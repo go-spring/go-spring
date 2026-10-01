@@ -22,7 +22,7 @@ import (
 	"testing"
 
 	"github.com/apache/thrift/lib/go/thrift"
-	"go-spring.org/cloud/governance/resilience"
+	"go-spring.org/cloud/resilience"
 )
 
 // stubServerExecutor is an Executor whose outcome the test dictates. reject

@@ -23,10 +23,10 @@ import (
 	"testing"
 
 	"go-spring.org/cloud/discovery"
-	"go-spring.org/cloud/governance/fault"
-	"go-spring.org/cloud/governance/resilience"
-	"go-spring.org/cloud/governance/traffic"
+	"go-spring.org/cloud/fault"
 	"go-spring.org/cloud/loadbalance"
+	"go-spring.org/cloud/resilience"
+	"go-spring.org/cloud/traffic"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/httpclt"
 )
@@ -122,7 +122,7 @@ func TestCustomDriverReceivesResolvedBackend(t *testing.T) {
 // sits between them: the driver sees exactly the instance the container holds.
 //
 // The test does NOT register those beans itself. Importing this starter blank-
-// imports starter-governance, which registers them — so a container already
+// imports the governance center, which registers them — so a container already
 // holds one *resilience.Manager / *fault.Injector, and providing another would
 // be a duplicate. The assertion is therefore identity with what another
 // injection resolves, which is the same claim.

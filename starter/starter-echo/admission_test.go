@@ -23,7 +23,7 @@ import (
 	"testing"
 
 	"github.com/labstack/echo/v4"
-	"go-spring.org/cloud/governance/resilience"
+	"go-spring.org/cloud/resilience"
 )
 
 // stubExecutor is an Executor whose behavior the test dictates, so the
@@ -65,7 +65,7 @@ func serveServerPolicy(t *testing.T, exec resilience.ServerExecutor, handler ech
 	t.Helper()
 	e := echo.New()
 	handlerRuns := 0
-	e.Use(resilienceServerPolicy(exec, "echo:test"))
+	e.Use(resilienceServerPolicy(exec, "echo:test", false))
 	e.GET("/x", func(c echo.Context) error {
 		handlerRuns++
 		return handler(c)

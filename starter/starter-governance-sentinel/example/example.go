@@ -38,7 +38,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"go-spring.org/cloud/governance/resilience"
+	"go-spring.org/cloud/resilience"
 
 	StarterGovernanceSentinel "go-spring.org/starter-governance-sentinel"
 )

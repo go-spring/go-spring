@@ -1,7 +1,7 @@
 # starter-dubbo Usage — Reference
 
 Detailed usage reference. Overview: [README.md](README.md). All behavior claims are verified against
-the starter source (`config.go`, `client.go`, `server.go`, `dync.go`, `fault.go`, `loadtest.go`,
+the starter source (`starter.go`, `config.go`, `client.go`, `server.go`, `dync.go`, `fault.go`, `loadtest.go`,
 `internal/logger`, `internal/mapconfig`) and the runnable [example/](example/). **Dubbo/tribble
 semantics (protocols, registry behavior, cluster/loadbalance strategies, serialization, filter
 semantics) are [dubbo-go's documentation](https://dubbo-go.github.io/)** — everything below is
@@ -9,10 +9,10 @@ go-spring's increment: binding surface, bean wiring, lifecycle, hot reload, gove
 observability integration.
 
 **Activation**: everything is gated on the literal presence of the `spring.dubbo.registries`
-property (config.go:52). A typo there silently disables the whole starter — no error, no bean.
+property (starter.go:41). A typo there silently disables the whole starter — no error, no bean.
 On top of that: the server bean additionally requires `spring.dubbo.provider.enabled` to be
-unset-or-`true` (server.go:33-34) **and** at least one `ServiceRegister` bean; the client bean
-follows the `Instance` (client.go:29).
+unset-or-`true` (starter.go:65) **and** at least one `ServiceRegister` bean; the client bean
+follows the `Instance` (starter.go:47).
 
 ---
 
@@ -176,23 +176,23 @@ registry (Design Health suspect 10).
 ```
 import starter-dubbo
   ├─ init(): dubbo-go log bridge installed (internal/logger, both facades)
-  ├─ init(): mapconfig installed as dubbo-go DynamicConfiguration (config.go:47)
-  ├─ gs.Provide(NewInstance)  — condition: OnProperty("spring.dubbo.registries")   [config.go:49-52]
-  ├─ gs.Provide(NewClient)    — condition: OnBean[*Instance]                       [client.go:27-30]
+  ├─ init(): mapconfig installed as dubbo-go DynamicConfiguration (starter.go:36)
+  ├─ gs.Provide(NewInstance)  — condition: OnProperty("spring.dubbo.registries")   [starter.go:38]
+  ├─ gs.Provide(NewClient)    — condition: OnBean[*Instance]                       [starter.go:46-48]
   ├─ gs.Module(provider.enabled=true-by-default) → gs.Provide(NewSimpleDubboServer)
-  │     exported as gs.Server — conditions: OnBean[ServiceRegister] + OnBean[*Instance]  [server.go:32-44]
-  ├─ gs.Provide(newDyncPoller) — unconditional; bound to ${spring.dubbo.application}  [dync.go:40-42]
+  │     exported as gs.Server — conditions: OnBean[ServiceRegister] + OnBean[*Instance]  [starter.go:65-75]
+  ├─ gs.Provide(newDyncPoller) — unconditional; bound to ${spring.dubbo.application}  [starter.go:56-60]
   └─ init(): "fault" and "loadtest" filters registered in dubbo-go's filter registry
 
 gs.Run()
   ├─ bind ${spring.dubbo} once, statically → DubboConfig → NewInstance
   │     (mounts protocols, metrics, tracing, shutdown on one *dubbo.Instance;
-  │      config.go:391-513; application.name blank or 0 registries → fail fast)
+  │      config.go:376-498; application.name blank or 0 registries → fail fast)
   ├─ RegisterReference beans bind ${spring.dubbo.consumer.references.<n>} → typed stubs via NewClient
   ├─ wiring order note: Rooters (dyncPoller) are wired BEFORE Runners (governance engine)
-  │     — see dync.go:90-94 comment; the injected center's OnReady re-polls to close the gap
+  │     — see dync.go:79-83 comment; the injected center's OnReady re-polls to close the gap
   ├─ SimpleDubboServer.Run: buildOptions(provider, protocols, registries) → d.NewServer()
-  │     → regAll(): every ServiceRegister bean invoked → <-sig.TriggerAndWait() → svr.Serve()  [server.go:297-327]
+  │     → regAll(): every ServiceRegister bean invoked → <-sig.TriggerAndWait() → svr.Serve()  [server.go:282-312]
   ├─ readiness: ready signal fires after Run's trigger; in-flight RPCs drain on Stop
   └─ SIGTERM: Stop closes the done channel → Run returns → gs completes shutdown
         (dubbo-go's own graceful-shutdown timings come from ${spring.dubbo.shutdown.*})
@@ -202,7 +202,7 @@ gs.Run()
 
 `gs.Provide` captures file:line debug info via `runtime.Caller(skip)` → `SetFileLine`
 (spring/gs/internal/gs_bean/bean.go:372-376). Both helpers pin that capture with `.Caller(2)`
-(server.go:360, client.go:175): frame 0 = `Caller`, frame 1 = the helper itself, frame 2 = **you**.
+(server.go:339, client.go:179): frame 0 = `Caller`, frame 1 = the helper itself, frame 2 = **you**.
 Call them directly at the top level of your own `init()`/package code; wrapping them in a helper
 function or calling from deep inside a closure shifts the stack and the bean's debug info points
 at the wrong place. This affects only diagnostics (bean descriptions, error attribution) — not
@@ -211,38 +211,38 @@ binding — but wrong frames make container dumps useless.
 ### 2.3 The Instance model (2026-07-24 refactor)
 
 There is exactly **one** static bind of `${spring.dubbo}` into a `DubboConfig`, held by the
-`Instance` facade (config.go:51, 351-354). `NewClient` (client.go:34) and `NewSimpleDubboServer`
-(server.go:190) both consume from `Instance` — `Registries()`, `Protocols()`, `Consumer()`,
-`Provider()`, `NewServer()`, `NewClient()` (config.go:357-386). Registries and protocols are
+`Instance` facade (starter.go:40, 351-354). `NewClient` (client.go:28) and `NewSimpleDubboServer`
+(server.go:175) both consume from `Instance` — `Registries()`, `Protocols()`, `Consumer()`,
+`Provider()`, `NewServer()`, `NewClient()` (config.go:342-371). Registries and protocols are
 therefore process-global: define them once at the top level, select per role by
-`registry-ids` / `protocol-ids` (empty = all; unknown ID fails fast — config.go:592-605).
+`registry-ids` / `protocol-ids` (empty = all; unknown ID fails fast — config.go:577-590).
 
 ### 2.4 Filter chain — what the starter registers, and where
 
 Two dubbo-go filters are registered at init time; both are **opt-in per service** by adding the
 name to the provider's `filter` key (comma-separated, dubbo-go semantics for the rest):
 
-- **`loadtest`** (loadtest.go:38): reads the load-test marker from the inbound dubbo attachment
+- **`loadtest`** (starter.go:102): reads the load-test marker from the inbound dubbo attachment
   (string or []byte, both handled) and tags the context so the propagator's `IsLoadTest(ctx)` works in
   later filters and in your service impl. Put it **first** in the chain (source comment,
-  loadtest.go:31-34) so the marker lands before anything else branches on it.
-- **`fault`** (fault.go:40): reads the governance starter's fault injector bean, which a wiring
+  starter.go:97-101) so the marker lands before anything else branches on it.
+- **`fault`** (starter.go:90): reads the governance starter's fault injector bean, which a wiring
   hook installs because dubbo's filter registry offers no constructor to inject into; the
   handle is read **on every call** — hot-toggleable, transparent pass-through when governance
   is absent. An injected failure surfaces as `result.RPCResult{Err: fault.ErrInjected}`.
 
-Filters are **frozen at Refer/export time** (dync.go:60) — changing a `filter` key needs a
+Filters are **frozen at Refer/export time** (dync.go:49) — changing a `filter` key needs a
 restart; timeout/retries do not (§4.2).
 
 ### 2.5 One call, layer by layer (consumer → provider)
 
 1. Your code calls the typed stub (`*greet.GreetService`), which was built by
    `RegisterReference` from the shared `*client.Client` + the reference's `ReferenceOption`s
-   (client.go:172-176).
+   (client.go:166-170).
 2. dubbo-go's consumer filter chain (whatever `consumer.filter` /
    `consumer.references.<n>.filter` installed) runs; outbound load-test marking is done by
-   cloud/governance/traffic's carrier injection — the starter's `loadtest` filter is the
-   inbound companion (loadtest.go:44-47 comment).
+   cloud/traffic's carrier injection — the starter's `loadtest` filter is the
+   inbound companion (starter.go:108 comment).
 3. Cluster strategy / loadbalance pick an instance (dubbo-go semantics; URL params — this is
    exactly the set the hot-reload path can change at runtime, §4.2).
 4. Triple (or dubbo/jsonrpc) transport delivers the invocation to the provider port.
@@ -259,14 +259,14 @@ restart; timeout/retries do not (§4.2).
 defaults, validation, couplings. Map ids (`registries.<id>`, `protocols.<id>`,
 `provider.services.<n>`, `consumer.references.<n>`, `...methods.<m>`) are free-form, validated
 `^[_a-zA-Z][a-zA-Z\d_-]*$`. All durations are **strings** (`"3s"`, `"10m"`); an unparseable or
-non-positive duration is **silently dropped**, never an error (e.g. config.go:565-569).
+non-positive duration is **silently dropped**, never an error (e.g. config.go:550-554).
 
 ### 3.1 application (8 keys) — required node for `name`
 
 | Key | Default | Binding behavior |
 |-----|---------|------------------|
-| `name` | `dubbo.io` | The only hard-required key: blank → `NewInstance` fails fast (config.go:393-395). Also the app-level governance label and the dyncPoller's override key (dync.go:77-83). |
-| `metadata-type` | `local` | `remote` flips `dubbo.WithRemoteMetadata` (config.go:419-421). |
+| `name` | `dubbo.io` | The only hard-required key: blank → `NewInstance` fails fast (config.go:378-380). Also the app-level governance label and the dyncPoller's override key (dync.go:66-72). |
+| `metadata-type` | `local` | `remote` flips `dubbo.WithRemoteMetadata` (config.go:404-406). |
 | `organization`/`module`/`owner` | `dubbo-go`/`sample`/`dubbo-go` | Only forwarded when non-empty. |
 | `group`/`version`/`environment` | — | Forwarded when non-empty. |
 
@@ -274,11 +274,11 @@ non-positive duration is **silently dropped**, never an error (e.g. config.go:56
 
 | Key | Default | Binding behavior |
 |-----|---------|------------------|
-| *(node presence)* | — | Literal `spring.dubbo.registries` property gates the whole starter (config.go:52). ≥1 entry or `NewInstance` fails (config.go:396-398). |
-| `protocol` | — | nacos/etcdv3/polaris/xds/zookeeper/service-discovery-registry; empty falls back to the map-key id (config.go:544-547). |
+| *(node presence)* | — | Literal `spring.dubbo.registries` property gates the whole starter (starter.go:41). ≥1 entry or `NewInstance` fails (config.go:381-383). |
+| `protocol` | — | nacos/etcdv3/polaris/xds/zookeeper/service-discovery-registry; empty falls back to the map-key id (config.go:529-532). |
 | `address` | — | Required in practice (registry needs one). |
 | `timeout` / `ttl` | 5s / 10s | Duration strings; invalid → dropped silently. |
-| `weight` | 100 | Always passed (`>=0`, config.go:571-573). |
+| `weight` | 100 | Always passed (`>=0`, config.go:556-558). |
 | `simplified` / `preferred` / `zone` | false / false / — | Registry-side knobs. |
 | `group` / `namespace` / `username` / `password` / `params` | — | Forwarded when set. |
 
@@ -286,11 +286,11 @@ non-positive duration is **silently dropped**, never an error (e.g. config.go:56
 
 | Key | Default | Binding behavior |
 |-----|---------|------------------|
-| `name` | `dubbo` | dubbo/rest/grpc/filter/jsonrpc/tri/registry; empty falls back to the id (config.go:517-520). |
+| `name` | `dubbo` | dubbo/rest/grpc/filter/jsonrpc/tri/registry; empty falls back to the id (config.go:502-505). |
 | `port` | 0 | 0 lets dubbo-go pick. |
-| `ip` / `params` | — | `params` is `map[string]string` — a value-typed map, not `map[string]any` (driver limitation, config.go:123-129 comment). |
+| `ip` / `params` | — | `params` is `map[string]string` — a value-typed map, not `map[string]any` (driver limitation, config.go:108-114 comment). |
 
-⚠ No protocols at all → server falls back to a single `tri` listener on `:20000` (server.go:276-282).
+⚠ No protocols at all → server falls back to a single `tri` listener on `:20000` (server.go:261-267).
 
 ### 3.4 metadata-report — removed
 
@@ -302,7 +302,7 @@ metadata (that routes through the registries block).
 ### 3.5 provider (27 keys) + provider.services.<n> (26) + methods.<m> (12)
 
 Provider-wide defaults every exported service inherits; per-service fields override them; both
-translate to `server.ServerOption` / `ServiceOption` in server.go:50-132 and 196-294. Only
+translate to `server.ServerOption` / `ServiceOption` in server.go:35-117 and 196-294. Only
 non-zero/non-empty values are forwarded (dubbo-go defaults fill the rest).
 
 Notables: `registry-ids`/`protocol-ids` must reference existing map keys (fails fast);
@@ -314,14 +314,14 @@ reference/method); values below `-1` fail startup with a validation error;
 
 ### 3.6 consumer (19 keys) + consumer.references.<n> (19) + methods.<m> (12)
 
-Same structure on the client side (client.go:34-98 for consumer level, 101-168 for references).
+Same structure on the client side (client.go:28-92 for consumer level, 101-168 for references).
 This tree is bound **twice** — statically for the client bean and as `gs.Dync` for hot reload
 (§4.2).
 
 | Gotcha | Detail |
 |--------|--------|
 | `check` | Both consumer and reference levels default **true** (fail fast on missing providers). Migration: references that relied on the old reference-level default **false** must set `spring.dubbo.consumer.check=false` — dubbo-go v3 has no per-reference "no check" option, so `references.<n>.check=false` combined with consumer check=true only WARNs at startup (it cannot be honored). |
-| `protocol` | consumer accepts tri/triple/jsonrpc/dubbo (client.go:39-46); reference accepts whatever dubbo-go takes. |
+| `protocol` | consumer accepts tri/triple/jsonrpc/dubbo (client.go:33-40); reference accepts whatever dubbo-go takes. |
 | `url` | Direct-connection mode — bypasses the registry for that reference. |
 | Separator mix | provider/consumer level uses dashes (`tps-limit-rate`), service/reference/method level uses dots (`tps.limit.rate`, `force.tag`) — same concept, two spellings. **Canonical by design** (kept for compatibility): the dotted spellings at service/reference/method level intentionally mirror dubbo's own URL-param names that the hot-reload path publishes (dync.go pushes `tps.limit.rate` etc. as URL params); the dashed spellings at provider/consumer level follow the starter's own key style. Exact-match binding only (no relaxed binding), so both forms must stay as documented. |
 
@@ -334,14 +334,14 @@ This tree is bound **twice** — statically for the client bean and as `gs.Dync`
 | `metrics.push-gateway-address` | — | Enables the pushgateway path when set. |
 | `metrics.mode` / `metrics.namespace` | — | Removed (2026-08): bound but dead, no v3 metrics.Option existed for them. |
 | `tracing.enable` | **true** | Mounts dubbo-go's OTel tracing with exporter default **stdout** — see §5 before relying on it. |
-| `tracing.exporter` / `endpoint` / `propagator` / `mode` / `ratio` / `insecure` | stdout / — / w3c / — / 1.0 / false | Forwarded to dubbo-go `trace.Option`s (config.go:453-472). |
+| `tracing.exporter` / `endpoint` / `propagator` / `mode` / `ratio` / `insecure` | stdout / — / w3c / — / 1.0 / false | Forwarded to dubbo-go `trace.Option`s (config.go:438-457). |
 | `tracing.name`/`serviceName`/`address`/`use-agent` | — | Removed (2026-08): legacy jaeger fields, never translated, no v3 Option. |
 
 ### 3.8 shutdown (6 keys)
 
 Duration strings translated to `graceful_shutdown.Option`s **only when at least one field is
-set** (config.go:475-506, `anySet` at 536-540). `reject-handler`: any non-empty value merely
-turns rejection on — the value itself is ignored (config.go:497-499). `internal-signal=true`
+set** (config.go:460-491, `anySet` at 536-540). `reject-handler`: any non-empty value merely
+turns rejection on — the value itself is ignored (config.go:482-484). `internal-signal=true`
 (default) lets dubbo-go react to signals itself.
 
 ### 3.9 Wrapper-field note (absolute vs prefixed keys)
@@ -350,7 +350,7 @@ Some starters expose `value:"${observability:=}"`-style wrapper fields that reso
 **top-level absolute** keys regardless of the instance prefix. starter-dubbo has **no such
 wrapper**: every key above is prefixed under `spring.dubbo.*` and bound relative to it (the only
 top-level refs are the literal tag expressions `spring.dubbo`, `spring.dubbo.consumer`,
-`spring.dubbo.application` in config.go:51, dync.go:41, dync.go:67).
+`spring.dubbo.application` in starter.go:40, starter.go:57, dync.go:56).
 
 ---
 
@@ -359,7 +359,7 @@ top-level refs are the literal tag expressions `spring.dubbo`, `spring.dubbo.con
 ### 4.1 Verify the assembly
 
 ```bash
-grep -ri "dubbo server starting" logs/    # SimpleDubboServer.Run reached (server.go:314)
+grep -ri "dubbo server starting" logs/    # SimpleDubboServer.Run reached (server.go:299)
 curl -s 127.0.0.1:9090/metrics | head     # dubbo-go Prometheus metrics (if enabled)
 grep -ri "_rpc_dubbo" logs/ | head        # dubbo-go framework logs via the bridge (§4.4)
 ```
@@ -367,13 +367,13 @@ grep -ri "_rpc_dubbo" logs/ | head        # dubbo-go framework logs via the brid
 ### 4.2 Hot reload drill (timeout/retries, no restart)
 
 `${spring.dubbo}` is bound once statically for `Instance` — fields consumed at build/refer time
-are **frozen**: protocols, registries, filters (dync.go:60), serialization, interface/group
+are **frozen**: protocols, registries, filters (dync.go:49), serialization, interface/group
 routing (they define the override key). `${spring.dubbo.consumer}` is bound **again** as
-`gs.Dync[DubboConsumer]` (dync.go:67) and the `dyncPoller` pushes the dynamically-applicable
+`gs.Dync[DubboConsumer]` (dync.go:56) and the `dyncPoller` pushes the dynamically-applicable
 subset into an in-memory config center (mapconfig) as flat dubbo URL params: `timeout`,
 `retries`, `loadbalance`, `cluster`, `group`, `version`, `serialization`, `sticky`,
 `force.tag`, `weight`, and per-method `methods.<m>.{timeout,retries,loadbalance,weight,sticky,
-tps.limit.*,execute.limit*}` (dync.go:57-59, 154-228).
+tps.limit.*,execute.limit*}` (dync.go:46-48, 154-228).
 
 Chain (DESIGN.md, confirmed in code):
 
@@ -397,32 +397,32 @@ Drill:
 Consumer-level defaults publish as `<application.name>.configurators` (app-level listener);
 each reference with a non-empty `interface` publishes as
 `<interface>:<version>:<group>.configurators` — built by `colonSeparatedKey`
-(dync.go:245-257): version is omitted when empty or the `0.0.0` sentinel **but its `:` is always
+(dync.go:234-246): version is omitted when empty or the `0.0.0` sentinel **but its `:` is always
 written**; likewise group. A bare interface name never matches. Consequence: for the override to
 land, the reference's `version`/`group` must match what the provider exported.
 
 ### 4.4 Governance merge path (dynamic timeout from the center)
 
-Optional; active only when starter-governance is imported and its rules document sets
+Optional; active only when starter-governance-file is imported and its rules document sets
 `spring.governance.enabled=true`. The poller injects the `*resilience.Manager` and the
-`*governance.Center` as nullable constructor params (dync.go:48-49) and
-subscribes to governance policies under two service labels (dync.go:263-264):
+`*governance.Center` as nullable constructor params (starter.go:59) and
+subscribes to governance policies under two service labels (dync.go:252-253):
 
 - `dubbo:<application.name>` — consumer-level defaults
 - `dubbo:<interface>:<version>:<group>` — per reference (same colon-separated key as §4.3)
 
 `Policy.Timeout` (ms) and `Policy.MaxRetries` override the `timeout`/`retries` params when > 0
-(dync.go:288-295); note MaxRetries maps to dubbo's **cluster** retries, not resilience-layer
+(dync.go:277-284); note MaxRetries maps to dubbo's **cluster** retries, not resilience-layer
 retry. Ordering is handled: Rooters wire before Runners, so the injected `*governance.Center`'s
-`OnReady` re-polls once the engine is live (dync.go:90-99). Drill: flip `spring.governance.*` timeout in the
+`OnReady` re-polls once the engine is live (dync.go:79-88). Drill: flip `spring.governance.*` timeout in the
 center's source, watch the reference override re-push without restart.
 
 ### 4.5 Fault drill (provider side, no restart)
 
 1. Add `fault` to the service's filter chain: `...services.greet.filter=loadtest,fault`.
-2. Import starter-governance; configure `spring.governance.client.fault.*` (rate/error/scope) via a hot source.
+2. Import starter-governance-file; configure `spring.governance.client.fault.*` (rate/error/scope) via a hot source.
 3. With `scope: loadtest`, only invocations carrying the load-test marker burn — mark them by
-   injecting the outbound carrier (cloud/governance/traffic) from a marked upstream, or use
+   injecting the outbound carrier (cloud/traffic) from a marked upstream, or use
    `scope: real` in a dedicated environment.
 4. Watch: consumer receives the injected error; the propagator's `IsLoadTest(ctx)` returns true inside
    the impl for marked calls (loadtest filter ordered first).
@@ -442,9 +442,9 @@ into the bridge.
 
 | Symptom | Likely cause | Fix |
 |---------|--------------|-----|
-| Nothing happens; no dubbo beans at all | `spring.dubbo.registries` misspelled/absent — module gate (config.go:52) | Set it; this failure mode is silent by design (covered in wiring_test.go). |
-| Boot fails: `${spring.dubbo.application.name} is required` | blank name | Set `spring.dubbo.application.name` (config.go:393-395). |
-| Boot fails: registry id "x" is not defined | `registry-ids`/`protocol-ids` references an unknown map key | Align ids under `registries`/`protocols` (config.go:592-605). |
+| Nothing happens; no dubbo beans at all | `spring.dubbo.registries` misspelled/absent — module gate (starter.go:41) | Set it; this failure mode is silent by design (covered in wiring_test.go). |
+| Boot fails: `${spring.dubbo.application.name} is required` | blank name | Set `spring.dubbo.application.name` (config.go:378-380). |
+| Boot fails: registry id "x" is not defined | `registry-ids`/`protocol-ids` references an unknown map key | Align ids under `registries`/`protocols` (config.go:577-590). |
 | Server never starts, client works | no `ServiceRegister` bean, or `provider.enabled=false` | Call `RegisterService` (at top level) or re-enable. |
 | Startup panic mentioning OTel/stdout exporter | `tracing.enable=true` (default) with exporter `stdout` and no provider wired | Set `spring.dubbo.tracing.enable=false` or wire starter-otel / a real exporter. |
 | Port 9090 conflict | dubbo-go metrics defaults on (`:9090/metrics`) | `spring.dubbo.metrics.enable=false` or set an explicit port. |
@@ -466,7 +466,7 @@ Design suspects (audit ledger):
 
 1. Config surface too large to document exhaustively — itself a signal.
 2. Duplicate binding of the same tree (static `Instance` + `Dync` consumer) with a frozen-field
-   list only visible in code (dync.go:57-60).
+   list only visible in code (dync.go:46-49).
 3. ~~Dash-vs-dot key separators differ by nesting level~~ — resolved as documented-canonical
    (see §3.6 "Separator mix"): dotted keys mirror dubbo URL params on dynamic levels, dashed
    keys are the starter's own style on static levels; kept for compatibility, exact-match only.
@@ -486,7 +486,7 @@ Design suspects (audit ledger):
    discovery).
 10. `check.sh` claims "no external service" but example/conf/app.properties requires etcd.
 11. ~~wiring_test.go "KNOWN BUG" comment is stale (fixed `map[string]string`), protocols block
-    still untested.~~ — the `map[string]any` driver failure is fixed (config.go:123-129
+    still untested.~~ — the `map[string]any` driver failure is fixed (config.go:108-114
     documents the constraint); protocols block remains untested in wiring_test.go.
 12. ~~DESIGN.md is stale relative to the code~~ — DESIGN.md refreshed (2026-08) to match
     config.go/dync.go; this USAGE and the source remain authoritative for details.

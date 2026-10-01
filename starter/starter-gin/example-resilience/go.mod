@@ -50,7 +50,7 @@ require (
 	github.com/ugorji/go/codec v1.3.1 // indirect
 	go-spring.org/gs-mock v0.0.9 // indirect
 	go-spring.org/log v0.1.4 // indirect
-	go-spring.org/starter-governance v0.0.0
+	go-spring.org/starter-governance-file v0.0.0
 	go-spring.org/stdlib v0.1.7 // indirect
 	go.mongodb.org/mongo-driver/v2 v2.6.0 // indirect
 	golang.org/x/arch v0.26.0 // indirect
@@ -65,4 +65,4 @@ require (
 
 replace go-spring.org/cloud => ../../../cloud
 
-replace go-spring.org/starter-governance => ../../starter-governance
+replace go-spring.org/starter-governance-file => ../../starter-governance-file

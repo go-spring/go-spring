@@ -14,28 +14,43 @@
  * limitations under the License.
  */
 
+// health.go builds this starter's health.Indicator beans: one per configured
+// instance, exported so an application that also imports starter-actuator gets
+// Redis readiness folded into /readiness with no extra wiring.
 package StarterGoRedis
 
 import (
 	"context"
 
-	"github.com/redis/go-redis/v9"
 	"go-spring.org/cloud/actuator/health"
 )
 
-// newClientHealth builds an indicator for a single/sentinel client. It is
-// registered once per configured instance and exported as health.Indicator, so
-// an application that also imports starter-actuator gets Redis readiness folded
-// into /readiness with no extra wiring.
-func NewClientHealth(name string, client redis.UniversalClient) *health.Indicator {
-	return &health.Indicator{Name: "redis:" + name, Probe: func(ctx context.Context) error {
-		return client.Ping(ctx).Err()
-	}}
+// HealthCheck probes a Redis client with the cheapest read-only round trip: a
+// PING to the backend. It is the module's single health implementation — the
+// Actuator probe ([NewClientHealth]) and the startup probe in the constructors
+// both delegate to it.
+//
+// Unlike the other client starters this probe cannot bypass the instrumentation:
+// the declaration and resilience layers are go-redis hooks attached to the raw
+// client the wrapper embeds, so a PING issued through the embedded client
+// necessarily rides them (it declares nothing — PING is a skip op — so the
+// resilience layer reports it as an undeclared call). That is inherent to how
+// go-redis exposes its extension point, not a choice made here.
+func HealthCheck(ctx context.Context, c *Client) error {
+	return c.Ping(ctx).Err()
 }
 
-// newClusterHealth builds an indicator for a cluster client.
-func NewClusterHealth(name string, client redis.UniversalClient) *health.Indicator {
+// NewClientHealth builds an indicator for a Redis client. Single, sentinel and
+// cluster modes all hand in the same [Client] wrapper (it hides the raw
+// *redis.Client / *redis.ClusterClient difference), so one constructor covers
+// every topology.
+//
+// It is registered once per configured instance and exported as
+// health.Indicator, so an application that also imports starter-actuator gets
+// Redis readiness folded into /readiness with no extra wiring. The probe
+// delegates to [HealthCheck], the module's single health implementation.
+func NewClientHealth(name string, c *Client) *health.Indicator {
 	return &health.Indicator{Name: "redis:" + name, Probe: func(ctx context.Context) error {
-		return client.Ping(ctx).Err()
+		return HealthCheck(ctx, c)
 	}}
 }

@@ -47,10 +47,11 @@ type Service struct {
 ### 4. Use
 
 ```go
-// Guarded path: resilience (rate limit / circuit breaking) + observation
+// Guarded path: resilience (rate limit / circuit breaking). The statement's
+// span, metrics and access log are declared here and emitted by the resilience layer.
 err := s.Client.Exec(ctx, "INSERT INTO demo.greetings (id, message) VALUES (?, ?)", 1, "hello")
 
-// Full query power through the embedded session
+// Full query power through the wrapped session
 var msg string
 err = s.Client.Query("SELECT message FROM demo.greetings WHERE id = ?", 1).
     WithContext(ctx).Scan(&msg)
@@ -60,13 +61,24 @@ err = s.Client.Query("SELECT message FROM demo.greetings WHERE id = ?", 1).
 
 - **Multi-instance clients** — every `spring.cassandra.instances.<name>` entry is its
   own bean with independent settings.
-- **Fail-fast startup probe + health indicator** — a `system.local` scan at
-  boot and a `cassandra:<name>` indicator for `starter-actuator`.
+- **Fail-fast startup probe + health indicator** — `HealthCheck` (a `system.local`
+  scan) at boot and a `cassandra:<name>` indicator for `starter-actuator`, both
+  delegating to the same implementation.
 - **Guarded Exec** — synchronous statements route through the governance
-  executor; iterator/paging queries use the embedded session directly
-  (unguarded by design, like the MQ starters' async paths).
+  executor; the guarded `Query` wrapper covers `Iter`/`Scan` too, while page
+  fetches inside the returned iterator and batch execution stay outside the
+  guard (statement-level fidelity, like the database/sql starters).
 - **Cluster discovery** — the contact-point list bootstraps the driver's own
   topology discovery; entries may carry ports (`host:9042`).
+
+## Observability
+
+`gocql` ships no official OpenTelemetry instrumentation. The starter therefore declares what each
+statement is (`observe.go`): the operation name, the `db.system`/`db.operation` labels, and the CQL text as
+`db.statement` span/log detail. The signals themselves are emitted by the resilience layer — the one point on the
+executor chain that sees a whole call, retries included — so beside the call-level `db.client.operation.duration`
+histogram every call also reports an attempt-level `db.client.attempt.duration` one, and an access log tagged
+`_app_cassandra_access`. All of it is a no-op unless `starter-otel` installs providers.
 
 ## Advanced Features
 

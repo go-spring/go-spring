@@ -120,13 +120,15 @@ type Config struct {
 	// false (the default) the client dials in plaintext.
 	TLS security.TLSConfig `value:"${tls}"`
 
-	// Otel toggles the redisotel tracing/metrics instrumentation attached to
-	// the client at construction. Both default to true — redisotel rides the
-	// OTel globals that starter-otel installs and is a no-op without it, so
-	// leaving them on is the zero-config opt-in. Set either to false to fully
-	// detach that signal's hooks for an instance, e.g. a high-throughput cache
-	// where the per-command span overhead is unwanted, or when a custom
-	// instrumentation is supplied via a Driver.
+	// Otel toggles the redisotel pool-metrics instrumentation attached to the
+	// client at construction. It defaults to true — redisotel rides the OTel
+	// globals that starter-otel installs and is a no-op without it, so leaving
+	// it on is the zero-config opt-in. Set it to false to detach the pool
+	// metrics for an instance, e.g. when a custom instrumentation is supplied
+	// via a Driver.
+	//
+	// Per-command spans are NOT toggled here: they belong to the resilience
+	// layer, which emits the one call span for every client in the family.
 	Otel OtelConfig `value:"${otel}"`
 
 	// HealthEnabled controls whether the starter contributes a health.Indicator
@@ -136,16 +138,26 @@ type Config struct {
 	HealthEnabled bool `value:"${health.enabled:=true}"`
 }
 
-// OtelConfig toggles the built-in redisotel instrumentation per instance and per
-// signal. See [Config.Otel].
+// OtelConfig toggles the built-in redisotel instrumentation per instance. Only
+// the connection-pool metrics remain toggleable — the per-command span is the
+// resilience layer's. See [Config.Otel].
 type OtelConfig struct {
-	TracingEnabled bool `value:"${tracing.enabled:=true}"`
 	MetricsEnabled bool `value:"${metrics.enabled:=true}"`
+
+	// TracingEnabled is REMOVED, and accepted only so an existing configuration
+	// still binds: per-command spans are emitted by the resilience layer, which
+	// already opens one span per call for every client in the family, so a
+	// redisotel span here was a second one for the same call. Setting the key
+	// changes nothing and is reported at startup (see [Config.Otel]); drop it
+	// from your configuration.
+	//
+	// It carries no default, so the warning fires only for a configuration that
+	// actually wrote the key — not for every instance that simply never used it.
+	TracingEnabled bool `value:"${tracing.enabled}"`
 }
 
-// Resilience is no longer a field of Config: it is armed by the Client wrapper
-// bean's Init (the gs InitMethod) from the *resilience.Manager bean the
-// container injects.
+// Resilience is not a field of Config: the [Client] wrapper applies it from the
+// [cloud.ClientParams] bundle the container injects (see [NewClient]).
 
 // Resilience binds the backend-neutral resilience knobs shared by every client
 // starter (see [resilience.Config]). Driver selects which registered backend

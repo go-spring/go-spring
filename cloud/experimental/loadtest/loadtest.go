@@ -48,8 +48,8 @@ import (
 	"slices"
 	"time"
 
-	"go-spring.org/cloud/governance/fault"
-	"go-spring.org/cloud/governance/resilience"
+	"go-spring.org/cloud/fault"
+	"go-spring.org/cloud/resilience"
 )
 
 // Op is one operation a worker fires per dispatch. It returns nil on success.

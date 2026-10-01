@@ -20,29 +20,11 @@ import (
 	"context"
 	"sync/atomic"
 
-	"dubbo.apache.org/dubbo-go/v3/common/extension"
 	"dubbo.apache.org/dubbo-go/v3/filter"
 	"dubbo.apache.org/dubbo-go/v3/protocol/base"
 	"dubbo.apache.org/dubbo-go/v3/protocol/result"
-	"go-spring.org/cloud/governance/fault"
-	"go-spring.org/spring/gs"
+	"go-spring.org/cloud/fault"
 )
-
-func init() {
-	// Register the inbound fault-injection filter under "fault". Add "fault" to
-	// a provider's filter chain to activate it. dubbo's filter registry hands out
-	// filters via a no-arg constructor, so the injector cannot arrive as a
-	// constructor parameter: a bean installs it into the package handle below
-	// instead.
-	extension.SetFilter(faultFilterKey, newFaultFilter)
-
-	// The governance beans are REQUIRED: this starter blank-imports
-	// starter-governance, so "governance off" is spring.governance.enabled=false,
-	// never an absent bean.
-	gs.Provide(newInjectorHook,
-		gs.IndexArg(0, gs.TagArg("")),
-	).Export(gs.As[gs.Rooter]()).Caller(1)
-}
 
 const faultFilterKey = "fault"
 
@@ -54,7 +36,7 @@ const faultFilterKey = "fault"
 // injector swaps its config in place ([fault.Injector.SetConfig]), so whatever
 // the center pushes later is visible to the filter without re-installing.
 //
-// nil (starter-governance not imported) means fault injection is off: the filter
+// nil (the governance center not imported) means fault injection is off: the filter
 // passes the call through untouched.
 var injector atomic.Pointer[fault.Injector]
 
@@ -62,7 +44,7 @@ var injector atomic.Pointer[fault.Injector]
 type injectorHook struct{}
 
 // newInjectorHook installs inj as the injector the fault filter reads. inj is
-// nil when starter-governance is not imported, which leaves fault injection off
+// nil when no center is linked, which leaves fault injection off
 // and the filter transparent; installing unconditionally (rather than skipping a
 // nil) keeps the handle from surviving a container that did have one — a
 // test-process concern, but the same "last wiring wins" rule in both cases.

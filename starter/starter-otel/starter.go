@@ -27,12 +27,17 @@ import (
 	"sync"
 
 	"go-spring.org/cloud/actuator/endpoint"
-	"go-spring.org/cloud/governance/traffic"
+	"go-spring.org/cloud/traffic"
 	"go-spring.org/log"
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/gs"
 	"go-spring.org/starter-otel/metric"
+	metricotlp "go-spring.org/starter-otel/metric/otlp"
+	metricprometheus "go-spring.org/starter-otel/metric/prometheus"
+	metricstdout "go-spring.org/starter-otel/metric/stdout"
 	"go-spring.org/starter-otel/trace"
+	traceotlp "go-spring.org/starter-otel/trace/otlp"
+	tracestdout "go-spring.org/starter-otel/trace/stdout"
 	"go-spring.org/stdlib/flatten"
 	runtimemetrics "go.opentelemetry.io/contrib/instrumentation/runtime"
 	"go.opentelemetry.io/otel"
@@ -52,6 +57,26 @@ var (
 )
 
 func init() {
+	// Register the built-in trace and metric exporters with their driver
+	// registries. Importing starter-otel is what makes otlp-grpc (the default),
+	// otlp-http, prometheus and stdout available; the subpackages hold the
+	// factories and expose a plain Register, so every registration the starter
+	// performs is readable here rather than spread across their inits.
+	//
+	// An application that wants to slim its dependency footprint can register
+	// its own exporter through the registry and drop the imports it does not
+	// need.
+	metricotlp.Register()
+	metricprometheus.Register()
+	metricstdout.Register()
+	traceotlp.Register()
+	tracestdout.Register()
+
+	// The W3C propagator pair the trace registry resolves "w3c" to. A caller
+	// that uses starter-otel/trace without linking this package (the luohua
+	// umbrella, that package's own tests) calls it directly.
+	trace.RegisterDefaults()
+
 	// A nil condition means the module always runs when the starter is imported;
 	// importing starter-otel activates the OTel SDK. The actual on/off is decided inside
 	// setup from ${spring.observability.enable} (default true). This must be a

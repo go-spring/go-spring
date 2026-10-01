@@ -15,32 +15,34 @@
  */
 
 // command.go is the "command seam" concept of this starter: the go-redis
-// [redis.Hook] layers that instrument each command, mirroring starter-redigo's
+// [redis.Hook] layer that protects each command, mirroring starter-redigo's
 // conn.go. Two hooks ride the client's hook chain (FIFO, first added outermost):
 //
-//	observeHook     — the access log (see observe.go; trace+metric come from
-//	                  redisotel, installed by instrument() in starter.go)
-//	resilienceHook  — the breaker/retry/rate-limit executor (innermost)
+//	operationHook   — the declaration layer: puts the command's identity on the
+//	                  ctx (see observe.go); emits nothing.
+//	resilienceHook  — the breaker/retry/rate-limit executor (innermost), which
+//	                  is also the single emitter of the call's span, metrics
+//	                  and access log.
 //
-// Their relative order is established by Init in client.go and is a semantic
-// contract: the access log sits outside the breaker so one log line covers the
-// whole retry loop.
+// Their relative order is established at construction (NewClient adds the
+// declaration, then the resilience hook) and is a
+// semantic contract: the declaration sits outside the breaker, so the identity
+// reaches the resilience layer and one log line covers the whole retry loop.
 package StarterGoRedis
 
 import (
 	"context"
-	"errors"
 
 	"github.com/redis/go-redis/v9"
-	"go-spring.org/cloud/governance/resilience"
+	"go-spring.org/cloud/resilience"
 )
 
 // resilienceHook routes every Redis command (and pipeline) through the executor.
 // DialHook is left untouched — connection establishment is discovery's concern,
 // not the command-level protection we add here.
 type resilienceHook struct {
-	exec    resilience.ClientExecutor
-	service string
+	exec         resilience.ClientExecutor
+	serviceLabel string
 }
 
 var _ redis.Hook = (*resilienceHook)(nil)
@@ -96,16 +98,6 @@ func (h *resilienceHook) run(ctx context.Context, setErr func(error), call func(
 		}, resilience.Tolerate(redis.Nil))
 	if err != nil && callErr == nil {
 		setErr(err)
-	}
-	return err
-}
-
-// nilAsSuccess treats redis.Nil (a cache miss / "key not found") as success so
-// it does not mark the access log entry as an error — mirroring run's treatment
-// of redis.Nil for the breaker.
-func nilAsSuccess(err error) error {
-	if errors.Is(err, redis.Nil) {
-		return nil
 	}
 	return err
 }

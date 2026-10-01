@@ -22,7 +22,7 @@ import (
 	"testing"
 
 	"github.com/redis/go-redis/v9"
-	"go-spring.org/cloud/governance/resilience"
+	"go-spring.org/cloud/resilience"
 	"go-spring.org/stdlib/testing/assert"
 )
 
@@ -30,7 +30,7 @@ func newHook(t *testing.T, p resilience.ClientPolicy) *resilienceHook {
 	d := resilience.NewDefaultDriver(nil)
 	exec, err := d.NewClientExecutor("svc", p)
 	assert.Error(t, err).Nil()
-	return &resilienceHook{exec: exec, service: "redis:test"}
+	return &resilienceHook{exec: exec, serviceLabel: "redis:test"}
 }
 
 // call drives one command through the hook with a stubbed next that returns

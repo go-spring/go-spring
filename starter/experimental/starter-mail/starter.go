@@ -23,9 +23,15 @@ import (
 	"strings"
 
 	"github.com/wneessen/go-mail"
+	"go-spring.org/cloud"
+	"go-spring.org/cloud/fault"
+	"go-spring.org/cloud/observability"
+	"go-spring.org/cloud/resilience"
 	"go-spring.org/log"
+	"go-spring.org/spring/conf"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
+	"go-spring.org/stdlib/flatten"
 )
 
 // Attachment is a file attached to a Message. Filename is the name shown to the
@@ -64,28 +70,57 @@ type Message struct {
 
 // Mailer wraps an SMTP client configured for one server. It is safe to hold as a
 // bean: each Send dials the server, delivers, and closes the connection, so no
-// long-lived socket is kept between calls (hence no destroy hook is needed).
+// long-lived socket is kept between calls. That is why the only resource it
+// releases at shutdown, through [Mailer.Destroy], is the resilience executor.
 type Mailer struct {
 	client *mail.Client
 	from   string
-	obs    *instrumentSet
+
+	// serviceLabel is the resilience service key ("mail:<name or host>") the
+	// executor scopes limiter/breaker state by. Fixed by [newMailer].
+	serviceLabel string
+
+	// exec is the resilience executor protecting every send, set by [newMailer]
+	// from the container's [cloud.ClientParams]; it is also the single emitter
+	// of the send's span, metrics and access log, read off the operation [Send]
+	// declares.
+	exec resilience.ClientExecutor
 }
 
 func init() {
-	// Register multiple SMTP mailers as a group. Each instance is created from
-	// the configuration under "${spring.mail}", so adding a second mailer is a
-	// pure-config change. There is no default singleton — select one by name
-	// (e.g. autowire:"notify").
-	//
-	// No destroy callback: the underlying client opens a fresh connection per
-	// Send and closes it when done, so there is nothing to release at shutdown.
-	gs.Group("${spring.mail.instances}", newMailer, nil)
+	// Register one SMTP mailer bean per entry under "${spring.mail.instances}".
+	// A gs.Module (rather than gs.Group) is used so each
+	// instance's ctor can take the governance beans alongside its config — the
+	// *Mailer bean owns the resilience executor, which the ctor builds while
+	// assembling the mailer and Destroy tears down — and to attach the file:line of
+	// this registration to the bean for diagnostics. There is no default
+	// singleton — select one by name (e.g. autowire:"notify").
+	gs.Module(gs.OnProperty("spring.mail.instances"), func(r gs.BeanProvider, p flatten.Storage) error {
+		return conf.BindEach(p, "${spring.mail.instances}", func(name string, c Config) error {
+			r.Provide(newMailer,
+				gs.IndexArg(1, gs.ValueArg(name)),
+				gs.IndexArg(2, gs.ValueArg(c)),
+				// The governance beans are REQUIRED: each is registered by the package that
+				// owns it (cloud/resilience, cloud/loadbalance, cloud/fault), which this
+				// starter imports — "governance off" is spring.governance.enabled=false, never
+				// an absent bean.
+				gs.IndexArg(3, gs.TagArg("")), // *resilience.Manager
+				gs.IndexArg(4, gs.TagArg("")), // *fault.Injector
+			).Name(name).Destroy((*Mailer).Destroy).Caller(1)
+			return nil
+		})
+	})
 }
 
 // newMailer builds a Mailer from config. It fails fast on a missing host or an
 // unknown auth/TLS mode, and probes the server once at startup so a
 // misconfiguration surfaces at boot rather than on the first send.
-func newMailer(ctx *gs.ContextProvider, name string, c Config) (*Mailer, error) {
+//
+// mgr and inj are the governance beans the container injects; the ctor bundles
+// them into the [cloud.ClientParams] it builds the mailer's executor from, so
+// the mailer is assembled complete in one step. The zero bundle degrades to an
+// observed-only, loudly-unmanaged executor.
+func newMailer(ctx *gs.ContextProvider, name string, c Config, mgr *resilience.Manager, inj *fault.Injector) (*Mailer, error) {
 	if err := errutil.RequireField("mail", "host", c.Host); err != nil {
 		return nil, err
 	}
@@ -145,7 +180,34 @@ func newMailer(ctx *gs.ContextProvider, name string, c Config) (*Mailer, error) 
 	}
 
 	log.Infof(pctx, log.TagAppDef, "mailer created host=%s port=%d", c.Host, c.Port)
-	return &Mailer{client: client, from: c.From, obs: instruments()}, nil
+	m := &Mailer{
+		client: client,
+		from:   c.From,
+		// The service label prefers the instance name (the config entry's key —
+		// the identity the app injected the mailer by), falling back to the host
+		// when the entry is unnamed.
+		serviceLabel: resilience.ServiceLabel("mail", name, c.Host),
+	}
+	// Governance is applied HERE, while the mailer is built, so a *Mailer cannot
+	// exist half-assembled: there is no applyGovernance step and nothing runs
+	// afterwards. The executor comes from the container's [cloud.ClientParams],
+	// the single place the resilience + fault composition lives; a hand-built
+	// mailer passes the zero bundle, whose executor degrades to
+	// resilience.Unmanaged — observed, with a one-time warning that no protection
+	// applies — rather than silently running bare.
+	params := cloud.ClientParams{Resilience: mgr, Fault: inj}
+	m.exec = params.ExecutorFor("mail", m.serviceLabel)
+	return m, nil
+}
+
+// Destroy releases the resilience executor. It is the gs destroy method. The
+// SMTP client holds no live resource — each Send dials and closes its own
+// connection — so there is nothing else to release.
+func (m *Mailer) Destroy() error {
+	if m.exec != nil {
+		return m.exec.Close()
+	}
+	return nil
 }
 
 // parseAuthType maps the config string onto a go-mail SMTP auth mechanism.
@@ -168,16 +230,20 @@ func parseAuthType(s string) (mail.SMTPAuthType, error) {
 // them, and closes it. An error is returned if any message is invalid or if the
 // connection or delivery fails.
 //
-// Each call is observed: a duration metric, the in-flight gauge and one
-// access-log line — emitted here, not by the caller-side span helpers, because a
-// send must be measurable whether or not the caller started a span.
+// Each call is guarded and observed. Send declares the batch's semantic identity
+// (see observe.go) on the context and routes through the mailer's resilience
+// executor via [resilience.Run]; the span, the duration metrics and the access
+// log are emitted by the resilience layer, the one point on the chain that sees
+// the whole call. Declaring the identity is this layer's whole job — it emits
+// nothing itself.
 func (m *Mailer) Send(ctx context.Context, msgs ...*Message) error {
 	if len(msgs) == 0 {
 		return nil
 	}
-	inflight, start := m.obs.start(ctx)
-	err := m.deliver(ctx, msgs)
-	m.obs.done(ctx, inflight, start, err)
+	ctx = observability.WithOperation(ctx, operation(msgs))
+	_, err := resilience.Run(ctx, m.exec, func(attemptCtx context.Context) (struct{}, error) {
+		return struct{}{}, m.deliver(attemptCtx, msgs)
+	})
 	return err
 }
 

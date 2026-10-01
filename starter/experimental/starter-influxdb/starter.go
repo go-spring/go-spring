@@ -19,10 +19,10 @@ package StarterInfluxdb
 import (
 	"context"
 
-	influxdb2 "github.com/influxdata/influxdb-client-go/v2"
+	"go-spring.org/cloud"
 	"go-spring.org/cloud/actuator/health"
-	"go-spring.org/cloud/governance/fault"
-	"go-spring.org/cloud/governance/resilience"
+	"go-spring.org/cloud/fault"
+	"go-spring.org/cloud/resilience"
 	"go-spring.org/log"
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/gs"
@@ -40,37 +40,43 @@ func init() {
 	// to the bean for diagnostics.
 	gs.Module(gs.OnProperty("spring.influxdb.instances"), func(r gs.BeanProvider, p flatten.Storage) error {
 		return conf.BindEach(p, "${spring.influxdb.instances}", func(name string, c Config) error {
-			// The wrapper bean owns the resilience executor, so Init arms it
-			// (InitMethod) and Destroy tears it down. The Driver bean is
-			// selected by the entry's ${driver} key: unset → "?" (nullable
-			// by-type — injects the single Driver bean when one is provided,
-			// nil otherwise, and the ctor falls back to the bundled
-			// DefaultDriver); set → that bean name, and naming a bean that
-			// does not exist fails loud.
+			// The Driver bean is selected by the entry's ${driver} key: unset →
+			// "?" (nullable by-type — injects the single Driver bean when one is
+			// provided, nil otherwise, and the ctor falls back to the bundled
+			// DefaultDriver); set → that bean name, and naming a bean that does
+			// not exist fails loud.
 			r.Provide(newClient,
 				gs.IndexArg(1, gs.ValueArg(c)),
 				gs.IndexArg(2, gs.TagArg("${spring.influxdb.instances."+name+".driver:=${spring.influxdb.default.driver:=?}}")),
-				// The governance beans are REQUIRED: this starter blank-imports
-				// starter-governance, so "governance off" is spring.governance.enabled=false,
-				// never an absent bean.
+				// The governance beans are REQUIRED: each is registered by the package that
+				// owns it (cloud/resilience, cloud/loadbalance, cloud/fault), which this
+				// starter imports — "governance off" is spring.governance.enabled=false, never
+				// an absent bean.
 				gs.IndexArg(3, gs.TagArg("")), // *resilience.Manager
 				gs.IndexArg(4, gs.TagArg("")), // *fault.Injector
-			).Name(name).Init((*Client).Init).Destroy((*Client).Destroy).Caller(1)
+			).Name(name).Destroy((*Client).Destroy).Caller(1)
 			// Contribute a health indicator for this instance, injecting the
 			// client just registered above by name.
 			r.Provide(func(w *Client) *health.Indicator {
-				return NewClientHealth(name, w.Client)
+				return NewClientHealth(name, w)
 			}, gs.TagArg(name)).Name("influxdb:" + name).Caller(1)
 			return nil
 		})
 	})
 }
 
-// newClient creates a new InfluxDB client based on the provided
-// configuration. The server is probed once at startup so that
-// misconfiguration or an unreachable server fails fast rather than on first
-// use. The governance beans (mgr, inj) are retained on the Client for Init to
-// build the executor with; both are nil in a standalone, non-gs call.
+// newClient creates a new InfluxDB client based on the provided configuration.
+// The Driver returns the client COMPLETE — governance (the declaration+
+// resilience transport) is applied while it is built — and this ctor only
+// afterwards probes the server once, so that misconfiguration or an unreachable
+// server fails fast rather than on first use. There is no Init hook: the client
+// is complete when the driver returns it.
+//
+// mgr and inj are the governance beans the container injects (both nil in a
+// standalone, non-gs call); the ctor bundles them into the
+// [cloud.ClientParams] it hands the driver, which passes it to [NewClient] —
+// so the client is assembled complete in one step, with the zero bundle
+// degrading to an observed-only, loudly-unmanaged executor.
 func newClient(ctx *gs.ContextProvider, c Config, d Driver, mgr *resilience.Manager, inj *fault.Injector) (*Client, error) {
 	log.Debugf(ctx.Context, starterTag, "creating influxdb client, url=%s org=%s bucket=%s", c.ServerURL, c.Org, c.Bucket)
 
@@ -78,30 +84,32 @@ func newClient(ctx *gs.ContextProvider, c Config, d Driver, mgr *resilience.Mana
 	if d == nil {
 		d = DefaultDriver{}
 	}
-	cl, err := d.CreateClient(ctx.Context, c)
+	w, err := d.CreateClient(ctx.Context, c, cloud.ClientParams{Resilience: mgr, Fault: inj})
 	if err != nil {
 		return nil, err
 	}
-	w := &Client{Client: cl, cfg: c, mgr: mgr, inj: inj}
-	// The DefaultDriver attaches a dynamic transport (its executor swapped in
-	// by Init); pick it up so the wrapper can arm it. Custom drivers may not
-	// install one — resilience is then simply unavailable for that client.
-	if v, ok := dynamicTransports.LoadAndDelete(cl); ok {
-		w.dyn = v.(*dynamicTransport)
-	}
-	if err := HealthCheck(ctx.Context, w.Client); err != nil {
-		w.Client.Close()
+	// The Driver returned the client complete — governance applied while it was
+	// built — so the probe below already runs through the assembled transport.
+	// Fail fast: probe the server once at startup. The probe goes straight to the
+	// raw client (a connectivity check, see [HealthCheck]); on failure the client
+	// just assembled is released, executor and connection together.
+	if err := HealthCheck(ctx.Context, w); err != nil {
+		_ = w.Destroy()
 		return nil, errutil.Explain(err, "failed to reach influxdb server %s", c.ServerURL)
 	}
 	return w, nil
 }
 
 // HealthCheck reports whether the InfluxDB server is reachable and healthy.
-// It is a thin readiness probe suitable for wiring into a health endpoint.
-func HealthCheck(ctx context.Context, client influxdb2.Client) error {
+// It is a thin readiness probe suitable for wiring into a health endpoint, and
+// the single place an InfluxDB liveness check is defined. It calls /health on
+// the raw client, which verifies reachability, authentication setup and server
+// status in one round trip; it must reflect the backend rather than the rate
+// limiter, without feeding the operation metrics or the breaker's statistics.
+func HealthCheck(ctx context.Context, client *Client) error {
 	hc, err := client.Health(ctx)
 	if err != nil {
 		return err
 	}
-	return HealthError(hc)
+	return healthError(hc)
 }

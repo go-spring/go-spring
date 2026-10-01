@@ -46,9 +46,10 @@ func init() {
 				gs.IndexArg(1, gs.ValueArg(name)),
 				gs.IndexArg(2, gs.ValueArg(c)),
 				gs.IndexArg(3, gs.TagArg("${spring.kafka-sarama.instances."+name+".driver:=${spring.kafka-sarama.default.driver:=?}}")),
-				// The governance beans are REQUIRED: this starter blank-imports
-				// starter-governance, so "governance off" is spring.governance.enabled=false,
-				// never an absent bean.
+				// The governance beans are REQUIRED: each is registered by the package that
+				// owns it (cloud/resilience, cloud/loadbalance, cloud/fault), which this
+				// starter imports — "governance off" is spring.governance.enabled=false, never
+				// an absent bean.
 				gs.IndexArg(4, gs.TagArg("")), // *resilience.Manager
 				gs.IndexArg(5, gs.TagArg("")), // *fault.Injector
 			).Name(name).Destroy(destroyClient).Caller(1)

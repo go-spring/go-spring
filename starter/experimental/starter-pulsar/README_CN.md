@@ -66,6 +66,21 @@ consumer.Ack(msg)
 
 ## 可观测
 
+所有经由本 starter 的 publish 与 consume 都会在调用上**声明(declare)**该操作的语义身份
+——方向(`messaging.operation`)、后端(`messaging.system=pulsar`)以及作为逐调用细节的
+topic —— 而由 resilience 层(executor 链上**唯一的发射点(emitter)**)依据声明发射信号:
+调用 span、调用级 `messaging.client.operation.duration` 直方图、尝试级
+`messaging.client.attempt.duration` 直方图(每次重试一条记录,因此重试/退避开销不会
+计入下游时延)、in-flight 计量、`resilience.client.calls` 计数器,以及每次调用一条访问
+日志。messaging.Driver 路径与原生 `GuardedSend` 接缝都走同一个声明辅助函数,因此两者
+不会对同一条消息重复上报。这些信号依赖 [starter-otel](../starter-otel) 安装的全局
+`TracerProvider`;未引入 starter-otel 时 span 与指标为空操作,访问日志则始终经 go-spring
+的 log 写出。
+
+starter 自身不再做任何逐调用发射 —— 它只声明身份,由 resilience 层发射。pulsar 原生的
+`pulsar_client_*` 指标(见下)留在 starter 内:它们是库原生的连接/生产者/消费者统计,
+而非逐调用信号。
+
 ### Metrics(原生 Prometheus)
 
 pulsar-client-go 没有 OTel contrib,但客户端始终会把 producer/consumer/连接指标上报到
@@ -86,11 +101,13 @@ spring.pulsar.instances.a.metrics.path=/metrics
 starter 时意外占用端口;客户端 bean 销毁时对应的服务会被关闭。将 Prometheus 指向
 `http://<host>:<port>/metrics` 抓取即可。
 
-### Tracing(原生 OTel 辅助函数)
+### Tracing(手动辅助函数)
 
-pulsar 自身没有 span 注入点,因此消息级链路追踪通过基于 OTel API 的调用点辅助函数完成。
-它们依赖 starter-otel 安装的全局 `TracerProvider` 与传播器,并把 W3C 链路上下文携带在消息
-`Properties` 里;未引入 starter-otel 时它们是空操作,也不会改动任何消息字节。
+对于自行直接操作原生 `pulsar.Client`(绕过 driver 与 `GuardedSend` 接缝)的代码,可用下面的
+调用点辅助函数自行开启 span。它们基于 OTel API,依赖 starter-otel 安装的全局
+`TracerProvider` 与传播器,并把 W3C 链路上下文携带在消息 `Properties` 里;未引入
+starter-otel 时它们是空操作,也不会改动任何消息字节。经 `GuardedSend` 路由的发送已由
+resilience 层依据其声明的操作开启 span,不要对同一次发送两者都包。
 
 ```go
 import starter "go-spring.org/starter-pulsar"

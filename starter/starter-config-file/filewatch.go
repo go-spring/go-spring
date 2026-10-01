@@ -31,23 +31,10 @@ import (
 	"path/filepath"
 
 	"go-spring.org/log"
-	"go-spring.org/spring/conf"
 	"go-spring.org/spring/conf/reader"
 	"go-spring.org/stdlib/errutil"
 	"go-spring.org/stdlib/flatten"
 )
-
-func init() {
-	// Register "file-watch" as a configuration provider so a spring.config.import
-	// entry such as
-	//
-	//	optional:file-watch:/etc/config/application.yaml
-	//
-	// loads a single file at startup and, whenever it changes, triggers a full
-	// property refresh via the gs.RefreshProperties facade — no separate hook
-	// wiring needed.
-	conf.RegisterProvider("file-watch", newFileWatchCtrl().Load)
-}
 
 // fileWatchCtrl is the "file-watch" provider: one configuration document per
 // import, parsed by extension. It embeds watchCore for the shared watch +

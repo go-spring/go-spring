@@ -51,7 +51,10 @@ func TestPropagationRidesOtelGlobal(t *testing.T) {
 	}
 
 	// Compose luohua into the global exactly as starter-otel would for
-	// propagator=w3c,luohua.
+	// propagator=w3c,luohua. luohua links starter-otel/trace but not the starter
+	// root, and the W3C pair is registered by the starter's starter.go, so the
+	// test installs it itself.
+	trace.RegisterDefaults()
 	prop, err := trace.NewPropagator("w3c," + propagatorName)
 	if err != nil {
 		t.Fatalf("NewPropagator: %v", err)

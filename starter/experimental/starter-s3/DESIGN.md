@@ -11,8 +11,9 @@ below.
 
 - **Owns**: bean lifecycle for the `spring.s3.instances.<name>` group (multi-instance,
   container-managed teardown), the fail-fast `ListBuckets` probe, the
-  per-instance health indicator, the observe transport (3 signals), and the
-  resilience round-tripper on the client's HTTP transport.
+  per-instance health indicator, the declaration transport (the resilience layer
+  emits the 3 signals), and the resilience round-tripper on the client's HTTP
+  transport.
 - **Does not own**: bucket/object administration policy, credential rotation
   (static keys only — rotate by config), vendor features outside the S3
   facade (custom-driver territory), and bucket discovery (the endpoint names
@@ -20,11 +21,12 @@ below.
 
 ## 2. Key Abstractions & Seams
 
-- **`Client` wrapper bean** — embeds `*minio.Client` unchanged. minio fixes the
-  transport inside `minio.Options` at construction, so DefaultDriver installs
-  a `dynamicTransport` (RWMutex-guarded RoundTripper indirection) and Init
-  swaps the observe+resilience transport into it —
-  the same mechanism starter-elasticsearch uses for the same reason.
+- **`Client` wrapper bean** — embeds the raw `*minio.Client`, so its whole SDK
+  method surface promotes unchanged (`NewClient` is the only constructor). minio fixes the
+  transport inside `minio.Options` at construction, so DefaultDriver installs a
+  `dynamicTransport` (RWMutex-guarded RoundTripper indirection) and the wrapper
+  swaps the declaration+resilience transport into it — the same mechanism
+  starter-elasticsearch uses for the same reason.
 - **`Driver` (driver.go)** — construction seam: the optional container-bean
   `Driver` interface + the bundled `DefaultDriver` that assembles credentials
   (`NewStaticV4`), region, bucket-lookup style and the dynamic transport. A
@@ -32,11 +34,16 @@ below.
   the starter falls back to `DefaultDriver`. The bucket-lookup config string
   maps onto minio's `BucketLookupType` (`virtual-host` is an alias of
   `BucketLookupDNS` in minio v7.0.74).
-- **obsTransport (command.go)** — per-request observe seam. minio-go ships no
-  OTel instrumentation, so the starter's own transport carries span + metric +
-  log (observe.go: client spans with `db.system`/`db.operation`/`db.statement`,
-  `db.client.*` metrics, `_app_s3_access` access log).
-- **Resilience** — `resilience.NewRoundTripper` wraps the observe transport
+- **declareTransport (command.go)** — per-request declaration seam. It puts the
+  request's identity on the context (`observability.WithOperation`), which the
+  resilience layer inside it reads to emit the span, the metrics and the access
+  log. It sits OUTSIDE the resilience round-tripper on purpose: the emitter reads
+  the operation at `Execute` entry, so a declaration nested inside the executor
+  would run per attempt and be read by nobody. The vocabulary (observe.go) is
+  `db.system=s3`, `db.operation=<HTTP method>` (bounded, as metric labels) and
+  `db.statement=<URL path>` (unbounded, detail only — span + log, never a label)
+  under the `_app_s3_access` access log.
+- **Resilience** — `resilience.NewRoundTripper` wraps `http.DefaultTransport`
   with the executor assembled by
   `fault.WrapClientExecutor(mgr.ClientExecutorFor("s3", service), service, inj)` from the injected
   `*resilience.Manager` / `*fault.Injector` beans, scoped by
@@ -67,7 +74,7 @@ below.
   modes); aws-sdk-go-v2 is a large module graph with AWS-specific
   bootstrapping.
 - **Static transport wrap at construction vs. dynamicTransport**: the real
-  transport (observe + resilience) is assembled only in Init, after
-  construction; the indirection keeps the client usable (DefaultTransport
-  passthrough) between construction and Init instead of failing or arming
-  blind.
+  transport (declaration + resilience) is assembled by the wrapper's constructor,
+  after minio has already fixed the transport; the indirection keeps the client
+  usable (DefaultTransport passthrough) until it is swapped in, instead of
+  failing or applying blind.

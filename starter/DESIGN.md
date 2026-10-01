@@ -23,6 +23,24 @@ not belong here.
   starters (§2.5) vary this: they carry `provider.go` instead of `config.go`
   (no bound `Config` — connection parameters are parsed from the import source
   string), and their smoke module is `example-config/`.
+- **Every `init()` lives in `starter.go`.** Registration is the starter's entry
+  point, so it must be readable in one place: no other file in the package
+  declares an `init()`. The per-capability files (`config.go`, `client.go`,
+  `observe.go`, ...) hold types, constructors and helpers — the implementation —
+  never a registration. A module with nothing to register (a pure library such
+  as `starter-http-server`, or `starter-gorm`, whose registration runs from each
+  dialect's own `starter.go`) simply has no `init()` at all.
+- **Sub-packages follow the same rule.** A helper package the starter imports
+  for its side effect — an exporter factory under `starter-otel/metric`, a
+  framework log bridge under `internal/logger` — exposes a plain `Register` /
+  `Install` and `starter.go`'s `init()` calls it, instead of declaring an
+  `init()` of its own. Importing such a package alone then does nothing, which
+  is the point: the starter's registration is one readable list. The same holds
+  for defaults a public sub-package owns: `starter-otel/trace` keeps its W3C
+  propagator pair behind `RegisterDefaults`, which the starter calls — a caller
+  that links the package without the starter root (the luohua umbrella, that
+  package's tests) calls it explicitly rather than getting the registration from
+  a hidden `init()`.
 - **Apache License header** on every source file (see
   [../LICENSE_HEADER](../LICENSE_HEADER)).
 - **`example/` owns its own `go.mod`.** Every starter example is a standalone Go
@@ -156,14 +174,16 @@ Database, cache, and message-queue clients (`go-redis`, `gorm-*`, `mongodb`,
   seam through which service discovery is injected (the driver builds the
   dialer). Optional capabilities go on *separate* interfaces (e.g. go-redis's
   `ClusterDriver`) so existing custom drivers keep compiling.
-- **A client starter that needs governance integrates it by default.** The
-  starter blank-imports `starter-governance` in its own **non-test** code, so
-  `*resilience.Manager` / `*loadbalance.Manager` / `*fault.Injector` are always
-  in the container; it injects them as REQUIRED (`gs.IndexArg(N, gs.TagArg(""))`),
-  never as nullable (`"?"`). The beans are part of the client's contract — it is
-  governable, observable and routable by construction — and `starter-governance`
-  is completely inert until a rule source is bound, so integrating it changes no
-  default behaviour. Turning governance off is
+- **A client starter that needs governance gets it from its own imports.** No
+  governance import is needed: each authority is registered by the package that
+  **owns it** — `cloud/resilience` registers `*resilience.Manager`,
+  `cloud/loadbalance` `*loadbalance.Manager`, `cloud/fault` `*fault.Injector` — and
+  a client that injects one has necessarily imported that package for the type.
+  So the three beans are always in the container; the client injects them as
+  REQUIRED (`gs.IndexArg(N, gs.TagArg(""))`), never as nullable (`"?"`). The beans
+  are part of the client's contract — it is governable, observable and routable by
+  construction — and they are inert until a rule source is bound, so having them
+  changes no default behaviour. Turning governance off is
   `spring.governance.enabled=false` (or binding no source), **not the absence of
   a bean**. A nullable injection would turn "the user forgot the import" into a
   silent degradation (governance looks on, is not) — exactly the error class this
@@ -172,6 +192,14 @@ Database, cache, and message-queue clients (`go-redis`, `gorm-*`, `mongodb`,
   (Blank-import it in non-test code only; `gs.RunTest` forces every injection
   nullable via `spring.force-autowire-is-nullable`, which is gs's behaviour, not
   an exception to this rule.)
+  The constructor wires them **at construction time**, as part of what the client
+  *is* rather than as a step someone must remember: it assembles
+  `cloud.ClientParams{Resilience, Fault, Loadbalance, Discovery}` and pins
+  `exec = params.ExecutorFor(system, label)` before returning. A zero
+  `ClientParams` — an application driving the constructor outside the container
+  — degrades to `resilience.Unmanaged`: still observed, plus a one-time "no
+  protection is in effect" warning. Outside the container is therefore never a
+  silent hole.
 - **Startup connection check.** Where the client library allows it, the
   constructor performs a bounded probe (e.g. Redis `PING` with `DialTimeout`) so
   a misconfiguration surfaces at boot, not on first request.
@@ -200,11 +228,15 @@ Database, cache, and message-queue clients (`go-redis`, `gorm-*`, `mongodb`,
     `lbMgr.Bind(pool, entry label)` on the injected `*loadbalance.Manager` — so the entry's
     governance rule drives `balancer` / `outlier-threshold` / `outlier-suspend-for` in place,
     through the `loadbalance` manager rather than by importing `cloud/governance`.
-  - `resilience.go` — the wrapper bean's `ApplyResilience` InitMethod, the
-    executor, and its `Close`/`CloseDriver` Destroy hook.
-  - `observability.go` — the observe kit bridge (trace/metric/access-log hooks).
-  - `health/` — the health-indicator constructor, as a subpackage so it can be
-    imported without pulling the whole starter.
+  - `client.go` — the assembled client and the resilience side of it: the
+    executor the constructor pins on the client, the per-call routing into it,
+    the `Close` Destroy hook, and any per-client protection seam (e.g. mongodb's
+    dial-level `resilience.NewDialer`).
+  - `observe.go` — the operation declarations this starter hands the framework's
+    single emitter (its `Metric` prefix, its bounded attrs, its unbounded detail,
+    its access `LogTag`); the emitter itself lives in `cloud/resilience` (§3).
+  - `health.go` — the health-indicator constructor, in the starter's root
+    package (a single-function subpackage is not worth the import cost).
   This split mirrors the concern boundary established across the ecosystem and is
   what every existing client starter (go-redis, gorm-*, mongodb, elasticsearch,
   neo4j, ...) now follows — new starters should copy it verbatim. §4 checklist
@@ -236,7 +268,7 @@ facilities.
   profiles, kept off the application's main port on purpose.
 - **`starter-governance-sentinel`** contributes one process-wide bean — the
   `sentinel`-named `resilience.Driver` — into the governance center's driver
-  directory. Imported alongside `starter-governance`, the governance document's
+  directory. Imported alongside `starter-governance-file`, the governance document's
   `spring.governance.driver=sentinel` switches every executor at once — inbound admission
   included, since one `Driver` answers for both directions. No port, no keys of
   its own.
@@ -357,6 +389,11 @@ baseline (its identity, wire vocabulary, error catalog, standard drivers).
   `cloud/actuator/health.NewIndicator` (factory for that package's
   `Indicator` interface), `stdlib/errutil.RequireField`/`RequireAny`
   (formatting sugar over `errutil.Explain`). Starters import these directly.
+  `cloud/governance.Parse` is the fourth: the rule-document parser is shared by
+  the file/http/etc/nacos sources, so it sits with the model it produces rather
+  than in one starter its siblings would have to reach into — the one place
+  `cloud/` takes a `spring` import, which is accepted because the document
+  format is the framework's.
   A *new* cross-cutting concern that no existing package currently owns is
   still inlined per-starter until a second home materializes - do not
   pre-emptively create a shared package for it.
@@ -425,10 +462,12 @@ baseline (its identity, wire vocabulary, error catalog, standard drivers).
   global/infrastructure archetype (§2.4): it exports a `gs.Server` that
   registers once the app is ready and deregisters on `PreStop`, so a rolling
   restart is lossless.
-- **Observability is central-define, edge-bridge.** The starter emits through
-  the OTel globals or bridges the library's internal logs into go-spring `log`
-  via a `SetLogger` hook; it must also add a go-spring `FileLogger` sink or the
-  console output is lost.
+- **Observability is central-define, edge-bridge.** A client-side starter does
+  not emit at all: it **declares** its operations for the framework's single
+  emitter (the next bullet). A component that *does* emit writes through the OTel
+  globals; a component that bridges a library's internal logs into go-spring
+  `log` does it via a `SetLogger` hook, and must also add a go-spring
+  `FileLogger` sink or the console output is lost.
 - **The instrument set is shared; the observation is not.** A component resolves
   its instruments **once per process**, not once per instance: the OTel SDK keys
   an instrument by name/description/unit/kind and hands every later creation the
@@ -447,26 +486,83 @@ baseline (its identity, wire vocabulary, error catalog, standard drivers).
     failed boot. `RegisterCallback` is additive and reversible.
   - *Same name means the same descriptor.* Name, description and unit must match
     on every creation, or the later one is ignored together with its description.
+    The mismatches that still exist are **registered, not licensed** — see
+    `KNOWN_MULTI_DESC` in `scripts/check-observability.sh`: the HTTP/RPC server
+    families (unmigrated, §5) and `messaging.client.connection.state_changes`
+    (its three backends write the system name into the description).
   - *A tracer is never cached* in a struct field or a package variable: a
     captured `otel.Tracer` stops forwarding once the global provider is set
     again. Resolve it at the use site.
   - *State in an instrument set is membership at most* — which instances are
     live — never measurements. A shared observer that buffers data is a global
     data store with no owner to bound it.
+- **Observation is two layers — a data granularity, not a second emission
+  point.** One logical call yields a **call** record (total time, attempts plus
+  backoff, final status, attempt count) and an **attempt** record per downstream
+  try (what the downstream itself took). They measure different things: a
+  downstream's latency is the downstream's property and a backoff is our
+  policy's, so merging them yields the absurd "raising the backoff made the
+  downstream slower". A call that succeeds on the first try reports equal numbers
+  on both layers — two meanings, not a duplicate. An error a retry erased is
+  never recorded as an error (OTel's rule): the call reports its final status.
 - **Component observability follows one rule: same kind → same name, same
   instrument type, same completeness, and a name states the capability, not the
   implementation** (`db.client.operation.duration`, never
-  `redis.command.duration`). Three principles bound it, and dropping any one
-  bends the rule:
-  - *Completeness* — every component carries the signals it can: a span, a
-    duration metric, an in-flight gauge, and one access-log line per call. A
-    missing signal, or a result dimension that cannot tell success from failure,
-    is a **defect**, not a style difference. This holds for a component with no
-    siblings as much as for a family member.
-  - *Commonality* — the members of a family (interchangeable backends behind one
-    capability) must agree **on the parts that mean the same thing**: same key,
-    same instrument type, same value vocabulary. That is what lets a backend be
-    swapped without rewriting every dashboard, alert and query against it.
+  `redis.command.duration`). The framework now has **one emitter**, on the
+  resilience chain, and client-side starters feed it by **declaring** what each
+  operation is. A client starter declares
+  `observability.WithOperation(ctx, observability.Operation{...})` — the
+  operation's `Name`, its `Metric` prefix (`db.client`, `messaging.client`), its
+  bounded `Attrs`, its unbounded `Detail` and its `LogTag` — and routes the call
+  through the resilience executor. The resilience observe layer
+  (`cloud/resilience/observe.go`, in `wrappedClientExecutor.Execute`)
+  emits from that declaration: the call span, `<prefix>.operation.duration`
+  (call level, retries and backoff included), `<prefix>.attempt.duration`
+  (attempt level, what the downstream itself took), `<prefix>.active_requests`
+  (in-flight calls), the always-on `resilience.client.calls{status}`, and one
+  access-log line per call.
+  - **The emitter sits outside the retry loop**, which is why the attempt layer
+    carries metrics only and no span: at that position a per-attempt span cannot
+    be opened. Deliberate, not a gap.
+  - **Turning governance off does not turn observation off.** The manager wraps
+    the pass-through executor too, so `spring.governance.enabled=false` keeps
+    every span, metric and access log and drops only the protection. The emitter
+    lives in `resilience` rather than `cloud/observability` because its fallback
+    path carries `resilience.*` names and the resilience log tag; a neutral
+    package would have to borrow that vocabulary.
+  - **`Attrs` must be bounded**: every attribute there becomes a metric label,
+    a span attribute and a log field, so an unbounded value (a cache key, a
+    subject) would multiply the series without bound. **`Detail` may be
+    unbounded** — a key, a statement, a URL path, a subject — and reaches the
+    span and the log but never a metric label.
+  - **The emitter reads the operation at `Execute` entry**, so a declaration
+    made *inside* the executor is read by nobody: a transport whose hook sits
+    below the resilience round tripper (see `starter-s3`) declares outside it.
+  - **Log levelling is the emitter's**: failure at Warn, a success carrying
+    `Detail` at Debug (lazy), a success carrying none at Info.
+  - **A non-idempotent operation is never retried**: a client whose repeat is a
+    second side effect rather than a second attempt — sending mail, publishing a
+    message, handling a consumed record — declares `NonIdempotent: true`, and the
+    executor runs the call **once** whatever retry the policy configures (it
+    warns once per service when a configured rule is dropped that way). The
+    policy cannot know this; only the client does, which is why the declaration
+    is the client's to make.
+  Three principles bound the rule, and dropping any one bends it:
+  - *Completeness is the emitter's obligation, discharged once.* The signals —
+    a span, a duration metric, an in-flight gauge, and one access-log line per
+    call — used to be a per-component checklist; they are now asserted once, at
+    the one emitter, and hold for every client that declares. A client-side
+    starter's completeness is therefore its **declaration**: a client that fails
+    to declare, or that re-builds a signal the emitter already owns (its own
+    `otel.Tracer`, its own duration/in-flight instrument), is the defect. A
+    result dimension that cannot tell success from failure is still a defect; the
+    emitter's is the `status` label.
+  - *Commonality moved with completeness.* Same-kind-same-name still holds, but
+    the names are now produced by the emitter from the declared prefix, so the
+    members of a family (interchangeable backends behind one capability) agree by
+    **declaring the same `Metric` prefix and the same bounded attribute keys**.
+    That is what lets a backend be swapped without rewriting every dashboard,
+    alert and query against it.
   - *Flexibility* — a component-specific key is allowed. Nothing is a violation
     merely for differing from its neighbours.
   - *Two tiers, because a shared name is only meaningful for a shared meaning.*
@@ -477,32 +573,67 @@ baseline (its identity, wire vocabulary, error catalog, standard drivers).
     vocabulary per backend, so forcing one name there would put two meanings
     under one key — worse than two names. The same split applies to HTTP: the
     shared axis is `status`, the detail is `http.response.status_code`.
+    The client emitter follows the same rule: `status` is `ok`/`error` like
+    everywhere else, and **`resilience.outcome`** carries what the protection
+    stages did to the call (`rate_limited`, `circuit_open`, `bulkhead_full`,
+    `retry_budget_exceeded`, `timeout`) — absent when they did nothing. Putting
+    those words in `status` would have made the one key two vocabularies, which
+    is exactly the failure this tier exists to prevent.
   - *Logs must join metrics.* An identity key in a log line must exist under the
     same name as an attribute (span attribute or metric label), or a failing
     metric cannot be traced to the line that explains it. Duration keys (ending
-    in `_ms`) and `error` are the line's own payload, not identity.
+    in `_ms`) and `error` are the line's own payload, not identity. The rule is
+    about the line that explains the component's *own* signals; the component's
+    ordinary application log (written under `log.TagAppDef`) is not one of these.
   The per-family key lists are mechanical and live in
   `scripts/check-observability.sh`, which is the enforcement — a family rule
   lists what every member must have, and anything outside that list is left
   alone. Its sections, and the gaps that are registered rather than closed:
-  - *families* — DB, messaging, HTTP server, RPC. A member whose metric or span
-    is emitted by a third-party library is registered with an access-point
-    evidence regex (checked against comment-stripped source, so deleting the
-    wiring but keeping the comment still fails).
+  - *families* — DB and messaging. A member **declares** (its family's `Metric`
+    prefix and the family's bounded attribute keys, through
+    `observability.WithOperation`) and routes the call through the executor; the
+    rule checks that declaration and that the member has not gone back to
+    building its own span (`otel.Tracer`) or its own duration/in-flight
+    instrument. The HTTP server and RPC families are **not migrated** — their
+    members still self-build their spans and instruments and are checked as
+    before. A member whose metric or span is emitted by a third-party library is
+    registered with an access-point evidence regex (checked against
+    comment-stripped source, so deleting the wiring but keeping the comment still
+    fails); the per-call third-party spans that go-redis
+    (`redisotel.InstrumentTracing`) and elasticsearch
+    (`ElasticsearchOpenTelemetry`) used to enable are gone — they duplicated the
+    call-level span the emitter now opens. Third-party *non* per-call telemetry
+    (go-redis pool metrics, kotel's client/connection metrics) is still left
+    alone.
+  - *emitter* — the single emission point is checked once for the completeness
+    above: the call span, `<prefix>.operation.duration`,
+    `<prefix>.attempt.duration`, `<prefix>.active_requests`, the always-on
+    `resilience.client.calls{status}`, one access-log line per call at the right
+    level, and the `Detail` kept out of the metric labels.
   - *baseline* — self-built instrumentation with no interchangeable siblings
-    (`scheduler`, `config-bus`, `mail`, `gateway`): completeness and joinability
-    only; commonality has nothing to bind them to.
+    (`config-bus`, `gateway`): completeness and joinability only; commonality has
+    nothing to bind them to.
   - *delegation* — signals come wholly from a shared layer (`http-client`,
     `oauth2-client`, the four `lock` backends, the three `transaction` backends,
-    the config providers, the registry backends); what is checked is that the
-    wiring is still there.
+    `scheduler` — whose signals live in `cloud/scheduling` — the config
+    providers, the registry backends); what is checked is that the wiring is
+    still there.
   - *forward list* — components that must be instrumented. The model discovers
-    members by the instruments they already build, so a component that was never
+    members by the signals they already carry, so a component that was never
     instrumented is invisible to it; this list is what makes "should have been
     done and was not" visible.
-  - *accepted gaps* — `starter-oauth2-client` logs every business call through the
+  - *accepted gaps* — `starter-mongodb` emits at the **command** layer instead of
+    declaring an operation, because the mongo driver v2 offers no per-command
+    execute hook (only a `CommandMonitor`, an observer that cannot gate), so its
+    resilience/executor seam is the **dialer**. Per-command signals must therefore
+    ride the driver's command monitor while protection rides the dial. It keeps
+    the emitter's vocabulary — bounded `db.system` / `db.operation` labels, the
+    statement as span-and-log-only detail, the same metric names, its own access
+    tag — and its protection stays dial-level. This is a driver constraint,
+    deliberately accepted.
+    `starter-oauth2-client` logs every business call through the
     same resilience layer as `starter-http-client` (it reaches that layer via the injected
-    `resilience.Manager`'s `ExecutorFor` instead of composing the wrapper itself), but the
+    `resilience.Manager` instead of composing the wrapper itself), but the
     token-endpoint exchange inside the oauth2 library bypasses that round tripper,
     so it is traced and not logged;
     kitex's and kratos's duration metrics carry no `status` dimension because the
@@ -569,7 +700,7 @@ baseline (its identity, wire vocabulary, error catalog, standard drivers).
 4. Client? → `gs.Group` multi-instance, driver registry, required address with
    fail-fast, startup probe, per-instance `Destroy`, and the one-concern-one-file
    skeleton (§2.2): `config.go` / `starter.go` / `discovery.go` /
-   `resilience.go` / `observability.go` (+ `health/`). Config goes in the two
+   `client.go` / `observe.go` / `health.go`. Config goes in the two
    buckets: `conf.BindEach(p, "${spring.<family>.instances}", ...)`, gate the
    module on `gs.OnProperty("spring.<family>.instances")`, and read family-wide
    values from `${spring.<family>.default.*}` inside each entry's tags. Never bind

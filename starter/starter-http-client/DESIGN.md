@@ -18,7 +18,7 @@ publishes is named under `${spring.http-client}` and injected by name.
 - **Out of scope:** the interface definitions and code-generation (that
   is `gs-http-gen`); the actual load-balancing algorithms (that is
   `cloud/loadbalance`); resilience policies (that is
-  `cloud/governance/resilience`).
+  `cloud/resilience`).
 
 ## 2. Transport Composition — outer to inner
 

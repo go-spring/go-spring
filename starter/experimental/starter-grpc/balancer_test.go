@@ -198,7 +198,7 @@ func TestPollLoop_PushesChanges(t *testing.T) {
 	cc := &fakeClientConn{states: make(chan resolver.State, 4)}
 
 	ctx, cancel := context.WithCancel(context.Background())
-	r := &discoveryResolver{cc: cc, d: d, backend: "fake", service: "svc", ctx: ctx, cancel: cancel}
+	r := &discoveryResolver{cc: cc, discovery: d, backend: "fake", serviceName: "svc", ctx: ctx, cancel: cancel}
 	r.push(d.snaps[0]) // Build seeds before the loop starts
 	go r.pollLoop(d.snaps[0])
 

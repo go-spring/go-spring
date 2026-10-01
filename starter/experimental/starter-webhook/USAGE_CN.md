@@ -1,7 +1,7 @@
 # starter-webhook 使用说明 — 参考手册
 
 深度使用文档。概览见 [README.md](README.md)。所有行为声明均对照源码
-（`starter.go`、`config.go`、`payload.go`、`trace.go`、`webhook_test.go`）与自包含的
+（`starter.go`、`config.go`、`payload.go`、`observe.go`、`webhook_test.go`）与自包含的
 [example/](example/)（自带本地 HTTP receiver；`go run .` 冒烟验证，无需 docker）核实。
 **本 starter 就是组件本身**——generic/DingTalk/Feishu/WeCom/Slack 的 payload 格式与签名
 在仓内实现；接收端配置见各平台机器人文档
@@ -38,7 +38,7 @@ require (
     go-spring.org/spring             v1.3.x
     go-spring.org/starter-webhook    latest
     go-spring.org/starter-otel       latest   # 可选：真实 span 导出
-    go-spring.org/starter-governance latest   # 可选：限流 / 熔断 / fault
+    go-spring.org/starter-governance-file latest   # 可选：限流 / 熔断 / fault
 )
 ```
 
@@ -49,7 +49,7 @@ package main
 
 import (
     "go-spring.org/spring/gs"
-    _ "go-spring.org/starter-governance"
+    _ "go-spring.org/starter-governance-file"
     _ "go-spring.org/starter-otel"
     _ "go-spring.org/starter-webhook"
 )
@@ -80,8 +80,9 @@ func init() {
     gs.Provide(&Service{}).Export(gs.As[gs.Rooter]())
 }
 
-// Fire 投递一条告警。Send 负责构建渠道 payload、签名、给 POST 套 producer span，
-// 并经 resilience executor 路由（治理启用时为限流 / 熔断 / fault 注入）。
+// Fire 投递一条告警。Send 负责构建渠道 payload、签名、声明本次投递的语义身份，
+// 并经 resilience executor 路由（治理启用时为限流 / 熔断 / fault 注入）；
+// 执行器上的 observe 层发射 span、指标与访问日志。
 func (s *Service) Fire(ctx context.Context, title, text string) error {
     return s.Alert.Send(ctx, &StarterWebhook.Notifier.Notification{Title: title, Text: text})
 }
@@ -139,7 +140,8 @@ gs.Run()
   ├─ newNotifier：
   │    ├─ 用空 Notification 干跑一次 buildPayload——校验 channel 取值、
   │    │   （dingtalk/feishu）签名可用性，全程无网络请求
-  │    ├─ exec := fault.WrapClientExecutor(mgr.ClientExecutorFor("webhook", "webhook:<name>:<channel>"), "webhook:<name>:<channel>", inj)
+  │    ├─ params := cloud.ClientParams{Resilience: mgr, Fault: inj}
+  │    ├─ exec := params.ExecutorFor("webhook", "webhook:<name>:<channel>")
   │    └─ &http.Client{Timeout: c.Timeout} —— 每 notifier 一个 client，不池化
   ├─ bean 就绪：*Notifier 注入所有 `autowire:"<name>"` 处
   ├─ Run / 服务：无后台 goroutine、无探测（理由见顶部激活说明）
@@ -163,19 +165,32 @@ resilience 服务标签为 `webhook:<name>:<channel>`——按实例**且**按�
      （`timestamp` + `sign` 字段）。
    - `wecom` / `slack`：markdown / text 消息，secret 被忽略。
    - 未知 channel → 报错 `webhook: unknown channel ... (want generic|dingtalk|feishu|wecom|slack)`。
-2. **Span** —— `startSend` 开 producer span `webhook.send`（属性
-   `messaging.system=webhook`、`webhook.channel`、`webhook.destination.host`——只有
-   scheme://host，签名 URL 不进遥测）。
-3. **ClientExecutor** —— POST 闭包经服务标签下的治理 executor：引入 starter-governance 后
-   限流 / 熔断 / retry（若经治理配置）/ fault 注入生效，否则透明直通。
-   executor 内部解析出的 observe 层按级别发 outcome span + 调用计数 + 时长直方图 +
-   访问日志。手工构造的零值 Notifier（测试场景）没有 executor，直接 POST——
-   Send 两种情况都可用。
+2. **声明** —— `Send` 经 `observability.WithOperation` 在 context 上声明本次投递的
+   语义身份（`observability.Operation`：span 名 `webhook.send`、指标前缀
+   `messaging.client`、有界 label `messaging.system=webhook` / `messaging.operation=send` /
+   `webhook.channel`，以及目标主机——只有 scheme://host——作为无界 `Detail`），
+   再经 `resilience.Run` 把 POST 路由穿过该 notifier 的 resilience executor。
+   Send **只声明**，自身不发射任何信号。
+3. **ClientExecutor + 发射（resilience 层）** —— POST 闭包经服务标签下的治理 executor：
+   引入 starter-governance-file 后限流 / 熔断 / retry（若经治理配置）/ fault 注入生效，否则
+   退化为只观测、不受治理的执行器（每客户端告警一次：无任何保护生效）。执行器上的
+   observe 包裹层是唯一**发射点**：开调用级 span `webhook.send`
+   （覆盖每次尝试），记录调用级 `messaging.client.operation.duration`、尝试级
+   `messaging.client.attempt.duration` 直方图（下游自身每次尝试的耗时）、在途
+   `messaging.client.active_requests` gauge 与 `resilience.client.calls` 计数器，
+   并每次投递在 `webhook`/`access` tag 下写一行访问日志，带上声明的 `messaging.*` /
+   `webhook.channel` 字段、主机 detail、`status` 与 `duration_ms`。发射点分级：失败 →
+   Warn、带 Detail 的成功 → Debug、不带 Detail 的成功 → Info；能解析出主机的投递带
+   detail，故成功发送记 Debug。手工构造的零值 Notifier（测试场景）没有 executor，
+   `resilience.Run` 直接 POST——Send 两种情况都可用。
 4. **POST** —— `n.post`：`Content-Type: application/json`，client 受 `timeout` 约束；
    任何非 2xx 状态都是错误，并带 body 前 512 字节。
-5. `EndSpan(span, err)` 记录失败并关闭 span。
 
-重试行为：**无内建 retry**。仅当通过 starter-governance 为
+span、指标与访问日志都**在** `Send` 路由穿过的执行器**内部**，因此无论调用方是否持有
+span 都会被度量——没有调用侧需要记得的括号。starter 不再提供 `StartSendSpan` / `EndSpan`
+助手：声明身份已是这一层的全部职责。
+
+重试行为：**无内建 retry**。仅当通过 starter-governance-file 为
 `webhook:<name>:<channel>` 服务配置了 retry 策略才会重试；无治理时失败的 POST 立即
 把错误返回给调用方。⚠ DingTalk/Feishu 有些失败以 HTTP 200 + 错误 body 返回——
 `post` 只检查状态码，这类响应当作成功（见 §6 嫌疑）。
@@ -229,16 +244,18 @@ cd example && go run .    # receiver 捕获 POST；example 断言
 ### 4.3 失败演练（无需重启）
 
 用一个坏 URL（如端口 1）启动：每次 Send 返回 `webhook: post failed` 带连接错误，
-producer span（status Error、error 事件）与 executor 的按 outcome 计数都有记录。
-starter 自身没有可热切换的东西；引入 starter-governance 后，改规则文件即可给
+发射的 span（status Error、error 事件）与 executor 的按 outcome 计数都有记录。
+starter 自身没有可热切换的东西；引入 starter-governance-file 后，改规则文件即可给
 `webhook:alert:dingtalk` 在线武装限流——超限的发送会以 limit-reject outcome 快速失败，
 不再到达平台。
 
 ### 4.4 可观测演练
 
-引入 starter-otel 后发送一次并读：span `webhook.send`（kind PRODUCER，属性见 §2.2
-第 2 步）、时长直方图。验证脱敏性质：span 属性是
-`webhook.destination.host=scheme://host`，绝不带签名 URL。
+引入 starter-otel 后发送一次并读：span `webhook.send`（属性 `messaging.system=webhook`、
+`messaging.operation=send`、`webhook.channel`，主机作为 detail——见 §2.2 第 2 步）、
+`messaging.client.operation.duration` 与 `messaging.client.attempt.duration` 直方图、
+`messaging.client.active_requests` gauge 与 `resilience.client.calls` 计数器。
+验证脱敏性质：span detail 是 `webhook.destination.host=scheme://host`，绝不带签名 URL。
 
 ### 4.5 渠道矩阵演练
 

@@ -30,8 +30,8 @@ import (
 )
 
 // Query wraps a *gocql.Query so its execution methods (Exec, Iter, Scan,
-// ScanCAS, MapScan, MapScanCAS) route through the client's resilience
-// executor + observer. All other gocql.Query methods (Consistency, PageSize,
+// ScanCAS, MapScan, MapScanCAS) route through the client's guard (which declares
+// the statement and runs it under the resilience executor). All other gocql.Query methods (Consistency, PageSize,
 // Idempotent, ...) promote unchanged through the embedding; note that the
 // promoted configurators return the embedded *gocql.Query, so calling them
 // after execution methods (or storing the result as a *gocql.Query) drops the
@@ -39,24 +39,24 @@ import (
 // the guarded path.
 type Query struct {
 	*gocql.Query
-	// c is the owning client (executor + observer).
+	// c is the owning client (guard + executor).
 	c *Client
 	// stmt is the CQL text, retained for the observation summary.
 	stmt string
 }
 
-// Query shadows the embedded (*gocql.Session).Query: instead of a raw
-// *gocql.Query it returns a guarded wrapper, so the normal statement path is
-// transparently protected. It is the only signature change versus a raw
-// session — see the type comment for the chaining caveat.
+// Query mirrors (*gocql.Session).Query but returns a guarded wrapper instead of
+// a raw *gocql.Query, so the normal statement path is transparently protected.
+// It is the only signature change versus a raw session — see the type comment
+// for the chaining caveat.
 func (o *Client) Query(stmt string, values ...any) *Query {
-	return &Query{Query: o.Session.Query(stmt, values...), c: o, stmt: stmt}
+	return &Query{Query: o.session.Query(stmt, values...), c: o, stmt: stmt}
 }
 
-// Bind shadows the embedded (*gocql.Session).Bind for the same reason as
-// Query: bound statements get the same transparent guard.
+// Bind mirrors (*gocql.Session).Bind for the same reason as Query: bound
+// statements get the same transparent guard.
 func (o *Client) Bind(stmt string, b func(q *gocql.QueryInfo) ([]any, error)) *Query {
-	return &Query{Query: o.Session.Bind(stmt, b), c: o, stmt: stmt}
+	return &Query{Query: o.session.Bind(stmt, b), c: o, stmt: stmt}
 }
 
 // WithContext attaches ctx to the query (the executor may derive a per-attempt

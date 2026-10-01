@@ -2,7 +2,7 @@
 
 Detailed usage reference. Overview: [README.md](README.md). All behavior claims are verified
 against the starter source (`starter.go`, `config.go`, `client.go`, `command.go`, `driver.go`,
-`health/health.go`) and the runnable examples ([example/](example/), [example-otel/](example-otel/),
+`health.go`) and the runnable examples ([example/](example/), [example-otel/](example-otel/),
 [example-cloudnative/](example-cloudnative/), [example-load/](example-load/)) — file:line
 spot-checks in brackets below. **Cypher semantics and the neo4j-go-driver API are
 [the driver's own documentation](https://neo4j.com/docs/go-manual/current/)** — everything below
@@ -36,7 +36,7 @@ require (
     go-spring.org/starter-neo4j        latest
     go-spring.org/starter-actuator     latest   // optional: readiness + /metrics
     go-spring.org/starter-otel         latest   // optional: real trace/metric export
-    go-spring.org/starter-governance   latest   // optional: resilience/fault policy
+    go-spring.org/starter-governance-file   latest   // optional: resilience/fault policy
 )
 ```
 
@@ -48,7 +48,7 @@ package main
 import (
     "go-spring.org/spring/gs"
     _ "go-spring.org/starter-actuator"
-    _ "go-spring.org/starter-governance"
+    _ "go-spring.org/starter-governance-file"
     _ "go-spring.org/starter-neo4j"
     _ "go-spring.org/starter-otel"
     _ "demo/service"
@@ -71,8 +71,9 @@ import (
 )
 
 type Service struct {
-    // Always the wrapper type *StarterNeo4j.Client — it embeds
-    // neo4j.DriverWithContext, so every driver method promotes unchanged.
+    // Always the wrapper type *StarterNeo4j.Client. It embeds the raw
+    // neo4j.DriverWithContext, so every interface method is promoted and the
+    // wrapper still satisfies the interface.
     Graph     *StarterNeo4j.Client `autowire:"graph"`
     Analytics *StarterNeo4j.Client `autowire:"analytics"`
 }
@@ -80,8 +81,9 @@ type Service struct {
 func init() {
     gs.Provide(func(s *Service) gs.Runner {
         return func(ctx context.Context) {
-            // Write + read through the instrumented Query (span + metric +
-            // access log + resilience guard). Same signature as neo4j.ExecuteQuery.
+            // Write + read through Query: it declares the operation and the
+            // resilience layer emits span + metrics + access log, plus the
+            // resilience guard. Same signature as neo4j.ExecuteQuery.
             _, err := StarterNeo4j.Query(ctx, s.Graph,
                 "MERGE (p:Person {name: $name}) SET p.age = $age RETURN p",
                 map[string]any{"name": "alice", "age": 30},
@@ -135,7 +137,7 @@ spring.observability.metrics.exporter=prometheus
 # --- actuator: readiness folds in neo4j:graph and neo4j:analytics -----------
 spring.actuator.addr=:9370
 # --- governance: guard for Query / RunWithResilience ------------------------
-# NOTE: governance RULES go in conf/governance.properties, referenced by spring.governance.source.file.path in app.properties (see starter-governance USAGE).
+# NOTE: governance RULES go in conf/governance.properties, referenced by spring.governance.source.file.path in app.properties (see starter-governance-file USAGE).
 spring.governance.enabled=true
 spring.governance.driver=default
 spring.governance.client.default.rate-limit=100
@@ -163,119 +165,134 @@ cypher-shell -a bolt://127.0.0.1:7687 -u neo4j -p password \
 
 ```
 import starter-neo4j
-  └─ gs.Module(OnProperty("spring.neo4j")) fires when any spring.neo4j.instances.* key exists
-        └─ conf.BindEach("${spring.neo4j}") → one Config per <name> entry
+  └─ gs.Module(OnProperty("spring.neo4j.instances")) fires when any spring.neo4j.instances.* key exists
+        └─ conf.BindEach("${spring.neo4j.instances}") → one Config per <name> entry
               ├─ Provide(newClient).Name(<name>)
-              │    .Init((*Client).Init).Destroy((*Client).Destroy).Caller(1)
+              │    .Destroy((*Client).Destroy).Caller(1)
               └─ Provide health.Indicator named "neo4j:<name>", exported
-                 (injects the wrapper by name; hands the embedded driver to
-                 the indicator) [starter.go:44-53]
+                 (injects the wrapper by name; probes the raw driver it holds)
+                 [starter.go:67-69]
 
 gs.Run()
-  ├─ ctor newClient [starter.go:96]: log instance creation
+  ├─ ctor newClient [starter.go:107]: log instance creation
   │   ├─ if service-name set and mesh off: resolveURI → one endpoint picked,
-  │   │  its address spliced into the URI host [starter.go:91-98, driver.go:129-157];
+  │   │  its address spliced into the URI host [starter.go:103-110, driver.go:185-213];
   │   │  the same resolver also feeds the driver's AddressResolver, so a
   │   │  neo4j:// client can re-find the cluster after the seeded host dies
   │   ├─ optional Driver bean — none → bundled DefaultDriver (d == nil
-  │   │  fallback [starter.go:100-103]); several coexist → the entry selects
+  │   │  fallback [starter.go:113-115]); several coexist → the entry selects
   │   │  one by name: spring.neo4j.instances.<name>.driver = <bean-name> (empty = `spring.neo4j.default.driver`,
   │   │  then the single Driver bean by type; naming a missing bean fails startup)
-  │   ├─ d.CreateClient(ctx, c, backend) (auth + pool knobs + TLS) [starter.go:104, driver.go:61-82]
-  │   └─ fail-fast VerifyConnectivity, bounded by socket-connect-timeout or
-  │      5s; on failure the client is closed and the boot aborts
-  │      [starter.go:112-118]
-  ├─ ArmGovernance [client.go:68-80]: service = resilience.ServiceLabel("neo4j",
-  │   ServiceName, URI) → fault.WrapClientExecutor(mgr.ClientExecutorFor("neo4j", service), service, inj),
-  │   mgr/inj being the injected *resilience.Manager / *fault.Injector beans
-  │   — pass-through executor when governance is off
-  ├─ readiness: indicator runs VerifyConnectivity per probe
-  └─ SIGTERM → Destroy [client.go:91-96]: exec.Close → stopLiveResolver →
+  │   ├─ d.CreateClient(ctx, c, backend, params) (auth + pool knobs + TLS) returns the *Client
+  │   │  COMPLETE — identity (session + service label) and governance both applied
+  │   │  [starter.go:123, driver.go:77]; params = cloud.ClientParams{Resilience: mgr,
+  │   │  Fault: inj}, mgr/inj being the injected *resilience.Manager / *fault.Injector beans
+  │   ├─ NewClient [client.go:96-103]: service = resilience.ServiceLabel("neo4j",
+  │   │  ServiceName, URI) → params.ExecutorFor("neo4j", service) — the governed executor
+  │   │  (fault.WrapClientExecutor over mgr.ClientExecutorFor) when the bundle is populated,
+  │   │  resilience.Unmanaged (observed, warned once) for a zero bundle
+  │   └─ fail-fast HealthCheck (VerifyConnectivity on the raw driver), bounded by
+  │      socket-connect-timeout or 5s; on failure the client is destroyed and the
+  │      boot aborts [starter.go:130-136]
+  ├─ readiness: indicator runs HealthCheck per probe [health.go:32-34]
+  └─ SIGTERM → Destroy [client.go:115-120]: exec.Close →
       driver.Close(context.Background())
 ```
 
+There is no `Init` hook: the wrapper is complete when `newClient` returns — governance is applied
+inside the constructor (`NewClient`), not patched on afterwards. A probe failure destroys an
+already-governed client (`Destroy`) rather than leaking the executor.
+
 **Assembly extension point**: client assembly is owned by a `Driver` (interface,
-`driver.go:53-55`). A company/umbrella starter may provide its own `Driver` as an **optional
+`driver.go:66-68`). A company/umbrella starter may provide its own `Driver` as an **optional
 container bean** (a `gs.Provide(func() StarterNeo4j.Driver{...})`, so it can inject config bound
 from the properties file at wiring time); every instance under `spring.neo4j` is then built
-through it. `CreateClient(ctx, c, backend)` also receives the discovery backend the entry's
+through it. `CreateClient(ctx, c, backend, params)` also receives the discovery backend the entry's
 `${discovery}` label resolved to (nil when no backend bean exists). When no such bean exists the
 starter falls back to the bundled `DefaultDriver`
-(`driver.go:58`) inside assembly (`starter.go:100-103`). There is no per-config `driver` key.
+(`driver.go:71`) inside assembly (`starter.go:113-115`). There is no per-config `driver` key.
 
 An unreachable server, or bad TLS material fails the boot — the process never reaches "serving"
 with a dead Neo4j.
 
-Teardown is deliberately named `Destroy`, not `Close`: the embedded
-`neo4j.DriverWithContext` already exposes `Close(context.Context)`, and shadowing it with a
-different signature would stop the wrapper satisfying the interface (client.go:81-88 comment).
+Teardown is named `Destroy`, not `Close`: `Close(context.Context)` is part of
+`neo4j.DriverWithContext` and is promoted verbatim, so the wrapper still satisfies the interface
+(and can be handed to `neo4j.ExecuteQuery`); `Destroy` is the separate gs lifecycle method
+(client.go).
 
 ### 2.2 What instrumentation actually exists — and what does not
 
 Be honest about the family asymmetry: **there is no transparent per-request instrumentation**.
 neo4j-go-driver speaks the binary Bolt protocol, ships no official OpenTelemetry
 instrumentation, and its `ExecuteQuery` is a package-level generic function — not a method on
-the driver — so there is no transport/dialer/hook to intercept (starter.go:73-78 and
+the driver — so there is no transport/dialer/hook to intercept (starter.go:79-84 and
 command.go:31-44 comments call this a documented gap, not an oversight). What exists:
 
 | Helper | What it adds | Level |
 |--------|--------------|-------|
-| `StarterNeo4j.Query[T]` | drop-in for `neo4j.ExecuteQuery` (same signature): span + duration/in-flight metric + access log, plus the call-site resilience guard | opt-in, per call site |
-| `StarterNeo4j.RunWithResilience` | wraps arbitrary session/transaction code in the resilience guard only (no span/metric/log) | opt-in |
-| `StarterNeo4j.StartSpan` / `EndSpan` | manual span + metric + access log for ops you drive via `driver.NewSession` | opt-in |
-| health indicator `neo4j:<name>` | `VerifyConnectivity` per actuator probe | automatic, always |
-| observe layer applied by the manager's executor (`resilience.WrapClientExecutor`) | outcome metrics (`resilience.*`) for guarded executions | automatic when governance on |
+| `StarterNeo4j.Query[T]` | drop-in for `neo4j.ExecuteQuery` (same signature): declares the operation's identity, so the resilience layer emits the span + duration metrics + access log, plus the call-site resilience guard | opt-in, per call site |
+| `StarterNeo4j.RunWithResilience` | wraps arbitrary session/transaction code in the resilience guard; pair with `StartSpan` so the call also carries a declared identity | opt-in |
+| `StarterNeo4j.StartSpan` | declares a manual operation's identity on the ctx (Cypher as `db.statement`); it starts nothing itself — run the op under `RunWithResilience` and the resilience layer emits the signals | opt-in |
+| health indicator `neo4j:<name>` | `HealthCheck` (a `VerifyConnectivity` on the raw driver) per actuator probe | automatic, always |
+| observe layer applied by the manager's executor (`resilience.WrapClientExecutor`) | the single emitter: span + `db.client.*` metrics + access log, read off the declared operation; outcome metrics (`resilience.*`) when no operation is declared | automatic once the helper is used |
 
-`Query`'s span/metric/log ride a **package-level** default observer (built lazily on first
-use, command.go:50) that emits through this module's own instrumentation ([observe.go]) on the
-OTel globals starter-otel installs — there is no config gate on it; the access log always
-emits via the package observer at the log package's native levels.
+`Query`'s span/metric/log are **not** emitted by the starter. The starter only declares the
+operation ([observe.go]) and the resilience layer emits it — `NewClient` builds the client's
+executor from the governance bundle (`params.ExecutorFor`, which wraps with
+`resilience.WrapClientExecutor`), so the emitter is the one
+point on the chain that sees a whole call, retries included. There is no config gate on the
+declaration; the signals are no-ops on the OTel globals starter-otel installs, while the access
+log always emits at the log package's native levels.
 
 Emissions when `Query` is used:
 
-- span: kind client, name = `op` (`"query"` for `Query`), attributes `db.system=neo4j`,
-  `db.operation=<op>`, `db.statement=<Cypher, truncated at 512 bytes>`
-- metrics: `db.client.operation.duration` (histogram, seconds) and
-  `db.client.active_requests` (in-flight gauge), both labeled with db.system/operation
+- span: name = `op` (`"query"` for `Query`), attributes `db.system=neo4j`,
+  `db.operation=<op>`, `db.statement=<Cypher, truncated at 512 bytes>`; the span is opened by
+  the resilience emitter (kind internal) so it covers every attempt
+- metrics: the call-level `db.client.operation.duration` histogram, the attempt-level
+  `db.client.attempt.duration` histogram, and `db.client.active_requests` (in-flight gauge),
+  all labeled with db.system/operation
 - access log: one record per call under log tag `_app_neo4j_access` (`log.RegisterAppTag`)
   at native levels — error → Warn; success with the captured Cypher argument → Debug;
   plain success → Info
 
 ### 2.3 One query through the actual layers: `Query(... "MATCH ...")`
 
-1. `defaultObs.Start(ctx, "query", cypher)` starts the span, bumps the in-flight gauge, and
-   opens an access-log record [command.go:66].
-2. `queryResilience(driver)` type-asserts the driver back to `*Client` [command.go:111-116].
-   On the wrapper the executor is armed at construction (nil — a plain call — when governance
-   is off), so the
-   call routes through `exec.Execute(ctx, fn)` — rate limit / breaker / retry /
-   bulkhead / timeout scoped to the service label `neo4j:<service-name|uri>` [client.go:78].
-   A **raw** `neo4j.DriverWithContext` passed instead of the wrapper yields `(nil, "")` and
-   runs unguarded, silently.
-3. `neo4j.ExecuteQuery[T]` runs the Cypher (driver retries transient errors up to
-   `max-transaction-retry-time` — driver semantics, see the
+1. `Query` declares the operation's identity on the ctx
+   (`observability.WithOperation(ctx, operation("query", cypher))`, [command.go:65]) — no span,
+   gauge or log is touched here.
+2. `queryResilience(driver)` type-asserts the driver back to `*Client` [command.go:105-117]. On
+   the wrapper the executor is fixed at construction, so the call routes through
+   `resilience.Run(ctx, exec, fn)` — rate limit / breaker / retry / bulkhead / timeout scoped to
+   the service label `neo4j:<service-name|uri>` [client.go:100], and, because the executor was
+   wrapped by `resilience.WrapClientExecutor`, the emitter reads the declared operation off the
+   ctx. A **raw** `neo4j.DriverWithContext` passed instead of the wrapper is handed
+   `resilience.Unmanaged("neo4j", "neo4j")` [command.go:116]: observed, and warned about once,
+   rather than silently unguarded.
+3. The emitter opens the call span, then `neo4j.ExecuteQuery[T]` runs the Cypher (driver
+   retries transient errors up to `max-transaction-retry-time` — driver semantics, see the
    [driver manual](https://neo4j.com/docs/go-manual/current/)).
-4. `sp.End(err)` records the duration histogram, balances the gauge, ends the span, and emits
-   the access-log record with the outcome.
+4. The emitter records the call-level and attempt-level duration histograms, balances the
+   gauge, ends the span, and emits the access-log record with the outcome.
 
 Code that calls `neo4j.ExecuteQuery` directly, or drives `NewSession`/`session.Run` without
-`RunWithResilience`/`StartSpan`, bypasses everything in steps 1-2 — unobserved and unguarded.
+`RunWithResilience`/`StartSpan`, bypasses declaration and emission — unobserved and unguarded.
 This is the documented cost of the missing seam (§6).
 
 ### 2.4 Discovery addressing — seed plus routing-mode recovery
 
 When `service-name` is set and mesh mode is off, `resolveURI` builds a Resolver on the
 `discovery` backend, picks one endpoint, and splices its address into the URI host
-[driver.go:129-157]. The neo4j driver exposes no dialer injection point, so that address is a
+[driver.go:185-213]. The neo4j driver exposes no dialer injection point, so that address is a
 **boot-time seed** — a running client does not re-pick per query. What does keep following the
 naming service is the driver's own `AddressResolver` hook, installed over the same resolver
-[driver.go:67-84]: the routing driver (`neo4j://` schemes) consults it when it failed to build a
+[driver.go:92-96]: the routing driver (`neo4j://` schemes) consults it when it failed to build a
 routing table from the address it was dialed with, i.e. exactly when the seeded host disappeared.
 So a routing-mode client recovers onto the current cluster without a restart; a **direct
 `bolt://` client has no routing table and stays on its boot-time address**. On a registry hiccup
 the hook hands back the address the driver already had, so it never turns a bad read into an empty
 router list. In mesh mode (`GS_MESH_MODE=on`) the sidecar owns discovery+LB and the URI is used
-unchanged [starter.go:80-87].
+unchanged [starter.go:103].
 
 ⚠ **Deliberately not wired to governed endpoint selection.** There is no per-query pick to govern:
 the boot-time pick is frozen into a URI string and the pool is built, used, and discarded in that
@@ -311,14 +328,14 @@ IndexArg(1)), not the absolute-property Pool rule.
 | `max-connection-pool-size` | int | 100 | Max connections per host (driver semantics). | Too low → `connection-acquisition-timeout` errors under burst. |
 | `max-connection-lifetime` | duration | 1h | Retire-and-reconnect window. | — |
 | `connection-acquisition-timeout` | duration | 1m | Max wait for a pooled connection. | Too low → spuriously failed queries under burst. |
-| `socket-connect-timeout` | duration | 5s | TCP connect timeout; ⚠ also bounds the startup fail-fast probe (starter.go:110,132-137). | 0/negative silently falls back to 5s for the probe. |
+| `socket-connect-timeout` | duration | 5s | TCP connect timeout; ⚠ also bounds the startup fail-fast probe (starter.go:130-136). | 0/negative silently falls back to 5s for the probe. |
 | `max-transaction-retry-time` | duration | 30s | Driver-level transient-error retry budget. ⚠ Stacks with `spring.governance.*.max-retries` — two retry loops can multiply attempts. | Large value + governance retry → multiplied latency. |
 
 ### 3.3 TLS
 
 | Key | Type | Default | Behavior / interactions | Misconfiguration consequence |
 |-----|------|---------|-------------------------|------------------------------|
-| `tls.ca-file` | string | — | CA bundle into `RootCAs`. ⚠ Only effective for `+s`/`+ssc` URI schemes — encryption is chosen by the scheme; `tls.enabled` is a shape-parity placeholder and does NOT turn encryption on (driver.go:84-89 comment). | Set with plain `bolt://` → silently ignored. |
+| `tls.ca-file` | string | — | CA bundle into `RootCAs`. ⚠ Only effective for `+s`/`+ssc` URI schemes — encryption is chosen by the scheme; `tls.enabled` is a shape-parity placeholder and does NOT turn encryption on (driver.go:143-145 comment). | Set with plain `bolt://` → silently ignored. |
 | `tls.cert-file` / `tls.key-file` | string | — | Mutual-TLS client certificate (static provider). ⚠ Both together. | Unreadable/invalid → boot error "neo4j: load client certificate". |
 | `tls.server-name` | string | — | Override peer name verification. | — |
 | `tls.insecure-skip-verify` | bool | false | Skip verification. | Convenience only; obvious risk. |
@@ -326,8 +343,8 @@ IndexArg(1)), not the absolute-property Pool rule.
 ### 3.4 Instrumentation
 
 There are **no instrumentation config keys** (no level, no skip list, no argument cap): the
-helpers' observation is unconditional and emitted by module-local instrumentation
-([observe.go]); trace/metric ride the OTel globals starter-otel installs
+helpers' declaration is unconditional ([observe.go]) and the signals are emitted by the
+resilience layer; trace/metric ride the OTel globals starter-otel installs
 (`spring.observability.*`).
 
 Reconciliation: the 14 `value:"..."` tags in the starter (Config fields) are exactly the keys
@@ -341,20 +358,21 @@ above — `grep -rhoE 'value:"[^"]+"'` matches both ways.
 
 ```bash
 curl -s :9370/readyz | jq .      # components include "neo4j:graph", "neo4j:analytics"
-docker stop starter-neo4j        # indicator runs VerifyConnectivity → component flips DOWN
+docker stop starter-neo4j        # indicator runs HealthCheck → component flips DOWN
 curl -s :9370/readyz             # 503 OUT_OF_SERVICE
 docker start starter-neo4j       # flips back UP on the next probe — no restart
 ```
 
 
-### 4.2 Observability — what this starter actually emits
+### 4.2 Observability — what a declared operation emits
 
 ```bash
 grep _app_neo4j_access app.log | tail -1
-# system=neo4j op=query status ok duration=...  (only for StarterNeo4j.Query;
-# success with Cypher at Debug, plain success at Info, failure at Warn)
-curl -s :9090/metrics | grep -E 'db.client.(operation.duration|active_requests)'
-# per-Query duration histogram + in-flight gauge, db.system=neo4j
+# db.system=neo4j db.operation=query status success duration_ms=...  (only for
+# StarterNeo4j.Query / StartSpan+RunWithResilience; success with Cypher at Debug,
+# plain success at Info, failure at Warn) — emitted by the resilience layer
+curl -s :9090/metrics | grep -E 'db.client.(operation|attempt).duration|db.client.active_requests'
+# call-level + attempt-level duration histograms + in-flight gauge, db.system=neo4j
 # Jaeger (example-otel compose): span "query" with db.statement=<Cypher>
 ```
 
@@ -364,7 +382,7 @@ silence is the un-intercepted path, not a broken pipeline (§2.2).
 ### 4.3 Resilience drill (example-cloudnative / example-load shape)
 
 ```properties
-# NOTE: governance RULES go in conf/governance.properties, referenced by spring.governance.source.file.path in app.properties (see starter-governance USAGE).
+# NOTE: governance RULES go in conf/governance.properties, referenced by spring.governance.source.file.path in app.properties (see starter-governance-file USAGE).
 spring.governance.enabled=true
 spring.governance.client.default.rate-limit=5
 ```
@@ -392,11 +410,11 @@ app (or let a platform do it) to re-resolve.
 
 | Symptom | Likely cause | Fix |
 |---------|--------------|-----|
-| Boot fails "failed to verify neo4j connectivity" | Server unreachable / wrong credentials / TLS mismatch | Fail-fast probe is unconditional [starter.go:112-118]; fix connectivity or auth. |
+| Boot fails "failed to verify neo4j connectivity" | Server unreachable / wrong credentials / TLS mismatch | Fail-fast probe is unconditional [starter.go:130-136]; fix connectivity or auth. |
 | Boot fails "neo4j: resolve service X" | `service-name` set but no backend registered under `discovery` | Register the backend (example/discovery.go) or drop service-name. |
-| Queries work but no spans/metrics/access log | Code calls `neo4j.ExecuteQuery` directly, bypassing the seam | Swap to `StarterNeo4j.Query` / wrap with `StartSpan` (§2.2); import starter-otel for real export. |
-| No protection though governance is on | Session code not routed through `Query`/`RunWithResilience`, or a raw driver passed (type-assert misses) | Route through the helpers; always pass the `*Client` wrapper [command.go:111-116]. |
-| TLS settings appear to do nothing | URI scheme is plain `bolt://`/`neo4j://` | Switch scheme to `neo4j+s://`/`bolt+s://`; tls.* only customizes trust for encrypted schemes [driver.go:84-89]. |
+| Queries work but no spans/metrics/access log | Code calls `neo4j.ExecuteQuery` directly, bypassing the seam | Swap to `StarterNeo4j.Query` / declare with `StartSpan` and run under `RunWithResilience` (§2.2); import starter-otel for real export. |
+| No protection though governance is on | Session code not routed through `Query`/`RunWithResilience`, or a raw driver passed (type-assert misses) | Route through the helpers; always pass the `*Client` wrapper [command.go:105]. |
+| TLS settings appear to do nothing | URI scheme is plain `bolt://`/`neo4j://` | Switch scheme to `neo4j+s://`/`bolt+s://`; tls.* only customizes trust for encrypted schemes [driver.go:143-145]. |
 | Discovery endpoint changed, client still dials the old address | One-shot resolution — no dialer hook in the driver | Rebuild/restart the client (§2.4); or front with mesh/sidecar LB. |
 
 ## 6. Design Health
@@ -419,9 +437,10 @@ Design suspects (audit ledger — kept from the previous audit, plus new):
   `*Client` either). The helpers are therefore the deepest reachable seam; governance applies
   automatically once they are used (no resilience flag). Covered by resilience_test.go.
 - `Query` type-asserts its driver argument back to `*Client` to find the executor — a
-  differently-typed custom driver silently loses the guard (command.go:111-116).
+  differently-typed custom driver has no config to derive a label from, so it runs under the
+  observed-only, loudly-unmanaged executor rather than a governed one (command.go:105-117).
 - `tls.enabled` is a dead placeholder key here (scheme owns encryption) — candidate for a
-  slimmer tls shape (driver.go:84-89); one-shot discovery resolution (vs live re-resolution
+  slimmer tls shape (driver.go:143-145); one-shot discovery resolution (vs live re-resolution
   in every other client starter) is forced by the missing dialer hook (§2.4).
 - Fail-fast probe reuses `socket-connect-timeout` as its bound — mixing "user's TCP budget"
-  and "startup probe budget" in one key (starter.go:110,132-137).
+  and "startup probe budget" in one key (starter.go:130-136).

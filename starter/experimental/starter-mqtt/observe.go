@@ -14,16 +14,21 @@
  * limitations under the License.
  */
 
-// observe.go is the module-local instrumentation for the span helpers in
-// command.go: a producer/consumer span, the messaging.client.* metrics, and an
-// access log per operation. It rides the OTel globals — without starter-otel
-// the tracer and meter providers are no-ops, so the helpers add negligible
-// overhead.
+// observe.go declares what an mqtt publish or consume IS. The signals
+// themselves — the span, the duration metrics (call-level and attempt-level),
+// the access log — are emitted by the resilience layer, the one place on the
+// executor chain that sees a whole call. This file therefore holds no per-call
+// emission code: only the vocabulary this starter alone knows, because only it
+// knows these calls reach a broker.
+//
+// The one signal kept here is the connection-state counter: it is NOT a
+// per-call signal — it is driven by the paho client's own connect / lost /
+// reconnecting callbacks — so it is not the resilience layer's to emit and
+// stays starter-local.
 package StarterMQTT
 
 import (
 	"context"
-	"time"
 
 	"go-spring.org/cloud/observability"
 	"go-spring.org/stdlib/strutil"
@@ -31,22 +36,29 @@ import (
 	"go-spring.org/log"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 )
 
-// accessTag is the static log tag for the mqtt access log.
+// accessTag is the static log tag for the mqtt access log. It is registered
+// here, at package init, because a tag must exist before the framework's first
+// property refresh — see [log.RegisterTag].
 var accessTag = log.RegisterAppTag("mqtt", "access")
 
-// tracerName names the tracer the per-operation spans open on. The tracer is
-// looked up per use (otel.Tracer at call time), never cached in a package
-// variable: a package-level otel.Tracer captured before any provider is set
-// stops forwarding once the global provider is set, unset and set again.
-const tracerName = "go-spring.org/starter-mqtt"
+// maxTopic bounds the topic captured as messaging.destination.name. A topic can
+// be long and a span or a log line has no use for all of it.
+const maxTopic = 512
 
-// maxLogArg bounds the topic captured in the access log.
-const maxLogArg = 512
+// mqttSystem is the value the family's messaging.system label carries for this
+// backend — the family's shared vocabulary, not a per-file choice.
+const mqttSystem = "mqtt"
+
+// Operation names, shared by the span name and the messaging.operation label so
+// the two can never disagree.
+const (
+	opPublish = "publish"
+	opConsume = "consume"
+)
 
 // Connection-state values the counter and the log lines share.
 const (
@@ -54,6 +66,49 @@ const (
 	connLost         = "lost"
 	connReconnecting = "reconnecting"
 )
+
+// operation is the semantic identity of one mqtt operation, named by its
+// direction (publish / consume) and addressed by its topic.
+//
+// The direction and the system ride in Attrs — both bounded, so both may label a
+// metric. The topic rides in Detail instead: topics are drawn from an open set,
+// so as a metric label one would multiply the series without bound. Detail
+// reaches the span and the log — where a topic is exactly what makes a line
+// worth reading — and never a label. A topicless call carries no detail at all,
+// which is also what levelled its success log at Info.
+// spanKind maps the operation's direction onto the trace edge it adds: a publish
+// is the producer side of the link, a consume the consumer side.
+func spanKind(direction string) trace.SpanKind {
+	if direction == opConsume {
+		return trace.SpanKindConsumer
+	}
+	return trace.SpanKindProducer
+}
+
+func operation(direction, topic string) observability.Operation {
+	op := observability.Operation{
+		Name:   direction,
+		Metric: "messaging.client",
+		Attrs: []attribute.KeyValue{
+			attribute.String("messaging.system", mqttSystem),
+			attribute.String("messaging.operation", direction),
+		},
+		LogTag: accessTag,
+		// A publish is the producer edge of the trace and a consume its consumer edge;
+		// declaring the kind is what keeps that topology once the emitter opens the span.
+		SpanKind: spanKind(direction),
+		// Publishing and handling both repeat a side effect when retried — a second
+		// message delivered, or a second run of the handler — so the executor chain must
+		// not retry this operation whatever retry a governance rule asks for.
+		NonIdempotent: true,
+	}
+	if topic != "" {
+		op.Detail = []attribute.KeyValue{
+			attribute.String("messaging.destination.name", strutil.Truncate(topic, maxTopic)),
+		}
+	}
+	return op
+}
 
 // connStateCounter counts the connection-lifecycle transitions paho reports.
 // Those events had only log lines: a client that kept losing its broker was
@@ -73,7 +128,7 @@ type connStateCounter struct {
 // an SDK installed later still receives the records.
 func newConnStateCounter() *connStateCounter {
 	changes, _ := otel.Meter("go-spring.org/starter-mqtt").Int64Counter("messaging.client.connection.state_changes",
-		metric.WithDescription("Connection-state transitions reported by the mqtt client"),
+		metric.WithDescription("Connection-state transitions reported by the messaging client"),
 		metric.WithUnit("{event}"))
 	return &connStateCounter{changes: changes}
 }
@@ -90,107 +145,5 @@ func (c *connStateCounter) record(ctx context.Context, state string) []log.Field
 	return []log.Field{
 		log.String("messaging.system", "mqtt"),
 		log.String("state", state),
-	}
-}
-
-// observer emits the span + metric + access-log trio for one operation
-// direction (publish or consume). kind selects the span kind.
-type observer struct {
-	kind     trace.SpanKind
-	duration metric.Float64Histogram
-	active   metric.Int64UpDownCounter
-}
-
-// newObserver builds the observer's instruments from whatever meter provider
-// is current — created at wiring time (newClient), not at package init, so an
-// SDK installed later than this package's init still receives the records.
-
-func newObserver(kind trace.SpanKind) *observer {
-	m := otel.Meter("go-spring.org/starter-mqtt")
-	duration, _ := m.Float64Histogram("messaging.client.operation.duration",
-		metric.WithDescription("Duration of mqtt client operations"),
-		metric.WithUnit("s"),
-		metric.WithExplicitBucketBoundaries(observability.DurationBuckets()...))
-	active, _ := m.Int64UpDownCounter("messaging.client.active_requests",
-		metric.WithDescription("Number of in-flight mqtt client operations"),
-		metric.WithUnit("{request}"))
-	return &observer{kind: kind, duration: duration, active: active}
-}
-
-// span is the handle returned by observer.Start; End records the outcome.
-type span struct {
-	o        *observer
-	ctx      context.Context
-	span     trace.Span
-	op       string
-	arg      string
-	start    time.Time
-	inflight metric.MeasurementOption
-}
-
-// Start begins an operation: it opens the span, records the start time, and
-// bumps the in-flight gauge. op is the operation name ("publish"/"consume"),
-// arg the topic (omitted from span attributes when empty). Start must be
-// followed by exactly one span.End.
-func (o *observer) Start(ctx context.Context, op, arg string) (context.Context, *span) {
-	attrs := []attribute.KeyValue{
-		attribute.String("messaging.system", "mqtt"),
-		attribute.String("messaging.operation", op),
-	}
-	if arg != "" {
-		attrs = append(attrs, attribute.String("messaging.destination.name", arg))
-	}
-	ctx, sp := otel.Tracer(tracerName).Start(ctx, op,
-		trace.WithSpanKind(o.kind),
-		trace.WithAttributes(attrs...))
-	inflight := metric.WithAttributes(
-		attribute.String("messaging.system", "mqtt"),
-		attribute.String("messaging.operation", op),
-	)
-	o.active.Add(ctx, 1, inflight)
-	return ctx, &span{o: o, ctx: ctx, span: sp, op: op, arg: arg, start: time.Now(), inflight: inflight}
-}
-
-// End records the duration histogram, balances the in-flight gauge, ends the
-// span (recording err if non-nil), and emits the access log. An error logs at
-// Warn; a success with a topic at Debug (publishes/consumes are frequent and
-// uninteresting until they fail); a success without a topic at Info.
-func (s *span) End(err error) {
-	o := s.o
-	dur := time.Since(s.start)
-	status := "ok"
-	if err != nil {
-		status = "error"
-	}
-	o.duration.Record(s.ctx, dur.Seconds(), metric.WithAttributes(
-		attribute.String("messaging.system", "mqtt"),
-		attribute.String("messaging.operation", s.op),
-		attribute.String("status", status),
-	))
-	o.active.Add(s.ctx, -1, s.inflight)
-	if err != nil {
-		s.span.RecordError(err)
-		s.span.SetStatus(codes.Error, err.Error())
-	}
-	s.span.End()
-
-	fields := func() []log.Field {
-		f := []log.Field{
-			log.String("messaging.operation", s.op),
-			log.String("status", status),
-			log.Float("duration_ms", float64(dur.Nanoseconds())/1e6),
-		}
-		if s.arg != "" {
-			f = append(f, log.String("messaging.destination.name", strutil.Truncate(s.arg, maxLogArg)))
-		}
-		return f
-	}
-	switch {
-	case err != nil:
-		log.Warn(s.ctx, accessTag, append(fields(), log.Err(err))...)
-	case s.arg != "":
-		log.Debug(s.ctx, accessTag, fields)
-	default:
-		log.Info(s.ctx, accessTag, fields()...)
 	}
 }

@@ -17,9 +17,12 @@ they are never imported together (`project_starter_kafka_sarama`).
   single connection pool serves every downstream role.
 - Deliberately not wrapped in a `*Conn` type: unlike NATS's dual API,
   Sarama has one `sarama.Client` interface as the natural bean.
-- No OTel producer/consumer hook. Sarama does not expose an interceptor
+- No OTel emission of its own. Sarama does not expose an interceptor
   seam; `otelsarama` is deprecated and locked to Shopify's fork
-  (`project_starter_kafka_sarama`). Tracing lives at the call site.
+  (`project_starter_kafka_sarama`). The starter DECLARES each
+  publish/consume's identity at the call-site seams (`WrapSyncProducer`
+  / `Consume`) and the resilience layer EMITS the span, metrics and
+  access log — the starter emits nothing.
 
 ## 2. Key Abstractions & Seams
 
@@ -46,10 +49,12 @@ they are never imported together (`project_starter_kafka_sarama`).
   `2.6.0`) for anything beyond the baseline protocol — features (SASL
   mechanisms, headers, idempotent producer) require a minimum protocol
   version.
-- **No OTel producer/consumer wrapping.** If tracing is required,
-  callers add span helpers at publish / consume boundaries; the starter
-  will not silently modify `sarama.Config` to insert interceptors that
-  do not exist.
+- **No OTel producer/consumer wrapping, but declaration seams.** Callers
+  declare a publish by wrapping their `SyncProducer` (`WrapSyncProducer`)
+  and a consume by running each received message through `Consume`; the
+  resilience layer emits from the declared operation. The starter will
+  not silently modify `sarama.Config` to insert interceptors that do not
+  exist.
 - **`destroy = Close`.** `sarama.Client.Close` releases broker
   connections. Callers that built consumer groups / producers on top
   must close those first (their own lifecycle).

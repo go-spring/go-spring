@@ -14,15 +14,21 @@
  * limitations under the License.
  */
 
-// observe.go is the module-local observer for the driver path: a
-// producer/consumer span, the messaging.client.operation.duration metric and
-// an access log per publish/consume. amqp091-go offers no per-message hook, so
-// the driver observes here, around the publish/handler call.
+// observe.go declares what a rabbitmq publish or consume IS. The signals
+// themselves — the span, the duration metrics (call-level and attempt-level),
+// the access log — are emitted by the resilience layer, the one place on the
+// executor chain that sees a whole call. This file therefore holds no per-call
+// emission code: only the vocabulary this starter alone knows, because only it
+// knows these calls reach a broker.
+//
+// The one signal kept here is the connection-state counter: it is NOT a
+// per-call signal — it is driven by the amqp091 connection's own NotifyClose /
+// NotifyBlocked channels — so it is not the resilience layer's to emit and
+// stays starter-local.
 package StarterRabbitMQ
 
 import (
 	"context"
-	"time"
 
 	"go-spring.org/cloud/observability"
 	"go-spring.org/stdlib/strutil"
@@ -30,16 +36,75 @@ import (
 	"go-spring.org/log"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 )
 
-// accessTag is the static log tag for the rabbitmq access log.
+// accessTag is the static log tag for the rabbitmq access log. It is registered
+// here, at package init, because a tag must exist before the framework's first
+// property refresh — see [log.RegisterTag].
 var accessTag = log.RegisterAppTag("rabbitmq", "access")
 
-// tracer starts this module's messaging spans; instrument handles live in the
-// observers so they bind to whatever OTel provider is current at construction.
+// scopeName names the OTel scope the process-wide connection-state instrument
+// registers under. The meter is looked up per use (otel.Meter at build time),
+// never cached before a provider is installed.
+const scopeName = "go-spring.org/starter-rabbitmq"
+
+// maxDestination bounds the destination captured as messaging.destination.name.
+// A queue name or routing key can be long and a span or a log line has no use
+// for all of it.
+const maxDestination = 512
+
+// rabbitmqSystem is the value the family's messaging.system label carries for
+// this backend — the family's shared vocabulary, not a per-file choice.
+const rabbitmqSystem = "rabbitmq"
+
+// Operation names, shared by the span name and the messaging.operation label so
+// the two can never disagree.
+const (
+	opPublish = "publish"
+	opConsume = "consume"
+)
+
+// operation is the semantic identity of one rabbitmq operation, named by its
+// direction (publish / consume) and addressed by its destination.
+//
+// The direction and the system ride in Attrs — both bounded, so both may label a
+// metric. The destination rides in Detail instead: queues and routing keys are
+// drawn from an open set, so as a metric label one would multiply the series
+// without bound. Detail reaches the span and the log — where a destination is
+// exactly what makes a line worth reading — and never a label. A destinationless
+// call carries no detail at all, which is also what levelled its success log at
+// Info.
+// spanKind maps the operation's direction onto the trace edge it adds: a publish
+// is the producer side of the link, a consume the consumer side.
+func spanKind(direction string) trace.SpanKind {
+	if direction == opConsume {
+		return trace.SpanKindConsumer
+	}
+	return trace.SpanKindProducer
+}
+
+func operation(direction, destination string) observability.Operation {
+	op := observability.Operation{
+		Name:   direction,
+		Metric: "messaging.client",
+		Attrs: []attribute.KeyValue{
+			attribute.String("messaging.system", rabbitmqSystem),
+			attribute.String("messaging.operation", direction),
+		},
+		LogTag: accessTag,
+		// A publish is the producer edge of the trace and a consume its consumer edge;
+		// declaring the kind is what keeps that topology once the emitter opens the span.
+		SpanKind: spanKind(direction),
+	}
+	if destination != "" {
+		op.Detail = []attribute.KeyValue{
+			attribute.String("messaging.destination.name", strutil.Truncate(destination, maxDestination)),
+		}
+	}
+	return op
+}
 
 // Connection-state values the counter and the log lines share.
 const (
@@ -61,8 +126,8 @@ type connStateCounter struct {
 // current — invoked at wiring time, not at package init, so an SDK installed
 // later still receives the records.
 func newConnStateCounter() *connStateCounter {
-	changes, _ := otel.Meter(tracerName).Int64Counter("messaging.client.connection.state_changes",
-		metric.WithDescription("Connection-state transitions reported by the rabbitmq client"),
+	changes, _ := otel.Meter(scopeName).Int64Counter("messaging.client.connection.state_changes",
+		metric.WithDescription("Connection-state transitions reported by the messaging client"),
 		metric.WithUnit("{event}"))
 	return &connStateCounter{changes: changes}
 }
@@ -73,114 +138,11 @@ func newConnStateCounter() *connStateCounter {
 // drifted key is silent: the line still looks right and joins nothing.
 func (c *connStateCounter) record(ctx context.Context, state string) []log.Field {
 	c.changes.Add(ctx, 1, metric.WithAttributes(
-		attribute.String("messaging.system", "rabbitmq"),
+		attribute.String("messaging.system", rabbitmqSystem),
 		attribute.String("state", state),
 	))
 	return []log.Field{
-		log.String("messaging.system", "rabbitmq"),
+		log.String("messaging.system", rabbitmqSystem),
 		log.String("state", state),
-	}
-}
-
-// observer emits the span/metric/access-log triple for one direction of the
-// driver path. kind selects producer or consumer spans. When starter-otel is
-// not imported the global OTel providers are no-ops, so span+metric add
-// negligible overhead; the access log always emits through the project log
-// package.
-type observer struct {
-	kind     trace.SpanKind
-	duration metric.Float64Histogram
-	active   metric.Int64UpDownCounter
-}
-
-// newObserver builds the messaging.client instruments from whatever meter
-// provider is current — invoked at wiring time, not at package init, so an SDK
-// installed later still receives the records.
-
-func newObserver(kind trace.SpanKind) *observer {
-	m := otel.Meter(tracerName)
-	duration, _ := m.Float64Histogram("messaging.client.operation.duration",
-		metric.WithDescription("Duration of rabbitmq client operations"),
-		metric.WithUnit("s"),
-		metric.WithExplicitBucketBoundaries(observability.DurationBuckets()...))
-	active, _ := m.Int64UpDownCounter("messaging.client.active_requests",
-		metric.WithDescription("Number of in-flight rabbitmq client operations"),
-		metric.WithUnit("{request}"))
-	return &observer{kind: kind, duration: duration, active: active}
-}
-
-// Start opens the operation's span, bumps the in-flight gauge, and returns the
-// in-flight observation; the caller ends it with the operation's error via End.
-func (o *observer) Start(ctx context.Context, op, arg string) (context.Context, obsSpan) {
-	spanAttrs := []attribute.KeyValue{
-		attribute.String("messaging.system", "rabbitmq"),
-		attribute.String("messaging.operation", op),
-	}
-	if arg != "" {
-		spanAttrs = append(spanAttrs, attribute.String("messaging.destination.name", strutil.Truncate(arg, 512)))
-	}
-	ctx, span := otel.Tracer(tracerName).Start(ctx, op,
-		trace.WithSpanKind(o.kind),
-		trace.WithAttributes(spanAttrs...))
-	inflight := metric.WithAttributes(
-		attribute.String("messaging.system", "rabbitmq"),
-		attribute.String("messaging.operation", op),
-	)
-	o.active.Add(ctx, 1, inflight)
-	return ctx, obsSpan{ctx: ctx, span: span, op: op, arg: arg, start: time.Now(), duration: o.duration, active: o.active, inflight: inflight}
-}
-
-// obsSpan is one in-flight observed operation: End emits the span status, the
-// duration metric, balances the in-flight gauge, and writes the access log.
-type obsSpan struct {
-	ctx      context.Context
-	span     trace.Span
-	op       string
-	arg      string
-	start    time.Time
-	duration metric.Float64Histogram
-	active   metric.Int64UpDownCounter
-	inflight metric.MeasurementOption
-}
-
-func (s obsSpan) End(err error) {
-	if err != nil {
-		s.span.SetStatus(codes.Error, err.Error())
-	}
-	s.span.End()
-
-	status := "ok"
-	if err != nil {
-		status = "error"
-	}
-	dur := time.Since(s.start)
-	s.duration.Record(s.ctx, dur.Seconds(), metric.WithAttributes(
-		attribute.String("messaging.system", "rabbitmq"),
-		attribute.String("messaging.operation", s.op),
-		attribute.String("status", status),
-	))
-	s.active.Add(s.ctx, -1, s.inflight)
-
-	common := []log.Field{
-		log.String("messaging.operation", s.op),
-		log.String("status", status),
-		log.Float("duration_ms", float64(dur.Nanoseconds())/1e6),
-	}
-	switch {
-	case err != nil:
-		fields := common
-		if s.arg != "" {
-			fields = append(fields, log.String("messaging.destination.name", strutil.Truncate(s.arg, 512)))
-		}
-		log.Warn(s.ctx, accessTag, append(fields, log.Err(err))...)
-	case s.arg != "":
-		// Success carrying an exchange/routing key: high-frequency and
-		// uninteresting until it fails, so Debug — and built lazily, truncation
-		// included.
-		log.Debug(s.ctx, accessTag, func() []log.Field {
-			return append(common, log.String("messaging.destination.name", strutil.Truncate(s.arg, 512)))
-		})
-	default:
-		log.Info(s.ctx, accessTag, common...)
 	}
 }

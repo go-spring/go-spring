@@ -17,8 +17,8 @@
 // Package logger forwards goframe's framework logs (glog) into go-spring's log
 // module, so an application only configures one logging pipeline. It is the
 // single shared implementation used by the http, grpc, tcp and ws starters -
-// each blank-imports this package, and the bridge self-installs via init()
-// before g.Server(name) emits its first lifecycle line.
+// each imports this package and calls [Install] from its starter.go, before
+// g.Server(name) emits its first lifecycle line.
 package logger
 
 import (
@@ -99,11 +99,11 @@ func toGSLevel(level int) log.Level {
 	}
 }
 
-// init routes every glog log line through go-spring's log module. Each goframe
-// sub-starter (http/grpc/tcp/ws) blank-imports this package, so importing any
-// one of them self-installs the bridge during Go package init - before any
-// server is built, so the very first framework log, including gsvc registration
-// and any startup error, flows through the bridge.
+// Install routes every glog log line through go-spring's log module. Each
+// goframe sub-starter (http/grpc/tcp/ws) calls it from its own starter.go,
+// so the bridge is installed before any server is built and the very first
+// framework log, including gsvc registration and any startup error, flows
+// through it.
 //
 // We install on both surfaces:
 //
@@ -114,7 +114,11 @@ func toGSLevel(level int) log.Level {
 //     package default (see glog_logger.go: `if len(l.config.Handlers) > 0`).
 //     Without this second call, anything that goes through g.Log() would still
 //     hit glog's own writer.
-func init() {
+//
+// Install routes goframe's own logs into the go-spring log pipeline. It is called
+// from each starter's starter.go, so the package declares no init of its own:
+// every registration a starter performs is readable in one place.
+func Install() {
 	glog.SetDefaultHandler(handler)
 	g.Log().SetHandlers(handler)
 }

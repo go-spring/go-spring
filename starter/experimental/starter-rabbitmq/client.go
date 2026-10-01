@@ -27,9 +27,10 @@ import (
 	"sync"
 
 	amqp "github.com/rabbitmq/amqp091-go"
-	"go-spring.org/cloud/governance/traffic"
 	"go-spring.org/cloud/messaging"
+	"go-spring.org/cloud/observability"
 	"go-spring.org/cloud/propagate"
+	"go-spring.org/cloud/traffic"
 	"go-spring.org/log"
 )
 
@@ -47,11 +48,13 @@ import (
 // safe for concurrent use), opened by the driver and closed on Close. Both
 // declare the queue idempotently so a round trip works without external setup.
 //
-// Trace context rides the envelope: the messaging.Observe decorator wraps this
-// driver, injecting the current W3C context into the message headers on
-// publish (mapped onto AMQP headers) and extracting it on consume, so a trace
-// links producer to consumer across services. It also supplies the spans,
-// metrics and access log. All of it is a no-op without starter-otel.
+// The driver DECLARES each operation's identity (see [operation]) and routes it
+// through the connection's resilience executor — the single emitter of the span,
+// the durations and the access log. It does not instrument anything itself:
+// publish rides [GuardedPublish], and the consume handler runs under [guard]
+// after the upstream W3C context is extracted from the delivery headers, so a
+// trace links producer to consumer across services. All of it is a no-op
+// without starter-otel.
 //
 // prop is the process's load-test convention (nullable — nil falls back to
 // traffic.NewDefaultPropagator), carried on every publisher/subscriber this
@@ -61,7 +64,7 @@ func NewDriver(conn *amqp.Connection, prop traffic.Propagator) messaging.Driver 
 		// DefaultBinding is complete, so this cannot fail.
 		prop, _ = traffic.NewDefaultPropagator(traffic.DefaultBinding())
 	}
-	return messaging.Observe(&driver{conn: conn, prop: prop}, "rabbitmq")
+	return &driver{conn: conn, prop: prop}
 }
 
 type driver struct {
@@ -90,7 +93,7 @@ func (b *driver) NewSubscriber(_ context.Context, source, _ string) (messaging.S
 		_ = ch.Close()
 		return nil, err
 	}
-	return &subscriber{ch: ch, queue: source, prop: b.prop}, nil
+	return &subscriber{conn: b.conn, ch: ch, queue: source, prop: b.prop}, nil
 }
 
 // publisher sends envelopes to a fixed queue via the default exchange. It holds
@@ -123,8 +126,10 @@ func (p *publisher) Publish(ctx context.Context, msg *messaging.Message) error {
 		pub.Headers[k] = v
 	}
 	// Route through the same resilience executor the raw client API uses
-	// (GuardedPublish): a no-op pass-through when governance is off for this
-	// connection, a rejection sentinel when rate-limited/circuit-open.
+	// (GuardedPublish): it declares the publish's identity and injects the W3C
+	// trace context, then runs the send under the connection's executor — a
+	// no-op pass-through when governance is off for this connection, a rejection
+	// sentinel when rate-limited/circuit-open.
 	return GuardedPublish(ctx, p.conn, p.ch, "", p.queue, false, false, pub)
 }
 
@@ -134,7 +139,11 @@ func (p *publisher) Close() error { return p.ch.Close() }
 // background loop over the delivery channel that stops when Close closes the
 // channel (which closes the delivery channel). A handler error nacks with
 // requeue so the broker can redeliver; success acks.
+//
+// It holds the owning connection so Subscribe can resolve the connection-scoped
+// resilience executor (channels carry no identity of their own).
 type subscriber struct {
+	conn  *amqp.Connection
 	ch    *amqp.Channel
 	queue string
 	prop  traffic.Propagator
@@ -154,9 +163,20 @@ func (s *subscriber) Subscribe(_ context.Context, handler messaging.Handler) err
 	go func() {
 		defer close(s.done)
 		for d := range deliveries {
-			// Extract the load-test marker the producer put in the AMQP headers.
-			msgCtx := s.prop.Extract(context.Background(), tableCarrier(d.Headers))
-			herr := handler(msgCtx, fromDelivery(&d))
+			// Extract the upstream W3C trace into a fresh ctx first, then declare
+			// the consume's identity, so the executor's consumer span nests under
+			// the producer's rather than starting a new trace root. The load-test
+			// marker the producer put in the AMQP headers is re-entered into the
+			// same ctx.
+			msgCtx := extractW3C(context.Background(), &d)
+			msgCtx = s.prop.Extract(msgCtx, tableCarrier(d.Headers))
+			msgCtx = observability.WithOperation(msgCtx, operation(opConsume, s.queue))
+			// The handler runs under the connection's resilience executor, which
+			// emits the consume span, durations and access log; without an
+			// executor guard runs it inline.
+			herr := guard(msgCtx, s.conn, func(attemptCtx context.Context) error {
+				return handler(attemptCtx, fromDelivery(&d))
+			})
 			if herr != nil {
 				log.Errorf(msgCtx, log.TagAppDef, "rabbitmq driver handler error on %q: %v", s.queue, herr)
 				if err := d.Nack(false, true); err != nil {

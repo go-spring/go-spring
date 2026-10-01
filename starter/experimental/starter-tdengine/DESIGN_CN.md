@@ -21,13 +21,15 @@
   原生 libtaos 的 CGO `taosSql`、吞吐/功能较弱的 REST `taosRestful`、
   纯 Go 的 websocket `taosWS`。starter 选 taosWS：零安装、功能完整；
   REST 连接器保留为自定义 driver 的空间。
-- **`Client` 包装 = `*sql.DB` + 武装槽位** — database/sql 没有可在构造后
-  替换的传输层或回调链，因此 DefaultDriver 用 `guardedConnector`/
+- **`Client` 包装 = 内嵌 `*sql.DB` + 槽位** — database/sql 没有可在构造后
+  替换的传输层或回调链，因此 NewClient 用 `guardedConnector`/
   `guardedConn` 包住 taosWS 连接器：池中每条连接在每次
-  `ExecContext`/`QueryContext` 时查询 `clientSlot`。ArmGovernance（由构造函数
-  调用，收注入的 `*resilience.Manager` / `*fault.Injector` bean）构建执行器
-  并武装槽位，Init 构建观察器；此前语句原样直通。这是 starter-gorm 回调链与 HTTP starter
-  RoundTripper 适配器在 database/sql 里的对应物。
+  `ExecContext`/`QueryContext` 时查询 `clientSlot`。NewClient 建槽位并把它装到
+  每条池化连接上，同时按装配处传入的 `cloud.ClientParams` 包算出执行器
+  并装到槽位，客户端一次构建到位；每条语句先把自己的身份声明到 context 上，
+  再经执行器路由。resilience
+  执行器是 span、指标与访问日志的唯一发射点——starter 只做声明。这是
+  starter-gorm 回调链与 HTTP starter RoundTripper 适配器在 database/sql 里的对应物。
 - **health** — `PingContext`，与 gorm 家族探针同形。
 
 ## 3. 约束

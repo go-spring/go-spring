@@ -4,20 +4,29 @@
 
 `starter-mail` 属于 Client 形态（`starter/DESIGN.md` §2.2），基于
 `github.com/wneessen/go-mail` 提供 SMTP mailer。starter 很小但有三个
-非显然决定值得写下来：不接 `destroy`、TLS 走 mode 非 enabled+证书、
+非显然决定值得写下来：观测只声明不发射、TLS 走 mode 非 enabled+证书、
 启动时预拨号。
 
 ## 1. 职责与边界
 
-- 用 `gs.Group` 把 `${spring.mail}` 每条绑到 `*Mailer` bean。不做默认单实例
+- 用 `gs.Module` 把 `${spring.mail}` 每条绑到 `*Mailer` bean（用 module 而非
+  group，是为了构造函数在配置之外还能接住治理 bean）。不做默认单实例
   （`project_client_starter_multiinstance`），按名注入（如
   `autowire:"notify"`）。
-- Send 每次现开连接、投递、关连接。无长连接，故不接 `destroy`。
+- Send 每次现开连接、投递、关连接。无长连接，故 `destroy` 只释放 resilience
+  执行器。
 - 不带模板引擎。调用方自行渲染 HTML/文本，把成品字符串传进来；模板不是
   邮件库应管的事。
 
 ## 2. 关键抽象与缝隙
 
+- **观测只声明，不发射。** `Send` 把发送的语义身份
+  （`observability.Operation`：span 名、指标前缀 `email.client`、有界 `email.*`
+  label、批量大小作为 `Detail`，以及非幂等标记）放到 context 上并路由经过 resilience
+  执行器。执行器上的 observe 包裹层是唯一发射点——span、时长指标（调用级
+  `.operation.duration` 与尝试级 `.attempt.duration`）与访问日志。Detail 会进 span
+  和日志，但永不成为指标 label；它携带的是收件人**数量**而非地址或主题 —— 那些是个人
+  数据，而失败的发送会在 Warn 级别写出 detail。
 - **TLS 是 mode 枚举，不是 flag+cert。** `tls.mode` 三选一：`starttls`
   （默认） / `tls`（465 隐式 TLS） / `none`。这与其他 starter 的
   `tls.enabled=true` 形状不同，因为 SMTP 有三种线路行为而不是两种
@@ -25,8 +34,9 @@
 - **启动预拨号 fail-fast。** `newMailer` 拨一次、关一次，让 host/port/auth/TLS
   错在启动就暴露，而不是等首封邮件。对 mailer 特别重要——首封往往是
   运维告警。
-- **不接 `destroy`。** `DialAndSendWithContext` 每次 Send 现拨现关。注册
-  destroy hook 会去关一个不持任何资源的 client。
+- **无连接池资源，destroy 有界。** `DialAndSendWithContext` 每次 Send 现拨现关，
+  故 `destroy` 在 SMTP 客户端上无可关之物——它只释放 mailer 持有的 resilience
+  执行器。
 - **Auth 可选。** `Username` 空时用 `SMTPAuthNoAuth`（受信内网 open relay）。
   否则 `auth-type` 字符串映射到 `plain / login / cram-md5 / auto`。
 - **Message 形状有意窄。** From（消息级覆盖或 mailer 级默认）、To/Cc/Bcc、

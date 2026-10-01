@@ -5,8 +5,8 @@
 `starter-governance-sentinel` is a **global / infrastructure** starter (see
 [starter/DESIGN.md](../DESIGN.md) §2.4) that registers
 [alibaba/sentinel-golang][sentinel] as the production driver for
-`cloud/governance/resilience`. It contributes one bean — the `sentinel`-named
-`resilience.Driver` — and opens no port; alongside `starter-governance`, a blank
+`cloud/resilience`. It contributes one bean — the `sentinel`-named
+`resilience.Driver` — and opens no port; alongside `starter-governance-file`, a blank
 import is enough for the governance center to resolve `spring.governance.driver=sentinel`
 for every client.
 
@@ -18,7 +18,7 @@ for every client.
   backend as the `sentinel`-named `resilience.Driver` bean. Translate a
   backend-neutral `resilience.ClientPolicy` into sentinel rules per service.
 - **Out of scope:** deciding *where* resilience is applied — that is the
-  adapter's job. `cloud/governance/resilience` ships the client seams
+  adapter's job. `cloud/resilience` ships the client seams
   (`NewRoundTripper` for HTTP clients, `NewDialer` for connection dial);
   inbound admission middlewares are built by the protocol starters on the
   `ExecutorFor` of the `resilience.Manager` they inject. This starter never
@@ -28,7 +28,7 @@ for every client.
 
 - **No single universal per-request seam.** Every client library has a
   different hook (oauth2 → `http.RoundTripper`, go-redis → `redis.Hook`,
-  gorm → plugin callback, MQ → call-site helper). `cloud/governance/resilience`
+  gorm → plugin callback, MQ → call-site helper). `cloud/resilience`
   keeps a neutral `Executor.Execute(ctx, fn)` and lets each
   adapter bridge to its own shape. This starter provides the *engine*,
   not the *seam*.
@@ -42,7 +42,7 @@ for every client.
   the budget.
 - **Block reasons map to neutral sentinels.** `BlockTypeCircuitBreaking
   → ErrCircuitOpen`, `BlockTypeIsolation → ErrBulkheadFull`, default
-  `→ ErrRateLimited`. Callers depend only on `cloud/governance/resilience`; the
+  `→ ErrRateLimited`. Callers depend only on `cloud/resilience`; the
   sentinel dependency is a starter-side detail.
 
 ## 3. Constraints
@@ -58,7 +58,7 @@ for every client.
 
 ## 4. Zero-dependency fallback
 
-`cloud/governance/resilience` ships a built-in `default` driver (token bucket +
+`cloud/resilience` ships a built-in `default` driver (token bucket +
 consecutive-failure breaker + retry + timeout, zero third-party
 dependencies) so the framework works out of the box and tests don't
 pull sentinel. This starter's value shows up on production traffic
@@ -66,7 +66,7 @@ where sentinel's adaptive flow control and tunable breakers shine.
 
 ## 5. Trade-offs / Alternatives Rejected
 
-- **Making `cloud/governance/resilience` depend on sentinel — rejected.** The
+- **Making `cloud/resilience` depend on sentinel — rejected.** The
   four-layer rule keeps the foundation zero-dep; this starter is one
   concrete implementation, not the abstraction.
 - **A single dialer / RoundTripper seam for every library — rejected.**

@@ -21,6 +21,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"go-spring.org/cloud"
 )
 
 // TestDSN pins the space-separated key=value PostgreSQL DSN: base fields in a
@@ -53,7 +55,7 @@ func TestDSN(t *testing.T) {
 // TestBuildValidation proves the required-address rule: with neither host nor
 // service-name the build fails instead of producing an empty-DSN dialector.
 func TestBuildValidation(t *testing.T) {
-	if _, err := build(context.Background(), Config{User: "u", Password: "p", DB: "test"}, nil, nil); err == nil {
+	if _, err := build(context.Background(), Config{User: "u", Password: "p", DB: "test"}, cloud.ClientParams{}); err == nil {
 		t.Fatal("build must require host or service-name")
 	}
 }
@@ -77,7 +79,7 @@ func TestDSNConnectTimeoutSubSecond(t *testing.T) {
 func TestBuildTLSConflict(t *testing.T) {
 	c := Config{Host: "h", Port: "5432", User: "u", Password: "p", DB: "d", SSLMode: "disable"}
 	c.TLS.Enabled = true
-	if _, err := build(context.Background(), c, nil, nil); err == nil || !strings.Contains(err.Error(), "sslmode=disable") {
+	if _, err := build(context.Background(), c, cloud.ClientParams{}); err == nil || !strings.Contains(err.Error(), "sslmode=disable") {
 		t.Fatalf("tls.enabled + sslmode=disable must fail loudly, got %v", err)
 	}
 }

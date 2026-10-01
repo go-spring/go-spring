@@ -37,7 +37,7 @@ import (
 	"time"
 
 	"github.com/IBM/sarama"
-	"go-spring.org/cloud/governance/traffic"
+	"go-spring.org/cloud/traffic"
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
 
@@ -49,8 +49,8 @@ const topic = "hello"
 
 type Service struct {
 	Client sarama.Client `autowire:"a"`
-	// Prop is the process's load-test convention, handed to the span helpers so
-	// the marker crosses the Kafka hop.
+	// Prop is the process's load-test convention, handed to the publish/consume
+	// seams so the marker crosses the Kafka hop.
 	Prop traffic.Propagator
 }
 
@@ -85,27 +85,28 @@ func main() {
 }
 
 // publish sends a single record to the topic and waits for the broker ack,
-// using a SyncProducer derived from the shared client. StartProducerSpan wraps
-// the send in an OTel producer span and injects trace context into the record
-// headers; it is a no-op unless starter-otel is imported.
+// using a SyncProducer derived from the shared client. WrapSyncProducer declares
+// the publish's identity and routes the send through the resilience executor,
+// which opens the publish span and injects trace context into the record
+// headers; a no-op unless starter-otel is imported.
 func (s *Service) publish(ctx context.Context, value string) error {
 	producer, err := sarama.NewSyncProducerFromClient(s.Client)
 	if err != nil {
 		return err
 	}
 	defer producer.Close()
-	msg := &sarama.ProducerMessage{Topic: topic, Value: sarama.StringEncoder(value)}
+	producer = starter.WrapSyncProducer(s.Client, producer, s.Prop)
 
-	_, span := starter.StartProducerSpan(ctx, msg, s.Prop)
+	msg := &sarama.ProducerMessage{Topic: topic, Value: sarama.StringEncoder(value)}
 	_, _, err = producer.SendMessage(msg)
-	starter.EndSpan(span, err)
 	return err
 }
 
 // consume reads the first record from partition 0 starting at the oldest
-// offset, using a Consumer derived from the shared client. StartConsumerSpan
-// continues the trace carried in the record headers; it is a no-op unless
-// starter-otel is imported.
+// offset, using a Consumer derived from the shared client. Consume continues the
+// trace carried in the record headers and runs the handler under the resilience
+// executor, which emits the consume span; it is a no-op unless starter-otel is
+// imported.
 func (s *Service) consume(ctx context.Context, timeout time.Duration) (string, error) {
 	consumer, err := sarama.NewConsumerFromClient(s.Client)
 	if err != nil {
@@ -121,9 +122,12 @@ func (s *Service) consume(ctx context.Context, timeout time.Duration) (string, e
 
 	select {
 	case msg := <-pc.Messages():
-		_, span := starter.StartConsumerSpan(ctx, msg, s.Prop)
-		starter.EndSpan(span, nil)
-		return string(msg.Value), nil
+		var body string
+		err := starter.Consume(ctx, s.Client, msg, s.Prop, func(context.Context) error {
+			body = string(msg.Value)
+			return nil
+		})
+		return body, err
 	case err := <-pc.Errors():
 		return "", err
 	case <-time.After(timeout):

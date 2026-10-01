@@ -24,32 +24,45 @@ import (
 	"crypto/tls"
 
 	"github.com/gocql/gocql"
+	"go-spring.org/cloud"
 	"go-spring.org/stdlib/errutil"
 )
 
-// Driver interface defines how to create a Cassandra session (a *gocql.
-// Session). It is an OPTIONAL CONTAINER BEAN: a company or umbrella starter
-// may provide its own Driver bean (its constructor returns
-// StarterCassandra.Driver); when none is present, starter-cassandra falls back
-// to the bundled [DefaultDriver] inside client assembly. A custom driver is a
-// bean, so it may inject the configuration/beans it needs — e.g. company
-// config bound from a properties file at wiring time.
+// Driver interface defines how to create a Cassandra client. It is an OPTIONAL
+// CONTAINER BEAN: a company or umbrella starter may provide its own Driver bean
+// (its constructor returns StarterCassandra.Driver); when none is present,
+// starter-cassandra falls back to the bundled [DefaultDriver] inside client
+// assembly. A custom driver is a bean, so it may inject the configuration/beans
+// it needs — e.g. company config bound from a properties file at wiring time.
+//
+// CreateClient returns the module's exported [Client] — the wrapper apps inject
+// — not the raw *gocql.Session, so a driver takes part in the type the rest of
+// the ecosystem sees and future wrapper capabilities are reachable from it. It
+// returns the client COMPLETE: the wrapper derives its service label from the
+// Config it is handed; params carries the container's facilities (see
+// [cloud.ClientParams]), which [NewClient] applies while building. Nothing
+// patches the client afterwards.
+//
+// params is one struct rather than a parameter per capability so this interface
+// — which every company driver implements — stays stable as capabilities are
+// added. A driver that has no use for one of its fields simply ignores it.
 //
 // At most one Driver bean is expected per process; every client under
 // ${spring.cassandra} is built through it, and per-instance differences are
 // expressed through [Config].
 type Driver interface {
-	CreateClient(ctx context.Context, c Config) (*gocql.Session, error)
+	CreateClient(ctx context.Context, c Config, params cloud.ClientParams) (*Client, error)
 }
 
 // DefaultDriver is the default implementation of the Driver interface.
 type DefaultDriver struct{}
 
-// CreateClient creates a new gocql.Session from the provided configuration.
-// It owns full session assembly — hosts, PasswordAuthenticator, consistency
-// level, timeouts, TLS — but not the startup probe or the resilience wiring,
-// which are the starter's lifecycle concerns (see newClient in starter.go).
-func (DefaultDriver) CreateClient(ctx context.Context, c Config) (*gocql.Session, error) {
+// CreateClient creates a new Cassandra client based on the provided
+// configuration. It owns full session assembly — hosts, PasswordAuthenticator,
+// consistency level, timeouts, TLS — but not the startup probe, which is the
+// starter's lifecycle concern (see newClient in starter.go). params is handed
+// straight to [NewClient], so the returned client is complete.
+func (DefaultDriver) CreateClient(ctx context.Context, c Config, params cloud.ClientParams) (*Client, error) {
 	consistency, err := parseConsistency(c.Consistency)
 	if err != nil {
 		return nil, err
@@ -79,7 +92,9 @@ func (DefaultDriver) CreateClient(ctx context.Context, c Config) (*gocql.Session
 	if err != nil {
 		return nil, errutil.Explain(err, "cassandra: create session failed for %v", c.Hosts)
 	}
-	return session, nil
+	// NewClient is the only way to build a Client: identity and governance are
+	// both applied here, so the driver returns a client that is complete.
+	return NewClient(session, c, params), nil
 }
 
 // parseConsistency maps the config string onto gocql.Consistency.

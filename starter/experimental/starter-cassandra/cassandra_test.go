@@ -22,7 +22,8 @@ import (
 	"testing"
 
 	"github.com/gocql/gocql"
-	"go-spring.org/cloud/governance/resilience"
+	"go-spring.org/cloud"
+	"go-spring.org/cloud/resilience"
 	"go-spring.org/stdlib/testing/assert"
 )
 
@@ -53,20 +54,25 @@ func TestParseConsistency(t *testing.T) {
 // --- guard (transparent per-statement resilience via the Query wrapper) ---
 
 // newGuardedClient builds a Client whose guard is wired to a real executor
-// from the default resilience driver. The embedded *gocql.Session is nil —
-// the tests drive Client.guard directly with a stubbed call, so no live
-// Cassandra cluster is needed.
+// from the default resilience driver, wrapped by the resilience observe layer
+// ([resilience.WrapClientExecutor]) exactly as the container wiring does — the
+// guard declares the operation and this wrapper emits from it. The embedded
+// *gocql.Session is nil — the tests drive Client.guard directly with a stubbed
+// call, so no live Cassandra cluster is needed.
 func newGuardedClient(t *testing.T, p resilience.ClientPolicy) *Client {
 	d := resilience.NewDefaultDriver(nil)
-	exec, err := d.NewClientExecutor("svc", p)
+	inner, err := d.NewClientExecutor("svc", p)
 	assert.Error(t, err).Nil()
-	return &Client{exec: exec, service: "cassandra:test"}
+	exec := resilience.WrapClientExecutor(inner, "cassandra", "cassandra:test")
+	return &Client{exec: exec, serviceLabel: "cassandra:test"}
 }
 
-// TestGuardPassThrough proves the zero-config stance: a Client with no
-// executor attached runs the call inline and returns its result unchanged.
+// TestGuardPassThrough proves the degraded stance: a Client assembled without a
+// container (the zero governance bundle) still runs the call — its executor is
+// the observed-only resilience.Unmanaged, which applies no rate limit, breaker
+// or retry — so the call runs inline and returns its result unchanged.
 func TestGuardPassThrough(t *testing.T) {
-	c := &Client{}
+	c := NewClient(nil, Config{Hosts: []string{"127.0.0.1"}}, cloud.ClientParams{})
 	boom := errors.New("boom")
 	assert.Error(t, c.guard(context.Background(), "exec", "SELECT 1", func(context.Context) error { return nil })).Nil()
 	assert.Error(t, c.guard(context.Background(), "exec", "SELECT 1", func(context.Context) error { return boom })).Is(boom)

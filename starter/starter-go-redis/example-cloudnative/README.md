@@ -14,7 +14,9 @@ a cache client — **discovery**, **resilience**, **health** and **observability
   hot-reloadable.
 - **Health**: the per-instance redis `health.Indicator` is aggregated by
   `starter-actuator` on `:9370` — `/readyz` reflects the pool.
-- **Observability**: redisotel + the starter's built-in access log ride the OTel globals.
+- **Observability**: the starter declares each command's identity; the resilience
+  layer emits the span + duration metrics + access log, and redisotel supplies the
+  pool metrics — all riding the OTel globals.
 
 ## Layout
 

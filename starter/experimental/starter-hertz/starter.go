@@ -22,8 +22,8 @@ import (
 	"github.com/cloudwego/hertz/pkg/app"
 	"github.com/cloudwego/hertz/pkg/app/server"
 	"github.com/cloudwego/hertz/pkg/common/config"
-	"go-spring.org/cloud/governance/fault"
-	"go-spring.org/cloud/governance/traffic"
+	"go-spring.org/cloud/fault"
+	"go-spring.org/cloud/traffic"
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
@@ -33,9 +33,10 @@ func init() {
 	gs.Provide(
 		NewSimpleHertzServer,
 		gs.IndexArg(1, gs.TagArg("${spring.hertz.server}")),
-		// The governance beans are REQUIRED: this starter blank-imports
-		// starter-governance, so "governance off" is spring.governance.enabled=false,
-		// never an absent bean.
+		// The governance beans are REQUIRED: each is registered by the package that
+		// owns it (cloud/resilience, cloud/loadbalance, cloud/fault), which this
+		// starter imports — "governance off" is spring.governance.enabled=false, never
+		// an absent bean.
 		gs.IndexArg(2, gs.TagArg("")),  // *fault.Injector
 		gs.IndexArg(3, gs.TagArg("?")), // nullable traffic.Propagator bean
 	).Export(gs.As[gs.Server]()).

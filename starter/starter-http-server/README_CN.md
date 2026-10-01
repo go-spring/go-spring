@@ -13,7 +13,7 @@
 | `Authorize(authorities...)` | 按权限守卫路由(匿名 401 / 缺权限 403) |
 | `CORS(cfg)` | 添加 `Access-Control-Allow-*` 响应头,应答 preflight |
 | `CSRF(cfg)` | 面向浏览器流的 double-submit-cookie CSRF 防护 |
-| `Observe()` | 每请求一个 span、请求指标与访问日志 —— 可选启用,见「可观测」 |
+| `ServerPolicy(label, mgr)` | 入站准入 —— 同时也是本请求的 span、指标与访问日志,见「可观测」 |
 
 ## 快速开始
 
@@ -42,13 +42,13 @@ gs.Provide(func(v security.TokenValidator) *gs.HttpServeMux {
 
 ## 可观测
 
-`Observe()` 是服务端可观测中间件。它是**可选启用**的,这与 gin/echo/hertz 三个 starter 的
-内置插桩不同:本包装饰的是应用自己传给框架 server 的 handler,没有地方自我安装。按普通
-装饰器组合即可:
+一个请求的信号来自 `ServerPolicy` —— 与其它每个 starter 现在同一套分工:中间件**声明**这个请求是什么,resilience 发射点据此产出信号。没有别的要装。
+
+(早先有一个独立、可选启用的 `Observe()` 中间件,自己起 span、自己建仪器。它已经删除:两个中间件各持一个 executor,等于两种被观测的方式、一种被准入的方式,而信号本来就归发射点。)
 
 ```go
 mux.Handle("/api/me", httpsvr.Chain(
-    httpsvr.Observe(),
+    httpsvr.ServerPolicy("http-server::9090", mgr),
     httpsvr.CORS(cfg),
     httpsvr.Authenticate(v, true),
 )(handler))
@@ -59,7 +59,7 @@ mux.Handle("/api/me", httpsvr.Chain(
 * 一个 server span,名为 `<METHOD> <path>`,带 `http.request.method`、`url.path`,退出时
   再带 `http.response.status_code` 与 `status`;
 * `http.server.request.duration`(Float64Histogram,秒)与 `http.server.active_requests`
-  (Int64UpDownCounter),label 为 `http.request.method` 与 `http.response.status_code`;
+  (Int64UpDownCounter),label 为 `http.request.method`、`http.response.status_code` 与 `status`;
 * 一行访问日志,tag `_app_http_server_access`
   (`log.RegisterAppTag("http_server", "access")`),带 `http.request.method`、`url.path`、
   `http.response.status_code`、`status` 与 `duration_ms`。5xx 为 Warn 行;span 与该行在

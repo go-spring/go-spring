@@ -15,8 +15,8 @@
  */
 
 // Package prometheus registers the pull-based Prometheus metric exporter with
-// the metric meter-exporter registry. It is blank-imported by the top-level
-// starter-otel package. Unlike the push-based otlp/stdout exporters, this one
+// the metric meter-exporter registry. It is registered by the top-level
+// starter-otel package from its starter.go. Unlike the push-based otlp/stdout exporters, this one
 // serves a scrape endpoint: the handler is contributed to the actuator as an
 // endpoint.Endpoint (when metrics.port=0) or a dedicated server is started
 // (when metrics.port>0).
@@ -37,7 +37,10 @@ import (
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 )
 
-func init() {
+// Register makes this exporter available under the name "prometheus". It is
+// called from the starter's starter.go, so the package declares no init of its
+// own: every registration the starter performs is readable in one place.
+func Register() {
 	metric.RegisterMeterExporter("prometheus", newPrometheus)
 }
 

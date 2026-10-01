@@ -17,9 +17,10 @@
 package StarterGoRedis
 
 import (
-	"go-spring.org/cloud/discovery"
+	"context"
 	"testing"
 
+	"go-spring.org/cloud/discovery"
 	"go-spring.org/stdlib/testing/assert"
 )
 
@@ -75,10 +76,16 @@ func TestValidateConfig(t *testing.T) {
 			cfg:     Config{Mode: "sharded"},
 			wantErr: "invalid mode",
 		},
+		{
+			// The removed key must still BIND: a framework upgrade must not turn
+			// into a failed deploy for a configuration that merely kept it.
+			name: "removed otel.tracing.enabled still binds",
+			cfg:  Config{Addr: "127.0.0.1:6379", Otel: OtelConfig{TracingEnabled: true}},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := validateConfig(tt.cfg)
+			err := validateConfig(context.Background(), tt.cfg)
 			if tt.wantErr == "" {
 				assert.Error(t, err).Nil()
 			} else {

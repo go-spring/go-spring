@@ -219,12 +219,16 @@ native 驱动的 `ch.Options.DialContext` 是两参 `func(ctx, addr string)` —
 
 `db.WithContext(ctx).Raw("SELECT version()").Scan(&v)`：
 
-1. `gorm:raw` processor —— 已被 gormcore 的 executor 包装替换（治理规则 `spring.governance.*` 的
-   timeout/retry/breaker，放火时含 fault 注入器；`gorm.ErrRecordNotFound` 视为成功）。
-2. observe 插件 span（db.system=clickhouse）+ in-flight 指标。
+1. observe 插件的 before 回调在 statement 的 ctx 上声明本次操作（名称、
+   `db.system=clickhouse`、`db.operation`、SQL）。
+2. `gorm:raw` processor —— 已被 gormcore 的 executor 包装替换（治理规则 `spring.governance.*` 的
+   timeout/retry/breaker，放火时含 fault 注入器；`gorm.ErrRecordNotFound` 视为成功）——
+   从 ctx 读回声明的操作。
 3. 原 processor：池取连接 → native DialContext（discovery 重新选点）→ native 协议
    握手（设了 `opts.TLS` 则加密）→ 查询。
-4. `after_*` 写入 SQL、结束 span/指标、写访问日志。
+4. resilience 层从声明的操作发射信号：call span（db.system=clickhouse）、call 级
+   `db.client.operation.duration`、attempt 级 `db.client.attempt.duration`、
+   `db.client.active_requests`，以及那一条访问日志。
 
 ---
 
@@ -304,7 +308,7 @@ example 的 `discovery` 实例用哑值 `0.0.0.0:0`；`Response from discovered 
 ```bash
 cd example-load && docker compose up -d
 go run . -duration=10s                        # SELECT 1 基线
-# 放火（starter-governance 热加载）：
+# 放火（starter-governance-file 热加载）：
 #   spring.governance.client.fault.enabled=true  spring.governance.client.fault.rate=0.5  spring.governance.client.fault.error=generic
 go run . -duration=10s                        # 错误分布显示 ~50% 注入
 ```
@@ -315,8 +319,9 @@ go run . -duration=10s                        # 错误分布显示 ~50% 注入
 ### 4.4 可观测（example-otel）
 
 运行 `example-otel`（Jaeger 经 compose 启动）：每查询一个 `db.system=clickhouse` 的
-span（含 SQL 语句）、:9090/metrics 的 prometheus 指标、按 `observability` 级别的访问
-日志。
+span（含 SQL 语句）、:9090/metrics 上的 call 级 `db.client.operation.duration` 与
+attempt 级 `db.client.attempt.duration`、`db.client.active_requests`，以及按
+`observability` 级别的访问日志。
 
 ---
 

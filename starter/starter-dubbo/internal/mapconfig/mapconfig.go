@@ -71,7 +71,10 @@ func Singleton() *MapDynamicConfiguration {
 // this in-memory config center set dubbo.config-center.protocol="map".
 const configCenterType = "map"
 
-func init() {
+// Install registers this configuration center under configCenterType. It is
+// called from the starter's starter.go, so the package declares no init of its
+// own: every registration the starter performs is readable in one place.
+func Install() {
 	extension.SetConfigCenterFactory(configCenterType, func() config_center.DynamicConfigurationFactory {
 		return &mapDynamicConfigurationFactory{}
 	})

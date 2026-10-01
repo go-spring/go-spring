@@ -17,9 +17,11 @@ starter（`starter-gorm-mysql`、`-postgres`、`-sqlite`、`-sqlserver`、
 - 经 `Module` 完成的多实例装配：每个已配置的
   `spring.gorm.<dialect>.instances.<name>` 条目对应一个 `*DB` bean 加一个配对的
   健康指示器；
-- gorm observe 插件——每次 Create / Query / Update / Delete 产生一个 client
-  span、一条时长指标、一行访问日志，走 OTel 全局对象，因此未装 `starter-otel`
-  时开销近乎为零；
+- gorm observe 插件——把每次 Create / Query / Update / Delete 声明为一个客户端
+  操作（名称、`db.system` / `db.operation` 标签、SQL 语句与访问 tag）挂在调用的
+  ctx 上。信号本身——call span、call 级与 attempt 级时长直方图、在途计数器、那一条
+  访问日志——由 resilience 层（executor 链条上的唯一发射点）发射。插件不发射任何
+  东西，因此走 OTel 全局对象，未装 `starter-otel` 时开销近乎为零；
 - resilience 回调——每个操作都在同一个后端中立的 `resilience.ClientExecutor` 下执行，
   `gorm.ErrRecordNotFound` 视为成功；
 - open 之后的 `DBCustomizer` 扩展缝，以及带方言限定的 bean 命名

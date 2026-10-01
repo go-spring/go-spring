@@ -19,21 +19,36 @@ package StarterRedigo
 import (
 	"context"
 
-	"github.com/gomodule/redigo/redis"
 	"go-spring.org/cloud/actuator/health"
 )
 
-// NewPoolHealth builds an indicator for a redigo connection pool. It is
+// HealthCheck dials one bare connection and PINGs it — the cheapest read-only
+// round trip that proves the pool's target is reachable. It is the module's
+// single health implementation: the Actuator probe ([NewClientHealth]) and the
+// opt-in startup probe in the constructor both delegate to it.
+//
+// It uses Pool.Dial (a non-pooled dial) instead of Pool.Get: a conn borrowed
+// via Get is returned to the idle pool on Close, and that happens before the
+// pool's dial is wrapped with the instrumented Conn — so the stale raw conn
+// would later be handed out with no instrumentation and silently bypass
+// resilience. Dialing directly keeps it out of the pool.
+func HealthCheck(ctx context.Context, p *Pool) error {
+	conn, err := p.Dial()
+	if err != nil {
+		return err
+	}
+	_, pingErr := conn.Do("PING")
+	_ = conn.Close()
+	return pingErr
+}
+
+// NewClientHealth builds an indicator for a redigo connection pool. It is
 // registered once per configured instance and exported as health.Indicator, so
 // an application that also imports starter-actuator gets redigo readiness
-// folded into /readiness with no extra wiring.
-//
-// The pool dials lazily, so the probe borrows one connection and runs PING.
-func NewPoolHealth(name string, pool *redis.Pool) *health.Indicator {
+// folded into /readiness with no extra wiring. The pool dials lazily, so the
+// probe delegates to [HealthCheck], the module's single health implementation.
+func NewClientHealth(name string, p *Pool) *health.Indicator {
 	return &health.Indicator{Name: "redigo:" + name, Probe: func(ctx context.Context) error {
-		conn := pool.Get()
-		defer func() { _ = conn.Close() }()
-		_, err := conn.Do("PING")
-		return err
+		return HealthCheck(ctx, p)
 	}}
 }

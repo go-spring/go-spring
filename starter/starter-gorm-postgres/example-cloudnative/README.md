@@ -16,7 +16,8 @@ around a storage client — **discovery**, **resilience**, **health**,
   `starter-actuator` on `:9370` — `/readyz` reflects the pool.
 - **Dynamic configuration**: a `gs.Dync[string]` field is bound to a watched file
   (`file-watch`); editing it hot-reloads the value with no restart.
-- **Observability**: the gorm observe plugin + observe kit ride the OTel globals.
+- **Observability**: the gorm observe plugin declares each operation; the resilience
+  layer emits the span, metrics and access log through the OTel globals.
 
 ## Layout
 

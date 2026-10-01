@@ -34,7 +34,7 @@ require (
     go-spring.org/starter-echo   latest
     go-spring.org/starter-actuator latest   // optional: probes + /metrics
     go-spring.org/starter-otel     latest   // optional: real trace/metric export
-    go-spring.org/starter-governance latest // optional: runtime fault injection
+    go-spring.org/starter-governance-file latest // optional: runtime fault injection
 )
 ```
 
@@ -49,7 +49,7 @@ import (
     "go-spring.org/spring/gs"
     _ "go-spring.org/starter-actuator"
     _ "go-spring.org/starter-echo"
-    _ "go-spring.org/starter-governance"
+    _ "go-spring.org/starter-governance-file"
     _ "go-spring.org/starter-otel"
 )
 
@@ -123,7 +123,7 @@ spring.echo.server.writeTimeout=5s
 spring.echo.server.idleTimeout=60s
 
 # --- middleware --------------------------------------------------------------
-# On by default: loadtest, recovery, requestId, tracing, metrics, accessLog.
+# On by default: loadtest, recovery, requestId, observability.
 # Opt-ins:
 spring.echo.server.middleware.secureHeaders.enabled=true
 
@@ -264,9 +264,8 @@ Every group has `.enabled`; semantics per layer are in §2.2/§2.3.
 |-----|---------|-------|
 | `middleware.loadtest.enabled` | on | Marker header → ctx tag through the propagator's `Extract`. Which header that is belongs to the propagator bean, not to this starter. |
 | `middleware.requestId.enabled` / `.header` | on / `X-Request-Id` | Generated when absent, propagated when present. |
-| `middleware.tracing.enabled` / `metrics.enabled` | on / on | No-op without starter-otel's OTel globals — nothing warns. |
-| `middleware.accessLog.skipPaths` | — | Merged with the health path. |
-| `middleware.accessLog.payload.*` | see gin parity | Body capture — check config.go for the echo-specific defaults; captured bodies land in the log field set. |
+| `middleware.observability.enabled` | on | Gates the request span, the HTTP family metrics and the access log — all three emitted by the resilience executor off the declaration the admission middleware makes. Off falls back to `resilience.server.*` + one resilience-tag line. |
+| `middleware.tracing` / `metrics` / `accessLog`.enabled | on | LEGACY. Still bind; granularity is gone (one set), so any false turns the set off and warns once. |
 | `middleware.cors.*` | off | `allowedMethods` empty → code default full verb set; `allowAllOrigins` vs explicit `allowedOrigins` are mutually exclusive postures. |
 | `middleware.gzip.enabled` / `.level` | off / 5 | `minLength`-style tuning where present in config.go. |
 | `middleware.secureHeaders.*` | off | frameOptions DENY, referrerPolicy no-referrer; `hsts.*` sub-keys (off). |
@@ -288,11 +287,12 @@ carries `request_id`.
 
 ### 4.2 Observing the middleware chain
 
-- Access log (tag `_app_echo_access`): one structured record per request — route, status,
-  duration, request id, trace/span ids when tracing is live. Severity: ≥500 Error, ≥400 Warn.
+- Access log (tag `_app_echo_access`): one structured record per request — method, route,
+  path, status, duration — emitted by the resilience executor, not by a middleware. Severity:
+  failure Warn, success Info when it carries no detail.
 - Metrics: `http.server.request.duration` histogram with `http.request.method`,
-  `http.route` (the *route pattern*, not the raw path), `http.response.status_code`;
-  in-flight gauge with the same method/route attributes. Read them:
+  `http.route` (the *route pattern*, not the raw path), `http.response.status_code` and
+  `status`; in-flight gauge with the method/route attributes. Read them:
 
 ```bash
 curl -s :9370/metrics | grep -E 'http_server_request_duration|in_flight'

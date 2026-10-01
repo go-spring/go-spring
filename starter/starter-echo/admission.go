@@ -23,16 +23,11 @@ import (
 	"net/http"
 
 	"github.com/labstack/echo/v4"
-	"go-spring.org/cloud/governance/resilience"
-
-	// Blank import: importing this starter brings the governance authority with
-	// it — starter-governance registers the *resilience.Manager, *loadbalance.
-	// Manager, *fault.Injector and *governance.Center beans this package injects.
-	// Turning governance OFF is spring.governance.enabled=false (or binding no rule source),
-	// not the absence of the starter. The injected parameters stay nullable, so a
-	// container that somehow lacks these beans degrades to a transparent
-	// pass-through instead of failing to boot.
-	_ "go-spring.org/starter-governance"
+	"go-spring.org/cloud/observability"
+	"go-spring.org/cloud/propagate"
+	"go-spring.org/cloud/resilience"
+	"go-spring.org/log"
+	"go.opentelemetry.io/otel/attribute"
 )
 
 // buildServerPolicy builds the inbound admission middleware. The resilience
@@ -40,7 +35,7 @@ import (
 // its rate-limit / bulkhead / breaker limits from the governance document's SERVER
 // block (spring.governance.server.*)
 // WITHOUT naming *governance.Center. A nil manager — a standalone call, or an app
-// that does not import starter-governance — is normalized to an unarmed one,
+// that does not import — is normalized to an unarmed one,
 // whose executor is a transparent pass-through, so the admission middleware runs
 // but never rejects (next runs once, untouched). The executor handle resolves its
 // backing implementation per call and follows the manager's hot-reload, so an
@@ -54,7 +49,7 @@ func buildServerPolicy(cfg Config, mgr *resilience.Manager) echo.MiddlewareFunc 
 		mgr = resilience.NewManager()
 	}
 	service := resilience.ServiceLabel("echo", cfg.Address)
-	return resilienceServerPolicy(mgr.ServerExecutorFor("echo", service), service)
+	return resilienceServerPolicy(mgr.ServerExecutorFor("echo", service), service, observeEnabled(cfg))
 }
 
 // resilienceServerPolicy is the inbound admission middleware: each request runs
@@ -67,17 +62,45 @@ func buildServerPolicy(cfg Config, mgr *resilience.Manager) echo.MiddlewareFunc 
 // effects cannot be replayed (inbound serving is not idempotent). Leave
 // [resilience.ServerPolicy] has no retry field at all, so the executor built from the
 // server block has no retry stage; the committed guard also prevents reentry.
-func resilienceServerPolicy(exec resilience.ServerExecutor, service string) echo.MiddlewareFunc {
+func resilienceServerPolicy(exec resilience.ServerExecutor, service string, observe bool) echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
+			ctx := c.Request().Context()
+			if observe {
+				// Declare what this request IS, so the executor's emitter names the
+				// span, the HTTP family metrics and the access log from it. This
+				// package emits nothing itself.
+				//
+				// The route is known here — echo resolves it before the handler
+				// chain runs, which is also why the span can be named after it
+				// rather than after the raw path.
+				ctx = observability.WithOperation(ctx, operation(c))
+			}
+			// The caller's remaining budget, when it sent one: the handler — and
+			// every outbound call it makes — then runs on the earlier of that and
+			// this server's own handling budget, so a request chain spends one
+			// allowance instead of one per hop.
+			ctx, cancel := resilience.WithBudget(ctx, propagate.Header(c.Request().Header))
+			defer cancel()
+
 			var served bool
 			var handlerErr error
-			err := exec.Execute(c.Request().Context(), func(ctx context.Context) error {
+			err := exec.Execute(ctx, func(ctx context.Context) error {
 				if served {
 					return nil // reentry guard: handler already ran this request
 				}
+				// Hand the bounded context to the handler: the admission executor
+				// derived it, so the deadline that bounds this request is the one
+				// the handler and its outbound clients actually run under.
+				c.SetRequest(c.Request().WithContext(ctx))
 				handlerErr = next(c)
 				served = c.Response().Committed || handlerErr != nil
+				if observe {
+					// The response half: the status code is the outcome of the work,
+					// so it exists only now. Recorded here, read back by the emitter.
+					observability.ResponseFrom(ctx).Add(
+						attribute.Int("http.response.status_code", c.Response().Status))
+				}
 				if handlerErr != nil {
 					return handlerErr
 				}
@@ -109,3 +132,70 @@ func resilienceServerPolicy(exec resilience.ServerExecutor, service string) echo
 type errHTTP5xx struct{ code int }
 
 func (e errHTTP5xx) Error() string { return fmt.Sprintf("http: server returned %d", e.code) }
+
+// observeEnabled reports whether this server DECLARES its requests, which is what
+// puts the request span, the HTTP family metrics and the access log on them (the
+// resilience executor emits all three from the declaration).
+//
+// The single switch is [ObservabilityConfig]; the three per-signal switches it
+// replaced are still read, so an existing configuration keeps working — but
+// their granularity is gone, because the signals are one set now. Turning any of
+// them off therefore turns the set off, and says so once: a server that quietly
+// ignored an operator's "no metrics for this route" would be worse than one that
+// reports it cannot honour the split any more.
+func observeEnabled(cfg Config) bool {
+	if !cfg.Middleware.Observability.Enabled {
+		return false
+	}
+	m := cfg.Middleware
+	if !m.Tracing.Enabled || !m.Metrics.Enabled || !m.AccessLog.Enabled {
+		log.Warnf(context.Background(), log.TagAppDef,
+			"echo: middleware.tracing/metrics/accessLog 的按信号开关已合并 —— 三者现在是一组,"+
+				"任一为 false 即整组关闭(span/指标/访问日志同生共死);请改用 middleware.observability.enabled")
+		return false
+	}
+	return true
+}
+
+// operation is the semantic identity of one inbound request, declared on the
+// context before the admission executor runs. It is this package's WHOLE
+// contribution to the request's signals: the emitter names the span, the family
+// metrics and the access log from it.
+//
+// The route is the span's word — echo resolves it before this middleware runs —
+// and it is bounded, so it labels a metric alongside the method. The raw path,
+// the host and the scheme are per-request and open-ended, so they are Detail:
+// span and log only. The one thing not known here is the response status, which
+// the handler records as it answers (see resilienceServerPolicy).
+func operation(c echo.Context) observability.Operation {
+	r := c.Request()
+	route := c.Path()
+	name := r.Method
+	if route != "" {
+		name += " " + route
+	} else {
+		name += " " + r.URL.Path
+	}
+	return observability.Operation{
+		Name:   name,
+		Metric: "http.server",
+		Attrs: []attribute.KeyValue{
+			attribute.String("http.request.method", r.Method),
+			attribute.String("http.route", route),
+		},
+		Detail: []attribute.KeyValue{
+			attribute.String("url.path", r.URL.Path),
+			attribute.String("server.address", r.Host),
+			attribute.String("url.scheme", scheme(r)),
+		},
+		LogTag: accessLogTag,
+	}
+}
+
+// scheme returns "https" when the request arrived over TLS, "http" otherwise.
+func scheme(r *http.Request) string {
+	if r.TLS != nil {
+		return "https"
+	}
+	return "http"
+}

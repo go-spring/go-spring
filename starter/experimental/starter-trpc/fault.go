@@ -19,17 +19,8 @@ package StarterTrpc
 import (
 	"context"
 
-	"go-spring.org/cloud/governance/fault"
+	"go-spring.org/cloud/fault"
 	"trpc.group/trpc-go/trpc-go/filter"
-
-	// Blank import: importing this starter brings the governance authority with
-	// it — starter-governance registers the *resilience.Manager, *loadbalance.
-	// Manager, *fault.Injector and *governance.Center beans this package injects.
-	// Turning governance OFF is spring.governance.enabled=false (or binding no rule source),
-	// not the absence of the starter. The injected parameters stay nullable, so a
-	// container that somehow lacks these beans degrades to a transparent
-	// pass-through instead of failing to boot.
-	_ "go-spring.org/starter-governance"
 )
 
 // FaultServerFilter is a tRPC ServerFilter that injects faults (latency/error)

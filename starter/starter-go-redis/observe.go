@@ -14,138 +14,91 @@
  * limitations under the License.
  */
 
-// observe.go is the module-local observability for Redis commands: the access
-// log plus the DB family's operation instruments. Spans come from redisotel
-// (installed by instrument() in starter.go), so this hook opens none — one
-// emitted here would duplicate redisotel's.
+// observe.go declares what a redis command IS. The signals themselves — the
+// span, the duration metrics, the access log — are emitted by the resilience
+// layer, the single point on the command hook chain that sees a whole call
+// (retries included). This file therefore holds no emission code: only the
+// vocabulary that this starter alone knows, because only it knows these
+// commands reach a redis backend.
 //
-// The operation metrics are NOT redisotel's. redisotel emits the connection
-// POOL metrics (db.client.connections.*), which say nothing about how long a
-// command took or how many are in flight; without these two, this backend
-// would be the one DB member whose latency is invisible in the family's
-// vocabulary.
+// redisotel still supplies the connection-POOL metrics (an observable-gauge
+// family, not per-call — see [instrument] in starter.go); its per-command span
+// is gone, because it duplicated the call span the resilience layer now opens.
 package StarterGoRedis
 
 import (
 	"context"
 	"fmt"
-	"sync"
-	"time"
 
 	"go-spring.org/cloud/observability"
 	"go-spring.org/stdlib/strutil"
 
 	"github.com/redis/go-redis/v9"
 	"go-spring.org/log"
-	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/metric"
 )
 
 // redisSystem is the value the family's db.system label carries for this
 // backend — the family's shared vocabulary, not a per-file choice.
 const redisSystem = "redis"
 
-// accessTag is the static access-log tag for Redis commands, registered once
-// at package init so logger config can address it (_app_redis_access).
+// maxStatement bounds the command's argument captured as db.statement. A key
+// can be long and a span or a log line has no use for all of it.
+const maxStatement = 512
+
+// accessTag is the static access-log tag for Redis commands, registered once at
+// package init so logger config can address it (_app_redis_access). A tag must
+// exist before the framework's first property refresh — see [log.RegisterTag].
 var accessTag = log.RegisterAppTag("redis", "access")
 
-// skipOps are the commands the access log suppresses entirely. Local decision,
-// not config: the health-check PING (health/health.go) fires periodically per
-// instance and would flood the log with uninteresting success lines.
+// skipOps are the commands that declare no identity, so nothing
+// family-specific is emitted for them: the health-check PING (health/health.go)
+// fires periodically per instance and would flood the log with uninteresting
+// success lines. They still run under the resilience layer, which reports them
+// as it reports any other call whose identity is undeclared.
 var skipOps = map[string]struct{}{"ping": {}}
 
-// instrumentSet is this starter's instrument set: one per process, resolved
-// lazily on first use so it binds to whichever meter provider is current then,
-// and immutable afterwards. It holds no per-client state — the db.system /
-// db.operation / status labels travel with each record, not here.
-type instrumentSet struct {
-	duration metric.Float64Histogram
-	active   metric.Int64UpDownCounter
-}
-
-// instruments is the one instrument set this starter uses for the whole process.
-var instruments = sync.OnceValue(buildInstruments)
-
-// buildInstruments builds the family's operation instruments from whatever meter
-// provider is current — resolved on first use, not at package init, so an SDK
-// installed later than this package's init still receives the records.
-func buildInstruments() *instrumentSet {
-	m := otel.Meter("go-spring.org/starter-go-redis")
-	duration, _ := m.Float64Histogram("db.client.operation.duration",
-		metric.WithDescription("Duration of redis client operations"),
-		metric.WithUnit("s"),
-		metric.WithExplicitBucketBoundaries(observability.DurationBuckets()...))
-	active, _ := m.Int64UpDownCounter("db.client.active_requests",
-		metric.WithDescription("Number of in-flight redis client operations"),
-		metric.WithUnit("{request}"))
-	return &instrumentSet{duration: duration, active: active}
-}
-
-// resetInstruments makes the next use of instruments() resolve a fresh set. It
-// exists for tests that install their own MeterProvider: the set is process-wide
-// and resolved once, so a test running after one that already resolved it would
-// otherwise keep reporting into the earlier provider.
-func resetInstruments() { instruments = sync.OnceValue(buildInstruments) }
-
-// inflightOf names the in-flight gauge's dimensions. The +1 taken when a
-// command starts and the -1 taken when it ends must carry identical
-// attributes, or the gauge never balances — so both go through here.
-func inflightOf(op string) metric.MeasurementOption {
-	return metric.WithAttributes(
-		attribute.String("db.system", redisSystem),
-		attribute.String("db.operation", op),
-	)
-}
-
-// statusOf names the outcome the way the family's metric label and log field
-// expect — the same two words the other DB backends use.
-func statusOf(err error) string {
-	if err != nil {
-		return "error"
+// operation is the semantic identity of one redis command. The command's full
+// name (cmd.FullName(), e.g. "get") names the span and carries the family's
+// db.operation label.
+//
+// The command's argument rides in Detail rather than Attrs: it is usually a
+// key, drawn from an open set, so as a metric label one would multiply the
+// series without bound. Detail reaches the span and the log — where a key is
+// exactly what makes a line worth reading — and never a label. A command with
+// no argument carries no detail at all, which is also what levelled its
+// success log at Info.
+func operation(cmd redis.Cmder) observability.Operation {
+	op := cmd.FullName()
+	o := observability.Operation{
+		Name:   op,
+		Metric: "db.client",
+		Attrs: []attribute.KeyValue{
+			attribute.String("db.system", redisSystem),
+			attribute.String("db.operation", op),
+		},
+		LogTag: accessTag,
 	}
-	return "ok"
-}
-
-// applyObservability attaches the access-log + operation-metric hook to client.
-func applyObservability(client redis.UniversalClient) {
-	client.AddHook(&observeHook{})
-}
-
-// observeHook emits a per-command access log and the family's duration /
-// in-flight instruments around every Redis command and pipeline; it sits
-// outside the resilience hook (see Client.Init) so one log line covers the
-// whole retry loop. Its records go through the process-wide instrument set (see
-// [instruments]), so it carries no state.
-type observeHook struct{}
-
-var _ redis.Hook = (*observeHook)(nil)
-
-func (h *observeHook) DialHook(next redis.DialHook) redis.DialHook { return next }
-
-func (h *observeHook) ProcessHook(next redis.ProcessHook) redis.ProcessHook {
-	return func(ctx context.Context, cmd redis.Cmder) error {
-		op := cmd.FullName()
-		if _, skip := skipOps[op]; skip {
-			return next(ctx, cmd)
+	if arg := argOf(cmd); arg != "" {
+		o.Detail = []attribute.KeyValue{
+			attribute.String("db.statement", arg),
 		}
-		start := time.Now()
-		inflight := inflightOf(op)
-		instruments().active.Add(ctx, 1, inflight)
-		err := next(ctx, cmd)
-		h.record(ctx, op, argOf(cmd), start, nilAsSuccess(err), inflight)
-		return err
 	}
+	return o
 }
 
-func (h *observeHook) ProcessPipelineHook(next redis.ProcessPipelineHook) redis.ProcessPipelineHook {
-	return func(ctx context.Context, cmds []redis.Cmder) error {
-		start := time.Now()
-		inflight := inflightOf("pipeline")
-		instruments().active.Add(ctx, 1, inflight)
-		err := next(ctx, cmds)
-		h.record(ctx, "pipeline", "", start, nilAsSuccess(err), inflight)
-		return err
+// pipelineOperation is the semantic identity of a pipelined batch: a pipeline
+// is not one command and carries no single argument, so its name is the literal
+// "pipeline" and it declares no Detail — which levels its success log at Info.
+func pipelineOperation() observability.Operation {
+	return observability.Operation{
+		Name:   "pipeline",
+		Metric: "db.client",
+		Attrs: []attribute.KeyValue{
+			attribute.String("db.system", redisSystem),
+			attribute.String("db.operation", "pipeline"),
+		},
+		LogTag: accessTag,
 	}
 }
 
@@ -157,48 +110,39 @@ func argOf(cmd redis.Cmder) string {
 	if len(args) < 2 {
 		return ""
 	}
-	return strutil.Truncate(fmt.Sprint(args[1]), 512)
+	return strutil.Truncate(fmt.Sprint(args[1]), maxStatement)
 }
 
-// record emits one finished command's duration, balances the in-flight gauge,
-// and writes its access-log entry. The log level carries the outcome: an error
-// at Warn with the error field; a keyed success at Debug in the lazy
-// `func() []log.Field` form (keyed commands are the common case and
-// uninteresting until they fail, and the lazy form skips formatting when Debug
-// is filtered); a keyless success at Info.
-func (h *observeHook) record(ctx context.Context, op, arg string, start time.Time, err error, inflight metric.MeasurementOption) {
-	status := statusOf(err)
-	dur := float64(time.Since(start).Nanoseconds()) / 1e6
-	instruments().duration.Record(ctx, time.Since(start).Seconds(), metric.WithAttributes(
-		attribute.String("db.system", redisSystem),
-		attribute.String("db.operation", op),
-		attribute.String("status", status),
-	))
-	instruments().active.Add(ctx, -1, inflight)
+// applyDeclaration attaches the declaration hook to client. It is added before
+// the resilience hook (see [NewClient]) so the identity it puts on the ctx is
+// already there when the resilience layer reads it and emits the call's span,
+// metrics and access log.
+func applyDeclaration(client redis.UniversalClient) {
+	client.AddHook(&operationHook{})
+}
 
-	if err != nil {
-		log.Warn(ctx, accessTag,
-			log.String("db.operation", op),
-			log.String("status", status),
-			log.Float("duration_ms", dur),
-			log.Err(err),
-		)
-		return
+// operationHook is the declaration layer of the command hook chain: it puts the
+// command's identity on the context, which the resilience layer inside it reads
+// to emit the span, the metrics and the access log. A skipped op is forwarded
+// untouched, declaring no Operation — the resilience layer then reports it as
+// any other call whose identity is undeclared.
+type operationHook struct{}
+
+var _ redis.Hook = (*operationHook)(nil)
+
+func (h *operationHook) DialHook(next redis.DialHook) redis.DialHook { return next }
+
+func (h *operationHook) ProcessHook(next redis.ProcessHook) redis.ProcessHook {
+	return func(ctx context.Context, cmd redis.Cmder) error {
+		if _, skip := skipOps[cmd.FullName()]; skip {
+			return next(ctx, cmd)
+		}
+		return next(observability.WithOperation(ctx, operation(cmd)), cmd)
 	}
-	if arg != "" {
-		log.Debug(ctx, accessTag, func() []log.Field {
-			return []log.Field{
-				log.String("db.operation", op),
-				log.String("status", status),
-				log.Float("duration_ms", dur),
-				log.String("db.statement", arg),
-			}
-		})
-		return
+}
+
+func (h *operationHook) ProcessPipelineHook(next redis.ProcessPipelineHook) redis.ProcessPipelineHook {
+	return func(ctx context.Context, cmds []redis.Cmder) error {
+		return next(observability.WithOperation(ctx, pipelineOperation()), cmds)
 	}
-	log.Info(ctx, accessTag,
-		log.String("db.operation", op),
-		log.String("status", status),
-		log.Float("duration_ms", dur),
-	)
 }

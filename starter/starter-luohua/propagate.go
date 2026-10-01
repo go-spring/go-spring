@@ -21,8 +21,7 @@ import (
 	"strings"
 	"sync"
 
-	"go-spring.org/cloud/governance/traffic"
-	"go-spring.org/starter-otel/trace"
+	"go-spring.org/cloud/traffic"
 	"go.opentelemetry.io/otel/propagation"
 )
 
@@ -107,10 +106,6 @@ func (luohuaPropagator) Fields() []string {
 	out := make([]string, len(luohuaHeaders.names))
 	copy(out, luohuaHeaders.names)
 	return out
-}
-
-func init() {
-	trace.RegisterPropagator(propagatorName, luohuaPropagator{})
 }
 
 // loadTestPropagator builds luohua's load-test convention when the config

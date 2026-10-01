@@ -217,12 +217,17 @@ owns discovery+LB.
 
 `db.WithContext(ctx).Raw("SELECT @@VERSION").Scan(&v)`:
 
-1. the `gorm:raw` processor — replaced by gormcore's executor wrapper (governance center:
-   timeout/retry/breaker, fault injector when armed; `gorm.ErrRecordNotFound` = success).
-2. observe plugin `before_raw`-anchored span (db.system=microsoft.sql_server) + metric.
+1. the observe plugin's `before_raw`-anchored callback runs on the statement's context and
+   DECLARES the operation (name, `db.system=microsoft.sql_server`, `db.operation`, SQL).
+2. the `gorm:raw` processor — replaced by gormcore's executor wrapper (governance center:
+   timeout/retry/breaker, fault injector when armed; `gorm.ErrRecordNotFound` = success) —
+   reads the declared operation off the ctx.
 3. the original processor: pool checkout → resolverDialer.DialContext (discovery
    instances) or the driver's plain dial → TDS login (encrypt per DSN, §3.2) → query.
-4. `after_*` sets the SQL, ends span/metric, writes the access log.
+4. the resilience layer EMITS the signals from the declared operation: the call span
+   (db.system=microsoft.sql_server), call-level `db.client.operation.duration`,
+   attempt-level `db.client.attempt.duration`, `db.client.active_requests`, and the one
+   access log.
 
 ---
 
@@ -300,7 +305,7 @@ instance (per-dial `Pick()`).
 ```bash
 cd example-load && docker compose up -d
 go run . -duration=10s                       # baseline SELECT 1 throughput
-# set fire — edit conf/governance.properties (hot-reload via starter-governance's file source):
+# set fire — edit conf/governance.properties (hot-reload via starter-governance-file's file source):
 #   spring.governance.client.fault.enabled=true  spring.governance.client.fault.rate=0.5  spring.governance.client.fault.error=generic
 go run . -duration=10s                       # error breakdown shows ~50% injected
 ```
@@ -312,7 +317,8 @@ queries.
 ### 4.4 Observability (example-otel)
 
 Run `example-otel` (Jaeger via its compose): per-query spans `db.system=microsoft.sql_server`
-with the SQL statement, duration/in-flight metrics on :9090/metrics, access log by
+with the SQL statement, call-level `db.client.operation.duration` and attempt-level
+`db.client.attempt.duration` plus `db.client.active_requests` on :9090/metrics, access log by
 `observability` level. `slow-threshold=200ms` additionally swaps in gorm's slow-query
 logger (routed through go-spring.org/log, TagAppDef, plain-text body).
 

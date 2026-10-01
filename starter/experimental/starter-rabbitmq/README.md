@@ -66,34 +66,49 @@ The [example](example/example.go) demonstrates three core RabbitMQ patterns:
 
 ## Observability
 
-Distributed tracing is available through native OTel helpers that ride the
-global `TracerProvider` and propagator installed by
-[starter-otel](../../starter-otel). Without starter-otel they are no-ops and change
-no message bytes, so instrumenting your code is a safe, zero-config opt-in.
+The starter **declares** the identity of every publish and consume; the signals
+themselves — the span, the duration metrics (call-level and attempt-level) and
+one access log per call — are **emitted** by the resilience layer, the single
+emitter on the executor chain. The starter contains no per-call emission code of
+its own.
+
+Declaring is automatic. A publish you route through
+`StarterRabbitMQ.GuardedPublish` (and every driver `Publish`, which rides it)
+attaches the operation to the `ctx` before running the call under the
+connection's resilience executor; so does every driver consume. The executor
+opens the `publish` / `consume` span, records `messaging.client.operation.duration`
+(the whole call, retries included) and the per-attempt
+`messaging.client.attempt.duration`, bumps the `resilience.client.calls` counter,
+and writes the access log — tagged `_app_rabbitmq_access`.
+
+Everything rides the global `TracerProvider` / `MeterProvider` and propagator
+installed by [starter-otel](../../starter-otel). Without starter-otel they are
+no-ops and change no message bytes, so instrumenting your code is a safe,
+zero-config opt-in. `GuardedPublish` also injects the current W3C trace context
+into the message headers, so a trace links producer to consumer across services.
 
 ```go
 import starter "go-spring.org/starter-rabbitmq"
 
-// Producer: start a span and inject W3C trace context into the message headers.
+// Declare and protect: the executor emits the span/metrics/log and injects the
+// W3C trace context into pub.Headers.
 pub := amqp.Publishing{ContentType: "text/plain", Body: []byte("v")}
-ctx, span := starter.StartPublishSpan(ctx, exchange, routingKey, &pub)
-err := ch.PublishWithContext(ctx, exchange, routingKey, false, false, pub)
-starter.EndSpan(span, err)
-
-// Consumer: continue the trace carried in the delivery headers.
-ctx, span := starter.StartConsumeSpan(ctx, &delivery)
-err := handle(ctx, delivery)
-starter.EndSpan(span, err)
+err := starter.GuardedPublish(ctx, conn, ch, exchange, routingKey, false, false, pub)
 ```
 
-Why call-site helpers instead of a wrapped channel/publisher:
+The one signal the starter keeps local is **not** a per-call signal: a
+`messaging.client.connection.state_changes` counter, driven by the amqp091
+connection's own close / blocked / unblocked notifications, which the resilience
+layer never sees.
+
+Why a call-site helper instead of a wrapped channel/publisher:
 
 * `amqp091-go` has no official OTel instrumentation, and the starter's bean is an
   `*amqp.Connection` — channels, publishes and deliveries are all created by the
   caller, so there is no seam to auto-instrument. A wrapper would have to
   re-expose the entire `Channel` surface and still miss raw-connection usage.
 * `amqp.Publishing` carries a `Headers` table that every delivery echoes back, so
-  instrumenting at the call site — where you already hold the `Publishing` /
+  declaring at the call site — where you already hold the `Publishing` /
   `Delivery` — is what propagates trace context and links producer to consumer
   across services.
 

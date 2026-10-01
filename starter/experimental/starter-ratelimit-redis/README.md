@@ -1,7 +1,7 @@
 # starter-ratelimit-redis
 
 Redis-backed counters for Go-Spring's rate-limit stage: it contributes a
-[`resilience.Counters`](../../../cloud/governance/resilience/ratelimit.go) store whose token
+[`resilience.Counters`](../../../cloud/resilience/ratelimit.go) store whose token
 buckets live in Redis, so every replica of a service spends one budget per scope instead of each
 replica counting its own.
 
@@ -35,7 +35,7 @@ spring.ratelimit.redis.client=cache
 The block's presence is what turns the starter on; an imported but unconfigured starter contributes
 nothing and each executor keeps counting in a private budget of its own. The rate-limit knobs
 (`rate-limit`, `burst`, `algorithm`, `window`, `rate-limit-max-wait`) are
-[`resilience.ClientPolicy`](../../../cloud/governance/resilience/policy.go)
+[`resilience.ClientPolicy`](../../../cloud/resilience/policy.go)
 fields on the governance rule document, not starter configuration.
 
 ## Consuming it

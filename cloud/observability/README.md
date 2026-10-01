@@ -3,7 +3,9 @@
 [English](README.md) | [中文](README_CN.md)
 
 `observability` carries per-request attributes on a `context.Context`, so the
-spans go-spring starts **on your behalf** carry them too.
+spans go-spring starts **on your behalf** carry them too. It is also where client
+starters declare what a call is (`Operation`) and accumulate its attempts
+(`Recorder`), for the `resilience` emitter to read.
 
 ## Why you need it
 
@@ -92,6 +94,43 @@ _ = observability.RefreshConf(ctx, gs.RefreshProperties)
 The refresh function is passed in (not referenced), so the package stays
 spring-free; fn's error is returned unchanged — this is instrumentation, not
 error policy.
+
+## Operation and Recorder: what client starters declare
+
+Clients do not emit — they **declare**, and the emitter is a single place:
+`resilience`'s wrapped client executor. Two primitives riding the context carry
+that declaration and its result.
+
+`Operation` says what the call is. Set it on the **caller's** context, outside
+the executor: the emitter reads it at `Execute` entry, so one set inside the
+wrapped function is never seen.
+
+```go
+ctx = observability.WithOperation(ctx, observability.Operation{
+    Name:   "get",                   // span name
+    Metric: "db.client",             // metric-name prefix; empty panics
+    Attrs:  []attribute.KeyValue{…}, // bounded → metric labels + span + log
+    Detail: []attribute.KeyValue{…}, // possibly unbounded → span + log only
+
+    LogTag: accessTag,               // the starter's own access-log tag
+})
+```
+
+`Attrs` must stay bounded: a cache key, a SQL statement, a URL path or a topic
+belongs in `Detail`, which never becomes a metric label.
+
+`Recorder` is the attempt-level accumulator. The governance executor appends one
+entry per downstream attempt; the emitter drains it after the retry loop.
+
+```go
+rec := observability.RecorderFrom(ctx)   // nil-safe — no recorder is fine
+rec.AddAttempt(d, status, err)
+```
+
+`WithRecorder` is deliberately **not idempotent**: the most recent recorder on
+the chain wins, so two nested executors each keep their own. Read it once at the
+loop entry and keep the pointer — a per-write lookup would hand an inner
+executor the outer call's records.
 
 ## What it does not cover
 

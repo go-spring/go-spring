@@ -23,10 +23,10 @@ import (
 	"unsafe"
 
 	"dubbo.apache.org/dubbo-go/v3/config_center"
+	"go-spring.org/cloud/fault"
 	"go-spring.org/cloud/governance"
-	"go-spring.org/cloud/governance/fault"
-	"go-spring.org/cloud/governance/resilience"
 	"go-spring.org/cloud/loadbalance"
+	"go-spring.org/cloud/resilience"
 	mapconfig "go-spring.org/starter-dubbo/internal/mapconfig"
 )
 

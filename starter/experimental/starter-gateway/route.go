@@ -29,7 +29,7 @@
 //
 // Upstreams are either direct (http(s)://host:port) or discovery-backed
 // (lb://<service>), the latter reusing cloud/discovery + cloud/loadbalance.
-// Forwarding runs through cloud/governance/resilience for retry/circuit-breaking, and the
+// Forwarding runs through cloud/resilience for retry/circuit-breaking, and the
 // gateway contributes /metrics to the actuator management port.
 package StarterGateway
 

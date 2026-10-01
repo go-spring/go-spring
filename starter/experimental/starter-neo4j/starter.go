@@ -20,11 +20,12 @@ import (
 	"context"
 	"time"
 
+	"go-spring.org/cloud"
 	"go-spring.org/cloud/actuator/health"
 	"go-spring.org/cloud/discovery"
-	"go-spring.org/cloud/governance/fault"
-	"go-spring.org/cloud/governance/resilience"
+	"go-spring.org/cloud/fault"
 	"go-spring.org/cloud/mesh"
+	"go-spring.org/cloud/resilience"
 	"go-spring.org/log"
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/gs"
@@ -40,9 +41,11 @@ func init() {
 	// registration to the bean for diagnostics.
 	gs.Module(gs.OnProperty("spring.neo4j.instances"), func(r gs.BeanProvider, p flatten.Storage) error {
 		return conf.BindEach(p, "${spring.neo4j.instances}", func(name string, c Config) error {
-			// The wrapper bean owns the resilience executor, so the ctor arms
-			// it (ArmGovernance, with the injected governance beans) and Close
-			// tears it down (Destroy). The instance's discovery.Discovery
+			// newClient bundles the injected governance beans into the
+			// [cloud.ClientParams] it hands the driver, which passes it to
+			// [NewClient] — so the client is assembled complete in one step. The
+			// wrapper bean owns the resulting resilience executor and Destroy
+			// tears it down. The instance's discovery.Discovery
 			// backend bean is injected by name from the entry's ${discovery}
 			// label (default "default"; optional, so an app with no backend
 			// beans at all gets nil here). The Driver bean
@@ -55,18 +58,18 @@ func init() {
 				gs.IndexArg(1, gs.ValueArg(c)),
 				gs.IndexArg(2, gs.TagArg("${spring.neo4j.instances."+name+".discovery:=${spring.neo4j.default.discovery:=none}}?")),
 				gs.IndexArg(3, gs.TagArg("${spring.neo4j.instances."+name+".driver:=${spring.neo4j.default.driver:=?}}")),
-				// The governance beans are REQUIRED: this starter blank-imports
-				// starter-governance, so "governance off" is spring.governance.enabled=false,
-				// never an absent bean.
+				// The governance beans are REQUIRED: each is registered by the package that
+				// owns it (cloud/resilience, cloud/loadbalance, cloud/fault), which this
+				// starter imports — "governance off" is spring.governance.enabled=false, never
+				// an absent bean.
 				gs.IndexArg(4, gs.TagArg("")), // *resilience.Manager
 				gs.IndexArg(5, gs.TagArg("")), // *fault.Injector
 			).Name(name).Destroy((*Client).Destroy).Caller(1)
 			// Contribute a health indicator for this instance, injecting the
-			// driver just registered above by name. The wrapper is what is
-			// autowired; the embedded neo4j.DriverWithContext is handed to the
-			// indicator.
+			// wrapper just registered above by name. Its probe only calls
+			// HealthCheck (see health.go).
 			r.Provide(func(w *Client) *health.Indicator {
-				return NewDriverHealth(name, w.DriverWithContext)
+				return NewClientHealth(name, w)
 			}, gs.TagArg(name)).Name("neo4j:" + name).Caller(1)
 			return nil
 		})
@@ -79,10 +82,14 @@ func init() {
 //
 // Observability note: the neo4j-go-driver speaks the binary Bolt protocol and
 // ships no official OpenTelemetry instrumentation, nor a command-monitor hook
-// comparable to the SQL/MongoDB drivers, so there is no clean seam to emit
-// client spans from the starter. Rather than hand-roll a fragile bridge, tracing
-// is left to the application (wrap ExecuteQuery / session calls with an OTel span
-// where needed). This is a documented gap, not an oversight.
+// comparable to the SQL/MongoDB drivers, so there is no transparent seam that
+// sees every request. The starter therefore exposes an opt-in call-site seam
+// ([Query] / [StartSpan]) that declares each operation's semantic identity; the
+// resilience layer — installed by [NewClient] — is what emits the
+// span, the db.client.* metrics and the access log from that declaration. Calls
+// that bypass the seam (a bare neo4j.ExecuteQuery / session.Run) are unobserved
+// and unguarded, a documented gap driven by upstream driver support, not an
+// oversight.
 //
 // When c.ServiceName is set and mesh mode is off, a Resolver is built against
 // backend (the discovery backend the entry's ${discovery} label resolved to),
@@ -94,10 +101,11 @@ func init() {
 // host disappears. In mesh mode the sidecar owns discovery+LB, so the URI is used
 // unchanged. See Config.ServiceName.
 //
-// mgr and inj are the governance beans starter-governance provides. The wiring
-// injects them NULLABLY, so both are nil in a container without
-// starter-governance as well as in a standalone (non-gs) call;
-// [Client.ArmGovernance] treats a nil bean as "governance off".
+// mgr and inj are the authority beans the owning packages register. The ctor
+// bundles them — together with backend — into the [cloud.ClientParams] it hands
+// the driver, which passes it to [NewClient] — so the client is assembled
+// complete in one step,
+// with the zero bundle degrading to an observed-only, loudly-unmanaged executor.
 func newClient(ctx *gs.ContextProvider, c Config, backend discovery.Discovery, d Driver, mgr *resilience.Manager, inj *fault.Injector) (*Client, error) {
 	log.Debugf(ctx.Context, log.TagAppDef, "creating neo4j client, uri=%s service-name=%s", c.URI, c.ServiceName)
 
@@ -114,36 +122,29 @@ func newClient(ctx *gs.ContextProvider, c Config, backend discovery.Discovery, d
 	if d == nil {
 		d = DefaultDriver{}
 	}
-	client, err := d.CreateClient(ctx.Context, c, backend)
+	client, err := d.CreateClient(ctx.Context, c,
+		cloud.ClientParams{Resilience: mgr, Fault: inj, Discovery: backend})
 	if err != nil {
 		log.Errorf(ctx.Context, log.TagAppDef, "neo4j: create client failed: %v", err)
 		return nil, errutil.Explain(err, "failed to create neo4j client")
 	}
-
-	w := &Client{DriverWithContext: client, cfg: c}
-	// Arm governance on the wrapper. It runs here, not inside the driver, so a
-	// custom Driver's client is governed too — without the Driver interface
-	// carrying a dependency on cloud/governance.
-	if err := w.ArmGovernance(mgr, inj); err != nil {
-		_ = client.Close(ctx.Context)
-		return nil, err
-	}
+	// The Driver returned the client complete — identity and governance both
+	// applied while it was built. There is no Init hook and nothing else runs
+	// after this — the bean is complete when this ctor returns.
 	// Fail fast: verify the server is reachable before handing out the driver.
+	// HealthCheck goes straight to the raw driver on purpose: it is a
+	// connectivity check, not business traffic, so it must not open a span or
+	// spend limiter/breaker budget. A failure abandons the client, so release
+	// what was just applied.
 	vctx, cancel := verifyContext(ctx.Context, c.SocketConnectTimeout)
 	defer cancel()
-	if err := client.VerifyConnectivity(vctx); err != nil {
+	if err := HealthCheck(vctx, client); err != nil {
 		log.Errorf(ctx.Context, log.TagAppDef, "neo4j: verify connectivity failed uri=%s: %v", c.URI, err)
-		_ = client.Close(ctx.Context)
+		_ = client.Destroy()
 		return nil, errutil.Explain(err, "failed to verify neo4j connectivity: %s", c.URI)
 	}
 	log.Infof(ctx.Context, log.TagAppDef, "neo4j client initialized, uri=%s", c.URI)
-	return w, nil
-}
-
-// HealthCheck reports whether the Neo4j driver can reach the server. It is a
-// thin readiness probe suitable for wiring into a health endpoint.
-func HealthCheck(ctx context.Context, client *Client) error {
-	return client.VerifyConnectivity(ctx)
+	return client, nil
 }
 
 // verifyContext derives a context for the startup connectivity check, bounded by

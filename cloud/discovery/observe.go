@@ -197,7 +197,7 @@ func (o *Observer) attrs(extra ...attribute.KeyValue) []attribute.KeyValue {
 // reporting and drops the operation's span; the operation itself still runs.
 //
 // A nil observer — one a caller never wired — reports nothing either, the same
-// pass-through as a nil injector in cloud/governance/fault: instrumentation is
+// pass-through as a nil injector in cloud/fault: instrumentation is
 // declared by construction, and its absence must never decide whether an
 // operation runs.
 func (o *Observer) live() bool {

@@ -39,9 +39,9 @@ func TestParseSource(t *testing.T) {
 	cs, err := parseSource("configmap/app?namespace=prod&key=application.yaml&format=yaml")
 	assert.Error(t, err).Nil()
 	assert.String(t, cs.kind).Equal(kindConfigMap)
-	assert.String(t, cs.name).Equal("app")
+	assert.String(t, cs.objectName).Equal("app")
 	assert.String(t, cs.namespace).Equal("prod")
-	assert.String(t, cs.key).Equal("application.yaml")
+	assert.String(t, cs.dataKey).Equal("application.yaml")
 	assert.String(t, cs.format).Equal("yaml")
 
 	cs, err = parseSource("secret/creds")

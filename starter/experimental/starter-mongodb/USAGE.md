@@ -11,7 +11,7 @@ below is go-spring's increment.
 
 **Activation**: any `spring.mongodb.instances.*` key (the module is `OnProperty("spring.mongodb")`, a
 prefix check). Each `spring.mongodb.instances.<name>` entry creates one `*StarterMongoDB.Client` bean
-named `<name>` (it embeds `*mongo.Client`), plus a health indicator named `mongo:<name>`.
+named `<name>` (it embeds `*mongo.Client`, so the driver surface is promoted), plus a health indicator named `mongo:<name>`.
 
 ---
 
@@ -39,7 +39,7 @@ require (
     go-spring.org/cloud             latest
     go-spring.org/starter-mongodb   latest
     go-spring.org/starter-actuator  latest   // optional: readiness + health
-    go-spring.org/starter-governance latest  // optional: resilience/fault policy
+    go-spring.org/starter-governance-file latest  // optional: resilience/fault policy
     go-spring.org/starter-otel      latest   // optional: real trace/metric export
 )
 ```
@@ -52,7 +52,7 @@ package main
 import (
     "go-spring.org/spring/gs"
     _ "go-spring.org/starter-actuator"
-    _ "go-spring.org/starter-governance"
+    _ "go-spring.org/starter-governance-file"
     _ "go-spring.org/starter-mongodb"
     _ "demo/service"
 )
@@ -91,7 +91,7 @@ import (
 
 type Service struct {
     // Always the wrapper type *StarterMongoDB.Client. It embeds
-    // *mongo.Client, so Database/Collection/StartSession/ping promote
+    // *mongo.Client, so Database/Collection/StartSession/ping are promoted
     // unchanged. It is NOT injectable as a bare *mongo.Client.
     Main *StarterMongoDB.Client `autowire:"a"`   // direct URI
     Disc *StarterMongoDB.Client `autowire:"disc"` // discovery (service-name)
@@ -131,7 +131,7 @@ spring.mongodb.instances.disc.server-selection-timeout=10s
 
 # --- governance: policy for the dial seam (rate-limit makes the dial
 #     protection observable; breaker/retry/timeout also apply) ---------------
-# NOTE: governance RULES go in conf/governance.properties, referenced by spring.governance.source.file.path in app.properties (see starter-governance USAGE).
+# NOTE: governance RULES go in conf/governance.properties, referenced by spring.governance.source.file.path in app.properties (see starter-governance-file USAGE).
 spring.governance.enabled=true
 spring.governance.driver=default
 spring.governance.client.default.rate-limit=5
@@ -171,59 +171,77 @@ on failure — run its `check.sh` as the executable version of this section.
 import starter-mongodb
   └─ gs.Module(OnProperty("spring.mongodb")) fires when any spring.mongodb.instances.* key exists
         └─ conf.BindEach("${spring.mongodb}") → one Config per <name> entry
-              ├─ Provide(newClient).Name(<name>).Init((*Client).Init).Destroy((*Client).Destroy)
+              ├─ Provide(newClient).Name(<name>).Destroy((*Client).Destroy)
               └─ Provide health.Indicator named "mongo:<name>", exported As[health.Indicator]
 
 gs.Run()
-  ├─ ctor newClient [starter.go:87]: ApplyURI → timeouts/pool/auth → tls.Build
-  │   → SetMonitor(command monitor, lazy observer) [starter.go:125]
-  │   → newPickPool(ctx, c, backend) (loader-backed endpoint picker when service-name set, mesh off) [starter.go:128]
-  │   → SetDialer(shared dialerWrapper) [starter.go:153]
-  │   → mongo.Connect → fail-fast Ping bounded by connect-timeout (10s fallback)
-  │     [starter.go:163-171] — a dead server fails the BOOT, not the first query
-  ├─ Init [client.go:108]: newDBObserver("mongodb") → module-local observer (span + metric + access log)
-  │   → fault.WrapClientExecutor(mgr.ClientExecutorFor("mongodb", service), service, inj)
-  │   → swap dialerWrapper.dial = resilience.NewDialer(base, exec)
-  ├─ readiness: mongo:<name> indicator runs client.Ping against the live server
-  └─ SIGTERM → Destroy [client.go:126]: exec.Close → client.Disconnect
+  ├─ ctor newClient [starter.go:105]: ApplyURI → timeouts/pool/auth → tls.Build
+  │   → build params = cloud.ClientParams{Resilience: mgr, Fault: inj, Loadbalance: lbMgr}
+  │   → SetMonitor(command monitor, lazy observer holder) [starter.go:152]
+  │   → newPickPool(ctx, c, backend) (loader-backed endpoint picker when service-name set, mesh off) [starter.go:155]
+  │   → SetDialer(shared dialerWrapper) [starter.go:185]
+  │   → mongo.Connect → NewClient(raw, cfg, params) (identity + observer + executor) [client.go:113]
+  │       newDBObserver("mongodb") → module-local observer (span + metric + access log);
+  │       serviceLabel = serviceLabel(cfg); exec = params.ExecutorFor("mongodb", serviceLabel),
+  │       which is fault.WrapClientExecutor(mgr.ClientExecutorFor("mongodb", service), service, inj)
+  │   → swap dialerWrapper.dial = resilience.NewDialer(base, w.exec) [starter.go:210]
+  │   → fail-fast probe: HealthCheck(ctx, w) — a Ping bounded by connect-timeout
+  │     (10s fallback) [starter.go:216] — a dead server fails the BOOT, not the first query
+  ├─ readiness: mongo:<name> indicator runs HealthCheck (a client.Ping) against the live server
+  └─ SIGTERM → Destroy [client.go:148]: exec.Close → client.Disconnect
       (the loader holds no resources, so nothing discovery-related is released)
 ```
 
 ### 2.2 The two seams — and the asymmetry that shapes them
 
 The mongo driver v2 exposes **no per-operation hook comparable to go-redis's ProcessHook**
-([client.go:44-47], [command.go:18-21]). The starter therefore splits what other client
+([client.go:50-57], [command.go:17-21]). The starter therefore splits what other client
 startners do in one hook chain into two seams:
 
-- **Observation rides the command monitor** ([command.go:53]): `event.CommandMonitor`
+- **Observation rides the command monitor** ([command.go:47]): `event.CommandMonitor`
   Started/Succeeded/Failed events, correlated by (connection id, request id). Every command —
   insert, find, ping, hello — opens a span + bumps the in-flight gauge in Started and closes
   them in Succeeded/Failed. The monitor reads the observer lazily via an atomic pointer
-  because it is installed in the ctor, before `Init` builds the observer; the nil guard
-  covers the startup ping path ([command.go:39-45]).
-- **Resilience/fault ride the dial layer**: `Init` wraps the dial function with
-  `resilience.NewDialer` — breaker/limiter/bulkhead/timeout/fault apply **per new connection**,
-  not per command. Already-open pooled connections run at full speed ([client.go:47-51]).
+  holder because it is installed before `Connect`, while `NewClient` builds the observer only
+  after `Connect`; the nil guard covers the startup ping path ([command.go:39-45]).
+- **Resilience/fault ride the dial layer**: the client's builder (`newClient`) wraps the dial
+  function with `resilience.NewDialer` — breaker/limiter/bulkhead/timeout/fault apply **per new
+  connection**, not per command. Already-open pooled connections run at full speed ([client.go:50-57]).
   This is the honest statement of the family asymmetry: there is **no per-request
   instrumentation for resilience here** — a breaker trips on connection failures and caps
   connection churn; slow-but-successful commands never touch it.
 
 The dial swap works without rebuilding the client because the ctor hands the driver a shared
-`dialerWrapper` whose `dial` field `Init` later mutates ([starter.go:143-147], [client.go:104-106]).
+`dialerWrapper` and then mutates its `dial` field to the resilience-wrapped one right after
+`NewClient` resolved the executor ([starter.go:184-185, 210], [client.go:113-121]).
 
 Why hand-rolled instead of otelmongo: the official instrumentation targets the v1 driver and
 its CommandMonitor type is incompatible with v2; the bridge here is module-local
 ([observe.go]) so MongoDB emits the same vocabulary as every other client starter.
 
+**The design rule.** Observation is at the command layer because the driver has no
+per-command hook; protection is at the dial layer through the resilience executor. This is
+the one client starter that emits locally — the other 19 declare an `observability.Operation`
+for the resilience executor to apply — and it does so by driver constraint, not by choice
+(see §6). Its vocabulary, however, is deliberately identical to that unified emitter's:
+bounded labels `db.system` + `db.operation`, unbounded detail `db.statement` (span and log
+only, never a metric label, truncated at 512 bytes), an internal span named after the
+command, and the `status` / `duration_ms` access-log fields with the same level rule
+(failure Warn / success-with-detail Debug / success-without-detail Info). The status word set
+is the ecosystem-wide `ok` / `error`, as everywhere. The one divergence is the absent
+`resilience.outcome`: a CommandMonitor sees only the driver's own error and cannot know that
+protection refused the call (`rate_limited`, `circuit_open`, `bulkhead_full`, `timeout`), so
+this emitter reports no outcome rather than an empty one.
+
 ### 2.3 One command through the layers: `FindOne` on the direct instance
 
-1. `coll.FindOne(ctx, ...)` runs on the embedded `*mongo.Client` — no wrapper interception;
-   every driver method promotes unchanged.
+1. `coll.FindOne(ctx, ...)` runs through the embedded `*mongo.Client` surface — every driver
+   method is promoted unchanged, with no wrapper interception.
 2. If the pool has no idle connection, the driver calls `dialerWrapper.DialContext` →
    resilience executor asks for a permit (service label `mongodb:<service-name or uri>` —
-   per instance, [client.go:99]); over the rate limit the dial is rejected and the operation
+   per instance, [client.go:128]); over the rate limit the dial is rejected and the operation
    surfaces `resilience.ErrRateLimited`. With service-name set, the base dial first asks the
-   loader-backed `Pool` to pick a live endpoint and ignores the URI address ([starter.go:137-144]).
+   loader-backed `Pool` to pick a live endpoint and ignores the URI address ([starter.go:163-176]).
 3. The driver sends the `find` command; the command monitor's `Started` fires:
    `obs.Start(ctx, "find", "test")` — span name = command name, argument = database name.
 4. The reply fires `Succeeded` (or `Failed`): the span ends, `db.client.operation.duration`
@@ -244,26 +262,28 @@ There are no observability keys — observation is unconditional (see §3.3).
 | Key | Type | Default | Behavior / interactions | Misconfiguration consequence |
 |-----|------|---------|-------------------------|------------------------------|
 | `uri` | string | — | **Required** (expr `$ != ''`). Parsed by `ApplyURI`; driver options in the URI win unless overridden below. | Missing/empty → boot error at binding. |
-| `username` | string | — | When non-empty, sets a `options.Credential` from username/password/auth-source/auth-mechanism [starter.go:104-111]. Empty → credentials come solely from the URI. | Setting username but forgetting password/auth-source → auth failure at the startup ping. |
+| `username` | string | — | When non-empty, sets a `options.Credential` from username/password/auth-source/auth-mechanism [starter.go:121-128]. Empty → credentials come solely from the URI. | Setting username but forgetting password/auth-source → auth failure at the startup ping. |
 | `password` | string | — | Part of the credential above. ⚠ Only effective together with `username`. | — |
 | `auth-source` | string | — | Credential verification database, e.g. `admin`. ⚠ Only with `username`. | Wrong db → "Authentication failed" at boot ping. |
 | `auth-mechanism` | string | — | e.g. `SCRAM-SHA-256`; empty = driver negotiates. ⚠ Only with `username`. | Unsupported mechanism → boot ping error. |
-| `connect-timeout` | duration | `10s` | Passed to the driver AND bounds the fail-fast startup ping (0 → 10s fallback, [starter.go:182-187]). | Too small → boot ping spuriously times out on slow networks. |
+| `connect-timeout` | duration | `10s` | Passed to the driver AND bounds the fail-fast startup ping (0 → 10s fallback, [starter.go:224-229]). | Too small → boot ping spuriously times out on slow networks. |
 | `server-selection-timeout` | duration | `0` | 0 = driver default (30s). How long the driver waits for a suitable server. | Too small + discovery latency → "server selection timeout". |
-| `max-pool-size` | uint64 | `100` | Max connections per server. 0 would mean "use default" — but the starter passes 100 explicitly when unset. | Too small → ops queue waiting for a pool slot. |
+| `max-pool-size` | uint64 | `100` | Max connections per server. 0 would mean "use default" — but the starter passes 100 explicitly when unset. A governance rule setting `max-conns` overrides it. | Too small → ops queue waiting for a pool slot. |
 | `min-pool-size` | uint64 | `0` | Min pooled connections (always applied, even 0). | — |
 | `max-conn-idle-time` | duration | `0` | 0 = no limit; e.g. `5m` prunes idle conns. ⚠ With `service-name`, a finite value recycles connections onto updated endpoints without a restart. | `0` + discovery → conns linger on a removed endpoint until they break. |
-| `service-name` | string | — | Resolve addressing via the registered discovery backend; a loader-backed (Pool-`Pick`) dialer replaces the URI hosts per connection [starter.go:133-144]. ⚠ **Bypasses MongoDB's own topology discovery** (replica set / mongos) — the driver dials whatever the naming service hands out; pair with `directConnection=true` in the URI ([config.go:80-84]). Ignored in mesh mode (sidecar owns discovery+LB). | Without `directConnection=true` on a replica-set URI → "no such host"/topology errors; the dummy-URI trick only proves discovery when the loader/pool is actually consulted. |
+| `service-name` | string | — | Resolve addressing via the registered discovery backend; a loader-backed (Pool-`Pick`) dialer replaces the URI hosts per connection [starter.go:150-167]. ⚠ **Bypasses MongoDB's own topology discovery** (replica set / mongos) — the driver dials whatever the naming service hands out; pair with `directConnection=true` in the URI ([config.go:80-84]). Ignored in mesh mode (sidecar owns discovery+LB). | Without `directConnection=true` on a replica-set URI → "no such host"/topology errors; the dummy-URI trick only proves discovery when the loader/pool is actually consulted. |
 | `scheme` | string | — | Narrows discovery endpoints to one transport scheme (e.g. `tls`). Only consulted when service-name is set. | — |
 | `discovery` | string | — | Which registered discovery backend resolves service-name. Falls back to `${spring.mongodb.default.discovery}` when unset. | Both unset or an unregistered name while service-name is set → boot error. |
-| `tls.*` | group | off | Shared `security` block (enabled/ca-file/cert-file/key-file/server-name/insecure-skip-verify); `tls.Build` error fails the boot [starter.go:112-119]. Enabled=false → no TLS unless the URI itself requests it (`mongodbs://` / `tls=true`). | Partial config → boot error "mongodb: build TLS". |
+| `tls.*` | group | off | Shared `security` block (enabled/ca-file/cert-file/key-file/server-name/insecure-skip-verify); `tls.Build` error fails the boot [starter.go:129-137]. Enabled=false → no TLS unless the URI itself requests it (`mongodbs://` / `tls=true`). | Partial config → boot error "mongodb: build TLS". |
 
 ### 3.2 Resilience / fault (spring.governance.*, not under the instance prefix)
 
-Policy keys live in the governance rules document under `spring.governance.*` (starter-governance's governance center);
-this starter arms `fault.WrapClientExecutor(mgr.ClientExecutorFor("mongodb", "mongodb:<service-name|uri>"), "mongodb:<service-name|uri>", inj)`
-in `Init` [client.go:110-115], where `mgr`/`inj` are the `*resilience.Manager` / `*fault.Injector`
-beans the container injects into `newClient`. Relevant keys (see starter-governance USAGE
+Policy keys live in the governance rules document under `spring.governance.*` (starter-governance-file's governance center);
+`newClient` bundles the injected `*resilience.Manager` / `*fault.Injector` (`mgr`/`inj`) and
+`*loadbalance.Manager` (`lbMgr`) into a `cloud.ClientParams` and hands it to `NewClient`, whose
+`params.ExecutorFor("mongodb", "mongodb:<service-name|uri>")` resolves
+`fault.WrapClientExecutor(mgr.ClientExecutorFor("mongodb", "mongodb:<service-name|uri>"), "mongodb:<service-name|uri>", inj)`
+in one call [client.go:113-121]. Relevant keys (see starter-governance-file USAGE
 for the full set): `spring.governance.enabled`, `spring.governance.driver`, `spring.governance.<driver>.rate-limit` /
 `error-threshold` / `open-duration` / `max-retries` / `timeout`, and the `spring.governance.client.fault.*`
 injection block (enable/rate/error). ⚠ Remember the seam is the **dial layer**: a breaker
@@ -271,7 +291,7 @@ policy manifests as rejected *connections*; a fault injection fires per dial, no
 
 **Endpoint selection is governed by the same rule, same label.** In discovery mode the pool is
 built with a suspension tracker and bound to `mongodb:<service-name|uri>` via
-`lbMgr.Bind(pool, label)` (the `*loadbalance.Manager` bean injected into `newClient`), so `spring.governance.client.rules[N].balancer` (round_robin / least_conn /
+`params.Loadbalance.Bind(pool, label)` (the `*loadbalance.Manager` bean injected into `newClient`), so `spring.governance.client.rules[N].balancer` (round_robin / least_conn /
 consistent_hash / weighted / zone_aware / random / p2c) and `outlier-threshold` /
 `outlier-suspend-for` apply **in place** — the next dial uses the new strategy, no restart and no
 re-dial of existing connections. Direct (URI-only) instances have no candidate set, so these keys
@@ -286,7 +306,13 @@ cap): observation is always on and emits through module-local instrumentation ([
 Trace and metric ride the OTel globals that starter-otel installs
 (`spring.observability.*`); without starter-otel they are no-ops.
 
-There is no `driver` key — this starter has no driver registry ([driver.go:17-21]).
+Emission is local by driver constraint: the mongo driver v2 has no per-command hook, so the
+resilience executor (where the framework's single emitter lives) is reachable only at dial
+time — and connection pooling makes dials rare, which would erase per-command signals. The
+command monitor is therefore where observation must live, and its vocabulary is kept aligned
+with the unified emitter's (see §2.2).
+
+There is no `driver` key — this starter has no driver registry ([driver.go:17-22]).
 
 ---
 
@@ -296,12 +322,12 @@ There is no `driver` key — this starter has no driver registry ([driver.go:17-
 
 ```bash
 curl -s :9370/readyz | jq .      # components include "mongo:a", "mongo:disc"
-docker stop <mongo>              # indicator runs client.Ping → component flips DOWN
+docker stop <mongo>              # indicator runs HealthCheck (client.Ping) → component flips DOWN
 curl -s :9370/readyz             # 503 OUT_OF_SERVICE
 docker start <mongo>
 ```
 
-The indicator is unconditional — no disable switch ([starter.go:55-57]).
+The indicator is unconditional — no disable switch ([starter.go:71-73]).
 
 ### 4.2 What observation actually emits
 
@@ -310,19 +336,22 @@ curl -s :9090/metrics | grep db.client
 # db.client.operation_duration_seconds...{db.operation="find",db.system="mongodb",status="ok"}
 # db.client.active_requests{db.operation=...,db.system="mongodb"}
 grep _app_mongodb_access app.log | tail -1
-# db.operation=find status=ok duration_ms=1.2 ; success with the db-name argument at Debug,
-# plain success at Info, failure adds error=... at Warn
+# db.system=mongodb db.operation=find status=ok duration_ms=1.2 ; success with the
+# db-name argument at Debug, plain success at Info, failure adds error=... at Warn
 ```
 
-- Spans: named after the MongoDB command (`find`, `insert`, `ping`), attributes
-  `db.system=mongodb`, `db.operation=<command>`, `db.statement=<database>` (truncated at 512 bytes).
-- The startup ping is also observed — unless the observer is still nil (pre-Init), which the
-  monitor's nil guard covers ([command.go:44-45]).
+- Spans: named after the MongoDB command (`find`, `insert`, `ping`), kind Internal,
+  attributes `db.system=mongodb`, `db.operation=<command>`, `db.statement=<database>`
+  (truncated at 512 bytes). The metric labels are `db.system` + `db.operation` + `status`;
+  `db.statement` reaches only the span and the log, never a label.
+- The startup ping is also observed (the observer holder is filled before the probe); the
+  monitor's nil guard only covers commands that race the holder's fill during `Connect`
+  ([command.go:44-45]).
 
 ### 4.3 Dial-layer resilience drill (from example-cloudnative)
 
 ```properties
-# NOTE: governance RULES go in conf/governance.properties, referenced by spring.governance.source.file.path in app.properties (see starter-governance USAGE).
+# NOTE: governance RULES go in conf/governance.properties, referenced by spring.governance.source.file.path in app.properties (see starter-governance-file USAGE).
 spring.governance.enabled=true
 spring.governance.driver=default
 spring.governance.client.default.rate-limit=5
@@ -338,7 +367,7 @@ the executor hot-reloads without restart (governance center).
 ### 4.4 Fault injection + load drill (example-load)
 
 ```properties
-# NOTE: governance RULES go in conf/governance.properties, referenced by spring.governance.source.file.path in app.properties (see starter-governance USAGE).
+# NOTE: governance RULES go in conf/governance.properties, referenced by spring.governance.source.file.path in app.properties (see starter-governance-file USAGE).
 spring.governance.client.fault.enabled=true
 spring.governance.client.fault.rate=0.5
 spring.governance.client.fault.error=generic    # or: timeout / reset
@@ -368,7 +397,7 @@ restart. Verify via `_app_mongodb_access` records or by stopping the old endpoin
 | Ops fail with `ErrRateLimited` under burst | Governance rate-limit on the dial seam | Raise `spring.governance.<driver>.rate-limit` or `max-pool-size`/`min-pool-size` (warm pool skips dials). |
 | Breaker never opens despite slow queries | By design — resilience is dial-layer only; slow-but-connected commands are invisible to it | Alert on `db.client.operation.duration` instead; see §2.2. |
 | No spans/metrics though commands work | starter-otel not imported — the monitor rides the OTel globals | `_ "go-spring.org/starter-otel"` + `spring.observability.*`. |
-| Injecting `*mongo.Client` fails | The bean is the wrapper `*StarterMongoDB.Client` | Autowire the wrapper type; driver methods promote unchanged. |
+| Injecting `*mongo.Client` fails | The bean is the wrapper `*StarterMongoDB.Client` | Autowire the wrapper type; the driver methods are promoted unchanged. |
 
 ---
 

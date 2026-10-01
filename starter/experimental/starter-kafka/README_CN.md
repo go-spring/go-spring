@@ -48,18 +48,26 @@ type Service struct {
 
 ### 4. 使用 Kafka 客户端
 
-参考 [example.go](example/example.go) 文件。同一个 `*kgo.Client` 即可生产与消费:
-生产使用 `ProduceSync`,消费使用 `PollFetches`。
+参考 [example.go](example/example.go) 文件。同一个 `*kgo.Client` 即可生产与消费。
+业务流量走 starter 提供的两个受管入口,而不是客户端自己的方法:治理守卫、`messaging.*`
+指标与访问日志都在那里 —— franz-go 的 hook 只能观察一条 record,包不住一次调用。
 
 ```go
 rec := &kgo.Record{Topic: "hello", Value: []byte("value")}
-_ = s.Client.ProduceSync(ctx, rec).FirstErr()
+_ = StarterKafka.GuardedProduceSync(ctx, s.Client, rec).FirstErr()
 
 fetches := s.Client.PollFetches(ctx)
 fetches.EachRecord(func(r *kgo.Record) {
-    fmt.Println(string(r.Value))
+    _ = StarterKafka.GuardedConsume(ctx, s.Client, r, func(ctx context.Context) error {
+        fmt.Println(string(r.Value))
+        return nil
+    })
 })
 ```
+
+直接调 `s.Client.ProduceSync` 或 `PollFetches` 仍然可用,但该次调用不被治理(无限流、
+熔断、重试、超时)也不上报(无 `messaging.*` 指标、无访问日志),只剩 kotel 的客户端级
+span 与指标。裸客户端是留给 driver 未建模的 Kafka 能力:事务、admin API、自定义消费语义。
 
 ## 消息 Driver
 

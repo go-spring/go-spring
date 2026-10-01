@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"github.com/allegro/bigcache/v3"
+	"go-spring.org/cloud"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
@@ -93,9 +94,9 @@ func TestCreationTimeCallbackServesOneInstanceOnly(t *testing.T) {
 	}
 }
 
-// newTestCache builds a Cache the way a standalone caller does - the raw client
-// plus the instance name, then Init - which is what gs does for each configured
-// instance, minus the container.
+// newTestCache builds a Cache the way a standalone caller does - the raw client,
+// the instance name and the zero params bundle, wrapped by NewCache - which is
+// what gs does for each configured instance, minus the container.
 func newTestCache(t *testing.T, name string) *Cache {
 	t.Helper()
 	client, err := bigcache.New(context.Background(), bigcache.DefaultConfig(time.Minute))
@@ -105,11 +106,7 @@ func newTestCache(t *testing.T, name string) *Cache {
 	if err := client.Set("k", []byte("v")); err != nil {
 		t.Fatalf("Set(%q): %v", name, err)
 	}
-	c := &Cache{BigCache: client, name: name}
-	if err := c.Init(); err != nil {
-		t.Fatalf("Init(%q): %v", name, err)
-	}
-	return c
+	return NewCache(client, name, cloud.ClientParams{})
 }
 
 // gaugeCacheNames collects one gauge and returns the sorted cache.name of every

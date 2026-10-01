@@ -41,7 +41,7 @@ require (
     go-spring.org/starter-gorm-mysql latest  // brings in starter-gorm (gormcore)
     go-spring.org/starter-actuator latest   // optional: probes + /metrics
     go-spring.org/starter-otel     latest   // optional: real trace/metric export
-    go-spring.org/starter-governance latest // optional: runtime fault injection
+    go-spring.org/starter-governance-file latest // optional: runtime fault injection
 )
 ```
 
@@ -55,7 +55,7 @@ import (
 
     "go-spring.org/spring/gs"
     _ "go-spring.org/starter-actuator"
-    _ "go-spring.org/starter-governance"
+    _ "go-spring.org/starter-governance-file"
     _ "go-spring.org/starter-gorm-mysql" // registers instances under spring.gorm.mysql.instances.*
     _ "go-spring.org/starter-otel"
 )
@@ -148,7 +148,7 @@ spring.observability.metrics.exporter=prometheus
 spring.observability.metrics.port=0        # /metrics via actuator only
 
 # --- governance (runtime fault injection / breaker / retry) ------------------
-# NOTE: governance RULES go in conf/governance.properties, referenced by spring.governance.source.file.path in app.properties (see starter-governance USAGE).
+# NOTE: governance RULES go in conf/governance.properties, referenced by spring.governance.source.file.path in app.properties (see starter-governance-file USAGE).
 spring.governance.enabled=true
 spring.governance.driver=default
 spring.governance.client.default.error-threshold=20
@@ -200,24 +200,30 @@ gs.Run()
   ├─ per instance <name>:
   │    ├─ Dialect.Build(ctx, c)      dialect builds DSN/dialector; resolves TLS,
   │    │                             service discovery (mysql only), service label
-  │    ├─ gormcore.Open:  gorm.Open → ApplyPool (pool knobs + fail-fast ping)
-  │    │                  → ApplyDBCustomizers (user seam, registration order)
-  │    ├─ Provide *DB .Name(<dialect>.<entry>).Init((*DB).Init).Destroy((*DB).Destroy)
+  │    ├─ gormcore.Open:  gorm.Open → ApplyPool (pool knobs) → ApplyDBCustomizers
+  │    │                  (user seam, registration order) → observe plugin
+  │    │                  (unless observe.enabled=false) → governance: builds the
+  │    │                  resilience executor from Options.Governance.ExecutorFor
+  │    │                  → ApplyCallbacks replaces the six gorm processors
+  │    ├─ startup probe: gormcore.HealthCheck (delegates to Ping, bounded by
+  │    │                  ping-timeout) — after assembly
+  │    ├─ Provide *DB .Name(<dialect>.<entry>).Destroy((*DB).Destroy)
   │    └─ Provide health.Indicator "gorm:mysql:<name>" (injects the *DB by name,
   │       exports as health.Indicator)  ← .Name is required: multi-instance beans
   │          share type (Indicator, *DB); without distinct names the container
   │          reports duplicate (Name,Type) keys
   ├─ bean wiring: gs assembles the *DB wrapper beans by name
-  ├─ DB.Init: observe plugin (unless observe.enabled=false) → resilience
-  │    executor chain → ApplyCallbacks replaces the six gorm processors
   ├─ Run / readiness: actuator aggregates the indicators → /readyz UP
   └─ SIGTERM: DB.Destroy → executor.Close → dialect closers (discovery watch,
      TLS deregistration) → underlying *sql.DB pool closed
 ```
 
-Failure at any open step (dialect build, gorm.Open, ping, customizer) fails that
-instance's creation and runs the dialect's closers — misconfigured address or
-credentials surface at boot, not on first query.
+Assembly completes inside `gormcore.Open` (observe + governance both applied, so
+the DB is complete when the constructor returns — nothing patches it afterwards)
+before the client is probed. Failure at any step (dialect build, gorm.Open, pool,
+customizer, observe plugin, governance) fails that instance's creation and runs
+the dialect's closers — a misconfigured address or bad credentials surface at
+boot, not on first query.
 
 ### 2.2 The callback chain for ONE query — exact order and why
 
@@ -225,27 +231,37 @@ credentials surface at boot, not on first query.
 
 ```
 gorm:query processor chain
-  1. go-spring:observe:before_query   span start + metric start + in-flight +1
-  2. gorm:query  ← REPLACED by the resilience wrapper:
+  1. go-spring:observe:declare_query  dry-runs the dialect's own gorm:query body on a
+                                      session sharing this statement, so the SQL is
+                                      built without being executed; then DECLARES the
+                                      operation (name, db.system/db.operation,
+                                      db.statement, access tag) on the call's ctx
+  2. gorm:query  ← REPLACED by the resilience wrapper — the single emitter:
         resilience.Run(ctx, exec, op)
           ├─ admission (rate limit / bulkhead, if configured)
           ├─ fault injector (spring.governance.client.fault.* — may short-circuit the attempt)
           ├─ timeout / breaker / retry envelope
-          └─ the ORIGINAL gorm:query body: builds SQL, executes, applies
-             gorm's own logger (slow-query warn, see slow-threshold)
-  3. go-spring:observe:after_query    SetArg(SQL) → span end + duration metric
-                                      + in-flight -1 + access log record
+          ├─ the ORIGINAL gorm:query body: reuses the SQL already built, executes,
+          │  applies gorm's own logger (slow-query warn, see slow-threshold)
+          └─ reads the declared operation off the ctx and EMITS the signals:
+             the call span, db.client.operation.duration, the attempt-level
+             db.client.attempt.duration, db.client.active_requests, one access log
 ```
 
 Rationale (from source comments, verified):
 
-- **Observe hooks wrap the gorm processor, not the driver** (observe/plugin.go:44-50):
-  the SQL statement is only known after gorm builds it, so the Before callback
-  opens the observation for timing and the After callback attaches the SQL via
-  SetArg before End — landing the statement in the detailed log and the span.
-- **Correlation key is the *gorm.DB pointer** (observe/plugin.go:39-43): gorm hands
-  the same fresh `*gorm.DB` to both callbacks, making it a unique per-operation key
-  (`sync.Map`, no locks on the hot path beyond the map's).
+- **The plugin declares; the resilience layer emits** (observe/plugin.go): the
+  observe plugin puts an `observability.Operation` on the call's context and
+  nothing else. The signals are emitted by the resilience wrapper around
+  `gorm:query` — the one point on the executor chain that sees a whole call,
+  retries included — so there is exactly one emitter across the client family
+  and no duplicate span/metric/log.
+- **The SQL is resolved by a dry-run, not a second build** (observe/plugin.go):
+  gorm builds the statement inside the very `gorm:query` processor the resilience
+  layer wraps, so it is unknown at the declaration point. The plugin captures the
+  dialect's own processor in `Initialize` and dry-runs it on a session that shares
+  the statement: the build runs, the dry-run stops before the driver, and the real
+  run reuses the SQL left behind — one build, by gorm's own code, not a copy of it.
 - **Resilience replaces the processor itself** (resilience/callbacks.go:53-90): the
   same backend-neutral Executor other starters drive through a redis Hook or
   grpc interceptor is here driven through gorm's callback chain — one shared
@@ -256,9 +272,14 @@ Rationale (from source comments, verified):
 - **Rejection propagation** (resilience/callbacks.go:76-83): a resilience rejection
   (rate-limited / circuit-open / bulkhead-full) or a fault-injected error is put
   on `tx.Error`; a real op error is left as gorm set it.
-- **No-op by default**: with no governance bean in the container, the executor
-  `Init` arms is a transparent pass-through — callbacks still wrap but add no behavior,
-  so the chain costs nothing to leave installed.
+- **No-op with governance off**: the governance beans are always present (each is
+  registered by the package that owns it, which this starter imports), so "off" is an unarmed manager
+  (`spring.governance.enabled=false` / no rule source), whose resolved executor is a
+  transparent pass-through — callbacks still wrap but add no behavior, so the
+  chain costs nothing to leave installed. A DB opened with the zero governance
+  bundle instead (a hand-built client, an example, a test) gets
+  `resilience.Unmanaged`: observed-only, with a one-time warning that no
+  protection applies.
 
 ### 2.3 Transactions
 
@@ -276,7 +297,7 @@ the same level as the dialect's own fields). Reconciled against
 
 | Key | Type | Default | Behavior / interactions | Misconfiguration consequence |
 |-----|------|---------|-------------------------|------------------------------|
-| `max-open-conns` | int | 0 | `>0` → `sql.DB.SetMaxOpenConns`; 0 = database/sql unlimited. | Too low under concurrency → `WaitCount` grows, queries queue (visible via `gormcore.Stats`). |
+| `max-open-conns` | int | 0 | `>0` → `sql.DB.SetMaxOpenConns`; 0 = database/sql unlimited. A governance rule setting `max-conns` overrides it. | Too low under concurrency → `WaitCount` grows, queries queue (visible via `gormcore.Stats`). |
 | `max-idle-conns` | int | 0 | `>0` → `SetMaxIdleConns`; 0 = database/sql default (2). | 0 with high QPS → constant reconnect churn; > max-open is clamped by database/sql. |
 | `conn-max-lifetime` | duration | 0 | `>0` → `SetConnMaxLifetime`; 0 = unlimited. | 0 against a LB that silently drops idle conns → stale-connection errors mid-run. |
 | `conn-max-idle-time` | duration | 0 | `>0` → `SetConnMaxIdleTime`; 0 = unlimited. | Mostly interacts with lifetime above. |
@@ -285,7 +306,7 @@ the same level as the dialect's own fields). Reconciled against
 | `service-name` | string | — | Switches addressing to service discovery: the dialect binds a discovery-backed dialer so each new connection reaches a live instance. When set, `addr` is ignored (the example uses a dummy `0.0.0.0:0` to prove it). In mesh mode (`GS_MESH_MODE=on`) a sidecar owns discovery and `addr` is used as-is. | Unset + no `addr` → dialect build error ("one of addr or service-name must be set"). |
 | `scheme` | string | — | Narrows discovery to endpoints of one transport scheme (e.g. `tls`). ⚠ Dead unless `service-name` is set (only consulted then). | Set without service-name → silently ignored. |
 | `discovery` | string | — | Which registered discovery backend resolves `service-name`. Falls back to `${spring.gorm.<dialect>.default.discovery}` when unset. ⚠ Dead unless `service-name` is set. | Both unset or an unregistered name while service-name is set → boot error; set without service-name → silently ignored. |
-| `observe.enabled` | bool | true | Hard kill switch for the gorm observe plugin: when false the plugin is not installed at all — no span, no metric, no access log, no per-query callbacks. | false → per-query observability silently absent (deliberate for hot instances). |
+| `observe.enabled` | bool | true | Hard kill switch for the gorm observe plugin: when false the plugin is not installed at all — no declaration, no per-query callbacks. Operations are then not declared, so the resilience layer falls back to its own generic call signals (`resilience.client.duration`, its own access tag). | false → per-operation db.* observability silently absent (deliberate for hot instances). |
 
 Dead-key notes: for **sqlite** the whole discovery trio (`service-name`/`scheme`/
 `discovery`) is structurally unusable (no server to discover) but still binds —
@@ -295,18 +316,22 @@ recorded in the suspects list.
 
 ## 4. Verification & fault drills
 
-### 4.1 Observe signals (per query)
+### 4.1 Observe signals (per operation)
 
-With starter-otel imported (see §1 config):
+The gorm plugin only DECLARES each operation; the signals are emitted by the
+resilience layer (see §2.2). With starter-otel imported (see §1 config):
 
 - **Span**: one per operation, named by kind (`query`/`create`/`update`/`delete`),
-  attribute `db.system=mysql`, SQL statement attached; check Jaeger
-  (`http://127.0.0.1:16686`, service = your `spring.observability.service-name`).
-- **Metrics**: histogram `db.client.operation.duration`, attributes `db.system`,
-  `db.operation`, status:
+  attributes `db.system=mysql`, `db.operation`, the SQL statement, and `status`;
+  check Jaeger (`http://127.0.0.1:16686`, service = your
+  `spring.observability.service-name`).
+- **Metrics**: histograms `db.client.operation.duration` (the whole call, retries
+  and backoff included) and `db.client.attempt.duration` (one downstream try),
+  each labelled `db.system`, `db.operation`, `status`, plus the in-flight gauge
+  `db.client.active_requests`:
 
 ```bash
-curl -s :9370/metrics | grep -E 'db_client_operation_duration'
+curl -s :9370/metrics | grep -E 'db_client_(operation|attempt)_duration'
 ```
 
 - **Access log**: tag `_app_gorm_access`, one structured record per operation —
@@ -346,20 +371,21 @@ curl -s :9370/readyz                    # recovers to 200 once the DB is back
 
 The indicator name is `gorm:<dialect>:<name>` (e.g. `gorm:mysql:primary`);
 `/health` on the actuator lists the component detail. Rejections here do NOT
-trip the resilience breaker — the health ping does not go through the callback
-chain (it calls `sqlDB.PingContext` directly, health.go:31-38).
+trip the resilience breaker — the health check does not go through the callback
+chain (it delegates to `Ping`, which calls `sqlDB.PingContext` directly,
+health.go:33-35).
 
 ### 4.4 Fault / resilience drill (no restart)
 
-Using the governance config from §1 plus a file source (see starter-governance)
+Using the governance config from §1 plus a file source (see starter-governance-file)
 or the example-load layout (`starter-gorm-mysql/example-load`):
 
 1. Start the app with `spring.governance.client.fault.enabled=false`; baseline queries succeed.
 2. Flip `spring.governance.client.fault.enabled=true` (+ `rate`, `error`) — the governance source
    hot-reloads.
 3. Faulted attempts short-circuit before the SQL runs: the injected error lands
-   on `tx.Error`, the breaker counts it, and the observe layer still records the
-   failed operation — you can watch the fire in the access log and the
+   on `tx.Error`, the breaker counts it, and the resilience layer still records
+   the failed operation — you can watch the fire in the access log and the
    `db.client.operation.duration` error-status buckets.
 4. With `error-threshold=20`, sustained fire opens the circuit: further queries
    fail fast with the circuit-open rejection instead of hitting the DB.
@@ -383,7 +409,7 @@ endpoint and watch `OpenConnections`/`InUse`/`WaitCount` under load
 | No beans register at all | No `spring.gorm.<dialect>.*` entries — `OnProperty(prefix)` never fires | Add at least one instance block; nothing activates by default. |
 | Container fails: duplicate beans | A second Provide of `*DB`/`health.Indicator` without `.Name` | Don't re-provide DB beans yourself; the DB beans are named `<dialect>.<entry>` (e.g. `mysql.primary`) and the health indicators `gorm:<dialect>:<entry>` (module.go:85-97). |
 | Injection error "not a simple value"/type mismatch | Injecting `*gorm.DB` instead of the wrapper | Autowire the shared `*gormcore.DB` bean; it embeds `*gorm.DB`. |
-| No spans/metrics/access log | starter-otel not imported, or `observe.enabled=false` | Import starter-otel; check the per-instance kill switch — it removes the plugin entirely. |
+| No db.* spans/metrics/access log | starter-otel not imported, or `observe.enabled=false` | Import starter-otel; check the per-instance kill switch — it removes the plugin entirely, so operations are undeclared and the resilience layer emits only its own generic signals. |
 | Slow-query lines are plain text | `slow-threshold` routes GORM's warn output through go-spring.org/log, but the message body is GORM's one-line text | Filter by message; for structured slow logs use the access log instead. |
 | Queries rejected with rate-limited/circuit-open errors | Governance resilience engaged (or fault fired) | Intended protection; check `spring.governance.*` config and the fault drill steps (§4.4). |
 | Stale connection errors after hours | LB/firewall dropping idle TCP; `conn-max-lifetime=0` | Set `conn-max-lifetime` below the infrastructure's idle cut. |
@@ -403,4 +429,8 @@ plain-text message body (routed via go-spring.org/log since 2026-08, no longer
 stdlib stdout); `Common` no longer carries the discovery trio for sqlite —
 the sqlite starter embeds only `PoolSettings`; per-operation span but no
 transaction-level span (correlation of a transaction's statements is by context
-only).
+only); the observe plugin resolves the SQL by dry-running the dialect's own
+processor before the call (observe/plugin.go) — it duplicates no gorm build code
+and builds the statement once, but it does invoke that processor twice (the
+dry build and the real run), so a future gorm that gives the statement earlier
+would let that indirection go.

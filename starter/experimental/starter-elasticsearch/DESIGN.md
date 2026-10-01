@@ -9,9 +9,9 @@ non-obvious decisions worth pinning: an optional Driver-bean seam, a nil-op
 
 ## 1. Responsibilities & Boundaries
 
-- Binds each `${spring.elasticsearch}` entry to an
-  `*elasticsearch.Client` bean via `gs.Group`. No single-instance
-  default.
+- Binds each `${spring.elasticsearch}` entry to a
+  `*Client` wrapper bean (which embeds the raw `*elasticsearch.Client`)
+  via `gs.Group`. No single-instance default.
 - Runs a one-shot `Info` health check at construction so a bad address,
   bad cert, or bad credential surfaces at boot instead of on first use.
 - Optionally resolves node addresses from `cloud/discovery` when
@@ -38,9 +38,10 @@ non-obvious decisions worth pinning: an optional Driver-bean seam, a nil-op
   round-robin over that list but does not re-resolve. This is
   deliberate: ES nodes churn on days, not seconds, and the client
   itself sniffs cluster state.
-- **`HealthCheck` always passes a context.** The transport's OTel
-  instrumentation panics on a nil parent context, so `client.Info` is
-  called with `WithContext(context.Background())` explicitly.
+- **`HealthCheck` is the single liveness entry, always passing a context.**
+  `client.Info.WithContext(ctx)` is always called with an explicit context so
+  the probe inherits cancellation and a deadline; the fail-fast probe and the
+  health indicator both go through `HealthCheck`.
 
 ## 3. Constraints
 
@@ -64,5 +65,8 @@ non-obvious decisions worth pinning: an optional Driver-bean seam, a nil-op
 - **Wrapping transport with `otelelasticsearch` in the starter —
   rejected.** Transport wrapping is done by the driver's `CreateClient`
   (the bundled `DefaultDriver` installs a dynamic transport whose
-  observe+resilience behavior `Init` swaps in); the base transport stays
-  plain net/http so an app that does not import otel does not pay for it.
+  declaration+resilience behavior the wrapper swaps in at construction); the
+  base transport stays plain net/http so an app that does not import otel does
+  not pay for it. The elastic transport's own OTel instrumentation is likewise
+  not enabled — it opened a call-level span per request that duplicated the one
+  the resilience layer now emits.

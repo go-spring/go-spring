@@ -21,6 +21,7 @@ import (
 	"testing"
 	"time"
 
+	"go-spring.org/cloud"
 	"go-spring.org/starter-gorm"
 )
 
@@ -42,7 +43,7 @@ func TestBuildPlainDSN(t *testing.T) {
 	}
 	c.PingTimeout = 500 * time.Millisecond
 
-	spec, err := build(context.Background(), c, nil, nil)
+	spec, err := build(context.Background(), c, cloud.ClientParams{})
 	if err != nil {
 		t.Fatalf("build failed: %v", err)
 	}

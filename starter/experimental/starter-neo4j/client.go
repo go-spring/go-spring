@@ -15,85 +15,86 @@
  */
 
 // client.go is the "resource entity" concept of this starter: the Client
-// wrapper Neo4j drivers are injected as, plus its lifecycle (Init/Destroy).
-// The call-site command seam (Query / RunWithResilience) lives in command.go.
+// wrapper Neo4j drivers are injected as, plus its lifecycle (construction/
+// Destroy). The call-site command seam (Query / RunWithResilience) lives in
+// command.go.
 package StarterNeo4j
 
 import (
 	"context"
 
 	"github.com/neo4j/neo4j-go-driver/v5/neo4j"
-	"go-spring.org/cloud/governance/fault"
-	"go-spring.org/cloud/governance/resilience"
-
-	// Blank import: importing this starter brings the governance authority with
-	// it — starter-governance registers the *resilience.Manager, *loadbalance.
-	// Manager, *fault.Injector and *governance.Center beans this package injects.
-	// Turning governance OFF is spring.governance.enabled=false (or binding no rule source),
-	// not the absence of the starter. The injected parameters stay nullable, so a
-	// container that somehow lacks these beans degrades to a transparent
-	// pass-through instead of failing to boot.
-	_ "go-spring.org/starter-governance"
+	"go-spring.org/cloud"
+	"go-spring.org/cloud/resilience"
 )
 
-// Client is the wrapper bean Neo4j drivers are injected as. It
-// embeds the neo4j.DriverWithContext interface (so every driver method promotes
-// unchanged) and carries the resilience executor built by [Client.ArmGovernance],
-// so the policy comes from the governance document and hot-reloads inside the
-// executor. newClient returns one and arms it.
+// Client is the wrapper bean Neo4j drivers are injected as. It embeds the raw
+// neo4j.DriverWithContext, so it satisfies that interface by promotion: it can
+// be handed to neo4j.ExecuteQuery and to this starter's own [Query] /
+// [RunWithResilience] seam unchanged. [NewClient] is the only way to build a
+// Client, so a driver can never exist without its identity (the service label),
+// and the resilience executor [NewClient] builds from the governance bundle it
+// is handed is the only extra capability it carries.
 //
-// The Neo4j seam: the driver's ExecuteQuery is a package-level function (not a
-// method on the driver), so there is no transport / dialer / hook to intercept —
-// the only viable insertion point is a call-site guard. Applications that call
-// [Query] (the instrumented drop-in for neo4j.ExecuteQuery) or
-// [RunWithResilience] route through this wrapper's executor automatically when
-// resilience is enabled; code that drives sessions directly is untouched (and
-// un-protected) unless it calls [RunWithResilience].
+// The wrapper is a pure holder here, which is why the driver is embedded rather
+// than re-declared method by method: neo4j-go-driver's ExecuteQuery is a
+// package-level function (not a method on the driver), and the driver exposes
+// no transport / dialer / hook to intercept — so the operation's identity is
+// declared by the call-site free functions (see command.go) and the signals are
+// emitted by the resilience layer, never by this type's methods.
+// Applications that call [Query] (the instrumented drop-in for
+// neo4j.ExecuteQuery) or [RunWithResilience] route through this wrapper's
+// executor automatically when resilience is enabled; code that drives sessions
+// directly is untouched (and un-protected) unless it calls [RunWithResilience].
 type Client struct {
+	// neo4j.DriverWithContext is embedded. The driver carries no per-instance
+	// instrumentation (the declaration is a call-site concern and the guard is a
+	// call-site seam), so its method set is promoted unchanged.
 	neo4j.DriverWithContext
 
-	// cfg is the connection config, retained for the resilience service label.
-	cfg Config
-	// exec is the resilience executor protecting queries, armed by
-	// ArmGovernance; nil means "governance off" — [Query] and
-	// [RunWithResilience] run their call inline.
+	// serviceLabel is the resilience service key ("neo4j:<service-name or
+	// uri>") exec scopes limiter/breaker state by. Fixed by [NewClient].
+	serviceLabel string
+
+	// exec is the resilience executor protecting queries, fixed by [NewClient]
+	// from the governance bundle it is handed. On a client built there it is
+	// never nil — a zero bundle degrades to resilience.Unmanaged (observed, with
+	// a one-time warning) rather than silently running bare. A zero Client built
+	// by hand (a test) leaves it nil, and [Query] / [RunWithResilience] then run
+	// their call inline.
 	exec resilience.ClientExecutor
 }
 
-// ArmGovernance arms the governance-driven resilience stack. It is called by
-// the gs wiring with the injected beans — nil when the container has no
-// starter-governance, and nil from a standalone caller, both of which mean
-// "governance off".
+// NewClient builds a complete Client — identity and governance both — over a
+// live raw driver, handing back a wrapper ready to use. client must be ready
+// for use — it is normally the Driver's product.
 //
-// The stack is observe( fault( execFor ) ): fault wraps the resolved executor's
-// operation fn so injected failures land INSIDE the retry/breaker loop (and so
-// are observed), and the observer behind [Query] / [RunWithResilience] sits
-// outermost. inj is nil-safe: with no injector (governance off / fault disabled)
-// WrapClientExecutor returns the inner executor unchanged, so the fault layer is a
-// transparent pass-through. Resolution is deferred to call time, so the order of
-// this arming relative to starter-governance's wiring is irrelevant.
-func (o *Client) ArmGovernance(mgr *resilience.Manager, inj *fault.Injector) error {
-	// A nil manager is the unwired case — a container without
-	// starter-governance (the wiring injects it nullably, so it is nil there
-	// too), or a standalone caller that built the driver itself. A fresh
-	// unarmed manager is exactly
-	// "governance off": every resolve is a pass-through, so [Query] and
-	// [RunWithResilience] run their call inline.
-	// Normalizing here keeps the rest of this method (and every caller) free of
-	// nil branches.
-	service := resilience.ServiceLabel("neo4j", o.cfg.ServiceName, o.cfg.URI)
-	o.exec = fault.WrapClientExecutor(mgr.ClientExecutorFor("neo4j", service), service, inj)
-	return nil
+// The declaration layer for neo4j is the per-call [StartSpan] / [Query] seam
+// (observe.go): the driver exposes no interception point, so the operation's
+// identity is carried on the ctx by the free-function call path rather than by
+// any per-instance object. There is therefore no Init step — building a Client
+// and initializing it are the same act, so the container has no lifecycle hook
+// to register and no way to hand out a half-built client.
+//
+// params carries the container's facilities (see [cloud.ClientParams]), applied
+// HERE so a Client cannot exist half-assembled: there is no later patching and
+// nothing the wiring has to remember to call. A hand-built client passes the
+// zero [cloud.ClientParams]; its executor then degrades to resilience.Unmanaged —
+// observed, with a one-time warning that no protection applies — rather than
+// silently running bare. The manager's ClientExecutorFor resolves its backing
+// executor lazily, on each Execute, so the call order relative to
+// the center's wiring is irrelevant.
+func NewClient(client neo4j.DriverWithContext, cfg Config, params cloud.ClientParams) *Client {
+	c := &Client{
+		DriverWithContext: client,
+	}
+	c.serviceLabel = resilience.ServiceLabel("neo4j", cfg.ServiceName, cfg.URI)
+	c.exec = params.ExecutorFor("neo4j", c.serviceLabel)
+	return c
 }
 
-// Destroy is the gs destroy method: it closes the resilience executor (if
-// armed), stops any discovery watch, and closes the underlying driver.
-//
-// It is deliberately NOT named Close: the embedded neo4j.DriverWithContext
-// already exposes Close(context.Context), and shadowing it with a different
-// signature would stop the wrapper from satisfying the interface (and thus from
-// being passed to neo4j.ExecuteQuery / [Query]). This teardown is referenced
-// explicitly from the gs registration.
+// Destroy releases the resilience executor and closes the underlying driver. It
+// is the gs destroy method.
 func (o *Client) Destroy() error {
 	if o.exec != nil {
 		_ = o.exec.Close()

@@ -4,8 +4,8 @@
 
 `starter-governance-sentinel` registers [alibaba/sentinel-golang][sentinel] as the
 production driver for the resilience framework defined in
-[`cloud/governance/resilience`](../../cloud/governance/resilience). Blank-import it
-alongside [`starter-governance`](../starter-governance) and name it in the
+[`cloud/resilience`](../../cloud/resilience). Blank-import it
+alongside [`starter-governance-file`](../starter-governance-file) and name it in the
 governance document (`spring.governance.driver=sentinel`) — every client that resolves its
 executor through the governance center then gets adaptive rate limiting,
 circuit breaking, and bulkhead isolation on top of the same neutral `ClientPolicy`,
@@ -13,7 +13,7 @@ with no per-client key and no code change.
 
 It follows the *global / infrastructure* archetype (see
 [starter/DESIGN.md](../DESIGN.md) §2.4): it contributes exactly one bean — the
-`sentinel`-named `resilience.Driver` that [`starter-governance`](../starter-governance)
+`sentinel`-named `resilience.Driver` that [`starter-governance-file`](../starter-governance-file)
 collects into the driver directory — and opens no port. `sentinel.InitDefault`
 runs at import time so a broken environment fails loudly on boot rather than on
 first use.
@@ -58,7 +58,7 @@ spring.governance.client.default.attempt-timeout=1s
 ### 3. Or drive it directly
 
 ```go
-import "go-spring.org/cloud/governance/resilience"
+import "go-spring.org/cloud/resilience"
 
 exec, _ := starter_governance_sentinel.NewSentinelDriver().NewExecutor("sentinel:test", resilience.ClientPolicy{
     RateLimit:      100,
@@ -97,10 +97,10 @@ loaded lazily on the first entry:
 `MaxRetries` and `Timeout` are applied by the executor around sentinel's
 entry check, since sentinel models neither. Sentinel block reasons are
 mapped onto the neutral sentinels so callers depend only on
-`cloud/governance/resilience`.
+`cloud/resilience`.
 
 ## Default driver
 
-`cloud/governance/resilience` ships a zero-dependency `default` driver for tests and
+`cloud/resilience` ships a zero-dependency `default` driver for tests and
 lightweight setups. Import this starter for production-grade throttling and
 breaking; stick with `default` if you don't need it.

@@ -26,22 +26,7 @@ import (
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
-	"go-spring.org/stdlib/flatten"
 )
-
-func init() {
-	enableSimpleDubboServer := gs.OnProperty("spring.dubbo.provider.enabled").
-		HavingValue("true").MatchIfMissing()
-	gs.Module(enableSimpleDubboServer, func(r gs.BeanProvider, p flatten.Storage) error {
-		r.Provide(
-			NewSimpleDubboServer,
-		).Export(gs.As[gs.Server]()).Condition(
-			gs.OnBean[ServiceRegister](),
-			gs.OnBean[*Instance](),
-		)
-		return nil
-	})
-}
 
 // ServiceRegister registers services on a Dubbo server.Server.
 type ServiceRegister func(svr *server.Server) error

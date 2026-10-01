@@ -20,7 +20,7 @@ import (
 	"context"
 	"errors"
 
-	"go-spring.org/cloud/governance/resilience"
+	"go-spring.org/cloud/resilience"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -38,7 +38,7 @@ type resilienceInterceptors struct {
 // gets its rate-limit / bulkhead / breaker limits from the governance document's
 // SERVER block (spring.governance.server.*)
 // WITHOUT naming *governance.Center. A nil manager — a standalone call, or an app
-// that does not import starter-governance — is normalized to an unarmed one,
+// that does not import — is normalized to an unarmed one,
 // whose executor is a transparent pass-through (fn runs once, untouched). The
 // executor handle resolves its backing implementation per call and follows the
 // manager's hot-reload. The executor is wrapped with observe-resilience so

@@ -32,8 +32,9 @@ func main() { gs.Run() }
 ```
 
 注入的 bean 是 starter 的 `*Cache` 封装而非原生 `*bigcache.BigCache`：其
-Get/Set/Delete 会经过 observe（访问日志/指标/trace）与 resilience（限流/熔断，经治理
-中心）接线。原生客户端以内嵌字段 `Cache.BigCache` 提供，供第三方 API 使用。
+Get/Set/Delete 会声明各自的操作身份，并经 resilience 层（限流/熔断，经治理中心）
+执行——span、指标与访问日志由该层发射，starter 自身不再发射。原生客户端存放于未导出字段
+且不提供访问器，其余原生方法（Stats/Len/Capacity/Reset/Close 等）以纯委托形式重新导出。
 
 ## 2. 全量配置参考
 
@@ -57,25 +58,32 @@ Get/Set/Delete 会经过 observe（访问日志/指标/trace）与 resilience（
 
 ## 3. beans / driver / 观测
 
-- 每实例一个 `*StarterBigCache.Cache` bean，名为 `<name>`；`Init` 装配 observe+resilience，
-  `Destroy` 调用 `Close()`（停止淘汰 goroutine）。
+- 每实例一个 `*StarterBigCache.Cache` bean，名为 `<name>`；构造（`NewCache`）即注册统计 gauge
+  并装配治理，`Destroy` 调用 `Close()`（停止淘汰 goroutine）。
 - 每实例一个健康 indicator，名 `bigcache:<name>`（经 `[]health.Indicator` 收集）。
+- 每次调用（由 resilience 层发射，meter `go-spring.org/cloud/resilience`）：
+  调用级 `db.client.operation.duration`（含重试与退避）、尝试级 `db.client.attempt.duration`
+  （每次下游尝试一条记录）、在途 `db.client.active_requests`，以及按状态分类的
+  `resilience.client.calls`。标签为 `db.system=bigcache`、`db.operation=<get|set|delete>`、`status`；
+  key 仅以 `db.statement` 进 span/日志，绝不作为指标标签。
 - 每实例 OTel gauge（meter `go-spring.org/starter-bigcache`，label `cache.name`）：
   `bigcache.hits` / `misses` / `delete_hits` / `delete_misses` / `collisions` / `entries` /
-  `capacity`。引入 starter-otel 时导出，否则为 no-op。
+  `capacity`。这是 starter 仍自有的唯一信号——按进程而非按调用，resilience 层无从发射。
+  引入 starter-otel 时导出，否则为 no-op。
 - 缓存抽象 bean：除包装类型外，每实例另提供一个 `*cache.Cache` bean，名为
   `bigcache:<instance>`（适配器在 this package's bytecache.go）——用 autowire tag
   `bigcache:<instance>` 按名注入。无人注入则不实例化，因此无配置开关。
-- 自定义客户端装配：装配由 `Driver` 接口（`CreateClient(ctx, Config)`，driver.go）负责。公司/
+- 自定义客户端装配：装配由 `Driver` 接口（`CreateClient(ctx, name, Config, cloud.ClientParams)`，driver.go）负责。公司/
   伞包 starter 可把自己的 `Driver` 作为**可选容器 bean** 提供
   （`gs.Provide(func() StarterBigCache.Driver{...})`，因为是 bean，可在装配期注入从配置绑定
   的配置）；无该 bean 时 starter 在装配内回退到内置 `DefaultDriver`。这仍是设置
   `bigcache.Config.OnRemove` 等字段的唯一途径。当容器中存在多个 Driver bean 时，实例可按名指定：
   `spring.bigcache.instances.<name>.driver = <bean 名>`（留空 = 先回退家族级 `spring.<family>.default.driver`，再按类型注入唯一 Driver bean；指定的 bean
   不存在则启动失败）。
-- resilience：实例级服务标签 `bigcache:<name>`；执行器由 `Init` 从容器注入的
-  `*resilience.Manager` bean 派生（`*fault.Injector` bean 可选包裹），容器内没有治理 bean 时
-  为透明 no-op。
+- resilience：实例级服务标签 `bigcache:<name>`；执行器在构造期由 `NewCache` 从传入的
+  `cloud.ClientParams` 派生（`Resilience` 为 `*resilience.Manager` bean，`Fault` 为
+  `*fault.Injector` bean，用于包裹加固）。容器内没有治理 bean 时（零值 `Governance`），
+  降级为 `resilience.Unmanaged`——仍可观测，仅一次性告警提示无保护，而非静默裸跑。
 
 ## 4. 设计体检表
 

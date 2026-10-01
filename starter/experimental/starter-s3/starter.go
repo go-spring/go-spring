@@ -19,9 +19,10 @@ package StarterS3
 import (
 	"context"
 
+	"go-spring.org/cloud"
 	"go-spring.org/cloud/actuator/health"
-	"go-spring.org/cloud/governance/fault"
-	"go-spring.org/cloud/governance/resilience"
+	"go-spring.org/cloud/fault"
+	"go-spring.org/cloud/resilience"
 	"go-spring.org/log"
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/gs"
@@ -37,41 +38,46 @@ func init() {
 	// to the bean for diagnostics.
 	gs.Module(gs.OnProperty("spring.s3.instances"), func(r gs.BeanProvider, p flatten.Storage) error {
 		return conf.BindEach(p, "${spring.s3.instances}", func(name string, c Config) error {
-			// The wrapper bean owns the resilience executor, so the ctor arms
-			// it (ArmGovernance, with the injected governance beans) and
-			// Destroy tears it down. The Driver bean is
-			// selected by the entry's ${driver} key: unset → "?" (nullable
-			// by-type — injects the single Driver bean when one is provided,
-			// nil otherwise, and the ctor falls back to the bundled
-			// DefaultDriver); set → that bean name, and naming a bean that
+			// The wrapper bean owns the resilience executor, so the ctor builds it
+			// from the injected governance beans and Destroy tears it down. The
+			// Driver bean is selected by the entry's ${driver}
+			// key: unset → "?" (nullable by-type — injects the single Driver bean
+			// when one is provided, nil otherwise, and the ctor falls back to the
+			// bundled DefaultDriver); set → that bean name, and naming a bean that
 			// does not exist fails loud.
 			r.Provide(newClient,
 				gs.IndexArg(1, gs.ValueArg(c)),
 				gs.IndexArg(2, gs.TagArg("${spring.s3.instances."+name+".driver:=${spring.s3.default.driver:=?}}")),
-				// The governance beans are REQUIRED: this starter blank-imports
-				// starter-governance, so "governance off" is spring.governance.enabled=false,
-				// never an absent bean.
+				// The governance beans are REQUIRED: each is registered by the package that
+				// owns it (cloud/resilience, cloud/loadbalance, cloud/fault), which this
+				// starter imports — "governance off" is spring.governance.enabled=false, never
+				// an absent bean.
 				gs.IndexArg(3, gs.TagArg("")), // *resilience.Manager
 				gs.IndexArg(4, gs.TagArg("")), // *fault.Injector
-			).Name(name).Init((*Client).Init).Destroy((*Client).Destroy).Caller(1)
+			).Name(name).Destroy((*Client).Destroy).Caller(1)
 			// Contribute a health indicator for this instance, injecting the
 			// client just registered above by name.
 			r.Provide(func(w *Client) *health.Indicator {
-				return NewClientHealth(name, w.Client)
+				return NewClientHealth(name, w)
 			}, gs.TagArg(name)).Name("s3:" + name).Caller(1)
 			return nil
 		})
 	})
 }
 
-// newClient creates a new S3 client based on the provided configuration. The
-// endpoint is probed once at startup (ListBuckets) so that misconfiguration or
-// an unreachable endpoint fails fast rather than on first use.
+// newClient creates a new S3 client based on the provided configuration, wrapped
+// so every request declares its identity to the resilience round-tripper, which
+// emits the span+metric+log. The endpoint is then probed once at startup
+// (ListBuckets) so that misconfiguration or an unreachable endpoint fails fast
+// rather than on first use.
 //
-// mgr and inj are the governance beans starter-governance provides. The wiring
-// injects them NULLABLY, so both are nil in a container without
-// starter-governance as well as in a standalone (non-gs) call;
-// [Client.ArmGovernance] treats a nil bean as "governance off".
+// mgr and inj are the authority beans the owning packages register; the ctor
+// bundles them into the [cloud.ClientParams] it hands the driver, which
+// passes it to [NewClient] — so the client is assembled complete in one step,
+// with the zero bundle degrading to an observed-only, loudly-unmanaged executor.
+// The wiring injects them as REQUIRED, and each is registered by the package
+// that owns it — which this starter imports — so "governance off" is
+// spring.governance.enabled=false, never an absent bean.
 func newClient(ctx *gs.ContextProvider, c Config, d Driver, mgr *resilience.Manager, inj *fault.Injector) (*Client, error) {
 	log.Debugf(ctx.Context, log.TagAppDef, "creating s3 client, endpoint=%s region=%s", c.Endpoint, c.Region)
 
@@ -79,33 +85,34 @@ func newClient(ctx *gs.ContextProvider, c Config, d Driver, mgr *resilience.Mana
 	if d == nil {
 		d = DefaultDriver{}
 	}
-	cl, err := d.CreateClient(ctx.Context, c)
+	client, err := d.CreateClient(ctx.Context, c,
+		cloud.ClientParams{Resilience: mgr, Fault: inj})
 	if err != nil {
 		return nil, err
 	}
-	w := &Client{Client: cl, cfg: c}
-	// The DefaultDriver attaches a dynamic transport (its executor swapped in
-	// by Init); pick it up so the wrapper can arm it. Custom drivers may not
-	// install one — resilience is then simply unavailable for that client.
-	if v, ok := dynamicTransports.LoadAndDelete(cl); ok {
-		w.dyn = v.(*dynamicTransport)
-	}
-	// Arm governance on the wrapper. It runs here, not inside the driver, so a
-	// custom Driver's client is governed too — without the Driver interface
-	// carrying a dependency on cloud/governance.
-	if err := w.ArmGovernance(mgr, inj); err != nil {
-		return nil, err
-	}
-	if err := HealthCheck(ctx.Context, w); err != nil {
+	// The Driver returned the client complete — identity and governance both
+	// applied while it was built. There is no Init hook and nothing else runs
+	// after this — the bean is complete when this ctor returns.
+	// Fail fast: probe the endpoint once at startup so a misconfigured or
+	// unreachable endpoint surfaces during boot rather than on the first
+	// request. The probe is [HealthCheck], the single liveness implementation,
+	// which goes straight to the raw client — it is a connectivity check, not
+	// business traffic. A failure abandons the client, so release what was just
+	// applied.
+	if err := HealthCheck(ctx.Context, client); err != nil {
+		log.Errorf(ctx.Context, log.TagAppDef, "s3: startup probe failed: %v", err)
+		_ = client.Destroy()
 		return nil, errutil.Explain(err, "failed to reach s3 endpoint %s", c.Endpoint)
 	}
-	return w, nil
+	log.Infof(ctx.Context, log.TagAppDef, "s3 client initialized, endpoint=%s", c.Endpoint)
+	return client, nil
 }
 
 // HealthCheck reports whether the S3 endpoint is reachable and the credential
 // pair is accepted, by listing buckets. It is a thin readiness probe suitable
-// for wiring into a health endpoint.
+// for wiring into a health endpoint. The probe goes straight to the raw client
+// on purpose: a readiness check must reflect the backend, not the wrapper.
 func HealthCheck(ctx context.Context, client *Client) error {
-	_, err := client.ListBuckets(ctx)
+	_, err := client.Client.ListBuckets(ctx)
 	return err
 }

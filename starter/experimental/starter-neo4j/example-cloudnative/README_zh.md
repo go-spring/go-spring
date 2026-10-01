@@ -16,8 +16,8 @@
   `:9370`——`/readyz` 反映服务器连通性。
 - **动态配置**：`gs.Dync[string]` 字段绑定被监听的文件；编辑后无需重启即可
   热加载新值。
-- **可观测性**：`StarterNeo4j.Query` 经模块内建埋点在 OTel 全局变量上产出
-  span、`db.client.*` 指标与访问日志。
+- **可观测性**：`StarterNeo4j.Query` 声明操作的语义身份，由 resilience 层在 OTel
+  全局变量上发射 span、`db.client.*` 指标与访问日志。
 
 ## 目录结构
 

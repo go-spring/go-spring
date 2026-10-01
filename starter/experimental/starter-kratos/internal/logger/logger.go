@@ -17,10 +17,10 @@
 // Package logger forwards kratos' framework logs into go-spring's log module,
 // so an application only configures one logging pipeline. It is the single shared
 // implementation used by the http, grpc and ws sub-package starters - each passes
-// the bridge logger to kratos.Logger when building its kratos.App. Unlike the
-// dubbo/trpc/kitex/goframe bridges this one cannot self-install via init():
-// kratos takes a per-App log.Logger value at construction, so each sub-starter
-// calls NewLogger() and hands the result to its kratos.App.
+// the bridge logger to kratos.Logger when building its kratos.App. There is no
+// package-level install to call from a starter.go: kratos takes a per-App
+// log.Logger value at construction, so each sub-starter calls NewLogger() and
+// hands the result to its kratos.App.
 package logger
 
 import (

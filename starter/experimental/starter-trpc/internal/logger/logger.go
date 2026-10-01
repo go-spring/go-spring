@@ -15,9 +15,9 @@
  */
 
 // Package logger forwards tRPC's framework logs into go-spring's log module,
-// so an application only configures one logging pipeline. The bridge
-// self-installs via init(): the main StarterTrpc package blank-imports this
-// package, so importing the starter redirects tRPC's default zap console sink
+// so an application only configures one logging pipeline. The main StarterTrpc
+// package imports this one and calls [Install] from its starter.go, which
+// redirects tRPC's default zap console sink
 // into the same sink the application already configures for go-spring's log.
 package logger
 
@@ -53,7 +53,10 @@ type loggerAdapter struct{}
 
 // init installs the bridge before any tRPC component captures the default
 // logger, so every log line for the lifetime of the process is redirected.
-func init() {
+// Install routes the framework's own logs into the go-spring log pipeline. It
+// is called from the starter's starter.go, so the package declares no init of
+// its own: every registration the starter performs is readable in one place.
+func Install() {
 	trpclog.SetLogger(&loggerAdapter{})
 }
 

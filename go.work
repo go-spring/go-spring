@@ -238,8 +238,8 @@ use (
 	./starter/starter-gorm-sqlserver/example
 	./starter/starter-gorm-sqlserver/example-load
 	./starter/starter-gorm-sqlserver/example-otel
-	./starter/starter-governance
-	./starter/starter-governance/example
+	./starter/starter-governance-file
+	./starter/starter-governance-file/example
 	./starter/starter-governance-etcd
 	./starter/starter-governance-etcd/example
 	./starter/starter-governance-nacos

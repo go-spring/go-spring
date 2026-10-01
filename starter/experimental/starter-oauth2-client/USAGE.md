@@ -35,7 +35,7 @@ require (
     golang.org/x/oauth2          v0.36.0
     go-spring.org/spring         v1.3.x
     go-spring.org/starter-oauth2-client latest
-    go-spring.org/starter-governance    latest  // optional: real resilience policies
+    go-spring.org/starter-governance-file    latest  // optional: real resilience policies
     go-spring.org/starter-otel          latest  // optional: real trace export
 )
 ```
@@ -52,7 +52,7 @@ import (
     "go-spring.org/spring/gs"
     "golang.org/x/oauth2"
 
-    _ "go-spring.org/starter-governance"
+    _ "go-spring.org/starter-governance-file"
     StarterOAuth2Client "go-spring.org/starter-oauth2-client"
 )
 
@@ -100,7 +100,7 @@ spring.oauth2.authcode.instances.login.scopes=openid,profile
 
 # --- governance (resilience for the *http.Client transport) ------------------
 # Same service label as the client: oauth2:<client-id>.
-# NOTE: governance RULES go in conf/governance.properties, referenced by spring.governance.source.file.path in app.properties (see starter-governance USAGE).
+# NOTE: governance RULES go in conf/governance.properties, referenced by spring.governance.source.file.path in app.properties (see starter-governance-file USAGE).
 spring.governance.enabled=true
 spring.governance.driver=default
 spring.governance.client.default.max-retries=3

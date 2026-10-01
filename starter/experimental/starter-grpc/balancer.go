@@ -45,21 +45,11 @@ import (
 	"go-spring.org/cloud/discovery"
 	"go-spring.org/cloud/loadbalance"
 	"go-spring.org/log"
-	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
 	"google.golang.org/grpc/attributes"
 	"google.golang.org/grpc/balancer"
 	"google.golang.org/grpc/balancer/base"
 	"google.golang.org/grpc/resolver"
-
-	// Blank import: importing this starter brings the governance authority with
-	// it — starter-governance registers the *resilience.Manager, *loadbalance.
-	// Manager, *fault.Injector and *governance.Center beans this package injects.
-	// Turning governance OFF is spring.governance.enabled=false (or binding no rule source),
-	// not the absence of the starter. The injected parameters stay nullable, so a
-	// container that somehow lacks these beans degrades to a transparent
-	// pass-through instead of failing to boot.
-	_ "go-spring.org/starter-governance"
 )
 
 // Scheme is the target scheme handled by the discovery-backed resolver. Dial
@@ -160,35 +150,12 @@ var builtinTrackers []*loadbalance.Tracker
 // deployment contributed (see [applyGovernedSelection]).
 var builtinDir = loadbalance.BuiltinDirectory()
 
-func init() {
-	resolver.Register(discoveryResolverBuilder{})
-
-	// One tracker per built-in strategy, all starting disabled.
-	for _, s := range builtinStrategies {
-		t := loadbalance.NewTracker(loadbalance.TrackerConfig{})
-		registerBalancer(BalancerName(s), s, t, true)
-		builtinTrackers = append(builtinTrackers, t)
-	}
-
-	// The install-and-hold bean that wires governance onto the built-in
-	// balancers. gRPC's balancer registry builds balancers through a no-arg
-	// constructor (see [newSelectionHook]), so the loadbalance manager cannot arrive
-	// as a balancer constructor parameter: a bean receives it and subscribes on
-	// their behalf, writing the resulting policy into the package handles
-	// ([builtinTrackers], [governedBal]) the pickers read. Exported as a gs.Rooter
-	// so gs instantiates it even though nothing injects it — without a
-	// collected-type export an unreachable bean is never created and the policy
-	// would never be applied.
-	gs.Provide(newSelectionHook, gs.IndexArg(0, gs.TagArg("?"))).
-		Export(gs.As[gs.Rooter]()).Caller(1)
-}
-
 // managerHook is the marker bean whose construction subscribes the built-in
 // balancers to the governance manager.
 type managerHook struct{}
 
 // newSelectionHook subscribes the built-in gs_* balancers to the manager's policy
-// for [clientGovernLabel]. mgr is nil when starter-governance is not imported —
+// for [clientGovernLabel]. mgr is nil when no center is linked —
 // the same "governance off" case as a disabled center — and there is then nothing
 // to subscribe, so each balancer keeps its own registered default. The manager
 // bean is a NULLABLE injection ("?"), so an absent bean leaves the app booting
@@ -451,7 +418,7 @@ func (discoveryResolverBuilder) Build(target resolver.Target, cc resolver.Client
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
-	r := &discoveryResolver{cc: cc, d: d, backend: backend, service: service, ctx: ctx, cancel: cancel}
+	r := &discoveryResolver{cc: cc, discovery: d, backend: backend, serviceName: service, ctx: ctx, cancel: cancel}
 
 	// Seed the client with an initial snapshot before starting the poll loop so
 	// the first RPC does not race an empty address list.
@@ -466,12 +433,12 @@ func (discoveryResolverBuilder) Build(target resolver.Target, cc resolver.Client
 }
 
 type discoveryResolver struct {
-	cc      resolver.ClientConn
-	d       discovery.Discovery
-	backend string
-	service string
-	ctx     context.Context
-	cancel  context.CancelFunc
+	cc          resolver.ClientConn
+	discovery   discovery.Discovery
+	backend     string
+	serviceName string
+	ctx         context.Context
+	cancel      context.CancelFunc
 }
 
 // push converts a discovery snapshot into a gRPC resolver state update.
@@ -506,10 +473,10 @@ func (r *discoveryResolver) pollLoop(seed []discovery.Endpoint) {
 		case <-r.ctx.Done():
 			return
 		case <-t.C:
-			eps, err := r.d.Resolve(r.ctx, r.service)
+			eps, err := r.discovery.Resolve(r.ctx, r.serviceName)
 			if err != nil {
 				log.Errorf(r.ctx, log.TagAppDef, "grpc resolver resolve %q via %q failed, keeping last snapshot: %v",
-					r.service, r.backend, err)
+					r.serviceName, r.backend, err)
 				continue
 			}
 			key := epsKey(eps)

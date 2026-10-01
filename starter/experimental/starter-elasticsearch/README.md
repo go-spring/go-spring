@@ -38,7 +38,7 @@ Refer to the [example.go](example/example.go) file.
 import StarterElasticsearch "go-spring.org/starter-elasticsearch"
 
 type Service struct {
-    ES *StarterElasticsearch.Client `autowire:"docs"` // embeds *elasticsearch.Client
+    ES *StarterElasticsearch.Client `autowire:"docs"` // the API tree + lifecycle, not the raw client
 }
 ```
 
@@ -67,12 +67,15 @@ The [example.go](example/example.go) file demonstrates the following core Elasti
   file and reference them by name in your project.
 * **Support Elasticsearch extensions**: You can extend Elasticsearch functionality by implementing the `Driver`
   interface — see the example implementation `AnotherESDriver`.
-* **Observability**: the default driver emits client spans via the elastic
-  transport's own `NewOtelInstrumentation` through the OpenTelemetry global
-  `TracerProvider` that `starter-otel` installs, plus module-local
-  `db.client.*` metrics and an `_app_elasticsearch_access` access log. When
-  `starter-otel` is absent those globals are no-ops, so it stays a zero-config
-  opt-in.
+* **Observability**: the starter only DECLARES what each request is — the
+  `db.system`/`db.operation` vocabulary plus the URL path, put on the request
+  context by the transport stack. The resilience layer EMITS every signal from
+  that declaration: the one client span, the call-level `db.client.operation.duration`
+  and attempt-level `db.client.attempt.duration` histograms, the in-flight
+  `db.client.active_requests` gauge, and the single `_app_elasticsearch_access`
+  access log. All ride the OpenTelemetry globals that `starter-otel` installs;
+  when `starter-otel` is absent those globals are no-ops, so it stays a
+  zero-config opt-in.
 * **Service discovery**: set `service-name` on an instance to resolve its node
   addresses through a registered discovery backend instead of the static
   `addresses` list. Each discovered `host:port` endpoint is turned into a node

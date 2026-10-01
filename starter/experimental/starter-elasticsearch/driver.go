@@ -25,6 +25,7 @@ import (
 
 	"github.com/elastic/elastic-transport-go/v8/elastictransport"
 	"github.com/elastic/go-elasticsearch/v8"
+	"go-spring.org/cloud"
 	"go-spring.org/cloud/discovery"
 	"go-spring.org/cloud/mesh"
 	"go-spring.org/stdlib/errutil"
@@ -38,35 +39,49 @@ import (
 // configuration/beans it needs — e.g. company config bound from a properties
 // file at wiring time.
 //
+// CreateClient returns the module's exported [Client] — the wrapper apps inject
+// — not the raw *elasticsearch.Client, so a driver takes part in the type the
+// rest of the ecosystem sees. It returns the client COMPLETE: cfg fixes the
+// addresses/cloud-id/service-name the resilience service label is derived from,
+// the driver hands the wrapper the [dynamicTransport] it installed so the
+// declaration transport can be swapped in, and params supplies the container's
+// facilities (see [cloud.ClientParams]), which [NewClient] applies while
+// building. Nothing patches the client afterwards.
+//
+// params is one struct rather than a parameter per capability so this interface
+// — which every company driver implements — stays stable as capabilities are
+// added. A driver that has no use for one of its fields simply ignores it.
+//
 // At most one Driver bean is expected per process; every client under
 // ${spring.elasticsearch} is built through it, and per-instance differences
 // are expressed through [Config].
 //
-// backend is the discovery backend the entry's ${discovery} label resolved to,
-// already looked up by the starter wiring; it is nil when no backend bean
-// exists. It is passed as an argument rather than carried on Config so a custom
-// driver can actually reach it — Config stays a pure bound value.
+// params.Discovery is the discovery backend the entry's ${discovery} label
+// resolved to, already looked up by the starter wiring; it is nil when no
+// backend bean exists. It rides on the params struct rather than Config so a
+// custom driver can actually reach it — Config stays a pure bound value.
 type Driver interface {
-	CreateClient(ctx context.Context, c Config, backend discovery.Discovery) (*elasticsearch.Client, error)
+	CreateClient(ctx context.Context, c Config, params cloud.ClientParams) (*Client, error)
 }
 
 // DefaultDriver is the default implementation of the Driver interface.
 type DefaultDriver struct{}
 
-// CreateClient creates a new Elasticsearch client, bridged into go-spring's
-// unified observability. Passing a nil provider to NewOtelInstrumentation makes
-// the transport emit client spans through the OTel global TracerProvider that
-// starter-otel installs; when starter-otel is absent that global is a no-op, so
-// this stays a zero-config opt-in that needs no per-component adaptation.
+// CreateClient creates a new Elasticsearch client whose requests are declared to
+// go-spring's unified observability. The transport carries no instrumentation of
+// its own — the elastic transport's OTel instrumentation is deliberately NOT
+// enabled, because it emitted a call-level client span per request that
+// duplicated the one the resilience layer now opens; the declaration + emission
+// pair lives entirely on the wrapper's transport stack ([NewClient]).
 //
 // The transport is fixed at construction time and cannot be swapped on the
-// client afterwards, and the resilience/observability policy is only injected
-// into the wrapper after CreateClient returns. So CreateClient installs a thin
-// [dynamicTransport] (an atomic RoundTripper indirection) whose behavior
-// Init later swaps in — the observe+resilience transport built from
-// the injected policy. The dynamic transport is tracked in [dynamicTransports]
-// (keyed by the returned client) so newClient can hand it to the wrapper.
-func (DefaultDriver) CreateClient(ctx context.Context, c Config, backend discovery.Discovery) (*elasticsearch.Client, error) {
+// client afterwards, while the declaration+resilience transport is built by the
+// wrapper's constructor ([NewClient]). So CreateClient installs a thin
+// [dynamicTransport] (a mutex-guarded RoundTripper indirection) as the client's
+// transport and returns a wrapper built over it: [NewClient] swaps the
+// declaration+resilience stack in, with the indirection keeping it installable
+// after elasticsearch.NewClient has already captured the transport.
+func (DefaultDriver) CreateClient(ctx context.Context, c Config, params cloud.ClientParams) (*Client, error) {
 	dyn := newDynamicTransport()
 	cfg := elasticsearch.Config{
 		Addresses:              c.Addresses,
@@ -81,7 +96,6 @@ func (DefaultDriver) CreateClient(ctx context.Context, c Config, backend discove
 		CompressRequestBody:    c.CompressRequestBody,
 		EnableMetrics:          c.EnableMetrics,
 		EnableDebugLogger:      c.EnableDebugLogger,
-		Instrumentation:        newOtelInstrumentation(),
 		Transport:              dyn,
 	}
 	// Service discovery in effect: replace the transport's static node set with a
@@ -89,8 +103,8 @@ func (DefaultDriver) CreateClient(ctx context.Context, c Config, backend discove
 	// boot-time snapshot. Transport node selection is untouched — the live pool
 	// keeps a library-built inner pool and only rebuilds it when the node set
 	// changes. Without discovery the static Addresses stand as configured.
-	if c.ServiceName != "" && backend != nil && !mesh.Enabled() {
-		resolver, err := discovery.NewResolver(ctx, backend, c.ServiceName, discovery.WithScheme(c.Scheme))
+	if c.ServiceName != "" && params.Discovery != nil && !mesh.Enabled() {
+		resolver, err := discovery.NewResolver(ctx, params.Discovery, c.ServiceName, discovery.WithScheme(c.Scheme))
 		if err != nil {
 			return nil, errutil.Explain(err, "elasticsearch: resolve service %s", c.ServiceName)
 		}
@@ -104,8 +118,7 @@ func (DefaultDriver) CreateClient(ctx context.Context, c Config, backend discove
 	if err != nil {
 		return nil, err
 	}
-	dynamicTransports.Store(client, dyn)
-	return client, nil
+	return NewClient(client, dyn, c, params), nil
 }
 
 // resolveAddresses resolves c.ServiceName through the discovery backend the

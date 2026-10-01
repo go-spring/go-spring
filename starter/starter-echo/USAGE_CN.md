@@ -1,7 +1,7 @@
 # starter-echo 使用说明 — 参考手册
 
 详细使用参考。概览见 [README.md](README.md)。所有行为声明均经 starter 源码核对
-(`starter.go`、`middleware.go`、`metrics.go`、`tracing.go`、`recover.go`、`config.go`)并锚定
+(`starter.go`、`middleware.go`、`admission.go`、`recover.go`、`config.go`)并锚定
 可运行的 [example/](example/)。**echo 自身语义(路由、context、绑定、中间件写法)见
 [echo 官方文档](https://echo.labstack.com/docs)**——以下全部是 go-spring 增量。
 
@@ -32,7 +32,7 @@ require (
     go-spring.org/starter-echo   latest
     go-spring.org/starter-actuator latest   // 可选:探针 + /metrics
     go-spring.org/starter-otel     latest   // 可选:真实 trace/指标导出
-    go-spring.org/starter-governance latest // 可选:运行期故障注入
+    go-spring.org/starter-governance-file latest // 可选:运行期故障注入
 )
 ```
 
@@ -47,7 +47,7 @@ import (
     "go-spring.org/spring/gs"
     _ "go-spring.org/starter-actuator"
     _ "go-spring.org/starter-echo"
-    _ "go-spring.org/starter-governance"
+    _ "go-spring.org/starter-governance-file"
     _ "go-spring.org/starter-otel"
 )
 
@@ -119,7 +119,7 @@ spring.echo.server.writeTimeout=5s
 spring.echo.server.idleTimeout=60s
 
 # --- middleware --------------------------------------------------------------
-# 默认开:loadtest、recovery、requestId、tracing、metrics、accessLog。
+# 默认开:loadtest、recovery、requestId、observability。
 # 可选开启:
 spring.echo.server.middleware.secureHeaders.enabled=true
 
@@ -252,9 +252,8 @@ LoadTest → Recovery → RequestID(+propagate) → Tracing → Metrics → Acce
 |-----|------|------|
 | `middleware.loadtest.enabled` | 开 | 标记头经 propagator 的 `Extract` 落 ctx;用哪个头是 propagator bean 的事,不在本 starter。 |
 | `middleware.requestId.enabled` / `.header` | 开 / `X-Request-Id` | 缺失时生成、存在时透传。 |
-| `middleware.tracing.enabled` / `metrics.enabled` | 开 / 开 | 无 starter-otel 的 OTel 全局对象时空操作——没有任何告警。 |
-| `middleware.accessLog.skipPaths` | — | 与健康路径合并。 |
-| `middleware.accessLog.payload.*` | 与 gin 对齐 | 请求体捕获——echo 侧默认值见 config.go;捕获体进日志字段。 |
+| `middleware.observability.enabled` | 开 | 门控请求 span、HTTP 族指标与访问日志 —— 三者都由 resilience 执行器依据 admission 中间件的声明发出。关掉不会让服务静默:请求落到 `resilience.server.*` + 一行 resilience tag 日志。 |
+| `middleware.tracing` / `metrics` / `accessLog`.enabled | 开 | LEGACY。仍可绑定;粒度已合并(三者是一组),任一 false 即整组关闭并告警一次。 |
 | `middleware.cors.*` | 关 | `allowedMethods` 空 → 代码默认全动词集;`allowAllOrigins` 与显式 `allowedOrigins` 是互斥姿态。 |
 | `middleware.gzip.enabled` / `.level` | 关 / 5 | `minLength` 类调优以 config.go 为准。 |
 | `middleware.secureHeaders.*` | 关 | frameOptions DENY、referrerPolicy no-referrer;`hsts.*` 子 key(关)。 |
@@ -275,10 +274,10 @@ curl -sD- -o/dev/null -H 'X-Request-Id: fixed-42' :8002/echo/a | grep -i x-reque
 
 ### 4.2 观测中间件链
 
-- 访问日志(tag `_app_echo_access`):每请求一条结构化记录——路由、状态、耗时、request id、
-  tracing 生效时的 trace/span id。定级:≥500 Error、≥400 Warn。
+- 访问日志(tag `_app_echo_access`):每请求一条结构化记录——方法、路由、路径、状态、耗时 ——
+  由 resilience 执行器发出,不是某个中间件。定级:失败 Warn,成功不带 detail 时 Info。
 - 指标:`http.server.request.duration` 直方图,属性 `http.request.method`、`http.route`
-  (*路由模板*,不是原始路径)、`http.response.status_code`;同属性维度的 in-flight 量表:
+  (*路由模板*,不是原始路径)、`http.response.status_code` 与 `status`;同属性维度的 in-flight 量表:
 
 ```bash
 curl -s :9370/metrics | grep -E 'http_server_request_duration|in_flight'

@@ -35,7 +35,7 @@ require (
     go-spring.org/starter-redigo   latest
     go-spring.org/starter-actuator latest   // 可选
     go-spring.org/starter-otel     latest   // 可选
-    go-spring.org/starter-governance latest // 可选
+    go-spring.org/starter-governance-file latest // 可选
 )
 ```
 
@@ -47,7 +47,7 @@ package main
 import (
     "go-spring.org/spring/gs"
     _ "go-spring.org/starter-actuator"
-    _ "go-spring.org/starter-governance"
+    _ "go-spring.org/starter-governance-file"
     _ "go-spring.org/starter-otel"
     _ "go-spring.org/starter-redigo"
     _ "demo/service"
@@ -72,7 +72,8 @@ import (
 )
 
 type Service struct {
-    // 始终注入包装 *StarterRedigo.Pool；它内嵌 *redis.Pool，Get/Stats 原样提升。
+    // 始终注入包装 *StarterRedigo.Pool；它内嵌裸 *redis.Pool，
+    // Get/GetContext/Stats/... 都按原样提升。
     // 它交出的连接都是插桩过的 Conn。
     Main      *StarterRedigo.Pool `autowire:"main"`
     Discovery *StarterRedigo.Pool `autowire:"discovery"`
@@ -163,17 +164,18 @@ import starter-redigo
               └─ health.enabled 时 → Provide 名为 "redigo:<name>" 的 health.Indicator
 
 gs.Run()
-  ├─ 构造 createPool [starter.go:107]：RequireAny(addr|service-name) → 查 driver
-  │   → d.CreateClient(c, backend)（= NewPool）：TLS 构建 → discovery resolver → 原始池
-  │     → observer → resilience executor → setupDial
-  │     → startup-ping（仅 startup-ping=true 时）[starter.go:144-149]
-  │   注意：没有独立 InitMethod——池在返回时即完整就绪 [pool.go:36-37]
+  ├─ 构造 createPool [starter.go]：RequireAny(addr|service-name) → 查 driver
+  │   → d.CreateClient(c, backend, params)（= NewPool）：TLS 构建 → discovery resolver → 原始池
+  │     → 构造期即应用治理：resilience executor + 端点选择绑定
+  │     → 装声明层 → setupDial（插桩过的 Dial 包裹）
+  │   → HealthCheck 启动探测（仅 startup-ping=true 时），在装配完成之后 [starter.go]
+  │   注意：没有独立 InitMethod，且此后不再对池做任何补挂 [pool.go]
   ├─ 你的 bean Init 可调用 UseCommandInterceptor（自此之后拨的连接生效）
-  └─ SIGTERM → destroyPool → Pool.Close：exec.Close → resolver.Stop → pool.Close [pool.go:141-149]
+  └─ SIGTERM → destroyPool → Pool.Close：exec.Close → resolver.Stop → pool.Close [pool.go]
 ```
 
-`Pool.Close` 遮蔽了内嵌的 `(*redis.Pool).Close`，确保普通 Close 不会泄漏 discovery
-resolver 的后台 watch [pool.go:137-140]。
+`Pool.Close` 覆盖了内嵌的 `(*redis.Pool).Close`，一次 Close 即同时拆掉
+绑定、executor 与连接池，确保不会泄漏 discovery resolver 的后台 watch [pool.go]。
 
 ### 2.2 命令洋葱 —— 在连接构造期折叠
 
@@ -183,7 +185,7 @@ resolver 的后台 watch [pool.go:137-140]。
 
 ```
 用户拦截器（先注册的在外）
-  → observe 层（span + 时延指标 + 访问日志）
+  → 声明层（把命令的语义身份挂到 ctx 上）
     → resilience executor（熔断/限流/重试/超时）
       → 内层 Do 调用 → Redis
 ```
@@ -203,15 +205,17 @@ bean Init 里注册。
 ### 2.3 一条命令逐层走读：命中场景的 `DoContext(ctx, "GET", "key")`
 
 1. 你的拦截器（若有）先跑；可改写或短路。
-2. observe 层开名为 `get` 的 span，参数摘要是 `GET key`（只记命令+首个参数——值永不入日志；
-   截断到 512 字节 [observe.go]）。ctx 是**调用方**的 context，span 因此挂到请求
+2. 声明层把命令的语义身份挂到 ctx：span 名为 `GET`，标签 `db.system`/`db.operation`，参数摘要
+   `GET key` 作为 `db.statement`（只记命令+首个参数——值永不入日志；截断到 512 字节 [observe.go]）。
+   key 只走 span/日志、永不进指标标签，因为它无界。ctx 是**调用方**的 context，span 因此挂到请求
    trace 上，attempt-timeout 也能打断调用。
 3. resilience 层向 executor（service 标签 `redigo:<地址或服务名>`，按池
    [pool.go:190]）申请许可；可重试失败会重新驱动内层调用。
 4. 内层 `Do` 读写 Redis；命中返回 bulk string。
 5. `redis.ErrNil`（miss）经 nil-as-success 谓词判为成功 [conn.go:201-204]——
    **miss 永不触发熔断**。
-6. span 结束；访问日志记录（tag `_app_redigo_access`）带时延/状态输出。
+6. resilience 层发射：span 结束，`db.client.operation.duration`（整次调用）与 `db.client.attempt.duration`
+   （每次尝试）记录，访问日志（tag `_app_redigo_access`）带时延/状态输出。
 
 `Do` / `DoWithTimeout` 不带 context：它们的 span 是根 span，attempt-timeout 打不断——
 两者任一要紧就用 `DoContext` [conn.go:74-79]。`Send`/`Flush`/`Receive`（pipeline）刻意不做
@@ -224,7 +228,7 @@ pool.Get()（你的代码）
   ├─ 有空闲连接？→ 复用（MaxConnLifetime=conn-max-lifetime 限定复用时长）
   └─ 否则 Dial：凭据/TLS/SELECT db → 设置了 service-name 时 discovery
      round-robin pool 选端点 [pool.go:104-120] → wrapConn 折叠洋葱
-  ├→ 你 Do/DoContext 命令（每条都走 用户 → observe → resilience → 网络）
+  ├→ 你 Do/DoContext 命令（每条都走 用户 → 声明 → resilience → 网络）
   └→ conn.Close()：归还空闲池（redigo 语义）
 停机：Pool.Close() —— executor、resolver watch，最后是池本身
 ```
@@ -250,7 +254,7 @@ pool.Get()（你的代码）
 | `dial-timeout` / `read-timeout` / `write-timeout` | duration | 5s / 3s / 3s | 拨号参数。 | — |
 | `conn-max-lifetime` | duration | 2m | MaxConnLifetime；较短值利于发现流量切换。 | 很大 + discovery → 老端点滞留。 |
 | `tls.*` | group | off | 客户端 TLS；key 与 starter-go-redis 对齐。 | 配一半 → tls.Build 启动报错。 |
-| `startup-ping` | bool | false | 可选启动探测：拨一条裸连接并 PING [pool.go:266-279]。⚠ 默认关——池是惰性的，坏地址要到首条命令才暴露。 | 期待 fail-fast 却没开 → 启动"成功"，首个请求失败。 |
+| `startup-ping` | bool | false | 可选启动探测：[HealthCheck] 拨一条裸连接并 PING [health.go:35-48]。⚠ 默认关——池是惰性的，坏地址要到首条命令才暴露。 | 期待 fail-fast 却没开 → 启动"成功"，首个请求失败。 |
 | `health.enabled` | bool | true | 注册 `redigo:<name>` 指示器；false 让池不卷入聚合健康。 | false → readiness 静默漏掉该池。 |
 
 **扩展点**：
@@ -273,7 +277,7 @@ pool.Get()（你的代码）
 ### 4.1 经 actuator 验证健康
 
 ```bash
-curl -s :9370/readyz            # redigo:main 借一条连接并 PING [`health.go`]
+curl -s :9370/readyz            # redigo:main 执行 HealthCheck（拨一条裸连接并 PING）[`health.go`]
 docker stop <redis>; curl -s :9370/readyz   # 503
 ```
 

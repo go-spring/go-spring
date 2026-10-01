@@ -33,7 +33,7 @@ spring.go-redis.instances.main.addr=127.0.0.1:6379
 import StarterGoRedis "go-spring.org/starter-go-redis"
 
 type Service struct {
-    Redis *StarterGoRedis.Client `autowire:"main"` // embeds redis.UniversalClient
+    Redis *StarterGoRedis.Client `autowire:"main"` // wraps redis.UniversalClient
 }
 ```
 
@@ -51,7 +51,7 @@ existing single-node configurations keep working unchanged.
 
 ### single (default)
 
-Dials one node via `addr` (or a service name via discovery). The bean type is
+Dials one node via `addr` (or a service name via discovery). The raw client is
 `*redis.Client`.
 
 ```properties
@@ -62,7 +62,7 @@ spring.go-redis.instances.cache.addr=127.0.0.1:6379
 
 ### sentinel
 
-Connects to the master group resolved through the sentinels. The bean type is
+Connects to the master group resolved through the sentinels. The raw client is
 still `*redis.Client`, so injection and the command surface are identical to
 single mode.
 
@@ -75,12 +75,14 @@ spring.go-redis.instances.cache.sentinel-addrs=127.0.0.1:26379,127.0.0.1:26380
 
 ### cluster
 
-Seeds the client with the cluster entry nodes. The bean type is
-**`*redis.ClusterClient`** — a distinct type — so inject it accordingly:
+Seeds the client with the cluster entry nodes. The raw client is a
+`*redis.ClusterClient`, but the wrapper hides that — the bean is registered as
+the same **`*redis.Client` wrapper** (`*StarterGoRedis.Client`) every other mode
+uses, so inject it the same way:
 
 ```go
 type Service struct {
-    Cluster *redis.ClusterClient `autowire:"cache"`
+    Cluster *StarterGoRedis.Client `autowire:"cache"`
 }
 ```
 
@@ -93,10 +95,14 @@ spring.go-redis.instances.cache.addrs=127.0.0.1:7000,127.0.0.1:7001,127.0.0.1:70
 # spring.go-redis.instances.cache.route-randomly=true
 ```
 
-TLS, connection-pool sizing, timeouts, OTel instrumentation, and the fail-fast
-startup `Ping` all apply to every topology. Service discovery (`service-name`)
-applies to **single mode only**: sentinel and cluster self-discover their nodes,
-so combining `service-name` with those modes is rejected at startup.
+TLS, connection-pool sizing, timeouts, OTel pool metrics, and the fail-fast
+startup `HealthCheck` all apply to every topology. The starter declares each
+command's semantic identity (`observe.go`) and the resilience layer emits the
+signals — the per-command span, the call-level and attempt-level duration
+histograms, and the access log (tag `_app_redis_access`). Service discovery
+(`service-name`) applies to **single mode only**: sentinel and cluster
+self-discover their nodes, so combining `service-name` with those modes is
+rejected at startup.
 
 See the `sentinel` and `cluster` instances in
 [app.properties](example/conf/app.properties) for a full working example, and
@@ -122,16 +128,18 @@ The [example.go](example/example.go) program demonstrates and asserts three core
 
 * **Supports multiple Redis instances**: you can define multiple Redis instances in the configuration file and reference them by name.
 * **Multiple topologies**: `mode` selects `single` (default), `sentinel`, or `cluster` — see the Topologies section
-  above. Cluster instances are exposed as `*redis.ClusterClient`; single/sentinel as `*redis.Client`.
-* **Support Redis extensions**: implement the `Driver` interface to extend Redis functionality — see the
-  example implementation `AnotherRedisDriver`. Cluster support is an optional `ClusterDriver` interface, so existing
-  custom drivers keep compiling unchanged. When several Driver beans coexist, an entry selects one by name:
+  above. Every topology registers the same wrapper bean, `*StarterGoRedis.Client`; the raw client it embeds is a
+  `*redis.Client` (single/sentinel) or a `*redis.ClusterClient` (cluster).
+* **Support Redis extensions**: implement the `Driver` interface to extend Redis functionality. `CreateClient`
+  returns the wrapper (`*StarterGoRedis.Client`), built with `NewClient`; cluster support is an optional
+  `ClusterDriver` interface, so a Driver that only builds single/sentinel clients stays valid. When several Driver
+  beans coexist, an entry selects one by name:
   `spring.go-redis.instances.<name>.driver = <bean-name>` (empty = fall back to the family-wide `spring.<family>.default.driver`, then to the single Driver bean by type; naming a missing
   bean fails startup).
-* **Startup connection validation (fail-fast)**: after building the client the starter issues a `Ping`; a misconfigured
-  address or unreachable server fails the boot instead of the first request.
-* **Health check / readiness**: the go-redis client exposes `Ping(ctx)` for readiness probes — call it straight off the
-  autowired client.
+* **Startup connection validation (fail-fast)**: after building the client the starter runs `HealthCheck` (a `Ping`);
+  a misconfigured address or unreachable server fails the boot instead of the first request.
+* **Health check / readiness**: `HealthCheck(ctx, client)` is the readiness probe — the autowired `health.Indicator`
+  delegates to it, and you can call it straight off the autowired client.
 * **Connection-pool monitoring**: `client.PoolStats()` returns live pool counters (hits, misses, total/idle conns) for
   runtime monitoring.
 * **TLS**: enable `tls.enabled` and provide `ca-file` (and `cert-file`/`key-file` for mutual TLS) to dial Redis over TLS;

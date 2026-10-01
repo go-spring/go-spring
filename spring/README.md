@@ -1115,7 +1115,7 @@ dependencies flow one way, downward:
 | 1 | `stdlib` | Zero-dependency utilities + pure semantic pieces (HTTP client/server, …) |
 | 2 | `log` | Structured logging engine |
 | 3 | `spring` | **This module**: IoC container (`gs`) + configuration engine (`conf`) — nothing else |
-| 4 | `cloud` | Ecosystem abstractions (governance, discovery, cache, …) — **container-free**, imports no spring package |
+| 4 | `cloud` | Ecosystem abstractions (governance, discovery, cache, …) — **container-free**; four packages register their own default bean through `spring/gs` (`resilience`/`loadbalance`/`fault`/`governance`) |
 | 5 | `starter` | 70+ integration modules: third-party SDKs + gs wiring |
 
 The rule of thumb: **abstractions go in `cloud`, wiring and third-party SDKs go

@@ -52,7 +52,7 @@ package transaction
 import (
 	"context"
 
-	"go-spring.org/cloud/governance/resilience"
+	"go-spring.org/cloud/resilience"
 )
 
 // RetryPolicy describes how an individual [Step] phase (action or compensation)

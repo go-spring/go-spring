@@ -14,147 +14,57 @@
  * limitations under the License.
  */
 
-// observe.go is this starter's own neo4j instrumentation: a per-operation
-// client span, the db.client.* duration/in-flight metrics, and an access
-// log riding the log package's native levels. It is deliberately local —
-// no shared observer framework — so the emitted vocabulary is all this
-// package's own.
+// observe.go declares what a neo4j operation IS. The signals themselves — the
+// span, the duration metrics, the access log — are emitted by the resilience
+// layer, the one place on the executor chain that sees a whole call (retries
+// included). This file therefore holds no emission code: only the vocabulary
+// that this starter alone knows, because only it knows these calls reach a
+// graph database over Bolt.
 package StarterNeo4j
 
 import (
-	"context"
-	"time"
-
 	"go-spring.org/cloud/observability"
 	"go-spring.org/stdlib/strutil"
 
 	"go-spring.org/log"
-	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/codes"
-	"go.opentelemetry.io/otel/metric"
-	"go.opentelemetry.io/otel/trace"
 )
 
-// tracerName names the tracer the spans open on. The tracer is looked up
-// per use (otel.Tracer at call time), never cached in a package variable: a
-// package-level otel.Tracer captured before any provider is set stops
-// forwarding once the global provider is set, unset and set again.
-const tracerName = "go-spring.org/starter-neo4j"
+// neo4jSystem is the value the family's db.system label carries for this
+// backend — the family's shared vocabulary, not a per-file choice.
+const neo4jSystem = "neo4j"
 
-// maxArg bounds the operation argument captured on span attributes and the
-// access log.
-const maxArg = 512
+// maxStatement bounds the Cypher text captured as db.statement. A query can be
+// long and a span or a log line has no use for all of it.
+const maxStatement = 512
 
-// accessTag is the static log tag for the neo4j access log.
+// accessTag is the static log tag for the neo4j access log. It is registered
+// here, at package init, because a tag must exist before the framework's first
+// property refresh — see [log.RegisterTag].
 var accessTag = log.RegisterAppTag("neo4j", "access")
 
-// tracer opens this starter's client spans through the OTel global
-// TracerProvider that starter-otel installs (a no-op when absent).
-
-// dbObserver emits the neo4j client signals for one instance: the
-// db.client.operation.duration histogram, the db.client.active_requests
-// gauge, a client span per operation, and the access log.
-type dbObserver struct {
-	system   string
-	duration metric.Float64Histogram
-	active   metric.Int64UpDownCounter
-}
-
-// newDBObserver builds the OTel instruments from whatever meter provider is
-// current — called at wiring time (Init), not at package init, so an SDK
-// installed later than this package's init still receives the records.
-
-func newDBObserver(system string) *dbObserver {
-	m := otel.Meter("go-spring.org/starter-neo4j")
-	duration, _ := m.Float64Histogram("db.client.operation.duration",
-		metric.WithDescription("Duration of "+system+" client operations"),
-		metric.WithUnit("s"),
-		metric.WithExplicitBucketBoundaries(observability.DurationBuckets()...))
-	active, _ := m.Int64UpDownCounter("db.client.active_requests",
-		metric.WithDescription("Number of in-flight "+system+" client operations"),
-		metric.WithUnit("{request}"))
-	return &dbObserver{system: system, duration: duration, active: active}
-}
-
-// Start begins one operation: it bumps the in-flight gauge, opens the client
-// span, and records the start time; the returned span's End records the
-// duration histogram, balances the gauge, ends the span, and emits the access
-// log. op names the operation (span name, db.operation); arg is the optional
-// operation argument (statement, URL path), bounded by maxArg.
-func (o *dbObserver) Start(ctx context.Context, op, arg string) (context.Context, *dbSpan) {
-	inflight := metric.WithAttributes(
-		attribute.String("db.system", o.system),
-		attribute.String("db.operation", op),
-	)
-	o.active.Add(ctx, 1, inflight)
-	attrs := []attribute.KeyValue{
-		attribute.String("db.system", o.system),
-		attribute.String("db.operation", op),
+// operation is the semantic identity of one neo4j operation.
+//
+// The Cypher text rides in Detail rather than Attrs: a query is drawn from an
+// open set, so as a metric label one would multiply the series without bound.
+// Detail reaches the span and the log — where the statement is exactly what
+// makes a line worth reading — and never a label. An operation with no Cypher
+// (a connectivity-shaped call) carries no detail at all, which is also what
+// levelled its success log at Info.
+func operation(op, summary string) observability.Operation {
+	o := observability.Operation{
+		Name:   op,
+		Metric: "db.client",
+		Attrs: []attribute.KeyValue{
+			attribute.String("db.system", neo4jSystem),
+			attribute.String("db.operation", op),
+		},
+		LogTag: accessTag,
 	}
-	if arg != "" {
-		attrs = append(attrs, attribute.String("db.statement", strutil.Truncate(arg, maxArg)))
-	}
-	ctx, span := otel.Tracer(tracerName).Start(ctx, op,
-		trace.WithSpanKind(trace.SpanKindClient),
-		trace.WithAttributes(attrs...))
-	return ctx, &dbSpan{o: o, ctx: ctx, span: span, op: op, arg: arg, start: time.Now(), inflight: inflight}
-}
-
-// dbSpan is the handle returned by dbObserver.Start; End must be called
-// exactly once.
-type dbSpan struct {
-	o        *dbObserver
-	ctx      context.Context
-	span     trace.Span
-	op       string
-	arg      string
-	start    time.Time
-	inflight metric.MeasurementOption
-}
-
-// End records the operation's outcome: the duration histogram, the in-flight
-// gauge balance, the span (with err, if any), and the access log — an error
-// at Warn, a success carrying an operation argument at Debug, a plain
-// success at Info.
-func (s *dbSpan) End(err error) {
-	o := s.o
-	dur := time.Since(s.start)
-	status := "ok"
-	if err != nil {
-		status = "error"
-	}
-	o.duration.Record(s.ctx, dur.Seconds(), metric.WithAttributes(
-		attribute.String("db.system", o.system),
-		attribute.String("db.operation", s.op),
-		attribute.String("status", status),
-	))
-	o.active.Add(s.ctx, -1, s.inflight)
-	if s.span != nil {
-		if err != nil {
-			s.span.SetStatus(codes.Error, err.Error())
-			s.span.RecordError(err)
+	if summary != "" {
+		o.Detail = []attribute.KeyValue{
+			attribute.String("db.statement", strutil.Truncate(summary, maxStatement)),
 		}
-		s.span.End()
 	}
-
-	common := func() []log.Field {
-		fields := []log.Field{
-			log.String("db.operation", s.op),
-			log.String("status", status),
-			log.Float("duration_ms", float64(dur.Nanoseconds())/1e6),
-		}
-		if s.arg != "" {
-			fields = append(fields, log.String("db.statement", strutil.Truncate(s.arg, maxArg)))
-		}
-		return fields
-	}
-	switch {
-	case err != nil:
-		log.Warn(s.ctx, accessTag, append(common(), log.Err(err))...)
-	case s.arg != "":
-		log.Debug(s.ctx, accessTag, common)
-	default:
-		log.Info(s.ctx, accessTag, common()...)
-	}
+	return o
 }

@@ -20,24 +20,22 @@ import (
 	"context"
 	"math"
 
-	"go-spring.org/cloud/governance/fault"
-	"go-spring.org/cloud/governance/traffic"
+	"go-spring.org/cloud/fault"
+	"go-spring.org/cloud/traffic"
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
+	"go-spring.org/starter-trpc/internal/logger"
 	"go-spring.org/stdlib/errutil"
 	"go-spring.org/stdlib/netutil"
 	trpc "trpc.group/trpc-go/trpc-go"
 	"trpc.group/trpc-go/trpc-go/filter"
 	"trpc.group/trpc-go/trpc-go/server"
-
-	// Side-effect import: installs the tRPC -> go-spring log bridge (see
-	// internal/logger). The bridge self-installs via init(), so no symbols are
-	// referenced here - importing this package is what redirects tRPC's own
-	// logs into the application's go-spring log pipeline.
-	_ "go-spring.org/starter-trpc/internal/logger"
 )
 
 func init() {
+	// Route tRPC's own logs into the go-spring pipeline before any framework call.
+	logger.Install()
+
 	gs.Provide(
 		NewSimpleTrpcServer,
 		gs.IndexArg(0, gs.TagArg("${spring.trpc.server}")),

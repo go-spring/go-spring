@@ -21,7 +21,6 @@ import (
 
 	"go-spring.org/cloud/discovery"
 	"go-spring.org/cloud/loadbalance"
-	"go-spring.org/spring/gs"
 )
 
 // LuohuaZone is the company's preferred data-center zone, used as the default
@@ -32,16 +31,6 @@ const LuohuaZone = "cn-luohua"
 // luohuaStrategy is the bean name the company's balancer answers to: a rule
 // selects it with `balancer: luohua`.
 const luohuaStrategy = "luohua"
-
-func init() {
-	// Contributing the company Balancer as a NAMED Factory bean is the whole
-	// extension — no change to cloud/loadbalance. The bean name IS the strategy
-	// name a selection rule cites, and the Export is what makes the bean visible
-	// to the governance wiring's directory map.
-	gs.Provide(func() loadbalance.Factory { return luohuaFactory{} }).
-		Name(luohuaStrategy).
-		Export(gs.As[loadbalance.Factory]()).Caller(1)
-}
 
 // luohuaFactory builds the company's zone-affine [loadbalance.Balancer]. Its
 // only parameter is the preferred zone, so a deployment can pin a service to a

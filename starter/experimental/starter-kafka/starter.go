@@ -23,10 +23,11 @@ import (
 	"time"
 
 	"github.com/twmb/franz-go/pkg/kgo"
-	"go-spring.org/cloud/governance/fault"
-	"go-spring.org/cloud/governance/resilience"
-	"go-spring.org/cloud/governance/traffic"
+	"go-spring.org/cloud"
+	"go-spring.org/cloud/fault"
 	"go-spring.org/cloud/messaging"
+	"go-spring.org/cloud/resilience"
+	"go-spring.org/cloud/traffic"
 	"go-spring.org/log"
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/gs"
@@ -49,9 +50,10 @@ func init() {
 				gs.IndexArg(1, gs.ValueArg(name)),
 				gs.IndexArg(2, gs.ValueArg(c)),
 				gs.IndexArg(3, gs.TagArg("${spring.kafka.instances."+name+".driver:=${spring.kafka.default.driver:=?}}")),
-				// The governance beans are REQUIRED: this starter blank-imports
-				// starter-governance, so "governance off" is spring.governance.enabled=false,
-				// never an absent bean.
+				// The governance beans are REQUIRED: each is registered by the package that
+				// owns it (cloud/resilience, cloud/loadbalance, cloud/fault), which this
+				// starter imports — "governance off" is spring.governance.enabled=false, never
+				// an absent bean.
 				gs.IndexArg(4, gs.TagArg("")), // *resilience.Manager
 				gs.IndexArg(5, gs.TagArg("")), // *fault.Injector
 			).Name(name).Destroy(destroyClient).Caller(1)
@@ -75,18 +77,23 @@ func init() {
 const pingTimeout = 10 * time.Second
 
 // newClient creates a Kafka client by dispatching to an optional Driver bean,
-// which owns full client assembly (hooks, SASL, TLS, producer options); when no
-// such bean exists the bundled DefaultDriver is used. The kotel hooks emit
-// producer/consumer spans and client metrics through the OTel globals that
-// starter-otel installs; when starter-otel is absent those globals are no-ops,
-// so this stays a zero-config opt-in that needs no per-component adaptation.
+// which owns full client assembly (hooks, SASL, TLS, producer options) and,
+// last of all, attaches the governance bundle — so the client it returns is
+// complete. When no such bean exists the bundled DefaultDriver is used. The
+// kotel hooks emit producer/consumer spans and client metrics through the OTel
+// globals that starter-otel installs; when starter-otel is absent those globals
+// are no-ops, so this stays a zero-config opt-in that needs no per-component
+// adaptation.
 //
-// After the client is built it is pinged so a misconfigured broker list, bad
-// credentials or TLS mismatch fail fast at startup instead of surfacing on the
-// first produce/consume, then the resilience executor is attached.
+// Assembly happens in one place and one order: the driver builds and completes
+// the client (governance attached inside it), and only then is it pinged, so a
+// misconfigured broker list, bad credentials or TLS mismatch fail fast at
+// startup instead of surfacing on the first produce/consume. A failed ping
+// releases the executor the driver attached before abandoning the client.
 //
-// mgr and inj are the governance beans gs injects (both nil in a standalone
-// call); applyResilience builds the guard from them.
+// mgr and inj are the governance beans gs injects; they are bundled into the
+// [cloud.ClientParams] handed to the driver, which applies them while
+// building.
 func newClient(ctx *gs.ContextProvider, name string, c Config, d Driver,
 	mgr *resilience.Manager, inj *fault.Injector) (*kgo.Client, error) {
 	log.Debugf(ctx.Context, log.TagAppDef, "creating kafka client, brokers=%s group=%s topic=%s", c.Brokers, c.Group, c.Topic)
@@ -95,23 +102,24 @@ func newClient(ctx *gs.ContextProvider, name string, c Config, d Driver,
 	if d == nil {
 		d = DefaultDriver{}
 	}
-	cl, err := d.CreateClient(ctx.Context, c)
+	cl, err := d.CreateClient(ctx.Context, c, cloud.ClientParams{Resilience: mgr, Fault: inj})
 	if err != nil {
 		log.Errorf(ctx.Context, log.TagAppDef, "kafka: create client failed: %v", err)
 		return nil, errutil.Explain(err, "failed to create kafka client: %s", c.Brokers)
 	}
 
+	// The driver returned the client complete — governance attached while it was
+	// built. Then probe connectivity. The probe goes straight to the raw client
+	// on purpose: it is a connectivity check, not business traffic, so it must
+	// not spend limiter/breaker budget. A failure abandons the client, so release
+	// the executor the driver attached.
 	pingCtx, cancel := context.WithTimeout(ctx.Context, pingTimeout)
 	defer cancel()
 	if err = cl.Ping(pingCtx); err != nil {
 		log.Errorf(ctx.Context, log.TagAppDef, "kafka: ping failed: %v", err)
+		closeResilience(cl)
 		cl.Close()
 		return nil, errutil.Explain(err, "failed to ping kafka: %s", c.Brokers)
-	}
-	if err := applyResilience(cl, resilience.ServiceLabel("kafka", c.Brokers), mgr, inj); err != nil {
-		log.Errorf(ctx.Context, log.TagAppDef, "kafka: resilience setup failed: %v", err)
-		cl.Close()
-		return nil, err
 	}
 	log.Infof(ctx.Context, log.TagAppDef, "kafka client initialized, brokers=%s", c.Brokers)
 	return cl, nil

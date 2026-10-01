@@ -10,8 +10,9 @@ be released on shutdown.
 
 ## 1. Responsibilities & Boundaries
 
-- Binds each `spring.bigcache.instances.<name>` entry to a
-  `*bigcache.BigCache` bean via `gs.Module`. No single-instance default
+- Binds each `spring.bigcache.instances.<name>` entry to a `*Cache`
+  wrapper bean via `gs.Module` (the raw `*bigcache.BigCache` is an
+  unexported field of the wrapper). No single-instance default
   (see `project_client_starter_multiinstance`).
 - Additionally provides a `cache.Cache` bean named `bigcache:<name>` per
   instance, so callers using that abstraction — including `cloud/cache`'s

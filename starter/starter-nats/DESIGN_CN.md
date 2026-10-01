@@ -11,9 +11,9 @@ NATS 同一连接同时承载 core + JetStream 两套 API。
 - 用 `gs.Group` 把 `spring.nats.instances.<name>` 每条绑到 `*Conn` bean；
   不做默认单实例（本仓库 client 类 starter 一律仅多实例，见
   `project_starter_capability_backlog`）。
-- `Conn` 内嵌 `*nats.Conn`，调用方仍能直接在 bean 上用
-  `Publish` / `Subscribe` / `Request`；`JetStream` 只有在
-  `jetstream.enabled=true` 时非 nil，且从同一连接派生。
+- `Conn` 以未导出字段持有原生 `*nats.Conn`，并以显式委托重新导出其方法
+  （`Publish` / `Subscribe` / `Request` 等），调用方仍能直接在 bean 上用；
+  `JetStream` 只有在 `jetstream.enabled=true` 时非 nil，且从同一连接派生。
 - 把连接事件（async 错误、disconnect、reconnect、close）桥接进 go-spring
   `log`，与业务日志一起落盘。
 - 可选地挂 resilience executor（限流 + 熔断）作为可选的
@@ -25,9 +25,9 @@ NATS 同一连接同时承载 core + JetStream 两套 API。
 - **bean = 包装，非原始 `*nats.Conn`。** 包装同时承载可选 JetStream 上下文
   与 resilience executor，让调用方不用同时 autowire 两个 bean 再自行判断
   关系。
-- **`Healthy()` 反映实时状态。** 包装返回 `Conn.IsConnected()`，并在其之上按实例注册
-  一个 `health.Indicator`（`nats:<name>`，可用 `health.enabled` 关掉），让
-  actuator 就绪探针看到自动重连客户端的实时状态，而不是启动期的旧成功值。
+- **`HealthCheck` 反映实时状态。** `StarterNats.HealthCheck` 返回裸连接的 `IsConnected()`，
+  并在其之上按实例注册一个 `health.Indicator`（`nats:<name>`，可用 `health.enabled` 关掉），
+  其探针只调用该函数，让 actuator 就绪探针看到自动重连客户端的实时状态，而不是启动期的旧成功值。
 - **`destroy = Drain`，不是 `Close`。** `Drain` 让 in-flight 订阅完成再关
   连接，符合框架优雅关停契约。
 - **service key 按实例而非按 subject。** resilience executor 的

@@ -21,8 +21,9 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
-	"go-spring.org/cloud/governance/resilience"
+	"go-spring.org/cloud/resilience"
 )
 
 // stubServerExecutor is an Executor whose outcome the test dictates. reject
@@ -69,6 +70,48 @@ func serveServerPolicy(t *testing.T, exec *stubServerExecutor, handler http.Hand
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/x", nil))
 	return rec, handlerRuns
+}
+
+// TestAdmission_BoundsHandlerByCallersBudget proves the receiving half of a
+// budget-carrying hop: a request that arrives with a remaining-budget header
+// reaches the handler under a context bounded by it, so the handler — and any
+// outbound call it makes — cannot outlive the caller's allowance.
+func TestAdmission_BoundsHandlerByCallersBudget(t *testing.T) {
+	exec := &stubServerExecutor{}
+	var hadDeadline bool
+	var remaining time.Duration
+	mw := admissionWith(exec, "http-server::9090")
+	h := mw(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		d, ok := r.Context().Deadline()
+		hadDeadline, remaining = ok, time.Until(d)
+	}))
+
+	req := httptest.NewRequest(http.MethodGet, "/x", nil)
+	req.Header.Set(resilience.BudgetHeader, "50")
+	h.ServeHTTP(httptest.NewRecorder(), req)
+
+	if !hadDeadline {
+		t.Fatal("handler ran with no deadline: the caller's budget was not applied")
+	}
+	if remaining > 50*time.Millisecond {
+		t.Fatalf("handler deadline %v exceeds the budget the caller sent (50ms)", remaining)
+	}
+}
+
+// TestAdmission_NoBudgetHeaderLeavesContextAlone proves a request that carries no
+// budget is not given one: a server invents no deadline it was not asked for.
+func TestAdmission_NoBudgetHeaderLeavesContextAlone(t *testing.T) {
+	exec := &stubServerExecutor{}
+	var hadDeadline bool
+	mw := admissionWith(exec, "http-server::9090")
+	h := mw(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		_, hadDeadline = r.Context().Deadline()
+	}))
+	h.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/x", nil))
+
+	if hadDeadline {
+		t.Fatal("handler ran with a deadline the caller never sent")
+	}
 }
 
 func TestAdmission_PassThroughRunsHandlerOnce(t *testing.T) {

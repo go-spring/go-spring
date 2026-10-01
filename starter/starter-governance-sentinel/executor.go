@@ -29,7 +29,7 @@ import (
 	"github.com/alibaba/sentinel-golang/core/flow"
 	"github.com/alibaba/sentinel-golang/core/isolation"
 
-	"go-spring.org/cloud/governance/resilience"
+	"go-spring.org/cloud/resilience"
 )
 
 // sentinelExecutor maps a backend-neutral resilience.ClientPolicy onto sentinel-golang
@@ -262,7 +262,7 @@ func (e *sentinelExecutor) Close() error { return nil }
 
 // mapBlockError translates sentinel's block reason into the framework's neutral
 // sentinel errors so callers depend only on
-// go-spring.org/cloud/governance/resilience.
+// go-spring.org/cloud/resilience.
 func mapBlockError(b *base.BlockError) error {
 	switch b.BlockType() {
 	case base.BlockTypeCircuitBreaking:

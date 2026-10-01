@@ -71,7 +71,7 @@ type watchManager struct {
 // ensureWatch starts a namespaced, name-scoped informer on the target object
 // and triggers a full property refresh on every add/update/delete.
 func (c *k8sCtrl) ensureWatch(client k8sClient, cs configSource) {
-	id := fmt.Sprintf("%s/%s/%s", cs.kind, cs.namespace, cs.name)
+	id := fmt.Sprintf("%s/%s/%s", cs.kind, cs.namespace, cs.objectName)
 
 	c.manager.mu.Lock()
 	if _, ok := c.manager.watched[id]; ok {
@@ -86,7 +86,7 @@ func (c *k8sCtrl) ensureWatch(client k8sClient, cs configSource) {
 		0, // event-driven only; no periodic resync needed for a single object
 		informers.WithNamespace(cs.namespace),
 		informers.WithTweakListOptions(func(opts *metav1.ListOptions) {
-			opts.FieldSelector = "metadata.name=" + cs.name
+			opts.FieldSelector = "metadata.name=" + cs.objectName
 		}),
 	)
 

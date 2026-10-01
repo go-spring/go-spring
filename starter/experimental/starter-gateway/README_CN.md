@@ -14,7 +14,7 @@
 让网关宕机。
 
 上游分为**直连**（`http(s)://host:port`）与**服务发现**（`lb://<service>`）两类，后者复用
-`cloud/discovery` + `cloud/loadbalance`。转发经由 `cloud/governance/resilience` 完成重试／熔断／
+`cloud/discovery` + `cloud/loadbalance`。转发经由 `cloud/resilience` 完成重试／熔断／
 限流。网关自身的指标是 OTel instrument（`gateway.requests`、`gateway.active_requests`、
 `gateway.route_reload_errors`），因此走应用配置的那条管道 —— starter-otel 的 Prometheus
 exporter 会把它们和其他组件一起暴露在 actuator 的 `/metrics` 上。

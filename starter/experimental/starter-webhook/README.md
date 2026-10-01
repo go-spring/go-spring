@@ -7,7 +7,8 @@ third-party dependencies: multi-instance webhook notifiers that POST a
 notification in the receiver's own payload format — generic JSON,
 DingTalk (钉钉), Feishu (飞书), WeCom (企业微信) or Slack — with optional
 HMAC signing, per-send resilience (rate limit / circuit breaking / fault
-injection) and OTel spans. Pair it with `starter-mail` for email delivery.
+injection) and per-delivery observability. Pair it with `starter-mail` for
+email delivery.
 
 ## Installation
 
@@ -74,10 +75,16 @@ is the body. Non-2xx answers (and vendor error bodies) surface as errors.
   or the Feishu signature automatically.
 - **Resilience** — every Send routes through the governance executor
   (`webhook:<name>:<channel>`), so a flapping endpoint gets circuit-broken
-  instead of piling up. With `starter-governance` absent this is a
-  transparent pass-through.
-- **Observability** — per-send access log through the observe kit, plus OTel
-  spans (`webhook.send`) riding the globals installed by `starter-otel`.
+  instead of piling up. With no governance center linked this degrades to an
+  observed-only, unmanaged executor (it warns once per client).
+- **Observability** — each Send **declares** its semantic identity (span
+  `webhook.send`; metric prefix `messaging.client`; bounded labels
+  `messaging.system`, `messaging.operation`, `webhook.channel`) and routes
+  through the resilience executor, whose observe layer is the single
+  **emitter**: the span, the `messaging.client.operation.duration` and
+  `messaging.client.attempt.duration` histograms and one access log per
+  delivery. The starter emits nothing itself. With `starter-otel` absent the
+  OTel globals are no-ops.
 - **Stateless by design** — no connections held, no health indicator, no
   destroy hook; see DESIGN for why there is no startup probe.
 

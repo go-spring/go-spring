@@ -24,27 +24,18 @@
 package StarterRedigo
 
 import (
+	"go-spring.org/cloud"
 	"go-spring.org/cloud/actuator/health"
 	"go-spring.org/cloud/cache"
 	"go-spring.org/cloud/discovery"
-	"go-spring.org/cloud/governance/fault"
-	"go-spring.org/cloud/governance/resilience"
+	"go-spring.org/cloud/fault"
 	"go-spring.org/cloud/loadbalance"
+	"go-spring.org/cloud/resilience"
 	"go-spring.org/log"
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
 	"go-spring.org/stdlib/flatten"
-
-	// Blank import: importing this starter brings the governance authority with
-	// it. starter-governance registers the four beans this file injects
-	// (*resilience.Manager, *loadbalance.Manager, *fault.Injector, *governance.
-	// Center), so a deployment gets governance wiring by importing a client
-	// starter alone; turning governance OFF is spring.governance.enabled=false (or binding
-	// no rule source), not the absence of the starter. The injected parameters
-	// are still nullable, so a container that somehow lacks these beans degrades
-	// to a transparent pass-through instead of failing to boot.
-	_ "go-spring.org/starter-governance"
 )
 
 func init() {
@@ -70,9 +61,10 @@ func init() {
 				gs.IndexArg(1, gs.ValueArg(c)),
 				gs.IndexArg(2, gs.TagArg("${spring.redigo.instances."+name+".driver:=${spring.redigo.default.driver:=?}}")),
 				gs.IndexArg(3, gs.TagArg("${spring.redigo.instances."+name+".discovery:=${spring.redigo.default.discovery:=none}}?")),
-				// The governance beans are REQUIRED: this starter blank-imports
-				// starter-governance, so "governance off" is spring.governance.enabled=false,
-				// never an absent bean.
+				// The governance beans are REQUIRED: each is registered by the package that
+				// owns it (cloud/resilience, cloud/loadbalance, cloud/fault), which this
+				// starter imports — "governance off" is spring.governance.enabled=false, never
+				// an absent bean.
 				gs.IndexArg(4, gs.TagArg("")),
 				gs.IndexArg(5, gs.TagArg("")),
 				gs.IndexArg(6, gs.TagArg("")),
@@ -83,7 +75,7 @@ func init() {
 			// registered above by name.
 			if c.HealthEnabled {
 				r.Provide(func(w *Pool) *health.Indicator {
-					return NewPoolHealth(name, w.Pool)
+					return NewClientHealth(name, w)
 				}, gs.TagArg(name)).Name("redigo:" + name)
 			}
 			// Expose this instance as a cache.Cache (the adapter lives in
@@ -102,12 +94,20 @@ func init() {
 // optional pool-assembly Driver bean, or the bundled DefaultDriver when a
 // company provides none — which owns the full assembly (the bundled
 // DefaultDriver delegates to [NewPool]) — and authoritatively re-attaches cfg
-// (custom out-of-package drivers cannot set unexported fields). The Driver's
-// returned Pool is fully armed; see [NewPool] and the Driver interface doc for
-// the assembly contract and the two customization shapes.
+// (custom out-of-package drivers cannot set unexported fields). The Driver
+// returns the Pool complete: identity and governance are both applied while it
+// is built, so nothing runs after this returns. See [NewPool] and the Driver
+// interface doc for the assembly contract and the two customization shapes.
 //
 // disc is the discovery backend bean cited by the entry's ${discovery} label
 // (nil when the key is unset or the entry dials a static Addr).
+//
+// mgr, inj and lbMgr are the governance beans the container injects; the ctor
+// bundles them into the [cloud.ClientParams] it hands the driver, which applies
+// it in the constructor. Loadbalance is included because this starter
+// binds endpoint selection through the shared machinery. The beans are nil in a
+// standalone (non-gs) call, and the zero bundle degrades to an observed-only,
+// loudly-unmanaged executor rather than failing.
 func createPool(ctx *gs.ContextProvider, c Config, d Driver, disc discovery.Discovery, mgr *resilience.Manager, inj *fault.Injector, lbMgr *loadbalance.Manager) (*Pool, error) {
 
 	log.Debugf(ctx.Context, log.TagAppDef, "creating redigo client, addr=%s service-name=%s", c.Addr, c.ServiceName)
@@ -134,8 +134,12 @@ func createPool(ctx *gs.ContextProvider, c Config, d Driver, disc discovery.Disc
 
 	// d owns pool assembly. It returns the wrapped Pool (NOT the raw
 	// *redis.Pool): it may customize the wrapper itself, and downstream
-	// consumers uniformly deal in the project's type.
-	w, err := d.CreateClient(ctx.Context, c, disc)
+	// consumers uniformly deal in the project's type. Governance rides the
+	// Governance bundle into the driver, so the pool is assembled complete — a
+	// custom Driver's pool is governed too, without the Driver having to know
+	// where the beans came from.
+	w, err := d.CreateClient(ctx.Context, c,
+		cloud.ClientParams{Resilience: mgr, Fault: inj, Loadbalance: lbMgr, Discovery: disc})
 	if err != nil {
 		log.Errorf(ctx.Context, log.TagAppDef, "redigo: create client failed: %v", err)
 		return nil, errutil.Explain(err, "failed to create redis client")
@@ -145,27 +149,19 @@ func createPool(ctx *gs.ContextProvider, c Config, d Driver, disc discovery.Disc
 	}
 	w.cfg = c
 
-	// Arm governance on the driver's pool. It runs here, not inside the driver,
-	// so a custom Driver's pool is governed too — without the Driver interface
-	// carrying a dependency on cloud/governance. The beans are injected into this
-	// bean's constructor and are nil in a standalone (non-gs) call, which
-	// ArmGovernance treats as "governance off".
-	if err := w.ArmGovernance(mgr, inj, lbMgr); err != nil {
-		_ = w.Close()
-		return nil, err
-	}
-
 	// Fail fast (opt-in): the redigo pool dials lazily, so when StartupPing is
-	// set, dial one connection directly and PING it at startup. A misconfigured
-	// address or unreachable server then surfaces during boot rather than on
-	// the first request. The pool is already assembled at this point, so the
-	// ping runs through the command chain (span et al.) — a harmless, even
-	// useful, first blip. See startupPing for why it dials directly instead of
-	// via pool.Get.
+	// set, probe the target once at startup. A misconfigured address or
+	// unreachable server then surfaces during boot rather than on the first
+	// request. The probe is [HealthCheck] — the same single health
+	// implementation the Actuator indicator uses — which dials one connection
+	// directly (see its doc for why it dials instead of using pool.Get). The
+	// pool is already assembled at this point, so the ping runs through the
+	// command chain (span et al.) — a harmless, even useful, first blip.
 	if c.StartupPing {
-		if err := startupPing(ctx.Context, w.Pool); err != nil {
+		if err := HealthCheck(ctx.Context, w); err != nil {
+			log.Errorf(ctx.Context, log.TagAppDef, "redigo: startup ping failed: %v", err)
 			_ = w.Close() // stop resolver watch + close pool
-			return nil, err
+			return nil, errutil.Explain(err, "redis: startup ping failed")
 		}
 	}
 

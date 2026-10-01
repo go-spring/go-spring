@@ -16,9 +16,10 @@
 
 // Package main is the observability example for starter-go-redis.
 //
-// It runs Redis SET/GET operations through a redisotel-instrumented client,
-// verifies client spans reach Jaeger, then self-exits. Traces are exported
-// via OTLP/gRPC to Jaeger (docker-compose).
+// It runs Redis SET/GET operations through the client, verifies the per-command
+// spans the resilience layer emits reach Jaeger, then self-exits. (The starter
+// itself only declares each command's identity; redisotel supplies the pool
+// metrics.) Traces are exported via OTLP/gRPC to Jaeger (docker-compose).
 //
 // Run with -manual to keep the server running for interactive exploration.
 package main
@@ -72,7 +73,7 @@ func main() {
 func runTest(s *Service) {
 	ctx := context.Background()
 
-	// Generate traffic — Redis SET/GET to produce client spans.
+	// Generate traffic — Redis SET/GET to produce per-command spans.
 	for i := 0; i < 20; i++ {
 		if _, err := s.Redis.Set(ctx, "otel-key", "otel-value", 0).Result(); err != nil {
 			log.Errorf(ctx, log.TagAppDef, "SET failed: %v", err)

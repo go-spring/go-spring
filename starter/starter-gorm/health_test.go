@@ -32,7 +32,7 @@ func TestGormHealth(t *testing.T) {
 	assert.Error(t, err).Nil("open")
 	defer func() { _ = ok.Destroy() }()
 
-	ind := NewGormHealth("gorm:fake:", "main", ok.DB)
+	ind := NewClientHealth("gorm:fake:", "main", ok)
 	if ind.Name != "gorm:fake:main" {
 		t.Fatalf("indicator name: want gorm:fake:main, got %s", ind.Name)
 	}
@@ -47,7 +47,7 @@ func TestGormHealth(t *testing.T) {
 	if err := closed.Destroy(); err != nil {
 		t.Fatalf("destroy: %v", err)
 	}
-	ind2 := NewGormHealth("gorm:fake:", "closed", closed.DB)
+	ind2 := NewClientHealth("gorm:fake:", "closed", closed)
 	if err := ind2.Probe(context.Background()); err == nil {
 		t.Fatal("closed pool must check DOWN")
 	}

@@ -29,8 +29,7 @@ import (
 	"github.com/twmb/franz-go/pkg/kgo"
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
-
-	_ "go-spring.org/starter-kafka"
+	StarterKafka "go-spring.org/starter-kafka"
 )
 
 const topic = "hello"
@@ -65,12 +64,18 @@ func main() {
 }
 
 // publish sends a single record to the topic and waits for the broker ack.
+// GuardedProduceSync is the guarded produce entry point: the record's publish
+// declaration and the client's resilience guard both live there, so the call is
+// rate-limited/retried and shows up in the messaging.* metrics and access log.
 func (s *Service) publish(ctx context.Context, value string) error {
 	rec := &kgo.Record{Topic: topic, Value: []byte(value)}
-	return s.Client.ProduceSync(ctx, rec).FirstErr()
+	return StarterKafka.GuardedProduceSync(ctx, s.Client, rec).FirstErr()
 }
 
 // consume polls one batch of fetches and returns the first record's value.
+// Each record is handled through GuardedConsume — the consume counterpart of
+// GuardedProduceSync — so a caller-owned poll loop keeps the same guard, metrics
+// and access log the driver's own subscriber has.
 func (s *Service) consume(ctx context.Context) (string, error) {
 	fetches := s.Client.PollFetches(ctx)
 	if err := fetches.Err(); err != nil {
@@ -78,9 +83,12 @@ func (s *Service) consume(ctx context.Context) (string, error) {
 	}
 	var body string
 	fetches.EachRecord(func(r *kgo.Record) {
-		if body == "" {
-			body = string(r.Value)
-		}
+		_ = StarterKafka.GuardedConsume(ctx, s.Client, r, func(context.Context) error {
+			if body == "" {
+				body = string(r.Value)
+			}
+			return nil
+		})
 	})
 	return body, nil
 }

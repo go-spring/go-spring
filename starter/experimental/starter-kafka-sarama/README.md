@@ -78,28 +78,54 @@ fmt.Println(string(msg.Value))
 
 ## Observability
 
-Distributed tracing is available through native OTel helpers that ride the
-global `TracerProvider` and propagator installed by
-[starter-otel](../../starter-otel). Without starter-otel they are no-ops and change
-no message bytes, so instrumenting your code is a safe, zero-config opt-in.
+This starter **declares** what each publish and consume is; it does not emit
+anything itself. The signals — the span, the duration metrics, the access log —
+are emitted by the resilience layer (see
+[governance](../../cloud/resilience)), the single point on the
+executor chain that sees a whole call, retries included. It rides the global
+`TracerProvider` and propagator installed by
+[starter-otel](../../starter-otel); without starter-otel they are no-ops and
+change no message bytes, so instrumenting your code is a safe, zero-config
+opt-in.
 
 ```go
 import starter "go-spring.org/starter-kafka-sarama"
 
 // prop is the process's traffic.Propagator; nil means the default convention.
-// Producer: start a span and inject W3C trace context into the record headers.
+// Producer: wrap the derived SyncProducer. The wrapper declares the publish,
+// injects W3C trace context into the record headers and routes the send through
+// the resilience executor, which emits the span, metrics and access log.
+producer, _ := sarama.NewSyncProducerFromClient(s.Client)
+producer = starter.WrapSyncProducer(s.Client, producer, prop)
 msg := &sarama.ProducerMessage{Topic: "hello", Value: sarama.StringEncoder("v")}
-_, span := starter.StartProducerSpan(ctx, msg, prop)
 _, _, err := producer.SendMessage(msg)
-starter.EndSpan(span, err)
 
-// Consumer: continue the trace carried in the record headers.
-ctx, span := starter.StartConsumerSpan(ctx, msg, prop)
-err := handle(ctx, msg)
-starter.EndSpan(span, err)
+// Consumer: run each received message through Consume. It continues the trace
+// carried in the record headers and runs the handler under the executor, which
+// emits the consume observation.
+select {
+case msg := <-pc.Messages():
+    err := starter.Consume(ctx, s.Client, msg, prop, func(ctx context.Context) error {
+        return handle(ctx, msg)
+    })
+}
 ```
 
-Why call-site helpers instead of a wrapped producer/consumer:
+**Declared signals.** The operation is declared with
+`observability.WithOperation`; the resilience layer then emits, under the
+`messaging.client` prefix:
+
+* `messaging.client.operation.duration` — one record per call (retries and
+  backoff included), labelled `messaging.system` / `messaging.operation` /
+  `status`;
+* `messaging.client.attempt.duration` — one record per downstream attempt, so
+  the broker's own latency is separate from what retrying cost the caller;
+* `messaging.client.active_requests` — in-flight calls;
+* the span (named `publish` / `consume`) and one access log per call under the
+  `kafka` access tag. The topic rides in the span and the log
+  (`messaging.destination.name`) but never as a metric label — it is unbounded.
+
+Why call-site seams instead of a wrapped producer/consumer:
 
 * The only official OTel instrumentation for sarama, `otelsarama`, is
   **deprecated** and still pinned to the abandoned `github.com/Shopify/sarama`
@@ -107,9 +133,10 @@ Why call-site helpers instead of a wrapped producer/consumer:
   types, so `otelsarama.WrapSyncProducer` cannot wrap an IBM producer and pulling
   it in would drag a second, conflicting sarama fork into the build.
 * `sarama.SyncProducer.SendMessage` takes no `context.Context`, so a producer
-  *wrapper* has nowhere to receive request-scoped context from and could only
-  emit disconnected root spans. Passing `ctx` explicitly at the call site is what
-  lets traces link across services.
+  *wrapper* has nowhere to receive request-scoped context from. `WrapSyncProducer`
+  therefore derives the operation from the message the send carries, and the
+  publish span is a new root; the trace context shipped in the record headers is
+  what links the two sides.
 
 **Metrics**: sarama emits metrics through its own `go-metrics` registry
 (`sarama.Config.MetricRegistry`), a system unrelated to OTel/Prometheus. Bridging

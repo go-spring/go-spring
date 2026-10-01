@@ -20,32 +20,12 @@ import (
 	"context"
 	"sync/atomic"
 
-	"dubbo.apache.org/dubbo-go/v3/common/extension"
 	"dubbo.apache.org/dubbo-go/v3/filter"
 	"dubbo.apache.org/dubbo-go/v3/protocol/base"
 	"dubbo.apache.org/dubbo-go/v3/protocol/result"
-	"go-spring.org/cloud/governance/traffic"
 	"go-spring.org/cloud/propagate"
-	"go-spring.org/spring/gs"
+	"go-spring.org/cloud/traffic"
 )
-
-func init() {
-	// Register the load-test identification filter under the dubbo filter name
-	// "loadtest". Activate it by adding "loadtest" to a provider's filter chain
-	// (ideally first), so the marker is on the context before later filters and
-	// the service impl run — letting downstream code branch on the load-test
-	// convention.
-	extension.SetFilter(loadTestFilterKey, newLoadTestFilter)
-
-	// The install-and-hold bean. dubbo's filter registry hands out filters via a
-	// no-arg constructor, so the propagator cannot arrive as a constructor
-	// parameter: a bean installs it into the package handle below instead.
-	// Exported as a gs.Rooter so gs instantiates it even though nothing injects
-	// it — without a collected-type export an unreachable bean is never created
-	// and the filter would keep reading go-spring's default.
-	gs.Provide(newPropagatorHook, gs.IndexArg(0, gs.TagArg("?"))).
-		Export(gs.As[gs.Rooter]()).Caller(1)
-}
 
 const loadTestFilterKey = "loadtest"
 
@@ -86,7 +66,7 @@ func newLoadTestFilter() filter.Filter { return &loadTestFilter{} }
 
 // Invoke tags the call context as load-test traffic when the dubbo attachment
 // carried by the invocation has the marker key. It is the dubbo inbound
-// companion to cloud/governance/traffic's outbound carrier injection. The attachment value
+// companion to cloud/traffic's outbound carrier injection. The attachment value
 // decodes as string or []byte depending on the protocol; both are handled.
 func (f *loadTestFilter) Invoke(ctx context.Context, invoker base.Invoker, inv base.Invocation) result.Result {
 	if att := inv.Attachments(); att != nil {

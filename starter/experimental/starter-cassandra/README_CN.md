@@ -46,10 +46,10 @@ type Service struct {
 ### 4. 使用
 
 ```go
-// 守卫路径：韧性（限流/熔断）+ 观测
+// 守卫路径：韧性（限流/熔断）。语句的 span、指标与 access log 由此处声明，由韧性层发射。
 err := s.Client.Exec(ctx, "INSERT INTO demo.greetings (id, message) VALUES (?, ?)", 1, "hello")
 
-// 经内嵌 session 使用完整查询能力
+// 经包装的 session 使用完整查询能力
 var msg string
 err = s.Client.Query("SELECT message FROM demo.greetings WHERE id = ?", 1).
     WithContext(ctx).Scan(&msg)
@@ -59,12 +59,22 @@ err = s.Client.Query("SELECT message FROM demo.greetings WHERE id = ?", 1).
 
 - **多实例客户端** — 每个 `spring.cassandra.instances.<name>` 条目都是独立 bean，
   拥有各自的配置。
-- **fail-fast 启动探针 + 健康指示器** — 启动期一次 `system.local` 扫描，
-  `cassandra:<name>` 指示器供 `starter-actuator` 聚合。
-- **守卫的 Exec** — 同步语句走治理执行器；迭代器/分页查询直接用内嵌
-  session（按设计不守卫，与 MQ starter 的异步路径同立场）。
+- **fail-fast 启动探针 + 健康指示器** — `HealthCheck`（一次 `system.local` 扫描）
+  在启动期执行，`cassandra:<name>` 指示器供 `starter-actuator` 聚合，二者都委托给同一实现。
+- **守卫的 Exec** — 同步语句走治理执行器；守卫的 `Query` 包装同样覆盖
+  `Iter`/`Scan`，而返回迭代器内部的翻页与 batch 执行仍在守卫之外
+  （语句级粒度，与 database/sql 系 starter 同立场）。
 - **集群发现** — 接触点列表引导驱动自身的拓扑发现；条目可带端口
   （`host:9042`）。
+
+## 可观测性
+
+`gocql` 不提供官方 OpenTelemetry 插桩。本 starter 因此只声明每条语句是什么
+（`observe.go`）：操作名、`db.system`/`db.operation` 标签，以及作为 `db.statement`
+span/log 明细的 CQL 文本。信号本身由韧性层发射——执行器链上唯一能看到整次调用
+（含重试）的位置，因此除调用级 `db.client.operation.duration` 直方图外，每次调用还
+上报一个尝试级 `db.client.attempt.duration`：access log 的 tag 为 `_app_cassandra_access`。
+不 import `starter-otel` 时，这一切都是 no-op。
 
 ## 高级特性
 

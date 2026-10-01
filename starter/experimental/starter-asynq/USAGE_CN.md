@@ -37,7 +37,7 @@ require (
     go-spring.org/spring        v1.3.x
     go-spring.org/starter-asynq latest
     go-spring.org/starter-actuator latest   // 可选：§4 的健康端点
-    go-spring.org/starter-governance latest // 可选：投递上的 resilience/fault
+    go-spring.org/starter-governance-file latest // 可选：投递上的 resilience/fault
 )
 ```
 
@@ -58,7 +58,7 @@ import (
 
     starter "go-spring.org/starter-asynq"
     _ "go-spring.org/starter-actuator"
-    _ "go-spring.org/starter-governance"
+    _ "go-spring.org/starter-governance-file"
 )
 
 const taskType = "example:greet"
@@ -157,19 +157,21 @@ import starter-asynq
   └─ init: gs.Module(gs.OnProperty("spring.asynq"))               [starter.go:36]
         └─ conf.BindEach("${spring.asynq}", 逐 <name>):
              ├─ Config 的 expr 校验（addr != ''——绑定期即失败）
-             ├─ Provide(newClient).Name(<name>).Init/Destroy       [恒有]
+             ├─ Provide(newClient).Name(<name>).Destroy            [恒有]
              ├─ if c.Server.Enabled:
              │    Provide(newServer).Name(<name> ":server").
-             │      Export(gs.As[gs.Server]()).Init/Destroy        [worker 选配]
+             │      Export(gs.As[gs.Server]()).Destroy             [worker 选配]
              └─ Provide(health.Indicator).Name("asynq:"+<name>).
                 Export(gs.As[health.Indicator]())
 gs.Run()
   ├─ bean 装配：应用 bean 按实例名 autowire *Client / *Server
+  ├─ ctor newClient（starter.go）：解析 RedisConnOpt，再由 NewClient 固定服务标签
+  │    （resilience.ServiceLabel("asynq", addr)）并用注入的 manager/injector
+  │    治理包装配——无 Init 钩子
+  ├─ ctor newServer（starter.go）：asynq.NewServer(connOpt, Config{...})
+  │    ——无 Init 钩子
   ├─ Rooter Init 阶段：应用 Service.Init 注册 handler（mux 惰性创建，
-  │  client.go:129-147——之后注册也可以，但 worker 开始消费后 handler 集合固定）
-  ├─ Client.Init (client.go)：newObserver()（observe.go）、
-  │    resilience.ServiceLabel("asynq", addr)、fault executor 就绪
-  ├─ Server.Init (client.go:111-127)：asynq.NewServer(connOpt, Config{...})
+  │  client.go——之后注册也可以，但 worker 开始消费后 handler 集合固定）
   ├─ Runner 阶段：Server.Run——srv.Start(mux)、sig.TriggerAndWait() → 就绪，
   │    随后阻塞于 <-ctx.Done()
   └─ SIGTERM 时：Server.Stop → srv.Shutdown() 在 shutdown-timeout 内排空在途
@@ -181,23 +183,27 @@ gs.Run()
 - **worker 选配**（`server.enabled` 默认 false）："a long-running worker is an opt-in...
   most processes only enqueue"（starter.go:33-35；starter/DESIGN.md 约定）。
 - **`Run` 用 `Start` + 等 ctx，绝不用 `asynq.Server.Run`**：asynq 的 helper 自装信号
-  处理器，"would race gs's graceful-shutdown signal handling"（client.go:154-158）。
+  处理器，"would race gs's graceful-shutdown signal handling"（client.go:149-161）。
   信号处理权留在 gs。
 - **handler 错误/panic 归 asynq**：server 刻意不装 ErrorHandler/recover 包装——
   "errors and panics inside a handler are asynq's to recover and retry... we keep our
-  own reporting out of the hot path"（client.go:121-125）。
+  own reporting out of the hot path"（starter.go:120-123）。
 - **健康检查每次用全新 Inspector 探测**，"verifies reachability without coupling to
   the producer/worker lifecycle"（health/health.go:26-32）。
 
 ### 2.3 一次任务逐层走读（投递 → 执行）
 
-1. 应用调用 **wrapper 的** `Client.Enqueue(ctx, task, opts...)`（client.go:71-94）。不要
+1. 应用调用 **wrapper 的** `Client.Enqueue(ctx, task, opts...)`（client.go:77-91）。不要
    调用内嵌提升的 `*asynq.Client.Enqueue`——只有 wrapper 走守护链。
-2. 观测层开启生产者观测（`o.obs.start(ctx, "enqueue", task.Type())`，
-   observe.go）：span、指标与访问日志。
-3. executor 执行：`Init` 用注入的 `*resilience.Manager` 构建、并由注入的
-   `*fault.Injector` 包裹的那一个——带 starter-governance 时，限流拒绝/熔断开启会在
-   **接触 Redis 之前**中止；未引入则为直通。
+2. starter **声明**这次调用的身份（`operation("enqueue", task.Type())`，observe.go：
+   span 名 `enqueue`、`messaging.system`/`messaging.operation` 标签、任务类型作
+   `messaging.destination.name` detail），放到 ctx 上，自身不发射任何信号。
+3. executor 执行：`NewClient` 用注入的 `*resilience.Manager` 构建、并由注入的
+   `*fault.Injector` 包裹的那一个——带 starter-governance-file 时，限流拒绝/熔断开启会在
+   **接触 Redis 之前**中止；未引入则为直通。resilience 层负责**发射**：span、call 级
+   `messaging.client.operation.duration`、attempt 级 `messaging.client.attempt.duration`
+   直方图、`messaging.client.active_requests` gauge、`resilience.client.calls` 计数器
+   与 `_app_asynq_access` 访问日志。
 4. `Client.EnqueueContext` 把任务写入 Redis（asynq 语义：队列/优先级由 opts 决定）。
 5. worker 的 `ServeMux` 按任务类型匹配注册的 pattern（`:` 作中间件分组分隔符），在
    `concurrency` 个槽位之一上调你的 `HandlerFunc`。
@@ -269,7 +275,7 @@ grep -c "boom" <log>                     # handler 错误经 asynq 日志浮出
 
 ### 4.5 治理守护（可选）
 
-带 starter-governance + 已配置的规则来源时，对服务 `asynq:<addr>` 开熔断/限流：
+带 starter-governance-file + 已配置的规则来源时，对服务 `asynq:<addr>` 开熔断/限流：
 `Client.Enqueue` 直接返回拒绝、**不触 Redis**；提升来的 `asynq.Client` 路径则完全绕过
 守护（见 §5 第 2 行）。
 

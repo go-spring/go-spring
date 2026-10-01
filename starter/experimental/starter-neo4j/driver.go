@@ -30,6 +30,7 @@ import (
 
 	"github.com/neo4j/neo4j-go-driver/v5/neo4j"
 	"github.com/neo4j/neo4j-go-driver/v5/neo4j/auth"
+	"go-spring.org/cloud"
 	"go-spring.org/cloud/discovery"
 	"go-spring.org/cloud/loadbalance"
 	"go-spring.org/cloud/mesh"
@@ -44,23 +45,35 @@ import (
 // assembly. A custom driver is a bean, so it may inject the configuration/beans
 // it needs — e.g. company config bound from a properties file at wiring time.
 //
+// CreateClient returns the module's exported [Client] — the wrapper apps inject
+// — not the raw neo4j.DriverWithContext, so a driver takes part in the type the
+// rest of the ecosystem sees and future wrapper capabilities are reachable from
+// it. It returns the client COMPLETE: the wrapper derives the service label from
+// the Config it is handed, so the driver fixes identity here; params carries
+// the container's facilities (see [cloud.ClientParams]), which [NewClient]
+// applies while building. Nothing patches the client afterwards.
+//
+// params is one struct rather than a parameter per capability so this interface
+// — which every company driver implements — stays stable as capabilities are
+// added. A driver that has no use for one of its fields simply ignores it.
+//
 // At most one Driver bean is expected per process; every client under
 // ${spring.neo4j} is built through it, and per-instance differences are
 // expressed through [Config].
 //
-// backend is the discovery backend the entry's ${discovery} label resolved to,
-// already looked up by the starter wiring; it is nil when no backend bean
-// exists. It is passed as an argument rather than carried on Config so a custom
-// driver can actually reach it — Config stays a pure bound value.
+// params.Discovery is the discovery backend the entry's ${discovery} label
+// resolved to, already looked up by the starter wiring; it is nil when no
+// backend bean exists. It rides on the params struct rather than Config so a
+// custom driver can actually reach it — Config stays a pure bound value.
 type Driver interface {
-	CreateClient(ctx context.Context, c Config, backend discovery.Discovery) (neo4j.DriverWithContext, error)
+	CreateClient(ctx context.Context, c Config, params cloud.ClientParams) (*Client, error)
 }
 
 // DefaultDriver is the default implementation of the Driver interface.
 type DefaultDriver struct{}
 
 // CreateClient creates a new Neo4j client based on the provided configuration.
-func (DefaultDriver) CreateClient(ctx context.Context, c Config, backend discovery.Discovery) (neo4j.DriverWithContext, error) {
+func (DefaultDriver) CreateClient(ctx context.Context, c Config, params cloud.ClientParams) (*Client, error) {
 	auth := neo4j.NoAuth()
 	if c.Username != "" {
 		auth = neo4j.BasicAuth(c.Username, c.Password, c.Realm)
@@ -78,8 +91,8 @@ func (DefaultDriver) CreateClient(ctx context.Context, c Config, backend discove
 		// again instead of staying broken until the process restarts. The driver
 		// only consults this hook in routing mode (neo4j:// schemes) — a direct
 		// bolt:// client has no routing table to rebuild and is unchanged.
-		if c.ServiceName != "" && backend != nil && !mesh.Enabled() {
-			if resolve, rerr := discovery.NewResolver(ctx, backend, c.ServiceName, discovery.WithScheme(c.Scheme)); rerr != nil {
+		if c.ServiceName != "" && params.Discovery != nil && !mesh.Enabled() {
+			if resolve, rerr := discovery.NewResolver(ctx, params.Discovery, c.ServiceName, discovery.WithScheme(c.Scheme)); rerr != nil {
 				tlsErr = errutil.Explain(rerr, "neo4j: resolve service %s", c.ServiceName)
 			} else if resolve != nil {
 				conf.AddressResolver = liveRouterAddresses(resolve)
@@ -92,7 +105,10 @@ func (DefaultDriver) CreateClient(ctx context.Context, c Config, backend discove
 	if tlsErr != nil {
 		return nil, tlsErr
 	}
-	return client, nil
+	// NewClient is the only way to build a Client: identity and governance are
+	// both applied here (see [Driver]), so the driver returns a client that is
+	// complete.
+	return NewClient(client, c, params), nil
 }
 
 // liveRouterAddresses adapts a discovery [discovery.Resolver] into the driver's

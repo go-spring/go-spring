@@ -26,13 +26,15 @@ package StarterRocketmq
 import (
 	"context"
 	"errors"
+	"strings"
 	"sync"
 
 	"github.com/apache/rocketmq-client-go/v2"
 	"github.com/apache/rocketmq-client-go/v2/consumer"
 	"github.com/apache/rocketmq-client-go/v2/primitive"
 	"github.com/apache/rocketmq-client-go/v2/producer"
-	"go-spring.org/cloud/governance/resilience"
+	"go-spring.org/cloud"
+	"go-spring.org/cloud/resilience"
 	"go-spring.org/log"
 )
 
@@ -46,24 +48,44 @@ func credentials(c Config) primitive.Credentials {
 }
 
 // Client is the RocketMQ resource entity managed by the container: it holds
-// the shared connection settings, the resilience executor attached by the
-// starter, and every producer/consumer created through it. Inject it and use
+// the shared connection settings, the resilience executor [NewClient] attaches,
+// and every producer/consumer created through it. Inject it and use
 // NewProducer / NewPushConsumer for raw SDK access, or NewDriver for the
 // broker-neutral messaging abstraction.
 type Client struct {
 	nameServers []string
 	cfg         Config
 
-	// exec / service carry the resilience executor applyResilience arms from
-	// the injected governance beans; exec is nil (transparent pass-through)
-	// when governance is off.
-	exec    resilience.ClientExecutor
-	service string
+	// exec / serviceLabel carry the resilience executor [NewClient] applies from
+	// the governance bundle it is handed; exec is never nil — a hand-built client
+	// degrades to an observed-only, loudly-unmanaged executor.
+	exec         resilience.ClientExecutor
+	serviceLabel string
 
 	mu        sync.Mutex
 	closed    bool
 	producers []rocketmq.Producer
 	consumers []rocketmq.PushConsumer
+}
+
+// NewClient builds a complete Client — identity, name server list and governance
+// executor all applied — over the given name server list. It fixes the identity
+// the wrapper reapplies to every producer and consumer it creates (the name
+// server list) and derives from the Config. There is no Init step — building a
+// Client and initializing it are the same act, so the container has no lifecycle
+// hook to register and no way to hand out a half-built client.
+//
+// params carries the container's facilities (see [cloud.ClientParams]), and is
+// applied HERE so a Client cannot exist half-assembled: the executor comes from
+// params.ExecutorFor, with a hand-built client (the zero [cloud.ClientParams])
+// degrading to [resilience.Unmanaged] — observed, with a one-time warning that no
+// protection applies. It is the constructor the bundled [DefaultDriver] uses; a
+// company Driver may call it too.
+func NewClient(nameServers []string, c Config, params cloud.ClientParams) *Client {
+	cl := &Client{nameServers: primitive.NamesrvAddr(nameServers), cfg: c}
+	cl.serviceLabel = resilience.ServiceLabel("rocketmq", strings.Join(nameServers, ","))
+	cl.exec = params.ExecutorFor("rocketmq", cl.serviceLabel)
+	return cl
 }
 
 // producerOptions returns the base producer options derived from Config,
@@ -168,7 +190,10 @@ func (cl *Client) Close() error {
 	}
 	cl.closed = true
 
-	closeResilience(cl)
+	if cl.exec != nil {
+		_ = cl.exec.Close()
+		cl.exec = nil
+	}
 	for _, p := range cl.producers {
 		if err := p.Shutdown(); err != nil {
 			log.Errorf(context.Background(), log.TagAppDef, "rocketmq: shutdown producer failed: %v", err)
@@ -184,8 +209,9 @@ func (cl *Client) Close() error {
 	return nil
 }
 
-// execute routes call through the client's resilience executor when one is
-// attached, and otherwise runs it inline.
+// execute routes call through the client's resilience executor, and otherwise
+// runs it inline. A Client built by [NewClient] always carries an executor; the
+// nil branch serves a bare Client (tests, or a caller assembling one by hand).
 func (cl *Client) execute(ctx context.Context, call func(context.Context) error) error {
 	if cl.exec == nil {
 		return call(ctx)

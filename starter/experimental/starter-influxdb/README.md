@@ -4,7 +4,8 @@
 
 `starter-influxdb` provides InfluxDB 2.x support for Go-Spring: multi-instance
 `influxdb2.Client` beans with fail-fast startup probes, per-request
-observability (span + metric + access log), resilience on the blocking write
+observability declared by the starter and emitted by the resilience layer
+(span + metric + access log), resilience on the blocking write
 path (rate limit / circuit breaking / fault injection), a managed async
 writer whose errors are drained into the log, and per-instance health
 indicators. Built on the official
@@ -55,7 +56,7 @@ raw, err := s.Client.QueryAPI(s.Client.Org()).
 ```
 
 The wrapper embeds `influxdb2.Client`, so every SDK method (QueryAPI,
-DeleteAPI, Setup, ...) promotes unchanged.
+DeleteAPI, Setup, ...) is promoted unchanged.
 
 ## Core Features
 
@@ -67,13 +68,17 @@ DeleteAPI, Setup, ...) promotes unchanged.
   log so the writer never blocks). See DESIGN for the split.
 - **Fail-fast startup probe + health indicator** — a `/health` round trip at
   boot and an `influxdb:<name>` indicator for `starter-actuator`.
-- **Observability** — every HTTP request emits a client span
-  (db.system/db.operation/db.statement), the `db.client.operation.duration`
-  histogram + `db.client.active_requests` gauge, and an access-log line via
-  the `_app_influxdb_access` tag at the log package's native levels.
+- **Observability** — the starter *declares* each request's identity
+  (`db.system=influxdb`, a bounded `db.operation=<method>`, and the URL path as
+  `db.statement`); the resilience layer *emits* it. It opens one client span per
+  call, records the call-level `db.client.operation.duration` histogram and the
+  attempt-level `db.client.attempt.duration` histogram + the
+  `db.client.active_requests` gauge, and writes one access-log line via the
+  `_app_influxdb_access` tag at the log package's native levels.
 - **Resilience** — blocking writes route through the executor built from the
-  injected `*resilience.Manager`; with `starter-governance` absent that
-  executor is a pass-through and the write path is observe-only.
+  injected `*resilience.Manager`; with no governance center linked that
+  executor is a pass-through and the write path emits nothing (the starter owns
+  no emitter).
 
 ## Advanced Features
 

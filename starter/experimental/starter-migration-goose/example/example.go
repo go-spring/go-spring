@@ -14,12 +14,10 @@
  * limitations under the License.
  */
 
-// Command example demonstrates starter-migration-goose end to end. The
-// application supplies a *gorm.DB bean "app" and blank-imports the starter; on
-// startup the starter's Runner (a gs.Runner) applies the goose SQL migrations
-// in ./sql before the goroutine below runs, so widgets already exists and is
-// seeded. The test then proves two guarantees: startup apply and second-run
-// idempotency.
+// The governance beans are REQUIRED: each is registered by the package that
+// owns it (cloud/resilience, cloud/loadbalance, cloud/fault), which this
+// starter imports — "governance off" is spring.governance.enabled=false, never
+// an absent bean.
 package main
 
 import (

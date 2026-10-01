@@ -37,10 +37,9 @@ import (
 // in-flight command.
 //
 // getObs lazily supplies the observer: newClient installs the monitor before
-// Init builds the observer, so Init makes it available through the getter. Because no
-// command runs before Init (the wrapper is not handed out until
-// startup completes), the monitor never sees a nil observer in practice; the
-// nil guard keeps the probe path (startup Ping) safe.
+// Connect, while [NewClient] builds the observer only after Connect, so the
+// holder the getter reads is filled in the gap (see newClient). The nil guard
+// keeps any command the driver issues before that safe.
 //
 // Why hand-rolled against the v2 event API (not otelmongo): the official
 // otelmongo instrumentation targets the v1 mongo driver and its CommandMonitor

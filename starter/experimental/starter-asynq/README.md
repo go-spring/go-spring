@@ -55,8 +55,8 @@ info, err := s.Client.Enqueue(ctx, asynq.NewTask("example:greet", payload))
   a `Server` (only when `server.enabled=true`; a long-running worker is an
   opt-in). Both share the same Redis connection settings.
 - **Guarded enqueue** — `Client.Enqueue` routes through the governance
-  executor (rate limit / circuit breaking); with `starter-governance` absent
-  it degrades to `Client.EnqueueContext`.
+  executor (rate limit / circuit breaking); with no governance center linked (no
+  rules armed) it degrades to `Client.EnqueueContext`.
 - **Graceful shutdown** — `Server` drains in-flight tasks up to
   `shutdown-timeout` on destroy.
 - **Health indicator** — an `asynq:<name>` probe pings Redis through a fresh
@@ -73,3 +73,14 @@ spring.asynq.instances.a.queues.default=3
 
 **Multiple instances** — additional `spring.asynq.instances.<name>` entries, each an
 independent producer/worker pair.
+
+## Observability
+
+The starter **declares** what each guarded enqueue is (`observe.go`): the span name `enqueue`, the
+`messaging.system`/`messaging.operation` labels, and the task type as `messaging.destination.name`
+span/log detail. The signals themselves are emitted by the resilience layer — the one point on the
+executor chain that sees a whole call, retries included — so beside the call-level
+`messaging.client.operation.duration` histogram every call also reports an attempt-level
+`messaging.client.attempt.duration` one, plus the `messaging.client.active_requests` gauge, the
+`resilience.client.calls` counter and an access log tagged `_app_asynq_access`. All of it is a no-op
+unless `starter-otel` installs providers.

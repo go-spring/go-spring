@@ -1,7 +1,7 @@
 # starter-webhook Usage — Reference
 
 Detailed usage reference. Overview: [README.md](README.md). All behavior claims are verified
-against the starter source (`starter.go`, `config.go`, `payload.go`, `trace.go`,
+against the starter source (`starter.go`, `config.go`, `payload.go`, `observe.go`,
 `webhook_test.go`) and the self-contained [example/](example/) (spins its own local HTTP
 receiver; smoke-verified with `go run .`, no docker). **This starter IS the component** —
 payload formats and signing for generic/DingTalk/Feishu/WeCom/Slack are implemented here;
@@ -39,7 +39,7 @@ require (
     go-spring.org/spring             v1.3.x
     go-spring.org/starter-webhook    latest
     go-spring.org/starter-otel       latest   # optional: real span export
-    go-spring.org/starter-governance latest   # optional: rate limit / breaker / fault
+    go-spring.org/starter-governance-file latest   # optional: rate limit / breaker / fault
 )
 ```
 
@@ -50,7 +50,7 @@ package main
 
 import (
     "go-spring.org/spring/gs"
-    _ "go-spring.org/starter-governance"
+    _ "go-spring.org/starter-governance-file"
     _ "go-spring.org/starter-otel"
     _ "go-spring.org/starter-webhook"
 )
@@ -82,9 +82,10 @@ func init() {
     gs.Provide(&Service{}).Export(gs.As[gs.Rooter]())
 }
 
-// Fire delivers one alert. Send builds the channel payload, signs it, wraps
-// the POST in a producer span and routes it through the resilience executor
-// (rate limit / circuit breaking / fault injection when governance is armed).
+// Fire delivers one alert. Send builds the channel payload, signs it, declares
+// the delivery's semantic identity and routes it through the resilience
+// executor (rate limit / circuit breaking / fault injection when governance is
+// armed); the executor's observe layer emits the span, metrics and access log.
 func (s *Service) Fire(ctx context.Context, title, text string) error {
     return s.Alert.Send(ctx, &StarterWebhook.Notifier.Notification{Title: title, Text: text})
 }
@@ -143,7 +144,8 @@ gs.Run()
   ├─ newNotifier:
   │    ├─ dry-run buildPayload with an empty Notification — validates channel value and
   │    │   (for dingtalk/feishu) that signing works, WITHOUT any network call
-  │    ├─ exec := fault.WrapClientExecutor(mgr.ClientExecutorFor("webhook", "webhook:<name>:<channel>"), "webhook:<name>:<channel>", inj)
+  │    ├─ params := cloud.ClientParams{Resilience: mgr, Fault: inj}
+  │    ├─ exec := params.ExecutorFor("webhook", "webhook:<name>:<channel>")
   │    └─ &http.Client{Timeout: c.Timeout} — per-notifier client, no pooling
   ├─ bean ready: *Notifier injected wherever `autowire:"<name>"` appears
   ├─ Run / serve: no background goroutines, no probe (rationale in §Activation)
@@ -168,21 +170,38 @@ so two notifiers on the same URL but different names get independent breaker/lim
      the **body** (`timestamp` + `sign` fields).
    - `wecom` / `slack`: markdown / text messages, secret ignored.
    - Unknown channel → error `webhook: unknown channel ... (want generic|dingtalk|feishu|wecom|slack)`.
-2. **Span** — `startSend` opens the producer span `webhook.send` (attributes
-   `messaging.system=webhook`, `webhook.channel`, `webhook.destination.host` —
-   scheme://host only, keeping signed URLs out of telemetry).
-3. **ClientExecutor** — the POST closure runs through the governance executor under the service
-   label: rate limit / circuit breaking / retry (if configured via governance) / fault
-   injection when starter-governance is armed; transparent pass-through otherwise.
-   The observe layer resolved inside the executor emits the outcome span + call counter +
-   duration histogram + access log per level. A hand-built zero-value Notifier (tests) has
-   no executor and posts directly — Send stays usable either way.
+2. **Declaration** — `Send` declares the delivery's semantic identity
+   (`observability.Operation`: span name `webhook.send`, metric prefix `messaging.client`,
+   the bounded labels `messaging.system=webhook` / `messaging.operation=send` /
+   `webhook.channel`, and the destination host — scheme://host only — as unbounded `Detail`)
+   on the context via `observability.WithOperation`, then routes the POST through the
+   notifier's resilience executor (`resilience.Run`). A send **declares**; it emits nothing
+   itself.
+3. **ClientExecutor + emission (the resilience layer)** — the POST closure runs through the
+   governance executor under the service label: rate limit / circuit breaking / retry (if
+   configured via governance) / fault injection when starter-governance-file is armed; an
+   observed-only, unmanaged executor otherwise (it warns once per client that no protection
+   applies). The observe wrapper on the executor chain is the single **emitter**:
+   it opens the call span `webhook.send` (covering every attempt), records the call-level
+   `messaging.client.operation.duration`, the per-attempt `messaging.client.attempt.duration`
+   histogram (the downstream's own latency, per try), the in-flight
+   `messaging.client.active_requests` gauge and the `resilience.client.calls` counter, and
+   writes one access-log line per delivery under the `webhook`/`access` tag carrying the
+   declared `messaging.*` / `webhook.channel` fields plus the host detail, `status` and
+   `duration_ms`. The emitter levels the log: failure → Warn, success **with** detail → Debug,
+   success without detail → Info; a delivery that resolves a host carries detail, so a
+   successful send logs at Debug. A hand-built zero-value Notifier (tests) has no executor and
+   `resilience.Run` posts directly — Send stays usable either way.
 4. **POST** — `n.post`: `Content-Type: application/json`, client bounded by `timeout`;
    any non-2xx status is an error carrying the first 512 bytes of the body.
-5. `EndSpan(span, err)` records the failure and closes the span.
+
+The span, the metrics and the access log all live **inside** the executor that `Send` routes
+through, so a delivery is measured whether or not the caller ever held a span — there is no
+caller-side bracket to remember. The starter no longer offers a `StartSendSpan` / `EndSpan`
+helper: declaring the identity is this layer's whole job now.
 
 Retry behavior: **no built-in retry**. Retries happen only if a retry policy for the
-`webhook:<name>:<channel>` service is armed through starter-governance; without governance
+`webhook:<name>:<channel>` service is armed through starter-governance-file; without governance
 a failed POST returns the error to the caller immediately. ⚠ DingTalk/Feishu report some
 failures as HTTP 200 with an error body — `post` checks only the status code, so those are
 treated as success (see suspect §6).
@@ -237,18 +256,20 @@ Recompute offline to verify: `base64(HMAC_SHA256(secret, ts+"\n"+secret))` — m
 ### 4.3 Failure drill (no restart)
 
 Start with a bad URL (e.g. port 1): every Send returns `webhook: post failed` with the
-connection error, wrapped in the producer span (status Error, error event) and counted in
+connection error, recorded on the emitted span (status Error, error event) and counted in
 the executor's call counter by outcome. There is nothing to "drill hot" in the starter
-itself; with starter-governance, flipping the rule file arms a rate limit on
+itself; with starter-governance-file, flipping the rule file arms a rate limit on
 `webhook:alert:dingtalk` live — over-limit sends then fail fast with a limit-reject outcome
 in the observability stream instead of reaching the platform.
 
 ### 4.4 Observability drill
 
-With starter-otel imported, send once and read: span `webhook.send` (kind PRODUCER,
-attributes as in §2.2 step 2) and duration histogram. Verify the
-redaction property: the span attribute is `webhook.destination.host=scheme://host`, never
-the signed URL.
+With starter-otel imported, send once and read: span `webhook.send` (attributes
+`messaging.system=webhook`, `messaging.operation=send`, `webhook.channel`, and the host as
+detail — as in §2.2 step 2), the `messaging.client.operation.duration` and
+`messaging.client.attempt.duration` histograms, the `messaging.client.active_requests` gauge
+and the `resilience.client.calls` counter. Verify the redaction property: the span detail is
+`webhook.destination.host=scheme://host`, never the signed URL.
 
 ### 4.5 Channel-matrix drill
 

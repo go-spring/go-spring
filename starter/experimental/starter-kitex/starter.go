@@ -30,17 +30,15 @@ import (
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
 	"go-spring.org/starter-kitex/internal/accesslog"
+	"go-spring.org/starter-kitex/internal/logger"
 	"go-spring.org/stdlib/errutil"
 	"go.opentelemetry.io/otel"
-
-	// Side-effect import: installs the kitex -> go-spring log bridge (see
-	// internal/logger). The bridge self-installs via init(), so no symbols are
-	// referenced here - importing this package is what redirects kitex' own
-	// logs into the application's go-spring log pipeline.
-	_ "go-spring.org/starter-kitex/internal/logger"
 )
 
 func init() {
+	// Route kitex's own logs into the go-spring pipeline before any framework call.
+	logger.Install()
+
 	gs.Provide(
 		NewSimpleKitexServer,
 		gs.IndexArg(0, gs.TagArg("${spring.kitex.server}")),

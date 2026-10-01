@@ -34,7 +34,7 @@ import (
 	"go-spring.org/cloud/experimental/loadtest"
 	"go-spring.org/spring/gs"
 
-	_ "go-spring.org/starter-governance" // registers the centralized governance center
+	_ "go-spring.org/starter-governance-file" // registers the centralized governance center
 	StarterMemcached "go-spring.org/starter-memcached"
 )
 

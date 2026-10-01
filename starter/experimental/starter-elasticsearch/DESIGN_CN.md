@@ -8,8 +8,8 @@
 
 ## 1. 职责与边界
 
-- 用 `gs.Group` 把 `${spring.elasticsearch}` 每条绑到
-  `*elasticsearch.Client` bean。不做默认单实例。
+- 用 `gs.Group` 把 `${spring.elasticsearch}` 每条绑到 `*Client` 包装 bean
+  （该 bean 内嵌裸 `*elasticsearch.Client`）。不做默认单实例。
 - 构造时跑一次性 `Info` 健康检查，让坏地址/坏证书/坏凭据在启动暴露而不是
   首次使用时才炸。
 - 若配置了 `service-name`，从 `cloud/discovery` 解析节点地址；否则使用
@@ -30,8 +30,9 @@
   `Addresses` 列表。v8 client 自己在该列表上做 round-robin，但不会再解析。
   这是刻意的：ES 节点变更以天为单位，不是秒；client 自己会 sniff 集群
   状态。
-- **`HealthCheck` 一定传 context。** transport 的 OTel 埋点在 nil 父 context
-  上会 panic，所以 `client.Info` 显式带 `WithContext(context.Background())`。
+- **`HealthCheck` 是唯一探活入口，且一定传 context。** 所以
+  `client.Info.WithContext(ctx)` 一定带显式 context，让探测继承取消与截止时间；
+  fail-fast 探测与健康指示器都经 `HealthCheck`。
 
 ## 3. 约束
 
@@ -49,5 +50,6 @@
   池化与 dead-node 回退；再套重解析循环会打架。
 - **starter 里包 `otelelasticsearch` transport——否决。** transport 包装由
   driver 的 `CreateClient` 完成（内置 `DefaultDriver` 装一个 dynamic
-  transport，其 observe+resilience 行为由 `Init` 换入）；基础 transport
-  保持纯 net/http，让不 import otel 的应用零负担。
+  transport，其 声明+resilience 行为由包装体在构造时换入）；基础 transport
+  保持纯 net/http，让不 import otel 的应用零负担。elastic transport 自带的 OTel
+  插桩同样不启用——它每请求开一个 call 级 span，与 resilience 层现在发射的那个重复。

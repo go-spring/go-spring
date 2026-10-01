@@ -20,25 +20,27 @@ import (
 	"context"
 
 	"github.com/nats-io/nats.go"
-	"go-spring.org/cloud/governance/traffic"
 	"go-spring.org/cloud/messaging"
 	"go-spring.org/cloud/propagate"
+	"go-spring.org/cloud/traffic"
 )
 
 // NewDriver adapts a NATS connection to the broker-neutral messaging.Driver, so
 // application code can publish/consume messaging.Message envelopes without
 // depending on the nats API. destination/source strings are NATS subjects; the
-// subscriber group maps onto a NATS queue group (competing consumers). The raw
+// subscriber group maps onto a NATS queue group (competing consumers). The
 // *Conn bean stays available for JetStream and other NATS-specific features this
 // driver does not model.
 //
-// Trace context rides the envelope: the messaging.Observe decorator wraps this
-// driver, injecting the current W3C context into the message headers on
-// publish and extracting it on consume, so a trace links producer to consumer
-// across services. The driver therefore calls the raw *nats.Conn (not the
-// instrumented Conn.PublishMsgContext/Conn.Consume): the messaging path is
-// observed once, by Observe, and the raw path by the Conn wrapper. All tracing
-// is a no-op without starter-otel.
+// The driver adds only envelope conversion: each publish and consume DECLARES
+// its operation (see [operation]) and runs on the Conn's own seams —
+// [Conn.PublishMsgContext] and [Conn.Consume] — so it routes through the
+// connection's resilience executor, the single emitter of the span, the
+// metrics and the access log. W3C trace context rides the envelope's NATS
+// headers (injected on publish, extracted on consume) from those same seams, so
+// a trace links producer to consumer across services. There is no second
+// emitter: the driver is returned bare, not wrapped in messaging.Observe. All
+// tracing is a no-op without starter-otel.
 //
 // prop is the load-test convention the driver carries: publish stamps the
 // marker onto the NATS message header and consume reads it back. A nil
@@ -48,7 +50,7 @@ func NewDriver(conn *Conn, prop traffic.Propagator) messaging.Driver {
 		// DefaultBinding is complete, so this cannot fail.
 		prop, _ = traffic.NewDefaultPropagator(traffic.DefaultBinding())
 	}
-	return messaging.Observe(&driver{conn: conn, prop: prop}, "nats")
+	return &driver{conn: conn, prop: prop}
 }
 
 type driver struct {
@@ -95,13 +97,14 @@ func (p *publisher) Publish(ctx context.Context, msg *messaging.Message) error {
 		}
 		p.prop.Inject(ctx, propagate.Header(nm.Header))
 	}
-	// Publish through the raw *nats.Conn: the Observe decorator already opened
-	// the producer span, injected the W3C trace context into msg.Headers (which
-	// toNatsHeader copied into nm.Header) and took the metrics; going through
-	// Conn.PublishMsgContext would count and span every message a second time.
-	// nats.go's core PublishMsg carries no context parameter, which is fine —
-	// the span's lifetime is Observe's, and nothing raw here needs the ctx.
-	return p.conn.Conn.PublishMsg(nm)
+	// Route through the Conn's publish seam: PublishMsgContext declares the
+	// publish's identity (operation(opPublish, subject)), injects the W3C trace
+	// context from the executor's attempt ctx into nm.Header (so the consumer
+	// continues the trace), and the connection's resilience executor — the single
+	// emitter — opens the span, records the durations and writes the access log.
+	// It is the connection's raw *nats.Conn that goes on the wire, so the message
+	// is emitted exactly once.
+	return p.conn.PublishMsgContext(ctx, nm)
 }
 
 func (p *publisher) Close() error { return nil }
@@ -120,25 +123,18 @@ type subscriber struct {
 func (s *subscriber) Subscribe(ctx context.Context, handler messaging.Handler) error {
 	// Recover converts a handler panic into the normal error path
 	// (nack/redelivery) instead of unwinding into the SDK goroutine. The error
-	// it returns is recorded by the Observe decorator wrapping this handler.
+	// it returns flows into the executor's outcome.
 	handler = messaging.Recover(handler)
-	// Subscribe through the raw *nats.Conn: the Observe decorator owns the
-	// consume span + metric + access log and extracts the upstream trace from
-	// the envelope headers; going through Conn.Consume would count and span
-	// every message a second time.
-	cb := func(nm *nats.Msg) {
-		octx := context.Background()
-		// Extract the load-test marker the producer put in the NATS header.
-		octx = s.prop.Extract(octx, propagate.Header(nm.Header))
-		_ = handler(octx, fromNatsMsg(nm)) // core NATS delivery is fire-and-forget
-	}
-	var sub *nats.Subscription
-	var err error
-	if s.group != "" {
-		sub, err = s.conn.Conn.QueueSubscribe(s.subject, s.group, cb)
-	} else {
-		sub, err = s.conn.Conn.Subscribe(s.subject, cb)
-	}
+	// Route through the Conn's consume seam: Consume extracts the upstream W3C
+	// trace from the envelope headers into a fresh ctx, declares the consume's
+	// identity (operation(opConsume, subject)), and runs the handler under the
+	// connection's resilience executor — the single emitter that opens the span,
+	// records the durations and writes the access log. The inner handler
+	// re-enters the load-test marker the producer stamped into the NATS header.
+	sub, err := s.conn.Consume(ctx, s.subject, s.group, func(msgCtx context.Context, nm *nats.Msg) error {
+		msgCtx = s.prop.Extract(msgCtx, propagate.Header(nm.Header))
+		return handler(msgCtx, fromNatsMsg(nm)) // core NATS delivery is fire-and-forget
+	})
 	if err != nil {
 		return err
 	}

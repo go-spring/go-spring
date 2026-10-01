@@ -4,7 +4,8 @@
 
 `starter-s3` provides S3-protocol object storage support for Go-Spring:
 multi-instance `*minio.Client` beans with fail-fast startup probes (bucket
-list), per-request instrumentation (span + metric + access log), resilience
+list), per-request instrumentation (the starter declares each call's identity;
+the resilience layer emits the span + metrics + access log), resilience
 (rate limit / circuit breaking / fault injection on the HTTP transport), and
 per-instance health indicators. It is built on
 [minio-go](https://github.com/minio/minio-go), so one config surface covers
@@ -62,7 +63,10 @@ _, err := s.Client.PutObject(ctx, "bucket", "key",
     minio.PutObjectOptions{ContentType: "text/plain"})
 ```
 
-The wrapper embeds `*minio.Client`, so every SDK method promotes unchanged.
+The wrapper is `*Client`, not the raw `*minio.Client`: `NewClient` is the only
+constructor and the wrapper embeds the raw client, so its full SDK surface is
+promoted unchanged and every call still flows through the declaration +
+governance transport.
 
 ## Core Features
 
@@ -74,16 +78,21 @@ The wrapper embeds `*minio.Client`, so every SDK method promotes unchanged.
 - **Health indicator per instance** — the same probe is registered as
   `s3:<name>` and folded into `/readiness` by `starter-actuator` when
   imported.
-- **Instrumentation** — every request emits an OTel client span
-  (`db.system`/`db.operation`/`db.statement` attributes), the
-  `db.client.operation.duration` metric and an access-log line (tag
-  `_app_s3_access`) from the starter's own transport. minio-go
-  ships no OTel instrumentation of its own, so the starter
-  transport carries all three signals.
+- **Instrumentation** — the starter DECLARES each request's semantic identity
+  (a `declareTransport` puts it on the context); the resilience layer on the
+  same HTTP transport EMITS the signals from the one point that sees the whole
+  call, retries included. One OTel client span (`db.system`/`db.operation`/
+  `db.statement` attributes), the `db.client.operation.duration` histogram plus
+  the `db.client.attempt.duration` histogram (attempt level — downstream latency
+  per try, excluding backoff), and an access-log line (tag `_app_s3_access`).
+  `db.system`/`db.operation` (the HTTP method) are bounded and become metric
+  labels; `db.statement` (the URL path) is per-call detail and reaches the span
+  and the log only, never a label. minio-go ships no OTel instrumentation of its
+  own.
 - **Resilience** — rate limiting, circuit breaking and fault injection are
   enforced on the client's HTTP transport through the executor built from the
-  injected governance beans; with `starter-governance` absent the transport is
-  observe-only.
+  injected governance beans at construction; a hand-built client (no container
+  governance) degrades to an observed-only, unmanaged executor that warns once.
 
 ## Advanced Features
 

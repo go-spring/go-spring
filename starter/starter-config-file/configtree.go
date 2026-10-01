@@ -24,24 +24,8 @@ import (
 	"strings"
 
 	"go-spring.org/log"
-	"go-spring.org/spring/conf"
 	"go-spring.org/stdlib/errutil"
 )
-
-func init() {
-	// Register "configtree" as a configuration provider backed by its own
-	// configTreeCtrl (which embeds the same watch + refresh machinery as
-	// "file-watch" via watchCore). A source such as
-	//
-	//	optional:configtree:/etc/config
-	//
-	// loads a directory tree at startup where each leaf file becomes one
-	// property: its path relative to the root (segments joined by ".") is the
-	// key and its unparsed, trimmed content is the value. This is the shape of a
-	// Kubernetes Secret / env-style ConfigMap mount (many scalar key files), and
-	// the model Spring Boot calls "configtree".
-	conf.RegisterProvider("configtree", newConfigTreeCtrl().load)
-}
 
 // configTreeCtrl is the "configtree" provider: a directory of scalar key
 // files where each leaf becomes one property keyed by its dotted relative

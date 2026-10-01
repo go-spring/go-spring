@@ -30,10 +30,10 @@ spring.memcached.instances.main.servers=127.0.0.1:11211
 ### 3. Inject the Memcached Instance
 
 ```go
-import "github.com/bradfitz/gomemcache/memcache"
+import StarterMemcached "go-spring.org/starter-memcached"
 
 type Service struct {
-    Memcached *memcache.Client `autowire:""`
+    Memcached *StarterMemcached.Client `autowire:""`
 }
 ```
 
@@ -59,8 +59,8 @@ The [example.go](example/example.go) program demonstrates and asserts three core
   the example implementation `AnotherMemcachedDriver`. When several Driver beans coexist, an entry selects
   one by name: `spring.memcached.instances.<name>.driver = <bean-name>` (empty = inject the single Driver bean by
   type; naming a missing bean fails startup).
-* **Startup connection validation (fail-fast)**: after building the client the starter issues a `Ping` against every
-  configured server; an unreachable server fails the boot instead of the first request.
+* **Startup connection validation (fail-fast)**: after building the client the starter runs `HealthCheck` (a `Ping`
+  loop) against every configured server; an unreachable server fails the boot instead of the first request.
 * **Service discovery**: set `service-name` (and `discovery` to name the registered backend; there is no default backend)
   instead of `servers`; the starter resolves the server list once through the registered `discovery.Discovery` backend
   at startup and shards keys across it. Because gomemcache hashes keys onto a fixed server set chosen at client creation,
@@ -68,8 +68,8 @@ The [example.go](example/example.go) program demonstrates and asserts three core
   membership requires a restart. For a topology that grows and shrinks dynamically, put a
 serverless/proxy-style endpoint (a single stable address) in `servers` and let the proxy own
 membership. See [discovery.go](example/discovery.go) for a backend example.
-* **Health check / readiness**: the client's `Ping()` probes all servers and is the readiness signal — call it straight
-  off the autowired client.
+* **Health check / readiness**: `HealthCheck` probes all servers and is the readiness signal (the autowired
+  `health.Indicator` delegates to it) — call it straight off the autowired client.
 * **Connection pool / timeouts**: `timeout` and `max-idle-conns` map to the client's per-server socket timeout and idle
   connection pool; both fall back to the driver defaults (100ms / 2) when left at 0.
 * **Authentication**: the `bradfitz/gomemcache` driver does not implement SASL, so no auth fields are exposed. Restrict
@@ -79,7 +79,9 @@ membership. See [discovery.go](example/discovery.go) for a backend example.
 
 ## Observability
 
-`bradfitz/gomemcache` ships no official OpenTelemetry instrumentation. The starter therefore emits its own: every
-operation goes through a module-local observe layer (client span with `db.system`/`db.operation`/`db.statement`
-attributes, the `db.client.operation.duration` histogram, and an access log tagged `_app_memcached_access`). All three
-are no-ops unless `starter-otel` installs providers.
+`bradfitz/gomemcache` ships no official OpenTelemetry instrumentation. The starter therefore declares what each
+operation is (`observe.go`): the command name, the `db.system`/`db.operation` labels, and the key as `db.statement`
+span/log detail. The signals themselves are emitted by the resilience layer — the one point on the executor chain that
+sees a whole call, retries included — so beside the call-level `db.client.operation.duration` histogram every call
+also reports an attempt-level `db.client.attempt.duration` one, and an access log tagged `_app_memcached_access`. All
+of it is a no-op unless `starter-otel` installs providers.

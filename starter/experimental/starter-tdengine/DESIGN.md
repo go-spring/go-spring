@@ -23,14 +23,18 @@ the wire protocol and the seam at which resilience/observability attach.
   `taosRestful` (weaker throughput/features), and the pure-Go websocket
   `taosWS`. The starter ships taosWS: zero-install, full feature set; the
   REST connector remains available as a custom driver.
-- **`Client` wrapper = `*sql.DB` + armed slot** — database/sql offers no
-  transport or callback to swap after construction, so DefaultDriver wraps
+- **`Client` wrapper = embedded `*sql.DB` + slot** — database/sql offers no
+  transport or callback to swap after construction, so NewClient wraps
   the taosWS connector in `guardedConnector`/`guardedConn`: every pooled
   connection consults a `clientSlot` on each `ExecContext`/`QueryContext`.
-  ArmGovernance (called from the ctor with the injected
-  `*resilience.Manager` / `*fault.Injector` beans) builds the executor and
-  arms the slot, Init builds the observer; before that statements pass
-  through untouched. This is the database/sql
+  NewClient creates the slot and installs it on every pooled connection; it
+  also computes the executor (from the injected `cloud.ClientParams`
+  bundle the wiring passes) and installs it on the slot, so the client is
+  built complete. On each statement the connection declares the statement's
+  identity on the context, then routes it through the executor. The
+  resilience executor is the single emitter of the
+  span, the metrics and the access log — the starter only declares. This is
+  the database/sql
   analog of starter-gorm's callback chain and the HTTP starters'
   RoundTripper adapters.
 - **health** — `PingContext`, matching the gorm family's probe shape.

@@ -155,9 +155,11 @@ gs.Run()
 ```
 
 **一次查询逐层走读**（引入 starter-otel 且 `observe.enabled=true`）：
-`db.WithContext(ctx).Exec("SELECT 1")` → resilience 回调包裹 processor → gorm observe 插件的
-before/after 回调开启 span（`db.system=postgresql`）、记录 `db.client.operation.duration`、输出
-访问日志（级别来自 wrapper 的 `observability` 字段，默认 `brief`）→ database/sql 取池内连接
+`db.WithContext(ctx).Exec("SELECT 1")` → gorm observe 插件的 before 回调在 statement 的 ctx 上
+声明本次操作（名称、`db.system=postgresql`、`db.operation`、SQL）→ resilience 回调包裹 processor
+并发射信号：call span（`db.system=postgresql`）、call 级 `db.client.operation.duration`、
+attempt 级 `db.client.attempt.duration`、`db.client.active_requests`，以及那一条访问日志
+（级别来自 wrapper 的 `observability` 字段，默认 `brief`）→ database/sql 取池内连接
 （发现模式下新物理连接经替换后的 pgx `DialFunc` 拨号）→ pgx 执行。
 
 **为什么用 pgx `DialFunc` 而非改写 DSN**：与 mysql 驱动（自定义拨号 network 名）不同，pgx
@@ -239,7 +241,7 @@ etcd discovery 后端；注册 `/services/postgres-cluster/<id>` key，值为
 | 启动正常，首次查询报 `database ... does not exist` | `db` 缺失/写错——ping 不碰库 | 正确设置 `db`。 |
 | 带空格的密码导致启动失败 | 空格分隔 DSN，未做引号处理 | 改密码，或记入设计问题。 |
 | 发现型 client 拨的是配置 `host` | 未设 `service-name`——走了直连路径 | 设 `service-name`（后端不为 "default" 时加 `discovery`）。 |
-| 每查询无 span/指标 | `observe.enabled=false` 或缺 starter-otel | 重新开启 / 引入 starter-otel。 |
+| 每查询无 db.* span/指标/访问日志 | `observe.enabled=false` 或缺 starter-otel | 引入 starter-otel；按实例开关会完全移除插件，操作不再声明，resilience 层只发它自己的通用信号。 |
 | `connect_timeout` 对亚秒值看似无效 | 截断到整秒（1500ms → 1） | 用整秒 duration。 |
 
 ## 6. 设计体检表

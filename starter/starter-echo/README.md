@@ -49,12 +49,11 @@ spring.echo.server.tls.cert-file=
 spring.echo.server.tls.key-file=
 spring.echo.server.tls.ca-file==# Optional: set to require client certificates signed by this CA (mTLS).
 
-# Built-in middlewares. Recovery, RequestID and AccessLog are on by default;
+# Built-in middlewares. Recovery and RequestID are on by default;
 # CORS, Gzip and SecureHeaders are off until opted in (see Built-in Middlewares).
 spring.echo.server.middleware.recovery.enabled=true
 spring.echo.server.middleware.requestId.enabled=true
-spring.echo.server.middleware.accessLog.enabled=true
-spring.echo.server.middleware.accessLog.skipPaths=
+spring.echo.server.middleware.observability.enabled=true
 spring.echo.server.middleware.cors.enabled=false
 spring.echo.server.middleware.cors.allowedOrigins=
 spring.echo.server.middleware.gzip.enabled=false
@@ -107,19 +106,20 @@ correlation).
 | `recovery` | on | `middleware.Recover()` (starter seam) | Catches request-goroutine panics; turning it off risks a process crash. |
 | `loadtest` | on | self | Tags the request context when the `X-LoadTest` (configurable) marker header is present, so downstream code can branch on the propagator's `IsLoadTest`. |
 | `requestId` | on | `middleware.RequestID()` | Generates/propagates `X-Request-Id`; also stored on the request context (see `RequestIDFromContext`). |
-| `tracing` | on | self | OTel server span per request; no-op until `starter-otel` is imported. |
-| `metrics` | on | self | Request count/duration/in-flight via the OTel globals; no-op until `starter-otel` is imported. |
-| `accessLog` | on | self (project `log` pkg) | One structured record per request; Warn on 4xx, Error on 5xx; the health path is auto-skipped. |
+| `observability` | on | the resilience emitter | The request's span, HTTP family metrics and access log. Nothing is installed into the chain: the admission middleware DECLARES the request and the executor emits. Turning it off does not silence the server — the request falls back to `resilience.server.*` plus one line under the resilience tag. |
+| `tracing` / `metrics` / `accessLog` | on | legacy | Kept readable so an existing configuration still binds. Their per-signal granularity is gone: the three signals are one set now, so turning any of them off turns the set off (and warns once). Use `observability.enabled`. |
 | `cors` | off | `middleware.CORS()` | No safe universal default - supply `allowedOrigins` (or `allowAllOrigins` for dev). |
 | `gzip` | off | `middleware.Gzip()` | `level` (1-9, -1=default). |
 | `secureHeaders` | off | `middleware.Secure()` | `X-Content-Type-Options`/`X-Frame-Options`/`Referrer-Policy`; HSTS only with TLS. |
 | body limit | on when `maxBodySize>0` | `middleware.BodyLimit()` | In-chain; an over-limit 413 is logged like any response. |
 
-Order (outermost first): `LoadTest -> Recovery -> RequestID -> Tracing -> Metrics -> AccessLog
--> SecureHeaders -> CORS -> Gzip -> BodyLimit -> fault`. LoadTest is outermost so every later
+Order (outermost first): `LoadTest -> Recovery -> RequestID -> Admission
+-> SecureHeaders -> CORS -> Gzip -> BodyLimit -> fault`. Admission declares the request and
+enforces the inbound policy; observation rides it (the executor emits the span, the metrics and
+the access log), so there is no separate tracing/metrics/access-log middleware to order. LoadTest is outermost so every later
 layer can branch on the propagator's `IsLoadTest`; Recovery catches panics from every later layer;
-RequestID runs before AccessLog so each access record carries the id; AccessLog wraps the policy
-middlewares so short-circuit responses (413, 204, 403) are still logged. A fault-injection
+RequestID runs before Admission so each access record carries the id; Admission wraps the policy
+middlewares so short-circuit responses (413, 204, 403) are still recorded. A fault-injection
 middleware is always installed innermost (transparent when the governance center has no fault
 rules).
 

@@ -37,7 +37,7 @@ require (
     go-spring.org/spring         v1.3.x
     go-spring.org/starter-trpc   latest
     go-spring.org/starter-otel     latest   // optional: real trace/metric export
-    go-spring.org/starter-governance latest // optional: runtime fault injection
+    go-spring.org/starter-governance-file latest // optional: runtime fault injection
 )
 ```
 
@@ -50,7 +50,7 @@ import (
     "go-spring.org/spring/gs"
     _ "demo/service"
 
-    _ "go-spring.org/starter-governance"
+    _ "go-spring.org/starter-governance-file"
     _ "go-spring.org/starter-otel"
     _ "go-spring.org/starter-trpc"
 )

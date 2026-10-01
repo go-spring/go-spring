@@ -25,9 +25,10 @@ import (
 	"github.com/apache/rocketmq-client-go/v2/consumer"
 	"github.com/apache/rocketmq-client-go/v2/primitive"
 	"github.com/apache/rocketmq-client-go/v2/producer"
-	"go-spring.org/cloud/governance/traffic"
 	"go-spring.org/cloud/messaging"
+	"go-spring.org/cloud/observability"
 	"go-spring.org/cloud/propagate"
+	"go-spring.org/cloud/traffic"
 	"go-spring.org/log"
 )
 
@@ -45,11 +46,14 @@ import (
 // again by the client's own teardown, where Shutdown is idempotent enough to
 // be safe).
 //
-// Trace context rides the envelope: the messaging.Observe decorator wraps this
-// driver, injecting the current W3C context into the message headers on
-// publish (mapped onto RocketMQ user properties) and extracting it on consume,
-// so a trace links producer to consumer across services. It also supplies the
-// spans, metrics and access log. All of it is a no-op without starter-otel.
+// Each publish and consume DECLARES its operation (see [operation]) and runs it
+// under the client's resilience executor, which is the single emitter of the
+// span, the metrics and the access log — rocketmq-client-go exposes no
+// reject-capable middleware, so the executor is driven at the call site. The
+// declared layer also injects/extracts the W3C trace context through the message
+// user properties (mapped onto RocketMQ user properties), so a trace links
+// producer to consumer across services. All of it is a no-op without
+// starter-otel.
 //
 // prop is the process's load-test convention (nullable — nil falls back to
 // traffic.NewDefaultPropagator), carried on every producer/consumer this driver
@@ -59,7 +63,7 @@ func NewDriver(cl *Client, prop traffic.Propagator) messaging.Driver {
 		// DefaultBinding is complete, so this cannot fail.
 		prop, _ = traffic.NewDefaultPropagator(traffic.DefaultBinding())
 	}
-	return messaging.Observe(&driver{cl: cl, prop: prop}, "rocketmq")
+	return &driver{cl: cl, prop: prop}
 }
 
 type driver struct {
@@ -72,7 +76,7 @@ func (b *driver) NewPublisher(_ context.Context, destination string) (messaging.
 	if err != nil {
 		return nil, err
 	}
-	return &publisher{p: p, topic: destination, prop: b.prop}, nil
+	return &publisher{cl: b.cl, p: p, topic: destination, prop: b.prop}, nil
 }
 
 func (b *driver) NewSubscriber(_ context.Context, source, group string) (messaging.Subscriber, error) {
@@ -89,8 +93,11 @@ func (b *driver) NewSubscriber(_ context.Context, source, group string) (messagi
 	return &subscriber{cl: b.cl, c: c, topic: source, prop: b.prop}, nil
 }
 
-// publisher produces envelopes to a fixed topic via its own producer.
+// publisher produces envelopes to a fixed topic via its own producer. It holds
+// the owning client so Publish can resolve the client-scoped resilience
+// executor (producers are caller-created and carry no stable identity).
 type publisher struct {
+	cl    *Client
 	p     rocketmq.Producer
 	topic string
 	prop  traffic.Propagator
@@ -113,7 +120,13 @@ func (p *publisher) Publish(ctx context.Context, msg *messaging.Message) error {
 	for k, v := range c {
 		m.WithProperty(k, v)
 	}
-	_, err := p.p.SendSync(ctx, m)
+	// Route through the same seam the raw client API uses (GuardedSend):
+	// GuardedSend declares the publish (topic/direction) and runs it under the
+	// client-scoped resilience executor, which emits the span, the metrics and the
+	// access log and injects the W3C trace context from the attempt ctx — a no-op
+	// pass-through when governance is off for this client and a rejection
+	// sentinel when rate-limited/circuit-open.
+	_, err := GuardedSend(ctx, p.cl, p.p, m)
 	return err
 }
 
@@ -124,6 +137,10 @@ func (p *publisher) Close() error {
 // subscriber delivers messages from a fixed topic/group to a handler. Delivery
 // runs on the SDK's push-consumer goroutines; a handler error asks RocketMQ to
 // redeliver the message (ConsumeRetryLater), success acknowledges it.
+//
+// cl is held so each delivery can declare its consume and resolve the
+// client-scoped resilience executor (the emitter); topic is the topic the
+// subscription was opened on, used as the declared destination.
 type subscriber struct {
 	cl    *Client
 	c     rocketmq.PushConsumer
@@ -144,11 +161,18 @@ func (s *subscriber) Subscribe(_ context.Context, handler messaging.Handler) err
 		for _, ext := range exts {
 			// Extract the load-test marker the producer put in the user
 			// properties so the handler sees synthetic load via the
-			// propagator's IsLoadTest(ctx).
-			ctx = s.prop.Extract(ctx, propagate.StringMap(ext.GetProperties()))
-			herr := handler(ctx, fromMessageExt(ext))
+			// propagator's IsLoadTest(ctx), then continue the producer's W3C
+			// trace and declare the consume. The handler runs under the client's
+			// resilience executor, which emits the span, metrics and access log
+			// from the declaration.
+			msgCtx := s.prop.Extract(ctx, propagate.StringMap(ext.GetProperties()))
+			msgCtx = extractTraceContext(msgCtx, ext.GetProperties())
+			msgCtx = observability.WithOperation(msgCtx, operation(opConsume, s.topic))
+			herr := s.cl.execute(msgCtx, func(attemptCtx context.Context) error {
+				return handler(attemptCtx, fromMessageExt(ext))
+			})
 			if herr != nil {
-				log.Errorf(ctx, log.TagAppDef, "rocketmq driver handler error on %q: %v", ext.Topic, herr)
+				log.Errorf(msgCtx, log.TagAppDef, "rocketmq driver handler error on %q: %v", ext.Topic, herr)
 				return consumer.ConsumeRetryLater, herr
 			}
 		}

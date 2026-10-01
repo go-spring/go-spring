@@ -22,9 +22,9 @@ import (
 	"strings"
 	"testing"
 
-	"go-spring.org/cloud/governance/traffic"
-	"go-spring.org/cloud/propagate"
 	"go-spring.org/cloud/observability"
+	"go-spring.org/cloud/propagate"
+	"go-spring.org/cloud/traffic"
 	"go-spring.org/log"
 	"go.opentelemetry.io/otel/propagation"
 )

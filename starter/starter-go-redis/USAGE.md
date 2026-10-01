@@ -1,8 +1,8 @@
 # starter-go-redis Usage — Reference
 
 Detailed usage reference. Overview: [README.md](README.md). All behavior claims are verified
-against the starter source (`starter.go`, `config.go`, `client.go`, `command.go`, `driver.go`,
-`health.go`, `bytecache.go`) and the runnable [example/](example/) — file:line
+against the starter source (`starter.go`, `config.go`, `client.go`, `command.go`,
+`driver.go`, `health.go`, `bytecache.go`) and the runnable [example/](example/) — file:line
 spot-checks in brackets below. **Redis semantics and the go-redis API are [go-redis's own
 documentation](https://redis.io/docs/latest/develop/clients/go/)** — everything below is
 go-spring's increment.
@@ -15,7 +15,7 @@ named `<name>`, plus a health indicator named `redis:<name>`.
 
 ## 1. Complete worked project
 
-Three topologies in one service, plus a cache façade and probes/metrics/tracing. File tree:
+Three topologies in one service, plus a cache façade and probes/metrics/traces. File tree:
 
 ```
 demo/
@@ -35,7 +35,7 @@ require (
     go-spring.org/starter-go-redis latest
     go-spring.org/starter-actuator latest   // optional: readiness + /metrics
     go-spring.org/starter-otel     latest   // optional: real trace/metric export
-    go-spring.org/starter-governance latest // optional: resilience/fault policy
+    go-spring.org/starter-governance-file latest // optional: resilience/fault policy
 )
 ```
 
@@ -48,7 +48,7 @@ import (
     "go-spring.org/spring/gs"
     _ "go-spring.org/starter-actuator"
     _ "go-spring.org/starter-go-redis"
-    _ "go-spring.org/starter-governance"
+    _ "go-spring.org/starter-governance-file"
     _ "go-spring.org/starter-otel"
     _ "demo/service"
 )
@@ -71,12 +71,13 @@ import (
 )
 
 type Service struct {
-    // Always the wrapper type *StarterGoRedis.Client. It embeds
-    // redis.UniversalClient, so Get/Set/Incr/Pipeline/PoolStats promote
-    // unchanged whether the instance is single, sentinel, or cluster.
+    // Always the wrapper type *StarterGoRedis.Client. It embeds the raw
+    // redis.UniversalClient, so Get/Set/Incr/Pipeline/PoolStats are promoted
+    // and available unchanged whether the instance is single, sentinel, or
+    // cluster.
     Main     *StarterGoRedis.Client `autowire:"main"`     // single
-    Sentinel *StarterGoRedis.Client `autowire:"sentinel"` // sentinel (still *redis.Client)
-    Cluster  *StarterGoRedis.Client `autowire:"cluster"`  // cluster (*redis.ClusterClient)
+    Sentinel *StarterGoRedis.Client `autowire:"sentinel"` // sentinel
+    Cluster  *StarterGoRedis.Client `autowire:"cluster"`  // cluster
 
     // The typed cache façade over the "main" instance — the *cache.Cache
     // bean named "go-redis:main" (see §3.4).
@@ -114,8 +115,8 @@ spring.go-redis.instances.cluster.addrs=127.0.0.1:7000,127.0.0.1:7001,127.0.0.1:
 spring.go-redis.instances.cluster.route-by-latency=true
 
 # --- observability ---------------------------------------------------------
-# Access log (tag _app_redis_access) emits by default; filter via logger config.
-# redisotel spans/pool-metrics are ON by default and ride starter-otel's globals.
+# Access log (tag _app_redis_access) is emitted by the resilience layer; filter via logger config.
+# redisotel pool-metrics are ON by default and ride starter-otel's globals.
 
 # --- actuator + otel ------------------------------------------------------
 spring.actuator.addr=:9370
@@ -147,22 +148,31 @@ redis-cli GET user:1              # JSON written via the cache façade
 import starter-go-redis
   └─ gs.Module(OnProperty("spring.go-redis")) fires when any spring.go-redis.instances.* key exists
         └─ conf.BindEach("${spring.go-redis}") → one Config per <name> entry
-              ├─ mode single/sentinel → Provide(newClient).Name(<name>)
-              │                          .Init((*Client).Init).Destroy((*Client).Destroy)
+              ├─ mode single/sentinel → Provide(newClient).Name(<name>).Destroy((*Client).Destroy)
               ├─ mode cluster          → Provide(newClusterClient).Name(<name>) (same wrapper type)
               └─ Provide health.Indicator named "redis:<name>" (gated by health.enabled, default on)
 
 gs.Run()
-  ├─ ctor newClient [starter.go:97]: validateConfig → driver lookup → driver.CreateClient
-  │   → instrument() (redisotel tracing+metrics, gated by otel.* keys)
-  │   → failFastPing (unconditional, bounded by dial-timeout or 5s) [starter.go:218]
-  ├─ Init [client.go:61]: resourceLabel → fault.WrapClientExecutor(mgr.ClientExecutorFor("redis", service), service, inj)
-  │   (mgr/inj = the *resilience.Manager / *fault.Injector beans injected into the ctor)
-  │   → applyObservability (access-log hook)
-  │   → AddHook(resilienceHook) — command chain complete
-  ├─ readiness: probes flip UP (indicator runs client.Ping)
-  └─ SIGTERM → Destroy [client.go:88]: exec.Close → detach selection → client.Close
+  └─ ctor newClient [starter.go:143] — assembles the client COMPLETELY, then probes:
+       ├─ validateConfig → driver lookup → driver.CreateClient(ctx, c, disc, params)
+       │    (the ctor bundles the injected beans into
+       │     cloud.ClientParams{Resilience: mgr, Fault: inj, Loadbalance: lbMgr})
+       │    └─ DefaultDriver builds the raw client, hands it (with params) to NewClient [client.go:88]
+       │         → instrument() (redisotel pool metrics, gated by otel.metrics.enabled)
+       │         → applyDeclaration (identity hook)   — declaration is part of construction
+       │         → serviceLabel → params.ExecutorFor("redis", service)
+       │              (= fault.WrapClientExecutor(mgr.ClientExecutorFor("redis", service), service, inj);
+       │               a zero bundle degrades to an observe-only Unmanaged executor)
+       │         → lbMgr.Bind(pool, label) for a discovery-routed entry
+       │         → AddHook(resilienceHook) — command chain complete
+       └─ startup HealthCheck on the raw client (bounded by dial-timeout or 5s); on failure Destroy
+          releases what was just assembled
+  ├─ readiness: probes flip UP (indicator runs HealthCheck)
+  └─ SIGTERM → Destroy [client.go:148]: exec.Close → detach selection → client.Close
 ```
+
+There is no `Init` hook: everything the old Init did (label, executor, selection binding,
+hook order) happens inside the ctor, so gs only has to know how to DESTROY the bean.
 
 A misconfigured mode (`mode=foo`) or a failed startup ping fails the boot — the process never
 reaches "serving" with a dead Redis.
@@ -172,35 +182,40 @@ reaches "serving" with a dead Redis.
 go-redis hooks are FIFO: first added is outermost. Order as built:
 
 ```
-redisotel (span + pool metrics) → observeHook (access log) → resilienceHook (breaker/...)
+redisotel (pool metrics) → operationHook (declares identity) → resilienceHook (breaker/... + emission)
 → go-redis core → network
 ```
 
-Rationale (source comments, [client.go:59-69] and [command.go:17-27]):
+Rationale (source comments, [client.go] and [command.go]):
 
-- **redisotel outermost**: added in the ctor (`instrument()`), before Init adds the rest. The
-  span therefore covers everything the starter adds, and the access log rides redisotel's span
-  context for trace_id correlation.
-- **observeHook outside the breaker**: one access-log line covers the whole retry loop — you
-  log the outcome, not each attempt. It is log-only by construction [observe.go]: redisotel
-  already owns trace/metric, so the hook emits only the access log.
-- **resilienceHook innermost**: protection decisions sit closest to the wire; its rejections are
-  what the outer layers then observe.
+- **redisotel outermost**: added by `NewClient` (`instrument()`), before `NewClient` adds the
+  resilience hook. Only its pool metrics remain — the per-command span it used to attach is gone,
+  because it duplicated the call span the resilience layer now opens.
+- **operationHook outside the breaker**: it puts the command's identity on the ctx
+  (`observability.WithOperation`, [observe.go]) and emits nothing. A skipped op (PING) declares no
+  identity and is forwarded untouched.
+- **resilienceHook innermost**: protection decisions sit closest to the wire, and it is the single
+  emitter — reading the declared identity off the ctx, it opens the one call span (covering the
+  whole retry loop), records the call-level and attempt-level duration histograms and the status
+  counter, and writes one access-log line.
 - `DialHook` is left untouched in both hooks — connection establishment is discovery's concern,
   not command-level protection.
 
 ### 2.3 One command through the chain: `GET user:1` on a miss
 
-1. redisotel starts the client span (no-op without starter-otel's globals).
-2. observeHook starts an access-log record named `get` (cmd.FullName()).
-3. resilienceHook asks the executor for a permit (rate limiter / breaker scoped to the service
-   label, e.g. `redis:127.0.0.1:6379` — per instance, not per command [client.go:90-96]).
-4. go-redis executes; the key is absent so it returns `redis.Nil`.
-5. `run()` classifies `redis.Nil` as success via the nil-as-success predicate [command.go:94] —
-   **a cache miss never trips the breaker**; retries are not driven for it either.
-6. observeHook ends the record with `nilAsSuccess(err)` [command.go:147] — the miss is logged
-   as a successful op, not an error.
-7. redisotel ends the span; the caller sees `redis.Nil` exactly as plain go-redis would return it.
+1. operationHook puts the command's identity on the ctx: span name `get` (cmd.FullName()), labels
+   `db.system`/`db.operation`, and the key as `db.statement` span/log detail — bounded to 512 bytes
+   [observe.go]. The key rides as span/log detail, never as a metric label, because keys are unbounded.
+2. resilienceHook asks the executor for a permit (rate limiter / breaker scoped to the service
+   label, e.g. `redis:127.0.0.1:6379` — per instance, not per command [client.go:165]).
+3. go-redis executes; the key is absent so it returns `redis.Nil`.
+4. `run()` classifies `redis.Nil` as success via the nil-as-success predicate (Tolerate)
+   [command.go] — **a cache miss never trips the breaker**; retries are not driven for it either.
+5. The resilience layer emits: the span ends, `db.client.operation.duration` (whole call) and
+   `db.client.attempt.duration` (per try) record, and the access-log line is written with a
+   *success* status — a miss is a successful op, not an error. It rides the caller's ctx, so the
+   span links to the request trace.
+6. The caller sees `redis.Nil` exactly as plain go-redis would return it.
 
 For a **pipeline**, resilienceHook wraps the whole batch in one executor run; `cmd.SetErr` fires
 on every command only when the batch never actually ran (a rejection or injected fault) — a real
@@ -209,17 +224,18 @@ per-command failure is already recorded by go-redis and is not overwritten [comm
 ### 2.4 Discovery addressing & connection recycling (single mode)
 
 When `service-name` is set, DefaultDriver replaces go-redis's dialer: every new connection
-calls `lb.Pick()` (a round-robin loadbalance.Pool) for a live endpoint [driver.go:141-154]. The resolver keeps the endpoint
+calls `lb.Pick()` (a round-robin loadbalance.Pool) for a live endpoint [driver.go]. The resolver keeps the endpoint
 set fresh in the background. Combined with `conn-max-lifetime` (default 2m), connections recycle
 onto updated addresses **without rebuilding the client** — that is why the default is a short 2m
-rather than "unlimited" [config.go:95-97]. `addr` then never takes effect — when both are set the
+rather than "unlimited" [config.go]. `addr` then never takes effect — when both are set the
 starter logs a WARN naming the ignored `addr` at startup (the example sets a dummy `0.0.0.0:0`).
 Setting `service-name` in sentinel or cluster mode is
-rejected at startup: those topologies discover their own nodes [starter.go:170-194].
+rejected at startup: those topologies discover their own nodes [starter.go].
 
-**The pool's strategy is governed, not hardcoded.** It is built with a suspension tracker, returned by the Driver, and bound to
-`redis:<service-name|master-name|addr>` by the Client via `lbMgr.Bind(pool, label)` — the
-binding lives outside the Driver so a company Driver never has to know about governance, so
+**The pool's strategy is governed, not hardcoded.** It is built with a suspension tracker, passed by the Driver to
+`NewClient` (which keeps it on the wrapper), and bound to
+`redis:<service-name|master-name|addr>` by `NewClient` via the governance bundle's `lbMgr.Bind(pool, label)` — the
+binding lives inside the constructor so a company Driver only has to pass the bundle through, and
 `spring.governance.client.rules[N].balancer` / `outlier-threshold` / `outlier-suspend-for` for that label drive it
 in place — the next dial uses the new strategy. The dialer feeds `Complete` with the dial
 outcome, so `outlier-threshold` evicts instances that keep refusing *connections*. Sentinel and
@@ -237,7 +253,7 @@ binding via `conf.BindEach` (NOT the absolute-property starter-Pool rule).
 
 | Key | Type | Default | Behavior / interactions | Misconfiguration consequence |
 |-----|------|---------|-------------------------|------------------------------|
-| `mode` | string | `single` | `single`/`sentinel` → bean embeds `*redis.Client`; `cluster` → `*redis.ClusterClient`. Any other value fails BindEach with "invalid mode". | Typo → boot error naming the instance. |
+| `mode` | string | `single` | Every mode registers the same bean type, `*StarterGoRedis.Client`; the raw client it wraps is `*redis.Client` for `single`/`sentinel` and `*redis.ClusterClient` for `cluster`. Any other value fails BindEach with "invalid mode". | Typo → boot error naming the instance. |
 | `addr` | string | — | Single-mode target. ⚠ Exactly one of `addr` / `service-name` required in single mode (RequireAny). | Neither → boot error; both → service-name wins, startup WARN names the ignored `addr`. |
 | `master-name` | string | — | Required in sentinel mode. | Missing → boot error "master-name and sentinel-addrs are required". |
 | `sentinel-addrs` | list | — | Required in sentinel mode. | Missing → same boot error as above. |
@@ -253,12 +269,12 @@ binding via `conf.BindEach` (NOT the absolute-property starter-Pool rule).
 
 | Key | Type | Default | Behavior / interactions | Misconfiguration consequence |
 |-----|------|---------|-------------------------|------------------------------|
-| `password` / `username` | string | — | Server/ACL auth (master in sentinel mode). | Wrong → failFastPing fails at boot. |
+| `password` / `username` | string | — | Server/ACL auth (master in sentinel mode). | Wrong → the startup ping fails at boot. |
 | `db` | int | 0 | SELECT on connect (single/sentinel only). Redis Cluster has no databases: `db != 0` with `mode=cluster` → boot error "db is not supported in cluster mode". | Out-of-range → first command errors. |
 | `pool-size` | int | 10 | Max socket connections. | Too low → wait contention under burst. |
 | `max-idle` | int | 5 | Max idle conns (go-redis MaxIdleConns). | — |
 | `max-retries` | int | 0 | go-redis command retries. ⚠ Keep the RESILIENCE retry at 0 too — double retry loops amplify latency and can re-send non-idempotent commands (config.go:152-154 comment). | Large value + resilience retry → multiplied attempts. |
-| `dial-timeout` / `read-timeout` / `write-timeout` | duration | 5s / 3s / 3s | Passed through; dial-timeout also bounds the startup ping [starter.go:229]. | — |
+| `dial-timeout` / `read-timeout` / `write-timeout` | duration | 5s / 3s / 3s | Passed through; dial-timeout also bounds the startup HealthCheck [starter.go]. | — |
 | `conn-max-lifetime` | duration | 2m | Conn reuse window; short values smooth discovery traffic switching. | Very large + discovery → stale-endpoint conns linger. |
 | `tls.*` | group | off | `security` client TLS (enabled/ca-file/cert-file/key-file/server-name/insecure-skip-verify). | Partial config → `tls.Build` error at boot. |
 | `health.enabled` | bool | true | Contributes the `redis:<name>` health.Indicator for the instance — the same switch starter-redigo exposes. | false → no indicator bean for the instance; readiness of that Redis is no longer reported. |
@@ -267,14 +283,18 @@ binding via `conf.BindEach` (NOT the absolute-property starter-Pool rule).
 
 | Key | Type | Default | Behavior / interactions | Misconfiguration consequence |
 |-----|------|---------|-------------------------|------------------------------|
-| `otel.tracing.enabled` | bool | true | Attach redisotel spans. No-op without starter-otel. | Off + expecting traces → silence, no warning. |
-| `otel.metrics.enabled` | bool | true | Attach redisotel pool/hit metrics. Same no-op rule. | — |
+| `otel.metrics.enabled` | bool | true | Attach redisotel pool/hit metrics. No-op without starter-otel. | — |
+| `otel.tracing.enabled` | bool | — | **REMOVED.** Still binds (a config that kept it does not fail to start) and is ignored; setting it logs one warning at construction. Per-command spans are emitted by the resilience layer, so a redisotel span here would be a second one for the same call — delete the key. | — |
+
+The per-command span, the duration histograms and the access log are not configured here: the
+starter only declares each command's identity (`observe.go`), and the resilience layer emits them.
+There is no per-instance opt-out for that — it is the family-wide default.
 
 ### 3.4 Cache abstraction bean
 
 Alongside the wrapper, each instance is provided as a `*cache.Cache` bean (wrapping
-`NewByteCache(c.UniversalClient)`) named `go-redis:<redis-instance-name>`
-[starter.go:87-94] — inject `*cache.Cache` with the autowire tag `go-redis:<instance-name>`.
+`NewByteCache(c)`, which accepts the wrapper directly) named `go-redis:<redis-instance-name>`
+[starter.go] — inject `*cache.Cache` with the autowire tag `go-redis:<instance-name>`.
 Un-injected, the bean never instantiates, so there is no config switch to set.
 `redis.Nil` is mapped to `cache.ErrMiss` at this boundary
 [`bytecache.go`].
@@ -287,7 +307,7 @@ Un-injected, the bean never instantiates, so there is no config switch to set.
 
 ```bash
 curl -s :9370/readyz | jq .      # components include "redis:main", "redis:cluster", ...
-docker stop <redis>              # indicator runs client.Ping → component flips DOWN
+docker stop <redis>              # indicator runs HealthCheck → component flips DOWN
 curl -s :9370/readyz             # 503 OUT_OF_SERVICE
 docker start <redis>
 ```
@@ -297,8 +317,10 @@ docker start <redis>
 ```bash
 redis-cli SET probe 1
 grep _app_redis_access app.log | tail -1
-# op=set status=ok duration=...; keyed successes log at Debug, errors at Warn
-curl -s :9370/metrics | grep -E 'redis.*pool|hits'   # redisotel gauges/counters
+# db.system=redis db.operation=set db.statement=probe status=ok duration_ms=...
+# keyed successes log at Debug, failures at Warn — emitted by the resilience layer
+curl -s :9370/metrics | grep -E 'redis.*pool|hits'   # redisotel pool gauges/counters
+curl -s :9370/metrics | grep -E 'db.client'          # call-level + attempt-level histograms
 ```
 
 ### 4.3 Discovery address recycling
@@ -324,7 +346,7 @@ form. A miss through the façade returns `cache.ErrMiss`, not `redis.Nil`.
 
 ### 4.5 Fault / resilience drill
 
-With starter-governance configured, set a breaker/limiter policy for service `redis:<addr>`;
+With starter-governance-file configured, set a breaker/limiter policy for service `redis:<addr>`;
 hammer the instance and watch rejections surface in `_app_redis_access` records and the
 resilience observer's outcome counters. Flip policy at runtime — the executor hot-reloads
 without restart.
@@ -335,14 +357,14 @@ without restart.
 
 | Symptom | Likely cause | Fix |
 |---------|--------------|-----|
-| Boot fails "startup ping failed" | Unreachable addr / wrong password / TLS mismatch | failFastPing is unconditional; fix connectivity or credentials. |
+| Boot fails "startup ping failed" | Unreachable addr / wrong password / TLS mismatch | The startup HealthCheck is unconditional; fix connectivity or credentials. |
 | Boot fails "invalid mode ... (want single/sentinel/cluster)" | Typo in `mode` | Correct the value — modes are exact-match. |
 | Boot fails "service-name is not supported in sentinel/cluster mode" | Discovery + self-discovering topology | Remove service-name; sentinel/cluster discover nodes themselves. |
 | Boot fails "db is not supported in cluster mode" | Redis Cluster has no database select | Drop `db` (cluster only has db 0). |
 | Startup WARN "addr ... is ignored" | Both `addr` and `service-name` set in single mode | Harmless; remove `addr` or keep it as a label — discovery owns addressing. |
 | Boot fails "... does not support cluster mode" | A provided Driver bean isn't cluster-capable but a `mode=cluster` instance exists | Have the Driver implement `ClusterDriver` (the bundled `DefaultDriver` does); the one process-wide Driver must cover every topology in use. |
 | Health DOWN though commands work | Indicator pings with ctx; check ACL/readonly replica | Inspect the component error body in /readiness. |
-| Injected bean has no spans/metrics | starter-otel not imported | redisotel rides the OTel globals; import starter-otel. |
+| Injected bean has no spans/metrics | starter-otel not imported | The resilience layer and redisotel ride the OTel globals; import starter-otel. |
 | No access log lines | logger config filters `_app_redis_access` or the Debug level (keyed successes log at Debug) | Check logger config for `_app_redis_access`. |
 | Breaker trips on every GET miss | It does not — redis.Nil is success [command.go:94] | Look for a real backend error; misses are excluded. |
 | Cache bean inject fails | the `*cache.Cache` bean is named `go-redis:<redis-instance-name>`, not `<instance-name>` | Autowire by `go-redis:<redis-instance-name>`; see §3.4. |
@@ -351,7 +373,7 @@ without restart.
 
 | Metric | Value |
 |--------|-------|
-| Config keys | 25 instance keys + tls group + otel(2) |
+| Config keys | 25 instance keys + tls group + otel(1) |
 | Required | 1 per mode (addr/service-name, master-name+sentinel-addrs, or addrs) |
 | Quickstart external deps | 1 (Redis) |
 | "Watch out" entries | 6 |

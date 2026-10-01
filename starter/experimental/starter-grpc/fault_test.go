@@ -22,7 +22,7 @@ import (
 	"testing"
 	"time"
 
-	"go-spring.org/cloud/governance/fault"
+	"go-spring.org/cloud/fault"
 	"go-spring.org/stdlib/testing/assert"
 	"google.golang.org/grpc"
 )

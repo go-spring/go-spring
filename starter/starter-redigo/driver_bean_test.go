@@ -20,6 +20,7 @@ import (
 	"context"
 	"testing"
 
+	"go-spring.org/cloud"
 	"go-spring.org/cloud/discovery"
 	"go-spring.org/spring/gs"
 )
@@ -31,9 +32,9 @@ type recordingDriver struct {
 	called bool
 }
 
-func (d *recordingDriver) CreateClient(ctx context.Context, c Config, backend discovery.Discovery) (*Pool, error) {
+func (d *recordingDriver) CreateClient(ctx context.Context, c Config, params cloud.ClientParams) (*Pool, error) {
 	d.called = true
-	return NewPool(ctx, c, backend)
+	return NewPool(ctx, c, params)
 }
 
 // TestDriverBeanDefault proves that when no company Driver bean is provided the
@@ -104,9 +105,9 @@ type captureDriver struct {
 	got discovery.Discovery
 }
 
-func (d *captureDriver) CreateClient(ctx context.Context, c Config, backend discovery.Discovery) (*Pool, error) {
-	d.got = backend
-	return NewPool(ctx, c, backend)
+func (d *captureDriver) CreateClient(ctx context.Context, c Config, params cloud.ClientParams) (*Pool, error) {
+	d.got = params.Discovery
+	return NewPool(ctx, c, params)
 }
 
 // TestDiscoveryDefaultFallback pins the two-layer citation semantics: an

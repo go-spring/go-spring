@@ -21,9 +21,8 @@ import (
 	"testing"
 	"time"
 
+	"go-spring.org/cloud"
 	"go-spring.org/cloud/actuator/health"
-	"go-spring.org/cloud/discovery"
-	"go-spring.org/cloud/loadbalance"
 	"go-spring.org/spring/gs"
 )
 
@@ -39,7 +38,7 @@ func init() {
 		Prefix:       "spring.gorm.fake",
 		Engine:       "fake",
 		HealthPrefix: "gorm:fake:",
-		Build: func(ctx context.Context, c fakeCfg, _ discovery.Discovery, _ *loadbalance.Manager) (Spec, error) {
+		Build: func(ctx context.Context, c fakeCfg, _ cloud.ClientParams) (Spec, error) {
 			return Spec{
 				Dialector:      fakeDialector{},
 				Pool:           PoolConfig{PingTimeout: time.Second},
@@ -56,7 +55,7 @@ func init() {
 		BeanPrefix:   "fake2",
 		Engine:       "fake2",
 		HealthPrefix: "gorm:fake2:",
-		Build: func(ctx context.Context, c fakeCfg, _ discovery.Discovery, _ *loadbalance.Manager) (Spec, error) {
+		Build: func(ctx context.Context, c fakeCfg, _ cloud.ClientParams) (Spec, error) {
 			return Spec{
 				Dialector:      fakeDialector{},
 				Pool:           PoolConfig{PingTimeout: time.Second},

@@ -27,8 +27,8 @@
 // Observability rides the envelope: because Headers is a plain map[string]string
 // it doubles as a W3C trace-context carrier, so trace context is injected on
 // publish and extracted on consume without any driver importing a tracing
-// library. [Observe] supplies the whole layer — spans, metrics, access log,
-// propagation — as a decorator over [Driver].
+// library. This package emits nothing itself: a driver declares what each
+// operation is on the context, and the emitter on the call's chain reports it.
 package messaging
 
 import (

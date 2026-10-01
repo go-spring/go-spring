@@ -40,7 +40,7 @@ res.Print(os.Stdout)
 supplies the client call. Every op's context is tagged as load-test traffic
 (`prop.WithLoadTest(ctx)`) so downstream clients recognize the synthetic load
 (shadow-table routing, fault-injection scope, and metrics labeling in
-`cloud/governance/traffic` all key off it).
+`cloud/traffic` all key off it).
 
 ## Choosing a driver
 

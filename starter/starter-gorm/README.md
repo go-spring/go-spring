@@ -19,9 +19,13 @@ here, shared by all five instead of copy-pasted:
   unchanged);
 - multi-instance assembly via `Module`: one `*DB` bean plus a paired health
   indicator per configured `spring.gorm.<dialect>.instances.<name>` entry;
-- the gorm observe plugin — one client span, one duration metric and one
-  access-log line per Create/Query/Update/Delete, riding the OTel globals so it
-  is near-zero overhead without `starter-otel`;
+- the gorm observe plugin — it DECLARES each Create/Query/Update/Delete as a
+  client operation (its name, `db.system`/`db.operation` labels, SQL statement
+  and access tag) on the call's context. The signals themselves — the call
+  span, the call- and attempt-level duration histograms, the in-flight gauge and
+  the one access log — are emitted by the resilience layer, the single emitter
+  on the executor chain. The plugin emits nothing, so it rides the OTel globals
+  and is near-zero overhead without `starter-otel`;
 - the resilience callbacks — every operation runs under one backend-neutral
   `resilience.ClientExecutor`, with `gorm.ErrRecordNotFound` counted as success;
 - the post-open `DBCustomizer` extension seam, and the dialect-qualified bean

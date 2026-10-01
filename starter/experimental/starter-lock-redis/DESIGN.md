@@ -22,7 +22,7 @@ it opens no listener and holds no connection of its own.
 
 - **Seam is the bean type, not a driver string.** `cloud/lock` deliberately
   has **no** package-level string driver registry, unlike
-  `cloud/discovery` or `cloud/governance/resilience`. Locks need a *live* backend
+  `cloud/discovery` or `cloud/resilience`. Locks need a *live* backend
   handle (`*redis.Client`), not a declarative policy string; switching
   from Redis to etcd/consul/k8s is a blank-import swap that changes which
   starter registers the `lock.Locker` bean.

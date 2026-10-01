@@ -18,9 +18,7 @@ package StarterElasticsearch
 
 import (
 	"context"
-	"fmt"
 
-	"github.com/elastic/go-elasticsearch/v8"
 	"go-spring.org/cloud/actuator/health"
 )
 
@@ -29,19 +27,12 @@ import (
 // an application that also imports starter-actuator gets Elasticsearch readiness
 // folded into /readiness with no extra wiring.
 //
-// The probe issues an Info request; a context is always passed because the
-// transport's OpenTelemetry instrumentation derives its span from it and panics
-// on a nil parent context.
-func NewClientHealth(name string, client *elasticsearch.Client) *health.Indicator {
+// The probe delegates to [HealthCheck], the single liveness implementation:
+// there is one place a readiness check is defined, so the indicator and an
+// ad-hoc caller can never drift apart. A context is always passed so the probe
+// inherits cancellation and a deadline from its caller.
+func NewClientHealth(name string, c *Client) *health.Indicator {
 	return &health.Indicator{Name: "elasticsearch:" + name, Probe: func(ctx context.Context) error {
-		res, err := client.Info(client.Info.WithContext(ctx))
-		if err != nil {
-			return err
-		}
-		defer func() { _ = res.Body.Close() }()
-		if res.IsError() {
-			return fmt.Errorf("elasticsearch: info returned %s", res.Status())
-		}
-		return nil
+		return HealthCheck(ctx, c)
 	}}
 }

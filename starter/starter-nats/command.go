@@ -15,15 +15,18 @@
  */
 
 // command.go is the "command seam" concept of this starter: the per-operation
-// instrumentation and protection that wraps publishes and consumes. Two layers
+// declaration and protection that wraps publishes and consumes. Two concerns
 // live here:
 //
-//	observe    — Conn.PublishMsg / Conn.Consume wrap every operation with a
-//	             producer/consumer span + duration/in-flight metric + access
-//	             log, and inject/extract the W3C trace context across the broker.
-//	resilience — applyResilience + Conn.guard drive the backend-neutral executor
+//	declare    — Conn.PublishMsg / Conn.Consume declare the operation's identity
+//	             (see [operation]) on the ctx and inject/extract the W3C trace
+//	             context across the broker.
+//	resilience — Conn.guard drives the backend-neutral executor
 //	             through the opt-in PublishGuarded/RequestGuarded call sites,
-//	             since nats exposes no reject-capable middleware.
+//	             since nats exposes no reject-capable middleware. The executor is
+//	             also the single emitter: it reads the declared operation off the
+//	             ctx and opens the span, records the durations (call-level and
+//	             attempt-level) and writes the one access log.
 package StarterNats
 
 import (
@@ -31,42 +34,37 @@ import (
 	"time"
 
 	"github.com/nats-io/nats.go"
-	"go-spring.org/cloud/governance/fault"
-	"go-spring.org/cloud/governance/resilience"
+	"go-spring.org/cloud/observability"
 	"go.opentelemetry.io/otel/propagation"
-
-	// Blank import: importing this starter brings the governance authority with
-	// it — starter-governance registers the *resilience.Manager, *loadbalance.
-	// Manager, *fault.Injector and *governance.Center beans this package injects.
-	// Turning governance OFF is spring.governance.enabled=false (or binding no rule source),
-	// not the absence of the starter. The injected parameters stay nullable, so a
-	// container that somehow lacks these beans degrades to a transparent
-	// pass-through instead of failing to boot.
-	_ "go-spring.org/starter-governance"
 )
 
 // Both directions are reachable without the messaging.Driver:
 //
 //	publish — Conn.PublishMsgContext(ctx, msg) and its ctx-less twin
-//	          Conn.PublishMsg(msg) wrap the publish with a producer span +
-//	          duration/in-flight metric + access log, and inject the W3C trace
-//	          context into msg.Header so subscribers continue the trace.
+//	          Conn.PublishMsg(msg) declare the publish's identity and inject the
+//	          W3C trace context into msg.Header so subscribers continue the trace.
 //	consume — Conn.Consume(ctx, subject, queue, handler) subscribes with a
 //	          context-bearing handler, extracting the upstream trace from the
-//	          message header into that ctx and wrapping the delivery in the
-//	          consumer span + metric + access log.
+//	          message header into that ctx and declaring the consume's identity.
 //
-// The ctx-less PublishMsg cannot parent its span on the caller (nats.go v1.38
+// The span, the metrics and the access log are not emitted here: declaring the
+// identity is this layer's whole job now, and the resilience executor emits from
+// the one point on the chain that sees a whole call.
+//
+// The ctx-less PublishMsg has no caller ctx to parent its span on (nats.go v1.38
 // gives it no ctx parameter), so callers with an ambient trace use
 // PublishMsgContext. Conn.Consume has no such limitation: its handler receives a
 // ctx, and the consume span's parent comes from the W3C header rather than from
 // the caller.
 //
-// The messaging.Driver (messaging.go) is built on these two entries and adds
-// only envelope conversion; it holds no instrumentation of its own.
+// The messaging.Driver (messaging.go) adds only envelope conversion and routes
+// its publishes through PublishMsgContext and its subscribes through Consume —
+// these same entries — so the driver path is declared and emitted here too,
+// with no second emitter.
 
 // injectW3C inserts the current trace context into msg.Header so the receiver
-// can continue the trace across the broker.
+// can continue the trace across the broker. With no valid span on ctx (the
+// ungoverned path) it writes nothing.
 func injectW3C(ctx context.Context, msg *nats.Msg) {
 	if msg.Header == nil {
 		msg.Header = nats.Header{}
@@ -83,97 +81,77 @@ func extractW3C(ctx context.Context, msg *nats.Msg) context.Context {
 	return propagation.TraceContext{}.Extract(ctx, propagation.HeaderCarrier(msg.Header))
 }
 
-// publishCtx is the publish-side core: it opens the producer span from ctx,
-// injects the trace context into msg, and records the outcome. send is the
-// actual wire call, injected so the instrumentation can be driven without a
-// live connection (mirrors guard below).
+// publishCtx is the publish-side core: it declares the publish's identity, then
+// runs the send under the executor via [Conn.guard], which opens the span,
+// records the metrics and writes the access log. send is the actual wire call,
+// injected so the seam can be driven without a live connection (mirrors guard
+// below).
 //
-// When pubObs is nil (the field was never set) it delegates unchanged and pays
-// nothing.
+// The W3C trace context is injected from the attempt ctx the executor hands
+// inward, so the traceparent carries the executor's span and links the broker
+// trace to this call. With no executor (a stand-alone Conn) guard runs send
+// inline and the injection carries whatever span the caller's ctx holds.
 func (c *Conn) publishCtx(ctx context.Context, subject string, msg *nats.Msg, send func() error) error {
-	if c.pubObs == nil {
+	ctx = observability.WithOperation(ctx, operation(opPublish, subject))
+	return c.guard(ctx, func(attemptCtx context.Context) error {
+		injectW3C(attemptCtx, msg)
 		return send()
-	}
-	ctx, sp := c.pubObs.Start(ctx, "publish", subject)
-	injectW3C(ctx, msg)
-	err := send()
-	sp.End(err)
-	return err
+	})
 }
 
-// PublishMsg overrides the embedded *nats.Conn.PublishMsg so every publish flows
-// through the instrumentation (see observe.go). Because nats.go's PublishMsg
-// (v1.38) carries no context parameter, the producer span is a NEW ROOT rather
+// PublishMsg publishes msg. Every publish is declared and routed through the
+// resilience executor, which is where its span, metrics and access log are
+// emitted. Because nats.go's PublishMsg (v1.38) carries no context parameter,
+// the call starts from context.Background(), so the span is a NEW ROOT rather
 // than a child of the caller's active trace; use PublishMsgContext when the
 // caller has a ctx to link against.
 func (c *Conn) PublishMsg(msg *nats.Msg) error {
 	return c.publishCtx(context.Background(), msg.Subject, msg,
-		func() error { return c.Conn.PublishMsg(msg) })
+		func() error { return c.conn.PublishMsg(msg) })
 }
 
-// PublishMsgContext publishes msg with the caller's context, so the producer
-// span is a child of the caller's active span instead of a new root. The W3C
-// trace context is still injected into msg.Header, so subscribers continue the
-// trace across the broker either way.
+// PublishMsgContext publishes msg with the caller's context, so the call's span
+// is a child of the caller's active span instead of a new root. The W3C trace
+// context is still injected into msg.Header, so subscribers continue the trace
+// across the broker either way.
 func (c *Conn) PublishMsgContext(ctx context.Context, msg *nats.Msg) error {
 	return c.publishCtx(ctx, msg.Subject, msg,
-		func() error { return c.Conn.PublishMsg(msg) })
+		func() error { return c.conn.PublishMsg(msg) })
 }
 
 // ContextHandler processes one consumed message. Unlike a bare nats.MsgHandler
 // it receives a ctx carrying the upstream trace (extracted from the message
-// header) and returns an error that is recorded on the consumer span.
+// header) and returns an error that flows into the executor's outcome.
 type ContextHandler func(ctx context.Context, msg *nats.Msg) error
 
-// Consume subscribes to subject and runs every delivery through the consumer
-// span + duration/in-flight metric + access log, extracting the producer's W3C
-// trace context from the message header into the ctx passed to handler. A
-// non-empty queue joins a NATS queue group (competing consumers); an empty
-// queue is a plain subscription, so every Consume caller receives every message.
+// Consume subscribes to subject and runs every delivery declared and under the
+// resilience executor, extracting the producer's W3C trace context from the
+// message header into the ctx passed to handler. A non-empty queue joins a NATS
+// queue group (competing consumers); an empty queue is a plain subscription, so
+// every Consume caller receives every message.
 //
-// ctx bounds subscription setup only — the consumer span's parent comes from the
+// ctx bounds subscription setup only — the consume span's parent comes from the
 // message header, never from this ctx.
 func (c *Conn) Consume(ctx context.Context, subject, queue string, handler ContextHandler) (*nats.Subscription, error) {
 	cb := c.wrapConsume(subject, handler)
 	if queue != "" {
-		return c.Conn.QueueSubscribe(subject, queue, cb)
+		return c.conn.QueueSubscribe(subject, queue, cb)
 	}
-	return c.Conn.Subscribe(subject, cb)
+	return c.conn.Subscribe(subject, cb)
 }
 
 // wrapConsume adapts a ContextHandler to the ctx-less nats.MsgHandler, which is
-// where the consume-side instrumentation has to live. When subObs is nil it
-// delegates without parsing the header, so a bare Conn pays nothing.
+// where the consume-side declaration has to live. It extracts the upstream trace
+// into a fresh ctx, declares the consume's identity, and runs the handler under
+// the executor — which emits the span, metrics and access log.
 func (c *Conn) wrapConsume(subject string, handler ContextHandler) nats.MsgHandler {
 	return func(nm *nats.Msg) {
-		if c.subObs == nil {
-			_ = handler(context.Background(), nm)
-			return
-		}
-		octx, sp := c.subObs.Start(extractW3C(context.Background(), nm), "consume", subject)
-		err := handler(octx, nm)
-		sp.End(err)
+		ctx := extractW3C(context.Background(), nm)
+		ctx = observability.WithOperation(ctx, operation(opConsume, subject))
+		_ = c.guard(ctx, func(attemptCtx context.Context) error {
+			return handler(attemptCtx, nm)
+		})
 	}
-}
-
-// applyResilience builds an executor and attaches it to conn. This is the nats
-// seam of resilience: because nats exposes no reject-capable middleware (unlike
-// redis.Hook or http.RoundTripper), the same backend-neutral Executor is driven
-// through opt-in call-site guards (PublishGuarded/RequestGuarded) rather than a
-// transparent interceptor. Only the adapter shape differs — the core is reused.
-//
-// The executor is armed from the *resilience.Manager bean the container injects
-// into the connection's constructor. mgr is normalized here: an unarmed manager
-// is exactly the "governance off" pass-through, while a nil pointer would panic
-// on the method call. The fault injector wraps it with inj, which is nil-safe
-// (with no injector the fault layer is a transparent pass-through). The
-// manager's ClientExecutorFor resolves its backing executor lazily, on each Execute, so
-// the arming order relative to starter-governance's wiring is irrelevant.
-func applyResilience(c Config, conn *Conn, service string, mgr *resilience.Manager, inj *fault.Injector) error {
-	exec := fault.WrapClientExecutor(mgr.ClientExecutorFor("nats", service), service, inj)
-	conn.exec = exec
-	conn.service = service
-	return nil
 }
 
 // guard routes call through the executor when one is attached, and otherwise
@@ -187,17 +165,12 @@ func (c *Conn) guard(ctx context.Context, call func(context.Context) error) erro
 	return c.exec.Execute(ctx, call)
 }
 
-// PublishGuarded publishes data on subj, routed through the resilience executor
-// when governance is enabled. When governance is disabled this
-// behaves exactly like the embedded Publish, so enabling protection is a
-// zero-code opt-in on the caller side. The publish itself flows through
-// PublishMsgContext, so the guarded path keeps the publish span/observer
-// instrumentation and the producer span is a child of the caller's trace. Use
-// RequestGuarded when a per-attempt timeout matters.
+// PublishGuarded publishes data on subj, routed through the resilience executor.
+// The publish itself flows through PublishMsgContext, so it is declared and
+// emitted exactly like any other publish — see that method for the trace
+// linkage. Use RequestGuarded when a per-attempt timeout matters.
 func (c *Conn) PublishGuarded(ctx context.Context, subj string, data []byte) error {
-	return c.guard(ctx, func(ctx context.Context) error {
-		return c.PublishMsgContext(ctx, &nats.Msg{Subject: subj, Data: data})
-	})
+	return c.PublishMsgContext(ctx, &nats.Msg{Subject: subj, Data: data})
 }
 
 // RequestGuarded sends a request/reply on subj, routed through the resilience
@@ -208,7 +181,7 @@ func (c *Conn) PublishGuarded(ctx context.Context, subj string, data []byte) err
 func (c *Conn) RequestGuarded(ctx context.Context, subj string, data []byte, timeout time.Duration) (*nats.Msg, error) {
 	var reply *nats.Msg
 	err := c.guard(ctx, func(context.Context) error {
-		msg, rerr := c.Conn.Request(subj, data, timeout)
+		msg, rerr := c.conn.Request(subj, data, timeout)
 		if rerr != nil {
 			return rerr
 		}

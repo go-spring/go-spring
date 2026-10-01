@@ -19,14 +19,17 @@ package gormcore
 import (
 	"context"
 	"strings"
+	"time"
 
+	"go-spring.org/cloud"
 	"go-spring.org/cloud/actuator/health"
 	"go-spring.org/cloud/discovery"
-	"go-spring.org/cloud/governance/fault"
-	"go-spring.org/cloud/governance/resilience"
+	"go-spring.org/cloud/fault"
 	"go-spring.org/cloud/loadbalance"
+	"go-spring.org/cloud/resilience"
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/gs"
+	"go-spring.org/stdlib/errutil"
 	"go-spring.org/stdlib/flatten"
 	"gorm.io/gorm"
 )
@@ -51,18 +54,17 @@ type Dialect[C any] struct {
 	BeanPrefix   string // bean-name qualifier, e.g. "mysql"; defaults to the Prefix tail
 	Engine       string // db.system + observe + service label, e.g. "mysql"
 	HealthPrefix string // e.g. "gorm:mysql:"
-	// Build assembles the dialector for one entry. backend is the discovery
-	// backend bean the entry's ${discovery} label resolved to (nil when the
-	// label named no bean), handed in as an argument rather than carried on
-	// Config so Config stays a pure bound value; dialects with no network
-	// transport (e.g. sqlite) ignore it, and so do dialects that dial a fixed
-	// address.
-	//
-	// lbMgr is the injected endpoint-selection authority. A dialect that builds
-	// a pick pool for a discovery-routed entry passes it to
-	// [Common.NewPickPool], which binds the pool to the entry's governance
-	// label; it is nil in a standalone call.
-	Build func(ctx context.Context, c C, backend discovery.Discovery, lbMgr *loadbalance.Manager) (Spec, error)
+	// Build assembles the dialector for one entry. params carries the container's
+	// facilities (see [cloud.ClientParams]): params.Discovery is the discovery
+	// backend bean the entry's ${discovery} label resolved to (nil when the label
+	// named no bean) and params.Loadbalance the injected endpoint-selection
+	// authority — handed in on the struct rather than as loose arguments so the
+	// signature stays stable as capabilities are added. Dialects with no network
+	// transport (e.g. sqlite) ignore both, and so do dialects that dial a fixed
+	// address. A dialect that builds a pick pool for a discovery-routed entry
+	// passes them to [Common.NewPickPool], which binds the pool to the entry's
+	// governance label; both are nil in a standalone call.
+	Build func(ctx context.Context, c C, params cloud.ClientParams) (Spec, error)
 }
 
 // Module declares a dialect starter as a gs module: it wires one *DB bean (plus
@@ -88,17 +90,27 @@ func Module[C any](d Dialect[C]) {
 			// only consumer, and never carried on the Config value.
 			r.Provide(func(ctx *gs.ContextProvider, disc discovery.Discovery,
 				mgr *resilience.Manager, inj *fault.Injector, lbMgr *loadbalance.Manager) (*DB, error) {
-				spec, err := d.Build(ctx.Context, c, disc, lbMgr)
+				// The container's facilities, assembled once: the dialect Build
+				// reads params.Discovery / params.Loadbalance while it constructs
+				// the dialector, and Open reads params.Resilience / params.Fault to
+				// install the executor. Both see the same bundle.
+				params := cloud.ClientParams{Resilience: mgr, Fault: inj, Loadbalance: lbMgr, Discovery: disc}
+				spec, err := d.Build(ctx.Context, c, params)
 				if err != nil {
 					return nil, err
 				}
+				// Assembly: open + pool + customizers + observe plugin +
+				// governance, all of it in Open — the dialect Build never sees
+				// the governance beans, so the wiring bundles them into the
+				// Options it hands Open. Only then probe, so the client is
+				// complete before it is checked, and a failure at any step
+				// releases what was just assembled.
 				db, err := Open(spec.Dialector, spec.Pool, Options{
 					Engine:         d.Engine,
 					Service:        spec.Service,
 					ObserveEnabled: spec.ObserveEnabled,
 					Closers:        spec.Closers,
-					Mgr:            mgr,
-					Inj:            inj,
+					Params:         params,
 				})
 				if err != nil {
 					for _, closer := range spec.Closers {
@@ -108,6 +120,22 @@ func Module[C any](d Dialect[C]) {
 					}
 					return nil, err
 				}
+				// Fail fast: probe the assembled DB with a ping at startup so an
+				// unreachable database surfaces during boot rather than on the first
+				// query. HealthCheck goes straight to the raw pool on purpose: it is
+				// a connectivity check, not business traffic, so it must not open a
+				// span or spend limiter/breaker budget. A failure abandons the DB,
+				// so release what was just applied.
+				timeout := spec.Pool.PingTimeout
+				if timeout <= 0 {
+					timeout = 5 * time.Second
+				}
+				pctx, cancel := context.WithTimeout(ctx.Context, timeout)
+				defer cancel()
+				if err := HealthCheck(pctx, db); err != nil {
+					_ = db.Destroy()
+					return nil, errutil.Explain(err, "gorm: startup ping failed")
+				}
 				return db, nil
 			},
 				// Bind the constructor's disc parameter: the backend bean named
@@ -116,19 +144,20 @@ func Module[C any](d Dialect[C]) {
 				// never-existing bean name, so an unset key yields the optional
 				// nil).
 				gs.IndexArg(1, gs.TagArg("${"+d.Prefix+".instances."+name+".discovery:=${"+d.Prefix+".default.discovery:=none}}?")),
-				// The governance beans are REQUIRED: this starter blank-imports
-				// starter-governance, so "governance off" is spring.governance.enabled=false,
-				// never an absent bean.
+				// The governance beans are REQUIRED: each is registered by the package that
+				// owns it (cloud/resilience, cloud/loadbalance, cloud/fault), which this
+				// starter imports — "governance off" is spring.governance.enabled=false, never
+				// an absent bean.
 				gs.IndexArg(2, gs.TagArg("")),
 				gs.IndexArg(3, gs.TagArg("")),
 				gs.IndexArg(4, gs.TagArg("")),
-			).Name(beanName).Init((*DB).Init).Destroy((*DB).Destroy).Caller(1)
+			).Name(beanName).Destroy((*DB).Destroy).Caller(1)
 
 			// Contribute a health indicator for this instance, injecting the
-			// wrapper just registered above by name (the embedded *gorm.DB is
-			// passed through to the indicator).
+			// wrapper just registered above by name. Its probe only calls
+			// HealthCheck (see health.go).
 			r.Provide(func(w *DB) *health.Indicator {
-				return NewGormHealth(d.HealthPrefix, name, w.DB)
+				return NewClientHealth(d.HealthPrefix, name, w)
 			}, gs.TagArg(beanName)).Name(d.HealthPrefix + name).Caller(1)
 			return nil
 		})

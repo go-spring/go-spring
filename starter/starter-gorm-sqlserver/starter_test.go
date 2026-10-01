@@ -25,6 +25,7 @@ import (
 	"time"
 
 	"github.com/microsoft/go-mssqldb/msdsn"
+	"go-spring.org/cloud"
 	"go-spring.org/cloud/actuator/health"
 	"go-spring.org/spring/gs"
 	"go-spring.org/starter-gorm"
@@ -118,13 +119,13 @@ func TestDSNTLSLandsOnTheDriver(t *testing.T) {
 
 func TestBuild(t *testing.T) {
 	// Neither host nor service-name: rejected up front.
-	if _, err := build(context.Background(), Config{User: "sa", Password: "p", DB: "master"}, nil, nil); err == nil {
+	if _, err := build(context.Background(), Config{User: "sa", Password: "p", DB: "master"}, cloud.ClientParams{}); err == nil {
 		t.Fatal("build must require host or service-name")
 	}
 
 	c := Config{User: "sa", Password: "p", Host: "127.0.0.1", Port: "1", DB: "master"}
 	c.PingTimeout = 500 * time.Millisecond
-	spec, err := build(context.Background(), c, nil, nil)
+	spec, err := build(context.Background(), c, cloud.ClientParams{})
 	assert.Error(t, err).Nil("build")
 	if spec.Dialector == nil {
 		t.Fatal("plain-host build must return a dialector")

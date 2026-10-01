@@ -26,23 +26,14 @@ import (
 	"net"
 
 	ch "github.com/ClickHouse/clickhouse-go/v2"
-	"go-spring.org/cloud/discovery"
-	"go-spring.org/cloud/governance/resilience"
+	"go-spring.org/cloud"
 	"go-spring.org/cloud/loadbalance"
 	"go-spring.org/cloud/mesh"
+	"go-spring.org/cloud/resilience"
 	"go-spring.org/log"
 	"go-spring.org/starter-gorm"
 	"go-spring.org/stdlib/errutil"
 	"gorm.io/driver/clickhouse"
-
-	// Blank import: importing this starter brings the governance authority with
-	// it — starter-governance registers the *resilience.Manager, *loadbalance.
-	// Manager, *fault.Injector and *governance.Center beans this package injects.
-	// Turning governance OFF is spring.governance.enabled=false (or binding no rule source),
-	// not the absence of the starter. The injected parameters stay nullable, so a
-	// container that somehow lacks these beans degrades to a transparent
-	// pass-through instead of failing to boot.
-	_ "go-spring.org/starter-governance"
 )
 
 func init() {
@@ -66,7 +57,7 @@ func init() {
 // client. In mesh mode a sidecar owns discovery+LB, so the configured Addr is
 // used as-is. When c.ServiceName is empty this is a plain DSN dial, unchanged
 // from before.
-func build(ctx context.Context, c Config, backend discovery.Discovery, lbMgr *loadbalance.Manager) (gormcore.Spec, error) {
+func build(ctx context.Context, c Config, params cloud.ClientParams) (gormcore.Spec, error) {
 	if c.Addr == "" && c.ServiceName == "" {
 		return gormcore.Spec{}, errutil.Explain(nil, "gorm clickhouse: one of addr or service-name must be set")
 	}
@@ -106,7 +97,7 @@ func build(ctx context.Context, c Config, backend discovery.Discovery, lbMgr *lo
 			opts.TLS = tlsCfg
 		}
 		if useDiscovery {
-			lb, _, stopSelection, derr := c.NewPickPool(ctx, backend, service, lbMgr)
+			lb, _, stopSelection, derr := c.NewPickPool(ctx, params.Discovery, service, params.Loadbalance)
 			if derr != nil {
 				log.Errorf(ctx, log.TagAppDef, "gorm clickhouse: build discovery resolver failed: %v", derr)
 				return gormcore.Spec{}, derr

@@ -23,8 +23,9 @@ import (
 	"testing"
 
 	"github.com/twmb/franz-go/pkg/kgo"
-	"go-spring.org/cloud/governance/resilience"
+	"go-spring.org/cloud"
 	"go-spring.org/cloud/messaging"
+	"go-spring.org/cloud/resilience"
 )
 
 // errGovernanceStub is returned by the test executor to prove a call was
@@ -42,24 +43,74 @@ func (s *stubExecutor) Execute(context.Context, func(context.Context) error) err
 func (s *stubExecutor) Close() error                          { return nil }
 func (s *stubExecutor) Refresh(resilience.ClientPolicy) error { return nil }
 
-// applyResilience always attaches an executor. Whether it protects anything is
-// decided by the governance rule for the service label, not by a per-instance
-// switch: with governance off the executor is a transparent pass-through, so
-// attaching one costs a call frame and changes nothing else.
-func TestApplyResilienceAttachesGuard(t *testing.T) {
+// CreateClient attaches a guard while it builds the client — governance is
+// applied in the constructor, not by a later starter step. Whether the executor
+// protects anything is decided by the governance rule for the service label, not
+// by a per-instance switch: with governance off the executor is a transparent
+// pass-through, so attaching one costs a call frame and changes nothing else.
+func TestCreateClientAttachesGuard(t *testing.T) {
+	cl, err := DefaultDriver{}.CreateClient(context.Background(), Config{Brokers: "127.0.0.1:1"},
+		cloud.ClientParams{Resilience: resilience.NewManager()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cl.Close()
+
+	if _, ok := clientGuards.Load(cl); !ok {
+		t.Fatal("CreateClient must attach an executor")
+	}
+	closeResilience(cl)
+}
+
+// AttachGovernance with the zero governance bundle still attaches an executor:
+// the client degrades to the observe-only resilience.Unmanaged one rather than
+// running bare, so a hand-built client is observed (with a one-time warning)
+// exactly like a governed one until protection is armed.
+func TestAttachGovernanceZeroBundleDegradesToUnmanaged(t *testing.T) {
 	cl, err := kgo.NewClient(kgo.SeedBrokers("127.0.0.1:1"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer cl.Close()
 
-	if err := applyResilience(cl, "kafka:test", resilience.NewManager(), nil); err != nil {
-		t.Fatal(err)
-	}
+	AttachGovernance(cl, "127.0.0.1:1", cloud.ClientParams{})
 	if _, ok := clientGuards.Load(cl); !ok {
-		t.Fatal("applyResilience must attach an executor")
+		t.Fatal("AttachGovernance must attach an executor even for the zero bundle")
 	}
 	closeResilience(cl)
+}
+
+// TestGuardedConsumeRoutesThroughGuard verifies an application owning its own
+// poll loop can route a consumed record through the client's executor: with an
+// executor attached, the record is rejected before the handler runs — the raw
+// client's own PollFetches cannot be intercepted, so this is the one entry point
+// that gives the raw consume path the guard, the messaging.* metrics and the
+// access log.
+func TestGuardedConsumeRoutesThroughGuard(t *testing.T) {
+	cl, err := kgo.NewClient(kgo.SeedBrokers("127.0.0.1:1"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cl.Close()
+
+	stub := &stubExecutor{}
+	clientGuards.Store(cl, &clientGuard{exec: stub, serviceLabel: "kafka:test"})
+	defer clientGuards.Delete(cl)
+
+	reached := false
+	err = GuardedConsume(context.Background(), cl, &kgo.Record{Topic: "t"}, func(context.Context) error {
+		reached = true
+		return nil
+	})
+	if !errors.Is(err, errGovernanceStub) {
+		t.Fatalf("expected stub rejection, got %v", err)
+	}
+	if reached {
+		t.Fatal("handler must not run when the executor rejects the consume")
+	}
+	if n := stub.called.Load(); n != 1 {
+		t.Fatalf("executor must run exactly once, ran %d", n)
+	}
 }
 
 // TestDriverPublishGuarded verifies the driver's Publish routes through the
@@ -73,7 +124,7 @@ func TestDriverPublishGuarded(t *testing.T) {
 	defer cl.Close()
 
 	stub := &stubExecutor{}
-	clientGuards.Store(cl, &clientGuard{exec: stub, service: "kafka:test"})
+	clientGuards.Store(cl, &clientGuard{exec: stub, serviceLabel: "kafka:test"})
 	defer clientGuards.Delete(cl)
 
 	b := NewDriver(cl, nil)

@@ -21,9 +21,10 @@ import (
 	"strings"
 	"time"
 
+	"go-spring.org/cloud"
 	"go-spring.org/cloud/actuator/health"
-	"go-spring.org/cloud/governance/fault"
-	"go-spring.org/cloud/governance/resilience"
+	"go-spring.org/cloud/fault"
+	"go-spring.org/cloud/resilience"
 	"go-spring.org/log"
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/gs"
@@ -39,9 +40,9 @@ func init() {
 	// to the bean for diagnostics.
 	gs.Module(gs.OnProperty("spring.tdengine.instances"), func(r gs.BeanProvider, p flatten.Storage) error {
 		return conf.BindEach(p, "${spring.tdengine.instances}", func(name string, c Config) error {
-			// The wrapper bean owns the resilience executor, so the ctor arms
-			// it (ArmGovernance, with the injected governance beans) and
-			// Destroy tears it down. The Driver bean is
+			// The wrapper bean owns the resilience executor, so the ctor
+			// applies it while building the client (with the injected governance
+			// beans) and Destroy tears it down. The Driver bean is
 			// selected by the entry's ${driver} key: unset → "?" (nullable
 			// by-type — injects the single Driver bean when one is provided,
 			// nil otherwise, and the ctor falls back to the bundled
@@ -50,16 +51,17 @@ func init() {
 			r.Provide(newClient,
 				gs.IndexArg(1, gs.ValueArg(c)),
 				gs.IndexArg(2, gs.TagArg("${spring.tdengine.instances."+name+".driver:=${spring.tdengine.default.driver:=?}}")),
-				// The governance beans are REQUIRED: this starter blank-imports
-				// starter-governance, so "governance off" is spring.governance.enabled=false,
-				// never an absent bean.
+				// The governance beans are REQUIRED: each is registered by the package that
+				// owns it (cloud/resilience, cloud/loadbalance, cloud/fault), which this
+				// starter imports — "governance off" is spring.governance.enabled=false, never
+				// an absent bean.
 				gs.IndexArg(3, gs.TagArg("")), // *resilience.Manager
 				gs.IndexArg(4, gs.TagArg("")), // *fault.Injector
-			).Name(name).Init((*Client).Init).Destroy((*Client).Destroy).Caller(1)
+			).Name(name).Destroy((*Client).Destroy).Caller(1)
 			// Contribute a health indicator for this instance, injecting the
 			// client just registered above by name.
 			r.Provide(func(w *Client) *health.Indicator {
-				return NewClientHealth(name, w.DB)
+				return NewClientHealth(name, w)
 			}, gs.TagArg(name)).Name("tdengine:" + name).Caller(1)
 			return nil
 		})
@@ -67,14 +69,16 @@ func init() {
 }
 
 // newClient creates a new TDengine client based on the provided
-// configuration. The server is pinged once at startup so that
+// configuration. The driver assembles the client complete — governance applied
+// while it is built — and only then is the server pinged, so that
 // misconfiguration or an unreachable taosAdapter fails fast rather than on
-// first use.
+// first use. A failed probe abandons the client.
 //
-// mgr and inj are the governance beans starter-governance provides. The wiring
+// mgr and inj are the authority beans the owning packages register. The wiring
 // injects them NULLABLY, so both are nil in a container without
-// starter-governance as well as in a standalone (non-gs) call;
-// [Client.ArmGovernance] treats a nil bean as "governance off".
+// the container as well as in a standalone (non-gs) call; the ctor bundles
+// them into the [cloud.ClientParams] it hands the driver, and the zero bundle
+// degrades to an observed-only, loudly-unmanaged executor.
 func newClient(ctx *gs.ContextProvider, c Config, d Driver, mgr *resilience.Manager, inj *fault.Injector) (*Client, error) {
 	log.Debugf(ctx.Context, log.TagAppDef, "creating tdengine client, dsn-addr=%s", dsnAddr(c.DSN))
 
@@ -82,30 +86,29 @@ func newClient(ctx *gs.ContextProvider, c Config, d Driver, mgr *resilience.Mana
 	if d == nil {
 		d = DefaultDriver{}
 	}
-	cl, err := d.CreateClient(ctx.Context, c)
+	cl, err := d.CreateClient(ctx.Context, c, cloud.ClientParams{Resilience: mgr, Fault: inj})
 	if err != nil {
 		return nil, err
 	}
-	// Arm governance on the client. It runs here, not inside the driver, so a
-	// custom Driver's client is governed too — without the Driver interface
-	// carrying a dependency on cloud/governance.
-	if err := cl.ArmGovernance(mgr, inj); err != nil {
-		_ = cl.Close()
-		return nil, err
-	}
+	// Fail fast: probe the assembled client with a ping at startup. The probe is
+	// [HealthCheck], the single liveness implementation; it goes straight to the
+	// raw pool on purpose: it is a connectivity check, not business traffic, so
+	// it must not open a span or spend limiter/breaker budget. A failure
+	// abandons the client, so release what was just applied.
 	pctx, cancel := context.WithTimeout(ctx.Context, 10*time.Second)
 	defer cancel()
-	if err = cl.PingContext(pctx); err != nil {
-		_ = cl.Close()
+	if err = HealthCheck(pctx, cl); err != nil {
+		_ = cl.Destroy()
 		return nil, errutil.Explain(err, "failed to reach tdengine at %s", dsnAddr(c.DSN))
 	}
 	return cl, nil
 }
 
 // HealthCheck reports whether the TDengine instance is reachable. It is a
-// thin readiness probe suitable for wiring into a health endpoint.
+// thin readiness probe suitable for wiring into a health endpoint, and the
+// single place a TDengine liveness check is defined.
 func HealthCheck(ctx context.Context, client *Client) error {
-	return client.PingContext(ctx)
+	return client.DB.PingContext(ctx)
 }
 
 // dsnAddr extracts a display-safe address from the unified DSN, e.g.

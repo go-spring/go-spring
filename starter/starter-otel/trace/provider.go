@@ -57,7 +57,7 @@ func NewResource(serviceName string) (*resource.Resource, error) {
 // NewTracerProvider builds a batching TracerProvider for the configured
 // exporter. The exporter is looked up by name in the span-exporter registry;
 // the built-in names (otlp-grpc, otlp-http, stdout) are registered by subpackages
-// the starter blank-imports, and applications may add their own via
+// the starter registers, and applications may add their own via
 // RegisterSpanExporter. Endpoint is required for the otlp exporters; an empty
 // endpoint falls back to the exporter's own default (localhost:4317 / :4318).
 func NewTracerProvider(cfg TraceConfig, res *resource.Resource) (*sdktrace.TracerProvider, error) {
@@ -108,7 +108,8 @@ func NewSampler(ratio float64) sdktrace.Sampler {
 // NewPropagator returns the text-map propagator for cross-service context
 // propagation named by spec, which is a comma-separated list of registered
 // propagator names composed in order. The built-in names are "tracecontext"
-// and "baggage" (pre-registered at init); "w3c" is an alias for that pair.
+// and "baggage" (registered by [RegisterDefaults], which the starter calls from
+// its starter.go); "w3c" is an alias for that pair.
 // "none" returns nil, leaving the process global untouched. An empty spec
 // defaults to "w3c". A company composes its own propagators into the fleet by
 // RegisterPropagator(name, p) and naming them here, e.g.

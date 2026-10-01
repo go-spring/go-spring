@@ -24,30 +24,10 @@ import (
 	"time"
 
 	"go-spring.org/cloud/governance"
-	"go-spring.org/cloud/governance/resilience"
+	"go-spring.org/cloud/resilience"
 	"go-spring.org/spring/gs"
 	mapconfig "go-spring.org/starter-dubbo/internal/mapconfig"
-
-	// Blank import: importing this starter brings the governance authority with
-	// it — starter-governance registers the *resilience.Manager, *loadbalance.
-	// Manager, *fault.Injector and *governance.Center beans this package injects.
-	// Turning governance OFF is spring.governance.enabled=false (or binding no rule source),
-	// not the absence of the starter. The injected parameters stay nullable, so a
-	// container that somehow lacks these beans degrades to a transparent
-	// pass-through instead of failing to boot.
-	_ "go-spring.org/starter-governance"
 )
-
-func init() {
-	// The governance beans are REQUIRED: this starter blank-imports
-	// starter-governance, so "governance off" is spring.governance.enabled=false,
-	// never an absent bean.
-	gs.Provide(newDyncPoller,
-		gs.IndexArg(0, gs.TagArg("${spring.dubbo.application}")),
-		gs.IndexArg(1, gs.TagArg("")), // *resilience.Manager
-		gs.IndexArg(2, gs.TagArg("")), // *governance.Center
-	).Init((*dyncPoller).Init).Export(gs.As[gs.Rooter]()).Caller(1)
-}
 
 // dyncPoller watches ${spring.dubbo.consumer} (the entire consumer node:
 // consumer-level defaults + per-reference overrides + per-method tuning) via
@@ -70,13 +50,13 @@ type dyncPoller struct {
 	appName string                             // application name, used as the app-level override key
 
 	// mgr is the governance starter's resilience manager bean, nil when
-	// starter-governance is not imported. It is the module authority the poller
+	// no center is linked. It is the module authority the poller
 	// reads policies from and subscribes to for hot-reload. A nil (or disabled)
 	// manager leaves governance off: no overrides are merged, and the
 	// ${spring.dubbo.consumer}-only behavior stands.
 	mgr *resilience.Manager
 
-	// ctr is the governance starter's center bean, nil when starter-governance is
+	// ctr is the governance starter's center bean, nil when the governance center is
 	// not imported. It is used only for its ready signal — gs wires Rooters before
 	// Runners, so this poller may initialize before the center is live; OnReady
 	// re-runs the poll once governance is armed.
@@ -92,7 +72,7 @@ type dyncPoller struct {
 }
 
 // newDyncPoller creates the poller bean. mgr and ctr are the governance beans
-// starter-governance provides; both are nil when it is not imported, which leaves
+// the governance center provides; both are nil when it is not imported, which leaves
 // the poller on the legacy ${spring.dubbo.consumer}-only behavior.
 func newDyncPoller(app DubboApplication, mgr *resilience.Manager, ctr *governance.Center) *dyncPoller {
 	return &dyncPoller{
@@ -134,7 +114,7 @@ func (p *dyncPoller) poll() {
 	// rules. Collected under p.mu (dedup via regged) but subscribed OUTSIDE the
 	// lock: Subscribe arms its callback synchronously, and that callback re-enters
 	// poll - holding p.mu across Subscribe would self-deadlock. The re-entrant poll
-	// is a no-op (changed() finds the same snapshot). When starter-governance is
+	// is a no-op (changed() finds the same snapshot). When the governance center is
 	// absent (nil manager) or governance is not armed (Enabled false) the whole
 	// block is skipped.
 	if p.mgr != nil && p.mgr.Enabled() {

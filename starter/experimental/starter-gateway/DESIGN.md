@@ -17,7 +17,7 @@ Predicates are `func(*http.Request) bool`, Filters are
   import.
 - **Out of scope:** runtime DSL / rules engine, control-plane sync,
   L4/TCP proxying. Resilience (retry/circuit-breaker/rate-limit) is
-  delegated to `cloud/governance/resilience`, not reimplemented.
+  delegated to `cloud/resilience`, not reimplemented.
 
 ## 2. Key Abstractions
 

@@ -21,16 +21,11 @@ import (
 	"errors"
 	"net/http"
 
-	"go-spring.org/cloud/governance/resilience"
-
-	// Blank import: importing this starter brings the governance authority with
-	// it — starter-governance registers the *resilience.Manager, *loadbalance.
-	// Manager, *fault.Injector and *governance.Center beans this package injects.
-	// Turning governance OFF is spring.governance.enabled=false (or binding no rule source),
-	// not the absence of the starter. The injected parameters stay nullable, so a
-	// container that somehow lacks these beans degrades to a transparent
-	// pass-through instead of failing to boot.
-	_ "go-spring.org/starter-governance"
+	"go-spring.org/cloud/observability"
+	"go-spring.org/cloud/propagate"
+	"go-spring.org/cloud/resilience"
+	"go-spring.org/log"
+	"go.opentelemetry.io/otel/attribute"
 )
 
 // ServerPolicy returns the inbound admission filter: every request runs through
@@ -76,14 +71,36 @@ func ServerPolicy(label string, mgr *resilience.Manager) Middleware {
 func admissionWith(exec resilience.ServerExecutor, label string) Middleware {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// Declare what this request IS, so the executor's emitter can name the
+			// span, the family metrics and the access log from it. This package
+			// emits nothing itself — the same division the client starters use.
+			ctx := observability.WithOperation(r.Context(), operation(r))
+			// The caller's remaining budget, when it sent one: the handler — and
+			// every outbound call it makes — then runs on the earlier of that and
+			// this server's own handling budget, so a request chain spends one
+			// allowance instead of one per hop.
+			ctx, cancel := resilience.WithBudget(ctx, propagate.Header(r.Header))
+			defer cancel()
+
 			sw := &statusWriter{ResponseWriter: w}
 			var served bool
-			err := exec.Execute(r.Context(), func(ctx context.Context) error {
+			err := exec.Execute(ctx, func(ctx context.Context) error {
 				if served {
 					return nil // reentry guard: the handler already ran this request
 				}
 				served = true
-				next.ServeHTTP(sw, r)
+				// Hand the bounded context to the handler: the admission executor
+				// derived it, so the deadline that bounds this request is the one
+				// the handler and its outbound clients actually run under.
+				next.ServeHTTP(sw, r.WithContext(ctx))
+				// The response half: what only the handler knows once it has
+				// answered. An unwritten response is a 200, which is what net/http
+				// sends on its behalf.
+				code := sw.status
+				if !sw.written {
+					code = http.StatusOK
+				}
+				observability.ResponseFrom(ctx).Add(attribute.Int("http.response.status_code", code))
 				if sw.written && sw.status >= 500 {
 					return errHTTP5xx{code: sw.status}
 				}
@@ -149,5 +166,36 @@ func (w *statusWriter) Unwrap() http.ResponseWriter { return w.ResponseWriter }
 func (w *statusWriter) Flush() {
 	if f, ok := w.ResponseWriter.(http.Flusher); ok {
 		f.Flush()
+	}
+}
+
+// accessTag is the static log tag for this server's access log. The tag name
+// uses an underscore because a tag is a syntax marker, not a path. It is
+// registered here, at package init, because a tag must exist before the
+// framework's first property refresh — see [log.RegisterAppTag].
+var accessTag = log.RegisterAppTag("http_server", "access")
+
+// operation is the semantic identity of one inbound request, declared on the
+// context before the admission executor runs. It is this package's WHOLE
+// contribution to the request's signals: the emitter names the span, the family
+// metrics and the access log from it (see the resilience observe layer), and
+// this package emits nothing itself.
+//
+// What is known up front rides here — the method (bounded, so it labels a
+// metric) and the URL path (drawn from the caller, so it is Detail: span and log
+// only, never a label). What is NOT known up front — the response status code —
+// is recorded by the handler as it answers, through [observability.Response];
+// see the admission filter below.
+func operation(r *http.Request) observability.Operation {
+	return observability.Operation{
+		Name:   r.Method + " " + r.URL.Path,
+		Metric: "http.server",
+		Attrs: []attribute.KeyValue{
+			attribute.String("http.request.method", r.Method),
+		},
+		Detail: []attribute.KeyValue{
+			attribute.String("url.path", r.URL.Path),
+		},
+		LogTag: accessTag,
 	}
 }

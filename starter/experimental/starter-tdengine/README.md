@@ -46,8 +46,8 @@ _, err := s.Client.ExecContext(ctx,
 rows, err := s.Client.QueryContext(ctx, "SELECT COUNT(*) FROM power.meters")
 ```
 
-The wrapper embeds `*sql.DB`, so `Query/Exec/BeginTx/PingContext` and the
-whole `database/sql` ecosystem promote unchanged.
+The wrapper embeds the raw `*sql.DB`, so the whole `database/sql` method set —
+`Query/Exec/BeginTx/PingContext` and the rest — is promoted unchanged.
 
 ## Core Features
 
@@ -56,8 +56,9 @@ whole `database/sql` ecosystem promote unchanged.
 - **Fail-fast startup ping + health indicator** — a `PingContext` at boot and
   a `tdengine:<name>` indicator for `starter-actuator`.
 - **Per-statement resilience + observability** — statements flow through a
-  guarded driver.Conn: rate limiting, circuit breaking, fault injection, span
-  + metric + access log per statement, all armed in Init.
+  guarded driver.Conn: rate limiting, circuit breaking and fault injection around
+  each statement, and each statement's semantic identity declared for the
+  resilience layer to emit (see [Observability](#observability)).
 - **Websocket wire, zero CGO** — works against any TDengine ≥ 3.3.6 running
   taosAdapter; `wss://` DSNs for TLS.
 
@@ -84,3 +85,12 @@ func init() {
     })
 }
 ```
+
+## Observability
+
+`driver-go` ships no instrumentation of its own. The starter therefore only **declares** what each statement is
+(`observe.go`): the statement kind (`exec`/`query`), the `db.system`/`db.operation` labels, and the SQL as `db.statement`
+span/log detail (truncated to 512 bytes). The signals themselves are **emitted by the resilience layer** — the one point
+on the executor chain that sees a whole call, retries included. Beside the call-level `db.client.operation.duration`
+histogram, every call also reports an attempt-level `db.client.attempt.duration` one, and an access log tagged
+`_app_tdengine_access`. All of it is a no-op unless `starter-otel` installs providers.

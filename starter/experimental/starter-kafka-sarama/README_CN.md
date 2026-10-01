@@ -74,35 +74,54 @@ fmt.Println(string(msg.Value))
 
 ## 可观测
 
-分布式链路追踪通过原生 OTel 辅助函数提供,它们依赖
-[starter-otel](../../starter-otel) 安装的全局 `TracerProvider` 与传播器。未引入
-starter-otel 时它们是空操作,也不会改动任何消息字节,因此埋点是安全、零配置的可选项。
+本 starter **声明**每次发布与消费的身份,自身不发射任何信号。信号——span、duration
+指标、访问日志——由 resilience 层统一发射(见
+[governance](../../cloud/resilience)),它是执行链上唯一能看到完整一次调用
+(含重试)的点。它依赖 [starter-otel](../../starter-otel) 安装的全局 `TracerProvider`
+与传播器;未引入 starter-otel 时它们是空操作,也不会改动任何消息字节,因此埋点是安全、
+零配置的可选项。
 
 ```go
 import starter "go-spring.org/starter-kafka-sarama"
 
 // prop 为进程的 traffic.Propagator；传 nil 即用默认约定。
-// 生产端:开启 span 并把 W3C 链路上下文注入到消息头。
+// 生产端:包裹派生出的 SyncProducer。包装器声明本次发布、把 W3C 链路上下文
+// 注入消息头,并把发送经 resilience executor 路由——由后者发射 span、指标与访问日志。
+producer, _ := sarama.NewSyncProducerFromClient(s.Client)
+producer = starter.WrapSyncProducer(s.Client, producer, prop)
 msg := &sarama.ProducerMessage{Topic: "hello", Value: sarama.StringEncoder("v")}
-_, span := starter.StartProducerSpan(ctx, msg, prop)
 _, _, err := producer.SendMessage(msg)
-starter.EndSpan(span, err)
 
-// 消费端:延续消息头里携带的链路。
-ctx, span := starter.StartConsumerSpan(ctx, msg, prop)
-err := handle(ctx, msg)
-starter.EndSpan(span, err)
+// 消费端:把每条收到的消息过一遍 Consume。它延续消息头里携带的链路,并在 executor
+// 下执行 handler——由后者发射消费观测。
+select {
+case msg := <-pc.Messages():
+    err := starter.Consume(ctx, s.Client, msg, prop, func(ctx context.Context) error {
+        return handle(ctx, msg)
+    })
+}
 ```
 
-为什么用调用点辅助函数,而不是包装 producer/consumer:
+**声明的信号。** 操作通过 `observability.WithOperation` 声明;resilience 层随后在
+`messaging.client` 前缀下发射:
+
+* `messaging.client.operation.duration` —— 每次调用一条(含重试与退避),标签为
+  `messaging.system` / `messaging.operation` / `status`;
+* `messaging.client.attempt.duration` —— 每次下游尝试一条,把 broker 自身延迟与
+  "重试让调用方多花了多少"分开;
+* `messaging.client.active_requests` —— 在途调用数;
+* span(名为 `publish` / `consume`)与每次调用一条访问日志,位于 `kafka` 访问 tag 下。
+  topic 进入 span 与日志(`messaging.destination.name`),但绝不作为指标标签——它无界。
+
+为什么用调用点接缝,而不是包装 producer/consumer:
 
 * sarama 唯一的官方 OTel 埋点包 `otelsarama` 已**废弃**,且仍锁定在被弃用的
   `github.com/Shopify/sarama` 模块。本 starter 使用 `github.com/IBM/sarama`,二者是
   不同的 Go 类型,`otelsarama.WrapSyncProducer` 无法包装 IBM 的 producer,强行引入还会
   把第二个相互冲突的 sarama fork 带进构建。
 * `sarama.SyncProducer.SendMessage` 不接收 `context.Context`,因此 producer *包装器*
-  无处获取请求级上下文,只能产出彼此孤立的根 span。在调用点显式传入 `ctx`,才能让链路
-  跨服务串联。
+  无处获取请求级上下文。`WrapSyncProducer` 于是从消息本身推导操作,发布 span 是一个
+  新的根;真正把两侧串起来的是随消息头一起发出的链路上下文。
 
 **Metrics**:sarama 通过自带的 `go-metrics` 注册表(`sarama.Config.MetricRegistry`)
 上报指标,这套体系与 OTel/Prometheus 无关。桥接它需要第三方 `go-metrics`→Prometheus

@@ -14,7 +14,7 @@
   tracing + 服务发现感知的负载均衡 + 韧性;注册 destroy 释放服务发现 watch
   与 resilience executor。
 - **不在范围内:**接口定义与代码生成(`gs-http-gen`);具体负载均衡算法
-  (`cloud/loadbalance`);韧性策略(`cloud/governance/resilience`)。
+  (`cloud/loadbalance`);韧性策略(`cloud/resilience`)。
 
 ## 2. Transport 组合——由外到内
 

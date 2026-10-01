@@ -2,21 +2,27 @@
 
 Detailed usage reference. Overview: [example/README.md](example/README.md) (the starter README
 currently lives under example/). All behavior claims are verified against the starter source
-(`starter.go`, `config.go`, `client.go`, `health/health.go`) and the runnable [example/](example/)
+(`starter.go`, `config.go`, `client.go`, `guard.go`, `observe.go`, `health.go`) and the runnable [example/](example/)
 — file:line spot-checks in brackets below. **Milvus semantics and the milvus-sdk-go v2 API are
 [Milvus's own documentation](https://milvus.io/docs/install-go.md)
 ([SDK](https://github.com/milvus-io/milvus-sdk-go))** — everything below is go-spring's increment.
 
 **Activation**: any `spring.milvus.instances.*` key (the module is `OnProperty("spring.milvus")`, a
-prefix check [starter.go:29]). Each `spring.milvus.instances.<name>` entry creates one
+prefix check [starter.go:36]). Each `spring.milvus.instances.<name>` entry creates one
 `*StarterMilvus.Client` bean named `<name>`, plus a health indicator named `milvus:<name>`.
 **Honest scope note**: since the per-RPC governance guard landed (guard.go — gRPC client
 interceptors on the SDK dial options), every Milvus RPC is transparently protected
 (rate-limit/breaker/bulkhead/retry/timeout + fault injection) with no opt-in at the call
-site; the executor built from the injected `*resilience.Manager` emits the guard execution's observation
-(spans + outcome metrics + access log). There is no separate per-RPC trace layer for
-unguarded traffic — when governance is off the executor is a transparent no-op. The health
-indicator remains the always-on liveness signal (§2.2, §6).
+site. The starter only **declares** what each RPC is (`observe.go`: span name, the
+`db.client` metric prefix, the `db.system`/`db.operation` labels, the full method path as
+span/log detail); the **resilience layer emits** — the one point on the executor chain
+inside the injected executor that sees a whole call, retries included — so every call
+reports a call-level `db.client.operation.duration` histogram, an attempt-level
+`db.client.attempt.duration` histogram and an access log tagged `_app_milvus_access`.
+There is no self-built per-RPC span or instrument in this starter, and no separate
+per-RPC trace layer for unguarded traffic — when governance is off the executor is a
+transparent no-op and nothing is emitted. The health indicator remains the always-on
+liveness signal (§2.2, §6).
 
 ---
 
@@ -76,8 +82,8 @@ import (
 
 type Service struct {
     // Always the wrapper type *StarterMilvus.Client. It embeds the SDK's
-    // client.Client interface, so NewCollection/Insert/Search/Flush/... all
-    // promote unchanged.
+    // client.Client interface, so NewCollection/Insert/Search/Flush/... are all
+    // promoted unchanged.
     Client *StarterMilvus.Client `autowire:"a"`
 }
 
@@ -145,52 +151,63 @@ import starter-milvus
   └─ gs.Module(OnProperty("spring.milvus")) fires when any spring.milvus.instances.* key exists
         └─ conf.BindEach(p, "${spring.milvus}") → one Config per <name> entry
               ├─ addr validated non-empty by the expr tag at bind time [config.go:26]
-              ├─ Provide(newClient).Name(<name>).Init((*Client).Init)
-              │       .Destroy((*Client).Destroy) [starter.go:31-33]
+              ├─ Provide(newClient).Name(<name>).Destroy((*Client).Destroy) [starter.go:38-44]
               └─ Provide health.Indicator named "milvus:<name>", TagArg(<name>) picks the
-                   right *Client, Export(gs.As[health.Indicator]()) [starter.go:35-37]
+                   right *Client, Export(gs.As[health.Indicator]()) [starter.go:47-49]
 
 gs.Run()
-  ├─ ctor newClient [client.go]: client.NewClient(ctx, {Address, Username, Password,
-  │   DBName, DialOptions: guardDialOptions(slot)}) — gRPC dial with the guard
-  │   interceptors installed (inert until Init arms them); then fail-fast probe:
-  │   ListCollections once, error → cl.Close() + boot fails — a wrong address or bad
-  │   credential never reaches "serving"
-  ├─ Init [client.go]: service = ServiceLabel("milvus", addr) →
-  │   fault.WrapClientExecutor(mgr.ClientExecutorFor("milvus", service), service, inj) from the
-  │   injected *resilience.Manager / *fault.Injector →
-  │   slot.arm — the
-  │   interceptors guard every RPC from here on; governance off → no-op executor
-  ├─ readiness: indicator repeats the same ListCollections probe periodically
-  └─ SIGTERM → Destroy [client.go]: exec.Close() then o.Client.Close() — closes the gRPC conn
+  ├─ ctor newClient [starter.go:69]: NewClient(ctx, c, cloud.ClientParams{...})
+  ├─ NewClient [client.go:82] owns the whole assembly — dial + guard + governance:
+  │   client.NewClient(ctx, {Address, Username, Password, DBName,
+  │   DialOptions: guardDialOptions(slot)}) — gRPC dial with the guard
+  │   interceptors installed (inert until governance is applied)
+  ├─ ...then fixes identity and applies governance:
+  │   service = ServiceLabel("milvus", addr) →
+  │   params.ExecutorFor("milvus", service) — the injected *resilience.Manager / *fault.Injector
+  │   bundled by the ctor → (fault-wrapped mgr.ClientExecutorFor) → slot.apply — the
+  │   interceptors guard every RPC from here on; zero params → observed-only Unmanaged executor
+  ├─ fail-fast probe: HealthCheck (ListCollections once), error → Destroy() + boot fails
+  │   [starter.go:89] — a wrong address or bad credential never reaches "serving"
+  ├─ readiness: indicator repeats HealthCheck (the same ListCollections probe) periodically
+  └─ SIGTERM → Destroy [client.go:94]: exec.Close() then o.client.Close() — closes the gRPC conn
 ```
 
-`Init` exists purely to arm the guard; dial + probe still happen in the constructor, so a failed probe
-means the bean is never created and dependent beans never wire against a dead client.
+There is no `Init` hook: `newClient` assembles the client (dial + guard + governance) and only
+then probes it, so a failed probe means the bean is never created and dependent beans never wire
+against a dead client.
 
 ### 2.2 One operation through the ACTUAL layers
 
 `Search(ctx, "docs", ...)` passes through exactly **two** layers:
 
-1. The wrapper struct — `Client` embeds `client.Client` [client.go] and adds no
-   interception at the method level; the guard rides below it, at the gRPC layer.
+1. The wrapper struct — `Client` embeds the raw `client.Client` [client.go], so its full
+   method set is promoted and it intercepts nothing at the method level; the guard rides
+   below it, at the gRPC layer.
 2. milvus-sdk-go → gRPC client → **guard interceptors** (executor: limiter/breaker/
    bulkhead/retry/timeout wrapped by the resilience observer, with fault injection outermost) → server.
 
 That is the whole story, plus the guard. **The guard is a gRPC interceptor chain**
-[guard.go]: `newClient` passes custom dial options, so the SDK's own `DefaultGrpcOpts`
+[guard.go]: `NewClient` passes custom dial options, so the SDK's own `DefaultGrpcOpts`
 (keepalive, connect backoff, 2GB recv limit) are re-added first and the guard
 interceptors (unary + stream-open) appended — additive, not a replacement. The
-interceptors read a per-client slot that `Init` arms with
-`fault.WrapClientExecutor(mgr.ClientExecutorFor("milvus", "milvus:<addr>"), "milvus:<addr>", inj)`, built from
-the injected `*resilience.Manager` and `*fault.Injector`
-(governance off → no-op, passthrough; the fail-fast probe in
-`newClient` runs pre-Init and relies on that passthrough). Every RPC — collections,
-indexes, search, insert — rides it with zero call-site changes, the same transparent
-per-request stance as the other NoSQL starters. The only other signal this starter
-emits: the health indicator. `milvus:<name>` is always registered, its probe is the wrapper's own
-`Health(ctx)` [client.go] — one `ListCollections` round trip verifying reachability AND
-auth [health/health.go].
+interceptors read a per-client slot that `NewClient` creates, applies with
+`params.ExecutorFor("milvus", "milvus:<addr>")`, and keeps private — the slot cannot appear
+in an exported signature, so the constructor owns both the dial and the governing step.
+The executor is built from the `*resilience.Manager` and
+`*fault.Injector` the ctor bundles into a `cloud.ClientParams`
+(governance off → observed-only `Unmanaged` executor, passthrough;
+governance is applied as the client is built, so the fail-fast probe in
+`newClient` runs *after* the slot is applied and on a governance-on boot the probe itself rides the
+guard). The interceptor is also the **declaration seam**: it puts the RPC's identity on the
+caller's context before `exec.Execute` runs (`observability.WithOperation(ctx, operation(method))`),
+and the emitter inside the executor reads it at Execute entry — the one place that sees the
+whole call, retries included — to name the span, the `db.client.*` metrics and the access log.
+Declaring inside the executor's fn would be read by nobody (per attempt), so it is placed here,
+outside. Every RPC — collections, indexes, search, insert — rides it with zero call-site
+changes, the same transparent per-request stance as the other NoSQL starters. The other signal
+this starter emits itself is the health indicator (not per-call). `milvus:<name>` is always registered, its probe
+goes straight to the raw client — `HealthCheck`'s one `ListCollections` round trip verifying
+reachability AND auth [health.go].
 
 ---
 
@@ -203,7 +220,7 @@ All keys live under `spring.milvus.instances.<name>.` — bound per-instance via
 | Key | Type | Default | Behavior / interactions | Misconfiguration consequence |
 |-----|------|---------|-------------------------|------------------------------|
 | `addr` | string | — | **required**, validated non-empty by the expr tag `$ != ''` [config.go:26]. Milvus gRPC endpoint `host:19530`. ⚠ TLS is expressed inside the address scheme by the SDK — this starter exposes no TLS block. | Missing/empty → bind-time error before any dial. Wrong host/port → ctor's fail-fast probe fails, boot aborts. |
-| `database` | string | `default` | Passed as `DBName` to `client.NewClient` [client.go:45]. | Nonexistent DB → fail-fast probe (ListCollections) errors at boot. |
+| `database` | string | `default` | Passed as `DBName` to `client.NewClient` [starter.go:65]. | Nonexistent DB → fail-fast probe (ListCollections) errors at boot. |
 | `username` | string | `""` | Auth credential; both halves must be set together when the cluster has auth on. ⚠ `username` without `password` (or vice versa) is silently half-sent. | Wrong pair → fail-fast probe fails at boot with the server's auth error. |
 | `password` | string | `""` | See `username`. | See `username`. |
 
@@ -237,14 +254,15 @@ docker compose -p gs-milvus-demo down && go run .
 
 ```bash
 curl -s :9370/metrics | grep -i milvus   # nothing from this starter with governance off
-grep _app_ app.log | grep -i milvus      # no access-log tag exists with governance off
+grep _app_ app.log | grep -i milvus      # the access log; empty with governance off
 ```
 
-With governance off (no starter-governance / no `spring.governance.*` rules) expect empty output for
+With governance off (no starter-governance-file / no `spring.governance.*` rules) expect empty output for
 both: the guard executor is a no-op and the only signal this starter emits is the health
-component. Turn governance on and the `resilience.*` outcome metrics and guard access log
-appear. Milvus's own server metrics live on the server's `:9091` (exposed by the example
-compose), not through this client.
+component. Turn governance on and the declared-identity signals appear — the `db.client.operation.duration`
+and `db.client.attempt.duration` histograms plus the `_app_milvus_access` access log — alongside
+the `resilience.*` outcome metrics. Milvus's own server metrics live on the server's `:9091`
+(exposed by the example compose), not through this client.
 
 ### 4.4 Round-trip smoke (same shape as example/check.sh)
 
@@ -264,7 +282,7 @@ grep "round trip" app.log    # the marker check.sh greps ("Milvus round trip OK:
 | `NewCollection` fails on restart | Collection already exists from a previous run | Drop it first or tolerate the error (example's check.sh uses a fixed name). |
 | Search returns empty / no results | Forgot `Flush` + `LoadCollection` before searching (SDK semantics) | Flush then load, as in example/example.go:80-85. |
 | Health DOWN though queries work | Indicator's `ListCollections` needs the same DB/auth as the client | Inspect the component error body in /readiness. |
-| No traces/metrics/access log for Milvus ops | Expected — there is no instrumentation (§2.2) | None at starter level; watch health + server-side :9091 metrics. |
+| No traces/metrics/access log for Milvus ops | Governance is off (the executor is a no-op) | Turn governance on (starter-governance-file + `spring.governance.*` rules); then `db.client.*` metrics + `_app_milvus_access` appear. Server-side :9091 metrics never go through this client. |
 
 ## 6. Design Health
 
@@ -273,7 +291,7 @@ grep "round trip" app.log    # the marker check.sh greps ("Milvus round trip OK:
 | Config keys | 4 tags (all effective) |
 | Required | 1 (`addr`) |
 | Quickstart external deps | 3 in compose (etcd + minio + milvus standalone) |
-| "Watch out" entries | 3 (auth pair, TLS-in-address, no instrumentation) |
+| "Watch out" entries | 3 (auth pair, TLS-in-address, TLS/auth dial-option escape hatch) |
 
 Design suspects (audit ledger — kept and extended):
 
@@ -283,9 +301,7 @@ Design suspects (audit ledger — kept and extended):
   vs redigo).
 - No TLS key — SDK TLS is expressed in the address; nothing in the starter documents how a
   user would even do it without forking `newClient`.
-- Missing instrumentation is itself a suspect: the build-time-only gRPC dial options are cited
-  [client.go:18-20] as the blocker, but no dial options are passed at all today — a
-  `DialOptions` escape hatch on Config would unlock interceptors (auth tokens, tracing)
-  without a fork.
-- errutil import is kept alive by a dummy `var _ = errutil.Explain` [starter.go:43-45]
-  "for future driver dispatch" — speculative API residue.
+- ~~Missing instrumentation~~ resolved: `observe.go` declares each RPC's identity and the
+  resilience layer emits the `db.client.*` signals + access log from the guard interceptors.
+  Still open: a TLS/auth `DialOptions` escape hatch on Config — an app wanting to add its
+  own interceptor (auth tokens, custom tracing) must fork `newClient`.

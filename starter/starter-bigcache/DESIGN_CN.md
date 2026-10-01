@@ -9,8 +9,8 @@ goroutine，必须在关停时释放。
 
 ## 1. 职责与边界
 
-- 用 `gs.Module` 把 `spring.bigcache.instances.<name>` 每条绑到
-  `*bigcache.BigCache` bean。不做默认单实例
+- 用 `gs.Module` 把 `spring.bigcache.instances.<name>` 每条绑到 `*Cache`
+  封装 bean（原生 `*bigcache.BigCache` 是该封装的未导出字段）。不做默认单实例
   （见 `project_client_starter_multiinstance`）。
 - 每实例额外提供一个名为 `bigcache:<name>` 的 `cache.Cache` bean，让使用
   该抽象的调用方（包括 `cloud/cache` 的 MultiLevel）能按名注入此后端，

@@ -1,11 +1,11 @@
 # starter-mail 使用说明 — 参考手册
 
 深度使用文档。概览见 [README.md](README.md)。所有行为声明均对照源码
-（`starter.go`、`config.go`、`trace.go`）与可运行的 [example/](example/) /
+（`starter.go`、`config.go`、`observe.go`）与可运行的 [example/](example/) /
 [example-otel/](example-otel/) 核实。**SMTP 与消息语义（header、MIME、附件、认证机制）
 见 [go-mail 官方文档](https://github.com/wneessen/go-mail) 与
 [RFC 5321](https://www.rfc-editor.org/rfc/rfc5321)** —— 本文只写 go-spring 的增量：
-配置、装配、启动 fail-fast、trace 辅助。
+配置、装配、启动 fail-fast、操作声明。
 
 **激活条件**：每个 `spring.mail.instances.<name>` 子树按名字各创建一个 `*Mailer` bean。
 不配置 `spring.mail.instances.*` 则不装配、不做启动拨号，starter 完全惰性。没有 `enabled` key，
@@ -78,8 +78,6 @@ func init() {
 // SendReport 自行渲染正文（starter 刻意不带模板引擎），发送一封
 // multipart/alternative 邮件并带附件。
 func (s *Service) SendReport(ctx context.Context) error {
-    ctx, span := StarterMail.StartSendSpan(ctx, "daily-report")
-    defer StarterMail.EndSpan(span, nil) // Send 失败时传入 err；见下
     return s.Notify.Send(ctx, &StarterMail.Message{
         To:      []string{"alice@example.com"},
         Subject: "daily report",
@@ -136,7 +134,7 @@ curl -s 'http://127.0.0.1:16686/api/traces?service=demo' | jq '.data[0].spans[].
 
 ```
 import starter-mail
-  └─ init(): gs.Group("${spring.mail}", newMailer, nil)     [每个 spring.mail.instances.<name> 一个实例]
+  └─ init(): gs.Module(OnProperty("spring.mail.instances"), ...)  [每个 spring.mail.instances.<name> 一个实例]
 
 gs.Run()
   ├─ 配置绑定：spring.mail.instances.<name>.* → Config（value tag；host 由 errutil.RequireField 强制）
@@ -144,14 +142,15 @@ gs.Run()
   ├─ fail-fast 探测：client.DialWithContext（受 timeout 约束）后 Close
   │     └─ host/port/auth/TLS 配错 ⇒ 启动报错，拒绝拉起（源码注释：
   │        "so a misconfiguration surfaces at boot rather than on the first send"）
+  ├─ 构造期应用治理：exec = cloud.ClientParams{...}.ExecutorFor("mail", label)
   ├─ bean 就绪：*Mailer 注入所有 `autowire:"<name>"` 处
   ├─ Run / 服务：无后台 goroutine、无连接池
-  └─ SIGTERM：无 destroy hook（每次 Send 自行拨号并关闭；无可释放资源）
+  └─ SIGTERM：destroy hook 关闭 resilience 执行器（SMTP 客户端不持有存活资源）
 ```
 
-设计理由引自源码注释：group 注册处写明了为何没有 destroy 回调——"the underlying
-client opens a fresh connection per Send and closes it when done, so there is nothing to
-release at shutdown"（starter.go init / Mailer 文档）。
+此处用 `gs.Module`（而非 `gs.Group`）是为了让构造函数在配置之外还能接住治理 bean。SMTP
+客户端每次 Send 自行拨号并关闭，没有连接池要释放——`Destroy` hook 唯一释放的是 resilience
+执行器。
 
 ### 2.2 一次发送的逐层走读
 
@@ -164,18 +163,37 @@ release at shutdown"（starter.go init / Mailer 文档）。
    （`AttachReader`）。
 2. **投递阶段** —— 单次 `DialAndSendWithContext` 开一条 SMTP 连接发完全部消息后关闭。
    部分失败语义归 go-mail；starter 只把错误包一层 `errutil.Explain(err, "mail: send failed")`。
-3. **观测（始终开启）** —— `Send` 记录时长指标 `email.client.operation.duration`
-   （label `email.system`、`status`），维护在途 gauge `email.client.active_requests`，
-   并为每次发送写一行访问日志（`email.system`、`status`、`duration_ms`，失败时另有
-   `error`），走 `mail`/`access` tag。**无论调用方有没有开 span 都会发** —— 一次发送
-   必须在两种情况下都可度量。
-4. **Tracing（选配，调用侧）** —— 若应用调用了 `StartSendSpan`（trace.go:41），span
-   `mail.send`（SpanKind=client，属性 `email.system=smtp`、`email.operation=send`、
-   `mail.purpose=<purpose>`）在 `EndSpan` 里记录结果并结束。不引入 starter-otel 时
-   OTel 全局 TracerProvider 是 no-op——线上零字节，也不告警。
+3. **声明** —— `Send` 把本次批量发送的语义身份
+   （`observability.Operation`：span 名 `mail.send`、指标前缀 `email.client`、有界 label
+   `email.system=smtp` / `email.operation=send`、批量大小作为 `Detail`，以及
+   `NonIdempotent: true`）经 `observability.WithOperation` 放到 context 上，再把投递经
+   `resilience.Run` 交给 mailer 的 resilience 执行器。发送只**声明**，自身不发任何信号。
+   - detail 是**收件人数量，绝不是收件人地址或主题**：二者都是个人数据，而失败的发送会
+     无条件在 Warn 级别写出 detail —— 地址会在发送正出问题时被记下来。它们留在调用方
+     自己的记录里。
+   - **非幂等标记**是阻止重试的东西：重发是第二封邮件，不是第二次尝试。见 §2.3。
+4. **发射（resilience 层）** —— 执行器链上的 observe 包裹层是唯一**发射点**：它开启调用
+   span `mail.send`（覆盖全部 attempt），记录调用级 `email.client.operation.duration`、
+   尝试级 `email.client.attempt.duration` 直方图（下游自身每次尝试的耗时）、在途
+   `email.client.active_requests` gauge，以及 `resilience.client.calls` 计数器，并为每次
+   发送写一行访问日志，走 `mail`/`access` tag，携带声明的 `email.*` 字段加 `status`、
+   `duration_ms`（失败时另有 `error`）。发射点按此分级：失败 → Warn，成功且带 detail →
+   Debug，成功且无 detail → Info。一次发送必然携带收件人数量，故成功发送记 Debug。不引入
+   starter-otel 时 OTel 全局是 no-op——线上零字节，也不告警。
 
-注意 trace span **不在** `Send` 内部：starter 暴露两个辅助函数，由调用方夹住调用
-（已记入 §6 设计嫌疑）。**指标与访问日志在 `Send` 内部，所以只有 trace 是选配的。**
+span、指标与访问日志**全都活在** `Send` 路由经过的那个执行器内部，因此无论调用方有没有
+持开 span，一次发送都会被度量——没有需要记住的调用侧夹持。
+
+### 2.3 重试语义：发送永不重试
+
+`Send` 经过 mailer 的 resilience 执行器，所以针对它 service label
+（`mail:<name 或 host>`）的治理规则*可以*带重试策略——而该策略会被**忽略**：操作声明了
+`NonIdempotent`，执行器只跑一次，无论 `max-retries` 配了多少。重试会投出第二封邮件，
+下游任何环节都收不回来。
+
+这个抑制不是静默的：第一次本该重试时，执行器会按 service 告警一次
+（`resilience: retries configured for service "mail:..." are suppressed — its operations
+are non-idempotent ...`）。超时、限流、熔断、隔舱都仍然生效——只丢重试这一级。
 
 ---
 
@@ -233,8 +251,9 @@ cd example-otel && docker compose up -d && go run .   # example 自带断言 Jae
 curl -s 'http://127.0.0.1:16686/api/traces?service=mail-otel-example&limit=1' | grep '"data":\['
 ```
 
-可读 span 字段：operation `mail.send`、kind CLIENT、属性 `email.system=smtp`、
-`mail.purpose`（你传入的字符串）、失败时有 error 事件 + status Error。
+可读 span 字段：operation `mail.send`、属性 `email.system=smtp`、`email.operation=send`、
+声明的 detail `email.recipients.count`，以及 `status`；失败时有 error 事件 +
+status Error。span 由 resilience 发射点（执行器链上的唯一发射点）开启，不由 starter 发。
 
 ### 4.5 From 回退演练
 
@@ -254,7 +273,7 @@ curl -s 'http://127.0.0.1:16686/api/traces?service=mail-otel-example&limit=1' | 
 | Send 报 "message has no recipients" | `To` 为空 | To 必填；只有 Cc/Bcc 不够。 |
 | 启动正常、之后 "send failed" | 中继重启 / 凭据过期 / timeout 过小 | 调大 `timeout`；探测只证明启动期健康——见 §6 嫌疑。 |
 | 附件丢失 | Data 传 nil 或只给了文件名 | Attachment 是名字+字节；mailer 从不读磁盘。 |
-| 完全没有 span | 未引入 starter-otel，或未调 StartSendSpan | 两者都要——span 夹持在设计上归调用方。 |
+| 完全没有 span | 未引入 starter-otel | 引入 starter-otel 即可；resilience 发射点会自动开启发送的 span，无需调用侧夹持。 |
 
 ## 6. 设计体检表
 
@@ -265,9 +284,7 @@ curl -s 'http://127.0.0.1:16686/api/traces?service=mail-otel-example&limit=1' | 
 | quickstart 前置外部依赖 | 1（SMTP 服务器 / MailHog） |
 | "注意/坑" 条数 | 4 |
 
-设计嫌疑清单（前两条沿用上一版）：
-- Trace 需要手工 `StartSendSpan`/`EndSpan` 而非内置于 `Send`——调用侧样板代码；
-  可考虑在引入 starter-otel 时直接包住 Send。
+设计嫌疑清单：
 - 有启动拨号探测却无健康检查——探测结果不暴露到运行时；启动期健康与稳态健康被混同。
 - fail-fast 探测使每次启动对每个实例做一次 SMTP 登录，对配额受限的中继
   （如 verified-sender API）有成本；可接受但实例数放大时要记得。

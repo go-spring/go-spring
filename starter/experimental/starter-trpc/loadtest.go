@@ -19,8 +19,8 @@ package StarterTrpc
 import (
 	"context"
 
-	"go-spring.org/cloud/governance/traffic"
 	"go-spring.org/cloud/propagate"
+	"go-spring.org/cloud/traffic"
 	trpc "trpc.group/trpc-go/trpc-go"
 	"trpc.group/trpc-go/trpc-go/filter"
 )
@@ -32,7 +32,7 @@ import (
 // context before tracing, metrics and the handler run, letting every downstream
 // layer branch on prop.IsLoadTest(ctx).
 //
-// It is the tRPC inbound companion to cloud/governance/traffic's outbound carrier
+// It is the tRPC inbound companion to cloud/traffic's outbound carrier
 // injection, letting a load-test flag ride a tRPC hop end to end. Without the
 // marker the filter is a no-op pass-through. A nil propagator means go-spring's
 // default convention.

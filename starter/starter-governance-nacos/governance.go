@@ -42,18 +42,11 @@ import (
 	"reflect"
 	"strings"
 
-	"github.com/nacos-group/nacos-sdk-go/v2/clients"
 	"github.com/nacos-group/nacos-sdk-go/v2/clients/config_client"
-	"github.com/nacos-group/nacos-sdk-go/v2/common/constant"
 	"github.com/nacos-group/nacos-sdk-go/v2/vo"
 	"go-spring.org/cloud/governance"
 	"go-spring.org/log"
-	"go-spring.org/spring/conf"
-	"go-spring.org/spring/gs"
-	"go-spring.org/starter-governance/rules"
 	"go-spring.org/stdlib/errutil"
-	"go-spring.org/stdlib/flatten"
-	"go-spring.org/stdlib/netutil"
 )
 
 var starterTag = log.RegisterAppTag("governance_nacos", "")
@@ -80,44 +73,6 @@ type governanceNacosConfig struct {
 	// Format overrides document-format detection; by default it is inferred
 	// from the dataId's extension, else properties.
 	Format string `value:"${format:=}"`
-}
-
-func init() {
-	gs.Module(gs.OnProperty("spring.governance.source.nacos"), func(r gs.BeanProvider, p flatten.Storage) error {
-		var c governanceNacosConfig
-		if err := conf.Bind(p, &c, "${spring.governance.source.nacos:=}"); err != nil {
-			return err
-		}
-		src := governanceSource{
-			dataID: c.DataID,
-			group:  c.Group,
-			format: sourceFormat(c.Format, c.DataID),
-		}
-
-		r.Provide(func() (*NacosSource, error) {
-			host, port, err := netutil.SplitHostPort(c.Server)
-			if err != nil {
-				return nil, err
-			}
-			cli, err := clients.NewConfigClient(vo.NacosClientParam{
-				ClientConfig: constant.NewClientConfig(
-					constant.WithNamespaceId(c.Namespace),
-					constant.WithTimeoutMs(dialTimeoutMs),
-					constant.WithUsername(c.Username),
-					constant.WithPassword(c.Password),
-					constant.WithNotLoadCacheAtStart(true),
-				),
-				ServerConfigs: []constant.ServerConfig{*constant.NewServerConfig(host, port)},
-			})
-			if err != nil {
-				return nil, errutil.Explain(err, "governance nacos source: create client for %s failed", c.Server)
-			}
-			return NewNacosSource(cli, src)
-		}).
-			Init((*NacosSource).Init).Destroy((*NacosSource).Close).
-			Export(gs.As[governance.Source]()).Caller(1)
-		return nil
-	})
 }
 
 // sourceFormat resolves the rule document format: an explicit format wins, else
@@ -170,7 +125,7 @@ func NewNacosSource(cli config_client.IConfigClient, src governanceSource) (*Nac
 	if err != nil {
 		return nil, errutil.Explain(err, "governance nacos source: get %s/%s failed", src.group, src.dataID)
 	}
-	cfg, err := rules.Parse(src.dataID, []byte(content), src.format)
+	cfg, err := governance.Parse(src.dataID, []byte(content), src.format)
 	if err != nil {
 		return nil, err
 	}
@@ -210,7 +165,7 @@ func (s *NacosSource) apply(data string) {
 	if data == s.doc {
 		return
 	}
-	cfg, err := rules.Parse(s.src.dataID, []byte(data), s.src.format)
+	cfg, err := governance.Parse(s.src.dataID, []byte(data), s.src.format)
 	if err != nil {
 		log.Errorf(context.Background(), starterTag, "governance nacos source: %s/%s published an invalid document (keeping last good config): %v", s.src.group, s.src.dataID, err)
 		return

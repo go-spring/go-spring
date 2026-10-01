@@ -1,7 +1,7 @@
 # starter-config-file Usage — Reference
 
 Detailed usage reference. Overview: [README.md](README.md). All behavior claims are verified
-against the starter source (`watch.go`, `filewatch.go`, `configtree.go`), the gs core
+against the starter source (`starter.go`, `watch.go`, `filewatch.go`, `configtree.go`), the gs core
 (`spring/conf/provider/provider.go`, `spring/gs/internal/gs_conf/conf.go`,
 `spring/gs/internal/gs_app/app.go`) and the smoke-tested examples
 [example/](example/) and [example-configtree/](example-configtree/) (both `check.sh` green).
@@ -10,9 +10,9 @@ against the starter source (`watch.go`, `filewatch.go`, `configtree.go`), the gs
 watch+refresh bridge. Each is activated individually by its entry in `spring.config.import`:
 
 - `file-watch:<file>` — one configuration document per import (a ConfigMap key holding
-  `application.yaml`), parsed by extension (filewatch.go:50).
+  `application.yaml`), parsed by extension (starter.go:41).
 - `configtree:<dir>` — a directory tree of scalar key files (a Secret / env-style ConfigMap
-  mount); each leaf file is one property keyed by its dotted relative path (configtree.go:43).
+  mount); each leaf file is one property keyed by its dotted relative path (starter.go:35).
 
 The centerpiece is **hot reload without restart**: both providers watch the parent directory,
 so the kubelet's atomic `..data` symlink swap on a ConfigMap/Secret update becomes a live
@@ -134,8 +134,8 @@ echo 'demo:\n  message: flipped' > example/mount/application.yaml
 
 ```
 import starter-config-file
-  ├─ init: conf.RegisterProvider("file-watch", controller.Load)      (filewatch.go:50)
-  └─ init: conf.RegisterProvider("configtree", controller.load)  (configtree.go:43)
+  ├─ init: conf.RegisterProvider("file-watch", controller.Load)      (starter.go:41)
+  └─ init: conf.RegisterProvider("configtree", controller.load)  (starter.go:35)
         │
 gs.Run() → App.Start()                                                (app.go:285)
   1. mount the gs.RefreshProperties / gs.AppStarted facade targets
@@ -172,7 +172,7 @@ Other timing facts:
 
 1. Editor or kubelet writes a new timestamped dir and renames `..data` onto it (atomic).
 2. fsnotify delivers a CREATE/RENAME event **on the directory** (the file's inode changed, which
-   is exactly why the watch is on the parent dir, never the file — filewatch.go:80-86). Common
+   is exactly why the watch is on the parent dir, never the file — filewatch.go:67-73). Common
    editors save by atomic rename too, so an ordinary edit hits the same path.
 3. `watchLoop` reacts to every event without name filtering (correct: a K8s update surfaces as
    an event on `..data`, not on the key files — watch.go:112-116) → `TriggerRefresh`.
@@ -195,12 +195,12 @@ references, not starter keys. The whole surface is the import-string grammar
 
 | Segment | Type | Default | Behavior / interactions | Misconfiguration consequence |
 |---------|------|---------|-------------------------|------------------------------|
-| `optional:` prefix | flag | absent | Parsed before the provider split; provider `Load` receives `optional=true` and returns `(nil, nil)` with a Warn log when the path is missing (filewatch.go:67-70, configtree.go:61-64). | Absent + missing path → stat error, startup aborts. |
+| `optional:` prefix | flag | absent | Parsed before the provider split; provider `Load` receives `optional=true` and returns `(nil, nil)` with a Warn log when the path is missing (filewatch.go:54-57, configtree.go:45-48). | Absent + missing path → stat error, startup aborts. |
 | `file-watch` provider | enum | `file` | One document per import, format by extension. Must be a file. | Typo → `unsupported provider type` at startup. Note the core default for a bare path is `file`, NOT `file-watch` — bare paths get no watching. |
-| `configtree` provider | enum | `file` | A directory tree; each non-dot leaf file = one property. Must be a directory. | Pointing it at a file → explicit error steering you to `file-watch` (configtree.go:68-71). |
-| `<path>` (file-watch) | file path | — | Resolved for property placeholders before loading (`conf.Resolve`, gs_conf/conf.go:229). Extension routed through the shared reader registry: `.properties/.yaml/.yml/.toml/.tml/.json`. Parent dir is watched. | Directory path → error steering you to `configtree` (filewatch.go:75-78). Unsupported extension (`.md`) → read error (unit-tested). |
-| `<path>` (configtree) | dir path | — | Key = dotted relative path (`db/user` file → `db.user`; a flat file literally named `db.user` also → `db.user`, since K8s keys may contain dots); value = file content `TrimSpace`d, NOT parsed (configtree.go:116-125). Every directory in the tree is watched. ⚠ numeric/boolean-looking values stay raw strings — cast in your code. | Expecting yaml parsing inside a key file → literal text ends up as the value. |
-| dot-prefixed entries | filter | skipped | `..data`, `..timestamp` dirs and dotfiles are skipped at every level; the root itself is never skipped (configtree.go:103-108). Symlink leaves are followed (`os.ReadFile`). | None — this is what makes K8s mounts clean. |
+| `configtree` provider | enum | `file` | A directory tree; each non-dot leaf file = one property. Must be a directory. | Pointing it at a file → explicit error steering you to `file-watch` (configtree.go:52-55). |
+| `<path>` (file-watch) | file path | — | Resolved for property placeholders before loading (`conf.Resolve`, gs_conf/conf.go:229). Extension routed through the shared reader registry: `.properties/.yaml/.yml/.toml/.tml/.json`. Parent dir is watched. | Directory path → error steering you to `configtree` (filewatch.go:62-65). Unsupported extension (`.md`) → read error (unit-tested). |
+| `<path>` (configtree) | dir path | — | Key = dotted relative path (`db/user` file → `db.user`; a flat file literally named `db.user` also → `db.user`, since K8s keys may contain dots); value = file content `TrimSpace`d, NOT parsed (configtree.go:100-109). Every directory in the tree is watched. ⚠ numeric/boolean-looking values stay raw strings — cast in your code. | Expecting yaml parsing inside a key file → literal text ends up as the value. |
+| dot-prefixed entries | filter | skipped | `..data`, `..timestamp` dirs and dotfiles are skipped at every level; the root itself is never skipped (configtree.go:87-92). Symlink leaves are followed (`os.ReadFile`). | None — this is what makes K8s mounts clean. |
 | import list order | list | — | `spring.config.import` is comma-separated, deduplicated; **later imports override earlier ones**; imports override the importing file's own keys (layered storage, gs_conf/conf.go:244-251). ⚠ no query parameters exist — the source string is a bare path. | Wrong order → layered overrides silently inverted. |
 | `spring.http.server.enabled` | bool | true | Core gs key, not this starter's; examples disable it because the demo has no HTTP surface. | Left true → default server starts on :8080. |
 
@@ -262,7 +262,7 @@ spring.config.import=optional:file-watch:/etc/config/application.yaml
   startup continues.
 - without `optional:` → missing path aborts startup with the stat error.
 - A path that exists but has the wrong TYPE (file vs dir) is an error regardless of
-  `optional:` — optionality only covers non-existence (os.IsNotExist check, filewatch.go:67).
+  `optional:` — optionality only covers non-existence (os.IsNotExist check, filewatch.go:54).
 
 ### 4.5 Observables
 

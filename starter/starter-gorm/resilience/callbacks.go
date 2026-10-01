@@ -33,7 +33,7 @@ package gormresilience
 import (
 	"context"
 
-	"go-spring.org/cloud/governance/resilience"
+	"go-spring.org/cloud/resilience"
 	"gorm.io/gorm"
 )
 

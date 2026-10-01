@@ -1,7 +1,7 @@
 # starter-actuator Usage & Design — Reference
 
 The detailed reference. For a first look, read the [README](README.md) first. Everything
-here is checked against the source (`actuator.go`, `probes.go`) and the self-asserting
+here is checked against the source (`starter.go`, `actuator.go`, `probes.go`) and the self-asserting
 [example/](example/). Kubernetes probe semantics are whatever the
 [kubelet](https://kubernetes.io/docs/tasks/configure-pod-container/configure-liveness-readiness-startup-probes/)
 does; the Spring Boot Actuator names are just familiar anchors.
@@ -38,7 +38,7 @@ require (
     go-spring.org/starter-echo       latest
     go-spring.org/starter-actuator   latest   // probes on :9370
     go-spring.org/starter-otel       latest   // optional: /metrics on the same port
-    go-spring.org/starter-governance latest   // optional: runtime fault injection
+    go-spring.org/starter-governance-file latest   // optional: runtime fault injection
 )
 ```
 
@@ -54,7 +54,7 @@ import (
     "go-spring.org/spring/gs"
     _ "go-spring.org/starter-actuator"
     _ "go-spring.org/starter-echo"
-    _ "go-spring.org/starter-governance"
+    _ "go-spring.org/starter-governance-file"
     _ "go-spring.org/starter-otel"
 )
 

@@ -45,18 +45,29 @@ type Service struct {
 
 ### 4. Use the Kafka Client
 
-The same `*kgo.Client` produces and consumes records; producing uses `ProduceSync`, consuming uses
-`PollFetches`.
+The same `*kgo.Client` produces and consumes records. Business traffic goes through the
+starter's two guarded entry points rather than the client's own methods: the resilience
+guard, the `messaging.*` metrics and the access log live there, because franz-go's hooks can
+only observe a record, not wrap a call.
 
 ```go
 rec := &kgo.Record{Topic: "hello", Value: []byte("value")}
-_ = s.Client.ProduceSync(ctx, rec).FirstErr()
+_ = StarterKafka.GuardedProduceSync(ctx, s.Client, rec).FirstErr()
 
 fetches := s.Client.PollFetches(ctx)
 fetches.EachRecord(func(r *kgo.Record) {
-    fmt.Println(string(r.Value))
+    _ = StarterKafka.GuardedConsume(ctx, s.Client, r, func(ctx context.Context) error {
+        fmt.Println(string(r.Value))
+        return nil
+    })
 })
 ```
+
+Calling `s.Client.ProduceSync` or `PollFetches` directly still works, but the call is then
+ungoverned (no limiter, breaker, retry or timeout) and unreported (no `messaging.*` metrics,
+no access log) — only kotel's client-level spans and metrics remain. The raw client is for
+the Kafka capabilities this driver does not model: transactions, the admin API, custom poll
+semantics.
 
 ## Messaging Driver
 

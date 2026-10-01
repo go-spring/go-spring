@@ -175,9 +175,11 @@ gs.Run()
 ```
 
 **One query, layer by layer** (with starter-otel imported and `observe.enabled=true`):
-`db.WithContext(ctx).Exec("SELECT 1")` → resilience callbacks wrap the processor (governance
-executor when configured, no-op otherwise) → the gorm observe plugin's before/after callbacks open a
-span (`db.system=mysql`), record the `db.client.operation.duration` metric, and emit an access log
+`db.WithContext(ctx).Exec("SELECT 1")` → the gorm observe plugin runs its before-callback on the
+statement's context and DECLARES the operation (name, `db.system=mysql`, `db.operation`, SQL) →
+resilience callbacks wrap the processor (governance executor when configured, no-op otherwise) and
+EMIT the signals: the call span (`db.system=mysql`), the call-level `db.client.operation.duration`,
+the attempt-level `db.client.attempt.duration`, `db.client.active_requests`, and one access log
 record (level from the wrapper `observability` field, default `brief`) → database/sql picks a pooled
 conn (dialing through the registered discovery dialer for a new conn) → the driver executes.
 
@@ -275,7 +277,7 @@ Remove `parseTime=true`, run a model with a `time.Time` field → every scan of 
 | Discovery dial error `no endpoints` / empty set | Backend name mismatch or no live keys | Check the `discovery` key cites the derived backend label (e.g. `etcd`) and `${spring.registry.etcd}` is configured; check etcd keys under the prefix. |
 | Time values shifted by hours | `loc` unset (UTC default) with `parseTime=true` | Set `loc=Asia/Shanghai` (or your zone). |
 | Connection dies mid-slow-query | `readTimeout` smaller than the query | Raise `readTimeout` or tune the query. |
-| No spans/metrics per query | `observe.enabled=false`, or starter-otel not imported | Re-enable / import starter-otel (observe is a silent no-op without OTel globals). |
+| No db.* spans/metrics/access log | `observe.enabled=false`, or starter-otel not imported | Re-enable / import starter-otel; the per-instance kill switch removes the plugin entirely, so operations go undeclared and the resilience layer emits only its own generic signals. |
 | TLS works locally, fails with hostname mismatch in prod | `tls.server-name` unset, addr is an IP | Set `tls.server-name` to the cert's CN. |
 
 ## 6. Design Health

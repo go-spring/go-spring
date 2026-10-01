@@ -28,19 +28,10 @@ import (
 	"sync/atomic"
 
 	"go-spring.org/cloud/discovery"
-	"go-spring.org/cloud/governance/resilience"
 	"go-spring.org/cloud/loadbalance"
+	"go-spring.org/cloud/resilience"
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
-
-	// Blank import: importing this starter brings the governance authority with
-	// it — starter-governance registers the *resilience.Manager, *loadbalance.
-	// Manager, *fault.Injector and *governance.Center beans this package injects.
-	// Turning governance OFF is spring.governance.enabled=false (or binding no rule source),
-	// not the absence of the starter. The injected parameters stay nullable, so a
-	// container that somehow lacks these beans degrades to a transparent
-	// pass-through instead of failing to boot.
-	_ "go-spring.org/starter-governance"
 )
 
 // FilterWrapper is the seam a bean-backed filter (jwt-auth, lua) satisfies:
@@ -107,7 +98,7 @@ type RouteTable struct {
 	execs map[string]resilience.ClientExecutor
 
 	// mgr and lbMgr are the governance authorities the container injected (a
-	// fresh unarmed instance when starter-governance is absent, so the table is
+	// fresh unarmed instance when no center is linked, so the table is
 	// always safe to use). mgr hands out the per-route protection executors;
 	// lbMgr binds each route's pool to its label for strategy + suspension.
 	mgr   *resilience.Manager
@@ -136,7 +127,7 @@ type RouteTable struct {
 // backend beans (optional: an app with none gets an empty directory, and any
 // lb:// upstream then fails to compile with the label it could not resolve).
 //
-// mgr and lbMgr are the governance beans starter-governance provides; both are
+// mgr and lbMgr are the authority beans the owning packages register; both are
 // nil when it is not imported (gs autowires a missing bean as nil) and are
 // normalized here to fresh unarmed authorities — a nil *Manager panics on its
 // first method call, so doing it once at assembly keeps every other method free

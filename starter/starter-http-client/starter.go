@@ -30,10 +30,10 @@ import (
 	"sort"
 
 	"go-spring.org/cloud/discovery"
-	"go-spring.org/cloud/governance/fault"
-	"go-spring.org/cloud/governance/resilience"
-	"go-spring.org/cloud/governance/traffic"
+	"go-spring.org/cloud/fault"
 	"go-spring.org/cloud/loadbalance"
+	"go-spring.org/cloud/resilience"
+	"go-spring.org/cloud/traffic"
 	"go-spring.org/log"
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/gs"
@@ -73,9 +73,10 @@ func init() {
 				gs.IndexArg(2, gs.ValueArg(c)),
 				gs.IndexArg(3, gs.TagArg("${spring.http-client.instances."+name+".driver:=${spring.http-client.default.driver:=?}}")),
 				gs.IndexArg(4, gs.TagArg("?")),
-				// The governance beans are REQUIRED: this starter blank-imports
-				// starter-governance, so "governance off" is spring.governance.enabled=false,
-				// never an absent bean.
+				// The governance beans are REQUIRED: each is registered by the package that
+				// owns it (cloud/resilience, cloud/loadbalance, cloud/fault), which this
+				// starter imports — "governance off" is spring.governance.enabled=false, never
+				// an absent bean.
 				gs.IndexArg(5, gs.TagArg("")),
 				gs.IndexArg(6, gs.TagArg("")),
 				gs.IndexArg(7, gs.TagArg("")),  // *loadbalance.Manager
@@ -102,7 +103,7 @@ func init() {
 // ${discovery} label against it, so different entries may cite different
 // registries.
 //
-// mgr and inj are the governance beans starter-governance provides (nil when it
+// mgr and inj are the authority beans the owning packages register (nil when it
 // is not imported — gs autowires a missing bean as nil); they are threaded to
 // the driver, which hands them to the transport assembler. Neither the entry's
 // own config nor its service label carries them: governance is a bean, not a

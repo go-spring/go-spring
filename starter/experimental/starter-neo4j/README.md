@@ -85,9 +85,14 @@ The neo4j-go-driver speaks the binary Bolt protocol and ships **no official
 OpenTelemetry instrumentation**, nor a command-monitor hook comparable to the
 SQL/MongoDB drivers — there is no transparent seam to intercept every request.
 Observation is therefore opt-in per call site via the `StarterNeo4j.Query` /
-`StartSpan` helpers, which emit a client span (`db.system=neo4j`), the
-`db.client.*` duration/in-flight metrics, and an `_app_neo4j_access` access log
-through the module's own instrumentation on the OTel globals that
-`starter-otel` installs. Direct `neo4j.ExecuteQuery` / session calls bypass it
-— a documented gap driven by upstream driver support, not an oversight.
+`StartSpan` helpers, which **declare** what each operation is (`observe.go`):
+the operation name, the `db.system`/`db.operation` labels, and the Cypher text
+as `db.statement` span/log detail. The signals themselves are emitted by the
+resilience layer — the one point on the executor chain that sees a whole call,
+retries included — so beside the call-level `db.client.operation.duration`
+histogram every call also reports an attempt-level `db.client.attempt.duration`
+one, plus the `db.client.active_requests` gauge and an `_app_neo4j_access` access
+log. All of it is a no-op unless `starter-otel` installs providers. Direct
+`neo4j.ExecuteQuery` / session calls bypass it — a documented gap driven by
+upstream driver support, not an oversight.
 

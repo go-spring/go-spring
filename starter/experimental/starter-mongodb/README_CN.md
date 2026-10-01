@@ -34,7 +34,7 @@ spring.mongodb.instances.b.uri=mongodb://127.0.0.1:27017
 ### 3. 注入 MongoDB 实例
 
 参见 [example.go](example/example.go) 文件。每个具名实例都会以该名称注册为一个
-`*StarterMongoDB.Client` bean（内嵌具体的 `*mongo.Client`，所有驱动方法原样提升），按名称注入所需实例即可。
+`*StarterMongoDB.Client` bean（内嵌 `*mongo.Client`，其完整方法集被提升到 wrapper 上，所有驱动调用均可用），按名称注入所需实例即可。
 
 ```go
 import StarterMongoDB "go-spring.org/starter-mongodb"
@@ -69,9 +69,19 @@ err = coll.FindOne(ctx, bson.M{"key": "key"}).Decode(&res)
 
 * **可观测**：每个客户端通过一个 command monitor 桥接进 go-spring 的统一可观测体系，
   为每条 MongoDB 命令经 `starter-otel` 安装的 OpenTelemetry 全局 `TracerProvider`
-  输出一个 client span。未引入 `starter-otel` 时该全局为 no-op，span 零开销、也无需
-  逐应用接线。（该桥接直接基于 v2 驱动的 event API 实现，因为官方 `otelmongo`
-  面向 v1 驱动，与此处使用的 v2 驱动类型不兼容。）
+  输出一个 span、`db.client.*` 指标与一条 `_app_mongodb_access` 访问日志。未引入
+  `starter-otel` 时该全局为 no-op，信号零开销、也无需逐应用接线。（该桥接直接基于 v2
+  驱动的 event API 实现，因为官方 `otelmongo` 面向 v1 驱动，与此处使用的 v2 驱动类型
+  不兼容。）
+
+  这是唯一一个在本地发射信号的 client starter——其余 client 只声明一个 operation，
+  交由框架里唯一的 resilience 发射器落地——而这由驱动约束决定：mongo v2 驱动没有逐命令
+  hook（只有 dialer 与只读的 monitor），所以观测只能落在命令层，保护则落在建连层由
+  resilience executor 承担。发射出的词汇刻意与统一发射器保持一致：有界的
+  `db.system` + `db.operation` 标签、作为无界细节只进 span 与日志（绝不进指标标签）的
+  `db.statement`、以命令命名的 Internal span，以及同样的 `status` / `duration_ms`
+  访问日志字段；唯一差别是状态词只有 `success` / `error`，因为 command monitor 看不到
+  resilience 的拒绝。
 
 * **服务发现**：在实例上设置 `service-name` 后，地址将通过已注册的 discovery 后端解析，
   而非直接使用 URI 中的 host。框架会注入一个基于 discovery `Loader`（经 `loadbalance.Pool`

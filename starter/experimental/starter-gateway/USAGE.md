@@ -1,14 +1,14 @@
 # starter-gateway Usage — Reference
 
 Detailed usage reference. Overview: [README.md](README.md). All behavior claims are verified
-against the starter source (`gateway.go`, `server.go`, `compile.go`, `route.go`, `predicate.go`,
+against the starter source (`starter.go`, `server.go`, `compile.go`, `route.go`, `predicate.go`,
 `filter.go`, `proxy.go`, `metrics.go`, `otel_tracing.go`) and the runnable [example/](example/)
 (`example/check.sh` is the self-asserting smoke test). The Route/Predicate/Filter model follows
 [Spring Cloud Gateway](https://docs.spring-cloud-spring-cloud-gateway/reference/) — everything
 below is Go-Spring's increment.
 
 **Activation**: the `gatewayServer` bean is registered only when `spring.gateway.server.addr`
-is set (gateway.go:40, `gs.OnProperty("spring.gateway.server.addr")`) — that key is the on/off
+is set (starter.go:52, `gs.OnProperty("spring.gateway.server.addr")`) — that key is the on/off
 switch. Route table + metrics + health beans exist unconditionally; without the server key
 routes bind but are never served.
 
@@ -265,7 +265,7 @@ Extension seams:
 
 | Key | Type | Default | Behavior / interactions | Misconfiguration consequence |
 |-----|------|---------|-------------------------|------------------------------|
-| `addr` | string | — | **Activation key** (gateway.go:40); port clash fails at `net.Listen` (server.go:92). | Missing → routes bind but nothing serves; no warning is emitted. |
+| `addr` | string | — | **Activation key** (starter.go:52); port clash fails at `net.Listen` (server.go:92). | Missing → routes bind but nothing serves; no warning is emitted. |
 | `tls.enabled` | bool | false | Enables TLS listen. | |
 | `tls.cert-file` / `tls.key-file` | string | "" | Server certificate; built via `security.BuildServer` — missing/unreadable files fail startup. | |
 | `tls.ca-file` | string | "" | **mTLS switch**: presence → `RequireAndVerifyClientCert` (server.go:69-75). ⚠ unlike the echo starter, this IS wired for mTLS. | |

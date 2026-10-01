@@ -33,8 +33,8 @@ type redigoCache struct{ pool *redis.Pool }
 // bean by beanID; call this directly only for ad-hoc use.
 //
 // It takes the native *redis.Pool on purpose, not the starter's wrapper type:
-// when the pool comes from a registered starter instance, Init has wrapped its
-// Dial so every command below flows
+// when the pool comes from a registered starter instance, NewPool has wrapped
+// its Dial so every command below flows
 // through obsConn — each GET/SET/DEL is traced, metered, access-logged and
 // resilience-guarded with no extra wiring here. Each method honors its ctx via
 // redis.DoContext, so a caller deadline can interrupt the op and (in the

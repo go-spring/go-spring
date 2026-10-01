@@ -37,7 +37,7 @@ require (
     go-spring.org/starter-redigo   latest
     go-spring.org/starter-actuator latest   // optional
     go-spring.org/starter-otel     latest   // optional
-    go-spring.org/starter-governance latest // optional
+    go-spring.org/starter-governance-file latest // optional
 )
 ```
 
@@ -49,7 +49,7 @@ package main
 import (
     "go-spring.org/spring/gs"
     _ "go-spring.org/starter-actuator"
-    _ "go-spring.org/starter-governance"
+    _ "go-spring.org/starter-governance-file"
     _ "go-spring.org/starter-otel"
     _ "go-spring.org/starter-redigo"
     _ "demo/service"
@@ -74,8 +74,9 @@ import (
 )
 
 type Service struct {
-    // Always the wrapper *StarterRedigo.Pool; it embeds *redis.Pool, so
-    // Get/Stats promote unchanged. Connections it hands out are instrumented Conns.
+    // Always the wrapper *StarterRedigo.Pool; it embeds the raw *redis.Pool,
+    // so Get/GetContext/Stats/... are promoted unchanged.
+    // Connections it hands out are instrumented Conns.
     Main      *StarterRedigo.Pool `autowire:"main"`
     Discovery *StarterRedigo.Pool `autowire:"discovery"`
 
@@ -166,17 +167,19 @@ import starter-redigo
               └─ if health.enabled → Provide health.Indicator named "redigo:<name>"
 
 gs.Run()
-  ├─ ctor createPool [starter.go:107]: RequireAny(addr|service-name) → driver lookup
-  │   → d.CreateClient(c, backend) (= NewPool): TLS build → discovery resolver → raw pool
-  │     → observer → resilience executor → setupDial
-  │     → startup-ping (ONLY if startup-ping=true) [starter.go:144-149]
-  │   NOTE: there is NO separate InitMethod — the pool is fully armed on return [pool.go:36-37]
+  ├─ ctor createPool [starter.go]: RequireAny(addr|service-name) → driver lookup
+  │   → d.CreateClient(c, backend, params) (= NewPool): TLS build → discovery resolver → raw pool
+  │     → governance applied in the constructor: resilience executor + endpoint-selection binding
+  │     → declaration layer installed → setupDial (instrumented Dial wrap)
+  │   → HealthCheck startup-ping (ONLY if startup-ping=true), AFTER assembly [starter.go]
+  │   NOTE: there is NO separate InitMethod and nothing patches the pool afterwards [pool.go]
   ├─ your bean Inits may call UseCommandInterceptor (affects conns dialed from then on)
-  └─ SIGTERM → destroyPool → Pool.Close: exec.Close → resolver.Stop → pool.Close [pool.go:141-149]
+  └─ SIGTERM → destroyPool → Pool.Close: exec.Close → resolver.Stop → pool.Close [pool.go]
 ```
 
-`Pool.Close` shadows the embedded `(*redis.Pool).Close` so a plain Close cannot leak the
-discovery-resolver watch [pool.go:137-140].
+`Pool.Close` overrides the promoted `(*redis.Pool).Close`,
+so a plain Close tears down the binding, the executor and the pool together and cannot leak
+the discovery-resolver watch [pool.go].
 
 ### 2.2 The command onion — folded at connection construction
 
@@ -186,17 +189,18 @@ Every connection the pool dials is wrapped ONCE, at dial time, by `Pool.wrapConn
 
 ```
 user interceptors (first-registered outermost)
-  → observe layer (span + duration metric + access log)
-    → resilience executor (breaker / limiter / retry / timeout)
+  → declaration layer (puts the command's identity on the ctx)
+    → resilience executor (breaker / limiter / retry / timeout + emission)
       → the inner Do call → Redis
 ```
 
 Rationale (source comments [pool.go:205-211], [conn.go:44-53]):
 
-- **User interceptors outermost**: a layer can short-circuit WITHOUT starting a span or
+- **User interceptors outermost**: a layer can short-circuit WITHOUT declaring an identity or
   consuming a breaker permit, rewrite ctx/cmd/args, or just observe the outcome. An
   observer-style layer that wants the command to count must call `next`.
-- **Span outside the executor**: one Execute — including any retries the policy drives —
+- **Declaration outside the executor**: the identity reaches the executor, which emits from the
+  one point that sees a whole call — so one Execute, including any retries the policy drives,
   shares a single span and one access-log line.
 - **Executor innermost**: it derives the per-attempt context and gates the actual wire call.
 
@@ -208,16 +212,19 @@ Init, before traffic.
 ### 2.3 One command through the onion: `DoContext(ctx, "GET", "key")` on a hit
 
 1. Your interceptor (if any) runs first; may rewrite or short-circuit.
-2. observe layer starts a span named `get` with a summarized argument `GET key`
-   (command + first arg only — values are never logged; bounded to 512 bytes
-   [observe.go]). ctx is the CALLER's context, so the span links to the request trace
-   and an attempt-timeout can interrupt the call.
+2. The declaration layer puts the command's identity on the ctx: span named `GET`, labels
+   `db.system`/`db.operation`, and a summarized argument `GET key` as `db.statement` (command +
+   first arg only — values are never logged; bounded to 512 bytes [observe.go]). The key rides
+   as span/log detail, never as a metric label, because keys are unbounded. ctx is the CALLER's
+   context, so the span links to the request trace and an attempt-timeout can interrupt the call.
 3. resilience layer asks the executor (service label `redigo:<addr-or-service-name>`,
    per pool [pool.go:190]) for a permit; on retry-able failures it re-drives the inner call.
 4. The inner `Do` writes/reads Redis; a hit returns the bulk string.
 5. `redis.ErrNil` (a miss) is classified success via the nil-as-success predicate
    [conn.go:201-204] — **a miss never trips the breaker**.
-6. The span ends; the access-log record (tag `_app_redigo_access`) emits with duration/status.
+6. The resilience layer emits: the span ends, `db.client.operation.duration` (whole call) and
+   `db.client.attempt.duration` (per try) record, and the access-log line (tag
+   `_app_redigo_access`) emits with duration/status.
 
 `Do` / `DoWithTimeout` carry no context: their spans are roots and an attempt-timeout cannot
 interrupt them — prefer `DoContext` when either matters [conn.go:74-79]. `Send`/`Flush`/`Receive`
@@ -230,7 +237,7 @@ pool.Get() (your code)
   ├─ idle conn available? → reuse (MaxConnLifetime=conn-max-lifetime bounds reuse)
   └─ else Dial: credentials/TLS/SELECT db → the round-robin loadbalance pool picks a
      endpoint when service-name is set [pool.go:104-120] → wrapConn folds the onion
-  ├→ you Do/DoContext commands (each flows user → observe → resilience → wire)
+  ├→ you Do/DoContext commands (each flows user → declaration → resilience → wire)
   └→ conn.Close(): returns to the idle pool (redigo semantics)
 shutdown: Pool.Close() — executor, resolver watch, then the pool itself
 ```
@@ -257,7 +264,7 @@ All keys live under `spring.redigo.instances.<name>.`.
 | `dial-timeout` / `read-timeout` / `write-timeout` | duration | 5s / 3s / 3s | Dial options. | — |
 | `conn-max-lifetime` | duration | 2m | MaxConnLifetime; short values smooth discovery traffic switching. | Very large + discovery → stale endpoints linger. |
 | `tls.*` | group | off | Client TLS; keys mirror starter-go-redis. | Partial → tls.Build boot error. |
-| `startup-ping` | bool | false | Opt-in boot probe: dials ONE bare conn and PINGs [pool.go:266-279]. ⚠ Off by default — the pool is lazy, so a bad address surfaces only on first command. | Expecting fail-fast without setting it → boot "succeeds", first request fails. |
+| `startup-ping` | bool | false | Opt-in boot probe: [HealthCheck] dials ONE bare conn and PINGs [health.go:35-48]. ⚠ Off by default — the pool is lazy, so a bad address surfaces only on first command. | Expecting fail-fast without setting it → boot "succeeds", first request fails. |
 | `health.enabled` | bool | true | Registers `redigo:<name>` indicator; false keeps the pool out of aggregate health. | false → readiness silently excludes this pool. |
 
 **Extension points**:
@@ -282,7 +289,7 @@ All keys live under `spring.redigo.instances.<name>.`.
 ### 4.1 Health via actuator
 
 ```bash
-curl -s :9370/readyz            # redigo:main borrows a conn and PINGs [`health.go`]
+curl -s :9370/readyz            # redigo:main runs HealthCheck (dials a bare conn and PINGs) [`health.go`]
 docker stop <redis>; curl -s :9370/readyz   # 503
 ```
 

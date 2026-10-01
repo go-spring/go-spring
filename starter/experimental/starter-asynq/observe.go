@@ -14,158 +14,62 @@
  * limitations under the License.
  */
 
-// observe.go is the enqueue path's own instrumentation: a producer span, the
-// messaging duration and in-flight metrics, and the access log for every
-// guarded enqueue. It rides the global OTel providers; without starter-otel
-// every signal is a no-op.
+// observe.go declares what an asynq enqueue IS. The signals themselves — the
+// span, the duration metrics, the access log — are emitted by the resilience
+// layer, the one place on the executor chain that sees a whole call (retries
+// included). This file therefore holds no emission code: only the vocabulary
+// that this starter alone knows, because only it knows these calls reach a task
+// queue.
 package StarterAsynq
 
 import (
-	"context"
-	"sync"
-	"time"
-
 	"go-spring.org/cloud/observability"
 	"go-spring.org/stdlib/strutil"
 
 	"go-spring.org/log"
-	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/codes"
-	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 )
 
-// tracerName names the tracer the spans open on. The tracer is looked up
-// per use (otel.Tracer at call time), never cached in a package variable: a
-// package-level otel.Tracer captured before any provider is set stops
-// forwarding once the global provider is set, unset and set again.
-const tracerName = "go-spring.org/starter-asynq"
+// asynqSystem is the value the family's messaging.system label carries for this
+// backend — the family's shared vocabulary, not a per-file choice.
+const asynqSystem = "asynq"
 
-// accessTag is the static log tag for the Asynq access log.
+// maxDestination bounds the task type captured as messaging.destination.name. A
+// task type can be long and a span or a log line has no use for all of it.
+const maxDestination = 512
+
+// accessTag is the static log tag for the Asynq access log. It is registered
+// here, at package init, because a tag must exist before the framework's first
+// property refresh — see [log.RegisterTag].
 var accessTag = log.RegisterAppTag("asynq", "access")
 
-// tracer starts the producer spans of the enqueue path.
-
-// instrumentSet is this starter's instrument set: one per process, resolved
-// lazily on first use so it binds to whichever providers are current then.
-type instrumentSet struct {
-	duration metric.Float64Histogram
-	active   metric.Int64UpDownCounter
-}
-
-// instruments is the one instrument set this starter uses for the whole
-// process. Resolution is deferred to the first use, not run at package init, so
-// the instruments bind to whichever providers are current then - starter-otel
-// installs them before any bean is built, but a test may replace them later and
-// a value resolved at init would keep pointing at the old SDK.
-var instruments = sync.OnceValue(buildInstruments)
-
-// buildInstruments builds the messaging.client.operation.duration histogram and
-// the messaging.client.active_requests up-down counter.
-func buildInstruments() *instrumentSet {
-	m := otel.Meter(tracerName)
-	in := &instrumentSet{}
-	in.duration, _ = m.Float64Histogram("messaging.client.operation.duration",
-		metric.WithDescription("Duration of Asynq enqueue operations"),
-		metric.WithUnit("s"),
-		metric.WithExplicitBucketBoundaries(observability.DurationBuckets()...))
-	in.active, _ = m.Int64UpDownCounter("messaging.client.active_requests",
-		metric.WithDescription("In-flight Asynq operations"),
-		metric.WithUnit("{request}"))
-	return in
-}
-
-// resetInstruments makes the next use of instruments() resolve a fresh set. It
-// exists for tests that install their own MeterProvider: the set is process-wide
-// and resolved once, so a test running after one that already resolved it would
-// otherwise keep reporting into the earlier provider.
-func resetInstruments() { instruments = sync.OnceValue(buildInstruments) }
-
-// observer holds the enqueue path's instrument set. newObserver takes the
-// shared set at wiring time (Client.Init), not at package init, so an SDK
-// installed later still receives the records.
-type observer struct {
-	ins *instrumentSet
-}
-
-// newObserver takes the shared instrument set.
-func newObserver() *observer {
-	return &observer{ins: instruments()}
-}
-
-// start opens a producer observation for one enqueue. taskType is the
-// enqueued task's type name; it may be empty, in which case no destination
-// attribute is recorded and the access log entry is logged at Info instead of
+// operation is the semantic identity of one enqueue call.
+//
+// The task type rides in Detail rather than Attrs: task types are drawn from an
+// open set, so as a metric label one would multiply the series without bound.
+// Detail reaches the span and the log — where the destination is exactly what
+// makes a line worth reading — and never a label. An empty task type carries no
+// detail at all, which is also what levelled its success log at Info rather than
 // Debug.
-func (o *observer) start(ctx context.Context, op, taskType string) (context.Context, *span) {
-	attrs := []attribute.KeyValue{
-		attribute.String("messaging.system", "asynq"),
-		attribute.String("messaging.operation", op),
+func operation(op, taskType string) observability.Operation {
+	o := observability.Operation{
+		Name:   op,
+		Metric: "messaging.client",
+		Attrs: []attribute.KeyValue{
+			attribute.String("messaging.system", asynqSystem),
+			attribute.String("messaging.operation", op),
+		},
+		LogTag: accessTag,
+		// An enqueue is the producer edge of the trace: the task is handed to a
+		// broker for a worker to consume later, and the edge is what keeps that
+		// visible once the emitter opens the span.
+		SpanKind: trace.SpanKindProducer,
 	}
 	if taskType != "" {
-		attrs = append(attrs, attribute.String("messaging.destination.name", taskType))
+		o.Detail = []attribute.KeyValue{
+			attribute.String("messaging.destination.name", strutil.Truncate(taskType, maxDestination)),
+		}
 	}
-	ctx, inner := otel.Tracer(tracerName).Start(ctx, op,
-		trace.WithSpanKind(trace.SpanKindProducer),
-		trace.WithAttributes(attrs...))
-	o.ins.active.Add(ctx, 1, metric.WithAttributes(
-		attribute.String("messaging.system", "asynq"),
-		attribute.String("messaging.operation", op),
-	))
-	return ctx, &span{ctx: ctx, ins: o.ins, Span: inner, op: op, dest: taskType, start: time.Now()}
-}
-
-// span is one in-flight observation opened by observer.start.
-type span struct {
-	ctx context.Context
-	ins *instrumentSet
-	trace.Span
-	op    string
-	dest  string
-	start time.Time
-}
-
-// End closes the observation: it ends the span, records the duration metric,
-// drops the in-flight count, and emits the access log entry. The log level
-// carries the outcome: an error at Warn, a success with a task type at
-// Debug, a success without one at Info.
-func (s *span) End(err error) {
-	if err != nil {
-		s.Span.RecordError(err)
-		s.Span.SetStatus(codes.Error, err.Error())
-	}
-	s.Span.End()
-
-	status := "ok"
-	if err != nil {
-		status = "error"
-	}
-	elapsed := time.Since(s.start)
-	s.ins.duration.Record(s.ctx, elapsed.Seconds(), metric.WithAttributes(
-		attribute.String("messaging.system", "asynq"),
-		attribute.String("messaging.operation", s.op),
-		attribute.String("status", status),
-	))
-	s.ins.active.Add(s.ctx, -1, metric.WithAttributes(
-		attribute.String("messaging.system", "asynq"),
-		attribute.String("messaging.operation", s.op),
-	))
-
-	fields := []log.Field{
-		log.String("messaging.operation", s.op),
-		log.String("status", status),
-		log.Float("duration_ms", float64(elapsed.Nanoseconds())/1e6),
-	}
-	if s.dest != "" {
-		fields = append(fields, log.String("messaging.destination.name", strutil.Truncate(s.dest, 512)))
-	}
-	switch {
-	case err != nil:
-		log.Warn(s.ctx, accessTag, append(fields, log.Err(err))...)
-	case s.dest != "":
-		log.Debug(s.ctx, accessTag, func() []log.Field { return fields })
-	default:
-		log.Info(s.ctx, accessTag, fields...)
-	}
+	return o
 }

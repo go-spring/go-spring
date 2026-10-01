@@ -50,14 +50,14 @@ import (
 	"time"
 
 	"go-spring.org/cloud/discovery"
-	"go-spring.org/cloud/governance/resilience"
+	"go-spring.org/cloud/resilience"
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/propagation"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 
-	_ "go-spring.org/starter-governance"
+	_ "go-spring.org/starter-governance-file"
 	_ "go-spring.org/starter-http-client"
 	"go-spring.org/starter-http-client/example/proto"
 )

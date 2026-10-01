@@ -28,7 +28,7 @@ import (
 	"github.com/alicebob/miniredis/v2"
 	"github.com/redis/go-redis/v9"
 
-	"go-spring.org/cloud/governance/resilience"
+	"go-spring.org/cloud/resilience"
 	"go-spring.org/spring/gs"
 	goredis "go-spring.org/starter-go-redis"
 	experimental "go-spring.org/starter-go-redis/experimental"
@@ -228,17 +228,21 @@ func TestWiring_MissingClientNameFailsStartup(t *testing.T) {
 
 // TestWiring_ContributesRedisStore proves the contribution contract end to end:
 // with the block configured, the container resolves resilience.Counters to the
-// Redis store. That bean is what starter-governance's driver bean injects, which
+// Redis store. That bean is what the bundled driver injects, which
 // is how every executor ends up spending the shared budget.
 func TestWiring_ContributesRedisStore(t *testing.T) {
 	srv, cli := newMiniRedis(t)
 
+	// The *goredis.Client bean starter-go-redis would publish, built the same
+	// way that starter builds one (identity + observation, no governance).
+	w, err := goredis.NewClient(cli, goredis.Config{}, nil)
+	if err != nil {
+		t.Fatalf("goredis.NewClient: %v", err)
+	}
+
 	gs.Web(false).Configure(func(app gs.App) {
 		app.Property("spring.ratelimit.redis.client", "cache")
-		// The *goredis.Client bean starter-go-redis would publish.
-		app.Provide(func() *goredis.Client {
-			return &goredis.Client{UniversalClient: cli}
-		}).Name("cache")
+		app.Provide(func() *goredis.Client { return w }).Name("cache")
 	}).RunTest(t, func(ts *struct {
 		Counters resilience.Counters `autowire:"?"`
 	}) {

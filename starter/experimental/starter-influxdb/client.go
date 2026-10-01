@@ -15,11 +15,11 @@
  */
 
 // client.go is the "resource entity" concept of this starter: the Client
-// wrapper InfluxDB clients are injected as, plus its lifecycle (Init/
-// Destroy), the service label, and the dynamicTransport indirection that
-// lets Init swap the observe+resilience transport into a client whose HTTP
-// client is fixed at construction time. It mirrors starter-s3's client.go.
-// The per-request observe seam lives in command.go.
+// wrapper InfluxDB clients are injected as, plus its lifecycle, the service
+// label and the dynamicTransport indirection [NewClient] uses to install the
+// declaration+resilience transport into a client whose HTTP client is fixed at
+// construction time. It mirrors starter-s3's client.go. The transport-level
+// declaration lives in observe.go.
 package StarterInfluxdb
 
 import (
@@ -30,72 +30,87 @@ import (
 	influxdb2 "github.com/influxdata/influxdb-client-go/v2"
 	"github.com/influxdata/influxdb-client-go/v2/api"
 	"github.com/influxdata/influxdb-client-go/v2/api/write"
-	"go-spring.org/cloud/governance/fault"
-	"go-spring.org/cloud/governance/resilience"
+	"go-spring.org/cloud"
+	"go-spring.org/cloud/resilience"
 	"go-spring.org/log"
-
-	// Blank import: importing this starter brings the governance authority with
-	// it — starter-governance registers the *resilience.Manager, *loadbalance.
-	// Manager, *fault.Injector and *governance.Center beans this package injects.
-	// Turning governance OFF is spring.governance.enabled=false (or binding no rule source),
-	// not the absence of the starter. The injected parameters stay nullable, so a
-	// container that somehow lacks these beans degrades to a transparent
-	// pass-through instead of failing to boot.
-	_ "go-spring.org/starter-governance"
 )
 
-// Client is the wrapper bean InfluxDB clients are injected as. It embeds the
-// concrete influxdb2.Client (so every generated method promotes unchanged).
-// newClient returns one; gs calls Init (InitMethod) to build the observe
-// transport + executor and swap them into the client's dynamic transport.
+// Client is the wrapper bean InfluxDB clients are injected as. The raw
+// influxdb2.Client is embedded, not held in an unexported field: the seam is
+// installed on that client itself — the declaration+resilience transport is
+// swapped into the RoundTripper its HTTP client carries — so there is nothing to
+// intercept in the wrapper, and the SDK's whole interface is promoted as-is.
+// [NewClient] remains the only constructor, so a client can never exist without
+// its config. The wrapper adds only the org/bucket-scoped write helpers below.
 type Client struct {
+	// influxdb2.Client is the raw client, embedded so its whole interface is
+	// promoted. The declaration and resilience layers ride the dynamic transport
+	// its HTTP client was built over (see [dynamicTransport]), so nothing here
+	// needs to re-declare the SDK's methods.
 	influxdb2.Client
 
 	// cfg is the connection config, retained for the write helpers and the
 	// resilience service label.
 	cfg Config
-	// dyn is the dynamic transport DefaultDriver installed; Init swaps the
-	// observe+resilience transport into it. nil for custom drivers.
+
+	// dyn is the dynamic transport the driver installed; [NewClient] swaps the
+	// declaration+resilience transport into it. nil for custom drivers.
 	dyn *dynamicTransport
-	// exec is the resilience executor protecting writes, built from the
-	// injected resilience.Manager; no-op when governance is off.
+
+	// exec is the resilience executor protecting writes, applied by [NewClient]
+	// from the governance bundle; observes-only when governance is off.
 	exec resilience.ClientExecutor
-	// service is the resilience service key ("influxdb:<url>") exec scopes
+	// serviceLabel is the resilience service key ("influxdb:<url>") exec scopes
 	// limiter/breaker state by.
-	service string
-	// mgr and inj are the governance beans gs injects into the constructor
-	// (both nil in a standalone call). mgr is normalized in Init, since an
-	// unarmed manager is exactly the "governance off" pass-through while a nil
-	// pointer would panic on the method call; inj is nil-safe at its use site.
-	mgr *resilience.Manager
-	inj *fault.Injector
-	// errDone tracks the async-writer error drain goroutine.
+	serviceLabel string
+
+	// errOnce tracks the async-writer error drain goroutine.
 	errOnce sync.Once
 }
 
-// Init is the gs InitMethod: it builds the observe transport (influxdb-client-go
-// ships no OTel instrumentation of its own, so the transport carries all three
-// signals) and builds the executor from the injected resilience.Manager, wraps
-// it with the fault injector and observe-resilience, and swaps the result into
-// the client's dynamic transport. When governance is off the executor is a
-// transparent no-op (the transport is effectively observe-only).
-func (o *Client) Init() error {
-	obs := newDBObserver()
-	observeTransport := &obsTransport{base: http.DefaultTransport, obs: obs}
-	o.service = resilience.ServiceLabel("influxdb", o.cfg.ServerURL)
-	exec := fault.WrapClientExecutor(o.mgr.ClientExecutorFor("influxdb", o.service), o.service, o.inj)
-	o.exec = exec
-	if o.dyn != nil {
-		o.dyn.Swap(resilience.NewRoundTripper(observeTransport, exec))
+// NewClient builds a complete Client — config, identity and governance — over a
+// raw influxdb2.Client. transport is the RoundTripper the raw client was built
+// over — the driver's [dynamicTransport], so the declaration+resilience
+// transport can be installed in place; a custom driver may pass nil, in which
+// case the client runs with no declaration or resilience on the wire (its HTTP
+// transport is not reachable and cannot be replaced), though its own write
+// helpers still go through the executor.
+//
+// params carries the container's facilities (see [cloud.ClientParams]) and is
+// applied HERE so a Client cannot exist half-assembled: there is no Init step,
+// no later patching, and nothing the container has to remember to call. A
+// hand-built client passes the zero [cloud.ClientParams]; its executor then
+// degrades to resilience.Unmanaged — observed, with a one-time warning that no
+// protection applies — rather than silently running bare.
+//
+// The declaring transport is OUTSIDE the resilience round-tripper, never its
+// base: the emitter reads the Operation at Execute entry, so the declaration
+// must run before the executor (see [declareTransport]). The chain installed is
+//
+//	dyn → declareTransport → resilience.NewRoundTripper → http.DefaultTransport
+//
+// The manager's ClientExecutorFor resolves its backing executor lazily, on each
+// Execute, so the call order relative to the center's wiring is
+// irrelevant.
+func NewClient(raw influxdb2.Client, transport http.RoundTripper, cfg Config, params cloud.ClientParams) *Client {
+	o := &Client{Client: raw, cfg: cfg}
+	o.serviceLabel = resilience.ServiceLabel("influxdb", cfg.ServerURL)
+	o.exec = params.ExecutorFor("influxdb", o.serviceLabel)
+	// Only the driver's own indirection is swappable; anything else leaves the
+	// declaration+resilience transport uninstalled, so the client keeps the
+	// executor on its own write helpers but not on the raw transport.
+	if t, ok := transport.(*dynamicTransport); ok {
+		o.dyn = t
+		o.dyn.Swap(&declareTransport{base: resilience.NewRoundTripper(http.DefaultTransport, o.exec)})
 	}
-	return nil
+	return o
 }
 
 // Destroy is the gs destroy method: it closes the underlying client — which
-// flushes and releases the async WriteAPI this wrapper handed out — then
-// closes the resilience executor (if armed).
+// flushes and releases the async WriteAPI this wrapper handed out — then closes
+// the resilience executor (if governance was applied).
 func (o *Client) Destroy() error {
-	o.Client.Close()
+	o.Close()
 	if o.exec != nil {
 		_ = o.exec.Close()
 	}
@@ -111,7 +126,7 @@ func (o *Client) WritePoints(ctx context.Context, points ...*write.Point) error 
 	if o.cfg.Org == "" || o.cfg.Bucket == "" {
 		return errMissingOrgBucket()
 	}
-	w := o.Client.WriteAPIBlocking(o.cfg.Org, o.cfg.Bucket)
+	w := o.WriteAPIBlocking(o.cfg.Org, o.cfg.Bucket)
 	return o.exec.Execute(ctx, func(ctx context.Context) error {
 		return w.WritePoint(ctx, points...)
 	})
@@ -131,7 +146,7 @@ func (o *Client) ManagedWriteAPI() api.WriteAPI {
 	if o.cfg.Org == "" || o.cfg.Bucket == "" {
 		panic(errMissingOrgBucket())
 	}
-	w := o.Client.WriteAPI(o.cfg.Org, o.cfg.Bucket)
+	w := o.WriteAPI(o.cfg.Org, o.cfg.Bucket)
 	o.errOnce.Do(func() {
 		go func() {
 			for err := range w.Errors() {
@@ -140,8 +155,11 @@ func (o *Client) ManagedWriteAPI() api.WriteAPI {
 				}
 				// A flushed batch has no request context and no span — the
 				// client's own goroutine flushes it — so the operation is named
-				// explicitly to keep this line joinable to the db.client.*
-				// records the synchronous path writes for the same endpoint.
+				// explicitly (see [asyncWriteFields]) to keep this line joinable
+				// to the db.client.* records the synchronous path emits for the
+				// same endpoint. This batch never crosses the resilience executor
+				// (see the method doc), so the line is the only failure signal
+				// the single emitter cannot produce for it.
 				log.Error(context.Background(), accessTag, append(asyncWriteFields(),
 					log.Err(err),
 					log.Msg("influxdb: async write failed"))...)
@@ -149,22 +167,6 @@ func (o *Client) ManagedWriteAPI() api.WriteAPI {
 		}()
 	})
 	return w
-}
-
-// asyncWriteOp is the operation label the transport records for the same
-// endpoint (method + path, see obsTransport), so an async failure and a
-// synchronous one for the same write name the same operation.
-const asyncWriteOp = "POST /api/v2/write"
-
-// asyncWriteFields returns the fields an async write failure carries: the same
-// db.operation/status keys the access log uses, so the line joins the
-// db.client.operation.duration records for that operation instead of only
-// describing the failure in prose.
-func asyncWriteFields() []log.Field {
-	return []log.Field{
-		log.String("db.operation", asyncWriteOp),
-		log.String("status", "error"),
-	}
 }
 
 // Org returns the configured default organization (for callers that need to
@@ -175,9 +177,7 @@ func (o *Client) Org() string { return o.cfg.Org }
 func (o *Client) Bucket() string { return o.cfg.Bucket }
 
 // errMissingOrgBucket builds the shared org/bucket validation error.
-func errMissingOrgBucket() error {
-	return missingOrgBucket{}
-}
+func errMissingOrgBucket() error { return missingOrgBucket{} }
 
 type missingOrgBucket struct{}
 
@@ -186,13 +186,13 @@ func (missingOrgBucket) Error() string {
 }
 
 // dynamicTransport is a thin http.RoundTripper indirection whose behavior can
-// be swapped after construction — the mechanism Init uses to arm observe+
-// resilience on a client whose HTTP client is fixed at construction time.
-// Until Init runs it passes straight through to http.DefaultTransport.
+// be swapped after construction — the mechanism [NewClient] uses to install
+// declaration+resilience on a client whose HTTP client is fixed at construction
+// time. Until then it passes straight through to http.DefaultTransport.
 //
 // The slot is guarded by a RWMutex rather than an atomic.Value because the
 // active round-tripper can be any of several distinct concrete types
-// (http.DefaultTransport, *obsTransport, the resilience round-tripper), and
+// (http.DefaultTransport, *declareTransport, the resilience round-tripper), and
 // atomic.Value requires every stored value to have the same concrete type.
 type dynamicTransport struct {
 	mu  sync.RWMutex

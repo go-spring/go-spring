@@ -3,15 +3,15 @@
 Detailed usage reference. Overview: [README.md](README.md). All behavior claims are verified
 against the starter source (`starter.go`, `executor.go`, `breaker_listener.go`,
 `executor_test.go`), the abstraction in
-[cloud/governance/resilience](../../cloud/governance/resilience) (`driver.go`,
+[cloud/resilience](../../cloud/resilience) (`driver.go`,
 `manager.go`), and the self-asserting [example/](example/) (`example/check.sh` — no
 container, no external deps). **Resilience semantics (breaker windows, retry backoff,
-policy vocabulary) are [cloud/governance/resilience](../../cloud/governance/resilience);
+policy vocabulary) are [cloud/resilience](../../cloud/resilience);
 sentinel-golang behavior is [official docs](https://github.com/alibaba/sentinel-golang)** —
 only the driver wiring is covered here.
 
 **Activation**: blank import this starter together with
-[`starter-governance`](../starter-governance) (the wiring that collects the driver
+[`starter-governance-file`](../starter-governance-file) (the wiring that collects the driver
 directory into the governance center). `init` (starter.go) calls `sentinel.InitDefault()`
 (panicking on failure — "a misconfigured environment fails loudly here rather than on first
 use", per the source comment) and contributes the backend as the `sentinel`-named
@@ -37,7 +37,7 @@ demo/
 
 ```
 require (
-    go-spring.org/cloud              v0.0.0   // governance/resilience
+    go-spring.org/cloud              v0.0.0   // governance + resilience
     go-spring.org/starter-governance-sentinel latest
 )
 ```
@@ -55,7 +55,7 @@ import (
     "sync/atomic"
     "time"
 
-    "go-spring.org/cloud/governance/resilience"
+    "go-spring.org/cloud/resilience"
 
     _ "go-spring.org/starter-governance-sentinel" // registers the "sentinel" driver
 )
@@ -139,10 +139,10 @@ directions with one key while the two configs stay independent:
   executor is resolved **lazily on each Execute** and memoized per label (sync.Map cache).
   The observe layer is applied during that resolve, on the still-private executor, so the
   client gets a fully composed executor and never wraps one itself.
-- The manager is armed once by starter-governance when the center goes live (one bean serves
+- The manager is armed once by starter-governance-file when the center goes live (one bean serves
   both the center and the clients); because resolution is deferred to call time,
   client-vs-govern wiring order is irrelevant.
-- With no manager injected (starter-governance absent) or an unarmed/disabled one, the
+- With no manager injected (starter-governance-file absent) or an unarmed/disabled one, the
   executor is a transparent **no-op**: fn runs once, untouched — uniform client code whether
   or not resilience is configured.
 - Hot-reload rides on the backing executor: building it registers a subscription on that
@@ -217,7 +217,7 @@ yields nothing. The `ClientPolicy` knobs (`rate-limit`, `error-threshold`, `open
 `max-concurrent`, `max-retries`, `timeout`, ...) are set in the **governance document** —
 `spring.governance.client.default.*` for the whole process, `spring.governance.client.rules[N].*` for a specific service — and
 reach this driver through `ExecutorFor` + `Refresh`. Field meanings:
-[cloud/governance/resilience](../../cloud/governance/resilience); key layout:
+[cloud/resilience](../../cloud/resilience); key layout:
 [`cloud/governance/README.md`](../../cloud/governance/README.md).
 
 ---
@@ -234,7 +234,7 @@ cd starter/starter-governance-sentinel && go test ./...
 Or: `StarterGovernanceSentinel.NewSentinelDriver()` must return non-nil; the import-time Info log
 "registered sentinel resilience driver" (tag: app default) confirms init ran. The container
 half — the bean is collected and `spring.governance.driver=sentinel` selects it — is pinned by
-starter-governance's driver-directory test.
+starter-governance-file's driver-directory test.
 
 ### 4.2 Breaker drill (from the example)
 
@@ -258,7 +258,7 @@ not the breaker — did the recovery, and the generous limit stayed transparent.
 
 Hold an executor built with `RateLimit: 1`, observe throttling as in §4.4, then call
 `exec.Refresh(resilience.ClientPolicy{RateLimit: 1000})` (or push the change through the
-governance source when running under starter-governance): the next Execute reloads rules and
+governance source when running under starter-governance-file): the next Execute reloads rules and
 throttling stops. Note the breaker stat window resets on refresh (§2.4).
 
 ### 4.6 Breaker event observation
@@ -280,7 +280,7 @@ drills above — the seam observe-resilience's WrapExecutor consumes.
 | Breaker state looks reset after a config push | `Refresh` clears rules; sentinel replaces them and resets the stat window | Intended lazy-reload semantic (§2.4). |
 | Doubled resources in the sentinel console/metrics | bulkhead lives under `<label>$bulkhead` | Driver-internal naming (suspect #2) — filter by suffix. |
 | No retry despite `MaxRetries` set | `ShouldRetry(err)` false, or `MaxDuration` budget exhausted before next attempt | Check the policy's retry predicate and budget. |
-| Everything no-op despite sentinel imported | running via `Manager.ClientExecutorFor` with no injected manager (no starter-governance / governance disabled) | Expected zero-cost fallback — configure governance or use the driver directly. |
+| Everything no-op despite sentinel imported | running via `Manager.ClientExecutorFor` with no injected manager (no starter-governance-file / governance disabled) | Expected zero-cost fallback — configure governance or use the driver directly. |
 
 ---
 

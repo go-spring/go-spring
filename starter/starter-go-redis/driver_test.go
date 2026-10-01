@@ -22,44 +22,54 @@ import (
 	"time"
 
 	"github.com/redis/go-redis/v9"
+	"go-spring.org/cloud"
 	"go-spring.org/cloud/discovery"
 	"go-spring.org/cloud/loadbalance"
+	"go-spring.org/cloud/resilience"
 	"go-spring.org/stdlib/testing/assert"
 )
 
 // poolDriver is a stand-in for a company Driver whose topology needs a pick
-// pool: it builds one and hands it back, exactly as the Driver contract asks,
-// WITHOUT any knowledge of governance — this test exists to pin that the caller
-// does the binding, and that the driver's only obligation is to return the pool.
+// pool: it builds one, hands it to NewClient along with the governance bundle,
+// and returns the wrapper — exactly as the Driver contract asks, WITHOUT any
+// knowledge of governance. This test exists to pin that NewClient does the
+// binding, and that the driver's only obligation is to return the pool inside
+// the wrapper it builds.
 type poolDriver struct {
 	endpoints []discovery.Endpoint
-	// returned records the pool the driver handed back, so the test can assert
+	// returned records the pool the driver handed over, so the test can assert
 	// the binding landed on THAT pool rather than on some other.
 	returned *loadbalance.Pool
 }
 
-func (d *poolDriver) CreateClient(context.Context, Config, discovery.Discovery) (*redis.Client, *loadbalance.Pool, error) {
+func (d *poolDriver) CreateClient(_ context.Context, c Config, params cloud.ClientParams) (*Client, error) {
 	src := func() ([]discovery.Endpoint, error) { return d.endpoints, nil }
 	bal := loadbalance.NewRoundRobin()
 	d.returned = loadbalance.NewPool(src, bal)
 	// A real *redis.Client is not needed: this driver builds no dialer.
-	return redis.NewClient(&redis.Options{Addr: "127.0.0.1:0"}), d.returned, nil
+	return NewClient(redis.NewClient(&redis.Options{Addr: "127.0.0.1:0"}), c, d.returned, params)
 }
 
 // TestDriverPoolIsBoundByCaller pins the split the Driver interface encodes: the
-// driver returns the pool it built and says nothing about governance, and the
-// Client binds that pool to the injected manager. A driver that returns a pool
-// must get governance for free, and one that returns nil must not be forced to
-// care.
+// driver returns the wrapper holding the pool it built and says nothing about
+// governance, and NewClient binds that pool to the bundle's manager. A driver
+// that returns a pool must get governance for free, and one that returns none
+// must not be forced to care.
 func TestDriverPoolIsBoundByCaller(t *testing.T) {
 	drv := &poolDriver{endpoints: []discovery.Endpoint{
 		{Addr: "10.0.0.1:6379", Healthy: true},
 		{Addr: "10.0.0.2:6379", Healthy: true},
 	}}
 
-	// The manager is armed before Init, standing in for a center that has gone
-	// live; the rule gives this service a strategy the pool was not built with.
+	// The manager is applied to the bundle the driver receives; binding an
+	// unarmed manager is safe, so the pool is subscribed and armed when the
+	// manager goes live — standing in for a center that pushes later.
 	mgr := loadbalance.NewManager()
+	w, err := drv.CreateClient(context.Background(), Config{Addr: "10.0.0.1:6379"},
+		cloud.ClientParams{Resilience: resilience.NewManager(), Loadbalance: mgr})
+	assert.Error(t, err).Nil()
+
+	// The rule gives this service a strategy the pool was not built with.
 	mgr.Apply(loadbalance.Settings{Enabled: true, Resolve: func(string) loadbalance.Selection {
 		return loadbalance.Selection{
 			Balancer:          loadbalance.ConsistentHash,
@@ -68,38 +78,21 @@ func TestDriverPoolIsBoundByCaller(t *testing.T) {
 		}
 	}})
 
-	c := &Client{
-		cfg:     Config{Addr: "10.0.0.1:6379"},
-		lbMgr:   mgr,
-		lbPool:  drv.returnedPool(t),
-		service: "redis:test",
-	}
-	c.bindSelection()
-
 	// The binding landed on the pool the driver returned...
 	assert.That(t, drv.returned).NotNil()
 	assert.That(t, drv.returned.Selection().Balancer).Equal(loadbalance.ConsistentHash)
 	assert.Number(t, drv.returned.Tracker().Config().Threshold).Equal(3)
 	// ...and Destroy releases it rather than leaking the subscription.
-	c.detach()
-}
-
-// returnedPool builds the driver's pool without going through CreateClient, so
-// the test can wire the Client directly.
-func (d *poolDriver) returnedPool(t *testing.T) *loadbalance.Pool {
-	t.Helper()
-	src := func() ([]discovery.Endpoint, error) { return d.endpoints, nil }
-	bal := loadbalance.NewRoundRobin()
-	d.returned = loadbalance.NewPool(src, bal)
-	return d.returned
+	assert.Error(t, w.Destroy()).Nil()
 }
 
 // TestDriverPoolNilIsFine pins the other half: a driver whose topology needs no
-// pick pool returns nil and the Client arms no selection — no nil dereference,
-// no forced governance awareness.
+// pick pool passes nil and NewClient binds nothing — no nil dereference, no
+// forced governance awareness.
 func TestDriverPoolNilIsFine(t *testing.T) {
-	c := &Client{cfg: Config{Addr: "10.0.0.1:6379"}, service: "redis:test"}
-	c.bindSelection()
-	assert.That(t, c.lbMgr).Nil()
-	assert.That(t, c.lbPool).Nil()
+	w, err := NewClient(redis.NewClient(&redis.Options{Addr: "127.0.0.1:0"}), Config{Addr: "10.0.0.1:6379"}, nil,
+		cloud.ClientParams{Resilience: resilience.NewManager(), Loadbalance: loadbalance.NewManager()})
+	assert.Error(t, err).Nil()
+	assert.That(t, w.lbPool).Nil()
+	assert.That(t, w.detach).Nil()
 }

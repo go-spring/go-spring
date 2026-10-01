@@ -17,9 +17,6 @@
 package luohua
 
 import (
-	"go-spring.org/spring/conf"
-	"go-spring.org/spring/gs"
-	"go-spring.org/stdlib/flatten"
 	"go-spring.org/stdlib/i18n"
 )
 
@@ -41,25 +38,4 @@ func luohuaCatalog(defaultLocale string) *i18n.MapSource {
 			"validation.required": "{0} is required",
 			"validation.min":      "{0} must be at least {1}",
 		})
-}
-
-func init() {
-	// Armed by any spring.luohua.i18n.* key. The catalog is a default: if the
-	// application registers its own i18n.MessageSource, OnMissingBean steps
-	// luohua's aside rather than competing.
-	gs.Module(gs.OnProperty("spring.luohua.i18n"), func(r gs.BeanProvider, p flatten.Storage) error {
-		if off, err := disabled(p); err != nil {
-			return err
-		} else if off {
-			return nil // whole baseline off; do not assemble the keyed bean capability
-		}
-		var c I18nConfig
-		if err := conf.Bind(p, &c, "${spring.luohua.i18n:=}"); err != nil {
-			return err
-		}
-		r.Provide(func() *i18n.MapSource { return luohuaCatalog(c.DefaultLocale) }).
-			Condition(gs.OnMissingBean[i18n.MessageSource]()).
-			Export(gs.As[i18n.MessageSource]()).Caller(1)
-		return nil
-	})
 }

@@ -83,7 +83,7 @@ func TestDynamicTransportSwapDifferentTypes(t *testing.T) {
 }
 
 // TestDynamicTransportSwapConcurrent ensures the RWMutex slot is safe under
-// concurrent Swap + RoundTrip, so ApplyResilience can hot-swap transports while
+// concurrent Swap + RoundTrip, so installTransport can hot-swap transports while
 // in-flight requests read the active one.
 func TestDynamicTransportSwapConcurrent(t *testing.T) {
 	tr := newDynamicTransport()

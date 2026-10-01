@@ -20,21 +20,12 @@ import (
 	"io"
 	"net/http"
 
-	"go-spring.org/cloud/governance/resilience"
+	"go-spring.org/cloud/resilience"
 	"go-spring.org/log"
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/flatten"
 	"golang.org/x/oauth2/clientcredentials"
-
-	// Blank import: importing this starter brings the governance authority with
-	// it — starter-governance registers the *resilience.Manager, *loadbalance.
-	// Manager, *fault.Injector and *governance.Center beans this package injects.
-	// Turning governance OFF is spring.governance.enabled=false (or binding no rule source),
-	// not the absence of the starter. The injected parameters stay nullable, so a
-	// container that somehow lacks these beans degrades to a transparent
-	// pass-through instead of failing to boot.
-	_ "go-spring.org/starter-governance"
 )
 
 func init() {
@@ -53,14 +44,35 @@ func init() {
 			r.Provide(newClient,
 				gs.IndexArg(1, gs.ValueArg(name)),
 				gs.IndexArg(2, gs.ValueArg(c)),
-				// The governance beans are REQUIRED: this starter blank-imports
-				// starter-governance, so "governance off" is spring.governance.enabled=false,
-				// never an absent bean.
+				// The governance beans are REQUIRED: each is registered by the package that
+				// owns it (cloud/resilience, cloud/loadbalance, cloud/fault), which this
+				// starter imports — "governance off" is spring.governance.enabled=false, never
+				// an absent bean.
 				gs.IndexArg(3, gs.TagArg("")), // *resilience.Manager
 			).Name(name).Destroy(destroyClient).Caller(1)
 			return nil
 		})
 	})
+}
+
+// The authorization_code configurations (see authcode.go).
+func init() {
+	// Register multiple OAuth2 authorization_code configurations as a group.
+	// Each instance is created from the configuration under "${spring.oauth2.authcode}".
+	// The resulting *oauth2.Config holds no closable resource, so no destroy callback is needed.
+	gs.Group("${spring.oauth2.authcode.instances}", newAuthCodeConfig, nil)
+}
+
+// The token sources over the same instance group (see tokensource.go).
+func init() {
+	// Register OAuth2 token sources alongside the HTTP clients over the same
+	// "${spring.oauth2.client}" configuration group. Beans are keyed by type
+	// plus name, so a *TokenSource coexists with the *http.Client of the same
+	// name. It exposes the raw bearer token for callers that need to inject it
+	// themselves (e.g., gRPC metadata) rather than send it via an *http.Client,
+	// and additionally surfaces the cached token's status for observability.
+	// Token sources hold no closable resource, so no destroy callback is needed.
+	gs.Group("${spring.oauth2.client.instances}", newTokenSource, nil)
 }
 
 // newClient builds an *http.Client whose transport injects an OAuth2 bearer

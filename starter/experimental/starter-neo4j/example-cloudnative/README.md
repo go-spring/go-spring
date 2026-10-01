@@ -19,9 +19,9 @@ and **observability**.
   `starter-actuator` on `:9370` — `/readyz` reflects the server.
 - **Dynamic config**: a `gs.Dync[string]` field is bound to a watched file;
   editing it hot-reloads the value with no restart.
-- **Observability**: `StarterNeo4j.Query` emits a client span, the
-  `db.client.*` metrics and an access log via the module's own instrumentation
-  on the OTel globals.
+- **Observability**: `StarterNeo4j.Query` declares the operation's identity; the
+  resilience layer emits the span, the `db.client.*` metrics and the access log
+  from it on the OTel globals.
 
 ## Layout
 

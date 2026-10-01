@@ -16,13 +16,13 @@
 
 // starter.go is the gs registration + glue concept: it binds each
 // ${spring.nats} entry to a *Conn bean (built by newConn in driver.go) and its
-// destroy callback (destroyConn in client.go).
+// destroy callback ((*Conn).Destroy in client.go).
 package StarterNats
 
 import (
 	"go-spring.org/cloud/actuator/health"
-	"go-spring.org/cloud/governance/traffic"
 	"go-spring.org/cloud/messaging"
+	"go-spring.org/cloud/traffic"
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/flatten"
@@ -39,19 +39,20 @@ func init() {
 			// bean when a company provides one, nil otherwise, and newConn
 			// falls back to DefaultDriver); set → that bean name, and naming
 			// a bean that does not exist fails loud. The trailing governance
-			// beans (*resilience.Manager / *fault.Injector) are injected nullable
-			// ("?"), since starter-governance may legitimately be absent from the
-			// container.
+			// beans (*resilience.Manager / *fault.Injector) are REQUIRED
+			// (TagArg("")): newConn bundles them into the
+			// cloud.ClientParams it hands the Driver.
 			r.Provide(newConn,
 				gs.IndexArg(1, gs.ValueArg(name)),
 				gs.IndexArg(2, gs.ValueArg(c)),
 				gs.IndexArg(3, gs.TagArg("${spring.nats.instances."+name+".driver:=${spring.nats.default.driver:=?}}")),
-				// The governance beans are REQUIRED: this starter blank-imports
-				// starter-governance, so "governance off" is spring.governance.enabled=false,
-				// never an absent bean.
+				// The governance beans are REQUIRED: each is registered by the package that
+				// owns it (cloud/resilience, cloud/loadbalance, cloud/fault), which this
+				// starter imports — "governance off" is spring.governance.enabled=false, never
+				// an absent bean.
 				gs.IndexArg(4, gs.TagArg("")),
 				gs.IndexArg(5, gs.TagArg("")),
-			).Name(name).Destroy(destroyConn).Caller(1)
+			).Name(name).Destroy((*Conn).Destroy).Caller(1)
 
 			// Export the broker-neutral messaging.Driver over this connection as a
 			// bean, so consumers (starter-outbox-gorm, app pub/sub) autowire it like
@@ -66,10 +67,11 @@ func init() {
 
 			// Contribute a health indicator for this instance unless the user
 			// disabled it (health.enabled=false), injecting the connection just
-			// registered above by name.
+			// registered above by name. Its probe only calls HealthCheck (see
+			// health.go).
 			if c.HealthEnabled {
 				r.Provide(func(conn *Conn) *health.Indicator {
-					return NewConnHealth(name, conn.Conn)
+					return NewClientHealth(name, conn)
 				}, gs.TagArg(name)).Name("nats:" + name)
 			}
 			return nil

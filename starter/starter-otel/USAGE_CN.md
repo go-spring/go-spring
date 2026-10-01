@@ -1,7 +1,7 @@
 # starter-otel 使用说明 — 参考手册
 
 详细使用文档,概览见 [README.md](README.md)。全部行为声明已对照源码核实(`starter.go`、
-`config.go`、`exporters.go`、`trace/`、`metric/`),并锚定可运行的 [example/](example/)
+`config.go`、`trace/`、`metric/`),并锚定可运行的 [example/](example/)
 (`example/check.sh` 已验证通过)。**OTel 概念(span、tracer/meter provider、exporter、采样、
 [W3C trace context](https://www.w3.org/TR/trace-context/))是 OpenTelemetry 自己的**,见
 [OTel Go 文档](https://opentelemetry.io/docs/languages/go/)与
@@ -170,18 +170,18 @@ curl -i :9370/health                                       # 探针与 /metrics 
 
 ```
 import starter-otel
-  └─ init():blank-import 注册 exporter(exporters.go:27-33)
-  └─ 注册 gs.Module(nil, setup)                            [starter.go:62]
+  └─ init():注册内置 exporter 与 propagator 默认值(starter.go:69-78)
+  └─ 注册 gs.Module(nil, setup)                            [starter.go:88]
 gs.Run()
   ├─ 配置加载 + .env(pre-config)
-  ├─ RefreshPrepare → applyModules → setup()                [starter.go:69-93]
+  ├─ RefreshPrepare → applyModules → setup()                [starter.go:113-145]
   │     ├─ 绑定 ${spring.observability} → Config
-  │     ├─ enable=false → 打日志直接返回(全局对象保持 OTel no-op) [starter.go:74-77]
+  │     ├─ enable=false → 打日志直接返回(全局对象保持 OTel no-op) [starter.go:118-121]
   │     ├─ trace.NewResource(service-name)                  [trace/provider.go:29-55]
   │     ├─ setupTrace:TracerProvider + 传播器 → otel.Set*Globals
-  │     │     └─ gs.RegisterStopper("otel-trace", tp.Shutdown)        [starter.go:121]
+  │     │     └─ gs.RegisterStopper("otel-trace", tp.Shutdown)        [starter.go:172]
   │     └─ setupMetrics:MeterProvider → otel.SetMeterProvider
-  │        ├─ runtime 指标(进程内仅一次)                              [starter.go:184-189]
+  │        ├─ runtime 指标(进程内仅一次)                              [starter.go:204-212]
   │        ├─ prometheus:RegisterStopper("otel-metrics-scrape-server", ...)
   │        └─ Provide(metric.NewEndpoint).Export(As[endpoint.Endpoint])
   ├─ bean 构造(gorm client、echo engine、http transport……)
@@ -191,7 +191,7 @@ gs.Run()
   └─ SIGTERM:server 停止 → 容器关闭 → runStoppers flush       [gs/stopper.go:86-100]
 ```
 
-这个顺序是承重的,源码注释说明了原因(starter.go:56-61):
+这个顺序是承重的,源码注释说明了原因(starter.go:80-87):
 
 > This must be a `gs.Module`, not a plain bean: its body executes during applyModules in the
 > RefreshPrepare phase, i.e. BEFORE any bean is instantiated. Setting the OTel globals here
@@ -200,24 +200,24 @@ gs.Run()
 > ordering.
 
 对用户的含义:没有需要注入的东西、没有初始化顺序坑——但也没有运行期可覆盖的口子。
-`enable=false` 时全局对象保持 SDK 的 no-op provider,引入而未启用完全无效果(starter.go:66-68)。
+`enable=false` 时全局对象保持 SDK 的 no-op provider,引入而未启用完全无效果(starter.go:112)。
 
 ### 2.2 exporter 注册表
 
 两条支柱用同一套 driver-registry 惯例(`trace/registry.go`、`metric/registry.go`,基于共享的
-泛型 `internal/registry`)。内置项经 `exporters.go` 的 blank import 在 init 自注册:
+泛型 `internal/registry`)。内置项由 `starter.go` 调用各子包的 `Register` 注册:
 
 | 支柱 | 注册名 | 类型 | endpoint 默认 | 说明 |
 |------|--------|------|---------------|------|
 | trace | `otlp-grpc` | push(batcher) | `localhost:4317` | 默认 exporter |
 | trace | `otlp-http` | push(batcher) | `localhost:4318` | |
 | trace | `stdout` | push | — | 本地调试 |
-| trace | `none` | — | — | 整条 trace 支柱跳过(starter.go:103) |
+| trace | `none` | — | — | 整条 trace 支柱跳过(starter.go:157) |
 | metrics | `otlp-grpc` | push(PeriodicReader,`interval`) | `localhost:4317` | 默认 exporter |
 | metrics | `otlp-http` | push(PeriodicReader,`interval`) | `localhost:4318` | |
 | metrics | `prometheus` | **pull** | 在 `port`/actuator 上服务 `path` | `otelprom.New` 自身即 Reader;handler 渲染独立 registry(`metric/prometheus/exporter.go`) |
 | metrics | `stdout` | push(PeriodicReader) | — | |
-| metrics | `none` | — | — | 支柱跳过(starter.go:134) |
+| metrics | `none` | — | — | 支柱跳过(starter.go:185) |
 
 未知名会让 setup 响亮失败,错误信息列出已注册的 exporter 自诊断(`unknownExporterErr`,
 trace/registry.go:58-61)。应用通过 `trace.RegisterSpanExporter(name, factory)` /
@@ -288,7 +288,7 @@ span,任何插桩点都无需配合**。
 
 go-spring 自己也用这套机制加了一个属性:被标记为压测流量的请求,其每个 span 都带
 `load_test=true`,于是压测运行可以从生产看板与告警里筛出去,而不是混在里面。
-这是对 `traffic` 契约的**读取**(见 `cloud/governance/traffic`),不是对它采取行动——
+这是对 `traffic` 契约的**读取**(见 `cloud/traffic`),不是对它采取行动——
 压测请求"该做什么"仍然由应用决定。
 
 **metric 不在覆盖范围内。** metric SDK 没有"记录时的钩子",所以内置 metric 标签按设计保持封闭;
@@ -305,22 +305,22 @@ go-spring 自己也用这套机制加了一个属性:被标记为压测流量的
 
 | Key | 类型 | 默认值 | 行为 | 配错后果 |
 |-----|------|--------|------|----------|
-| `enable` | bool | true | setup 内的总开关;false 时全局对象保持 SDK no-op(starter.go:74-77)。 | false + 被埋点组件 → 一切照跑、什么都不导出、无告警。 |
+| `enable` | bool | true | setup 内的总开关;false 时全局对象保持 SDK no-op(starter.go:118-121)。 | false + 被埋点组件 → 一切照跑、什么都不导出、无告警。 |
 | `service-name` | string | `${spring.application.name:=go-spring-app}` | 进程 resource 上的 `service.name`。若设了 `OTEL_SERVICE_NAME`，后者优先（trace/provider.go:29-55）。resource 同时带上 OTel 默认属性（`telemetry.sdk.*`）与 `OTEL_RESOURCE_ATTRIBUTES` 声明的属性——这是把进程级维度（env、cluster、tenant）挂到每个 span 和 metric 上的标准做法，不需要 go-spring 自建 API。 | 不设 → 静默 `go-spring-app`;所有默认名服务在后端混流。 |
-| `trace.enable` | bool | true | false(或 `exporter=none`)整条 trace 支柱跳过——连传播器也不装(starter.go:103)。 | ⚠ 关 trace 同时丢 W3C 传播:跨服务 trace 上下文不再转发,组件还在(空转地)调全局对象。 |
+| `trace.enable` | bool | true | false(或 `exporter=none`)整条 trace 支柱跳过——连传播器也不装(starter.go:157)。 | ⚠ 关 trace 同时丢 W3C 传播:跨服务 trace 上下文不再转发,组件还在(空转地)调全局对象。 |
 | `trace.exporter` | string | otlp-grpc | 注册表查找(§2.2):otlp-grpc \| otlp-http \| stdout \| none。 | 未知名 → 启动期 setup 失败,错误列出合法名。 |
 | `trace.endpoint` | string | "" | otlp exporter 的 host:port;空回落 SDK 默认 localhost:4317/:4318(trace/otlp/exporter.go)。stdout/none 忽略。 | 配错 → 启动时连通性探针(internal/probe,3s TCP 拨号)WARN 一次并点名 endpoint——绝不阻断启动(collector 可能晚于应用起);之后 span 静默排队丢弃直到恢复。 |
 | `trace.insecure` | bool | true | 明文 OTLP(WithInsecure)——本地/sidecar collector 的常态。 | true 对 TLS collector → 仅运行期导出失败;反向同理。 |
 | `trace.sampler-ratio` | float | 1.0 | `ParentBased` 映射:≥1 全采,(0,1) 按 TraceID 比例(trace/provider.go)。 | **≤0 启动即报错**(2026-08):非正比例过去等于永不采样——全部 span 静默丢弃而表面一切健康。要关 trace 用 `trace.exporter=none` / `trace.enable=false`(传播仍在)。 |
 | `trace.propagator` | string | w3c | w3c = TraceContext+Baggage 组合;none 不动进程默认(返回 nil,不是清空)(trace/provider.go:78-90)。自 2026-08 起**独立于 trace 导出生效**(过去 trace 支柱关闭时被整体忽略)。 | 拼错 → setup 报 `unknown propagator (want w3c|none)`。 |
-| `metrics.enable` | bool | true | false(或 `exporter=none`)跳过指标支柱(starter.go:134)。 | 与 trace.enable 同样的静默不导出形态。 |
+| `metrics.enable` | bool | true | false(或 `exporter=none`)跳过指标支柱(starter.go:185)。 | 与 trace.enable 同样的静默不导出形态。 |
 | `metrics.exporter` | string | otlp-grpc | otlp-grpc \| otlp-http \| prometheus \| stdout \| none(§2.2)。 | 未知名 → setup 失败并列出合法名。 |
 | `metrics.endpoint` | string | "" | 仅 otlp;与 trace 同样的 SDK 默认回落。对 prometheus/stdout 是死 key。 | 与 trace.endpoint 同样的惰性失败形态。 |
 | `metrics.insecure` | bool | true | 仅 otlp。 | 对 prometheus/stdout 是死 key——设了无效。 |
 | `metrics.port` | int | **9090** | 仅 prometheus:>0 在 setup 期**同步**起一个独立第二 HTTP server(metric/prometheus/exporter.go 的 `serveMetrics`);0 = 抓取 handler 只经 actuator 挂载服务。 | ⚠ 默认 9090 + actuator → `/metrics` 两个端口都有(endpoint bean 无条件贡献)。0 + 未引 actuator → handler 导出了却没人服务,静默。端口占用 → 启动响亮失败。 |
-| `metrics.path` | string | /metrics | 仅 prometheus;独立 server 与 actuator 挂载**共用**(starter.go:169)。 | 自定义 path 同时改两处——Prometheus 抓取配置要跟着改。 |
+| `metrics.path` | string | /metrics | 仅 prometheus;独立 server 与 actuator 挂载**共用**(starter.go:220)。 | 自定义 path 同时改两处——Prometheus 抓取配置要跟着改。 |
 | `metrics.interval` | duration | 10s | otlp/stdout PeriodicReader 的推送节奏(metric/provider.go:101-107)。prometheus/none 死 key。 | 0/负数回落 reader 自身默认(不是"越快越好")。 |
-| `metrics.runtime.enable` | bool | true | 经 OTel contrib 喂 Go 运行时指标(GC、heap、goroutine、GOMAXPROCS),进程内仅启动一次(starter.go:184-189)。 | 关掉丢 `go_goroutine_count` 等——example 冒烟就断言这些。 |
+| `metrics.runtime.enable` | bool | true | 经 OTel contrib 喂 Go 运行时指标(GC、heap、goroutine、GOMAXPROCS),进程内仅启动一次(starter.go:204-212)。 | 关掉丢 `go_goroutine_count` 等——example 冒烟就断言这些。 |
 | `metrics.runtime.min-read-mem-stats-interval` | duration | 15s | 限制 `runtime.ReadMemStats`(stop-the-world)频率;0 = 仪表自身默认(metric/provider.go:57-62)。 | 过低 → 采集频繁带来可测的 STW 开销。 |
 
 ⚠ **按 exporter 的死 key**(任何阶段都无告警):`endpoint`/`insecure` 对
@@ -392,7 +392,7 @@ curl -i :9370/health                                   # 探针同端口共存
 
 改回 `metrics.port=9090` 重启:`/metrics` 在 `:9090`(独立 server,日志
 `prometheus scrape server listening`)与 `:9370`(actuator 挂载)**两处**都应答——endpoint
-bean 与 port 无关地贡献(starter.go:164-172)。再去掉 starter-actuator import 且 `port=0`:
+bean 与 port 无关地贡献(starter.go:215-223)。再去掉 starter-actuator import 且 `port=0`:
 `/metrics` 哪都不在——但 2026-08 起该组合会在启动时 WARN 并给出修复建议。
 
 ### 4.4 日志↔trace 关联演练

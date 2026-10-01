@@ -22,10 +22,11 @@ import (
 	"time"
 
 	"go-spring.org/cloud/discovery"
-	"go-spring.org/cloud/governance/fault"
-	"go-spring.org/cloud/governance/resilience"
-	"go-spring.org/cloud/governance/traffic"
+	"go-spring.org/cloud/fault"
+	"go-spring.org/cloud/loadbalance"
+	"go-spring.org/cloud/resilience"
 	"go-spring.org/cloud/security"
+	"go-spring.org/cloud/traffic"
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
@@ -34,6 +35,7 @@ import (
 	"google.golang.org/grpc/health"
 	healthpb "google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/keepalive"
+	"google.golang.org/grpc/resolver"
 )
 
 func init() {
@@ -56,6 +58,31 @@ func init() {
 	gs.Provide(newDiscoveryBackendsHook,
 		gs.IndexArg(0, gs.TagArg("?")),
 	).Export(gs.As[gs.Rooter]()).Caller(1)
+}
+
+// The client-side half: the gsdiscovery resolver and the built-in governance
+// balancers (see balancer.go).
+func init() {
+	resolver.Register(discoveryResolverBuilder{})
+
+	// One tracker per built-in strategy, all starting disabled.
+	for _, s := range builtinStrategies {
+		t := loadbalance.NewTracker(loadbalance.TrackerConfig{})
+		registerBalancer(BalancerName(s), s, t, true)
+		builtinTrackers = append(builtinTrackers, t)
+	}
+
+	// The install-and-hold bean that wires governance onto the built-in
+	// balancers. gRPC's balancer registry builds balancers through a no-arg
+	// constructor (see [newSelectionHook]), so the loadbalance manager cannot arrive
+	// as a balancer constructor parameter: a bean receives it and subscribes on
+	// their behalf, writing the resulting policy into the package handles
+	// ([builtinTrackers], [governedBal]) the pickers read. Exported as a gs.Rooter
+	// so gs instantiates it even though nothing injects it — without a
+	// collected-type export an unreachable bean is never created and the policy
+	// would never be applied.
+	gs.Provide(newSelectionHook, gs.IndexArg(0, gs.TagArg("?"))).
+		Export(gs.As[gs.Rooter]()).Caller(1)
 }
 
 // newDiscoveryBackendsHook installs every named discovery.Discovery bean into
@@ -92,7 +119,7 @@ type HealthConfig struct {
 // LoadTest interceptors read the propagator's marker key off the incoming
 // metadata and tag the handler context, so tracing, metrics, resilience and the
 // handler itself can branch on the propagator's IsLoadTest(ctx). It is the gRPC
-// inbound counterpart to cloud/governance/traffic's outbound carrier injection.
+// inbound counterpart to cloud/traffic's outbound carrier injection.
 type LoadTestConfig struct {
 	Enabled bool `value:"${enabled:=true}"`
 }

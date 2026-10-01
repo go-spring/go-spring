@@ -37,7 +37,7 @@ require (
     go-spring.org/starter-hertz  latest
     go-spring.org/starter-actuator latest   // 可选：探针 + /metrics
     go-spring.org/starter-otel     latest   // 可选：真实 trace/指标导出
-    go-spring.org/starter-governance latest // 可选：运行期故障注入
+    go-spring.org/starter-governance-file latest // 可选：运行期故障注入
 )
 ```
 
@@ -51,7 +51,7 @@ import (
 
     "go-spring.org/spring/gs"
     _ "go-spring.org/starter-actuator"
-    _ "go-spring.org/starter-governance"
+    _ "go-spring.org/starter-governance-file"
     _ "go-spring.org/starter-hertz"
     _ "go-spring.org/starter-otel"
 )

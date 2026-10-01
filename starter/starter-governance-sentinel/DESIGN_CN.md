@@ -4,9 +4,9 @@
 
 `starter-governance-sentinel` 属于 **global / infrastructure** 形态(见
 [starter/DESIGN.md](../DESIGN.md) §2.4),把
-[alibaba/sentinel-golang][sentinel] 注册为 `cloud/governance/resilience` 的生产 driver。
+[alibaba/sentinel-golang][sentinel] 注册为 `cloud/resilience` 的生产 driver。
 只贡献一个 bean —— 名为 `sentinel` 的 `resilience.Driver` —— 且不开端口;与
-`starter-governance` 一起空导入,治理中心即可为所有客户端解析
+`starter-governance-file` 一起空导入,治理中心即可为所有客户端解析
 `spring.governance.driver=sentinel`。
 
 [sentinel]: https://github.com/alibaba/sentinel-golang
@@ -16,7 +16,7 @@
 - **在范围内:**import 时调用 `sentinel.InitDefault()`,并把后端贡献为名为
   `sentinel` 的 `resilience.Driver` bean;把中立
   `resilience.ClientPolicy` 按 service 翻译成 sentinel 规则。
-- **不在范围内:**决定韧性*施加在哪里*——那是适配器的活。`cloud/governance/resilience`
+- **不在范围内:**决定韧性*施加在哪里*——那是适配器的活。`cloud/resilience`
   提供客户端 seam:HTTP 客户端 `NewRoundTripper`、连接拨号 `NewDialer`;
   入站 admission 中间件由各协议 starter 基于它们注入的 `resilience.Manager`
   的 `ExecutorFor` 自建。本 starter 从不在其中选择。
@@ -25,7 +25,7 @@
 
 - **没有"单一通用 per-request seam"。**各 client 库钩子不同(oauth2 →
   `http.RoundTripper`,go-redis → `redis.Hook`,gorm → plugin callback,
-  MQ → call-site helper)。`cloud/governance/resilience` 保留中立
+  MQ → call-site helper)。`cloud/resilience` 保留中立
   `Executor.Execute(ctx, fn)`,让每个适配器桥接到自家形态。
   本 starter 提供*引擎*,不提供*缝隙*。
 - **`ClientPolicy` → sentinel 规则按 service 懒加载。**sentinel 按 service 名
@@ -36,7 +36,7 @@
   循环,避免被取消的请求耗尽预算。
 - **Block 原因映射为中立 sentinel。**`BlockTypeCircuitBreaking →
   ErrCircuitOpen`、`BlockTypeIsolation → ErrBulkheadFull`、缺省
-  `→ ErrRateLimited`。调用方仅依赖 `cloud/governance/resilience`;sentinel 是
+  `→ ErrRateLimited`。调用方仅依赖 `cloud/resilience`;sentinel 是
   starter 侧细节。
 
 ## 3. 约束
@@ -50,13 +50,13 @@
 
 ## 4. 零依赖兜底
 
-`cloud/governance/resilience` 内建 `default` driver(令牌桶 + 连续失败熔断 + 重试 +
+`cloud/resilience` 内建 `default` driver(令牌桶 + 连续失败熔断 + 重试 +
 超时,零三方依赖),让框架开箱即用、测试无需拉 sentinel。本 starter 的
 价值体现在需要 sentinel 自适应流控与可调熔断的生产链路。
 
 ## 5. 取舍 / 弃选方案
 
-- **让 `cloud/governance/resilience` 依赖 sentinel——弃选。**四层规则要求基础层零
+- **让 `cloud/resilience` 依赖 sentinel——弃选。**四层规则要求基础层零
   依赖;本 starter 是一种具体实现,而非抽象。
 - **给所有库来一个统一的 dialer / RoundTripper seam——弃选。**`Resolver`
   是唯一真通用的 seam,但只覆盖建连;per-request 钩子只能停在各库自选之处。

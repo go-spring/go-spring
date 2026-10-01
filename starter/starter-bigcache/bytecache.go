@@ -25,16 +25,17 @@ import (
 	"go-spring.org/cloud/cache"
 )
 
-// NewByteCache wraps a *bigcache.BigCache as a [cache.ByteCache] - the raw
-// bytes-native primitives the "bigcache" driver layers a typed [cache.Cache]
-// façade over. The driver registered in the starter's root package selects the
-// BigCache bean by beanID; call this directly to build a ByteCache for ad-hoc
-// use.
-func NewByteCache(c *bigcache.BigCache) cache.ByteCache {
+// NewByteCache wraps a *Cache as a [cache.ByteCache] - the raw bytes-native
+// primitives the "bigcache" driver layers a typed [cache.Cache] façade over.
+// Every operation flows through the wrapper's command seam (declared operation +
+// resilience; the span/access log are emitted there). The driver registered in the
+// starter's root package selects the BigCache bean by beanID; call this directly
+// to build a ByteCache for ad-hoc use.
+func NewByteCache(c *Cache) cache.ByteCache {
 	return &bigcacheCache{c}
 }
 
-type bigcacheCache struct{ c *bigcache.BigCache }
+type bigcacheCache struct{ c *Cache }
 
 // GetBytes returns the raw bytes under key. A missing key is reported as
 // (nil, [cache.ErrMiss]).

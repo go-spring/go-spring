@@ -14,173 +14,57 @@
  * limitations under the License.
  */
 
-// observe.go is this starter's own s3 instrumentation: a per-operation
-// client span, the db.client.* duration/in-flight metrics, and an access
-// log riding the log package's native levels. It is deliberately local —
-// no shared observer framework — so the emitted vocabulary is all this
-// package's own.
+// observe.go declares what one S3 call IS. The signals themselves — the span,
+// the duration metrics, the access log — are emitted by the resilience layer,
+// the single point on the executor chain that sees a whole call (retries
+// included). This file therefore holds no emission code: only the vocabulary
+// that this starter alone knows, because only it knows these requests reach an
+// S3-compatible object store over HTTP.
 package StarterS3
 
 import (
-	"context"
-	"sync"
-	"time"
-
 	"go-spring.org/cloud/observability"
 	"go-spring.org/stdlib/strutil"
 
 	"go-spring.org/log"
-	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/codes"
-	"go.opentelemetry.io/otel/metric"
-	"go.opentelemetry.io/otel/trace"
 )
 
-// tracerName names the tracer the spans open on. The tracer is looked up
-// per use (otel.Tracer at call time), never cached in a package variable: a
-// package-level otel.Tracer captured before any provider is set stops
-// forwarding once the global provider is set, unset and set again.
-const tracerName = "go-spring.org/starter-s3"
-
-// s3System is the value the db.system label carries for this backend.
+// s3System is the value the family's db.system label carries for this
+// backend — the family's shared vocabulary, not a per-file choice.
 const s3System = "s3"
 
-// maxArg bounds the operation argument captured on span attributes and the
-// access log.
-const maxArg = 512
+// maxStatement bounds the request path captured as db.statement. An object key
+// can be long and a span or a log line has no use for all of it.
+const maxStatement = 512
 
-// accessTag is the static log tag for the s3 access log.
+// accessTag is the static log tag for the s3 access log. It is registered here,
+// at package init, because a tag must exist before the framework's first
+// property refresh — see [log.RegisterTag].
 var accessTag = log.RegisterAppTag("s3", "access")
 
-// tracer opens this starter's client spans through the OTel global
-// TracerProvider that starter-otel installs (a no-op when absent).
-
-// dbObserver emits the s3 client signals for one instance: the
-// db.client.operation.duration histogram, the db.client.active_requests
-// gauge, a client span per operation, and the access log. Its records go
-// through the process-wide instrument set (see [instruments]); only the
-// db.system label is per instance.
-type dbObserver struct {
-	system string
-}
-
-// instrumentSet is this starter's instrument set: one per process, resolved
-// lazily on first use so it binds to whichever meter provider is current then,
-// and immutable afterwards. It holds no per-instance state — the db.system /
-// db.operation / status labels travel with each record, not here.
-type instrumentSet struct {
-	duration metric.Float64Histogram
-	active   metric.Int64UpDownCounter
-}
-
-// instruments is the one instrument set this starter uses for the whole process.
-var instruments = sync.OnceValue(buildInstruments)
-
-// buildInstruments builds the OTel instruments from whatever meter provider is
-// current — resolved on first use, not at package init, so an SDK installed
-// later than this package's init still receives the records.
-func buildInstruments() *instrumentSet {
-	m := otel.Meter("go-spring.org/starter-s3")
-	duration, _ := m.Float64Histogram("db.client.operation.duration",
-		metric.WithDescription("Duration of "+s3System+" client operations"),
-		metric.WithUnit("s"),
-		metric.WithExplicitBucketBoundaries(observability.DurationBuckets()...))
-	active, _ := m.Int64UpDownCounter("db.client.active_requests",
-		metric.WithDescription("Number of in-flight "+s3System+" client operations"),
-		metric.WithUnit("{request}"))
-	return &instrumentSet{duration: duration, active: active}
-}
-
-// resetInstruments makes the next use of instruments() resolve a fresh set. It
-// exists for tests that install their own MeterProvider: the set is process-wide
-// and resolved once, so a test running after one that already resolved it would
-// otherwise keep reporting into the earlier provider.
-func resetInstruments() { instruments = sync.OnceValue(buildInstruments) }
-
-// newDBObserver builds the observer for one instance.
-func newDBObserver() *dbObserver {
-	return &dbObserver{system: s3System}
-}
-
-// Start begins one operation: it bumps the in-flight gauge, opens the client
-// span, and records the start time; the returned span's End records the
-// duration histogram, balances the gauge, ends the span, and emits the access
-// log. op names the operation (span name, db.operation); arg is the optional
-// operation argument (statement, URL path), bounded by maxArg.
-func (o *dbObserver) Start(ctx context.Context, op, arg string) (context.Context, *dbSpan) {
-	inflight := metric.WithAttributes(
-		attribute.String("db.system", o.system),
-		attribute.String("db.operation", op),
-	)
-	instruments().active.Add(ctx, 1, inflight)
-	attrs := []attribute.KeyValue{
-		attribute.String("db.system", o.system),
-		attribute.String("db.operation", op),
+// operation is the semantic identity of one S3 HTTP call.
+//
+// db.operation carries only the HTTP method — a bounded set — so the metric
+// labels stay bounded. The URL path is drawn from an open set (bucket/key),
+// so as a label it would multiply the series without bound; it therefore rides
+// in Detail as db.statement, reaching the span and the log but never a label.
+// The span Name keeps the descriptive "METHOD /path" form: Name is a span
+// name, not a label, so it is the right place for a path to survive.
+func operation(method, path string) observability.Operation {
+	op := observability.Operation{
+		Name:   method + " " + path,
+		Metric: "db.client",
+		Attrs: []attribute.KeyValue{
+			attribute.String("db.system", s3System),
+			attribute.String("db.operation", method),
+		},
+		LogTag: accessTag,
 	}
-	if arg != "" {
-		attrs = append(attrs, attribute.String("db.statement", strutil.Truncate(arg, maxArg)))
-	}
-	ctx, span := otel.Tracer(tracerName).Start(ctx, op,
-		trace.WithSpanKind(trace.SpanKindClient),
-		trace.WithAttributes(attrs...))
-	return ctx, &dbSpan{o: o, ctx: ctx, span: span, op: op, arg: arg, start: time.Now(), inflight: inflight}
-}
-
-// dbSpan is the handle returned by dbObserver.Start; End must be called
-// exactly once.
-type dbSpan struct {
-	o        *dbObserver
-	ctx      context.Context
-	span     trace.Span
-	op       string
-	arg      string
-	start    time.Time
-	inflight metric.MeasurementOption
-}
-
-// End records the operation's outcome: the duration histogram, the in-flight
-// gauge balance, the span (with err, if any), and the access log — an error
-// at Warn, a success carrying an operation argument at Debug, a plain
-// success at Info.
-func (s *dbSpan) End(err error) {
-	o := s.o
-	dur := time.Since(s.start)
-	status := "ok"
-	if err != nil {
-		status = "error"
-	}
-	instruments().duration.Record(s.ctx, dur.Seconds(), metric.WithAttributes(
-		attribute.String("db.system", o.system),
-		attribute.String("db.operation", s.op),
-		attribute.String("status", status),
-	))
-	instruments().active.Add(s.ctx, -1, s.inflight)
-	if s.span != nil {
-		if err != nil {
-			s.span.SetStatus(codes.Error, err.Error())
-			s.span.RecordError(err)
+	if path != "" {
+		op.Detail = []attribute.KeyValue{
+			attribute.String("db.statement", strutil.Truncate(path, maxStatement)),
 		}
-		s.span.End()
 	}
-
-	common := func() []log.Field {
-		fields := []log.Field{
-			log.String("db.operation", s.op),
-			log.String("status", status),
-			log.Float("duration_ms", float64(dur.Nanoseconds())/1e6),
-		}
-		if s.arg != "" {
-			fields = append(fields, log.String("db.statement", strutil.Truncate(s.arg, maxArg)))
-		}
-		return fields
-	}
-	switch {
-	case err != nil:
-		log.Warn(s.ctx, accessTag, append(common(), log.Err(err))...)
-	case s.arg != "":
-		log.Debug(s.ctx, accessTag, common)
-	default:
-		log.Info(s.ctx, accessTag, common()...)
-	}
+	return op
 }

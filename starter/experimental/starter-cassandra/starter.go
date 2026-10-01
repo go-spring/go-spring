@@ -17,12 +17,10 @@
 package StarterCassandra
 
 import (
-	"context"
-
-	"github.com/gocql/gocql"
+	"go-spring.org/cloud"
 	"go-spring.org/cloud/actuator/health"
-	"go-spring.org/cloud/governance/fault"
-	"go-spring.org/cloud/governance/resilience"
+	"go-spring.org/cloud/fault"
+	"go-spring.org/cloud/resilience"
 	"go-spring.org/log"
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/gs"
@@ -38,10 +36,10 @@ func init() {
 	// to the bean for diagnostics.
 	gs.Module(gs.OnProperty("spring.cassandra.instances"), func(r gs.BeanProvider, p flatten.Storage) error {
 		return conf.BindEach(p, "${spring.cassandra.instances}", func(name string, c Config) error {
-			// The wrapper bean owns the resilience executor, so the ctor arms
-			// it (ArmGovernance, with the injected governance beans) and
-			// Destroy tears it down. The Driver bean is
-			// selected by the entry's ${driver} key: unset → "?" (nullable
+			// The ctor bundles the injected governance beans and hands them to the
+			// Driver, which passes them to NewClient — so the client is assembled
+			// complete in one step, and Destroy tears the executor down. The
+			// Driver bean is selected by the entry's ${driver} key: unset → "?" (nullable
 			// by-type — injects the single Driver bean when one is provided,
 			// nil otherwise, and the ctor falls back to the bundled
 			// DefaultDriver); set → that bean name, and naming a bean that
@@ -49,16 +47,18 @@ func init() {
 			r.Provide(newClient,
 				gs.IndexArg(1, gs.ValueArg(c)),
 				gs.IndexArg(2, gs.TagArg("${spring.cassandra.instances."+name+".driver:=${spring.cassandra.default.driver:=?}}")),
-				// The governance beans are REQUIRED: this starter blank-imports
-				// starter-governance, so "governance off" is spring.governance.enabled=false,
-				// never an absent bean.
+				// The governance beans are REQUIRED: each is registered by the package that
+				// owns it (cloud/resilience, cloud/loadbalance, cloud/fault), which this
+				// starter imports — "governance off" is spring.governance.enabled=false, never
+				// an absent bean.
 				gs.IndexArg(3, gs.TagArg("")), // *resilience.Manager
 				gs.IndexArg(4, gs.TagArg("")), // *fault.Injector
-			).Name(name).Init((*Client).Init).Destroy((*Client).Destroy).Caller(1)
+			).Name(name).Destroy((*Client).Destroy).Caller(1)
 			// Contribute a health indicator for this instance, injecting the
-			// client just registered above by name.
+			// client just registered above by name. The probe delegates to
+			// HealthCheck, which goes straight to the raw session.
 			r.Provide(func(w *Client) *health.Indicator {
-				return NewClientHealth(name, w.Session)
+				return NewClientHealth(name, w)
 			}, gs.TagArg(name)).Name("cassandra:" + name).Caller(1)
 			return nil
 		})
@@ -66,14 +66,15 @@ func init() {
 }
 
 // newClient creates a new Cassandra client based on the provided
-// configuration. The cluster is probed once at startup so that
-// misconfiguration or an unreachable cluster fails fast rather than on first
-// use.
+// configuration, wrapped so every statement declares its identity (see
+// observe.go) and flows through the governance guard.
 //
-// mgr and inj are the governance beans starter-governance provides. The wiring
+// mgr and inj are the authority beans the owning packages register. The wiring
 // injects them NULLABLY, so both are nil in a container without
-// starter-governance as well as in a standalone (non-gs) call;
-// [Client.ArmGovernance] treats a nil bean as "governance off".
+// the container as well as in a standalone (non-gs) call; the ctor bundles
+// them into the [cloud.ClientParams] it hands the driver, which passes it to
+// [NewClient] — so the client is assembled complete in one step, with the zero
+// bundle degrading to an observed-only, loudly-unmanaged executor.
 func newClient(ctx *gs.ContextProvider, c Config, d Driver, mgr *resilience.Manager, inj *fault.Injector) (*Client, error) {
 	log.Debugf(ctx.Context, log.TagAppDef, "creating cassandra client, hosts=%v keyspace=%s", c.Hosts, c.Keyspace)
 
@@ -85,28 +86,25 @@ func newClient(ctx *gs.ContextProvider, c Config, d Driver, mgr *resilience.Mana
 	if d == nil {
 		d = DefaultDriver{}
 	}
-	session, err := d.CreateClient(ctx.Context, c)
+	client, err := d.CreateClient(ctx.Context, c, cloud.ClientParams{Resilience: mgr, Fault: inj})
 	if err != nil {
 		return nil, err
 	}
-	if err = HealthCheck(ctx.Context, session); err != nil {
-		session.Close()
+	// The Driver returned the client complete — identity and governance both
+	// applied while it was built. There is no Init hook and nothing else runs
+	// after this — the bean is complete when this ctor returns.
+	// Fail fast: probe the cluster once at startup so misconfiguration or an
+	// unreachable cluster surfaces during boot rather than on first use. The
+	// probe is [HealthCheck] — the same single health implementation the
+	// Actuator indicator uses — which goes straight to the raw session on
+	// purpose: it is a connectivity check, not business traffic, so it must not
+	// open a span or spend limiter/breaker budget. A failure abandons the
+	// client, so release what was just applied.
+	if err := HealthCheck(ctx.Context, client); err != nil {
+		log.Errorf(ctx.Context, log.TagAppDef, "cassandra: startup probe failed: %v", err)
+		_ = client.Destroy()
 		return nil, errutil.Explain(err, "failed to reach cassandra cluster %v", c.Hosts)
 	}
-	w := &Client{Session: session, cfg: c}
-	// Arm governance on the wrapper. It runs here, not inside the driver, so a
-	// custom Driver's client is governed too — without the Driver interface
-	// carrying a dependency on cloud/governance.
-	if err := w.ArmGovernance(mgr, inj); err != nil {
-		session.Close()
-		return nil, err
-	}
-	return w, nil
-}
-
-// HealthCheck reports whether the Cassandra cluster answers a trivial query.
-// It is a thin readiness probe suitable for wiring into a health endpoint.
-func HealthCheck(ctx context.Context, session *gocql.Session) error {
-	var release string
-	return session.Query("SELECT release_version FROM system.local").WithContext(ctx).Scan(&release)
+	log.Infof(ctx.Context, log.TagAppDef, "cassandra client initialized, hosts=%v", c.Hosts)
+	return client, nil
 }

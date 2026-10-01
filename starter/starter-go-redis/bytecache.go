@@ -25,16 +25,18 @@ import (
 	"go-spring.org/cloud/cache"
 )
 
-// NewByteCache wraps a redis.UniversalClient as a [cache.ByteCache] - the raw
-// bytes-native primitives the "go-redis" driver layers a typed [cache.Cache]
-// façade over. The driver registered in the starter's root package selects the
-// client bean by beanID; call this directly to build a ByteCache for ad-hoc
-// use.
-func NewByteCache(c redis.UniversalClient) cache.ByteCache {
+// NewByteCache wraps a [Client] as a [cache.ByteCache] - the raw bytes-native
+// primitives the "go-redis" driver layers a typed [cache.Cache] façade over.
+// Every operation flows through the wrapper's command seam, where the starter
+// declares the command's identity and the resilience layer emits the span,
+// duration metrics and access log. The driver registered in the
+// starter's root package selects the client bean by beanID; call this directly
+// to build a ByteCache for ad-hoc use.
+func NewByteCache(c *Client) cache.ByteCache {
 	return &redisCache{c}
 }
 
-type redisCache struct{ c redis.UniversalClient }
+type redisCache struct{ c *Client }
 
 // GetBytes returns the raw bytes under key. A redis.Nil reply (key absent) is
 // reported as (nil, [cache.ErrMiss]) - a plain miss, not a backend error - so

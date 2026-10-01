@@ -20,7 +20,6 @@ import (
 	"context"
 	"fmt"
 
-	influxdb2 "github.com/influxdata/influxdb-client-go/v2"
 	"github.com/influxdata/influxdb-client-go/v2/domain"
 	"go-spring.org/cloud/actuator/health"
 )
@@ -30,22 +29,20 @@ import (
 // so an application that also imports starter-actuator gets InfluxDB
 // readiness folded into /readiness with no extra wiring.
 //
-// The probe calls /health: it verifies reachability, authentication setup and
-// server status in one round trip.
-func NewClientHealth(name string, client influxdb2.Client) *health.Indicator {
+// The probe delegates to [HealthCheck], the single liveness implementation:
+// there is one place a readiness check is defined, so the indicator and an
+// ad-hoc caller can never drift apart.
+func NewClientHealth(name string, c *Client) *health.Indicator {
 	return &health.Indicator{Name: "influxdb:" + name, Probe: func(ctx context.Context) error {
-		hc, err := client.Health(ctx)
-		if err != nil {
-			return err
-		}
-		return HealthError(hc)
+		return HealthCheck(ctx, c)
 	}}
 }
 
-// HealthError maps a domain.HealthCheck onto an error: nil when the server
-// reports pass, the reported message otherwise. It is shared by the starter's
-// fail-fast probe and the health indicator.
-func HealthError(hc *domain.HealthCheck) error {
+// healthError maps a domain.HealthCheck onto an error: nil when the server
+// reports pass, the reported message otherwise. It is the /health status
+// mapping [HealthCheck] is built on; it stays unexported because HealthCheck
+// is the only liveness entry this package exports.
+func healthError(hc *domain.HealthCheck) error {
 	if hc.Status == domain.HealthCheckStatusPass {
 		return nil
 	}

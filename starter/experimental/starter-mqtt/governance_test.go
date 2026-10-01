@@ -24,8 +24,9 @@ import (
 	"time"
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
-	"go-spring.org/cloud/governance/resilience"
+	"go-spring.org/cloud"
 	"go-spring.org/cloud/messaging"
+	"go-spring.org/cloud/resilience"
 )
 
 // errGovernanceStub is returned by the test executor to prove a call was
@@ -62,18 +63,19 @@ func (f *fakeMQTTClient) Publish(topic string, qos byte, retained bool, payload 
 	return &fakeToken{}
 }
 
-// applyResilience always attaches an executor. Whether it protects anything is
-// decided by the governance rule for the service label, not by a per-instance
-// switch: with governance off the executor is a transparent pass-through, so
-// attaching one costs a call frame and changes nothing else.
-func TestApplyResilienceAttachesGuard(t *testing.T) {
+// AttachGovernance installs an executor for every driver-built client. Whether it
+// protects anything is decided by the governance rule for the service label, not
+// by a per-instance switch: a zero Governance yields the observed-only
+// resilience.Unmanaged executor, so attaching one costs a call frame and changes
+// nothing else.
+func TestAttachGuardInstallsExecutor(t *testing.T) {
 	cl := &fakeMQTTClient{}
 
-	if err := applyResilience(cl, "mqtt:test", nil, nil); err != nil {
-		t.Fatal(err)
-	}
+	var params cloud.ClientParams
+	AttachGovernance(cl, "tcp://127.0.0.1:1883", params)
+
 	if _, ok := clientGuards.Load(cl); !ok {
-		t.Fatal("applyResilience must attach an executor")
+		t.Fatal("AttachGovernance must install an executor")
 	}
 	closeResilience(cl)
 }
@@ -85,7 +87,7 @@ func TestApplyResilienceAttachesGuard(t *testing.T) {
 func TestDriverPublishGuarded(t *testing.T) {
 	cl := &fakeMQTTClient{}
 	stub := &stubExecutor{}
-	clientGuards.Store(cl, &clientGuard{exec: stub, service: "mqtt:test"})
+	clientGuards.Store(cl, &clientGuard{exec: stub, serviceLabel: "mqtt:test"})
 
 	b := NewDriver(cl)
 	pub, err := b.NewPublisher(context.Background(), "t")

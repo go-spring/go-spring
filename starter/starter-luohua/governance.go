@@ -19,9 +19,8 @@ package luohua
 import (
 	"context"
 
-	"go-spring.org/cloud/governance/resilience"
+	"go-spring.org/cloud/resilience"
 	"go-spring.org/log"
-	"go-spring.org/spring/gs"
 )
 
 // LuohuaResilienceDriverName is the name this backend answers to in the
@@ -54,20 +53,6 @@ func (d luohuaResilienceDriver) NewClientExecutor(service string, p resilience.C
 		return nil, err
 	}
 	return &luohuaExecutor{inner: inner, service: service}, nil
-}
-
-func init() {
-	// Contributing the backend as a bean named "luohua" makes it selectable by
-	// spring.governance.driver=luohua: starter-governance's wiring bean collects every bean
-	// exported as resilience.Driver into a name-keyed directory. Like the bundled
-	// "default" (and sentinel's blank-import contribution) this is an init-time
-	// availability registration, not a config-gated activation — the driver only
-	// governs when the process actually selects it.
-	gs.Provide(func(c resilience.Counters) *luohuaResilienceDriver {
-		return &luohuaResilienceDriver{counters: c}
-	}, gs.TagArg("?")).Name(LuohuaResilienceDriverName).
-		Export(gs.As[resilience.Driver]()).
-		Caller(1)
 }
 
 // luohuaExecutor wraps the inner (default) executor and stamps each governed

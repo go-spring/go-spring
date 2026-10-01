@@ -83,22 +83,6 @@ import (
 	"go-spring.org/stdlib/httpauth"
 )
 
-func init() {
-	// Mark that a management server collecting endpoint.Endpoint beans is
-	// linked in, so contributors (e.g. starter-otel's Prometheus /metrics with
-	// metrics.port=0) can WARN at startup when they would otherwise be
-	// silently homeless. See endpoint.MarkServing.
-	endpoint.MarkServing()
-
-	// Register the actuator as a gs.Server under a distinct name so it coexists
-	// with the application's main HTTP server (which also exports gs.Server).
-	// Enabled by default: the endpoints are cheap and the value — K8s probes,
-	// registry health checks — is high.
-	gs.Provide(&Server{}).
-		Condition(gs.OnProperty("spring.actuator.addr")).
-		Export(gs.As[gs.Server]())
-}
-
 // Server serves the actuator endpoints on a dedicated management port.
 //
 // The exported fields are populated by the IoC container: Address from

@@ -69,7 +69,7 @@ Cache *cache.Cache `autowire:"luohua"`
 
 luohua 刻意**不造自己的治理引擎** —— 出站调用已走治理 starter 注册的 `resilience.Manager` /
 `fault.Injector` bean、挂在单一治理权威下;没有自研后端的公司应骑官方引擎、按舰队钉默认策略。
-写在治理规则文档里即可(见 starter-governance):
+写在治理规则文档里即可(见 starter-governance-file):
 
 ```properties
 spring.governance.driver=default

@@ -15,9 +15,9 @@
  */
 
 // Package logger forwards dubbo-go's framework logs into go-spring's log
-// module, so an application only configures one logging pipeline. The bridge
-// self-installs via init(): the main StarterDubbo package blank-imports this
-// package, so importing the starter redirects dubbo-go's two layered logger
+// module, so an application only configures one logging pipeline. The main
+// StarterDubbo package imports this one and calls [Install] from its
+// starter.go, which redirects dubbo-go's two layered logger
 // facades - dubbo.apache.org/dubbo-go/v3/logger and
 // github.com/dubbogo/gost/log/logger - into the same sink the application
 // already configures for go-spring's log.
@@ -75,7 +75,10 @@ type loggerAdapter struct{}
 // captured by callers at first use, so replacing them here - during Go
 // package init, well before gs.Run() starts the server - is enough to
 // redirect every log line for the lifetime of the process.
-func init() {
+// Install redirects dubbo-go's own logs into the go-spring log pipeline. It is
+// called from the starter's starter.go, so the package declares no init of its
+// own: every registration the starter performs is readable in one place.
+func Install() {
 	b := &loggerAdapter{}
 	dubbologger.SetLogger(b)
 	gostlogger.SetLogger(b)

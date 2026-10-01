@@ -45,8 +45,8 @@ _, err := s.Client.ExecContext(ctx,
 rows, err := s.Client.QueryContext(ctx, "SELECT COUNT(*) FROM power.meters")
 ```
 
-包装类型内嵌 `*sql.DB`，`Query/Exec/BeginTx/PingContext` 与整个
-`database/sql` 生态原样提升可用。
+包装类型内嵌裸 `*sql.DB`，整个 `database/sql` 方法集——
+`Query/Exec/BeginTx/PingContext` 等——按原样提升。
 
 ## 核心特性
 
@@ -54,8 +54,9 @@ rows, err := s.Client.QueryContext(ctx, "SELECT COUNT(*) FROM power.meters")
   拥有各自的配置。
 - **fail-fast 启动探活 + 健康指示器** — 启动期一次 `PingContext`，
   `tdengine:<name>` 指示器供 `starter-actuator` 聚合。
-- **逐语句韧性 + 可观测** — 语句经守卫过的 driver.Conn 流动：限流、熔断、
-  故障注入、逐语句 span + 指标 + 访问日志，全部在 Init 里武装。
+- **逐语句韧性 + 可观测** — 语句经守卫过的 driver.Conn 流动：每条语句外套
+  限流、熔断与故障注入，并声明其语义身份，交由 resilience 层发射
+  （见[可观测](#可观测)）。
 - **websocket 线路、零 CGO** — 支持任何运行 taosAdapter 的 TDengine
   ≥ 3.3.6；`wss://` DSN 即 TLS。
 
@@ -80,3 +81,13 @@ func init() {
     })
 }
 ```
+
+## 可观测
+
+`driver-go` 自身不带埋点。starter 因此只**声明**每条语句是什么
+（`observe.go`）：语句种类（`exec`/`query`）、`db.system`/`db.operation`
+标签，以及作为 `db.statement` span/日志 detail 的 SQL（截断至 512 字节）。
+信号本身由 **resilience 层发射**——它是 executor 链条上唯一看得见整次调用
+（含重试）的点。除 call 级 `db.client.operation.duration` 直方图外，每次
+调用还多一条 attempt 级的 `db.client.attempt.duration` 直方图，以及 tag 为
+`_app_tdengine_access` 的访问日志。未引入 `starter-otel` 时全部为 no-op。

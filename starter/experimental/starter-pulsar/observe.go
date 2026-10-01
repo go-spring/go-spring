@@ -14,135 +14,87 @@
  * limitations under the License.
  */
 
-// observe.go is the module-local observer for the driver path: a
-// producer/consumer span, the messaging.client.operation.duration metric and
-// an access log per publish/consume. pulsar-client-go offers no per-message
-// hook, so the driver observes here, around the send/handler call.
+// observe.go declares what a Pulsar publish or consume IS. The signals
+// themselves — the span, the duration metrics (call-level and attempt-level),
+// the access log — are emitted by the resilience layer, the one place on the
+// executor chain that sees a whole call (retries included). This file therefore
+// holds no per-call emission code: only the vocabulary this starter alone
+// knows, because only it knows these calls reach a broker.
+//
+// Pulsar's own native Prometheus metrics (the pulsar_client_* family behind
+// newMetricsServer in command.go) stay where they are: they are library-native
+// connection/producer/consumer stats, not per-call signals, so they are not the
+// resilience layer's to emit and the starter keeps them.
 package StarterPulsar
 
 import (
-	"context"
-	"time"
-
 	"go-spring.org/cloud/observability"
 	"go-spring.org/stdlib/strutil"
 
 	"go-spring.org/log"
-	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/codes"
-	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 )
 
-// accessTag is the static log tag for the pulsar access log.
+// accessTag is the static log tag for the pulsar access log. It is registered
+// here, at package init, because a tag must exist before the framework's first
+// property refresh — see [log.RegisterTag].
 var accessTag = log.RegisterAppTag("pulsar", "access")
 
-// tracerName names the tracer this module's messaging spans open on; it
-// doubles as the meter name. The tracer is looked up per use (otel.Tracer at
-// call time), never cached in a package variable: a package-level otel.Tracer
-// captured before any provider is set stops forwarding once the global
-// provider is set, unset and set again. Instrument handles live in the
-// observers so they bind to whatever OTel provider is current at construction.
+// pulsarSystem is the value the family's messaging.system label carries for this
+// backend — the family's shared vocabulary, not a per-file choice.
+const pulsarSystem = "pulsar"
 
-// observer emits the span/metric/access-log triple for one direction of the
-// driver path. kind selects producer or consumer spans. When starter-otel is
-// not imported the global OTel providers are no-ops, so span+metric add
-// negligible overhead; the access log always emits through the project log
-// package.
-type observer struct {
-	kind     trace.SpanKind
-	duration metric.Float64Histogram
-	active   metric.Int64UpDownCounter
+// maxDestination bounds the topic captured as messaging.destination.name. A
+// topic can be long and a span or a log line has no use for all of it.
+const maxDestination = 512
+
+// Operation names, shared by the span name and the messaging.operation label so
+// the two can never disagree.
+const (
+	opPublish = "publish"
+	opConsume = "consume"
+)
+
+// operation is the semantic identity of one Pulsar operation, named by its
+// direction (publish / consume) and addressed by its topic.
+//
+// The direction and the system ride in Attrs — both bounded, so both may label a
+// metric. The topic rides in Detail instead: topics are drawn from an open set,
+// so as a metric label one would multiply the series without bound. Detail
+// reaches the span and the log — where a topic is exactly what makes a line
+// worth reading — and never a label. A topicless call carries no detail at all,
+// which is also what levelled its success log at Info.
+// spanKind maps the operation's direction onto the trace edge it adds: a publish
+// is the producer side of the link, a consume the consumer side.
+func spanKind(direction string) trace.SpanKind {
+	if direction == opConsume {
+		return trace.SpanKindConsumer
+	}
+	return trace.SpanKindProducer
 }
 
-// newObserver builds the messaging.client instruments from whatever meter
-// provider is current — invoked at wiring time, not at package init, so an SDK
-// installed later still receives the records.
-
-func newObserver(kind trace.SpanKind) *observer {
-	m := otel.Meter(tracerName)
-	duration, _ := m.Float64Histogram("messaging.client.operation.duration",
-		metric.WithDescription("Duration of pulsar client operations"),
-		metric.WithUnit("s"),
-		metric.WithExplicitBucketBoundaries(observability.DurationBuckets()...))
-	active, _ := m.Int64UpDownCounter("messaging.client.active_requests",
-		metric.WithDescription("Number of in-flight pulsar client operations"),
-		metric.WithUnit("{request}"))
-	return &observer{kind: kind, duration: duration, active: active}
-}
-
-// Start opens the operation's span, bumps the in-flight gauge, and returns the
-// in-flight observation; the caller ends it with the operation's error via End.
-func (o *observer) Start(ctx context.Context, op, arg string) (context.Context, obsSpan) {
-	spanAttrs := []attribute.KeyValue{
-		attribute.String("messaging.system", "pulsar"),
-		attribute.String("messaging.operation", op),
+func operation(direction, topic string) observability.Operation {
+	op := observability.Operation{
+		Name:   direction,
+		Metric: "messaging.client",
+		Attrs: []attribute.KeyValue{
+			attribute.String("messaging.system", pulsarSystem),
+			attribute.String("messaging.operation", direction),
+		},
+		LogTag: accessTag,
+		// A publish is the producer edge of the trace and a consume its consumer edge;
+		// declaring the kind is what keeps that topology once the emitter opens the span.
+		SpanKind: spanKind(direction),
+		// Publishing and handling both repeat a side effect when retried — a second
+		// message delivered, or a second run of the handler — so the executor chain must
+		// not retry this operation whatever retry a governance rule asks for.
+		NonIdempotent: true,
 	}
-	if arg != "" {
-		spanAttrs = append(spanAttrs, attribute.String("messaging.destination.name", strutil.Truncate(arg, 512)))
-	}
-	ctx, span := otel.Tracer(tracerName).Start(ctx, op,
-		trace.WithSpanKind(o.kind),
-		trace.WithAttributes(spanAttrs...))
-	inflight := metric.WithAttributes(
-		attribute.String("messaging.system", "pulsar"),
-		attribute.String("messaging.operation", op),
-	)
-	o.active.Add(ctx, 1, inflight)
-	return ctx, obsSpan{ctx: ctx, span: span, op: op, arg: arg, start: time.Now(), duration: o.duration, active: o.active, inflight: inflight}
-}
-
-// obsSpan is one in-flight observed operation: End emits the span status, the
-// duration metric, balances the in-flight gauge, and writes the access log.
-type obsSpan struct {
-	ctx      context.Context
-	span     trace.Span
-	op       string
-	arg      string
-	start    time.Time
-	duration metric.Float64Histogram
-	active   metric.Int64UpDownCounter
-	inflight metric.MeasurementOption
-}
-
-func (s obsSpan) End(err error) {
-	if err != nil {
-		s.span.SetStatus(codes.Error, err.Error())
-	}
-	s.span.End()
-
-	status := "ok"
-	if err != nil {
-		status = "error"
-	}
-	dur := time.Since(s.start)
-	s.duration.Record(s.ctx, dur.Seconds(), metric.WithAttributes(
-		attribute.String("messaging.system", "pulsar"),
-		attribute.String("messaging.operation", s.op),
-		attribute.String("status", status),
-	))
-	s.active.Add(s.ctx, -1, s.inflight)
-
-	common := []log.Field{
-		log.String("messaging.operation", s.op),
-		log.String("status", status),
-		log.Float("duration_ms", float64(dur.Nanoseconds())/1e6),
-	}
-	switch {
-	case err != nil:
-		fields := common
-		if s.arg != "" {
-			fields = append(fields, log.String("messaging.destination.name", strutil.Truncate(s.arg, 512)))
+	if topic != "" {
+		op.Detail = []attribute.KeyValue{
+			attribute.String("messaging.destination.name", strutil.Truncate(topic, maxDestination)),
 		}
-		log.Warn(s.ctx, accessTag, append(fields, log.Err(err))...)
-	case s.arg != "":
-		// Success carrying a topic: high-frequency and uninteresting until it
-		// fails, so Debug — and built lazily, truncation included.
-		log.Debug(s.ctx, accessTag, func() []log.Field {
-			return append(common, log.String("messaging.destination.name", strutil.Truncate(s.arg, 512)))
-		})
-	default:
-		log.Info(s.ctx, accessTag, common...)
 	}
+	return op
 }

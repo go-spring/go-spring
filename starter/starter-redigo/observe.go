@@ -14,157 +14,82 @@
  * limitations under the License.
  */
 
+// observe.go declares what a redis command IS. The signals themselves — the
+// span, the duration metrics, the access log — are emitted by the resilience
+// layer, the single point on the command chain that sees a whole call (retries
+// included). This file therefore holds no emission code: only the vocabulary
+// that this starter alone knows, because only it knows these commands reach a
+// redis backend.
 package StarterRedigo
 
 import (
 	"context"
 	"fmt"
 	"strings"
-	"sync"
-	"time"
 
 	"go-spring.org/cloud/observability"
 	"go-spring.org/stdlib/strutil"
 
 	"go-spring.org/log"
-	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/codes"
-	"go.opentelemetry.io/otel/metric"
-	"go.opentelemetry.io/otel/trace"
 )
 
-// accessTag is the static log tag for the redigo access log.
+// accessTag is the static log tag for the redigo access log. It is registered
+// here, at package init, because a tag must exist before the framework's first
+// property refresh — see [log.RegisterTag].
 var accessTag = log.RegisterAppTag("redigo", "access")
 
-// tracerName names the tracer the command spans open on. The tracer is looked
-// up per use (otel.Tracer at call time), never cached in a package variable: a
-// package-level otel.Tracer captured before any provider is set stops
-// forwarding once the global provider is set, unset and set again.
-const tracerName = "go-spring.org/starter-redigo"
-
-// skipOps are commands that skip instrumentation entirely (span + metric +
-// log together): PING fires on every health probe and pool test-on-borrow,
-// so instrumenting it is pure noise.
+// skipOps are commands that declare no identity, so nothing family-specific is
+// emitted for them: PING fires on every health probe and pool test-on-borrow,
+// so instrumenting it is pure noise. They still run under the resilience layer,
+// which reports them as it reports any other call whose identity is undeclared.
 var skipOps = map[string]struct{}{"PING": {}}
 
 // redisSystem is the value the family's db.system label carries for this
 // backend — the family's shared vocabulary, not a per-file choice.
 const redisSystem = "redis"
 
-// instrumentSet is this starter's instrument set: one per process, resolved
-// lazily on first use so it binds to whichever meter provider is current then,
-// and immutable afterwards. It holds no per-pool state — the db.system /
-// db.operation / status labels travel with each record, not here.
-type instrumentSet struct {
-	duration metric.Float64Histogram
-	active   metric.Int64UpDownCounter
-}
+// maxStatement bounds the command summary captured as db.statement.
+const maxStatement = 512
 
-// instruments is the one instrument set this starter uses for the whole process.
-var instruments = sync.OnceValue(buildInstruments)
-
-// buildInstruments builds the db.* instruments from whatever meter provider is
-// current — resolved on first use, not at package init, so an SDK installed
-// after this package's init still receives the records.
-func buildInstruments() *instrumentSet {
-	m := otel.Meter("go-spring.org/starter-redigo")
-	duration, _ := m.Float64Histogram("db.client.operation.duration",
-		metric.WithDescription("Duration of redis client operations"),
-		metric.WithUnit("s"),
-		metric.WithExplicitBucketBoundaries(observability.DurationBuckets()...))
-	active, _ := m.Int64UpDownCounter("db.client.active_requests",
-		metric.WithDescription("Number of in-flight redis client operations"),
-		metric.WithUnit("{request}"))
-	return &instrumentSet{duration: duration, active: active}
-}
-
-// resetInstruments makes the next use of instruments() resolve a fresh set. It
-// exists for tests that install their own MeterProvider: the set is process-wide
-// and resolved once, so a test running after one that already resolved it would
-// otherwise keep reporting into the earlier provider.
-func resetInstruments() { instruments = sync.OnceValue(buildInstruments) }
-
-// statusOf names the outcome the way the family's metric label and log field
-// expect — the same two words the other DB backends use.
-func statusOf(err error) string {
-	if err != nil {
-		return "error"
+// operation is the semantic identity of one redis command. The span is named
+// after the command as written ("GET"); the db.operation label carries it
+// lowercased, the family's convention.
+//
+// The command summary rides in Detail rather than Attrs: its first argument is
+// usually a key, drawn from an open set, so as a metric label it would multiply
+// the series without bound. A command with no arguments carries no detail at
+// all, which is also what levelled its success log at Info.
+func operation(cmd string, args []interface{}) observability.Operation {
+	op := observability.Operation{
+		Name:   cmd,
+		Metric: "db.client",
+		Attrs: []attribute.KeyValue{
+			attribute.String("db.system", redisSystem),
+			attribute.String("db.operation", strings.ToLower(cmd)),
+		},
+		LogTag: accessTag,
 	}
-	return "ok"
+	if len(args) > 0 {
+		op.Detail = []attribute.KeyValue{
+			attribute.String("db.statement", summarizeCommand(cmd, args)),
+		}
+	}
+	return op
 }
 
-// observeInterceptor is the observe layer of the command chain: it starts a
-// client span for the command (trace + duration metric + access log), runs
-// next under it, and ends the span with the result. ctx is the span parent —
-// the caller's context for DoContext (so the span links to the request trace
-// and an attempt-timeout can interrupt it), background for the context-less
-// paths. The span sits OUTSIDE the resilience layer, so one Execute (with any
-// retries the policy drives) is covered by a single span. Skipped ops pass
-// through untouched.
-func observeInterceptor() CommandInterceptor {
+// operationInterceptor is the declaration layer of the command chain: it puts
+// the command's identity on the context, which the resilience layer inside it
+// reads to emit the span, the metrics and the access log. A skipped op is
+// forwarded untouched.
+func operationInterceptor() CommandInterceptor {
 	return func(next CommandHandler) CommandHandler {
-		return func(ctx context.Context, cmd string, args []interface{}) (reply interface{}, err error) {
+		return func(ctx context.Context, cmd string, args []interface{}) (interface{}, error) {
 			if _, skip := skipOps[strings.ToUpper(cmd)]; skip {
 				return next(ctx, cmd, args)
 			}
-			start := time.Now()
-			statement := summarizeCommand(cmd, args)
-			inflight := metric.WithAttributes(
-				attribute.String("db.system", redisSystem),
-				attribute.String("db.operation", strings.ToLower(cmd)),
-			)
-			instruments().active.Add(ctx, 1, inflight)
-			ctx, span := otel.Tracer(tracerName).Start(ctx, cmd,
-				trace.WithSpanKind(trace.SpanKindClient),
-				trace.WithAttributes(
-					attribute.String("db.system", redisSystem),
-					attribute.String("db.operation", strings.ToLower(cmd)),
-					attribute.String("db.statement", statement),
-				))
-			reply, err = next(ctx, cmd, args)
-			if err != nil {
-				span.SetStatus(codes.Error, err.Error())
-			}
-			span.End()
-			record(ctx, inflight, cmd, statement, len(args) > 0, start, err)
-			return reply, err
+			return next(observability.WithOperation(ctx, operation(cmd, args)), cmd, args)
 		}
-	}
-}
-
-// record emits the duration metric and the access log for one finished
-// command. The log level carries the outcome: an error at Warn, a success
-// that names its key at Debug (lazy — the common case is uninteresting), and
-// a keyless success (ECHO, FLUSHALL, SELECT, ...) at Info.
-func record(ctx context.Context, inflight metric.MeasurementOption, cmd, statement string, hasArgs bool, start time.Time, err error) {
-	status := statusOf(err)
-	dur := float64(time.Since(start).Nanoseconds()) / 1e6
-	instruments().duration.Record(ctx, time.Since(start).Seconds(), metric.WithAttributes(
-		attribute.String("db.system", redisSystem),
-		attribute.String("db.operation", strings.ToLower(cmd)),
-		attribute.String("status", status),
-	))
-	instruments().active.Add(ctx, -1, inflight)
-
-	// Log keys are the metric labels' names, so a dashboard selecting failed
-	// commands lands on the lines that explain them.
-	common := func() []log.Field {
-		return []log.Field{
-			log.String("db.operation", strings.ToLower(cmd)),
-			log.String("status", status),
-			log.String("db.statement", statement),
-			log.Float("duration_ms", dur),
-		}
-	}
-	switch {
-	case err != nil:
-		fields := append(common(), log.Err(err))
-		log.Warn(ctx, accessTag, fields...)
-	case hasArgs:
-		log.Debug(ctx, accessTag, common)
-	default:
-		log.Info(ctx, accessTag, common()...)
 	}
 }
 
@@ -176,5 +101,5 @@ func summarizeCommand(cmd string, args []interface{}) string {
 	if len(args) == 0 {
 		return cmd
 	}
-	return strutil.Truncate(fmt.Sprintf("%s %v", cmd, args[0]), 512)
+	return strutil.Truncate(fmt.Sprintf("%s %v", cmd, args[0]), maxStatement)
 }

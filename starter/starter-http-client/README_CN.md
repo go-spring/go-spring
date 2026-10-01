@@ -38,7 +38,7 @@ go get go-spring.org/starter-http-client
   持续维护最新的端点快照;
 * [`loadbalance`](../../cloud/loadbalance) —— `Pool` 为每次请求挑选一个存活端点
   (任意已注册策略,并可选离群剔除),传输层随即把请求主机改写为该端点;
-* [`resilience`](../../cloud/governance/resilience) —— 可选的执行器包裹整条链路,使限流、
+* [`resilience`](../../cloud/resilience) —— 可选的执行器包裹整条链路,使限流、
   熔断与重试保护每一次调用。由于它位于负载均衡器**之外**,重试会重新挑选一个
   新端点,而熔断器则以逻辑服务名为键。
 
@@ -68,7 +68,7 @@ spring.http-client.instances.direct.addr=127.0.0.1:9471
 spring.http-client.instances.discovered.service-name=greet-svc
 spring.http-client.instances.discovered.discovery=static
 
-# 韧性与端点选择不在这里配置:策略写在治理规则文档的 spring.governance.* 下(starter-governance;
+# 韧性与端点选择不在这里配置:策略写在治理规则文档的 spring.governance.* 下(starter-governance-file;
 # conf/governance.properties,由 spring.governance.source.file.path 指向)。连续 2 次失败熔断:
 #   spring.governance.enabled=true
 #   spring.governance.client.default.error-threshold=2
@@ -110,7 +110,7 @@ _, resp, err := client.Greet(ctx, &proto.GreetReq{Name: "Grace"})
 | `spring.http-client.instances.<name>.tls.enabled` | `false` | 打开该 entry 的 TLS 配置面(完整 `tls.*`:cert-file/key-file/ca-file/server-name/insecure-skip-verify)。 |
 
 韧性、故障注入与端点选择在这里**没有配置 key**:它们是按服务的策略,写在治理规则文档里(见
-starter-governance)。治理服务标签在发现模式下为 `http:<service-name>`,直连模式下为
+starter-governance-file)。治理服务标签在发现模式下为 `http:<service-name>`,直连模式下为
 `http:<addr>`。单次请求超时来自 `spring.governance.client.default.attempt-timeout`;负载均衡策略与端点剔除来自
 命中该标签的规则上的 `balancer` / `outlier-threshold` / `outlier-suspend-for`。
 

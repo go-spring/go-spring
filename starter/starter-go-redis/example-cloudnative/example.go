@@ -25,7 +25,9 @@
 //     starter-actuator on :9370 (/readyz reflects the pool).
 //   - DYNAMIC CONFIG: a gs.Dync[string] field is bound to a watched file; editing
 //     it hot-reloads the value with no restart.
-//   - OBSERVABILITY: redisotel + the starter's built-in access log ride the OTel globals.
+//   - OBSERVABILITY: the starter declares each command's identity; the resilience
+//     layer emits the span + duration metrics + access log, and redisotel supplies
+//     the pool metrics — all riding the OTel globals.
 //
 // The app self-tests every capability and exits non-zero on failure.
 package main
@@ -44,13 +46,13 @@ import (
 	"time"
 
 	"go-spring.org/cloud/discovery"
-	"go-spring.org/cloud/governance/resilience"
+	"go-spring.org/cloud/resilience"
 	"go-spring.org/spring/gs"
 
 	_ "go-spring.org/starter-actuator"    // aggregates the redis health.Indicator
 	_ "go-spring.org/starter-config-file" // registers the file-watch config provider
 	StarterGoRedis "go-spring.org/starter-go-redis"
-	_ "go-spring.org/starter-governance" // registers the centralized governance center
+	_ "go-spring.org/starter-governance-file" // registers the centralized governance center
 )
 
 const mountDir = "./mount"

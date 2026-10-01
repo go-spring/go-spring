@@ -214,12 +214,16 @@ nil）直接使用配置的 Host —— sidecar 负责 discovery+LB。
 
 `db.WithContext(ctx).Raw("SELECT @@VERSION").Scan(&v)`：
 
-1. `gorm:raw` processor —— 已被 gormcore 的 executor 包装替换（治理规则 `spring.governance.*` 的
-   timeout/retry/breaker，放火时含 fault 注入器；`gorm.ErrRecordNotFound` 视为成功）。
-2. observe 插件锚在 `before_raw` 的 span（db.system=microsoft.sql_server）+ 指标。
+1. observe 插件锚在 `before_raw` 的回调在 statement 的 ctx 上声明本次操作（名称、
+   `db.system=microsoft.sql_server`、`db.operation`、SQL）。
+2. `gorm:raw` processor —— 已被 gormcore 的 executor 包装替换（治理规则 `spring.governance.*` 的
+   timeout/retry/breaker，放火时含 fault 注入器；`gorm.ErrRecordNotFound` 视为成功）——
+   从 ctx 读回声明的操作。
 3. 原 processor：池取连接 → resolverDialer.DialContext（discovery 实例）或驱动直拨
    → TDS 登录（encrypt 按 DSN，见 §3.2）→ 查询。
-4. `after_*` 写入 SQL、结束 span/指标、写访问日志。
+4. resilience 层从声明的操作发射信号：call span（db.system=microsoft.sql_server）、call 级
+   `db.client.operation.duration`、attempt 级 `db.client.attempt.duration`、
+   `db.client.active_requests`，以及那一条访问日志。
 
 ---
 
@@ -295,7 +299,7 @@ example 的 `discovery` 实例用哑值 `0.0.0.0:0`；`Response from discovered 
 ```bash
 cd example-load && docker compose up -d
 go run . -duration=10s                       # SELECT 1 基线吞吐
-# 放火 —— 编辑 conf/app.properties（starter-governance 热加载）：
+# 放火 —— 编辑 conf/app.properties（starter-governance-file 热加载）：
 #   spring.governance.client.fault.enabled=true  spring.governance.client.fault.rate=0.5  spring.governance.client.fault.error=generic
 go run . -duration=10s                       # 错误分布显示 ~50% 注入
 ```
@@ -306,8 +310,9 @@ go run . -duration=10s                       # 错误分布显示 ~50% 注入
 ### 4.4 可观测（example-otel）
 
 运行 `example-otel`（Jaeger 经其 compose 启动）：每查询一个
-`db.system=microsoft.sql_server` 的 span（含 SQL 语句）、:9090/metrics 的时长/in-flight
-指标、按 `observability` 级别的访问日志。`slow-threshold=200ms` 另外换入 gorm 慢查询
+`db.system=microsoft.sql_server` 的 span（含 SQL 语句）、:9090/metrics 上的 call 级
+`db.client.operation.duration` 与 attempt 级 `db.client.attempt.duration`、
+`db.client.active_requests`，以及按 `observability` 级别的访问日志。`slow-threshold=200ms` 另外换入 gorm 慢查询
 logger（经 go-spring.org/log 转发，TagAppDef，消息体为纯文本）。
 
 ---

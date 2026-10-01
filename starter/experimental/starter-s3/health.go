@@ -19,7 +19,6 @@ package StarterS3
 import (
 	"context"
 
-	"github.com/minio/minio-go/v7"
 	"go-spring.org/cloud/actuator/health"
 )
 
@@ -28,11 +27,11 @@ import (
 // that also imports starter-actuator gets S3 readiness folded into /readiness
 // with no extra wiring.
 //
-// The probe lists buckets: it verifies both endpoint reachability and that the
-// credential pair is accepted.
-func NewClientHealth(name string, client *minio.Client) *health.Indicator {
+// The probe delegates to [HealthCheck], the single liveness implementation:
+// there is one place a readiness check is defined, so the indicator and an
+// ad-hoc caller can never drift apart.
+func NewClientHealth(name string, c *Client) *health.Indicator {
 	return &health.Indicator{Name: "s3:" + name, Probe: func(ctx context.Context) error {
-		_, err := client.ListBuckets(ctx)
-		return err
+		return HealthCheck(ctx, c)
 	}}
 }

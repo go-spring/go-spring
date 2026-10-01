@@ -22,12 +22,22 @@ import (
 	"go-spring.org/cloud/actuator/health"
 )
 
-// NewClientHealth builds an indicator for a Milvus client. The probe lists
-// collections — one round trip that verifies reachability and auth.
-func NewClientHealth(name string, c interface {
-	Health(ctx context.Context) error
-}) *health.Indicator {
+// HealthCheck is the module's single connectivity probe: it lists collections —
+// one round trip that verifies reachability and auth. It goes straight to the
+// raw client on purpose — a readiness check must reflect the backend, not the
+// rate limiter, and must not feed the guard's statistics — so it calls the
+// embedded SDK client's ListCollections directly. The startup probe in
+// [newClient] and the actuator probe in [NewClientHealth] both delegate here,
+// so there is exactly one implementation.
+func HealthCheck(ctx context.Context, c *Client) error {
+	_, err := c.Client.ListCollections(ctx)
+	return err
+}
+
+// NewClientHealth builds an indicator for a Milvus client. The probe only calls
+// [HealthCheck], so it shares the module's one connectivity check.
+func NewClientHealth(name string, c *Client) *health.Indicator {
 	return &health.Indicator{Name: "milvus:" + name, Probe: func(ctx context.Context) error {
-		return c.Health(ctx)
+		return HealthCheck(ctx, c)
 	}}
 }

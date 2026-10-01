@@ -23,8 +23,8 @@ import (
 	"testing"
 
 	"github.com/labstack/echo/v4"
-	"go-spring.org/cloud/governance/fault"
-	"go-spring.org/cloud/governance/traffic"
+	"go-spring.org/cloud/fault"
+	"go-spring.org/cloud/traffic"
 	"go-spring.org/spring/conf"
 	"go-spring.org/stdlib/flatten"
 	"go-spring.org/stdlib/testing/assert"
@@ -393,38 +393,12 @@ func TestFaultMiddleware_Injects503ThenPassesThrough(t *testing.T) {
 	assert.That(t, w2.Code).Equal(http.StatusOK)
 }
 
-// --- access log skip set --------------------------------------------------------
+// --- otel no-op safety -+
 
-// TestAccessLogSkipSet_MergesHealthAndConfiguredPaths verifies probe traffic
-// never floods the access log: the health path is auto-skipped (only when
-// health is on) and merged with the operator's skip list.
-func TestAccessLogSkipSet_MergesHealthAndConfiguredPaths(t *testing.T) {
-	cfg := bindConfig(t, map[string]any{
-		"health.enabled":                 true,
-		"middleware.accessLog.skipPaths": []string{"/metrics", "/debug"},
-	})
-	skip := accessLogSkipSet(cfg)
-	assert.That(t, len(skip)).Equal(3)
-	for _, p := range []string{"/healthz", "/metrics", "/debug"} {
-		_, ok := skip[p]
-		assert.That(t, ok).True()
-	}
-
-	// Health off: its path is not auto-skipped.
-	cfg2 := bindConfig(t, map[string]any{
-		"middleware.accessLog.skipPaths": []string{"/metrics"},
-	})
-	skip2 := accessLogSkipSet(cfg2)
-	assert.That(t, len(skip2)).Equal(1)
-	_, ok := skip2["/healthz"]
-	assert.That(t, ok).False()
-}
-
-// --- tracing/metrics no-op safety -------------------------------------------------
-
-// TestMiddlewareChain_OtelNoopGlobalsStillServe asserts the "on by default,
-// no-op without starter-otel" claim: with the default (no-op) OTel globals the
-// tracing and metrics middlewares ride through without breaking the request.
+// TestMiddlewareChain_OtelNoopGlobalsStillServe asserts the "no-op without
+// starter-otel" claim: with the default (no-op) OTel globals a request is served
+// end to end — the observation now rides the resilience executor, which is a
+// no-op emitter without starter-otel, and the request must be unaffected.
 func TestMiddlewareChain_OtelNoopGlobalsStillServe(t *testing.T) {
 	e := newTestEngine(t, map[string]any{})
 	e.GET("/x", func(c echo.Context) error {

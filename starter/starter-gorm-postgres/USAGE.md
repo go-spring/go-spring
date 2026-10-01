@@ -157,9 +157,11 @@ gs.Run()
 ```
 
 **One query, layer by layer** (starter-otel imported, `observe.enabled=true`):
-`db.WithContext(ctx).Exec("SELECT 1")` → resilience callbacks wrap the processor → the gorm observe
-plugin's before/after callbacks open a span (`db.system=postgresql`), record
-`db.client.operation.duration`, emit an access-log record (level from the wrapper `observability`
+`db.WithContext(ctx).Exec("SELECT 1")` → the gorm observe plugin runs its before-callback on the
+statement's context and DECLARES the operation (name, `db.system=postgresql`, `db.operation`, SQL) →
+resilience callbacks wrap the processor and EMIT the signals: the call span (`db.system=postgresql`),
+the call-level `db.client.operation.duration`, the attempt-level `db.client.attempt.duration`,
+`db.client.active_requests`, and one access log record (level from the wrapper `observability`
 field, default `brief`) → database/sql takes a pooled conn (a new physical conn dials through the
 replaced pgx `DialFunc` in discovery mode) → pgx executes.
 
@@ -245,7 +247,7 @@ Mirror the mysql starter's drill (§4.3 of its USAGE): add an instance with
 | Starts fine, first query fails `database ... does not exist` | `db` missing/typo — ping doesn't touch the db | Set `db` correctly. |
 | Password with a space breaks startup | Space-separated DSN, no quoting applied | Change the password or raise as a design issue. |
 | Discovery client dials the config `host` | `service-name` unset — plain-DSN path | Set `service-name` (+ `discovery` if not "default"). |
-| No spans/metrics per query | `observe.enabled=false` or starter-otel missing | Re-enable / import starter-otel. |
+| No db.* spans/metrics/access log | `observe.enabled=false` or starter-otel missing | Import starter-otel; the per-instance kill switch removes the plugin entirely, so operations go undeclared and the resilience layer emits only its own generic signals. |
 | `connect_timeout` seems ignored for sub-second values | Truncated to whole seconds (1500ms → 1) | Use whole-second durations. |
 
 ## 6. Design Health

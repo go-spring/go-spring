@@ -61,8 +61,9 @@ type MiddlewareConfig struct {
 	LoadTest      LoadTestConfig      `value:"${loadtest}"`
 	RequestID     RequestIDConfig     `value:"${requestId}"`
 	AccessLog     AccessLogConfig     `value:"${accessLog}"`
-	Tracing       TracingConfig       `value:"${tracing}"`
-	Metrics       MetricsConfig       `value:"${metrics}"`
+	Tracing       TracingConfig       `value:"${tracing}"` // legacy: see ObservabilityConfig
+	Metrics       MetricsConfig       `value:"${metrics}"` // legacy: see ObservabilityConfig
+	Observability ObservabilityConfig `value:"${observability}"`
 	CORS          CORSConfig          `value:"${cors}"`
 	Gzip          GzipConfig          `value:"${gzip}"`
 	SecureHeaders SecureHeadersConfig `value:"${secureHeaders}"`
@@ -156,6 +157,30 @@ type TracingConfig struct {
 // It is on by default: the middleware is a no-op when starter-otel is not
 // imported, so enabling it upfront means one less config to flip when adopting
 // OTel.
+//
+// LEGACY — the signals it used to gate are now emitted, together with the span
+// and the access log, by the resilience executor this server is admitted
+// through, and they travel as one set: the single emitter produces all of them
+// or the request falls back to the admission-only signals. This switch is still
+// read so an existing configuration keeps working; setting any of the three
+// per-signal switches to false turns the whole set off (and warns once, because
+// the granularity they offered is gone). Use [ObservabilityConfig] instead.
 type MetricsConfig struct {
+	Enabled bool `value:"${enabled:=true}"`
+}
+
+// ObservabilityConfig gates the whole observability set for this server — the
+// request span, the HTTP family metrics and the access log. It is on by
+// default, and it is the one switch to reach for: everything it controls is
+// emitted by the resilience executor (see [the governance center] and
+// cloud/resilience), which is also why the signals are one set rather than three
+// independently switchable ones.
+//
+// Turning it off does not silence the server: the admission middleware stops
+// DECLARING, and the request falls back to what the resilience layer reports
+// about every admitted call regardless — `resilience.server.*` and one log line
+// under the resilience tag. That is the same fallback an undeclared route has
+// always taken.
+type ObservabilityConfig struct {
 	Enabled bool `value:"${enabled:=true}"`
 }

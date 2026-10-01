@@ -19,7 +19,7 @@ package StarterRedigo
 import (
 	"context"
 
-	"go-spring.org/cloud/discovery"
+	"go-spring.org/cloud"
 )
 
 // Driver interface defines how to create a Redis client (a connection pool) —
@@ -39,20 +39,30 @@ import (
 // bean fails startup.
 //
 // The driver owns the FULL assembly and returns the starter's wrapped [Pool]
-// (embeds the concrete *redis.Pool), fully armed. The bundled DefaultDriver
+// (embeds the concrete *redis.Pool), fully assembled — identity (the service
+// label), the resilience executor, the endpoint-selection binding and the
+// instrumented Dial wrap are all live on return. The bundled DefaultDriver
 // simply delegates to [NewPool] — the one-shot standard assembly (raw dial +
-// discovery/TLS + observer + resilience + instrumented dial). Two
-// customization shapes:
+// discovery/TLS + governance + observer + instrumented dial). Two customization
+// shapes:
 //
 //   - ADD to the default: call [NewPool] (or embed DefaultDriver), then
 //     customize the returned Pool via the public API (e.g.
 //     [Pool.UseCommandInterceptor]).
-//   - REPLACE: build and arm the Pool entirely your own way — the public
+//   - REPLACE: build and assemble the Pool entirely your own way — the public
 //     primitive is [NewConn] (variadic interceptors); you simply own what the
 //     standard assembly would have done, including any teardown of resources
 //     you built.
+//
+// params carries the container's facilities (see [cloud.ClientParams]);
+// [NewPool] applies them while it builds, so nothing patches the pool
+// afterwards. It is one struct rather than a parameter per capability so this
+// interface — which every company driver implements — stays stable as
+// capabilities are added; a driver that has no use for one of its fields simply
+// ignores it. A hand-built pool (an example, a test) passes the zero
+// ClientParams and degrades to an observed-only, loudly-unmanaged executor.
 type Driver interface {
-	CreateClient(ctx context.Context, c Config, backend discovery.Discovery) (*Pool, error)
+	CreateClient(ctx context.Context, c Config, params cloud.ClientParams) (*Pool, error)
 }
 
 // DefaultDriver is the default implementation of the Driver interface.
@@ -61,22 +71,25 @@ type DefaultDriver struct{}
 // CreateClient creates a new Redis pool based on the provided configuration.
 //
 // When c.ServiceName is set (and mesh mode is not enabled), the address is
-// resolved through the discovery backend (backend) instead of
-// c.Addr: a discovery loader keeps the endpoint set fresh via the backend's
-// watch and the pool dials a live instance (Pick) for each new connection.
-// Combined with c.ConnMaxLifetime, pooled connections recycle onto updated
-// addresses without rebuilding the pool. When c.ServiceName is empty this is a
-// plain Addr dial, unchanged from before.
+// resolved through the discovery backend (params.Discovery) instead of c.Addr: a
+// discovery loader keeps the endpoint set fresh via the backend's watch and the
+// pool dials a live instance (Pick) for each new connection. Combined with
+// c.ConnMaxLifetime, pooled connections recycle onto updated addresses without
+// rebuilding the pool. When c.ServiceName is empty this is a plain Addr dial,
+// unchanged from before.
 //
-// backend is the discovery backend the entry's ${discovery} label resolved to,
-// already looked up by the starter wiring; it is nil when the entry cites no
-// label (an unknown label fails at wiring, before the driver is called). It is
-// passed as an argument rather than carried on Config so a custom driver can
-// actually reach it — Config stays a pure bound value.
+// params.Discovery is the discovery backend the entry's ${discovery} label
+// resolved to, already looked up by the starter wiring; it is nil when the entry
+// cites no label (an unknown label fails at wiring, before the driver is
+// called). It rides on the params struct rather than Config so a custom driver
+// can actually reach it — Config stays a pure bound value.
 //
 // In mesh mode (mesh.Enabled) discovery is skipped entirely: a sidecar owns
 // discovery+LB, so the pool connects straight to the configured static Addr
 // (the service's stable DNS address).
-func (DefaultDriver) CreateClient(ctx context.Context, c Config, backend discovery.Discovery) (*Pool, error) {
-	return NewPool(ctx, c, backend)
+//
+// params is passed straight through to [NewPool], which applies it during
+// assembly, so the returned Pool is complete.
+func (DefaultDriver) CreateClient(ctx context.Context, c Config, params cloud.ClientParams) (*Pool, error) {
+	return NewPool(ctx, c, params)
 }

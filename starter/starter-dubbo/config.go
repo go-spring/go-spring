@@ -23,34 +23,13 @@ import (
 
 	"dubbo.apache.org/dubbo-go/v3"
 	"dubbo.apache.org/dubbo-go/v3/client"
-	"dubbo.apache.org/dubbo-go/v3/common/config"
 	"dubbo.apache.org/dubbo-go/v3/graceful_shutdown"
 	"dubbo.apache.org/dubbo-go/v3/metrics"
 	"dubbo.apache.org/dubbo-go/v3/otel/trace"
 	"dubbo.apache.org/dubbo-go/v3/protocol"
 	"dubbo.apache.org/dubbo-go/v3/registry"
 	"dubbo.apache.org/dubbo-go/v3/server"
-	"go-spring.org/spring/gs"
-
-	// Side-effect import: installs the dubbo-go -> go-spring log bridge (see
-	// internal/logger). The bridge self-installs via init(), so no symbols are
-	// referenced here - importing this package is what redirects dubbo-go's
-	// own logs into the application's go-spring log pipeline.
-	_ "go-spring.org/starter-dubbo/internal/logger"
-
-	mapconfig "go-spring.org/starter-dubbo/internal/mapconfig"
 )
-
-func init() {
-	// Activate mapconfig as dubbo-go's DynamicConfiguration so the dyncPoller
-	// can push override rules into the configurator pipeline at runtime.
-	config.GetEnvInstance().SetDynamicConfiguration(mapconfig.Singleton())
-
-	gs.Provide(
-		NewInstance,
-		gs.IndexArg(0, gs.TagArg("${spring.dubbo}")),
-	).Condition(gs.OnProperty("spring.dubbo.registries"))
-}
 
 // This file defines the canonical config model for the dubbo-go starter. Types
 // mirror dubbo-go.json and are bound via go-spring value:"${...}" tags under

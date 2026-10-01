@@ -1,13 +1,18 @@
-# cloud/governance — 服务治理家族
+# cloud/governance — 控制面
 
-本目录收拢 go-spring 的**运行期服务治理**能力。治理家族的成员各自代表治理的一个维度，彼此是**平级**关系，而非父子从属：
+`cloud/governance` 是 go-spring 的**控制面**。它只做三件事——**[送达契约 `Source`](source.go) + [期望态 schema `Config`](config.go) + [分发 `Center`](center.go)**——外加[一个规则文档解析入口 `Parse`](rules.go),除此之外不含任何策略实现。它持有进程内唯一一份可热更的 `Config` 文档，经 `Source` 接收下发，再一次性 fan-out 给各**域**的 authority。
 
-| 子包 | 角色 | 说明 |
+被它治理的各**域**是 `cloud/` 下的**平级**包，不在本目录内：
+
+| 域 | 角色 | 被中心分发到 |
 |------|------|------|
-| `.` (package governance) | **控制面** | 集中式治理中心：单一可热更 `Config` → 一次 fan-out。client 只注入它需要的模块 bean（`*resilience.Manager` / `*loadbalance.Manager` / `*fault.Injector`），不调任何包级函数。 |
-| `resilience/` | **原语** | 防御原语：熔断 / 限流 / 重试 / 退避 / `ClientExecutor` 接缝。叶子包，不依赖治理家族其他成员。 |
-| `fault/` | **混沌面** | 故障注入（fault injection），借用 `ClientExecutor` 接缝注入失败。与 resilience 互为攻防。 |
-| `traffic/` | **流量识别面** | 压测/灰度流量标识的识别与传播。 |
+| [resilience](../resilience/) | **原语** | `*resilience.Manager` —— 熔断 / 限流 / 重试 / 退避 / `ClientExecutor` 接缝 |
+| [fault](../fault/) | **混沌面** | `*fault.Injector` —— 故障注入，借用 `ClientExecutor` 接缝 |
+| [loadbalance](../loadbalance/) | **选点域** | `*loadbalance.Manager` —— 端点选择策略 |
+
+client 只注入它需要的域 bean，不调任何包级函数，也从不接触本包。
+
+> **概念**：控制面（本包）与域（resilience / fault / loadbalance …）是**两种东西**。控制面回答"期望态是什么、怎么送到运行时"；域回答"拿到策略后具体怎么做"。`Config` 文档是各域 policy 类型的**聚合体**（`resilience.ClientPolicy`、`loadbalance.Selection`、`fault.Config`…），所以本包必然 import 它们——这是控制面的固有职责（持有综合期望态），**不是从属关系**。
 
 ## 配置感知：Source 契约
 
@@ -19,7 +24,7 @@ governance.Source bean ─────┼──→ center（单一活跃源）�
 Center.SetSource（显式）────┘                    res.Apply / lb.Apply / inj.SetConfig
 ```
 
-文档格式由 `rules.Parse(name, data, format)`（starter-governance 的 `rules` 子包，spring/conf 与容器无关治理核心之间的共享解析胶水）统一：任何后端送来的规则文档（文件字节 / HTTP body / 配置中心 value）都用同一套解析与键语义（`spring.governance.*` 键），规则文件跨后端逐字节可移植。解析成功但没有任何 `spring.governance.*` 键的文档一律报错（防截断静默关治理）。
+文档格式由 `governance.Parse(name, data, format)`（本包的 `rules.go`，解析经 spring/conf 的 value-tag 驱动——这是 `cloud/` 里唯一 import `spring` 的地方）统一：任何后端送来的规则文档（文件字节 / HTTP body / 配置中心 value）都用同一套解析与键语义（`spring.governance.*` 键），规则文件跨后端逐字节可移植。解析成功但没有任何 `spring.governance.*` 键的文档一律报错（防截断静默关治理）。
 
 优先级：`Center.SetSource` > bean 注入。**没有内置默认源**——不配置任何来源时治理保持 disabled（`resilience.Manager.ClientExecutorFor` 返回透传 noop）。治理配置不挂 gs 的通用属性刷新管道。
 
@@ -48,35 +53,39 @@ func (s *nacosRuleSource) Subscribe(cb func(governance.Config)) { ... }
 
 | 后端 | 所在 starter | 一行接线 |
 |---|---|---|
-| 独立规则文件（fsnotify） | starter-governance | `spring.governance.source.file.path=...` |
-| 治理控制台 / 规则 API（轮询拉取） | starter-governance | `spring.governance.source.http.url=...` |
+| 独立规则文件（fsnotify） | starter-governance-file | `spring.governance.source.file.path=...` |
+| 治理控制台 / 规则 API（轮询拉取） | starter-governance-file | `spring.governance.source.http.url=...` |
 | Nacos 直连（专用 dataId，ListenConfig 推送） | starter-governance-nacos | `spring.governance.source.nacos.server=...` + `data-id=...` |
 | etcd 直连（专用 key，Watch 推送） | starter-governance-etcd | `spring.governance.source.etcd.endpoint=...` + `key=...` |
 
-## 为什么是平级伞包，而非挂到 resilience 下
+## 为什么控制面与各域平级，而不是把域收进本目录
 
-`resilience` 是叶子原语，`governance`（控制面）、`fault`（混沌面）、`traffic`（识别面）都**依赖** resilience，是它的消费方。依赖方向为：
+`resilience` / `fault` 是**域**（策略的实现），本包是**控制面**（策略的分发），两者是两种东西、平级，不是父子。依赖方向为：
 
 ```
-resilience   ← 叶子原语（不 import 家族其他成员）
-governance   ──→ resilience   （中心经 Settings.ResolveClientPolicy 交付 resilience.ClientPolicy）
-fault        ──→ resilience + traffic
-traffic      ← 叶子（只额外依赖 cloud/propagate 载体）
+governance（控制面） ──→ resilience, fault, loadbalance    （为交付它们的 ClientPolicy / Selection / Config）
+fault（域）          ──→ resilience（原语） + cloud/traffic（压测标记，域外）
+resilience（原语）   ← 叶子（只依赖 observability）
 ```
 
-若把 govern/fault 塞进 `resilience/` 当子包，等于宣称"控制面是原语的一种""混沌是原语的一种"——这是假层级，且颠倒了控制方向（govern 驱动 resilience）。中性伞包 `governance` 聚拢它们，既显式化家族关系，又不制造从属。
+`resilience/` 与 `fault/` 曾经作为子目录挂在 `governance/` 下——那只是**目录嵌套**，依赖图里没有"根包 ← 子包"的边（子包零 import 根包），所以是假层级。把域提到 `cloud/` 顶层后，目录与依赖图一致：`cloud/` 顶层是一列平级的域加一个控制面。
 
-## 不属于治理家族（仍在 cloud/ 下平级存在）
+控制面**必须** import 各域（因为它持有它们 policy 类型的聚合体 `Config`），但这是"综合期望态"的固有职责，不代表域从属于它。
 
-- `cloud/loadbalance`、`cloud/discovery` — 端点选择与服务注册，与 discovery 成对。
+## 同处 cloud/ 顶层、但不被本控制面治理的包
+
+控制面只 fan-out 到 **resilience / fault / loadbalance** 三域。下列包平级存在，与治理无关：
+
+- `cloud/traffic` — 压测/灰度流量标识的**数据面**接缝（叶子，只依赖 `cloud/propagate`）。无可下发的期望态（`Binding` 是构造期注入的静态值），控制面从不推它；但 `fault` 的 `scope` 门控依赖它的压测标记。
+- `cloud/discovery` — 服务注册与解析（**自注册型**期望态，另一套机制），与 `cloud/loadbalance` 配对消费。
 - `cloud/actuator`、`cloud/mesh`、`cloud/security` — 运维/网格/TLS，独立关注点。
 - `cloud/experimental/loadtest` — 测试工具；`cloud/experimental/transaction` — 分布式事务（仍在孵化）。
-- resilience 的插桩在本包自身（`resilience/observe.go` 的 `WrapClientExecutor`，由
-  `Manager.backing` 在 resolve 时应用到尚未发布到缓存的 executor 上，client 不直接调用）。
+- resilience 的插桩在 `cloud/resilience/observe.go` 的 `WrapClientExecutor`，由
+  `Manager.backing` 在 resolve 时应用到尚未发布到缓存的 executor 上，client 不直接调用。
 
 ## 为什么定时任务（cloud/scheduling）刻意不接治理（拍板：2026-09-15）
 
-逐项审过治理五件套对定时任务的价值，结论是**不接 `resilience.Manager.ClientExecutorFor`，也不给
+逐项审过限流/重试/熔断对定时任务的价值，结论是**不接 `resilience.Manager.ClientExecutorFor`，也不给
 scheduling 服务标签**：
 
 - **限流**无意义——触发频率由 cron / fixed-rate 自己定，限一个自己发起的固定频率没有对象。
@@ -96,13 +105,15 @@ scheduling 服务标签**：
 
 ## 配置
 
-治理规则使用 `spring.governance.*` 键命名空间（如 `spring.governance.enabled`、`spring.governance.client.default.*`、`spring.governance.client.rules`），与 Go 包名 `governance` 独立。规则是**独立文档**，经 Source 契约进入中心，不写进 `app.properties`——本地文件用 `spring.governance.source.file.path` 引导（见 [starter-governance](../../starter/starter-governance/README_CN.md)）。
+治理规则使用 `spring.governance.*` 键命名空间（如 `spring.governance.enabled`、`spring.governance.client.default.*`、`spring.governance.client.rules`），与 Go 包名 `governance` 独立。规则是**独立文档**，经 Source 契约进入中心，不写进 `app.properties`——本地文件用 `spring.governance.source.file.path` 引导（见 [starter-governance-file](../../starter/starter-governance-file/README_CN.md)）。
 
-本包**容器无关**（不 import spring/gs）：gs 接线（注册三个 authority bean 与中心 bean、绑定注入的 Source、`GoLive`）在 **starter-governance** 的常驻 wiring bean 里。应用侧：
+本包**自己带一层 gs 接线**:[`starter.go`](starter.go) 注册中心 bean 和一个把它接进 gs 的常驻 wiring bean([`wiring.go`](wiring.go))。三个 authority bean **不在这里** —— 它们由**管这个类型的那个包**注册(`cloud/resilience` / `cloud/loadbalance` / `cloud/fault`),所以注入它们的 client 只要 import 了那个包就已经拿到 bean,和治理无关。应用侧:
 
 ```go
-import _ "go-spring.org/starter-governance" // 接线治理中心 + 装载规则来源
+import _ "go-spring.org/starter-governance-file" // 装载规则来源(file/http)
 ```
+
+接入治理能力(拿 authority bean)只需链接本包;要一个**文件或 HTTP 规则源**才需要再 import `starter-governance-file`。
 
 非 gs 运行时自己持有中心：`governance.NewCenter(cfg, res, lb, inj)`，再 `ctr.SetSource(src)`（或 `ctr.BindDefault(src)`）+ `ctr.GoLive()`；三个 authority 由调用方自建（测试就是这么注入的）。
 
@@ -147,7 +158,7 @@ resilience.Manager  loadbalance.Manager  fault.Injector
 ```
 
 - **中心**：`governance.Center`，持有唯一的活跃 `Source` 与 `Config` 快照。它只做一件事——把配置文档按 label 解析成两半，分发给下面三个 authority。它**不持有**执行器缓存、订阅表、驱动目录。
-- **三个模块 authority**：每个都是 `starter-governance` 注册的 bean，各自持有本领域的运行时状态与 fan-out：`resilience.Manager`（label → Executor 缓存 + 驱动目录 + 订阅表）、`loadbalance.Manager`（label → 池绑定表）、`fault.Injector`（进程唯一注入器）。
+- **三个模块 authority**：每个都是 `starter-governance-file` 注册的 bean，各自持有本领域的运行时状态与 fan-out：`resilience.Manager`（label → Executor 缓存 + 驱动目录 + 订阅表）、`loadbalance.Manager`（label → 池绑定表）、`fault.Injector`（进程唯一注入器）。
 - **分发**：配置变化时中心重算，**只在变化时**通知各 authority 的订阅者。选择性扇出的比对现在按半进行——保护半边用 `reflect.DeepEqual`（`ClientPolicy` 全标量，DeepEqual 精确），选择半边用 `==`（`Selection` 全字段可比）。
 
 ### 2.1 感知层：Source 契约
@@ -162,7 +173,7 @@ resilience.Manager  loadbalance.Manager  fault.Injector
 - **换源安全**：换源靠活跃源守卫（handle 指针比较，规避接口值 `==` 的 panic 风险），旧源回调自动失效。
 - **边界**：普通业务配置（如 `spring.dubbo.consumer`）继续用 `gs.Dync` 字段绑定——数据性质决定刷新机制：实例列表是高频运行态（discovery 的 watch），治理规则是低频配置态（Source 快照替换），普通开关是散配置（dync 字段绑定）。
 
-> **client 怎么拿到治理能力**：client starter **注入它需要的那个模块 bean**，不再有任何进程级 seam。要保护调用就注入 `*resilience.Manager` 调 `mgr.ClientExecutorFor(系统名, 服务label)`；要选点就注入 `*loadbalance.Manager` 调 `lbMgr.Bind(pool, label)`；要放火就注入 `*fault.Injector`。注入参数一律用 `gs.IndexArg(n, gs.TagArg("?"))` 标成**可空**——装了 starter-governance 就有这个 bean，没装就是 nil（各 authority 把 nil 当作"未武装"，即透传），所以"治理没装"不会变成"应用起不来"。
+> **client 怎么拿到治理能力**：client starter **注入它需要的那个模块 bean**，不再有任何进程级 seam。要保护调用就注入 `*resilience.Manager` 调 `mgr.ClientExecutorFor(系统名, 服务label)`；要选点就注入 `*loadbalance.Manager` 调 `lbMgr.Bind(pool, label)`；要放火就注入 `*fault.Injector`。注入参数一律用 `gs.IndexArg(n, gs.TagArg("?"))` 标成**可空**——装了 starter-governance-file 就有这个 bean，没装就是 nil（各 authority 把 nil 当作"未武装"，即透传），所以"治理没装"不会变成"应用起不来"。
 
 > `resilience.Manager.ClientExecutorFor` 返回的 executor 每次 Execute 时按 label 懒解析（进程内一个 label 恰好一个 executor），与"中心何时武装"无关；resolve 时顺带把 observe 层应用到**尚未发布**的 executor 上，所以 client 拿到的是组装好的 executor，不再自己调 `resilience.WrapClientExecutor`。`loadbalance.Manager.Bind` 则**不是**懒的——但它在中心武装前也会记住订阅（以零 Selection 武装、武装后自动补发），所以构造期绑定同样安全。
 
@@ -185,7 +196,7 @@ per-label 订阅配合"上次交付值"（`subscriber.last`）做**选择性扇�
 | Disabled 即透传 | 中心未启用时两半都解析成零值，executor 透明直连、池保持原策略 | `Center.clientServiceFor` |
 | 一个 label 一个 executor | `Manager` 内按 label memoize，共享熔断/限流状态 | `resilience.Manager.backing` |
 | 没有进程级可变全局 | 三个 authority 与中心都是 bean；`cloud` 侧零包级槽位 | 见下 §5 |
-| 不装 starter-governance 也是 no-op | 注入参数可空，authority 把 nil 当未武装 | 各 starter 的 `gs.IndexArg(n, gs.TagArg("?"))` |
+| 不装 starter-governance-file 也是 no-op | 注入参数可空，authority 把 nil 当未武装 | 各 starter 的 `gs.IndexArg(n, gs.TagArg("?"))` |
 
 ## 5. 公共 API
 
@@ -226,7 +237,7 @@ type ServerRule struct {
     resilience.ServerPolicy // 入站模型：无 retry / 无 fallback / 无选择（字段上就没有）
 }
 
-// Center 只做文档与分发；接线方（starter-governance）驱动它
+// Center 只做文档与分发；接线方（starter-governance-file）驱动它
 func NewCenter(cfg Config, res *resilience.Manager, lb *loadbalance.Manager, inj *fault.Injector) *Center
 func (c *Center) SetDrivers(map[string]resilience.Driver)  // 装驱动目录，须先于 GoLive
 func (c *Center) BindDefault(src Source)                   // 无源时绑定（SetSource 优先）
@@ -259,7 +270,7 @@ func fault.ApplyServer(ctx, in *Injector, service string, fn func() error) error
 
 ## 6. 服务标签（label）约定
 
-label 是 `resilience.Manager.ClientExecutorFor` / `ClientPolicyFor` 与 `loadbalance.Manager.Bind` 的 key，决定一条策略归属哪个服务。所有 starter 通过 [`resilience.ServiceLabel`](resilience/policy.go) 统一拼接：第一个非空 name 拼到 prefix 后，都没有则只用 prefix。
+label 是 `resilience.Manager.ClientExecutorFor` / `ClientPolicyFor` 与 `loadbalance.Manager.Bind` 的 key，决定一条策略归属哪个服务。所有 starter 通过 [`resilience.ServiceLabel`](../resilience/policy.go) 统一拼接：第一个非空 name 拼到 prefix 后，都没有则只用 prefix。
 
 | starter | label 格式 | 示例 |
 |---|---|---|
@@ -328,7 +339,7 @@ dubbo 有自己的 URL-param 治理模型（timeout / retries / loadbalance / cl
 
 ## 8. 与 fault 注入的关系
 
-fault（"放火"）已**收进治理中心**，和 resilience 共用同一个 `governance.Config`——也就是同一份规则文档。两个方向各嵌一份 `fault.Config`：`ClientConfig.Fault`（`value:"${fault:=}"`，绑成 `spring.governance.client.fault.*`）与 `ServerConfig.Fault`（绑成 `spring.governance.server.fault.*`）。`*fault.Injector` 由 starter-governance 注册为 bean（`fault.NewInjector(fault.Configs{})`，两侧 Enabled=false 即 no-op），center 持有的是**同一个实例**——两侧 starter 注入它，center 往里推配置。每次 source push（`adopt`）在 `resilience.Manager.Apply` / `loadbalance.Manager.Apply` 之外，额外 `inj.SetConfig(fault.Configs{Client, Server})` 一次性热更两侧。
+fault（"放火"）已**收进治理中心**，和 resilience 共用同一个 `governance.Config`——也就是同一份规则文档。两个方向各嵌一份 `fault.Config`：`ClientConfig.Fault`（`value:"${fault:=}"`，绑成 `spring.governance.client.fault.*`）与 `ServerConfig.Fault`（绑成 `spring.governance.server.fault.*`）。`*fault.Injector` 由 starter-governance-file 注册为 bean（`fault.NewInjector(fault.Configs{})`，两侧 Enabled=false 即 no-op），center 持有的是**同一个实例**——两侧 starter 注入它，center 往里推配置。每次 source push（`adopt`）在 `resilience.Manager.Apply` / `loadbalance.Manager.Apply` 之外，额外 `inj.SetConfig(fault.Configs{Client, Server})` 一次性热更两侧。
 
 **为什么 fault 必须按方向拆，而 rules 不用**：`fault.Config` 的 `Rate / Latency / Error / Scope / 护栏` 是**没有 label 的全局旋钮**，作用于"一切流量"——它无处声明方向，只能靠所在的块表态。而 `ClientRule` 的作用域由一个 label 决定，label 本身已经带方向（`gin::8080` 是入站、`redigo:cache` 是出站），所以 rules 一份就够。
 
@@ -337,7 +348,7 @@ fault（"放火"）已**收进治理中心**，和 resilience 共用同一个 `g
 **集中形态比 resilience 更简单——没有 per-label 解析，只有一个 injector。** 区别在于：
 
 - `resilience.ClientPolicy` / `ServerPolicy` **没有**内置的多服务定向能力，redis 和 gorm 是两个独立对象，所以 center 必须按 label 解析出"属于你的那一个"。
-- [`fault.Config`](fault/config.go) **天生带**多服务定向：`Rules []Rule` 每条有自己的 `Service / Rate / Latency / Error`，一份 Config 即可描述"redis 打 0.5 错误、gorm 加延迟、其余全量慢调用"。所以 fault 不需要 per-label injector，一个 side 在分发时按 Rules 匹配即可。
+- [`fault.Config`](../fault/config.go) **天生带**多服务定向：`Rules []Rule` 每条有自己的 `Service / Rate / Latency / Error`，一份 Config 即可描述"redis 打 0.5 错误、gorm 加延迟、其余全量慢调用"。所以 fault 不需要 per-label injector，一个 side 在分发时按 Rules 匹配即可。
 
 starter 侧注入同一个 `*fault.Injector` bean 接入，零耦合 cloud/governance：
 
@@ -360,11 +371,11 @@ starter 侧注入同一个 `*fault.Injector` bean 接入，零耦合 cloud/gover
 
 ---
 
-## 1. 前置：引入 starter-governance + 指定规则来源
+## 1. 前置：引入 starter-governance-file + 指定规则来源
 
 治理不是自动生效的，两步：
 
-1. 程序入口 blank import `starter-governance`——它注册接线 bean，把规则来源交给治理中心并启动它。
+1. 程序入口 blank import `starter-governance-file`——它注册接线 bean，把规则来源交给治理中心并启动它。
 2. 在 `app.properties` 里用**一个引导 key** 告诉它规则从哪来（本地文件为例）：
 
 ```properties
@@ -375,19 +386,19 @@ spring.governance.source.file.path=conf/governance.properties
 
 ```go
 import (
-    _ "go-spring.org/starter-governance" // 启动时接线治理中心，装载规则来源
+    _ "go-spring.org/starter-governance-file" // 启动时接线治理中心，装载规则来源
     _ "go-spring.org/starter-redigo"     // 你的业务 starter
     // ... 其他 starter
 )
 ```
 
-> **client starter 只注入 authority bean，不调任何包级函数。** 每个 client（redis/gorm/http/…）把自己需要的那一个（`*resilience.Manager` / `*loadbalance.Manager` / `*fault.Injector`）作为**可空**构造参数注入——`gs.IndexArg(n, gs.TagArg("?"))`，装了 starter-governance 就有 bean、没装就是 nil——再调 `mgr.ClientExecutorFor(系统名, 服务label)` / `lbMgr.Bind(pool, label)` 拿到自己的能力。它不知道规则文档长什么样，也不知道是哪个 source 送来的：`governance.Source` 契约把治理核心和"规则从哪来"解耦，因此控制台推流、专用配置中心 listener、静态注入都能驱动它，而本地文件只是其中一种。
+> **client starter 只注入 authority bean，不调任何包级函数。** 每个 client（redis/gorm/http/…）把自己需要的那一个（`*resilience.Manager` / `*loadbalance.Manager` / `*fault.Injector`）作为**可空**构造参数注入——`gs.IndexArg(n, gs.TagArg("?"))`，链接了 `cloud/governance` 就有 bean、没有就是 nil——再调 `mgr.ClientExecutorFor(系统名, 服务label)` / `lbMgr.Bind(pool, label)` 拿到自己的能力。它不知道规则文档长什么样，也不知道是哪个 source 送来的：`governance.Source` 契约把治理核心和"规则从哪来"解耦，因此控制台推流、专用配置中心 listener、静态注入都能驱动它，而本地文件只是其中一种。
 
-**不 import starter-governance 时**：容器里没有这些 bean，可空注入拿到 nil，各 authority 把 nil 当作"未武装"，`ClientExecutorFor` 返回透传的 noop executor，resilience 完全旁路（直连后端），不会报错。所以"没配治理"和"不能用 starter"是两回事。
+**容器里没有链接 `cloud/governance` 时**：没有这些 bean，可空注入拿到 nil，各 authority 把 nil 当作"未武装"，`ClientExecutorFor` 返回透传的 noop executor，resilience 完全旁路（直连后端），不会报错。所以"没配治理"和"不能用 starter"是两回事。
 
 **其它规则来源**：
 
-- `spring.governance.source.http.*`（轮询远程控制台/规则 API，见 [starter-governance README](../../starter/starter-governance/README_CN.md)）；
+- `spring.governance.source.http.*`（轮询远程控制台/规则 API，见 [starter-governance-file README](../../starter/starter-governance-file/README_CN.md)）；
 - config 中心的 source 适配器（nacos/etcd）各自独立成模块（`starter-governance-nacos`、`starter-governance-etcd`），内容同样是这份 `spring.governance.*` 文档；
 - 代码里 `ctr.SetSource(...)` 静态注入或推流。
 
@@ -418,7 +429,7 @@ spring.governance.client.default.open-duration=5s     # 熔断持续 5s 后半�
 
 配完这份文件（加上 §1 的 `spring.governance.source.file.path`），项目里的 redis、gorm、mongo、http-client……全部自动套用这套超时/重试/限流/熔断，且**热重载**——file source 盯着这个文件，改完不用重启（远程 source 同样的效果）。
 
-> 规则文件里的键就是 `spring.governance.*` 命名空间。`spring.governance.client.default.*` 下可用字段是 `resilience.ClientPolicy` 的全部旋钮：`attempt-timeout` / `max-retries` / `rate-limit` / `burst` / `rate-limit-max-wait` / `algorithm`(token-bucket|sliding-window) / `window` / `error-threshold` / `open-duration` / `breaker-strategy`(consecutive|error-rate) / `error-rate-threshold` / `min-requests` / `breaker-window`，以及端点选择类的 `balancer` / `balancer-params`（策略自己的参数，扁平子映射）/ `outlier-threshold` / `outlier-suspend-for`（见 §3.1）。字段含义见 [cloud/governance/resilience/policy.go](resilience/policy.go)。
+> 规则文件里的键就是 `spring.governance.*` 命名空间。`spring.governance.client.default.*` 下可用字段是 `resilience.ClientPolicy` 的全部旋钮：`attempt-timeout` / `max-retries` / `rate-limit` / `burst` / `rate-limit-max-wait` / `algorithm`(token-bucket|sliding-window) / `window` / `error-threshold` / `open-duration` / `breaker-strategy`(consecutive|error-rate) / `error-rate-threshold` / `min-requests` / `breaker-window`，以及端点选择类的 `balancer` / `balancer-params`（策略自己的参数，扁平子映射）/ `outlier-threshold` / `outlier-suspend-for`（见 §3.1）。字段含义见 [cloud/resilience/policy.go](../resilience/policy.go)。
 
 ---
 
@@ -693,7 +704,7 @@ spring.governance.server.fault.max-duration=10m     # 入站同理，两侧各�
 
 ### fault 与真实流量
 
-用 `scope` 限定只烧压测流量、不碰真实请求（依赖 cloud/governance/traffic 的压测标记）：
+用 `scope` 限定只烧压测流量、不碰真实请求（依赖 cloud/traffic 的压测标记）：
 
 ```properties
 spring.governance.client.fault.scope=loadtest   # 只给带压测标记的流量放火；真实流量不受影响
@@ -769,7 +780,7 @@ spring.governance.server.fault.enabled=false
 
 ```go
 import (
-    _ "go-spring.org/starter-governance"
+    _ "go-spring.org/starter-governance-file"
     _ "go-spring.org/starter-gin"
     _ "go-spring.org/starter-redigo"
     _ "go-spring.org/starter-gorm-mysql"
@@ -793,6 +804,6 @@ import (
 | 给 `spring.governance.client.default` 或 `spring.governance.client.rules[N]` 写 `enabled=true` 想按服务开关 | **没有这个键**：`ClientDefaultPolicy` / `ClientRule` 只带策略旋钮，开关是进程级的 `spring.governance.enabled`。绑定按字段走，多余键被静默忽略——不报错，也不生效。想让某条服务不上治理，给它配一条所有旋钮为 0 的 ClientRule（见 §3.2）。 |
 | 不知道服务 label 是什么 | 配 `service-name` 让 label 稳定可读；查设计说明 §6 表。 |
 | 多 starter 项目写 `spring.governance.client.fault.enabled=true` 以为只烧一个 | fault 是全进程共享开关，会烧所有 starter。用 `spring.governance.client.fault.rules[].service` 定向。 |
-| 没 import starter-governance | 容器里没有治理 bean，可空注入拿到 nil（各 authority 视为未武装），resilience 完全旁路，不报错但也不生效。 |
+| 没 import starter-governance-file | 容器里没有治理 bean，可空注入拿到 nil（各 authority 视为未武装），resilience 完全旁路，不报错但也不生效。 |
 | 配了 `spring.governance.*` 但忘了 `spring.governance.source.file.path`（或其它 source） | 治理 disabled——没有 source 就没有规则来源。 |
 | 改了规则文件没生效 | 确认 file source 在盯它（`spring.governance.source.file.path` 指向的目录未变）；远程 source 确认 push 成功。规则文档本身热重载。 |

@@ -37,14 +37,13 @@ import (
 	"github.com/gogf/gf/v2/net/gsvc"
 	"go-spring.org/spring/gs"
 
-	// Side-effect import: installs the goframe (glog) -> go-spring log bridge
-	// (see internal/logger). The bridge self-installs via init(), so importing
-	// this package routes goframe's own logs into the application's go-spring
-	// log pipeline before g.Server(name) emits its first lifecycle line.
-	_ "go-spring.org/starter-goframe/internal/logger"
+	"go-spring.org/starter-goframe/internal/logger"
 )
 
 func init() {
+	// Route goframe's own logs into the go-spring pipeline before any glog use.
+	logger.Install()
+
 	gs.Provide(NewWSServer, gs.IndexArg(0, gs.TagArg("${spring.goframe.ws.server}"))).
 		Export(gs.As[gs.Server]()).
 		Condition(gs.OnProperty("spring.goframe.ws.server.address"))

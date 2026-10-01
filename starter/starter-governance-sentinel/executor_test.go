@@ -26,7 +26,7 @@ import (
 	"testing"
 	"time"
 
-	"go-spring.org/cloud/governance/resilience"
+	"go-spring.org/cloud/resilience"
 	"go-spring.org/stdlib/testing/assert"
 )
 
@@ -34,7 +34,7 @@ import (
 // constructor returns a working Driver, so a caller outside the container can
 // build executors with no compile-time dependency on the sentinel library. The
 // container-level half — that importing this module makes "sentinel" selectable
-// by spring.governance.driver — is covered by starter-governance's driver-directory test.
+// by spring.governance.driver — is covered by the driver-directory test.
 func TestDriverBuilds(t *testing.T) {
 	d := NewSentinelDriver()
 	assert.That(t, d).NotNil()

@@ -41,8 +41,9 @@ type Service struct {
 }
 ```
 
-注入的 bean 是 starter 的 `*Cache` 封装（原生 `*bigcache.BigCache` 以内嵌字段
-`s.Cache.BigCache` 提供）；其 Get/Set/Delete 会经过 observe 与 resilience 两层。
+注入的 bean 是 starter 的 `*Cache` 封装。原生 `*bigcache.BigCache` 存放于未导出字段且不提供访问器，
+因此所有操作都留在封装之后：Get/Set/Delete 会声明各自的操作身份并经过 resilience 层——由该层发射
+span、指标与访问日志——其余原生方法（Stats、Len、Reset、Close 等）则以纯委托形式重新导出。
 
 ### 4. 使用 BigCache 实例
 
@@ -67,7 +68,11 @@ value, err := s.Cache.Get("key")
 * **支持 BigCache 扩展**：你可以通过实现 `Driver` 接口来扩展 BigCache 的创建逻辑。当容器中存在多个
   Driver bean 时，实例可按名指定：`spring.bigcache.instances.<name>.driver = <bean 名>`（留空 = 按类型注入唯一
   Driver bean；指定的 bean 不存在则启动失败）。
-* **命中率统计**：设置 `stats-enabled=true` 后读取 `cache.Stats()` 获取命中/未命中/冲突计数，用于监控缓存效果。
+* **可观测**：Get/Set/Delete 声明 `db.operation=get|set|delete`，由 resilience 层发射 `get`/`set`/`delete`
+  span、调用级 `db.client.operation.duration`、尝试级 `db.client.attempt.duration` 直方图，以及
+  `_app_bigcache_access` 访问日志（key 作为 `db.statement` 只进 span/日志，永不作为指标标签）。
+* **命中率统计**：设置 `stats-enabled=true` 后读取 `cache.Stats()` 获取命中/未命中/冲突计数，用于监控缓存效果；
+  starter 会将其导出为 OTel 可观测 gauge。
 * **淘汰/过期回调**：通过自定义 `Driver`（实现 `CreateClient`，在构建的
   `bigcache.Config` 上设置 `OnRemove`）注册条目淘汰/过期回调。
 * **优雅关闭**：destroy 回调会调用 `Close()`，停止后台清理 goroutine。

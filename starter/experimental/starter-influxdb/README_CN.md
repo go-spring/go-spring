@@ -3,9 +3,9 @@
 [English](README.md) | [中文](README_CN.md)
 
 `starter-influxdb` 为 Go-Spring 提供 InfluxDB 2.x 支持：多实例
-`influxdb2.Client` bean、fail-fast 启动探针、逐请求可观测（span + 指标 +
-访问日志）、阻塞写路径上的韧性（限流/熔断/故障注入）、错误自动排入日志的
-托管异步写入器，以及每实例健康指示器。基于官方
+`influxdb2.Client` bean、fail-fast 启动探针、由 starter 声明、由韧性层发射的
+逐请求可观测（span + 指标 + 访问日志）、阻塞写路径上的韧性（限流/熔断/故障
+注入）、错误自动排入日志的托管异步写入器，以及每实例健康指示器。基于官方
 [influxdb-client-go](https://github.com/influxdata/influxdb-client-go) v2。
 
 ## 安装
@@ -47,13 +47,13 @@ p := influxdb2.NewPointWithMeasurement("cpu").
     AddField("usage_idle", 42.5)
 err := s.Client.WritePoints(ctx, p)
 
-// 经内嵌客户端做 Flux 查询
+// 经内嵌的客户端做 Flux 查询
 raw, err := s.Client.QueryAPI(s.Client.Org()).
     QueryRaw(ctx, `from(bucket:"my-bucket") |> range(start: -1m)`, influxdb2.DefaultDialect())
 ```
 
 包装类型内嵌 `influxdb2.Client`，SDK 的所有方法（QueryAPI、DeleteAPI、
-Setup……）原样提升可用。
+Setup……）被原样提升可用。
 
 ## 核心特性
 
@@ -64,12 +64,14 @@ Setup……）原样提升可用。
   日志，写入器永不阻塞）。拆分理由见 DESIGN。
 - **fail-fast 启动探针 + 健康指示器** — 启动期一次 `/health` 往返，
   `influxdb:<name>` 指示器供 `starter-actuator` 聚合。
-- **可观测** — 每个 HTTP 请求产出 client span（db.system/db.operation/
-  db.statement 属性）、`db.client.operation.duration` 直方图 +
-  `db.client.active_requests` 计量，以及 `_app_influxdb_access` tag 的访问
-  日志（走 log 包原生分级）。
+- **可观测** — starter 只*声明*每个请求的身份（`db.system=influxdb`、有界的
+  `db.operation=<method>`、URL 路径作 `db.statement`），由韧性层*发射*：每次调用
+  开启一个 client span，记录调用级 `db.client.operation.duration` 直方图、尝试级
+  `db.client.attempt.duration` 直方图与 `db.client.active_requests` 计量，并写一行
+  `_app_influxdb_access` tag 的访问日志（走 log 包原生分级）。
 - **韧性** — 阻塞写路径走由注入的 `*resilience.Manager` 构建的 executor；
-  未导入 `starter-governance` 时该 executor 为直通，仅做观测。
+  未导入 `starter-governance-file` 时该 executor 为直通，写入路径不发射任何信号
+  （starter 自身不持有发射点）。
 
 ## 高级特性
 

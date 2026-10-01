@@ -22,6 +22,7 @@ import (
 
 	"go-spring.org/stdlib/testing/assert"
 
+	"go-spring.org/cloud"
 	"go-spring.org/cloud/actuator/health"
 	"go-spring.org/spring/gs"
 	"go-spring.org/starter-gorm"
@@ -100,7 +101,7 @@ func TestSqliteDefaultsNotTriggered(t *testing.T) {
 func TestBuildSpec(t *testing.T) {
 	c := Config{File: ":memory:"}
 	c.ObserveEnabled = false
-	spec, err := build(context.Background(), c, nil, nil)
+	spec, err := build(context.Background(), c, cloud.ClientParams{})
 	assert.Error(t, err).Nil("build")
 	if spec.Dialector == nil {
 		t.Fatal("build must return a dialector")

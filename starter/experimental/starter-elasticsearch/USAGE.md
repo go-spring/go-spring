@@ -31,7 +31,7 @@ require (
     go-spring.org/starter-elasticsearch latest
     go-spring.org/starter-actuator     latest   // optional: readiness on :9370
     go-spring.org/starter-otel         latest   // optional: real trace/metric export
-    go-spring.org/starter-governance   latest   // optional: resilience/fault policy
+    go-spring.org/starter-governance-file   latest   // optional: resilience/fault policy
 )
 ```
 
@@ -43,7 +43,7 @@ package main
 import (
     "go-spring.org/spring/gs"
     _ "go-spring.org/starter-actuator"
-    _ "go-spring.org/starter-governance"
+    _ "go-spring.org/starter-governance-file"
     _ "go-spring.org/starter-otel"
     StarterElasticsearch "go-spring.org/starter-elasticsearch"
     _ "demo/service"
@@ -83,8 +83,9 @@ import (
 const indexName = "demo-docs"
 
 type Service struct {
-    // Always the wrapper type *StarterElasticsearch.Client. It embeds
-    // *elasticsearch.Client, so Index/Get/Search/Info promote unchanged.
+    // Always the wrapper type *StarterElasticsearch.Client. It embeds the raw
+    // *elasticsearch.Client, so the API tree (Index/Get/Search/Info, ...) and
+    // the lifecycle methods are all promoted.
     Main *StarterElasticsearch.Client `autowire:"main"`
     Disc *StarterElasticsearch.Client `autowire:"disc"` // discovery-resolved nodes
 }
@@ -152,30 +153,28 @@ import starter-elasticsearch
         └─ conf.BindEach("${spring.elasticsearch}") → one Config per <name> entry
               ├─ Provide(newClient, IndexArg(1, ValueArg(c)),
               │            IndexArg(2, ?Driver)).Name(<name>)
-              │      .Init((*Client).Init).Destroy((*Client).Destroy).Caller(1)
+              │      .Destroy((*Client).Destroy).Caller(1)
               └─ Provide health.Indicator named "elasticsearch:<name>"
-                     .Export(gs.As[health.Indicator]())   [starter.go:41-71]
+                     .Export(gs.As[health.Indicator]())
 
 gs.Run()
-  ├─ ctor newClient [starter.go:81]:
+  ├─ ctor newClient:
   │    ├─ service-name set && !mesh.Enabled() → resolveAddresses(c, backend):
   │    │      read snapshot → "scheme://host:port" overrides c.Addresses
   │    │      (fails fast: no backend bean cited, or no endpoints for the service)
   │    ├─ optional Driver bean (none → bundled DefaultDriver; several coexist →
   │    │      the entry selects one by name: spring.elasticsearch.instances.<name>.driver =
   │    │      <bean-name>, empty = the family-wide `spring.elasticsearch.default.driver`, then the single Driver bean by type, naming a
-  │    │      missing bean fails startup) → driver.CreateClient(ctx, c, backend):
-  │    │      DefaultDriver installs dynamicTransport + OTel instrumentation
-  │    │      and records it in dynamicTransports; newClient picks it up for Init
-  │    └─ HealthCheck (Info request) — unconditional fail-fast probe; failure closes the
-  │        client and aborts boot
-  ├─ Init [client.go:78]: newDBObserver("elasticsearch") → module-local observer
-  │    → obsTransport (metric + access log, no span)
-  │    → fault.WrapClientExecutor(mgr.ClientExecutorFor("elasticsearch", service), service, inj) — the injected
-  │      governance beans + outcome counter + resilience span
-  │    → dyn.Swap(resilience.NewRoundTripper(obsTransport, exec)) [client.go:86-92]
-  ├─ readiness: indicator flips UP (runs client.Info)
-  └─ SIGTERM → Destroy [client.go:98]: exec.Close → stop discovery watch → client.Close
+  │    │      missing bean fails startup) → driver.CreateClient(ctx, c, backend, params):
+  │    │      DefaultDriver installs the dynamicTransport indirection and returns
+  │    │      the *Client wrapper; NewClient fixes identity, derives the service
+  │    │      label and sets exec = params.ExecutorFor("elasticsearch", service)
+  │    │      (fault(governed executor), or observe-only Unmanaged for the zero params),
+  │    │      then installs the transport: declaration outermost, resilience inside
+  │    └─ fail-fast probe: HealthCheck(ctx, client) — one Info straight to the raw client;
+  │        failure releases the client (Destroy) and aborts boot
+  ├─ readiness: indicator flips UP (runs the raw client.Info via HealthCheck)
+  └─ SIGTERM → Destroy: exec.Close → client.Close
 ```
 
 A dead cluster, or a service-name with no endpoints fails the boot — the process never reaches
@@ -187,57 +186,66 @@ Every request passes through the layers below. Order as built:
 
 ```
 elasticsearch API (Index/Get/...)
-  → elastictransport: OTel instrumentation span (NewOtelInstrumentation(nil,...) — rides the
-      OTel global TracerProvider starter-otel installs; no-op otherwise)
   → elastictransport retry loop (MaxRetries / DisableRetry)
-  → dynamicTransport (RWMutex indirection; http.DefaultTransport until Init swaps)
-  → resilience roundTripper: executor = fault(observe(limiter/breaker/bulkhead/retry)):
-      the injected fault injector outermost, the observe layer (span + outcome counter + access log
-      per Execute) inside it, the governed core innermost
-  → obsTransport: db.client.operation.duration histogram + db.client.active_requests gauge
-      + _app_elasticsearch_access log (module-local observer emits no span — no duplicate)
+  → dynamicTransport (RWMutex indirection; http.DefaultTransport until the wrapper swaps)
+  → declareTransport: puts the operation (db.system/db.operation + URL path) on the request
+      context — OUTSIDE the executor, so the resilience layer reads it at Execute entry
+  → resilience roundTripper: executor = fault(emit(limiter/breaker/bulkhead/retry)):
+      the injected fault injector outermost, the executor's own emit layer (span + call-level
+      and attempt-level duration histograms + outcome counter + access log per Execute)
+      inside it, the governed core innermost
   → http.DefaultTransport → network
 ```
 
-Rationale (source comments, [command.go:17-41] and [client.go:56-95]):
+Rationale (source comments, [command.go] and [client.go]):
 
-- **Trace comes from elastictransport, not the module observer.** The client exposes
-  `elasticsearch.Config.Instrumentation`, so the span covers retries too; the module-local
-  observer in [observe.go] emits no span and only fills the metric+log gap.
-- **Resilience OUTSIDE the observe transport** — deliberate difference from go-redis
-  (where the access log wraps the breaker). Here the executor built from the injected
-  `*resilience.Manager` already carries the observe layer, so breaker trips / rate-limit
-  rejections get their *own* span + outcome counter, while obsTransport records the HTTP
-  outcome inside the protected call.
+- **The starter DECLARES, the resilience layer EMITS.** There is exactly one emitter on the
+  chain. The declaration transport ([command.go]) turns the method + URL path into an
+  `observability.Operation` and puts it on the request context; the executor reads it at
+  Execute entry and emits the one span, both duration histograms, the in-flight gauge and the
+  access log.
+- **The declaration sits OUTSIDE the executor, not as its base.** The executor reads the
+  operation *before* the protected call runs, so a declaration made inside it would be read by
+  nobody. The stack is therefore declaration-outermost, wrapping the resilience round-tripper,
+  which wraps `http.DefaultTransport` — the reverse of the old layering, where the emitting
+  transport was the executor's base and ran per attempt.
+- **The elastic transport's own OTel instrumentation is NOT enabled.**
+  `elasticsearch.Config.Instrumentation` used to carry `NewOtelInstrumentation`, which opened a
+  call-level client span per request from the esapi layer — a second span for the same call,
+  duplicating the one the resilience layer now emits. It is removed so the resilience layer
+  stays the single emitter. (The same call as starter-go-redis, where redisotel's per-command
+  span was dropped and only its non-per-call pool metrics kept; here the instrumentation is
+  per-call only, so nothing of it remains.)
 - **dynamicTransport instead of a fixed transport**: the ES transport is fixed at construction
   and cannot be swapped on the client afterwards; the indirection keeps the resilience policy
-  hot-reloadable (Dync) even though the transport instance is not [client.go:31-44]. The slot
+  hot-reloadable (Dync) even though the transport instance is not. The slot
   is guarded by RWMutex, not atomic.Value, because the active round-tripper is one of several
   distinct concrete types — the atomic.Value version panicked on the second Swap, which is
   exactly what resilience_test.go pins as a regression test.
-- **Custom drivers may install none of this**: only clients built by DefaultDriver appear in
-  `dynamicTransports`; a custom driver's own transport silently bypasses the Init-time swap —
-  resilience and the observe transport are then unavailable for that instance.
+- **Custom drivers may install none of this**: only clients built by DefaultDriver are handed
+  a dynamicTransport; a custom driver's own transport silently bypasses the swap — the
+  declaration and resilience layers are then unavailable for that instance.
 
 ### 2.3 One request through the chain: `Search` with a match query
 
-1. The generated API builds `POST /demo-docs/_search`; elastictransport opens the client span
-   (no-op without starter-otel's globals).
+1. The generated API builds `POST /demo-docs/_search` and hands it to the transport chain.
 2. The retry loop (up to `max-retries`, default 3) hands the request to dynamicTransport.
-3. The resilience executor asks for a permit scoped to the service label, e.g.
+3. declareTransport (outside the executor) puts the operation on the request context: the span
+   name and `db.statement` are `POST /demo-docs/_search` (its URL path), `db.operation` is
+   `POST` (the bounded part), `db.system` is `elasticsearch` [command.go].
+4. The resilience executor asks for a permit scoped to the service label, e.g.
    `elasticsearch:es-cluster` or `elasticsearch:http://127.0.0.1:9200` (first address;
-   derived via `resilience.ServiceLabel` [client.go:114-122]) — per cluster, not per request.
-   With governance off, the executor is a transparent no-op.
-4. obsTransport derives the operation `POST /demo-docs/_search` from method + URL path, bumps
-   the in-flight gauge, and emits the duration histogram + access log on completion
-   [command.go:44-51].
-5. The caller sees exactly what plain go-elasticsearch returns — including 4xx `res.IsError()`
-   bodies; only transport-level errors (5xx are mapped to a breaker-tripping, retryable error
-   by the resilience round-tripper, cloud/governance/resilience/roundtripper.go:99-104).
+   derived via `resilience.ServiceLabel` in `NewClient`) — per cluster, not per request.
+   With governance off, the executor is the observe-only `resilience.Unmanaged`.
+5. On completion the executor emits the one span, the call-level and attempt-level duration
+   histograms and the access log. The caller sees exactly what plain go-elasticsearch returns —
+   including 4xx `res.IsError()` bodies; only transport-level errors (5xx are mapped to a
+   breaker-tripping, retryable error by the resilience round-tripper,
+   cloud/resilience/roundtripper.go:99-104).
 
-**Context is mandatory on every call.** The OTel instrumentation derives its span from the
-request context and panics on a nil parent — `HealthCheck` and the health indicator always pass
-one explicitly [starter.go:120-124, health/health.go:19-31]; user code should use
+**Pass a context on every call.** It carries the call's cancellation and deadline, and the
+operation span the resilience layer opens inherits it — `HealthCheck` and the health indicator
+always pass one explicitly [starter.go, health.go]; user code should use
 `es.Search.WithContext(ctx)` etc.
 
 ### 2.4 Discovery addressing — seed plus a live node set
@@ -245,7 +253,7 @@ one explicitly [starter.go:120-124, health/health.go:19-31]; user code should us
 When `service-name` is set and mesh mode is off, the endpoints are resolved once in the ctor and
 baked into `c.Addresses`; the loader is a pure snapshot function with no resources and no
 background watch, so nothing is kept alive and nothing needs stopping on shutdown
-[starter.go:82-88, driver.go:101-121]. That read is the **fail-fast gate and the seed** — the
+[starter.go, driver.go]. That read is the **fail-fast gate and the seed** — the
 live feed is a custom `ConnectionPoolFunc` the driver installs over the same resolver
 [pool.go]: the transport's node set is re-read from the naming service, so a node joining or
 leaving the cluster becomes usable without a restart. The propagation budget is one second
@@ -297,10 +305,10 @@ unconditional (see §3.4).
 
 ### 3.4 Instrumentation
 
-There are **no instrumentation config keys** (no level, no skip list, no argument cap):
-metrics and the access log are emitted unconditionally by module-local instrumentation
-([observe.go]); the trace span comes from the elastic transport's own OTel instrumentation.
-Both ride the OTel globals starter-otel installs (`spring.observability.*`).
+There are **no instrumentation config keys** (no level, no skip list): the starter DECLARES
+each request's identity unconditionally ([observe.go]), and the resilience layer EMITS every
+signal from that declaration. All ride the OTel globals starter-otel installs
+(`spring.observability.*`).
 
 ---
 
@@ -317,18 +325,21 @@ docker start starter-elasticsearch
 
 ### 4.2 What observability actually emits
 
-- **Metrics** (OTel, via starter-otel's globals): `db.client.operation.duration` histogram
-  and `db.client.active_requests` gauge, attributes `db.system=elasticsearch`,
-  `db.operation` = `"<METHOD> <path>"`, `status` = ok/error. Resilience layer adds
-  `resilience.client.calls` counter with `resilience.outcome` ∈
-  {success, rate_limited, circuit_open, bulkhead_full, timeout, error}.
-- **Spans**: client span per request from elastictransport instrumentation (name like
-  `POST /demo-docs/_search`); one internal span per resilience Execute
-  (`resilience.service` attribute). Verify: `curl "http://127.0.0.1:16686/api/traces?service=demo&limit=1"`
+- **Metrics** (OTel, via starter-otel's globals), emitted by the resilience layer: the
+  call-level `db.client.operation.duration` and attempt-level `db.client.attempt.duration`
+  histograms plus the in-flight `db.client.active_requests` gauge — attributes
+  `db.system=elasticsearch`, `db.operation=<METHOD>` (bounded), `status` = ok/error, none
+  of them carrying the URL path. The same layer emits the `resilience.client.calls` counter
+  with `status` ∈ {ok, error}, plus `resilience.outcome` ∈ {rate_limited, circuit_open,
+  bulkhead_full, retry_budget_exceeded, timeout} when protection refused the call.
+- **Spans**: one span per request, opened by the resilience layer (internal kind), named like
+  `POST /demo-docs/_search`, with `db.system`/`db.operation` attributes plus `db.statement` =
+  the URL path. Verify: `curl "http://127.0.0.1:16686/api/traces?service=demo&limit=1"`
   and grep for `data":[{` (same check as example-otel's self-test).
-- **Access log**: one line per request under tag `_app_elasticsearch_access`
-  (`log.RegisterAppTag("elasticsearch", "access")`) at native levels — error → Warn; success
-  with the captured URL path (truncated to 512 bytes) → Debug; plain success → Info.
+- **Access log**: one line per request, written by the resilience layer under tag
+  `_app_elasticsearch_access` (`log.RegisterAppTag("elasticsearch", "access")`) at native
+  levels — error → Warn; success with the captured URL path (truncated to 512 bytes) → Debug;
+  plain success → Info.
 
 ```bash
 curl -s "127.0.0.1:9090/search" >/dev/null  # or drive via the app
@@ -339,7 +350,7 @@ grep _app_elasticsearch_access app.log | tail -1
 ### 4.3 Resilience / fault drill (example-load style)
 
 ```properties
-# NOTE: governance RULES go in conf/governance.properties, referenced by spring.governance.source.file.path in app.properties (see starter-governance USAGE).
+# NOTE: governance RULES go in conf/governance.properties, referenced by spring.governance.source.file.path in app.properties (see starter-governance-file USAGE).
 spring.governance.enabled=true
 spring.governance.driver=default
 spring.governance.client.default.rate-limit=5          # burst > 5 concurrent → ErrRateLimited rejections
@@ -378,11 +389,11 @@ requires a restart (§2.4).
 |---------|--------------|-----|
 | Boot fails "failed to reach elasticsearch cluster" | Unreachable address / wrong credentials / fingerprint mismatch / ES still booting (up to 120 s) | Fix connectivity; wait for `curl http://127.0.0.1:9200` to answer, restart. |
 | Boot fails `discovery ... returned no endpoints` | service-name unknown to the backend, or backend not registered | Register the backend bean (a named discovery.Discovery bean) before gs.Run; check the service name. |
-| Panic with nil context inside a request | OTel instrumentation derives the span from the request context | Pass `WithContext(ctx)` on every call; never use the no-context API variant. |
+| Panic on a nil context inside a request | `http.Request.WithContext` panics on a nil context | Pass `WithContext(ctx)` on every call; never use the no-context API variant. |
 | Boot fails on `addresses` validation though service-name is set | `addresses` is required unconditionally (`len($) > 0`) | Keep a dummy address (the example's pattern) — it is overridden. |
-| No spans/metrics though code is correct | starter-otel not imported | Instrumentation rides the OTel globals; import starter-otel and configure exporters. |
+| No spans/metrics though code is correct | starter-otel not imported | The resilience layer's signals ride the OTel globals; import starter-otel and configure exporters. |
 | No access log lines | log tag filtered by logger config | Check logger config for `_app_elasticsearch_access`. |
-| Custom driver instance has no breaker/metrics | Only DefaultDriver installs dynamicTransport | Use DefaultDriver, or install the observe+resilience transport yourself in the custom driver. |
+| Custom driver instance has no breaker/metrics | Only DefaultDriver installs dynamicTransport | Use DefaultDriver, or install the declaration+resilience transport yourself in the custom driver. |
 | Retries seem multiplied | Client `max-retries` + governance `max-retries` both > 0 | Set one of them to 0 / disable-retry. |
 
 ## 6. Design Health
@@ -401,11 +412,8 @@ Design suspects (audit ledger; first three carried over from the previous doc):
   the expr when service-name/cloud-id present).
 - No `tls.*` block unlike sibling starters — TLS lives in three different keys plus the URL
   scheme (`https://` addresses, `cloud-id`, `certificate-fingerprint`).
-- Custom drivers silently lose the governance/resilience observe transport swap — no warning, no hook.
+- Custom drivers silently lose the governance + resilience declaration transport swap — no warning, no hook.
 - schema.json `enable-metrics` default (`false`) disagrees with the code (`true`) — schema is
   not generated, so it drifts.
 - Health indicator has no opt-out key (same family asymmetry as go-redis; redigo has
   `health.enabled`).
-- Resilience sits OUTSIDE the observe transport here but INSIDE for go-redis — per-family
-  layering differs; the resilience bridge compensates but doubles span/metric emission
-  points across families.

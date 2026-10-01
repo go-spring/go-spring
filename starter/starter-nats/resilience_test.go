@@ -21,7 +21,7 @@ import (
 	"errors"
 	"testing"
 
-	"go-spring.org/cloud/governance/resilience"
+	"go-spring.org/cloud/resilience"
 	"go-spring.org/stdlib/testing/assert"
 )
 
@@ -33,7 +33,7 @@ func newConnWithPolicy(t *testing.T, p resilience.ClientPolicy) *Conn {
 	d := resilience.NewDefaultDriver(nil)
 	exec, err := d.NewClientExecutor("svc", p)
 	assert.Error(t, err).Nil()
-	return &Conn{exec: exec, service: "nats:test"}
+	return &Conn{exec: exec, serviceLabel: "nats:test"}
 }
 
 // TestGuardPassThrough proves the zero-config opt-in: a Conn with no executor

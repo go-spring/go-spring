@@ -20,15 +20,18 @@ import (
 	"context"
 
 	"go-spring.org/cloud/actuator/health"
-	"go.mongodb.org/mongo-driver/v2/mongo"
 )
 
 // NewClientHealth builds an indicator for a MongoDB client. It is registered
 // once per configured instance and exported as health.Indicator, so an
 // application that also imports starter-actuator gets MongoDB readiness folded
 // into /readiness with no extra wiring.
-func NewClientHealth(name string, client *mongo.Client) *health.Indicator {
+//
+// The probe delegates to [HealthCheck], the single liveness implementation:
+// there is one place a readiness check is defined, so the indicator and an
+// ad-hoc caller can never drift apart.
+func NewClientHealth(name string, c *Client) *health.Indicator {
 	return &health.Indicator{Name: "mongo:" + name, Probe: func(ctx context.Context) error {
-		return client.Ping(ctx, nil)
+		return HealthCheck(ctx, c)
 	}}
 }

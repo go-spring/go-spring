@@ -20,7 +20,7 @@
 
 - **`cloud/security`——零依赖抽象。**本 starter 是其中一种具体实现。
   `TokenValidator` 是 driver 缝隙(注册表式——与 `cloud/discovery`、
-  `cloud/governance/resilience` 同款)。`Principal` + `Authentication` 是中立类型,
+  `cloud/resilience` 同款)。`Principal` + `Authentication` 是中立类型,
   自带 `HasAuthority` / `HasAnyAuthority` / `HasAllAuthorities` 帮助函数,
   均 nil-safe,`!Authenticated` 时短路返回 `false`。
 - **同一 bean,两个挂载点。**

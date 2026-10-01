@@ -21,7 +21,7 @@ import (
 
 	"github.com/alibaba/sentinel-golang/core/circuitbreaker"
 
-	"go-spring.org/cloud/governance/resilience"
+	"go-spring.org/cloud/resilience"
 )
 
 // breakerRoutes maps a sentinel resource name (a service label) to the resilience BreakerEventListener

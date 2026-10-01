@@ -18,6 +18,7 @@ package trace
 
 import (
 	"context"
+	"os"
 	"strings"
 	"testing"
 
@@ -49,6 +50,14 @@ func (namedHeaderPropagator) Extract(ctx context.Context, carrier propagation.Te
 func (namedHeaderPropagator) Fields() []string { return []string{"X-Tenant"} }
 
 const tenantHeader = "x-tenant-propagator-test" // unique to avoid clashing with parallel test binaries
+
+// TestMain registers the W3C pair the way the starter does. The package has no
+// init of its own - the starter calls RegisterDefaults from its starter.go -
+// so a test that exercises the built-in names must install them itself.
+func TestMain(m *testing.M) {
+	RegisterDefaults()
+	os.Exit(m.Run())
+}
 
 func TestRegisterPropagatorPanics(t *testing.T) {
 	assert.Panics(t, func() { RegisterPropagator("", namedHeaderPropagator{}) })

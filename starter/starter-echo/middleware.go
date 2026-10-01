@@ -21,14 +21,13 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
-	"time"
 
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
-	"go-spring.org/cloud/governance/fault"
-	"go-spring.org/cloud/governance/resilience"
-	"go-spring.org/cloud/governance/traffic"
+	"go-spring.org/cloud/fault"
 	"go-spring.org/cloud/propagate"
+	"go-spring.org/cloud/resilience"
+	"go-spring.org/cloud/traffic"
 	"go-spring.org/log"
 )
 
@@ -46,7 +45,7 @@ type requestIDCtxKey struct{}
 // X-LoadTest) it tags the request context, so the handler chain and every
 // outbound client the handlers drive can recognise synthetic load through the
 // propagator's IsLoadTest. It is the inbound companion to
-// cloud/governance/traffic's outbound injection: together they let a load-test
+// cloud/traffic's outbound injection: together they let a load-test
 // flag ride an HTTP hop end to end. An empty header falls back to the
 // propagator's own header name; prop nil means go-spring's default. Without the
 // marker it is a no-op.
@@ -113,15 +112,11 @@ func applyMiddlewares(e *echo.Echo, cfg Config, mgr *resilience.Manager, inj *fa
 		e.Use(middleware.RequestID())
 		e.Use(propagateRequestID)
 	}
-	if mw.Tracing.Enabled {
-		e.Use(tracingMiddleware())
-	}
-	if mw.Metrics.Enabled {
-		e.Use(metricsMiddleware())
-	}
-	if mw.AccessLog.Enabled {
-		e.Use(accessLog(accessLogSkipSet(cfg)))
-	}
+	// The span, the HTTP family metrics and the access log are no longer
+	// separate middlewares: they are emitted by the resilience executor this
+	// server is admitted through, off the operation the admission middleware
+	// declares (see admission.go). The per-signal switches remain readable — see
+	// observeEnabled — but nothing is installed here for them.
 	if mw.SecureHeaders.Enabled {
 		e.Use(secureHeadersMiddleware(mw.SecureHeaders, cfg.TLS.Enabled))
 	}
@@ -183,20 +178,6 @@ func buildFault(inj *fault.Injector) echo.MiddlewareFunc {
 	}
 }
 
-// accessLogSkipSet builds the set of paths the access log should not record. It
-// merges the operator-configured skip list with the health endpoint path, so
-// liveness/readiness probes never flood the log.
-func accessLogSkipSet(cfg Config) map[string]struct{} {
-	skip := make(map[string]struct{}, len(cfg.Middleware.AccessLog.SkipPaths)+1)
-	for _, p := range cfg.Middleware.AccessLog.SkipPaths {
-		skip[p] = struct{}{}
-	}
-	if cfg.Health.Enabled && cfg.Health.Path != "" {
-		skip[cfg.Health.Path] = struct{}{}
-	}
-	return skip
-}
-
 // propagateRequestID copies the id set by middleware.RequestID onto the request
 // context so downstream handlers and the project log package can read it. The
 // id is already on the response header by the time this runs.
@@ -207,44 +188,6 @@ func propagateRequestID(next echo.HandlerFunc) echo.HandlerFunc {
 			c.SetRequest(c.Request().WithContext(ctx))
 		}
 		return next(c)
-	}
-}
-
-// accessLog emits one structured record per request via the project log package.
-// The level follows the response status: Warn for 4xx, Error for 5xx, Info
-// otherwise, so failures stand out without filtering.
-func accessLog(skip map[string]struct{}) echo.MiddlewareFunc {
-	return func(next echo.HandlerFunc) echo.HandlerFunc {
-		return func(c echo.Context) error {
-			start := time.Now()
-			err := next(c)
-
-			path := c.Request().URL.Path
-			if _, ok := skip[path]; !ok {
-				fields := []log.Field{
-					log.String("http.request.method", c.Request().Method),
-					log.String("url.path", path),
-					log.Int("http.response.status_code", c.Response().Status),
-					log.Int("size", c.Response().Size),
-					log.String("ip", c.RealIP()),
-					log.Float("duration_ms", float64(time.Since(start).Nanoseconds())/1e6),
-				}
-				if rid := c.Response().Header().Get(echo.HeaderXRequestID); rid != "" {
-					fields = append(fields, log.String("request_id", rid))
-				}
-
-				ctx := c.Request().Context()
-				switch status := c.Response().Status; {
-				case status >= http.StatusInternalServerError:
-					log.Error(ctx, accessLogTag, fields...)
-				case status >= http.StatusBadRequest:
-					log.Warn(ctx, accessLogTag, fields...)
-				default:
-					log.Info(ctx, accessLogTag, fields...)
-				}
-			}
-			return err
-		}
 	}
 }
 

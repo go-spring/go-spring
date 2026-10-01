@@ -18,9 +18,10 @@ package StarterMQTT
 
 import (
 	mqtt "github.com/eclipse/paho.mqtt.golang"
-	"go-spring.org/cloud/governance/fault"
-	"go-spring.org/cloud/governance/resilience"
+	"go-spring.org/cloud"
+	"go-spring.org/cloud/fault"
 	"go-spring.org/cloud/messaging"
+	"go-spring.org/cloud/resilience"
 	"go-spring.org/log"
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/gs"
@@ -44,9 +45,10 @@ func init() {
 				gs.IndexArg(1, gs.ValueArg(name)),
 				gs.IndexArg(2, gs.ValueArg(c)),
 				gs.IndexArg(3, gs.TagArg("${spring.mqtt.instances."+name+".driver:=${spring.mqtt.default.driver:=?}}")),
-				// The governance beans are REQUIRED: this starter blank-imports
-				// starter-governance, so "governance off" is spring.governance.enabled=false,
-				// never an absent bean.
+				// The governance beans are REQUIRED: each is registered by the package that
+				// owns it (cloud/resilience, cloud/loadbalance, cloud/fault), which this
+				// starter imports — "governance off" is spring.governance.enabled=false, never
+				// an absent bean.
 				gs.IndexArg(4, gs.TagArg("")), // *resilience.Manager
 				gs.IndexArg(5, gs.TagArg("")), // *fault.Injector
 			).Name(name).Destroy(destroyClient).Caller(1)
@@ -65,11 +67,17 @@ func init() {
 
 // newClient creates and connects an MQTT client by dispatching to the injected
 // Driver bean, which owns full client assembly (broker URL, options, TLS,
-// credentials, will). After the client is built it is connected so a misconfigured
-// broker URL, bad credentials or TLS mismatch fail fast at startup instead of
-// surfacing on the first publish/consume, then the resilience executor is
-// attached from the injected governance beans (mgr, inj) — both nil in a
-// standalone, non-gs call, which applyResilience treats as "governance off".
+// credentials, will) and installs the governance executor — so the client is
+// complete when the driver returns it. Only then is it connected, so a
+// misconfigured broker URL, bad credentials or TLS mismatch fail fast at startup
+// instead of surfacing on the first publish/consume. A failed connect releases
+// what was just assembled.
+//
+// mgr and inj are the governance beans the container injects; the ctor bundles
+// them into the cloud.ClientParams it hands the driver, which resolves the
+// executor through it — the governed one when mgr is present, the observed-only
+// resilience.Unmanaged one otherwise (a standalone, non-gs caller passes nil,
+// which is exactly "governance off").
 func newClient(ctx *gs.ContextProvider, name string, c Config, d Driver, mgr *resilience.Manager, inj *fault.Injector) (mqtt.Client, error) {
 	log.Debugf(ctx.Context, log.TagAppDef, "creating mqtt client, broker=%s client-id=%s", c.Broker, c.ClientID)
 
@@ -77,25 +85,23 @@ func newClient(ctx *gs.ContextProvider, name string, c Config, d Driver, mgr *re
 	if d == nil {
 		d = DefaultDriver{}
 	}
-	client, err := d.CreateClient(ctx.Context, c)
+	client, err := d.CreateClient(ctx.Context, c,
+		cloud.ClientParams{Resilience: mgr, Fault: inj})
 	if err != nil {
 		log.Errorf(ctx.Context, log.TagAppDef, "mqtt: create client failed: %v", err)
 		return nil, errutil.Explain(err, "failed to create mqtt client: %s", c.Broker)
 	}
 
-	// Build the package-level span-helper observers (StartPublishSpan /
-	// StartConsumeSpan) from the current OTel meter provider; the first wired
-	// client wins.
-	buildObservers()
-
+	// The driver returned the client complete — assembly and governance both
+	// applied while it was built — so there is no post-hoc resilience step. Now
+	// connect: it is a connectivity check, not business traffic, so it must not
+	// spend limiter/breaker budget. A failure abandons the client, so release
+	// what was just assembled.
 	token := client.Connect()
 	token.Wait()
 	if err := token.Error(); err != nil {
 		log.Errorf(ctx.Context, log.TagAppDef, "mqtt: connect failed broker=%s: %v", c.Broker, err)
-		return nil, err
-	}
-	if err := applyResilience(client, resilience.ServiceLabel("mqtt", c.Broker), mgr, inj); err != nil {
-		log.Errorf(ctx.Context, log.TagAppDef, "mqtt: resilience setup failed: %v", err)
+		closeResilience(client)
 		client.Disconnect(250)
 		return nil, err
 	}

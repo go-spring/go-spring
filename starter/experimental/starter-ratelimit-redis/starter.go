@@ -22,7 +22,7 @@
 // Nothing to step aside for: without this starter the process contributes NO
 // counter store, and each executor counts in a budget of its own (one budget per
 // service label, since the manager builds one executor per label).
-// Contributing this one is the whole switch — starter-governance's driver bean
+// Contributing this one is the whole switch — the bundled driver bean
 // injects whatever store the container holds, so every executor it builds, the
 // bundled "default" as much as any other backend, spends the shared budget.
 // Only the WIDTH of a budget changes, never what it covers: the scope is still
@@ -47,7 +47,7 @@ package StarterRatelimitRedis
 import (
 	"context"
 
-	"go-spring.org/cloud/governance/resilience"
+	"go-spring.org/cloud/resilience"
 	"go-spring.org/log"
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/gs"
@@ -85,9 +85,9 @@ func setup(r gs.BeanProvider, p flatten.Storage) error {
 	// TagArg injects the *goredis.Client bean by name — the seam that ties the
 	// counters to one Redis instance. The ctor returns the interface type, so gs
 	// indexes the bean under resilience.Counters: no Export is needed, and that
-	// type is what starter-governance's driver bean injects.
+	// type is what the bundled driver injects.
 	r.Provide(func(client *goredis.Client) (resilience.Counters, error) {
-		return experimental.NewCounters(client.UniversalClient)
+		return experimental.NewCounters(client)
 	}, gs.TagArg(c.Client)).Caller(1)
 	return nil
 }

@@ -22,7 +22,7 @@ import (
 	"errors"
 	"testing"
 
-	"go-spring.org/cloud/governance/resilience"
+	"go-spring.org/cloud/resilience"
 	"go-spring.org/stdlib/testing/assert"
 )
 
@@ -46,7 +46,7 @@ func (c *stubConn) QueryContext(_ context.Context, query string, _ []driver.Name
 	return nil, nil
 }
 
-// TestGuardedConnPassThrough proves the unarmed slot runs statements inline:
+// TestGuardedConnPassThrough proves the pass-through slot runs statements inline:
 // the guard is a zero-config opt-in, matching the other client adapters.
 func TestGuardedConnPassThrough(t *testing.T) {
 	sc := &stubConn{}

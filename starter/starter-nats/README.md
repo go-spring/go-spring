@@ -36,9 +36,9 @@ spring.nats.instances.work.url=nats://127.0.0.1:4222
 ### 3. Inject the NATS Connection
 
 Refer to the [example.go](example/example.go) file. Each named instance is registered
-as a `*Conn` bean under that name; the injected bean embeds `*nats.Conn`, so you can
-call `Publish`/`Subscribe`/`Request` directly on it; `Conn.JetStream` is non-nil when
-JetStream is enabled on that instance.
+as a `*Conn` bean under that name; the injected bean re-exposes the raw connection's
+methods (`Publish`/`Subscribe`/`Request`/...) as delegations, so you can call them
+directly on it; `Conn.JetStream` is non-nil when JetStream is enabled on that instance.
 
 ```go
 import StarterNats "go-spring.org/starter-nats"
@@ -63,7 +63,7 @@ reply, _ := s.Conn.Request("demo.rpc", []byte("ping"), time.Second)
 The [example](example/example.go) self-asserts four features against a live server:
 core pub/sub, request-reply, queue groups (each message delivered to exactly one
 member), and JetStream (publish to a stream then pull the message back). It also
-checks `Conn.Healthy()` reports the connection as up before exercising them.
+checks `HealthCheck(ctx, conn)` reports the connection as up before exercising them.
 
 Connection-layer events (async errors, disconnect, reconnect, close) are bridged into
 go-spring's log.
@@ -78,7 +78,7 @@ publishes and consumes `*messaging.Message` envelopes without depending on the
 The driver is registered as a bean per configured instance, under the same name
 as the connection, so inject it by name like any client bean (`Driver
 messaging.Driver \`autowire:"main"\``). Beans are keyed by name *and* type, so
-it stays distinct from the raw `*Conn` bean. To build one by hand instead, call
+it stays distinct from the `*Conn` bean. To build one by hand instead, call
 `StarterNats.NewDriver(conn, prop)`, where `prop` is the process's
 `traffic.Propagator` (a nil propagator falls back to
 `traffic.NewDefaultPropagator(traffic.DefaultBinding())`).
@@ -100,7 +100,7 @@ _ = sub.Subscribe(ctx, func(ctx context.Context, m *messaging.Message) error {
 
 The subscriber `group` maps onto a NATS queue group (competing consumers). Trace
 context rides the message `Header`, so with starter-otel a trace links producer
-to consumer. The raw `*Conn` bean stays available for JetStream, request-reply
+to consumer. The `*Conn` bean stays available for JetStream, request-reply
 and other NATS features the driver does not model.
 
 ## Advanced Features
@@ -111,10 +111,11 @@ and other NATS features the driver does not model.
 * **Multiple connections**: Every entry under `spring.nats` becomes an
   independently configured `*Conn` bean; inject them by name to talk to different
   clusters or JetStream domains.
-* **Health check**: `Conn.Healthy()` reflects the live state of the auto-reconnecting
-  client, so health/readiness probes can query it at any time without relying only on
-  the connection-event logs. Each instance also registers a `health.Indicator`
-  (`nats:<name>`) on top of it, which starter-actuator folds into `/readiness`.
+* **Health check**: `HealthCheck(ctx, conn)` reflects the live state of the
+  auto-reconnecting client, so health/readiness probes can query it at any time
+  without relying only on the connection-event logs. Each instance also registers a
+  `health.Indicator` (`nats:<name>`) whose probe only calls it, which
+  starter-actuator folds into `/readiness`.
 * **Authentication**: Beyond username/password and token, the starter supports NATS 2.x
   decentralized auth via a credentials file (`creds-file`) or an nkey seed file
   (`nkey-file`).
@@ -124,45 +125,55 @@ and other NATS features the driver does not model.
 
 ## Observability
 
-Both directions of an operation are instrumented on the connection itself — a
-span, a duration/in-flight metric and an access log — and ride the global
-`TracerProvider` and propagator installed by [starter-otel](../starter-otel).
-Without starter-otel they are no-ops, so the instrumentation is a safe,
-zero-config opt-in.
+Both directions DECLARE their operation on the call — the publish/consume
+identity (`messaging.system`, `messaging.operation`) plus the subject — and the
+resilience layer, the single emitter on the executor chain, emits the signals
+from that declaration: the call span, the call-level
+`messaging.client.operation.duration` histogram, the attempt-level
+`messaging.client.attempt.duration` histogram, the in-flight gauge, the
+`resilience.client.calls` counter, and one access log per call. They ride the
+global `TracerProvider` installed by [starter-otel](../starter-otel); without it
+the span and metrics are no-ops, while the access log always writes through
+go-spring's log.
+
+The connection-state counter (`messaging.client.connection.state_changes`),
+driven by the NATS client's own disconnect/reconnect/close callbacks, stays in
+the starter: it is not a per-call signal, so it is not the emitter's to produce.
 
 ```go
 import "github.com/nats-io/nats.go"
 
-// Producer: the ctx-aware entry hangs the producer span off your trace and
+// Producer: the ctx-aware entry hangs the call's span off your trace and
 // injects the trace context into the message header.
 msg := &nats.Msg{Subject: "demo.pubsub", Data: []byte("hello")}
 err := conn.PublishMsgContext(ctx, msg)
 
 // Consumer: the handler receives a ctx carrying the producer's trace, so the
-// consumer span continues it across the broker.
+// consume span continues it across the broker.
 sub, err := conn.Consume(ctx, "demo.pubsub", "", func(ctx context.Context, msg *nats.Msg) error {
     return handle(ctx, msg)
 })
 ```
 
-* `PublishMsg(msg)` is the ctx-less twin, kept so it still shadows the embedded
-  `*nats.Conn.PublishMsg`. `nats.go` gives it no ctx parameter, so its producer
-  span is a new root; use `PublishMsgContext` when the caller has a trace.
+* `PublishMsg(msg)` is the ctx-less twin, kept so it overrides the raw
+  `*nats.Conn.PublishMsg`. `nats.go` gives it no ctx parameter, so its span is a
+  new root; use `PublishMsgContext` when the caller has a trace.
 * `Consume(ctx, subject, queue, handler)` takes a context-bearing handler and an
   optional queue group — an empty queue is a plain broadcast subscription. Its
-  setup ctx bounds the subscribe only; the consumer span's parent comes from the
+  setup ctx bounds the subscribe only; the consume span's parent comes from the
   message header.
-* The [messaging.Driver](#messaging-driver) calls the raw *nats.Conn and adds only
-  envelope conversion; its instrumentation comes from the broker-neutral
-  `messaging.Observe` decorator, so the two paths never double-count a message.
-* `Conn.Healthy()` reflects the live state of the auto-reconnecting client, and
+* The [messaging.Driver](#messaging-driver) adds only envelope conversion and routes
+  each publish through `PublishMsgContext` and each subscribe through `Consume`, so the
+  driver path declares its operation on the same seams and the resilience layer emits —
+  no second emitter, and the two paths never double-count a message.
+* `HealthCheck(ctx, conn)` reflects the live state of the auto-reconnecting client, and
   the starter registers a `health.Indicator` per instance (`nats:<name>`) so an
   app that also imports starter-actuator gets nats connectivity folded into
   `/readiness`. Set `health.enabled=false` on an instance whose connectivity
   should not roll into readiness.
 
 Not instrumented: JetStream operations and the raw `Subscribe`/`Publish`
-methods on the embedded connection. Use `PublishMsgContext`/`Consume` for traced
+delegations. Use `PublishMsgContext`/`Consume` for traced
 pub/sub, and the driver for traced messaging envelopes.
 
 ## Configuration

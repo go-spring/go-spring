@@ -28,20 +28,11 @@ import (
 	"github.com/hertz-contrib/cors"
 	"github.com/hertz-contrib/gzip"
 	"github.com/hertz-contrib/requestid"
-	"go-spring.org/cloud/governance/fault"
-	"go-spring.org/cloud/governance/traffic"
+	"go-spring.org/cloud/fault"
 	"go-spring.org/cloud/propagate"
+	"go-spring.org/cloud/traffic"
 	"go-spring.org/log"
 	"go-spring.org/stdlib/errutil"
-
-	// Blank import: importing this starter brings the governance authority with
-	// it — starter-governance registers the *resilience.Manager, *loadbalance.
-	// Manager, *fault.Injector and *governance.Center beans this package injects.
-	// Turning governance OFF is spring.governance.enabled=false (or binding no rule source),
-	// not the absence of the starter. The injected parameters stay nullable, so a
-	// container that somehow lacks these beans degrades to a transparent
-	// pass-through instead of failing to boot.
-	_ "go-spring.org/starter-governance"
 )
 
 // accessLogTag categorizes the structured access records emitted by the
@@ -170,7 +161,7 @@ func accessLogSkipSet(cfg Config) map[string]struct{} {
 // When the incoming request carries the configured marker header (default
 // X-LoadTest) it tags the request context, so handlers and outbound clients can
 // recognise synthetic load through the propagator's IsLoadTest. It is the
-// inbound companion to cloud/governance/traffic's outbound injection: together
+// inbound companion to cloud/traffic's outbound injection: together
 // they let a load-test flag ride an HTTP hop end to end. An empty header falls
 // back to the propagator's own header name; prop nil means go-spring's default.
 // Without the marker it is a no-op. Hertz stores headers as []byte; Peek returns

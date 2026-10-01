@@ -49,10 +49,23 @@ Verified dependency facts (do not violate):
 - `cloud/` (module `go-spring.org/cloud`) is the **ecosystem abstraction
   library**: governance (resilience/fault/traffic), discovery, loadbalance,
   cache, repository, migration, i18n, validation, event/scheduling/batch,
-  lock, messaging, transaction, actuator, ... It depends on `stdlib`/`log`
-  only and **imports no spring package** — the whole library is usable
-  without the container. gs wiring that used to live beside those
-  abstractions moved into starters (e.g. `starter-cache`, `starter-governance`).
+  lock, messaging, transaction, actuator, ... The **capability abstractions are
+  container-free** — their types, drivers and seams work with or without a
+  container — but the packages that own a default bean register it, so `spring`
+  appears in four of them:
+
+  - `cloud/resilience` registers `*resilience.Manager` (and the bundled driver),
+    `cloud/loadbalance` registers `*loadbalance.Manager`, `cloud/fault` registers
+    `*fault.Injector`. The rule is **the package that owns the type registers its
+    default**: a client that injects one has already imported that package for
+    the type, so there is no separate "governance import" to forget.
+  - `cloud/governance` registers the center over those authorities and the one
+    bean that wires it into gs, and its `rules.go` binds a rules document through
+    `spring/conf`'s value-tag machinery (the document format is the framework's,
+    and a per-backend parser would let the backends drift apart).
+
+  Everything else in `cloud/` stays gs-free, and gs wiring for any other family
+  still belongs in a starter (e.g. `starter-cache`).
 - `starter-*` and `gs-*` sit on top and may pull third-party packages.
 - Nothing in a lower layer may import a higher layer. A `starter` importing
   another `starter`, or `spring`/`cloud` importing a `starter`, is a layering
@@ -70,7 +83,7 @@ on an in-workspace module sends `go mod tidy` to the proxy and 404s. See the
 | `stdlib/` | foundation | Zero-dependency general-purpose utilities (a completion of the Go standard library) | Pure Go helpers — types, encoding, collections, hashing, text, ... | Any third-party import; capability abstractions / driver registries (those live in `spring/`); container/DI logic | [stdlib/README.md](stdlib/README.md) |
 | `log/` | foundation | Structured logging model, config grammar, adapters | The logging model, appenders, field encoding, log config parser | Business logging; hard deps on `spring` | [log/DESIGN.md](log/README.md) |
 | `spring/` | core | IoC container, dependency injection, app lifecycle, layered config engine — the pure core (`gs` + `conf`) | Bean model, injection, start/stop state machine, config binding/refresh | Third-party business packages; capability abstractions (those live in `cloud/`); integration code that wires a real backend | [spring/DESIGN.md](spring/README.md) |
-| `cloud/` | ecosystem | Container-free capability abstractions: governance, discovery, cache, repository, i18n/validation, ... | Ecosystem interfaces + driver seams usable with or without the container | Any spring import; third-party SDKs; gs wiring (that belongs in a starter) | [cloud/](cloud/) per-family docs |
+| `cloud/` | ecosystem | Capability abstractions: governance, discovery, cache, repository, i18n/validation, ... | Ecosystem interfaces + driver seams usable with or without the container; the four packages that own a default bean register it (`resilience`/`loadbalance`/`fault`/`governance`) | Spring imports beyond those four; third-party SDKs; gs wiring for any other family (that belongs in a starter) | [cloud/](cloud/) per-family docs |
 | `starter/` | integration | One module per third-party service/framework, wired into the IoC container | `starter-*` modules following the five archetypes; the family design guide | Business logic; deployment scaffolding; a *new* shared-helper package living only to serve starters (use an existing natural home instead - see trap below) | [starter/DESIGN.md](starter/DESIGN.md) |
 | `gs/` | tooling | Dev tools: scaffolding (`gs`), GUI, code generation (`gs-http-gen`), mocking (`gs-mock`) | CLI/codegen/tooling that operates *on* projects | Runtime framework code; anything imported by a running app | [gs/README.md](gs/README.md) |
 | `contrib/` | demo | Runnable examples showing how third-party frameworks are wired the Go-Spring way | Per-framework runnable variants; smoke tests | Reusable modules (those become `starter-*`); deployment scaffolding | [contrib/DIRECTORY_CONVENTIONS.md](contrib/DIRECTORY_CONVENTIONS.md) |

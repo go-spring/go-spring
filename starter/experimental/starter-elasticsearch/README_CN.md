@@ -39,7 +39,7 @@ spring.elasticsearch.instances.docs.addresses=http://127.0.0.1:9200
 import StarterElasticsearch "go-spring.org/starter-elasticsearch"
 
 type Service struct {
-    ES *StarterElasticsearch.Client `autowire:"docs"` // 内嵌 *elasticsearch.Client
+    ES *StarterElasticsearch.Client `autowire:"docs"` // API 树 + 生命周期，而非裸 client
 }
 ```
 
@@ -66,9 +66,12 @@ res, err := s.ES.Search(s.ES.Search.WithIndex("index"), s.ES.Search.WithBody(que
 
 * **支持多 Elasticsearch 实例**：可以在配置文件中定义多个 Elasticsearch 实例，并在项目中使用 name 进行引用。
 * **支持 Elasticsearch 扩展**：可以通过实现 `Driver` 接口来扩展 Elasticsearch 功能，参见示例中的 `AnotherESDriver` 实现。
-* **可观测**：默认驱动通过 `elastictransport.NewOtelInstrumentation` 将 transport 桥接进
-  go-spring 的统一可观测体系，经 `starter-otel` 安装的 OpenTelemetry 全局 `TracerProvider`
-  输出 client span。未引入 `starter-otel` 时该全局为 no-op，保持零配置可选。
+* **可观测**：starter 只负责**声明**每个请求是什么——`db.system`／`db.operation` 词表加 URL 路径，
+  由传输链放到请求 context 上。所有信号由 resilience 层**发出**：唯一的 client span、
+  call 级 `db.client.operation.duration` 与 attempt 级 `db.client.attempt.duration` 两个直方图、
+  in-flight `db.client.active_requests` gauge，以及唯一一条 `_app_elasticsearch_access` 访问日志。
+  它们都搭乘 `starter-otel` 安装的 OpenTelemetry 全局；未引入 `starter-otel` 时该全局为 no-op，
+  保持零配置可选。
 * **服务发现**：在实例上设置 `service-name` 后，节点地址将通过已注册的 discovery 后端解析，
   而非使用静态的 `addresses` 列表。每个解析出的 `host:port` 端点会用 `discovery-scheme`
   （默认 `http`）拼成节点地址。用 `discovery` 选择后端（必填，无默认后端）；

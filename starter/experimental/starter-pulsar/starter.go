@@ -22,10 +22,11 @@ package StarterPulsar
 
 import (
 	"github.com/apache/pulsar-client-go/pulsar"
-	"go-spring.org/cloud/governance/fault"
-	"go-spring.org/cloud/governance/resilience"
-	"go-spring.org/cloud/governance/traffic"
+	"go-spring.org/cloud"
+	"go-spring.org/cloud/fault"
 	"go-spring.org/cloud/messaging"
+	"go-spring.org/cloud/resilience"
+	"go-spring.org/cloud/traffic"
 	"go-spring.org/log"
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/gs"
@@ -49,9 +50,10 @@ func init() {
 				gs.IndexArg(1, gs.ValueArg(name)),
 				gs.IndexArg(2, gs.ValueArg(c)),
 				gs.IndexArg(3, gs.TagArg("${spring.pulsar.instances."+name+".driver:=${spring.pulsar.default.driver:=?}}")),
-				// The governance beans are REQUIRED: this starter blank-imports
-				// starter-governance, so "governance off" is spring.governance.enabled=false,
-				// never an absent bean.
+				// The governance beans are REQUIRED: each is registered by the package that
+				// owns it (cloud/resilience, cloud/loadbalance, cloud/fault), which this
+				// starter imports — "governance off" is spring.governance.enabled=false, never
+				// an absent bean.
 				gs.IndexArg(4, gs.TagArg("")), // *resilience.Manager
 				gs.IndexArg(5, gs.TagArg("")), // *fault.Injector
 			).Name(name).Destroy(destroyClient).Caller(1)
@@ -73,12 +75,18 @@ func init() {
 
 // newClient creates a Pulsar client by dispatching to an optional Driver bean,
 // which owns full client assembly (ClientOptions, authentication, TLS, metrics
-// registry); when no such bean exists the bundled DefaultDriver is used. After
-// the client is built it is probed (when FailFast is enabled) so a misconfigured
-// broker list, bad credentials or TLS mismatch fail fast at startup instead of
-// surfacing on the first produce/consume, then the resilience executor is
-// attached from the injected governance beans (mgr, inj) — both nil in a
-// standalone, non-gs call, which applyResilience treats as "governance off".
+// registry, and the governance executor); when no such bean exists the bundled
+// DefaultDriver is used. The driver returns the client COMPLETE — the identity
+// and the resilience executor are applied while it is built — so the starter
+// never patches it afterwards. mgr and inj are the governance beans the
+// container injects; the ctor bundles them into the [cloud.ClientParams] it
+// hands the driver.
+//
+// Assembly completes before the probe: the client is probed (when FailFast is
+// enabled) only after the driver has returned it, so a misconfigured broker
+// list, bad credentials or TLS mismatch fail fast at startup instead of
+// surfacing on the first produce/consume. A failed probe releases what was just
+// assembled.
 func newClient(ctx *gs.ContextProvider, name string, c Config, d Driver, mgr *resilience.Manager, inj *fault.Injector) (pulsar.Client, error) {
 	log.Debugf(ctx.Context, log.TagAppDef, "creating pulsar client, url=%s fail-fast=%v", c.URL, c.FailFast)
 
@@ -86,24 +94,25 @@ func newClient(ctx *gs.ContextProvider, name string, c Config, d Driver, mgr *re
 	if d == nil {
 		d = DefaultDriver{}
 	}
-	cl, err := d.CreateClient(ctx.Context, c)
+	cl, err := d.CreateClient(ctx.Context, c,
+		cloud.ClientParams{Resilience: mgr, Fault: inj})
 	if err != nil {
 		return nil, err
 	}
 
+	// The driver returned the client complete — identity and the governance
+	// executor applied while it was built. Probe it (when FailFast is enabled).
+	// The probe goes straight to the raw client on purpose: it is a connectivity
+	// check, not business traffic, so it must not spend limiter/breaker budget. A
+	// failure abandons the client, so release what was just assembled.
 	if c.FailFast {
 		if _, err = cl.TopicPartitions(c.HealthCheckTopic); err != nil {
 			log.Errorf(ctx.Context, log.TagAppDef, "pulsar: fail-fast probe failed on %s (topic=%s): %v", c.URL, c.HealthCheckTopic, err)
+			closeResilience(cl)
 			cl.Close()
 			shutdownMetrics(cl)
 			return nil, errutil.Explain(err, "pulsar broker probe failed on %s (topic=%s)", c.URL, c.HealthCheckTopic)
 		}
-	}
-	if err := applyResilience(cl, resilience.ServiceLabel("pulsar", c.URL), mgr, inj); err != nil {
-		log.Errorf(ctx.Context, log.TagAppDef, "pulsar: resilience setup failed: %v", err)
-		cl.Close()
-		shutdownMetrics(cl)
-		return nil, err
 	}
 	log.Infof(ctx.Context, log.TagAppDef, "pulsar client initialized, url=%s", c.URL)
 	return cl, nil

@@ -34,7 +34,7 @@ import (
 	"go-spring.org/cloud/experimental/loadtest"
 	"go-spring.org/spring/gs"
 
-	_ "go-spring.org/starter-governance"
+	_ "go-spring.org/starter-governance-file"
 	StarterNeo4j "go-spring.org/starter-neo4j"
 )
 

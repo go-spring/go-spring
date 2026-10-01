@@ -52,12 +52,11 @@ spring.echo.server.tls.cert-file=
 spring.echo.server.tls.key-file=
 spring.echo.server.tls.ca-file==# 可选：配置后强制校验该 CA 签发的客户端证书（mTLS）。
 
-# 内置中间件。Recovery、RequestID、AccessLog 默认开启；
+# 内置中间件。Recovery、RequestID 默认开启；
 # CORS、Gzip、SecureHeaders 默认关闭，按需开启（见"内置中间件"）。
 spring.echo.server.middleware.recovery.enabled=true
 spring.echo.server.middleware.requestId.enabled=true
-spring.echo.server.middleware.accessLog.enabled=true
-spring.echo.server.middleware.accessLog.skipPaths=
+spring.echo.server.middleware.observability.enabled=true
 spring.echo.server.middleware.cors.enabled=false
 spring.echo.server.middleware.cors.allowedOrigins=
 spring.echo.server.middleware.gzip.enabled=false
@@ -88,7 +87,7 @@ gs.Provide(func(c *Controller) StarterEcho.RouterRegister {
 
 [example](example/example.go) 通过真实 HTTP 请求端到端演示了三项能力：
 
-* **中间件**：starter 默认安装 Recovery、RequestID、AccessLog（外加可选的 CORS/Gzip/SecureHeaders）；注册器再加一个自定义中间件，会在每个响应上写入
+* **中间件**：starter 默认安装 Recovery、RequestID（外加可选的 CORS/Gzip/SecureHeaders）；注册器再加一个自定义中间件，会在每个响应上写入
   `X-App: go-spring` 头。
 * **路径参数 + JSON 响应**：`GET /echo/:name` 通过 `ctx.Param` 与 `ctx.JSON` 返回
   `{"message":"Hello, <name>"}`。
@@ -106,9 +105,8 @@ starter 在应用的 `RouterRegister` 执行**之前**，按固定顺序在 `*ec
 | `recovery` | 开 | `middleware.Recover()`（starter 接缝） | 捕获请求 goroutine 的 panic；关闭可能导致进程崩溃。 |
 | `loadtest` | 开 | 自实现 | 请求携带 `X-LoadTest`（可配置）标记头时给请求 context 打标，下游可通过 propagator 的 `IsLoadTest` 分流。 |
 | `requestId` | 开 | `middleware.RequestID()` | 生成/透传 `X-Request-Id`，同时写入请求 context（见 `RequestIDFromContext`）。 |
-| `tracing` | 开 | 自实现 | 每请求一个 OTel server span；未引入 `starter-otel` 时为 no-op。 |
-| `metrics` | 开 | 自实现 | 经 OTel 全局记录请求数/时长/在途数；未引入 `starter-otel` 时为 no-op。 |
-| `accessLog` | 开 | 自实现（项目 `log` 包） | 每个请求一条结构化访问日志；4xx 记 Warn、5xx 记 Error；健康端点路径自动跳过。 |
+| `observability` | 开 | resilience 发射点 | 请求的 span、HTTP 族指标与访问日志。链路里不装任何东西：admission 中间件**声明**请求，执行器发信号。关掉不会让服务静默 —— 请求落到 `resilience.server.*` + 一行 resilience tag 日志。 |
+| `tracing` / `metrics` / `accessLog` | 开 | LEGACY | 保留可绑定，但按信号的粒度已合并（三者是一组），任一为 false 即整组关闭并告警一次。改用 `observability.enabled`。 |
 | `cors` | 关 | `middleware.CORS()` | 没有安全的通用默认值，需显式配置 `allowedOrigins`（或开发期用 `allowAllOrigins`）。 |
 | `gzip` | 关 | `middleware.Gzip()` | `level`（1-9，-1=默认）。 |
 | `secureHeaders` | 关 | `middleware.Secure()` | `X-Content-Type-Options`/`X-Frame-Options`/`Referrer-Policy`；HSTS 仅在启用 TLS 时生效。 |

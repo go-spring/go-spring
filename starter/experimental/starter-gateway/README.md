@@ -17,7 +17,7 @@ table in place, so a bad edit never takes the gateway down.
 
 Upstreams are either **direct** (`http(s)://host:port`) or **discovery-backed**
 (`lb://<service>`), the latter reusing `cloud/discovery` + `cloud/loadbalance`.
-Forwarding runs through `cloud/governance/resilience` for retry / circuit-breaking / rate
+Forwarding runs through `cloud/resilience` for retry / circuit-breaking / rate
 limiting. Its own metrics are OTel instruments (`gateway.requests`,
 `gateway.active_requests`, `gateway.route_reload_errors`), so they surface through whatever
 pipeline the application configured — starter-otel's Prometheus exporter serves them on

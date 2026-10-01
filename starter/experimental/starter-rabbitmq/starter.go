@@ -18,10 +18,10 @@ package StarterRabbitMQ
 
 import (
 	amqp "github.com/rabbitmq/amqp091-go"
-	"go-spring.org/cloud/governance/fault"
-	"go-spring.org/cloud/governance/resilience"
-	"go-spring.org/cloud/governance/traffic"
+	"go-spring.org/cloud/fault"
 	"go-spring.org/cloud/messaging"
+	"go-spring.org/cloud/resilience"
+	"go-spring.org/cloud/traffic"
 	"go-spring.org/log"
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/gs"
@@ -45,9 +45,10 @@ func init() {
 				gs.IndexArg(1, gs.ValueArg(name)),
 				gs.IndexArg(2, gs.ValueArg(c)),
 				gs.IndexArg(3, gs.TagArg("${spring.rabbitmq.instances."+name+".driver:=${spring.rabbitmq.default.driver:=?}}")),
-				// The governance beans are REQUIRED: this starter blank-imports
-				// starter-governance, so "governance off" is spring.governance.enabled=false,
-				// never an absent bean.
+				// The governance beans are REQUIRED: each is registered by the package that
+				// owns it (cloud/resilience, cloud/loadbalance, cloud/fault), which this
+				// starter imports — "governance off" is spring.governance.enabled=false, never
+				// an absent bean.
 				gs.IndexArg(4, gs.TagArg("")), // *resilience.Manager
 				gs.IndexArg(5, gs.TagArg("")), // *fault.Injector
 			).Name(name).Destroy(destroyClient).Caller(1)
@@ -74,15 +75,16 @@ func init() {
 // URL, wrong credentials or TLS mismatch fail fast at startup rather than
 // surfacing on the first channel/publish.
 //
-// Once the connection is built a probe channel is opened and closed to confirm
-// the AMQP layer is usable, then close/block notifiers are bridged into
-// go-spring's log so broker-driven events land alongside app logs, and finally
-// the resilience executor is attached.
+// Assembly completes before the probe: once the connection is built the
+// close/block notifiers are bridged into go-spring's log (the observe half) and
+// the resilience executor is attached, and only then is a probe channel opened
+// and closed to confirm the AMQP layer is usable. A failed probe releases what
+// was just assembled.
 //
-// mgr and inj are the governance beans starter-governance provides. The wiring
-// injects them NULLABLY, so both are nil in a container without
-// starter-governance as well as in a standalone (non-gs) call; applyResilience
-// treats a nil bean as "governance off".
+// mgr and inj are the governance beans cloud/resilience and cloud/fault
+// provide. mgr is required: this starter imports those packages, so "governance
+// off" is spring.governance.enabled=false, never an absent bean; a standalone, non-gs
+// caller passes a fresh manager, which is exactly "governance off".
 func newClient(ctx *gs.ContextProvider, name string, c Config, d Driver, mgr *resilience.Manager, inj *fault.Injector) (*amqp.Connection, error) {
 	log.Debugf(ctx.Context, log.TagAppDef, "creating rabbitmq connection, url=%s vhost=%s", c.URL, c.Vhost)
 
@@ -94,17 +96,6 @@ func newClient(ctx *gs.ContextProvider, name string, c Config, d Driver, mgr *re
 	if err != nil {
 		log.Errorf(ctx.Context, log.TagAppDef, "rabbitmq: create client failed: %v", err)
 		return nil, errutil.Explain(err, "failed to create rabbitmq client: %s", c.URL)
-	}
-
-	// Confirm the AMQP channel layer is usable, not just the TCP handshake.
-	ch, err := conn.Channel()
-	if err != nil {
-		log.Errorf(ctx.Context, log.TagAppDef, "rabbitmq: open probe channel failed url=%s: %v", c.URL, err)
-		_ = conn.Close()
-		return nil, errutil.Explain(err, "failed to open probe channel: %s", c.URL)
-	}
-	if err := ch.Close(); err != nil {
-		log.Warnf(ctx.Context, log.TagAppDef, "rabbitmq: close probe channel failed url=%s: %v", c.URL, err)
 	}
 
 	// Bridge connection-level events into go-spring's log AND the connection
@@ -144,12 +135,28 @@ func newClient(ctx *gs.ContextProvider, name string, c Config, d Driver, mgr *re
 		}
 	}()
 
-	log.Infof(ctx.Context, log.TagAppDef, "rabbitmq connection initialized, url=%s", c.URL)
+	// Assemble fully before probing: attach the resilience executor first.
 	if err := applyResilience(conn, resilience.ServiceLabel("rabbitmq", c.Vhost, c.URL), mgr, inj); err != nil {
 		log.Errorf(ctx.Context, log.TagAppDef, "rabbitmq: resilience setup failed: %v", err)
 		_ = conn.Close()
 		return nil, err
 	}
+	// Then confirm the AMQP channel layer is usable, not just the TCP handshake.
+	// The probe goes straight to the raw connection on purpose: it is a
+	// connectivity check, not business traffic, so it must not spend
+	// limiter/breaker budget. A failure abandons the connection, so release what
+	// was just assembled.
+	ch, err := conn.Channel()
+	if err != nil {
+		log.Errorf(ctx.Context, log.TagAppDef, "rabbitmq: open probe channel failed url=%s: %v", c.URL, err)
+		closeResilience(conn)
+		_ = conn.Close()
+		return nil, errutil.Explain(err, "failed to open probe channel: %s", c.URL)
+	}
+	if err := ch.Close(); err != nil {
+		log.Warnf(ctx.Context, log.TagAppDef, "rabbitmq: close probe channel failed url=%s: %v", c.URL, err)
+	}
+	log.Infof(ctx.Context, log.TagAppDef, "rabbitmq connection initialized, url=%s", c.URL)
 	return conn, nil
 }
 

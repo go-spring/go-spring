@@ -15,9 +15,11 @@
   由调用方在共享 client 上构建，一个连接池服务所有下游角色。
 - 有意不套 `*Conn` 包装：不同于 NATS 的双 API，Sarama 天然以
   `sarama.Client` 接口做 bean。
-- 不接 OTel producer/consumer hook。Sarama 无 interceptor 缝隙；
+- 自身不发射 OTel 信号。Sarama 无 interceptor 缝隙；
   `otelsarama` 已废弃且锁在 Shopify fork
-  （`project_starter_kafka_sarama`）。tracing 放在调用点。
+  （`project_starter_kafka_sarama`）。starter 在调用点接缝
+  （`WrapSyncProducer` / `Consume`）**声明**每次发布/消费的身份，
+  由 resilience 层**发射** span、指标与访问日志 —— starter 自身不发射。
 
 ## 2. 关键抽象与缝隙
 
@@ -39,8 +41,9 @@
 - **`Brokers` 必填。** 无 localhost 兜底；空 broker 列表启动失败。
 - **Sarama version 必须钉。** `version`（如 `2.6.0`）不设会退到最基线协议，
   很多特性（SASL 机制、header、idempotent producer）要求最低协议版本。
-- **不做 OTel producer/consumer 包装。** 需要 tracing 就在
-  publish / consume 边界加 span helper；starter 不会静默改
+- **不做 OTel producer/consumer 包装，但有声明接缝。** 调用方包裹
+  `SyncProducer`（`WrapSyncProducer`）声明一次发布，把每条收到的消息过
+  `Consume` 声明一次消费；由 resilience 层从声明的操作发射。starter 不会静默改
   `sarama.Config` 去插入并不存在的 interceptor。
 - **`destroy = Close`。** `sarama.Client.Close` 释放 broker 连接。基于其
   构造的 consumer group / producer 由调用方先关。

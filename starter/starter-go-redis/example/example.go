@@ -212,8 +212,9 @@ func runTest(s *Service) {
 	fmt.Println("Response from sentinel master:", sv)
 
 	// Feature 7: cluster topology. The `cluster` instance (mode=cluster in conf)
-	// is a *redis.ClusterClient — a distinct bean type — that routes keys across
-	// the cluster's hash slots. redisotel attaches per node via OnNewNode.
+	// wraps a *redis.ClusterClient that routes keys across the cluster's hash
+	// slots; it is injected as the same *StarterGoRedis.Client wrapper type the
+	// other modes use. redisotel attaches its pool metrics per node via OnNewNode.
 	if _, err := s.ClusterRedis.Set(ctx, "cluster-key", "cluster-value", 0).Result(); err != nil {
 		log.Errorf(ctx, log.TagAppDef, "cluster SET failed: %v", err)
 		os.Exit(1)

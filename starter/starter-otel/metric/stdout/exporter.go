@@ -15,9 +15,9 @@
  */
 
 // Package stdout registers the stdout metric exporter with the metric
-// meter-exporter registry. It is blank-imported by the top-level starter-otel
-// package; mainly useful for local debugging and self-contained examples (no
-// collector needed).
+// meter-exporter registry. It is registered by the top-level starter-otel
+// package from its starter.go; mainly useful for local debugging and
+// self-contained examples (no collector needed).
 package stdout
 
 import (
@@ -26,7 +26,9 @@ import (
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 )
 
-func init() {
+// Register makes this exporter available under the name "stdout". Called from
+// the starter's starter.go; the package declares no init of its own.
+func Register() {
 	metric.RegisterMeterExporter("stdout", newStdout)
 }
 

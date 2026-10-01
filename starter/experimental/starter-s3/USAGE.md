@@ -2,7 +2,7 @@
 
 Detailed usage reference. Overview: [README.md](README.md). All behavior claims are verified
 against the starter source (`starter.go`, `config.go`, `driver.go`, `client.go`,
-`command.go`, `health/health.go`, `s3_test.go`) and the runnable [example/](example/)
+`command.go`, `health.go`, `s3_test.go`) and the runnable [example/](example/)
 (smoke-verified against MinIO via docker-compose). **Object-storage operation semantics
 (bucket/object APIs, retention, versioning) are [minio-go's documentation](https://github.com/minio/minio-go)**
 — everything below is go-spring's increment: configuration, wiring, fail-fast startup,
@@ -41,7 +41,7 @@ require (
     go-spring.org/starter-s3       latest
     go-spring.org/starter-actuator latest   # optional: readiness endpoint
     go-spring.org/starter-otel     latest   # optional: real span/metric export
-    go-spring.org/starter-governance latest # optional: retry/limiter/breaker/fault
+    go-spring.org/starter-governance-file latest # optional: retry/limiter/breaker/fault
 )
 ```
 
@@ -53,7 +53,7 @@ package main
 import (
     "go-spring.org/spring/gs"
     _ "go-spring.org/starter-actuator"
-    _ "go-spring.org/starter-governance"
+    _ "go-spring.org/starter-governance-file"
     _ "go-spring.org/starter-otel"
     _ "go-spring.org/starter-s3"
 )
@@ -75,9 +75,9 @@ import (
     starter "go-spring.org/starter-s3"
 )
 
-// Service injects one named client. Client embeds *minio.Client, so every
-// generated method (PutObject, GetObject, StatObject, ...) promotes unchanged.
-// A second endpoint is a pure config change plus another field.
+// Service injects one named client. *Client is the whole surface: it embeds the
+// raw *minio.Client, so every SDK method (PutObject, GetObject, StatObject, ...)
+// is promoted. A second endpoint is a pure config change plus another field.
 type Service struct {
     Client *starter.Client `autowire:"a"`
 }
@@ -86,8 +86,8 @@ func init() {
     gs.Provide(&Service{}).Export(gs.As[gs.Rooter]())
 }
 
-// Put demonstrates one upload; the instrumentation/resilience transport sits
-// inside the client, so this call is already spanned, metered, logged and
+// Put demonstrates one upload; the declaration/resilience transport sits inside
+// the client, so this call is already declared, spanned, metered, logged and
 // governance-guarded (see §2.3).
 func (s *Service) Put(ctx context.Context, bucket, key string, b []byte) error {
     _, err := s.Client.PutObject(ctx, bucket, key,
@@ -141,33 +141,29 @@ mc ls local/go-spring-example                              # via the compose net
 
 ```
 import starter-s3
-  └─ init(): gs.Module(gs.OnProperty("spring.s3"), ...) — a Module (not gs.Group) so each
+  └─ init(): gs.Module(gs.OnProperty("spring.s3.instances"), ...) — a Module (not gs.Group) so each
         instance's *Client can be PAIRED with a health.Indicator under the same name
-        (source comment, starter.go:32-36)
 
 gs.Run()
   ├─ conf.BindEach over spring.s3.instances.* → one Config per instance name
   ├─ per instance:
-  │    ├─ r.Provide(newClient, IndexArg(1, ValueArg(c)),
-  │    │            IndexArg(2, ?Driver)).Name(name)
-  │    │      .Init((*Client).Init).Destroy((*Client).Destroy).Caller(1)
+  │    ├─ r.Provide(newClient, IndexArg(1, ValueArg(c)), IndexArg(2, ?Driver))
+  │    │      .Name(name).Destroy((*Client).Destroy).Caller(1)
   │    ├─ r.Provide(health indicator).Name("s3:"+name).Export(health.Indicator)
   │    │      — .Name is what keeps multi-instance (Name,Type) keys unique
   │    ├─ newClient: optional Driver bean (none → bundled DefaultDriver;
   │    │      several coexist → the entry selects one by name:
   │    │      spring.s3.instances.<name>.driver = <bean-name>, empty = `spring.s3.default.driver`, then the single
   │    │      Driver bean by type, naming a missing bean fails startup)
-  │    │      → d.CreateClient: static creds + region + bucket-lookup
-  │    │        + a dynamicTransport placeholder inside minio.Options
-  │    │      → dynamicTransports.LoadAndDelete hands the placeholder to the wrapper
-  │    ├─ ArmGovernance() [client.go:97]: mgr/inj are the injected
-  │    │      *resilience.Manager / *fault.Injector beans
-  │    │      exec := fault.WrapClientExecutor(mgr.ClientExecutorFor("s3", "s3:<endpoint>"), "s3:<endpoint>", inj)  // outcome spans/counter
-  │    ├─ fail-fast probe: HealthCheck → ListBuckets — unreachable endpoint or rejected
-  │    │      credentials abort startup
-  │    └─ Init() [client.go:67]:
-  │          obsTransport (span + db.client.* metrics + access log, observe.go)
-  │          dyn.Swap(resilience.NewRoundTripper(obsTransport, exec))
+  │    │      → d.CreateClient(cfg, cloud.ClientParams{Resilience: mgr, Fault: inj}):
+  │    │        static creds + region + bucket-lookup + a dynamicTransport inside minio.Options
+  │    │      → NewClient builds the *Client wrapper: identity, exec =
+  │    │        params.ExecutorFor("s3", "s3:<endpoint>") (mgr/inj are the injected
+  │    │        *resilience.Manager / *fault.Injector beans), then installs the transport —
+  │    │        declaration outermost, resilience inside
+  │    ├─ fail-fast probe: HealthCheck(ctx, client) — one ListBuckets straight to the raw
+  │    │      client; an unreachable endpoint or rejected credentials abort startup and
+  │    │      release the client (Destroy)
   ├─ Run / serve: readyz folds in every s3:<name> indicator (needs starter-actuator)
   └─ SIGTERM: Destroy() closes the resilience executor; minio holds no session to close
 ```
@@ -175,46 +171,51 @@ gs.Run()
 ### 2.2 Why the dynamicTransport exists (rationale from source)
 
 minio-go fixes the `http.Transport` inside `minio.Options` at construction and exposes no
-setter, while the real transport (instrumentation + resilience) can only be swapped in
+setter, while the real transport (declaration + resilience) is assembled by the wrapper
 **after** the client exists.
 `DefaultDriver.CreateClient` therefore installs a thin `dynamicTransport` — an atomic
 RoundTripper indirection (RWMutex-guarded, not atomic.Value, because the active tripper is
-one of several concrete types; see client.go:131-151) — and records it in a package-level
-`dynamicTransports sync.Map` keyed by the returned client. `newClient` picks it up
-(`LoadAndDelete`) so `Init` can swap the real observe+resilience transport in. Until Init
-runs, requests pass straight through to `http.DefaultTransport`.
+one of several concrete types) — and returns the `*Client` wrapper built over it:
+`NewClient` swaps the declaration+resilience stack in (its executor comes from the
+`cloud.ClientParams` the ctor passes down). Until the swap happens, requests pass
+straight through to `http.DefaultTransport`.
 
 ### 2.3 One upload, layer by layer
 
 `PutObject(ctx, bucket, key, ...)`:
 
-1. minio-go signs the request (SigV4 static credentials) and issues the HTTP request through
-   the configured transport — which is the swapped-in resilience round-tripper.
-2. Resilience round-tripper: the request enters the executor built for service
-   `s3:<endpoint>` from the injected `*resilience.Manager` — retry / rate-limit /
-   circuit-breaker / bulkhead when starter-governance
-   arms them (hot-reloadable through the governance center), transparent pass-through
-   otherwise; the injected `*fault.Injector` (nil-safe) may inject
-   failures for drills. The observe layer inside the executor emits an outcome
-   span + call counter + duration histogram + access log for breaker trips, limit rejects,
-   bulkhead rejections.
-3. obsTransport (command.go:38): starts the per-request observer span with operation
-   `"PUT /bucket/key"` (method + URL path), runs the base `http.DefaultTransport`, ends the
-   span with the error — the span + duration metric + access log all carry that operation
-   name (minio-go ships no OTel hooks of its own, so the starter's transport carries all
-   three signals).
-4. The response unwinds: span attributes/metrics recorded, access-log line emitted via the
-   `_app_s3_access` tag at the log package's native levels — an error at Warn, a success
-   carrying the URL-path argument at Debug, a plain success at Info; minio-go returns the
-   object info to the caller.
+1. `Client.PutObject` is the raw `*minio.Client`'s method (promoted), which signs the request (SigV4
+   static credentials) and issues the HTTP request through the configured transport — the
+   swapped-in declaration transport.
+2. declareTransport (command.go), outermost: it declares the request's identity on the
+   context — `db.system=s3`, `db.operation=PUT` (bounded, becomes a metric label), and
+   `db.statement=/bucket/key` (per-call detail) with span name `"PUT /bucket/key"` — and
+   delegates inward. It MUST sit outside the resilience round-tripper: the emitter reads the
+   operation at `Execute` entry, so a declaration nested inside the executor would run per
+   attempt and be read by nobody.
+3. Resilience round-tripper, inside the declaration: the request enters the executor built at
+   construction for service `s3:<endpoint>` from the `cloud.ClientParams` the ctor passed
+   down (`*resilience.Manager` / `*fault.Injector` beans) — retry / rate-limit /
+   circuit-breaker / bulkhead when starter-governance-file applies them (hot-reloadable through
+   the governance center), an observed-only unmanaged executor otherwise; the
+   `*fault.Injector` (nil-safe) may inject failures for drills. This executor is the SINGLE
+   emitter: it opens the call span, records the call-level `db.client.operation.duration`,
+   the attempt-level `db.client.attempt.duration` per retry, and writes one access log —
+   covering the whole call, retries included (minio-go ships no OTel hooks of its own).
+4. The response unwinds: the emitter writes the span attributes, the metrics and the
+   access-log line via the `_app_s3_access` tag at the log package's native levels — an error
+   at Warn, a success carrying detail (the URL path) at Debug, a plain success at Info;
+   minio-go returns the object info to the caller.
 
 ### 2.4 Health
 
-`NewClientHealth` (health/health.go:33) probes with `ListBuckets` — it verifies both endpoint
-reachability **and** that the credential pair is accepted. Registered per instance under
-`s3:<name>` and exported as `health.Indicator`, so an app importing starter-actuator gets S3
-readiness folded into `/readiness` with no extra wiring. The same function is exported as
-`StarterS3.HealthCheck(ctx, *Client) error` for ad-hoc probing.
+`HealthCheck` (starter.go) probes with `ListBuckets` — it verifies both endpoint
+reachability **and** that the credential pair is accepted. It is the single liveness
+implementation: the startup probe in `newClient` and the `NewClientHealth` indicator
+(health.go) both call it. `NewClientHealth` registers per instance under `s3:<name>` and
+exports a `health.Indicator`, so an app importing starter-actuator gets S3 readiness folded
+into `/readiness` with no extra wiring; `StarterS3.HealthCheck(ctx, *Client) error` is
+exported for ad-hoc probing. The probe goes straight to the raw client.
 
 ---
 
@@ -260,18 +261,21 @@ per-request, not latched.
 
 ### 4.4 Instrumentation drill
 
-With starter-otel imported, generate one upload and read the three signals: a client span
-named `PUT /go-spring-example/hello.txt` (attributes `db.system=s3`, `db.operation`,
+With starter-otel imported, generate one upload and read the signals: a client span
+named `PUT /go-spring-example/hello.txt` (attributes `db.system=s3`, `db.operation=PUT`,
 `db.statement` carrying the URL path, truncated at 512 bytes), the
-`db.client.operation.duration` histogram (plus the `db.client.active_requests` gauge), and
+`db.client.operation.duration` histogram plus the attempt-level
+`db.client.attempt.duration` histogram and the `db.client.active_requests` gauge, and
 the access-log line under the `_app_s3_access` tag — an errored operation logs at Warn, a
 successful one carrying the URL-path argument logs at Debug, a plain success at Info.
+`db.operation` is the HTTP method (bounded — a metric label); `db.statement` is the URL
+path (per-call, span + log only).
 
-### 4.5 Fault/resilience drill (needs starter-governance)
+### 4.5 Fault/resilience drill (needs starter-governance-file)
 
-Arms per endpoint service label `s3:127.0.0.1:9000`: a governance rule with
+Applies per endpoint service label `s3:127.0.0.1:9000`: a governance rule with
 `fault.rate` against that service makes a fraction of uploads fail through the executor —
-observable as outcome-tagged spans/counters from the executor's observe layer. Flip the rule
+observable as outcome-tagged spans/counters from the resilience layer. Flip the rule
 file to withdraw (hot-reload through the governance source). ⚠ note the retry policy retries
 per round-trip, not per stream: uploads with large bodies may re-send the body.
 
@@ -283,7 +287,7 @@ per round-trip, not per stream: uploads with large bodies may re-send the body.
 |---------|--------------|-----|
 | Startup aborts "failed to reach s3 endpoint" | endpoint down, wrong port, `use-ssl` mismatch, or bad credentials | The probe error carries the underlying cause (signature mismatch ⇒ creds; connection refused ⇒ endpoint/ssl). |
 | Startup aborts "unknown bucket-lookup" | invalid style string | One of auto / virtual-host / dns / path. |
-| Custom driver client has no resilience | dynamicTransport handshake only exists for DefaultDriver | Accept observe-only, or install your own indirection in the driver. |
+| Custom driver client has no resilience | dynamicTransport handshake only exists for DefaultDriver | Accept no declaration/resilience, or install your own indirection in the driver so `NewClient` can swap the stack in. |
 | Works against MinIO, 404/redirect on cloud X | virtual-host addressing not supported there | `bucket-lookup=path`. |
 | readyz DOWN though app works | credential rotation invalidated the pair after boot | The indicator probes live; refresh credentials / restart. |
 | Two instances → container duplicate-bean error on health | (historical) indicator registered without `.Name` | Current code registers `s3:<name>` — keep that pattern when copying it for your own starters. |
@@ -305,5 +309,5 @@ Design suspects (for the audit ledger; first two carried over from the previous 
   surface redundancy.
 - NEW: service label is `s3:<endpoint>` only — two instances on one endpoint (like the
   example's `a`/`b`) share one resilience scope; no per-instance disambiguation.
-- NEW: health probe and fail-fast probe are the same ListBuckets call but duplicated in code
-  (starter.go HealthCheck vs health/health.go) — harmless but a small consolidation target.
+- The health probe and the fail-fast probe are the same ListBuckets call, now defined once in
+  `HealthCheck`; `NewClientHealth` and the `newClient` startup probe both delegate to it.

@@ -30,6 +30,7 @@ import (
 	"github.com/twmb/franz-go/pkg/sasl/plain"
 	"github.com/twmb/franz-go/pkg/sasl/scram"
 	"github.com/twmb/franz-go/plugin/kotel"
+	"go-spring.org/cloud"
 	"go-spring.org/log"
 	"go-spring.org/stdlib/errutil"
 )
@@ -41,29 +42,47 @@ import (
 // assembly. A custom driver is a bean, so it may inject the configuration/beans
 // it needs — e.g. company config bound from a properties file at wiring time.
 //
+// CreateClient returns the client COMPLETE. params supplies the container's
+// service-governance capabilities (see [cloud.ClientParams]), which the
+// driver applies WHILE it builds — by calling [AttachGovernance] — so nothing
+// patches the client afterwards. Attaching is part of the contract, not an
+// optional extra: the guard is indexed by the raw *kgo.Client the driver
+// returns, and it is the only handle this package has on that client for the
+// produce/consume path. A driver that returns without attaching leaves its
+// client ungoverned.
+//
+// params is one struct rather than a parameter per capability so this interface —
+// which every company driver implements — stays stable as capabilities are
+// added. A driver that has no use for one of its fields simply ignores it.
+//
 // At most one Driver bean is expected per process; every client under
 // ${spring.kafka} is built through it, and per-instance differences are
 // expressed through [Config].
 type Driver interface {
-	CreateClient(ctx context.Context, c Config) (*kgo.Client, error)
+	CreateClient(ctx context.Context, c Config, params cloud.ClientParams) (*kgo.Client, error)
 }
 
 // DefaultDriver is the default implementation of the Driver interface.
 type DefaultDriver struct{}
 
 // CreateClient creates a new *kgo.Client from the provided configuration. It
-// owns full client assembly — the kotel trace/metric hooks, the observe
-// access-log hook, the log bridge, consumer group/topic, SASL mechanism, TLS and
-// producer options — but not the startup ping or the resilience wiring, which
-// are the starter's lifecycle concerns (see newClient in starter.go).
-func (DefaultDriver) CreateClient(ctx context.Context, c Config) (*kgo.Client, error) {
+// owns full client assembly — the kotel trace/metric hooks, the log bridge,
+// consumer group/topic, SASL mechanism, TLS and producer options — and, last of
+// all, attaches the governance bundle (see [AttachGovernance]), so the returned
+// client is complete. The startup ping is deliberately not here: it is the
+// starter's lifecycle concern (see newClient in starter.go).
+//
+// The per-message access log is no longer a client hook (the observe hook was
+// removed): the resilience executor emits it from the declared operation (see
+// observe.go and command.go), so the hook set here is kotel's alone.
+func (DefaultDriver) CreateClient(ctx context.Context, c Config, params cloud.ClientParams) (*kgo.Client, error) {
 	kt := kotel.NewKotel(
 		kotel.WithTracer(kotel.NewTracer()),
 		kotel.WithMeter(kotel.NewMeter()),
 	)
 	opts := []kgo.Opt{
 		kgo.SeedBrokers(strings.Split(c.Brokers, ",")...),
-		kgo.WithHooks(append(kt.Hooks(), newObserveHook())...),
+		kgo.WithHooks(kt.Hooks()...),
 		kgo.WithLogger(newLogger()),
 	}
 	if c.Group != "" {
@@ -92,7 +111,16 @@ func (DefaultDriver) CreateClient(ctx context.Context, c Config) (*kgo.Client, e
 		return nil, err
 	}
 	opts = append(opts, producerOpts...)
-	return kgo.NewClient(opts...)
+	cl, err := kgo.NewClient(opts...)
+	if err != nil {
+		return nil, err
+	}
+	// The client is complete when returned: governance is applied HERE, while it
+	// is built, not by a later starter step. AttachGovernance indexes the executor
+	// by this raw client, which is the only handle the package's produce/consume
+	// path has on it.
+	AttachGovernance(cl, c.Brokers, params)
+	return cl, nil
 }
 
 // saslMechanism builds the franz-go SASL mechanism from the configuration.

@@ -44,15 +44,19 @@ const defaultQoS byte = 1
 // mqtt.Client bean stays available for retained messages, custom QoS, wildcards
 // and other MQTT features this driver does not model.
 //
+// The driver DECLARES each operation's identity (see [operation]) and routes it
+// through the client's resilience executor — the single emitter of the span, the
+// durations and the access log. It does not instrument anything itself: publish
+// rides [GuardedPublish] and the consume callback rides [GuardedConsume].
+//
 // Envelope mapping is payload-only: MQTT 3.1.1 packets carry no per-message
 // metadata, so Key, Headers and Timestamp are NOT transmitted. That also means
-// W3C trace context cannot ride the message: the messaging.Observe decorator
-// still supplies the operation metrics and access log, but its producer and
-// consumer spans land as unlinked roots (unlike the Kafka/NATS/Pulsar/RocketMQ
-// drivers). Applications needing message metadata should use an MQTT 5.0
-// broker/client or a different transport.
+// W3C trace context cannot ride the message, so a producer and a consumer span
+// land as unlinked roots (unlike the Kafka/NATS/Pulsar/RocketMQ drivers) — an
+// inherent protocol limitation, not an instrumentation gap. Applications needing
+// message metadata should use an MQTT 5.0 broker/client or a different transport.
 func NewDriver(cl mqtt.Client) messaging.Driver {
-	return messaging.Observe(&driver{cl: cl}, "mqtt")
+	return &driver{cl: cl}
 }
 
 type driver struct{ cl mqtt.Client }
@@ -89,12 +93,20 @@ type subscriber struct {
 }
 
 func (s *subscriber) Subscribe(_ context.Context, handler messaging.Handler) error {
-	// Recover converts a handler panic into the normal error path
-	// (nack/redelivery) instead of unwinding into the SDK goroutine.
+	// Recover converts a handler panic into the normal error path instead of
+	// unwinding into the SDK goroutine.
 	handler = messaging.Recover(handler)
 	token := s.cl.Subscribe(s.topic, defaultQoS, func(_ mqtt.Client, m mqtt.Message) {
 		msg := &messaging.Message{Payload: m.Payload()}
-		if err := handler(context.Background(), msg); err != nil {
+		// Route through the same seam the raw client API uses (GuardedConsume):
+		// it declares the consume's identity (topic from msg.Topic()) and runs the
+		// handler under the client-scoped resilience executor — a no-op
+		// pass-through when governance is off for this client, a rejection
+		// sentinel when rate-limited/circuit-open. The paho callback is
+		// fire-and-forget, so a handler error is only logged.
+		if err := GuardedConsume(context.Background(), s.cl, m, func(ctx context.Context) error {
+			return handler(ctx, msg)
+		}); err != nil {
 			log.Errorf(context.Background(), log.TagAppDef, "mqtt driver handler error on %q: %v", m.Topic(), err)
 		}
 	})

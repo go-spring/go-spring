@@ -15,8 +15,8 @@
  */
 
 // Package otlp registers the OTLP metric exporters (otlp-grpc, otlp-http) with
-// the metric meter-exporter registry. It is blank-imported by the top-level
-// starter-otel package so the default exporter is available with no per-app
+// the metric meter-exporter registry. It is registered by the top-level
+// starter-otel package from its starter.go so the default exporter is available with no per-app
 // wiring; an application that wants neither OTLP exporter can drop this import.
 package otlp
 
@@ -31,7 +31,9 @@ import (
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 )
 
-func init() {
+// Register makes these exporters available under "otlp-grpc" and "otlp-http".
+// Called from the starter's starter.go; the package declares no init of its own.
+func Register() {
 	metric.RegisterMeterExporter("otlp-grpc", newGRPC)
 	metric.RegisterMeterExporter("otlp-http", newHTTP)
 }

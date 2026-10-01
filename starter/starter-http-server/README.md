@@ -14,7 +14,7 @@ identity model in [`cloud/security`](../../cloud/security).
 | `Authorize(authorities...)` | Gates a route on authorities (401 anonymous / 403 lacking) |
 | `CORS(cfg)` | Adds `Access-Control-Allow-*` headers, answers preflights |
 | `CSRF(cfg)` | Double-submit-cookie CSRF defence for browser flows |
-| `Observe()` | Span, request metrics and access log per request — opt-in, see Observability |
+| `ServerPolicy(label, mgr)` | Inbound admission — and the request's span, metrics and access log, see Observability |
 
 ## Quick Start
 
@@ -44,26 +44,29 @@ core package. For the gin and echo equivalents of these middlewares, see
 
 ## Observability
 
-`Observe()` is the server-side observability middleware. It is **opt-in**, unlike the
-gin/echo/hertz starters where instrumentation is built in: this package decorates whatever
-handler the application passes to the framework's own server, so it has no place to install
-itself. Compose it like any other decorator:
+A request's signals come from `ServerPolicy` — the same division every other starter uses
+now: the middleware **declares** what the request is, and the resilience emitter produces the
+signals from that declaration. There is nothing else to install:
 
 ```go
 mux.Handle("/api/me", httpsvr.Chain(
-    httpsvr.Observe(),
+    httpsvr.ServerPolicy("http-server::9090", mgr),
     httpsvr.CORS(cfg),
     httpsvr.Authenticate(v, true),
 )(handler))
 ```
+
+(An earlier version had a separate opt-in `Observe()` middleware that built the span and the
+instruments itself. It is gone: two middlewares each holding an executor meant two ways to
+be observed and one way to be admitted, and the emitter already owns the signals.)
 
 One request produces:
 
 * a server span named `<METHOD> <path>`, carrying `http.request.method`, `url.path` and, on
   exit, `http.response.status_code` plus `status`;
 * `http.server.request.duration` (Float64Histogram, seconds) and
-  `http.server.active_requests` (Int64UpDownCounter), labelled `http.request.method` and
-  `http.response.status_code`;
+  `http.server.active_requests` (Int64UpDownCounter), labelled `http.request.method`,
+  `http.response.status_code` and `status`;
 * one access-log line, tag `_app_http_server_access`
   (`log.RegisterAppTag("http_server", "access")`), carrying `http.request.method`,
   `url.path`, `http.response.status_code`, `status` and `duration_ms`. A 5xx is a Warn

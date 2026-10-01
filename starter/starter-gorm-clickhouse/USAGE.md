@@ -220,12 +220,16 @@ as-is (sidecar owns discovery+LB), though TLS may still force the native path.
 
 `db.WithContext(ctx).Raw("SELECT version()").Scan(&v)`:
 
-1. the `gorm:raw` processor — replaced by gormcore's executor wrapper (governance center:
-   timeout/retry/breaker, fault injector when armed; `gorm.ErrRecordNotFound` = success).
-2. observe plugin span (db.system=clickhouse) + in-flight metric.
+1. the observe plugin's before-callback runs on the statement's context and DECLARES the
+   operation (name, `db.system=clickhouse`, `db.operation`, SQL).
+2. the `gorm:raw` processor — replaced by gormcore's executor wrapper (governance center:
+   timeout/retry/breaker, fault injector when armed; `gorm.ErrRecordNotFound` = success) —
+   reads the declared operation off the ctx.
 3. the original processor: pool checkout → native DialContext (discovery re-pick) →
    native protocol handshake (TLS if `opts.TLS` set) → query.
-4. `after_*` sets the SQL, ends span/metric, writes the access log.
+4. the resilience layer EMITS the signals from the declared operation: the call span
+   (db.system=clickhouse), call-level `db.client.operation.duration`, attempt-level
+   `db.client.attempt.duration`, `db.client.active_requests`, and the one access log.
 
 ---
 
@@ -307,7 +311,7 @@ pool connections land on it (per-dial `Pick()`).
 ```bash
 cd example-load && docker compose up -d
 go run . -duration=10s                        # baseline SELECT 1
-# set fire (hot-reload via starter-governance):
+# set fire (hot-reload via starter-governance-file):
 #   spring.governance.client.fault.enabled=true  spring.governance.client.fault.rate=0.5  spring.governance.client.fault.error=generic
 go run . -duration=10s                        # ~50% injected in the breakdown
 ```
@@ -318,7 +322,9 @@ makes per-iteration inserts/migrations brittle (example-load comment).
 ### 4.4 Observability (example-otel)
 
 Run `example-otel` (Jaeger via compose): per-query spans `db.system=clickhouse` with the
-SQL statement, prometheus metrics on :9090/metrics, access log by `observability` level.
+SQL statement, call-level `db.client.operation.duration` and attempt-level
+`db.client.attempt.duration` plus `db.client.active_requests` on :9090/metrics, access log
+by `observability` level.
 
 ---
 

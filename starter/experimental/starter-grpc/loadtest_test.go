@@ -20,7 +20,7 @@ import (
 	"context"
 	"testing"
 
-	"go-spring.org/cloud/governance/traffic"
+	"go-spring.org/cloud/traffic"
 	"go-spring.org/stdlib/testing/assert"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"

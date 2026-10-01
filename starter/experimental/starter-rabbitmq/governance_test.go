@@ -23,9 +23,9 @@ import (
 	"testing"
 
 	amqp "github.com/rabbitmq/amqp091-go"
-	"go-spring.org/cloud/governance/resilience"
-	"go-spring.org/cloud/governance/traffic"
 	"go-spring.org/cloud/messaging"
+	"go-spring.org/cloud/resilience"
+	"go-spring.org/cloud/traffic"
 	"go-spring.org/stdlib/testing/assert"
 )
 
@@ -46,9 +46,9 @@ func (s *stubExecutor) Refresh(resilience.ClientPolicy) error { return nil }
 
 // applyResilience always attaches an executor, whether or not the governance
 // beans are wired. Whether it protects anything is decided by the governance
-// rule for the service label, not by a per-instance switch: an unarmed manager
-// yields a transparent pass-through, so attaching one costs a call frame and
-// changes nothing else.
+// rule for the service label, not by a per-instance switch: a manager with no
+// rule yields a transparent pass-through, so attaching one costs a call frame
+// and changes nothing else.
 func TestApplyResilienceAttachesGuard(t *testing.T) {
 	conn := &amqp.Connection{}
 
@@ -68,7 +68,7 @@ func TestApplyResilienceAttachesGuard(t *testing.T) {
 func TestDriverPublishGuarded(t *testing.T) {
 	conn := &amqp.Connection{}
 	stub := &stubExecutor{}
-	clientGuards.Store(conn, &clientGuard{exec: stub, service: "rabbitmq:test"})
+	clientGuards.Store(conn, &clientGuard{exec: stub, serviceLabel: "rabbitmq:test"})
 	defer func() {
 		clientGuards.Delete(conn)
 	}()

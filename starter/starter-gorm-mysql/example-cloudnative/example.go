@@ -25,7 +25,8 @@
 //     starter-actuator on :9370 (/readyz reflects the pool).
 //   - DYNAMIC CONFIG: a gs.Dync[string] field is bound to a watched file; editing
 //     it hot-reloads the value with no restart.
-//   - OBSERVABILITY: gorm observe plugin + observe kit ride the OTel globals.
+//   - OBSERVABILITY: the gorm observe plugin declares each operation; the
+//     resilience layer emits the span, metrics and access log via the OTel globals.
 //
 // The app self-tests every capability and exits non-zero on failure.
 package main
@@ -44,14 +45,14 @@ import (
 	"time"
 
 	"go-spring.org/cloud/discovery"
-	"go-spring.org/cloud/governance/resilience"
+	"go-spring.org/cloud/resilience"
 	"go-spring.org/spring/gs"
 
 	_ "go-spring.org/starter-actuator"    // aggregates the gorm health.Indicator
 	_ "go-spring.org/starter-config-file" // registers the file-watch config provider
 	"go-spring.org/starter-gorm"
 	_ "go-spring.org/starter-gorm-mysql"
-	_ "go-spring.org/starter-governance" // registers the centralized governance center
+	_ "go-spring.org/starter-governance-file" // registers the centralized governance center
 )
 
 const mountDir = "./mount"

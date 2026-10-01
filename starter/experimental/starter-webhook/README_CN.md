@@ -5,7 +5,7 @@
 `starter-webhook` 为 Go-Spring 提供零第三方依赖的通知支持：多实例 webhook
 通知器，按接收方自己的载荷格式 POST —— generic JSON、钉钉、飞书、企业微信
 或 Slack —— 支持可选的 HMAC 加签、逐次发送的韧性（限流/熔断/故障注入）
-与 OTel span。需要邮件通道时配合 `starter-mail` 使用。
+与逐次投递的可观测。需要邮件通道时配合 `starter-mail` 使用。
 
 ## 安装
 
@@ -71,9 +71,14 @@ err := s.Ops.Send(ctx, &StarterWebhook.Notification{
 - **加签** — `secret` 自动启用钉钉加签（timestamp+sign 查询对）或飞书
   签名。
 - **韧性** — 每次 Send 走治理执行器（`webhook:<name>:<channel>`），端点
-  抖动会被熔断而不是堆请求。未导入 `starter-governance` 时是透明直通。
-- **可观测** — 经 observe kit 的逐次访问日志，外加 OTel span
-  （`webhook.send`），依赖 `starter-otel` 安装的全局 provider。
+  抖动会被熔断而不是堆请求。未导入 `starter-governance-file` 时退化为只观测、
+  不受治理的执行器（每客户端告警一次）。
+- **可观测** — 每次 Send **声明**自己的语义身份（span `webhook.send`；指标
+  前缀 `messaging.client`；有界 label `messaging.system`、`messaging.operation`、
+  `webhook.channel`），并路由经过 resilience 执行器；执行器上的 observe 层是唯一
+  **发射点**：span、`messaging.client.operation.duration` 与
+  `messaging.client.attempt.duration` 直方图，以及每次投递一行访问日志。
+  starter 自身不发射任何信号。未引入 `starter-otel` 时 OTel 全局为空操作。
 - **天然无状态** — 不持有连接、无健康指示器、无 destroy 钩子；为什么没有
   启动探针见 DESIGN。
 

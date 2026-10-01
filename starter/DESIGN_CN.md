@@ -20,6 +20,18 @@ starter 是**集成模块**:只负责把某一个第三方服务或框架接入 
   配置 Provider 类(§2.5)在此之上有变体:用 `provider.go` 取代 `config.go`
   (没有绑定 `Config` —— 连接参数从导入 source 串解析),冒烟 module 为
   `example-config/`。
+- **所有 `init()` 都放在 `starter.go` 里。** 注册是 starter 的入口,必须能在一处
+  读完:包内其他文件一律不声明 `init()`。各能力文件(`config.go`、`client.go`、
+  `observe.go`……)只放类型、构造函数与辅助函数——即实现,永远不放注册。无可注册
+  内容的 module(纯库如 `starter-http-server`,或 `starter-gorm` —— 它的注册由各
+  方言自己的 `starter.go` 完成)干脆没有 `init()`。
+- **子包同样适用。** starter 靠副效应导入的辅助包——`starter-otel/metric` 下的
+  exporter 工厂、`internal/logger` 下的框架日志桥——对外只暴露一个普通的
+  `Register` / `Install`,由 `starter.go` 的 `init()` 调用,自己不再声明 `init()`。
+  这样单独导入该子包什么也不做,这正是要点:starter 注册什么,一处读完。公共子包自己
+  拥有的默认值同理:`starter-otel/trace` 把 W3C propagator 放在 `RegisterDefaults`
+  里,由 starter 调用——只链接该包、不链接 starter 根包的调用方(luohua 伞包、该包
+  自己的测试)显式调它,而不是从一个隐藏的 `init()` 里拿到注册。
 - **每个源文件都要有 Apache License 头**(见 [../LICENSE_HEADER](../LICENSE_HEADER))。
 - **仓库级 module 规则同样适用**(根无 `go.mod`;一子项目一 module;内部依赖靠
   `go.work` 解析、不写 `require`)。这些规则由 [../ARCHITECTURE_CN.md §1](../ARCHITECTURE_CN.md)
@@ -115,11 +127,13 @@ Web(`gin`、`echo`、`hertz`……)与 RPC(`grpc`、`kitex`、`thrift`、`dubbo`
   `${driver:=...}` 选中,无需 fork starter。没有包级注册表:点名一个不存在的 bean
   在启动期失败。这也是注入服务发现的接缝(由 driver 构建 dialer)。可选能力放到
   **独立**接口上(如 go-redis 的 `ClusterDriver`),让已有的自定义 driver 保持可编译。
-- **需要治理的 client starter 默认集成 starter-governance。** starter 在自己的
-  **非测试**代码里 blank-import `starter-governance`,于是 `*resilience.Manager` /
+- **需要治理的 client starter 靠自己的 import 拿到它。** 不需要任何治理 import:每个 authority
+  由**管它的那个包**注册 —— `cloud/resilience` 注册 `*resilience.Manager`、`cloud/loadbalance`
+  注册 `*loadbalance.Manager`、`cloud/fault` 注册 `*fault.Injector` —— 而注入其中一个的 client
+  必然已经为了类型 import 了那个包。于是 `*resilience.Manager` /
   `*loadbalance.Manager` / `*fault.Injector` 必然在容器里;注入写成**必填**
   (`gs.IndexArg(N, gs.TagArg(""))`),不写可空(`"?"`)。这三个 bean 本就是 client
-  契约的一部分(它天生可治理、可观测、可路由),而 starter-governance 在不绑定规则来源
+  契约的一部分(它天生可治理、可观测、可路由),而 starter-governance-file 在不绑定规则来源
   时完全惰性,所以集成它不改变任何默认行为。关掉治理是
   `spring.governance.enabled=false`(或不配来源),**不是"bean 不存在"**。写成可空会把
   "用户忘了 import"变成静默降级(治理看着在工作、其实没有),这正是本规则要消除的错误。
@@ -127,6 +141,11 @@ Web(`gin`、`echo`、`hertz`……)与 RPC(`grpc`、`kitex`、`thrift`、`dubbo`
   (只在非测试代码里 blank-import;`gs.RunTest` 会经
   `spring.force-autowire-is-nullable` 把一切注入强制 nullable —— 那是 gs 的行为,
   不是本规则的例外。)
+  构造函数在**构造期**把它们接上,那是 client **是什么**的一部分,而不是"造完要记得补的一步"
+  —— 它组装 `cloud.ClientParams{Resilience, Fault, Loadbalance, Discovery}`,并在返回前
+  `exec = params.ExecutorFor(system, label)`。零值 `ClientParams`(容器之外自己调构造函数的
+  应用)退化为 `resilience.Unmanaged`:仍然被观测,外加一次"没有任何保护生效"的告警 —— 容器
+  之外因此永远不是黑洞。
 - **启动期连接校验。** 客户端库允许时,构造函数做一次有超时上界的探测(如 Redis
   `PING` 用 `DialTimeout`),让配置错误在启动期暴露而非首个请求时。
 - **每个实例都有 `Destroy`。** 每个 bean 注册析构函数,`Close()` 连接并停掉其背后的
@@ -148,10 +167,14 @@ Web(`gin`、`echo`、`hertz`……)与 RPC(`grpc`、`kitex`、`thrift`、`dubbo`
     `lbMgr.Bind(pool, entry label)`(在注入的 `*loadbalance.Manager` 上)——于是该 entry 的
     治理规则原地驱动 `balancer` / `outlier-threshold` / `outlier-suspend-for`,走的是
     `loadbalance` manager,不需要 import `cloud/governance`。
-  - `resilience.go` —— wrapper bean 的 `ApplyResilience` InitMethod、executor,以及
-    它的 `Close` / `CloseDriver` Destroy 钩子。
-  - `observability.go` —— observe kit 桥接(trace/metric/access-log 钩子)。
-  - `health/` —— health indicator 构造函数,作为子包以便不拉整个 starter 就能引用。
+  - `client.go` —— 组装好的 client 及其 resilience 那一侧:构造函数钉在它上面的 executor、
+    把每次调用路由进该 executor、`Close` Destroy 钩子,以及任何 per-client 保护缝
+    (如 mongodb 的 dial 层 `resilience.NewDialer`)。
+  - `observe.go` —— 交给框架唯一发射点的 operation 声明(本 starter 的 `Metric`
+    前缀、有界属性、无界 detail、access `LogTag`);发射点本身在
+    `cloud/resilience`(见 §3)。
+  - `health.go` —— health indicator 构造函数,放在 starter 根包里(单函数子包不值那个
+    import 代价)。
   这一划分与生态内既有 client starter(go-redis、gorm-*、mongodb、elasticsearch、
   neo4j……)现遵循的关注点边界一致,新增 starter 应照抄。§4 清单第 4 条引用此骨架。
 
@@ -176,7 +199,7 @@ WebSocket(`websocket`、`websocket-coder`)、中间件(`lua-filter`)、鉴权
 - **`starter-pprof`** 在**独立**端口跑一个专用 HTTP server 暴露运行时 profile,刻意
   与应用主端口隔开。
 - **`starter-governance-sentinel`** 只贡献一个进程级 bean —— 名为 `sentinel` 的
-  `resilience.Driver` —— 给治理中心的 driver 目录。与 `starter-governance` 一起导入后,
+  `resilience.Driver` —— 给治理中心的 driver 目录。与 `starter-governance-file` 一起导入后,
   治理文档的 `spring.governance.driver=sentinel` 一次切换全部 executor——**含入站准入**，因为同一个
   `Driver` 同时应答两个方向。无端口、无自有 key。
 
@@ -259,7 +282,9 @@ WebSocket(`websocket`、`websocket-coder`)、中间件(`lua-filter`)、鉴权
   (`enabled` + cert/key/CA),默认关闭。
 - **现阶段容忍重复优先于过早抽象。** 公共能力(health、TLS、fail-fast)刻意在每个模块
   各写一份,而不抽到公共包。后续可能有统一收敛的一轮重构;在那之前不要建跨 starter 的
-  helper 包。
+  helper 包。判据是 helper 的**性质**,不是谁在用它:`cloud/governance.Parse`(规则文档
+  解析器)被 file/http/etcd/nacos 四个源共享,放进了它产出模型所在的 `cloud/governance`
+  —— 这是 `cloud/` 唯一一处 `spring` 依赖,可以接受,因为文档格式本就是框架自己的。
 - **优先用框架自带的注册与发现;没有的才考虑统一。** 默认使用每个框架**自己**的
   注册与发现机制,而不是在其之上硬套一层 Go-Spring 抽象。只有对**本身没有原生机制**
   的传输层,才**考虑**由 Go-Spring 提供统一能力。原因:各 RPC 框架各自带一套互不
@@ -303,9 +328,10 @@ WebSocket(`websocket`、`websocket-coder`)、中间件(`lua-filter`)、鉴权
   去发现);实例级注册是给虚机 / 裸机 / 混合部署用的。每个 registry starter 属全局 /
   基础设施形态(§2.4):导出一个 `gs.Server`,应用就绪后注册、`PreStop` 时注销,使滚动
   重启无损。
-- **可观测遵循"中心定义、边缘桥接"。** starter 通过 OTel 全局输出,或用 `SetLogger`
-  钩子把库的内部日志桥接进 go-spring `log`;桥接时必须同时补一个 go-spring
-  `FileLogger` sink,否则会丢掉 console 输出。
+- **可观测遵循"中心定义、边缘桥接"。** client 侧 starter 根本不上报:它把每个操作**声明**给
+  框架唯一的发射点(下一条)。真正上报的组件走 OTel 全局;把库的内部日志桥接进 go-spring
+  `log` 的组件走 `SetLogger` 钩子,且必须同时补一个 go-spring `FileLogger` sink,
+  否则会丢掉 console 输出。
 - **仪器集是共享的,观测不是。** 组件解析仪器**每进程一次**,不是每实例一次:OTel SDK 按
   name/description/unit/kind 给仪器建索引,之后每次创建都拿回第一份,所以重复创建是个空操作,
   且会静默保留第一份的描述。因此风险不在**重复创建**,而在**注册**。
@@ -317,20 +343,55 @@ WebSocket(`websocket`、`websocket-coder`)、中间件(`lua-filter`)、鉴权
     这个条件在调用点看不出来,违反它的表现是**少一条 series**,不是启动失败。`RegisterCallback`
     既可叠加又可撤销。
   - *同名即同一 descriptor。* name、description、unit 每次创建都必须一致,否则后一次连同它的
-    描述一起被忽略。
+    描述一起被忽略。尚存的不一致是**登记,不是许可** —— 见 `scripts/check-observability.sh`
+    的 `KNOWN_MULTI_DESC`:HTTP/RPC 服务端族(未迁移,见 §5),以及
+    `messaging.client.connection.state_changes`(三个后端把 system 名写进了描述)。
   - *tracer 永不缓存*在结构体字段或包级变量里:被捕获的 `otel.Tracer` 在全局 provider 被重新
     设置之后就停止转发。到使用点现取。
   - *仪器集里的状态最多是成员关系* —— 哪些实例还活着 —— 绝不是测量数据。一个缓冲数据的共享
     observer 就是一个无人能界定边界的全局数据存储。
+- **观测是两层 —— 那是数据粒度,不是第二个发射点。** 一次逻辑调用产出**调用级**记录
+  （总耗时 = 尝试 + 退避、最终状态、尝试次数）与每次下游尝试的**尝试级**记录（下游自己那次
+  花了多久）。两者量的不是一回事:下游耗时是**下游的属性**,退避是**我们策略的属性**,混起来
+  会得出"调大退避 → 下游变慢"的荒谬结论。首次就成功的调用两层数值相等 —— 那是**两个语义**,
+  不是重复。**被重试抹掉的错误绝不记为 error**（OTel 明文规则）:调用报的是最终状态。
 - **组件可观测遵循同一条规则:同类型 → 同名、同型、同齐整,且名字取能力不取实现**
-  （`db.client.operation.duration`,绝不是 `redis.command.duration`）。三条原则支撑它,
-  少一条就会走偏:
-  - *完整性* —— 每个组件都要带上它能带的信号:span、时长指标、在途 gauge,以及每调用
-    一行访问日志。缺信号、缺一个能分辨成败的结果维度,都是**缺陷**,不是「风格不同」。
-    这一条对没有同类的组件与族成员同样成立。
-  - *共同性* —— 同族成员（同一能力背后的可互换后端）必须在**含义相同的那些部分**上
-    一致:同样的键、同样的仪器类型、同样的取值词表。这正是「换一个后端不必重写看板、
-    告警与查询」的由来。
+  （`db.client.operation.duration`,绝不是 `redis.command.duration`）。框架现在有**唯一
+  一个发射点**,落在 resilience 链上;client 侧 starter 靠**声明**每个操作是什么来喂它。
+  client starter 声明 `observability.WithOperation(ctx, observability.Operation{...})` ——
+  操作的 `Name`、`Metric` 前缀（`db.client`、`messaging.client`）、有界的 `Attrs`、
+  无界的 `Detail` 与 `LogTag` —— 再把调用路由进 resilience executor。resilience 的观测层
+  （`cloud/resilience/observe.go` 的 `wrappedClientExecutor.Execute`）就按这份
+  声明发射:调用 span、`<prefix>.operation.duration`（调用级,含重试与退避）、
+  `<prefix>.attempt.duration`（尝试级,下游自己那次花了多久）、
+  `<prefix>.active_requests`（在途调用）、永远开启的 `resilience.client.calls{status}`,
+  以及每调用一行访问日志。
+  - **发射点在重试循环之外**,所以尝试层只有指标、没有 span —— 在那个位置开不出 per-attempt
+    的 span。这是刻意的取舍,不是缺口。
+  - **关掉治理不等于关掉观测。** manager 对**透传 executor 也套**观测层,所以
+    `spring.governance.enabled=false` 保留全部 span、指标与访问日志,只丢掉保护。发射点落在
+    `resilience` 而不是 `cloud/observability`,是因为它的 fallback 路径要带 `resilience.*`
+    名字与 resilience 的日志 tag —— 放中立包就得去借这套词汇。
+  - **`Attrs` 必须有界**:这里的每个属性都会同时变成 metric label、span 属性和日志字段,
+    无界的值（缓存键、主题名）会把序列撑爆。**`Detail` 可以无界** —— 键、语句、URL 路径、
+    主题 —— 它进 span 和日志,但**永不**进 metric label。
+  - **发射点在 `Execute` 入口就读 operation**,所以在 executor **内部**做的声明没有任何人
+    会读到:钩子挂在 resilience round-tripper **下方**的传输层（见 `starter-s3`）要在它外面
+    声明。
+  - **日志分级归发射点**:失败 Warn、带 `Detail` 的成功 Debug（惰性）、不带 `Detail` 的成功 Info。
+  - **非幂等操作绝不重试**:重复一次会变成**第二个副作用**（而非第二次尝试）的调用 —— 发信、
+    向 broker 发布、处理一条消费记录 —— 声明 `NonIdempotent: true`,执行器**只跑一次**,
+    无论策略配了多少重试（配置被这样丢弃时,每个 service 告警一次）。策略不可能知道这一点,
+    只有客户端知道,所以这个声明归客户端做。
+  三条原则支撑这条规则,少一条就会走偏:
+  - *完整性是发射点的义务,一次付清。* 这些信号 —— span、时长指标、在途 gauge,以及每调用
+    一行访问日志 —— 以前是逐组件的清单,现在只在唯一的发射点上查一次,并对每个做了声明的
+    client 成立。于是 client 侧 starter 的完整性就是它的**声明**:没声明、或把发射点已经
+    拥有的信号又自建一遍（自己的 `otel.Tracer`、自己的时长/在途仪器）,才是缺陷。缺一个能
+    分辨成败的结果维度仍是缺陷;发射点的那个维度就是 `status`。
+  - *共同性随完整性一起挪了。* 同类型同名依然成立,但名字现在由发射点按声明的前缀产出,
+    所以同族成员（同一能力背后的可互换后端）靠**声明同一个 `Metric` 前缀和同一批有界属性键**
+    来取得一致。这正是「换一个后端不必重写看板、告警与查询」的由来。
   - *灵活性* —— 组件特有的键是允许的。没有任何东西仅因为「和别人不一样」而违规。
   - *分两档,因为同名只在同义时才成立。* `status`（`ok`/`error`）、`rpc.method`、
     `duration_ms` 在每个 RPC 后端里含义完全相同,所以必须同名 —— 它们是跨框架查询
@@ -338,21 +399,45 @@ WebSocket(`websocket`、`websocket-coder`)、中间件(`lua-filter`)、鉴权
     `rpc.thrift.status_code`）各家取值词表不同,强行同名等于把两个含义塞进一个键,
     比不同名更糟。HTTP 同此一刀:共用的轴是 `status`,细节是
     `http.response.status_code`。
+    客户端发射点同此一刀:`status` 与别处一样是 `ok`/`error`,而
+    **`resilience.outcome`** 承载保护各阶段对这次调用做了什么
+    （`rate_limited`、`circuit_open`、`bulkhead_full`、`retry_budget_exceeded`、
+    `timeout`）—— 什么都没做时它**不出现**。把这些词放进 `status`,就是让一个键有两套
+    词表,正是这一档要防的失败。
   - *日志必须能 join 指标。* 日志行里的身份键必须在某个属性（span 属性或 metric label）
     上同名存在,否则失败的指标落不到解释它的那行日志上。时长键（以 `_ms` 结尾）与
-    `error` 是日志行自身的载荷,不是身份。
+    `error` 是日志行自身的载荷,不是身份。这条规则针对的是**解释组件自己信号**的那行日志;
+    组件的普通应用日志（写在 `log.TagAppDef` 下）不算。
   各族的键清单是机械的,落在 `scripts/check-observability.sh` 里,它就是执行面 ——
   族规列出每个成员必须有的东西,清单之外一律不管。它的各节,以及**登记而非关闭**的缺口:
-  - *族* —— DB、消息、HTTP server、RPC。指标或 span 由第三方库发出的成员需附接入点
-    证据正则登记（证据在**去注释源码**上匹配,所以删掉接线、留着注释照样失败）。
-  - *底线段* —— 自建插桩、但没有可互换同类的组件（`scheduler`、`config-bus`、`mail`、
-    `gateway`）:只查完整性与可 join,因为共同性没有对象可绑。
+  - *族* —— DB 与消息。成员**声明**（本族的 `Metric` 前缀与本族的有界属性键,经
+    `observability.WithOperation`）并把调用路由进 executor;族规查这份声明,并查它**没有**
+    退回自建 span（`otel.Tracer`）或自建时长/在途仪器。HTTP server 与 RPC 两族本轮**未迁移**
+    —— 它们的成员仍自建 span 与仪器,规则照旧。指标或 span 由第三方库发出的成员需附接入点
+    证据正则登记（证据在**去注释源码**上匹配,所以删掉接线、留着注释照样失败）;
+    go-redis（`redisotel.InstrumentTracing`）与 elasticsearch
+    （`ElasticsearchOpenTelemetry`）原先开的第三方**每调用** span 已撤 —— 它们和发射点现在
+    开的调用级 span 重复。第三方**非**每调用的遥测（go-redis 的连接池指标、kotel 的客户端/
+    连接指标）仍照旧保留。
+  - *发射点* —— 唯一的发射点对上述齐整一次性负责,故只在那里查一次:调用 span、
+    `<prefix>.operation.duration`、`<prefix>.attempt.duration`、`<prefix>.active_requests`、
+    永远开启的 `resilience.client.calls{status}`、分级正确的每调用一行访问日志,以及
+    `Detail` 不得进 metric label。
+  - *底线段* —— 自建插桩、但没有可互换同类的组件（`config-bus`、`gateway`）:只查完整性与
+    可 join,因为共同性没有对象可绑。
   - *委托段* —— 信号完全来自共享层（`http-client`、`oauth2-client`、四个 `lock`
-    后端、三个 `transaction` 后端、各配置源、registry 后端）:查的是接线还在不在。
-  - *正向清单* —— 必须被插桩的组件。这套模型靠「已经建了仪器」反向识别成员,所以一个
+    后端、三个 `transaction` 后端、`scheduler` —— 它的信号在 `cloud/scheduling`、各配置源、
+    registry 后端）:查的是接线还在不在。
+  - *正向清单* —— 必须被插桩的组件。这套模型靠「已经带了什么信号」反向识别成员,所以一个
     从未插桩的组件对它完全隐形;这张清单让「该做而没做」变得可见。
-  - *已登记缺口* —— `starter-oauth2-client` 的业务调用经 resilience 层打每调用日志（与
-    `starter-http-client` 同源:它走注入的 `resilience.Manager` 的 `ExecutorFor` 而非自己
+  - *已登记缺口* —— `starter-mongodb` 在 **command 层**发射,而不是声明 operation,因为
+    mongo driver v2 没有 per-command 的 execute 钩子（只有 `CommandMonitor` 这种「只看不能拦」
+    的观察者）,所以它的 resilience/executor 接缝是 **dialer**;每 command 信号只能挂在驱动的
+    command monitor 上,保护则留在 dial 层。它保持发射点的词汇 —— 有界的 `db.system` /
+    `db.operation` label、只进 span 与日志的语句 detail、同样的指标名、自己的 access tag ——
+    保护也保持在 dial 层。这是驱动的约束,是有意接受的。
+    `starter-oauth2-client` 的业务调用经 resilience 层打每调用日志（与
+    `starter-http-client` 同源:它走注入的 `resilience.Manager` 而非自己
     组装包装层）;但 oauth2
     库内部的 token 端点换取不经过那个 RoundTripper,故它只有 span、没有日志。
     kitex 与 kratos 的时长指标没有 `status` 维度,因为指标由库发出;
@@ -403,7 +488,7 @@ WebSocket(`websocket`、`websocket-coder`)、中间件(`lua-filter`)、鉴权
    `spring.` 根不是可选的（§3）,`scripts/check-config-namespace.sh` 在每个绑定点强制。
 4. Client? → `gs.Group` 多实例、driver 注册表、地址必填 + fail-fast、启动期探测、
    每实例 `Destroy`,以及"一个关注点一个文件"的骨架(§2.2):`config.go` /
-   `starter.go` / `discovery.go` / `resilience.go` / `observability.go`(+ `health/`)。
+   `starter.go` / `discovery.go` / `client.go` / `observe.go` / `health.go`。
    配置走两个桶:`conf.BindEach(p, "${spring.<family>.instances}", ...)`,模块 gate 用
    `gs.OnProperty("spring.<family>.instances")`,家族级值在各实例的 tag 里读
    `${spring.<family>.default.*}`。**绝不可直接绑定在家族前缀上** ——

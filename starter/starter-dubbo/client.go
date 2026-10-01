@@ -25,12 +25,6 @@ import (
 	"go-spring.org/spring/gs"
 )
 
-func init() {
-	gs.Provide(
-		NewClient,
-	).Condition(gs.OnBean[*Instance]())
-}
-
 // NewClient builds the single *client.Client from the shared *Instance's
 // consumer configuration.
 func NewClient(d *Instance) (*client.Client, error) {

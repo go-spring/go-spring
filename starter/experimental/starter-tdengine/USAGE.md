@@ -38,7 +38,7 @@ require (
     go-spring.org/starter-tdengine latest
     go-spring.org/starter-actuator latest        // optional: readiness + /metrics
     go-spring.org/starter-otel     latest        // optional: real trace/metric export
-    go-spring.org/starter-governance latest      // optional: resilience/fault policy
+    go-spring.org/starter-governance-file latest      // optional: resilience/fault policy
 )
 ```
 
@@ -50,7 +50,7 @@ package main
 import (
     "go-spring.org/spring/gs"
     _ "go-spring.org/starter-actuator"
-    _ "go-spring.org/starter-governance"
+    _ "go-spring.org/starter-governance-file"
     _ "go-spring.org/starter-otel"
     _ "go-spring.org/starter-tdengine"
     _ "demo/service"
@@ -72,9 +72,10 @@ import (
 )
 
 type Service struct {
-    // Always the wrapper type *StarterTdengine.Client. It embeds *sql.DB,
-    // so ExecContext/QueryContext/QueryRowContext/PingContext promote
-    // unchanged [client.go:38-55].
+    // Always the wrapper type *StarterTdengine.Client. It embeds the raw
+    // *sql.DB, so the whole database/sql surface —
+    // ExecContext/QueryContext/QueryRowContext/PingContext and the rest — is
+    // promoted unchanged [client.go].
     Admin *StarterTdengine.Client `autowire:"a"` // no default database
     Power *StarterTdengine.Client `autowire:"b"` // DSN pins /power
 }
@@ -113,8 +114,9 @@ spring.tdengine.instances.a.max-idle-conns=2
 
 spring.tdengine.instances.b.dsn=root:taosdata@ws(127.0.0.1:6041)/power
 
-# --- observability is always on: spans + db.client.* metrics ride ------------
-# starter-otel's globals, and the access log rides the log package's levels.
+# --- observability is always on: the resilience layer emits the spans and -----
+# db.client.* metrics on starter-otel's globals, and the access log rides the
+# log package's levels. The starter only declares each statement's identity.
 
 # --- actuator + otel ---------------------------------------------------------
 spring.actuator.addr=:9370
@@ -131,7 +133,7 @@ ships 3.3.6.0 with taosAdapter on 6041):
 docker compose -p gs-tdengine-demo up -d          # wait ~30s; taosAdapter boots late
 go run .                        # boot fails fast if the DSN is unreachable (§2.1)
 curl -s :9370/readyz | jq .     # components include tdengine:a and tdengine:b
-curl -s :9370/metrics | grep -E 'db.client.*tdengine'   # per-statement histograms
+curl -s :9370/metrics | grep -E 'db_client_(operation|attempt)_duration'   # per-statement histograms
 grep _app_tdengine_access app.log | tail -3        # one record per statement
 docker exec -it <container> taos -s "SELECT COUNT(*) FROM power.meters"   # 1
 ```
@@ -151,27 +153,32 @@ import starter-tdengine
   └─ gs.Module(OnProperty("spring.tdengine")) fires when any spring.tdengine.instances.* key exists
         └─ conf.BindEach("${spring.tdengine}") → one Config per <name> entry
               ├─ Provide(newClient).Name(<name>)
-              │       .Init((*Client).Init).Destroy((*Client).Destroy).Caller(1)
+              │       .Destroy((*Client).Destroy).Caller(1)
               └─ Provide health.Indicator named "tdengine:<name>", exported as
                   health.Indicator (always registered; no opt-out key)
 
 gs.Run()
-  ├─ ctor newClient [starter.go:61]: optional Driver bean → when none present the
-  │     starter falls back to the bundled DefaultDriver (d == nil [starter.go:65-67]);
+  ├─ ctor newClient [starter.go]: optional Driver bean → when none present the
+  │     starter falls back to the bundled DefaultDriver (d == nil);
   │     when several Driver beans coexist, the entry selects one by name:
   │     spring.tdengine.instances.<name>.driver = <bean-name> (empty = the single Driver
   │     bean by type; naming a missing bean fails startup)
-  │     → d.CreateClient [starter.go:73]: ParseDSN → taosws.NewConnector →
-  │       guardedConnector → sql.OpenDB → pool settings applied
-  │     → ArmGovernance [client.go:81]: resourceLabel ("tdengine:<dsn addr>") →
-  │       fault.WrapClientExecutor(mgr.ClientExecutorFor("tdengine", service), service, inj), mgr/inj
-  │       being the injected *resilience.Manager / *fault.Injector beans →
-  │       exec armed on the slot
-  │     → fail-fast PingContext bounded by 10s; on error the
-  │       half-built client is Closed and the boot fails
-  ├─ Init [client.go:55]: newDBObserver("tdengine") armed on the slot
-  ├─ readiness: indicator runs db.PingContext per instance
-  └─ SIGTERM → Destroy [client.go:102]: exec.Close → db.Close
+  │     → d.CreateClient(ctx, c, params): the ctor bundles the injected beans into
+  │       params = cloud.ClientParams{Resilience: mgr, Fault: inj}
+  │       (*resilience.Manager / *fault.Injector) and passes it in →
+  │       ParseDSN → taosws.NewConnector → NewClient
+  │     → NewClient [client.go]: builds the slot, wraps the connector
+  │       (guardedConnector), opens the *sql.DB pool, applies pool settings —
+  │       identity + guard installed in one act, no Init hook
+  │     → NewClient computes serviceLabel ("tdengine:<dsn addr>") and
+  │       exec = params.ExecutorFor("tdengine", serviceLabel), then installs it on the
+  │       slot — the client is complete when it is returned. The zero bundle (no
+  │       *resilience.Manager) degrades to resilience.Unmanaged: observed only,
+  │       with a one-time warning that no protection applies
+  │     → fail-fast probe: HealthCheck(ctx, cl) — a PingContext bounded by 10s, run
+  │       AFTER assembly; on error the half-built client is Destroyed and the boot fails
+  ├─ readiness: indicator runs HealthCheck (a db.PingContext) per instance
+  └─ SIGTERM → Destroy: exec.Close → db.Close
 ```
 
 A wrong DSN, wrong credentials, or a server older than the driver's minimum fails the boot —
@@ -198,37 +205,46 @@ One statement, e.g. `QueryContext("SELECT COUNT(*) ...")`:
 
 ```
 *sql.DB pool
-  └─ guardedConn.QueryContext [driver.go:143]
-        ├─ guard: exec.Execute(ctx, call) [driver.go:160-165]
+  └─ guardedConn.QueryContext [driver.go]
+        ├─ declare: observability.WithOperation(ctx, operation("query", sql)) — the
+        │    statement's identity goes on ctx BEFORE the executor runs, because the
+        │    executor reads it at Execute entry: a declaration made inside it (per
+        │    attempt) would be read by nobody [observe.go].
+        ├─ run: resilience.Run(ctx, exec, call)
         │    (OUTER: rate limit / breaker / fault decide BEFORE the statement runs; a
         │     rejection never reaches the connection — unit-tested [tdengine_test.go:62-76].
-        │     When governance is off the executor is a transparent no-op.)
-        │    └─ queryObserved: observer.Start(ctx, "query", sql) — span + in-flight
-        │         metric + access log wrap EACH attempt [driver.go:179-187]: a retry
-        │         loop emits one record per attempt, and a rejection emits none.
+        │     With no container the executor is resilience.Unmanaged: the call is observed
+        │     but unprotected, so the declaration still reaches the emitter.)
+        │    └─ the resilience executor EMITS (the starter emits nothing itself): one
+        │         call span ("query"), the call-level db.client.operation.duration and
+        │         one db.client.attempt.duration per downstream attempt, the
+        │         resilience.client.calls counter, and one access log — retries included.
         └─ taosWS conn → websocket → taosAdapter
 ```
 
-Contrast with starter-go-redis, where the access log sits outside the breaker (one record
-per command): here the executor is outermost, so the log answers "what did each attempt do"
-and the resilience metrics answer "what did the executor decide". driver-go ships no
-instrumentation of its own, so the module-local observer owns all three signals here
-(spans + metrics + log — see observe.go).
+Contrast with starter-go-redis, where the declaration rides an interceptor above the
+breaker: here the declaration is made at the call seam and the executor is outermost, so
+the emitter sees the whole call. driver-go ships no instrumentation of its own, so this
+starter only declares the statement's identity (see observe.go); the resilience layer is
+the single emitter of all three signals (span + metrics + log).
 
 What is NOT covered by the guard [driver.go:189-198]:
 
 - `Prepare` delegates to the raw connection — statements executed through a prepared
-  `*sql.Stmt` bypass resilience/observation. Use `ExecContext`/`QueryContext` (which
+  `*sql.Stmt` bypass resilience/observability. Use `ExecContext`/`QueryContext` (which
   `database/sql` prefers anyway, per the source comment).
 - `Begin` delegates too: TDengine has no transactions; the underlying driver reports that.
-- The health probe (`PingContext`) does not pass through observer/executor.
+- The health probe (`PingContext`) does not pass through the declaration/executor.
 
-Before Init arms the slot, statements pass through untouched (nil exec, nil obs — the
-zero-config pass-through is unit-tested [tdengine_test.go:51-58]).
+A slot whose executor is nil passes statements through untouched — the zero-config
+pass-through, unit-tested at the slot level [tdengine_test.go:51-58]. Through the
+constructor the slot always gets an executor ([NewClient] installs one), so in practice a
+statement is always observed: governed when the container is present, `Unmanaged`
+(observed only, warned once) when it is not.
 
 ### 2.3 Service label
 
-`resourceLabel` extracts a display-safe address from the DSN
+`serviceLabel` extracts a display-safe address from the DSN
 ("root:taosdata@ws(127.0.0.1:6041)/power" → "127.0.0.1:6041") and builds
 `tdengine:<addr>` [client.go:91-94, starter.go:89-96]. Limiter/breaker state is scoped per
 TDengine instance, not per statement or per database: two clients to the same host:port
@@ -266,37 +282,43 @@ docker start <tdengine>
 ```
 
 The probe draws a real websocket connection and exercises taosAdapter's action chain
-[health/health.go:30-33].
+[health/health.go:33-37].
 
-### 4.2 What observability actually emits
+### 4.2 What the starter declares, and what the resilience layer emits
+
+The starter emits nothing per call: it declares each statement's identity on the context
+(`observe.go`) — the statement kind (`exec`/`query`), the `db.system`/`db.operation` labels,
+and the SQL as `db.statement` detail (truncated to 512 bytes). The resilience layer, the one
+point on the executor chain that sees a whole call, emits every signal from that declaration.
 
 | Signal | Name / shape | Attributes |
 |--------|--------------|------------|
-| Span | `exec` / `query`, kind = client, tracer `go-spring.org/starter-tdengine` | `db.system=tdengine`, `db.operation=exec\|query`, `db.statement=<sql, bounded>` |
-| Metric | `db.client.operation.duration` (histogram, s) | `db.system`, `db.operation`, `status=ok\|error` |
+| Span | `exec` / `query` (operation name; the resilience layer opens it) | `db.system=tdengine`, `db.operation=exec\|query`, `db.statement=<sql, truncated to 512 bytes>` |
+| Metric | `db.client.operation.duration` (histogram, s) — per call, retries included | `db.system`, `db.operation`, `status` |
+| Metric | `db.client.attempt.duration` (histogram, s) — per downstream attempt | `db.system`, `db.operation`, `status` |
 | Metric | `db.client.active_requests` (up-down counter) | `db.system`, `db.operation` |
-| Metric | `resilience.client.calls` (counter) | `resilience.system=tdengine`, `resilience.service`, `resilience.outcome=success\|rate_limited\|circuit_open\|bulkhead_full\|timeout\|error` |
+| Metric | `resilience.client.calls` (counter) | `system=tdengine`, `service`, `status=ok\|error` (plus `resilience.outcome` when protection refused the call) |
 | Metric | `resilience.client.breaker.state_change` (counter) | from/to attrs |
-| Log | tag `_app_tdengine_access` | system=tdengine op=… status duration; error → Warn, success with the SQL (truncated to 512 bytes) → Debug, plain success → Info |
-| Log | tag `_app_tdengine_resilience` | resilience rejections |
+| Log | tag `_app_tdengine_access` | db.system=tdengine db.operation=… status duration_ms; error → Warn, success with the SQL → Debug, plain success → Info |
+| Log | tag `_app_resilience` | breaker state transitions (the declared access log uses the statement tag above, failures included) |
 
 Without starter-otel, spans/metrics are no-ops (global providers empty) — only the access
 log emits, and it carries no trace_id.
 
 ```bash
-curl -s :9370/metrics | grep -E 'db.client_operation_duration|db.client_active' 
+curl -s :9370/metrics | grep -E 'db_client_(operation|attempt)_duration|db_client_active'
 grep _app_tdengine_access app.log | tail -1
-# system=tdengine op=exec status ok duration=... "INSERT INTO power.d001 ..."
+# db.system=tdengine db.operation=exec status=ok duration_ms=... "INSERT INTO power.d001 ..."
 ```
 
 ### 4.3 Resilience drill
 
-With starter-governance imported, define a policy for service `tdengine:127.0.0.1:6041`
+With starter-governance-file imported, define a policy for service `tdengine:127.0.0.1:6041`
 (§2.3) — e.g. a rate limit. Hammer `ExecContext`; over-limit statements are rejected with
 `resilience.ErrRateLimited` **without reaching the connection** (unit-tested
-[tdengine_test.go:62-76]), surface in `resilience.client.calls{outcome="rate_limited"}` and the
-`_app_tdengine_resilience` log. Flip the policy at runtime — the executor hot-reloads via
-the governance center without restart.
+[tdengine_test.go:62-76]), surface in `resilience.client.calls{resilience.outcome="rate_limited"}` and in a
+Warn line under the `_app_tdengine_access` tag. Flip the policy at runtime — the executor
+hot-reloads via the governance center without restart.
 
 ### 4.4 Fail-fast drill
 
@@ -304,7 +326,7 @@ the governance center without restart.
 docker stop <tdengine> && go run .    # exits with "failed to reach tdengine at 127.0.0.1:6041"
 ```
 
-The startup ping is unconditional and bounded by 10s [starter.go:72-77] — a boot that
+The startup ping is unconditional and bounded by 10s [starter.go:98-108] — a boot that
 succeeds proves credentials, DSN and server version are all good.
 
 ---
@@ -317,9 +339,9 @@ succeeds proves credentials, DSN and server version are all good.
 | Boot fails, driver version error | Server < 3.3.6.0 on the WebSocket path (driver-go v3.8.2 floor) | Upgrade the server image. |
 | Boot fails at BindEach on `dsn` | Empty or missing `spring.tdengine.instances.<name>.dsn` | The expr tag enforces non-empty — set it. |
 | Health DOWN though SQL works | Probe draws a fresh conn while the pool is exhausted (max-open-conns too low) | Raise max-open-conns; inspect the component error body in /readiness. |
-| No spans/metrics | starter-otel not imported | The observer rides the OTel globals; import starter-otel. |
+| No spans/metrics | starter-otel not imported | The resilience layer emits on the OTel globals; import starter-otel. |
 | No access log lines | Logger level drops Debug/Info, or the log tag is filtered | Check the logger level and logger config for `_app_tdengine_access`. |
-| Statements through db.Prepare are unguarded/unobserved | `Prepare` bypasses the slot by design [driver.go:189-191] | Use ExecContext/QueryContext. |
+| Statements through db.Prepare are unguarded/unobserved | `Prepare` bypasses the slot by design [driver.go] | Use ExecContext/QueryContext. |
 | Breaker state shared across "databases" | Service label is per host:port, DSN params ignored | Intentional (per-instance scoping); split backends by host to get separate buckets. |
 | `Begin` errors | TDengine has no transactions | By design — the driver reports it. |
 
@@ -337,6 +359,6 @@ Design suspects (kept from the previous audit, plus new):
   out of it, so two DSNs differing only in params or database share one bucket; no
   `tls.*`/`service-name` unlike sibling starters (family asymmetry).
 - `Prepare` escapes the guard seam entirely — an ORM that prepares statements silently loses
-  resilience + observation coverage.
+  resilience + observability coverage.
 - Health indicator has no opt-out key (same family asymmetry as starter-go-redis; redigo
   has `health.enabled`).

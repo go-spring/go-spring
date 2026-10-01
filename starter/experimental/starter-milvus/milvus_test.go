@@ -21,7 +21,7 @@ import (
 	"testing"
 
 	"github.com/milvus-io/milvus-sdk-go/v2/client"
-	"go-spring.org/cloud/governance/resilience"
+	"go-spring.org/cloud/resilience"
 	"go-spring.org/stdlib/testing/assert"
 	"google.golang.org/grpc"
 )
@@ -36,7 +36,7 @@ func TestConfigDefaults(t *testing.T) {
 
 // --- guard (per-RPC resilience via gRPC interceptors) ---
 
-// newGuardedSlot builds a slot armed with a real executor from the default
+// newGuardedSlot builds a slot applied with a real executor from the default
 // resilience driver, for driving the interceptors directly (no live Milvus
 // server is needed).
 func newGuardedSlot(t *testing.T, p resilience.ClientPolicy) *guardSlot {
@@ -44,12 +44,13 @@ func newGuardedSlot(t *testing.T, p resilience.ClientPolicy) *guardSlot {
 	exec, err := d.NewClientExecutor("svc", p)
 	assert.Error(t, err).Nil()
 	s := &guardSlot{}
-	s.arm(exec)
+	s.apply(exec)
 	return s
 }
 
-// TestUnaryGuardPassThrough proves the unarmed slot (before Init) passes RPCs
-// straight through — the fail-fast probe in newClient relies on this.
+// TestUnaryGuardPassThrough proves an unapplied slot passes RPCs straight
+// through — the transparent branch the guard degrades to before [NewClient]
+// installs its executor.
 func TestUnaryGuardPassThrough(t *testing.T) {
 	var ran int
 	invoker := func(context.Context, string, any, any, *grpc.ClientConn, ...grpc.CallOption) error {

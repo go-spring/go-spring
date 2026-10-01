@@ -38,7 +38,7 @@ require (
     go-spring.org/spring          v1.3.x
     StarterGrpc "go-spring.org/starter-grpc" latest
     go-spring.org/starter-otel      latest   // 可选：真实 trace/metric 导出
-    go-spring.org/starter-governance latest // 可选：治理中心（准入 + fault）
+    go-spring.org/starter-governance-file latest // 可选：治理中心（准入 + fault）
 )
 ```
 
@@ -49,7 +49,7 @@ package main
 
 import (
     "go-spring.org/spring/gs"
-    _ "go-spring.org/starter-governance"
+    _ "go-spring.org/starter-governance-file"
     _ "go-spring.org/starter-otel"
 )
 
@@ -391,7 +391,7 @@ handler panic → `codes.Internal` "panic in {FullMethod}: ..."，并经共享 g
 | tracing/metrics "开了"但没有导出 | 未 import starter-otel——OTel 全局是无声 no-op | 加 import（照 example-otel）。 |
 | 拦截器配置不生效 | 前缀写错：是 `observer.*`，不是 `interceptor.*`（example-otel 的 conf 就带这个死 key） | 用 `spring.grpc.server.observer.tracing/metrics.enabled`。 |
 | 客户端 TLS 握手被拒、证书报错 | 配了 `tls.ca-file`——那会开启 **mTLS**（`RequireAndVerifyClientCert`） | 单向 TLS 就删掉它，否则给客户端发证。 |
-| 一切正常但 fault/准入无效果 | 未 import starter-governance 或未配 `spring.governance.source`——seam 直通 | 加 import 并把 `spring.governance.source.file.path` 指向文件。 |
+| 一切正常但 fault/准入无效果 | 未 import starter-governance-file 或未配 `spring.governance.source`——seam 直通 | 加 import 并把 `spring.governance.source.file.path` 指向文件。 |
 | `ResourceExhausted` "received message larger than max" | `maxRecvMsgSize` 低于报文 | 调大上限。 |
 | stream RPC 绕过限流 | 准入设计上只覆盖 unary | 用用户 stream 拦截器 bean 防护（注入为 grpc.StreamServerInterceptor）。 |
 | GOAWAY / 连接抖动 | 激进的 `keepalive.time` 对上低频 ping 的客户端 | grpc keepalive 语义；放宽服务端参数。 |

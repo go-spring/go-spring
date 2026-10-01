@@ -59,15 +59,16 @@ The [example.go](example/example.go) file demonstrates the following core Redis 
 * **Supports multiple Redis instances**: you can define multiple Redis instances in the configuration file and reference them by name.
 * **Support Redis extensions**: implement the `Driver` interface to extend Redis functionality — see the
   example implementation `AnotherRedisDriver`.
-* **Startup connection validation (opt-in)**: set `startup-ping=true` to borrow a connection and
-  `PING` at boot; with the default `false`, a misconfigured address surfaces on the first command
+* **Startup connection validation (opt-in)**: set `startup-ping=true` to run `HealthCheck` (dial a
+  bare connection and `PING`) at boot; with the default `false`, a misconfigured address surfaces on the first command
   (redigo pools are lazy).
 * **Service discovery**: set `service-name` (and `discovery` to name the registered backend; there is no default backend)
   instead of `addr`; a `Resolver` resolves the service through the registered `discovery.Discovery` backend and dials a
   live endpoint for every new pool connection. Combined with `conn-max-lifetime`, pooled connections recycle onto updated
   addresses without rebuilding the pool. On shutdown the starter stops the background watch. This mirrors
   `starter-go-redis`; see [discovery.go](example/discovery.go) for a backend example.
-* **Health check / readiness**: borrow a connection and run `PING` for readiness probes.
+* **Health check / readiness**: `HealthCheck(ctx, pool)` dials a bare connection and runs `PING` — the autowired
+  `health.Indicator` delegates to it.
 * **Connection-pool monitoring**: `pool.Stats()` returns live pool counters (active/idle connections) for runtime
   monitoring.
 * **TLS**: enable `tls.enabled` and provide `ca-file` (and `cert-file`/`key-file` for mutual TLS) to dial Redis over TLS.
@@ -76,6 +77,9 @@ The [example.go](example/example.go) file demonstrates the following core Redis 
 ## Observability
 
 Unlike `starter-go-redis` (which uses the official `redisotel` hooks), redigo ships no official OpenTelemetry
-instrumentation. The starter therefore emits its own: every pooled command goes through a module-local observe layer
-(client span with `db.system`/`db.operation`/`db.statement` attributes, the `db.client.operation.duration` histogram,
-and an access log tagged `_app_redigo_access`). All three are no-ops unless `starter-otel` installs providers.
+instrumentation. The starter therefore declares what each command is (`observe.go`): the span name, the
+`db.system`/`db.operation` labels, and the command summary as `db.statement` span/log detail. The signals themselves
+are emitted by the resilience layer — the one point on the command chain that sees a whole call, retries included — so
+beside the call-level `db.client.operation.duration` histogram every call also reports an attempt-level
+`db.client.attempt.duration` one, and an access log tagged `_app_redigo_access`. All of it is a no-op unless
+`starter-otel` installs providers.

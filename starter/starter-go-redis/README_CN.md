@@ -39,7 +39,7 @@ spring.go-redis.instances.main.addr=127.0.0.1:6379
 import "github.com/redis/go-redis/v9"
 
 type Service struct {
-    Redis *StarterGoRedis.Client `autowire:"main"` // 内嵌 redis.UniversalClient
+    Redis *StarterGoRedis.Client `autowire:"main"` // 包装 redis.UniversalClient
 }
 ```
 
@@ -79,11 +79,12 @@ spring.go-redis.instances.cache.sentinel-addrs=127.0.0.1:26379,127.0.0.1:26380
 
 ### cluster（集群）
 
-用集群入口节点作为种子地址，bean 类型为 **`*redis.ClusterClient`**（与单机不同），需按此类型注入：
+用集群入口节点作为种子地址，底层客户端为 `*redis.ClusterClient`，包装体内嵌了它——bean 类型与其它模式一致，
+仍是 **`*StarterGoRedis.Client`**，注入方式相同：
 
 ```go
 type Service struct {
-    Cluster *redis.ClusterClient `autowire:"cache"`
+    Cluster *StarterGoRedis.Client `autowire:"cache"`
 }
 ```
 
@@ -96,7 +97,9 @@ spring.go-redis.instances.cache.addrs=127.0.0.1:7000,127.0.0.1:7001,127.0.0.1:70
 # spring.go-redis.instances.cache.route-randomly=true
 ```
 
-TLS、连接池大小、超时、OTel 埋点以及启动期 fail-fast `Ping` 对三种拓扑均生效。服务发现（`service-name`）**仅对单机模式生效**：
+TLS、连接池大小、超时、OTel 连接池指标以及启动期 fail-fast `HealthCheck` 对三种拓扑均生效。本 starter 只声明每条命令的
+语义身份（`observe.go`），信号由 resilience 层发射——每条命令的 span、call 级与 attempt 级时延直方图，以及 tag 为
+`_app_redis_access` 的访问日志。服务发现（`service-name`）**仅对单机模式生效**：
 哨兵与集群自带节点发现，若在这两种模式下同时设置 `service-name`，启动即报错。
 
 完整可运行示例见 [app.properties](example/conf/app.properties) 中的 `sentinel` 与 `cluster` 实例，
@@ -119,13 +122,14 @@ Dragonfly 与 Kvrocks 说 Redis 线协议，因此本 starter 可直接驱动它
 ## 高级功能
 
 * **支持多 Redis 实例**：可以在配置文件中定义多个 Redis 实例，并在项目中使用 name 进行引用。
-* **多拓扑支持**：`mode` 可选 `single`（默认）、`sentinel`、`cluster`，详见上文"拓扑"一节。集群实例暴露为
-  `*redis.ClusterClient`，单机/哨兵为 `*redis.Client`。
-* **支持 Redis 扩展**：可以通过实现 `Driver` 接口来扩展 Redis 功能，参见示例中的 `AnotherRedisDriver` 实现。集群支持是
-  可选的 `ClusterDriver` 接口，因此已有的自定义 Driver 无需改动即可继续编译。当容器中存在多个 Driver bean 时，实例可
+* **多拓扑支持**：`mode` 可选 `single`（默认）、`sentinel`、`cluster`，详见上文"拓扑"一节。三种拓扑注册的都是同一个包装体
+  bean `*StarterGoRedis.Client`；其内嵌的底层客户端为 `*redis.Client`（单机/哨兵）或 `*redis.ClusterClient`（集群）。
+* **支持 Redis 扩展**：可以通过实现 `Driver` 接口来扩展 Redis 功能。`CreateClient` 返回包装体
+  `*StarterGoRedis.Client`，用 `NewClient` 构建；集群支持是可选的 `ClusterDriver` 接口，因此只构建单机/哨兵客户端的
+  Driver 仍然有效。当容器中存在多个 Driver bean 时，实例可
   按名指定：`spring.go-redis.instances.<name>.driver = <bean 名>`（留空 = 先回退家族级 `spring.<family>.default.driver`，再按类型注入唯一 Driver bean；指定的 bean 不存在则启动失败）。
-* **启动期连接校验（fail-fast）**：创建客户端后会执行一次 `Ping`，地址配置错误或服务不可达时启动即失败，而非等到首次请求。
-* **健康检查 / readiness**：go-redis 客户端自带 `Ping(ctx)`，可直接在注入的客户端上调用做健康探测。
+* **启动期连接校验（fail-fast）**：创建客户端后会执行一次 `HealthCheck`（即 `Ping`），地址配置错误或服务不可达时启动即失败，而非等到首次请求。
+* **健康检查 / readiness**：`HealthCheck(ctx, client)` 是就绪探针——自动装配的 `health.Indicator` 即委托于它，也可直接在注入的客户端上调用。
 * **连接池运行时监控**：`client.PoolStats()` 返回连接池实时计数（命中、未命中、总连接/空闲连接）。
 * **TLS**：开启 `tls.enabled` 并提供 `ca-file`（双向 TLS 再加 `cert-file`/`key-file`）即可通过 TLS 连接 Redis，
   详见 [app.properties](example/conf/app.properties) 中的注释示例。

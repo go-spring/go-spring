@@ -18,8 +18,6 @@ package luohua
 
 import (
 	"go-spring.org/cloud/lock"
-	"go-spring.org/spring/gs"
-	"go-spring.org/stdlib/flatten"
 )
 
 // lockDefault provides luohua's in-process [lock.Locker] baseline so a luohua
@@ -29,21 +27,3 @@ import (
 // a service pointing at redis/etcd for its lock is never silently downgraded
 // to the in-process one.
 func lockDefault() *lock.MemoryLocker { return lock.NewMemoryLocker() }
-
-func init() {
-	// Armed by spring.luohua.lock=true (OnProperty is a prefix check), gated by
-	// the master Enabled. The default rides the same OnMissingBean step-aside as
-	// identity/i18n: consumers autowire lock.Locker and get luohua's baseline
-	// only while no backend starter provides its own bean.
-	gs.Module(gs.OnProperty("spring.luohua.lock"), func(r gs.BeanProvider, p flatten.Storage) error {
-		if off, err := disabled(p); err != nil {
-			return err
-		} else if off {
-			return nil // whole baseline off; do not assemble the keyed bean capability
-		}
-		r.Provide(lockDefault).
-			Condition(gs.OnMissingBean[lock.Locker]()).
-			Export(gs.As[lock.Locker]()).Caller(1)
-		return nil
-	})
-}

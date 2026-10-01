@@ -1,7 +1,7 @@
 # starter-config-file 使用说明 — 参考手册
 
 详细使用参考。总览见 [README_CN.md](README_CN.md)。所有行为声明均对照 starter 源码
-（`watch.go`、`filewatch.go`、`configtree.go`）、gs 核心
+（`starter.go`、`watch.go`、`filewatch.go`、`configtree.go`）、gs 核心
 （`spring/conf/provider/provider.go`、`spring/gs/internal/gs_conf/conf.go`、
 `spring/gs/internal/gs_app/app.go`）以及冒烟通过的 [example/](example/) 与
 [example-configtree/](example-configtree/)（两个 `check.sh` 均为绿色）核对。
@@ -10,9 +10,9 @@
 各自由 `spring.config.import` 中的对应条目独立激活：
 
 - `file-watch:<file>` — 每条 import 一个配置文档（承载 `application.yaml` 的 ConfigMap key），
-  按扩展名解析（filewatch.go:50）。
+  按扩展名解析（starter.go:41）。
 - `configtree:<dir>` — 标量 key 文件组成的目录树（Secret / env 风格 ConfigMap 挂载）；
-  每个叶子文件是一条 property，key 为其点分相对路径（configtree.go:43）。
+  每个叶子文件是一条 property，key 为其点分相对路径（starter.go:35）。
 
 本 starter 的核心是**免重启热更新**：两个 provider 都 watch 父目录，因此 kubelet 更新
 ConfigMap/Secret 时的原子 `..data` 符号链接交换会被转成 `gs.Dync` 字段的实时刷新。
@@ -168,7 +168,7 @@ controller 之所以不需要是 bean，尽管配置加载发生在 bean 装配�
 
 1. 编辑器或 kubelet 写入新的时间戳目录并把 `..data` rename 到它上面（原子）。
 2. fsnotify 在**目录上**送出 CREATE/RENAME 事件（文件 inode 已变 —— 这正是 watch 挂在
-   父目录而非文件本身的原因，filewatch.go:80-86）。常见编辑器同样以原子 rename 保存，
+   父目录而非文件本身的原因，filewatch.go:67-73）。常见编辑器同样以原子 rename 保存，
    因此普通编辑走的也是同一条路径。
 3. `watchLoop` 对每个事件都响应、不过滤文件名（这是正确的：K8s 更新表现为 `..data` 上的
    事件而非 key 文件上的事件 —— watch.go:112-116）→ `TriggerRefresh`。
@@ -189,12 +189,12 @@ gs 核心解析的 import 字符串文法 `[optional:]<provider>:<path>`（provi
 
 | 片段 | 类型 | 默认 | 行为 / 联动 | 配错后果 |
 |------|------|------|-------------|----------|
-| `optional:` 前缀 | flag | 无 | 在 provider 拆分前解析；provider 的 `Load` 收到 `optional=true`，路径缺失时打 Warn 日志并返回 `(nil, nil)`（filewatch.go:67-70、configtree.go:61-64）。 | 缺前缀且路径缺失 → stat 错误，启动中止。 |
+| `optional:` 前缀 | flag | 无 | 在 provider 拆分前解析；provider 的 `Load` 收到 `optional=true`，路径缺失时打 Warn 日志并返回 `(nil, nil)`（filewatch.go:54-57、configtree.go:45-48）。 | 缺前缀且路径缺失 → stat 错误，启动中止。 |
 | `file-watch` provider | 枚举 | `file` | 每条 import 一个文档，按扩展名识别格式。必须是文件。 | 拼写错误 → 启动报 `unsupported provider type`。注意核心对裸路径的默认 provider 是 `file` 而非 `file-watch` —— 裸路径没有 watch。 |
-| `configtree` provider | 枚举 | `file` | 目录树；每个非点前缀叶子文件 = 一条 property。必须是目录。 | 指向文件 → 显式报错并指向 `file-watch`（configtree.go:68-71）。 |
-| `<path>`（file-watch） | 文件路径 | — | 加载前先解析 property 占位符（`conf.Resolve`，gs_conf/conf.go:229）。扩展名经共享 reader registry 路由：`.properties/.yaml/.yml/.toml/.tml/.json`。父目录被 watch。 | 目录路径 → 报错并指向 `configtree`（filewatch.go:75-78）。不支持的扩展名（`.md`）→ 读取错误（有单测覆盖）。 |
-| `<path>`（configtree） | 目录路径 | — | key = 点分相对路径（`db/user` 文件 → `db.user`；名为 `db.user` 的平面文件同样 → `db.user`，因为 K8s key 可含点）；值 = 文件内容 `TrimSpace` 后的原文，不做解析（configtree.go:116-125）。树内每个目录都被 watch。⚠ 看似数字/布尔的值仍是原始字符串 —— 在业务代码里自行转换。 | 期望 key 文件内是 yaml 解析 → 字面文本成为值。 |
-| 点前缀条目 | 过滤规则 | 跳过 | `..data`、`..时间戳` 目录与 dotfile 在每层被跳过；根目录本身永不跳过（configtree.go:103-108）。符号链接叶子会被跟随（`os.ReadFile`）。 | 无 —— 这正是 K8s 挂载保持干净的原因。 |
+| `configtree` provider | 枚举 | `file` | 目录树；每个非点前缀叶子文件 = 一条 property。必须是目录。 | 指向文件 → 显式报错并指向 `file-watch`（configtree.go:52-55）。 |
+| `<path>`（file-watch） | 文件路径 | — | 加载前先解析 property 占位符（`conf.Resolve`，gs_conf/conf.go:229）。扩展名经共享 reader registry 路由：`.properties/.yaml/.yml/.toml/.tml/.json`。父目录被 watch。 | 目录路径 → 报错并指向 `configtree`（filewatch.go:62-65）。不支持的扩展名（`.md`）→ 读取错误（有单测覆盖）。 |
+| `<path>`（configtree） | 目录路径 | — | key = 点分相对路径（`db/user` 文件 → `db.user`；名为 `db.user` 的平面文件同样 → `db.user`，因为 K8s key 可含点）；值 = 文件内容 `TrimSpace` 后的原文，不做解析（configtree.go:100-109）。树内每个目录都被 watch。⚠ 看似数字/布尔的值仍是原始字符串 —— 在业务代码里自行转换。 | 期望 key 文件内是 yaml 解析 → 字面文本成为值。 |
+| 点前缀条目 | 过滤规则 | 跳过 | `..data`、`..时间戳` 目录与 dotfile 在每层被跳过；根目录本身永不跳过（configtree.go:87-92）。符号链接叶子会被跟随（`os.ReadFile`）。 | 无 —— 这正是 K8s 挂载保持干净的原因。 |
 | import 列表顺序 | 列表 | — | `spring.config.import` 逗号分隔、去重；**后声明覆盖先声明**；import 覆盖导入文件自身的 key（分层存储，gs_conf/conf.go:244-251）。⚠ 不存在任何 query 参数 —— 来源字符串就是裸路径。 | 顺序写反 → 分层覆盖静默反转。 |
 | `spring.http.server.enabled` | bool | true | gs 核心 key，非本 starter 所有；示例关闭它因为演示没有 HTTP 面。 | 保持 true → 默认 server 起在 :8080。 |
 
@@ -254,7 +254,7 @@ spring.config.import=optional:file-watch:/etc/config/application.yaml
 - 存在 → 正常加载；缺失 → Warn `optional config path ... not found (skipped)`，启动继续。
 - 不带 `optional:` → 路径缺失以 stat 错误中止启动。
 - 路径存在但类型错误（文件 vs 目录）则无论是否 `optional:` 都报错 —— optionality 只
-  覆盖"不存在"（os.IsNotExist 判断，filewatch.go:67）。
+  覆盖"不存在"（os.IsNotExist 判断，filewatch.go:54）。
 
 ### 4.5 可观测信号
 

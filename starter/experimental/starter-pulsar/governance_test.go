@@ -23,9 +23,10 @@ import (
 	"testing"
 
 	"github.com/apache/pulsar-client-go/pulsar"
-	"go-spring.org/cloud/governance/resilience"
-	"go-spring.org/cloud/governance/traffic"
+	"go-spring.org/cloud"
 	"go-spring.org/cloud/messaging"
+	"go-spring.org/cloud/resilience"
+	"go-spring.org/cloud/traffic"
 	"go-spring.org/stdlib/testing/assert"
 )
 
@@ -57,18 +58,17 @@ type fakePulsarProducer struct {
 
 func (f *fakePulsarProducer) Topic() string { return f.topic }
 
-// applyResilience always attaches an executor. Whether it protects anything is
-// decided by the governance rule for the service label, not by a per-instance
-// switch: with governance off the executor is a transparent pass-through, so
-// attaching one costs a call frame and changes nothing else.
-func TestApplyResilienceAttachesGuard(t *testing.T) {
+// AttachGovernance always attaches an executor — the driver calls it while building
+// the client. Whether it protects anything is decided by the governance rule for
+// the service label, not by a per-instance switch: the zero governance bundle
+// degrades the executor to an observed-only, loudly-unmanaged one, so attaching
+// it costs a call frame and changes nothing else.
+func TestAttachGuardAttachesExecutor(t *testing.T) {
 	cl := &fakePulsarClient{}
 
-	if err := applyResilience(cl, "pulsar:test", nil, nil); err != nil {
-		t.Fatal(err)
-	}
+	AttachGovernance(cl, "pulsar://127.0.0.1:6650", cloud.ClientParams{})
 	if _, ok := clientGuards.Load(cl); !ok {
-		t.Fatal("applyResilience must attach an executor")
+		t.Fatal("AttachGovernance must attach an executor")
 	}
 	closeResilience(cl)
 }
@@ -79,7 +79,7 @@ func TestApplyResilienceAttachesGuard(t *testing.T) {
 func TestDriverPublishGuarded(t *testing.T) {
 	cl := &fakePulsarClient{}
 	stub := &stubExecutor{}
-	clientGuards.Store(cl, &clientGuard{exec: stub, service: "pulsar:test"})
+	clientGuards.Store(cl, &clientGuard{exec: stub, serviceLabel: "pulsar:test"})
 	defer func() {
 		clientGuards.Delete(cl)
 	}()

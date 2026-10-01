@@ -104,9 +104,11 @@ func main() {
 	// value%
 }
 
-// publish declares the queue and sends a message onto it. The publish is wrapped
-// in an OTel producer span (no-op unless starter-otel is imported), which also
-// injects trace context into the message headers.
+// publish declares the queue and sends a message onto it through
+// StarterRabbitMQ.GuardedPublish: the starter declares the publish's identity
+// and the connection's resilience executor emits the span, the durations and the
+// access log — with starter-otel imported, that span reaches Jaeger.
+// GuardedPublish also injects the W3C trace context into the message headers.
 func (s *Service) publish(ctx context.Context, body string) error {
 	ch, err := s.Conn.Channel()
 	if err != nil {
@@ -120,15 +122,11 @@ func (s *Service) publish(ctx context.Context, body string) error {
 		ContentType: "text/plain",
 		Body:        []byte(body),
 	}
-	ctx, span := starter.StartPublishSpan(ctx, "", queueName, &pub)
-	err = ch.PublishWithContext(ctx, "", queueName, false, false, pub)
-	starter.EndSpan(span, err)
-	return err
+	return starter.GuardedPublish(ctx, s.Conn, ch, "", queueName, false, false, pub)
 }
 
-// consume declares the queue and pulls a single message from it. Each delivery
-// starts an OTel consumer span linked to the producer via the propagated trace
-// context (no-op unless starter-otel is imported).
+// consume declares the queue and pulls a single message from it. A raw ch.Get
+// pull is not part of the instrumented driver path, so it runs unobserved here.
 func (s *Service) consume() (string, error) {
 	ch, err := s.Conn.Channel()
 	if err != nil {
@@ -145,8 +143,6 @@ func (s *Service) consume() (string, error) {
 	if !ok {
 		return "", nil
 	}
-	_, span := starter.StartConsumeSpan(context.Background(), &msg)
-	starter.EndSpan(span, nil)
 	return string(msg.Body), nil
 }
 

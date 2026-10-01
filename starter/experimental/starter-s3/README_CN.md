@@ -4,7 +4,8 @@
 
 `starter-s3` 为 Go-Spring 提供 S3 协议对象存储支持：多实例
 `*minio.Client` bean、fail-fast 启动探针（列举桶）、逐请求可观测
-（span + 指标 + 访问日志）、韧性（HTTP 传输层限流/熔断/故障注入），以及
+（starter 声明调用身份，resilience 层发射 span + 指标 + 访问日志）、
+韧性（HTTP 传输层限流/熔断/故障注入），以及
 每实例健康指示器。基于 [minio-go](https://github.com/minio/minio-go)，
 一套配置面覆盖所有 S3 兼容端点。
 
@@ -58,7 +59,8 @@ _, err := s.Client.PutObject(ctx, "bucket", "key",
     minio.PutObjectOptions{ContentType: "text/plain"})
 ```
 
-包装类型内嵌 `*minio.Client`，SDK 的所有方法原样提升可用。
+包装类型是 `*Client`，而非裸 `*minio.Client`：`NewClient` 是唯一构造函数，包装体内嵌
+裸 client，SDK 的完整方法集因此原样提升，每次调用仍经过声明 + 治理传输层。
 
 ## 核心特性
 
@@ -68,12 +70,17 @@ _, err := s.Client.PutObject(ctx, "bucket", "key",
   操作之前就暴露配错的端点与被拒的凭证。
 - **每实例健康指示器** — 同一探针注册为 `s3:<name>`，导入
   `starter-actuator` 后自动并入 `/readiness`。
-- **可观测** — starter 自带的传输层为每个请求产出 OTel client span
-  （属性 `db.system`/`db.operation`/`db.statement`）、
-  `db.client.operation.duration` 指标与访问日志（tag `_app_s3_access`）。
-  minio-go 自身不带 OTel 埋点，因此由 starter 的传输层承载全部三信号。
+- **可观测** — starter 只“声明”每个请求的语义身份（`declareTransport` 把它放到
+  context 上）；同一 HTTP 传输层上的 resilience 层在唯一能看到整次调用（含重试）
+  的位置“发射”信号。一个 OTel client span（属性 `db.system`/`db.operation`/
+  `db.statement`）、`db.client.operation.duration` 直方图与 `db.client.attempt.duration`
+  直方图（尝试级——下游每次尝试自身耗时，不含退避）、以及访问日志（tag
+  `_app_s3_access`）。`db.system`/`db.operation`（HTTP 方法）有界，可作指标标签；
+  `db.statement`（URL path）是逐调用明细，只进 span 与日志，绝不进标签。
+  minio-go 自身不带 OTel 埋点。
 - **韧性** — 限流、熔断、故障注入在客户端 HTTP 传输层经注入的治理 bean
-  构建的执行器强制执行；未导入 `starter-governance` 时传输层仅做观测。
+  在构造期构建的执行器强制执行；手工构建的客户端（无容器治理）降级为仅观测的
+  unmanaged 执行器，并告警一次。
 
 ## 高级特性
 

@@ -37,7 +37,7 @@ require (
     go-spring.org/starter-mqtt       latest
     go-spring.org/starter-actuator   latest   // optional: probes + /metrics
     go-spring.org/starter-otel       latest   // optional: real trace/metric export
-    go-spring.org/starter-governance latest   // optional: runtime resilience/fault policy
+    go-spring.org/starter-governance-file latest   // optional: runtime resilience/fault policy
 )
 ```
 
@@ -51,7 +51,7 @@ import (
     _ "demo/service"
 
     _ "go-spring.org/starter-actuator"
-    _ "go-spring.org/starter-governance"
+    _ "go-spring.org/starter-governance-file"
     _ "go-spring.org/starter-mqtt"
     _ "go-spring.org/starter-otel"
 )
@@ -86,11 +86,12 @@ func init() {
 
     gs.Provide(func(s *Service) gs.Runner {
         return func(ctx context.Context) error {
-            // (a) guarded publish — routed through the resilience executor
-            //     (rate limit / breaker) attached to client "a".
-            ctx, sp := StarterMQTT.StartPublishSpan(ctx, "sensors/temp")
+            // (a) guarded publish — declares the publish operation and routes
+            //     it through the resilience executor (rate limit / breaker)
+            //     attached to client "a"; the executor emits the span, metrics
+            //     and access log.
             err := StarterMQTT.GuardedPublish(ctx, s.Client, "sensors/temp", 1, false, []byte("21.5"))
-            StarterMQTT.EndSpan(sp, err)
+            _ = err
 
             // (b) driver consume — envelope API, payload-only mapping.
             b := StarterMQTT.NewDriver(s.Client)
@@ -140,7 +141,7 @@ starts a no-auth mosquitto on 127.0.0.1:1883):
 docker compose -f example/docker-compose.yml up -d   # or: docker run -d -p 1883:1883 eclipse-mosquitto:2 mosquitto -c /mosquitto-no-auth.conf
 go run .                        # boot fails fast if the broker is unreachable
 # expected: "mqtt client initialized, broker=tcp://127.0.0.1:1883", then "received: 21.5"
-curl -s :9370/metrics | grep -E 'messaging_client'   # observe-kit metrics
+curl -s :9370/metrics | grep -E 'messaging_client'   # resilience-emitted metrics
 grep _app_mqtt_access app.log | tail -2              # access records
 cd example && ./check.sh                             # full smoke (self-asserting)
 mosquitto_sub -t 'demo/status' &                     # kill -9 the app → will "offline" arrives
@@ -161,24 +162,26 @@ import starter-mqtt
               └─ Provide(newClient).Name(<name>).Destroy(destroyClient).Caller(1)   [starter.go:36-40]
 
 gs.Run()
-  ├─ ctor newClient [starter.go:52]:
+  ├─ ctor newClient [starter.go:75]:
   │    1. Driver bean injection — a company Driver bean, when present;
-  │       nil (none) falls back to the bundled DefaultDriver           [starter.go:55-58]
+  │       nil (none) falls back to the bundled DefaultDriver           [starter.go:78-81]
   │       (selected per entry by ${spring.mqtt.instances.<name>.driver}: empty = `spring.mqtt.default.driver` then by type,
   │       set = by bean name — naming a missing bean fails startup)
   │    2. CreateClient: assembles paho options (broker, id,
   │       credentials, clean-session, keep-alive, connect-timeout),
   │       bridges connect/lost/reconnecting events into go-spring log  [driver.go:64-72],
   │       builds TLS (security BuildClient) and registers the will            [driver.go:74-85]
-  │    3. client.Connect() + token.Wait() — fail-fast probe: a dead
-  │       broker, bad credentials or TLS mismatch abort the boot       [starter.go:70-75]
-  │    4. applyResilience — attaches the governance executor, indexed
-  │       by client; on failure the client is disconnected (250ms)     [starter.go:76-80]
+  │    3. CreateClient installs the governance executor while it builds the
+  │       client — params.ExecutorFor("mqtt", "mqtt:<broker>"), indexed by
+  │       client [driver.go:115-123] — so the client is complete when returned
+  │    4. then probe: client.Connect() + token.Wait() — a dead broker,
+  │       bad credentials or TLS mismatch abort the boot; a failed
+  │       connect releases what was assembled                       [starter.go:99-110]
   ├─ readiness: no indicator bean — paho's auto-reconnect (left on) is the
   │  recovery path; connection state is observable via IsConnected() and the
   │  bridged lifecycle logs (warn on connection lost)                  [driver.go:67-69]
-  └─ SIGTERM → destroyClient [starter.go:85-92]:
-       closeResilience (Close the executor, error discarded)           [command.go:137-142]
+  └─ SIGTERM → destroyClient [starter.go:111-117]:
+       closeResilience (Close the executor, error discarded)           [command.go:102-107]
        → client.Disconnect(250ms grace for in-flight work)
 ```
 
@@ -187,76 +190,97 @@ constructor, so a bean that injects successfully is always connected-and-guarded
 
 ### 2.2 The guard/wrap mechanism — exact order and what is NOT guarded
 
-paho.mqtt.golang ships no hook/plugin extension point, so there is no transparent client
+paho.mqtt.golang ships no reject-capable middleware, so there is no transparent client
 wrapper. Instead the seam is an executor attached at construction and **opt-in call-site
-guards** [command.go:17-27]:
+guards** [command.go:17-29]:
 
 ```
-applyResilience [command.go:129-136]:
-  exec = fault.WrapClientExecutor(mgr.ClientExecutorFor("mqtt", "mqtt:<broker>"), "mqtt:<broker>", inj)  // injected *resilience.Manager + *fault.Injector
-  stored in sync.Map keyed by the mqtt.Client value
+CreateClient [driver.go:115-123] (the assembly seam):
+  exec = params.ExecutorFor("mqtt", "mqtt:<broker>")   // injected cloud.ClientParams{Resilience: mgr, Fault: inj}
+  attachGuard(cl, exec, label) — stored in sync.Map keyed by the mqtt.Client value  [command.go:98-100]
+  (params.ExecutorFor = fault.WrapClientExecutor(mgr.ClientExecutorFor("mqtt", label), label, inj)
+   when mgr is present, else the observed-only resilience.Unmanaged)
 
-GuardedPublish [command.go:167-173]:
-  guard() → executor.Execute(ctx, call)                               [command.go:148-155]
+GuardedPublish [command.go:134-141]:
+  ctx = observability.WithOperation(ctx, operation(opPublish, topic))  // declare
+  guard() → executor.Execute(ctx, call)                               [command.go:114-121]
   call = cl.Publish(...) + token.Wait() + token.Error()
 ```
 
-Wrap order (outer→inner): **fault injection → observe (span+metric+access log of the guarded
-call) → resilience policy (limiter/breaker/retry) → paho Publish → token wait**. Rationale
-(source comments): paho manages its own queueing and reconnect, so the executor is
-intentionally minimal — rate-limit the publish rate and short-circuit when the broker is
-unhealthy [command.go:119-124]. The service label is `mqtt:<broker-url>` — per broker, not
-per topic [starter.go:70, resilience/policy.go:216-230].
+Wrap order (outer→inner): **fault injection → resilience observe (reads the declared
+operation off the ctx and emits the span, the call-level and attempt-level duration
+histograms, and the access log) → resilience policy (limiter/breaker/retry) → paho Publish
+→ token wait**. Rationale (source comments): paho manages its own queueing and reconnect, so
+the executor is intentionally minimal — rate-limit the publish rate and short-circuit when
+the broker is unhealthy. The service label is `mqtt:<broker-url>` — per broker, not per
+topic [driver.go:121].
 
 **What is NOT guarded** (verified):
 
 - plain `client.Publish` called directly on the client bean — bypasses resilience entirely;
   only `GuardedPublish` and the driver's `Publish` route through the executor
-  [command.go:157-173, client.go].
-- `Subscribe` / `Unsubscribe` / subscription callbacks — no guard exists for them.
+  [command.go:134-141, client.go].
+- raw `Subscribe` / `Unsubscribe` — no guard exists for subscription setup. A delivery is
+  guarded only if the callback routes through `GuardedConsume` [command.go:160-162]; a bare
+  callback is unobserved and unguarded.
 - driver subscribe handlers: guarded only against panics (`messaging.Recover`
-  converts a panic into an error) [client.go:92]; the error is then only logged
-  [client.go:95-97].
+  converts a panic into an error) [client.go:98]; the error is then only logged
+  [client.go:107-111]. Each delivery is otherwise declared and guarded through
+  `GuardedConsume` [client.go:107-109].
 
-When governance is unwired, the injected manager normalizes to an unarmed one and yields a
-transparent no-op executor, so `GuardedPublish` behaves exactly like plain publish + wait
-[command.go:125-129, 157-161].
+The manager is required — this starter imports the package that registers it, so "governance off"
+is `spring.governance.enabled=false`, never an absent bean; a standalone, non-gs caller
+passes nil, and the client's executor degrades to the observed-only
+`resilience.Unmanaged` (with a one-time warning) rather than to a silent no-op
+[starter.go:87-88, driver.go:115-123].
 
 ### 2.3 One publish and one consume, layer by layer
 
-**Guarded publish** `GuardedPublish(ctx, cl, "sensors/temp", 1, false, payload)` with the
-span helper wrapped around it:
+**Guarded publish** `GuardedPublish(ctx, cl, "sensors/temp", 1, false, payload)`:
 
-1. `StartPublishSpan(ctx, topic)` opens a producer observation named `publish` with
-   `messaging.destination.name = topic` [command.go, observe.go].
-2. `guard` resolves the executor for this client from the sync.Map [command.go:148-153].
+1. `observability.WithOperation(ctx, operation(opPublish, topic))` declares the publish
+   identity (`messaging.system`, `messaging.operation`, topic in Detail) [command.go:135,
+   observe.go:78-99].
+2. `guard` resolves the executor for this client from the sync.Map [command.go:114-121].
 3. fault injection check (spring.governance.client.fault.* policy, if enabled).
-4. observe bridge records the guarded call's outcome (span/metric/access log).
+4. resilience observe opens the call span named `publish` and, once the call returns, emits
+   the call-level `messaging.client.operation.duration`, the attempt-level
+   `messaging.client.attempt.duration`, the `resilience.client.calls` counter and the one
+   access log — all read from the declaration. Publish and consume are declared
+   `NonIdempotent`, so a retry policy on the label is **suppressed** (one warning per service):
+   re-publishing or re-running the handler is a second side effect, not a second attempt.
 5. resilience policy: rate limiter / circuit breaker on service `mqtt:<broker>`;
-   on rejection the sentinel error returns and **paho Publish is never invoked**
-   [command.go:160-163].
+   on rejection the sentinel error returns and **paho Publish is never invoked**.
 6. `cl.Publish(topic, qos, retained, payload)` hands off to paho's outbound queue;
    `token.Wait()` blocks until the packet is written (QoS 0) or the PUBACK/PUBCOMP
-   arrives (QoS 1/2) [command.go:164-171].
-7. `EndSpan(sp, err)` records the outcome and closes the observation [command.go:100-103].
+   arrives (QoS 1/2) [command.go:137-139].
+
+**Guarded consume** `GuardedConsume(ctx, cl, msg, handler)` is the counterpart for a
+subscription: it declares the consume identity (topic from `msg.Topic()`)
+and runs the handler under the same executor, so a delivery is observed exactly like a
+publish [command.go:160-162]. The messaging.Driver path below uses it for its consume
+callback.
 
 **Driver consume** — `sub.Subscribe(ctx, handler)` on topic `sensors/temp`:
 
-1. handler is wrapped in `messaging.Recover` (panic → error) [client.go:92].
+1. handler is wrapped in `messaging.Recover` (panic → error) [client.go:98].
 2. `cl.Subscribe(topic, 1, callback)` + `token.Wait()` — errors (bad topic filter,
-   no broker) return synchronously [client.go:93-100].
-3. per delivery, the callback builds a `messaging.Message` from the paho message:
-   **Payload only**. Topic lives outside the envelope (it is the subscriber's fixed
+   no broker) return synchronously [client.go:99-114].
+3. per delivery, the callback builds a `messaging.Message` from the paho message —
+   **Payload only**; topic lives outside the envelope (it is the subscriber's fixed
    source), QoS/retained are not modeled, and Key/Headers/Timestamp do not exist on the
-   wire — MQTT 3.1.1 packets carry no per-message metadata [client.go:47-52].
-4. handler error → logged at Error level with the topic; no ack/nack, no redelivery
-   (fire-and-forget callback) [client.go:95-97].
-5. `sub.Close()` → `Unsubscribe(topic)` + wait; the token error is returned (the only
-   error NOT discarded on this path) [client.go:103-107].
+   wire — MQTT 3.1.1 packets carry no per-message metadata [client.go:52-57].
+4. the callback then routes the message through `GuardedConsume`, which declares the
+   consume identity (topic from `msg.Topic()`) and runs the handler under the client's
+   resilience executor [client.go:101-111].
+5. handler error → logged at Error level with the topic; no ack/nack, no redelivery
+   (fire-and-forget callback) [client.go:107-111].
+6. `sub.Close()` → `Unsubscribe(topic)` + wait; the token error is returned (the only
+   error NOT discarded on this path) [client.go:117-121].
 
 The driver is fixed at QoS 1 (`defaultQoS`) and `retained=false` on publish; retained
 messages, custom QoS and wildcard subscriptions require the raw `mqtt.Client` bean
-[client.go:33-45].
+[client.go:33-37].
 
 ---
 
@@ -297,7 +321,7 @@ docker start <mosquitto> && go run .   # boots, logs "mqtt client initialized" [
 
 ### 4.2 Guarded vs unguarded path
 
-With starter-governance configured, add a breaker/limiter policy for service
+With starter-governance-file configured, add a breaker/limiter policy for service
 `mqtt:tcp://127.0.0.1:1883`:
 
 ```yaml
@@ -314,36 +338,46 @@ Hammer `GuardedPublish` → rejections surface as resilience sentinel errors and
 plain `client.Publish` on the client bean is unaffected — the driver now rides the same
 guard, so opting out is a service-level decision (an all-zero rule for
 `mqtt:<broker>`, or governance off), not a per call site one
-[command.go:147-172, client.go:73-77]. Policies hot-reload without restart
+[command.go:134-162, client.go:78-83]. Policies hot-reload without restart
 (governance center).
 
 ### 4.3 Message round-trip incl. driver mapping survival
 
 Publish an envelope with Key/Headers/Timestamp set through the driver publisher, consume
 with the driver subscriber: **only Payload survives**; Key/Headers/Timestamp arrive zero
-— MQTT 3.1.1 has no metadata fields [client.go:47-52, client.go:94]. Round-trip the payload
+— MQTT 3.1.1 has no metadata fields [client.go:52-57, client.go:100]. Round-trip the payload
 and assert byte equality; anything beyond payload requires the raw client (e.g. encode
 metadata into the payload yourself).
 
 ### 4.4 Observability reads
 
-- Access log: tag `_app_mqtt_access` (observe.go registers `app.mqtt.access`). One
-  record per span-helper observation: `messaging.operation=publish|consume`,
-  `messaging.destination.name=<topic>`, `status=<ok|error>`, `duration_ms=...`; errors at
-  Warn with an `error` field.
-- Metrics: `messaging.client.operation.duration` (s) and `messaging.client.active_requests`,
-  attributes `messaging.system=mqtt`, `messaging.operation`, and
-  `messaging.destination.name` (topic) on spans [observe.go].
+The starter DECLARES; the resilience layer EMITS. Everything below is produced by the
+resilience executor from the declared operation — not by the starter.
+
+- Access log: tag `_app_mqtt_access` (observe.go registers `app.mqtt.access`, carried on the
+  declaration as `Operation.LogTag`). One record per guarded call: `messaging.system=mqtt`,
+  `messaging.operation=publish|consume`, `messaging.destination.name=<topic>`,
+  `status=<ok|error>`, `resilience.outcome=<rate_limited|...>` when protection refused the call, `duration_ms=...`; a failure at
+  Warn with an `error` field, a success carrying a topic (Detail) at Debug, a topicless
+  success at Info.
+- Metrics, all under `messaging.client.*`: the call-level `operation.duration` histogram,
+  the attempt-level `attempt.duration` histogram, the `active_requests` in-flight gauge
+  (labels `messaging.system=mqtt`, `messaging.operation`, `status`), plus the resilience
+  layer's own `resilience.client.calls` counter. The topic never labels a metric — it is
+  Detail, so it reaches only the span and the log.
+- Connection-state counter: `messaging.client.connection.state_changes`
+  (`messaging.system=mqtt`, `state`), driven by paho's connect/lost/reconnecting callbacks;
+  it stays starter-local and is NOT emitted by the resilience layer.
 
 ```bash
-curl -s :9370/metrics | grep -E 'messaging_client_operation_duration|messaging_client_active_requests'
+curl -s :9370/metrics | grep -E 'messaging_client_(operation_duration|attempt_duration|active_requests|connection_state_changes)'
 ```
 
-- Spans: producer span named `publish`, consumer span named `consume`. ⚠ The two sides are
-  **independent traces** — W3C trace context cannot ride an MQTT 3.1.1 message [command.go:44-47].
-  All three signals are silent no-ops without starter-otel's OTel globals.
+- Spans: publish and consume each open a span named `publish` / `consume`. ⚠ The two sides
+  are **independent traces** — W3C trace context cannot ride an MQTT 3.1.1 message
+  [command.go:31-38]. All signals are silent no-ops without starter-otel's OTel globals.
 - Lifecycle logs (tag `_app_def`): connected / reconnecting (Info), connection lost (Warn)
-  [driver.go:73-81].
+  [driver.go:72-86].
 
 ### 4.5 Will / graceful shutdown
 
@@ -362,10 +396,10 @@ kill -9 <pid>   # ungraceful → will "offline" (retained per config) is publish
 | Boot fails "mqtt: connect failed broker=..." | Broker unreachable / wrong credentials / TLS mismatch | Fail-fast connect is unconditional [starter.go:64-69]; fix connectivity or config. |
 | Boot hangs (no error) | `connect-timeout=0` with a black-holed address | Keep a finite timeout; 0 disables it [config.go:51]. |
 | Reconnect storm / client kicked | Duplicate `client-id` across replicas | Assign distinct ids (broker enforces uniqueness). |
-| No breaker/limiter effect | Publishing via plain `client.Publish` | `GuardedPublish` and the driver's `Publish` are guarded [command.go:156-172]; switch call sites. |
-| No traces/metrics/access records | starter-otel not imported, or expecting them from the driver | Helpers ride the OTel globals; the driver emits nothing [client.go:47-52]. |
+| No breaker/limiter effect | Publishing via plain `client.Publish` | `GuardedPublish` and the driver's `Publish` are guarded [command.go:134-162]; switch call sites. |
+| No traces/metrics/access records | starter-otel not imported, or expecting them from the driver | The resilience layer emits from the declared operation and rides the OTel globals; the driver emits nothing [client.go:47-50]. |
 | Subscriber silent after broker restart | Subscription lost on unclean session drop | Re-subscription depends on clean-session / broker session; verify with the lifecycle logs [driver.go:76-81]. |
-| Handler errors vanish | Driver logs them and moves on — no redelivery | Handle retries inside the handler [client.go:95-97]. |
+| Handler errors vanish | Driver logs them and moves on — no redelivery | Handle retries inside the handler [client.go:107-111]. |
 | TLS keys seem ignored | Broker URL still `tcp://` | Use `ssl://` with `tls.enabled` [config.go:53-55]. |
 
 ---
@@ -381,8 +415,9 @@ kill -9 <pid>   # ungraceful → will "offline" (retained per config) is publish
 
 Design suspects (audit ledger; none fixed since last pass):
 
-- Driver handler errors are only logged; `Recover`'s comment claims "nack/redelivery"
-  that MQTT 3.1.1's fire-and-forget callback cannot deliver [client.go:90-97].
+- Driver handler errors are only logged; `Recover`'s comment now says exactly that
+  (the earlier "nack/redelivery" claim, which MQTT 3.1.1's fire-and-forget callback
+  cannot deliver, was corrected) [client.go:95-98].
 - Governance is per-call-site opt-in (`GuardedPublish`) and undocumented in the README.
 - No health indicator bean (family asymmetry: redis/nats provide one); `IsConnected()` is
   the only liveness signal and nothing probes it automatically.

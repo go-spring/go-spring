@@ -1,7 +1,7 @@
 # starter-ratelimit-redis
 
 Go-Spring 限流阶段的 Redis 计数器后端：贡献一份
-[`resilience.Counters`](../../../cloud/governance/resilience/ratelimit.go) 计数器存储，
+[`resilience.Counters`](../../../cloud/resilience/ratelimit.go) 计数器存储，
 其令牌桶状态放在 Redis 里，于是服务多副本（replica）共享每个 scope 的同一个预算，
 而不是每个副本各自计数。
 
@@ -31,7 +31,7 @@ spring.ratelimit.redis.client=cache
 
 配置块存在即打开本 starter；只 import 未配置则什么都不贡献，每个 executor 保持自己的私有预算。限流参数
 （`rate-limit`、`burst`、`algorithm`、`window`、`rate-limit-max-wait`）是治理规则文档上的
-[`resilience.ClientPolicy`](../../../cloud/governance/resilience/policy.go) 字段，不是 starter 配置。
+[`resilience.ClientPolicy`](../../../cloud/resilience/policy.go) 字段，不是 starter 配置。
 
 ## 使用方式
 

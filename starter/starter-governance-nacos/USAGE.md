@@ -1,8 +1,8 @@
 # starter-governance-nacos Usage — Reference
 
 Detailed usage reference. Overview: [README.md](README.md). Every behavior claim below is verified
-against the starter source (`governance.go`, `governance_test.go`), the shared parse glue
-[starter-governance/rules](../starter-governance/rules/rules.go), the core contract
+against the starter source (`starter.go`, `governance.go`, `governance_test.go`), the shared parse glue
+[cloud/governance/rules.go](../../cloud/governance/rules.go), the core contract
 [cloud/governance](../../cloud/governance) (`source.go`), and the self-asserting
 [example/](example) (`example/example.go`, `example/check.sh`). Nacos's own semantics (dataId,
 group, namespace, `ListenConfig`) are [Nacos docs](https://nacos.io/docs/latest/manual/admin/config/)
@@ -10,7 +10,7 @@ group, namespace, `ListenConfig`) are [Nacos docs](https://nacos.io/docs/latest/
 
 **What this starter is**: the Nacos adapter of the governance rule-source family. It is a
 `governance.Source` implementation; presenting the governance center itself is
-[starter-governance](../starter-governance)'s job. Blank-importing this package is inert until a
+[starter-governance-file](../starter-governance-file)'s job. Blank-importing this package is inert until a
 `spring.governance.source.nacos.*` key is present.
 
 ---
@@ -33,7 +33,7 @@ demo/
 ```
 require (
     go-spring.org/spring                  v1.3.x
-    go-spring.org/starter-governance       latest
+    go-spring.org/starter-governance-file       latest
     go-spring.org/starter-governance-nacos latest
 )
 ```
@@ -44,10 +44,10 @@ require (
 package main
 
 import (
-    "go-spring.org/cloud/governance/resilience"
+    "go-spring.org/cloud/resilience"
     "go-spring.org/spring/gs"
 
-    _ "go-spring.org/starter-governance"
+    _ "go-spring.org/starter-governance-file"
     _ "go-spring.org/starter-governance-nacos"
 )
 
@@ -67,7 +67,7 @@ func (p *poller) Run(ctx context.Context) error {
 }
 
 // newPoller builds the poller over the injected manager. A nil manager — a
-// container without starter-governance — is normalized to a fresh unarmed one.
+// container without starter-governance-file — is normalized to a fresh unarmed one.
 func newPoller(mgr *resilience.Manager) *poller {
     if mgr == nil {
         mgr = resilience.NewManager()
@@ -155,17 +155,17 @@ bean lifecycle, so the center closes it on Destroy.
 
 ```
 blank-import starter-governance-nacos
-  └─ init() governance.go: gs.Module(gs.OnProperty("spring.governance.source.nacos"), ...)
+  └─ init() starter.go: gs.Module(gs.OnProperty("spring.governance.source.nacos"), ...)
          (OnProperty is a PREFIX check: any spring.governance.source.nacos.* key arms it)
        ├─ conf.Bind(p, &c, "${spring.governance.source.nacos:=}")   bind + expr-validate the keys
        └─ Provide newNacosSource:
             clients.NewConfigClient (namespace, 5s timeout, auth, NotLoadCacheAtStart)
-              → NewNacosSource: initial GetConfig + rules.Parse   ← fail fast here
+              → NewNacosSource: initial GetConfig + governance.Parse   ← fail fast here
             .Init((*NacosSource).Init).Destroy((*NacosSource).Close)
             .Export(gs.As[governance.Source]())
 
 gs.Run()
-  ├─ bean wiring: the exported Source bean is injected into starter-governance's wiring
+  ├─ bean wiring: the exported Source bean is injected into starter-governance-file's wiring
   ├─ source bean Init: ListenConfig installs the OnChange listener
   ├─ your Runners run (governance already armed — Rooter precedes Runner)
   └─ on SIGTERM: source bean Destroy → Close: CancelListenConfig + CloseClient
@@ -176,7 +176,7 @@ gs.Run()
 - **The Export is load-bearing.** Without `Export(gs.As[governance.Source]())` the bean would be
   invisible to the center's interface injection and governance would stay disabled. The starter
   wires it correctly; a hand-rolled Source bean must export itself the same way.
-- **Fail-fast seed.** `NewNacosSource` calls `GetConfig` and `rules.Parse` before the bean exists.
+- **Fail-fast seed.** `NewNacosSource` calls `GetConfig` and `governance.Parse` before the bean exists.
   A missing dataId, a client error, or an unparseable document fails construction — and therefore
   startup — instead of arming a disabled center
   ([`TestNacosSource_BadSeedFailsFast`](governance_test.go) pins this).
@@ -187,7 +187,7 @@ gs.Run()
 2. Nacos delivers the new content to the listener installed by `Init` (`ListenConfig` →
    `OnChange` → `NacosSource.apply`).
 3. `apply` first compares bytes: a byte-equal re-delivery (Nacos may re-push on reconnect) is a
-   no-op. Otherwise it re-parses through `rules.Parse`; a bad document logs with the tag
+   no-op. Otherwise it re-parses through `governance.Parse`; a bad document logs with the tag
    `_app_governance_nacos` and keeps the last good snapshot, pushing nothing.
 4. A good parse is deduped against the current snapshot with `reflect.DeepEqual`; the snapshot is
    swapped and `cb` fires only when the rules actually changed.
@@ -202,7 +202,7 @@ The document format is resolved by `sourceFormat` (mirrored from the etcd siblin
 supported extension (`app-governance.yaml`, `app-governance.json`, `app-governance.toml`) needs no `format`
 key; an extension-less or unknown-extension dataId defaults to `properties`.
 
-`rules.Parse` binds through the same `conf` value-tag machinery with prefix `govern`, and rejects a
+`governance.Parse` binds through the same `conf` value-tag machinery with prefix `govern`, and rejects a
 document that parses but carries no `spring.governance.*` key (a truncated or emptied document) — turning
 governance off is `spring.governance.enabled=false`, a key that IS present.
 
@@ -228,11 +228,11 @@ starter surface.
 
 ⚠ `spring.governance.source.*` is the bootstrap surface only. The rules document itself never rides
 `app.properties` — it lives in its own dataId, and its keys are the `spring.governance.*` vocabulary
-documented in [starter-governance's USAGE](../starter-governance/USAGE.md).
+documented in [starter-governance-file's USAGE](../starter-governance-file/USAGE.md).
 
 ### 3.1 Byte-portability of the document
 
-The document is parsed by the same `rules.Parse` used by the `starter-governance` file and http
+The document is parsed by the same `governance.Parse` used by the `starter-governance-file` file and http
 sources: it is flattened, required to carry at least one `spring.governance.*` key, then bound into
 `governance.Config`. Consequently a document that works as a local rules file works unchanged as a
 Nacos dataId (and vice versa, and as an etcd value with
@@ -294,7 +294,7 @@ on exit.
 |---------|--------------|-----|
 | Startup fails `nacos server address must be host:port` | `server` has no `:` or an empty host/port | Use `host:port`, one server. |
 | Startup fails `governance nacos source: get <group>/<dataId> failed` | dataId missing, wrong group/namespace, wrong credentials, or server down | Create the dataId under the right group/namespace; check auth. |
-| Startup fails inside `rules.Parse` | dataId holds an unparseable or `spring.governance.*`-less document | Publish a valid document first — the seed fails fast by design. |
+| Startup fails inside `governance.Parse` | dataId holds an unparseable or `spring.governance.*`-less document | Publish a valid document first — the seed fails fast by design. |
 | Governance configured, `PolicyFor` stays zero | `spring.governance.enabled` false (the default) in the document | Set `spring.governance.enabled=true` — it is the master switch. |
 | A publish does not change the policy | logs `published an invalid document (keeping last good config)` | Fix the document; "off" is `spring.governance.enabled=false`, not an empty document. |
 | A publish of identical content does nothing | by design — byte-equal re-deliveries and DeepEqual-equal documents push nothing | Expected. |
@@ -318,8 +318,10 @@ Design notes (for the audit ledger):
   `optional:` mode, so a misconfigured dataId cannot arm a disabled center silently. The trade-off
   is that the dataId must exist before the app starts — acceptable for a rule document whose
   absence would otherwise be invisible.
-- The parse glue (`rules.Parse`) lives as a subpackage of `starter-governance`, not inside
-  `cloud/governance`, so the container-free core stays free of the `spring` dependency while every
-  backend shares one parser.
+- The parse glue (`governance.Parse`) lives in `cloud/governance` itself: the rule document is the
+  framework's own format, so the parser belongs with the model it produces and every backend shares
+  one implementation. It is the one place in `cloud/` that imports `spring/conf` — accepted because
+  the alternative (a per-backend parser, or a parser parked in one starter that its siblings reach
+  into) is worse.
 - The sibling etcd adapter ([starter-governance-etcd](../starter-governance-etcd)) has the same
   shape; the two are kept structurally parallel so a reader can move between them.

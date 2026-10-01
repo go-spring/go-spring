@@ -15,75 +15,102 @@
  */
 
 // client.go is the "resource entity" concept of this starter — the Client
-// wrapper MongoDB clients are injected as, plus its lifecycle (Init/Destroy),
-// service label, and the dialerWrapper adaptor the driver holds. It mirrors
-// starter-go-redis's client.go; the per-command observation layers live in
-// command.go.
+// wrapper MongoDB clients are injected as, plus its lifecycle, service label,
+// the embedded *mongo.Client, and the dialerWrapper adaptor the driver
+// holds. It mirrors starter-go-redis's client.go; the per-command observation
+// layers live in observe.go and command.go.
 package StarterMongoDB
 
 import (
 	"context"
 	"net"
-	"sync/atomic"
 
-	"go-spring.org/cloud/governance/fault"
-	"go-spring.org/cloud/governance/resilience"
+	"go-spring.org/cloud"
+	"go-spring.org/cloud/resilience"
 	"go.mongodb.org/mongo-driver/v2/mongo"
-
-	// Blank import: importing this starter brings the governance authority with
-	// it — starter-governance registers the *resilience.Manager, *loadbalance.
-	// Manager, *fault.Injector and *governance.Center beans this package injects.
-	// Turning governance OFF is spring.governance.enabled=false (or binding no rule source),
-	// not the absence of the starter. The injected parameters stay nullable, so a
-	// container that somehow lacks these beans degrades to a transparent
-	// pass-through instead of failing to boot.
-	_ "go-spring.org/starter-governance"
 )
 
-// Client is the wrapper bean MongoDB clients are injected as. It
-// embeds the concrete *mongo.Client (so every driver method promotes
-// unchanged) and arms its resilience executor from the injected governance
-// manager, so the policy comes from the governance document and hot-reloads
-// inside the executor. newClient returns one; gs calls
-// Init (InitMethod) to build the observer and swap the executor into the dialer.
+// Client is the wrapper bean MongoDB clients are injected as. The raw
+// *mongo.Client is embedded, not held in an unexported field: both seams are
+// installed on that client itself — its options carry the observe command
+// monitor and the shared dialer the resilience layer wraps — so there is
+// nothing to intercept in the wrapper, and the driver's whole surface is
+// promoted as-is. [NewClient] remains the only constructor, so a client can
+// never exist without its config.
 //
 // The resilience seam is the dial layer: the mongo driver v2 exposes no single
 // per-operation hook comparable to go-redis's ProcessHook, so the cleanest
 // insertion point is the dialer (a breaker trips on connection failures, a
 // limiter caps connection churn, a bulkhead bounds concurrent dials).
 // Already-open connections run at full speed — this is connection-level
-// protection, not per-command. newClient installs a shared dialer instance and
-// Init mutates its dial function to the resilience-wrapped one, so
-// the swap takes effect without rebuilding the client.
+// protection, not per-command. newClient installs a shared dialer instance; the
+// constructor ([NewClient]) resolves the executor and newClient then mutates the
+// dialer's dial function to the resilience-wrapped one while the client is being
+// built, so the swap takes effect without rebuilding the client.
 type Client struct {
+	// *mongo.Client is the raw client, embedded so its whole surface is
+	// promoted. The observe layer (its command monitor) and the resilience
+	// layer (its dialer) ride the client's own options, so nothing here needs
+	// to re-declare the driver's methods.
 	*mongo.Client
 
-	// mgr and inj are the governance beans gs injects into the constructor (both
-	// nil in a standalone call). mgr is normalized in Init: an unarmed manager is
-	// exactly the "governance off" pass-through, while a nil pointer would panic
-	// on the method call. inj is nil-safe at its use site.
-	mgr *resilience.Manager
-	inj *fault.Injector
+	// obs emits the per-command span/metric/access-log triple. Built by
+	// [NewClient]: it needs no external input, so it is part of what the client
+	// IS, not a later assembly step. The command monitor reads it lazily (see
+	// command.go).
+	obs *dbObserver
 
 	// cfg is the connection config, retained for the resilience service label.
 	cfg Config
-	// dialer is the shared dialer handed to the driver; Init swaps
-	// its dial field to the resilience-wrapped function.
-	dialer *dialerWrapper
-	// obs is the instrumentation built by Init; the command monitor reads it
-	// lazily.
-	obs atomic.Pointer[dbObserver]
-	// exec is the resilience executor protecting dials, resolved from the injected
-	// manager; no-op when governance is off.
+
+	// exec is the resilience executor protecting dials, resolved by [NewClient]
+	// and consumed by newClient, which wraps the shared dialer with it. It is
+	// never nil: a client with no governance degrades to an observed-only,
+	// loudly-unmanaged executor rather than a no-op.
 	exec resilience.ClientExecutor
-	// service is the resilience service key ("mongodb:<...>") exec scopes
-	// limiter/breaker state by. The same label addresses the service's endpoint
-	// selection in the governance rules document.
-	service string
+	// serviceLabel is the resilience service key ("mongodb:<service-name or
+	// uri>") exec scopes limiter/breaker state by. The same label addresses the
+	// service's endpoint selection in the governance rules document.
+	serviceLabel string
 	// stop detaches the discovery pool's endpoint-selection binding; nil when
-	// discovery is not in effect. Bound by newClient, which is where the pool
+	// discovery is not in effect. Set by newClient, which is where the pool
 	// first exists.
 	stop func()
+}
+
+// NewClient builds a complete Client — identity, observe and governance — over a
+// connected raw client, fixing its config. raw must be ready for use (its
+// command monitor already applied) — it is normally the product of newClient's
+// construction.
+//
+// params carries the container's facilities (see [cloud.ClientParams]) and is
+// applied HERE, so a Client cannot exist half-assembled: this constructor
+// derives the service label and resolves the executor
+// ([cloud.ClientParams.ExecutorFor]) that scopes the instance's limiter/breaker
+// state. A hand-built client passes the zero [cloud.ClientParams]; its executor
+// then degrades to
+// [resilience.Unmanaged] — observed, with a one-time warning that no protection
+// applies — rather than silently running bare.
+//
+// Because this starter's protection rides the dial layer (the mongo driver v2
+// offers no per-command hook), the executor is not consumed here: newClient
+// wraps the shared dialer's dial function with [Client.exec] right after this
+// returns. There is no Init step — building a Client and initializing it are the
+// same act, done in one place, so the container has no lifecycle hook to
+// register and no way to hand out a half-built client.
+//
+// The manager's ClientExecutorFor resolves its backing executor lazily, on each
+// Execute, so the call order relative to the center's wiring is
+// irrelevant.
+func NewClient(raw *mongo.Client, cfg Config, params cloud.ClientParams) *Client {
+	label := serviceLabel(cfg)
+	return &Client{
+		Client:       raw,
+		obs:          newDBObserver(),
+		cfg:          cfg,
+		serviceLabel: label,
+		exec:         params.ExecutorFor("mongodb", label),
+	}
 }
 
 // serviceLabel derives a stable, human-readable service key for a client, so
@@ -106,29 +133,10 @@ func (d *dialerWrapper) DialContext(ctx context.Context, network, address string
 	return d.dial(ctx, network, address)
 }
 
-// Init is the gs InitMethod: it builds the instrumentation (see observe.go) and
-// arms the executor from the injected governance manager, then swaps the
-// resilience-wrapped dial function into the shared dialer. The manager's
-// ClientExecutorFor resolves its backing executor lazily, on each Execute, so the
-// arming order relative to starter-governance's wiring is irrelevant; the fault
-// injector wraps it with inj, which is nil-safe (with no injector the fault layer
-// is a transparent pass-through). When governance is off — an unarmed manager —
-// the resolved executor is a transparent no-op.
-func (o *Client) Init() error {
-	o.obs.Store(newDBObserver())
-	o.service = serviceLabel(o.cfg)
-	exec := fault.WrapClientExecutor(o.mgr.ClientExecutorFor("mongodb", o.service), o.service, o.inj)
-	o.exec = exec
-	// Wrap the current (plain/discovery) dial with the policy and swap it into
-	// the shared dialer the driver already holds.
-	baseDial := o.dialer.dial
-	o.dialer.dial = resilience.NewDialer(baseDial, exec)
-	return nil
-}
-
-// Destroy is the gs destroy method: it closes the resilience executor (if armed)
-// and disconnects the underlying client. Discovery runs inside the backend (the
-// loader has no resources), so nothing discovery-related is released here.
+// Destroy is the gs destroy method: it detaches the discovery pool's binding,
+// closes the resilience executor and disconnects the underlying client.
+// Discovery runs inside the backend (the loader has no resources), so nothing
+// discovery-related is released besides the binding.
 func (o *Client) Destroy() error {
 	if o.stop != nil {
 		o.stop()
@@ -136,5 +144,5 @@ func (o *Client) Destroy() error {
 	if o.exec != nil {
 		_ = o.exec.Close()
 	}
-	return o.Client.Disconnect(context.Background())
+	return o.Disconnect(context.Background())
 }

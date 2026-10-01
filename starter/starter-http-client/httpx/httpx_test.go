@@ -25,15 +25,15 @@ import (
 	"time"
 
 	"go-spring.org/cloud/discovery"
-	"go-spring.org/cloud/governance/fault"
-	"go-spring.org/cloud/governance/resilience"
-	"go-spring.org/cloud/governance/traffic"
+	"go-spring.org/cloud/fault"
 	"go-spring.org/cloud/loadbalance"
+	"go-spring.org/cloud/resilience"
+	"go-spring.org/cloud/traffic"
 	"go-spring.org/stdlib/testing/assert"
 )
 
 // Direct (non-gs) construction must now supply the governance authorities: they
-// are REQUIRED because the starter blank-imports starter-governance, so the
+// are REQUIRED because the packages that own them register them, so the
 // container always provides them. A test that calls the constructor directly
 // passes the same unarmed ones the container would.
 var (
@@ -323,7 +323,7 @@ func TestNewTransport_ResilienceFollowsManager(t *testing.T) {
 	assert.That(t, before).Equal(3)
 
 	// Arm the manager with an error-threshold breaker for the label and push it,
-	// exactly as starter-governance's center does on a config change.
+	// exactly as the center does on a config change.
 	mgr.Apply(resilience.Settings{
 		Enabled:             true,
 		ResolveClientPolicy: func(string) resilience.ClientPolicy { return resilience.ClientPolicy{ErrorThreshold: 2} },

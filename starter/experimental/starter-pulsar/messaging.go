@@ -22,9 +22,10 @@ import (
 	"sync"
 
 	"github.com/apache/pulsar-client-go/pulsar"
-	"go-spring.org/cloud/governance/traffic"
 	"go-spring.org/cloud/messaging"
+	"go-spring.org/cloud/observability"
 	"go-spring.org/cloud/propagate"
+	"go-spring.org/cloud/traffic"
 	"go-spring.org/log"
 )
 
@@ -40,11 +41,13 @@ import (
 // pulsar.Consumer for its subscription; both are created lazily by the driver
 // and released on Close.
 //
-// Trace context rides the envelope: the messaging.Observe decorator wraps this
-// driver, injecting the current W3C context into the message headers on
-// publish (mapped onto Pulsar message Properties) and extracting it on
-// consume, so a trace links producer to consumer across services. It also
-// supplies the spans, metrics and access log. All of it is a no-op without
+// Each publish and consume DECLARES its operation (see [operation]) and runs it
+// under the client's resilience executor, which is the single emitter of the
+// span, the metrics and the access log — pulsar-client-go exposes no
+// reject-capable middleware, so the executor is driven at the call site. The
+// declared layer also injects/extracts the W3C trace context through the
+// message Properties (mapped onto the envelope headers), so a trace links
+// producer to consumer across services. All of it is a no-op without
 // starter-otel.
 //
 // prop is the process's load-test convention (nullable — nil falls back to
@@ -55,7 +58,7 @@ func NewDriver(cl pulsar.Client, prop traffic.Propagator) messaging.Driver {
 		// DefaultBinding is complete, so this cannot fail.
 		prop, _ = traffic.NewDefaultPropagator(traffic.DefaultBinding())
 	}
-	return messaging.Observe(&driver{cl: cl, prop: prop}, "pulsar")
+	return &driver{cl: cl, prop: prop}
 }
 
 type driver struct {
@@ -86,7 +89,7 @@ func (b *driver) NewSubscriber(_ context.Context, source, group string) (messagi
 	if err != nil {
 		return nil, err
 	}
-	return &subscriber{c: c, prop: b.prop}, nil
+	return &subscriber{cl: b.cl, c: c, source: source, prop: b.prop}, nil
 }
 
 // publisher produces envelopes to a fixed topic via its own producer. It holds
@@ -120,9 +123,10 @@ func (p *publisher) Publish(ctx context.Context, msg *messaging.Message) error {
 	if msg.Key != "" {
 		pm.Key = msg.Key
 	}
-	// Route through the same resilience executor the raw client API uses
-	// (GuardedSend): a no-op pass-through when governance is off for this
-	// client, a rejection sentinel when rate-limited/circuit-open.
+	// Route through the same seam the raw client API uses (GuardedSend):
+	// GuardedSend declares the publish (topic/direction) and runs it under the
+	// client-scoped resilience executor, a no-op pass-through when governance is
+	// off for this client and a rejection sentinel when rate-limited/circuit-open.
 	_, err := GuardedSend(ctx, p.cl, p.p, pm)
 	return err
 }
@@ -135,8 +139,14 @@ func (p *publisher) Close() error {
 // subscriber delivers messages from a fixed topic/subscription to a handler. It
 // runs one background receive loop that stops when Close cancels its context. A
 // handler error nacks the message so Pulsar can redeliver it; success acks it.
+//
+// cl is held so each delivery can declare its consume and resolve the
+// client-scoped resilience executor (the emitter); source is the topic the
+// subscription was opened on, used as the declared destination.
 type subscriber struct {
+	cl     pulsar.Client
 	c      pulsar.Consumer
+	source string
 	prop   traffic.Propagator
 	cancel context.CancelFunc
 	done   chan struct{}
@@ -163,9 +173,16 @@ func (s *subscriber) Subscribe(ctx context.Context, handler messaging.Handler) e
 				continue
 			}
 			// Extract the load-test marker the producer put in Properties so the
-			// handler sees synthetic load via the propagator's IsLoadTest(msgCtx).
+			// handler sees synthetic load via the propagator's IsLoadTest(msgCtx),
+			// then continue the producer's W3C trace and declare the consume. The
+			// handler runs under the resilience executor, which emits the span,
+			// metrics and access log from the declaration.
 			msgCtx := s.prop.Extract(loopCtx, propagate.StringMap(msg.Properties()))
-			herr := handler(msgCtx, fromPulsarMsg(msg))
+			msgCtx = extractTraceContext(msgCtx, msg.Properties())
+			msgCtx = observability.WithOperation(msgCtx, operation(opConsume, s.source))
+			herr := guard(msgCtx, s.cl, func(attemptCtx context.Context) error {
+				return handler(attemptCtx, fromPulsarMsg(msg))
+			})
 			if herr != nil {
 				log.Errorf(msgCtx, log.TagAppDef, "pulsar driver handler error on %q: %v", msg.Topic(), herr)
 				s.c.Nack(msg)

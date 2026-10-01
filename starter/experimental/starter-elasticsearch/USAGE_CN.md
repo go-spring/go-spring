@@ -39,7 +39,7 @@ require (
     go-spring.org/starter-elasticsearch latest
     go-spring.org/starter-actuator     latest   // 可选：readiness :9370
     go-spring.org/starter-otel         latest   // 可选：真实 trace/metric 导出
-    go-spring.org/starter-governance   latest   // 可选：resilience/fault 策略
+    go-spring.org/starter-governance-file   latest   // 可选：resilience/fault 策略
 )
 ```
 
@@ -51,7 +51,7 @@ package main
 import (
     "go-spring.org/spring/gs"
     _ "go-spring.org/starter-actuator"
-    _ "go-spring.org/starter-governance"
+    _ "go-spring.org/starter-governance-file"
     _ "go-spring.org/starter-otel"
     StarterElasticsearch "go-spring.org/starter-elasticsearch"
     _ "demo/service"
@@ -91,8 +91,9 @@ import (
 const indexName = "demo-docs"
 
 type Service struct {
-    // 恒为 wrapper 类型 *StarterElasticsearch.Client。它内嵌
-    // *elasticsearch.Client，Index/Get/Search/Info 原样提升。
+    // 恒为 wrapper 类型 *StarterElasticsearch.Client。它内嵌裸
+    // *elasticsearch.Client，API 树（Index/Get/Search/Info、...）与
+    // 生命周期方法因此全部原样提升。
     Main *StarterElasticsearch.Client `autowire:"main"`
     Disc *StarterElasticsearch.Client `autowire:"disc"` // discovery 解析节点
 }
@@ -160,29 +161,27 @@ import starter-elasticsearch
         └─ conf.BindEach("${spring.elasticsearch}") → 每个 <name> 条目一份 Config
               ├─ Provide(newClient, IndexArg(1, ValueArg(c)),
               │            IndexArg(2, ?Driver)).Name(<name>)
-              │      .Init((*Client).Init).Destroy((*Client).Destroy).Caller(1)
+              │      .Destroy((*Client).Destroy).Caller(1)
               └─ Provide health.Indicator，名为 "elasticsearch:<name>"
-                     .Export(gs.As[health.Indicator]())   [starter.go:41-71]
+                     .Export(gs.As[health.Indicator]())
 
 gs.Run()
-  ├─ 构造 newClient [starter.go:81]：
+  ├─ 构造 newClient：
   │    ├─ 设置了 service-name 且 !mesh.Enabled() → resolveAddresses(c, backend)：
   │    │      读快照 → "scheme://host:port" 覆盖 c.Addresses
   │    │      （快速失败：无 `${discovery}` 后端 bean、或该服务无端点）
   │    ├─ 可选 Driver bean（无则用内置 DefaultDriver；多个并存时实例可按名指定：
   │    │      `spring.elasticsearch.instances.<name>.driver = <bean 名>`，留空 = 按类型注入
-  │    │      唯一 Driver bean，指定的 bean 不存在则启动失败）→ driver.CreateClient(ctx, c, backend)：
-  │    │      DefaultDriver 安装 dynamicTransport + OTel 插桩，
-  ｜    │      记入 dynamicTransports；newClient 取出交给 Init
-  │    └─ HealthCheck（Info 请求）——无条件 fail-fast 探测；失败则关闭
-  │        client 并中止启动
-  ├─ Init [client.go:78]：newDBObserver("elasticsearch") → 模块内建 observer
-  │    → obsTransport（指标 + 访问日志，无 span）
-  │    → fault.WrapClientExecutor(mgr.ClientExecutorFor("elasticsearch", service), service, inj)——注入的
-  │      治理 bean + outcome 计数 + resilience span
-  │    → dyn.Swap(resilience.NewRoundTripper(obsTransport, exec)) [client.go:86-92]
-  ├─ 就绪：指示器转 UP（执行 client.Info）
-  └─ SIGTERM → Destroy [client.go:98]：exec.Close → 停 discovery watch → client.Close
+  │    │      唯一 Driver bean，指定的 bean 不存在则启动失败）→ driver.CreateClient(ctx, c, backend, params)：
+  │    │      DefaultDriver 安装 dynamicTransport 间接层，并返回 *Client 包装体；
+  │    │      NewClient 定身份、派生 service label 并置
+  │    │      exec = params.ExecutorFor("elasticsearch", service)
+  │    │      （fault(受治理 executor)，零值 params 则降级为只观测的 Unmanaged），
+  │    │      然后装入传输层：声明层在最外层，resilience 在其内
+  │    └─ fail-fast 探测：HealthCheck(ctx, client)——一次直连裸 client 的 Info；
+  │        失败则释放 client（Destroy）并中止启动
+  ├─ 就绪：指示器转 UP（经 HealthCheck 执行裸 client.Info）
+  └─ SIGTERM → Destroy：exec.Close → client.Close
 ```
 
 集群不可达、service-name 无端点，都会让启动失败——进程不会带着坏的
@@ -194,60 +193,65 @@ ES 连接进入"服务中"状态。
 
 ```
 elasticsearch API（Index/Get/...）
-  → elastictransport：OTel 插桩 span（NewOtelInstrumentation(nil,...)——挂 starter-otel
-      安装的 OTel 全局 TracerProvider；未导入则为 no-op）
   → elastictransport 重试循环（MaxRetries / DisableRetry）
-  → dynamicTransport（RWMutex 间接层；Init 换入前直通 http.DefaultTransport）
-  → resilience roundTripper：executor = fault(observe(限流/熔断/bulkhead/重试))：
-      注入的 fault injector 在最外，observe 层（每次 Execute 的 span + outcome 计数 +
-      访问日志）在其内，治理核心在最内
-  → obsTransport：db.client.operation.duration 直方图 + db.client.active_requests gauge
-      + _app_elasticsearch_access 日志（模块内建 observer 不出 span——不重复）
+  → dynamicTransport（RWMutex 间接层；包装体换入前直通 http.DefaultTransport）
+  → declareTransport：把操作（db.system／db.operation + URL 路径）放到请求 context 上——
+      在 executor 之外，故 resilience 层在 Execute 入口才读得到它
+  → resilience roundTripper：executor = fault(emit(限流/熔断/bulkhead/重试))：
+      注入的 fault injector 在最外，executor 自带的发射层（每次 Execute 的 span +
+      call 级/attempt 级两个 duration 直方图 + outcome 计数 + 访问日志）在其内，
+      治理核心在最内
   → http.DefaultTransport → 网络
 ```
 
-设计理由（源码注释，[command.go:17-41] 与 [client.go:56-95]）：
+设计理由（源码注释，[command.go] 与 [client.go]）：
 
-- **trace 来自 elastictransport 而非模块 observer。** 客户端暴露
-  `elasticsearch.Config.Instrumentation`，因此 span 覆盖重试；[observe.go] 的模块内建
-  observer 不出 span，只补 metric+log 缺口。
-- **resilience 位于 observe transport 之外**——与 go-redis 相反（那边访问日志包
-  在熔断器外）。这里的 executor 由注入的 `*resilience.Manager` 构建后已自带 observe 层，
-  使熔断跳闸/限流拒绝获得**自己的** span + outcome 计数，而 obsTransport 在被保护调用
-  内部记录 HTTP 结果。
+- **starter 只声明，resilience 层发射。** 链上只有一个发射点。声明传输层（[command.go]）
+  把 method + URL 路径变成 `observability.Operation` 放到请求 context 上；executor 在
+  Execute 入口读取它，发射唯一的 span、两个 duration 直方图、in-flight gauge 与访问日志。
+- **声明层在 executor 之外，而非它的 base。** executor 在被保护调用运行**之前**就读走操作，
+  所以放在它内部的声明没人读。因此传输栈是「声明层最外 → resilience round-tripper →
+  `http.DefaultTransport`」——这与旧分层相反：旧的那个负责发射的传输层是 executor 的
+  base，逐 attempt 运行。
+- **不启用 elastic transport 自带的 OTel 插桩。**
+  `elasticsearch.Config.Instrumentation` 过去装 `NewOtelInstrumentation`，会在 esapi 层
+  每请求开一个 call 级 client span——同一调用第二个 span，与 resilience 层现在发射的那个
+  重复。已删除，使 resilience 层保持唯一发射点。（与 starter-go-redis 同一处置：那边砍掉
+  redisotel 的逐命令 span、只留非逐调用的池指标；这里的插桩本就是逐调用的，故一并不留。）
 - **用 dynamicTransport 而非固定 transport**：ES 的 transport 在构造期固定、事后无法
   在 client 上替换；这层间接让 resilience 策略（Dync）保持可热更，尽管 transport 实例
-  本身不可换 [client.go:31-44]。槽位用 RWMutex 而非 atomic.Value，因为活跃
-  round-tripper 是若干不同具体类型之一——atomic.Value 版本在第二次 Swap 时 panic，
-  resilience_test.go 正是钉住这一点的回归测试。
-- **自定义 driver 可能完全没有这些**：只有 DefaultDriver 构建的 client 会进入
-  `dynamicTransports`；自定义 driver 自带 transport 会静默绕过 Init 时的换入——该实例
-  的 resilience 与 observe transport 均不可用。
+  本身不可换。槽位用 RWMutex 而非 atomic.Value，因为活跃 round-tripper 是若干不同具体
+  类型之一——atomic.Value 版本在第二次 Swap 时 panic，resilience_test.go 正是钉住这
+  一点的回归测试。
+- **自定义 driver 可能完全没有这些**：只有 DefaultDriver 构建的 client 才拿到
+  dynamicTransport；自定义 driver 自带 transport 会静默绕过换入——该实例的声明层与
+  resilience 层均不可用。
 
 ### 2.3 一次请求走读：带 match 查询的 `Search`
 
-1. 生成的 API 构造 `POST /demo-docs/_search`；elastictransport 打开 client span
-   （无 starter-otel 全局时为 no-op）。
+1. 生成的 API 构造 `POST /demo-docs/_search` 并交给传输链。
 2. 重试循环（至多 `max-retries`，默认 3）把请求交给 dynamicTransport。
 3. resilience executor 以 service label 为作用域申请许可，例如
    `elasticsearch:es-cluster` 或 `elasticsearch:http://127.0.0.1:9200`（取首个地址，
-   经 `resilience.ServiceLabel` 派生 [client.go:114-122]）——按集群而非按请求。
-   治理关闭时 executor 是透明的 no-op。
-4. obsTransport 从 method + URL path 得到操作名 `POST /demo-docs/_search`，抬升
-   in-flight gauge，完成时输出 duration 直方图 + 访问日志 [command.go:44-51]。
-5. 调用方拿到的与裸 go-elasticsearch 完全一致——包括 4xx 的 `res.IsError()` 响应体；
+   在 `NewClient` 里经 `resilience.ServiceLabel` 派生）——按集群而非按请求。
+   治理关闭时 executor 是只观测的 `resilience.Unmanaged`。
+4. declareTransport（在 executor 之外）把操作放到请求 context 上：span 名与 `db.statement`
+   是 `POST /demo-docs/_search`（其 URL 路径），`db.operation` 是 `POST`（有界的那部分），
+   `db.system` 是 `elasticsearch` [command.go]。
+5. 完成时 executor 发射唯一的 span、call 级/attempt 级 duration 直方图与访问日志。
+   调用方拿到的与裸 go-elasticsearch 完全一致——包括 4xx 的 `res.IsError()` 响应体；
    只有传输层错误进入异常路径（5xx 由 resilience round-tripper 映射为可触发熔断、
-   可重试的错误，cloud/governance/resilience/roundtripper.go:99-104）。
+   可重试的错误，cloud/resilience/roundtripper.go:99-104）。
 
-**每次调用必须带 context。** OTel 插桩从请求 context 派生 span、nil parent 会 panic
-——`HealthCheck` 与健康指示器都显式传 context [starter.go:120-124, health/health.go:19-31]；
+**每次调用都要传 context。** 它承载这次调用的取消与截止时间，resilience 层打开的操作 span
+也继承它——`HealthCheck` 与健康指示器都显式传 context [starter.go, health.go]；
 用户代码应使用 `es.Search.WithContext(ctx)` 等。
 
 ### 2.4 discovery 寻址——种子 + 活的节点集
 
 设置 `service-name` 且 mesh 模式关闭时，端点在构造函数里解析一次并固化进 `c.Addresses`；loader 是
-纯快照函数，无资源、无后台 watch，所以不保活也无需在停机时 Stop [starter.go:82-88,
-driver.go:101-121]。这次读是**fail-fast 闸门兼种子**——真正持续供数的是 driver 用同一个 resolver
+纯快照函数，无资源、无后台 watch，所以不保活也无需在停机时 Stop [starter.go, driver.go]。
+这次读是**fail-fast 闸门兼种子**——真正持续供数的是 driver 用同一个 resolver
 装上的自定义 `ConnectionPoolFunc` [pool.go]：transport 的节点集会从命名服务重读，所以节点加入/离开
 **不用重启**即可用。传播预算是 1 秒（`refreshInterval`，在请求路径上检查），注册中心抖动或空快照
 则保留上一份可用节点集，而不是把片刻前还正常的流量打黑。
@@ -295,9 +299,9 @@ Addresses（或 CloudID）原样使用。
 
 ### 3.4 插桩
 
-本模块**没有插桩配置 key**（没有 level、没有跳过名单、没有参数上限）：指标与访问
-日志由模块内建埋点（[observe.go]）无条件产出；trace span 来自 elastictransport 自身
-的 OTel 插桩。两者都搭乘 starter-otel 安装的 OTel 全局（`spring.observability.*`）。
+本模块**没有插桩配置 key**（没有 level、没有跳过名单）：starter 无条件**声明**每个请求的
+身份（[observe.go]），resilience 层据此**发射**全部信号。它们都搭乘 starter-otel 安装的
+OTel 全局（`spring.observability.*`）。
 
 ---
 
@@ -314,18 +318,20 @@ docker start starter-elasticsearch
 
 ### 4.2 可观测到底发什么
 
-- **指标**（OTel，经 starter-otel 全局）：`db.client.operation.duration` 直方图与
-  `db.client.active_requests` gauge，属性 `db.system=elasticsearch`、
-  `db.operation` = `"<METHOD> <path>"`、`status` = ok/error。resilience 层另有
-  `resilience.client.calls` 计数器，带 `resilience.outcome` ∈
-  {success, rate_limited, circuit_open, bulkhead_full, timeout, error}。
-- **span**：每请求一个 client span（来自 elastictransport 插桩，形如
-  `POST /demo-docs/_search`）；每次 resilience Execute 一个 internal span
-  （`resilience.service` 属性）。验证：`curl "http://127.0.0.1:16686/api/traces?service=demo&limit=1"`
+- **指标**（OTel，经 starter-otel 全局），由 resilience 层发射：call 级
+  `db.client.operation.duration` 与 attempt 级 `db.client.attempt.duration` 两个直方图，
+  以及 in-flight `db.client.active_requests` gauge——属性 `db.system=elasticsearch`、
+  `db.operation=<METHOD>`（有界）、`status` = ok/error，均不含 URL 路径。同一层还发
+  `resilience.client.calls` 计数器，带 `status` ∈ {ok, error}，以及保护拒绝该调用时的
+  `resilience.outcome` ∈ {rate_limited, circuit_open, bulkhead_full, retry_budget_exceeded,
+  timeout}。
+- **span**：每请求一个 span，由 resilience 层打开（internal 类型），形如
+  `POST /demo-docs/_search`，带 `db.system`/`db.operation` 属性及 `db.statement` = URL 路径。
+  验证：`curl "http://127.0.0.1:16686/api/traces?service=demo&limit=1"`
   并 grep `"data":[{`（与 example-otel 自测同款）。
-- **访问日志**：每请求一行，tag 为 `_app_elasticsearch_access`
+- **访问日志**：每请求一行，由 resilience 层写入，tag 为 `_app_elasticsearch_access`
   （`log.RegisterAppTag("elasticsearch", "access")`），按原生级别——失败 → Warn；带捕获
-  URL path（截断至 512 字节）的成功 → Debug；普通成功 → Info。
+  URL 路径（截断至 512 字节）的成功 → Debug；普通成功 → Info。
 
 ```bash
 curl -s "127.0.0.1:9090/search" >/dev/null  # 或由应用驱动
@@ -336,7 +342,7 @@ grep _app_elasticsearch_access app.log | tail -1
 ### 4.3 resilience / fault 演练（example-load 风格）
 
 ```properties
-# NOTE: governance RULES go in conf/governance.properties, referenced by spring.governance.source.file.path in app.properties (see starter-governance USAGE).
+# NOTE: governance RULES go in conf/governance.properties, referenced by spring.governance.source.file.path in app.properties (see starter-governance-file USAGE).
 spring.governance.enabled=true
 spring.governance.driver=default
 spring.governance.client.default.rate-limit=5          # 并发 > 5 → ErrRateLimited 拒绝
@@ -373,11 +379,11 @@ spring.elasticsearch.instances.disc.service-name=es-cluster
 |------|----------|------|
 | 启动报 "failed to reach elasticsearch cluster" | 地址不可达 / 凭据错误 / 指纹不匹配 / ES 未起完（最长 120 秒） | 修连通性；等 `curl http://127.0.0.1:9200` 通后重启。 |
 | 启动报 `discovery ... returned no endpoints` | service-name 在后端不存在，或后端未注册 | gs.Run 前注册后端 bean（命名 discovery.Discovery bean）；核对服务名。 |
-| 请求内 nil context panic | OTel 插桩从请求 context 派生 span | 每次调用传 `WithContext(ctx)`；不用无 context 的 API 变体。 |
+| 请求内 nil context panic | `http.Request.WithContext` 对 nil context 会 panic | 每次调用传 `WithContext(ctx)`；不用无 context 的 API 变体。 |
 | 已设 service-name 仍在 `addresses` 校验失败 | `addresses` 无条件必填（`len($) > 0`） | 保留哑地址（example 的做法）——反正会被覆盖。 |
-| 代码正确却无 span/指标 | 未导入 starter-otel | 插桩挂 OTel 全局；导入 starter-otel 并配置 exporter。 |
+| 代码正确却无 span/指标 | 未导入 starter-otel | resilience 层的信号挂 OTel 全局；导入 starter-otel 并配置 exporter。 |
 | 没有访问日志 | 日志 tag 被 logger 配置过滤 | 检查 `_app_elasticsearch_access` 的 logger 配置。 |
-| 自定义 driver 实例没有熔断/指标 | 只有 DefaultDriver 安装 dynamicTransport | 用 DefaultDriver，或在自定义 driver 里自行安装 observe+resilience transport。 |
+| 自定义 driver 实例没有熔断/指标 | 只有 DefaultDriver 安装 dynamicTransport | 用 DefaultDriver，或在自定义 driver 里自行安装 声明+resilience transport。 |
 | 重试次数疑似翻倍 | 客户端 `max-retries` 与治理 `max-retries` 同时 > 0 | 一侧归零 / disable-retry。 |
 
 ## 6. 设计体检表
@@ -395,9 +401,7 @@ spring.elasticsearch.instances.disc.service-name=es-cluster
   哑地址写法是权宜而非设计（候选：service-name/cloud-id 存在时放宽 expr）。
 - 与兄弟 starter 不同没有 `tls.*` 块——TLS 分散在三个 key 加 URL scheme
   （`https://` 地址、`cloud-id`、`certificate-fingerprint`）。
-- 自定义 driver 静默丢失 governance/resilience observe transport 换入——无告警、无 hook。
+- 自定义 driver 静默丢失 governance + resilience 声明传输层换入——无告警、无 hook。
 - schema.json 的 `enable-metrics` 默认值（`false`）与代码（`true`）不一致——schema 非
   生成物，会漂移。
 - 健康指示器无 opt-out key（与 go-redis 同款家族不对称；redigo 有 `health.enabled`）。
-- 本 starter 的 resilience 位于 observe transport 之外，go-redis 则在内——家族间分层
-  不同；resilience 桥补偿了缺口，但跨家族的 span/指标发射点翻倍。

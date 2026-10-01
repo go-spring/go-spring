@@ -35,7 +35,7 @@ require (
     go-spring.org/starter-bigcache latest
     go-spring.org/starter-actuator latest   // optional
     go-spring.org/starter-otel     latest   // optional: metric/span export
-    go-spring.org/starter-governance latest // optional
+    go-spring.org/starter-governance-file latest // optional
 )
 ```
 
@@ -48,7 +48,7 @@ import (
     "go-spring.org/spring/gs"
     _ "go-spring.org/starter-actuator"
     _ "go-spring.org/starter-bigcache"
-    _ "go-spring.org/starter-governance"
+    _ "go-spring.org/starter-governance-file"
     _ "go-spring.org/starter-otel"
     _ "demo/service"
 )
@@ -71,10 +71,11 @@ import (
 
 type Service struct {
     // Inject the WRAPPER *StarterBigCache.Cache, not *bigcache.BigCache:
-    // bigcache offers no hook/plugin point, so per-operation observability
-    // lives in the wrapper's Get/Set/Delete [client.go:31-45]. The embedded
-    // *bigcache.BigCache is reachable via the field for raw API needs
-    // (Reset/Stats/Len/Capacity promote unchanged).
+    // bigcache offers no hook/plugin point, so each operation's identity is
+    // declared by the wrapper's Get/Set/Delete [command.go:63-73] and emitted
+    // by the resilience layer it runs under. The raw *bigcache.BigCache is
+    // unexported with no accessor; the remaining raw methods
+    // (Stats/Len/Capacity/Reset/Close/...) are plain delegations.
     Hot  *StarterBigCache.Cache `autowire:"hot"`
     Cold *StarterBigCache.Cache `autowire:"cold"`
 
@@ -132,49 +133,58 @@ import starter-bigcache
   └─ gs.Module(OnProperty("spring.bigcache")) fires when any spring.bigcache.instances.* key exists
         └─ conf.BindEach("${spring.bigcache}") → one Config per <name>
               ├─ Provide(newClient, name@1, c@2).Name(<name>)
-              │    .Init((*Cache).Init).Destroy((*Cache).Destroy)
+              │    .Destroy((*Cache).Destroy)
               └─ Provide health.Indicator named "bigcache:<name>"
 
 gs.Run()
-  ├─ ctor newClient [starter.go:82]: driver lookup → DefaultDriver.CreateClient
-  │   (bigcache.DefaultConfig(LifeWindow) + knobs → bigcache.New)
-  │   → registerMetrics(name, client) — OTel observable gauges [starter.go:144-156]
+  ├─ ctor newClient [starter.go:88]: driver lookup → DefaultDriver.CreateClient(ctx, name, c, params)
+  │   (params = cloud.ClientParams{Resilience: mgr, Fault: inj}, bundled by the ctor from the
+  │    injected *resilience.Manager / *fault.Injector beans)
+  │   (bigcache.DefaultConfig(LifeWindow) + knobs → bigcache.New → NewCache(name, client, params))
+  │   → NewCache [client.go:108-131]: register this cache's observable gauges AND build the
+  │     resilience executor — the cache is complete here, nothing patches it afterwards
+  │     — OTel observable gauges [observe.go:99-107, 159-171]
+  │     — service label "bigcache:<name>" → params.ExecutorFor("bigcache", service)
+  │       (= resilience executor for mgr + fault wrapper for inj; the executor emits each
+  │        declared operation's span/metrics/access log; zero params → resilience.Unmanaged,
+  │        observed-only with a one-time warning)
   │   NOTE: no connectivity probe — there is nothing to probe (in-process heap)
-  ├─ Init [client.go]: newDBObserver() → service label
-  │   "bigcache:<name>" → fault.WrapClientExecutor(mgr.ClientExecutorFor("bigcache", service), service, inj)
-  │   (mgr/inj = the *resilience.Manager / *fault.Injector beans injected into newClient;
-  │    without them the executor is a transparent pass-through)
-  ├─ your Runner uses Get/Set/Delete (each = span + executor + access log)
-  └─ SIGTERM → Destroy [client.go:90-95]: exec.Close → BigCache.Close
+  ├─ your Runner uses Get/Set/Delete (each = declared operation + executor; emitted there)
+  └─ SIGTERM → Destroy [client.go:136-145]: unregister gauges → exec.Close → client.Close
       (stops the background eviction goroutine — hence the mandatory destroy)
 ```
 
 ### 2.2 Command surface — hand-written, because bigcache has no hook point
 
 Unlike go-redis (hooks) or redigo (interceptor chain), bigcache exposes no extension seam, so
-the starter hand-writes Get/Set/Delete on the wrapper, each with the same two layers
-[command.go:17-29]:
+the starter hand-writes Get/Set/Delete on the wrapper, each routed through the same two layers
+[command.go:47-73]:
 
 ```
-observe span (start) → resilience executor (guard) → bigcache core → span end
+declare operation (run/runErr) → resilience executor (guard = emission point) → bigcache core
 ```
 
-- **`guard`** [command.go:38-51]: runs the op under the executor; `bigcache.ErrEntryNotFound`
-  (a cache miss) is mapped to success — **a miss never trips the breaker**, mirroring
-  `redis.Nil` / `gorm.ErrRecordNotFound` elsewhere in the family. A rejection
-  (rate-limited / circuit-open) is returned as the executor's error.
-- **span**: bigcache is in-process with no network, so spans are ROOT spans (no caller context
-  to link) and durations are sub-microsecond — the value is per-key access visibility and a
-  uniform signal vocabulary across client starters [client.go:31-39]. Operations are named
-  `get` / `set` / `delete` with the key as the argument.
+- **`run` / `runErr`** [command.go:47-60]: declares the operation's identity on the context and
+  threads it through the executor; `bigcache.ErrEntryNotFound` (a cache miss) is declared with
+  `resilience.Tolerate`, so **a miss never trips the breaker**, mirroring `redis.Nil` /
+  `gorm.ErrRecordNotFound` elsewhere in the family, while still being returned to the caller
+  verbatim. A rejection (rate-limited / circuit-open) surfaces as the executor's error.
+- **emission**: the starter emits nothing itself — it only DECLARES the operation. The
+  resilience recorder it runs under emits the span, the metrics and the access log. bigcache is
+  in-process with no network, so spans are ROOT spans (no caller context to link) and durations
+  are sub-microsecond — the value is per-key access visibility and a uniform signal vocabulary
+  across client starters [client.go:39-58]. Operations are named `get` / `set` / `delete` with
+  the key as `db.statement` (span and log only — never a metric label).
 
 ### 2.3 One operation through the layers: `Get("key")` on a miss
 
-1. observe span starts (`get`, arg `key`).
-2. guard asks the executor for a permit (service `bigcache:<name>` — per instance).
-3. bigcache returns `ErrEntryNotFound`; guard classifies it as success (nil to the executor).
-4. The original error is still returned to the caller verbatim [command.go:50]; the span/log
-   record it as the op's outcome without feeding the breaker.
+1. `run` declares the operation (`get`, key `key`) and puts it on the context [command.go:47].
+2. The resilience executor opens the call span (`get`) and asks for a permit
+   (service `bigcache:<name>` — per instance).
+3. bigcache returns `ErrEntryNotFound`; `Tolerate` classifies it as success (nil to the executor).
+4. The executor emits the span, the duration metrics and the access log, then the original error
+   is returned to the caller verbatim [command.go:47-60]; the log records the miss as the op's
+   outcome without feeding the breaker.
 
 ---
 
@@ -190,30 +200,41 @@ All keys live under `spring.bigcache.instances.<name>.`.
 | `max-entries-in-window` | int | 600000 | Pre-allocation hint only — no runtime cap. | Under-guessed → realloc churn at startup. |
 | `max-entry-size` | int | 500 | Pre-allocation hint for one entry (bytes). | Under-guessed → realloc churn. |
 | `hard-max-cache-size` | int | 0 | Hard memory cap in MB; 0 = unlimited. | Set without need → early eviction (oldest entries dropped). |
-| `stats-enabled` | bool | false | bigcache per-key hit/miss stats. ⚠ The starter's OTel gauges read `Stats()` — several show 0 unless this is on (they pull whatever Stats() returns [starter.go:124-132]). | Off → gauges read zero while Len/Capacity still work. |
+| `stats-enabled` | bool | false | bigcache per-key hit/miss stats. ⚠ The starter's OTel gauges read `Stats()` — several show 0 unless this is on (they pull whatever Stats() returns [observe.go:99-107]). | Off → gauges read zero while Len/Capacity still work. |
 
 The per-instance `driver` key names the Driver bean: empty = inject the single Driver bean by
 type (or fall back to the bundled `DefaultDriver` when none is provided); set to a bean name to
 select one explicitly — naming a missing bean fails startup.
 
-**Metrics** (meter `go-spring.org/starter-bigcache`, attribute `cache.name=<name>`): observable
-gauges `bigcache.hits`, `bigcache.misses`, `bigcache.delete_hits`, `bigcache.delete_misses`,
-`bigcache.collisions`, `bigcache.entries`, `bigcache.capacity` [starter.go:124-132]. All are
-gauges (not counters) because `ResetStats()` can break monotonicity. No per-operation cost —
-values are pulled on scrape via callbacks.
+**Per-operation metrics** (emitted by the resilience layer the declared operation runs under,
+meter `go-spring.org/cloud/resilience`): call-level `db.client.operation.duration`
+(retries and backoff included), attempt-level `db.client.attempt.duration` (one record per
+downstream try — what the cache itself cost), in-flight `db.client.active_requests`, and the
+status-classified `resilience.client.calls`. Labels are `db.system=bigcache`,
+`db.operation=<get|set|delete>` and `status`; the key rides `db.statement` on the span and log
+only, never as a label. The access log is tag `_app_bigcache_access`, the same tag the starter
+registers [observe.go:44].
+
+**Cache-statistics gauges** (owner of this starter's own meter, `go-spring.org/starter-bigcache`,
+attribute `cache.name=<name>`): observable gauges `bigcache.hits`, `bigcache.misses`,
+`bigcache.delete_hits`, `bigcache.delete_misses`, `bigcache.collisions`, `bigcache.entries`,
+`bigcache.capacity` [observe.go:99-107]. All are gauges (not counters) because `ResetStats()` can
+break monotonicity. No per-operation cost — values are pulled on scrape via callbacks. This is
+the one signal the starter still owns: it is per-process, not per-call, so the resilience layer
+cannot emit it.
 
 **Cache abstraction bean**: alongside the wrapper, each instance is provided as a
-`*cache.Cache` bean named `bigcache:<bigcache-instance-name>` [starter.go:63-69] — inject
+`*cache.Cache` bean named `bigcache:<bigcache-instance-name>` [starter.go:68-71] — inject
 `*cache.Cache` with the autowire tag `bigcache:<instance-name>`. Un-injected, the bean never
 instantiates, so there is no config switch to set. `ErrEntryNotFound` maps to `cache.ErrMiss`
 at this boundary (this package's bytecache.go).
 
-**Assembly extension point**: cache assembly is owned by a `Driver` interface [driver.go:32-35].
+**Assembly extension point**: cache assembly is owned by a `Driver` interface [driver.go:32-58].
 A company/umbrella starter may provide its own `Driver` as an **optional container bean**
 (`gs.Provide(func() StarterBigCache.Driver{...})`), whose constructor returns the interface and
 so may inject config bound from the properties file at wiring time; every cache instance is then
 built through it. When no such bean exists the starter falls back to the bundled `DefaultDriver`
-inside assembly [driver.go:37-49]. When several Driver beans coexist, an entry selects one by name:
+inside assembly [driver.go:67-84]. When several Driver beans coexist, an entry selects one by name:
 `spring.bigcache.instances.<name>.driver = <bean-name>` (empty = fall back to the family-wide `spring.<family>.default.driver`, then to the single Driver bean by type;
 naming a missing bean fails startup).
 
@@ -252,15 +273,16 @@ spring.bigcache.instances.evict.max-entry-size=1024
 Write past the 1MB cap: oldest entries are evicted; `bigcache.entries` plateaus at capacity and
 `bigcache.misses` climbs for evicted keys — the example asserts exactly this shape.
 
-### 4.4 Cache abstraction wiring (SET via façade, GET via raw client)
+### 4.4 Cache abstraction wiring (SET via façade, GET via wrapper)
 
 ```go
-_ = s.Cache.Set(ctx, "k", "v", time.Minute)  // JSON-encoded bytes
-v, _ := s.Hot.GetBytes(ctx, "k")             // the JSON form via the promoted raw method
-raw, _ := s.Hot.BigCache.Get("k")            // identical bytes off the embedded client
+_ = s.Cache.Set(ctx, "k", "v", time.Minute)  // JSON-encoded bytes through the *cache.Cache façade
+raw, _ := s.Hot.Get("k")                     // the same JSON bytes, read through the wrapper
 ```
 
-A façade miss returns `cache.ErrMiss`; the wrapper returns `bigcache.ErrEntryNotFound`.
+A façade miss returns `cache.ErrMiss`; the wrapper returns `bigcache.ErrEntryNotFound`. The raw
+`*bigcache.BigCache` is not reachable — only the wrapper (which declares every access's
+operation) is.
 
 ---
 
@@ -275,7 +297,7 @@ A façade miss returns `cache.ErrMiss`; the wrapper returns `bigcache.ErrEntryNo
 | Entries disappear early | `hard-max-cache-size` cap evicting oldest | Raise or remove the cap. |
 | Health shows component but "probe seems fake" | By design — always UP [`health.go`] | Watch gauges/log instead for real signal. |
 | Stale values served | `clean-window=0` disabled the cleaner | Set a non-zero clean-window. |
-| Breaker trips on every miss | It does not — ErrEntryNotFound is success [command.go:42-45] | Look for a real failure. |
+| Breaker trips on every miss | It does not — ErrEntryNotFound is tolerated [command.go:47-51] | Look for a real failure. |
 
 ## 6. Design Health
 

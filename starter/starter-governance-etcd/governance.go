@@ -45,11 +45,7 @@ import (
 
 	"go-spring.org/cloud/governance"
 	"go-spring.org/log"
-	"go-spring.org/spring/conf"
-	"go-spring.org/spring/gs"
-	"go-spring.org/starter-governance/rules"
 	"go-spring.org/stdlib/errutil"
-	"go-spring.org/stdlib/flatten"
 	clientv3 "go.etcd.io/etcd/client/v3"
 )
 
@@ -73,32 +69,6 @@ type governanceEtcdConfig struct {
 	// Format overrides document-format detection; by default it is inferred
 	// from the key's extension, else properties.
 	Format string `value:"${format:=}"`
-}
-
-func init() {
-	gs.Module(gs.OnProperty("spring.governance.source.etcd"), func(r gs.BeanProvider, p flatten.Storage) error {
-		var c governanceEtcdConfig
-		if err := conf.Bind(p, &c, "${spring.governance.source.etcd:=}"); err != nil {
-			return err
-		}
-		format := sourceFormat(c.Format, c.Key)
-
-		r.Provide(func() (*EtcdSource, error) {
-			cli, err := clientv3.New(clientv3.Config{
-				Endpoints:   []string{c.Endpoint},
-				Username:    c.Username,
-				Password:    c.Password,
-				DialTimeout: dialTimeout,
-			})
-			if err != nil {
-				return nil, errutil.Explain(err, "governance etcd source: create client for %s failed", c.Endpoint)
-			}
-			return NewEtcdSource(cli, c.Key, format)
-		}).
-			Init((*EtcdSource).Init).Destroy((*EtcdSource).Close).
-			Export(gs.As[governance.Source]()).Caller(1)
-		return nil
-	})
 }
 
 // sourceFormat resolves the rule document format: an explicit format wins, else
@@ -160,7 +130,7 @@ func NewEtcdSource(kv etcdKV, key, format string) (*EtcdSource, error) {
 		return nil, errutil.Explain(nil, "governance etcd source: key %s is empty", key)
 	}
 	doc := string(resp.Kvs[0].Value)
-	cfg, err := rules.Parse(key, []byte(doc), format)
+	cfg, err := governance.Parse(key, []byte(doc), format)
 	if err != nil {
 		return nil, err
 	}
@@ -213,7 +183,7 @@ func (s *EtcdSource) apply(data string) {
 	if data == s.doc {
 		return
 	}
-	cfg, err := rules.Parse(s.key, []byte(data), s.format)
+	cfg, err := governance.Parse(s.key, []byte(data), s.format)
 	if err != nil {
 		log.Errorf(context.Background(), starterTag, "governance etcd source: key %s got an invalid value (keeping last good config): %v", s.key, err)
 		return

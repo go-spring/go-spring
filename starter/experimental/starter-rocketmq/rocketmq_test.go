@@ -23,9 +23,9 @@ import (
 	"testing"
 
 	"github.com/apache/rocketmq-client-go/v2/primitive"
-	"go-spring.org/cloud/governance/resilience"
-	"go-spring.org/cloud/governance/traffic"
 	"go-spring.org/cloud/propagate"
+	"go-spring.org/cloud/resilience"
+	"go-spring.org/cloud/traffic"
 	"go-spring.org/stdlib/testing/assert"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/propagation"
@@ -39,7 +39,7 @@ func newClientWithPolicy(t *testing.T, p resilience.ClientPolicy) *Client {
 	d := resilience.NewDefaultDriver(nil)
 	exec, err := d.NewClientExecutor("svc", p)
 	assert.Error(t, err).Nil()
-	return &Client{exec: exec, service: "rocketmq:test"}
+	return &Client{exec: exec, serviceLabel: "rocketmq:test"}
 }
 
 // TestExecutePassThrough proves the zero-config opt-in: a Client with no

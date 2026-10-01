@@ -62,6 +62,22 @@ go-spring's log.
 
 ## Observability
 
+Both directions DECLARE their operation on the call — the publish/consume
+identity (`messaging.system`, `messaging.operation`) plus the topic — and the
+resilience layer, the single emitter on the executor chain, emits the signals
+from that declaration: the call span, the call-level
+`messaging.client.operation.duration` histogram, the attempt-level
+`messaging.client.attempt.duration` histogram, the in-flight gauge, the
+`resilience.client.calls` counter, and one access log per call. They ride the
+global `TracerProvider` installed by [starter-otel](../starter-otel); without it
+the span and metrics are no-ops, while the access log always writes through
+go-spring's log. The starter itself no longer emits anything — it only declares.
+
+The connection-state counter (`messaging.client.connection.state_changes`),
+driven by the paho client's own connect / connection-lost / reconnecting
+callbacks, stays in the starter: it is not a per-call signal, so it is not the
+emitter's to produce.
+
 Distributed tracing is **not applicable** to this starter, and this is a
 deliberate decision rather than a gap:
 
@@ -75,10 +91,10 @@ deliberate decision rather than a gap:
   not done.
 
 The practical consequence: producer and consumer spans cannot be linked across
-the broker. The `messaging.Observe` decorator still instruments the driver —
-`messaging.operation.*` metrics and the access log — but its spans land as
-unlinked roots. Connection-layer events (connect, connection lost, reconnecting)
-are also bridged into go-spring's log for operational visibility.
+the broker — a publish and a consume are each still observed (the declared
+operation is emitted as metrics, logs and a span), but they land as unlinked
+roots. Connection-layer events (connect, connection lost, reconnecting) are also
+bridged into go-spring's log for operational visibility.
 
 ## Messaging Driver
 
@@ -118,8 +134,8 @@ _ = sub.Subscribe(ctx, func(ctx context.Context, m *messaging.Message) error {
 driver is **payload-only**: MQTT 3.1.1 carries no per-message metadata, so
 `Key`, `Headers` and `Timestamp` are not transmitted, and — uniquely among the
 drivers — **trace context cannot ride the message** (there is nowhere to ride
-it), so the `messaging.Observe` instrumentation emits metrics, logs and spans,
-but no cross-broker trace links. `group` is unused because 3.1.1 has no shared subscriptions. The paho
+it), so each publish and consume is observed (the declared operation is emitted
+as metrics, logs and a span) but there are no cross-broker trace links. `group` is unused because 3.1.1 has no shared subscriptions. The paho
 callback is fire-and-forget with no ack/nack, so a handler error is only logged.
 The raw `mqtt.Client` bean stays available for retained messages, custom QoS,
 wildcard topics and other MQTT features the driver does not model.

@@ -1,15 +1,15 @@
 # starter-governance-nacos 使用说明 — 参考手册
 
 详细使用参考。总览见 [README_CN.md](README_CN.md)。以下每条行为断言都对照过 starter
-源码（`governance.go`、`governance_test.go`）、共享解析胶水
-[starter-governance/rules](../starter-governance/rules/rules.go)、核心契约
+源码（`starter.go`、`governance.go`、`governance_test.go`）、共享解析胶水
+[cloud/governance/rules.go](../../cloud/governance/rules.go)、核心契约
 [cloud/governance](../../cloud/governance)（`source.go`），以及自断言的
 [example/](example)（`example/example.go`、`example/check.sh`）。Nacos 自身的语义（dataId、
 group、namespace、`ListenConfig`）见 [Nacos 文档](https://nacos.io/docs/latest/manual/admin/config/)——
 以下都是 go-spring 的增量。
 
 **本 starter 是什么**：治理规则源家族的 Nacos 适配器，是一个 `governance.Source` 实现；
-治理中心本身的呈现是 [starter-governance](../starter-governance) 的职责。存在
+治理中心本身的呈现是 [starter-governance-file](../starter-governance-file) 的职责。存在
 `spring.governance.source.nacos.*` 配置项之前，空导入本包是惰性的。
 
 ---
@@ -32,7 +32,7 @@ demo/
 ```
 require (
     go-spring.org/spring                  v1.3.x
-    go-spring.org/starter-governance       latest
+    go-spring.org/starter-governance-file       latest
     go-spring.org/starter-governance-nacos latest
 )
 ```
@@ -43,10 +43,10 @@ require (
 package main
 
 import (
-    "go-spring.org/cloud/governance/resilience"
+    "go-spring.org/cloud/resilience"
     "go-spring.org/spring/gs"
 
-    _ "go-spring.org/starter-governance"
+    _ "go-spring.org/starter-governance-file"
     _ "go-spring.org/starter-governance-nacos"
 )
 
@@ -65,7 +65,7 @@ func (p *poller) Run(ctx context.Context) error {
 }
 
 // newPoller 在注入的 manager 之上构建 poller。manager 为 nil——没有
-// starter-governance 的容器——时归一化为一个新的未武装实例。
+// starter-governance-file 的容器——时归一化为一个新的未武装实例。
 func newPoller(mgr *resilience.Manager) *poller {
     if mgr == nil {
         mgr = resilience.NewManager()
@@ -149,17 +149,17 @@ type Source interface {
 
 ```
 空导入 starter-governance-nacos
-  └─ init() governance.go: gs.Module(gs.OnProperty("spring.governance.source.nacos"), ...)
+  └─ init() starter.go: gs.Module(gs.OnProperty("spring.governance.source.nacos"), ...)
          （OnProperty 是前缀匹配：任何 spring.governance.source.nacos.* 键都会武装它）
        ├─ conf.Bind(p, &c, "${spring.governance.source.nacos:=}")   绑定并 expr 校验各 key
        └─ Provide newNacosSource:
             clients.NewConfigClient（namespace、5s 超时、鉴权、NotLoadCacheAtStart）
-              → NewNacosSource: 初始 GetConfig + rules.Parse   ← 在此快速失败
+              → NewNacosSource: 初始 GetConfig + governance.Parse   ← 在此快速失败
             .Init((*NacosSource).Init).Destroy((*NacosSource).Close)
             .Export(gs.As[governance.Source]())
 
 gs.Run()
-  ├─ Bean 装配：导出的 Source Bean 被注入 starter-governance 的 wiring
+  ├─ Bean 装配：导出的 Source Bean 被注入 starter-governance-file 的 wiring
   ├─ 规则源 Bean Init: ListenConfig 安装 OnChange 监听器
   ├─ 你的 Runner 运行（治理已武装——Rooter 先于 Runner）
   └─ SIGTERM 时：规则源 Bean Destroy → Close：CancelListenConfig + CloseClient
@@ -169,7 +169,7 @@ gs.Run()
 
 - **Export 是承重的。** 缺少 `Export(gs.As[governance.Source]())` 时，Bean 对中心的接口注入不可见，
   治理会保持 disabled。本 starter 已正确接线；手写的 Source Bean 也必须如此导出自己。
-- **启动即校验。** `NewNacosSource` 在 Bean 存在之前就调用 `GetConfig` 与 `rules.Parse`。
+- **启动即校验。** `NewNacosSource` 在 Bean 存在之前就调用 `GetConfig` 与 `governance.Parse`。
   dataId 缺失、客户端报错、或文档不可解析都会使构造（进而启动）失败，而不是静默装一个 disabled
   中心（[`TestNacosSource_BadSeedFailsFast`](governance_test.go) 钉住了这一点）。
 
@@ -177,7 +177,7 @@ gs.Run()
 
 1. 发布方向 dataId 写入内容（控制台、HTTP open API、SDK，任选）。
 2. Nacos 把新内容投递给 `Init` 安装的监听器（`ListenConfig` → `OnChange` → `NacosSource.apply`）。
-3. `apply` 先比字节：逐字节相同的重复投递（Nacos 重连时可能重推）是 no-op。否则经 `rules.Parse`
+3. `apply` 先比字节：逐字节相同的重复投递（Nacos 重连时可能重推）是 no-op。否则经 `governance.Parse`
    重新解析；坏文档以 tag `_app_governance_nacos` 打日志并保留上一份好快照，不推送任何东西。
 4. 解析成功的配置用 `reflect.DeepEqual` 与当前快照去重；仅当规则确实变化时才替换快照并触发 `cb`。
 5. 中心订阅的回调采纳该配置，为每个已注册 label 重新解析策略并热替换 fault——因此一次推送在下一次
@@ -189,7 +189,7 @@ gs.Run()
 点号后缀，否则 `properties`。dataId 带受支持后缀（`app-governance.yaml`、`app-governance.json`、
 `app-governance.toml`）时无需 `format` 键；无后缀或未知后缀的 dataId 默认为 `properties`。
 
-`rules.Parse` 经相同的 `conf` value-tag 机制以前缀 `govern` 绑定，并拒绝「能解析但不含任何
+`governance.Parse` 经相同的 `conf` value-tag 机制以前缀 `govern` 绑定，并拒绝「能解析但不含任何
 `spring.governance.*` 键」的文档（被截断或清空的文档）——关闭治理的正确姿势是 `spring.governance.enabled=false`，
 一个确实存在的键。
 
@@ -213,11 +213,11 @@ gs.Run()
 这与 `starter-config-nacos` import 串的 `timeout-ms` 不同。
 
 ⚠ `spring.governance.source.*` 只是引导面。规则文档本身永不走 `app.properties`——它住在自己的 dataId 里，
-其键是 `spring.governance.*` 词表，文档见 [starter-governance 的 USAGE](../starter-governance/USAGE.md)。
+其键是 `spring.governance.*` 词表，文档见 [starter-governance-file 的 USAGE](../starter-governance-file/USAGE.md)。
 
 ### 3.1 文档的逐字节可移植性
 
-文档由 `starter-governance` 的 file 源与 http 源共用的同一个 `rules.Parse` 解析：先扁平化，
+文档由 `starter-governance-file` 的 file 源与 http 源共用的同一个 `governance.Parse` 解析：先扁平化，
 要求至少含一个 `spring.governance.*` 键，再绑定进 `governance.Config`。因此一份能作为本地规则文件工作的文档，
 作为 Nacos dataId（反之亦然，以及作为 etcd 值配合
 [starter-governance-etcd](../starter-governance-etcd)）也能原样工作。
@@ -274,7 +274,7 @@ docker 或 compose 命令不可用时，`check.sh` 优雅跳过。否则它拉�
 |------|----------|------|
 | 启动报错 `nacos server address must be host:port` | `server` 无 `:` 或 host/port 为空 | 使用 `host:port`，单服务端。 |
 | 启动报错 `governance nacos source: get <group>/<dataId> failed` | dataId 缺失、分组/命名空间错误、凭据错误、或服务端宕机 | 在正确的分组/命名空间下创建 dataId；检查鉴权。 |
-| 启动在 `rules.Parse` 内报错 | dataId 里的文档不可解析或不含 `spring.governance.*` 键 | 先发布一份合法文档——播种按设计快速失败。 |
+| 启动在 `governance.Parse` 内报错 | dataId 里的文档不可解析或不含 `spring.governance.*` 键 | 先发布一份合法文档——播种按设计快速失败。 |
 | 配了治理，`PolicyFor` 却始终为零 | 文档里 `spring.governance.enabled` 为 false（默认） | 设为 `spring.governance.enabled=true`——它是总开关。 |
 | 一次发布没改变策略 | 日志出现 `published an invalid document (keeping last good config)` | 修正文档；「关闭」是 `spring.governance.enabled=false`，不是空文档。 |
 | 发布内容完全相同却毫无反应 | 设计如此——逐字节相同的重复投递与 DeepEqual 相等的文档都不推送 | 符合预期。 |
@@ -297,7 +297,9 @@ docker 或 compose 命令不可用时，`check.sh` 优雅跳过。否则它拉�
 - 播种快速失败是刻意的：与配置导入角色不同，此接口面没有 `optional:` 模式，因此配置错误的 dataId
   无法静默装一个 disabled 中心。代价是 dataId 必须在应用启动前存在——对于一份缺失即不可见的规则
   文档，这是可接受的。
-- 解析胶水（`rules.Parse`）作为 `starter-governance` 的子包安放，而非放进 `cloud/governance`，
-  这样容器无关的核心保持不含 `spring` 依赖，同时各后端共享同一个解析器。
+- 解析胶水（`governance.Parse`）就放在 `cloud/governance` 里：规则文档是框架自己的格式，解析器
+  理应和它产出的模型在一起,各后端共享同一个实现。这是 `cloud/` 里唯一 import `spring/conf` 的
+  地方——可以接受,因为替代方案(每个后端各写一份解析,或把解析器塞在某个 starter 里让兄弟模块
+  反向依赖它)都更差。
 - etcd 兄弟适配器（[starter-governance-etcd](../starter-governance-etcd)）形态相同；两者保持
   结构对齐，便于读者在两者之间迁移。

@@ -15,64 +15,93 @@
  */
 
 // client.go is the "resource entity" concept of this starter: the Conn wrapper
-// NATS connections are injected as, plus its lifecycle (destroy = Drain) and the
-// live-health probe. It mirrors starter-redigo's pool.go: the entity embeds the
-// concrete *nats.Conn and carries the optional JetStream context, the observe
-// observers, and the resilience executor, while the per-operation observe +
-// guard layers live in command.go.
+// NATS connections are injected as and its lifecycle (NewConn/Destroy). The
+// live-health probe lives in health.go. It mirrors starter-memcached's client.go and
+// starter-redigo's pool.go: the entity holds the concrete *nats.Conn in an
+// unexported field and carries the optional JetStream context and the resilience
+// executor, while the per-operation declaration + guard layers live in command.go
+// and the raw-client delegations in delegate.go.
 package StarterNats
 
 import (
 	"github.com/nats-io/nats.go"
 	"github.com/nats-io/nats.go/jetstream"
-	"go-spring.org/cloud/governance/resilience"
+	"go-spring.org/cloud"
+	"go-spring.org/cloud/resilience"
 )
 
-// Conn wraps a NATS connection together with an optional JetStream context.
-// The embedded *nats.Conn lets callers use Publish/Subscribe/Request directly on
-// the bean; JetStream is non-nil only when jetstream.enabled is set, since it is
-// derived from the same connection rather than opening a second one.
+// Conn wraps a NATS connection together with an optional JetStream context. It
+// is the type apps inject (and [Driver.CreateClient] returns); JetStream is
+// non-nil only when jetstream.enabled is set, since it is derived from the same
+// connection rather than opening a second one.
 //
-// When governance is enabled the opt-in PublishGuarded(ctx, …) and
-// RequestGuarded methods route the call through a rate-limiter / circuit-
-// breaker executor; the plain Publish/Request remain untouched. nats exposes no
-// reject-capable middleware, so the guard lives at the call site — callers pick
-// per-invocation whether they want protection.
+// The raw *nats.Conn is an unexported field, not an embedded one: [NewConn] is
+// the only way to build a Conn, so a connection can never exist without its
+// identity, and the operation surface (command.go + the delegations in
+// delegate.go) is the whole API. There is deliberately no exported accessor for
+// the raw connection: that would let a caller bypass the declaration and
+// governance layers without it showing up in review. Because nothing is
+// promoted, every method the raw *nats.Conn exposed is re-exposed explicitly in
+// delegate.go.
+//
+// Every publish and consume is declared (see [operation]) and routed through the
+// resilience executor, which emits the call's span, metrics and access log —
+// nats exposes no reject-capable middleware, so the executor is driven at the
+// call site rather than threaded in as an interceptor.
 type Conn struct {
-	*nats.Conn
+	// conn is the raw nats connection. Unexported so [NewConn] is the only
+	// constructor — see the type doc.
+	conn *nats.Conn
+
+	// JetStream is the JetStream context derived from conn, non-nil only when
+	// jetstream.enabled is set.
 	JetStream jetstream.JetStream
 
-	// pubObs/subObs drive the instrumentation (trace+metric+log) for publishes
-	// and consumes. nil-safe: when nil the instrumented methods delegate
-	// unchanged.
-	pubObs *observer
-	subObs *observer
-
-	// exec is nil unless governance is enabled; when set, the guarded
-	// methods route through it. service is the stable per-instance key so the
-	// limiter/breaker state is scoped per connection rather than per subject.
-	exec    resilience.ClientExecutor
-	service string
+	// exec is the resilience executor every publish and consume runs under; it is
+	// also the single emission point for the operation's span, metrics and access
+	// log. It is set by [NewConn] from the params bundle it is handed, so a
+	// Conn is complete the moment it is built. serviceLabel is the stable
+	// per-instance key so the limiter/breaker state is scoped per connection
+	// rather than per subject.
+	exec         resilience.ClientExecutor
+	serviceLabel string
 }
 
-// Healthy reports whether the connection is currently established. It reflects
-// the live state of the auto-reconnecting client, so callers (health probes,
-// readiness endpoints) can query it at any time rather than relying only on the
-// connection-event logs.
-func (c *Conn) Healthy() bool {
-	return c.Conn != nil && c.Conn.IsConnected()
-}
-
-// destroyConn drains the connection, letting in-flight subscriptions finish
-// before the underlying socket is closed. Drain closes the connection when done.
-// When a resilience executor is attached its Close releases any background
-// services of a production driver.
-func destroyConn(conn *Conn) error {
-	var execErr error
-	if conn.exec != nil {
-		execErr = conn.exec.Close()
+// NewConn builds a complete Conn — identity, governance and all — over a
+// connected raw client. raw must be ready for use (dialed with its
+// options/auth/TLS applied) — it is normally the Driver's product. url is the
+// configured server address; it is the identity the resilience service label
+// scopes limiter/breaker state by.
+//
+// params carries the container's facilities (see [cloud.ClientParams]), and is
+// applied HERE so a Conn cannot exist half-assembled: there is no Init step, no
+// later patching, and nothing the container has to remember to call. A
+// hand-built connection passes the zero [cloud.ClientParams]; its executor then
+// degrades to [resilience.Unmanaged] — observed, with a one-time warning that no
+// protection applies — rather than silently running bare.
+//
+// The manager's ClientExecutorFor resolves its backing executor lazily, on each
+// Execute, so the call order relative to the center's wiring is
+// irrelevant.
+func NewConn(raw *nats.Conn, url string, params cloud.ClientParams) *Conn {
+	c := &Conn{
+		conn:         raw,
+		serviceLabel: resilience.ServiceLabel("nats", url),
 	}
-	if err := conn.Drain(); err != nil {
+	c.exec = params.ExecutorFor("nats", c.serviceLabel)
+	return c
+}
+
+// Destroy releases the resilience executor (when one is attached) and drains
+// the connection, letting in-flight subscriptions finish before the underlying
+// socket is closed. Drain closes the connection when done. It is the gs destroy
+// method.
+func (c *Conn) Destroy() error {
+	var execErr error
+	if c.exec != nil {
+		execErr = c.exec.Close()
+	}
+	if err := c.conn.Drain(); err != nil {
 		return err
 	}
 	return execErr

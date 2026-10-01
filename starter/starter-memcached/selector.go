@@ -40,8 +40,17 @@ var keyBufPool = sync.Pool{
 }
 
 // staticAddr caches the Network() and String() values from a resolved net.Addr,
-// mirroring gomemcache's own unexported type: the client calls String() on every
-// operation, and *net.TCPAddr would recompute it each time.
+// mirroring gomemcache's own unexported type. The client uses addr.String() as
+// its connection-pool key on every operation — getConn and putConn each do a
+// freeconn[addr.String()] lookup — and again when dialing; *net.TCPAddr
+// recomputes and reallocates that string on each call.
+//
+// This is an allocation optimization only, not a correctness requirement:
+// handing back the resolved *net.TCPAddr directly behaves identically, at the
+// cost of about two small allocations per memcached operation — real but small
+// next to the network round trip it accompanies. The type is kept to match the
+// library's own selector; it is safe to drop if the duplication is not worth
+// that.
 type staticAddr struct {
 	ntw, str string
 }
@@ -74,9 +83,9 @@ func (s *staticAddr) String() string  { return s.str }
 type liveServers struct {
 	resolve discovery.Resolver
 
-	mu   sync.Mutex
-	key  string     // signature of the snapshot the addresses were resolved from
-	addr []net.Addr // resolved, sorted
+	mu          sync.Mutex
+	snapshotKey string     // signature of the snapshot the addresses were resolved from
+	addr        []net.Addr // resolved, sorted
 }
 
 // newLiveServers wraps resolve as a [memcache.ServerSelector].
@@ -138,7 +147,7 @@ func (s *liveServers) snapshot() ([]net.Addr, error) {
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if key == s.key {
+	if key == s.snapshotKey {
 		return s.addr, nil
 	}
 	resolved := make([]net.Addr, 0, len(addrs))
@@ -155,6 +164,6 @@ func (s *liveServers) snapshot() ([]net.Addr, error) {
 		}
 		resolved = append(resolved, newStaticAddr(addr))
 	}
-	s.key, s.addr = key, resolved
+	s.snapshotKey, s.addr = key, resolved
 	return s.addr, nil
 }

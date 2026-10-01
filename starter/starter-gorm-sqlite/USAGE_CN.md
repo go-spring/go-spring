@@ -151,16 +151,18 @@ gs.Run()
 
 `db.WithContext(ctx).First(&g, 1)`：
 
-1. gorm 的 `gorm:query` processor 执行 —— 但 gormcore 的 `ApplyCallbacks` 已把它
-   *替换*为在实例 resilience executor（治理规则 `spring.governance.*` 的 timeout/retry/breaker，放火时
+1. observe 插件的 `before_query` 在 statement 的 ctx 上声明本次操作（名称、
+   `db.system=sqlite`、`db.operation`、SQL；`starter-gorm/observe/plugin.go`）。
+2. gormcore 的 `ApplyCallbacks` 已把 gorm 的 `gorm:query` processor *替换*为在实例
+   resilience executor（治理规则 `spring.governance.*` 的 timeout/retry/breaker，放火时
    还有 fault 注入器）之下运行的包装。`gorm.ErrRecordNotFound` 视为成功，"无行"
    不会触发熔断（`starter-gorm/resilience/callbacks.go:runGuard`）。
-2. observe 插件的 `before_query` 开 span + in-flight 指标
-   （`starter-gorm/observe/plugin.go`；此时还拿不到 SQL）。
 3. 原 processor 执行：连接池取连接（SQLite：` :memory:` 的唯一连接，或文件库的 N
    个连接之一 —— 每个连接都会按 DSN 重新应用 `_pragma` 设置）、语句构建、行扫描。
-4. `after_query` 把 SQL 写入 span、结束 span + 时长指标、写访问日志（级别来自
-   wrapper 级 `observability` key）。
+4. resilience 层从声明的操作发射信号：call span（含 SQL）、call 级
+   `db.client.operation.duration`、attempt 级 `db.client.attempt.duration`、
+   `db.client.active_requests`，以及那一条访问日志（级别来自 wrapper 级
+   `observability` key）。
 5. executor 包装把拒绝信号（`ErrCircuitOpen` 等）传播到 `tx.Error`。
 
 ---
@@ -228,8 +230,10 @@ grep "SQLite round trip OK:" smoke.out     # CRUD + 事务往返
 curl -s :9370/readyz                        # 引入 starter-actuator 后：gorm:sqlite:<name> 折叠在内
 ```
 
-每查询可观测项（`observe.enabled=true`，默认开）：每个 Create/Query/Update/Delete 一个
-`db.system=sqlite` 的 span、时长/in-flight 指标、带 SQL 语句的访问日志。按实例关闭用
+每查询可观测项（`observe.enabled=true`，默认开）：插件为每个 Create/Query/Update/Delete
+声明操作；resilience 层发射 span（`db.system=sqlite`，含 SQL）、call 级
+`db.client.operation.duration`、attempt 级 `db.client.attempt.duration`、
+`db.client.active_requests`，以及那一条访问日志。按实例关闭声明用
 `observe.enabled=false`（插件完全不安装）。
 
 ### 4.3 演练：写者争用下的 busy-timeout
@@ -248,7 +252,7 @@ curl -s :9370/readyz                        # 引入 starter-actuator 后：gorm
 | 实例启动失败：expr `$ != ''` | `file` 为空/缺失 | 设置 `file` —— 唯一必填 key。 |
 | 外键约束不生效 | `foreign-keys=false`（pragma 被省略，SQLite 默认关闭） | 置 `true`。 |
 | 第二个实例看不到第一个的数据 | 文件路径不一致 / 相对路径依赖 cwd | 用绝对路径；example 的 `init()` 会 chdir 到源码目录。 |
-| 查询无 span/指标 | `observe.enabled=false` 或未引入 starter-otel | 重新开启 / 引入 starter-otel（无它时钩子静默空转）。 |
+| 查询无 db.* span/指标/访问日志 | `observe.enabled=false` 或未引入 starter-otel | 引入 starter-otel；按实例开关会完全移除插件，操作不再声明，resilience 层只发它自己的通用信号。 |
 | 慢查询日志条目格式怪 | `slow-threshold>0` 自 2026-08 起将 GORM 的 warn 输出改经 `go-spring.org/log`（TagAppDef）转发 | 内容是 GORM 的单行文本；嫌吵可按消息过滤。 |
 
 ## 6. 设计体检表

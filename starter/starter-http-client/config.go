@@ -20,7 +20,7 @@ import (
 	"fmt"
 
 	"go-spring.org/cloud/discovery"
-	"go-spring.org/cloud/governance/resilience"
+	"go-spring.org/cloud/resilience"
 	"go-spring.org/cloud/security"
 	"go-spring.org/starter-http-client/httpx"
 )
@@ -60,7 +60,7 @@ type Config struct {
 }
 
 // Resilience, fault and endpoint-selection policy are NOT bound here: they live
-// in the governance rules document (starter-governance), matched by this
+// in the governance rules document (the governance center), matched by this
 // entry's service label. That includes the load-balancing strategy
 // (`balancer`) and outlier suspension (`outlier-threshold` /
 // `outlier-suspend-for`) — write them under spring.governance.client.rules[N], not here.

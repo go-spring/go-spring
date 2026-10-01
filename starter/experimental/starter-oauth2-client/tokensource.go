@@ -26,17 +26,6 @@ import (
 	"golang.org/x/oauth2/clientcredentials"
 )
 
-func init() {
-	// Register OAuth2 token sources alongside the HTTP clients over the same
-	// "${spring.oauth2.client}" configuration group. Beans are keyed by type
-	// plus name, so a *TokenSource coexists with the *http.Client of the same
-	// name. It exposes the raw bearer token for callers that need to inject it
-	// themselves (e.g., gRPC metadata) rather than send it via an *http.Client,
-	// and additionally surfaces the cached token's status for observability.
-	// Token sources hold no closable resource, so no destroy callback is needed.
-	gs.Group("${spring.oauth2.client.instances}", newTokenSource, nil)
-}
-
 // TokenSource wraps an oauth2.TokenSource (client-credentials grant) and records
 // the most recently minted token so callers can observe the current bearer
 // token, its validity, and its expiry without forcing a fetch. It satisfies

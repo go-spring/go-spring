@@ -33,7 +33,7 @@
   otel。starter 提供 `otelObserver`,每个阶段开一个子 span
   (`saga.action|compensate <step>`),走 `starter-otel` 装的 globals——
   零依赖模式下的标准做法(call-site span helper 落在 starter 层)。
-- **重试策略复用 `cloud/governance/resilience`。**`RetryPolicy = resilience.ClientPolicy`
+- **重试策略复用 `cloud/resilience`。**`RetryPolicy = resilience.ClientPolicy`
   (`cloud/experimental/transaction` 中的类型别名),重试经 resilience `default` driver
   执行,不重造循环。
 

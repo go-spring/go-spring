@@ -42,9 +42,11 @@ type Service struct {
 }
 ```
 
-The bean is the starter's `*Cache` wrapper (the raw `*bigcache.BigCache` is embedded
-and available as `s.Cache.BigCache`); Get/Set/Delete on it flow through the observe
-and resilience layers.
+The bean is the starter's `*Cache` wrapper. The raw `*bigcache.BigCache` is held in an
+unexported field with no accessor, so every operation stays behind the wrapper: Get/Set/Delete
+declare their operation and flow through the resilience layer — which emits the span, the
+metrics and the access log — and the remaining raw methods (Stats, Len, Reset, Close, …) are
+re-exposed as plain delegations.
 
 ### 4. Use the BigCache Instance
 
@@ -70,8 +72,12 @@ The [example.go](example/example.go) program demonstrates and asserts three core
 * **Support BigCache extensions**: You can extend BigCache creation by implementing the `Driver` interface.
   When several Driver beans coexist, an instance selects one by name: `spring.bigcache.instances.<name>.driver = <bean-name>`
   (empty = fall back to the family-wide `spring.<family>.default.driver`, then to the single Driver bean by type; naming a missing bean fails startup).
+* **Observability**: Get/Set/Delete declare `db.operation=get|set|delete` and the resilience layer emits
+  the `get`/`set`/`delete` span, the call-level `db.client.operation.duration`, the attempt-level
+  `db.client.attempt.duration` histogram, and the `_app_bigcache_access` access log (the key rides the
+  span/log as `db.statement`, never a metric label).
 * **Hit/miss statistics**: set `stats-enabled=true` and read `cache.Stats()` for hit/miss/collision counters — the
-  read mechanism for cache-effectiveness monitoring.
+  read mechanism for cache-effectiveness monitoring; the starter exports them as OTel observable gauges.
 * **Eviction/expiry callback**: register `bigcache.Config.OnRemove` by providing a
   custom `Driver` (implement `CreateClient` and set the callback on the
   `bigcache.Config` you build).

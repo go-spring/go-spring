@@ -45,13 +45,13 @@ import (
 	"time"
 
 	"go-spring.org/cloud/discovery"
-	"go-spring.org/cloud/governance/resilience"
+	"go-spring.org/cloud/resilience"
 	"go-spring.org/spring/gs"
 
 	_ "go-spring.org/starter-actuator"    // aggregates the elasticsearch health.Indicator
 	_ "go-spring.org/starter-config-file" // registers the file-watch config provider
 	StarterElasticsearch "go-spring.org/starter-elasticsearch"
-	_ "go-spring.org/starter-governance"
+	_ "go-spring.org/starter-governance-file"
 )
 
 const mountDir = "./mount"

@@ -78,13 +78,13 @@ func init() {
 
 // Relay is the bean wrapping one [outbox.Relay] loop.
 type Relay struct {
-	cfg    Config
-	name   string
-	db     *gorm.DB
-	drv    messaging.Driver
-	relay  *outbox.Relay
-	cancel context.CancelFunc
-	done   chan struct{}
+	cfg          Config
+	instanceName string
+	db           *gorm.DB
+	drv          messaging.Driver
+	relay        *outbox.Relay
+	cancel       context.CancelFunc
+	done         chan struct{}
 }
 
 // newRelay builds the bean from the bound config, the autowired *gorm.DB, the
@@ -92,7 +92,7 @@ type Relay struct {
 // like any client bean (empty config names the single messaging.Driver bean);
 // the container resolves it before Init runs.
 func newRelay(_ *gs.ContextProvider, c Config, db *gorm.DB, drv messaging.Driver, name string) (*Relay, error) {
-	return &Relay{cfg: c, name: name, db: db, drv: drv}, nil
+	return &Relay{cfg: c, instanceName: name, db: db, drv: drv}, nil
 }
 
 // Init optionally migrates the table, then starts the relay loop in the
@@ -101,7 +101,7 @@ func newRelay(_ *gs.ContextProvider, c Config, db *gorm.DB, drv messaging.Driver
 func (o *Relay) Init() error {
 	if o.cfg.AutoMigrate {
 		if err := Migrate(o.db); err != nil {
-			log.Errorf(context.Background(), starterTag, "outbox %q: auto-migrate failed: %v", o.name, err)
+			log.Errorf(context.Background(), starterTag, "outbox %q: auto-migrate failed: %v", o.instanceName, err)
 			return err
 		}
 	}
@@ -117,7 +117,7 @@ func (o *Relay) Init() error {
 	if driver == "" {
 		driver = "(autowired messaging.Driver bean)"
 	}
-	log.Infof(context.Background(), starterTag, "outbox relay %q started (driver=%s)", o.name, driver)
+	log.Infof(context.Background(), starterTag, "outbox relay %q started (driver=%s)", o.instanceName, driver)
 	return nil
 }
 
@@ -133,7 +133,7 @@ func (o *Relay) Destroy() error {
 	select {
 	case <-o.done:
 	case <-time.After(DrainTimeout):
-		log.Warnf(context.Background(), starterTag, "outbox relay %q: drain timed out", o.name)
+		log.Warnf(context.Background(), starterTag, "outbox relay %q: drain timed out", o.instanceName)
 	}
 	return nil
 }

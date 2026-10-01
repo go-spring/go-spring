@@ -23,8 +23,8 @@ import (
 	"testing"
 
 	"go-spring.org/cloud/discovery"
-	"go-spring.org/cloud/governance/resilience"
 	"go-spring.org/cloud/loadbalance"
+	"go-spring.org/cloud/resilience"
 )
 
 // newTestTable builds a RouteTable without the container, enough for

@@ -34,7 +34,7 @@ import (
 	"go-spring.org/spring/gs"
 	"go-spring.org/starter-gorm"
 	_ "go-spring.org/starter-gorm-clickhouse"
-	_ "go-spring.org/starter-governance"
+	_ "go-spring.org/starter-governance-file"
 )
 
 // Service is the root bean holding the autowired client instance "load".

@@ -76,7 +76,7 @@ type PromServe struct {
 // NewMeterProvider builds a MeterProvider for the configured exporter. The
 // exporter is looked up by name in the meter-exporter registry; the built-in
 // names (otlp-grpc, otlp-http, prometheus, stdout) are registered by subpackages
-// the starter blank-imports, and applications may add their own via
+// the starter registers, and applications may add their own via
 // RegisterMeterExporter. A pull-based exporter returns a *PromServe carrying
 // the scrape handler (and optional dedicated server); a push-based exporter
 // returns a nil *PromServe.

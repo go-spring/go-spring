@@ -26,6 +26,7 @@ import (
 	"strings"
 
 	"github.com/IBM/sarama"
+	"go-spring.org/cloud"
 	"go-spring.org/log"
 	"go-spring.org/stdlib/errutil"
 )
@@ -38,11 +39,24 @@ import (
 // configuration/beans it needs — e.g. company config bound from a properties
 // file at wiring time.
 //
+// CreateClient returns the client COMPLETE. Kafka-sarama exposes the raw
+// sarama.Client as its bean (no wrapper type), so the driver both builds it and
+// attaches its governance: params supplies the container's service-governance
+// capabilities (see [cloud.ClientParams]), and the driver indexes the
+// executor it yields, keyed by the returned client, so the WrapSyncProducer /
+// Consume seams can resolve it later. Nothing patches the client afterwards — a
+// custom driver is expected to attach the executor from the params it is handed the
+// same way (see AttachGovernance).
+//
+// params is one struct rather than a parameter per capability so this interface —
+// which every company driver implements — stays stable as capabilities are
+// added. A driver that has no use for one of its fields simply ignores it.
+//
 // At most one Driver bean is expected per process; every client under
 // ${spring.kafka-sarama} is built through it, and per-instance differences are
 // expressed through [Config].
 type Driver interface {
-	CreateClient(ctx context.Context, c Config) (sarama.Client, error)
+	CreateClient(ctx context.Context, c Config, params cloud.ClientParams) (sarama.Client, error)
 }
 
 // DefaultDriver is the default implementation of the Driver interface.
@@ -50,10 +64,11 @@ type DefaultDriver struct{}
 
 // CreateClient creates a new sarama.Client from the provided configuration. It
 // owns full client assembly — the Kafka version negotiation, SASL mechanism,
-// TLS transport and producer options — but not the startup broker-validation or
-// the resilience wiring, which are the starter's lifecycle concerns (see
-// newClient in client.go).
-func (DefaultDriver) CreateClient(ctx context.Context, c Config) (sarama.Client, error) {
+// TLS transport and producer options — and, the moment the client is built,
+// attaches its resilience executor from params (see AttachGovernance), so the driver
+// returns a client that is complete. The startup broker-validation is the
+// starter's lifecycle concern and runs afterwards (see newClient in client.go).
+func (DefaultDriver) CreateClient(ctx context.Context, c Config, params cloud.ClientParams) (sarama.Client, error) {
 	cfg := sarama.NewConfig()
 	if c.Version != "" {
 		v, err := sarama.ParseKafkaVersion(c.Version)
@@ -85,7 +100,14 @@ func (DefaultDriver) CreateClient(ctx context.Context, c Config) (sarama.Client,
 		return nil, err
 	}
 
-	return sarama.NewClient(strings.Split(c.Brokers, ","), cfg)
+	cl, err := sarama.NewClient(strings.Split(c.Brokers, ","), cfg)
+	if err != nil {
+		return nil, err
+	}
+	// Assemble fully here: attach the resilience executor to the client we just
+	// built, so there is no later patching step for the container to remember.
+	AttachGovernance(cl, c.Brokers, params)
+	return cl, nil
 }
 
 // applySASL configures cfg.Net.SASL fields for the requested mechanism.

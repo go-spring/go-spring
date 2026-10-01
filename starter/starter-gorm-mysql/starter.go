@@ -28,22 +28,14 @@ import (
 	"sync/atomic"
 
 	"github.com/go-sql-driver/mysql"
+	"go-spring.org/cloud"
 	"go-spring.org/cloud/discovery"
-	"go-spring.org/cloud/governance/resilience"
 	"go-spring.org/cloud/loadbalance"
+	"go-spring.org/cloud/resilience"
 	"go-spring.org/log"
 	"go-spring.org/starter-gorm"
 	"go-spring.org/stdlib/errutil"
 	gormmysql "gorm.io/driver/mysql"
-
-	// Blank import: importing this starter brings the governance authority with
-	// it — starter-governance registers the *resilience.Manager, *loadbalance.
-	// Manager, *fault.Injector and *governance.Center beans this package injects.
-	// Turning governance OFF is spring.governance.enabled=false (or binding no rule source),
-	// not the absence of the starter. The injected parameters stay nullable, so a
-	// container that somehow lacks these beans degrades to a transparent
-	// pass-through instead of failing to boot.
-	_ "go-spring.org/starter-governance"
 )
 
 // tlsSeq makes each registered custom TLS config name unique.
@@ -70,7 +62,7 @@ func init() {
 // the client. In mesh mode a sidecar owns discovery+LB, so the configured Addr
 // is used as-is. When c.ServiceName is empty this is a plain Addr dial,
 // unchanged from before.
-func build(ctx context.Context, c Config, backend discovery.Discovery, lbMgr *loadbalance.Manager) (gormcore.Spec, error) {
+func build(ctx context.Context, c Config, params cloud.ClientParams) (gormcore.Spec, error) {
 	if c.Addr == "" && c.ServiceName == "" {
 		return gormcore.Spec{}, fmt.Errorf("gorm mysql: one of addr or service-name must be set")
 	}
@@ -104,7 +96,7 @@ func build(ctx context.Context, c Config, backend discovery.Discovery, lbMgr *lo
 	dsn := c.DSN()
 
 	service := resilience.ServiceLabel("gorm:mysql", c.ServiceName, c.Addr)
-	conn, err := newDiscoveryConn(ctx, c, backend, service, lbMgr)
+	conn, err := newDiscoveryConn(ctx, c, params.Discovery, service, params.Loadbalance)
 	if err != nil {
 		log.Errorf(ctx, log.TagAppDef, "gorm mysql: build discovery dialer failed: %v", err)
 		if tlsCloser != nil {

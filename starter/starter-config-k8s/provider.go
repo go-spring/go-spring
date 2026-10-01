@@ -67,9 +67,9 @@ const (
 // configSource holds the parsed components of a "k8s" provider source.
 type configSource struct {
 	kind       string // "configmap" or "secret"
-	name       string // object name
+	objectName string // object name
 	namespace  string // object namespace
-	key        string // when set, only this data entry is read
+	dataKey    string // when set, only this data entry is read
 	format     string // format override applied to every read entry
 	kubeconfig string // kubeconfig path; empty means in-cluster
 }
@@ -91,7 +91,7 @@ func parseSource(source string) (configSource, error) {
 		if v := q.Get("namespace"); v != "" {
 			cs.namespace = v
 		}
-		cs.key = q.Get("key")
+		cs.dataKey = q.Get("key")
 		cs.format = q.Get("format")
 		cs.kubeconfig = q.Get("kubeconfig")
 	}
@@ -101,7 +101,7 @@ func parseSource(source string) (configSource, error) {
 		return configSource{}, errutil.Explain(nil, "k8s config source %q must be <kind>/<name>", source)
 	}
 	cs.kind = strings.ToLower(kind)
-	cs.name = name
+	cs.objectName = name
 	if cs.kind != kindConfigMap && cs.kind != kindSecret {
 		return configSource{}, errutil.Explain(nil, "unsupported k8s config kind %q (want %q or %q)", kind, kindConfigMap, kindSecret)
 	}
@@ -123,7 +123,7 @@ func (c *k8sCtrl) Load(optional bool, source string) (map[string]string, error) 
 		return nil, err
 	}
 
-	log.Debugf(context.Background(), starterTag, "loading k8s config from kind=%s name=%s namespace=%s key=%s format=%s", cs.kind, cs.name, cs.namespace, cs.key, cs.format)
+	log.Debugf(context.Background(), starterTag, "loading k8s config from kind=%s name=%s namespace=%s key=%s format=%s", cs.kind, cs.objectName, cs.namespace, cs.dataKey, cs.format)
 
 	client, err := c.clientFor(cs.kubeconfig)
 	if err != nil {
@@ -145,10 +145,10 @@ func (c *k8sCtrl) loadFromClient(client k8sClient, cs configSource, optional boo
 	data, err := fetch(ctx, client, cs)
 	if err != nil {
 		if apierrors.IsNotFound(err) && optional {
-			log.Warnf(context.Background(), starterTag, "optional config %s/%s not found (skipped)", cs.namespace, cs.name)
+			log.Warnf(context.Background(), starterTag, "optional config %s/%s not found (skipped)", cs.namespace, cs.objectName)
 			return nil, nil
 		}
-		log.Errorf(context.Background(), starterTag, "fetch k8s %s/%s failed: %v", cs.namespace, cs.name, err)
+		log.Errorf(context.Background(), starterTag, "fetch k8s %s/%s failed: %v", cs.namespace, cs.objectName, err)
 		return nil, err
 	}
 
@@ -162,7 +162,7 @@ func (c *k8sCtrl) loadFromClient(client k8sClient, cs configSource, optional boo
 		return nil, err
 	}
 
-	log.Infof(context.Background(), starterTag, "loaded k8s config from %s/%s keys=%d", cs.namespace, cs.name, len(m))
+	log.Infof(context.Background(), starterTag, "loaded k8s config from %s/%s keys=%d", cs.namespace, cs.objectName, len(m))
 	return m, nil
 }
 
@@ -172,15 +172,15 @@ func (c *k8sCtrl) loadFromClient(client k8sClient, cs configSource, optional boo
 func fetch(ctx context.Context, client k8sClient, cs configSource) (map[string][]byte, error) {
 	switch cs.kind {
 	case kindConfigMap:
-		cm, err := client.CoreV1().ConfigMaps(cs.namespace).Get(ctx, cs.name, metav1.GetOptions{})
+		cm, err := client.CoreV1().ConfigMaps(cs.namespace).Get(ctx, cs.objectName, metav1.GetOptions{})
 		if err != nil {
-			return nil, errutil.Explain(err, "k8s config: get configmap %s/%s", cs.namespace, cs.name)
+			return nil, errutil.Explain(err, "k8s config: get configmap %s/%s", cs.namespace, cs.objectName)
 		}
 		return configMapData(cm), nil
 	case kindSecret:
-		sec, err := client.CoreV1().Secrets(cs.namespace).Get(ctx, cs.name, metav1.GetOptions{})
+		sec, err := client.CoreV1().Secrets(cs.namespace).Get(ctx, cs.objectName, metav1.GetOptions{})
 		if err != nil {
-			return nil, errutil.Explain(err, "k8s config: get secret %s/%s", cs.namespace, cs.name)
+			return nil, errutil.Explain(err, "k8s config: get secret %s/%s", cs.namespace, cs.objectName)
 		}
 		return sec.Data, nil
 	default:
@@ -206,7 +206,7 @@ func configMapData(cm *corev1.ConfigMap) map[string][]byte {
 // skipped, mirroring the file starter's directory semantics.
 func parseEntries(cs configSource, data map[string][]byte, m map[string]string) error {
 	for name, content := range data {
-		if cs.key != "" && name != cs.key {
+		if cs.dataKey != "" && name != cs.dataKey {
 			continue
 		}
 		format := cs.format
@@ -216,7 +216,7 @@ func parseEntries(cs configSource, data map[string][]byte, m map[string]string) 
 				ext = name[i+1:]
 			}
 			if !reader.Has(ext) {
-				if cs.key != "" {
+				if cs.dataKey != "" {
 					return errutil.Explain(nil, "k8s config: entry %q has no known format; set format=", name)
 				}
 				continue

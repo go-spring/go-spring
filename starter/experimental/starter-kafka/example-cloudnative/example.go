@@ -51,12 +51,12 @@ import (
 
 	"github.com/twmb/franz-go/pkg/kgo"
 	"go-spring.org/cloud/actuator/health"
-	"go-spring.org/cloud/governance/resilience"
+	"go-spring.org/cloud/resilience"
 	"go-spring.org/spring/gs"
 
-	_ "go-spring.org/starter-actuator"    // aggregates health.Indicator beans on :9370
-	_ "go-spring.org/starter-config-file" // registers the file-watch config provider
-	_ "go-spring.org/starter-governance"  // centralized governance center (spring.governance.* config)
+	_ "go-spring.org/starter-actuator"        // aggregates health.Indicator beans on :9370
+	_ "go-spring.org/starter-config-file"     // registers the file-watch config provider
+	_ "go-spring.org/starter-governance-file" // centralized governance center (spring.governance.* config)
 	StarterKafka "go-spring.org/starter-kafka"
 )
 
@@ -145,9 +145,12 @@ func (s *Service) consume(ctx context.Context, want string) error {
 		}
 		var found bool
 		fetches.EachRecord(func(r *kgo.Record) {
-			if string(r.Value) == want {
-				found = true
-			}
+			_ = StarterKafka.GuardedConsume(ctx, s.Client, r, func(context.Context) error {
+				if string(r.Value) == want {
+					found = true
+				}
+				return nil
+			})
 		})
 		if found {
 			return nil

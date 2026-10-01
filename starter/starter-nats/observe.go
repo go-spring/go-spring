@@ -14,16 +14,22 @@
  * limitations under the License.
  */
 
-// observe.go is the module-local instrumentation for publishes and consumes:
-// a producer/consumer span, the messaging.client.* metrics, and an access log
-// per operation. It rides the OTel globals — without starter-otel the tracer
-// and meter providers are no-ops, so the wrapper adds negligible overhead.
+// observe.go declares what a NATS publish or consume IS. The signals
+// themselves — the span, the duration metrics (call-level and attempt-level),
+// the access log — are emitted by the resilience layer, the one place on the
+// executor chain that sees a whole call. This file therefore holds no per-call
+// emission code: only the vocabulary this starter alone knows, because only it
+// knows these calls reach a broker.
+//
+// The one signal kept here is the connection-state counter: it is NOT a
+// per-call signal — it is driven by the NATS client's own disconnect /
+// reconnect / close callbacks — so it is not the resilience layer's to emit and
+// stays starter-local.
 package StarterNats
 
 import (
 	"context"
 	"sync"
-	"time"
 
 	"go-spring.org/cloud/observability"
 	"go-spring.org/stdlib/strutil"
@@ -31,22 +37,34 @@ import (
 	"go-spring.org/log"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 )
 
-// accessTag is the static log tag for the nats access log.
+// accessTag is the static log tag for the nats access log. It is registered
+// here, at package init, because a tag must exist before the framework's first
+// property refresh — see [log.RegisterTag].
 var accessTag = log.RegisterAppTag("nats", "access")
 
-// tracerName names the tracer the per-operation spans open on. The tracer is
-// looked up per use (otel.Tracer at call time), never cached in a package
-// variable: a package-level otel.Tracer captured before any provider is set
-// stops forwarding once the global provider is set, unset and set again.
-const tracerName = "go-spring.org/starter-nats"
+// scopeName names the OTel scope the process-wide connection-state instrument
+// registers under. The meter is looked up per use (otel.Meter at build time),
+// never cached before a provider is installed.
+const scopeName = "go-spring.org/starter-nats"
 
-// maxLogArg bounds the subject captured in the access log.
-const maxLogArg = 512
+// maxSubject bounds the subject captured as messaging.destination.name. A
+// subject can be long and a span or a log line has no use for all of it.
+const maxSubject = 512
+
+// natsSystem is the value the family's messaging.system label carries for this
+// backend — the family's shared vocabulary, not a per-file choice.
+const natsSystem = "nats"
+
+// Operation names, shared by the span name and the messaging.operation label so
+// the two can never disagree.
+const (
+	opPublish = "publish"
+	opConsume = "consume"
+)
 
 // Connection-state values the counter and the log lines share.
 const (
@@ -55,12 +73,55 @@ const (
 	connClosed       = "closed"
 )
 
+// operation is the semantic identity of one NATS operation, named by its
+// direction (publish / consume) and addressed by its subject.
+//
+// The direction and the system ride in Attrs — both bounded, so both may label a
+// metric. The subject rides in Detail instead: subjects are drawn from an open
+// set, so as a metric label one would multiply the series without bound. Detail
+// reaches the span and the log — where a subject is exactly what makes a line
+// worth reading — and never a label. A subjectless call carries no detail at
+// all, which is also what levelled its success log at Info.
+// spanKind maps the operation's direction onto the trace edge it adds: a publish
+// is the producer side of the link, a consume the consumer side.
+func spanKind(direction string) trace.SpanKind {
+	if direction == opConsume {
+		return trace.SpanKindConsumer
+	}
+	return trace.SpanKindProducer
+}
+
+func operation(direction, subject string) observability.Operation {
+	op := observability.Operation{
+		Name:   direction,
+		Metric: "messaging.client",
+		Attrs: []attribute.KeyValue{
+			attribute.String("messaging.system", natsSystem),
+			attribute.String("messaging.operation", direction),
+		},
+		LogTag: accessTag,
+		// A publish is the producer edge of the trace and a consume its consumer edge;
+		// declaring the kind is what keeps that topology once the emitter opens the span.
+		SpanKind: spanKind(direction),
+		// Publishing and handling both repeat a side effect when retried — a second
+		// message delivered, or a second run of the handler — so the executor chain must
+		// not retry this operation whatever retry a governance rule asks for.
+		NonIdempotent: true,
+	}
+	if subject != "" {
+		op.Detail = []attribute.KeyValue{
+			attribute.String("messaging.destination.name", strutil.Truncate(subject, maxSubject)),
+		}
+	}
+	return op
+}
+
 // instrumentSet is this starter's instrument set: one per process, resolved
 // lazily on first use so it binds to whichever providers are current then, and
-// shared by every connection in the process.
+// shared by every connection in the process. It holds only the connection-state
+// counter; the per-call signals are the resilience layer's, built from the
+// operation this starter declares (see [operation]).
 type instrumentSet struct {
-	duration    metric.Float64Histogram
-	active      metric.Int64UpDownCounter
 	connChanges metric.Int64Counter
 }
 
@@ -72,26 +133,13 @@ type instrumentSet struct {
 var instruments = sync.OnceValue(buildInstruments)
 
 func buildInstruments() *instrumentSet {
-	m := otel.Meter(tracerName)
+	m := otel.Meter(scopeName)
 	in := &instrumentSet{}
-	in.duration, _ = m.Float64Histogram("messaging.client.operation.duration",
-		metric.WithDescription("Duration of nats client operations"),
-		metric.WithUnit("s"),
-		metric.WithExplicitBucketBoundaries(observability.DurationBuckets()...))
-	in.active, _ = m.Int64UpDownCounter("messaging.client.active_requests",
-		metric.WithDescription("Number of in-flight nats client operations"),
-		metric.WithUnit("{request}"))
 	in.connChanges, _ = m.Int64Counter("messaging.client.connection.state_changes",
-		metric.WithDescription("Connection-state transitions reported by the nats client"),
+		metric.WithDescription("Connection-state transitions reported by the messaging client"),
 		metric.WithUnit("{event}"))
 	return in
 }
-
-// resetInstruments makes the next use of instruments() resolve a fresh set. It
-// exists for tests that install their own MeterProvider: the set is process-wide
-// and resolved once, so a test running after one that already resolved it would
-// otherwise keep reporting into the earlier provider.
-func resetInstruments() { instruments = sync.OnceValue(buildInstruments) }
 
 // connStateCounter counts the connection-state transitions the NATS client's own
 // handlers report. Those events had only log lines: a connection that flapped or
@@ -119,103 +167,11 @@ func newConnStateCounter() *connStateCounter {
 // key is silent: the line still looks right and joins nothing.
 func (c *connStateCounter) record(ctx context.Context, state string) []log.Field {
 	c.ins.connChanges.Add(ctx, 1, metric.WithAttributes(
-		attribute.String("messaging.system", "nats"),
+		attribute.String("messaging.system", natsSystem),
 		attribute.String("state", state),
 	))
 	return []log.Field{
-		log.String("messaging.system", "nats"),
+		log.String("messaging.system", natsSystem),
 		log.String("state", state),
-	}
-}
-
-// observer emits the span + metric + access-log trio for one operation
-// direction (publish or consume). kind selects the span kind.
-type observer struct {
-	kind trace.SpanKind
-	ins  *instrumentSet
-}
-
-// newObserver takes the shared instrument set and the span kind of one
-// direction — created at wiring time (newConn), not at package init, so an SDK
-// installed later than this package's init still receives the records.
-func newObserver(kind trace.SpanKind) *observer {
-	return &observer{kind: kind, ins: instruments()}
-}
-
-// span is the handle returned by observer.Start; End records the outcome.
-type span struct {
-	o        *observer
-	ctx      context.Context
-	span     trace.Span
-	op       string
-	arg      string
-	start    time.Time
-	inflight metric.MeasurementOption
-}
-
-// Start begins an operation: it opens the span, records the start time, and
-// bumps the in-flight gauge. op is the operation name ("publish"/"consume"),
-// arg the subject (omitted from span attributes when empty). Start must be
-// followed by exactly one span.End.
-func (o *observer) Start(ctx context.Context, op, arg string) (context.Context, *span) {
-	attrs := []attribute.KeyValue{
-		attribute.String("messaging.system", "nats"),
-		attribute.String("messaging.operation", op),
-	}
-	if arg != "" {
-		attrs = append(attrs, attribute.String("messaging.destination.name", arg))
-	}
-	ctx, sp := otel.Tracer(tracerName).Start(ctx, op,
-		trace.WithSpanKind(o.kind),
-		trace.WithAttributes(attrs...))
-	inflight := metric.WithAttributes(
-		attribute.String("messaging.system", "nats"),
-		attribute.String("messaging.operation", op),
-	)
-	o.ins.active.Add(ctx, 1, inflight)
-	return ctx, &span{o: o, ctx: ctx, span: sp, op: op, arg: arg, start: time.Now(), inflight: inflight}
-}
-
-// End records the duration histogram, balances the in-flight gauge, ends the
-// span (recording err if non-nil), and emits the access log. An error logs at
-// Warn; a success with a subject at Debug (publishes are frequent and
-// uninteresting until they fail); a success without a subject at Info.
-func (s *span) End(err error) {
-	o := s.o
-	dur := time.Since(s.start)
-	status := "ok"
-	if err != nil {
-		status = "error"
-	}
-	o.ins.duration.Record(s.ctx, dur.Seconds(), metric.WithAttributes(
-		attribute.String("messaging.system", "nats"),
-		attribute.String("messaging.operation", s.op),
-		attribute.String("status", status),
-	))
-	o.ins.active.Add(s.ctx, -1, s.inflight)
-	if err != nil {
-		s.span.RecordError(err)
-		s.span.SetStatus(codes.Error, err.Error())
-	}
-	s.span.End()
-
-	fields := func() []log.Field {
-		f := []log.Field{
-			log.String("messaging.operation", s.op),
-			log.String("status", status),
-			log.Float("duration_ms", float64(dur.Nanoseconds())/1e6),
-		}
-		if s.arg != "" {
-			f = append(f, log.String("messaging.destination.name", strutil.Truncate(s.arg, maxLogArg)))
-		}
-		return f
-	}
-	switch {
-	case err != nil:
-		log.Warn(s.ctx, accessTag, append(fields(), log.Err(err))...)
-	case s.arg != "":
-		log.Debug(s.ctx, accessTag, fields)
-	default:
-		log.Info(s.ctx, accessTag, fields()...)
 	}
 }

@@ -48,13 +48,13 @@ import (
 	"time"
 
 	"github.com/allegro/bigcache/v3"
-	"go-spring.org/cloud/governance/resilience"
+	"go-spring.org/cloud/resilience"
 	"go-spring.org/spring/gs"
 	StarterBigCache "go-spring.org/starter-bigcache"
 
-	_ "go-spring.org/starter-actuator"    // aggregates the bigcache health.Indicator
-	_ "go-spring.org/starter-config-file" // registers the file-watch config provider
-	_ "go-spring.org/starter-governance"  // provides the centralized *governance.Center bean
+	_ "go-spring.org/starter-actuator"        // aggregates the bigcache health.Indicator
+	_ "go-spring.org/starter-config-file"     // registers the file-watch config provider
+	_ "go-spring.org/starter-governance-file" // provides the centralized *governance.Center bean
 )
 
 const mountDir = "./mount"

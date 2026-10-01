@@ -15,111 +15,92 @@
  */
 
 // Package gormobservability is the GORM instrumentation plugin shared by the
-// go-spring gorm starters. It emits one client span (db.system/db.operation/
-// db.statement), one db.client.operation.duration record, and one access-log
-// line for every Create/Query/Update/Delete via a gorm.Plugin:
+// go-spring gorm starters. It DECLARES what one Create/Query/Update/Delete
+// operation IS — its name, its db.system/db.operation labels, its SQL statement
+// and its access tag — on the call's context via [observability.WithOperation];
+// it emits nothing itself.
 //
 //	db.Use(gormobserve.NewPlugin("mysql"))
 //
-// The signals ride the OTel globals: without starter-otel the tracer and meter
-// are no-ops, so the plugin adds near-zero overhead and is installed
-// unconditionally.
+// The signals — the call span, the call- and attempt-level duration histograms,
+// the in-flight gauge and the one access log — are emitted by the resilience
+// layer, the one place on the executor chain that sees a whole call (retries
+// included); see cloud/resilience/observe.go. Declaring rather than
+// emitting is what the plugin alone can do: only it knows these calls reach a
+// database through gorm, and only it knows the operation's kind.
 package gormobservability
 
 import (
 	"context"
-	"sync"
-	"time"
 
 	"go-spring.org/cloud/observability"
 	"go-spring.org/stdlib/strutil"
 
 	"go-spring.org/log"
-	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/codes"
-	"go.opentelemetry.io/otel/metric"
-	"go.opentelemetry.io/otel/trace"
 	"gorm.io/gorm"
 )
 
-// tracerName names the tracer the spans open on. The tracer is looked up
-// per use (otel.Tracer at call time), never cached in a package variable: a
-// package-level otel.Tracer captured before any provider is set stops
-// forwarding once the global provider is set, unset and set again.
-const tracerName = "go-spring.org/starter-gorm/observe"
+// accessTag is the static log tag for the gorm access log; the engine is a log
+// field, not part of the tag. It is registered here, at package init, because a
+// tag must exist before the framework's first property refresh — see
+// [log.RegisterTag].
+var accessTag = log.RegisterAppTag("gorm", "access")
 
-var (
-	// accessTag is the static log tag for the gorm access log; the engine is a
-	// log field, not part of the tag.
-	accessTag = log.RegisterAppTag("gorm", "access")
-)
+// maxStatement bounds the SQL captured as db.statement. A statement can be long
+// and a span or a log line has no use for all of it.
+const maxStatement = 512
 
-// instrumentSet is this package's instrument set: one per process, resolved
-// lazily on first use so it binds to whichever meter provider is current then,
-// and immutable afterwards. It holds no per-plugin state — the db.system /
-// db.operation / status labels travel with each record, not here.
-type instrumentSet struct {
-	duration metric.Float64Histogram
-	active   metric.Int64UpDownCounter
-}
-
-// instruments is the one instrument set this package uses for the whole process.
-var instruments = sync.OnceValue(buildInstruments)
-
-// buildInstruments builds the db.* instruments from whatever meter provider is
-// current — resolved on first use, not at package init, so an SDK installed
-// later than this package's init still receives the records.
-func buildInstruments() *instrumentSet {
-	m := otel.Meter("go-spring.org/starter-gorm/observe")
-	duration, _ := m.Float64Histogram("db.client.operation.duration",
-		metric.WithDescription("Duration of gorm client operations"),
-		metric.WithUnit("s"),
-		metric.WithExplicitBucketBoundaries(observability.DurationBuckets()...))
-	active, _ := m.Int64UpDownCounter("db.client.active_requests",
-		metric.WithDescription("Number of in-flight gorm client operations"),
-		metric.WithUnit("{request}"))
-	return &instrumentSet{duration: duration, active: active}
-}
-
-// resetInstruments makes the next use of instruments() resolve a fresh set. It
-// exists for tests that install their own MeterProvider: the set is process-wide
-// and resolved once, so a test running after one that already resolved it would
-// otherwise keep reporting into the earlier provider.
-func resetInstruments() { instruments = sync.OnceValue(buildInstruments) }
-
-// inflightOf names the in-flight gauge's dimensions. The +1 in the Before
-// callback and the -1 in After must carry identical attributes or the gauge
-// never balances, so both go through here.
-func inflightOf(system, op string) metric.MeasurementOption {
-	return metric.WithAttributes(
-		attribute.String("db.system", system),
-		attribute.String("db.operation", op),
-	)
-}
-
-// gormSpans correlates a gorm operation's Before callback (which opens the
-// span for timing) with its After callback (which ends it). gorm hands the
-// same *gorm.DB to both, and creates a fresh one per operation, so the pointer
-// is a unique key for one in-flight operation.
-var gormSpans sync.Map // *gorm.DB -> *opSpan
-
-// observePlugin is a gorm Plugin that instruments every Create/Query/Update/
-// Delete. The SQL statement is not known until the After callback (gorm builds
-// it during the gorm:<op> processor that runs between Before and After), so the
-// Before callback opens the span for timing and the After callback calls SetArg
-// with the SQL before End — landing the statement in the span and the log.
+// operation is the semantic identity of one gorm operation. kind names the
+// operation ("create"/"query"/"update"/"delete"); stmt is the SQL gorm built
+// for it, empty when the operation produced none.
 //
-// Only the four data processors are instrumented; gorm's noisy internal
-// callbacks (row processing, transaction bookkeeping) are not observable as
-// operations here, so no op-skip list is needed.
+// The statement rides in Detail rather than Attrs: SQL is drawn from an open
+// set, so as a metric label it would multiply the series without bound. Detail
+// reaches the span and the log — where the statement is exactly what makes a
+// line worth reading — and never a label. A statement-less operation carries no
+// detail at all, which is also what levels its success log at Info.
+func operation(system, kind, stmt string) observability.Operation {
+	o := observability.Operation{
+		Name:   kind,
+		Metric: "db.client",
+		Attrs: []attribute.KeyValue{
+			attribute.String("db.system", system),
+			attribute.String("db.operation", kind),
+		},
+		LogTag: accessTag,
+	}
+	if stmt != "" {
+		o.Detail = []attribute.KeyValue{
+			attribute.String("db.statement", strutil.Truncate(stmt, maxStatement)),
+		}
+	}
+	return o
+}
+
+// observePlugin is a gorm Plugin that declares every Create/Query/Update/Delete
+// as an operation. It runs at the gorm:<op> anchor's Before position, which is
+// the last point before the resilience layer (which wraps that same processor)
+// takes over — so the declaration is what the emitter below reads.
+//
+// Only the four data processors are declared; gorm's noisy internal callbacks
+// (row processing, transaction bookkeeping) are not operations here, so no
+// op-skip list is needed.
 type observePlugin struct {
 	system string
+
+	// orig holds the dialect's own per-operation processor, captured in
+	// [observePlugin.Initialize] before anything replaces it — the resilience
+	// callbacks do, and after that the anchor named gorm:<op> is the wrapper,
+	// not the SQL builder. [observePlugin.statement] dry-runs it to learn the SQL
+	// the operation is about to build.
+	orig map[string]func(*gorm.DB)
 }
 
-// NewPlugin builds a gorm.Plugin that emits trace span + duration metric +
-// access log for every operation under the given db.system label (e.g. "mysql",
-// "postgresql", "clickhouse", "microsoft.sql_server").
+// NewPlugin builds a gorm.Plugin that declares every operation's identity under
+// the given db.system label (e.g. "mysql", "postgresql", "clickhouse",
+// "microsoft.sql_server"). The signals themselves are emitted by the resilience
+// layer from the declared operation.
 func NewPlugin(system string) gorm.Plugin {
 	return &observePlugin{system: system}
 }
@@ -127,136 +108,70 @@ func NewPlugin(system string) gorm.Plugin {
 func (p *observePlugin) Name() string { return "go-spring:observe" }
 
 func (p *observePlugin) Initialize(db *gorm.DB) error {
-	ops := []struct{ kind, raw string }{
-		{"create", "gorm:create"},
-		{"query", "gorm:query"},
-		{"update", "gorm:update"},
-		{"delete", "gorm:delete"},
+	// Capture the dialect's own processors here, before the resilience callbacks
+	// replace the gorm:<op> anchors: the SQL the plugin declares is the one the
+	// real run then reuses, built by exactly this function.
+	p.orig = map[string]func(*gorm.DB){
+		"create": db.Callback().Create().Get("gorm:create"),
+		"query":  db.Callback().Query().Get("gorm:query"),
+		"update": db.Callback().Update().Get("gorm:update"),
+		"delete": db.Callback().Delete().Get("gorm:delete"),
+	}
+
+	ops := []struct {
+		kind string
+		reg  func(fn func(*gorm.DB)) error
+	}{
+		{"create", func(fn func(*gorm.DB)) error {
+			return db.Callback().Create().Before("gorm:create").Register("go-spring:observe:declare_create", fn)
+		}},
+		{"query", func(fn func(*gorm.DB)) error {
+			return db.Callback().Query().Before("gorm:query").Register("go-spring:observe:declare_query", fn)
+		}},
+		{"update", func(fn func(*gorm.DB)) error {
+			return db.Callback().Update().Before("gorm:update").Register("go-spring:observe:declare_update", fn)
+		}},
+		{"delete", func(fn func(*gorm.DB)) error {
+			return db.Callback().Delete().Before("gorm:delete").Register("go-spring:observe:declare_delete", fn)
+		}},
 	}
 	for _, op := range ops {
-		kind, raw := op.kind, op.raw
-		before := func(tx *gorm.DB) {
-			sp := p.start(tx.Statement.Context, kind)
-			gormSpans.Store(tx, sp)
-		}
-		after := func(tx *gorm.DB) {
-			v, ok := gormSpans.LoadAndDelete(tx)
-			if !ok {
-				return
-			}
-			sp := v.(*opSpan)
-			if tx.Statement != nil {
-				sp.SetArg(tx.Statement.SQL.String())
-			}
-			sp.End(tx.Error)
-		}
-		// gorm has no generic "register on every processor" API, so register per
-		// kind against the gorm:<op> anchor each processor defines by default.
-		switch kind {
-		case "create":
-			if err := db.Callback().Create().Before(raw).Register("go-spring:observe:before_create", before); err != nil {
-				return err
-			}
-			if err := db.Callback().Create().After(raw).Register("go-spring:observe:after_create", after); err != nil {
-				return err
-			}
-		case "query":
-			if err := db.Callback().Query().Before(raw).Register("go-spring:observe:before_query", before); err != nil {
-				return err
-			}
-			if err := db.Callback().Query().After(raw).Register("go-spring:observe:after_query", after); err != nil {
-				return err
-			}
-		case "update":
-			if err := db.Callback().Update().Before(raw).Register("go-spring:observe:before_update", before); err != nil {
-				return err
-			}
-			if err := db.Callback().Update().After(raw).Register("go-spring:observe:after_update", after); err != nil {
-				return err
-			}
-		case "delete":
-			if err := db.Callback().Delete().Before(raw).Register("go-spring:observe:before_delete", before); err != nil {
-				return err
-			}
-			if err := db.Callback().Delete().After(raw).Register("go-spring:observe:after_delete", after); err != nil {
-				return err
-			}
+		kind := op.kind
+		before := func(tx *gorm.DB) { p.declare(tx, kind) }
+		if err := op.reg(before); err != nil {
+			return err
 		}
 	}
 	return nil
 }
 
-// opSpan is one in-flight gorm operation: the client span opened in Before and
-// ended in After.
-type opSpan struct {
-	p     *observePlugin
-	ctx   context.Context
-	span  trace.Span
-	op    string
-	arg   string
-	start time.Time
+// declare puts the operation's identity on the call's context, where the
+// resilience layer wrapping the gorm:<op> processor below reads it back to emit
+// the call's span, metrics and access log.
+func (p *observePlugin) declare(tx *gorm.DB, kind string) {
+	if tx.Statement == nil {
+		return
+	}
+	ctx := tx.Statement.Context
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	tx.Statement.Context = observability.WithOperation(ctx, operation(p.system, kind, p.statement(tx, kind)))
 }
 
-// start opens the operation's client span.
-func (p *observePlugin) start(ctx context.Context, op string) *opSpan {
-	instruments().active.Add(ctx, 1, inflightOf(p.system, op))
-	ctx, span := otel.Tracer(tracerName).Start(ctx, op,
-		trace.WithSpanKind(trace.SpanKindClient),
-		trace.WithAttributes(
-			attribute.String("db.system", p.system),
-			attribute.String("db.operation", op),
-		))
-	return &opSpan{p: p, ctx: ctx, span: span, op: op, start: time.Now()}
-}
-
-// SetArg sets the SQL statement once it is known (in the After callback): it
-// lands on the span as db.statement and in the access log, truncated so a
-// runaway statement cannot flood either.
-func (s *opSpan) SetArg(arg string) {
-	s.arg = strutil.Truncate(arg, 512)
-	if s.span != nil && s.arg != "" {
-		s.span.SetAttributes(attribute.String("db.statement", s.arg))
+// statement returns the SQL the operation is about to build, without executing
+// it. gorm builds the SQL inside the very processor the resilience layer wraps,
+// so it is not known yet at this point; the plugin dry-runs the dialect's own
+// processor on a session that shares this statement. The build runs, the
+// dry-run stops before touching the driver, and the real run below then finds
+// the SQL already built and reuses it — so the statement is built exactly once,
+// by gorm's own code, not by a copy of it. An unknown processor yields no
+// statement, and the operation is declared without detail.
+func (p *observePlugin) statement(tx *gorm.DB, kind string) string {
+	orig := p.orig[kind]
+	if orig == nil {
+		return ""
 	}
-}
-
-// End records the operation: the duration metric, the span (error status when
-// err is set), and the access log — an error at Warn, a success with SQL at
-// Debug (lazy, since the common case is uninteresting), other successes at
-// Info.
-func (s *opSpan) End(err error) {
-	p := s.p
-	dur := time.Since(s.start)
-	status := "ok"
-	if err != nil {
-		status = "error"
-	}
-	instruments().duration.Record(s.ctx, dur.Seconds(), metric.WithAttributes(
-		attribute.String("db.system", p.system),
-		attribute.String("db.operation", s.op),
-		attribute.String("status", status),
-	))
-	instruments().active.Add(s.ctx, -1, inflightOf(p.system, s.op))
-	if err != nil {
-		s.span.SetStatus(codes.Error, err.Error())
-		s.span.RecordError(err)
-	}
-	s.span.End()
-
-	// Log keys are the metric labels' names, so a dashboard selecting failed
-	// queries lands on the lines that explain them.
-	common := []log.Field{
-		log.String("db.system", p.system),
-		log.String("db.operation", s.op),
-		log.String("status", status),
-		log.Float("duration_ms", float64(dur.Nanoseconds())/1e6),
-	}
-	switch {
-	case err != nil:
-		log.Warn(s.ctx, accessTag, append(common, log.Err(err))...)
-	case s.arg != "":
-		fields := append(common, log.String("db.statement", s.arg))
-		log.Debug(s.ctx, accessTag, func() []log.Field { return fields })
-	default:
-		log.Info(s.ctx, accessTag, common...)
-	}
+	orig(tx.Session(&gorm.Session{DryRun: true}))
+	return tx.Statement.SQL.String()
 }

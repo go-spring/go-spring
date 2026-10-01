@@ -39,7 +39,7 @@ TC/TM/RM roles or bytecode magic.
   one child span per phase (`saga.action|compensate <step>`) on the
   globals `starter-otel` installs — the standard zero-dep pattern
   (call-site span helpers live in the starter layer).
-- **Retry policy reuses `cloud/governance/resilience`.** `RetryPolicy =
+- **Retry policy reuses `cloud/resilience`.** `RetryPolicy =
   resilience.ClientPolicy` (an alias in `cloud/experimental/transaction`), so retries
   are executed through the resilience `default` driver rather than
   a second retry loop.

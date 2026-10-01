@@ -14,130 +14,88 @@
  * limitations under the License.
  */
 
-// observe.go is this starter's own kafka instrumentation: a messaging span, a
-// duration/in-flight metric pair, and an access log per publish/consume
-// operation, emitted on the OTel globals. Without starter-otel the global
-// providers are no-ops, so the observation adds negligible overhead.
+// observe.go declares what a kafka publish or consume IS. The signals
+// themselves — the span, the duration metrics (call-level and attempt-level),
+// the access log — are emitted by the resilience layer, the one place on the
+// executor chain that sees a whole call (retries included). This file therefore
+// holds no per-call emission code: only the vocabulary this starter alone
+// knows, because only it knows these calls reach a broker.
+//
+// Nothing here is kept outside the declared operation: this starter has no
+// connection-state counter, no observable gauge, no pool-stat instrument, so
+// there is no non-per-call signal left to own. (The sarama logging bridge in
+// logger.go is not an instrument — it routes sarama's own connection events
+// into go-spring's log — so it stays, but it emits no observation.)
 package StarterKafkaSarama
 
 import (
-	"context"
-	"time"
-
 	"go-spring.org/cloud/observability"
 	"go-spring.org/stdlib/strutil"
 
 	"go-spring.org/log"
-	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/codes"
-	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 )
 
-const instrumentScope = "go-spring.org/starter-kafka-sarama"
+// accessTag is the static log tag for the kafka access log. It is registered
+// here, at package init, because a tag must exist before the framework's first
+// property refresh — see [log.RegisterTag].
+var accessTag = log.RegisterAppTag("kafka", "access")
 
-var (
-	// accessTag is the static log tag for the kafka access log.
-	accessTag = log.RegisterAppTag("kafka", "access")
+// maxDestination bounds the topic captured as messaging.destination.name. A
+// topic name can be long and a span or a log line has no use for all of it.
+const maxDestination = 512
+
+// kafkaSystem is the value the family's messaging.system label carries for this
+// backend — the family's shared vocabulary, not a per-file choice.
+const kafkaSystem = "kafka"
+
+// Operation names, shared by the span name and the messaging.operation label so
+// the two can never disagree.
+const (
+	opPublish = "publish"
+	opConsume = "consume"
 )
 
-// observer emits the span + metrics + access log for one operation direction
-// ("publish" or "consume").
-type observer struct {
-	op       string
-	kind     trace.SpanKind
-	duration metric.Float64Histogram
-	active   metric.Int64UpDownCounter
+// operation is the semantic identity of one kafka operation, named by its
+// direction (publish / consume) and addressed by its topic.
+//
+// The direction and the system ride in Attrs — both bounded, so both may label a
+// metric. The topic rides in Detail instead: topic names are drawn from an open
+// set, so as a metric label one would multiply the series without bound. Detail
+// reaches the span and the log — where a topic is exactly what makes a line
+// worth reading — and never a label. A topicless call carries no detail at all,
+// which is also what levelled its success log at Info.
+// spanKind maps the operation's direction onto the trace edge it adds: a publish
+// is the producer side of the link, a consume the consumer side.
+func spanKind(direction string) trace.SpanKind {
+	if direction == opConsume {
+		return trace.SpanKindConsumer
+	}
+	return trace.SpanKindProducer
 }
 
-// newObserver builds the direction's instruments from whatever meter provider
-// is current — called lazily at first use, not at package init, so an SDK
-// installed later than this package's init still receives the records.
-func newObserver(op string, kind trace.SpanKind) *observer {
-	m := otel.Meter(instrumentScope)
-	duration, _ := m.Float64Histogram("messaging.client.operation.duration",
-		metric.WithDescription("Duration of kafka client operations"),
-		metric.WithUnit("s"),
-		metric.WithExplicitBucketBoundaries(observability.DurationBuckets()...))
-	active, _ := m.Int64UpDownCounter("messaging.client.active_requests",
-		metric.WithDescription("Number of in-flight kafka client operations"),
-		metric.WithUnit("{request}"))
-	return &observer{op: op, kind: kind, duration: duration, active: active}
-}
-
-// Span is the handle returned by observer.Start. End records the operation's
-// outcome; it must be called exactly once.
-type Span struct {
-	o        *observer
-	ctx      context.Context
-	span     trace.Span
-	arg      string
-	start    time.Time
-	inflight metric.MeasurementOption
-}
-
-// Start opens the operation's span, bumps the in-flight gauge, and opens the
-// access record. arg is the destination topic, captured on the span and in the
-// log when non-empty.
-func (o *observer) Start(ctx context.Context, arg string) (context.Context, *Span) {
-	attrs := []attribute.KeyValue{
-		attribute.String("messaging.system", "kafka"),
-		attribute.String("messaging.operation", o.op),
+func operation(direction, topic string) observability.Operation {
+	op := observability.Operation{
+		Name:   direction,
+		Metric: "messaging.client",
+		Attrs: []attribute.KeyValue{
+			attribute.String("messaging.system", kafkaSystem),
+			attribute.String("messaging.operation", direction),
+		},
+		LogTag: accessTag,
+		// A publish is the producer edge of the trace and a consume its consumer edge;
+		// declaring the kind is what keeps that topology once the emitter opens the span.
+		SpanKind: spanKind(direction),
+		// Publishing and handling both repeat a side effect when retried — a second
+		// message delivered, or a second run of the handler — so the executor chain must
+		// not retry this operation whatever retry a governance rule asks for.
+		NonIdempotent: true,
 	}
-	if arg != "" {
-		attrs = append(attrs, attribute.String("messaging.destination.name", strutil.Truncate(arg, 512)))
-	}
-	ctx, span := otel.Tracer(instrumentScope).Start(ctx, o.op, trace.WithSpanKind(o.kind), trace.WithAttributes(attrs...))
-	inflight := metric.WithAttributes(
-		attribute.String("messaging.system", "kafka"),
-		attribute.String("messaging.operation", o.op),
-	)
-	o.active.Add(ctx, 1, inflight)
-	return ctx, &Span{o: o, ctx: ctx, span: span, arg: arg, start: time.Now(), inflight: inflight}
-}
-
-// End records the duration histogram, balances the in-flight gauge, ends the
-// span (recording err if non-nil), and emits the access log. The log level
-// carries the outcome: an error at Warn, a success with a destination at Debug
-// (the per-message record is frequent and uninteresting until it fails), a
-// success without a destination at Info.
-func (s *Span) End(err error) {
-	status := "ok"
-	if err != nil {
-		status = "error"
-	}
-	dur := time.Since(s.start)
-	s.o.duration.Record(s.ctx, dur.Seconds(), metric.WithAttributes(
-		attribute.String("messaging.system", "kafka"),
-		attribute.String("messaging.operation", s.o.op),
-		attribute.String("status", status),
-	))
-	s.o.active.Add(s.ctx, -1, s.inflight)
-	if err != nil {
-		s.span.SetStatus(codes.Error, err.Error())
-		s.span.RecordError(err)
-	}
-	s.span.End()
-
-	fields := func() []log.Field {
-		f := []log.Field{
-			log.String("messaging.operation", s.o.op),
-			log.String("status", status),
-			log.Float("duration_ms", float64(dur.Nanoseconds())/1e6),
+	if topic != "" {
+		op.Detail = []attribute.KeyValue{
+			attribute.String("messaging.destination.name", strutil.Truncate(topic, maxDestination)),
 		}
-		if s.arg != "" {
-			f = append(f, log.String("messaging.destination.name", strutil.Truncate(s.arg, 512)))
-		}
-		return f
 	}
-	if err != nil {
-		log.Warn(s.ctx, accessTag, append(fields(), log.Err(err))...)
-		return
-	}
-	if s.arg != "" {
-		log.Debug(s.ctx, accessTag, fields)
-		return
-	}
-	log.Info(s.ctx, accessTag, fields()...)
+	return op
 }

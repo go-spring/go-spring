@@ -19,7 +19,6 @@ package StarterBigCache
 import (
 	"context"
 
-	"github.com/allegro/bigcache/v3"
 	"go-spring.org/cloud/actuator/health"
 )
 
@@ -30,7 +29,11 @@ import (
 // instance is registered) without a round-trip. It is exported as
 // health.Indicator, so an application that also imports starter-actuator gets
 // the instance folded into /readiness with no extra wiring.
-func NewBigCacheHealth(name string, _ *bigcache.BigCache) *health.Indicator {
+//
+// The probe needs nothing of the cache — there is no bare client to reach for —
+// so the parameter is only there to keep the indicator tied to the instance it
+// was registered for.
+func NewBigCacheHealth(name string, _ *Cache) *health.Indicator {
 	return &health.Indicator{Name: "bigcache:" + name, Probe: func(ctx context.Context) error {
 		return nil
 	}}

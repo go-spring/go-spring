@@ -19,7 +19,7 @@ package StarterGrpc
 import (
 	"context"
 
-	"go-spring.org/cloud/governance/fault"
+	"go-spring.org/cloud/fault"
 	"google.golang.org/grpc"
 )
 

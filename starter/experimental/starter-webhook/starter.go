@@ -17,7 +17,8 @@
 // starter.go is the gs registration + glue concept of this starter: it
 // registers the per-instance webhook notifier group under "${spring.webhook}"
 // (thin, mail-style: stateless per call, no destroy hook) and owns the
-// Notifier send path — payload build, resilience executor, trace span.
+// Notifier send path — payload build, operation declaration, resilience
+// executor.
 package StarterWebhook
 
 import (
@@ -30,22 +31,15 @@ import (
 	"net/url"
 	"time"
 
-	"go-spring.org/cloud/governance/fault"
-	"go-spring.org/cloud/governance/resilience"
+	"go-spring.org/cloud"
+	"go-spring.org/cloud/fault"
+	"go-spring.org/cloud/observability"
+	"go-spring.org/cloud/resilience"
 	"go-spring.org/log"
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
 	"go-spring.org/stdlib/flatten"
-
-	// Blank import: importing this starter brings the governance authority with
-	// it — starter-governance registers the *resilience.Manager, *loadbalance.
-	// Manager, *fault.Injector and *governance.Center beans this package injects.
-	// Turning governance OFF is spring.governance.enabled=false (or binding no rule source),
-	// not the absence of the starter. The injected parameters stay nullable, so a
-	// container that somehow lacks these beans degrades to a transparent
-	// pass-through instead of failing to boot.
-	_ "go-spring.org/starter-governance"
 )
 
 // Notification is one outbound webhook message. Title is the headline (shown
@@ -80,9 +74,10 @@ func init() {
 			r.Provide(newNotifier,
 				gs.IndexArg(1, gs.ValueArg(name)),
 				gs.IndexArg(2, gs.ValueArg(c)),
-				// The governance beans are REQUIRED: this starter blank-imports
-				// starter-governance, so "governance off" is spring.governance.enabled=false,
-				// never an absent bean.
+				// The governance beans are REQUIRED: each is registered by the package that
+				// owns it (cloud/resilience, cloud/loadbalance, cloud/fault), which this
+				// starter imports — "governance off" is spring.governance.enabled=false, never
+				// an absent bean.
 				gs.IndexArg(3, gs.TagArg("")), // *resilience.Manager
 				gs.IndexArg(4, gs.TagArg("")), // *fault.Injector
 			).Name(name).Caller(1)
@@ -96,16 +91,24 @@ func init() {
 // notification at boot is worse than failing on first use (see DESIGN).
 //
 // mgr and inj are the governance beans gs injects (both nil in a standalone
-// call). A nil manager is normalized to an unarmed one, whose executor is a
-// transparent pass-through — governance off and standalone callers then behave
-// identically; the injector is nil-safe at its use site.
+// call); the ctor bundles them into the [cloud.ClientParams] it applies while
+// building, so the notifier is complete in one step — there is no
+// applyGovernance step after construction and nothing the container has to
+// remember to call. A zero bundle (a hand-built notifier, or a container without
+// governance beans) degrades to resilience.Unmanaged: the notifier is still
+// observed and warns once that no protection applies, rather than running
+// silently bare.
 func newNotifier(ctx *gs.ContextProvider, name string, c Config, mgr *resilience.Manager, inj *fault.Injector) (*Notifier, error) {
 	if _, _, err := buildPayload(c.Channel, &Notification{}, c.Secret, time.Now()); err != nil {
 		return nil, err
 	}
 	log.Debugf(ctx.Context, log.TagAppDef, "creating webhook notifier url=%s channel=%s", c.URL, c.Channel)
 
-	exec := fault.WrapClientExecutor(mgr.ClientExecutorFor("webhook", resilience.ServiceLabel("webhook", c.Channel, name)), resilience.ServiceLabel("webhook", c.Channel, name), inj)
+	// Governance is applied HERE, in the constructor: the bundle is the single
+	// composition point ([cloud.ClientParams.ExecutorFor]) that turns the
+	// injected manager/injector into the executor every Send runs on.
+	params := cloud.ClientParams{Resilience: mgr, Fault: inj}
+	exec := params.ExecutorFor("webhook", resilience.ServiceLabel("webhook", c.Channel, name))
 	return &Notifier{
 		cfg:    c,
 		client: &http.Client{Timeout: c.Timeout},
@@ -116,10 +119,16 @@ func newNotifier(ctx *gs.ContextProvider, name string, c Config, mgr *resilience
 // Channel reports the payload format this notifier speaks.
 func (n *Notifier) Channel() string { return n.cfg.Channel }
 
-// Send delivers the notification: it builds the channel payload, wraps the
-// POST in a producer span, and routes it through the resilience executor
-// (rate limit / circuit breaking / fault injection when starter-governance is
-// imported; a transparent pass-through otherwise).
+// Send delivers the notification: it builds the channel payload, declares the
+// delivery's semantic identity (see observe.go) on the context, and routes the
+// POST through the resilience executor (rate limit / circuit breaking / fault
+// injection when the center is linked; an observed-only, unmanaged
+// executor otherwise) via [resilience.Run].
+//
+// The span, the duration metrics and the access log are emitted by the
+// resilience layer, the one point on the chain that sees the whole call,
+// retries included. Declaring the identity is this layer's whole job — it emits
+// nothing itself.
 func (n *Notifier) Send(ctx context.Context, notification *Notification) error {
 	body, extra, err := buildPayload(n.cfg.Channel, notification, n.cfg.Secret, time.Now())
 	if err != nil {
@@ -131,16 +140,13 @@ func (n *Notifier) Send(ctx context.Context, notification *Notification) error {
 		return errutil.Explain(err, "webhook: invalid url %q", n.cfg.URL)
 	}
 
-	ctx, span := startSend(ctx, n.cfg.Channel, endpoint)
-	post := func(ctx context.Context) error { return n.post(ctx, endpoint, body) }
-	// A zero-value Notifier (built by hand in tests) has no executor; the
-	// starter-built one always does, but keep Send usable either way.
-	if n.exec != nil {
-		err = n.exec.Execute(ctx, post)
-	} else {
-		err = post(ctx)
-	}
-	EndSpan(span, err)
+	ctx = observability.WithOperation(ctx, operation(n.cfg.Channel, endpoint))
+	// A zero-value Notifier (built by hand in tests) has no executor;
+	// resilience.Run falls back to running the closure directly, so Send stays
+	// usable either way.
+	_, err = resilience.Run(ctx, n.exec, func(attemptCtx context.Context) (struct{}, error) {
+		return struct{}{}, n.post(attemptCtx, endpoint, body)
+	})
 	return err
 }
 

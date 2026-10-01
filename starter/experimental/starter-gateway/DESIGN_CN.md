@@ -14,7 +14,7 @@ http.Handler`,路由即函数组合,不做运行时 DSL。
   `cloud/loadbalance`;`FilterWrapper` 缝隙让 jwt-auth、lua 等可插拔 filter
   免硬 import 挂载。
 - **不在范围内:**运行时 DSL / 规则引擎、控制面同步、L4/TCP 代理。韧性
-  (重试 / 熔断 / 限流)交给 `cloud/governance/resilience`,不重造。
+  (重试 / 熔断 / 限流)交给 `cloud/resilience`,不重造。
 
 ## 2. 关键抽象
 

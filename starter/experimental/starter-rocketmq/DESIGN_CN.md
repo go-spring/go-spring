@@ -24,7 +24,9 @@ starter-pulsar / starter-kafka 确立的 MQ starter 家族规约。
   并登记每个生产者/消费者以便 Close 时统一停机。
 - **`Driver`（driver.go）** — 构造 seam：可选的容器 bean。公司/伞级
   starter 可提供自己的 `Driver` bean；没有时装配回退到内置 `DefaultDriver`。
-  rlog 桥是进程级全局的，所以在 DefaultDriver 内部只安装一次，而非每实例
+  `CreateClient` 接收容器的 `cloud.ClientParams` bundle，返回**装配完整**的
+  客户端——身份与 executor 在构建时就已就位（见 `NewClient`）——之后不再有任何
+  补挂。rlog 桥是进程级全局的，所以在 DefaultDriver 内部只安装一次，而非每实例
   一次。
 - **`NewDriver`（driver.go）** — 适配 `messaging.Driver`：每个 publisher 一
   个已启动生产者，每个 subscriber 一个已启动推送消费者（按 SDK 契约先
@@ -33,9 +35,10 @@ starter-pulsar / starter-kafka 确立的 MQ starter 家族规约。
   `msgCarrier`（`primitive.Message` 上的 `propagation.TextMapCarrier` 适配，
   对应 kafka-go 的 `recordCarrier`）走 user properties。
 - **`GuardedSend`（command.go）** — 韧性 seam：SDK 没有可拒绝的中间件，
-  治理执行器以可选包装的形式挂在同步 `SendSync` 路径上，由注入的
-  `*resilience.Manager` / `*fault.Injector` bean 组装（装配在
-  starter-governance 中）。
+  治理执行器以可选包装的形式挂在同步 `SendSync` 路径上。执行器本身在构造时挂载
+  （`NewClient`，来自传给 `Driver` 的 `cloud.ClientParams` bundle——该 bundle
+  又由注入的 `*resilience.Manager` / `*fault.Injector` bean 组装）；`GuardedSend`
+  只负责把调用路由过它。
 
 ## 3. 约束
 

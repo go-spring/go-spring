@@ -20,7 +20,7 @@ import (
 	"context"
 	"sync/atomic"
 
-	"go-spring.org/cloud/governance/traffic"
+	"go-spring.org/cloud/traffic"
 	"go.opentelemetry.io/otel/attribute"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 )

@@ -154,18 +154,19 @@ No TLS registration (no transport) and no discovery dialer (the "server" is a fi
 
 `db.WithContext(ctx).First(&g, 1)`:
 
-1. gorm's `gorm:query` processor runs — but gormcore's `ApplyCallbacks` has *replaced* it
-   with a wrapper that runs the op under the instance's resilience executor (timeout /
-   retry / breaker via the governance center, fault injector when armed). `gorm.ErrRecordNotFound`
-   is treated as success so "no rows" never trips the breaker
-   (`starter-gorm/resilience/callbacks.go:runGuard`).
-2. the observe plugin's `before_query` opens a span + in-flight metric
-   (`starter-gorm/observe/plugin.go`; SQL is not known yet).
+1. the observe plugin's `before_query` runs on the statement's context and DECLARES the
+   operation (name, `db.system=sqlite`, `db.operation`, SQL; `starter-gorm/observe/plugin.go`).
+2. gormcore's `ApplyCallbacks` has *replaced* gorm's `gorm:query` processor with a wrapper
+   that runs the op under the instance's resilience executor (timeout / retry / breaker via
+   the governance center, fault injector when armed). `gorm.ErrRecordNotFound` is treated as
+   success so "no rows" never trips the breaker (`starter-gorm/resilience/callbacks.go:runGuard`).
 3. the original processor executes: pool checkout (SQLite: the single `:memory:` conn, or
    one of N file-backed conns — each conn re-applies the `_pragma` settings from the DSN),
    statement build, rows scan.
-4. `after_query` sets the SQL on the span, ends span + duration metric, writes the access
-   log (level from the wrapper `observability` key).
+4. the resilience layer EMITS the signals from the declared operation: the call span (SQL
+   included), the call-level `db.client.operation.duration`, the attempt-level
+   `db.client.attempt.duration`, `db.client.active_requests`, and one access log record
+   (level from the wrapper `observability` key).
 5. the executor wrapper propagates rejections (`ErrCircuitOpen` etc.) onto `tx.Error`.
 
 ---
@@ -236,10 +237,11 @@ grep "SQLite round trip OK:" smoke.out     # CRUD + transaction round trip
 curl -s :9370/readyz                        # with starter-actuator: gorm:sqlite:<name> folded in
 ```
 
-Per-query observables (when `observe.enabled=true`, the default): span
-`db.system=sqlite` per Create/Query/Update/Delete, duration/in-flight metrics, access log
-with the SQL statement. Kill it per instance with `observe.enabled=false` (plugin not
-installed at all).
+Per-query observables (when `observe.enabled=true`, the default): the plugin DECLARES each
+Create/Query/Update/Delete; the resilience layer EMITS the span (`db.system=sqlite`, SQL
+included), the call-level `db.client.operation.duration`, the attempt-level
+`db.client.attempt.duration`, `db.client.active_requests`, and one access log. Kill the
+declaration per instance with `observe.enabled=false` (plugin not installed at all).
 
 ### 4.3 Drill: busy-timeout under writer contention
 
@@ -258,7 +260,7 @@ transaction in one — the other waits ~1 ms then fails `SQLITE_BUSY`. Raise to 
 | Instance fails to start: expr `$ != ''` | `file` empty/missing | set `file` — it is the only required key. |
 | FK constraint not enforced | `foreign-keys=false` (pragma omitted, SQLite default off) | set `true`. |
 | Second instance sees none of the first's data | file-backed paths differ / relative path depends on cwd | use absolute paths; the example `init()` chdirs to the source dir. |
-| No spans/metrics per query | `observe.enabled=false` or starter-otel not imported | re-enable / import starter-otel (hooks are silent no-ops without it). |
+| No db.* spans/metrics/access log | `observe.enabled=false` or starter-otel not imported | import starter-otel; the per-instance kill switch removes the plugin entirely, so operations go undeclared and the resilience layer emits only its own generic signals. |
 | Slow-query log entries look odd | `slow-threshold>0` routes GORM's warn-level output through `go-spring.org/log` (TagAppDef) since 2026-08 | output is GORM's one-line text; filter by message if noisy. |
 
 ## 6. Design Health

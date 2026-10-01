@@ -31,7 +31,7 @@ spring.mongodb.instances.b.uri=mongodb://127.0.0.1:27017
 
 ### 3. Inject the MongoDB Instance
 
-Each named instance is registered as a `*StarterMongoDB.Client` bean under that name (it embeds the concrete `*mongo.Client`, so every driver method promotes unchanged); inject the one you need by name.
+Each named instance is registered as a `*StarterMongoDB.Client` bean under that name (it embeds `*mongo.Client`, so the whole driver method set is promoted onto it); inject the one you need by name.
 
 ```go
 import StarterMongoDB "go-spring.org/starter-mongodb"
@@ -64,13 +64,25 @@ The [example.go](example/example.go) exercises three core MongoDB operations end
   talk to different clusters or databases.
 
 * **Observability**: each client carries module-local instrumentation wired
-  through a command monitor that emits one client span per MongoDB command,
+  through a command monitor that emits one span per MongoDB command,
   `db.client.*` metrics, and an `_app_mongodb_access` access log via the
   OpenTelemetry globals that `starter-otel` installs. When `starter-otel` is
   absent those globals are no-ops, so signals cost nothing and no per-app
   wiring is needed. (The bridge is implemented directly against the v2
   driver's event API because the official `otelmongo` instrumentation targets
   the v1 driver and is type-incompatible with the v2 driver used here.)
+
+  This is the one client starter that emits locally rather than declaring an
+  operation for the framework's single resilience emitter to apply, and that is
+  by driver constraint: the mongo driver v2 has no per-command hook (only a
+  dialer and observer-only monitors), so observation lives at the command layer
+  while protection lives at the dial layer through the resilience executor.
+  The emitted vocabulary is deliberately the same as the unified emitter's —
+  bounded `db.system` + `db.operation` labels, `db.statement` as unbounded
+  detail on the span and log only, an internal span named after the command,
+  and the same `status` / `duration_ms` access-log fields — except that the
+  status words are `success` / `error`, since a command monitor cannot see a
+  resilience rejection.
 
 * **Service discovery**: set `service-name` on an instance to resolve its address
   through a registered discovery backend instead of the URI hosts. A

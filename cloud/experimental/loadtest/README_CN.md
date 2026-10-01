@@ -36,7 +36,7 @@ res.Print(os.Stdout)
 
 `Op` 是 `func(ctx) error`——成功返回 nil;由各 starter 的 main 提供具体客
 户端调用。每个 op 的 context 都打了压测流量标记(`prop.WithLoadTest(ctx)`),
-下游客户端据此识别合成流量(`cloud/governance/traffic` 的影子表路由、故障
+下游客户端据此识别合成流量(`cloud/traffic` 的影子表路由、故障
 注入范围、指标打标都依赖它)。
 
 ## 选 driver

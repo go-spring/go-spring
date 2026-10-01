@@ -22,35 +22,50 @@ import (
 	"net"
 
 	"github.com/gomodule/redigo/redis"
+	"go-spring.org/cloud"
 	"go-spring.org/cloud/discovery"
-	"go-spring.org/cloud/governance/fault"
-	"go-spring.org/cloud/governance/resilience"
 	"go-spring.org/cloud/loadbalance"
-	"go-spring.org/log"
+	"go-spring.org/cloud/resilience"
 	"go-spring.org/stdlib/errutil"
 )
 
-// Pool is the wrapper bean redigo pools are injected as. It embeds
-// the concrete *redis.Pool (so Get/Stats/etc. promote unchanged). NewPool
-// assembles it in ONE phase — observer, resilience executor, and the
-// instrumented Dial wrap are all live on return; there is no separate Init.
+// Pool is the wrapper bean redigo pools are injected as. It embeds the raw
+// *redis.Pool, so the whole raw-pool method set is promoted unchanged. That is
+// the right shape here because the pool itself is not instrumented: the command
+// chain is composed onto each connection the pool dials ([NewConn], installed
+// by the wrapped Dial), so this type is a holder, not a per-command
+// interceptor. [NewPool] is the only way to build a Pool, so a pool can never
+// exist without its observer and its instrumented Dial wrap. NewPool assembles
+// it in ONE phase — observer, resilience executor, endpoint-selection binding,
+// and the instrumented Dial wrap are all live on return; there is no separate
+// Init.
 type Pool struct {
+	// *redis.Pool is embedded. The raw pool carries no instrumentation of its
+	// own (the wrapped Dial hands out the instrumented Conn), so its methods are
+	// promoted rather than re-declared one by one. Pool.Close overrides the
+	// promoted Close so teardown also detaches the binding and executor.
 	*redis.Pool
 
-	cfg     Config                    // address fields feed the governance service label
-	exec    resilience.ClientExecutor // armed by ArmGovernance; observe-only when governance is off
-	chain   []CommandInterceptor      // user interceptor chain, first entry outermost; nil when none registered
-	service string                    // governance service label (stable per pool)
-	lbPool  *loadbalance.Pool         // endpoint-selection pool, nil when discovery is not in effect
-	stop    func()                    // detaches the endpoint-selection binding
+	cfg          Config                    // address fields feed the governance service label
+	exec         resilience.ClientExecutor // the executor every command runs under, set by [NewPool] from the governance bundle; always non-nil on a NewPool-built pool
+	chain        []CommandInterceptor      // user interceptor chain, first entry outermost; nil when none registered
+	serviceLabel string                    // governance service label (stable per pool)
+	lbPool       *loadbalance.Pool         // endpoint-selection pool, nil when discovery is not in effect
+	stop         func()                    // detaches the endpoint-selection binding
 }
 
-// backend is the discovery backend the entry's ${discovery} label resolved to,
-// already looked up by the starter wiring; a stand-alone NewPool caller passes
-// the backend it wants explicitly (nil for a plain Addr dial). It is passed as
-// an argument rather than carried on Config so NewPool stays a pure function of
-// its inputs — Config is a pure bound value.
-func NewPool(ctx context.Context, c Config, backend discovery.Discovery) (*Pool, error) {
+// params carries the container's facilities (see [cloud.ClientParams]).
+// params.Discovery is the discovery backend the entry's ${discovery} label
+// resolved to, already looked up by the starter wiring; a stand-alone NewPool
+// caller passes the backend it wants explicitly (nil for a plain Addr dial). It
+// rides on the params struct rather than Config so NewPool stays a pure function
+// of its inputs — Config is a pure bound value. It is applied HERE, while the
+// pool is built, so a Pool cannot exist half-assembled: there is no separate
+// apply step and nothing the container has to remember to call. A stand-alone
+// caller passes the zero [cloud.ClientParams]; its executor then degrades to
+// resilience.Unmanaged — observed, with a one-time warning that no protection
+// applies — rather than running bare.
+func NewPool(ctx context.Context, c Config, params cloud.ClientParams) (*Pool, error) {
 	tlsConfig, err := c.TLS.BuildClient()
 	if err != nil {
 		return nil, errutil.Explain(err, "redis: build TLS")
@@ -60,7 +75,7 @@ func NewPool(ctx context.Context, c Config, backend discovery.Discovery) (*Pool,
 	// service name / no backend / mesh), so the pool dials the
 	// configured Addr directly. Freshness lives inside the backend, so the
 	// resolver has no resources to release.
-	resolver, err := discovery.NewResolver(ctx, backend, c.ServiceName,
+	resolver, err := discovery.NewResolver(ctx, params.Discovery, c.ServiceName,
 		discovery.WithScheme(c.Scheme))
 	if err != nil {
 		return nil, err
@@ -69,7 +84,7 @@ func NewPool(ctx context.Context, c Config, backend discovery.Discovery) (*Pool,
 	// this Redis instance (not per command): fall back across the address fields
 	// via the shared [resilience.ServiceLabel] helper. Computed here because the
 	// pool's selection binding needs it before the executor is built.
-	service := resilience.ServiceLabel("redigo", c.ServiceName, c.Addr)
+	serviceLabel := resilience.ServiceLabel("redigo", c.ServiceName, c.Addr)
 
 	// Endpoint selection rides the shared loadbalance machinery (round-robin
 	// here, per opened connection). The tracker makes outlier suspension possible
@@ -81,16 +96,32 @@ func NewPool(ctx context.Context, c Config, backend discovery.Discovery) (*Pool,
 	}
 
 	pool := newRawPool(c, tlsConfig, lb)
-	w := &Pool{Pool: pool, cfg: c, service: service, lbPool: lb, stop: func() {}}
+	w := &Pool{Pool: pool, cfg: c, serviceLabel: serviceLabel, lbPool: lb, stop: func() {}}
 
-	// Arm the standard instrumentation: the command observer and the
+	// Governance is assembled complete, in one step. The executor the pool's
+	// service label resolves to is the stack observe(fault(execFor)): fault wraps
+	// the resolved executor's operation fn so injected failures land INSIDE the
+	// retry/breaker loop (and so are observed), and the resilience layer emits the
+	// span + counter + histogram + access log for the whole call, retries included.
+	// A nil Fault is nil-safe (WrapClientExecutor is a transparent pass-through)
+	// and the zero bundle degrades to resilience.Unmanaged. Resolution is deferred
+	// to call time, so the order relative to the center's wiring is
+	// irrelevant; rate / error / latency hot-toggle and the bound protection policy
+	// is adopted at runtime through the executor's Refresh.
+	w.exec = params.ExecutorFor("redigo", serviceLabel)
+
+	// Endpoint selection rides the shared loadbalance machinery. Binding it here
+	// (rather than after assembly) is what makes the pool complete on return, so a
+	// custom Driver's pool is governed without any post-construction patching.
+	if lb != nil && params.Loadbalance != nil {
+		w.stop = params.Loadbalance.Bind(lb, serviceLabel)
+	}
+
+	// Install the standard instrumentation: the command observer and the
 	// instrumented Dial wrap. The observer is unconditional: without
 	// starter-otel the OTel globals are no-ops, so it costs one map lookup per
 	// command, and its instruments come from the process-wide set (see
-	// [instruments]). Governance (the resilience executor and the
-	// endpoint-selection binding) is armed separately by [Pool.ArmGovernance],
-	// which the gs wiring calls with the injected beans — see that method for why
-	// it is not part of this pure assembly.
+	// [instruments]).
 	w.setupDial()
 	return w, nil
 }
@@ -160,8 +191,10 @@ func newRawPool(c Config, tlsConfig *tls.Config, lb *loadbalance.Pool) *redis.Po
 }
 
 // Close tears the pool down: detaches the endpoint-selection binding, closes the
-// resilience executor (if armed), then the underlying redis pool. Freshness
-// lives inside the discovery backend, so there is no per-pool watch to stop.
+// resilience executor, then the underlying redis pool. Freshness lives inside
+// the discovery backend, so there is no per-pool watch to stop. It is the bean
+// destroy method; the raw pool's own Close is reached through it, so the wrapper
+// overrides rather than delegates it.
 func (p *Pool) Close() error {
 	p.stop()
 	if p.exec != nil {
@@ -186,53 +219,19 @@ func (p *Pool) UseCommandInterceptor(i ...CommandInterceptor) {
 	p.chain = append(p.chain, i...)
 }
 
-// ArmGovernance attaches the governance-driven stack to the pool, so every Conn
-// threads each command through it: the resilience executor this pool's service
-// label resolves to, and the process-wide fault injector wrapping it. The three
-// authorities are the beans starter-governance registers, handed in by the gs
-// wiring; a standalone caller passes nil, which this method normalizes to a
-// fresh unarmed authority — exactly "governance off", so callers need no nil
-// branches of their own.
-//
-// The stack is observe( fault( execFor ) ): fault wraps the resolved executor's
-// operation fn so injected failures land INSIDE the retry/breaker loop (and so
-// are observed), and observe sits outermost so trips / rejects / retries emit
-// span + counter + histogram + access log (the resilience core emits none).
-// inj is nil-safe: with no injector, WrapClientExecutor returns the inner executor
-// unchanged, so the fault layer is a transparent pass-through. Rate / Error /
-// Latency / Enabled hot-toggle at runtime because the center swaps the
-// injector's config in place; the bound protection policy is adopted the same
-// way, through the executor's Refresh, and a selection change reaches the pool
-// through its binding. None of it needs a restart.
-func (o *Pool) ArmGovernance(mgr *resilience.Manager, inj *fault.Injector, lbMgr *loadbalance.Manager) error {
-
-	// Resolution is deferred to call time, so the order of this arming relative
-	// to starter-governance's wiring is irrelevant.
-	o.exec = fault.WrapClientExecutor(mgr.ClientExecutorFor("redigo", o.service), o.service, inj)
-
-	// Endpoint selection rides the shared loadbalance machinery. Binding it here
-	// (rather than during assembly) is what keeps the pool's own construction a
-	// pure function of its Config, and lets a custom Driver's pool be governed
-	// without changing the Driver interface.
-	if o.lbPool != nil {
-		o.stop = lbMgr.Bind(o.lbPool, o.service)
-	}
-	return nil
-}
-
 // wrapConn wraps a freshly dialed raw connection in the instrumented Conn.
 // Layer order (earlier = outermost): user interceptors first (so a
-// short-circuit skips the span and the breaker), then the observe span, then
-// the resilience executor innermost — the span wraps the executor, so one
-// Execute with any retries the policy drives shares a single span. It reads
-// the pool's live state, so interceptors added after NewPool still apply to
-// connections dialed later.
+// short-circuit skips the declared identity and the breaker), then the
+// declaration layer, then the resilience executor innermost — the declaration
+// reaches the executor, which emits the one span covering the whole call with
+// any retries the policy drives. It reads the pool's live state, so
+// interceptors added after NewPool still apply to connections dialed later.
 func (p *Pool) wrapConn(raw redis.Conn) redis.Conn {
 	var layers []CommandInterceptor
 	layers = append(layers, p.chain...)
-	layers = append(layers, observeInterceptor())
+	layers = append(layers, operationInterceptor())
 	if p.exec != nil {
-		layers = append(layers, resilienceInterceptor(p.exec, p.service))
+		layers = append(layers, resilienceInterceptor(p.exec, p.serviceLabel))
 	}
 	return NewConn(raw, layers...)
 }
@@ -240,8 +239,8 @@ func (p *Pool) wrapConn(raw redis.Conn) redis.Conn {
 // setupDial wraps the pool's Dial / DialContext so every connection handed out
 // goes through newConn — the Conn that instruments each command
 // through the module-local observe layer (trace span + duration metric +
-// access log) and, when resilience is armed, through the executor. It is
-// called by NewPool after the observer + executor are built; the wrap
+// access log) and, when governance is applied, through the executor. It is
+// called by NewPool after the observer is built; the wrap
 // resolves at dial time, so interceptors added afterwards still apply to
 // connections dialed later.
 //
@@ -267,28 +266,4 @@ func (o *Pool) setupDial() {
 			return o.wrapConn(c), nil
 		}
 	}
-}
-
-// startupPing dials one bare connection and PINGs it so a misconfigured
-// address or unreachable server surfaces during boot rather than on the first
-// request.
-//
-// It uses pool.Dial (a non-pooled dial) instead of pool.Get: a conn borrowed
-// via Get is returned to the idle pool on Close, and that happens *before*
-// NewPool wraps pool.Dial with the Conn — so the stale raw conn would later be
-// handed out with no instrumentation and silently bypass resilience. Dialing
-// directly keeps it out of the pool. Only runs when Config.StartupPing is set.
-func startupPing(ctx context.Context, pool *redis.Pool) error {
-	conn, err := pool.Dial()
-	if err != nil {
-		log.Errorf(ctx, log.TagAppDef, "redigo: startup ping failed: %v", err)
-		return errutil.Explain(err, "redis: startup ping failed")
-	}
-	_, pingErr := conn.Do("PING")
-	_ = conn.Close()
-	if pingErr != nil {
-		log.Errorf(ctx, log.TagAppDef, "redigo: startup ping failed: %v", pingErr)
-		return errutil.Explain(pingErr, "redis: startup ping failed")
-	}
-	return nil
 }

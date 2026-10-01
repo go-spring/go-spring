@@ -137,23 +137,13 @@
           "otel": {
             "type": "object",
             "properties": {
-              "tracing": {
-                "type": "object",
-                "properties": {
-                  "enabled": {
-                    "type": "boolean",
-                    "default": true,
-                    "description": "redisotel tracing hook per instance"
-                  }
-                }
-              },
               "metrics": {
                 "type": "object",
                 "properties": {
                   "enabled": {
                     "type": "boolean",
                     "default": true,
-                    "description": "redisotel metrics hook per instance"
+                    "description": "redisotel pool-metrics hook per instance"
                   }
                 }
               }

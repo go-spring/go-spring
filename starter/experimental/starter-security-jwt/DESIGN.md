@@ -23,7 +23,7 @@ middleware onto an existing `*gs.HttpServeMux`.
 - **`cloud/security` — zero-dependency abstraction.** The starter is one
   concrete implementation of that shape. `TokenValidator` is the driver
   seam (registry-style — the same pattern `cloud/discovery` and
-  `cloud/governance/resilience` use). `Principal` + `Authentication` are neutral
+  `cloud/resilience` use). `Principal` + `Authentication` are neutral
   types with `HasAuthority` / `HasAnyAuthority` / `HasAllAuthorities`
   helpers, all nil-safe and short-circuit `false` when not authenticated.
 - **Two mount points from one bean.**

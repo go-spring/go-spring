@@ -42,14 +42,13 @@ import (
 	"github.com/gogf/gf/v2/net/gtcp"
 	"go-spring.org/spring/gs"
 
-	// Side-effect import: installs the goframe (glog) -> go-spring log bridge
-	// (see internal/logger). The bridge self-installs via init(), so importing
-	// this package routes goframe's own logs into the application's go-spring
-	// log pipeline before the listener is built.
-	_ "go-spring.org/starter-goframe/internal/logger"
+	"go-spring.org/starter-goframe/internal/logger"
 )
 
 func init() {
+	// Route goframe's own logs into the go-spring pipeline before any glog use.
+	logger.Install()
+
 	gs.Provide(NewTCPServer, gs.IndexArg(0, gs.TagArg("${spring.goframe.tcp.server}"))).
 		Export(gs.As[gs.Server]()).
 		Condition(gs.OnProperty("spring.goframe.tcp.server.address"))

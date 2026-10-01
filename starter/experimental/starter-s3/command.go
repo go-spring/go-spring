@@ -14,29 +14,30 @@
  * limitations under the License.
  */
 
-// command.go is the "command seam" concept of this starter: the obsTransport
-// round-tripper that emits a span + duration metric + access log per request
-// (see observe.go). It mirrors starter-elasticsearch's command.go, except
-// minio-go ships no OTel instrumentation of its own, so the transport carries
-// the trace signal too.
+// command.go is the "declaration seam" concept of this starter: the
+// declareTransport round-tripper that puts each S3 request's semantic identity
+// on the context (see observe.go). It emits nothing — the resilience layer
+// inside it reads the declaration to emit the span, the metrics and the access
+// log.
 package StarterS3
 
 import (
 	"net/http"
+
+	"go-spring.org/cloud/observability"
 )
 
-// obsTransport wraps the underlying HTTP round-tripper so each request emits
-// a span + duration metric + access log. The operation is derived from the
-// request method + URL path (e.g. "PUT /bucket/key").
-type obsTransport struct {
-	base http.RoundTripper
-	obs  *dbObserver
+// declareTransport declares the semantic identity of the S3 request on its
+// context and delegates inward. It MUST sit OUTSIDE the resilience
+// round-tripper: the emitter reads the operation at [ClientExecutor.Execute]
+// entry, so a declaration made inside the executor — per attempt — would be
+// read by nobody. Placed here, the executor emits one call's signals covering
+// every attempt, retries included.
+type declareTransport struct {
+	next http.RoundTripper
 }
 
-func (t *obsTransport) RoundTrip(req *http.Request) (*http.Response, error) {
-	op := req.Method + " " + req.URL.Path
-	ctx, sp := t.obs.Start(req.Context(), op, req.URL.Path)
-	resp, err := t.base.RoundTrip(req.WithContext(ctx))
-	sp.End(err)
-	return resp, err
+func (t *declareTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	op := operation(req.Method, req.URL.Path)
+	return t.next.RoundTrip(req.WithContext(observability.WithOperation(req.Context(), op)))
 }

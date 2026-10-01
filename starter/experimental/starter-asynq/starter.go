@@ -20,9 +20,10 @@ import (
 	"context"
 
 	"github.com/hibiken/asynq"
+	"go-spring.org/cloud"
 	"go-spring.org/cloud/actuator/health"
-	"go-spring.org/cloud/governance/fault"
-	"go-spring.org/cloud/governance/resilience"
+	"go-spring.org/cloud/fault"
+	"go-spring.org/cloud/resilience"
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/flatten"
@@ -45,18 +46,19 @@ func init() {
 			r.Provide(newClient,
 				gs.IndexArg(1, gs.ValueArg(c)),
 				gs.IndexArg(2, gs.TagArg("${spring.asynq.instances."+name+".driver:=${spring.asynq.default.driver:=?}}")),
-				// The governance beans are REQUIRED: this starter blank-imports
-				// starter-governance, so "governance off" is spring.governance.enabled=false,
-				// never an absent bean.
+				// The governance beans are REQUIRED: each is registered by the package that
+				// owns it (cloud/resilience, cloud/loadbalance, cloud/fault), which this
+				// starter imports — "governance off" is spring.governance.enabled=false, never
+				// an absent bean.
 				gs.IndexArg(3, gs.TagArg("")), // *resilience.Manager
 				gs.IndexArg(4, gs.TagArg("")), // *fault.Injector
-			).Name(name).Init((*Client).Init).Destroy((*Client).Destroy).Caller(1)
+			).Name(name).Destroy((*Client).Destroy).Caller(1)
 
 			if c.Server.Enabled {
 				r.Provide(newServer,
 					gs.IndexArg(1, gs.ValueArg(c)),
 					gs.IndexArg(2, gs.TagArg("${spring.asynq.instances."+name+".driver:=${spring.asynq.default.driver:=?}}")),
-				).Name(name + ":server").Init((*Server).Init).Destroy((*Server).Destroy).
+				).Name(name + ":server").Destroy((*Server).Destroy).
 					Export(gs.As[gs.Server]()).Caller(1)
 			}
 
@@ -78,8 +80,14 @@ func init() {
 }
 
 // newClient builds the producer Client bean through the supplied Driver. The
-// governance beans (mgr, inj) are retained on the Client for Init to arm the
-// executor with; both are nil in a standalone, non-gs call.
+// client is assembled complete in one step: the Driver resolves the RedisConnOpt,
+// and [NewClient] fixes the identity and applies the params bundle it is
+// handed (mgr, inj). There is no Init hook — building the Client and
+// initializing it are the same act.
+//
+// mgr is required (blank-imported governance); a standalone, non-gs caller
+// passes a fresh manager, which is exactly "governance off". The zero bundle
+// degrades to an observed-only, loudly-unmanaged executor.
 func newClient(ctx *gs.ContextProvider, c Config, d Driver, mgr *resilience.Manager, inj *fault.Injector) (*Client, error) {
 	// No company Driver bean → fall back to the bundled default assembly.
 	if d == nil {
@@ -89,18 +97,30 @@ func newClient(ctx *gs.ContextProvider, c Config, d Driver, mgr *resilience.Mana
 	if err != nil {
 		return nil, err
 	}
-	cl := asynq.NewClient(connOpt)
-	return &Client{Client: cl, cfg: c, mgr: mgr, inj: inj}, nil
+	return NewClient(connOpt, c.Addr, cloud.ClientParams{Resilience: mgr, Fault: inj}), nil
 }
 
-// newServer builds the worker Server bean, holding the resolved Driver so
-// Server.Init can build the RedisConnOpt when it constructs the asynq server.
+// newServer builds the worker Server bean. The asynq server is constructed here
+// from the Driver-resolved RedisConnOpt, so there is no Init hook: the bean is
+// complete when this ctor returns, and the app's handlers register against the
+// lazily-created mux before Run.
 func newServer(ctx *gs.ContextProvider, c Config, d Driver) (*Server, error) {
 	// No company Driver bean → fall back to the bundled default assembly.
 	if d == nil {
 		d = DefaultDriver{}
 	}
-	return &Server{cfg: c, driver: d}, nil
+	connOpt, err := d.RedisConnOpt(ctx.Context, c)
+	if err != nil {
+		return nil, err
+	}
+	srv := asynq.NewServer(connOpt, asynq.Config{
+		Concurrency:     c.Concurrency,
+		Queues:          c.Queues,
+		ShutdownTimeout: c.ShutdownTimeout,
+		// Errors and panics inside a handler are asynq's to recover and retry;
+		// a handler error is reported via ErrorHandler and a panic is recovered
+		// by asynq's own guard. We keep our own reporting out of the hot path —
+		// see DESIGN for the boundary.
+	})
+	return &Server{srv: srv}, nil
 }
-
-var _ = context.Background

@@ -43,7 +43,7 @@
 //	    c.Set(key, v)
 //	}
 //
-// cloud/governance/traffic is the reference pair, for the load-test marker.
+// cloud/traffic is the reference pair, for the load-test marker.
 // This package holds no policy — no key registry, no value rules, no context
 // slot — only the invariants the adapters share: an empty value reads as
 // absent, and Set replaces instead of appending, so re-injecting is

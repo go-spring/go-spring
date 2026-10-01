@@ -62,6 +62,25 @@ consumer.Ack(msg)
 
 ## Observability
 
+Every publish and consume that flows through this starter DECLARES its operation
+on the call — the direction (`messaging.operation`), the backend
+(`messaging.system=pulsar`) and the topic as per-call detail — and the resilience
+layer, the single emitter on the executor chain, emits the signals from that
+declaration: the call span, the call-level `messaging.client.operation.duration`
+histogram, the attempt-level `messaging.client.attempt.duration` histogram (one
+record per retry, so retry/backoff cost never inflates downstream latency), the
+in-flight gauge, the `resilience.client.calls` counter and one access log per
+call. Both the [messaging.Driver](#messaging-driver) path and the raw
+`GuardedSend` seam declare through the same helper, so the two never
+double-report a message. They ride the global `TracerProvider` installed by
+[starter-otel](../starter-otel); without it the span and metrics are no-ops,
+while the access log always writes through go-spring's log.
+
+The starter itself emits nothing per call — it declares the identity and lets
+the resilience layer emit. Pulsar's native `pulsar_client_*` metrics (below)
+stay in the starter: they are library-native connection/producer/consumer
+stats, not per-call signals.
+
 ### Metrics (native Prometheus)
 
 pulsar-client-go has no OTel contrib, but the client always emits
@@ -85,13 +104,15 @@ each a distinct `port`. The endpoint is disabled by default so importing the
 starter never binds a port unexpectedly, and the server is shut down when the
 client bean is destroyed. Point Prometheus at `http://<host>:<port>/metrics`.
 
-### Tracing (native OTel helpers)
+### Tracing (manual helpers)
 
-pulsar exposes no span injection point of its own, so message-level tracing is
-done with small call-site helpers built on the OTel API. They ride the global
-`TracerProvider` and propagator installed by starter-otel and carry the W3C trace
-context in the message `Properties`; without starter-otel they are no-ops and
-change no message bytes.
+Code that drives the raw `pulsar.Client` itself — bypassing the driver and the
+`GuardedSend` seam — can open its own span with the call-site helpers below. They
+are built on the OTel API, ride the global `TracerProvider` and propagator
+installed by starter-otel, and carry the W3C trace context in the message
+`Properties`; without starter-otel they are no-ops and change no message bytes.
+A send routed through `GuardedSend` is already spanned by the resilience layer
+from the operation it declares, so do not wrap the same send in both.
 
 ```go
 import starter "go-spring.org/starter-pulsar"

@@ -1,7 +1,7 @@
 # starter-actuator 使用与设计 — 参考手册
 
 详细参考。先读 [README_CN](README_CN.md) 有整体印象。文中一切行为都对照过源码
-（`actuator.go`、`probes.go`）和自校验的 [example/](example/)。Kubernetes 探针语义以
+（`starter.go`、`actuator.go`、`probes.go`）和自校验的 [example/](example/)。Kubernetes 探针语义以
 [kubelet](https://kubernetes.io/docs/tasks/configure-pod-container/configure-liveness-readiness-startup-probes/)
 的行为为准；Spring Boot Actuator 的名字只是照护熟悉度。
 
@@ -36,7 +36,7 @@ require (
     go-spring.org/starter-echo       latest
     go-spring.org/starter-actuator   latest   // 探针，:9370
     go-spring.org/starter-otel       latest   // 可选：/metrics 挂同一端口
-    go-spring.org/starter-governance latest   // 可选：运行时故障注入
+    go-spring.org/starter-governance-file latest   // 可选：运行时故障注入
 )
 ```
 
@@ -52,7 +52,7 @@ import (
     "go-spring.org/spring/gs"
     _ "go-spring.org/starter-actuator"
     _ "go-spring.org/starter-echo"
-    _ "go-spring.org/starter-governance"
+    _ "go-spring.org/starter-governance-file"
     _ "go-spring.org/starter-otel"
 )
 

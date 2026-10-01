@@ -30,18 +30,18 @@ import (
 // carries the reported message.
 func TestHealthError(t *testing.T) {
 	pass := domain.HealthCheckStatusPass
-	assert.Error(t, HealthError(&domain.HealthCheck{Status: pass})).Nil()
+	assert.Error(t, healthError(&domain.HealthCheck{Status: pass})).Nil()
 
 	fail := domain.HealthCheckStatusFail
 	msg := "corrupt tsdb"
-	err := HealthError(&domain.HealthCheck{Status: fail, Message: &msg})
+	err := healthError(&domain.HealthCheck{Status: fail, Message: &msg})
 	assert.That(t, err != nil).True()
 	assert.That(t, strings.Contains(err.Error(), "corrupt tsdb")).True()
 }
 
 // TestDynamicTransportSwap proves the indirection passes through to the base
-// transport until Swap installs a replacement — the mechanism Init uses to
-// arm observe+resilience after construction.
+// transport until Swap installs a replacement — the mechanism [NewClient] uses
+// to install declaration+resilience while the client is built.
 func TestDynamicTransportSwap(t *testing.T) {
 	var served string
 	base := roundTripFunc(func(r *http.Request) (*http.Response, error) {

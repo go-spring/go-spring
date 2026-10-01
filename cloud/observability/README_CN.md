@@ -3,7 +3,9 @@
 [English](README.md) | [中文](README_CN.md)
 
 `observability` 把每请求的属性（如租户、压测标记）挂在 `context.Context`
-上，让框架**替你创建**的那些 span 也能带上它们。
+上，让框架**替你创建**的那些 span 也能带上它们。客户端 starter 也在这里声明
+一次调用是什么（`Operation`）、累积它的尝试记录（`Recorder`），供 `resilience`
+的发射端读取。
 
 ## 为什么需要它
 
@@ -87,6 +89,40 @@ _ = observability.RefreshConf(ctx, gs.RefreshProperties)
 
 刷新函数由调用方传入（而非包内引用），因此本包不依赖 spring；fn 的错误
 原样返回——这里是插桩，不是错误策略。
+
+## Operation 与 Recorder：客户端 starter 的"声明"接口
+
+客户端不发射信号——它们**声明**，发射端只有一处：`resilience` 的 wrapped
+client executor。context 上承载这份声明及其结果的是两个类型。
+
+`Operation` 说明这次调用是什么。它必须挂在**调用方**的 context 上、位于
+executor 之外：发射端在 `Execute` 入口读取，写在被包裹函数里的声明没人读。
+
+```go
+ctx = observability.WithOperation(ctx, observability.Operation{
+    Name:   "get",                   // span 名
+    Metric: "db.client",             // 指标名前缀——为空会 panic
+    Attrs:  []attribute.KeyValue{…}, // 有界 → 指标标签 + span + 日志
+    Detail: []attribute.KeyValue{…}, // 可能无界 → 仅 span + 日志
+
+    LogTag: accessTag,               // starter 自己的访问日志 tag
+})
+```
+
+`Attrs` 必须保持有界：缓存 key、SQL 语句、URL 路径、topic 一律放 `Detail`，
+它永远不会变成指标标签。
+
+`Recorder` 是尝试级累加器：治理 executor 为每次下游尝试追加一条，发射端在
+重试循环之外把它读走。
+
+```go
+rec := observability.RecorderFrom(ctx)   // nil 安全——没有 recorder 也正常
+rec.AddAttempt(d, status, err)
+```
+
+`WithRecorder` 刻意**不幂等**：链上最近的一个胜出，嵌套的两层 executor 各写
+各的。在循环入口读一次并持有指针——每次写入都重新查会把手外层调用的记录
+交给内层 executor。
 
 ## 不覆盖什么
 

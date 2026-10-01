@@ -42,7 +42,7 @@ protected upstream.
   what makes Auth0 `audience` / Azure `resource` work without a
   code change.
 - **Resilience is layered here, not below.** The starter integrates
-  `cloud/governance/resilience` as the outermost transport wrap (retry can
+  `cloud/resilience` as the outermost transport wrap (retry can
   re-pick, breaker keys by logical name). Enabling it is a config-only
   switch on the same instance.
 

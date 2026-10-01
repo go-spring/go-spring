@@ -96,17 +96,36 @@ pub, _ := driver.NewPublisher(ctx, "orders")
 _ = pub.Publish(ctx, &messaging.Message{Key: "o-1", Payload: []byte("...")})
 ```
 
-The driver injects/extracts W3C trace context and the load-test marker into
-the message user properties, so traces link producer to consumer and
-synthetic load stays recognisable downstream.
+Each publish and consume declares its operation and runs it under the client's
+resilience executor (the single emitter — see [Observability](#observability)),
+and injects/extracts the W3C trace context and the load-test marker into the
+message user properties, so traces link producer to consumer and synthetic load
+stays recognisable downstream.
 
 ## Observability
 
-- **Tracing**: `StartProducerSpan` / `StartConsumerSpan` / `EndSpan` wrap raw
-  sends and handlers in OTel spans; the driver path is instrumented
-  automatically by the broker-neutral `messaging.Observe` decorator. Everything
-  rides the globals installed by `starter-otel` and is a no-op without it. See
-  `example-otel/`.
+Every publish and consume that flows through this starter DECLARES its operation
+on the call — the direction (`messaging.operation`), the backend
+(`messaging.system=rocketmq`) and the topic as per-call detail — and the
+resilience layer, the single emitter on the executor chain, emits the signals
+from that declaration: the call span, the call-level
+`messaging.client.operation.duration` histogram, the attempt-level
+`messaging.client.attempt.duration` histogram (one record per retry, so
+retry/backoff cost never inflates downstream latency), the in-flight gauge, the
+`resilience.client.calls` counter and one access log per call. Both the
+[Messaging Driver](#messaging-driver) path and the raw `GuardedSend` seam
+declare through the same helper, so the two never double-report a message. They
+ride the global `TracerProvider` installed by
+[starter-otel](../starter-otel); without it the span and metrics are no-ops,
+while the access log always writes through go-spring's log.
+
+The starter itself emits nothing per call — it declares the identity and lets
+the resilience layer emit.
+
+For a raw send or consumer you drive yourself, the manual helpers
+`StartProducerSpan` / `StartConsumerSpan` / `EndSpan` wrap them in OTel spans,
+with the W3C trace context carried in the message user properties. See
+`example-otel/`.
 
 ## Resilience
 
@@ -117,8 +136,11 @@ attached to the client (rate limit, circuit breaking, fault injection):
 res, err := StarterRocketmq.GuardedSend(ctx, s.Client, p, msg)
 ```
 
-When `starter-governance` is not imported this behaves exactly like
+When `starter-governance-file` is not imported this behaves exactly like
 `p.SendSync(ctx, msg)`.
+
+The [Messaging Driver](#messaging-driver) publish and consume paths route
+through the same executor, so driver traffic is protected and declared too.
 
 ## Advanced Features
 
@@ -142,7 +164,10 @@ returns `StarterRocketmq.Driver`). It is an optional container bean: every
 client under `spring.rocketmq.instances.*` is built through it, and the starter falls
 back to its bundled `DefaultDriver` only when no `Driver` bean is present.
 Embed `StarterRocketmq.DefaultDriver` and delegate `CreateClient` so the
-default assembly is preserved:
+default assembly is preserved. `CreateClient` takes the container's
+`cloud.ClientParams` bundle (see `go-spring.org/cloud`) and passes
+it through, so the client is assembled complete — identity and executor — in one
+step; delegate it as-is and governance keeps applying:
 
 ```go
 func init() {
@@ -155,8 +180,9 @@ type myDriver struct {
     StarterRocketmq.DefaultDriver
 }
 
-func (d myDriver) CreateClient(ctx context.Context, c StarterRocketmq.Config) (*StarterRocketmq.Client, error) {
-    return d.DefaultDriver.CreateClient(ctx, c)
+func (d myDriver) CreateClient(ctx context.Context, c StarterRocketmq.Config,
+    params cloud.ClientParams) (*StarterRocketmq.Client, error) {
+    return d.DefaultDriver.CreateClient(ctx, c, params)
 }
 ```
 

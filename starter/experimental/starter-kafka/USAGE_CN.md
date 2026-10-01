@@ -20,7 +20,7 @@ franz-go API 属于 [franz-go 官方文档](https://github.com/twmb/franz-go)与
 
 **go.mod**（关键依赖）：`github.com/twmb/franz-go/pkg/kgo`、`go-spring.org/spring`、
 `go-spring.org/cloud`、`go-spring.org/starter-kafka`，加可选的 `starter-actuator`
-（探针 + /metrics）、`starter-otel`（trace/metric 导出）、`starter-governance`（限流/熔断）。
+（探针 + /metrics）、`starter-otel`（trace/metric 导出）、`starter-governance-file`（限流/熔断）。
 
 **main.go**：
 
@@ -30,7 +30,7 @@ package main
 import (
     "go-spring.org/spring/gs"
     _ "go-spring.org/starter-actuator"
-    _ "go-spring.org/starter-governance"
+    _ "go-spring.org/starter-governance-file"
     _ "go-spring.org/starter-kafka"
     _ "go-spring.org/starter-otel"
     _ "demo/service"
@@ -113,7 +113,7 @@ spring.observability.trace.endpoint=127.0.0.1:4317
 spring.observability.metrics.exporter=prometheus
 
 # --- governance（同步生产路径上的限流）--------------------------------------
-# NOTE: governance RULES go in conf/governance.properties, referenced by spring.governance.source.file.path in app.properties (see starter-governance USAGE).
+# NOTE: governance RULES go in conf/governance.properties, referenced by spring.governance.source.file.path in app.properties (see starter-governance-file USAGE).
 spring.governance.enabled=true
 spring.governance.driver=default
 spring.governance.client.default.rate-limit=8
@@ -148,49 +148,58 @@ import starter-kafka
                     .Destroy(destroyClient)
 
 gs.Run()
-  ├─ ctor newClient [starter.go:63]:
-  │   1. 可选 Driver bean——无则用内置 DefaultDriver              [starter.go:67-68]
-  │   2. d.CreateClient：完整 client 装配（见 §2.2）                [driver.go:57]
-  │   3. Ping 10s 超时——坏 brokers/凭证/TLS 让启动失败，
-  │      而不是等第一次 produce 才暴露                                [starter.go:51,76]
-  │   4. applyResilience：fault.WrapClientExecutor(mgr.ClientExecutorFor(
-  │      "kafka", "kafka:<brokers>"), "kafka:<brokers>", inj)，以
-  │      client 指针索进包级 sync.Map                              [command.go:99-105]
-  ├─ 无 Init 钩子；*kgo.Client bean 在 ctor 后即就绪
-  ├─ Destroy(destroyClient) [starter.go:95-102]:
+  ├─ ctor newClient [starter.go:96]:
+  │   1. 可选 Driver bean——无则用内置 DefaultDriver              [starter.go:101-102]
+  │   2. d.CreateClient：完整 client 装配并在此完成——driver 在构建时即
+  │      装配治理：AttachGovernance → params.ExecutorFor("kafka",
+  │      "kafka:<brokers>")                                  [driver.go:78,122]
+  │      （bundle 有值时 = fault.WrapClientExecutor(mgr.ClientExecutorFor(
+  │      "kafka", service), service, inj)；bundle 为零值时 = 仅观测的
+  │      resilience.Unmanaged executor），以 client 指针索进包级 sync.Map
+  │                                                         [command.go:83-89]
+  │   3. 再探测：Ping 10s 超时——坏 brokers/凭证/TLS 让启动失败，
+  │      而不是等第一次 produce 才暴露；探测失败释放 driver 刚装配的 executor
+  │                                                         [starter.go:113,119]
+  ├─ 无 Init 钩子；*kgo.Client bean 在 ctor 后即就绪；此后无任何补装配——
+  │  治理已在构造器内应用
+  ├─ Destroy(destroyClient) [starter.go:130]:
   │   closeResilience（executor Close）→ Flush(10s ctx) → Close。
   │   ⚠ Flush 失败会记 ERROR 日志（可能丢消息）并向上返回——未送达 broker 的缓冲记录丢失。
 ```
 
-**装配扩展点**：client 装配由 `Driver`（接口，`driver.go:33-44`）负责。公司/伞包 starter 可把
+**装配扩展点**：client 装配由 `Driver`（接口，`driver.go:37-63`）负责。公司/伞包 starter 可把
 自己的 `Driver` 作为**可选容器 bean** 提供（`gs.Provide(func() StarterKafka.Driver{...})`，
 因为是 bean，可在装配期注入从配置文件绑定的配置）；`spring.kafka` 下每个实例都经它构建。
-没有该 bean 时 starter 在装配内回退到内置 `DefaultDriver`（`driver.go:47-95`，
-`starter.go:67-68`）。当容器中存在多个 Driver bean 时，实例可按名指定：
+没有该 bean 时 starter 在装配内回退到内置 `DefaultDriver`（`driver.go:66-124`，
+`starter.go:100-102`）。当容器中存在多个 Driver bean 时，实例可按名指定：
 `spring.kafka.instances.<name>.driver = <bean 名>`（留空 = 先回退家族级 `spring.<family>.default.driver`，再按类型注入唯一 Driver bean；指定的
 bean 不存在则启动失败）。
 
-resilience 注册表以 `*kgo.Client` 指针为键，这正是 `GuardedProduceSync` 可以是接收原始
-bean 的自由函数的原因：guard 直接解析 executor，无需包装 client 类型 [command.go:118-125]。
+`CreateClient` 接收治理 bundle，必须调用 `AttachGovernance` 才算完成 client——guard 以 driver
+返回的原始 `*kgo.Client` 指针为键，自定义 Driver 只能在那里装配；正是这个以指针为键的
+resilience 注册表，让 `GuardedProduceSync` 可以是接收原始 bean 的自由函数：guard 直接解析
+executor，无需包装 client 类型 [command.go:83-89,102-109]。
 
 ### 2.2 client 装配 —— DefaultDriver 按序安装什么
 
-`DefaultDriver.CreateClient` 组装一次 `kgo.NewClient` 调用 [driver.go:67-104]：
+`DefaultDriver.CreateClient` 组装一次 `kgo.NewClient` 调用并随后完成它 [driver.go:78-124]：
 
 1. `kgo.SeedBrokers(strings.Split(c.Brokers, ",")...)` —— brokers 是 CSV；每项只是 seed，
    client 自行学习完整集群拓扑。
-2. `kgo.WithHooks(append(kt.Hooks(), newObserveHook())...)` [driver.go:74] ——
-   **kotel（tracer+meter）钩子在前，纯日志的 access 钩子在后**。理由：span 与 metric 归
-   kotel，access 钩子只发访问日志（observe.go）——信号不重复。
+2. `kgo.WithHooks(kt.Hooks()...)` [driver.go:75] —— **kotel（tracer+meter）钩子**。broker/
+   client 级 span 与 metric（`messaging.kafka.*`）归 kotel；逐消息信号由本 starter **声明**、
+   由 resilience executor **发射**（§2.3、§4.5），故不再装第二个钩子，信号不重复。
 3. `kgo.WithLogger(newLogger())` —— franz-go 内部日志（broker 连接、请求失败、重连）经
-   go-spring log 桥接，tag `log.TagAppDef`，Info 级阈值 [driver.go:173-193]。
+   go-spring log 桥接，tag `log.TagAppDef`，Info 级阈值 [driver.go:195-211]。
 4. `kgo.ConsumerGroup` / `kgo.ConsumeTopics` 来自 `group`/`topic` 配置——**构造期固定**；
    这是 driver 继承的 franz-go 约束（§2.3）。
 5. SASL mechanism、TLS（`c.TLS.BuildClient()`——裸 `BuildClient`，客户端侧 key 见 §3）、producer 选项
    （compression/acks/batch/linger）。
+6. `AttachGovernance(cl, c.Brokers, params)` [driver.go:122]——治理最后装配，就在构造器内，
+   故返回的 client 即完整（见 §2.1 第 2 步与 §4.5）。
 
-启动 ping 与 resilience 接线**有意不放**在 driver 里：它们是 starter 的生命周期职责
-[driver.go:62-66 注释]。
+只有启动 ping **有意不放**在 driver 里：它是 starter 的生命周期职责 [starter.go:113]。
+resilience 接线**现在就在** driver 内：随 client 构建时应用，而非稍后的补装配。
 
 ### 2.3 driver 的一次发布与一次消费，逐层走读
 
@@ -206,11 +215,12 @@ bean 的自由函数的原因：guard 直接解析 executor，无需包装 clien
 4. `GuardedProduceSync(ctx, p.cl, rec).FirstErr()` —— 同步生产，走与裸 client API 同一个
    resilience executor（没有规则命中该 client 的 service label 时为透明 no-op）
    [client.go:93-99]，broker ack / 拒绝直接返回给调用方。
-5. client 内部钩子触发：kotel produce span + metric；observeHook 的
-   `OnProduceRecordBuffered` 开启名为 `publish` 的访问日志记录，
-   `OnProduceRecordUnbuffered` 以结果与 buffered→unbuffered 时长收尾
-   [command.go:57-69]。访问日志 tag：`messaging.access`（observe.go 的
-   `RegisterAppTag("kafka","access")`）。
+5. `GuardedProduceSync` **声明**发布的身份（`observability.WithOperation`，span 名 `publish`，
+   metric 前缀 `messaging.client`，topic 进 Detail），再把调用交给该 client 的 resilience
+   executor，由它发射 span、调用级/尝试级时长直方图、调用计数器与唯一一条访问日志
+   [command.go, observe.go]。访问日志 tag：`messaging.access`（observe.go 的
+   `RegisterAppTag("messaging","access")`）。client 内部 kotel 的 produce span 与 client
+   metric 照常触发（本 starter 只是启用的第三方插桩）。
 
 绑定到 source `hello` 的 subscriber 上 `Subscribe(ctx, handler)` [client.go:109-144]：
 
@@ -220,10 +230,13 @@ bean 的自由函数的原因：guard 直接解析 executor，无需包装 clien
 3. poll 错误打日志（tag `log.TagAppDef`），`context.Canceled` 抑制 [client.go:121-127]。
 4. 逐条 record：给了 source 且 `rec.Topic != s.topic` 则过滤——source 与所配 topic 都不
    匹配时静默过滤掉一切 [client.go:129-131]。
-5. 从 record headers 提取 trace context；压测标记恢复到消息 ctx [client.go:132-136]。
-6. handler 收到 `fromRecord(rec)`：Key/Payload/Headers/Timestamp 全部在映射中存活
-   [client.go:172-186]。⚠ handler 错误**只打日志**——本 driver 无 nack/重投
-   （franz-go 组消费照常提交；设计嫌疑，§6）。
+5. 从 record headers 提取 trace context；压测标记恢复到消息 ctx；并**声明**消费的身份
+   （`operation(opConsume, rec.Topic)`）[client.go:132-140]。
+6. handler 在**该 client 的 resilience executor 之下**收到 `fromRecord(rec)`：Key/Payload/
+   Headers/Timestamp 全部在映射中存活 [client.go:172-186]；executor 发射消费的 span、metric
+   与访问日志。⚠ handler 错误事后仍**只打日志**——本 driver 无 nack/重投（franz-go 组消费
+   照常提交；设计嫌疑，§6）——且消费声明为非幂等，故命中的治理规则也无法在进程内重试
+   handler：再跑一次就是第二个副作用。
 7. `Close` 取消循环并等 `done`；`sync.Once` 保证幂等 [client.go:146-156]。
 
 franz-go 构造约束带来的两个 driver 陷阱 [client.go:43-51 注释]：
@@ -232,23 +245,38 @@ franz-go 构造约束带来的两个 driver 陷阱 [client.go:43-51 注释]：
 
 ### 2.4 GuardedProduceSync —— resilience 路径的精确语义
 
-franz-go 的异步 `Produce` 立即返回，因此只有同步路径可包 [command.go:21-22,126-137 注释]。
-`GuardedProduceSync(ctx, cl, recs...)` [command.go:138-154]：
+franz-go 的异步 `Produce` 立即返回，因此只有同步路径可包 [command.go:18-21,69-74,137-141 注释]。
+`GuardedProduceSync(ctx, cl, recs...)` [command.go:142-159]：
 
 - guard 解析 `cl` 上挂的 executor；没有（governance 关）则原样内联执行——与
   `cl.ProduceSync` 行为一致。
+- 发布的身份在进入 executor **之前**就按首条 record 的 topic 声明，故其 span 名为 `publish`，
+  metric/访问日志带上 topic（进 Detail，绝不进 metric label）[command.go]。
 - governance 开启时，调用经过已组装好的 executor
-  `fault.WrapClientExecutor(mgr.ClientExecutorFor("kafka", service), service, inj)` [command.go:100]：运行时
+  `fault.WrapClientExecutor(mgr.ClientExecutorFor("kafka", service), service, inj)` [command.go:86]：运行时
   故障注入与 resilience 结果 metric 包住 produce，服务标签 `kafka:<brokers>`
   （`resilience.ServiceLabel("kafka", c.Brokers)` [starter.go:83]，格式 `prefix:name`
   [resilience/policy.go:216-230]）。
 - 被拒（限流 / 熔断打开）时 produce **绝不执行**；拒绝错误编码为逐 record 错误，调用方的
-  `.FirstErr()` 像真实 produce 失败一样拿到它 [command.go:145-151]。example-cloudnative
+  `.FirstErr()` 像真实 produce 失败一样拿到它 [command.go:150-157]。example-cloudnative
   断言突发流量会得到 `resilience.ErrRateLimited`。
-- **不受保护**的路径：直接在 client bean 上调裸 `ProduceSync`/`Produce`，以及整条
-  consume/poll 路径（被动）。driver 的 publish **已受保护**（§2.3 第 4 步）。
+- **不受保护**的路径：直接在 client bean 上调裸 `ProduceSync`/`Produce`。driver 的 publish
+  **已受保护**（§2.3 第 4 步），driver 的消费 handler 亦已受保护（§2.3 消费第 6 步）。
   想让某个 client 事实上不受治理：给它的 service label（`kafka:<brokers>`）配一条
   所有旋钮都为 0 的 rule —— Rule 是整体替换 default，全零 rule 即透传。
+
+### 2.5 GuardedConsume —— 自持 poll 循环的受管入口
+
+裸 `*kgo.Client` bean 的 `PollFetches` 拦不住（franz-go 的 hook 只观察一条 record，包不住
+调用），所以应用自己轮询 client 时，消费就没有限流/熔断/重试/超时、没有 `messaging.*`
+指标、没有访问日志。`GuardedConsume(ctx, cl, rec, fn)` [command.go] 正是给这种形态准备的、
+`GuardedProduceSync` 的消费侧对偶：
+
+- 按 `rec.Topic` 声明本次消费的身份（span `consume`、`messaging.*` 指标、访问日志），
+  再把 `fn` 交给挂在 `cl` 上的 guard 执行。
+- driver 的订阅循环对每条投递的 record 调用的就是这个函数，所以受管循环与自持循环不会漂移。
+- 异步 `Produce` 没有对应入口：它在 broker 确认前就返回，包 executor 无意义 —— 用异步
+  produce 的应用即接受该次调用不受治理、不上报。
 
 ---
 
@@ -273,8 +301,8 @@ conf 里的 `driver` 指治理的 `spring.governance.driver` 选择规则源，�
 
 | Key | 类型 | 默认值 | 行为与联动 | 配错后果 |
 |-----|------|--------|-----------|----------|
-| `sasl.enabled` | bool | false | 控制 mechanism 装配 [driver.go:83-89]。 | 开而无凭证 → 启动 Ping 认证失败。 |
-| `sasl.mechanism` | string | `plain` | `plain` / `scram-sha-256` / `scram-sha-512`，大小写不敏感 [driver.go:107-118]。 | 其他值 → 启动 CreateClient 报错。 |
+| `sasl.enabled` | bool | false | 控制 mechanism 装配 [driver.go:94-100]。 | 开而无凭证 → 启动 Ping 认证失败。 |
+| `sasl.mechanism` | string | `plain` | `plain` / `scram-sha-256` / `scram-sha-512`，大小写不敏感 [driver.go:127-138]。 | 其他值 → 启动 CreateClient 报错。 |
 | `sasl.username` / `sasl.password` | string | "" | 传给 mechanism。 | 错 → 启动 10s Ping 失败。 |
 
 ### 3.3 TLS
@@ -283,7 +311,7 @@ conf 里的 `driver` 指治理的 `spring.governance.driver` 选择规则源，�
 
 | Key | 类型 | 默认值 | 行为与联动 | 配错后果 |
 |-----|------|--------|-----------|----------|
-| `tls.enabled` | bool | false | `c.TLS.BuildClient()` → `kgo.DialTLSConfig` [driver.go:90-97]。 | — |
+| `tls.enabled` | bool | false | `c.TLS.BuildClient()` → `kgo.DialTLSConfig` [driver.go:100-108]。 | — |
 | `tls.cert-file` / `tls.key-file` | string | "" | mTLS 客户端证书对。 | 只配一半 → `tls.Build` 启动报错。 |
 | `tls.ca-file` | string | "" | 校验 broker 的 CA。 | 私有 CA 下缺失 → Ping TLS 失败。 |
 | `tls.server-name` | string | "" | SNI/校验名。 | 失配 → 校验失败。 |
@@ -295,8 +323,8 @@ conf 里的 `driver` 指治理的 `spring.governance.driver` 选择规则源，�
 
 | Key | 类型 | 默认值 | 行为与联动 | 配错后果 |
 |-----|------|--------|-----------|----------|
-| `producer.compression` | string | "" | `none`/`gzip`/`snappy`/`lz4`/`zstd`，大小写不敏感 [driver.go:153-167]。 | 其他值 → 启动 CreateClient 报错。 |
-| `producer.required-acks` | string | `all` | `all`→AllISRAcks；`leader`/`none` 还会**关闭幂等写**（协议要求）[driver.go:132-141]。 | 其他值 → 启动报错；弱化 acks 会静默丢幂等。 |
+| `producer.compression` | string | "" | `none`/`gzip`/`snappy`/`lz4`/`zstd`，大小写不敏感 [driver.go:173-187]。 | 其他值 → 启动 CreateClient 报错。 |
+| `producer.required-acks` | string | `all` | `all`→AllISRAcks；`leader`/`none` 还会**关闭幂等写**（协议要求）[driver.go:141-160]。 | 其他值 → 启动报错；弱化 acks 会静默丢幂等。 |
 | `producer.max-batch-bytes` | int32 | 0 | >0 时 `kgo.ProducerBatchMaxBytes`。 | 低于 broker 消息上限 → 逐条 produce 报错。 |
 | `producer.linger` | duration | 0s | >0 时 `kgo.ProducerLinger`；吞吐/延迟权衡。 | — |
 
@@ -349,14 +377,21 @@ go run .    # 打印 "resilience: N produce admitted, M rejected with ErrRateLim
 
 ### 4.5 Traces / metrics / 日志 tag
 
-- kotel span + `messaging.*` metric 挂在 starter-otel 的全局上；命名遵循 kotel 插件
-  （见 [kotel](https://github.com/twmb/franz-go/tree/main/plugin/kotel)）。example-otel 配
-  OTLP gRPC → :4317 Jaeger；在 Jaeger UI 检查生产/消费 span 的链路关联（trace context 随
-  record headers 走，§2.3 第 2/5 步）。
-- 访问日志 tag `messaging.access`（渲染形如 `_app_messaging_access`）：op 名 `publish`（带时长）与
-  `consume`（无时长——消费没有成对的起始钩子 [command.go:40-42,71-75]）。
+- 本 starter **声明**每个操作的身份（span 名 `publish`/`consume`，metric 前缀 `messaging.client`，
+  label 为 `messaging.system` + `messaging.operation`，topic 进 Detail）；**resilience 层发射**
+  信号，且只在能看到整次调用的那一点发——span、调用级 `messaging.client.operation.duration`、
+  尝试级 `messaging.client.attempt.duration`、在途 `messaging.client.active_requests` 表
+  与访问日志 [observe.go, command.go]。两个方向都覆盖：生产路径（`GuardedProduceSync`）与
+  消费路径（每条投递的 record）。
+- kotel 另外在 client 内发 broker/client 级 span + `messaging.kafka.*` metric——本 starter 只是
+  启用的第三方插桩，此处未改（见 [kotel](https://github.com/twmb/franz-go/tree/main/plugin/kotel)）。
+  example-otel 配 OTLP gRPC → :4317 Jaeger；在 Jaeger UI 检查生产/消费 span 的链路关联
+  （trace context 随 record headers 走，§2.3 第 2/5 步）。
+- 访问日志 tag `messaging.access`（渲染形如 `_app_messaging_access`）：op 名 `publish` 与
+  `consume`，都带时长与 topic；级别随结果而定（失败 Warn，带 topic 的成功 Debug，不带 topic 的
+  成功 Info）。
 - franz-go client 内部日志（重连、请求失败）出现在 `log.TagAppDef` 下，Info 阈值桥接
-  [driver.go:177-192]。
+  [driver.go:195-211]。
 
 ### 4.6 broker 宕机快速失败
 
@@ -377,8 +412,9 @@ franz-go 自动重连（其自身语义，见 franz-go 文档）。
 | 启动失败 "unsupported kafka sasl mechanism / required-acks / compression" | 枚举 key 拼写错误 | 枚举精确匹配（大小写不敏感）；改对值。 |
 | driver 消费者收不到 | `NewSubscriber` source ≠ 所配 `topic`，或 `topic` 为空 | source 必须等于 client 的 `topic`；否则静默过滤。 |
 | driver 消费 group "不生效" | `NewSubscriber` 的 group 实参是死的 | 配 `spring.kafka.instances.<name>.group`（构造期固定）。 |
-| spring.governance.* 已开但无限流 | 直接在 client bean 上裸调 `ProduceSync` | 只有 `GuardedProduceSync` 与 driver publisher 受保护。 |
-| 无 traces/metrics | 未 import starter-otel | kotel 挂 OTel 全局；import starter-otel。 |
+| spring.governance.* 已开但无限流 | 直接在 client bean 上裸调 `ProduceSync` | 只有 `GuardedProduceSync`/`GuardedConsume`（与 driver publisher/消费 handler）受保护。 |
+| 无 traces/metrics | 未 import starter-otel | kotel 与 resilience 发射器都挂 OTel 全局；import starter-otel。 |
+| 无 `messaging.client.*` metric/日志 | 该调用绕过了声明 | 只有 `GuardedProduceSync`、`GuardedConsume` 与 driver publish/消费 handler 会声明；在 client bean 上裸调 `ProduceSync`/`PollFetches` 什么都不发。 |
 | 无访问日志 | 日志 tag 被过滤 | 检查 `messaging.access` tag 过滤。 |
 | handler 错误只留一行日志 | 设计如此：本 driver 无 nack/重投 | 在 handler 内自建重试，或用 messaging 的 retry.go。 |
 
@@ -397,4 +433,4 @@ franz-go 自动重连（其自身语义，见 franz-go 文档）。
 - 消费 handler 错误只打日志，无 nack/重投 [client.go:137-139]——与 Recover 注释的说法相悖 [client.go:110-112]。
 - ~~`destroyClient` 丢弃 Flush 错误~~已修：Flush 失败记 ERROR（点名丢数据后果）并从 destroy 钩子向上返回。
 - starter 不注册 health indicator（家族不对称：go-redis/redigo 都注册）。
-- resilience executor 以 `*kgo.Client` 指针为键存包级 sync.Map [command.go:81-85]——自定义 Driver 返回包装 client 会静默跳过 guard。
+- resilience executor 以 `*kgo.Client` 指针为键存包级 sync.Map [command.go:83-89]——guard 在 `CreateClient` 内（经 `AttachGovernance`）装配；自定义 Driver 返回 client 却不调用它会静默跳过 guard。

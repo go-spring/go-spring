@@ -14,42 +14,32 @@
  * limitations under the License.
  */
 
-// command.go is the "command seam" concept of this starter: the observe
-// transport layer — the OpenTelemetry instrumentation and the obsTransport
-// round-tripper that emits a duration metric + access log per request.
+// command.go is the "command seam" concept of this starter: the declaration
+// transport — the outer http.RoundTripper that puts each request's semantic
+// identity on the context, for the resilience layer inside it to emit.
 package StarterElasticsearch
 
 import (
 	"net/http"
 
-	"github.com/elastic/elastic-transport-go/v8/elastictransport"
+	"go-spring.org/cloud/observability"
 )
 
-// newOtelInstrumentation builds the transport-level OpenTelemetry
-// instrumentation plugged into elasticsearch.Config.Instrumentation. Passing a
-// nil TracerProvider makes the transport emit client spans through the OTel
-// global TracerProvider that starter-otel installs; when starter-otel is absent
-// that global is a no-op, so this is a zero-config opt-in that needs no
-// per-component adaptation.
-func newOtelInstrumentation() *elastictransport.ElasticsearchOpenTelemetry {
-	return elastictransport.NewOtelInstrumentation(nil, false, "")
-}
-
-// obsTransport wraps the underlying HTTP round-tripper so each request emits a
-// duration metric + access log (see observe.go — no span here: the trace span
-// comes from newOtelInstrumentation above, applied at the
-// elastictransport.Perform layer, so emitting one here would duplicate it). The
-// operation is derived from the request method + URL path (e.g. "POST
-// /index/_search").
-type obsTransport struct {
+// declareTransport is the declaration layer of the transport chain: it turns the
+// request's method + URL path into an [observability.Operation] and puts it on
+// the request context, where the resilience executor — which reads the operation
+// at Execute entry — picks it up to emit the one call span, the call-level and
+// attempt-level duration metrics and the single access log.
+//
+// It MUST sit OUTSIDE the resilience round-tripper, not be its base: a
+// declaration made inside the executor is read by nobody, because the executor
+// already read the operation before the protected call ran. [Client.installTransport]
+// builds them in that order.
+type declareTransport struct {
 	base http.RoundTripper
-	obs  *dbObserver
 }
 
-func (t *obsTransport) RoundTrip(req *http.Request) (*http.Response, error) {
-	op := req.Method + " " + req.URL.Path
-	ctx, sp := t.obs.Start(req.Context(), op, req.URL.Path)
-	resp, err := t.base.RoundTrip(req.WithContext(ctx))
-	sp.End(err)
-	return resp, err
+func (t *declareTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	ctx := observability.WithOperation(req.Context(), operation(req.Method, req.URL.Path))
+	return t.base.RoundTrip(req.WithContext(ctx))
 }

@@ -16,7 +16,8 @@
 
 // client.go is the "resource entity + lifecycle" of this starter: the Client
 // wrapper bean (enqueue producer) and the Server wrapper bean (worker), plus
-// their Init/Destroy. Both share the Config-derived RedisConnOpt; the server
+// their Destroy. Both are fully assembled by their constructors — there is no
+// Init hook — and share the Config-derived RedisConnOpt; the server
 // additionally holds the handler registry the app populates before Run.
 package StarterAsynq
 
@@ -24,18 +25,10 @@ import (
 	"context"
 
 	"github.com/hibiken/asynq"
-	"go-spring.org/cloud/governance/fault"
-	"go-spring.org/cloud/governance/resilience"
+	"go-spring.org/cloud"
+	"go-spring.org/cloud/observability"
+	"go-spring.org/cloud/resilience"
 	"go-spring.org/spring/gs"
-
-	// Blank import: importing this starter brings the governance authority with
-	// it — starter-governance registers the *resilience.Manager, *loadbalance.
-	// Manager, *fault.Injector and *governance.Center beans this package injects.
-	// Turning governance OFF is spring.governance.enabled=false (or binding no rule source),
-	// not the absence of the starter. The injected parameters stay nullable, so a
-	// container that somehow lacks these beans degrades to a transparent
-	// pass-through instead of failing to boot.
-	_ "go-spring.org/starter-governance"
 )
 
 // Client is the producer bean: it enqueues tasks into one Asynq queue. It
@@ -45,25 +38,37 @@ import (
 type Client struct {
 	*asynq.Client
 
-	cfg     Config
-	service string
-	exec    resilience.ClientExecutor
-	obs     *observer
+	// serviceLabel is the resilience service key ("asynq:<addr>") the executor
+	// scopes limiter/breaker state by; it is fixed by [NewClient].
+	serviceLabel string
 
-	// mgr and inj are the governance beans gs injects into the constructor
-	// (both nil in a standalone call). mgr is normalized in Init, since an
-	// unarmed manager is exactly the "governance off" pass-through while a nil
-	// pointer would panic on the method call; inj is nil-safe at its use site.
-	mgr *resilience.Manager
-	inj *fault.Injector
+	// exec is the resilience executor protecting the synchronous Enqueue path,
+	// fixed by [NewClient]; a no-op when governance is off.
+	exec resilience.ClientExecutor
 }
 
-// Init arms the observer and the resilience executor after injection.
-func (o *Client) Init() error {
-	o.obs = newObserver()
-	o.service = resilience.ServiceLabel("asynq", o.cfg.Addr)
-	o.exec = fault.WrapClientExecutor(o.mgr.ClientExecutorFor("asynq", o.service), o.service, o.inj)
-	return nil
+// NewClient builds a complete Client — identity and governance both applied —
+// over the asynq producer built from connOpt. addr is the Redis host:port the
+// instance addresses (the config entry's addr); the governance service label
+// ("asynq:<addr>") is derived from it.
+//
+// params carries the container's facilities (see [cloud.ClientParams]), and is
+// applied HERE so a Client cannot exist half-assembled: there is no Init step,
+// no later patching, and nothing the container has to remember to call. A
+// hand-built client passes the zero [cloud.ClientParams]; its executor then
+// degrades to resilience.Unmanaged — observed, with a one-time warning that no
+// protection applies — rather than silently running bare.
+//
+// The manager's ClientExecutorFor resolves its backing executor lazily, on each
+// Execute, so the call order relative to the center's wiring is
+// irrelevant.
+func NewClient(connOpt asynq.RedisConnOpt, addr string, params cloud.ClientParams) *Client {
+	o := &Client{
+		Client:       asynq.NewClient(connOpt),
+		serviceLabel: resilience.ServiceLabel("asynq", addr),
+	}
+	o.exec = params.ExecutorFor("asynq", o.serviceLabel)
+	return o
 }
 
 // Destroy closes the producer and the resilience executor.
@@ -75,29 +80,16 @@ func (o *Client) Destroy() error {
 }
 
 // Enqueue is the guarded, observed enqueue path. It behaves like
-// Client.Enqueue but routes the call through the resilience executor and
-// emits a producer observation; a rejection (rate-limit / open circuit)
-// never reaches Redis.
+// Client.Enqueue but declares the call's identity on the context and routes it
+// through the resilience executor, which is also where the span, the metrics
+// and the access log are emitted; a rejection (rate-limit / open circuit) never
+// reaches Redis.
 func (o *Client) Enqueue(ctx context.Context, task *asynq.Task, opts ...asynq.Option) (*asynq.TaskInfo, error) {
-	var info *asynq.TaskInfo
-	call := func(ctx context.Context) error {
-		var err error
-		info, err = o.Client.EnqueueContext(ctx, task, opts...)
-		return err
-	}
-	if o.obs != nil {
-		inner := call
-		call = func(ctx context.Context) error {
-			ctx, sp := o.obs.start(ctx, "enqueue", task.Type())
-			err := inner(ctx)
-			sp.End(err)
-			return err
-		}
-	}
-	if o.exec == nil {
-		return info, call(ctx)
-	}
-	if err := o.exec.Execute(ctx, call); err != nil {
+	ctx = observability.WithOperation(ctx, operation("enqueue", task.Type()))
+	info, err := resilience.Run(ctx, o.exec, func(attemptCtx context.Context) (*asynq.TaskInfo, error) {
+		return o.Client.EnqueueContext(attemptCtx, task, opts...)
+	})
+	if err != nil {
 		return nil, err
 	}
 	return info, nil
@@ -108,42 +100,19 @@ func (o *Client) Enqueue(ctx context.Context, task *asynq.Task, opts ...asynq.Op
 // asynq server built from Config. Destroy calls Shutdown, which drains
 // in-flight tasks up to ShutdownTimeout.
 //
-// Unlike the producer Client, the worker emits no observations of its own
+// Unlike the producer Client, the worker declares no operation of its own
 // (per-task handling is asynq's domain — handler errors/panics are recovered
 // and retried by asynq), so it carries no observability config.
 type Server struct {
-	cfg     Config
-	service string
-	driver  Driver
-	mux     *asynq.ServeMux
-	srv     *asynq.Server
-}
-
-// Init builds the asynq server (reusing any mux the app already created via
-// RegisterHandler).
-func (o *Server) Init() error {
-	o.service = resilience.ServiceLabel("asynq", o.cfg.Addr)
-	connOpt, err := o.driver.RedisConnOpt(context.Background(), o.cfg)
-	if err != nil {
-		return err
-	}
-	o.srv = asynq.NewServer(connOpt, asynq.Config{
-		Concurrency:     o.cfg.Concurrency,
-		Queues:          o.cfg.Queues,
-		ShutdownTimeout: o.cfg.ShutdownTimeout,
-		// Errors and panics inside a handler are asynq's to recover and
-		// retry; a handler error is reported via ErrorHandler and a panic is
-		// recovered by asynq's own guard. We keep our own reporting out of
-		// the hot path — see DESIGN for the boundary.
-	})
-	return nil
+	mux *asynq.ServeMux
+	srv *asynq.Server
 }
 
 // RegisterHandler registers fn as the handler for task pattern. It may be
 // called before or after the container wires the bean (handlers are fixed
 // once the server starts consuming): the mux is created lazily so app code
 // can register handlers against a freshly-constructed Server in its wiring
-// without racing Init.
+// without racing the constructor.
 //
 // pattern is the task type name, with ":" as the group separator for
 // middleware scoping.

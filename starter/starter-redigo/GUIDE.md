@@ -31,7 +31,7 @@
 
 | 类型 | 是什么 | 你需要知道什么 |
 |---|---|---|
-| **`Pool`** | `*redis.Pool` 的包装 bean | 你注入的就是它。它**嵌入**了 `*redis.Pool`，所以 `Get()`/`Stats()`/`Close()` 等 redigo 原生方法原样可用；额外承载 resilience / observability 的配置字段。每个 `${spring.redigo.instances.<name>}` 条目产出一个 `*Pool` bean，名字是 `<name>`。 |
+| **`Pool`** | `*redis.Pool` 的包装 bean | 你注入的就是它。它**内嵌**裸 `*redis.Pool`，`Get()`/`GetContext()`/`Stats()`/`Close()` 等 redigo 原生方法按原样提升（`Close` 被覆盖以一并拆除绑定与执行器）；额外承载 resilience / observability 的配置字段。每个 `${spring.redigo.instances.<name>}` 条目产出一个 `*Pool` bean，名字是 `<name>`。 |
 | **`Conn`** | `redis.Conn` 的插桩包装 | `pool.Get()` 拿到的连接其实是 `*Conn`。它对每条命令（`Do` / `DoContext` / `DoWithTimeout`）自动套上 trace span、metric、访问日志，并在开启 resilience 时套上执行器。**对调用方完全透明**——你照常用 redigo 的 `conn.Do(...)`，插桩在背后发生。 |
 | **`Driver`** | 创建连接池的扩展接口 | 默认实现 `DefaultDriver` 满足绝大多数场景。需要自定义拨号逻辑（公司内部寻址、特殊鉴权、代理…）时实现它并作为可选容器 bean 提供，详见[第七节](#七扩展自定义-driver)。 |
 
@@ -121,9 +121,9 @@ n, err := redis.Int(conn.Do("INCR", "counter")) // INCR
 | `scheme` | _空_ | 发现时按传输 scheme 过滤（如 `tls`）。仅 `service-name` 非空时有效。 |
 | `discovery` | — | 选哪个已注册的 discovery 后端。仅 `service-name` 非空时有效；未配置即无后端。 |
 | `driver` | `DefaultDriver` | 选哪个[ Driver](#七扩展自定义-driver)。 |
-| `startup-ping` | `false` | 启动期拨一条连接 `PING`，地址错/不可达时启动即失败（fail-fast），而非等到首次请求。redigo 池是惰性拨号的，建议生产打开。 |
+| `startup-ping` | `false` | 启动期 `HealthCheck` 拨一条连接 `PING`，地址错/不可达时启动即失败（fail-fast），而非等到首次请求。redigo 池是惰性拨号的，建议生产打开。 |
 
-> **resilience 是全局键**（`resilience.*`，见[第五节](#五resilience限流--熔断--重试--超时)）。observe 层内置无条件（未装 starter-otel 时空操作）；health 可按实例关闭，见[第九节](#九关闭内置功能)（`health.enabled`）。
+> **resilience 是全局键**（`resilience.*`，见[第五节](#五resilience限流--熔断--重试--超时)）。声明层内置无条件（未装 starter-otel 时空操作）；health 可按实例关闭，见[第九节](#九关闭内置功能)（`health.enabled`）。
 
 ---
 
@@ -199,7 +199,7 @@ resilience.driver=default     # 后端驱动，default 或 sentinel
 观测层由 starter **内置且无条件生效**：未导入 starter-otel 时 trace/metric 自动是空操作，导入后自动搭上 starter-otel 装的全局
 TracerProvider/MeterProvider（`spring.observability.*` 管理 exporter、采样率、服务名）。
 
-- 每条命令一个 client span（`db.system`/`db.operation`/`db.statement` 属性）+ `db.client.operation.duration` 直方图。
+- 每条命令一个 client span（`db.system`/`db.operation`/`db.statement` 属性）+ call 级 `db.client.operation.duration` 与 attempt 级 `db.client.attempt.duration` 直方图。信号由 resilience 层发射，本 starter 只声明命令的语义身份。
 - 访问日志走项目 `log` 包（tag `_app_redigo_access`）：错误 → Warn；带参数的成功 → Debug（惰性求值）；其余成功 → Info。
 - 日志只记命令名 + 第一个参数（通常是 key），**不记 value**（可能敏感或很大），且截断到 512 字节。
 - 健康探测的 `PING` 整体静默（span+metric+log 一起跳过），避免刷屏。
@@ -214,7 +214,7 @@ TracerProvider/MeterProvider（`spring.observability.*` 管理 exporter、采样
 
 ```go
 type Driver interface {
-    CreateClient(ctx context.Context, c Config, backend discovery.Discovery) (*redis.Pool, io.Closer, error)
+    CreateClient(ctx context.Context, c Config, params cloud.ClientParams) (*Pool, error)
 }
 ```
 
@@ -249,18 +249,9 @@ Driver bean；指定的 bean 不存在则启动失败）。
 ```go
 type MyDriver struct{}
 
-func (MyDriver) CreateClient(ctx context.Context, c StarterRedigo.Config, backend discovery.Discovery) (*redis.Pool, io.Closer, error) {
-    pool := &redis.Pool{
-        MaxActive: c.PoolSize,
-        MaxIdle:   c.MaxIdle,
-        Dial: func() (redis.Conn, error) {
-            return redis.Dial("tcp", c.Addr,
-                redis.DialPassword(c.Password),
-                redis.DialConnectTimeout(c.DialTimeout),
-            )
-        },
-    }
-    return pool, discovery.NopCloser(), nil
+func (MyDriver) CreateClient(ctx context.Context, c StarterRedigo.Config, params cloud.ClientParams) (*StarterRedigo.Pool, error) {
+    // 复用标准装配，再按需定制（如 UseCommandInterceptor）；params 在 NewPool 内部应用。
+    return StarterRedigo.NewPool(ctx, c, params)
 }
 ```
 
@@ -372,7 +363,7 @@ type Service struct {
 
 ### 自动健康指标
 
-每个实例自动注册一个 `health.Indicator`，名字 `redigo:<name>`：借一条连接 `PING`，成功即 UP。配合 actuator 聚合：
+每个实例自动注册一个 `health.Indicator`，名字 `redigo:<name>`：`HealthCheck` 拨一条裸连接 `PING`，成功即 UP。配合 actuator 聚合：
 
 ```properties
 spring.actuator.enabled=true
@@ -382,7 +373,7 @@ spring.actuator.addr=:9370
 
 ### 连接池运行时计数
 
-`Pool` 嵌入了 `*redis.Pool`，`Stats()` 直接可用：
+`Pool` 内嵌了裸 `*redis.Pool`，其 `Stats()` 直接可用：
 
 ```go
 stats := s.Redis.Stats()

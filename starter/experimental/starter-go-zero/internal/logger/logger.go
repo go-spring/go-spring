@@ -19,8 +19,8 @@
 // single shared implementation used by both the rest and zrpc starters - each
 // installs it via logx.SetWriter after building its server.
 //
-// Unlike the dubbo/trpc/kitex/goframe bridges this one cannot self-install via
-// init(): go-zero's rest/zrpc MustNewServer run ServiceConf.SetUp() -> logx.SetUp()
+// Unlike the dubbo/trpc/kitex/goframe bridges there is no package-level install
+// to call from a starter.go: go-zero's rest/zrpc MustNewServer run ServiceConf.SetUp() -> logx.SetUp()
 // which installs logx's own writer, so the bridge must be installed via
 // logx.SetWriter AFTER the server is built. Each sub-starter calls NewWriter()
 // at that point.

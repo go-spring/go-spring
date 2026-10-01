@@ -19,8 +19,8 @@ package governance
 import (
 	"testing"
 
-	"go-spring.org/cloud/governance/fault"
-	"go-spring.org/cloud/governance/resilience"
+	"go-spring.org/cloud/fault"
+	"go-spring.org/cloud/resilience"
 )
 
 // TestConfig_DirectionBlocks guards the shape of the document: each direction's

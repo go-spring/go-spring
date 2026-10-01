@@ -48,10 +48,10 @@ type TaskFunc func(ctx context.Context, param string) error
 // via /log.
 type Executor struct {
 	cfg Config
-	// name is the instance name under "${spring.xxljob}" — used for the
+	// instanceName is the instance name under "${spring.xxljob}" — used for the
 	// health.Indicator name (matching the bean name, like sibling starters).
-	name     string
-	registry map[string]TaskFunc
+	instanceName string
+	registry     map[string]TaskFunc
 
 	mu      sync.Mutex
 	running map[int64][]*runEntry // jobId -> running runs, for /kill & /idleBeat
@@ -74,10 +74,10 @@ func (e *Executor) RegisterHandler(name string, fn TaskFunc) {
 // server routes.
 func newExecutor(ctx *gs.ContextProvider, name string, c Config) (*Executor, error) {
 	e := &Executor{
-		cfg:      c,
-		name:     name,
-		registry: map[string]TaskFunc{},
-		running:  map[int64][]*runEntry{},
+		cfg:          c,
+		instanceName: name,
+		registry:     map[string]TaskFunc{},
+		running:      map[int64][]*runEntry{},
 	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/run", e.handleRun)
@@ -302,7 +302,7 @@ func (e *Executor) callback(ctx context.Context, logID, logDateTime int64, res h
 // serving (the executor is ready). Named after the instance name, matching
 // the bean name in starter.go (sibling-starters convention).
 func (e *Executor) Health() *health.Indicator {
-	return &health.Indicator{Name: "xxljob:" + e.name, Probe: func(ctx context.Context) error {
+	return &health.Indicator{Name: "xxljob:" + e.instanceName, Probe: func(ctx context.Context) error {
 		if e.srv == nil {
 			return fmt.Errorf("xxljob: executor not started")
 		}

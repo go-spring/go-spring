@@ -34,7 +34,7 @@ require (
     go-spring.org/starter-go-redis latest
     go-spring.org/starter-actuator latest   // 可选：readiness + /metrics
     go-spring.org/starter-otel     latest   // 可选：真实 trace/metric 导出
-    go-spring.org/starter-governance latest // 可选：resilience/fault 策略
+    go-spring.org/starter-governance-file latest // 可选：resilience/fault 策略
 )
 ```
 
@@ -47,7 +47,7 @@ import (
     "go-spring.org/spring/gs"
     _ "go-spring.org/starter-actuator"
     _ "go-spring.org/starter-go-redis"
-    _ "go-spring.org/starter-governance"
+    _ "go-spring.org/starter-governance-file"
     _ "go-spring.org/starter-otel"
     _ "demo/service"
 )
@@ -70,10 +70,11 @@ import (
 
 type Service struct {
     // 始终注入包装类型 *StarterGoRedis.Client。它内嵌 redis.UniversalClient，
-    // Get/Set/Incr/Pipeline/PoolStats 原样提升，single/sentinel/cluster 通吃。
+    // Get/Set/Incr/Pipeline/PoolStats 被提升，
+    // single/sentinel/cluster 三种模式下用法一致。
     Main     *StarterGoRedis.Client `autowire:"main"`     // single
-    Sentinel *StarterGoRedis.Client `autowire:"sentinel"` // sentinel（仍是 *redis.Client）
-    Cluster  *StarterGoRedis.Client `autowire:"cluster"`  // cluster（*redis.ClusterClient）
+    Sentinel *StarterGoRedis.Client `autowire:"sentinel"` // sentinel
+    Cluster  *StarterGoRedis.Client `autowire:"cluster"`  // cluster
 
     // "main" 实例上的带类型 cache 门面——名为 "go-redis:main" 的
     // *cache.Cache bean（见 §3.4）。
@@ -111,8 +112,8 @@ spring.go-redis.instances.cluster.addrs=127.0.0.1:7000,127.0.0.1:7001,127.0.0.1:
 spring.go-redis.instances.cluster.route-by-latency=true
 
 # --- 可观测 -----------------------------------------------------------------
-# 访问日志（tag _app_redis_access）默认输出，经 logger 配置过滤；带 key 的成功记录走 Debug。
-# redisotel 的 span/连接池指标默认开启，挂在 starter-otel 的全局管线上。
+# 访问日志（tag _app_redis_access）由 resilience 层发射，经 logger 配置过滤；带 key 的成功记录走 Debug。
+# redisotel 的连接池指标默认开启，挂在 starter-otel 的全局管线上。
 
 # --- actuator + otel ------------------------------------------------------
 spring.actuator.addr=:9370
@@ -144,22 +145,31 @@ redis-cli GET user:1              # 经 cache 门面写入的 JSON
 import starter-go-redis
   └─ 任一 spring.go-redis.instances.* key 存在时 gs.Module(OnProperty("spring.go-redis")) 触发
         └─ conf.BindEach("${spring.go-redis}") → 每个 <name> 条目一份 Config
-              ├─ mode single/sentinel → Provide(newClient).Name(<name>)
-              │                          .Init((*Client).Init).Destroy((*Client).Destroy)
+              ├─ mode single/sentinel → Provide(newClient).Name(<name>).Destroy((*Client).Destroy)
               ├─ mode cluster          → Provide(newClusterClient).Name(<name>)（同一包装类型）
               └─ Provide 名为 "redis:<name>" 的 health.Indicator（由 health.enabled 控制，默认开）
 
 gs.Run()
-  ├─ 构造 newClient [starter.go:97]：validateConfig → 查 driver → driver.CreateClient
-  │   → instrument()（redisotel tracing+metrics，由 otel.* 开关门控）
-  │   → failFastPing（无条件执行，上限 dial-timeout 或 5s）[starter.go:218]
-  ├─ Init [client.go:61]：resourceLabel → fault.WrapClientExecutor(mgr.ClientExecutorFor("redis", service), service, inj)
-  │   （mgr/inj = 容器注入构造函数的 *resilience.Manager / *fault.Injector bean）
-  │   → applyObservability（访问日志 hook）
-  │   → AddHook(resilienceHook)——命令链装配完成
-  ├─ 就绪：探针翻转 UP（指示器执行 client.Ping）
-  └─ SIGTERM → Destroy [client.go:88]：exec.Close → 摘除 selection 订阅 → client.Close
+  └─ 构造 newClient [starter.go:143]——先完整装配，再探测：
+       ├─ validateConfig → 查 driver → driver.CreateClient(ctx, c, disc, params)
+       │    （构造函数把注入的 bean 打包成
+       │      cloud.ClientParams{Resilience: mgr, Fault: inj, Loadbalance: lbMgr}）
+       │    └─ DefaultDriver 建好裸客户端后连同 params 交给 NewClient [client.go:88]
+       │         → instrument()（redisotel 连接池指标，由 otel.metrics.enabled 门控）
+       │         → applyDeclaration（声明身份 hook）——声明属于构造的一部分
+       │         → serviceLabel → params.ExecutorFor("redis", service)
+       │              （= fault.WrapClientExecutor(mgr.ClientExecutorFor("redis", service), service, inj)；
+       │               零值 bundle 退化为仅观测的 Unmanaged executor）
+       │         → 走服务发现的条目在此 lbMgr.Bind(pool, label)
+       │         → AddHook(resilienceHook)——命令链装配完成
+       └─ 在裸客户端上执行启动 HealthCheck（上限 dial-timeout 或 5s）；失败则 Destroy
+          释放刚装配好的资源
+  ├─ 就绪：探针翻转 UP（指示器执行 HealthCheck）
+  └─ SIGTERM → Destroy [client.go:148]：exec.Close → 摘除 selection 订阅 → client.Close
 ```
+
+没有 `Init` 钩子了：旧 Init 做的事（标签、executor、selection 绑定、hook 顺序）全部发生在构造函数内，
+gs 只需知道如何 DESTROY 这个 bean。
 
 mode 配错或启动 ping 失败都会导致启动失败——进程不会带着一个死 Redis 进入"服务中"状态。
 
@@ -168,30 +178,36 @@ mode 配错或启动 ping 失败都会导致启动失败——进程不会带着
 go-redis 的 hook 是 FIFO：先加的在最外层。装配顺序：
 
 ```
-redisotel（span + 连接池指标）→ observeHook（访问日志）→ resilienceHook（熔断/...）
+redisotel（连接池指标）→ operationHook（声明身份）→ resilienceHook（熔断/... + 发射）
 → go-redis 核心 → 网络
 ```
 
-理由（源码注释 [client.go:59-69]、[command.go:17-27]）：
+理由（源码注释 [client.go]、[command.go]）：
 
-- **redisotel 最外层**：在构造期由 `instrument()` 添加，早于 Init 加的其余层。span 因此
-  覆盖 starter 加的全部层，访问日志也借用 redisotel 的 span 上下文做 trace_id 关联。
-- **observeHook 在熔断器之外**：一条访问日志覆盖整个重试循环——记录的是最终结果而非
-  每次尝试。它天然只发日志 [observe.go]：redisotel 已负责 span/指标，hook 只补日志缺口。
-- **resilienceHook 最内层**：保护决策贴近网络；其拒绝正是外层随后要观测的对象。
+- **redisotel 最外层**：由 `NewClient` 中的 `instrument()` 添加，早于 `NewClient` 添加的
+  resilience hook。如今只剩连接池指标——它原先附带的每命令 span 已删，因为它与 resilience 层现在
+  开的 call span 重复。
+- **operationHook 在熔断器之外**：把命令的语义身份挂到 ctx（`observability.WithOperation`
+  [observe.go]），自身不发任何信号。跳过的命令（PING）不声明身份，原样放行。
+- **resilienceHook 最内层**：保护决策贴近网络，同时它是**唯一发射点**——从 ctx 读出声明身份，
+  开唯一的 call span（覆盖整个重试循环），记录 call 级与 attempt 级时延直方图和状态计数器，
+  并写一条访问日志。
 - 两个 hook 的 `DialHook` 都不动——建连是 discovery 的职责，不是命令级保护 [command.go:39-41]。
 
 ### 2.3 一条命令逐层走读：miss 场景下的 `GET user:1`
 
-1. redisotel 开 client span（无 starter-otel 时为 no-op）。
-2. observeHook 开一条名为 `get` 的访问日志记录（cmd.FullName()）。
-3. resilienceHook 向 executor 申请许可（限流/熔断作用域是 service 标签，如
-   `redis:127.0.0.1:6379`——按实例而非按命令 [client.go:90-96]）。
-4. go-redis 执行；key 不存在，返回 `redis.Nil`。
-5. `run()` 通过 nil-as-success 谓词把 `redis.Nil` 判为成功 [command.go:94]——
+1. operationHook 把命令的语义身份挂到 ctx：span 名为 `get`（cmd.FullName()），标签
+   `db.system`/`db.operation`，key 作为 `db.statement` span/日志细节——截断到 512 字节
+   [observe.go]。key 只走 span/日志、永不进指标标签，因为它无界。
+2. resilienceHook 向 executor 申请许可（限流/熔断作用域是 service 标签，如
+   `redis:127.0.0.1:6379`——按实例而非按命令 [client.go:165]）。
+3. go-redis 执行；key 不存在，返回 `redis.Nil`。
+4. `run()` 通过 nil-as-success 谓词（Tolerate）把 `redis.Nil` 判为成功 [command.go]——
    **cache miss 永不触发熔断**，也不会为此重试。
-6. observeHook 以 `nilAsSuccess(err)` 结束记录 [command.go:147]——miss 记为成功操作而非错误。
-7. redisotel 结束 span；调用方拿到的仍是普通 go-redis 那样的 `redis.Nil`。
+5. resilience 层发射：span 结束，`db.client.operation.duration`（整次调用）与
+   `db.client.attempt.duration`（每次尝试）记录，访问日志以**成功**状态写出——miss 是成功操作
+   而非错误。它走调用方的 ctx，span 因此挂到请求 trace 上。
+6. 调用方拿到的仍是普通 go-redis 那样的 `redis.Nil`。
 
 **pipeline** 场景下 resilienceHook 把整批包进一次 executor 运行；只有当批次根本没执行
 （被拒绝或注入故障）时才对每条命令 `cmd.SetErr`——真实的逐命令错误已由 go-redis 记录，
@@ -206,7 +222,7 @@ redisotel（span + 连接池指标）→ observeHook（访问日志）→ resili
 `0.0.0.0:0` 来证明这点）。sentinel/cluster 模式下设置 `service-name` 会在启动期被拒绝：
 这两种拓扑自己发现节点 [starter.go:170-194]。
 
-**池的策略归治理管，不是写死的。** 它挂着 suspension tracker，由 Driver 交出、由 Client 经 `lbMgr.Bind(pool, label)` 绑到
+**池的策略归治理管，不是写死的。** 它挂着 suspension tracker，由 Driver 交给 `NewClient`（包装体持有），再由 `NewClient` 经治理 bundle 的 `lbMgr.Bind(pool, label)` 绑到
 `redis:<service-name|master-name|addr>`，所以该 label 命中的
 `spring.governance.client.rules[N].balancer` / `outlier-threshold` / `outlier-suspend-for` 会**原地**驱动它——下一次拨号
 就用新策略。dialer 把拨号结果喂给 `Complete`，所以 `outlier-threshold` 摘的是**反复连不上**的实例。
@@ -224,7 +240,7 @@ sentinel 与 cluster 客户端自己发现节点、没有池，这些 key 到不
 
 | Key | 类型 | 默认值 | 行为 / 联动 | 配错后果 |
 |-----|------|--------|------------|----------|
-| `mode` | string | `single` | `single`/`sentinel` → 内嵌 `*redis.Client`；`cluster` → `*redis.ClusterClient`。其他值 BindEach 报 "invalid mode"。 | 拼错 → 启动报错并指名实例。 |
+| `mode` | string | `single` | 三种模式注册的 bean 类型都是 `*StarterGoRedis.Client`；其包装的裸客户端 `single`/`sentinel` 为 `*redis.Client`，`cluster` 为 `*redis.ClusterClient`。其他值 BindEach 报 "invalid mode"。 | 拼错 → 启动报错并指名实例。 |
 | `addr` | string | — | single 模式目标。⚠ single 模式下 `addr` / `service-name` 至少其一（RequireAny）。 | 都缺 → 启动报错；都配 → service-name 生效，启动 WARN 点名被忽略的 `addr`。 |
 | `master-name` | string | — | sentinel 模式必填。 | 缺失 → 启动报 "master-name and sentinel-addrs are required"。 |
 | `sentinel-addrs` | list | — | sentinel 模式必填。 | 同上。 |
@@ -240,12 +256,12 @@ sentinel 与 cluster 客户端自己发现节点、没有池，这些 key 到不
 
 | Key | 类型 | 默认值 | 行为 / 联动 | 配错后果 |
 |-----|------|--------|------------|----------|
-| `password` / `username` | string | — | 服务端/ACL 认证（sentinel 下为 master）。 | 配错 → 启动期 failFastPing 失败。 |
+| `password` / `username` | string | — | 服务端/ACL 认证（sentinel 下为 master）。 | 配错 → 启动期 Ping 失败。 |
 | `db` | int | 0 | 连接时 SELECT（仅 single/sentinel）。Redis Cluster 无库概念：`mode=cluster` 且 `db != 0` → 启动报 "db is not supported in cluster mode"。 | 越界 → 首条命令报错。 |
 | `pool-size` | int | 10 | 最大连接数。 | 过小 → 突发下排队。 |
 | `max-idle` | int | 5 | 最大空闲连接（go-redis MaxIdleConns）。 | — |
 | `max-retries` | int | 0 | go-redis 命令重试。⚠ resilience 侧重试也要保持 0——双重重试放大时延，且可能重发非幂等命令（config.go:152-154 注释）。 | 调大 + resilience 重试 → 尝试次数相乘。 |
-| `dial-timeout` / `read-timeout` / `write-timeout` | duration | 5s / 3s / 3s | 直传；dial-timeout 同时限定启动 ping [starter.go:229]。 | — |
+| `dial-timeout` / `read-timeout` / `write-timeout` | duration | 5s / 3s / 3s | 直传；dial-timeout 同时限定启动 HealthCheck [starter.go]。 | — |
 | `conn-max-lifetime` | duration | 2m | 连接复用窗口；较短值利于发现流量切换。 | 很大 + discovery → 老端点连接滞留。 |
 | `tls.*` | group | off | `security` 客户端 TLS（enabled/ca-file/cert-file/key-file/server-name/insecure-skip-verify）。 | 配一半 → `tls.Build` 启动报错。 |
 | `health.enabled` | bool | true | 为实例注册 `redis:<name>` 健康指示器——与 starter-redigo 同名开关。 | false → 该实例无指示器 bean，不再上报就绪。 |
@@ -254,13 +270,16 @@ sentinel 与 cluster 客户端自己发现节点、没有池，这些 key 到不
 
 | Key | 类型 | 默认值 | 行为 / 联动 | 配错后果 |
 |-----|------|--------|------------|----------|
-| `otel.tracing.enabled` | bool | true | 挂 redisotel span。无 starter-otel 时为 no-op。 | 关掉又期待 trace → 静默无告警。 |
-| `otel.metrics.enabled` | bool | true | 挂 redisotel 连接池/命中指标。同上。 | — |
+| `otel.metrics.enabled` | bool | true | 挂 redisotel 连接池/命中指标。无 starter-otel 时为 no-op。 | — |
+| `otel.tracing.enabled` | bool | — | **已移除。** 仍可绑定（带此键的配置不会启动失败）但被忽略；设了它会在构造期打一条告警。per-command span 归 resilience 层，这里再发一条就是同一次调用的第二个 span —— 请删掉该键。 | — |
+
+每条命令的 span、时延直方图与访问日志不在此配置：本 starter 只声明命令的语义身份
+（`observe.go`），由 resilience 层发射。这没有按实例关闭的开关——它是全家族默认行为。
 
 ### 3.4 缓存抽象 bean
 
 除包装类型外，每实例另提供一个 `*cache.Cache` bean（包
-`NewByteCache(c.UniversalClient)`），名为 `go-redis:<redis 实例名>`
+`NewByteCache(c)`，直接接收包装体），名为 `go-redis:<redis 实例名>`
 [starter.go:87-94]——用 autowire tag `go-redis:<实例名>` 按名注入。无人注入则不实例化，
 因此无配置开关。`redis.Nil` 在该边界被映射为 `cache.ErrMiss`
 [`bytecache.go`]。
@@ -273,7 +292,7 @@ sentinel 与 cluster 客户端自己发现节点、没有池，这些 key 到不
 
 ```bash
 curl -s :9370/readyz | jq .      # components 含 "redis:main"、"redis:cluster"...
-docker stop <redis>              # 指示器跑 client.Ping → 组件翻 DOWN
+docker stop <redis>              # 指示器跑 HealthCheck → 组件翻 DOWN
 curl -s :9370/readyz             # 503 OUT_OF_SERVICE
 docker start <redis>
 ```
@@ -283,8 +302,10 @@ docker start <redis>
 ```bash
 redis-cli SET probe 1
 grep _app_redis_access app.log | tail -1
-# brief：system=redis op=set status ok duration=...；detailed 附 "set probe"
-curl -s :9370/metrics | grep -E 'redis.*pool|hits'   # redisotel 指标
+# db.system=redis db.operation=set db.statement=probe status=ok duration_ms=...
+# 带 key 的成功记录走 Debug，失败走 Warn——由 resilience 层发射
+curl -s :9370/metrics | grep -E 'redis.*pool|hits'   # redisotel 连接池指标
+curl -s :9370/metrics | grep -E 'db.client'          # call 级 + attempt 级直方图
 ```
 
 ### 4.3 验证发现地址回收
@@ -309,7 +330,7 @@ val, _ := s.Main.Get(ctx, "k").Result()       // 裸客户端读同一 key："v"
 
 ### 4.5 故障/弹性演练
 
-配置 starter-governance 后给服务 `redis:<addr>` 设熔断/限流策略；压测并观察拒绝如何出现在
+配置 starter-governance-file 后给服务 `redis:<addr>` 设熔断/限流策略；压测并观察拒绝如何出现在
 `_app_redis_access` 记录与 resilience observer 的 outcome 计数里。策略可运行时热切换——
 executor 无需重启即刷新。
 
@@ -319,14 +340,14 @@ executor 无需重启即刷新。
 
 | 症状 | 可能原因 | 处置 |
 |------|---------|------|
-| 启动报 "startup ping failed" | 地址不可达/密码错/TLS 不匹配 | failFastPing 无条件执行；修连通性或凭据。 |
+| 启动报 "startup ping failed" | 地址不可达/密码错/TLS 不匹配 | 启动 HealthCheck 无条件执行；修连通性或凭据。 |
 | 启动报 "invalid mode ... (want single/sentinel/cluster)" | `mode` 拼错 | 改正——mode 精确匹配。 |
 | 启动报 "service-name is not supported in sentinel/cluster mode" | 发现与自发现拓扑组合 | 删 service-name；sentinel/cluster 自行发现节点。 |
 | 启动报 "... does not support cluster mode" | 提供的 Driver bean 不支 cluster 但存在 `mode=cluster` 实例 | 让 Driver 实现 `ClusterDriver`（内置 `DefaultDriver` 已实现）；进程内那一个 Driver 须覆盖所用到的全部拓扑。 |
 | 启动报 "db is not supported in cluster mode" | Cluster 无 database select | 删掉 `db`（cluster 只有 0 号库）。 |
 | 启动 WARN "addr ... is ignored" | single 模式同时配了 `addr` 和 `service-name` | 无害；删 `addr` 或留着当标签——寻址归服务发现。 |
 | 命令正常但健康 DOWN | 指示器带 ctx ping；查 ACL/只读副本 | 看 /readiness 里组件的错误详情。 |
-| 注入的 bean 无 span/指标 | 未引入 starter-otel | redisotel 挂 OTel 全局；补 import。 |
+| 注入的 bean 无 span/指标 | 未引入 starter-otel | resilience 层与 redisotel 都挂 OTel 全局；补 import。 |
 | 没有访问日志 | logger 配置过滤了 `_app_redis_access` 或 Debug 级别（带 key 成功走 Debug） | 检查 `_app_redis_access` 的 logger 配置。 |
 | 怀疑 GET miss 触发熔断 | 不会——redis.Nil 判为成功 [command.go:94] | 找真实后端错误；miss 已排除。 |
 | cache bean 注入失败 | `*cache.Cache` 的 bean 名是 `go-redis:<redis 实例名>`，不是 `<实例名>` | 按 `go-redis:<实例名>` 注入；见 §3.4。 |
@@ -335,7 +356,7 @@ executor 无需重启即刷新。
 
 | 指标 | 数值 |
 |------|------|
-| 配置 key 总数 | 实例 25 个 + tls 组 + otel(2) |
+| 配置 key 总数 | 实例 25 个 + tls 组 + otel(1) |
 | 其中必填 | 每种模式 1 组（addr/service-name、master-name+sentinel-addrs 或 addrs） |
 | quickstart 前置外部依赖 | 1（Redis） |
 | "注意/坑" 条数 | 6 |

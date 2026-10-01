@@ -39,7 +39,7 @@ require (
     go-spring.org/spring        v1.3.x
     go-spring.org/starter-asynq latest
     go-spring.org/starter-actuator latest   // optional: health endpoint for §4
-    go-spring.org/starter-governance latest // optional: resilience/fault on enqueue
+    go-spring.org/starter-governance-file latest // optional: resilience/fault on enqueue
 )
 ```
 
@@ -60,7 +60,7 @@ import (
 
     starter "go-spring.org/starter-asynq"
     _ "go-spring.org/starter-actuator"
-    _ "go-spring.org/starter-governance"
+    _ "go-spring.org/starter-governance-file"
 )
 
 const taskType = "example:greet"
@@ -160,20 +160,22 @@ import starter-asynq
   └─ init: gs.Module(gs.OnProperty("spring.asynq"))               [starter.go:36]
         └─ conf.BindEach("${spring.asynq}", per <name>):
              ├─ expr validation on Config (addr != '' — fail at BIND time)
-             ├─ Provide(newClient).Name(<name>).Init/Destroy       [always]
+             ├─ Provide(newClient).Name(<name>).Destroy            [always]
              ├─ if c.Server.Enabled:
              │    Provide(newServer).Name(<name> ":server").
-             │      Export(gs.As[gs.Server]()).Init/Destroy        [worker opt-in]
+             │      Export(gs.As[gs.Server]()).Destroy             [worker opt-in]
              └─ Provide(health.Indicator).Name("asynq:"+<name>).
                 Export(gs.As[health.Indicator]())
 gs.Run()
   ├─ bean wiring: app beans autowire *Client / *Server by instance name
+  ├─ ctor newClient (starter.go): resolves RedisConnOpt, then NewClient fixes
+  │    the service label (resilience.ServiceLabel("asynq", addr)) and applies
+  │    the injected manager/injector governance bundle — no Init hook
+  ├─ ctor newServer (starter.go): builds asynq.NewServer(connOpt, Config{...})
+  │    — no Init hook
   ├─ Rooter Init phase: app Service.Init registers handlers (mux created lazily,
-  │  client.go:129-147 — registration may also happen later, but handlers are
+  │  client.go — registration may also happen later, but handlers are
   │  fixed once the worker starts consuming)
-  ├─ Client.Init (client.go): newObserver() (observe.go),
-  │    resilience.ServiceLabel("asynq", addr), fault executor armed
-  ├─ Server.Init (client.go:111-127): builds asynq.NewServer(connOpt, Config{...})
   ├─ Runner phase: Server.Run — srv.Start(mux), sig.TriggerAndWait() → ready,
   │    then blocks on <-ctx.Done()
   └─ on SIGTERM: Server.Stop → srv.Shutdown() drains in-flight tasks bounded by
@@ -186,23 +188,27 @@ gs.Run()
 - **Worker is opt-in** (`server.enabled` default false): "a long-running worker is an opt-in...
   most processes only enqueue" (starter.go:33-35; starter/DESIGN.md convention).
 - **`Run` uses `Start` + wait-on-ctx, never `asynq.Server.Run`**: asynq's helper installs its
-  own signal handler which "would race gs's graceful-shutdown signal handling" (client.go:154-158).
+  own signal handler which "would race gs's graceful-shutdown signal handling" (client.go:149-161).
   Signal handling stays in gs.
 - **Handler errors/panics are asynq's domain**: the server deliberately installs no
   ErrorHandler/recover wrapper — "errors and panics inside a handler are asynq's to recover
-  and retry... we keep our own reporting out of the hot path" (client.go:121-125).
+  and retry... we keep our own reporting out of the hot path" (starter.go:120-123).
 - **Health probes via a fresh Inspector per check**, so it "verifies reachability without
   coupling to the producer/worker lifecycle" (health/health.go:26-32).
 
 ### 2.3 One task, layer by layer (enqueue → run)
 
-1. App calls the **wrapper's** `Client.Enqueue(ctx, task, opts...)` (client.go:71-94). Do not
+1. App calls the **wrapper's** `Client.Enqueue(ctx, task, opts...)` (client.go:77-91). Do not
    call the promoted `*asynq.Client.Enqueue` — only the wrapper routes through the guard.
-2. The observe layer opens a producer observation (`o.obs.start(ctx, "enqueue", task.Type())`,
-   observe.go): span, metrics, and access log.
-3. The executor runs: the one `Init` built from the injected `*resilience.Manager` wrapped
-   with the injected `*fault.Injector` — with starter-governance, a rate-limit rejection or
+2. The starter **declares** the operation's identity (`operation("enqueue", task.Type())`,
+   observe.go: span name `enqueue`, the `messaging.system`/`messaging.operation` labels, the
+   task type as `messaging.destination.name` detail) and puts it on the ctx. It emits nothing.
+3. The executor runs: the one `NewClient` built from the injected `*resilience.Manager` wrapped
+   with the injected `*fault.Injector` — with starter-governance-file, a rate-limit rejection or
    open circuit aborts **before** Redis is touched; without it the executor is a pass-through.
+   The resilience layer **emits**: the span, the call-level `messaging.client.operation.duration`,
+   the attempt-level `messaging.client.attempt.duration` histograms, the `messaging.client.active_requests`
+   gauge, the `resilience.client.calls` counter and the `_app_asynq_access` access log.
 4. `Client.EnqueueContext` writes the task to Redis (asynq semantics: queue/priority from opts).
 5. The worker's `ServeMux` matches the task type against the registered pattern (`:` groups
    for middleware scoping) and invokes your `HandlerFunc` on one of `concurrency` slots.
@@ -274,7 +280,7 @@ than the run abandons it (asynq then retries it on the next delivery — asynq s
 
 ### 4.5 Governance guard (optional)
 
-With starter-governance + a configured rules source, open the circuit / set a rate limit on service
+With starter-governance-file + a configured rules source, open the circuit / set a rate limit on service
 `asynq:<addr>`: `Client.Enqueue` returns the rejection **without touching Redis**; the
 promoted `asynq.Client` path would bypass the guard entirely (see §5 row 2).
 

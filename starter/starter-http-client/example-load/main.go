@@ -35,7 +35,7 @@ import (
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/httpclt"
 
-	_ "go-spring.org/starter-governance" // registers the centralized governance center
+	_ "go-spring.org/starter-governance-file" // registers the centralized governance center
 	_ "go-spring.org/starter-http-client"
 )
 

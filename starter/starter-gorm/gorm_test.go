@@ -37,7 +37,8 @@ import (
 // The lifecycle tests below open a real gorm.DB through a hand-rolled fake
 // dialector backed by a minimal database/sql driver (a Pinger-only Conn). That
 // keeps this module dependency-free while exercising the full shared chain:
-// gorm.Open → ApplyPool ping → DBCustomizers → wrapper → Init/Destroy.
+// gorm.Open → ApplyPool → DBCustomizers → wrapper (+ observe plugin) →
+// governance (resilience callbacks) → Destroy.
 
 // fakeConnector adapts the fake driver to database/sql.
 type fakeConnector struct{ failPing bool }
@@ -176,11 +177,10 @@ func TestOpenLifecycle(t *testing.T) {
 		t.Fatal("customizer should run after open with the freshly-opened *gorm.DB")
 	}
 
-	// Init installs the observe plugin and resilience callbacks; with
-	// governance off the executor is a transparent no-op, so this must succeed.
-	if err := db.Init(); err != nil {
-		t.Fatalf("init: %v", err)
-	}
+	// Open installs both the observe plugin and the resilience callbacks, so the
+	// DB is complete on return — nothing patches it here. With the zero
+	// governance bundle the executor is resilience.Unmanaged (observed-only), and
+	// ApplyCallbacks still wraps every processor, so this must succeed.
 
 	if err := Ping(context.Background(), db.DB); err != nil {
 		t.Fatalf("ping after init: %v", err)
@@ -211,8 +211,8 @@ func TestOpenDialectorFailure(t *testing.T) {
 func TestOpenPingFailure(t *testing.T) {
 	withCustomizers(t) // none
 	// gorm.Open auto-pings on Initialize, so a failing backend surfaces as the
-	// open error here (ApplyPool's ping would catch it otherwise); either way
-	// the starter must fail fast instead of returning an unusable DB.
+	// open error here; the starter must fail fast instead of returning an
+	// unusable DB.
 	_, err := Open(fakeDialector{failPing: true}, PoolConfig{PingTimeout: 500 * time.Millisecond}, Options{})
 	if err == nil || !strings.Contains(err.Error(), "ping refused") {
 		t.Fatalf("want ping failure to fail the open, got %v", err)

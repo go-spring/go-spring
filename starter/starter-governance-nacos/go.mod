@@ -63,7 +63,6 @@ require (
 	github.com/tjfoc/gmsm v1.4.1 // indirect
 	go-spring.org/cloud v0.0.0
 	go-spring.org/gs-mock v0.0.9 // indirect
-	go-spring.org/starter-governance v0.0.0
 	go.uber.org/multierr v1.11.0 // indirect
 	go.uber.org/zap v1.27.0 // indirect
 	go.yaml.in/yaml/v2 v2.4.4 // indirect
@@ -84,5 +83,3 @@ require (
 )
 
 replace go-spring.org/cloud => ../../cloud
-
-replace go-spring.org/starter-governance => ../starter-governance

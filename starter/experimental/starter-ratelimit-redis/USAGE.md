@@ -2,17 +2,17 @@
 
 Detailed usage reference. Overview: [README.md](README.md). Every behavior claim below is verified
 against the starter source (`starter.go`, `config.go`), the counter implementation in
-`starter-go-redis/experimental/ratelimit.go`, the [governance wiring](../../starter-governance/wiring.go)
+`starter-go-redis/experimental/ratelimit.go`, the [governance wiring](../../starter-governance-file/wiring.go)
 that injects the store into the driver bean, and the self-asserting [example/](example)
 (`example/check.sh`). Rate-limiting semantics themselves are documented in
-`cloud/governance/resilience` — everything below is this starter's increment.
+`cloud/resilience` — everything below is this starter's increment.
 
 **Activation**: any `spring.ratelimit.redis.*` key arms the starter's module, and the block's one key
 must be set: `spring.ratelimit.redis.client` names the `*goredis.Client` bean (provided by
 starter-go-redis under `spring.go-redis.instances.<client>`) whose Redis instance backs the
 counters. The starter contributes ONE bean of type `resilience.Counters`. With none in the container
 each executor counts in a budget of its own, so contributing this one is the whole switch:
-[starter-governance](../../starter-governance)'s driver bean injects it, and every executor in the
+[starter-governance-file](../../starter-governance-file)'s driver bean injects it, and every executor in the
 process then spends one Redis budget per scope — across replicas, which an executor-local budget
 cannot do.
 
@@ -67,7 +67,7 @@ import (
     "errors"
     "net/http"
 
-    "go-spring.org/cloud/governance/resilience"
+    "go-spring.org/cloud/resilience"
     "go-spring.org/spring/gs"
 )
 
@@ -194,7 +194,7 @@ gs.Run()
   script cheaply — use a token bucket when the counters are shared.
 - It does not queue: `rate-limit-max-wait` is ignored and an over-limit unit is rejected immediately.
   Waiting for a token would mean polling Redis; keep queueing for the in-memory store.
-- It keeps no metrics of its own — a rate-limited call shows up as `status=rate_limited` on the
+- It keeps no metrics of its own — a rate-limited call shows up as `resilience.outcome=rate_limited` on the
   executor's observe layer.
 - It does not adjudicate: rejecting over-limit calls and choosing open-vs-closed on a counter error
   are the executor's decisions.

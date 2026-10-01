@@ -2,7 +2,7 @@
 
 Detailed usage reference. Overview: [README.md](README.md). All behavior claims are verified
 against the starter source (`config.go`, `starter.go`, `client.go`, `command.go`, `driver.go`,
-`driver.go`) and the runnable [example/](example/) / [example-otel/](example-otel/) — file:line
+`observe.go`, `messaging.go`) and the runnable [example/](example/) / [example-otel/](example-otel/) — file:line
 spot-checks in brackets below. **Pulsar semantics (subscriptions, keyed messages, properties,
 retention/redelivery) are [Pulsar's own documentation](https://pulsar.apache.org/docs/next/client-libraries-go/)**
 — everything below is go-spring's increment.
@@ -38,7 +38,7 @@ require (
     go-spring.org/starter-pulsar       latest
     go-spring.org/starter-actuator     latest   // optional: readiness + OTel metrics mount
     go-spring.org/starter-otel         latest   // optional: real trace export
-    go-spring.org/starter-governance   latest   // optional: breaker/limiter policy
+    go-spring.org/starter-governance-file   latest   // optional: breaker/limiter policy
 )
 ```
 
@@ -51,7 +51,7 @@ import (
     "go-spring.org/spring/gs"
     _ "demo/messaging"
     _ "go-spring.org/starter-actuator"
-    _ "go-spring.org/starter-governance"
+    _ "go-spring.org/starter-governance-file"
     _ "go-spring.org/starter-otel"
     _ "go-spring.org/starter-pulsar"
 )
@@ -99,7 +99,10 @@ func init() {
         }
 
         return func(ctx context.Context) error {
-            // Driver publish: span + trace-context injection built in [driver.go:98-101].
+            // Driver publish: the driver declares the publish (topic/direction)
+            // and runs it under the resilience executor, which emits the span,
+            // the messaging.client.* metrics and the access log, and injects the
+            // W3C trace context into the message properties [driver.go].
             return pub.Publish(ctx, &messaging.Message{
                 Key:     "user-42",                    // becomes the Pulsar message key
                 Payload: []byte(`{"amt":100}`),
@@ -109,12 +112,12 @@ func init() {
     })
 }
 
-// The guarded RAW path: only Producer.Send via GuardedSend is resilience-wrapped.
+// The guarded RAW path: Producer.Send via GuardedSend is declared and
+// resilience-wrapped. GuardedSend declares the operation itself, so it needs no
+// manual span helper around it — the resilience layer emits the span.
 func guarded(ctx context.Context, cl pulsar.Client, p pulsar.Producer) error {
     msg := &pulsar.ProducerMessage{Payload: []byte("x"), Key: "user-42"}
-    ctx, span := StarterPulsar.StartProducerSpan(ctx, msg) // manual span helper
     id, err := StarterPulsar.GuardedSend(ctx, cl, p, msg)
-    StarterPulsar.EndSpan(span, err)
     _ = id
     return err
 }
@@ -164,7 +167,7 @@ for i in $(seq 1 60); do curl -fsS http://127.0.0.1:8080/admin/v2/brokers/health
 ```bash
 go run .                                   # fail-fast probe aborts boot if broker is dead
 curl -s :9091/metrics | grep pulsar_client_ # native client metrics
-curl -s :9370/metrics | grep messaging      # driver-path per-message metrics
+curl -s :9370/metrics | grep messaging.client # declared-operation metrics (call + attempt)
 grep -E '_app_pulsar|pulsar' app.log        # driver + client log lines (tag _app_def)
 ```
 
@@ -182,29 +185,33 @@ import starter-pulsar
                    .Destroy(destroyClient)
 
 gs.Run()
-  ├─ ctor newClient [starter.go:56-85]:
-  │    1. optional Driver bean — none → bundled DefaultDriver              [starter.go:61-63]
-  │    2. d.CreateClient: ClientOptions, auth (mTLS>token-file>token), TLS,
-  │       native Prometheus registry + :port /metrics server, log bridge,
-  │       pulsar.NewClient                                              [driver.go:59-105]
-  │    3. FailFast probe: cl.TopicPartitions(HealthCheckTopic) — a lookup
+  ├─ ctor newClient [starter.go:89]:
+  │    1. optional Driver bean — none → bundled DefaultDriver              [starter.go:92-95]
+  │    2. d.CreateClient(c, cloud.ClientParams{Resilience: mgr, Fault: inj}):
+  │       ClientOptions, auth (mTLS>token-file>token), TLS, native
+  │       Prometheus registry + :port /metrics server, log bridge,
+  │       pulsar.NewClient, then attachGuard — params.ExecutorFor("pulsar",
+  │       "pulsar:<url>") indexed by client, so the client is COMPLETE when
+  │       returned; mgr/inj are the injected *resilience.Manager /
+  │       *fault.Injector                                  [driver.go:76-115, command.go:225]
+  │    3. then probe (FailFast): cl.TopicPartitions(HealthCheckTopic) — a lookup
   │       that exercises address+auth+TLS without producing; failure →
-  │       cl.Close + metrics shutdown + boot error                       [starter.go:69-76]
-  │    4. applyResilience: fault.WrapClientExecutor(
-  │       mgr.ClientExecutorFor("pulsar", "pulsar:<url>"), "pulsar:<url>", inj)
-  │       with mgr/inj the injected *resilience.Manager / *fault.Injector
-  │       → indexed by client                                           [command.go:227-228]
+  │       closeResilience + cl.Close + metrics shutdown + boot error     [starter.go:108-116]
   ├─ readiness: no health indicator exists — the probe is boot-time only
-  └─ SIGTERM → destroyClient [client.go:44-49]: closeResilience (executor Close)
+  └─ SIGTERM → destroyClient [client.go:45]: closeResilience (executor Close)
        → cl.Close() (releases all producers/consumers) → shutdownMetrics (:port server)
 ```
 
-**Assembly extension point**: client assembly is owned by a `Driver` (interface, `driver.go:27-38`).
-A company/umbrella starter may provide its own `Driver` as an **optional container bean** (a
+**Assembly extension point**: client assembly is owned by a `Driver` (interface,
+`driver.go:62-72`): `CreateClient(ctx, c Config, params cloud.ClientParams) (pulsar.Client, error)`.
+The driver returns the client COMPLETE — it applies the governance executor itself (via
+`attachGuard`) while building, so nothing patches the client afterwards. A company/umbrella starter
+may provide its own `Driver` as an **optional container bean** (a
 `gs.Provide(func() StarterPulsar.Driver{...})`, so it can inject config bound from the properties
-file at wiring time); every instance under `spring.pulsar` is then built through it. When no such
-bean exists the starter falls back to the bundled `DefaultDriver` (`driver.go:40-105`) inside
-assembly (`starter.go:61-63`). When several Driver beans coexist, an entry selects one by
+file at wiring time); every instance under `spring.pulsar` is then built through it, and a custom
+driver attaches the executor by calling `attachGuard` (same package) before returning. When no such
+bean exists the starter falls back to the bundled `DefaultDriver` (`driver.go:74-115`) inside
+assembly (`starter.go:92-95`). When several Driver beans coexist, an entry selects one by
 name: `spring.pulsar.instances.<name>.driver = <bean-name>` (empty = inject the single Driver bean by
 type; naming a missing bean fails startup).
 
@@ -213,76 +220,95 @@ into go-spring's log under tag `_app_def` with a `pulsar: ` prefix [driver.go:20
 
 ### 2.2 The guard/wrap mechanism — exact order and what is NOT guarded
 
-The resilience executor attached in the ctor is only driven through **one seam**:
+The resilience executor attached in the ctor is driven through **one seam**, and
+each call DECLARES its operation before entering it — the starter declares, the
+resilience layer emits:
 
 ```
-GuardedSend(ctx, cl, producer, msg)                       [command.go:264-275]
-  └─ guard: clientGuards.Load(cl)                         [command.go:244-251]
-       ├─ not found (governance off) → producer.Send runs inline, identical to raw
-       └─ found → exec.Execute(ctx, send)                  — fault-injector outermost
-                  (fault.WrapClientExecutor), resilience observer inside it; rejection returns
-                  a resilience sentinel and the send never reaches the wire
+GuardedSend(ctx, cl, producer, msg)                       [command.go]
+  ├─ observability.WithOperation(ctx, operation("publish", producer.Topic()))
+  │     — declares the direction (span name), messaging.system/operation labels
+  │       and the topic as Detail (never a label)
+  └─ guard: clientGuards.Load(cl)                         [command.go]
+       ├─ not found (driver skipped attachGuard) → producer.Send runs inline
+       └─ found → exec.Execute(ctx, injectW3C + send)      — fault-injector outermost
+                  (under governance), resilience observer inside it; the observer
+                  emits span + messaging.client.* metrics + access log from the
+                  declaration; rejection returns a resilience sentinel and the
+                  send never reaches the wire
 ```
 
-Wrap order inside `applyResilience` [command.go:227]: `mgr.ClientExecutorFor("pulsar", service)` —
-mgr being the injected `*resilience.Manager` — returns the fully assembled executor (core
-breaker/limiter/retry wrapped by the resilience observer — outcome counters + access log) →
-wrapped outermost by `fault.WrapClientExecutor(..., inj)` (runtime fault injection from the injected
-`*fault.Injector`; the injected error flows through the inner retry loop, so the breaker counts it).
+The consumer direction declares the same way inside the driver's receive loop
+(`operation("consume", source)`), then runs the handler under `guard`
+[messaging.go].
+
+The executor attached by `attachGuard` [command.go] comes from
+`params.ExecutorFor("pulsar", service)` (`service` = `pulsar:<url>`), where `params` is the
+`cloud.ClientParams{Resilience: mgr, Fault: inj}` the ctor hands the driver — `mgr` being the
+injected `*resilience.Manager`: with a manager it returns the fully assembled executor (core
+breaker/limiter/retry wrapped by the resilience observer — outcome counters + access log) wrapped
+outermost by fault injection from the injected `*fault.Injector` (the injected error flows through
+the inner retry loop, so the breaker counts it); with the zero bundle it degrades to an
+observed-only, loudly-unmanaged executor.
 
 **NOT guarded** (each deliberate, per source comments):
 - `producer.SendAsync` — intentionally untouched; the async path has no synchronous outcome
-  to reject [command.go:261-263].
-- ~~driver `Publish`~~ — **now guarded**: the driver routes through `GuardedSend` with the
-  client-scoped executor [driver.go], so driver publishes get span+trace injection *and*
-  breaker/limiter/fault. Give the service label (`pulsar:<url>`) an all-zero rule to make
-  every call path effectively bare.
-- Consumer `Receive`/handlers — no consumer-side protection exists.
+  to reject [command.go].
 - `CreateProducer`/`Subscribe`/`TopicPartitions` — lifecycle calls, only the FailFast probe
   covers them at boot.
+- The manual `StartProducerSpan`/`StartConsumerSpan` helpers — the app's own spans for a raw
+  send it drives directly; a send routed through `GuardedSend` is already spanned by the
+  resilience layer from the declaration, so do not wrap both around one send.
 
 ### 2.3 One driver publish, layer by layer
 
 `pub.Publish(ctx, msg)` with `Key: "k"`, `Headers: h`, load-test marker on ctx
-[driver.go:81-102]:
+[messaging.go:104-131]:
 
 1. Header copy: if the propagator's `IsLoadTest(ctx)`, headers are **copied** (caller's map never
-   mutated) and `x-load-test=1` is added [driver.go:85-90].
+   mutated) and `x-load-test=1` is added [messaging.go:110-118].
 2. Envelope → `pulsar.ProducerMessage`: `Payload`, `Properties` (= headers), and **Key only
-   when non-empty** [driver.go:91-97]. Not mapped: `Timestamp` (messaging envelope has one;
+   when non-empty** [messaging.go:119-125]. Not mapped: `Timestamp` (messaging envelope has one;
    Pulsar sets publish time server-side) and any Pulsar-specific field (OrderingKey,
    DeliverAt…).
-3. NewDriver wraps the driver in `messaging.Observe`: the decorator already opened the
-   "publish" producer span and injected the W3C trace context into the envelope headers
-   (which step 2 mapped onto `pm.Properties`); no module-local instrumentation runs on the
-   driver path.
-4. `producer.Send(ctx, pm)` — synchronous, blocks until broker ack.
-5. Observe records the outcome on `messaging.operation.total/duration/active` and the
-   access log.
+3. `GuardedSend` declares the publish (`operation("publish", producer.Topic())`): the
+   direction names the span, `messaging.system`/`messaging.operation` are the bounded
+   labels, and the topic is per-call Detail — it reaches the span and the log, never a
+   metric label.
+4. `producer.Send(attemptCtx, pm)` — synchronous, blocks until broker ack; the W3C trace
+   context is injected into `pm.Properties` from the attempt ctx, so the traceparent
+   carries the executor's span.
+5. The resilience observer (the single emitter) records the outcome on
+   `messaging.client.operation.duration` (call level), `messaging.client.attempt.duration`
+   (per retry) and `messaging.client.active_requests`, and writes one access log. Publish and
+   consume are declared `NonIdempotent`, so a retry policy on the label is **suppressed** (one
+   warning per service): re-sending or re-running the handler is a second side effect, not a
+   second attempt.
 
 ### 2.4 One driver consume, layer by layer
 
-`sub.Subscribe(handler)` starts one background loop [driver.go:119-155]:
+`sub.Subscribe(handler)` starts one background loop [messaging.go:156-196]:
 
 1. Handler is wrapped in `messaging.Recover` — a panic becomes a normal error → Nack →
-   redelivery, never an SDK-goroutine crash [driver.go:121-123].
+   redelivery, never an SDK-goroutine crash [messaging.go:159-161].
 2. Loop ctx derives from `context.WithoutCancel(ctx)` — Close cancels it explicitly, the
-   caller's ctx cancellation does not [driver.go:123].
-3. `c.Receive` → the message goes to `messaging.Observe`'s handler wrapper, which extracts
-   the upstream trace from the envelope headers (mapped from `Properties()`) and opens the
-   consumer span.
+   caller's ctx cancellation does not [messaging.go:157].
+3. `c.Receive` → the loop extracts the upstream W3C trace from `msg.Properties()`
+   (`extractTraceContext`), declares the consume (`operation("consume", source)`) onto the
+   handler ctx, and runs the handler under `guard` — so the resilience observer opens the
+   consumer span, records the metrics and writes the access log from the declaration.
 4. Load-test marker: if the producer stamped `x-load-test` in Properties, the handler ctx is
-   re-marked via `prop.WithLoadTest(ctx)` [driver.go:141-143].
+   re-marked via `prop.WithLoadTest(ctx)` (the `prop.Extract` above).
 5. `fromPulsarMsg` maps back: Pulsar `Key()` → envelope Key, `Payload()`, `Properties()` →
    Headers (including the injected `traceparent` — consumer headers gain keys), `PublishTime()`
-   → Timestamp [driver.go:171-178]. Both directions preserve Key and Properties.
+   → Timestamp [driver.go]. Both directions preserve Key and Properties.
 6. Handler error → `Nack` (redelivery per Shared-subscription semantics) + error log;
-   success → `Ack(msg)`, a failed ack is logged as WARN (redelivery risk) [driver.go:145-151].
-7. A `Receive` error that is not ctx-cancellation is logged and the loop retries [driver.go:131-137].
+   success → `Ack(msg)`, a failed ack is logged as WARN (redelivery risk) [driver.go].
+7. A `Receive` error that is not ctx-cancellation is logged and the loop retries [driver.go].
 
 Close order: cancel loop ctx → wait for `done` (in-flight handler finishes) → `consumer.Close()`
-[driver.go:157-168]; publisher Close just calls `producer.Close()` and **discards its error**
-[driver.go:104-107].
+[messaging.go:198-207]; publisher Close just calls `producer.Close()` and **discards its
+error** [messaging.go:134-136].
 
 ---
 
@@ -303,12 +329,12 @@ absolute-property Pool rule). 18 value tags found by grep — table covers every
 | `tls-key-file` | string | — | Client private key pairing with cert [driver.go:76]. | — |
 | `tls-allow-insecure` | bool | false | Disables server cert verification. Never in production. | true → MITM exposure. |
 | `tls-validate-hostname` | bool | false | Hostname-in-cert verification; default preserves pulsar-client-go's default [config.go:63-66]. | — |
-| `fail-fast` | bool | true | Startup `TopicPartitions` probe [starter.go:68-75]. | false → dead broker surfaces only on first produce. |
+| `fail-fast` | bool | true | Startup `TopicPartitions` probe [starter.go:107-114]. | false → dead broker surfaces only on first produce. |
 | `health-check-topic` | string | `persistent://public/default/__health_check` | Probe target; lookup on a non-partitioned topic succeeds even when absent [config.go:72-76]. | Partitioned/garbage topic name → probe error blocks boot. |
 | `metrics` | group | — | Struct binding `value:"${metrics}"` [config.go:79]. | — |
 | `metrics.enabled` | bool | true | Starts the per-instance `/metrics` server and wires the dedicated registry [driver.go:97-101]. | false → no `pulsar_client_*` anywhere. |
-| `metrics.port` | int | 9091 | Port of that server. ⚠ Fixed default: every metrics-enabled instance MUST get a distinct port; collision = second server's listen fails silently (error swallowed [command.go:69-71]). | Two instances, one port → one metrics endpoint silently dead. |
-| `metrics.path` | string | `/metrics` | HTTP path on that server [command.go:62]. | — |
+| `metrics.port` | int | 9091 | Port of that server. ⚠ Fixed default: every metrics-enabled instance MUST get a distinct port; collision = second server's listen fails silently (error swallowed [command.go:96]). | Two instances, one port → one metrics endpoint silently dead. |
+| `metrics.path` | string | `/metrics` | HTTP path on that server [command.go:88]. | — |
 
 The `driver` key names the Driver bean for this entry: unset → assembly is owned by the
 optional Driver bean injected by type (see §2.1) or the bundled `DefaultDriver`; set → that
@@ -348,19 +374,23 @@ spring:
         failure-rate: 50
 ```
 
-Service label is `pulsar:pulsar://127.0.0.1:6650` [starter.go:76]. Kill the broker, then:
-hammer `GuardedSend` → after the threshold the breaker opens, calls fail fast with a
-resilience sentinel, and resilience outcome counters appear;
-hammer driver `Publish` instead → every call blocks into the client's own retry/timeout, no
-sentinel, no breaker. That contrast IS the §2.2 boundary.
+Service label is `pulsar:pulsar://127.0.0.1:6650` [starter.go:76]. Kill the broker, then
+hammer `GuardedSend` — or driver `Publish`, which routes through the same seam — → after the
+threshold the breaker opens, calls fail fast with a resilience sentinel, and the
+`messaging.client.*` (declared-operation) and `resilience.client.*` counters appear. The
+unguarded contrast is `producer.SendAsync` and the lifecycle calls (`CreateProducer` /
+`Subscribe`): they block into the client's own retry/timeout, no sentinel, no breaker — that
+contrast IS the §2.2 boundary.
 
 ### 4.4 Metrics / span / log reads
 
 - Native: `curl -s :9091/metrics | grep pulsar_client_` (producer/consumer/connection stats;
-  separate per-instance registry so instances never collide [command.go:59-74]).
-- OTel: driver-path spans `publish` / `consume` (traces link via W3C context in Properties);
-  manual helpers emit `pulsar.produce` / `pulsar.consume <topic>` with
-  `messaging.system=pulsar` [command.go:99-134]. Check Jaeger (`:16686`) after traffic.
+  separate per-instance registry so instances never collide [command.go:85-100]).
+- OTel: the declared operations emit spans named `publish` / `consume` from the resilience
+  layer (traces link via W3C context in Properties), plus `messaging.client.operation.duration`
+  and `messaging.client.attempt.duration`; manual app spans are named `pulsar.produce` /
+  `pulsar.consume <topic>` with `messaging.system=pulsar` [command.go]. Check Jaeger
+  (`:16686`) after traffic.
 - Logs: driver handler/receive errors and all bridged client-internal lines land under the
   `_app_def` tag with `pulsar: ` prefix.
 
@@ -368,7 +398,7 @@ sentinel, no breaker. That contrast IS the §2.2 boundary.
 
 SIGTERM → destroyClient closes the executor, the client (all producers/consumers), and the
 metrics server [client.go:44-58]. Subscriber Close drains its loop before consumer.Close
-[driver.go:157-168]. Watch the log for a clean exit; :9091 stops serving.
+[messaging.go:198-207]. Watch the log for a clean exit; :9091 stops serving.
 
 ---
 
@@ -377,12 +407,12 @@ metrics server [client.go:44-58]. Subscriber Close drains its loop before consum
 | Symptom | Likely cause | Fix |
 |---------|--------------|-----|
 | Boot fails "pulsar broker probe failed" | Broker down / wrong url / auth / TLS | Fix connectivity; 6650 open ≠ ready, gate on `:8080/admin/v2/brokers/health`. |
-| Second instance has no /metrics | `metrics.port` collision; listen failure WARN-logged [command.go:69-71] | Assign distinct ports. |
+| Second instance has no /metrics | `metrics.port` collision; listen failure WARN-logged [command.go:96] | Assign distinct ports. |
 | No traces | starter-otel not imported | Import it; all helpers are silent no-ops without it. |
-| Messages redelivered though handler succeeded | Ack failed (WARN logged) [driver.go:158] | Check broker ack permission; suspect listed in §6. |
-| Consumer never gets messages | Wrong subscription name / Shared vs topic semantics | `group` maps 1:1 to subscription; empty group derives `go-spring-<topic>` [driver.go:63-66]. |
+| Messages redelivered though handler succeeded | Ack failed (WARN logged) [messaging.go] | Check broker ack permission; suspect listed in §6. |
+| Consumer never gets messages | Wrong subscription name / Shared vs topic semantics | `group` maps 1:1 to subscription; empty group derives `go-spring-<topic>` [messaging.go:77-92]. |
 | Expecting token auth, broker refuses | mTLS cert+key set → token ignored (priority order) [driver.go:83-90] | Remove cert/key or disable mTLS requirement. |
-| Breaker never trips under load | Traffic goes through driver Publish or SendAsync — unguarded (§2.2) | Route through GuardedSend. |
+| Breaker never trips under load | Traffic goes through `producer.SendAsync` or the manual helpers — unguarded (§2.2) | Route the synchronous send through `GuardedSend` (driver `Publish` already does). |
 | Handler panic kills nothing but message reappears | Recover converts panic → Nack | Expected; fix the handler. |
 
 ## 6. Design Health
@@ -395,8 +425,10 @@ metrics server [client.go:44-58]. Subscriber Close drains its loop before consum
 | "Watch out" entries | 8 |
 
 Design suspects (audit ledger): `metrics.port` fixed default 9091 collides across instances
-and with other apps, and the listen failure is swallowed; driver Publish is now guarded
-through the same executor as the raw path (Subscribe/consume remains unguarded); a failed
+and with other apps, and the listen failure is swallowed; both driver Publish and the
+driver's consume loop now declare their operation and run under the same executor as the raw
+path, so the starter emits nothing per call — the resilience layer is the single emitter
+(`SendAsync` and the lifecycle calls remain unguarded); a failed
 consumer `Ack` is WARN-logged; `producer.Close()` has no
 error return so publisher Close cannot fail; no runtime health indicator
 (fail-fast is boot-only — a broker dying later is invisible to actuator); `schema.json`

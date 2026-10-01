@@ -17,17 +17,15 @@
 // starter.go is the gs registration + glue concept of this starter: it declares
 // the infra log tag and registers the per-instance RocketMQ client group under
 // "${spring.rocketmq}", wiring each Config entry to newClient (the dispatch +
-// probe + resilience wiring) and the Client wrapper's Close (the lifecycle in
-// client.go).
+// probe) and the Client wrapper's Close (the lifecycle in client.go).
 package StarterRocketmq
 
 import (
-	"strings"
-
-	"go-spring.org/cloud/governance/fault"
-	"go-spring.org/cloud/governance/resilience"
-	"go-spring.org/cloud/governance/traffic"
+	"go-spring.org/cloud"
+	"go-spring.org/cloud/fault"
 	"go-spring.org/cloud/messaging"
+	"go-spring.org/cloud/resilience"
+	"go-spring.org/cloud/traffic"
 	"go-spring.org/log"
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/gs"
@@ -51,9 +49,10 @@ func init() {
 				gs.IndexArg(1, gs.ValueArg(name)),
 				gs.IndexArg(2, gs.ValueArg(c)),
 				gs.IndexArg(3, gs.TagArg("${spring.rocketmq.instances."+name+".driver:=${spring.rocketmq.default.driver:=?}}")),
-				// The governance beans are REQUIRED: this starter blank-imports
-				// starter-governance, so "governance off" is spring.governance.enabled=false,
-				// never an absent bean.
+				// The governance beans are REQUIRED: each is registered by the package that
+				// owns it (cloud/resilience, cloud/loadbalance, cloud/fault), which this
+				// starter imports — "governance off" is spring.governance.enabled=false, never
+				// an absent bean.
 				gs.IndexArg(4, gs.TagArg("")), // *resilience.Manager
 				gs.IndexArg(5, gs.TagArg("")), // *fault.Injector
 			).Name(name).Destroy((*Client).Close).Caller(1)
@@ -75,15 +74,17 @@ func init() {
 
 // newClient creates a RocketMQ client by dispatching to the (optional) Driver
 // bean, which owns full client assembly (name server resolution, credentials,
-// the rlog bridge). After the client is built it is probed (when FailFast is
-// enabled) so a wrong name server list fails fast at startup instead of
-// surfacing on the first produce/consume, then the resilience executor is
-// attached.
+// the rlog bridge). The Driver returns the client COMPLETE — identity and the
+// governance executor are both applied while it is built (see [NewClient]) — and
+// only then is the client probed (when FailFast is enabled) so a wrong name
+// server list fails fast at startup instead of surfacing on the first
+// produce/consume. A failed probe abandons the client and releases what was just
+// assembled.
 //
-// mgr and inj are the governance beans starter-governance provides. The wiring
-// injects them NULLABLY, so both are nil in a container without
-// starter-governance as well as in a standalone (non-gs) call; applyResilience
-// treats a nil bean as "governance off".
+// mgr and inj are the authority beans the owning packages register; the ctor
+// bundles them into the [cloud.ClientParams] it hands the driver, which passes
+// it to [NewClient] — so the client is assembled complete in one step, with the
+// zero bundle degrading to an observed-only, loudly-unmanaged executor.
 func newClient(ctx *gs.ContextProvider, name string, c Config, d Driver, mgr *resilience.Manager, inj *fault.Injector) (*Client, error) {
 	log.Debugf(ctx.Context, log.TagAppDef, "creating rocketmq client, name-servers=%v fail-fast=%v", c.NameServers, c.FailFast)
 
@@ -95,20 +96,21 @@ func newClient(ctx *gs.ContextProvider, name string, c Config, d Driver, mgr *re
 	if d == nil {
 		d = DefaultDriver{}
 	}
-	cl, err := d.CreateClient(ctx.Context, c)
+	cl, err := d.CreateClient(ctx.Context, c,
+		cloud.ClientParams{Resilience: mgr, Fault: inj})
 	if err != nil {
 		return nil, err
 	}
 
+	// Fail fast (opt-in): probe the name server list directly on the wire, not
+	// through the client, so it is a connectivity check rather than business
+	// traffic. A failure abandons the client, so release what was just applied.
 	if c.FailFast {
 		if err = probeNameServer(c.NameServers); err != nil {
 			log.Errorf(ctx.Context, log.TagAppDef, "rocketmq: fail-fast probe failed on %v: %v", c.NameServers, err)
+			_ = cl.Close()
 			return nil, errutil.Explain(err, "rocketmq name server probe failed on %v", c.NameServers)
 		}
-	}
-	if err := applyResilience(c, cl, resilience.ServiceLabel("rocketmq", strings.Join(c.NameServers, ",")), mgr, inj); err != nil {
-		log.Errorf(ctx.Context, log.TagAppDef, "rocketmq: resilience setup failed: %v", err)
-		return nil, err
 	}
 	log.Infof(ctx.Context, log.TagAppDef, "rocketmq client initialized, name-servers=%v", c.NameServers)
 	return cl, nil

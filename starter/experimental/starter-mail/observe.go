@@ -14,115 +14,83 @@
  * limitations under the License.
  */
 
-// observe.go is the module-local observer for the Mailer: one duration metric,
-// an in-flight gauge and an access log per send. go-mail offers no hook, so a
-// send can only be observed here, at the wrapper — which is why the observation
-// lives in [Mailer.Send] and not in the caller-side span helpers.
+// observe.go declares what a mail send IS. The signals themselves — the span,
+// the duration metrics, the access log — are emitted by the resilience layer,
+// the one place on the executor chain that sees a whole call (retries
+// included). This file therefore holds no emission code: only the vocabulary
+// that this starter alone knows, because only it knows these calls reach an
+// SMTP server.
 //
 // The vocabulary is its own: email is not messaging (there is no broker, no
 // destination, no consumer side), so the labels are email.* rather than
-// messaging.*. The result axis and duration key are the ecosystem-wide ones
-// (status, duration_ms), so a mail failure still joins the same query shape as
-// every other client.
+// messaging.*. The result axis (status) is the ecosystem-wide one, so a mail
+// failure still joins the same query shape as every other client.
 package StarterMail
 
 import (
-	"context"
-	"sync"
-	"time"
-
 	"go-spring.org/cloud/observability"
-	"go-spring.org/log"
-	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/metric"
-)
 
-// meterName identifies metrics emitted by this starter.
-const meterName = "go-spring.org/starter-mail"
+	"go-spring.org/log"
+	"go.opentelemetry.io/otel/attribute"
+)
 
 // emailSystem is the value the email.system label carries — the capability's
 // name, not a per-instance choice.
 const emailSystem = "smtp"
 
-// accessTag is the static log tag for the mail access log.
+// accessTag is the static log tag for the mail access log. It is registered
+// here, at package init, because a tag must exist before the framework's first
+// property refresh — see [log.RegisterTag].
 var accessTag = log.RegisterAppTag("mail", "access")
 
-// instrumentSet is this starter's instrument set: one per process, resolved
-// lazily on first use so it binds to whichever meter provider is current then,
-// and immutable afterwards. It holds no per-mailer state — the email.system /
-// status labels travel with each record, not here.
-type instrumentSet struct {
-	duration metric.Float64Histogram
-	active   metric.Int64UpDownCounter
-}
-
-// instruments is the one instrument set this starter uses for the whole process.
-var instruments = sync.OnceValue(buildInstruments)
-
-// buildInstruments builds the instruments from whatever meter provider is
-// current — resolved on first use, not at package init, so an SDK installed
-// later than this package's init still receives the records.
-func buildInstruments() *instrumentSet {
-	m := otel.GetMeterProvider().Meter(meterName)
-	duration, _ := m.Float64Histogram(
-		"email.client.operation.duration",
-		metric.WithDescription("Duration of mail sends"),
-		metric.WithUnit("s"),
-		metric.WithExplicitBucketBoundaries(observability.DurationBuckets()...),
-	)
-	active, _ := m.Int64UpDownCounter(
-		"email.client.active_requests",
-		metric.WithDescription("Number of mail sends currently in flight"),
-		metric.WithUnit("{request}"),
-	)
-	return &instrumentSet{duration: duration, active: active}
-}
-
-// resetInstruments makes the next use of instruments() resolve a fresh set. It
-// exists for tests that install their own MeterProvider: the set is process-wide
-// and resolved once, so a test running after one that already resolved it would
-// otherwise keep reporting into the earlier provider.
-func resetInstruments() { instruments = sync.OnceValue(buildInstruments) }
-
-// start bumps the in-flight gauge and returns the value to hand back to [done],
-// plus the instant the send began.
-func (o *instrumentSet) start(ctx context.Context) (metric.MeasurementOption, time.Time) {
-	inflight := metric.WithAttributes(attribute.String("email.system", emailSystem))
-	o.active.Add(ctx, 1, inflight)
-	return inflight, time.Now()
-}
-
-// done records the duration and the access log, and balances the gauge.
+// operation is the semantic identity of one send batch.
 //
-// status is the ecosystem-wide result axis (ok|error) and duration_ms is the
-// ecosystem-wide duration key, so a failing send joins the same queries as
-// every other client — while email.system keeps the line identifiable as mail.
-func (o *instrumentSet) done(ctx context.Context, inflight metric.MeasurementOption, start time.Time, err error) {
-	dur := time.Since(start)
-	status := statusOf(err)
-	o.active.Add(ctx, -1, inflight)
-	o.duration.Record(ctx, dur.Seconds(), metric.WithAttributes(
-		attribute.String("email.system", emailSystem),
-		attribute.String("status", status),
-	))
-
-	fields := []log.Field{
-		log.String("email.system", emailSystem),
-		log.String("status", status),
-		log.Float("duration_ms", float64(dur.Nanoseconds())/1e6),
+// The batch's size rides in Detail rather than Attrs: it varies per call, so as
+// a metric label it would multiply the series. Detail reaches the span and the
+// log and never a label, which also levels a send's success log at Debug (a
+// send carries a count, so it almost always carries detail).
+//
+// The operation is declared non-idempotent: a resend is a second email, not a
+// second attempt, so the executor chain must not retry it however a governance
+// rule is configured.
+func operation(msgs []*Message) observability.Operation {
+	o := observability.Operation{
+		Name:   "mail.send",
+		Metric: "email.client",
+		Attrs: []attribute.KeyValue{
+			attribute.String("email.system", emailSystem),
+			attribute.String("email.operation", "send"),
+		},
+		LogTag:        accessTag,
+		NonIdempotent: true,
 	}
-	if err != nil {
-		log.Warn(ctx, accessTag, append(fields, log.Err(err))...)
-		return
+	if d := sendDetail(msgs); len(d) > 0 {
+		o.Detail = d
 	}
-	log.Info(ctx, accessTag, fields...)
+	return o
 }
 
-// statusOf names the outcome the way the rest of the ecosystem does.
-func statusOf(err error) string {
-	if err != nil {
-		return "error"
+// sendDetail renders the per-call detail the span and the log carry. It is
+// deliberately not what the mail says or whom it is addressed to: recipients
+// and subject are personal data, and on a failure the access log is written at
+// Warn unconditionally — so the addresses would be recorded precisely when the
+// send is already going wrong. The batch's size is what a span or a log line
+// needs to be useful, and it is bounded, so it stays a detail rather than a
+// label. The addresses stay in the caller's own records, where the data's owner
+// put them. Bcc is not counted separately — the confidential list is not this
+// layer's to see.
+func sendDetail(msgs []*Message) []attribute.KeyValue {
+	if len(msgs) == 0 {
+		return nil
 	}
-	return "ok"
+	recipients := 0
+	for _, m := range msgs {
+		recipients += len(m.To) + len(m.Cc)
+	}
+	if recipients == 0 {
+		return nil
+	}
+	return []attribute.KeyValue{
+		attribute.Int("email.recipients.count", recipients),
+	}
 }

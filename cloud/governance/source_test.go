@@ -19,7 +19,7 @@ package governance
 import (
 	"testing"
 
-	"go-spring.org/cloud/governance/resilience"
+	"go-spring.org/cloud/resilience"
 )
 
 // TestSource_PushSourceDrivesCenter covers the custom-source end-to-end path:

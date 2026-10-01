@@ -91,15 +91,28 @@ pub, _ := driver.NewPublisher(ctx, "orders")
 _ = pub.Publish(ctx, &messaging.Message{Key: "o-1", Payload: []byte("...")})
 ```
 
-driver 会在消息 user properties 里注入/提取 W3C trace 上下文与压测标记，
-因此链路能跨服务串联、合成流量在下游可识别。
+每次 publish 与 consume 都会声明其操作并在 client 的 resilience executor（唯一发射点，
+见[可观测性](#可观测性)）下执行，同时在消息 user properties 里注入/提取 W3C trace 上下文
+与压测标记，因此链路能跨服务串联、合成流量在下游可识别。
 
 ## 可观测性
 
-- **追踪**：`StartProducerSpan` / `StartConsumerSpan` / `EndSpan` 把原生
-  发送与处理包成 OTel span；driver 路径由 broker 中立的 `messaging.Observe`
-  装饰器自动埋点。全部依赖 `starter-otel` 安装的全局 provider，未导入时是
-  no-op。见 `example-otel/`。
+所有经由本 starter 的 publish 与 consume 都会在调用上**声明（declare）**该操作的语义身份
+——方向（`messaging.operation`）、后端（`messaging.system=rocketmq`）以及作为逐调用细节的
+topic —— 而由 resilience 层（executor 链上**唯一的发射点（emitter）**）依据声明发射信号：
+调用 span、调用级 `messaging.client.operation.duration` 直方图、尝试级
+`messaging.client.attempt.duration` 直方图（每次重试一条记录，因此重试/退避开销不会
+计入下游时延）、in-flight 计量、`resilience.client.calls` 计数器，以及每次调用一条访问
+日志。messaging.Driver 路径与原生 `GuardedSend` 接缝都走同一个声明辅助函数，因此两者
+不会对同一条消息重复上报。这些信号依赖 [starter-otel](../starter-otel) 安装的全局
+`TracerProvider`；未引入 starter-otel 时 span 与指标为空操作，访问日志则始终经 go-spring
+的 log 写出。
+
+starter 自身不再做任何逐调用发射 —— 它只声明身份，由 resilience 层发射。
+
+自行驱动原生发送或消费者时，可用手动辅助函数 `StartProducerSpan` /
+`StartConsumerSpan` / `EndSpan` 将其包成 OTel span（W3C 上下文随消息 user properties
+传递）。见 `example-otel/`。
 
 ## 韧性
 
@@ -110,7 +123,10 @@ driver 会在消息 user properties 里注入/提取 W3C trace 上下文与压�
 res, err := StarterRocketmq.GuardedSend(ctx, s.Client, p, msg)
 ```
 
-未导入 `starter-governance` 时，它和 `p.SendSync(ctx, msg)` 行为完全一致。
+未导入 `starter-governance-file` 时，它和 `p.SendSync(ctx, msg)` 行为完全一致。
+
+[消息 Driver](#消息-driver)的 publish 与 consume 路径同样经由该 executor，因此
+driver 流量也受到保护并被声明。
 
 ## 高级特性
 
@@ -132,7 +148,10 @@ type Service struct {
 `StarterRocketmq.Driver`）替换客户端装配过程（例如注入自定义
 `primitive.NsResolver`）。它是可选的容器 bean：`spring.rocketmq.instances.*` 下每个
 客户端都经它构建，仅当没有 `Driver` bean 时才回退到内置 `DefaultDriver`。
-内嵌 `StarterRocketmq.DefaultDriver` 并委托 `CreateClient` 以保留默认装配：
+内嵌 `StarterRocketmq.DefaultDriver` 并委托 `CreateClient` 以保留默认装配。
+`CreateClient` 接收容器的 `cloud.ClientParams` bundle（见
+`go-spring.org/cloud`）并原样传递，因此客户端在一步内装配完整——
+身份与 executor 同时就位；照原样委托即可让治理继续生效：
 
 ```go
 func init() {
@@ -145,8 +164,9 @@ type myDriver struct {
     StarterRocketmq.DefaultDriver
 }
 
-func (d myDriver) CreateClient(ctx context.Context, c StarterRocketmq.Config) (*StarterRocketmq.Client, error) {
-    return d.DefaultDriver.CreateClient(ctx, c)
+func (d myDriver) CreateClient(ctx context.Context, c StarterRocketmq.Config,
+    params cloud.ClientParams) (*StarterRocketmq.Client, error) {
+    return d.DefaultDriver.CreateClient(ctx, c, params)
 }
 ```
 

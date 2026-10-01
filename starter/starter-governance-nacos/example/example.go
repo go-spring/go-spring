@@ -44,11 +44,11 @@ import (
 	"syscall"
 	"time"
 
-	"go-spring.org/cloud/governance/resilience"
+	"go-spring.org/cloud/resilience"
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
 
-	_ "go-spring.org/starter-governance"
+	_ "go-spring.org/starter-governance-file"
 	_ "go-spring.org/starter-governance-nacos"
 )
 
@@ -124,7 +124,7 @@ func (p *poller) Run(ctx context.Context) error {
 }
 
 // newPoller builds the poller over the injected governance manager. A nil
-// manager (a container without starter-governance) is normalized to a fresh
+// manager (a container without starter-governance-file) is normalized to a fresh
 // unarmed one, so the loop reads a zero policy instead of dereferencing nil —
 // an unarmed manager is exactly "governance off".
 func newPoller(mgr *resilience.Manager) *poller {

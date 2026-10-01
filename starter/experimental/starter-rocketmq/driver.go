@@ -27,8 +27,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/apache/rocketmq-client-go/v2/primitive"
 	"github.com/apache/rocketmq-client-go/v2/rlog"
+	"go-spring.org/cloud"
 	"go-spring.org/log"
 	"go-spring.org/stdlib/errutil"
 )
@@ -41,11 +41,21 @@ import (
 // bean, so it may inject the configuration/beans it needs — e.g. company
 // config bound from a properties file at wiring time.
 //
+// CreateClient returns the module's exported [Client] — the resource entity apps
+// inject — assembled COMPLETE: the identity and the resilience executor are both
+// applied while it is built (see [NewClient]), and nothing patches the client
+// afterwards.
+//
+// params supplies the container's facilities (see [cloud.ClientParams]); it is
+// one struct rather than a parameter per capability so this interface — which
+// every company driver implements — stays stable as capabilities are added. A
+// driver that has no use for one of its fields simply ignores it.
+//
 // At most one Driver bean is expected per process; every client under
 // ${spring.rocketmq} is built through it, and per-instance differences are
 // expressed through [Config].
 type Driver interface {
-	CreateClient(ctx context.Context, c Config) (*Client, error)
+	CreateClient(ctx context.Context, c Config, params cloud.ClientParams) (*Client, error)
 }
 
 // DefaultDriver is the default implementation of the Driver interface.
@@ -53,21 +63,17 @@ type DefaultDriver struct{}
 
 // CreateClient creates a new RocketMQ Client from the provided configuration.
 // It owns full client assembly — the rlog bridge into go-spring's log, the
-// name server list and the credential builder stored on the wrapper — but not
-// the startup name server probe (FailFast) or the resilience wiring, which
-// are the starter's lifecycle concerns (see newClient in starter.go).
-func (DefaultDriver) CreateClient(ctx context.Context, c Config) (*Client, error) {
+// name server list and the credential builder stored on the wrapper — and hands
+// the result to [NewClient], which fixes its identity and applies the governance
+// bundle. It does NOT own the startup name server probe (FailFast), which is the
+// starter's lifecycle concern (see newClient in starter.go).
+func (DefaultDriver) CreateClient(ctx context.Context, c Config, params cloud.ClientParams) (*Client, error) {
 	// Bridge rocketmq-client-go's internal logs into go-spring's log so
 	// connection and rebalance events show up alongside application logs.
 	// rlog.SetLogger is process-global, so install the bridge exactly once.
 	installLogBridge()
 
-	ns := primitive.NamesrvAddr(c.NameServers)
-	cl := &Client{
-		nameServers: ns,
-		cfg:         c,
-	}
-	return cl, nil
+	return NewClient(c.NameServers, c, params), nil
 }
 
 // -----------------------------------------------------------------------------

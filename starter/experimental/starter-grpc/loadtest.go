@@ -19,15 +19,15 @@ package StarterGrpc
 import (
 	"context"
 
-	"go-spring.org/cloud/governance/traffic"
 	"go-spring.org/cloud/propagate"
+	"go-spring.org/cloud/traffic"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
 )
 
 // LoadTestUnaryInterceptor tags the handler context as load-test traffic when
 // the incoming gRPC metadata carries prop's marker key. It is the gRPC inbound
-// companion to cloud/governance/traffic's outbound carrier injection, letting a
+// companion to cloud/traffic's outbound carrier injection, letting a
 // load-test flag ride a gRPC hop end to end. Installed first in the server
 // interceptor chain (outermost), so tracing, metrics, resilience and the handler
 // all see the marker via prop.IsLoadTest(ctx).

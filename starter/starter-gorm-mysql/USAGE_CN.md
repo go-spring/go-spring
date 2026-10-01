@@ -176,9 +176,11 @@ gs.Run()
 ```
 
 **一次查询逐层走读**（引入 starter-otel 且 `observe.enabled=true`）：
-`db.WithContext(ctx).Exec("SELECT 1")` → resilience 回调包裹 processor（配置了治理中心则生效，
-否则 no-op）→ gorm observe 插件的 before/after 回调开启 span（`db.system=mysql`）、记录
-`db.client.operation.duration` 指标、输出访问日志（级别来自 wrapper 的 `observability` 字段，
+`db.WithContext(ctx).Exec("SELECT 1")` → gorm observe 插件的 before 回调在 statement 的 ctx 上
+声明本次操作（名称、`db.system=mysql`、`db.operation`、SQL）→ resilience 回调包裹 processor
+（配置了治理中心则生效，否则 no-op）并发射信号：call span（`db.system=mysql`）、call 级
+`db.client.operation.duration`、attempt 级 `db.client.attempt.duration`、
+`db.client.active_requests`，以及那一条访问日志（级别来自 wrapper 的 `observability` 字段，
 默认 `brief`）→ database/sql 取池内连接（新连接经注册的发现 dialer 拨号）→ 驱动执行。
 
 **为什么改写 DSN**：go-sql-driver 只有在 DSN 的 *network* 段等于注册名时才走
@@ -272,7 +274,7 @@ ETCDCTL_API=3 etcdctl del /services/mysql-cluster/b
 | 发现拨号报 `no endpoints` / 端点集为空 | 后端名不匹配或无存活 key | 检查 `discovery` key 引用的是派生后端标签（如 `etcd`）且已配置 `${spring.registry.etcd}`；检查前缀下 etcd key。 |
 | 时间值差了几个小时 | `parseTime=true` 但 `loc` 未设（默认 UTC） | 设 `loc=Asia/Shanghai`（或你的时区）。 |
 | 慢查询中途连接断开 | `readTimeout` 小于查询耗时 | 调大 `readTimeout` 或优化查询。 |
-| 每查询无 span/指标 | `observe.enabled=false`，或未引入 starter-otel | 重新开启 / 引入 starter-otel（无 OTel 全局时 observe 是静默 no-op）。 |
+| 每查询无 db.* span/指标/访问日志 | `observe.enabled=false`，或未引入 starter-otel | 重新开启 / 引入 starter-otel；按实例开关会完全移除插件，操作不再声明，resilience 层只发它自己的通用信号。 |
 | 本地 TLS 正常、生产报主机名不匹配 | `tls.server-name` 未设且 addr 是 IP | 把 `tls.server-name` 设为证书 CN。 |
 
 ## 6. 设计体检表

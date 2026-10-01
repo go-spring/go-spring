@@ -9,7 +9,7 @@
 
 它是治理规则源适配器家族（Sentinel-datasource 形态）的 Nacos 成员；etcd 成员是
 [starter-governance-etcd](../starter-governance-etcd)，file/http 成员在
-[starter-governance](../starter-governance)。三者都经 `rules.Parse` 解析同一份规则文档，
+[starter-governance-file](../starter-governance-file)。三者都经 `governance.Parse` 解析同一份规则文档，
 所以文档在各后端之间逐字节可移植。
 
 ## 与 starter-config-nacos 的关系
@@ -74,8 +74,8 @@ spring:
 
 每个已发布版本都会被重新解析并推送进治理中心。规则词表（`spring.governance.enabled`、`spring.governance.client.default.*`、
 `spring.governance.client.rules[n].*`、`spring.governance.client.fault.*`）属于治理域，完整参考见
-[starter-governance 的 USAGE](../starter-governance/USAGE.md)。引入治理中心本身仍是
-[starter-governance](../starter-governance) 的职责——本模块只提供规则源。
+[starter-governance-file 的 USAGE](../starter-governance-file/USAGE.md)。引入治理中心本身仍是
+[starter-governance-file](../starter-governance-file) 的职责——本模块只提供规则源。
 
 ## 配置项
 

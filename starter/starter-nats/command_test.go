@@ -23,6 +23,7 @@ import (
 	"testing"
 
 	"github.com/nats-io/nats.go"
+	"go-spring.org/cloud/resilience"
 	"go-spring.org/stdlib/testing/assert"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/propagation"
@@ -30,14 +31,16 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
-// The instrumentation seams (publishCtx / wrapConsume) exist so this file can
-// drive them without a NATS server: the embedded *nats.Conn stays nil and the
-// wire call is a stub, which is why publishCtx takes `send` and wrapConsume
-// returns a plain nats.MsgHandler.
+// The declaration seams (publishCtx / wrapConsume) exist so this file can drive
+// them without a NATS server: the embedded *nats.Conn stays nil and the wire
+// call is a stub, which is why publishCtx takes `send` and wrapConsume returns a
+// plain nats.MsgHandler. The signals themselves are emitted by the resilience
+// executor, so the Conn under test carries a real resilience wrapper over a
+// pass-through inner (exactly the composition the wiring builds).
 
 // TestMain installs a real tracer provider so spans are recording and carry a
 // valid SpanContext. The OTel globals bind to the first provider set, so this
-// must happen before any observer is built.
+// must happen before any executor emits a span.
 func TestMain(m *testing.M) {
 	prev := otel.GetTracerProvider()
 	tp := sdktrace.NewTracerProvider()
@@ -48,13 +51,25 @@ func TestMain(m *testing.M) {
 	os.Exit(code)
 }
 
-// newInstrumentedConn returns a Conn whose observers are armed but whose
-// embedded *nats.Conn is nil — every test below drives a seam instead of the
-// wire.
+// passthroughExecutor is the innermost layer the tests chain under the emitting
+// resilience wrapper: it runs the call and nothing else, so every span under
+// assertion comes from the wrapper above it.
+type passthroughExecutor struct{}
+
+func (passthroughExecutor) Execute(ctx context.Context, fn func(context.Context) error) error {
+	return fn(ctx)
+}
+func (passthroughExecutor) Close() error                          { return nil }
+func (passthroughExecutor) Refresh(resilience.ClientPolicy) error { return nil }
+
+// newInstrumentedConn returns a Conn whose resilience executor is armed but
+// whose embedded *nats.Conn is nil — every test below drives a seam instead of
+// the wire. The executor is a real resilience wrapper, so the declared
+// operations actually emit spans.
 func newInstrumentedConn() *Conn {
 	return &Conn{
-		pubObs: newObserver(trace.SpanKindProducer),
-		subObs: newObserver(trace.SpanKindConsumer),
+		exec:         resilience.WrapClientExecutor(passthroughExecutor{}, "nats", "nats:test"),
+		serviceLabel: "nats:test",
 	}
 }
 
@@ -175,10 +190,11 @@ func TestWrapConsumeReportsHandlerError(t *testing.T) {
 	}
 }
 
-// With no observer attached, the seams must delegate unchanged and pay nothing:
-// no header is written and the handler still runs.
-func TestSeamsDelegateWithoutObserver(t *testing.T) {
-	c := &Conn{} // no observers, nil embedded connection
+// With no executor attached, the seams must run the call inline: no span is
+// opened, no header is written (the ctx holds no valid span) and the handler
+// still runs.
+func TestSeamsDelegateWithoutExecutor(t *testing.T) {
+	c := &Conn{} // no executor, nil embedded connection
 
 	msg := &nats.Msg{Subject: "t.subject"}
 	sent := false
@@ -188,10 +204,10 @@ func TestSeamsDelegateWithoutObserver(t *testing.T) {
 	})
 	assert.Error(t, err).Nil()
 	if !sent {
-		t.Fatal("publishCtx must call send when no observer is attached")
+		t.Fatal("publishCtx must call send when no executor is attached")
 	}
 	if len(msg.Header) != 0 {
-		t.Fatalf("no observer means no trace injection, got header %v", msg.Header)
+		t.Fatalf("an unarmed ctx has no span to inject, got header %v", msg.Header)
 	}
 
 	called := false
@@ -200,6 +216,6 @@ func TestSeamsDelegateWithoutObserver(t *testing.T) {
 		return nil
 	})(&nats.Msg{Subject: "t.subject"})
 	if !called {
-		t.Fatal("wrapConsume must call the handler when no observer is attached")
+		t.Fatal("wrapConsume must call the handler when no executor is attached")
 	}
 }

@@ -38,7 +38,7 @@ require (
     go-spring.org/starter-mqtt       latest
     go-spring.org/starter-actuator   latest   // 可选：探针 + /metrics
     go-spring.org/starter-otel       latest   // 可选：真实 trace/metric 导出
-    go-spring.org/starter-governance latest   // 可选：运行期 resilience/fault 策略
+    go-spring.org/starter-governance-file latest   // 可选：运行期 resilience/fault 策略
 )
 ```
 
@@ -52,7 +52,7 @@ import (
     _ "demo/service"
 
     _ "go-spring.org/starter-actuator"
-    _ "go-spring.org/starter-governance"
+    _ "go-spring.org/starter-governance-file"
     _ "go-spring.org/starter-mqtt"
     _ "go-spring.org/starter-otel"
 )
@@ -87,11 +87,11 @@ func init() {
 
     gs.Provide(func(s *Service) gs.Runner {
         return func(ctx context.Context) error {
-            // (a) 受保护发布 —— 经过挂在 client "a" 上的 resilience executor
-            //     （限流 / 熔断）。
-            ctx, sp := StarterMQTT.StartPublishSpan(ctx, "sensors/temp")
+            // (a) 受保护发布 —— 声明 publish operation 并经挂在 client "a" 上的
+            //     resilience executor（限流 / 熔断）执行；由 executor 发射 span、
+            //     指标与访问日志。
             err := StarterMQTT.GuardedPublish(ctx, s.Client, "sensors/temp", 1, false, []byte("21.5"))
-            StarterMQTT.EndSpan(sp, err)
+            _ = err
 
             // (b) driver 消费 —— envelope API，仅载荷映射。
             b := StarterMQTT.NewDriver(s.Client)
@@ -144,7 +144,7 @@ docker compose -f example/docker-compose.yml up -d   # 或：docker run -d -p 18
 go run .                        # broker 不可达则启动直接失败
 # 预期应用日志："mqtt client initialized, broker=tcp://127.0.0.1:1883"
 # 随后 driver 订阅者输出 "received: 21.5"
-curl -s :9370/metrics | grep -E 'messaging_client'   # observe kit 指标
+curl -s :9370/metrics | grep -E 'messaging_client'   # resilience 层发射的指标
 grep _app_mqtt_access app.log | tail -2              # 访问记录
 cd example && ./check.sh                             # 完整冒烟（自断言）
 mosquitto_sub -t 'demo/status' &                     # kill -9 应用 → will "offline" 到达
@@ -166,24 +166,25 @@ import starter-mqtt
               └─ Provide(newClient).Name(<name>).Destroy(destroyClient).Caller(1)   [starter.go:36-40]
 
 gs.Run()
-  ├─ 构造 newClient [starter.go:52]：
+  ├─ 构造 newClient [starter.go:75]：
   │    1. Driver bean 注入 —— 有公司 Driver bean 则用它；
-  │       无（nil）则回退到内置 DefaultDriver                  [starter.go:55-58]
+  │       无（nil）则回退到内置 DefaultDriver                  [starter.go:78-81]
   │       （由 ${spring.mqtt.instances.<name>.driver} 按实例选择：留空 = 按类型注入，配置 = 按
   │       bean 名注入——指定的 bean 不存在则启动失败）
   │    2. CreateClient：组装 paho options（broker、id、凭证、
   │       clean-session、keep-alive、connect-timeout），把
   │       connect/lost/reconnecting 事件桥接进 go-spring 日志    [driver.go:64-72]，
   │       构建 TLS（security BuildClient）并注册 will                  [driver.go:74-85]
-  │    3. client.Connect() + token.Wait() —— fail-fast 探测：broker 挂了、
-  │       凭证错误或 TLS 不匹配都会中止启动                      [starter.go:70-75]
-  │    4. applyResilience —— 挂上治理 executor，按 client 索引；
-  │       失败则断开 client（250ms）                             [starter.go:76-80]
+  │    3. CreateClient 在构建 client 的同时装上治理 executor ——
+  │       params.ExecutorFor("mqtt", "mqtt:<broker>")，按 client 索引
+  │       [driver.go:115-123] —— 因此 client 返回时即已完整
+  │    4. 再探测：client.Connect() + token.Wait() —— broker 挂了、
+  │       凭证错误或 TLS 不匹配都会中止启动；探测失败释放刚装配的内容 [starter.go:99-110]
   ├─ 就绪：没有 indicator bean —— paho 的自动重连（保持开启）是
   │  恢复路径；连接状态可经 IsConnected() 与桥接的生命周期日志观察
   │  （掉线打 Warn）                                             [driver.go:67-69]
-  └─ SIGTERM → destroyClient [starter.go:85-92]：
-       closeResilience（Close executor，错误被丢弃）             [command.go:137-142]
+  └─ SIGTERM → destroyClient [starter.go:111-117]：
+       closeResilience（Close executor，错误被丢弃）             [command.go:102-107]
        → client.Disconnect(250ms 宽限期收尾在途消息)
 ```
 
@@ -192,69 +193,87 @@ bean 一定是"已连接且已挂保护"的。
 
 ### 2.2 guard/wrap 机制 —— 精确顺序与未被保护的部分
 
-paho.mqtt.golang 没有钩子/插件扩展点，所以不存在透明 client 包装。这个 seam 是
-构造期挂载的 executor 加**调用点自愿接入的 guard** [command.go:17-27]：
+paho.mqtt.golang 没有 reject-capable 中间件，所以不存在透明 client 包装。这个 seam 是
+构造期挂载的 executor 加**调用点自愿接入的 guard** [command.go:17-29]：
 
 ```
-applyResilience [command.go:129-136]：
-  exec = fault.WrapClientExecutor(mgr.ClientExecutorFor("mqtt", "mqtt:<broker>"), "mqtt:<broker>", inj)  // 注入的 *resilience.Manager + *fault.Injector
-  以 mqtt.Client 值为键存入 sync.Map
+CreateClient [driver.go:115-123]（装配 seam）：
+  exec = params.ExecutorFor("mqtt", "mqtt:<broker>")   // 注入的 cloud.ClientParams{Resilience: mgr, Fault: inj}
+  attachGuard(cl, exec, label) —— 以 mqtt.Client 值为键存入 sync.Map  [command.go:98-100]
+  （mgr 存在时 params.ExecutorFor = fault.WrapClientExecutor(mgr.ClientExecutorFor("mqtt", label), label, inj)，
+   否则为仅观测的 resilience.Unmanaged）
 
-GuardedPublish [command.go:167-173]：
-  guard() → executor.Execute(ctx, call)                               [command.go:148-155]
+GuardedPublish [command.go:134-141]：
+  ctx = observability.WithOperation(ctx, operation(opPublish, topic))  // 声明
+  guard() → executor.Execute(ctx, call)                               [command.go:114-121]
   call = cl.Publish(...) + token.Wait() + token.Error()
 ```
 
-包裹顺序（外→内）：**fault 注入 → observe（受保护调用的 span+metric+访问日志）→
-resilience 策略（限流/熔断/重试）→ paho Publish → token 等待**。设计理由（源码
-注释）：paho 自管队列与重连，因此 executor 有意保持极小 —— 只限发布速率、在 broker
-不健康时短路 [command.go:119-124]。服务标签是 `mqtt:<broker-url>` —— 按 broker 而非
-按 topic [starter.go:70, resilience/policy.go:216-230]。
+包裹顺序（外→内）：**fault 注入 → resilience observe（从 ctx 读取声明的 operation，
+发射 span、调用级与尝试级 duration 直方图、访问日志）→ resilience 策略
+（限流/熔断/重试）→ paho Publish → token 等待**。设计理由（源码注释）：paho 自管队列
+与重连，因此 executor 有意保持极小 —— 只限发布速率、在 broker 不健康时短路。服务标签
+是 `mqtt:<broker-url>` —— 按 broker 而非按 topic [driver.go:121]。
 
 **未被保护的部分**（已核实）：
 
 - 裸 `client.Publish`（直接调 client bean）—— 完全绕过 resilience；`GuardedPublish`
   与 driver 的 `Publish` 都走 executor
-  [command.go:157-173]。
-- `Subscribe` / `Unsubscribe` / 订阅回调 —— 没有对应的 guard。
+  [command.go:134-141]。
+- 裸 `Subscribe` / `Unsubscribe` —— 订阅建立没有 guard。投递只有经回调里的
+  `GuardedConsume` 才受保护与观测；裸回调既无观测也无保护 [command.go:160-162]。
 - driver 订阅 handler：只有 panic 保护（`messaging.Recover` 把 panic 转成 error）
-  [client.go:92]；该 error 之后仅记日志 [client.go:95-97]。
+  [client.go:98]；该 error 之后仅记日志 [client.go:107-111]。除 panic 外，每次投递都经
+  `GuardedConsume` 声明并受保护 [client.go:107-109]。
 
-治理未接线时，注入的 manager 归一化为未武装的 manager、返回透明的 no-op executor，
-`GuardedPublish` 的行为与裸 publish + wait 完全一致 [command.go:125-129, 157-161]。
+manager 是必需的 —— 这个 starter 空导入 starter-governance-file，"关治理"是
+`spring.governance.enabled=false`，而不是 bean 缺失；独立（非 gs）调用者传 nil，
+client 的 executor 退化为仅观测的 `resilience.Unmanaged`（并打一次告警），而不是静默的
+no-op [starter.go:87-88, driver.go:115-123]。
 
 ### 2.3 一次发布与一次消费的逐层走读
 
-**受保护发布** `GuardedPublish(ctx, cl, "sensors/temp", 1, false, payload)`，外层套
-span 助手：
+**受保护发布** `GuardedPublish(ctx, cl, "sensors/temp", 1, false, payload)`：
 
-1. `StartPublishSpan(ctx, topic)` 打开名为 `publish` 的 producer 观测，带
-   `messaging.destination.name = topic` [command.go, observe.go]。
-2. `guard` 从 sync.Map 解析该 client 的 executor [command.go:148-153]。
+1. `observability.WithOperation(ctx, operation(opPublish, topic))` 声明 publish 身份
+   （`messaging.system`、`messaging.operation`，topic 走 Detail）[command.go:135,
+   observe.go:78-99]。
+2. `guard` 从 sync.Map 解析该 client 的 executor [command.go:114-121]。
 3. fault 注入检查（spring.governance.client.fault.* 策略，启用时）。
-4. observe 桥记录受保护调用的结果（span/metric/访问日志）。
+4. resilience observe 打开名为 `publish` 的调用 span，并在调用返回后发射调用级
+   `messaging.client.operation.duration`、尝试级 `messaging.client.attempt.duration`、
+   `resilience.client.calls` 计数器与唯一一条访问日志 —— 全部从声明读取。publish 与 consume
+   声明为 `NonIdempotent`，故针对该 label 的重试策略会被**抑制**（每个 service 告警一次）：
+   重新发布或再跑一遍 handler 是第二个副作用，不是第二次尝试。
 5. resilience 策略：服务 `mqtt:<broker>` 上的限流器 / 熔断器；被拒时返回 sentinel
-   错误且 **paho Publish 根本不会执行** [command.go:160-163]。
+   错误且 **paho Publish 根本不会执行**。
 6. `cl.Publish(topic, qos, retained, payload)` 交给 paho 出站队列；`token.Wait()`
-   阻塞到包写出（QoS 0）或 PUBACK/PUBCOMP 到达（QoS 1/2）[command.go:164-171]。
-7. `EndSpan(sp, err)` 记录结果并结束观测 [command.go:100-103]。
+   阻塞到包写出（QoS 0）或 PUBACK/PUBCOMP 到达（QoS 1/2）[command.go:137-139]。
+
+**受保护消费** `GuardedConsume(ctx, cl, msg, handler)` 是订阅的对应入口：
+它声明 consume 身份（topic 取自 `msg.Topic()`）并把 handler 放进同一个 executor，
+因此一次投递与一次发布以完全相同的方式被观测 [command.go:160-162]。下方的
+messaging.Driver 路径用它作为消费回调的入口。
 
 **driver 消费** —— 在 topic `sensors/temp` 上 `sub.Subscribe(ctx, handler)`：
 
-1. handler 被 `messaging.Recover` 包裹（panic → error）[client.go:92]。
+1. handler 被 `messaging.Recover` 包裹（panic → error）[client.go:98]。
 2. `cl.Subscribe(topic, 1, callback)` + `token.Wait()` —— 错误（非法 topic 过滤器、
-   无 broker）同步返回 [client.go:93-100]。
-3. 每次投递，callback 从 paho 消息构造 `messaging.Message`：**只有 Payload**。
+   无 broker）同步返回 [client.go:99-114]。
+3. 每次投递，callback 从 paho 消息构造 `messaging.Message`——**只有 Payload**；
    topic 在 envelope 之外（它是订阅者的固定 source），QoS/retained 未建模，
    Key/Headers/Timestamp 在线路上不存在 —— MQTT 3.1.1 包没有逐消息元数据
-   [client.go:47-52]。
-4. handler 出错 → 按级别 Error 记日志并附 topic；没有 ack/nack、没有重投
-   （回调 fire-and-forget）[client.go:95-97]。
-5. `sub.Close()` → `Unsubscribe(topic)` + 等待；token 错误会返回（这条路径上唯一
-   不被丢弃的错误）[client.go:103-107]。
+   [client.go:52-57]。
+4. callback 随后把消息交给 `GuardedConsume`，由它声明 consume 身份
+   （topic 取自 `msg.Topic()`）并把 handler 放进该 client 的 resilience executor
+   [client.go:101-111]。
+5. handler 出错 → 按级别 Error 记日志并附 topic；没有 ack/nack、没有重投
+   （回调 fire-and-forget）[client.go:107-111]。
+6. `sub.Close()` → `Unsubscribe(topic)` + 等待；token 错误会返回（这条路径上唯一
+   不被丢弃的错误）[client.go:117-121]。
 
 driver 固定 QoS 1（`defaultQoS`）、发布 `retained=false`；retained 消息、自定义 QoS、
-通配订阅需要裸 `mqtt.Client` bean [client.go:33-45]。
+通配订阅需要裸 `mqtt.Client` bean [client.go:33-37]。
 
 ---
 
@@ -295,7 +314,7 @@ docker start <mosquitto> && go run .   # 正常启动，日志 "mqtt client init
 
 ### 4.2 受保护 vs 未受保护路径
 
-配置 starter-governance 后，为服务 `mqtt:tcp://127.0.0.1:1883` 加限流/熔断策略：
+配置 starter-governance-file 后，为服务 `mqtt:tcp://127.0.0.1:1883` 加限流/熔断策略：
 
 ```yaml
 spring:
@@ -310,34 +329,43 @@ spring:
 浮出。同等流量直接在 client bean 上裸调
 `client.Publish` 则完全不受影响 —— driver 已走同一 guard，退出口是服务级
 （给 `mqtt:<broker>` 配一条全零 rule，或整体关治理），不再是调用点
-[command.go:147-172, client.go]。
+[command.go:134-162, client.go]。
 策略免重启热切换（治理中心）。
 
 ### 4.3 消息往返（含 driver 映射字段存活）
 
 经 driver publisher 发一个设置了 Key/Headers/Timestamp 的 envelope，用 driver
 subscriber 消费：**只有 Payload 存活**；Key/Headers/Timestamp 到达时为零值 —— MQTT
-3.1.1 没有元数据字段 [client.go:47-52, client.go:94]。往返断言 payload 字节相等；
+3.1.1 没有元数据字段 [client.go:52-57, client.go:100]。往返断言 payload 字节相等；
 超出载荷的需求请用裸 client（例如自行把元数据编码进 payload）。
 
 ### 4.4 可观测读取
 
-- 访问日志：tag `_app_mqtt_access`（observe.go 注册 `app.mqtt.access`）。每次 span 助手
-  观测一条记录：`messaging.operation=publish|consume messaging.destination.name=<topic> status=<ok|error> duration_ms=...`，出错时 Warn 并
-  带 `error` 字段。
-- 指标：`messaging.client.operation.duration`（秒）与 `messaging.client.active_requests`，
-  属性 `messaging.system=mqtt`、`messaging.operation`，span 上另有
-  `messaging.destination.name`（topic）[observe.go]。
+starter 只**声明**；由 resilience 层**发射**。以下信号全部由 resilience executor 依据
+声明的 operation 产出 —— 不是 starter 产出的。
+
+- 访问日志：tag `_app_mqtt_access`（observe.go 注册 `app.mqtt.access`，作为
+  `Operation.LogTag` 随声明携带）。每次受保护调用一条记录：`messaging.system=mqtt`、
+  `messaging.operation=publish|consume`、`messaging.destination.name=<topic>`、
+  `status=<ok|error>`、保护拒绝时的 `resilience.outcome=<rate_limited|...>`、`duration_ms=...`；失败打
+  Warn 并带 `error` 字段，带 topic（Detail）的成功打 Debug，无 topic 的成功打 Info。
+- 指标，全部在 `messaging.client.*` 下：调用级 `operation.duration` 直方图、尝试级
+  `attempt.duration` 直方图、`active_requests` 在途 gauge（标签 `messaging.system=mqtt`、
+  `messaging.operation`、`status`），外加 resilience 层自有的 `resilience.client.calls`
+  计数器。topic 永不作为指标标签 —— 它是 Detail，只进 span 与日志。
+- 连接状态计数器：`messaging.client.connection.state_changes`
+  （`messaging.system=mqtt`、`state`），由 paho 的 connect/lost/reconnecting 回调驱动；
+  它留在 starter 内，**不由** resilience 层发射。
 
 ```bash
-curl -s :9370/metrics | grep -E 'messaging_client_operation_duration|messaging_client_active_requests'
+curl -s :9370/metrics | grep -E 'messaging_client_(operation_duration|attempt_duration|active_requests|connection_state_changes)'
 ```
 
-- span：producer span 名为 `publish`，consumer span 名为 `consume`。⚠ 两侧是
+- span：publish 与 consume 各自打开名为 `publish` / `consume` 的 span。⚠ 两侧是
   **彼此独立的 trace** —— W3C trace context 无法随 MQTT 3.1.1 消息传播
-  [command.go:44-47]。没有 starter-otel 的 OTel 全局时，三个信号全部是无声 no-op。
+  [command.go:31-38]。没有 starter-otel 的 OTel 全局时，信号全部是无声 no-op。
 - 生命周期日志（tag `_app_def`）：connected / reconnecting（Info）、connection lost
-  （Warn）[driver.go:73-81]。
+  （Warn）[driver.go:72-86]。
 
 ### 4.5 will / 优雅停机
 
@@ -357,10 +385,10 @@ kill -9 <pid>   # 非正常退出 → broker 代发 will "offline"（按配置 r
 | 启动报 "mqtt: connect failed broker=..." | broker 不可达 / 凭证错误 / TLS 不匹配 | fail-fast 连接是无条件的 [starter.go:64-69]；修连通性或配置。 |
 | 启动卡死（无报错） | `connect-timeout=0` 且地址被黑洞 | 保持有限超时；0 表示关闭超时 [config.go:51]。 |
 | 反复重连 / 客户端被踢 | 多副本重复 `client-id` | 各配不同 id（broker 强制唯一）。 |
-| 熔断/限流不生效 | 直接裸调 `client.Publish` | `GuardedPublish` 与 driver 的 `Publish` 都受保护 [command.go:156-172]；换调用点。 |
-| 无 trace/metric/访问记录 | 未 import starter-otel，或期望 driver 产出 | 助手依赖 OTel 全局；driver 什么都不产 [client.go:47-52]。 |
+| 熔断/限流不生效 | 直接裸调 `client.Publish` | `GuardedPublish` 与 driver 的 `Publish` 都受保护 [command.go:134-162]；换调用点。 |
+| 无 trace/metric/访问记录 | 未 import starter-otel，或期望 driver 产出 | resilience 层依据声明的 operation 发射，并依赖 OTel 全局；driver 什么都不产 [client.go:47-50]。 |
 | broker 重启后订阅者沉默 | 非干净会话丢失订阅 | paho 自动重连在，但重订阅行为取决于 clean-session / broker 会话；用生命周期日志核实 [driver.go:76-81]。 |
-| handler 错误石沉大海 | driver 只记日志不重投 | 在 handler 内部自行重试 [client.go:95-97]。 |
+| handler 错误石沉大海 | driver 只记日志不重投 | 在 handler 内部自行重试 [client.go:107-111]。 |
 | TLS key 似乎没生效 | broker URL 仍是 `tcp://` | `ssl://` 与 `tls.enabled` 搭配使用 [config.go:53-55]。 |
 
 ---
@@ -376,8 +404,8 @@ kill -9 <pid>   # 非正常退出 → broker 代发 will "offline"（按配置 r
 
 设计嫌疑（审计台账；上轮条目均未修复）：
 
-- driver handler 出错仅记日志；`Recover` 注释宣称的 "nack/redelivery" 是 MQTT 3.1.1
-  fire-and-forget 回调给不了的 [client.go:90-97]。
+- driver handler 出错仅记日志；`Recover` 注释现在正是这样写的（早先那句 MQTT 3.1.1
+  fire-and-forget 回调给不了的 "nack/redelivery" 已修正）[client.go:95-98]。
 - 治理按调用点 opt-in（`GuardedPublish`）且 README 未记载。
 - README 配置表漏掉 `driver`。
 - 无 health indicator bean（家族不对称：redis/nats 都有）；`IsConnected()` 是唯一活性

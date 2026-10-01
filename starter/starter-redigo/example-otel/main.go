@@ -38,7 +38,7 @@ import (
 	"time"
 
 	"github.com/gomodule/redigo/redis"
-	"go-spring.org/cloud/discovery"
+	"go-spring.org/cloud"
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
 	_ "go-spring.org/starter-otel"
@@ -58,11 +58,12 @@ func init() {
 // AnotherRedisDriver is a custom implementation of the Driver interface.
 type AnotherRedisDriver struct{}
 
-func (AnotherRedisDriver) CreateClient(ctx context.Context, c StarterRedigo.Config, backend discovery.Discovery) (*StarterRedigo.Pool, error) {
+func (AnotherRedisDriver) CreateClient(ctx context.Context, c StarterRedigo.Config, params cloud.ClientParams) (*StarterRedigo.Pool, error) {
 	log.Infof(context.Background(), log.TagAppDef, "AnotherRedisDriver::CreateClient")
 	// Delegate to the standard one-shot assembly, then the driver could
-	// customize the pool via its public API (e.g. UseCommandInterceptor).
-	return StarterRedigo.NewPool(ctx, c, backend)
+	// customize the pool via its public API (e.g. UseCommandInterceptor). params
+	// carries the container's facilities, applied inside NewPool.
+	return StarterRedigo.NewPool(ctx, c, params)
 }
 
 type Service struct {

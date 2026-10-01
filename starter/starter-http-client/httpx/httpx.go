@@ -55,12 +55,12 @@ import (
 	"net/http"
 
 	"go-spring.org/cloud/discovery"
-	"go-spring.org/cloud/governance/fault"
-	"go-spring.org/cloud/governance/resilience"
-	"go-spring.org/cloud/governance/traffic"
+	"go-spring.org/cloud/fault"
 	"go-spring.org/cloud/loadbalance"
 	"go-spring.org/cloud/propagate"
+	"go-spring.org/cloud/resilience"
 	"go-spring.org/cloud/security"
+	"go-spring.org/cloud/traffic"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 )
 
@@ -162,7 +162,7 @@ type Config struct {
 // rather than on the first request.
 //
 // mgr and inj are the governance beans the caller received from the container
-// (starter-governance provides both); a standalone caller that has neither
+// (the authority packages provide both); a standalone caller that has neither
 // passes nil, which is normalized here to fresh unarmed authorities. A nil
 // [*resilience.Manager] would panic on its first method call, so normalizing at
 // the assembly point keeps every other caller free of nil branches; the
@@ -318,7 +318,7 @@ func NewTransport(cfg Config, mgr *resilience.Manager, inj *fault.Injector, lbMg
 
 // trafficTransport injects the load-test marker header onto each request when
 // the request's context is a load-test context, then delegates to base. It is
-// the outbound seam for [go-spring.org/cloud/governance/traffic] on the HTTP client path.
+// the outbound seam for [go-spring.org/cloud/traffic] on the HTTP client path.
 type trafficTransport struct {
 	base http.RoundTripper
 	prop traffic.Propagator

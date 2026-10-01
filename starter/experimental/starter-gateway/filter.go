@@ -26,7 +26,7 @@ import (
 	"sync"
 	"time"
 
-	"go-spring.org/cloud/governance/resilience"
+	"go-spring.org/cloud/resilience"
 	"go-spring.org/log"
 )
 
@@ -71,24 +71,6 @@ func lookupFilter(name string) (FilterFactory, bool) {
 	defer filterMu.RUnlock()
 	f, ok := filterRegistry[name]
 	return f, ok
-}
-
-func init() {
-	RegisterFilter("stripPrefix", stripPrefixFilter)
-	RegisterFilter("prefixPath", prefixPathFilter)
-	RegisterFilter("addRequestHeader", headerFilter(reqHeader, headerAdd))
-	RegisterFilter("setRequestHeader", headerFilter(reqHeader, headerSet))
-	RegisterFilter("removeRequestHeader", headerFilter(reqHeader, headerRemove))
-	RegisterFilter("addResponseHeader", headerFilter(respHeader, headerAdd))
-	RegisterFilter("setResponseHeader", headerFilter(respHeader, headerSet))
-	RegisterFilter("removeResponseHeader", headerFilter(respHeader, headerRemove))
-	RegisterFilter("rewriteHost", rewriteHostFilter)
-	RegisterFilter("preserveHostHeader", preserveHostFilter)
-	RegisterFilter("requestId", requestIDFilter)
-	// rateLimit is deliberately NOT registered here: it needs a limiter backend,
-	// which lives in the container, so the route table handles it directly (see
-	// RouteTable.buildFilters) rather than through this self-contained factory
-	// registry.
 }
 
 // stripPrefixFilter removes the first n path segments, the way an upstream that

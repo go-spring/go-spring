@@ -1,7 +1,7 @@
 # starter-otel Usage — Reference
 
 Detailed usage reference. Overview: [README.md](README.md). All behavior claims are verified against
-the starter source (`starter.go`, `config.go`, `exporters.go`, `trace/`, `metric/`) and the runnable
+the starter source (`starter.go`, `config.go`, `trace/`, `metric/`) and the runnable
 [example/](example/) (`example/check.sh` — verified passing). **OTel concepts (spans, tracer/meter
 providers, exporters, sampling, [W3C trace context](https://www.w3.org/TR/trace-context/)) are
 OpenTelemetry's own** — see the [OTel Go documentation](https://opentelemetry.io/docs/languages/go/)
@@ -176,18 +176,18 @@ row 3). Configure or disable explicitly in every environment.
 
 ```
 import starter-otel
-  └─ init(): blank-imports register exporters (exporters.go:27-33)
-  └─ gs.Module(nil, setup) registered                     [starter.go:62]
+  └─ init(): Register the built-in exporters + propagator defaults (starter.go:69-78)
+  └─ gs.Module(nil, setup) registered                     [starter.go:88]
 gs.Run()
   ├─ config load + .env (pre-config)
-  ├─ RefreshPrepare → applyModules → setup()              [starter.go:69-93]
+  ├─ RefreshPrepare → applyModules → setup()              [starter.go:113-145]
   │     ├─ bind ${spring.observability} → Config
-  │     ├─ enable=false → log + return (globals stay OTel no-ops)   [starter.go:74-77]
+  │     ├─ enable=false → log + return (globals stay OTel no-ops)   [starter.go:118-121]
   │     ├─ trace.NewResource(service-name)                [trace/provider.go:29-55]
   │     ├─ setupTrace: TracerProvider + propagator → otel.Set*Globals
-  │     │     └─ gs.RegisterStopper("otel-trace", tp.Shutdown)      [starter.go:121]
+  │     │     └─ gs.RegisterStopper("otel-trace", tp.Shutdown)      [starter.go:172]
   │     └─ setupMetrics: MeterProvider → otel.SetMeterProvider
-  │        ├─ runtime metrics (once per process)                     [starter.go:184-189]
+  │        ├─ runtime metrics (once per process)                     [starter.go:204-212]
   │        ├─ prometheus: RegisterStopper("otel-metrics-scrape-server", ...)
   │        └─ Provide(metric.NewEndpoint).Export(As[endpoint.Endpoint])
   ├─ bean construction (gorm client, echo engine, http transports, ...)
@@ -197,7 +197,7 @@ gs.Run()
   └─ on SIGTERM: servers stop → container closes → runStoppers flush  [gs/stopper.go:86-100]
 ```
 
-The ordering is load-bearing, and the source says why (starter.go:56-61):
+The ordering is load-bearing, and the source says why (starter.go:80-87):
 
 > This must be a `gs.Module`, not a plain bean: its body executes during applyModules in the
 > RefreshPrepare phase, i.e. BEFORE any bean is instantiated. Setting the OTel globals here
@@ -207,25 +207,25 @@ The ordering is load-bearing, and the source says why (starter.go:56-61):
 
 Consequence for users: there is nothing to autowire and no init-order pitfall — but also nothing to
 override at runtime. If `enable=false`, the globals remain the SDK's no-op providers, so an
-imported-but-disabled starter has no effect (starter.go:66-68).
+imported-but-disabled starter has no effect (starter.go:112).
 
 ### 2.2 Exporter registry
 
 Both pillars use the same driver-registry idiom (`trace/registry.go`, `metric/registry.go` over the
-shared generic `internal/registry`). Built-ins self-register at init via the blank imports in
-`exporters.go`:
+shared generic `internal/registry`). The starter registers the built-ins from `starter.go`,
+by calling each subpackage's `Register`:
 
 | Pillar | Registry name | Kind | Endpoint default | Notes |
 |--------|--------------|------|------------------|-------|
 | trace | `otlp-grpc` | push (batcher) | `localhost:4317` | default exporter |
 | trace | `otlp-http` | push (batcher) | `localhost:4318` | |
 | trace | `stdout` | push | — | local debugging |
-| trace | `none` | — | — | pillar fully skipped (starter.go:103) |
+| trace | `none` | — | — | pillar fully skipped (starter.go:157) |
 | metrics | `otlp-grpc` | push (PeriodicReader, `interval`) | `localhost:4317` | default exporter |
 | metrics | `otlp-http` | push (PeriodicReader, `interval`) | `localhost:4318` | |
 | metrics | `prometheus` | **pull** | serves `path` on `port` / actuator | `otelprom.New` is itself the Reader; handler renders a dedicated registry (`metric/prometheus/exporter.go`) |
 | metrics | `stdout` | push (PeriodicReader) | — | |
-| metrics | `none` | — | — | pillar skipped (starter.go:134) |
+| metrics | `none` | — | — | pillar skipped (starter.go:185) |
 
 An unknown name fails setup loudly with a self-diagnosing error listing the registered exporters
 (`unknownExporterErr`, trace/registry.go:58-61). Applications add backends via
@@ -303,7 +303,7 @@ key the later source wins.
 go-spring uses the same mechanism for one attribute of its own: every span of a request tagged as
 synthetic load carries `load_test=true`, so a load-test run can be filtered out of production
 dashboards and alerts instead of blending into them. That is a **read** of the `traffic` contract
-(see `cloud/governance/traffic`), not an action on it — deciding what a load-test request should
+(see `cloud/traffic`), not an action on it — deciding what a load-test request should
 *do* stays the application's business.
 
 **Metrics are not covered.** The metric SDK has no per-record hook, so built-in metric labels stay
@@ -321,7 +321,7 @@ All under `spring.observability.*`. 17 keys total (verified against `grep -rhoE 
 
 | Key | Type | Default | Behavior | Misconfiguration consequence |
 |-----|------|---------|----------|------------------------------|
-| `enable` | bool | true | Master switch inside setup; false leaves OTel globals as SDK no-ops (starter.go:74-77). | false + instrumented components → everything runs, nothing is exported, no warning. |
+| `enable` | bool | true | Master switch inside setup; false leaves OTel globals as SDK no-ops (starter.go:118-121). | false + instrumented components → everything runs, nothing is exported, no warning. |
 | `service-name` | string | `${spring.application.name:=go-spring-app}` | `service.name` on the process resource. `OTEL_SERVICE_NAME`, when set, overrides it (trace/provider.go:29-55). The resource also carries OTel's defaults (`telemetry.sdk.*`) and whatever `OTEL_RESOURCE_ATTRIBUTES` declares — the standard way to attach process-level dimensions (env, cluster, tenant) to every span and metric, with no go-spring API of its own. | Unset → silent `go-spring-app`; all defaulted services merge in every backend. |
 | `trace.enable` | bool | true | false (or `exporter=none`) skips the TracerProvider only — the **propagator is still installed** (starter.go setupTrace): context/baggage relay keeps working even with no span export (2026-08 fix; the key used to be ignored entirely when tracing was off). | To drop propagation too, set `trace.propagator=none`. |
 | `trace.exporter` | string | otlp-grpc | Registry lookup (§2.2): otlp-grpc \| otlp-http \| stdout \| none. | Unknown name → setup fails at boot with the registered-names error. |
@@ -329,14 +329,14 @@ All under `spring.observability.*`. 17 keys total (verified against `grep -rhoE 
 | `trace.insecure` | bool | true | Plaintext OTLP (WithInsecure) — the norm for a local/sidecar collector. | true against a TLS collector → export fails at runtime only. false against plaintext → same, other direction. |
 | `trace.sampler-ratio` | float | 1.0 | `ParentBased` mapping: ≥1 AlwaysSample, (0,1) TraceIDRatioBased (trace/provider.go). | **≤0 is rejected at startup** (2026-08): non-positive ratios used to mean NeverSample — ALL spans silently dropped while everything looked healthy. To disable tracing use `trace.exporter=none` / `trace.enable=false` (propagation still works). |
 | `trace.propagator` | string | w3c | Comma list of registered propagators composed in order; built-ins `tracecontext`+`baggage`, `w3c`=both; `none` leaves the process default untouched (trace/provider.go). A company adds its own (e.g. a named-header propagator) via `RegisterPropagator` and names it, e.g. `w3c,luohua`. ⚠ Ignored entirely when trace pillar is off. | Unknown name → setup error listing registered propagators. |
-| `metrics.enable` | bool | true | false (or `exporter=none`) skips the metrics pillar (starter.go:134). | Same silent-nothing-exported posture as trace.enable. |
+| `metrics.enable` | bool | true | false (or `exporter=none`) skips the metrics pillar (starter.go:185). | Same silent-nothing-exported posture as trace.enable. |
 | `metrics.exporter` | string | otlp-grpc | otlp-grpc \| otlp-http \| prometheus \| stdout \| none (§2.2). | Unknown name → setup fails listing valid names. |
 | `metrics.endpoint` | string | "" | otlp only; same SDK-default fallback as trace. Dead key for prometheus/stdout. | Same lazy-failure mode as trace.endpoint, plus the same one-shot startup probe WARN (internal/probe). |
 | `metrics.insecure` | bool | true | otlp only. | Dead key for prometheus/stdout — set with no effect. |
 | `metrics.port` | int | **9090** | prometheus only: >0 starts a **dedicated second HTTP server** bound synchronously at setup (metric/prometheus/exporter.go `serveMetrics`); 0 = scrape handler served solely via the actuator mount. | ⚠ Default 9090 + actuator → `/metrics` on BOTH ports (the endpoint bean is contributed regardless). 0 + no actuator in the process → startup WARN naming the remediation (2026-08, endpoint.IsServing() detection); port in use → boot fails loudly. |
-| `metrics.path` | string | /metrics | prometheus only; used by BOTH the standalone server and the actuator mount (starter.go:169). | Custom path changes both surfaces — point your Prometheus scrape config at it. |
+| `metrics.path` | string | /metrics | prometheus only; used by BOTH the standalone server and the actuator mount (starter.go:220). | Custom path changes both surfaces — point your Prometheus scrape config at it. |
 | `metrics.interval` | duration | 10s | Push cadence for otlp/stdout PeriodicReader (metric/provider.go:101-107). Dead for prometheus/none. | 0/negative keeps the reader's own default (not "as fast as possible"). |
-| `metrics.runtime.enable` | bool | true | Feeds Go runtime metrics (GC, heap, goroutines, GOMAXPROCS) via OTel contrib, started exactly once per process (starter.go:184-189). | Disable loses `go_goroutine_count` etc. — the example smoke asserts on those. |
+| `metrics.runtime.enable` | bool | true | Feeds Go runtime metrics (GC, heap, goroutines, GOMAXPROCS) via OTel contrib, started exactly once per process (starter.go:204-212). | Disable loses `go_goroutine_count` etc. — the example smoke asserts on those. |
 | `metrics.runtime.min-read-mem-stats-interval` | duration | 15s | Caps `runtime.ReadMemStats` (stop-the-world) frequency; 0 = instrumentation default (metric/provider.go:57-62). | Too low → measurable STW overhead at high cardinality of collection. |
 
 ⚠ **Per-exporter dead keys** (no warning at any phase): `endpoint`/`insecure` are dead for
@@ -409,7 +409,7 @@ curl -i :9370/health                                   # probes coexist on the s
 
 Flip to `metrics.port=9090` and restart: `/metrics` now answers on BOTH `:9090` (dedicated server,
 log line `prometheus scrape server listening`) and `:9370` (actuator mount) — the endpoint bean is
-contributed regardless of port (starter.go:164-172). Then remove the starter-actuator import with
+contributed regardless of port (starter.go:215-223). Then remove the starter-actuator import with
 `port=0`: `/metrics` is nowhere — but since 2026-08 this combo WARNs at startup with remediation.
 
 ### 4.4 Log↔trace correlation drill

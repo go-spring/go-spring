@@ -22,7 +22,7 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
-	"go-spring.org/cloud/governance/traffic"
+	"go-spring.org/cloud/traffic"
 	"go-spring.org/stdlib/testing/assert"
 )
 

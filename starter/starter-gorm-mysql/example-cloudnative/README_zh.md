@@ -8,7 +8,7 @@
 - **韧性**:开启 `resilience.enabled` 后,每条查询都通过内置 `"default"` executor;超过 `rate-limit` 的突发被以 `ErrRateLimited` 拒绝。
 - **健康检查**:每实例的 gorm `health.Indicator` 被 `starter-actuator` 在 `:9370` 聚合——`/readyz` 反映连接池状态。
 - **动态配置**:一个 `gs.Dync[string]` 字段绑定到被监视的文件(`file-watch`);编辑它可无重启热更新。
-- **可观测性**:gorm observe 插件 + observe kit 依托 OTel 全局。
+- **可观测性**:gorm observe 插件为每次操作声明身份,resilience 层通过 OTel 全局发射 span、指标与访问日志。
 
 ## 布局
 

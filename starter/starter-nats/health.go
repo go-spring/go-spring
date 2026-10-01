@@ -20,7 +20,6 @@ import (
 	"context"
 	"errors"
 
-	"github.com/nats-io/nats.go"
 	"go-spring.org/cloud/actuator/health"
 )
 
@@ -29,20 +28,30 @@ import (
 // the probe reports.
 var errNotConnected = errors.New("nats connection is not established")
 
-// NewConnHealth builds an indicator for a NATS connection. It is registered once
-// per configured instance and exported as health.Indicator, so an application
-// that also imports starter-actuator gets nats connectivity folded into
-// /readiness with no extra wiring.
-//
-// The probe reads the live state of the auto-reconnecting client rather than the
-// outcome of the initial dial, so a connection that dropped after startup reports
-// unhealthy until it reconnects. It takes the raw *nats.Conn (like the redis
-// indicators take their client).
-func NewConnHealth(name string, nc *nats.Conn) *health.Indicator {
-	return &health.Indicator{Name: "nats:" + name, Probe: func(context.Context) error {
-		if nc == nil || !nc.IsConnected() {
-			return errNotConnected
-		}
-		return nil
+// HealthCheck is the module's single connectivity probe: it reports whether the
+// connection behind c is currently established. It reads the live state of the
+// auto-reconnecting client rather than the outcome of the initial dial, so a
+// connection that dropped after startup reports unhealthy until it reconnects.
+// It goes straight to the bare *nats.Conn on purpose — a readiness check must
+// reflect the backend, not the rate limiter, and must not feed the operation
+// metrics or the breaker's statistics — so it touches the unexported conn field
+// directly rather than any delegating wrapper method. The startup probe in
+// [newConn] and the actuator probe in [NewClientHealth] both delegate here, so
+// there is exactly one implementation.
+func HealthCheck(ctx context.Context, c *Conn) error {
+	if c.conn == nil || !c.conn.IsConnected() {
+		return errNotConnected
+	}
+	return nil
+}
+
+// NewClientHealth builds an indicator for a NATS connection. It is registered
+// once per configured instance and exported as health.Indicator, so an
+// application that also imports starter-actuator gets nats connectivity folded
+// into /readiness with no extra wiring. The probe only calls [HealthCheck], so
+// it shares the module's one connectivity check.
+func NewClientHealth(name string, c *Conn) *health.Indicator {
+	return &health.Indicator{Name: "nats:" + name, Probe: func(ctx context.Context) error {
+		return HealthCheck(ctx, c)
 	}}
 }

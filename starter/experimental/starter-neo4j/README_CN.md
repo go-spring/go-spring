@@ -85,8 +85,12 @@ res, err := neo4j.ExecuteQuery(ctx, s.Neo4j,
 ## 可观测
 
 neo4j-go-driver 使用二进制 Bolt 协议，**没有官方的 OpenTelemetry instrumentation**，
-也没有类似 SQL/MongoDB 驱动的 command-monitor 钩子。因此 starter 没有干净的切面来输出
-client span，与 `starter-gorm-*`、`starter-go-redis`、`starter-mongodb` 不同，
-**starter 内不接入 tracing**。需要 span 的应用应直接在自己的 `ExecuteQuery` / session
-调用外层包裹 OpenTelemetry span。这是受上游驱动能力限制的、已记录的取舍，而非遗漏。
+也没有类似 SQL/MongoDB 驱动的 command-monitor 钩子，因此没有能拦截每个请求的透明切面。
+观测按调用点可选开启，经由 `StarterNeo4j.Query` / `StartSpan` 两个辅助函数——它们只**声明**
+每个操作是什么（`observe.go`）：操作名、`db.system`/`db.operation` 标签，以及作为 `db.statement`
+span/日志细节的 Cypher 文本。信号本身由 resilience 层发射——它是 executor 链条上唯一看得见
+整次调用（含重试）的点——所以除 call 级 `db.client.operation.duration` 直方图外，每次调用还多一条
+attempt 级的 `db.client.attempt.duration` 直方图，另有 `db.client.active_requests` gauge 与
+tag 为 `_app_neo4j_access` 的访问日志。未导入 starter-otel 时全部为空操作。直接调
+`neo4j.ExecuteQuery` / session 调用会绕过它——这是受上游驱动能力限制的、已记录的取舍，而非遗漏。
 

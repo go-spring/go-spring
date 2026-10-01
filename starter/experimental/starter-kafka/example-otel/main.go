@@ -40,7 +40,7 @@ import (
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
 
-	_ "go-spring.org/starter-kafka"
+	StarterKafka "go-spring.org/starter-kafka"
 	_ "go-spring.org/starter-otel"
 )
 
@@ -81,7 +81,7 @@ func main() {
 // publish sends a single record to the topic and waits for the broker ack.
 func (s *Service) publish(ctx context.Context, value string) error {
 	rec := &kgo.Record{Topic: topic, Value: []byte(value)}
-	return s.Client.ProduceSync(ctx, rec).FirstErr()
+	return StarterKafka.GuardedProduceSync(ctx, s.Client, rec).FirstErr()
 }
 
 // consume polls one batch of fetches and returns the first record's value.
@@ -92,9 +92,12 @@ func (s *Service) consume(ctx context.Context) (string, error) {
 	}
 	var body string
 	fetches.EachRecord(func(r *kgo.Record) {
-		if body == "" {
-			body = string(r.Value)
-		}
+		_ = StarterKafka.GuardedConsume(ctx, s.Client, r, func(context.Context) error {
+			if body == "" {
+				body = string(r.Value)
+			}
+			return nil
+		})
 	})
 	return body, nil
 }

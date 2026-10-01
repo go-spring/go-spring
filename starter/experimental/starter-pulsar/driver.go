@@ -29,6 +29,7 @@ import (
 	"github.com/apache/pulsar-client-go/pulsar"
 	plog "github.com/apache/pulsar-client-go/pulsar/log"
 	"github.com/prometheus/client_golang/prometheus"
+	"go-spring.org/cloud"
 	"go-spring.org/log"
 	"go-spring.org/stdlib/errutil"
 )
@@ -41,11 +42,25 @@ import (
 // configuration/beans it needs — e.g. company config bound from a properties
 // file at wiring time.
 //
+// CreateClient returns the client COMPLETE: the reachable broker probe is the
+// starter's boot-time concern, but the resilience executor is applied while the
+// client is built — see [AttachGovernance], which the driver calls before returning —
+// and nothing patches the client afterwards. A custom driver therefore attaches
+// the governance executor itself ([AttachGovernance] is exported to the package, so a
+// custom driver in this package may call it) rather than leaving a half-built
+// client for the starter to complete.
+//
+// params supplies the container's service-governance capabilities (see
+// [cloud.ClientParams]); it is one struct rather than a parameter per
+// capability so this interface — which every company driver implements — stays
+// stable as capabilities are added. A driver that has no use for one of its
+// fields simply ignores it.
+//
 // At most one Driver bean is expected per process; every client under
 // ${spring.pulsar} is built through it, and per-instance differences are
 // expressed through [Config].
 type Driver interface {
-	CreateClient(ctx context.Context, c Config) (pulsar.Client, error)
+	CreateClient(ctx context.Context, c Config, params cloud.ClientParams) (pulsar.Client, error)
 }
 
 // DefaultDriver is the default implementation of the Driver interface.
@@ -54,10 +69,11 @@ type DefaultDriver struct{}
 // CreateClient creates a new pulsar.Client from the provided configuration. It
 // owns full client assembly — ClientOptions, authentication (mTLS / token), TLS,
 // the native Prometheus metrics registry and its /metrics server, the log
-// bridge, and the pulsar.NewClient call — but not the startup broker probe
-// (FailFast) or the resilience wiring, which are the starter's lifecycle
-// concerns (see newClient in starter.go).
-func (DefaultDriver) CreateClient(ctx context.Context, c Config) (pulsar.Client, error) {
+// bridge, the pulsar.NewClient call, and the governance executor (applied here,
+// via [AttachGovernance], so the client is complete when returned) — but not the
+// startup broker probe (FailFast), which is the starter's lifecycle concern (see
+// newClient in starter.go).
+func (DefaultDriver) CreateClient(ctx context.Context, c Config, params cloud.ClientParams) (pulsar.Client, error) {
 	opts := pulsar.ClientOptions{
 		URL:                        c.URL,
 		OperationTimeout:           c.OperationTimeout,
@@ -102,6 +118,11 @@ func (DefaultDriver) CreateClient(ctx context.Context, c Config) (pulsar.Client,
 	if srv != nil {
 		metricsServers.Store(cl, srv)
 	}
+	// The client is complete the moment it is returned: fix its identity (the
+	// service label) and attach the governance executor here, so nothing patches
+	// it afterwards. A zero governance bundle degrades the executor to an
+	// observed-only, loudly-unmanaged one rather than leaving the client bare.
+	AttachGovernance(cl, c.URL, params)
 	return cl, nil
 }
 

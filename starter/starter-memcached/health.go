@@ -22,15 +22,29 @@ package StarterMemcached
 import (
 	"context"
 
-	"github.com/bradfitz/gomemcache/memcache"
 	"go-spring.org/cloud/actuator/health"
 )
 
-// NewClientHealth builds an indicator for a memcached client. gomemcache's
-// Ping carries no context, so the probe cannot honor a deadline; the client's
-// own dial/read timeouts bound it.
-func NewClientHealth(name string, client *memcache.Client) *health.Indicator {
+// HealthCheck probes a memcached client with the cheapest read-only round trip:
+// a PING to every server in the pool. It is the module's single health
+// implementation — the Actuator probe ([NewClientHealth]) and the startup
+// probe in the constructor both delegate to it.
+//
+// It goes straight to the raw client on purpose: a connectivity check must
+// reflect the backend, not the rate limiter, and must not feed the operation
+// metrics or the breaker's statistics. gomemcache's Ping carries no context, so
+// ctx cannot bound the probe; the client's own dial/read timeouts do.
+func HealthCheck(ctx context.Context, c *Client) error {
+	return c.client.Ping()
+}
+
+// NewClientHealth builds an indicator for a memcached client. It is registered
+// once per configured instance and exported as health.Indicator, so an
+// application that also imports starter-actuator gets memcached readiness
+// folded into /readiness with no extra wiring. The probe delegates to
+// [HealthCheck], the module's single health implementation.
+func NewClientHealth(name string, c *Client) *health.Indicator {
 	return &health.Indicator{Name: "memcache:" + name, Probe: func(ctx context.Context) error {
-		return client.Ping()
+		return HealthCheck(ctx, c)
 	}}
 }

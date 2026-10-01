@@ -18,7 +18,6 @@ package StarterTdengine
 
 import (
 	"context"
-	"database/sql"
 
 	"go-spring.org/cloud/actuator/health"
 )
@@ -28,10 +27,11 @@ import (
 // application that also imports starter-actuator gets TDengine readiness
 // folded into /readiness with no extra wiring.
 //
-// The probe pings the pool, which draws a websocket connection and exercises
-// the server's action chain.
-func NewClientHealth(name string, db *sql.DB) *health.Indicator {
+// The probe delegates to [HealthCheck], the single liveness implementation:
+// there is one place a readiness check is defined, so the indicator and an
+// ad-hoc caller can never drift apart.
+func NewClientHealth(name string, c *Client) *health.Indicator {
 	return &health.Indicator{Name: "tdengine:" + name, Probe: func(ctx context.Context) error {
-		return db.PingContext(ctx)
+		return HealthCheck(ctx, c)
 	}}
 }

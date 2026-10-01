@@ -5,7 +5,6 @@ go 1.26.1
 require (
 	github.com/elastic/elastic-transport-go/v8 v8.9.0
 	github.com/elastic/go-elasticsearch/v8 v8.19.6
-	go-spring.org/starter-governance v0.0.0
 	go-spring.org/log v0.1.4
 	go-spring.org/spring v1.3.4
 	go-spring.org/stdlib v0.1.7
@@ -41,4 +40,3 @@ require (
 require go-spring.org/cloud v0.0.0
 
 replace go-spring.org/cloud => ../../../cloud
-replace go-spring.org/starter-governance => ../../starter-governance

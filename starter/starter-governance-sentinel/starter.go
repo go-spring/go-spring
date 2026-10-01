@@ -16,7 +16,7 @@
 
 // Package StarterGovernanceSentinel contributes sentinel-golang as the recommended
 // resilience backend for the framework defined in
-// [go-spring.org/cloud/governance/resilience].
+// [go-spring.org/cloud/resilience].
 //
 // Contribution is a blank import:
 //
@@ -37,7 +37,7 @@ import (
 
 	sentinel "github.com/alibaba/sentinel-golang/api"
 
-	"go-spring.org/cloud/governance/resilience"
+	"go-spring.org/cloud/resilience"
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
 )
@@ -52,7 +52,7 @@ func init() {
 		panic("starter-governance-sentinel: sentinel init failed: " + err.Error())
 	}
 	// Contribute the backend as a named bean: the container is the driver
-	// directory, and starter-governance's wiring bean collects every bean
+	// directory, and the wiring bean collects every bean
 	// exported as resilience.Driver into a name-keyed map. The Export is
 	// load-bearing — gs indexes beans by their exact type, so without it the
 	// concrete *sentinelDriver would be invisible to that map.

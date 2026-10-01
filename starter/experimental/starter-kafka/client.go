@@ -19,7 +19,8 @@
 // publish/consume messaging.Message envelopes, plus its publisher/subscriber
 // lifecycle (Subscribe/Close). The raw *kgo.Client bean itself stays available
 // for transactions, admin and other Kafka-specific features the driver does not
-// model. The per-message observe + resilience layers live in command.go.
+// model. The produce/consume resilience layer and the operation declarations
+// live in command.go.
 package StarterKafka
 
 import (
@@ -27,9 +28,9 @@ import (
 	"sync"
 
 	"github.com/twmb/franz-go/pkg/kgo"
-	"go-spring.org/cloud/governance/traffic"
 	"go-spring.org/cloud/messaging"
 	"go-spring.org/cloud/propagate"
+	"go-spring.org/cloud/traffic"
 	"go-spring.org/log"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/propagation"
@@ -40,6 +41,13 @@ import (
 // envelopes without depending on the kgo API. The raw *kgo.Client bean stays
 // available for transactions, admin and other Kafka-specific features this
 // driver does not model.
+//
+// An application that drives the raw client for business traffic must enter
+// through [GuardedProduceSync] and [GuardedConsume]: the client's own
+// ProduceSync and PollFetches are neither governed (no limiter, breaker, retry
+// or timeout) nor reported (no messaging.* metrics, no access log) — franz-go's
+// hooks can observe a record but cannot wrap a call, so there is no other place
+// to attach either.
 //
 // Two Kafka realities shape the mapping:
 //   - Publish is fully general: destination is the target topic and the message
@@ -113,7 +121,10 @@ func (p *publisher) Close() error { return nil }
 
 // subscriber delivers records from the client's configured topics to a handler,
 // filtered to a single topic. It runs one background poll loop that stops when
-// Close cancels its context.
+// Close cancels its context. Each delivery is declared (see [operation]) and run
+// under the client's resilience executor, which emits its span, metrics and
+// access log; with governance off the executor is a pass-through and the
+// handler runs inline.
 type subscriber struct {
 	cl     *kgo.Client
 	topic  string
@@ -149,7 +160,13 @@ func (s *subscriber) Subscribe(ctx context.Context, handler messaging.Handler) e
 				msgCtx := otel.GetTextMapPropagator().Extract(loopCtx, recordCarrier{rec})
 				// Extract the load-test marker the producer put in a record header.
 				msgCtx = s.prop.Extract(msgCtx, recordCarrier{rec})
-				if err := handler(msgCtx, fromRecord(rec)); err != nil {
+				// Declare the consume's identity and run the handler under the
+				// client's executor: it emits the span, metrics and access log.
+				// This is the same entry point an application owning its own poll
+				// loop calls ([GuardedConsume]), so the two paths cannot drift.
+				if err := GuardedConsume(msgCtx, s.cl, rec, func(attemptCtx context.Context) error {
+					return handler(attemptCtx, fromRecord(rec))
+				}); err != nil {
 					log.Errorf(msgCtx, log.TagAppDef, "kafka driver handler error on %q: %v", rec.Topic, err)
 				}
 			})

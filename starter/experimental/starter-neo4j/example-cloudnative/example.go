@@ -47,12 +47,12 @@ import (
 
 	"github.com/neo4j/neo4j-go-driver/v5/neo4j"
 	"go-spring.org/cloud/discovery"
-	"go-spring.org/cloud/governance/resilience"
+	"go-spring.org/cloud/resilience"
 	"go-spring.org/spring/gs"
 
 	_ "go-spring.org/starter-actuator"    // aggregates the neo4j health.Indicator
 	_ "go-spring.org/starter-config-file" // registers the file-watch config provider
-	_ "go-spring.org/starter-governance"
+	_ "go-spring.org/starter-governance-file"
 	StarterNeo4j "go-spring.org/starter-neo4j"
 )
 

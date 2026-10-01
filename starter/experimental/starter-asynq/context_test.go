@@ -21,9 +21,9 @@ import (
 	"testing"
 
 	"github.com/hibiken/asynq"
-	"go-spring.org/cloud/governance/fault"
-	"go-spring.org/cloud/governance/resilience"
+	"go-spring.org/cloud/fault"
 	"go-spring.org/cloud/observability"
+	"go-spring.org/cloud/resilience"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/testing/assert"
 	"go.opentelemetry.io/otel"
@@ -62,10 +62,11 @@ func attrsOf(s sdktrace.ReadOnlySpan) map[string]string {
 }
 
 // TestEnqueueSpanCarriesContextAttributes locks the "reachable without holding
-// the span" shape documented in cloud/observability/README.md: Enqueue starts
-// the producer span inside the call, so annotating the ctx is the only way in
-// for a caller. The enqueue itself is pointed at a closed port — the span is
-// what is under test, and it is opened and closed either way.
+// the span" shape documented in cloud/observability/README.md: Enqueue declares
+// the operation's identity on the ctx, and the resilience layer — the executor
+// underneath — opens the span from that same ctx, so annotating the ctx is the
+// only way in for a caller. The enqueue itself is pointed at a closed port — the
+// span is what is under test, and it is opened and closed either way.
 func TestEnqueueSpanCarriesContextAttributes(t *testing.T) {
 	sr := tracetest.NewSpanRecorder()
 	tp := sdktrace.NewTracerProvider(
@@ -84,7 +85,6 @@ func TestEnqueueSpanCarriesContextAttributes(t *testing.T) {
 		resilience.NewManager(), fault.NewInjector(fault.Configs{}, nil))
 	assert.Error(t, err).Nil()
 	defer func() { _ = c.Client.Close() }()
-	assert.Error(t, c.Init()).Nil()
 
 	ctx := observability.WithContextAttributes(context.Background(),
 		attribute.String("tenant", "acme"))

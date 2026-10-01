@@ -36,8 +36,9 @@ spring.nats.instances.work.url=nats://127.0.0.1:4222
 ### 3. 注入 NATS 连接
 
 参见 [example.go](example/example.go) 文件。每个具名实例都会以该名称注册为一个
-`*Conn` bean；注入的 bean 内嵌 `*nats.Conn`，因此可以直接在其上调用
-`Publish`/`Subscribe`/`Request`；当该实例启用 JetStream 时，`Conn.JetStream` 非空。
+`*Conn` bean；注入的 bean 以委托形式重新导出原生连接的方法
+（`Publish`/`Subscribe`/`Request` 等），因此可以直接在其上调用；
+当该实例启用 JetStream 时，`Conn.JetStream` 非空。
 
 ```go
 import StarterNats "go-spring.org/starter-nats"
@@ -61,7 +62,7 @@ reply, _ := s.Conn.Request("demo.rpc", []byte("ping"), time.Second)
 
 [example](example/example.go) 针对真实服务自断言了四项功能：核心发布/订阅、请求-应答、
 队列组（每条消息只投递给一个成员）、以及 JetStream（向 stream 发布后再拉回消息）。运行前
-还会检查 `Conn.Healthy()` 报告连接处于可用状态。
+还会检查 `HealthCheck(ctx, conn)` 报告连接处于可用状态。
 
 连接层事件（异步错误、断连、重连、关闭）会被桥接进 go-spring 日志。
 
@@ -73,7 +74,7 @@ reply, _ := s.Conn.Request("demo.rpc", []byte("ping"), time.Second)
 
 driver 会按已配置实例自动注册为 bean，与连接共用实例名，因此可像其他 client bean
 一样按名注入（`Driver messaging.Driver \`autowire:"main"\``）。bean 以名字与类型
-双键区分，所以它和原生 `*Conn` bean 互不冲突。若想手工构造，调用
+双键区分，所以它和 `*Conn` bean 互不冲突。若想手工构造，调用
 `StarterNats.NewDriver(conn, prop)` 即可，`prop` 为进程的 `traffic.Propagator`
 （传 nil 则回退到 `traffic.NewDefaultPropagator(traffic.DefaultBinding())`）。
 
@@ -102,8 +103,8 @@ bean 仍可用于 JetStream、请求-应答等 driver 未建模的 NATS 能力�
   即可在该实例的 `Conn.JetStream` 上暴露 JetStream 上下文，它派生自同一条连接。
 * **多连接**：`spring.nats` 下的每一项都会成为一个独立配置的 `*Conn` bean，
   按名称注入即可访问不同的集群或 JetStream 域。
-* **健康检查**：`Conn.Healthy()` 反映自动重连客户端的实时状态，健康/就绪探针可随时查询，
-  无需只依赖连接事件日志。每个实例还会基于它注册一个 `health.Indicator`（`nats:<name>`），
+* **健康检查**：`HealthCheck(ctx, conn)` 反映自动重连客户端的实时状态，健康/就绪探针可随时查询，
+  无需只依赖连接事件日志。每个实例还会注册一个 `health.Indicator`（`nats:<name>`），其探针只调用该函数，
   由 starter-actuator 并入 `/readiness`。
 * **鉴权**：除用户名/密码与 token 外，还支持 NATS 2.x 去中心化鉴权——凭据文件
   （`creds-file`）或 nkey seed 文件（`nkey-file`）。
@@ -112,37 +113,45 @@ bean 仍可用于 JetStream、请求-应答等 driver 未建模的 NATS 能力�
 
 ## 可观测性
 
-收发两个方向都直接在连接上埋点——span、耗时/在途 metric、access log——并依赖
-[starter-otel](../starter-otel) 安装的全局 `TracerProvider` 与传播器。未引入
-starter-otel 时它们为 no-op，因此埋点是安全的零配置可选项。
+收发两个方向都只**声明**本次操作的语义——publish/consume 身份（`messaging.system`、
+`messaging.operation`）与 subject——由治理层的 resilience executor（执行器链上唯一的发射点）
+据声明发射信号：调用 span、调用级 `messaging.client.operation.duration` histogram、
+尝试级 `messaging.client.attempt.duration` histogram、在途 gauge、`resilience.client.calls`
+counter，以及每次调用一条 access log。它们依赖 [starter-otel](../starter-otel) 安装的全局
+`TracerProvider`：未引入 starter-otel 时 span 与 metric 为 no-op，access log 则始终经
+go-spring 日志写出。
+
+连接状态计数器（`messaging.client.connection.state_changes`）由 NATS 客户端自身的
+断连/重连/关闭回调驱动，它留在 starter 内：这不是按调用的信号，因而不归发射点产生。
 
 ```go
 import "github.com/nats-io/nats.go"
 
-// 生产者：带 ctx 的入口把 producer span 挂到你的 trace 下，
+// 生产者：带 ctx 的入口把调用 span 挂到你的 trace 下，
 // 并把链路上下文注入消息 header。
 msg := &nats.Msg{Subject: "demo.pubsub", Data: []byte("hello")}
 err := conn.PublishMsgContext(ctx, msg)
 
 // 消费者：handler 收到的 ctx 携带生产者的链路上下文，
-// 因此 consumer span 能跨 broker 延续它。
+// 因此 consume span 能跨 broker 延续它。
 sub, err := conn.Consume(ctx, "demo.pubsub", "", func(ctx context.Context, msg *nats.Msg) error {
     return handle(ctx, msg)
 })
 ```
 
-* `PublishMsg(msg)` 是无 ctx 的孪生入口，保留它是为了继续遮蔽内嵌的
-  `*nats.Conn.PublishMsg`。`nats.go` 未给它 ctx 参数，因此其 producer span 是新根；
+* `PublishMsg(msg)` 是无 ctx 的孪生入口，保留它是为了覆写原生的
+  `*nats.Conn.PublishMsg`。`nats.go` 未给它 ctx 参数，因此其 span 是新根；
   调用方有 trace 时请用 `PublishMsgContext`。
 * `Consume(ctx, subject, queue, handler)` 接收带 ctx 的 handler 与可选 queue group——
-  queue 为空即普通广播订阅。它的 ctx 只约束订阅建立；consumer span 的父节点来自消息 header。
-* [messaging.Driver](#messaging-driver) 直接调用裸 `*nats.Conn`，只额外做信封转换；
-  其插桩来自 broker 中立的 `messaging.Observe` 装饰器，两条路径不会重复计数。
-* `Conn.Healthy()` 反映自动重连客户端的实时状态，且 starter 会按实例注册
+  queue 为空即普通广播订阅。它的 ctx 只约束订阅建立；consume span 的父节点来自消息 header。
+* [messaging.Driver](#messaging-driver) 只额外做信封转换：发布走 `PublishMsgContext`、
+  订阅走 `Consume`，因此 driver 路径在同一缝上声明操作、由 resilience 层发射——
+  没有第二个发射点，两条路径不会重复计数。
+* `HealthCheck(ctx, conn)` 反映自动重连客户端的实时状态，且 starter 会按实例注册
   `health.Indicator`（`nats:<name>`），因此同时引入 starter-actuator 的应用可把
   NATS 连通性并入 `/readiness`。若某实例的连通性不应计入就绪，设 `health.enabled=false`。
 
-未埋点：JetStream 操作与内嵌连接上的裸 `Subscribe`/`Publish`。需要可追踪的
+未埋点：JetStream 操作与裸 `Subscribe`/`Publish` 委托。需要可追踪的
 pub/sub 请用 `PublishMsgContext`/`Consume`，需要可追踪的消息信封请用 driver。
 
 ## 配置项

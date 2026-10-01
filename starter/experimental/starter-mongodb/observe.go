@@ -15,10 +15,24 @@
  */
 
 // observe.go is this starter's own mongodb instrumentation: a per-operation
-// client span, the db.client.* duration/in-flight metrics, and an access
-// log riding the log package's native levels. It is deliberately local —
-// no shared observer framework — so the emitted vocabulary is all this
-// package's own.
+// span, the db.client.* duration/in-flight metrics, and an access log riding
+// the log package's native levels. It emits the same shape and vocabulary as
+// the framework's unified emitter (cloud/resilience/observe.go) —
+// bounded labels db.system + db.operation, unbounded detail (db.statement)
+// reaching only the span and the log, an internal span named after the
+// command, and the status/duration_ms access-log fields — but it emits
+// LOCALLY, and it must.
+//
+// This is the one client starter that does not declare an
+// observability.Operation for the resilience executor to apply: MongoDB's
+// per-command observation has nowhere else to live. The mongo driver v2
+// exposes no per-command execute hook (only SetDialer, SetMonitor and the
+// server/pool monitors), so the resilience executor is reachable only at DIAL
+// time — and connection pooling makes dials rare, which would make per-command
+// signals vanish. Observation therefore rides the driver's CommandMonitor (a
+// pure observer that cannot return an error), while protection rides the dial
+// seam (resilience.NewDialer, see client.go). See the package docs on
+// [dbObserver] for the status vocabulary this forces.
 package StarterMongoDB
 
 import (
@@ -53,14 +67,14 @@ const maxArg = 512
 // accessTag is the static log tag for the mongodb access log.
 var accessTag = log.RegisterAppTag("mongodb", "access")
 
-// tracer opens this starter's client spans through the OTel global
-// TracerProvider that starter-otel installs (a no-op when absent).
-
-// dbObserver emits the mongodb client signals for one instance: the
+// dbObserver emits the mongodb signals for one instance: the
 // db.client.operation.duration histogram, the db.client.active_requests
-// gauge, a client span per operation, and the access log. Its records go
-// through the process-wide instrument set (see [instruments]); only the
-// db.system label is per instance.
+// gauge, an operation span, and the access log. Its records go through the
+// process-wide instrument set (see [instruments]); only the db.system label is
+// per instance. The emitted vocabulary mirrors the framework's unified emitter
+// so a mongodb call reads the same as any other client call in a dashboard; see
+// the file header for why the emission itself stays here rather than moving to
+// the resilience executor.
 type dbObserver struct {
 	system string
 }
@@ -103,11 +117,15 @@ func newDBObserver() *dbObserver {
 	return &dbObserver{system: mongodbSystem}
 }
 
-// Start begins one operation: it bumps the in-flight gauge, opens the client
-// span, and records the start time; the returned span's End records the
-// duration histogram, balances the gauge, ends the span, and emits the access
-// log. op names the operation (span name, db.operation); arg is the optional
-// operation argument (statement, URL path), bounded by maxArg.
+// Start begins one operation: it bumps the in-flight gauge, opens the
+// operation span, and records the start time; the returned span's End records
+// the duration histogram, balances the gauge, ends the span, and emits the
+// access log. op names the operation (span name, db.operation); arg is the
+// optional operation argument (statement, URL path), bounded by maxArg.
+//
+// The span is SpanKindInternal — the framework-wide shape for a client call,
+// matching the unified emitter — because from this process's point of view the
+// call is an internal client operation, not a server-side handler.
 func (o *dbObserver) Start(ctx context.Context, op, arg string) (context.Context, *dbSpan) {
 	inflight := metric.WithAttributes(
 		attribute.String("db.system", o.system),
@@ -122,7 +140,7 @@ func (o *dbObserver) Start(ctx context.Context, op, arg string) (context.Context
 		attrs = append(attrs, attribute.String("db.statement", strutil.Truncate(arg, maxArg)))
 	}
 	ctx, span := otel.Tracer(tracerName).Start(ctx, op,
-		trace.WithSpanKind(trace.SpanKindClient),
+		trace.WithSpanKind(trace.SpanKindInternal),
 		trace.WithAttributes(attrs...))
 	return ctx, &dbSpan{o: o, ctx: ctx, span: span, op: op, arg: arg, start: time.Now(), inflight: inflight}
 }
@@ -141,8 +159,15 @@ type dbSpan struct {
 
 // End records the operation's outcome: the duration histogram, the in-flight
 // gauge balance, the span (with err, if any), and the access log — an error
-// at Warn, a success carrying an operation argument at Debug, a plain
-// success at Info.
+// at Warn, a success carrying an operation argument at Debug (built lazily),
+// a plain success at Info — the same level rule the unified emitter applies.
+//
+// Status vocabulary: `ok` / `error`, the axis every family uses. The unified
+// emitter additionally carries `resilience.outcome` when protection rejected a
+// call, which it can see because its executor is where the rejection happens. A
+// CommandMonitor sees only the driver's own error — it runs after the driver
+// decided the outcome — so it has no outcome to report and correctly reports
+// none, rather than an empty label.
 func (s *dbSpan) End(err error) {
 	o := s.o
 	dur := time.Since(s.start)
@@ -166,14 +191,13 @@ func (s *dbSpan) End(err error) {
 
 	common := func() []log.Field {
 		fields := []log.Field{
+			log.String("db.system", o.system),
 			log.String("db.operation", s.op),
-			log.String("status", status),
-			log.Float("duration_ms", float64(dur.Nanoseconds())/1e6),
 		}
 		if s.arg != "" {
 			fields = append(fields, log.String("db.statement", strutil.Truncate(s.arg, maxArg)))
 		}
-		return fields
+		return append(fields, log.String("status", status), log.Float("duration_ms", float64(dur.Nanoseconds())/1e6))
 	}
 	switch {
 	case err != nil:

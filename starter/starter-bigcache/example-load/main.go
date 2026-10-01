@@ -34,7 +34,7 @@ import (
 	"go-spring.org/spring/gs"
 
 	StarterBigCache "go-spring.org/starter-bigcache"
-	_ "go-spring.org/starter-governance" // registers the centralized governance center
+	_ "go-spring.org/starter-governance-file" // registers the centralized governance center
 )
 
 // Service is the root bean holding the autowired client instance "load".

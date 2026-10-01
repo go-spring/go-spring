@@ -34,10 +34,10 @@ spring.memcached.instances.main.servers=127.0.0.1:11211
 参见 [example.go](example/example.go) 文件。
 
 ```go
-import "github.com/bradfitz/gomemcache/memcache"
+import StarterMemcached "go-spring.org/starter-memcached"
 
 type Service struct {
-    Memcached *memcache.Client `autowire:""`
+    Memcached *StarterMemcached.Client `autowire:""`
 }
 ```
 
@@ -64,13 +64,13 @@ item, err := s.Memcached.Get(ctx, "key")
 * **支持 Memcached 扩展**：可以通过实现 `Driver` 接口来扩展 Memcached 功能，参见示例中的 `AnotherMemcachedDriver` 实现。
   当容器中存在多个 Driver bean 时，实例可按名指定：`spring.memcached.instances.<name>.driver = <bean 名>`（留空 = 按类型注入唯一
   Driver bean；指定的 bean 不存在则启动失败）。
-* **启动期连接校验（fail-fast）**：创建客户端后会对每个配置的 server 执行一次 `Ping`，服务不可达时启动即失败，而非等到首次请求。
+* **启动期连接校验（fail-fast）**：创建客户端后会对每个配置的 server 执行一次 `HealthCheck`（即 `Ping` 循环），服务不可达时启动即失败，而非等到首次请求。
 * **服务发现**：配置 `service-name`（并用 `discovery` 指定已注册后端，无默认后端）替代 `servers`；starter 在启动时通过注册的
   `discovery.Discovery` 后端解析一次 server 列表并据此做 key 分片。由于 gomemcache 在创建客户端时就把 key 哈希到固定的 server
   集合上，这里的解析是**启动时一次性**的（解析失败或为空则 fail-fast），而非实时 watch —— 集群成员变化需重启才能生效。若集群拓扑动态扩缩，建议在 `servers` 中配置
   serverless/代理类端点（单一稳定地址），把成员管理交给代理层。后端示例参见
   [discovery.go](example/discovery.go)。
-* **健康检查 / readiness**：客户端的 `Ping()` 会探测所有 server，可直接在注入的客户端上调用做健康探测。
+* **健康检查 / readiness**：`HealthCheck` 会探测所有 server，可直接在注入的客户端上调用做健康探测（自动装配的 `health.Indicator` 即委托于它）。
 * **连接池 / 超时**：`timeout` 与 `max-idle-conns` 对应客户端每 server 的 socket 超时和空闲连接池，为 0 时回退到驱动默认值（100ms / 2）。
 * **认证**：`bradfitz/gomemcache` 驱动未实现 SASL，因此不暴露认证字段，请在网络层（VPC/安全组）限制访问。
 * **共享缓存后端**：`AsCache(client, codec)` 将客户端适配为 `cloud/cache.Cache`,作为多级缓存的共享(远端)层。
@@ -78,6 +78,8 @@ item, err := s.Memcached.Get(ctx, "key")
 
 ## 可观测
 
-`bradfitz/gomemcache` 没有官方的 OpenTelemetry 埋点。本 starter 因此自带模块内观测层：每个操作经过 client span
-（`db.system`/`db.operation`/`db.statement` 属性）、`db.client.operation.duration` 直方图，以及 tag 为
-`_app_memcached_access` 的访问日志。未导入 starter-otel 时三者均为空操作。
+`bradfitz/gomemcache` 没有官方的 OpenTelemetry 埋点。本 starter 因此只声明每个操作是什么（`observe.go`）：
+命令名、`db.system`/`db.operation` 标签，以及作为 `db.statement` span/日志细节的 key。信号本身由 resilience
+层发射——它是 executor 链条上唯一看得见整次调用（含重试）的点——所以除 call 级 `db.client.operation.duration`
+直方图外，每次调用还多一条 attempt 级的 `db.client.attempt.duration` 直方图，以及 tag 为
+`_app_memcached_access` 的访问日志。未导入 starter-otel 时全部为空操作。

@@ -14,12 +14,20 @@
  * limitations under the License.
  */
 
-// command.go is the "command seam" concept of this starter: the observe layer
-// (module-local publish/consume observers, see observe.go) and the resilience
-// guard (executor-backed GuardedPublish) that wrap the raw mqtt.Client's
-// operations. paho.mqtt.golang ships no hook/plugin extension point, so instead
-// of a transparent client wrapper the seam is opt-in helpers the caller wraps
-// around Publish and inside the Subscribe callback.
+// command.go is the "command seam" concept of this starter: the per-operation
+// declaration and protection that wraps publishes and consumes. Two concerns
+// live here:
+//
+//	declare    — GuardedPublish / GuardedConsume declare the operation's
+//	             identity (see [operation]) on the ctx before running under the
+//	             executor.
+//	resilience — AttachGovernance installs the executor the driver obtained from its
+//	             governance bundle, and guard drives it through the opt-in call
+//	             sites, since paho.mqtt.golang exposes no reject-capable
+//	             middleware. The executor is also the single emitter: it reads
+//	             the declared operation off the ctx and opens the span, records
+//	             the durations (call-level and attempt-level) and writes the one
+//	             access log.
 package StarterMQTT
 
 import (
@@ -27,118 +35,61 @@ import (
 	"sync"
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
-	"go-spring.org/cloud/governance/fault"
-	"go-spring.org/cloud/governance/resilience"
-	"go.opentelemetry.io/otel/trace"
-
-	// Blank import: importing this starter brings the governance authority with
-	// it — starter-governance registers the *resilience.Manager, *loadbalance.
-	// Manager, *fault.Injector and *governance.Center beans this package injects.
-	// Turning governance OFF is spring.governance.enabled=false (or binding no rule source),
-	// not the absence of the starter. The injected parameters stay nullable, so a
-	// container that somehow lacks these beans degrades to a transparent
-	// pass-through instead of failing to boot.
-	_ "go-spring.org/starter-governance"
+	"go-spring.org/cloud"
+	"go-spring.org/cloud/observability"
+	"go-spring.org/cloud/resilience"
 )
 
-// MQTT observability is driven by these kit-backed helpers rather than a
+// MQTT protection is driven by these opt-in call-site helpers rather than a
 // transparent client wrapper, for two reasons:
 //
-//  1. paho.mqtt.golang (v1) ships no OTel instrumentation, and Publish returns
-//     an async Token whose error/timing is not known at the call site — a
-//     transparent wrapper would have to wrap the Token too, which is fragile.
+//  1. paho.mqtt.golang (v1) ships no reject-capable middleware, and Publish
+//     returns an async Token whose error/timing is not known at the call site —
+//     a transparent wrapper would have to wrap the Token too, which is fragile.
 //
 //  2. MQTT 3.1.1 (what paho v1 speaks) carries no message properties, so W3C
-//     trace context cannot propagate across the broker: publish and consume
-//     spans are independent traces. That is an inherent protocol limitation,
-//     not an instrumentation gap.
+//     trace context cannot propagate across the broker; a publish and a consume
+//     are independent traces. That is an inherent protocol limitation, not an
+//     instrumentation gap.
 //
-// The helpers emit the full three-signal trio (span + duration/in-flight metric
-// + access log) via the module-local observers in observe.go, riding the OTel
-// globals starter-otel installs. Call them around Publish and inside the
-// Subscribe callback.
-
-// The observers are package-level (the span helpers take no client, unlike the
-// nats Conn methods) and config-free. They are built at wiring time — the first
-// client the starter wires constructs them (see newClient) — falling back to a
-// lazy sync.Once for apps that call the helpers without any starter-configured
-// client.
-var (
-	defaultObsOnce sync.Once
-	pubObs         *observer
-	subObs         *observer
-)
-
-// buildObservers constructs the span helpers' observers from the current OTel
-// meter provider. Safe to call multiple times; only the first call wins.
-func buildObservers() {
-	defaultObsOnce.Do(func() {
-		pubObs = newObserver(trace.SpanKindProducer)
-		subObs = newObserver(trace.SpanKindConsumer)
-	})
-}
-
-// StartPublishSpan opens a producer observation for a publish to topic. Call
-// right before client.Publish and End the returned span once the token resolves:
-//
-//	ctx, sp := StarterMQTT.StartPublishSpan(ctx, "sensors/temp")
-//	tok := client.Publish("sensors/temp", qos, false, payload)
-//	_ = tok.Wait()
-//	StarterMQTT.EndSpan(sp, tok.Error())
-func StartPublishSpan(ctx context.Context, topic string) (context.Context, *span) {
-	buildObservers()
-	return pubObs.Start(ctx, "publish", topic)
-}
-
-// StartConsumeSpan opens a consumer observation for an inbound message. Call at
-// the top of a subscription callback and End once handling finishes:
-//
-//	sub, _ := client.Subscribe("sensors/temp", qos, func(c mqtt.Client, m mqtt.Message) {
-//	    ctx, sp := StarterMQTT.StartConsumeSpan(ctx, m)
-//	    err := handle(ctx, m)
-//	    StarterMQTT.EndSpan(sp, err)
-//	})
-func StartConsumeSpan(ctx context.Context, msg mqtt.Message) (context.Context, *span) {
-	buildObservers()
-	return subObs.Start(ctx, "consume", msg.Topic())
-}
-
-// EndSpan records err (if any) on the span and ends it.
-func EndSpan(span *span, err error) {
-	span.End(err)
-}
+// The span, the metrics and the access log are not emitted here: declaring the
+// identity is this layer's whole job now, and the resilience executor — the one
+// point on the chain that sees a whole call — emits from that declaration.
 
 // clientGuard is the per-client resilience attachment: the executor chain and
-// the stable service label it executes under, colocated so a guard lookup
-// reads the pair atomically (no torn exec/service combination).
+// the stable serviceLabel it executes under, colocated so a guard lookup
+// reads the pair atomically (no torn exec/serviceLabel combination).
 type clientGuard struct {
-	exec    resilience.ClientExecutor
-	service string
+	exec         resilience.ClientExecutor
+	serviceLabel string
 }
 
-// clientGuards indexes the guard by the raw client bean, so GuardedPublish can resolve
-// it from a bare mqtt.Client and the destructor can Close it. Only clients with
-// resilience enabled appear here.
+// clientGuards indexes the guard by the raw client, so GuardedPublish can resolve
+// it from a bare mqtt.Client and the destructor can Close it. Every client a
+// [Driver] builds appears here; a bare mqtt.Client that never went through a
+// driver is absent and runs inline, unobserved.
 var clientGuards sync.Map // mqtt.Client -> *clientGuard
 
-// applyResilience builds an executor and indexes it by cl. This is the mqtt seam
-// of resilience. paho's Publish hands the message to the client's internal
-// outbound queue and returns a Token; the caller then blocks on token.Wait().
-// For QoS 0 Wait() returns once the packet is written; for QoS 1/2 it blocks
-// until the PUBACK/PUBCOMP. Because paho manages its own queueing and reconnect,
-// the executor here is intentionally minimal — rate limiting the publish rate
-// and short-circuiting (circuit breaker) when the broker is unhealthy. It is
-// driven through an opt-in call-site guard (GuardedPublish).
+// AttachGovernance installs the executor the client runs under, indexed by cl so
+// [GuardedPublish] / [GuardedConsume] can resolve it from a bare mqtt.Client and
+// [closeResilience] can Close it.
 //
-// mgr and inj are the governance beans gs injects into the client constructor.
-// A nil mgr is normalized here — an unarmed manager yields a transparent no-op
-// executor, which is exactly "governance off", while a nil pointer would panic
-// on the method call; inj is nil-safe at its use site, so a nil injector simply
-// adds no fault.
-func applyResilience(cl mqtt.Client, service string, mgr *resilience.Manager, inj *fault.Injector) error {
-	exec := fault.WrapClientExecutor(mgr.ClientExecutorFor("mqtt", service), service, inj)
-	clientGuards.Store(cl, &clientGuard{exec: exec, service: service})
-	return nil
+// The [Driver] calls it while it builds the client (see [Driver.CreateClient]),
+// so the client is complete when returned and nothing patches it afterwards.
+// paho's mqtt.Client is an interface the starter cannot add fields to, so the
+// executor is held beside the client here rather than on it. The executor is the
+// driver's params.ExecutorFor product — the governed one when the container is
+// present, the observed-only one otherwise, never absent.
+//
+// paho's Publish hands the message to the client's internal outbound queue and
+// returns a Token; the caller then blocks on token.Wait(). Because paho manages
+// its own queueing and reconnect, the executor is intentionally minimal — rate
+// limiting the publish rate and short-circuiting (circuit breaker) when the
+// broker is unhealthy — and is driven through an opt-in call-site guard
+// ([GuardedPublish]).
+func AttachGovernance(cl mqtt.Client, broker string, params cloud.ClientParams) {
+	label := resilience.ServiceLabel("mqtt", broker)
+	clientGuards.Store(cl, &clientGuard{exec: params.ExecutorFor("mqtt", label), serviceLabel: label})
 }
 
 // closeResilience closes and forgets the executor behind cl, if any.
@@ -149,8 +100,10 @@ func closeResilience(cl mqtt.Client) {
 }
 
 // guard routes call through the executor attached to cl, and otherwise runs it
-// inline. When resilience is disabled for the client this is a no-op
-// pass-through, so enabling protection is a zero-code opt-in on the caller side.
+// inline. A client built through a [Driver] always carries one (the governed or
+// the observed-only executor), so enabling protection is a zero-code opt-in on
+// the caller side; a bare client that never went through a driver has none and
+// the call runs inline.
 func guard(ctx context.Context, cl mqtt.Client, call func(context.Context) error) error {
 	v, ok := clientGuards.Load(cl)
 	if !ok {
@@ -161,19 +114,43 @@ func guard(ctx context.Context, cl mqtt.Client, call func(context.Context) error
 }
 
 // GuardedPublish publishes payload to topic at qos, routed through the
-// resilience executor attached to cl when governance is enabled.
-// When governance is disabled this behaves exactly like a plain Client.Publish
-// followed by token.Wait(). On rejection (rate-limit or open circuit) the
-// returned error is a resilience sentinel and the underlying publish is never
-// invoked.
+// resilience executor attached to cl when governance is enabled. The publish is
+// declared (see [operation]) so the executor emits its span, metrics and access
+// log; with no executor (governance off) guard runs the publish inline, behaving
+// exactly like a plain Client.Publish followed by token.Wait().
+// On rejection (rate-limit or open circuit) the returned error is a resilience
+// sentinel and the underlying publish is never invoked.
 //
 // retained controls broker-side retention, matching the paho Publish signature.
 // The function blocks until paho acknowledges the outbound handoff (immediately
 // at QoS 0, after a PUBACK/PUBCOMP at QoS 1/2).
 func GuardedPublish(ctx context.Context, cl mqtt.Client, topic string, qos byte, retained bool, payload interface{}) error {
+	ctx = observability.WithOperation(ctx, operation(opPublish, topic))
 	return guard(ctx, cl, func(context.Context) error {
 		token := cl.Publish(topic, qos, retained, payload)
 		token.Wait()
 		return token.Error()
 	})
+}
+
+// GuardedConsume runs handler for one delivered message, declaring the consume
+// operation (topic from msg.Topic()) and routing the handler through the
+// resilience executor attached to cl. It is the consume-side counterpart of
+// GuardedPublish, for callers that subscribe on the raw mqtt.Client and want the
+// delivery observed and guarded: call it at the top of the paho subscription
+// callback, passing the message paho handed in.
+//
+//	sub, _ := client.Subscribe("sensors/temp", qos, func(_ mqtt.Client, m mqtt.Message) {
+//	    _ = StarterMQTT.GuardedConsume(ctx, client, m, func(ctx context.Context) error {
+//	        return handle(ctx, m)
+//	    })
+//	})
+//
+// With no executor attached (governance off) the handler runs inline; the
+// declared operation still reaches whatever emitter is on the chain. The paho
+// callback is fire-and-forget, so the returned error is the caller's to log —
+// there is no ack/nack for MQTT 3.1.1.
+func GuardedConsume(ctx context.Context, cl mqtt.Client, msg mqtt.Message, handler func(context.Context) error) error {
+	ctx = observability.WithOperation(ctx, operation(opConsume, msg.Topic()))
+	return guard(ctx, cl, handler)
 }

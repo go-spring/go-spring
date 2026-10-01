@@ -24,7 +24,9 @@ import (
 	"context"
 
 	"github.com/bradfitz/gomemcache/memcache"
+	"go-spring.org/cloud"
 	"go-spring.org/cloud/discovery"
+	"go-spring.org/cloud/resilience"
 	"go-spring.org/stdlib/errutil"
 )
 
@@ -35,11 +37,29 @@ import (
 // assembly. A custom driver is a bean, so it may inject the configuration/beans
 // it needs — e.g. company config bound from a properties file at wiring time.
 //
+// CreateClient returns the module's exported [Client] — the wrapper apps inject
+// — not the raw *memcache.Client, so a driver takes part in the type the rest of
+// the ecosystem sees and future wrapper capabilities are reachable from it. It
+// returns the client COMPLETE: name is the config entry's key
+// (spring.memcached.instances.<name>) and c.ServiceName its discovery name, so
+// the driver sets both on the wrapper it builds; params carries the container's
+// facilities — the resilience/fault/loadbalance authorities and the discovery
+// backend — and [NewClient] applies them while building. Nothing patches the
+// client afterwards.
+//
+// params is one struct rather than a parameter per capability so this interface
+// — which every company driver implements — stays stable as capabilities are
+// added. A driver that has no use for one of its fields simply ignores it.
+//
+// name is passed as an argument rather than carried on Config: Config stays a
+// pure projection of the entry's properties, and the instance name is the map
+// key, not a value in it.
+//
 // At most one Driver bean is expected per process; every client under
 // ${spring.memcached} is built through it, and per-instance differences are
 // expressed through [Config].
 type Driver interface {
-	CreateClient(ctx context.Context, c Config, backend discovery.Discovery) (*memcache.Client, error)
+	CreateClient(ctx context.Context, name string, c Config, params cloud.ClientParams) (*Client, error)
 }
 
 // DefaultDriver is the default implementation of the Driver interface.
@@ -58,21 +78,21 @@ type DefaultDriver struct{}
 // snapshot so an unchanged cluster keeps an unchanged key→server mapping.
 // Resolver freshness lives inside the backend, so there is nothing to release.
 //
-// backend is the discovery backend the entry's ${discovery} label resolved to,
-// already looked up by the starter wiring; it is nil when the entry cites no
-// label (an unknown label fails at wiring, before the driver is called). It is
-// passed as an argument rather than carried on Config so a custom driver can
-// actually reach it — Config stays a pure bound value.
+// params.Discovery is the discovery backend the entry's ${discovery} label
+// resolved to, already looked up by the starter wiring; it is nil when the entry
+// cites no label (an unknown label fails at wiring, before the driver is
+// called). It rides on the params struct rather than Config so a custom driver
+// can actually reach it — Config stays a pure bound value.
 //
 // In mesh mode (mesh.Enabled) discovery is skipped entirely: a sidecar owns
 // discovery+LB, so the client connects straight to the configured static
 // Servers list (the service's stable DNS address).
-func (DefaultDriver) CreateClient(ctx context.Context, c Config, backend discovery.Discovery) (*memcache.Client, error) {
+func (DefaultDriver) CreateClient(ctx context.Context, name string, c Config, params cloud.ClientParams) (*Client, error) {
 	servers := c.Servers
 	// A nil resolver (service-name unset, or mesh mode where a sidecar owns
 	// discovery+LB) means the caller uses the configured Servers list.
 	// Resolver freshness lives inside the backend, so there is nothing to release.
-	resolver, err := discovery.NewResolver(ctx, backend, c.ServiceName, discovery.WithScheme(c.Scheme))
+	resolver, err := discovery.NewResolver(ctx, params.Discovery, c.ServiceName, discovery.WithScheme(c.Scheme))
 	if err != nil {
 		return nil, errutil.Explain(err, "memcached: discovery resolve %q failed", c.ServiceName)
 	}
@@ -98,5 +118,15 @@ func (DefaultDriver) CreateClient(ctx context.Context, c Config, backend discove
 	if c.MaxIdleConns > 0 {
 		client.MaxIdleConns = c.MaxIdleConns
 	}
-	return client, nil
+	// The governance rule may size the pool too — the resource half of isolation,
+	// next to the bulkhead's concurrency half — and it wins over the per-instance
+	// key, so one place configures both halves. gomemcache caps IDLE connections
+	// and dials on demand, so this rule's MaxConns is that cap here, not a limit
+	// on open connections.
+	if n := params.PolicyFor(resilience.ServiceLabel("memcached", c.ServiceName, name)).MaxConns; n > 0 {
+		client.MaxIdleConns = n
+	}
+	// NewClient is the only way to build a Client: identity and governance are
+	// both applied here, so the driver returns a client that is complete.
+	return NewClient(client, name, c.ServiceName, params), nil
 }

@@ -36,9 +36,10 @@ import (
 
 // Service injects the per-instance wrapped clients. bigcache exposes no hook/
 // plugin extension point, so per-operation observability is delivered through
-// the *Cache wrapper itself (Get/Set/Delete emit span+metric+log);
-// inject that type rather than the raw *bigcache.BigCache. The embedded
-// *bigcache.BigCache is still reachable via the field for any raw API need.
+// the *Cache wrapper itself: Get/Set/Delete declare the operation and the
+// resilience layer emits its span+metric+log. Inject that type rather than the
+// raw *bigcache.BigCache. The raw client is an unexported field of the wrapper;
+// the other raw methods (Stats/Len/...) are re-exposed as plain delegations.
 type Service struct {
 	Hot   *StarterBigCache.Cache `autowire:"hot"`
 	Cold  *StarterBigCache.Cache `autowire:"cold"`

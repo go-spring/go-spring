@@ -22,11 +22,13 @@ opt-in, a worker Server (dequeue + run).
   explicit operator decision, matching the no-autoconfig-exclude stance
   (see spring/DESIGN.md §4).
 - **`Client.Enqueue` guard** — the synchronous enqueue touches Redis and is
-  the overload-sensitive path; it routes through the resilience executor built
-  from the injected `*resilience.Manager`, wrapped with the injected
-  `*fault.Injector`, plus the starter's own producer observation (observe.go).
-  With governance unwired the executor is a transparent pass-through, so the
-  path degrades to `Client.EnqueueContext`.
+  the overload-sensitive path; it declares the call's identity (observe.go) on
+  the ctx and routes through the resilience executor built from the injected
+  `*resilience.Manager`, wrapped with the injected `*fault.Injector`. The
+  starter only declares; the resilience layer emits the span, the metrics and
+  the access log. With governance off (`spring.governance.enabled=false`) every
+  rule resolves to a pass-through, so the path degrades to
+  `Client.EnqueueContext`.
 - **`Server` implements `gs.Server`, not `gs.Runner`** — this is the
   load-bearing seam. gs.Runner is a startup-time, must-not-block interface
   (migrations, cache warm); gs.Server is the long-running, gracefully-stopped
@@ -34,9 +36,9 @@ opt-in, a worker Server (dequeue + run).
   handling. `Server.Run` uses asynq's `Start` + wait-on-ctx, deliberately NOT
   `asynq.Server.Run`, whose `waitForSignals` installs its own signal handler
   that races gs's graceful shutdown.
-- **Handler mux is lazily built** — `RegisterHandler` may run before `Init`
-  (the app wires it from its own Init), so the mux is created on first use and
-  shared with Init/Run.
+- **Handler mux is lazily built** — `RegisterHandler` may run after the
+  constructor (the app wires it from its own Init), so the mux is created on
+  first use and shared with Run.
 
 ## 3. Constraints
 

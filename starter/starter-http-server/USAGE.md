@@ -49,8 +49,8 @@ belong to `gs`; see the spring documentation.
 - `Authorize(authorities ...string)` — anonymous yields 401; an authenticated
   caller missing any required authority yields 403; with no arguments it only
   requires an authenticated caller.
-- `Observe() Middleware` — the server-side observability middleware (span +
-  metrics + access log); opt-in, see §4.
+- `ServerPolicy(label, mgr) Middleware` — inbound admission, and the request's span +
+  metrics + access log (both ride the same executor); see §4.
 - `CORS(CORSConfig)` / `CSRF(CSRFConfig)` — see the constraints in
   [cloud/security DESIGN](../../cloud/security/README.md) (wildcard ×
   credentials, double-submit cookie).
@@ -58,18 +58,19 @@ belong to `gs`; see the spring documentation.
 ## 4. Operations
 
 The security middlewares emit no logs or metrics; observability comes from the
-server side and from `starter-governance`. The CSRF cookie/header names default
+server side and from `starter-governance-file`. The CSRF cookie/header names default
 to `csrf_token` / `X-CSRF-Token`, matching the gin and echo shells.
 
-`Observe()` is the one exception: it is an **opt-in** server-side observability
-middleware. Unlike gin/echo/hertz, whose instrumentation is built in, this
-package decorates the handler the application itself handed to the framework's
-server — it has nowhere to install itself — so it is composed into the chain
-like any other decorator:
+A request's signals come from `ServerPolicy` — the same division every other
+starter uses: the middleware **declares** what the request is, and the resilience
+emitter produces the signals from that declaration. (An earlier opt-in
+`Observe()` middleware built the span and the instruments itself; it is gone,
+because two middlewares each holding an executor meant two ways to be observed
+and one way to be admitted.)
 
 ```go
 mux.Handle("/api/me", httpsvr.Chain(
-    httpsvr.Observe(),
+    httpsvr.ServerPolicy("http-server::9090", mgr),
     httpsvr.CORS(cfg),
     httpsvr.Authenticate(v, true),
 )(handler))
@@ -81,7 +82,7 @@ One request produces:
   and `url.path`, plus `http.response.status_code` and `status` on the way out;
 - two metrics: `http.server.request.duration` (Float64Histogram, seconds) and
   `http.server.active_requests` (Int64UpDownCounter), labelled
-  `http.request.method` and `http.response.status_code`;
+  `http.request.method`, `http.response.status_code` and `status`;
 - one access-log line, tag `_app_http_server_access`
   (`log.RegisterAppTag("http_server", "access")`), with fields
   `http.request.method`, `url.path`, `http.response.status_code`, `status` and

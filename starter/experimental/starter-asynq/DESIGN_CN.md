@@ -18,17 +18,18 @@ starter。一个实例产出生产者 Client（入队）与可选启用的 worke
 - **双角色、单 Config** — `Client`（总是装配）与 `Server`（仅
   `server.enabled=true`）。worker 是 opt-in：长期消费者是运维的显式决策，
   契合 no-autoconfig-exclude 立场（见 spring/DESIGN.md §4）。
-- **`Client.Enqueue` 守卫** — 同步入队触 Redis、是过载敏感路径；经注入的
-  `*resilience.Manager` 构建、并由注入的 `*fault.Injector` 包裹的 resilience
-  executor，外加 starter 自带的生产观测（observe.go）；未接治理时 executor 为
+- **`Client.Enqueue` 守卫** — 同步入队触 Redis、是过载敏感路径；它先把本次调用的
+  身份（observe.go）声明到 ctx 上，再经注入的 `*resilience.Manager` 构建、由注入的
+  `*fault.Injector` 包裹的 resilience executor。starter 只声明，span、指标与访问日志
+  由 resilience 层发射；治理关闭（`spring.governance.enabled=false`）时每条规则都解析为
   透明直通，退化为 `Client.EnqueueContext`。
 - **`Server` 实现 `gs.Server` 而非 `gs.Runner`** — 这是承重 seam。gs.Runner
   是启动期、禁止阻塞的接口（迁移、缓存预热）；gs.Server 才是长期运行、
   优雅停止的服务接口。误用 gs.Runner 会阻塞启动并破坏信号处理。
   `Server.Run` 用 asynq 的 `Start` + 等 ctx，刻意不用 `asynq.Server.Run`——
   后者的 `waitForSignals` 自己装信号处理器，与 gs 的优雅关机竞争。
-- **handler mux 惰性构建** — `RegisterHandler` 可能先于 `Init` 执行（应用
-  从自己的 Init 里注册），因此 mux 首次使用时才创建，与 Init/Run 共享。
+- **handler mux 惰性构建** — `RegisterHandler` 可能在构造函数之后执行（应用
+  从自己的 Init 里注册），因此 mux 首次使用时才创建，与 Run 共享。
 
 ## 3. 约束
 

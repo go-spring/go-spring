@@ -42,7 +42,7 @@ require (
     go-spring.org/spring                    v1.3.x
     go-spring.org/starter-memcached         latest
     go-spring.org/starter-actuator          latest   // optional: /readiness folds in memcache health
-    go-spring.org/starter-governance        latest   // optional: resilience/fault for memcached ops
+    go-spring.org/starter-governance-file        latest   // optional: resilience/fault for memcached ops
 )
 ```
 
@@ -129,39 +129,59 @@ import starter-memcached
   └─ init: gs.Module(OnProperty("spring.memcached"), BindEach)       starter.go:42-43
         per spring.memcached.instances.<name> entry:
           r.Provide(newClient, IndexArg(name,c), IndexArg(3,?Driver))  starter.go:47-51
-              .Name(name).Init((*Client).Init).Destroy((*Client).Destroy)
-          r.Provide(health indicator "memcache:"+name)               starter.go:54
+              .Name(name).Destroy((*Client).Destroy)     # no InitMethod — see below
+          r.Provide(health indicator "memcache:"+name)               starter.go:65
 gs.Run()
   ├─ config bind: ${spring.memcached.instances.<name>} → Config (value tags)   config.go:24-58
-  ├─ ctor newClient [starter.go:80]: validate → optional Driver bean
-  │     (none → bundled DefaultDriver) → d.CreateClient(c, backend) → STARTUP PING
-  ├─ Client.Init: observer + resilience/fault executor               client.go:66-71
-  ├─ readiness: health indicator folds Ping into /readiness          `health.go`
-  └─ shutdown: Client.Destroy — release executor, stop discovery watch  client.go:77-82
+  ├─ ctor newClient [starter.go:87]: validate → optional Driver bean
+  │     (none → bundled DefaultDriver) → d.CreateClient(c, backend)
+  │         └─ NewClient: identity + observe layer                   client.go
+  ├─ ctor: Client.applyGovernance(mgr, inj): resilience/fault executor
+  ├─ ctor: HealthCheck (raw client) — assembly is complete before the probe
+  ├─ readiness: health indicator folds HealthCheck into /readiness   `health.go`
+  └─ shutdown: Client.Destroy — close pool, release executor         client.go
 ```
 
 **Assembly extension point**: client assembly is owned by a `Driver` (interface,
-`driver.go:31-41`). A company/umbrella starter may provide its own `Driver` as an **optional
+`driver.go:31-52`). A company/umbrella starter may provide its own `Driver` as an **optional
 container bean** (a `gs.Provide(func() StarterMemcached.Driver{...})`, so it can inject config
 bound from the properties file at wiring time); every instance under `spring.memcached` is then
 built through it. When no such bean exists the starter falls back to the bundled `DefaultDriver`
-(`driver.go:45-60`) inside assembly (`starter.go:86-88`). When several Driver beans coexist, an
+(`driver.go:55-79`) inside assembly. When several Driver beans coexist, an
 entry selects one by name: `spring.memcached.instances.<name>.driver = <bean-name>` (empty = inject the
 single Driver bean by type; naming a missing bean fails startup).
 
+`CreateClient` returns the exported `*Client` — the same type apps inject — not the raw
+`*memcache.Client`, so a custom driver takes part in the type the ecosystem sees. It returns the
+client **identity-complete**: `NewClient` is the only constructor, and the driver passes it the
+entry's name and `c.ServiceName`, so a Client can never exist without its identity. The observe
+layer is installed there too — it needs no external input, so it is part of what the client *is*,
+not a later assembly step. The one thing a driver does not assemble is governance: the resilience
+executor is applied by `Client.applyGovernance`, called by the ctor right after, because the
+authorities come from the container and a driver must not have to depend on `cloud/governance`.
+
+There is deliberately **no `Init` hook**. Initialization is "what happens right after the object
+exists", and the constructor does it in one place: `NewClient` fixes identity and observe,
+`applyGovernance` installs governance. Splitting either into a separate `gs.InitMethod` would buy
+nothing and give the container a way to hand out a half-built client.
+
 Startup ping timing: it runs **inside the constructor**, before the bean exists — a dead server
-aborts container assembly with `memcached: startup ping failed` (`starter.go:98-100`); it is not
+aborts container assembly with `memcached: startup ping failed` (`starter.go`); it is not
 lazy and not retryable. gomemcache's `Ping` probes every configured server, so one dead node in
-`servers` fails the whole instance.
+`servers` fails the whole instance. The probe goes straight to the raw client: it is a boot check
+on the connection, not business traffic, so it opens no span and spends no limiter/breaker budget.
+A failed probe abandons the client, so the ctor releases the governance it had just applied. The
+boot probe and the readiness indicator both delegate to `HealthCheck` (`health.go`), the module's
+single health implementation.
 
 ### 2.2 Discovery addressing flow
 
 With `service-name` set (and mesh mode off), the starter resolves the `discovery` label (default
 `"default"`) to a backend bean and passes it to `DefaultDriver.CreateClient` as the `backend`
 argument; the driver builds a discovery resolver against it, filtered by
-`scheme` (`driver.go:70`, `driver.go:100-102`). The initial snapshot is read at build time as a
+`scheme` (`driver.go:84`, `driver.go:100-103`). The initial snapshot is read at build time as a
 fail-fast gate — an empty one fails boot with
-`memcached: discovery returned no endpoints for %q` (`driver.go:73-79`) — and the client is then
+`memcached: discovery returned no endpoints for %q` (`driver.go:90-99`) — and the client is then
 built over a **live `ServerSelector`** (`selector.go`) that re-reads the snapshot on every key
 lookup. So an instance joining or leaving is visible on the next operation; no restart, no
 proxy needed. Resolver freshness lives inside the backend, so there is nothing to release.
@@ -178,7 +198,7 @@ Two properties are deliberate, because for memcached the selector *is* the cache
   library expresses it — list an address more than once.)
 
 In mesh mode discovery is skipped entirely and `servers` is used as-is (sidecar owns
-discovery+LB, `driver.go:69-70` comment).
+discovery+LB, `driver.go:76-78` comment).
 
 ### 2.3 One Set call, layer by layer
 
@@ -191,16 +211,18 @@ discovery+LB, `driver.go:69-70` comment).
 2. `run` runs the op under the resilience executor via `resilience.Run`:
    limiter/breaker scoped to service `memcached:<service-name or instance-name>` (`client.go`);
    `memcache.ErrCacheMiss` counts as success so misses never trip the breaker
-   (resilience.Tolerate); the executor is armed in one line —
-   `fault.WrapClientExecutor(mgr.ClientExecutorFor("memcached", service), service, inj)`, where `mgr`/`inj` are the
-   `*resilience.Manager` / `*fault.Injector` beans the container injects into `newClient`, with the
-   observe layer applied inside resolve. With no governance bean it is a transparent no-op.
-3. The embedded `*memcache.Client` performs the actual write; the span closes with
-   the error.
+   (resilience.Tolerate); the executor is applied by `Client.applyGovernance` —
+   `fault.WrapClientExecutor(mgr.ClientExecutorFor("memcached", service), service, inj)`, where
+   `mgr`/`inj` are the beans the container injects into `newClient` and the ctor passes on, with
+   the observe layer applied inside resolve. When no governance is applied it is a transparent
+   no-op.
+3. The raw client performs the actual write; the span closes with the error.
 
 All 17 operations (get/get_and_touch/get_multi/touch/set/add/replace/append/prepend/cas/delete/
-delete_all/increment/decrement/ping/flush_all) follow this same shape (`client.go`). Methods
-not overridden (only `Close` among lifecycle ones) are promoted unchanged from the embedded client.
+delete_all/increment/decrement/ping/flush_all) follow this same shape (`client.go`). Together with
+`Close` they are the whole `*Client` surface: the raw client is a private field, so nothing is
+promoted and there is no exported way to reach it — a caller cannot bypass the observe and
+governance layers by accident.
 
 ### 2.4 The cache abstraction bean
 
@@ -223,18 +245,18 @@ the output belongs to the example app, not the starter).
 
 | Key (under `spring.memcached.instances.<name>`) | Type | Default | Behavior / interactions | Misconfiguration consequence |
 |---|---|---|---|---|
-| `servers` | []string | empty | Static server list; requests sharded across it (config.go:28). XOR with `service-name`. | Both empty → ctor error `one of servers or service-name must be set` (starter.go:83); dead address → startup ping fail-fast |
-| `service-name` | string | empty | Discovery addressing: the server set follows the backend named by `discovery` (config.go:39), re-read per key lookup (selector.go). When set (non-mesh), `servers` is ignored. | Backend missing → boot error `discovery resolve %q failed`; empty snapshot at boot → boot error (driver.go:76-79); empty at runtime → `memcache.ErrNoServers` on that operation |
+| `servers` | []string | empty | Static server list; requests sharded across it (config.go:28). XOR with `service-name`. | Both empty → ctor error `one of servers or service-name must be set` (starter.go:92); dead address → startup ping fail-fast |
+| `service-name` | string | empty | Discovery addressing: the server set follows the backend named by `discovery` (config.go:39), re-read per key lookup (selector.go). When set (non-mesh), `servers` is ignored. | Backend missing → boot error `discovery resolve %q failed`; empty snapshot at boot → boot error (driver.go:93-99); empty at runtime → `memcache.ErrNoServers` on that operation |
 | `scheme` | string | empty | Narrows discovery to endpoints of one transport scheme; only consulted with `service-name` (config.go:45). | Over-filtering → "no endpoints" boot error |
 | `discovery` | string | — | Which registered `discovery.Discovery` resolves `service-name` (config.go:50). The wiring resolves this label to a bean and passes it to the driver as the `backend` argument of `CreateClient`. Falls back to `${spring.memcached.default.discovery}` when unset. | Both unset or an unregistered name while service-name is set → boot error. |
 | `timeout` | duration | 0 | Socket read/write timeout per request; 0 = gomemcache default 100ms (config.go:54). | Too low → spurious timeouts under load |
-| `max-idle-conns` | int | 0 | Idle connections kept per server; 0 = driver default 2 (config.go:58). | Too low → reconnect churn |
+| `max-idle-conns` | int | 0 | Idle connections kept per server; 0 = driver default 2 (config.go:58). A governance rule setting `max-conns` overrides it (gomemcache has no open-connection cap, so the rule sizes this idle cap). | Too low → reconnect churn |
 
 The `driver` key names the Driver bean: empty = fall back to the family-wide `spring.<family>.default.driver`, then to the single Driver bean by type (see
 §2.1), set to a bean name to select one explicitly; no `resilience` key: resilience/fault come from the governance center
 (`spring.governance.*` config of
-starter-governance), keyed by service `memcached:<service-name or instance-name>`.: resilience/fault come from the governance center (`spring.governance.*` config of
-starter-governance), keyed by service `memcached:<service-name or instance-name>`.
+starter-governance-file), keyed by service `memcached:<service-name or instance-name>`.: resilience/fault come from the governance center (`spring.governance.*` config of
+starter-governance-file), keyed by service `memcached:<service-name or instance-name>`.
 
 ---
 
@@ -246,25 +268,26 @@ starter-governance), keyed by service `memcached:<service-name or instance-name>
    governance on, repeated misses do NOT open the breaker (ErrCacheMiss is success,
    `client.go`).
 3. **Server-down fail-fast**: stop memcached (`docker stop demo-memcached`), boot the app →
-   container assembly aborts with `memcached: startup ping failed` (`starter.go:98-100`). Bad
+   container assembly aborts with `memcached: startup ping failed` (`starter.go:123`). Bad
    `servers` address behaves identically — this is the fail-fast posture, there is no lazy mode.
 4. **Discovery bad-address drill**: set `service-name` with no backend registered → boot fails with
-   `memcached: discovery resolve %q failed` (`driver.go:71-72`). Register a backend that returns an
-   empty endpoint set → boot fails with `discovery returned no endpoints` (`driver.go:78`).
+   `memcached: discovery resolve %q failed` (`driver.go:92`). Register a backend that returns an
+   empty endpoint set → boot fails with `discovery returned no endpoints` (`driver.go:104`).
 5. **Membership-change limitation drill**: with a discovery instance running, remove the endpoint
    from the backend snapshot — the client keeps dialing the old address until restarted
    (§2.2). This is a documented gomemcache constraint, not a wiring bug.
 6. **Health / readiness**: import starter-actuator; each instance contributes an indicator named
-   `memcache:<name>` whose probe is a live `Ping` (`starter.go:53`, `health.go`).
+   `memcache:<name>` whose probe is a live `HealthCheck` (`starter.go:65`, `health.go`).
    Kill the server, then `curl :9370/readiness` flips DOWN. Note the probe carries no deadline —
    gomemcache's `Ping` has no context; the client timeout bounds it (`health.go`).
 7. **Multi-instance**: `cache` and `session` instances coexist (distinct bean names = the map
    keys, `starter.go:47-50`); two entries pointing at the same server are independent beans with
    independent executors (service labels `memcached:cache` vs `memcached:session`).
 8. **Observability**: with starter-otel imported, a client span named after the operation
-   (`get`/`set`/...) appears per call, joined to the caller's trace via the passed ctx (§2.3); the
-   `db.client.operation.duration` histogram and the access log come from the module-local observer
-   (`observe.go`).
+   (`get`/`set`/...) appears per call, joined to the caller's trace via the passed ctx (§2.3). The
+   starter declares the operation's identity (`observe.go`); the resilience layer emits from it, so
+   the call-level `db.client.operation.duration`, the attempt-level `db.client.attempt.duration`
+   histograms and the `_app_memcached_access` access log all come from there.
 
 ---
 
@@ -272,11 +295,11 @@ starter-governance), keyed by service `memcached:<service-name or instance-name>
 
 | Symptom | Likely cause | Fix |
 |---|---|---|
-| Boot fails `one of servers or service-name must be set` | instance block has neither key | set one of them (`starter.go:83`) |
-| Boot fails `memcached: startup ping failed` | server down / wrong address at boot | start memcached, fix `servers`; ping is fail-fast (`starter.go:98-100`) |
+| Boot fails `one of servers or service-name must be set` | instance block has neither key | set one of them (`starter.go:92`) |
+| Boot fails `memcached: startup ping failed` | server down / wrong address at boot | start memcached, fix `servers`; ping is fail-fast (`starter.go:123`) |
 | Boot fails `discovery resolve "..." failed` | `service-name` set but no backend under the `discovery` name | register the backend bean (named discovery.Discovery) before boot |
-| Boot fails `discovery returned no endpoints` | backend healthy but the service has no instances (or `scheme` over-filters) | start instances / clear `scheme` (`driver.go:75-79`) |
-| Stale server list after cluster scale-out/scale-in | gomemcache fixes the server set at creation; watch is lifecycle-only | restart the process to re-resolve (`driver.go:60-66`) |
+| Boot fails `discovery returned no endpoints` | backend healthy but the service has no instances (or `scheme` over-filters) | start instances / clear `scheme` (`driver.go:97-98`) |
+| Stale server list after cluster scale-out/scale-in | gomemcache fixes the server set at creation; watch is lifecycle-only | restart the process to re-resolve (`driver.go:61-68`) |
 | Traces show memcached spans disconnected from request traces | a `context.Background()`-style ctx (no trace) was passed; spans follow the caller's ctx | pass the request's ctx so the span joins the trace; the wire call itself still ignores ctx (bounded by `timeout`) |
 | Breaker never trips on cache misses | by design: ErrCacheMiss counts as success | trip drills must use real failures, not misses (`client.go`) |
 | Readiness stays UP while ops fail | indicator probes `Ping` only; a slow-but-alive server still passes | watch observe metrics for real latency/errors |
@@ -295,10 +318,10 @@ starter-governance), keyed by service `memcached:<service-name or instance-name>
 Suspect ledger (carried from the previous edition, updated):
 
 - ~~No health indicator~~ — **resolved**: each instance now registers `memcache:<name>` as an
-  exported `health.Indicator` (`starter.go:53`, `health.go`); with starter-actuator it
+  exported `health.Indicator` (`starter.go:65`, `health.go`); with starter-actuator it
   folds into `/readiness` with no extra wiring.
 - Discovery watch is lifecycle-only: membership changes need a restart (structural gomemcache
-  constraint, `driver.go:60-66`) — consider documenting a rebuild seam or a client-swap pattern
+  constraint, `driver.go:61-68`) — consider documenting a rebuild seam or a client-swap pattern
   (cf. the dubbo dynamic-timeout atomic-swap approach).
 - The wire call cannot be cancelled via ctx (no context in gomemcache API; bounded by `timeout`) —
   only the resilience layer honors cancellation (`client.go`).

@@ -28,8 +28,11 @@ starter-pulsar / starter-kafka.
   it creates, and registers every producer/consumer for teardown on Close.
 - **`Driver` (driver.go)** — the construction seam: an OPTIONAL container bean.
   A company/umbrella starter may provide its own `Driver` bean; when none is
-  present, assembly falls back to the bundled `DefaultDriver`. The rlog bridge
-  is process-global, so it is installed exactly once inside `DefaultDriver`
+  present, assembly falls back to the bundled `DefaultDriver`. `CreateClient`
+  takes the container's `cloud.ClientParams` bundle and returns the client
+  COMPLETE — identity and executor both applied while it is built (see
+  `NewClient`) — with nothing patching it afterwards. The rlog bridge is
+  process-global, so it is installed exactly once inside `DefaultDriver`
   rather than per instance.
 - **`NewDriver` (driver.go)** — adapts to `messaging.Driver`: one started
   producer per publisher, one started push consumer per subscriber
@@ -40,9 +43,10 @@ starter-pulsar / starter-kafka.
   mirroring kafka-go's `recordCarrier`).
 - **`GuardedSend` (command.go)** — the resilience seam: the SDK exposes no
   reject-capable middleware, so the governance executor is an opt-in wrapper
-  on the synchronous `SendSync` path, assembled from the injected
-  `*resilience.Manager` / `*fault.Injector` beans (the wiring lives in
-  starter-governance).
+  on the synchronous `SendSync` path. The executor itself is attached at
+  construction (`NewClient`, from the `cloud.ClientParams` bundle the
+  `Driver` was handed — itself built from the injected `*resilience.Manager` /
+  `*fault.Injector` beans); `GuardedSend` only routes a call through it.
 
 ## 3. Constraints
 

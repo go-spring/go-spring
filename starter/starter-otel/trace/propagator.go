@@ -25,7 +25,7 @@ import (
 
 // Text-map propagators are pluggable by name, mirroring the driver-registry
 // idiom used for span/meter exporters (RegisterSpanExporter / RegisterMeterExporter):
-// the W3C built-ins self-register at init, and a company can add its own — for
+// the W3C built-ins are registered by the starter's starter.go, and a company can add its own — for
 // example a propagator that carries its named business headers (X-Tenant, ...)
 // — by calling RegisterPropagator from an init, then listing it in the
 // ${spring.observability.trace.propagator} spec (see NewPropagator). Every
@@ -41,7 +41,7 @@ var (
 // panics on an empty name, a nil propagator, or a duplicate — mirroring the
 // driver-registry idiom elsewhere, so a mis-wired or duplicate registration
 // fails loudly at init. The built-in names "tracecontext" and "baggage" are
-// pre-registered at init and must not be re-registered.
+// registered by [RegisterDefaults] and must not be re-registered.
 func RegisterPropagator(name string, p propagation.TextMapPropagator) {
 	if name == "" {
 		panic("trace: register propagator with empty name")
@@ -57,7 +57,12 @@ func RegisterPropagator(name string, p propagation.TextMapPropagator) {
 	propReg[name] = p
 }
 
-func init() {
+// RegisterDefaults registers the W3C built-ins under their canonical names. The
+// starter calls it from its starter.go, so this package declares no init of its
+// own and every registration the starter performs stays readable in one place;
+// a caller that uses this package without linking the starter (the luohua
+// umbrella, this package's own tests) calls it explicitly.
+func RegisterDefaults() {
 	RegisterPropagator("tracecontext", propagation.TraceContext{})
 	RegisterPropagator("baggage", propagation.Baggage{})
 }

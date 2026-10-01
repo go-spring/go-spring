@@ -100,7 +100,7 @@ func TestNewPickPoolBindsSelection(t *testing.T) {
 // TestNewPickPoolAnUnarmedManagerIsPassThrough pins the "governance off" case: an
 // unarmed manager (no rules in the process) leaves the pool on the strategy it
 // was built with, and a stop from it is safe to call anyway. The manager is
-// REQUIRED — the starter blank-imports starter-governance, so the container
+// REQUIRED — the package that owns it registers it, so the container
 // always has one; "governance off" is an unarmed manager, never a nil one.
 func TestNewPickPoolAnUnarmedManagerIsPassThrough(t *testing.T) {
 	for _, mgr := range []*loadbalance.Manager{loadbalance.NewManager()} {

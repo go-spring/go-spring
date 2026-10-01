@@ -1,11 +1,11 @@
 # starter-mail Usage — Reference
 
 Detailed usage reference. Overview: [README.md](README.md). All behavior claims are verified
-against the starter source (`starter.go`, `config.go`, `trace.go`) and the runnable
+against the starter source (`starter.go`, `config.go`, `observe.go`) and the runnable
 [example/](example/) / [example-otel/](example-otel/). **SMTP and message semantics (headers,
 MIME, attachments, auth mechanisms) are [go-mail's documentation](https://github.com/wneessen/go-mail)
 and [RFC 5321](https://www.rfc-editor.org/rfc/rfc5321)** — everything below is go-spring's
-increment: configuration, wiring, fail-fast startup, tracing helpers.
+increment: configuration, wiring, fail-fast startup, operation declaration.
 
 **Activation**: every `spring.mail.instances.<name>` subtree creates exactly one `*Mailer` bean named
 `<name>`. No `spring.mail.instances.*` keys → no beans, no startup dial, starter is inert. There is no
@@ -78,8 +78,6 @@ func init() {
 // SendReport renders the body itself (the starter ships no template engine,
 // by design) and sends one multipart/alternative mail with an attachment.
 func (s *Service) SendReport(ctx context.Context) error {
-    ctx, span := StarterMail.StartSendSpan(ctx, "daily-report")
-    defer StarterMail.EndSpan(span, nil) // set err if Send fails; see below
     return s.Notify.Send(ctx, &StarterMail.Message{
         To:      []string{"alice@example.com"},
         Subject: "daily report",
@@ -137,7 +135,7 @@ curl -s 'http://127.0.0.1:16686/api/traces?service=demo' | jq '.data[0].spans[].
 
 ```
 import starter-mail
-  └─ init(): gs.Group("${spring.mail}", newMailer, nil)     [one instance per spring.mail.instances.<name>]
+  └─ init(): gs.Module(OnProperty("spring.mail.instances"), ...)  [one instance per spring.mail.instances.<name>]
 
 gs.Run()
   ├─ config bind: spring.mail.instances.<name>.* → Config (value tags; host required via errutil.RequireField)
@@ -145,14 +143,16 @@ gs.Run()
   ├─ fail-fast probe: client.DialWithContext (bounded by timeout) then Close
   │     └─ bad host/port/auth/TLS ⇒ startup ERROR, app refuses to boot (source comment:
   │        "so a misconfiguration surfaces at boot rather than on the first send")
+  ├─ governance applied in the ctor: exec = cloud.ClientParams{...}.ExecutorFor("mail", label)
   ├─ bean ready: *Mailer injected wherever `autowire:"<name>"` appears
   ├─ Run / serve: nothing background — no goroutines, no pooled sockets
-  └─ SIGTERM: no destroy hook (each Send dials and closes per call; nothing to release)
+  └─ SIGTERM: destroy hook closes the resilience executor (the SMTP client owns no live resource)
 ```
 
-Design rationale from source comments: the group registration documents *why* there is no
-destroy callback — "the underlying client opens a fresh connection per Send and closes it when
-done, so there is nothing to release at shutdown" (starter.go init / Mailer doc).
+A `gs.Module` (not `gs.Group`) is used so the constructor can take the governance beans
+alongside its config. The SMTP client opens a fresh connection per Send and closes it when
+done, so there is no pooled socket to release — the only resource the `Destroy` hook releases
+is the resilience executor.
 
 ### 2.2 One send, layer by layer
 
@@ -166,21 +166,46 @@ done, so there is nothing to release at shutdown" (starter.go init / Mailer doc)
 2. **Delivery phase** — a single `DialAndSendWithContext` opens one SMTP connection, delivers
    all messages, and closes it. Partial failure semantics are go-mail's; the starter wraps any
    error with `errutil.Explain(err, "mail: send failed")`.
-3. **Observation (always on)** — `Send` records the duration metric
-   `email.client.operation.duration` (labels `email.system`, `status`), keeps the in-flight
-   gauge `email.client.active_requests`, and writes one access-log line per send
-   (`email.system`, `status`, `duration_ms`, plus `error` on failure) under the
-   `mail`/`access` tag. This happens whether or not the caller started a span — a send must
-   be measurable either way.
-4. **Tracing (opt-in, caller-side)** — if the app called `StartSendSpan` (trace.go:41), the
-   span `mail.send` (SpanKind client, attributes `email.system=smtp`,
-   `email.operation=send`, `mail.purpose=<purpose>`) records the outcome and ends via
-   `EndSpan`. Without starter-otel the OTel global TracerProvider is a no-op — nothing is sent
-   on the wire, nothing warns.
+3. **Declaration** — `Send` declares the batch's semantic identity
+   (`observability.Operation`: span name `mail.send`, metric prefix `email.client`, the
+   bounded labels `email.system=smtp` / `email.operation=send`, the batch size as `Detail`,
+   and `NonIdempotent: true`) on the context via `observability.WithOperation`, then routes
+   the delivery through the mailer's resilience executor (`resilience.Run`). A send
+   **declares**; it emits nothing itself.
+   - The **detail is the recipient count, never the recipients or the subject**: both are
+     personal data and a failed send writes its detail at Warn unconditionally, so the
+     addresses would be recorded exactly when the send is going wrong. They stay in the
+     caller's own records.
+   - The **non-idempotent marker** is what stops a configured retry: a resend is a second
+     email, not a second attempt. See §2.5.
+4. **Emission (the resilience layer)** — the observe wrapper on the executor chain is the
+   single **emitter**: it opens the call span `mail.send` (covering every attempt), records
+   the call-level `email.client.operation.duration`, the per-attempt
+   `email.client.attempt.duration` histogram (the downstream's own latency, per try), the
+   in-flight `email.client.active_requests` gauge, and the `resilience.client.calls` counter,
+   and writes one access-log line per send under the `mail`/`access` tag carrying the declared
+   `email.*` fields plus `status` and `duration_ms` (and `error` on failure). The emitter
+   levels the log: failure → Warn, success **with** detail → Debug, success without detail →
+   Info. A send always carries its recipient count, so a successful send logs at Debug. With
+   starter-otel absent the OTel globals are no-ops — nothing is sent on the wire, nothing
+   warns.
 
-Note the trace span is **not** inside `Send`: the starter exposes the two helpers and the
-caller brackets the call (recorded as a design suspect in §6). The metric and the access log
-are inside `Send`, so **only the trace is opt-in**.
+The span, the metrics and the access log all live **inside** the executor that `Send` routes
+through, so a send is measured whether or not the caller ever held a span — there is no
+caller-side bracket to remember.
+
+### 2.3 Retry semantics: a send is never retried
+
+`Send` runs through the mailer's resilience executor, so a governance rule for its service
+label (`mail:<name or host>`) *can* carry a retry policy — and that policy is **ignored**: the
+operation is declared `NonIdempotent`, and the executor runs it once regardless of
+`max-retries`. A retry would deliver a second copy of the mail, which no downstream stage can
+take back.
+
+The suppression is not silent: the first time a call would have been retried, the executor
+logs one warning per service (`resilience: retries configured for service "mail:..." are
+suppressed — its operations are non-idempotent ...`). Timeouts, rate limiting, the circuit
+breaker and the bulkhead all still apply — only the retry stage is dropped.
 
 ---
 
@@ -238,8 +263,10 @@ cd example-otel && docker compose up -d && go run .   # asserts traces in Jaeger
 curl -s 'http://127.0.0.1:16686/api/traces?service=mail-otel-example&limit=1' | grep '"data":\['
 ```
 
-Span fields to read: operation `mail.send`, kind CLIENT, attributes `email.system=smtp`,
-`mail.purpose` (the string you passed), error event + status Error on failure.
+Span fields to read: operation `mail.send`, attributes `email.system=smtp`,
+`email.operation=send`, the declared detail `email.recipients.count`, plus
+`status`, and an error event + status Error on failure. The span is opened by the resilience
+emitter (the single emitter on the executor chain), not by the starter.
 
 ### 4.5 From-fallback drill
 
@@ -259,7 +286,7 @@ Remove `from` from config, keep the app sending `Message` without `From` → eve
 | Send fails "message has no recipients" | `To` empty | To is mandatory; Cc/Bcc alone are not enough. |
 | Send works at boot, fails later "send failed" | relay restarted / credentials expired / timeout too small | Raise `timeout`; the probe only proves boot-time health — see suspect §6. |
 | Attachments missing | passed nil Data or wrong filename only | Attachment is name+bytes; the mailer never reads disk. |
-| No spans anywhere | starter-otel not imported, or StartSendSpan not called | Both are needed — the span bracket is caller-side by design. |
+| No spans anywhere | starter-otel not imported | Import starter-otel; the resilience emitter opens the send's span automatically — no caller-side bracket. |
 
 ## 6. Design Health
 
@@ -270,9 +297,7 @@ Remove `from` from config, keep the app sending `Message` without `From` → eve
 | Quickstart external deps | 1 (SMTP server / MailHog) |
 | "Watch out" entries | 4 |
 
-Design suspects (for the audit ledger; first two carried over from the previous edition):
-- Trace requires manual `StartSendSpan`/`EndSpan` instead of living inside `Send` — caller-side
-  boilerplate; consider wrapping Send itself when starter-otel is present.
+Design suspects (for the audit ledger):
 - No health indicator despite a startup dial probe existing — the probe result is not exposed
   at runtime; boot-time health and steady-state health are conflated.
 - Fail-fast probe costs one SMTP login per boot per instance against quota-limited relays

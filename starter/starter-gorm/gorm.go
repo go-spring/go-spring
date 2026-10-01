@@ -36,15 +36,6 @@ import (
 	"go-spring.org/stdlib/errutil"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
-
-	// Blank import: importing this starter brings the governance authority with
-	// it — starter-governance registers the *resilience.Manager, *loadbalance.
-	// Manager, *fault.Injector and *governance.Center beans this package injects.
-	// Turning governance OFF is spring.governance.enabled=false (or binding no rule source),
-	// not the absence of the starter. The injected parameters stay nullable, so a
-	// container that somehow lacks these beans degrades to a transparent
-	// pass-through instead of failing to boot.
-	_ "go-spring.org/starter-governance"
 )
 
 // PoolConfig carries the driver-agnostic connection-pool and logging settings
@@ -157,8 +148,8 @@ func (c Common) NewResolver(ctx context.Context, backend discovery.Discovery) (d
 //
 // lbMgr is the injected endpoint-selection authority, threaded down from the
 // dialect (which receives it from the gs module ctor). A nil manager is the
-// standalone case (no container); an unarmed one is exactly "governance off",
-// where Bind is a no-op — normalizing here keeps the binding free of a nil
+// standalone case (no container); a pass-through one is exactly "governance
+// off", where Bind is a no-op — normalizing here keeps the binding free of a nil
 // branch.
 func (c Common) NewPickPool(ctx context.Context, backend discovery.Discovery, service string, lbMgr *loadbalance.Manager) (*loadbalance.Pool, discovery.Resolver, func(), error) {
 	resolver, err := c.NewResolver(ctx, backend)
@@ -202,9 +193,11 @@ func GormConfig(pool PoolConfig) *gorm.Config {
 	return cfg
 }
 
-// ApplyPool applies connection-pool settings and performs a startup ping so
-// misconfigured address/credentials fail fast at creation instead of on first
-// query.
+// ApplyPool applies the configured connection-pool settings to db. It does not
+// probe: the startup connectivity check is a separate step ([Ping]), run by the
+// wiring after [Open] returns, so the client is assembled complete (observe +
+// governance) before it is probed. (gorm.Open itself already pings on initialize unless
+// DisableAutomaticPing is set, so a dead backend still fails fast at open.)
 func ApplyPool(db *gorm.DB, pool PoolConfig) error {
 	sqlDB, err := db.DB()
 	if err != nil {
@@ -222,13 +215,7 @@ func ApplyPool(db *gorm.DB, pool PoolConfig) error {
 	if pool.ConnMaxIdleTime > 0 {
 		sqlDB.SetConnMaxIdleTime(pool.ConnMaxIdleTime)
 	}
-	timeout := pool.PingTimeout
-	if timeout <= 0 {
-		timeout = 5 * time.Second
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
-	defer cancel()
-	return sqlDB.PingContext(ctx)
+	return nil
 }
 
 // Ping verifies the connection pool behind db can reach the database. It is a

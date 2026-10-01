@@ -72,9 +72,12 @@ func fail(format string, args ...any) {
 }
 
 func runTest(s *Service) {
-	// Feature 0: health — both connections report a live status via Healthy().
-	if !s.Main.Healthy() || !s.Work.Healthy() {
-		fail("connection not healthy: main=%v work=%v", s.Main.Healthy(), s.Work.Healthy())
+	// Feature 0: health — both connections report a live status via HealthCheck.
+	if err := StarterNats.HealthCheck(context.Background(), s.Main); err != nil {
+		fail("main connection not healthy: %v", err)
+	}
+	if err := StarterNats.HealthCheck(context.Background(), s.Work); err != nil {
+		fail("work connection not healthy: %v", err)
 	}
 
 	// Feature 1: core pub/sub round-trip. Both directions go through the

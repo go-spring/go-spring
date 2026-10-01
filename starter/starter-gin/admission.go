@@ -23,24 +23,16 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	"go-spring.org/cloud/governance/fault"
-	"go-spring.org/cloud/governance/resilience"
-
-	// Blank import: importing this starter brings the governance authority with
-	// it — starter-governance registers the *resilience.Manager, *loadbalance.
-	// Manager, *fault.Injector and *governance.Center beans this package injects.
-	// Turning governance OFF is spring.governance.enabled=false (or binding no rule source),
-	// not the absence of the starter. The injected parameters stay nullable, so a
-	// container that somehow lacks these beans degrades to a transparent
-	// pass-through instead of failing to boot.
-	_ "go-spring.org/starter-governance"
+	"go-spring.org/cloud/fault"
+	"go-spring.org/cloud/propagate"
+	"go-spring.org/cloud/resilience"
 )
 
 // buildServerPolicy builds the inbound admission middleware. The admission executor
 // is built from the injected [resilience.Manager], so this server gets its
 // rate-limit / bulkhead / breaker limits from the governance document's SERVER
 // block (spring.governance.server.*) WITHOUT naming *governance.Center. A nil manager — a
-// standalone call, or an app that does not import starter-governance — is
+// standalone call, or an app that does not import — is
 // normalized to an unarmed one, whose executor is a transparent pass-through, so
 // the admission middleware runs but never rejects (fn runs once, untouched). The
 // executor handle resolves its backing implementation per call and follows the
@@ -69,11 +61,24 @@ func buildServerPolicy(cfg Config, mgr *resilience.Manager) (gin.HandlerFunc, er
 // prevents reentry regardless.
 func resilienceServerPolicy(exec resilience.ServerExecutor, service string) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		// The caller's remaining budget, when it sent one: the handler — and every
+		// outbound call it makes — then runs on the earlier of that and this
+		// server's own handling budget, so a request chain spends one allowance
+		// instead of one per hop. A request that carried no budget is bounded by
+		// this server's policy alone, exactly as before.
+		ctx, cancel := resilience.WithBudget(c.Request.Context(), propagate.Header(c.Request.Header))
+		defer cancel()
+
 		var served bool
-		err := exec.Execute(c.Request.Context(), func(ctx context.Context) error {
+		err := exec.Execute(ctx, func(ctx context.Context) error {
 			if served {
 				return nil // reentry guard: handler already ran this request
 			}
+			// Hand the bounded context to the handler chain: the admission
+			// executor derived it, and gin reads it back off the request, so the
+			// deadline that bounds this request is the one the handler — and its
+			// outbound clients — actually run under.
+			c.Request = c.Request.WithContext(ctx)
 			c.Next()
 			served = c.Writer.Written()
 			if c.Writer.Status() >= 500 {

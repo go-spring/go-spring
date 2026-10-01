@@ -21,20 +21,11 @@ import (
 	"net/http"
 
 	"go-spring.org/cloud/discovery"
-	"go-spring.org/cloud/governance/fault"
-	"go-spring.org/cloud/governance/resilience"
-	"go-spring.org/cloud/governance/traffic"
+	"go-spring.org/cloud/fault"
 	"go-spring.org/cloud/loadbalance"
+	"go-spring.org/cloud/resilience"
+	"go-spring.org/cloud/traffic"
 	"go-spring.org/starter-http-client/httpx"
-
-	// Blank import: importing this starter brings the governance authority with
-	// it — starter-governance registers the *resilience.Manager, *loadbalance.
-	// Manager, *fault.Injector and *governance.Center beans this package injects.
-	// Turning governance OFF is spring.governance.enabled=false (or binding no rule source),
-	// not the absence of the starter. The injected parameters stay nullable, so a
-	// container that somehow lacks these beans degrades to a transparent
-	// pass-through instead of failing to boot.
-	_ "go-spring.org/starter-governance"
 )
 
 // Driver defines how to create one client entry's transport — THE extension
@@ -69,7 +60,7 @@ import (
 // actually reach it — Config stays a pure bound value.
 //
 // mgr and inj are the governance beans the container injected into the starter
-// (nil when starter-governance is absent — gs autowires a missing bean as nil).
+// (nil when no center is linked — gs autowires a missing bean as nil).
 // They are handed to the driver rather than read from a package-level seam, so
 // a custom driver can wrap, replace or simply forward them; the bundled
 // DefaultDriver forwards both to [httpx.NewTransport], which normalizes a nil

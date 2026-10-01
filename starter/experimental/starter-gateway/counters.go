@@ -28,7 +28,7 @@ import (
 	"sync"
 	"time"
 
-	"go-spring.org/cloud/governance/resilience"
+	"go-spring.org/cloud/resilience"
 	"go-spring.org/stdlib/timeutil"
 )
 

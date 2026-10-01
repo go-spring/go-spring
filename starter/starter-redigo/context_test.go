@@ -22,6 +22,7 @@ import (
 
 	"github.com/gomodule/redigo/redis"
 	"go-spring.org/cloud/observability"
+	"go-spring.org/cloud/resilience"
 	"go-spring.org/stdlib/testing/assert"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -107,7 +108,11 @@ func TestDoContextSpanCarriesContextAttributes(t *testing.T) {
 			return next(ctx, cmd, args)
 		}
 	})
-	c := NewConn(inner, user, observeInterceptor())
+	// The span is emitted by the resilience layer, which the chain reaches
+	// through the declaration layer — so this exercises both: the starter
+	// declares the command's identity, the executor emits from it.
+	exec := resilience.WrapClientExecutor(passthroughExecutor{}, "redigo", "svc")
+	c := NewConn(inner, user, operationInterceptor(), resilienceInterceptor(exec, "svc"))
 
 	ctx := observability.WithContextAttributes(context.Background(),
 		attribute.String("deployment", "canary"))
@@ -118,9 +123,21 @@ func TestDoContextSpanCarriesContextAttributes(t *testing.T) {
 	assert.That(t, inner.doContexts).Equal(1)
 	spans := sr.Ended()
 	assert.That(t, len(spans)).Equal(1)
+	assert.That(t, spans[0].Name()).Equal("GET")
 	got := attrsOf(spans[0])
 	assert.That(t, got["tenant"]).Equal("acme")
 	assert.That(t, got["deployment"]).Equal("canary")
 	// The family's own attributes are still set on the same span.
 	assert.That(t, got["db.system"]).Equal("redis")
 }
+
+// passthroughExecutor is the innermost layer the test chains under the
+// declaration layer: it runs the call and nothing else, so the span under
+// assertion comes from the resilience wrapper above it.
+type passthroughExecutor struct{}
+
+func (passthroughExecutor) Execute(ctx context.Context, fn func(context.Context) error) error {
+	return fn(ctx)
+}
+func (passthroughExecutor) Close() error                          { return nil }
+func (passthroughExecutor) Refresh(resilience.ClientPolicy) error { return nil }

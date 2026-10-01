@@ -12,9 +12,11 @@ with a small twist: the injected bean is a wrapper around
 - Binds each `spring.nats.instances.<name>` entry to a `*Conn` bean via
   `gs.Group`; there is no default single-instance bean (client starters
   in this repo are multi-instance only, see `project_starter_capability_backlog`).
-- `Conn` embeds `*nats.Conn` so callers keep `Publish`/`Subscribe`/
-  `Request` directly on the bean; `JetStream` is non-nil only when
-  `jetstream.enabled=true` and is derived from the same connection.
+- `Conn` holds the raw `*nats.Conn` in an unexported field and re-exposes
+  its methods (`Publish`/`Subscribe`/`Request`/...) as explicit
+  delegations, so callers keep them directly on the bean; `JetStream` is
+  non-nil only when `jetstream.enabled=true` and is derived from the same
+  connection.
 - Bridges async connection events (async errors, disconnect, reconnect,
   close) into go-spring's `log` so they land beside app logs.
 - Applies an optional resilience executor (rate-limit + circuit breaker)
@@ -27,11 +29,11 @@ with a small twist: the injected bean is a wrapper around
 - **Bean = wrapper, not raw `*nats.Conn`.** The wrapper carries the
   optional JetStream context and the resilience executor without
   forcing callers to pick two beans and reason about their relationship.
-- **`Healthy()` reflects live state.** The wrapper reports
-  `Conn.IsConnected()`, and each instance registers a `health.Indicator`
-  (`nats:<name>`, opt-out via `health.enabled`) on top of it, so an actuator
-  readiness probe sees the auto-reconnecting client's actual state rather than a
-  stale boot-time success.
+- **`HealthCheck` reflects live state.** `StarterNats.HealthCheck` reports the
+  bare connection's `IsConnected()`, and each instance registers a
+  `health.Indicator` (`nats:<name>`, opt-out via `health.enabled`) whose probe
+  only calls it, so an actuator readiness probe sees the auto-reconnecting
+  client's actual state rather than a stale boot-time success.
 - **`destroy = Drain`, not `Close`.** `Drain` lets in-flight
   subscriptions finish and closes the connection when done, matching
   the graceful-shutdown contract of the framework.

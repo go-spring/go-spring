@@ -64,6 +64,20 @@ _ = token.Error()
 
 ## 可观测性
 
+两个方向都在调用处**声明**自己的 operation —— 发布／消费的身份
+（`messaging.system`、`messaging.operation`）加 topic —— 由 resilience 层作为
+executor 链上唯一的发射点，按该声明发射信号：调用 span、调用级
+`messaging.client.operation.duration` 直方图、尝试级
+`messaging.client.attempt.duration` 直方图、在途 gauge、
+`resilience.client.calls` 计数器，以及每次调用一条访问日志。它们依赖
+[starter-otel](../starter-otel) 安装的全局 `TracerProvider`；没有它时 span 与指标
+都是 no-op，访问日志则始终经 go-spring 日志写出。starter 自身不再发射任何东西 ——
+它只声明。
+
+连接状态计数器（`messaging.client.connection.state_changes`）由 paho 客户端自身的
+连接／连接丢失／重连回调驱动，仍留在 starter 内：它不是逐调用信号，因此不该由发射点
+产出。
+
 分布式链路追踪**不适用**于本 starter,这是刻意取舍而非缺失:
 
 * `paho.mqtt.golang` 没有官方 OTel instrumentation。
@@ -73,9 +87,9 @@ _ = token.Error()
   仅存在于 MQTT 5,而此 paho v3 客户端并不支持。把链路上下文塞进业务 payload 或 topic
   会破坏消息契约,故不采用。
 
-实际影响:生产者与消费者的 span 无法跨 broker 串联。`messaging.Observe` 装饰器
-仍会给 driver 插桩——`messaging.operation.*` 指标与访问日志——但其 span 是不相连的
-根。连接层事件(连接、连接丢失、重连中)也仍会桥接进 go-spring 日志以供运维观测。
+实际影响:生产者与消费者的 span 无法跨 broker 串联 —— 一次发布与一次消费仍各自被观测
+（声明的 operation 会发射为指标、日志与 span），但它们落成不相连的根。连接层事件
+（连接、连接丢失、重连中）也仍会桥接进 go-spring 日志以供运维观测。
 
 ## 消息 Driver
 
@@ -111,11 +125,11 @@ _ = sub.Subscribe(ctx, func(ctx context.Context, m *messaging.Message) error {
 
 `destination` 与 `source` 都是 topic,以 QoS 1 收发。该 driver 是 **payload-only**:
 MQTT 3.1.1 无每消息元数据,所以 `Key`、`Headers`、`Timestamp` 不会上线,而且 ——
-在所有 driver 中唯一地 —— **trace context 无法随消息传输**(无处可骑),因此
-`messaging.Observe` 插桩产出指标、日志与 span,但没有跨 broker 的 trace 串联。`group`
-不使用,因为 3.1.1 没有 shared subscription。paho 回调是 fire-and-forget、无 ack/nack,
-因此 handler 出错只记日志。原生 `mqtt.Client` bean 仍可用于 retained 消息、自定义 QoS、
-通配符 topic 等 driver 未建模的 MQTT 能力。
+在所有 driver 中唯一地 —— **trace context 无法随消息传输**(无处可骑),因此每次发布与
+每次消费仍被观测(声明的 operation 会发射为指标、日志与 span),但没有跨 broker 的 trace
+串联。`group` 不使用,因为 3.1.1 没有 shared subscription。paho 回调是 fire-and-forget、
+无 ack/nack,因此 handler 出错只记日志。原生 `mqtt.Client` bean 仍可用于 retained 消息、
+自定义 QoS、通配符 topic 等 driver 未建模的 MQTT 能力。
 
 ## 高级功能
 

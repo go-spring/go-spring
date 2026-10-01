@@ -1,14 +1,14 @@
 # starter-gateway 使用说明 — 参考手册
 
 详细使用文档,概览见 [README_CN.md](README_CN.md)。以下行为声明全部对照源码
-(`gateway.go`、`server.go`、`compile.go`、`route.go`、`predicate.go`、`filter.go`、
+(`starter.go`、`server.go`、`compile.go`、`route.go`、`predicate.go`、`filter.go`、
 `proxy.go`、`metrics.go`、`otel_tracing.go`)与可运行的 [example/](example/)
 (`example/check.sh` 为自断言冒烟脚本)核对。Route/Predicate/Filter 模型参照
 [Spring Cloud Gateway](https://docs.spring-cloud-spring-cloud-gateway/reference/) —
 本文只写 Go-Spring 的增量。
 
 **激活条件**：仅当配置 `spring.gateway.server.addr` 时才注册 `gatewayServer` bean
-(gateway.go:40,`gs.OnProperty("spring.gateway.server.addr")`)——该 key 即总开关。路由表、
+(starter.go:52,`gs.OnProperty("spring.gateway.server.addr")`)——该 key 即总开关。路由表、
 metrics、health bean 无条件注册;不配 server key 时路由照样绑定但永远不会对外服务。
 
 ---
@@ -260,7 +260,7 @@ bean 型 token(从注入的 `Wrappers` map 解析,不走注册表):
 
 | Key | 类型 | 默认值 | 行为 / 联动 | 配错后果 |
 |-----|------|--------|-------------|----------|
-| `addr` | string | — | **激活 key**(gateway.go:40);端口冲突在 `net.Listen` 失败(server.go:92)。 | 缺失 → 路由绑定但无人服务;无任何告警。 |
+| `addr` | string | — | **激活 key**(starter.go:52);端口冲突在 `net.Listen` 失败(server.go:92)。 | 缺失 → 路由绑定但无人服务;无任何告警。 |
 | `tls.enabled` | bool | false | 启用 TLS 监听。 | |
 | `tls.cert-file` / `tls.key-file` | string | "" | 服务端证书;经 `security.BuildServer` 构建——文件缺失/不可读启动失败。 | |
 | `tls.ca-file` | string | "" | **mTLS 开关**:出现即 `RequireAndVerifyClientCert`(server.go:69-75)。⚠ 与 echo starter 不同,这里 mTLS 是接通的。 | |
