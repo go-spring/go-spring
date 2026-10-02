@@ -96,9 +96,10 @@ type zkBackend struct {
 	conn *zk.Conn
 }
 
-// newZkBackend builds the session (probing the ensemble) and both halves. The
-// probe is the fail-fast: a misconfigured or unreachable ensemble fails
-// startup here, once per block.
+// newZkBackend builds the session (probing the ensemble when Ping is set) and
+// both halves. The probe is the fail-fast: a misconfigured or unreachable
+// ensemble fails startup here, once per block; with Ping off (the default)
+// construction skips it.
 func newZkBackend(c ZookeeperConfig, name string) (*zkBackend, error) {
 	conn, err := connectZookeeper(c)
 	if err != nil {
@@ -178,8 +179,8 @@ func (b *zkBackend) probe(ctx context.Context) error {
 }
 
 // connectZookeeper dials the ensemble for c, applies digest auth when set, and
-// probes it (an Exists call blocks until the session connects) so an
-// unreachable ensemble fails startup rather than surfacing on the first
+// when Ping is set probes it (an Exists call blocks until the session connects)
+// so an unreachable ensemble fails startup rather than surfacing on the first
 // operation.
 func connectZookeeper(c ZookeeperConfig) (*zk.Conn, error) {
 	if len(c.Servers) == 0 {
@@ -196,11 +197,14 @@ func connectZookeeper(c ZookeeperConfig) (*zk.Conn, error) {
 			return nil, errutil.Explain(err, "registry-zookeeper: add digest auth")
 		}
 	}
-	// Fail-fast probe: an Exists call blocks until the session connects (or the
-	// session timeout elapses), so an unreachable ensemble surfaces at boot.
-	if _, _, err := conn.Exists("/"); err != nil {
-		conn.Close()
-		return nil, errutil.Explain(err, "registry-zookeeper: startup probe failed for %v", c.Servers)
+	if c.Ping {
+		// Fail-fast probe: an Exists call blocks until the session connects (or
+		// the session timeout elapses), so an unreachable ensemble surfaces at
+		// boot.
+		if _, _, err := conn.Exists("/"); err != nil {
+			conn.Close()
+			return nil, errutil.Explain(err, "registry-zookeeper: startup probe failed for %v", c.Servers)
+		}
 	}
 	return conn, nil
 }
@@ -223,9 +227,9 @@ func init() {
 				Destroy((*zkBackend).Close).Caller(1)
 
 			// Contribute a health indicator for this ensemble unless the user
-			// disabled it (health.enabled=false), injecting the backend
-			// registered above by name.
-			if c.HealthEnabled {
+			// disabled it (health=false), injecting the backend registered
+			// above by name.
+			if c.Health {
 				r.Provide(func(b *zkBackend) *health.Indicator {
 					return &health.Indicator{Name: "registry-zookeeper:" + name, Probe: b.probe}
 				}, gs.TagArg("zookeeper."+name)).Name("registry-zookeeper:" + name)

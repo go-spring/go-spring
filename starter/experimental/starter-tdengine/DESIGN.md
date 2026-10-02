@@ -42,7 +42,8 @@ the wire protocol and the seam at which resilience/observability attach.
 ## 3. Constraints
 
 - driver-go v3.8.2 requires a TDengine server ≥ 3.3.6.0 on the websocket
-  path; older servers fail the startup ping with the driver's version error.
+  path; older servers fail the startup ping (when `ping=true`) with the driver's
+  version error, or surface it on first use otherwise.
 - TDengine has no transactions; the wrapper's `Begin` delegates to the
   driver, which reports that.
 - The DSN is the driver's unified format (`user:pass@ws(host:port)/db`) —

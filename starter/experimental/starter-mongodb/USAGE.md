@@ -150,7 +150,7 @@ spring.observability.metrics.path=/metrics
 collector on :4317 if you enable the trace exporter):
 
 ```bash
-go run .                          # boot fails fast if the server is unreachable (startup ping)
+go run .                          # boot fails fast if the server is unreachable (startup ping; needs ping=true, off by default)
 curl -s :9370/readyz | jq .       # components include "mongo:a" and "mongo:disc"
 curl -s :9090/metrics | grep db.client   # db.client.operation.duration / db.client.active_requests
 grep _app_mongodb_access app.log | tail -3   # one access record per command
@@ -185,8 +185,8 @@ gs.Run()
   │       serviceLabel = serviceLabel(cfg); exec = params.ExecutorFor("mongodb", serviceLabel),
   │       which is fault.WrapClientExecutor(mgr.ClientExecutorFor("mongodb", service), service, inj)
   │   → swap dialerWrapper.dial = resilience.NewDialer(base, w.exec) [starter.go:210]
-  │   → fail-fast probe: HealthCheck(ctx, w) — a Ping bounded by connect-timeout
-  │     (10s fallback) [starter.go:216] — a dead server fails the BOOT, not the first query
+  │   → ping=true only: fail-fast probe HealthCheck(ctx, w) — a Ping bounded by
+  │     connect-timeout (10s fallback) [starter.go:220] — a dead server fails the BOOT
   ├─ readiness: mongo:<name> indicator runs HealthCheck (a client.Ping) against the live server
   └─ SIGTERM → Destroy [client.go:148]: exec.Close → client.Disconnect
       (the loader holds no resources, so nothing discovery-related is released)
@@ -262,11 +262,11 @@ There are no observability keys — observation is unconditional (see §3.3).
 | Key | Type | Default | Behavior / interactions | Misconfiguration consequence |
 |-----|------|---------|-------------------------|------------------------------|
 | `uri` | string | — | **Required** (expr `$ != ''`). Parsed by `ApplyURI`; driver options in the URI win unless overridden below. | Missing/empty → boot error at binding. |
-| `username` | string | — | When non-empty, sets a `options.Credential` from username/password/auth-source/auth-mechanism [starter.go:121-128]. Empty → credentials come solely from the URI. | Setting username but forgetting password/auth-source → auth failure at the startup ping. |
+| `username` | string | — | When non-empty, sets a `options.Credential` from username/password/auth-source/auth-mechanism [starter.go:121-128]. Empty → credentials come solely from the URI. | Setting username but forgetting password/auth-source → auth failure on first use (or at the startup ping when `ping=true`). |
 | `password` | string | — | Part of the credential above. ⚠ Only effective together with `username`. | — |
-| `auth-source` | string | — | Credential verification database, e.g. `admin`. ⚠ Only with `username`. | Wrong db → "Authentication failed" at boot ping. |
-| `auth-mechanism` | string | — | e.g. `SCRAM-SHA-256`; empty = driver negotiates. ⚠ Only with `username`. | Unsupported mechanism → boot ping error. |
-| `connect-timeout` | duration | `10s` | Passed to the driver AND bounds the fail-fast startup ping (0 → 10s fallback, [starter.go:224-229]). | Too small → boot ping spuriously times out on slow networks. |
+| `auth-source` | string | — | Credential verification database, e.g. `admin`. ⚠ Only with `username`. | Wrong db → "Authentication failed" on first use (or at the boot ping when `ping=true`). |
+| `auth-mechanism` | string | — | e.g. `SCRAM-SHA-256`; empty = driver negotiates. ⚠ Only with `username`. | Unsupported mechanism → error on first use (or at the boot ping when `ping=true`). |
+| `connect-timeout` | duration | `10s` | Passed to the driver AND bounds the startup ping when `ping=true` (0 → 10s fallback, [starter.go:224-229]). | Too small → boot ping spuriously times out on slow networks. |
 | `server-selection-timeout` | duration | `0` | 0 = driver default (30s). How long the driver waits for a suitable server. | Too small + discovery latency → "server selection timeout". |
 | `max-pool-size` | uint64 | `100` | Max connections per server. 0 would mean "use default" — but the starter passes 100 explicitly when unset. A governance rule setting `max-conns` overrides it. | Too small → ops queue waiting for a pool slot. |
 | `min-pool-size` | uint64 | `0` | Min pooled connections (always applied, even 0). | — |
@@ -275,6 +275,8 @@ There are no observability keys — observation is unconditional (see §3.3).
 | `scheme` | string | — | Narrows discovery endpoints to one transport scheme (e.g. `tls`). Only consulted when service-name is set. | — |
 | `discovery` | string | — | Which registered discovery backend resolves service-name. Falls back to `${spring.mongodb.default.discovery}` when unset. | Both unset or an unregistered name while service-name is set → boot error. |
 | `tls.*` | group | off | Shared `security` block (enabled/ca-file/cert-file/key-file/server-name/insecure-skip-verify); `tls.Build` error fails the boot [starter.go:129-137]. Enabled=false → no TLS unless the URI itself requests it (`mongodbs://` / `tls=true`). | Partial config → boot error "mongodb: build TLS". |
+| `ping` | bool | `false` | Startup connectivity probe: when true the ctor pings the server once (`HealthCheck`) and fails the boot if unreachable, restoring fail-fast. Off by default so a server that is not up yet does not block startup — connectivity problems surface on first use. | `ping=true` against a down server → boot error `mongodb: ping <uri>: ...`. |
+| `health` | bool | `true` | Whether this instance contributes a `health.Indicator` (name `mongo:<name>`) for the actuator's readiness/startup probes. Set false to keep the instance out of the aggregated health report. | `health=false` → no `mongo:<name>` component in `/readyz`. |
 
 ### 3.2 Resilience / fault (spring.governance.*, not under the instance prefix)
 
@@ -327,7 +329,8 @@ curl -s :9370/readyz             # 503 OUT_OF_SERVICE
 docker start <mongo>
 ```
 
-The indicator is unconditional — no disable switch ([starter.go:71-73]).
+The indicator is contributed per instance by default ([starter.go:73]); set the
+instance's `health=false` to skip it.
 
 ### 4.2 What observation actually emits
 
@@ -390,7 +393,7 @@ restart. Verify via `_app_mongodb_access` records or by stopping the old endpoin
 
 | Symptom | Likely cause | Fix |
 |---------|--------------|-----|
-| Boot fails `mongodb: ping <uri>: ...` | Unreachable server / wrong credentials / TLS mismatch — the fail-fast ping is unconditional | Fix connectivity/credentials; `connect-timeout` bounds the probe. |
+| Boot fails `mongodb: ping <uri>: ...` | Unreachable server / wrong credentials / TLS mismatch — the fail-fast ping runs only when `ping=true` (default off) | Fix connectivity/credentials; `connect-timeout` bounds the probe; or drop `ping` to defer the failure to first use. |
 | Boot fails at binding on `uri` | `uri` empty — it is expr-validated non-empty | Set `spring.mongodb.instances.<name>.uri`. |
 | Boot fails "build TLS" / "build discovery resolver" | Partial `tls.*` config; `discovery` names nothing registered | Complete the security block; register the backend as a named discovery bean. |
 | Discovery client errors "no such host" / topology errors | `service-name` bypasses driver topology discovery | Add `directConnection=true` to the URI, or drop service-name for replica-set/mongos URIs. |
@@ -405,7 +408,7 @@ restart. Verify via `_app_mongodb_access` records or by stopping the old endpoin
 
 | Metric | Value |
 |--------|-------|
-| Config keys | 14 instance keys + tls group |
+| Config keys | 16 instance keys + tls group |
 | Required | 1 (`uri`) |
 | Quickstart external deps | 1 (MongoDB) |
 | "Watch out" entries | 4 (directConnection, warm-pool bypass, username-gated credential) |
@@ -414,7 +417,9 @@ Design suspects (audit ledger; kept from the previous edition, additions marked 
 
 - `service-name` silently disables driver topology discovery and needs the user's
   `directConnection=true` cooperation — the starter cannot inject it itself (URI is opaque).
-- Health indicator has no disable switch (family asymmetry: redigo has `health.enabled`).
+- Health indicator is per instance and can be disabled with `health=false`; the startup probe is
+  the opposite default — off unless `ping=true` (family asymmetry with redigo's single
+  `health.enabled` + `startup-ping` pair: here the two knobs are `health` and `ping`).
 - Resilience is dial-layer only; users expecting per-command breaker semantics (as in
   starter-go-redis) get silent non-protection for warm-pool command failures. Re-audited in
   the 2026-08-28 guard-unification pass and confirmed **SDK-blocked at the command level**:

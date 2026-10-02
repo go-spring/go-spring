@@ -54,6 +54,7 @@ import (
 	"go-spring.org/cloud/loadbalance"
 	"go-spring.org/cloud/resilience"
 	"go-spring.org/spring/gs"
+	"go-spring.org/stdlib/errutil"
 
 	_ "go-spring.org/starter-actuator"    // registers the actuator Server bean
 	_ "go-spring.org/starter-config-file" // registers the file-watch config provider
@@ -78,7 +79,7 @@ var dep = &health.Indicator{
 	Groups: []health.Group{health.GroupReadiness, health.GroupStartup},
 	Probe: func(ctx context.Context) error {
 		if depDown.Load() {
-			return errors.New("dependency unavailable")
+			return errutil.Explain(nil, "dependency unavailable")
 		}
 		return nil
 	},

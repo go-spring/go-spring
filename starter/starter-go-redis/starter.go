@@ -74,10 +74,10 @@ func init() {
 					gs.IndexArg(6, gs.TagArg("")),
 				).Name(name).Destroy((*Client).Destroy).Caller(1)
 				// Contribute a health indicator for this instance unless the
-				// user disabled it (health.enabled=false), injecting the
+				// user disabled it (health=false), injecting the
 				// client just registered above by name. The probe goes to the
 				// wrapper, which holds the raw client.
-				if c.HealthEnabled {
+				if c.Health {
 					r.Provide(func(w *Client) *health.Indicator {
 						return NewClientHealth(name, w)
 					}, gs.TagArg(name)).Name("redis:" + name).Caller(1)
@@ -92,7 +92,7 @@ func init() {
 					gs.IndexArg(3, gs.TagArg("")),
 					gs.IndexArg(4, gs.TagArg("")),
 				).Name(name).Destroy((*Client).Destroy).Caller(1)
-				if c.HealthEnabled {
+				if c.Health {
 					r.Provide(func(w *Client) *health.Indicator {
 						return NewClientHealth(name, w)
 					}, gs.TagArg(name)).Name("redis:" + name).Caller(1)
@@ -164,19 +164,23 @@ func newClient(ctx *gs.ContextProvider, c Config, d Driver, disc discovery.Disco
 		log.Errorf(ctx.Context, log.TagAppDef, "redis: create client failed: %v", err)
 		return nil, errutil.Explain(err, "failed to create redis client")
 	}
-	// Fail fast: ping the backend at startup so a misconfigured address or an
-	// unreachable server surfaces during boot rather than on the first request.
-	// The probe is [HealthCheck] — the same single health implementation the
-	// Actuator indicator uses — and the hooks are already on the raw client the
-	// wrapper embeds, which is exactly what "assemble first, then probe" means.
-	// A failure abandons the client, so release everything just assembled.
-	pingCtx, cancel := context.WithTimeout(ctx.Context, pingTimeout(c))
-	err = HealthCheck(pingCtx, w)
-	cancel()
-	if err != nil {
-		log.Errorf(ctx.Context, log.TagAppDef, "redis: startup ping failed: %v", err)
-		_ = w.Destroy()
-		return nil, errutil.Explain(err, "redis: startup ping failed")
+	// Fail fast (opt-in, e.g. ping=true): ping the backend at startup so a
+	// misconfigured address or an unreachable server surfaces during boot rather
+	// than on the first request. The probe is [HealthCheck] — the same single
+	// health implementation the Actuator indicator uses — and the hooks are
+	// already on the raw client the wrapper embeds, which is exactly what
+	// "assemble first, then probe" means. A failure abandons the client, so
+	// release everything just assembled. With ping unset the probe is skipped
+	// and an unreachable server only surfaces on first use.
+	if c.Ping {
+		pingCtx, cancel := context.WithTimeout(ctx.Context, pingTimeout(c))
+		err = HealthCheck(pingCtx, w)
+		cancel()
+		if err != nil {
+			log.Errorf(ctx.Context, log.TagAppDef, "redis: startup ping failed: %v", err)
+			_ = w.Destroy()
+			return nil, errutil.Explain(err, "redis: startup ping failed")
+		}
 	}
 	log.Infof(ctx.Context, log.TagAppDef, "redis client initialized, addr=%s mode=%s", c.Addr, c.Mode)
 	return w, nil
@@ -214,13 +218,15 @@ func newClusterClient(ctx *gs.ContextProvider, c Config, d Driver, mgr *resilien
 		log.Errorf(ctx.Context, log.TagAppDef, "redis: create cluster client failed: %v", err)
 		return nil, errutil.Explain(err, "failed to create redis cluster client")
 	}
-	pingCtx, cancel := context.WithTimeout(ctx.Context, pingTimeout(c))
-	err = HealthCheck(pingCtx, w)
-	cancel()
-	if err != nil {
-		log.Errorf(ctx.Context, log.TagAppDef, "redis: cluster startup ping failed: %v", err)
-		_ = w.Destroy()
-		return nil, errutil.Explain(err, "redis: startup ping failed")
+	if c.Ping {
+		pingCtx, cancel := context.WithTimeout(ctx.Context, pingTimeout(c))
+		err = HealthCheck(pingCtx, w)
+		cancel()
+		if err != nil {
+			log.Errorf(ctx.Context, log.TagAppDef, "redis: cluster startup ping failed: %v", err)
+			_ = w.Destroy()
+			return nil, errutil.Explain(err, "redis: startup ping failed")
+		}
 	}
 	log.Infof(ctx.Context, log.TagAppDef, "redis cluster client initialized, addrs=%v", c.Addrs)
 	return w, nil

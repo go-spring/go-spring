@@ -31,7 +31,7 @@ type User struct{ Name string }
 // typed. val must be a pointer. The codec is fixed at construction
 // (New(bc, WithCodec(...))); default is JSON.
 err := c.Get(ctx, "user:42", &user)        // cache.ErrMiss if absent
-_  = c.Set(ctx, "user:42", user, 5*time.Minute)
+_  = c.Set(ctx, "user:42", user, 300)      // ttl in whole seconds
 
 // the rare entry in a different format: the same WithCodec option,
 // passed to that one call instead of New.
@@ -55,16 +55,17 @@ backend-specific error handling:
 err := c.Get(ctx, key, &v)
 if errors.Is(err, cache.ErrMiss) {
     v, err = loadFromSource(ctx, key)      // fall through only on a real miss
-    _ = c.Set(ctx, key, v, 5*time.Minute)
+    _ = c.Set(ctx, key, v, 300)
 }
 ```
 
 ### TTL semantics
 
-go-redis, redigo and memcached honor the per-entry ttl (non-positive means no
-expiry). bigcache ignores it and uses the global `LifeWindow` set at
-construction. A backend that cannot honor per-entry ttl ignores the argument
-and says so in its own docs; it does not panic.
+The ttl is a whole number of seconds; a non-positive value means the entry does
+not expire. Every backend that supports per-entry ttl (go-redis, redigo,
+memcached) applies it. bigcache cannot - it expires entries by the global
+`LifeWindow` set at construction - so it ignores the argument and says so in
+its own docs; it does not panic.
 
 ## Observability
 
@@ -99,7 +100,8 @@ unchanged.
 ```go
 type ByteCache interface {
     GetBytes(ctx context.Context, key string) ([]byte, error) // (nil, ErrMiss) when absent
-    SetBytes(ctx context.Context, key string, val []byte, ttl time.Duration) error
+    // ttlSeconds is a whole number of seconds; non-positive means no expiry.
+    SetBytes(ctx context.Context, key string, val []byte, ttlSeconds int) error
     Delete(ctx context.Context, key string) error
 }
 ```

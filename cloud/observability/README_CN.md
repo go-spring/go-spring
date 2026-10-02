@@ -19,7 +19,7 @@ go-spring 绝大多数插桩的 span 都在框架内部创建：注册中心的�
 这个 context 启动的 span——无论在框架哪一层——都能读到：
 
 ```go
-ctx = observability.WithContextAttributes(ctx, attribute.String("tenant", t))
+ctx = observability.WithSpanAttributes(ctx, attribute.String("tenant", t))
 ```
 
 子 span 自动继承；同名属性后设置的胜出。属性生命周期与 context 完全
@@ -38,7 +38,7 @@ go get go-spring.org/cloud
 ```go
 func TenantMiddleware(next http.Handler) http.Handler {
     return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-        ctx := observability.WithContextAttributes(r.Context(),
+        ctx := observability.WithSpanAttributes(r.Context(),
             attribute.String("tenant", tenantOf(r)),
         )
         next.ServeHTTP(w, r.WithContext(ctx))
@@ -48,20 +48,45 @@ func TenantMiddleware(next http.Handler) http.Handler {
 
 读方是一个 `SpanProcessor`，由 starter-otel 自动注册到 provider
 （见该 starter 的 USAGE §2.5）。自己构造 `TracerProvider` 的用户需要手动
-注册 `trace.ContextAttributesProcessor()`——没有这个读方，挂上去的属性
+注册 `observability.SpanAttributesProcessor()`——没有这个读方，挂上去的属性
 不会被任何 span 采集。
+
+## span 是一个窗口
+
+span 观测的是一个**过程**，不是某个瞬时：它在工作开始前启动、在工作结束后
+结算。正是这个生命周期让它区别于这里的其他信号——工作运行期间它一直可写，
+而且可以通过工作所携带的 context 寻址。属性可以在三个时刻进入，第四个不行：
+
+| 时刻 | 方式 |
+|---|---|
+| `Start` 时 | 组件传给 `Tracer.Start` 的静态属性 |
+| `Start` 之前（来自框架之外的调用方） | `observability.WithSpanAttributes`，由 processor 在 span 启动时应用 |
+| span 运行期间 | `observability.SetSpanAttributes(ctx, ...)`，由持有该 span context 的一方调用 |
+| `End` 之后 | 没有——`OnEnd` 拿到的是只读 span |
+
+第三行是包裹插桩的那一层用的。context 是派生且不可变的，所以
+`trace.SpanFromContext(ctx)` 只会解析到本次操作的 span，不会是别的：这一层写
+进去的内容不可能落到另一次调用上，被插桩的组件也无需知道这一层存在。
+
+这个设计带着两个限制。窗口的宽度等于 context 传播的宽度——从
+`context.Background()` 起的 goroutine、或不认 ctx 的客户端，都会把 span 落在
+身后。窗口在 `End` 关闭：调用返回之后才知道的信息，再也加不到它对应的 span
+上。
+
+metric 没有这样的窗口。它是一次测量而不是一个过程，所以每个标签都只能在记录
+的那一刻交上来。
 
 ## 两个典型场景
 
-两种情况都**不需要拿到 span 对象**，只需要 span 将要从中启动的那个
-context。
+两种都是上面表格里"`Start` 之前"那一行的情况：都**不需要拿到 span 对象**，
+只需要 span 将要从中启动的那个 context。
 
 **span 在框架内部启动。** 注册中心的注册、加锁、缓存或 DB 访问，你在自己的
 ctx 上看不到这些 span，`trace.SpanFromContext(ctx)` 返回的是父 span。标注你
 传进去的 ctx 即可：
 
 ```go
-ctx = observability.WithContextAttributes(ctx, attribute.String("tenant", t))
+ctx = observability.WithSpanAttributes(ctx, attribute.String("tenant", t))
 client.Call(ctx, ...)   // 内部启动的 span 带上 tenant
 ```
 
@@ -70,7 +95,7 @@ client.Call(ctx, ...)   // 内部启动的 span 带上 tenant
 
 ```go
 func (myInterceptor) Do(ctx context.Context, ...) {
-    ctx = observability.WithContextAttributes(ctx, attribute.String("tenant", t))
+    ctx = observability.WithSpanAttributes(ctx, attribute.String("tenant", t))
     return next(ctx, ...)   // 下一层用这个 ctx 启动 span
 }
 ```

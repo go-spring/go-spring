@@ -49,6 +49,16 @@
           "max-idle-conns": {
             "type": "integer",
             "default": 0
+          },
+          "ping": {
+            "type": "boolean",
+            "default": false,
+            "description": "Ping the backend once at startup and fail fast when it is unreachable; default off so a backend that is not up yet only surfaces on first use."
+          },
+          "health": {
+            "type": "boolean",
+            "default": true,
+            "description": "Contributes a health.Indicator bean per instance; set false to disable."
           }
         }
       }

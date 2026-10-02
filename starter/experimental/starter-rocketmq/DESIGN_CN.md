@@ -10,7 +10,7 @@ starter-pulsar / starter-kafka 确立的 MQ starter 家族规约。
 
 - **负责**：`spring.rocketmq.instances.<name>` 组的 bean 生命周期（多实例、容器托管
   停机）、公共选项应用到其创建的每个生产者/消费者、rlog 到 go-spring 日志
-  的桥接、fail-fast 名字服务探针、`messaging.Driver` 适配、OTel span 助手、
+  的桥接、ping 名字服务探针、`messaging.Driver` 适配、OTel span 助手、
   `GuardedSend` 韧性 seam。
 - **不负责**：消息序列化（payload 保持 `[]byte`）、顺序语义（driver 是并发
   消费的；顺序/事务消息走原生 client）、topic 管理、broker 健康探测（见
@@ -47,7 +47,7 @@ starter-pulsar / starter-kafka 确立的 MQ starter 家族规约。
   显式设置 `instance-name` 则让底层远端客户端共享同一个连接池。
 - 推送消费者必须先 `Subscribe` 再 `Start`；包装器的 `NewPushConsumer`
   因此返回未启动的消费者，由 driver 在内部完成这套顺序。
-- fail-fast 探针是 TCP 拨号而非 broker 往返：RocketMQ 远端层是惰性连接，
+- ping 探针是 TCP 拨号而非 broker 往返：RocketMQ 远端层是惰性连接，
   拨号是唯一廉价、无副作用、与拓扑无关的探针。它能抓出配错的地址，抓
   不出 ACL 错误。
 - 不注册 `health.Indicator`：与 starter-kafka/starter-pulsar 一致 —— 没有

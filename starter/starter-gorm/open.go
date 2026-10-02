@@ -17,12 +17,11 @@
 package gormcore
 
 import (
-	"fmt"
-
 	"go-spring.org/cloud"
 	"go-spring.org/cloud/resilience"
 	gormobserve "go-spring.org/starter-gorm/observe"
 	gormresilience "go-spring.org/starter-gorm/resilience"
+	"go-spring.org/stdlib/errutil"
 	"gorm.io/gorm"
 )
 
@@ -85,15 +84,15 @@ func Open(dialector gorm.Dialector, pool PoolConfig, opt Options) (*DB, error) {
 	}
 	db, err := gorm.Open(dialector, GormConfig(pool))
 	if err != nil {
-		return nil, fmt.Errorf("gorm open: %w", err)
+		return nil, errutil.Explain(err, "gorm open")
 	}
 	if err := ApplyPool(db, pool); err != nil {
 		_ = closeSQL(db)
-		return nil, fmt.Errorf("gorm pool: %w", err)
+		return nil, errutil.Explain(err, "gorm pool")
 	}
 	if err := ApplyDBCustomizers(db); err != nil {
 		_ = closeSQL(db)
-		return nil, fmt.Errorf("gorm customizer: %w", err)
+		return nil, errutil.Explain(err, "gorm customizer")
 	}
 	o := &DB{
 		DB:             db,
@@ -111,7 +110,7 @@ func Open(dialector gorm.Dialector, pool PoolConfig, opt Options) (*DB, error) {
 	if o.observeEnabled {
 		if err := o.DB.Use(gormobserve.NewPlugin(o.engine)); err != nil {
 			_ = closeSQL(db)
-			return nil, fmt.Errorf("gorm observe: %w", err)
+			return nil, errutil.Explain(err, "gorm observe")
 		}
 	}
 	// Governance is applied in the constructor, not by the wiring, so the DB is
@@ -125,7 +124,7 @@ func Open(dialector gorm.Dialector, pool PoolConfig, opt Options) (*DB, error) {
 	o.exec = opt.Params.ExecutorFor(o.engine, o.serviceLabel)
 	if err := gormresilience.ApplyCallbacks(o.DB, o.exec, o.serviceLabel); err != nil {
 		_ = closeSQL(db)
-		return nil, fmt.Errorf("gorm resilience: %w", err)
+		return nil, errutil.Explain(err, "gorm resilience")
 	}
 	return o, nil
 }

@@ -64,7 +64,7 @@ func init() {
 // unchanged from before.
 func build(ctx context.Context, c Config, params cloud.ClientParams) (gormcore.Spec, error) {
 	if c.Addr == "" && c.ServiceName == "" {
-		return gormcore.Spec{}, fmt.Errorf("gorm mysql: one of addr or service-name must be set")
+		return gormcore.Spec{}, errutil.Explain(nil, "gorm mysql: one of addr or service-name must be set")
 	}
 
 	log.Debugf(ctx, log.TagAppDef, "creating gorm mysql client, addr=%s service-name=%s db=%s", c.Addr, c.ServiceName, c.DB)

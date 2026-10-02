@@ -20,7 +20,7 @@ span/日志 detail），**发射**交给 resilience 层——executor 内唯一�
 starter 内没有任何自建逐 RPC span 或埋点；未受保护流量也没有独立的逐 RPC trace 层——
 治理关闭时 executor 退化为**只观测**的执行器：限流/熔断/重试/超时不再生效，但观测照旧
 发射（调用级/尝试级直方图 + `_app_milvus_access` 访问日志），消失的只有 `resilience.*`
-outcome 指标。健康指示器仍是常开的存活信号（§2.2、§6）。
+outcome 指标。健康指示器仍是声明的存活信号（§2.2、§6）——除非实例置 `health=false`，否则注册。
 
 ---
 
@@ -132,7 +132,7 @@ spring.actuator.addr=:9370
 
 ```bash
 docker compose -p gs-milvus-demo up -d   # milvus 启动很慢（约 60s）
-go run .                                 # 19530 不可达则启动期 fail-fast
+go run .                                 # 19530 不可达则启动期 fail-fast（需 ping=true；默认关闭）
 curl -s :9370/readyz | grep milvus       # 组件 "milvus:a" UP
 grep -E 'round trip|Milvus' app.log      # 上面的 search 已返回
 ```
@@ -164,7 +164,7 @@ gs.Run()
   │   params.ExecutorFor("milvus", service)——构造期把注入的 `*resilience.Manager` /
   │   `*fault.Injector` 打包成 cloud.ClientParams →（fault 包裹 mgr.ClientExecutorFor）→
   │   slot.apply——此后每个 RPC 都过守卫；零值 params → 只观测的 Unmanaged executor
-  ├─ fail-fast 探针：HealthCheck（ListCollections 一次），出错 → Destroy() + 启动失败
+  ├─ 仅 ping=true：fail-fast 探针 HealthCheck（ListCollections 一次），出错 → Destroy()+启动失败
   │   [starter.go:89]——地址/凭据错，进程到不了 "serving"
   ├─ readiness：指示器周期性重复 HealthCheck（同一个 ListCollections 探针）
   └─ SIGTERM → Destroy [client.go:94]：exec.Close() 后 o.client.Close() 关闭 gRPC 连接
@@ -198,7 +198,7 @@ slot，该 slot 由 `NewClient` 内部创建、用 `params.ExecutorFor("milvus",
 与访问日志。声明若放进 executor 的 fn 内（逐次尝试）则无人读取，故置于此处、executor 之外。
 collection/index/search/insert
 等全部 RPC 零改动过守卫，与其他 NoSQL starter 的透明逐请求口径一致。本 starter 自身发出的
-另一信号是健康指示器（非逐调用）：`milvus:<name>` 恒注册，探针直接走裸 client，即 `HealthCheck` 的一次
+另一信号是健康指示器（非逐调用）：`milvus:<name>` 除非实例置 `health=false`，否则注册；探针直接走裸 client，即 `HealthCheck` 的一次
 `ListCollections` 往返，同时校验连通与鉴权 [health.go]。
 
 ---
@@ -211,10 +211,12 @@ starter-Pool 的绝对属性规则）。已用 `grep -rhoE 'value:"[^"]+"'` 双�
 
 | Key | 类型 | 默认值 | 行为/联动 | 配错后果 |
 |-----|------|--------|-----------|----------|
-| `addr` | string | — | **必填**，expr tag `$ != ''` 校验非空 [config.go:26]。Milvus gRPC 端点 `host:19530`。⚠ TLS 由 SDK 经地址 scheme 表达——本 starter 无 TLS 配置块。 | 缺失/空 → 拨号前绑定期报错。host/port 错 → 构造期 fail-fast 探针失败，启动中止。 |
-| `database` | string | `default` | 作为 `DBName` 传给 `client.NewClient` [starter.go:65]。 | 库不存在 → fail-fast 探针（ListCollections）启动期报错。 |
-| `username` | string | `""` | 鉴权凭据；集群开鉴权时两半必须成对设置。⚠ 只设 `username` 不设 `password`（或反之）会被静默发送一半。 | 配错 → 启动期探针失败，携带服务端鉴权错误。 |
+| `addr` | string | — | **必填**，expr tag `$ != ''` 校验非空 [config.go:26]。Milvus gRPC 端点 `host:19530`。⚠ TLS 由 SDK 经地址 scheme 表达——本 starter 无 TLS 配置块。 | 缺失/空 → 拨号前绑定期报错。host/port 错 → 首次使用时（`ping=true` 时为构造期 fail-fast 探针）失败，启动中止。 |
+| `database` | string | `default` | 作为 `DBName` 传给 `client.NewClient` [starter.go:65]。 | 库不存在 → 首次使用时（`ping=true` 时为 ListCollections 探针）启动期报错。 |
+| `username` | string | `""` | 鉴权凭据；集群开鉴权时两半必须成对设置。⚠ 只设 `username` 不设 `password`（或反之）会被静默发送一半。 | 配错 → 首次使用时（`ping=true` 时为启动探针）失败，携带服务端鉴权错误。 |
 | `password` | string | `""` | 见 `username`。 | 见 `username`。 |
+| `ping` | bool | `false` | 启动连通探活：true 时构造期跑一次 `HealthCheck`（一次 `ListCollections`），出错则启动失败，恢复 fail-fast。默认关闭，使尚未就绪的 server 不阻塞启动。 | `ping=true` 且 server 已挂 → 启动报 `milvus: startup probe failed`。 |
+| `health` | bool | `true` | 本实例是否贡献 `health.Indicator`（名 `milvus:<name>`）供 actuator 就绪/启动探测。置 false 可把该实例排除在聚合健康报告之外。 | `health=false` → `/readyz` 无 `milvus:<name>` 组件。 |
 
 无 `driver` 注册表、无 `mode`（单机/集群是服务端拓扑）、无服务发现、无 otel key——
 治理（resilience + fault）经共享 `spring.governance.*` 规则由逐 RPC 守卫消费，没有 milvus 专属
@@ -235,11 +237,12 @@ curl -s :9370/readyz                    # 下一轮探测翻 DOWN（503）
 组件错误体原样携带 gRPC 错误——据此区分连通问题与鉴权问题（如 `Unavailable` vs
 `Unauthenticated`）。
 
-### 4.2 fail-fast 探针（启动时服务端已挂）
+### 4.2 fail-fast 探针（启动时服务端已挂，`ping=true`）
 
 ```bash
-docker compose -p gs-milvus-demo down && go run .
+docker compose -p gs-milvus-demo down && go run .   # 实例需 ping=true
 # 构造期非零退出（向死端口 ListCollections）——进程永远到不了 "serving"
+# 默认 ping=false 时启动成功，改为首个 RPC 才失败
 ```
 
 ### 4.3 确认"关治理只停保护、不停观测"
@@ -280,7 +283,7 @@ grep "round trip" app.log    # check.sh grep 的 marker（"Milvus round trip OK:
 
 | 指标 | 数值 |
 |------|------|
-| 配置 key 总数 | 4 个 tag（全部生效） |
+| 配置 key 总数 | 6 个 tag（全部生效） |
 | 其中必填 | 1（`addr`） |
 | quickstart 前置外部依赖 | compose 内 3 个（etcd + minio + milvus standalone） |
 | "注意/坑" 条数 | 3（鉴权成对、TLS 在地址里、TLS/鉴权 dial option 无逃生口） |
@@ -289,7 +292,8 @@ grep "round trip" app.log    # check.sh grep 的 marker（"Milvus round trip OK:
 
 - starter 级 README/DESIGN/schema.json 放在 example/ 而非模块根（家族不对称：其他
   starter 放根目录）。
-- 健康指示器无关闭开关（缺 `health.enabled` 类 key；与 redigo 家族不对称）。
+- 健康指示器每实例默认注册（`health=false` 可关）；启动探活为 opt-in（`ping=true`）——即
+  redigo 拆成 `health.enabled`/`startup-ping` 的那两个旋钮。
 - 无 TLS key——SDK 的 TLS 经地址表达；而且当前不给任何 dial option，用户想配 TLS
   只能 fork `newClient`，starter 内也无文档说明。
 - ~~缺失埋点~~ 已解决：`observe.go` 声明每个 RPC 的身份，resilience 层经守卫拦截器发射

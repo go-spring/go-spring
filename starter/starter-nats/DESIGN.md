@@ -31,7 +31,7 @@ with a small twist: the injected bean is a wrapper around
   forcing callers to pick two beans and reason about their relationship.
 - **`HealthCheck` reflects live state.** `StarterNats.HealthCheck` reports the
   bare connection's `IsConnected()`, and each instance registers a
-  `health.Indicator` (`nats:<name>`, opt-out via `health.enabled`) whose probe
+  `health.Indicator` (`nats:<name>`, opt-out via `health`) whose probe
   only calls it, so an actuator readiness probe sees the auto-reconnecting
   client's actual state rather than a stale boot-time success.
 - **`destroy = Drain`, not `Close`.** `Drain` lets in-flight

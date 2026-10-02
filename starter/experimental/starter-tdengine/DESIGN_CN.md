@@ -35,7 +35,7 @@
 ## 3. 约束
 
 - driver-go v3.8.2 要求 websocket 线路上的 TDengine 服务端 ≥ 3.3.6.0；
-  更老的服务端会在启动探活时报驱动的版本错误。
+  更老的服务端会在启动探活（`ping=true`）时报驱动的版本错误，否则在首次使用时暴露。
 - TDengine 没有事务；包装器的 `Begin` 委托给驱动，由它报错。
 - DSN 用驱动的统一格式（`user:pass@ws(host:port)/db`）—— 故意不拆成
   host/port/user 字段，驱动的参数面（`?readTimeout=...` 等）原样透传。

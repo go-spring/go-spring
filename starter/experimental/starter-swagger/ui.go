@@ -18,13 +18,13 @@ package StarterSwagger
 
 import (
 	"context"
-	"fmt"
 	"html/template"
 	"net/http"
 	"os"
 	"strings"
 
 	"go-spring.org/log"
+	"go-spring.org/stdlib/errutil"
 )
 
 // pageTemplate is the minimal Swagger UI shell. The heavy assets (CSS + JS
@@ -74,7 +74,7 @@ func NewUI(cfg Config) (*UI, error) {
 
 	spec, err := os.ReadFile(cfg.SpecFile)
 	if err != nil {
-		return nil, fmt.Errorf("swagger: reading spec file %q: %w", cfg.SpecFile, err)
+		return nil, errutil.Explain(err, "swagger: reading spec file %q", cfg.SpecFile)
 	}
 
 	specURL := base + "/openapi.json"
@@ -84,7 +84,7 @@ func NewUI(cfg Config) (*UI, error) {
 		"AssetBaseURL": strings.TrimRight(cfg.AssetBaseURL, "/"),
 		"SpecURL":      specURL,
 	}); err != nil {
-		return nil, fmt.Errorf("swagger: rendering page: %w", err)
+		return nil, errutil.Explain(err, "swagger: rendering page")
 	}
 
 	log.Infof(context.Background(), log.TagAppDef, "swagger ui configured basePath=%s specFile=%s", cfg.BasePath, cfg.SpecFile)

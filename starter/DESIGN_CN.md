@@ -278,7 +278,9 @@ WebSocket(`websocket`、`websocket-coder`)、中间件(`lua-filter`)、鉴权
   规则（"addr 或 service-name 至少一个"）在构造函数中用 `errutil.RequireAny` 校验,
   因为 `expr` 不跨字段。
 - **生产能力是封装的一部分。** 健康/就绪检查、启动期连接校验、TLS、destroy 回调都被视为
-  starter 必须提供的能力,而非可选附加项。TLS 是一个嵌套的 `TLSConfig`
+  starter 必须提供的能力,而非可选附加项。其中两项各带一个每实例开关:启动期连通性
+  探测(`ping`,默认关,未就绪的后端不该阻塞启动)与 health indicator(`health`,默认开)。
+  TLS 是一个嵌套的 `TLSConfig`
   (`enabled` + cert/key/CA),默认关闭。
 - **现阶段容忍重复优先于过早抽象。** 公共能力(health、TLS、fail-fast)刻意在每个模块
   各写一份,而不抽到公共包。后续可能有统一收敛的一轮重构;在那之前不要建跨 starter 的
@@ -486,8 +488,8 @@ WebSocket(`websocket`、`websocket-coder`)、中间件(`lua-filter`)、鉴权
 3. 选配置前缀 —— 使用唯一的 `${spring.<name>}` 前缀来标识**本**实现。如果是已有能力的
    第二种实现,用 `<能力>-<实现>` 格式（如 `spring.kafka-sarama`）,不要复用已有前缀。
    `spring.` 根不是可选的（§3）,`scripts/check-config-namespace.sh` 在每个绑定点强制。
-4. Client? → `gs.Group` 多实例、driver 注册表、地址必填 + fail-fast、启动期探测、
-   每实例 `Destroy`,以及"一个关注点一个文件"的骨架(§2.2):`config.go` /
+4. Client? → `gs.Group` 多实例、driver 注册表、地址必填 + fail-fast、启动期探测
+   (`ping`,默认关)、每实例 `Destroy`,以及"一个关注点一个文件"的骨架(§2.2):`config.go` /
    `starter.go` / `discovery.go` / `client.go` / `observe.go` / `health.go`。
    配置走两个桶:`conf.BindEach(p, "${spring.<family>.instances}", ...)`,模块 gate 用
    `gs.OnProperty("spring.<family>.instances")`,家族级值在各实例的 tag 里读
@@ -513,6 +515,6 @@ WebSocket(`websocket`、`websocket-coder`)、中间件(`lua-filter`)、鉴权
    接口 —— 自愈路径不经过它。本家族的只做发现后端（`starter-registry-k8s`）没有
    registrar:只定义 `obsSystem` 并上报 `discovery.Synced`,登记为本检查的例外。
    `scripts/check-observability.sh`(registry 段) 强制以上各项。
-8. 在底层库支持的前提下补 health、TLS、destroy。
+8. 在底层库支持的前提下补 health(`health` 开关,默认开)、TLS、destroy。
 9. 提供双语 README,以及只含 `check.sh` 的 `example/`(不放部署脚手架)。
 10. 内部依赖走 `go.work`,不写 `require`。

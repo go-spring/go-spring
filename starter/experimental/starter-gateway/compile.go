@@ -18,7 +18,6 @@ package StarterGateway
 
 import (
 	"context"
-	"fmt"
 	"net/http"
 	"net/url"
 	"reflect"
@@ -32,6 +31,7 @@ import (
 	"go-spring.org/cloud/resilience"
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
+	"go-spring.org/stdlib/errutil"
 )
 
 // FilterWrapper is the seam a bean-backed filter (jwt-auth, lua) satisfies:
@@ -242,7 +242,7 @@ func (t *RouteTable) recompile(raw map[string]RouteRaw) error {
 		rt, err := t.compileRoute(id, raw[id], execs)
 		if err != nil {
 			t.mu.Unlock()
-			return fmt.Errorf("route %q: %w", id, err)
+			return errutil.Explain(err, "route %q", id)
 		}
 		routes = append(routes, rt)
 	}
@@ -342,7 +342,7 @@ func (t *RouteTable) compileRoute(id string, raw RouteRaw, execs map[string]resi
 	if name := strings.TrimSpace(raw.Resilience.Policy); name != "" {
 		e, ok := execs[name]
 		if !ok {
-			return nil, fmt.Errorf("unknown resilience policy %q", name)
+			return nil, errutil.Explain(nil, "unknown resilience policy %q", name)
 		}
 		exec, service = e, gatewayLabel(name)
 	}
@@ -396,7 +396,7 @@ func (t *RouteTable) buildFilters(spec string) ([]Filter, error) {
 			}
 			w, ok := t.Wrappers[strings.TrimSpace(args[0])]
 			if !ok {
-				return nil, fmt.Errorf("gateway: no FilterWrapper bean named %q for %s filter (export it as gateway.FilterWrapper)", args[0], name)
+				return nil, errutil.Explain(nil, "gateway: no FilterWrapper bean named %q for %s filter (export it as gateway.FilterWrapper)", args[0], name)
 			}
 			out = append(out, w.Wrap)
 		default:

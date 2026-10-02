@@ -83,9 +83,9 @@ func init() {
 				Destroy((*consulBackend).Close).Caller(1)
 
 			// Contribute a health indicator for this agent unless the user
-			// disabled it (health.enabled=false), injecting the backend
-			// registered above by name.
-			if c.HealthEnabled {
+			// disabled it (health=false), injecting the backend registered
+			// above by name.
+			if c.Health {
 				r.Provide(func(b *consulBackend) *health.Indicator {
 					return &health.Indicator{Name: "registry-consul:" + name, Probe: b.probe}
 				}, gs.TagArg("consul."+name)).Name("registry-consul:" + name)
@@ -117,9 +117,10 @@ type consulBackend struct {
 	obs *discovery.Observer
 }
 
-// newConsulBackend builds the client and probes the agent. The probe is the
-// fail-fast: a misconfigured or unreachable agent fails startup here, once
-// per block.
+// newConsulBackend builds the client and, when Ping is set, probes the agent.
+// The probe is the fail-fast: a misconfigured or unreachable agent fails
+// startup here, once per block. With Ping off (the default) construction skips
+// it.
 func newConsulBackend(c ConsulConfig, name string) (*consulBackend, error) {
 	if c.Address == "" {
 		return nil, errutil.Explain(nil, "registry-consul: address is required")
@@ -128,10 +129,12 @@ func newConsulBackend(c ConsulConfig, name string) (*consulBackend, error) {
 	if err != nil {
 		return nil, err
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	if _, _, err := client.Catalog().Services((&api.QueryOptions{}).WithContext(ctx)); err != nil {
-		return nil, errutil.Explain(err, "registry-consul: startup probe failed for %s", c.Address)
+	if c.Ping {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if _, _, err := client.Catalog().Services((&api.QueryOptions{}).WithContext(ctx)); err != nil {
+			return nil, errutil.Explain(err, "registry-consul: startup probe failed for %s", c.Address)
+		}
 	}
 	obs, err := discovery.NewObserver(obsSystem, name)
 	if err != nil {

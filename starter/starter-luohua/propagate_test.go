@@ -47,7 +47,7 @@ func logLine(ctx context.Context) string {
 // carriedAttr reads one span attribute off ctx, as the SpanProcessor in
 // starter-otel would see it.
 func carriedAttr(ctx context.Context, key string) (string, bool) {
-	for _, a := range observability.ContextAttributes(ctx) {
+	for _, a := range observability.SpanAttributes(ctx) {
 		if string(a.Key) == key {
 			return a.Value.Emit(), true
 		}

@@ -52,6 +52,7 @@ All keys live under `spring.config.bus`:
 | `nats-instance` | `config-bus`           | Name of the `spring.nats.instances.*` connection used as the transport.     |
 | `watch-prefixes`| (empty)                | Comma-separated prefixes; when set, only broadcasts whose prefix overlaps one of these (or full-fleet broadcasts) trigger a refresh on this instance. |
 | `origin`        | (host name)            | Publisher label carried in each broadcast's `RefreshEvent.Origin` and in the producer span, for telling "this instance refreshed" from "some instance refreshed". |
+| `health`        | `true`                 | Whether to contribute the `config-bus:configBus` `health.Indicator`. Set `false` to keep the bus out of the aggregated readiness report. |
 
 ### 4. Broadcast a refresh
 
@@ -150,13 +151,13 @@ Traces come from the transport: `Publish` opens a producer span (parented on you
 consumer span continues it, so one broadcast appears as a single trace spanning
 the publisher and every subscriber. Both are no-ops without starter-otel.
 
-Health: the bus registers a `health.Indicator` named `config-bus:configBus`,
-which reports whether the subscription is still active. That is deliberately not
-a connectivity check — a subscription survives a reconnect, so this is false only
-when the listener is genuinely dead, the case a NATS connectivity probe cannot
-see and the one that leaves an instance silently stuck on stale configuration.
-Connection-level health is starter-nats's own indicator, with its own per-instance
-`health.enabled` switch.
+Health: the bus registers a `health.Indicator` named `config-bus:configBus`
+(unless `health=false`), which reports whether the subscription is still active.
+That is deliberately not a connectivity check — a subscription survives a
+reconnect, so this is false only when the listener is genuinely dead, the case a
+NATS connectivity probe cannot see and the one that leaves an instance silently
+stuck on stale configuration. Connection-level health is starter-nats's own
+indicator, with its own per-instance `health` switch.
 
 ### Log tag
 

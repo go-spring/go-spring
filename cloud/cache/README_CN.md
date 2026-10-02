@@ -29,7 +29,7 @@ type User struct{ Name string }
 // 类型化访问。val 必须是指针，codec 在构造期固定（New(bc, WithCodec(...))），
 // 默认 JSON。
 err := c.Get(ctx, "user:42", &user)        // 不存在时返回 cache.ErrMiss
-_  = c.Set(ctx, "user:42", user, 5*time.Minute)
+_  = c.Set(ctx, "user:42", user, 300)      // ttl 单位为秒
 
 // 少数格式不同的条目：同一个 WithCodec 选项，传给那一次调用而不是 New。
 _ = c.Set(ctx, "icon:42", icon, 0, cache.WithCodec(gobCodec))
@@ -51,15 +51,15 @@ read-through 不用写后端相关的错误判断：
 err := c.Get(ctx, key, &v)
 if errors.Is(err, cache.ErrMiss) {
     v, err = loadFromSource(ctx, key)      // 只有真未命中才回落数据源
-    _ = c.Set(ctx, key, v, 5*time.Minute)
+    _ = c.Set(ctx, key, v, 300)
 }
 ```
 
 ### TTL 语义
 
-go-redis、redigo、memcached 支持逐条 ttl，非正数表示不过期。bigcache 不认
-这个参数，用构造期设置的全局 `LifeWindow`。无法支持逐条 ttl 的后端忽略该参
-数，并在自己的文档里说明，不会 panic。
+ttl 是整秒数，非正数表示不过期。支持逐条 ttl 的后端（go-redis、redigo、
+memcached）都会应用它。bigcache 做不到——它按构造期设置的全局 `LifeWindow`
+过期——因此忽略该参数，并在自己的文档里说明，不会 panic。
 
 ## 可观测
 
@@ -87,7 +87,8 @@ go-redis、redigo、memcached 支持逐条 ttl，非正数表示不过期。bigc
 ```go
 type ByteCache interface {
     GetBytes(ctx context.Context, key string) ([]byte, error) // 不存在时 (nil, ErrMiss)
-    SetBytes(ctx context.Context, key string, val []byte, ttl time.Duration) error
+    // ttlSeconds 是整秒数，非正数表示不过期。
+    SetBytes(ctx context.Context, key string, val []byte, ttlSeconds int) error
     Delete(ctx context.Context, key string) error
 }
 ```

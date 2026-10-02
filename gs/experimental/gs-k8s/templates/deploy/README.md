@@ -62,14 +62,17 @@ The startupProbe **budget** ≈ `periodSeconds × failureThreshold`. The default
 
 What determines cold start is **not** bean wiring (reflection wiring of a few
 hundred beans is sub-millisecond). It is the startup-time I/O that starters do
-**on purpose** to fail fast: DB/Redis dials, config-center first fetch,
-discovery informer sync, and — if you use a migration starter — schema migrations. Size the budget against your **p99 boot**, not p50.
+**on purpose** to fail fast: config-center first fetch, discovery informer sync,
+and — if you use a migration starter — schema migrations. A client starter's
+startup connectivity probe is **off by default** (set `ping=true` to fail fast
+on an unreachable backend instead); turning it on adds a DB/Redis dial to the
+budget. Size the budget against your **p99 boot**, not p50.
 
 | App profile | Boot dominated by | `periodSeconds` | `failureThreshold` | budget |
 |---|---|---|---|---|
-| Small (few starters, no migration) | process init + a couple of dials | 3 | 10 | ~30s |
-| Typical microservice (DB + Redis + config-center + discovery) | dials + config fetch + informer sync | 5 | 12 | ~60s |
-| Large (many deps, informers, cache warmup) | many dials + warmup | 5 | 24 | ~120s |
+| Small (few starters, no migration) | process init + config fetch | 3 | 10 | ~30s |
+| Typical microservice (DB + Redis + config-center + discovery) | config fetch + informer sync | 5 | 12 | ~60s |
+| Large (many deps, informers, cache warmup) | config fetch + informer sync + warmup | 5 | 24 | ~120s |
 | Runs DB migrations at boot | migration DDL (can be minutes) | 10 | ≥ longest migration ÷ 10 | ≥ 300s |
 
 Rules of thumb:

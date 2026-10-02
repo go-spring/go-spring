@@ -18,7 +18,6 @@ package StarterRegistryK8s
 
 import (
 	"context"
-	"fmt"
 	"net"
 	"strconv"
 	"sync"
@@ -34,6 +33,7 @@ import (
 
 	"go-spring.org/cloud/discovery"
 	"go-spring.org/log"
+	"go-spring.org/stdlib/errutil"
 )
 
 // serviceNameLabel is the well-known label Kubernetes sets on every
@@ -107,7 +107,7 @@ func newEndpointSliceDiscovery(cfg Config, obs *discovery.Observer) (*endpointSl
 	}
 	client, err := kubernetes.NewForConfig(restCfg)
 	if err != nil {
-		return nil, fmt.Errorf("registry-k8s: build clientset: %w", err)
+		return nil, errutil.Explain(err, "registry-k8s: build clientset")
 	}
 	return &endpointSliceDiscovery{
 		cfg:      cfg,
@@ -122,13 +122,13 @@ func buildRESTConfig(cfg Config) (*rest.Config, error) {
 	if cfg.Kubeconfig != "" {
 		c, err := clientcmd.BuildConfigFromFlags("", cfg.Kubeconfig)
 		if err != nil {
-			return nil, fmt.Errorf("registry-k8s: load kubeconfig %q: %w", cfg.Kubeconfig, err)
+			return nil, errutil.Explain(err, "registry-k8s: load kubeconfig %q", cfg.Kubeconfig)
 		}
 		return c, nil
 	}
 	c, err := rest.InClusterConfig()
 	if err != nil {
-		return nil, fmt.Errorf("registry-k8s: in-cluster config (set kubeconfig when running outside a cluster): %w", err)
+		return nil, errutil.Explain(err, "registry-k8s: in-cluster config (set kubeconfig when running outside a cluster)")
 	}
 	return c, nil
 }
@@ -169,7 +169,7 @@ func (d *endpointSliceDiscovery) listSlices(ctx context.Context, name string) ([
 		LabelSelector: d.selector(name),
 	})
 	if err != nil {
-		return nil, fmt.Errorf("registry-k8s: list endpointslices for %q: %w", name, err)
+		return nil, errutil.Explain(err, "registry-k8s: list endpointslices for %q", name)
 	}
 	slices := make([]*discoveryv1.EndpointSlice, 0, len(list.Items))
 	for i := range list.Items {
@@ -229,7 +229,7 @@ func (d *endpointSliceDiscovery) watchInformer(name string, e *esEntry) {
 	factory.Start(h.done)
 	if !cache.WaitForCacheSync(h.done, informer.HasSynced) {
 		h.stop()
-		err := fmt.Errorf("registry-k8s: cache sync for %q failed", name)
+		err := errutil.Explain(nil, "registry-k8s: cache sync for %q failed", name)
 		d.obs.Synced(name, err)
 		log.Warn(context.Background(), starterTag, append(
 			[]log.Field{

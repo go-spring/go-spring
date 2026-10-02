@@ -94,4 +94,18 @@ type Config struct {
 	// discovered "host:port" endpoint, since discovery yields addresses without a
 	// scheme. It is only used when ServiceName is set; default is "http".
 	DiscoveryScheme string `value:"${discovery-scheme:=http}"`
+
+	// Ping enables the startup connectivity probe: when true the constructor
+	// pings the backend once and fails startup if it is unreachable, surfacing
+	// misconfiguration early. Default is false: a backend that is not up yet
+	// must not block the application from starting; connectivity problems
+	// surface on first use instead. Set true to restore fail-fast behaviour.
+	Ping bool `value:"${ping:=false}"`
+
+	// Health controls whether the starter contributes a health.Indicator bean
+	// for this instance (readiness/startup probes via starter-actuator). On by
+	// default; set false to keep this instance out of the aggregated health
+	// report, e.g. for a backend whose downtime must not pull the pod out of
+	// rotation.
+	Health bool `value:"${health:=true}"`
 }

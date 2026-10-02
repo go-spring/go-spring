@@ -30,6 +30,7 @@ import (
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
+	"go-spring.org/stdlib/errutil"
 
 	_ "go-spring.org/starter-mqtt"
 )
@@ -104,7 +105,7 @@ func (s *Service) subscribeOnce(timeout time.Duration) (string, error) {
 	case body := <-received:
 		return body, nil
 	case <-time.After(timeout):
-		return "", fmt.Errorf("timed out waiting for message on %q", topic)
+		return "", errutil.Explain(nil, "timed out waiting for message on %q", topic)
 	}
 }
 

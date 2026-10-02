@@ -62,18 +62,21 @@ func init() {
 					Export(gs.As[gs.Server]()).Caller(1)
 			}
 
-			// Health indicator probes Redis via a fresh inspector round trip.
-			r.Provide(func(d Driver) (*health.Indicator, error) {
-				// No company Driver bean → fall back to the bundled default.
-				if d == nil {
-					d = DefaultDriver{}
-				}
-				connOpt, err := d.RedisConnOpt(context.Background(), c)
-				if err != nil {
-					return nil, err
-				}
-				return NewClientHealth(name, connOpt), nil
-			}, gs.IndexArg(0, gs.TagArg("${spring.asynq.instances."+name+".driver:=${spring.asynq.default.driver:=?}}"))).Name("asynq:" + name).Caller(1)
+			// Health indicator probes Redis via a fresh inspector round trip,
+			// unless the user disabled it (health=false).
+			if c.Health {
+				r.Provide(func(d Driver) (*health.Indicator, error) {
+					// No company Driver bean → fall back to the bundled default.
+					if d == nil {
+						d = DefaultDriver{}
+					}
+					connOpt, err := d.RedisConnOpt(context.Background(), c)
+					if err != nil {
+						return nil, err
+					}
+					return NewClientHealth(name, connOpt), nil
+				}, gs.IndexArg(0, gs.TagArg("${spring.asynq.instances."+name+".driver:=${spring.asynq.default.driver:=?}}"))).Name("asynq:" + name).Caller(1)
+			}
 			return nil
 		})
 	})

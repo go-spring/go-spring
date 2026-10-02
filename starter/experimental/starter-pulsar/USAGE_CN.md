@@ -125,7 +125,7 @@ func guarded(ctx context.Context, cl pulsar.Client, p pulsar.Producer) error {
 ```properties
 # --- pulsar client（实例 "main"）---------------------------------------------
 spring.pulsar.instances.main.url=pulsar://127.0.0.1:6650
-spring.pulsar.instances.main.fail-fast=true
+spring.pulsar.instances.main.ping=true
 # 对未分区 topic 的 lookup 即使 topic 不存在也会成功，
 # 因此普通 topic 在全新 standalone 集群上是安全的探测目标。
 spring.pulsar.instances.main.health-check-topic=persistent://public/demo/orders
@@ -162,7 +162,7 @@ for i in $(seq 1 60); do curl -fsS http://127.0.0.1:8080/admin/v2/brokers/health
 **验证**：
 
 ```bash
-go run .                                   # broker 不可达时 fail-fast 探测中止启动
+go run .                                   # broker 不可达时 ping 探测中止启动
 curl -s :9091/metrics | grep pulsar_client_ # 原生 client 指标
 curl -s :9370/metrics | grep messaging.client # 声明式操作指标（调用级 + 尝试级）
 grep -E '_app_pulsar|pulsar' app.log        # driver + client 日志行（tag _app_def）
@@ -190,7 +190,7 @@ gs.Run()
   │       pulsar.NewClient，随后 attachGuard —— params.ExecutorFor("pulsar",
   │       "pulsar:<url>") 按 client 索引，客户端在此刻已完整；mgr/inj 即注入的
   │       *resilience.Manager / *fault.Injector        [driver.go:76-115, command.go:225]
-  │    3. 再探测（FailFast）：cl.TopicPartitions(HealthCheckTopic) —— 一次
+  │    3. 再探测（Ping）：cl.TopicPartitions(HealthCheckTopic) —— 一次
   │       覆盖地址+认证+TLS 的 lookup（不产生消息）；失败 →
   │       closeResilience + cl.Close + metrics 下线 + 启动报错            [starter.go:108-116]
   ├─ 就绪：无 health indicator —— 探测只在启动期生效
@@ -242,7 +242,7 @@ GuardedSend(ctx, cl, producer, msg)                       [command.go]
 
 **未保护面**（均有源码注释说明是有意的）：
 - `producer.SendAsync` —— 刻意不碰；异步路径没有可拒绝的同步结果 [command.go]。
-- `CreateProducer`/`Subscribe`/`TopicPartitions` —— 生命周期调用，仅启动期 FailFast
+- `CreateProducer`/`Subscribe`/`TopicPartitions` —— 生命周期调用，仅启动期 Ping
   探测覆盖。
 - 手动 `StartProducerSpan`/`StartConsumerSpan` 助手 —— 供应用自行直连裸 client 发送时
   使用；经 `GuardedSend` 的发送已由 resilience 层依据声明开 span，不要对同一次发送两者都包。
@@ -304,14 +304,14 @@ Close 顺序：取消循环 ctx → 等 `done`（在途 handler 收尾）→ `co
 | `url` | string | — | **必填**（`expr:"$ != ''"`）。`pulsar://` 明文或 `pulsar+ssl://` TLS。同时构成 resilience 服务标签 `pulsar\|<url>` [starter.go:76]。 | 缺失/空 → BindEach 启动报错。 |
 | `operation-timeout` | duration | 30s | producer/订阅/lookup 超时，传给 ClientOptions [driver.go:72]。 | 过低 → CreateProducer 间歇失败。 |
 | `connection-timeout` | duration | 5s | TCP 连接超时 [driver.go:73]。 | — |
-| `token` | string | — | JWT token 值，或 `token-from-file=true` 时的文件路径 [driver.go:86-90]。⚠ 认证优先级：mTLS cert+key 高于 token。 | token 错 → FailFast 探测启动失败。 |
+| `token` | string | — | JWT token 值，或 `token-from-file=true` 时的文件路径 [driver.go:86-90]。⚠ 认证优先级：mTLS cert+key 高于 token。 | token 错 → `ping=true` 时 Ping 探测启动失败。 |
 | `token-from-file` | bool | false | 把 `token` 切换为路径解释。 | true 配了字面 token → 文件打开失败。 |
 | `tls-trust-certs-file` | string | — | 校验 broker 的 PEM CA bundle [driver.go:74]。 | `pulsar+ssl://` 下缺失 → 探测期握手失败。 |
 | `tls-cert-file` | string | — | 客户端证书；与 `tls-key-file` 成对时还经 `NewAuthenticationTLS` 成为 mTLS 认证器 [driver.go:84-85]。⚠ 只配 cert 不配 key → 静默无认证。 | — |
 | `tls-key-file` | string | — | 与证书配对的客户端私钥 [driver.go:76]。 | — |
 | `tls-allow-insecure` | bool | false | 关闭服务端证书校验。生产禁用。 | true → MITM 暴露。 |
 | `tls-validate-hostname` | bool | false | 证书内主机名校验；默认保持 pulsar-client-go 默认值 [config.go:63-66]。 | — |
-| `fail-fast` | bool | true | 启动期 `TopicPartitions` 探测 [starter.go:107-114]。 | false → broker 挂了要到首次生产才暴露。 |
+| `ping` | bool | false | 可选启动期 `TopicPartitions` 探测 [starter.go:107-114]。 | true → broker 挂了则中止启动；false → 到首次生产才暴露。 |
 | `health-check-topic` | string | `persistent://public/default/__health_check` | 探测目标；未分区 topic 的 lookup 即使不存在也成功 [config.go:72-76]。 | 分区/乱写 topic 名 → 探测报错挡启动。 |
 | `metrics` | group | — | 结构绑定 `value:"${metrics}"` [config.go:79]。 | — |
 | `metrics.enabled` | bool | true | 启动按实例的 `/metrics` server 并接入独立 registry [driver.go:97-101]。 | false → 任何地方都没有 `pulsar_client_*`。 |
@@ -327,7 +327,7 @@ Close 顺序：取消循环 ctx → 等 `done`（在途 handler 收尾）→ `co
 
 ## 4. 验证与故障演练
 
-### 4.1 启动期 fail-fast
+### 4.1 启动期 ping 探测
 
 ```bash
 docker stop pulsar && go run .    # 启动中止："pulsar broker probe failed on pulsar://..."
@@ -407,6 +407,6 @@ server [client.go:44-58]。subscriber Close 先排空循环再 consumer.Close
 监听失败被吞；driver 的 Publish 与消费循环现均声明各自操作并跑在同一 executor 下，与裸
 路径一致，因此 starter 不再逐调用发射 —— resilience 层是唯一发射点（`SendAsync` 与
 生命周期调用仍未受保护）；消费侧 ack 失败记 WARN；`producer.Close()` 无
-错误返回，publisher Close 不会失败；无运行期 health indicator（fail-fast
+错误返回，publisher Close 不会失败；无运行期 health indicator（ping
 仅启动期 —— broker 后续宕机对 actuator 不可见）；`schema.json` 的
 `metrics.enabled` 默认值与代码（true）不一致。

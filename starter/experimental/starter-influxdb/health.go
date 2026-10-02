@@ -18,10 +18,10 @@ package StarterInfluxdb
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/influxdata/influxdb-client-go/v2/domain"
 	"go-spring.org/cloud/actuator/health"
+	"go-spring.org/stdlib/errutil"
 )
 
 // NewClientHealth builds an indicator for an InfluxDB client. It is
@@ -50,5 +50,5 @@ func healthError(hc *domain.HealthCheck) error {
 	if hc.Message != nil {
 		msg = *hc.Message
 	}
-	return fmt.Errorf("influxdb: health status %s: %s", hc.Status, msg)
+	return errutil.Explain(nil, "influxdb: health status %s: %s", hc.Status, msg)
 }

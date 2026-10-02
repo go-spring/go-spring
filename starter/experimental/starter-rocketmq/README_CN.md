@@ -3,7 +3,7 @@
 [English](README.md) | [中文](README_CN.md)
 
 `starter-rocketmq` 为 Go-Spring 提供 [RocketMQ](https://rocketmq.apache.org/)
-支持：多实例 `rocketmq.Client` bean、启动期 fail-fast 探针、可选 ACL 凭证、
+支持：多实例 `rocketmq.Client` bean、可选的启动期 ping 探针、可选 ACL 凭证、
 协议无关的 `messaging.Driver`、OTel 追踪助手，以及同步发送路径上的可选
 调用点韧性。基于官方
 [rocketmq-client-go](https://github.com/apache/rocketmq-client-go) v2 客户端，
@@ -63,8 +63,8 @@ err = c.Start()
 
 - **多实例客户端** — 每个 `spring.rocketmq.instances.<name>` 条目都是独立 bean，
   拥有各自的配置。
-- **fail-fast 启动探针** — 启动期对名字服务列表做 TCP 拨号，第一条消息
-  之前就暴露配错的地址（`fail-fast=false` 关闭）。
+- **启动 ping 探针（可选）** — `ping=true` 时启动期对名字服务列表做 TCP 拨号，第一条消息
+  之前就暴露配错的地址；默认关闭，broker 未就绪不阻塞启动。
 - **生命周期管理** — 经 client 创建的所有生产者/消费者都被登记，应用
   关闭时统一停机。
 - **日志桥接** — 客户端库的内部日志汇入 go-spring 的日志。

@@ -190,8 +190,8 @@ gs.Run()
   ├─ newConn：把 mgr/inj（= 注入的 *resilience.Manager / *fault.Injector bean）
   │           打包进交给 Driver 的 cloud.ClientParams；此后无任何补装配
   │           [driver.go:181-182]
-  ├─ 启动连通性检查（裸 client 的 IsConnected）；失败则销毁该 bean
-  │           [driver.go:196-200]
+  ├─ ping 时启动连通性检查（裸 client 的 IsConnected）；失败则销毁该 bean
+  │           [driver.go:197-202]
   ├─ Run / 就绪
   └─ SIGTERM：(*Conn).Destroy → exec.Close()（错误在 Drain 后向上返回）再 conn.Drain()
               —— 在途订阅收尾后关闭 socket [client.go:105-113]
@@ -285,10 +285,10 @@ resilience 哨兵错误（`ErrRateLimited` / `ErrCircuitOpen`），底层发布/
 
 ### 2.5 健康检查
 
-除非条目设置 `health.enabled=false`，每个实例都会贡献一个名为 `nats:<name>` 的
+除非条目设置 `health=false`，每个实例都会贡献一个名为 `nats:<name>` 的
 `health.Indicator` [starter.go]。探针直接读取裸 client 的 `IsConnected()`（不开 span、
 不花限流/熔断额度），因此重连间隙中的实例会报 down 并在重连后自行恢复。对应用离开它就无法服务的依赖而言这是正确默认；若某条连接
-是可选旁路、不应计入就绪，设 `health.enabled=false`——该指标将完全不注册，而不是注册成
+是可选旁路、不应计入就绪，设 `health=false`——该指标将完全不注册，而不是注册成
 永远绿的摆设。
 
 ---
@@ -312,11 +312,13 @@ struct——其子 key 属于 security，不属于本 starter。
 | `connect-timeout` | duration | 5s | 仅约束**首次拨号** [driver.go:80]。 | 过小 → 慢网络误判启动失败。 |
 | `jetstream` | group | — | `enabled` 的容器。 | — |
 | `jetstream.enabled` | bool | false | 在**同一**连接上派生 `jetstream.New(nc)`；失败关闭 nc 并中断启动；否则 `Conn.JetStream` 保持 nil [driver.go:143-151]。 | 对未开 `-js` 的 broker 启用 → 启动错误。 |
+| `ping` | bool | false | 可选启动探测：`HealthCheck` 单次检查连接状态，broker 不可达则启动失败；默认关，未就绪的 broker 到首次发布才暴露 [driver.go:197-202]。 | 期待 fail-fast 却没开 → 启动"成功"，首次发布失败。 |
+| `health` | bool | true | 为实例注册 `nats:<name>` 健康指示器；false 让该连接不卷入聚合健康 [starter.go]。 | false → 无指示器 bean，不再上报该连接的就绪。 |
 
-grep 核对：本 starter Go 文件中 13 个去重 `value:` tag 恰为 `url`、`name`、`username`、
+grep 核对：本 starter Go 文件中 15 个去重 `value:` tag 恰为 `url`、`name`、`username`、
 `password`、`token`、`creds-file`、`nkey-file`、`tls`、`max-reconnects`、
 `reconnect-wait`、`connect-timeout`、`jetstream`、`jetstream.enabled`
-（即 `${enabled:=false}`）——全部在表内；两边无多余项。
+（即 `${enabled:=false}`）、`ping`、`health`——全部在表内；两边无多余项。
 
 ---
 
@@ -392,7 +394,7 @@ executor 的 service 是 `nats:<url>` [client.go:89]。把 governance.yaml 规�
 | 消费者能收消息但消费侧无 trace/metric | 用了裸 `Conn.Subscribe`/`QueueSubscribe` 委托而非 `Conn.Consume` | 走 `Conn.Consume(ctx, subject, queue, handler)` 或 messaging.Driver。 |
 | guarded 调用突然报哨兵错误 | 限流耗尽或熔断打开——设计行为 [command.go:187-192] | 检查 governance.yaml 策略；熔断冷却后自愈。 |
 | producer trace 不链接调用方 span | 发布走的是 `PublishMsg`（无 ctx 参数），其 span 必为新根 | 改用 `PublishMsgContext(ctx, msg)`——`PublishGuarded` 已如此。 |
-| `/readiness` 报 `nats:<name>` 不健康 | 自动重连客户端正处于重连间隙 | 属预期；若该实例连通性不应计入就绪，对它设 `health.enabled=false`。 |
+| `/readiness` 报 `nats:<name>` 不健康 | 自动重连客户端正处于重连间隙 | 属预期；若该实例连通性不应计入就绪，对它设 `health=false`。 |
 | 第二个 header 值丢失 | driver 多值 header 压平取首值（单值信封） | 额外值放 payload，或用裸 Conn API。 |
 | 日志出现重连风暴 | 集群宕机时 `reconnect-wait` 过小 | 调大；重连本就是客户端的可靠性机制。 |
 
@@ -400,7 +402,7 @@ executor 的 service 是 `nats:<url>` [client.go:89]。把 governance.yaml 规�
 
 | 指标 | 数值 |
 |------|------|
-| 配置 key | 15 个 starter 本地 value tag（+ tls 分组子 key 在 security） |
+| 配置 key | 17 个 starter 本地 value tag（+ tls 分组子 key 在 security） |
 | 必填 | 1（`url`） |
 | quickstart 前置外部依赖 | 1（nats；collector 可选用于可观测） |
 | "注意/坑"条数 | 4 |
@@ -410,7 +412,7 @@ executor 的 service 是 `nats:<url>` [client.go:89]。把 governance.yaml 规�
 - **已修**：发布 span 现可经 `PublishMsgContext` 挂到调用方 trace 下（无 ctx 的
   `PublishMsg` 保留其已文档化的新根行为以维持兼容——nats.PublishMsg 本身无 ctx 参数）；
   消费侧不再只有 driver 才有插桩，任何 `Conn.Consume` 调用方都覆盖；每实例接线了
-  `health.Indicator`（`health.enabled`，见 §2.5）；`PublishGuarded` 现在把调用方 ctx
+  `health.Indicator`（`health`，见 §2.5）；`PublishGuarded` 现在把调用方 ctx
   透传进调用 span；每次发布/消费都声明操作、由 resilience executor 作唯一发射点
   （starter 内不再有按调用的插桩）。
 - **未解**：JetStream 消费无 trace（独立 API 面）；多值 header 压平取首值；

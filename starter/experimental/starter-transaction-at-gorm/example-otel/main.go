@@ -35,6 +35,7 @@ import (
 	"go-spring.org/spring/gs"
 	_ "go-spring.org/starter-otel"
 	atgorm "go-spring.org/starter-transaction-at-gorm"
+	"go-spring.org/stdlib/errutil"
 	sqlite "gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
@@ -143,7 +144,7 @@ func (s *BankService) purchase(ctx context.Context, cost, qty int, failStock boo
 	if err == nil {
 		err = s.stockDB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 			if failStock {
-				return errors.New("stock service unavailable")
+				return errutil.Explain(nil, "stock service unavailable")
 			}
 			return tx.Model(&stock{}).Where("id = ?", 1).
 				Update("count", gorm.Expr("count - ?", qty)).Error

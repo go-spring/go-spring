@@ -17,12 +17,11 @@
 package StarterHTTPClient
 
 import (
-	"fmt"
-
 	"go-spring.org/cloud/discovery"
 	"go-spring.org/cloud/resilience"
 	"go-spring.org/cloud/security"
 	"go-spring.org/starter-http-client/httpx"
+	"go-spring.org/stdlib/errutil"
 )
 
 // Config binds one declarative-HTTP-client entry under
@@ -76,9 +75,9 @@ type Config struct {
 func (c Config) validate() error {
 	switch {
 	case c.Addr == "" && c.ServiceName == "":
-		return fmt.Errorf("http-client: one of addr or service-name is required")
+		return errutil.Explain(nil, "http-client: one of addr or service-name is required")
 	case c.Addr == "" && c.Discovery == "":
-		return fmt.Errorf("http-client: discovery is required when service-name is set without addr")
+		return errutil.Explain(nil, "http-client: discovery is required when service-name is set without addr")
 	}
 	return nil
 }

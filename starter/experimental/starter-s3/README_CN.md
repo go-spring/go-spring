@@ -3,7 +3,7 @@
 [English](README.md) | [中文](README_CN.md)
 
 `starter-s3` 为 Go-Spring 提供 S3 协议对象存储支持：多实例
-`*minio.Client` bean、fail-fast 启动探针（列举桶）、逐请求可观测
+`*minio.Client` bean、可选 fail-fast 启动探针（列举桶）、逐请求可观测
 （starter 声明调用身份，resilience 层发射 span + 指标 + 访问日志）、
 韧性（HTTP 传输层限流/熔断/故障注入），以及
 每实例健康指示器。基于 [minio-go](https://github.com/minio/minio-go)，
@@ -66,8 +66,8 @@ _, err := s.Client.PutObject(ctx, "bucket", "key",
 
 - **多实例客户端** — 每个 `spring.s3.instances.<name>` 条目都是独立 bean，拥有
   各自的配置。
-- **fail-fast 启动探针** — 启动期做一次 `ListBuckets` 往返，第一个对象
-  操作之前就暴露配错的端点与被拒的凭证。
+- **fail-fast 启动探针** — 启动期做一次 `ListBuckets` 往返（opt-in：`ping=true`；
+  默认关闭），第一个对象操作之前就暴露配错的端点与被拒的凭证。
 - **每实例健康指示器** — 同一探针注册为 `s3:<name>`，导入
   `starter-actuator` 后自动并入 `/readiness`。
 - **可观测** — starter 只“声明”每个请求的语义身份（`declareTransport` 把它放到

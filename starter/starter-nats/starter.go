@@ -66,10 +66,10 @@ func init() {
 			}, gs.TagArg(name), gs.IndexArg(1, gs.TagArg("?"))).Name(name).Caller(1)
 
 			// Contribute a health indicator for this instance unless the user
-			// disabled it (health.enabled=false), injecting the connection just
+			// disabled it (health=false), injecting the connection just
 			// registered above by name. Its probe only calls HealthCheck (see
 			// health.go).
-			if c.HealthEnabled {
+			if c.Health {
 				r.Provide(func(conn *Conn) *health.Indicator {
 					return NewClientHealth(name, conn)
 				}, gs.TagArg(name)).Name("nats:" + name)

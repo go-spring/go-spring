@@ -23,9 +23,7 @@ package main
 
 import (
 	"context"
-	"errors"
 	"flag"
-	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -35,6 +33,7 @@ import (
 
 	"go-spring.org/cloud/experimental/loadtest"
 	"go-spring.org/spring/gs"
+	"go-spring.org/stdlib/errutil"
 
 	StarterElasticsearch "go-spring.org/starter-elasticsearch"
 	_ "go-spring.org/starter-governance-file"
@@ -81,7 +80,7 @@ func runLoad(s *Service) {
 			return err
 		}
 		if idxRes.IsError() {
-			return errors.New("elasticsearch: index " + idxRes.Status())
+			return errutil.Explain(nil, "elasticsearch: index "+idxRes.Status())
 		}
 		if err := idxRes.Body.Close(); err != nil {
 			return err
@@ -92,7 +91,7 @@ func runLoad(s *Service) {
 		}
 		defer func() { _ = getRes.Body.Close() }()
 		if getRes.IsError() {
-			return fmt.Errorf("elasticsearch: get %s", getRes.Status())
+			return errutil.Explain(nil, "elasticsearch: get %s", getRes.Status())
 		}
 		return nil
 	}

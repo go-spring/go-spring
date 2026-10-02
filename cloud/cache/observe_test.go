@@ -20,7 +20,6 @@ import (
 	"context"
 	"errors"
 	"testing"
-	"time"
 
 	"go-spring.org/stdlib/testing/assert"
 	"go.opentelemetry.io/otel"
@@ -131,7 +130,7 @@ func labels(attrs attribute.Set) string {
 // stubCache is a ByteCache whose outcomes are scripted per test.
 type stubCache struct {
 	get func(ctx context.Context, key string) ([]byte, error)
-	set func(ctx context.Context, key string, val []byte, ttl time.Duration) error
+	set func(ctx context.Context, key string, val []byte, ttlSeconds int) error
 	del func(ctx context.Context, key string) error
 }
 
@@ -139,8 +138,8 @@ func (s stubCache) GetBytes(ctx context.Context, key string) ([]byte, error) {
 	return s.get(ctx, key)
 }
 
-func (s stubCache) SetBytes(ctx context.Context, key string, val []byte, ttl time.Duration) error {
-	return s.set(ctx, key, val, ttl)
+func (s stubCache) SetBytes(ctx context.Context, key string, val []byte, ttlSeconds int) error {
+	return s.set(ctx, key, val, ttlSeconds)
 }
 
 func (s stubCache) Delete(ctx context.Context, key string) error {
@@ -162,7 +161,7 @@ func scriptedCache() stubCache {
 				return nil, sentinelErr
 			}
 		},
-		set: func(context.Context, string, []byte, time.Duration) error { return sentinelErr },
+		set: func(context.Context, string, []byte, int) error { return sentinelErr },
 		del: func(context.Context, string) error { return nil },
 	}
 }

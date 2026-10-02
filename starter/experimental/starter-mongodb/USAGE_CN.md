@@ -147,7 +147,7 @@ spring.observability.metrics.path=/metrics
 :4317 上的 Jaeger/OTLP collector）：
 
 ```bash
-go run .                          # server 不可达则启动直接失败（startup ping）
+go run .                          # server 不可达则启动直接失败（startup ping；需 ping=true，默认关闭）
 curl -s :9370/readyz | jq .       # components 含 "mongo:a" 与 "mongo:disc"
 curl -s :9090/metrics | grep db.client   # db.client.operation.duration / db.client.active_requests
 grep _app_mongodb_access app.log | tail -3   # 每条命令一条访问记录
@@ -181,8 +181,8 @@ gs.Run()
   │       serviceLabel = serviceLabel(cfg)；exec = params.ExecutorFor("mongodb", serviceLabel)，
   │       即 fault.WrapClientExecutor(mgr.ClientExecutorFor("mongodb", service), service, inj)
   │   → 换入 dialerWrapper.dial = resilience.NewDialer(base, w.exec)[starter.go:210]
-  │   → fail-fast 探测：HealthCheck(ctx, w)——一次 Ping，由 connect-timeout
-  │     约束（兜底 10s）[starter.go:216]——server 挂掉失败的是启动，不是第一条查询
+  │   → 仅 ping=true：fail-fast 探测 HealthCheck(ctx, w)——一次 Ping，由
+  │     connect-timeout 约束（兜底 10s）[starter.go:220]——server 挂掉失败的是启动
   ├─ 就绪：mongo:<name> 指示器经 HealthCheck（即 client.Ping）对真实 server 探测
   └─ SIGTERM → Destroy [client.go:148]：exec.Close → client.Disconnect
       （loader 无资源，无需释放任何 discovery 相关的东西）
@@ -250,11 +250,11 @@ key——观测无条件开启（见 §3.3）。
 | Key | 类型 | 默认值 | 行为 / 联动 | 配错后果 |
 |-----|------|--------|-------------|----------|
 | `uri` | string | — | **必填**（expr `$ != ''`）。经 `ApplyURI` 解析；URI 内驱动选项优先，除非下方字段覆盖。 | 缺失/为空 → 绑定期启动报错。 |
-| `username` | string | — | 非空时由 username/password/auth-source/auth-mechanism 组成 `options.Credential` [starter.go:121-128]。为空 → 凭据完全取自 URI。 | 设了 username 漏了 password/auth-source → 启动 ping 认证失败。 |
+| `username` | string | — | 非空时由 username/password/auth-source/auth-mechanism 组成 `options.Credential` [starter.go:121-128]。为空 → 凭据完全取自 URI。 | 设了 username 漏了 password/auth-source → 首次使用时认证失败（`ping=true` 时则为启动 ping）。 |
 | `password` | string | — | 上述凭据一部分。⚠ 仅与 `username` 一起生效。 | — |
-| `auth-source` | string | — | 凭据校验库，如 `admin`。⚠ 仅随 `username`。 | 库错 → 启动 ping 报 "Authentication failed"。 |
-| `auth-mechanism` | string | — | 如 `SCRAM-SHA-256`；空 = 驱动自动协商。⚠ 仅随 `username`。 | 不支持的机制 → 启动 ping 报错。 |
-| `connect-timeout` | duration | `10s` | 传给驱动，且限定 fail-fast 启动 ping（0 → 兜底 10s，[starter.go:224-229]）。 | 过小 → 慢网络下启动 ping 假超时。 |
+| `auth-source` | string | — | 凭据校验库，如 `admin`。⚠ 仅随 `username`。 | 库错 → 首次使用时（`ping=true` 时为启动 ping）报 "Authentication failed"。 |
+| `auth-mechanism` | string | — | 如 `SCRAM-SHA-256`；空 = 驱动自动协商。⚠ 仅随 `username`。 | 不支持的机制 → 首次使用时（`ping=true` 时为启动 ping）报错。 |
+| `connect-timeout` | duration | `10s` | 传给驱动，且限定启动 ping（`ping=true` 时；0 → 兜底 10s，[starter.go:224-229]）。 | 过小 → 慢网络下启动 ping 假超时。 |
 | `server-selection-timeout` | duration | `0` | 0 = 驱动默认（30s）。驱动等待合适 server 的时长。 | 过小 + 发现延迟 → "server selection timeout"。 |
 | `max-pool-size` | uint64 | `100` | 每 server 最大连接数。0 本意为用默认——但 starter 未设时显式传 100。治理规则里的 `max-conns` 覆盖它。 | 过小 → 操作排队等池位。 |
 | `min-pool-size` | uint64 | `0` | 最小池内连接（恒应用，含 0）。 | — |
@@ -263,6 +263,8 @@ key——观测无条件开启（见 §3.3）。
 | `scheme` | string | — | 把发现端点收窄到一种传输 scheme（如 `tls`）。仅 service-name 生效时被咨询。 | — |
 | `discovery` | string | — | 用哪个已注册发现后端解析 service-name。未配置时回退 `${spring.mongodb.default.discovery}`。 | service-name 已设但两层都未配置或名字无对应 bean → 启动报错。 |
 | `tls.*` | group | off | 共享 `security` 块（enabled/ca-file/cert-file/key-file/server-name/insecure-skip-verify）；`tls.Build` 报错直接失败启动 [starter.go:129-137]。enabled=false → 不启 TLS，除非 URI 自己要求（`mongodbs://` / `tls=true`）。 | 配一半 → 启动报 "mongodb: build TLS"。 |
+| `ping` | bool | `false` | 启动连通探活：true 时构造期 ping 一次 server（`HealthCheck`），不可达则启动失败，恢复 fail-fast。默认关闭，使尚未就绪的 server 不阻塞启动——连通问题推迟到首次使用暴露。 | `ping=true` 且 server 已挂 → 启动报 `mongodb: ping <uri>: ...`。 |
+| `health` | bool | `true` | 本实例是否贡献 `health.Indicator`（名 `mongo:<name>`）供 actuator 就绪/启动探测。置 false 可把该实例排除在聚合健康报告之外。 | `health=false` → `/readyz` 无 `mongo:<name>` 组件。 |
 
 ### 3.2 resilience / fault（spring.governance.*，不在实例前缀下）
 
@@ -309,7 +311,7 @@ curl -s :9370/readyz             # 503 OUT_OF_SERVICE
 docker start <mongo>
 ```
 
-指示器无条件注册——没有关闭开关（[starter.go:71-73]）。
+指示器默认每实例注册（[starter.go:73]）；置该实例 `health=false` 可跳过。
 
 ### 4.2 观测到底产出什么
 
@@ -368,7 +370,7 @@ spring.governance.client.fault.error=generic    # 或：timeout / reset
 
 | 症状 | 可能原因 | 处置 |
 |------|----------|------|
-| 启动报 `mongodb: ping <uri>: ...` | server 不可达 / 凭据错 / TLS 不匹配——fail-fast ping 无条件执行 | 修连通性/凭据；`connect-timeout` 约束探测时长。 |
+| 启动报 `mongodb: ping <uri>: ...` | server 不可达 / 凭据错 / TLS 不匹配——fail-fast ping 仅在 `ping=true` 时执行（默认关闭） | 修连通性/凭据；`connect-timeout` 约束探测时长；或去掉 `ping` 把失败推迟到首次使用。 |
 | 绑定期对 `uri` 启动失败 | `uri` 为空——expr 校验非空 | 设置 `spring.mongodb.instances.<name>.uri`。 |
 | 启动报 "build TLS" / "build discovery resolver" | `tls.*` 配了一半；`discovery` 指向未注册后端 | 补全 security 块；init 里注册命名后端 bean。 |
 | 发现客户端报 "no such host" / 拓扑错误 | `service-name` 绕过驱动拓扑发现 | URI 加 `directConnection=true`；副本集/mongos URI 则放弃 service-name。 |
@@ -383,7 +385,7 @@ spring.governance.client.fault.error=generic    # 或：timeout / reset
 
 | 指标 | 数值 |
 |------|------|
-| 配置 key 总数 | 14 个实例 key + tls 组 |
+| 配置 key 总数 | 16 个实例 key + tls 组 |
 | 其中必填 | 1（`uri`） |
 | quickstart 前置外部依赖 | 1（MongoDB） |
 | "注意/坑" 条数 | 4（directConnection、焐热池绕过、username 门控凭据） |
@@ -392,7 +394,9 @@ spring.governance.client.fault.error=generic    # 或：timeout / reset
 
 - `service-name` 静默关闭驱动拓扑发现，还需用户配合 `directConnection=true`——starter
   无法替用户注入（URI 不透明）。
-- 健康指示器无关闭开关（家族不对称：redigo 有 `health.enabled`）。
+- 健康指示器每实例默认注册，可用 `health=false` 关闭；启动探活则是相反的默认——除非 `ping=true`
+  否则关闭（与 redigo 的 `health.enabled` + `startup-ping` 一对相比，这里的两个旋钮是
+  `health` 与 `ping`）。
 - resilience 仅建连层；期待逐命令 breaker 语义（如 starter-go-redis）的用户对焐热池
   的命令失败得到的是静默不保护。2026-08-28 守卫统一化复核确认这是**命令级 SDK 阻塞**：
   v2 驱动唯一的逐命令 hook 是 `event.CommandMonitor`，只能观测（事件无拒绝能力）；

@@ -3,7 +3,7 @@
 [English](README.md) | [中文](README_CN.md)
 
 `starter-s3` provides S3-protocol object storage support for Go-Spring:
-multi-instance `*minio.Client` beans with fail-fast startup probes (bucket
+multi-instance `*minio.Client` beans with opt-in fail-fast startup probes (bucket
 list), per-request instrumentation (the starter declares each call's identity;
 the resilience layer emits the span + metrics + access log), resilience
 (rate limit / circuit breaking / fault injection on the HTTP transport), and
@@ -72,9 +72,9 @@ governance transport.
 
 - **Multi-instance clients** — every `spring.s3.instances.<name>` entry is its own bean
   with independent settings.
-- **Fail-fast startup probe** — a `ListBuckets` round trip at boot catches
-  wrong endpoints and rejected credentials before the first object
-  operation.
+- **Fail-fast startup probe** — an opt-in (`ping=true`; off by default) `ListBuckets`
+  round trip at boot catches wrong endpoints and rejected credentials before the
+  first object operation.
 - **Health indicator per instance** — the same probe is registered as
   `s3:<name>` and folded into `/readiness` by `starter-actuator` when
   imported.

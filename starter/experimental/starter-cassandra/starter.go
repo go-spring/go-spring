@@ -56,10 +56,13 @@ func init() {
 			).Name(name).Destroy((*Client).Destroy).Caller(1)
 			// Contribute a health indicator for this instance, injecting the
 			// client just registered above by name. The probe delegates to
-			// HealthCheck, which goes straight to the raw session.
-			r.Provide(func(w *Client) *health.Indicator {
-				return NewClientHealth(name, w)
-			}, gs.TagArg(name)).Name("cassandra:" + name).Caller(1)
+			// HealthCheck, which goes straight to the raw session. Skipped when
+			// c.Health is false.
+			if c.Health {
+				r.Provide(func(w *Client) *health.Indicator {
+					return NewClientHealth(name, w)
+				}, gs.TagArg(name)).Name("cassandra:" + name).Caller(1)
+			}
 			return nil
 		})
 	})
@@ -99,11 +102,14 @@ func newClient(ctx *gs.ContextProvider, c Config, d Driver, mgr *resilience.Mana
 	// Actuator indicator uses — which goes straight to the raw session on
 	// purpose: it is a connectivity check, not business traffic, so it must not
 	// open a span or spend limiter/breaker budget. A failure abandons the
-	// client, so release what was just applied.
-	if err := HealthCheck(ctx.Context, client); err != nil {
-		log.Errorf(ctx.Context, log.TagAppDef, "cassandra: startup probe failed: %v", err)
-		_ = client.Destroy()
-		return nil, errutil.Explain(err, "failed to reach cassandra cluster %v", c.Hosts)
+	// client, so release what was just applied. Off by default (c.Ping): a
+	// cluster that is not up yet must not block startup.
+	if c.Ping {
+		if err := HealthCheck(ctx.Context, client); err != nil {
+			log.Errorf(ctx.Context, log.TagAppDef, "cassandra: startup probe failed: %v", err)
+			_ = client.Destroy()
+			return nil, errutil.Explain(err, "failed to reach cassandra cluster %v", c.Hosts)
+		}
 	}
 	log.Infof(ctx.Context, log.TagAppDef, "cassandra client initialized, hosts=%v", c.Hosts)
 	return client, nil

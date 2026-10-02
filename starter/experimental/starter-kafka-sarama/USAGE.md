@@ -279,7 +279,7 @@ ConsumerGroup handler):
 
 ## 3. Per-key behavior reference
 
-All keys under `spring.kafka-sarama.instances.<name>.` (15 total incl. the tls/sasl
+All keys under `spring.kafka-sarama.instances.<name>.` (16 total incl. the tls/sasl
 groups; binding is per-instance prefix binding via `conf.BindEach`, NOT absolute-property
 field injection).
 
@@ -289,6 +289,7 @@ field injection).
 |-----|------|---------|-------------------------|------------------------------|
 | `brokers` | string | — | **Required** (`expr:"$ != ''"` [config.go:32]); comma-separated seed list [driver.go:103]. Also becomes the governance service label `kafka:<brokers>` verbatim [command.go:221] — different orderings/spellings of the same cluster are DIFFERENT labels. | Missing/empty → bind error at boot. Typo'd broker → sarama.NewClient fails at boot (fail-fast). |
 | `version` | string | "" (sarama default) | Parsed with `sarama.ParseKafkaVersion`; gates protocol features (headers, SASL mechanisms, consumer groups) [driver.go:65-71]. | Unparseable → boot error `invalid kafka version`. Too low → feature errors at first use. |
+| `ping` | bool | false | Opt-in defensive metadata probe after assembly: fails startup if `len(cl.Brokers())==0` [client.go:77-82]. The dial itself is always done by `sarama.NewClient` inside the driver, so `ping=false` does not make broker-down silent. | true → an empty cluster aborts boot; false → the check is skipped. |
 
 The `driver` key names the Driver bean for this entry: unset → assembly is owned by the
 optional Driver bean injected by type (see §2.1) or the bundled `DefaultDriver`; set → that

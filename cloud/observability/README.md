@@ -19,7 +19,7 @@ Putting the attributes on the context instead means one place covers every span
 in the process:
 
 ```go
-ctx = observability.WithContextAttributes(ctx, attribute.String("tenant", t))
+ctx = observability.WithSpanAttributes(ctx, attribute.String("tenant", t))
 ```
 
 Nested spans inherit, and on a duplicate key the later source wins. The
@@ -39,7 +39,7 @@ Set them where the value becomes known — typically a middleware:
 ```go
 func TenantMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		ctx := observability.WithContextAttributes(r.Context(),
+		ctx := observability.WithSpanAttributes(r.Context(),
 			attribute.String("tenant", tenantOf(r)),
 		)
 		next.ServeHTTP(w, r.WithContext(ctx))
@@ -50,12 +50,42 @@ func TenantMiddleware(next http.Handler) http.Handler {
 Nothing else is required. The reader is a `SpanProcessor` that `starter-otel`
 registers on the provider automatically — see that starter's USAGE §2.5. If you
 build your own `TracerProvider` instead, register
-`trace.ContextAttributesProcessor()` yourself; without a reader the carrier is
-inert.
+`observability.SpanAttributesProcessor()` yourself; without a reader the carrier
+is inert.
+
+## The span is a window
+
+A span observes a process, not an instant: it is started before the work and
+settled after it. That lifetime is what sets it apart from the other signals
+here — it stays writable while the work runs, and it can be addressed from the
+context the work carries. Three moments can add to it, and a fourth cannot:
+
+| Moment | How |
+|---|---|
+| at `Start` | the static attributes the component passes to `Tracer.Start` |
+| before `Start`, from a caller outside the frame | `observability.WithSpanAttributes`, applied by the processor as the span starts |
+| while the span runs | `observability.SetSpanAttributes(ctx, ...)`, by whoever holds the span-carrying context |
+| after `End` | not at all — `OnEnd` is handed a read-only span |
+
+The third row is what a layer wrapping the instrumentation uses. A context is
+derived and immutable, so `trace.SpanFromContext(ctx)` resolves to this
+operation's span and no other: what such a layer writes cannot land on a
+different call, and the instrumented component never has to know the layer
+exists.
+
+Two limits come with that design. The window is only as wide as context
+propagation — a goroutine started from `context.Background()`, or a client that
+ignores its ctx, leaves the span behind. And the window shuts at `End`: what the
+caller learns only after the call returns cannot be added to the span it came
+from.
+
+A metric has no such window. It is a single measurement, not a process, so every
+label is supplied at the moment it is recorded.
 
 ## Two shapes that look unreachable, and are not
 
-Neither needs the span object, only the context it will be started from.
+Both are the `before Start` row above: neither needs the span object, only the
+context it will be started from.
 
 **A span the framework starts below your frame.** Registry registration, a lock
 acquisition, a cache or DB call: you never see the span, so
@@ -63,7 +93,7 @@ acquisition, a cache or DB call: you never see the span, so
 you hand in instead:
 
 ```go
-ctx = observability.WithContextAttributes(ctx, attribute.String("tenant", t))
+ctx = observability.WithSpanAttributes(ctx, attribute.String("tenant", t))
 client.Call(ctx, ...)   // the span started inside carries tenant
 ```
 
@@ -73,7 +103,7 @@ so it holds a context without the span in it. Annotate before delegating:
 
 ```go
 func (myInterceptor) Do(ctx context.Context, ...) {
-	ctx = observability.WithContextAttributes(ctx, attribute.String("tenant", t))
+	ctx = observability.WithSpanAttributes(ctx, attribute.String("tenant", t))
 	return next(ctx, ...)   // the instrumented layer starts its span from this
 }
 ```

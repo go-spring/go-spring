@@ -4,8 +4,8 @@
 
 `starter-cassandra` 基于官方 [gocql](https://github.com/gocql/gocql) 驱动为
 Go-Spring 提供 Cassandra / ScyllaDB 支持（两者都说 CQL 原生协议）：多实例
-session bean、fail-fast 启动探针、韧性守卫的 `Exec` 助手、每实例健康指示
-器，可选 PasswordAuthenticator 与 TLS。
+session bean、可选 fail-fast 启动探针、韧性守卫的 `Exec` 助手、每实例健康指
+示器，可选 PasswordAuthenticator 与 TLS。
 
 ## 安装
 
@@ -60,7 +60,8 @@ err = s.Client.Query("SELECT message FROM demo.greetings WHERE id = ?", 1).
 - **多实例客户端** — 每个 `spring.cassandra.instances.<name>` 条目都是独立 bean，
   拥有各自的配置。
 - **fail-fast 启动探针 + 健康指示器** — `HealthCheck`（一次 `system.local` 扫描）
-  在启动期执行，`cassandra:<name>` 指示器供 `starter-actuator` 聚合，二者都委托给同一实现。
+  在启动期执行（opt-in：`ping=true`；默认关闭），`cassandra:<name>` 指示器供
+  `starter-actuator` 聚合（`health=false` 可跳过），二者都委托给同一实现。
 - **守卫的 Exec** — 同步语句走治理执行器；守卫的 `Query` 包装同样覆盖
   `Iter`/`Scan`，而返回迭代器内部的翻页与 batch 执行仍在守卫之外
   （语句级粒度，与 database/sql 系 starter 同立场）。

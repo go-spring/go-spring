@@ -38,6 +38,7 @@ import (
 
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
+	"go-spring.org/stdlib/errutil"
 
 	starter "go-spring.org/starter-xxljob"
 )
@@ -64,7 +65,7 @@ type Service struct {
 func (s *Service) Init() error {
 	s.Executor.RegisterHandler("demoJob", func(ctx context.Context, param string) error {
 		if param != "a=1" {
-			return fmt.Errorf("unexpected param %q", param)
+			return errutil.Explain(nil, "unexpected param %q", param)
 		}
 		select {
 		case handlerRan <- struct{}{}:

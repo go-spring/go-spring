@@ -23,7 +23,6 @@ import (
 	"encoding/base64"
 	"encoding/binary"
 	"encoding/json"
-	"fmt"
 	"math/big"
 	"net/http"
 	"sync"
@@ -84,7 +83,7 @@ func (c *jwksCache) key(kid string) (any, error) {
 	if k, ok := c.keys[kid]; ok {
 		return k, nil
 	}
-	return nil, fmt.Errorf("oauth2-resource-server: no JWKS key for kid %q", kid)
+	return nil, errutil.Explain(nil, "oauth2-resource-server: no JWKS key for kid %q", kid)
 }
 
 // reload fetches the JWKS document and replaces the cached key set.
@@ -99,7 +98,7 @@ func (c *jwksCache) reload() error {
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("oauth2-resource-server: fetch JWKS %s: status %d", c.url, resp.StatusCode)
+		return errutil.Explain(nil, "oauth2-resource-server: fetch JWKS %s: status %d", c.url, resp.StatusCode)
 	}
 
 	var doc struct {
@@ -118,7 +117,7 @@ func (c *jwksCache) reload() error {
 		keys[k.Kid] = pub
 	}
 	if len(keys) == 0 {
-		return fmt.Errorf("oauth2-resource-server: JWKS %s contains no usable key", c.url)
+		return errutil.Explain(nil, "oauth2-resource-server: JWKS %s contains no usable key", c.url)
 	}
 
 	c.mu.Lock()
@@ -151,7 +150,7 @@ func (k jwk) publicKey() (any, error) {
 	case "EC":
 		return k.ecKey()
 	default:
-		return nil, fmt.Errorf("oauth2-resource-server: unsupported JWK kty %q", k.Kty)
+		return nil, errutil.Explain(nil, "oauth2-resource-server: unsupported JWK kty %q", k.Kty)
 	}
 }
 
@@ -184,7 +183,7 @@ func (k jwk) ecKey() (*ecdsa.PublicKey, error) {
 	case "P-521":
 		curve = elliptic.P521()
 	default:
-		return nil, fmt.Errorf("oauth2-resource-server: unsupported EC curve %q", k.Crv)
+		return nil, errutil.Explain(nil, "oauth2-resource-server: unsupported EC curve %q", k.Crv)
 	}
 	xBytes, err := base64.RawURLEncoding.DecodeString(k.X)
 	if err != nil {

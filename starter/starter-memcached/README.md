@@ -59,8 +59,9 @@ The [example.go](example/example.go) program demonstrates and asserts three core
   the example implementation `AnotherMemcachedDriver`. When several Driver beans coexist, an entry selects
   one by name: `spring.memcached.instances.<name>.driver = <bean-name>` (empty = inject the single Driver bean by
   type; naming a missing bean fails startup).
-* **Startup connection validation (fail-fast)**: after building the client the starter runs `HealthCheck` (a `Ping`
-  loop) against every configured server; an unreachable server fails the boot instead of the first request.
+* **Startup connection validation (opt-in)**: set `ping=true` and after building the client the starter runs
+  `HealthCheck` (a `Ping` loop) against every configured server, so an unreachable server fails the boot instead of
+  the first request. Off by default: a backend that is not up yet must not block startup.
 * **Service discovery**: set `service-name` (and `discovery` to name the registered backend; there is no default backend)
   instead of `servers`; the starter resolves the server list once through the registered `discovery.Discovery` backend
   at startup and shards keys across it. Because gomemcache hashes keys onto a fixed server set chosen at client creation,

@@ -134,7 +134,7 @@ spring.observability.metrics.path=/metrics
 takes up to 120 s on first boot, and Jaeger via example-otel/docker-compose.yml if tracing):
 
 ```bash
-go run .                          # boot fails fast if the cluster is unreachable
+go run .                          # boot fails fast if the cluster is unreachable (needs ping=true; off by default)
 curl -s :9370/readyz | jq .       # components include elasticsearch:main and elasticsearch:disc
 curl -s :9090/metrics | grep -E 'db.client.*elasticsearch'   # duration + in-flight gauges
 curl "http://127.0.0.1:16686/api/traces?service=demo&limit=1" # spans in Jaeger (example-otel check)
@@ -171,8 +171,8 @@ gs.Run()
   │    │      label and sets exec = params.ExecutorFor("elasticsearch", service)
   │    │      (fault(governed executor), or observe-only Unmanaged for the zero params),
   │    │      then installs the transport: declaration outermost, resilience inside
-  │    └─ fail-fast probe: HealthCheck(ctx, client) — one Info straight to the raw client;
-  │        failure releases the client (Destroy) and aborts boot
+  │    └─ ping=true only: fail-fast probe HealthCheck(ctx, client) — one Info straight to
+  │        the raw client; failure releases the client (Destroy) and aborts boot
   ├─ readiness: indicator flips UP (runs the raw client.Info via HealthCheck)
   └─ SIGTERM → Destroy: exec.Close → client.Close
 ```
@@ -277,11 +277,13 @@ unconditional (see §3.4).
 
 | Key | Type | Default | Behavior / interactions | Misconfiguration consequence |
 |-----|------|---------|-------------------------|------------------------------|
-| `addresses` | list | — | Node URLs, e.g. `http://127.0.0.1:9200` (comma-separated). Validated non-empty (`len($) > 0`). ⚠ Required even when `service-name` overrides it — the example carries a non-resolvable dummy on purpose. ⚠ Ignored when `cloud-id` is set (client-side precedence). | Empty → BindEach error; unreachable first probe → boot error "failed to reach elasticsearch cluster". |
+| `addresses` | list | — | Node URLs, e.g. `http://127.0.0.1:9200` (comma-separated). Validated non-empty (`len($) > 0`). ⚠ Required even when `service-name` overrides it — the example carries a non-resolvable dummy on purpose. ⚠ Ignored when `cloud-id` is set (client-side precedence). | Empty → BindEach error; wrong address → error on first use (or boot error "failed to reach elasticsearch cluster" when `ping=true`). |
 | `service-name` | string | — | Resolve node addresses via a registered discovery backend, and keep the transport's node set following it (pool.go); overrides `addresses`. Ignored in mesh mode. ⚠ Pairs with `scheme`/`discovery`/`discovery-scheme`. | Service has no endpoints at boot → boot error `discovery %q returned no endpoints`; empty at runtime → last good set kept. |
 | `scheme` | string | — | Narrows discovery to endpoints of one transport scheme. Only consulted when `service-name` is set. | — |
 | `discovery` | string | — | Which registered discovery backend resolves `service-name`. Falls back to `${spring.elasticsearch.default.discovery}` when unset. | Both unset or an unregistered name while service-name is set → boot error. |
-| `discovery-scheme` | string | `http` | URL scheme stamped onto discovered `host:port` endpoints (`http`/`https`). | Wrong scheme → first probe fails at boot. |
+| `discovery-scheme` | string | `http` | URL scheme stamped onto discovered `host:port` endpoints (`http`/`https`). | Wrong scheme → first probe (or first request) fails. |
+| `ping` | bool | `false` | Startup connectivity probe: when true the ctor runs `HealthCheck` (an `Info`) once and fails the boot if it errors, restoring fail-fast. Off by default so a cluster that is not up yet does not block startup. | `ping=true` against a down cluster → boot error "failed to reach elasticsearch cluster". |
+| `health` | bool | `true` | Whether this instance contributes a `health.Indicator` (name `elasticsearch:<name>`) for the actuator's readiness/startup probes. Set false to keep the instance out of the aggregated health report. | `health=false` → no `elasticsearch:<name>` component in `/readyz`. |
 | `cloud-id` | string | — | Elastic Cloud deployment ID; when set the client prefers it over `addresses`. | — |
 
 ### 3.2 Auth & TLS
@@ -377,7 +379,8 @@ requires a restart (§2.4).
 
 ### 4.5 Server-down behavior
 
-- At boot: fail-fast — process exits with "failed to reach elasticsearch cluster".
+- At boot: fail-fast when `ping=true` — process exits with "failed to reach elasticsearch
+  cluster"; with the default `ping=false` the boot succeeds and the first request fails instead.
 - At runtime: requests return transport errors through the full chain (span + access log +
   breaker counting); `/readyz` flips DOWN within one probe interval.
 
@@ -400,7 +403,7 @@ requires a restart (§2.4).
 
 | Metric | Value |
 |--------|-------|
-| Config keys | 16 instance keys |
+| Config keys | 18 instance keys |
 | Required | 1 (`addresses`, validated non-empty) |
 | Quickstart external deps | 1 (Elasticsearch) |
 | "Watch out" entries | 5 |
@@ -415,5 +418,5 @@ Design suspects (audit ledger; first three carried over from the previous doc):
 - Custom drivers silently lose the governance + resilience declaration transport swap — no warning, no hook.
 - schema.json `enable-metrics` default (`false`) disagrees with the code (`true`) — schema is
   not generated, so it drifts.
-- Health indicator has no opt-out key (same family asymmetry as go-redis; redigo has
-  `health.enabled`).
+- Health indicator is per instance (`health=false` opts out); the startup probe is opt-in
+  (`ping=true`) — the `health`/`ping` pair replaces redigo's `health.enabled`/`startup-ping`.

@@ -48,6 +48,7 @@ spring.nats.instances.config-bus.url=nats://127.0.0.1:4222
 | `nats-instance`  | `config-bus`            | 作为传输通道的 `spring.nats.instances.*` 连接名。                        |
 | `watch-prefixes` | (空)                    | 逗号分隔的前缀;设置后,仅当广播前缀与其中之一有交集（或为全量广播）时,本实例才刷新。 |
 | `origin`        | (主机名)                | 发布方标识，写入每次广播的 `RefreshEvent.Origin` 与 producer span，用于区分"本实例刷新了"和"某个实例刷新了"。 |
+| `health`        | `true`                  | 是否贡献 `config-bus:configBus` 这个 `health.Indicator`。置 `false` 可让总线不出现在聚合就绪报告里。 |
 
 ### 4. 广播刷新
 
@@ -130,10 +131,10 @@ trace 来自传输层：`Publish` 打开 producer span（父节点是你的 `ctx
 消息 header，订阅侧的 consumer span 延续它，因此一次广播在追踪里表现为横跨发布方与
 每个订阅者的单条链路。未引入 starter-otel 时两者都是 no-op。
 
-健康检查：总线注册名为 `config-bus:configBus` 的 `health.Indicator`，报告订阅是否仍然
-有效。它刻意不做连通性检查——订阅能挺过重连，所以它只在监听真的死掉时才为假，而这正是
-NATS 连通性探针看不见、且会让实例静默停留在过期配置上的那种情况。连接层健康由
-starter-nats 自己的指标负责，带有它自己的按实例 `health.enabled` 开关。
+健康检查：总线注册名为 `config-bus:configBus` 的 `health.Indicator`（除非 `health=false`），
+报告订阅是否仍然有效。它刻意不做连通性检查——订阅能挺过重连，所以它只在监听真的死掉时
+才为假，而这正是 NATS 连通性探针看不见、且会让实例静默停留在过期配置上的那种情况。连接层
+健康由 starter-nats 自己的指标负责，带有它自己的按实例 `health` 开关。
 
 ### 日志 tag
 

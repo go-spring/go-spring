@@ -26,8 +26,6 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
-const tracerName = "go-spring.org/starter-gateway"
-
 // proxySpan wraps an http.Handler with OTel tracing: it extracts the incoming
 // trace context, starts a server span for the gateway hop, then creates a child
 // client span for the upstream call. The span names include the route id so
@@ -45,7 +43,7 @@ func proxySpan(routeID string, next http.Handler) http.Handler {
 		)
 
 		// Server span: the inbound hop into the gateway.
-		ctx, serverSpan := otel.Tracer(tracerName).Start(ctx, "gateway "+routeID,
+		ctx, serverSpan := otel.Tracer(scope).Start(ctx, "gateway "+routeID,
 			trace.WithSpanKind(trace.SpanKindServer),
 			trace.WithAttributes(
 				attribute.String("http.request.method", r.Method),
@@ -57,7 +55,7 @@ func proxySpan(routeID string, next http.Handler) http.Handler {
 		// Client span: the outbound hop to the upstream. This nests inside the
 		// server span so tracing backends show gateway→upstream latency broken
 		// out from the total request latency.
-		ctx, clientSpan := otel.Tracer(tracerName).Start(ctx, "proxy "+routeID,
+		ctx, clientSpan := otel.Tracer(scope).Start(ctx, "proxy "+routeID,
 			trace.WithSpanKind(trace.SpanKindClient),
 		)
 

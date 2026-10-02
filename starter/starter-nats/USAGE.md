@@ -193,8 +193,8 @@ gs.Run()
   ├─ newConn: bundles mgr/inj (= the injected *resilience.Manager / *fault.Injector beans)
   │           into the cloud.ClientParams it hands the Driver; nothing patches the Conn afterwards
   │           [driver.go:181-182]
-  ├─ startup connectivity check on the bare client (IsConnected); failure destroys the bean
-  │           [driver.go:196-200]
+  ├─ if ping: startup connectivity check on the bare client (IsConnected); failure destroys the bean
+  │           [driver.go:197-202]
   ├─ Run / readiness
   └─ SIGTERM: (*Conn).Destroy → exec.Close() (error returned after Drain) then conn.Drain()
               — in-flight subscriptions finish, then the socket closes [client.go:105-113]
@@ -299,10 +299,10 @@ inside `Request`, and it declares no operation, so it opens no operation span of
 ### 2.5 Health
 
 Each instance contributes a `health.Indicator` named `nats:<name>` unless its entry sets
-`health.enabled=false` [starter.go]. The probe reads the bare client's `IsConnected()` directly
+`health=false` [starter.go]. The probe reads the bare client's `IsConnected()` directly
 (no span, no limiter/breaker budget), so an instance between
 reconnects reports down and recovers on its own. That is the right default for a dependency the app
-cannot serve without; set `health.enabled=false` for an optional side connection that should not gate
+cannot serve without; set `health=false` for an optional side connection that should not gate
 readiness — the indicator is then not registered at all, rather than registered and always green.
 
 ---
@@ -326,11 +326,14 @@ struct — its sub-keys belong to security, not this starter.
 | `connect-timeout` | duration | 5s | Bounds the **initial dial only** [driver.go:80]. | Too low → spurious boot failures on slow networks. |
 | `jetstream` | group | — | Container for `enabled`. | — |
 | `jetstream.enabled` | bool | false | Derives `jetstream.New(nc)` on the SAME connection; failure closes nc and fails boot; otherwise `Conn.JetStream` stays nil [driver.go:143-151]. | Enabled against a broker without `-js` → boot error. |
+| `ping` | bool | false | Opt-in startup probe: `HealthCheck` checks the live connection once and fails the boot on an unreachable broker; off by default so a broker that is not up yet only surfaces on first publish [driver.go:197-202]. | Expecting fail-fast without setting it → boot "succeeds", first publish fails. |
+| `health` | bool | true | Contributes the `nats:<name>` health.Indicator; false keeps the connection out of aggregate health [starter.go]. | false → no indicator bean; readiness of that connection is no longer reported. |
 
-Grep reconciliation: the 13 distinct `value:` tags in this starter's Go files are exactly
+Grep reconciliation: the 15 distinct `value:` tags in this starter's Go files are exactly
 `url`, `name`, `username`, `password`, `token`, `creds-file`, `nkey-file`, `tls`,
 `max-reconnects`, `reconnect-wait`, `connect-timeout`, `jetstream`, `jetstream.enabled`
-(as `${enabled:=false}`) — all tabled above; no extras either way.
+(as `${enabled:=false}`), `ping`, `health`
+— all tabled above; no extras either way.
 
 ---
 
@@ -408,7 +411,7 @@ Publish an envelope with `Payload` + `Headers{"tenant":"acme"}`; in the consumer
 | Consumer gets messages but no traces/metrics on consumes | using the raw `Conn.Subscribe`/`QueueSubscribe` delegations instead of `Conn.Consume` | Consume via `Conn.Consume(ctx, subject, queue, handler)` or messaging.Driver. |
 | Guarded calls suddenly fail with sentinel errors | rate limit exhausted or breaker open — by design [command.go:187-192] | Check governance.yaml policy; breaker recovers after cool-down. |
 | Producer trace never links to the caller's span | the publish used `PublishMsg` (no ctx parameter), so its span is a new root | Use `PublishMsgContext(ctx, msg)` — `PublishGuarded` already does. |
-| `/readiness` reports `nats:<name>` down | the auto-reconnecting client is between reconnects | Expected; if this instance's connectivity should not gate readiness, set `health.enabled=false` on it. |
+| `/readiness` reports `nats:<name>` down | the auto-reconnecting client is between reconnects | Expected; if this instance's connectivity should not gate readiness, set `health=false` on it. |
 | Missing 2nd header value | driver flattens multi-value headers to the first value (single-valued envelope) | Carry the extra values in the payload or use the raw Conn API. |
 | Reconnect storm in logs | `reconnect-wait` too low with dead cluster | Raise it; reconnect is the client's reliability mechanism. |
 
@@ -416,7 +419,7 @@ Publish an envelope with `Payload` + `Headers{"tenant":"acme"}`; in the consumer
 
 | Metric | Value |
 |--------|-------|
-| Config keys | 15 starter-local value tags (+ tls group sub-keys in security) |
+| Config keys | 17 starter-local value tags (+ tls group sub-keys in security) |
 | Required | 1 (`url`) |
 | Quickstart external deps | 1 (nats; collector optional for observability) |
 | "Watch out" entries | 4 |
@@ -427,7 +430,7 @@ Design suspects (audit ledger):
   `PublishMsgContext` (the ctx-less `PublishMsg` keeps its documented new-root behaviour
   for compatibility — nats.PublishMsg has no ctx parameter); consumes are instrumented
   for any caller of `Conn.Consume`, not just the driver; a `health.Indicator` is wired
-  per instance (`health.enabled`, see §2.5); `PublishGuarded` now threads the caller ctx
+  per instance (`health`, see §2.5); `PublishGuarded` now threads the caller ctx
   into its call span; every publish/consume declares its operation and the resilience
   executor is the single emitter (no per-call instrumentation in the starter).
 - **Open**: JetStream consumes untraced (separate API surface); multi-value headers

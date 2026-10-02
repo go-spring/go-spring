@@ -17,9 +17,10 @@
 package trace
 
 import (
-	"fmt"
 	"strings"
 
+	"go-spring.org/cloud/observability"
+	"go-spring.org/stdlib/errutil"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/sdk/resource"
@@ -62,7 +63,7 @@ func NewResource(serviceName string) (*resource.Resource, error) {
 // endpoint falls back to the exporter's own default (localhost:4317 / :4318).
 func NewTracerProvider(cfg TraceConfig, res *resource.Resource) (*sdktrace.TracerProvider, error) {
 	if cfg.SamplerRatio <= 0 {
-		return nil, fmt.Errorf(
+		return nil, errutil.Explain(nil,
 			"observability: trace.sampler-ratio=%v is invalid: a non-positive ratio drops every trace (config default is 1.0); to disable tracing set spring.observability.trace.exporter=none or spring.observability.trace.enable=false", cfg.SamplerRatio)
 	}
 	f, ok := lookupSpanExporter(cfg.Exporter)
@@ -77,11 +78,11 @@ func NewTracerProvider(cfg TraceConfig, res *resource.Resource) (*sdktrace.Trace
 	return sdktrace.NewTracerProvider(
 		sdktrace.WithBatcher(exp),
 		// Applies the attributes a context carries (see
-		// observability.WithContextAttributes) to every span in the process,
+		// observability.WithSpanAttributes) to every span in the process,
 		// including the ones instrumentation starts inside the framework.
 		// Registered alongside the batcher: the SDK keeps a list of processors,
 		// and this one holds no resources.
-		sdktrace.WithSpanProcessor(ContextAttributesProcessor()),
+		sdktrace.WithSpanProcessor(observability.SpanAttributesProcessor()),
 		// Tags every span of a load-test request, so synthetic traffic is
 		// separable from production traffic in traces and metrics. Reads the
 		// traffic contract; the marker package itself stays passive.
@@ -140,13 +141,13 @@ func NewPropagator(spec string) (propagation.TextMapPropagator, error) {
 	for _, n := range names {
 		p, ok := lookupPropagator(n)
 		if !ok {
-			return nil, fmt.Errorf("observability: unknown propagator %q (registered: %s)",
+			return nil, errutil.Explain(nil, "observability: unknown propagator %q (registered: %s)",
 				n, strings.Join(propagatorNames(), ", "))
 		}
 		parts = append(parts, p)
 	}
 	if len(parts) == 0 {
-		return nil, fmt.Errorf("observability: empty propagator spec %q", spec)
+		return nil, errutil.Explain(nil, "observability: empty propagator spec %q", spec)
 	}
 	if len(parts) == 1 {
 		return parts[0], nil

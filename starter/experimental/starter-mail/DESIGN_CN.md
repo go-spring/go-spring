@@ -31,9 +31,9 @@
   （默认） / `tls`（465 隐式 TLS） / `none`。这与其他 starter 的
   `tls.enabled=true` 形状不同，因为 SMTP 有三种线路行为而不是两种
   （`project_starter_mail`）。
-- **启动预拨号 fail-fast。** `newMailer` 拨一次、关一次，让 host/port/auth/TLS
-  错在启动就暴露，而不是等首封邮件。对 mailer 特别重要——首封往往是
-  运维告警。
+- **启动预拨号是可选探测。** `ping=true` 时 `newMailer` 拨一次、关一次，让
+  host/port/auth/TLS 错在启动就暴露，而不是等首封邮件；默认关闭，中继未就绪
+  不阻塞启动。对 mailer 特别重要——首封往往是运维告警。
 - **无连接池资源，destroy 有界。** `DialAndSendWithContext` 每次 Send 现拨现关，
   故 `destroy` 在 SMTP 客户端上无可关之物——它只释放 mailer 持有的 resilience
   执行器。

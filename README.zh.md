@@ -77,7 +77,7 @@ Go-Spring **不拥有任何协议、任何传输**。它是**它们之下、它�
 - **每个组件都被插桩，不是可选项。** 全部 54 个组件（数据库、消息、HTTP、RPC 各族，加上 cloud 域包）在同一份规约下产出信号，缺一个信号、或结果值分不出成败，都算**缺陷**而不是风格差异。覆盖范围包括框架**代你执行**的操作：注册中心心跳、加锁、缓存与 MQ 访问，而不只是你自己的 handler。
 - **同类组件用同一套词汇。** 同类组件共用名字、仪器类型与取值词表，并遵循 OpenTelemetry 语义约定（`db.system`、`messaging.system`、`http.*`）。把 Redis 换成 Memcached、把 Kafka 换成 Pulsar，你的运维资产照样读得懂。组件仍可自由添加自己的字段——只在语义相同时才要求一致。
 - **靠脚本强制，不靠自觉。** [`scripts/check-observability.sh`](scripts/check-observability.sh) 对全部 54 个组件机械校验规约，并由 [`scripts/check-all.sh`](scripts/check-all.sh) 在每次 push 与 PR 上运行——规约漂移会让构建失败，而不是悄悄腐烂。
-- **你要加的数据不需要改框架。** 用 `log.WithFields` / `log.Collect` 或 `observability.WithContextAttributes` 在 context 上标注，这些值会落到日志行上，**也**会落到每一个 span 上——包括框架代你创建、你根本拿不到句柄的那些 span。metric 则刻意保持封闭（无界的标签正是基数爆炸的来源）；需要自己的指标时，用 `otel.Meter(...)` 自建。
+- **你要加的数据不需要改框架。** 用 `log.WithFields` / `log.Collect` 或 `observability.WithSpanAttributes` 在 context 上标注，这些值会落到日志行上，**也**会落到每一个 span 上——包括框架代你创建、你根本拿不到句柄的那些 span。metric 则刻意保持封闭（无界的标签正是基数爆炸的来源）；需要自己的指标时，用 `otel.Meter(...)` 自建。
 - **没有另一套观测 API 要学。** 用的就是框架的 `log` 包和 OpenTelemetry 本身，所以你对 OTLP、Collector 与后端的既有认知完全适用。
 
 ### 依赖注入，纯 Go 方式

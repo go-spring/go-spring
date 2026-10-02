@@ -425,7 +425,7 @@ func (discoveryResolverBuilder) Build(target resolver.Target, cc resolver.Client
 	eps, err := d.Resolve(ctx, service)
 	if err != nil {
 		cancel()
-		return nil, fmt.Errorf("loadbalance: resolve %q via %q: %w", service, backend, err)
+		return nil, errutil.Explain(err, "loadbalance: resolve %q via %q", service, backend)
 	}
 	r.push(eps)
 	go r.pollLoop(eps)

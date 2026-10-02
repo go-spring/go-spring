@@ -113,8 +113,8 @@ func init() {
 }
 
 // newMailer builds a Mailer from config. It fails fast on a missing host or an
-// unknown auth/TLS mode, and probes the server once at startup so a
-// misconfiguration surfaces at boot rather than on the first send.
+// unknown auth/TLS mode, and (when Ping is enabled) probes the server once at
+// startup so a misconfiguration surfaces at boot rather than on the first send.
 //
 // mgr and inj are the governance beans the container injects; the ctor bundles
 // them into the [cloud.ClientParams] it builds the mailer's executor from, so
@@ -168,18 +168,20 @@ func newMailer(ctx *gs.ContextProvider, name string, c Config, mgr *resilience.M
 		return nil, errutil.Explain(err, "mail: failed to create client for %s:%d", c.Host, c.Port)
 	}
 
-	// Fail fast: dial the server once and close it so a bad host, port, auth, or
-	// TLS setting is caught at startup instead of on the first send.
-	pctx, cancel := context.WithTimeout(ctx.Context, c.Timeout)
-	defer cancel()
-	if err := client.DialWithContext(pctx); err != nil {
-		return nil, errutil.Explain(err, "mail: startup dial to %s:%d failed", c.Host, c.Port)
-	}
-	if err := client.Close(); err != nil {
-		return nil, errutil.Explain(err, "mail: closing startup probe connection failed")
+	// Ping (opt-in): dial the server once and close it so a bad host, port,
+	// auth, or TLS setting is caught at startup instead of on the first send.
+	if c.Ping {
+		pctx, cancel := context.WithTimeout(ctx.Context, c.Timeout)
+		defer cancel()
+		if err := client.DialWithContext(pctx); err != nil {
+			return nil, errutil.Explain(err, "mail: startup dial to %s:%d failed", c.Host, c.Port)
+		}
+		if err := client.Close(); err != nil {
+			return nil, errutil.Explain(err, "mail: closing startup probe connection failed")
+		}
 	}
 
-	log.Infof(pctx, log.TagAppDef, "mailer created host=%s port=%d", c.Host, c.Port)
+	log.Infof(ctx.Context, log.TagAppDef, "mailer created host=%s port=%d", c.Host, c.Port)
 	m := &Mailer{
 		client: client,
 		from:   c.From,

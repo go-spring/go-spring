@@ -18,20 +18,20 @@ package StarterGateway
 
 import (
 	"context"
-	"fmt"
 	"net/http"
 	"sync"
 	"time"
 
 	"go-spring.org/cloud/actuator/health"
 	"go-spring.org/log"
+	"go-spring.org/stdlib/errutil"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 )
 
-// meterName identifies metrics emitted by this starter.
-const meterName = "go-spring.org/starter-gateway"
+// scope is the instrumentation scope name every meter and tracer in this package reports under.
+const scope = "go-spring.org/starter-gateway"
 
 // accessTag is the static log tag for the gateway access log.
 var accessTag = log.RegisterAppTag("gateway", "access")
@@ -60,7 +60,7 @@ type instrumentSet struct {
 var instruments = sync.OnceValue(buildInstruments)
 
 func buildInstruments() *instrumentSet {
-	m := otel.Meter(meterName)
+	m := otel.Meter(scope)
 	requests, _ := m.Int64Counter(
 		"gateway.requests",
 		metric.WithDescription("Requests proxied by the gateway"),
@@ -162,7 +162,7 @@ func (o *observer) reloadError(ctx context.Context) { instruments().reloadErrors
 func newGatewayHealth(tbl *RouteTable) *health.Indicator {
 	return &health.Indicator{Name: "gateway", Probe: func(ctx context.Context) error {
 		if tbl.compiled.Load() == nil {
-			return fmt.Errorf("gateway: route table not loaded")
+			return errutil.Explain(nil, "gateway: route table not loaded")
 		}
 		return nil
 	}}

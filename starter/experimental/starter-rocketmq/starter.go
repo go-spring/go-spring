@@ -76,7 +76,7 @@ func init() {
 // bean, which owns full client assembly (name server resolution, credentials,
 // the rlog bridge). The Driver returns the client COMPLETE — identity and the
 // governance executor are both applied while it is built (see [NewClient]) — and
-// only then is the client probed (when FailFast is enabled) so a wrong name
+// only then is the client probed (when Ping is enabled) so a wrong name
 // server list fails fast at startup instead of surfacing on the first
 // produce/consume. A failed probe abandons the client and releases what was just
 // assembled.
@@ -86,7 +86,7 @@ func init() {
 // it to [NewClient] — so the client is assembled complete in one step, with the
 // zero bundle degrading to an observed-only, loudly-unmanaged executor.
 func newClient(ctx *gs.ContextProvider, name string, c Config, d Driver, mgr *resilience.Manager, inj *fault.Injector) (*Client, error) {
-	log.Debugf(ctx.Context, log.TagAppDef, "creating rocketmq client, name-servers=%v fail-fast=%v", c.NameServers, c.FailFast)
+	log.Debugf(ctx.Context, log.TagAppDef, "creating rocketmq client, name-servers=%v ping=%v", c.NameServers, c.Ping)
 
 	if (c.AccessKey == "") != (c.SecretKey == "") {
 		return nil, errutil.Explain(nil, "rocketmq access-key and secret-key must be set together (client %s)", name)
@@ -105,9 +105,9 @@ func newClient(ctx *gs.ContextProvider, name string, c Config, d Driver, mgr *re
 	// Fail fast (opt-in): probe the name server list directly on the wire, not
 	// through the client, so it is a connectivity check rather than business
 	// traffic. A failure abandons the client, so release what was just applied.
-	if c.FailFast {
+	if c.Ping {
 		if err = probeNameServer(c.NameServers); err != nil {
-			log.Errorf(ctx.Context, log.TagAppDef, "rocketmq: fail-fast probe failed on %v: %v", c.NameServers, err)
+			log.Errorf(ctx.Context, log.TagAppDef, "rocketmq: ping failed on %v: %v", c.NameServers, err)
 			_ = cl.Close()
 			return nil, errutil.Explain(err, "rocketmq name server probe failed on %v", c.NameServers)
 		}

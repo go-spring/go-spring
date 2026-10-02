@@ -327,7 +327,7 @@ func newSSETracer() *sseTracer {
 // starter-otel is absent: the noop tracer returns a non-recording span. The span
 // carries seq + size only; the full event text lives in the log record.
 func (t *sseTracer) Stamp(ef eventFacts, start, end time.Time) {
-	_, span := otel.Tracer(tracerName).Start(ef.ctx, "sse.event",
+	_, span := otel.Tracer(scope).Start(ef.ctx, "sse.event",
 		trace.WithTimestamp(start),
 	)
 	span.SetAttributes(

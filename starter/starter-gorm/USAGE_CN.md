@@ -194,9 +194,9 @@ gs.Run()
   │    │                  (用户 seam,按注册顺序)→ observe 插件(observe.enabled=false 除外)
   │    │                  → 治理:由 Options.Governance.ExecutorFor 构建 resilience executor
   │    │                  → ApplyCallbacks 替换六个 gorm processor
-  │    ├─ 启动探测:gormcore.HealthCheck(内部调用 Ping,受 ping-timeout 约束)—— 在装配完成之后
+  │    ├─ ping 时启动探测:gormcore.HealthCheck(内部调用 Ping,受 ping-timeout 约束)—— 在装配完成之后
   │    ├─ Provide *DB .Name(<dialect>.<entry>).Destroy((*DB).Destroy)
-  │    └─ Provide health.Indicator "gorm:mysql:<name>"(按名注入上面的 *DB,
+  │    └─ health=false 除外 → Provide health.Indicator "gorm:mysql:<name>"(按名注入上面的 *DB,
   │       导出为 health.Indicator)  ← .Name 必须加:多实例 bean 共享类型
   │          (Indicator、*DB);没有独立名字容器会报 (Name,Type) 重复键
   ├─ bean 装配:gs 按名组装各 *DB wrapper bean
@@ -266,7 +266,7 @@ gorm:query processor 链
 ## 3. 逐 key 行为参考
 
 所有 key 位于 `spring.gorm.<dialect>.<name>.*`(内嵌 `Common`,与方言自身字段同级绑定)。
-已与 `grep -rhoE 'value:"[^"]+"' starter/starter-gorm` 核对——共享 key 恰为这 10 个。
+已与 `grep -rhoE 'value:"[^"]+"' starter/starter-gorm` 核对——共享 key 恰为这 12 个。
 
 | Key | 类型 | 默认值 | 行为 / 联动 | 配错后果 |
 |-----|------|--------|------------|----------|
@@ -274,12 +274,14 @@ gorm:query processor 链
 | `max-idle-conns` | int | 0 | `>0` → `SetMaxIdleConns`;0 = database/sql 默认(2)。 | 高 QPS 下 0 → 反复重连抖动;> max-open 会被 database/sql 收敛。 |
 | `conn-max-lifetime` | duration | 0 | `>0` → `SetConnMaxLifetime`;0 = 不限。 | 0 且 LB 静默丢弃空闲连接 → 运行中期报 stale connection。 |
 | `conn-max-idle-time` | duration | 0 | `>0` → `SetConnMaxIdleTime`;0 = 不限。 | 主要与上面 lifetime 联动。 |
-| `ping-timeout` | duration | 5s | 启动 fail-fast ping(`PingContext`)的时限。`<=0` 回落 5s。 | 太小 → 冷启动 DB 时启动失败;太大 → DB 宕机时启动缓慢。 |
+| `ping-timeout` | duration | 5s | 启动 ping(`PingContext`)的时限——仅 `ping=true` 时执行。`<=0` 回落 5s。 | 太小 → 冷启动 DB 时启动失败;太大 → DB 宕机时启动缓慢。 |
 | `slow-threshold` | duration | 0 | `>0` 安装 warn 级 gorm 慢查询 logger,输出经 **go-spring.org/log**(`log.Warnf`,TagAppDef)转发——进配置的 appender,而非裸 stdout。0 保持 gorm 默认 logger。⚠ 消息体是 GORM 的单行文本,不是结构化字段。 | 0 → 完全没有慢日志;要结构化字段 → 消息体是纯文本(改用访问日志)。 |
 | `service-name` | string | — | 切换为服务发现寻址:方言绑定 discovery 拨号器,每条新连接到达存活实例。设置后 `addr` 被忽略(示例故意用 dummy `0.0.0.0:0` 证明)。mesh 模式(`GS_MESH_MODE=on`)下 sidecar 接管发现,`addr` 原样使用。 | 不设且无 `addr` → 方言构建报错("one of addr or service-name must be set")。 |
 | `scheme` | string | — | 把发现收窄到单一传输 scheme(如 `tls`)。⚠ 未设 `service-name` 时为死 key(仅在此时被读取)。 | 设了但无 service-name → 静默忽略。 |
 | `discovery` | string | — | 选择解析 `service-name` 的已注册 discovery 后端。未配置时回退 `${spring.gorm.<dialect>.default.discovery}`。⚠ 未设 `service-name` 时为死 key。 | service-name 已设但两层都未配置或名字无对应 bean → 启动报错；设了但无 service-name → 静默忽略。 |
 | `observe.enabled` | bool | true | gorm observe 插件的硬开关:false 时插件完全不安装——无声明、无逐查询回调。操作因此未被声明,resilience 层退回它自己那套通用信号(`resilience.client.duration` 与它自己的访问 tag)。 | false → 逐操作 db.* 可观测静默消失(为高吞吐实例有意为之)。 |
+| `ping` | bool | false | 可选启动探测:装配完成后 `gormcore.HealthCheck` 单次 ping,DB 不可达则启动失败;默认关,未就绪的 DB 到首次使用才暴露。 | 期待 fail-fast 却没开 → 启动"成功",首个查询失败。 |
+| `health` | bool | true | 为实例注册 `gorm:<dialect>:<entry>` 健康指示器;false 让它不卷入聚合健康。 | false → 无指示器 bean,不再上报该 DB 的就绪。 |
 
 死 key 说明:对 **sqlite** 而言整个发现三件套(`service-name`/`scheme`/`discovery`)结构性
 不可用(无服务可发现)但仍会绑定——已记入嫌疑清单。
@@ -366,9 +368,9 @@ health.go:33-35),因此探针失败不会触发 resilience 熔断。
 
 | 症状 | 可能原因 | 处置 |
 |------|----------|------|
-| 启动失败 "gorm ping: ..." | `ping-timeout` 内 DB 不可达/凭据错误 | 修 addr/凭据;冷启动调大 `ping-timeout`。这是有意的 fail-fast,不是 bug。 |
+| 启动失败 "gorm ping: ..." | `ping-timeout` 内 DB 不可达/凭据错误 | 仅 `ping=true` 时抛出;修 addr/凭据,冷启动调大 `ping-timeout`。这是有意的 fail-fast,不是 bug。 |
 | 一个 bean 都没注册 | 无任何 `spring.gorm.<dialect>.*` 条目——`OnProperty(prefix)` 未触发 | 至少加一个实例块;默认不装配。 |
-| 容器报 duplicate beans | 又 Provide 了未 `.Name` 的 `*DB`/`health.Indicator` | 不要自行 Provide DB bean；DB bean 名为 `<dialect>.<entry>`（如 `mysql.primary`），health indicator 名为 `gorm:<dialect>:<entry>`（module.go:85-97）。 |
+| 容器报 duplicate beans | 又 Provide 了未 `.Name` 的 `*DB`/`health.Indicator` | 不要自行 Provide DB bean；DB bean 名为 `<dialect>.<entry>`（如 `mysql.primary`），health indicator 名为 `gorm:<dialect>:<entry>`（module.go:163-167）。 |
 | 注入报 "not a simple value"/类型不匹配 | 注入 `*gorm.DB` 而非 wrapper | autowire 共享的 `*gormcore.DB` bean；它内嵌 `*gorm.DB`。 |
 | 无 db.* span/指标/访问日志 | 未 import starter-otel,或 `observe.enabled=false` | import starter-otel;检查实例级硬开关——false 会整体移除插件,操作因此未被声明,resilience 层只发它自己的通用信号。 |
 | 慢查询行是纯文本 | `slow-threshold` 把 GORM 的 warn 输出经 go-spring.org/log 转发,但消息体是 GORM 单行文本 | 按消息过滤;要结构化慢日志改用访问日志。 |

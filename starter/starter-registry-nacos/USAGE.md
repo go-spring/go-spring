@@ -19,7 +19,7 @@ per configured center —
   resolve through by citing the bean name `nacos.<name>`.
 
 **Activation**: each `spring.registry.nacos.<name>` block is one registry center — one shared
-naming client, one startup probe, one lifecycle (`starter.go`). The bean named `nacos.<name>`
+naming client, one lifecycle (a startup probe only when `ping=true`; `starter.go`). The bean named `nacos.<name>`
 exports BOTH `discovery.Registry` (collected by the starter-registry core when
 `spring.registry.service-name` is set — a pure consumer app registers nothing) and
 `discovery.Discovery` (cited by bean name, so a pure provider never pays for the read half).
@@ -231,9 +231,10 @@ push afterwards.
 | `namespace` | string | "" (public) | Namespace id shared by registration and discovery (the block owns it). | Mismatch with the providers you consume → they are in a different namespace. |
 | `group` | string | DEFAULT_GROUP | Group shared by registration and discovery — one value, both halves. | Mismatch with a provider registered elsewhere → resolution silently returns empty. |
 | `cluster` | string | DEFAULT | Nacos cluster name shared by both halves. | Provider in cluster X + this block pinned elsewhere → you miss it. |
-| `username` / `password` | string | "" | Nacos auth; validated by the startup probe. | Bad credentials → startup fails at the probe, not at first Register. |
-| `timeout-ms` | uint64 | 5000 | Bounds each nacos API call incl. the probe. | Too low → flaky probe/register on slow links. |
-| `health.enabled` | bool | true | Contributes a `health.Indicator` bean named `registry-nacos:<name>` probing the server with a one-service listing in the block's namespace/group (same check as the startup probe). Only instantiated when a collector (e.g. starter-actuator) autowires it. | `false` → the server's health is invisible to readiness probes |
+| `username` / `password` | string | "" | Nacos auth; validated by the startup probe when `ping=true`. | Bad credentials → (with `ping=true`) startup fails at the probe, not at first Register. |
+| `timeout-ms` | uint64 | 5000 | Bounds each nacos API call incl. the `ping=true` probe. | Too low → flaky probe/register on slow links. |
+| `ping` | bool | false | Probes the server once at construction (a one-service listing) and fails startup if unreachable. Off by default so a server that is not up yet does not block boot; connectivity surfaces on first use. | — |
+| `health` | bool | true | Contributes a `health.Indicator` bean named `registry-nacos:<name>` probing the server with a one-service listing in the block's namespace/group (same check as the startup probe). Only instantiated when a collector (e.g. starter-actuator) autowires it. | `false` → the server's health is invisible to readiness probes |
 
 Two blocks with the same `<name>` fail loudly in the container (duplicate bean name); block
 names across backends never collide (the bean name carries the backend type, e.g. `nacos.main`
@@ -316,6 +317,7 @@ or all Disabled).
 
 ```properties
 spring.registry.nacos.main.server=127.0.0.1:9999   # nothing there
+spring.registry.nacos.main.ping=true               # probe at boot
 ```
 
 ```bash
@@ -329,7 +331,7 @@ go run ./provider   # startup aborts: "registry-nacos: startup probe failed for 
 | Symptom | Likely cause | Fix |
 |---------|--------------|-----|
 | No registration, no logs at all | no `spring.registry.nacos.*` block (or its `server` missing) | Configure a named block — any key under `spring.registry.nacos.<name>.*` activates the backend. |
-| Startup aborts "startup probe failed" | Nacos unreachable, or bad namespace/credentials | Fix server/namespace/username/password; the probe is a 1-row service listing. |
+| Startup aborts "startup probe failed" (only with `ping=true`) | Nacos unreachable, or bad namespace/credentials | Fix server/namespace/username/password; the probe is a 1-row service listing. |
 | Startup aborts "service-name and addr are required" | `spring.registry.*` incomplete | Set both; validation runs before readiness. |
 | Startup aborts "... but no registry center is configured" | `service-name` set yet no connection block anywhere | Add at least one `spring.registry.<backend>.<name>` block. |
 | Registered but consumer resolves nothing | the provider registered under a different group/namespace than the cited block's | Both sides must use the same block-level `group`/`namespace` (this starter shares one value for read and write). |

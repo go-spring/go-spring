@@ -23,7 +23,6 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
-	"fmt"
 	"net"
 	"net/url"
 	"os"
@@ -159,11 +158,11 @@ func applyTLS(t security.TLSConfig, conf *neo4j.Config) error {
 	if t.CAFile != "" {
 		pem, err := os.ReadFile(t.CAFile)
 		if err != nil {
-			return fmt.Errorf("neo4j: read ca cert: %w", err)
+			return errutil.Explain(err, "neo4j: read ca cert")
 		}
 		pool := x509.NewCertPool()
 		if !pool.AppendCertsFromPEM(pem) {
-			return fmt.Errorf("neo4j: no certificates parsed from %s", t.CAFile)
+			return errutil.Explain(nil, "neo4j: no certificates parsed from %s", t.CAFile)
 		}
 		conf.TlsConfig.RootCAs = pool
 	}
@@ -172,7 +171,7 @@ func applyTLS(t security.TLSConfig, conf *neo4j.Config) error {
 			auth.ClientCertificate{CertFile: t.CertFile, KeyFile: t.KeyFile},
 		)
 		if err != nil {
-			return fmt.Errorf("neo4j: load client certificate: %w", err)
+			return errutil.Explain(err, "neo4j: load client certificate")
 		}
 		conf.ClientCertificateProvider = provider
 	}

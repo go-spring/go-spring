@@ -128,7 +128,7 @@ func guarded(ctx context.Context, cl pulsar.Client, p pulsar.Producer) error {
 ```properties
 # --- pulsar client (instance "main") ----------------------------------------
 spring.pulsar.instances.main.url=pulsar://127.0.0.1:6650
-spring.pulsar.instances.main.fail-fast=true
+spring.pulsar.instances.main.ping=true
 # Lookup against a non-partitioned topic succeeds even if absent, so any
 # ordinary topic is a safe probe target on a fresh standalone cluster.
 spring.pulsar.instances.main.health-check-topic=persistent://public/demo/orders
@@ -165,7 +165,7 @@ for i in $(seq 1 60); do curl -fsS http://127.0.0.1:8080/admin/v2/brokers/health
 **Verify**:
 
 ```bash
-go run .                                   # fail-fast probe aborts boot if broker is dead
+go run .                                   # ping probe aborts boot if broker is dead
 curl -s :9091/metrics | grep pulsar_client_ # native client metrics
 curl -s :9370/metrics | grep messaging.client # declared-operation metrics (call + attempt)
 grep -E '_app_pulsar|pulsar' app.log        # driver + client log lines (tag _app_def)
@@ -194,7 +194,7 @@ gs.Run()
   │       "pulsar:<url>") indexed by client, so the client is COMPLETE when
   │       returned; mgr/inj are the injected *resilience.Manager /
   │       *fault.Injector                                  [driver.go:76-115, command.go:225]
-  │    3. then probe (FailFast): cl.TopicPartitions(HealthCheckTopic) — a lookup
+  │    3. then probe (Ping): cl.TopicPartitions(HealthCheckTopic) — a lookup
   │       that exercises address+auth+TLS without producing; failure →
   │       closeResilience + cl.Close + metrics shutdown + boot error     [starter.go:108-116]
   ├─ readiness: no health indicator exists — the probe is boot-time only
@@ -254,7 +254,7 @@ observed-only, loudly-unmanaged executor.
 **NOT guarded** (each deliberate, per source comments):
 - `producer.SendAsync` — intentionally untouched; the async path has no synchronous outcome
   to reject [command.go].
-- `CreateProducer`/`Subscribe`/`TopicPartitions` — lifecycle calls, only the FailFast probe
+- `CreateProducer`/`Subscribe`/`TopicPartitions` — lifecycle calls, only the Ping probe
   covers them at boot.
 - The manual `StartProducerSpan`/`StartConsumerSpan` helpers — the app's own spans for a raw
   send it drives directly; a send routed through `GuardedSend` is already spanned by the
@@ -322,14 +322,14 @@ absolute-property Pool rule). 18 value tags found by grep — table covers every
 | `url` | string | — | **Required** (`expr:"$ != ''"`). `pulsar://` plaintext or `pulsar+ssl://` TLS. Also becomes the resilience service label `pulsar\|<url>` [starter.go:76]. | Missing/empty → BindEach boot error. |
 | `operation-timeout` | duration | 30s | Producer/subscribe/lookup timeout passed to ClientOptions [driver.go:72]. | Too low → intermittent CreateProducer failures. |
 | `connection-timeout` | duration | 5s | TCP connect timeout [driver.go:73]. | — |
-| `token` | string | — | JWT token value, OR a file path when `token-from-file=true` [driver.go:86-90]. ⚠ Auth priority: mTLS cert+key beats token if both set. | Wrong token → FailFast probe fails at boot. |
+| `token` | string | — | JWT token value, OR a file path when `token-from-file=true` [driver.go:86-90]. ⚠ Auth priority: mTLS cert+key beats token if both set. | Wrong token → Ping probe fails at boot (when `ping=true`). |
 | `token-from-file` | bool | false | Switches `token` to path interpretation. | true with a literal token → file-open failure. |
 | `tls-trust-certs-file` | string | — | PEM CA bundle for broker verification [driver.go:74]. | Missing on `pulsar+ssl://` → handshake failure at probe. |
 | `tls-cert-file` | string | — | Client cert; with `tls-key-file` also becomes the mTLS auth provider via `NewAuthenticationTLS` [driver.go:84-85]. ⚠ Only cert without key → silently no auth. | — |
 | `tls-key-file` | string | — | Client private key pairing with cert [driver.go:76]. | — |
 | `tls-allow-insecure` | bool | false | Disables server cert verification. Never in production. | true → MITM exposure. |
 | `tls-validate-hostname` | bool | false | Hostname-in-cert verification; default preserves pulsar-client-go's default [config.go:63-66]. | — |
-| `fail-fast` | bool | true | Startup `TopicPartitions` probe [starter.go:107-114]. | false → dead broker surfaces only on first produce. |
+| `ping` | bool | false | Opt-in startup `TopicPartitions` probe [starter.go:107-114]. | true → dead broker aborts boot; false → surfaces only on first produce. |
 | `health-check-topic` | string | `persistent://public/default/__health_check` | Probe target; lookup on a non-partitioned topic succeeds even when absent [config.go:72-76]. | Partitioned/garbage topic name → probe error blocks boot. |
 | `metrics` | group | — | Struct binding `value:"${metrics}"` [config.go:79]. | — |
 | `metrics.enabled` | bool | true | Starts the per-instance `/metrics` server and wires the dedicated registry [driver.go:97-101]. | false → no `pulsar_client_*` anywhere. |
@@ -347,7 +347,7 @@ trust the code.
 
 ## 4. Verification & fault drills
 
-### 4.1 Boot-time fail-fast
+### 4.1 Boot-time ping probe
 
 ```bash
 docker stop pulsar && go run .    # boot aborts: "pulsar broker probe failed on pulsar://..."
@@ -431,5 +431,5 @@ path, so the starter emits nothing per call — the resilience layer is the sing
 (`SendAsync` and the lifecycle calls remain unguarded); a failed
 consumer `Ack` is WARN-logged; `producer.Close()` has no
 error return so publisher Close cannot fail; no runtime health indicator
-(fail-fast is boot-only — a broker dying later is invisible to actuator); `schema.json`
+(the ping probe is boot-only — a broker dying later is invisible to actuator); `schema.json`
 `metrics.enabled` default disagrees with code (true).

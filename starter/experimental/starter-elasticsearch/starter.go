@@ -18,7 +18,6 @@ package StarterElasticsearch
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/elastic/go-elasticsearch/v8/esapi"
 	"go-spring.org/cloud"
@@ -63,10 +62,13 @@ func init() {
 				gs.IndexArg(5, gs.TagArg("")), // *fault.Injector
 			).Name(name).Destroy((*Client).Destroy).Caller(1)
 			// Contribute a health indicator for this instance, injecting the
-			// client just registered above by name.
-			r.Provide(func(w *Client) *health.Indicator {
-				return NewClientHealth(name, w)
-			}, gs.TagArg(name)).Name("elasticsearch:" + name).Caller(1)
+			// client just registered above by name. Skipped when c.Health is
+			// false.
+			if c.Health {
+				r.Provide(func(w *Client) *health.Indicator {
+					return NewClientHealth(name, w)
+				}, gs.TagArg(name)).Name("elasticsearch:" + name).Caller(1)
+			}
 			return nil
 		})
 	})
@@ -75,9 +77,10 @@ func init() {
 // newClient creates a new Elasticsearch client based on the provided
 // configuration, wrapped so every request declares its identity on the transport
 // chain and then flows through the resilience round-tripper, which emits the one
-// span, the duration metrics and the access log. The cluster is then probed once
-// at startup so that misconfiguration or an unreachable cluster fails fast rather
-// than on first use.
+// span, the duration metrics and the access log. When c.Ping is set the cluster
+// is then probed once at startup so that misconfiguration or an unreachable
+// cluster fails fast rather than on first use; the probe is off by default, so a
+// cluster that is not up yet does not block startup.
 //
 // When c.ServiceName is set and mesh mode is off, a by-name loader is built
 // against backend (the discovery backend the entry's ${discovery} label
@@ -125,10 +128,13 @@ func newClient(ctx *gs.ContextProvider, c Config, backend discovery.Discovery, d
 	// The probe is [HealthCheck], the single liveness implementation; it goes
 	// straight to the raw client on purpose — it is a connectivity check, not
 	// business traffic. A failure abandons the client, so release what was just
-	// applied.
-	if err := HealthCheck(ctx.Context, client); err != nil {
-		_ = client.Destroy()
-		return nil, errutil.Explain(err, "failed to reach elasticsearch cluster")
+	// applied. Off by default (c.Ping): a cluster that is not up yet must not
+	// block startup.
+	if c.Ping {
+		if err := HealthCheck(ctx.Context, client); err != nil {
+			_ = client.Destroy()
+			return nil, errutil.Explain(err, "failed to reach elasticsearch cluster")
+		}
 	}
 	return client, nil
 }
@@ -152,7 +158,7 @@ func HealthCheck(ctx context.Context, client *Client) error {
 func infoStatus(res *esapi.Response) error {
 	defer func() { _ = res.Body.Close() }()
 	if res.IsError() {
-		return fmt.Errorf("elasticsearch: info returned %s", res.Status())
+		return errutil.Explain(nil, "elasticsearch: info returned %s", res.Status())
 	}
 	return nil
 }

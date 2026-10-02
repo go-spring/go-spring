@@ -28,9 +28,6 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
-// tracerName identifies spans emitted by this starter.
-const tracerName = "go-spring.org/starter-hertz"
-
 // --- tracing ----------------------------------------------------------------
 
 // tracingMiddleware starts a server span for each inbound request: it extracts
@@ -51,7 +48,7 @@ func tracingMiddleware() app.HandlerFunc {
 		})
 
 		ctx = otel.GetTextMapPropagator().Extract(ctx, propagation.HeaderCarrier(hdr))
-		ctx, span := otel.Tracer(tracerName).Start(ctx, "HTTP "+string(c.Request.Method()),
+		ctx, span := otel.Tracer(scope).Start(ctx, "HTTP "+string(c.Request.Method()),
 			trace.WithSpanKind(trace.SpanKindServer),
 		)
 

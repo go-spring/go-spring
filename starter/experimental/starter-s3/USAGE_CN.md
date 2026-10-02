@@ -5,7 +5,7 @@
 `s3_test.go`）与可运行的 [example/](example/)（经 docker-compose 的 MinIO 冒烟验证）核实。
 **对象存储操作语义（bucket/object API、保留策略、版本化）见
 [minio-go 官方文档](https://github.com/minio/minio-go)** —— 本文只写 go-spring 的增量：
-配置、装配、启动 fail-fast、逐请求可观测、resilience、健康检查。
+配置、装配、可选启动 fail-fast、逐请求可观测、resilience、健康检查。
 
 **激活条件**：`gs.OnProperty("spring.s3")` 门控一个 gs.Module；每个 `spring.s3.instances.<name>`
 子树创建一个名为 `<name>` 的 `*Client` bean，外加一个名为 `s3:<name>` 的健康指示器。
@@ -156,8 +156,8 @@ gs.Run()
   │    │        params.ExecutorFor("s3", "s3:<endpoint>")（mgr/inj 为注入的
   │    │        *resilience.Manager / *fault.Injector bean），再装入传输层——
   │    │        声明在最外层，resilience 在其内
-  │    ├─ fail-fast 探测：HealthCheck(ctx, client)——一次直连裸 client 的 ListBuckets；
-  │    │      端点不可达或凭据被拒都会中止启动并释放 client（Destroy）
+  │    ├─ 仅 ping=true：fail-fast 探测 HealthCheck(ctx, client)——一次直连裸 client 的
+  │    │      ListBuckets；端点不可达或凭据被拒都会中止启动并释放 client（Destroy）
   ├─ Run / 服务：readyz 并入每个 s3:<name> 指示器（需 starter-actuator）
   └─ SIGTERM：Destroy() 关闭 resilience executor；minio 侧无会话可关
 ```
@@ -212,12 +212,14 @@ ctor 绑定的 `Config` key（config.go）带前缀 `spring.s3.instances.<name>.
 | Key | 类型 | 默认值 | 行为 / 联动 | 配错后果 |
 |-----|------|--------|-------------|----------|
 | `endpoint` | string | — | **必填**（`expr:"$ != ''"`）。`host:port`，不带 scheme。 | 缺失/为空 → 启动期绑定校验报错。 |
-| `access-key-id` | string | — | **必填**；静态 SigV4 凭据。 | 缺失 → 启动报错；错误 → ListBuckets fail-fast 探测拒绝启动。 |
+| `access-key-id` | string | — | **必填**；静态 SigV4 凭据。 | 缺失 → 启动报错；错误 → 首次使用时（`ping=true` 时为 ListBuckets 探测）拒绝启动。 |
 | `secret-access-key` | string | — | **必填**；静态 SigV4 凭据。 | 同上。 |
-| `session-token` | string | — | 可选第三要素（临时凭据）。 | 永久凭据配过期 token → 启动探测处签名被拒。 |
+| `session-token` | string | — | 可选第三要素（临时凭据）。 | 永久凭据配过期 token → 首次使用时（`ping=true` 时为启动探测）签名被拒。 |
 | `region` | string | us-east-1 | 传给 minio.Options 的 bucket region。 | region 错误 → region 敏感端点上出现签名/重定向错误（对不敏感的 MinIO 可能过了探测、之后按桶失败）。 |
 | `use-ssl` | bool | false | 对端点启用 HTTPS。 | 对只收 TLS 的端点配 false（或对明文端点配 true）→ 启动探测失败。 |
 | `bucket-lookup` | string | auto | `auto` \| `virtual-host`/`dns`（别名，`BucketLookupDNS`）\| `path`。 | 部分 S3 兼容云只支持 path 风格 → 风格错导致逐请求寻址失败；未知值 → 启动报错列出合法值。 |
+| `ping` | bool | `false` | 启动连通探活：true 时构造期跑一次 `HealthCheck`（一次 `ListBuckets`），出错则启动失败，恢复 fail-fast。默认关闭，使尚未就绪的端点不阻塞启动。 | `ping=true` 且端点错/凭据被拒 → 启动报 "failed to reach s3 endpoint …"。 |
+| `health` | bool | `true` | 本实例是否贡献 `health.Indicator`（名 `s3:<name>`）供 actuator 就绪/启动探测。置 false 可把该实例排除在聚合健康报告之外。 | `health=false` → `/readiness` 无 `s3:<name>` 组件。 |
 
 ---
 
@@ -232,11 +234,11 @@ curl -s :9370/readyz | grep -o '"s3:a[^"]*":[^,}]*'   # 指示器 UP（需 actua
 
 example 在 GetObject 后自断言 `bytes.Equal(got, content)`——任何传输层损坏都会失败。
 
-### 4.2 fail-fast 演练
+### 4.2 fail-fast 演练（`ping=true`）
 
-把 `spring.s3.instances.a.secret-access-key=wrong`：启动中止，报
+把 `spring.s3.instances.a.secret-access-key=wrong` 并置该实例 `ping=true`：启动中止，报
 `failed to reach s3 endpoint ...`（底层是签名不匹配）。探测（ListBuckets）的存在
-就是让凭据/端点错误到不了首次使用。
+就是让凭据/端点错误到不了首次使用；默认 `ping=false` 时它们改为在首次对象操作暴露。
 
 ### 4.3 健康演练
 
@@ -277,7 +279,7 @@ Debug、纯成功 Info。`db.operation` 是 HTTP 方法（有界，作指标标�
 
 | 指标 | 数值 |
 |------|------|
-| 配置 key 总数 | 8 |
+| 配置 key 总数 | 10 |
 | 其中必填 | 3（endpoint、access-key-id、secret-access-key） |
 | quickstart 前置外部依赖 | 1（MinIO / 任意 S3 端点） |
 | "注意/坑" 条数 | 5 |

@@ -59,7 +59,7 @@ The [example.go](example/example.go) file demonstrates the following core Redis 
 * **Supports multiple Redis instances**: you can define multiple Redis instances in the configuration file and reference them by name.
 * **Support Redis extensions**: implement the `Driver` interface to extend Redis functionality — see the
   example implementation `AnotherRedisDriver`.
-* **Startup connection validation (opt-in)**: set `startup-ping=true` to run `HealthCheck` (dial a
+* **Startup connection validation (opt-in)**: set `ping=true` to run `HealthCheck` (dial a
   bare connection and `PING`) at boot; with the default `false`, a misconfigured address surfaces on the first command
   (redigo pools are lazy).
 * **Service discovery**: set `service-name` (and `discovery` to name the registered backend; there is no default backend)

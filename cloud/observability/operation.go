@@ -24,7 +24,7 @@
 // with [WithOperation] (it is the only side that knows it is talking to a cache
 // and not to a broker), and the emitter applies it. Nothing here emits, and
 // nothing here classifies an outcome — this file only defines what travels on
-// the context, so a writer depends on no OTel SDK.
+// the context, so nothing in it needs the OTel SDK.
 
 package observability
 
@@ -121,7 +121,7 @@ type Operation struct {
 
 // WithOperation returns a context carrying op as the semantic identity of the
 // operation about to run. Attributes accumulate down the derivation chain when
-// nested calls each declare their own (see [WithContextAttributes] for the same
+// nested calls each declare their own (see [WithSpanAttributes] for the same
 // accumulation rule); the innermost declaration is what an emitter reads.
 //
 // The declaration is per call: the operation name inside a family varies per

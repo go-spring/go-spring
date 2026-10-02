@@ -31,6 +31,10 @@ import (
 	"go.opentelemetry.io/otel/metric"
 )
 
+// scope is the instrumentation scope name every meter and tracer in this
+// package reports under.
+const scope = "go-spring.org/cloud/experimental/transaction"
+
 // Option configures the in-process [Coordinator] built by [NewCoordinator].
 type Option func(*coordinator)
 
@@ -59,7 +63,7 @@ var instruments = sync.OnceValue(buildInstruments)
 
 func buildInstruments() *instrumentSet {
 	in := &instrumentSet{}
-	in.outcomes, _ = otel.Meter("go-spring.org/cloud/experimental/transaction").
+	in.outcomes, _ = otel.Meter(scope).
 		Int64Counter("transaction.saga.outcome.total",
 			metric.WithDescription("Saga terminal states, by status"),
 			metric.WithUnit("{saga}"))

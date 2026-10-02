@@ -41,4 +41,9 @@ type Config struct {
 	// "this instance refreshed" from "some instance refreshed" when reading
 	// traces and logs. Defaults to the host name when empty.
 	Origin string `value:"${origin:=}"`
+
+	// Health controls whether the starter contributes a health.Indicator bean
+	// (readiness/startup probes via starter-actuator). On by default; set false
+	// to keep it out of the aggregated health report.
+	Health bool `value:"${health:=true}"`
 }

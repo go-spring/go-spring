@@ -11,7 +11,7 @@ ephemeral znodes, watchers, digest auth) are
 everything below is go-spring's increment.
 
 **Activation**: each `spring.registry.zookeeper.<name>` block is one registry center — one shared
-session, one startup probe, one lifecycle (`starter.go`). The bean named `zookeeper.<name>` exports
+session, one lifecycle (a startup probe only when `ping=true`; `starter.go`). The bean named `zookeeper.<name>` exports
 BOTH `discovery.Registry` (collected by the starter-registry core when
 `spring.registry.service-name` is set — a pure consumer app registers nothing) and
 `discovery.Discovery` (cited by bean name, so a pure provider never pays for the read half). This
@@ -142,8 +142,8 @@ blank-import starter-registry-zookeeper
 gs.Run()
   ├─ conf.BindEach over spring.registry.zookeeper.* → one ZookeeperConfig per block
   ├─ newZkBackend per block: zk.Connect(servers, session-timeout) + digest AddAuth
-  │    when set + fail-fast probe Exists("/") — blocks until the session connects,
-  │    so an unreachable ensemble fails STARTUP, not the first Register   [starter.go]
+  │    when set; ping=true → fail-fast probe Exists("/") — blocks until the
+  │    session connects, so an unreachable ensemble fails STARTUP, not the first Register   [starter.go]
   ├─ registryServer collects every backend's Registry via []discovery.Registry
   │    slice injection (across ALL backends — zookeeper, nacos, ...)
   ├─ Run: validate service-name/addr AND ≥1 registrar BEFORE readiness
@@ -216,10 +216,11 @@ discovery config: the backend bean IS the block's bean, named `zookeeper.<name>`
 
 | key | type | default | behavior / interactions | misconfiguration consequence |
 |-----|------|---------|-------------------------|------------------------------|
-| `spring.registry.zookeeper.<n>.servers` | []string | — (required) | ensemble members; **its presence activates the block** | unset everywhere: starter inert, no error; wrong value: startup fails at the probe (`registry-zookeeper: startup probe failed`) |
-| `spring.registry.zookeeper.<n>.session-timeout` | duration | `10s` | zk session timeout; bounds the startup probe AND how long a crashed process's ephemeral node lingers | ⚠ too long delays crash-driven instance removal; too short risks session expiry on GC pauses / transient partitions → silent deregistration |
+| `spring.registry.zookeeper.<n>.servers` | []string | — (required) | ensemble members; **its presence activates the block** | unset everywhere: starter inert, no error; wrong value with `ping=true`: startup fails at the probe (`registry-zookeeper: startup probe failed`) |
+| `spring.registry.zookeeper.<n>.session-timeout` | duration | `10s` | zk session timeout; bounds the `ping=true` startup probe AND how long a crashed process's ephemeral node lingers | ⚠ too long delays crash-driven instance removal; too short risks session expiry on GC pauses / transient partitions → silent deregistration |
 | `spring.registry.zookeeper.<n>.base-path` | string | `/services` | persistent parent znode; trailing `/` trimmed; service dirs created on demand | consumers must list the same path; a mismatch is invisible to the provider |
-| `spring.registry.zookeeper.<n>.health.enabled` | bool | `true` | Contributes a `health.Indicator` bean named `registry-zookeeper:<name>` probing the ensemble with one `Exists("/")` call (same check as the startup probe). Only instantiated when a collector (e.g. starter-actuator) autowires it. | `false` → the ensemble's health is invisible to readiness probes |
+| `spring.registry.zookeeper.<n>.ping` | bool | `false` | Probes the ensemble once at construction (an `Exists("/")` call that blocks until the session connects) and fails startup if unreachable. Off by default so an ensemble that is not up yet does not block boot; connectivity surfaces on first use. | — |
+| `spring.registry.zookeeper.<n>.health` | bool | `true` | Contributes a `health.Indicator` bean named `registry-zookeeper:<name>` probing the ensemble with one `Exists("/")` call (same check as the startup probe). Only instantiated when a collector (e.g. starter-actuator) autowires it. | `false` → the ensemble's health is invisible to readiness probes |
 | `spring.registry.zookeeper.<n>.username` | string | `` | digest auth, applied via `AddAuth("digest", user:pass)`; set together with `password` | ⚠ one set, one empty → auth scheme error / ACL-denied writes |
 | `spring.registry.zookeeper.<n>.password` | string | `` | digest password (see above) | as above |
 | `spring.registry.service-name` | string | `` | logical name; becomes the znode directory and what discovery clients resolve. **Registration intent signal**: unset with blocks configured → a valid pure consumer | set with `addr` empty: Run returns `registry: ${spring.registry.service-name} and ${spring.registry.addr} are required` — after the app is otherwise up |
@@ -257,9 +258,9 @@ All zk-side checks work with `zkCli.sh` inside the container (see §1) or any zk
    example) later — no critical-marking phase, no reaper config, unlike TTL-based registries.
    Watch it vanish: `zkCli.sh ls -w /services/orders` or poll `get` until `NoNode`. A consumer's
    `ChildrenW` fires on the deletion and its next snapshot drops the endpoint.
-5. **Bad ensemble fail-fast**: set `servers=127.0.0.1:9999` on the block, boot → startup fails
-   with `registry-zookeeper: startup probe failed` — by design, instead of surfacing on the
-   first Register.
+5. **Bad ensemble fail-fast**: set `servers=127.0.0.1:9999` on the block and `ping=true`, boot →
+   startup fails with `registry-zookeeper: startup probe failed` — by design, instead of surfacing
+   on the first Register.
 6. **Restart replacement**: kill -9, restart immediately (before the old session expires) —
    Register succeeds despite the lingering old ephemeral node (delete + recreate); zkCli shows
    exactly one child.
@@ -279,7 +280,7 @@ shared registration lifecycle lines. Observability: registration and discovery e
 | symptom | cause | fix |
 |---------|-------|-----|
 | starter inert, nothing registered | no `spring.registry.zookeeper.*` block anywhere | configure a named block — its `servers` is the activation switch |
-| startup fails `startup probe failed` | ensemble unreachable / wrong servers | start ZooKeeper, fix the block's `servers`; the probe blocks up to `session-timeout` |
+| startup fails `startup probe failed` (only with `ping=true`) | ensemble unreachable / wrong servers | start ZooKeeper, fix the block's `servers`; the probe blocks up to `session-timeout` |
 | startup error `service-name and addr are required` | either instance key unset while registering | set both — note this fires at Run, after other servers are already up |
 | startup aborts "... but no registry center is configured" | `service-name` set yet no connection block anywhere | add at least one `spring.registry.<backend>.<name>` block |
 | instance vanished while the app was running | session expired (long GC pause, network partition, session-timeout too low); zk removed the ephemeral node and the starter never re-registers | raise `session-timeout`; restart the process; watch for reconnect gaps in the zk client logs |

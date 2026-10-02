@@ -71,7 +71,7 @@ type DefaultDriver struct{}
 // the native Prometheus metrics registry and its /metrics server, the log
 // bridge, the pulsar.NewClient call, and the governance executor (applied here,
 // via [AttachGovernance], so the client is complete when returned) — but not the
-// startup broker probe (FailFast), which is the starter's lifecycle concern (see
+// startup broker probe (Ping), which is the starter's lifecycle concern (see
 // newClient in starter.go).
 func (DefaultDriver) CreateClient(ctx context.Context, c Config, params cloud.ClientParams) (pulsar.Client, error) {
 	opts := pulsar.ClientOptions{

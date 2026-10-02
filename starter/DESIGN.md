@@ -379,8 +379,11 @@ baseline (its identity, wire vocabulary, error catalog, standard drivers).
   message rather than defaulted to something that half-works.
 - **Production capabilities are part of the wrapper.** Health/readiness,
   startup connection validation, TLS, and destroy hooks are considered part of
-  what a starter must provide, not optional extras. TLS is a nested
-  `TLSConfig` (`enabled` + cert/key/CA), off by default.
+  what a starter must provide, not optional extras. Two of them carry a
+  per-instance switch: the startup connectivity probe (`ping`, off by default,
+  so an unready backend cannot block boot) and the health indicator (`health`,
+  on by default). TLS is a nested `TLSConfig`
+  (`enabled` + cert/key/CA), off by default.
 - **Shared helpers live in their natural homes, not in a starter-shared
   package.** The three concerns every starter touches - TLS config, health
   indicator construction, fail-fast validation - each have a single home
@@ -698,7 +701,8 @@ baseline (its identity, wire vocabulary, error catalog, standard drivers).
    do not reuse the existing prefix. The `spring.` root is not optional (§3);
    `scripts/check-config-namespace.sh` enforces it at every binding site.
 4. Client? → `gs.Group` multi-instance, driver registry, required address with
-   fail-fast, startup probe, per-instance `Destroy`, and the one-concern-one-file
+   fail-fast, opt-in startup probe (`ping`, off by default), per-instance
+   `Destroy`, and the one-concern-one-file
    skeleton (§2.2): `config.go` / `starter.go` / `discovery.go` /
    `client.go` / `observe.go` / `health.go`. Config goes in the two
    buckets: `conf.BindEach(p, "${spring.<family>.instances}", ...)`, gate the
@@ -733,7 +737,8 @@ baseline (its identity, wire vocabulary, error catalog, standard drivers).
    `obsSystem` and reports `discovery.Synced` only, and is registered as an
    exception in `scripts/check-observability.sh` (its registry section).
    `scripts/check-observability.sh` (its registry section) enforces this.
-8. Add health, TLS, and destroy where the underlying library supports them.
+8. Add health (`health` switch, on by default), TLS, and destroy where the
+   underlying library supports them.
 9. Ship a bilingual README pair and an `example/` with `check.sh` only (no
    deployment scaffolding).
 10. Resolve internal deps through `go.work`, never `require`.

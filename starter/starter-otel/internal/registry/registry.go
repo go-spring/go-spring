@@ -22,10 +22,11 @@
 package registry
 
 import (
-	"fmt"
 	"sort"
 	"strings"
 	"sync"
+
+	"go-spring.org/stdlib/errutil"
 )
 
 // Registry is a concurrency-safe, name-keyed map of factory values of type T.
@@ -100,6 +101,6 @@ func (r *Registry[T]) Names() []string {
 // UnknownErr builds the error returned when name matches no registered factory,
 // listing the available ones so the misconfig is self-diagnosing.
 func (r *Registry[T]) UnknownErr(name string) error {
-	return fmt.Errorf("observability: unknown %s exporter %q (registered: %s)",
+	return errutil.Explain(nil, "observability: unknown %s exporter %q (registered: %s)",
 		r.category, name, strings.Join(r.Names(), ", "))
 }

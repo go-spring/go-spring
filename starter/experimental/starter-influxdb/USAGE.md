@@ -10,7 +10,7 @@ everything below is go-spring's increment.
 **Activation**: any `spring.influxdb.instances.*` key (the module is `OnProperty("spring.influxdb")`, a
 prefix check [starter.go:41]). Each `spring.influxdb.instances.<name>` entry creates one
 `*StarterInfluxdb.Client` bean named `<name>`, plus a health indicator named
-`influxdb:<name>` — there is no opt-out key for either.
+`influxdb:<name>` (skip it with `health=false`); the startup probe is opt-in via `ping=true`.
 
 ---
 
@@ -136,7 +136,7 @@ cd starter-influxdb/example && docker compose -p demo up -d
 # wait for the one-shot setup (admin/org/bucket/token) to report pass:
 curl -fsS http://127.0.0.1:8086/health | grep '"pass"'
 
-go run .                          # boot fails fast if the server is unreachable
+go run .                          # boot fails fast if the server is unreachable (needs ping=true; off by default)
 curl -s :9370/readyz | jq .      # components include influxdb:a and influxdb:b
 curl -s :9370/metrics | grep -E 'db.client'   # call+attempt duration histograms + active gauge
 grep _app_influxdb_access app.log | tail -3   # one access record per call
@@ -178,9 +178,9 @@ gs.Run()
   │       raw client rides — dyn.Swap(declareTransport{base:
   │       resilience.NewRoundTripper(http.DefaultTransport, exec)}) — so the
   │       declaration+governance chain is live the moment the driver returns
-  │    4. fail-fast probe: HealthCheck(ctx, w) → /health must report "pass",
-  │       otherwise the just-assembled client is torn down (executor + connection)
-  │       and the boot fails [starter.go:99-102]
+  │    4. ping=true only: fail-fast probe HealthCheck(ctx, w) → /health must report
+  │       "pass", otherwise the just-assembled client is torn down (executor +
+  │       connection) and the boot fails [starter.go:99-102]
   ├─ readiness: indicators flip UP (each probe = one /health round trip)
   └─ SIGTERM → Destroy [client.go:119]: Client.Close() — flushes the async
        writer's pending batches — then exec.Close()
@@ -197,9 +197,11 @@ installs no `dynamicTransport` gets a client with no transport-level declaration
 When no such bean exists the starter falls back to the bundled `DefaultDriver`
 (`driver.go:67`) inside assembly (`starter.go:83-85`). There is no per-config `driver` key.
 
-An unreachable/uninitialized server fails the boot — the process never reaches "serving" with a
-dead InfluxDB. Note the OSS server reports differently before its one-time setup finishes, so
-bootstrap-order races surface at boot, not as intermittent write failures (DESIGN.md §3).
+When the instance sets `ping=true`, an unreachable/uninitialized server fails the boot — the
+process never reaches "serving" with a dead InfluxDB; with the default `ping=false` the boot
+succeeds and the first request fails instead. Note the OSS server reports differently before its
+one-time setup finishes, so bootstrap-order races surface at boot (with `ping=true`), not as
+intermittent write failures (DESIGN.md §3).
 
 ### 2.2 Request chain — exact order and why
 
@@ -278,10 +280,12 @@ All keys live under `spring.influxdb.instances.<name>.` — per-instance prefix 
 
 | Key | Type | Default | Behavior / interactions | Misconfiguration consequence |
 |-----|------|---------|-------------------------|------------------------------|
-| `server-url` | string | — | InfluxDB base URL; also seeds the resilience service key `influxdb:<server-url>`. ⚠ HTTPS is expressed by the URL scheme — there is no `tls.*` block. | Empty → BindEach fails the boot (`expr:"$ != ''"` [config.go:26]); wrong host → fail-fast /health probe fails the boot. |
+| `server-url` | string | — | InfluxDB base URL; also seeds the resilience service key `influxdb:<server-url>`. ⚠ HTTPS is expressed by the URL scheme — there is no `tls.*` block. | Empty → BindEach fails the boot (`expr:"$ != ''"` [config.go:26]); wrong host → error on first use (or the fail-fast /health probe fails the boot when `ping=true`). |
 | `auth-token` | string | — | API token passed to the SDK. | Empty → boot error; wrong token → writes/queries fail per request (the /health probe may still pass — it does not authenticate). |
 | `org` | string | `""` | Default org for `WritePoints`/`ManagedWriteAPI` and `Org()`. ⚠ Required **at call time**, not at wiring: a client without org/bucket still serves Query/Delete APIs. | Missing → `WritePoints` returns an error, `ManagedWriteAPI` **panics** (inconsistent failure modes — design suspect). |
 | `bucket` | string | `""` | Default destination bucket for the write helpers. ⚠ Same call-time rule as `org`. | Same as `org`. |
+| `ping` | bool | `false` | Startup connectivity probe: when true the ctor runs `HealthCheck` (a `/health` round trip) once and fails the boot if it errors, restoring fail-fast. Off by default so a server that is not up yet does not block startup. | `ping=true` against a down server → boot error `failed to reach influxdb server …`. |
+| `health` | bool | `true` | Whether this instance contributes a `health.Indicator` (name `influxdb:<name>`) for the actuator's readiness/startup probes. Set false to keep the instance out of the aggregated health report. | `health=false` → no `influxdb:<name>` component in `/readyz`. |
 
 No `driver` key: client assembly is owned by an optional `Driver` bean (see §2.1) or the
 bundled `DefaultDriver`. No `tls.*` group, no `service-name`/discovery, no timeout keys —
@@ -366,7 +370,7 @@ process keeps running (async failures never become caller errors).
 
 | Metric | Value |
 |--------|-------|
-| Config keys | 4 instance keys |
+| Config keys | 6 instance keys |
 | Required | 2 at wiring (`server-url`, `auth-token`) + 2 at call time (`org`, `bucket`) |
 | Quickstart external deps | 1 (InfluxDB 2.x) |
 | "Watch out" entries | 5 |
@@ -375,8 +379,9 @@ Design suspects (audit ledger — carried over plus new):
 
 - `org`/`bucket` validated only at call time; `WritePoints` errors but `ManagedWriteAPI`
   **panics** — inconsistent failure modes for the same gap.
-- Health indicator has no opt-out key (redigo has `health.enabled` — family asymmetry); the
-  health probe also rides the declaring transport, adding an access-log record per readiness check.
+- Health indicator is per instance (`health=false` opts out); the startup probe is opt-in
+  (`ping=true`) — the `health`/`ping` pair replaces redigo's `health.enabled`/`startup-ping`.
+  The health probe also rides the declaring transport, adding an access-log record per readiness check.
 - Embedded-client methods other than `WritePoints` get no per-call governance (transport
   layer only); `ManagedWriteAPI` gets none at all — two guardedness tiers that are invisible
   at the call site.

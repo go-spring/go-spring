@@ -37,6 +37,11 @@
             "type": "string",
             "default": "./logs",
             "description": "directory served via /log; task log files are written by the application's TaskFunc, not the starter"
+          },
+          "health": {
+            "type": "boolean",
+            "default": true,
+            "description": "contribute a health.Indicator for this instance (readiness probes via starter-actuator)"
           }
         }
       }

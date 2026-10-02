@@ -43,6 +43,7 @@
       "description": "Name registry only: keys name executors routes reference via resilience.policy; values ignored (policy lives in the governance rules document (spring.governance.*) keyed gateway:<name>)"
     },
     "discovery": { "type": "string", "default": "", "description": "Default discovery backend name for lb:// routes lacking upstream.discovery" },
+    "health": { "type": "boolean", "default": true, "description": "contribute the gateway health.Indicator (readiness probes via starter-actuator)" },
     "tracing": {
       "type": "object",
       "properties": {

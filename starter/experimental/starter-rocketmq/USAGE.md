@@ -122,7 +122,7 @@ func init() {
 # --- rocketmq --------------------------------------------------------------
 spring.rocketmq.instances.a.name-servers=127.0.0.1:9876
 spring.rocketmq.instances.a.send-timeout=5s
-spring.rocketmq.instances.a.fail-fast=true          # TCP probe of the name server at boot
+spring.rocketmq.instances.a.ping=true          # TCP probe of the name server at boot
 # spring.rocketmq.instances.a.access-key=...         # ACL: must pair with secret-key
 # spring.rocketmq.instances.a.secret-key=...
 
@@ -185,7 +185,7 @@ gs.Run()
   │       the governance executor in the same step — params.ExecutorFor("rocketmq",
   │       service) over the injected *resilience.Manager / *fault.Injector beans,
   │       bundled by newClient into cloud.ClientParams        [driver.go, client.go]
-  │    3. FailFast probe (opt-in): TCP dial, first reachable addr wins, 3s budget
+  │    3. Ping probe (opt-in): TCP dial, first reachable addr wins, 3s budget
   │       per address; runs AFTER assembly, failure → boot error (Client closed)
   ├─ app injects *Client wherever `autowire:"<name>"` appears
   ├─ app creates producers/consumers/driver at its own pace (each registered
@@ -315,13 +315,13 @@ grep, no extras on either side.
 
 | Key | Type | Default | Behavior / interactions | Misconfiguration consequence |
 |-----|------|---------|-------------------------|------------------------------|
-| `name-servers` | []string | — | **Required** (`expr:"len($) > 0"` [config.go:35]). Address list of the RocketMQ NameServer. Also feeds the fail-fast probe. | Missing/empty → bind-time validation error. |
+| `name-servers` | []string | — | **Required** (`expr:"len($) > 0"` [config.go:35]). Address list of the RocketMQ NameServer. Also feeds the ping probe. | Missing/empty → bind-time validation error. |
 | `instance-name` | string | `""` | Distinguishes clients on one host. Empty is safe: the SDK rewrites "DEFAULT" to a per-producer/consumer unique name (DESIGN.md §3). Set it to make remoting clients share one connection pool. | Unnecessary explicit value → shared pool where you wanted isolation. |
 | `access-key` | string | `""` | ACL access key. ⚠ Must pair with `secret-key` — one-sided fails the boot with an error naming the client [starter.go:60-62]. | One-sided → boot error; wrong value → first produce/consume fails (probe is TCP-only). |
 | `secret-key` | string | `""` | ACL secret key pairing with access-key [config.go:48]. | Same as above. |
 | `send-timeout` | duration | `3s` | Stamped onto every producer (`WithSendMsgTimeout`) [client.go:73]. | Too low → sync sends time out under load. |
 | `retry` | int | `2` | Producer-internal retries before a sync send fails (`WithRetry`); 2 = up to 3 attempts [client.go:74, config.go:55]. This is the SDK's loop and the only one that fires: the publish/consume operations are declared `NonIdempotent`, so a governance-side retry rule for the label is suppressed. | Large value + slow broker → latency amplification. |
-| `fail-fast` | bool | `true` | TCP dial against the name server list at bean creation; first reachable address satisfies it, 3s per dial [driver.go:146-160]. | Disabling → wrong addresses surface only on first use. |
+| `ping` | bool | `false` | Opt-in TCP dial against the name server list at bean creation; first reachable address satisfies it, 3s per dial [driver.go:146-160]. | true → wrong addresses abort boot; false → surface only on first use. |
 
 ---
 
@@ -339,15 +339,16 @@ go run .                                  # expect "Response from server: value"
 The example asserts Payload and custom Headers survive the round trip [example/example.go:110-120].
 To assert Key survival yourself, log `msg.Key` in the handler — expect the same single string.
 
-### 4.2 Broker-down fail-fast
+### 4.2 Broker-down ping probe
 
 ```properties
 spring.rocketmq.instances.a.name-servers=127.0.0.1:19876   # nothing listening
+spring.rocketmq.instances.a.ping=true                      # opt in to the boot probe
 ```
 
-Boot fails with "rocketmq name server probe failed on ..." [starter.go:74-79]. With
-`fail-fast=false` the same config boots fine and fails on first use. Note the probe proves
-reachability only — a valid TCP endpoint with wrong ACL still boots.
+Boot fails with "rocketmq name server probe failed on ..." [starter.go:74-79] when `ping=true`;
+the default (`ping=false`) lets the same config boot fine and fail on first use. Note the probe
+proves reachability only — a valid TCP endpoint with wrong ACL still boots.
 
 ### 4.3 Guarded vs unguarded
 

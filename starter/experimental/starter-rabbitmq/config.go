@@ -45,4 +45,12 @@ type Config struct {
 	// uniform across starters (cert-file / key-file / ca-file / server-name /
 	// insecure-skip-verify).
 	TLS security.TLSConfig `value:"${tls}"`
+
+	// Ping enables the startup connectivity probe: when true the constructor
+	// opens and closes a probe channel once and fails startup if the AMQP layer
+	// is unreachable, surfacing misconfiguration early. Default is false: a
+	// broker that is not up yet must not block the application from starting;
+	// connectivity problems surface on first use instead. Set true to restore
+	// fail-fast behaviour.
+	Ping bool `value:"${ping:=false}"`
 }

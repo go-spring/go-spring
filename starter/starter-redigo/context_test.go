@@ -30,24 +30,13 @@ import (
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 )
 
-// ctxAttrsProcessor mirrors ContextAttributesProcessor (starter-otel/trace/context.go)
-// instead of importing it: this module deliberately has no starter-otel
-// dependency, and adding one would drag the SDK, the exporters and the
-// container into a redis client. What this test locks is the half that lives
-// here — a span started by this package on the caller's behalf is started from
-// the caller's ctx, so the attributes carried on it arrive without the caller
-// ever holding a span object. The processor's own wiring is covered by
-// starter-otel's tests.
-type ctxAttrsProcessor struct{}
-
-func (ctxAttrsProcessor) OnStart(parent context.Context, s sdktrace.ReadWriteSpan) {
-	if attrs := observability.ContextAttributes(parent); len(attrs) > 0 {
-		s.SetAttributes(attrs...)
-	}
-}
-func (ctxAttrsProcessor) OnEnd(sdktrace.ReadOnlySpan)      {}
-func (ctxAttrsProcessor) Shutdown(context.Context) error   { return nil }
-func (ctxAttrsProcessor) ForceFlush(context.Context) error { return nil }
+// The reader is the real one now that it lives in cloud/observability: this
+// module still has no starter-otel dependency, but it no longer has to mirror
+// the processor to get one. What this test locks is the half that lives here —
+// a span started by this package on the caller's behalf is started from the
+// caller's ctx, so the attributes carried on it arrive without the caller ever
+// holding a span object. The processor's own wiring into a provider is covered
+// by starter-otel's tests.
 
 // ctxStubConn implements the ctx-aware path, which is the one under test: the
 // wrapper falls back to the context-less Do when the inner conn lacks
@@ -80,15 +69,15 @@ func attrsOf(s sdktrace.ReadOnlySpan) map[string]string {
 	return m
 }
 
-// TestDoContextSpanCarriesContextAttributes locks the "reachable without
+// TestDoContextSpanCarriesSpanAttributes locks the "reachable without
 // holding the span" shape documented in cloud/observability/README.md: the
 // command's span is created inside the interceptor chain, so a user layer -
 // which is outermost - can only annotate the ctx it forwards. Both the
 // caller's annotation and the layer's must end up on that span.
-func TestDoContextSpanCarriesContextAttributes(t *testing.T) {
+func TestDoContextSpanCarriesSpanAttributes(t *testing.T) {
 	sr := tracetest.NewSpanRecorder()
 	tp := sdktrace.NewTracerProvider(
-		sdktrace.WithSpanProcessor(ctxAttrsProcessor{}),
+		sdktrace.WithSpanProcessor(observability.SpanAttributesProcessor()),
 		sdktrace.WithSpanProcessor(sr),
 	)
 	prev := otel.GetTracerProvider()
@@ -104,7 +93,7 @@ func TestDoContextSpanCarriesContextAttributes(t *testing.T) {
 	// forwards, exactly as the README's recipe says.
 	user := CommandInterceptor(func(next CommandHandler) CommandHandler {
 		return func(ctx context.Context, cmd string, args []interface{}) (interface{}, error) {
-			ctx = observability.WithContextAttributes(ctx, attribute.String("tenant", "acme"))
+			ctx = observability.WithSpanAttributes(ctx, attribute.String("tenant", "acme"))
 			return next(ctx, cmd, args)
 		}
 	})
@@ -114,7 +103,7 @@ func TestDoContextSpanCarriesContextAttributes(t *testing.T) {
 	exec := resilience.WrapClientExecutor(passthroughExecutor{}, "redigo", "svc")
 	c := NewConn(inner, user, operationInterceptor(), resilienceInterceptor(exec, "svc"))
 
-	ctx := observability.WithContextAttributes(context.Background(),
+	ctx := observability.WithSpanAttributes(context.Background(),
 		attribute.String("deployment", "canary"))
 	if _, err := c.DoContext(ctx, "GET", "k"); err != nil {
 		t.Fatalf("DoContext: %v", err)

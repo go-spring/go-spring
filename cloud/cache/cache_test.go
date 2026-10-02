@@ -21,9 +21,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"sync"
 	"testing"
-	"time"
 
 	"go-spring.org/cloud/cache"
 	"go-spring.org/stdlib/errutil"
@@ -48,42 +46,6 @@ func TestErrMiss(t *testing.T) {
 	assert.That(t, errors.Is(errutil.Explain(nil, "boom"), cache.ErrMiss)).False()
 }
 
-// fakeByteCache is an in-memory ByteCache for exercising the Cache façade
-// without a real backend. It stores raw bytes and reports ErrMiss on absent
-// keys, so the codec layer above it can be tested in isolation.
-type fakeByteCache struct {
-	mu sync.Mutex
-	m  map[string][]byte
-}
-
-func newFakeByteCache() *fakeByteCache {
-	return &fakeByteCache{m: make(map[string][]byte)}
-}
-
-func (f *fakeByteCache) GetBytes(_ context.Context, key string) ([]byte, error) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	b, ok := f.m[key]
-	if !ok {
-		return nil, cache.ErrMiss
-	}
-	return b, nil
-}
-
-func (f *fakeByteCache) SetBytes(_ context.Context, key string, val []byte, _ time.Duration) error {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	f.m[key] = val
-	return nil
-}
-
-func (f *fakeByteCache) Delete(_ context.Context, key string) error {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	delete(f.m, key)
-	return nil
-}
-
 // markerCodec wraps JSON with a "MARKER:" prefix so a test can prove the Cache
 // façade routes Get/Set through the caller's Codec rather than the default.
 type markerCodec struct{}
@@ -101,7 +63,7 @@ func (markerCodec) Unmarshal(data []byte, v any) error {
 }
 
 func TestCacheRoundTrip(t *testing.T) {
-	bc := newFakeByteCache()
+	bc := cache.NewMemory()
 	c := cache.New(bc)
 
 	type user struct{ Name string }
@@ -112,7 +74,9 @@ func TestCacheRoundTrip(t *testing.T) {
 	// The stored bytes are exactly what JSONCodec.Marshal produced - proving
 	// the façade, not the caller, did the encode.
 	want, _ := json.Marshal(in)
-	assert.That(t, bc.m["u:1"]).Equal(want)
+	stored, err := bc.GetBytes(context.Background(), "u:1")
+	assert.That(t, err).Nil()
+	assert.That(t, stored).Equal(want)
 
 	var out user
 	assert.That(t, c.Get(context.Background(), "u:1", &out)).Nil()
@@ -120,14 +84,14 @@ func TestCacheRoundTrip(t *testing.T) {
 }
 
 func TestCacheGetMiss(t *testing.T) {
-	c := cache.New(newFakeByteCache())
+	c := cache.New(cache.NewMemory())
 	var v any
 	err := c.Get(context.Background(), "absent", &v)
 	assert.That(t, errors.Is(err, cache.ErrMiss)).True()
 }
 
 func TestCacheDelete(t *testing.T) {
-	bc := newFakeByteCache()
+	bc := cache.NewMemory()
 	c := cache.New(bc)
 
 	assert.That(t, c.Set(context.Background(), "k", 42, 0)).Nil()
@@ -138,13 +102,15 @@ func TestCacheDelete(t *testing.T) {
 }
 
 func TestCacheCustomCodec(t *testing.T) {
-	bc := newFakeByteCache()
+	bc := cache.NewMemory()
 	c := cache.New(bc, cache.WithCodec(markerCodec{}))
 
 	in := map[string]any{"n": float64(7)}
 	assert.That(t, c.Set(context.Background(), "k", in, 0)).Nil()
 	// The construction-time codec ran, not the default JSON.
-	assert.That(t, bytes.HasPrefix(bc.m["k"], []byte("MARKER:"))).True()
+	stored, err := bc.GetBytes(context.Background(), "k")
+	assert.That(t, err).Nil()
+	assert.That(t, bytes.HasPrefix(stored, []byte("MARKER:"))).True()
 
 	var out map[string]any
 	assert.That(t, c.Get(context.Background(), "k", &out)).Nil()
@@ -154,15 +120,20 @@ func TestCacheCustomCodec(t *testing.T) {
 func TestCachePerCallCodec(t *testing.T) {
 	// One cache, two formats: entries stick to the construction codec (here
 	// the JSON default), exceptions pass a codec to that single call.
-	bc := newFakeByteCache()
+	bc := cache.NewMemory()
 	c := cache.New(bc)
 
 	assert.That(t, c.Set(context.Background(), "json", 7, 0)).Nil()
 	assert.That(t, c.Set(context.Background(), "marked", 7, 0, cache.WithCodec(markerCodec{}))).Nil()
 
 	// The per-call codec ran for "marked", the default for "json".
-	assert.That(t, bytes.HasPrefix(bc.m["marked"], []byte("MARKER:"))).True()
-	assert.That(t, bytes.HasPrefix(bc.m["json"], []byte("MARKER:"))).False()
+	marked, err := bc.GetBytes(context.Background(), "marked")
+	assert.That(t, err).Nil()
+	assert.That(t, bytes.HasPrefix(marked, []byte("MARKER:"))).True()
+
+	plain, err := bc.GetBytes(context.Background(), "json")
+	assert.That(t, err).Nil()
+	assert.That(t, bytes.HasPrefix(plain, []byte("MARKER:"))).False()
 
 	var n int
 	assert.That(t, c.Get(context.Background(), "marked", &n, cache.WithCodec(markerCodec{}))).Nil()

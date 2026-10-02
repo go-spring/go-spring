@@ -98,7 +98,7 @@ spring.http-client.instances.users.discovery=nacos.main
 | `cluster` | `DEFAULT` | 实例所属的 Nacos 集群名。 |
 | `username` | （空） | 认证用户名，匿名集群留空。 |
 | `password` | （空） | 认证密码。 |
-| `timeout-ms` | `5000` | 每次调用超时，含启动探测。 |
+| `timeout-ms` | `5000` | 每次调用超时，含启动探测（`ping=true` 时）。 |
 | `tls.enabled` | `false` | 打开共享 TLS 配置块（TLS 版 Nacos 服务端）。 |
 | `tls.ca-file` | (空) | 服务端 CA 证书（自建 CA）。 |
 | `tls.cert-file` / `tls.key-file` | (空) | mTLS 客户端证书/私钥。 |
@@ -115,8 +115,8 @@ spring.http-client.instances.users.discovery=nacos.main
 
 ## 工作原理
 
-- 每个块的后端 bean 立即构造：构建 naming client 并探测服务端（列举服务），配置错误或
-  不可达的 Nacos 会让启动失败，每块一次。
+- 每个块的后端 bean 立即构造：构建 naming client，`ping=true` 时探测服务端（列举服务），
+  配置错误或不可达的 Nacos 会让启动失败，每块一次。
 - starter-registry 核心的 `registryServer` 收集每个后端的 registrar，等待就绪，然后把实例
   作为**临时实例**注册进每个中心。Nacos SDK 以后台心跳保活；若进程未注销就退出，Nacos
   会自动摘除。

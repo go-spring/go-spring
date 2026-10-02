@@ -67,11 +67,19 @@ type Config struct {
 	// JetStream configures the JetStream context derived from this connection.
 	JetStream JetStreamConfig `value:"${jetstream}"`
 
-	// HealthEnabled controls whether this connection contributes a
-	// health.Indicator to aggregate health. Set it to false for a connection
-	// that should not roll into readiness (e.g. an optional side channel),
-	// default is true.
-	HealthEnabled bool `value:"${health.enabled:=true}"`
+	// Ping enables the startup connectivity probe: when true the constructor
+	// checks the live connection once and fails startup if it is unreachable,
+	// surfacing misconfiguration early. Default is false: a backend that is not
+	// up yet must not block the application from starting; connectivity problems
+	// surface on first use instead. Set true to restore fail-fast behaviour.
+	Ping bool `value:"${ping:=false}"`
+
+	// Health controls whether this connection contributes a health.Indicator to
+	// aggregate health (readiness/startup probes via starter-actuator). On by
+	// default; set it to false for a connection that should not roll into
+	// readiness (e.g. an optional side channel) — no indicator bean is
+	// registered for it.
+	Health bool `value:"${health:=true}"`
 }
 
 // JetStream context is created from the connection and exposed on Conn.JetStream;

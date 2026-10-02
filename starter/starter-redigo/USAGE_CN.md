@@ -9,7 +9,7 @@
 
 **激活条件**：任一 `spring.redigo.instances.*` key。每个 `spring.redigo.instances.<name>` 条目创建一个名为
 `<name>` 的 `*StarterRedigo.Pool` bean，并附带名为 `redigo:<name>` 的健康指示器
-（`health.enabled` 默认 true）。
+（`health` 默认 true）。
 
 ---
 
@@ -117,7 +117,7 @@ func init() {
 ```properties
 # --- main 池：静态地址 + fail-fast 拨号检查 -----------------------------------
 spring.redigo.instances.main.addr=127.0.0.1:6379
-spring.redigo.instances.main.startup-ping=true
+spring.redigo.instances.main.ping=true
 spring.redigo.instances.main.pool-size=20
 spring.redigo.instances.main.conn-max-lifetime=2m
 
@@ -130,7 +130,7 @@ spring.redigo.instances.discovery.conn-max-lifetime=30s
 
 # --- 健康 -------------------------------------------------------------------
 # 默认 true；设 false 可让非关键缓存不卷入聚合健康
-spring.redigo.instances.main.health.enabled=true
+spring.redigo.instances.main.health=true
 
 # --- actuator + otel ----------------------------------------------------------
 spring.actuator.addr=:9370
@@ -142,7 +142,7 @@ spring.observability.metrics.exporter=prometheus
 
 ```bash
 docker run -d -p 6379:6379 redis
-go run .                          # 地址错误时 startup-ping 让启动失败
+go run .                          # 地址错误时 ping 让启动失败
 curl -s :9370/readyz              # components 含 redigo:main、redigo:discovery
 redis-cli GET key                 # "value"——经洋葱模型写入
 redis-cli GET user:1              # 经 cache 门面写入的 JSON
@@ -161,14 +161,14 @@ import starter-redigo
         └─ conf.BindEach("${spring.redigo}") → 每个 <name> 一份 Config
               ├─ Provide(createPool).Name(<name>).Destroy(destroyPool)
               │    ctor 参数：ContextProvider、Config（IndexArg 1）
-              └─ health.enabled 时 → Provide 名为 "redigo:<name>" 的 health.Indicator
+              └─ health 时 → Provide 名为 "redigo:<name>" 的 health.Indicator
 
 gs.Run()
   ├─ 构造 createPool [starter.go]：RequireAny(addr|service-name) → 查 driver
   │   → d.CreateClient(c, backend, params)（= NewPool）：TLS 构建 → discovery resolver → 原始池
   │     → 构造期即应用治理：resilience executor + 端点选择绑定
   │     → 装声明层 → setupDial（插桩过的 Dial 包裹）
-  │   → HealthCheck 启动探测（仅 startup-ping=true 时），在装配完成之后 [starter.go]
+  │   → HealthCheck 启动探测（仅 ping=true 时），在装配完成之后 [starter.go]
   │   注意：没有独立 InitMethod，且此后不再对池做任何补挂 [pool.go]
   ├─ 你的 bean Init 可调用 UseCommandInterceptor（自此之后拨的连接生效）
   └─ SIGTERM → destroyPool → Pool.Close：exec.Close → resolver.Stop → pool.Close [pool.go]
@@ -247,15 +247,15 @@ pool.Get()（你的代码）
 | `service-name` | string | — | 经发现解析地址；`addr` 只作标签。每次拨号选端点 + conn-max-lifetime 回收。 | 后端未注册 → 启动报错。 |
 | `scheme` | string | — | 把发现端点收窄到单一 scheme。仅 service-name 时生效。 | — |
 | `discovery` | string | — | 用哪个发现后端。wiring 把该 label 解析成 bean，并以 `backend` 参数传给 driver（`CreateClient` / `NewPool`）。未配置时回退 `${spring.redigo.default.discovery}`。 | service-name 已设但两层都未配置或名字无对应 bean → 启动报错。 |
-| `password` / `username` | string | — | 拨号认证；username 非空才附加 [pool.go:94-96]。 | 配错 → 首次拨号（或 startup-ping）失败。 |
+| `password` / `username` | string | — | 拨号认证；username 非空才附加 [pool.go:94-96]。 | 配错 → 首次拨号（或 ping）失败。 |
 | `db` | int | 0 | 每条新连接执行 `SELECT`（仅非 0 时）[pool.go:125-131]。 | 越界 → 拨号失败。 |
 | `pool-size` | int | 10 | MaxActive。`Wait:true` → 耗尽时阻塞。 | 过小 → 时延而非报错。 |
 | `max-idle` | int | 5 | MaxIdle。 | 大于 pool-size 无意义。 |
 | `dial-timeout` / `read-timeout` / `write-timeout` | duration | 5s / 3s / 3s | 拨号参数。 | — |
 | `conn-max-lifetime` | duration | 2m | MaxConnLifetime；较短值利于发现流量切换。 | 很大 + discovery → 老端点滞留。 |
 | `tls.*` | group | off | 客户端 TLS；key 与 starter-go-redis 对齐。 | 配一半 → tls.Build 启动报错。 |
-| `startup-ping` | bool | false | 可选启动探测：[HealthCheck] 拨一条裸连接并 PING [health.go:35-48]。⚠ 默认关——池是惰性的，坏地址要到首条命令才暴露。 | 期待 fail-fast 却没开 → 启动"成功"，首个请求失败。 |
-| `health.enabled` | bool | true | 注册 `redigo:<name>` 指示器；false 让池不卷入聚合健康。 | false → readiness 静默漏掉该池。 |
+| `ping` | bool | false | 可选启动探测：[HealthCheck] 拨一条裸连接并 PING [health.go:35-48]。⚠ 默认关——池是惰性的，坏地址要到首条命令才暴露。 | 期待 fail-fast 却没开 → 启动"成功"，首个请求失败。 |
+| `health` | bool | true | 注册 `redigo:<name>` 指示器；false 让池不卷入聚合健康。 | false → readiness 静默漏掉该池。 |
 
 **扩展点**：
 
@@ -318,9 +318,9 @@ v, _ := redis.String(s.Main.Get().(*StarterRedigo.Conn).Do("GET", "k"))  // 读�
 命中拦截器的 key（§1 的 `GET local:skip`）：直接返回应答，且**没有**新增
 `_app_redigo_access` 行、不占熔断配额——证明用户层在两者之外。改调 `next` 则恢复完整插桩。
 
-### 4.6 startup-ping 演练
+### 4.6 ping 演练
 
-`startup-ping=true` + 错误 `addr`：启动报 "redis: startup ping failed"。设为 false：
+`ping=true` + 错误 `addr`：启动报 "redis: startup ping failed"。设为 false：
 启动成功而首条命令失败——这正是该 key 控制的取舍。
 
 ---
@@ -329,7 +329,7 @@ v, _ := redis.String(s.Main.Get().(*StarterRedigo.Conn).Do("GET", "k"))  // 读�
 
 | 症状 | 可能原因 | 处置 |
 |------|---------|------|
-| 启动正常，首条命令 "connection refused" | 池惰性；`startup-ping` 关着 | 开 `startup-ping=true` 获得 fail-fast。 |
+| 启动正常，首条命令 "connection refused" | 池惰性；`ping` 关着 | 开 `ping=true` 获得 fail-fast。 |
 | 启动报 "redis: startup ping failed" | 地址/认证/TLS/发现不通 | 它拨一条裸连接；修连通性。 |
 | 启动报 "one of addr/service-name required" | 两个 key 都没配 | 恰好配一个。 |
 | 拦截器不生效 | 注册晚于连接拨出 | 流量前来 bean Init 里注册 [pool.go:151-157]。 |
@@ -348,6 +348,6 @@ v, _ := redis.String(s.Main.Get().(*StarterRedigo.Conn).Do("GET", "k"))  // 读�
 | quickstart 前置外部依赖 | 1（Redis） |
 | "注意/坑" 条数 | 6 |
 
-设计嫌疑清单：`startup-ping` 此处可选而 starter-go-redis 无条件执行（家族不对称，
-config.go:85-91 有记载）；
+设计嫌疑清单：~~`startup-ping` 此处可选而 starter-go-redis 无条件执行~~（已修：
+两个 starter 现统一由同一个 `ping` 键控制启动探测，默认 false）；
 借出的连接要拿到 `DoContext` 需要类型断言（`pool.Get()` 返回 `redis.Conn`）。

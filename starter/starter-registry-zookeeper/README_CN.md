@@ -115,8 +115,8 @@ spring.http-client.instances.users.discovery=zookeeper.main
 
 ## 工作原理
 
-- 每个块的后端 bean 立即构造：拨号该集群（探测 —— 一次 `Exists` 调用会阻塞到会话连上
-  —— 不可达的 ZooKeeper 会让启动失败）并持有该块的会话，两个半区共享它。
+- 每个块的后端 bean 立即构造：拨号该集群（`ping=true` 时探测 —— 一次 `Exists` 调用会阻塞
+  到会话连上 —— 不可达的 ZooKeeper 会让启动失败）并持有该块的会话，两个半区共享它。
 - starter-registry 核心的 `registryServer` 收集每个后端的 registrar，等待就绪，然后把实例
   注册进每个中心：按需创建持久父目录，并把实例写成一个**临时**叶子节点。
 - 停机时 `PreStop` 在 pre-stop 延迟之前向每个中心注销（删除 znode），让发现体系在在途

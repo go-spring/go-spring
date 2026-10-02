@@ -169,7 +169,7 @@ sub, err := conn.Consume(ctx, "demo.pubsub", "", func(ctx context.Context, msg *
 * `HealthCheck(ctx, conn)` reflects the live state of the auto-reconnecting client, and
   the starter registers a `health.Indicator` per instance (`nats:<name>`) so an
   app that also imports starter-actuator gets nats connectivity folded into
-  `/readiness`. Set `health.enabled=false` on an instance whose connectivity
+  `/readiness`. Set `health=false` on an instance whose connectivity
   should not roll into readiness.
 
 Not instrumented: JetStream operations and the raw `Subscribe`/`Publish`
@@ -196,4 +196,4 @@ Each connection under `spring.nats.instances.<name>` reads the following propert
 | `reconnect-wait` | `2s` | Delay between reconnect attempts. |
 | `connect-timeout` | `5s` | Bound on the initial dial. |
 | `jetstream.enabled` | `false` | Expose a JetStream context on `Conn.JetStream`. |
-| `health.enabled` | `true` | Contribute a `health.Indicator` (`nats:<name>`) for this instance. |
+| `health` | `true` | Contribute a `health.Indicator` (`nats:<name>`) for this instance. |

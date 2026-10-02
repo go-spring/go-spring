@@ -143,7 +143,7 @@ import starter-outbox-gorm
         │           IndexArg(3, TagArg(driver) messaging.Driver),
         │           IndexArg(4, ValueArg(name))
         │     exported as gs.Rooter                                 [starter.go:61-66]
-        └─ Provide(health.Indicator "outbox:<name>")               [starter.go:69-71]
+        └─ unless health=false → Provide(health.Indicator "outbox:<name>")  [starter.go:69-71]
               .Name("outbox:" + name) — mandatory: multi-instance health beans
               need distinct (Name,Type) keys or the container reports duplicates.
 
@@ -233,6 +233,7 @@ config.go:29-63; normalization (clamps) from outbox.go:132-153.
 | `backoff-base` | duration | 1s | Wait after the first failure; doubled per further failure. `<=0` → 1s. | Together with `backoff-max` sets total retry window: 8 attempts at 1s..1m ≈ 3.5 min before DLQ. |
 | `backoff-max` | duration | 1m | Cap on a single backoff. `<=0` → 1m. | — |
 | `dlq-suffix` | string | ".dlq" | Appended to destination to derive the dead-letter destination. ⚠ empty string **disables** the DLQ copy — exhausted records go straight to `dead` with no copy anywhere (config.go:59-62). | Empty suffix intended "no suffix", actually silences dead-lettering. |
+| `health` | bool | true | Contributes the `outbox:<name>` health.Indicator (a `SELECT 1` on the backing DB); false keeps the instance out of aggregate health. | false → no indicator bean; readiness of that relay's DB is no longer reported. |
 
 Coupling notes:
 

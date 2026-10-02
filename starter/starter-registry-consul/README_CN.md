@@ -89,7 +89,7 @@ spring.registry.metadata.version=v1
 | `ttl` | `15s` | TTL 健康检查;starter 以 TTL 一半的间隔心跳。 |
 | `deregister-critical-after` | `1m` | 检查持续 critical 超过此时长(如崩溃后),Consul 自动摘除实例。 |
 
-每个块成为**一个**后端 bean `consul.<name>`——一个客户端、一次启动探测、一个生命周期;
+每个块成为**一个**后端 bean `consul.<name>`——一个客户端、一个生命周期(仅 `ping=true` 时才有一次启动探测);
 命名体系的两半共享它们,读写永不分裂。**只有设置了 `service-name` 才会注册**;纯消费方
 应用省略该键,不注册任何实例。
 
@@ -137,8 +137,8 @@ blocking query 持续刷新,后续 Resolve 都是内存读。通告的 passing �
 ## 工作原理
 
 - 每个块在 bean 构造阶段成为**一个**后端 bean(`consul.<name>`),持有该 agent 的
-  客户端与命名体系的两半。它会探测 agent(`Catalog().Services`),不可达即启动失败,
-  每块一次。
+  客户端与命名体系的两半。`ping=true` 时它会探测 agent(`Catalog().Services`),不可达即
+  启动失败,每块一次。
 - [starter-registry](../starter-registry) 核心(传递依赖自动引入)的 `registryServer`
   收集每个后端的 registrar——跨所有后端——等待就绪,然后带一个 Consul **TTL 健康检查**
   把实例 `Register` 进每个中心。它立即让检查通过,并以 TTL 一半的间隔在后台心跳保活。

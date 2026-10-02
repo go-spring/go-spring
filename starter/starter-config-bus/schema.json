@@ -10,6 +10,11 @@
     "watch-prefixes": {
       "type": "string",
       "default": ""
+    },
+    "health": {
+      "type": "boolean",
+      "default": true,
+      "description": "contribute a health.Indicator (readiness probes via starter-actuator)"
     }
   }
 }

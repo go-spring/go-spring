@@ -43,10 +43,9 @@ import (
 // must exist before the framework's first property refresh — see [log.RegisterTag].
 var accessTag = log.RegisterAppTag("bigcache", "access")
 
-// obsScope names the meter this starter's cache-statistics gauges register
-// under. It is a meter scope only: the per-call span and metrics are emitted by
-// the resilience layer, under its own scope.
-const obsScope = "go-spring.org/starter-bigcache"
+// scope is the instrumentation scope name every meter and tracer in this package
+// reports under.
+const scope = "go-spring.org/starter-bigcache"
 
 // bigcacheSystem is the value the family's db.system label carries for this
 // backend — the family's shared vocabulary, not a per-file choice.
@@ -131,7 +130,7 @@ type statObserver struct {
 var instruments = sync.OnceValue(buildInstruments)
 
 func buildInstruments() *statObserver {
-	m := otel.Meter(obsScope)
+	m := otel.Meter(scope)
 	o := &statObserver{meter: m}
 	o.gauges = make([]metric.Int64ObservableGauge, len(statInstruments))
 	for i, inst := range statInstruments {

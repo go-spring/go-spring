@@ -165,9 +165,10 @@ exists", and the constructor does it in one place: `NewClient` fixes identity an
 `applyGovernance` installs governance. Splitting either into a separate `gs.InitMethod` would buy
 nothing and give the container a way to hand out a half-built client.
 
-Startup ping timing: it runs **inside the constructor**, before the bean exists — a dead server
-aborts container assembly with `memcached: startup ping failed` (`starter.go`); it is not
-lazy and not retryable. gomemcache's `Ping` probes every configured server, so one dead node in
+Startup ping timing (opt-in, `ping=true`): it runs **inside the constructor**, before the bean
+exists — a dead server aborts container assembly with `memcached: startup ping failed`
+(`starter.go`); it is not lazy and not retryable. Off by default, the probe is skipped so a dead
+server is not caught at boot and only surfaces on the first operation. gomemcache's `Ping` probes every configured server, so one dead node in
 `servers` fails the whole instance. The probe goes straight to the raw client: it is a boot check
 on the connection, not business traffic, so it opens no span and spends no limiter/breaker budget.
 A failed probe abandons the client, so the ctor releases the governance it had just applied. The
@@ -240,17 +241,19 @@ so it is not silently "forever" (`bytecache.go`). `GetBytes` maps
 
 ## 3. Per-key behavior reference
 
-Six value tags exist in the per-instance Config (verified with the grep audit; `demo.label` in
+Eight value tags exist in the per-instance Config (verified with the grep audit; `demo.label` in
 the output belongs to the example app, not the starter).
 
 | Key (under `spring.memcached.instances.<name>`) | Type | Default | Behavior / interactions | Misconfiguration consequence |
 |---|---|---|---|---|
-| `servers` | []string | empty | Static server list; requests sharded across it (config.go:28). XOR with `service-name`. | Both empty → ctor error `one of servers or service-name must be set` (starter.go:92); dead address → startup ping fail-fast |
+| `servers` | []string | empty | Static server list; requests sharded across it (config.go:28). XOR with `service-name`. | Both empty → ctor error `one of servers or service-name must be set` (starter.go:92); dead address → startup ping fail-fast (when `ping=true`) |
 | `service-name` | string | empty | Discovery addressing: the server set follows the backend named by `discovery` (config.go:39), re-read per key lookup (selector.go). When set (non-mesh), `servers` is ignored. | Backend missing → boot error `discovery resolve %q failed`; empty snapshot at boot → boot error (driver.go:93-99); empty at runtime → `memcache.ErrNoServers` on that operation |
 | `scheme` | string | empty | Narrows discovery to endpoints of one transport scheme; only consulted with `service-name` (config.go:45). | Over-filtering → "no endpoints" boot error |
 | `discovery` | string | — | Which registered `discovery.Discovery` resolves `service-name` (config.go:50). The wiring resolves this label to a bean and passes it to the driver as the `backend` argument of `CreateClient`. Falls back to `${spring.memcached.default.discovery}` when unset. | Both unset or an unregistered name while service-name is set → boot error. |
 | `timeout` | duration | 0 | Socket read/write timeout per request; 0 = gomemcache default 100ms (config.go:54). | Too low → spurious timeouts under load |
 | `max-idle-conns` | int | 0 | Idle connections kept per server; 0 = driver default 2 (config.go:58). A governance rule setting `max-conns` overrides it (gomemcache has no open-connection cap, so the rule sizes this idle cap). | Too low → reconnect churn |
+| `ping` | bool | false | Opt-in startup probe: `HealthCheck` pings every configured server once and fails the boot on an unreachable one; off by default so a server that is not up yet only surfaces on first use. | Expecting fail-fast without setting it → boot "succeeds", first request fails. |
+| `health` | bool | true | Contributes the `memcache:<name>` health.Indicator for the instance. | false → no indicator bean; readiness of that memcached is no longer reported. |
 
 The `driver` key names the Driver bean: empty = fall back to the family-wide `spring.<family>.default.driver`, then to the single Driver bean by type (see
 §2.1), set to a bean name to select one explicitly; no `resilience` key: resilience/fault come from the governance center
@@ -267,9 +270,10 @@ starter-governance-file), keyed by service `memcached:<service-name or instance-
 2. **Cache-miss semantics**: delete the key, `curl :9090/get` → `memcache: cache miss`; with
    governance on, repeated misses do NOT open the breaker (ErrCacheMiss is success,
    `client.go`).
-3. **Server-down fail-fast**: stop memcached (`docker stop demo-memcached`), boot the app →
-   container assembly aborts with `memcached: startup ping failed` (`starter.go:123`). Bad
-   `servers` address behaves identically — this is the fail-fast posture, there is no lazy mode.
+3. **Server-down fail-fast**: set `ping=true`, stop memcached (`docker stop demo-memcached`), boot
+   the app → container assembly aborts with `memcached: startup ping failed` (`starter.go:123`).
+   Bad `servers` address behaves identically. With the default `false` no boot probe runs, so the
+   failure only surfaces on the first operation.
 4. **Discovery bad-address drill**: set `service-name` with no backend registered → boot fails with
    `memcached: discovery resolve %q failed` (`driver.go:92`). Register a backend that returns an
    empty endpoint set → boot fails with `discovery returned no endpoints` (`driver.go:104`).
@@ -296,7 +300,7 @@ starter-governance-file), keyed by service `memcached:<service-name or instance-
 | Symptom | Likely cause | Fix |
 |---|---|---|
 | Boot fails `one of servers or service-name must be set` | instance block has neither key | set one of them (`starter.go:92`) |
-| Boot fails `memcached: startup ping failed` | server down / wrong address at boot | start memcached, fix `servers`; ping is fail-fast (`starter.go:123`) |
+| Boot fails `memcached: startup ping failed` | server down / wrong address at boot | emitted only when `ping=true`; start memcached, fix `servers` (`starter.go:123`). With `ping` off the failure surfaces on the first operation. |
 | Boot fails `discovery resolve "..." failed` | `service-name` set but no backend under the `discovery` name | register the backend bean (named discovery.Discovery) before boot |
 | Boot fails `discovery returned no endpoints` | backend healthy but the service has no instances (or `scheme` over-filters) | start instances / clear `scheme` (`driver.go:97-98`) |
 | Stale server list after cluster scale-out/scale-in | gomemcache fixes the server set at creation; watch is lifecycle-only | restart the process to re-resolve (`driver.go:61-68`) |
@@ -310,7 +314,7 @@ starter-governance-file), keyed by service `memcached:<service-name or instance-
 
 | Metric | Value |
 |---|---|
-| Config keys | 7 (6 connection + 1 via cache-bridge naming) |
+| Config keys | 9 (8 connection + 1 via cache-bridge naming) |
 | Required | 1 (`servers` xor `service-name`) |
 | Quickstart external deps | 1 (memcached, docker) |
 | "Watch out" entries | 4 |

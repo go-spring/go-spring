@@ -77,9 +77,9 @@ func init() {
 //
 // Assembly completes before the probe: once the connection is built the
 // close/block notifiers are bridged into go-spring's log (the observe half) and
-// the resilience executor is attached, and only then is a probe channel opened
-// and closed to confirm the AMQP layer is usable. A failed probe releases what
-// was just assembled.
+// the resilience executor is attached, and only then (when Ping is enabled) is a
+// probe channel opened and closed to confirm the AMQP layer is usable. A failed
+// probe releases what was just assembled.
 //
 // mgr and inj are the governance beans cloud/resilience and cloud/fault
 // provide. mgr is required: this starter imports those packages, so "governance
@@ -141,20 +141,22 @@ func newClient(ctx *gs.ContextProvider, name string, c Config, d Driver, mgr *re
 		_ = conn.Close()
 		return nil, err
 	}
-	// Then confirm the AMQP channel layer is usable, not just the TCP handshake.
-	// The probe goes straight to the raw connection on purpose: it is a
-	// connectivity check, not business traffic, so it must not spend
-	// limiter/breaker budget. A failure abandons the connection, so release what
-	// was just assembled.
-	ch, err := conn.Channel()
-	if err != nil {
-		log.Errorf(ctx.Context, log.TagAppDef, "rabbitmq: open probe channel failed url=%s: %v", c.URL, err)
-		closeResilience(conn)
-		_ = conn.Close()
-		return nil, errutil.Explain(err, "failed to open probe channel: %s", c.URL)
-	}
-	if err := ch.Close(); err != nil {
-		log.Warnf(ctx.Context, log.TagAppDef, "rabbitmq: close probe channel failed url=%s: %v", c.URL, err)
+	// Then confirm the AMQP channel layer is usable, not just the TCP handshake
+	// (when Ping is enabled). The probe goes straight to the raw connection on
+	// purpose: it is a connectivity check, not business traffic, so it must not
+	// spend limiter/breaker budget. A failure abandons the connection, so release
+	// what was just assembled.
+	if c.Ping {
+		ch, err := conn.Channel()
+		if err != nil {
+			log.Errorf(ctx.Context, log.TagAppDef, "rabbitmq: open probe channel failed url=%s: %v", c.URL, err)
+			closeResilience(conn)
+			_ = conn.Close()
+			return nil, errutil.Explain(err, "failed to open probe channel: %s", c.URL)
+		}
+		if err := ch.Close(); err != nil {
+			log.Warnf(ctx.Context, log.TagAppDef, "rabbitmq: close probe channel failed url=%s: %v", c.URL, err)
+		}
 	}
 	log.Infof(ctx.Context, log.TagAppDef, "rabbitmq connection initialized, url=%s", c.URL)
 	return conn, nil

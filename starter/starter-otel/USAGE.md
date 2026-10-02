@@ -280,7 +280,7 @@ Process-level dimensions (env, cluster, tenant, version) belong on the **resourc
 Per-request dimensions go on the **context**:
 
 ```go
-ctx = observability.WithContextAttributes(ctx, attribute.String("tenant", t))
+ctx = observability.WithSpanAttributes(ctx, attribute.String("tenant", t))
 ```
 
 The carrier lives in `cloud/observability`, not here: putting something on a context is a contract, and

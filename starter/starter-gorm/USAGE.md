@@ -205,10 +205,10 @@ gs.Run()
   │    │                  (unless observe.enabled=false) → governance: builds the
   │    │                  resilience executor from Options.Governance.ExecutorFor
   │    │                  → ApplyCallbacks replaces the six gorm processors
-  │    ├─ startup probe: gormcore.HealthCheck (delegates to Ping, bounded by
-  │    │                  ping-timeout) — after assembly
+  │    ├─ if ping: startup probe: gormcore.HealthCheck (delegates to Ping, bounded
+  │    │                  by ping-timeout) — after assembly
   │    ├─ Provide *DB .Name(<dialect>.<entry>).Destroy((*DB).Destroy)
-  │    └─ Provide health.Indicator "gorm:mysql:<name>" (injects the *DB by name,
+  │    └─ unless health=false → Provide health.Indicator "gorm:mysql:<name>" (injects the *DB by name,
   │       exports as health.Indicator)  ← .Name is required: multi-instance beans
   │          share type (Indicator, *DB); without distinct names the container
   │          reports duplicate (Name,Type) keys
@@ -293,7 +293,7 @@ observed and guarded (the transaction as a whole is not a separate span).
 
 All keys live at `spring.gorm.<dialect>.<name>.*` (embedded `Common`, bound at
 the same level as the dialect's own fields). Reconciled against
-`grep -rhoE 'value:"[^"]+"' starter/starter-gorm` — exactly these 10 shared keys.
+`grep -rhoE 'value:"[^"]+"' starter/starter-gorm` — exactly these 12 shared keys.
 
 | Key | Type | Default | Behavior / interactions | Misconfiguration consequence |
 |-----|------|---------|-------------------------|------------------------------|
@@ -301,12 +301,14 @@ the same level as the dialect's own fields). Reconciled against
 | `max-idle-conns` | int | 0 | `>0` → `SetMaxIdleConns`; 0 = database/sql default (2). | 0 with high QPS → constant reconnect churn; > max-open is clamped by database/sql. |
 | `conn-max-lifetime` | duration | 0 | `>0` → `SetConnMaxLifetime`; 0 = unlimited. | 0 against a LB that silently drops idle conns → stale-connection errors mid-run. |
 | `conn-max-idle-time` | duration | 0 | `>0` → `SetConnMaxIdleTime`; 0 = unlimited. | Mostly interacts with lifetime above. |
-| `ping-timeout` | duration | 5s | Bounds the fail-fast startup ping (`PingContext`). `<=0` falls back to 5s. | Too small → boot failure on a cold/slow DB; huge → slow boot when the DB is down. |
+| `ping-timeout` | duration | 5s | Bounds the startup ping (`PingContext`) — which runs only when `ping=true`. `<=0` falls back to 5s. | Too small → boot failure on a cold/slow DB; huge → slow boot when the DB is down. |
 | `slow-threshold` | duration | 0 | `>0` installs a warn-level gorm slow-query logger whose output is routed through **go-spring.org/log** (`log.Warnf`, TagAppDef) — it lands in the configured appenders, not raw stdout. 0 keeps gorm's default logger. ⚠ The message body is GORM's one-line text, not structured fields. | 0 → no slow log at all; expecting structured fields → the payload is plain text (use the access log for that). |
 | `service-name` | string | — | Switches addressing to service discovery: the dialect binds a discovery-backed dialer so each new connection reaches a live instance. When set, `addr` is ignored (the example uses a dummy `0.0.0.0:0` to prove it). In mesh mode (`GS_MESH_MODE=on`) a sidecar owns discovery and `addr` is used as-is. | Unset + no `addr` → dialect build error ("one of addr or service-name must be set"). |
 | `scheme` | string | — | Narrows discovery to endpoints of one transport scheme (e.g. `tls`). ⚠ Dead unless `service-name` is set (only consulted then). | Set without service-name → silently ignored. |
 | `discovery` | string | — | Which registered discovery backend resolves `service-name`. Falls back to `${spring.gorm.<dialect>.default.discovery}` when unset. ⚠ Dead unless `service-name` is set. | Both unset or an unregistered name while service-name is set → boot error; set without service-name → silently ignored. |
 | `observe.enabled` | bool | true | Hard kill switch for the gorm observe plugin: when false the plugin is not installed at all — no declaration, no per-query callbacks. Operations are then not declared, so the resilience layer falls back to its own generic call signals (`resilience.client.duration`, its own access tag). | false → per-operation db.* observability silently absent (deliberate for hot instances). |
+| `ping` | bool | false | Opt-in startup probe: after assembly `gormcore.HealthCheck` pings once and fails startup on an unreachable DB; off by default so a DB that is not up yet only surfaces on first use. | Expecting fail-fast without setting it → boot "succeeds", first query fails. |
+| `health` | bool | true | Contributes the `gorm:<dialect>:<entry>` health.Indicator for the instance; false keeps it out of aggregate health. | false → no indicator bean; readiness of that DB is no longer reported. |
 
 Dead-key notes: for **sqlite** the whole discovery trio (`service-name`/`scheme`/
 `discovery`) is structurally unusable (no server to discover) but still binds —
@@ -405,9 +407,9 @@ endpoint and watch `OpenConnections`/`InUse`/`WaitCount` under load
 
 | Symptom | Likely cause | Fix |
 |---------|--------------|-----|
-| Boot fails "gorm ping: ..." | DB unreachable/credentials wrong within `ping-timeout` | Fix addr/credentials; raise `ping-timeout` for cold starts. Deliberate fail-fast, not a bug. |
+| Boot fails "gorm ping: ..." | DB unreachable/credentials wrong within `ping-timeout` | Emitted only when `ping=true`; fix addr/credentials, raise `ping-timeout` for cold starts. Deliberate fail-fast, not a bug. |
 | No beans register at all | No `spring.gorm.<dialect>.*` entries — `OnProperty(prefix)` never fires | Add at least one instance block; nothing activates by default. |
-| Container fails: duplicate beans | A second Provide of `*DB`/`health.Indicator` without `.Name` | Don't re-provide DB beans yourself; the DB beans are named `<dialect>.<entry>` (e.g. `mysql.primary`) and the health indicators `gorm:<dialect>:<entry>` (module.go:85-97). |
+| Container fails: duplicate beans | A second Provide of `*DB`/`health.Indicator` without `.Name` | Don't re-provide DB beans yourself; the DB beans are named `<dialect>.<entry>` (e.g. `mysql.primary`) and the health indicators `gorm:<dialect>:<entry>` (module.go:163-167). |
 | Injection error "not a simple value"/type mismatch | Injecting `*gorm.DB` instead of the wrapper | Autowire the shared `*gormcore.DB` bean; it embeds `*gorm.DB`. |
 | No db.* spans/metrics/access log | starter-otel not imported, or `observe.enabled=false` | Import starter-otel; check the per-instance kill switch — it removes the plugin entirely, so operations are undeclared and the resilience layer emits only its own generic signals. |
 | Slow-query lines are plain text | `slow-threshold` routes GORM's warn output through go-spring.org/log, but the message body is GORM's one-line text | Filter by message; for structured slow logs use the access log instead. |

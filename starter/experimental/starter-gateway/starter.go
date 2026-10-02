@@ -52,10 +52,17 @@ func init() {
 		Export(gs.As[gs.Server]()).
 		Condition(gs.OnProperty("spring.gateway.server.addr"))
 
-	// Report gateway health. The metrics need no contribution: they are OTel
-	// instruments now, so starter-otel's Prometheus exporter exposes them on the
-	// same /metrics (actuator management port) as the rest of the application.
-	gs.Provide(newGatewayHealth)
+	// Report gateway health, unless the user turned it off (spring.gateway.health
+	// = false). The metrics need no contribution: they are OTel instruments now,
+	// so starter-otel's Prometheus exporter exposes them on the same /metrics
+	// (actuator management port) as the rest of the application.
+	//
+	// The health bean is a single top-level contribution with no config-bearing
+	// closure around it, so the switch is a property condition (the framework's
+	// idiom for a default-on top-level bean) rather than a Config field: reading
+	// one bool should not force a second bind of the whole route table.
+	gs.Provide(newGatewayHealth).
+		Condition(gs.OnProperty("spring.gateway.health").HavingValue("true").MatchIfMissing())
 }
 
 // The self-contained filter factories (implementations in filter.go).

@@ -115,7 +115,7 @@ spring.observability.metrics.exporter=prometheus
 `cqlsh -e "DESCRIBE CLUSTER"` 最长等 240 秒）：
 
 ```bash
-go run .                          # 集群不可达时启动 fail fast
+go run .                          # 集群不可达时启动 fail fast（需 ping=true；默认关闭）
 curl -s :9370/readyz | jq .       # components 含 "cassandra:a"、"cassandra:b"
 curl -s :9370/metrics | grep -E 'db.client.(operation.duration|attempt.duration|active_requests)'
 grep _app_cassandra_access app.log | tail -3   # 每次 Exec 一条记录
@@ -150,7 +150,7 @@ gs.Run()
   │     （session + 身份 + 治理）：NewClient 设 exec = params.ExecutorFor("cassandra", service)，
   │     即 fault.WrapClientExecutor(mgr.ClientExecutorFor("cassandra", service), service, inj)，
   │     mgr/inj 为注入的 *resilience.Manager / *fault.Injector bean —— 构造期 exec 链即就绪
-  ├─ fail-fast 探活：newClient 调 HealthCheck [starter.go:100]——一条 system.local 查询直达裸 session
+  ├─ 仅 ping=true：fail-fast 探活——newClient 调 HealthCheck [starter.go:100]，一条 system.local 查询直达裸 session
   ├─ readiness：indicator 委托 HealthCheck 查询 system.local [health.go:34]
   └─ SIGTERM → Destroy [client.go]：exec.Close → session.Close
 ```
@@ -171,7 +171,8 @@ Actuator 指示器的探针委托同一个 `HealthCheck`。探活直达裸
 session 是有意为之——它是连通性检查、不是业务流量，不开 span、不耗 limiter/breaker 额度。
 失败则销毁 client，并以 "failed to reach cassandra
 cluster …" 中止启动。探活一回合验证协议版本、认证与集群状态——与运行期健康指示器同一
-条查询。没有重试、没有跳过开关：配置里出现 cassandra 条目即意味着"启动时必须可用"。
+条查询。探活为 opt-in——只有实例置 `ping=true` 才执行；默认 `ping=false` 时配置里的
+cassandra 条目不再意味着"启动时必须可用"，连通问题推迟到首次使用暴露。
 探活由 gocql 自身的 `ConnectTimeout`/`Timeout`（此处默认各 11s）兜底，没有 starter 专属
 超时。
 
@@ -244,7 +245,7 @@ per-config 的 `driver` key。
 | `keyspace` | string | — | session 默认 keyspace。留空则以无 keyspace 连接（比如先跑 `CREATE KEYSPACE`）。 | 名字错 → 每条带 keyspace 的语句报 "Keyspace … does not exist"。 |
 | `username` / `password` | string | — | 两者都设 → `gocql.PasswordAuthenticator`（driver.go:74-76）；都空 → 无认证。⚠ 成对强制：只设其一 → 启动报 "username and password must be set together"（starter.go:77-79）。 | 只设一个 → 启动失败。 |
 | `consistency` | string | `local-quorum` | session 默认一致性级别；精确匹配枚举 `any\|one\|two\|three\|quorum\|all\|local-quorum\|each-quorum\|local-one`（driver.go:99-120），无 kebab/camel 变体。 | 拼错 → 启动报错并列出合法值。 |
-| `timeout` | duration | `11s` | gocql 单查询超时 —— 同时兜底 fail-fast 探活的查询回合。 | 过小 → 慢查询被客户端中断。 |
+| `timeout` | duration | `11s` | gocql 单查询超时 —— `ping=true` 时同时兜底探活的查询回合。 | 过小 → 慢查询被客户端中断。 |
 | `connect-timeout` | duration | `11s` | gocql 建连超时。 | 过小 → 慢网络下启动探活失败。 |
 | `cql-version` | string | `3.0.0` | 传给 gocql 的 CQL 方言版本。 | 与服务端不匹配 → 握手报错。 |
 | `tls.enabled` | bool | false | 开启整个 `tls.*` 组；映射 `gocql.SslOptions` [driver.go:77-88]。 | — |
@@ -252,6 +253,8 @@ per-config 的 `driver` key。
 | `tls.cert-file` / `tls.key-file` | string | — | 客户端证书/私钥路径（双向 TLS）。⚠ 必须成对。 | 只配一个 → 握手失败。 |
 | `tls.server-name` | string | — | 与 host 不同时的 SNI/校验名。 | 用 IP + 证书 CN 不一致 → 校验失败。 |
 | `tls.insecure-skip-verify` | bool | false | 跳过主机校验（`EnableHostVerification = !值`，driver.go:86）。 | 生产开 = TLS 对 MITM 敞开。 |
+| `ping` | bool | `false` | 启动连通探活：true 时构造期扫一次 `system.local`（`HealthCheck`），不可达则启动失败，恢复 fail-fast。默认关闭，使尚未就绪的集群不阻塞启动。 | `ping=true` 且集群已挂 → 启动报 "failed to reach cassandra cluster …"。 |
+| `health` | bool | `true` | 本实例是否贡献 `health.Indicator`（名 `cassandra:<name>`）供 actuator 就绪/启动探测。置 false 可把该实例排除在聚合健康报告之外。 | `health=false` → `/readyz` 无 `cassandra:<name>` 组件。 |
 
 ### 3.2 观测
 
@@ -303,12 +306,13 @@ curl -s :9370/metrics | grep db.client   # 调用级/尝试级直方图 + active
 发射器的 outcome 计数。运行期翻转策略 —— 执行器热生效，无需重启。注意 service label
 只取 hosts[0]：首 host 相同的实例 `b` 与实例 `a` 共用同一个 breaker 桶。
 
-### 4.4 fail-fast 探活演练
+### 4.4 fail-fast 探活演练（`ping=true`）
 
 ```bash
-docker stop cassandra-example && go run .
+docker stop cassandra-example && go run .   # 实例需 ping=true
 # 启动中止："failed to reach cassandra cluster [127.0.0.1]" —— 进程绝不进入
 # serving。重启容器后同一配置正常启动。
+# 默认 ping=false 时启动成功，改为首条语句才失败。
 ```
 
 ---
@@ -317,7 +321,7 @@ docker stop cassandra-example && go run .
 
 | 症状 | 可能原因 | 处置 |
 |------|----------|------|
-| 启动报 "failed to reach cassandra cluster" | hosts 不可达 / 凭证错误 / TLS 不匹配 | 启动探活无条件执行（§2.2）；修连通性或认证；等 CQL 完全就绪（Cassandra 5 启动慢，check.sh 留 240s）。 |
+| 启动报 "failed to reach cassandra cluster" | hosts 不可达 / 凭证错误 / TLS 不匹配 | 启动探活仅在 `ping=true` 时执行（默认关闭，§2.2）；修连通性或认证，或去掉 `ping` 把失败推迟到首次使用；等 CQL 完全就绪（Cassandra 5 启动慢，check.sh 留 240s）。 |
 | 启动报 "username and password must be set together" | 只配了成对校验的一边 | 两个都配或都不配 [starter.go:77-79]。 |
 | 启动报 "unknown consistency" | `consistency` 拼错；枚举精确匹配 | 用九个合法值之一 [driver.go:120]。 |
 | Exec 无 span/metric | 未 import starter-otel | 发射的信号搭 OTel 全局件；import starter-otel（access log 仍会输出）。 |
@@ -330,7 +334,7 @@ docker stop cassandra-example && go run .
 
 | 指标 | 数值 |
 |------|------|
-| 配置 key 总数 | 9 个实例 key + tls 组 6 个 |
+| 配置 key 总数 | 11 个实例 key + tls 组 6 个 |
 | 其中必填 | 1（`hosts`） |
 | quickstart 前置外部依赖数 | 1（Cassandra） |
 | 文档中"注意/坑"条数 | 4 |
@@ -340,4 +344,5 @@ docker stop cassandra-example && go run .
 - ~~只有 `Exec` 有防护/观测~~ 已修：带防护的 `*Query` wrapper 覆盖常规语句路径
   （§2.3）；batch 与 `Iter` 深翻页仍在守卫之外。
 - service label 只用 `hosts[0]`，多 seed 配置共享一个以首 host 为键的 resilience 桶。
-- 健康指示器没有关闭 key（与 redigo 的 `health.enabled` 家族不对称）。
+- 健康指示器每实例默认注册（`health=false` 可关）；启动探活为 opt-in（`ping=true`）——即
+  redigo 拆成 `health.enabled`/`startup-ping` 的那两个旋钮。

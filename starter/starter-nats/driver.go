@@ -186,16 +186,20 @@ func newConn(ctx *gs.ContextProvider, name string, c Config, d Driver,
 	// The Driver returned the connection complete — identity, governance and (when
 	// enabled) JetStream all applied while it was built. There is no Init hook and
 	// nothing else runs after this — the bean is complete when this ctor returns.
-	// Fail fast: confirm the live connection state before publishing the bean, so
-	// a connection that died between the dial and the end of assembly surfaces
-	// during boot rather than on the first publish. HealthCheck goes straight to
-	// the bare client on purpose: it is a connectivity check, not business
-	// traffic, so it must not open a span or spend limiter/breaker budget. A
-	// failure abandons the connection, so release what was just applied.
-	if err := HealthCheck(ctx.Context, conn); err != nil {
-		log.Errorf(ctx.Context, log.TagAppDef, "nats: startup connectivity check failed: %s", c.URL)
-		_ = conn.Destroy()
-		return nil, errutil.Explain(err, "nats: startup connectivity check failed: %s", c.URL)
+	// Fail fast (opt-in, e.g. ping=true): confirm the live connection state
+	// before publishing the bean, so a connection that died between the dial and
+	// the end of assembly surfaces during boot rather than on the first publish.
+	// HealthCheck goes straight to the bare client on purpose: it is a
+	// connectivity check, not business traffic, so it must not open a span or
+	// spend limiter/breaker budget. A failure abandons the connection, so release
+	// what was just applied. With ping unset the check is skipped and a dropped
+	// connection only surfaces on first use.
+	if c.Ping {
+		if err := HealthCheck(ctx.Context, conn); err != nil {
+			log.Errorf(ctx.Context, log.TagAppDef, "nats: startup connectivity check failed: %s", c.URL)
+			_ = conn.Destroy()
+			return nil, errutil.Explain(err, "nats: startup connectivity check failed: %s", c.URL)
+		}
 	}
 	log.Infof(ctx.Context, log.TagAppDef, "nats connection initialized, url=%s", c.URL)
 	return conn, nil

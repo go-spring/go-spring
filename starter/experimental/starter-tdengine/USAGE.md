@@ -131,7 +131,7 @@ ships 3.3.6.0 with taosAdapter on 6041):
 
 ```bash
 docker compose -p gs-tdengine-demo up -d          # wait ~30s; taosAdapter boots late
-go run .                        # boot fails fast if the DSN is unreachable (§2.1)
+go run .                        # boot fails fast if the DSN is unreachable (needs ping=true; off by default, §2.1)
 curl -s :9370/readyz | jq .     # components include tdengine:a and tdengine:b
 curl -s :9370/metrics | grep -E 'db_client_(operation|attempt)_duration'   # per-statement histograms
 grep _app_tdengine_access app.log | tail -3        # one record per statement
@@ -155,7 +155,7 @@ import starter-tdengine
               ├─ Provide(newClient).Name(<name>)
               │       .Destroy((*Client).Destroy).Caller(1)
               └─ Provide health.Indicator named "tdengine:<name>", exported as
-                  health.Indicator (always registered; no opt-out key)
+                  health.Indicator (registered unless the instance sets health=false)
 
 gs.Run()
   ├─ ctor newClient [starter.go]: optional Driver bean → when none present the
@@ -175,8 +175,9 @@ gs.Run()
   │       slot — the client is complete when it is returned. The zero bundle (no
   │       *resilience.Manager) degrades to resilience.Unmanaged: observed only,
   │       with a one-time warning that no protection applies
-  │     → fail-fast probe: HealthCheck(ctx, cl) — a PingContext bounded by 10s, run
-  │       AFTER assembly; on error the half-built client is Destroyed and the boot fails
+  │     → ping=true only: fail-fast probe HealthCheck(ctx, cl) — a PingContext bounded
+  │       by 10s, run AFTER assembly; on error the half-built client is Destroyed and
+  │       the boot fails
   ├─ readiness: indicator runs HealthCheck (a db.PingContext) per instance
   └─ SIGTERM → Destroy: exec.Close → db.Close
 ```
@@ -260,10 +261,12 @@ All keys live under `spring.tdengine.instances.<name>.` — bound per instance v
 
 | Key | Type | Default | Behavior / interactions | Misconfiguration consequence |
 |-----|------|---------|-------------------------|------------------------------|
-| `dsn` | string | — | **required** (expr `$ != ''` [config.go:33]). Driver's unified DSN `[user[:password]@]ws(host:port)/[dbname][?params]`. Also the source of the resilience service label (§2.3) and of boot error messages. TLS is expressed here (`wss(...)`, cert params) — there is no `tls.*` block. | Empty → boot error at BindEach. Wrong addr/credentials → fail-fast ping error "failed to reach tdengine at <addr>". |
+| `dsn` | string | — | **required** (expr `$ != ''` [config.go:33]). Driver's unified DSN `[user[:password]@]ws(host:port)/[dbname][?params]`. Also the source of the resilience service label (§2.3) and of boot error messages. TLS is expressed here (`wss(...)`, cert params) — there is no `tls.*` block. | Empty → boot error at BindEach. Wrong addr/credentials → error on first use (or the fail-fast ping error "failed to reach tdengine at <addr>" when `ping=true`). |
 | `max-open-conns` | int | 8 | `db.SetMaxOpenConns` on the embedded pool [driver.go:81]. | Too low → statements queue waiting for a free conn. |
 | `max-idle-conns` | int | 2 | `db.SetMaxIdleConns`. ⚠ Should be ≤ max-open-conns (database/sql silently caps it, but a value above is a config smell). | Larger than open conns → clamped, idle churn. |
 | `conn-max-lifetime` | duration | 0s | `db.SetConnMaxLifetime`; 0 = never retire. ⚠ Unlike redis (2m default), there is no discovery to follow here, so 0 is safe. | — |
+| `ping` | bool | `false` | Startup connectivity probe: when true the ctor pings once (`HealthCheck`) and fails the boot if unreachable, restoring fail-fast. Off by default so a server that is not up yet does not block startup. | `ping=true` against a down server → boot error "failed to reach tdengine at <addr>". |
+| `health` | bool | `true` | Whether this instance contributes a `health.Indicator` (name `tdengine:<name>`) for the actuator's readiness/startup probes. Set false to keep the instance out of the aggregated health report. | `health=false` → no `tdengine:<name>` component in `/readyz`. |
 
 No `driver` key: client assembly is owned by an optional `Driver` bean (see §2.1) or the bundled
 `DefaultDriver`. No observability keys exist — instrumentation is always on (§4.2).
@@ -326,8 +329,9 @@ hot-reloads via the governance center without restart.
 docker stop <tdengine> && go run .    # exits with "failed to reach tdengine at 127.0.0.1:6041"
 ```
 
-The startup ping is unconditional and bounded by 10s [starter.go:98-108] — a boot that
-succeeds proves credentials, DSN and server version are all good.
+The startup ping runs only when `ping=true` and is bounded by 10s [starter.go:98-108] — a
+boot that succeeds proves credentials, DSN and server version are all good; with the default
+`ping=false` the failure surfaces on first use instead of at boot.
 
 ---
 
@@ -349,7 +353,7 @@ succeeds proves credentials, DSN and server version are all good.
 
 | Metric | Value |
 |--------|-------|
-| Config keys | 4 instance keys |
+| Config keys | 6 instance keys |
 | Required | 1 (`dsn`) |
 | Quickstart external deps | 1 (TDengine + its bundled taosAdapter) |
 | "Watch out" entries | 4 |
@@ -360,5 +364,5 @@ Design suspects (kept from the previous audit, plus new):
   `tls.*`/`service-name` unlike sibling starters (family asymmetry).
 - `Prepare` escapes the guard seam entirely — an ORM that prepares statements silently loses
   resilience + observability coverage.
-- Health indicator has no opt-out key (same family asymmetry as starter-go-redis; redigo
-  has `health.enabled`).
+- The health indicator is per instance (`health=false` opts out); the startup probe is
+  opt-in (`ping=true`) — the two knobs redigo splits into `health.enabled`/`startup-ping`.

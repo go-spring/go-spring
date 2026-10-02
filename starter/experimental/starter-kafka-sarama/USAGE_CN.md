@@ -177,7 +177,7 @@ gs.Run()
   │       executor（带一次性警告）—— 以 client 为键存入 sync.Map。治理**在构造
   │       期施加**，故 driver 返回的 client 已是完整的，没有事后补挂步骤
   │       [driver.go CreateClient, command.go attachExecutor]
-  │    4. 再防御性 fail-fast：len(Brokers())==0 → closeResilience +
+  │    4. 再防御性探测（ping=true 时）：len(Brokers())==0 → closeResilience +
   │       close + 启动报错                                          [client.go:86-89]
   ├─ 派生 bean 归你所有：注入 client 处用 sarama.New*FromClient 自建
   └─ SIGTERM → Destroy：closeResilience（exec.Close、清 map）→ cl.Close()
@@ -263,7 +263,7 @@ SendMessage / SendMessages
 
 ## 3. 逐 key 行为参考
 
-所有 key 位于 `spring.kafka-sarama.instances.<name>.` 下（含 tls/sasl 组共 15 个；
+所有 key 位于 `spring.kafka-sarama.instances.<name>.` 下（含 tls/sasl 组共 16 个；
 这里是 `conf.BindEach` 的按实例前缀绑定，不是绝对属性的字段注入）。
 
 ### 3.1 核心
@@ -272,6 +272,7 @@ SendMessage / SendMessages
 |-----|------|--------|-------------|----------|
 | `brokers` | string | — | **必填**（`expr:"$ != ''"` [config.go:32]）；逗号分隔 seed 列表 [driver.go:103]。同时原样构成治理服务标签 `kafka:<brokers>` [command.go:221] —— 同一集群写法不同即**不同**标签。 | 缺失/为空 → 绑定报错。broker 写错 → sarama.NewClient 启动失败（fail-fast）。 |
 | `version` | string | ""（sarama 默认） | `sarama.ParseKafkaVersion` 解析；决定协议特性（headers、SASL 机制、消费组）[driver.go:65-71]。 | 解析失败 → 启动报错 `invalid kafka version`。过低 → 首次使用才报功能错误。 |
+| `ping` | bool | false | 可选：装配后的一次防御性元数据探测，`len(cl.Brokers())==0` 则启动失败 [client.go:77-82]。拨号本身始终由 driver 内的 `sarama.NewClient` 完成，故 `ping=false` 不会让 broker 宕机变静默。 | true → 空集群中止启动；false → 跳过该检查。 |
 
 `driver` key 为实例按名指定 Driver bean：不配置 → 装配由按类型注入的可选 Driver bean（见
 §2.1）或内置 `DefaultDriver` 负责；配置 → 按名注入该 bean，指定的 bean 不存在则启动失败。

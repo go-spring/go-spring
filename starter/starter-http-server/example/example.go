@@ -22,7 +22,6 @@ package main
 
 import (
 	"context"
-	"errors"
 	"flag"
 	"fmt"
 	"net/http"
@@ -33,6 +32,7 @@ import (
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
 	httpsvr "go-spring.org/starter-http-server"
+	"go-spring.org/stdlib/errutil"
 )
 
 const base = "http://127.0.0.1:9090"
@@ -46,7 +46,7 @@ type staticValidator struct{}
 
 func (staticValidator) Validate(_ context.Context, token string) (*security.Authentication, error) {
 	if token != "good-token" {
-		return nil, errors.New("bad token")
+		return nil, errutil.Explain(nil, "bad token")
 	}
 	return &security.Authentication{
 		Principal:     security.Principal{Subject: "alice"},

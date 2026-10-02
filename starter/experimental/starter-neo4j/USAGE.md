@@ -149,7 +149,7 @@ spring.governance.client.default.attempt-timeout=500ms
 or use [example/docker-compose.yml](example/docker-compose.yml)):
 
 ```bash
-go run .                          # boot fails fast if Neo4j is unreachable
+go run .                          # boot fails fast if Neo4j is unreachable (needs ping=true; off by default)
 curl -s :9370/readyz | jq .       # components include "neo4j:graph", "neo4j:analytics"
 curl -s :9370/metrics | grep -E 'db.client.operation'   # per-query duration histogram
 grep _app_neo4j_access app.log | tail -3   # one access record per Query call
@@ -191,9 +191,9 @@ gs.Run()
   │   │  ServiceName, URI) → params.ExecutorFor("neo4j", service) — the governed executor
   │   │  (fault.WrapClientExecutor over mgr.ClientExecutorFor) when the bundle is populated,
   │   │  resilience.Unmanaged (observed, warned once) for a zero bundle
-  │   └─ fail-fast HealthCheck (VerifyConnectivity on the raw driver), bounded by
-  │      socket-connect-timeout or 5s; on failure the client is destroyed and the
-  │      boot aborts [starter.go:130-136]
+  │   └─ ping=true only: fail-fast HealthCheck (VerifyConnectivity on the raw driver),
+  │      bounded by socket-connect-timeout or 5s; on failure the client is destroyed
+  │      and the boot aborts [starter.go:134-145]
   ├─ readiness: indicator runs HealthCheck per probe [health.go:32-34]
   └─ SIGTERM → Destroy [client.go:115-120]: exec.Close →
       driver.Close(context.Background())
@@ -233,7 +233,7 @@ command.go:31-44 comments call this a documented gap, not an oversight). What ex
 | `StarterNeo4j.Query[T]` | drop-in for `neo4j.ExecuteQuery` (same signature): declares the operation's identity, so the resilience layer emits the span + duration metrics + access log, plus the call-site resilience guard | opt-in, per call site |
 | `StarterNeo4j.RunWithResilience` | wraps arbitrary session/transaction code in the resilience guard; pair with `StartSpan` so the call also carries a declared identity | opt-in |
 | `StarterNeo4j.StartSpan` | declares a manual operation's identity on the ctx (Cypher as `db.statement`); it starts nothing itself — run the op under `RunWithResilience` and the resilience layer emits the signals | opt-in |
-| health indicator `neo4j:<name>` | `HealthCheck` (a `VerifyConnectivity` on the raw driver) per actuator probe | automatic, always |
+| health indicator `neo4j:<name>` | `HealthCheck` (a `VerifyConnectivity` on the raw driver) per actuator probe | automatic (unless the instance sets `health=false`) |
 | observe layer applied by the manager's executor (`resilience.WrapClientExecutor`) | the single emitter: span + `db.client.*` metrics + access log, read off the declared operation; outcome metrics (`resilience.*`) when no operation is declared | automatic once the helper is used |
 
 `Query`'s span/metric/log are **not** emitted by the starter. The starter only declares the
@@ -322,14 +322,16 @@ IndexArg(1)), not the absolute-property Pool rule.
 
 | Key | Type | Default | Behavior / interactions | Misconfiguration consequence |
 |-----|------|---------|-------------------------|------------------------------|
-| `username` | string | — | BasicAuth together with `password`/`realm`. ⚠ Empty `username` ⇒ NoAuth — anonymous connection. | Empty on an auth-enabled server → fail-fast connectivity error at boot. |
-| `password` | string | — | See above. | Wrong → fail-fast error. |
+| `username` | string | — | BasicAuth together with `password`/`realm`. ⚠ Empty `username` ⇒ NoAuth — anonymous connection. | Empty on an auth-enabled server → connectivity error on first query (or the fail-fast probe at boot when `ping=true`). |
+| `password` | string | — | See above. | Wrong → error on first query (or the fail-fast probe when `ping=true`). |
 | `realm` | string | — | Auth realm passed to BasicAuth. | — |
 | `max-connection-pool-size` | int | 100 | Max connections per host (driver semantics). | Too low → `connection-acquisition-timeout` errors under burst. |
 | `max-connection-lifetime` | duration | 1h | Retire-and-reconnect window. | — |
 | `connection-acquisition-timeout` | duration | 1m | Max wait for a pooled connection. | Too low → spuriously failed queries under burst. |
-| `socket-connect-timeout` | duration | 5s | TCP connect timeout; ⚠ also bounds the startup fail-fast probe (starter.go:130-136). | 0/negative silently falls back to 5s for the probe. |
+| `socket-connect-timeout` | duration | 5s | TCP connect timeout; ⚠ when `ping=true` also bounds the startup fail-fast probe (starter.go:134-145). | 0/negative silently falls back to 5s for the probe. |
 | `max-transaction-retry-time` | duration | 30s | Driver-level transient-error retry budget. ⚠ Stacks with `spring.governance.*.max-retries` — two retry loops can multiply attempts. | Large value + governance retry → multiplied latency. |
+| `ping` | bool | `false` | Startup connectivity probe: when true the ctor runs `HealthCheck` (`VerifyConnectivity`) once and fails the boot if unreachable, restoring fail-fast. Off by default so a server that is not up yet does not block startup. | `ping=true` against a down server → boot error "failed to verify neo4j connectivity …". |
+| `health` | bool | `true` | Whether this instance contributes a `health.Indicator` (name `neo4j:<name>`) for the actuator's readiness/startup probes. Set false to keep the instance out of the aggregated health report. | `health=false` → no `neo4j:<name>` component in `/readyz`. |
 
 ### 3.3 TLS
 
@@ -410,7 +412,7 @@ app (or let a platform do it) to re-resolve.
 
 | Symptom | Likely cause | Fix |
 |---------|--------------|-----|
-| Boot fails "failed to verify neo4j connectivity" | Server unreachable / wrong credentials / TLS mismatch | Fail-fast probe is unconditional [starter.go:130-136]; fix connectivity or auth. |
+| Boot fails "failed to verify neo4j connectivity" | Server unreachable / wrong credentials / TLS mismatch | Fail-fast probe runs only when `ping=true` (default off) [starter.go:134-145]; fix connectivity or auth, or drop `ping` to defer the failure to first query. |
 | Boot fails "neo4j: resolve service X" | `service-name` set but no backend registered under `discovery` | Register the backend (example/discovery.go) or drop service-name. |
 | Queries work but no spans/metrics/access log | Code calls `neo4j.ExecuteQuery` directly, bypassing the seam | Swap to `StarterNeo4j.Query` / declare with `StartSpan` and run under `RunWithResilience` (§2.2); import starter-otel for real export. |
 | No protection though governance is on | Session code not routed through `Query`/`RunWithResilience`, or a raw driver passed (type-assert misses) | Route through the helpers; always pass the `*Client` wrapper [command.go:105]. |
@@ -421,7 +423,7 @@ app (or let a platform do it) to re-resolve.
 
 | Metric | Value |
 |--------|-------|
-| Config keys | 13 instance keys + tls group (4) |
+| Config keys | 15 instance keys + tls group (4) |
 | Required | 1 (`uri`) |
 | Quickstart external deps | 1 (Neo4j) |
 | "Watch out" entries | 6 |

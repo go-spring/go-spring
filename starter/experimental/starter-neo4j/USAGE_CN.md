@@ -148,7 +148,7 @@ spring.governance.client.default.attempt-timeout=500ms
 或用 [example/docker-compose.yml](example/docker-compose.yml)）：
 
 ```bash
-go run .                          # Neo4j 不可达时启动 fail fast
+go run .                          # Neo4j 不可达时启动 fail fast（需 ping=true；默认关闭）
 curl -s :9370/readyz | jq .       # components 含 "neo4j:graph"、"neo4j:analytics"
 curl -s :9370/metrics | grep -E 'db.client.operation'   # 每次查询的 duration 直方图
 grep _app_neo4j_access app.log | tail -3   # 每次 Query 一条访问记录
@@ -189,9 +189,9 @@ gs.Run()
   │   │  ServiceName, URI) → params.ExecutorFor("neo4j", service)——bundle 有值时是受治理的
   │   │  executor（fault.WrapClientExecutor 包住 mgr.ClientExecutorFor），零值 bundle 时
   │   │  为 resilience.Unmanaged（被观测、仅告警一次）
-  │   └─ fail-fast HealthCheck（直达裸 driver 的 VerifyConnectivity），受
-  │      socket-connect-timeout 或 5s 约束；失败时销毁 client，启动中止
-  │      [starter.go:130-136]
+  │   └─ 仅 ping=true：fail-fast HealthCheck（直达裸 driver 的 VerifyConnectivity），
+  │      受 socket-connect-timeout 或 5s 约束；失败时销毁 client，启动中止
+  │      [starter.go:134-145]
   ├─ readiness：指示器每次探测跑 HealthCheck [health.go:32-34]
   └─ SIGTERM → Destroy [client.go:115-120]：exec.Close →
       driver.Close(context.Background())
@@ -227,7 +227,7 @@ gs.Run()
 | `StarterNeo4j.Query[T]` | `neo4j.ExecuteQuery` 的替换（同签名）：声明操作的语义身份，由 resilience 层发射 span + 时长指标 + 访问日志，外加调用点韧性保护 | 可选，逐调用点 |
 | `StarterNeo4j.RunWithResilience` | 把任意 session/事务代码套进韧性保护；配合 `StartSpan` 后该调用也带上声明的身份 | 可选 |
 | `StarterNeo4j.StartSpan` | 在 ctx 上声明手工操作的语义身份（Cypher 作为 `db.statement`）；它自身不启动任何东西——把操作放进 `RunWithResilience` 运行，信号由 resilience 层发射 | 可选 |
-| 健康指示器 `neo4j:<name>` | 每次 actuator 探测跑 `HealthCheck`（直达裸 driver 的 `VerifyConnectivity`） | 自动，恒注册 |
+| 健康指示器 `neo4j:<name>` | 每次 actuator 探测跑 `HealthCheck`（直达裸 driver 的 `VerifyConnectivity`） | 自动（除非实例置 `health=false`） |
 | 由 manager 的执行器（`resilience.WrapClientExecutor`）应用的 observe 层 | 唯一发射点：读 ctx 上声明的操作，发射 span + `db.client.*` 指标 + 访问日志；未声明操作时为 outcome 指标（`resilience.*`） | 用了辅助函数后自动 |
 
 `Query` 的 span/指标/日志**不**由 starter 发射。starter 只声明操作（[observe.go]），
@@ -305,14 +305,16 @@ IndexArg(1)），不是 starter Pool 的绝对属性规则。
 
 | Key | 类型 | 默认值 | 行为 / 联动 | 配错后果 |
 |-----|------|---------|-------------------------|------------------------------|
-| `username` | string | — | 与 `password`/`realm` 组成 BasicAuth。⚠ `username` 为空 ⇒ NoAuth 匿名连接。 | 在启用认证的服务器上留空 → 启动期 fail-fast 报错。 |
-| `password` | string | — | 见上。 | 错误 → fail-fast 报错。 |
+| `username` | string | — | 与 `password`/`realm` 组成 BasicAuth。⚠ `username` 为空 ⇒ NoAuth 匿名连接。 | 在启用认证的服务器上留空 → 首次查询报错（`ping=true` 时为启动期 fail-fast 报错）。 |
+| `password` | string | — | 见上。 | 错误 → 首次查询报错（`ping=true` 时为 fail-fast 报错）。 |
 | `realm` | string | — | 传给 BasicAuth 的 realm。 | — |
 | `max-connection-pool-size` | int | 100 | 每 host 最大连接数（驱动语义）。 | 过小 → 突发下报 `connection-acquisition-timeout` 错。 |
 | `max-connection-lifetime` | duration | 1h | 连接退役重连窗口。 | — |
 | `connection-acquisition-timeout` | duration | 1m | 从池里取连接的最长等待。 | 过小 → 突发下查询假性失败。 |
-| `socket-connect-timeout` | duration | 5s | TCP 建连超时；⚠ 同时约束启动 fail-fast 探测（starter.go:130-136）。 | 0/负值时探测静默回退 5s。 |
+| `socket-connect-timeout` | duration | 5s | TCP 建连超时；⚠ `ping=true` 时同时约束启动 fail-fast 探测（starter.go:134-145）。 | 0/负值时探测静默回退 5s。 |
 | `max-transaction-retry-time` | duration | 30s | 驱动级瞬时错误重试预算。⚠ 与 `spring.governance.*.max-retries` 叠加——两层重试相乘。 | 大值 + 治理重试 → 延迟放大。 |
+| `ping` | bool | `false` | 启动连通探活：true 时构造期跑一次 `HealthCheck`（`VerifyConnectivity`），不可达则启动失败，恢复 fail-fast。默认关闭，使尚未就绪的 server 不阻塞启动。 | `ping=true` 且 server 已挂 → 启动报 "failed to verify neo4j connectivity …"。 |
+| `health` | bool | `true` | 本实例是否贡献 `health.Indicator`（名 `neo4j:<name>`）供 actuator 就绪/启动探测。置 false 可把该实例排除在聚合健康报告之外。 | `health=false` → `/readyz` 无 `neo4j:<name>` 组件。 |
 
 ### 3.3 TLS
 
@@ -392,7 +394,7 @@ go run ./example-cloudnative -manual   # 自校验：15 连发 → 部分放行�
 
 | 症状 | 可能原因 | 处置 |
 |---------|--------------|-----|
-| 启动报 "failed to verify neo4j connectivity" | 服务器不可达 / 凭证错误 / TLS 不匹配 | fail-fast 探测无条件执行 [starter.go:130-136]；修连通性或认证。 |
+| 启动报 "failed to verify neo4j connectivity" | 服务器不可达 / 凭证错误 / TLS 不匹配 | fail-fast 探测仅在 `ping=true` 时执行（默认关闭）[starter.go:134-145]；修连通性或认证，或去掉 `ping` 把失败推迟到首次查询。 |
 | 启动报 "neo4j: resolve service X" | 设了 `service-name` 但 `discovery` 名下无后端 | 注册后端（example/discovery.go）或去掉 service-name。 |
 | 查询正常但无 span/指标/访问日志 | 代码直调 `neo4j.ExecuteQuery`，绕过接缝 | 换 `StarterNeo4j.Query` / 用 `StartSpan` 声明后放进 `RunWithResilience` 运行（§2.2）；真实导出需 import starter-otel。 |
 | 治理已开却没有保护 | session 代码未走 `Query`/`RunWithResilience`，或传了裸 driver（断言落空） | 走辅助函数；恒传 `*Client` wrapper [command.go:105]。 |
@@ -403,7 +405,7 @@ go run ./example-cloudnative -manual   # 自校验：15 连发 → 部分放行�
 
 | 指标 | 数值 |
 |------|------|
-| 配置 key 总数 | 13 实例 key + tls 组（4） |
+| 配置 key 总数 | 15 实例 key + tls 组（4） |
 | 其中必填 | 1（`uri`） |
 | quickstart 前置外部依赖 | 1（Neo4j） |
 | "注意/坑" 条数 | 6 |

@@ -161,7 +161,7 @@ import starter-asynq
              ├─ if c.Server.Enabled:
              │    Provide(newServer).Name(<name> ":server").
              │      Export(gs.As[gs.Server]()).Destroy             [worker 选配]
-             └─ Provide(health.Indicator).Name("asynq:"+<name>).
+             └─ health=false 除外 → Provide(health.Indicator).Name("asynq:"+<name>).
                 Export(gs.As[health.Indicator]())
 gs.Run()
   ├─ bean 装配：应用 bean 按实例名 autowire *Client / *Server
@@ -229,6 +229,7 @@ gs.Run()
 | `..queues` | map[string]int | 空 → asynq "default":1 | 队列 → 优先级权重（越高越常被处理）。⚠ 投递侧 `asynq.Queue(...)` 选项必须指向已配置的队列（或回退 default），否则 worker 取不到。 | 投到未列出的队列 → 任务永久 pending。 |
 | `..shutdown-timeout` | duration | 8s | worker 排空上限（`srv.Shutdown()`）；传给 `Stop` 的 ctx 不被使用——排空由该 timeout 兜底（client.go:176-183）。 | 过短 → 发布时在途任务被弃。 |
 | `..server.enabled` | bool | false | **worker 选配开关**。同时决定 `*Server` bean 是否存在——不开却 `autowire:"a:server"` 会在装配期失败。 | 注入 worker 但没开 → 容器报 bean 不存在。 |
+| `..health` | bool | true | 为实例注册 `asynq:<name>` 健康指示器（经新建 inspector 探 Redis）；false 让该实例不卷入聚合健康。 | false → 无指示器 bean，不再上报该 Redis 的就绪。 |
 | `..driver` | string | 空 | 按名指定装配该实例的 Driver bean。留空 = 先回退家族级 `spring.<family>.default.driver`，再按类型注入唯一 Driver bean（没有则回退内置 DefaultDriver）；指定的 bean 不存在则启动失败。 | 容器中存在多个 Driver bean → 每实例按名选定一个。 |
 
 ---

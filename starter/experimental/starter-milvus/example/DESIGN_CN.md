@@ -20,8 +20,8 @@ Milvus（向量数据库）的 Client 原型 starter，走 gRPC。
   executor。它们同时是**声明 seam**：各自在 executor 之前把 RPC 身份放到调用方 ctx 上
   （`observe.go`），于是 executor 内唯一的发射器据此命名 span、`db.client.*` 指标与访问日志。
   starter 自身不发射任何信号。
-- **fail-fast 探针** — 构造期 `HealthCheck`（`ListCollections`）；配错地址或凭证在启动期
-  就失败，而非首次查询。
+- **fail-fast 探针** — 实例置 `ping=true` 时在构造期跑 `HealthCheck`（`ListCollections`）；
+  配错地址或凭证此时在启动期失败，而非首次查询（默认关闭探针，则在首次查询时才失败）。
 
 ## 3. 约束
 

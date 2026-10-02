@@ -47,4 +47,11 @@ type Config struct {
 
 	// StatsEnabled records per-key hit/miss statistics when true.
 	StatsEnabled bool `value:"${stats-enabled:=false}"`
+
+	// Health controls whether the starter contributes a health.Indicator bean
+	// for this instance (readiness/startup probes via starter-actuator). On by
+	// default; set false to keep this instance out of the aggregated health
+	// report, e.g. for an instance whose absence must not pull the pod out of
+	// rotation.
+	Health bool `value:"${health:=true}"`
 }

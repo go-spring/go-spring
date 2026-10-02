@@ -31,6 +31,10 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
+// scope is the instrumentation scope name every meter and tracer in this
+// package reports under.
+const scope = "go-spring.org/cloud/scheduling"
+
 // Observability contract.
 //
 // Every fire — whether it ran or was swallowed — is reported here, becoming a
@@ -75,7 +79,7 @@ type instrumentSet struct {
 var instruments = sync.OnceValue(buildInstruments)
 
 func buildInstruments() *instrumentSet {
-	m := otel.Meter("go-spring.org/cloud/scheduling")
+	m := otel.Meter(scope)
 	runs, _ := m.Int64Counter("scheduling.runs",
 		metric.WithDescription("Scheduled job fires by status"),
 		metric.WithUnit("{fire}"))
@@ -191,7 +195,7 @@ func recordSkip(scheduled time.Time, name, reason string) {
 // context. The tracer is the global one — the no-op implementation unless an
 // SDK-based provider has been installed — so without otel the span is free.
 func traceRun(ctx context.Context, name string) (context.Context, trace.Span) {
-	return otel.Tracer("go-spring.org/cloud/scheduling").Start(ctx, "scheduler.job "+name,
+	return otel.Tracer(scope).Start(ctx, "scheduler.job "+name,
 		trace.WithAttributes(attribute.String("scheduler.job.name", name)),
 		trace.WithSpanKind(trace.SpanKindConsumer),
 	)

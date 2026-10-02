@@ -117,9 +117,9 @@ flip the weight via the app's `UpdateWeight` (§2.3) and re-query — `Weights.P
 Timeline (`starter.go`, `registrar.go`, and the starter-registry core's `starter.go`):
 
 1. For each `${spring.registry.consul.<name>}` block the module (`OnProperty("spring.registry.consul")`,
-   bound via `BindEach`) builds ONE `*api.Client` and probes the agent (`Catalog().Services`, 5s
-   timeout) so a bad address fails startup here, once per block. The bean named `consul.<name>`
-   exports BOTH `discovery.Registry` and `discovery.Discovery` (lazy read half) on that client.
+   bound via `BindEach`) builds ONE `*api.Client` and, when `ping=true`, probes the agent
+   (`Catalog().Services`, 5s timeout) so a bad address fails startup here, once per block. The bean
+   named `consul.<name>` exports BOTH `discovery.Registry` and `discovery.Discovery` (lazy read half) on that client.
 2. The starter-registry core provides `gs.Provide(NewServer).Name("registryServer")` conditioned
    on `spring.registry.service-name`; its `Registries []discovery.Registry` field slice-collects
    EVERY backend's registrar (consul, etcd, ... mixed). `Run` validates `service-name`/`addr` and
@@ -180,14 +180,15 @@ every center.
 
 | key | type | default | behavior | misconfiguration consequence |
 |-----|------|---------|----------|------------------------------|
-| `spring.registry.consul.<name>.address` | string | — (required) | Consul HTTP API address; **setting a block activates it** | unset: block fails bind (`address is required`); wrong value: startup probe fails |
+| `spring.registry.consul.<name>.address` | string | — (required) | Consul HTTP API address; **setting a block activates it** | unset: block fails bind (`address is required`); wrong value with `ping=true`: startup probe fails |
 | `spring.registry.consul.<name>.scheme` | string | `http` | `http`/`https` for the agent API | mismatch with TLS deployment → connection errors |
 | `spring.registry.consul.<name>.datacenter` | string | `` | datacenter to register into; empty = agent's | cross-dc mismatch → register/query against wrong dc |
 | `spring.registry.consul.<name>.token` | string | `` | ACL token for requests | ACL-enabled cluster without token → 403s |
 | `spring.registry.consul.<name>.namespace` | string | `` | Consul Enterprise namespace | silently wrong partition on CE |
 | `spring.registry.consul.<name>.ttl` | duration | `15s` | TTL check interval; heartbeat at `ttl/2` | ⚠ too long delays crash detection to ~TTL + `deregister-critical-after` |
 | `spring.registry.consul.<name>.deregister-critical-after` | duration | `1m` | auto-drop after check critical this long; `0` disables | ⚠ must exceed `ttl` or Consul may drop live instances on a hiccup |
-| `spring.registry.consul.<name>.health.enabled` | bool | `true` | Contributes a `health.Indicator` bean named `registry-consul:<name>` probing the agent with a catalog listing (same check as the startup probe). Only instantiated when a collector (e.g. starter-actuator) autowires it. | `false` → the agent's health is invisible to readiness probes |
+| `spring.registry.consul.<name>.ping` | bool | `false` | Probes the agent once at construction (`Catalog().Services`, 5s) and fails startup if unreachable. Off by default so an agent that is not up yet does not block boot; connectivity surfaces on first use. | — |
+| `spring.registry.consul.<name>.health` | bool | `true` | Contributes a `health.Indicator` bean named `registry-consul:<name>` probing the agent with a catalog listing (same check as the startup probe). Only instantiated when a collector (e.g. starter-actuator) autowires it. | `false` → the agent's health is invisible to readiness probes |
 | `spring.registry.service-name` | string | `` | logical service name clients resolve; **its presence is the registration intent signal** | empty: pure consumer; set with no block: Run error `... no registry center is configured` |
 | `spring.registry.addr` | string | `` (required when registering) | advertised `host:port` | empty with service-name set: startup error; malformed: Register error (`registrar.go`) |
 | `spring.registry.id` | string | `` | instance ID override; empty derives `<name>-<addr>` | ⚠ duplicate IDs across processes → one entry overwrites the other |
@@ -225,8 +226,8 @@ passing-only queries keep unhealthy instances out of the snapshot.
 5. **Heartbeat death**: pause the process (`kill -STOP`) — same visible course as a crash; resume
    (`kill -CONT`) before the critical window and the next heartbeat re-passes the check with no
    re-registration needed.
-6. **Bad address fail-fast**: set `address=127.0.0.1:9999`, boot → startup fails at the center
-   probe with `registry-consul: startup probe failed for 127.0.0.1:9999` (`starter.go`).
+6. **Bad address fail-fast**: set `address=127.0.0.1:9999` and `ping=true`, boot → startup fails at
+   the center probe with `registry-consul: startup probe failed for 127.0.0.1:9999` (`starter.go`).
 7. **Unregistered UpdateWeight**: calling `UpdateWeight` before Run registers returns
    `registry: instance not registered yet` (starter-registry `starter.go`).
 

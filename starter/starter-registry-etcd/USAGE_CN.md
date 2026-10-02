@@ -235,17 +235,18 @@ gs.Run()
 ### 3.1 `${spring.registry.etcd.<name>.*}` —— 每集群块(config.go)
 
 每块一个 etcd 集群;块名自选,成为后端 bean `etcd.<name>`。任一块存在即激活模块
-(`OnProperty("spring.registry.etcd")` 是前缀匹配);每块经 `BindEach` 绑定并在启动期探活。
+(`OnProperty("spring.registry.etcd")` 是前缀匹配);每块经 `BindEach` 绑定,并在 `ping=true` 时于启动期探活。
 
 | key | 类型 | 默认值 | 行为与联动 | 配错后果 |
 |-----|------|--------|-----------|----------|
-| `endpoints` | []string | — | 每块必填。启动时对 `endpoints[0]` 做 `Status` 探活。 | 未设:块绑定期报错(`endpoints is required`);不可达:启动失败 `registry-etcd: startup probe failed`(starter.go) |
-| `username` / `password` | string | "" | etcd 认证凭据。 | 开 auth 的集群未配 → 启动探活失败 |
-| `dial-timeout` | duration | 5s | 约束 client dial 与启动探活超时。 | 过小 → 慢网络下启动偶发失败 |
+| `endpoints` | []string | — | 每块必填。`ping=true` 时启动对 `endpoints[0]` 做 `Status` 探活。 | 未设:块绑定期报错(`endpoints is required`);`ping=true` 且不可达:启动失败 `registry-etcd: startup probe failed`(starter.go) |
+| `username` / `password` | string | "" | etcd 认证凭据。 | 开 auth 的集群未配 →(`ping=true` 时)启动探活失败 |
+| `dial-timeout` | duration | 5s | 约束 client dial 与 `ping=true` 时的启动探活超时。 | 过小 → 慢网络下启动偶发失败 |
 | `ttl` | duration | 15s | lease TTL;向上取整到整秒、最小 1s。⚠ `<=0` 静默变 15s,不是绑定期报错。 | 过长 → 崩溃驱逐延迟到 ~TTL;0 不会禁用任何东西 |
 | `key-prefix` | string | `/services/` | 所有 key 的前缀(读写共享)。⚠ 必须与消费方引用的块一致——耦合只有文档约束、从不校验。 | 不一致 → provider 正常注册、consumer 什么都发现不了,双方都"成功" |
-| `tls.*` | security | 关 | 共享 `cloud/security` 块:`enabled`、`cert-file`、`key-file`、`ca-file`、`server-name`、`insecure-skip-verify`。 | CA 错 → 启动探活失败 |
-| `health.enabled` | bool | true | 贡献名为 `registry-etcd:<name>` 的 `health.Indicator` bean,探针打 `endpoints[0]`(与启动探活同一检查)。仅当有采集方(如 starter-actuator)注入时才实例化。 | `false` → 集群健康对 readiness 探针不可见 |
+| `tls.*` | security | 关 | 共享 `cloud/security` 块:`enabled`、`cert-file`、`key-file`、`ca-file`、`server-name`、`insecure-skip-verify`。 | CA 错 →(`ping=true` 时)启动探活失败 |
+| `ping` | bool | false | 构造期对集群探活一次(`Status` 打 `endpoints[0]`),不可达即启动失败。默认关,故尚未就绪的集群不会阻塞启动,连通性问题在首次使用时暴露。 | — |
+| `health` | bool | true | 贡献名为 `registry-etcd:<name>` 的 `health.Indicator` bean,探针打 `endpoints[0]`(与启动探活同一检查)。仅当有采集方(如 starter-actuator)注入时才实例化。 | `false` → 集群健康对 readiness 探针不可见 |
 
 两个块 = 两个中心 = 双注册(registryServer 会注册进两者)。跨后端混搭(etcd 块 +
 zookeeper 块同进程)同理——registrar 收集与后端无关。
@@ -324,7 +325,7 @@ client starter 按 bean 名引用(`spring.http-client.instances.<n>.discovery=et
    → Warn `registry-etcd: snapshot %q failed (waiting for watch)` 且返回 nil——"陈旧地址
    好过没有地址";事件恢复后缓存照常刷新。
 
-8. **坏集群快速失败**:某块 `endpoints=127.0.0.1:9999` 启动 → 直接失败
+8. **坏集群快速失败**:某块 `endpoints=127.0.0.1:9999` 且 `ping=true` 启动 → 直接失败
    `registry-etcd: startup probe failed for 127.0.0.1:9999`(starter.go)——
    不会留下静默运行期缺口。
 
@@ -342,7 +343,7 @@ discovery backend name=...`。经 `logger.<name>.tag=_app_registry_etcd` 单独�
 |------|------|------|
 | 启动报 `registry: ${spring.registry.service-name} and ${spring.registry.addr} are required` | 设了 `service-name` 但没设 `addr` | 两个都设上(starter-registry `starter.go`) |
 | 启动报 `... is set but no registry center is configured` | 设了 `service-name` 但没有任何 `spring.registry.etcd.<name>` 块 | 至少配一个带 `endpoints` 的块 |
-| 启动报 `startup probe failed` | etcd 不可达 / TLS 错 / 缺认证 | 修该块的 `endpoints`/`tls.*`/凭据;探活就是启动期证明 |
+| 启动报 `startup probe failed`(仅 `ping=true` 时) | etcd 不可达 / TLS 错 / 缺认证 | 修该块的 `endpoints`/`tls.*`/凭据;探活就是启动期证明 |
 | provider 正常,consumer 解析不到 | provider 注册的块与 consumer 引用的块 `key-prefix` 不一致 | 两边对齐(默认 `/services/`);该不一致从不校验 |
 | consumer 引用 `etcd.main` 找不到 bean | 块名不同,或块缺失 | bean 名是 `etcd.<块名>`;核对块 key |
 | 实例短暂消失后回归 | lease 死亡(etcd 重启、带外 revoke)后自愈循环完成重注册 | 无需处置——自愈(演练 6);频繁出现则检查 etcd 健康 |

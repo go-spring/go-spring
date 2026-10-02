@@ -102,8 +102,8 @@ Connection, bound per block under `spring.registry.consul.<name>`:
 | `ttl` | `15s` | TTL health check; the starter heartbeats at half this interval. |
 | `deregister-critical-after` | `1m` | Consul drops the instance if its check stays critical this long (e.g. after a crash). |
 
-Each block becomes ONE backend bean `consul.<name>` — one client, one startup
-probe, one lifecycle; both halves of the naming idiom share them, so read and
+Each block becomes ONE backend bean `consul.<name>` — one client, one lifecycle
+(a startup probe only when `ping=true`); both halves of the naming idiom share them, so read and
 write can never diverge. **Registration activates only when `service-name` is
 set**; a consumer-only app omits that key and registers nothing.
 
@@ -158,8 +158,9 @@ meta key carries transport selection, mirroring the etcd/nacos adapters.
 ## How It Works
 
 - For each block the starter builds ONE backend bean (`consul.<name>`) holding
-  the agent's client and both halves of the naming idiom. It probes the agent
-  (`Catalog().Services`) so an unreachable one fails startup, once per block.
+  the agent's client and both halves of the naming idiom. With `ping=true` it
+  probes the agent (`Catalog().Services`) so an unreachable one fails startup,
+  once per block.
 - The `registryServer` from the [starter-registry](../starter-registry) core
   (transitively imported) collects every backend's registrar — across all
   backends — and waits for readiness, then `Register`s the instance into every

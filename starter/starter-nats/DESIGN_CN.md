@@ -26,7 +26,7 @@ NATS 同一连接同时承载 core + JetStream 两套 API。
   与 resilience executor，让调用方不用同时 autowire 两个 bean 再自行判断
   关系。
 - **`HealthCheck` 反映实时状态。** `StarterNats.HealthCheck` 返回裸连接的 `IsConnected()`，
-  并在其之上按实例注册一个 `health.Indicator`（`nats:<name>`，可用 `health.enabled` 关掉），
+  并在其之上按实例注册一个 `health.Indicator`（`nats:<name>`，可用 `health` 关掉），
   其探针只调用该函数，让 actuator 就绪探针看到自动重连客户端的实时状态，而不是启动期的旧成功值。
 - **`destroy = Drain`，不是 `Close`。** `Drain` 让 in-flight 订阅完成再关
   连接，符合框架优雅关停契约。

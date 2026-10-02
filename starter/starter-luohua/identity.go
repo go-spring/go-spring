@@ -22,12 +22,11 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
-	"errors"
-	"fmt"
 	"strings"
 	"time"
 
 	"go-spring.org/cloud/security"
+	"go-spring.org/stdlib/errutil"
 )
 
 // LuohuaSSO is the luohua company SSO: a security.TokenValidator backed by a
@@ -83,32 +82,32 @@ func (s *LuohuaSSO) sign(payload string) string {
 // it to 401, so luohua needs no HTTP knowledge here.
 func (s *LuohuaSSO) Validate(_ context.Context, token string) (*security.Authentication, error) {
 	if token == "" {
-		return nil, errors.New("luohua: empty token")
+		return nil, errutil.Explain(nil, "luohua: empty token")
 	}
 	payload, sig, ok := strings.Cut(token, ".")
 	if !ok {
-		return nil, errors.New("luohua: malformed token")
+		return nil, errutil.Explain(nil, "luohua: malformed token")
 	}
 
 	mac := hmac.New(sha256.New, s.secret)
 	mac.Write([]byte(payload))
 	if !hmac.Equal([]byte(sig), []byte(base64.RawURLEncoding.EncodeToString(mac.Sum(nil)))) {
-		return nil, errors.New("luohua: bad signature")
+		return nil, errutil.Explain(nil, "luohua: bad signature")
 	}
 
 	raw, err := base64.RawURLEncoding.DecodeString(payload)
 	if err != nil {
-		return nil, fmt.Errorf("luohua: decode: %w", err)
+		return nil, errutil.Explain(err, "luohua: decode")
 	}
 	var c claims
 	if err := json.Unmarshal(raw, &c); err != nil {
-		return nil, fmt.Errorf("luohua: decode claims: %w", err)
+		return nil, errutil.Explain(err, "luohua: decode claims")
 	}
 	if c.Issuer != s.issuer {
-		return nil, errors.New("luohua: bad issuer")
+		return nil, errutil.Explain(nil, "luohua: bad issuer")
 	}
 	if c.ExpiresAt != 0 && c.ExpiresAt < time.Now().Unix() {
-		return nil, errors.New("luohua: token expired")
+		return nil, errutil.Explain(nil, "luohua: token expired")
 	}
 
 	return &security.Authentication{

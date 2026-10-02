@@ -29,9 +29,6 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-// tracerName identifies spans emitted by this starter.
-const tracerName = "go-spring.org/starter-grpc"
-
 // --- tracing ----------------------------------------------------------------
 
 // TracingUnaryInterceptor starts a server span for each unary gRPC request:
@@ -45,7 +42,7 @@ const tracerName = "go-spring.org/starter-grpc"
 func TracingUnaryInterceptor() grpc.UnaryServerInterceptor {
 	return func(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
 		ctx = extractTraceContext(ctx)
-		ctx, span := otel.Tracer(tracerName).Start(ctx, info.FullMethod,
+		ctx, span := otel.Tracer(scope).Start(ctx, info.FullMethod,
 			trace.WithSpanKind(trace.SpanKindServer),
 			trace.WithAttributes(
 				attribute.String("rpc.system", "grpc"),
@@ -74,7 +71,7 @@ func TracingUnaryInterceptor() grpc.UnaryServerInterceptor {
 func TracingStreamInterceptor() grpc.StreamServerInterceptor {
 	return func(srv any, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
 		ctx := extractTraceContext(ss.Context())
-		ctx, span := otel.Tracer(tracerName).Start(ctx, info.FullMethod,
+		ctx, span := otel.Tracer(scope).Start(ctx, info.FullMethod,
 			trace.WithSpanKind(trace.SpanKindServer),
 			trace.WithAttributes(
 				attribute.String("rpc.system", "grpc"),

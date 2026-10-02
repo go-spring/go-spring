@@ -43,9 +43,10 @@ type etcdLocker struct {
 }
 
 // newEtcdLocker builds a *clientv3.Client from c and returns a Locker that
-// mints one session per acquisition. It fails fast when the cluster is
-// unreachable within DialTimeout so a misconfigured application never boots
-// with a silently broken lock backend.
+// mints one session per acquisition. With Ping set it fails fast when the
+// cluster is unreachable within DialTimeout, so a misconfigured application
+// never boots with a silently broken lock backend; with Ping off (the default)
+// construction skips the probe.
 func newEtcdLocker(ctx *gs.ContextProvider, c Config) (*etcdLocker, error) {
 	log.Debugf(ctx.Context, log.TagAppDef, "creating etcd locker, endpoints=%v key-prefix=%s", c.Endpoints, c.KeyPrefix)
 
@@ -71,18 +72,20 @@ func newEtcdLocker(ctx *gs.ContextProvider, c Config) (*etcdLocker, error) {
 		return nil, errutil.Explain(err, "lock-etcd: failed to create etcd client")
 	}
 
-	// Fail-fast readiness probe: a Status against the first endpoint proves
-	// the credentials and TLS material work, so a bad configuration surfaces
-	// at boot instead of on the first Acquire.
-	pctx, cancel := context.WithTimeout(ctx.Context, c.DialTimeout)
-	defer cancel()
-	if _, err := cli.Status(pctx, c.Endpoints[0]); err != nil {
-		log.Errorf(pctx, log.TagAppDef, "lock-etcd: startup probe failed for %s: %v", c.Endpoints[0], err)
-		_ = cli.Close()
-		return nil, errutil.Explain(err, "lock-etcd: startup probe failed for %s", c.Endpoints[0])
+	if c.Ping {
+		// Fail-fast readiness probe: a Status against the first endpoint proves
+		// the credentials and TLS material work, so a bad configuration surfaces
+		// at boot instead of on the first Acquire.
+		pctx, cancel := context.WithTimeout(ctx.Context, c.DialTimeout)
+		defer cancel()
+		if _, err := cli.Status(pctx, c.Endpoints[0]); err != nil {
+			log.Errorf(pctx, log.TagAppDef, "lock-etcd: startup probe failed for %s: %v", c.Endpoints[0], err)
+			_ = cli.Close()
+			return nil, errutil.Explain(err, "lock-etcd: startup probe failed for %s", c.Endpoints[0])
+		}
 	}
 
-	log.Infof(pctx, log.TagAppDef, "etcd locker initialized, endpoints=%v", c.Endpoints)
+	log.Infof(ctx.Context, log.TagAppDef, "etcd locker initialized, endpoints=%v", c.Endpoints)
 	return &etcdLocker{
 		client:    cli,
 		keyPrefix: c.KeyPrefix,

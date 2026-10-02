@@ -190,11 +190,12 @@ TTL / renew / retry 经 `lock.Resolve`（cloud/lock/resolve.go）解析，高层
 | Key | 类型 | 默认值 | 行为 / 联动 | 配错后果 |
 |-----|------|--------|-------------|----------|
 | `endpoints` | []string | — | **必填**。集群节点地址，注册前检查。 | 空 → 启动失败并点名实例。 |
-| `username` / `password` | string | — | etcd 鉴权凭据；匿名集群留空。 | 凭据错误在启动 `Status` 探针即失败（不只是建 client）。 |
-| `dial-timeout` | duration | `5s` | 同时限定初始连接**与**就绪探针预算。 | 过低 → 慢网络启动失败；过高 → fail-fast 变慢。 |
+| `username` / `password` | string | — | etcd 鉴权凭据；匿名集群留空。 | 凭据错误（`ping=true` 时）在启动 `Status` 探针即失败（不只是建 client）。 |
+| `dial-timeout` | duration | `5s` | 同时限定初始连接**与** `ping=true` 时的就绪探针预算。 | 过低 → 慢网络启动失败；过高 → fail-fast 变慢。 |
 | `ttl` | duration | `30s` | 每把锁的 lease TTL，进 §2.2 第 2 层。不足 1 秒**向上取整**。 | `500ms` 无声变 `1s`。 |
 | `key-prefix` | string | `/lock/` | 拼在每个锁 key 前；尾部斜杠保留。 | 跨应用共享前缀 → 互相争锁。 |
 | `tls.enabled` | bool | `false` | 经 `security.Build` 应用共享 `security` 块（`server-name`、`ca-file`、`cert-file`、`key-file`、`insecure-skip-verify`）。 | 材料错误 → 启动期建 client 失败。 |
+| `ping` | bool | `false` | 构造期对集群探活一次（`dial-timeout` 内 `Status` 打 `endpoints[0]`），不可达即启动失败。默认关，故尚未就绪的集群不阻塞启动，连通性问题在首次 `Acquire` 时暴露。 | — |
 | `observe.enabled` | bool | `true` | 默认用 observe-lock 适配器包装 `<name>` 主 Locker bean（trace span + metric + 访问日志）。`false` = 裸 locker。 | 迁移：`<name>-observed` bean 已移除，请注入 `<name>`。 |
 
 ⚠ 本 starter **没有** `renew-interval`/`retry-interval` key：etcd concurrency 包自动维持
@@ -225,7 +226,7 @@ ETCDCTL_API=3 etcdctl get --prefix /starter-lock-etcd/ --keys-only   # 持有者
 
 ### 4.3 启动就绪探针
 
-把 `endpoints` 指向死端口：启动报 `lock-etcd: startup probe failed for ...` 并关闭
+把 `endpoints` 指向死端口并设 `ping=true`：启动报 `lock-etcd: startup probe failed for ...` 并关闭
 client——配置错的应用到不了 `Acquire`。
 
 ### 4.4 观察 locker（默认开启）
@@ -251,7 +252,7 @@ cd example && ./check.sh    # docker 门控：compose 起 etcd，跑自校验 ex
 | 症状 | 可能原因 | 处置 |
 |------|----------|------|
 | 启动报 `endpoints is required for instance "<n>"` | 实例缺 endpoints | 补 key 或删实例。 |
-| 启动报 `startup probe failed` | 集群不可达 / 凭据错 / TLS 材料错 | `Status` 探针启动期三合一验证——修连通性或鉴权。 |
+| 启动报 `startup probe failed`（仅 `ping=true` 时） | 集群不可达 / 凭据错 / TLS 材料错 | `Status` 探针启动期三合一验证——修连通性或鉴权。 |
 | 进程健康却中途丢锁 | keepalive 流断（网络分区、etcd 丢仲裁） | keepalive 依赖 client→server 流量；查连通与仲裁，必要时缩短 TTL 限定暴露面。 |
 | 亚秒 TTL 表现为 1s | lease 整秒取整（`ttlSeconds` 向上、下限 1s） | 选整秒 TTL；`500ms` 不可表达。 |
 | `TryAcquire` 返回 `ok=false` 无错误 | 普通竞争（`ErrLocked` 被翻译） | 预期行为；等待用 `Acquire`。 |

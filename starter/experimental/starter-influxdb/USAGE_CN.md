@@ -9,7 +9,7 @@ influxdb-client-go API 属于[客户端官方文档](https://docs.influxdata.com
 **激活条件**：出现任意 `spring.influxdb.instances.*` key 即激活（模块是
 `OnProperty("spring.influxdb")` 前缀检查 [starter.go:41]）。每个 `spring.influxdb.instances.<name>`
 条目创建一个名为 `<name>` 的 `*StarterInfluxdb.Client` bean，外加名为
-`influxdb:<name>` 的健康指示器——两者均无关闭开关。
+`influxdb:<name>` 的健康指示器（`health=false` 可跳过）；启动探活为 opt-in（`ping=true`）。
 
 ---
 
@@ -132,7 +132,7 @@ cd starter-influxdb/example && docker compose -p demo up -d
 # 等一次性 setup（admin/org/bucket/token）完成并报告 pass：
 curl -fsS http://127.0.0.1:8086/health | grep '"pass"'
 
-go run .                          # server 不可达时启动快速失败（fail fast）
+go run .                          # server 不可达时启动快速失败（fail fast；需 ping=true，默认关闭）
 curl -s :9370/readyz | jq .      # components 含 influxdb:a 与 influxdb:b
 curl -s :9370/metrics | grep -E 'db.client'   # 调用级+尝试级 duration 直方图 + active gauge
 grep _app_influxdb_access app.log | tail -3   # 每次调用一条访问记录
@@ -171,7 +171,7 @@ gs.Run()
   │       client 所乘的 dynamicTransport 上换入链——dyn.Swap(declareTransport{base:
   │       resilience.NewRoundTripper(http.DefaultTransport, exec)})——因此 driver
   │       一返回，声明+治理链即已生效
-  │    4. fail-fast 探测：HealthCheck(ctx, w) → /health 必须报告 "pass"，
+  │    4. 仅 ping=true：fail-fast 探测 HealthCheck(ctx, w) → /health 必须报告 "pass"，
   │       否则刚装配好的 client 被拆解（executor + 连接）并启动失败 [starter.go:99-102]
   ├─ 就绪：指示器翻 UP（每次探测 = 一趟 /health 往返）
   └─ SIGTERM → Destroy [client.go:119]：Client.Close()——flush 异步 writer
@@ -258,10 +258,12 @@ transport 的自定义 driver 得到的 client 没有传输层声明/治理—�
 
 | Key | 类型 | 默认值 | 行为 / 联动 | 配错后果 |
 |-----|------|--------|-------------|----------|
-| `server-url` | string | — | InfluxDB 基础 URL；同时派生 resilience 服务键 `influxdb:<server-url>`。⚠ HTTPS 由 URL scheme 表达——没有 `tls.*` 块。 | 空 → BindEach 启动失败（`expr:"$ != ''"` [config.go:26]）；host 错 → fail-fast /health 探测启动失败。 |
+| `server-url` | string | — | InfluxDB 基础 URL；同时派生 resilience 服务键 `influxdb:<server-url>`。⚠ HTTPS 由 URL scheme 表达——没有 `tls.*` 块。 | 空 → BindEach 启动失败（`expr:"$ != ''"` [config.go:26]）；host 错 → 首次使用时（`ping=true` 时为 fail-fast /health 探测）启动失败。 |
 | `auth-token` | string | — | 传给 SDK 的 API token。 | 空 → 启动报错；token 错 → 写/查逐请求失败（/health 探测不做鉴权，可能仍绿）。 |
 | `org` | string | `""` | `WritePoints`/`ManagedWriteAPI` 与 `Org()` 的默认 org。⚠ **调用期**才需要，装配期不校验：不配 org/bucket 的 client 照样能服务 Query/Delete API。 | 缺失 → `WritePoints` 返回 error，`ManagedWriteAPI` **panic**（失败方式不一致——设计嫌疑）。 |
 | `bucket` | string | `""` | 写助手的目标 bucket 默认值。⚠ 与 `org` 同一调用期规则。 | 同 `org`。 |
+| `ping` | bool | `false` | 启动连通探活：true 时构造期跑一次 `HealthCheck`（一趟 `/health` 往返），出错则启动失败，恢复 fail-fast。默认关闭，使尚未就绪的 server 不阻塞启动。 | `ping=true` 且 server 已挂 → 启动报 `failed to reach influxdb server …`。 |
+| `health` | bool | `true` | 本实例是否贡献 `health.Indicator`（名 `influxdb:<name>`）供 actuator 就绪/启动探测。置 false 可把该实例排除在聚合健康报告之外。 | `health=false` → `/readyz` 无 `influxdb:<name>` 组件。 |
 
 没有 `driver` key：client 装配由可选 `Driver` bean（见 §2.1）或内置 `DefaultDriver` 负责。
 没有 `tls.*` 组、没有 `service-name`/服务发现、没有超时 key——未列出的一切都是
@@ -345,7 +347,7 @@ error）。
 
 | 指标 | 数值 |
 |------|------|
-| 配置 key 总数 | 实例 4 个 |
+| 配置 key 总数 | 实例 6 个 |
 | 其中必填 | 装配期 2（`server-url`、`auth-token`）+ 调用期 2（`org`、`bucket`） |
 | quickstart 前置外部依赖 | 1（InfluxDB 2.x） |
 | "注意/坑" 条数 | 5 |
@@ -354,7 +356,8 @@ error）。
 
 - `org`/`bucket` 只在调用期校验；`WritePoints` 报 error、`ManagedWriteAPI` **panic**——
   同一缺口两种失败方式。
-- 健康指示器无关闭 key（redigo 有 `health.enabled`——家族不对称）；健康探测本身也走
+- 健康指示器每实例默认注册（`health=false` 可关）；启动探活为 opt-in（`ping=true`）——即
+  redigo 拆成 `health.enabled`/`startup-ping` 的那两个旋钮。健康探测本身也走
   声明 transport，每次 readiness 检查多一条访问日志。
 - `WritePoints` 之外的内嵌方法只有传输层治理、没有逐调用治理；`ManagedWriteAPI` 则
   完全没有——两档保护强度在调用点不可见。

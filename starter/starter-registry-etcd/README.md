@@ -92,13 +92,13 @@ Connection, bound per block under `spring.registry.etcd.<name>`:
 | `endpoints` | (required) | etcd cluster nodes; setting a block activates it. |
 | `username` | (empty) | Auth username; empty for anonymous clusters. |
 | `password` | (empty) | Auth password. |
-| `dial-timeout` | `5s` | Bounds the initial connect and the startup probe. |
+| `dial-timeout` | `5s` | Bounds the initial connect and the startup probe (when `ping=true`). |
 | `ttl` | `15s` | Lease duration; the registrar keeps it alive while up. Rounded up to whole seconds. |
 | `key-prefix` | `/services/` | Prepended to every key so apps can share a cluster. |
 | `tls.*` | (off) | Optional client TLS (`enabled`, `cert-file`, `key-file`, `ca-file`). |
 
-Each block becomes ONE backend bean `etcd.<name>` — one client, one startup
-probe, one lifecycle; both halves of the naming idiom share them, so read and
+Each block becomes ONE backend bean `etcd.<name>` — one client, one lifecycle
+(a startup probe only when `ping=true`); both halves of the naming idiom share them, so read and
 write can never diverge. **Registration activates only when `service-name` is
 set**; a consumer-only app omits that key and registers nothing.
 
@@ -156,9 +156,9 @@ selection, mirroring the nacos adapter.
 ## How It Works
 
 - For each block the starter builds ONE backend bean (`etcd.<name>`) holding
-  the cluster's client and both halves of the naming idiom. It probes the
-  cluster (a `Status` call) so an unreachable etcd fails startup, once per
-  block.
+  the cluster's client and both halves of the naming idiom. With `ping=true` it
+  probes the cluster (a `Status` call) so an unreachable etcd fails startup,
+  once per block.
 - The `registryServer` from the [starter-registry](../starter-registry) core
   (transitively imported) collects every backend's registrar — across all
   backends — and waits for readiness, then `Register`s the instance into every

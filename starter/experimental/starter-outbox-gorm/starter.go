@@ -67,10 +67,13 @@ func init() {
 			).Name(name).Init((*Relay).Init).Destroy((*Relay).Destroy).
 				Export(gs.As[gs.Rooter]()).Caller(1)
 
-			// Health indicator probes the backing database through gorm.
-			r.Provide(func(db *gorm.DB) *health.Indicator {
-				return NewRelayHealth(name, db)
-			}, gs.TagArg(c.DB)).Name("outbox:" + name).Caller(1)
+			// Health indicator probes the backing database through gorm, unless
+			// the user disabled it (health=false).
+			if c.Health {
+				r.Provide(func(db *gorm.DB) *health.Indicator {
+					return NewRelayHealth(name, db)
+				}, gs.TagArg(c.DB)).Name("outbox:" + name).Caller(1)
+			}
 			return nil
 		})
 	})

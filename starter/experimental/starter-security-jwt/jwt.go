@@ -19,7 +19,6 @@ package StarterSecurityJWT
 import (
 	"context"
 	"errors"
-	"fmt"
 	"net/http"
 	"os"
 	"slices"
@@ -122,7 +121,7 @@ func validMethods(c Config, src keySource) ([]string, error) {
 	if slices.Contains(allowed, alg) {
 		return []string{alg}, nil
 	}
-	return nil, fmt.Errorf("security-jwt: algorithm %q is not compatible with the configured key source", c.Algorithm)
+	return nil, errutil.Explain(nil, "security-jwt: algorithm %q is not compatible with the configured key source", c.Algorithm)
 }
 
 // parsePEMPublicKey loads the PEM public key from the inline value or the file,
@@ -142,7 +141,7 @@ func parsePEMPublicKey(c Config) (any, error) {
 	if ecKey, err := jwt.ParseECPublicKeyFromPEM(pem); err == nil {
 		return ecKey, nil
 	}
-	return nil, errors.New("security-jwt: public key is neither a valid RSA nor ECDSA PEM")
+	return nil, errutil.Explain(nil, "security-jwt: public key is neither a valid RSA nor ECDSA PEM")
 }
 
 // Validate verifies a raw token string and returns the security.Authentication

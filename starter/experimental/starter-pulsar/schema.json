@@ -62,9 +62,9 @@
             "type": "boolean",
             "default": false
           },
-          "fail-fast": {
+          "ping": {
             "type": "boolean",
-            "default": true
+            "default": false
           },
           "health-check-topic": {
             "type": "string",

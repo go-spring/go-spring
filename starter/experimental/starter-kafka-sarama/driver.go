@@ -22,7 +22,6 @@ package StarterKafkaSarama
 
 import (
 	"context"
-	"fmt"
 	"strings"
 
 	"github.com/IBM/sarama"
@@ -127,7 +126,7 @@ func applySASL(cfg *sarama.Config, c SASLConfig) error {
 		cfg.Net.SASL.Mechanism = sarama.SASLTypeSCRAMSHA512
 		cfg.Net.SASL.SCRAMClientGeneratorFunc = scramSHA512Generator
 	default:
-		return fmt.Errorf("unsupported kafka sasl mechanism: %q", c.Mechanism)
+		return errutil.Explain(nil, "unsupported kafka sasl mechanism: %q", c.Mechanism)
 	}
 	return nil
 }
@@ -149,7 +148,7 @@ func applyProducer(cfg *sarama.Config, c ProducerConfig) error {
 	case "none":
 		cfg.Producer.RequiredAcks = sarama.NoResponse
 	default:
-		return fmt.Errorf("unsupported kafka required-acks: %q", c.RequiredAcks)
+		return errutil.Explain(nil, "unsupported kafka required-acks: %q", c.RequiredAcks)
 	}
 	return nil
 }
@@ -168,6 +167,6 @@ func compressionCodec(name string) (sarama.CompressionCodec, error) {
 	case "zstd":
 		return sarama.CompressionZSTD, nil
 	default:
-		return sarama.CompressionNone, fmt.Errorf("unsupported kafka compression: %q", name)
+		return sarama.CompressionNone, errutil.Explain(nil, "unsupported kafka compression: %q", name)
 	}
 }

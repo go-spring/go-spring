@@ -62,6 +62,11 @@
                 "description": "turn on the worker role"
               }
             }
+          },
+          "health": {
+            "type": "boolean",
+            "default": true,
+            "description": "Contributes a health.Indicator bean per instance; set false to disable."
           }
         }
       }

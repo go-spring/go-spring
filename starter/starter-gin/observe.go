@@ -31,6 +31,7 @@ import (
 	"go-spring.org/cloud/observability"
 	"go-spring.org/log"
 	"go-spring.org/stdlib/bufutil"
+	"go-spring.org/stdlib/errutil"
 	"go-spring.org/stdlib/httputil"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -42,11 +43,9 @@ import (
 	tracenoop "go.opentelemetry.io/otel/trace/noop"
 )
 
-// tracerName identifies spans emitted by this starter.
-const tracerName = "go-spring.org/starter-gin"
-
-// meterName identifies metrics emitted by this starter.
-const meterName = "go-spring.org/starter-gin"
+// scope is the instrumentation scope name every meter and tracer in this package
+// reports under.
+const scope = "go-spring.org/starter-gin"
 
 // OTel HTTP semantic-convention attribute keys, stable since semconv v1.27.0.
 // Hardcoded (rather than importing semconv/v1.27.0) to keep the starter
@@ -405,7 +404,7 @@ func (t *httpTracer) Begin(ctx context.Context, r *http.Request, f requestFacts)
 		spanName = f.method + " " + f.route
 	}
 	ctx = otel.GetTextMapPropagator().Extract(ctx, propagation.HeaderCarrier(r.Header))
-	ctx, span := otel.Tracer(tracerName).Start(ctx, spanName,
+	ctx, span := otel.Tracer(scope).Start(ctx, spanName,
 		trace.WithSpanKind(trace.SpanKindServer),
 	)
 	// Request attributes, set up front so they appear even when a later
@@ -446,7 +445,7 @@ func (t *httpTracer) End(ff finalizeFacts) {
 	if ff.rec != nil {
 		err, ok := ff.rec.(error)
 		if !ok {
-			err = fmt.Errorf("%v", ff.rec)
+			err = errutil.Explain(nil, "%v", ff.rec)
 		}
 		span.RecordError(err, trace.WithStackTrace(true))
 	}
@@ -487,7 +486,7 @@ type instrumentSet struct {
 var instruments = sync.OnceValue(buildInstruments)
 
 func buildInstruments() *instrumentSet {
-	m := otel.Meter(meterName)
+	m := otel.Meter(scope)
 	in := &instrumentSet{meter: m}
 	in.duration, _ = m.Float64Histogram(
 		"http.server.request.duration",

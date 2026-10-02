@@ -192,7 +192,7 @@ gs.Run()
   │   ├─ NotifyClose/NotifyBlocked 桥接进 go-spring 日志（连接关闭时
   │   │   amqp091 关闭 channel，goroutine 自然退出）                       [starter.go:106-135]
   │   ├─ applyResilience：先装配——executor 以 *amqp.Connection 为键索引     [starter.go:138]
-  │   └─ 再探测：打开并关闭一条探测 channel，确认 AMQP 层可用；
+  │   └─ 再探测（ping=true 时）：打开并关闭一条探测 channel，确认 AMQP 层可用；
   │       探测失败释放刚装配的内容                                           [starter.go:148-158]
   ├─ 就绪：连接 bean 可按实例名注入 *amqp.Connection
   └─ SIGTERM：destroyClient → closeResilience（executor Close）后
@@ -270,14 +270,15 @@ publish 根本不执行，返回的是 resilience 哨兵错误。没有单独的
 
 ## 3. 逐 key 行为参考
 
-所有 key 位于 `spring.rabbitmq.instances.<name>.*`。自有 value tag 4 个（config.go:28-55）
-加共享 security（6 个）块共 10 个；必填 1 个。
+所有 key 位于 `spring.rabbitmq.instances.<name>.*`。自有 value tag 5 个（config.go:28-55）
+加共享 security（6 个）块共 11 个；必填 1 个。
 
 | Key | 类型 | 默认值 | 行为 / 联动 | 配错后果 |
 |-----|------|--------|-------------|----------|
 | `url` | string | — | **必填**（`expr:"$ != ''"`，config.go:33）。`amqp://` 或 `amqps://`；仅 `amqps://` scheme 也会强制走 TLS 配置拨号分支 [driver.go:69-72]。 | 为空 → 绑定报错；凭据/TLS 错 → **启动失败**（同步拨号）。 |
 | `vhost` | string | "" | 传入 `amqp.Config`，覆盖从 URL 解析出的 vhost [driver.go:72-76]。同时进入治理 service label。 | URL 与 vhost 冲突 → 启动期 AMQP 握手错误。 |
 | `heartbeat` | duration | 10s | `>0`（或有 TLS/vhost）使 `amqp.Dial` → `amqp.DialConfig` 并携带 `Heartbeat` [driver.go:72-80]。`0` = URL/服务端默认。⚠ 非默认 heartbeat 会把普通拨号也切到 DialConfig 分支，值仍生效。 | 过低 → 高负载下误判断连；0 → 服务端默认可能超过 TCP 空闲超时。 |
+| `ping` | bool | false | 可选：启动期打开并关闭一条探测 channel，确认 AMQP 层可用 [starter.go:148-158]。 | true → TCP 通但 AMQP 层坏的端点会中止启动；false → 首次 channel/publish 才暴露。 |
 | `tls.enabled` | bool | false | 与 `amqps://` 隐式等效；显式开启后把构建的 `*tls.Config` 接进拨号 [driver.go:69-79]。 | 明文 `amqp://` + `tls.enabled=true` → 对 cleartext 端口跑 TLS → 启动报错。 |
 | `tls.ca-file` / `cert-file` / `key-file` | string | "" | 自定义 CA / mTLS 证书对，由共享 `security` 块加载（跨 starter 统一 key，config.go:44-48）。 | 文件缺失 → 启动期 TLS 构建失败 [driver.go:64-68]。 |
 | `tls.server-name` | string | "" | SNI/校验名覆盖。 | 不匹配 → 启动期 x509 hostname 错误。 |
@@ -290,7 +291,7 @@ publish 根本不执行，返回的是 resilience 哨兵错误。没有单独的
 （config.go / driver.go）。
 
 已与 `grep -rhoE 'value:"[^"]+"'` 对账：自有 tag 恰为 `${url}`、`${vhost:=}`、
-`${heartbeat:=10s}`、`${tls}`；tls.* 各列来自经
+`${heartbeat:=10s}`、`${ping:=false}`、`${tls}`；tls.* 各列来自经
 `${tls}` 绑定的共享 cloud 块。
 
 ---
@@ -302,7 +303,7 @@ publish 根本不执行，返回的是 resilience 哨兵错误。没有单独的
 ```bash
 docker stop demo-rabbit && go run .   # example 下：broker 停掉跑 ./check.sh
 # 启动即中断："failed to dial rabbitmq: ..."（driver.go:86）—— 不是首次使用才
-# 懒失败；探测 channel 还能额外拦下 TCP 通但 AMQP 层坏掉的端点（starter.go:69-76）。
+# 懒失败；ping=true 时探测 channel 还能额外拦下 TCP 通但 AMQP 层坏掉的端点（starter.go:69-76）。
 ```
 
 ### 4.2 受守卫 vs 未守卫路径
@@ -368,7 +369,7 @@ health indicator —— 进程会在死连接上继续跑。
 | 症状 | 可能原因 | 处置 |
 |------|----------|------|
 | 启动失败：`failed to dial rabbitmq` | broker 未起 / URL / 凭据错误 | 同步拨号 fail-fast —— 修环境或 URL（driver.go:86）。 |
-| 启动失败：`failed to open probe channel` | TCP 通但 AMQP 层坏（如 vhost/权限错） | 检查该用户的 vhost 权限（starter.go:69-76）。 |
+| 启动失败：`failed to open probe channel` | TCP 通但 AMQP 层坏（如 vhost/权限错） | 检查该用户的 vhost 权限（仅 `ping=true` 时；starter.go:69-76）。 |
 | 启动正常、之后 publish 报错；伴随 close/blocked Warn 日志 | broker 中途挂了；无自动重连 | 重启进程或在裸 bean 上自建重连；盯 `connection closed` Warn。 |
 | 消费者收不到消息 | handler 出错 → Nack(requeue) 死循环；查 `rabbitmq driver handler error on %q` Error 日志 | 修 handler；任何 error 都会永久重投 —— 没有 DLQ（client.go:141-146）。 |
 | broker 重启后消息消失 | driver 队列非持久化且消息瞬态 | 用裸连接做 durable 声明（client.go:64,76；rabbitmq.com/docs/durability）。 |

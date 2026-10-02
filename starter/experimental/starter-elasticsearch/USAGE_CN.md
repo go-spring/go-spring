@@ -142,7 +142,7 @@ spring.observability.metrics.path=/metrics
 120 秒；看 trace 则按 example-otel/docker-compose.yml 再起 Jaeger）：
 
 ```bash
-go run .                          # 集群不可达时启动直接失败
+go run .                          # 集群不可达时启动直接失败（需 ping=true；默认关闭）
 curl -s :9370/readyz | jq .       # components 含 elasticsearch:main 与 elasticsearch:disc
 curl -s :9090/metrics | grep -E 'db.client.*elasticsearch'   # duration + in-flight 指标
 curl "http://127.0.0.1:16686/api/traces?service=demo&limit=1" # Jaeger 中的 span（example-otel 同款检查）
@@ -178,8 +178,8 @@ gs.Run()
   │    │      exec = params.ExecutorFor("elasticsearch", service)
   │    │      （fault(受治理 executor)，零值 params 则降级为只观测的 Unmanaged），
   │    │      然后装入传输层：声明层在最外层，resilience 在其内
-  │    └─ fail-fast 探测：HealthCheck(ctx, client)——一次直连裸 client 的 Info；
-  │        失败则释放 client（Destroy）并中止启动
+  │    └─ 仅 ping=true：fail-fast 探测 HealthCheck(ctx, client)——一次直连裸 client 的
+  │        Info；失败则释放 client（Destroy）并中止启动
   ├─ 就绪：指示器转 UP（经 HealthCheck 执行裸 client.Info）
   └─ SIGTERM → Destroy：exec.Close → client.Close
 ```
@@ -275,7 +275,9 @@ Addresses（或 CloudID）原样使用。
 | `service-name` | string | — | 经已注册 discovery 后端解析节点地址，并让 transport 的节点集持续跟随它（pool.go）；覆盖 `addresses`。mesh 模式忽略。⚠ 与 `scheme`/`discovery`/`discovery-scheme` 成组。 | 启动期服务无端点 → 启动报 `discovery %q returned no endpoints`；运行期空快照 → 保留上一份可用集合。 |
 | `scheme` | string | — | 将 discovery 收敛到单一传输 scheme 的端点。仅在设置 `service-name` 时生效。 | — |
 | `discovery` | string | — | 用哪个已注册后端解析 `service-name`。未配置时回退 `${spring.elasticsearch.default.discovery}`。 | service-name 已设但两层都未配置或名字无对应 bean → 启动报错。 |
-| `discovery-scheme` | string | `http` | 拼到发现的 `host:port` 端点前的 URL scheme（`http`/`https`）。 | scheme 错 → 启动首探失败。 |
+| `discovery-scheme` | string | `http` | 拼到发现的 `host:port` 端点前的 URL scheme（`http`/`https`）。 | scheme 错 → 首探（或首个请求）失败。 |
+| `ping` | bool | `false` | 启动连通探活：true 时构造期跑一次 `HealthCheck`（一次 `Info`），出错则启动失败，恢复 fail-fast。默认关闭，使尚未就绪的集群不阻塞启动。 | `ping=true` 且集群已挂 → 启动报 "failed to reach elasticsearch cluster"。 |
+| `health` | bool | `true` | 本实例是否贡献 `health.Indicator`（名 `elasticsearch:<name>`）供 actuator 就绪/启动探测。置 false 可把该实例排除在聚合健康报告之外。 | `health=false` → `/readyz` 无 `elasticsearch:<name>` 组件。 |
 | `cloud-id` | string | — | Elastic Cloud 部署 ID；设置后客户端优先于 `addresses`。 | — |
 
 ### 3.2 认证与 TLS
@@ -367,7 +369,8 @@ spring.elasticsearch.instances.disc.service-name=es-cluster
 
 ### 4.5 服务端宕机行为
 
-- 启动期：fail-fast——进程以 "failed to reach elasticsearch cluster" 退出。
+- 启动期：`ping=true` 时 fail-fast——进程以 "failed to reach elasticsearch cluster" 退出；
+  默认 `ping=false` 时启动成功，改为首个请求失败。
 - 运行期：请求带完整链路（span + 访问日志 + 熔断计数）返回传输错误；`/readyz` 在一个
   探测周期内转 DOWN。
 
@@ -390,7 +393,7 @@ spring.elasticsearch.instances.disc.service-name=es-cluster
 
 | 指标 | 数值 |
 |------|------|
-| 配置 key 总数 | 16 个实例 key |
+| 配置 key 总数 | 18 个实例 key |
 | 其中必填 | 1（`addresses`，校验非空） |
 | quickstart 前置外部依赖 | 1（Elasticsearch） |
 | "注意/坑" 条数 | 5 |
@@ -404,4 +407,5 @@ spring.elasticsearch.instances.disc.service-name=es-cluster
 - 自定义 driver 静默丢失 governance + resilience 声明传输层换入——无告警、无 hook。
 - schema.json 的 `enable-metrics` 默认值（`false`）与代码（`true`）不一致——schema 非
   生成物，会漂移。
-- 健康指示器无 opt-out key（与 go-redis 同款家族不对称；redigo 有 `health.enabled`）。
+- 健康指示器每实例默认注册（`health=false` 可关）；启动探活为 opt-in（`ping=true`）——即
+  redigo 拆成 `health.enabled`/`startup-ping` 的那两个旋钮。

@@ -135,8 +135,8 @@ spring.http-client.instances.users.discovery=etcd.main
 ## 工作原理
 
 - 每个块在 bean 构造阶段成为**一个**后端 bean(`etcd.<name>`),持有该集群的客户端与
-  命名体系的两半。它会探测集群(一次 `Status` 调用),不可达的 etcd 会让启动失败,每块
-  一次。
+  命名体系的两半。`ping=true` 时它会探测集群(一次 `Status` 调用),不可达的 etcd 会让
+  启动失败,每块一次。
 - [starter-registry](../starter-registry) 核心(传递依赖自动引入)的 `registryServer`
   收集每个后端的 registrar——跨所有后端——等待就绪,然后把实例 `Register` 进每个中心:
   每中心申请一个**租约**、把键写在该租约下并用后台 keep-alive 保活。若租约在服务端死亡,

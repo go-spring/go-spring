@@ -47,6 +47,7 @@ import (
 	"go-spring.org/cloud/resilience"
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
+	"go-spring.org/stdlib/errutil"
 
 	_ "go-spring.org/starter-governance-file"
 	_ "go-spring.org/starter-governance-nacos"
@@ -175,7 +176,7 @@ func publish(doc string) error {
 	defer func() { _ = resp.Body.Close() }()
 	body, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode != http.StatusOK || strings.TrimSpace(string(body)) != "true" {
-		return fmt.Errorf("unexpected response: status=%d body=%q", resp.StatusCode, string(body))
+		return errutil.Explain(nil, "unexpected response: status=%d body=%q", resp.StatusCode, string(body))
 	}
 	return nil
 }

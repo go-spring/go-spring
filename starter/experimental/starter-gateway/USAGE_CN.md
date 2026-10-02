@@ -8,8 +8,9 @@
 本文只写 Go-Spring 的增量。
 
 **激活条件**：仅当配置 `spring.gateway.server.addr` 时才注册 `gatewayServer` bean
-(starter.go:52,`gs.OnProperty("spring.gateway.server.addr")`)——该 key 即总开关。路由表、
-metrics、health bean 无条件注册;不配 server key 时路由照样绑定但永远不会对外服务。
+(``gs.OnProperty("spring.gateway.server.addr")``)——该 key 即总开关。路由表与 metrics bean
+无条件注册;health bean 默认注册,可用 `spring.gateway.health=false` 关掉。不配 server key
+时路由照样绑定但永远不会对外服务。
 
 ---
 
@@ -119,6 +120,8 @@ import starter-gateway
   │      .Export(gs.As[gs.Server]())
   │      .Condition(gs.OnProperty("spring.gateway.server.addr"))
   └─ gs.Provide(newGatewayHealth).Export(health.Indicator)    // "gateway"
+       .Condition(gs.OnProperty("spring.gateway.health")
+                    .HavingValue("true").MatchIfMissing())       // 默认开
        (指标走 OTel;由 starter-otel 的 exporter 在 /metrics 上暴露)
         │
 gs.Run()
@@ -200,6 +203,7 @@ gs.Run()
 | `resilience` | map 名→(忽略) | 空 | **仅名字注册表**:key 是路由可引用的 executor 名;value 是空结构体——策略值在治理规则文档(`spring.governance.*`)下、按 `gateway:<name>` 键控(route.go:114-128)。 | `resilience.<name>.*` 下的子 key 被绑定器静默忽略(遗留兼容)。 |
 | `discovery` | string | "" | `lb://` 路由未配 `upstream.discovery` 时的默认后端。⚠ 两者都缺 → 编译错误(proxy.go:98)。 | 路由编译失败(启动报错 / reload 保留旧表)。 |
 | `tracing.enabled` | bool | true | 每个匹配请求包一层 gateway server+client span。 | 需 starter-otel 才真实导出;否则静默空操作。 |
+| `health` | bool | true | 贡献 `gateway` 这个 `health.Indicator`（以属性条件实现,非 Config 字段——`gs.OnProperty("spring.gateway.health").HavingValue("true").MatchIfMissing()`）。 | `false` → 网关不出现在 `/readiness`;路由表编译失败将无从上报。 |
 
 ### 3.2 每路由 —— `spring.gateway.routes.<id>.*`
 
@@ -366,7 +370,7 @@ for i in $(seq 1 100); do curl -s -o /dev/null -w '%{http_code}\n' -X POST :9440
 
 | 指标 | 数值 |
 |------|------|
-| 配置 key 总数(生效) | 22(顶层 4 + 路由 12 + server 2 + tls 生效 4;tls 死 key 2) |
+| 配置 key 总数(生效) | 23(顶层 5 + 路由 12 + server 2 + tls 生效 4;tls 死 key 2) |
 | 其中必填 | 2(`server.addr`、`upstream.target`) |
 | quickstart 前置外部依赖 | 0(discovery/redis/collector 可选) |
 | "注意/坑"条数 | 7 |

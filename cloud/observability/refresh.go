@@ -29,6 +29,10 @@ import (
 
 var configTag = log.RegisterAppTag("config", "")
 
+// scope is the instrumentation scope name every meter and tracer in this
+// package reports under.
+const scope = "go-spring.org/cloud/observability"
+
 // Status attribute values. The statuses are exclusive, so
 // config.refresh.total summed over status is the number of refreshes
 // triggered — there is no separate counter that could double-count.
@@ -51,7 +55,7 @@ type instrumentSet struct {
 var instruments = sync.OnceValue(buildInstruments)
 
 func buildInstruments() *instrumentSet {
-	m := otel.Meter("go-spring.org/cloud/observability")
+	m := otel.Meter(scope)
 	in := &instrumentSet{}
 	in.total, _ = m.Int64Counter("config.refresh.total",
 		metric.WithDescription("Property refreshes triggered, by status"),

@@ -28,6 +28,7 @@ import (
 
 	"go-spring.org/cloud/discovery"
 	"go-spring.org/log"
+	"go-spring.org/stdlib/errutil"
 )
 
 // dnsResolver is the subset of net.Resolver the DNS backend needs. Abstracting
@@ -156,7 +157,7 @@ func (d *dnsDiscovery) fetch(ctx context.Context, name string) ([]discovery.Endp
 func (d *dnsDiscovery) resolveSRV(ctx context.Context, name string) ([]discovery.Endpoint, error) {
 	_, srvs, err := d.res.LookupSRV(ctx, d.cfg.PortName, "tcp", d.fqdn(name))
 	if err != nil {
-		return nil, fmt.Errorf("registry-k8s: SRV lookup %q: %w", d.fqdn(name), err)
+		return nil, errutil.Explain(err, "registry-k8s: SRV lookup %q", d.fqdn(name))
 	}
 	eps := make([]discovery.Endpoint, 0, len(srvs))
 	for _, srv := range srvs {
@@ -176,7 +177,7 @@ func (d *dnsDiscovery) resolveSRV(ctx context.Context, name string) ([]discovery
 func (d *dnsDiscovery) resolveA(ctx context.Context, name string) ([]discovery.Endpoint, error) {
 	ips, err := d.res.LookupIPAddr(ctx, d.fqdn(name))
 	if err != nil {
-		return nil, fmt.Errorf("registry-k8s: A lookup %q: %w", d.fqdn(name), err)
+		return nil, errutil.Explain(err, "registry-k8s: A lookup %q", d.fqdn(name))
 	}
 	port := strconv.Itoa(d.cfg.Port)
 	eps := make([]discovery.Endpoint, 0, len(ips))

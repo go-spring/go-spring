@@ -25,7 +25,6 @@ package main
 
 import (
 	"context"
-	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -43,6 +42,7 @@ import (
 	"go-spring.org/spring/gs"
 	_ "go-spring.org/starter-otel"
 	_ "go-spring.org/starter-transaction-tcc"
+	"go-spring.org/stdlib/errutil"
 )
 
 // ----------------------------------------------------------------------------
@@ -71,7 +71,7 @@ func (l *ledger) try(txID string, n int) error {
 		return nil
 	}
 	if l.available < n {
-		return errors.New("insufficient")
+		return errutil.Explain(nil, "insufficient")
 	}
 	l.available -= n
 	l.frozen[txID] = n

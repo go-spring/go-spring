@@ -18,7 +18,6 @@ package main
 
 import (
 	"context"
-	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -33,6 +32,7 @@ import (
 	"go-spring.org/cloud/actuator/health"
 	"go-spring.org/spring/gs"
 	_ "go-spring.org/starter-actuator"
+	"go-spring.org/stdlib/errutil"
 )
 
 // depDown toggles the demo dependency's health so runTest can observe both the
@@ -47,7 +47,7 @@ var dep = &health.Indicator{
 	Name: "demo:dependency",
 	Probe: func(ctx context.Context) error {
 		if depDown.Load() {
-			return errors.New("dependency unavailable")
+			return errutil.Explain(nil, "dependency unavailable")
 		}
 		return nil
 	},

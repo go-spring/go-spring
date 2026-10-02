@@ -61,10 +61,13 @@ type Config struct {
 	// the certificate. Default is false to preserve pulsar-client-go's default.
 	TLSValidateHostname bool `value:"${tls-validate-hostname:=false}"`
 
-	// FailFast enables a startup broker probe. When true, a lookup is issued
-	// against HealthCheckTopic right after the client is built so bad broker
-	// addresses / auth / TLS surface immediately instead of on first use.
-	FailFast bool `value:"${fail-fast:=true}"`
+	// Ping enables the startup connectivity probe: when true a lookup is issued
+	// against HealthCheckTopic right after the client is built, failing startup
+	// if the broker is unreachable, surfacing bad addresses / auth / TLS early.
+	// Default is false: a broker that is not up yet must not block the
+	// application from starting; connectivity problems surface on first use
+	// instead. Set true to restore fail-fast behaviour.
+	Ping bool `value:"${ping:=false}"`
 
 	// HealthCheckTopic is the topic used for the startup lookup probe. A
 	// lookup against a non-existent, non-partitioned topic normally succeeds

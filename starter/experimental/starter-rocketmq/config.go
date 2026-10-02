@@ -55,10 +55,13 @@ type Config struct {
 	// non-zero — pick one place to retry.
 	Retry int `value:"${retry:=2}"`
 
-	// FailFast enables a startup connectivity probe. When true, a TCP dial is
-	// issued against the first NameServer address right after the client is
-	// built, so a wrong address list fails at boot instead of on first use.
-	// RocketMQ's remoting layer connects lazily and would otherwise swallow
-	// the error until the first produce/consume.
-	FailFast bool `value:"${fail-fast:=true}"`
+	// Ping enables the startup connectivity probe: when true a TCP dial is
+	// issued against the first reachable NameServer address right after the
+	// client is built, so a wrong address list fails startup instead of
+	// surfacing on the first produce/consume. Default is false: a name server
+	// that is not up yet must not block the application from starting;
+	// connectivity problems surface on first use instead. Set true to restore
+	// fail-fast behaviour. RocketMQ's remoting layer connects lazily and would
+	// otherwise swallow the error until the first produce/consume.
+	Ping bool `value:"${ping:=false}"`
 }

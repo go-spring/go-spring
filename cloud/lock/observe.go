@@ -75,7 +75,7 @@ type instrumentSet struct {
 var instruments = sync.OnceValue(buildInstruments)
 
 func buildInstruments() *instrumentSet {
-	m := otel.Meter("go-spring.org/cloud/lock")
+	m := otel.Meter(scope)
 	in := &instrumentSet{}
 	in.total, _ = m.Int64Counter("lock.operation.total",
 		metric.WithDescription("Lock operations executed, by operation and status"),
@@ -121,24 +121,22 @@ func Observe(inner Locker, system string) Locker {
 	}
 }
 
-// tracerName names the tracer the operation spans open on. The tracer is
-// looked up per use (otel.Tracer at call time), never cached in a field or
-// package variable: one captured before any provider is set stops forwarding
-// once the global provider is set, unset and set again.
-const tracerName = "go-spring.org/cloud/lock"
+// scope is the instrumentation scope name every meter and tracer in this
+// package reports under.
+const scope = "go-spring.org/cloud/lock"
 
 type observedLocker struct {
 	system string
 	inner  Locker
 
 	// ins is the shared instrument set; the tracer is deliberately NOT held
-	// alongside it (see [tracerName]).
+	// alongside it (see [scope]).
 	ins *instrumentSet
 }
 
 // startSpan opens the operation's client span.
 func (l *observedLocker) startSpan(ctx context.Context, op, key string) (context.Context, trace.Span) {
-	return otel.Tracer(tracerName).Start(ctx, op,
+	return otel.Tracer(scope).Start(ctx, op,
 		trace.WithSpanKind(trace.SpanKindClient),
 		trace.WithAttributes(
 			attribute.String("lock.system", l.system),

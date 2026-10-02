@@ -95,9 +95,10 @@ type nacosBackend struct {
 	group     string
 }
 
-// newNacosBackend builds the naming client (probing the server) and both
-// halves. The probe is the fail-fast: a misconfigured or unreachable Nacos
-// fails startup here, once per block.
+// newNacosBackend builds the naming client (probing the server when Ping is
+// set) and both halves. The probe is the fail-fast: a misconfigured or
+// unreachable Nacos fails startup here, once per block; with Ping off (the
+// default) construction skips it.
 func newNacosBackend(c NacosConfig, name string) (*nacosBackend, error) {
 	if c.Server == "" {
 		return nil, errutil.Explain(nil, "registry-nacos: server is required")
@@ -171,10 +172,11 @@ func (b *nacosBackend) Resolve(ctx context.Context, name string, opts ...discove
 	return b.disc.Resolve(ctx, name, opts...)
 }
 
-// newNamingClient builds a Nacos naming client for the block's config and
-// probes it with a one-service listing. It is the single construction path
-// behind the backend. The shared tls.* block maps onto the SDK's TLS option
-// only when enabled, so an untouched config behaves exactly as before.
+// newNamingClient builds a Nacos naming client for the block's config and,
+// when Ping is set, probes it with a one-service listing. It is the single
+// construction path behind the backend. The shared tls.* block maps onto the
+// SDK's TLS option only when enabled, so an untouched config behaves exactly
+// as before.
 func newNamingClient(c NacosConfig) (*naming_client.NamingClient, error) {
 	host, port, err := netutil.SplitHostPort(c.Server)
 	if err != nil {
@@ -206,10 +208,12 @@ func newNamingClient(c NacosConfig) (*naming_client.NamingClient, error) {
 		log.Errorf(context.Background(), starterTag, "create nacos naming client for server=%s failed: %v", c.Server, err)
 		return nil, errutil.Explain(err, "registry-nacos: create naming client for %s", c.Server)
 	}
-	if _, err := ic.GetAllServicesInfo(vo.GetAllServiceInfoParam{
-		NameSpace: c.Namespace, GroupName: c.Group, PageNo: 1, PageSize: 1,
-	}); err != nil {
-		return nil, errutil.Explain(err, "registry-nacos: startup probe failed for %s", c.Server)
+	if c.Ping {
+		if _, err := ic.GetAllServicesInfo(vo.GetAllServiceInfoParam{
+			NameSpace: c.Namespace, GroupName: c.Group, PageNo: 1, PageSize: 1,
+		}); err != nil {
+			return nil, errutil.Explain(err, "registry-nacos: startup probe failed for %s", c.Server)
+		}
 	}
 	// clients.NewNamingClient always returns the concrete *NamingClient.
 	client, _ := ic.(*naming_client.NamingClient)
@@ -237,9 +241,9 @@ func init() {
 				Destroy((*nacosBackend).Close).Caller(1)
 
 			// Contribute a health indicator for this server unless the user
-			// disabled it (health.enabled=false), injecting the backend
-			// registered above by name.
-			if c.HealthEnabled {
+			// disabled it (health=false), injecting the backend registered
+			// above by name.
+			if c.Health {
 				r.Provide(func(b *nacosBackend) *health.Indicator {
 					return &health.Indicator{Name: "registry-nacos:" + name, Probe: b.probe}
 				}, gs.TagArg("nacos."+name)).Name("registry-nacos:" + name)

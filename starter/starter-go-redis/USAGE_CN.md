@@ -147,7 +147,7 @@ import starter-go-redis
         └─ conf.BindEach("${spring.go-redis}") → 每个 <name> 条目一份 Config
               ├─ mode single/sentinel → Provide(newClient).Name(<name>).Destroy((*Client).Destroy)
               ├─ mode cluster          → Provide(newClusterClient).Name(<name>)（同一包装类型）
-              └─ Provide 名为 "redis:<name>" 的 health.Indicator（由 health.enabled 控制，默认开）
+              └─ Provide 名为 "redis:<name>" 的 health.Indicator（由 health 控制，默认开）
 
 gs.Run()
   └─ 构造 newClient [starter.go:143]——先完整装配，再探测：
@@ -162,7 +162,7 @@ gs.Run()
        │               零值 bundle 退化为仅观测的 Unmanaged executor）
        │         → 走服务发现的条目在此 lbMgr.Bind(pool, label)
        │         → AddHook(resilienceHook)——命令链装配完成
-       └─ 在裸客户端上执行启动 HealthCheck（上限 dial-timeout 或 5s）；失败则 Destroy
+       └─ ping 时在裸客户端上执行启动 HealthCheck（上限 dial-timeout 或 5s）；失败则 Destroy
           释放刚装配好的资源
   ├─ 就绪：探针翻转 UP（指示器执行 HealthCheck）
   └─ SIGTERM → Destroy [client.go:148]：exec.Close → 摘除 selection 订阅 → client.Close
@@ -171,7 +171,8 @@ gs.Run()
 没有 `Init` 钩子了：旧 Init 做的事（标签、executor、selection 绑定、hook 顺序）全部发生在构造函数内，
 gs 只需知道如何 DESTROY 这个 bean。
 
-mode 配错或启动 ping 失败都会导致启动失败——进程不会带着一个死 Redis 进入"服务中"状态。
+mode 配错必然启动失败；启动 ping 失败也如此——但该探测仅在 `ping=true` 时执行。默认关闭时死 Redis
+不会在启动期被发现，而是首条命令失败。
 
 ### 2.2 命令 hook 链 —— 精确顺序与理由
 
@@ -220,7 +221,7 @@ redisotel（连接池指标）→ operationHook（声明身份）→ resilienceH
 `conn-max-lifetime`（默认 2m），连接**无需重建客户端**就能换到更新后的地址——这也是默认值
 取较短 2m 而非"无限"的原因 [config.go:95-97]。此时 `addr` 不生效——两者都配置时启动会打 WARN 点名被忽略的 `addr`（example 故意配 dummy
 `0.0.0.0:0` 来证明这点）。sentinel/cluster 模式下设置 `service-name` 会在启动期被拒绝：
-这两种拓扑自己发现节点 [starter.go:170-194]。
+这两种拓扑自己发现节点 [starter.go:174-198]。
 
 **池的策略归治理管，不是写死的。** 它挂着 suspension tracker，由 Driver 交给 `NewClient`（包装体持有），再由 `NewClient` 经治理 bundle 的 `lbMgr.Bind(pool, label)` 绑到
 `redis:<service-name|master-name|addr>`，所以该 label 命中的
@@ -256,15 +257,16 @@ sentinel 与 cluster 客户端自己发现节点、没有池，这些 key 到不
 
 | Key | 类型 | 默认值 | 行为 / 联动 | 配错后果 |
 |-----|------|--------|------------|----------|
-| `password` / `username` | string | — | 服务端/ACL 认证（sentinel 下为 master）。 | 配错 → 启动期 Ping 失败。 |
+| `password` / `username` | string | — | 服务端/ACL 认证（sentinel 下为 master）。 | 配错 → 启动期 Ping（`ping=true` 时）或首条命令失败。 |
 | `db` | int | 0 | 连接时 SELECT（仅 single/sentinel）。Redis Cluster 无库概念：`mode=cluster` 且 `db != 0` → 启动报 "db is not supported in cluster mode"。 | 越界 → 首条命令报错。 |
 | `pool-size` | int | 10 | 最大连接数。 | 过小 → 突发下排队。 |
 | `max-idle` | int | 5 | 最大空闲连接（go-redis MaxIdleConns）。 | — |
 | `max-retries` | int | 0 | go-redis 命令重试。⚠ resilience 侧重试也要保持 0——双重重试放大时延，且可能重发非幂等命令（config.go:152-154 注释）。 | 调大 + resilience 重试 → 尝试次数相乘。 |
-| `dial-timeout` / `read-timeout` / `write-timeout` | duration | 5s / 3s / 3s | 直传；dial-timeout 同时限定启动 HealthCheck [starter.go]。 | — |
+| `dial-timeout` / `read-timeout` / `write-timeout` | duration | 5s / 3s / 3s | 直传；dial-timeout 同时限定启动 HealthCheck（`ping=true` 时）[starter.go]。 | — |
 | `conn-max-lifetime` | duration | 2m | 连接复用窗口；较短值利于发现流量切换。 | 很大 + discovery → 老端点连接滞留。 |
 | `tls.*` | group | off | `security` 客户端 TLS（enabled/ca-file/cert-file/key-file/server-name/insecure-skip-verify）。 | 配一半 → `tls.Build` 启动报错。 |
-| `health.enabled` | bool | true | 为实例注册 `redis:<name>` 健康指示器——与 starter-redigo 同名开关。 | false → 该实例无指示器 bean，不再上报就绪。 |
+| `ping` | bool | false | 可选启动探测：`HealthCheck` 单次 ping，服务器不可达则启动失败；默认关，未就绪的后端到首次使用才暴露。 | 期待 fail-fast 却没开 → 启动"成功"，首个请求失败。 |
+| `health` | bool | true | 为实例注册 `redis:<name>` 健康指示器——与 starter-redigo 同名开关。 | false → 该实例无指示器 bean，不再上报就绪。 |
 
 ### 3.3 观测
 
@@ -340,7 +342,7 @@ executor 无需重启即刷新。
 
 | 症状 | 可能原因 | 处置 |
 |------|---------|------|
-| 启动报 "startup ping failed" | 地址不可达/密码错/TLS 不匹配 | 启动 HealthCheck 无条件执行；修连通性或凭据。 |
+| 启动报 "startup ping failed" | 地址不可达/密码错/TLS 不匹配 | 仅在 `ping=true` 时抛出；修连通性或凭据。默认关闭时死 Redis 到首条命令才暴露。 |
 | 启动报 "invalid mode ... (want single/sentinel/cluster)" | `mode` 拼错 | 改正——mode 精确匹配。 |
 | 启动报 "service-name is not supported in sentinel/cluster mode" | 发现与自发现拓扑组合 | 删 service-name；sentinel/cluster 自行发现节点。 |
 | 启动报 "... does not support cluster mode" | 提供的 Driver bean 不支 cluster 但存在 `mode=cluster` 实例 | 让 Driver 实现 `ClusterDriver`（内置 `DefaultDriver` 已实现）；进程内那一个 Driver 须覆盖所用到的全部拓扑。 |
@@ -361,6 +363,6 @@ executor 无需重启即刷新。
 | quickstart 前置外部依赖 | 1（Redis） |
 | "注意/坑" 条数 | 6 |
 
-设计嫌疑清单：~~健康指示器无关闭 key~~（已修：`health.enabled` 与 redigo 对齐）；~~cache 门面
+设计嫌疑清单：~~健康指示器无关闭 key~~（已修：`health` 与 redigo 对齐）；~~cache 门面
 bean 名取后端实例名而非 `spring.cache` map key~~（已解决：`go-redis:<实例名>` 的 bean 名就是
 契约，直接按名注入）；`max-retries`（go-redis）与 resilience 重试的双重重试隐患仅写在配置注释里。

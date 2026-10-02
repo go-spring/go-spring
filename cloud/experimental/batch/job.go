@@ -28,6 +28,10 @@ import (
 	"go.opentelemetry.io/otel/metric"
 )
 
+// scope is the instrumentation scope name every meter and tracer in this
+// package reports under.
+const scope = "go-spring.org/cloud/experimental/batch"
+
 // instrumentSet bundles the metrics a job run records: one per process,
 // resolved lazily on first use so the set binds to whichever OTel global
 // provider is current then, and immutable afterwards. It holds no per-run
@@ -41,7 +45,7 @@ type instrumentSet struct {
 var instruments = sync.OnceValue(buildInstruments)
 
 func buildInstruments() *instrumentSet {
-	m := otel.Meter("go-spring.org/cloud/experimental/batch")
+	m := otel.Meter(scope)
 	in := &instrumentSet{}
 	in.total, _ = m.Int64Counter("batch.job.total",
 		metric.WithDescription("Batch job runs reaching a terminal state, by status"),

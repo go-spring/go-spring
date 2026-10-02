@@ -59,10 +59,13 @@ func init() {
 				gs.IndexArg(4, gs.TagArg("")), // *fault.Injector
 			).Name(name).Destroy((*Client).Destroy).Caller(1)
 			// Contribute a health indicator for this instance, injecting the
-			// client just registered above by name.
-			r.Provide(func(w *Client) *health.Indicator {
-				return NewClientHealth(name, w)
-			}, gs.TagArg(name)).Name("tdengine:" + name).Caller(1)
+			// client just registered above by name. Skipped when c.Health is
+			// false.
+			if c.Health {
+				r.Provide(func(w *Client) *health.Indicator {
+					return NewClientHealth(name, w)
+				}, gs.TagArg(name)).Name("tdengine:" + name).Caller(1)
+			}
 			return nil
 		})
 	})
@@ -70,9 +73,10 @@ func init() {
 
 // newClient creates a new TDengine client based on the provided
 // configuration. The driver assembles the client complete — governance applied
-// while it is built — and only then is the server pinged, so that
+// while it is built — and when c.Ping is set the server is then pinged, so that
 // misconfiguration or an unreachable taosAdapter fails fast rather than on
-// first use. A failed probe abandons the client.
+// first use; the probe is off by default, so a server that is not up yet does
+// not block startup. A failed probe abandons the client.
 //
 // mgr and inj are the authority beans the owning packages register. The wiring
 // injects them NULLABLY, so both are nil in a container without
@@ -94,12 +98,15 @@ func newClient(ctx *gs.ContextProvider, c Config, d Driver, mgr *resilience.Mana
 	// [HealthCheck], the single liveness implementation; it goes straight to the
 	// raw pool on purpose: it is a connectivity check, not business traffic, so
 	// it must not open a span or spend limiter/breaker budget. A failure
-	// abandons the client, so release what was just applied.
-	pctx, cancel := context.WithTimeout(ctx.Context, 10*time.Second)
-	defer cancel()
-	if err = HealthCheck(pctx, cl); err != nil {
-		_ = cl.Destroy()
-		return nil, errutil.Explain(err, "failed to reach tdengine at %s", dsnAddr(c.DSN))
+	// abandons the client, so release what was just applied. Off by default
+	// (c.Ping): a server that is not up yet must not block startup.
+	if c.Ping {
+		pctx, cancel := context.WithTimeout(ctx.Context, 10*time.Second)
+		defer cancel()
+		if err = HealthCheck(pctx, cl); err != nil {
+			_ = cl.Destroy()
+			return nil, errutil.Explain(err, "failed to reach tdengine at %s", dsnAddr(c.DSN))
+		}
 	}
 	return cl, nil
 }

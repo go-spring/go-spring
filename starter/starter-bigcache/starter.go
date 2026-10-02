@@ -58,9 +58,12 @@ func init() {
 				gs.IndexArg(4, gs.TagArg("")),
 				gs.IndexArg(5, gs.TagArg("")),
 			).Name(name).Destroy((*Cache).Destroy).Caller(1)
-			// Contribute a health indicator for this instance, injecting the
-			// client just registered above by name.
-			r.Provide(func(c *Cache) *health.Indicator { return NewBigCacheHealth(name, c) }, gs.TagArg(name)).Name("bigcache:" + name).Caller(1)
+			// Contribute a health indicator for this instance unless the user
+			// disabled it (health=false), injecting the client just registered
+			// above by name.
+			if c.Health {
+				r.Provide(func(c *Cache) *health.Indicator { return NewBigCacheHealth(name, c) }, gs.TagArg(name)).Name("bigcache:" + name).Caller(1)
+			}
 			// Expose this instance as a cache.Cache (the adapter lives in
 			// this package's bytecache.go). Named "bigcache:<name>" — cache.Cache
 			// is a shared type across backend starters, so the prefix keeps the

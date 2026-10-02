@@ -35,6 +35,7 @@ import (
 	"go-spring.org/spring/gs"
 	httpsvr "go-spring.org/starter-http-server"
 	StarterOAuth2Server "go-spring.org/starter-oauth2-server"
+	"go-spring.org/stdlib/errutil"
 )
 
 // secret matches spring.oauth2.server.secret in conf/app.properties. The
@@ -118,7 +119,7 @@ func (v hmacValidator) Validate(_ context.Context, token string) (*security.Auth
 	tok, err := jwt.NewParser(jwt.WithValidMethods([]string{"HS256"})).
 		ParseWithClaims(token, claims, func(*jwt.Token) (any, error) { return v.secret, nil })
 	if err != nil || !tok.Valid {
-		return nil, fmt.Errorf("invalid token: %w", err)
+		return nil, errutil.Explain(err, "invalid token")
 	}
 	subject, _ := claims["sub"].(string)
 	authorities := append(claimStrings(claims["scope"]), claimStrings(claims["roles"])...)

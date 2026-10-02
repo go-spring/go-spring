@@ -86,10 +86,11 @@ const pingTimeout = 10 * time.Second
 // adaptation.
 //
 // Assembly happens in one place and one order: the driver builds and completes
-// the client (governance attached inside it), and only then is it pinged, so a
-// misconfigured broker list, bad credentials or TLS mismatch fail fast at
-// startup instead of surfacing on the first produce/consume. A failed ping
-// releases the executor the driver attached before abandoning the client.
+// the client (governance attached inside it), and only then is it pinged (when
+// Ping is enabled), so a misconfigured broker list, bad credentials or TLS
+// mismatch fail fast at startup instead of surfacing on the first
+// produce/consume. A failed ping releases the executor the driver attached
+// before abandoning the client.
 //
 // mgr and inj are the governance beans gs injects; they are bundled into the
 // [cloud.ClientParams] handed to the driver, which applies them while
@@ -109,17 +110,19 @@ func newClient(ctx *gs.ContextProvider, name string, c Config, d Driver,
 	}
 
 	// The driver returned the client complete — governance attached while it was
-	// built. Then probe connectivity. The probe goes straight to the raw client
-	// on purpose: it is a connectivity check, not business traffic, so it must
-	// not spend limiter/breaker budget. A failure abandons the client, so release
-	// the executor the driver attached.
-	pingCtx, cancel := context.WithTimeout(ctx.Context, pingTimeout)
-	defer cancel()
-	if err = cl.Ping(pingCtx); err != nil {
-		log.Errorf(ctx.Context, log.TagAppDef, "kafka: ping failed: %v", err)
-		closeResilience(cl)
-		cl.Close()
-		return nil, errutil.Explain(err, "failed to ping kafka: %s", c.Brokers)
+	// built. Then probe connectivity (when Ping is enabled). The probe goes
+	// straight to the raw client on purpose: it is a connectivity check, not
+	// business traffic, so it must not spend limiter/breaker budget. A failure
+	// abandons the client, so release the executor the driver attached.
+	if c.Ping {
+		pingCtx, cancel := context.WithTimeout(ctx.Context, pingTimeout)
+		defer cancel()
+		if err = cl.Ping(pingCtx); err != nil {
+			log.Errorf(ctx.Context, log.TagAppDef, "kafka: ping failed: %v", err)
+			closeResilience(cl)
+			cl.Close()
+			return nil, errutil.Explain(err, "failed to ping kafka: %s", c.Brokers)
+		}
 	}
 	log.Infof(ctx.Context, log.TagAppDef, "kafka client initialized, brokers=%s", c.Brokers)
 	return cl, nil

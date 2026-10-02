@@ -108,9 +108,10 @@ type etcdBackend struct {
 	endpoints []string
 }
 
-// newEtcdBackend builds the client and probes the cluster. The probe is the
-// fail-fast: a misconfigured or unreachable cluster fails startup here, once
-// per block.
+// newEtcdBackend builds the client and, when Ping is set, probes the cluster.
+// The probe is the fail-fast: a misconfigured or unreachable cluster fails
+// startup here, once per block. With Ping off (the default) construction skips
+// the probe so a cluster that is not up yet does not block startup.
 func newEtcdBackend(c EtcdConfig, name string) (*etcdBackend, error) {
 	if len(c.Endpoints) == 0 {
 		return nil, errutil.Explain(nil, "registry-etcd: endpoints is required")
@@ -130,11 +131,13 @@ func newEtcdBackend(c EtcdConfig, name string) (*etcdBackend, error) {
 		log.Errorf(context.Background(), starterTag, "create etcd client for endpoints=%v failed: %v", c.Endpoints, err)
 		return nil, errutil.Explain(err, "registry-etcd: failed to create etcd client")
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), c.DialTimeout)
-	defer cancel()
-	if _, err := cli.Status(ctx, c.Endpoints[0]); err != nil {
-		_ = cli.Close()
-		return nil, errutil.Explain(err, "registry-etcd: startup probe failed for %s", c.Endpoints[0])
+	if c.Ping {
+		ctx, cancel := context.WithTimeout(context.Background(), c.DialTimeout)
+		defer cancel()
+		if _, err := cli.Status(ctx, c.Endpoints[0]); err != nil {
+			_ = cli.Close()
+			return nil, errutil.Explain(err, "registry-etcd: startup probe failed for %s", c.Endpoints[0])
+		}
 	}
 	kv := etcdClient{cli}
 	obs, err := discovery.NewObserver(obsSystem, name)
@@ -227,9 +230,9 @@ func init() {
 				Destroy((*etcdBackend).Close).Caller(1)
 
 			// Contribute a health indicator for this cluster unless the user
-			// disabled it (health.enabled=false), injecting the backend
-			// registered above by name.
-			if c.HealthEnabled {
+			// disabled it (health=false), injecting the backend registered
+			// above by name.
+			if c.Health {
 				r.Provide(func(b *etcdBackend) *health.Indicator {
 					return &health.Indicator{Name: "registry-etcd:" + name, Probe: b.probe}
 				}, gs.TagArg("etcd."+name)).Name("registry-etcd:" + name)

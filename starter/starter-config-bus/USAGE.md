@@ -240,7 +240,8 @@ required — but see consequences.
 |-----|------|---------|-------------------------|------------------------------|
 | `spring.config.bus.subject` | string | `spring.config.refresh` | NATS subject for publish+subscribe; all instances sharing it form one bus. Read once at wiring — changing it via a refresh event does not resubscribe (§2.2). | Two fleets silently split if one instance typos the subject: refreshes propagate only within each half; no error anywhere. |
 | `spring.config.bus.watch-prefixes` | string | `` (empty) | Comma-separated prefix filter, parsed once in `subscribe()`. Empty = react to every event. Non-empty = react only to empty-prefix events or bidirectional prefix overlaps (`db` ↔ `db.pool`). ⚠ dead key for hot-reload: reparsed only on restart. | Over-scoped list refreshes more than intended (harmless but noisy); a prefix that never matches published prefixes makes the instance silently skip scoped refreshes while still honoring `Publish("")`. |
-| `spring.config.bus.nats-instance` | string | `config-bus` | Name of the `spring.nats.instances.<name>.*` connection injected as transport (autowire by instance name, `starter.go:116`). ⚠ the named instance must exist — this is the de-facto activation gate. | No matching `spring.nats.instances.<name>.*` block → container wiring failure at startup (the bean cannot be assembled). Sharing the name with a business NATS connection couples bus failures to that connection. |
+| `spring.config.bus.nats-instance` | string | `config-bus` | Name of the `spring.nats.instances.<name>.*` connection injected as transport (autowire by instance name, `starter.go:128`). ⚠ the named instance must exist — this is the de-facto activation gate. | No matching `spring.nats.instances.<name>.*` block → container wiring failure at startup (the bean cannot be assembled). Sharing the name with a business NATS connection couples bus failures to that connection. |
+| `spring.config.bus.health` | bool | `true` | Whether to contribute the `config-bus:configBus` `health.Indicator` (gated by an `if c.Health` in the health module, `starter.go:83-96`). | `false` → the bus is absent from `/readiness`; a dead subscription then goes unreported. |
 
 Beyond these, the referenced NATS instance carries its own `spring.nats.instances.<name>.*` keys
 (url, auth, ...) — see starter-nats documentation. A NATS connection is a hard prerequisite;
@@ -334,8 +335,8 @@ that explains it (rather than only traced by wall-clock time).
 
 Traces: a broadcast is one trace with a `publish` span (a child of the caller's span when
 `Publish` was called from one) and one `consume` span per subscriber. Health: `/readiness`
-carries `config-bus:configBus`, which is down exactly when the subscription is no longer
-active. [example-otel/](example-otel/) asserts all three end to end.
+carries `config-bus:configBus` (unless `health=false`), which is down exactly when the
+subscription is no longer active. [example-otel/](example-otel/) asserts all three end to end.
 
 ---
 
@@ -359,7 +360,7 @@ active. [example-otel/](example-otel/) asserts all three end to end.
 
 | Metric | Value |
 |--------|-------|
-| Config keys | 4 |
+| Config keys | 5 |
 | Required | 0 explicit, 1 implicit (the referenced NATS instance definition) |
 | Quickstart external deps | 1 (NATS broker) |
 | "Watch out" entries | 3 |

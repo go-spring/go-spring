@@ -41,11 +41,12 @@ import (
 	"github.com/nats-io/nats.go"
 	"go-spring.org/cloud/actuator/health"
 	"go-spring.org/log"
+	"go-spring.org/spring/conf"
+	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
+	"go-spring.org/stdlib/flatten"
 
 	StarterNats "go-spring.org/starter-nats"
-
-	"go-spring.org/spring/gs"
 )
 
 var (
@@ -69,17 +70,29 @@ func init() {
 		Destroy((*ConfigBus).Destroy).
 		Export(gs.As[gs.Rooter]())
 
-	// Contribute the subscriber-health indicator under the same gate. It reports
-	// the subscription, not the NATS connection: a dropped connection is
-	// starter-nats's own indicator to report (and to let an app opt out of via
-	// that instance's health.enabled), while a lost subscription is invisible to
-	// every other probe and is exactly what leaves an instance silently stuck on
-	// stale configuration.
-	gs.Provide(func(bus *ConfigBus) *health.Indicator {
-		return NewBusHealth("configBus", bus.Healthy)
-	}, gs.TagArg("configBus")).
-		Condition(gs.OnProperty("spring.config.bus")).
-		Name("config-bus:configBus")
+	// Contribute the subscriber-health indicator under the same gate, unless the
+	// user turned it off (health=false). It reports the subscription, not the
+	// NATS connection: a dropped connection is starter-nats's own indicator to
+	// report (and to let an app opt out of via that instance's health switch),
+	// while a lost subscription is invisible to every other probe and is exactly
+	// what leaves an instance silently stuck on stale configuration.
+	//
+	// The bus itself is a single top-level bean, not a per-instance closure, so
+	// there is no Config in scope at registration time: the module binds the
+	// block here and gates the contribution on c.Health.
+	gs.Module(gs.OnProperty("spring.config.bus"), func(r gs.BeanProvider, p flatten.Storage) error {
+		var c Config
+		if err := conf.Bind(p, &c, "${spring.config.bus}"); err != nil {
+			return err
+		}
+		if !c.Health {
+			return nil
+		}
+		r.Provide(func(bus *ConfigBus) *health.Indicator {
+			return NewBusHealth("configBus", bus.Healthy)
+		}, gs.TagArg("configBus")).Name("config-bus:configBus").Caller(1)
+		return nil
+	})
 }
 
 // RefreshEvent is the payload published on the bus. It carries only a hint of

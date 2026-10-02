@@ -3,7 +3,7 @@
 [English](README.md) | [中文](README_CN.md)
 
 `starter-influxdb` 为 Go-Spring 提供 InfluxDB 2.x 支持：多实例
-`influxdb2.Client` bean、fail-fast 启动探针、由 starter 声明、由韧性层发射的
+`influxdb2.Client` bean、可选 fail-fast 启动探针、由 starter 声明、由韧性层发射的
 逐请求可观测（span + 指标 + 访问日志）、阻塞写路径上的韧性（限流/熔断/故障
 注入）、错误自动排入日志的托管异步写入器，以及每实例健康指示器。基于官方
 [influxdb-client-go](https://github.com/influxdata/influxdb-client-go) v2。
@@ -62,8 +62,8 @@ Setup……）被原样提升可用。
 - **双写入口** — `WritePoints`（阻塞、韧性保护、逐次报错）与
   `ManagedWriteAPI`（后台缓冲批量、停机时 flush；失败批次排入 go-spring
   日志，写入器永不阻塞）。拆分理由见 DESIGN。
-- **fail-fast 启动探针 + 健康指示器** — 启动期一次 `/health` 往返，
-  `influxdb:<name>` 指示器供 `starter-actuator` 聚合。
+- **fail-fast 启动探针 + 健康指示器** — 启动期一次 `/health` 往返（opt-in：`ping=true`；
+  默认关闭），`influxdb:<name>` 指示器供 `starter-actuator` 聚合（`health=false` 可跳过）。
 - **可观测** — starter 只*声明*每个请求的身份（`db.system=influxdb`、有界的
   `db.operation=<method>`、URL 路径作 `db.statement`），由韧性层*发射*：每次调用
   开启一个 client span，记录调用级 `db.client.operation.duration` 直方图、尝试级

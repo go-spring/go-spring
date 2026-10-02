@@ -18,13 +18,13 @@ package StarterMigrationGoose
 
 import (
 	"context"
-	"fmt"
 	"os"
 	"sort"
 
 	"github.com/pressly/goose/v3"
 	"github.com/pressly/goose/v3/database"
 	"go-spring.org/log"
+	"go-spring.org/stdlib/errutil"
 	"gorm.io/gorm"
 )
 
@@ -63,7 +63,7 @@ func (r *Runner) Run(ctx context.Context) error {
 			return err
 		}
 		if err := migrateOne(ctx, db, cfg); err != nil {
-			return fmt.Errorf("migration %q: %w", name, err)
+			return errutil.Explain(err, "migration %q", name)
 		}
 	}
 	return nil
@@ -75,7 +75,7 @@ func (r *Runner) resolveDB(name string, cfg Config) (*gorm.DB, error) {
 	if cfg.DBRef != "" {
 		db, ok := r.DBs[cfg.DBRef]
 		if !ok {
-			return nil, fmt.Errorf("no *gorm.DB bean named %q (known: %v)", cfg.DBRef, keys(r.DBs))
+			return nil, errutil.Explain(nil, "no *gorm.DB bean named %q (known: %v)", cfg.DBRef, keys(r.DBs))
 		}
 		return db, nil
 	}
@@ -85,9 +85,9 @@ func (r *Runner) resolveDB(name string, cfg Config) (*gorm.DB, error) {
 			return db, nil
 		}
 	case 0:
-		return nil, fmt.Errorf("entry %q: no *gorm.DB bean found; open a database starter first", name)
+		return nil, errutil.Explain(nil, "entry %q: no *gorm.DB bean found; open a database starter first", name)
 	default:
-		return nil, fmt.Errorf("entry %q: several *gorm.DB beans exist (known: %v); set db-ref", name, keys(r.DBs))
+		return nil, errutil.Explain(nil, "entry %q: several *gorm.DB beans exist (known: %v); set db-ref", name, keys(r.DBs))
 	}
 	return nil, nil
 }
@@ -96,14 +96,14 @@ func (r *Runner) resolveDB(name string, cfg Config) (*gorm.DB, error) {
 // migration in cfg.Dir, forward-only.
 func migrateOne(ctx context.Context, db *gorm.DB, cfg Config) error {
 	if cfg.Dir == "" {
-		return fmt.Errorf("dir is required (directory of V<version>__<name>.sql files)")
+		return errutil.Explain(nil, "dir is required (directory of V<version>__<name>.sql files)")
 	}
 	if _, err := os.Stat(cfg.Dir); err != nil {
-		return fmt.Errorf("migration dir %q: %w", cfg.Dir, err)
+		return errutil.Explain(err, "migration dir %q", cfg.Dir)
 	}
 	sqlDB, err := db.DB()
 	if err != nil {
-		return fmt.Errorf("gorm connection has no *sql.DB: %w", err)
+		return errutil.Explain(err, "gorm connection has no *sql.DB")
 	}
 	dialect, err := gooseDialect(db.Dialector.Name())
 	if err != nil {
@@ -112,7 +112,7 @@ func migrateOne(ctx context.Context, db *gorm.DB, cfg Config) error {
 
 	store, err := database.NewStore(database.Dialect(dialect), cfg.Table)
 	if err != nil {
-		return fmt.Errorf("goose store: %w", err)
+		return errutil.Explain(err, "goose store")
 	}
 	// With a custom store goose derives the dialect from the store itself, so
 	// the provider-level dialect must be empty.
@@ -121,7 +121,7 @@ func migrateOne(ctx context.Context, db *gorm.DB, cfg Config) error {
 		goose.WithAllowOutofOrder(cfg.AllowMissing),
 	)
 	if err != nil {
-		return fmt.Errorf("goose provider: %w", err)
+		return errutil.Explain(err, "goose provider")
 	}
 	res, err := provider.Up(ctx)
 	if err != nil {
@@ -151,7 +151,7 @@ func gooseDialect(name string) (goose.Dialect, error) {
 	case "clickhouse":
 		return goose.DialectClickHouse, nil
 	default:
-		return "", fmt.Errorf("goose has no dialect for gorm dialector %q", name)
+		return "", errutil.Explain(nil, "goose has no dialect for gorm dialector %q", name)
 	}
 }
 

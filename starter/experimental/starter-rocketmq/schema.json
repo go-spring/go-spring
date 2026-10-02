@@ -53,9 +53,9 @@
             "default": 2,
             "description": "Producer internal retries before a synchronous send fails"
           },
-          "fail-fast": {
+          "ping": {
             "type": "boolean",
-            "default": true,
+            "default": false,
             "description": "Probe the first name server address with a TCP dial at startup"
           }
         }

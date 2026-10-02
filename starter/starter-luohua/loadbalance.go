@@ -17,10 +17,9 @@
 package luohua
 
 import (
-	"errors"
-
 	"go-spring.org/cloud/discovery"
 	"go-spring.org/cloud/loadbalance"
+	"go-spring.org/stdlib/errutil"
 )
 
 // LuohuaZone is the company's preferred data-center zone, used as the default
@@ -73,7 +72,7 @@ func (b luohuaBalancer) Pick(eps []discovery.Endpoint, _ loadbalance.PickInfo) (
 	if len(eps) > 0 {
 		return eps[0], nil
 	}
-	return discovery.Endpoint{}, errors.New("loadbalance: luohua balancer: no endpoints")
+	return discovery.Endpoint{}, errutil.Explain(nil, "loadbalance: luohua balancer: no endpoints")
 }
 
 // Complete implements [loadbalance.Balancer]. The policy is stateless.

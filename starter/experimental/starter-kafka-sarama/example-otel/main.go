@@ -40,6 +40,7 @@ import (
 	"go-spring.org/cloud/traffic"
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
+	"go-spring.org/stdlib/errutil"
 
 	starter "go-spring.org/starter-kafka-sarama"
 	_ "go-spring.org/starter-otel"
@@ -131,7 +132,7 @@ func (s *Service) consume(ctx context.Context, timeout time.Duration) (string, e
 	case err := <-pc.Errors():
 		return "", err
 	case <-time.After(timeout):
-		return "", fmt.Errorf("consume timed out")
+		return "", errutil.Explain(nil, "consume timed out")
 	}
 }
 

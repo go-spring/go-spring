@@ -82,13 +82,13 @@ func init() {
 // container injects; the ctor bundles them into the [cloud.ClientParams] it
 // hands the driver.
 //
-// Assembly completes before the probe: the client is probed (when FailFast is
+// Assembly completes before the probe: the client is probed (when Ping is
 // enabled) only after the driver has returned it, so a misconfigured broker
 // list, bad credentials or TLS mismatch fail fast at startup instead of
 // surfacing on the first produce/consume. A failed probe releases what was just
 // assembled.
 func newClient(ctx *gs.ContextProvider, name string, c Config, d Driver, mgr *resilience.Manager, inj *fault.Injector) (pulsar.Client, error) {
-	log.Debugf(ctx.Context, log.TagAppDef, "creating pulsar client, url=%s fail-fast=%v", c.URL, c.FailFast)
+	log.Debugf(ctx.Context, log.TagAppDef, "creating pulsar client, url=%s ping=%v", c.URL, c.Ping)
 
 	// No company Driver bean → fall back to the bundled default assembly.
 	if d == nil {
@@ -101,13 +101,13 @@ func newClient(ctx *gs.ContextProvider, name string, c Config, d Driver, mgr *re
 	}
 
 	// The driver returned the client complete — identity and the governance
-	// executor applied while it was built. Probe it (when FailFast is enabled).
+	// executor applied while it was built. Probe it (when Ping is enabled).
 	// The probe goes straight to the raw client on purpose: it is a connectivity
 	// check, not business traffic, so it must not spend limiter/breaker budget. A
 	// failure abandons the client, so release what was just assembled.
-	if c.FailFast {
+	if c.Ping {
 		if _, err = cl.TopicPartitions(c.HealthCheckTopic); err != nil {
-			log.Errorf(ctx.Context, log.TagAppDef, "pulsar: fail-fast probe failed on %s (topic=%s): %v", c.URL, c.HealthCheckTopic, err)
+			log.Errorf(ctx.Context, log.TagAppDef, "pulsar: ping failed on %s (topic=%s): %v", c.URL, c.HealthCheckTopic, err)
 			closeResilience(cl)
 			cl.Close()
 			shutdownMetrics(cl)

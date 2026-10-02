@@ -121,9 +121,9 @@ n, err := redis.Int(conn.Do("INCR", "counter")) // INCR
 | `scheme` | _空_ | 发现时按传输 scheme 过滤（如 `tls`）。仅 `service-name` 非空时有效。 |
 | `discovery` | — | 选哪个已注册的 discovery 后端。仅 `service-name` 非空时有效；未配置即无后端。 |
 | `driver` | `DefaultDriver` | 选哪个[ Driver](#七扩展自定义-driver)。 |
-| `startup-ping` | `false` | 启动期 `HealthCheck` 拨一条连接 `PING`，地址错/不可达时启动即失败（fail-fast），而非等到首次请求。redigo 池是惰性拨号的，建议生产打开。 |
+| `ping` | `false` | 启动期 `HealthCheck` 拨一条连接 `PING`，地址错/不可达时启动即失败（fail-fast），而非等到首次请求。redigo 池是惰性拨号的，建议生产打开。 |
 
-> **resilience 是全局键**（`resilience.*`，见[第五节](#五resilience限流--熔断--重试--超时)）。声明层内置无条件（未装 starter-otel 时空操作）；health 可按实例关闭，见[第九节](#九关闭内置功能)（`health.enabled`）。
+> **resilience 是全局键**（`resilience.*`，见[第五节](#五resilience限流--熔断--重试--超时)）。声明层内置无条件（未装 starter-otel 时空操作）；health 可按实例关闭，见[第九节](#九关闭内置功能)（`health`）。
 
 ---
 
@@ -306,14 +306,14 @@ gs.Provide(func(s *Service) gs.Init {
 
 | 内置功能 | 开关键 | 默认 | 关掉的效果 |
 |---|---|---|---|
-| **health 指标** | `health.enabled` | `true` | 不注册 `redigo:<name>` 健康指标，不进聚合健康。 |
+| **health 指标** | `health` | `true` | 不注册 `redigo:<name>` 健康指标，不进聚合健康。 |
 | **resilience** | `resilience.enabled`（全局） | `false` | 本就 opt-in；不开启则命令直连。见[第五节](#五resilience限流--熔断--重试--超时)。 |
-| **startup-ping** | `startup-ping` | `false` | 本就 opt-in；不开启则惰性拨号。 |
+| **ping** | `ping` | `false` | 本就 opt-in；不开启则惰性拨号。 |
 
 ```properties
 # 某个非关键缓存池：不进聚合健康
 spring.redigo.instances.softcache.addr=10.0.0.5:6379
-spring.redigo.instances.softcache.health.enabled=false
+spring.redigo.instances.softcache.health=false
 ```
 
 > 缓存抽象 bean（名为 `redigo:<实例名>` 的 `*cache.Cache`）是惰性的：无人注入就不实例化，无配置开关。

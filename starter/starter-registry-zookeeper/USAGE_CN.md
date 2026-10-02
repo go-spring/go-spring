@@ -9,8 +9,8 @@
 [ZooKeeper 文档](https://zookeeper.apache.org/doc/current/zookeeperProgrammers.html)**——
 本文只讲 go-spring 的增量。
 
-**激活条件**：每个 `spring.registry.zookeeper.<name>` 块即一个注册中心 —— 一个共享会话、一次
-启动探测、一套生命周期（`starter.go`）。名为 `zookeeper.<name>` 的 bean 同时导出
+**激活条件**：每个 `spring.registry.zookeeper.<name>` 块即一个注册中心 —— 一个共享会话、一套
+生命周期(仅 `ping=true` 时才有一次启动探测;`starter.go`)。名为 `zookeeper.<name>` 的 bean 同时导出
 `discovery.Registry`（设置了 `spring.registry.service-name` 时由 starter-registry 核心收集
 —— 纯消费方应用不注册任何实例）与 `discovery.Discovery`（按 bean 名引用，纯提供方不为读侧
 付出成本）。本 starter **两侧都做**：把本实例以临时 znode 发布到 ZooKeeper，同时携带客户端
@@ -135,8 +135,8 @@ blank-import starter-registry-zookeeper
 gs.Run()
   ├─ conf.BindEach 遍历 spring.registry.zookeeper.* → 每块一份 ZookeeperConfig
   ├─ 每块 newZkBackend：zk.Connect(servers, session-timeout)；设置了凭证则 digest
-  │    AddAuth + fail-fast 探活 Exists("/") —— 阻塞到会话连上，因此集群不可达在
-  │    启动期失败，而不是等第一次 Register 才暴露                    [starter.go]
+  │    AddAuth；ping=true 时 fail-fast 探活 Exists("/") —— 阻塞到会话连上，因此集群不可达
+  │    在启动期失败，而不是等第一次 Register 才暴露                  [starter.go]
   ├─ registryServer 经 []discovery.Registry 切片注入收集所有后端的 registrar
   │    （跨所有后端 —— zookeeper、nacos……）
   ├─ Run：就绪前校验 service-name/addr 且 registrar ≥ 1 个
@@ -198,10 +198,11 @@ unregistered instance`），负权重映射为 1 但 0 原样放行，然后用 
 
 | key | 类型 | 默认值 | 行为与联动 | 配错后果 |
 |-----|------|--------|-----------|---------|
-| `spring.registry.zookeeper.<n>.servers` | []string | —（必填） | 集群成员；**设置它即激活该块** | 到处未设：starter 沉默不生效；配错：启动在探活处失败（`registry-zookeeper: startup probe failed`） |
-| `spring.registry.zookeeper.<n>.session-timeout` | duration | `10s` | zk 会话超时；同时限定启动探活时长、以及崩溃进程的临时节点残留多久 | ⚠ 过长拖慢崩溃摘除；过短则在 GC 停顿/瞬时分区下会话过期 → 无声注销 |
+| `spring.registry.zookeeper.<n>.servers` | []string | —（必填） | 集群成员；**设置它即激活该块** | 到处未设：starter 沉默不生效；`ping=true` 且配错：启动在探活处失败（`registry-zookeeper: startup probe failed`） |
+| `spring.registry.zookeeper.<n>.session-timeout` | duration | `10s` | zk 会话超时；同时限定 `ping=true` 时的启动探活时长、以及崩溃进程的临时节点残留多久 | ⚠ 过长拖慢崩溃摘除；过短则在 GC 停顿/瞬时分区下会话过期 → 无声注销 |
 | `spring.registry.zookeeper.<n>.base-path` | string | `/services` | 持久父 znode；尾部 `/` 会被裁剪；服务目录按需创建 | 消费方必须列同一 path；不一致对提供方不可见 |
-| `spring.registry.zookeeper.<n>.health.enabled` | bool | `true` | 贡献名为 `registry-zookeeper:<name>` 的 `health.Indicator` bean,探针做一次 `Exists("/")`(与启动探活同一检查)。仅当有采集方(如 starter-actuator)注入时才实例化。 | `false` → 集群健康对 readiness 探针不可见 |
+| `spring.registry.zookeeper.<n>.ping` | bool | `false` | 构造期对集群探活一次(一次 `Exists("/")` 调用,阻塞到会话连上),不可达即启动失败。默认关,故尚未就绪的集群不会阻塞启动,连通性问题在首次使用时暴露。 | — |
+| `spring.registry.zookeeper.<n>.health` | bool | `true` | 贡献名为 `registry-zookeeper:<name>` 的 `health.Indicator` bean,探针做一次 `Exists("/")`(与启动探活同一检查)。仅当有采集方(如 starter-actuator)注入时才实例化。 | `false` → 集群健康对 readiness 探针不可见 |
 | `spring.registry.zookeeper.<n>.username` | string | `` | digest 认证，经 `AddAuth("digest", user:pass)` 生效；与 `password` 成对设置 | ⚠ 只设其一 → 认证报错 / ACL 拒绝写入 |
 | `spring.registry.zookeeper.<n>.password` | string | `` | digest 密码（同上） | 同上 |
 | `spring.registry.service-name` | string | `` | 逻辑服务名；成为 znode 目录名，也是发现侧解析的名字。**注册意图信号**：配了块而不设 → 合法的纯消费方 | 设了而 `addr` 为空：Run 返回 `registry: ${spring.registry.service-name} and ${spring.registry.addr} are required`——此时应用其他部分已起来 |
@@ -235,7 +236,7 @@ zk 侧检查均可用容器内 `zkCli.sh`（见 §1）或任意 zk 客户端完�
    `session-timeout`（示例 10s）之后——没有 critical 标记阶段、没有 reaper 配置，不同于基于
    TTL 的注册中心。观察消失：`zkCli.sh ls -w /services/orders` 或轮询 `get` 直到 `NoNode`。
    消费方的 `ChildrenW` 在删除时触发，下一个 snapshot 丢弃该 endpoint。
-5. **坏地址 fail-fast**：把块的 `servers` 设为 `127.0.0.1:9999` 启动 → 启动失败，报
+5. **坏地址 fail-fast**：把块的 `servers` 设为 `127.0.0.1:9999` 且 `ping=true` 启动 → 启动失败，报
    `registry-zookeeper: startup probe failed`——这是刻意设计，不让它拖到第一次 Register 才
    暴露。
 6. **重启替换**：kill -9 后立刻重启（赶在旧会话过期前）——尽管旧临时节点仍在，Register 依旧
@@ -253,7 +254,7 @@ zk 侧检查均可用容器内 `zkCli.sh`（见 §1）或任意 zk 客户端完�
 | 症状 | 原因 | 处置 |
 |------|------|------|
 | starter 不生效，没注册 | 到处都没有 `spring.registry.zookeeper.*` 块 | 配置一个命名块——块内 `servers` 即激活开关 |
-| 启动失败 `startup probe failed` | 集群不可达 / servers 配错 | 启动 ZooKeeper、修该块的 `servers`；探活最多阻塞一个 `session-timeout` |
+| 启动失败 `startup probe failed`（仅 `ping=true` 时） | 集群不可达 / servers 配错 | 启动 ZooKeeper、修该块的 `servers`；探活最多阻塞一个 `session-timeout` |
 | 启动报 `service-name and addr are required` | 注册时任一实例 key 未设 | 都设上——注意这在 Run 期才报，其他 server 已起来 |
 | 启动中止 "…… but no registry center is configured" | 设了 `service-name` 却没有任何连接块 | 至少加一个 `spring.registry.<backend>.<name>` 块 |
 | 运行中实例消失 | 会话过期（长 GC 停顿、网络分区、session-timeout 过低）；zk 删掉了临时节点，且 starter 不会重注册 | 调大 `session-timeout`；重启进程；关注 zk 客户端日志里的重连空档 |

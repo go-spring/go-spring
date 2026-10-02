@@ -56,6 +56,13 @@ type Config struct {
 	// processes only enqueue. See starter/DESIGN.md — starters do not
 	// activate services the operator did not ask for.
 	Server ServerConfig `value:"${server}"`
+
+	// Health controls whether the starter contributes a health.Indicator bean
+	// for this instance (readiness/startup probes via starter-actuator). On by
+	// default; set false to keep this instance out of the aggregated health
+	// report, e.g. for a backend whose downtime must not pull the pod out of
+	// rotation.
+	Health bool `value:"${health:=true}"`
 }
 
 // ServerConfig controls the worker role.

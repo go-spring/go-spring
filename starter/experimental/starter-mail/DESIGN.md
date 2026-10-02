@@ -6,7 +6,7 @@
 that provisions SMTP mailers backed by `github.com/wneessen/go-mail`.
 It is a small starter but has three non-obvious decisions worth pinning:
 observability declares (it does not emit), TLS mode ≠ enabled+cert-files, and
-startup-time dial.
+an opt-in startup-time dial.
 
 ## 1. Responsibilities & Boundaries
 
@@ -37,8 +37,9 @@ startup-time dial.
   `starttls` (default) / `tls` (implicit TLS on port 465) / `none`. This
   differs from every other starter's `tls.enabled=true` shape because
   SMTP has three distinct wire behaviours, not two (`project_starter_mail`).
-- **Startup dial is fail-fast.** `newMailer` dials once and closes so a
-  bad host/port/auth/TLS shows up at boot instead of on the first send.
+- **The startup dial is an opt-in probe.** With `ping=true` `newMailer` dials
+  once and closes so a bad host/port/auth/TLS shows up at boot instead of on the
+  first send; off by default so a not-yet-up relay does not block startup.
   For a mailer this matters — the first `Send` may be an ops alert.
 - **No pooled resource, a bounded destroy.** `DialAndSendWithContext` dials
   per Send and closes when done, so `destroy` has nothing to close on the SMTP

@@ -4,8 +4,8 @@
 
 `starter-cassandra` provides Cassandra / ScyllaDB support for Go-Spring on
 the official [gocql](https://github.com/gocql/gocql) driver (both speak the
-CQL native protocol): multi-instance session beans with fail-fast startup
-probes, a resilience-guarded `Exec` helper, per-instance health indicators,
+CQL native protocol): multi-instance session beans with opt-in fail-fast
+startup probes, a resilience-guarded `Exec` helper, per-instance health indicators,
 optional PasswordAuthenticator and TLS.
 
 ## Installation
@@ -61,9 +61,9 @@ err = s.Client.Query("SELECT message FROM demo.greetings WHERE id = ?", 1).
 
 - **Multi-instance clients** — every `spring.cassandra.instances.<name>` entry is its
   own bean with independent settings.
-- **Fail-fast startup probe + health indicator** — `HealthCheck` (a `system.local`
-  scan) at boot and a `cassandra:<name>` indicator for `starter-actuator`, both
-  delegating to the same implementation.
+- **Fail-fast startup probe + health indicator** — an opt-in `HealthCheck` (a `system.local`
+  scan) at boot (`ping=true`; off by default) and a `cassandra:<name>` indicator for
+  `starter-actuator` (`health=false` to skip it), both delegating to the same implementation.
 - **Guarded Exec** — synchronous statements route through the governance
   executor; the guarded `Query` wrapper covers `Iter`/`Scan` too, while page
   fetches inside the returned iterator and batch execution stay outside the

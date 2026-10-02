@@ -3,7 +3,7 @@
 [English](README.md) | [中文](README_CN.md)
 
 `starter-influxdb` provides InfluxDB 2.x support for Go-Spring: multi-instance
-`influxdb2.Client` beans with fail-fast startup probes, per-request
+`influxdb2.Client` beans with opt-in fail-fast startup probes, per-request
 observability declared by the starter and emitted by the resilience layer
 (span + metric + access log), resilience on the blocking write
 path (rate limit / circuit breaking / fault injection), a managed async
@@ -66,8 +66,9 @@ DeleteAPI, Setup, ...) is promoted unchanged.
   fails per call) and `ManagedWriteAPI` (buffered batches on a background
   goroutine, flushed on shutdown; failed batches are drained into go-spring's
   log so the writer never blocks). See DESIGN for the split.
-- **Fail-fast startup probe + health indicator** — a `/health` round trip at
-  boot and an `influxdb:<name>` indicator for `starter-actuator`.
+- **Fail-fast startup probe + health indicator** — an opt-in `/health` round trip
+  at boot (`ping=true`; off by default) and an `influxdb:<name>` indicator for
+  `starter-actuator` (`health=false` to skip it).
 - **Observability** — the starter *declares* each request's identity
   (`db.system=influxdb`, a bounded `db.operation=<method>`, and the URL path as
   `db.statement`); the resilience layer *emits* it. It opens one client span per

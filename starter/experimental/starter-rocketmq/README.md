@@ -3,8 +3,8 @@
 [English](README.md) | [中文](README_CN.md)
 
 `starter-rocketmq` provides [RocketMQ](https://rocketmq.apache.org/) support for
-Go-Spring: multi-instance `rocketmq.Client` beans with fail-fast startup
-probes, optional ACL credentials, a broker-neutral `messaging.Driver`, OTel
+Go-Spring: multi-instance `rocketmq.Client` beans with an opt-in startup ping
+probe, optional ACL credentials, a broker-neutral `messaging.Driver`, OTel
 tracing helpers, and opt-in call-site resilience on the synchronous send path.
 It is built on the official [rocketmq-client-go](https://github.com/apache/rocketmq-client-go)
 v2 client and works against RocketMQ 4.x and 5.x clusters through the
@@ -65,9 +65,9 @@ automatically when the application closes.
 
 - **Multi-instance clients** — every `spring.rocketmq.instances.<name>` entry is its own
   bean with independent settings.
-- **Fail-fast startup probe** — a TCP dial against the name server list at
-  boot catches wrong addresses before the first message (disable with
-  `fail-fast=false`).
+- **Startup ping probe (opt-in)** — with `ping=true` a TCP dial against the name server list at
+  boot catches wrong addresses before the first message; off by default
+  so a not-yet-up broker does not block startup.
 - **Lifecycle management** — everything created through the client
   (producers, push consumers) is registered and shut down by the starter.
 - **Log bridge** — the client library's internal logs are routed into

@@ -150,7 +150,7 @@ import starter-go-redis
         └─ conf.BindEach("${spring.go-redis}") → one Config per <name> entry
               ├─ mode single/sentinel → Provide(newClient).Name(<name>).Destroy((*Client).Destroy)
               ├─ mode cluster          → Provide(newClusterClient).Name(<name>) (same wrapper type)
-              └─ Provide health.Indicator named "redis:<name>" (gated by health.enabled, default on)
+              └─ Provide health.Indicator named "redis:<name>" (gated by health, default on)
 
 gs.Run()
   └─ ctor newClient [starter.go:143] — assembles the client COMPLETELY, then probes:
@@ -165,8 +165,8 @@ gs.Run()
        │               a zero bundle degrades to an observe-only Unmanaged executor)
        │         → lbMgr.Bind(pool, label) for a discovery-routed entry
        │         → AddHook(resilienceHook) — command chain complete
-       └─ startup HealthCheck on the raw client (bounded by dial-timeout or 5s); on failure Destroy
-          releases what was just assembled
+       └─ if ping: startup HealthCheck on the raw client (bounded by dial-timeout or 5s); on failure
+          Destroy releases what was just assembled
   ├─ readiness: probes flip UP (indicator runs HealthCheck)
   └─ SIGTERM → Destroy [client.go:148]: exec.Close → detach selection → client.Close
 ```
@@ -174,8 +174,9 @@ gs.Run()
 There is no `Init` hook: everything the old Init did (label, executor, selection binding,
 hook order) happens inside the ctor, so gs only has to know how to DESTROY the bean.
 
-A misconfigured mode (`mode=foo`) or a failed startup ping fails the boot — the process never
-reaches "serving" with a dead Redis.
+A misconfigured mode (`mode=foo`) always fails the boot; so does a failed startup ping — but that
+probe only runs when `ping=true`. With the default `false` a dead Redis is not caught at boot; the
+first command fails instead.
 
 ### 2.2 Command hook chain — exact order and why
 
@@ -274,10 +275,11 @@ binding via `conf.BindEach` (NOT the absolute-property starter-Pool rule).
 | `pool-size` | int | 10 | Max socket connections. | Too low → wait contention under burst. |
 | `max-idle` | int | 5 | Max idle conns (go-redis MaxIdleConns). | — |
 | `max-retries` | int | 0 | go-redis command retries. ⚠ Keep the RESILIENCE retry at 0 too — double retry loops amplify latency and can re-send non-idempotent commands (config.go:152-154 comment). | Large value + resilience retry → multiplied attempts. |
-| `dial-timeout` / `read-timeout` / `write-timeout` | duration | 5s / 3s / 3s | Passed through; dial-timeout also bounds the startup HealthCheck [starter.go]. | — |
+| `dial-timeout` / `read-timeout` / `write-timeout` | duration | 5s / 3s / 3s | Passed through; dial-timeout also bounds the startup HealthCheck when `ping=true` [starter.go]. | — |
 | `conn-max-lifetime` | duration | 2m | Conn reuse window; short values smooth discovery traffic switching. | Very large + discovery → stale-endpoint conns linger. |
 | `tls.*` | group | off | `security` client TLS (enabled/ca-file/cert-file/key-file/server-name/insecure-skip-verify). | Partial config → `tls.Build` error at boot. |
-| `health.enabled` | bool | true | Contributes the `redis:<name>` health.Indicator for the instance — the same switch starter-redigo exposes. | false → no indicator bean for the instance; readiness of that Redis is no longer reported. |
+| `ping` | bool | false | Opt-in startup probe: `HealthCheck` pings once and fails the boot on an unreachable server; off by default so a backend that is not up yet only surfaces on first use. | Expecting fail-fast without setting it → boot "succeeds", first request fails. |
+| `health` | bool | true | Contributes the `redis:<name>` health.Indicator for the instance — the same switch starter-redigo exposes. | false → no indicator bean for the instance; readiness of that Redis is no longer reported. |
 
 ### 3.3 Instrumentation
 
@@ -357,7 +359,7 @@ without restart.
 
 | Symptom | Likely cause | Fix |
 |---------|--------------|-----|
-| Boot fails "startup ping failed" | Unreachable addr / wrong password / TLS mismatch | The startup HealthCheck is unconditional; fix connectivity or credentials. |
+| Boot fails "startup ping failed" | Unreachable addr / wrong password / TLS mismatch | Emitted only when `ping=true`; fix connectivity or credentials. With `ping` off a dead Redis surfaces on the first command instead. |
 | Boot fails "invalid mode ... (want single/sentinel/cluster)" | Typo in `mode` | Correct the value — modes are exact-match. |
 | Boot fails "service-name is not supported in sentinel/cluster mode" | Discovery + self-discovering topology | Remove service-name; sentinel/cluster discover nodes themselves. |
 | Boot fails "db is not supported in cluster mode" | Redis Cluster has no database select | Drop `db` (cluster only has db 0). |
@@ -373,12 +375,12 @@ without restart.
 
 | Metric | Value |
 |--------|-------|
-| Config keys | 25 instance keys + tls group + otel(1) |
+| Config keys | 26 instance keys + tls group + otel(1) |
 | Required | 1 per mode (addr/service-name, master-name+sentinel-addrs, or addrs) |
 | Quickstart external deps | 1 (Redis) |
 | "Watch out" entries | 6 |
 
-Design suspects (audit ledger): ~~health indicator has no opt-out key~~ (fixed: `health.enabled`
+Design suspects (audit ledger): ~~health indicator has no opt-out key~~ (fixed: `health`
 now mirrors redigo); ~~cache façade bean named after the backend instance rather
 than the `spring.cache` map key~~ (resolved: the `go-redis:<name>` bean name is now the
 contract, injected directly by name); `max-retries` (go-redis) vs resilience retry is a

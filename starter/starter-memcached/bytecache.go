@@ -22,11 +22,12 @@ package StarterMemcached
 import (
 	"context"
 	"errors"
-	"time"
 
 	"github.com/bradfitz/gomemcache/memcache"
 	"go-spring.org/cloud/cache"
 )
+
+type byteCache struct{ c *Client }
 
 // NewByteCache wraps a *Client as a [cache.ByteCache]. Every operation flows
 // through the wrapper's command seam (observe span + duration metric + access
@@ -34,28 +35,21 @@ import (
 // registered in the starter's root package selects the memcache client bean by
 // beanID; call this directly to build a ByteCache for ad-hoc use.
 func NewByteCache(c *Client) cache.ByteCache {
-	return &memcachedCache{c}
+	return &byteCache{c}
 }
 
-type memcachedCache struct{ c *Client }
-
-// toExp converts a ttl to memcached's int32-seconds expiration. 0 means "never
-// expire"; a positive sub-second ttl is rounded up to 1s so it is not silently
-// treated as forever.
-func toExp(ttl time.Duration) int32 {
-	if ttl <= 0 {
+// toExp converts a ttl in whole seconds to memcached's int32-seconds
+// expiration. A non-positive value means "never expire" (0).
+func toExp(ttlSeconds int) int32 {
+	if ttlSeconds <= 0 {
 		return 0
 	}
-	exp := int32(ttl.Seconds())
-	if exp == 0 {
-		exp = 1
-	}
-	return exp
+	return int32(ttlSeconds)
 }
 
-// GetBytes returns the raw bytes under key. A missing key is reported as
-// (nil, [cache.ErrMiss]).
-func (m *memcachedCache) GetBytes(ctx context.Context, key string) ([]byte, error) {
+// GetBytes returns the raw bytes under key, or (nil, [cache.ErrMiss]) when the
+// key is absent.
+func (m *byteCache) GetBytes(ctx context.Context, key string) ([]byte, error) {
 	item, err := m.c.Get(ctx, key)
 	if errors.Is(err, memcache.ErrCacheMiss) {
 		return nil, cache.ErrMiss
@@ -66,15 +60,14 @@ func (m *memcachedCache) GetBytes(ctx context.Context, key string) ([]byte, erro
 	return item.Value, nil
 }
 
-// SetBytes stores the raw bytes under key for ttl. ttl is in seconds
-// (sub-second rounded up to 1s); a non-positive ttl means the entry never
-// expires.
-func (m *memcachedCache) SetBytes(ctx context.Context, key string, val []byte, ttl time.Duration) error {
-	return m.c.Set(ctx, &memcache.Item{Key: key, Value: val, Expiration: toExp(ttl)})
+// SetBytes stores the raw bytes under key for ttlSeconds, a whole number of
+// seconds. A non-positive value means the entry does not expire.
+func (m *byteCache) SetBytes(ctx context.Context, key string, val []byte, ttlSeconds int) error {
+	return m.c.Set(ctx, &memcache.Item{Key: key, Value: val, Expiration: toExp(ttlSeconds)})
 }
 
 // Delete removes key. Deleting an absent key is not an error.
-func (m *memcachedCache) Delete(ctx context.Context, key string) error {
+func (m *byteCache) Delete(ctx context.Context, key string) error {
 	err := m.c.Delete(ctx, key)
 	if errors.Is(err, memcache.ErrCacheMiss) {
 		return nil

@@ -49,6 +49,7 @@ Get/Set/Delete 会声明各自的操作身份，并经 resilience 层（限流/�
 | `spring.bigcache.instances.<name>.max-entry-size` | int | 500 | 否 | 预期单条目最大字节数；仅预分配提示 |
 | `spring.bigcache.instances.<name>.hard-max-cache-size` | int | 0 | 否 | 内存硬顶（MB）；0 = 不限 |
 | `spring.bigcache.instances.<name>.stats-enabled` | bool | false | 否 | 开启 `Stats()` 计数（同时喂 OTel gauge） |
+| `spring.bigcache.instances.<name>.health` | bool | true | 否 | 是否注册 `bigcache:<name>` 健康 indicator；false 则不卷入聚合健康 |
 
 `driver` key 按名指定 Driver bean：留空 = 先回退家族级 `spring.<family>.default.driver`，再按类型注入唯一 Driver bean（无 bean 时装配内回退到内置
 `DefaultDriver`）；配置 bean 名则显式选定一个，指定的 bean 不存在则启动失败。
@@ -60,7 +61,7 @@ Get/Set/Delete 会声明各自的操作身份，并经 resilience 层（限流/�
 
 - 每实例一个 `*StarterBigCache.Cache` bean，名为 `<name>`；构造（`NewCache`）即注册统计 gauge
   并装配治理，`Destroy` 调用 `Close()`（停止淘汰 goroutine）。
-- 每实例一个健康 indicator，名 `bigcache:<name>`（经 `[]health.Indicator` 收集）。
+- 每实例一个健康 indicator，名 `bigcache:<name>`（经 `[]health.Indicator` 收集；由 `health` 控制，默认 true）。
 - 每次调用（由 resilience 层发射，meter `go-spring.org/cloud/resilience`）：
   调用级 `db.client.operation.duration`（含重试与退避）、尝试级 `db.client.attempt.duration`
   （每次下游尝试一条记录）、在途 `db.client.active_requests`，以及按状态分类的

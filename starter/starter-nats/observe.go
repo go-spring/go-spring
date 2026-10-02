@@ -46,10 +46,9 @@ import (
 // property refresh — see [log.RegisterTag].
 var accessTag = log.RegisterAppTag("nats", "access")
 
-// scopeName names the OTel scope the process-wide connection-state instrument
-// registers under. The meter is looked up per use (otel.Meter at build time),
-// never cached before a provider is installed.
-const scopeName = "go-spring.org/starter-nats"
+// scope is the instrumentation scope name every meter and tracer in this package
+// reports under.
+const scope = "go-spring.org/starter-nats"
 
 // maxSubject bounds the subject captured as messaging.destination.name. A
 // subject can be long and a span or a log line has no use for all of it.
@@ -132,8 +131,14 @@ type instrumentSet struct {
 // a value resolved at init would keep pointing at the old SDK.
 var instruments = sync.OnceValue(buildInstruments)
 
+// resetInstruments makes the next use of instruments() resolve a fresh set. It
+// exists for tests that install their own MeterProvider: the set is process-wide
+// and resolved once, so a test running after one that already resolved it would
+// otherwise keep reporting into the earlier provider.
+func resetInstruments() { instruments = sync.OnceValue(buildInstruments) }
+
 func buildInstruments() *instrumentSet {
-	m := otel.Meter(scopeName)
+	m := otel.Meter(scope)
 	in := &instrumentSet{}
 	in.connChanges, _ = m.Int64Counter("messaging.client.connection.state_changes",
 		metric.WithDescription("Connection-state transitions reported by the messaging client"),

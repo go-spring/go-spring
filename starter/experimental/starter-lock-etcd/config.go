@@ -36,7 +36,8 @@ type Config struct {
 	Password string `value:"${password:=}"`
 
 	// DialTimeout bounds the initial connection attempt. It also bounds the
-	// startup readiness probe used to fail fast on unreachable clusters.
+	// startup readiness probe (see Ping) used to fail fast on unreachable
+	// clusters.
 	DialTimeout time.Duration `value:"${dial-timeout:=5s}"`
 
 	// TTL is the lease duration attached to each acquired lock. When the
@@ -53,6 +54,13 @@ type Config struct {
 	// the shared spring/cloud/security block so every starter exposes the same
 	// tls.* keys.
 	TLS security.TLSConfig `value:"${tls}"`
+
+	// Ping enables the startup connectivity probe: when true the constructor
+	// probes the cluster once and fails startup if it is unreachable, surfacing
+	// misconfiguration early. Default is false: a cluster that is not up yet
+	// must not block the application from starting; connectivity problems
+	// surface on first use instead. Set true to restore fail-fast behaviour.
+	Ping bool `value:"${ping:=false}"`
 
 	// ObserveEnabled toggles the observe-lock instrumentation layer (trace
 	// span + duration metric + access log) around the Locker. On by

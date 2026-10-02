@@ -18,7 +18,7 @@ bean 承载 ——
   bean 名 `nacos.<name>` 来解析。
 
 **激活方式**：每个 `spring.registry.nacos.<name>` 块即一个注册中心 —— 一个共享 naming
-client、一次启动探测、一套生命周期（`starter.go`）。名为 `nacos.<name>` 的 bean 同时导出
+client、一套生命周期（仅 `ping=true` 时才有一次启动探活;`starter.go`）。名为 `nacos.<name>` 的 bean 同时导出
 `discovery.Registry`（设置了 `spring.registry.service-name` 时由 starter-registry 核心收集
 —— 纯消费方应用不注册任何实例）与 `discovery.Discovery`（按 bean 名引用，纯提供方不为读
 侧付出任何成本）。
@@ -158,7 +158,7 @@ import starter-registry-nacos
             条件：gs.OnProperty("spring.registry.service-name")
 gs.Run()
   ├─ conf.BindEach 遍历 spring.registry.nacos.* → 每块一份 NacosConfig
-  ├─ 每块 newNacosBackend：建 nacos naming client + FAIL-FAST 探活
+  ├─ 每块 newNacosBackend：建 nacos naming client；ping=true 时 FAIL-FAST 探活
   │    （GetAllServicesInfo 取 1 行 —— server 不可达/凭证错误直接终止启动）[starter.go]
   ├─ registryServer 经 []discovery.Registry 切片注入收集所有后端的 registrar
   │    （跨所有后端 —— nacos、zookeeper……）
@@ -218,9 +218,10 @@ gs.Run()
 | `namespace` | string | ""（public） | 注册与发现共享的 namespace id（块持有）。 | 与被消费的 provider 不一致 → 对方在另一个 namespace。 |
 | `group` | string | DEFAULT_GROUP | 注册与发现共享的分组 —— 一个值服务两半。 | 与别处注册的 provider 不匹配 → 解析静默返回空。 |
 | `cluster` | string | DEFAULT | 两半共享的 Nacos 集群名。 | provider 在集群 X、本块钉在别处 → 看不到。 |
-| `username` / `password` | string | "" | Nacos 鉴权；由启动探活验证。 | 凭证错误 → 启动在探活处失败，而非首次 Register。 |
-| `timeout-ms` | uint64 | 5000 | 界定每次 nacos API 调用（含探活）。 | 过小 → 慢链路上探活/注册抖动。 |
-| `health.enabled` | bool | true | 贡献名为 `registry-nacos:<name>` 的 `health.Indicator` bean,探针在块的 namespace/group 内做一次单服务列举(与启动探活同一检查)。仅当有采集方(如 starter-actuator)注入时才实例化。 | `false` → 服务端健康对 readiness 探针不可见 |
+| `username` / `password` | string | "" | Nacos 鉴权；`ping=true` 时由启动探活验证。 | 凭证错误 →（`ping=true` 时）启动在探活处失败，而非首次 Register。 |
+| `timeout-ms` | uint64 | 5000 | 界定每次 nacos API 调用（含 `ping=true` 的探活）。 | 过小 → 慢链路上探活/注册抖动。 |
+| `ping` | bool | false | 构造期对服务端探活一次（一次单服务列举），不可达即启动失败。默认关，故尚未就绪的服务端不会阻塞启动，连通性问题在首次使用时暴露。 | — |
+| `health` | bool | true | 贡献名为 `registry-nacos:<name>` 的 `health.Indicator` bean,探针在块的 namespace/group 内做一次单服务列举(与启动探活同一检查)。仅当有采集方(如 starter-actuator)注入时才实例化。 | `false` → 服务端健康对 readiness 探针不可见 |
 
 同一 `<name>` 的两个块会在容器里因 bean 重名而响亮报错；不同后端之间的块名永不冲突
 （bean 名带后端类型，如 `nacos.main` 与 `zookeeper.main`）。
@@ -298,6 +299,7 @@ Disabled 才 ErrNoAvailable）。
 
 ```properties
 spring.registry.nacos.main.server=127.0.0.1:9999   # 该端口无服务
+spring.registry.nacos.main.ping=true               # 启动即探活
 ```
 
 ```bash
@@ -311,7 +313,7 @@ go run ./provider   # 启动中止："registry-nacos: startup probe failed for 1
 | 症状 | 可能原因 | 处置 |
 |------|----------|------|
 | 没有注册、也没有任何日志 | 没有任何 `spring.registry.nacos.*` 块（或块内缺 `server`） | 配置一个命名块 —— `spring.registry.nacos.<name>.*` 下任意 key 都会激活后端。 |
-| 启动中止 "startup probe failed" | Nacos 不可达，或 namespace/凭证错误 | 修正 server/namespace/username/password；探活就是取 1 行服务列表。 |
+| 启动中止 "startup probe failed"（仅 `ping=true` 时） | Nacos 不可达，或 namespace/凭证错误 | 修正 server/namespace/username/password；探活就是取 1 行服务列表。 |
 | 启动中止 "service-name and addr are required" | `spring.registry.*` 不完整 | 两个都设上；校验发生在就绪前。 |
 | 启动中止 "…… but no registry center is configured" | 设了 `service-name` 却没有任何连接块 | 至少加一个 `spring.registry.<backend>.<name>` 块。 |
 | 已注册但 consumer 解析为空 | provider 注册在了与被引用块不同的 group/namespace 下 | 两侧必须使用相同的块级 `group`/`namespace`（本 starter 读写共享一个值）。 |

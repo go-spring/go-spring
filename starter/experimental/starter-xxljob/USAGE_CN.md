@@ -116,9 +116,9 @@ import starter-xxljob
              ├─ Config 的 expr 校验（app-name != ''、admin-addresses
              │  非空、port > 0——绑定期即失败）
              ├─ Provide(newExecutor).Name(<name>).
-             │   Export(gs.As[gs.Server]()).Destroy(...)           [starter.go:32-35]
-             └─ Provide(health.Indicator).Name("xxljob:"+<name>).
-                Export(gs.As[health.Indicator]())                  [starter.go:37-39]
+             │   Export(gs.As[gs.Server]()).Destroy(...)           [starter.go:32-38]
+             └─ if c.Health: Provide(health.Indicator).
+                Name("xxljob:"+<name>)                             [starter.go:40-45]
 gs.Run()
   ├─ bean 装配：应用按实例名 autowire *Executor
   ├─ Rooter Init 阶段：应用 Service.Init 调 RegisterHandler
@@ -185,6 +185,7 @@ gs.Run()
 | `access-token` | string | 空 | 非空时在 executor→admin 调用上带 `XXL-JOB-ACCESS-TOKEN`。⚠ 必须与 admin 侧 token 完全一致；空只匹配无 token 的 admin。 | 不一致 → admin 静默丢弃注册/回调。 |
 | `registry-interval` | duration | 10s | 重注册/心跳周期。⚠ 须明显小于 admin 的注册过期（原版 xxl-job 默认 90s），否则 executor 掉线抖动。 | 过大 → admin 视角 executor 周期性离线；触发被路由到别处。 |
 | `log-dir` | string | `./logs` | `/log` 以 `<logId>.log` 服务该目录；目录缺失时 starter 会创建。⚠ 职责分工：starter 只负责**读**这一侧——写 `<log-dir>/<logId>.log` 由你的 TaskFunc 负责。 | admin 控制台日志为空。 |
+| `health` | bool | true | 为该实例贡献名为 `xxljob:<name>` 的 `health.Indicator`（经 starter-actuator 的就绪探测）。置 false 可让它不出现在聚合健康报告里。 | false → 该实例探针缺失；就绪状态不再反映它。 |
 
 ---
 
@@ -247,7 +248,7 @@ recover（goutil 链）并按失败上报——进程存活。
 
 | 指标 | 数值 |
 |------|------|
-| 配置 key 总数 | 6 |
+| 配置 key 总数 | 7 |
 | 其中必填 | 3（app-name、admin-addresses、port） |
 | quickstart 前置外部依赖数 | 1（xxl-job admin；example 用 mock） |
 | 注意/坑条数 | 4 |

@@ -81,20 +81,15 @@
           "tls": {
             "type": "object"
           },
-          "startup-ping": {
+          "ping": {
             "type": "boolean",
             "default": false,
-            "description": "Ping once at pool Init to fail fast on an unreachable Redis"
+            "description": "Ping the backend once at startup and fail fast when it is unreachable; default off so a backend that is not up yet only surfaces on first use."
           },
           "health": {
-            "type": "object",
-            "properties": {
-              "enabled": {
-                "type": "boolean",
-                "default": true,
-                "description": "Contributes a health.Indicator bean per instance; set false to disable."
-              }
-            }
+            "type": "boolean",
+            "default": true,
+            "description": "Contributes a health.Indicator bean per instance; set false to disable."
           }
         }
       }

@@ -5,7 +5,7 @@ against the starter source (`starter.go`, `config.go`, `observe.go`) and the run
 [example/](example/) / [example-otel/](example-otel/). **SMTP and message semantics (headers,
 MIME, attachments, auth mechanisms) are [go-mail's documentation](https://github.com/wneessen/go-mail)
 and [RFC 5321](https://www.rfc-editor.org/rfc/rfc5321)** — everything below is go-spring's
-increment: configuration, wiring, fail-fast startup, operation declaration.
+increment: configuration, wiring, an opt-in startup probe, operation declaration.
 
 **Activation**: every `spring.mail.instances.<name>` subtree creates exactly one `*Mailer` bean named
 `<name>`. No `spring.mail.instances.*` keys → no beans, no startup dial, starter is inert. There is no
@@ -140,7 +140,7 @@ import starter-mail
 gs.Run()
   ├─ config bind: spring.mail.instances.<name>.* → Config (value tags; host required via errutil.RequireField)
   ├─ newMailer: parse auth (only if username set) → TLS mode → mail.NewClient
-  ├─ fail-fast probe: client.DialWithContext (bounded by timeout) then Close
+  ├─ probe (when ping=true): client.DialWithContext (bounded by timeout) then Close
   │     └─ bad host/port/auth/TLS ⇒ startup ERROR, app refuses to boot (source comment:
   │        "so a misconfiguration surfaces at boot rather than on the first send")
   ├─ governance applied in the ctor: exec = cloud.ClientParams{...}.ExecutorFor("mail", label)
@@ -219,10 +219,11 @@ instance-prefixed. (The starter has no wrapper-field value tags; nothing here is
 | `host` | string | — | **Required** (`errutil.RequireField` in newMailer). No localhost fallback. | Missing → startup fails fast with a required-field error. |
 | `port` | int | 587 | Passed to `mail.WithPort`. | ⚠ 465 without `tls.mode=tls` → implicit-TLS server spoken plaintext → dial fails at startup. 587 with `tls.mode=tls` likewise fails. |
 | `username` | string | — | Non-empty turns SMTP auth on with `password`; empty ⇒ `WithSMTPAuth(SMTPAuthNoAuth)` (anonymous). | Password without username is silently ignored. |
-| `password` | string | — | Used only when username set. | Wrong password → startup dial fails (fail-fast). |
+| `password` | string | — | Used only when username set. | Wrong password → startup dial fails (when ping=true). |
 | `auth-type` | string | auto | `auto`\|`plain`\|`login`\|`cram-md5` (parseAuthType, lower-cased; `crammd5` alias accepted). Only consulted when username non-empty. | Unknown value → startup error listing valid values. |
 | `from` | string | — | Default sender; per-message `Message.From` overrides. | Empty from + message without From → Send-time error, not startup. |
-| `timeout` | duration | 10s | Bounds BOTH the startup probe and each send's dial (`WithTimeout` + probe context). | Too small → spurious startup/send timeouts on slow relays. |
+| `timeout` | duration | 10s | Bounds both the startup probe (when `ping=true`) and each send's dial (`WithTimeout` + probe context). | Too small → spurious startup/send timeouts on slow relays. |
+| `ping` | bool | false | Opt-in startup probe: `DialWithContext` then `Close` so bad host/port/auth/TLS aborts boot [starter.go:171-180]. | true → a bad triple aborts boot; false → surfaces on the first Send. |
 | `tls.mode` | string | starttls | `starttls` (empty = same, mandatory upgrade) \| `tls`/`ssl` (implicit TLS) \| `none` (plaintext, test only). Unknown → startup error. | `none` in production sends credentials in the clear; wrong mode vs port → dial failure at boot. |
 | `tls.insecure-skip-verify` | bool | false | When true installs a TLS config with `InsecureSkipVerify` (ServerName=host). | Test-only; in production it accepts forged server certificates — silent MITM exposure. |
 
@@ -244,17 +245,20 @@ curl -s :8025/api/v2/messages | jq '.messages[0].To'                 # alice, bo
 The example asserts `total >= 1` after sending one message with To×2 + Cc×1 and one attachment
 (example.go runTest).
 
-### 4.2 Fail-fast drill
+### 4.2 Ping drill
 
-Set `spring.mail.instances.notify.port=9999` (nothing listening) and boot: startup aborts with
-`mail: startup dial to ...:9999 failed`. This is the intended posture — the probe
-(newMailer, starter.go:137-144) exists precisely so bad config never reaches first-send.
+Set `spring.mail.instances.notify.port=9999` (nothing listening), add
+`spring.mail.instances.notify.ping=true`, and boot: startup aborts with
+`mail: startup dial to ...:9999 failed`. This is the opt-in posture — the probe
+(newMailer, starter.go:171-180) exists so bad config can be caught before first-send when the
+operator asks for it; without `ping=true` the same config boots and fails on the first Send.
 
 ### 4.3 TLS posture drill
 
 Point `host/port` at a real submission server with `tls.mode` mismatched (e.g. `none` on 587
-against a STARTTLS-only relay): boot fails on the probe. Flip to `starttls` → boots. The probe
-catches TLS-mode mistakes for free because it performs the same negotiation a Send would.
+against a STARTTLS-only relay) and set `ping=true`: boot fails on the probe. Flip to `starttls`
+→ boots. The probe catches TLS-mode mistakes for free because it performs the same negotiation
+a Send would.
 
 ### 4.4 Trace drill (example-otel)
 
@@ -292,15 +296,15 @@ Remove `from` from config, keep the app sending `Message` without `From` → eve
 
 | Metric | Value |
 |--------|-------|
-| Config keys | 10 (incl. 2 `tls.*`) |
+| Config keys | 11 (incl. 2 `tls.*`) |
 | Required | 1 (`host`) |
 | Quickstart external deps | 1 (SMTP server / MailHog) |
 | "Watch out" entries | 4 |
 
 Design suspects (for the audit ledger):
-- No health indicator despite a startup dial probe existing — the probe result is not exposed
-  at runtime; boot-time health and steady-state health are conflated.
-- Fail-fast probe costs one SMTP login per boot per instance against quota-limited relays
+- No health indicator despite an opt-in startup dial probe existing — the probe result is not
+  exposed at runtime; boot-time health and steady-state health are conflated.
+- The opt-in ping probe costs one SMTP login per boot per instance against quota-limited relays
   (e.g. verified-sender APIs); acceptable but worth remembering at instance-count scale.
 - `port` ↔ `tls.mode` coupling is validated only implicitly by the probe — a friendlier
   startup error naming the pairing would save a troubleshooting round.

@@ -112,7 +112,7 @@ spring.gateway.routes.api.upstream.target=http://127.0.0.1:19000
   网关自己不再保留任何端点。
 * 每个被代理的请求一行访问日志（`gateway.route`、`status`、`http.request.method`、
   `url.path`、`http.response.status_code`、`duration_ms`）。
-* 名为 `gateway` 的 `health.Indicator` 只要路由表已加载即报告 UP。
+* 名为 `gateway` 的 `health.Indicator` 只要路由表已加载即报告 UP（除非 `spring.gateway.health=false`）。
 
 ## 核心特性
 

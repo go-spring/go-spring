@@ -33,6 +33,11 @@ type fakeCfg struct {
 	File string `value:"${file}"`
 }
 
+// PingEnabled / HealthEnabled satisfy [gormcore.ConfigSwitches]; the fake dialect
+// keeps the documented defaults (no startup probe, health indicator on).
+func (fakeCfg) PingEnabled() bool   { return false }
+func (fakeCfg) HealthEnabled() bool { return true }
+
 func init() {
 	Module(Dialect[fakeCfg]{
 		Prefix:       "spring.gorm.fake",

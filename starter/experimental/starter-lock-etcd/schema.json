@@ -50,6 +50,11 @@
                 "description": "Wrap the Locker with the observe-lock adapter; false = bare locker"
               }
             }
+          },
+          "ping": {
+            "type": "boolean",
+            "default": false,
+            "description": "Probe the cluster once at startup and fail fast when unreachable; false (default) skips the probe."
           }
         }
       }

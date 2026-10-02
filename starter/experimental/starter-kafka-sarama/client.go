@@ -23,8 +23,6 @@
 package StarterKafkaSarama
 
 import (
-	"fmt"
-
 	"github.com/IBM/sarama"
 	"go-spring.org/cloud"
 	"go-spring.org/cloud/fault"
@@ -47,10 +45,10 @@ import (
 // misconfigured broker list, bad credentials or TLS mismatch fail fast at
 // startup instead of surfacing on the first produce/consume. The Driver returns
 // the client complete — identity and governance both applied while it was built
-// (see [Driver.CreateClient]) — so this ctor only probes the metadata afterwards:
-// a defensive non-empty Brokers() test that guards against sarama changes which
-// might otherwise swallow a fully empty cluster. A failed probe releases what
-// was just assembled.
+// (see [Driver.CreateClient]) — so this ctor only probes the metadata afterwards
+// (when Ping is enabled): a defensive non-empty Brokers() test that guards
+// against sarama changes which might otherwise swallow a fully empty cluster. A
+// failed probe releases what was just assembled.
 //
 // mgr and inj are the governance beans the container injects; the ctor bundles
 // them into the [cloud.ClientParams] it hands the driver, which attaches the
@@ -72,13 +70,15 @@ func newClient(ctx *gs.ContextProvider, name string, c Config, d Driver, mgr *re
 		return nil, errutil.Explain(err, "failed to create kafka client: %s", c.Brokers)
 	}
 	// The Driver returned the client complete — governance was attached while it
-	// was built. Only the defensive metadata probe runs after this; a failure
-	// releases what was assembled.
-	if len(cl.Brokers()) == 0 {
-		closeResilience(cl)
-		cl.Close()
-		log.Errorf(ctx.Context, log.TagAppDef, "kafka sarama: no brokers after metadata fetch: %s", c.Brokers)
-		return nil, fmt.Errorf("kafka client has no brokers after metadata fetch: %s", c.Brokers)
+	// was built. Only the defensive metadata probe runs after this (when Ping is
+	// enabled); a failure releases what was assembled.
+	if c.Ping {
+		if len(cl.Brokers()) == 0 {
+			closeResilience(cl)
+			cl.Close()
+			log.Errorf(ctx.Context, log.TagAppDef, "kafka sarama: no brokers after metadata fetch: %s", c.Brokers)
+			return nil, errutil.Explain(nil, "kafka client has no brokers after metadata fetch: %s", c.Brokers)
+		}
 	}
 	log.Infof(ctx.Context, log.TagAppDef, "kafka sarama client initialized, brokers=%s", c.Brokers)
 	return cl, nil

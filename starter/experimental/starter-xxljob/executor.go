@@ -34,6 +34,7 @@ import (
 	"go-spring.org/cloud/actuator/health"
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
+	"go-spring.org/stdlib/errutil"
 	"go-spring.org/stdlib/goutil"
 )
 
@@ -304,7 +305,7 @@ func (e *Executor) callback(ctx context.Context, logID, logDateTime int64, res h
 func (e *Executor) Health() *health.Indicator {
 	return &health.Indicator{Name: "xxljob:" + e.instanceName, Probe: func(ctx context.Context) error {
 		if e.srv == nil {
-			return fmt.Errorf("xxljob: executor not started")
+			return errutil.Explain(nil, "xxljob: executor not started")
 		}
 		return nil
 	}}

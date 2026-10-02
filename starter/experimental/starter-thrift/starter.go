@@ -18,7 +18,6 @@ package StarterThrift
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	"github.com/apache/thrift/lib/go/thrift"
@@ -131,7 +130,7 @@ func (s *SimpleThriftServer) protocolFactory() (thrift.TProtocolFactory, error) 
 		// Pair it with transport "none" (it manages framing itself).
 		return thrift.NewTHeaderProtocolFactoryConf(nil), nil
 	default:
-		return nil, fmt.Errorf("unknown thrift protocol %q (want binary/compact/json/header)", s.cfg.Protocol)
+		return nil, errutil.Explain(nil, "unknown thrift protocol %q (want binary/compact/json/header)", s.cfg.Protocol)
 	}
 }
 
@@ -148,7 +147,7 @@ func (s *SimpleThriftServer) transportFactory() (thrift.TTransportFactory, error
 		conf := &thrift.TConfiguration{MaxFrameSize: int32(s.cfg.BufferSize)}
 		return thrift.NewTFramedTransportFactoryConf(thrift.NewTTransportFactory(), conf), nil
 	default:
-		return nil, fmt.Errorf("unknown thrift transport %q (want none/buffered/framed)", s.cfg.Transport)
+		return nil, errutil.Explain(nil, "unknown thrift transport %q (want none/buffered/framed)", s.cfg.Transport)
 	}
 }
 

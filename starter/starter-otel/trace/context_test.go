@@ -37,7 +37,7 @@ import (
 func newTestRecorderProvider() (*sdktrace.TracerProvider, *tracetest.SpanRecorder) {
 	rec := tracetest.NewSpanRecorder()
 	tp := sdktrace.NewTracerProvider(
-		sdktrace.WithSpanProcessor(ContextAttributesProcessor()),
+		sdktrace.WithSpanProcessor(observability.SpanAttributesProcessor()),
 		sdktrace.WithSpanProcessor(LoadTestProcessor()),
 		sdktrace.WithSpanProcessor(rec),
 	)
@@ -56,15 +56,15 @@ func attrsToString(attrs []attribute.KeyValue) string {
 	return strings.Join(parts, ",")
 }
 
-// TestContextAttributesReachSpansStartedBelow is the contract this whole
+// TestSpanAttributesReachSpansStartedBelow is the contract this whole
 // mechanism exists for: a span the FRAMEWORK starts internally -- from a
 // context it received, never handing the span-carrying context back -- still
 // picks up the attributes. The test plays the framework's part by starting the
 // span from the carried context and never exposing it upward.
-func TestContextAttributesReachSpansStartedBelow(t *testing.T) {
+func TestSpanAttributesReachSpansStartedBelow(t *testing.T) {
 	tp, rec := newTestRecorderProvider()
 
-	ctx := observability.WithContextAttributes(context.Background(), attribute.String("tenant", "t1"))
+	ctx := observability.WithSpanAttributes(context.Background(), attribute.String("tenant", "t1"))
 	_, span := tp.Tracer("test").Start(ctx, "framework-op")
 	span.End()
 
@@ -73,13 +73,13 @@ func TestContextAttributesReachSpansStartedBelow(t *testing.T) {
 	assert.String(t, attrsToString(ended[0].Attributes())).Equal("tenant=t1")
 }
 
-// TestContextAttributesReachChildSpans proves inheritance: a child span is
+// TestSpanAttributesReachChildSpans proves inheritance: a child span is
 // started from a context derived from the carried one, so it gets the
 // attributes too.
-func TestContextAttributesReachChildSpans(t *testing.T) {
+func TestSpanAttributesReachChildSpans(t *testing.T) {
 	tp, rec := newTestRecorderProvider()
 
-	ctx := observability.WithContextAttributes(context.Background(), attribute.String("tenant", "t1"))
+	ctx := observability.WithSpanAttributes(context.Background(), attribute.String("tenant", "t1"))
 	parentCtx, parent := tp.Tracer("test").Start(ctx, "parent")
 	_, child := tp.Tracer("test").Start(parentCtx, "child")
 	child.End()
@@ -105,12 +105,12 @@ func TestSpansWithoutCarrierAreUntouched(t *testing.T) {
 	assert.String(t, attrsToString(ended[0].Attributes())).Equal("")
 }
 
-// TestContextAttributesKeepStaticOnes proves the carried attributes are applied
+// TestSpanAttributesKeepStaticOnes proves the carried attributes are applied
 // on top of, not instead of, the span's own static attributes.
-func TestContextAttributesKeepStaticOnes(t *testing.T) {
+func TestSpanAttributesKeepStaticOnes(t *testing.T) {
 	tp, rec := newTestRecorderProvider()
 
-	ctx := observability.WithContextAttributes(context.Background(), attribute.String("tenant", "t1"))
+	ctx := observability.WithSpanAttributes(context.Background(), attribute.String("tenant", "t1"))
 	_, span := tp.Tracer("test").Start(ctx, "op",
 		oteltrace.WithAttributes(attribute.String("db.system", "redis")))
 	span.End()
@@ -118,13 +118,13 @@ func TestContextAttributesKeepStaticOnes(t *testing.T) {
 	assert.String(t, attrsToString(rec.Ended()[0].Attributes())).Equal("db.system=redis,tenant=t1")
 }
 
-// TestContextAttributesLaterWins proves the tie-break rule matches the rest of
+// TestSpanAttributesLaterWins proves the tie-break rule matches the rest of
 // the design: on a duplicate key the later source is the effective one. The
 // carried attributes are applied after the span's own, so they win there.
-func TestContextAttributesLaterWins(t *testing.T) {
+func TestSpanAttributesLaterWins(t *testing.T) {
 	tp, rec := newTestRecorderProvider()
 
-	ctx := observability.WithContextAttributes(context.Background(), attribute.String("k", "carried"))
+	ctx := observability.WithSpanAttributes(context.Background(), attribute.String("k", "carried"))
 	_, span := tp.Tracer("test").Start(ctx, "op",
 		oteltrace.WithAttributes(attribute.String("k", "static")))
 	span.End()
@@ -156,10 +156,10 @@ func (e *captureExporter) collected() []sdktrace.ReadOnlySpan {
 	return append([]sdktrace.ReadOnlySpan(nil), e.spans...)
 }
 
-// TestNewTracerProviderWiresContextAttributes is the wiring test: it goes
+// TestNewTracerProviderWiresSpanAttributes is the wiring test: it goes
 // through NewTracerProvider itself, so forgetting to register the processor
 // there fails here even though the processor's own tests still pass.
-func TestNewTracerProviderWiresContextAttributes(t *testing.T) {
+func TestNewTracerProviderWiresSpanAttributes(t *testing.T) {
 	const name = "test-capture"
 	exp := &captureExporter{}
 	RegisterSpanExporter(name, func(TraceConfig) (sdktrace.SpanExporter, error) {
@@ -173,7 +173,7 @@ func TestNewTracerProviderWiresContextAttributes(t *testing.T) {
 	assert.Error(t, err).Nil()
 	defer func() { _ = tp.Shutdown(context.Background()) }()
 
-	ctx := observability.WithContextAttributes(context.Background(), attribute.String("tenant", "t1"))
+	ctx := observability.WithSpanAttributes(context.Background(), attribute.String("tenant", "t1"))
 	_, span := tp.Tracer("test").Start(ctx, "op")
 	span.End()
 	assert.Error(t, tp.ForceFlush(context.Background())).Nil()

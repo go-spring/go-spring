@@ -58,15 +58,16 @@ startupProbe 的**预算** ≈ `periodSeconds × failureThreshold`。默认值
 (`3 × 40 = 120s`)故意留得宽。只有它通过后,liveness / readiness 才接管。
 
 决定冷启动的**不是 bean 装配**(几百个 bean 的反射接线是亚毫秒级),而是各
-starter **有意为之**的启动期 I/O fail-fast:DB/Redis 拨号、配置中心首拉、
-服务发现 informer sync,以及——如果用了迁移 starter——schema 迁移。
-按你的 **p99 启动**、而非 p50 来定预算。
+starter **有意为之**的启动期 I/O fail-fast:配置中心首拉、服务发现 informer
+sync,以及——如果用了迁移 starter——schema 迁移。客户端 starter 的启动期连通性
+探测**默认关闭**(置 `ping=true` 才会在后端不可达时失败启动),打开才把一次
+DB/Redis 拨号计入预算。按你的 **p99 启动**、而非 p50 来定预算。
 
 | 应用画像 | 启动耗时主要来自 | `periodSeconds` | `failureThreshold` | 预算 |
 |---|---|---|---|---|
-| 小型(少量 starter、无迁移) | 进程初始化 + 少数拨号 | 3 | 10 | ~30s |
-| 典型微服务(DB + Redis + 配置中心 + 发现) | 拨号 + 配置首拉 + informer sync | 5 | 12 | ~60s |
-| 大型(依赖多、informer、缓存预热) | 大量拨号 + 预热 | 5 | 24 | ~120s |
+| 小型(少量 starter、无迁移) | 进程初始化 + 配置首拉 | 3 | 10 | ~30s |
+| 典型微服务(DB + Redis + 配置中心 + 发现) | 配置首拉 + informer sync | 5 | 12 | ~60s |
+| 大型(依赖多、informer、缓存预热) | 配置首拉 + informer sync + 预热 | 5 | 24 | ~120s |
 | 启动时跑 DB 迁移 | 迁移 DDL(可能几分钟) | 10 | ≥ 最长迁移 ÷ 10 | ≥ 300s |
 
 经验法则:

@@ -28,7 +28,8 @@ type ZookeeperConfig struct {
 
 	// SessionTimeout is the ZooKeeper session timeout. Ephemeral registration
 	// nodes survive as long as the session; if the process dies ZooKeeper removes
-	// them roughly one session timeout later. It also bounds the startup probe.
+	// them roughly one session timeout later. It also bounds the startup probe
+	// (see Ping).
 	SessionTimeout time.Duration `value:"${session-timeout:=10s}"`
 
 	// BasePath is the parent znode under which service directories are created,
@@ -40,9 +41,15 @@ type ZookeeperConfig struct {
 	Username string `value:"${username:=}"`
 	Password string `value:"${password:=}"`
 
-	// HealthEnabled controls whether the starter contributes a health.Indicator
-	// bean for this block (named "registry-zookeeper:<name>"). On by default;
-	// the indicator is only instantiated when a collector (e.g.
-	// starter-actuator) autowires it.
-	HealthEnabled bool `value:"${health.enabled:=true}"`
+	// Ping enables the startup connectivity probe: when true the constructor
+	// probes the cluster once and fails startup if it is unreachable, surfacing
+	// misconfiguration early. Default is false: a cluster that is not up yet
+	// must not block the application from starting; connectivity problems
+	// surface on first use instead. Set true to restore fail-fast behaviour.
+	Ping bool `value:"${ping:=false}"`
+
+	// Health controls whether the starter contributes a health.Indicator bean
+	// for this block (readiness/startup probes via starter-actuator). On by
+	// default; set false to keep it out of the aggregated health report.
+	Health bool `value:"${health:=true}"`
 }

@@ -5,7 +5,7 @@ against the starter source (`starter.go`, `config.go`, `driver.go`, `client.go`,
 `command.go`, `health.go`, `s3_test.go`) and the runnable [example/](example/)
 (smoke-verified against MinIO via docker-compose). **Object-storage operation semantics
 (bucket/object APIs, retention, versioning) are [minio-go's documentation](https://github.com/minio/minio-go)**
-— everything below is go-spring's increment: configuration, wiring, fail-fast startup,
+— everything below is go-spring's increment: configuration, wiring, opt-in fail-fast startup,
 per-request instrumentation, resilience, health.
 
 **Activation**: `gs.OnProperty("spring.s3")` gates a gs.Module; every `spring.s3.instances.<name>`
@@ -161,9 +161,9 @@ gs.Run()
   │    │        params.ExecutorFor("s3", "s3:<endpoint>") (mgr/inj are the injected
   │    │        *resilience.Manager / *fault.Injector beans), then installs the transport —
   │    │        declaration outermost, resilience inside
-  │    ├─ fail-fast probe: HealthCheck(ctx, client) — one ListBuckets straight to the raw
-  │    │      client; an unreachable endpoint or rejected credentials abort startup and
-  │    │      release the client (Destroy)
+  │    ├─ ping=true only: fail-fast probe HealthCheck(ctx, client) — one ListBuckets
+  │    │      straight to the raw client; an unreachable endpoint or rejected credentials
+  │    │      abort startup and release the client (Destroy)
   ├─ Run / serve: readyz folds in every s3:<name> indicator (needs starter-actuator)
   └─ SIGTERM: Destroy() closes the resilience executor; minio holds no session to close
 ```
@@ -226,12 +226,14 @@ Prefix `spring.s3.instances.<name>.*` for the ctor-bound `Config` keys (config.g
 | Key | Type | Default | Behavior / interactions | Misconfiguration consequence |
 |-----|------|---------|-------------------------|------------------------------|
 | `endpoint` | string | — | **Required** (`expr:"$ != ''"`). `host:port` without scheme. | Missing/empty → bind-time validation error at startup. |
-| `access-key-id` | string | — | **Required**; static SigV4 credential. | Missing → startup error; wrong → the ListBuckets fail-fast probe rejects boot. |
+| `access-key-id` | string | — | **Required**; static SigV4 credential. | Missing → startup error; wrong → error on first use (or the ListBuckets probe rejects boot when `ping=true`). |
 | `secret-access-key` | string | — | **Required**; static SigV4 credential. | Same as above. |
-| `session-token` | string | — | Optional third element (temporary credentials). | Permanent creds + stale token → signature rejected at the boot probe. |
+| `session-token` | string | — | Optional third element (temporary credentials). | Permanent creds + stale token → signature rejected on first use (or at the boot probe when `ping=true`). |
 | `region` | string | us-east-1 | Bucket region passed to minio.Options. | Wrong region → signature/redirect errors on region-aware endpoints (may pass the probe against region-agnostic MinIO, then fail per-bucket). |
 | `use-ssl` | bool | false | HTTPS towards the endpoint. | false against an TLS-only endpoint (or true against plaintext) → boot probe fails. |
 | `bucket-lookup` | string | auto | `auto` \| `virtual-host`/`dns` (aliases, `BucketLookupDNS`) \| `path`. | Some S3-compatible clouds only serve path style → wrong style yields per-request addressing failures. Unknown value → startup error listing valid values. |
+| `ping` | bool | `false` | Startup connectivity probe: when true the ctor runs `HealthCheck` (a `ListBuckets`) once and fails the boot if it errors, restoring fail-fast. Off by default so an endpoint that is not up yet does not block startup. | `ping=true` against a wrong endpoint / rejected credentials → boot error "failed to reach s3 endpoint …". |
+| `health` | bool | `true` | Whether this instance contributes a `health.Indicator` (name `s3:<name>`) for the actuator's readiness/startup probes. Set false to keep the instance out of the aggregated health report. | `health=false` → no `s3:<name>` component in `/readiness`. |
 
 ---
 
@@ -247,11 +249,12 @@ curl -s :9370/readyz | grep -o '"s3:a[^"]*":[^,}]*'   # indicator UP (with actua
 The example self-asserts `bytes.Equal(got, content)` after GetObject — any transport-level
 corruption fails the run.
 
-### 4.2 Fail-fast drill
+### 4.2 Fail-fast drill (`ping=true`)
 
-Set `spring.s3.instances.a.secret-access-key=wrong`: boot aborts with `failed to reach s3 endpoint ...
-(the request signature we calculated does not match ...)`. The probe (ListBuckets) exists so
-credential/endpoint mistakes never reach first use.
+Set `spring.s3.instances.a.secret-access-key=wrong` (and the instance's `ping=true`): boot aborts
+with `failed to reach s3 endpoint ... (the request signature we calculated does not match ...)`.
+The probe (ListBuckets) exists so credential/endpoint mistakes never reach first use; with the
+default `ping=false` they surface on the first object operation instead.
 
 ### 4.3 Health drill
 
@@ -296,7 +299,7 @@ per round-trip, not per stream: uploads with large bodies may re-send the body.
 
 | Metric | Value |
 |--------|-------|
-| Config keys | 8 |
+| Config keys | 10 |
 | Required | 3 (endpoint, access-key-id, secret-access-key) |
 | Quickstart external deps | 1 (MinIO / any S3 endpoint) |
 | "Watch out" entries | 5 |

@@ -75,7 +75,7 @@ func ResponseFrom(ctx context.Context) *Response {
 //
 // Later values for the same key win, so a handler that writes the same key twice
 // (a redirect chain, say) leaves the last answer standing — the same rule
-// [WithContextAttributes] applies.
+// [WithSpanAttributes] applies.
 func (r *Response) Add(attrs ...attribute.KeyValue) {
 	if r == nil || len(attrs) == 0 {
 		return

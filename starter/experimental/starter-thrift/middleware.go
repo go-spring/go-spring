@@ -30,11 +30,8 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
-// tracerName identifies spans emitted by this starter.
-const tracerName = "go-spring.org/starter-thrift"
-
-// meterName identifies metrics emitted by this starter.
-const meterName = "go-spring.org/starter-thrift"
+// scope is the instrumentation scope name every meter and tracer in this package reports under.
+const scope = "go-spring.org/starter-thrift"
 
 // rpcSystem is the value the RPC family's rpc.system label carries for this
 // backend. Together with rpc.method and status it is one of the three keys
@@ -60,7 +57,7 @@ type instrumentSet struct {
 var instruments = sync.OnceValue(buildInstruments)
 
 func buildInstruments() *instrumentSet {
-	m := otel.Meter(meterName)
+	m := otel.Meter(scope)
 	requestCount, _ := m.Int64Counter(
 		"rpc.server.request_count",
 		metric.WithDescription("Number of Thrift RPC requests received"),
@@ -138,7 +135,7 @@ func (o *observer) observe(name string, next thrift.TProcessorFunction) thrift.T
 			instruments().requestInflight.Add(ctx, 1, inflight)
 			start := time.Now()
 
-			ctx, span := otel.Tracer(tracerName).Start(ctx, name,
+			ctx, span := otel.Tracer(scope).Start(ctx, name,
 				trace.WithSpanKind(trace.SpanKindServer),
 				trace.WithAttributes(
 					attribute.String("rpc.system", rpcSystem),

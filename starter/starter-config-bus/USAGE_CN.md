@@ -227,7 +227,8 @@ gs.Run() → App.Start()                                                       [
 |-----|------|--------|-------------|----------|
 | `spring.config.bus.subject` | string | `spring.config.refresh` | NATS subject，发布+订阅共用；共享它的所有实例构成一个 bus。装配期读一次——刷新事件改它不会触发重新订阅（§2.2）。 | 某实例写错 subject → 舰队静默裂成两半：刷新只在各自一半内传播，任何地方都不报错。 |
 | `spring.config.bus.watch-prefixes` | string | ``（空） | 逗号分隔 prefix 过滤，`subscribe()` 解析一次。空 = 对每个事件都反应。非空 = 只对空 prefix 事件或双向 prefix 重叠放行（`db` ↔ `db.pool`）。⚠ 热加载死 key：仅重启后重解析。 | 列表过宽会刷得比预期多（无害但噪音）；某 prefix 与发布侧永不匹配时，该实例静默跳过 scoped 刷新，但 `Publish(ctx, "")` 仍放行。 |
-| `spring.config.bus.nats-instance` | string | `config-bus` | 作为传输层注入的 `spring.nats.instances.<name>.*` 连接名（按实例名 autowire，starter.go:116）。⚠ 指名的实例必须存在——这是事实上的激活门。 | 无对应 `spring.nats.instances.<name>.*` 块 → 启动期容器装配失败（bean 无法组装）。与业务 NATS 连接共用名字会把 bus 故障耦合到该连接。 |
+| `spring.config.bus.nats-instance` | string | `config-bus` | 作为传输层注入的 `spring.nats.instances.<name>.*` 连接名（按实例名 autowire，starter.go:128）。⚠ 指名的实例必须存在——这是事实上的激活门。 | 无对应 `spring.nats.instances.<name>.*` 块 → 启动期容器装配失败（bean 无法组装）。与业务 NATS 连接共用名字会把 bus 故障耦合到该连接。 |
+| `spring.config.bus.health` | bool | `true` | 是否贡献 `config-bus:configBus` 这个 `health.Indicator`（在 health module 里以 `if c.Health` 门控，starter.go:83-96）。 | `false` → 总线不出现在 `/readiness`；订阅死掉时将无从上报。 |
 
 除此之外，被引用的 NATS 实例还有自己的 `spring.nats.instances.<name>.*` key（url、认证等）——见
 starter-nats 文档。NATS 连接是硬前置；没有嵌入式/内存兜底。
@@ -314,8 +315,8 @@ sum(rate(config_bus_events_total{status="refreshed"}[5m]))
 按墙钟时间去猜）。
 
 trace：一次广播是一条链路，含一个 `publish` span（若 `Publish` 在 span 内调用，它是其子）
-和每个订阅者一个 `consume` span。健康：`/readiness` 携带 `config-bus:configBus`，它在订阅
-不再有效时正好为 down。[example-otel/](example-otel/) 端到端断言了这三者。
+和每个订阅者一个 `consume` span。健康：`/readiness` 携带 `config-bus:configBus`（除非
+`health=false`），它在订阅不再有效时正好为 down。[example-otel/](example-otel/) 端到端断言了这三者。
 
 ---
 
@@ -339,7 +340,7 @@ trace：一次广播是一条链路，含一个 `publish` span（若 `Publish` �
 
 | 指标 | 数值 |
 |------|------|
-| 配置 key 总数 | 4 |
+| 配置 key 总数 | 5 |
 | 其中必填 | 显式 0，隐式 1（被引用的 NATS 实例定义） |
 | quickstart 前置外部依赖 | 1（NATS broker） |
 | "注意/坑"条数 | 3 |

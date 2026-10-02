@@ -56,10 +56,13 @@ func init() {
 				gs.IndexArg(4, gs.TagArg("")), // *fault.Injector
 			).Name(name).Destroy((*Client).Destroy).Caller(1)
 			// Contribute a health indicator for this instance, injecting the
-			// client just registered above by name.
-			r.Provide(func(w *Client) *health.Indicator {
-				return NewClientHealth(name, w)
-			}, gs.TagArg(name)).Name("s3:" + name).Caller(1)
+			// client just registered above by name. Skipped when c.Health is
+			// false.
+			if c.Health {
+				r.Provide(func(w *Client) *health.Indicator {
+					return NewClientHealth(name, w)
+				}, gs.TagArg(name)).Name("s3:" + name).Caller(1)
+			}
 			return nil
 		})
 	})
@@ -67,9 +70,10 @@ func init() {
 
 // newClient creates a new S3 client based on the provided configuration, wrapped
 // so every request declares its identity to the resilience round-tripper, which
-// emits the span+metric+log. The endpoint is then probed once at startup
-// (ListBuckets) so that misconfiguration or an unreachable endpoint fails fast
-// rather than on first use.
+// emits the span+metric+log. When c.Ping is set the endpoint is then probed once
+// at startup (ListBuckets) so that misconfiguration or an unreachable endpoint
+// fails fast rather than on first use; the probe is off by default, so an
+// endpoint that is not up yet does not block startup.
 //
 // mgr and inj are the authority beans the owning packages register; the ctor
 // bundles them into the [cloud.ClientParams] it hands the driver, which
@@ -98,11 +102,14 @@ func newClient(ctx *gs.ContextProvider, c Config, d Driver, mgr *resilience.Mana
 	// request. The probe is [HealthCheck], the single liveness implementation,
 	// which goes straight to the raw client — it is a connectivity check, not
 	// business traffic. A failure abandons the client, so release what was just
-	// applied.
-	if err := HealthCheck(ctx.Context, client); err != nil {
-		log.Errorf(ctx.Context, log.TagAppDef, "s3: startup probe failed: %v", err)
-		_ = client.Destroy()
-		return nil, errutil.Explain(err, "failed to reach s3 endpoint %s", c.Endpoint)
+	// applied. Off by default (c.Ping): an endpoint that is not up yet must not
+	// block startup.
+	if c.Ping {
+		if err := HealthCheck(ctx.Context, client); err != nil {
+			log.Errorf(ctx.Context, log.TagAppDef, "s3: startup probe failed: %v", err)
+			_ = client.Destroy()
+			return nil, errutil.Explain(err, "failed to reach s3 endpoint %s", c.Endpoint)
+		}
 	}
 	log.Infof(ctx.Context, log.TagAppDef, "s3 client initialized, endpoint=%s", c.Endpoint)
 	return client, nil

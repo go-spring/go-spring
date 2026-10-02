@@ -77,7 +77,7 @@ func annotate(ctx context.Context) context.Context {
 	if len(fields) == 0 {
 		return ctx
 	}
-	return observability.WithContextAttributes(log.WithFields(ctx, fields...), attrs...)
+	return observability.WithSpanAttributes(log.WithFields(ctx, fields...), attrs...)
 }
 
 // applyObservability records which business context fields luohua surfaces on

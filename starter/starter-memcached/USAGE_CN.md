@@ -159,8 +159,9 @@ authority 来自容器，driver 不应被迫依赖 `cloud/governance`。
 `NewClient` 定身份与 observe，`applyGovernance` 装治理。把任一步拆成独立的 `gs.InitMethod` 一无所获，
 只会给容器留下一个把半成品客户端发出去的机会。
 
-启动 PING 时机：它在**构造函数内部**执行、bean 尚不存在 —— 服务器不可达会以
-`memcached: startup ping failed` 中止容器装配（`starter.go`）；不是懒加载、不重试。
+启动 PING 时机（可选，`ping=true`）：它在**构造函数内部**执行、bean 尚不存在 —— 服务器不可达会以
+`memcached: startup ping failed` 中止容器装配（`starter.go`）；不是懒加载、不重试。默认关闭时不执行
+探测，服务器不可达不会在启动期被发现，而是到首次操作才暴露。
 gomemcache 的 `Ping` 探测全部已配置服务器，`servers` 里一个死节点即令整个实例失败。该探测直接走裸
 client：它是对连接的启动检查、不是业务流量，因此不开 span、不占用限流/熔断额度。探测失败即放弃该
 客户端，构造函数会释放刚装上的治理。启动探测与就绪指示器都委托给 `HealthCheck`（`health.go`），
@@ -219,17 +220,19 @@ int32 秒——**0/负值 = 永不过期**，亚秒向上取整为 1s，避免�
 
 ## 3. 逐 key 行为参考
 
-每实例 Config 共 6 个 value tag（grep 审计核实；输出中的 `demo.label` 属于 example 应用而非
+每实例 Config 共 8 个 value tag（grep 审计核实；输出中的 `demo.label` 属于 example 应用而非
 starter）。
 
 | key（`spring.memcached.instances.<name>` 下） | 类型 | 默认值 | 行为与联动 | 配错后果 |
 |---|---|---|---|---|
-| `servers` | []string | 空 | 静态 server 列表；请求按其分片（config.go:28）。与 `service-name` 二选一 | 两者皆空 → 构造错误 `one of servers or service-name must be set`（starter.go:92）；地址死 → 启动 ping fail-fast |
+| `servers` | []string | 空 | 静态 server 列表；请求按其分片（config.go:28）。与 `service-name` 二选一 | 两者皆空 → 构造错误 `one of servers or service-name must be set`（starter.go:92）；地址死 → 启动 ping fail-fast（仅 `ping=true`） |
 | `service-name` | string | 空 | 服务发现寻址：server 集合跟随 `discovery` 指名的后端（config.go:39），每次 key 查找重读（selector.go）。设置后（非 mesh）忽略 `servers` | 后端缺失 → 启动报 `discovery resolve %q failed`；启动期空快照 → 启动报错（driver.go:93-99）；运行期空快照 → 该次操作报 `memcache.ErrNoServers` |
 | `scheme` | string | 空 | 把 discovery 收窄到单一传输 scheme 的端点；仅在设 `service-name` 时生效（config.go:45） | 过滤过度 → "no endpoints" 启动错误 |
 | `discovery` | string | — | 用哪个已注册的 `discovery.Discovery` 解析 `service-name`（config.go:50）。wiring 把该 label 解析成 bean，并以 `backend` 参数传给 driver 的 `CreateClient`。未配置时回退 `${spring.memcached.default.discovery}`。 | service-name 已设但两层都未配置或名字无对应 bean → 启动报错。 |
 | `timeout` | duration | 0 | 每请求 socket 读/写超时；0 = gomemcache 默认 100ms（config.go:54） | 过低 → 高压下伪超时 |
 | `max-idle-conns` | int | 0 | 每 server 保留的空闲连接数；0 = driver 默认 2（config.go:58）。治理规则里的 `max-conns` 覆盖它（gomemcache 没有"打开连接上限"，规则 sizing 的就是这个空闲上限）。 | 过低 → 重连抖动 |
+| `ping` | bool | false | 可选启动探测：`HealthCheck` 对每个已配置 server 单次 ping，不可达则启动失败；默认关，未就绪的 server 到首次使用才暴露。 | 期待 fail-fast 却没开 → 启动"成功"，首个请求失败。 |
+| `health` | bool | true | 为实例注册 `memcache:<name>` 健康指示器。 | false → 无指示器 bean，不再上报该 memcached 的就绪。 |
 
 `driver` key 按名指定 Driver bean：留空 = 先回退家族级 `spring.<family>.default.driver`，再按类型注入唯一 Driver bean（见 §2.1），配置
 bean 名则显式选定一个；无 `resilience` key：resilience/fault 来自治理中心
@@ -243,9 +246,9 @@ bean 名则显式选定一个；无 `resilience` key：resilience/fault 来自�
    （handler 见 `example/example.go`；check.sh 无头断言）。
 2. **cache-miss 语义**：删除 key 后 `curl :9090/get` → `memcache: cache miss`；开 governance
    时反复 miss **不会**熔断（ErrCacheMiss 计为成功，`client.go`）。
-3. **server-down fail-fast**：停掉 memcached（`docker stop demo-memcached`）再启动应用 →
-   容器装配以 `memcached: startup ping failed` 中止（`starter.go:123`）。坏 `servers`
-   地址表现相同 —— 这是 fail-fast 姿态，没有懒模式。
+3. **server-down fail-fast**：设 `ping=true`，停掉 memcached（`docker stop demo-memcached`）再
+   启动应用 → 容器装配以 `memcached: startup ping failed` 中止（`starter.go:123`）。坏 `servers`
+   地址表现相同。默认关闭时不跑启动探测，失败到首次操作才暴露。
 4. **discovery 坏地址演练**：设 `service-name` 但未注册后端 → 启动报
    `memcached: discovery resolve %q failed`（`driver.go:92`）。注册的后端返回空端点集 →
    启动报 `discovery returned no endpoints`（`driver.go:104`）。
@@ -270,7 +273,7 @@ bean 名则显式选定一个；无 `resilience` key：resilience/fault 来自�
 | 症状 | 可能原因 | 处置 |
 |---|---|---|
 | 启动报 `one of servers or service-name must be set` | 实例块两者皆未配 | 配其一（`starter.go:92`） |
-| 启动报 `memcached: startup ping failed` | 服务器宕机/启动期地址错误 | 启动 memcached、修 `servers`；ping 是 fail-fast（`starter.go:123`） |
+| 启动报 `memcached: startup ping failed` | 服务器宕机/启动期地址错误 | 仅 `ping=true` 时抛出；启动 memcached、修 `servers`（`starter.go:123`）。`ping` 关闭时失败到首次操作才暴露。 |
 | 启动报 `discovery resolve "..." failed` | 设了 `service-name` 但 `discovery` 名下无后端 | 启动前注册命名后端 bean |
 | 启动报 `discovery returned no endpoints` | 后端健康但服务无实例（或 `scheme` 过滤过度） | 拉起实例/清空 `scheme`（`driver.go:97-98`） |
 | 集群扩缩容后 server 列表不更新 | gomemcache 创建即固定 server 集；watch 仅管生命周期 | 重启进程重新解析（`driver.go:61-68`） |
@@ -284,7 +287,7 @@ bean 名则显式选定一个；无 `resilience` key：resilience/fault 来自�
 
 | 指标 | 数值 |
 |--------|------|
-| 配置 key | 7（6 连接 + 1 经 cache 桥命名） |
+| 配置 key | 9（8 连接 + 1 经 cache 桥命名） |
 | 必填 | 1（`servers` 与 `service-name` 二选一） |
 | quickstart 前置外部依赖 | 1（memcached，docker） |
 | "注意/坑"条数 | 4 |

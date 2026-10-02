@@ -100,8 +100,8 @@ func (b *Batch) Run(ctx context.Context) {
 spring.lock.instances.etcd.main.endpoints=127.0.0.1:2379
 spring.lock.instances.etcd.main.ttl=10s
 spring.lock.instances.etcd.main.key-prefix=/starter-lock-etcd/
-# dial-timeout bounds both the initial connection and the startup readiness
-# probe — an unreachable cluster fails boot instead of the first Acquire.
+# dial-timeout bounds both the initial connection and the ping=true startup
+# readiness probe — an unreachable cluster fails boot instead of the first Acquire.
 # spring.lock.instances.etcd.main.dial-timeout=5s
 
 # --- observability (starter-otel) --------------------------------------------
@@ -115,7 +115,7 @@ spring.observability.trace.endpoint=127.0.0.1:4317
 **Verify** (with a local etcd, e.g. `example/docker-compose.yml`):
 
 ```bash
-go run .                          # boots; unreachable etcd aborts boot (probe)
+go run .                          # boots; unreachable etcd aborts boot (probe, ping=true)
 ETCDCTL_API=3 etcdctl get --prefix /starter-lock-etcd/   # lock key while held
 ```
 
@@ -138,7 +138,7 @@ import starter-lock-etcd
              └─ newLocker wraps it with observe-lock unless observe.enabled=false
   ├─ newEtcdLocker:
   │    clientv3.New (DialTimeout, optional TLS via security.Build)
-  │    + readiness probe: cli.Status(endpoints[0]) within DialTimeout —
+  │    + when ping=true, readiness probe: cli.Status(endpoints[0]) within DialTimeout —
   │      proves credentials/TLS work at boot; failure closes the client and aborts
   ├─ bean wiring: consumers' autowire:"<name>" resolved (bean already observe-wrapped)
   └─ on SIGTERM: Destroy → Close closes the shared *clientv3.Client.
@@ -194,11 +194,12 @@ All keys live under `spring.lock.instances.etcd.<name>` (exact-match, no relaxed
 | Key | Type | Default | Behavior / interactions | Misconfiguration consequence |
 |-----|------|---------|-------------------------|------------------------------|
 | `endpoints` | []string | — | **Required.** Cluster node addresses; checked before bean registration. | Empty → boot fails naming the instance. |
-| `username` / `password` | string | — | etcd auth credentials; empty for anonymous clusters. | Wrong credentials fail the startup `Status` probe (not merely client creation). |
-| `dial-timeout` | duration | `5s` | Bounds the initial connection **and** the readiness probe budget. | Too low → boot failures on slow networks; too high → slow fail-fast. |
+| `username` / `password` | string | — | etcd auth credentials; empty for anonymous clusters. | Wrong credentials (with `ping=true`) fail the startup `Status` probe (not merely client creation). |
+| `dial-timeout` | duration | `5s` | Bounds the initial connection **and** the `ping=true` readiness probe budget. | Too low → boot failures on slow networks; too high → slow fail-fast. |
 | `ttl` | duration | `30s` | Lease TTL per lock; feeds layer 2 of §2.2. Sub-second values round **up** to 1s. | `500ms` silently becomes `1s`. |
 | `key-prefix` | string | `/lock/` | Prepended to every lock key; trailing slashes preserved. | Shared prefix across apps → mutual contention. |
 | `tls.enabled` | bool | `false` | Applies the shared `security` block (`server-name`, `ca-file`, `cert-file`, `key-file`, `insecure-skip-verify`) via `security.Build`. | Bad material → boot failure at client creation. |
+| `ping` | bool | `false` | Probes the cluster once at construction (`Status` on `endpoints[0]` within `dial-timeout`) and fails boot if unreachable. Off by default so a cluster that is not up yet does not block boot; connectivity surfaces on first `Acquire`. | — |
 | `observe.enabled` | bool | `true` | Wrap the primary `<name>` Locker bean with the observe-lock adapter (trace span + metric + access log). `false` = bare locker. | Migration: the `<name>-observed` bean no longer exists — inject `<name>`. |
 
 ⚠ There is **no** `renew-interval`/`retry-interval` key: etcd's concurrency package keeps each
@@ -232,8 +233,8 @@ The mutex key appears while held (etcd concurrency MVCC key) and disappears on U
 
 ### 4.3 Startup readiness probe
 
-Point `endpoints` at a dead port: boot fails with `lock-etcd: startup probe failed for ...` and
-closes the client — a misconfigured app never reaches `Acquire`.
+Point `endpoints` at a dead port with `ping=true`: boot fails with `lock-etcd: startup probe failed
+for ...` and closes the client — a misconfigured app never reaches `Acquire`.
 
 ### 4.4 Observing the locker (on by default)
 
@@ -259,7 +260,7 @@ cd example && ./check.sh    # docker-gated: compose up etcd, run self-asserting 
 | Symptom | Likely cause | Fix |
 |---------|--------------|-----|
 | Boot fails `endpoints is required for instance "<n>"` | instance without endpoints | Set the key or drop the instance. |
-| Boot fails `startup probe failed` | unreachable cluster, wrong credentials or TLS material | The `Status` call proves all three at boot — fix connectivity/auth. |
+| Boot fails `startup probe failed` (only with `ping=true`) | unreachable cluster, wrong credentials or TLS material | The `Status` call proves all three at boot — fix connectivity/auth. |
 | Lock lost mid-run with healthy process | keepalive stream broken (network partition, etcd quorum loss) | etcd requires client→server traffic for keepalive; check connectivity and quorum, then shrink TTL to bound the exposure. |
 | Sub-second TTL behaves as 1s | whole-second lease rounding (`ttlSeconds` rounds up, 1s floor) | Pick whole-second TTLs; `500ms` is not representable. |
 | `TryAcquire` returns `ok=false` with no error | ordinary contention (`ErrLocked` translated) | Expected; use `Acquire` to wait. |

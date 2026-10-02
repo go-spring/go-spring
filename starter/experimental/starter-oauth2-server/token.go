@@ -198,7 +198,7 @@ func parsePEMPrivateKey(c Config) (any, error) {
 	if k, err := jwt.ParseECPrivateKeyFromPEM(pem); err == nil {
 		return k, nil
 	}
-	return nil, errors.New("oauth2-server: private key is neither a valid RSA nor ECDSA PEM")
+	return nil, errutil.Explain(nil, "oauth2-server: private key is neither a valid RSA nor ECDSA PEM")
 }
 
 // jwk mirrors a single JSON Web Key entry; only the members needed to publish an

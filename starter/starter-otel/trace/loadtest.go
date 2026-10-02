@@ -97,7 +97,7 @@ func (loadTestProcessor) ForceFlush(context.Context) error { return nil }
 // load_test=true.
 //
 // [NewTracerProvider] registers one automatically. It is exported for the same
-// reason [ContextAttributesProcessor] is: an application that builds its own
-// TracerProvider must register the processors itself, or it silently gets
-// different telemetry from the framework's own setup.
+// reason observability.SpanAttributesProcessor is: an application that builds
+// its own TracerProvider must register the processors itself, or it silently
+// gets different telemetry from the framework's own setup.
 func LoadTestProcessor() sdktrace.SpanProcessor { return loadTestProcessor{} }

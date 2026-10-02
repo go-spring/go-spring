@@ -24,8 +24,9 @@ A Client-archetype starter for Milvus (vector database) over gRPC.
   each puts the RPC's identity on the caller's context before the executor runs
   (`observe.go`), so the single emitter inside the executor names the span, the
   `db.client.*` metrics and the access log. The starter emits nothing itself.
-- **Fail-fast probe** — `HealthCheck` (`ListCollections`) at construction; a
-  wrong address or bad credential fails at boot, not on first query.
+- **Fail-fast probe** — `HealthCheck` (`ListCollections`) at construction when the
+  instance sets `ping=true`; a wrong address or bad credential then fails at boot,
+  not on first query (the probe is off by default, so it fails on first query).
 
 ## 3. Constraints
 

@@ -33,6 +33,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"go-spring.org/log"
 	"go-spring.org/starter-otel/metric"
+	"go-spring.org/stdlib/errutil"
 	otelprom "go.opentelemetry.io/otel/exporters/prometheus"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 )
@@ -62,7 +63,7 @@ func newPrometheus(cfg metric.MetricsConfig) (sdkmetric.Reader, *metric.PromServ
 			// The dedicated server failed to bind (port in use / permission).
 			// Surface it rather than silently running a dead /metrics: a bind
 			// failure must stop setup so the operator fixes the port.
-			return nil, nil, fmt.Errorf("observability: start prometheus scrape server: %w", err)
+			return nil, nil, errutil.Explain(err, "observability: start prometheus scrape server")
 		}
 		ps.Server = srv
 	}

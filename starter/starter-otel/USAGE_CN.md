@@ -270,7 +270,7 @@ SIGTERM 后,待所有 server 停止、IoC 容器关闭,`runStoppers` 逐个调�
 **每请求**维度则挂到 context 上:
 
 ```go
-ctx = observability.WithContextAttributes(ctx, attribute.String("tenant", t))
+ctx = observability.WithSpanAttributes(ctx, attribute.String("tenant", t))
 ```
 
 载体本身在 `cloud/observability`,不在这里:往 context 上放东西是**契约**,写方(业务代码、

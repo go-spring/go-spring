@@ -30,6 +30,7 @@ import (
 	"github.com/redis/go-redis/v9"
 	"go-spring.org/cloud/experimental/batch"
 	"go-spring.org/spring/gs"
+	"go-spring.org/stdlib/errutil"
 )
 
 // redisRepository implements batch.JobRepository over a *redis.Client. It is
@@ -60,7 +61,7 @@ type redisRepository struct {
 // client, which would surface as a nil-deref on the first call otherwise.
 func newRedisRepository(ctx *gs.ContextProvider, c Config, client *redis.Client) (batch.JobRepository, error) {
 	if client == nil {
-		return nil, errors.New("batch-redis: nil *redis.Client")
+		return nil, errutil.Explain(nil, "batch-redis: nil *redis.Client")
 	}
 	return &redisRepository{cfg: c, client: client}, nil
 }
@@ -138,7 +139,7 @@ func (r *redisRepository) ObtainExecution(ctx context.Context, name string, para
 	if err == nil {
 		var je batch.JobExecution
 		if err := json.Unmarshal(raw, &je); err != nil {
-			return nil, false, fmt.Errorf("batch-redis: decode job %s: %w", ik, err)
+			return nil, false, errutil.Explain(err, "batch-redis: decode job %s", ik)
 		}
 		if je.Status != batch.StatusCompleted {
 			return &je, true, nil
@@ -170,7 +171,7 @@ func (r *redisRepository) ObtainExecution(ctx context.Context, name string, para
 // coherent snapshot in Redis.
 func (r *redisRepository) SaveJobExecution(ctx context.Context, je *batch.JobExecution) error {
 	if je == nil {
-		return errors.New("batch-redis: SaveJobExecution nil execution")
+		return errutil.Explain(nil, "batch-redis: SaveJobExecution nil execution")
 	}
 	return r.writeJob(ctx, instanceKey(je.JobName, je.Params), je)
 }
@@ -181,7 +182,7 @@ func (r *redisRepository) SaveJobExecution(ctx context.Context, je *batch.JobExe
 func (r *redisRepository) writeJob(ctx context.Context, ik string, je *batch.JobExecution) error {
 	buf, err := json.Marshal(je)
 	if err != nil {
-		return fmt.Errorf("batch-redis: encode job %s: %w", je.ID, err)
+		return errutil.Explain(err, "batch-redis: encode job %s", je.ID)
 	}
 	jkey := r.jobKey(ik)
 	if err := r.client.Set(ctx, jkey, buf, 0).Err(); err != nil {
@@ -196,11 +197,11 @@ func (r *redisRepository) writeJob(ctx context.Context, ik string, je *batch.Job
 // so a long-running step keeps its records alive.
 func (r *redisRepository) SaveStepExecution(ctx context.Context, se *batch.StepExecution) error {
 	if se == nil {
-		return errors.New("batch-redis: SaveStepExecution nil execution")
+		return errutil.Explain(nil, "batch-redis: SaveStepExecution nil execution")
 	}
 	buf, err := json.Marshal(se)
 	if err != nil {
-		return fmt.Errorf("batch-redis: encode step %s/%s: %w", se.JobExecutionID, se.StepName, err)
+		return errutil.Explain(err, "batch-redis: encode step %s/%s", se.JobExecutionID, se.StepName)
 	}
 	skey := r.stepsKey(se.JobExecutionID)
 	if err := r.client.HSet(ctx, skey, se.StepName, buf).Err(); err != nil {
@@ -222,7 +223,7 @@ func (r *redisRepository) FindStepExecution(ctx context.Context, jobExecutionID,
 	}
 	var se batch.StepExecution
 	if err := json.Unmarshal(raw, &se); err != nil {
-		return nil, false, fmt.Errorf("batch-redis: decode step %s/%s: %w", jobExecutionID, stepName, err)
+		return nil, false, errutil.Explain(err, "batch-redis: decode step %s/%s", jobExecutionID, stepName)
 	}
 	return &se, true, nil
 }
@@ -239,7 +240,7 @@ func (r *redisRepository) ListStepExecutions(ctx context.Context, jobExecutionID
 	for name, raw := range m {
 		var se batch.StepExecution
 		if err := json.Unmarshal([]byte(raw), &se); err != nil {
-			return nil, fmt.Errorf("batch-redis: decode step %s/%s: %w", jobExecutionID, name, err)
+			return nil, errutil.Explain(err, "batch-redis: decode step %s/%s", jobExecutionID, name)
 		}
 		out = append(out, &se)
 	}

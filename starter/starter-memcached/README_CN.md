@@ -64,7 +64,7 @@ item, err := s.Memcached.Get(ctx, "key")
 * **支持 Memcached 扩展**：可以通过实现 `Driver` 接口来扩展 Memcached 功能，参见示例中的 `AnotherMemcachedDriver` 实现。
   当容器中存在多个 Driver bean 时，实例可按名指定：`spring.memcached.instances.<name>.driver = <bean 名>`（留空 = 按类型注入唯一
   Driver bean；指定的 bean 不存在则启动失败）。
-* **启动期连接校验（fail-fast）**：创建客户端后会对每个配置的 server 执行一次 `HealthCheck`（即 `Ping` 循环），服务不可达时启动即失败，而非等到首次请求。
+* **启动期连接校验（可选）**：设 `ping=true` 后，创建客户端时会对每个配置的 server 执行一次 `HealthCheck`（即 `Ping` 循环），服务不可达时启动即失败，而非等到首次请求。默认关闭：尚未就绪的后端不应阻塞启动。
 * **服务发现**：配置 `service-name`（并用 `discovery` 指定已注册后端，无默认后端）替代 `servers`；starter 在启动时通过注册的
   `discovery.Discovery` 后端解析一次 server 列表并据此做 key 分片。由于 gomemcache 在创建客户端时就把 key 哈希到固定的 server
   集合上，这里的解析是**启动时一次性**的（解析失败或为空则 fail-fast），而非实时 watch —— 集群成员变化需重启才能生效。若集群拓扑动态扩缩，建议在 `servers` 中配置

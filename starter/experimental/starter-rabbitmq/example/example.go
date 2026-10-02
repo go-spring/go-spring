@@ -30,6 +30,7 @@ import (
 	amqp "github.com/rabbitmq/amqp091-go"
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
+	"go-spring.org/stdlib/errutil"
 
 	starter "go-spring.org/starter-rabbitmq"
 )
@@ -227,7 +228,7 @@ func runDirectExchange(ctx context.Context, s *Service) (string, error) {
 		return "", err
 	}
 	if !ok {
-		return "", fmt.Errorf("no message on queue %q", q.Name)
+		return "", errutil.Explain(nil, "no message on queue %q", q.Name)
 	}
 	return string(msg.Body), nil
 }
@@ -264,10 +265,10 @@ func runQosManualAck(ctx context.Context, s *Service) (string, error) {
 		return "", err
 	}
 	if !ok {
-		return "", fmt.Errorf("no message on queue %q", queue)
+		return "", errutil.Explain(nil, "no message on queue %q", queue)
 	}
 	if err := msg.Ack(false); err != nil {
-		return "", fmt.Errorf("ack failed: %w", err)
+		return "", errutil.Explain(err, "ack failed")
 	}
 	return string(msg.Body), nil
 }

@@ -62,13 +62,28 @@ type PoolSettings struct {
 	ConnMaxLifetime time.Duration `value:"${conn-max-lifetime:=0}"`  // Max lifetime of a connection (0 = unlimited)
 	ConnMaxIdleTime time.Duration `value:"${conn-max-idle-time:=0}"` // Max idle time of a connection (0 = unlimited)
 
-	// PingTimeout bounds the startup connectivity check. The client fails fast
-	// during creation if the server cannot be reached within this window.
+	// PingTimeout bounds the startup connectivity check (run only when [Ping] is
+	// enabled). The client then fails fast during creation if the server cannot
+	// be reached within this window.
 	PingTimeout time.Duration `value:"${ping-timeout:=5s}"`
 
 	// SlowThreshold enables GORM slow-query logging when > 0: queries slower than
 	// this are logged at warn level.
 	SlowThreshold time.Duration `value:"${slow-threshold:=0}"`
+
+	// Ping enables the startup connectivity probe: when true the constructor
+	// pings the backend once and fails startup if it is unreachable, surfacing
+	// misconfiguration early. Default is false: a backend that is not up yet
+	// must not block the application from starting; connectivity problems
+	// surface on first use instead. Set true to restore fail-fast behaviour.
+	Ping bool `value:"${ping:=false}"`
+
+	// Health controls whether the starter contributes a health.Indicator bean
+	// for this instance (readiness/startup probes via starter-actuator). On by
+	// default; set false to keep this instance out of the aggregated health
+	// report, e.g. for a backend whose downtime must not pull the pod out of
+	// rotation.
+	Health bool `value:"${health:=true}"`
 }
 
 // Common is the config block every network gorm dialect starter shares:
@@ -112,6 +127,25 @@ func (c PoolSettings) Pool() PoolConfig {
 		SlowThreshold:   c.SlowThreshold,
 	}
 }
+
+// ConfigSwitches is the per-instance switch surface [Module] reads off a dialect
+// Config. The wiring is generic over the dialect Config type and cannot read its
+// struct fields directly, so the two switches it gates on — the startup [Ping]
+// and the [Health] indicator — are surfaced through these accessors instead;
+// every dialect Config satisfies them through the embedded [PoolSettings] (or
+// [Common]).
+type ConfigSwitches interface {
+	PingEnabled() bool
+	HealthEnabled() bool
+}
+
+// PingEnabled reports whether the startup connectivity probe runs for this
+// instance (the [Ping] key).
+func (c PoolSettings) PingEnabled() bool { return c.Ping }
+
+// HealthEnabled reports whether this instance contributes a health.Indicator
+// (the [Health] key).
+func (c PoolSettings) HealthEnabled() bool { return c.Health }
 
 // NewResolver resolves the discovery backend the entry's ${discovery} label
 // cites into a by-name resolver that re-reads the service's live endpoint

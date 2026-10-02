@@ -71,9 +71,9 @@ func init() {
 			).Name(name).Destroy(destroyPool)
 
 			// Contribute a health indicator for this instance unless the user
-			// disabled it (health.enabled=false), injecting the pool just
+			// disabled it (health=false), injecting the pool just
 			// registered above by name.
-			if c.HealthEnabled {
+			if c.Health {
 				r.Provide(func(w *Pool) *health.Indicator {
 					return NewClientHealth(name, w)
 				}, gs.TagArg(name)).Name("redigo:" + name)
@@ -149,15 +149,15 @@ func createPool(ctx *gs.ContextProvider, c Config, d Driver, disc discovery.Disc
 	}
 	w.cfg = c
 
-	// Fail fast (opt-in): the redigo pool dials lazily, so when StartupPing is
-	// set, probe the target once at startup. A misconfigured address or
+	// Fail fast (opt-in, e.g. ping=true): the redigo pool dials lazily, so when
+	// Ping is set, probe the target once at startup. A misconfigured address or
 	// unreachable server then surfaces during boot rather than on the first
 	// request. The probe is [HealthCheck] — the same single health
 	// implementation the Actuator indicator uses — which dials one connection
 	// directly (see its doc for why it dials instead of using pool.Get). The
 	// pool is already assembled at this point, so the ping runs through the
 	// command chain (span et al.) — a harmless, even useful, first blip.
-	if c.StartupPing {
+	if c.Ping {
 		if err := HealthCheck(ctx.Context, w); err != nil {
 			log.Errorf(ctx.Context, log.TagAppDef, "redigo: startup ping failed: %v", err)
 			_ = w.Close() // stop resolver watch + close pool

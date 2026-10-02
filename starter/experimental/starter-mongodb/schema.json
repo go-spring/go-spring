@@ -71,6 +71,16 @@
           "resilience": {
             "type": "object",
             "default": ""
+          },
+          "ping": {
+            "type": "boolean",
+            "default": false,
+            "description": "Startup connectivity probe: when true the constructor pings the backend once and fails startup if it is unreachable. Default false: not being up yet must not block startup."
+          },
+          "health": {
+            "type": "boolean",
+            "default": true,
+            "description": "Whether the starter contributes a health.Indicator bean for this instance. Default true; set false to leave this instance out of the aggregated health report."
           }
         }
       }

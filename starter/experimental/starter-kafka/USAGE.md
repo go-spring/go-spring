@@ -159,8 +159,8 @@ gs.Run()
   │      service, inj) when the bundle is populated; the observe-only
   │      resilience.Unmanaged executor when it is zero), indexed by client
   │      pointer in the package-level sync.Map                    [command.go:83-89]
-  │   3. then probe: Ping with 10s timeout — bad brokers/credentials/TLS
-  │      fail the boot instead of the first produce; a failed ping
+  │   3. then probe (when ping=true): Ping with 10s timeout — bad
+  │      brokers/credentials/TLS fail the boot instead of the first produce; a failed ping
   │      releases the executor the driver attached                [starter.go:113,119]
   ├─ no Init hook; the *kgo.Client bean is ready after the ctor; nothing
   │  patches it — governance was applied inside the constructor
@@ -299,15 +299,16 @@ no access log. `GuardedConsume(ctx, cl, rec, fn)` [command.go] is the consume co
 ## 3. Per-key behavior reference
 
 All keys live under `spring.kafka.instances.<name>.*` — ctor-arg binding via `conf.BindEach` (real
-per-instance prefix binding). `value:` tags reconciled against source: 20 keys total.
+per-instance prefix binding). `value:` tags reconciled against source: 21 keys total.
 
 ### 3.1 Core
 
 | Key | Type | Default | Behavior / interactions | Misconfiguration consequence |
 |-----|------|---------|-------------------------|------------------------------|
-| `brokers` | string | — | **Required** (`expr:"$ != ''"` [config.go:30]); CSV of seed brokers; also becomes the resilience service label `kafka:<brokers>`. | Empty → boot error; a wrong-but-reachable host fails the 10s startup Ping. |
+| `brokers` | string | — | **Required** (`expr:"$ != ''"` [config.go:30]); CSV of seed brokers; also becomes the resilience service label `kafka:<brokers>`. | Empty → boot error; with `ping=true` a wrong-but-reachable host fails the 10s startup Ping. |
 | `topic` | string | "" | Passed as `kgo.ConsumeTopics` — consumer topics fixed at construction; the driver subscriber filters by it. Empty = produce-only client. | Produce works, consume never delivers (no topic subscribed). |
 | `group` | string | "" | Passed as `kgo.ConsumerGroup`; group semantics are Kafka's own (offsets, rebalancing — see kafka.apache.org). ⚠ the driver's `NewSubscriber` group arg is dead — this key is the only group switch. | Empty + topic set = ungrouped (random-group / eager) consumption; offsets not committed. |
+| `ping` | bool | false | Opt-in startup connectivity probe: `cl.Ping` with a 10s timeout [starter.go:116-123]. | true → unreachable brokers abort boot; false → surface on first produce/consume. |
 
 The `driver` key names the Driver bean for this entry: unset → assembly is owned by the
 optional Driver bean injected by type (see §2.1) or the bundled `DefaultDriver`; set → that
@@ -318,9 +319,9 @@ governance-resilience `spring.governance.driver` selecting a rule source, not th
 
 | Key | Type | Default | Behavior / interactions | Misconfiguration consequence |
 |-----|------|---------|-------------------------|------------------------------|
-| `sasl.enabled` | bool | false | Gates mechanism assembly [driver.go:94-100]. | Enabled without credentials → Ping auth failure at boot. |
+| `sasl.enabled` | bool | false | Gates mechanism assembly [driver.go:94-100]. | Enabled without credentials → Ping auth failure at boot (when `ping=true`). |
 | `sasl.mechanism` | string | `plain` | `plain` / `scram-sha-256` / `scram-sha-512`, case-insensitive [driver.go:127-138]. | Any other value → CreateClient error at boot. |
-| `sasl.username` / `sasl.password` | string | "" | Passed to the mechanism. | Wrong → 10s Ping failure at boot. |
+| `sasl.username` / `sasl.password` | string | "" | Passed to the mechanism. | Wrong → 10s Ping failure at boot (when `ping=true`). |
 
 ### 3.3 TLS
 
@@ -330,7 +331,7 @@ Shared `security` block — property names uniform across starters [config.go:43
 |-----|------|---------|-------------------------|------------------------------|
 | `tls.enabled` | bool | false | `c.TLS.BuildClient()` → `kgo.DialTLSConfig` [driver.go:100-108]. | — |
 | `tls.cert-file` / `tls.key-file` | string | "" | mTLS client cert pair. | Half a pair → `tls.Build` boot error. |
-| `tls.ca-file` | string | "" | CA to verify the broker. | Missing against a private CA → Ping TLS failure. |
+| `tls.ca-file` | string | "" | CA to verify the broker. | Missing against a private CA → Ping TLS failure (when `ping=true`). |
 | `tls.server-name` | string | "" | SNI/verification name. | Mismatch → verification failure. |
 | `tls.insecure-skip-verify` | bool | false | Skips verification. | true in prod = silent MITM exposure. |
 
@@ -411,10 +412,10 @@ limiter/breaker; verify via the resilience outcome counters
 - franz-go client-internal logs (reconnects, request failures) under `log.TagAppDef`,
   bridged at Info threshold [driver.go:195-211].
 
-### 4.6 Broker-down fail-fast
+### 4.6 Broker-down ping probe
 
 ```bash
-docker compose down && go run .   # boot fails within ~10s: "failed to ping kafka: <brokers>"
+docker compose down && go run .   # with ping=true: boot fails within ~10s: "failed to ping kafka: <brokers>"
 ```
 
 Mid-run broker loss: poll errors in the log (tag `log.TagAppDef`) and per-call produce errors;
@@ -426,7 +427,7 @@ franz-go reconnects automatically (its own semantics).
 
 | Symptom | Likely cause | Fix |
 |---------|--------------|-----|
-| Boot fails "failed to ping kafka" | Unreachable brokers / wrong SASL / TLS mismatch | Fix connectivity or credentials; the 10s probe is unconditional. |
+| Boot fails "failed to ping kafka" | Unreachable brokers / wrong SASL / TLS mismatch | Fix connectivity or credentials; the 10s probe runs only when `ping=true`. |
 | Boot fails "unsupported kafka sasl mechanism / required-acks / compression" | Typo in an enum key | Exact-match enums (case-insensitive); correct the value. |
 | Driver consumer never receives | `NewSubscriber` source ≠ configured `topic`, or `topic` empty | Source must equal the client's `topic`; silent filter otherwise. |
 | Driver consumer group "ignored" | `NewSubscriber` group arg is dead | Set `spring.kafka.instances.<name>.group` (fixed at construction). |

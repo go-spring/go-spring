@@ -67,18 +67,22 @@ func init() {
 			).Name(name).Destroy((*Client).Destroy).Caller(1)
 			// Contribute a health indicator for this instance, injecting the
 			// wrapper just registered above by name. Its probe only calls
-			// HealthCheck (see health.go).
-			r.Provide(func(w *Client) *health.Indicator {
-				return NewClientHealth(name, w)
-			}, gs.TagArg(name)).Name("neo4j:" + name).Caller(1)
+			// HealthCheck (see health.go). Skipped when c.Health is false.
+			if c.Health {
+				r.Provide(func(w *Client) *health.Indicator {
+					return NewClientHealth(name, w)
+				}, gs.TagArg(name)).Name("neo4j:" + name).Caller(1)
+			}
 			return nil
 		})
 	})
 }
 
 // newClient creates a new Neo4j client based on the provided configuration.
-// After the driver is built, connectivity is verified so that misconfiguration
-// or an unreachable server fails fast at startup rather than on first query.
+// When c.Ping is set, connectivity is verified after the driver is built so
+// that misconfiguration or an unreachable server fails fast at startup rather
+// than on first query; the probe is off by default, so a server that is not up
+// yet does not block startup.
 //
 // Observability note: the neo4j-go-driver speaks the binary Bolt protocol and
 // ships no official OpenTelemetry instrumentation, nor a command-monitor hook
@@ -135,13 +139,16 @@ func newClient(ctx *gs.ContextProvider, c Config, backend discovery.Discovery, d
 	// HealthCheck goes straight to the raw driver on purpose: it is a
 	// connectivity check, not business traffic, so it must not open a span or
 	// spend limiter/breaker budget. A failure abandons the client, so release
-	// what was just applied.
-	vctx, cancel := verifyContext(ctx.Context, c.SocketConnectTimeout)
-	defer cancel()
-	if err := HealthCheck(vctx, client); err != nil {
-		log.Errorf(ctx.Context, log.TagAppDef, "neo4j: verify connectivity failed uri=%s: %v", c.URI, err)
-		_ = client.Destroy()
-		return nil, errutil.Explain(err, "failed to verify neo4j connectivity: %s", c.URI)
+	// what was just applied. Off by default (c.Ping): a server that is not up
+	// yet must not block startup.
+	if c.Ping {
+		vctx, cancel := verifyContext(ctx.Context, c.SocketConnectTimeout)
+		defer cancel()
+		if err := HealthCheck(vctx, client); err != nil {
+			log.Errorf(ctx.Context, log.TagAppDef, "neo4j: verify connectivity failed uri=%s: %v", c.URI, err)
+			_ = client.Destroy()
+			return nil, errutil.Explain(err, "failed to verify neo4j connectivity: %s", c.URI)
+		}
 	}
 	log.Infof(ctx.Context, log.TagAppDef, "neo4j client initialized, uri=%s", c.URI)
 	return client, nil

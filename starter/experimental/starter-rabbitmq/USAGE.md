@@ -193,7 +193,7 @@ gs.Run()
   │   ├─ NotifyClose/NotifyBlocked bridged into go-spring's log (goroutines
   │   │   exit when amqp091 closes the channels on connection shutdown)       [starter.go:106-135]
   │   ├─ applyResilience: assemble — executor indexed by *amqp.Connection     [starter.go:138]
-  │   └─ then probe: channel opened and closed to confirm the AMQP layer;
+  │   └─ then probe (when ping=true): channel opened and closed to confirm the AMQP layer;
   │       a failed probe releases what was assembled                          [starter.go:148-158]
   ├─ ready: connection beans injectable as *amqp.Connection by instance name
   └─ SIGTERM: destroyClient → closeResilience (executor Close) then
@@ -279,14 +279,15 @@ surface.
 
 ## 3. Per-key behavior reference
 
-All keys live under `spring.rabbitmq.instances.<name>.*`. Four own value tags
-(config.go:28-55) plus the shared security (6) block = 10; 1 required.
+All keys live under `spring.rabbitmq.instances.<name>.*`. Five own value tags
+(config.go:28-55) plus the shared security (6) block = 11; 1 required.
 
 | Key | Type | Default | Behavior / interactions | Misconfiguration consequence |
 |-----|------|---------|------------------------|------------------------------|
 | `url` | string | — | **Required** (`expr:"$ != ''"`, config.go:33). `amqp://` or `amqps://`; the `amqps://` scheme alone forces the TLS-config dial path [driver.go:69-72]. | Empty → bind error; wrong credentials/TLS → **boot fails** (synchronous dial). |
 | `vhost` | string | "" | Overrides the vhost parsed from the URL by being passed into `amqp.Config` [driver.go:72-76]. Also part of the governance service label. | Conflict between URL and vhost → AMQP handshake error at boot. |
 | `heartbeat` | duration | 10s | `>0` (or TLS, or vhost set) switches `amqp.Dial` → `amqp.DialConfig` with `Heartbeat` [driver.go:72-80]. `0` = URL/server default. ⚠ With the plain-`Dial` branch (no TLS/vhost), a non-default heartbeat key silently forces the DialConfig branch — value still applies. | Too low → false connection drops under load; 0 → server default may outlive TCP idle timeouts. |
+| `ping` | bool | false | Opt-in startup probe: a channel is opened and closed to confirm the AMQP layer is usable [starter.go:148-158]. | true → a TCP-connected but AMQP-broken endpoint aborts boot; false → surfaces on first channel/publish. |
 | `tls.enabled` | bool | false | With `amqps://` implicitly, or explicitly, routes the built `*tls.Config` into the dial [driver.go:69-79]. | Plain `amqp://` + `tls.enabled=true` → TLS on a cleartext port → dial error at boot. |
 | `tls.ca-file` / `cert-file` / `key-file` | string | "" | Custom CA / mTLS pair, loaded by the shared `security` block (uniform keys across starters, config.go:44-48). | Missing files → boot fails in TLS build [driver.go:64-68]. |
 | `tls.server-name` | string | "" | SNI/verification name override. | Mismatch → x509 hostname error at boot. |
@@ -299,7 +300,7 @@ Driver beans coexist, an entry selects one by name: `spring.rabbitmq.instances.<
 <bean-name>` (empty = fall back to the family-wide `spring.<family>.default.driver`, then to the single Driver bean by type).
 
 Reconciled against `grep -rhoE 'value:"[^"]+"'` over the starter: own tags are exactly
-`${url}`, `${vhost:=}`, `${heartbeat:=10s}`, `${tls}`; the
+`${url}`, `${vhost:=}`, `${heartbeat:=10s}`, `${ping:=false}`, `${tls}`; the
 tls.* columns come from the shared cloud block bound through `${tls}`.
 
 ---
@@ -311,8 +312,8 @@ tls.* columns come from the shared cloud block bound through `${tls}`.
 ```bash
 docker stop demo-rabbit && go run .   # in example/: ./check.sh with broker down
 # boot aborts with "failed to dial rabbitmq: ..." (driver.go:86) — not a lazy
-# failure on first use; the probe channel additionally catches a TCP-connected
-# but AMQP-broken endpoint (starter.go:69-76).
+# failure on first use; with ping=true the probe channel additionally catches a
+# TCP-connected but AMQP-broken endpoint (starter.go:69-76).
 ```
 
 ### 4.2 Guarded vs unguarded path
@@ -381,7 +382,7 @@ and no health indicator — the process keeps running on a dead connection.
 | Symptom | Likely cause | Fix |
 |---------|--------------|-----|
 | Boot fails: `failed to dial rabbitmq` | broker down / wrong URL / credentials | synchronous dial is fail-fast — fix env or URL (driver.go:86). |
-| Boot fails: `failed to open probe channel` | TCP connects but AMQP layer broken (e.g. wrong vhost/permissions) | check vhost permissions for the user (starter.go:69-76). |
+| Boot fails: `failed to open probe channel` | TCP connects but AMQP layer broken (e.g. wrong vhost/permissions) | check vhost permissions for the user (only when `ping=true`; starter.go:69-76). |
 | Works at boot, publishes later error; close/blocked Warn logs | broker died mid-run; no auto-reconnect | restart process or implement reconnect on the raw bean; watch the `connection closed` Warn. |
 | Consumers get nothing | handler error → Nack(requeue) loop; check `rabbitmq driver handler error on %q` Error log | fix the handler; every error requeues forever — no DLQ (client.go:141-146). |
 | Messages vanish after broker restart | driver queues are non-durable and messages transient | use the raw connection with durable declares (client.go:64,76; rabbitmq.com/docs/durability). |

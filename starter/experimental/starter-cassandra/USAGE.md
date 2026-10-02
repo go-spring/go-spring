@@ -118,7 +118,7 @@ spring.observability.metrics.exporter=prometheus
 the example's check.sh waits up to 240s on `cqlsh -e "DESCRIBE CLUSTER"`):
 
 ```bash
-go run .                          # boot fails fast if the cluster is unreachable
+go run .                          # boot fails fast if the cluster is unreachable (needs ping=true; off by default)
 curl -s :9370/readyz | jq .       # components include "cassandra:a", "cassandra:b"
 curl -s :9370/metrics | grep -E 'db.client.(operation.duration|attempt.duration|active_requests)'
 grep _app_cassandra_access app.log | tail -3   # one record per Exec call
@@ -153,7 +153,7 @@ gs.Run()
   │       (session + identity + governance): NewClient sets exec = params.ExecutorFor("cassandra", service),
   │       which builds fault.WrapClientExecutor(mgr.ClientExecutorFor("cassandra", service), service, inj)
   │       over the injected *resilience.Manager / *fault.Injector beans — exec chain complete at construction
-  ├─ fail-fast probe: newClient calls HealthCheck [starter.go:100] — one system.local scan straight to the raw session
+  ├─ ping=true only: fail-fast probe — newClient calls HealthCheck [starter.go:100], one system.local scan to the raw session
   ├─ readiness: indicator delegates to HealthCheck, which queries system.local [health.go:34]
   └─ SIGTERM → Destroy [client.go]: exec.Close → session.Close
 ```
@@ -175,9 +175,10 @@ implementation: on the raw session (`client.session`) it runs
 business traffic, so it opens no span and spends no limiter/breaker budget. On failure the client
 is destroyed and the boot aborts with "failed to reach cassandra cluster …". The probe verifies protocol version,
 auth, and cluster state in one round trip — the same query the health indicator uses at runtime.
-There is no retry and no skip switch: a Cassandra entry in your config means "must be up at
-boot". The probe is bounded by gocql's own `ConnectTimeout`/`Timeout` (defaults 11s each here),
-not by a starter-specific deadline.
+There is no retry, and the probe is opt-in: only an instance with `ping=true` runs it, so by
+default a Cassandra entry in your config does NOT mean "must be up at boot" — connectivity
+problems surface on first use instead. The probe is bounded by gocql's own
+`ConnectTimeout`/`Timeout` (defaults 11s each here), not by a starter-specific deadline.
 
 ### 2.3 What IS and IS NOT instrumented — per-operation walkthrough
 
@@ -254,7 +255,7 @@ ctor's `Config` arg), NOT the absolute-property starter-Pool rule.
 | `keyspace` | string | — | Default keyspace for the session. Leave empty to connect without one (e.g. to run `CREATE KEYSPACE` first). | Wrong name → every keyed statement errors "Keyspace … does not exist". |
 | `username` / `password` | string | — | Both set → `gocql.PasswordAuthenticator` (driver.go:74-76); both empty → no auth. ⚠ Pairing enforced: exactly one set → boot error "username and password must be set together" (starter.go:77-79). | Only one set → boot error. |
 | `consistency` | string | `local-quorum` | Default consistency for the session; exact-match enum `any\|one\|two\|three\|quorum\|all\|local-quorum\|each-quorum\|local-one` (driver.go:99-120). No kebab/camel variants. | Typo → boot error naming the wanted set. |
-| `timeout` | duration | `11s` | gocql per-query timeout — also bounds the fail-fast probe's query round trip. | Too low → slow queries aborted client-side. |
+| `timeout` | duration | `11s` | gocql per-query timeout — also bounds the probe's query round trip when `ping=true`. | Too low → slow queries aborted client-side. |
 | `connect-timeout` | duration | `11s` | gocql connection-setup timeout. | Too low → boot probe fails on slow networks. |
 | `cql-version` | string | `3.0.0` | CQL dialect version passed to gocql. | Mismatch vs server → handshake errors. |
 | `tls.enabled` | bool | false | Gates the whole `tls.*` group; maps onto `gocql.SslOptions` [driver.go:77-88]. | — |
@@ -262,6 +263,8 @@ ctor's `Config` arg), NOT the absolute-property starter-Pool rule.
 | `tls.cert-file` / `tls.key-file` | string | — | Client cert/key paths (mutual TLS). ⚠ Both together. | One-sided → handshake failure. |
 | `tls.server-name` | string | — | SNI/verification name when it differs from the host. | Verification fails on IP+differing cert CN. |
 | `tls.insecure-skip-verify` | bool | false | Skips host verification (`EnableHostVerification = !value`, driver.go:86). | true in prod = MITM-open TLS. |
+| `ping` | bool | `false` | Startup connectivity probe: when true the ctor scans `system.local` once (`HealthCheck`) and fails the boot if unreachable, restoring fail-fast. Off by default so a cluster that is not up yet does not block startup. | `ping=true` against a down cluster → boot error "failed to reach cassandra cluster …". |
+| `health` | bool | `true` | Whether this instance contributes a `health.Indicator` (name `cassandra:<name>`) for the actuator's readiness/startup probes. Set false to keep the instance out of the aggregated health report. | `health=false` → no `cassandra:<name>` component in `/readyz`. |
 
 ### 3.2 Instrumentation
 
@@ -315,12 +318,13 @@ Configure a breaker or limiter for service `cassandra:127.0.0.1` under `spring.g
 at runtime — the executor hot-reloads without restart. Note the service label uses hosts[0]
 only: instance `b` with the same first host shares instance `a`'s breaker bucket.
 
-### 4.4 Fail-fast probe drill
+### 4.4 Fail-fast probe drill (`ping=true`)
 
 ```bash
-docker stop cassandra-example && go run .
+docker stop cassandra-example && go run .   # with the instance's ping=true
 # boot aborts: "failed to reach cassandra cluster [127.0.0.1]" — the process
 # never reaches serving. Restart the container and the same config boots clean.
+# with the default ping=false the boot succeeds and the first statement fails instead
 ```
 
 ---
@@ -329,7 +333,7 @@ docker stop cassandra-example && go run .
 
 | Symptom | Likely cause | Fix |
 |---------|--------------|-----|
-| Boot fails "failed to reach cassandra cluster" | Unreachable hosts / wrong credentials / TLS mismatch | The startup probe is unconditional (§2.2); fix connectivity or auth; wait for full CQL readiness (Cassandra 5 boots slowly — check.sh allows 240s). |
+| Boot fails "failed to reach cassandra cluster" | Unreachable hosts / wrong credentials / TLS mismatch | The startup probe runs only when `ping=true` (default off, §2.2); fix connectivity or auth, or drop `ping` to defer the failure to first use; wait for full CQL readiness (Cassandra 5 boots slowly — check.sh allows 240s). |
 | Boot fails "username and password must be set together" | Only one of the pair configured | Set both or neither [starter.go:77-79]. |
 | Boot fails "unknown consistency" | Typo in `consistency`; enum is exact-match | Use one of the nine listed values [driver.go:120]. |
 | No spans/metrics from Exec | starter-otel not imported | The emitted signals ride the OTel globals; import starter-otel (access log still emits). |
@@ -342,7 +346,7 @@ docker stop cassandra-example && go run .
 
 | Metric | Value |
 |--------|-------|
-| Config keys | 9 instance keys + tls group (6) |
+| Config keys | 11 instance keys + tls group (6) |
 | Required | 1 (`hosts`) |
 | Quickstart external deps | 1 (Cassandra) |
 | "Watch out" entries | 4 |
@@ -353,4 +357,5 @@ Design suspects (audit ledger — kept from the previous audit, still true):
   statement path (§2.3); batches and deep `Iter` paging remain outside the guard.
 - Service label uses `hosts[0]` only, so multi-seed configs share one resilience bucket keyed
   on the first host.
-- Health indicator has no opt-out key (family asymmetry with redigo's `health.enabled`).
+- Health indicator is per instance (`health=false` opts out); the startup probe is opt-in
+  (`ping=true`) — the `health`/`ping` pair replaces redigo's `health.enabled`/`startup-ping`.

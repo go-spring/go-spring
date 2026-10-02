@@ -41,7 +41,7 @@ type NacosConfig struct {
 	Password string `value:"${password:=}"`
 
 	// TimeoutMs bounds each Nacos API call, including the startup connectivity
-	// probe used to fail fast on an unreachable server.
+	// probe (see Ping) used to fail fast on an unreachable server.
 	TimeoutMs uint64 `value:"${timeout-ms:=5000}"`
 
 	// TLS configures optional transport-layer security for a TLS-enabled
@@ -49,9 +49,15 @@ type NacosConfig struct {
 	// block so every starter exposes the same tls.* keys.
 	TLS security.TLSConfig `value:"${tls}"`
 
-	// HealthEnabled controls whether the starter contributes a health.Indicator
-	// bean for this block (named "registry-nacos:<name>"). On by default; the
-	// indicator is only instantiated when a collector (e.g. starter-actuator)
-	// autowires it.
-	HealthEnabled bool `value:"${health.enabled:=true}"`
+	// Ping enables the startup connectivity probe: when true the constructor
+	// probes the cluster once and fails startup if it is unreachable, surfacing
+	// misconfiguration early. Default is false: a cluster that is not up yet
+	// must not block the application from starting; connectivity problems
+	// surface on first use instead. Set true to restore fail-fast behaviour.
+	Ping bool `value:"${ping:=false}"`
+
+	// Health controls whether the starter contributes a health.Indicator bean
+	// for this block (readiness/startup probes via starter-actuator). On by
+	// default; set false to keep it out of the aggregated health report.
+	Health bool `value:"${health:=true}"`
 }

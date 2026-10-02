@@ -30,7 +30,6 @@ package cache
 import (
 	"context"
 	"errors"
-	"time"
 
 	"go-spring.org/stdlib/errutil"
 )
@@ -44,13 +43,13 @@ var ErrMiss = errors.New("cache: miss")
 // Implementations must be safe for concurrent use; a nil ByteCache is never
 // valid.
 type ByteCache interface {
-	// GetBytes returns the raw bytes stored under key, or (nil, [ErrMiss])
-	// when the key is absent.
+	// GetBytes returns the raw bytes under key, or (nil, [ErrMiss]) when the
+	// key is absent.
 	GetBytes(ctx context.Context, key string) ([]byte, error)
 
-	// SetBytes stores the raw bytes under key. A non-positive ttl means the
-	// entry does not expire.
-	SetBytes(ctx context.Context, key string, val []byte, ttl time.Duration) error
+	// SetBytes stores the raw bytes under key for ttlSeconds, a whole number
+	// of seconds. A non-positive value means the entry does not expire.
+	SetBytes(ctx context.Context, key string, val []byte, ttlSeconds int) error
 
 	// Delete removes key. Deleting an absent key is not an error.
 	Delete(ctx context.Context, key string) error
@@ -125,13 +124,13 @@ func (c Cache) Get(ctx context.Context, key string, val any, opts ...Option) err
 	return nil
 }
 
-// Set encodes val and stores it under key. A non-positive ttl means the entry
-// does not expire. opts override the cache's config for this call, as on
-// [Cache.Get].
-func (c Cache) Set(ctx context.Context, key string, val any, ttl time.Duration, opts ...Option) error {
+// Set encodes val and stores it under key for ttlSeconds, a whole number of
+// seconds. A non-positive value means the entry does not expire. opts override
+// the cache's config for this call, as on [Cache.Get].
+func (c Cache) Set(ctx context.Context, key string, val any, ttlSeconds int, opts ...Option) error {
 	b, err := c.configFor(opts).codec.Marshal(val)
 	if err != nil {
 		return errutil.Explain(err, "cache: encode %q", key)
 	}
-	return c.SetBytes(ctx, key, b, ttl)
+	return c.SetBytes(ctx, key, b, ttlSeconds)
 }

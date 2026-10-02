@@ -84,8 +84,8 @@ destroy 钩子)。
   文件字节即可附加附件。
 * **多 mailer**:`spring.mail` 下的每个条目都成为一个独立配置的 `*Mailer` bean;
   按名字注入即可通过不同服务器或不同发件人发信。
-* **快速失败**:host 缺失、auth/TLS 模式非法或服务器不可达,都会在启动时通过一次
-  有界连接探测暴露出来,而非等到首次发信。
+* **可选启动探测**:host 缺失或 auth/TLS 模式非法仍在启动时快速失败;服务器不可达
+  仅在 `ping=true` 时由探测拦下,否则等到首次发信才暴露。
 
 ## 认证与 TLS
 
@@ -112,5 +112,6 @@ destroy 钩子)。
 | `auth-type` | `auto` | 认证机制:`auto`/`plain`/`login`/`cram-md5`。 |
 | `from` | `` | `Message` 未设 `From` 时使用的默认发件人。 |
 | `timeout` | `10s` | 限定启动探测与每次发信的拨号时长。 |
+| `ping` | `false` | 启动时拨一次服务器,提前拦截坏配置。 |
 | `tls.mode` | `starttls` | 传输安全:`starttls`/`tls`/`none`。 |
 | `tls.insecure-skip-verify` | `false` | 关闭证书校验(仅测试用)。 |

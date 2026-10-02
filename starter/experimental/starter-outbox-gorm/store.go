@@ -19,10 +19,10 @@ package StarterOutboxGorm
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"time"
 
 	"go-spring.org/cloud/experimental/outbox"
+	"go-spring.org/stdlib/errutil"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
@@ -108,7 +108,7 @@ func (s *gormStore) MarkDead(ctx context.Context, id int64, err error) error {
 		return res.Error
 	}
 	if res.RowsAffected == 0 {
-		return errors.New("outbox: record is no longer pending")
+		return errutil.Explain(nil, "outbox: record is no longer pending")
 	}
 	return nil
 }

@@ -63,6 +63,13 @@ type Config struct {
 	// destination ("orders" → "orders.dlq"). Empty disables the DLQ copy:
 	// exhausted records go straight to dead status.
 	DLQSuffix string `value:"${dlq-suffix:=.dlq}"`
+
+	// Health controls whether the starter contributes a health.Indicator bean
+	// for this instance (readiness/startup probes via starter-actuator). On by
+	// default; set false to keep this instance out of the aggregated health
+	// report, e.g. for a backend whose downtime must not pull the pod out of
+	// rotation.
+	Health bool `value:"${health:=true}"`
 }
 
 // relayConfig projects Config onto the relay's knobs.

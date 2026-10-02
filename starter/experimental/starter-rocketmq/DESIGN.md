@@ -12,7 +12,7 @@ starter-pulsar / starter-kafka.
 - **Owns**: bean lifecycle for the `spring.rocketmq.instances.<name>` group (multi-
   instance, container-managed teardown), common-option application to every
   producer/consumer it creates, the rlog bridge into go-spring's log, the
-  fail-fast name server probe, the `messaging.Driver` adapter, OTel span
+  ping name server probe, the `messaging.Driver` adapter, OTel span
   helpers, and the `GuardedSend` resilience seam.
 - **Does not own**: message serialization (payload stays `[]byte`), ordering
   semantics (the driver is concurrently-consumed; use the raw client for
@@ -58,7 +58,7 @@ starter-pulsar / starter-kafka.
 - `Subscribe` must precede `Start` on a push consumer; the wrapper's
   `NewPushConsumer` therefore returns an unstarted consumer and the driver
   performs the dance internally.
-- The fail-fast probe is a TCP dial, not a broker round trip: RocketMQ's
+- The ping probe is a TCP dial, not a broker round trip: RocketMQ's
   remoting layer connects lazily and a dial is the only probe that is cheap,
   side-effect-free, and topology-independent. It catches wrong addresses, not
   ACL errors.

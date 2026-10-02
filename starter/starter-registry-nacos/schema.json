@@ -37,6 +37,16 @@
         "timeout-ms": {
           "type": "integer",
           "default": 5000
+        },
+        "ping": {
+          "type": "boolean",
+          "default": false,
+          "description": "Probe the server once at startup and fail fast when unreachable; false (default) skips the probe."
+        },
+        "health": {
+          "type": "boolean",
+          "default": true,
+          "description": "Contributes a health.Indicator bean for this block; set false to disable."
         }
       },
       "required": [

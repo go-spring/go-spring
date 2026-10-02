@@ -21,8 +21,8 @@ reports a call-level `db.client.operation.duration` histogram, an attempt-level
 `db.client.attempt.duration` histogram and an access log tagged `_app_milvus_access`.
 There is no self-built per-RPC span or instrument in this starter, and no separate
 per-RPC trace layer for unguarded traffic — when governance is off the executor is a
-transparent no-op and nothing is emitted. The health indicator remains the always-on
-liveness signal (§2.2, §6).
+transparent no-op and nothing is emitted. The health indicator remains the declared
+liveness signal (§2.2, §6) — contributed unless the instance sets `health=false`.
 
 ---
 
@@ -135,7 +135,7 @@ brings up etcd + minio + milvus standalone):
 
 ```bash
 docker compose -p gs-milvus-demo up -d   # milvus boot is slow (~60s)
-go run .                                 # boot fails fast if 19530 is unreachable
+go run .                                 # boot fails fast if 19530 is unreachable (needs ping=true; off by default)
 curl -s :9370/readyz | grep milvus       # component "milvus:a" UP
 grep -E 'round trip|Milvus' app.log      # the search above returned
 ```
@@ -166,7 +166,7 @@ gs.Run()
   │   params.ExecutorFor("milvus", service) — the injected *resilience.Manager / *fault.Injector
   │   bundled by the ctor → (fault-wrapped mgr.ClientExecutorFor) → slot.apply — the
   │   interceptors guard every RPC from here on; zero params → observed-only Unmanaged executor
-  ├─ fail-fast probe: HealthCheck (ListCollections once), error → Destroy() + boot fails
+  ├─ ping=true only: fail-fast probe HealthCheck (ListCollections once), error → Destroy()+boot fails
   │   [starter.go:89] — a wrong address or bad credential never reaches "serving"
   ├─ readiness: indicator repeats HealthCheck (the same ListCollections probe) periodically
   └─ SIGTERM → Destroy [client.go:94]: exec.Close() then o.client.Close() — closes the gRPC conn
@@ -205,9 +205,9 @@ whole call, retries included — to name the span, the `db.client.*` metrics and
 Declaring inside the executor's fn would be read by nobody (per attempt), so it is placed here,
 outside. Every RPC — collections, indexes, search, insert — rides it with zero call-site
 changes, the same transparent per-request stance as the other NoSQL starters. The other signal
-this starter emits itself is the health indicator (not per-call). `milvus:<name>` is always registered, its probe
-goes straight to the raw client — `HealthCheck`'s one `ListCollections` round trip verifying
-reachability AND auth [health.go].
+this starter emits itself is the health indicator (not per-call). `milvus:<name>` is registered
+unless the instance sets `health=false`; its probe goes straight to the raw client —
+`HealthCheck`'s one `ListCollections` round trip verifying reachability AND auth [health.go].
 
 ---
 
@@ -219,10 +219,12 @@ All keys live under `spring.milvus.instances.<name>.` — bound per-instance via
 
 | Key | Type | Default | Behavior / interactions | Misconfiguration consequence |
 |-----|------|---------|-------------------------|------------------------------|
-| `addr` | string | — | **required**, validated non-empty by the expr tag `$ != ''` [config.go:26]. Milvus gRPC endpoint `host:19530`. ⚠ TLS is expressed inside the address scheme by the SDK — this starter exposes no TLS block. | Missing/empty → bind-time error before any dial. Wrong host/port → ctor's fail-fast probe fails, boot aborts. |
-| `database` | string | `default` | Passed as `DBName` to `client.NewClient` [starter.go:65]. | Nonexistent DB → fail-fast probe (ListCollections) errors at boot. |
-| `username` | string | `""` | Auth credential; both halves must be set together when the cluster has auth on. ⚠ `username` without `password` (or vice versa) is silently half-sent. | Wrong pair → fail-fast probe fails at boot with the server's auth error. |
+| `addr` | string | — | **required**, validated non-empty by the expr tag `$ != ''` [config.go:26]. Milvus gRPC endpoint `host:19530`. ⚠ TLS is expressed inside the address scheme by the SDK — this starter exposes no TLS block. | Missing/empty → bind-time error before any dial. Wrong host/port → error on first use (or the ctor's fail-fast probe aborting boot when `ping=true`). |
+| `database` | string | `default` | Passed as `DBName` to `client.NewClient` [starter.go:65]. | Nonexistent DB → error on first use (or the ListCollections probe at boot when `ping=true`). |
+| `username` | string | `""` | Auth credential; both halves must be set together when the cluster has auth on. ⚠ `username` without `password` (or vice versa) is silently half-sent. | Wrong pair → auth error on first use (or the probe at boot when `ping=true`). |
 | `password` | string | `""` | See `username`. | See `username`. |
+| `ping` | bool | `false` | Startup connectivity probe: when true the ctor runs `HealthCheck` (a `ListCollections`) once and fails the boot if it errors, restoring fail-fast. Off by default so a server that is not up yet does not block startup. | `ping=true` against a down server → boot error `milvus: startup probe failed`. |
+| `health` | bool | `true` | Whether this instance contributes a `health.Indicator` (name `milvus:<name>`) for the actuator's readiness/startup probes. Set false to keep the instance out of the aggregated health report. | `health=false` → no `milvus:<name>` component in `/readyz`. |
 
 No `driver` registry, no `mode` (one topology: standalone/cluster is server-side), no
 discovery, no otel keys — governance (resilience + fault) arrives via the shared
@@ -243,11 +245,12 @@ curl -s :9370/readyz                    # flips DOWN (503) on the next probe cyc
 The component error body carries the gRPC error verbatim — that distinguishes reachability
 (`Unavailable`) from auth (`Unauthenticated`).
 
-### 4.2 Fail-fast probe (server down at boot)
+### 4.2 Fail-fast probe (server down at boot, `ping=true`)
 
 ```bash
-docker compose -p gs-milvus-demo down && go run .
+docker compose -p gs-milvus-demo down && go run .   # with the instance's ping=true
 # exits non-zero from the ctor (ListCollections on a dead port) — never reaches "serving"
+# with the default ping=false the boot succeeds and the first RPC fails instead
 ```
 
 ### 4.3 Confirm the guard's silence (honest drill, governance off)
@@ -288,7 +291,7 @@ grep "round trip" app.log    # the marker check.sh greps ("Milvus round trip OK:
 
 | Metric | Value |
 |--------|-------|
-| Config keys | 4 tags (all effective) |
+| Config keys | 6 tags (all effective) |
 | Required | 1 (`addr`) |
 | Quickstart external deps | 3 in compose (etcd + minio + milvus standalone) |
 | "Watch out" entries | 3 (auth pair, TLS-in-address, TLS/auth dial-option escape hatch) |
@@ -297,8 +300,8 @@ Design suspects (audit ledger — kept and extended):
 
 - Starter-level README/DESIGN/schema.json live under example/ rather than the module root
   (family asymmetry: other starters keep them at the root).
-- Health indicator has no disable switch (`health.enabled`-style key absent; family asymmetry
-  vs redigo).
+- Health indicator is per instance (`health=false` opts out); the startup probe is opt-in
+  (`ping=true`) — the `health`/`ping` pair replaces redigo's `health.enabled`/`startup-ping`.
 - No TLS key — SDK TLS is expressed in the address; nothing in the starter documents how a
   user would even do it without forking `newClient`.
 - ~~Missing instrumentation~~ resolved: `observe.go` declares each RPC's identity and the

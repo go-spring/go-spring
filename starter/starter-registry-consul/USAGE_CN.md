@@ -40,7 +40,8 @@ blank-import + `gs.Run()`。注册器用 TTL 心跳保活;`PreStop` 反注册。
 | `namespace` | string | ""(Enterprise) | |
 | `ttl` | duration | 15s | 心跳间隔 |
 | `deregister-critical-after` | duration | 1m | 0 = 关闭;agent 卡死时可见性很快消失 |
-| `health.enabled` | bool | true | 贡献名为 `registry-consul:<name>` 的 `health.Indicator` bean,探针用一次 catalog 列表探 agent(与启动探活同一检查)。仅当有采集方(如 starter-actuator)注入时才实例化。 | `false` → agent 健康对 readiness 探针不可见 |
+| `ping` | bool | false | 构造期对 agent 探活一次(`Catalog().Services`,5s),不可达即启动失败;默认关,尚未就绪的 agent 不阻塞启动 |
+| `health` | bool | true | 贡献名为 `registry-consul:<name>` 的 `health.Indicator` bean,探针用一次 catalog 列表探 agent(与启动探活同一检查)。仅当有采集方(如 starter-actuator)注入时才实例化。 |
 
 ### `spring.registry.*`(实例,5 key)
 
@@ -73,7 +74,7 @@ query(index 长轮询)保鲜,后续 Resolve 读缓存;`Meta["scheme"]` → `Endp
 - 运行期日志带专属 tag `_app_registry_consul`（`log.RegisterAppTag("registry_consul", "")`），
   经 `logger.<name>.tag=_app_registry_consul` 单独调级（与 registry-etcd/nacos 一致）。
 - 可观测性：注册与发现经 OTel 全局产出指标——未引入 `starter-otel` 时全部 no-op。`register`、`deregister`、`update_weight` 各有一个 client span 与一条 `registry.operation.duration`（标签 `system`/`operation`/`service`/`status`）；`registry.registration.attempts_total` 按 `reason` 与 `status` 计数；`registry.instance.registered` gauge 在发布中为 1、否则为 0——自愈失败会落在这里，而不只是出现在日志里。发现半边把每次后台缓存同步上报到 `discovery.sync_total`，并维持 `discovery.cache.age_seconds`（距上次确认新鲜的秒数），watch 死掉时表现为持续爬升，而不是静默返回陈旧地址。 `reason` 取 `initial`（初次发布）与 `self_heal`（后台重注册）。
-- 启动探测:每块构建时 `Catalog().Services`(5s 超时),`address` 配错启动即失败。
+- 启动探测(`ping=true`):每块构建时 `Catalog().Services`(5s 超时),`address` 配错启动即失败。
 - 心跳 `UpdateTTL` 失败会升级:连续失败记日志并重注册(upsert)自愈。
 
 ## 4. 设计体检表

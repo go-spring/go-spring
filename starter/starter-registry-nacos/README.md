@@ -112,7 +112,7 @@ Connection, bound per block under `spring.registry.nacos.<name>`:
 | `cluster` | `DEFAULT` | Nacos cluster name the instance belongs to. |
 | `username` | (empty) | Auth username; empty for anonymous clusters. |
 | `password` | (empty) | Auth password. |
-| `timeout-ms` | `5000` | Per-call timeout, including the startup probe. |
+| `timeout-ms` | `5000` | Per-call timeout, including the startup probe (when `ping=true`). |
 | `tls.enabled` | `false` | Turn on the shared TLS block (TLS-enabled Nacos server). |
 | `tls.ca-file` | (empty) | CA bundle for the server (private CA). |
 | `tls.cert-file` / `tls.key-file` | (empty) | Client certificate / key for mTLS. |
@@ -131,8 +131,8 @@ backends is a blank-import swap, not a config migration):
 ## How It Works
 
 - Each block's backend bean is constructed eagerly: it builds the naming
-  client and probes the server (a service listing), so a misconfigured or
-  unreachable Nacos fails startup once per block.
+  client and, when `ping=true`, probes the server (a service listing), so a
+  misconfigured or unreachable Nacos fails startup once per block.
 - The `registryServer` from the starter-registry core collects every backend's
   registrar, waits for readiness, then `Register`s the instance as
   **ephemeral** into each center. The Nacos SDK keeps it alive with its own

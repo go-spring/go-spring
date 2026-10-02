@@ -91,9 +91,9 @@ API.
 * **Multiple mailers**: every entry under `spring.mail` becomes an independently
   configured `*Mailer` bean; inject them by name to send through different
   servers or from different senders.
-* **Fail-fast**: a missing host, an unknown auth/TLS mode, or an unreachable
-  server surfaces at startup via a bounded connection probe, not on the first
-  send.
+* **Opt-in startup probe**: a missing host or an unknown auth/TLS mode still
+  fails fast at startup; an unreachable server is caught by the probe only when
+  `ping=true` — otherwise it surfaces on the first send.
 
 ## Authentication and TLS
 
@@ -122,5 +122,6 @@ Each mailer under `spring.mail.instances.<name>` reads the following properties:
 | `auth-type` | `auto` | Auth mechanism: `auto`/`plain`/`login`/`cram-md5`. |
 | `from` | `` | Default sender used when a `Message` sets no `From`. |
 | `timeout` | `10s` | Bounds the startup probe and each send's dial. |
+| `ping` | `false` | Dial the server once at startup to catch a bad config early. |
 | `tls.mode` | `starttls` | Transport security: `starttls`/`tls`/`none`. |
 | `tls.insecure-skip-verify` | `false` | Disable certificate verification (testing only). |

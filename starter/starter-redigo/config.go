@@ -76,13 +76,14 @@ type Config struct {
 	// starter-go-redis so the two starters stay interchangeable.
 	TLS security.TLSConfig `value:"${tls}"`
 
-	// StartupPing, when true, dials one connection at boot and PINGs it so a
-	// misconfigured address or unreachable server surfaces during startup
-	// rather than on the first request. Defaults to false: the redigo pool
-	// dials lazily, so without this flag a bad address is only discovered once
-	// a command actually runs. (starter-go-redis performs this probe
-	// unconditionally; here it is opt-in.)
-	StartupPing bool `value:"${startup-ping:=false}"`
+	// Ping enables the startup connectivity probe: when true the constructor
+	// dials one connection and PINGs it, so a misconfigured address or an
+	// unreachable server surfaces during startup rather than on the first
+	// request (the redigo pool dials lazily, so without this a bad address is
+	// only discovered once a command actually runs). Default is false: a backend
+	// that is not up yet must not block the application from starting; set true
+	// to restore fail-fast behaviour.
+	Ping bool `value:"${ping:=false}"`
 
 	// ObserveEnabled turns this instance's instrumentation layer (trace span +
 	// metric + access log) on/off. Defaults to true. It is distinct from the
@@ -93,16 +94,18 @@ type Config struct {
 	// DoContext / DoWithTimeout, but emits no span/metric/log).
 	ObserveEnabled bool `value:"${observe.enabled:=true}"`
 
-	// HealthEnabled controls whether the starter contributes a health.Indicator
-	// (named redigo:<name>) for this instance. Defaults to true; set false for a
-	// pool that should not roll into aggregate health (e.g. a non-critical
-	// cache). When false, no indicator bean is registered for this instance.
-	HealthEnabled bool `value:"${health.enabled:=true}"`
+	// Health controls whether the starter contributes a health.Indicator bean
+	// (named redigo:<name>) for this instance (readiness/startup probes via
+	// starter-actuator). On by default; set false to keep this instance out of
+	// the aggregated health report, e.g. for a pool whose downtime must not pull
+	// the pod out of rotation. When false, no indicator bean is registered for
+	// this instance.
+	Health bool `value:"${health:=true}"`
 }
 
 // Resilience and Observability policy are not fields of Config: the Pool
 // wrapper resolves its executor at Init through the neutral
 // [resilience.ClientExecutorFor] seam (see pool.go setupResilience), so policy comes
 // from the governance document rather than from a bound property here. Config
-// carries only the per-instance on/off switch HealthEnabled; instrumentation
+// carries only the per-instance on/off switch Health; instrumentation
 // itself is unconditional (a no-op without starter-otel).

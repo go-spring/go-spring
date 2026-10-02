@@ -17,7 +17,6 @@
 package StarterDubbo
 
 import (
-	"errors"
 	"fmt"
 	"time"
 
@@ -29,6 +28,8 @@ import (
 	"dubbo.apache.org/dubbo-go/v3/protocol"
 	"dubbo.apache.org/dubbo-go/v3/registry"
 	"dubbo.apache.org/dubbo-go/v3/server"
+
+	"go-spring.org/stdlib/errutil"
 )
 
 // This file defines the canonical config model for the dubbo-go starter. Types
@@ -357,10 +358,10 @@ func (d *Instance) NewClient(opts ...client.ClientOption) (*client.Client, error
 func NewInstance(cfg DubboConfig) (*Instance, error) {
 	app := cfg.Application
 	if app.Name == "" {
-		return nil, errors.New("${spring.dubbo.application.name} is required")
+		return nil, errutil.Explain(nil, "${spring.dubbo.application.name} is required")
 	}
 	if len(cfg.Registries) == 0 {
-		return nil, errors.New("${spring.dubbo.registries} must define at least one registry")
+		return nil, errutil.Explain(nil, "${spring.dubbo.registries} must define at least one registry")
 	}
 	if err := validateRetries(&cfg); err != nil {
 		return nil, err
@@ -489,7 +490,7 @@ func NewInstance(cfg DubboConfig) (*Instance, error) {
 func validateRetries(cfg *DubboConfig) error {
 	check := func(where string, r int) error {
 		if r < -1 {
-			return fmt.Errorf("dubbo: %s.retries=%d is invalid: use -1 (or omit) for unset, 0 to disable retries, >0 for the retry count", where, r)
+			return errutil.Explain(nil, "dubbo: %s.retries=%d is invalid: use -1 (or omit) for unset, 0 to disable retries, >0 for the retry count", where, r)
 		}
 		return nil
 	}
@@ -607,7 +608,7 @@ func selectRegistries(registries map[string]DubboRegistry, ids []string) (map[st
 	for _, id := range ids {
 		rc, ok := registries[id]
 		if !ok {
-			return nil, fmt.Errorf("dubbo: registry id %q is not defined under ${spring.dubbo.registries}", id)
+			return nil, errutil.Explain(nil, "dubbo: registry id %q is not defined under ${spring.dubbo.registries}", id)
 		}
 		selected[id] = rc
 	}

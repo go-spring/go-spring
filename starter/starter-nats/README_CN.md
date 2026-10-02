@@ -149,7 +149,7 @@ sub, err := conn.Consume(ctx, "demo.pubsub", "", func(ctx context.Context, msg *
   没有第二个发射点，两条路径不会重复计数。
 * `HealthCheck(ctx, conn)` 反映自动重连客户端的实时状态，且 starter 会按实例注册
   `health.Indicator`（`nats:<name>`），因此同时引入 starter-actuator 的应用可把
-  NATS 连通性并入 `/readiness`。若某实例的连通性不应计入就绪，设 `health.enabled=false`。
+  NATS 连通性并入 `/readiness`。若某实例的连通性不应计入就绪，设 `health=false`。
 
 未埋点：JetStream 操作与裸 `Subscribe`/`Publish` 委托。需要可追踪的
 pub/sub 请用 `PublishMsgContext`/`Consume`，需要可追踪的消息信封请用 driver。
@@ -174,4 +174,4 @@ pub/sub 请用 `PublishMsgContext`/`Consume`，需要可追踪的消息信封请
 | `reconnect-wait` | `2s` | 每次重连之间的等待时长。 |
 | `connect-timeout` | `5s` | 初次拨号的超时上限。 |
 | `jetstream.enabled` | `false` | 在 `Conn.JetStream` 上暴露 JetStream 上下文。 |
-| `health.enabled` | `true` | 为该实例贡献一个 `health.Indicator`（`nats:<name>`）。 |
+| `health` | `true` | 为该实例贡献一个 `health.Indicator`（`nats:<name>`）。 |

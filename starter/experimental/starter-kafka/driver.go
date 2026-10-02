@@ -133,7 +133,7 @@ func saslMechanism(c SASLConfig) (sasl.Mechanism, error) {
 	case "scram-sha-512":
 		return scram.Auth{User: c.Username, Pass: c.Password}.AsSha512Mechanism(), nil
 	default:
-		return nil, fmt.Errorf("unsupported kafka sasl mechanism: %q", c.Mechanism)
+		return nil, errutil.Explain(nil, "unsupported kafka sasl mechanism: %q", c.Mechanism)
 	}
 }
 
@@ -157,7 +157,7 @@ func producerOpts(c ProducerConfig) ([]kgo.Opt, error) {
 	case "none":
 		opts = append(opts, kgo.RequiredAcks(kgo.NoAck()), kgo.DisableIdempotentWrite())
 	default:
-		return nil, fmt.Errorf("unsupported kafka required-acks: %q", c.RequiredAcks)
+		return nil, errutil.Explain(nil, "unsupported kafka required-acks: %q", c.RequiredAcks)
 	}
 
 	if c.MaxBatchBytes > 0 {
@@ -183,7 +183,7 @@ func compressionCodec(name string) (kgo.CompressionCodec, error) {
 	case "zstd":
 		return kgo.ZstdCompression(), nil
 	default:
-		return kgo.CompressionCodec{}, fmt.Errorf("unsupported kafka compression: %q", name)
+		return kgo.CompressionCodec{}, errutil.Explain(nil, "unsupported kafka compression: %q", name)
 	}
 }
 

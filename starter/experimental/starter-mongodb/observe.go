@@ -51,11 +51,8 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
-// tracerName names the tracer the spans open on. The tracer is looked up
-// per use (otel.Tracer at call time), never cached in a package variable: a
-// package-level otel.Tracer captured before any provider is set stops
-// forwarding once the global provider is set, unset and set again.
-const tracerName = "go-spring.org/starter-mongodb"
+// scope is the instrumentation scope name every meter and tracer in this package reports under.
+const scope = "go-spring.org/starter-mongodb"
 
 // mongodbSystem is the value the db.system label carries for this backend.
 const mongodbSystem = "mongodb"
@@ -95,7 +92,7 @@ var instruments = sync.OnceValue(buildInstruments)
 // current — resolved on first use, not at package init, so an SDK installed
 // later than this package's init still receives the records.
 func buildInstruments() *instrumentSet {
-	m := otel.Meter("go-spring.org/starter-mongodb")
+	m := otel.Meter(scope)
 	duration, _ := m.Float64Histogram("db.client.operation.duration",
 		metric.WithDescription("Duration of "+mongodbSystem+" client operations"),
 		metric.WithUnit("s"),
@@ -139,7 +136,7 @@ func (o *dbObserver) Start(ctx context.Context, op, arg string) (context.Context
 	if arg != "" {
 		attrs = append(attrs, attribute.String("db.statement", strutil.Truncate(arg, maxArg)))
 	}
-	ctx, span := otel.Tracer(tracerName).Start(ctx, op,
+	ctx, span := otel.Tracer(scope).Start(ctx, op,
 		trace.WithSpanKind(trace.SpanKindInternal),
 		trace.WithAttributes(attrs...))
 	return ctx, &dbSpan{o: o, ctx: ctx, span: span, op: op, arg: arg, start: time.Now(), inflight: inflight}

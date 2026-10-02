@@ -125,7 +125,7 @@ policy share pooled breaker/limiter state.
 * One access-log line per proxied request (`gateway.route`, `status`,
   `http.request.method`, `url.path`, `http.response.status_code`, `duration_ms`).
 * A `health.Indicator` named `gateway` reports UP as long as the route table is
-  loaded.
+  loaded (contributed unless `spring.gateway.health=false`).
 
 ## Core Features
 

@@ -17,7 +17,6 @@
 package StarterMemcached
 
 import (
-	"fmt"
 	"hash/crc32"
 	"net"
 	"sort"
@@ -26,6 +25,7 @@ import (
 
 	"github.com/bradfitz/gomemcache/memcache"
 	"go-spring.org/cloud/discovery"
+	"go-spring.org/stdlib/errutil"
 )
 
 // keyBufPool returns []byte buffers for use by pickServer's call to
@@ -160,7 +160,7 @@ func (s *liveServers) snapshot() ([]net.Addr, error) {
 			addr, err = net.ResolveTCPAddr("tcp", a)
 		}
 		if err != nil {
-			return nil, fmt.Errorf("memcached: resolve server %q: %w", a, err)
+			return nil, errutil.Explain(err, "memcached: resolve server %q", a)
 		}
 		resolved = append(resolved, newStaticAddr(addr))
 	}

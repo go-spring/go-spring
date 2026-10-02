@@ -54,6 +54,10 @@ const (
 	statusError = "error"
 )
 
+// scope is the instrumentation scope name every meter and tracer in this
+// package reports under.
+const scope = "go-spring.org/cloud/cache"
+
 // observedCache is the [ByteCache] decorator [New] wraps every backend in. It
 // records the cache semantics — hit vs miss vs error — that no backend's own
 // instrumentation can see: a redis GET that returns nil is a successful command
@@ -96,7 +100,7 @@ type instrumentSet struct {
 var instruments = sync.OnceValue(buildInstruments)
 
 func buildInstruments() *instrumentSet {
-	m := otel.Meter("go-spring.org/cloud/cache")
+	m := otel.Meter(scope)
 	in := &instrumentSet{}
 	in.total, _ = m.Int64Counter("cache.operation.total",
 		metric.WithDescription("Cache operations executed, by operation and status"),
@@ -114,21 +118,37 @@ func buildInstruments() *instrumentSet {
 // otherwise keep reporting into the earlier provider.
 func resetInstruments() { instruments = sync.OnceValue(buildInstruments) }
 
-// tracerName names the tracer the operation spans open on. The tracer is looked
-// up per use (otel.Tracer at call time), never cached in a field or package
-// variable: one captured before any provider is set stops forwarding once the
-// global provider is set, unset and set again.
-const tracerName = "go-spring.org/cloud/cache"
-
 // newObservedCache wraps bc.
 func newObservedCache(bc ByteCache) observedCache {
 	return observedCache{ByteCache: bc}
 }
 
+func (o observedCache) GetBytes(ctx context.Context, key string) ([]byte, error) {
+	var b []byte
+	err := o.observe(ctx, opGet, key, func(ctx context.Context) error {
+		var err error
+		b, err = o.ByteCache.GetBytes(ctx, key)
+		return err
+	})
+	return b, err
+}
+
+func (o observedCache) SetBytes(ctx context.Context, key string, val []byte, ttlSeconds int) error {
+	return o.observe(ctx, opSet, key, func(ctx context.Context) error {
+		return o.ByteCache.SetBytes(ctx, key, val, ttlSeconds)
+	})
+}
+
+func (o observedCache) Delete(ctx context.Context, key string) error {
+	return o.observe(ctx, opDelete, key, func(ctx context.Context) error {
+		return o.ByteCache.Delete(ctx, key)
+	})
+}
+
 // startSpan opens the operation's client span. The key rides on the span only —
 // see the invariants above.
 func startSpan(ctx context.Context, op, key string) (context.Context, trace.Span) {
-	return otel.Tracer(tracerName).Start(ctx, op,
+	return otel.Tracer(scope).Start(ctx, op,
 		trace.WithSpanKind(trace.SpanKindClient),
 		trace.WithAttributes(
 			attribute.String("cache.operation", op),
@@ -174,32 +194,16 @@ func (o observedCache) record(ctx context.Context, op, status string, start time
 	in.duration.Record(ctx, time.Since(start).Seconds(), attrs)
 }
 
-func (o observedCache) GetBytes(ctx context.Context, key string) ([]byte, error) {
+// observe runs fn under the operation's span and reports the outcome: status is
+// computed once and stamped on both the span and the metric, so the two cannot
+// disagree. fn receives the span's context, so anything it logs lands in the
+// same trace; its error is the outcome that gets reported.
+func (o observedCache) observe(ctx context.Context, op, key string, fn func(ctx context.Context) error) error {
 	start := time.Now()
-	ctx, span := startSpan(ctx, opGet, key)
-	b, err := o.ByteCache.GetBytes(ctx, key)
-	status := statusOf(opGet, err)
+	ctx, span := startSpan(ctx, op, key)
+	err := fn(ctx)
+	status := statusOf(op, err)
 	endSpan(span, status, err)
-	o.record(ctx, opGet, status, start)
-	return b, err
-}
-
-func (o observedCache) SetBytes(ctx context.Context, key string, val []byte, ttl time.Duration) error {
-	start := time.Now()
-	ctx, span := startSpan(ctx, opSet, key)
-	err := o.ByteCache.SetBytes(ctx, key, val, ttl)
-	status := statusOf(opSet, err)
-	endSpan(span, status, err)
-	o.record(ctx, opSet, status, start)
-	return err
-}
-
-func (o observedCache) Delete(ctx context.Context, key string) error {
-	start := time.Now()
-	ctx, span := startSpan(ctx, opDelete, key)
-	err := o.ByteCache.Delete(ctx, key)
-	status := statusOf(opDelete, err)
-	endSpan(span, status, err)
-	o.record(ctx, opDelete, status, start)
+	o.record(ctx, op, status, start)
 	return err
 }

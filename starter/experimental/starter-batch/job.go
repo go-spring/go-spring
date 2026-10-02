@@ -17,10 +17,9 @@
 package StarterBatch
 
 import (
-	"fmt"
-
 	"go-spring.org/cloud/experimental/batch"
 	"go-spring.org/spring/gs"
+	"go-spring.org/stdlib/errutil"
 )
 
 var _ JobDefinition = (*staticJob)(nil)
@@ -99,7 +98,7 @@ func (j *staticJob) JobName() string { return j.name }
 
 func (j *staticJob) Build() (*batch.Job, error) {
 	if j.name == "" {
-		return nil, fmt.Errorf("batch: job definition has empty name")
+		return nil, errutil.Explain(nil, "batch: job definition has empty name")
 	}
 	// Copy the slice so a caller mutating the returned job does not affect the
 	// definition's own step list.

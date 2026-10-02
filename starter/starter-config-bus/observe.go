@@ -50,9 +50,9 @@ import (
 // a consumer span linked to the publisher's span, so a business span would only
 // add a redundant child.
 
-// instrumentationName is the OTel instrumentation scope; the module path keeps
-// it unique across starters.
-const instrumentationName = "go-spring.org/starter-config-bus"
+// scope is the OTel instrumentation scope; the module path keeps it unique
+// across starters.
+const scope = "go-spring.org/starter-config-bus"
 
 // The exclusive statuses of one received broadcast.
 const (
@@ -89,7 +89,7 @@ type instrumentSet struct {
 var instruments = sync.OnceValue(buildInstruments)
 
 func buildInstruments() *instrumentSet {
-	m := otel.Meter(instrumentationName)
+	m := otel.Meter(scope)
 	in := &instrumentSet{}
 	in.events, _ = m.Int64Counter("config.bus.events",
 		metric.WithDescription("Configuration refresh broadcasts received, by outcome"),

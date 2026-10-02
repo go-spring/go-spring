@@ -56,10 +56,13 @@ func init() {
 				gs.IndexArg(4, gs.TagArg("")), // *fault.Injector
 			).Name(name).Destroy((*Client).Destroy).Caller(1)
 			// Contribute a health indicator for this instance, injecting the
-			// client just registered above by name.
-			r.Provide(func(w *Client) *health.Indicator {
-				return NewClientHealth(name, w)
-			}, gs.TagArg(name)).Name("influxdb:" + name).Caller(1)
+			// client just registered above by name. Skipped when c.Health is
+			// false.
+			if c.Health {
+				r.Provide(func(w *Client) *health.Indicator {
+					return NewClientHealth(name, w)
+				}, gs.TagArg(name)).Name("influxdb:" + name).Caller(1)
+			}
 			return nil
 		})
 	})
@@ -67,10 +70,11 @@ func init() {
 
 // newClient creates a new InfluxDB client based on the provided configuration.
 // The Driver returns the client COMPLETE — governance (the declaration+
-// resilience transport) is applied while it is built — and this ctor only
-// afterwards probes the server once, so that misconfiguration or an unreachable
-// server fails fast rather than on first use. There is no Init hook: the client
-// is complete when the driver returns it.
+// resilience transport) is applied while it is built — and when c.Ping is set
+// this ctor afterwards probes the server once, so that misconfiguration or an
+// unreachable server fails fast rather than on first use; the probe is off by
+// default, so a server that is not up yet does not block startup. There is no
+// Init hook: the client is complete when the driver returns it.
 //
 // mgr and inj are the governance beans the container injects (both nil in a
 // standalone, non-gs call); the ctor bundles them into the
@@ -92,10 +96,13 @@ func newClient(ctx *gs.ContextProvider, c Config, d Driver, mgr *resilience.Mana
 	// built — so the probe below already runs through the assembled transport.
 	// Fail fast: probe the server once at startup. The probe goes straight to the
 	// raw client (a connectivity check, see [HealthCheck]); on failure the client
-	// just assembled is released, executor and connection together.
-	if err := HealthCheck(ctx.Context, w); err != nil {
-		_ = w.Destroy()
-		return nil, errutil.Explain(err, "failed to reach influxdb server %s", c.ServerURL)
+	// just assembled is released, executor and connection together. Off by
+	// default (c.Ping): a server that is not up yet must not block startup.
+	if c.Ping {
+		if err := HealthCheck(ctx.Context, w); err != nil {
+			_ = w.Destroy()
+			return nil, errutil.Explain(err, "failed to reach influxdb server %s", c.ServerURL)
+		}
 	}
 	return w, nil
 }

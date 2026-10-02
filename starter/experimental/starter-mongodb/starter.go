@@ -18,7 +18,6 @@ package StarterMongoDB
 
 import (
 	"context"
-	"fmt"
 	"net"
 	"sync/atomic"
 	"time"
@@ -69,10 +68,12 @@ func init() {
 
 			// Contribute a health indicator for this instance, injecting the
 			// client just registered above by name. The probe goes straight to
-			// the wrapper's raw client.
-			r.Provide(func(w *Client) *health.Indicator {
-				return NewClientHealth(name, w)
-			}, gs.TagArg(name)).Name("mongo:" + name).Caller(1)
+			// the wrapper's raw client. Skipped when c.Health is false.
+			if c.Health {
+				r.Provide(func(w *Client) *health.Indicator {
+					return NewClientHealth(name, w)
+				}, gs.TagArg(name)).Name("mongo:" + name).Caller(1)
+			}
 			return nil
 		})
 	})
@@ -84,10 +85,11 @@ func init() {
 // the governance bundle are all assembled here — the monitor reads the observer
 // lazily through a holder, [NewClient] resolves the executor off the bundle, and
 // this ctor then wraps the shared dial function with that executor (its
-// protection rides the dial layer). Only after that is the client pinged so
-// that misconfiguration or an unreachable server fails fast at startup rather
-// than on first use. There is no Init hook: the client is complete when this
-// ctor returns.
+// protection rides the dial layer). When c.Ping is set the client is then
+// pinged so that misconfiguration or an unreachable server fails fast at
+// startup rather than on first use; the probe is off by default so a server
+// that is not up yet does not block startup. There is no Init hook: the client
+// is complete when this ctor returns.
 //
 // When c.ServiceName is set and mesh mode is off, the address is resolved
 // through backend (the discovery backend the entry's ${discovery} label
@@ -195,7 +197,7 @@ func newClient(ctx *gs.ContextProvider, c Config, backend discovery.Discovery,
 	raw, err := mongo.Connect(opts)
 	if err != nil {
 		log.Errorf(ctx.Context, log.TagAppDef, "mongodb: connect failed: %v", err)
-		return nil, fmt.Errorf("mongodb: create client: %w", err)
+		return nil, errutil.Explain(err, "mongodb: create client")
 	}
 	// NewClient resolves the executor off the governance bundle and stores the
 	// service label; the client's identity, observe and governance all come from
@@ -221,12 +223,16 @@ func newClient(ctx *gs.ContextProvider, c Config, backend discovery.Discovery,
 	// The probe is [HealthCheck], the single liveness implementation (a
 	// connectivity check going straight to the raw client); on failure the
 	// client just assembled is released, executor and connection together.
-	pingCtx, cancel := pingContext(ctx.Context, c.ConnectTimeout)
-	defer cancel()
-	if err := HealthCheck(pingCtx, w); err != nil {
-		log.Errorf(ctx.Context, log.TagAppDef, "mongodb: ping failed uri=%s: %v", c.URI, err)
-		_ = w.Destroy()
-		return nil, fmt.Errorf("mongodb: ping %s: %w", c.URI, err)
+	// Off by default (c.Ping): a server that is not up yet must not block
+	// startup, so this runs only when explicitly requested.
+	if c.Ping {
+		pingCtx, cancel := pingContext(ctx.Context, c.ConnectTimeout)
+		defer cancel()
+		if err := HealthCheck(pingCtx, w); err != nil {
+			log.Errorf(ctx.Context, log.TagAppDef, "mongodb: ping failed uri=%s: %v", c.URI, err)
+			_ = w.Destroy()
+			return nil, errutil.Explain(err, "mongodb: ping %s", c.URI)
+		}
 	}
 	log.Infof(ctx.Context, log.TagAppDef, "mongodb client initialized, uri=%s", c.URI)
 	return w, nil

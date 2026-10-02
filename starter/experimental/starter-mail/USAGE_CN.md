@@ -5,7 +5,7 @@
 [example-otel/](example-otel/) 核实。**SMTP 与消息语义（header、MIME、附件、认证机制）
 见 [go-mail 官方文档](https://github.com/wneessen/go-mail) 与
 [RFC 5321](https://www.rfc-editor.org/rfc/rfc5321)** —— 本文只写 go-spring 的增量：
-配置、装配、启动 fail-fast、操作声明。
+配置、装配、可选启动探测、操作声明。
 
 **激活条件**：每个 `spring.mail.instances.<name>` 子树按名字各创建一个 `*Mailer` bean。
 不配置 `spring.mail.instances.*` 则不装配、不做启动拨号，starter 完全惰性。没有 `enabled` key，
@@ -139,7 +139,7 @@ import starter-mail
 gs.Run()
   ├─ 配置绑定：spring.mail.instances.<name>.* → Config（value tag；host 由 errutil.RequireField 强制）
   ├─ newMailer：解析 auth（仅 username 非空时）→ TLS mode → mail.NewClient
-  ├─ fail-fast 探测：client.DialWithContext（受 timeout 约束）后 Close
+  ├─ 探测（ping=true 时）：client.DialWithContext（受 timeout 约束）后 Close
   │     └─ host/port/auth/TLS 配错 ⇒ 启动报错，拒绝拉起（源码注释：
   │        "so a misconfiguration surfaces at boot rather than on the first send"）
   ├─ 构造期应用治理：exec = cloud.ClientParams{...}.ExecutorFor("mail", label)
@@ -207,10 +207,11 @@ are non-idempotent ...`）。超时、限流、熔断、隔舱都仍然生效—
 | `host` | string | — | **必填**（newMailer 里 `errutil.RequireField`）。无 localhost 兜底。 | 缺失 → 启动即失败，报必填字段错误。 |
 | `port` | int | 587 | 传给 `mail.WithPort`。 | ⚠ 465 不配 `tls.mode=tls` → 对隐式 TLS 服务器说明文 → 启动拨号失败；587 配 `tls.mode=tls` 同理失败。 |
 | `username` | string | — | 非空则开启 SMTP 认证并使用 `password`；空 ⇒ `WithSMTPAuth(SMTPAuthNoAuth)`（匿名）。 | 只配 password 不配 username 会被静默忽略。 |
-| `password` | string | — | 仅 username 非空时生效。 | 密码错误 → 启动拨号失败（fail-fast）。 |
+| `password` | string | — | 仅 username 非空时生效。 | 密码错误 → 启动拨号失败（ping=true 时）。 |
 | `auth-type` | string | auto | `auto`\|`plain`\|`login`\|`cram-md5`（parseAuthType，大小写不敏感；接受 `crammd5` 别名）。仅 username 非空时读取。 | 未知值 → 启动报错并列出合法值。 |
 | `from` | string | — | 默认发件人；逐消息的 `Message.From` 可覆盖。 | 空 from + 消息不带 From → Send 时报错（非启动期）。 |
-| `timeout` | duration | 10s | 同时约束启动探测与每次发送的拨号（`WithTimeout` + 探测 context）。 | 过小 → 慢中继上出现伪启动/发送超时。 |
+| `timeout` | duration | 10s | 同时约束启动探测（ping=true 时）与每次发送的拨号（`WithTimeout` + 探测 context）。 | 过小 → 慢中继上出现伪启动/发送超时。 |
+| `ping` | bool | false | 可选启动探测：`DialWithContext` 后 `Close`，host/port/auth/TLS 错则中止启动 [starter.go:171-180]。 | true → 三元组错则中止启动；false → 首次 Send 才暴露。 |
 | `tls.mode` | string | starttls | `starttls`（空值同义，强制升级）\| `tls`/`ssl`（隐式 TLS）\| `none`（明文，仅测试）。未知 → 启动报错。 | 生产用 `none` 会明文送凭据；mode 与 port 不匹配 → 启动期拨号失败。 |
 | `tls.insecure-skip-verify` | bool | false | 为 true 时安装 `InsecureSkipVerify` 的 TLS 配置（ServerName=host）。 | 仅测试可用；生产等于接受伪造证书——静默 MITM 暴露。 |
 
@@ -232,17 +233,19 @@ curl -s :8025/api/v2/messages | jq '.messages[0].To'                 # alice, bo
 example 在发送 To×2 + Cc×1、带一个附件的一封邮件后断言 `total >= 1`
 （example.go runTest）。
 
-### 4.2 fail-fast 演练
+### 4.2 ping 演练
 
-把 `spring.mail.instances.notify.port=9999`（无监听）后启动：启动中止并报
-`mail: startup dial to ...:9999 failed`。这是刻意姿态——探测（newMailer，
-starter.go:137-144）的存在就是让坏配置到不了首次发送。
+把 `spring.mail.instances.notify.port=9999`（无监听）、加上
+`spring.mail.instances.notify.ping=true` 后启动：启动中止并报
+`mail: startup dial to ...:9999 failed`。这是可选姿态——探测（newMailer，
+starter.go:171-180）的存在让运维在需要时把坏配置拦在首次发送之前；不加 `ping=true`
+则同样配置照常启动，首次 Send 才失败。
 
 ### 4.3 TLS 姿态演练
 
 将 `host/port` 指向真实提交服务器并故意配错 `tls.mode`（如对只收 STARTTLS 的 587 端口
-配 `none`）：启动在探测处失败；改回 `starttls` 即可启动。探测执行与 Send 相同的协商，
-因此 TLS mode 错误免费被拦截。
+配 `none`）并设 `ping=true`：启动在探测处失败；改回 `starttls` 即可启动。探测执行与 Send
+相同的协商，因此 TLS mode 错误免费被拦截。
 
 ### 4.4 Trace 演练（example-otel）
 
@@ -279,14 +282,14 @@ status Error。span 由 resilience 发射点（执行器链上的唯一发射点
 
 | 指标 | 数值 |
 |------|------|
-| 配置 key 总数 | 10（含 2 个 `tls.*`） |
+| 配置 key 总数 | 11（含 2 个 `tls.*`） |
 | 其中必填 | 1（`host`） |
 | quickstart 前置外部依赖 | 1（SMTP 服务器 / MailHog） |
 | "注意/坑" 条数 | 4 |
 
 设计嫌疑清单：
-- 有启动拨号探测却无健康检查——探测结果不暴露到运行时；启动期健康与稳态健康被混同。
-- fail-fast 探测使每次启动对每个实例做一次 SMTP 登录，对配额受限的中继
+- 有可选启动拨号探测却无健康检查——探测结果不暴露到运行时；启动期健康与稳态健康被混同。
+- 可选 ping 探测使每次启动对每个实例做一次 SMTP 登录，对配额受限的中继
   （如 verified-sender API）有成本；可接受但实例数放大时要记得。
 - `port` ↔ `tls.mode` 耦合只靠探测隐式校验——启动错误若能点名这组配对，
   可省一轮排障。

@@ -121,9 +121,9 @@ import starter-xxljob
              ├─ expr validation on Config (app-name != '', admin-addresses
              │  non-empty, port > 0 — BIND-time failure)
              ├─ Provide(newExecutor).Name(<name>).
-             │   Export(gs.As[gs.Server]()).Destroy(...)           [starter.go:32-35]
-             └─ Provide(health.Indicator).Name("xxljob:"+<name>).
-                Export(gs.As[health.Indicator]())                  [starter.go:37-39]
+             │   Export(gs.As[gs.Server]()).Destroy(...)           [starter.go:32-38]
+             └─ if c.Health: Provide(health.Indicator).
+                Name("xxljob:"+<name>)                             [starter.go:40-45]
 gs.Run()
   ├─ bean wiring: app autowires *Executor by instance name
   ├─ Rooter Init phase: app Service.Init calls RegisterHandler
@@ -191,6 +191,7 @@ Prefix: `spring.xxljob.instances.<name>.*` (multi-instance).
 | `access-token` | string | empty | Sent as `XXL-JOB-ACCESS-TOKEN` on executor→admin calls when non-empty. ⚠ must match the admin's token exactly; empty matches only a token-less admin. | Mismatch → admin silently drops registry/callback requests. |
 | `registry-interval` | duration | 10s | Re-register/heartbeat period. ⚠ must be well under the admin's registry-expiry (default 90s in stock xxl-job) or the executor flaps. | Too large → executor periodically offline from the admin's view; triggers route elsewhere. |
 | `log-dir` | string | `./logs` | Dir served by `/log` as `<LogId>.log`; the starter creates it if absent. ⚠ division of labor: the starter owns the **reading** side only — your TaskFunc owns writing `<log-dir>/<logId>.log`. | Empty logs in the admin console. |
+| `health` | bool | true | Contribute a `health.Indicator` named `xxljob:<name>` for this instance (readiness probes via starter-actuator). Set false to keep it out of the aggregated health report. | false → the instance's probe is absent; readiness no longer reflects it. |
 
 ---
 
@@ -254,7 +255,7 @@ starter (no stored cancel sweep on shutdown). Registration removal is POSTed on 
 
 | Metric | Value |
 |--------|-------|
-| Config keys | 6 |
+| Config keys | 7 |
 | Required | 3 (`app-name`, `admin-addresses`, `port`) |
 | Quickstart external deps | 1 (an xxl-job admin; the example mocks it) |
 | "Watch out" entries | 4 |

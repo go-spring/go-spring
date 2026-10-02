@@ -49,4 +49,9 @@ type Config struct {
 	// writes task log files — the application's TaskFunc owns writing
 	// <log-dir>/<logId>.log; this starter only owns the reading side.
 	LogDir string `value:"${log-dir:=./logs}"`
+
+	// Health controls whether the starter contributes a health.Indicator bean
+	// for this instance (readiness/startup probes via starter-actuator). On by
+	// default; set false to keep it out of the aggregated health report.
+	Health bool `value:"${health:=true}"`
 }

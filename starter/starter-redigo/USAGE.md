@@ -10,7 +10,7 @@ switching between the two is an import + prefix change.
 
 **Activation**: any `spring.redigo.instances.*` key. Each `spring.redigo.instances.<name>` entry creates one
 `*StarterRedigo.Pool` bean named `<name>`, plus a health indicator named `redigo:<name>`
-(when `health.enabled`, default true).
+(controlled by `health`, default true).
 
 ---
 
@@ -119,7 +119,7 @@ func init() {
 ```properties
 # --- main pool: static address, fail-fast dial check ------------------------
 spring.redigo.instances.main.addr=127.0.0.1:6379
-spring.redigo.instances.main.startup-ping=true
+spring.redigo.instances.main.ping=true
 spring.redigo.instances.main.pool-size=20
 spring.redigo.instances.main.conn-max-lifetime=2m
 
@@ -133,7 +133,7 @@ spring.redigo.instances.discovery.conn-max-lifetime=30s
 
 # --- health -------------------------------------------------------------------
 # default true; set false to keep a non-critical cache out of aggregate health
-spring.redigo.instances.main.health.enabled=true
+spring.redigo.instances.main.health=true
 
 # --- actuator + otel ----------------------------------------------------------
 spring.actuator.addr=:9370
@@ -145,7 +145,7 @@ spring.observability.metrics.exporter=prometheus
 
 ```bash
 docker run -d -p 6379:6379 redis
-go run .                          # startup-ping fails boot on a bad address
+go run .                          # ping fails boot on a bad address
 curl -s :9370/readyz              # components include redigo:main, redigo:discovery
 redis-cli GET key                 # "value" — written through the onion
 redis-cli GET user:1              # JSON written via the cache façade
@@ -164,14 +164,14 @@ import starter-redigo
         └─ conf.BindEach("${spring.redigo}") → one Config per <name>
               ├─ Provide(createPool).Name(<name>).Destroy(destroyPool)
               │    ctor args: ContextProvider, Config (IndexArg 1)
-              └─ if health.enabled → Provide health.Indicator named "redigo:<name>"
+              └─ if health → Provide health.Indicator named "redigo:<name>"
 
 gs.Run()
   ├─ ctor createPool [starter.go]: RequireAny(addr|service-name) → driver lookup
   │   → d.CreateClient(c, backend, params) (= NewPool): TLS build → discovery resolver → raw pool
   │     → governance applied in the constructor: resilience executor + endpoint-selection binding
   │     → declaration layer installed → setupDial (instrumented Dial wrap)
-  │   → HealthCheck startup-ping (ONLY if startup-ping=true), AFTER assembly [starter.go]
+  │   → HealthCheck ping (ONLY if ping=true), AFTER assembly [starter.go]
   │   NOTE: there is NO separate InitMethod and nothing patches the pool afterwards [pool.go]
   ├─ your bean Inits may call UseCommandInterceptor (affects conns dialed from then on)
   └─ SIGTERM → destroyPool → Pool.Close: exec.Close → resolver.Stop → pool.Close [pool.go]
@@ -257,15 +257,15 @@ All keys live under `spring.redigo.instances.<name>.`.
 | `service-name` | string | — | Discovery-resolved address; `addr` becomes a label only. Per-dial endpoint pick + conn-max-lifetime recycling. | Unregistered backend → boot error. |
 | `scheme` | string | — | Narrows discovery endpoints to one scheme. Only with service-name. | — |
 | `discovery` | string | — | Which discovery backend resolves service-name. The wiring resolves this label to a bean and passes it to the driver (`CreateClient` / `NewPool`) as the `backend` argument. Falls back to `${spring.redigo.default.discovery}` when unset. | Both unset or an unregistered name while service-name is set → boot error. |
-| `password` / `username` | string | — | Dial auth; username only appended when non-empty [pool.go:94-96]. | Wrong → first dial (or startup-ping) fails. |
+| `password` / `username` | string | — | Dial auth; username only appended when non-empty [pool.go:94-96]. | Wrong → first dial (or ping) fails. |
 | `db` | int | 0 | `SELECT` executed on each fresh conn (non-zero only) [pool.go:125-131]. | Out-of-range → dial fails. |
 | `pool-size` | int | 10 | MaxActive. `Wait:true` → borrowers block when exhausted. | Too low → latency, not errors. |
 | `max-idle` | int | 5 | MaxIdle. | Higher than pool-size is pointless. |
 | `dial-timeout` / `read-timeout` / `write-timeout` | duration | 5s / 3s / 3s | Dial options. | — |
 | `conn-max-lifetime` | duration | 2m | MaxConnLifetime; short values smooth discovery traffic switching. | Very large + discovery → stale endpoints linger. |
 | `tls.*` | group | off | Client TLS; keys mirror starter-go-redis. | Partial → tls.Build boot error. |
-| `startup-ping` | bool | false | Opt-in boot probe: [HealthCheck] dials ONE bare conn and PINGs [health.go:35-48]. ⚠ Off by default — the pool is lazy, so a bad address surfaces only on first command. | Expecting fail-fast without setting it → boot "succeeds", first request fails. |
-| `health.enabled` | bool | true | Registers `redigo:<name>` indicator; false keeps the pool out of aggregate health. | false → readiness silently excludes this pool. |
+| `ping` | bool | false | Opt-in boot probe: [HealthCheck] dials ONE bare conn and PINGs [health.go:35-48]. ⚠ Off by default — the pool is lazy, so a bad address surfaces only on first command. | Expecting fail-fast without setting it → boot "succeeds", first request fails. |
+| `health` | bool | true | Registers `redigo:<name>` indicator; false keeps the pool out of aggregate health. | false → readiness silently excludes this pool. |
 
 **Extension points**:
 
@@ -333,9 +333,9 @@ Hit the interceptor's key (`GET local:skip` in §1): the reply comes back with N
 `_app_redigo_access` line and no breaker permit consumed — proof the user layer sits outside
 both. Calling `next` instead restores full instrumentation.
 
-### 4.6 Startup-ping drill
+### 4.6 Ping drill
 
-Set `startup-ping=true` and a wrong `addr`: boot fails with "redis: startup ping failed".
+Set `ping=true` and a wrong `addr`: boot fails with "redis: startup ping failed".
 Set it false: boot succeeds and the first command fails instead — the trade-off the key controls.
 
 ---
@@ -344,7 +344,7 @@ Set it false: boot succeeds and the first command fails instead — the trade-of
 
 | Symptom | Likely cause | Fix |
 |---------|--------------|-----|
-| Boot OK, first command "connection refused" | pool is lazy; `startup-ping` off | Set `startup-ping=true` for fail-fast. |
+| Boot OK, first command "connection refused" | pool is lazy; `ping` off | Set `ping=true` for fail-fast. |
 | Boot fails "redis: startup ping failed" | addr/auth/TLS/discovery broken | It dials one bare conn; fix connectivity. |
 | Boot fails "one of addr/service-name required" | neither key set | Set exactly one. |
 | Interceptor never runs | registered after conns were dialed | Register from a bean Init before traffic [pool.go:151-157]. |
@@ -363,6 +363,6 @@ Set it false: boot succeeds and the first command fails instead — the trade-of
 | Quickstart external deps | 1 (Redis) |
 | "Watch out" entries | 6 |
 
-Design suspects (audit ledger): `startup-ping` opt-in here but unconditional in starter-go-redis
-(family asymmetry, documented at config.go:85-91); type assertion needed to reach
-`DoContext` on a borrowed conn (`pool.Get()` returns `redis.Conn`).
+Design suspects (audit ledger): ~~`startup-ping` opt-in here but unconditional in starter-go-redis~~
+(fixed: both starters now gate the startup probe on the same `ping` key, default false);
+type assertion needed to reach `DoContext` on a borrowed conn (`pool.Get()` returns `redis.Conn`).

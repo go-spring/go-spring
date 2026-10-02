@@ -137,7 +137,7 @@ import starter-outbox-gorm
         │     参数：IndexArg(1, 绑定的 Config)、IndexArg(2, TagArg(db) *gorm.DB)、
         │           IndexArg(3, ValueArg(name))
         │     以 gs.Rooter 导出                                      [starter.go:61-66]
-        └─ Provide(health.Indicator "outbox:<name>")              [starter.go:69-71]
+        └─ health=false 除外 → Provide(health.Indicator "outbox:<name>")  [starter.go:69-71]
               .Name("outbox:" + name) —— 必须命名：多实例健康 bean 需要
               不同的 (Name,Type) 键，否则容器报 duplicate beans。
 
@@ -222,6 +222,7 @@ config.go:29-63；归一化（钳制）来自 outbox.go:132-153。
 | `backoff-base` | duration | 1s | 首次失败后的等待；其后每次失败翻倍。`<=0` → 1s。 | 与 `backoff-max` 共同决定总重试窗口：1s..1m 下 8 次约 3.5 分钟后进 DLQ。 |
 | `backoff-max` | duration | 1m | 单次 backoff 上限。`<=0` → 1m。 | — |
 | `dlq-suffix` | string | ".dlq" | 拼在 destination 后得到死信目的地。⚠ 空串是**关闭** DLQ 拷贝 —— 耗尽记录直接 `dead`、任何地方都没有副本（config.go:59-62）。 | 本想"无后缀"，实际静默关掉了死信投递。 |
+| `health` | bool | true | 为实例注册 `outbox:<name>` 健康指示器（对承载库执行 `SELECT 1`）；false 让该实例不卷入聚合健康。 | false → 无指示器 bean，不再上报该 relay 所在库的就绪。 |
 
 联动说明：
 

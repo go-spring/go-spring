@@ -45,10 +45,8 @@ import (
 // property refresh — see [log.RegisterTag].
 var accessTag = log.RegisterAppTag("rabbitmq", "access")
 
-// scopeName names the OTel scope the process-wide connection-state instrument
-// registers under. The meter is looked up per use (otel.Meter at build time),
-// never cached before a provider is installed.
-const scopeName = "go-spring.org/starter-rabbitmq"
+// scope is the instrumentation scope name every meter and tracer in this package reports under.
+const scope = "go-spring.org/starter-rabbitmq"
 
 // maxDestination bounds the destination captured as messaging.destination.name.
 // A queue name or routing key can be long and a span or a log line has no use
@@ -126,7 +124,7 @@ type connStateCounter struct {
 // current — invoked at wiring time, not at package init, so an SDK installed
 // later still receives the records.
 func newConnStateCounter() *connStateCounter {
-	changes, _ := otel.Meter(scopeName).Int64Counter("messaging.client.connection.state_changes",
+	changes, _ := otel.Meter(scope).Int64Counter("messaging.client.connection.state_changes",
 		metric.WithDescription("Connection-state transitions reported by the messaging client"),
 		metric.WithUnit("{event}"))
 	return &connStateCounter{changes: changes}

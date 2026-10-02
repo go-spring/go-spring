@@ -65,7 +65,7 @@ type DefaultDriver struct{}
 // It owns full client assembly — the rlog bridge into go-spring's log, the
 // name server list and the credential builder stored on the wrapper — and hands
 // the result to [NewClient], which fixes its identity and applies the governance
-// bundle. It does NOT own the startup name server probe (FailFast), which is the
+// bundle. It does NOT own the startup name server probe (Ping), which is the
 // starter's lifecycle concern (see newClient in starter.go).
 func (DefaultDriver) CreateClient(ctx context.Context, c Config, params cloud.ClientParams) (*Client, error) {
 	// Bridge rocketmq-client-go's internal logs into go-spring's log so
@@ -139,7 +139,7 @@ func emit(level log.Level, msg string, fields map[string]interface{}) {
 // probeNameServer dials the first reachable address in the name server list
 // with a short timeout. RocketMQ's remoting layer connects lazily — a wrong
 // address list would otherwise surface only on the first produce/consume — so
-// the fail-fast path verifies TCP reachability up front.
+// the ping path verifies TCP reachability up front.
 func probeNameServer(addrs []string) error {
 	var lastErr error
 	for _, addr := range addrs {

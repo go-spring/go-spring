@@ -35,9 +35,9 @@ import (
 // protected client's system is a log field, not part of the tag.
 var resilienceTag = log.RegisterAppTag("resilience", "")
 
-// resilienceScope names the OTel scope this package's spans and instruments
+// scope names the OTel scope this package's spans and instruments
 // register under.
-const resilienceScope = "go-spring.org/cloud/resilience"
+const scope = "go-spring.org/cloud/resilience"
 
 // instrumentSet is this package's instruments: one per process, resolved lazily
 // on first use so it binds to whichever providers are current then, and immutable
@@ -69,7 +69,7 @@ var instruments = sync.OnceValue(buildInstruments)
 func resetInstruments() { instruments = sync.OnceValue(buildInstruments) }
 
 func buildInstruments() *instrumentSet {
-	m := otel.Meter(resilienceScope)
+	m := otel.Meter(scope)
 	in := &instrumentSet{}
 	in.clientDuration, _ = m.Float64Histogram("resilience.client.duration",
 		metric.WithDescription("Duration of resilience-protected calls"),
@@ -221,7 +221,7 @@ func serverOperationInstruments(prefix string) *opServerInstrumentSet {
 	if s, ok := opServerInstruments.m[prefix]; ok {
 		return s
 	}
-	m := otel.Meter(resilienceScope)
+	m := otel.Meter(scope)
 	s := &opServerInstrumentSet{}
 	s.duration, _ = m.Float64Histogram(prefix+".request.duration",
 		metric.WithDescription("Duration of one inbound request"),
@@ -260,7 +260,7 @@ func operationInstruments(prefix string) *opInstrumentSet {
 	if s, ok := opInstruments.m[prefix]; ok {
 		return s
 	}
-	m := otel.Meter(resilienceScope)
+	m := otel.Meter(scope)
 	s := &opInstrumentSet{}
 	s.duration, _ = m.Float64Histogram(prefix+".operation.duration",
 		metric.WithDescription("Duration of one logical client operation, retries and backoff included"),
@@ -304,7 +304,7 @@ func (w *wrappedClientExecutor) Execute(ctx context.Context, fn func(context.Con
 		ins = operationInstruments(op.Metric)
 	}
 
-	ctx, span := otel.Tracer(resilienceScope).Start(ctx, w.spanName(op, hasOp),
+	ctx, span := otel.Tracer(scope).Start(ctx, w.spanName(op, hasOp),
 		trace.WithSpanKind(spanKind(op, hasOp)),
 		trace.WithAttributes(w.spanAttrs(op, hasOp)...))
 	// The in-flight gauge brackets the whole call, retries included, exactly as
@@ -594,7 +594,7 @@ func (w *wrappedServerExecutor) Execute(ctx context.Context, fn func(context.Con
 	// a server cannot, and this is the holder that closes that gap.
 	ctx, resp := observability.WithResponse(ctx)
 
-	ctx, span := otel.Tracer(resilienceScope).Start(ctx, w.serverSpanName(op, hasOp),
+	ctx, span := otel.Tracer(scope).Start(ctx, w.serverSpanName(op, hasOp),
 		trace.WithSpanKind(trace.SpanKindServer),
 		trace.WithAttributes(w.serverSpanAttrs(op, hasOp)...))
 

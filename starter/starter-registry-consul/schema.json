@@ -71,6 +71,16 @@
           "type": "string",
           "description": "Auto-drop after the check stays critical this long; 0 disables",
           "default": "1m"
+        },
+        "ping": {
+          "type": "boolean",
+          "default": false,
+          "description": "Probe the agent once at startup and fail fast when unreachable; false (default) skips the probe."
+        },
+        "health": {
+          "type": "boolean",
+          "default": true,
+          "description": "Contributes a health.Indicator bean for this block; set false to disable."
         }
       },
       "required": [

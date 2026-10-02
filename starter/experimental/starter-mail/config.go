@@ -52,6 +52,13 @@ type Config struct {
 
 	// TLS configures transport security for the connection.
 	TLS TLSConfig `value:"${tls}"`
+
+	// Ping enables the startup connectivity probe: when true the constructor
+	// dials the SMTP server once and fails startup if it is unreachable,
+	// surfacing misconfiguration early. Default is false: a server that is not
+	// up yet must not block the application from starting; connectivity problems
+	// surface on first use instead. Set true to restore fail-fast behaviour.
+	Ping bool `value:"${ping:=false}"`
 }
 
 // TLSConfig configures transport security for the SMTP connection. Mode selects

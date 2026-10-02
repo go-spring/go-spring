@@ -45,18 +45,25 @@ func init() {
 				gs.IndexArg(3, gs.TagArg("")), // *fault.Injector
 			).Name(name).Destroy((*Client).Destroy).Caller(1)
 
-			r.Provide(func(w *Client) *health.Indicator {
-				return NewClientHealth(name, w)
-			}, gs.TagArg(name)).Name("milvus:" + name).Caller(1)
+			// Contribute a health indicator for this instance, injecting the
+			// client just registered above by name. Skipped when c.Health is
+			// false.
+			if c.Health {
+				r.Provide(func(w *Client) *health.Indicator {
+					return NewClientHealth(name, w)
+				}, gs.TagArg(name)).Name("milvus:" + name).Caller(1)
+			}
 			return nil
 		})
 	})
 }
 
 // newClient builds the Milvus client — [NewClient] owns the whole assembly,
-// guard and governance included — and only then probes it once so a wrong
-// address or bad credential fails fast at startup instead of on first query.
-// There is no Init hook: the client is complete when this ctor returns.
+// guard and governance included — and when c.Ping is set probes it once so a
+// wrong address or bad credential fails fast at startup instead of on first
+// query; the probe is off by default, so a server that is not up yet does not
+// block startup. There is no Init hook: the client is complete when this ctor
+// returns.
 //
 // mgr and inj are the governance beans the container injects; the ctor bundles
 // them into the [cloud.ClientParams] it hands [NewClient], so the client is
@@ -75,10 +82,13 @@ func newClient(cp *gs.ContextProvider, c Config, mgr *resilience.Manager, inj *f
 	// auth. The guard is already installed, so the probe runs under it, matching
 	// the assembled-then-probed order of the other client starters; it goes
 	// straight to the raw client (see [HealthCheck]). On failure the client just
-	// assembled is released, not leaked.
-	if err := HealthCheck(ctx, w); err != nil {
-		_ = w.Destroy()
-		return nil, errutil.Explain(err, "milvus: startup probe failed")
+	// assembled is released, not leaked. Off by default (c.Ping): a server that
+	// is not up yet must not block startup.
+	if c.Ping {
+		if err := HealthCheck(ctx, w); err != nil {
+			_ = w.Destroy()
+			return nil, errutil.Explain(err, "milvus: startup probe failed")
+		}
 	}
 	return w, nil
 }

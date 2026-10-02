@@ -24,7 +24,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"net/http"
 	"os"
 	"slices"
@@ -126,7 +125,7 @@ func validMethods(c Config, src keySource) ([]string, error) {
 	if slices.Contains(allowed, alg) {
 		return []string{alg}, nil
 	}
-	return nil, fmt.Errorf("oauth2-resource-server: algorithm %q is not compatible with the configured key source", c.Algorithm)
+	return nil, errutil.Explain(nil, "oauth2-resource-server: algorithm %q is not compatible with the configured key source", c.Algorithm)
 }
 
 // discoverJWKSURI performs OIDC discovery: it fetches
@@ -147,7 +146,7 @@ func discoverJWKSURI(c Config) (string, error) {
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("oauth2-resource-server: fetch discovery document %s: status %d", url, resp.StatusCode)
+		return "", errutil.Explain(nil, "oauth2-resource-server: fetch discovery document %s: status %d", url, resp.StatusCode)
 	}
 
 	var doc struct {
@@ -158,7 +157,7 @@ func discoverJWKSURI(c Config) (string, error) {
 		return "", errutil.Explain(err, "oauth2-resource-server: decode discovery document %s", url)
 	}
 	if doc.JWKSURI == "" {
-		return "", fmt.Errorf("oauth2-resource-server: discovery document %s has no jwks_uri", url)
+		return "", errutil.Explain(nil, "oauth2-resource-server: discovery document %s has no jwks_uri", url)
 	}
 	return doc.JWKSURI, nil
 }
@@ -180,7 +179,7 @@ func parsePEMPublicKey(c Config) (any, error) {
 	if ecKey, err := jwt.ParseECPublicKeyFromPEM(pem); err == nil {
 		return ecKey, nil
 	}
-	return nil, errors.New("oauth2-resource-server: public key is neither a valid RSA nor ECDSA PEM")
+	return nil, errutil.Explain(nil, "oauth2-resource-server: public key is neither a valid RSA nor ECDSA PEM")
 }
 
 // Validate verifies a raw token string and returns the security.Authentication

@@ -34,9 +34,14 @@ func init() {
 				gs.IndexArg(2, gs.ValueArg(c)),
 			).Name(name).Export(gs.As[gs.Server]()).Destroy((*Executor).Destroy).Caller(1)
 
-			r.Provide(func(e *Executor) *health.Indicator {
-				return e.Health()
-			}, gs.TagArg(name)).Name("xxljob:" + name).Caller(1)
+			// Contribute a health indicator for this instance unless the user
+			// disabled it (health=false). The probe reports whether the executor's
+			// callback server is still reachable by the admin.
+			if c.Health {
+				r.Provide(func(e *Executor) *health.Indicator {
+					return e.Health()
+				}, gs.TagArg(name)).Name("xxljob:" + name).Caller(1)
+			}
 			return nil
 		})
 	})

@@ -32,23 +32,12 @@ import (
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 )
 
-// ctxAttrsProcessor mirrors ContextAttributesProcessor (starter-otel/trace/context.go)
-// instead of importing it: this module has no starter-otel dependency, and
-// adding one would drag the SDK, the exporters and the container into a task
-// queue client. What this test locks is the half that lives here — the enqueue
-// span is started from the ctx the caller passed to Enqueue, so attributes
-// carried on that ctx arrive on a span the caller never holds. The processor's
-// own wiring is covered by starter-otel's tests.
-type ctxAttrsProcessor struct{}
-
-func (ctxAttrsProcessor) OnStart(parent context.Context, s sdktrace.ReadWriteSpan) {
-	if attrs := observability.ContextAttributes(parent); len(attrs) > 0 {
-		s.SetAttributes(attrs...)
-	}
-}
-func (ctxAttrsProcessor) OnEnd(sdktrace.ReadOnlySpan)      {}
-func (ctxAttrsProcessor) Shutdown(context.Context) error   { return nil }
-func (ctxAttrsProcessor) ForceFlush(context.Context) error { return nil }
+// The reader is the real one now that it lives in cloud/observability: this
+// module still has no starter-otel dependency, but it no longer has to mirror
+// the processor to get one. What this test locks is the half that lives here —
+// the enqueue span is started from the ctx the caller passed to Enqueue, so
+// attributes carried on that ctx arrive on a span the caller never holds. The
+// processor's own wiring into a provider is covered by starter-otel's tests.
 
 // attrsOf flattens a span's attributes. Value.Emit, not AsString: AsString
 // renders any non-STRING value as the empty string, which would make an
@@ -61,16 +50,16 @@ func attrsOf(s sdktrace.ReadOnlySpan) map[string]string {
 	return m
 }
 
-// TestEnqueueSpanCarriesContextAttributes locks the "reachable without holding
+// TestEnqueueSpanCarriesSpanAttributes locks the "reachable without holding
 // the span" shape documented in cloud/observability/README.md: Enqueue declares
 // the operation's identity on the ctx, and the resilience layer — the executor
 // underneath — opens the span from that same ctx, so annotating the ctx is the
 // only way in for a caller. The enqueue itself is pointed at a closed port — the
 // span is what is under test, and it is opened and closed either way.
-func TestEnqueueSpanCarriesContextAttributes(t *testing.T) {
+func TestEnqueueSpanCarriesSpanAttributes(t *testing.T) {
 	sr := tracetest.NewSpanRecorder()
 	tp := sdktrace.NewTracerProvider(
-		sdktrace.WithSpanProcessor(ctxAttrsProcessor{}),
+		sdktrace.WithSpanProcessor(observability.SpanAttributesProcessor()),
 		sdktrace.WithSpanProcessor(sr),
 	)
 	prev := otel.GetTracerProvider()
@@ -86,7 +75,7 @@ func TestEnqueueSpanCarriesContextAttributes(t *testing.T) {
 	assert.Error(t, err).Nil()
 	defer func() { _ = c.Client.Close() }()
 
-	ctx := observability.WithContextAttributes(context.Background(),
+	ctx := observability.WithSpanAttributes(context.Background(),
 		attribute.String("tenant", "acme"))
 	_, _ = c.Enqueue(ctx, asynq.NewTask("probe:task", nil))
 

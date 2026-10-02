@@ -136,8 +136,9 @@ The [example.go](example/example.go) program demonstrates and asserts three core
   beans coexist, an entry selects one by name:
   `spring.go-redis.instances.<name>.driver = <bean-name>` (empty = fall back to the family-wide `spring.<family>.default.driver`, then to the single Driver bean by type; naming a missing
   bean fails startup).
-* **Startup connection validation (fail-fast)**: after building the client the starter runs `HealthCheck` (a `Ping`);
-  a misconfigured address or unreachable server fails the boot instead of the first request.
+* **Startup connection validation (opt-in)**: set `ping=true` and after building the client the starter runs
+  `HealthCheck` (a `Ping`), so a misconfigured address or unreachable server fails the boot instead of the first
+  request. Off by default: a backend that is not up yet must not block startup.
 * **Health check / readiness**: `HealthCheck(ctx, client)` is the readiness probe — the autowired `health.Indicator`
   delegates to it, and you can call it straight off the autowired client.
 * **Connection-pool monitoring**: `client.PoolStats()` returns live pool counters (hits, misses, total/idle conns) for

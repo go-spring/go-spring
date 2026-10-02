@@ -8,7 +8,8 @@ byte-only values) are [the official README](https://github.com/allegro/bigcache)
 below is go-spring's increment.
 
 **Activation**: any `spring.bigcache.instances.*` key. Each `spring.bigcache.instances.<name>` entry creates one
-`*StarterBigCache.Cache` bean named `<name>`, plus a health indicator named `bigcache:<name>`.
+`*StarterBigCache.Cache` bean named `<name>`, plus a health indicator named `bigcache:<name>`
+(controlled by `health`, default true).
 Pure in-process cache — no external dependency, no address, no pool.
 
 ---
@@ -134,7 +135,7 @@ import starter-bigcache
         └─ conf.BindEach("${spring.bigcache}") → one Config per <name>
               ├─ Provide(newClient, name@1, c@2).Name(<name>)
               │    .Destroy((*Cache).Destroy)
-              └─ Provide health.Indicator named "bigcache:<name>"
+              └─ unless health=false → Provide health.Indicator named "bigcache:<name>"
 
 gs.Run()
   ├─ ctor newClient [starter.go:88]: driver lookup → DefaultDriver.CreateClient(ctx, name, c, params)
@@ -201,6 +202,7 @@ All keys live under `spring.bigcache.instances.<name>.`.
 | `max-entry-size` | int | 500 | Pre-allocation hint for one entry (bytes). | Under-guessed → realloc churn. |
 | `hard-max-cache-size` | int | 0 | Hard memory cap in MB; 0 = unlimited. | Set without need → early eviction (oldest entries dropped). |
 | `stats-enabled` | bool | false | bigcache per-key hit/miss stats. ⚠ The starter's OTel gauges read `Stats()` — several show 0 unless this is on (they pull whatever Stats() returns [observe.go:99-107]). | Off → gauges read zero while Len/Capacity still work. |
+| `health` | bool | true | Contributes the `bigcache:<name>` health.Indicator (a constant-UP placeholder — an in-process heap cache has no reachability to check); false keeps the instance out of aggregate health. | false → no indicator bean; the instance is absent from the health report. |
 
 The per-instance `driver` key names the Driver bean: empty = inject the single Driver bean by
 type (or fall back to the bundled `DefaultDriver` when none is provided); set to a bean name to

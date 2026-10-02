@@ -76,7 +76,7 @@ type Dialect[C any] struct {
 // each dialect's instances in their own bean-name space, so two dialects may
 // carry an instance of the same name — without it both would register the same
 // (name, *DB) pair and the container would refuse to start.
-func Module[C any](d Dialect[C]) {
+func Module[C ConfigSwitches](d Dialect[C]) {
 	beanPrefix := d.BeanPrefix
 	if beanPrefix == "" {
 		beanPrefix = d.Prefix[strings.LastIndex(d.Prefix, ".")+1:]
@@ -120,21 +120,25 @@ func Module[C any](d Dialect[C]) {
 					}
 					return nil, err
 				}
-				// Fail fast: probe the assembled DB with a ping at startup so an
-				// unreachable database surfaces during boot rather than on the first
-				// query. HealthCheck goes straight to the raw pool on purpose: it is
-				// a connectivity check, not business traffic, so it must not open a
-				// span or spend limiter/breaker budget. A failure abandons the DB,
-				// so release what was just applied.
-				timeout := spec.Pool.PingTimeout
-				if timeout <= 0 {
-					timeout = 5 * time.Second
-				}
-				pctx, cancel := context.WithTimeout(ctx.Context, timeout)
-				defer cancel()
-				if err := HealthCheck(pctx, db); err != nil {
-					_ = db.Destroy()
-					return nil, errutil.Explain(err, "gorm: startup ping failed")
+				// Fail fast (opt-in, e.g. ping=true): probe the assembled DB with
+				// a ping at startup so an unreachable database surfaces during boot
+				// rather than on the first query. HealthCheck goes straight to the
+				// raw pool on purpose: it is a connectivity check, not business
+				// traffic, so it must not open a span or spend limiter/breaker
+				// budget. A failure abandons the DB, so release what was just
+				// applied. With ping unset the probe is skipped and a database that
+				// is not up yet only surfaces on first use.
+				if c.PingEnabled() {
+					timeout := spec.Pool.PingTimeout
+					if timeout <= 0 {
+						timeout = 5 * time.Second
+					}
+					pctx, cancel := context.WithTimeout(ctx.Context, timeout)
+					defer cancel()
+					if err := HealthCheck(pctx, db); err != nil {
+						_ = db.Destroy()
+						return nil, errutil.Explain(err, "gorm: startup ping failed")
+					}
 				}
 				return db, nil
 			},
@@ -153,12 +157,14 @@ func Module[C any](d Dialect[C]) {
 				gs.IndexArg(4, gs.TagArg("")),
 			).Name(beanName).Destroy((*DB).Destroy).Caller(1)
 
-			// Contribute a health indicator for this instance, injecting the
-			// wrapper just registered above by name. Its probe only calls
-			// HealthCheck (see health.go).
-			r.Provide(func(w *DB) *health.Indicator {
-				return NewClientHealth(d.HealthPrefix, name, w)
-			}, gs.TagArg(beanName)).Name(d.HealthPrefix + name).Caller(1)
+			// Contribute a health indicator for this instance unless the user
+			// disabled it (health=false), injecting the wrapper just registered
+			// above by name. Its probe only calls HealthCheck (see health.go).
+			if c.HealthEnabled() {
+				r.Provide(func(w *DB) *health.Indicator {
+					return NewClientHealth(d.HealthPrefix, name, w)
+				}, gs.TagArg(beanName)).Name(d.HealthPrefix + name).Caller(1)
+			}
 			return nil
 		})
 	})

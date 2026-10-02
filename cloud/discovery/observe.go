@@ -18,7 +18,6 @@ package discovery
 
 import (
 	"context"
-	"fmt"
 	"maps"
 	"sync"
 	"time"
@@ -32,9 +31,9 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
-// instrumentationName is the OTel scope all registry/discovery instruments are
-// built from.
-const instrumentationName = "go-spring.org/cloud/discovery"
+// scope is the instrumentation scope name every meter and tracer in this
+// package reports under.
+const scope = "go-spring.org/cloud/discovery"
 
 // Registration reasons a backend passes to [Observer.RegisterAttempt]: the first
 // publish of an instance, and a background re-publish after the center lost it.
@@ -74,14 +73,14 @@ func (s syncState) ageAt(now time.Time) time.Duration {
 	return now.Sub(s.last)
 }
 
-// insts is the discovery instrument set: one per process, resolved lazily on
-// first use so it binds to whichever providers are current then, and immutable
-// afterwards. It holds no per-instance state — the values the two observable
-// gauges report live in each Observer, not here.
+// instrumentSet is the discovery instrument set: one per process, resolved
+// lazily on first use so it binds to whichever providers are current then, and
+// immutable afterwards. It holds no per-instance state — the values the two
+// observable gauges report live in each Observer, not here.
 //
 // The gauges are created WITHOUT a callback on purpose; see [Observer.register]
 // for why a creation-time callback would report only the first block.
-type insts struct {
+type instrumentSet struct {
 	meter       metric.Meter
 	opDuration  metric.Float64Histogram
 	regAttempts metric.Int64Counter
@@ -93,9 +92,9 @@ type insts struct {
 // instruments is the one instrument set this package uses for the whole process.
 var instruments = sync.OnceValue(buildInstruments)
 
-func buildInstruments() *insts {
-	m := otel.Meter(instrumentationName)
-	in := &insts{meter: m}
+func buildInstruments() *instrumentSet {
+	m := otel.Meter(scope)
+	in := &instrumentSet{meter: m}
 	in.opDuration, _ = m.Float64Histogram("registry.operation.duration",
 		metric.WithDescription("Duration of registry-center operations"),
 		metric.WithUnit("s"),
@@ -328,7 +327,7 @@ func (o *Observer) startOp(ctx context.Context, op, service, reason string) (con
 	if reason != "" {
 		attrs = append(attrs, attribute.String("registry.reason", reason))
 	}
-	return otel.Tracer(instrumentationName).Start(ctx, op,
+	return otel.Tracer(scope).Start(ctx, op,
 		trace.WithSpanKind(trace.SpanKindClient),
 		trace.WithAttributes(attrs...))
 }
@@ -427,7 +426,7 @@ func finishAttempt(ctx context.Context, end func(err error), fn func(ctx context
 	var err error
 	defer func() {
 		if p := recover(); p != nil {
-			end(fmt.Errorf("panic: %v", p))
+			end(errutil.Explain(nil, "panic: %v", p))
 			panic(p)
 		}
 		end(err)

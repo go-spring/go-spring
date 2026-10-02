@@ -126,7 +126,7 @@ spring.observability.metrics.exporter=prometheus
 
 ```bash
 docker compose -p gs-tdengine-demo up -d          # 等约 30s；taosAdapter 启动偏慢
-go run .                        # DSN 不可达则启动 fail fast（§2.1）
+go run .                        # DSN 不可达则启动 fail fast（需 ping=true；默认关闭，§2.1）
 curl -s :9370/readyz | jq .     # components 含 tdengine:a 与 tdengine:b
 curl -s :9370/metrics | grep -E 'db_client_(operation|attempt)_duration'   # 逐语句直方图
 grep _app_tdengine_access app.log | tail -3        # 每条语句一条记录
@@ -149,7 +149,7 @@ import starter-tdengine
               ├─ Provide(newClient).Name(<name>)
               │       .Destroy((*Client).Destroy).Caller(1)
               └─ Provide health.Indicator，命名 "tdengine:<name>"，导出为
-                  health.Indicator（恒注册；无关闭 key）
+                  health.Indicator（除实例 health=false 外均注册）
 
 gs.Run()
   ├─ 构造 newClient [starter.go]：可选 Driver bean——没有则回退内置
@@ -166,8 +166,8 @@ gs.Run()
   │       exec = params.ExecutorFor("tdengine", serviceLabel)，并装到 slot 上——
   │       client 返回时即已完整。零值包（无 *resilience.Manager）退化为
   │       resilience.Unmanaged：仅观测，并一次性告警提示不受任何保护
-  │     → fail-fast 探测：HealthCheck(ctx, cl)——一次 PingContext，10s 上限，在装配
-  │       完成之后跑；失败则 Destroy 半成品 client，启动失败
+  │     → 仅 ping=true：fail-fast 探测 HealthCheck(ctx, cl)——一次 PingContext，10s
+  │       上限，在装配完成之后跑；失败则 Destroy 半成品 client，启动失败
   ├─ readiness：指示器对每实例跑 HealthCheck（即 db.PingContext）
   └─ SIGTERM → Destroy：exec.Close → db.Close
 ```
@@ -245,10 +245,12 @@ executor 在最外层，因此发射器看得见整次调用。driver-go 自身�
 
 | Key | 类型 | 默认值 | 行为 / 联动 | 配错后果 |
 |-----|------|--------|-------------|----------|
-| `dsn` | string | — | **必填**（expr `$ != ''` [config.go:33]）。驱动统一 DSN `[user[:password]@]ws(host:port)/[dbname][?params]`。也是 resilience service label（§2.3）与启动错误信息的来源。TLS 在这里表达（`wss(...)`、证书参数）——没有 `tls.*` 块。 | 空 → BindEach 启动报错。地址/凭据错 → fail-fast ping 报 "failed to reach tdengine at <addr>"。 |
+| `dsn` | string | — | **必填**（expr `$ != ''` [config.go:33]）。驱动统一 DSN `[user[:password]@]ws(host:port)/[dbname][?params]`。也是 resilience service label（§2.3）与启动错误信息的来源。TLS 在这里表达（`wss(...)`、证书参数）——没有 `tls.*` 块。 | 空 → BindEach 启动报错。地址/凭据错 → 首次使用时（`ping=true` 时为 fail-fast ping）报 "failed to reach tdengine at <addr>"。 |
 | `max-open-conns` | int | 8 | 内嵌池的 `db.SetMaxOpenConns` [driver.go:81]。 | 过小 → 语句排队等连接。 |
 | `max-idle-conns` | int | 2 | `db.SetMaxIdleConns`。⚠ 应 ≤ max-open-conns（database/sql 会静默封顶，但超出即是配置坏味道）。 | 大于 open conns → 被钳制，idle 抖动。 |
 | `conn-max-lifetime` | duration | 0s | `db.SetConnMaxLifetime`；0 = 永不退役。⚠ 与 redis（默认 2m）不同，这里没有 discovery 需要跟随，0 是安全的。 | — |
+| `ping` | bool | `false` | 启动连通探活：true 时构造期 ping 一次（`HealthCheck`），不可达则启动失败，恢复 fail-fast。默认关闭，使尚未就绪的 server 不阻塞启动。 | `ping=true` 且 server 已挂 → 启动报 "failed to reach tdengine at <addr>"。 |
+| `health` | bool | `true` | 本实例是否贡献 `health.Indicator`（名 `tdengine:<name>`）供 actuator 就绪/启动探测。置 false 可把该实例排除在聚合健康报告之外。 | `health=false` → `/readyz` 无 `tdengine:<name>` 组件。 |
 
 没有 `driver` key：client 装配由可选 `Driver` bean（见 §2.1）或内置 `DefaultDriver` 负责。
 没有观测类 key——插桩恒开启（§4.2）。
@@ -310,8 +312,8 @@ Warn 日志。运行期切换策略——executor 经 governance 中心热加载
 docker stop <tdengine> && go run .    # 退出并报 "failed to reach tdengine at 127.0.0.1:6041"
 ```
 
-启动 ping 无条件执行、10s 封顶 [starter.go:98-108]——启动成功即证明凭据、DSN 与
-server 版本全部正常。
+启动 ping 仅在 `ping=true` 时执行、10s 封顶 [starter.go:98-108]——启动成功即证明凭据、
+DSN 与 server 版本全部正常；默认 `ping=false` 时失败推到首次使用才暴露。
 
 ---
 
@@ -333,7 +335,7 @@ server 版本全部正常。
 
 | 指标 | 数值 |
 |------|------|
-| 配置 key 总数 | 4 个实例 key |
+| 配置 key 总数 | 6 个实例 key |
 | 其中必填 | 1（`dsn`） |
 | quickstart 前置外部依赖 | 1（TDengine 及其自带 taosAdapter） |
 | "注意/坑" 条数 | 4 |
@@ -343,4 +345,5 @@ server 版本全部正常。
   两个 DSN 共享同一个桶；无 `tls.*`/`service-name`，与兄弟 starter 不一致（家族不对称）。
 - `Prepare` 完全绕出 guard seam——走 prepared statement 的 ORM 会静默失去
   resilience + observability 覆盖。
-- 健康指示器无关闭 key（与 starter-go-redis 相同的家族不对称；redigo 有 `health.enabled`）。
+- 健康指示器每实例默认注册（`health=false` 可关）；启动探活为 opt-in（`ping=true`）——即
+  redigo 拆成 `health.enabled`/`startup-ping` 的那两个旋钮。

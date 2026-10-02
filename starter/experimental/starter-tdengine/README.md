@@ -5,7 +5,7 @@
 `starter-tdengine` provides TDengine support for Go-Spring over the official
 [driver-go](https://github.com/taosdata/driver-go) v3 **websocket driver**
 (taosWS) — pure Go, no client library install, no CGO. The bean is a
-`*sql.DB` pool: multi-instance clients with fail-fast startup pings,
+`*sql.DB` pool: multi-instance clients with opt-in fail-fast startup pings,
 per-statement observability and resilience at the connection seam, and
 per-instance health indicators.
 
@@ -53,8 +53,9 @@ The wrapper embeds the raw `*sql.DB`, so the whole `database/sql` method set —
 
 - **Multi-instance clients** — every `spring.tdengine.instances.<name>` entry is its
   own bean with independent settings.
-- **Fail-fast startup ping + health indicator** — a `PingContext` at boot and
-  a `tdengine:<name>` indicator for `starter-actuator`.
+- **Fail-fast startup ping + health indicator** — an opt-in `PingContext` at boot
+  (`ping=true`; off by default, so a server not up yet does not block startup) and
+  a `tdengine:<name>` indicator for `starter-actuator` (`health=false` to skip it).
 - **Per-statement resilience + observability** — statements flow through a
   guarded driver.Conn: rate limiting, circuit breaking and fault injection around
   each statement, and each statement's semantic identity declared for the

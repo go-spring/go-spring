@@ -122,7 +122,7 @@ func init() {
 # --- rocketmq --------------------------------------------------------------
 spring.rocketmq.instances.a.name-servers=127.0.0.1:9876
 spring.rocketmq.instances.a.send-timeout=5s
-spring.rocketmq.instances.a.fail-fast=true          # 启动期对 name server 做 TCP 探测
+spring.rocketmq.instances.a.ping=true          # 启动期对 name server 做 TCP 探测
 # spring.rocketmq.instances.a.access-key=...         # ACL：必须与 secret-key 成对
 # spring.rocketmq.instances.a.secret-key=...
 
@@ -184,7 +184,7 @@ gs.Run()
   │       NewClient 在同一步固定身份（name server 列表 + Config）并挂载治理 executor：
   │       params.ExecutorFor("rocketmq", service)，其来源为注入的 *resilience.Manager /
   │       *fault.Injector bean，由 newClient 组装为 cloud.ClientParams  [driver.go, client.go]
-  │    3. FailFast 探测（可选）：TCP dial，首个可达地址即通过，每地址 3s 预算；
+  │    3. Ping 探测（可选）：TCP dial，首个可达地址即通过，每地址 3s 预算；
   │       在装配完成之后跑，失败 → 启动失败（Client 已关闭）
   ├─ 应用按 `autowire:"<name>"` 注入 *Client
   ├─ 应用自行随时创建 producer/consumer/driver（均在锁内注册到 Client）       [client.go:104-157]
@@ -298,13 +298,13 @@ SDK push-consumer 协程回调 starter 的 handler [messaging.go]：
 
 | Key | 类型 | 默认值 | 行为 / 联动 | 配错后果 |
 |-----|------|--------|------------|----------|
-| `name-servers` | []string | — | **必填**（`expr:"len($) > 0"` [config.go:35]）。NameServer 地址列表；同时供 fail-fast 探测使用。 | 缺失/为空 → 绑定期校验错误。 |
+| `name-servers` | []string | — | **必填**（`expr:"len($) > 0"` [config.go:35]）。NameServer 地址列表；同时供 ping 探测使用。 | 缺失/为空 → 绑定期校验错误。 |
 | `instance-name` | string | `""` | 区分同主机多客户端。留空安全：SDK 会把 "DEFAULT" 改写为每个 producer/consumer 唯一名（DESIGN.md §3）。设置后 remoting 客户端共享一个连接池。 | 多余的显式值 → 想隔离时却共享了池。 |
 | `access-key` | string | `""` | ACL access key。⚠ 必须与 `secret-key` 成对——单边启动即失败，错误信息带客户端名 [starter.go:60-62]。 | 单边 → 启动错误；值错误 → 首次收发失败（探测只到 TCP 层）。 |
 | `secret-key` | string | `""` | 与 access-key 配对的 ACL secret key [config.go:48]。 | 同上。 |
 | `send-timeout` | duration | `3s` | 套到每个 producer（`WithSendMsgTimeout`）[client.go:73]。 | 过小 → 高压下同步发送超时。 |
 | `retry` | int | `2` | producer 内部重试次数（`WithRetry`）；2 = 最多 3 次尝试 [client.go:74, config.go:55]。这是 SDK 自己的循环，也是唯一会生效的那个：publish/consume 声明为非幂等，针对该 label 的治理侧重试规则会被抑制。 | 大值 + 慢 broker → 延迟放大。 |
-| `fail-fast` | bool | `true` | bean 创建期对 name server 列表 TCP dial；首个可达地址即通过，每地址 3s [driver.go:146-160]。 | 关闭 → 地址错误延迟到首次使用才暴露。 |
+| `ping` | bool | `false` | 可选：bean 创建期对 name server 列表 TCP dial；首个可达地址即通过，每地址 3s [driver.go:146-160]。 | true → 地址错误中止启动；false → 延迟到首次使用才暴露。 |
 
 ---
 
@@ -322,14 +322,15 @@ go run .                                  # 期望输出 "Response from server: 
 example 断言 Payload 与自定义 Headers 往返存活 [example/example.go:110-120]。要自行断言
 Key 存活，可在 handler 里打印 `msg.Key`——应得到同一个字符串。
 
-### 4.2 broker 宕机 fail-fast
+### 4.2 broker 宕机 ping 探测
 
 ```properties
 spring.rocketmq.instances.a.name-servers=127.0.0.1:19876   # 无监听
+spring.rocketmq.instances.a.ping=true                      # 显式开启启动探测
 ```
 
-启动失败并报 "rocketmq name server probe failed on ..." [starter.go:74-79]。设
-`fail-fast=false` 后同样配置可正常启动，首次使用才失败。注意探测只证明可达性——
+`ping=true` 时启动失败并报 "rocketmq name server probe failed on ..." [starter.go:74-79]；
+默认 `ping=false` 下同样配置可正常启动，首次使用才失败。注意探测只证明可达性——
 TCP 可达但 ACL 错误照样能启动。
 
 ### 4.3 guarded 与 unguarded 对比

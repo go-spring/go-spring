@@ -2,6 +2,7 @@ go 1.26.1
 
 use (
 	./cloud
+	./cloud/cache/example-otel
 	./cloud/experimental/session/example
 	./cloud/experimental/loadtest/example
 	./cloud/lock/example

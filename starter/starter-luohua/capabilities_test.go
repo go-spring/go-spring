@@ -87,7 +87,7 @@ func TestMemoryCacheRoundTrip(t *testing.T) {
 	c := NewLuohuaCache()
 	ctx := context.Background()
 
-	if err := c.Set(ctx, "k", "v", time.Minute); err != nil {
+	if err := c.Set(ctx, "k", "v", 60); err != nil {
 		t.Fatalf("Set: %v", err)
 	}
 	var got string
@@ -98,11 +98,12 @@ func TestMemoryCacheRoundTrip(t *testing.T) {
 		t.Fatalf("Get = %q, want v", got)
 	}
 
-	// Expired key is a miss.
-	if err := c.Set(ctx, "gone", "x", time.Millisecond); err != nil {
+	// Expired key is a miss. The shortest ttl is 1s (whole seconds), so the
+	// wait is a second long.
+	if err := c.Set(ctx, "gone", "x", 1); err != nil {
 		t.Fatalf("Set: %v", err)
 	}
-	time.Sleep(2 * time.Millisecond)
+	time.Sleep(1100 * time.Millisecond)
 	if err := c.Get(ctx, "gone", new(string)); !errors.Is(err, cache.ErrMiss) {
 		t.Fatalf("expired Get err = %v, want ErrMiss", err)
 	}

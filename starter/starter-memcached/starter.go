@@ -62,9 +62,12 @@ func init() {
 				gs.IndexArg(5, gs.TagArg("")),
 				gs.IndexArg(6, gs.TagArg("")),
 			).Name(name).Destroy((*Client).Destroy).Caller(1)
-			// Contribute a health indicator for this instance, injecting the
-			// client just registered above by name.
-			r.Provide(func(c *Client) *health.Indicator { return NewClientHealth(name, c) }, gs.TagArg(name)).Name("memcache:" + name).Caller(1)
+			// Contribute a health indicator for this instance unless the user
+			// disabled it (health=false), injecting the client just registered
+			// above by name.
+			if c.Health {
+				r.Provide(func(c *Client) *health.Indicator { return NewClientHealth(name, c) }, gs.TagArg(name)).Name("memcache:" + name).Caller(1)
+			}
 			// Expose this instance as a cache.Cache (the adapter lives in
 			// this package). Named "memcached:<name>" — cache.Cache
 			// is a shared type across backend starters, so the prefix keeps the
@@ -117,17 +120,21 @@ func newClient(ctx *gs.ContextProvider, name string, c Config, d Driver, disc di
 	// The Driver returned the client complete — identity and governance both
 	// applied while it was built. There is no Init hook and nothing runs after
 	// this: the bean is finished when the ctor returns.
-	// Fail fast: probe every configured server with a PING at startup so a
-	// misconfigured or unreachable server surfaces during boot rather than on
-	// the first request. The probe is [HealthCheck] — the same single health
-	// implementation the Actuator indicator uses — which goes straight to the
-	// raw client on purpose: it is a connectivity check, not business traffic,
-	// so it must not open a span or spend limiter/breaker budget. A failure
-	// abandons the client, so release what was just applied.
-	if err := HealthCheck(ctx.Context, client); err != nil {
-		log.Errorf(ctx.Context, log.TagAppDef, "memcached: startup ping failed: %v", err)
-		_ = client.Destroy()
-		return nil, errutil.Explain(err, "memcached: startup ping failed")
+	// Fail fast (opt-in, e.g. ping=true): probe every configured server with a
+	// PING at startup so a misconfigured or unreachable server surfaces during
+	// boot rather than on the first request. The probe is [HealthCheck] — the
+	// same single health implementation the Actuator indicator uses — which goes
+	// straight to the raw client on purpose: it is a connectivity check, not
+	// business traffic, so it must not open a span or spend limiter/breaker
+	// budget. A failure abandons the client, so release what was just applied.
+	// With ping unset the probe is skipped and an unreachable server only
+	// surfaces on first use.
+	if c.Ping {
+		if err := HealthCheck(ctx.Context, client); err != nil {
+			log.Errorf(ctx.Context, log.TagAppDef, "memcached: startup ping failed: %v", err)
+			_ = client.Destroy()
+			return nil, errutil.Explain(err, "memcached: startup ping failed")
+		}
 	}
 	log.Infof(ctx.Context, log.TagAppDef, "memcached client initialized, servers=%v", c.Servers)
 	return client, nil

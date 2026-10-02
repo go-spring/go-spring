@@ -47,6 +47,13 @@ type Config struct {
 
 	// Producer tunes producer-side batching, compression and acks.
 	Producer ProducerConfig `value:"${producer}"`
+
+	// Ping enables the startup connectivity probe: when true the constructor
+	// pings the broker once and fails startup if it is unreachable, surfacing
+	// misconfiguration early. Default is false: a broker that is not up yet must
+	// not block the application from starting; connectivity problems surface on
+	// first use instead. Set true to restore fail-fast behaviour.
+	Ping bool `value:"${ping:=false}"`
 }
 
 // SASLConfig configures SASL authentication. It is shared, by property name,

@@ -74,7 +74,7 @@ All keys live under `spring.lock.instances.etcd.<name>`:
 | `endpoints`     | (required)| etcd cluster addresses                           |
 | `username`      | `""`      | etcd auth username                               |
 | `password`      | `""`      | etcd auth password                               |
-| `dial-timeout`  | `5s`      | initial connect timeout / startup probe budget   |
+| `dial-timeout`  | `5s`      | initial connect timeout / `ping=true` startup probe budget |
 | `ttl`           | `30s`     | lease TTL per acquired lock (min 1s, seconds)    |
 | `key-prefix`    | `/lock/`  | prefix prepended to every lock key               |
 | `tls.enabled`   | `false`   | enable TLS                                       |

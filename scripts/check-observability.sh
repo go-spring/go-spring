@@ -439,8 +439,12 @@ declare_members() {
     case "$d" in starter/experimental/|*/example/|*/example-*/) continue;; esac
     src=$(find "$d" -maxdepth 3 -name '*.go' ! -name '*_test.go' \
       ! -path '*/example/*' ! -path '*/example-*/*' -exec cat {} + 2>/dev/null)
-    printf '%s' "$src" | grep -q "Metric: *\"$prefix\"" || continue
-    printf '%s' "$src" | grep -q 'observability\.WithOperation(' || continue
+    # here-string, not `printf | grep -q`: $src is the whole module's source, and
+    # under `set -o pipefail` a `grep -q` that matches early closes the pipe,
+    # SIGPIPEs the printf, and the non-zero pipeline makes the member look
+    # unclassified (a false failure that appears only under load).
+    grep -q "Metric: *\"$prefix\"" <<<"$src" || continue
+    grep -q 'observability\.WithOperation(' <<<"$src" || continue
     printf '%s\n' "${d%/}"
   done
 }
@@ -714,7 +718,7 @@ check_emitter() {
   # 的那一行,全文 grep 等于没查(这正是这条规则此前"没有执行面"的原因)。
   local spanattrs
   spanattrs="$(awk '/^func .*spanAttrs\(/{f=1} f{print} f && /^}/{exit}' "$f")"
-  printf '%s' "$spanattrs" | grep -q 'op\.Detail' \
+  grep -q 'op\.Detail' <<<"$spanattrs" \
     || report "[发射点] Detail 未进 span 属性(spanAttrs 里没有 op.Detail)—— Detail = span + 日志"
   echo "[发射点] 单点发射(span/两级时长/在途/status 计数/访问日志)"
 }

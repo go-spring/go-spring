@@ -19,9 +19,11 @@ package StarterGovernanceSentinel
 import (
 	"context"
 	"fmt"
-	"go-spring.org/stdlib/timeutil"
 	"sync"
 	"sync/atomic"
+
+	"go-spring.org/stdlib/errutil"
+	"go-spring.org/stdlib/timeutil"
 
 	sentinel "github.com/alibaba/sentinel-golang/api"
 	"github.com/alibaba/sentinel-golang/core/base"
@@ -63,7 +65,7 @@ const isoSuffix = "$bulkhead"
 
 func newSentinelExecutor(service string, p resilience.ClientPolicy) (*sentinelExecutor, error) {
 	if p.RateLimit < 0 {
-		return nil, fmt.Errorf("resilience: negative rate limit %v", p.RateLimit)
+		return nil, errutil.Explain(nil, "resilience: negative rate limit %v", p.RateLimit)
 	}
 	return &sentinelExecutor{service: service, policy: p}, nil
 }
@@ -89,7 +91,7 @@ func (e *sentinelExecutor) ensureRules() error {
 			Threshold:              e.policy.RateLimit,
 			StatIntervalInMs:       1000,
 		}}); err != nil {
-			return fmt.Errorf("resilience: load flow rule for %q: %w", service, err)
+			return errutil.Explain(err, "resilience: load flow rule for %q", service)
 		}
 	}
 
@@ -114,7 +116,7 @@ func (e *sentinelExecutor) ensureRules() error {
 			MetricType: isolation.Concurrency,
 			Threshold:  uint32(e.policy.MaxConcurrent),
 		}}); err != nil {
-			return fmt.Errorf("resilience: load isolation rule for %q: %w", isoResource, err)
+			return errutil.Explain(err, "resilience: load isolation rule for %q", isoResource)
 		}
 	}
 
@@ -164,7 +166,7 @@ func (e *sentinelExecutor) loadBreakerRule(service string) error {
 		}
 	}
 	if _, err := circuitbreaker.LoadRulesOfResource(service, []*circuitbreaker.Rule{rule}); err != nil {
-		return fmt.Errorf("resilience: load breaker rule for %q: %w", service, err)
+		return errutil.Explain(err, "resilience: load breaker rule for %q", service)
 	}
 	return nil
 }
@@ -180,7 +182,7 @@ func (e *sentinelExecutor) loadBreakerRule(service string) error {
 // re-registered when ensureRules re-runs.
 func (e *sentinelExecutor) Refresh(p resilience.ClientPolicy) error {
 	if p.RateLimit < 0 {
-		return fmt.Errorf("resilience: negative rate limit %v", p.RateLimit)
+		return errutil.Explain(nil, "resilience: negative rate limit %v", p.RateLimit)
 	}
 	e.mu.Lock()
 	defer e.mu.Unlock()

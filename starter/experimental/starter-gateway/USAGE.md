@@ -8,8 +8,9 @@ against the starter source (`starter.go`, `server.go`, `compile.go`, `route.go`,
 below is Go-Spring's increment.
 
 **Activation**: the `gatewayServer` bean is registered only when `spring.gateway.server.addr`
-is set (starter.go:52, `gs.OnProperty("spring.gateway.server.addr")`) — that key is the on/off
-switch. Route table + metrics + health beans exist unconditionally; without the server key
+is set (starter.go, `gs.OnProperty("spring.gateway.server.addr")`) — that key is the on/off
+switch. The route table and metrics beans exist unconditionally; the health bean is on by
+default and can be switched off with `spring.gateway.health=false`. Without the server key
 routes bind but are never served.
 
 ---
@@ -121,6 +122,8 @@ import starter-gateway
   │      .Export(gs.As[gs.Server]())
   │      .Condition(gs.OnProperty("spring.gateway.server.addr"))
   └─ gs.Provide(newGatewayHealth).Export(health.Indicator)    // "gateway"
+       .Condition(gs.OnProperty("spring.gateway.health")
+                    .HavingValue("true").MatchIfMissing())       // on by default
        (metrics ride OTel; starter-otel's exporter serves them on /metrics)
         │
 gs.Run()
@@ -204,6 +207,7 @@ On any stage error the compiled table is left untouched (keep-last-good, §4.2).
 | `resilience` | map name→(ignored) | empty | **Name registry only**: keys name the executors routes may reference; the value is an empty struct — policy values live in the governance rules document (`spring.governance.*`) keyed `gateway:<name>` (route.go:114-128). | Sub-keys under `resilience.<name>.*` are silently ignored by the driver (legacy compat). |
 | `discovery` | string | "" | Default discovery backend for `lb://` routes lacking `upstream.discovery`. ⚠ An `lb://` route with neither → compile error (proxy.go:98). | Routes fail to compile (startup error / reload keeps old table). |
 | `tracing.enabled` | bool | true | Wraps every matched request in gateway server+client spans. | Needs starter-otel for real export; without it a silent no-op. |
+| `health` | bool | true | Contributes the `gateway` `health.Indicator` (a property condition, not a Config field — `gs.OnProperty("spring.gateway.health").HavingValue("true").MatchIfMissing()`). | `false` → the gateway is absent from `/readiness`; a route table that fails to compile goes unreported. |
 
 ### 3.2 Per route — `spring.gateway.routes.<id>.*`
 
@@ -377,7 +381,7 @@ Stop the upstream → each request gets `502 Bad Gateway` (proxy.go:180) with a 
 
 | Metric | Value |
 |--------|-------|
-| Config keys (live) | 22 (4 top + 12 route + 2 server + 4 tls live; 2 tls keys dead) |
+| Config keys (live) | 23 (5 top + 12 route + 2 server + 4 tls live; 2 tls keys dead) |
 | Required | 2 (`server.addr`, `upstream.target`) |
 | Quickstart external deps | 0 (discovery/redis/collector optional) |
 | "Watch out" entries | 7 |

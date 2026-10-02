@@ -157,7 +157,7 @@ gs.Run()
   │      "kafka", service), service, inj)；bundle 为零值时 = 仅观测的
   │      resilience.Unmanaged executor），以 client 指针索进包级 sync.Map
   │                                                         [command.go:83-89]
-  │   3. 再探测：Ping 10s 超时——坏 brokers/凭证/TLS 让启动失败，
+  │   3. 再探测（`ping=true` 时）：Ping 10s 超时——坏 brokers/凭证/TLS 让启动失败，
   │      而不是等第一次 produce 才暴露；探测失败释放 driver 刚装配的 executor
   │                                                         [starter.go:113,119]
   ├─ 无 Init 钩子；*kgo.Client bean 在 ctor 后即就绪；此后无任何补装配——
@@ -283,15 +283,16 @@ franz-go 的异步 `Produce` 立即返回，因此只有同步路径可包 [comm
 ## 3. 逐 key 行为参考
 
 key 都在 `spring.kafka.instances.<name>.*` 下——ctor 参数经 `conf.BindEach` 绑定（真正的按实例前缀
-绑定）。`value:` tag 已与源码核对：共 20 个 key。
+绑定）。`value:` tag 已与源码核对：共 21 个 key。
 
 ### 3.1 核心
 
 | Key | 类型 | 默认值 | 行为与联动 | 配错后果 |
 |-----|------|--------|-----------|----------|
-| `brokers` | string | — | **必填**（`expr:"$ != ''"` [config.go:30]）；CSV seed brokers；同时构成 resilience 服务标签 `kafka:<brokers>`。 | 空 → 启动报错；错但可达的主机在 10s 启动 Ping 处失败。 |
+| `brokers` | string | — | **必填**（`expr:"$ != ''"` [config.go:30]）；CSV seed brokers；同时构成 resilience 服务标签 `kafka:<brokers>`。 | 空 → 启动报错；`ping=true` 时错但可达的主机在 10s 启动 Ping 处失败。 |
 | `topic` | string | "" | 传给 `kgo.ConsumeTopics`——消费 topic 构造期固定；driver subscriber 按它过滤。空 = 纯生产 client。 | 能生产、消费永不投递（未订阅 topic）。 |
 | `group` | string | "" | 传给 `kgo.ConsumerGroup`；group 语义属 Kafka 自身（offset、rebalance——见 kafka.apache.org）。⚠ driver `NewSubscriber` 的 group 实参是死的——本 key 是唯一 group 开关。 | 空 + 有 topic = 无 group（随机 group/急切）消费；offset 不提交。 |
+| `ping` | bool | false | 可选启动连通性探测：`cl.Ping`，10s 超时 [starter.go:116-123]。 | true → brokers 不可达则中止启动；false → 首次 produce/consume 才暴露。 |
 
 `driver` key 为实例按名指定 Driver bean：不配置 → 装配由按类型注入的可选 Driver bean（见
 §2.1）或内置 `DefaultDriver` 负责；配置 → 按名注入该 bean，指定的 bean 不存在则启动失败。（下方
@@ -301,9 +302,9 @@ conf 里的 `driver` 指治理的 `spring.governance.driver` 选择规则源，�
 
 | Key | 类型 | 默认值 | 行为与联动 | 配错后果 |
 |-----|------|--------|-----------|----------|
-| `sasl.enabled` | bool | false | 控制 mechanism 装配 [driver.go:94-100]。 | 开而无凭证 → 启动 Ping 认证失败。 |
+| `sasl.enabled` | bool | false | 控制 mechanism 装配 [driver.go:94-100]。 | 开而无凭证 → `ping=true` 时启动 Ping 认证失败。 |
 | `sasl.mechanism` | string | `plain` | `plain` / `scram-sha-256` / `scram-sha-512`，大小写不敏感 [driver.go:127-138]。 | 其他值 → 启动 CreateClient 报错。 |
-| `sasl.username` / `sasl.password` | string | "" | 传给 mechanism。 | 错 → 启动 10s Ping 失败。 |
+| `sasl.username` / `sasl.password` | string | "" | 传给 mechanism。 | 错 → `ping=true` 时启动 10s Ping 失败。 |
 
 ### 3.3 TLS
 
@@ -313,7 +314,7 @@ conf 里的 `driver` 指治理的 `spring.governance.driver` 选择规则源，�
 |-----|------|--------|-----------|----------|
 | `tls.enabled` | bool | false | `c.TLS.BuildClient()` → `kgo.DialTLSConfig` [driver.go:100-108]。 | — |
 | `tls.cert-file` / `tls.key-file` | string | "" | mTLS 客户端证书对。 | 只配一半 → `tls.Build` 启动报错。 |
-| `tls.ca-file` | string | "" | 校验 broker 的 CA。 | 私有 CA 下缺失 → Ping TLS 失败。 |
+| `tls.ca-file` | string | "" | 校验 broker 的 CA。 | 私有 CA 下缺失 → `ping=true` 时 Ping TLS 失败。 |
 | `tls.server-name` | string | "" | SNI/校验名。 | 失配 → 校验失败。 |
 | `tls.insecure-skip-verify` | bool | false | 跳过校验。 | 生产置 true = 默默暴露于 MITM。 |
 
@@ -393,10 +394,10 @@ go run .    # 打印 "resilience: N produce admitted, M rejected with ErrRateLim
 - franz-go client 内部日志（重连、请求失败）出现在 `log.TagAppDef` 下，Info 阈值桥接
   [driver.go:195-211]。
 
-### 4.6 broker 宕机快速失败
+### 4.6 broker 宕机 ping 探测
 
 ```bash
-docker compose down && go run .   # 约 10s 内启动失败："failed to ping kafka: <brokers>"
+docker compose down && go run .   # ping=true 时约 10s 内启动失败："failed to ping kafka: <brokers>"
 ```
 
 运行中 broker 失联表现为日志里的 poll 错误（tag `log.TagAppDef`）与逐次 produce 错误；
@@ -408,7 +409,7 @@ franz-go 自动重连（其自身语义，见 franz-go 文档）。
 
 | 症状 | 可能原因 | 处置 |
 |------|----------|------|
-| 启动失败 "failed to ping kafka" | brokers 不可达 / SASL 错 / TLS 失配 | 修连通性或凭证；10s 探针无条件执行。 |
+| 启动失败 "failed to ping kafka" | brokers 不可达 / SASL 错 / TLS 失配 | 修连通性或凭证；10s 探针仅在 `ping=true` 时执行。 |
 | 启动失败 "unsupported kafka sasl mechanism / required-acks / compression" | 枚举 key 拼写错误 | 枚举精确匹配（大小写不敏感）；改对值。 |
 | driver 消费者收不到 | `NewSubscriber` source ≠ 所配 `topic`，或 `topic` 为空 | source 必须等于 client 的 `topic`；否则静默过滤。 |
 | driver 消费 group "不生效" | `NewSubscriber` 的 group 实参是死的 | 配 `spring.kafka.instances.<name>.group`（构造期固定）。 |

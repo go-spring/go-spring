@@ -27,7 +27,6 @@ package main
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"os"
 	"sync"
@@ -38,6 +37,7 @@ import (
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
 	outboxgorm "go-spring.org/starter-outbox-gorm"
+	"go-spring.org/stdlib/errutil"
 	sqlite "gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
@@ -80,7 +80,7 @@ func (b *memDriver) NewPublisher(ctx context.Context, destination string) (messa
 
 // NewSubscriber implements [messaging.Driver].
 func (b *memDriver) NewSubscriber(ctx context.Context, source, group string) (messaging.Subscriber, error) {
-	return nil, errors.New("example: subscriber not supported")
+	return nil, errutil.Explain(nil, "example: subscriber not supported")
 }
 
 // memPublisher publishes to one destination of a [memDriver].
@@ -95,7 +95,7 @@ func (p *memPublisher) Publish(ctx context.Context, msg *messaging.Message) erro
 	defer p.b.mu.Unlock()
 	p.b.attempts[p.dest]++
 	if n, ok := p.b.failUntil[p.dest]; ok && (n == 0 || p.b.attempts[p.dest] <= n) {
-		return fmt.Errorf("example: simulated failure #%d on %q", p.b.attempts[p.dest], p.dest)
+		return errutil.Explain(nil, "example: simulated failure #%d on %q", p.b.attempts[p.dest], p.dest)
 	}
 	p.b.sent[p.dest] = append(p.b.sent[p.dest], msg)
 	return nil
@@ -166,7 +166,7 @@ func runTest() {
 		if err := outboxgorm.Publish(tx, "orders", "order-2", []byte(`{"id":2}`), nil); err != nil {
 			return err
 		}
-		return errors.New("business rollback")
+		return errutil.Explain(nil, "business rollback")
 	}); err == nil {
 		fail("rollback transaction unexpectedly succeeded")
 	}

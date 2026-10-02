@@ -128,7 +128,7 @@ Dragonfly 与 Kvrocks 说 Redis 线协议，因此本 starter 可直接驱动它
   `*StarterGoRedis.Client`，用 `NewClient` 构建；集群支持是可选的 `ClusterDriver` 接口，因此只构建单机/哨兵客户端的
   Driver 仍然有效。当容器中存在多个 Driver bean 时，实例可
   按名指定：`spring.go-redis.instances.<name>.driver = <bean 名>`（留空 = 先回退家族级 `spring.<family>.default.driver`，再按类型注入唯一 Driver bean；指定的 bean 不存在则启动失败）。
-* **启动期连接校验（fail-fast）**：创建客户端后会执行一次 `HealthCheck`（即 `Ping`），地址配置错误或服务不可达时启动即失败，而非等到首次请求。
+* **启动期连接校验（可选）**：设 `ping=true` 后，创建客户端时会执行一次 `HealthCheck`（即 `Ping`），地址配置错误或服务不可达时启动即失败，而非等到首次请求。默认关闭：尚未就绪的后端不应阻塞启动。
 * **健康检查 / readiness**：`HealthCheck(ctx, client)` 是就绪探针——自动装配的 `health.Indicator` 即委托于它，也可直接在注入的客户端上调用。
 * **连接池运行时监控**：`client.PoolStats()` 返回连接池实时计数（命中、未命中、总连接/空闲连接）。
 * **TLS**：开启 `tls.enabled` 并提供 `ca-file`（双向 TLS 再加 `cert-file`/`key-file`）即可通过 TLS 连接 Redis，
