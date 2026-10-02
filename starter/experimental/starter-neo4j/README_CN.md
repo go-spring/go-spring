@@ -17,7 +17,7 @@ go get go-spring.org/starter-neo4j
 
 ### 1. 引入 `starter-neo4j` 包
 
-参见 [example.go](example/example.go) 文件。
+参见 [main.go](example/main.go) 文件。
 
 ```go
 import _ "go-spring.org/starter-neo4j"
@@ -35,7 +35,7 @@ spring.neo4j.instances.graph.password=password
 
 ### 3. 注入 Neo4j 实例
 
-参见 [example.go](example/example.go) 文件。
+参见 [main.go](example/main.go) 文件。
 
 ```go
 import StarterNeo4j "go-spring.org/starter-neo4j"
@@ -47,7 +47,7 @@ type Service struct {
 
 ### 4. 使用 Neo4j 实例
 
-参见 [example.go](example/example.go) 文件。
+参见 [main.go](example/main.go) 文件。
 
 ```go
 res, err := neo4j.ExecuteQuery(ctx, s.Neo4j,
@@ -58,7 +58,7 @@ res, err := neo4j.ExecuteQuery(ctx, s.Neo4j,
 
 ## 核心功能
 
-[example.go](example/example.go) 文件演示了以下核心 Neo4j 功能：
+[main.go](example/main.go) 文件演示了以下核心 Neo4j 功能：
 
 * **创建节点**：使用 `MERGE ... SET` 创建或更新带属性的节点。
 * **查询节点**：使用 `MATCH` 读取节点并检查其属性。

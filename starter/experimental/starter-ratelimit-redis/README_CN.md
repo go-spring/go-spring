@@ -68,3 +68,9 @@ err := exec.Execute(ctx, func(context.Context) error { return nil })
 全有或全无、零速率直通、并发放行数和 key TTL，以及装配契约：配置后贡献 `resilience.Counters`
 bean、未配置则不贡献，client 名为空时启动失败。[example](example) 提供 docker 冒烟脚本（`example/check.sh`），
 两个"副本"共享一个预算打真实 Redis。
+
+## 设计说明
+
+* **它插的是计数器接缝，不是 driver 接缝。** `resilience` 有两条接缝：`Driver` 决定*用哪个引擎*执行 policy（一个把限流 + 熔断 + 重试 + 超时打包的 Executor），`Counters` 决定*计数器放在哪里*。从 `Driver` 去接 Redis 会把熔断与重试一并拖离 `default`/`sentinel`，因此分布式限流走 `Counters`，与进程内熔断保持正交。
+* **计数逻辑不在这里实现。** 那条原子 Lua 令牌桶住在 `starter-go-redis` 的 experimental 子包里；本 starter 只决定计数器放在哪，因此依赖该子包——它若迁移，本 starter 跟着走。
+* **key 形如 `ratelimit:<scope>`，落在同一个 Redis 里。** 不同 scope 各自独立预算，因此 scope 名就是隔离机制；`n > 1` 的请求在单条脚本内全有或全无。

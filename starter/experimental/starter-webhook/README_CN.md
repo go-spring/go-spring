@@ -80,7 +80,7 @@ err := s.Ops.Send(ctx, &StarterWebhook.Notification{
   `messaging.client.attempt.duration` 直方图，以及每次投递一行访问日志。
   starter 自身不发射任何信号。未引入 `starter-otel` 时 OTel 全局为空操作。
 - **天然无状态** — 不持有连接、无健康指示器、无 destroy 钩子；为什么没有
-  启动探针见 DESIGN。
+  启动探针见下文《设计说明》。
 
 ## 高级特性
 
@@ -94,3 +94,15 @@ for _, n := range []*StarterWebhook.Notifier{s.Ops, s.Ding} {
     _ = n.Send(ctx, note)
 }
 ```
+
+## 设计说明
+
+* **有意不做启动探针。** 唯一通用的 webhook 探针就是一次真实 POST，而启动期向
+  生产聊天群发一条垃圾通知，比首次发送才报错是更糟的失败模式。
+* **无探针时的失败时机。** 未知 `channel` 在构造期即失败（不需要网络）；非法的
+  `url` 在首次发送时带端点信息浮出。
+* **`200` 带错误体是厂商怪癖。** 某些钉钉／飞书配置会用 `200` 应答但正文里带错误；
+  非 2xx 一定是错误，而「200 带错误体」只在接收方返回非 200 时才被拦下。需要
+  body 级错误解析的通道属于 `buildPayload` 的自定义扩展。
+* **遥测不含凭证。** 目标主机作为 `Detail` 进 span 和日志，永不作为指标标签；
+  携带 token 的完整 URL 绝不进遥测。

@@ -48,7 +48,7 @@ gs.Provide(func() StarterKitex.ServiceRegister {
 
 ## Core Features
 
-The [example](example/example.go) runs the server and an in-process client in
+The [example](example/main.go) runs the server and an in-process client in
 one binary and asserts a unary Echo round-trip end-to-end via `runTest`:
 
 1. **Unary Echo call** — the client invokes `EchoService.Echo` and receives the

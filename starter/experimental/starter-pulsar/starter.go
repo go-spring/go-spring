@@ -40,6 +40,10 @@ func init() {
 	// Each instance is created according to the configuration in "${spring.pulsar}".
 	// This allows defining multiple Pulsar clients dynamically.
 	gs.Module(gs.OnProperty("spring.pulsar.instances"), func(r gs.BeanProvider, p flatten.Storage) error {
+		// Any key an instance does not define falls back to the family-wide
+		// "default" bucket: spring.pulsar.default.<k> is the value every
+		// instance inherits unless it sets its own.
+		p = flatten.WithFallback(p, "spring.pulsar.instances", "spring.pulsar.default")
 		return conf.BindEach(p, "${spring.pulsar.instances}", func(name string, c Config) error {
 			// The Driver param (index 3) is selected by the entry's ${driver}
 			// key: unset → "?" (nullable by-type — injects the single Driver

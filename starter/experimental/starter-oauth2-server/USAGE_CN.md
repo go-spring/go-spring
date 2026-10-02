@@ -105,7 +105,7 @@ func (v hmacValidator) Validate(_ context.Context, token string) (*security.Auth
 }
 ```
 
-(`claimStrings` 把空格分隔或数组形式的 claim 归一——从 example/example.go 复制。)
+(`claimStrings` 把空格分隔或数组形式的 claim 归一——从 example/main.go 复制。)
 
 **conf/app.properties**——完整注释配置面:
 
@@ -327,7 +327,7 @@ curl -i :9090/oauth2/token -d grant_type=client_credentials -d client_id=spa
 - HMAC(`secret`):`curl :9090/oauth2/jwks` → `{"keys":[]}`——无可发布;资源侧带外
   共享 secret。
 - RSA/EC(`private-key-file`):公钥带 `kid`、`use: sig`、`alg` 出现。
-- ⚠ 演示脚坑(源自 DESIGN):RSA + JWKS URL 指回*本进程*时,急引导的校验器会与
+- ⚠ 演示脚坑(源自设计说明):RSA + JWKS URL 指回*本进程*时,急引导的校验器会与
   尚未开始服务的 server 死锁——单进程演示用 HMAC。
 
 ---
@@ -357,10 +357,10 @@ curl -i :9090/oauth2/token -d grant_type=client_credentials -d client_id=spa
 | quickstart 前置外部依赖 | 0 |
 | "注意/坑"条数 | 5 |
 
-设计嫌疑(待设计裁决;保留旧 USAGE/DESIGN 已有条目,新增写作中发现的):
+设计嫌疑(待设计裁决;沿用此前评审已有条目,新增写作中发现的):
 
 - code 与 refresh token 存进程内存——仅单节点;多节点需要共享存储(既有)。store 是
-  内部实现且无 `OnMissingBean`/bean seam,DESIGN 里"未来可贡献 `CodeStore` bean"目前
+  内部实现且无 `OnMissingBean`/bean seam,此前设想的"未来可贡献 `CodeStore` bean"目前
   并无实际扩展点(新)。
 - `UserAuthFunc` 是注入后设置的公开可变字段,不是配置驱动或 bean 驱动的 seam(既有)。
 - /authorize 在请求内同步认证资源所有者(没有自己的登录跳转):`UserAuthFunc` 返回

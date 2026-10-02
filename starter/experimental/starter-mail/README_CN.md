@@ -18,7 +18,7 @@ go get go-spring.org/starter-mail
 
 ### 1. 导入 `starter-mail` 包
 
-参考 [example.go](example/example.go) 文件。
+参考 [main.go](example/main.go) 文件。
 
 ```go
 import _ "go-spring.org/starter-mail"
@@ -41,7 +41,7 @@ spring.mail.instances.notify.tls.mode=starttls
 
 ### 3. 注入 Mailer
 
-参考 [example.go](example/example.go) 文件。每个具名实例都会以该名字注册为一个
+参考 [main.go](example/main.go) 文件。每个具名实例都会以该名字注册为一个
 `*Mailer` bean。没有默认单例——按名字选择实例;新增一个 mailer 仅需改配置。
 
 ```go
@@ -54,7 +54,7 @@ type Service struct {
 
 ### 4. 发送邮件
 
-参考 [example.go](example/example.go) 文件。构造 `Message` 后调用 `Send`。可提供
+参考 [main.go](example/main.go) 文件。构造 `Message` 后调用 `Send`。可提供
 纯文本正文、HTML 正文或二者兼具(multipart/alternative),并支持多收件人与附件。
 
 ```go
@@ -75,7 +75,7 @@ destroy 钩子)。
 
 ## 核心特性
 
-[示例](example/example.go)会对接一个真实的 MailHog 服务器自校验:发送一封带 HTML
+[示例](example/main.go)会对接一个真实的 MailHog 服务器自校验:发送一封带 HTML
 正文、纯文本备选、附件及多收件人(To/Cc)的邮件,再通过 MailHog 的 HTTP API 验证
 投递结果。
 
@@ -115,3 +115,19 @@ destroy 钩子)。
 | `ping` | `false` | 启动时拨一次服务器,提前拦截坏配置。 |
 | `tls.mode` | `starttls` | 传输安全:`starttls`/`tls`/`none`。 |
 | `tls.insecure-skip-verify` | `false` | 关闭证书校验(仅测试用)。 |
+
+## 设计说明
+
+* **`Send` 是非幂等的。** 重发会投递第二封邮件,因此无论策略配置了多少次重试,
+  执行器都只跑一次 `Send`——重试永不重复投递。
+* **观测只声明、不发射。** `Send` 以 `email.client` 前缀声明本次操作,并以收件人
+  **数量**作为 `Detail`(绝不是地址或主题——那些是个人数据);resilience 发射点产出
+  span、时长直方图与访问日志,失败的发送在 Warn 级别写出 detail。
+* **`tls.mode` 是 mode 枚举,不是 `enabled` + 证书文件。** SMTP 有三种线路行为
+  (STARTTLS、隐式 TLS、明文),一个布尔表达不了。
+* **正文形状由 `Text` / `HTML` 决定。** 两者都设 → `multipart/alternative`;
+  只设一个 → 该正文;都为空 → 空的纯文本正文。
+* **`insecure-skip-verify` 仍钉 `ServerName`。** 它取 `host`,因此在重新开启校验后
+  通配符证书依然能匹配名字。
+* **不做连接池。** SMTP 服务通常按连接限速,故每次 `Send` 现拨现关——池是被有意
+  省去的。

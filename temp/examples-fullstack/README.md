@@ -42,7 +42,7 @@ client --POST /api/orders (Bearer token)--> gateway :9440
 - **Discovery**: the gateway's `lb://order` and order's `order→inventory` call
   both resolve through a Consul-backed `discovery.Discovery`
   (`internal/consuldisc`), registered once under the name `consul`. Instances
-  register themselves via `starter-registry-consul`.
+  register themselves via `starter-discovery-consul`.
 - **Config center**: `fullstack.order.charge-fail` is imported from Nacos into a
   `gs.Dync[bool]`. Publishing it live flips the next order into the compensation
   path — no restart.

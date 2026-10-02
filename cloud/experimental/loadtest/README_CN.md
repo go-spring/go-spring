@@ -7,7 +7,7 @@
 住了、信号没丢" —— 而不只是产出一堆数字。它是 example 级工具,不是生产
 代码:需要统计严谨性的场合请用真正的压测工具。
 
-可运行、自校验的独立演示在 [example](example/example.go)
+可运行、自校验的独立演示在 [example](example/main.go)
 (`./example/check.sh` 退出码 0)。
 
 ## 快速开始

@@ -201,7 +201,7 @@ When the instance sets `ping=true`, an unreachable/uninitialized server fails th
 process never reaches "serving" with a dead InfluxDB; with the default `ping=false` the boot
 succeeds and the first request fails instead. Note the OSS server reports differently before its
 one-time setup finishes, so bootstrap-order races surface at boot (with `ping=true`), not as
-intermittent write failures (DESIGN.md §3).
+intermittent write failures (see the README's design notes).
 
 ### 2.2 Request chain — exact order and why
 
@@ -247,13 +247,13 @@ Rationale (source comments [client.go:102-113], [observe.go]):
    rejections at the inner layer count in the outer one's view).
 
 **`QueryAPI(org).QueryRaw` (embedded SDK method)**: no per-call guard is added
-(DESIGN.md §4 — query-time resilience was deliberately left out; a GuardedQuery would be
-additive). The request is still declared and executor-gated at the transport layer, because
+(query-time resilience was deliberately left out — see the README's design notes; a
+GuardedQuery would be additive). The request is still declared and executor-gated at the transport layer, because
 every request is.
 
 **`ManagedWriteAPI` (async)** [client.go:152]: background batching, **not** routed through
 any executor — the SDK's own batching retries govern it; guarding per point would
-double-count (DESIGN.md §2). Failed batches land on the `Errors()` channel, which the
+double-count (see the README's design notes). Failed batches land on the `Errors()` channel, which the
 wrapper drains into go-spring's log (`influxdb: async write failed: ...`) — an undrained
 channel would block the writer on its first failure. Destroy's `Client.Close()` flushes
 pending batches.
@@ -363,7 +363,7 @@ process keeps running (async failures never become caller errors).
 | `WritePoints` returns the org/bucket error | Same call-time gap, non-panicking shape | Same as above. |
 | Writes fail but boot and health are green | Wrong `auth-token` — /health does not authenticate | Verify the token with `influx query --token ...`. |
 | No spans/metrics despite requests flowing | starter-otel not imported | The emitter rides the OTel globals; import starter-otel (the access log still emits without it). |
-| Queries return nothing right after a write | Bucket write-path settling (eventual visibility) | Retry window — the example itself polls up to 15s [example/example.go:81-91]. |
+| Queries return nothing right after a write | Bucket write-path settling (eventual visibility) | Retry window — the example itself polls up to 15s [example/main.go:81-91]. |
 | Async writes vanish silently | Wrong mental model: `ManagedWriteAPI` failures are log lines, not errors | Grep `influxdb: async write failed`; use `WritePoints` when you need the error. |
 
 ## 6. Design Health

@@ -20,7 +20,7 @@ go get go-spring.org/starter-dubbo
 
 ### 1. Import the `starter-dubbo` package
 
-Refer to the [example.go](example/example.go) file.
+Refer to the [main.go](example/main.go) file.
 
 ```go
 import StarterDubbo "go-spring.org/starter-dubbo"
@@ -115,7 +115,7 @@ Per-registry (`registries.<name>`): `address`, `namespace`, `group`,
 
 ### 3. Register your service
 
-Refer to the [example.go](example/example.go) file. `StarterDubbo.RegisterService` registers the
+Refer to the [main.go](example/main.go) file. `StarterDubbo.RegisterService` registers the
 code-generated register function (e.g. `greet.RegisterGreetServiceHandler`) and the handler instance
 as a `ServiceRegister` bean. `SimpleDubboServer` collects every `ServiceRegister` bean
 (`autowire:"?"` slice autowire, sorted by name) and invokes them all at startup, so one server can
@@ -374,7 +374,7 @@ to dubbo-go.
 
 ## Core Features
 
-The [example](example/example.go) demonstrates a Dubbo Triple round-trip,
+The [example](example/main.go) demonstrates a Dubbo Triple round-trip,
 asserted end-to-end by `runTest`:
 
 1. **Unary Greet call** — the server exports `greet.GreetService` over the
@@ -400,3 +400,22 @@ asserted end-to-end by `runTest`:
 - At least one `ServiceRegister` bean (i.e. one `RegisterService` call) is required to activate the server.
 - `spring.dubbo.application.name` is required; metrics (Prometheus) and tracing
   (OTel/stdout) ship enabled by default — see [Observability](#observability-built-in).
+
+## Design Notes
+
+* **`retries` has one vocabulary at every level.** `-1` (the default) means
+  "unset" (dubbo-go's own default), `0` means no retry, and `>0` is the retry
+  count; anything below `-1` is rejected at `NewInstance`.
+* **`check` defaults to `true` (fail-fast) on both sides.** dubbo-go v3 has no
+  reference-level "disable check" option, so `references.<n>.check=false`
+  alongside `consumer.check=true` only logs a startup WARN — it cannot turn the
+  check off.
+* **`Instance` holds one `DubboConfig`, bound once from `${spring.dubbo}`.**
+  Static levels use hyphens (the starter's own style) and dynamic levels use dots
+  (aligned with dubbo's URL parameter names); keys are matched exactly.
+* **Config changes are pushed to a running instance.** A properties change flows
+  through go-spring's refresh → `Dync` → override rules → dubbo-go's
+  config-center listeners → the live invoker URLs, so it takes effect on the
+  next call — no restart. Consumer-level defaults publish as
+  `<appName>.configurators`, each reference as
+  `<interface>:<version>:<group>.configurators`.

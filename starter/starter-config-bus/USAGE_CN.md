@@ -98,7 +98,7 @@ func main() {
 ```
 
 （仓库内的 example 直接持有 `gs.Provide` 返回的 bean 句柄，流程与上面一致，见
-[example/example.go](example/example.go)。）
+[example/main.go](example/main.go)。）
 
 **conf/app.properties**——完整带注释的配置面：
 

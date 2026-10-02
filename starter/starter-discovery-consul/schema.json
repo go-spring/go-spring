@@ -1,0 +1,91 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "spring.discovery.consul",
+  "type": "object",
+  "properties": {
+    "spring.discovery.consul": {
+      "type": "object",
+      "description": "One named block per Consul agent. Each block becomes ONE backend bean named 'consul.<name>' implementing both discovery.Registry (write) and discovery.Discovery (read). No default/unnamed block.",
+      "additionalProperties": {
+        "$ref": "#/$defs/consulBlock"
+      }
+    },
+    "spring.discovery.service-name": {
+      "type": "string",
+      "description": "Registration intent signal: logical service name to advertise into every configured center. Unset means pure consumer (registers nothing).",
+      "default": ""
+    },
+    "spring.discovery.addr": {
+      "type": "string",
+      "description": "Advertised host:port of this instance (required when service-name is set)",
+      "default": ""
+    },
+    "spring.discovery.id": {
+      "type": "string",
+      "description": "Instance id override; empty derives from service-name+addr",
+      "default": ""
+    },
+    "spring.discovery.weight": {
+      "type": "integer",
+      "description": "Initial load-balancing weight shared by every center",
+      "default": 100
+    },
+    "spring.discovery.metadata": {
+      "type": "object",
+      "description": "Arbitrary key/value attributes stored with the instance",
+      "additionalProperties": {
+        "type": "string"
+      }
+    }
+  },
+  "$defs": {
+    "consulBlock": {
+      "type": "object",
+      "properties": {
+        "address": {
+          "type": "string",
+          "description": "Consul HTTP API address; required"
+        },
+        "scheme": {
+          "type": "string",
+          "default": "http"
+        },
+        "datacenter": {
+          "type": "string",
+          "default": ""
+        },
+        "token": {
+          "type": "string",
+          "default": ""
+        },
+        "namespace": {
+          "type": "string",
+          "default": ""
+        },
+        "ttl": {
+          "type": "string",
+          "description": "TTL health check interval; heartbeat at half this",
+          "default": "15s"
+        },
+        "deregister-critical-after": {
+          "type": "string",
+          "description": "Auto-drop after the check stays critical this long; 0 disables",
+          "default": "1m"
+        },
+        "ping": {
+          "type": "boolean",
+          "default": false,
+          "description": "Probe the agent once at startup and fail fast when unreachable; false (default) skips the probe."
+        },
+        "health": {
+          "type": "boolean",
+          "default": true,
+          "description": "Contributes a health.Indicator bean for this block; set false to disable."
+        }
+      },
+      "required": [
+        "address"
+      ]
+    }
+  }
+}

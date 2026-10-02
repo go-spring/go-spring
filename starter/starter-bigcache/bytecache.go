@@ -28,18 +28,21 @@ type byteCache struct{ c *Cache }
 
 // NewByteCache wraps a *Cache as a [cache.ByteCache] - the raw bytes-native
 // primitives the "bigcache" driver layers a typed [cache.Cache] façade over.
-// Every operation flows through the wrapper's command seam (declared operation +
-// resilience; the span/access log are emitted there). The driver registered in the
-// starter's root package selects the BigCache bean by beanID; call this directly
-// to build a ByteCache for ad-hoc use.
+// Every operation flows through the wrapper's command surface, which emits the
+// operation's span and metrics there (see [statObserver]), so the façade inherits
+// them. The starter's own registration calls this to expose each instance as a
+// [cache.Cache] bean; call it directly to build a ByteCache for ad-hoc use.
 func NewByteCache(c *Cache) cache.ByteCache {
 	return &byteCache{c}
 }
 
 // GetBytes returns the raw bytes under key, or (nil, [cache.ErrMiss]) when the
 // key is absent.
-func (b *byteCache) GetBytes(_ context.Context, key string) ([]byte, error) {
-	data, err := b.c.Get(key)
+//
+// The context is passed on rather than dropped: it is the caller's, and the
+// wrapper it reaches opens the operation's span with it.
+func (b *byteCache) GetBytes(ctx context.Context, key string) ([]byte, error) {
+	data, err := b.c.get(ctx, key)
 	if errors.Is(err, bigcache.ErrEntryNotFound) {
 		return nil, cache.ErrMiss
 	}
@@ -52,13 +55,13 @@ func (b *byteCache) GetBytes(_ context.Context, key string) ([]byte, error) {
 // SetBytes stores the raw bytes under key for ttlSeconds, a whole number of
 // seconds. BigCache ignores it - entries expire by the global LifeWindow set at
 // construction - so configure the lifetime via ${spring.bigcache} instead.
-func (b *byteCache) SetBytes(_ context.Context, key string, val []byte, _ int) error {
-	return b.c.Set(key, val)
+func (b *byteCache) SetBytes(ctx context.Context, key string, val []byte, _ int) error {
+	return b.c.set(ctx, key, val)
 }
 
 // Delete removes key. Deleting an absent key is not an error.
-func (b *byteCache) Delete(_ context.Context, key string) error {
-	err := b.c.Delete(key)
+func (b *byteCache) Delete(ctx context.Context, key string) error {
+	err := b.c.delete(ctx, key)
 	if errors.Is(err, bigcache.ErrEntryNotFound) {
 		return nil
 	}

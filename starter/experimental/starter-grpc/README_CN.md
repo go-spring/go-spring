@@ -18,7 +18,7 @@ go get go-spring.org/starter-grpc
 
 ### 1. 引入 `starter-grpc` 包
 
-参见 [example.go](example/example.go) 文件。
+参见 [main.go](example/main.go) 文件。
 
 ```go
 import StarterGrpc "go-spring.org/starter-grpc"
@@ -55,7 +55,7 @@ spring.grpc.server.tls.key-file=
 
 ### 3. 注册 gRPC 服务
 
-参见 [example.go](example/example.go) 文件。
+参见 [main.go](example/main.go) 文件。
 
 ```go
 gs.Provide(&Controller{})
@@ -73,7 +73,7 @@ gs.Provide(func(c *Controller) StarterGrpc.ServiceRegister {
 而不是崩掉整个进程 —— grpc-go 自身对 handler panic 不做任何恢复。放在最内层，
 转换后的错误会回穿 tracing/metrics/resilience，被完整观测到。
 
-[示例](example/example.go) 展示了 3 个 gRPC 关键能力，均在 `runTest` 中做了端到端断言：
+[示例](example/main.go) 展示了 3 个 gRPC 关键能力，均在 `runTest` 中做了端到端断言：
 
 1. **一元 Echo 调用**：客户端调用 `EchoService.Echo` 并拿到原样返回的消息，验证标准的
    请求/响应链路。

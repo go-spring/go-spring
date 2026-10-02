@@ -42,6 +42,10 @@ func init() {
 	// interface, so consumers inject that interface and never see the
 	// concrete *k8sLocker type.
 	gs.Module(gs.OnProperty("spring.lock.instances.k8s"), func(r gs.BeanProvider, p flatten.Storage) error {
+		// Any key an instance does not define falls back to the family-wide
+		// "default" bucket: spring.lock.default.<k> is the value every
+		// instance inherits unless it sets its own.
+		p = flatten.WithFallback(p, "spring.lock.instances.k8s", "spring.lock.default")
 		return conf.BindEach(p, "${spring.lock.instances.k8s}", func(name string, c Config) error {
 			// The bean is wrapped with the observe-lock adapter by default
 			// (see newLocker); observe.enabled=false opts out. There is no

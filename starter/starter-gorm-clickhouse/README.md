@@ -49,7 +49,7 @@ err := s.DB.Raw("SELECT version()").Scan(&version).Error
 
 ## Core Features
 
-The [example.go](example/example.go) file demonstrates GORM against ClickHouse.
+The [main.go](example/main.go) file demonstrates GORM against ClickHouse.
 ClickHouse is an OLAP engine — it does not enforce unique indexes the way OLTP
 engines do, and it has no standard multi-statement transactions — so this
 example is adapted accordingly:

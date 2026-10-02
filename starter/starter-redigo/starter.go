@@ -45,6 +45,10 @@ func init() {
 	// the same name — and to attach the file:line of this registration to the
 	// bean for diagnostics.
 	gs.Module(gs.OnProperty("spring.redigo.instances"), func(r gs.BeanProvider, p flatten.Storage) error {
+		// Any key an instance does not define falls back to the family-wide
+		// "default" bucket: spring.redigo.default.<k> is the value every
+		// instance inherits unless it sets its own.
+		p = flatten.WithFallback(p, "spring.redigo.instances", "spring.redigo.default")
 		return conf.BindEach(p, "${spring.redigo.instances}", func(name string, c Config) error {
 
 			// The adapter is the gs↔NewPool bridge: it converts the

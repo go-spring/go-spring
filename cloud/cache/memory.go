@@ -33,8 +33,6 @@ type Memory struct {
 	m  map[string][]byte
 }
 
-var _ ByteCache = (*Memory)(nil)
-
 // NewMemory returns an empty in-process ByteCache. Wrap it in [New] for the
 // typed façade: cache.New(cache.NewMemory()).
 func NewMemory() *Memory { return &Memory{m: make(map[string][]byte)} }

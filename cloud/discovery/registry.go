@@ -18,10 +18,10 @@ package discovery
 
 import "context"
 
-// Instance is the process advertisement every registrar publishes: one
+// Instance is the process advertisement every registry publishes: one
 // physical instance of a named service. It is the write-side mirror of
-// [Endpoint] — the registry-center starters fill it from the global
-// ${spring.registry} identity block, so every backend registers the SAME
+// [Endpoint] — [Server] fills it from the global ${spring.discovery}
+// identity block, so every backend registers the SAME
 // instance content (a multi-registry setup is one publication fanned out to
 // several centers, not several publications).
 //
@@ -66,10 +66,10 @@ type Instance struct {
 	Metadata map[string]string
 }
 
-// Registry publishes one [Instance] into ONE registry center. Each backend
-// starter derives one Registry per configured block; the starter-registry
-// core collects them all and drives them through a single lifecycle —
-// register on app-ready, deregister on shutdown, broadcast weight changes.
+// Registry publishes one [Instance] into ONE discovery center. Each backend
+// starter derives one Registry per configured block; [Server] collects them
+// all and drives them through a single lifecycle — register on app-ready,
+// deregister on shutdown, broadcast weight changes.
 // Implementations must make Deregister and UpdateWeight idempotent.
 type Registry interface {
 	// Register publishes inst into this center. It is called once, after the

@@ -66,7 +66,7 @@ spring.swagger.title=Greeter API Docs
 spring.swagger.assetBaseURL=https://unpkg.com/swagger-ui-dist@5
 ```
 
-**Variant B — no actuator** (this is `example/example.go:43-47`): the bean is also a plain
+**Variant B — no actuator** (this is `example/main.go:43-47`): the bean is also a plain
 `*UI` (`http.Handler`), so mount it yourself:
 
 ```go

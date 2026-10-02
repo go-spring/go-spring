@@ -49,6 +49,10 @@ import (
 
 func init() {
 	gs.Module(gs.OnProperty("spring.lock.instances.redis"), func(r gs.BeanProvider, p flatten.Storage) error {
+		// Any key an instance does not define falls back to the family-wide
+		// "default" bucket: spring.lock.default.<k> is the value every
+		// instance inherits unless it sets its own.
+		p = flatten.WithFallback(p, "spring.lock.instances.redis", "spring.lock.default")
 		return conf.BindEach(p, "${spring.lock.instances.redis}", func(name string, c Config) error {
 			// Fail fast: silently defaulting to some arbitrary *redis.Client
 			// would hide a misconfiguration that only surfaces on first

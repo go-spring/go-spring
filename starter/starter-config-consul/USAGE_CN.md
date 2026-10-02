@@ -212,7 +212,7 @@ consul kv put gs-config-demo "demo.message=hello-2"
 ```
 
 example 自动化的正是这一步：发布 `hello-<timestamp>`，轮询 `Dync` 字段最长 15 秒，超时非零
-退出（`example/example.go` 的 `runTest`）。本地 agent 下 blocking query 延迟亚秒级；错过通知的
+退出（`example/main.go` 的 `runTest`）。本地 agent 下 blocking query 延迟亚秒级；错过通知的
 最坏情形是一个 `WaitTime` 周期（5 分钟）。
 
 ### 4.3 畸形值

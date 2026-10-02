@@ -183,7 +183,7 @@ func (s *OrderService) place(ctx context.Context, id string) (transaction.Result
 的方法直接透传 `proceed`。两条路径共用同一个协调器 bean。
 
 自测 main 的写法照抄
-[starter-transaction-tcc/example/example.go](../starter-transaction-tcc/example/example.go)：
+[starter-transaction-tcc/example/main.go](../starter-transaction-tcc/example/main.go)：
 启动 500ms 后在 goroutine 里跑一次 `place`，断言 `err != nil` 且
 `res.Status == transaction.StatusCompensated`，然后 `syscall.Kill(os.Getpid(), syscall.SIGTERM)`。
 

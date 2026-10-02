@@ -95,16 +95,16 @@ var instruments = sync.OnceValue(buildInstruments)
 func buildInstruments() *instrumentSet {
 	m := otel.Meter(scope)
 	in := &instrumentSet{meter: m}
-	in.opDuration, _ = m.Float64Histogram("registry.operation.duration",
-		metric.WithDescription("Duration of registry-center operations"),
+	in.opDuration, _ = m.Float64Histogram("discovery.operation.duration",
+		metric.WithDescription("Duration of discovery-center operations"),
 		metric.WithUnit("s"),
 		metric.WithExplicitBucketBoundaries(observability.DurationBuckets()...))
-	in.regAttempts, _ = m.Int64Counter("registry.registration.attempts_total",
-		metric.WithDescription("Registration attempts against a registry center, by reason and outcome"))
+	in.regAttempts, _ = m.Int64Counter("discovery.registration.attempts_total",
+		metric.WithDescription("Registration attempts against a discovery center, by reason and outcome"))
 	in.syncTotal, _ = m.Int64Counter("discovery.sync_total",
 		metric.WithDescription("Background endpoint-cache syncs, by outcome"))
-	in.registered, _ = m.Int64ObservableGauge("registry.instance.registered",
-		metric.WithDescription("1 while this instance is published into the registry center, 0 while it is not"))
+	in.registered, _ = m.Int64ObservableGauge("discovery.instance.registered",
+		metric.WithDescription("1 while this instance is published into the discovery center, 0 while it is not"))
 	in.age, _ = m.Float64ObservableGauge("discovery.cache.age_seconds",
 		metric.WithDescription("Seconds since the cached endpoint snapshot for this service was last confirmed fresh"),
 		metric.WithUnit("s"))
@@ -117,7 +117,7 @@ func buildInstruments() *instrumentSet {
 // otherwise keep reporting into the earlier provider.
 func resetInstruments() { instruments = sync.OnceValue(buildInstruments) }
 
-// Observer reports one configured registry block: the registration operations of
+// Observer reports one configured discovery block: the registration operations of
 // its write half, the endpoint syncs of its read half, and the two gauges they
 // feed. It is a layer the block owns — created by the block's constructor,
 // closed by its destructor — so the state it accumulates lives exactly as long
@@ -127,9 +127,9 @@ func resetInstruments() { instruments = sync.OnceValue(buildInstruments) }
 //
 // The two axes of that identity travel with every reading: system names the
 // backend implementation ("etcd", "nacos", ...), center names the configured
-// block (${spring.registry.<backend>.<name>}). Both are needed for more than
+// block (${spring.discovery.<backend>.<name>}). Both are needed for more than
 // bookkeeping: one process routinely publishes the same service into several
-// centers at once (the registry core drives every configured registrar), so
+// centers at once (the discovery core drives every configured registry), so
 // without center the readings of two clusters would be one indistinguishable
 // series.
 type Observer struct {
@@ -181,7 +181,7 @@ func NewObserver(system, center string) (*Observer, error) {
 // they describe.
 func (o *Observer) System() string { return o.system }
 
-// Center names the configured registry block (see [NewObserver]).
+// Center names the configured discovery block (see [NewObserver]).
 func (o *Observer) Center() string { return o.center }
 
 // attrs is the identity prefix every instrument of this block carries.
@@ -313,19 +313,19 @@ func StatusOf(err error) string {
 	return "ok"
 }
 
-// startOp opens the client span for one registry-center operation. The span
-// attributes are namespaced (registry.*) while the metric attributes are bare,
+// startOp opens the client span for one discovery-center operation. The span
+// attributes are namespaced (discovery.*) while the metric attributes are bare,
 // matching the other domain packages' instrumentation.
 func (o *Observer) startOp(ctx context.Context, op, service, reason string) (context.Context, trace.Span) {
 	o.ready()
 	attrs := []attribute.KeyValue{
-		attribute.String("registry.system", o.system),
-		attribute.String("registry.center", o.center),
-		attribute.String("registry.operation", op),
-		attribute.String("registry.service", service),
+		attribute.String("discovery.system", o.system),
+		attribute.String("discovery.center", o.center),
+		attribute.String("discovery.operation", op),
+		attribute.String("discovery.service", service),
 	}
 	if reason != "" {
-		attrs = append(attrs, attribute.String("registry.reason", reason))
+		attrs = append(attrs, attribute.String("discovery.reason", reason))
 	}
 	return otel.Tracer(scope).Start(ctx, op,
 		trace.WithSpanKind(trace.SpanKindClient),
@@ -348,7 +348,7 @@ func (o *Observer) endOp(ctx context.Context, span trace.Span, op, service strin
 }
 
 // RegisterAttempt runs and reports one registration attempt against this
-// observer's registry center: fn executes the attempt, and its error becomes the
+// observer's discovery center: fn executes the attempt, and its error becomes the
 // attempt's outcome. It returns fn's error unchanged so the caller keeps its
 // normal error flow.
 //
@@ -406,7 +406,7 @@ func (o *Observer) DeregisterAttempt(ctx context.Context, service string, fn fun
 
 // WeightChange runs and reports one weight re-advertisement — the operation
 // that keeps an instance discoverable while it drains, and the one path the
-// registry core does not log (see [Observer.RegisterAttempt] for the fn/context
+// discovery core does not log (see [Observer.RegisterAttempt] for the fn/context
 // contract). It carries no reason: a weight change is never a re-register.
 func (o *Observer) WeightChange(ctx context.Context, service string, fn func(ctx context.Context) error) error {
 	if !o.live() {
@@ -471,7 +471,7 @@ func (o *Observer) Synced(service string, err error) {
 
 // setPublished records whether the instance is currently published.
 //
-// The state is per service and lives as long as this observer: a registry block
+// The state is per service and lives as long as this observer: a discovery block
 // publishes exactly one service identity per process, and the discovery half
 // adds one entry per service name it resolves.
 func (o *Observer) setPublished(service string, ok bool) {

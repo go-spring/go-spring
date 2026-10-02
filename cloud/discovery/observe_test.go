@@ -187,8 +187,8 @@ func TestObserveReporting(t *testing.T) {
 }
 
 // testTwoCentersStayDistinct pins why center is part of the identity: one process
-// publishes the same service into EVERY configured center (the registry core
-// drives all collected registrars), and each block keeps its own state. Without
+// publishes the same service into EVERY configured center (the discovery core
+// drives all collected registrys), and each block keeps its own state. Without
 // center the two blocks would be one series — and now that the state is per
 // block, two datapoints sharing a label set, which is a scrape error rather than
 // a wrong number.
@@ -208,7 +208,7 @@ func testTwoCentersStayDistinct(t *testing.T, rdr sdkmetric.Reader) {
 	assert.Equal(t, int64(0), mustGauge(t, rdr, map[string]string{"system": sys, "center": "beta", "service": svc}))
 
 	require.NoError(t, beta.Close())
-	if _, ok := findIntGauge(t, rdr, "registry.instance.registered", map[string]string{
+	if _, ok := findIntGauge(t, rdr, "discovery.instance.registered", map[string]string{
 		"system": sys, "center": "beta", "service": svc,
 	}); assert.False(t, ok, "a closed observer must drop its series") {
 	}
@@ -257,24 +257,24 @@ func testRegistryLifecycle(t *testing.T, spanExp *tracetest.InMemoryExporter, rd
 	require.NotEmpty(t, spans)
 	last := spans[len(spans)-1]
 	assert.Equal(t, opRegister, last.Name)
-	if got, ok := spanAttr(last, "registry.reason"); assert.True(t, ok) {
+	if got, ok := spanAttr(last, "discovery.reason"); assert.True(t, ok) {
 		assert.Equal(t, ReasonInitial, got)
 	}
-	if got, ok := spanAttr(last, "registry.system"); assert.True(t, ok) {
+	if got, ok := spanAttr(last, "discovery.system"); assert.True(t, ok) {
 		assert.Equal(t, sys, got)
 	}
 
-	if _, ok := findHist(t, rdr, "registry.operation.duration", map[string]string{
+	if _, ok := findHist(t, rdr, "discovery.operation.duration", map[string]string{
 		"system": sys, "operation": opRegister, "service": svc, "status": "ok",
 	}); !assert.True(t, ok, "register duration datapoint missing") {
 		t.FailNow()
 	}
-	if v, ok := findSum(t, rdr, "registry.registration.attempts_total", map[string]string{
+	if v, ok := findSum(t, rdr, "discovery.registration.attempts_total", map[string]string{
 		"system": sys, "service": svc, "reason": ReasonInitial, "status": "ok",
 	}); assert.True(t, ok, "initial attempts counter missing") {
 		assert.Equal(t, int64(1), v)
 	}
-	if v, ok := findIntGauge(t, rdr, "registry.instance.registered", map[string]string{
+	if v, ok := findIntGauge(t, rdr, "discovery.instance.registered", map[string]string{
 		"system": sys, "service": svc,
 	}); assert.True(t, ok, "registered gauge missing") {
 		assert.Equal(t, int64(1), v)
@@ -282,12 +282,12 @@ func testRegistryLifecycle(t *testing.T, spanExp *tracetest.InMemoryExporter, rd
 
 	// --- a failed self-heal declares the instance unpublishable ---
 	reportRegister(o, svc, ReasonSelfHeal, fail)
-	if v, ok := findSum(t, rdr, "registry.registration.attempts_total", map[string]string{
+	if v, ok := findSum(t, rdr, "discovery.registration.attempts_total", map[string]string{
 		"system": sys, "service": svc, "reason": ReasonSelfHeal, "status": "failed",
 	}); assert.True(t, ok, "self-heal failure counter missing") {
 		assert.Equal(t, int64(1), v)
 	}
-	if v, ok := findIntGauge(t, rdr, "registry.instance.registered", map[string]string{
+	if v, ok := findIntGauge(t, rdr, "discovery.instance.registered", map[string]string{
 		"system": sys, "service": svc,
 	}); assert.True(t, ok) {
 		assert.Equal(t, int64(0), v, "a failed re-register must report the instance as unpublished")
@@ -295,7 +295,7 @@ func testRegistryLifecycle(t *testing.T, spanExp *tracetest.InMemoryExporter, rd
 
 	// --- the center recovers: the next self-heal succeeds and the gauge clears ---
 	reportRegister(o, svc, ReasonSelfHeal, nil)
-	if v, _ := findIntGauge(t, rdr, "registry.instance.registered", map[string]string{
+	if v, _ := findIntGauge(t, rdr, "discovery.instance.registered", map[string]string{
 		"system": sys, "service": svc,
 	}); assert.Equal(t, int64(1), v) {
 	}
@@ -323,14 +323,14 @@ func testRegistryFailureSemantics(t *testing.T, rdr sdkmetric.Reader) {
 // mustGauge reads the registered gauge for an exact (system, service) pair.
 func mustGauge(t *testing.T, rdr sdkmetric.Reader, want map[string]string) int64 {
 	t.Helper()
-	v, ok := findIntGauge(t, rdr, "registry.instance.registered", want)
+	v, ok := findIntGauge(t, rdr, "discovery.instance.registered", want)
 	require.True(t, ok, "registered gauge missing for %v", want)
 	return v
 }
 
 // testWeightChangeObserved asserts a weight re-advertisement is a first-class
 // operation on the duration metric — it is the drain path, and the one the
-// registry core does not log.
+// discovery core does not log.
 func testWeightChangeObserved(t *testing.T, spanExp *tracetest.InMemoryExporter, rdr sdkmetric.Reader) {
 	const sys, center, svc = "nacos", "main", "orders"
 	o := newObserver(t, sys, center)
@@ -341,7 +341,7 @@ func testWeightChangeObserved(t *testing.T, spanExp *tracetest.InMemoryExporter,
 	require.NotEmpty(t, spans)
 	assert.Equal(t, opUpdateWeight, spans[len(spans)-1].Name)
 
-	_, ok := findHist(t, rdr, "registry.operation.duration", map[string]string{
+	_, ok := findHist(t, rdr, "discovery.operation.duration", map[string]string{
 		"system": sys, "operation": opUpdateWeight, "service": svc, "status": "ok",
 	})
 	assert.True(t, ok, "update_weight duration datapoint missing")

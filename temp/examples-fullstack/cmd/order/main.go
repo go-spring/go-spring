@@ -27,7 +27,7 @@
 //     proving cross-service rollback triggered by a live config change.
 //   - starter-otel gives every log line the request's trace_id and propagates the
 //     trace to B, so one order is one trace across A and B.
-//   - starter-registry-consul advertises this instance as "order" so the gateway
+//   - starter-discovery-consul advertises this instance as "order" so the gateway
 //     can route lb://order to it.
 package main
 
@@ -53,8 +53,8 @@ import (
 	"go.opentelemetry.io/otel/propagation"
 
 	"go-spring.org/cloud/discovery"
-	"go-spring.org/cloud/security"
 	"go-spring.org/cloud/experimental/transaction"
+	"go-spring.org/cloud/security"
 	StarterSecurityJWT "go-spring.org/starter-security-jwt"
 
 	"fullstack/internal/consuldisc"
@@ -63,18 +63,18 @@ import (
 	// Contributor + provider starters, enabled by blank import.
 	_ "go-spring.org/starter-actuator"
 	_ "go-spring.org/starter-config-nacos"
-	_ "go-spring.org/starter-registry-consul"
+	_ "go-spring.org/starter-discovery-consul"
 	_ "go-spring.org/starter-transaction-saga"
 )
 
-// discoveryName is the cloud/discovery registry key under which the Consul
+// discoveryName is the cloud/discovery key under which the Consul
 // resolver is published; the order->inventory Resolver looks it up by this
 // name. It matches the gateway's spring.gateway.routes.orders.upstream.discovery.
 const discoveryName = "consul"
 
 // consulAddr is the Consul agent this process resolves against. Hard-coded to the
 // docker-compose agent to keep the sample self-contained, mirroring the
-// starter-registry-consul example.
+// starter-discovery-consul example.
 const consulAddr = "127.0.0.1:8500"
 
 var bizTag = log.RegisterBizTag("order", "")

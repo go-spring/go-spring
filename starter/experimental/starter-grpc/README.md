@@ -69,7 +69,7 @@ crashing the whole process — grpc-go recovers handler panics nowhere by
 itself. Placed innermost, the converted error flows back through
 tracing/metrics/resilience and is fully observed.
 
-The [example](example/example.go) demonstrates three core gRPC building blocks,
+The [example](example/main.go) demonstrates three core gRPC building blocks,
 each asserted end-to-end by `runTest`:
 
 1. **Unary Echo call** — the client invokes `EchoService.Echo` and receives

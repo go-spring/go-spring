@@ -78,3 +78,19 @@ plus the wiring contract: a configured starter contributes the `resilience.Count
 unconfigured one contributes none, and an empty client name fails startup. The [example](example)
 runs a docker-gated smoke test (`example/check.sh`) with
 two "replicas" sharing one budget against a real Redis.
+
+## Design Notes
+
+* **It plugs the counters seam, not the driver seam.** `resilience` has two seams:
+  `Driver` decides *which engine* runs a policy (an Executor bundling limit + breaker
+  + retry + timeout), while `Counters` decides *where the counters live*. Reaching
+  Redis through `Driver` would drag breaker and retry off `default`/`sentinel`, so
+  distributed limiting goes through `Counters` and stays orthogonal to in-process
+  circuit breaking.
+* **The counting logic is not implemented here.** The atomic Lua token bucket lives in
+  `starter-go-redis`'s experimental subpackage; this starter only decides where the
+  counters live, and therefore depends on that subpackage — if it ever moves, this
+  starter follows it.
+* **Keys live at `ratelimit:<scope>` in one Redis.** Independent scopes are
+  independent budgets, so the scope name is the isolation mechanism, and an `n > 1`
+  request is all-or-nothing inside the single script.

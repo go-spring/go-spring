@@ -16,7 +16,7 @@ go get go-spring.org/starter-nats
 
 ### 1. Import the `starter-nats` Package
 
-Refer to the [example.go](example/example.go) file.
+Refer to the [main.go](example/main.go) file.
 
 ```go
 import _ "go-spring.org/starter-nats"
@@ -35,7 +35,7 @@ spring.nats.instances.work.url=nats://127.0.0.1:4222
 
 ### 3. Inject the NATS Connection
 
-Refer to the [example.go](example/example.go) file. Each named instance is registered
+Refer to the [main.go](example/main.go) file. Each named instance is registered
 as a `*Conn` bean under that name; the injected bean re-exposes the raw connection's
 methods (`Publish`/`Subscribe`/`Request`/...) as delegations, so you can call them
 directly on it; `Conn.JetStream` is non-nil when JetStream is enabled on that instance.
@@ -50,7 +50,7 @@ type Service struct {
 
 ### 4. Use the Connection
 
-Refer to the [example.go](example/example.go) file. The connection is established on
+Refer to the [main.go](example/main.go) file. The connection is established on
 startup and drained on shutdown, so you can publish and subscribe directly.
 
 ```go
@@ -60,7 +60,7 @@ reply, _ := s.Conn.Request("demo.rpc", []byte("ping"), time.Second)
 
 ## Core Features
 
-The [example](example/example.go) self-asserts four features against a live server:
+The [example](example/main.go) self-asserts four features against a live server:
 core pub/sub, request-reply, queue groups (each message delivered to exactly one
 member), and JetStream (publish to a stream then pull the message back). It also
 checks `HealthCheck(ctx, conn)` reports the connection as up before exercising them.
@@ -197,3 +197,20 @@ Each connection under `spring.nats.instances.<name>` reads the following propert
 | `connect-timeout` | `5s` | Bound on the initial dial. |
 | `jetstream.enabled` | `false` | Expose a JetStream context on `Conn.JetStream`. |
 | `health` | `true` | Contribute a `health.Indicator` (`nats:<name>`) for this instance. |
+
+## Design Notes
+
+* **Guarding is opt-in at the call site.** Plain `Publish`/`Request` are
+  untouched; resilience (rate-limit + circuit breaker) applies only through the
+  `PublishGuarded`/`RequestGuarded` helpers, because NATS exposes no
+  reject-capable middleware seam and silently wrapping `Publish` would change
+  its semantics.
+* **Limiter/breaker state is scoped per connection, not per subject.** The
+  resilience executor's resource key is the connection bean name, so all
+  subjects on one connection share the same limiter/breaker state.
+* **JetStream reuses the connection.** With `jetstream.enabled=true` the context
+  is built from the same `*nats.Conn`; if that fails, the raw connection is
+  closed and boot fails — there is no second connection.
+* **Reconnection is the reliability mechanism.** `max-reconnects=-1` means
+  infinite client-side reconnect with no external supervisor; the `*Conn` bean
+  stays usable across reconnects.

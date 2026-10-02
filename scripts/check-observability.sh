@@ -26,7 +26,7 @@
 #   §声明族  client 后端族(DB、消息、email):成员靠"声明了该族的 Metric 前缀"识别
 #   §发射点  唯一的发射点一次性满足齐整(span/两级时长/在途/访问日志)
 #   §仪器    三条横向规则:tracer 不得缓存、gauge 不用创建期回调、同名同描述符
-#   §registry 后端在自己的缝上上报(委托调用点存在性,不是名字)
+#   §discovery 后端在自己的缝上上报(委托调用点存在性,不是名字)
 #   §config   配置源完全委托 observability.RefreshConf:查接线,且不得自建仪器
 #   §底线     自建插桩但无同类的单例:只有完整性与可 join 可查
 #   §委托     信号全部来自共享层:查接线还在不在
@@ -806,9 +806,9 @@ check_instrument_hygiene() {
   echo "[仪器] tracer 现调 $n_tracer 文件 / gauge 回调 $n_gauge 文件 / 仪器 $entries 条"
 }
 
-# ── registry 族:后端在自己的缝上上报 ───────────────────────────────────
+# ── discovery 族:后端在自己的缝上上报 ───────────────────────────────────
 #
-# 规则来自 starter/DESIGN{,_CN}.md §3「Registry backends report at their own seams」,
+# 规则来自 starter/DESIGN{,_CN}.md §3「Discovery backends report at their own seams」,
 # 原先由 scripts/check-registry-observability.sh 单独跑,现已并入本脚本 —— 一个入口,
 # 免得"例外表在哪"有两份答案。
 #
@@ -826,20 +826,19 @@ NO_SELF_HEAL="nacos"
 # 新增例外必须在此登记,并同步 starter/DESIGN{,_CN}.md §3。
 NO_REGISTRAR="k8s"
 
-check_registry() {
+check_discovery() {
   local b dir backends synced
-  backends=$(ls -d starter/starter-registry-* 2>/dev/null \
-             | grep -v '^starter/starter-registry$' \
-             | sed 's|^starter/starter-registry-||' | sort)
-  [ -n "$backends" ] || { report "[registry] 未扫到任何后端 —— 本段静默失效"; return; }
+  backends=$(ls -d starter/starter-discovery-* 2>/dev/null \
+             | sed 's|^starter/starter-discovery-||' | sort)
+  [ -n "$backends" ] || { report "[discovery] 未扫到任何后端 —— 本段静默失效"; return; }
 
   for b in $backends; do
-    dir="starter/starter-registry-$b"
+    dir="starter/starter-discovery-$b"
 
     # 1) 后端名常量(指标的 system 属性取值)
     grep -q "obsSystem = " "$dir/starter.go" 2>/dev/null \
-      || report "[registry] $b: starter.go 未定义 obsSystem(后端名/指标 system 属性)"
-    CLASSIFIED="$CLASSIFIED starter-registry-$b"
+      || report "[discovery] $b: starter.go 未定义 obsSystem(后端名/指标 system 属性)"
+    CLASSIFIED="$CLASSIFIED starter-discovery-$b"
 
     # 2) & 2b) 写侧:只对真正有 registrar 的后端要求
     case " $NO_REGISTRAR " in
@@ -849,21 +848,21 @@ check_registry() {
         # 上报走块自己的 observer 层(cloud/discovery.Observer),不写包级状态:
         # 匹配的是方法名,实例变量名随各后端自便。
         has_call '\.RegisterAttempt(' \
-          || report "[registry] $b: 未上报 RegisterAttempt(注册,含自愈重注册)"
+          || report "[discovery] $b: 未上报 RegisterAttempt(注册,含自愈重注册)"
         has_call '\.DeregisterAttempt(' \
-          || report "[registry] $b: 未上报 DeregisterAttempt"
+          || report "[discovery] $b: 未上报 DeregisterAttempt"
         has_call '\.WeightChange(' \
-          || report "[registry] $b: 未上报 WeightChange"
+          || report "[discovery] $b: 未上报 WeightChange"
         has_call 'discovery.ReasonInitial' \
-          || report "[registry] $b: RegisterAttempt 未用 ReasonInitial"
+          || report "[discovery] $b: RegisterAttempt 未用 ReasonInitial"
         case " $NO_SELF_HEAL " in
           *" $b "*)
             has_call 'discovery.ReasonSelfHeal' \
-              && report "[registry] $b: 登记为无自愈路径,却使用了 ReasonSelfHeal"
+              && report "[discovery] $b: 登记为无自愈路径,却使用了 ReasonSelfHeal"
             ;;
           *)
             has_call 'discovery.ReasonSelfHeal' \
-              || report "[registry] $b: 有自愈路径却未用 ReasonSelfHeal(自愈重注册会退化成 initial)"
+              || report "[discovery] $b: 有自愈路径却未用 ReasonSelfHeal(自愈重注册会退化成 initial)"
             ;;
         esac
         ;;
@@ -872,7 +871,7 @@ check_registry() {
     # 3) 读侧成功/失败两侧都报。数出现次数而非命中行数:一行两处也要算两处。
     synced=$(grep -ro '\.Synced(' --include='*.go' --exclude='*_test.go' "$dir" 2>/dev/null | wc -l | tr -d ' ')
     [ "$synced" -ge 2 ] \
-      || report "[registry] $b: 同步上报调用仅 $synced 处(需要成功与失败两侧)"
+      || report "[discovery] $b: 同步上报调用仅 $synced 处(需要成功与失败两侧)"
   done
 }
 
@@ -907,6 +906,38 @@ check_config() {
       && report "[config] $b: 自建插桩 —— config 族的可观测性完全委托 observability.RefreshConf,不该有本地仪器"
 
     CLASSIFIED="$CLASSIFIED starter-config-$b"
+  done
+}
+
+# ── 自发射的进程内组件:bigcache ──────────────────────────────────────────
+#
+# bigcache 是进程内堆缓存:没有外部依赖,于是既没有可保护的对象,也没有值得逐调用记一
+# 行日志的"外部调用"。它因此**不走执行器链** —— 不接治理、也不借信封 —— 而是自己开
+# span、自己记指标。这是本仓唯一一个自发射的 client starter。
+#
+# 检查四项:前两项是正向(这个类别的观测就是它自己发的),后两项是回归绊线。
+SELF_EMITTING="starter-bigcache"
+
+check_self_emitting() {
+  local comp dir
+  for comp in $SELF_EMITTING; do
+    dir="starter/$comp"
+    [ -d "$dir" ] || { report "[自发射] $comp: 目录不存在(清单漂移)"; continue; }
+
+    grep -rqE 'otel\.Tracer\(' --include='*.go' --exclude='*_test.go' "$dir" 2>/dev/null \
+      || report "[自发射] $comp: 找不到 otel.Tracer( —— 自己开 span 是这个类别的观测本体"
+    grep -rqE 'Int64Counter\(|Float64Histogram\(' --include='*.go' --exclude='*_test.go' "$dir" 2>/dev/null \
+      || report "[自发射] $comp: 找不到自建指标 —— 这个类别自己发 span 与 metric"
+
+    # 绊线一:接回执行器链,就是把"永不设防、不借信封"这个决定撤销了 —— 那正是它从链上
+    # 摘下来的原因(进程内缓存的瞬时失败会被熔断放大成拒服务)。
+    grep -rqE 'ExecutorFor\(|resilience\.Run\(' --include='*.go' --exclude='*_test.go' "$dir" 2>/dev/null \
+      && report "[自发射] $comp: 接回了执行器链 —— 进程内组件没有可保护的外部依赖"
+    # 绊线二:这个类别不逐调用写日志(缓存调用太频繁,逐调用一行只是噪音)。
+    grep -rqE 'RegisterAppTag\([^)]*"access"' --include='*.go' --exclude='*_test.go' "$dir" 2>/dev/null \
+      && report "[自发射] $comp: 出现了访问日志 tag —— 这个类别不逐调用写日志"
+
+    CLASSIFIED="$CLASSIFIED $comp"
   done
 }
 
@@ -1106,8 +1137,9 @@ check_cloud_join() {
 
 check_emitter
 check_instrument_hygiene
-check_registry
+check_discovery
 check_config
+check_self_emitting
 check_connection_state
 check_baseline
 check_delegates
@@ -1118,7 +1150,7 @@ check_cloud_join
 # starter-kafka 都这样整族漏掉过。漏检比误报危险得多,故反向兜底。
 #
 # 只认「访问日志 tag」RegisterAppTag(x, "access")。生命周期 tag RegisterAppTag(x, "") 是
-# starter 自己的日志分类,不是访问日志 —— config / registry 族的每操作可观测性委托给
+# starter 自己的日志分类,不是访问日志 —— config / discovery 族的每操作可观测性委托给
 # cloud/observability 与 cloud/discovery,本来就没有 per-starter 访问日志,不该被算作漏检。
 #
 # 谓词是「有插桩迹象」,不是「有 access tag」:后者只覆盖自己发访问日志的 starter,

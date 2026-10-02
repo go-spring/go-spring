@@ -118,7 +118,7 @@ multi-tenancy, Kvrocks' namespace) are out of scope and need a custom driver.
 
 ## Core Features
 
-The [example.go](example/example.go) program demonstrates and asserts three core Redis operations:
+The [main.go](example/main.go) program demonstrates and asserts three core Redis operations:
 
 * **String SET/GET** — write a value with `Set(...)` and read it back with `Get(...)`.
 * **INCR counter** — reset a key with `Del(...)` and then atomically increment it via `Incr(...)`.

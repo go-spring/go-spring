@@ -16,7 +16,7 @@
 ## 1. 完整工程示例
 
 example 内嵌 mock admin（仅够注册与触发的 REST），让 触发→执行→回调 全链路本地跑通——
-即 [example/example.go](example/example.go)。生产环境把 `admin-addresses` 指向真实
+即 [example/main.go](example/main.go)。生产环境把 `admin-addresses` 指向真实
 xxl-job-admin。文件树：
 
 ```
@@ -143,7 +143,7 @@ gs.Run()
 - **端口必填、无默认**："an executor server must be reachable by the admin to receive
   trigger callbacks, so the port is an explicit operator decision"（config.go:37-41）。
 - **协议手写、无 SDK**："It speaks the xxl-job executor protocol to an admin ... over
-  plain HTTP, hand-rolled (no third-party SDK) — see DESIGN"（config.go:25-27）。
+  plain HTTP, hand-rolled (no third-party SDK)"（config.go:25-27）。
 - **任务跑独立 goroutine、ctx 可取消**："`/kill` can interrupt a long task; a panic in a
   task is recovered through the shared goutil panic chain"（executor.go:17-21；执行路径用
   `goutil.SafeRun` 包裹，executor.go:167-169）。
@@ -216,7 +216,7 @@ curl -s ":9999/log?logId=1001&fromLineNum=0" ; echo
 handler，触发后向 `/kill` POST `{"jobId":1}`——任务观察到 ctx 取消，完成回调上报中断。
 运行中任务按 `jobId` 记账（admin 对 /kill 与 /idleBeat 用的键）；触发参数里的 `logId`
 只透传到 `/api/callback` 载荷与 `/log`。example 用 `jobId=2, logId=2002` 触发并按
-jobId kill，证明二者分离（`example/example.go` 的 "kill round trip OK"）。
+jobId kill，证明二者分离（`example/main.go` 的 "kill round trip OK"）。
 
 ### 4.4 失败上报
 

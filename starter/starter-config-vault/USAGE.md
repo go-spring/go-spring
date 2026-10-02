@@ -353,7 +353,7 @@ Design suspects (for the audit ledger; first three carried over from the previou
 5. `scheme` rides in the query string (`?scheme=https`) instead of accepting a real
    `vault://host/...` / `https://host/...` URL form — easy to miss, no inline hint.
 6. Example drift: `example/check.sh` exports `VAULT_TOKEN` but not
-   `GS_CONFIG_DECRYPT_AES_KEY`, and `example.go` declares an unused `aesKey` const plus an
+   `GS_CONFIG_DECRYPT_AES_KEY`, and `main.go` declares an unused `aesKey` const plus an
    init comment claiming it sets env vars it does not set — the ENC-decryption leg of the
    smoke test cannot pass as scripted; fix the script or the init.
 7. No health indicator, no metrics, dedicated log tag `_app_config_vault`: staleness is

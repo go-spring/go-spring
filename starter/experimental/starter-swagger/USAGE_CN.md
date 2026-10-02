@@ -66,7 +66,7 @@ spring.swagger.title=Greeter API Docs
 spring.swagger.assetBaseURL=https://unpkg.com/swagger-ui-dist@5
 ```
 
-**变体 B —— 无 actuator**（即 `example/example.go:43-47`）：bean 同时是普通的 `*UI`
+**变体 B —— 无 actuator**（即 `example/main.go:43-47`）：bean 同时是普通的 `*UI`
 （`http.Handler`），自己挂载：
 
 ```go

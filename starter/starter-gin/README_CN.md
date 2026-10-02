@@ -18,7 +18,7 @@ go get go-spring.org/starter-gin
 
 ### 1. 引入 `starter-gin` 包
 
-参见 [example.go](example/example.go) 文件。
+参见 [main.go](example/main.go) 文件。
 
 ```go
 import _ "go-spring.org/starter-gin"
@@ -78,7 +78,7 @@ spring.gin.server.middleware.secureHeaders.referrerPolicy=no-referrer
 ### 3. 提供 `RouterRegister` Bean
 
 starter 负责创建并配置 `*gin.Engine`（release 模式，并安装下列内置中间件），再交给你的注册器。
-在其中挂载路由与中间件即可。参见 [example.go](example/example.go) 文件。
+在其中挂载路由与中间件即可。参见 [main.go](example/main.go) 文件。
 
 ```go
 gs.Provide(func(c *Controller) StarterGin.RouterRegister {
@@ -90,7 +90,7 @@ gs.Provide(func(c *Controller) StarterGin.RouterRegister {
 
 ## 核心功能
 
-[example](example/example.go) 通过真实 HTTP 请求端到端演示了三项能力：
+[example](example/main.go) 通过真实 HTTP 请求端到端演示了三项能力：
 
 * **中间件**：starter 默认安装 Recovery、Tracing、Metrics、AccessLog（合并进一个 Observe 中间件，外加 RequestID 与可选的 CORS/Gzip/SecureHeaders）；注册器再加一个自定义中间件，会在每个响应上写入
   `X-App: go-spring` 头。

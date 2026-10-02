@@ -141,7 +141,7 @@ func (s *BankService) purchase(ctx context.Context, cost, qty int, failStock boo
 ```
 
 （`openDB` 与 `gs.Provide(newBankService)` 的接线在
-[example/example.go](example/example.go)——直接照抄；每个 sqlite 句柄设
+[example/main.go](example/main.go)——直接照抄；每个 sqlite 句柄设
 `MaxOpenConns(1)`，避免共享内存库被每连接复制。）
 
 **conf/app.properties** —— 完整带注释的配置面（两个 key 均为默认值，写出来便于发现）：

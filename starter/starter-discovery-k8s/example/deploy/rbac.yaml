@@ -1,0 +1,38 @@
+# RBAC for EndpointSlice-mode discovery. DNS mode needs none of this; apply it
+# only when running with `spring.discovery.k8s.<name>.mode=endpointslice`.
+#
+# The consumer Pod runs as the "discovery-k8s" ServiceAccount, which is granted
+# get/list/watch on endpointslices in the "default" namespace — the minimum the
+# client-go informer requires. Widen to a ClusterRole/ClusterRoleBinding only if
+# you discover Services across namespaces.
+#
+#   kubectl apply -f rbac.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: discovery-k8s
+  namespace: default
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: discovery-k8s-endpointslices
+  namespace: default
+rules:
+  - apiGroups: ["discovery.k8s.io"]
+    resources: ["endpointslices"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: discovery-k8s-endpointslices
+  namespace: default
+subjects:
+  - kind: ServiceAccount
+    name: discovery-k8s
+    namespace: default
+roleRef:
+  kind: Role
+  name: discovery-k8s-endpointslices
+  apiGroup: rbac.authorization.k8s.io

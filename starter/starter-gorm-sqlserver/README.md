@@ -50,7 +50,7 @@ err := s.DB.Raw("SELECT @@VERSION").Scan(&version).Error
 
 ## Core Features
 
-The [example.go](example/example.go) file demonstrates three core GORM features against SQL Server:
+The [main.go](example/main.go) file demonstrates three core GORM features against SQL Server:
 
 * **AutoMigrate**: create the table from a Go struct via `s.DB.AutoMigrate(&KV{})` and verify with
   `s.DB.Migrator().HasTable(&KV{})`.

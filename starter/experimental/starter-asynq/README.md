@@ -84,3 +84,20 @@ executor chain that sees a whole call, retries included — so beside the call-l
 `messaging.client.attempt.duration` one, plus the `messaging.client.active_requests` gauge, the
 `resilience.client.calls` counter and an access log tagged `_app_asynq_access`. All of it is a no-op
 unless `starter-otel` installs providers.
+
+## Design Notes
+
+* **The worker is a `gs.Server`, not a `gs.Runner`.** Go-Spring's `gs.Runner` is a
+  startup-time, must-not-block interface; a long-running consumer belongs on
+  `gs.Server`, so the worker never blocks startup and stops gracefully. It drives
+  asynq's `Start` + wait-on-ctx rather than `asynq.Server.Run`, whose own signal
+  handler would race Go-Spring's shutdown.
+* **Register handlers any time before the worker runs.** `RegisterHandler` may be
+  called after the constructor (for example from your own `Init`): the mux is built
+  lazily on first use and shared with the running server.
+* **The payload is your own `[]byte`.** Serialization, retry/queue policy (asynq
+  `Options` pass through unchanged) and cron scheduling are asynq's own concerns —
+  configure them through asynq's API, not starter config.
+* **Panics are recovered by asynq, not the starter.** asynq's processor guard
+  recovers handler panics; the starter deliberately does not wrap handlers a second
+  time.

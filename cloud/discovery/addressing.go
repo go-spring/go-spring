@@ -42,7 +42,7 @@ type Addressing struct {
 	ServiceName string `value:"${service-name:=}"`
 
 	// Discovery names the discovery backend bean that resolves ServiceName
-	// (bean name = "<backend>.<name>", registered by a registry starter).
+	// (bean name = "<backend>.<name>", registered by a discovery starter).
 	// Empty means unset: no discovery backend is wired, and the entry must
 	// not route by service-name alone. Falls back to the family-wide
 	// ${<family>.default.discovery} via the starter's wiring, not this tag.

@@ -152,3 +152,16 @@ See [`example/`](example) for a runnable demo exercising `fixed-rate`,
 ```bash
 cd example && ./check.sh
 ```
+
+## Design Notes
+
+* **The schedule lives in code, deliberately.** There are no per-job schedule
+  keys — the only configuration is `spring.scheduler.enabled`. A job's cadence is
+  part of what the job *is*; a retunable cadence is an ops knob, which is what a
+  job platform (`starter-xxl-job`) is for.
+* **Cron is 5-field with 1-minute granularity** (`min hour dom month dow`). The
+  example's smoke window deliberately does not fire cron — it only verifies
+  wiring.
+* **Multi-replica de-duplication is strict max-concurrency = 1.** Every fire
+  re-attempts the lock and the loser skips that fire; it is not "one replica owns
+  the job" — a replica that lost one fire can win the next.

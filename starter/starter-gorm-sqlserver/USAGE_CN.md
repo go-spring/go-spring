@@ -42,7 +42,7 @@ require (
 )
 ```
 
-**main.go**（节选自 `example/example.go`）：
+**main.go**（节选自 `example/main.go`）：
 
 ```go
 package main

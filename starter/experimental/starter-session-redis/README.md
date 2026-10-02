@@ -115,3 +115,22 @@ config.
 * **Secure ids** — 256 bits of `crypto/rand`, so ids are unguessable.
 * **Fail-fast configuration** — a missing `client` refuses to boot instead of
   surfacing on the first session read.
+
+## Design Notes
+
+* **This starter is storage only.** Cookie parsing, lazy allocation, write-back and
+  the `Manager` middleware live in `cloud/experimental/session`; this starter maps one
+  config entry to a `SessionStore` and nothing more.
+* **One instance per named Redis client.** A `SessionStore` reuses the
+  `*redis.Client` bean named by `client=`; the client's lifecycle belongs to
+  `starter-go-redis`, so there is no destroy hook here.
+* **Sessions are stored as JSON.** The store implements the narrow `ByteStore` seam
+  and is lifted by `FromByteStore`, which JSON-encodes
+  `sessionData{Attributes, CreatedAt}` — so session attributes must be
+  JSON-serializable.
+* **Lifetime is the Redis key TTL.** Each save writes a key TTL; Redis enforces
+  expiry and sliding renewal, and `redis.Nil` maps to a miss — no separate reaper
+  runs.
+* **The session cookie is always HttpOnly.** `Manager` offers no toggle: a
+  JS-readable session cookie is essentially always a bug, and a `bool` zero value
+  could not distinguish an explicit `false`.

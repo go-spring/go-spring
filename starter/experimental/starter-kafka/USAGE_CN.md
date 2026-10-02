@@ -336,7 +336,7 @@ conf 里的 `driver` 指治理的 `spring.governance.driver` 选择规则源，�
 ### 4.1 健康（应用侧 indicator）
 
 starter 不注册 indicator；应用自己导一个（如 §1 / example-cloudnative
-[example.go:76-97]）：
+[main.go:76-97]）：
 
 ```bash
 curl -s :9370/readyz | jq .          # 组件 "kafka:a"，readiness+startup 组，critical

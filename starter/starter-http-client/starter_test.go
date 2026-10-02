@@ -20,6 +20,8 @@ import (
 	"testing"
 
 	"go-spring.org/cloud/security"
+	"go-spring.org/spring/conf"
+	"go-spring.org/stdlib/flatten"
 	"go-spring.org/stdlib/testing/assert"
 )
 
@@ -65,4 +67,25 @@ func TestTLSConfigPassthrough(t *testing.T) {
 	c := Config{Addr: "10.0.0.1:8080", TLS: security.TLSConfig{Enabled: true, ServerName: "svc.internal"}}
 	cfg := c.toTransportConfig(nil)
 	assert.That(t, cfg.TLS.ServerName).Equal("svc.internal")
+}
+
+// An entry inherits every key it does not define from the family-wide
+// spring.http-client.default bucket — one value at a time, so an entry that
+// tweaks one leaf of a struct still gets the struct's other leaves.
+func TestEntriesInheritFamilyDefaults(t *testing.T) {
+	p := flatten.WithFallback(flatten.NewPropertiesStorage(flatten.NewProperties(map[string]string{
+		"spring.http-client.default.discovery":          "consul.main",
+		"spring.http-client.default.tls.ca-file":        "/etc/ca.pem",
+		"spring.http-client.instances.svc.service-name": "user-svc",
+		"spring.http-client.instances.svc.tls.enabled":  "true",
+	})), "spring.http-client.instances", "spring.http-client.default")
+
+	var m map[string]Config
+	assert.Error(t, conf.Bind(p, &m, "${spring.http-client.instances}")).Nil()
+
+	c := m["svc"]
+	assert.That(t, c.ServiceName).Equal("user-svc")   // the entry's own leaf
+	assert.That(t, c.Discovery).Equal("consul.main")  // inherited leaf
+	assert.That(t, c.TLS.Enabled).True()              // the entry's own leaf
+	assert.That(t, c.TLS.CAFile).Equal("/etc/ca.pem") // inherited sibling leaf
 }

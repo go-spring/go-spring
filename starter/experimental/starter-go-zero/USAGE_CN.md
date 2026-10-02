@@ -1,8 +1,8 @@
 # starter-go-zero 使用说明 — 参考手册
 
 伞包使用参考，覆盖两个子 server 包（`rest/`、`zrpc/`）与内部日志桥。概览见
-[README_CN.md](README_CN.md)。锚定可运行示例 [rest/example/](rest/example/example.go)、
-[zrpc/example/](zrpc/example/example.go) 及 Jaeger 支撑的可观测示例 `rest/example-otel/`、
+[README_CN.md](README_CN.md)。锚定可运行示例 [rest/example/](rest/example/main.go)、
+[zrpc/example/](zrpc/example/main.go) 及 Jaeger 支撑的可观测示例 `rest/example-otel/`、
 `zrpc/example-otel/`（各带 `docker-compose.yml`）。**go-zero 自身语义（rest 路由、zrpc 服务治理、
 logx、DevServer）见 [go-zero 官方文档](https://go-zero.dev/docs/)** —— 本文只写 Go-Spring 增量：
 激活 key、bean 接线、etcd 发布、日志桥、优雅退出。

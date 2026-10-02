@@ -35,6 +35,10 @@ func init() {
 	// additionally wired when server.enabled is true (default off — a
 	// long-running worker is an opt-in, per the starter conventions).
 	gs.Module(gs.OnProperty("spring.asynq.instances"), func(r gs.BeanProvider, p flatten.Storage) error {
+		// Any key an instance does not define falls back to the family-wide
+		// "default" bucket: spring.asynq.default.<k> is the value every
+		// instance inherits unless it sets its own.
+		p = flatten.WithFallback(p, "spring.asynq.instances", "spring.asynq.default")
 		return conf.BindEach(p, "${spring.asynq.instances}", func(name string, c Config) error {
 			// The Driver bean is selected by the entry's ${driver} key: unset →
 			// "?" (nullable by-type — injects the single Driver bean when one
@@ -122,8 +126,8 @@ func newServer(ctx *gs.ContextProvider, c Config, d Driver) (*Server, error) {
 		ShutdownTimeout: c.ShutdownTimeout,
 		// Errors and panics inside a handler are asynq's to recover and retry;
 		// a handler error is reported via ErrorHandler and a panic is recovered
-		// by asynq's own guard. We keep our own reporting out of the hot path —
-		// see DESIGN for the boundary.
+		// by asynq's own guard, so we keep our own reporting out of the
+		// hot path.
 	})
 	return &Server{srv: srv}, nil
 }

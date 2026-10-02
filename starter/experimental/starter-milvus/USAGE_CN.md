@@ -1,7 +1,6 @@
 # starter-milvus 使用说明 — 参考手册
 
-详细使用参考。概述见 [example/README_CN.md](example/README_CN.md)（starter 级 README 目前放在
-example/ 下）。所有行为声明均已对照 starter 源码（`starter.go`、`config.go`、`client.go`、`guard.go`、`observe.go`、`health.go`）与可运行的
+详细使用参考。概述见 [README_CN.md](README_CN.md)。所有行为声明均已对照 starter 源码（`starter.go`、`config.go`、`client.go`、`guard.go`、`observe.go`、`health.go`）与可运行的
 [example/](example/) 核验——下文方括号为 file:line 抽查点。**Milvus 语义与 milvus-sdk-go v2 API 属于
 [Milvus 官方文档](https://milvus.io/docs/install-go.md)
 （[SDK](https://github.com/milvus-io/milvus-sdk-go)）**——本文只写 go-spring 增量。
@@ -65,7 +64,7 @@ func main() { gs.Run() }
 ```
 
 **service.go** — 注入 wrapper，跑一次真实向量往返（与冒烟验证过的
-[example/example.go](example/example.go) 同构）：
+[example/main.go](example/main.go) 同构）：
 
 ```go
 package service
@@ -275,7 +274,7 @@ grep "round trip" app.log    # check.sh grep 的 marker（"Milvus round trip OK:
 | 启动期报 `Unauthenticated` | 开了鉴权但 `username`/`password` 缺失或错误 | 两半都配；⚠ 只配一半会被静默忽略。 |
 | 启动期 list collections 失败但服务端可达 | `database` 不存在 | `database` 指向已存在的库（Milvus ≥2.3）。 |
 | 重启后 `NewCollection` 失败 | 上次运行已建同名集合 | 先 drop，或容忍该错误（example 的 check.sh 用固定名）。 |
-| Search 结果为空 | 查询前漏了 `Flush` + `LoadCollection`（SDK 语义） | 先 flush 再 load，同 example/example.go:80-85。 |
+| Search 结果为空 | 查询前漏了 `Flush` + `LoadCollection`（SDK 语义） | 先 flush 再 load，同 example/main.go:80-85。 |
 | 查询正常但健康 DOWN | 指示器的 `ListCollections` 需要与 client 相同的库/鉴权 | 看 /readiness 里组件的错误体。 |
 | Milvus 操作无 trace/指标/访问日志 | 流量绕开守卫（直接用原生 client）；治理关闭**不**会如此——关治理只停保护、观测仍在 | 走 client 的受 guard 覆盖的方法（Query/Search 等）；直方图另需 `starter-otel`。 |
 
@@ -290,7 +289,7 @@ grep "round trip" app.log    # check.sh grep 的 marker（"Milvus round trip OK:
 
 设计嫌疑清单（审计台账——保留并扩充）：
 
-- starter 级 README/DESIGN/schema.json 放在 example/ 而非模块根（家族不对称：其他
+- `schema.json` 放在 example/ 而非模块根（家族不对称：其他
   starter 放根目录）。
 - 健康指示器每实例默认注册（`health=false` 可关）；启动探活为 opt-in（`ping=true`）——即
   redigo 拆成 `health.enabled`/`startup-ping` 的那两个旋钮。

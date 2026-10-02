@@ -19,7 +19,7 @@ participate in the server lifecycle.
 ## 1. Complete worked project
 
 Four jobs — fixed-rate, fixed-delay, cron, and a lock-guarded fixed-rate — exactly
-[example/example.go](example/example.go). File tree:
+[example/main.go](example/main.go). File tree:
 
 ```
 demo/

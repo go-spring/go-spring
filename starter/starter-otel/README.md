@@ -245,3 +245,21 @@ per-component instrumentation code.
 
 The starter registers the providers as process-global stoppers (`gs.RegisterStopper`), so on
 shutdown the buffered spans and metrics flush and the exporters close cleanly.
+
+## Design Notes
+
+* **One provider pair per process.** The `TracerProvider` and `MeterProvider`
+  are OTel process globals — singletons by design; a second installer (another
+  starter doing the same) would race.
+* **Shutdown flushes after everything else stops.** The providers are registered
+  as process-global stoppers that run only after every server has stopped and
+  the container has closed; the final flush context carries no deadline, so the
+  last batch waits for export instead of being cut off by a shutdown timeout.
+* **A hard kill loses buffered data.** `Shutdown` is the only flush point: on
+  SIGKILL / `os.Exit` / a server whose graceful shutdown never returns, traces
+  lose up to one BatchSpanProcessor queue (default 2048 spans / 5 s) and metrics
+  up to one PeriodicReader interval (default 60 s). The pull-based Prometheus
+  exporter keeps no buffer, so it loses nothing.
+* **Runtime metrics are an opt-in extra on the same MeterProvider**, so
+  `MeterProvider.Shutdown` tears them down too — there is no separate stop hook
+  to manage.

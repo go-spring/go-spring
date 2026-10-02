@@ -40,6 +40,10 @@ func init() {
 	// paired with a Name + Destroy hook carrying the call-site file:line for
 	// diagnostics.
 	gs.Module(gs.OnProperty("spring.oauth2.client.instances"), func(r gs.BeanProvider, p flatten.Storage) error {
+		// Any key an instance does not define falls back to the family-wide
+		// "default" bucket: spring.oauth2.client.default.<k> is the value every
+		// instance inherits unless it sets its own.
+		p = flatten.WithFallback(p, "spring.oauth2.client.instances", "spring.oauth2.client.default")
 		return conf.BindEach(p, "${spring.oauth2.client.instances}", func(name string, c Config) error {
 			r.Provide(newClient,
 				gs.IndexArg(1, gs.ValueArg(name)),

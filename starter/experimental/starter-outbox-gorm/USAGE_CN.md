@@ -76,7 +76,7 @@ type Service struct{ db *gorm.DB }
 func newService(db *gorm.DB) *Service { return &Service{db: db} }
 
 // CreateOrder 在同一个数据库事务里写订单 AND 发事件。共享同一事务正是该模式的
-// 全部意义：两行要么一起提交，要么都不提交（example.go 的 rollback 断言验证）。
+// 全部意义：两行要么一起提交，要么都不提交（main.go 的 rollback 断言验证）。
 func (s *Service) CreateOrder(order *Order, payload []byte) error {
     return s.db.Transaction(func(tx *gorm.DB) error {
         if err := tx.Create(order).Error; err != nil {
@@ -121,7 +121,7 @@ cd starter/experimental/starter-outbox-gorm/example && ./check.sh
 
 example 自断言：已提交事务恰好投递其消息；回滚的事务什么都不投递；flaky 目的地在
 最后一次允许的尝试上成功；poison 目的地落入 `poison.dlq` 且带 `x-dlq-retries: 3`；
-终态表内为 2 sent / 1 dead / 0 pending（example.go:159-236）。
+终态表内为 2 sent / 1 dead / 0 pending（main.go:159-236）。
 
 ---
 
@@ -241,7 +241,7 @@ config.go:29-63；归一化（钳制）来自 outbox.go:132-153。
 
 example 运行时（或你自己的服务）：一个事务里下订单后提交、另一个在 `Publish` 之后
 回滚。观察 broker：只有已提交的消息到达；`SELECT status, count(*) FROM
-outbox_message GROUP BY status` 无幻影行。example 断言的正是这一点（example.go:159-172）。
+outbox_message GROUP BY status` 无幻影行。example 断言的正是这一点（main.go:159-172）。
 
 ### 4.2 带退避的重试
 

@@ -75,7 +75,7 @@ All keys live under `spring.lock.instances.etcd.<name>`:
 | `username`      | `""`      | etcd auth username                               |
 | `password`      | `""`      | etcd auth password                               |
 | `dial-timeout`  | `5s`      | initial connect timeout / `ping=true` startup probe budget |
-| `ttl`           | `30s`     | lease TTL per acquired lock (min 1s, seconds)    |
+| `ttl`           | `30s`     | lease TTL per acquired lock (whole seconds, rounded up, min 1s) |
 | `key-prefix`    | `/lock/`  | prefix prepended to every lock key               |
 | `tls.enabled`   | `false`   | enable TLS                                       |
 | `tls.cert-file` | `""`      | client certificate (mutual TLS)                  |
@@ -120,3 +120,16 @@ logger.lock_access.type=Logger
 logger.lock_access.level=WARN
 logger.lock_access.tag=_app_lock_access
 ```
+
+## Design Notes
+
+* **Self-contained client — there is no `client=` key.** Unlike the Redis backend,
+  which reuses the application's `*redis.Client`, an etcd cluster used only for
+  coordination is common, so the lock builds its own `clientv3.Client` from the bound
+  config and closes it on destroy.
+* **The TTL is normalized to whole seconds.** etcd rejects sub-second session TTLs, so
+  the configured TTL is rounded **up** to a whole second (minimum 1s); `0` or a
+  negative value falls back to the `30s` default.
+* **`renew-interval` does not apply here.** etcd's `concurrency.Session` keeps the
+  lease alive on its own, so there is no renewal knob to tune — that setting serves
+  the consul and redis backends only.

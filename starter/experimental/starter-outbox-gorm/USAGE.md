@@ -80,7 +80,7 @@ func newService(db *gorm.DB) *Service { return &Service{db: db} }
 
 // CreateOrder writes the order AND its event in ONE database transaction.
 // That shared transaction is the whole point of the pattern: either both rows
-// commit, or neither does (verified by example.go's rollback assertion).
+// commit, or neither does (verified by main.go's rollback assertion).
 func (s *Service) CreateOrder(order *Order, payload []byte) error {
     return s.db.Transaction(func(tx *gorm.DB) error {
         if err := tx.Create(order).Error; err != nil {
@@ -126,7 +126,7 @@ cd starter/experimental/starter-outbox-gorm/example && ./check.sh
 The example self-asserts: a committed transaction delivers exactly its message; a rolled-back
 one delivers nothing; a flaky destination succeeds on the last permitted attempt; a poison
 destination lands in `poison.dlq` with `x-dlq-retries: 3`; final table states are 2 sent /
-1 dead / 0 pending (example.go:159-236).
+1 dead / 0 pending (main.go:159-236).
 
 ---
 
@@ -253,7 +253,7 @@ Coupling notes:
 With the example running (or your own service): create one order in a transaction that
 commits, and one that the handler rolls back after `Publish`. Observe the broker: only the
 committed message arrives; `SELECT status, count(*) FROM outbox_message GROUP BY status`
-shows no phantom rows. The example asserts exactly this (example.go:159-172).
+shows no phantom rows. The example asserts exactly this (main.go:159-172).
 
 ### 4.2 Retry with backoff
 

@@ -92,3 +92,17 @@ func init() {
 （含重试）的点。除 call 级 `db.client.operation.duration` 直方图外，每次
 调用还多一条 attempt 级的 `db.client.attempt.duration` 直方图，以及 tag 为
 `_app_tdengine_access` 的访问日志。未引入 `starter-otel` 时全部为 no-op。
+
+## 设计说明
+
+* **DSN 刻意保持整体。** `dsn` 是驱动的统一格式（`user:pass@ws(host:port)/db`），不拆成
+  host/port/user 字段，因此驱动自身的参数面（`?readTimeout=…`）原样透传。
+* **TDengine 没有事务。** 提升上来的 `Begin`/`BeginTx` 委托给驱动，由它报错——不要基于
+  `database/sql` 事务来构建。
+* **守卫落在 driver 连接层。** 限流、熔断与故障注入包裹每条池化连接上的每次
+  `ExecContext`/`QueryContext`，因此所有调用方——包括架在池上的 ORM——都被覆盖，无需记得用
+  `Guarded*` 助手。
+* **并非 `database/sql` 能表达的一切都可用。** STMT 参数绑定未被建模（需要时直接用 SDK），
+  超级表/无模式写入仍是原生 SQL。DSN 指向单个 taosAdapter，因此没有连接级负载均衡。
+* **服务端版本有要求。** driver-go v3.8.2 在 websocket 路径上需要 TDengine ≥ 3.3.6.0；
+  更老的服务端会在启动探活（`ping=true`）时报驱动的版本错误，否则在首次使用时暴露。

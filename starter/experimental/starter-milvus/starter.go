@@ -34,6 +34,10 @@ func init() {
 	// under the same name — and to attach the file:line of this registration to
 	// the bean for diagnostics.
 	gs.Module(gs.OnProperty("spring.milvus.instances"), func(r gs.BeanProvider, p flatten.Storage) error {
+		// Any key an instance does not define falls back to the family-wide
+		// "default" bucket: spring.milvus.default.<k> is the value every
+		// instance inherits unless it sets its own.
+		p = flatten.WithFallback(p, "spring.milvus.instances", "spring.milvus.default")
 		return conf.BindEach(p, "${spring.milvus.instances}", func(name string, c Config) error {
 			r.Provide(newClient,
 				gs.IndexArg(1, gs.ValueArg(c)),

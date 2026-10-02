@@ -236,7 +236,7 @@ have (an admin handler, a signal):
 if err := guard.Reload(); err != nil { /* bad edit: old script still running */ }
 ```
 
-Drill (exactly what `example/example.go:118-131` asserts):
+Drill (exactly what `example/main.go:118-131` asserts):
 
 1. Edit `guard.lua` to also `deny(403, "hello disabled")` on `/hello`.
 2. Call `Reload()` — success: subsequent requests get 403 on `/hello`, no restart.

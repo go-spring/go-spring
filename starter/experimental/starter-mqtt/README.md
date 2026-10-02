@@ -53,7 +53,7 @@ _ = token.Error()
 
 ## Core Features
 
-The [example](example/example.go) demonstrates a pub/sub round-trip: subscribe to a
+The [example](example/main.go) demonstrates a pub/sub round-trip: subscribe to a
 topic at QoS 1, publish a message to it, and assert the payload is delivered back to
 the subscription handler. It also checks `Client.IsConnected()` before publishing.
 

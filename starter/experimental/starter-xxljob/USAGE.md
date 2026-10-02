@@ -17,7 +17,7 @@ in config.go:30-41), so a half-configured instance fails at startup, not at firs
 ## 1. Complete worked project
 
 The example embeds a mock admin (just enough REST to register and trigger) so the whole
-trigger→run→callback path runs locally — exactly [example/example.go](example/example.go).
+trigger→run→callback path runs locally — exactly [example/main.go](example/main.go).
 Production points `admin-addresses` at a real xxl-job-admin. File tree:
 
 ```
@@ -148,7 +148,7 @@ gs.Run()
 - **Port is required, no default**: "an executor server must be reachable by the admin to
   receive trigger callbacks, so the port is an explicit operator decision" (config.go:37-41).
 - **Protocol hand-rolled, no SDK**: "It speaks the xxl-job executor protocol to an admin ...
-  over plain HTTP, hand-rolled (no third-party SDK) — see DESIGN" (config.go:25-27).
+  over plain HTTP, hand-rolled (no third-party SDK)" (config.go:25-27).
 - **Tasks run on their own goroutine with cancellable ctx**: "`/kill` can interrupt a long
   task; a panic in a task is recovered through the shared goutil panic chain" (executor.go:17-21;
   the run path wraps the fn in `goutil.SafeRun`, executor.go:167-169).
@@ -223,7 +223,7 @@ trigger it, then POST `{"jobId":1}` to `/kill` — the task observes ctx cancell
 completion callback reports the interruption. Running jobs are tracked by `jobId` (the key the
 admin uses for /kill and /idleBeat); the trigger's `logId` is only carried through to the
 `/api/callback` payload and `/log`. The example proves the split by triggering
-`jobId=2, logId=2002` and killing by jobId (`example/example.go`, "kill round trip OK").
+`jobId=2, logId=2002` and killing by jobId (`example/main.go`, "kill round trip OK").
 
 ### 4.4 Failure reporting
 

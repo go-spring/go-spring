@@ -15,7 +15,7 @@ go get go-spring.org/starter-mqtt
 
 ### 1. 引入 `starter-mqtt` 包
 
-参见 [example.go](example/example.go) 文件。
+参见 [main.go](example/main.go) 文件。
 
 ```go
 import _ "go-spring.org/starter-mqtt"
@@ -33,7 +33,7 @@ spring.mqtt.instances.b.broker=tcp://127.0.0.1:1883
 
 ### 3. 注入 MQTT 客户端
 
-参见 [example.go](example/example.go) 文件。每个具名实例都会以该名称注册为一个
+参见 [main.go](example/main.go) 文件。每个具名实例都会以该名称注册为一个
 `mqtt.Client` bean，按名称注入所需实例即可。
 
 ```go
@@ -46,7 +46,7 @@ type Service struct {
 
 ### 4. 使用 MQTT 客户端
 
-参见 [example.go](example/example.go) 文件。客户端在启动时建立连接、在关闭时断开连接，
+参见 [main.go](example/main.go) 文件。客户端在启动时建立连接、在关闭时断开连接，
 因此可以直接进行发布和订阅。
 
 ```go
@@ -57,7 +57,7 @@ _ = token.Error()
 
 ## 核心功能
 
-[example](example/example.go) 演示了一次发布/订阅往返：以 QoS 1 订阅某个 topic，
+[example](example/main.go) 演示了一次发布/订阅往返：以 QoS 1 订阅某个 topic，
 向其发布一条消息，并断言消息被投递回订阅回调。发布前还会检查 `Client.IsConnected()`。
 
 连接层事件（连接、连接丢失、重连中）会被桥接进 go-spring 日志。

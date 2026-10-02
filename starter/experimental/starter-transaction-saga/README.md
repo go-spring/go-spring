@@ -139,3 +139,18 @@ free of an otel dependency.
 ## License
 
 Apache 2.0. See [LICENSE](../../../LICENSE).
+
+## Design Notes
+
+* **Recovery is backward-only.** After a crash every in-flight step is
+  compensated in reverse; forward recovery is not implemented. A committed saga
+  deletes its log, while a compensated or failed one keeps the terminal log for
+  post-mortem.
+* **A failed saga-log write is swallowed.** Once a saga has advanced, a
+  log-write error does not fail the call — failing the whole operation over a
+  logging hiccup would only make things worse.
+* **A nil `Compensate` is `CompensationFailed`, not a silent skip.** An
+  irreversible step is a decision the application must own explicitly.
+* **Retries are the shared resilience `default` driver's job.** `RetryPolicy`
+  is `resilience.ClientPolicy`, so retry behaviour and tuning live in the
+  resilience config rather than in a private retry loop.

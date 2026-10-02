@@ -103,7 +103,7 @@ func main() {
 ```
 
 (In the checked-in example the bean handle is captured directly from `gs.Provide`; the
-structure above is the same flow. See [example/example.go](example/example.go).)
+structure above is the same flow. See [example/main.go](example/main.go).)
 
 **conf/app.properties** — the complete, commented surface:
 

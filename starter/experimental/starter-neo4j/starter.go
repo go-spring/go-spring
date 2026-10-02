@@ -40,6 +40,10 @@ func init() {
 	// registered under the same name — and to attach the file:line of this
 	// registration to the bean for diagnostics.
 	gs.Module(gs.OnProperty("spring.neo4j.instances"), func(r gs.BeanProvider, p flatten.Storage) error {
+		// Any key an instance does not define falls back to the family-wide
+		// "default" bucket: spring.neo4j.default.<k> is the value every
+		// instance inherits unless it sets its own.
+		p = flatten.WithFallback(p, "spring.neo4j.instances", "spring.neo4j.default")
 		return conf.BindEach(p, "${spring.neo4j.instances}", func(name string, c Config) error {
 			// newClient bundles the injected governance beans into the
 			// [cloud.ClientParams] it hands the driver, which passes it to

@@ -83,7 +83,7 @@ gs.Provide(func(c *Controller) StarterEcho.RouterRegister {
 
 ## Core Features
 
-The [example](example/example.go) demonstrates three features exercised end-to-end via real HTTP:
+The [example](example/main.go) demonstrates three features exercised end-to-end via real HTTP:
 
 * **Middleware** — the starter installs Recovery, RequestID and AccessLog by default (plus opt-in
   CORS/Gzip/SecureHeaders); the register adds a custom middleware that

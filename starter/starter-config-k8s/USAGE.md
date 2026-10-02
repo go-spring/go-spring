@@ -189,7 +189,7 @@ starters. Before the app has started, `TriggerRefresh` is a harmless no-op
 
 There are **no `value:` tags in this starter** — its entire configuration surface is the
 import-string grammar plus the core `spring.config.import` key. The only `value:` tag in the
-tree is the *example's* `value:"${demo.message:=none}"` (example/example.go), which binds a
+tree is the *example's* `value:"${demo.message:=none}"` (example/main.go), which binds a
 top-level absolute key flattened out of the ConfigMap document.
 
 ### 3.1 Import-string grammar

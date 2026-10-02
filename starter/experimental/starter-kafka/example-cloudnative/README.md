@@ -27,7 +27,7 @@ brokers (`spring.kafka.instances.a.brokers`), so there is no service-name to res
 ## Layout
 
 ```
-example.go               the flagship app (container + self-test)
+main.go               the flagship app (container + self-test)
 conf/app.properties      kafka, resilience, actuator config
 check.sh                 docker-gated smoke test
 docker-compose.yml       single-node KRaft Kafka

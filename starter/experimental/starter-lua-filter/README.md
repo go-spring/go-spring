@@ -20,7 +20,7 @@ go get go-spring.org/starter-lua-filter
 
 ### 1. Import the `starter-lua-filter` Package
 
-Refer to the [example.go](example/example.go) file.
+Refer to the [main.go](example/main.go) file.
 
 ```go
 import _ "go-spring.org/starter-lua-filter"
@@ -39,7 +39,7 @@ spring.lua.filter.instances.guard.script=./scripts/guard.lua
 
 The filter is injected by its config sub-key (`guard`) and wraps your business
 handler. Handing the wrapped handler to a `*gs.HttpServeMux` places the filter
-in front of the server. Refer to the [example.go](example/example.go) file.
+in front of the server. Refer to the [main.go](example/main.go) file.
 
 ```go
 gs.Provide(func(guard *StarterLuaFilter.Filter) *gs.HttpServeMux {
@@ -80,7 +80,7 @@ The script sees these globals, re-bound per request:
 
 ## Core Features
 
-The [example.go](example/example.go) program demonstrates and asserts four
+The [main.go](example/main.go) program demonstrates and asserts four
 core filter behaviors:
 
 * **Pass-through + mutate** — a normal `/hello` request reaches the handler and
@@ -116,3 +116,16 @@ logger.lua_filter.type=Logger
 logger.lua_filter.level=WARN
 logger.lua_filter.tag=_app_lua_filter
 ```
+
+## Design Notes
+
+* **A gateway-style HTTP filter, not a general scripting engine.** The scope is deliberate —
+  raw request/response manipulation at the `net/http` layer; in-process dynamic logic belongs
+  in Go middleware, CEL or WASM.
+* **The host API is the sandbox boundary.** Scripts see only `req` / `resp` / `deny` / `log`;
+  widening that surface widens the sandbox, so the API stays intentionally small.
+* **Pure Go, no CGO.** gopher-lua keeps the starter cross-compilation-friendly, with no C
+  toolchain needed.
+* **Compile once, pool per request.** The script is compiled to a proto at construction; each
+  request borrows a sandboxed VM from a pool and returns it, so a request pays a rebind, not a
+  compile.

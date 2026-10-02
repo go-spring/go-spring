@@ -102,3 +102,15 @@ func init() {
     gs.Provide(func() StarterS3.Driver { return iamDriver{} })
 }
 ```
+
+## 设计说明
+
+* **凭证是静态且必填的。** 内置 driver 以固定的 access key/secret 认证，两个 key
+  都挂 `expr` 必填——公开（匿名）桶需要自定义 `Driver`。轮换凭证是改配置，不是
+  运行期调用。
+* **不接服务发现。** 一个 S3 实例是一个端点，而不是可发现的服务：与数据库／
+  消息队列客户端不同，这里没有 `service-name`／discovery 四件套，`lb://` 也不适用。
+* **客户端无物可关。** minio-go 的 client 没有 `Close`，因此实例停机只释放
+  resilience 执行器——没有套接字或连接池需要排空。
+* **`bucket-lookup` 的两种写法。** minio-go v7.0.74 里 `virtual-host` 是 `dns` 的
+  别名；两种写法都可用，且在 7.x 上保持有效。

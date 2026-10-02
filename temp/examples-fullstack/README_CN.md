@@ -38,7 +38,7 @@ client --POST /api/orders (Bearer token)--> gateway :9440
 
 - **服务发现**:网关的 `lb://order` 和订单的 `order→inventory` 调用都经由一个
   Consul 支撑的 `discovery.Discovery`(`internal/consuldisc`)解析,以名字 `consul`
-  注册一次。实例通过 `starter-registry-consul` 自行注册。
+  注册一次。实例通过 `starter-discovery-consul` 自行注册。
 - **配置中心**:`fullstack.order.charge-fail` 从 Nacos 导入到一个 `gs.Dync[bool]`。
   在线发布它会让下一笔订单进入补偿路径——无需重启。
 - **分布式事务**:`starter-transaction-saga`。步骤 1 预留库存(补偿即释放);

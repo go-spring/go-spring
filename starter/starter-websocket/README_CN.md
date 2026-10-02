@@ -19,7 +19,7 @@ go get go-spring.org/starter-websocket
 
 ### 1. 引入 `starter-websocket` 包
 
-参见 [example.go](example/example.go) 文件。使用空导入即可——只需其 `init()` 注册
+参见 [main.go](example/main.go) 文件。使用空导入即可——只需其 `init()` 注册
 `*websocket.Upgrader` 提供者：
 
 ```go
@@ -73,7 +73,7 @@ spring.http.server.idleTimeout=0
 
 ## 核心功能
 
-[example](example/example.go) 端到端演示了三个能力，`runTest` 客户端会逐一断言：
+[example](example/main.go) 端到端演示了三个能力，`runTest` 客户端会逐一断言：
 
 * **文本回显 (`/echo`)** —— 完成 WebSocket 升级后，通过 `conn.ReadMessage` /
   `conn.WriteMessage` 原样回写每一帧文本消息。

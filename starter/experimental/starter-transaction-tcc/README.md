@@ -84,7 +84,7 @@ func (s *OrderService) Place(ctx context.Context, txID string) (tcc.Result, erro
 
 The coordinator tries every participant in order. If all succeed it confirms
 them all; if any `Try` fails it cancels the tried ones in reverse. See
-[example/example.go](example/example.go) for a runnable stock + balance demo
+[example/main.go](example/main.go) for a runnable stock + balance demo
 covering both the commit and rollback paths.
 
 ### 4. Or declare it as `@GlobalTransactional`
@@ -148,3 +148,19 @@ scan. (No durable-Store starter is shipped for TCC yet — mirror
 ## License
 
 Apache 2.0. See [LICENSE](../../../LICENSE).
+
+## Design Notes
+
+* **Confirm is post-commit.** A `Confirm` failure does not surface on the
+  top-level error return (reserved for `Try` failures); it is reported through
+  `StatusConfirmFailed` and `Result.Errors`.
+* **A malformed participant fails fast.** All three phases must be non-nil and
+  participant names must be unique; both are validated before any side effect,
+  at `Execute` entry.
+* **Recovery is decision-log-driven.** The commit decision (`Confirming`) is
+  persisted *before* Confirm runs; on restart, `Confirming` resumes forward
+  Confirm, `Trying`/`Cancelling` run backward Cancel, and a terminal or absent
+  record is an idempotent no-op.
+* **A durable Store must return every non-terminal transaction** from `Pending`
+  — TCC has more in-flight statuses (`Trying`/`Confirming`/`Cancelling`) than
+  Saga's `Running`-only scan.

@@ -34,7 +34,7 @@ go get go-spring.org/starter-admin-ui
 
 ### 1. 导入包
 
-参见 [example.go](example/example.go)。
+参见 [main.go](example/main.go)。
 
 ```go
 import _ "go-spring.org/starter-admin-ui"
@@ -132,6 +132,20 @@ JSON 载荷示例:
 | `spring.admin-ui.interval` | `10s` | 轮询周期,同时驱动页面自动刷新。 |
 | `spring.admin-ui.timeout` | `3s` | 单个实例单个端点的 HTTP 超时。 |
 | `spring.admin-ui.title` | `Go-Spring Admin` | 看板标题,便于给不同环境的看板打上环境名。 |
+
+## 设计说明
+
+* **实例列表是静态的。** 不接 discovery——目标集合就是
+  `spring.admin-ui.instances`，面向已知的小规模实例集（私有化／临时 bring-up），
+  不是全集群扫描。
+* **启动期就服务。** 与 actuator 一致，它不阻塞在就绪信号上，运维可以观察聚合
+  状态翻转。
+* **每轮 sweep 上限 = 轮询周期。** 因此拥塞实例绝不会让相邻 sweep 交叠。
+* **部分失败照常渲染，不抛错。** `/info` 失败被忽略；`/readiness` 的非 2xx
+  响应体仍会解码，让状态胶囊正确渲染；只有 `/health` 不可达才写入该行 `Error`。
+  单个目标坏掉不会拖垮看板。
+* **刷新的下限与稳定顺序。** 亚秒 `interval` 会被钳到 HTML meta refresh 的 1s
+  下限；行按 base URL 排序，刷新之间不抖动。
 
 ## License
 

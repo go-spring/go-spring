@@ -16,7 +16,7 @@ go get go-spring.org/starter-nats
 
 ### 1. 引入 `starter-nats` 包
 
-参见 [example.go](example/example.go) 文件。
+参见 [main.go](example/main.go) 文件。
 
 ```go
 import _ "go-spring.org/starter-nats"
@@ -35,7 +35,7 @@ spring.nats.instances.work.url=nats://127.0.0.1:4222
 
 ### 3. 注入 NATS 连接
 
-参见 [example.go](example/example.go) 文件。每个具名实例都会以该名称注册为一个
+参见 [main.go](example/main.go) 文件。每个具名实例都会以该名称注册为一个
 `*Conn` bean；注入的 bean 以委托形式重新导出原生连接的方法
 （`Publish`/`Subscribe`/`Request` 等），因此可以直接在其上调用；
 当该实例启用 JetStream 时，`Conn.JetStream` 非空。
@@ -50,7 +50,7 @@ type Service struct {
 
 ### 4. 使用连接
 
-参见 [example.go](example/example.go) 文件。连接在启动时建立、在关闭时优雅排空（drain），
+参见 [main.go](example/main.go) 文件。连接在启动时建立、在关闭时优雅排空（drain），
 因此可以直接进行发布和订阅。
 
 ```go
@@ -60,7 +60,7 @@ reply, _ := s.Conn.Request("demo.rpc", []byte("ping"), time.Second)
 
 ## 核心功能
 
-[example](example/example.go) 针对真实服务自断言了四项功能：核心发布/订阅、请求-应答、
+[example](example/main.go) 针对真实服务自断言了四项功能：核心发布/订阅、请求-应答、
 队列组（每条消息只投递给一个成员）、以及 JetStream（向 stream 发布后再拉回消息）。运行前
 还会检查 `HealthCheck(ctx, conn)` 报告连接处于可用状态。
 
@@ -175,3 +175,15 @@ pub/sub 请用 `PublishMsgContext`/`Consume`，需要可追踪的消息信封请
 | `connect-timeout` | `5s` | 初次拨号的超时上限。 |
 | `jetstream.enabled` | `false` | 在 `Conn.JetStream` 上暴露 JetStream 上下文。 |
 | `health` | `true` | 为该实例贡献一个 `health.Indicator`（`nats:<name>`）。 |
+
+## 设计说明
+
+* **护栏在调用点按需启用。** 原生 `Publish`/`Request` 不受影响；resilience（限流 +
+  熔断）只经 `PublishGuarded`/`RequestGuarded` 辅助方法生效——NATS 无可拒绝式
+  middleware 缝隙，静默包裹 `Publish` 会改变其语义。
+* **限流/熔断状态按连接而非按 subject 聚合。** resilience executor 的 resource 键
+  就是连接 bean 名，故同一连接上的所有 subject 共享同一份限流/熔断状态。
+* **JetStream 复用同一条连接。** `jetstream.enabled=true` 时上下文由同一条
+  `*nats.Conn` 构建；构建失败则关闭原生连接并启动失败——不存在第二条连接。
+* **重连即可靠性机制。** `max-reconnects=-1` 表示无限客户端重连，没有外部
+  supervisor；`*Conn` bean 在重连后依然可用。

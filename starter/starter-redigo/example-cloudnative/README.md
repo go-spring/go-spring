@@ -22,7 +22,7 @@ a connection pool — **discovery**, **resilience**, **health** and
 ## Layout
 
 ```
-example.go               the flagship app (container + self-test)
+main.go               the flagship app (container + self-test)
 conf/app.properties      discovery, resilience, actuator config
 check.sh                 docker-gated smoke test
 ```

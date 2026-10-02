@@ -79,3 +79,15 @@ starter **只声明**每次受守卫入队的身份（`observe.go`）：span 名
 attempt 级的 `messaging.client.attempt.duration` 直方图，外加 `messaging.client.active_requests`
 gauge、`resilience.client.calls` 计数器，以及 tag 为 `_app_asynq_access` 的访问日志。未安装
 `starter-otel` 提供的 provider 时全部为空操作。
+
+## 设计说明
+
+* **worker 是 `gs.Server`，不是 `gs.Runner`。** Go-Spring 的 `gs.Runner` 是启动期、禁止阻塞的接口；
+  长期运行的消费者应归 `gs.Server`，因此 worker 不会阻塞启动、并能优雅停机。它用 asynq 的
+  `Start` + 等 ctx，而非 `asynq.Server.Run`——后者自装的信号处理器会与 Go-Spring 的关机流程竞争。
+* **handler 可在 worker 运行前的任意时刻注册。** `RegisterHandler` 可以在构造函数之后调用（例如从
+  你自己的 `Init` 里）：mux 首次使用时惰性构建，并与运行中的 server 共享。
+* **payload 是你自己的 `[]byte`。** 序列化、重试/队列策略（asynq `Options` 原样透传）与定时任务都是
+  asynq 自身的事——通过 asynq 的 API 配置，而非 starter 配置。
+* **panic 由 asynq 恢复，而非 starter。** asynq 的 processor guard 会恢复 handler panic；
+  starter 刻意不二次包裹 handler。

@@ -23,7 +23,7 @@ no port, no server, only beans. The `spring.transaction` namespace is shared wit
 
 A one-process "order service" reserving stock and freezing balance as ONE TCC transaction.
 The second participant's Try deliberately fails (amount too large), so the first participant's
-reservation is cancelled — the exact scenario [example/example.go](example/example.go) asserts.
+reservation is cancelled — the exact scenario [example/main.go](example/main.go) asserts.
 File tree:
 
 ```

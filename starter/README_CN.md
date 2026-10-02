@@ -54,17 +54,18 @@ starter,并通过它们的公开缝提供一整家组织的默认 —— 身份�
 ## 服务发现 / 注册中心
 
 把本实例注册进注册中心，和/或把服务名解析成实时端点。每个后端都配置在
-`${spring.registry.<backend>.<name>}` 命名块下，客户端按 bean 名引用
-（`discovery: consul.main`）。
+`${spring.discovery.<backend>.<name>}` 命名块下，客户端按 bean 名引用
+（`discovery: consul.main`）。发布生命周期本身——那个统一驱动所有中心的
+`Server`——住在 [`cloud/discovery`](../cloud/discovery/README.md)；这里的
+starter 只贡献各自的 `Registry`。
 
 | Starter | 底层库 | 领域 |
 | --- | --- | --- |
-| `starter-registry` | 仅 stdlib | 注册核心：唯一那个把本实例发布进每个已配置中心的 `gs.Server` |
-| `starter-registry-consul` | [consul/api](https://github.com/hashicorp/consul) | Consul agent：注册（TTL 健康检查）+ 发现 |
-| `starter-registry-etcd` | [etcd/client/v3](https://go.etcd.io/etcd) | etcd KV：注册（lease）+ 发现（watch） |
-| `starter-registry-nacos` | [nacos-sdk-go/v2](https://github.com/nacos-group/nacos-sdk-go) | Nacos naming：注册 + 发现（push） |
-| `starter-registry-zookeeper` | [go-zookeeper/zk](https://github.com/go-zookeeper/zk) | ZooKeeper：注册（临时节点）+ 发现 |
-| `starter-registry-k8s` | [client-go](https://github.com/kubernetes/client-go) | K8s Service：**只做发现** —— 平台已经把每个 Pod 注册好了 |
+| `starter-discovery-consul` | [consul/api](https://github.com/hashicorp/consul) | Consul agent：注册（TTL 健康检查）+ 发现 |
+| `starter-discovery-etcd` | [etcd/client/v3](https://go.etcd.io/etcd) | etcd KV：注册（lease）+ 发现（watch） |
+| `starter-discovery-nacos` | [nacos-sdk-go/v2](https://github.com/nacos-group/nacos-sdk-go) | Nacos naming：注册 + 发现（push） |
+| `starter-discovery-zookeeper` | [go-zookeeper/zk](https://github.com/go-zookeeper/zk) | ZooKeeper：注册（临时节点）+ 发现 |
+| `starter-discovery-k8s` | [client-go](https://github.com/kubernetes/client-go) | K8s Service：**只做发现** —— 平台已经把每个 Pod 注册好了 |
 
 ## RPC 框架
 

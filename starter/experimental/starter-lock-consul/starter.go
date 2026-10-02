@@ -39,6 +39,10 @@ func init() {
 	// rule in DESIGN.md) surfaces during bean provisioning with a message that
 	// names the offending instance.
 	gs.Module(gs.OnProperty("spring.lock.instances.consul"), func(r gs.BeanProvider, p flatten.Storage) error {
+		// Any key an instance does not define falls back to the family-wide
+		// "default" bucket: spring.lock.default.<k> is the value every
+		// instance inherits unless it sets its own.
+		p = flatten.WithFallback(p, "spring.lock.instances.consul", "spring.lock.default")
 		return conf.BindEach(p, "${spring.lock.instances.consul}", func(name string, c Config) error {
 			if c.Address == "" {
 				return errutil.Explain(nil, "lock-consul: spring.lock.instances.consul.%s.address is required", name)

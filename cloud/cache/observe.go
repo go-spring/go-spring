@@ -25,9 +25,7 @@ import (
 	"go-spring.org/cloud/observability"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/metric"
-	"go.opentelemetry.io/otel/trace"
 )
 
 // Observability contract.
@@ -63,16 +61,21 @@ const scope = "go-spring.org/cloud/cache"
 // instrumentation can see: a redis GET that returns nil is a successful command
 // down there, and only this layer knows it was a miss.
 //
-// Every signal shares one vocabulary, so a metric and a span always agree:
+// The metric's labels and the attributes this layer contributes to the call's
+// span share one vocabulary:
 //
 //	operation  get | set | delete
 //	status     hit | miss | ok | error
 //
+// It opens no span of its own: the span belongs to the emitter the call ends up
+// under (the backend starter's executor), and this layer contributes to it
+// through the framework's carrier. See [observedCache.observe].
+//
 // No logs: cache calls are high-frequency, so a per-call line would be noise.
 //
 // Two invariants:
-//   - The key is a caller-chosen resource name. It belongs on spans, never on a
-//     metric, where its cardinality is unbounded.
+//   - The key is a caller-chosen resource name. It belongs on the call's span,
+//     never on a metric, where its cardinality is unbounded.
 //   - The duration is the caller-visible one — the backend round trip — and it
 //     is the reason the histogram is here: the backend's own client metric
 //     cannot split hit from miss, and those two have different latency profiles.
@@ -145,21 +148,34 @@ func (o observedCache) Delete(ctx context.Context, key string) error {
 	})
 }
 
-// startSpan opens the operation's client span. The key rides on the span only —
-// see the invariants above.
-func startSpan(ctx context.Context, op, key string) (context.Context, trace.Span) {
-	return otel.Tracer(scope).Start(ctx, op,
-		trace.WithSpanKind(trace.SpanKindClient),
-		trace.WithAttributes(
-			attribute.String("cache.operation", op),
-			attribute.String("cache.key", key),
-		))
+// observe runs fn and reports the outcome.
+//
+// The operation and the key are put on the framework's span-attribute carrier
+// rather than on a span opened here: this layer has no business opening one, and
+// the emitter that owns the span sits BELOW it. The carrier is what closes that
+// gap — it rides the context down, so the span the emitter starts on the way
+// picks the attributes up as it opens.
+//
+// The status is not among them. A miss is only known once fn returns, and by
+// then the span is over; it stays a metric dimension, which is where it drives
+// the hit rate. On the span the outcome is the emitter's own ok/error.
+//
+// fn's error is the outcome that gets reported, and it is returned unchanged.
+func (o observedCache) observe(ctx context.Context, op, key string, fn func(ctx context.Context) error) error {
+	ctx = observability.WithSpanAttributes(ctx,
+		attribute.String("cache.operation", op),
+		attribute.String("cache.key", key))
+
+	start := time.Now()
+	err := fn(ctx)
+	o.record(ctx, op, err, time.Since(start))
+	return err
 }
 
-// statusOf maps an outcome to the status dimension the metric and the span
-// share. ErrMiss is a status of its own: a miss is neither a success nor a
-// backend failure, and folding it into either would hide the hit rate this
-// decorator exists to report.
+// statusOf maps an outcome to the status dimension the metric records. ErrMiss
+// is a status of its own: a miss is neither a success nor a backend failure, and
+// folding it into either would hide the hit rate this decorator exists to
+// report.
 func statusOf(op string, err error) string {
 	switch {
 	case err == nil && op == opGet:
@@ -173,37 +189,15 @@ func statusOf(op string, err error) string {
 	}
 }
 
-// endSpan stamps the outcome on the span — the same status value the metric
-// records, so the two cannot disagree — and closes it.
-func endSpan(span trace.Span, status string, err error) {
-	span.SetAttributes(attribute.String("cache.status", status))
-	if status == statusError {
-		span.SetStatus(codes.Error, err.Error())
-	}
-	span.End()
-}
-
-// record emits the counter and the duration for one finished operation.
-func (o observedCache) record(ctx context.Context, op, status string, start time.Time) {
+// record emits the counter and the duration for one finished operation, under
+// the status its outcome maps to. elapsed is what the caller measured: the
+// window belongs to whoever knows where the operation began.
+func (o observedCache) record(ctx context.Context, op string, err error, elapsed time.Duration) {
 	attrs := metric.WithAttributes(
 		attribute.String("operation", op),
-		attribute.String("status", status),
+		attribute.String("status", statusOf(op, err)),
 	)
 	in := instruments()
 	in.total.Add(ctx, 1, attrs)
-	in.duration.Record(ctx, time.Since(start).Seconds(), attrs)
-}
-
-// observe runs fn under the operation's span and reports the outcome: status is
-// computed once and stamped on both the span and the metric, so the two cannot
-// disagree. fn receives the span's context, so anything it logs lands in the
-// same trace; its error is the outcome that gets reported.
-func (o observedCache) observe(ctx context.Context, op, key string, fn func(ctx context.Context) error) error {
-	start := time.Now()
-	ctx, span := startSpan(ctx, op, key)
-	err := fn(ctx)
-	status := statusOf(op, err)
-	endSpan(span, status, err)
-	o.record(ctx, op, status, start)
-	return err
+	in.duration.Record(ctx, elapsed.Seconds(), attrs)
 }

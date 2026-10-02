@@ -18,7 +18,7 @@ go get go-spring.org/starter-oauth2-client
 
 ### 1. Import the `starter-oauth2-client` Package
 
-Refer to the [example.go](example/example.go) file.
+Refer to the [main.go](example/main.go) file.
 
 ```go
 import _ "go-spring.org/starter-oauth2-client"
@@ -40,7 +40,7 @@ spring.oauth2.client.instances.downstream.timeout=5s
 ### 3. Inject the HTTP Client
 
 The starter registers one `*http.Client` per configuration key, so inject it by
-that name. Refer to the [example.go](example/example.go) file.
+that name. Refer to the [main.go](example/main.go) file.
 
 ```go
 type Service struct {
@@ -50,7 +50,7 @@ type Service struct {
 
 ### 4. Use the HTTP Client
 
-Refer to the [example.go](example/example.go) file. The client obtains the token on
+Refer to the [main.go](example/main.go) file. The client obtains the token on
 the first request and attaches it as `Authorization: Bearer <token>` automatically.
 
 ```go
@@ -59,7 +59,7 @@ resp, err := s.Client.Get("https://api.example.com/resource")
 
 ## Core Features
 
-The [example.go](example/example.go) program starts an in-process OAuth2 token
+The [main.go](example/main.go) program starts an in-process OAuth2 token
 endpoint and a protected resource server, then demonstrates and asserts:
 
 * **Automatic token fetch** — the injected client mints a token via the
@@ -153,3 +153,21 @@ type LoginService struct {
 // url := s.OAuth.AuthCodeURL("state")       // redirect the user here
 // tok, err := s.OAuth.Exchange(ctx, code)   // swap the callback code for a token
 ```
+
+## Design Notes
+
+* **Client side only.** The starter obtains and refreshes tokens; verifying an incoming token
+  belongs to the resource server (`starter-security-jwt`), so this config surface never grows
+  validation knobs.
+* **The two grants never share a bean.** `client_credentials` publishes `*http.Client` +
+  `*TokenSource` under `spring.oauth2.client`, while `authorization_code` publishes
+  `*oauth2.Config` under `spring.oauth2.authcode`; the separate prefixes keep the two config
+  surfaces from bleeding into each other.
+* **Resilience is the outermost transport wrap.** The bearer token is attached first, then the
+  request runs through the `cloud/resilience` executor (retry re-picks the upstream, the breaker
+  keys by logical service name), so every protected attempt is a complete, authenticated
+  request. It is a config-only switch on the same instance, and a transparent pass-through when
+  governance is off.
+* **The token exchange sits outside that wrap.** The executor wraps the returned client's
+  transport, while the library fetches the token on its own path — a flaky IdP is not retried by
+  this client's policy.

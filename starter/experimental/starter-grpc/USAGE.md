@@ -408,7 +408,7 @@ the shared goutil panic chain (`goutil.ReportPanic`) — visible in log and span
 Design suspects (kept from the previous audit, updated):
 
 1. README stale claim that interceptor composition requires handler-layer wrapping —
-   `UseUnaryInterceptor`/`UseStreamInterceptor` + chained interceptors exist (example.go's
+   `UseUnaryInterceptor`/`UseStreamInterceptor` + chained interceptors exist (main.go's
    `interceptedEchoServer` is legacy). *(still open — README text)*
 2. example/conf comment claims a ":9494 default" — there is none; `addr` is required.
 3. Resilience admission covers unary only; stream RPCs skip it (admission.go builds no stream

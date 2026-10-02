@@ -23,7 +23,7 @@ config**.
 ## Layout
 
 ```
-example.go               the flagship app (container + self-test)
+main.go               the flagship app (container + self-test)
 conf/app.properties      mongodb, discovery, resilience, actuator config
 check.sh                 docker-gated smoke test
 ```

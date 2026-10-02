@@ -1,0 +1,277 @@
+# starter-discovery-consul Usage — Reference
+
+Detailed usage reference. Overview: [README.md](README.md). All behavior claims are verified against the
+starter source (`starter.go`, `registry.go`, `config.go`, `discovery.go`, `starter_test.go`,
+`registry_test.go`, `discovery_test.go`) and the runnable
+[example/](example/) (`check.sh` runs unit tests + a docker-compose Consul end-to-end boot).
+**Consul's own semantics (agents, TTL checks, weights, catalog) are
+[Consul documentation](https://developer.hashicorp.com/consul/docs)** — everything below is go-spring's
+increment.
+
+**Model**: config is NAMED BLOCKS — each `spring.discovery.consul.<name>.*` block describes ONE
+Consul agent and becomes ONE backend bean named `consul.<name>` (`starter.go`). The bean implements
+BOTH sides of the naming idiom: `discovery.Registry` (write — collected by the `discoveryServer`
+from the [cloud/discovery](../../cloud/discovery) core, imported transitively, which registers into
+EVERY configured center across backends) and `discovery.Discovery` (read — consumers cite the bean
+name, e.g. `discovery=consul.main`; the bean is lazy). Read and write share the block's client, so
+they can never diverge. There is no default/unnamed block. Registration activates only when
+`spring.discovery.service-name` is set — a pure consumer app configures only connection blocks and
+registers nothing. Multi-center (dual registration, cross-backend mixes) is just more blocks. It
+opens no port — the exported `gs.Server` (in the cloud/discovery core) exists purely to plug
+registration into the app lifecycle.
+
+---
+
+## 1. Complete worked project
+
+Two sides: a **provider** (this starter + a served endpoint) and a **consumer** (any discovery-aware
+client starter resolving through a Consul-backed `discovery.Discovery`). File tree:
+
+```
+demo/
+├── go.mod
+├── main.go
+├── provider.go
+└── conf/
+    └── app.properties
+```
+
+**Prerequisite** (single external dependency): a Consul dev agent —
+
+```bash
+docker run -d --name consul -p 127.0.0.1:8500:8500 hashicorp/consul:1.18 agent -dev -client=0.0.0.0
+```
+
+**go.mod**:
+
+```
+require (
+    github.com/hashicorp/consul/api      latest
+    go-spring.org/spring                 v1.3.x
+    go-spring.org/starter-discovery-consul latest
+    go-spring.org/starter-redigo          latest   // any discovery-aware client starter
+)
+```
+
+**main.go**:
+
+```go
+package main
+
+import (
+    _ "demo/conf"
+    "go-spring.org/spring/gs"
+    _ "go-spring.org/starter-discovery-consul"
+)
+
+func main() { gs.Run() }
+```
+
+**conf/app.properties** (verbatim from `example/conf/app.properties`):
+
+```properties
+spring.app.name=orders-provider
+
+# One named block per Consul agent; each block becomes the backend bean
+# "consul.<name>" serving both registration (via the cloud/discovery core)
+# and discovery.
+spring.discovery.consul.main.address=127.0.0.1:8500
+spring.discovery.consul.main.ttl=10s                        # heartbeat at half this
+spring.discovery.consul.main.deregister-critical-after=30s  # crash auto-cleanup
+
+# The advertised instance (backend-agnostic keys, shared by every center).
+spring.discovery.service-name=orders
+spring.discovery.addr=127.0.0.1:8080
+spring.discovery.weight=100
+spring.discovery.metadata.zone=cn-north
+spring.discovery.metadata.version=v1
+```
+
+**Consumer side.** The starter ships the Consul discovery backend. With the provider config above
+the block's bean (`consul.main`) already serves both halves — nothing more to configure. A client
+starter cites the block's bean name:
+
+```properties
+spring.redis.demo.service-name=orders
+spring.redis.demo.discovery=consul.main   # the block's bean name
+```
+
+A pure consumer app configures ONLY connection blocks (no `service-name`/`addr`) — it registers
+nothing and just cites `discovery=consul.<name>`.
+
+**Verify** (mirrors `example/check.sh`):
+
+```bash
+curl -fsS http://127.0.0.1:8500/v1/status/leader          # agent up (has a host:port)
+go run .                                                  # logs: registered "orders" at 127.0.0.1:8080
+curl -fsS 'http://127.0.0.1:8500/v1/health/service/orders?passing=true'
+# -> one entry, Weights.Passing=100, Meta contains zone/version
+```
+
+Drain check: `curl -X PUT .../v1/agent/service/deregister/orders-127.0.0.1:8080` after stopping, or
+flip the weight via the app's `UpdateWeight` (§2.3) and re-query — `Weights.Passing` becomes 0.
+
+---
+
+## 2. Assembly & timing
+
+Timeline (`starter.go`, `registry.go`, and the cloud/discovery core's `starter.go`):
+
+1. For each `${spring.discovery.consul.<name>}` block the module (`OnProperty("spring.discovery.consul")`,
+   bound via `BindEach`) builds ONE `*api.Client` and, when `ping=true`, probes the agent
+   (`Catalog().Services`, 5s timeout) so a bad address fails startup here, once per block. The bean
+   named `consul.<name>` exports BOTH `discovery.Registry` and `discovery.Discovery` (lazy read half) on that client.
+2. The cloud/discovery core provides `gs.Provide(NewServer).Name("discoveryServer")` conditioned
+   on `spring.discovery.service-name`; its `Registries []discovery.Registry` field slice-collects
+   EVERY backend's registry (consul, etcd, ... mixed). `Run` validates `service-name`/`addr` and
+   ≥1 registry **before** signalling readiness, waits `<-sig.TriggerAndWait()` (the ready-gate:
+   registration happens only after every other server is up), then `Agent().ServiceRegister` into
+   every center with a TTL check and an immediate `UpdateTTL(passing)` (`registry.go`). Log:
+   `registered %q at %s in N discovery center(s)`.
+3. A background heartbeat re-passes the check every `ttl/2` until deregister (`registry.go`);
+   crash safety never depends on Deregister: the process dies → check misses → Consul marks
+   critical after one TTL → auto-dropped after `deregister-critical-after` (`config.go`).
+4. Shutdown: `PreStop` deregisters from **every** center **first** — before the pre-stop delay and
+   before any server stops, so discovery stops handing the instance out while in-flight requests
+   drain (starter-discovery `starter.go`). `Stop` is an idempotent fallback.
+
+### 2.1 Registration write semantics
+
+- Service ID = configured `id`, else `"<service-name>-<addr>"` — restarts replace the same entry
+  (`registry.go`).
+- A negative (misconfigured) weight is normalized at write time: `<0 → 1`. 0 passes through as the
+  drain signal on both write paths, so `weight=0` in config registers a drained instance
+  (`registry.go`, asserted by `registry_test.go TestNormalizeWeight`).
+- `addr` must be `host:port` with a numeric port; anything else fails Register
+  (`registry.go`).
+- The entry carries `Weights{Passing: weight, Warning: 1}` and the TTL check
+  (`registry.go`). Consul routes no traffic to a zero-Passing-weight service — that is the
+  drain mechanism.
+
+### 2.2 WATCH path (consumer side)
+
+`consulDiscovery` (`discovery_consul.go`) keeps each resolved service fresh with a Consul
+blocking query: the first `Resolve` seeds a per-service cache from
+`Health().Service(name, tag, passingOnly=true, nil)`, then a background long poll
+(`WaitIndex` = last seen index, `WaitTime` 5m) delivers the fresh full snapshot on every catalog
+change. A failed poll keeps the stale snapshot and retries after 5s; an agent index reset
+(smaller `LastIndex`) drops the held index so the next query answers immediately. Later Resolves
+are in-memory reads. Weight-0 filtering is the consumer pool's: `excludeDrained` drops
+`Weight == 0` endpoints, falling back to the full set only when every endpoint is drained
+(`cloud/loadbalance/pool.go`).
+
+### 2.3 DRAIN path — UpdateWeight(0)
+
+`Server.UpdateWeight(ctx, 0)` (starter-discovery `starter.go`) → each center's registry looks up
+the last registered value (error if never registered, `registry.go`), maps negative weights to 1
+but passes 0 through (`registry.go`) → re-issues `ServiceRegister` with the new weight.
+`ServiceRegister` is an **upsert on the service ID**, so the existing TTL check and its heartbeat
+goroutine survive unchanged — the entry never leaves discovery (`registry.go`). Consumers' next snapshot sees
+`Weights.Passing = 0` → weight 0 endpoint → `excludeDrained` filters it from every load-balance
+strategy. Restore with `UpdateWeight(ctx, 100)`.
+
+---
+
+## 3. Configuration reference
+
+Two prefixes. `${spring.discovery.consul.<name>.*}` binds ONE agent block each (`config.go`); the
+block name is yours to choose and becomes the backend bean `consul.<name>`.
+`${spring.discovery.*}` binds the advertised instance (starter-discovery `config.go`), shared by
+every center.
+
+| key | type | default | behavior | misconfiguration consequence |
+|-----|------|---------|----------|------------------------------|
+| `spring.discovery.consul.<name>.address` | string | — (required) | Consul HTTP API address; **setting a block activates it** | unset: block fails bind (`address is required`); wrong value with `ping=true`: startup probe fails |
+| `spring.discovery.consul.<name>.scheme` | string | `http` | `http`/`https` for the agent API | mismatch with TLS deployment → connection errors |
+| `spring.discovery.consul.<name>.datacenter` | string | `` | datacenter to register into; empty = agent's | cross-dc mismatch → register/query against wrong dc |
+| `spring.discovery.consul.<name>.token` | string | `` | ACL token for requests | ACL-enabled cluster without token → 403s |
+| `spring.discovery.consul.<name>.namespace` | string | `` | Consul Enterprise namespace | silently wrong partition on CE |
+| `spring.discovery.consul.<name>.ttl` | duration | `15s` | TTL check interval; heartbeat at `ttl/2` | ⚠ too long delays crash detection to ~TTL + `deregister-critical-after` |
+| `spring.discovery.consul.<name>.deregister-critical-after` | duration | `1m` | auto-drop after check critical this long; `0` disables | ⚠ must exceed `ttl` or Consul may drop live instances on a hiccup |
+| `spring.discovery.consul.<name>.ping` | bool | `false` | Probes the agent once at construction (`Catalog().Services`, 5s) and fails startup if unreachable. Off by default so an agent that is not up yet does not block boot; connectivity surfaces on first use. | — |
+| `spring.discovery.consul.<name>.health` | bool | `true` | Contributes a `health.Indicator` bean named `discovery-consul:<name>` probing the agent with a catalog listing (same check as the startup probe). Only instantiated when a collector (e.g. starter-actuator) autowires it. | `false` → the agent's health is invisible to readiness probes |
+| `spring.discovery.service-name` | string | `` | logical service name clients resolve; **its presence is the registration intent signal** | empty: pure consumer; set with no block: Run error `... no discovery center is configured` |
+| `spring.discovery.addr` | string | `` (required when registering) | advertised `host:port` | empty with service-name set: startup error; malformed: Register error (`registry.go`) |
+| `spring.discovery.id` | string | `` | instance ID override; empty derives `<name>-<addr>` | ⚠ duplicate IDs across processes → one entry overwrites the other |
+| `spring.discovery.weight` | int | `100` | advertised weight; negative normalized to 1 at write time | 0 = drained; drains from startup as well as via `UpdateWeight(0)` |
+| `spring.discovery.metadata.*` | map[string]string | empty | instance attributes (zone, version, ...) passed through to discovery Metadata | — |
+
+Discovery needs **no configuration**: each block's bean IS a `cloud/discovery.Discovery` named
+`consul.<name>`; clients cite that bean name (`discovery=consul.main`). The bean is lazy — a
+pure provider never pays for the read half; a pure consumer configures only connection blocks and
+registers nothing. Multi-agent discovery is just multiple blocks — cite whichever agent you want
+to read from. Per-call, `discovery.WithTag` still narrows a query by Consul service tag.
+
+Mapping: `Service.Address:Port` → `Endpoint.Addr` (node address fallback when the service has
+none), `Weights.Passing` → weight, `Meta` → metadata, `Meta["scheme"]` → `Endpoint.Scheme`;
+passing-only queries keep unhealthy instances out of the snapshot.
+
+---
+
+## 4. Verification & failure drills
+
+1. **Register → resolve**: boot the app, `curl '.../v1/health/service/orders?passing=true'` shows
+   the entry with weight and metadata; the example's verify runner resolves the same registration
+   back through the derived `consul` discovery bean and prints
+   `discovered endpoint=... weight=... metadata=...` (`example/main.go`).
+2. **Weight change propagation**: call `server.UpdateWeight(ctx, 0)` (inject the `gs.Server` named
+   `discoveryServer`), re-query the catalog — `Weights.Passing=0`; a consumer pool stops picking the
+   instance on its next snapshot. `UpdateWeight(ctx, 100)` restores it. Unit-asserted in
+   `registry_test.go:73 TestBuildRegistration_AdvertisesDrainWeight`.
+3. **Graceful shutdown drain**: `kill <pid>` → PreStop deregisters before servers stop;
+   `.../v1/health/service/orders` returns empty immediately.
+4. **Instance loss (crash)**: `kill -9 <pid>` → no deregister runs; the check stops being passed and
+   goes critical after ~one TTL (`ttl` default 15s; example uses 10s), then Consul auto-drops the
+   entry after `deregister-critical-after` (example 30s). Watch with
+   `curl -s .../v1/health/service/orders | jq '.[].Checks[0].Status'` — `passing` → `critical` → gone.
+5. **Heartbeat death**: pause the process (`kill -STOP`) — same visible course as a crash; resume
+   (`kill -CONT`) before the critical window and the next heartbeat re-passes the check with no
+   re-registration needed.
+6. **Bad address fail-fast**: set `address=127.0.0.1:9999` and `ping=true`, boot → startup fails at
+   the center probe with `discovery-consul: startup probe failed for 127.0.0.1:9999` (`starter.go`).
+7. **Unregistered UpdateWeight**: calling `UpdateWeight` before Run registers returns
+   `discovery: instance not registered yet` (starter-discovery `starter.go`).
+
+All runtime logs carry the tag `_app_discovery_consul` (`log.RegisterAppTag("discovery_consul", "")`):
+`creating consul registry`, `registering service=...`, `registered %q at %s`, `deregister %q`
+(Warn). Tune verbosity via `logger.<name>.tag=_app_discovery_consul`.
+
+Observability: registration and discovery emit OTel metrics through the global providers — a no-op unless `starter-otel` is imported. `register`, `deregister` and `update_weight` each produce a client span plus a `discovery.operation.duration` record labelled `system`/`operation`/`service`/`status`; `discovery.registration.attempts_total` counts attempts by `reason` and `status`; the `discovery.instance.registered` gauge reads 1 while this instance is published and 0 while it is not, so a failed self-heal lands there instead of only in a log line. The discovery half reports every background cache sync to `discovery.sync_total` and keeps `discovery.cache.age_seconds` (seconds since the snapshot was last confirmed fresh), so a dead watch shows a climbing age rather than a silently stale address list. `reason` is `initial` for the first publish and `self_heal` for the background re-registration.
+
+---
+
+## 5. Troubleshooting
+
+| symptom | cause | fix |
+|---------|-------|-----|
+| startup error `...service-name} and ${spring.discovery.addr} are required` | `service-name` set but `addr` unset | set both (starter-discovery `starter.go`) |
+| `register "orders" ... connection refused` | Consul agent unreachable / wrong address | start agent, fix `address` |
+| entry appears then vanishes ~TTL later while app runs | heartbeat goroutine died or agent unreachable mid-run | check agent health; heartbeat logs nothing — watch the check status |
+| consumer still sends traffic after `UpdateWeight(0)` | consumer snapshot stale (blocking-query interval) | re-query; check the consumer backend maps Weights to Endpoint.Weight |
+| instance not dropped after crash | `deregister-critical-after=0` (disabled) | set a positive value > `ttl` |
+| two processes, only one entry in catalog | derived ID collision (same name+addr) | set distinct `spring.discovery.id` per instance |
+| query with `?passing=true` empty though registered | check went critical (paused/dead process) | drills 4/5; verify `ttl`/heartbeat |
+| `403` / `Permission denied` from agent | ACL enabled, no `token` | set `spring.discovery.consul.token` |
+| restart leaves stale duplicate entry | previous crash auto-drop not yet elapsed | wait `deregister-critical-after`, or deregister manually via API |
+
+---
+
+## 6. Design health
+
+| metric | value |
+|--------|-------|
+| config keys | 7 per block (agent) + 5 instance (`spring.discovery.*`) |
+| required | 1 per block (`address`) + 2 at Run (`service-name`, `addr`) — registration only |
+| quickstart external deps | 1 (Consul agent, docker) |
+| "notes/gotchas" | 4 |
+
+Suspect ledger:
+
+- The blocking query's `WaitTime` (5m) and failure retry interval (5s) are hardcoded, not
+  configuration keys.
+- `Warning` weight hardcoded to 1 (`registry.go`) — not configurable, undocumented in keys.
+- Startup validation happens in Run, not bind time: an empty `service-name` fails only after the app
+  is otherwise up.
+- Drain relies on Consul's Passing-weight semantics; a consumer backend that ignores Weights
+  silently breaks weight-0 drain — the shipped backend maps `Weights.Passing` → `Endpoint.Weight`,
+  but the contract lives only in docs.

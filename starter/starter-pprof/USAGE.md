@@ -68,7 +68,7 @@ spring.pprof.token=s3cr3t
 # spring.pprof.enabled=false
 ```
 
-**Verify** (isomorphic to `example/example.go runTest`):
+**Verify** (isomorphic to `example/main.go runTest`):
 
 ```bash
 go run . -manual &

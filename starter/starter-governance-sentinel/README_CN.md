@@ -96,3 +96,14 @@ sentinel 本身不建模这两者。sentinel 的阻断原因会被映射为中�
 `cloud/resilience` 内置零依赖的 `default` driver,供测试与轻量场景。要在
 生产链路上得到实打实的限流与熔断,请导入本 starter;若无需即可继续使用
 `default`。
+
+## 设计说明
+
+* **本 starter 是引擎，不是缝隙。** 它不决定韧性*施加在哪里*——那是适配器的活：
+  HTTP 客户端经 `resilience.NewRoundTripper` 包，连接拨号经 `resilience.NewDialer`，
+  入站准入中间件由各协议 starter 自建。单靠它本身，不会保护任何一次调用。
+* **规则按 service 懒加载。** sentinel 一切以 service 名为键，故某 service 的
+  策略 → 规则翻译发生在它首次 `Entry` 时，由互斥锁守护；从未被调用的 service 也
+  永远不会装规则。
+* **sentinel 锁死 v1.0.4。** 后续小版本调整了 flow / 熔断规则字段；锁版本让上游
+  回归在此处暴露，而非波及每个适配器。

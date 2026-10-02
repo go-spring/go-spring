@@ -39,7 +39,7 @@ require (
 )
 ```
 
-**main.go**（节选自 `example/example.go`，结构一致）：
+**main.go**（节选自 `example/main.go`，结构一致）：
 
 ```go
 package main

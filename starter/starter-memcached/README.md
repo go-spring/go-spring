@@ -46,7 +46,7 @@ item, err := s.Memcached.Get(ctx, "key")
 
 ## Core Features
 
-The [example.go](example/example.go) program demonstrates and asserts three core Memcached operations:
+The [main.go](example/main.go) program demonstrates and asserts three core Memcached operations:
 
 * **String SET/GET** — write a value with `Set(...)` and read it back with `Get(...)`.
 * **INCR counter** — seed a key with `Set(...)` and then atomically increment it via `Increment(...)`.

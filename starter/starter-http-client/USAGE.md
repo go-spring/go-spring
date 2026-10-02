@@ -61,8 +61,8 @@ import (
 func main() { gs.Run() }
 ```
 
-**backend.go** — in-process backends plus a static discovery registry (stand-in for a real
-registry starter such as starter-registry-etcd):
+**backend.go** — in-process backends plus a static discovery backend (stand-in for a real
+discovery starter such as starter-discovery-etcd):
 
 ```go
 package main
@@ -289,7 +289,7 @@ Keys under `spring.http-client.instances.<name>.*` (cross-checked with
 |-----|------|---------|-------------------------|------------------------------|
 | `addr` | string | "" | Direct mode: `fixedHostTransport` pins every request to this host:port. May be combined with `service-name`, which then stays a pure governance label (no discovery). | Neither set → fail fast "one of addr or service-name is required". |
 | `service-name` | string | "" | Discovery mode: logical name resolved via the named backend; ALWAYS the governance service label when set (discovery or direct mode). With `addr` set it is not a discovery target. | Neither set → fail fast; set without `addr` and without `discovery` → fail fast. |
-| `discovery` | string | "" | Names a discovery backend bean (bean name = label, registered by a registry starter). Falls back to `${spring.http-client.default.discovery}` when unset. Required iff `service-name` set without `addr` (config.go validate). | Missing at both levels → fail fast. Unknown name → wiring-time error listing the registered beans (starter.go newRoute). |
+| `discovery` | string | "" | Names a discovery backend bean (bean name = label, registered by a discovery starter). Falls back to `${spring.http-client.default.discovery}` when unset. Required iff `service-name` set without `addr` (config.go validate). | Missing at both levels → fail fast. Unknown name → wiring-time error listing the registered beans (starter.go newRoute). |
 | `observability.level` | string | brief | Access-log gate for the executor wrap: off / brief / detailed (observe/config.go:50). | brief is ON by default — expect one log record per protected call. |
 | `observability.maxArgBytes` | int | 512 | Argument truncation in those logs. | Large bodies silently truncated. |
 | `observability.skipOps` | []string | "" | Ops excluded from access logging. | |
@@ -350,7 +350,7 @@ kill %1
 
 Switch the rule's `balancer` from `round_robin` to `least_conn` in conf/governance.properties, or add a
 third endpoint, to see the spread change — the pool is retuned in place, no restart;
-deregistering an instance (with a real registry) drops it from rotation: the backend's snapshot
+deregistering an instance (with a real discovery backend) drops it from rotation: the backend's snapshot
 loses it and the loader-bound `Pool` stops picking it (httpx.go:200-221).
 
 ### 4.3 Breaker drill — open, fast-fail, recover
@@ -423,7 +423,7 @@ whole stack, not just the injector.
 |--------|-------|
 | Config keys | 9 (6 route + 3 observability) |
 | Required | 0 by tag; 1 XOR pair + conditional discovery enforced at validate |
-| Quickstart external deps | 0 (a registry only for discovery mode) |
+| Quickstart external deps | 0 (a discovery center only for discovery mode) |
 | "Watch out" entries | 8 |
 
 Design suspects (for the audit ledger):

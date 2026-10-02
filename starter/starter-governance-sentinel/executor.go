@@ -109,7 +109,7 @@ func (e *sentinelExecutor) ensureRules() error {
 	if e.policy.MaxConcurrent > 0 {
 		// The isolation rule lives under the bulkhead-suffixed resource name so it is
 		// acquired once for the whole Execute (see Execute below) and held across
-		// retries, matching the builtin's bulkhead-scope contract (DESIGN.md §3).
+		// retries, matching the builtin's bulkhead-scope contract.
 		isoResource := service + isoSuffix
 		if _, err := isolation.LoadRulesOfResource(isoResource, []*isolation.Rule{{
 			Resource:   isoResource,
@@ -198,7 +198,7 @@ func (e *sentinelExecutor) Execute(ctx context.Context, fn func(context.Context)
 
 	// Bulkhead: one Entry under the suffixed resource, held for the whole
 	// Execute (retries included) via defer. This restores the bulkhead-scope
-	// invariant the builtin upholds and DESIGN.md §3 documents.
+	// invariant the builtin upholds.
 	if e.policy.MaxConcurrent > 0 {
 		isoEntry, blockErr := sentinel.Entry(e.service+isoSuffix, sentinel.WithTrafficType(base.Outbound))
 		if blockErr != nil {

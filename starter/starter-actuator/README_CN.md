@@ -22,7 +22,7 @@ go get go-spring.org/starter-actuator
 
 ### 1. 引入包
 
-参考 [example.go](example/example.go)。
+参考 [main.go](example/main.go)。
 
 ```go
 import _ "go-spring.org/starter-actuator"
@@ -74,7 +74,7 @@ readinessProbe:
 
 健康指示器就是一个 bean：把任何东西（redis 客户端、db 连接池）导出为
 `health.Indicator`，它就自动进 `/readyz` 的聚合——零接线，组件也不用 import 本
-starter。写法见 [example](example/example.go)。
+starter。写法见 [example](example/main.go)。
 
 ### 指标挂载
 

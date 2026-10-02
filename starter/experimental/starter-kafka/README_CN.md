@@ -15,7 +15,7 @@ go get go-spring.org/starter-kafka
 
 ### 1. 引入 `starter-kafka` 包
 
-参考 [example.go](example/example.go) 文件。
+参考 [main.go](example/main.go) 文件。
 
 ```go
 import _ "go-spring.org/starter-kafka"
@@ -35,7 +35,7 @@ spring.kafka.instances.b.brokers=127.0.0.1:9092
 
 ### 3. 注入 Kafka 客户端
 
-参考 [example.go](example/example.go) 文件。每个具名实例都会以该名称注册为一个
+参考 [main.go](example/main.go) 文件。每个具名实例都会以该名称注册为一个
 `*kgo.Client` bean,按名称注入所需实例即可。
 
 ```go
@@ -48,7 +48,7 @@ type Service struct {
 
 ### 4. 使用 Kafka 客户端
 
-参考 [example.go](example/example.go) 文件。同一个 `*kgo.Client` 即可生产与消费。
+参考 [main.go](example/main.go) 文件。同一个 `*kgo.Client` 即可生产与消费。
 业务流量走 starter 提供的两个受管入口,而不是客户端自己的方法:治理守卫、`messaging.*`
 指标与访问日志都在那里 —— franz-go 的 hook 只能观察一条 record,包不住一次调用。
 

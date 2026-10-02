@@ -76,6 +76,16 @@ lifecycle by exporting a `gs.Server` bean.
   `HandlerRegister`, ...); the starter creates and configures the engine and its
   transport. Registration is the seam.
 - **No `gs.Module` wrapper.** Server bean registration is a direct `gs.Provide(...)` call in `init()`. The port configuration itself is the startup gate — no `enabled` toggle or `OnBean[ServiceRegister]` condition is needed.
+- **A non-listener long-running unit is still a `gs.Server`.** A message consumer, a
+  callback server, or a poller that runs for the life of the process registers as a
+  `gs.Server` so its `Stop` runs on shutdown — never a `gs.Runner`, whose `Run` must
+  return quickly. When the wrapped library's own `Run` installs a signal handler,
+  drive its `Start` and block on the context instead, so it cannot race Go-Spring's
+  own shutdown.
+- **Operator-facing servers serve during startup.** An operator or diagnostic server
+  (a dashboard, a bean/config inspector) answers before the ready signal rather than
+  waiting on it, so an operator can watch the boot. A dev-facing docs UI instead
+  mounts on the existing app/actuator mux rather than owning a port of its own.
 
 ### 2.2 Client starters (driver mode + multi-instance)
 
@@ -112,7 +122,7 @@ Database, cache, and message-queue clients (`go-redis`, `gorm-*`, `mongodb`,
     modules (`starter-gorm-mysql`, `-postgres`, `-sqlite`, `-sqlserver`,
     `-clickhouse`) all register `gormcore.DB`, so they qualify the bean name as
     `<dialect>.<name>` (`gormcore.Module` takes the qualifier from the config
-    prefix's tail, overridable via `Dialect.BeanPrefix`); registry's
+    prefix's tail, overridable via `Dialect.BeanPrefix`); discovery's
     `etcd.<name>` / `nacos.<name>` and session-redis' / batch-redis' `redis.<name>`
     are the same shape.
 
@@ -146,15 +156,29 @@ Database, cache, and message-queue clients (`go-redis`, `gorm-*`, `mongodb`,
     it (`gs.OnProperty("spring.X.instances")`) and bind with
     `conf.BindEach(p, "${spring.X.instances}", ...)`. A process that sets only
     `${spring.X.default}` configures no client and must not activate the starter.
+  - **`default` is inherited through the binder.** Wrap the storage before
+    binding — `p = flatten.WithFallback(p, "spring.X.instances",
+    "spring.X.default")` — so a key an instance does not define reads the same
+    key under `default` with the instance name dropped. One value is overridden
+    at a time: an instance's leaf replaces that leaf, and the default still
+    supplies the values around it (the other members of the same struct, the
+    other entries of the same map). A list is inherited **whole** — as soon as
+    an instance defines one element, the list is the instance's. A wiring-time
+    selection cannot use this: `${...driver}` names a *bean*, not a value, so it
+    keeps its explicit `${instances.<name>.driver:=${default.driver:=?}}` chain.
   - **Where it applies.** The buckets are for families whose direct children are
     *user-chosen* instance names. A family that owns its child namespace keeps its
-    own shape: `spring.registry.*` holds this process's registration identity
+    own shape: `spring.discovery.*` holds this process's registration identity
     (`service-name`, `addr`, `weight`, ...) beside its center blocks
-    `spring.registry.<backend>.<name>`, and no user-controlled name can collide
+    `spring.discovery.<backend>.<name>`, and no user-controlled name can collide
     there (the `<backend>` segment is the framework's, and the user's `<name>` is
-    one level deeper). Forces that are not per-instance-overridable do **not**
-    belong in `default` either — same-family process policy like registry's
-    identity sits at the family prefix, process-wide policy in its own namespace
+    one level deeper). A family that adds a framework level *inside* `instances`
+    keeps one `default` at the family prefix anyway — `spring.lock.instances.
+    <backend>.<name>` inherits `spring.lock.default.*`, shared by every backend —
+    and the wrap takes that backend's instances path as its first argument.
+    Forces that are not per-instance-overridable do **not** belong in `default`
+    either — same-family process policy like discovery's identity sits at the
+    family prefix, process-wide policy in its own namespace
     (`spring.governance.*`).
   - The invariant either way: **never let a user-chosen name share a level with a
     framework key.** A single-instance family (`spring.http.server`) keeps its keys
@@ -174,7 +198,7 @@ Database, cache, and message-queue clients (`go-redis`, `gorm-*`, `mongodb`,
   seam through which service discovery is injected (the driver builds the
   dialer). Optional capabilities go on *separate* interfaces (e.g. go-redis's
   `ClusterDriver`) so existing custom drivers keep compiling.
-- **A client starter that needs governance gets it from its own imports.** No
+- **A client starter whose component reaches out gets governance from its own imports.** No
   governance import is needed: each authority is registered by the package that
   **owns it** — `cloud/resilience` registers `*resilience.Manager`,
   `cloud/loadbalance` `*loadbalance.Manager`, `cloud/fault` `*fault.Injector` — and
@@ -187,8 +211,7 @@ Database, cache, and message-queue clients (`go-redis`, `gorm-*`, `mongodb`,
   `spring.governance.enabled=false` (or binding no source), **not the absence of
   a bean**. A nullable injection would turn "the user forgot the import" into a
   silent degradation (governance looks on, is not) — exactly the error class this
-  removes. Regression guard:
-  `starter-bigcache`'s `TestBlankImportProvidesGovernanceBeans`.
+  removes.
   (Blank-import it in non-test code only; `gs.RunTest` forces every injection
   nullable via `spring.force-autowire-is-nullable`, which is gs's behaviour, not
   an exception to this rule.)
@@ -200,6 +223,22 @@ Database, cache, and message-queue clients (`go-redis`, `gorm-*`, `mongodb`,
   — degrades to `resilience.Unmanaged`: still observed, plus a one-time "no
   protection is in effect" warning. Outside the container is therefore never a
   silent hole.
+- **A component with nothing to protect emits its own signals.** The rule above is
+  for a client of an external service; a component whose dependency lives in the
+  same process is the exception, and `starter-bigcache` is its only member. A rate
+  limit, breaker or retry has nothing to act on there — and a breaker tripped by a
+  transient local failure (an oversized entry) would reject calls that would have
+  hit, since the "shared downstream is down" premise does not hold. So bigcache
+  injects no governance bean, `Driver.CreateClient` takes no
+  `cloud.ClientParams`, and it does not route through the executor chain at all:
+  it opens the operation's span and records its own metrics
+  (`bigcache.operation.total` / `.duration`), and writes no access log — a cache
+  call is high-frequency, and it is not a call to anything outside the process.
+  Its span still rides the span-attribute carrier, so a layer above it contributes
+  its attributes with no cooperation from either side. This is the one exception
+  to the one-emitter rule below; `scripts/check-observability.sh` carries it as a
+  section of its own, so it neither fails every family's check nor drifts back
+  onto the chain unnoticed.
 - **Startup connection check.** Where the client library allows it, the
   constructor performs a bounded probe (e.g. Redis `PING` with `DialTimeout`) so
   a misconfiguration surfaces at boot, not on first request.
@@ -236,11 +275,49 @@ Database, cache, and message-queue clients (`go-redis`, `gorm-*`, `mongodb`,
     single emitter (its `Metric` prefix, its bounded attrs, its unbounded detail,
     its access `LogTag`); the emitter itself lives in `cloud/resilience` (§3).
   - `health.go` — the health-indicator constructor, in the starter's root
-    package (a single-function subpackage is not worth the import cost).
+    package (a single-function subpackage is not worth the import cost). Omitted
+    by a starter whose component has nothing to probe (bigcache, §3).
   This split mirrors the concern boundary established across the ecosystem and is
   what every existing client starter (go-redis, gorm-*, mongodb, elasticsearch,
   neo4j, ...) now follows — new starters should copy it verbatim. §4 checklist
   item 4 references this skeleton.
+- **`gs.Group` has no registry access — use `gs.Module` where it cannot reach.**
+  `gs.Group` returns one bean per bucket entry and cannot `.Name(...)` /
+  `.Export(...)` or inject other beans. A starter that must export a per-instance
+  seam bean, or whose constructor must inject additional beans, hand-writes a
+  `gs.Module` over the instances bucket instead.
+- **A transport fixed at construction gets a mutable indirection, and only the
+  overload-sensitive path is guarded.** When the wrapped SDK fixes its transport or
+  connector at construction, the starter installs a swappable holder and points it
+  at its declaring-plus-resilience transport *after* construction — the declaring
+  layer wraps the resilience one, never its base. A path the SDK already retries on
+  a background goroutine stays unguarded, so protection is not counted twice.
+- **Drain a library's error channel into the log.** When a wrapped library exposes
+  an error channel, the starter drains it into the framework log rather than
+  re-exporting it through the wrapper: a channel nobody drains eventually blocks the
+  writer.
+- **Put the guard where the library's seam is.** A `database/sql`-based client guards
+  at the driver connection, so every caller — an ORM on the same pool included — is
+  covered without a `Guarded*` helper. When a library exposes no interceptor and its
+  send takes no ctx, the starter instruments through call-site seams: wrap the
+  producer, run each consumed record through a helper, and let trace context ride
+  the record headers.
+- **Messaging-driver convention.** One producer per publisher, one push consumer per
+  subscriber, and a handler error triggers redelivery.
+- **A process-wide driver bean serves every instance.** Because the `Driver` bean is
+  process-wide, a custom driver delegates to the bundled default to keep per-instance
+  behaviour. Wrapping a library that is itself process-wide (one client per process)
+  makes the starter single-instance, overriding the multi-instance default.
+- **Declarative clients ride code generation, not runtime reflection.**
+- **Resilience wraps outside the load balancer.** Wrapping *inside* would let a retry
+  reuse the endpoint the balancer already picked, so the round-tripper sits outside
+  the `Pool` and every retry re-picks.
+- **Client ownership splits by backend.** A backend whose store exposes no shared
+  client owns and closes its own client on destroy; a backend that reuses the
+  application's client closes nothing.
+- **Each backend adapts the shared TTL knob to what its store accepts.**
+- **A stateless client registers neither a health indicator nor a destroy hook.** A
+  client that holds no connection has nothing to probe and nothing to close.
 
 ### 2.3 Contributor starters (no port of their own)
 
@@ -255,6 +332,14 @@ that the application mounts onto infrastructure it already runs.
 - **The bean type is the seam.** Switching between two implementations of the
   same capability is a one-line blank-import change; see the shared-prefix rule
   in §3.
+- **A filter or middleware supplies a wrapped mux.** The framework installs its
+  default `*gs.HttpServeMux` under `OnMissingBean`, so a filter or middleware
+  contributes by providing a mux that wraps it.
+- **A JWT verifier never accepts HMAC for an asymmetric key source.**
+- **A session cookie is always HttpOnly**, with no toggle.
+- **Compiled Go has no refreshable-script-bean culture.** In-process dynamic logic
+  belongs to middleware, CEL, or WASM, so a Lua filter starter is a gateway-edge
+  tool rather than a general component.
 
 ### 2.4 Global / infrastructure starters
 
@@ -272,6 +357,13 @@ facilities.
   `spring.governance.driver=sentinel` switches every executor at once — inbound admission
   included, since one `Driver` answers for both directions. No port, no keys of
   its own.
+- **A global starter installs its globals during `gs.Module` setup and tears them
+  down via `gs.RegisterStopper`.** Setup runs before any bean constructor; the
+  stopper runs after every server has stopped and the container has closed.
+- **Read-optimised snapshots: a single writer under an RWMutex.** Handlers copy the
+  snapshot and never block on live work.
+- **Cap each background sweep's context at its own interval**, so a wedged target
+  cannot make consecutive sweeps overlap.
 
 ### 2.5 Config-provider starters (remote configuration center)
 
@@ -284,7 +376,7 @@ application can load configuration from it at startup and hot-reload at runtime.
   different integration points in Go-Spring, so they live in different starters:
   the **config** role is a config-provider starter (this archetype); the
   **discovery** role is client-side (`cloud/discovery`, §3) or framework-native
-  (`contrib/registry/`, §3). A config-provider starter does the config role and
+  (`contrib/discovery/`, §3). A config-provider starter does the config role and
   nothing else. The naming mirrors Spring Cloud Alibaba
   (`nacos-config` vs `nacos-discovery`).
 - **It registers a provider, not a bean.** The seam is
@@ -382,7 +474,10 @@ baseline (its identity, wire vocabulary, error catalog, standard drivers).
   what a starter must provide, not optional extras. Two of them carry a
   per-instance switch: the startup connectivity probe (`ping`, off by default,
   so an unready backend cannot block boot) and the health indicator (`health`,
-  on by default). TLS is a nested `TLSConfig`
+  on by default). The health indicator is for a component with an external
+  dependency to probe; an in-process component with none (bigcache) contributes
+  no indicator, because a probe that cannot fail is a constant term in an
+  AND-aggregated readiness and carries no signal. TLS is a nested `TLSConfig`
   (`enabled` + cert/key/CA), off by default.
 - **Shared helpers live in their natural homes, not in a starter-shared
   package.** The three concerns every starter touches - TLS config, health
@@ -426,7 +521,7 @@ baseline (its identity, wire vocabulary, error catalog, standard drivers).
   framework-native per the principle above. When `ServiceName` is empty the
   client dials the address directly, unchanged. For examples of framework-native
   provider registration into consul/etcd/nacos/zookeeper/polaris, see
-  `contrib/registry/`.
+  `contrib/discovery/`.
 - **Service-mesh mode degrades the client-side stack centrally, not per
   starter.** When a sidecar (Istio/Envoy, Linkerd) is injected it already does
   discovery and load balancing, so running the app's own on top double-balances
@@ -447,12 +542,13 @@ baseline (its identity, wire vocabulary, error catalog, standard drivers).
   registration is not.** Do not conflate two different "registration" concerns.
   (1) Registering *this process* into an external registry
   (Nacos/Consul/Eureka/ZooKeeper) - the Spring Cloud `@EnableDiscoveryClient`
-  direction - is a generic, transport-agnostic capability. It is **not** a shared
-  abstraction in `cloud/discovery`: each `starter-registry-<backend>`
-  (etcd/nacos/consul/zookeeper) owns its full register/deregister lifecycle -
-  the registrar is a local value wired into the exported `gs.Server`, not a
-  globally registered backend, and swapping backends means swapping the starter.
-  The one shared rule every registry starter follows: **Register must
+  direction - is a generic, transport-agnostic capability. Its publication
+  lifecycle lives in `cloud/discovery`: `Server` is the one exported
+  `gs.Server` that drives every configured center, and each
+  `starter-discovery-<backend>` (etcd/nacos/consul/zookeeper) contributes a
+  `Registry` - the protocol adapter for its own center. Swapping backends means
+  swapping the starter.
+  The one shared rule every discovery starter follows: **Register must
   self-renew** (TTL, heartbeat, or an ephemeral node) so that correctness never
   depends on `Deregister` being called - a process that crashes (SIGKILL, OOM)
   without deregistering must still be removed by the registry once its
@@ -460,8 +556,8 @@ baseline (its identity, wire vocabulary, error catalog, standard drivers).
   clean shutdown. (2) Registering an RPC framework's *services* stays
   framework-native per the bullet above. Neither is needed in pure Kubernetes,
   where the platform registers every Pod behind a Service (discover with
-  `starter-registry-k8s`); instance-level registration exists for VM /
-  bare-metal / hybrid deployments. Each registry starter is a
+  `starter-discovery-k8s`); instance-level registration exists for VM /
+  bare-metal / hybrid deployments. The registration core is a
   global/infrastructure archetype (§2.4): it exports a `gs.Server` that
   registers once the app is ready and deregisters on `PreStop`, so a rolling
   restart is lossless.
@@ -513,7 +609,8 @@ baseline (its identity, wire vocabulary, error catalog, standard drivers).
   implementation** (`db.client.operation.duration`, never
   `redis.command.duration`). The framework now has **one emitter**, on the
   resilience chain, and client-side starters feed it by **declaring** what each
-  operation is. A client starter declares
+  operation is — with the one exception of the in-process component above, which
+  emits its own. A client starter declares
   `observability.WithOperation(ctx, observability.Operation{...})` — the
   operation's `Name`, its `Metric` prefix (`db.client`, `messaging.client`), its
   bounded `Attrs`, its unbounded `Detail` and its `LogTag` — and routes the call
@@ -619,7 +716,7 @@ baseline (its identity, wire vocabulary, error catalog, standard drivers).
   - *delegation* — signals come wholly from a shared layer (`http-client`,
     `oauth2-client`, the four `lock` backends, the three `transaction` backends,
     `scheduler` — whose signals live in `cloud/scheduling` — the config
-    providers, the registry backends); what is checked is that the wiring is
+    providers, the discovery backends); what is checked is that the wiring is
     still there.
   - *forward list* — components that must be instrumented. The model discovers
     members by the signals they already carry, so a component that was never
@@ -653,7 +750,7 @@ baseline (its identity, wire vocabulary, error catalog, standard drivers).
     shared list: requiring it of a library that has no such callback could only
     produce fabricated data. The checker holds the registered list and fails if a
     registered member stops emitting it, or if an unregistered member starts.
-- **Registry backends report at their own seams, through their own observer.**
+- **Discovery backends report at their own seams, through their own observer.**
   Each configured block builds one `discovery.Observer` at construction — from
   its backend name and its block name — and reports through its methods
   (`RegisterAttempt`, `DeregisterAttempt`, `WeightChange`, `Synced`), passing
@@ -668,11 +765,11 @@ baseline (its identity, wire vocabulary, error catalog, standard drivers).
   that leaves an instance serving while no longer discoverable. The metric and
   span definitions live once in `cloud/discovery/observe.go` — backends never
   name an instrument themselves.
-  A **discovery-only** backend of this family (`starter-registry-k8s`, where the
+  A **discovery-only** backend of this family (`starter-discovery-k8s`, where the
   platform registers Pods for you) has no such seam to report at: it builds the
   same observer and reports `Synced` on both sync outcomes, and emits none of the
   three registrar operations. Registered as an exception in
-  `scripts/check-observability.sh` (its registry section).
+  `scripts/check-observability.sh` (its discovery section).
   The log lines around those operations belong to the backend, so each one
   writes its fields out. **A line that explains a discovery metric or span must
   carry all of these, under exactly these names, or it does not join it:**
@@ -680,7 +777,7 @@ baseline (its identity, wire vocabulary, error catalog, standard drivers).
   | Field | Value |
   |---|---|
   | `system` | the backend name (`etcd`, `nacos`, ...) — take it from `Observer.System()`, the same value the metric's own `system` attribute carries |
-  | `center` | the configured block (`${spring.registry.<backend>.<name>}`) — from `Observer.Center()`. One process publishes the same service into every configured center, so without this the readings of two clusters are one indistinguishable series |
+  | `center` | the configured block (`${spring.discovery.<backend>.<name>}`) — from `Observer.Center()`. One process publishes the same service into every configured center, so without this the readings of two clusters are one indistinguishable series |
   | `service` | the name being registered or synced |
   | `operation` | `register` / `deregister` / `update_weight` / `sync` |
   | `reason` | `initial` / `self_heal` — registration only |
@@ -690,6 +787,36 @@ baseline (its identity, wire vocabulary, error catalog, standard drivers).
   The caller supplies its own message and its own detail (the key, the action
   taken); the fields above cover only what identifies the operation, which is
   what the join needs.
+- **No package-global registry for a live implementation.** `cloud/lock`
+  deliberately keeps no string driver registry (unlike discovery and resilience): a
+  lock needs a live backend handle, so the backend is chosen by which starter is
+  blank-imported. More generally, a live, config-derived implementation is never
+  registered into a package-global map — globals are wrong across tests and
+  restarts.
+- **Starters are independently versioned and never depend on each other.** A second
+  starter of the same capability re-implements the proven pattern rather than
+  importing its sibling, and distributed-transaction patterns ship as separate
+  starters, never one merged abstraction.
+- **More than two wire behaviours means a TLS mode enum.** When a protocol has more
+  than two wire behaviours (SMTP: STARTTLS / implicit TLS / plaintext), TLS config
+  is a mode enum, not the ecosystem's `enabled` plus cert pair.
+- **No startup probe when the only universal probe would have a side effect.** When
+  a real POST is the only probe available, ship no probe at all — a boot-time junk
+  call is worse than a first-send error.
+- **Bind an aggregate struct with field-level `value:"..."` tags**, never
+  `gs.TagArg("${prefix}")`.
+- **A second `gs.Server` bean must be `.Name(...)`d** — the container already holds
+  a default web-server bean.
+- **A `gs.Dync[map]` default must be empty**, never a non-empty map literal.
+- **Prefer owning a small protocol with the stdlib over depending on a dormant
+  SDK**, and ship a self-contained mock-server example when the official counterpart
+  service needs heavy orchestration.
+- **A zero-dependency capability package exposes a plain Observer/callback seam.**
+  A `cloud/` capability package must not depend on a concrete backend; the OTel span
+  helpers live in the starter layer, not the neutral foundation.
+- **A capability's default in-memory store rides `gs.OnMissingBean`**, so a
+  durable-store starter displaces it for every consumer with no business-code
+  change.
 
 ## 4. Adding a New Starter — Checklist
 
@@ -728,17 +855,18 @@ baseline (its identity, wire vocabulary, error catalog, standard drivers).
    no bean), parse params from the source string, cache the client, register the
    listener unconditionally before the fetch, call the `gs.RefreshProperties()`
    facade from the change callback, ship `example-config/`.
-7. Registry starter? → define `obsSystem` and report at the seams the initial
+7. Discovery starter? → define `obsSystem` and report at the seams the initial
    publish and the self-healing path share (`discovery.RegisterAttempt` with
    `ReasonInitial`/`ReasonSelfHeal`, `DeregisterAttempt`, `WeightChange`, and
    `discovery.Synced` on both sync outcomes); never wrap the `Registry`
    interface instead — the self-heal path does not cross it. A discovery-only
-   backend of the family (`starter-registry-k8s`) has no registrar: it defines
+   backend of the family (`starter-discovery-k8s`) has no registrar: it defines
    `obsSystem` and reports `discovery.Synced` only, and is registered as an
-   exception in `scripts/check-observability.sh` (its registry section).
-   `scripts/check-observability.sh` (its registry section) enforces this.
-8. Add health (`health` switch, on by default), TLS, and destroy where the
-   underlying library supports them.
+   exception in `scripts/check-observability.sh` (its discovery section).
+   `scripts/check-observability.sh` (its discovery section) enforces this.
+8. Add health (`health` switch, on by default) where the component has an
+   external dependency to probe, TLS, and destroy where the underlying library
+   supports them.
 9. Ship a bilingual README pair and an `example/` with `check.sh` only (no
    deployment scaffolding).
 10. Resolve internal deps through `go.work`, never `require`.

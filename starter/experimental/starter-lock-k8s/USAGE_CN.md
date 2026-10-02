@@ -122,7 +122,7 @@ kubectl get lease demo-leader -o yaml  # holderIdentity 即 fencing token
 ```
 
 集群外时，example 以 wiring-only 模式启动（不声明 `spring.lock` 条目，因此不构建 Locker
-bean）——见 `example/example.go`。
+bean）——见 `example/main.go`。
 
 ---
 

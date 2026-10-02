@@ -158,7 +158,7 @@ docker run -d --name demo-rabbit -p 127.0.0.1:5672:5672 -p 127.0.0.1:15672:15672
 # 或：cd starter-rabbitmq/example && docker compose up -d
 ```
 
-**验证**（与 example/example.go 的 `-manual` 模式同构，其在 :9090 提供 /publish、
+**验证**（与 example/main.go 的 `-manual` 模式同构，其在 :9090 提供 /publish、
 /consume）：
 
 ```bash

@@ -2,7 +2,7 @@
 
 Umbrella usage reference covering the two sub-server packages (`rest/`, `zrpc/`) and the internal
 log bridge. Overview: [README.md](README.md). Anchored to the runnable examples
-[rest/example/](rest/example/example.go), [zrpc/example/](zrpc/example/example.go) and the
+[rest/example/](rest/example/main.go), [zrpc/example/](zrpc/example/main.go) and the
 Jaeger-backed observability examples `rest/example-otel/`, `zrpc/example-otel/` (each has a
 `docker-compose.yml`). **go-zero's own semantics (rest routing, zrpc governance, logx, DevServer)
 are [go-zero's documentation](https://go-zero.dev/docs/)** — everything below is Go-Spring's

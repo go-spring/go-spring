@@ -2,7 +2,7 @@
 
 [English](USAGE.md) | [中文](USAGE_CN.md)
 
-Anchored on the self-verifying [example](example/example.go) (`./check.sh`
+Anchored on the self-verifying [example](example/main.go) (`./check.sh`
 exits 0).
 
 ## 1. Quick start

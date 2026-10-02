@@ -28,7 +28,7 @@ go get go-spring.org/starter-goframe
 
 ## Quick Start — HTTP
 
-See [http/example/example.go](http/example/example.go).
+See [http/example/main.go](http/example/main.go).
 
 ```go
 import _ "go-spring.org/starter-goframe/http"
@@ -52,8 +52,8 @@ gs.Provide(func() goframehttp.ServiceRegister {
 ## Quick Start — gRPC / TCP / WebSocket
 
 The shape is identical: import the sub-package, configure the prefix, and provide a `ServiceRegister`
-bean. See [grpc/example](grpc/example/example.go), [tcp/example](tcp/example/example.go) and
-[ws/example](ws/example/example.go).
+bean. See [grpc/example](grpc/example/main.go), [tcp/example](tcp/example/main.go) and
+[ws/example](ws/example/main.go).
 
 ## Service Discovery (etcd)
 

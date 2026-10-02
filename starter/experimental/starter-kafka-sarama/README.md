@@ -19,7 +19,7 @@ go get go-spring.org/starter-kafka-sarama
 
 ### 1. Import the `starter-kafka-sarama` package
 
-See [example.go](example/example.go).
+See [main.go](example/main.go).
 
 ```go
 import _ "go-spring.org/starter-kafka-sarama"
@@ -44,7 +44,7 @@ spring.kafka-sarama.instances.b.brokers=127.0.0.1:9092
 
 ### 3. Inject the Kafka client
 
-See [example.go](example/example.go). Inject an instance by its name.
+See [main.go](example/main.go). Inject an instance by its name.
 
 ```go
 import "github.com/IBM/sarama"
@@ -56,7 +56,7 @@ type Service struct {
 
 ### 4. Use the Kafka client
 
-See [example.go](example/example.go). sarama has no single object that both
+See [main.go](example/main.go). sarama has no single object that both
 produces and consumes; instead, derive a producer or consumer from the shared
 `sarama.Client` via the `*FromClient` constructors:
 
@@ -147,3 +147,20 @@ scope rather than shipping as a fragile wrapper.
 
 * **Multiple Kafka clients**: define multiple clients under
   `spring.kafka-sarama` in the configuration file and reference them by name.
+
+## Design Notes
+
+* **One `sarama.Client` serves every role.** Producers, consumer groups and admin
+  clients are derived from the shared client (`*FromClient`), so a single metadata
+  cache and broker connection pool backs them all; the starter deliberately does
+  not pre-create these — you own their lifecycle.
+* **`brokers` is required.** There is no localhost fallback — an empty broker list
+  is rejected at boot. `version` must be set for anything beyond the baseline
+  protocol: SASL mechanisms, headers and the idempotent producer need a minimum
+  protocol version.
+* **Producer knobs are Sarama-native.** `producer.required-acks`,
+  `producer.idempotent` and `producer.compression` map directly onto
+  `sarama.Config` fields; the starter adds no abstraction over Sarama's semantics.
+* **You close what you derive.** The instance's destroy calls `sarama.Client.Close`
+  (releasing broker connections); any producer or consumer group built on top must
+  be closed first — their lifecycle is yours.

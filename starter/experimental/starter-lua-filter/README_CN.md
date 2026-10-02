@@ -18,7 +18,7 @@ go get go-spring.org/starter-lua-filter
 
 ### 1. 引入 `starter-lua-filter` 包
 
-参考 [example.go](example/example.go) 文件。
+参考 [main.go](example/main.go) 文件。
 
 ```go
 import _ "go-spring.org/starter-lua-filter"
@@ -36,7 +36,7 @@ spring.lua.filter.instances.guard.script=./scripts/guard.lua
 ### 3. 将过滤器接入 HTTP 服务
 
 过滤器按配置子键（`guard`）注入，用来包裹你的业务处理器。把包好的处理器交给
-`*gs.HttpServeMux`，过滤器就位于服务最前端。参考 [example.go](example/example.go) 文件。
+`*gs.HttpServeMux`，过滤器就位于服务最前端。参考 [main.go](example/main.go) 文件。
 
 ```go
 gs.Provide(func(guard *StarterLuaFilter.Filter) *gs.HttpServeMux {
@@ -76,7 +76,7 @@ end
 
 ## 核心特性
 
-[example.go](example/example.go) 程序演示并断言了四个核心过滤器行为：
+[main.go](example/main.go) 程序演示并断言了四个核心过滤器行为：
 
 * **放行 + 改写** —— 正常的 `/hello` 请求到达业务处理器，并带上脚本注入的
   `X-Lua-Filter` 响应头。
@@ -104,3 +104,10 @@ logger.lua_filter.type=Logger
 logger.lua_filter.level=WARN
 logger.lua_filter.tag=_app_lua_filter
 ```
+
+## 设计说明
+
+* **是网关式 HTTP filter，不是通用脚本引擎。** 定位是有意收窄的——在 `net/http` 层做原始 request/response 操作；进程内的动态逻辑应交给 Go 中间件、CEL 或 WASM。
+* **宿主 API 就是沙箱边界。** 脚本只能看到 `req` / `resp` / `deny` / `log`；扩宽这个表面即扩宽沙箱，因此 API 有意保持很小。
+* **纯 Go，无 CGO。** gopher-lua 让本 starter 便于交叉编译，无需 C 工具链。
+* **一次编译，逐请求池化。** 脚本在构造期编译成 proto；每次请求从池中借一个沙箱 VM 再归还，因此一次请求付出的是重绑而非编译的代价。

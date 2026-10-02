@@ -184,7 +184,7 @@ gs.Run()
 
 A wrong DSN, wrong credentials, or a server older than the driver's minimum fails the boot —
 the process never reaches "serving" with a dead TDengine (version floor: driver-go v3.8.2
-needs server ≥ 3.3.6.0 on the WebSocket path [DESIGN.md §3]).
+needs server ≥ 3.3.6.0 on the WebSocket path; see the README's design notes).
 
 **Assembly extension point**: client assembly is owned by a `Driver` (interface,
 `driver.go:45-46`). A company/umbrella starter may provide its own `Driver` as an **optional
@@ -200,7 +200,7 @@ DefaultDriver wraps the taosWS connector in `guardedConnector`, and every pooled
 is a `guardedConn` [driver.go:96-124]. This is the database/sql analog of the gorm callback
 chain and the HTTP RoundTripper adapters — and it means protection is **per-statement and
 transparent**: no opt-in at call sites, ORMs layered on the pool are covered too
-[driver.go:115-124, DESIGN.md §4].
+[driver.go:115-124; see the README's design notes].
 
 One statement, e.g. `QueryContext("SELECT COUNT(*) ...")`:
 

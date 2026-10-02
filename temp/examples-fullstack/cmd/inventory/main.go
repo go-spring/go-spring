@@ -47,7 +47,7 @@ import (
 	// Actuator management server (probes) + otel (tracing/metrics + log link).
 	_ "go-spring.org/starter-actuator"
 	// Register this instance into Consul on ready, deregister on shutdown.
-	_ "go-spring.org/starter-registry-consul"
+	_ "go-spring.org/starter-discovery-consul"
 )
 
 // bizTag routes this service's log lines under a business tag so they are easy

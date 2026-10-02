@@ -410,7 +410,7 @@ handler panic → `codes.Internal` "panic in {FullMethod}: ..."，并经共享 g
 设计嫌疑清单（承接上轮审计并更新）：
 
 1. README 陈旧说法：拦截器组合需要 handler 层包装——`UseUnaryInterceptor`/
-   `UseStreamInterceptor` + 链式拦截器已存在（example.go 的 `interceptedEchoServer` 是
+   `UseStreamInterceptor` + 链式拦截器已存在（main.go 的 `interceptedEchoServer` 是
    遗留写法）。*（仍开放——README 文本）*
 2. example/conf 注释声称 ":9494 默认值"——不存在；`addr` 必填。
 3. resilience 准入只覆盖 unary；stream RPC 跳过（admission.go 未构建 stream 拦截器）。

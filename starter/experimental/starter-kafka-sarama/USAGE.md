@@ -72,7 +72,7 @@ import (
 type Service struct {
     // Always the raw sarama.Client bean. Producers/consumers are derived per use
     // via sarama's *FromClient constructors — one pool/metadata cache serves every
-    // role (DESIGN.md §2).
+    // role (see the README's design notes).
     Client sarama.Client `autowire:"main"`
     // The process's load-test convention, injected when the application provides a
     // traffic.Propagator bean; nil → the seams use the default convention.
@@ -205,7 +205,7 @@ single Driver bean by type; naming a missing bean fails startup).
 
 Derived producers/consumers are not container beans — close them yourself before the app
 shuts down (`defer producer.Close()` in the publish path is the intended pattern, see
-[example/example.go:72-76]). `sarama.Client.Close` releases the shared broker connections.
+[example/main.go:72-76]). `sarama.Client.Close` releases the shared broker connections.
 ### 2.2 The declare/guard mechanism — exact order and what is NOT guarded
 
 For a producer, `WrapSyncProducer(cl, p, prop)` resolves the executor stashed for `cl` and
@@ -356,7 +356,7 @@ the resilience sentinel from `Consume` and your handler never runs.
 ### 4.3 Message round-trip incl. header survival
 
 Publish then consume on the same topic (partition consumer from oldest, as in
-[example/example.go:89-112]):
+[example/main.go:89-112]):
 
 - `msg.Value` survives verbatim (`sarama.StringEncoder` → `string(msg.Value)`).
 - `traceparent` header injected by `WrapSyncProducer` is readable on the consumer side —

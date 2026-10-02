@@ -21,7 +21,7 @@ cd "$(dirname "${BASH_SOURCE[0]}")/.." || exit 1
 
 # 闭命名空间家族:子键名由框架决定(用户的实例名在更深一层),故不套桶。
 # 新增例外必须在此显式登记,并同步 starter/DESIGN.md §2.2。
-ALLOW="spring.registry"
+ALLOW="spring.discovery"
 
 # 框架侧允许的绑定根(规则二)。logging 是唯一登记的豁免:它是框架启动期(容器
 # refresh 之前)就要生效的日志配置,由 gs_app 从顶层 logging 段读取,见 DESIGN §2.2。

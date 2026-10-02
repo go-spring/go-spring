@@ -47,8 +47,9 @@ type Config struct {
 	// Discovery names the discovery backend bean that resolves ServiceName.
 	// Required when ServiceName is set; the starter wiring resolves this label
 	// against every registered discovery backend bean and hands the result to
-	// the driver as the Discovery argument of CreateTransport.
-	Discovery string `value:"${discovery:=${spring.http-client.default.discovery:=}}"`
+	// the driver as the Discovery argument of CreateTransport. Unset, it
+	// inherits the family-wide ${spring.http-client.default.discovery}.
+	Discovery string `value:"${discovery:=}"`
 
 	// TLS configures the certificate surface for https targets: a client key
 	// pair (tls.cert-file/key-file), a CA bundle (tls.ca-file), the expected

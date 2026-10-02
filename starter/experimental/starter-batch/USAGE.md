@@ -40,7 +40,7 @@ require (
 )
 ```
 
-**main.go** (abridged from `example/example.go`, same structure):
+**main.go** (abridged from `example/main.go`, same structure):
 
 ```go
 package main

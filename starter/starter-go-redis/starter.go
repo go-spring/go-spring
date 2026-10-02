@@ -47,6 +47,10 @@ func init() {
 	// types, so we bind the map ourselves and dispatch. Switching a client to
 	// cluster is then a pure in-config change.
 	gs.Module(gs.OnProperty("spring.go-redis.instances"), func(r gs.BeanProvider, p flatten.Storage) error {
+		// Any key an instance does not define falls back to the family-wide
+		// "default" bucket: spring.go-redis.default.<k> is the value every
+		// instance inherits unless it sets its own.
+		p = flatten.WithFallback(p, "spring.go-redis.instances", "spring.go-redis.default")
 		return conf.BindEach(p, "${spring.go-redis.instances}", func(name string, c Config) error {
 			// Both ctors below leave index 0 (*gs.ContextProvider) to be
 			// autowired and bind c explicitly. The Driver param (index 2) is

@@ -342,7 +342,7 @@ spring.mongodb.instances.a.max-pool-size=100   # 给爆发留出强制新建连�
 ```
 
 冷池上并发打 40 个 `InsertOne`：超限的拨号以 `resilience.ErrRateLimited` 失败、浮出为
-操作的连接错误；获准的照常成功（[example-cloudnative/example.go:197-225]）。反面同样
+操作的连接错误；获准的照常成功（[example-cloudnative/main.go:197-225]）。反面同样
 成立：池一旦焐热，同样的爆发全数通过——保护是连接级的。运行时翻转 `spring.governance.*` ——
 executor 热更新，无需重启（治理中心）。
 

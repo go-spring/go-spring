@@ -18,7 +18,7 @@ go get go-spring.org/starter-pprof
 
 ### 1. 引入 `starter-pprof` 包
 
-参见 [example.go](example/example.go) 文件。
+参见 [main.go](example/main.go) 文件。
 
 ```go
 import _ "go-spring.org/starter-pprof"

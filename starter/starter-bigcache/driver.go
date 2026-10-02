@@ -27,7 +27,7 @@ import (
 	"context"
 
 	"github.com/allegro/bigcache/v3"
-	"go-spring.org/cloud"
+	"go-spring.org/stdlib/errutil"
 )
 
 // Driver interface defines how to create a BigCache instance. It is an OPTIONAL
@@ -40,14 +40,23 @@ import (
 // not the raw *bigcache.BigCache, so a driver takes part in the type the rest of
 // the ecosystem sees and future wrapper capabilities are reachable from it. It
 // returns the cache COMPLETE: name is the config entry's key
-// (spring.bigcache.instances.<name>) and becomes both the resilience service
-// label and the gauge label, so the driver sets it on the wrapper it builds; and
-// params carries the container's facilities (see [cloud.ClientParams]), which
-// [NewCache] applies while building. Nothing patches the cache afterwards.
+// (spring.bigcache.instances.<name>) and becomes the label every signal carries,
+// so the driver sets it on the wrapper it builds. Nothing patches the cache
+// afterwards.
 //
-// params is one struct rather than a parameter per capability so this interface —
-// which every company driver implements — stays stable as capabilities are
-// added. A driver that has no use for one of its fields simply ignores it.
+// A driver attributes its own construction failures: the error it returns is
+// passed through to the container unwrapped, so it must name the stage that
+// failed and the instance it was building — `errutil.Explain(err, "bigcache:
+// create instance %q", name)` in [DefaultDriver]. The container adds the bean
+// name and the registration's file:line, but only the driver can say which step
+// inside the assembly went wrong.
+//
+// Unlike the network client starters, this signature carries no
+// `cloud.ClientParams`: those bundle the container's governance authorities
+// (resilience, fault, loadbalance, discovery), and bigcache has no external
+// dependency for any of them to act on — it does not route through the executor
+// chain at all, emitting its own signals instead (see [statObserver]). Handing a
+// driver facilities it must never use would be a seam with nothing behind it.
 //
 // name is passed as an argument rather than carried on Config: Config stays a
 // pure projection of the entry's properties, and the instance name is the map
@@ -57,7 +66,7 @@ import (
 // ${spring.bigcache} is built through it, and per-instance differences are
 // expressed through [Config].
 type Driver interface {
-	CreateClient(ctx context.Context, name string, c Config, params cloud.ClientParams) (*Cache, error)
+	CreateClient(ctx context.Context, name string, c Config) (*Cache, error)
 }
 
 // DefaultDriver is the default implementation of the Driver interface.
@@ -65,9 +74,11 @@ type DefaultDriver struct{}
 
 // CreateClient creates a new BigCache instance based on the provided configuration.
 //
-// The raw cache is built here and immediately wrapped by [NewCache], which also
-// applies governance: the returned cache is complete in one step.
-func (DefaultDriver) CreateClient(ctx context.Context, name string, c Config, params cloud.ClientParams) (*Cache, error) {
+// The raw cache is built here and immediately wrapped by [NewCache], which fixes
+// its identity and its observability: the returned cache is complete in one step.
+// If the wrapping fails the raw cache is closed before returning, so a failed
+// construction never leaves the eviction goroutine behind.
+func (DefaultDriver) CreateClient(ctx context.Context, name string, c Config) (*Cache, error) {
 	conf := bigcache.DefaultConfig(c.LifeWindow)
 	conf.Shards = c.Shards
 	conf.CleanWindow = c.CleanWindow
@@ -77,10 +88,17 @@ func (DefaultDriver) CreateClient(ctx context.Context, name string, c Config, pa
 	conf.StatsEnabled = c.StatsEnabled
 	client, err := bigcache.New(ctx, conf)
 	if err != nil {
-		return nil, err
+		return nil, errutil.Explain(err, "bigcache: create instance %q", name)
 	}
-	// NewCache is the only way to build a Cache: identity and governance are
+	// NewCache is the only way to build a Cache: identity and observation are
 	// both applied here (see [Driver]), so the driver returns a cache that is
 	// complete.
-	return NewCache(client, name, params), nil
+	cache, err := NewCache(client, name)
+	if err != nil {
+		// The raw cache was built and is running - with its background eviction
+		// goroutine. Nothing else holds it, so it is this branch's to close.
+		_ = client.Close()
+		return nil, err
+	}
+	return cache, nil
 }

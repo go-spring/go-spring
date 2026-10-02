@@ -18,7 +18,7 @@ go get go-spring.org/starter-kafka-sarama
 
 ### 1. 引入 `starter-kafka-sarama` 包
 
-参考 [example.go](example/example.go) 文件。
+参考 [main.go](example/main.go) 文件。
 
 ```go
 import _ "go-spring.org/starter-kafka-sarama"
@@ -41,7 +41,7 @@ spring.kafka-sarama.instances.b.brokers=127.0.0.1:9092
 
 ### 3. 注入 Kafka 客户端
 
-参考 [example.go](example/example.go) 文件,按名字注入对应实例。
+参考 [main.go](example/main.go) 文件,按名字注入对应实例。
 
 ```go
 import "github.com/IBM/sarama"
@@ -53,7 +53,7 @@ type Service struct {
 
 ### 4. 使用 Kafka 客户端
 
-参考 [example.go](example/example.go) 文件。sarama 没有同时生产与消费的单一对象,
+参考 [main.go](example/main.go) 文件。sarama 没有同时生产与消费的单一对象,
 需从共享的 `sarama.Client` 通过 `*FromClient` 构造函数派生生产者或消费者:
 
 ```go
@@ -131,3 +131,15 @@ case msg := <-pc.Messages():
 
 * **支持多个 Kafka 客户端**:可以在配置文件中的 `spring.kafka-sarama` 下定义多个
   Kafka 客户端,并通过名称引用它们。
+
+## 设计说明
+
+* **一个 `sarama.Client` 服务所有角色。** producer、consumer group、admin 客户端都从共享 client
+  派生（`*FromClient`），一套 metadata 缓存与 broker 连接池为其服务；starter 刻意不预建它们——
+  生命周期归你。
+* **`brokers` 必填。** 没有 localhost 兜底——空 broker 列表在启动期被拒。`version` 不设则退到最基线
+  协议：SASL 机制、header、幂等 producer 都要求最低协议版本。
+* **Producer 参数是 Sarama 原生。** `producer.required-acks`、`producer.idempotent`、
+  `producer.compression` 直接映射到 `sarama.Config` 字段；starter 不在 Sarama 语义之上再叠抽象。
+* **你派生的，由你关闭。** 实例销毁时调用 `sarama.Client.Close`（释放 broker 连接）；架在其上的
+  producer 或 consumer group 必须先关——那是你的生命周期。

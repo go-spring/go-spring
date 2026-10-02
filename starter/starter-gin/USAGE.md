@@ -56,7 +56,7 @@ import (
 func main() { gs.Run() }
 ```
 
-**router.go** — the application's entire HTTP surface (mirrors example/example.go):
+**router.go** — the application's entire HTTP surface (mirrors example/main.go):
 
 ```go
 package router

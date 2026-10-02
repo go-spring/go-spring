@@ -23,7 +23,7 @@ go get go-spring.org/starter-actuator
 
 ### 1. Import the package
 
-See [example.go](example/example.go).
+See [main.go](example/main.go).
 
 ```go
 import _ "go-spring.org/starter-actuator"
@@ -76,7 +76,7 @@ readinessProbe:
 
 Health indicators are just beans: export anything as `health.Indicator` (a redis
 client, a db pool) and it is automatically folded into `/readyz`. No wiring, no
-import of this starter from your component. See the [example](example/example.go).
+import of this starter from your component. See the [example](example/main.go).
 
 ### Metrics mounting
 

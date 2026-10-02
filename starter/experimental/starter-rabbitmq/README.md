@@ -54,7 +54,7 @@ _ = ch.PublishWithContext(ctx, "", "hello", false, false, amqp.Publishing{Body: 
 
 ## Core Features
 
-The [example](example/example.go) demonstrates three core RabbitMQ patterns:
+The [example](example/main.go) demonstrates three core RabbitMQ patterns:
 
 1. **Default-exchange publish/consume** — publish a message to the default exchange using the
    queue name as the routing key, then pull it back with `ch.Get`.

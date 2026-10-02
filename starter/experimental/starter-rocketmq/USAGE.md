@@ -7,7 +7,7 @@ spot-checks in brackets below. **RocketMQ semantics (topics, consumer groups, ta
 clustering vs broadcasting) are [rocketmq-client-go's documentation](https://github.com/apache/rocketmq-client-go)
 and [RocketMQ's own docs](https://rocketmq.apache.org/docs/)** — everything below is go-spring's
 increment. The client library is `github.com/apache/rocketmq-client-go/v2` (the remoting client,
-not the 5.x gRPC `rocketmq-clients`); see DESIGN.md §4 for that choice.
+not the 5.x gRPC `rocketmq-clients`).
 
 **Activation**: any `spring.rocketmq.instances.*` key (the module registers `OnProperty("spring.rocketmq")`,
 a prefix check [starter.go:40]). Each `spring.rocketmq.instances.<name>` entry creates one
@@ -197,14 +197,14 @@ gs.Run()
 Notes verified in source:
 
 - The probe is a TCP dial, **not** a broker round trip — it catches wrong addresses, not ACL or
-  credential errors (DESIGN.md §3; probe loop [driver.go:148-155] stops at the first success).
+  credential errors (probe loop [driver.go:148-155] stops at the first success; see the README's design notes).
 - Producers are created *started* (`p.Start()` inside NewProducer [client.go:116]); consumers are
   returned **unstarted** — call Subscribe then Start yourself, or let the driver do it
   [client.go:130-135].
 - If Close races a concurrent NewProducer/NewPushConsumer, the newcomer is shut down and
   `errClosedClient` returned [client.go:122-125]; after Close, both constructors fail fast
   [client.go:105-110].
-- There is **no health.Indicator** (family-wide decision; see DESIGN.md §3).
+- There is **no health.Indicator** (family-wide decision; see the README's Health section).
 
 ### 2.2 The guard — exact wrap order and what is NOT guarded
 
@@ -302,7 +302,7 @@ Known mapping drops (both directions) — all verified in messaging.go:
 | Topic | fixed at NewPublisher | not surfaced on the envelope |
 
 The round trip that does survive cleanly: Payload, custom Headers, Key (single), and the trace
-context — exactly what [example/example.go] asserts and what TestFromMessageExt covers
+context — exactly what [example/main.go] asserts and what TestFromMessageExt covers
 [rocketmq_test.go:102-117].
 
 ---
@@ -316,7 +316,7 @@ grep, no extras on either side.
 | Key | Type | Default | Behavior / interactions | Misconfiguration consequence |
 |-----|------|---------|-------------------------|------------------------------|
 | `name-servers` | []string | — | **Required** (`expr:"len($) > 0"` [config.go:35]). Address list of the RocketMQ NameServer. Also feeds the ping probe. | Missing/empty → bind-time validation error. |
-| `instance-name` | string | `""` | Distinguishes clients on one host. Empty is safe: the SDK rewrites "DEFAULT" to a per-producer/consumer unique name (DESIGN.md §3). Set it to make remoting clients share one connection pool. | Unnecessary explicit value → shared pool where you wanted isolation. |
+| `instance-name` | string | `""` | Distinguishes clients on one host. Empty is safe: the SDK rewrites "DEFAULT" to a per-producer/consumer unique name (see the README's design notes). Set it to make remoting clients share one connection pool. | Unnecessary explicit value → shared pool where you wanted isolation. |
 | `access-key` | string | `""` | ACL access key. ⚠ Must pair with `secret-key` — one-sided fails the boot with an error naming the client [starter.go:60-62]. | One-sided → boot error; wrong value → first produce/consume fails (probe is TCP-only). |
 | `secret-key` | string | `""` | ACL secret key pairing with access-key [config.go:48]. | Same as above. |
 | `send-timeout` | duration | `3s` | Stamped onto every producer (`WithSendMsgTimeout`) [client.go:73]. | Too low → sync sends time out under load. |
@@ -336,7 +336,7 @@ gating — see it for why each gate exists), or manually:
 go run .                                  # expect "Response from server: value"
 ```
 
-The example asserts Payload and custom Headers survive the round trip [example/example.go:110-120].
+The example asserts Payload and custom Headers survive the round trip [example/main.go:110-120].
 To assert Key survival yourself, log `msg.Key` in the handler — expect the same single string.
 
 ### 4.2 Broker-down ping probe

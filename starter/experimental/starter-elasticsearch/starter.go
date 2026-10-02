@@ -39,6 +39,10 @@ func init() {
 	// registered under the same name — and to attach the file:line of this
 	// registration to the bean for diagnostics.
 	gs.Module(gs.OnProperty("spring.elasticsearch.instances"), func(r gs.BeanProvider, p flatten.Storage) error {
+		// Any key an instance does not define falls back to the family-wide
+		// "default" bucket: spring.elasticsearch.default.<k> is the value every
+		// instance inherits unless it sets its own.
+		p = flatten.WithFallback(p, "spring.elasticsearch.instances", "spring.elasticsearch.default")
 		return conf.BindEach(p, "${spring.elasticsearch.instances}", func(name string, c Config) error {
 			// The wrapper bean is assembled complete by the ctor: identity and
 			// governance are applied while the Driver builds it, and Destroy tears

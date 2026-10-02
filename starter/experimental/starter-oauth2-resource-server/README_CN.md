@@ -80,8 +80,12 @@ cd example
 ./check.sh
 ```
 
-设计取舍见[设计文档](DESIGN_CN.md)。
-
 ## 许可证
 
 Apache License 2.0
+
+## 设计说明
+
+* **只提供校验器，不提供中间件栈。** 本 starter 只贡献一个 `security.TokenValidator`；401 还是放行、以及权限检查，都由 `cloud/security` 的 `Authenticate`/`Authorize` 决定，由你在自己的 mux 上组合。
+* **发现是急式的，`issuer-uri` 写错即启动失败。** discovery 文档与首次 JWKS 都在 bean 构造期加载——issuer 写错会在启动时暴露，而不是变成线上排查 401。
+* **密钥轮换无需重启。** 密钥按 `jwks-refresh` 缓存；遇到未知 `kid` 立即重拉一次，而刷新失败时继续用缓存密钥兜底，因此 IdP 短暂抖动不会变成拒绝尖峰。

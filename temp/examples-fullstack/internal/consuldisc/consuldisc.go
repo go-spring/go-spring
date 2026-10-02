@@ -15,7 +15,7 @@
  */
 
 // Package consuldisc is a small, client-side [discovery.Discovery] backed by the
-// Consul catalog. starter-registry-consul is a *register-side* starter (it
+// Consul catalog. starter-discovery-consul is a *register-side* starter (it
 // advertises this instance into Consul); it does not ship a client-side resolver.
 // The unified cloud/discovery abstraction is exactly the seam meant to close
 // that gap, so the reference app supplies its own Consul-backed Discovery here
@@ -24,7 +24,7 @@
 // per-caller Consul code.
 //
 // This lives in the sample (not in a starter) on purpose: a real deployment
-// would either use starter-registry-k8s or contribute a company Consul resolver.
+// would either use starter-discovery-k8s or contribute a company Consul resolver.
 // Keeping it here proves the abstraction is enough to bridge a register-only
 // backend to full client-side discovery.
 package consuldisc
@@ -58,7 +58,7 @@ type consulEntry struct {
 }
 
 // Register builds a Consul-backed Discovery for the agent at addr (e.g.
-// "127.0.0.1:8500") and publishes it in the cloud/discovery registry under
+// "127.0.0.1:8500") and publishes it in cloud/discovery under
 // name, so discovery.GetDiscovery(name) (used by the gateway) and any Resolver find
 // it. It is meant to be called once at process start.
 func Register(name, addr string) error {

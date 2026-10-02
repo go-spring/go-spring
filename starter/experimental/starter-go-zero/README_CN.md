@@ -22,7 +22,7 @@ go get go-spring.org/starter-go-zero
 
 ## 快速开始 —— REST（HTTP/API）
 
-参考 [rest/example/example.go](rest/example/example.go)。
+参考 [rest/example/main.go](rest/example/main.go)。
 
 ### 1. 引入子包
 
@@ -55,7 +55,7 @@ gs.Provide(func() gozerorest.HandlerRegister {
 
 ## 快速开始 —— zRPC（gRPC）
 
-参考 [zrpc/example/example.go](zrpc/example/example.go)。
+参考 [zrpc/example/main.go](zrpc/example/main.go)。
 
 ### 1. 引入子包
 

@@ -189,7 +189,7 @@ driver 随配置一并收到 `cloud.ClientParams` 包，返回模块的 `*Client
 
 server 不可达或未初始化会导致启动失败——进程不会带着一个死的
 InfluxDB 进入"服务中"。注意 OSS server 在一次性 setup 完成前报告状态不同，因此
-bootstrap 顺序竞争会在启动期暴露，而不是表现为间歇性写失败（DESIGN.md §3）。
+bootstrap 顺序竞争会在启动期暴露，而不是表现为间歇性写失败（见 README 的设计说明）。
 
 ### 2.2 请求链——精确顺序与理由
 
@@ -229,12 +229,12 @@ resilience round-tripper（exec.Execute：开调用 span、记调用级/尝试�
    因此一次 WritePoints 两次跨越 executor（两层共用同一服务键，故限流/熔断状态
    共享——内层的拒绝也计入外层的视野）。
 
-**`QueryAPI(org).QueryRaw`（内嵌的 SDK 方法）**：不加逐调用守卫（DESIGN.md §4——
-查询路径的 resilience 刻意留白；日后加 GuardedQuery 是增量不破坏）。但请求在传输层
+**`QueryAPI(org).QueryRaw`（内嵌的 SDK 方法）**：不加逐调用守卫（查询路径的 resilience
+刻意留白——见 README 的设计说明；日后加 GuardedQuery 是增量不破坏）。但请求在传输层
 仍被声明并被 executor 门控，因为所有请求都是。
 
 **`ManagedWriteAPI`（异步）** [client.go:152]：后台批量，**不**经过任何 executor——
-由 SDK 自己的批量重试掌控；逐点加守卫会重复计数（DESIGN.md §2）。失败批次落到
+由 SDK 自己的批量重试掌控；逐点加守卫会重复计数（见 README 的设计说明）。失败批次落到
 `Errors()` channel，由 wrapper 排干进 go-spring 日志（`influxdb: async write
 failed: ...`）——不排干会在首次失败时阻塞 writer。Destroy 的 `Client.Close()` 会
 flush 残留批次。
@@ -340,7 +340,7 @@ error）。
 | `WritePoints` 返回 org/bucket 错误 | 同一调用期缺口的不 panic 形态 | 同上。 |
 | 写失败但启动与健康都是绿的 | `auth-token` 错——/health 不做鉴权 | 用 `influx query --token ...` 验 token。 |
 | 请求在跑却没有 span/指标 | 未 import starter-otel | 发射点挂在 OTel globals 上；import starter-otel（访问日志无 otel 也照发）。 |
-| 写完立刻查询没有数据 | bucket 写路径落盘的短暂延迟 | 重试窗口——example 自身轮询至 15s [example/example.go:81-91]。 |
+| 写完立刻查询没有数据 | bucket 写路径落盘的短暂延迟 | 重试窗口——example 自身轮询至 15s [example/main.go:81-91]。 |
 | 异步写无声消失 | 心智模型错位：`ManagedWriteAPI` 的失败是日志行，不是 error | grep `influxdb: async write failed`；需要错误就改用 `WritePoints`。 |
 
 ## 6. 设计体检

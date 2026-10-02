@@ -129,3 +129,21 @@ logger.lock_access.type=Logger
 logger.lock_access.level=WARN
 logger.lock_access.tag=_app_lock_access
 ```
+
+## Design Notes
+
+* **The `*redis.Client` is borrowed, never owned.** This starter reuses the bean named
+  by `client=` and never closes it — its destroy hook only stops the background
+  renewal goroutines it started. The connection's lifecycle belongs to
+  `starter-go-redis`.
+* **There is no `driver=` key: the backend is chosen by blank import.** `cloud/lock`
+  takes a *live* backend handle rather than a declarative driver string, so unlike
+  `cloud/discovery` / `cloud/resilience` there is no package-level driver registry;
+  swapping to etcd/consul/k8s is a blank-import change under the same `spring.lock`
+  prefix.
+* **Per-acquire knobs go through `lock.Option`, not config.** TTL, renew/retry
+  intervals and the fencing token are per-call options; the config only supplies
+  defaults, so tuning is identical across every backend.
+* **A `Locker` is bound to exactly one Redis instance.** `client=` is explicit and
+  required — there is no auto-detect — so two Redis instances mean two client beans
+  and two lock instances.

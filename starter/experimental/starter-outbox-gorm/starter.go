@@ -58,6 +58,10 @@ func init() {
 	// it is not an endpoint but a worker, and blocking on it would defeat the
 	// readiness signal.
 	gs.Module(gs.OnProperty("spring.outbox.instances"), func(r gs.BeanProvider, p flatten.Storage) error {
+		// Any key an instance does not define falls back to the family-wide
+		// "default" bucket: spring.outbox.default.<k> is the value every
+		// instance inherits unless it sets its own.
+		p = flatten.WithFallback(p, "spring.outbox.instances", "spring.outbox.default")
 		return conf.BindEach(p, "${spring.outbox.instances}", func(name string, c Config) error {
 			r.Provide(newRelay,
 				gs.IndexArg(1, gs.ValueArg(c)),

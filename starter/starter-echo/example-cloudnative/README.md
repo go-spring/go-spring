@@ -25,7 +25,7 @@ docker required.
 ## Layout
 
 ```
-example.go               the flagship app (container + self-test)
+main.go               the flagship app (container + self-test)
 conf/app.properties      ports, actuator, file-watch imports
 check.sh                 zero-dependency smoke test
 ```

@@ -132,8 +132,8 @@ func TestSentinelBulkhead(t *testing.T) {
 }
 
 // TestSentinelBulkheadHeldAcrossRetries verifies the isolation slot is held for
-// the whole Execute (retries included), matching the builtin driver and
-// DESIGN.md §3. With MaxConcurrent=1 and a retrying call in flight, a second
+// the whole Execute (retries included), matching the builtin driver.
+// With MaxConcurrent=1 and a retrying call in flight, a second
 // call must be rejected for the entire retry sequence — not admitted in the
 // gap between attempts.
 func TestSentinelBulkheadHeldAcrossRetries(t *testing.T) {

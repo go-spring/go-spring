@@ -100,7 +100,7 @@ spring.http.server.enabled=false
 **前置依赖**（一个外部系统）：import 字符串所指地址可达的 Apollo config service，
 含 app `demo`、cluster `default`、已发布 namespace `application`。本地最快的起法是
 Apollo 官方 [Quick Start docker-compose](https://www.apolloconfig.com/#/zh/deployment/quick-start-docker)；
-CI/离线场景可用 starter example 内置的 mock Apollo（`example.go:73-92`），它恰好实现
+CI/离线场景可用 starter example 内置的 mock Apollo（`main.go:73-92`），它恰好实现
 agollo 冷加载需要的两个端点（`/services/config` 与 `/configfiles/json/{appId}/{cluster}/{namespace}`）
 ——免 docker。
 
@@ -267,8 +267,8 @@ cd example && ./check.sh                       # CI 门："Apollo cold-load OK:"
 
 example 自包含：在 `127.0.0.1:18080` 起 mock Apollo、导入
 `optional:apollo:127.0.0.1:18080/application?appId=demo&format=properties`，若
-`demo.message` 未冷加载为 `hello-from-apollo` 则非零退出（`example.go:94-103`）。注意
-mock 的 `/notifications/v2` 返回 304（`example.go:85-86`）——agollo 会持续 long-poll，
+`demo.message` 未冷加载为 `hello-from-apollo` 则非零退出（`main.go:94-103`）。注意
+mock 的 `/notifications/v2` 返回 304（`main.go:85-86`）——agollo 会持续 long-poll，
 这正是演练 4.2 所依赖的机制。
 
 ### 4.2 watch 推送（热加载，免重启）

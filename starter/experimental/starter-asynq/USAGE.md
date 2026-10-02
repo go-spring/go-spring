@@ -18,7 +18,7 @@ opt-in). Multi-instance: each `spring.asynq.instances.<name>` entry is an indepe
 
 One instance playing both roles: the producer enqueues a `example:greet` task, the worker
 (enabled in config) runs it and the process self-terminates on the asserted round trip —
-exactly the shape of [example/example.go](example/example.go). File tree:
+exactly the shape of [example/main.go](example/main.go). File tree:
 
 ```
 demo/
@@ -77,7 +77,7 @@ var completed = make(chan string, 1)
 
 // Init runs after gs field-injects both beans — the correct seam to register
 // handlers before the worker starts consuming (the gs Rooter Init phase runs
-// before Runners/servers, see example/example.go:49-55).
+// before Runners/servers, see example/main.go:49-55).
 func (s *Service) Init() error {
     s.Server.RegisterHandler(taskType, handleGreet)
     return nil

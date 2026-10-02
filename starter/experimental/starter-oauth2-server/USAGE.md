@@ -110,7 +110,7 @@ func (v hmacValidator) Validate(_ context.Context, token string) (*security.Auth
 ```
 
 (`claimStrings` normalizes a space-delimited or array claim — copy it from
-example/example.go.)
+example/main.go.)
 
 **conf/app.properties** — the complete, commented surface:
 
@@ -339,7 +339,7 @@ curl -i :9090/oauth2/token -d grant_type=client_credentials -d client_id=spa
 - HMAC (`secret`): `curl :9090/oauth2/jwks` → `{"keys":[]}` — nothing to publish; the
   resource server shares the secret out of band.
 - RSA/EC (`private-key-file`): the public key appears with `kid`, `use: sig`, `alg`.
-- ⚠ Demo footgun (from DESIGN): with RSA and a JWKS URL pointing back at *this* process,
+- ⚠ Demo footgun (from the design notes): with RSA and a JWKS URL pointing back at *this* process,
   an eagerly-bootstrapping validator can deadlock against the not-yet-serving server —
   ship HMAC for single-process demos.
 
@@ -370,11 +370,11 @@ curl -i :9090/oauth2/token -d grant_type=client_credentials -d client_id=spa
 | Quickstart external deps | 0 |
 | "Watch out" entries | 5 |
 
-Design suspects (kept from previous USAGE/DESIGN, plus new ones):
+Design suspects (carried over from earlier review, plus new ones):
 
 - Codes and refresh tokens live in process memory — single-node only; multi-node needs a
   shared store (existing). The store is internal with no `OnMissingBean`/bean seam, so the
-  DESIGN's "durable store starter could contribute a `CodeStore` bean later" has no actual
+  idea that a later "durable store starter could contribute a `CodeStore` bean" has no actual
   extension point yet (new).
 - `UserAuthFunc` is a mutable public field set after injection, not a config-driven or
   bean-driven seam (existing).

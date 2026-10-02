@@ -182,7 +182,7 @@ provider 都跑在生命周期第 2 步、先于 starter 的原因。app 启动�
 
 本 starter **没有 `value:` tag**——它的全部配置面就是 import 字符串文法加核心的
 `spring.config.import` key。整个目录里唯一的 `value:` tag 是 example 的
-`value:"${demo.message:=none}"`（example/example.go），绑定的是从 ConfigMap 文档展平出的
+`value:"${demo.message:=none}"`（example/main.go），绑定的是从 ConfigMap 文档展平出的
 顶层绝对 key。
 
 ### 3.1 import 字符串文法

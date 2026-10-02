@@ -115,3 +115,18 @@ func init() {
     gs.Provide(func() StarterS3.Driver { return iamDriver{} })
 }
 ```
+
+## Design Notes
+
+* **Credentials are static and required.** The bundled driver authenticates with a
+  fixed access key/secret pair, and both keys are `expr`-required — a public
+  (anonymous) bucket needs a custom `Driver`. Rotating credentials is a config
+  change, not a runtime call.
+* **No service discovery.** An S3 instance is one endpoint, not a discoverable
+  service: unlike the database / message-queue clients there is no
+  `service-name` / discovery quartet, and `lb://` does not apply.
+* **Nothing to close on the client.** minio-go's client has no `Close`, so the
+  instance's teardown releases only the resilience executor — there is no socket
+  or connection pool to drain.
+* **`bucket-lookup` spellings.** `virtual-host` is an alias of `dns` in minio-go
+  v7.0.74; either value works and stays valid across 7.x.

@@ -2,7 +2,7 @@ go 1.26.1
 
 use (
 	./cloud
-	./cloud/cache/example-otel
+	./cloud/observability/example-otel
 	./cloud/experimental/session/example
 	./cloud/experimental/loadtest/example
 	./cloud/lock/example
@@ -22,11 +22,11 @@ use (
 	./contrib/kitex/thrift
 	./contrib/observability
 	./contrib/observability-gorm
-	./contrib/registry/consul
-	./contrib/registry/etcd
-	./contrib/registry/nacos
-	./contrib/registry/polaris
-	./contrib/registry/zookeeper
+	./contrib/discovery/consul
+	./contrib/discovery/etcd
+	./contrib/discovery/nacos
+	./contrib/discovery/polaris
+	./contrib/discovery/zookeeper
 	./gs/experimental/gs-gui
 	./gs/experimental/gs-k8s
 	./gs/experimental/gs-serve
@@ -68,8 +68,8 @@ use (
 	./starter/starter-config-nacos/example
 	./starter/starter-config-vault
 	./starter/starter-config-vault/example
-	./starter/starter-registry-k8s
-	./starter/starter-registry-k8s/example
+	./starter/starter-discovery-k8s
+	./starter/starter-discovery-k8s/example
 	./starter/experimental/starter-elasticsearch
 	./starter/experimental/starter-elasticsearch/example
 	./starter/experimental/starter-elasticsearch/example-cloudnative
@@ -152,13 +152,12 @@ use (
 	./starter/experimental/starter-rabbitmq/example-otel
 	./starter/experimental/starter-ratelimit-redis
 	./starter/experimental/starter-ratelimit-redis/example
-	./starter/starter-registry-consul
-	./starter/starter-registry-consul/example
-	./starter/starter-registry-nacos
-	./starter/starter-registry-nacos/example
-	./starter/starter-registry
-	./starter/starter-registry-zookeeper
-	./starter/starter-registry-zookeeper/example
+	./starter/starter-discovery-consul
+	./starter/starter-discovery-consul/example
+	./starter/starter-discovery-nacos
+	./starter/starter-discovery-nacos/example
+	./starter/starter-discovery-zookeeper
+	./starter/starter-discovery-zookeeper/example
 	./starter/experimental/starter-rocketmq
 	./starter/experimental/starter-rocketmq/example
 	./starter/experimental/starter-rocketmq/example-otel
@@ -192,8 +191,6 @@ use (
 	./starter/experimental/starter-xxljob/example
 	./starter/starter-bigcache
 	./starter/starter-bigcache/example
-	./starter/starter-bigcache/example-cloudnative
-	./starter/starter-bigcache/example-load
 	./starter/starter-bigcache/example-otel
 	./starter/starter-config-etcd
 	./starter/starter-config-etcd/example
@@ -272,8 +269,8 @@ use (
 	./starter/starter-redigo/example-cloudnative
 	./starter/starter-redigo/example-load
 	./starter/starter-redigo/example-otel
-	./starter/starter-registry-etcd
-	./starter/starter-registry-etcd/example
+	./starter/starter-discovery-etcd
+	./starter/starter-discovery-etcd/example
 	./starter/starter-scheduler
 	./starter/starter-scheduler/example
 	./starter/starter-scheduler/example-otel

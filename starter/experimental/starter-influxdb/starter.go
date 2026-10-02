@@ -39,6 +39,10 @@ func init() {
 	// under the same name — and to attach the file:line of this registration
 	// to the bean for diagnostics.
 	gs.Module(gs.OnProperty("spring.influxdb.instances"), func(r gs.BeanProvider, p flatten.Storage) error {
+		// Any key an instance does not define falls back to the family-wide
+		// "default" bucket: spring.influxdb.default.<k> is the value every
+		// instance inherits unless it sets its own.
+		p = flatten.WithFallback(p, "spring.influxdb.instances", "spring.influxdb.default")
 		return conf.BindEach(p, "${spring.influxdb.instances}", func(name string, c Config) error {
 			// The Driver bean is selected by the entry's ${driver} key: unset →
 			// "?" (nullable by-type — injects the single Driver bean when one is

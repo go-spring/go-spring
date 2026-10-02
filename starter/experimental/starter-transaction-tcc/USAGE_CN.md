@@ -22,7 +22,7 @@ server，只注册 bean。`spring.transaction` 命名空间与 starter-transacti
 
 一个单进程"订单服务"，把预留库存与冻结余额编排为一个 TCC 事务。第二个参与者的 Try
 故意失败（金额过大），第一个参与者的预留随即被 Cancel —— 正是
-[example/example.go](example/example.go) 断言的场景。文件树：
+[example/main.go](example/main.go) 断言的场景。文件树：
 
 ```
 demo/

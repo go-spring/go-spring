@@ -114,3 +114,9 @@ logger.lock_access.type=Logger
 logger.lock_access.level=WARN
 logger.lock_access.tag=_app_lock_access
 ```
+
+## 设计说明
+
+* **Lease 名为 `<key-prefix><key>`，因此锁 key 本身必须是合法的 DNS-1123 子域**——只能含小写字母数字、`-` 与 `.`。该约束作用于传给 `Acquire` 的 key，而不只是 `key-prefix`。
+* **时序参数按次获取由 `lock.Option` 携带，单位为整秒。** K8s Lease 时长是整数秒，因此亚秒级 TTL 会向上取整为 1s；本 starter 的配置中没有时序键。
+* **各持有相互独立。** 所有持有共享一个 clientset，但每个已持有的锁自持续期 ticker 与 `Lost()` 通道，因此丢失一个租约不会影响另一个。

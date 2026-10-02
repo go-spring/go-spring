@@ -41,7 +41,7 @@ go get go-spring.org/starter-admin-ui
 
 ### 1. Import the package
 
-Refer to the [example.go](example/example.go) file.
+Refer to the [main.go](example/main.go) file.
 
 ```go
 import _ "go-spring.org/starter-admin-ui"
@@ -147,6 +147,23 @@ operator tool, not a probe target, so there is nothing to flip on drain.
 | `spring.admin-ui.interval` | `10s` | Poll cadence; also drives the page's auto-refresh. |
 | `spring.admin-ui.timeout` | `3s` | Per-request HTTP timeout when polling one endpoint on one instance. |
 | `spring.admin-ui.title` | `Go-Spring Admin` | Dashboard title. Handy for labelling per-environment dashboards. |
+
+## Design Notes
+
+* **The instance list is static.** There is no discovery integration — the target
+  set is `spring.admin-ui.instances`, aimed at a known small fleet (on-prem /
+  bring-up), not fleet-wide scanning.
+* **It serves during startup.** Like the actuator it does not block on the ready
+  signal, so operators can watch the aggregate transition.
+* **Each sweep is capped at the poll interval,** so a wedged instance can never
+  let consecutive sweeps overlap.
+* **Partial failure is rendered, not raised.** An `/info` failure is ignored; a
+  non-2xx `/readiness` body is still decoded so the status pill renders; only an
+  unreachable `/health` becomes the row's `Error`. A broken target never breaks
+  the dashboard.
+* **Refresh floor and stable order.** A sub-second `interval` is clamped to the
+  HTML meta-refresh minimum of 1s, and rows are sorted by base URL so the table
+  does not shuffle between refreshes.
 
 ## License
 

@@ -19,7 +19,7 @@ go get go-spring.org/starter-thrift
 
 ### 1. 引入 `starter-thrift` 包
 
-参见 [example.go](example/example.go) 文件。
+参见 [main.go](example/main.go) 文件。
 
 ```go
 import _ "go-spring.org/starter-thrift"
@@ -54,7 +54,7 @@ spring.thrift.server.tls.key-file=
 
 ### 3. 注册 Processor
 
-参见 [example.go](example/example.go) 文件。
+参见 [main.go](example/main.go) 文件。
 
 ```go
 gs.Provide(&Controller{})
@@ -65,7 +65,7 @@ gs.Provide(func(c *Controller) thrift.TProcessor {
 
 ## 核心功能
 
-[示例](example/example.go) 展示了 3 个 Thrift 关键能力，均在 `runTest` 中做了端到端断言：
+[示例](example/main.go) 展示了 3 个 Thrift 关键能力，均在 `runTest` 中做了端到端断言：
 
 1. **Echo RPC**：客户端调用 `EchoService.Echo`，传入 `"Hello, Thrift!"`，
    并断言响应体原样返回，验证在所配置的 `compact` 协议 + `framed`
@@ -95,7 +95,7 @@ Starter 通过 `NewTSimpleServer4` 构建服务端，同时暴露协议工厂与
   前缀，很多跨语言客户端要求使用它。客户端的传输必须与之匹配。
 
 客户端/服务端在协议或传输上不匹配会导致读死锁或协议错乱。
-[示例](example/example.go) 将服务端配置为 `compact` + `framed`，并让
+[示例](example/main.go) 将服务端配置为 `compact` + `framed`，并让
 客户端相应对齐：用 `TFramedTransport` 包装 socket + `TCompactProtocol`。
 
 ### 关于服务器模型

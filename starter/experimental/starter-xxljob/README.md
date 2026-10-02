@@ -56,3 +56,18 @@ func (s *Service) Init() error {
 
 **Multiple executors** — additional `spring.xxljob.instances.<name>` entries, each with
 its own callback port and handler registry.
+
+## Design Notes
+
+* **The callback port is required, with no default.** The admin must dial back
+  into the executor to trigger jobs, so the port is an explicit operator decision.
+* **The protocol is a deliberate subset.** Registry / heartbeat / `/run` /
+  `/idleBeat` / `/kill` / `/log` plus the `/api/callback` post-back. Broadcast /
+  sharding (`broadcastIndex` / `broadcastTotal`) is parsed but not acted on, and
+  GLUE (shell / python) execution is out of scope — those jobs need an external
+  handler.
+* **Registration lives with the server.** The registry / heartbeat / remove loop
+  runs inside the executor's `Run` lifecycle and de-registers on shutdown.
+* **A task is a goroutine with a cancellable context.** `/kill` cancels the
+  running handler, and a handler panic is converted to a `500` callback rather
+  than crashing the executor.

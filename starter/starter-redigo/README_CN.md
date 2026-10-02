@@ -17,7 +17,7 @@ go get go-spring.org/starter-redigo
 
 ### 1. 引入 `starter-redigo` 包
 
-参见 [example.go](example/example.go) 文件。
+参见 [main.go](example/main.go) 文件。
 
 ```go
 import _ "go-spring.org/starter-redigo"
@@ -33,7 +33,7 @@ spring.redigo.instances.main.addr=127.0.0.1:6379
 
 ### 3. 注入 Redis 实例
 
-参见 [example.go](example/example.go) 文件。
+参见 [main.go](example/main.go) 文件。
 
 ```go
 import "github.com/gomodule/redigo/redis"
@@ -45,7 +45,7 @@ type Service struct {
 
 ### 4. 使用 Redis 实例
 
-参见 [example.go](example/example.go) 文件。
+参见 [main.go](example/main.go) 文件。
 
 ```go
 c := s.Redis.Get() // 从池里借连接
@@ -56,7 +56,7 @@ _, err = c.Do("SET", "key", "value")
 
 ## 核心功能
 
-[example.go](example/example.go) 文件演示了以下核心 Redis 功能：
+[main.go](example/main.go) 文件演示了以下核心 Redis 功能：
 
 * **字符串 SET/GET**：使用 `SET` 存储字符串值，使用 `GET` 读取。
 * **INCR 计数器**：使用 `INCR` 对整型计数器进行原子自增。

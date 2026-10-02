@@ -25,12 +25,13 @@
 //
 // A company adapts its own naming service by implementing the single
 // [Discovery] interface; each backend is a named bean in the IoC container
-// (a registry starter derives one per ${spring.registry.<backend>.<name>}
+// (a discovery starter derives one per ${spring.discovery.<backend>.<name>}
 // block, named "<backend>.<name>" — e.g. "etcd.main"), and every client
 // starter injects the backend it cites by name — the container is
 // the discovery directory. Publishing this process to a registry (the
-// provider-side write) is handled by a registry starter such as
-// starter-registry-etcd, not by this package.
+// provider-side write) is driven by this package: [Server] owns the
+// publication lifecycle, and each backend starter contributes the [Registry]
+// that talks to its own center.
 package discovery
 
 import (
@@ -43,8 +44,8 @@ import (
 // Reserved metadata keys. The dimensions consumers route on (version, zone,
 // scheme) travel inside Endpoint.Metadata / Instance.Metadata so backends
 // store them without per-backend mapping. These keys are the single source of
-// truth for that convention: the write side (starter-registry) folds the
-// ${spring.registry} identity fields in under these keys, and the read side
+// truth for that convention: the write side ([Server]) folds the
+// ${spring.discovery} identity fields in under these keys, and the read side
 // (backends restoring [Endpoint.Scheme], zone-aware balancing) reads them back.
 const (
 	// MetaKeyVersion carries the application version of the instance.
@@ -122,14 +123,14 @@ type Query struct {
 	Scheme string
 
 	// Tag narrows the lookup to instances carrying tag — a Consul service tag, a
-	// registry label, or any backend-specific marker that partitions a service's
-	// instances and is part of the registry query (not a generic field on
+	// discovery label, or any backend-specific marker that partitions a service's
+	// instances and is part of the discovery query (not a generic field on
 	// [Endpoint]). It is "" (the default) when the caller passed no [WithTag].
 	//
 	// Unlike [Query.Scheme], tag has no package-level filter ([FilterByScheme]):
-	// tag is part of the registry's own query (Consul's Health().Service takes
+	// tag is part of the discovery backend's own query (Consul's Health().Service takes
 	// the tag server-side), so a backend that supports tags honors it in its
-	// registry call, and a backend that does not (the static backend, k8s DNS,
+	// backend call, and a backend that does not (the static backend, k8s DNS,
 	// ...) silently ignores it. That asymmetry is intentional — only dimensions
 	// with a generic [Endpoint] representation get a shared filter.
 	Tag string
@@ -157,7 +158,7 @@ func WithScheme(s string) Option {
 }
 
 // WithTag narrows the lookup to instances carrying tag (a Consul service tag, a
-// registry label, ...). An empty t is a no-op. Honoring tag is backend-specific
+// discovery label, ...). An empty t is a no-op. Honoring tag is backend-specific
 // and has no package-level filter — see [Query.Tag].
 func WithTag(t string) Option {
 	return func(q *Query) {
@@ -191,7 +192,7 @@ func NewQuery(name string, opts ...Option) Query {
 // lets one naming adapter serve every client.
 //
 // Execution model: Resolve is a snapshot read — ctx bounds the call (deadline,
-// cancellation, trace). The freshness machinery (registry watch, subscription,
+// cancellation, trace). The freshness machinery (backend watch, subscription,
 // poll) lives INSIDE each backend, not in this interface: a backend keeps its
 // cache current on its own, so Resolve is a cheap read from an up-to-date
 // cache. A client therefore just calls Resolve whenever it needs endpoints:
@@ -259,7 +260,7 @@ func NewResolver(ctx context.Context, d Discovery, name string, opts ...Option) 
 // real adapter would talk to a naming service (Nacos, Consul, etcd, Kubernetes,
 // ...) and refresh its cache as instances come and go; this one never changes.
 // Use it for examples, tests, and single-instance local setups where a live
-// registry is not wanted.
+// backend is not wanted.
 func NewStaticDiscovery(eps ...Endpoint) Discovery {
 	return &staticBackend{eps: eps}
 }

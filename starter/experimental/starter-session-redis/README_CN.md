@@ -108,3 +108,11 @@ Cookie 名称、路径、`Secure`、`SameSite` 以及空闲超时都在构建 `M
   `Set` 时才签发。
 * **安全 id**——256 位 `crypto/rand`,id 不可猜测。
 * **fail-fast 配置**——缺失 `client` 直接拒绝启动,而不是等到第一次读会话才暴露。
+
+## 设计说明
+
+* **本 starter 只提供存储。** Cookie 解析、惰性分配、写回与 `Manager` 中间件都在 `cloud/experimental/session`；本 starter 只把一条配置映射为一个 `SessionStore`，仅此而已。
+* **一个实例对应一个具名 Redis 客户端。** `SessionStore` 复用 `client=` 指名的 `*redis.Client` bean；客户端生命周期归 `starter-go-redis`，因此这里没有 destroy 钩子。
+* **会话以 JSON 存储。** 存储实现较窄的 `ByteStore` 接缝，并由 `FromByteStore` 抬升——它把 `sessionData{Attributes, CreatedAt}` JSON 编码，因此会话属性必须可被 JSON 序列化。
+* **生命周期就是 Redis key TTL。** 每次保存都写入一个 key TTL；过期与滑动续期由 Redis 强制，`redis.Nil` 映射为未命中——没有单独的清扫器在跑。
+* **会话 Cookie 恒为 HttpOnly。** `Manager` 不提供开关：JavaScript 可读的会话 cookie 基本总是 bug，且 `bool` 零值无法区分显式的 `false`。

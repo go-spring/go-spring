@@ -67,7 +67,7 @@ spring.pprof.token=s3cr3t
 # spring.pprof.enabled=false
 ```
 
-**验证**(与 `example/example.go runTest` 同构):
+**验证**(与 `example/main.go runTest` 同构):
 
 ```bash
 go run . -manual &

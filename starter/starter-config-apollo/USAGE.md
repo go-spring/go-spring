@@ -105,7 +105,7 @@ address in the import string, with app `demo`, cluster `default`, namespace
 `application` published. Quickest local stack is Apollo's official
 [Quick Start docker-compose](https://www.apolloconfig.com/#/en/deployment/quick-start-docker);
 for CI or offline work the starter's own example embeds a mock Apollo service
-(`example.go:73-92`) that serves exactly the two endpoints agollo needs
+(`main.go:73-92`) that serves exactly the two endpoints agollo needs
 (`/services/config` and `/configfiles/json/{appId}/{cluster}/{namespace}`) — no docker.
 
 **Verify (cold load)**:
@@ -283,8 +283,8 @@ cd example && ./check.sh                       # CI gate: "Apollo cold-load OK:"
 
 The example is self-contained: it starts the mock Apollo on `127.0.0.1:18080`, imports
 `optional:apollo:127.0.0.1:18080/application?appId=demo&format=properties`, and exits
-non-zero unless `demo.message` cold-loads as `hello-from-apollo` (`example.go:94-103`).
-Note the mock's `/notifications/v2` returning 304 (`example.go:85-86`) — agollo keeps
+non-zero unless `demo.message` cold-loads as `hello-from-apollo` (`main.go:94-103`).
+Note the mock's `/notifications/v2` returning 304 (`main.go:85-86`) — agollo keeps
 long-polling, which is what drill 4.2 rides on.
 
 ### 4.2 Watch push (hot reload, no restart)

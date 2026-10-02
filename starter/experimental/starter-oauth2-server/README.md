@@ -64,7 +64,7 @@ spring.oauth2.server.clients.svc.grant-types=client_credentials
 ### 3. Mount the Endpoints and Wire the Login Seam
 
 Inject the `*AuthServer`, set `UserAuthFunc` (the resource-owner login), and
-mount `Handler()` onto your HTTP server. Refer to the [example.go](example/example.go) file.
+mount `Handler()` onto your HTTP server. Refer to the [main.go](example/main.go) file.
 
 ```go
 gs.Provide(func(as *StarterOAuth2Server.AuthServer) *gs.HttpServeMux {
@@ -129,3 +129,16 @@ mux.Handle("/api/admin", security.Chain(
 
 For the design constraints every official starter follows, see
 [DESIGN.md](../../DESIGN.md).
+
+## Design Notes
+
+* **One authorization server per application.** The bean is not a `gs.Group` — an application
+  runs a single AS, and multi-tenancy is the `clients` map, not several server beans.
+* **Login is a struct field, not a bean.** Set `UserAuthFunc` on the injected `*AuthServer` and
+  mount `Handler()`; there is no optional `UserAuth` bean and no reflective wiring — the
+  application supplies identity.
+* **Never point a JWKS fetch back at this process.** With an asymmetric key the `/jwks` URL must
+  be served by another service: a same-process eager JWKS fetch deadlocks against this
+  not-yet-serving server, which is why the example ships HMAC.
+* **PKCE helpers are exported.** `GenerateVerifier()` and `Challenge(verifier, method)` build
+  the RFC 7636 pair, so a client SDK or a test does not hand-roll the algorithm.

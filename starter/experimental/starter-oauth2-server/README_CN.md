@@ -58,7 +58,7 @@ spring.oauth2.server.clients.svc.grant-types=client_credentials
 ### 3. 挂载端点并接入登录缝隙
 
 注入 `*AuthServer`，设置 `UserAuthFunc`（资源属主登录），并把 `Handler()`
-挂到你的 HTTP 服务器上。参考 [example.go](example/example.go) 文件。
+挂到你的 HTTP 服务器上。参考 [main.go](example/main.go) 文件。
 
 ```go
 gs.Provide(func(as *StarterOAuth2Server.AuthServer) *gs.HttpServeMux {
@@ -116,3 +116,10 @@ mux.Handle("/api/admin", security.Chain(
 ## 设计
 
 每个官方 starter 都遵循的设计约束，见 [DESIGN.md](../../DESIGN.md)。
+
+## 设计说明
+
+* **一个应用一个授权服务器。** bean 不是 `gs.Group`——一个应用只跑一个 AS，多租户靠 `clients` map，而不是多个 server bean。
+* **登录是结构体字段，不是 bean。** 在注入的 `*AuthServer` 上设置 `UserAuthFunc` 再挂 `Handler()`；没有可选的 `UserAuth` bean，也没有反射接线——身份由应用提供。
+* **不要把 JWKS 拉取指回本进程。** 用非对称密钥时 `/jwks` URL 必须由另一个服务提供：同进程急式拉取 JWKS 会与这个尚未起服务的服务器死锁，这正是示例使用 HMAC 的原因。
+* **PKCE 工具已导出。** `GenerateVerifier()` 与 `Challenge(verifier, method)` 可构造 RFC 7636 的校验对，客户端 SDK 或测试无需手写算法。

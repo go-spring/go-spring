@@ -223,3 +223,17 @@ Collector 侧拿到 GORM 查询 span 和连接池指标。
 
 provider 以进程级 stopper（gs.RegisterStopper）注册，因此关闭时会 flush 缓冲的 span 和
 metrics 并干净地关闭 exporter。
+
+## 设计说明
+
+* **每进程一对 provider。** `TracerProvider` 与 `MeterProvider` 是 OTel 进程全局，
+  生来单例；第二个安装器（另一个做同样事的 starter）会与之打架。
+* **关停时在所有组件之后 flush。** provider 注册为进程级 stopper，只在所有 server
+  停止、容器关闭之后运行；最后 flush 的 ctx 无 deadline，因此最后一批数据会等待导出
+  完成，而不会被关停超时掐断。
+* **硬杀进程会丢缓冲数据。** `Shutdown` 是唯一 flush 点：SIGKILL / `os.Exit` /
+  server 优雅退出永不返回时，trace 最多丢一个 BatchSpanProcessor 队列（默认 2048 条
+  / 5 s），metric 最多丢一个 PeriodicReader 周期（默认 60 s）。pull 型 Prometheus
+  exporter 无缓冲，不丢任何数据。
+* **runtime metrics 是同一 MeterProvider 上的可选增值**，`MeterProvider.Shutdown`
+  会一并回收——没有单独的 stop hook。

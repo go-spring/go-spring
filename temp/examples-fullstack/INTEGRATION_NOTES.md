@@ -19,9 +19,9 @@ must allocate explicitly. Documented in each `conf/app.properties`.
 
 ## 2. Consul has no client-side discovery starter — *gap feeds back*
 
-`starter-registry-consul` is register-side only (it advertises an instance). The
+`starter-discovery-consul` is register-side only (it advertises an instance). The
 gateway's `lb://order` and order→inventory need a *client-side*
-`discovery.Discovery`, and only `starter-registry-k8s` ships one.
+`discovery.Discovery`, and only `starter-discovery-k8s` ships one.
 
 **Bridged in the sample** via `internal/consuldisc`, a Consul-catalog-backed
 `discovery.Discovery` registered with `discovery.Register("consul", …)`. It
@@ -29,12 +29,12 @@ proves the `cloud/discovery` abstraction is sufficient to close the gap, but a
 first-class `starter-discovery-consul` would remove this per-app code. **Feeds
 back**: candidate new starter.
 
-## 3. `lb://` resolves through a global registry, not a bean — *ordering note*
+## 3. `lb://` resolves through a global discovery lookup, not a bean — *ordering note*
 
 The gateway resolves an `lb://` upstream via `discovery.GetDiscovery(name)` — the
-process-global `cloud/discovery` registry, not the IoC container. So
+process-global `cloud/discovery` lookup table, not the IoC container. So
 `discovery.Register(...)` must run in `init()` (before route compilation), and it
-is a global side effect, not an injectable bean. Mixing a global registry with
+is a global side effect, not an injectable bean. Mixing a global discovery lookup with
 bean-based wiring is easy to get wrong; the sample keeps the `Register` call in
 each `main`'s `init` next to the blank imports so the ordering is obvious.
 
@@ -101,7 +101,7 @@ each driven to a verdict against the code above:
 1. **Config-prefix collisions — non-issue.** Every capability owns a distinct
    top-level prefix (`spring.gateway`, `spring.observability`, `spring.actuator`,
    `spring.security.jwt`), and same-capability families deliberately share one
-   (`spring.registry`, `spring.config`, `spring.transaction`, `spring.redis`) so
+   (`spring.discovery`, `spring.config`, `spring.transaction`, `spring.redis`) so
    swapping implementation is import-only. No unrelated starters read the same
    key. The only real per-host clash — ports — is solved by item 1 above.
 2. **Multi-server drain order — verified correct.** The actuator server is a

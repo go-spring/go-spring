@@ -102,7 +102,7 @@ func init() {
 ```
 
 （seqReader 与 writeChunk 属应用代码——完整带 checkpoint 的 reader 见
-`../starter-batch/example/example.go:117-145`。）
+`../starter-batch/example/main.go:117-145`。）
 
 **conf/app.properties** —— 全量配置面：
 

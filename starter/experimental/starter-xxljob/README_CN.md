@@ -55,3 +55,15 @@ func (s *Service) Init() error {
 
 **多执行器** — 更多 `spring.xxljob.instances.<name>` 条目，各自独立的回调端口与
 handler 注册表。
+
+## 设计说明
+
+* **回调端口必填、无默认值。** admin 必须能拨回执行器以触发任务，因此端口是
+  运维的显式决策。
+* **协议是刻意子集。** 注册／心跳／`/run`／`/idleBeat`／`/kill`／`/log` 加上
+  `/api/callback` 回传。广播／分片（`broadcastIndex`／`broadcastTotal`）只解析不
+  执行，GLUE（shell／python）执行不在范围内——这类任务需要外部 handler。
+* **注册与服务器同生命周期。** 注册／心跳／注销循环跑在执行器 `Run` 生命周期里，
+  关机时注销。
+* **任务是带可取消 context 的 goroutine。** `/kill` 取消运行中的 handler，handler
+  panic 会转成 `500` 回调，而不是让执行器崩溃。

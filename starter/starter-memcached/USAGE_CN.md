@@ -243,7 +243,7 @@ bean 名则显式选定一个；无 `resilience` key：resilience/fault 来自�
 ## 4. 验证与故障演练
 
 1. **SET/GET 往返**：`curl :9090/set` → `OK`；`curl :9090/get` → `value`
-   （handler 见 `example/example.go`；check.sh 无头断言）。
+   （handler 见 `example/main.go`；check.sh 无头断言）。
 2. **cache-miss 语义**：删除 key 后 `curl :9090/get` → `memcache: cache miss`；开 governance
    时反复 miss **不会**熔断（ErrCacheMiss 计为成功，`client.go`）。
 3. **server-down fail-fast**：设 `ping=true`，停掉 memcached（`docker stop demo-memcached`）再

@@ -35,6 +35,10 @@ func init() {
 	// concrete types. An empty map registers nothing — configuration is the
 	// enable switch.
 	gs.Module(gs.OnProperty("spring.security.oauth2.resource.jwt.instances"), func(r gs.BeanProvider, p flatten.Storage) error {
+		// Any key an instance does not define falls back to the family-wide
+		// "default" bucket: spring.security.oauth2.resource.jwt.default.<k> is the value every
+		// instance inherits unless it sets its own.
+		p = flatten.WithFallback(p, "spring.security.oauth2.resource.jwt.instances", "spring.security.oauth2.resource.jwt.default")
 		return conf.BindEach(p, "${spring.security.oauth2.resource.jwt.instances}", func(name string, c Config) error {
 			if _, err := c.source(); err != nil {
 				return errutil.Explain(err, "oauth2-resource-server: instance %q", name)

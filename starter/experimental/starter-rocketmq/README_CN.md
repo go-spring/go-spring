@@ -173,3 +173,12 @@ func (d myDriver) CreateClient(ctx context.Context, c StarterRocketmq.Config,
 **健康检查** — 与其它 MQ starter 一致，这里不注册 `health.Indicator`
 （没有在所有集群拓扑下都廉价可用的探针）；使用 `starter-actuator` 时由
 应用自己导出（例如一次 `NewProducer`/`Shutdown` 往返）。
+
+## 设计说明
+
+* **顺序与事务消息留在原生 SDK。** `messaging.Driver` 适配器是并发消费的；顺序或事务发送请用原生
+  `Client`。消息 payload 保持 `[]byte`——序列化归你。
+* **`instance-name` 控制连接池共享。** 留空时 SDK 把共享的 "DEFAULT" 改写为每个 producer/consumer
+  的 `PID#nano`，在多生产者进程里是安全的；显式设置则让所有 remoting 客户端共享一个连接池。
+* **ping 探针是 TCP 拨号，不是 broker 往返。** 它能在启动期抓出配错的地址，但抓不到 ACL 或凭据错误——
+  刻意廉价、无副作用、与拓扑无关。

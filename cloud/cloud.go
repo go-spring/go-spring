@@ -79,6 +79,10 @@ type ClientParams struct {
 // client's backend name ("memcached", "redigo", ...), which clients also declare
 // in their operations; it is a parameter rather than a field because one
 // container assembles many kinds of client.
+//
+// A component with nothing to protect does not come through here: an in-process
+// cache pins [resilience.Observed] itself (see starter-bigcache), so that a rule
+// naming its label — or a family-wide default — has no seam to reach it.
 func (p ClientParams) ExecutorFor(system, label string) resilience.ClientExecutor {
 	if p.Resilience == nil {
 		return resilience.Unmanaged(system, label)

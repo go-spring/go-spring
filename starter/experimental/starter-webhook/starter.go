@@ -70,6 +70,10 @@ func init() {
 	// No destroy callback: each Send is a stateless HTTP request, so there is
 	// nothing to release at shutdown.
 	gs.Module(gs.OnProperty("spring.webhook.instances"), func(r gs.BeanProvider, p flatten.Storage) error {
+		// Any key an instance does not define falls back to the family-wide
+		// "default" bucket: spring.webhook.default.<k> is the value every
+		// instance inherits unless it sets its own.
+		p = flatten.WithFallback(p, "spring.webhook.instances", "spring.webhook.default")
 		return conf.BindEach(p, "${spring.webhook.instances}", func(name string, c Config) error {
 			r.Provide(newNotifier,
 				gs.IndexArg(1, gs.ValueArg(name)),
@@ -88,7 +92,7 @@ func init() {
 
 // newNotifier builds a Notifier from config. There is deliberately no startup
 // probe: the only universal probe would be a real POST, and sending a junk
-// notification at boot is worse than failing on first use (see DESIGN).
+// notification at boot is worse than failing on first use.
 //
 // mgr and inj are the governance beans gs injects (both nil in a standalone
 // call); the ctor bundles them into the [cloud.ClientParams] it applies while

@@ -38,6 +38,10 @@ func init() {
 	// We use gs.Module instead of gs.Group so that the pool's bean name is
 	// available to pass to observers.
 	gs.Module(gs.OnProperty("spring.ants.instances"), func(r gs.BeanProvider, p flatten.Storage) error {
+		// Any key an instance does not define falls back to the family-wide
+		// "default" bucket: spring.ants.default.<k> is the value every
+		// instance inherits unless it sets its own.
+		p = flatten.WithFallback(p, "spring.ants.instances", "spring.ants.default")
 		return conf.BindEach(p, "${spring.ants.instances}", func(name string, c Config) error {
 			// createPool returns Pool (interface), but gs.Provide registers
 			// the concrete type. Export(gs.As[Pool]()) makes it available

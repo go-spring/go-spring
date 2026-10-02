@@ -18,7 +18,7 @@ go get go-spring.org/starter-kitex
 
 ### 1. 引入 `starter-kitex` 包
 
-参见 [example.go](example/example.go) 文件。
+参见 [main.go](example/main.go) 文件。
 
 ```go
 import StarterKitex "go-spring.org/starter-kitex"
@@ -37,7 +37,7 @@ spring.kitex.server.compatible-unary-middleware=true
 
 ### 3. 注册 Kitex 服务
 
-参见 [example.go](example/example.go) 文件。将生成的 `xxxservice.RegisterService`
+参见 [main.go](example/main.go) 文件。将生成的 `xxxservice.RegisterService`
 包装成一个 `StarterKitex.ServiceRegister` Bean —— Starter 会构建原始的
 `server.Server` 并调用它来绑定你的 handler，因此 Starter 本身不依赖任何生成代码：
 
@@ -51,7 +51,7 @@ gs.Provide(func() StarterKitex.ServiceRegister {
 
 ## 核心功能
 
-[示例](example/example.go) 在同一个进程内同时运行服务器和客户端，并在 `runTest` 中对
+[示例](example/main.go) 在同一个进程内同时运行服务器和客户端，并在 `runTest` 中对
 一元 Echo 调用做了端到端断言：
 
 1. **一元 Echo 调用**：客户端调用 `EchoService.Echo` 并拿到原样返回的消息，验证标准的

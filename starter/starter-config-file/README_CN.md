@@ -61,7 +61,7 @@ type Demo struct {
 ```
 
 被监听的文件变更时，Provider 的监听器会触发一次应用属性刷新，所有绑定的 `gs.Dync`
-字段都会被原子更新。完整流程参见 [example](example/example.go)——它复现了
+字段都会被原子更新。完整流程参见 [example](example/main.go)——它复现了
 Kubernetes `..data` 原子软链替换，并断言绑定字段发生热更新。
 
 ## Kubernetes 示例
@@ -105,7 +105,7 @@ spring.config.import=configtree:/etc/secret
 K8s Secret/ConfigMap 挂载是扁平的（一个 key 一个文件；key 名允许含点，所以 `db.user` 是合法 key）。
 `configtree` 也支持真正的嵌套树（`db/user` → 属性 `db.user`）；名字以 `.` 开头的条目
 （`..data`、时间戳目录）在每一层都会被跳过。不接受 `?format=`——value 就是裸字符串。完整热更新
-流程见 [example-configtree](example-configtree/example.go)。
+流程见 [example-configtree](example-configtree/main.go)。
 
 ### file-watch 与 configtree 的选择
 

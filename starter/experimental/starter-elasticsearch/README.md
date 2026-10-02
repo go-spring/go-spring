@@ -16,7 +16,7 @@ go get go-spring.org/starter-elasticsearch
 
 ### 1. Import the `starter-elasticsearch` Package
 
-Refer to the [example.go](example/example.go) file.
+Refer to the [main.go](example/main.go) file.
 
 ```go
 import _ "go-spring.org/starter-elasticsearch"
@@ -32,7 +32,7 @@ spring.elasticsearch.instances.docs.addresses=http://127.0.0.1:9200
 
 ### 3. Inject the Elasticsearch Instance
 
-Refer to the [example.go](example/example.go) file.
+Refer to the [main.go](example/main.go) file.
 
 ```go
 import StarterElasticsearch "go-spring.org/starter-elasticsearch"
@@ -44,7 +44,7 @@ type Service struct {
 
 ### 4. Use the Elasticsearch Instance
 
-Refer to the [example.go](example/example.go) file.
+Refer to the [main.go](example/main.go) file.
 
 ```go
 res, err := s.ES.Index("index", strings.NewReader(`{"title":"hello"}`), s.ES.Index.WithDocumentID("1"))
@@ -54,7 +54,7 @@ res, err := s.ES.Search(s.ES.Search.WithIndex("index"), s.ES.Search.WithBody(que
 
 ## Core Features
 
-The [example.go](example/example.go) file demonstrates the following core Elasticsearch features:
+The [main.go](example/main.go) file demonstrates the following core Elasticsearch features:
 
 * **Cluster Info**: verify connectivity to the cluster with `Info`.
 * **Index a document**: store a JSON document with `Index`, using `WithRefresh` to make it immediately searchable.
@@ -92,4 +92,21 @@ The [example.go](example/example.go) file demonstrates the following core Elasti
   fixed for the client's lifetime. Elasticsearch cluster addresses are typically
   stable VIPs, so this is usually sufficient; when it is not, leave
   `service-name` empty and configure `addresses` directly.
+
+## Design Notes
+
+* **Fail at boot, not on first use.** A one-shot `Info` probe runs during
+  construction, so a bad address, certificate or credential surfaces at startup;
+  the health indicator and that probe share the same `HealthCheck`.
+* **Exactly one provisioning mode.** The node list comes from `addresses`,
+  `cloud-id` or `service-name` — exactly one; leaving all three empty fails
+  startup, since the probe has nothing to reach.
+* **The v8 client has no `Close`.** Its transport reuses idle `net/http`
+  connections, so the destroy callback is deliberately a no-op — lifecycle
+  symmetry with the other client starters, not an oversight.
+* **A custom `Driver` is process-wide.** The Driver is a single container bean
+  serving every instance, so a custom driver should delegate to the bundled
+  `DefaultDriver` to keep per-instance behaviour. Transport wrapping (e.g. an
+  APM/OTel transport) belongs in the driver's `CreateClient`; the base transport
+  stays plain `net/http`, so an app that never imports `starter-otel` pays nothing.
 

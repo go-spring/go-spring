@@ -49,12 +49,7 @@
           },
           "stats-enabled": {
             "type": "boolean",
-            "default": false
-          },
-          "health": {
-            "type": "boolean",
-            "default": true,
-            "description": "Contributes a health.Indicator bean per instance; set false to disable."
+            "default": true
           }
         }
       }

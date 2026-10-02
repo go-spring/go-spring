@@ -50,7 +50,7 @@ res, err := neo4j.ExecuteQuery(ctx, s.Neo4j,
 
 ## Core Features
 
-The [example.go](example/example.go) file demonstrates the following core Neo4j features:
+The [main.go](example/main.go) file demonstrates the following core Neo4j features:
 
 * **Create nodes**: create or update a node with properties using `MERGE ... SET`.
 * **Query nodes**: read a node back with `MATCH` and inspect its properties.

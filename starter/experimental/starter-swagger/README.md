@@ -25,7 +25,7 @@ gs-http-gen --openapi -i api.thrift -o .
 
 ### 2. Import the `starter-swagger` Package
 
-Refer to the [example.go](example/example.go) file.
+Refer to the [main.go](example/main.go) file.
 
 ```go
 import _ "go-spring.org/starter-swagger"
@@ -60,7 +60,7 @@ Then open `http://<host>/swagger/` in a browser.
 
 ## Core Features
 
-The [example.go](example/example.go) program demonstrates and asserts three things:
+The [main.go](example/main.go) program demonstrates and asserts three things:
 
 * **UI shell** — `GET /swagger/` returns an HTML page that boots Swagger UI.
 * **Index alias** — `GET /swagger/index.html` serves the same shell.
@@ -79,3 +79,6 @@ The [example.go](example/example.go) program demonstrates and asserts three thin
   management port or the app's own HTTP server).
 * **Toggle without code changes**: set `spring.swagger.enabled=false` to disable
   the docs in production while keeping the import.
+* **OpenAPI 3.0 only**: the UI consumes the `--openapi` document; the older Swagger 2.0
+  `--swagger` output is intentionally unsupported (`gs-http-gen` still emits it, this UI does
+  not read it).

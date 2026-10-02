@@ -54,3 +54,22 @@ transport — a TLS-configured clone, a custom dialer — tracing is layered on 
 of it by `httpx` itself.
 
 See `starter/starter-http-client` for the bean-oriented wrapper.
+
+## Design Notes
+
+* **Fault injects innermost, observe records the outcome.** An active executor is
+  wrapped as `observe(fault(raw))`: an injected fault sits *inside* observe so it
+  looks like a real downstream failure, and observe measures the final result.
+* **`WrapExec` is the escape hatch.** Callers that need their own ordering or an
+  extra layer replace the default `observe(fault(...))` wrap through it.
+* **Nothing above the transport lives here.** Cookie jars, buffering a body for
+  retry, injecting tracing headers — none of it is in `httpx`; put those in the
+  client or in a `Base` transport you supply.
+* **Host rewriting clones the request first.** `net/http` may retry and the
+  resilience layer above reuses the original request across attempts, so
+  `balancedTransport` clones before rewriting `URL.Host` / `Host`; mutating the
+  caller's request in place would be a correctness bug.
+* **The four-stage order is fixed.** `resilience → balancer → otel-base →
+  net/http` is deliberate, and there is no user-composable chain API —
+  reordering would invite putting resilience below the balancer and losing
+  failover on retry.

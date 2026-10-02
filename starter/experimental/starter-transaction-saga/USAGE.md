@@ -188,7 +188,7 @@ method name drives the registry lookup (`transaction.GlobalTransactional(coord, 
 unregistered method calls `proceed` untouched. Both paths share the same coordinator bean.
 
 Self-test main pattern (copy from
-[starter-transaction-tcc/example/example.go](../starter-transaction-tcc/example/example.go)):
+[starter-transaction-tcc/example/main.go](../starter-transaction-tcc/example/main.go)):
 run `place` once in a goroutine after 500ms, assert `err != nil` and
 `res.Status == transaction.StatusCompensated`, then `syscall.Kill(os.Getpid(), syscall.SIGTERM)`.
 

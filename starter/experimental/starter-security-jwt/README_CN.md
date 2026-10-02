@@ -17,7 +17,7 @@ go get go-spring.org/starter-security-jwt
 
 ### 1. 导入 `starter-security-jwt` 包
 
-参考 [example.go](example/example.go) 文件。
+参考 [main.go](example/main.go) 文件。
 
 ```go
 import _ "go-spring.org/starter-security-jwt"
@@ -43,7 +43,7 @@ spring.security.jwt.instances.api.secret=example-shared-secret
 ### 3. 把 Authenticator 接入 HTTP 服务
 
 Authenticator 按配置子键(`api`)注入并包裹业务 handler。把包裹后的 handler 交给
-`*gs.HttpServeMux`,认证就位于服务器前面。参考 [example.go](example/example.go) 文件。
+`*gs.HttpServeMux`,认证就位于服务器前面。参考 [main.go](example/main.go) 文件。
 
 ```go
 gs.Provide(func(auth *StarterSecurityJWT.Authenticator) *gs.HttpServeMux {
@@ -91,7 +91,7 @@ if !a.HasAuthority("admin") {
 
 ## 核心特性
 
-[example.go](example/example.go) 程序演示并断言:
+[main.go](example/main.go) 程序演示并断言:
 
 * **拒绝缺失 token** —— `required=true`(默认)时,无 bearer token 的请求返回 `401`。
 * **认证** —— 合法 token 通过校验,subject 可经 `security.FromContext` 取到。
@@ -113,3 +113,9 @@ if !a.HasAuthority("admin") {
   `*Authenticator`;具体类型仍可注入,供 `Wrap` 使用。
 * **多实例**:在 `spring.security.jwt.instances.*` 下定义多个条目,按名选取 ——
   缝隙用 `autowire:"<name>"`,具体 authenticator 用 `gs.TagArg("...")`。
+
+## 设计说明
+
+* **只校验，不签发、不定策略。** 本 starter 校验进入的 JWT 并挂载身份；签发 token 是 `starter-oauth2-server` 的事，而授权*策略*（谁能做什么）住在 `cloud/security`，不在这里。
+* **同一 bean，两个缝隙。** 每个实例既是 HTTP 中间件（`Wrap(http.Handler)`），又是导出的 `security.TokenValidator`——非 HTTP 传输（gRPC metadata、WebSocket 握手）注入中立缝隙，只有需要 `Wrap` 时才注入具体 `*Authenticator`。
+* **JWKS 内建解析。** RSA/ECDSA 的 JWK 成员直接解码，依赖图止于 `golang-jwt/jwt/v5`，不引外部 keyfunc；缓存仍按配置间隔、以及遇到未知 `kid` 时刷新。

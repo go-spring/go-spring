@@ -23,7 +23,7 @@ this; the tree below is the canonical layout.
 ```
 demo/
 ├── go.mod
-├── example.go            (or main.go + service.go)
+├── main.go            (add service.go to split the wiring out)
 └── conf/
     └── app.properties
 ```
@@ -40,7 +40,7 @@ require (
 )
 ```
 
-**example.go** — the application's entire surface (mirrors example/example.go):
+**main.go** — the application's entire surface (mirrors example/main.go):
 
 ```go
 package main
@@ -317,7 +317,7 @@ time. No restart.
 | Quickstart external deps | 0 (example runs an in-process token endpoint) |
 | "Watch out" entries | 4 |
 
-Design suspects (kept from previous USAGE/DESIGN, plus new ones):
+Design suspects (carried over from earlier review, plus new ones):
 
 - `*TokenSource` skips the resilience wrapper while `*http.Client` has it — the same config
   entry yields two beans with different governance behavior (existing).

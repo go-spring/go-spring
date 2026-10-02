@@ -20,7 +20,7 @@ go get go-spring.org/starter-mail
 
 ### 1. Import the `starter-mail` Package
 
-Refer to the [example.go](example/example.go) file.
+Refer to the [main.go](example/main.go) file.
 
 ```go
 import _ "go-spring.org/starter-mail"
@@ -43,7 +43,7 @@ spring.mail.instances.notify.tls.mode=starttls
 
 ### 3. Inject the Mailer
 
-Refer to the [example.go](example/example.go) file. Each named instance is
+Refer to the [main.go](example/main.go) file. Each named instance is
 registered as a `*Mailer` bean under that name. There is no default singleton —
 select an instance by name; adding a second mailer is a pure-config change.
 
@@ -57,7 +57,7 @@ type Service struct {
 
 ### 4. Send an Email
 
-Refer to the [example.go](example/example.go) file. Build a `Message` and call
+Refer to the [main.go](example/main.go) file. Build a `Message` and call
 `Send`. A plain-text body, an HTML body, or both (multipart/alternative) may be
 supplied, along with multiple recipients and attachments.
 
@@ -79,7 +79,7 @@ so no long-lived socket is held between calls (and no destroy hook is needed).
 
 ## Core Features
 
-The [example](example/example.go) self-asserts sending against a live MailHog
+The [example](example/main.go) self-asserts sending against a live MailHog
 server: one message with an HTML body, a plain-text alternative, an attachment,
 and multiple recipients (To/Cc), then verifies delivery through MailHog's HTTP
 API.
@@ -125,3 +125,22 @@ Each mailer under `spring.mail.instances.<name>` reads the following properties:
 | `ping` | `false` | Dial the server once at startup to catch a bad config early. |
 | `tls.mode` | `starttls` | Transport security: `starttls`/`tls`/`none`. |
 | `tls.insecure-skip-verify` | `false` | Disable certificate verification (testing only). |
+
+## Design Notes
+
+* **`Send` is non-idempotent.** A resend delivers a second message, so the
+  executor runs `Send` once whatever retry the policy configures — a delivery is
+  never duplicated by a retry.
+* **Observability declares, it does not emit.** `Send` marks the operation with
+  the `email.client` prefix and the recipient **count** as `Detail` (never the
+  addresses or the subject — personal data); the resilience emitter produces the
+  span, the duration histograms and the access log, and a failed send logs its
+  detail at Warn.
+* **`tls.mode` is a mode enum, not `enabled` + cert files.** SMTP has three wire
+  behaviours (STARTTLS, implicit TLS, plaintext), which a boolean cannot express.
+* **Body shape follows `Text` / `HTML`.** Both set → `multipart/alternative`; one
+  set → that body; both empty → an empty plain-text body.
+* **`insecure-skip-verify` still pins `ServerName`.** It is set from `host`, so a
+  wildcard certificate keeps matching the name once verification is re-enabled.
+* **No connection pooling.** SMTP servers routinely rate-limit per connection, so
+  each `Send` dials fresh and closes — a pool is deliberately absent.

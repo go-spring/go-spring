@@ -58,8 +58,8 @@ import (
 func main() { gs.Run() }
 ```
 
-**backend.go** ——进程内后端 + 静态 discovery 注册(真实场景换成 starter-registry-etcd
-等注册中心 starter):
+**backend.go** ——进程内后端 + 静态 discovery 后端(真实场景换成 starter-discovery-etcd
+等 discovery starter):
 
 ```go
 package main
@@ -272,7 +272,7 @@ func init() {
 |-----|------|--------|-------------|----------|
 | `addr` | string | "" | 直连模式:`fixedHostTransport` 把每个请求钉到该 host:port。可与 `service-name` 同配,此时 service-name 只是纯治理 label(不触发发现)。 | 都不配 → 快速失败 "one of addr or service-name is required"。 |
 | `service-name` | string | "" | 发现模式:经指定后端解析的逻辑名;只要设置了就同时是治理 service label(发现与直连模式皆是)。配了 `addr` 时它不是发现目标。 | 都不配 → 快速失败;只配 service-name 不配 `addr`/`discovery` → 快速失败。 |
-| `discovery` | string | "" | 发现后端 bean 名(bean 名=标签，由 registry starter 注册)。未配置时回退 `${spring.http-client.default.discovery}`。`service-name` 未配 `addr` 时必填(config.go validate)。 | 两层都缺失 → 快速失败。名字未知 → 装配期报错并列出已注册 bean(starter.go newRoute)。 |
+| `discovery` | string | "" | 发现后端 bean 名(bean 名=标签，由 discovery starter 注册)。未配置时回退 `${spring.http-client.default.discovery}`。`service-name` 未配 `addr` 时必填(config.go validate)。 | 两层都缺失 → 快速失败。名字未知 → 装配期报错并列出已注册 bean(starter.go newRoute)。 |
 | `observability.level` | string | brief | executor 包裹层的访问日志开关:off / brief / detailed(observe/config.go:50)。 | brief 默认**开**——预期每次受保护调用一条日志。 |
 | `observability.maxArgBytes` | int | 512 | 日志中参数截断长度。 | 大 body 被静默截断。 |
 | `observability.skipOps` | []string | "" | 不记访问日志的操作名。 | |
@@ -329,7 +329,7 @@ kill %1
 ```
 
 把 conf/governance.properties 里规则的 `balancer` 从 `round_robin` 换成 `least_conn`,或加第三个
-endpoint,看打散变化——池是原地换策略的,不用重启;用真实注册
+endpoint,看打散变化——池是原地换策略的,不用重启;用真实发现
 中心注销实例后,后端快照会丢掉它,绑 loader 的 `Pool` 不再选它(httpx.go:200-221)。
 
 ### 4.3 熔断演练 ——打开、快速失败、恢复

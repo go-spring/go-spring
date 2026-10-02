@@ -42,7 +42,7 @@ require (
 )
 ```
 
-**main.go** (trimmed from `example/example.go`):
+**main.go** (trimmed from `example/main.go`):
 
 ```go
 package main

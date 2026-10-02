@@ -243,7 +243,7 @@ curl -s :8025/api/v2/messages | jq '.messages[0].To'                 # alice, bo
 ```
 
 The example asserts `total >= 1` after sending one message with To×2 + Cc×1 and one attachment
-(example.go runTest).
+(main.go runTest).
 
 ### 4.2 Ping drill
 

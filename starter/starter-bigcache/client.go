@@ -14,33 +14,36 @@
  * limitations under the License.
  */
 
-// client.go is the "resource entity" concept of this starter: the Cache
-// wrapper bigcache instances are injected as, its lifecycle (NewCache/Destroy),
-// and the delegations back to the raw cache. The per-operation command surface
-// lives in command.go.
+// client.go is the "resource entity" concept of this starter: the Cache wrapper
+// bigcache instances are injected as, its lifecycle (NewCache/Destroy), the
+// command surface (Get/Set/Delete — the three operations that carry business
+// traffic, and the only three observed), and the delegations back to the raw
+// cache.
 package StarterBigCache
 
 import (
+	"context"
+
 	"github.com/allegro/bigcache/v3"
-	"go-spring.org/cloud"
-	"go-spring.org/cloud/resilience"
-	"go.opentelemetry.io/otel/metric"
 )
 
 // Cache wraps a *bigcache.BigCache so Get/Set/Delete carry their semantic
-// identity and flow through the governance executor, which is also where the
-// operation's span, metrics and access log are emitted (see observe.go). It also
-// owns the cache-statistics gauges. bigcache is an in-process heap cache with no
-// network, so the spans are root spans (no caller context to link) and the
-// durations are sub-microsecond - the value is per-key access visibility and a
-// uniform signal vocabulary with the other client starters.
+// identity and emit the operation's span and metrics (see [statObserver]). It
+// holds its own observer — the instance's identity, its gauges and the one place
+// its calls become signals — over the process-wide instruments. bigcache is an
+// in-process heap cache with no network, so the spans are root spans (no caller
+// context to link) and the durations are sub-microsecond - the value is per-key
+// access visibility and a uniform signal vocabulary with the other client
+// starters.
+//
+// No executor sits under these calls: nothing here reaches out, so there is no
+// protection to apply and no access log worth writing. See [NewCache].
 //
 // The raw cache is an unexported field, not an embedded one: [NewCache] is the
 // only way to build a Cache, so a cache can never exist without its identity, and
-// the command surface (command.go) plus the delegations below are the whole API.
-// There is deliberately no exported accessor for the raw cache: that would let a
-// caller bypass the declaration and governance layers without it showing up in
-// review.
+// the command surface plus the delegations below are the whole API. There is
+// deliberately no exported accessor for the raw cache: that would let a caller
+// bypass the observation layer without it showing up in review.
 //
 // The type is exported because bigcache (unlike go-redis or gorm) offers no
 // hook/plugin extension point, so the only way to observe per-operation traffic
@@ -52,120 +55,109 @@ type Cache struct {
 	// constructor — see the type doc.
 	client *bigcache.BigCache
 
-	// stats is this starter's shared gauge set (observe.go): the cache-statistics
-	// gauges. One per process - every Cache holds the same one. The per-call
-	// signals are not held here: they are emitted by the resilience layer from the
-	// operation each command declares (command.go).
-	stats *statObserver
-
-	// gaugeRegs is this cache's own registration of its statistics against the
-	// shared gauges. It is held here because the values those gauges report come
-	// from this cache: the registration's lifetime is the cache's lifetime, and
-	// Destroy takes it away. Dropping it would leave the instrument reporting a
-	// destroyed cache, and holding the registration would pin it.
-	gaugeRegs []metric.Registration
-
-	// instanceName is the instance name (the spring.bigcache.instances.<instanceName>
-	// map key), used both for the resilience service label and as the gauge label
-	// that keeps several caches in one process distinguishable. Fixed by [NewCache].
-	instanceName string
-
-	// exec is the resilience executor protecting Get/Set/Delete, applied by
-	// [NewCache] in the constructor; it is the observed-only
-	// resilience.Unmanaged executor when the container is absent.
-	exec resilience.ClientExecutor
-	// serviceLabel is the resilience service key ("bigcache:<instance-name>")
-	// exec scopes limiter/breaker state by.
-	serviceLabel string
+	// obs is this cache's own observability (observe.go): its instance identity,
+	// its registration of the shared gauges, and the one place its calls become
+	// signals. One per Cache — the instruments behind it are the process-wide set.
+	obs *statObserver
 }
 
-// NewCache builds a complete Cache — identity, governance and all — over a raw
-// (already created) bigcache instance, fixing its identity, installing the
-// cache-statistics gauges and building the resilience executor. client is normally
-// the Driver's product; instanceName is the config entry's key and both the
-// resilience service label and the gauge label that keeps several caches in one
-// process distinguishable.
+// NewCache builds a complete Cache — identity and observation — over a raw
+// (already created) bigcache instance. client is normally the Driver's product;
+// instanceName is the config entry's key and the label that keeps several caches
+// in one process distinguishable.
 //
-// params carries the container's facilities (see [cloud.ClientParams]), and is
-// applied HERE so a Cache cannot exist half-assembled: there is no Init step, no
-// later patching, and nothing the container has to remember to call. A hand-built
-// cache passes the zero [cloud.ClientParams]; its executor then degrades to
-// resilience.Unmanaged — observed, with a one-time warning that no protection
-// applies — rather than silently running bare.
+// Everything is applied HERE, so a Cache cannot exist half-assembled: there is no
+// Init step and nothing the container has to remember to call. No container
+// facility is taken either — an in-process cache has nothing to protect, and
+// nothing to declare to an emitter.
 //
-// The manager's ClientExecutorFor resolves its backing executor lazily, on each
-// Execute, so the call order relative to the center's wiring is
-// irrelevant.
-func NewCache(client *bigcache.BigCache, instanceName string, params cloud.ClientParams) *Cache {
-	c := &Cache{
-		client:       client,
-		stats:        instruments(),
-		instanceName: instanceName,
+// The error is the process-wide instrument set failing to build (see
+// [newStatObserver]) — never the raw cache, which is already open and healthy
+// when this is called. The caller owns that raw cache, so it must close it when
+// this returns an error; [Driver.CreateClient] does.
+func NewCache(client *bigcache.BigCache, instanceName string) (*Cache, error) {
+	obs, err := newStatObserver(client, instanceName)
+	if err != nil {
+		return nil, err
 	}
-	// Register this cache's statistics against the shared gauges, labeled with
-	// this instance's name so several caches in one process stay distinguishable.
-	// A registration error is dropped rather than failing construction: with no
-	// OTel SDK installed the meter is a no-op and there is nothing to report,
-	// which is not a reason to refuse to serve.
-	if reg, err := c.stats.observeGauges(client, instanceName); err == nil {
-		c.gaugeRegs = append(c.gaugeRegs, reg)
-	}
-	c.serviceLabel = resilience.ServiceLabel("bigcache", c.instanceName)
-	c.exec = params.ExecutorFor("bigcache", c.serviceLabel)
-	return c
+	return &Cache{client: client, obs: obs}, nil
 }
 
-// Destroy takes away this cache's gauge registration, releases the resilience
-// executor (if governance was applied), and closes the underlying BigCache. It is
-// the gs destroy method.
-//
-// The unregistration comes first: once the cache is closed its statistics are
-// meaningless, and a registration left behind would both report a dead cache and
-// pin it. It is also why the registration lives on the cache rather than in the
-// shared gauge set - the same reason the gauges are not registered by a
-// creation-time callback.
+// Destroy takes away this cache's observability and closes the underlying
+// BigCache. It is the gs destroy method; the unregistration comes first, because
+// once the cache is closed its statistics are meaningless.
 func (c *Cache) Destroy() error {
-	for _, reg := range c.gaugeRegs {
-		_ = reg.Unregister()
-	}
-	c.gaugeRegs = nil
-	if c.exec != nil {
-		_ = c.exec.Close()
-	}
+	c.obs.close()
 	return c.client.Close()
+}
+
+// The command surface: Get/Set/Delete are the three operations bigcache's raw API
+// exposes that carry business traffic, and the only ones worth observing. Each
+// names itself and its key and runs under [statObserver.observe], which emits the
+// signal. bigcache exposes no hook or plugin point, so the surface is
+// hand-written - the analog of starter-memcached's command surface.
+//
+// The error comes back verbatim: a miss is [bigcache.ErrEntryNotFound], which
+// [statusOf] folds into the ok status rather than an error, so callers keep
+// treating it as the normal outcome it is.
+//
+// The exported forms carry no context — that is the shape a Cache bean is used
+// in — so a call made straight on the wrapper starts a trace of its own. The
+// unexported forms are what the [cache.ByteCache] adapter calls, and it has a
+// context to give: a call arriving through the cloud/cache façade keeps the
+// caller's, so its span joins that trace and picks up whatever span attributes a
+// layer above contributed.
+
+func (c *Cache) Get(key string) ([]byte, error) { return c.get(context.Background(), key) }
+
+func (c *Cache) get(ctx context.Context, key string) ([]byte, error) {
+	var b []byte
+	err := c.obs.observe(ctx, opGet, key, func(context.Context) error {
+		var err error
+		b, err = c.client.Get(key)
+		return err
+	})
+	return b, err
+}
+
+func (c *Cache) Set(key string, entry []byte) error {
+	return c.set(context.Background(), key, entry)
+}
+
+func (c *Cache) set(ctx context.Context, key string, entry []byte) error {
+	return c.obs.observe(ctx, opSet, key, func(context.Context) error {
+		return c.client.Set(key, entry)
+	})
+}
+
+func (c *Cache) Delete(key string) error { return c.delete(context.Background(), key) }
+
+func (c *Cache) delete(ctx context.Context, key string) error {
+	return c.obs.observe(ctx, opDelete, key, func(context.Context) error {
+		return c.client.Delete(key)
+	})
 }
 
 // The methods below delegate to the raw cache. They exist because the raw cache
 // is an unexported field, so nothing is promoted: every method the raw
 // *bigcache.BigCache exposed is re-exposed here unchanged, except the three the
-// command surface overwrites with instrumented operations (Get/Set/Delete,
-// command.go). They are plain pass-throughs on purpose - only Get/Set/Delete are
-// business traffic worth observing; these are lifecycle/introspection helpers.
+// command surface above overwrites with instrumented operations (Get/Set/Delete).
+// They are plain pass-throughs on purpose - only Get/Set/Delete are business
+// traffic worth observing; these are lifecycle/introspection helpers.
 
 // Close signals a shutdown of the cache, letting its cleaning goroutines exit.
 // Note bigcache's Close is not idempotent (it closes a channel), so calling it
 // and then Destroy — or twice — panics; Destroy is the normal path.
 func (c *Cache) Close() error { return c.client.Close() }
 
-// GetWithInfo reads the entry for key together with Response info. It returns
-// bigcache.ErrEntryNotFound when no entry exists for the key.
-func (c *Cache) GetWithInfo(key string) ([]byte, bigcache.Response, error) {
-	return c.client.GetWithInfo(key)
-}
-
-// Append appends entry under key, or sets it when the key does not exist.
-func (c *Cache) Append(key string, entry []byte) error { return c.client.Append(key, entry) }
-
 // Reset empties every cache shard.
 func (c *Cache) Reset() error { return c.client.Reset() }
-
-// ResetStats resets the cache statistics.
-func (c *Cache) ResetStats() error { return c.client.ResetStats() }
 
 // Len returns the number of entries in the cache.
 func (c *Cache) Len() int { return c.client.Len() }
 
-// Capacity returns the amount of bytes stored in the cache.
+// Capacity returns the bytes allocated for the entries queues, summed over
+// shards — the room the cache has, not what it is using (see [Cache.Len]).
 func (c *Cache) Capacity() int { return c.client.Capacity() }
 
 // Stats returns the cache's statistics.

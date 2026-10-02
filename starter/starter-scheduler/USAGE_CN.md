@@ -17,7 +17,7 @@
 ## 1. 完整工程示例
 
 四个 job——fixed-rate、fixed-delay、cron、带锁 fixed-rate——与
-[example/example.go](example/example.go) 同构。文件树：
+[example/main.go](example/main.go) 同构。文件树：
 
 ```
 demo/

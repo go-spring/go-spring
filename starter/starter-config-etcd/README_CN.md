@@ -55,7 +55,7 @@ type Demo struct {
 
 etcd key 变更时，Provider 的 watcher 会触发一次应用属性刷新，所有绑定的
 `gs.Dync` 字段都会被原子更新。完整的“发布 -> 热更新”流程参见
-[example](example/example.go)。
+[example](example/main.go)。
 
 ## 工作原理
 

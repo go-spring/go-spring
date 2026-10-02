@@ -219,7 +219,7 @@ consul kv put gs-config-demo "demo.message=hello-2"
 ```
 
 The example automates exactly this: it publishes `hello-<timestamp>`, polls the `Dync` field for up
-to 15 s, and exits non-zero on timeout (`example/example.go`, `runTest`). Blocking-query latency is
+to 15 s, and exits non-zero on timeout (`example/main.go`, `runTest`). Blocking-query latency is
 sub-second on a local agent; worst case one `WaitTime` cycle (5 min) after a missed notification.
 
 ### 4.3 Malformed value

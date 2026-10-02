@@ -21,7 +21,7 @@ client-credentials 组(多实例:一个 `<name>` = 一个 `*http.Client` + 一�
 ```
 demo/
 ├── go.mod
-├── example.go            (或 main.go + service.go)
+├── main.go            (可加 service.go 拆分装配)
 └── conf/
     └── app.properties
 ```
@@ -38,7 +38,7 @@ require (
 )
 ```
 
-**example.go**——应用的全部面(与 example/example.go 同构):
+**main.go**——应用的全部面(与 example/main.go 同构):
 
 ```go
 package main
@@ -305,7 +305,7 @@ span/指标(`mgr.ClientExecutorFor("oauth2", service)`);`TokenSource` 没有对�
 | quickstart 前置外部依赖 | 0(example 内置进程内 token 端点) |
 | "注意/坑"条数 | 4 |
 
-设计嫌疑(待设计裁决;保留旧 USAGE/DESIGN 已有条目,新增写作中发现的):
+设计嫌疑(待设计裁决;沿用此前评审已有条目,新增写作中发现的):
 
 - `*TokenSource` 不带 resilience 包裹而 `*http.Client` 带——同一配置条目产出治理行为
   不同的两个 bean(既有)。

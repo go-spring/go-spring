@@ -72,8 +72,9 @@ memcached）都会应用它。bigcache 做不到——它按构造期设置的�
 - `cache.operation.duration` —— 同一套 `operation` × `status` 维度上的直方图。
   在这里记而不只靠后端客户端，是因为后者的 `db.client.operation.duration`
   分不出命中与未命中，而这两种的时延分布本来就不同。
-- 每个操作一个 client span，名为 `get`/`set`/`delete`，带 `cache.operation`、
-  `cache.key`、`cache.status`。
+- 不自建 span。装饰器通过框架的 span 属性载体贡献 `cache.operation` 与 `cache.key`，
+  它们会落到下层 executor 开启的那个 span 上。status 不在其中：未命中要等调用返回才
+  知道，那时 span 已经结束了——它只作为指标维度存在。
 
 观测单位是字节层：取到字节即为 hit，哪怕上层 codec 随后解码失败。key 永不进
 指标（基数无界），只进 span。不记日志：缓存调用太频繁，逐调用日志只是噪音，

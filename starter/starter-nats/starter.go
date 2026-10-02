@@ -33,6 +33,10 @@ func init() {
 	// Each instance is created according to the configuration in
 	// "${spring.nats}", allowing multiple connections dynamically.
 	gs.Module(gs.OnProperty("spring.nats.instances"), func(r gs.BeanProvider, p flatten.Storage) error {
+		// Any key an instance does not define falls back to the family-wide
+		// "default" bucket: spring.nats.default.<k> is the value every
+		// instance inherits unless it sets its own.
+		p = flatten.WithFallback(p, "spring.nats.instances", "spring.nats.default")
 		return conf.BindEach(p, "${spring.nats.instances}", func(name string, c Config) error {
 			// The Driver param (index 3) is selected by the entry's ${driver}
 			// key: unset → "?" (nullable by-type — injects the single Driver

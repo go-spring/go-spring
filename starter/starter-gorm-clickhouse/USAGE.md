@@ -41,7 +41,7 @@ require (
 )
 ```
 
-**main.go** (trimmed from `example/example.go`) — note the ClickHouse-specific modeling:
+**main.go** (trimmed from `example/main.go`) — note the ClickHouse-specific modeling:
 
 ```go
 package main

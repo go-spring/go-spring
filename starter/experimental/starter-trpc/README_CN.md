@@ -20,7 +20,7 @@ go get go-spring.org/starter-trpc
 
 ### 1. 导入 `starter-trpc` 包
 
-参考 [example.go](example/example.go) 文件。
+参考 [main.go](example/main.go) 文件。
 
 ```go
 import StarterTrpc "go-spring.org/starter-trpc"
@@ -38,7 +38,7 @@ spring.trpc.server.service.name=trpc.helloworld.greet.GreetService
 
 ### 3. 注册你的 service
 
-参考 [example.go](example/example.go) 文件。把生成的
+参考 [main.go](example/main.go) 文件。把生成的
 `xxx.RegisterXxxServiceService` 包进一个 `StarterTrpc.ServiceRegister` bean —
 starter 会构建 `*server.Server` 并调用它来挂载你的 handler，因此 starter
 本身不依赖任何生成代码：
@@ -53,7 +53,7 @@ gs.Provide(func() StarterTrpc.ServiceRegister {
 
 ## 核心特性
 
-[example](example/example.go) 在同一个二进制里同时跑 server 和一个进程内
+[example](example/main.go) 在同一个二进制里同时跑 server 和一个进程内
 client，并通过 `runTest` 端到端断言一次 unary Greet 往返：
 
 1. **Unary Greet 调用** —— client 直连 `ip://127.0.0.1:8000` 调用

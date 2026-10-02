@@ -20,7 +20,7 @@ go get go-spring.org/starter-dubbo
 
 ### 1. 引入 `starter-dubbo` 包
 
-参见 [example.go](example/example.go) 文件。
+参见 [main.go](example/main.go) 文件。
 
 ```go
 import StarterDubbo "go-spring.org/starter-dubbo"
@@ -110,7 +110,7 @@ spring.dubbo.server.adaptive-service=false
 
 ### 3. 注册 Dubbo 服务
 
-参见 [example.go](example/example.go) 文件。`StarterDubbo.RegisterService` 把生成器（如
+参见 [main.go](example/main.go) 文件。`StarterDubbo.RegisterService` 把生成器（如
 `greet.RegisterGreetServiceHandler`）和 handler 实例注册成一个 `ServiceRegister` Bean，
 `SimpleDubboServer` 收集所有 `ServiceRegister` Bean（`autowire:"?"` 切片装配，按名排序）并在
 启动时逐个调用，因此同一个服务器可驱动任意多个 Dubbo 服务。
@@ -344,7 +344,7 @@ trace-id,记录的调用位置(file:line)也会指向桥接层而非真实打点
 
 ## 核心功能
 
-[示例](example/example.go) 展示了一次 Dubbo Triple 端到端调用，并在 `runTest` 中做了断言：
+[示例](example/main.go) 展示了一次 Dubbo Triple 端到端调用，并在 `runTest` 中做了断言：
 
 1. **一元 Greet 调用**：服务端通过 Triple 协议在配置端口导出 `greet.GreetService`。客户端用
    `client.WithClientURL` 直连并调用 `Greet`，拿到原样返回的请求名作为问候语，验证标准的
@@ -364,3 +364,17 @@ trace-id,记录的调用位置(file:line)也会指向桥接层而非真实打点
 - 至少注册一个 `ServiceRegister` Bean（即调用一次 `RegisterService`）即可激活整个服务器。
 - `spring.dubbo.application.name` 必填；metrics（Prometheus）与 tracing（OTel/stdout）
   内置且默认开启 —— 参见[可观测性](#可观测性内置)。
+
+## 设计说明
+
+* **`retries` 在各层级只有一套语义。** `-1`（默认）表示“未设置”（沿用 dubbo-go
+  默认），`0` 表示不重试，`>0` 为重试次数；低于 `-1` 会在 `NewInstance` 校验时报错。
+* **两端 `check` 都默认 `true`（fail-fast）。** dubbo-go v3 没有 reference 级“关闭检查”
+  选项，因此 `references.<n>.check=false` 叠加 `consumer.check=true` 只会打一条启动期
+  WARN——并不能真正关掉检查。
+* **`Instance` 持有单份 `DubboConfig`，由 `${spring.dubbo}` 一次性绑定。** 静态层级用
+  连字符（starter 自身风格），动态层级用点号（对齐 dubbo URL 参数名）；键只做精确匹配。
+* **配置变更会推送到运行中的实例。** 一次 properties 变更经 go-spring 刷新 → `Dync`
+  → override 规则 → dubbo-go 的配置中心 listener → 线上 invoker URL，因此下次调用即
+  生效，无需重启。consumer 级默认发布为 `<appName>.configurators`，各 reference 发布为
+  `<interface>:<version>:<group>.configurators`。

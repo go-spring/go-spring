@@ -83,8 +83,18 @@ cd example
 ./check.sh
 ```
 
-See [DESIGN.md](DESIGN.md) for the design rationale.
-
 ## License
 
 Apache License 2.0
+
+## Design Notes
+
+* **A validator, not a middleware stack.** The starter contributes only a
+  `security.TokenValidator`; the 401-vs-pass-through decision and the authority checks are
+  `cloud/security`'s `Authenticate`/`Authorize`, which you compose onto your own mux.
+* **Discovery is eager, so a bad `issuer-uri` fails the boot.** The discovery document and the
+  first JWKS load happen while the bean is constructed — a wrong issuer surfaces at startup,
+  not as a runtime 401 hunt.
+* **Key rotation without a restart.** Keys are cached for `jwks-refresh`; a token with an
+  unknown `kid` forces one immediate reload, and if a refresh fails the last cached keys keep
+  serving, so a transient IdP outage does not become a rejection spike.

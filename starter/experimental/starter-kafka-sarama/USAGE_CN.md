@@ -70,7 +70,7 @@ import (
 type Service struct {
     // 永远注入裸 sarama.Client bean。producer/consumer 用 sarama 的
     // *FromClient 构造器按需派生 —— 一套连接池与 metadata 缓存服务所有角色
-    // （DESIGN.md §2）。
+    // （见 README 的设计说明）。
     Client sarama.Client `autowire:"main"`
     // 进程的压测约定，应用提供 traffic.Propagator bean 时注入；nil 则接缝走默认约定。
     Prop traffic.Propagator `autowire:"?"`
@@ -194,7 +194,7 @@ Driver bean 时，实例可按名指定：
 bean 不存在则启动失败）。
 
 派生的 producer/consumer 不是容器 bean —— 需自行在应用退出前关闭（publish 路径里
-`defer producer.Close()` 即预期写法，见 [example/example.go:72-76]）。
+`defer producer.Close()` 即预期写法，见 [example/main.go:72-76]）。
 `sarama.Client.Close` 释放共享 broker 连接。
 ### 2.2 declare/guard 机制 —— 精确顺序与未保护面
 
@@ -337,7 +337,7 @@ producer.SendMessage(msg)  // 裸句柄依旧不受保护 —— wrapper 不改�
 
 ### 4.3 消息往返与 header 存活
 
-同 topic 先发后收（partition consumer 从最旧读，同 [example/example.go:89-112]）：
+同 topic 先发后收（partition consumer 从最旧读，同 [example/main.go:89-112]）：
 
 - `msg.Value` 原样存活（`sarama.StringEncoder` → `string(msg.Value)`）。
 - `WrapSyncProducer` 注入的 `traceparent` 在消费侧可读 —— Jaeger 里 `publish` →

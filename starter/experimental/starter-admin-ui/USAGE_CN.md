@@ -88,7 +88,7 @@ spring.admin-ui.title=Go-Spring Admin
 spring.http.server.enabled=false
 ```
 
-**验证**(与 `example/example.go runTest` 同构):
+**验证**(与 `example/main.go runTest` 同构):
 
 ```bash
 go run . -manual &

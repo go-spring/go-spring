@@ -122,3 +122,10 @@ logger.lock_access.type=Logger
 logger.lock_access.level=WARN
 logger.lock_access.tag=_app_lock_access
 ```
+
+## 设计说明
+
+* **`*redis.Client` 是借用的，从不拥有。** 本 starter 复用 `client=` 指名的 bean，且从不关闭它——其 destroy 钩子只停掉自己启动的后台续期 goroutine。连接的生命周期归 `starter-go-redis`。
+* **没有 `driver=` 键：后端由空导入决定。** `cloud/lock` 需要的是一个**活的**后端句柄，而非声明式的 driver 字符串，因此与 `cloud/discovery` / `cloud/resilience` 不同，它没有包级 driver 注册表；切换到 etcd/consul/k8s 只是在同一个 `spring.lock` 前缀下换一行空导入。
+* **逐次获取的旋钮走 `lock.Option`，而非配置。** TTL、续租/重试间隔与 fencing token 都是逐次调用的选项；配置只提供默认值，因此各后端的调参方式完全一致。
+* **一个 `Locker` 绑定恰好一个 Redis 实例。** `client=` 显式且必填——不做自动探测——因此两个 Redis 实例就是两个客户端 bean 加两个锁实例。

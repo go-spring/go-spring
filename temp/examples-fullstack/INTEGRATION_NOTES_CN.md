@@ -17,9 +17,9 @@
 
 ## 2. Consul 没有客户端侧发现 starter —— *缺口反哺*
 
-`starter-registry-consul` 只做注册侧(它宣告一个实例)。网关的 `lb://order` 和
+`starter-discovery-consul` 只做注册侧(它宣告一个实例)。网关的 `lb://order` 和
 order→inventory 需要一个*客户端侧*的 `discovery.Discovery`,而只有
-`starter-registry-k8s` 提供这种能力。
+`starter-discovery-k8s` 提供这种能力。
 
 **在示例中桥接**,通过 `internal/consuldisc`——一个由 Consul catalog 支撑的
 `discovery.Discovery`,用 `discovery.Register("consul", …)` 注册。它证明了
@@ -87,7 +87,7 @@ span 中间件(`traceMiddleware` / `traceServer`)才能把 `trace_id` 打进日�
 
 1. **配置前缀冲突 —— 非问题。** 每种能力独占一个顶层前缀(`spring.gateway`、
    `spring.observability`、`spring.actuator`、`spring.security.jwt`),同能力多实现
-   族则有意共用一个(`spring.registry`、`spring.config`、`spring.transaction`、
+   族则有意共用一个(`spring.discovery`、`spring.config`、`spring.transaction`、
    `spring.redis`),换实现只改 import。没有两个不相关 starter 读同一个 key。唯一真正
    的同机冲突——端口——已由上文第 1 条解决。
 2. **多 server 停机顺序 —— 已验证正确。** actuator server 是 `PreStopper`,SIGTERM

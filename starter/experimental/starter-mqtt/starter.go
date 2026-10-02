@@ -35,6 +35,10 @@ func init() {
 	// Each instance is created according to the configuration in "${spring.mqtt}".
 	// This allows defining multiple MQTT clients dynamically.
 	gs.Module(gs.OnProperty("spring.mqtt.instances"), func(r gs.BeanProvider, p flatten.Storage) error {
+		// Any key an instance does not define falls back to the family-wide
+		// "default" bucket: spring.mqtt.default.<k> is the value every
+		// instance inherits unless it sets its own.
+		p = flatten.WithFallback(p, "spring.mqtt.instances", "spring.mqtt.default")
 		return conf.BindEach(p, "${spring.mqtt.instances}", func(name string, c Config) error {
 			// The Driver param (index 3) is selected by the entry's ${driver}
 			// key: unset → "?" (nullable by-type — injects the single Driver

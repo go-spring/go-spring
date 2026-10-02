@@ -65,7 +65,7 @@ DeleteAPI, Setup, ...) is promoted unchanged.
 - **Two write paths** — `WritePoints` (blocking, resilience-guarded,
   fails per call) and `ManagedWriteAPI` (buffered batches on a background
   goroutine, flushed on shutdown; failed batches are drained into go-spring's
-  log so the writer never blocks). See DESIGN for the split.
+  log so the writer never blocks). See the Design Notes below for the split.
 - **Fail-fast startup probe + health indicator** — an opt-in `/health` round trip
   at boot (`ping=true`; off by default) and an `influxdb:<name>` indicator for
   `starter-actuator` (`health=false` to skip it).
@@ -116,3 +116,21 @@ logger.influxdb.type=Logger
 logger.influxdb.level=WARN
 logger.influxdb.tag=_app_influxdb
 ```
+
+## Design Notes
+
+* **Two write methods, two failure contracts.** `WritePoints` is blocking and
+  resilience-guarded (rate limit / circuit breaking / fault injection) and fails
+  per call; `ManagedWriteAPI` batches on a background goroutine whose retries are
+  the SDK's own, so it is deliberately unguarded — guarding per point would
+  double-count, and its failures surface as log lines, not caller errors.
+* **Async errors are drained for you.** The starter drains `ManagedWriteAPI`'s
+  `Errors()` channel into go-spring's log, because an undrained channel blocks the
+  writer on its first failure; if you need custom handling, use the embedded
+  `WriteAPI` directly.
+* **Only the blocking write is guarded.** `QueryRaw` and the other query paths
+  carry no per-call guard — the blocking write is the overload-sensitive path. A
+  guarded query would be additive later, not breaking.
+* **`org`/`bucket` gate the write helpers, not the connection.** A client
+  configured without them still serves Query/Delete APIs; the write helpers fail
+  with a pointed message instead of at wiring time.

@@ -25,7 +25,7 @@ go get go-spring.org/starter-go-zero
 
 ## Quick Start — REST (HTTP/API)
 
-See [rest/example/example.go](rest/example/example.go).
+See [rest/example/main.go](rest/example/main.go).
 
 ### 1. Import the sub-package
 
@@ -58,7 +58,7 @@ gs.Provide(func() gozerorest.HandlerRegister {
 
 ## Quick Start — zRPC (gRPC)
 
-See [zrpc/example/example.go](zrpc/example/example.go).
+See [zrpc/example/main.go](zrpc/example/main.go).
 
 ### 1. Import the sub-package
 

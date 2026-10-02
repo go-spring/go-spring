@@ -363,7 +363,7 @@ override key）。`${spring.dubbo.consumer}` 会**再**绑定为 `gs.Dync[DubboC
 `methods.<m>.{timeout,retries,loadbalance,weight,sticky,tps.limit.*,execute.limit*}`
 （dync.go:46-48、154-228）。
 
-链路（DESIGN.md，已对码确认）：
+链路（README 设计说明，已对码确认）：
 
 ```
 属性变更（file/nacos/env）→ gs RefreshProperties → gs.Dync 原子换值
@@ -469,5 +469,5 @@ internal/logger/logger.go init()。dubbo-go 框架的每行日志经 go-spring l
 11. ~~wiring_test.go 的 "KNOWN BUG" 注释已过时（`map[string]string` 已修复）、protocols 块
     仍未测~~ ——`map[string]any` 绑定失败已修复（config.go:108-114 记录了该约束）；
     wiring_test.go 的 protocols 块仍缺测试。
-12. ~~DESIGN.md 相对代码已过时~~——DESIGN.md 已于 2026-08 刷新对齐 config.go/dync.go；
-    细节仍以本 USAGE 与源码为准。
+12. ~~DESIGN.md 相对代码已过时~~——设计说明现已并入 README 的设计说明一节，对齐
+    config.go/dync.go；细节仍以本 USAGE 与源码为准。

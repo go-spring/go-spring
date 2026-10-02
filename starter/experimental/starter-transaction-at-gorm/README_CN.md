@@ -85,7 +85,7 @@ return coord.Commit(context.Background(), xid)    // 删除 undo log
 
 数据库在 `ctx` 下首次写入时自动登记为一个分支；一个数据库即使写多次，也只提交/回滚
 一次。可运行的双库示例（覆盖提交路径、回滚路径与写-写冲突）见
-[example/example.go](example/example.go)。
+[example/main.go](example/main.go)。
 
 ### 4. 或声明为 `@GlobalTransactional`
 

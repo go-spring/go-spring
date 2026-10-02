@@ -38,7 +38,7 @@ gs.Provide(func(v security.TokenValidator) *gs.HttpServeMux {
 
 服务方法级校验用核心包的 `security.Require`。这些中间件的 gin / echo 等价物
 见 `starter-gin`、`starter-echo`。可运行、自校验的示例在
-[example](example/example.go)。
+[example](example/main.go)。
 
 ## 可观测
 

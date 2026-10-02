@@ -52,7 +52,7 @@ gs.Provide(func() StarterTrpc.ServiceRegister {
 
 ## Core Features
 
-The [example](example/example.go) runs the server and an in-process client in
+The [example](example/main.go) runs the server and an in-process client in
 one binary and asserts a unary Greet round-trip end-to-end via `runTest`:
 
 1. **Unary Greet call** — the client dials `ip://127.0.0.1:8000` directly and

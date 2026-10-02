@@ -146,7 +146,7 @@ func (s *BankService) purchase(ctx context.Context, cost, qty int, failStock boo
 ```
 
 (`openDB` and the `gs.Provide(newBankService)` wiring are in
-[example/example.go](example/example.go) — copy from there; each sqlite handle uses
+[example/main.go](example/main.go) — copy from there; each sqlite handle uses
 `MaxOpenConns(1)` so the shared in-memory database is not duplicated per connection.)
 
 **conf/app.properties** — the complete, commented surface (both keys are defaults, shown

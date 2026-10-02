@@ -41,6 +41,10 @@ func init() {
 	// method, so the destroy callback only stops any discovery Resolver watch
 	// behind the client (added when ServiceName is set).
 	gs.Module(gs.OnProperty("spring.memcached.instances"), func(r gs.BeanProvider, p flatten.Storage) error {
+		// Any key an instance does not define falls back to the family-wide
+		// "default" bucket: spring.memcached.default.<k> is the value every
+		// instance inherits unless it sets its own.
+		p = flatten.WithFallback(p, "spring.memcached.instances", "spring.memcached.default")
 		return conf.BindEach(p, "${spring.memcached.instances}", func(name string, c Config) error {
 			// IndexArg(1, ...) binds c to index 1, leaving index 0 (*gs.ContextProvider)
 			// to be autowired — the documented pattern for a ctor whose first param

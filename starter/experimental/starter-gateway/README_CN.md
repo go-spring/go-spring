@@ -29,7 +29,7 @@ go get go-spring.org/starter-gateway
 
 ### 1. 导入 `starter-gateway` 包
 
-路由是纯配置，无需任何应用 bean，匿名导入即可。参考 [example.go](example/example.go)。
+路由是纯配置，无需任何应用 bean，匿名导入即可。参考 [main.go](example/main.go)。
 
 ```go
 import _ "go-spring.org/starter-gateway"
@@ -116,7 +116,7 @@ spring.gateway.routes.api.upstream.target=http://127.0.0.1:19000
 
 ## 核心特性
 
-[example.go](example/example.go) 演示并断言：
+[main.go](example/main.go) 演示并断言：
 
 * **路由 + 断言匹配** —— `/api/**` 被正确路由，未匹配路径干净地返回 `404`，不接触任何上游。
 * **过滤器链** —— 在上游看到请求之前剥掉 `/api` 前缀并注入 `X-From` 头。
@@ -132,3 +132,13 @@ spring.gateway.routes.api.upstream.target=http://127.0.0.1:19000
 * **bean 形态过滤器** —— `jwt-auth(<bean>)` 与 `lua(<bean>)` 解析一个导出为
   `gateway.FilterWrapper` 的 bean（单方法 `Wrap(next) handler` 缝隙），让
   `starter-security-jwt` 与 `starter-lua-filter` 无耦合地作为过滤器接入。
+
+## 设计说明
+
+* **路由走 warmup 而非 eager 编译。** `FilterWrapper` map 在构造之后才有值，
+  因此编译发生在 server 的 `warmup()` 里；坏路由仍在启动时失败，只是比构造期
+  稍晚一点。
+* **路由 map 的默认值必须为空。** 写 `${routes:=}`，**不要**写 `${routes:={}}`
+  ——bind 层会拒绝非空 map 默认值。
+* **`lb://` 复用共享的客户端栈。** 服务发现与负载均衡来自 `cloud/discovery` +
+  `cloud/loadbalance`，因此 mesh 模式在其中集中退化，网关侧无需分支。

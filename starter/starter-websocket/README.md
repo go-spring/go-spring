@@ -74,7 +74,7 @@ spring.http.server.idleTimeout=0
 
 ## Core Features
 
-The [example](example/example.go) demonstrates three end-to-end features, each
+The [example](example/main.go) demonstrates three end-to-end features, each
 asserted by the in-process `runTest` client:
 
 * **Text echo (`/echo`)** — upgrades the request and echoes each text frame

@@ -38,7 +38,7 @@ go 1.26
 require (
     go-spring.org/spring               v1.3.4
     go-spring.org/starter-gorm-mysql   latest
-    go-spring.org/starter-registry-etcd latest   // etcd discovery 后端
+    go-spring.org/starter-discovery-etcd latest   // etcd discovery 后端
     go-spring.org/starter-actuator     latest   // /health + /readyz
     go-spring.org/starter-otel         latest   // trace/metric 导出
 )
@@ -55,7 +55,7 @@ import (
     "go-spring.org/spring/gs"
     _ "go-spring.org/starter-actuator"
     _ "go-spring.org/starter-otel"
-    _ "go-spring.org/starter-registry-etcd" // 注册 etcd discovery 后端
+    _ "go-spring.org/starter-discovery-etcd" // 注册 etcd discovery 后端
     _ "go-spring.org/starter-gorm-mysql"
 )
 
@@ -109,11 +109,11 @@ spring.gorm.mysql.instances.cluster.user=root
 spring.gorm.mysql.instances.cluster.password=123456
 spring.gorm.mysql.instances.cluster.db=test
 spring.gorm.mysql.instances.cluster.service-name=mysql-cluster
-spring.gorm.mysql.instances.cluster.discovery=etcd.main    # -> ${spring.registry.etcd.main} 块的后端 bean
+spring.gorm.mysql.instances.cluster.discovery=etcd.main    # -> ${spring.discovery.etcd.main} 块的后端 bean
 spring.gorm.mysql.instances.cluster.conn-max-lifetime=30m  # 约束故障切换滞后（见 §4.3）
 
 # --- etcd 注册中心（注册与发现共用）---------------------------------------------
-spring.registry.etcd.main.endpoints=127.0.0.1:2379
+spring.discovery.etcd.main.endpoints=127.0.0.1:2379
 
 # --- actuator（聚合 gorm:mysql:<name> 指示器）-----------------------------------
 spring.actuator.addr=:9370
@@ -271,7 +271,7 @@ ETCDCTL_API=3 etcdctl del /services/mysql-cluster/b
 | 启动失败 `gorm ping:` | addr/凭据错误，或 `ping-timeout` 内 DB 不可达 | 修配置或调大 `ping-timeout`；这是 fail-fast ping，不是运行期故障。 |
 | `unsupported Scan ... []uint8 ... time.Time` | `parseTime` 默认 false | 设 `parseTime=true`（需要时加 `loc`）。 |
 | 发现型 client 拨的是配置 `addr` 而非注册中心端点 | 未设 `service-name`——走了直连路径 | 设 `service-name`（后端不为 "default" 时加 `discovery`）。 |
-| 发现拨号报 `no endpoints` / 端点集为空 | 后端名不匹配或无存活 key | 检查 `discovery` key 引用的是派生后端标签（如 `etcd`）且已配置 `${spring.registry.etcd}`；检查前缀下 etcd key。 |
+| 发现拨号报 `no endpoints` / 端点集为空 | 后端名不匹配或无存活 key | 检查 `discovery` key 引用的是派生后端标签（如 `etcd`）且已配置 `${spring.discovery.etcd}`；检查前缀下 etcd key。 |
 | 时间值差了几个小时 | `parseTime=true` 但 `loc` 未设（默认 UTC） | 设 `loc=Asia/Shanghai`（或你的时区）。 |
 | 慢查询中途连接断开 | `readTimeout` 小于查询耗时 | 调大 `readTimeout` 或优化查询。 |
 | 每查询无 db.* span/指标/访问日志 | `observe.enabled=false`，或未引入 starter-otel | 重新开启 / 引入 starter-otel；按实例开关会完全移除插件，操作不再声明，resilience 层只发它自己的通用信号。 |

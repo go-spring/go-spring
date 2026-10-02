@@ -122,3 +122,15 @@ logger.lock_access.type=Logger
 logger.lock_access.level=WARN
 logger.lock_access.tag=_app_lock_access
 ```
+
+## Design Notes
+
+* **The Lease name is `<key-prefix><key>`, so the lock key itself must be a valid
+  DNS-1123 subdomain** — lowercase alphanumerics, `-` and `.` only. The constraint
+  applies to the key you pass to `Acquire`, not just to `key-prefix`.
+* **Timing is carried per-acquire on `lock.Option`, in whole seconds.** K8s Lease
+  durations are integer seconds, so a sub-second TTL is rounded up to 1s; there are
+  no timing keys in this starter's config.
+* **Holds are independent.** One clientset is shared across every hold, but each held
+  lock owns its own renewal ticker and `Lost()` channel, so losing one lease does not
+  disturb another.

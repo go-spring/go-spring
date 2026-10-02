@@ -266,7 +266,7 @@ starter-governance-file), keyed by service `memcached:<service-name or instance-
 ## 4. Verification & fault drills
 
 1. **SET/GET round-trip**: `curl :9090/set` → `OK`; `curl :9090/get` → `value`
-   (handlers in `example/example.go`; check.sh asserts them headlessly).
+   (handlers in `example/main.go`; check.sh asserts them headlessly).
 2. **Cache-miss semantics**: delete the key, `curl :9090/get` → `memcache: cache miss`; with
    governance on, repeated misses do NOT open the breaker (ErrCacheMiss is success,
    `client.go`).

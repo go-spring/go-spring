@@ -25,7 +25,7 @@ go get go-spring.org/starter-goframe
 
 ## 快速开始 — HTTP
 
-见 [http/example/example.go](http/example/example.go)。
+见 [http/example/main.go](http/example/main.go)。
 
 ```go
 import _ "go-spring.org/starter-goframe/http"
@@ -49,8 +49,8 @@ gs.Provide(func() goframehttp.ServiceRegister {
 ## 快速开始 — gRPC / TCP / WebSocket
 
 用法完全一致:导入子包、配置前缀、提供 `ServiceRegister` bean。见
-[grpc/example](grpc/example/example.go)、[tcp/example](tcp/example/example.go)、
-[ws/example](ws/example/example.go)。
+[grpc/example](grpc/example/main.go)、[tcp/example](tcp/example/main.go)、
+[ws/example](ws/example/main.go)。
 
 ## 服务发现(etcd)
 

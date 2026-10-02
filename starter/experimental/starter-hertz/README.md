@@ -96,7 +96,7 @@ func main() {
 
 ## Core Features
 
-The [example.go](example/example.go) file demonstrates three core Hertz
+The [main.go](example/main.go) file demonstrates three core Hertz
 features and asserts each one via real HTTP calls in `runTest`:
 
 * **Middleware** — the starter installs Recovery, RequestID and AccessLog by default; a `h.Use(...)` middleware sets the `X-App: go-spring`

@@ -15,7 +15,7 @@ go get go-spring.org/starter-ants
 
 ### 1. 引入 `starter-ants` 包
 
-参考 [example.go](example/example.go) 文件。
+参考 [main.go](example/main.go) 文件。
 
 ```go
 import _ "go-spring.org/starter-ants"
@@ -31,7 +31,7 @@ spring.ants.instances.main.size=256
 
 ### 3. 注入 ants 协程池
 
-参考 [example.go](example/example.go) 文件。
+参考 [main.go](example/main.go) 文件。
 
 ```go
 import "github.com/panjf2000/ants/v2"
@@ -43,7 +43,7 @@ type Service struct {
 
 ### 4. 使用 ants 协程池
 
-参考 [example.go](example/example.go) 文件。
+参考 [main.go](example/main.go) 文件。
 
 ```go
 err := s.Pool.Submit(func() {
@@ -53,7 +53,7 @@ err := s.Pool.Submit(func() {
 
 ## 核心特性
 
-[example.go](example/example.go) 程序演示并断言了三个核心 ants 操作：
+[main.go](example/main.go) 程序演示并断言了三个核心 ants 操作：
 
 * **Submit** —— 把任务分发到池化协程上执行，并确认全部运行。
 * **实例隔离** —— 两个命名池彼此完全独立，由各自配置的容量证明。

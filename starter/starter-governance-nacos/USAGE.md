@@ -4,7 +4,7 @@ Detailed usage reference. Overview: [README.md](README.md). Every behavior claim
 against the starter source (`starter.go`, `governance.go`, `governance_test.go`), the shared parse glue
 [cloud/governance/rules.go](../../cloud/governance/rules.go), the core contract
 [cloud/governance](../../cloud/governance) (`source.go`), and the self-asserting
-[example/](example) (`example/example.go`, `example/check.sh`). Nacos's own semantics (dataId,
+[example/](example) (`example/main.go`, `example/check.sh`). Nacos's own semantics (dataId,
 group, namespace, `ListenConfig`) are [Nacos docs](https://nacos.io/docs/latest/manual/admin/config/)
 — everything below is go-spring's increment.
 
@@ -18,12 +18,12 @@ group, namespace, `ListenConfig`) are [Nacos docs](https://nacos.io/docs/latest/
 ## 1. Complete worked project
 
 A service whose governance rules live in their OWN Nacos dataId and hot-reload on every publish.
-This is the checked-in example (abridged); the full flow is in [example/example.go](example/example.go).
+This is the checked-in example (abridged); the full flow is in [example/main.go](example/main.go).
 
 ```
 demo/
 ├── go.mod
-├── main.go            (example.go)
+├── main.go
 └── conf/
     └── app.properties
 ```

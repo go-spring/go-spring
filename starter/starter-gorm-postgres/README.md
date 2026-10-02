@@ -51,7 +51,7 @@ err := s.DB.Raw("SELECT version()").Scan(&version).Error
 
 ## Core Features
 
-The [example.go](example/example.go) file demonstrates three core GORM features against PostgreSQL:
+The [main.go](example/main.go) file demonstrates three core GORM features against PostgreSQL:
 
 * **AutoMigrate**: create the table from a Go struct via `s.DB.AutoMigrate(&KV{})` and verify with
   `s.DB.Migrator().HasTable(&KV{})`.

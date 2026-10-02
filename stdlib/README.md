@@ -49,6 +49,7 @@ making everyday Go development more convenient and enjoyable.
 | [iterutil](./iterutil/) | Iterator and loop processing utilities |
 | [listutil](./listutil/) | Generic, type-safe skin over `container/list` plus slice helpers |
 | [ordered](./ordered/) | Sorted map-key iteration helper |
+| [singleton](./singleton/) | Single-instance container with an idempotent constructor, for package-level state outside a managed lifecycle |
 
 ### Errors, Context & Files
 

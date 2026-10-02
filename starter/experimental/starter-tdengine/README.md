@@ -95,3 +95,22 @@ span/log detail (truncated to 512 bytes). The signals themselves are **emitted b
 on the executor chain that sees a whole call, retries included. Beside the call-level `db.client.operation.duration`
 histogram, every call also reports an attempt-level `db.client.attempt.duration` one, and an access log tagged
 `_app_tdengine_access`. All of it is a no-op unless `starter-otel` installs providers.
+
+## Design Notes
+
+* **The DSN is kept whole on purpose.** `dsn` is the driver's unified format
+  (`user:pass@ws(host:port)/db`), not decomposed into host/port/user fields, so
+  the driver's own parameter surface (`?readTimeout=…`) passes through unchanged.
+* **TDengine has no transactions.** The promoted `Begin`/`BeginTx` delegate to the
+  driver, which reports that — do not build on `database/sql` transactions.
+* **Guarding is at the driver connection.** Rate limiting, circuit breaking and
+  fault injection wrap every `ExecContext`/`QueryContext` on every pooled
+  connection, so every caller — including an ORM layered on the pool — is covered,
+  with no `Guarded*` helper to remember.
+* **Not everything `database/sql` can express is available.** STMT parameter
+  binding is not modeled (use the SDK directly when needed) and super-table /
+  schemaless writes stay raw SQL. The DSN names a single taosAdapter, so there is
+  no connection-level load balancing.
+* **Server version matters.** driver-go v3.8.2 needs TDengine ≥ 3.3.6.0 on the
+  websocket path; an older server fails the startup ping (when `ping=true`) with
+  the driver's version error, or surfaces it on first use otherwise.

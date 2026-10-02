@@ -18,7 +18,7 @@ go get go-spring.org/starter-casbin
 
 ### 1. 引入 `starter-casbin` 包
 
-参考 [example.go](example/example.go) 文件。
+参考 [main.go](example/main.go) 文件。
 
 ```go
 import _ "go-spring.org/starter-casbin"
@@ -39,7 +39,7 @@ spring.casbin.instances.rbac.policy=./conf/policy.csv
 
 ### 3. 注入 Enforcer
 
-参考 [example.go](example/example.go) 文件，按实例名注入。注入的 bean 是
+参考 [main.go](example/main.go) 文件，按实例名注入。注入的 bean 是
 `*StarterCasbin.Enforcer`，内嵌 `*casbin.Enforcer`，因此可直接调用
 `Enforce`、`AddPolicy` 等常用方法。
 
@@ -69,7 +69,7 @@ ok, err := s.Enforcer.Enforce("alice", "/data", "write")
 
 ## 核心功能
 
-[example.go](example/example.go) 构建了一个 RBAC enforcer 并断言：
+[main.go](example/main.go) 构建了一个 RBAC enforcer 并断言：
 
 * **角色继承** —— `alice`（admin）可 `read`/`write`，`bob`（viewer）仅可 `read`。
 * **默认拒绝** —— 未知主体、未授权动作一律拒绝。

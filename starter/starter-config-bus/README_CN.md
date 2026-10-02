@@ -68,7 +68,7 @@ _ = svc.Bus.Publish(ctx, "db")
 ```
 
 订阅该主题的每个实例都会重新执行 `RefreshProperties`,所有绑定的 `gs.Dync` 字段随之
-热更新。完整的广播 → 刷新流程见 [example](example/example.go)。
+热更新。完整的广播 → 刷新流程见 [example](example/main.go)。
 
 ## 工作原理
 

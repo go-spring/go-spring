@@ -190,3 +190,17 @@ func (d myDriver) CreateClient(ctx context.Context, c StarterRocketmq.Config,
 here (there is no cheap broker probe that works on every cluster topology);
 export one from the application (e.g. a `NewProducer`/`Shutdown` round trip)
 when you use `starter-actuator`.
+
+## Design Notes
+
+* **Ordered and transactional messaging lives in the raw SDK.** The
+  `messaging.Driver` adapter consumes concurrently; for orderly or transactional
+  sends use the raw `Client`. Message payloads stay `[]byte` — serialization is
+  yours.
+* **`instance-name` controls connection pooling.** Left empty, the SDK rewrites
+  the shared "DEFAULT" to a per-producer/consumer `PID#nano`, which is safe in
+  multi-producer processes; set it explicitly to make all remoting clients share
+  one connection pool.
+* **The ping probe is a TCP dial, not a broker round trip.** It catches wrong
+  addresses at boot but not ACL or credential errors — deliberately cheap,
+  side-effect-free and topology-independent.

@@ -105,7 +105,7 @@ curl -fsS -X POST 'http://127.0.0.1:8848/nacos/v1/cs/configs' \
 # 观察应用日志/字段；自动化形式见 ./example/check.sh
 ```
 
-[example](example/example.go) 把这个闭环自动化（发布 + 最多 15 秒轮询 + 断言），
+[example](example/main.go) 把这个闭环自动化（发布 + 最多 15 秒轮询 + 断言），
 `example/check.sh` 是 docker 门控的冒烟门禁。
 
 ---

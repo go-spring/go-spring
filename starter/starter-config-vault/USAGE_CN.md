@@ -335,6 +335,6 @@ env -u VAULT_TOKEN go run .   # ERROR "no vault token found (set VAULT_TOKEN, VA
 5. `scheme` 藏在 query（`?scheme=https`）而非接受真正的 `vault://host/...` /
    `https://host/...` URL 形态——容易漏配，且无内联提示。
 6. example 漂移：`example/check.sh` 只 export `VAULT_TOKEN` 没有
-   `GS_CONFIG_DECRYPT_AES_KEY`，`example.go` 声明了未使用的 `aesKey` 常量、init 注释声称
+   `GS_CONFIG_DECRYPT_AES_KEY`，`main.go` 声明了未使用的 `aesKey` 常量、init 注释声称
    设置了实际没设的环境变量——按现脚本 ENC 解密一腿的冒烟无法通过；需修脚本或 init。
 7. 无健康检查、无指标；有专属 log tag `_app_config_vault`：变更与失败均记日志，但配置陈旧与否离开外部探测不可观测。

@@ -90,7 +90,7 @@ return coord.Commit(context.Background(), xid)    // drops the undo logs
 
 Each database self-registers a branch the first time it writes under `ctx`; a
 database that writes several times is committed/rolled back exactly once. See
-[example/example.go](example/example.go) for a runnable two-database demo
+[example/main.go](example/main.go) for a runnable two-database demo
 covering the commit path, the rollback path and the write-write conflict.
 
 ### 4. Or declare it as `@GlobalTransactional`

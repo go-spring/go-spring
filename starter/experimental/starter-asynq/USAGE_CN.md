@@ -16,7 +16,7 @@ starter.go:36）。一个实例恒产出生产者 `*Client`；worker `*Server` �
 ## 1. 完整工程示例
 
 单实例双角色：生产者投递 `example:greet` 任务，worker（配置中开启）执行，断言往返成功后
-进程自退出——与 [example/example.go](example/example.go) 同构。文件树：
+进程自退出——与 [example/main.go](example/main.go) 同构。文件树：
 
 ```
 demo/
@@ -74,7 +74,7 @@ type Service struct {
 var completed = make(chan string, 1)
 
 // Init 在 gs 字段注入两个 bean 之后运行——这是 worker 开始消费前注册 handler 的
-// 正确时机（gs 的 Rooter Init 阶段先于 Runner/server，见 example/example.go:49-55）。
+// 正确时机（gs 的 Rooter Init 阶段先于 Runner/server，见 example/main.go:49-55）。
 func (s *Service) Init() error {
     s.Server.RegisterHandler(taskType, handleGreet)
     return nil

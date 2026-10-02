@@ -117,3 +117,9 @@ logger.lock_access.type=Logger
 logger.lock_access.level=WARN
 logger.lock_access.tag=_app_lock_access
 ```
+
+## 设计说明
+
+* **自持客户端——没有 `client=` 键。** Consul 未提供 `starter-go-redis` 那种可共享的客户端，因此每个实例从绑定的配置构建并自持一个 `*consul/api.Client`，并在 destroy 时关闭。本 starter 无法复用应用提供的连接。
+* **会话 TTL 被钳制到 Consul 的窗口内。** Consul 会话只接受 `[10s, 86400s]` 范围内的 TTL；配置值（或逐次调用的值）超出该范围时会被钳制——低于 10s 向上补，高于 24h 向下压——因此短 TTL 仍能启动，而不是在创建会话时失败。运行时生效的是钳制后的有效 TTL。
+* **`scheme=https` 不等于 TLS。** `scheme` 只选择 URL 协议；真正可用的 TLS 连接需要 `tls.enabled=true` 以及 cert/CA 字段。只设 `scheme=https` 会拨号失败。

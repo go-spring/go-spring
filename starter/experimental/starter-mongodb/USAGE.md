@@ -363,7 +363,7 @@ spring.mongodb.instances.a.max-pool-size=100   # room for the burst to force fre
 
 Fire 40 concurrent `InsertOne` on a cold pool: dials beyond the limit fail with
 `resilience.ErrRateLimited` surfaced as the operation's connection error; admitted ops succeed
-([example-cloudnative/example.go:197-225]). Then note the flip side: once the pool is warm,
+([example-cloudnative/main.go:197-225]). Then note the flip side: once the pool is warm,
 the same burst sails through — protection is connection-level. Flip `spring.governance.*` at runtime —
 the executor hot-reloads without restart (governance center).
 

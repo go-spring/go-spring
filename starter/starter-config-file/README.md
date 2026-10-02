@@ -70,7 +70,7 @@ type Demo struct {
 
 When a watched file changes, the provider's watcher triggers an application
 property refresh, and all bound `gs.Dync` fields are updated atomically. See
-[example](example/example.go) for the full flow — it reproduces the exact
+[example](example/main.go) for the full flow — it reproduces the exact
 Kubernetes `..data` atomic symlink swap and asserts the bound field hot-reloads.
 
 ## Kubernetes example
@@ -117,7 +117,7 @@ allowed, so `db.user` is a valid key). `configtree` also supports genuinely
 nested trees (`db/user` → property `db.user`); entries whose name starts with `.`
 (`..data`, timestamped dirs) are skipped at every level. No `?format=` is
 accepted — values are raw strings. See
-[example-configtree](example-configtree/example.go) for the full hot-reload flow.
+[example-configtree](example-configtree/main.go) for the full hot-reload flow.
 
 ### file-watch vs configtree
 

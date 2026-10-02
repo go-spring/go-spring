@@ -47,3 +47,19 @@ client := &http.Client{Transport: rt}
 `httpx` 自己叠在其上。
 
 Bean 化封装见 `starter/starter-http-client`。
+
+## 设计说明
+
+* **fault 注入在最内层，observe 记录最终结果。** 启用 resilience 时执行器包成
+  `observe(fault(raw))`：注入的故障位于 observe *之内*，因此看起来与真实下游失败一致，
+  而 observe 度量最终结果。
+* **`WrapExec` 是逃生舱。** 需要自定义顺序或额外一层的调用方，通过它替换默认的
+  `observe(fault(...))` 包装。
+* **传输层以上的事不在这里做。** Cookie jar、为重试缓冲请求体、注入追踪头——都不在
+  `httpx`；请放到 client 或你传入的 `Base` 传输层里。
+* **改写 host 前先克隆请求。** net/http 可能重试，上层 resilience 也会跨尝试复用原
+  请求，因此 `balancedTransport` 在改写 `URL.Host` / `Host` 前会先克隆；就地改写
+  调用方请求是正确性 bug。
+* **四段顺序是固定的。** `resilience → balancer → otel-base → net/http` 是有意固定
+  的，没有用户可拼装的 chain API——改变顺序会诱使把 resilience 放到 balancer 之下，
+  重试时失去 failover。

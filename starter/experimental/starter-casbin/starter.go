@@ -40,6 +40,10 @@ func init() {
 	// file-backed policy path). No package-level registry: adapters/watchers are
 	// ordinary beans the app owns.
 	gs.Module(gs.OnProperty("spring.casbin.instances"), func(r gs.BeanProvider, p flatten.Storage) error {
+		// Any key an instance does not define falls back to the family-wide
+		// "default" bucket: spring.casbin.default.<k> is the value every
+		// instance inherits unless it sets its own.
+		p = flatten.WithFallback(p, "spring.casbin.instances", "spring.casbin.default")
 		return conf.BindEach(p, "${spring.casbin.instances}", func(name string, c Config) error {
 			return registerEnforcer(r, name, c)
 		})

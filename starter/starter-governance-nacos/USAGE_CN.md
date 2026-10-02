@@ -4,7 +4,7 @@
 源码（`starter.go`、`governance.go`、`governance_test.go`）、共享解析胶水
 [cloud/governance/rules.go](../../cloud/governance/rules.go)、核心契约
 [cloud/governance](../../cloud/governance)（`source.go`），以及自断言的
-[example/](example)（`example/example.go`、`example/check.sh`）。Nacos 自身的语义（dataId、
+[example/](example)（`example/main.go`、`example/check.sh`）。Nacos 自身的语义（dataId、
 group、namespace、`ListenConfig`）见 [Nacos 文档](https://nacos.io/docs/latest/manual/admin/config/)——
 以下都是 go-spring 的增量。
 
@@ -17,12 +17,12 @@ group、namespace、`ListenConfig`）见 [Nacos 文档](https://nacos.io/docs/la
 ## 1. 完整工程示例
 
 一个把治理规则放进自己的 Nacos dataId、并在每次发布时热更新的服务。以下是签入的示例（节选），
-完整流程见 [example/example.go](example/example.go)。
+完整流程见 [example/main.go](example/main.go)。
 
 ```
 demo/
 ├── go.mod
-├── main.go            (example.go)
+├── main.go
 └── conf/
     └── app.properties
 ```

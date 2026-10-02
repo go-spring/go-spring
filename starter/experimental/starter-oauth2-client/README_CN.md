@@ -17,7 +17,7 @@ go get go-spring.org/starter-oauth2-client
 
 ### 1. 导入 `starter-oauth2-client` 包
 
-参考 [example.go](example/example.go) 文件。
+参考 [main.go](example/main.go) 文件。
 
 ```go
 import _ "go-spring.org/starter-oauth2-client"
@@ -39,7 +39,7 @@ spring.oauth2.client.instances.downstream.timeout=5s
 ### 3. 注入 HTTP 客户端
 
 starter 会为每个配置键注册一个 `*http.Client`,按该名称注入。参考
-[example.go](example/example.go) 文件。
+[main.go](example/main.go) 文件。
 
 ```go
 type Service struct {
@@ -49,7 +49,7 @@ type Service struct {
 
 ### 4. 使用 HTTP 客户端
 
-参考 [example.go](example/example.go) 文件。首次请求时自动获取 token,并以
+参考 [main.go](example/main.go) 文件。首次请求时自动获取 token,并以
 `Authorization: Bearer <token>` 形式附加到请求上。
 
 ```go
@@ -58,7 +58,7 @@ resp, err := s.Client.Get("https://api.example.com/resource")
 
 ## 核心特性
 
-[example.go](example/example.go) 会在进程内启动一个 OAuth2 token 端点和一个
+[main.go](example/main.go) 会在进程内启动一个 OAuth2 token 端点和一个
 受保护资源服务,随后演示并断言:
 
 * **自动获取 token** — 注入的客户端在首次请求时通过 client-credentials 授权拿到 token。
@@ -142,3 +142,10 @@ type LoginService struct {
 // url := s.OAuth.AuthCodeURL("state")       // 将用户重定向到该地址
 // tok, err := s.OAuth.Exchange(ctx, code)   // 用回调 code 换 token
 ```
+
+## 设计说明
+
+* **只做客户端。** 本 starter 负责获取并刷新 token；校验进入的 token 属于资源服务器（`starter-security-jwt`），因此这层配置表面不会长出校验开关。
+* **两种 grant 不共用 bean。** `client_credentials` 在 `spring.oauth2.client` 下发布 `*http.Client` + `*TokenSource`，而 `authorization_code` 在 `spring.oauth2.authcode` 下发布 `*oauth2.Config`；分前缀让两个配置表面互不污染。
+* **韧性是最外层的 transport 包装。** bearer token 先附加，请求再流过 `cloud/resilience` 执行器（重试可重挑上游，熔断按逻辑服务名聚合），因此每次受保护的尝试都是一次完整、已认证的请求。它是同一实例内的纯配置开关，治理关闭时为透明直通。
+* **token 交换不受这层包装覆盖。** 执行器包裹的是返回 client 的 transport，而库用自己的路径获取 token——IdP 抖动不会被本 client 的策略重试。

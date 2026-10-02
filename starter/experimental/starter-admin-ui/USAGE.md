@@ -96,7 +96,7 @@ spring.admin-ui.title=Go-Spring Admin
 spring.http.server.enabled=false
 ```
 
-**Verify** (isomorphic to `example/example.go runTest`):
+**Verify** (isomorphic to `example/main.go runTest`):
 
 ```bash
 go run . -manual &

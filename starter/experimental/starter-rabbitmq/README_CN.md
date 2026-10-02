@@ -15,7 +15,7 @@ go get go-spring.org/starter-rabbitmq
 
 ### 1. 引入 `starter-rabbitmq` 包
 
-参见 [example.go](example/example.go) 文件。
+参见 [main.go](example/main.go) 文件。
 
 ```go
 import _ "go-spring.org/starter-rabbitmq"
@@ -33,7 +33,7 @@ spring.rabbitmq.instances.b.url=amqp://guest:guest@127.0.0.1:5672/
 
 ### 3. 注入 RabbitMQ 连接
 
-参见 [example.go](example/example.go) 文件。每个具名实例都会以该名称注册为一个
+参见 [main.go](example/main.go) 文件。每个具名实例都会以该名称注册为一个
 `*amqp.Connection` bean，按名称注入所需实例即可。
 
 ```go
@@ -46,7 +46,7 @@ type Service struct {
 
 ### 4. 使用 RabbitMQ 连接
 
-参见 [example.go](example/example.go) 文件。Channel 开销很小且非并发安全，
+参见 [main.go](example/main.go) 文件。Channel 开销很小且非并发安全，
 应从共享连接上按 goroutine/操作各自打开一个。
 
 ```go
@@ -58,7 +58,7 @@ _ = ch.PublishWithContext(ctx, "", "hello", false, false, amqp.Publishing{Body: 
 
 ## 核心功能
 
-[example](example/example.go) 演示了 RabbitMQ 的三个核心用法：
+[example](example/main.go) 演示了 RabbitMQ 的三个核心用法：
 
 1. **默认交换机的发布/消费**：使用队列名作为 routing key 通过默认交换机发布消息，
    再通过 `ch.Get` 将其取回。

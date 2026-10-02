@@ -375,7 +375,7 @@ subset into an in-memory config center (mapconfig) as flat dubbo URL params: `ti
 `force.tag`, `weight`, and per-method `methods.<m>.{timeout,retries,loadbalance,weight,sticky,
 tps.limit.*,execute.limit*}` (dync.go:46-48, 154-228).
 
-Chain (DESIGN.md, confirmed in code):
+Chain (README Design Notes, confirmed in code):
 
 ```
 property change (file/nacos/env) → gs RefreshProperties → gs.Dync swap
@@ -488,5 +488,6 @@ Design suspects (audit ledger):
 11. ~~wiring_test.go "KNOWN BUG" comment is stale (fixed `map[string]string`), protocols block
     still untested.~~ — the `map[string]any` driver failure is fixed (config.go:108-114
     documents the constraint); protocols block remains untested in wiring_test.go.
-12. ~~DESIGN.md is stale relative to the code~~ — DESIGN.md refreshed (2026-08) to match
-    config.go/dync.go; this USAGE and the source remain authoritative for details.
+12. ~~DESIGN.md is stale relative to the code~~ — the design notes now live in
+    the README's Design Notes section, aligned with config.go/dync.go; this USAGE
+    and the source remain authoritative for details.

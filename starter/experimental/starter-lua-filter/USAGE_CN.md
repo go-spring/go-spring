@@ -233,7 +233,7 @@ logger.lua_filter.tag=_app_lua_filter
 if err := guard.Reload(); err != nil { /* 坏编辑：旧脚本仍在运行 */ }
 ```
 
-演练（正是 `example/example.go:118-131` 断言的内容）：
+演练（正是 `example/main.go:118-131` 断言的内容）：
 
 1. 编辑 `guard.lua`，让 `/hello` 也 `deny(403, "hello disabled")`。
 2. 调 `Reload()` —— 成功：后续请求在 `/hello` 得到 403，无需重启。

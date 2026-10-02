@@ -48,7 +48,7 @@ _, err = c.Do("SET", "key", "value")
 
 ## Core Features
 
-The [example.go](example/example.go) file demonstrates the following core Redis features:
+The [main.go](example/main.go) file demonstrates the following core Redis features:
 
 * **String SET/GET**: store a string value with `SET` and retrieve it with `GET`.
 * **INCR counter**: atomically increment an integer counter with `INCR`.

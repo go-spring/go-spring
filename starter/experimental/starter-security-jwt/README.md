@@ -20,7 +20,7 @@ go get go-spring.org/starter-security-jwt
 
 ### 1. Import the `starter-security-jwt` Package
 
-Refer to the [example.go](example/example.go) file.
+Refer to the [main.go](example/main.go) file.
 
 ```go
 import _ "go-spring.org/starter-security-jwt"
@@ -48,7 +48,7 @@ spring.security.jwt.instances.api.secret=example-shared-secret
 
 Inject the authenticator by its config sub-key (`api`) and wrap your
 business handler. Handing the wrapped handler to a `*gs.HttpServeMux` places
-authentication in front of the server. Refer to the [example.go](example/example.go) file.
+authentication in front of the server. Refer to the [main.go](example/main.go) file.
 
 ```go
 gs.Provide(func(auth *StarterSecurityJWT.Authenticator) *gs.HttpServeMux {
@@ -97,7 +97,7 @@ All keys live under `spring.security.jwt.instances.<name>`:
 
 ## Core Features
 
-The [example.go](example/example.go) program demonstrates and asserts:
+The [main.go](example/main.go) program demonstrates and asserts:
 
 * **Reject missing token** — with `required=true` (default) a request without a
   bearer token gets `401`.
@@ -128,3 +128,16 @@ The [example.go](example/example.go) program demonstrates and asserts:
 * **Multiple authenticators**: define several entries under
   `spring.security.jwt.instances.*` and select each by name — `autowire:"<name>"`
   for the seam, `gs.TagArg("...")` for the concrete authenticator.
+
+## Design Notes
+
+* **Verification only — no issuance, no policy.** This starter verifies incoming JWTs and
+  attaches identity; minting tokens is `starter-oauth2-server`'s job, and authorization
+  *policy* (who may do what) lives in `cloud/security`, not here.
+* **Two seams from one bean.** Each instance is both an HTTP middleware (`Wrap(http.Handler)`)
+  and an exported `security.TokenValidator` — inject the neutral seam for non-HTTP transports
+  (gRPC metadata, WebSocket handshake), and the concrete `*Authenticator` only when you need
+  `Wrap`.
+* **JWKS is parsed in-tree.** The RSA/ECDSA JWK members are decoded directly, so the dependency
+  graph stays at `golang-jwt/jwt/v5` with no external keyfunc; the cache still refreshes on its
+  configured interval and on an unknown-`kid` miss.

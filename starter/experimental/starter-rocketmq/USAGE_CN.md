@@ -8,7 +8,7 @@
 [rocketmq-client-go 官方文档](https://github.com/apache/rocketmq-client-go) 与
 [RocketMQ 官方文档](https://rocketmq.apache.org/docs/)**——本文只写 go-spring 的增量。
 客户端库为 `github.com/apache/rocketmq-client-go/v2`（remoting 客户端，非 5.x gRPC 的
-`rocketmq-clients`）；选型理由见 DESIGN.md §4。
+`rocketmq-clients`）。
 
 **激活条件**：出现任意 `spring.rocketmq.instances.*` 配置（模块注册 `OnProperty("spring.rocketmq")`
 前缀匹配 [starter.go:40]）。每个 `spring.rocketmq.instances.<name>` 条目创建一个名为 `<name>` 的
@@ -195,13 +195,13 @@ gs.Run()
 源码核对要点：
 
 - 探测是 TCP dial，**不是** broker 往返——能抓地址写错，抓不到 ACL/凭证错误
-  （DESIGN.md §3；探测循环 [driver.go:148-155] 首个成功即返回）。
+  （探测循环 [driver.go:148-155] 首个成功即返回；见 README 的设计说明）。
 - producer 创建即启动（NewProducer 内 `p.Start()` [client.go:116]）；consumer 返回
   **未启动**——需自行先 Subscribe 后 Start，或交给 driver [client.go:130-135]。
 - Close 与并发 NewProducer/NewPushConsumer 竞争时，新来者被 shutdown 并返回
   `errClosedClient` [client.go:122-125]；Close 之后两个构造函数直接失败
   [client.go:105-110]。
-- **没有 health.Indicator**（家族统一决策；见 DESIGN.md §3）。
+- **没有 health.Indicator**（家族统一决策；见 README 的健康检查一节）。
 
 ### 2.2 守护机制 —— 精确包裹顺序与未守护范围
 
@@ -287,7 +287,7 @@ SDK push-consumer 协程回调 starter 的 handler [messaging.go]：
 | Topic | 在 NewPublisher 时固定 | 不回填到信封 |
 
 能干净存活的双向字段：Payload、自定义 Headers、Key（单个）、trace context——正是
-[example/example.go] 断言、TestFromMessageExt 覆盖的内容 [rocketmq_test.go:102-117]。
+[example/main.go] 断言、TestFromMessageExt 覆盖的内容 [rocketmq_test.go:102-117]。
 
 ---
 
@@ -299,7 +299,7 @@ SDK push-consumer 协程回调 starter 的 handler [messaging.go]：
 | Key | 类型 | 默认值 | 行为 / 联动 | 配错后果 |
 |-----|------|--------|------------|----------|
 | `name-servers` | []string | — | **必填**（`expr:"len($) > 0"` [config.go:35]）。NameServer 地址列表；同时供 ping 探测使用。 | 缺失/为空 → 绑定期校验错误。 |
-| `instance-name` | string | `""` | 区分同主机多客户端。留空安全：SDK 会把 "DEFAULT" 改写为每个 producer/consumer 唯一名（DESIGN.md §3）。设置后 remoting 客户端共享一个连接池。 | 多余的显式值 → 想隔离时却共享了池。 |
+| `instance-name` | string | `""` | 区分同主机多客户端。留空安全：SDK 会把 "DEFAULT" 改写为每个 producer/consumer 唯一名（见 README 的设计说明）。设置后 remoting 客户端共享一个连接池。 | 多余的显式值 → 想隔离时却共享了池。 |
 | `access-key` | string | `""` | ACL access key。⚠ 必须与 `secret-key` 成对——单边启动即失败，错误信息带客户端名 [starter.go:60-62]。 | 单边 → 启动错误；值错误 → 首次收发失败（探测只到 TCP 层）。 |
 | `secret-key` | string | `""` | 与 access-key 配对的 ACL secret key [config.go:48]。 | 同上。 |
 | `send-timeout` | duration | `3s` | 套到每个 producer（`WithSendMsgTimeout`）[client.go:73]。 | 过小 → 高压下同步发送超时。 |
@@ -319,7 +319,7 @@ SDK push-consumer 协程回调 starter 的 handler [messaging.go]：
 go run .                                  # 期望输出 "Response from server: value"
 ```
 
-example 断言 Payload 与自定义 Headers 往返存活 [example/example.go:110-120]。要自行断言
+example 断言 Payload 与自定义 Headers 往返存活 [example/main.go:110-120]。要自行断言
 Key 存活，可在 handler 里打印 `msg.Key`——应得到同一个字符串。
 
 ### 4.2 broker 宕机 ping 探测

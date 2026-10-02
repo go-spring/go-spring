@@ -34,7 +34,7 @@ go get go-spring.org/starter-gateway
 ### 1. Import the `starter-gateway` Package
 
 Routes are pure config, so no application bean is required — a blank import is
-enough. Refer to the [example.go](example/example.go) file.
+enough. Refer to the [main.go](example/main.go) file.
 
 ```go
 import _ "go-spring.org/starter-gateway"
@@ -129,7 +129,7 @@ policy share pooled breaker/limiter state.
 
 ## Core Features
 
-The [example.go](example/example.go) program demonstrates and asserts:
+The [main.go](example/main.go) program demonstrates and asserts:
 
 * **Route + predicate matching** — `/api/**` is routed while an unmatched path
   gets a clean `404` without contacting any upstream.
@@ -150,3 +150,14 @@ The [example.go](example/example.go) program demonstrates and asserts:
   exported as `gateway.FilterWrapper` (a one-method `Wrap(next) handler` seam),
   letting `starter-security-jwt` and `starter-lua-filter` plug in as filters with
   no coupling to those modules.
+
+## Design Notes
+
+* **Routes warm up rather than compile eagerly.** The `FilterWrapper` map is only
+  populated after construction, so compilation happens in the server's `warmup()`;
+  a bad route still fails startup, just slightly later than construction.
+* **The route map's default must be empty.** Write `${routes:=}`, never
+  `${routes:={}}` — the bind layer rejects a non-empty map default.
+* **`lb://` rides the shared client-side stack.** Discovery and load balancing
+  come from `cloud/discovery` + `cloud/loadbalance`, so mesh mode degrades them
+  centrally with no gateway-side branching.

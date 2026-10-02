@@ -38,6 +38,10 @@ func init() {
 	// An authenticator holds no closable resource (the JWKS cache refreshes
 	// on-demand with no background goroutine), so there is no destroy hook.
 	gs.Module(gs.OnProperty("spring.security.jwt.instances"), func(r gs.BeanProvider, p flatten.Storage) error {
+		// Any key an instance does not define falls back to the family-wide
+		// "default" bucket: spring.security.jwt.default.<k> is the value every
+		// instance inherits unless it sets its own.
+		p = flatten.WithFallback(p, "spring.security.jwt.instances", "spring.security.jwt.default")
 		return conf.BindEach(p, "${spring.security.jwt.instances}", func(name string, c Config) error {
 			r.Provide(newAuthenticator,
 				gs.IndexArg(1, gs.ValueArg(name)),

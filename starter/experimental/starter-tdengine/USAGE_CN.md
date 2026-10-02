@@ -174,7 +174,7 @@ gs.Run()
 
 DSN 写错、凭据不对或 server 低于驱动下限都会导致启动失败——进程不会带着死的
 TDengine 进入 "serving"（版本下限：driver-go v3.8.2 在 WebSocket 路径要求
-server ≥ 3.3.6.0 [DESIGN.md §3]）。
+server ≥ 3.3.6.0；见 README 的设计说明）。
 
 **装配扩展点**：client 装配由 `Driver`（接口，`driver.go:45-46`）负责。公司/伞包 starter 可把
 自己的 `Driver` 作为**可选容器 bean** 提供（`gs.Provide(func() StarterTdengine.Driver{...})`，
@@ -188,7 +188,7 @@ server ≥ 3.3.6.0 [DESIGN.md §3]）。
 taosWS connector 包进 `guardedConnector`，池内每条连接都是 `guardedConn`
 [driver.go:96-124]。这是 gorm callback 链与 HTTP RoundTripper 适配器在 database/sql
 里的对应物——意味着治理是**逐语句且透明的**：调用点无需 opt-in，架在池上的 ORM
-同样被覆盖 [driver.go:115-124, DESIGN.md §4]。
+同样被覆盖 [driver.go:115-124；见 README 的设计说明]。
 
 一条语句，例如 `QueryContext("SELECT COUNT(*) ...")`：
 

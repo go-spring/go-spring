@@ -59,6 +59,10 @@ func init() {
 	// process that sets only defaults must not take over httpclt.DoRequest with an
 	// empty route table.
 	gs.Module(gs.OnProperty("spring.http-client.instances"), func(r gs.BeanProvider, p flatten.Storage) error {
+		// Any key an entry does not define falls back to the family-wide
+		// "default" bucket: spring.http-client.default.<k> is the value every
+		// entry inherits unless it sets its own.
+		p = flatten.WithFallback(p, "spring.http-client.instances", "spring.http-client.default")
 
 		// Entries are provided one bean at a time so each selects its own Driver.
 		// The Driver param (index 3) is selected by the entry's

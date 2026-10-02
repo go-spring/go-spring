@@ -35,6 +35,10 @@ func init() {
 	// under the same name — and to attach the file:line of this registration
 	// to the bean for diagnostics.
 	gs.Module(gs.OnProperty("spring.cassandra.instances"), func(r gs.BeanProvider, p flatten.Storage) error {
+		// Any key an instance does not define falls back to the family-wide
+		// "default" bucket: spring.cassandra.default.<k> is the value every
+		// instance inherits unless it sets its own.
+		p = flatten.WithFallback(p, "spring.cassandra.instances", "spring.cassandra.default")
 		return conf.BindEach(p, "${spring.cassandra.instances}", func(name string, c Config) error {
 			// The ctor bundles the injected governance beans and hands them to the
 			// Driver, which passes them to NewClient — so the client is assembled

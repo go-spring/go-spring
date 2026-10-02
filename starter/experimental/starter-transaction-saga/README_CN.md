@@ -128,3 +128,14 @@ Coordinator 上,故 `cloud/experimental/transaction` 不必依赖 otel。
 ## 许可
 
 Apache 2.0。见 [LICENSE](../../../LICENSE)。
+
+## 设计说明
+
+* **仅支持后向恢复。** 崩溃后所有在途 Step 逆序补偿，前向恢复未实现。已提交的 Saga
+  删除日志；被补偿或失败的 Saga 保留终态日志供事后诊断。
+* **Saga 日志写失败会被吞掉。** Saga 一旦推进，日志写错误不会使本次调用失败——因日志
+  抖动而让整个操作失败只会更糟。
+* **`Compensate` 为 nil 即 `CompensationFailed`，而非静默跳过。** 不可逆 Step 是应用
+  必须显式自担的决策。
+* **重试归共享 resilience `default` driver。** `RetryPolicy` 即
+  `resilience.ClientPolicy`，重试行为与调优在 resilience 配置里，而非私有重试循环。

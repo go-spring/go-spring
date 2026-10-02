@@ -93,7 +93,7 @@ spring.observability.trace.endpoint=127.0.0.1:4317
 ```
 
 **Verify** (with any HTTP upstream on `:19000`, e.g. `python3 -m http.server 19000`, or the
-in-process backend from example/example.go):
+in-process backend from example/main.go):
 
 ```bash
 go run .
@@ -105,7 +105,7 @@ curl -i :9370/healthz                        # gateway indicator UP once table c
 ```
 
 Prerequisites: none for direct `http(s)://` targets. `lb://` routes additionally need a
-discovery backend (starter-registry-nacos etc.); cross-replica `rateLimit` a shared counter
+discovery backend (starter-discovery-nacos etc.); cross-replica `rateLimit` a shared counter
 store (starter-ratelimit-redis); tracing an OTel collector (see example-otel/conf).
 
 ---

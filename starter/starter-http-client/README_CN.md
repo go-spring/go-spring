@@ -79,7 +79,7 @@ spring.http-client.instances.guarded.addr=127.0.0.1:9473
 ### 3. 调用
 
 生成的客户端直接给 `Target` 即可——无需注入任何东西,已安装的 transport 按 target
-分派。见 [example/example.go](example/example.go):
+分派。见 [example/main.go](example/main.go):
 
 ```go
 client := &proto.Client{Target: "greet-svc"}
@@ -88,7 +88,7 @@ _, resp, err := client.Greet(ctx, &proto.GreetReq{Name: "Grace"})
 
 ## 核心特性
 
-[example.go](example/example.go) 会启动三个进程内后端,并端到端断言全部四项结果:
+[main.go](example/main.go) 会启动三个进程内后端,并端到端断言全部四项结果:
 
 * **直连地址** —— `direct` 客户端固定到某个后端。
 * **服务发现 + 负载均衡** —— `discovered` 客户端按服务名路由,在多个实例间轮询
@@ -132,4 +132,16 @@ starter-governance-file)。治理服务标签在发现模式下为 `http:<servic
 `resilience.driver=default` 使用内置的零依赖实现。切换到 Sentinel 只需
 `driver=sentinel` 外加空导入 [`starter-governance-sentinel`](../starter-governance-sentinel),
 无需改动任何代码。
+
+## 设计说明
+
+* **重试要求可重放的请求体。** 重试循环会重放请求，因此只支持一次读取的 body
+  （没有 `GetBody`）无法重试。
+* **没有默认单例。** 与一次性的 `http.Client` 不同，本 starter 构建的每个客户端都是
+  `spring.http-client.instances.<name>` 下的具名实例；再加一个只是配置变更。
+* **直连模式下 `Target` 是标签，不是路由。** 当地址固定为 `Addr` 时，生成客户端的
+  `Target` 仍会成为治理 service label 并出现在日志里，但**不影响路由**——`httpx`
+  通过改写 host 完全接管寻址。
+* **刷新会回收资源。** transport 是 `io.Closer`；starter 的 destroy 会释放其后的
+  服务发现 watch 与 resilience executor，故刷新时移除的实例不会留下 goroutine。
 

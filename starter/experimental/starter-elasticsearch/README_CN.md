@@ -17,7 +17,7 @@ go get go-spring.org/starter-elasticsearch
 
 ### 1. 引入 `starter-elasticsearch` 包
 
-参见 [example.go](example/example.go) 文件。
+参见 [main.go](example/main.go) 文件。
 
 ```go
 import _ "go-spring.org/starter-elasticsearch"
@@ -33,7 +33,7 @@ spring.elasticsearch.instances.docs.addresses=http://127.0.0.1:9200
 
 ### 3. 注入 Elasticsearch 实例
 
-参见 [example.go](example/example.go) 文件。
+参见 [main.go](example/main.go) 文件。
 
 ```go
 import StarterElasticsearch "go-spring.org/starter-elasticsearch"
@@ -45,7 +45,7 @@ type Service struct {
 
 ### 4. 使用 Elasticsearch 实例
 
-参见 [example.go](example/example.go) 文件。
+参见 [main.go](example/main.go) 文件。
 
 ```go
 res, err := s.ES.Index("index", strings.NewReader(`{"title":"hello"}`), s.ES.Index.WithDocumentID("1"))
@@ -55,7 +55,7 @@ res, err := s.ES.Search(s.ES.Search.WithIndex("index"), s.ES.Search.WithBody(que
 
 ## 核心功能
 
-[example.go](example/example.go) 文件演示了以下核心 Elasticsearch 功能：
+[main.go](example/main.go) 文件演示了以下核心 Elasticsearch 功能：
 
 * **集群信息**：使用 `Info` 验证与集群的连通性。
 * **写入文档**：使用 `Index` 存储 JSON 文档，并通过 `WithRefresh` 让其立即可被检索。
@@ -84,4 +84,16 @@ res, err := s.ES.Search(s.ES.Search.WithIndex("index"), s.ES.Search.WithBody(que
 
   局限：这是**启动时的一次性解析**——节点列表在客户端生命周期内固定。ES 集群地址通常是稳定的 VIP，
   因此一般足够；若不满足，请留空 `service-name` 并直接配置 `addresses`。
+
+## 设计说明
+
+* **在启动期失败，而不是首次使用时。** 构造时跑一次 `Info` 探针，坏地址、坏证书或坏凭据都会在启动期
+  暴露；健康指示器与该探针共用同一个 `HealthCheck`。
+* **供给模式只能三选一。** 节点列表来自 `addresses`、`cloud-id` 或 `service-name`——恰好一种；
+  三者都留空则启动失败，因为探针无处可去。
+* **v8 客户端没有 `Close`。** 它的 transport 复用空闲 `net/http` 连接，因此 destroy 回调刻意是空实现——
+  与其他 client starter 的生命周期对称，而非疏漏。
+* **自定义 `Driver` 是进程级的。** Driver 是服务所有实例的单个容器 bean，因此自定义 driver 应委托
+  内置 `DefaultDriver` 以保留按实例行为。transport 包装（如 APM/OTel transport）归 driver 的
+  `CreateClient`；基础 transport 保持纯 `net/http`，因此从不引入 `starter-otel` 的应用零负担。
 

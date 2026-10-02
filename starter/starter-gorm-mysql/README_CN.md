@@ -17,7 +17,7 @@ go get go-spring.org/starter-gorm-mysql
 
 ### 1. 引入 `starter-gorm-mysql` 包
 
-参见 [example.go](example/example.go) 文件。
+参见 [main.go](example/main.go) 文件。
 
 ```go
 import _ "go-spring.org/starter-gorm-mysql"
@@ -36,7 +36,7 @@ spring.gorm.mysql.instances.primary.db=test
 
 ### 3. 注入 gorm 实例
 
-参见 [example.go](example/example.go) 文件。
+参见 [main.go](example/main.go) 文件。
 
 ```go
 import "go-spring.org/starter-gorm"
@@ -48,7 +48,7 @@ type Service struct {
 
 ### 4. 使用 gorm 实例
 
-参见 [example.go](example/example.go) 文件。
+参见 [main.go](example/main.go) 文件。
 
 ```go
 var version string
@@ -57,7 +57,7 @@ err := s.DB.Raw("SELECT VERSION()").Scan(&version).Error
 
 ## 核心功能
 
-[example.go](example/example.go) 演示了 GORM 在 MySQL 上的三项核心能力：
+[main.go](example/main.go) 演示了 GORM 在 MySQL 上的三项核心能力：
 
 * **AutoMigrate**：通过 `s.DB.AutoMigrate(&KV{})` 由 Go 结构体建表，并使用
   `s.DB.Migrator().HasTable(&KV{})` 校验建表结果。

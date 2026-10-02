@@ -90,7 +90,7 @@ gs.Provide(func(c *Controller) StarterGin.RouterRegister {
 
 ## Core Features
 
-The [example](example/example.go) demonstrates three features exercised end-to-end via real HTTP:
+The [example](example/main.go) demonstrates three features exercised end-to-end via real HTTP:
 
 * **Middleware** — the starter installs Recovery, Tracing, Metrics and AccessLog by default (bundled
   into one Observe middleware, plus RequestID and opt-in CORS/Gzip/SecureHeaders); the register adds a

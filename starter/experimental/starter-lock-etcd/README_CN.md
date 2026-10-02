@@ -72,7 +72,7 @@ case <-workDone:
 | `username`      | `""`      | etcd 认证用户名                         |
 | `password`      | `""`      | etcd 认证密码                           |
 | `dial-timeout`  | `5s`      | 初始连接超时，同时是启动探针预算        |
-| `ttl`           | `30s`     | 每次加锁的租约 TTL（最小 1 秒，按秒下取整） |
+| `ttl`           | `30s`     | 每次加锁的租约 TTL（向上取整为整秒，最小 1 秒） |
 | `key-prefix`    | `/lock/`  | 所有锁键的前缀                          |
 | `tls.enabled`   | `false`   | 启用 TLS                                |
 | `tls.cert-file` | `""`      | 客户端证书（mTLS）                      |
@@ -115,3 +115,9 @@ logger.lock_access.type=Logger
 logger.lock_access.level=WARN
 logger.lock_access.tag=_app_lock_access
 ```
+
+## 设计说明
+
+* **自持客户端——没有 `client=` 键。** 与复用应用 `*redis.Client` 的 Redis 后端不同，仅用于协调的 etcd 集群十分常见，因此锁从绑定的配置自建 `clientv3.Client`，并在 destroy 时关闭。
+* **TTL 归一化为整秒。** etcd 拒绝亚秒级的 session TTL，因此配置的 TTL 会向上取整为整秒（最小 1s）；`0` 或负值则回退到 `30s` 默认值。
+* **此处不适用 `renew-interval`。** etcd 的 `concurrency.Session` 自行维持租约存活，没有可调的续期旋钮——该配置项只服务于 consul 与 redis 后端。

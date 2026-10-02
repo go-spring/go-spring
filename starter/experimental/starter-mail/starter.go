@@ -96,6 +96,10 @@ func init() {
 	// this registration to the bean for diagnostics. There is no default
 	// singleton — select one by name (e.g. autowire:"notify").
 	gs.Module(gs.OnProperty("spring.mail.instances"), func(r gs.BeanProvider, p flatten.Storage) error {
+		// Any key an instance does not define falls back to the family-wide
+		// "default" bucket: spring.mail.default.<k> is the value every
+		// instance inherits unless it sets its own.
+		p = flatten.WithFallback(p, "spring.mail.instances", "spring.mail.default")
 		return conf.BindEach(p, "${spring.mail.instances}", func(name string, c Config) error {
 			r.Provide(newMailer,
 				gs.IndexArg(1, gs.ValueArg(name)),

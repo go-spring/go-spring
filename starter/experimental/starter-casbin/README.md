@@ -61,7 +61,7 @@ ok, err := s.Enforcer.Enforce("alice", "/data", "write")
 
 ## Core Features
 
-The [example.go](example/example.go) program builds an RBAC enforcer and asserts:
+The [main.go](example/main.go) program builds an RBAC enforcer and asserts:
 
 * **role inheritance** — `alice` (admin) may `read`/`write`, `bob` (viewer) may only `read`.
 * **default deny** — unknown subjects and unlisted actions are rejected.

@@ -15,7 +15,7 @@ go get go-spring.org/starter-mongodb
 
 ### 1. 引入 `starter-mongodb` 包
 
-参见 [example.go](example/example.go) 文件。
+参见 [main.go](example/main.go) 文件。
 
 ```go
 import _ "go-spring.org/starter-mongodb"
@@ -33,7 +33,7 @@ spring.mongodb.instances.b.uri=mongodb://127.0.0.1:27017
 
 ### 3. 注入 MongoDB 实例
 
-参见 [example.go](example/example.go) 文件。每个具名实例都会以该名称注册为一个
+参见 [main.go](example/main.go) 文件。每个具名实例都会以该名称注册为一个
 `*StarterMongoDB.Client` bean（内嵌 `*mongo.Client`，其完整方法集被提升到 wrapper 上，所有驱动调用均可用），按名称注入所需实例即可。
 
 ```go
@@ -46,7 +46,7 @@ type Service struct {
 
 ### 4. 使用 MongoDB 实例
 
-参见 [example.go](example/example.go) 文件。
+参见 [main.go](example/main.go) 文件。
 
 ```go
 coll := s.Mongo.Database("test").Collection("kv")
@@ -56,7 +56,7 @@ err = coll.FindOne(ctx, bson.M{"key": "key"}).Decode(&res)
 
 ## 核心功能
 
-[example.go](example/example.go) 端到端演示了三个核心 MongoDB 操作：
+[main.go](example/main.go) 端到端演示了三个核心 MongoDB 操作：
 
 * **InsertOne** —— 插入文档并校验返回的 `InsertedID`。
 * **FindOne** —— 读取文档并断言字段值。

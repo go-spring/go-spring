@@ -5,16 +5,26 @@ Prometheus pull exporter.
 
 ## What it shows
 
-- `starter-bigcache` registers OTel observable gauges for each BigCache instance
-  (`bigcache.hits`, `bigcache.misses`, `bigcache.delete_hits`,
-  `bigcache.delete_misses`, `bigcache.collisions`, `bigcache.entries`,
-  `bigcache.capacity`), labeled by the instance name (`cache.name`).
-- `starter-otel` serves the gauges at the in-process Prometheus endpoint
-  (`:9090/metrics`). No external collector is required.
+- **Statistics gauges**: `bigcache.hits`, `bigcache.misses`, `bigcache.delete_hits`,
+  `bigcache.delete_misses`, `bigcache.collisions`, `bigcache.entries`, `bigcache.capacity`, each
+  labeled with `cache.name`.
+- **Per-operation signals**: the `bigcache.operation.total` counter and the
+  `bigcache.operation.duration` histogram, labeled `operation` × `status` × `cache.name`.
+- `starter-otel` serves all of it at the in-process Prometheus endpoint (`:9090/metrics`).
+  No external collector is required.
 
-The example generates 20 SET/GET (hits) + 5 GET on absent keys (misses), then
-scrapes `/metrics` and asserts the `bigcache_hits` / `bigcache_misses` gauges
-appear with `cache_name="hot"` and that the hit gauge is non-zero.
+The example drives `hot` (20 SET/GET hits + 5 GETs on absent keys), scrapes `/metrics`, and
+asserts:
+
+- `bigcache_hits{cache_name="hot"}` reads at least the 20 hits driven, i.e. the gauge is wired
+  to `Stats()` and not a never-updated zero;
+- the per-operation counter and histogram are present for `get` and `set`, a miss is counted as
+  `status="ok"` rather than an error, and no cache key appears as a metric label.
+
+**Spans.** The wrapper opens one span per operation. They go to the built-in `stdout` exporter
+(`spring.observability.trace.exporter=stdout`), so they print alongside the example's output —
+read them rather than take the attribute names on trust. Swap in `otlp-grpc` plus an endpoint to
+ship them to a collector instead.
 
 ## Run
 

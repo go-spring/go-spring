@@ -15,7 +15,7 @@ go get go-spring.org/starter-memcached
 
 ### 1. 引入 `starter-memcached` 包
 
-参见 [example.go](example/example.go) 文件。
+参见 [main.go](example/main.go) 文件。
 
 ```go
 import _ "go-spring.org/starter-memcached"
@@ -31,7 +31,7 @@ spring.memcached.instances.main.servers=127.0.0.1:11211
 
 ### 3. 注入 Memcached 实例
 
-参见 [example.go](example/example.go) 文件。
+参见 [main.go](example/main.go) 文件。
 
 ```go
 import StarterMemcached "go-spring.org/starter-memcached"
@@ -43,7 +43,7 @@ type Service struct {
 
 ### 4. 使用 Memcached 实例
 
-参见 [example.go](example/example.go) 文件。
+参见 [main.go](example/main.go) 文件。
 
 ```go
 err := s.Memcached.Set(ctx, &memcache.Item{Key: "key", Value: []byte("value")})
@@ -52,7 +52,7 @@ item, err := s.Memcached.Get(ctx, "key")
 
 ## 核心功能
 
-[example.go](example/example.go) 示例程序演示并断言了三项 Memcached 核心操作：
+[main.go](example/main.go) 示例程序演示并断言了三项 Memcached 核心操作：
 
 * **字符串 SET/GET**：通过 `Set(...)` 写入值，再通过 `Get(...)` 读回。
 * **INCR 计数器**：先通过 `Set(...)` 播种，再使用 `Increment(...)` 原子自增。

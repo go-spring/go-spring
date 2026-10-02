@@ -61,7 +61,7 @@ Setup……）被原样提升可用。
   拥有各自的配置。
 - **双写入口** — `WritePoints`（阻塞、韧性保护、逐次报错）与
   `ManagedWriteAPI`（后台缓冲批量、停机时 flush；失败批次排入 go-spring
-  日志，写入器永不阻塞）。拆分理由见 DESIGN。
+  日志，写入器永不阻塞）。拆分理由见下方设计说明。
 - **fail-fast 启动探针 + 健康指示器** — 启动期一次 `/health` 往返（opt-in：`ping=true`；
   默认关闭），`influxdb:<name>` 指示器供 `starter-actuator` 聚合（`health=false` 可跳过）。
 - **可观测** — starter 只*声明*每个请求的身份（`db.system=influxdb`、有界的
@@ -105,3 +105,15 @@ logger.influxdb.type=Logger
 logger.influxdb.level=WARN
 logger.influxdb.tag=_app_influxdb
 ```
+
+## 设计说明
+
+* **两个写方法，两套失败契约。** `WritePoints` 阻塞、受韧性保护（限流/熔断/故障注入）、逐次报错；
+  `ManagedWriteAPI` 在后台 goroutine 批量、重试是 SDK 自己的，因此刻意不做守卫——逐点守卫会重复计数，
+  其失败以日志行浮出，而非调用方错误。
+* **异步错误已替你排干。** starter 把 `ManagedWriteAPI` 的 `Errors()` 通道排入 go-spring 日志，
+  因为没人排空时写入器会在首次失败时卡死；若需自定义处理，直接用内嵌的 `WriteAPI`。
+* **只有阻塞写受守卫。** `QueryRaw` 等查询路径没有逐调用守卫——阻塞写才是过载敏感路径。
+  日后加守卫查询是增量变更，不破坏兼容。
+* **`org`/`bucket` 门控的是写助手，不是连接。** 未配置它们的客户端照样服务 Query/Delete API；
+  写助手以指明性错误失败，而不是在装配期报错。

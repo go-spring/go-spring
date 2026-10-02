@@ -353,7 +353,7 @@ Zero values keep franz-go defaults [config.go:79-80].
 ### 4.1 Health (app-side indicator)
 
 The starter registers no indicator; the app exports one (as in §1 / example-cloudnative
-[example.go:76-97]):
+[main.go:76-97]):
 
 ```bash
 curl -s :9370/readyz | jq .          # component "kafka:a", readiness+startup groups, critical

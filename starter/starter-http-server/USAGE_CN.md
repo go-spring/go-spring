@@ -2,7 +2,7 @@
 
 [English](USAGE.md) | [中文](USAGE_CN.md)
 
-锚定自校验示例 [example](example/example.go)(`./check.sh` 退出码 0)。
+锚定自校验示例 [example](example/main.go)(`./check.sh` 退出码 0)。
 
 ## 1. 快速开始
 

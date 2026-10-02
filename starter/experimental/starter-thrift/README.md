@@ -59,7 +59,7 @@ gs.Provide(func(c *Controller) thrift.TProcessor {
 
 ## Core Features
 
-The [example](example/example.go) demonstrates three core Thrift building
+The [example](example/main.go) demonstrates three core Thrift building
 blocks, each asserted end-to-end by `runTest`:
 
 1. **Echo RPC** — the client invokes `EchoService.Echo` with
@@ -96,7 +96,7 @@ protocol factory and a transport factory:
   clients. The client's transport must match.
 
 A client/server protocol or transport mismatch will deadlock or corrupt
-the wire protocol. The [example](example/example.go) configures the
+the wire protocol. The [example](example/main.go) configures the
 server with `compact` + `framed` and pairs the client accordingly:
 `TFramedTransport` wrapping the socket + `TCompactProtocol`.
 

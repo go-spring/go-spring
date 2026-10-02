@@ -22,7 +22,7 @@ around a storage client — **discovery**, **resilience**, **health**,
 ## Layout
 
 ```
-example.go               the flagship app (container + self-test)
+main.go               the flagship app (container + self-test)
 conf/app.properties      discovery, resilience, actuator, file-watch config
 check.sh                 docker-gated smoke test
 ```

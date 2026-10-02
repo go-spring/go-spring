@@ -60,6 +60,10 @@ const beanQualifier = "redis"
 
 func init() {
 	gs.Module(gs.OnProperty("spring.batch-repository.instances"), func(r gs.BeanProvider, p flatten.Storage) error {
+		// Any key an instance does not define falls back to the family-wide
+		// "default" bucket: spring.batch-repository.default.<k> is the value every
+		// instance inherits unless it sets its own.
+		p = flatten.WithFallback(p, "spring.batch-repository.instances", "spring.batch-repository.default")
 		return conf.BindEach(p, "${spring.batch-repository.instances}", func(name string, c Config) error {
 			// Fail fast: silently defaulting to some arbitrary *redis.Client
 			// would hide a misconfiguration that only surfaces the first time

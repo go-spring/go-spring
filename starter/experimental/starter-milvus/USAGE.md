@@ -1,7 +1,6 @@
 # starter-milvus Usage — Reference
 
-Detailed usage reference. Overview: [example/README.md](example/README.md) (the starter README
-currently lives under example/). All behavior claims are verified against the starter source
+Detailed usage reference. Overview: [README.md](README.md). All behavior claims are verified against the starter source
 (`starter.go`, `config.go`, `client.go`, `guard.go`, `observe.go`, `health.go`) and the runnable [example/](example/)
 — file:line spot-checks in brackets below. **Milvus semantics and the milvus-sdk-go v2 API are
 [Milvus's own documentation](https://milvus.io/docs/install-go.md)
@@ -67,7 +66,7 @@ func main() { gs.Run() }
 ```
 
 **service.go** — inject the wrapper, run a real vector round trip (same shape as the
-smoke-tested [example/example.go](example/example.go)):
+smoke-tested [example/main.go](example/main.go)):
 
 ```go
 package service
@@ -283,7 +282,7 @@ grep "round trip" app.log    # the marker check.sh greps ("Milvus round trip OK:
 | Boot fails with `Unauthenticated` | Auth on but `username`/`password` missing or wrong | Set both halves; ⚠ half a pair is silently ignored. |
 | Boot fails listing collections, server reachable | `database` does not exist | Point `database` at an existing DB (Milvus ≥2.3). |
 | `NewCollection` fails on restart | Collection already exists from a previous run | Drop it first or tolerate the error (example's check.sh uses a fixed name). |
-| Search returns empty / no results | Forgot `Flush` + `LoadCollection` before searching (SDK semantics) | Flush then load, as in example/example.go:80-85. |
+| Search returns empty / no results | Forgot `Flush` + `LoadCollection` before searching (SDK semantics) | Flush then load, as in example/main.go:80-85. |
 | Health DOWN though queries work | Indicator's `ListCollections` needs the same DB/auth as the client | Inspect the component error body in /readiness. |
 | No traces/metrics/access log for Milvus ops | Governance is off (the executor is a no-op) | Turn governance on (starter-governance-file + `spring.governance.*` rules); then `db.client.*` metrics + `_app_milvus_access` appear. Server-side :9091 metrics never go through this client. |
 
@@ -298,8 +297,8 @@ grep "round trip" app.log    # the marker check.sh greps ("Milvus round trip OK:
 
 Design suspects (audit ledger — kept and extended):
 
-- Starter-level README/DESIGN/schema.json live under example/ rather than the module root
-  (family asymmetry: other starters keep them at the root).
+- `schema.json` lives under example/ rather than the module root
+  (family asymmetry: other starters keep it at the root).
 - Health indicator is per instance (`health=false` opts out); the startup probe is opt-in
   (`ping=true`) — the `health`/`ping` pair replaces redigo's `health.enabled`/`startup-ping`.
 - No TLS key — SDK TLS is expressed in the address; nothing in the starter documents how a

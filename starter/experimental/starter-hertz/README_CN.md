@@ -19,7 +19,7 @@ go get go-spring.org/starter-hertz
 
 ### 1. 引入 `starter-hertz` 包
 
-参见 [example.go](example/example.go) 文件。
+参见 [main.go](example/main.go) 文件。
 
 ```go
 import _ "go-spring.org/starter-hertz"
@@ -28,7 +28,7 @@ import _ "go-spring.org/starter-hertz"
 ### 2. 提供 `RouterRegister` Bean
 
 starter 会依据配置在指定地址创建 `*server.Hertz` 并交给你的注册器，你在其中挂载
-中间件与路由即可。参见 [example.go](example/example.go) 文件。
+中间件与路由即可。参见 [main.go](example/main.go) 文件。
 
 ```go
 gs.Provide(func(c *Controller) StarterHertz.RouterRegister {
@@ -98,7 +98,7 @@ func main() {
 
 ## 核心功能
 
-[example.go](example/example.go) 演示了三个核心 Hertz 特性，`runTest` 通过真实
+[main.go](example/main.go) 演示了三个核心 Hertz 特性，`runTest` 通过真实
 HTTP 请求逐个断言：
 
 * **中间件（Middleware）**：starter 默认安装 Recovery、RequestID、AccessLog；通过 `h.Use(...)` 注册的中间件为每个响应写入

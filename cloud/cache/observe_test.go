@@ -21,15 +21,12 @@ import (
 	"errors"
 	"testing"
 
+	"go-spring.org/cloud/observability"
 	"go-spring.org/stdlib/testing/assert"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/codes"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/metric/metricdata"
-	sdktrace "go.opentelemetry.io/otel/sdk/trace"
-	"go.opentelemetry.io/otel/sdk/trace/tracetest"
-	"go.opentelemetry.io/otel/trace"
 )
 
 // sentinelErr is the backend failure the scripted cache reports.
@@ -52,26 +49,6 @@ func withReader(t *testing.T) *sdkmetric.ManualReader {
 		otel.SetMeterProvider(prev)
 	})
 	return rdr
-}
-
-// withSpanRecorder installs a recording tracer provider as the global one for
-// the test; the decorator resolves the tracer per call, so no reset is needed.
-func withSpanRecorder(t *testing.T) *tracetest.SpanRecorder {
-	t.Helper()
-	sr := tracetest.NewSpanRecorder()
-	prev := otel.GetTracerProvider()
-	otel.SetTracerProvider(sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(sr)))
-	t.Cleanup(func() { otel.SetTracerProvider(prev) })
-	return sr
-}
-
-// attrMap flattens a span's attributes for assertion.
-func attrMap(sp sdktrace.ReadOnlySpan) map[string]string {
-	out := map[string]string{}
-	for _, kv := range sp.Attributes() {
-		out[string(kv.Key)] = kv.Value.AsString()
-	}
-	return out
 }
 
 // totals collects cache.operation.total into a "operation.status" -> count map.
@@ -214,28 +191,36 @@ func TestObservabilityDuration(t *testing.T) {
 	assert.That(t, got["delete.ok"]).Equal(uint64(1))
 }
 
-func TestObservabilitySpan(t *testing.T) {
-	sr := withSpanRecorder(t)
-	exerciseStatuses(t, New(scriptedCache()))
-
-	spans := sr.Ended()
-	assert.That(t, len(spans)).Equal(5)
-
-	// The first operation was the get that hit: one client span carrying the
-	// operation, the key, and the status — the same status the metric recorded.
-	sp := spans[0]
-	assert.String(t, sp.Name()).Equal("get")
-	assert.That(t, sp.SpanKind()).Equal(trace.SpanKindClient)
-	attrs := attrMap(sp)
-	assert.String(t, attrs["cache.operation"]).Equal("get")
-	assert.String(t, attrs["cache.key"]).Equal("hit")
-	assert.String(t, attrs["cache.status"]).Equal("hit")
-
-	// A miss is a normal outcome, a backend failure is not: only the latter
-	// marks the span.
-	for _, s := range spans {
-		status := attrMap(s)["cache.status"]
-		wantErr := status == "error"
-		assert.That(t, s.Status().Code == codes.Error).Equal(wantErr)
+// carrierOf flattens what the framework's span-attribute carrier held on ctx.
+func carrierOf(ctx context.Context) map[string]string {
+	out := map[string]string{}
+	for _, kv := range observability.SpanAttributes(ctx) {
+		out[string(kv.Key)] = kv.Value.AsString()
 	}
+	return out
+}
+
+// TestContributesToTheCallSpan pins the contract the decorator has with the
+// span: it opens none itself, and hands the operation and the key to whatever
+// span the call ends up under by putting them on the framework's carrier. The
+// call below therefore does not stamp the caller's context — the write is for
+// the span below, not for whoever called in.
+func TestContributesToTheCallSpan(t *testing.T) {
+	var carried map[string]string
+	c := New(stubCache{
+		get: func(ctx context.Context, _ string) ([]byte, error) {
+			carried = carrierOf(ctx)
+			return nil, ErrMiss
+		},
+		set: func(context.Context, string, []byte, int) error { return nil },
+		del: func(context.Context, string) error { return nil },
+	})
+
+	ctx := context.Background()
+	_, err := c.GetBytes(ctx, "user:42")
+	assert.That(t, errors.Is(err, ErrMiss)).True()
+
+	assert.String(t, carried["cache.operation"]).Equal("get")
+	assert.String(t, carried["cache.key"]).Equal("user:42")
+	assert.That(t, len(observability.SpanAttributes(ctx))).Equal(0)
 }

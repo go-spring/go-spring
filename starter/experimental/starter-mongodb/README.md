@@ -51,7 +51,7 @@ err = coll.FindOne(ctx, bson.M{"key": "key"}).Decode(&res)
 
 ## Core Features
 
-The [example.go](example/example.go) exercises three core MongoDB operations end-to-end:
+The [main.go](example/main.go) exercises three core MongoDB operations end-to-end:
 
 * **InsertOne** — insert a document and verify `InsertedID` is returned.
 * **FindOne** — read the document back and assert the field value.

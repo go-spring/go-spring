@@ -86,7 +86,7 @@ is the body. Non-2xx answers (and vendor error bodies) surface as errors.
   delivery. The starter emits nothing itself. With `starter-otel` absent the
   OTel globals are no-ops.
 - **Stateless by design** — no connections held, no health indicator, no
-  destroy hook; see DESIGN for why there is no startup probe.
+  destroy hook; see Design Notes below for why there is no startup probe.
 
 ## Advanced Features
 
@@ -101,3 +101,20 @@ for _, n := range []*StarterWebhook.Notifier{s.Ops, s.Ding} {
     _ = n.Send(ctx, note)
 }
 ```
+
+## Design Notes
+
+* **No startup probe, on purpose.** The only universal webhook probe is a real
+  POST, and a boot-time junk notification to a production chat channel is a worse
+  failure mode than an error on the first send.
+* **Fail timing without a probe.** An unknown `channel` fails fast at
+  construction (no network needed); a malformed `url` surfaces on the first send,
+  with the endpoint in the message.
+* **`200` with an error body is a vendor quirk.** Some DingTalk / Feishu setups
+  answer `200` while the body carries an error; a non-2xx is always an error, and
+  a `200`-with-error-body is caught only if the receiver returns a non-200.
+  Channels that need body-level error parsing are a custom `buildPayload`
+  extension.
+* **Telemetry keeps tokens out.** The destination host rides the span and the log
+  as `Detail`, never a metric label; full URLs (which carry tokens) never reach
+  telemetry.

@@ -104,3 +104,17 @@ mapped onto the neutral sentinels so callers depend only on
 `cloud/resilience` ships a zero-dependency `default` driver for tests and
 lightweight setups. Import this starter for production-grade throttling and
 breaking; stick with `default` if you don't need it.
+
+## Design Notes
+
+* **This starter is the engine, not the seam.** It decides nothing about *where*
+  resilience applies — the adapter does: HTTP clients wrap through
+  `resilience.NewRoundTripper`, connection dial through `resilience.NewDialer`,
+  and inbound admission middlewares are built by the protocol starters. On its
+  own it protects no call.
+* **Rules install lazily, keyed by service name.** Sentinel keys everything by
+  service, so a service's policy → rule translation happens on its first
+  `Entry`, guarded by a mutex; a service that is never called never gets rules.
+* **Sentinel is pinned to v1.0.4.** Later minors reshuffled the flow /
+  circuit-breaker rule struct fields; the pin keeps an upstream regression
+  surfacing here rather than at every adapter.

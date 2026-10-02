@@ -41,7 +41,7 @@ require (
 )
 ```
 
-**main.go**（节选自 `example/example.go`）—— 注意 ClickHouse 特有的建模：
+**main.go**（节选自 `example/main.go`）—— 注意 ClickHouse 特有的建模：
 
 ```go
 package main

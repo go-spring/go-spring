@@ -47,6 +47,7 @@
 | [iterutil](./iterutil/) | 迭代器和循环处理工具 |
 | [listutil](./listutil/) | 给 `container/list` 加泛型类型安全外壳，附切片工具 |
 | [ordered](./ordered/) | map key 排序遍历工具 |
+| [singleton](./singleton/) | 单例容器：幂等构造函数，承载托管生命周期之外的包级状态 |
 
 ### 错误、上下文与文件
 

@@ -82,6 +82,10 @@ func Module[C ConfigSwitches](d Dialect[C]) {
 		beanPrefix = d.Prefix[strings.LastIndex(d.Prefix, ".")+1:]
 	}
 	gs.Module(gs.OnProperty(d.Prefix+".instances"), func(r gs.BeanProvider, p flatten.Storage) error {
+		// Any key an entry does not define falls back to the family-wide
+		// "default" bucket: <prefix>.default.<k> is the value every entry
+		// inherits unless it sets its own.
+		p = flatten.WithFallback(p, d.Prefix+".instances", d.Prefix+".default")
 		return conf.BindEach(p, "${"+d.Prefix+".instances}", func(name string, c C) error {
 			beanName := beanPrefix + "." + name
 			// disc is the discovery backend bean cited by this entry's

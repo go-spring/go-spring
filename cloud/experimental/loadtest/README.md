@@ -10,7 +10,7 @@ producing numbers. It is example-grade tooling, not production code: when a
 run needs statistical rigor, reach for a real load tool.
 
 A runnable, self-verifying standalone demo lives in
-[example](example/example.go) (`./example/check.sh` exits 0).
+[example](example/main.go) (`./example/check.sh` exits 0).
 
 ## Quick start
 

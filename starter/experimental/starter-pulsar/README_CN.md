@@ -15,7 +15,7 @@ go get go-spring.org/starter-pulsar
 
 ### 1. 引入 `starter-pulsar` 包
 
-参考 [example.go](example/example.go) 文件。
+参考 [main.go](example/main.go) 文件。
 
 ```go
 import _ "go-spring.org/starter-pulsar"
@@ -33,7 +33,7 @@ spring.pulsar.instances.b.url=pulsar://127.0.0.1:6650
 
 ### 3. 注入 Pulsar 客户端
 
-参考 [example.go](example/example.go) 文件。每个具名实例都会以该名称注册为一个
+参考 [main.go](example/main.go) 文件。每个具名实例都会以该名称注册为一个
 `pulsar.Client` bean,按名称注入所需实例即可。
 
 ```go
@@ -46,7 +46,7 @@ type Service struct {
 
 ### 4. 使用 Pulsar 客户端
 
-参考 [example.go](example/example.go) 文件。从共享的客户端创建生产者或消费者,
+参考 [main.go](example/main.go) 文件。从共享的客户端创建生产者或消费者,
 使用完毕后关闭它们。
 
 ```go

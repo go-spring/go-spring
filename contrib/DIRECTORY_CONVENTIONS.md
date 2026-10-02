@@ -78,7 +78,7 @@ contrib/<framework>/<variant>/
 ## 3. Naming conventions
 
 - **Module path**: `go-spring.org/<framework>/<variant>` (e.g.
-  `go-spring.org/kitex/thrift`, `go-spring.org/registry/consul`). A few flat
+  `go-spring.org/kitex/thrift`, `go-spring.org/discovery/consul`). A few flat
   variants use `go-spring.org/<framework>-<variant>` (e.g.
   `go-spring.org/go-kratos-http`). go-zero uses bare names (`greetapi`,
   `greetrpc`, `greetws`).

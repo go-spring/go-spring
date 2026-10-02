@@ -45,13 +45,12 @@ type Config struct {
 	// HardMaxCacheSize is the hard memory limit in MB, 0 means unlimited.
 	HardMaxCacheSize int `value:"${hard-max-cache-size:=0}"`
 
-	// StatsEnabled records per-key hit/miss statistics when true.
-	StatsEnabled bool `value:"${stats-enabled:=false}"`
-
-	// Health controls whether the starter contributes a health.Indicator bean
-	// for this instance (readiness/startup probes via starter-actuator). On by
-	// default; set false to keep this instance out of the aggregated health
-	// report, e.g. for an instance whose absence must not pull the pod out of
-	// rotation.
-	Health bool `value:"${health:=true}"`
+	// StatsEnabled records per-key hit/miss statistics. It is on by default,
+	// unlike bigcache's own DefaultConfig, because the bigcache.hits / misses /
+	// delete_hits / delete_misses / collisions gauges read exactly this: with it
+	// off they are exported as a constant zero, and a dashboard showing no hits
+	// would mean the counter is off rather than that the cache is cold. Turning
+	// it off trades those counters — and KeyMetadata() — for the per-key
+	// bookkeeping bigcache keeps alongside the cache while it is on.
+	StatsEnabled bool `value:"${stats-enabled:=true}"`
 }

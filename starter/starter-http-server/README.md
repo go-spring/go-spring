@@ -40,7 +40,7 @@ gs.Provide(func(v security.TokenValidator) *gs.HttpServeMux {
 For method-level checks inside a service, use `security.Require` from the
 core package. For the gin and echo equivalents of these middlewares, see
 `starter-gin` and `starter-echo`. A runnable, self-verifying example lives in
-[example](example/example.go).
+[example](example/main.go).
 
 ## Observability
 

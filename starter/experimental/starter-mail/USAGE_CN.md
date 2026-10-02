@@ -231,7 +231,7 @@ curl -s :8025/api/v2/messages | jq '.messages[0].To'                 # alice, bo
 ```
 
 example 在发送 To×2 + Cc×1、带一个附件的一封邮件后断言 `total >= 1`
-（example.go runTest）。
+（main.go runTest）。
 
 ### 4.2 ping 演练
 

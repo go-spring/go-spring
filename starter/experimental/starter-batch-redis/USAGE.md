@@ -105,7 +105,7 @@ func init() {
 ```
 
 (seqReader and writeChunk are application code — see the smoke example for a complete
-checkpoint-carrying reader: `../starter-batch/example/example.go:117-145`.)
+checkpoint-carrying reader: `../starter-batch/example/main.go:117-145`.)
 
 **conf/app.properties** — the complete surface:
 

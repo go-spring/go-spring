@@ -17,7 +17,7 @@ go get go-spring.org/starter-gorm-clickhouse
 
 ### 1. 引入 `starter-gorm-clickhouse` 包
 
-参见 [example.go](example/example.go) 文件。
+参见 [main.go](example/main.go) 文件。
 
 ```go
 import _ "go-spring.org/starter-gorm-clickhouse"
@@ -36,7 +36,7 @@ spring.gorm.clickhouse.instances.primary.db=default
 
 ### 3. 注入 gorm 实例
 
-参见 [example.go](example/example.go) 文件。
+参见 [main.go](example/main.go) 文件。
 
 ```go
 import "go-spring.org/starter-gorm"
@@ -48,7 +48,7 @@ type Service struct {
 
 ### 4. 使用 gorm 实例
 
-参见 [example.go](example/example.go) 文件。
+参见 [main.go](example/main.go) 文件。
 
 ```go
 var version string
@@ -57,7 +57,7 @@ err := s.DB.Raw("SELECT version()").Scan(&version).Error
 
 ## 核心功能
 
-[example.go](example/example.go) 演示了 GORM 在 ClickHouse 上的能力。
+[main.go](example/main.go) 演示了 GORM 在 ClickHouse 上的能力。
 ClickHouse 是 OLAP 引擎，既不像 OLTP 引擎那样强制唯一索引，也没有标准的多语句
 事务，因此示例做了相应适配：
 

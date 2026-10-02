@@ -39,6 +39,10 @@ func init() {
 	// under the same name — and to attach the file:line of this registration
 	// to the bean for diagnostics.
 	gs.Module(gs.OnProperty("spring.tdengine.instances"), func(r gs.BeanProvider, p flatten.Storage) error {
+		// Any key an instance does not define falls back to the family-wide
+		// "default" bucket: spring.tdengine.default.<k> is the value every
+		// instance inherits unless it sets its own.
+		p = flatten.WithFallback(p, "spring.tdengine.instances", "spring.tdengine.default")
 		return conf.BindEach(p, "${spring.tdengine.instances}", func(name string, c Config) error {
 			// The wrapper bean owns the resilience executor, so the ctor
 			// applies it while building the client (with the injected governance

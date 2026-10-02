@@ -58,7 +58,7 @@ type Demo struct {
 
 When the etcd key changes, the provider's watcher triggers an application
 property refresh, and all bound `gs.Dync` fields are updated atomically. See
-[example](example/example.go) for the full publish to hot-reload
+[example](example/main.go) for the full publish to hot-reload
 flow.
 
 ## How It Works

@@ -109,7 +109,7 @@ curl -fsS -X POST 'http://127.0.0.1:8848/nacos/v1/cs/configs' \
 # tail the app logs / observe the field; the example's automated form is ./example/check.sh
 ```
 
-The [example](example/example.go) automates exactly this loop (publish + poll up to 15 s +
+The [example](example/main.go) automates exactly this loop (publish + poll up to 15 s +
 assert) and `example/check.sh` is the docker-gated smoke gate.
 
 ---

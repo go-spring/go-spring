@@ -121,7 +121,7 @@ kubectl get lease demo-leader -o yaml   # holderIdentity = the fencing token
 ```
 
 Out of cluster, the example boots in a wiring-only mode (no `spring.lock` entry is declared, so
-no Locker bean is built) — see `example/example.go`.
+no Locker bean is built) — see `example/main.go`.
 
 ---
 

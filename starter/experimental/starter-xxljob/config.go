@@ -20,7 +20,7 @@ import "time"
 
 // Config defines one xxl-job executor instance. It speaks the xxl-job
 // executor protocol to an admin (registry/heartbeat/run/kill) over plain
-// HTTP, hand-rolled (no third-party SDK) — see DESIGN.
+// HTTP, hand-rolled (no third-party SDK).
 type Config struct {
 	// AppName is the executor app name as registered with the admin. Required.
 	AppName string `value:"${app-name}" expr:"$ != ''"`

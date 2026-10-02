@@ -80,7 +80,7 @@ func (s *OrderService) Place(ctx context.Context, txID string) (tcc.Result, erro
 
 协调器按顺序 Try 所有参与者。全部成功则全部 Confirm;任一 `Try` 失败则对已 Try 的
 参与者逆序 Cancel。可运行的库存 + 余额示例(覆盖提交与回滚两条路径)见
-[example/example.go](example/example.go)。
+[example/main.go](example/main.go)。
 
 ### 4. 或声明为 `@GlobalTransactional`
 
@@ -135,3 +135,15 @@ place := tcc.GlobalTCC(coord, reg)
 ## 许可证
 
 Apache 2.0，见 [LICENSE](../../../LICENSE)。
+
+## 设计说明
+
+* **Confirm 属于提交之后。** `Confirm` 失败不占用顶层错误返回（那是 `Try` 失败的
+  通道），而是经 `StatusConfirmFailed` 与 `Result.Errors` 上报。
+* **参与者缺胳膊少腿会 fail-fast。** 三个阶段都必须非 nil、参与者名必须唯一；二者
+  都在任何副作用之前、于 `Execute` 入口校验。
+* **恢复由决策日志驱动。** 提交决策（`Confirming`）在跑 Confirm 之前先持久化；重启
+  后 `Confirming` 前向 Confirm，`Trying`/`Cancelling` 后向 Cancel，终态或不存在则
+  幂等 no-op。
+* **持久化 Store 的 `Pending` 必须返回所有非终态事务**——TCC 的在途状态
+  （`Trying`/`Confirming`/`Cancelling`）比 Saga 只扫 `Running` 更多。

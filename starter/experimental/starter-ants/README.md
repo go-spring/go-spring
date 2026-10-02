@@ -47,7 +47,7 @@ err := s.Pool.Submit(func() {
 
 ## Core Features
 
-The [example.go](example/example.go) program demonstrates and asserts three core ants operations:
+The [main.go](example/main.go) program demonstrates and asserts three core ants operations:
 
 * **Submit** — dispatch tasks onto pooled goroutines and confirm they all run.
 * **Instance isolation** — two named pools are fully independent, proven by their

@@ -17,7 +17,7 @@ go get go-spring.org/starter-go-redis
 
 ### 1. 引入 `starter-go-redis` 包
 
-参见 [example.go](example/example.go) 文件。
+参见 [main.go](example/main.go) 文件。
 
 ```go
 import _ "go-spring.org/starter-go-redis"
@@ -33,7 +33,7 @@ spring.go-redis.instances.main.addr=127.0.0.1:6379
 
 ### 3. 注入 Redis 实例
 
-参见 [example.go](example/example.go) 文件。
+参见 [main.go](example/main.go) 文件。
 
 ```go
 import "github.com/redis/go-redis/v9"
@@ -45,7 +45,7 @@ type Service struct {
 
 ### 4. 使用 Redis 实例
 
-参见 [example.go](example/example.go) 文件。
+参见 [main.go](example/main.go) 文件。
 
 ```go
 str, err := s.Redis.Get(r.Context(), "key").Result()
@@ -113,7 +113,7 @@ Dragonfly 与 Kvrocks 说 Redis 线协议，因此本 starter 可直接驱动它
 
 ## 核心功能
 
-[example.go](example/example.go) 示例程序演示并断言了三项 Redis 核心操作：
+[main.go](example/main.go) 示例程序演示并断言了三项 Redis 核心操作：
 
 * **字符串 SET/GET**：通过 `Set(...)` 写入值，再通过 `Get(...)` 读回。
 * **INCR 计数器**：先通过 `Del(...)` 复位，再使用 `Incr(...)` 原子自增。

@@ -121,3 +121,17 @@ logger.lock_access.type=Logger
 logger.lock_access.level=WARN
 logger.lock_access.tag=_app_lock_access
 ```
+
+## Design Notes
+
+* **Self-contained client — there is no `client=` key.** Consul exposes no shared
+  client the way `starter-go-redis` does, so each instance builds and owns its own
+  `*consul/api.Client` from the bound config and closes it on destroy. This starter
+  cannot reuse an application-provided connection.
+* **The session TTL is clamped to Consul's window.** A Consul session only accepts a
+  TTL in `[10s, 86400s]`; a configured (or per-call) value outside it is clamped —
+  up from below 10s, down from above 24h — so a short TTL still boots instead of
+  failing session creation. The effective, clamped TTL is what runs.
+* **`scheme=https` is not TLS.** `scheme` only selects the URL scheme; a working TLS
+  connection needs `tls.enabled=true` plus the cert/CA fields. Setting only
+  `scheme=https` fails to dial.

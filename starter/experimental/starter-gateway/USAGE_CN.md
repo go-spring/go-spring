@@ -91,7 +91,7 @@ spring.observability.trace.endpoint=127.0.0.1:4317
 ```
 
 **验证**(任选一个 `:19000` 上的 HTTP 上游,如 `python3 -m http.server 19000`,或
-example/example.go 的进程内后端):
+example/main.go 的进程内后端):
 
 ```bash
 go run .
@@ -103,7 +103,7 @@ curl -i :9370/healthz                        # 路由表编译成功后 gateway 
 ```
 
 前置依赖:直连 `http(s)://` 目标无需任何外部系统。`lb://` 路由另需 discovery 后端
-(starter-registry-nacos 等);跨实例 `rateLimit` 需共享计数器存储
+(starter-discovery-nacos 等);跨实例 `rateLimit` 需共享计数器存储
 (starter-ratelimit-redis);tracing 需 OTel collector(见 example-otel/conf)。
 
 ---

@@ -88,7 +88,7 @@ spring.http-client.instances.discovered.discovery=static
 ### 3. Call
 
 Generated clients take the target directly — nothing to inject; the installed
-transport dispatches by target. See [example/example.go](example/example.go):
+transport dispatches by target. See [example/main.go](example/main.go):
 
 ```go
 client := &proto.Client{Target: "greet-svc"}
@@ -97,7 +97,7 @@ _, resp, err := client.Greet(ctx, &proto.GreetReq{Name: "Grace"})
 
 ## Core Features
 
-The [example.go](example/example.go) program starts three in-process backends
+The [main.go](example/main.go) program starts three in-process backends
 and asserts all four outcomes end to end:
 
 * **Direct address** — the `direct` client is pinned to one backend.
@@ -160,4 +160,19 @@ so they ride the exact same transport (discovery, load balancing, resilience,
 tracing) with the same route key (addr or service name). Note the runtime
 decodes with `jsonflow`, which matches field names strictly — plain struct
 tags, no case folding.
+
+## Design Notes
+
+* **Retries need a replayable body.** The retry loop replays the request, so a
+  body that supports only a single read (no `GetBody`) cannot be retried.
+* **No default singleton.** Unlike a one-off `http.Client`, every client this
+  starter builds is a named instance under `spring.http-client.instances.<name>`;
+  adding another is a pure-config change.
+* **In direct-connect mode `Target` is a label, not a route.** When addressing is
+  pinned to `Addr`, the generated client's `Target` still becomes the governance
+  service label and shows up in logs, but it never affects routing — `httpx` owns
+  addressing by rewriting the host.
+* **A refresh reclaims resources.** The transport is an `io.Closer`; the
+  starter's destroy releases the discovery watch and the resilience executor
+  behind it, so an instance removed at refresh time leaves no goroutine behind.
 

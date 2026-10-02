@@ -84,7 +84,7 @@ n, err := redis.Int(conn.Do("INCR", "counter")) // INCR
 
 ### 4. 运行
 
-完整可运行示例见 [example/example.go](example/example.go)（覆盖 SET/GET/INCR/EXPIRE/TTL、服务发现、健康检查、连接池监控），配套 `docker-compose.yml` 起一个 Redis。
+完整可运行示例见 [example/main.go](example/main.go)（覆盖 SET/GET/INCR/EXPIRE/TTL、服务发现、健康检查、连接池监控），配套 `docker-compose.yml` 起一个 Redis。
 
 ---
 
@@ -255,7 +255,7 @@ func (MyDriver) CreateClient(ctx context.Context, c StarterRedigo.Config, params
 }
 ```
 
-> 完整可运行示例见 [example/example.go](example/example.go) 里的 `AnotherRedisDriver`。
+> 完整可运行示例见 [example/main.go](example/main.go) 里的 `AnotherRedisDriver`。
 
 ---
 

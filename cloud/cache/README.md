@@ -81,12 +81,15 @@ typed or promoted — records the same signals under the
   It is recorded here and not only by the backend clients because their
   `db.client.operation.duration` cannot split a hit from a miss, and the two
   have different latency profiles.
-- A client span per operation, named `get`/`set`/`delete`, carrying
-  `cache.operation`, `cache.key` and `cache.status`.
+- No span of its own. The decorator contributes `cache.operation` and `cache.key`
+  to the call's span through the framework's span-attribute carrier, so they land
+  on the span the backend's executor opens below it. The status is not among
+  them: a miss is only known once the call returns, by which time the span is
+  over — it stays the metric's dimension.
 
 The unit of observation is the byte layer: a get that finds the bytes is a hit
 even if a codec above this layer then fails to decode them. The key never
-appears in a metric (unbounded cardinality) — spans only. No logs: cache calls
+appears in a metric (unbounded cardinality) — the span only. No logs: cache calls
 are too frequent for a per-call line, and backend errors keep being reported by
 the backends' own instrumentation.
 
