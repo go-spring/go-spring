@@ -37,7 +37,6 @@ require (
     go-spring.org/starter-mqtt       latest
     go-spring.org/starter-actuator   latest   // optional: probes + /metrics
     go-spring.org/starter-otel       latest   // optional: real trace/metric export
-    go-spring.org/starter-governance-file latest   // optional: runtime resilience/fault policy
 )
 ```
 
@@ -51,7 +50,6 @@ import (
     _ "demo/service"
 
     _ "go-spring.org/starter-actuator"
-    _ "go-spring.org/starter-governance-file"
     _ "go-spring.org/starter-mqtt"
     _ "go-spring.org/starter-otel"
 )
@@ -321,7 +319,7 @@ docker start <mosquitto> && go run .   # boots, logs "mqtt client initialized" [
 
 ### 4.2 Guarded vs unguarded path
 
-With starter-governance-file configured, add a breaker/limiter policy for service
+With a configured governance rules source, add a breaker/limiter policy for service
 `mqtt:tcp://127.0.0.1:1883`:
 
 ```yaml

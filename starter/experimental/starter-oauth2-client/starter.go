@@ -17,6 +17,7 @@
 package StarterOAuth2Client
 
 import (
+	"go-spring.org/cloud/governance"
 	"io"
 	"net/http"
 
@@ -48,11 +49,7 @@ func init() {
 			r.Provide(newClient,
 				gs.IndexArg(1, gs.ValueArg(name)),
 				gs.IndexArg(2, gs.ValueArg(c)),
-				// The governance beans are REQUIRED: each is registered by the package that
-				// owns it (cloud/resilience, cloud/loadbalance, cloud/fault), which this
-				// starter imports — "governance off" is spring.governance.enabled=false, never
-				// an absent bean.
-				gs.IndexArg(3, gs.TagArg("")), // *resilience.Manager
+				// The governance center is the family's sole injection point.
 			).Name(name).Destroy(destroyClient).Caller(1)
 			return nil
 		})
@@ -89,10 +86,10 @@ func init() {
 // governance is off — so the bearer token is already attached before the
 // resilience layer runs and each protected attempt is a complete request.
 //
-// mgr is the governance bean gs injects (nil in a standalone call); a nil
-// manager is normalized to an unarmed one, whose executor is a transparent
+// center is the governance center bean gs injects (nil in a standalone call);
+// a nil center reads a nil resilience manager, whose executor is a transparent
 // pass-through, so governance off and standalone callers behave identically.
-func newClient(ctx *gs.ContextProvider, name string, c Config, mgr *resilience.Manager) (*http.Client, error) {
+func newClient(ctx *gs.ContextProvider, name string, c Config, center *governance.Center) (*http.Client, error) {
 
 	cfg := &clientcredentials.Config{
 		ClientID:       c.ClientID,
@@ -117,7 +114,7 @@ func newClient(ctx *gs.ContextProvider, name string, c Config, mgr *resilience.M
 	// resolves its backing implementation per call, so the order of this setup
 	// relative to the container's wiring is irrelevant.
 	service := resilience.ServiceLabel("oauth2", c.ClientID)
-	exec := mgr.ClientExecutorFor("oauth2", service)
+	exec := center.Resilience().ClientExecutorFor("oauth2", service)
 	client.Transport = resilience.NewRoundTripper(client.Transport, exec)
 	return client, nil
 }

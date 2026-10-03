@@ -90,8 +90,8 @@ Web(`gin`、`echo`、`hertz`……)与 RPC(`grpc`、`kitex`、`thrift`、`dubbo`
     实现名**，家族有实例概念时写成 `<实现名>.<实例名>`。bean 以（名字，类型）为键，第二个
     实现带一个同名实例就会注册出同一个键，容器直接拒绝启动。gorm 的五个方言模块
     （`starter-gorm-mysql`、`-postgres`、`-sqlite`、`-sqlserver`、`-clickhouse`）共享
-    `gormcore.DB`，所以 bean 名是 `<dialect>.<name>`（`gormcore.Module` 从配置前缀的
-    最后一段取限定词，可用 `Dialect.BeanPrefix` 覆盖）；discovery 的 `etcd.<name>` /
+    `gormcore.DB`，所以 bean 名是 `<dialect>.<name>`（各 dialect starter 在它自己注册的
+    `gs.Module` 块里硬编码限定词）；discovery 的 `etcd.<name>` /
     `nacos.<name>`、session-redis 与 batch-redis 的 `redis.<name>` 同理。
 
     不是接缝（该 starter 私有的类型，不会有第二个实现来抢，如 `*redis.Client`）→ 裸的
@@ -150,9 +150,10 @@ Web(`gin`、`echo`、`hertz`……)与 RPC(`grpc`、`kitex`、`thrift`、`dubbo`
   必然已经为了类型 import 了那个包。于是 `*resilience.Manager` /
   `*loadbalance.Manager` / `*fault.Injector` 必然在容器里;注入写成**必填**
   (`gs.IndexArg(N, gs.TagArg(""))`),不写可空(`"?"`)。这三个 bean 本就是 client
-  契约的一部分(它天生可治理、可观测、可路由),而 starter-governance-file 在不绑定规则来源
-  时完全惰性,所以集成它不改变任何默认行为。关掉治理是
-  `spring.governance.enabled=false`(或不配来源),**不是"bean 不存在"**。写成可空会把
+  契约的一部分(它天生可治理、可观测、可路由),而在规则文档里关掉治理时它们行为如常,所以
+  集成它不改变任何默认行为。关掉治理是
+  `spring.governance.enabled=false`,**不是"bean 不存在"** —— 也不是"没有源":中心的 Source
+  参数必传,一个源都不贡献的进程直接启动失败。写成可空会把
   "用户忘了 import"变成静默降级(治理看着在工作、其实没有),这正是本规则要消除的错误。
   (只在非测试代码里 blank-import;`gs.RunTest` 会经
   `spring.force-autowire-is-nullable` 把一切注入强制 nullable —— 那是 gs 的行为,
@@ -255,9 +256,10 @@ WebSocket(`websocket`、`websocket-coder`)、中间件(`lua-filter`)、鉴权
 - **`starter-pprof`** 在**独立**端口跑一个专用 HTTP server 暴露运行时 profile,刻意
   与应用主端口隔开。
 - **`starter-governance-sentinel`** 只贡献一个进程级 bean —— 名为 `sentinel` 的
-  `resilience.Driver` —— 给治理中心的 driver 目录。与 `starter-governance-file` 一起导入后,
+  `resilience.Driver` —— 给治理中心的 driver 目录。与 `cloud/governance` 一起导入后,
   治理文档的 `spring.governance.driver=sentinel` 一次切换全部 executor——**含入站准入**，因为同一个
-  `Driver` 同时应答两个方向。无端口、无自有 key。
+  `Driver` 同时应答两个方向。无端口、无自有 key;file/http 规则源由 `cloud/governance`
+  内置注册,nacos/etcd 两个远端源各自成 starter(`starter-governance-nacos` / `starter-governance-etcd`)。
 - **全局 starter 在 `gs.Module` 装配期安装自己的全局设施，并通过 `gs.RegisterStopper` 拆除。**
   装配在任何 bean 构造函数之前运行；stopper 在所有 server 停止、容器关闭之后运行。
 - **读优化的快照模式：单写者加一把 RWMutex。** 处理函数拷贝快照，绝不在处理过程中阻塞等待实时工作。
@@ -275,9 +277,15 @@ WebSocket(`websocket`、`websocket-coder`)、中间件(`lua-filter`)、鉴权
   starter 只做 config 角色,别的都不做。命名对标 Spring Cloud Alibaba
   (`nacos-config` vs `nacos-discovery`)。
 - **它注册的是 provider,不是 bean。** 接缝是 `init()` 里的
-  `conf.RegisterProvider(name, fn)`,不是 `gs.Provide`。配置 Provider 类 starter
+  `conf.RegisterProvider(name, p)`,不是 `gs.Provide`。配置 Provider 类 starter
   不产生可注入的 bean;应用只需 blank import。这也是它带 `provider.go` 而没有
-  `config.go` 的原因。
+  `config.go` 的原因。要注册控制器对象本身,不能注册 `ctrl.Load` 这个方法值:
+  运行时持有注册进去的 provider,并在退出时调用它的 `Close` —— 这是它握住 watcher 和
+  listener 的唯一把手。
+- **Close 停掉 Load 起的东西,下一次 Load 重新武装。** `Load` 在启动时和每次 refresh
+  都会跑,`Close` 每个应用实例只跑一次;而一个进程可以先后跑多个实例(`gs.RunTest`)。
+  因此 `Close` 取消控制器的 watch 代次、丢弃缓存的 client 和去重集合,下一次 `Load`
+  从头重建。别让 `Close` 留下下一次 `Load` 会信以为真的状态。
 - **provider 在容器存在之前运行。** `spring.config.import=`
   `[optional:]<name>:<host>:<port>/<key>?<query>` 会在 `AppConfig.Refresh` 阶段
   调用 provider,此时任何 bean 都还没装配。因此它拿不到 client bean —— 只能从 source

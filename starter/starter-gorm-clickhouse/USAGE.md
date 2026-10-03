@@ -181,8 +181,7 @@ go run . -manual & curl http://127.0.0.1:9090/clickhouse_version
 
 ```
 import starter-gorm-clickhouse
-  └─ init(): gormcore.Module(Dialect{Prefix: "spring.gorm.clickhouse",
-        Engine: "clickhouse", HealthPrefix: "gorm:clickhouse:"})
+  └─ init(): gs.Module(gs.OnProperty("spring.gorm.clickhouse.instances"), ...)   — registration in starter.go
 gs.Run()
   ├─ conf.BindEach → Config per entry
   ├─ build()                                        — starter.go:61-131
@@ -194,9 +193,10 @@ gs.Run()
   │    │      + opts.DialContext = resolver pick     (when discovery)
   │    │      → clickhouse.New(Config{Conn: ch.OpenDB(opts)})
   │    └─ plain path: clickhouse.Open(DSN)           (no TLS, no discovery)
-  ├─ gormcore.Open: gorm.Open → ApplyPool (startup ping) → DBCustomizers
-  ├─ DB.Init(): observe plugin (db.system=clickhouse) + resilience callbacks
-  │            (resource "gorm:clickhouse" + service-name/addr)
+  ├─ gormcore.NewDB: gorm.Open → ApplyPool (pool knobs) → DBCustomizers → observe
+  │      plugin (db.system=clickhouse) + resilience callbacks (resource
+  │      "gorm:clickhouse" + service-name/addr) → *DB bean, named <dialect>.<entry>
+  ├─ if ping: startup probe: gormcore.HealthCheck (bounded by ping-timeout)
   └─ SIGTERM → DB.Destroy(): executor → closers (stop the discovery watch) → pool close
 ```
 
@@ -311,7 +311,7 @@ pool connections land on it (per-dial `Pick()`).
 ```bash
 cd example-load && docker compose up -d
 go run . -duration=10s                        # baseline SELECT 1
-# set fire (hot-reload via starter-governance-file):
+# set fire (hot-reload via cloud/governance):
 #   spring.governance.client.fault.enabled=true  spring.governance.client.fault.rate=0.5  spring.governance.client.fault.error=generic
 go run . -duration=10s                        # ~50% injected in the breakdown
 ```

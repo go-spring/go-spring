@@ -105,7 +105,7 @@ type observer struct{}
 // metrics both identify the method instead of an undifferentiated
 // "thrift.process".
 //
-// Install it OUTERMOST, so a call the admission middleware rejects is still
+// Install it OUTERMOST, so a call the inbound middleware rejects is still
 // traced and counted:
 //
 //	proc = thrift.WrapProcessor(proc, Observe(), AccessLog(), Admit(label, system, mgr))

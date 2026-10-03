@@ -19,6 +19,7 @@ package StarterRocketmq
 import (
 	"context"
 	"errors"
+	"go-spring.org/cloud/chain"
 	"strings"
 	"testing"
 
@@ -64,7 +65,7 @@ func TestExecuteRateLimit(t *testing.T) {
 
 	assert.Error(t, cl.execute(context.Background(), stub)).Nil()
 	assert.Error(t, cl.execute(context.Background(), stub)).Nil()
-	assert.Error(t, cl.execute(context.Background(), stub)).Is(resilience.ErrRateLimited)
+	assert.Error(t, cl.execute(context.Background(), stub)).Is(chain.ErrRateLimited)
 	assert.That(t, ran).Equal(2) // the rejected call never reached the stub
 }
 

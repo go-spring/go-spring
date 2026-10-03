@@ -76,12 +76,6 @@ import (
 	"go-spring.org/spring/gs"
 )
 
-// enabled matches when the starter is not explicitly disabled.
-var enabled = gs.OnProperty("spring.transaction.tcc.enabled").HavingValue("true").MatchIfMissing()
-
-// recoverOnStart matches when startup recovery is not explicitly disabled.
-var recoverOnStart = gs.OnProperty("spring.transaction.tcc.recover-on-start").HavingValue("true").MatchIfMissing()
-
 func init() {
 	// The registry where application code declares each method's TCC participants.
 	// It is a shared, concurrency-safe map, so a single instance serves the app.
@@ -109,6 +103,12 @@ func init() {
 		Condition(enabled, recoverOnStart).
 		Export(gs.As[gs.Runner]())
 }
+
+// enabled matches when the starter is not explicitly disabled.
+var enabled = gs.OnProperty("spring.transaction.tcc.enabled").HavingValue("true").MatchIfMissing()
+
+// recoverOnStart matches when startup recovery is not explicitly disabled.
+var recoverOnStart = gs.OnProperty("spring.transaction.tcc.recover-on-start").HavingValue("true").MatchIfMissing()
 
 // newCoordinator builds the bundled in-process coordinator over the autowired
 // TCC-log Store and, when tracing is enabled, the otel observer.

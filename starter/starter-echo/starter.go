@@ -19,13 +19,11 @@ package StarterEcho
 import (
 	"context"
 	"crypto/tls"
-	"errors"
+	"go-spring.org/cloud/governance"
 	"net"
 	"net/http"
 
 	"github.com/labstack/echo/v4"
-	"go-spring.org/cloud/fault"
-	"go-spring.org/cloud/resilience"
 	"go-spring.org/cloud/traffic"
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
@@ -37,11 +35,12 @@ func init() {
 		NewSimpleEchoServer,
 		gs.IndexArg(1, gs.TagArg("?")), // nullable EngineMiddleware outer hook
 		gs.IndexArg(2, gs.TagArg("${spring.echo.server}")),
-		gs.IndexArg(3, gs.TagArg("?")), // nullable resilience.Manager bean
-		gs.IndexArg(4, gs.TagArg("?")), // nullable fault.Injector bean
-		gs.IndexArg(5, gs.TagArg("?")), // nullable traffic.Propagator bean
+		gs.IndexArg(4, gs.TagArg("?")), // nullable traffic.Propagator bean
 	).Export(gs.As[gs.Server]()).
-		Condition(gs.OnProperty("spring.echo.server.addr"))
+		Condition(gs.And(
+			gs.OnProperty("spring.echo.server.enabled").HavingValue("true").MatchIfMissing(),
+			gs.OnProperty("spring.echo.server.addr"),
+		))
 }
 
 // RouterRegister registers routes and middleware onto the framework-owned
@@ -81,13 +80,13 @@ type SimpleEchoServer struct {
 // middlewares, applies the registered RouterRegister, and wraps it in an HTTP
 // server configured from ${spring.echo.server}. outer is the application-supplied
 // EngineMiddleware hook (nil when none is provided); it runs before the built-in
-// chain so middleware it installs ends up outermost. mgr is the governance
-// starter's resilience manager bean (nil when governance is not imported), which
-// supplies the inbound admission middleware's policy; inj is the fault injector
-// bean (nil likewise), handed to applyMiddlewares for the inbound fault
-// middleware. prop is the application's load-test convention bean (nil means
+// chain so middleware it installs ends up outermost. center is the governance
+// center bean (nil when governance is not imported) — the family's sole
+// injection point; its resilience authority supplies the inbound middleware's
+// policy and its fault authority backs the inbound fault
+// middleware, both handed to applyMiddlewares. prop is the application's load-test convention bean (nil means
 // go-spring's default), handed to the inbound LoadTest middleware.
-func NewSimpleEchoServer(register RouterRegister, outer EngineMiddleware, cfg Config, mgr *resilience.Manager, inj *fault.Injector, prop traffic.Propagator) (*SimpleEchoServer, error) {
+func NewSimpleEchoServer(register RouterRegister, outer EngineMiddleware, cfg Config, center *governance.Center, prop traffic.Propagator) (*SimpleEchoServer, error) {
 	e := echo.New()
 	e.HideBanner = true
 
@@ -98,7 +97,7 @@ func NewSimpleEchoServer(register RouterRegister, outer EngineMiddleware, cfg Co
 		outer(e)
 	}
 
-	if err := applyMiddlewares(e, cfg, mgr, inj, prop); err != nil {
+	if err := applyMiddlewares(e, cfg, center, prop); err != nil {
 		return nil, err
 	}
 
@@ -157,7 +156,7 @@ func (s *SimpleEchoServer) Run(ctx context.Context, sig gs.ReadySignal) error {
 	} else {
 		err = s.svr.Serve(ln)
 	}
-	if errors.Is(err, http.ErrServerClosed) {
+	if errutil.IsServerClosed(err) {
 		log.Debugf(ctx, log.TagAppDef, "echo server stopped on %s", s.svr.Addr)
 		return nil
 	}

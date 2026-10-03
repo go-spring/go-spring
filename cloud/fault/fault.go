@@ -15,7 +15,7 @@
  */
 
 // Package fault is the in-process fault-injection companion to
-// go-spring.org/cloud/resilience. It wraps a [resilience.ClientExecutor] so a
+// go-spring.org/cloud/resilience. It wraps a [chain.Executor] so a
 // configurable fraction of operations are made to fail or slow down on demand
 // — "setting fire" to a running client — to verify that retry, circuit-breaker,
 // per-attempt timeout and Fallback actually engage, and that the observe kit

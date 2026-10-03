@@ -121,8 +121,8 @@ Database, cache, and message-queue clients (`go-redis`, `gorm-*`, `mongodb`,
     pair and the container would refuse to start. The gorm family's five dialect
     modules (`starter-gorm-mysql`, `-postgres`, `-sqlite`, `-sqlserver`,
     `-clickhouse`) all register `gormcore.DB`, so they qualify the bean name as
-    `<dialect>.<name>` (`gormcore.Module` takes the qualifier from the config
-    prefix's tail, overridable via `Dialect.BeanPrefix`); discovery's
+    `<dialect>.<name>` (each dialect starter hardcodes its own qualifier in the
+    `gs.Module` block it registers); discovery's
     `etcd.<name>` / `nacos.<name>` and session-redis' / batch-redis' `redis.<name>`
     are the same shape.
 
@@ -206,12 +206,13 @@ Database, cache, and message-queue clients (`go-redis`, `gorm-*`, `mongodb`,
   So the three beans are always in the container; the client injects them as
   REQUIRED (`gs.IndexArg(N, gs.TagArg(""))`), never as nullable (`"?"`). The beans
   are part of the client's contract — it is governable, observable and routable by
-  construction — and they are inert until a rule source is bound, so having them
-  changes no default behaviour. Turning governance off is
-  `spring.governance.enabled=false` (or binding no source), **not the absence of
-  a bean**. A nullable injection would turn "the user forgot the import" into a
-  silent degradation (governance looks on, is not) — exactly the error class this
-  removes.
+  construction — and with governance switched off in the rules document they behave
+  exactly as before, so having them changes no default behaviour. Turning
+  governance off is `spring.governance.enabled=false`, **not the absence of a
+  bean** — and not the absence of a source either: the center's Source parameter is
+  required, so a process that contributes none fails startup. A nullable injection
+  would turn "the user forgot the import" into a silent degradation (governance
+  looks on, is not) — exactly the error class this removes.
   (Blank-import it in non-test code only; `gs.RunTest` forces every injection
   nullable via `spring.force-autowire-is-nullable`, which is gs's behaviour, not
   an exception to this rule.)
@@ -353,7 +354,7 @@ facilities.
   profiles, kept off the application's main port on purpose.
 - **`starter-governance-sentinel`** contributes one process-wide bean — the
   `sentinel`-named `resilience.Driver` — into the governance center's driver
-  directory. Imported alongside `starter-governance-file`, the governance document's
+  directory. Imported alongside `cloud/governance`, the governance document's
   `spring.governance.driver=sentinel` switches every executor at once — inbound admission
   included, since one `Driver` answers for both directions. No port, no keys of
   its own.
@@ -380,9 +381,12 @@ application can load configuration from it at startup and hot-reload at runtime.
   nothing else. The naming mirrors Spring Cloud Alibaba
   (`nacos-config` vs `nacos-discovery`).
 - **It registers a provider, not a bean.** The seam is
-  `conf.RegisterProvider(name, fn)` called in `init()`, not `gs.Provide`. A
+  `conf.RegisterProvider(name, p)` called in `init()`, not `gs.Provide`. A
   config-provider starter produces no injectable bean; the application just
   blank-imports it. This is why it carries `provider.go` and no `config.go`.
+  Register the controller object itself, never `ctrl.Load` as a method value:
+  the runtime holds the registered provider and calls its `Close` once at
+  shutdown, which is the only handle it has on the watchers and listeners.
 - **The provider runs before the container exists.** `spring.config.import=`
   `[optional:]<name>:<host>:<port>/<key>?<query>` invokes the provider during
   `AppConfig.Refresh`, before any bean is wired. It therefore cannot inject a
@@ -390,6 +394,12 @@ application can load configuration from it at startup and hot-reload at runtime.
   client per connection tuple so repeated refreshes do not leak goroutines.
   Connection parameters (auth, namespace, format, ...) come from the source
   query string, not a bound `Config`.
+- **Close stops what Load started, and a later Load re-arms.** `Load` runs at
+  startup and on every refresh, `Close` runs once per application instance; a
+  process can run several instances in sequence (`gs.RunTest`). So `Close`
+  cancels the controller's watch generation, drops the cached clients and the
+  dedup sets, and the next `Load` rebuilds them from scratch. Never let `Close`
+  leave state that the next `Load` would trust.
 - **Register the change listener unconditionally, before the fetch.** The
   provider must install its watch/listener *before* the fetch's
   `optional`-and-missing early return. Otherwise an app that starts before the

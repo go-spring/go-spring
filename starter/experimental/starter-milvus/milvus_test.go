@@ -18,6 +18,7 @@ package StarterMilvus
 
 import (
 	"context"
+	"go-spring.org/cloud/chain"
 	"testing"
 
 	"github.com/milvus-io/milvus-sdk-go/v2/client"
@@ -74,7 +75,7 @@ func TestUnaryGuardRateLimit(t *testing.T) {
 	err := unaryGuard(slot)(context.Background(), "/milvus.proto/HasCollection", nil, nil, nil, invoker)
 	assert.Error(t, err).Nil()
 	err = unaryGuard(slot)(context.Background(), "/milvus.proto/ListCollections", nil, nil, nil, invoker)
-	assert.Error(t, err).Is(resilience.ErrRateLimited)
+	assert.Error(t, err).Is(chain.ErrRateLimited)
 	assert.That(t, ran).Equal(1) // the rejected call never reached the wire
 }
 
@@ -90,7 +91,7 @@ func TestStreamGuardRateLimit(t *testing.T) {
 	_, err := streamGuard(slot)(context.Background(), &grpc.StreamDesc{}, nil, "/milvus.proto/Search", streamer)
 	assert.Error(t, err).Nil()
 	_, err = streamGuard(slot)(context.Background(), &grpc.StreamDesc{}, nil, "/milvus.proto/Query", streamer)
-	assert.Error(t, err).Is(resilience.ErrRateLimited)
+	assert.Error(t, err).Is(chain.ErrRateLimited)
 	assert.That(t, ran).Equal(1)
 }
 

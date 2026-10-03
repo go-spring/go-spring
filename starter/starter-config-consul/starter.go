@@ -43,11 +43,13 @@ import (
 )
 
 func init() {
-	// Register "consul" as a remote configuration provider. The provider is
-	// the global controller's Load method. Watch-triggered refreshes go
-	// through the gs.RefreshProperties package-level facade, so the
-	// controller needs no bean wiring at all.
-	conf.RegisterProvider("consul", newConsulCtrl().Load)
+	// Register "consul" as a remote configuration provider. The controller
+	// itself is registered (not just its Load method): the runtime holds the
+	// registered provider so it can stop the watchers at shutdown (see
+	// provider.Provider). Watch-triggered refreshes go through the
+	// gs.RefreshProperties package-level facade, so the controller needs no
+	// bean wiring at all.
+	conf.RegisterProvider("consul", newConsulCtrl())
 }
 
 var starterTag = log.RegisterAppTag("config_consul", "")
@@ -59,6 +61,44 @@ type consulCtrl struct {
 	mu       sync.Mutex
 	clients  map[string]kvAPI
 	listened map[string]struct{}
+
+	// ctx is the watch generation: Close cancels it, which aborts the blocking
+	// queries and stops every watch goroutine; the next Load starts a fresh one
+	// (see rearm).
+	ctx context.Context
+	// cancel cancels ctx.
+	cancel context.CancelFunc
+	// stopped is true between Close and the next Load.
+	stopped bool
+}
+
+// rearm restarts the watch generation after a Close, so the first Load of a new
+// application instance can install watchers again.
+func (c *consulCtrl) rearm() {
+	c.mu.Lock()
+	if c.stopped {
+		c.ctx, c.cancel = context.WithCancel(context.Background())
+		c.stopped = false
+	}
+	c.mu.Unlock()
+}
+
+// Close stops every watch goroutine and clears the dedup set, so the next Load
+// re-watches. It implements provider.Provider. The cached KV handles are
+// deliberately kept: a Consul handle holds no goroutine and nothing to release
+// (its HTTP transport is what we want to reuse), and closing is therefore final
+// only for this application instance, not for the handles.
+func (c *consulCtrl) Close() error {
+	c.mu.Lock()
+	c.cancel()
+	c.stopped = true
+	n := len(c.listened)
+	c.listened = map[string]struct{}{}
+	c.mu.Unlock()
+	if n > 0 {
+		log.Infof(context.Background(), starterTag, "stopped %d consul watcher(s)", n)
+	}
+	return nil
 }
 
 // kvAPI is the slice of the Consul API surface this starter consumes. It
@@ -70,9 +110,12 @@ type kvAPI interface {
 // newConsulCtrl creates a controller with its caches ready, so the lazy
 // nil-checks are kept out of the hot paths.
 func newConsulCtrl() *consulCtrl {
+	ctx, cancel := context.WithCancel(context.Background())
 	return &consulCtrl{
 		clients:  map[string]kvAPI{},
 		listened: map[string]struct{}{},
+		ctx:      ctx,
+		cancel:   cancel,
 	}
 }
 
@@ -161,6 +204,7 @@ func (c *consulCtrl) clientFor(cs configSource) (kvAPI, error) {
 	if err != nil {
 		return nil, errutil.Explain(err, "create consul client for %s failed", cs.address)
 	}
+	log.Infof(context.Background(), starterTag, "created consul client address=%s datacenter=%s", cs.address, cs.datacenter)
 	kv := raw.KV()
 	c.clients[key] = kv
 	return kv, nil
@@ -171,6 +215,8 @@ func (c *consulCtrl) clientFor(cs configSource) (kvAPI, error) {
 // installs a blocking-query watcher that triggers an application property
 // refresh on change.
 func (c *consulCtrl) Load(optional bool, source string) (map[string]string, error) {
+	c.rearm()
+
 	cs, err := parseSource(source)
 	if err != nil {
 		log.Errorf(context.Background(), starterTag, "parse source %q failed: %v", source, err)
@@ -219,7 +265,7 @@ func (c *consulCtrl) Load(optional bool, source string) (map[string]string, erro
 		return nil, errutil.Explain(err, "parse consul kv %s as %s failed", cs.kvPath, cs.format)
 	}
 
-	log.Infof(context.Background(), starterTag, "loaded consul config from kvPath=%s keys=%d", cs.kvPath, len(m))
+	log.Infof(context.Background(), starterTag, "loaded consul config from address=%s kvPath=%s keys=%d", cs.address, cs.kvPath, len(m))
 	return flatten.Flatten(m), nil
 }
 
@@ -238,29 +284,37 @@ func (c *consulCtrl) registerWatch(cli kvAPI, cs configSource, optional bool) {
 		return
 	}
 	c.listened[lk] = struct{}{}
+	ctx := c.ctx
 	c.mu.Unlock()
 
-	go c.watchLoop(cli, cs, optional)
+	log.Infof(context.Background(), starterTag, "watching consul kv=%s address=%s datacenter=%s", cs.kvPath, cs.address, cs.datacenter)
+	go c.watchLoop(ctx, cli, cs, optional)
 }
 
 // watchLoop runs the blocking-query loop for a single KV path. Errors retry
 // silently-but-visibly: the first failure logs a warning, subsequent ones only
 // debug (the loop keeps retrying every 2s, so per-failure warnings would flood),
 // and recovery logs once at info.
-func (c *consulCtrl) watchLoop(cli kvAPI, cs configSource, optional bool) {
+func (c *consulCtrl) watchLoop(ctx context.Context, cli kvAPI, cs configSource, optional bool) {
 	var lastIndex uint64
 	initialized := false
 	failing := false
 	for {
-		pair, meta, err := cli.Get(cs.kvPath, &api.QueryOptions{
+		// The blocking query carries the watch generation's context, so Close
+		// aborts an in-flight wait instead of leaving it parked for WaitTime.
+		q := &api.QueryOptions{
 			Datacenter: cs.datacenter,
 			WaitIndex:  lastIndex,
 			WaitTime:   5 * time.Minute,
-		})
+		}
+		pair, meta, err := cli.Get(cs.kvPath, q.WithContext(ctx))
 		if err == nil && meta == nil {
 			err = errutil.Explain(nil, "nil query meta")
 		}
 		if err != nil {
+			if ctx.Err() != nil {
+				return // shutting down
+			}
 			if !failing {
 				log.Warnf(context.Background(), starterTag,
 					"consul watch on %s failing, retrying every 2s (changes are missed until it recovers): %v", cs.kvPath, err)
@@ -269,7 +323,11 @@ func (c *consulCtrl) watchLoop(cli kvAPI, cs configSource, optional bool) {
 				log.Debugf(context.Background(), starterTag,
 					"consul watch on %s still failing: %v", cs.kvPath, err)
 			}
-			time.Sleep(2 * time.Second)
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(2 * time.Second):
+			}
 			continue
 		}
 		if failing {
@@ -292,7 +350,16 @@ func (c *consulCtrl) watchLoop(cli kvAPI, cs configSource, optional bool) {
 				log.Warnf(context.Background(), starterTag,
 					"consul kv %s deleted; stale snapshot retained until the key is restored", cs.kvPath)
 			}
-			c.TriggerRefresh(context.Background())
+			// Stamp the trigger with the change's identity (which KV entry, which
+			// consul revision) so the refresh records logged and metered by
+			// observability.RefreshConf carry what this round is about. The LastIndex
+			// doubles as the refresh identifier: it is unique per KV change within
+			// consul, so two refreshes from the same path are distinguishable.
+			c.TriggerRefresh(log.WithFields(context.Background(),
+				log.String("source", "consul"),
+				log.String("kv_path", cs.kvPath),
+				log.Int("last_index", int64(meta.LastIndex)),
+			))
 		}
 	}
 }

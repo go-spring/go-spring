@@ -12,7 +12,7 @@ without a restart and without an application-wide property re-bind.
 It is the Nacos member of the governance-source adapter family (the
 Sentinel-datasource shape); the etcd member is
 [starter-governance-etcd](../starter-governance-etcd) and the file/http
-members live in [starter-governance-file](../starter-governance-file). All of them
+sources are built into [cloud/governance](../../cloud/governance). All of them
 parse the same rule document through `governance.Parse`, so a document is
 byte-portable between backends.
 
@@ -88,9 +88,9 @@ spring:
 Every published version is re-parsed and pushed into the center. The rule
 vocabulary (`spring.governance.enabled`, `spring.governance.client.default.*`, `spring.governance.client.rules[n].*`,
 `spring.governance.client.fault.*`) belongs to the governance domain; see
-[starter-governance-file's USAGE](../starter-governance-file/USAGE.md) for the full
+[cloud/governance's SOURCE_USAGE](../../cloud/governance/SOURCE_USAGE.md) for the full
 reference. Introducing the governance center itself is still
-[starter-governance-file](../starter-governance-file)'s job — this module only supplies
+[cloud/governance](../../cloud/governance)'s job — this module only supplies
 the source.
 
 ## Configuration Keys

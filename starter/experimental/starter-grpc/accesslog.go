@@ -43,7 +43,7 @@ var accessTag = log.RegisterAppTag("grpc", "access")
 // toggleable and stay that way — they ride the OTel globals, this does not.
 //
 // In the interceptor chain it sits just inside tracing (so the line carries the
-// span's trace_id) and outside admission, fault injection and recovery (so it
+// span's trace_id) and outside inbound, fault injection and recovery (so it
 // reports what the caller actually got, including a rejection or a recovered
 // panic).
 

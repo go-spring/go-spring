@@ -143,7 +143,7 @@ reason the starter can offer nothing else: it runs before the IoC container exis
 
 ```
 blank-import starter-config-vault
-  └─ init(): conf.RegisterProvider("vault", vaultController.Load)   [starter.go:60]
+  └─ init(): conf.RegisterProvider("vault", newVaultCtrl())   [starter.go:60]
 
 gs.Run()
   ├─ config load: conf/app.properties read

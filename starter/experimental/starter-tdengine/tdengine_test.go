@@ -20,6 +20,7 @@ import (
 	"context"
 	"database/sql/driver"
 	"errors"
+	"go-spring.org/cloud/chain"
 	"testing"
 
 	"go-spring.org/cloud/resilience"
@@ -70,7 +71,7 @@ func TestGuardedConnRateLimit(t *testing.T) {
 	_, err = conn.ExecContext(context.Background(), "INSERT INTO t VALUES(now, 1)", nil)
 	assert.Error(t, err).Nil()
 	_, err = conn.ExecContext(context.Background(), "INSERT INTO t VALUES(now, 2)", nil)
-	assert.Error(t, err).Is(resilience.ErrRateLimited)
+	assert.Error(t, err).Is(chain.ErrRateLimited)
 	assert.That(t, sc.lastStmt).Equal("INSERT INTO t VALUES(now, 1)") // the rejected call never reached the conn
 }
 

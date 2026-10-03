@@ -134,7 +134,7 @@ example 还演示了属性级解密：文档值为 `ENC(aes:<base64>)` 时，con
 
 ```
 blank-import starter-config-vault
-  └─ init(): conf.RegisterProvider("vault", vaultController.Load)   [starter.go:60]
+  └─ init(): conf.RegisterProvider("vault", newVaultCtrl())   [starter.go:60]
 
 gs.Run()
   ├─ 配置加载：读 conf/app.properties

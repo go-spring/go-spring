@@ -23,11 +23,6 @@ import (
 	"go-spring.org/spring/gs"
 )
 
-var (
-	// starterTag identifies logs emitted by the lua filter starter.
-	starterTag = log.RegisterAppTag("lua_filter", "")
-)
-
 func init() {
 	// Register multiple Lua filters as a group, one per entry under
 	// "${spring.lua.filter}". Each bean is named after its config sub-key
@@ -39,6 +34,11 @@ func init() {
 	gs.Group("${spring.lua.filter.instances}", newFilter, destroyFilter)
 	log.Debugf(context.Background(), starterTag, "lua filter group registered")
 }
+
+var (
+	// starterTag identifies logs emitted by the lua filter starter.
+	starterTag = log.RegisterAppTag("lua_filter", "")
+)
 
 // destroyFilter releases the VM pool held by a filter.
 func destroyFilter(f *Filter) error {

@@ -24,6 +24,7 @@ import (
 	"dubbo.apache.org/dubbo-go/v3/protocol/base"
 	"dubbo.apache.org/dubbo-go/v3/protocol/result"
 	"go-spring.org/cloud/fault"
+	"go-spring.org/cloud/governance"
 )
 
 const faultFilterKey = "fault"
@@ -43,13 +44,14 @@ var injector atomic.Pointer[fault.Injector]
 // injectorHook is the marker bean whose construction installs the injector.
 type injectorHook struct{}
 
-// newInjectorHook installs inj as the injector the fault filter reads. inj is
-// nil when no center is linked, which leaves fault injection off
-// and the filter transparent; installing unconditionally (rather than skipping a
-// nil) keeps the handle from surviving a container that did have one — a
-// test-process concern, but the same "last wiring wins" rule in both cases.
-func newInjectorHook(inj *fault.Injector) (*injectorHook, error) {
-	injector.Store(inj)
+// newInjectorHook installs the center's fault authority as the injector the
+// fault filter reads. center is nil when none is linked, which leaves fault
+// injection off and the filter transparent; installing unconditionally (rather
+// than skipping a nil) keeps the handle from surviving a container that did have
+// one — a test-process concern, but the same "last wiring wins" rule in both
+// cases.
+func newInjectorHook(center *governance.Center) (*injectorHook, error) {
+	injector.Store(center.Fault())
 	return &injectorHook{}, nil
 }
 

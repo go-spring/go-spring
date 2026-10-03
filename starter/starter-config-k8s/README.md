@@ -81,8 +81,8 @@ starter's directory semantics; entries with an unknown extension and no forced
   refresh, re-running the provider and propagating new values to bound
   `gs.Dync` fields. The refresh reaches the framework through the
   process-level `gs.RefreshProperties()` facade — no autowired refresher.
-- The controller bean's destructor stops every informer on shutdown (it stays
-  a bean only for the `.Destroy` lifecycle; it has no autowire fields).
+- The controller's `Close` — the provider lifecycle hook the runtime calls on
+  shutdown — stops every informer.
 
 ## Design Notes
 

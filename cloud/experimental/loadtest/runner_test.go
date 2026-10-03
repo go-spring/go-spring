@@ -19,13 +19,13 @@ package loadtest
 import (
 	"context"
 	"errors"
+	"go-spring.org/cloud/chain"
 	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
 
 	"go-spring.org/cloud/fault"
-	"go-spring.org/cloud/resilience"
 	"go-spring.org/cloud/traffic"
 	"go-spring.org/stdlib/errutil"
 	"go-spring.org/stdlib/testing/assert"
@@ -167,7 +167,7 @@ func TestNewRunner_AssertGCPauseRequiresCapture(t *testing.T) {
 	assert.That(t, r.Passed()).True()
 
 	// With CaptureGC + allocation pressure: NumGC > 0 and GCPauseAvg populated.
-	_ = resilience.ErrCircuitOpen // keep resilience import used alongside fault
+	_ = chain.ErrCircuitOpen // keep resilience import used alongside fault
 	r2 := New().Driver(ClosedLoop{Concurrency: 4}).Duration(100*time.Millisecond).
 		CaptureGC(true).
 		Run(context.Background(), func(context.Context) error {

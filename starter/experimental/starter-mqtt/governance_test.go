@@ -26,7 +26,6 @@ import (
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"go-spring.org/cloud"
 	"go-spring.org/cloud/messaging"
-	"go-spring.org/cloud/resilience"
 )
 
 // errGovernanceStub is returned by the test executor to prove a call was
@@ -41,8 +40,7 @@ func (s *stubExecutor) Execute(context.Context, func(context.Context) error) err
 	s.called.Add(1)
 	return errGovernanceStub
 }
-func (s *stubExecutor) Close() error                          { return nil }
-func (s *stubExecutor) Refresh(resilience.ClientPolicy) error { return nil }
+func (s *stubExecutor) Close() error { return nil }
 
 // fakeToken is a completed paho token.
 type fakeToken struct{ err error }

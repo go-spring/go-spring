@@ -73,6 +73,19 @@ type zkDiscovery struct {
 	entries map[string]*serviceEntry
 }
 
+// newZookeeperDiscovery builds the read half for one configured block over the
+// block's shared session. The base path is normalized here, once, so every
+// watcher and read agrees on it.
+func newZookeeperDiscovery(c ZookeeperConfig, conn *zk.Conn, obs *discovery.Observer) *zkDiscovery {
+	return &zkDiscovery{
+		conn:     conn,
+		basePath: normalizeBasePath(c.BasePath),
+		done:     make(chan struct{}),
+		obs:      obs,
+		entries:  map[string]*serviceEntry{},
+	}
+}
+
 // serviceEntry is the cached snapshot for one service name. eps holds the FULL
 // (unfiltered) set; scheme narrowing happens per Resolve call.
 type serviceEntry struct {

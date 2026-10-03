@@ -53,11 +53,6 @@ import (
 	"go-spring.org/stdlib/flatten"
 )
 
-// beanQualifier names this backend inside the batch.JobRepository seam: a
-// repository's bean is "<beanQualifier>.<config name>", matching the gorm and
-// registry families' <impl>.<name> shape (starter/DESIGN.md §2.2).
-const beanQualifier = "redis"
-
 func init() {
 	gs.Module(gs.OnProperty("spring.batch-repository.instances"), func(r gs.BeanProvider, p flatten.Storage) error {
 		// Any key an instance does not define falls back to the family-wide
@@ -84,3 +79,8 @@ func init() {
 		})
 	})
 }
+
+// beanQualifier names this backend inside the batch.JobRepository seam: a
+// repository's bean is "<beanQualifier>.<config name>", matching the gorm and
+// registry families' <impl>.<name> shape (starter/DESIGN.md §2.2).
+const beanQualifier = "redis"

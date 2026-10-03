@@ -137,9 +137,9 @@ clientset.
 
 ```
 blank import starter-config-k8s
-  ├─ init (provider.go:67): conf.RegisterProvider("k8s", k8sController.Load)
-  └─ init (starter.go:29):  gs.Provide(k8sController).Name("k8sController")
-                            .Export(gs.As[gs.Rooter]()).Destroy((*k8sCtrl).Destroy)
+  └─ init (starter.go:34): conf.RegisterProvider("k8s", newK8sCtrl())
+                           — the controller itself, so its Close can stop the
+                             informers at shutdown
 
 gs.Run()
   ├─ AppConfig.Refresh (gs_conf/conf.go:83-128) — BEFORE any bean is wired:
@@ -155,10 +155,11 @@ gs.Run()
   │            landing right after the initial read is not missed (provider.go:158-161)
   │         e. parseEntries → flatten → merged into the property storage
   │    └─ merged snapshot becomes the storage every value tag binds against
-  ├─ container wiring: k8sController is instantiated as a bean purely for its
-  │  .Destroy lifecycle (no autowire fields); app.started flips true (app.go:179-183)
+  ├─ container wiring: the controller is not a bean at all; app.started flips
+  │  true (app.go:179-183)
   ├─ Runners/Servers start; ready
-  └─ SIGTERM → bean destructor Destroy → manager.stopAll() stops every informer
+  └─ SIGTERM → conf.CloseProviders() → k8sCtrl.Close → manager.stopAll()
+     stops every informer
 ```
 
 Why pre-bean: the provider's output must be part of the property storage *before* `value:`

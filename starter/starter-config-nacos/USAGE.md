@@ -120,7 +120,7 @@ assert) and `example/check.sh` is the docker-gated smoke gate.
 
 ```
 blank-import starter-config-nacos
-  └─ init(): conf.RegisterProvider("nacos", nacosController.Load)      starter.go:58
+  └─ init(): conf.RegisterProvider("nacos", newNacosCtrl())      starter.go:58
 
 gs.Run()
   ├─ App.Start(): app.p.Refresh()                                     app.go "Start"

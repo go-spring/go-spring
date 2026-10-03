@@ -21,6 +21,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"go-spring.org/cloud/chain"
 	"io"
 	"net/http"
 	"os"
@@ -29,6 +30,7 @@ import (
 	"syscall"
 	"time"
 
+	"go-spring.org/cloud/governance"
 	"go-spring.org/cloud/resilience"
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
@@ -59,14 +61,14 @@ const service = "ratelimit-redis:api"
 var manual = flag.Bool("manual", false, "run in manual verification mode (server stays up)")
 
 func init() {
-	gs.Provide(func(mgr *resilience.Manager) *gs.HttpServeMux {
+	gs.Provide(func(center *governance.Center) *gs.HttpServeMux {
 		// Handlers A and B model two replicas of a service: they share NO
 		// in-process state. Each gets its own executor handle for the same
 		// service label, and both draw on the one Redis-backed counter store
 		// this process contributed, so the budget is global.
 		mux := http.NewServeMux()
-		mux.Handle("/a/", serve(executor(mgr)))
-		mux.Handle("/b/", serve(executor(mgr)))
+		mux.Handle("/a/", serve(executor(center.Resilience())))
+		mux.Handle("/b/", serve(executor(center.Resilience())))
 		return &gs.HttpServeMux{Handler: mux}
 	})
 }
@@ -74,19 +76,19 @@ func init() {
 // executor returns the handle for the shared service label. ClientExecutorFor
 // resolves its backing executor lazily, on each Execute, so the policy is read
 // after the governance center has gone live.
-func executor(mgr *resilience.Manager) resilience.ClientExecutor {
+func executor(mgr *resilience.Manager) chain.Executor {
 	return mgr.ClientExecutorFor("ratelimit-redis", service)
 }
 
 // serve runs one protected call per request. The executor's rate-limit stage
 // charges the shared store; an over-budget call comes back as ErrRateLimited.
-func serve(exec resilience.ClientExecutor) http.HandlerFunc {
+func serve(exec chain.Executor) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		err := exec.Execute(r.Context(), func(context.Context) error { return nil })
 		switch {
 		case err == nil:
 			_, _ = w.Write([]byte("ok"))
-		case errors.Is(err, resilience.ErrRateLimited):
+		case errors.Is(err, chain.ErrRateLimited):
 			http.Error(w, "429 Too Many Requests", http.StatusTooManyRequests)
 		default:
 			http.Error(w, "executor error: "+err.Error(), http.StatusInternalServerError)

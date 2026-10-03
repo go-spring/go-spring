@@ -18,13 +18,13 @@ package StarterHTTPClient
 
 import (
 	"context"
+	"go-spring.org/cloud/governance"
 	"net/http"
 	"reflect"
 	"testing"
 
 	"go-spring.org/cloud/discovery"
 	"go-spring.org/cloud/fault"
-	"go-spring.org/cloud/loadbalance"
 	"go-spring.org/cloud/resilience"
 	"go-spring.org/cloud/traffic"
 	"go-spring.org/spring/gs"
@@ -35,7 +35,7 @@ import (
 // DefaultDriver when no Driver bean is provided (nil). Building the transport
 // needs no live server — it only assembles the RoundTripper.
 func TestDefaultDriverFallback(t *testing.T) {
-	rt, _, err := assembleTransport(nil, "x", Config{Addr: "10.0.0.1:8080"}, nil, nil, nil, nil, nil, nil)
+	rt, _, err := assembleTransport(nil, "x", Config{Addr: "10.0.0.1:8080"}, nil, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("assembleTransport with nil driver failed: %v", err)
 	}
@@ -53,25 +53,24 @@ type recordingDriver struct {
 	// can prove the starter wiring resolves the ${discovery} label and passes it
 	// to a custom driver (rather than keeping it private to DefaultDriver).
 	backend discovery.Discovery
-	// mgr and inj record the governance beans handed to CreateTransport, so a
-	// test can prove the container's authorities reach a custom driver as
-	// arguments (the beans, not a package-level seam).
-	mgr *resilience.Manager
-	inj *fault.Injector
+	// center records the governance center handed to CreateTransport, so a
+	// test can prove the container's authority reaches a custom driver as an
+	// argument (the bean, not a package-level seam).
+	center *governance.Center
 }
 
-func (d *recordingDriver) CreateTransport(ctx context.Context, name string, c Config, backend discovery.Discovery, mgr *resilience.Manager, inj *fault.Injector, lbMgr *loadbalance.Manager, prop traffic.Propagator) (http.RoundTripper, func() error, error) {
+func (d *recordingDriver) CreateTransport(ctx context.Context, name string, c Config, backend discovery.Discovery, center *governance.Center, prop traffic.Propagator) (http.RoundTripper, func() error, error) {
 	d.called = true
 	d.backend = backend
-	d.mgr, d.inj = mgr, inj
-	return d.DefaultDriver.CreateTransport(ctx, name, c, backend, mgr, inj, lbMgr, prop)
+	d.center = center
+	return d.DefaultDriver.CreateTransport(ctx, name, c, backend, center, prop)
 }
 
 // TestCustomDriverUsed proves a provided Driver bean is the one assembleTransport
 // dispatches through, replacing the internal DefaultDriver fallback.
 func TestCustomDriverUsed(t *testing.T) {
 	drv := &recordingDriver{}
-	rt, _, err := assembleTransport(nil, "x", Config{Addr: "10.0.0.1:8080"}, nil, drv, nil, nil, nil, nil)
+	rt, _, err := assembleTransport(nil, "x", Config{Addr: "10.0.0.1:8080"}, nil, drv, nil, nil)
 	if err != nil {
 		t.Fatalf("assembleTransport failed: %v", err)
 	}
@@ -139,14 +138,15 @@ func TestCustomDriverReceivesGovernanceBeans(t *testing.T) {
 		if ts.DT == nil {
 			t.Fatal("expected a wired dispatch transport")
 		}
-		if drv.mgr == nil || ts.Mgr == nil {
-			t.Fatalf("expected a resilience manager bean in both places, got drv=%p injected=%p", drv.mgr, ts.Mgr)
+		got := drv.center.Resilience()
+		if got == nil || ts.Mgr == nil {
+			t.Fatalf("expected a resilience authority in both places, got drv=%p injected=%p", got, ts.Mgr)
 		}
-		if drv.mgr != ts.Mgr {
-			t.Fatalf("the driver must receive the container's resilience manager, got %p want %p", drv.mgr, ts.Mgr)
+		if got != ts.Mgr {
+			t.Fatalf("the driver must receive the container's resilience authority, got %p want %p", got, ts.Mgr)
 		}
-		if drv.inj == nil || drv.inj != ts.Inj {
-			t.Fatalf("the driver must receive the container's fault injector, got %p want %p", drv.inj, ts.Inj)
+		if drv.center.Fault() == nil || drv.center.Fault() != ts.Inj {
+			t.Fatalf("the driver must receive the container's fault injector, got %p want %p", drv.center.Fault(), ts.Inj)
 		}
 	})
 }

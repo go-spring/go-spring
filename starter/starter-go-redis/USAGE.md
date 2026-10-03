@@ -35,7 +35,6 @@ require (
     go-spring.org/starter-go-redis latest
     go-spring.org/starter-actuator latest   // optional: readiness + /metrics
     go-spring.org/starter-otel     latest   // optional: real trace/metric export
-    go-spring.org/starter-governance-file latest // optional: resilience/fault policy
 )
 ```
 
@@ -48,7 +47,6 @@ import (
     "go-spring.org/spring/gs"
     _ "go-spring.org/starter-actuator"
     _ "go-spring.org/starter-go-redis"
-    _ "go-spring.org/starter-governance-file"
     _ "go-spring.org/starter-otel"
     _ "demo/service"
 )
@@ -348,7 +346,7 @@ form. A miss through the façade returns `cache.ErrMiss`, not `redis.Nil`.
 
 ### 4.5 Fault / resilience drill
 
-With starter-governance-file configured, set a breaker/limiter policy for service `redis:<addr>`;
+With a configured governance rules source, set a breaker/limiter policy for service `redis:<addr>`;
 hammer the instance and watch rejections surface in `_app_redis_access` records and the
 resilience observer's outcome counters. Flip policy at runtime — the executor hot-reloads
 without restart.

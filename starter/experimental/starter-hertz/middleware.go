@@ -29,6 +29,7 @@ import (
 	"github.com/hertz-contrib/gzip"
 	"github.com/hertz-contrib/requestid"
 	"go-spring.org/cloud/fault"
+	"go-spring.org/cloud/governance"
 	"go-spring.org/cloud/propagate"
 	"go-spring.org/cloud/traffic"
 	"go-spring.org/log"
@@ -73,7 +74,7 @@ func RequestIDFromContext(ctx context.Context) string {
 // 403) are still logged. Body limiting is handled by the engine option
 // WithMaxRequestBodySize, not a middleware, so an over-limit 413 is likewise
 // logged.
-func applyMiddlewares(h *server.Hertz, cfg Config, inj *fault.Injector, prop traffic.Propagator) error {
+func applyMiddlewares(h *server.Hertz, cfg Config, center *governance.Center, prop traffic.Propagator) error {
 	mw := cfg.Middleware
 
 	// LoadTest identification is outermost of all so the marker is on the
@@ -116,11 +117,11 @@ func applyMiddlewares(h *server.Hertz, cfg Config, inj *fault.Injector, prop tra
 		h.Use(gzip.Gzip(mw.Gzip.Level))
 	}
 	// Fault injection (always installed, innermost so the resulting 503 is still
-	// logged). The injector is the bean gs passes in (nil-safe: a transparent
-	// pass-through when fault is off / no injector bean), letting an operator
-	// "set fire" to the running server and hot-toggle it at runtime without a
-	// restart.
-	h.Use(buildFault(inj))
+	// logged). The injector is read off the governance center (nil-safe: a
+	// transparent pass-through when fault is off / no center bean), letting an
+	// operator "set fire" to the running server and hot-toggle it at runtime
+	// without a restart.
+	h.Use(buildFault(center.Fault()))
 	return nil
 }
 

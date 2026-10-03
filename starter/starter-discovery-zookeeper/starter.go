@@ -47,7 +47,6 @@ package StarterDiscoveryZookeeper
 
 import (
 	"context"
-	"strings"
 
 	"github.com/go-zookeeper/zk"
 	"go-spring.org/cloud/actuator/health"
@@ -58,6 +57,39 @@ import (
 	"go-spring.org/stdlib/errutil"
 	"go-spring.org/stdlib/flatten"
 )
+
+func init() {
+	// One NAMED bean per block under ${spring.discovery.zookeeper.<name>}: the
+	// bean name "zookeeper.<name>" is the label a client starter cites to pick
+	// this backend for discovery, and the discovery registration core collects the
+	// same bean (as a discovery.Registry) into the single publication
+	// lifecycle. Blocks across backends never collide (the name carries the
+	// backend type); a duplicate name within one backend fails loudly in the
+	// container.
+	gs.Module(gs.OnProperty("spring.discovery.zookeeper"), func(r gs.BeanProvider, p flatten.Storage) error {
+		return conf.BindEach(p, "${spring.discovery.zookeeper}", func(name string, c ZookeeperConfig) error {
+			if !c.Enabled {
+				return nil
+			}
+			r.Provide(newZkBackend,
+				gs.IndexArg(0, gs.ValueArg(c)),
+				gs.IndexArg(1, gs.ValueArg(name)),
+			).Name("zookeeper."+name).
+				Export(gs.As[discovery.Discovery](), gs.As[discovery.Registry]()).
+				Destroy((*zkBackend).Close).Caller(1)
+
+			// Contribute a health indicator for this ensemble unless the user
+			// disabled it (health=false), injecting the backend registered
+			// above by name.
+			if c.Health {
+				r.Provide(func(b *zkBackend) *health.Indicator {
+					return &health.Indicator{Name: "discovery-zookeeper:" + name, Probe: b.probe}
+				}, gs.TagArg("zookeeper."+name)).Name("discovery-zookeeper:" + name)
+			}
+			return nil
+		})
+	})
+}
 
 // obsSystem is this backend's value for the discovery instrumentation's
 // "system" attribute, so one dashboard can compare discovery centers.
@@ -110,15 +142,10 @@ func newZkBackend(c ZookeeperConfig, name string) (*zkBackend, error) {
 		conn.Close()
 		return nil, err
 	}
+	disc := newZookeeperDiscovery(c, conn, obs)
 	return &zkBackend{
-		reg: reg,
-		disc: &zkDiscovery{
-			conn:     conn,
-			basePath: strings.TrimRight(c.BasePath, "/"),
-			done:     make(chan struct{}),
-			obs:      obs,
-			entries:  map[string]*serviceEntry{},
-		},
+		reg:  reg,
+		disc: disc,
 		obs:  obs,
 		conn: conn,
 	}, nil
@@ -202,34 +229,4 @@ func connectZookeeper(c ZookeeperConfig) (*zk.Conn, error) {
 		}
 	}
 	return conn, nil
-}
-
-func init() {
-	// One NAMED bean per block under ${spring.discovery.zookeeper.<name>}: the
-	// bean name "zookeeper.<name>" is the label a client starter cites to pick
-	// this backend for discovery, and the discovery registration core collects the
-	// same bean (as a discovery.Registry) into the single publication
-	// lifecycle. Blocks across backends never collide (the name carries the
-	// backend type); a duplicate name within one backend fails loudly in the
-	// container.
-	gs.Module(gs.OnProperty("spring.discovery.zookeeper"), func(r gs.BeanProvider, p flatten.Storage) error {
-		return conf.BindEach(p, "${spring.discovery.zookeeper}", func(name string, c ZookeeperConfig) error {
-			r.Provide(newZkBackend,
-				gs.IndexArg(0, gs.ValueArg(c)),
-				gs.IndexArg(1, gs.ValueArg(name)),
-			).Name("zookeeper."+name).
-				Export(gs.As[discovery.Discovery](), gs.As[discovery.Registry]()).
-				Destroy((*zkBackend).Close).Caller(1)
-
-			// Contribute a health indicator for this ensemble unless the user
-			// disabled it (health=false), injecting the backend registered
-			// above by name.
-			if c.Health {
-				r.Provide(func(b *zkBackend) *health.Indicator {
-					return &health.Indicator{Name: "discovery-zookeeper:" + name, Probe: b.probe}
-				}, gs.TagArg("zookeeper."+name)).Name("discovery-zookeeper:" + name)
-			}
-			return nil
-		})
-	})
 }

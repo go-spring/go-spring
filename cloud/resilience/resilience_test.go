@@ -19,6 +19,7 @@ package resilience
 import (
 	"context"
 	"errors"
+	"go-spring.org/cloud/chain"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -33,7 +34,7 @@ import (
 	"go-spring.org/stdlib/testing/assert"
 )
 
-func newBuiltin(t *testing.T, p ClientPolicy) ClientExecutor {
+func newBuiltin(t *testing.T, p ClientPolicy) chain.Executor {
 	d := NewDefaultDriver(nil)
 	e, err := d.NewClientExecutor("svc", p)
 	assert.Error(t, err).Nil()
@@ -60,7 +61,7 @@ func TestRateLimit(t *testing.T) {
 	}
 	assert.Error(t, run()).Nil()
 	assert.Error(t, run()).Nil()
-	assert.Error(t, run()).Is(ErrRateLimited)
+	assert.Error(t, run()).Is(chain.ErrRateLimited)
 }
 
 func TestCircuitBreakerOpensAndRecovers(t *testing.T) {
@@ -75,7 +76,7 @@ func TestCircuitBreakerOpensAndRecovers(t *testing.T) {
 	assert.Error(t, fail()).Is(boom)
 
 	// Now open: the operation is short-circuited without invoking fn.
-	assert.Error(t, fail()).Is(ErrCircuitOpen)
+	assert.Error(t, fail()).Is(chain.ErrCircuitOpen)
 
 	// After the cool-down a trial request is admitted; a success closes it.
 	time.Sleep(60 * time.Millisecond)
@@ -108,7 +109,7 @@ func TestRetrySucceedsAfterTransientFailure(t *testing.T) {
 // must survive the wrapper in between, which is the only executor a client ever
 // holds.
 func TestNonIdempotentOperationIsNotRetried(t *testing.T) {
-	e := WrapClientExecutor(newBuiltin(t, ClientPolicy{MaxRetries: 3}), "mail", "mail:svc")
+	e := observability.WrapClientExecutor(newBuiltin(t, ClientPolicy{MaxRetries: 3}), "mail", "mail:svc")
 	ctx := observability.WithOperation(context.Background(), observability.Operation{
 		Name:          "send",
 		Metric:        "email.client",
@@ -208,12 +209,12 @@ func TestRoundTripperCircuitOpenIsError(t *testing.T) {
 	_, err := client.Get(srv.URL) // trips the breaker
 	assert.Error(t, err).NotNil()
 	_, err = client.Get(srv.URL) // now short-circuited
-	assert.Error(t, err).Is(ErrCircuitOpen)
+	assert.Error(t, err).Is(chain.ErrCircuitOpen)
 }
 
 func TestBulkheadRejectsWhenFull(t *testing.T) {
 	// MaxConcurrent 1: while one call is parked inside fn, a second is rejected
-	// with ErrBulkheadFull rather than queued.
+	// with chain.ErrBulkheadFull rather than queued.
 	e := newBuiltin(t, ClientPolicy{MaxConcurrent: 1})
 
 	release := make(chan struct{})
@@ -229,7 +230,7 @@ func TestBulkheadRejectsWhenFull(t *testing.T) {
 
 	<-entered // first call now holds the only slot
 	err := e.Execute(context.Background(), func(context.Context) error { return nil })
-	assert.Error(t, err).Is(ErrBulkheadFull)
+	assert.Error(t, err).Is(chain.ErrBulkheadFull)
 
 	close(release)
 	wg.Wait()
@@ -252,7 +253,7 @@ func TestFallbackDegradesOnRejection(t *testing.T) {
 		func(context.Context) error { return errutil.Explain(nil, "should not run") },
 		func(_ context.Context, cause error) error { seen = cause; return nil })
 	assert.Error(t, err).Nil()
-	assert.Error(t, seen).Is(ErrCircuitOpen)
+	assert.Error(t, seen).Is(chain.ErrCircuitOpen)
 }
 
 func TestFallbackNilExecStillDegrades(t *testing.T) {
@@ -293,7 +294,7 @@ func TestDialerBreakerOpensOnDialFailures(t *testing.T) {
 
 	// Now open: the dial is short-circuited without touching base.
 	_, err = dial(context.Background(), "tcp", "addr")
-	assert.Error(t, err).Is(ErrCircuitOpen)
+	assert.Error(t, err).Is(chain.ErrCircuitOpen)
 }
 
 // --- new: backoff, retry classification, total budget, half-open, error-rate ---
@@ -375,7 +376,7 @@ func TestHalfOpenAdmitsSingleTrialConcurrent(t *testing.T) {
 	time.Sleep(40 * time.Millisecond) // cool-down elapses -> half-open
 
 	// Two concurrent calls: the first that reaches the half-open gate runs fn;
-	// the other must be rejected as ErrCircuitOpen (no second trial permit).
+	// the other must be rejected as chain.ErrCircuitOpen (no second trial permit).
 	var wg sync.WaitGroup
 	var ran, rejected int32
 	for range 2 {
@@ -386,7 +387,7 @@ func TestHalfOpenAdmitsSingleTrialConcurrent(t *testing.T) {
 				time.Sleep(20 * time.Millisecond)
 				return nil // trial succeeds -> closes
 			})
-			if errors.Is(err, ErrCircuitOpen) {
+			if errors.Is(err, chain.ErrCircuitOpen) {
 				atomic.AddInt32(&rejected, 1)
 			}
 		})
@@ -418,7 +419,7 @@ func TestErrorRateBreakerTripsOnRatio(t *testing.T) {
 		})
 		// Once the breaker trips (after MinRequests with ratio met) further
 		// calls are short-circuited. The last iteration should be rejected.
-		if errors.Is(err, ErrCircuitOpen) {
+		if errors.Is(err, chain.ErrCircuitOpen) {
 			return // trip observed
 		}
 	}
@@ -446,21 +447,21 @@ func TestBreakerRecordsOncePerCallNotPerAttempt(t *testing.T) {
 	// must still reach fn (return "boom"), proving the breaker did NOT open.
 	err := fail()
 	assert.Error(t, err).NotNil()
-	assert.That(t, !errors.Is(err, ErrCircuitOpen)).True()
+	assert.That(t, !errors.Is(err, chain.ErrCircuitOpen)).True()
 
 	// Second failing call: 2 samples now, still closed.
 	err = fail()
 	assert.Error(t, err).NotNil()
-	assert.That(t, !errors.Is(err, ErrCircuitOpen)).True()
+	assert.That(t, !errors.Is(err, chain.ErrCircuitOpen)).True()
 
 	// Third failing call records the 3rd sample and opens — but the opening
 	// happens at record time (after fn ran), so this call still returns "boom".
 	err = fail()
 	assert.Error(t, err).NotNil()
-	assert.That(t, !errors.Is(err, ErrCircuitOpen)).True()
+	assert.That(t, !errors.Is(err, chain.ErrCircuitOpen)).True()
 
 	// The fourth call is rejected outright without invoking fn.
-	assert.Error(t, fail()).Is(ErrCircuitOpen)
+	assert.Error(t, fail()).Is(chain.ErrCircuitOpen)
 }
 
 type timeoutNetErr struct{}
@@ -482,7 +483,7 @@ func TestRateLimitQueueing(t *testing.T) {
 	// And with no wait budget the same shape rejects.
 	e2 := newBuiltin(t, ClientPolicy{RateLimit: 20, Burst: 1})
 	assert.Error(t, e2.Execute(context.Background(), func(context.Context) error { return nil })).Nil()
-	assert.Error(t, e2.Execute(context.Background(), func(context.Context) error { return nil })).Is(ErrRateLimited)
+	assert.Error(t, e2.Execute(context.Background(), func(context.Context) error { return nil })).Is(chain.ErrRateLimited)
 }
 
 func TestSlowCallBreaker(t *testing.T) {
@@ -507,7 +508,7 @@ func TestSlowCallBreaker(t *testing.T) {
 	assert.Error(t, slow()).Nil()
 	// 2/2 slow >= 0.5: the breaker must now be open.
 	err := e.Execute(context.Background(), func(context.Context) error { return nil })
-	assert.Error(t, err).Is(ErrCircuitOpen)
+	assert.Error(t, err).Is(chain.ErrCircuitOpen)
 }
 
 func TestHalfOpenMultipleTrials(t *testing.T) {
@@ -546,7 +547,7 @@ func TestHalfOpenMultipleTrials(t *testing.T) {
 func TestRetryBudget(t *testing.T) {
 	// RetryBudget caps in-flight retries for the executor: call A's retry (in
 	// flight, blocked inside fn) holds the single budget slot, so call B's
-	// retry is rejected with ErrRetryBudgetExceeded. First attempts never take
+	// retry is rejected with chain.ErrRetryBudgetExceeded. First attempts never take
 	// budget. Both calls run through one executor, which serves one service.
 	e := newBuiltin(t, ClientPolicy{MaxRetries: 1, RetryBudget: 1})
 	inRetry := make(chan struct{})
@@ -571,7 +572,7 @@ func TestRetryBudget(t *testing.T) {
 		bCalls++
 		return errutil.Explain(nil, "boom")
 	})
-	assert.Error(t, err).Is(ErrRetryBudgetExceeded)
+	assert.Error(t, err).Is(chain.ErrRetryBudgetExceeded)
 	assert.That(t, bCalls).Equal(1)
 
 	close(unblock)

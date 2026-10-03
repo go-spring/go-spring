@@ -38,7 +38,7 @@ func TestConfig_DirectionBlocks(t *testing.T) {
 		t.Fatalf("zero config policyFor: want no timeout, got %v", p.AttemptTimeout)
 	}
 	if a := c.serverPolicyFor("x"); !a.IsZero() {
-		t.Fatalf("zero config serverPolicyFor: want a zero admission, got %+v", a)
+		t.Fatalf("zero config serverPolicyFor: want a zero inbound, got %+v", a)
 	}
 
 	// One fault config per side: each is preserved, and they stay independent.
@@ -62,10 +62,10 @@ func TestConfig_DirectionBlocks(t *testing.T) {
 	if p := cc.clientPolicyFor("redis:cache"); p.AttemptTimeout != dur(100) {
 		t.Fatalf("policyFor with Fault set: want timeout 100ms, got %v", p.AttemptTimeout)
 	}
-	// An outbound-only document leaves admission at zero: the server side does not
+	// An outbound-only document leaves inbound at zero: the server side does not
 	// inherit the client's knobs.
 	if a := cc.serverPolicyFor("gin:0.0.0.0:8080"); !a.IsZero() {
-		t.Fatalf("client-only document must leave admission zero, got %+v", a)
+		t.Fatalf("client-only document must leave inbound zero, got %+v", a)
 	}
 }
 

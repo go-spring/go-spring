@@ -14,8 +14,8 @@ records the resulting outcomes.
   inbound handler call). Both validate resilience, not bypass it.
 - Centralized, hot-reloadable config. fault rides the same `governance.Config`
   (and so the same source document) as resilience (see
-  [README 设计说明 §8](../governance/README.md)); starter-governance-file owns the one
-  `*Injector` — exported as a bean — and swaps its config in place via
+  [README 设计说明 §8](../governance/README.md)); `cloud/fault` owns the one
+  `*Injector` — registered as a bean — and swaps its config in place via
   `SetConfig`, so toggling fires at runtime with no restart.
 - One config per DIRECTION, so a fire on one side cannot touch the other:
   spring.governance.client.fault.* drives outbound calls, spring.governance.server.fault.* drives
@@ -27,8 +27,8 @@ records the resulting outcomes.
   `Config.Rules`.
 - Injected errors implement `resilience.Retryable`, so they deterministically
   drive retries regardless of the host's retry predicate.
-- stdlib + resilience only — no third-party deps, no gs/spring dependency. The
-  gs wiring lives in starter-governance-file, not here.
+- stdlib + resilience only — no third-party deps. The gs wiring that registers
+  the one `*Injector` bean lives in this package (`starter.go`).
 
 ## Install
 
@@ -47,7 +47,7 @@ import (
     "go-spring.org/cloud/resilience"
 )
 
-// The injector is a bean: starter-governance-file registers one *fault.Injector, and
+// The injector is a bean: cloud/fault registers one *fault.Injector, and
 // a starter takes it as a nullable constructor parameter
 // (gs.IndexArg(n, gs.TagArg("?"))). nil means no governance is in the container,
 // and both entry points below are nil-safe, so the wrap is a transparent
@@ -111,9 +111,11 @@ calls, `ApplyServer` for inbound requests — plus the load-test binary
   `InjectedError` values that are `resilience.Retryable` and surface as familiar
   Go errors (`context.DeadlineExceeded`, `syscall.ECONNRESET`).
 - **Refuses:**
-  - No gs / spring dependency. fault is stdlib + resilience only; the hot-reload
-    wiring lives in the governance center (it shares the single Config — and so
-    the same source — with resilience), not in each client starter.
+  - No gs / spring dependency in the DOMAIN code: the injector is a plain object,
+    and `WrapClientExecutor` / `ApplyServer` are container-free functions. The one
+    bean is registered in this package's `starter.go`, and the hot-reload is driven
+    by the governance center (it shares the single Config — and so the same source —
+    with resilience), not by each client starter.
   - No metrics, tracing or logging of its own. Injected failures flow through
     the host's observe layer (the executor sits inside it), so they are recorded
     exactly like real failures — that is the whole point.
@@ -173,15 +175,15 @@ next call.
 
 ## 3. Constraints
 
-- **stdlib + resilience only.** No third-party deps; the package must stay at
-  the same zero-dependency layer as resilience so a starter that imports fault
-  pulls in nothing new.
+- **stdlib + resilience at the core.** No third-party deps (the gs wiring lives
+  only in `starter.go`, and `cloud` was already on spring for the other
+  authorities); importing fault pulls in nothing new.
 - **nil transparency.** `WrapClientExecutor(nil, service, nil)` returns nil, and a nil *injector*
   is transparent: `WrapClientExecutor(exec, service, nil)` runs `fn` untouched while no fault is configured
   — the same zero-config invariant resilience's `NewDialer`/`NewRoundTripper`
   uphold.
-- **Forwarded lifecycle.** `faultExecutor.Close` and `Refresh` delegate to the
-  inner executor; fault has no resources or policy of its own to manage.
+- **Forwarded lifecycle.** `faultExecutor.Close` delegates to the inner
+  executor; fault has no resources or policy of its own to manage.
 
 ## 4. Trade-offs / Alternatives Rejected
 

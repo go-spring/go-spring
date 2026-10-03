@@ -4,14 +4,14 @@
 
 `starter-governance-sentinel` 把 [alibaba/sentinel-golang][sentinel] 注册为
 [`cloud/resilience`](../../cloud/resilience) 韧性框架的生产 driver。
-与 [`starter-governance-file`](../starter-governance-file) 一起空导入,并在治理文档里
+空导入它,并在治理文档里
 写 `spring.governance.driver=sentinel` —— 此后每个经治理中心解析 executor 的客户端,都在
 同一份中立 `ClientPolicy` 之上获得自适应限流、熔断与并发隔离,无需按客户端配 key,
 也无需改代码。
 
 它属于 *global / infrastructure*(全局 / 基础设施)形态(见
 [starter/DESIGN.md](../DESIGN.md) §2.4):只贡献一个 bean —— 名为 `sentinel`
-的 `resilience.Driver`,由 [`starter-governance-file`](../starter-governance-file) 收进 driver
+的 `resilience.Driver`,由 [`cloud/resilience`](../../cloud/resilience) 收进 driver
 目录 —— 也不开监听端口。`sentinel.InitDefault` 在 import 时就执行,故环境异常
 在启动时立刻炸出,而不是等到第一次调用时才暴露。
 

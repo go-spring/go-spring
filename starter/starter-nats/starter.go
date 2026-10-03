@@ -43,19 +43,13 @@ func init() {
 			// bean when a company provides one, nil otherwise, and newConn
 			// falls back to DefaultDriver); set → that bean name, and naming
 			// a bean that does not exist fails loud. The trailing governance
-			// beans (*resilience.Manager / *fault.Injector) are REQUIRED
-			// (TagArg("")): newConn bundles them into the
-			// cloud.ClientParams it hands the Driver.
+			// center (index 4) is the family's sole injection point: newConn
+			// reads the resilience/fault authorities from it and bundles them
+			// into the cloud.ClientParams it hands the Driver.
 			r.Provide(newConn,
 				gs.IndexArg(1, gs.ValueArg(name)),
 				gs.IndexArg(2, gs.ValueArg(c)),
 				gs.IndexArg(3, gs.TagArg("${spring.nats.instances."+name+".driver:=${spring.nats.default.driver:=?}}")),
-				// The governance beans are REQUIRED: each is registered by the package that
-				// owns it (cloud/resilience, cloud/loadbalance, cloud/fault), which this
-				// starter imports — "governance off" is spring.governance.enabled=false, never
-				// an absent bean.
-				gs.IndexArg(4, gs.TagArg("")),
-				gs.IndexArg(5, gs.TagArg("")),
 			).Name(name).Destroy((*Conn).Destroy).Caller(1)
 
 			// Export the broker-neutral messaging.Driver over this connection as a

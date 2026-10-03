@@ -174,8 +174,8 @@ defer stop()
   call it, or the manager keeps a callback pointing at a dead pool.
 - Binding an **unarmed** manager is safe and is the normal case for a pool built
   during container wiring: the subscription is remembered and armed by the first
-  `Apply`. With no manager injected at all (a container without
-  starter-governance-file, or a standalone caller) the pool keeps the strategy it was
+  `Apply`. With no manager injected at all (a container with no `cloud/governance`
+  bean, or a standalone caller) the pool keeps the strategy it was
   built with — a transparent pass-through.
 - An empty strategy name leaves the current strategy alone; an **unknown** name
   is ignored and the last good strategy stays in force. The suspension thresholds

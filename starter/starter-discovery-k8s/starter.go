@@ -27,6 +27,30 @@ import (
 	"go-spring.org/stdlib/flatten"
 )
 
+func init() {
+	// One NAMED bean per block under ${spring.discovery.k8s.<name>}: the bean
+	// name "k8s.<name>" is the label a client starter cites to pick this
+	// backend (the name carries the backend type, so blocks across backends
+	// never collide). The container is the discovery directory — a backend is
+	// constructed at injection time (only when something cites it) and its
+	// background resources (client-go informers) are released by the bean
+	// destructor on shutdown. A duplicate name within this backend fails loudly
+	// in the container.
+	gs.Module(gs.OnProperty("spring.discovery.k8s"), func(r gs.BeanProvider, p flatten.Storage) error {
+		return conf.BindEach(p, "${spring.discovery.k8s}", func(name string, c Config) error {
+			if !c.Enabled {
+				return nil
+			}
+			r.Provide(newBackendBean,
+				gs.IndexArg(1, gs.ValueArg(c)),
+				gs.IndexArg(2, gs.ValueArg(name)),
+			).Name("k8s." + name).Destroy(destroyBackendBean).Caller(1)
+			log.Debugf(context.Background(), starterTag, "declared k8s discovery backend bean name=%s mode=%s namespace=%s", "k8s."+name, c.Mode, c.Namespace)
+			return nil
+		})
+	})
+}
+
 var (
 	// starterTag identifies logs emitted by the k8s discovery starter. It is a
 	// user-facing config key — USAGE documents tuning this starter's logging via
@@ -39,27 +63,6 @@ var (
 // discovery backends. This backend reports the READ side only: it has no
 // registry, so it emits no RegisterAttempt / DeregisterAttempt / WeightChange.
 const obsSystem = "k8s"
-
-func init() {
-	// One NAMED bean per block under ${spring.discovery.k8s.<name>}: the bean
-	// name "k8s.<name>" is the label a client starter cites to pick this
-	// backend (the name carries the backend type, so blocks across backends
-	// never collide). The container is the discovery directory — a backend is
-	// constructed at injection time (only when something cites it) and its
-	// background resources (client-go informers) are released by the bean
-	// destructor on shutdown. A duplicate name within this backend fails loudly
-	// in the container.
-	gs.Module(gs.OnProperty("spring.discovery.k8s"), func(r gs.BeanProvider, p flatten.Storage) error {
-		return conf.BindEach(p, "${spring.discovery.k8s}", func(name string, c Config) error {
-			r.Provide(newBackendBean,
-				gs.IndexArg(1, gs.ValueArg(c)),
-				gs.IndexArg(2, gs.ValueArg(name)),
-			).Name("k8s." + name).Destroy(destroyBackendBean).Caller(1)
-			log.Debugf(context.Background(), starterTag, "declared k8s discovery backend bean name=%s mode=%s namespace=%s", "k8s."+name, c.Mode, c.Namespace)
-			return nil
-		})
-	})
-}
 
 // newBackendBean builds the discovery backend for c. It runs at injection
 // time, so an invalid mode or an unreachable API server fails startup.

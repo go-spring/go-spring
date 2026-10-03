@@ -22,7 +22,6 @@ import (
 	"testing"
 
 	"go-spring.org/cloud/observability"
-	"go-spring.org/cloud/resilience"
 	"go-spring.org/stdlib/testing/assert"
 	"go.opentelemetry.io/otel/attribute"
 	"google.golang.org/grpc"
@@ -75,7 +74,7 @@ func TestOperationWithoutSlashKeepsWholeWord(t *testing.T) {
 	assert.String(t, attrsLine(op.Detail)).Equal("db.method=Flush")
 }
 
-// captureExecutor is a ClientExecutor that runs fn with the ctx it was handed,
+// captureExecutor is a chain.Executor that runs fn with the ctx it was handed,
 // so the test sees exactly the ctx the emitter reads the operation from at
 // Execute entry.
 type captureExecutor struct {
@@ -91,8 +90,7 @@ func (e *captureExecutor) Execute(ctx context.Context, fn func(context.Context) 
 	e.seen.op, e.seen.ok = observability.OperationFrom(ctx)
 	return fn(ctx)
 }
-func (e *captureExecutor) Close() error                          { return nil }
-func (e *captureExecutor) Refresh(resilience.ClientPolicy) error { return nil }
+func (e *captureExecutor) Close() error { return nil }
 
 // TestUnaryGuardDeclaresOperationBeforeExecuting pins the wire-up: the
 // interceptor must put the declaration on the context the executor reads it

@@ -24,6 +24,16 @@ import (
 // injects *loadbalance.Manager has already imported this package, and its
 // constructor parameter is REQUIRED — an absent bean fails startup rather than
 // degrading silently.
+//
+// The strategy directory is a constructor parameter: gs collects every
+// [Factory] bean the container holds (a deployment contributes one with
+// gs.Provide(...).Name("<strategy>").Export(gs.As[Factory]())) and hands the map
+// over at construction, so there is no separate install step and no window in
+// which a manager exists without its strategies. The tag is nullable because
+// contributing none is the common case, and an empty collection is otherwise an
+// injection error.
 func init() {
-	gs.Provide(func() *Manager { return NewManager() }).Caller(1)
+	gs.Provide(func(factories map[string]Factory) (*Manager, error) {
+		return NewManager(factories)
+	}, gs.TagArg("?")).Caller(1)
 }

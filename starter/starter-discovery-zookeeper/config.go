@@ -21,6 +21,11 @@ import "time"
 // ZookeeperConfig binds the ZooKeeper ensemble connection under
 // ${spring.discovery.zookeeper}.
 type ZookeeperConfig struct {
+	// Enabled turns this named block off without deleting it. Default true;
+	// a disabled block contributes no beans (no session, no registration,
+	// no discovery, no health indicator).
+	Enabled bool `value:"${enabled:=true}"`
+
 	// Servers lists the ZooKeeper ensemble members to connect to, e.g.
 	// "127.0.0.1:2181". Required; setting it is what activates this starter
 	// (fail-loud opt-in; no silent localhost).

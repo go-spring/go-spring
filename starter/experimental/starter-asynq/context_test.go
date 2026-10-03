@@ -21,9 +21,7 @@ import (
 	"testing"
 
 	"github.com/hibiken/asynq"
-	"go-spring.org/cloud/fault"
 	"go-spring.org/cloud/observability"
-	"go-spring.org/cloud/resilience"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/testing/assert"
 	"go.opentelemetry.io/otel"
@@ -70,8 +68,7 @@ func TestEnqueueSpanCarriesSpanAttributes(t *testing.T) {
 	}()
 
 	cp := &gs.ContextProvider{Context: context.Background()}
-	c, err := newClient(cp, Config{Addr: "127.0.0.1:1"}, nil,
-		resilience.NewManager(), fault.NewInjector(fault.Configs{}, nil))
+	c, err := newClient(cp, Config{Addr: "127.0.0.1:1"}, nil, testCenter())
 	assert.Error(t, err).Nil()
 	defer func() { _ = c.Client.Close() }()
 

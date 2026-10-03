@@ -52,7 +52,7 @@ Token 来源:注入 `security.TokenValidator`(由 `starter-oauth2-resource-serve
 
 ## 4. 运维
 
-安全中间件不产生日志、指标;观测由 server 侧与 `starter-governance-file` 提供。
+安全中间件不产生日志、指标;观测由 server 侧与治理（`cloud/governance`）提供。
 CSRF cookie 名/头名默认 `csrf_token` / `X-CSRF-Token`,与 gin/echo 壳一致。
 
 一个请求的信号来自 `ServerPolicy` —— 与其它每个 starter 同一套分工:中间件**声明**

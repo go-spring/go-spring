@@ -39,7 +39,6 @@ require (
     go-spring.org/starter-elasticsearch latest
     go-spring.org/starter-actuator     latest   // 可选：readiness :9370
     go-spring.org/starter-otel         latest   // 可选：真实 trace/metric 导出
-    go-spring.org/starter-governance-file   latest   // 可选：resilience/fault 策略
 )
 ```
 
@@ -51,7 +50,6 @@ package main
 import (
     "go-spring.org/spring/gs"
     _ "go-spring.org/starter-actuator"
-    _ "go-spring.org/starter-governance-file"
     _ "go-spring.org/starter-otel"
     StarterElasticsearch "go-spring.org/starter-elasticsearch"
     _ "demo/service"
@@ -344,7 +342,7 @@ grep _app_elasticsearch_access app.log | tail -1
 ### 4.3 resilience / fault 演练（example-load 风格）
 
 ```properties
-# NOTE: governance RULES go in conf/governance.properties, referenced by spring.governance.source.file.path in app.properties (see starter-governance-file USAGE).
+# NOTE: governance RULES go in conf/governance.properties, referenced by spring.governance.source.file.path in app.properties (see cloud/governance's SOURCE_USAGE).
 spring.governance.enabled=true
 spring.governance.driver=default
 spring.governance.client.default.rate-limit=5          # 并发 > 5 → ErrRateLimited 拒绝

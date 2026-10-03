@@ -8,7 +8,6 @@ package wssvr
 
 import (
 	"context"
-	"errors"
 	"net"
 	"net/http"
 
@@ -17,6 +16,7 @@ import (
 	"github.com/gorilla/websocket"
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
+	"go-spring.org/stdlib/errutil"
 )
 
 func init() {
@@ -92,7 +92,7 @@ func (s *Server) Run(ctx context.Context, sig gs.ReadySignal) error {
 
 	<-sig.TriggerAndWait()
 
-	if err = s.svr.Serve(ln); err != nil && !errors.Is(err, http.ErrServerClosed) {
+	if err = s.svr.Serve(ln); err != nil && !errutil.IsServerClosed(err) {
 		return err
 	}
 	return nil

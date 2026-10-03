@@ -32,6 +32,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"go-spring.org/cloud/chain"
 	"net"
 	"net/http"
 	"os"
@@ -75,13 +76,13 @@ func demoClientDialer(driver resilience.Driver) {
 	for i := 1; i <= 3; i++ {
 		if _, err := dial(context.Background(), "tcp", deadAddr); err == nil {
 			fail("dial %d unexpectedly succeeded", i)
-		} else if errors.Is(err, resilience.ErrCircuitOpen) {
+		} else if errors.Is(err, chain.ErrCircuitOpen) {
 			fail("dial %d opened breaker too early", i)
 		}
 	}
 
 	_, err = dial(context.Background(), "tcp", deadAddr)
-	if !errors.Is(err, resilience.ErrCircuitOpen) {
+	if !errors.Is(err, chain.ErrCircuitOpen) {
 		fail("breaker did not open after 3 failures: %v", err)
 	}
 	fmt.Println("client Dialer: circuit opened after 3 refused dials")

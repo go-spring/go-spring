@@ -18,11 +18,81 @@ package StarterConfigApollo
 
 import (
 	"context"
-	agstorage "github.com/apolloconfig/agollo/v4/storage"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
+	"time"
 
+	agstorage "github.com/apolloconfig/agollo/v4/storage"
+	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/testing/assert"
 )
+
+// mockApollo serves the endpoints agollo needs: meta service discovery, the
+// namespace content, and the long-poll notification endpoint. It mirrors the
+// mock in example/main.go — the starter's contract is the provider seam, so a
+// mock service covers it end to end without the Apollo stack.
+func mockApollo(t *testing.T, content string) *httptest.Server {
+	t.Helper()
+	var srv *httptest.Server
+	srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/services/config":
+			http.Error(w, "[]", http.StatusOK) // empty: agollo falls back to the source address
+		case "/configfiles/json/demo/default/application":
+			_, _ = w.Write([]byte(content))
+		case "/notifications/v2":
+			// Real Apollo holds the poll open; sleeping keeps the loop from
+			// spinning while the app instance is up.
+			time.Sleep(200 * time.Millisecond)
+			w.WriteHeader(http.StatusNotModified)
+		default:
+			_, _ = w.Write([]byte(`[{"appName":"demo","instanceId":"mock","homepageUrl":"` + srv.URL + `"}]`))
+		}
+	}))
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+// TestApolloAcrossAppInstances is the end-to-end counterpart of the
+// fake-backed tests: it drives the real agollo client against a mock service and
+// runs two application instances in one process. The second instance is the
+// Close-then-Load path required by provider.Provider — exactly what sequential
+// gs.RunTest runs do — so it proves the client can be stopped and rebuilt, not
+// just that the controller clears its own cache.
+func TestApolloAcrossAppInstances(t *testing.T) {
+	srv := mockApollo(t, `{"demo.message":"hello-from-apollo"}`)
+	source := "apollo:" + strings.TrimPrefix(srv.URL, "http://") + "/application?appId=demo"
+
+	// The import must be declared in a loaded config file (imports are read from
+	// the file's own properties, not from the layered storage), so point the app
+	// at a throwaway config directory holding one such file.
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "app.properties"),
+		[]byte("spring.config.import="+source+"\n"), 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	loadOnce := func() string {
+		var got string
+		gs.Web(false).Configure(func(app gs.App) {
+			app.Property("spring.app.config.dir", dir)
+		}).RunTest(t, func(d *struct {
+			Message gs.Dync[string] `value:"${demo.message:=none}"`
+		}) {
+			got = d.Message.Value()
+		})
+		return got
+	}
+
+	assert.That(t, loadOnce()).Equal("hello-from-apollo")
+	// The first instance has shut down and closed the provider by now; a fresh
+	// instance must be able to start polling again.
+	assert.That(t, loadOnce()).Equal("hello-from-apollo")
+}
 
 // TestParseSource pins the source grammar and defaults: cluster "default",
 // format inferred from the namespace extension.
@@ -57,6 +127,7 @@ type fakeApolloClient struct {
 	content string // namespace content GetConfig returns; empty means "not loaded"
 	ns      string // namespace GetConfig is called with
 	listens int
+	closed  int
 }
 
 func (f *fakeApolloClient) GetConfigContent(namespace string) string {
@@ -66,6 +137,10 @@ func (f *fakeApolloClient) GetConfigContent(namespace string) string {
 
 func (f *fakeApolloClient) AddChangeListener(agstorage.ChangeListener) {
 	f.listens++
+}
+
+func (f *fakeApolloClient) Close() {
+	f.closed++
 }
 
 // newCtrlWithFake pre-seeds the controller's client cache for source so
@@ -78,6 +153,40 @@ func newCtrlWithFake(source string, fake *fakeApolloClient) (*apolloCtrl, error)
 	c := newApolloCtrl()
 	c.clients[clientKey(cs)] = fake
 	return c, nil
+}
+
+// TestCloseReleasesClientAndLoadRearms pins the provider lifecycle: Close stops
+// the client it created and drops it, so a later Load (a new application
+// instance in the same process) cannot reuse a stopped client and re-listens
+// from scratch.
+func TestCloseReleasesClientAndLoadRearms(t *testing.T) {
+	const source = "127.0.0.1:8080/application?appId=demo"
+	fake := &fakeApolloClient{content: "greeting=hello\n"}
+	c, err := newCtrlWithFake(source, fake)
+	assert.That(t, err).Nil()
+
+	if _, err = c.Load(false, source); err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	assert.Number(t, fake.listens).Equal(1)
+	assert.Number(t, len(c.clients)).Equal(1)
+
+	assert.That(t, c.Close()).Nil()
+	assert.Number(t, fake.closed).Equal(1)
+	assert.Number(t, len(c.clients)).Equal(0)
+	assert.Number(t, len(c.listened)).Equal(0)
+
+	// Re-seeding the cache stands in for the fresh client the next Load would
+	// build: the controller must have dropped the old one, and it must listen
+	// again.
+	cs, err := parseSource(source)
+	assert.That(t, err).Nil()
+	c.clients[clientKey(cs)] = fake
+
+	if _, err = c.Load(false, source); err != nil {
+		t.Fatalf("Load after Close: %v", err)
+	}
+	assert.Number(t, fake.listens).Equal(2)
 }
 
 // TestLoadProperties pins the happy path: properties content parsed and
@@ -131,8 +240,8 @@ func TestListenerRegisteredOncePerSource(t *testing.T) {
 }
 
 // TestListenerChangeFiresRefresh pins the listener seam: firing OnChange /
-// OnNewestChange reaches TriggerRefresh, which before the container wires the
-// PropertiesRefresher must be a harmless no-op rather than a nil dereference.
+// OnNewestChange reaches TriggerRefresh, which must be a harmless no-op before
+// the app has started rather than a nil dereference.
 func TestListenerChangeFiresRefresh(t *testing.T) {
 	l := &apolloListener{ctrl: newApolloCtrl()}
 	l.OnChange(&agolloChangeEvent{})

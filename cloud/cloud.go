@@ -25,6 +25,7 @@
 package cloud
 
 import (
+	"go-spring.org/cloud/chain"
 	"go-spring.org/cloud/discovery"
 	"go-spring.org/cloud/fault"
 	"go-spring.org/cloud/loadbalance"
@@ -83,7 +84,7 @@ type ClientParams struct {
 // A component with nothing to protect does not come through here: an in-process
 // cache pins [resilience.Observed] itself (see starter-bigcache), so that a rule
 // naming its label — or a family-wide default — has no seam to reach it.
-func (p ClientParams) ExecutorFor(system, label string) resilience.ClientExecutor {
+func (p ClientParams) ExecutorFor(system, label string) chain.Executor {
 	if p.Resilience == nil {
 		return resilience.Unmanaged(system, label)
 	}

@@ -100,7 +100,7 @@ etcdctl put gs-config-demo "demo.message=hello-2"     # bound gs.Dync field flip
 
 ```
 blank-import starter-config-etcd
-  └─ init(): conf.RegisterProvider("etcd", etcdController.Load)
+  └─ init(): conf.RegisterProvider("etcd", newEtcdCtrl())
 
 gs.Run() → App.Start()
   1. mount the gs.RefreshProperties / gs.AppStarted facade targets

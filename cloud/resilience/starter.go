@@ -31,7 +31,15 @@ import (
 // anywhere, over the bundled driver. A governance center, when one is linked,
 // only pushes policy into it (and swaps the driver directory in).
 func init() {
-	gs.Provide(func() *Manager { return NewManager() }).Caller(1)
+	// The driver directory is a constructor parameter: gs collects every [Driver]
+	// bean the container holds — including this package's bundled named driver
+	// below — and hands the map over at construction, so the manager never exists
+	// without its directory and there is no separate install step. The tag is
+	// nullable for the shape's sake rather than out of need: the bundled driver
+	// is always present, so the collection is never empty.
+	gs.Provide(func(drivers map[string]Driver) *Manager {
+		return NewManager(drivers)
+	}, gs.TagArg("?")).Caller(1)
 
 	// The bundled engine, contributed as a NAMED driver bean. It takes the
 	// process's counter store IF a backend starter contributed one — a Redis

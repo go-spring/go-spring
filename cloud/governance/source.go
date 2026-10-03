@@ -65,9 +65,9 @@ type Source interface {
 //	// later, on each console event:
 //	src.Push(cfg)
 //
-// The usual route is the bean one instead: export a [Source] and let
-// starter-governance bind it (see [Center.BindDefault]); SetSource is the eager
-// path for a caller that holds the center and wants to pre-empt the default.
+// The usual route is the bean one instead: export a [Source] and the container
+// hands it straight to the center's constructor; SetSource is the eager path for
+// a caller that holds the center and wants to replace whatever is bound.
 //
 // Safe for concurrent use.
 type PushSource struct {

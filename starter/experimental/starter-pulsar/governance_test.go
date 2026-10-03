@@ -25,7 +25,6 @@ import (
 	"github.com/apache/pulsar-client-go/pulsar"
 	"go-spring.org/cloud"
 	"go-spring.org/cloud/messaging"
-	"go-spring.org/cloud/resilience"
 	"go-spring.org/cloud/traffic"
 	"go-spring.org/stdlib/testing/assert"
 )
@@ -42,8 +41,7 @@ func (s *stubExecutor) Execute(context.Context, func(context.Context) error) err
 	s.called.Add(1)
 	return errGovernanceStub
 }
-func (s *stubExecutor) Close() error                          { return nil }
-func (s *stubExecutor) Refresh(resilience.ClientPolicy) error { return nil }
+func (s *stubExecutor) Close() error { return nil }
 
 // fakePulsarClient is a map-key-only stand-in for the client bean; no method
 // is ever invoked because the executor rejects first.

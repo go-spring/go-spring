@@ -35,7 +35,6 @@ require (
     go-spring.org/starter-neo4j        latest
     go-spring.org/starter-actuator     latest   // 可选：readiness + /metrics
     go-spring.org/starter-otel         latest   // 可选：真实 trace/metric 导出
-    go-spring.org/starter-governance-file   latest   // 可选：resilience/fault 策略
 )
 ```
 
@@ -47,7 +46,6 @@ package main
 import (
     "go-spring.org/spring/gs"
     _ "go-spring.org/starter-actuator"
-    _ "go-spring.org/starter-governance-file"
     _ "go-spring.org/starter-neo4j"
     _ "go-spring.org/starter-otel"
     _ "demo/service"
@@ -136,7 +134,7 @@ spring.observability.metrics.exporter=prometheus
 spring.actuator.addr=:9370
 
 # --- governance：Query / RunWithResilience 的保护 ----------------------------
-# NOTE: governance RULES go in conf/governance.properties, referenced by spring.governance.source.file.path in app.properties (see starter-governance-file USAGE).
+# NOTE: governance RULES go in conf/governance.properties, referenced by spring.governance.source.file.path in app.properties (see cloud/governance's SOURCE_USAGE).
 spring.governance.enabled=true
 spring.governance.driver=default
 spring.governance.client.default.rate-limit=100
@@ -366,7 +364,7 @@ curl -s :9090/metrics | grep -E 'db.client.(operation|attempt).duration|db.clien
 ### 4.3 韧性演练（example-cloudnative / example-load 形态）
 
 ```properties
-# NOTE: governance RULES go in conf/governance.properties, referenced by spring.governance.source.file.path in app.properties (see starter-governance-file USAGE).
+# NOTE: governance RULES go in conf/governance.properties, referenced by spring.governance.source.file.path in app.properties (see cloud/governance's SOURCE_USAGE).
 spring.governance.enabled=true
 spring.governance.client.default.rate-limit=5
 ```

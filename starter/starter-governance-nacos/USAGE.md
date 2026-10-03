@@ -10,7 +10,7 @@ group, namespace, `ListenConfig`) are [Nacos docs](https://nacos.io/docs/latest/
 
 **What this starter is**: the Nacos adapter of the governance rule-source family. It is a
 `governance.Source` implementation; presenting the governance center itself is
-[starter-governance-file](../starter-governance-file)'s job. Blank-importing this package is inert until a
+[cloud/governance](../../cloud/governance)'s job. Blank-importing this package is inert until a
 `spring.governance.source.nacos.*` key is present.
 
 ---
@@ -33,7 +33,6 @@ demo/
 ```
 require (
     go-spring.org/spring                  v1.3.x
-    go-spring.org/starter-governance-file       latest
     go-spring.org/starter-governance-nacos latest
 )
 ```
@@ -47,7 +46,6 @@ import (
     "go-spring.org/cloud/resilience"
     "go-spring.org/spring/gs"
 
-    _ "go-spring.org/starter-governance-file"
     _ "go-spring.org/starter-governance-nacos"
 )
 
@@ -67,7 +65,7 @@ func (p *poller) Run(ctx context.Context) error {
 }
 
 // newPoller builds the poller over the injected manager. A nil manager — a
-// container without starter-governance-file — is normalized to a fresh unarmed one.
+// container without cloud/governance's bean — is normalized to a fresh unarmed one.
 func newPoller(mgr *resilience.Manager) *poller {
     if mgr == nil {
         mgr = resilience.NewManager()
@@ -165,7 +163,7 @@ blank-import starter-governance-nacos
             .Export(gs.As[governance.Source]())
 
 gs.Run()
-  ├─ bean wiring: the exported Source bean is injected into starter-governance-file's wiring
+  ├─ bean wiring: the exported Source bean is injected into cloud/governance's wiring
   ├─ source bean Init: ListenConfig installs the OnChange listener
   ├─ your Runners run (governance already armed — Rooter precedes Runner)
   └─ on SIGTERM: source bean Destroy → Close: CancelListenConfig + CloseClient
@@ -228,11 +226,11 @@ starter surface.
 
 ⚠ `spring.governance.source.*` is the bootstrap surface only. The rules document itself never rides
 `app.properties` — it lives in its own dataId, and its keys are the `spring.governance.*` vocabulary
-documented in [starter-governance-file's USAGE](../starter-governance-file/USAGE.md).
+documented in [cloud/governance's SOURCE_USAGE](../../cloud/governance/SOURCE_USAGE.md).
 
 ### 3.1 Byte-portability of the document
 
-The document is parsed by the same `governance.Parse` used by the `starter-governance-file` file and http
+The document is parsed by the same `governance.Parse` used by cloud/governance's built-in file and http
 sources: it is flattened, required to carry at least one `spring.governance.*` key, then bound into
 `governance.Config`. Consequently a document that works as a local rules file works unchanged as a
 Nacos dataId (and vice versa, and as an etcd value with

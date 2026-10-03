@@ -18,7 +18,6 @@ package gs
 
 import (
 	"context"
-	"errors"
 	"net"
 	"net/http"
 	"time"
@@ -123,7 +122,7 @@ func (s *SimpleHttpServer) Run(ctx context.Context, sig ReadySignal) error {
 
 	<-sig.TriggerAndWait()
 	err = s.svr.Serve(ln)
-	if errors.Is(err, http.ErrServerClosed) {
+	if errutil.IsServerClosed(err) {
 		log.Infof(ctx, httpServerTag, "HTTP server closed gracefully")
 		return nil
 	}

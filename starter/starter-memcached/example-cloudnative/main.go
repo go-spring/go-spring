@@ -36,6 +36,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"go-spring.org/cloud/chain"
 	"io"
 	"net/http"
 	"os"
@@ -46,12 +47,10 @@ import (
 
 	"github.com/bradfitz/gomemcache/memcache"
 	"go-spring.org/cloud/discovery"
-	"go-spring.org/cloud/resilience"
 	"go-spring.org/spring/gs"
 
-	_ "go-spring.org/starter-actuator"        // aggregates the memcached health.Indicator
-	_ "go-spring.org/starter-config-file"     // registers the file-watch config provider
-	_ "go-spring.org/starter-governance-file" // registers the centralized governance center
+	_ "go-spring.org/starter-actuator"    // aggregates the memcached health.Indicator
+	_ "go-spring.org/starter-config-file" // registers the file-watch config provider
 	StarterMemcached "go-spring.org/starter-memcached"
 )
 
@@ -135,7 +134,7 @@ func runTest(s *Service, c *Config) {
 		switch {
 		case err == nil:
 			admitted++
-		case errors.Is(err, resilience.ErrRateLimited):
+		case errors.Is(err, chain.ErrRateLimited):
 			rejected++
 		default:
 			fail("Set: %v", err)

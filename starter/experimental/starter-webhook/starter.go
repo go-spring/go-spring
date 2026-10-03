@@ -26,13 +26,14 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"go-spring.org/cloud/chain"
+	"go-spring.org/cloud/governance"
 	"io"
 	"net/http"
 	"net/url"
 	"time"
 
 	"go-spring.org/cloud"
-	"go-spring.org/cloud/fault"
 	"go-spring.org/cloud/observability"
 	"go-spring.org/cloud/resilience"
 	"go-spring.org/log"
@@ -41,6 +42,33 @@ import (
 	"go-spring.org/stdlib/errutil"
 	"go-spring.org/stdlib/flatten"
 )
+
+func init() {
+	// Register multiple webhook notifiers as a group, one per entry under
+	// "${spring.webhook.instances}". A gs.Module (rather than gs.Group) is used
+	// because the constructor takes the injected governance center alongside the
+	// config entry — its authorities arm each notifier's executor. Adding
+	// a second endpoint is a pure-config change. There is no default singleton —
+	// select one by name (e.g. autowire:"alert").
+	//
+	// No destroy callback: each Send is a stateless HTTP request, so there is
+	// nothing to release at shutdown.
+	gs.Module(gs.OnProperty("spring.webhook.instances"), func(r gs.BeanProvider, p flatten.Storage) error {
+		// Any key an instance does not define falls back to the family-wide
+		// "default" bucket: spring.webhook.default.<k> is the value every
+		// instance inherits unless it sets its own.
+		p = flatten.WithFallback(p, "spring.webhook.instances", "spring.webhook.default")
+		return conf.BindEach(p, "${spring.webhook.instances}", func(name string, c Config) error {
+			r.Provide(newNotifier,
+				gs.IndexArg(1, gs.ValueArg(name)),
+				gs.IndexArg(2, gs.ValueArg(c)),
+				// The governance center is the family's sole injection point: it hands
+				// out the resilience/fault/loadbalance authorities.
+			).Name(name).Caller(1)
+			return nil
+		})
+	})
+}
 
 // Notification is one outbound webhook message. Title is the headline (shown
 // bold/markdown by most receivers), Text is the body.
@@ -56,53 +84,23 @@ type Notification struct {
 type Notifier struct {
 	cfg    Config
 	client *http.Client
-	exec   resilience.ClientExecutor
-}
-
-func init() {
-	// Register multiple webhook notifiers as a group, one per entry under
-	// "${spring.webhook.instances}". A gs.Module (rather than gs.Group) is used
-	// because the constructor takes the injected governance beans alongside the
-	// config entry — the manager and injector arm each notifier's executor. Adding
-	// a second endpoint is a pure-config change. There is no default singleton —
-	// select one by name (e.g. autowire:"alert").
-	//
-	// No destroy callback: each Send is a stateless HTTP request, so there is
-	// nothing to release at shutdown.
-	gs.Module(gs.OnProperty("spring.webhook.instances"), func(r gs.BeanProvider, p flatten.Storage) error {
-		// Any key an instance does not define falls back to the family-wide
-		// "default" bucket: spring.webhook.default.<k> is the value every
-		// instance inherits unless it sets its own.
-		p = flatten.WithFallback(p, "spring.webhook.instances", "spring.webhook.default")
-		return conf.BindEach(p, "${spring.webhook.instances}", func(name string, c Config) error {
-			r.Provide(newNotifier,
-				gs.IndexArg(1, gs.ValueArg(name)),
-				gs.IndexArg(2, gs.ValueArg(c)),
-				// The governance beans are REQUIRED: each is registered by the package that
-				// owns it (cloud/resilience, cloud/loadbalance, cloud/fault), which this
-				// starter imports — "governance off" is spring.governance.enabled=false, never
-				// an absent bean.
-				gs.IndexArg(3, gs.TagArg("")), // *resilience.Manager
-				gs.IndexArg(4, gs.TagArg("")), // *fault.Injector
-			).Name(name).Caller(1)
-			return nil
-		})
-	})
+	exec   chain.Executor
 }
 
 // newNotifier builds a Notifier from config. There is deliberately no startup
 // probe: the only universal probe would be a real POST, and sending a junk
 // notification at boot is worse than failing on first use.
 //
-// mgr and inj are the governance beans gs injects (both nil in a standalone
-// call); the ctor bundles them into the [cloud.ClientParams] it applies while
-// building, so the notifier is complete in one step — there is no
+// center is the governance center gs injects (nil in a standalone call) — the
+// family's sole injection point; the ctor reads the resilience and fault
+// authorities from it and bundles them into the [cloud.ClientParams] it applies
+// while building, so the notifier is complete in one step — there is no
 // applyGovernance step after construction and nothing the container has to
 // remember to call. A zero bundle (a hand-built notifier, or a container without
-// governance beans) degrades to resilience.Unmanaged: the notifier is still
+// governance) degrades to resilience.Unmanaged: the notifier is still
 // observed and warns once that no protection applies, rather than running
 // silently bare.
-func newNotifier(ctx *gs.ContextProvider, name string, c Config, mgr *resilience.Manager, inj *fault.Injector) (*Notifier, error) {
+func newNotifier(ctx *gs.ContextProvider, name string, c Config, center *governance.Center) (*Notifier, error) {
 	if _, _, err := buildPayload(c.Channel, &Notification{}, c.Secret, time.Now()); err != nil {
 		return nil, err
 	}
@@ -111,7 +109,7 @@ func newNotifier(ctx *gs.ContextProvider, name string, c Config, mgr *resilience
 	// Governance is applied HERE, in the constructor: the bundle is the single
 	// composition point ([cloud.ClientParams.ExecutorFor]) that turns the
 	// injected manager/injector into the executor every Send runs on.
-	params := cloud.ClientParams{Resilience: mgr, Fault: inj}
+	params := cloud.ClientParams{Resilience: center.Resilience(), Fault: center.Fault()}
 	exec := params.ExecutorFor("webhook", resilience.ServiceLabel("webhook", c.Channel, name))
 	return &Notifier{
 		cfg:    c,

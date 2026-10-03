@@ -157,9 +157,9 @@ curl -s '127.0.0.1:16686/api/traces?service=demo&limit=1' | grep '"data":\['
 
 ```
 import starter-gorm-mysql
-  └─ init: gormcore.Module(Dialect{Prefix: "spring.gorm.mysql", Engine: "mysql", ...})
+  └─ init: gs.Module(gs.OnProperty("spring.gorm.mysql.instances"), ...)   —— 注册在 starter.go
 gs.Run()
-  ├─ OnProperty("spring.gorm.mysql") 命中；conf.BindEach 为每个 <name> 条目绑定一份 Config
+  ├─ OnProperty("spring.gorm.mysql.instances") 命中；conf.BindEach 为每个 <name> 条目绑定一份 Config
   ├─ 每实例：build(ctx, c)
   │    ├─ addr/service-name 存在性检查（必须设其一）
   │    ├─ TLS：c.TLS.BuildClient() -> *tls.Config；mysql.RegisterTLSConfig("gstls_<n>", cfg)
@@ -167,11 +167,13 @@ gs.Run()
   │    └─ 服务发现（设了 service-name 且 mesh 关闭）：
   │         mysql.RegisterDialContext("gsdisco_<svc>_<n>", 经 round-robin pick pool 拨号)
   │         并把 DSN 改写为 net(gsdisco_...)(<service-name>)
-  ├─ gormcore.Open：gorm.Open -> ApplyPool（含启动 ping、ping-timeout 上限）
-  │    -> ApplyDBCustomizers -> *DB bean（Name=<name>，Init，Destroy）
+  ├─ gormcore.NewDB：gormcore.Open：gorm.Open -> ApplyPool（连接池旋钮）
+  │    -> ApplyDBCustomizers -> observe 插件（db.system=mysql，observe.enabled=false 除外）
+  │       -> 治理：资源 "gorm:mysql:<addr|service-name>" 的 resilience/fault executor 回调
+  │       -> *DB
+  ├─ ping 时启动探测：gormcore.HealthCheck（受 ping-timeout 约束）
+  ├─ Provide *DB .Name(mysql.<entry>).Destroy((*DB).Destroy)
   ├─ 健康指示器 "gorm:mysql:<name>" 以 health.Indicator 导出
-  ├─ DB.Init（在注入 Observability 字段之后）：observe 插件（db.system=mysql）
-  │    + 资源 "gorm:mysql:<addr|service-name>" 的 resilience/fault executor 回调
   └─ DB.Destroy（SIGTERM）：关 executor -> 停发现 watch + 注销 TLS -> 关连接池
 ```
 

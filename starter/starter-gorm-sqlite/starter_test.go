@@ -83,6 +83,45 @@ func TestSqliteAssembly(t *testing.T) {
 	})
 }
 
+// TestSqliteMultiInstance pins the registration contract this starter now owns
+// itself: exactly one *DB plus one health.Indicator per configured entry, and
+// every DB bean named "<dialect>.<entry>" so an application selects an instance
+// by name. It is the multi-instance half of [TestSqliteAssembly].
+func TestSqliteMultiInstance(t *testing.T) {
+	gs.Web(false).Configure(func(app gs.App) {
+		app.Property("spring.gorm.sqlite.instances.mem.file", ":memory:")
+		app.Property("spring.gorm.sqlite.instances.audit.file", ":memory:")
+	}).RunTest(t, func(s *struct {
+		Mem   *gormcore.DB        `autowire:"sqlite.mem"`
+		Audit *gormcore.DB        `autowire:"sqlite.audit"`
+		DBs   []*gormcore.DB      `autowire:""`
+		Inds  []*health.Indicator `autowire:""`
+	}) {
+		if s.Mem == nil || s.Audit == nil {
+			t.Fatalf("both \"<dialect>.<entry>\" beans must resolve by name, got %v, %v", s.Mem, s.Audit)
+		}
+		if s.Mem == s.Audit {
+			t.Fatal("each entry must get its own DB bean")
+		}
+		if len(s.DBs) != 2 {
+			t.Fatalf("want 2 DB beans, got %d", len(s.DBs))
+		}
+		if len(s.Inds) != 2 {
+			t.Fatalf("want 2 indicators, got %d", len(s.Inds))
+		}
+		names := map[string]bool{}
+		for _, ind := range s.Inds {
+			names[ind.Name] = true
+			if err := ind.Probe(context.Background()); err != nil {
+				t.Fatalf("indicator %s must report UP: %v", ind.Name, err)
+			}
+		}
+		if !names["gorm:sqlite:mem"] || !names["gorm:sqlite:audit"] {
+			t.Fatalf("want one indicator per entry, got %v", names)
+		}
+	})
+}
+
 // TestSqliteDefaultsNotTriggered proves the conditional wiring: with no
 // spring.gorm.sqlite.instances.* entries the starter registers nothing and the app starts.
 func TestSqliteDefaultsNotTriggered(t *testing.T) {

@@ -21,7 +21,6 @@ import (
 	"testing"
 
 	"go-spring.org/cloud/observability"
-	"go-spring.org/cloud/resilience"
 	"go-spring.org/stdlib/testing/assert"
 )
 
@@ -44,8 +43,7 @@ func (c *captureExecutor) Execute(ctx context.Context, fn func(context.Context) 
 	c.op, c.hasOp = observability.OperationFrom(ctx)
 	return fn(ctx)
 }
-func (c *captureExecutor) Close() error                          { return nil }
-func (c *captureExecutor) Refresh(resilience.ClientPolicy) error { return nil }
+func (c *captureExecutor) Close() error { return nil }
 
 // instrumentedClient returns a fake client whose guard is the real resilience
 // wrapper over a capturing inner — the composition the wiring builds — plus the
@@ -55,7 +53,7 @@ func instrumentedClient(t *testing.T) (*fakeMQTTClient, *captureExecutor) {
 	cl := &fakeMQTTClient{}
 	cap := &captureExecutor{}
 	clientGuards.Store(cl, &clientGuard{
-		exec:         resilience.WrapClientExecutor(cap, "mqtt", "mqtt:test"),
+		exec:         observability.WrapClientExecutor(cap, "mqtt", "mqtt:test"),
 		serviceLabel: "mqtt:test",
 	})
 	t.Cleanup(func() { closeResilience(cl) })

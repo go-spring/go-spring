@@ -16,16 +16,20 @@
 
 // client.go is the "resource entity" concept of this starter — the Client
 // wrapper go-redis clients are injected as, plus its lifecycle (NewClient /
-// Destroy) and service label. It mirrors starter-redigo's pool.go: the entity
-// embeds the raw client and carries the resilience executor + the
+// Destroy) and service label — together with the "command seam" that protects
+// each command. It mirrors starter-redigo's pool.go and conn.go together: the
+// entity embeds the raw client and carries the resilience executor + the
 // endpoint-selection subscription, while the per-command hook layers (the
-// declaration layer in observe.go and the executor in command.go) live beside
-// it (starter-redigo's conn.go analog).
+// declaration layer in observe.go and the executor below) ride the client's
+// hook chain.
 package StarterGoRedis
 
 import (
+	"context"
+
 	"github.com/redis/go-redis/v9"
 	"go-spring.org/cloud"
+	"go-spring.org/cloud/chain"
 	"go-spring.org/cloud/loadbalance"
 	"go-spring.org/cloud/resilience"
 )
@@ -56,7 +60,7 @@ type Client struct {
 	// from the container's params bundle. It is never nil: a bundle with no
 	// resilience manager degrades to the observed-only
 	// [resilience.Unmanaged] executor.
-	exec resilience.ClientExecutor
+	exec chain.Executor
 	// serviceLabel is the resilience service key ("redis:<...>") exec scopes
 	// limiter/breaker state by. Fixed by [NewClient].
 	serviceLabel string
@@ -167,4 +171,82 @@ func serviceLabel(c Config) string {
 		first = c.Addrs[0]
 	}
 	return resilience.ServiceLabel("redis", c.ServiceName, c.MasterName, c.Addr, first)
+}
+
+// resilienceHook is the command seam: the go-redis [redis.Hook] layer that
+// routes every Redis command (and pipeline) through the executor. Two hooks ride
+// the client's hook chain (FIFO, first added outermost):
+//
+//	operationHook   — the declaration layer: puts the command's identity on the
+//	                  ctx (see observe.go); emits nothing.
+//	resilienceHook  — the breaker/retry/rate-limit executor (innermost), which
+//	                  is also the single emitter of the call's span, metrics
+//	                  and access log.
+//
+// Their relative order is established at construction (see [NewClient]) and is a
+// semantic contract: the declaration sits outside the breaker, so the identity
+// reaches the resilience layer and one log line covers the whole retry loop.
+//
+// DialHook is left untouched — connection establishment is discovery's concern,
+// not the command-level protection we add here.
+type resilienceHook struct {
+	exec         chain.Executor
+	serviceLabel string
+}
+
+var _ redis.Hook = (*resilienceHook)(nil)
+
+func (h *resilienceHook) DialHook(next redis.DialHook) redis.DialHook {
+	return next
+}
+
+func (h *resilienceHook) ProcessHook(next redis.ProcessHook) redis.ProcessHook {
+	return func(ctx context.Context, cmd redis.Cmder) error {
+		return h.guard(ctx, cmd, func(ctx context.Context) error {
+			return next(ctx, cmd)
+		})
+	}
+}
+
+func (h *resilienceHook) ProcessPipelineHook(next redis.ProcessPipelineHook) redis.ProcessPipelineHook {
+	return func(ctx context.Context, cmds []redis.Cmder) error {
+		var setErr = func(err error) {
+			for _, cmd := range cmds {
+				cmd.SetErr(err)
+			}
+		}
+		return h.run(ctx, setErr, func(ctx context.Context) error {
+			return next(ctx, cmds)
+		})
+	}
+}
+
+// guard runs a single command through the executor, tagging the command with a
+// rejection error when the limiter or breaker short-circuits it.
+func (h *resilienceHook) guard(ctx context.Context, cmd redis.Cmder, call func(context.Context) error) error {
+	return h.run(ctx, cmd.SetErr, call)
+}
+
+// run is the shared body for both command and pipeline hooks. It executes call
+// under the policy via [resilience.Run], treating redis.Nil (a cache miss /
+// "key not found") as a success so it never trips the circuit breaker.
+//
+// The setErr side-channel is why go-redis keeps a thin wrapper rather than
+// calling resilience.Run directly: a normal downstream failure is already
+// recorded on the command(s) by go-redis itself, and for a pipeline the
+// per-command errors must be preserved, not overwritten with the aggregate
+// error. So setErr fires only when the command never actually ran — a
+// resilience rejection or an injected fault — where go-redis had no chance to
+// record anything. callErr is tracked for that distinction.
+func (h *resilienceHook) run(ctx context.Context, setErr func(error), call func(context.Context) error) error {
+	var callErr error
+	_, err := resilience.Run(ctx, h.exec,
+		func(actx context.Context) (struct{}, error) {
+			callErr = call(actx)
+			return struct{}{}, callErr
+		}, resilience.Tolerate(redis.Nil))
+	if err != nil && callErr == nil {
+		setErr(err)
+	}
+	return err
 }

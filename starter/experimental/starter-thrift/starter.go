@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/apache/thrift/lib/go/thrift"
+	"go-spring.org/cloud/governance"
 	"go-spring.org/cloud/resilience"
 	"go-spring.org/cloud/security"
 	"go-spring.org/log"
@@ -32,13 +33,13 @@ func init() {
 	gs.Provide(
 		NewSimpleThriftServer,
 		gs.IndexArg(0, gs.TagArg("${spring.thrift.server}")),
-		// The governance beans are REQUIRED: each is registered by the package that
-		// owns it (cloud/resilience, cloud/loadbalance, cloud/fault), which this
-		// starter imports — "governance off" is spring.governance.enabled=false, never
-		// an absent bean.
-		gs.IndexArg(2, gs.TagArg("")), // *resilience.Manager
+		// The governance center is the family's sole injection point: it hands
+		// out the resilience/fault/loadbalance authorities.
 	).Export(gs.As[gs.Server]()).
-		Condition(gs.OnProperty("spring.thrift.server.addr"))
+		Condition(gs.And(
+			gs.OnProperty("spring.thrift.server.enabled").HavingValue("true").MatchIfMissing(),
+			gs.OnProperty("spring.thrift.server.addr"),
+		))
 }
 
 // Config defines Thrift server configuration.
@@ -53,6 +54,10 @@ func init() {
 // Observer toggles OTel tracing and metrics via a wrapped TProcessor.
 // Both are on by default; importing starter-otel activates them.
 type Config struct {
+	// Enabled gates the server (enabled, default true) — the starter convention:
+	// the switch opts OUT, the addr key below opts IN.
+	Enabled bool `value:"${enabled:=true}"`
+
 	Addr          string             `value:"${addr}"`
 	ClientTimeout time.Duration      `value:"${clientTimeout:=0}"`
 	Protocol      string             `value:"${protocol:=binary}"`
@@ -87,18 +92,18 @@ type SimpleThriftServer struct {
 	proc thrift.TProcessor
 	svr  *thrift.TSimpleServer
 
-	// mgr is the governance bean gs injects (nil in a standalone call); it backs
-	// the inbound admission middleware Run installs.
-	mgr *resilience.Manager
+	// center is the governance center bean gs injects (nil in a standalone
+	// call); its resilience authority backs the inbound middleware Run installs.
+	center *governance.Center
 }
 
 // NewSimpleThriftServer creates a SimpleThriftServer from ${spring.thrift.server}
-// configuration. mgr is the injected [resilience.Manager] the admission
+// configuration. center is the injected governance center the inbound
 // middleware is armed from.
-func NewSimpleThriftServer(cfg Config, proc thrift.TProcessor, mgr *resilience.Manager) *SimpleThriftServer {
+func NewSimpleThriftServer(cfg Config, proc thrift.TProcessor, center *governance.Center) *SimpleThriftServer {
 	log.Debugf(context.Background(), log.TagAppDef, "thrift server created addr=%s protocol=%s transport=%s",
 		cfg.Addr, cfg.Protocol, cfg.Transport)
-	return &SimpleThriftServer{cfg: cfg, proc: proc, mgr: mgr}
+	return &SimpleThriftServer{cfg: cfg, proc: proc, center: center}
 }
 
 // newTransport builds a server transport honoring the client timeout and,
@@ -174,7 +179,7 @@ func (s *SimpleThriftServer) Run(ctx context.Context, sig gs.ReadySignal) error 
 	//
 	// Observe is the only one behind a switch — it rides the OTel globals.
 	// AccessLog is always installed (the RPC family requires every member to
-	// have one), and so is admission: each call passes the service's
+	// have one), and so is inbound: each call passes the service's
 	// rate-limit / bulkhead / breaker policy before reaching the service; with
 	// governance off the executor is a transparent pass-through, so installing
 	// it costs a call frame and changes nothing else.
@@ -183,7 +188,7 @@ func (s *SimpleThriftServer) Run(ctx context.Context, sig gs.ReadySignal) error 
 		mws = append(mws, Observe())
 	}
 	mws = append(mws, AccessLog())
-	mws = append(mws, Admit(resilience.ServiceLabel("thrift", s.cfg.Addr), "thrift", s.mgr))
+	mws = append(mws, Admit(resilience.ServiceLabel("thrift", s.cfg.Addr), "thrift", s.center.Resilience()))
 	proc := thrift.WrapProcessor(s.proc, mws...)
 	s.svr = thrift.NewTSimpleServer4(proc, transport, transFactory, protoFactory)
 	<-sig.TriggerAndWait()

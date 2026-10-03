@@ -36,6 +36,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"go-spring.org/cloud/chain"
 	"io"
 	"net/http"
 	"os"
@@ -46,13 +47,11 @@ import (
 	"time"
 
 	"go-spring.org/cloud/discovery"
-	"go-spring.org/cloud/resilience"
 	"go-spring.org/spring/gs"
 	"go.mongodb.org/mongo-driver/v2/bson"
 
 	_ "go-spring.org/starter-actuator"    // aggregates the mongodb health.Indicator
 	_ "go-spring.org/starter-config-file" // registers the file-watch config provider
-	_ "go-spring.org/starter-governance-file"
 	StarterMongoDB "go-spring.org/starter-mongodb"
 )
 
@@ -214,7 +213,7 @@ func resilienceBurst(s *Service) (admitted, rejected, other int) {
 			switch {
 			case err == nil:
 				admitted++
-			case errors.Is(err, resilience.ErrRateLimited):
+			case errors.Is(err, chain.ErrRateLimited):
 				rejected++
 			default:
 				other++

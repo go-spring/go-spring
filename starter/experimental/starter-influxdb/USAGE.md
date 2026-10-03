@@ -37,7 +37,6 @@ require (
     go-spring.org/starter-influxdb   latest
     go-spring.org/starter-actuator   latest   // optional: readiness + /metrics
     go-spring.org/starter-otel       latest   // optional: real trace/metric export
-    go-spring.org/starter-governance-file latest   // optional: resilience/fault policy
 )
 ```
 
@@ -49,7 +48,6 @@ package main
 import (
     "go-spring.org/spring/gs"
     _ "go-spring.org/starter-actuator"
-    _ "go-spring.org/starter-governance-file"
     _ "go-spring.org/starter-influxdb"
     _ "go-spring.org/starter-otel"
     _ "demo/service"
@@ -339,7 +337,7 @@ executor/transport error; the breaker (if a governance policy targets
 
 ### 4.4 Governance drill
 
-With starter-governance-file configured, a limiter/breaker policy on service
+With a governance rules source configured, a limiter/breaker policy on service
 `influxdb:http://127.0.0.1:8086` applies to **every** request (write, query, health probe)
 through the transport executor — hammer `WritePoints` and watch rejections surface as
 `_app_influxdb_access` records and in the resilience layer's outcome counters. Flip the

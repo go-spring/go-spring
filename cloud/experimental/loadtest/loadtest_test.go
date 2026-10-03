@@ -18,12 +18,12 @@ package loadtest
 
 import (
 	"context"
+	"go-spring.org/cloud/chain"
 	"sync/atomic"
 	"testing"
 	"time"
 
 	"go-spring.org/cloud/fault"
-	"go-spring.org/cloud/resilience"
 	"go-spring.org/cloud/traffic"
 	"go-spring.org/stdlib/errutil"
 	"go-spring.org/stdlib/testing/assert"
@@ -47,11 +47,11 @@ func TestRun_ClassifiesErrors(t *testing.T) {
 			n := atomic.AddInt32(&i, 1) % 5
 			switch n {
 			case 0:
-				return resilience.ErrCircuitOpen
+				return chain.ErrCircuitOpen
 			case 1:
-				return resilience.ErrRateLimited
+				return chain.ErrRateLimited
 			case 2:
-				return resilience.ErrBulkheadFull
+				return chain.ErrBulkheadFull
 			case 3:
 				return fault.ErrInjected
 			default:

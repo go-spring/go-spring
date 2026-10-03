@@ -22,9 +22,8 @@ package StarterRocketmq
 
 import (
 	"go-spring.org/cloud"
-	"go-spring.org/cloud/fault"
+	"go-spring.org/cloud/governance"
 	"go-spring.org/cloud/messaging"
-	"go-spring.org/cloud/resilience"
 	"go-spring.org/cloud/traffic"
 	"go-spring.org/log"
 	"go-spring.org/spring/conf"
@@ -53,12 +52,8 @@ func init() {
 				gs.IndexArg(1, gs.ValueArg(name)),
 				gs.IndexArg(2, gs.ValueArg(c)),
 				gs.IndexArg(3, gs.TagArg("${spring.rocketmq.instances."+name+".driver:=${spring.rocketmq.default.driver:=?}}")),
-				// The governance beans are REQUIRED: each is registered by the package that
-				// owns it (cloud/resilience, cloud/loadbalance, cloud/fault), which this
-				// starter imports — "governance off" is spring.governance.enabled=false, never
-				// an absent bean.
-				gs.IndexArg(4, gs.TagArg("")), // *resilience.Manager
-				gs.IndexArg(5, gs.TagArg("")), // *fault.Injector
+				// The governance center is the family's sole injection point: it hands
+				// out the resilience/fault/loadbalance authorities.
 			).Name(name).Destroy((*Client).Close).Caller(1)
 
 			// Export the broker-neutral messaging.Driver over this client as a bean,
@@ -89,7 +84,7 @@ func init() {
 // bundles them into the [cloud.ClientParams] it hands the driver, which passes
 // it to [NewClient] — so the client is assembled complete in one step, with the
 // zero bundle degrading to an observed-only, loudly-unmanaged executor.
-func newClient(ctx *gs.ContextProvider, name string, c Config, d Driver, mgr *resilience.Manager, inj *fault.Injector) (*Client, error) {
+func newClient(ctx *gs.ContextProvider, name string, c Config, d Driver, center *governance.Center) (*Client, error) {
 	log.Debugf(ctx.Context, log.TagAppDef, "creating rocketmq client, name-servers=%v ping=%v", c.NameServers, c.Ping)
 
 	if (c.AccessKey == "") != (c.SecretKey == "") {
@@ -101,7 +96,7 @@ func newClient(ctx *gs.ContextProvider, name string, c Config, d Driver, mgr *re
 		d = DefaultDriver{}
 	}
 	cl, err := d.CreateClient(ctx.Context, c,
-		cloud.ClientParams{Resilience: mgr, Fault: inj})
+		cloud.ClientParams{Resilience: center.Resilience(), Fault: center.Fault()})
 	if err != nil {
 		return nil, err
 	}

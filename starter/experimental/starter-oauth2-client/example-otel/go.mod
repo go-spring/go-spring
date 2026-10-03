@@ -43,7 +43,6 @@ require (
 	github.com/smartystreets/goconvey v1.8.1 // indirect
 	github.com/spf13/cast v1.10.0 // indirect
 	go-spring.org/gs-mock v0.0.9 // indirect
-	go-spring.org/starter-governance-file v0.0.0
 	go-spring.org/stdlib v0.1.7 // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
 	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.62.0 // indirect
@@ -81,4 +80,3 @@ replace go-spring.org/starter-otel => ../../../starter-otel
 
 replace go-spring.org/starter-actuator => ../../../starter-actuator
 
-replace go-spring.org/starter-governance-file => ../../../starter-governance-file

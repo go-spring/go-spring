@@ -19,6 +19,7 @@ package StarterGovernanceSentinel
 import (
 	"context"
 	"fmt"
+	"go-spring.org/cloud/chain"
 	"sync"
 	"sync/atomic"
 
@@ -171,26 +172,6 @@ func (e *sentinelExecutor) loadBreakerRule(service string) error {
 	return nil
 }
 
-// Refresh adopts p as the new policy and clears the loaded flag, so
-// the next Execute reloads flow/breaker/isolation rules under the new thresholds.
-// It is the [resilience.ClientExecutor.Refresh] implementation for the sentinel driver.
-//
-// sentinel's LoadRulesOfResource replaces a service's existing rules, so an
-// already-loaded service gets fresh rules (and a reset breaker stat window) on
-// its next Execute. This mirrors the default driver's "discard state, rebuild on
-// next call" lazy semantic. Already-registered breaker route listeners are
-// re-registered when ensureRules re-runs.
-func (e *sentinelExecutor) Refresh(p resilience.ClientPolicy) error {
-	if p.RateLimit < 0 {
-		return errutil.Explain(nil, "resilience: negative rate limit %v", p.RateLimit)
-	}
-	e.mu.Lock()
-	defer e.mu.Unlock()
-	e.policy = p
-	e.loaded = false
-	return nil
-}
-
 func (e *sentinelExecutor) Execute(ctx context.Context, fn func(context.Context) error) error {
 	if err := e.ensureRules(); err != nil {
 		return err
@@ -268,10 +249,10 @@ func (e *sentinelExecutor) Close() error { return nil }
 func mapBlockError(b *base.BlockError) error {
 	switch b.BlockType() {
 	case base.BlockTypeCircuitBreaking:
-		return fmt.Errorf("%w: %s", resilience.ErrCircuitOpen, b.Error())
+		return fmt.Errorf("%w: %s", chain.ErrCircuitOpen, b.Error())
 	case base.BlockTypeIsolation:
-		return fmt.Errorf("%w: %s", resilience.ErrBulkheadFull, b.Error())
+		return fmt.Errorf("%w: %s", chain.ErrBulkheadFull, b.Error())
 	default:
-		return fmt.Errorf("%w: %s", resilience.ErrRateLimited, b.Error())
+		return fmt.Errorf("%w: %s", chain.ErrRateLimited, b.Error())
 	}
 }

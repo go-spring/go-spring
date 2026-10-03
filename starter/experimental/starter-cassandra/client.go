@@ -25,6 +25,7 @@ package StarterCassandra
 
 import (
 	"context"
+	"go-spring.org/cloud/chain"
 
 	"github.com/gocql/gocql"
 	"go-spring.org/cloud"
@@ -63,7 +64,7 @@ type Client struct {
 	// [NewClient] from the governance bundle — an observed-only, loudly-unmanaged
 	// executor when the bundle is zero. It is also the single emitter of the
 	// statement's span, metrics and access log.
-	exec resilience.ClientExecutor
+	exec chain.Executor
 }
 
 // NewClient builds a complete Client — identity, governance and all — over a

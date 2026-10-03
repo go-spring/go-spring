@@ -33,7 +33,6 @@ require (
     golang.org/x/oauth2          v0.36.0
     go-spring.org/spring         v1.3.x
     go-spring.org/starter-oauth2-client latest
-    go-spring.org/starter-governance-file    latest  // 可选:真实韧性策略
     go-spring.org/starter-otel          latest  // 可选:真实 trace 导出
 )
 ```
@@ -50,7 +49,6 @@ import (
     "go-spring.org/spring/gs"
     "golang.org/x/oauth2"
 
-    _ "go-spring.org/starter-governance-file"
     StarterOAuth2Client "go-spring.org/starter-oauth2-client"
 )
 
@@ -97,7 +95,7 @@ spring.oauth2.authcode.instances.login.scopes=openid,profile
 
 # --- governance(*http.Client transport 的韧性)-------------------------------
 # 与 client 同一服务标签:oauth2:<client-id>。
-# NOTE: governance RULES go in conf/governance.properties, referenced by spring.governance.source.file.path in app.properties (see starter-governance-file USAGE).
+# NOTE: governance RULES go in conf/governance.properties, referenced by spring.governance.source.file.path in app.properties (see cloud/governance's SOURCE_USAGE_CN.md).
 spring.governance.enabled=true
 spring.governance.driver=default
 spring.governance.client.default.max-retries=3

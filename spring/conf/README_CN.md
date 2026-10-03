@@ -205,7 +205,8 @@ props, err = conf.Load("optional:file:config.yaml")
 ```
 
 用 `RegisterProvider` 注册自定义 provider(etcd、Consul、环境变量等)以支持
-更多配置源。
+更多配置源。provider 是带生命周期的对象:除 `Load` 外还实现 `Close`,运行时在应用退出时
+调用一次,用来停止 `Load` 期间装上的 watcher 和 listener。
 
 ### 支持的文件格式
 

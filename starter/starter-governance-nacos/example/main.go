@@ -44,12 +44,12 @@ import (
 	"syscall"
 	"time"
 
+	"go-spring.org/cloud/governance"
 	"go-spring.org/cloud/resilience"
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
 
-	_ "go-spring.org/starter-governance-file"
 	_ "go-spring.org/starter-governance-nacos"
 )
 
@@ -59,22 +59,24 @@ const (
 	nacosAddr = "127.0.0.1:8848"
 )
 
-const rulesV1 = `govern:
-  enabled: true
-  client:
-    default:
-      enabled: true
-      attempt-timeout: 100ms
-      max-retries: 2
+const rulesV1 = `spring:
+  governance:
+    enabled: true
+    client:
+      default:
+        enabled: true
+        attempt-timeout: 100ms
+        max-retries: 2
 `
 
-const rulesV2 = `govern:
-  enabled: true
-  client:
-    default:
-      enabled: true
-      attempt-timeout: 900ms
-      max-retries: 2
+const rulesV2 = `spring:
+  governance:
+    enabled: true
+    client:
+      default:
+        enabled: true
+        attempt-timeout: 900ms
+        max-retries: 2
 `
 
 var manual = flag.Bool("manual", false, "run in manual verification mode (server stays up)")
@@ -82,9 +84,9 @@ var manual = flag.Bool("manual", false, "run in manual verification mode (server
 // poller observes the resolved policy for one service label, so a rule push is
 // visible without any client wiring.
 type poller struct {
-	// mgr is the governance starter's resilience manager bean, injected here
-	// rather than resolved from a process-wide seam.
-	mgr *resilience.Manager
+	// center is the governance center bean — the family's sole injection point;
+	// the poller reads its resilience authority off it.
+	center *governance.Center
 }
 
 func (p *poller) Run(ctx context.Context) error {
@@ -108,7 +110,7 @@ func (p *poller) Run(ctx context.Context) error {
 				return
 			case <-tk.C:
 			}
-			pol := p.mgr.ClientPolicyFor("demo:service")
+			pol := p.center.Resilience().ClientPolicyFor("demo:service")
 			fmt.Printf("policy: enabled=%v timeout=%v retries=%d\n", !pol.IsZero(), pol.AttemptTimeout, pol.MaxRetries)
 			if pol.AttemptTimeout == 900*time.Millisecond {
 				fmt.Println("rule push observed: attempt-timeout is now", pol.AttemptTimeout)
@@ -124,15 +126,15 @@ func (p *poller) Run(ctx context.Context) error {
 	return nil
 }
 
-// newPoller builds the poller over the injected governance manager. A nil
-// manager (a container without starter-governance-file) is normalized to a fresh
-// unarmed one, so the loop reads a zero policy instead of dereferencing nil —
-// an unarmed manager is exactly "governance off".
-func newPoller(mgr *resilience.Manager) *poller {
-	if mgr == nil {
-		mgr = resilience.NewManager()
+// newPoller builds the poller over the injected governance center. A nil center
+// (a container without starter-governance-nacos) is normalized to a fresh one
+// over an unarmed manager, so the loop reads a zero policy instead of
+// dereferencing nil — an unarmed manager is exactly "governance off".
+func newPoller(center *governance.Center) *poller {
+	if center == nil {
+		center = governance.NewCenter(governance.Config{}, resilience.NewManager(nil), nil, nil, nil, nil)
 	}
-	return &poller{mgr: mgr}
+	return &poller{center: center}
 }
 
 // init registers the poller as a root object so the container creates it

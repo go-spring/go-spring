@@ -19,8 +19,7 @@ package StarterMilvus
 import (
 	"go-spring.org/cloud"
 	"go-spring.org/cloud/actuator/health"
-	"go-spring.org/cloud/fault"
-	"go-spring.org/cloud/resilience"
+	"go-spring.org/cloud/governance"
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
@@ -41,12 +40,8 @@ func init() {
 		return conf.BindEach(p, "${spring.milvus.instances}", func(name string, c Config) error {
 			r.Provide(newClient,
 				gs.IndexArg(1, gs.ValueArg(c)),
-				// The governance beans are REQUIRED: each is registered by the package that
-				// owns it (cloud/resilience, cloud/loadbalance, cloud/fault), which this
-				// starter imports — "governance off" is spring.governance.enabled=false, never
-				// an absent bean.
-				gs.IndexArg(2, gs.TagArg("")), // *resilience.Manager
-				gs.IndexArg(3, gs.TagArg("")), // *fault.Injector
+				// The governance center is the family's sole injection point: it hands
+				// out the resilience/fault/loadbalance authorities.
 			).Name(name).Destroy((*Client).Destroy).Caller(1)
 
 			// Contribute a health indicator for this instance, injecting the
@@ -69,16 +64,17 @@ func init() {
 // block startup. There is no Init hook: the client is complete when this ctor
 // returns.
 //
-// mgr and inj are the governance beans the container injects; the ctor bundles
-// them into the [cloud.ClientParams] it hands [NewClient], so the client is
+// center is the governance center the container injects — the family's sole
+// injection point; the ctor reads the resilience and fault authorities from it
+// and bundles them into the [cloud.ClientParams] it hands [NewClient], so the client is
 // assembled complete in one step, with the zero bundle degrading to an
 // observed-only, loudly-unmanaged executor.
 //
 // cp carries the application context gs injects into a constructor (a bare
 // context.Context is not an injectable bean).
-func newClient(cp *gs.ContextProvider, c Config, mgr *resilience.Manager, inj *fault.Injector) (*Client, error) {
+func newClient(cp *gs.ContextProvider, c Config, center *governance.Center) (*Client, error) {
 	ctx := cp.Context
-	w, err := NewClient(ctx, c, cloud.ClientParams{Resilience: mgr, Fault: inj})
+	w, err := NewClient(ctx, c, cloud.ClientParams{Resilience: center.Resilience(), Fault: center.Fault()})
 	if err != nil {
 		return nil, err
 	}

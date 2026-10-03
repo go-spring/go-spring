@@ -38,7 +38,6 @@ require (
     go-spring.org/starter-mqtt       latest
     go-spring.org/starter-actuator   latest   // 可选：探针 + /metrics
     go-spring.org/starter-otel       latest   // 可选：真实 trace/metric 导出
-    go-spring.org/starter-governance-file latest   // 可选：运行期 resilience/fault 策略
 )
 ```
 
@@ -52,7 +51,6 @@ import (
     _ "demo/service"
 
     _ "go-spring.org/starter-actuator"
-    _ "go-spring.org/starter-governance-file"
     _ "go-spring.org/starter-mqtt"
     _ "go-spring.org/starter-otel"
 )
@@ -226,7 +224,7 @@ GuardedPublish [command.go:134-141]：
   [client.go:98]；该 error 之后仅记日志 [client.go:107-111]。除 panic 外，每次投递都经
   `GuardedConsume` 声明并受保护 [client.go:107-109]。
 
-manager 是必需的 —— 这个 starter 空导入 starter-governance-file，"关治理"是
+manager 是必需的 —— 这个 starter 传递链接 cloud/governance，"关治理"是
 `spring.governance.enabled=false`，而不是 bean 缺失；独立（非 gs）调用者传 nil，
 client 的 executor 退化为仅观测的 `resilience.Unmanaged`（并打一次告警），而不是静默的
 no-op [starter.go:87-88, driver.go:115-123]。
@@ -314,7 +312,7 @@ docker start <mosquitto> && go run .   # 正常启动，日志 "mqtt client init
 
 ### 4.2 受保护 vs 未受保护路径
 
-配置 starter-governance-file 后，为服务 `mqtt:tcp://127.0.0.1:1883` 加限流/熔断策略：
+配好治理规则源后，为服务 `mqtt:tcp://127.0.0.1:1883` 加限流/熔断策略：
 
 ```yaml
 spring:

@@ -18,11 +18,10 @@ package StarterS3
 
 import (
 	"context"
+	"go-spring.org/cloud/governance"
 
 	"go-spring.org/cloud"
 	"go-spring.org/cloud/actuator/health"
-	"go-spring.org/cloud/fault"
-	"go-spring.org/cloud/resilience"
 	"go-spring.org/log"
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/gs"
@@ -43,7 +42,7 @@ func init() {
 		p = flatten.WithFallback(p, "spring.s3.instances", "spring.s3.default")
 		return conf.BindEach(p, "${spring.s3.instances}", func(name string, c Config) error {
 			// The wrapper bean owns the resilience executor, so the ctor builds it
-			// from the injected governance beans and Destroy tears it down. The
+			// from the injected governance center and Destroy tears it down. The
 			// Driver bean is selected by the entry's ${driver}
 			// key: unset → "?" (nullable by-type — injects the single Driver bean
 			// when one is provided, nil otherwise, and the ctor falls back to the
@@ -52,12 +51,8 @@ func init() {
 			r.Provide(newClient,
 				gs.IndexArg(1, gs.ValueArg(c)),
 				gs.IndexArg(2, gs.TagArg("${spring.s3.instances."+name+".driver:=${spring.s3.default.driver:=?}}")),
-				// The governance beans are REQUIRED: each is registered by the package that
-				// owns it (cloud/resilience, cloud/loadbalance, cloud/fault), which this
-				// starter imports — "governance off" is spring.governance.enabled=false, never
-				// an absent bean.
-				gs.IndexArg(3, gs.TagArg("")), // *resilience.Manager
-				gs.IndexArg(4, gs.TagArg("")), // *fault.Injector
+				// The governance center is the family's sole injection point: it hands
+				// out the resilience/fault/loadbalance authorities.
 			).Name(name).Destroy((*Client).Destroy).Caller(1)
 			// Contribute a health indicator for this instance, injecting the
 			// client just registered above by name. Skipped when c.Health is
@@ -79,14 +74,12 @@ func init() {
 // fails fast rather than on first use; the probe is off by default, so an
 // endpoint that is not up yet does not block startup.
 //
-// mgr and inj are the authority beans the owning packages register; the ctor
-// bundles them into the [cloud.ClientParams] it hands the driver, which
+// center is the governance center — the family's sole injection point; the ctor
+// reads the resilience and fault authorities from it and bundles them into the
+// [cloud.ClientParams] it hands the driver, which
 // passes it to [NewClient] — so the client is assembled complete in one step,
 // with the zero bundle degrading to an observed-only, loudly-unmanaged executor.
-// The wiring injects them as REQUIRED, and each is registered by the package
-// that owns it — which this starter imports — so "governance off" is
-// spring.governance.enabled=false, never an absent bean.
-func newClient(ctx *gs.ContextProvider, c Config, d Driver, mgr *resilience.Manager, inj *fault.Injector) (*Client, error) {
+func newClient(ctx *gs.ContextProvider, c Config, d Driver, center *governance.Center) (*Client, error) {
 	log.Debugf(ctx.Context, log.TagAppDef, "creating s3 client, endpoint=%s region=%s", c.Endpoint, c.Region)
 
 	// No company Driver bean → fall back to the bundled default assembly.
@@ -94,7 +87,7 @@ func newClient(ctx *gs.ContextProvider, c Config, d Driver, mgr *resilience.Mana
 		d = DefaultDriver{}
 	}
 	client, err := d.CreateClient(ctx.Context, c,
-		cloud.ClientParams{Resilience: mgr, Fault: inj})
+		cloud.ClientParams{Resilience: center.Resilience(), Fault: center.Fault()})
 	if err != nil {
 		return nil, err
 	}

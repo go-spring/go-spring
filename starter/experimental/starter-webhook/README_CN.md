@@ -71,8 +71,8 @@ err := s.Ops.Send(ctx, &StarterWebhook.Notification{
 - **加签** — `secret` 自动启用钉钉加签（timestamp+sign 查询对）或飞书
   签名。
 - **韧性** — 每次 Send 走治理执行器（`webhook:<name>:<channel>`），端点
-  抖动会被熔断而不是堆请求。未导入 `starter-governance-file` 时退化为只观测、
-  不受治理的执行器（每客户端告警一次）。
+  抖动会被熔断而不是堆请求。治理未接入（容器里没有 `cloud/governance` 的 bean）
+  时退化为只观测、不受治理的执行器（每客户端告警一次）。
 - **可观测** — 每次 Send **声明**自己的语义身份（span `webhook.send`；指标
   前缀 `messaging.client`；有界 label `messaging.system`、`messaging.operation`、
   `webhook.channel`），并路由经过 resilience 执行器；执行器上的 observe 层是唯一

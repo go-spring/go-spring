@@ -18,126 +18,102 @@ package gormcore
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
 	"go-spring.org/cloud"
-	"go-spring.org/cloud/actuator/health"
-	"go-spring.org/spring/gs"
+	"go-spring.org/stdlib/testing/assert"
+	"gorm.io/gorm"
 )
 
-// fakeCfg is the config of a make-believe dialect used to drive Module's
-// multi-instance assembly through a real gs container without needing a real
-// database server.
-type fakeCfg struct {
-	File string `value:"${file}"`
+// The tests below drive [NewDB] — the construction half of an entry, shared by
+// every dialect starter — over the same fake dialector the Open tests use. What
+// a dialect starter owns (the gs.Module registration, the bean naming, the
+// health indicator) is covered end to end by starter-gorm-sqlite, which opens a
+// real in-memory database.
+
+// specFor builds the minimal Spec a healthy fake entry needs.
+func specFor(closers ...func()) Spec {
+	return Spec{
+		Dialector: fakeDialector{},
+		Pool:      PoolConfig{PingTimeout: time.Second},
+		Service:   "gorm:fake:life",
+		Closers:   closers,
+	}
 }
 
-// PingEnabled / HealthEnabled satisfy [gormcore.ConfigSwitches]; the fake dialect
-// keeps the documented defaults (no startup probe, health indicator on).
-func (fakeCfg) PingEnabled() bool   { return false }
-func (fakeCfg) HealthEnabled() bool { return true }
+// TestNewDBAssemblesWithoutProbe covers the default path (ping unset): the client
+// is assembled complete — observe plugin and resilience callbacks installed — and
+// no startup probe runs, so the wiring can skip a backend that is not up yet.
+func TestNewDBAssemblesWithoutProbe(t *testing.T) {
+	db, err := NewDB(context.Background(), "fake", specFor(), cloud.ClientParams{}, false)
+	assert.Error(t, err).Nil("new db")
+	defer func() { _ = db.Destroy() }()
 
-func init() {
-	Module(Dialect[fakeCfg]{
-		Prefix:       "spring.gorm.fake",
-		Engine:       "fake",
-		HealthPrefix: "gorm:fake:",
-		Build: func(ctx context.Context, c fakeCfg, _ cloud.ClientParams) (Spec, error) {
-			return Spec{
-				Dialector:      fakeDialector{},
-				Pool:           PoolConfig{PingTimeout: time.Second},
-				Service:        "gorm:fake:" + c.File,
-				ObserveEnabled: false,
-			}, nil
-		},
-	})
-
-	// fake2Cfg drives a second dialect that reuses the instance names of
-	// [fakeCfg], proving the dialect qualifier keeps their beans apart.
-	Module(Dialect[fakeCfg]{
-		Prefix:       "spring.gorm.fake2",
-		BeanPrefix:   "fake2",
-		Engine:       "fake2",
-		HealthPrefix: "gorm:fake2:",
-		Build: func(ctx context.Context, c fakeCfg, _ cloud.ClientParams) (Spec, error) {
-			return Spec{
-				Dialector:      fakeDialector{},
-				Pool:           PoolConfig{PingTimeout: time.Second},
-				Service:        "gorm:fake2:" + c.File,
-				ObserveEnabled: false,
-			}, nil
-		},
-	})
+	if err := Ping(context.Background(), db.DB); err != nil {
+		t.Fatalf("assembled client must be usable: %v", err)
+	}
 }
 
-// TestRegisterMultiInstance pins the BindEach assembly: one *DB bean plus one
-// health.Indicator per entry under the prefix, each opened through the shared
-// chain and torn down on shutdown.
-func TestRegisterMultiInstance(t *testing.T) {
-	gs.Web(false).Configure(func(app gs.App) {
-		app.Property("spring.gorm.fake.instances.orders.file", "orders.db")
-		app.Property("spring.gorm.fake.instances.audit.file", "audit.db")
-	}).RunTest(t, func(s *struct {
-		DBs  []*DB               `autowire:""`
-		Inds []*health.Indicator `autowire:""`
-	}) {
-		if len(s.DBs) != 2 {
-			t.Fatalf("want 2 DB beans, got %d", len(s.DBs))
-		}
-		for _, db := range s.DBs {
-			if err := Ping(context.Background(), db.DB); err != nil {
-				t.Fatalf("instance %s must be open and pingable: %v", db.Name(), err)
-			}
-		}
+// TestNewDBProbePasses proves the opt-in startup probe runs against a reachable
+// backend without rejecting it.
+func TestNewDBProbePasses(t *testing.T) {
+	db, err := NewDB(context.Background(), "fake", specFor(), cloud.ClientParams{}, true)
+	assert.Error(t, err).Nil("new db with ping")
+	defer func() { _ = db.Destroy() }()
 
-		names := map[string]bool{}
-		for _, ind := range s.Inds {
-			names[ind.Name] = true
-			if err := ind.Probe(context.Background()); err != nil {
-				t.Fatalf("indicator %s must check UP: %v", ind.Name, err)
-			}
-		}
-		if !names["gorm:fake:orders"] || !names["gorm:fake:audit"] {
-			t.Fatalf("want gorm:fake:orders and gorm:fake:audit indicators, got %v", names)
-		}
-	})
+	if db == nil {
+		t.Fatal("a healthy probe must still return the client")
+	}
 }
 
-// TestDialectQualifiedBeanNames pins the bean-naming contract: every DB bean is
-// named "<dialect>.<instance>", taken from BeanPrefix (here explicit for the
-// second dialect, derived from Prefix for the first). Two dialects sharing an
-// instance name therefore register distinct beans instead of colliding.
-func TestDialectQualifiedBeanNames(t *testing.T) {
-	gs.Web(false).Configure(func(app gs.App) {
-		app.Property("spring.gorm.fake.instances.orders.file", "orders.db")
-		app.Property("spring.gorm.fake2.instances.orders.file", "orders2.db")
-	}).RunTest(t, func(s *struct {
-		Fake  *DB `autowire:"fake.orders"`
-		Fake2 *DB `autowire:"fake2.orders"`
-	}) {
-		if s.Fake == nil || s.Fake2 == nil {
-			t.Fatalf("both dialects' \"orders\" beans must resolve by qualified name, got %v, %v", s.Fake, s.Fake2)
-		}
-		if s.Fake == s.Fake2 {
-			t.Fatal("qualified names must yield two distinct DB beans")
-		}
-	})
+// TestNewDBReleasesClosersOnOpenFailure pins the rollback half: when the dialect's
+// build succeeded (it already registered a discovery watch / TLS config) and the
+// open then fails, NewDB releases exactly that driver-scoped state.
+func TestNewDBReleasesClosersOnOpenFailure(t *testing.T) {
+	closerRan := false
+	spec := Spec{Dialector: fakeDialector{failInit: true}, Closers: []func(){func() { closerRan = true }}}
+
+	db, err := NewDB(context.Background(), "fake", spec, cloud.ClientParams{}, false)
+	if err == nil {
+		_ = db.Destroy()
+		t.Fatal("an initialize failure must fail the assembly")
+	}
+	if db != nil {
+		t.Fatalf("expected nil client on failure, got %v", db)
+	}
+	if !closerRan {
+		t.Fatal("a failed open must release the closers the dialect had armed")
+	}
 }
 
-// TestRegisterNotTriggered proves the OnProperty guard: with no
-// spring.gorm.fake.instances.* entries configured, no DB or indicator beans register (the
-// container starts fine and the injections resolve empty).
-func TestRegisterNotTriggered(t *testing.T) {
-	gs.Web(false).RunTest(t, func(s *struct {
-		DBs  []*DB               `autowire:""`
-		Inds []*health.Indicator `autowire:""`
-	}) {
-		if len(s.DBs) != 0 {
-			t.Fatalf("no DB beans should register without config, got %d", len(s.DBs))
+// TestNewDBProbeFailureAbandonsClient pins the probe's failure path: the probe is
+// the last step, so a DB that fails it is destroyed (running the closers) and the
+// error names the startup ping. The pool is closed by a customizer, which is the
+// only way to make a live fake backend stop answering after a successful open.
+func TestNewDBProbeFailureAbandonsClient(t *testing.T) {
+	withCustomizers(t, func(db *gorm.DB) error {
+		sqlDB, err := db.DB()
+		if err != nil {
+			return err
 		}
-		if len(s.Inds) != 0 {
-			t.Fatalf("no indicators should register without config, got %d", len(s.Inds))
-		}
+		return sqlDB.Close()
 	})
+
+	closerRan := false
+	db, err := NewDB(context.Background(), "fake", specFor(func() { closerRan = true }), cloud.ClientParams{}, true)
+	if err == nil {
+		_ = db.Destroy()
+		t.Fatal("a failed startup probe must fail the assembly")
+	}
+	if db != nil {
+		t.Fatalf("expected nil client on probe failure, got %v", db)
+	}
+	if !strings.Contains(err.Error(), "startup ping failed") {
+		t.Fatalf("want the error to name the startup ping, got %v", err)
+	}
+	if !closerRan {
+		t.Fatal("an abandoned client must release the closers the dialect had armed")
+	}
 }

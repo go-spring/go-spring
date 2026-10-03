@@ -178,8 +178,7 @@ curl http://127.0.0.1:9090/sqlserver_version
 
 ```
 import starter-gorm-sqlserver
-  └─ init(): gormcore.Module(Dialect{Prefix: "spring.gorm.sqlserver",
-        Engine: "microsoft.sql_server", HealthPrefix: "gorm:sqlserver:"})
+  └─ init(): gs.Module(gs.OnProperty("spring.gorm.sqlserver.instances"), ...)   — registration in starter.go
 gs.Run()
   ├─ conf.BindEach → Config per entry
   ├─ build()                                        — starter.go:63-107
@@ -189,9 +188,10 @@ gs.Run()
   │    │    → connector.Dialer = resolverDialer     — every dial re-picks a live endpoint
   │    │    → sqlserver.New(Config{Conn: sql.OpenDB(connector)})
   │    └─ plain path: sqlserver.Open(DSN)
-  ├─ gormcore.Open: gorm.Open → ApplyPool (startup ping) → DBCustomizers
-  ├─ DB.Init(): observe plugin (db.system=microsoft.sql_server) + resilience callbacks
-  │            (resource "gorm:sqlserver" + service-name/host)
+  ├─ gormcore.NewDB: gorm.Open → ApplyPool (pool knobs) → DBCustomizers → observe
+  │      plugin (db.system=microsoft.sql_server) + resilience callbacks (resource
+  │      "gorm:sqlserver" + service-name/host) → *DB bean, named <dialect>.<entry>
+  ├─ if ping: startup probe: gormcore.HealthCheck (bounded by ping-timeout)
   ├─ run; the resolver's background watch keeps the endpoint set fresh
   └─ SIGTERM → DB.Destroy(): executor → closers (stop the discovery watch) → pool close
 ```
@@ -305,7 +305,7 @@ instance (per-dial `Pick()`).
 ```bash
 cd example-load && docker compose up -d
 go run . -duration=10s                       # baseline SELECT 1 throughput
-# set fire — edit conf/governance.properties (hot-reload via starter-governance-file's file source):
+# set fire — edit conf/governance.properties (hot-reload via cloud/governance's file source):
 #   spring.governance.client.fault.enabled=true  spring.governance.client.fault.rate=0.5  spring.governance.client.fault.error=generic
 go run . -duration=10s                       # error breakdown shows ~50% injected
 ```

@@ -27,8 +27,12 @@ package metric
 
 import (
 	"net/http"
+	"sort"
+	"strings"
+	"sync"
 	"time"
 
+	"go-spring.org/stdlib/errutil"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/resource"
 )
@@ -83,7 +87,7 @@ type PromServe struct {
 func NewMeterProvider(cfg MetricsConfig, res *resource.Resource) (*sdkmetric.MeterProvider, *PromServe, error) {
 	f, ok := lookupMeterExporter(cfg.Exporter)
 	if !ok {
-		return nil, nil, unknownExporterErr(cfg.Exporter)
+		return nil, nil, errutil.Explain(nil, "observability: unknown metric exporter %q (registered: %s)", cfg.Exporter, strings.Join(exporterNames(), ", "))
 	}
 	reader, ps, err := f(cfg)
 	if err != nil {
@@ -104,4 +108,56 @@ func NewPeriodicReader(exp sdkmetric.Exporter, interval time.Duration) sdkmetric
 		opts = append(opts, sdkmetric.WithInterval(interval))
 	}
 	return sdkmetric.NewPeriodicReader(exp, opts...)
+}
+
+// MeterExporterFactory builds a metric reader (and, for pull-based exporters,
+// the scrape artifacts) for one backend from the metrics config. A push-based
+// exporter (otlp, stdout) returns only reader and a nil *PromServe; a pull-based
+// exporter (prometheus) returns the scrape handler (and optional dedicated
+// server) in pull. Register one under a name to add a metrics backend beyond
+// the built-ins; NewMeterProvider looks it up by cfg.Exporter.
+type MeterExporterFactory func(cfg MetricsConfig) (reader sdkmetric.Reader, pull *PromServe, err error)
+
+var (
+	exporterMu  sync.RWMutex
+	exporterReg = map[string]MeterExporterFactory{}
+)
+
+// RegisterMeterExporter makes a metric exporter factory available under name.
+// It panics on empty name, nil factory, or a duplicate - mirroring the
+// driver-registry idiom used elsewhere so a mis-wired or duplicate
+// registration fails loudly at init.
+func RegisterMeterExporter(name string, f MeterExporterFactory) {
+	if name == "" {
+		panic("metric: register meter exporter with empty name")
+	}
+	if f == nil {
+		panic("metric: register nil meter exporter factory for " + name)
+	}
+	exporterMu.Lock()
+	defer exporterMu.Unlock()
+	if _, ok := exporterReg[name]; ok {
+		panic("metric: meter exporter already registered: " + name)
+	}
+	exporterReg[name] = f
+}
+
+func lookupMeterExporter(name string) (MeterExporterFactory, bool) {
+	exporterMu.RLock()
+	defer exporterMu.RUnlock()
+	f, ok := exporterReg[name]
+	return f, ok
+}
+
+// exporterNames returns the sorted registered exporter names, for inclusion in
+// "unknown exporter" error messages.
+func exporterNames() []string {
+	exporterMu.RLock()
+	defer exporterMu.RUnlock()
+	names := make([]string, 0, len(exporterReg))
+	for n := range exporterReg {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+	return names
 }

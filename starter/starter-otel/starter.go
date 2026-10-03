@@ -44,18 +44,6 @@ import (
 	"go.opentelemetry.io/otel/sdk/resource"
 )
 
-var (
-
-	// runtimeOnce guards runtimemetrics.Start, which is not idempotent: the OTel
-	// contrib runtime instrumentation registers fresh async callbacks on the
-	// MeterProvider each call, so a second invocation (e.g. across gs.RunTest
-	// re-runs against the same provider) would create duplicate instruments.
-	// The first error is sticky so a later re-run does not silently lose the
-	// original failure.
-	runtimeOnce sync.Once
-	runtimeErr  error
-)
-
 func init() {
 	// Register the built-in trace and metric exporters with their driver
 	// registries. Importing starter-otel is what makes otlp-grpc (the default),
@@ -95,6 +83,18 @@ func init() {
 	gs.Provide(newLoadTestHook, gs.IndexArg(0, gs.TagArg("?"))).
 		Export(gs.As[gs.Rooter]()).Caller(1)
 }
+
+var (
+
+	// runtimeOnce guards runtimemetrics.Start, which is not idempotent: the OTel
+	// contrib runtime instrumentation registers fresh async callbacks on the
+	// MeterProvider each call, so a second invocation (e.g. across gs.RunTest
+	// re-runs against the same provider) would create duplicate instruments.
+	// The first error is sticky so a later re-run does not silently lose the
+	// original failure.
+	runtimeOnce sync.Once
+	runtimeErr  error
+)
 
 // loadTestHook is the marker bean whose construction installs the container's
 // load-test convention into the span processor. A nil bean (no propagator

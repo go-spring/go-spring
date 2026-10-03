@@ -3,7 +3,7 @@
 [English](README.md) | [中文](README_CN.md)
 
 `starter-governance-etcd` 是治理规则源家族中的 etcd 成员——与
-[`starter-governance-file`](../starter-governance-file/README_CN.md) 内 file、http 两个源同款
+[`cloud/governance`](../../cloud/governance) 内置的 file、http 两个源同款
 datasource 形态。它监听一个 etcd key 上的一份治理规则文档，并把每一次变更版本
 经 [`go-spring.org/cloud/governance`](../../cloud/governance) 的 `governance.Source`
 契约推入治理中心。
@@ -31,17 +31,14 @@ go get go-spring.org/starter-governance-etcd
 
 ## 快速开始
 
-### 1. 引入本 starter（以及接线）
+### 1. 引入本 starter
 
 ```go
-import (
-    _ "go-spring.org/starter-governance-file"
-    _ "go-spring.org/starter-governance-etcd"
-)
+import _ "go-spring.org/starter-governance-etcd"
 ```
 
-`starter-governance-file` 才是把注入的 `governance.Source` Bean 交给治理中心的模块；
-只引入 etcd 适配器会注册 Bean 但什么都不武装。
+本 starter 传递链接了 `cloud/governance`；配置后注册一个 `governance.Source` Bean，
+即武装治理中心。
 
 ### 2. 配置源
 

@@ -49,17 +49,11 @@ type dyncPoller struct {
 	dynCfg  *mapconfig.MapDynamicConfiguration // in-memory config center overrides are pushed into
 	appName string                             // application name, used as the app-level override key
 
-	// mgr is the governance starter's resilience manager bean, nil when
-	// no center is linked. It is the module authority the poller
-	// reads policies from and subscribes to for hot-reload. A nil (or disabled)
-	// manager leaves governance off: no overrides are merged, and the
-	// ${spring.dubbo.consumer}-only behavior stands.
-	mgr *resilience.Manager
-
-	// ctr is the governance starter's center bean, nil when the governance center is
-	// not imported. It is used only for its ready signal — gs wires Rooters before
-	// Runners, so this poller may initialize before the center is live; OnReady
-	// re-runs the poll once governance is armed.
+	// ctr is the governance center bean, nil when the governance center is
+	// not imported. It is the poller's sole governance entry: [dyncPoller.mgr]
+	// reads the resilience authority off it, and its ready signal re-runs the
+	// poll once governance goes live (gs wires Rooters before Runners, so this
+	// poller may initialize before the center is live).
 	ctr *governance.Center
 
 	// Consumer is the entire consumer node under ${spring.dubbo.consumer},
@@ -71,30 +65,37 @@ type dyncPoller struct {
 	regged map[string]bool              // dubbo service labels already subscribed on the center
 }
 
-// newDyncPoller creates the poller bean. mgr and ctr are the governance beans
-// the governance center provides; both are nil when it is not imported, which leaves
-// the poller on the legacy ${spring.dubbo.consumer}-only behavior.
-func newDyncPoller(app DubboApplication, mgr *resilience.Manager, ctr *governance.Center) *dyncPoller {
+// newDyncPoller creates the poller bean. ctr is the governance center bean; it
+// is nil when governance is not imported, which leaves the poller on the legacy
+// ${spring.dubbo.consumer}-only behavior.
+func newDyncPoller(app DubboApplication, ctr *governance.Center) *dyncPoller {
 	return &dyncPoller{
 		dynCfg:  mapconfig.Singleton(),
 		appName: app.Name,
-		mgr:     mgr,
 		ctr:     ctr,
 		last:    make(map[string]map[string]string),
 		regged:  make(map[string]bool),
 	}
 }
 
+// mgr returns the resilience authority the center hands out, or nil when no
+// center is linked. A nil (or disabled) manager leaves governance off: no
+// overrides are merged, and the ${spring.dubbo.consumer}-only behavior stands.
+func (p *dyncPoller) mgr() *resilience.Manager {
+	return p.ctr.Resilience()
+}
+
 // Init registers a change callback on the consumer Dync and pushes the current
 // override rules once. Subsequent hot-reloads fire the callback, which re-runs
 // poll; poll's internal diff skips no-op refreshes.
 //
-// gs wires Rooters before Runners, and the governance center is a Rooter while
-// this poller is one too — so the first poll below can run BEFORE the center has
-// gone live (mgr.Enabled is false while the authority is unarmed).
-// ctr.OnReady guarantees a re-poll once governance goes live, so overrides are
-// still pushed at startup regardless of init ordering; that re-poll is also what
-// first subscribes the poller to the center's policy changes.
+// The center is a Rooter whose Init hook is its GoLive, and this poller takes it
+// as a constructor dependency — so by the time this Init runs the center has
+// always gone live, and the first poll below already sees the armed authority.
+// ctr.OnReady is kept as the guard for the paths that can still run early (a
+// manually built center, a test); it is what first subscribes the poller to the
+// center's policy changes, and OnReady fires immediately when the center is
+// already live.
 func (p *dyncPoller) Init() error {
 	p.Consumer.OnChanged(func(_, _ DubboConsumer) { p.poll() })
 	if p.ctr != nil {
@@ -117,7 +118,7 @@ func (p *dyncPoller) poll() {
 	// is a no-op (changed() finds the same snapshot). When the governance center is
 	// absent (nil manager) or governance is not armed (Enabled false) the whole
 	// block is skipped.
-	if p.mgr != nil && p.mgr.Enabled() {
+	if p.mgr() != nil && p.mgr().Enabled() {
 		labels := dubboServiceLabels(p.appName, &consumer)
 		var toReg []string
 		p.mu.Lock()
@@ -130,7 +131,7 @@ func (p *dyncPoller) poll() {
 		p.mu.Unlock()
 		for _, l := range toReg {
 			l := l
-			p.mgr.Subscribe(l, func(resilience.ClientPolicy) { p.poll() })
+			p.mgr().Subscribe(l, func(resilience.ClientPolicy) { p.poll() })
 		}
 	}
 
@@ -162,7 +163,7 @@ func (p *dyncPoller) consumerToOverrideRules(c *DubboConsumer) map[string]map[st
 	// governed is read once: the same "is governance on?" answer gates both the
 	// app-level and the per-reference override, and the manager's Enabled is a
 	// locked read.
-	governed := p.mgr != nil && p.mgr.Enabled()
+	governed := p.mgr() != nil && p.mgr().Enabled()
 	rules := make(map[string]map[string]string)
 
 	// Consumer-level defaults → application-level override.
@@ -181,7 +182,7 @@ func (p *dyncPoller) consumerToOverrideRules(c *DubboConsumer) map[string]map[st
 		appParams["force.tag"] = "true"
 	}
 	if governed {
-		applyGovernOverride(appParams, p.mgr.ClientPolicyFor(dubboAppLabel(appName)))
+		applyGovernOverride(appParams, p.mgr().ClientPolicyFor(dubboAppLabel(appName)))
 	}
 	if len(appParams) > 0 {
 		rules[appName] = appParams
@@ -228,7 +229,7 @@ func (p *dyncPoller) consumerToOverrideRules(c *DubboConsumer) map[string]map[st
 			addIfSet(refParams, prefix+"execute.limit.rejected.handler", m.ExecuteLimitRejectedHandler)
 		}
 		if governed {
-			applyGovernOverride(refParams, p.mgr.ClientPolicyFor(dubboRefLabel(key)))
+			applyGovernOverride(refParams, p.mgr().ClientPolicyFor(dubboRefLabel(key)))
 		}
 		if len(refParams) > 0 {
 			rules[key] = refParams

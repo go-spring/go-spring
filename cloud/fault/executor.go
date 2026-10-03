@@ -18,11 +18,10 @@ package fault
 
 import (
 	"context"
-
-	"go-spring.org/cloud/resilience"
+	"go-spring.org/cloud/chain"
 )
 
-// WrapClientExecutor returns an Executor that injects faults into fn before
+// WrapClientExecutor returns an chain.Executor that injects faults into fn before
 // delegating to inner, using in as the injector.
 //
 // The injection happens INSIDE inner's retry loop: the wrapped fn either
@@ -47,7 +46,7 @@ import (
 // [ApplyServer]'s and never touches an outbound call.
 //
 // nil inner => returns nil.
-func WrapClientExecutor(inner resilience.ClientExecutor, service string, in *Injector) resilience.ClientExecutor {
+func WrapClientExecutor(inner chain.Executor, service string, in *Injector) chain.Executor {
 	if inner == nil {
 		return nil
 	}
@@ -58,7 +57,7 @@ func WrapClientExecutor(inner resilience.ClientExecutor, service string, in *Inj
 }
 
 type faultExecutor struct {
-	inner   resilience.ClientExecutor
+	inner   chain.Executor
 	service string
 	in      *Injector
 }
@@ -80,8 +79,3 @@ func (e *faultExecutor) Execute(ctx context.Context, fn func(context.Context) er
 
 // Close releases the inner executor's resources.
 func (e *faultExecutor) Close() error { return e.inner.Close() }
-
-// Refresh forwards the new policy to the inner executor. The fault injector
-// itself has no policy to refresh — its own config is swapped via
-// [Injector.SetConfig] whenever the governance source pushes a new config.
-func (e *faultExecutor) Refresh(p resilience.ClientPolicy) error { return e.inner.Refresh(p) }

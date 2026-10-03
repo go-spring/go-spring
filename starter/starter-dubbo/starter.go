@@ -60,14 +60,10 @@ func init() {
 
 // The dynamic-configuration poller (see dync.go).
 func init() {
-	// The governance beans are REQUIRED: each is registered by the package that
-	// owns it (cloud/resilience, cloud/loadbalance, cloud/fault), which this
-	// starter imports — "governance off" is spring.governance.enabled=false, never
-	// an absent bean.
+	// The governance center is the family's sole injection point: the poller
+	// reads its resilience authority and its ready signal from here.
 	gs.Provide(newDyncPoller,
 		gs.IndexArg(0, gs.TagArg("${spring.dubbo.application}")),
-		gs.IndexArg(1, gs.TagArg("")), // *resilience.Manager
-		gs.IndexArg(2, gs.TagArg("")), // *governance.Center
 	).Init((*dyncPoller).Init).Export(gs.As[gs.Rooter]()).Caller(1)
 }
 
@@ -95,12 +91,9 @@ func init() {
 	// instead.
 	extension.SetFilter(faultFilterKey, newFaultFilter)
 
-	// The governance beans are REQUIRED: each is registered by the package that
-	// owns it, which this starter imports — "governance off" is
-	// spring.governance.enabled=false, never an absent bean.
-	gs.Provide(newInjectorHook,
-		gs.IndexArg(0, gs.TagArg("")),
-	).Export(gs.As[gs.Rooter]()).Caller(1)
+	// The governance center is the family's sole injection point: the hook
+	// installs its fault authority into the package handle the filter reads.
+	gs.Provide(newInjectorHook).Export(gs.As[gs.Rooter]()).Caller(1)
 }
 
 // The load-test identification filter (see loadtest.go).

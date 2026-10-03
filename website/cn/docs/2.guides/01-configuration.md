@@ -468,8 +468,12 @@ func init() {
 ### 自定义配置提供者
 
 配置提供者负责从特定来源（本地文件、远程服务、数据库等）加载配置数据。
+`provider.Provider` 有两个方法：`Load` 返回配置内容，`Close` 停止 `Load` 期间装上的东西（watcher、listener、client）。
+运行时在应用退出时调用一次 `Close`，因此支持热更新的提供者无需额外接线就能被清理干净。
 如果你需要从一个特殊的地方加载配置（比如公司内部的配置中心、etcd、数据库等），
-只需要实现 `provider.Provider` 函数类型，然后调用 `conf.RegisterProvider` 注册就行了。
+调用 `conf.RegisterProvider` 注册就行了。
+
+没有资源需要释放的配置源就是一个普通函数，用 `provider.ProviderFunc` 包一层即可；一旦需要监听变更，就改写成带 `Load` 和 `Close` 的结构体。
 
 **完整示例 - 从环境变量读取 JSON 配置**：
 
@@ -480,6 +484,7 @@ import (
 	"os"
 
 	"go-spring.org/spring/conf"
+	"go-spring.org/spring/conf/provider"
 	"go-spring.org/stdlib/flatten"
 )
 
@@ -507,7 +512,8 @@ func envJSONProvider(optional bool, source string) (map[string]string, error) {
 
 // 在 init 中注册 Provider
 func init() {
-	conf.RegisterProvider("envjson", envJSONProvider)
+	// 没有资源需要释放：普通函数加上 ProviderFunc 就够了。
+	conf.RegisterProvider("envjson", provider.ProviderFunc(envJSONProvider))
 }
 ```
 

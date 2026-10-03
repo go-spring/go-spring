@@ -34,6 +34,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"go-spring.org/cloud/chain"
 	"io"
 	"net/http"
 	"os"
@@ -44,12 +45,10 @@ import (
 
 	"github.com/gomodule/redigo/redis"
 	"go-spring.org/cloud/discovery"
-	"go-spring.org/cloud/resilience"
 	"go-spring.org/spring/gs"
 
-	_ "go-spring.org/starter-actuator"        // aggregates the redigo health.Indicator
-	_ "go-spring.org/starter-config-file"     // registers the file-watch config provider
-	_ "go-spring.org/starter-governance-file" // registers the centralized governance center
+	_ "go-spring.org/starter-actuator"    // aggregates the redigo health.Indicator
+	_ "go-spring.org/starter-config-file" // registers the file-watch config provider
 	StarterRedigo "go-spring.org/starter-redigo"
 )
 
@@ -133,7 +132,7 @@ func runTest(s *Service, c *Config) {
 		switch {
 		case err == nil:
 			admitted++
-		case errors.Is(err, resilience.ErrRateLimited):
+		case errors.Is(err, chain.ErrRateLimited):
 			rejected++
 		default:
 			fail("SET: %v", err)

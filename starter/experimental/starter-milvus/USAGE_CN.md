@@ -251,7 +251,7 @@ grep _app_milvus_access app.log              # 治理关闭时访问日志照旧
 curl -s :9370/metrics | grep 'resilience\.'  # 治理关闭时为空：outcome 指标是治理动作的产物
 ```
 
-治理（starter-governance-file + `spring.governance.*` 规则）关闭时，限流/熔断/重试/超时都不生效，
+治理（cloud/governance + `spring.governance.*` 规则）关闭时，限流/熔断/重试/超时都不生效，
 但**观测仍在**：发射点在治理 executor 之外，`db.client.operation.duration`、
 `db.client.attempt.duration` 两个直方图与 `_app_milvus_access` 访问日志照旧产出（直方图还需
 `starter-otel` 安装 provider）。真正消失的只有 `resilience.*` outcome 指标。非经容器（零值

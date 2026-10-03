@@ -134,8 +134,8 @@ echo 'demo:\n  message: flipped' > example/mount/application.yaml
 
 ```
 import starter-config-file
-  ├─ init: conf.RegisterProvider("file-watch", controller.Load)      (starter.go:41)
-  └─ init: conf.RegisterProvider("configtree", controller.load)  (starter.go:35)
+  ├─ init: conf.RegisterProvider("file-watch", newFileWatchCtrl())      (starter.go:41)
+  └─ init: conf.RegisterProvider("configtree", newConfigTreeCtrl())  (starter.go:35)
         │
 gs.Run() → App.Start()                                                (app.go:285)
   1. mount the gs.RefreshProperties / gs.AppStarted facade targets

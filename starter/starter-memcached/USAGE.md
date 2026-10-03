@@ -42,7 +42,6 @@ require (
     go-spring.org/spring                    v1.3.x
     go-spring.org/starter-memcached         latest
     go-spring.org/starter-actuator          latest   // optional: /readiness folds in memcache health
-    go-spring.org/starter-governance-file        latest   // optional: resilience/fault for memcached ops
 )
 ```
 
@@ -258,8 +257,7 @@ the output belongs to the example app, not the starter).
 The `driver` key names the Driver bean: empty = fall back to the family-wide `spring.<family>.default.driver`, then to the single Driver bean by type (see
 §2.1), set to a bean name to select one explicitly; no `resilience` key: resilience/fault come from the governance center
 (`spring.governance.*` config of
-starter-governance-file), keyed by service `memcached:<service-name or instance-name>`.: resilience/fault come from the governance center (`spring.governance.*` config of
-starter-governance-file), keyed by service `memcached:<service-name or instance-name>`.
+cloud/governance), keyed by service `memcached:<service-name or instance-name>`.
 
 ---
 

@@ -123,7 +123,7 @@ starter 自身不再做任何逐调用发射 —— 它只声明身份，由 res
 res, err := StarterRocketmq.GuardedSend(ctx, s.Client, p, msg)
 ```
 
-未导入 `starter-governance-file` 时，它和 `p.SendSync(ctx, msg)` 行为完全一致。
+治理未接入（容器里没有 `cloud/governance` 的 bean）时，它和 `p.SendSync(ctx, msg)` 行为完全一致。
 
 [消息 Driver](#消息-driver)的 publish 与 consume 路径同样经由该 executor，因此
 driver 流量也受到保护并被声明。

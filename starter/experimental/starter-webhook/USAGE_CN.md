@@ -38,7 +38,6 @@ require (
     go-spring.org/spring             v1.3.x
     go-spring.org/starter-webhook    latest
     go-spring.org/starter-otel       latest   # 可选：真实 span 导出
-    go-spring.org/starter-governance-file latest   # 可选：限流 / 熔断 / fault
 )
 ```
 
@@ -49,7 +48,6 @@ package main
 
 import (
     "go-spring.org/spring/gs"
-    _ "go-spring.org/starter-governance-file"
     _ "go-spring.org/starter-otel"
     _ "go-spring.org/starter-webhook"
 )
@@ -172,7 +170,7 @@ resilience 服务标签为 `webhook:<name>:<channel>`——按实例**且**按�
    再经 `resilience.Run` 把 POST 路由穿过该 notifier 的 resilience executor。
    Send **只声明**，自身不发射任何信号。
 3. **ClientExecutor + 发射（resilience 层）** —— POST 闭包经服务标签下的治理 executor：
-   引入 starter-governance-file 后限流 / 熔断 / retry（若经治理配置）/ fault 注入生效，否则
+   配好治理规则源后限流 / 熔断 / retry（若经治理配置）/ fault 注入生效，否则
    退化为只观测、不受治理的执行器（每客户端告警一次：无任何保护生效）。执行器上的
    observe 包裹层是唯一**发射点**：开调用级 span `webhook.send`
    （覆盖每次尝试），记录调用级 `messaging.client.operation.duration`、尝试级
@@ -190,7 +188,7 @@ span、指标与访问日志都**在** `Send` 路由穿过的执行器**内部**
 span 都会被度量——没有调用侧需要记得的括号。starter 不再提供 `StartSendSpan` / `EndSpan`
 助手：声明身份已是这一层的全部职责。
 
-重试行为：**无内建 retry**。仅当通过 starter-governance-file 为
+重试行为：**无内建 retry**。仅当通过治理规则为
 `webhook:<name>:<channel>` 服务配置了 retry 策略才会重试；无治理时失败的 POST 立即
 把错误返回给调用方。⚠ DingTalk/Feishu 有些失败以 HTTP 200 + 错误 body 返回——
 `post` 只检查状态码，这类响应当作成功（见 §6 嫌疑）。
@@ -245,7 +243,7 @@ cd example && go run .    # receiver 捕获 POST；example 断言
 
 用一个坏 URL（如端口 1）启动：每次 Send 返回 `webhook: post failed` 带连接错误，
 发射的 span（status Error、error 事件）与 executor 的按 outcome 计数都有记录。
-starter 自身没有可热切换的东西；引入 starter-governance-file 后，改规则文件即可给
+starter 自身没有可热切换的东西；配好治理规则源后，改规则文件即可给
 `webhook:alert:dingtalk` 在线武装限流——超限的发送会以 limit-reject outcome 快速失败，
 不再到达平台。
 

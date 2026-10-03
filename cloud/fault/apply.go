@@ -56,7 +56,7 @@ func scopeApplies(c Config, prop traffic.Propagator, ctx context.Context) bool {
 // caller's own timeout/budget logic reacts rather than retrying blindly.
 // gate does NOT retry — retry is a client concern; for the full
 // retry/timeout/breaker treatment on a client call use [WrapClientExecutor] with a
-// resilience.ClientExecutor.
+// chain.Executor.
 func (in *Injector) gate(ctx context.Context, s *side, service string, fn func(context.Context) error) error {
 	c := s.config()
 	if !c.Enabled || !scopeApplies(c, in.prop, ctx) {

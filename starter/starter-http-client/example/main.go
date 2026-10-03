@@ -29,7 +29,7 @@
 //     two instances (observed via the servedBy field flipping between them).
 //  3. Resilience — the "guarded" client points at a backend that always fails;
 //     after the error threshold the breaker opens and calls fast-fail with
-//     resilience.ErrCircuitOpen instead of hitting the network.
+//     chain.ErrCircuitOpen instead of hitting the network.
 //  4. Trace propagation — a client span injects a W3C traceparent header
 //     (httpx's built-in otelhttp transport + the global propagator);
 //     the backend echoes it back, so the same trace id is observable on both
@@ -41,6 +41,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"go-spring.org/cloud/chain"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -50,14 +51,12 @@ import (
 	"time"
 
 	"go-spring.org/cloud/discovery"
-	"go-spring.org/cloud/resilience"
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/propagation"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 
-	_ "go-spring.org/starter-governance-file"
 	_ "go-spring.org/starter-http-client"
 	"go-spring.org/starter-http-client/example/proto"
 )
@@ -202,7 +201,7 @@ func runTest() {
 		if err == nil {
 			fail("guarded call unexpectedly succeeded against a failing backend")
 		}
-		if errors.Is(err, resilience.ErrCircuitOpen) {
+		if errors.Is(err, chain.ErrCircuitOpen) {
 			breakerOpened = true
 			fmt.Printf("resilience OK: breaker open on attempt %d, fast-failed in %s\n", i+1, time.Since(start))
 			break

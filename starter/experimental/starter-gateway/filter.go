@@ -19,6 +19,7 @@ package StarterGateway
 import (
 	"context"
 	"errors"
+	"go-spring.org/cloud/chain"
 	"net"
 	"net/http"
 	"strconv"
@@ -266,10 +267,10 @@ func rateLimitFilter(args []string, counters resilience.Counters) (Filter, error
 			if keyMode == "ip" {
 				scope = scope + "|" + clientIP(r)
 			}
-			err := counters.Allow(r.Context(), scope, pol, 1)
+			err := counters.Allow(r.Context(), scope, pol.RateSpec(), 1)
 			switch {
 			case err == nil:
-			case errors.Is(err, resilience.ErrRateLimited):
+			case errors.Is(err, chain.ErrRateLimited):
 				http.Error(w, "429 Too Many Requests", http.StatusTooManyRequests)
 				return
 			default:

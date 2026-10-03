@@ -21,10 +21,8 @@ import (
 	"net"
 	"time"
 
-	"go-spring.org/cloud/discovery"
-	"go-spring.org/cloud/fault"
+	"go-spring.org/cloud/governance"
 	"go-spring.org/cloud/loadbalance"
-	"go-spring.org/cloud/resilience"
 	"go-spring.org/cloud/security"
 	"go-spring.org/cloud/traffic"
 	"go-spring.org/log"
@@ -44,20 +42,21 @@ func init() {
 		gs.IndexArg(0, gs.TagArg("${spring.grpc.server}")),
 		gs.IndexArg(2, gs.TagArg("?")), // nullable []grpc.UnaryServerInterceptor beans
 		gs.IndexArg(3, gs.TagArg("?")), // nullable []grpc.StreamServerInterceptor beans
-		gs.IndexArg(4, gs.TagArg("?")), // nullable resilience.Manager bean
-		gs.IndexArg(5, gs.TagArg("?")), // nullable fault.Injector bean
-		gs.IndexArg(6, gs.TagArg("?")), // nullable traffic.Propagator bean
+		// The governance center is the family's sole injection point: it hands
+		// out the resilience/fault/loadbalance authorities.
+		gs.IndexArg(5, gs.TagArg("?")), // nullable traffic.Propagator bean
 	).Export(gs.As[gs.Server]()).
 		Condition(gs.OnProperty("spring.grpc.server.addr"))
 
-	// Capture the container's named discovery backend beans (bean name = label)
-	// into the directory the gsdiscovery resolver resolves "gsdiscovery://<label>
-	// /<service>" targets against. Collected at assembly time so target
-	// resolution never consults process-global state at runtime. Exported as a
-	// Rooter so the map is captured even when nothing autowires the hook.
-	gs.Provide(newDiscoveryBackendsHook,
-		gs.IndexArg(0, gs.TagArg("?")),
-	).Export(gs.As[gs.Rooter]()).Caller(1)
+	// Capture the discovery directory (bean name = label) into the directory the
+	// gsdiscovery resolver resolves "gsdiscovery://<label>/<service>" targets
+	// against. The directory rides the governance center, so this hook injects
+	// the center — the family's sole injection point — and reads the directory
+	// off it. Collected at assembly time so target resolution never consults
+	// process-global state at runtime. Exported as a Rooter so the directory is
+	// captured even when nothing autowires the hook.
+	gs.Provide(newDiscoveryBackendsHook).
+		Export(gs.As[gs.Rooter]()).Caller(1)
 }
 
 // The client-side half: the gsdiscovery resolver and the built-in governance
@@ -81,17 +80,18 @@ func init() {
 	// so gs instantiates it even though nothing injects it — without a
 	// collected-type export an unreachable bean is never created and the policy
 	// would never be applied.
-	gs.Provide(newSelectionHook, gs.IndexArg(0, gs.TagArg("?"))).
+	gs.Provide(newSelectionHook).
 		Export(gs.As[gs.Rooter]()).Caller(1)
 }
 
-// newDiscoveryBackendsHook installs every named discovery.Discovery bean into
-// the gsdiscovery resolver's label directory (see balancer.go). The map is nil
-// when the app declares no backend beans — dials then fail loudly on the label.
+// newDiscoveryBackendsHook installs the center's discovery directory into the
+// gsdiscovery resolver's label directory (see balancer.go). center is nil when
+// no center is linked, which reads a nil directory — dials then fail loudly on
+// the label.
 type discoveryBackendsHook struct{}
 
-func newDiscoveryBackendsHook(backends map[string]discovery.Discovery) (*discoveryBackendsHook, error) {
-	SetDiscoveryBackends(backends)
+func newDiscoveryBackendsHook(center *governance.Center) (*discoveryBackendsHook, error) {
+	SetDiscoveryBackends(center.Discovery())
 	return &discoveryBackendsHook{}, nil
 }
 
@@ -171,12 +171,10 @@ type SimpleGrpcServer struct {
 	// []grpc.StreamServerInterceptor) — per-container, no package-level stack.
 	userUnary  []grpc.UnaryServerInterceptor
 	userStream []grpc.StreamServerInterceptor
-	// inj is the governance starter's fault injector bean (nil when governance
-	// is not imported); it backs the always-installed fault interceptors.
-	inj *fault.Injector
-	// mgr is the governance starter's resilience manager bean (nil when
-	// governance is not imported); it supplies the inbound admission policy.
-	mgr *resilience.Manager
+	// center is the governance center bean (nil when governance is not
+	// imported); its fault authority backs the always-installed fault
+	// interceptors and its resilience authority supplies the inbound policy.
+	center *governance.Center
 	// prop is the application's load-test convention bean (nil-normalized to
 	// go-spring's default); the LoadTest interceptors read the inbound marker
 	// through it.
@@ -185,20 +183,20 @@ type SimpleGrpcServer struct {
 }
 
 // NewSimpleGrpcServer creates a SimpleGrpcServer from ${spring.grpc.server}
-// configuration. Inbound admission protection (rate-limit / breaker) is built
+// configuration. Inbound inbound protection (rate-limit / breaker) is built
 // inside buildResilienceInterceptors from the injected mgr. User-contributed
 // interceptors arrive as bean collections: an application gs.Provides each
 // interceptor and exports it As the interceptor type, and the container injects
 // every one of them here — per-container, so two containers in one process carry
 // independent stacks. Both collections are nullable, so an application that
-// contributes no interceptor of its own still starts. mgr and inj are the
-// governance starter's resilience manager and fault injector beans, captured
-// here and reused by the admission and fault interceptors (both nil when
-// governance is not imported). prop is the application's load-test convention
-// bean, handed to the LoadTest interceptors (nil means go-spring's default).
+// contributes no interceptor of its own still starts. center is the governance
+// center bean, captured here and its authorities reused by the inbound and
+// fault interceptors (nil when governance is not imported). prop is the
+// application's load-test convention bean, handed to the LoadTest interceptors
+// (nil means go-spring's default).
 func NewSimpleGrpcServer(cfg Config, reg ServiceRegister,
 	userUnary []grpc.UnaryServerInterceptor, userStream []grpc.StreamServerInterceptor,
-	mgr *resilience.Manager, inj *fault.Injector, prop traffic.Propagator) *SimpleGrpcServer {
+	center *governance.Center, prop traffic.Propagator) *SimpleGrpcServer {
 	if prop == nil {
 		// DefaultBinding is complete, so this cannot fail.
 		prop, _ = traffic.NewDefaultPropagator(traffic.DefaultBinding())
@@ -209,8 +207,7 @@ func NewSimpleGrpcServer(cfg Config, reg ServiceRegister,
 		reg:        reg,
 		userUnary:  userUnary,
 		userStream: userStream,
-		mgr:        mgr,
-		inj:        inj,
+		center:     center,
 		prop:       prop,
 	}
 }
@@ -280,7 +277,7 @@ func (s *SimpleGrpcServer) buildOptions() ([]grpc.ServerOption, error) {
 	// The access log is installed unconditionally, unlike the two above: it is
 	// the one signal the RPC family requires of every member, so a config change
 	// must not be able to remove it. It sits just inside tracing (the line then
-	// carries the span's trace_id) and outside admission, fault injection and
+	// carries the span's trace_id) and outside inbound, fault injection and
 	// recovery (so it reports what the caller actually got).
 	unary = append(unary, AccessLogUnaryInterceptor())
 	stream = append(stream, AccessLogStreamInterceptor())
@@ -297,8 +294,8 @@ func (s *SimpleGrpcServer) buildOptions() ([]grpc.ServerOption, error) {
 	// pass-through when governance is not imported), so fault can be hot-toggled
 	// at runtime without a restart — the center swaps the injector's config in
 	// place.
-	unary = append(unary, FaultUnaryInterceptor(s.inj))
-	stream = append(stream, FaultStreamInterceptor(s.inj))
+	unary = append(unary, FaultUnaryInterceptor(s.center.Fault()))
+	stream = append(stream, FaultStreamInterceptor(s.center.Fault()))
 	// Recovery (always installed), innermost so a converted panic flows back
 	// through tracing/metrics/resilience as a codes.Internal error and is
 	// observed — grpc-go recovers handler panics nowhere by itself.

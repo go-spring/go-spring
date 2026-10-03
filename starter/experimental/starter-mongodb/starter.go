@@ -18,14 +18,13 @@ package StarterMongoDB
 
 import (
 	"context"
+	"go-spring.org/cloud/governance"
 	"net"
 	"sync/atomic"
 	"time"
 
 	"go-spring.org/cloud"
 	"go-spring.org/cloud/actuator/health"
-	"go-spring.org/cloud/discovery"
-	"go-spring.org/cloud/fault"
 	"go-spring.org/cloud/loadbalance"
 	"go-spring.org/cloud/resilience"
 	"go-spring.org/log"
@@ -52,22 +51,15 @@ func init() {
 
 			// The wrapper bean owns the resilience executor + discovery watch:
 			// newClient builds them and Destroy tears them down, so there is no
-			// Init hook. The instance's discovery.Discovery backend bean is
-			// injected by name from the entry's ${discovery} label (default
-			// "default"; optional, so an app with no backend beans at all gets
-			// nil here). The trailing governance beans (*resilience.Manager /
-			// *fault.Injector / *loadbalance.Manager) are injected as beans (see
-			// the per-arg note below).
+			// Init hook. The entry's ${discovery} label is bound here as a value
+			// (family default "none", meaning "no backend") and resolved against
+			// the center's discovery directory. The governance center is the
+			// family's sole injection point (see the per-arg note below).
 			r.Provide(newClient,
 				gs.IndexArg(1, gs.ValueArg(c)),
-				gs.IndexArg(2, gs.TagArg("${spring.mongodb.instances."+name+".discovery:=${spring.mongodb.default.discovery:=none}}?")),
-				// The governance beans are REQUIRED: each is registered by the package that
-				// owns it (cloud/resilience, cloud/loadbalance, cloud/fault), which this
-				// starter imports — "governance off" is spring.governance.enabled=false, never
-				// an absent bean.
-				gs.IndexArg(3, gs.TagArg("")),
-				gs.IndexArg(4, gs.TagArg("")),
-				gs.IndexArg(5, gs.TagArg("")),
+				gs.IndexArg(2, gs.TagArg("${spring.mongodb.instances."+name+".discovery:=${spring.mongodb.default.discovery:=none}}")),
+				// The governance center is the family's sole injection point: it hands
+				// out the resilience/fault/loadbalance authorities.
 			).Name(name).Destroy((*Client).Destroy).Caller(1)
 
 			// Contribute a health indicator for this instance, injecting the
@@ -96,28 +88,34 @@ func init() {
 // is complete when this ctor returns.
 //
 // When c.ServiceName is set and mesh mode is off, the address is resolved
-// through backend (the discovery backend the entry's ${discovery} label
-// resolved to): a loader-backed dialer is injected as the client's
+// through the backend the entry's ${discovery} label names, looked up in the
+// center's discovery directory: a loader-backed dialer is injected as the client's
 // ContextDialer, so each new connection dials a currently-live instance picked
 // from the service's endpoint snapshot and address changes take effect without
 // rebuilding the client. In mesh mode a sidecar owns discovery+LB, so the URI
 // hosts are dialed directly. When c.ServiceName is empty this dials the URI
 // hosts directly, unchanged from before.
 //
-// mgr, inj and lbMgr are the governance beans the container injects (all nil in
-// a standalone, non-gs call). They are bundled into one [cloud.ClientParams]
-// handed to [NewClient], which resolves the resilience executor from it;
-// lbMgr (as the bundle's Loadbalance) additionally binds the discovery pick
+// center is the governance center the container injects (nil in a standalone,
+// non-gs call) — the family's sole injection point. Its resilience, fault and
+// loadbalance authorities are bundled into one [cloud.ClientParams] handed to
+// [NewClient], which resolves the resilience executor from it; the loadbalance
+// authority additionally binds the discovery pick
 // pool this constructor builds, which is where the pool first exists.
-func newClient(ctx *gs.ContextProvider, c Config, backend discovery.Discovery,
-	mgr *resilience.Manager, inj *fault.Injector, lbMgr *loadbalance.Manager) (*Client, error) {
+func newClient(ctx *gs.ContextProvider, c Config, discoveryLabel string,
+	center *governance.Center) (*Client, error) {
 	log.Debugf(ctx.Context, log.TagAppDef, "creating mongodb client, uri=%s service-name=%s", c.URI, c.ServiceName)
 
+	// Resolve the entry's ${discovery} label against the center's directory. A
+	// label that names nothing (including the "none" sentinel) reads a nil
+	// backend, which the assembly below rejects when service-name routing is on.
+	backend, _ := center.Discovery().Get(discoveryLabel)
+
 	// The container's governance capabilities, bundled so the client is
-	// assembled complete in one step (see [cloud.ClientParams]). All three may
+	// assembled complete in one step (see [cloud.ClientParams]). All of them may
 	// be nil in a standalone, non-gs call; the bundle then degrades to an
 	// observed-only, loudly-unmanaged executor.
-	params := cloud.ClientParams{Resilience: mgr, Fault: inj, Loadbalance: lbMgr, Discovery: backend}
+	params := cloud.ClientParams{Resilience: center.Resilience(), Fault: center.Fault(), Loadbalance: center.Loadbalance(), Discovery: backend}
 
 	opts := options.Client().ApplyURI(c.URI)
 	if c.ConnectTimeout > 0 {

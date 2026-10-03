@@ -177,8 +177,7 @@ curl http://127.0.0.1:9090/sqlserver_version
 
 ```
 import starter-gorm-sqlserver
-  └─ init(): gormcore.Module(Dialect{Prefix: "spring.gorm.sqlserver",
-        Engine: "microsoft.sql_server", HealthPrefix: "gorm:sqlserver:"})
+  └─ init(): gs.Module(gs.OnProperty("spring.gorm.sqlserver.instances"), ...)   —— 注册在 starter.go
 gs.Run()
   ├─ conf.BindEach → 每条目一个 Config
   ├─ build()                                        — starter.go:63-107
@@ -188,9 +187,10 @@ gs.Run()
   │    │    → connector.Dialer = resolverDialer     — 每次拨号重新挑一个存活实例
   │    │    → sqlserver.New(Config{Conn: sql.OpenDB(connector)})
   │    └─ 直连路径：sqlserver.Open(DSN)
-  ├─ gormcore.Open: gorm.Open → ApplyPool（启动 ping）→ DBCustomizers
-  ├─ DB.Init(): observe 插件（db.system=microsoft.sql_server）+ resilience 回调
-  │            （resource "gorm:sqlserver" + service-name/host）
+  ├─ gormcore.NewDB: gorm.Open → ApplyPool（连接池旋钮）→ DBCustomizers → observe
+  │      插件（db.system=microsoft.sql_server）+ resilience 回调（resource
+  │      "gorm:sqlserver" + service-name/host）→ *DB bean，名为 <dialect>.<entry>
+  ├─ ping 时启动探测：gormcore.HealthCheck（受 ping-timeout 约束）
   ├─ 运行；resolver 的后台 watch 持续刷新端点集
   └─ SIGTERM → DB.Destroy(): executor → closers（停 discovery watch）→ 关连接池
 ```
@@ -299,7 +299,7 @@ example 的 `discovery` 实例用哑值 `0.0.0.0:0`；`Response from discovered 
 ```bash
 cd example-load && docker compose up -d
 go run . -duration=10s                       # SELECT 1 基线吞吐
-# 放火 —— 编辑 conf/app.properties（starter-governance-file 热加载）：
+# 放火 —— 编辑 conf/app.properties（cloud/governance 热加载）：
 #   spring.governance.client.fault.enabled=true  spring.governance.client.fault.rate=0.5  spring.governance.client.fault.error=generic
 go run . -duration=10s                       # 错误分布显示 ~50% 注入
 ```

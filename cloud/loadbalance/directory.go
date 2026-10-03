@@ -26,11 +26,11 @@ import (
 // Directory is the name-keyed table of [Factory] strategies — the runtime form
 // of "the strategies this process knows". The built-in strategies are always
 // present; a deployment extends it by contributing named [Factory] beans (see
-// the governance starter's wiring), which is what makes load balancing
-// specializable without touching this package.
+// [NewManager]), which is what makes load balancing specializable without
+// touching this package.
 //
-// A Directory is built once during wiring and read-only afterwards, so it is
-// safe for concurrent use.
+// A Directory is built once, when the manager is constructed, and read-only
+// afterwards, so it is safe for concurrent use.
 type Directory interface {
 	// Build constructs the strategy named name from p. An unknown name, or a
 	// params bag the strategy rejects, is an error.

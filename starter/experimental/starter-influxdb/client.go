@@ -24,6 +24,7 @@ package StarterInfluxdb
 
 import (
 	"context"
+	"go-spring.org/cloud/chain"
 	"net/http"
 	"sync"
 
@@ -59,7 +60,7 @@ type Client struct {
 
 	// exec is the resilience executor protecting writes, applied by [NewClient]
 	// from the governance bundle; observes-only when governance is off.
-	exec resilience.ClientExecutor
+	exec chain.Executor
 	// serviceLabel is the resilience service key ("influxdb:<url>") exec scopes
 	// limiter/breaker state by.
 	serviceLabel string

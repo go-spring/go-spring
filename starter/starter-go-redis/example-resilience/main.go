@@ -16,7 +16,7 @@
 
 // Command example demonstrates starter-go-redis's resilience protection: with
 // resilience.enabled, every Redis command runs through the selected driver's
-// Executor (rate limit / circuit breaker / bulkhead), so a burst over the limit
+// chain.Executor (rate limit / circuit breaker / bulkhead), so a burst over the limit
 // is rejected with ErrRateLimited before reaching Redis. Configuration is
 // backend-neutral — the same ${resilience.*} keys drive every client starter.
 package main
@@ -26,17 +26,16 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"go-spring.org/cloud/chain"
 	"os"
 	"path/filepath"
 	"runtime"
 	"syscall"
 	"time"
 
-	"go-spring.org/cloud/resilience"
 	"go-spring.org/spring/gs"
 
 	StarterGoRedis "go-spring.org/starter-go-redis"
-	_ "go-spring.org/starter-governance-file" // registers the centralized governance center
 )
 
 // Service autowires the named "cache" redis instance. Its ops are protected by
@@ -78,7 +77,7 @@ func runTest(s *Service) {
 		switch {
 		case err == nil:
 			ok++
-		case errors.Is(err, resilience.ErrRateLimited):
+		case errors.Is(err, chain.ErrRateLimited):
 			rejected++
 		default:
 			fail("Set: %v", err)

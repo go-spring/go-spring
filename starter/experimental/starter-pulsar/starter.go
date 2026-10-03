@@ -23,9 +23,8 @@ package StarterPulsar
 import (
 	"github.com/apache/pulsar-client-go/pulsar"
 	"go-spring.org/cloud"
-	"go-spring.org/cloud/fault"
+	"go-spring.org/cloud/governance"
 	"go-spring.org/cloud/messaging"
-	"go-spring.org/cloud/resilience"
 	"go-spring.org/cloud/traffic"
 	"go-spring.org/log"
 	"go-spring.org/spring/conf"
@@ -54,12 +53,8 @@ func init() {
 				gs.IndexArg(1, gs.ValueArg(name)),
 				gs.IndexArg(2, gs.ValueArg(c)),
 				gs.IndexArg(3, gs.TagArg("${spring.pulsar.instances."+name+".driver:=${spring.pulsar.default.driver:=?}}")),
-				// The governance beans are REQUIRED: each is registered by the package that
-				// owns it (cloud/resilience, cloud/loadbalance, cloud/fault), which this
-				// starter imports — "governance off" is spring.governance.enabled=false, never
-				// an absent bean.
-				gs.IndexArg(4, gs.TagArg("")), // *resilience.Manager
-				gs.IndexArg(5, gs.TagArg("")), // *fault.Injector
+				// The governance center is the family's sole injection point: it hands
+				// out the resilience/fault/loadbalance authorities.
 			).Name(name).Destroy(destroyClient).Caller(1)
 
 			// Export the broker-neutral messaging.Driver over this client as a bean,
@@ -82,8 +77,9 @@ func init() {
 // registry, and the governance executor); when no such bean exists the bundled
 // DefaultDriver is used. The driver returns the client COMPLETE — the identity
 // and the resilience executor are applied while it is built — so the starter
-// never patches it afterwards. mgr and inj are the governance beans the
-// container injects; the ctor bundles them into the [cloud.ClientParams] it
+// never patches it afterwards. center is the governance center the container
+// injects — the family's sole injection point; the ctor reads the resilience and
+// fault authorities from it and bundles them into the [cloud.ClientParams] it
 // hands the driver.
 //
 // Assembly completes before the probe: the client is probed (when Ping is
@@ -91,7 +87,7 @@ func init() {
 // list, bad credentials or TLS mismatch fail fast at startup instead of
 // surfacing on the first produce/consume. A failed probe releases what was just
 // assembled.
-func newClient(ctx *gs.ContextProvider, name string, c Config, d Driver, mgr *resilience.Manager, inj *fault.Injector) (pulsar.Client, error) {
+func newClient(ctx *gs.ContextProvider, name string, c Config, d Driver, center *governance.Center) (pulsar.Client, error) {
 	log.Debugf(ctx.Context, log.TagAppDef, "creating pulsar client, url=%s ping=%v", c.URL, c.Ping)
 
 	// No company Driver bean → fall back to the bundled default assembly.
@@ -99,7 +95,7 @@ func newClient(ctx *gs.ContextProvider, name string, c Config, d Driver, mgr *re
 		d = DefaultDriver{}
 	}
 	cl, err := d.CreateClient(ctx.Context, c,
-		cloud.ClientParams{Resilience: mgr, Fault: inj})
+		cloud.ClientParams{Resilience: center.Resilience(), Fault: center.Fault()})
 	if err != nil {
 		return nil, err
 	}

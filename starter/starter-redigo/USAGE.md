@@ -37,7 +37,6 @@ require (
     go-spring.org/starter-redigo   latest
     go-spring.org/starter-actuator latest   // optional
     go-spring.org/starter-otel     latest   // optional
-    go-spring.org/starter-governance-file latest // optional
 )
 ```
 
@@ -49,7 +48,6 @@ package main
 import (
     "go-spring.org/spring/gs"
     _ "go-spring.org/starter-actuator"
-    _ "go-spring.org/starter-governance-file"
     _ "go-spring.org/starter-otel"
     _ "go-spring.org/starter-redigo"
     _ "demo/service"

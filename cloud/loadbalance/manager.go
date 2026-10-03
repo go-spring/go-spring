@@ -53,8 +53,8 @@ type Manager struct {
 
 	// dir is the strategy directory every bound pool's balancer is built from:
 	// the built-in strategies plus whatever [Factory] beans the container
-	// contributed (see [Manager.SetFactories]). It is never nil on a manager
-	// built by [NewManager].
+	// contributed (see [NewManager]). It is never nil on a manager built by
+	// [NewManager].
 	dir Directory
 }
 
@@ -72,37 +72,30 @@ type Settings struct {
 	Resolve func(label string) Selection
 }
 
-// NewManager returns an unarmed Manager: no resolver yet, so every pool keeps
-// the strategy it was built with until [Manager.Apply] arms it. Bindings taken
-// while it is unarmed are remembered and come alive on that Apply. Its
-// directory holds the built-in strategies; a deployment adds its own with
-// [Manager.SetFactories] before the center goes live.
-func NewManager() *Manager {
-	return &Manager{subs: map[string][]*subscriber{}, dir: builtinDirectory()}
-}
-
-// SetFactories installs the additional [Factory] beans the container
-// contributed, keyed by bean name — the strategy directory a `balancer` name in
-// a rule is resolved against. The built-in strategies stay in place and a
-// contributed name that shadows one is an error, as is an empty name or a nil
-// factory. It is the load-balancing counterpart of resilience's
-// Manager.SetDrivers and is meant to run during wiring, before the center goes
-// live; a nil or empty map is a no-op that leaves the built-ins alone.
+// NewManager returns an unarmed Manager over the built-in strategies extended
+// by factories — the additional [Factory] beans the container contributed,
+// keyed by bean name. That map IS the strategy directory a `balancer` name in a
+// rule is resolved against, and it is taken here rather than through a setter
+// because the directory is fixed for the manager's lifetime: the container
+// hands over everything it has at construction and nothing installs a strategy
+// afterwards.
 //
-// On error the directory is left unchanged, so a rejected contribution cannot
-// strip the process of the strategies it already had.
-func (m *Manager) SetFactories(extra map[string]Factory) error {
-	if len(extra) == 0 {
-		return nil
-	}
-	dir, err := NewDirectory(extra)
+// A nil or empty factories leaves the manager on the built-in strategies alone,
+// which is what a process that contributes none looks like. An empty name, a
+// nil factory, or a name that shadows a built-in strategy is an error — a
+// deployment must not silently replace round_robin — and no manager is
+// returned, so a rejected contribution cannot strip the process of the
+// strategies it already had.
+//
+// The manager is unarmed: no resolver yet, so every pool keeps the strategy it
+// was built with until [Manager.Apply] arms it. Bindings taken while it is
+// unarmed are remembered and come alive on that Apply.
+func NewManager(factories map[string]Factory) (*Manager, error) {
+	dir, err := NewDirectory(factories)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.dir = dir
-	return nil
+	return &Manager{subs: map[string][]*subscriber{}, dir: dir}, nil
 }
 
 // Build constructs the strategy name from the manager's directory, using params
@@ -210,7 +203,7 @@ func (m *Manager) Bind(pool *Pool, label string) (stop func()) {
 // Subscribing to an UNARMED manager is meaningful, not a no-op: the sink is armed
 // with the zero Selection (which applies as "keep the strategy, disable
 // suspension") and is notified as soon as the manager is armed. That is what makes
-// binding safe during bean construction, which runs BEFORE the wiring bean's
+// binding safe during bean construction, which can run BEFORE the center bean's
 // [governance.Center.GoLive] — the moment a pool is built, the manager has no
 // resolver yet, and dropping the subscription here would silently lose the
 // binding for the process lifetime.

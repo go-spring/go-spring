@@ -99,7 +99,7 @@ func (s *GatewayServer) Run(ctx context.Context, sig gs.ReadySignal) error {
 
 	<-sig.TriggerAndWait()
 	log.Infof(ctx, log.TagAppDef, "gateway: serving on %s", s.Cfg.Addr)
-	if err = s.svr.Serve(listener); err != nil && err != http.ErrServerClosed {
+	if err = s.svr.Serve(listener); err != nil && !errutil.IsServerClosed(err) {
 		log.Errorf(ctx, log.TagAppDef, "gateway: failed to serve on %s: %v", s.Cfg.Addr, err)
 		return errutil.Explain(err, "gateway: failed to serve on %s", s.Cfg.Addr)
 	}

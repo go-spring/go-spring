@@ -27,8 +27,12 @@
 // [Discovery] interface; each backend is a named bean in the IoC container
 // (a discovery starter derives one per ${spring.discovery.<backend>.<name>}
 // block, named "<backend>.<name>" — e.g. "etcd.main"), and every client
-// starter injects the backend it cites by name — the container is
-// the discovery directory. Publishing this process to a registry (the
+// cites the backend it wants by that label — the container is the discovery
+// directory, and [Manager] is its object form: the one bean that hands a
+// backend out by label. That manager is also carried by the governance center,
+// so a client whose single injection point is the center reaches discovery
+// through it like every other facility.
+// Publishing this process to a registry (the
 // provider-side write) is driven by this package: [Server] owns the
 // publication lifecycle, and each backend starter contributes the [Registry]
 // that talks to its own center.

@@ -38,7 +38,6 @@ require (
     go-spring.org/starter-cassandra latest
     go-spring.org/starter-actuator  latest   // optional: readiness + /metrics
     go-spring.org/starter-otel      latest   // optional: real trace/metric export
-    go-spring.org/starter-governance-file latest  // optional: resilience/fault policy
 )
 ```
 
@@ -51,7 +50,6 @@ import (
     "go-spring.org/spring/gs"
     _ "go-spring.org/starter-actuator"
     _ "go-spring.org/starter-cassandra"
-    _ "go-spring.org/starter-governance-file"
     _ "go-spring.org/starter-otel"
     _ "demo/service"
 )
@@ -310,7 +308,7 @@ Then confirm what stays outside the guard: run a `NewBatch`/`ExecuteBatch` or ch
 configurator (`Consistency(...)`, which returns a `*gocql.Query`), and see no new access-log
 line, no metric delta, no span (those paths are undeclared by design, §2.3).
 
-### 4.3 Fault / resilience drill (needs starter-governance-file)
+### 4.3 Fault / resilience drill (needs governance: a configured rules source)
 
 Configure a breaker or limiter for service `cassandra:127.0.0.1` under `spring.governance.*`, hammer
 `Exec` inserts, and watch rejections surface as fast errors WITHOUT the statement executing

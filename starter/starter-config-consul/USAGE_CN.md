@@ -116,7 +116,7 @@ consul kv put gs-config-demo "demo.message=hello-2"
 
 ```
 blank import starter-config-consul
-  └─ init(): conf.RegisterProvider("consul", consulCtrl.Load)      starter.go:55
+  └─ init(): conf.RegisterProvider("consul", newConsulCtrl())      starter.go:55
 
 gs.Run()
   ├─ 配置阶段（无 bean 参与，因此是 pre-bean）：
@@ -282,5 +282,5 @@ agent 不可达时同样可对比：停掉 docker（`compose stop`），比较 `
 - ACL token 内联在 import 字符串里会落进配置文件——没有像 vault 那样的 env / token-file 兜底 → 候选带外凭证通道。
 - 一个 import 只读一个 KV 条目；不支持前缀/列表读取（key 目录）——按目录建模的应用只能每个 key 一个 import。
 - watch 出错每 2 秒静默重试，本模块不打日志、无陈旧度信号（指标/健康检查）——“配置已陈旧”不可观测。
-- watch goroutine 停机时从不停止；非 optional key 被删除时仍退化为陈旧快照（§4.6），但加了 WARN 后该退化在日志中可见。
+- 非 optional key 被删除时仍退化为陈旧快照（§4.6），但加了 WARN 后该退化在日志中可见；watch goroutine 本身由 `Close` 在停机时停止。
 - 刷新是全有或全无且全局：一个 KV 条目变更会重读所有 import 和所有文件；当前规模无碍，import 变多后需记在案。

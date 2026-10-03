@@ -19,6 +19,7 @@ package gormresilience
 import (
 	"context"
 	"errors"
+	"go-spring.org/cloud/chain"
 	"testing"
 
 	"go-spring.org/cloud/resilience"
@@ -26,7 +27,7 @@ import (
 	"gorm.io/gorm"
 )
 
-func newExec(t *testing.T, p resilience.ClientPolicy) resilience.ClientExecutor {
+func newExec(t *testing.T, p resilience.ClientPolicy) chain.Executor {
 	t.Helper()
 	d := resilience.NewDefaultDriver(nil)
 	exec, err := d.NewClientExecutor("svc", p)
@@ -62,7 +63,7 @@ func TestRunGuardRealErrorsTripBreaker(t *testing.T) {
 	assert.Error(t, runGuard(context.Background(), exec, "gorm:test", func() error { return boom })).Is(boom)
 	assert.Error(t, runGuard(context.Background(), exec, "gorm:test", func() error { return boom })).Is(boom)
 	// Breaker now open: the next call is short-circuited before the stub runs.
-	assert.Error(t, runGuard(context.Background(), exec, "gorm:test", func() error { return nil })).Is(resilience.ErrCircuitOpen)
+	assert.Error(t, runGuard(context.Background(), exec, "gorm:test", func() error { return nil })).Is(chain.ErrCircuitOpen)
 }
 
 // TestRunGuardRateLimitRejects confirms the flow-control path: once the burst
@@ -77,6 +78,6 @@ func TestRunGuardRateLimitRejects(t *testing.T) {
 	assert.Error(t, runGuard(context.Background(), exec, "gorm:test", stub)).Nil()
 	assert.Error(t, runGuard(context.Background(), exec, "gorm:test", stub)).Nil()
 	err := runGuard(context.Background(), exec, "gorm:test", stub)
-	assert.Error(t, err).Is(resilience.ErrRateLimited)
+	assert.Error(t, err).Is(chain.ErrRateLimited)
 	assert.That(t, ran).Equal(2) // the rejected call never reached the stub
 }

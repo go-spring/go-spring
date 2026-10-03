@@ -49,7 +49,6 @@ starter,并通过它们的公开缝提供一整家组织的默认 —— 身份�
 | `starter-config-etcd` | [etcd/client/v3](https://go.etcd.io/etcd) | etcd KV |
 | `starter-config-vault` | [vault/api](https://github.com/hashicorp/vault) | Vault secret/配置 |
 | `starter-config-k8s` | [client-go](https://github.com/kubernetes/client-go) | K8s ConfigMap/Secret |
-| `starter-config-bus` | [nats.go](https://github.com/nats-io/nats.go) | 配置总线（多实例广播） |
 
 ## 服务发现 / 注册中心
 

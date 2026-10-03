@@ -9,14 +9,14 @@ starter（`starter-gorm-mysql`、`-postgres`、`-sqlite`、`-sqlserver`、
 
 ## 它做什么
 
-现有五个方言 starter，每个只负责自己的方言：`Config` 块、DSN，以及 TLS / 服务
-发现拨号。其余与方言无关的部分全部在这里，五个方言共用一份实现而非各自复制：
+现有五个方言 starter，每个负责自己的方言——`Config` 块、DSN、TLS / 服务发现
+拨号——以及注册 bean 的那个 `gs.Module` 块，它就写在 starter 里，读的人一眼能看到
+它贡献了什么：每个已配置的 `spring.gorm.<dialect>.instances.<name>` 条目对应一个
+`*DB` bean 加一个配对的健康指示器。其余与方言无关的部分全部在这里，五个方言共用
+一份实现而非各自复制：
 
-- 每实例的 open / ping / customize 序列、连接池调优，以及 `*DB` 包装 bean（内嵌
-  `*gorm.DB`，gorm 全部方法原样提升）；
-- 经 `Module` 完成的多实例装配：每个已配置的
-  `spring.gorm.<dialect>.instances.<name>` 条目对应一个 `*DB` bean 加一个配对的
-  健康指示器；
+- 各 starter 的 bean 所跑的每实例构造 `NewDB`：open / ping / customize 序列、
+  连接池调优，以及 `*DB` 包装 bean（内嵌 `*gorm.DB`，gorm 全部方法原样提升）；
 - gorm observe 插件——把每次 Create / Query / Update / Delete 声明为一个客户端
   操作（名称、`db.system` / `db.operation` 标签、SQL 语句与访问 tag）挂在调用的
   ctx 上。信号本身——call span、call 级与 attempt 级时长直方图、在途计数器、那一条
@@ -24,7 +24,7 @@ starter（`starter-gorm-mysql`、`-postgres`、`-sqlite`、`-sqlserver`、
   东西，因此走 OTel 全局对象，未装 `starter-otel` 时开销近乎为零；
 - resilience 回调——每个操作都在同一个后端中立的 `resilience.ClientExecutor` 下执行，
   `gorm.ErrRecordNotFound` 视为成功；
-- open 之后的 `DBCustomizer` 扩展缝，以及带方言限定的 bean 命名
+- open 之后的 `DBCustomizer` 扩展缝，以及各 starter 采用的带方言限定的 bean 命名
   （`<dialect>.<name>`），使两个方言可以携带同名实例而不冲突。
 
 ## 完整参考

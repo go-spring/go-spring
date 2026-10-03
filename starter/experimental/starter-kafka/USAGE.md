@@ -20,7 +20,7 @@ A producer + consumer service using the messaging driver, with health probes, me
 
 **go.mod** (deps that matter): `github.com/twmb/franz-go/pkg/kgo`, `go-spring.org/spring`,
 `go-spring.org/cloud`, `go-spring.org/starter-kafka`, plus optional `starter-actuator`
-(probes + /metrics), `starter-otel` (trace/metric export), `starter-governance-file` (rate limit/breaker).
+(probes + /metrics), `starter-otel` (trace/metric export).
 
 **main.go**:
 
@@ -30,7 +30,6 @@ package main
 import (
     "go-spring.org/spring/gs"
     _ "go-spring.org/starter-actuator"
-    _ "go-spring.org/starter-governance-file"
     _ "go-spring.org/starter-kafka"
     _ "go-spring.org/starter-otel"
     _ "demo/service"
@@ -115,7 +114,7 @@ spring.observability.trace.endpoint=127.0.0.1:4317
 spring.observability.metrics.exporter=prometheus
 
 # --- governance (rate limit on the sync produce path) -----------------------
-# NOTE: governance RULES go in conf/governance.properties, referenced by spring.governance.source.file.path in app.properties (see starter-governance-file USAGE).
+# NOTE: governance RULES go in conf/governance.properties, referenced by spring.governance.source.file.path in app.properties (see cloud/governance's SOURCE_USAGE).
 spring.governance.enabled=true
 spring.governance.driver=default
 spring.governance.client.default.rate-limit=8

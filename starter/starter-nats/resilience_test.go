@@ -19,6 +19,7 @@ package StarterNats
 import (
 	"context"
 	"errors"
+	"go-spring.org/cloud/chain"
 	"testing"
 
 	"go-spring.org/cloud/resilience"
@@ -60,7 +61,7 @@ func TestGuardRateLimit(t *testing.T) {
 
 	assert.Error(t, h.guard(context.Background(), stub)).Nil()
 	assert.Error(t, h.guard(context.Background(), stub)).Nil()
-	assert.Error(t, h.guard(context.Background(), stub)).Is(resilience.ErrRateLimited)
+	assert.Error(t, h.guard(context.Background(), stub)).Is(chain.ErrRateLimited)
 	assert.That(t, ran).Equal(2) // the rejected call never reached the stub
 }
 
@@ -79,6 +80,6 @@ func TestGuardCircuitOpen(t *testing.T) {
 		ran++
 		return nil
 	})
-	assert.Error(t, err).Is(resilience.ErrCircuitOpen)
+	assert.Error(t, err).Is(chain.ErrCircuitOpen)
 	assert.That(t, ran).Equal(0)
 }

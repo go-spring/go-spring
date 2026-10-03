@@ -20,9 +20,7 @@ import (
 	"go-spring.org/cloud"
 	"go-spring.org/cloud/actuator/health"
 	"go-spring.org/cloud/cache"
-	"go-spring.org/cloud/discovery"
-	"go-spring.org/cloud/fault"
-	"go-spring.org/cloud/resilience"
+	"go-spring.org/cloud/governance"
 	"go-spring.org/log"
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/gs"
@@ -58,13 +56,9 @@ func init() {
 				gs.IndexArg(1, gs.ValueArg(name)),
 				gs.IndexArg(2, gs.ValueArg(c)),
 				gs.IndexArg(3, gs.TagArg("${spring.memcached.instances."+name+".driver:=${spring.memcached.default.driver:=?}}")),
-				gs.IndexArg(4, gs.TagArg("${spring.memcached.instances."+name+".discovery:=${spring.memcached.default.discovery:=none}}?")),
-				// The governance beans are REQUIRED: each is registered by the package that
-				// owns it (cloud/resilience, cloud/loadbalance, cloud/fault), which this
-				// starter imports — "governance off" is spring.governance.enabled=false, never
-				// an absent bean.
-				gs.IndexArg(5, gs.TagArg("")),
-				gs.IndexArg(6, gs.TagArg("")),
+				gs.IndexArg(4, gs.TagArg("${spring.memcached.instances."+name+".discovery:=${spring.memcached.default.discovery:=none}}")),
+				// The governance center is the family's sole injection point: it hands
+				// out the resilience/fault/loadbalance authorities.
 			).Name(name).Destroy((*Client).Destroy).Caller(1)
 			// Contribute a health indicator for this instance unless the user
 			// disabled it (health=false), injecting the client just registered
@@ -87,17 +81,21 @@ func init() {
 // newClient creates a new Memcached client based on the provided configuration,
 // wrapped so every operation flows through the module-local observe layer (trace+metric+log).
 //
-// disc is the discovery backend bean cited by the entry's ${discovery} label
-// (nil when the key is unset or the entry uses a static server list).
+// disc is the backend the entry's ${discovery} label resolves to in the center's
+// discovery directory (nil when the key is unset, sentinel "none", or names
+// nothing, and the entry uses a static server list).
 //
-// mgr and inj are the governance beans the container injects (both nil in a
-// standalone, non-gs call); the ctor bundles them — together with disc — into
+// center is the governance center the container injects (nil in a standalone,
+// non-gs call) — the family's sole injection point; the ctor reads the
+// resilience and fault authorities from it and bundles them — together with disc — into
 // the [cloud.ClientParams] it hands the driver, which passes it to [NewClient]:
 // the client is assembled complete in one step, with the zero bundle degrading
 // to an observed-only, loudly-unmanaged executor.
-func newClient(ctx *gs.ContextProvider, name string, c Config, d Driver, disc discovery.Discovery,
-	mgr *resilience.Manager, inj *fault.Injector) (*Client, error) {
+func newClient(ctx *gs.ContextProvider, name string, c Config, d Driver, discoveryLabel string,
+	center *governance.Center) (*Client, error) {
 	log.Debugf(ctx.Context, log.TagAppDef, "creating memcached client, servers=%v service-name=%s", c.Servers, c.ServiceName)
+
+	disc, _ := center.Discovery().Get(discoveryLabel)
 
 	if len(c.Servers) == 0 && c.ServiceName == "" {
 		return nil, errutil.Explain(nil, "memcached: one of servers or service-name must be set")
@@ -116,7 +114,7 @@ func newClient(ctx *gs.ContextProvider, name string, c Config, d Driver, disc di
 		d = DefaultDriver{}
 	}
 	client, err := d.CreateClient(ctx.Context, name, c,
-		cloud.ClientParams{Resilience: mgr, Fault: inj, Discovery: disc})
+		cloud.ClientParams{Resilience: center.Resilience(), Fault: center.Fault(), Discovery: disc})
 	if err != nil {
 		log.Errorf(ctx.Context, log.TagAppDef, "memcached: create client failed: %v", err)
 		return nil, errutil.Explain(err, "failed to create memcached client")

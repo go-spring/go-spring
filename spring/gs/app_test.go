@@ -26,6 +26,7 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"go-spring.org/spring/conf"
 	"go-spring.org/stdlib/testing/assert"
 )
 
@@ -37,6 +38,44 @@ func init() {
 
 type GlobalService struct {
 	Name string `value:"${name:=global}"`
+}
+
+// closeRecorderProvider is a config provider that only counts its Close calls,
+// used to prove the runtime releases providers on shutdown.
+type closeRecorderProvider struct {
+	closes atomic.Int32
+}
+
+func (p *closeRecorderProvider) Load(optional bool, source string) (map[string]string, error) {
+	return nil, nil
+}
+
+func (p *closeRecorderProvider) Close() error {
+	p.closes.Add(1)
+	return nil
+}
+
+// TestRunTestClosesConfigProviders proves the shutdown path reaches the config
+// providers: a provider registered in init() is closed when the application
+// stops, so its watchers and listeners do not outlive the app (which matters
+// when a process runs several instances, e.g. sequential gs.RunTest runs).
+//
+// Two closes are expected, not one: the graceful shutdown path closes the
+// providers while the container is still alive, and the deferred safety net
+// (which covers a failed start) closes them again. Closing twice must stay
+// harmless — that is part of the Provider contract.
+func TestRunTestClosesConfigProviders(t *testing.T) {
+	p := &closeRecorderProvider{}
+	conf.RegisterProvider("close-recorder", p)
+
+	Web(false).RunTest(t, func(s *struct {
+		Name string `value:"${name:=app}"`
+	}) {
+		// Nothing to assert inside the app: the interesting moment is shutdown.
+		assert.That(t, s.Name).Equal("app")
+	})
+
+	assert.Number(t, p.closes.Load()).Equal(2)
 }
 
 type App1Service struct {

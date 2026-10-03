@@ -259,7 +259,7 @@ curl -s :9370/metrics | grep -i milvus   # nothing from this starter with govern
 grep _app_ app.log | grep -i milvus      # the access log; empty with governance off
 ```
 
-With governance off (no starter-governance-file / no `spring.governance.*` rules) expect empty output for
+With governance off (no `cloud/governance` beans in the container / no `spring.governance.*` rules) expect empty output for
 both: the guard executor is a no-op and the only signal this starter emits is the health
 component. Turn governance on and the declared-identity signals appear — the `db.client.operation.duration`
 and `db.client.attempt.duration` histograms plus the `_app_milvus_access` access log — alongside
@@ -284,7 +284,7 @@ grep "round trip" app.log    # the marker check.sh greps ("Milvus round trip OK:
 | `NewCollection` fails on restart | Collection already exists from a previous run | Drop it first or tolerate the error (example's check.sh uses a fixed name). |
 | Search returns empty / no results | Forgot `Flush` + `LoadCollection` before searching (SDK semantics) | Flush then load, as in example/main.go:80-85. |
 | Health DOWN though queries work | Indicator's `ListCollections` needs the same DB/auth as the client | Inspect the component error body in /readiness. |
-| No traces/metrics/access log for Milvus ops | Governance is off (the executor is a no-op) | Turn governance on (starter-governance-file + `spring.governance.*` rules); then `db.client.*` metrics + `_app_milvus_access` appear. Server-side :9091 metrics never go through this client. |
+| No traces/metrics/access log for Milvus ops | Governance is off (the executor is a no-op) | Turn governance on (a configured rules source + `spring.governance.*` rules); then `db.client.*` metrics + `_app_milvus_access` appear. Server-side :9091 metrics never go through this client. |
 
 ## 6. Design Health
 

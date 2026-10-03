@@ -37,12 +37,12 @@ package StarterGrpc
 import (
 	"context"
 	"fmt"
-	"sort"
 	"strings"
 	"sync/atomic"
 	"time"
 
 	"go-spring.org/cloud/discovery"
+	"go-spring.org/cloud/governance"
 	"go-spring.org/cloud/loadbalance"
 	"go-spring.org/log"
 	"go-spring.org/stdlib/errutil"
@@ -60,42 +60,33 @@ const Scheme = "gsdiscovery"
 
 // discoveryBackends is the label -> backend directory the resolver builder
 // resolves "gsdiscovery://<backend>/<service>" targets against. It is the
-// container's named discovery.Discovery beans, captured once at wiring time by
-// newDiscoveryBackendsHook (see starter.go) — or by a non-container caller via
-// [SetDiscoveryBackends] — so target resolution never consults process-global
-// state at runtime. An atomic.Value keeps the read lock-free on the RPC dial
-// path.
-var discoveryBackends atomic.Value // map[string]discovery.Discovery
+// container's discovery directory, read off the governance center once at wiring
+// time by newDiscoveryBackendsHook (see starter.go) — or installed by a
+// non-container caller via [SetDiscoveryBackends] — so target resolution never
+// consults process-global state at runtime. An atomic.Value keeps the read
+// lock-free on the RPC dial path.
+var discoveryBackends atomic.Value // *discovery.Manager
 
-// SetDiscoveryBackends installs backends (bean name = label) as the directory
-// the gsdiscovery resolver resolves target labels against. The starter's wiring
-// calls this once at assembly time; a program that dials gsdiscovery targets
-// outside the container (no gs.Run) calls it directly instead. Calling it again
-// replaces the directory wholesale.
-func SetDiscoveryBackends(backends map[string]discovery.Discovery) {
-	discoveryBackends.Store(backends)
+// SetDiscoveryBackends installs m as the directory the gsdiscovery resolver
+// resolves target labels against. The starter's wiring calls this once at
+// assembly time; a program that dials gsdiscovery targets outside the container
+// (no gs.Run) calls it directly instead. Calling it again replaces the directory
+// wholesale. A nil manager is an empty directory (every lookup misses).
+func SetDiscoveryBackends(m *discovery.Manager) {
+	discoveryBackends.Store(m)
 }
 
 // lookupDiscoveryBackend returns the backend registered under label.
 func lookupDiscoveryBackend(label string) (discovery.Discovery, bool) {
-	v, _ := discoveryBackends.Load().(map[string]discovery.Discovery)
-	if v == nil {
-		return nil, false
-	}
-	d, ok := v[label]
-	return d, ok
+	m, _ := discoveryBackends.Load().(*discovery.Manager)
+	return m.Get(label)
 }
 
 // backendLabels lists every registered backend label, sorted, for error
 // messages.
 func backendLabels() []string {
-	v, _ := discoveryBackends.Load().(map[string]discovery.Discovery)
-	labels := make([]string, 0, len(v))
-	for k := range v {
-		labels = append(labels, k)
-	}
-	sort.Strings(labels)
-	return labels
+	m, _ := discoveryBackends.Load().(*discovery.Manager)
+	return m.Labels()
 }
 
 // clientGovernLabel is the governance service label the pre-registered
@@ -155,16 +146,17 @@ var builtinDir = loadbalance.BuiltinDirectory()
 type managerHook struct{}
 
 // newSelectionHook subscribes the built-in gs_* balancers to the manager's policy
-// for [clientGovernLabel]. mgr is nil when no center is linked —
+// for [clientGovernLabel]. center is nil when none is linked —
 // the same "governance off" case as a disabled center — and there is then nothing
-// to subscribe, so each balancer keeps its own registered default. The manager
+// to subscribe, so each balancer keeps its own registered default. The center
 // bean is a NULLABLE injection ("?"), so an absent bean leaves the app booting
 // instead of failing wiring.
 //
 // Subscribe arms the callback immediately with the current policy (a zero policy
 // on a manager that is not yet live), so the built-ins start inert and are
 // retuned the moment governance goes live — no OnReady deferral is needed.
-func newSelectionHook(lbMgr *loadbalance.Manager) (*managerHook, error) {
+func newSelectionHook(center *governance.Center) (*managerHook, error) {
+	lbMgr := center.Loadbalance()
 	if lbMgr != nil {
 		lbMgr.Subscribe(clientGovernLabel, func(s loadbalance.Selection) error {
 			applyGovernedSelection(lbMgr, s)

@@ -37,6 +37,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"go-spring.org/cloud/chain"
 	"io"
 	"net/http"
 	"os"
@@ -47,12 +48,10 @@ import (
 
 	"github.com/neo4j/neo4j-go-driver/v5/neo4j"
 	"go-spring.org/cloud/discovery"
-	"go-spring.org/cloud/resilience"
 	"go-spring.org/spring/gs"
 
 	_ "go-spring.org/starter-actuator"    // aggregates the neo4j health.Indicator
 	_ "go-spring.org/starter-config-file" // registers the file-watch config provider
-	_ "go-spring.org/starter-governance-file"
 	StarterNeo4j "go-spring.org/starter-neo4j"
 )
 
@@ -151,7 +150,7 @@ func runTest(s *Service, c *Config) {
 		switch {
 		case err == nil:
 			admitted++
-		case errors.Is(err, resilience.ErrRateLimited):
+		case errors.Is(err, chain.ErrRateLimited):
 			rejected++
 		default:
 			fail("resilient query: %v", err)

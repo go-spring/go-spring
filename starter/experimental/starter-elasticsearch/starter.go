@@ -18,14 +18,12 @@ package StarterElasticsearch
 
 import (
 	"context"
+	"go-spring.org/cloud/governance"
 
 	"github.com/elastic/go-elasticsearch/v8/esapi"
 	"go-spring.org/cloud"
 	"go-spring.org/cloud/actuator/health"
-	"go-spring.org/cloud/discovery"
-	"go-spring.org/cloud/fault"
 	"go-spring.org/cloud/mesh"
-	"go-spring.org/cloud/resilience"
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
@@ -46,24 +44,20 @@ func init() {
 		return conf.BindEach(p, "${spring.elasticsearch.instances}", func(name string, c Config) error {
 			// The wrapper bean is assembled complete by the ctor: identity and
 			// governance are applied while the Driver builds it, and Destroy tears
-			// down the executor. The instance's discovery.Discovery backend bean is
-			// injected by name from the entry's ${discovery} label (default
-			// "default"; optional, so an app with no backend beans at all gets nil
-			// here). The Driver bean is selected by the entry's ${driver} key:
+			// down the executor. The entry's ${discovery} label is bound as a value
+			// (family default "none", meaning "no backend") and resolved against
+			// the center's discovery directory. The Driver bean is selected by the
+			// entry's ${driver} key:
 			// unset → "?" (nullable by-type — injects the single Driver bean when
 			// one is provided, nil otherwise, and the ctor falls back to the
 			// bundled DefaultDriver); set → that bean name, and naming a bean that
 			// does not exist fails loud.
 			r.Provide(newClient,
 				gs.IndexArg(1, gs.ValueArg(c)),
-				gs.IndexArg(2, gs.TagArg("${spring.elasticsearch.instances."+name+".discovery:=${spring.elasticsearch.default.discovery:=none}}?")),
+				gs.IndexArg(2, gs.TagArg("${spring.elasticsearch.instances."+name+".discovery:=${spring.elasticsearch.default.discovery:=none}}")),
 				gs.IndexArg(3, gs.TagArg("${spring.elasticsearch.instances."+name+".driver:=${spring.elasticsearch.default.driver:=?}}")),
-				// The governance beans are REQUIRED: each is registered by the package that
-				// owns it (cloud/resilience, cloud/loadbalance, cloud/fault), which this
-				// starter imports — "governance off" is spring.governance.enabled=false, never
-				// an absent bean.
-				gs.IndexArg(4, gs.TagArg("")), // *resilience.Manager
-				gs.IndexArg(5, gs.TagArg("")), // *fault.Injector
+				// The governance center is the family's sole injection point: it hands
+				// out the resilience/fault/loadbalance authorities.
 			).Name(name).Destroy((*Client).Destroy).Caller(1)
 			// Contribute a health indicator for this instance, injecting the
 			// client just registered above by name. Skipped when c.Health is
@@ -96,16 +90,16 @@ func init() {
 // discovery+LB, so the static Addresses (or CloudID) are used unchanged. See
 // Config.ServiceName.
 //
-// mgr and inj are the governance beans the container injects (both nil in a
-// standalone, non-gs call); the ctor bundles them — together with backend —
-// into the [cloud.ClientParams] it hands the driver, which passes it to
-// [NewClient]: the client is assembled complete in one step, with the zero
-// bundle degrading to an observed-only, loudly-unmanaged executor. The wiring
-// injects them as REQUIRED, and each is registered by the package that owns
-// it — which this starter imports — so "governance off" is
-// spring.governance.enabled=false, never an absent bean.
-func newClient(ctx *gs.ContextProvider, c Config, backend discovery.Discovery, d Driver,
-	mgr *resilience.Manager, inj *fault.Injector) (*Client, error) {
+// center is the governance center the container injects (nil in a standalone,
+// non-gs call) — the family's sole injection point; the ctor reads the
+// resilience and fault authorities from it and resolves the entry's ${discovery}
+// label against its directory, bundling them — together with the backend —
+// into the [cloud.ClientParams] it hands the driver, which passes it
+// to [NewClient]: the client is assembled complete in one step, with the zero
+// bundle degrading to an observed-only, loudly-unmanaged executor.
+func newClient(ctx *gs.ContextProvider, c Config, discoveryLabel string, d Driver,
+	center *governance.Center) (*Client, error) {
+	backend, _ := center.Discovery().Get(discoveryLabel)
 	if c.ServiceName != "" && !mesh.Enabled() {
 		addrs, err := resolveAddresses(ctx.Context, c, backend)
 		if err != nil {
@@ -119,7 +113,7 @@ func newClient(ctx *gs.ContextProvider, c Config, backend discovery.Discovery, d
 		d = DefaultDriver{}
 	}
 	client, err := d.CreateClient(ctx.Context, c,
-		cloud.ClientParams{Resilience: mgr, Fault: inj, Discovery: backend})
+		cloud.ClientParams{Resilience: center.Resilience(), Fault: center.Fault(), Discovery: backend})
 	if err != nil {
 		return nil, errutil.Explain(err, "failed to create elasticsearch client")
 	}

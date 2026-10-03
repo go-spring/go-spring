@@ -37,7 +37,6 @@ require (
     go-spring.org/starter-rabbitmq   latest
     go-spring.org/starter-actuator   latest   // optional: probes + /metrics
     go-spring.org/starter-otel       latest   // optional: real trace/metric export
-    go-spring.org/starter-governance-file latest   // optional: runtime resilience/fault for GuardedPublish
 )
 ```
 
@@ -51,7 +50,6 @@ import (
 
     "go-spring.org/spring/gs"
     _ "go-spring.org/starter-actuator"
-    _ "go-spring.org/starter-governance-file"
     _ "go-spring.org/starter-otel"
     _ "go-spring.org/starter-rabbitmq"
 )
@@ -318,7 +316,7 @@ docker stop demo-rabbit && go run .   # in example/: ./check.sh with broker down
 
 ### 4.2 Guarded vs unguarded path
 
-With starter-governance-file and a fault rule on the rabbitmq service
+With a configured governance rules source and a fault rule on the rabbitmq service
 (label `rabbitmq:<vhost>` (colon format; falls back to `rabbitmq:<url>` when vhost empty), starter.go:106):
 
 1. `GuardedPublish` call → resilience-sentinel error, publish never reaches the channel,

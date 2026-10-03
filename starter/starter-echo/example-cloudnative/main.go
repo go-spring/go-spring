@@ -23,7 +23,7 @@
 //   - DISCOVERY: a static discovery backend hands out the app's own echo address;
 //     the app resolves it client-side and dials the endpoint end-to-end.
 //   - RESILIENCE: the builtin "default" driver rate-limits an arbitrary function
-//     (Executor.Execute -> ErrRateLimited) and an inbound route (/limited -> 429).
+//     (chain.Executor.Execute -> ErrRateLimited) and an inbound route (/limited -> 429).
 //   - DYNAMIC CONFIG: a gs.Dync[string] field is bound to a watched file
 //     (file-watch provider); editing it hot-reloads the value into /greeting.
 //   - OBSERVABILITY: starter-echo's Tracing/Metrics/AccessLog middleware are on
@@ -38,6 +38,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"go-spring.org/cloud/chain"
 	"io"
 	"net/http"
 	"os"
@@ -86,7 +87,7 @@ var dep = &health.Indicator{
 }
 
 // exec is the resilience executor built from the builtin "default" driver.
-var exec resilience.ClientExecutor
+var exec chain.Executor
 
 func init() {
 	// Serve the app's own echo address through discovery (a real deployment
@@ -141,7 +142,7 @@ func main() {
 				err := exec.Execute(ctx.Request().Context(), func(context.Context) error {
 					return ctx.String(http.StatusOK, "ok")
 				})
-				if errors.Is(err, resilience.ErrRateLimited) {
+				if errors.Is(err, chain.ErrRateLimited) {
 					return ctx.String(http.StatusTooManyRequests, "too many requests")
 				}
 				return err
@@ -206,7 +207,7 @@ func runTest() {
 		switch {
 		case err == nil:
 			admitted++
-		case errors.Is(err, resilience.ErrRateLimited):
+		case errors.Is(err, chain.ErrRateLimited):
 			rejected++
 		default:
 			fail("execute: %v", err)
@@ -215,7 +216,7 @@ func runTest() {
 	if admitted == 0 || rejected == 0 {
 		fail("resilience rate limit ineffective: admitted=%d rejected=%d", admitted, rejected)
 	}
-	fmt.Printf("resilience: Executor rate limit admitted=%d rejected=%d\n", admitted, rejected)
+	fmt.Printf("resilience: chain.Executor rate limit admitted=%d rejected=%d\n", admitted, rejected)
 
 	okHTTP, limitedHTTP := 0, 0
 	for range 15 {

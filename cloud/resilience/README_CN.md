@@ -132,14 +132,14 @@ sentinel 驱动。
 
 - **两级抽象：`ClientPolicy` / `ServerPolicy` + `Driver` + `ClientExecutor`。** 两个模型都是后端
   中立的声明式配置；`Driver.NewClientExecutor(service, Policy)` 构造出站的运行时，
-  `Driver.NewServerExecutor(service, ServerPolicy)` 构造入站的。内置驱动把 `ServerPolicy`
-  投影回它的 `ClientPolicy` 引擎（`ServerPolicy.AsPolicy`）——对它而言这个投影是精确的，因为
-  它没有入站专有原语；sentinel 那类后端则各自映射到本土的 flow / circuit-breaker
-  规则。adapter 只依赖 `ClientExecutor` / `ServerExecutor`。**接口之所以两个方法而不是
-  一个**，是因为两个方向不共享模型，而**同一个对象同时实现两个方法**，所以
-  `spring.governance.driver=sentinel` 仍然是一句话切全进程。
+  `Driver.NewServerExecutor(service, ServerPolicy)` 构造入站的。内置驱动给出**两个引擎**：
+  出站 `defaultExecutor`、入站 `admissionExecutor`，互不以对方表达，共享的只是两者
+  底下的器官（熔断器、限流预算、隔离闸）；sentinel 那类后端则各自映射到本土的
+  flow / circuit-breaker 规则。adapter 只依赖 `ClientExecutor` / `ServerExecutor`。
+  **接口之所以两个方法而不是一个**，是因为两个方向不共享模型，而**同一个对象同时实现
+  两个方法**，所以 `spring.governance.driver=sentinel` 仍然是一句话切全进程。
 - **容器即驱动目录。** 本包不带任何注册表：后端以自身名字贡献为 bean、导出为
-  `Driver`,governance 的 wiring bean 把所有这类 bean 收成按名字索引的 map。
+  `Driver`,manager 的构造函数把所有这类 bean 收成按名字索引的 map。
   `spring.governance.driver` 在这个目录里解析出选中项 —— 与 `discovery`
   和 client starter 的 `Driver` 同一形态。内置驱动无需 bean 即应答 `"default"`。
 - **中立拒绝错误**(`ErrRateLimited` / `ErrCircuitOpen` / `ErrBulkheadFull`)

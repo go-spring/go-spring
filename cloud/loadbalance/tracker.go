@@ -63,7 +63,7 @@ type TrackerConfig struct {
 // semantics, but keyed by endpoint address and *queryable* so a [Pool] can drop
 // bad instances from the candidate set proactively rather than only rejecting a
 // call after it is routed. The same Complete-err signal that feeds a
-// resilience Executor feeds a Tracker, so the two stay consistent without one
+// resilience chain.Executor feeds a Tracker, so the two stay consistent without one
 // depending on the other.
 //
 // A Tracker with Threshold <= 0 is disabled: [Tracker.Allows] returns every

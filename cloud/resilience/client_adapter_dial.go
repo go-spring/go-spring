@@ -1,0 +1,74 @@
+/*
+ * Copyright 2025 The Go-Spring Authors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+// adapter_dial.go is the connection-establishing seam: [NewDialer] wraps a
+// DialFunc so every connection attempt flows through an [chain.Executor].
+
+package resilience
+
+import (
+	"context"
+	"go-spring.org/cloud/chain"
+	"net"
+)
+
+// DialFunc is the shape of the connection-establishing hook exposed by common
+// clients — it matches net.Dialer.DialContext as well as the dialer closure a
+// caller builds around a discovery Resolver bound to one service name (read a live
+// endpoint, then dial its Addr), which resolves a live service endpoint before
+// each dial.
+type DialFunc func(ctx context.Context, network, addr string) (net.Conn, error)
+
+// NewDialer wraps base so every connection attempt flows through exec. It is the
+// client-side dialer seam of the framework: pairing it with a discovery-backed
+// dialer (one built on a discovery Resolver) gives
+// service-to-service calls circuit breaking, retry and a bulkhead at the point
+// connections are made, without the client library knowing anything about
+// resilience.
+//
+// exec carries the service it protects (see [chain.Executor]), so this seam needs no
+// label: a dialer is already scoped to one downstream, and that is the service
+// the executor was built for. When exec is nil base is returned unchanged, so
+// wiring stays a no-op until a policy is configured — the same zero-config
+// opt-in contract as the other seams.
+//
+// The coverage is coarser than the HTTP/RPC seams: protection keys on the dial,
+// so the breaker trips on connection failures (refused, timed out) rather than
+// on per-request errors of an already-open connection. That is exactly the level
+// at which a discovery-backed dialer operates.
+func NewDialer(base DialFunc, exec chain.Executor) DialFunc {
+	if exec == nil {
+		return base
+	}
+	if base == nil {
+		base = (&net.Dialer{}).DialContext
+	}
+	return func(ctx context.Context, network, addr string) (net.Conn, error) {
+		var conn net.Conn
+		err := exec.Execute(ctx, func(ctx context.Context) error {
+			c, err := base(ctx, network, addr)
+			if err != nil {
+				return err
+			}
+			conn = c
+			return nil
+		})
+		if err != nil {
+			return nil, err
+		}
+		return conn, nil
+	}
+}

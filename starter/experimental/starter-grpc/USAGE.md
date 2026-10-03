@@ -32,8 +32,7 @@ demo/
 ```
 
 **go.mod** (deps that matter): `google.golang.org/grpc`, `go-spring.org/spring`,
-`go-spring.org/starter-grpc`; optional `go-spring.org/starter-otel` (real trace/metric export) and
-`go-spring.org/starter-governance-file` (governance center: admission + fault).
+`go-spring.org/starter-grpc`; optional `go-spring.org/starter-otel` (real trace/metric export).
 
 **main.go**:
 
@@ -42,7 +41,6 @@ package main
 
 import (
     "go-spring.org/spring/gs"
-    _ "go-spring.org/starter-governance-file"
     _ "go-spring.org/starter-otel"
 )
 
@@ -389,7 +387,7 @@ the shared goutil panic chain (`goutil.ReportPanic`) — visible in log and span
 | Tracing/metrics "enabled" but nothing exported | starter-otel not imported — OTel globals are silent no-ops | Add the import (example-otel pattern). |
 | Config for interceptors ignored | Wrong prefix: it's `observer.*`, not `interceptor.*` (example-otel's conf has this dead key) | Use `spring.grpc.server.observer.tracing/metrics.enabled`. |
 | Clients rejected at TLS handshake with cert errors | `tls.ca-file` set — that enables **mTLS** (`RequireAndVerifyClientCert`) | Remove it for one-way TLS, or issue client certs. |
-| Everything works, no fault/admission effect | starter-governance-file not imported or `spring.governance.source` not configured — seams yield pass-through | Import it and point `spring.governance.source.file.path` at your file. |
+| Everything works, no fault/admission effect | governance not wired in — no `cloud/governance` bean in the container, seams yield pass-through | Configure a rules source: point `spring.governance.source.file.path` at your file. |
 | `ResourceExhausted` "received message larger than max" | `maxRecvMsgSize` below payload | Raise the cap. |
 | Stream RPCs bypass rate limit | Admission is unary-only by design | Guard streams with a user stream-interceptor bean (injected as grpc.StreamServerInterceptor). |
 | GOAWAY / connection churn | Aggressive `keepalive.time` vs client ping rate | grpc keepalive semantics; relax server params. |

@@ -52,7 +52,6 @@ assembled `*http.Client` with discovery, load balancing and resilience wired in.
 | `starter-config-etcd` | [etcd/client/v3](https://go.etcd.io/etcd) | etcd KV |
 | `starter-config-vault` | [vault/api](https://github.com/hashicorp/vault) | Vault secret/config |
 | `starter-config-k8s` | [client-go](https://github.com/kubernetes/client-go) | K8s ConfigMap/Secret |
-| `starter-config-bus` | [nats.go](https://github.com/nats-io/nats.go) | Config bus (multi-instance broadcast) |
 
 ## Service Discovery
 

@@ -157,20 +157,22 @@ curl -s '127.0.0.1:16686/api/traces?service=demo&limit=1' | grep '"data":\['
 
 ```
 import starter-gorm-mysql
-  └─ init: gormcore.Module(Dialect{Prefix: "spring.gorm.mysql", Engine: "mysql", ...})
+  └─ init: gs.Module(gs.OnProperty("spring.gorm.mysql.instances"), ...)   — registration in starter.go
 gs.Run()
-  ├─ OnProperty("spring.gorm.mysql") fires; conf.BindEach binds one Config per <name> entry
+  ├─ OnProperty("spring.gorm.mysql.instances") fires; conf.BindEach binds one Config per <name> entry
   ├─ per instance: build(ctx, c)
   │    ├─ addr/service-name presence check (one must be set)
   │    ├─ TLS: c.TLS.BuildClient() -> *tls.Config; mysql.RegisterTLSConfig("gstls_<n>", cfg)
   │    ├─ DSN(): user:pass@tcp(addr)/db?params
   │    └─ discovery (service-name set, mesh off): mysql.RegisterDialContext("gsdisco_<svc>_<n>",
   │         dial via the round-robin pick pool) and the DSN is rewritten to net(gsdisco_...)(<service-name>)
-  ├─ gormcore.Open: gorm.Open -> ApplyPool (incl. startup ping, ping-timeout bound)
-  │    -> ApplyDBCustomizers -> *DB bean (Name=<name>, Init, Destroy)
+  ├─ gormcore.NewDB: gormcore.Open: gorm.Open -> ApplyPool (pool knobs)
+  │    -> ApplyDBCustomizers -> observe plugin (db.system=mysql, unless
+  │       observe.enabled=false) -> governance: resilience/fault executor callbacks
+  │       on resource "gorm:mysql:<addr|service-name>" -> *DB bean
+  ├─ if ping: startup probe: gormcore.HealthCheck (bounded by ping-timeout)
+  ├─ Provide *DB .Name(mysql.<entry>).Destroy((*DB).Destroy)
   ├─ health indicator "gorm:mysql:<name>" exported as health.Indicator
-  ├─ DB.Init (after Observability field-inject): observe plugin (db.system=mysql)
-  │    + resilience/fault executor callbacks on resource "gorm:mysql:<addr|service-name>"
   └─ DB.Destroy (SIGTERM): executor close -> discovery watch stop + TLS deregister -> pool close
 ```
 

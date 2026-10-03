@@ -50,8 +50,6 @@ import (
 	"gorm.io/gorm"
 )
 
-var starterTag = log.RegisterAppTag("outbox", "")
-
 func init() {
 	// Register one relay instance per entry under "${spring.outbox}". The relay
 	// runs as a background loop on the bean's Init/Destroy, not as a gs.Server:
@@ -82,6 +80,8 @@ func init() {
 		})
 	})
 }
+
+var starterTag = log.RegisterAppTag("outbox", "")
 
 // Relay is the bean wrapping one [outbox.Relay] loop.
 type Relay struct {

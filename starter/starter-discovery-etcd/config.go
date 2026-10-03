@@ -24,6 +24,11 @@ import (
 
 // EtcdConfig binds the etcd cluster connection under ${spring.discovery.etcd}.
 type EtcdConfig struct {
+	// Enabled turns this named block off without deleting it. Default true;
+	// a disabled block contributes no beans (no client, no registration,
+	// no discovery, no health indicator).
+	Enabled bool `value:"${enabled:=true}"`
+
 	// Endpoints lists the etcd cluster nodes to dial. Required; setting it is
 	// what activates this starter (fail-loud opt-in; no silent localhost).
 	Endpoints []string `value:"${endpoints}"`

@@ -24,6 +24,7 @@ import (
 	"sync/atomic"
 
 	"go-spring.org/log"
+	"go-spring.org/spring/conf"
 	"go-spring.org/spring/gs/internal/gs"
 	"go-spring.org/spring/gs/internal/gs_bean"
 	"go-spring.org/spring/gs/internal/gs_conf"
@@ -393,6 +394,14 @@ func (app *App) WaitForShutdown() {
 	// Stop); a server that hangs hangs the process, by design.
 	stopWg.Wait()
 	app.wg.Wait()
+
+	// Stop config providers before the container goes away: their watchers and
+	// listeners call RefreshProperties, and an app that is mid-close must not be
+	// refreshed. This is also what releases the resources a provider acquired
+	// while loading (see provider.Provider).
+	if err := conf.CloseProviders(); err != nil {
+		log.Errorf(app.ctx, log.TagAppDef, "close config providers failed: %v", err)
+	}
 
 	app.c.Close()
 	// Detach from the package-level RefreshProperties facade so a shut-down

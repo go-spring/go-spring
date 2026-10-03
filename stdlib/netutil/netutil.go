@@ -76,3 +76,20 @@ func SplitHostPort(addr string) (string, uint64, error) {
 	}
 	return host, port, nil
 }
+
+// IsLoopback reports whether addr binds only to a loopback interface. An
+// empty or wildcard host (":9981", "0.0.0.0:9981") is treated as
+// non-loopback, since such listeners accept off-host traffic.
+func IsLoopback(addr string) bool {
+	host, _, err := net.SplitHostPort(addr)
+	if err != nil {
+		host = addr
+	}
+	if host == "" {
+		return false
+	}
+	if ip := net.ParseIP(host); ip != nil {
+		return ip.IsLoopback()
+	}
+	return host == "localhost"
+}

@@ -67,6 +67,13 @@ func RegisterProvider(name string, p provider.Provider) {
 	provider.Register(name, p)
 }
 
+// CloseProviders stops every registered provider, releasing the watchers and
+// listeners they installed while loading. The application runtime calls it once
+// while shutting down.
+func CloseProviders() error {
+	return provider.CloseAll()
+}
+
 // RegisterDecryptor registers a property-level decryption scheme, the seam
 // through which a custom scheme (an asymmetric cipher or a cloud KMS) replaces
 // the built-in AES-GCM driver. Select the active scheme by naming it in the

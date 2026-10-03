@@ -40,8 +40,7 @@ func (s *stubExecutor) Execute(context.Context, func(context.Context) error) err
 	s.called.Add(1)
 	return errGovernanceStub
 }
-func (s *stubExecutor) Close() error                          { return nil }
-func (s *stubExecutor) Refresh(resilience.ClientPolicy) error { return nil }
+func (s *stubExecutor) Close() error { return nil }
 
 // CreateClient attaches a guard while it builds the client — governance is
 // applied in the constructor, not by a later starter step. Whether the executor
@@ -50,7 +49,7 @@ func (s *stubExecutor) Refresh(resilience.ClientPolicy) error { return nil }
 // pass-through, so attaching one costs a call frame and changes nothing else.
 func TestCreateClientAttachesGuard(t *testing.T) {
 	cl, err := DefaultDriver{}.CreateClient(context.Background(), Config{Brokers: "127.0.0.1:1"},
-		cloud.ClientParams{Resilience: resilience.NewManager()})
+		cloud.ClientParams{Resilience: resilience.NewManager(nil)})
 	if err != nil {
 		t.Fatal(err)
 	}

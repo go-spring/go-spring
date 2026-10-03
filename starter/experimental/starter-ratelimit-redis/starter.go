@@ -15,7 +15,7 @@
  */
 
 // Package StarterRatelimitRedis contributes a [resilience.Counters] backed by
-// Redis — the store the rate-limit stage of a [resilience.ClientExecutor] spends — so
+// Redis — the store the rate-limit stage of a [chain.Executor] spends — so
 // one budget per scope covers every replica instead of each replica counting its
 // own.
 //
@@ -57,15 +57,15 @@ import (
 	"go-spring.org/stdlib/flatten"
 )
 
+func init() {
+	gs.Module(configured, setup)
+}
+
 // configured turns the starter on when its block is present. An imported but
 // unconfigured starter contributes nothing, so each executor keeps counting in
 // its own budget — limiting stays per-replica until the application asks for a
 // shared one.
 var configured = gs.OnProperty("spring.ratelimit.redis")
-
-func init() {
-	gs.Module(configured, setup)
-}
 
 // setup binds ${spring.ratelimit.redis} and contributes the Redis-backed store.
 // It is a gs.Module, not a plain bean, because the block's presence is the

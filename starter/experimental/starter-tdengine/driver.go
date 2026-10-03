@@ -24,6 +24,7 @@ package StarterTdengine
 import (
 	"context"
 	"database/sql/driver"
+	"go-spring.org/cloud/chain"
 
 	taosws "github.com/taosdata/driver-go/v3/taosWS"
 	"go-spring.org/cloud"
@@ -87,7 +88,7 @@ func (DefaultDriver) CreateClient(ctx context.Context, c Config, params cloud.Cl
 // clientSlot carries the resilience executor [NewClient] installs. Connections
 // consult it on every statement; until it is set it is transparent (nil exec).
 type clientSlot struct {
-	exec resilience.ClientExecutor
+	exec chain.Executor
 }
 
 // guardedConnector wraps a driver.Connector so every connection it hands out

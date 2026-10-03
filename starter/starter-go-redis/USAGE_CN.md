@@ -34,7 +34,6 @@ require (
     go-spring.org/starter-go-redis latest
     go-spring.org/starter-actuator latest   // 可选：readiness + /metrics
     go-spring.org/starter-otel     latest   // 可选：真实 trace/metric 导出
-    go-spring.org/starter-governance-file latest // 可选：resilience/fault 策略
 )
 ```
 
@@ -47,7 +46,6 @@ import (
     "go-spring.org/spring/gs"
     _ "go-spring.org/starter-actuator"
     _ "go-spring.org/starter-go-redis"
-    _ "go-spring.org/starter-governance-file"
     _ "go-spring.org/starter-otel"
     _ "demo/service"
 )
@@ -332,7 +330,7 @@ val, _ := s.Main.Get(ctx, "k").Result()       // 裸客户端读同一 key："v"
 
 ### 4.5 故障/弹性演练
 
-配置 starter-governance-file 后给服务 `redis:<addr>` 设熔断/限流策略；压测并观察拒绝如何出现在
+配好治理规则源后给服务 `redis:<addr>` 设熔断/限流策略；压测并观察拒绝如何出现在
 `_app_redis_access` 记录与 resilience observer 的 outcome 计数里。策略可运行时热切换——
 executor 无需重启即刷新。
 

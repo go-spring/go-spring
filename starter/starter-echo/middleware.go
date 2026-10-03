@@ -19,6 +19,7 @@ package StarterEcho
 import (
 	"context"
 	"errors"
+	"go-spring.org/cloud/governance"
 	"net/http"
 	"strconv"
 
@@ -26,7 +27,6 @@ import (
 	"github.com/labstack/echo/v4/middleware"
 	"go-spring.org/cloud/fault"
 	"go-spring.org/cloud/propagate"
-	"go-spring.org/cloud/resilience"
 	"go-spring.org/cloud/traffic"
 	"go-spring.org/log"
 )
@@ -91,7 +91,7 @@ func RequestIDFromContext(ctx context.Context) string {
 // both; AccessLog wraps the policy middlewares so short-circuit responses (413,
 // 204, 403) are still logged. BodyLimit sits inside the chain so an over-limit
 // 413 is logged and recovered like any other response.
-func applyMiddlewares(e *echo.Echo, cfg Config, mgr *resilience.Manager, inj *fault.Injector, prop traffic.Propagator) error {
+func applyMiddlewares(e *echo.Echo, cfg Config, center *governance.Center, prop traffic.Propagator) error {
 	mw := cfg.Middleware
 
 	// LoadTest identification is outermost of all so the marker is on the
@@ -114,8 +114,8 @@ func applyMiddlewares(e *echo.Echo, cfg Config, mgr *resilience.Manager, inj *fa
 	}
 	// The span, the HTTP family metrics and the access log are no longer
 	// separate middlewares: they are emitted by the resilience executor this
-	// server is admitted through, off the operation the admission middleware
-	// declares (see admission.go). The per-signal switches remain readable — see
+	// server is admitted through, off the operation the inbound middleware
+	// declares (see inbound.go). The per-signal switches remain readable — see
 	// observeEnabled — but nothing is installed here for them.
 	if mw.SecureHeaders.Enabled {
 		e.Use(secureHeadersMiddleware(mw.SecureHeaders, cfg.TLS.Enabled))
@@ -130,14 +130,14 @@ func applyMiddlewares(e *echo.Echo, cfg Config, mgr *resilience.Manager, inj *fa
 		e.Use(middleware.BodyLimit(strconv.FormatInt(cfg.MaxBodySize, 10)))
 	}
 
-	// Resilience admission (always installed): runs the request through the
+	// Resilience inbound (always installed): runs the request through the
 	// configured rate-limit / bulkhead / breaker before the handler chain. Sits
 	// inside AccessLog so 429/503 rejects are still logged, and outside fault so
 	// a rate-limited request is not also faulted. mgr is the governance
 	// starter's manager bean (nil when governance is not imported); without it
 	// the executor is a transparent pass-through, so installing it costs a call
 	// frame and changes nothing else.
-	e.Use(buildServerPolicy(cfg, mgr))
+	e.Use(buildServerPolicy(cfg, center.Resilience()))
 
 	// Fault injection (always installed, innermost so the resulting 503 is still
 	// logged by the access log). inj is the governance starter's injector bean,
@@ -145,7 +145,7 @@ func applyMiddlewares(e *echo.Echo, cfg Config, mgr *resilience.Manager, inj *fa
 	// pass-through when governance is not imported); the center hot-swaps the
 	// injector's config in place, so an operator can "set fire" to the running
 	// server and hot-toggle it at runtime without a restart.
-	e.Use(buildFault(inj))
+	e.Use(buildFault(center.Fault()))
 	return nil
 }
 

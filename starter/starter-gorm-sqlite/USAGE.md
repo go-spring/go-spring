@@ -132,23 +132,25 @@ without docker.
 
 ```
 import starter-gorm-sqlite
-  └─ init(): gormcore.Module(Dialect{Prefix: "spring.gorm.sqlite", ...})
+  └─ init(): gs.Module(gs.OnProperty("spring.gorm.sqlite.instances"), ...)   — registration in starter.go
         │
 gs.Run()
-  ├─ OnProperty("spring.gorm.sqlite") fires only if ≥1 entry exists
+  ├─ OnProperty("spring.gorm.sqlite.instances") fires only if ≥1 entry exists
   ├─ conf.BindEach: each entry → Config (value tags; file passes expr "$ != ''")
-  ├─ build(): Config → Spec{Dialector: glebarez/sqlite.Open(DSN), Pool, Resource,
-  │          "gorm:sqlite"+file, ObserveEnabled}          — starter.go:49-56
-  ├─ gormcore.Open: gorm.Open → ApplyPool (startup ping, PingTimeout bound)
-  │                 → DBCustomizers → *DB wrapper
-  ├─ gs field-injects Observability → DB.Init(): observe plugin (db.system=sqlite)
-  │                 + resilience/fault executor callbacks (resource "gorm:sqlite")
+  ├─ build(): Config → Spec{Dialector: glebarez/sqlite.Open(DSN), Pool,
+  │          Service: "gorm:sqlite"+file, ObserveEnabled}
+  ├─ gormcore.NewDB → gormcore.Open: gorm.Open → ApplyPool (pool knobs)
+  │                 → DBCustomizers (user seam) → observe plugin (unless
+  │                 observe.enabled=false) → governance: resilience callbacks
+  │                 replace the six gorm processors → *DB wrapper
+  ├─ if ping: startup probe: gormcore.HealthCheck (delegates to Ping, bounded
+  │                 by ping-timeout) — after assembly
   ├─ run; readiness folds in the gorm:sqlite:<name> PING indicator
   └─ SIGTERM → DB.Destroy(): executor close → closers (none for sqlite) → pool close
 ```
 
 No TLS registration (no transport) and no discovery dialer (the "server" is a file path) —
-`starter.go:46-48` states this explicitly.
+`build` states this explicitly.
 
 ### 2.2 One query, layer by layer
 

@@ -38,8 +38,11 @@ type armedManager struct {
 	current loadbalance.Selection
 }
 
-func newArmedManager(sel loadbalance.Selection) *armedManager {
-	a := &armedManager{m: loadbalance.NewManager(), current: sel}
+func newArmedManager(t *testing.T, sel loadbalance.Selection) *armedManager {
+	t.Helper()
+	m, err := loadbalance.NewManager(nil)
+	assert.Error(t, err).Nil()
+	a := &armedManager{m: m, current: sel}
 	a.m.Apply(loadbalance.Settings{Enabled: true, Resolve: a.resolve})
 	return a
 }
@@ -66,7 +69,7 @@ func (a *armedManager) push(sel loadbalance.Selection) {
 // entry's protection executor — also governs its balancing strategy. The returned
 // stop detaches.
 func TestNewPickPoolBindsSelection(t *testing.T) {
-	a := newArmedManager(loadbalance.Selection{
+	a := newArmedManager(t, loadbalance.Selection{
 		Balancer: loadbalance.LeastConn, OutlierThreshold: 3, OutlierSuspendFor: time.Minute,
 	})
 
@@ -103,7 +106,9 @@ func TestNewPickPoolBindsSelection(t *testing.T) {
 // REQUIRED — the package that owns it registers it, so the container
 // always has one; "governance off" is an unarmed manager, never a nil one.
 func TestNewPickPoolAnUnarmedManagerIsPassThrough(t *testing.T) {
-	for _, mgr := range []*loadbalance.Manager{loadbalance.NewManager()} {
+	unarmed, err := loadbalance.NewManager(nil)
+	assert.Error(t, err).Nil()
+	for _, mgr := range []*loadbalance.Manager{unarmed} {
 		c := Common{Addressing: discovery.Addressing{ServiceName: "user-db"}, Scheme: "tcp"}
 		backend := discovery.NewStaticDiscovery(discovery.Endpoint{Addr: "127.0.0.1:3306", Healthy: true, Weight: 1})
 
@@ -128,7 +133,7 @@ func TestNewPickPoolAnUnarmedManagerIsPassThrough(t *testing.T) {
 // address has no candidate set to choose from: no pool, no resolver, and a stop
 // that is safe to call anyway.
 func TestNewPickPoolDirectAddrBindsNothing(t *testing.T) {
-	a := newArmedManager(loadbalance.Selection{Balancer: loadbalance.LeastConn})
+	a := newArmedManager(t, loadbalance.Selection{Balancer: loadbalance.LeastConn})
 
 	c := Common{}
 	pool, resolver, stop, err := c.NewPickPool(context.Background(), nil, "gorm:mysql:127.0.0.1:3306", a.m)

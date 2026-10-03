@@ -68,12 +68,6 @@ import (
 	"go-spring.org/spring/gs"
 )
 
-// enabled matches when the starter is not explicitly disabled.
-var enabled = gs.OnProperty("spring.transaction.at.enabled").HavingValue("true").MatchIfMissing()
-
-// recoverOnStart matches when startup recovery is not explicitly disabled.
-var recoverOnStart = gs.OnProperty("spring.transaction.at.recover-on-start").HavingValue("true").MatchIfMissing()
-
 func init() {
 	// The default global row lock: in-memory, so the framework stays standalone. It
 	// steps aside (OnMissingBean) the moment a durable-lock starter contributes its
@@ -98,6 +92,12 @@ func init() {
 		Condition(enabled, recoverOnStart).
 		Export(gs.As[gs.Runner]())
 }
+
+// enabled matches when the starter is not explicitly disabled.
+var enabled = gs.OnProperty("spring.transaction.at.enabled").HavingValue("true").MatchIfMissing()
+
+// recoverOnStart matches when startup recovery is not explicitly disabled.
+var recoverOnStart = gs.OnProperty("spring.transaction.at.recover-on-start").HavingValue("true").MatchIfMissing()
 
 // newCoordinator builds the bundled in-process coordinator over the autowired
 // global lock and, when tracing is enabled, the otel observer.

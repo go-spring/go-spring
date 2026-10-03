@@ -25,7 +25,6 @@ import (
 	"testing"
 
 	"go-spring.org/cloud/observability"
-	"go-spring.org/cloud/resilience"
 	gormresilience "go-spring.org/starter-gorm/resilience"
 	"go-spring.org/stdlib/testing/assert"
 	"go.opentelemetry.io/otel/attribute"
@@ -103,8 +102,7 @@ func (c *captureExecutor) Execute(ctx context.Context, fn func(context.Context) 
 	c.op, c.has = observability.OperationFrom(ctx)
 	return fn(ctx)
 }
-func (c *captureExecutor) Close() error                          { return nil }
-func (c *captureExecutor) Refresh(resilience.ClientPolicy) error { return nil }
+func (c *captureExecutor) Close() error { return nil }
 
 // newProbeDB opens a gorm.DB with the plugin installed and the real resilience
 // wrapper composed on top, returning the capture executor the wrapper forwards
@@ -120,7 +118,7 @@ func newProbeDB(t *testing.T, system string) (*gorm.DB, *captureExecutor) {
 		t.Fatalf("use plugin: %v", err)
 	}
 	inner := &captureExecutor{}
-	exec := resilience.WrapClientExecutor(inner, "gorm", "svc")
+	exec := observability.WrapClientExecutor(inner, "gorm", "svc")
 	if err := gormresilience.ApplyCallbacks(db, exec, "svc"); err != nil {
 		t.Fatalf("apply callbacks: %v", err)
 	}

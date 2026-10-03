@@ -23,6 +23,8 @@ import (
 	"testing"
 
 	amqp "github.com/rabbitmq/amqp091-go"
+	"go-spring.org/cloud/fault"
+	"go-spring.org/cloud/governance"
 	"go-spring.org/cloud/messaging"
 	"go-spring.org/cloud/resilience"
 	"go-spring.org/cloud/traffic"
@@ -41,8 +43,7 @@ func (s *stubExecutor) Execute(context.Context, func(context.Context) error) err
 	s.called.Add(1)
 	return errGovernanceStub
 }
-func (s *stubExecutor) Close() error                          { return nil }
-func (s *stubExecutor) Refresh(resilience.ClientPolicy) error { return nil }
+func (s *stubExecutor) Close() error { return nil }
 
 // applyResilience always attaches an executor, whether or not the governance
 // beans are wired. Whether it protects anything is decided by the governance
@@ -52,8 +53,10 @@ func (s *stubExecutor) Refresh(resilience.ClientPolicy) error { return nil }
 func TestApplyResilienceAttachesGuard(t *testing.T) {
 	conn := &amqp.Connection{}
 
-	// A nil manager models the standalone caller with no container.
-	if err := applyResilience(conn, "rabbitmq:test", nil, nil); err != nil {
+	// An unarmed center models a container with no governance rules: the
+	// executor is a transparent pass-through.
+	center := governance.NewCenter(governance.Config{}, resilience.NewManager(nil), nil, fault.NewInjector(fault.Configs{}, nil), nil, nil)
+	if err := applyResilience(conn, "rabbitmq:test", center); err != nil {
 		t.Fatal(err)
 	}
 	if _, ok := clientGuards.Load(conn); !ok {

@@ -467,8 +467,11 @@ This list is still growing. Of course, you can also implement your own configura
 ### Custom Configuration Provider
 
 A configuration provider is responsible for loading configuration data from a specific source (local files, remote services, databases, and so on).
+`provider.Provider` has two methods: `Load` returns the source content, and `Close` stops whatever `Load` installed (a watcher, a listener, a client). The runtime calls `Close` once when the application shuts down, so a provider that hot-reloads gets cleaned up without any extra wiring.
 If you need to load configuration from a special place (such as an internal company configuration center, etcd, a database, and so on),
-you only need to implement the `provider.Provider` function type and then call `conf.RegisterProvider` to register it.
+call `conf.RegisterProvider` to register it.
+
+A source with nothing to release is just a plain function, wrapped in `provider.ProviderFunc`; write a struct with `Load` and `Close` instead once the source watches for changes.
 
 **Complete example - reading JSON configuration from environment variables**:
 
@@ -479,6 +482,7 @@ import (
 	"os"
 
 	"go-spring.org/spring/conf"
+	"go-spring.org/spring/conf/provider"
 	"go-spring.org/stdlib/flatten"
 )
 
@@ -506,7 +510,8 @@ func envJSONProvider(optional bool, source string) (map[string]string, error) {
 
 // Register the Provider in init
 func init() {
-	conf.RegisterProvider("envjson", envJSONProvider)
+	// Nothing to release: a plain function plus ProviderFunc is enough.
+	conf.RegisterProvider("envjson", provider.ProviderFunc(envJSONProvider))
 }
 ```
 

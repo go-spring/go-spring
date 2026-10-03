@@ -39,7 +39,6 @@ require (
     go-spring.org/spring             v1.3.x
     go-spring.org/starter-webhook    latest
     go-spring.org/starter-otel       latest   # optional: real span export
-    go-spring.org/starter-governance-file latest   # optional: rate limit / breaker / fault
 )
 ```
 
@@ -50,7 +49,6 @@ package main
 
 import (
     "go-spring.org/spring/gs"
-    _ "go-spring.org/starter-governance-file"
     _ "go-spring.org/starter-otel"
     _ "go-spring.org/starter-webhook"
 )
@@ -179,7 +177,7 @@ so two notifiers on the same URL but different names get independent breaker/lim
    itself.
 3. **ClientExecutor + emission (the resilience layer)** — the POST closure runs through the
    governance executor under the service label: rate limit / circuit breaking / retry (if
-   configured via governance) / fault injection when starter-governance-file is armed; an
+   configured via governance) / fault injection when a governance rules source is armed; an
    observed-only, unmanaged executor otherwise (it warns once per client that no protection
    applies). The observe wrapper on the executor chain is the single **emitter**:
    it opens the call span `webhook.send` (covering every attempt), records the call-level
@@ -201,7 +199,7 @@ caller-side bracket to remember. The starter no longer offers a `StartSendSpan` 
 helper: declaring the identity is this layer's whole job now.
 
 Retry behavior: **no built-in retry**. Retries happen only if a retry policy for the
-`webhook:<name>:<channel>` service is armed through starter-governance-file; without governance
+`webhook:<name>:<channel>` service is armed through the governance rules; without governance
 a failed POST returns the error to the caller immediately. ⚠ DingTalk/Feishu report some
 failures as HTTP 200 with an error body — `post` checks only the status code, so those are
 treated as success (see suspect §6).
@@ -258,7 +256,7 @@ Recompute offline to verify: `base64(HMAC_SHA256(secret, ts+"\n"+secret))` — m
 Start with a bad URL (e.g. port 1): every Send returns `webhook: post failed` with the
 connection error, recorded on the emitted span (status Error, error event) and counted in
 the executor's call counter by outcome. There is nothing to "drill hot" in the starter
-itself; with starter-governance-file, flipping the rule file arms a rate limit on
+itself; with a governance rules source configured, flipping the rule file arms a rate limit on
 `webhook:alert:dingtalk` live — over-limit sends then fail fast with a limit-reject outcome
 in the observability stream instead of reaching the platform.
 

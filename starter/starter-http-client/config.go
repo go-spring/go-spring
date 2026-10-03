@@ -44,11 +44,12 @@ type Config struct {
 	// not silently change the key spring.governance.client.rules match on.
 	ServiceName string `value:"${service-name:=}"`
 
-	// Discovery names the discovery backend bean that resolves ServiceName.
-	// Required when ServiceName is set; the starter wiring resolves this label
-	// against every registered discovery backend bean and hands the result to
-	// the driver as the Discovery argument of CreateTransport. Unset, it
-	// inherits the family-wide ${spring.http-client.default.discovery}.
+	// Discovery is the label of the discovery backend that resolves ServiceName,
+	// as registered in the container (and therefore in the center's discovery
+	// directory). Required when ServiceName is set; the starter wiring resolves
+	// this label against that directory and hands the result to the driver as the
+	// Discovery argument of CreateTransport. Unset, it inherits the family-wide
+	// ${spring.http-client.default.discovery}.
 	Discovery string `value:"${discovery:=}"`
 
 	// TLS configures the certificate surface for https targets: a client key

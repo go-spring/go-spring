@@ -11,7 +11,7 @@ go-spring 增量:分派、服务发现/负载均衡、韧性/治理、可观测�
 **激活条件**:只有存在至少一个 `spring.http-client.instances.<name>.*` 配置项时才安装进程级 transport
 (`gs.OnProperty("spring.http-client.instances")`,starter.go:60)。每个配置项成为一个 route bean——
 以条目名命名,持有自己的 target(addr 或 service-name)与装配好的 transport——由路由表
-收集。韧性/故障策略不在这里配置——进程级 `spring.governance.*`(见 starter-governance-file)。
+收集。韧性/故障策略不在这里配置——进程级 `spring.governance.*`(见 cloud/governance 的 SOURCE_USAGE_CN.md)。
 
 ---
 
@@ -36,7 +36,6 @@ module demo
 
 require (
     go-spring.org/spring             v1.3.x
-    go-spring.org/starter-governance-file latest
     go-spring.org/starter-http-client latest
     go.opentelemetry.io/otel          v1.45.0
 )
@@ -49,7 +48,6 @@ package main
 
 import (
     "go-spring.org/spring/gs"
-    _ "go-spring.org/starter-governance-file"
     _ "go-spring.org/starter-http-client"
     // 由 gs-http-gen 从 .idl 生成;只持有一个 Target
     "demo/proto"
@@ -127,7 +125,7 @@ spring.http-client.instances.discovered.discovery=static
 # (3) 韧性守卫路由:策略在进程级 spring.governance.* 下。
 # 内置 DefaultDriver 连续失败 2 次后熔断,持续 30s。
 spring.http-client.instances.guarded.addr=127.0.0.1:9473
-# NOTE: governance RULES go in conf/governance.properties, referenced by spring.governance.source.file.path in app.properties (see starter-governance-file USAGE).
+# NOTE: governance RULES go in conf/governance.properties, referenced by spring.governance.source.file.path in app.properties (see cloud/governance's SOURCE_USAGE).
 spring.governance.enabled=true
 spring.governance.driver=default
 spring.governance.client.default.error-threshold=2
@@ -291,12 +289,12 @@ service-name 即可;只有彻底删掉 service-name 才会换 key。
 另:直连模式下熔断按 host:port 计——同一后端两种 `addr` 写法得到两个熔断器。
 
 **不在这里**(`spring.http-client.*` 下没有):超时、重试、熔断、限流、故障注入。所有
-策略是进程级 `spring.governance.*`(starter-governance-file)——`spring.governance.enabled`、`spring.governance.driver`、
+策略是进程级 `spring.governance.*`(见 cloud/governance 的 SOURCE_USAGE_CN.md)——`spring.governance.enabled`、`spring.governance.driver`、
 `spring.governance.client.default.<策略字段>`(rate-limit / burst / error-threshold / open-duration /
 breaker-strategy / error-rate-threshold / min-requests / max-concurrent / max-retries /
 initial-interval / multiplier / max-interval / attempt-timeout / max-duration),故障注入在
 `spring.governance.client.fault.*`。按 target 定策略 = 一条 `spring.governance.client.rules[n]`,service 指向上面的 label。
-该配置面详见 starter-governance-file 的 USAGE。
+该配置面详见 cloud/governance 的 SOURCE_USAGE_CN.md。
 
 `min-requests`:error-rate 熔断的最小样本数直接取自 governance rule,由 resilience 施加;未配置
 即 resilience 自己的零值下限 1,低流量下单次失败就可能跳闸——下游是低流量时请显式配置。
@@ -351,7 +349,7 @@ fault 挂在同一治理 source 上;`spring.governance.client.fault.*` 热加载
 在配置文件里翻转:
 
 ```properties
-# NOTE: governance RULES go in conf/governance.properties, referenced by spring.governance.source.file.path in app.properties (see starter-governance-file USAGE).
+# NOTE: governance RULES go in conf/governance.properties, referenced by spring.governance.source.file.path in app.properties (see cloud/governance's SOURCE_USAGE).
 spring.governance.client.fault.enabled=true
 spring.governance.client.fault.rate=0.5
 spring.governance.client.fault.error=timeout    # 或 generic / reset
@@ -382,7 +380,7 @@ spring.governance.client.fault.error=timeout    # 或 generic / reset
 |------|----------|------|
 | 请求报 `http-client: no transport for target "x"` | 没有 addr/service-name 等于客户端 `Target` 的配置项(错配在请求期而非装配期暴露——starter.go:188-195) | 补一条配置或修正 Target;必须精确匹配。 |
 | 容器启动失败:"one of addr or service-name is required" / "discovery is required" | validate() 规则(config.go) | 至少配一种寻址;只配 service-name 时必须配 `discovery`。 |
-| 一切正常但没有熔断/限流 | 未设 `spring.governance.enabled`——治理 executor 在其未启用时是透明 no-op | 启用 starter-governance-file 并配策略。 |
+| 一切正常但没有熔断/限流 | 未设 `spring.governance.enabled`——治理 executor 在其未启用时是透明 no-op | 配置一个治理规则源并配策略。 |
 | 单次失败即熔断 | `breaker-strategy=error-rate` 且 `min-requests` 未配置 | 在 governance rule 里显式配 `min-requests`(如 5)或调高 `error-rate-threshold`;未配置时熔断可能在第一次失败就跳闸。 |
 | addr ↔ service-name 切换后策略"失效" | ⚠ label 耦合:service key 变了(§3) | 把 `spring.governance.client.rules[].services` 更新为新 label。 |
 | 客户端无 trace / 指标 | 未 import starter-otel;otelhttp 与 meter 依赖 OTel globals | 空导入 starter-otel 并配 `spring.observability.*`。 |

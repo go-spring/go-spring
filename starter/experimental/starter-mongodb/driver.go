@@ -41,8 +41,8 @@ import (
 // the backend, so the pool has no resources to release.
 //
 // The pool is returned unbound: binding it to the service's governance label
-// needs the injected *loadbalance.Manager, which the constructor holds (see
-// newClient), not this dial seam.
+// needs the governance center's loadbalance authority, which the constructor
+// holds (see newClient), not this dial seam.
 func newPickPool(ctx context.Context, c Config, backend discovery.Discovery) (*loadbalance.Pool, error) {
 	if c.ServiceName != "" && backend == nil && !mesh.Enabled() {
 		if c.Discovery == "" {

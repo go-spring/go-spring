@@ -19,6 +19,7 @@ package StarterRatelimitRedis
 import (
 	"context"
 	"errors"
+	"go-spring.org/cloud/chain"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -28,6 +29,7 @@ import (
 	"github.com/alicebob/miniredis/v2"
 	"github.com/redis/go-redis/v9"
 
+	"go-spring.org/cloud"
 	"go-spring.org/cloud/resilience"
 	"go-spring.org/spring/gs"
 	goredis "go-spring.org/starter-go-redis"
@@ -65,7 +67,7 @@ func TestSharedBudgetAcrossReplicas(t *testing.T) {
 	a := newStore(t, cli)
 	b := newStore(t, cli)
 	ctx := context.Background()
-	p := resilience.ClientPolicy{RateLimit: 0.001, Burst: 5}
+	p := resilience.RateSpec{RateLimit: 0.001, Burst: 5}
 
 	allowed := 0
 	for i := 0; i < 5; i++ {
@@ -83,7 +85,7 @@ func TestSharedBudgetAcrossReplicas(t *testing.T) {
 	}
 	// Both replicas must now be refused: the bucket lives in Redis, not in either.
 	for name, s := range map[string]resilience.Counters{"a": a, "b": b} {
-		if err := s.Allow(ctx, "api", p, 1); !errors.Is(err, resilience.ErrRateLimited) {
+		if err := s.Allow(ctx, "api", p, 1); !errors.Is(err, chain.ErrRateLimited) {
 			t.Fatalf("replica %s after drain: err=%v, want ErrRateLimited", name, err)
 		}
 	}
@@ -95,14 +97,14 @@ func TestScopeIsolation(t *testing.T) {
 	_, cli := newMiniRedis(t)
 	c := newStore(t, cli)
 	ctx := context.Background()
-	p := resilience.ClientPolicy{RateLimit: 0.001, Burst: 2}
+	p := resilience.RateSpec{RateLimit: 0.001, Burst: 2}
 
 	for i := 0; i < 2; i++ {
 		if err := c.Allow(ctx, "tenant-a", p, 1); err != nil {
 			t.Fatalf("tenant-a allow %d: %v", i, err)
 		}
 	}
-	if err := c.Allow(ctx, "tenant-a", p, 1); !errors.Is(err, resilience.ErrRateLimited) {
+	if err := c.Allow(ctx, "tenant-a", p, 1); !errors.Is(err, chain.ErrRateLimited) {
 		t.Fatalf("tenant-a budget should be exhausted, err=%v", err)
 	}
 	// A different scope has an independent budget.
@@ -117,13 +119,13 @@ func TestBatchAllowAllOrNothing(t *testing.T) {
 	_, cli := newMiniRedis(t)
 	c := newStore(t, cli)
 	ctx := context.Background()
-	p := resilience.ClientPolicy{RateLimit: 0.001, Burst: 5}
+	p := resilience.RateSpec{RateLimit: 0.001, Burst: 5}
 
 	if err := c.Allow(ctx, "api", p, 3); err != nil {
 		t.Fatalf("Allow(3) on full bucket: %v", err)
 	}
 	// Only 2 left: asking for 3 must consume nothing.
-	if err := c.Allow(ctx, "api", p, 3); !errors.Is(err, resilience.ErrRateLimited) {
+	if err := c.Allow(ctx, "api", p, 3); !errors.Is(err, chain.ErrRateLimited) {
 		t.Fatalf("Allow(3) with 2 left: err=%v, want ErrRateLimited", err)
 	}
 	// The 2 survivors are still there.
@@ -144,7 +146,7 @@ func TestUnlimitedPolicy(t *testing.T) {
 	ctx := context.Background()
 
 	for i := 0; i < 100; i++ {
-		if err := c.Allow(ctx, "api", resilience.ClientPolicy{}, 1); err != nil {
+		if err := c.Allow(ctx, "api", resilience.RateSpec{}, 1); err != nil {
 			t.Fatalf("unlimited allow %d: %v", i, err)
 		}
 	}
@@ -159,7 +161,7 @@ func TestConcurrency(t *testing.T) {
 	_, cli := newMiniRedis(t)
 	c := newStore(t, cli)
 	ctx := context.Background()
-	p := resilience.ClientPolicy{RateLimit: 0.001, Burst: 10}
+	p := resilience.RateSpec{RateLimit: 0.001, Burst: 10}
 
 	var granted atomic.Int64
 	var w sync.WaitGroup
@@ -171,7 +173,7 @@ func TestConcurrency(t *testing.T) {
 			switch {
 			case err == nil:
 				granted.Add(1)
-			case errors.Is(err, resilience.ErrRateLimited):
+			case errors.Is(err, chain.ErrRateLimited):
 			default:
 				t.Errorf("Allow: %v", err)
 			}
@@ -188,7 +190,7 @@ func TestConcurrency(t *testing.T) {
 func TestKeyTTLPreventsColdKeyPileup(t *testing.T) {
 	srv, cli := newMiniRedis(t)
 	c := newStore(t, cli)
-	if err := c.Allow(context.Background(), "api", resilience.ClientPolicy{RateLimit: 2, Burst: 4}, 1); err != nil {
+	if err := c.Allow(context.Background(), "api", resilience.RateSpec{RateLimit: 2, Burst: 4}, 1); err != nil {
 		t.Fatalf("Allow: %v", err)
 	}
 	// ceil(burst/rate)+1 = 3s for the policy above.
@@ -235,7 +237,7 @@ func TestWiring_ContributesRedisStore(t *testing.T) {
 
 	// The *goredis.Client bean starter-go-redis would publish, built the same
 	// way that starter builds one (identity + observation, no governance).
-	w, err := goredis.NewClient(cli, goredis.Config{}, nil)
+	w, err := goredis.NewClient(cli, goredis.Config{}, nil, cloud.ClientParams{})
 	if err != nil {
 		t.Fatalf("goredis.NewClient: %v", err)
 	}
@@ -252,7 +254,7 @@ func TestWiring_ContributesRedisStore(t *testing.T) {
 		// Only the Redis store can write the bucket key, which is what makes
 		// this an assertion about WHICH store was injected.
 		err := ts.Counters.Allow(context.Background(), "api",
-			resilience.ClientPolicy{RateLimit: 100, Burst: 5}, 1)
+			resilience.RateSpec{RateLimit: 100, Burst: 5}, 1)
 		if err != nil {
 			t.Fatalf("Allow: %v", err)
 		}

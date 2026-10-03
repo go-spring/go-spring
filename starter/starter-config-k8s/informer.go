@@ -68,6 +68,17 @@ type watchManager struct {
 	stops   []chan struct{}
 }
 
+// objVersion extracts an informer object's resourceVersion for refresh
+// tagging. The handlers receive the concrete typed objects, which all
+// implement metav1.Object; wrappers like cache.DeletedFinalStateUnknown do
+// not, and yield an empty version.
+func objVersion(obj any) string {
+	if o, ok := obj.(metav1.Object); ok {
+		return o.GetResourceVersion()
+	}
+	return ""
+}
+
 // ensureWatch starts a namespaced, name-scoped informer on the target object
 // and triggers a full property refresh on every add/update/delete.
 func (c *k8sCtrl) ensureWatch(client k8sClient, cs configSource) {
@@ -101,9 +112,33 @@ func (c *k8sCtrl) ensureWatch(client k8sClient, cs configSource) {
 	}
 
 	handler := cache.ResourceEventHandlerFuncs{
-		AddFunc:    func(any) { c.TriggerRefresh(context.Background()) },
-		UpdateFunc: func(any, any) { c.TriggerRefresh(context.Background()) },
-		DeleteFunc: func(any) { c.TriggerRefresh(context.Background()) },
+		// Stamp each trigger with the change's identity (which object, which
+		// resourceVersion) so the refresh records logged and metered by
+		// observability.RefreshConf carry what this round is about. The
+		// resourceVersion doubles as the refresh identifier: it advances on
+		// every write to the object, so two refreshes from the same object are
+		// distinguishable. UpdateFunc stamps the new object's version.
+		AddFunc: func(obj any) {
+			c.TriggerRefresh(log.WithFields(context.Background(),
+				log.String("source", "k8s"),
+				log.String("object", id),
+				log.String("resource_version", objVersion(obj)),
+			))
+		},
+		UpdateFunc: func(_, newObj any) {
+			c.TriggerRefresh(log.WithFields(context.Background(),
+				log.String("source", "k8s"),
+				log.String("object", id),
+				log.String("resource_version", objVersion(newObj)),
+			))
+		},
+		DeleteFunc: func(obj any) {
+			c.TriggerRefresh(log.WithFields(context.Background(),
+				log.String("source", "k8s"),
+				log.String("object", id),
+				log.String("resource_version", objVersion(obj)),
+			))
+		},
 	}
 	if _, err := informer.AddEventHandler(handler); err != nil {
 		log.Errorf(context.Background(), starterTag,
@@ -125,6 +160,8 @@ func (c *k8sCtrl) ensureWatch(client k8sClient, cs configSource) {
 	c.manager.mu.Lock()
 	c.manager.stops = append(c.manager.stops, stop)
 	c.manager.mu.Unlock()
+
+	log.Infof(context.Background(), starterTag, "watching k8s object kind=%s namespace=%s name=%s", cs.kind, cs.namespace, cs.objectName)
 }
 
 // forget drops a watcher id so a later Load may retry starting it.
@@ -143,5 +180,8 @@ func (m *watchManager) stopAll() {
 	m.mu.Unlock()
 	for _, s := range stops {
 		close(s)
+	}
+	if n := len(stops); n > 0 {
+		log.Infof(context.Background(), starterTag, "stopped %d k8s informer(s)", n)
 	}
 }

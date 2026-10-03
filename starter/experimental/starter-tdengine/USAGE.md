@@ -38,7 +38,6 @@ require (
     go-spring.org/starter-tdengine latest
     go-spring.org/starter-actuator latest        // optional: readiness + /metrics
     go-spring.org/starter-otel     latest        // optional: real trace/metric export
-    go-spring.org/starter-governance-file latest      // optional: resilience/fault policy
 )
 ```
 
@@ -50,7 +49,6 @@ package main
 import (
     "go-spring.org/spring/gs"
     _ "go-spring.org/starter-actuator"
-    _ "go-spring.org/starter-governance-file"
     _ "go-spring.org/starter-otel"
     _ "go-spring.org/starter-tdengine"
     _ "demo/service"
@@ -316,7 +314,7 @@ grep _app_tdengine_access app.log | tail -1
 
 ### 4.3 Resilience drill
 
-With starter-governance-file imported, define a policy for service `tdengine:127.0.0.1:6041`
+With a configured governance rules source, define a policy for service `tdengine:127.0.0.1:6041`
 (§2.3) — e.g. a rate limit. Hammer `ExecContext`; over-limit statements are rejected with
 `resilience.ErrRateLimited` **without reaching the connection** (unit-tested
 [tdengine_test.go:62-76]), surface in `resilience.client.calls{resilience.outcome="rate_limited"}` and in a

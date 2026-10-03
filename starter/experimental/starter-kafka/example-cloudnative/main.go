@@ -41,6 +41,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"go-spring.org/cloud/chain"
 	"io"
 	"net/http"
 	"os"
@@ -51,12 +52,10 @@ import (
 
 	"github.com/twmb/franz-go/pkg/kgo"
 	"go-spring.org/cloud/actuator/health"
-	"go-spring.org/cloud/resilience"
 	"go-spring.org/spring/gs"
 
-	_ "go-spring.org/starter-actuator"        // aggregates health.Indicator beans on :9370
-	_ "go-spring.org/starter-config-file"     // registers the file-watch config provider
-	_ "go-spring.org/starter-governance-file" // centralized governance center (spring.governance.* config)
+	_ "go-spring.org/starter-actuator"    // aggregates health.Indicator beans on :9370
+	_ "go-spring.org/starter-config-file" // registers the file-watch config provider
 	StarterKafka "go-spring.org/starter-kafka"
 )
 
@@ -185,7 +184,7 @@ func runTest(s *Service, c *Config) {
 		switch {
 		case err == nil:
 			admitted++
-		case errors.Is(err, resilience.ErrRateLimited):
+		case errors.Is(err, chain.ErrRateLimited):
 			rejected++
 		default:
 			fail("produce: %v", err)

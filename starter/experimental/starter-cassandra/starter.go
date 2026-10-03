@@ -19,8 +19,7 @@ package StarterCassandra
 import (
 	"go-spring.org/cloud"
 	"go-spring.org/cloud/actuator/health"
-	"go-spring.org/cloud/fault"
-	"go-spring.org/cloud/resilience"
+	"go-spring.org/cloud/governance"
 	"go-spring.org/log"
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/gs"
@@ -40,8 +39,8 @@ func init() {
 		// instance inherits unless it sets its own.
 		p = flatten.WithFallback(p, "spring.cassandra.instances", "spring.cassandra.default")
 		return conf.BindEach(p, "${spring.cassandra.instances}", func(name string, c Config) error {
-			// The ctor bundles the injected governance beans and hands them to the
-			// Driver, which passes them to NewClient — so the client is assembled
+			// The ctor reads the authorities off the injected governance center and
+			// hands them to the Driver, which passes them to NewClient — so the client is assembled
 			// complete in one step, and Destroy tears the executor down. The
 			// Driver bean is selected by the entry's ${driver} key: unset → "?" (nullable
 			// by-type — injects the single Driver bean when one is provided,
@@ -51,12 +50,8 @@ func init() {
 			r.Provide(newClient,
 				gs.IndexArg(1, gs.ValueArg(c)),
 				gs.IndexArg(2, gs.TagArg("${spring.cassandra.instances."+name+".driver:=${spring.cassandra.default.driver:=?}}")),
-				// The governance beans are REQUIRED: each is registered by the package that
-				// owns it (cloud/resilience, cloud/loadbalance, cloud/fault), which this
-				// starter imports — "governance off" is spring.governance.enabled=false, never
-				// an absent bean.
-				gs.IndexArg(3, gs.TagArg("")), // *resilience.Manager
-				gs.IndexArg(4, gs.TagArg("")), // *fault.Injector
+				// The governance center is the family's sole injection point: it hands
+				// out the resilience/fault/loadbalance authorities.
 			).Name(name).Destroy((*Client).Destroy).Caller(1)
 			// Contribute a health indicator for this instance, injecting the
 			// client just registered above by name. The probe delegates to
@@ -76,13 +71,14 @@ func init() {
 // configuration, wrapped so every statement declares its identity (see
 // observe.go) and flows through the governance guard.
 //
-// mgr and inj are the authority beans the owning packages register. The wiring
-// injects them NULLABLY, so both are nil in a container without
-// the container as well as in a standalone (non-gs) call; the ctor bundles
+// center is the governance center — the family's sole injection point. The
+// wiring injects it NULLABLY, so it is nil in a container without governance as
+// well as in a standalone (non-gs) call; the ctor reads the resilience and fault
+// authorities from it and bundles
 // them into the [cloud.ClientParams] it hands the driver, which passes it to
 // [NewClient] — so the client is assembled complete in one step, with the zero
 // bundle degrading to an observed-only, loudly-unmanaged executor.
-func newClient(ctx *gs.ContextProvider, c Config, d Driver, mgr *resilience.Manager, inj *fault.Injector) (*Client, error) {
+func newClient(ctx *gs.ContextProvider, c Config, d Driver, center *governance.Center) (*Client, error) {
 	log.Debugf(ctx.Context, log.TagAppDef, "creating cassandra client, hosts=%v keyspace=%s", c.Hosts, c.Keyspace)
 
 	if (c.Username == "") != (c.Password == "") {
@@ -93,7 +89,7 @@ func newClient(ctx *gs.ContextProvider, c Config, d Driver, mgr *resilience.Mana
 	if d == nil {
 		d = DefaultDriver{}
 	}
-	client, err := d.CreateClient(ctx.Context, c, cloud.ClientParams{Resilience: mgr, Fault: inj})
+	client, err := d.CreateClient(ctx.Context, c, cloud.ClientParams{Resilience: center.Resilience(), Fault: center.Fault()})
 	if err != nil {
 		return nil, err
 	}

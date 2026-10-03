@@ -27,6 +27,7 @@ import (
 	"github.com/nats-io/nats.go"
 	"github.com/nats-io/nats.go/jetstream"
 	"go-spring.org/cloud"
+	"go-spring.org/cloud/chain"
 	"go-spring.org/cloud/resilience"
 )
 
@@ -63,7 +64,7 @@ type Conn struct {
 	// Conn is complete the moment it is built. serviceLabel is the stable
 	// per-instance key so the limiter/breaker state is scoped per connection
 	// rather than per subject.
-	exec         resilience.ClientExecutor
+	exec         chain.Executor
 	serviceLabel string
 }
 

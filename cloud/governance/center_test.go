@@ -43,21 +43,22 @@ func enabledTimeout(d int) Config {
 
 // newAuthorities returns the three module authorities a center distributes to.
 // The wiring starter creates them as beans; a test creates them per center so no
-// state leaks between tests.
-func newAuthorities() (*resilience.Manager, *loadbalance.Manager, *fault.Injector) {
-	return resilience.NewManager(), loadbalance.NewManager(), fault.NewInjector(fault.Configs{}, nil)
+// state leaks between tests. drivers is the resilience driver directory the
+// managers are built over — the stand-in for the container's bean collection, so
+// a config naming a non-bundled backend resolves.
+func newAuthorities(drivers map[string]resilience.Driver) (*resilience.Manager, *loadbalance.Manager, *fault.Injector) {
+	lb, err := loadbalance.NewManager(nil) // no factories contributed
+	if err != nil {
+		panic(err)
+	}
+	return resilience.NewManager(drivers), lb, fault.NewInjector(fault.Configs{}, nil)
 }
 
 // newTestCenterWith builds a center over fresh module authorities and dispatches
-// cfg into them, exactly as the wiring starter does in production. drivers, when
-// non-nil, is installed before the dispatch so a config naming a non-bundled
-// backend resolves.
+// cfg into them, exactly as the wiring starter does in production.
 func newTestCenterWith(cfg Config, drivers map[string]resilience.Driver) (*Center, *resilience.Manager, *loadbalance.Manager, *fault.Injector) {
-	res, lb, inj := newAuthorities()
-	if drivers != nil {
-		res.SetDrivers(drivers)
-	}
-	c := NewCenter(cfg, res, lb, inj)
+	res, lb, inj := newAuthorities(drivers)
+	c := NewCenter(cfg, res, lb, inj, nil, nil)
 	if err := c.dispatch(cfg); err != nil {
 		panic(err)
 	}
@@ -132,9 +133,9 @@ func TestServerPolicyFor_ServerBlock(t *testing.T) {
 			}},
 		},
 	})
-	// A matched admission rule fully replaces the server default.
+	// A matched inbound rule fully replaces the server default.
 	if a := c.serverPolicyFor("gin::8080"); a.RateLimit != 500 || a.AttemptTimeout != 0 {
-		t.Fatalf("admission rule must replace the default wholesale: %+v", a)
+		t.Fatalf("inbound rule must replace the default wholesale: %+v", a)
 	}
 	if a := c.serverPolicyFor("echo::9090"); a.AttemptTimeout != dur(100) {
 		t.Fatalf("unmatched route: want the server default, got %+v", a)
@@ -142,7 +143,7 @@ func TestServerPolicyFor_ServerBlock(t *testing.T) {
 	// The two directions are separate resolutions over separate rules: the client
 	// half of the same document holds nothing for these labels.
 	if p := c.clientPolicyFor("gin::8080"); !p.IsZero() {
-		t.Fatalf("admission must not leak into the outbound policy: %+v", p)
+		t.Fatalf("inbound must not leak into the outbound policy: %+v", p)
 	}
 }
 
@@ -152,7 +153,7 @@ func TestServerPolicyFor_DisabledIsZero(t *testing.T) {
 		Server:  ServerConfig{Default: resilience.ServerPolicy{RateLimit: 10, MaxConcurrent: 4}},
 	})
 	if a := c.serverPolicyFor("gin::8080"); !a.IsZero() {
-		t.Fatalf("disabled center must yield a zero admission, got %+v", a)
+		t.Fatalf("disabled center must yield a zero inbound, got %+v", a)
 	}
 }
 
@@ -358,8 +359,9 @@ func TestSetSource_LateArm_StaleGuard(t *testing.T) {
 }
 
 // TestSetSource_NilPanics pins the contract: there is no "remove the source"
-// operation, only replacement (removal would resurrect the wiring default
-// half-armed, which the guard machinery deliberately cannot do).
+// operation, only replacement. "No source" is a start-of-life state — the
+// nullable constructor parameter — settled once and never revisited; a nil
+// argument to SetSource is therefore a programming error, not a mode.
 func TestSetSource_NilPanics(t *testing.T) {
 	c, _, _, _ := newTestCenterWith(Config{}, nil)
 	defer func() {
@@ -370,24 +372,20 @@ func TestSetSource_NilPanics(t *testing.T) {
 	c.SetSource(nil)
 }
 
-// TestBindDefault_RespectsExplicitSource pins the priority rule: BindDefault
-// installs its source only when none is bound — an earlier explicit SetSource
-// always wins, which is what lets a pre-wiring SetSource take over the default.
-func TestBindDefault_RespectsExplicitSource(t *testing.T) {
-	c := newTestCenter(Config{})
-	explicit := NewPushSource(enabledTimeout(100))
-	c.SetSource(explicit)
-
-	c.BindDefault(NewPushSource(enabledTimeout(999))) // must be ignored
-	if p := c.clientPolicyFor("x"); p.AttemptTimeout != dur(100) {
-		t.Fatalf("BindDefault must not override an explicit source: want 100ms, got %v", p.AttemptTimeout)
+// TestSetSource_ReplacesTheConstructorSource pins the source rule that replaced
+// the old default-vs-explicit dance: the source handed to NewCenter is bound at
+// construction (the container's contribution), and any later SetSource replaces
+// it outright — last write wins, no arbitration.
+func TestSetSource_ReplacesTheConstructorSource(t *testing.T) {
+	res, lb, inj := newAuthorities(nil)
+	c := NewCenter(Config{}, res, lb, inj, nil, NewPushSource(enabledTimeout(300)))
+	if p := c.clientPolicyFor("x"); p.AttemptTimeout != dur(300) {
+		t.Fatalf("the constructor's source must be bound at construction: want 300ms, got %v", p.AttemptTimeout)
 	}
 
-	// With nothing bound, BindDefault takes effect.
-	c2 := newTestCenter(Config{})
-	c2.BindDefault(NewPushSource(enabledTimeout(200)))
-	if p := c2.clientPolicyFor("x"); p.AttemptTimeout != dur(200) {
-		t.Fatalf("BindDefault should bind when nothing is bound: want 200ms, got %v", p.AttemptTimeout)
+	c.SetSource(NewPushSource(enabledTimeout(100)))
+	if p := c.clientPolicyFor("x"); p.AttemptTimeout != dur(100) {
+		t.Fatalf("SetSource must replace the constructor's source: want 100ms, got %v", p.AttemptTimeout)
 	}
 }
 
@@ -556,4 +554,21 @@ func TestGoLive_ArmsSelection(t *testing.T) {
 
 	assert.That(t, pool.Selection().Balancer).Equal(loadbalance.P2C)
 	assert.Number(t, pool.Tracker().Config().Threshold).Equal(4)
+}
+
+// TestDiscovery_HandsOutTheDirectory pins the center's fourth hole: it carries
+// the discovery directory and returns exactly the manager it was built with, so
+// a client reaches discovery through the same injection point as the policy
+// authorities.
+func TestDiscovery_HandsOutTheDirectory(t *testing.T) {
+	backend := discovery.NewStaticDiscovery(discovery.Endpoint{Addr: "10.0.0.1:2379"})
+	disc := discovery.NewManager(map[string]discovery.Discovery{"etcd.main": backend})
+
+	res, lb, inj := newAuthorities(nil)
+	c := NewCenter(Config{}, res, lb, inj, disc, nil)
+	assert.That(t, c.Discovery()).Same(disc)
+
+	got, ok := c.Discovery().Get("etcd.main")
+	assert.That(t, ok).True()
+	assert.That(t, got).Same(backend)
 }

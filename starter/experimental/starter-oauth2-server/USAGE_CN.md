@@ -32,7 +32,7 @@ require (
     github.com/golang-jwt/jwt/v5     v5.3.1
     go-spring.org/spring             v1.3.x
     go-spring.org/starter-oauth2-server latest
-    // 可选生态:starter-actuator / starter-otel / starter-governance-file
+    // 可选生态:starter-actuator / starter-otel
 )
 ```
 

@@ -19,6 +19,7 @@ package StarterGovernanceSentinel
 import (
 	"context"
 	"errors"
+	"go-spring.org/cloud/chain"
 	"net/http"
 	"net/http/httptest"
 	"sync"
@@ -47,7 +48,7 @@ func TestDriverBuilds(t *testing.T) {
 // service: sentinel's rule registry AND its per-resource stat window are
 // process-global, so a shared resource name would let one test's calls trip
 // another test's rule.
-func newExec(t *testing.T, service string, p resilience.ClientPolicy) resilience.ClientExecutor {
+func newExec(t *testing.T, service string, p resilience.ClientPolicy) chain.Executor {
 	e, err := NewSentinelDriver().NewClientExecutor(service, p)
 	assert.Error(t, err).Nil()
 	return e
@@ -73,7 +74,7 @@ func TestSentinelRateLimit(t *testing.T) {
 	}
 	assert.Error(t, run()).Nil()
 	assert.Error(t, run()).Nil()
-	assert.Error(t, run()).Is(resilience.ErrRateLimited)
+	assert.Error(t, run()).Is(chain.ErrRateLimited)
 }
 
 // TestSentinelRoundTripperRetry drives the sentinel executor through the exact
@@ -122,7 +123,7 @@ func TestSentinelBulkhead(t *testing.T) {
 
 	<-entered // first call holds the only concurrency slot
 	err := e.Execute(context.Background(), func(context.Context) error { return nil })
-	assert.Error(t, err).Is(resilience.ErrBulkheadFull)
+	assert.Error(t, err).Is(chain.ErrBulkheadFull)
 
 	close(release)
 	wg.Wait()
@@ -156,7 +157,7 @@ func TestSentinelBulkheadHeldAcrossRetries(t *testing.T) {
 	// While the first call holds the slot (parked inside fn), the second is
 	// rejected — proving the bulkhead is held for the duration of Execute.
 	err := e.Execute(context.Background(), func(context.Context) error { return nil })
-	assert.Error(t, err).Is(resilience.ErrBulkheadFull)
+	assert.Error(t, err).Is(chain.ErrBulkheadFull)
 
 	close(release)
 	wg.Wait()
@@ -181,7 +182,7 @@ func TestSentinelErrorRateBreaker(t *testing.T) {
 			}
 			return nil
 		})
-		if errors.Is(err, resilience.ErrCircuitOpen) {
+		if errors.Is(err, chain.ErrCircuitOpen) {
 			tripped = true
 			break
 		}
@@ -203,7 +204,7 @@ func TestSentinelHalfOpenRecovery(t *testing.T) {
 	})
 	// Open: short-circuited.
 	err := e.Execute(context.Background(), func(context.Context) error { return nil })
-	assert.Error(t, err).Is(resilience.ErrCircuitOpen)
+	assert.Error(t, err).Is(chain.ErrCircuitOpen)
 
 	// After cool-down a successful trial closes the circuit.
 	time.Sleep(40 * time.Millisecond)
@@ -229,7 +230,7 @@ func TestSentinelHalfOpenReopensOnFailedTrial(t *testing.T) {
 		return errors.New("still bad")
 	})
 	err := e.Execute(context.Background(), func(context.Context) error { return nil })
-	assert.Error(t, err).Is(resilience.ErrCircuitOpen)
+	assert.Error(t, err).Is(chain.ErrCircuitOpen)
 }
 
 // sentinelRec captures breaker state transitions routed from sentinel-golang via

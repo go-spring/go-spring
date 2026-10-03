@@ -56,6 +56,38 @@ import (
 	clientv3 "go.etcd.io/etcd/client/v3"
 )
 
+func init() {
+	// One NAMED bean per block under ${spring.discovery.etcd.<name>}: the bean
+	// name "etcd.<name>" is the label a client starter cites to pick this
+	// backend for discovery, and the discovery registration core collects the same
+	// bean (as a discovery.Registry) into the single publication lifecycle.
+	// Blocks across backends never collide (the name carries the backend
+	// type); a duplicate name within one backend fails loudly in the
+	// container.
+	gs.Module(gs.OnProperty("spring.discovery.etcd"), func(r gs.BeanProvider, p flatten.Storage) error {
+		return conf.BindEach(p, "${spring.discovery.etcd}", func(name string, c EtcdConfig) error {
+			if !c.Enabled {
+				return nil
+			}
+			r.Provide(newEtcdBackend,
+				gs.IndexArg(0, gs.ValueArg(c)),
+			).Name("etcd."+name).
+				Export(gs.As[discovery.Discovery](), gs.As[discovery.Registry]()).
+				Destroy((*etcdBackend).Close).Caller(1)
+
+			// Contribute a health indicator for this cluster unless the user
+			// disabled it (health=false), injecting the backend registered
+			// above by name.
+			if c.Health {
+				r.Provide(func(b *etcdBackend) *health.Indicator {
+					return &health.Indicator{Name: "discovery-etcd:" + name, Probe: b.probe}
+				}, gs.TagArg("etcd."+name)).Name("discovery-etcd:" + name)
+			}
+			return nil
+		})
+	})
+}
+
 var (
 	// starterTag identifies logs emitted by the etcd discovery starter.
 	starterTag = log.RegisterAppTag("discovery_etcd", "")
@@ -206,33 +238,4 @@ func (b *etcdBackend) UpdateWeight(ctx context.Context, inst discovery.Instance,
 // key prefix.
 func (b *etcdBackend) Resolve(ctx context.Context, name string, opts ...discovery.Option) ([]discovery.Endpoint, error) {
 	return b.disc.Resolve(ctx, name, opts...)
-}
-
-func init() {
-	// One NAMED bean per block under ${spring.discovery.etcd.<name>}: the bean
-	// name "etcd.<name>" is the label a client starter cites to pick this
-	// backend for discovery, and the discovery registration core collects the same
-	// bean (as a discovery.Registry) into the single publication lifecycle.
-	// Blocks across backends never collide (the name carries the backend
-	// type); a duplicate name within one backend fails loudly in the
-	// container.
-	gs.Module(gs.OnProperty("spring.discovery.etcd"), func(r gs.BeanProvider, p flatten.Storage) error {
-		return conf.BindEach(p, "${spring.discovery.etcd}", func(name string, c EtcdConfig) error {
-			r.Provide(newEtcdBackend,
-				gs.IndexArg(0, gs.ValueArg(c)),
-			).Name("etcd."+name).
-				Export(gs.As[discovery.Discovery](), gs.As[discovery.Registry]()).
-				Destroy((*etcdBackend).Close).Caller(1)
-
-			// Contribute a health indicator for this cluster unless the user
-			// disabled it (health=false), injecting the backend registered
-			// above by name.
-			if c.Health {
-				r.Provide(func(b *etcdBackend) *health.Indicator {
-					return &health.Indicator{Name: "discovery-etcd:" + name, Probe: b.probe}
-				}, gs.TagArg("etcd."+name)).Name("discovery-etcd:" + name)
-			}
-			return nil
-		})
-	})
 }

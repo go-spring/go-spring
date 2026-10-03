@@ -17,6 +17,7 @@
 package provider
 
 import (
+	"errors"
 	"os"
 	"strings"
 
@@ -28,18 +29,43 @@ import (
 var providers = map[string]Provider{}
 
 func init() {
-	Register("file", LoadFile)
+	Register("file", ProviderFunc(LoadFile))
 }
 
-// Provider defines a function type that provides configuration data from a specific source.
+// Provider reads configuration data from a specific source type (file, nacos,
+// etcd, ...). If access to a remote server is needed, the information required
+// to access it is usually placed in the source string or passed through
+// environment variables.
 //
-// If access to a remote server is needed, the information required to access it is usually
-// placed in the source string or passed through environment variables.
-//
-// To support dynamic refresh, a version number field can be added and a regular Bean
-// can be registered to listen for changes. When the version changes, the configuration
-// can be updated.
-type Provider func(optional bool, source string) (map[string]string, error)
+// A source that supports hot-reload installs its watcher or listener inside
+// Load, and Close releases whatever Load installed. The two sides are not
+// symmetric: Load runs at startup and again on every property refresh, while
+// Close runs once when the application shuts down. An implementation must
+// tolerate every interleaving — Close on a provider that never loaded is a
+// no-op, and Load after Close re-arms, because one process can run several
+// application instances in sequence (e.g. repeated gs.RunTest runs).
+type Provider interface {
+	// Load returns the source content as a flattened map[string]string.
+	// When optional is true and the source does not exist, it returns (nil, nil).
+	Load(optional bool, source string) (map[string]string, error)
+
+	// Close stops everything Load installed (watchers, listeners, clients).
+	// It must be safe to call repeatedly.
+	Close() error
+}
+
+// ProviderFunc adapts a plain read function to Provider, for a source that
+// holds no resource to release.
+type ProviderFunc func(optional bool, source string) (map[string]string, error)
+
+// Load implements Provider.
+func (f ProviderFunc) Load(optional bool, source string) (map[string]string, error) {
+	return f(optional, source)
+}
+
+// Close implements Provider: a plain function installs nothing, so there is
+// nothing to stop.
+func (ProviderFunc) Close() error { return nil }
 
 // Register registers a Provider for a specific configuration source type.
 // Must be called in init functions only.
@@ -96,11 +122,26 @@ func Load(source string) (map[string]string, error) {
 		err := errutil.Explain(nil, "unsupported provider type %s", provider)
 		return nil, errutil.Explain(err, "conf: read config %q error", config)
 	}
-	m, err := p(optional, source)
+	m, err := p.Load(optional, source)
 	if err != nil {
 		return nil, errutil.Explain(err, "conf: read config %q error", config)
 	}
 	return m, nil
+}
+
+// CloseAll stops every registered provider, in no defined order. Providers are
+// independent and must not rely on one another having been closed. The registry
+// itself is left intact: registration happens in init, but Close runs once per
+// application instance, and a later instance must still find its providers.
+// Every failing provider is reported; one failure does not skip the rest.
+func CloseAll() error {
+	var errs []error
+	for name, p := range providers {
+		if err := p.Close(); err != nil {
+			errs = append(errs, errutil.Explain(err, "close provider %s error", name))
+		}
+	}
+	return errors.Join(errs...)
 }
 
 // LoadFile loads a configuration file and returns its content as a flattened map[string]string.

@@ -19,6 +19,8 @@ package httpx
 import (
 	"context"
 	"errors"
+	"go-spring.org/cloud/chain"
+	"go-spring.org/cloud/governance"
 	"net/http"
 	"sync"
 	"testing"
@@ -37,10 +39,22 @@ import (
 // container always provides them. A test that calls the constructor directly
 // passes the same unarmed ones the container would.
 var (
-	testMgr   = resilience.NewManager()
+	testMgr   = resilience.NewManager(nil)
 	testInj   = fault.NewInjector(fault.Configs{}, nil)
-	testLbMgr = loadbalance.NewManager()
+	testLbMgr = mustLbManager()
 )
+
+// mustLbManager builds a manager over the built-in strategies alone — the
+// authority the container would build with no factory bean contributed, which is
+// the only shape a direct (non-gs) caller has. The constructor cannot fail for
+// that input.
+func mustLbManager() *loadbalance.Manager {
+	m, err := loadbalance.NewManager(nil)
+	if err != nil {
+		panic(err)
+	}
+	return m
+}
 
 // stubDiscovery serves a fixed endpoint set.
 type stubDiscovery struct{ eps []discovery.Endpoint }
@@ -69,7 +83,7 @@ func (r *recordRT) RoundTrip(req *http.Request) (*http.Response, error) {
 
 func TestNewTransport_DirectMode(t *testing.T) {
 	rec := &recordRT{}
-	rt, closeFn, err := NewTransport(Config{Base: rec}, testMgr, testInj, testLbMgr, nil)
+	rt, closeFn, err := NewTransport(Config{Base: rec}, testCenter(testMgr, testInj, testLbMgr), nil)
 	assert.That(t, err).Nil()
 	defer func() { _ = closeFn() }()
 
@@ -82,7 +96,7 @@ func TestNewTransport_DirectMode(t *testing.T) {
 
 func TestNewTransport_AddrPinsHost(t *testing.T) {
 	rec := &recordRT{}
-	rt, closeFn, err := NewTransport(Config{Addr: "10.9.8.7:80", Base: rec}, testMgr, testInj, testLbMgr, nil)
+	rt, closeFn, err := NewTransport(Config{Addr: "10.9.8.7:80", Base: rec}, testCenter(testMgr, testInj, testLbMgr), nil)
 	assert.That(t, err).Nil()
 	defer func() { _ = closeFn() }()
 
@@ -105,7 +119,7 @@ func TestNewTransport_DiscoveryRewritesHost(t *testing.T) {
 		ServiceName: "user-svc",
 		Discovery:   backend,
 		Base:        rec,
-	}, testMgr, testInj, testLbMgr, nil)
+	}, testCenter(testMgr, testInj, testLbMgr), nil)
 	assert.That(t, err).Nil()
 	defer func() { _ = closeFn() }()
 
@@ -122,7 +136,7 @@ func TestNewTransport_DiscoveryRewritesHost(t *testing.T) {
 
 func TestNewTransport_FailFast(t *testing.T) {
 	// A discovery backend whose seed Resolve fails -> fail fast.
-	_, _, err := NewTransport(Config{ServiceName: "x", Discovery: errorDiscovery{}}, testMgr, testInj, testLbMgr, nil)
+	_, _, err := NewTransport(Config{ServiceName: "x", Discovery: errorDiscovery{}}, testCenter(testMgr, testInj, testLbMgr), nil)
 	assert.Error(t, err).Matches("resolve")
 }
 
@@ -141,7 +155,7 @@ func TestGovernSelection_BindsThroughManager(t *testing.T) {
 	second, _ := pool.Pick(loadbalance.PickInfo{HashKey: "k"})
 	assert.That(t, first.Addr).NotEqual(second.Addr)
 
-	mgr := loadbalance.NewManager()
+	mgr := mustLbManager()
 	mgr.Apply(loadbalance.Settings{Enabled: true, Resolve: func(string) loadbalance.Selection {
 		return loadbalance.Selection{
 			Balancer:          loadbalance.ConsistentHash,
@@ -189,7 +203,7 @@ func TestNewTransport_ResilienceBreakerFastFails(t *testing.T) {
 		ResilienceDriver: resilience.NewDefaultDriver(nil),
 		ResiliencePolicy: resilience.ClientPolicy{ErrorThreshold: 2},
 		Base:             rec,
-	}, testMgr, testInj, testLbMgr, nil)
+	}, testCenter(testMgr, testInj, testLbMgr), nil)
 	assert.That(t, err).Nil()
 	defer func() { _ = closeFn() }()
 
@@ -224,7 +238,7 @@ func TestNewTransport_InjectsLoadTestMarker(t *testing.T) {
 	prop, err := traffic.NewDefaultPropagator(traffic.DefaultBinding())
 	assert.Error(t, err).Nil()
 	rec := &headerRT{headerKey: "X-LoadTest"}
-	rt, closeFn, err := NewTransport(Config{Base: rec}, testMgr, testInj, testLbMgr, nil)
+	rt, closeFn, err := NewTransport(Config{Base: rec}, testCenter(testMgr, testInj, testLbMgr), nil)
 	assert.That(t, err).Nil()
 	defer func() { _ = closeFn() }()
 
@@ -262,7 +276,7 @@ func TestNewTransport_WrapTransportIsOutermost(t *testing.T) {
 				return inner.RoundTrip(req)
 			})
 		},
-	}, testMgr, testInj, testLbMgr, nil)
+	}, testCenter(testMgr, testInj, testLbMgr), nil)
 	assert.That(t, err).Nil()
 	defer func() { _ = closeFn() }()
 
@@ -286,12 +300,12 @@ func TestNewTransport_WrapExecReplacesDefault(t *testing.T) {
 	called := false
 	rt, closeFn, err := NewTransport(Config{
 		Base:     rec,
-		Executor: resilience.NewManager().ClientExecutorFor("test", "test-service"),
-		WrapExec: func(e resilience.ClientExecutor) resilience.ClientExecutor {
+		Executor: resilience.NewManager(nil).ClientExecutorFor("test", "test-service"),
+		WrapExec: func(e chain.Executor) chain.Executor {
 			called = true
 			return e
 		},
-	}, testMgr, testInj, testLbMgr, nil)
+	}, testCenter(testMgr, testInj, testLbMgr), nil)
 	assert.That(t, err).Nil()
 	defer func() { _ = closeFn() }()
 
@@ -307,9 +321,9 @@ func TestNewTransport_WrapExecReplacesDefault(t *testing.T) {
 // every other client starter takes — so arming that manager hot-swaps the policy
 // behind a transport that was already built, with no transport rebuild.
 func TestNewTransport_ResilienceFollowsManager(t *testing.T) {
-	mgr := resilience.NewManager()
+	mgr := resilience.NewManager(nil)
 	rec := &recordRT{status: http.StatusInternalServerError}
-	rt, closeFn, err := NewTransport(Config{Addr: "svc:80", Base: rec}, mgr, testInj, testLbMgr, nil)
+	rt, closeFn, err := NewTransport(Config{Addr: "svc:80", Base: rec}, testCenter(mgr, testInj, testLbMgr), nil)
 	assert.That(t, err).Nil()
 	defer func() { _ = closeFn() }()
 
@@ -348,4 +362,10 @@ func TestConfigServiceDerivation(t *testing.T) {
 	assert.That(t, Config{Addr: "10.0.0.1:8080", ServiceName: "user-svc"}.service()).Equal("http:user-svc")
 	assert.That(t, Config{Addr: "10.0.0.1:8080"}.service()).Equal("http:10.0.0.1:8080")
 	assert.That(t, Config{Service: "custom", Addr: "10.0.0.1:8080"}.service()).Equal("custom")
+}
+
+// testCenter bundles the trio of test authorities into the one center bean
+// NewTransport takes.
+func testCenter(mgr *resilience.Manager, inj *fault.Injector, lb *loadbalance.Manager) *governance.Center {
+	return governance.NewCenter(governance.Config{}, mgr, lb, inj, nil, nil)
 }

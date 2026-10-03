@@ -43,7 +43,8 @@ func setDyncConsumer(p *dyncPoller, c DubboConsumer) {
 // from another test. There is no process-global authority to reset any more —
 // each test owns its manager.
 func newTestPoller() *dyncPoller {
-	return newDyncPoller(DubboApplication{Name: testApp}, resilience.NewManager(), nil)
+	return newDyncPoller(DubboApplication{Name: testApp},
+		governance.NewCenter(governance.Config{}, resilience.NewManager(nil), nil, nil, nil, nil))
 }
 
 // armedPoller builds a poller over a center constructed from cfg, then drives
@@ -51,15 +52,18 @@ func newTestPoller() *dyncPoller {
 // old package-level Arm helper provided. It returns only the poller: tests assert on the
 // published override rules, not on the center.
 func armedPoller(cfg governance.Config) *dyncPoller {
-	res := resilience.NewManager()
-	ctr := governance.NewCenter(cfg, res, loadbalance.NewManager(), fault.NewInjector(fault.Configs{Client: fault.Config{}}, nil))
+	lb, err := loadbalance.NewManager(nil) // no factory bean contributed
+	if err != nil {
+		panic(err)
+	}
+	res := resilience.NewManager(nil)
+	ctr := governance.NewCenter(cfg, res, lb, fault.NewInjector(fault.Configs{Client: fault.Config{}}, nil), nil, nil)
 	if err := ctr.GoLive(); err != nil {
 		panic(err)
 	}
 	return &dyncPoller{
 		dynCfg:  mapconfig.Singleton(),
 		appName: testApp,
-		mgr:     res,
 		ctr:     ctr,
 		last:    make(map[string]map[string]string),
 		regged:  make(map[string]bool),

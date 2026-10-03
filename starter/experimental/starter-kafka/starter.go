@@ -20,13 +20,12 @@ package StarterKafka
 
 import (
 	"context"
+	"go-spring.org/cloud/governance"
 	"time"
 
 	"github.com/twmb/franz-go/pkg/kgo"
 	"go-spring.org/cloud"
-	"go-spring.org/cloud/fault"
 	"go-spring.org/cloud/messaging"
-	"go-spring.org/cloud/resilience"
 	"go-spring.org/cloud/traffic"
 	"go-spring.org/log"
 	"go-spring.org/spring/conf"
@@ -54,12 +53,8 @@ func init() {
 				gs.IndexArg(1, gs.ValueArg(name)),
 				gs.IndexArg(2, gs.ValueArg(c)),
 				gs.IndexArg(3, gs.TagArg("${spring.kafka.instances."+name+".driver:=${spring.kafka.default.driver:=?}}")),
-				// The governance beans are REQUIRED: each is registered by the package that
-				// owns it (cloud/resilience, cloud/loadbalance, cloud/fault), which this
-				// starter imports — "governance off" is spring.governance.enabled=false, never
-				// an absent bean.
-				gs.IndexArg(4, gs.TagArg("")), // *resilience.Manager
-				gs.IndexArg(5, gs.TagArg("")), // *fault.Injector
+				// The governance center is the family's sole injection point: it hands
+				// out the resilience/fault/loadbalance authorities.
 			).Name(name).Destroy(destroyClient).Caller(1)
 
 			// Export the broker-neutral messaging.Driver over this client as a bean,
@@ -96,18 +91,19 @@ const pingTimeout = 10 * time.Second
 // produce/consume. A failed ping releases the executor the driver attached
 // before abandoning the client.
 //
-// mgr and inj are the governance beans gs injects; they are bundled into the
-// [cloud.ClientParams] handed to the driver, which applies them while
-// building.
+// center is the governance center gs injects — the family's sole injection
+// point; the ctor reads the resilience and fault authorities from it and bundles
+// them into the [cloud.ClientParams] handed to the driver, which applies them
+// while building.
 func newClient(ctx *gs.ContextProvider, name string, c Config, d Driver,
-	mgr *resilience.Manager, inj *fault.Injector) (*kgo.Client, error) {
+	center *governance.Center) (*kgo.Client, error) {
 	log.Debugf(ctx.Context, log.TagAppDef, "creating kafka client, brokers=%s group=%s topic=%s", c.Brokers, c.Group, c.Topic)
 
 	// No company Driver bean → fall back to the bundled default assembly.
 	if d == nil {
 		d = DefaultDriver{}
 	}
-	cl, err := d.CreateClient(ctx.Context, c, cloud.ClientParams{Resilience: mgr, Fault: inj})
+	cl, err := d.CreateClient(ctx.Context, c, cloud.ClientParams{Resilience: center.Resilience(), Fault: center.Fault()})
 	if err != nil {
 		log.Errorf(ctx.Context, log.TagAppDef, "kafka: create client failed: %v", err)
 		return nil, errutil.Explain(err, "failed to create kafka client: %s", c.Brokers)

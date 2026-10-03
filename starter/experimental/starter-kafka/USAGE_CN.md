@@ -20,7 +20,7 @@ franz-go API 属于 [franz-go 官方文档](https://github.com/twmb/franz-go)与
 
 **go.mod**（关键依赖）：`github.com/twmb/franz-go/pkg/kgo`、`go-spring.org/spring`、
 `go-spring.org/cloud`、`go-spring.org/starter-kafka`，加可选的 `starter-actuator`
-（探针 + /metrics）、`starter-otel`（trace/metric 导出）、`starter-governance-file`（限流/熔断）。
+（探针 + /metrics）、`starter-otel`（trace/metric 导出）。
 
 **main.go**：
 
@@ -30,7 +30,6 @@ package main
 import (
     "go-spring.org/spring/gs"
     _ "go-spring.org/starter-actuator"
-    _ "go-spring.org/starter-governance-file"
     _ "go-spring.org/starter-kafka"
     _ "go-spring.org/starter-otel"
     _ "demo/service"
@@ -113,7 +112,7 @@ spring.observability.trace.endpoint=127.0.0.1:4317
 spring.observability.metrics.exporter=prometheus
 
 # --- governance（同步生产路径上的限流）--------------------------------------
-# NOTE: governance RULES go in conf/governance.properties, referenced by spring.governance.source.file.path in app.properties (see starter-governance-file USAGE).
+# NOTE: governance RULES go in conf/governance.properties, referenced by spring.governance.source.file.path in app.properties (see cloud/governance's SOURCE_USAGE_CN.md).
 spring.governance.enabled=true
 spring.governance.driver=default
 spring.governance.client.default.rate-limit=8

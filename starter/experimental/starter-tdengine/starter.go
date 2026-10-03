@@ -18,13 +18,12 @@ package StarterTdengine
 
 import (
 	"context"
+	"go-spring.org/cloud/governance"
 	"strings"
 	"time"
 
 	"go-spring.org/cloud"
 	"go-spring.org/cloud/actuator/health"
-	"go-spring.org/cloud/fault"
-	"go-spring.org/cloud/resilience"
 	"go-spring.org/log"
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/gs"
@@ -55,12 +54,8 @@ func init() {
 			r.Provide(newClient,
 				gs.IndexArg(1, gs.ValueArg(c)),
 				gs.IndexArg(2, gs.TagArg("${spring.tdengine.instances."+name+".driver:=${spring.tdengine.default.driver:=?}}")),
-				// The governance beans are REQUIRED: each is registered by the package that
-				// owns it (cloud/resilience, cloud/loadbalance, cloud/fault), which this
-				// starter imports — "governance off" is spring.governance.enabled=false, never
-				// an absent bean.
-				gs.IndexArg(3, gs.TagArg("")), // *resilience.Manager
-				gs.IndexArg(4, gs.TagArg("")), // *fault.Injector
+				// The governance center is the family's sole injection point: it hands
+				// out the resilience/fault/loadbalance authorities.
 			).Name(name).Destroy((*Client).Destroy).Caller(1)
 			// Contribute a health indicator for this instance, injecting the
 			// client just registered above by name. Skipped when c.Health is
@@ -87,14 +82,14 @@ func init() {
 // the container as well as in a standalone (non-gs) call; the ctor bundles
 // them into the [cloud.ClientParams] it hands the driver, and the zero bundle
 // degrades to an observed-only, loudly-unmanaged executor.
-func newClient(ctx *gs.ContextProvider, c Config, d Driver, mgr *resilience.Manager, inj *fault.Injector) (*Client, error) {
+func newClient(ctx *gs.ContextProvider, c Config, d Driver, center *governance.Center) (*Client, error) {
 	log.Debugf(ctx.Context, log.TagAppDef, "creating tdengine client, dsn-addr=%s", dsnAddr(c.DSN))
 
 	// No company Driver bean → fall back to the bundled default assembly.
 	if d == nil {
 		d = DefaultDriver{}
 	}
-	cl, err := d.CreateClient(ctx.Context, c, cloud.ClientParams{Resilience: mgr, Fault: inj})
+	cl, err := d.CreateClient(ctx.Context, c, cloud.ClientParams{Resilience: center.Resilience(), Fault: center.Fault()})
 	if err != nil {
 		return nil, err
 	}

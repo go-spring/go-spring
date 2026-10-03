@@ -30,7 +30,10 @@ func init() {
 	// key and its unparsed, trimmed content is the value. This is the shape of a
 	// Kubernetes Secret / env-style ConfigMap mount (many scalar key files), and
 	// the model Spring Boot calls "configtree".
-	conf.RegisterProvider("configtree", newConfigTreeCtrl().load)
+	//
+	// The controller itself is registered (not its Load method): the runtime
+	// holds it so its Close can stop the watchers at shutdown.
+	conf.RegisterProvider("configtree", newConfigTreeCtrl())
 
 	// Register "file-watch" as a configuration provider so a spring.config.import
 	// entry such as
@@ -40,5 +43,5 @@ func init() {
 	// loads a single file at startup and, whenever it changes, triggers a full
 	// property refresh via the gs.RefreshProperties facade — no separate hook
 	// wiring needed.
-	conf.RegisterProvider("file-watch", newFileWatchCtrl().Load)
+	conf.RegisterProvider("file-watch", newFileWatchCtrl())
 }

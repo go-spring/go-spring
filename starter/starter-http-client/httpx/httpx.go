@@ -52,11 +52,14 @@ package httpx
 
 import (
 	"context"
+	"go-spring.org/cloud/chain"
+	"go-spring.org/cloud/governance"
 	"net/http"
 
 	"go-spring.org/cloud/discovery"
 	"go-spring.org/cloud/fault"
 	"go-spring.org/cloud/loadbalance"
+	"go-spring.org/cloud/observability"
 	"go-spring.org/cloud/propagate"
 	"go-spring.org/cloud/resilience"
 	"go-spring.org/cloud/security"
@@ -110,7 +113,7 @@ type Config struct {
 	// ResilienceDriver is the resilience backend to protect calls with. The
 	// caller resolves it by name from the container's driver directory (the
 	// starter's ${...driver} entry key) and passes the driver itself, since this
-	// package is container-free. When neither Executor nor ResilienceDriver is
+	// package is container-free. When neither chain.Executor nor ResilienceDriver is
 	// set, the executor is resolved from the injected [resilience.Manager] under
 	// Service; with governance off the armed policy is zero and the executor is
 	// a transparent pass-through.
@@ -126,14 +129,14 @@ type Config struct {
 	// that owns its hot-reload), and httpx only wraps the transport with it. This
 	// lets a caller attach a policy that refreshes externally without httpx
 	// knowing about the governance source. WrapExec still wraps it (fault/observe).
-	Executor resilience.ClientExecutor
+	Executor chain.Executor
 
 	// WrapExec, when non-nil, replaces the default executor wrap (fault over the
 	// raw executor, with observe added here only when the executor came from the
-	// driver/Executor escape hatches rather than from the manager) — the escape
+	// driver/chain.Executor escape hatches rather than from the manager) — the escape
 	// hatch for a caller that needs its own ordering or extra layers. nil means
 	// the default wrap.
-	WrapExec func(resilience.ClientExecutor) resilience.ClientExecutor
+	WrapExec func(chain.Executor) chain.Executor
 
 	// Base is the raw underlying transport every request ultimately flows
 	// through — tracing is layered on top of it by this package, so pass the
@@ -161,15 +164,26 @@ type Config struct {
 // strategy cannot be resolved, so misconfiguration surfaces at wiring time
 // rather than on the first request.
 //
-// mgr and inj are the governance beans the caller received from the container
-// (the authority packages provide both); a standalone caller that has neither
-// passes nil, which is normalized here to fresh unarmed authorities. A nil
-// [*resilience.Manager] would panic on its first method call, so normalizing at
-// the assembly point keeps every other caller free of nil branches; the
-// [*fault.Injector] is nil-safe and simply leaves the fault layer transparent.
+// center is the governance center bean the caller received from the container;
+// a standalone caller passes nil, which is normalized below to fresh unarmed
+// authorities.
 // prop is the application's load-test convention bean (nil means go-spring's
 // default), which stamps the marker onto every outbound request.
-func NewTransport(cfg Config, mgr *resilience.Manager, inj *fault.Injector, lbMgr *loadbalance.Manager, prop traffic.Propagator) (rt http.RoundTripper, close func() error, err error) {
+func NewTransport(cfg Config, center *governance.Center, prop traffic.Propagator) (rt http.RoundTripper, close func() error, err error) {
+	// A standalone caller that has no container passes a nil center; normalize it
+	// to fresh unarmed authorities so every later use is nil-free. A nil
+	// resilience manager would panic on its first method call, so normalizing at
+	// the assembly point keeps every other caller free of nil branches; a nil
+	// fault injector is nil-safe and simply leaves the fault layer transparent.
+	if center == nil {
+		lb, e := loadbalance.NewManager(nil) // no factory bean contributed
+		if e != nil {
+			return nil, nil, e
+		}
+		center = governance.NewCenter(governance.Config{},
+			resilience.NewManager(nil), lb,
+			fault.NewInjector(fault.Configs{}, nil), discovery.NewManager(nil), nil)
+	}
 	if prop == nil {
 		if prop, err = traffic.NewDefaultPropagator(traffic.DefaultBinding()); err != nil {
 			return nil, nil, err
@@ -238,14 +252,14 @@ func NewTransport(cfg Config, mgr *resilience.Manager, inj *fault.Injector, lbMg
 	// the balancer and picks a fresh endpoint, and the breaker keys on
 	// cfg.service() — the same label the policy is resolved under, so limiter/
 	// breaker state and driver rule names agree with the governance rule that armed
-	// them. Three executor sources, first match wins: a pre-built Executor, an
+	// them. Three executor sources, first match wins: a pre-built chain.Executor, an
 	// explicit ResilienceDriver+Policy, or — the default, and the same path every
 	// other client starter takes — the injected [resilience.Manager] under
 	// Service. The manager owns that executor: it is built once per label, shared
 	// by every user of the label, refreshes itself on a policy change, and
 	// already carries the observe layer; with governance off the armed policy is
 	// zero and it is a transparent pass-through.
-	var exec resilience.ClientExecutor
+	var exec chain.Executor
 	managerOwned := false
 	switch {
 	case cfg.Executor != nil:
@@ -256,14 +270,14 @@ func NewTransport(cfg Config, mgr *resilience.Manager, inj *fault.Injector, lbMg
 			return nil, nil, err
 		}
 	default:
-		exec = mgr.ClientExecutorFor("http", cfg.service())
+		exec = center.Resilience().ClientExecutorFor("http", cfg.service())
 		managerOwned = true
 		// The pool's endpoint-selection half follows the governance rule through
 		// its own subscription on the loadbalance manager — the protection policy
 		// reaches the executor, the selection reaches the pool, and neither change
 		// rebuilds anything. A nil pool (direct addressing) opts out.
 		if pool != nil {
-			lbMgr.Bind(pool, cfg.service())
+			center.Loadbalance().Bind(pool, cfg.service())
 		}
 	}
 
@@ -281,12 +295,12 @@ func NewTransport(cfg Config, mgr *resilience.Manager, inj *fault.Injector, lbMg
 	wrap := cfg.WrapExec
 	if wrap == nil {
 		if managerOwned {
-			wrap = func(e resilience.ClientExecutor) resilience.ClientExecutor {
-				return fault.WrapClientExecutor(e, cfg.service(), inj)
+			wrap = func(e chain.Executor) chain.Executor {
+				return fault.WrapClientExecutor(e, cfg.service(), center.Fault())
 			}
 		} else {
-			wrap = func(e resilience.ClientExecutor) resilience.ClientExecutor {
-				return fault.WrapClientExecutor(resilience.WrapClientExecutor(e, "http", cfg.service()), cfg.service(), inj)
+			wrap = func(e chain.Executor) chain.Executor {
+				return fault.WrapClientExecutor(observability.WrapClientExecutor(e, "http", cfg.service()), cfg.service(), center.Fault())
 			}
 		}
 	}

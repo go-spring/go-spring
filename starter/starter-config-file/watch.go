@@ -35,6 +35,7 @@ package StarterConfigFile
 
 import (
 	"context"
+	"errors"
 	"sync"
 
 	"github.com/fsnotify/fsnotify"
@@ -49,22 +50,55 @@ import (
 // package-level controller variable exists.
 var starterTag = log.RegisterAppTag("config_file", "")
 
-// watchCore is the machinery both providers embed: the deduplicated set of
-// watched directories plus the change-to-refresh bridge. The per-provider
-// controllers (fileWatchCtrl in filewatch.go, configTreeCtrl in configtree.go)
-// read config; ensureWatch/watchLoop deliver change events; TriggerRefresh
-// fans them out into a full application property refresh via the
-// gs.RefreshProperties package-level facade — no bean wiring needed.
+// watchCore is the machinery both providers embed: the watched directories
+// plus the change-to-refresh bridge. The per-provider controllers
+// (fileWatchCtrl in filewatch.go, configTreeCtrl in configtree.go) read
+// config; ensureWatch/watchLoop deliver change events; TriggerRefresh fans
+// them out into a full application property refresh via the
+// gs.RefreshProperties package-level facade — no bean wiring needed. Close
+// stops every watcher, which is how both controllers satisfy
+// conf/provider.Provider.
 type watchCore struct {
-	mu      sync.Mutex
-	watched map[string]struct{} // directories already watched
+	mu       sync.Mutex
+	watchers map[string]*fsnotify.Watcher // directory -> its watcher
 }
 
-// newWatchCore creates the shared watch machinery with its dedup set ready,
+// newWatchCore creates the shared watch machinery with its watcher set ready,
 // so ensureWatch needs no lazy nil-check. The per-provider constructors in
 // filewatch.go and configtree.go embed it.
 func newWatchCore() watchCore {
-	return watchCore{watched: map[string]struct{}{}}
+	return watchCore{watchers: map[string]*fsnotify.Watcher{}}
+}
+
+// Close stops every watcher. A Load that follows re-arms watchCore: ensureWatch
+// finds the directory absent from the set and starts a fresh watcher.
+func (c *watchCore) Close() error {
+	c.mu.Lock()
+	watchers := c.watchers
+	c.watchers = map[string]*fsnotify.Watcher{}
+	c.mu.Unlock()
+
+	var errs []error
+	for _, w := range watchers {
+		if err := w.Close(); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	return errors.Join(errs...)
+}
+
+// isCurrent reports whether w is still the watcher registered for its
+// directory. A watcher that Close removed is no longer current, so its event
+// channel closing is expected and must not be reported as a failure.
+func (c *watchCore) isCurrent(w *fsnotify.Watcher) bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	for _, watcher := range c.watchers {
+		if watcher == w {
+			return true
+		}
+	}
+	return false
 }
 
 // TriggerRefresh is called by the watcher goroutines when a watched directory
@@ -83,7 +117,7 @@ func (c *watchCore) TriggerRefresh(ctx context.Context) {
 // startup still succeeds with a static snapshot, only losing hot-reload.
 func (c *watchCore) ensureWatch(dir string) {
 	c.mu.Lock()
-	if _, ok := c.watched[dir]; ok {
+	if _, ok := c.watchers[dir]; ok {
 		c.mu.Unlock()
 		return
 	}
@@ -102,7 +136,7 @@ func (c *watchCore) ensureWatch(dir string) {
 			"watch directory %s failed, hot-reload disabled for it (static snapshot kept): %v", dir, err)
 		return
 	}
-	c.watched[dir] = struct{}{}
+	c.watchers[dir] = w
 	c.mu.Unlock()
 
 	go c.watchLoop(w)
@@ -116,23 +150,39 @@ func (c *watchCore) ensureWatch(dir string) {
 func (c *watchCore) watchLoop(w *fsnotify.Watcher) {
 	for {
 		select {
-		case _, ok := <-w.Events:
+		case e, ok := <-w.Events:
 			if !ok {
-				// The events channel closes only when the watcher is closed
-				// out from under us; without this line the goroutine would
-				// exit silently and hot-reload would stop working.
-				log.Errorf(context.Background(), starterTag,
-					"file watcher closed; hot-reload is disabled until restart")
+				c.reportClosed(w)
 				return
 			}
-			c.TriggerRefresh(context.Background())
+			// Stamp the trigger with the change's identity (which path changed)
+			// so the refresh records logged and metered by observability.RefreshConf
+			// carry what this round is about. fsnotify hands over no revision, so
+			// the event name is all the identity available; a Kubernetes ConfigMap
+			// update surfaces here as the "..data" symlink.
+			c.TriggerRefresh(log.WithFields(context.Background(),
+				log.String("source", "file"),
+				log.String("path", e.Name),
+				log.String("op", e.Op.String()),
+			))
 		case err, ok := <-w.Errors:
 			if !ok {
-				log.Errorf(context.Background(), starterTag,
-					"file watcher closed; hot-reload is disabled until restart")
+				c.reportClosed(w)
 				return
 			}
 			log.Warnf(context.Background(), starterTag, "file watcher error: %v", err)
 		}
 	}
+}
+
+// reportClosed handles a watcher whose channels closed. Close closing this
+// watcher is the expected path and returns quietly; a channel closing while the
+// watcher is still registered means hot-reload died on its own, and a silent
+// exit there would hide it until restart.
+func (c *watchCore) reportClosed(w *fsnotify.Watcher) {
+	if !c.isCurrent(w) {
+		return
+	}
+	log.Errorf(context.Background(), starterTag,
+		"file watcher closed; hot-reload is disabled until restart")
 }

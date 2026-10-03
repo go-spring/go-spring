@@ -25,8 +25,7 @@ package StarterKafkaSarama
 import (
 	"github.com/IBM/sarama"
 	"go-spring.org/cloud"
-	"go-spring.org/cloud/fault"
-	"go-spring.org/cloud/resilience"
+	"go-spring.org/cloud/governance"
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
@@ -50,13 +49,14 @@ import (
 // against sarama changes which might otherwise swallow a fully empty cluster. A
 // failed probe releases what was just assembled.
 //
-// mgr and inj are the governance beans the container injects; the ctor bundles
-// them into the [cloud.ClientParams] it hands the driver, which attaches the
-// executor from it — so the client is assembled complete in one step, with the
-// zero bundle degrading to an observed-only, loudly-unmanaged executor. A
-// standalone, non-gs caller passes nil for both, which is exactly "governance
+// center is the governance center the container injects — the family's sole
+// injection point; the ctor reads the resilience and fault authorities from it
+// and bundles them into the [cloud.ClientParams] it hands the driver, which
+// attaches the executor from it — so the client is assembled complete in one
+// step, with the zero bundle degrading to an observed-only, loudly-unmanaged
+// executor. A standalone, non-gs caller passes nil, which is exactly "governance
 // off".
-func newClient(ctx *gs.ContextProvider, name string, c Config, d Driver, mgr *resilience.Manager, inj *fault.Injector) (sarama.Client, error) {
+func newClient(ctx *gs.ContextProvider, name string, c Config, d Driver, center *governance.Center) (sarama.Client, error) {
 	log.Debugf(ctx.Context, log.TagAppDef, "creating kafka sarama client, brokers=%s", c.Brokers)
 
 	// No company Driver bean → fall back to the bundled default assembly.
@@ -64,7 +64,7 @@ func newClient(ctx *gs.ContextProvider, name string, c Config, d Driver, mgr *re
 		d = DefaultDriver{}
 	}
 	cl, err := d.CreateClient(ctx.Context, c,
-		cloud.ClientParams{Resilience: mgr, Fault: inj})
+		cloud.ClientParams{Resilience: center.Resilience(), Fault: center.Fault()})
 	if err != nil {
 		log.Errorf(ctx.Context, log.TagAppDef, "kafka sarama: create client failed: %v", err)
 		return nil, errutil.Explain(err, "failed to create kafka client: %s", c.Brokers)

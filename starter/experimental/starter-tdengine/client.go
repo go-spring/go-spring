@@ -25,6 +25,7 @@ package StarterTdengine
 import (
 	"database/sql"
 	"database/sql/driver"
+	"go-spring.org/cloud/chain"
 
 	"go-spring.org/cloud"
 	"go-spring.org/cloud/resilience"
@@ -50,7 +51,7 @@ type Client struct {
 	// exec is the resilience executor, applied by [NewClient]; it is always
 	// non-nil — a client without the container degrades to
 	// [resilience.Unmanaged], so statements are always observed.
-	exec resilience.ClientExecutor
+	exec chain.Executor
 	// serviceLabel is the resilience service key ("tdengine:<dsn addr>") exec
 	// scopes limiter/breaker state by.
 	serviceLabel string

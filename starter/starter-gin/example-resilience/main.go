@@ -14,12 +14,12 @@
  * limitations under the License.
  */
 
-// Command example demonstrates starter-gin's inbound resilience admission: with
+// Command example demonstrates starter-gin's inbound resilience inbound: with
 // spring.gin.server.resilience.enabled, every request runs through the selected
-// resilience driver's Executor, so a burst over the configured rate limit is
+// resilience driver's chain.Executor, so a burst over the configured rate limit is
 // shed with HTTP 429 (circuit-open with 503) before the business handler runs.
 //
-// This is entirely config-driven — the starter applies the admission middleware
+// This is entirely config-driven — the starter applies the inbound middleware
 // itself; the app only wires a route. The smoke test fires a burst and asserts
 // the server both serves and sheds load. No external services or docker are
 // required.
@@ -40,7 +40,6 @@ import (
 	"go-spring.org/spring/gs"
 
 	StarterGin "go-spring.org/starter-gin"
-	_ "go-spring.org/starter-governance-file"
 )
 
 func init() {
@@ -74,7 +73,7 @@ func main() {
 	gs.Run()
 }
 
-// runTest fires a burst at the rate-limited route and asserts that admission
+// runTest fires a burst at the rate-limited route and asserts that inbound
 // both serves (200) and sheds (429) load. Exits non-zero on failure.
 func runTest() {
 	const url = "http://127.0.0.1:8081/"
@@ -96,7 +95,7 @@ func runTest() {
 		}
 	}
 	if ok == 0 || limited == 0 {
-		fail("resilience admission ineffective: ok=%d limited=%d", ok, limited)
+		fail("resilience inbound ineffective: ok=%d limited=%d", ok, limited)
 	}
 	fmt.Printf("gin resilience: %d served, %d rejected with 429\n", ok, limited)
 

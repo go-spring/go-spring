@@ -23,6 +23,7 @@ package StarterMongoDB
 
 import (
 	"context"
+	"go-spring.org/cloud/chain"
 	"net"
 
 	"go-spring.org/cloud"
@@ -67,7 +68,7 @@ type Client struct {
 	// and consumed by newClient, which wraps the shared dialer with it. It is
 	// never nil: a client with no governance degrades to an observed-only,
 	// loudly-unmanaged executor rather than a no-op.
-	exec resilience.ClientExecutor
+	exec chain.Executor
 	// serviceLabel is the resilience service key ("mongodb:<service-name or
 	// uri>") exec scopes limiter/breaker state by. The same label addresses the
 	// service's endpoint selection in the governance rules document.

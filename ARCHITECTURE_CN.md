@@ -37,7 +37,8 @@
   discovery、loadbalance、cache、repository、migration、i18n、validation、
   event/scheduling/batch、lock、messaging、transaction、actuator……它只依赖 `stdlib`/`log`,
   **不 import 任何 spring 包**——整个库可脱离容器使用。原先与这些抽象同处的 gs 接线
-  已外移进 starter(如 `starter-cache`、`starter-governance-file`)。
+  已外移进 starter(如 `starter-cache`);治理规则源是个例外——file/http 源已内置于
+  `cloud/governance`,原先的 `starter-governance-file` 模块已删除。
 - `starter-*` 与 `gs-*` 位于上层,可以引入三方包。
 - 下层模块不得 import 上层。`starter` import 另一个 `starter`、或 `spring`/`cloud` import
   `starter`,都是分层违规。全仓口径:**抽象进 cloud,三方 SDK 与 gs 接线进 starter,

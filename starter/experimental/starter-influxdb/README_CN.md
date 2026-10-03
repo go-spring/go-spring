@@ -70,7 +70,7 @@ Setup……）被原样提升可用。
   `db.client.attempt.duration` 直方图与 `db.client.active_requests` 计量，并写一行
   `_app_influxdb_access` tag 的访问日志（走 log 包原生分级）。
 - **韧性** — 阻塞写路径走由注入的 `*resilience.Manager` 构建的 executor；
-  未导入 `starter-governance-file` 时该 executor 为直通，写入路径不发射任何信号
+  未接入（容器里没有 `cloud/governance` 的 bean）时该 executor 为直通，写入路径不发射任何信号
   （starter 自身不持有发射点）。
 
 ## 高级特性

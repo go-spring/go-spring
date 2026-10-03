@@ -19,13 +19,11 @@ package StarterGin
 import (
 	"context"
 	"crypto/tls"
-	"errors"
 	"net"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	"go-spring.org/cloud/fault"
-	"go-spring.org/cloud/resilience"
+	"go-spring.org/cloud/governance"
 	"go-spring.org/cloud/traffic"
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
@@ -39,9 +37,9 @@ func init() {
 		NewSimpleGinServer,
 		gs.IndexArg(1, gs.TagArg("?")),
 		gs.IndexArg(2, gs.TagArg("${spring.gin.server}")),
-		gs.IndexArg(3, gs.TagArg("?")), // nullable resilience.Manager bean
-		gs.IndexArg(4, gs.TagArg("?")), // nullable fault.Injector bean
-		gs.IndexArg(5, gs.TagArg("?")), // nullable traffic.Propagator bean
+		// The governance center is the family's sole injection point: it hands
+		// out the resilience/fault/loadbalance authorities.
+		gs.IndexArg(4, gs.TagArg("?")), // nullable traffic.Propagator bean
 	).Export(gs.As[gs.Server]()).
 		Condition(gs.OnProperty("spring.gin.server.addr"))
 }
@@ -97,15 +95,15 @@ type SimpleGinServer struct {
 //
 // outer is the application-supplied EngineMiddleware hook (nullable - nil when
 // none is provided); it runs before the built-in set so app middleware sits on
-// the outside of the chain. cfg is bound from ${spring.gin.server}. mgr is the
-// governance starter's resilience manager bean (nullable - nil when governance
-// is not imported), which supplies the inbound admission middleware's
-// rate-limit / bulkhead / breaker policy; inj is the fault injector bean
-// (nullable likewise), handed to ApplyMiddlewares for the inbound fault
-// middleware. prop is the application's load-test convention bean (nullable -
-// nil when none is provided), which the inbound LoadTest middleware tags the
-// request context with.
-func NewSimpleGinServer(register RouterRegister, outer EngineMiddleware, cfg Config, mgr *resilience.Manager, inj *fault.Injector, prop traffic.Propagator) (*SimpleGinServer, error) {
+// the outside of the chain. cfg is bound from ${spring.gin.server}. center is
+// the governance center bean (nullable - nil when governance is not imported),
+// whose resilience authority supplies the inbound middleware's
+// rate-limit / bulkhead / breaker policy and whose fault authority backs the
+// inbound fault middleware; both are handed to ApplyMiddlewares. prop is the
+// application's load-test convention bean (nullable - nil when none is
+// provided), which the inbound LoadTest middleware tags the request context
+// with.
+func NewSimpleGinServer(register RouterRegister, outer EngineMiddleware, cfg Config, center *governance.Center, prop traffic.Propagator) (*SimpleGinServer, error) {
 	e := gin.New()
 
 	// Run the application-supplied outer hook first, so it wraps the built-in
@@ -116,7 +114,7 @@ func NewSimpleGinServer(register RouterRegister, outer EngineMiddleware, cfg Con
 	}
 
 	if cfg.Middleware.Enabled {
-		if err := ApplyMiddlewares(e, cfg, mgr, inj, prop); err != nil {
+		if err := ApplyMiddlewares(e, cfg, center, prop); err != nil {
 			return nil, err
 		}
 	}
@@ -181,7 +179,7 @@ func (s *SimpleGinServer) Run(ctx context.Context, sig gs.ReadySignal) error {
 		err = s.svr.Serve(ln)
 	}
 
-	if errors.Is(err, http.ErrServerClosed) {
+	if errutil.IsServerClosed(err) {
 		log.Debugf(ctx, log.TagAppDef, "gin server stopped on %s", s.svr.Addr)
 		return nil
 	}

@@ -36,7 +36,6 @@ require (
     go-spring.org/starter-neo4j        latest
     go-spring.org/starter-actuator     latest   // optional: readiness + /metrics
     go-spring.org/starter-otel         latest   // optional: real trace/metric export
-    go-spring.org/starter-governance-file   latest   // optional: resilience/fault policy
 )
 ```
 
@@ -48,7 +47,6 @@ package main
 import (
     "go-spring.org/spring/gs"
     _ "go-spring.org/starter-actuator"
-    _ "go-spring.org/starter-governance-file"
     _ "go-spring.org/starter-neo4j"
     _ "go-spring.org/starter-otel"
     _ "demo/service"
@@ -137,7 +135,7 @@ spring.observability.metrics.exporter=prometheus
 # --- actuator: readiness folds in neo4j:graph and neo4j:analytics -----------
 spring.actuator.addr=:9370
 # --- governance: guard for Query / RunWithResilience ------------------------
-# NOTE: governance RULES go in conf/governance.properties, referenced by spring.governance.source.file.path in app.properties (see starter-governance-file USAGE).
+# NOTE: governance RULES go in conf/governance.properties, referenced by spring.governance.source.file.path in app.properties (see cloud/governance's SOURCE_USAGE).
 spring.governance.enabled=true
 spring.governance.driver=default
 spring.governance.client.default.rate-limit=100
@@ -384,7 +382,7 @@ silence is the un-intercepted path, not a broken pipeline (§2.2).
 ### 4.3 Resilience drill (example-cloudnative / example-load shape)
 
 ```properties
-# NOTE: governance RULES go in conf/governance.properties, referenced by spring.governance.source.file.path in app.properties (see starter-governance-file USAGE).
+# NOTE: governance RULES go in conf/governance.properties, referenced by spring.governance.source.file.path in app.properties (see cloud/governance's SOURCE_USAGE).
 spring.governance.enabled=true
 spring.governance.client.default.rate-limit=5
 ```

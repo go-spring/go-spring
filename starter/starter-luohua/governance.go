@@ -18,6 +18,7 @@ package luohua
 
 import (
 	"context"
+	"go-spring.org/cloud/chain"
 
 	"go-spring.org/cloud/resilience"
 	"go-spring.org/log"
@@ -45,9 +46,9 @@ type luohuaResilienceDriver struct {
 	counters resilience.Counters
 }
 
-// NewClientExecutor builds a luohua-flavored [resilience.ClientExecutor] for service on top
+// NewClientExecutor builds a luohua-flavored [chain.Executor] for service on top
 // of the bundled engine.
-func (d luohuaResilienceDriver) NewClientExecutor(service string, p resilience.ClientPolicy) (resilience.ClientExecutor, error) {
+func (d luohuaResilienceDriver) NewClientExecutor(service string, p resilience.ClientPolicy) (chain.Executor, error) {
 	inner, err := resilience.NewDefaultDriver(d.counters).NewClientExecutor(service, p)
 	if err != nil {
 		return nil, err
@@ -58,7 +59,7 @@ func (d luohuaResilienceDriver) NewClientExecutor(service string, p resilience.C
 // luohuaExecutor wraps the inner (default) executor and stamps each governed
 // call with the luohua verification marker before delegating.
 type luohuaExecutor struct {
-	inner   resilience.ClientExecutor
+	inner   chain.Executor
 	service string
 }
 
@@ -82,16 +83,14 @@ func (e *luohuaExecutor) SetBreakerEventListener(l resilience.BreakerEventListen
 	}
 }
 
-func (e *luohuaExecutor) Refresh(p resilience.ClientPolicy) error { return e.inner.Refresh(p) }
-
 func (e *luohuaExecutor) Close() error { return e.inner.Close() }
 
 // NewServerExecutor is the inbound counterpart of [luohuaResilienceDriver.NewClientExecutor]:
-// it builds the bundled driver's admission executor and wraps it with the same
-// luohua marker, so spring.governance.driver=luohua flavors inbound admission too — a fleet
+// it builds the bundled driver's inbound executor and wraps it with the same
+// luohua marker, so spring.governance.driver=luohua flavors inbound governance too — a fleet
 // whose only outbound calls were marked would leave the inbound half of its
 // governance unobservable.
-func (d luohuaResilienceDriver) NewServerExecutor(service string, p resilience.ServerPolicy) (resilience.ServerExecutor, error) {
+func (d luohuaResilienceDriver) NewServerExecutor(service string, p resilience.ServerPolicy) (chain.Executor, error) {
 	inner, err := resilience.NewDefaultDriver(d.counters).NewServerExecutor(service, p)
 	if err != nil {
 		return nil, err
@@ -100,10 +99,10 @@ func (d luohuaResilienceDriver) NewServerExecutor(service string, p resilience.S
 }
 
 // luohuaServerExecutor is the inbound twin of [luohuaExecutor]: the same
-// marker, the same delegating contract, refreshed with the admission model it was
+// marker, the same delegating contract, refreshed with the inbound model it was
 // built from.
 type luohuaServerExecutor struct {
-	inner   resilience.ServerExecutor
+	inner   chain.Executor
 	service string
 }
 
@@ -116,10 +115,6 @@ func (e *luohuaServerExecutor) SetBreakerEventListener(l resilience.BreakerEvent
 	if s, ok := e.inner.(resilience.BreakerEventListenerSetter); ok {
 		s.SetBreakerEventListener(l)
 	}
-}
-
-func (e *luohuaServerExecutor) Refresh(p resilience.ServerPolicy) error {
-	return e.inner.Refresh(p)
 }
 
 func (e *luohuaServerExecutor) Close() error { return e.inner.Close() }

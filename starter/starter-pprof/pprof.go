@@ -20,9 +20,10 @@ import (
 	"net/http"
 	"net/http/pprof"
 
+	"go-spring.org/cloud/security"
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
-	"go-spring.org/stdlib/httpauth"
+	"go-spring.org/stdlib/netutil"
 )
 
 // Config configures the dedicated pprof HTTP server. pprof endpoints expose
@@ -65,8 +66,8 @@ func NewSimplePProfServer(ctx *gs.ContextProvider, c Config) *SimplePProfServer 
 	mux.HandleFunc("GET /debug/pprof/symbol", pprof.Symbol)
 	mux.HandleFunc("GET /debug/pprof/trace", pprof.Trace)
 
-	guard := httpauth.Guard{Token: c.Token, Username: c.Username, Password: c.Password}
-	if !guard.Enabled() && !httpauth.IsLoopback(c.Address) {
+	guard := security.Guard{Token: c.Token, Username: c.Username, Password: c.Password}
+	if !guard.Enabled() && !netutil.IsLoopback(c.Address) {
 		log.Warnf(ctx.Context, log.TagAppDef,
 			"pprof server listening on %q without authentication; set ${spring.pprof.token} or ${spring.pprof.username}/${spring.pprof.password}",
 			c.Address)

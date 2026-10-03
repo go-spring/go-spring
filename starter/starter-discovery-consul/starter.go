@@ -53,13 +53,6 @@ import (
 	"go-spring.org/stdlib/flatten"
 )
 
-// obsSystem is this backend's value for the discovery instrumentation's
-// "system" attribute, so one dashboard can compare discovery centers.
-const obsSystem = "consul"
-
-// starterTag identifies logs emitted by the consul discovery starter.
-var starterTag = log.RegisterAppTag("discovery_consul", "")
-
 func init() {
 	// One NAMED bean per block under ${spring.discovery.consul.<name>}: the
 	// bean name "consul.<name>" is the label a client starter cites to pick
@@ -70,6 +63,9 @@ func init() {
 	// container.
 	gs.Module(gs.OnProperty("spring.discovery.consul"), func(r gs.BeanProvider, p flatten.Storage) error {
 		return conf.BindEach(p, "${spring.discovery.consul}", func(name string, c ConsulConfig) error {
+			if !c.Enabled {
+				return nil
+			}
 			r.Provide(newConsulBackend,
 				gs.IndexArg(0, gs.ValueArg(c)),
 				gs.IndexArg(1, gs.ValueArg(name)),
@@ -89,6 +85,13 @@ func init() {
 		})
 	})
 }
+
+// obsSystem is this backend's value for the discovery instrumentation's
+// "system" attribute, so one dashboard can compare discovery centers.
+const obsSystem = "consul"
+
+// starterTag identifies logs emitted by the consul discovery starter.
+var starterTag = log.RegisterAppTag("discovery_consul", "")
 
 // consulBackend is ONE configured discovery center: the
 // ${spring.discovery.consul.<name>} block made a bean. It owns the single

@@ -136,7 +136,7 @@ cd example && ./check.sh && echo SMOKE-OK   # 断言输出含 "Apollo cold-load 
 
 ```
 blank-import starter-config-apollo
-  └─ init(): conf.RegisterProvider("apollo", apolloCtrl.Load)   starter.go:77-80
+  └─ init(): conf.RegisterProvider("apollo", newApolloCtrl())   starter.go:77-80
 gs.Run() → App.Start()
   ├─ 1. 挂载 gs.RefreshProperties / gs.AppStarted 门面目标
   ├─ 2. app.p.Refresh() —— 加载 app.properties，展开 spring.config.import     gs_conf/conf.go:216-240

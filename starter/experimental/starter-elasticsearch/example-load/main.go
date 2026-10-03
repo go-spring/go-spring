@@ -36,7 +36,6 @@ import (
 	"go-spring.org/stdlib/errutil"
 
 	StarterElasticsearch "go-spring.org/starter-elasticsearch"
-	_ "go-spring.org/starter-governance-file"
 )
 
 const indexName = "starter-es-load"

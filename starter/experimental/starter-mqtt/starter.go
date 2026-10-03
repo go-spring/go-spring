@@ -19,9 +19,8 @@ package StarterMQTT
 import (
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"go-spring.org/cloud"
-	"go-spring.org/cloud/fault"
+	"go-spring.org/cloud/governance"
 	"go-spring.org/cloud/messaging"
-	"go-spring.org/cloud/resilience"
 	"go-spring.org/log"
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/gs"
@@ -49,12 +48,8 @@ func init() {
 				gs.IndexArg(1, gs.ValueArg(name)),
 				gs.IndexArg(2, gs.ValueArg(c)),
 				gs.IndexArg(3, gs.TagArg("${spring.mqtt.instances."+name+".driver:=${spring.mqtt.default.driver:=?}}")),
-				// The governance beans are REQUIRED: each is registered by the package that
-				// owns it (cloud/resilience, cloud/loadbalance, cloud/fault), which this
-				// starter imports — "governance off" is spring.governance.enabled=false, never
-				// an absent bean.
-				gs.IndexArg(4, gs.TagArg("")), // *resilience.Manager
-				gs.IndexArg(5, gs.TagArg("")), // *fault.Injector
+				// The governance center is the family's sole injection point: it hands
+				// out the resilience/fault/loadbalance authorities.
 			).Name(name).Destroy(destroyClient).Caller(1)
 
 			// Export the broker-neutral messaging.Driver over this client as a bean,
@@ -77,12 +72,13 @@ func init() {
 // instead of surfacing on the first publish/consume. A failed connect releases
 // what was just assembled.
 //
-// mgr and inj are the governance beans the container injects; the ctor bundles
-// them into the cloud.ClientParams it hands the driver, which resolves the
-// executor through it — the governed one when mgr is present, the observed-only
-// resilience.Unmanaged one otherwise (a standalone, non-gs caller passes nil,
-// which is exactly "governance off").
-func newClient(ctx *gs.ContextProvider, name string, c Config, d Driver, mgr *resilience.Manager, inj *fault.Injector) (mqtt.Client, error) {
+// center is the governance center the container injects — the family's sole
+// injection point; the ctor reads the resilience and fault authorities from it
+// and bundles them into the cloud.ClientParams it hands the driver, which
+// resolves the executor through it — the governed one when the resilience
+// authority is present, the observed-only resilience.Unmanaged one otherwise (a
+// standalone, non-gs caller passes nil, which is exactly "governance off").
+func newClient(ctx *gs.ContextProvider, name string, c Config, d Driver, center *governance.Center) (mqtt.Client, error) {
 	log.Debugf(ctx.Context, log.TagAppDef, "creating mqtt client, broker=%s client-id=%s", c.Broker, c.ClientID)
 
 	// No company Driver bean → fall back to the bundled default assembly.
@@ -90,7 +86,7 @@ func newClient(ctx *gs.ContextProvider, name string, c Config, d Driver, mgr *re
 		d = DefaultDriver{}
 	}
 	client, err := d.CreateClient(ctx.Context, c,
-		cloud.ClientParams{Resilience: mgr, Fault: inj})
+		cloud.ClientParams{Resilience: center.Resilience(), Fault: center.Fault()})
 	if err != nil {
 		log.Errorf(ctx.Context, log.TagAppDef, "mqtt: create client failed: %v", err)
 		return nil, errutil.Explain(err, "failed to create mqtt client: %s", c.Broker)

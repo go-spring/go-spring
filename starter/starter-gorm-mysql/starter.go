@@ -15,10 +15,11 @@
  */
 
 // Package StarterGormMySql is the gorm+mysql dialect starter. It registers one
-// gorm client per entry under "spring.gorm.mysql", with the shared open/pool/
-// observe/resilience scaffolding provided by go-spring.org/starter-gorm. Only
-// the MySQL-specific pieces — the Config + DSN, TLS registration and the
-// service-discovery dialer — live here.
+// gorm client per entry under "spring.gorm.mysql" — the gs.Module block below is
+// that registration, written out here so a reader sees the beans this starter
+// contributes — with the shared open/pool/observe/resilience scaffolding
+// provided by go-spring.org/starter-gorm. The MySQL-specific pieces — the
+// Config + DSN, TLS registration and the service-discovery dialer — live here.
 package StarterGormMySql
 
 import (
@@ -29,31 +30,72 @@ import (
 
 	"github.com/go-sql-driver/mysql"
 	"go-spring.org/cloud"
+	"go-spring.org/cloud/actuator/health"
 	"go-spring.org/cloud/discovery"
+	"go-spring.org/cloud/governance"
 	"go-spring.org/cloud/loadbalance"
 	"go-spring.org/cloud/resilience"
 	"go-spring.org/log"
+	"go-spring.org/spring/conf"
+	"go-spring.org/spring/gs"
 	"go-spring.org/starter-gorm"
 	"go-spring.org/stdlib/errutil"
+	"go-spring.org/stdlib/flatten"
 	gormmysql "gorm.io/driver/mysql"
 )
+
+// The registration below is written out per dialect starter rather than shared
+// through a helper, so a reader of this file sees exactly which beans it
+// contributes: one *DB named "mysql.<entry>" plus a paired health.Indicator, per
+// entry under spring.gorm.mysql.instances. The construction those beans run —
+// build → [gormcore.NewDB] (open, observe, governance, startup ping) — is shared
+// in starter-gorm.
+func init() {
+	gs.Module(gs.OnProperty("spring.gorm.mysql.instances"), func(r gs.BeanProvider, p flatten.Storage) error {
+		// Any key an entry does not define falls back to the family-wide
+		// "default" bucket: spring.gorm.mysql.default.<k> is the value every entry
+		// inherits unless it sets its own.
+		p = flatten.WithFallback(p, "spring.gorm.mysql.instances", "spring.gorm.mysql.default")
+		return conf.BindEach(p, "${spring.gorm.mysql.instances}", func(name string, c Config) error {
+			// The dialect qualifier keeps mysql's instances in their own bean-name
+			// space, so two dialects may carry an instance of the same name.
+			beanName := "mysql." + name
+			r.Provide(func(ctx *gs.ContextProvider, discoveryLabel string, center *governance.Center) (*gormcore.DB, error) {
+				// The entry's ${discovery} label is resolved against the center's
+				// discovery directory here, and the label's "none" sentinel makes an
+				// unset key resolve to a nil backend (a static-address entry). The
+				// center is the family's sole injection point: it also hands out the
+				// resilience/fault/loadbalance authorities, bundled into the one
+				// ClientParams the dialect and NewDB both read.
+				disc, _ := center.Discovery().Get(discoveryLabel)
+				params := cloud.ClientParams{Resilience: center.Resilience(), Fault: center.Fault(), Loadbalance: center.Loadbalance(), Discovery: disc}
+				spec, err := build(ctx.Context, c, params)
+				if err != nil {
+					return nil, err
+				}
+				return gormcore.NewDB(ctx.Context, "mysql", spec, params, c.Ping)
+			},
+				gs.IndexArg(1, gs.TagArg("${spring.gorm.mysql.instances."+name+".discovery:=${spring.gorm.mysql.default.discovery:=none}}")),
+			).Name(beanName).Destroy((*gormcore.DB).Destroy).Caller(1)
+
+			// Contribute a health indicator for this instance unless the user
+			// disabled it (health=false), injecting the bean just registered above
+			// by name.
+			if c.Health {
+				r.Provide(func(w *gormcore.DB) *health.Indicator {
+					return gormcore.NewClientHealth("gorm:mysql:", name, w)
+				}, gs.TagArg(beanName)).Name("gorm:mysql:" + name).Caller(1)
+			}
+			return nil
+		})
+	})
+}
 
 // tlsSeq makes each registered custom TLS config name unique.
 var tlsSeq atomic.Uint64
 
-func init() {
-	gormcore.Module(gormcore.Dialect[Config]{
-		Prefix:       "spring.gorm.mysql",
-		BeanPrefix:   "mysql",
-		Engine:       "mysql",
-		HealthPrefix: "gorm:mysql:",
-		Build:        build,
-	})
-}
-
 // build constructs the driver-specific dialector for a Config, handling TLS and
-// service-discovery routing, and returns the Spec gormcore.Module needs to
-// open and wrap the client.
+// service-discovery routing, and returns the Spec [gormcore.NewDB] assembles.
 //
 // When c.ServiceName is set (and mesh mode is off), the address is resolved
 // through the registered discovery backend: a Resolver is bound to a unique

@@ -30,9 +30,17 @@ func init() {
 
 	// Register the actuator as a gs.Server under a distinct name so it coexists
 	// with the application's main HTTP server (which also exports gs.Server).
-	// Enabled by default: the endpoints are cheap and the value — K8s probes,
-	// registry health checks — is high.
-	gs.Provide(&Server{}).
-		Condition(gs.OnProperty("spring.actuator.addr")).
+	// The starter convention: spring.actuator.enabled defaults to on (the
+	// switch opts OUT), while spring.actuator.addr must still be set — the
+	// address opts IN. Both must hold.
+	gs.Provide(NewServer,
+		gs.IndexArg(0, gs.TagArg("${spring.actuator}")),
+		gs.IndexArg(1, gs.TagArg("?")),
+		gs.IndexArg(2, gs.TagArg("?")),
+	).
+		Condition(gs.And(
+			gs.OnProperty("spring.actuator.enabled").HavingValue("true").MatchIfMissing(),
+			gs.OnProperty("spring.actuator.addr"),
+		)).
 		Export(gs.As[gs.Server]())
 }

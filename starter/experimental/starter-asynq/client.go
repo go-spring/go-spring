@@ -23,6 +23,7 @@ package StarterAsynq
 
 import (
 	"context"
+	"go-spring.org/cloud/chain"
 
 	"github.com/hibiken/asynq"
 	"go-spring.org/cloud"
@@ -44,7 +45,7 @@ type Client struct {
 
 	// exec is the resilience executor protecting the synchronous Enqueue path,
 	// fixed by [NewClient]; a no-op when governance is off.
-	exec resilience.ClientExecutor
+	exec chain.Executor
 }
 
 // NewClient builds a complete Client — identity and governance both applied —

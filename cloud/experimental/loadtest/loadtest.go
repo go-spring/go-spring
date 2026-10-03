@@ -44,12 +44,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"go-spring.org/cloud/chain"
 	"io"
 	"slices"
 	"time"
 
 	"go-spring.org/cloud/fault"
-	"go-spring.org/cloud/resilience"
 )
 
 // Op is one operation a worker fires per dispatch. It returns nil on success.
@@ -140,11 +140,11 @@ func (r *Result) Passed() bool {
 // these labels or any other.
 func DefaultClassify(err error) string {
 	switch {
-	case errors.Is(err, resilience.ErrCircuitOpen):
+	case errors.Is(err, chain.ErrCircuitOpen):
 		return BucketCircuit
-	case errors.Is(err, resilience.ErrRateLimited):
+	case errors.Is(err, chain.ErrRateLimited):
 		return BucketRateLimited
-	case errors.Is(err, resilience.ErrBulkheadFull):
+	case errors.Is(err, chain.ErrBulkheadFull):
 		return BucketBulkhead
 	case fault.IsInjected(err):
 		return BucketInjected

@@ -20,11 +20,12 @@ import (
 	"bytes"
 	"context"
 	"crypto/tls"
+	"go-spring.org/cloud/chain"
+	"go-spring.org/cloud/governance"
 	"strings"
 
 	"github.com/wneessen/go-mail"
 	"go-spring.org/cloud"
-	"go-spring.org/cloud/fault"
 	"go-spring.org/cloud/observability"
 	"go-spring.org/cloud/resilience"
 	"go-spring.org/log"
@@ -33,6 +34,31 @@ import (
 	"go-spring.org/stdlib/errutil"
 	"go-spring.org/stdlib/flatten"
 )
+
+func init() {
+	// Register one SMTP mailer bean per entry under "${spring.mail.instances}".
+	// A gs.Module (rather than gs.Group) is used so each
+	// instance's ctor can take the governance center alongside its config — the
+	// *Mailer bean owns the resilience executor, which the ctor builds while
+	// assembling the mailer and Destroy tears down — and to attach the file:line of
+	// this registration to the bean for diagnostics. There is no default
+	// singleton — select one by name (e.g. autowire:"notify").
+	gs.Module(gs.OnProperty("spring.mail.instances"), func(r gs.BeanProvider, p flatten.Storage) error {
+		// Any key an instance does not define falls back to the family-wide
+		// "default" bucket: spring.mail.default.<k> is the value every
+		// instance inherits unless it sets its own.
+		p = flatten.WithFallback(p, "spring.mail.instances", "spring.mail.default")
+		return conf.BindEach(p, "${spring.mail.instances}", func(name string, c Config) error {
+			r.Provide(newMailer,
+				gs.IndexArg(1, gs.ValueArg(name)),
+				gs.IndexArg(2, gs.ValueArg(c)),
+				// The governance center is the family's sole injection point: it hands
+				// out the resilience/fault/loadbalance authorities.
+			).Name(name).Destroy((*Mailer).Destroy).Caller(1)
+			return nil
+		})
+	})
+}
 
 // Attachment is a file attached to a Message. Filename is the name shown to the
 // recipient; Data holds the raw file bytes. The mailer does not read from disk —
@@ -84,47 +110,19 @@ type Mailer struct {
 	// from the container's [cloud.ClientParams]; it is also the single emitter
 	// of the send's span, metrics and access log, read off the operation [Send]
 	// declares.
-	exec resilience.ClientExecutor
-}
-
-func init() {
-	// Register one SMTP mailer bean per entry under "${spring.mail.instances}".
-	// A gs.Module (rather than gs.Group) is used so each
-	// instance's ctor can take the governance beans alongside its config — the
-	// *Mailer bean owns the resilience executor, which the ctor builds while
-	// assembling the mailer and Destroy tears down — and to attach the file:line of
-	// this registration to the bean for diagnostics. There is no default
-	// singleton — select one by name (e.g. autowire:"notify").
-	gs.Module(gs.OnProperty("spring.mail.instances"), func(r gs.BeanProvider, p flatten.Storage) error {
-		// Any key an instance does not define falls back to the family-wide
-		// "default" bucket: spring.mail.default.<k> is the value every
-		// instance inherits unless it sets its own.
-		p = flatten.WithFallback(p, "spring.mail.instances", "spring.mail.default")
-		return conf.BindEach(p, "${spring.mail.instances}", func(name string, c Config) error {
-			r.Provide(newMailer,
-				gs.IndexArg(1, gs.ValueArg(name)),
-				gs.IndexArg(2, gs.ValueArg(c)),
-				// The governance beans are REQUIRED: each is registered by the package that
-				// owns it (cloud/resilience, cloud/loadbalance, cloud/fault), which this
-				// starter imports — "governance off" is spring.governance.enabled=false, never
-				// an absent bean.
-				gs.IndexArg(3, gs.TagArg("")), // *resilience.Manager
-				gs.IndexArg(4, gs.TagArg("")), // *fault.Injector
-			).Name(name).Destroy((*Mailer).Destroy).Caller(1)
-			return nil
-		})
-	})
+	exec chain.Executor
 }
 
 // newMailer builds a Mailer from config. It fails fast on a missing host or an
 // unknown auth/TLS mode, and (when Ping is enabled) probes the server once at
 // startup so a misconfiguration surfaces at boot rather than on the first send.
 //
-// mgr and inj are the governance beans the container injects; the ctor bundles
-// them into the [cloud.ClientParams] it builds the mailer's executor from, so
+// center is the governance center the container injects — the family's sole
+// injection point; the ctor reads the resilience and fault authorities from it
+// and bundles them into the [cloud.ClientParams] it builds the mailer's executor from, so
 // the mailer is assembled complete in one step. The zero bundle degrades to an
 // observed-only, loudly-unmanaged executor.
-func newMailer(ctx *gs.ContextProvider, name string, c Config, mgr *resilience.Manager, inj *fault.Injector) (*Mailer, error) {
+func newMailer(ctx *gs.ContextProvider, name string, c Config, center *governance.Center) (*Mailer, error) {
 	if err := errutil.RequireField("mail", "host", c.Host); err != nil {
 		return nil, err
 	}
@@ -201,7 +199,7 @@ func newMailer(ctx *gs.ContextProvider, name string, c Config, mgr *resilience.M
 	// mailer passes the zero bundle, whose executor degrades to
 	// resilience.Unmanaged — observed, with a one-time warning that no protection
 	// applies — rather than silently running bare.
-	params := cloud.ClientParams{Resilience: mgr, Fault: inj}
+	params := cloud.ClientParams{Resilience: center.Resilience(), Fault: center.Fault()}
 	m.exec = params.ExecutorFor("mail", m.serviceLabel)
 	return m, nil
 }

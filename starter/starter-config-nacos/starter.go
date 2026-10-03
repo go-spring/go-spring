@@ -47,13 +47,13 @@ import (
 )
 
 func init() {
-	// Register "nacos" as a remote configuration provider. The provider is
-	// the controller's Load method — the controller itself lives in this
-	// closure only (no package-level variable), so its state is reachable
-	// solely through the registered provider. Watch-triggered refreshes go
-	// through the gs.RefreshProperties package-level facade, so the
-	// controller needs no bean wiring at all.
-	conf.RegisterProvider("nacos", newNacosCtrl().Load)
+	// Register "nacos" as a remote configuration provider. The controller
+	// itself is registered (not just its Load method): the runtime holds the
+	// registered provider so it can stop the listeners at shutdown (see
+	// provider.Provider). Watch-triggered refreshes go through the
+	// gs.RefreshProperties package-level facade, so the controller needs no
+	// bean wiring at all.
+	conf.RegisterProvider("nacos", newNacosCtrl())
 }
 
 var starterTag = log.RegisterAppTag("config_nacos", "")
@@ -69,15 +69,57 @@ type nacosCtrl struct {
 	mu       sync.Mutex
 	clients  map[string]config_client.IConfigClient
 	listened map[string]struct{}
+
+	// ctx is the listener generation: Close cancels it and closes every client,
+	// which stops the change callbacks; the next Load starts a fresh one (see
+	// rearm). The context itself is carried by the callbacks, which hand it to
+	// TriggerRefresh.
+	ctx context.Context
+	// cancel cancels ctx.
+	cancel context.CancelFunc
+	// stopped is true between Close and the next Load.
+	stopped bool
 }
 
 // newNacosCtrl creates a controller with its caches ready, so the lazy
 // nil-checks are kept out of the hot paths.
 func newNacosCtrl() *nacosCtrl {
+	ctx, cancel := context.WithCancel(context.Background())
 	return &nacosCtrl{
 		clients:  map[string]config_client.IConfigClient{},
 		listened: map[string]struct{}{},
+		ctx:      ctx,
+		cancel:   cancel,
 	}
+}
+
+// rearm restarts the listener generation after a Close, so the first Load of a
+// new application instance can install listeners again.
+func (c *nacosCtrl) rearm() {
+	c.mu.Lock()
+	if c.stopped {
+		c.ctx, c.cancel = context.WithCancel(context.Background())
+		c.stopped = false
+	}
+	c.mu.Unlock()
+}
+
+// Close closes every client — which stops its listeners and polling — and drops
+// the caches. It implements provider.Provider. Closing is final only for this
+// application instance: the next Load builds fresh clients and re-listens.
+func (c *nacosCtrl) Close() error {
+	c.mu.Lock()
+	c.cancel()
+	c.stopped = true
+	clients := c.clients
+	c.clients = map[string]config_client.IConfigClient{}
+	c.listened = map[string]struct{}{}
+	c.mu.Unlock()
+
+	for _, cli := range clients {
+		cli.CloseClient()
+	}
+	return nil
 }
 
 // TriggerRefresh is called by the config listener when a watched data id
@@ -188,6 +230,8 @@ func (c *nacosCtrl) clientFor(cs configSource) (config_client.IConfigClient, err
 // from Nacos, parses it according to the declared format, and installs a
 // change listener that triggers an application property refresh.
 func (c *nacosCtrl) Load(optional bool, source string) (map[string]string, error) {
+	c.rearm()
+
 	cs, err := parseSource(source)
 	if err != nil {
 		log.Errorf(context.Background(), starterTag, "parse source %q failed: %v", source, err)
@@ -243,13 +287,25 @@ func (c *nacosCtrl) registerListener(cli config_client.IConfigClient, cs configS
 		return
 	}
 	c.listened[lk] = struct{}{}
+	ctx := c.ctx
 	c.mu.Unlock()
 
 	err := cli.ListenConfig(vo.ConfigParam{
 		DataId: cs.dataID,
 		Group:  cs.group,
 		OnChange: func(namespace, group, dataId, data string) {
-			c.TriggerRefresh(context.Background())
+			// Stamp the trigger with the change's identity (which data id in
+			// which group/namespace) so the refresh records logged and metered
+			// by observability.RefreshConf carry what this round is about.
+			// Nacos hands the listener no change revision, so the coordinates
+			// plus the new content's length are all the identity available.
+			c.TriggerRefresh(log.WithFields(ctx,
+				log.String("source", "nacos"),
+				log.String("data_id", dataId),
+				log.String("group", group),
+				log.String("namespace", namespace),
+				log.Int("data_len", len(data)),
+			))
 		},
 	})
 	if err != nil {

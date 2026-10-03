@@ -26,6 +26,7 @@ package StarterRocketmq
 import (
 	"context"
 	"errors"
+	"go-spring.org/cloud/chain"
 	"strings"
 	"sync"
 
@@ -59,7 +60,7 @@ type Client struct {
 	// exec / serviceLabel carry the resilience executor [NewClient] applies from
 	// the governance bundle it is handed; exec is never nil — a hand-built client
 	// degrades to an observed-only, loudly-unmanaged executor.
-	exec         resilience.ClientExecutor
+	exec         chain.Executor
 	serviceLabel string
 
 	mu        sync.Mutex

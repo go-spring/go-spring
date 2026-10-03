@@ -59,3 +59,13 @@ func counts(t *testing.T, b Balancer, set []discovery.Endpoint, info PickInfo, n
 func staticSource(eps ...discovery.Endpoint) discovery.Resolver {
 	return func() ([]discovery.Endpoint, error) { return eps, nil }
 }
+
+// newManager builds a manager over the built-in strategies alone, which is the
+// shape a test wants when it exercises selection rather than contributed
+// factories.
+func newManager(t *testing.T) *Manager {
+	t.Helper()
+	m, err := NewManager(nil)
+	assert.Error(t, err).Nil()
+	return m
+}

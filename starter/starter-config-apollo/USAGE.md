@@ -141,7 +141,7 @@ step 2 of `App.Start` (`gs_app/app.go:285-294`), **before** the IoC container is
 
 ```
 blank-import starter-config-apollo
-  └─ init(): conf.RegisterProvider("apollo", apolloCtrl.Load)   starter.go:77-80
+  └─ init(): conf.RegisterProvider("apollo", newApolloCtrl())   starter.go:77-80
 gs.Run() → App.Start()
   ├─ 1. mount the gs.RefreshProperties / gs.AppStarted facade targets
   ├─ 2. app.p.Refresh() — load app.properties, expand spring.config.import      gs_conf/conf.go:216-240

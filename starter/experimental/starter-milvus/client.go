@@ -24,6 +24,7 @@ package StarterMilvus
 
 import (
 	"context"
+	"go-spring.org/cloud/chain"
 
 	"github.com/milvus-io/milvus-sdk-go/v2/client"
 	"go-spring.org/cloud"
@@ -50,7 +51,7 @@ type Client struct {
 	// exec is the resilience executor the guard interceptors route through,
 	// set by [NewClient] from the governance bundle; it is also the single
 	// emitter of each RPC's span, metrics and access log.
-	exec resilience.ClientExecutor
+	exec chain.Executor
 	// serviceLabel is the resilience service key ("milvus:<addr>") exec scopes
 	// limiter/breaker state by.
 	serviceLabel string

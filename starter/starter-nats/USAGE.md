@@ -35,7 +35,6 @@ require (
     go-spring.org/starter-nats    latest
     go-spring.org/starter-actuator latest   // optional: probes + /metrics mount
     go-spring.org/starter-otel     latest   // optional: real trace/metric export
-    go-spring.org/starter-governance-file latest // optional: runtime resilience/fault
 )
 ```
 
@@ -49,7 +48,6 @@ import (
 
     "go-spring.org/spring/gs"
     _ "go-spring.org/starter-actuator"
-    _ "go-spring.org/starter-governance-file"
     _ "go-spring.org/starter-nats"
     _ "go-spring.org/starter-otel"
 )

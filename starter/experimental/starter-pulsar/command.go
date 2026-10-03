@@ -43,6 +43,7 @@ package StarterPulsar
 import (
 	"context"
 	"fmt"
+	"go-spring.org/cloud/chain"
 	"net/http"
 	"sync"
 	"time"
@@ -54,6 +55,7 @@ import (
 	"go-spring.org/cloud/observability"
 	"go-spring.org/cloud/resilience"
 	"go-spring.org/log"
+	"go-spring.org/stdlib/errutil"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
@@ -84,7 +86,7 @@ func newMetricsServer(cfg MetricsConfig) (prometheus.Registerer, *http.Server) {
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 	go func() {
-		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		if err := srv.ListenAndServe(); err != nil && !errutil.IsServerClosed(err) {
 			log.Warnf(context.Background(), log.TagAppDef, "pulsar: metrics server exited unexpectedly: %v", err)
 		}
 	}()
@@ -193,7 +195,7 @@ func EndSpan(span trace.Span, err error) {
 // the stable serviceLabel it executes under, colocated so a guard lookup
 // reads the pair atomically (no torn exec/serviceLabel combination).
 type clientGuard struct {
-	exec         resilience.ClientExecutor
+	exec         chain.Executor
 	serviceLabel string
 }
 

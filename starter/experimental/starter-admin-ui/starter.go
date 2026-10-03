@@ -39,7 +39,6 @@ package StarterAdminUI
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"html/template"
 	"net"
@@ -50,10 +49,11 @@ import (
 	"sync"
 	"time"
 
+	"go-spring.org/cloud/security"
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
-	"go-spring.org/stdlib/httpauth"
+	"go-spring.org/stdlib/netutil"
 )
 
 func init() {
@@ -64,7 +64,10 @@ func init() {
 	// the operator gives it a port.
 	gs.Provide(&Server{}).
 		Name("adminUIServer").
-		Condition(gs.OnProperty("spring.admin-ui.addr")).
+		Condition(gs.And(
+			gs.OnProperty("spring.admin-ui.enabled").HavingValue("true").MatchIfMissing(),
+			gs.OnProperty("spring.admin-ui.addr"),
+		)).
 		Export(gs.As[gs.Server]())
 }
 
@@ -148,7 +151,7 @@ func (s *Server) Run(ctx context.Context, sig gs.ReadySignal) error {
 	go s.pollLoop()
 
 	err = s.svr.Serve(ln)
-	if errors.Is(err, http.ErrServerClosed) {
+	if errutil.IsServerClosed(err) {
 		return nil
 	}
 	return errutil.Explain(err, "admin-ui: failed to serve on %s", s.Config.Addr)
@@ -403,8 +406,8 @@ func (s *Server) newHandler() http.Handler {
 	mux.HandleFunc("GET /", s.handleDashboard)
 	mux.HandleFunc("GET /api/status", s.handleStatusJSON)
 
-	guard := httpauth.Guard{Token: s.Config.Token, Username: s.Config.Username, Password: s.Config.Password}
-	if !guard.Enabled() && !httpauth.IsLoopback(s.Config.Addr) {
+	guard := security.Guard{Token: s.Config.Token, Username: s.Config.Username, Password: s.Config.Password}
+	if !guard.Enabled() && !netutil.IsLoopback(s.Config.Addr) {
 		log.Warnf(context.Background(), log.TagAppDef,
 			"admin-ui server listening on %q without authentication; set ${spring.admin-ui.token} or ${spring.admin-ui.username}/${spring.admin-ui.password}",
 			s.Config.Addr)

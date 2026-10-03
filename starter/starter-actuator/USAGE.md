@@ -38,7 +38,6 @@ require (
     go-spring.org/starter-echo       latest
     go-spring.org/starter-actuator   latest   // probes on :9370
     go-spring.org/starter-otel       latest   // optional: /metrics on the same port
-    go-spring.org/starter-governance-file latest   // optional: runtime fault injection
 )
 ```
 
@@ -54,7 +53,6 @@ import (
     "go-spring.org/spring/gs"
     _ "go-spring.org/starter-actuator"
     _ "go-spring.org/starter-echo"
-    _ "go-spring.org/starter-governance-file"
     _ "go-spring.org/starter-otel"
 )
 

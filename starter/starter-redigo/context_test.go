@@ -22,7 +22,6 @@ import (
 
 	"github.com/gomodule/redigo/redis"
 	"go-spring.org/cloud/observability"
-	"go-spring.org/cloud/resilience"
 	"go-spring.org/stdlib/testing/assert"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -100,7 +99,7 @@ func TestDoContextSpanCarriesSpanAttributes(t *testing.T) {
 	// The span is emitted by the resilience layer, which the chain reaches
 	// through the declaration layer — so this exercises both: the starter
 	// declares the command's identity, the executor emits from it.
-	exec := resilience.WrapClientExecutor(passthroughExecutor{}, "redigo", "svc")
+	exec := observability.WrapClientExecutor(passthroughExecutor{}, "redigo", "svc")
 	c := NewConn(inner, user, operationInterceptor(), resilienceInterceptor(exec, "svc"))
 
 	ctx := observability.WithSpanAttributes(context.Background(),
@@ -128,5 +127,4 @@ type passthroughExecutor struct{}
 func (passthroughExecutor) Execute(ctx context.Context, fn func(context.Context) error) error {
 	return fn(ctx)
 }
-func (passthroughExecutor) Close() error                          { return nil }
-func (passthroughExecutor) Refresh(resilience.ClientPolicy) error { return nil }
+func (passthroughExecutor) Close() error { return nil }

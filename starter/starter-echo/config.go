@@ -32,6 +32,10 @@ type HealthConfig struct {
 // Config defines Echo server configuration, bound from ${spring.echo.server}.
 // Address must be explicitly configured; the server won't start without it.
 type Config struct {
+	// Enabled gates the server (enabled, default true) — the starter convention:
+	// the switch opts OUT, the addr key below opts IN.
+	Enabled bool `value:"${enabled:=true}"`
+
 	Address      string             `value:"${addr}"`
 	ReadTimeout  time.Duration      `value:"${readTimeout:=5s}"`
 	WriteTimeout time.Duration      `value:"${writeTimeout:=5s}"`
@@ -161,7 +165,7 @@ type TracingConfig struct {
 // LEGACY — the signals it used to gate are now emitted, together with the span
 // and the access log, by the resilience executor this server is admitted
 // through, and they travel as one set: the single emitter produces all of them
-// or the request falls back to the admission-only signals. This switch is still
+// or the request falls back to the inbound-only signals. This switch is still
 // read so an existing configuration keeps working; setting any of the three
 // per-signal switches to false turns the whole set off (and warns once, because
 // the granularity they offered is gone). Use [ObservabilityConfig] instead.
@@ -176,7 +180,7 @@ type MetricsConfig struct {
 // cloud/resilience), which is also why the signals are one set rather than three
 // independently switchable ones.
 //
-// Turning it off does not silence the server: the admission middleware stops
+// Turning it off does not silence the server: the inbound middleware stops
 // DECLARING, and the request falls back to what the resilience layer reports
 // about every admitted call regardless — `resilience.server.*` and one log line
 // under the resilience tag. That is the same fallback an undeclared route has

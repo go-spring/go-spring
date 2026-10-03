@@ -29,7 +29,7 @@ import (
 
 // declareTransport declares the semantic identity of the S3 request on its
 // context and delegates inward. It MUST sit OUTSIDE the resilience
-// round-tripper: the emitter reads the operation at [ClientExecutor.Execute]
+// round-tripper: the emitter reads the operation at [chain.Executor.Execute]
 // entry, so a declaration made inside the executor — per attempt — would be
 // read by nobody. Placed here, the executor emits one call's signals covering
 // every attempt, retries included.

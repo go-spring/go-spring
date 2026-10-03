@@ -22,12 +22,11 @@ package StarterNats
 
 import (
 	"context"
+	"go-spring.org/cloud/governance"
 
 	"github.com/nats-io/nats.go"
 	"github.com/nats-io/nats.go/jetstream"
 	"go-spring.org/cloud"
-	"go-spring.org/cloud/fault"
-	"go-spring.org/cloud/resilience"
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
@@ -165,12 +164,13 @@ func (DefaultDriver) CreateClient(ctx context.Context, c Config, params cloud.Cl
 // reconnect, close) are bridged into go-spring's log by the driver's handlers so
 // they show up alongside app logs.
 //
-// mgr and inj are the governance beans the container injects; the ctor bundles
-// them into the [cloud.ClientParams] it hands the driver, which passes it to
+// center is the governance center the container injects — the family's sole
+// injection point; the ctor reads the resilience and fault authorities from it
+// and bundles them into the [cloud.ClientParams] it hands the driver, which passes it to
 // [NewConn] — so the connection is assembled complete in one step, with the zero
 // bundle degrading to an observed-only, loudly-unmanaged executor.
 func newConn(ctx *gs.ContextProvider, name string, c Config, d Driver,
-	mgr *resilience.Manager, inj *fault.Injector) (*Conn, error) {
+	center *governance.Center) (*Conn, error) {
 	log.Debugf(ctx.Context, log.TagAppDef, "creating nats connection, url=%s name=%s", c.URL, c.Name)
 
 	// No company Driver bean → fall back to the bundled default assembly.
@@ -178,7 +178,7 @@ func newConn(ctx *gs.ContextProvider, name string, c Config, d Driver,
 		d = DefaultDriver{}
 	}
 	conn, err := d.CreateClient(ctx.Context, c,
-		cloud.ClientParams{Resilience: mgr, Fault: inj})
+		cloud.ClientParams{Resilience: center.Resilience(), Fault: center.Fault()})
 	if err != nil {
 		log.Errorf(ctx.Context, log.TagAppDef, "nats: create client failed: %v", err)
 		return nil, errutil.Explain(err, "failed to create nats client: %s", c.URL)

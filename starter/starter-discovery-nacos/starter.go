@@ -58,6 +58,39 @@ import (
 	"go-spring.org/stdlib/netutil"
 )
 
+func init() {
+	// One NAMED bean per block under ${spring.discovery.nacos.<name>}: the bean
+	// name "nacos.<name>" is the label a client starter cites to pick this
+	// backend for discovery, and the discovery registration core collects the same
+	// bean (as a discovery.Registry) into the single publication lifecycle.
+	// Blocks across backends never collide (the name carries the backend
+	// type); a duplicate name within one backend fails loudly in the
+	// container.
+	gs.Module(gs.OnProperty("spring.discovery.nacos"), func(r gs.BeanProvider, p flatten.Storage) error {
+		return conf.BindEach(p, "${spring.discovery.nacos}", func(name string, c NacosConfig) error {
+			if !c.Enabled {
+				return nil
+			}
+			r.Provide(newNacosBackend,
+				gs.IndexArg(0, gs.ValueArg(c)),
+				gs.IndexArg(1, gs.ValueArg(name)),
+			).Name("nacos."+name).
+				Export(gs.As[discovery.Discovery](), gs.As[discovery.Registry]()).
+				Destroy((*nacosBackend).Close).Caller(1)
+
+			// Contribute a health indicator for this server unless the user
+			// disabled it (health=false), injecting the backend registered
+			// above by name.
+			if c.Health {
+				r.Provide(func(b *nacosBackend) *health.Indicator {
+					return &health.Indicator{Name: "discovery-nacos:" + name, Probe: b.probe}
+				}, gs.TagArg("nacos."+name)).Name("discovery-nacos:" + name)
+			}
+			return nil
+		})
+	})
+}
+
 var (
 	// starterTag identifies logs emitted by the nacos discovery starter.
 	starterTag = log.RegisterAppTag("discovery_nacos", "")
@@ -216,34 +249,4 @@ func newNamingClient(c NacosConfig) (*naming_client.NamingClient, error) {
 		return nil, errutil.Explain(nil, "discovery-nacos: naming client is not the concrete *NamingClient")
 	}
 	return client, nil
-}
-
-func init() {
-	// One NAMED bean per block under ${spring.discovery.nacos.<name>}: the bean
-	// name "nacos.<name>" is the label a client starter cites to pick this
-	// backend for discovery, and the discovery registration core collects the same
-	// bean (as a discovery.Registry) into the single publication lifecycle.
-	// Blocks across backends never collide (the name carries the backend
-	// type); a duplicate name within one backend fails loudly in the
-	// container.
-	gs.Module(gs.OnProperty("spring.discovery.nacos"), func(r gs.BeanProvider, p flatten.Storage) error {
-		return conf.BindEach(p, "${spring.discovery.nacos}", func(name string, c NacosConfig) error {
-			r.Provide(newNacosBackend,
-				gs.IndexArg(0, gs.ValueArg(c)),
-				gs.IndexArg(1, gs.ValueArg(name)),
-			).Name("nacos."+name).
-				Export(gs.As[discovery.Discovery](), gs.As[discovery.Registry]()).
-				Destroy((*nacosBackend).Close).Caller(1)
-
-			// Contribute a health indicator for this server unless the user
-			// disabled it (health=false), injecting the backend registered
-			// above by name.
-			if c.Health {
-				r.Provide(func(b *nacosBackend) *health.Indicator {
-					return &health.Indicator{Name: "discovery-nacos:" + name, Probe: b.probe}
-				}, gs.TagArg("nacos."+name)).Name("discovery-nacos:" + name)
-			}
-			return nil
-		})
-	})
 }

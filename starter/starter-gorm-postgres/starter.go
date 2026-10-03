@@ -15,10 +15,11 @@
  */
 
 // Package StarterGormPostgres is the gorm+postgres dialect starter. It registers
-// one gorm client per entry under "spring.gorm.postgres", with the shared open/
-// pool/observe/resilience scaffolding provided by go-spring.org/starter-gorm.
-// Only the PostgreSQL-specific pieces — the Config + DSN and the service-
-// discovery dialer — live here.
+// one gorm client per entry under "spring.gorm.postgres" — the gs.Module block
+// below is that registration, written out here so a reader sees the beans this
+// starter contributes — with the shared open/pool/observe/resilience scaffolding
+// provided by go-spring.org/starter-gorm. The PostgreSQL-specific pieces — the
+// Config + DSN and the service-discovery dialer — live here.
 package StarterGormPostgres
 
 import (
@@ -28,27 +29,70 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/stdlib"
 	"go-spring.org/cloud"
+	"go-spring.org/cloud/actuator/health"
+	"go-spring.org/cloud/governance"
 	"go-spring.org/cloud/loadbalance"
 	"go-spring.org/cloud/resilience"
 	"go-spring.org/log"
+	"go-spring.org/spring/conf"
+	"go-spring.org/spring/gs"
 	"go-spring.org/starter-gorm"
 	"go-spring.org/stdlib/errutil"
+	"go-spring.org/stdlib/flatten"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 )
 
+// The registration below is written out per dialect starter rather than shared
+// through a helper, so a reader of this file sees exactly which beans it
+// contributes: one *DB named "postgres.<entry>" plus a paired health.Indicator,
+// per entry under spring.gorm.postgres.instances. The construction those beans
+// run — build → [gormcore.NewDB] (open, observe, governance, startup ping) — is
+// shared in starter-gorm.
 func init() {
-	gormcore.Module(gormcore.Dialect[Config]{
-		Prefix:       "spring.gorm.postgres",
-		BeanPrefix:   "postgres",
-		Engine:       "postgresql",
-		HealthPrefix: "gorm:postgres:",
-		Build:        build,
+	gs.Module(gs.OnProperty("spring.gorm.postgres.instances"), func(r gs.BeanProvider, p flatten.Storage) error {
+		// Any key an entry does not define falls back to the family-wide
+		// "default" bucket: spring.gorm.postgres.default.<k> is the value every
+		// entry inherits unless it sets its own.
+		p = flatten.WithFallback(p, "spring.gorm.postgres.instances", "spring.gorm.postgres.default")
+		return conf.BindEach(p, "${spring.gorm.postgres.instances}", func(name string, c Config) error {
+			// The dialect qualifier keeps postgres's instances in their own
+			// bean-name space, so two dialects may carry an instance of the same
+			// name.
+			beanName := "postgres." + name
+			r.Provide(func(ctx *gs.ContextProvider, discoveryLabel string, center *governance.Center) (*gormcore.DB, error) {
+				// The entry's ${discovery} label is resolved against the center's
+				// discovery directory here, and the label's "none" sentinel makes an
+				// unset key resolve to a nil backend (a static-address entry). The
+				// center is the family's sole injection point: it also hands out the
+				// resilience/fault/loadbalance authorities, bundled into the one
+				// ClientParams the dialect and NewDB both read.
+				disc, _ := center.Discovery().Get(discoveryLabel)
+				params := cloud.ClientParams{Resilience: center.Resilience(), Fault: center.Fault(), Loadbalance: center.Loadbalance(), Discovery: disc}
+				spec, err := build(ctx.Context, c, params)
+				if err != nil {
+					return nil, err
+				}
+				return gormcore.NewDB(ctx.Context, "postgresql", spec, params, c.Ping)
+			},
+				gs.IndexArg(1, gs.TagArg("${spring.gorm.postgres.instances."+name+".discovery:=${spring.gorm.postgres.default.discovery:=none}}")),
+			).Name(beanName).Destroy((*gormcore.DB).Destroy).Caller(1)
+
+			// Contribute a health indicator for this instance unless the user
+			// disabled it (health=false), injecting the bean just registered above
+			// by name.
+			if c.Health {
+				r.Provide(func(w *gormcore.DB) *health.Indicator {
+					return gormcore.NewClientHealth("gorm:postgres:", name, w)
+				}, gs.TagArg(beanName)).Name("gorm:postgres:" + name).Caller(1)
+			}
+			return nil
+		})
 	})
 }
 
 // build constructs the driver-specific dialector for a Config, handling service
-// discovery, and returns the Spec gormcore.Module needs to open and wrap the
+// discovery, and returns the Spec [gormcore.NewDB] assembles.
 // client.
 //
 // When c.ServiceName is set (and mesh mode is off), the address is resolved

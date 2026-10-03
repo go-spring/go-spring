@@ -61,6 +61,10 @@ const (
 // belong to the discovery core and are deliberately not bound here: in a cluster
 // the platform already registers every Pod behind a Service.
 type Config struct {
+	// Enabled turns this named block off without deleting it. Default true;
+	// a disabled block contributes no beans (no resolver, no discovery).
+	Enabled bool `value:"${enabled:=true}"`
+
 	// Mode selects the discovery mechanism: "dns" (default, headless Service
 	// DNS, zero dependency) or "endpointslice" (client-go informer, real-time).
 	Mode string `value:"${mode:=dns}"`

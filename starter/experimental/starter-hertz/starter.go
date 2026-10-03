@@ -22,7 +22,7 @@ import (
 	"github.com/cloudwego/hertz/pkg/app"
 	"github.com/cloudwego/hertz/pkg/app/server"
 	"github.com/cloudwego/hertz/pkg/common/config"
-	"go-spring.org/cloud/fault"
+	"go-spring.org/cloud/governance"
 	"go-spring.org/cloud/traffic"
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
@@ -33,11 +33,8 @@ func init() {
 	gs.Provide(
 		NewSimpleHertzServer,
 		gs.IndexArg(1, gs.TagArg("${spring.hertz.server}")),
-		// The governance beans are REQUIRED: each is registered by the package that
-		// owns it (cloud/resilience, cloud/loadbalance, cloud/fault), which this
-		// starter imports — "governance off" is spring.governance.enabled=false, never
-		// an absent bean.
-		gs.IndexArg(2, gs.TagArg("")),  // *fault.Injector
+		// The governance center is the family's sole injection point: it hands
+		// out the resilience/fault/loadbalance authorities.
 		gs.IndexArg(3, gs.TagArg("?")), // nullable traffic.Propagator bean
 	).Export(gs.As[gs.Server]()).
 		Condition(gs.OnProperty("spring.hertz.server.addr"))
@@ -69,12 +66,12 @@ type SimpleHertzServer struct {
 // when a built-in middleware (notably CORS) is misconfigured, so the server
 // fails fast at startup instead of panicking on the first request.
 //
-// inj is the fault injector bean gs injects (nil in a standalone call); the
-// inbound fault middleware captures it once here rather than resolving per
-// request, so a config swap on the bean takes effect without re-resolution.
-// prop is the application's load-test convention bean (nil means go-spring's
-// default), handed to the inbound LoadTest middleware.
-func NewSimpleHertzServer(register RouterRegister, cfg Config, inj *fault.Injector, prop traffic.Propagator) (*SimpleHertzServer, error) {
+// center is the governance center bean gs injects (nil in a standalone call);
+// the inbound fault middleware captures its injector once here rather than
+// resolving per request, so a config swap on the bean takes effect without
+// re-resolution. prop is the application's load-test convention bean (nil means
+// go-spring's default), handed to the inbound LoadTest middleware.
+func NewSimpleHertzServer(register RouterRegister, cfg Config, center *governance.Center, prop traffic.Propagator) (*SimpleHertzServer, error) {
 	opts := []config.Option{
 		server.WithHostPorts(cfg.Addr),
 		server.WithReadTimeout(cfg.ReadTimeout),
@@ -98,7 +95,7 @@ func NewSimpleHertzServer(register RouterRegister, cfg Config, inj *fault.Inject
 
 	h := server.New(opts...)
 
-	if err := applyMiddlewares(h, cfg, inj, prop); err != nil {
+	if err := applyMiddlewares(h, cfg, center, prop); err != nil {
 		return nil, err
 	}
 

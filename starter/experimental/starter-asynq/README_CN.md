@@ -54,8 +54,8 @@ info, err := s.Client.Enqueue(ctx, asynq.NewTask("example:greet", payload))
 - **双角色、单实例** — `Client`（总是装配，入队带守卫）与 `Server`（仅
   `server.enabled=true` 时装配；长期运行的 worker 是显式 opt-in）。二者共
   享同一套 Redis 连接配置。
-- **入队守卫** — `Client.Enqueue` 走治理执行器（限流/熔断）；未导入
-  `starter-governance-file` 时退化为 `Client.EnqueueContext`。
+- **入队守卫** — `Client.Enqueue` 走治理执行器（限流/熔断）；治理
+  未接入（容器里没有 `cloud/governance` 的 bean）时退化为 `Client.EnqueueContext`。
 - **优雅停机** — 销毁时 `Server` 按 `shutdown-timeout` 排空在飞任务。
 - **健康指示器** — `asynq:<name>` 探针经新建 inspector ping Redis。
 

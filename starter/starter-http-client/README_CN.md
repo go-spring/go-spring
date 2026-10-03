@@ -68,7 +68,7 @@ spring.http-client.instances.direct.addr=127.0.0.1:9471
 spring.http-client.instances.discovered.service-name=greet-svc
 spring.http-client.instances.discovered.discovery=static
 
-# 韧性与端点选择不在这里配置:策略写在治理规则文档的 spring.governance.* 下(starter-governance-file;
+# 韧性与端点选择不在这里配置:策略写在治理规则文档的 spring.governance.* 下(cloud/governance;
 # conf/governance.properties,由 spring.governance.source.file.path 指向)。连续 2 次失败熔断:
 #   spring.governance.enabled=true
 #   spring.governance.client.default.error-threshold=2
@@ -110,7 +110,7 @@ _, resp, err := client.Greet(ctx, &proto.GreetReq{Name: "Grace"})
 | `spring.http-client.instances.<name>.tls.enabled` | `false` | 打开该 entry 的 TLS 配置面(完整 `tls.*`:cert-file/key-file/ca-file/server-name/insecure-skip-verify)。 |
 
 韧性、故障注入与端点选择在这里**没有配置 key**:它们是按服务的策略,写在治理规则文档里(见
-starter-governance-file)。治理服务标签在发现模式下为 `http:<service-name>`,直连模式下为
+cloud/governance 的 SOURCE_USAGE_CN.md)。治理服务标签在发现模式下为 `http:<service-name>`,直连模式下为
 `http:<addr>`。单次请求超时来自 `spring.governance.client.default.attempt-timeout`;负载均衡策略与端点剔除来自
 命中该标签的规则上的 `balancer` / `outlier-threshold` / `outlier-suspend-for`。
 

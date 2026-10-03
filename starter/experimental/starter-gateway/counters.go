@@ -25,6 +25,7 @@ package StarterGateway
 
 import (
 	"context"
+	"go-spring.org/cloud/chain"
 	"sync"
 	"time"
 
@@ -56,41 +57,32 @@ type memoryCounters struct {
 // scopeState is one key's counters plus the config they were built for, so a
 // policy change (a hot-reloaded rate) starts that key's budget over.
 type scopeState struct {
-	spec   rateSpec
+	spec   resilience.RateSpec
 	bucket *tokenBucket
 	window *slidingWindow
 	used   time.Time
 }
 
-// rateSpec is the part of a rate-limit policy the counters depend on.
-type rateSpec struct {
-	rate      float64
-	burst     int
-	window    time.Duration
-	algorithm resilience.Algorithm
-}
-
-func (c *memoryCounters) Allow(ctx context.Context, scope string, p resilience.ClientPolicy, n int) error {
-	if p.RateLimit <= 0 || n <= 0 { // no budget configured
+func (c *memoryCounters) Allow(ctx context.Context, scope string, spec resilience.RateSpec, n int) error {
+	if spec.RateLimit <= 0 || n <= 0 { // no budget configured
 		return nil
 	}
-	s := c.state(scope, p)
+	s := c.state(scope, spec)
 	if s.window != nil {
 		if s.window.allowN(n) {
 			return nil
 		}
-		return resilience.ErrRateLimited
+		return chain.ErrRateLimited
 	}
-	if s.bucket.waitN(ctx, float64(n), p.RateLimitMaxWait) {
+	if s.bucket.waitN(ctx, float64(n), spec.MaxWait) {
 		return nil
 	}
-	return resilience.ErrRateLimited
+	return chain.ErrRateLimited
 }
 
-// state returns scope's counters, rebuilding them when the policy's rate-limit
+// state returns scope's counters, rebuilding them when the rate-limit
 // configuration changed since they were built.
-func (c *memoryCounters) state(scope string, p resilience.ClientPolicy) *scopeState {
-	spec := rateSpec{rate: p.RateLimit, burst: p.Burst, window: p.Window, algorithm: p.Algorithm}
+func (c *memoryCounters) state(scope string, spec resilience.RateSpec) *scopeState {
 	now := time.Now()
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -99,26 +91,26 @@ func (c *memoryCounters) state(scope string, p resilience.ClientPolicy) *scopeSt
 		return s
 	}
 	s := &scopeState{spec: spec, used: now}
-	if p.Algorithm == resilience.SlidingWindow {
-		win := p.Window
+	if spec.Algorithm == resilience.SlidingWindow {
+		win := spec.Window
 		if win <= 0 {
 			win = time.Second
 		}
-		limit := p.RateLimit * win.Seconds()
+		limit := spec.RateLimit * win.Seconds()
 		if limit < 1 {
 			limit = 1
 		}
 		s.window = &slidingWindow{limit: limit, window: win, curStart: now}
 	} else {
-		burst := p.Burst
+		burst := spec.Burst
 		if burst <= 0 {
 			// A small burst keeps steady traffic from being clipped by timing
 			// jitter while still bounding spikes.
-			if burst = int(p.RateLimit); burst < 1 {
+			if burst = int(spec.RateLimit); burst < 1 {
 				burst = 1
 			}
 		}
-		s.bucket = newTokenBucket(p.RateLimit, burst)
+		s.bucket = newTokenBucket(spec.RateLimit, burst)
 	}
 	c.scopes[scope] = s
 	if len(c.scopes) > maxScopes {

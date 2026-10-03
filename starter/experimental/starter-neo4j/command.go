@@ -23,6 +23,7 @@ package StarterNeo4j
 
 import (
 	"context"
+	"go-spring.org/cloud/chain"
 
 	"github.com/neo4j/neo4j-go-driver/v5/neo4j"
 	"go-spring.org/cloud/observability"
@@ -108,7 +109,7 @@ func StartSpan(ctx context.Context, op, summary string) context.Context {
 // to derive a service label from, so it runs under the bare system label,
 // observed and warned about once, instead of silently running with no telemetry
 // at all.
-func queryResilience(driver neo4j.DriverWithContext) resilience.ClientExecutor {
+func queryResilience(driver neo4j.DriverWithContext) chain.Executor {
 	if w, ok := driver.(*Client); ok {
 		return w.exec
 	}

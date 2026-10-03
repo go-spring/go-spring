@@ -77,7 +77,7 @@ spring.http-client.instances.discovered.service-name=greet-svc
 spring.http-client.instances.discovered.discovery=static
 
 # Resilience and endpoint selection are NOT configured here: policy lives under
-# spring.governance.* in the governance rules document (starter-governance-file;
+# spring.governance.* in the governance rules document (cloud/governance;
 # conf/governance.properties referenced by spring.governance.source.file.path). Breaker trips
 # after 2 consecutive failures:
 #   spring.governance.enabled=true
@@ -123,7 +123,7 @@ and asserts all four outcomes end to end:
 
 Resilience, fault injection and endpoint selection have **no keys here**: they
 are per-service policy and live in the governance rules document (see
-starter-governance-file). The governance service label is `http:<service-name>`
+cloud/governance's SOURCE_USAGE). The governance service label is `http:<service-name>`
 whenever `service-name` is set (either addressing mode), `http:<addr>` only when
 no service-name exists. Per-request timeout comes from
 `spring.governance.client.default.attempt-timeout`; the load-balancing strategy and outlier

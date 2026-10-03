@@ -27,10 +27,7 @@ import (
 	"go-spring.org/cloud"
 	"go-spring.org/cloud/actuator/health"
 	"go-spring.org/cloud/cache"
-	"go-spring.org/cloud/discovery"
-	"go-spring.org/cloud/fault"
-	"go-spring.org/cloud/loadbalance"
-	"go-spring.org/cloud/resilience"
+	"go-spring.org/cloud/governance"
 	"go-spring.org/log"
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/gs"
@@ -64,14 +61,9 @@ func init() {
 				createPool,
 				gs.IndexArg(1, gs.ValueArg(c)),
 				gs.IndexArg(2, gs.TagArg("${spring.redigo.instances."+name+".driver:=${spring.redigo.default.driver:=?}}")),
-				gs.IndexArg(3, gs.TagArg("${spring.redigo.instances."+name+".discovery:=${spring.redigo.default.discovery:=none}}?")),
-				// The governance beans are REQUIRED: each is registered by the package that
-				// owns it (cloud/resilience, cloud/loadbalance, cloud/fault), which this
-				// starter imports — "governance off" is spring.governance.enabled=false, never
-				// an absent bean.
-				gs.IndexArg(4, gs.TagArg("")),
-				gs.IndexArg(5, gs.TagArg("")),
-				gs.IndexArg(6, gs.TagArg("")),
+				gs.IndexArg(3, gs.TagArg("${spring.redigo.instances."+name+".discovery:=${spring.redigo.default.discovery:=none}}")),
+				// The governance center is the family's sole injection point: it
+				// hands out the resilience/fault/loadbalance authorities.
 			).Name(name).Destroy(destroyPool)
 
 			// Contribute a health indicator for this instance unless the user
@@ -103,16 +95,18 @@ func init() {
 // is built, so nothing runs after this returns. See [NewPool] and the Driver
 // interface doc for the assembly contract and the two customization shapes.
 //
-// disc is the discovery backend bean cited by the entry's ${discovery} label
-// (nil when the key is unset or the entry dials a static Addr).
+// disc is the backend the entry's ${discovery} label resolves to in the center's
+// discovery directory (nil when the key is unset, sentinel "none", or names
+// nothing, and the entry dials a static Addr).
 //
-// mgr, inj and lbMgr are the governance beans the container injects; the ctor
-// bundles them into the [cloud.ClientParams] it hands the driver, which applies
-// it in the constructor. Loadbalance is included because this starter
-// binds endpoint selection through the shared machinery. The beans are nil in a
-// standalone (non-gs) call, and the zero bundle degrades to an observed-only,
-// loudly-unmanaged executor rather than failing.
-func createPool(ctx *gs.ContextProvider, c Config, d Driver, disc discovery.Discovery, mgr *resilience.Manager, inj *fault.Injector, lbMgr *loadbalance.Manager) (*Pool, error) {
+// center is the governance center bean — the family's sole spokesperson: the
+// resilience/fault/loadbalance authorities are read from it rather than
+// injected one by one — the ctor bundles them into the [cloud.ClientParams] it
+// hands the driver, which applies it in the constructor. Loadbalance is
+// included because this starter binds endpoint selection through the shared
+// machinery. The bean is nil in a standalone (non-gs) call, and the zero bundle
+// degrades to an observed-only, loudly-unmanaged executor rather than failing.
+func createPool(ctx *gs.ContextProvider, c Config, d Driver, discoveryLabel string, center *governance.Center) (*Pool, error) {
 
 	log.Debugf(ctx.Context, log.TagAppDef, "creating redigo client, addr=%s service-name=%s", c.Addr, c.ServiceName)
 
@@ -123,8 +117,10 @@ func createPool(ctx *gs.ContextProvider, c Config, d Driver, disc discovery.Disc
 		return nil, err
 	}
 
+	disc, _ := center.Discovery().Get(discoveryLabel)
+
 	// Fail loud when the entry routes through discovery but the cited label
-	// names no backend bean — the container is the discovery directory.
+	// names no backend — the center's discovery directory is the table.
 	if c.ServiceName != "" && disc == nil {
 		if c.Discovery == "" {
 			return nil, errutil.Explain(nil, "redis: instance routes by service-name but sets no discovery backend (set ${spring.redigo.instances.<name>.discovery} to the name of a discovery backend bean)")
@@ -143,7 +139,12 @@ func createPool(ctx *gs.ContextProvider, c Config, d Driver, disc discovery.Disc
 	// custom Driver's pool is governed too, without the Driver having to know
 	// where the beans came from.
 	w, err := d.CreateClient(ctx.Context, c,
-		cloud.ClientParams{Resilience: mgr, Fault: inj, Loadbalance: lbMgr, Discovery: disc})
+		cloud.ClientParams{
+			Resilience:  center.Resilience(),
+			Fault:       center.Fault(),
+			Loadbalance: center.Loadbalance(),
+			Discovery:   disc,
+		})
 	if err != nil {
 		log.Errorf(ctx.Context, log.TagAppDef, "redigo: create client failed: %v", err)
 		return nil, errutil.Explain(err, "failed to create redis client")

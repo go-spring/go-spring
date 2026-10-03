@@ -37,7 +37,6 @@ require (
     go-spring.org/starter-pulsar       latest
     go-spring.org/starter-actuator     latest   // 可选：readiness + OTel 指标挂载
     go-spring.org/starter-otel         latest   // 可选：真实 trace 导出
-    go-spring.org/starter-governance-file   latest   // 可选：熔断/限流策略
 )
 ```
 
@@ -50,7 +49,6 @@ import (
     "go-spring.org/spring/gs"
     _ "demo/messaging"
     _ "go-spring.org/starter-actuator"
-    _ "go-spring.org/starter-governance-file"
     _ "go-spring.org/starter-otel"
     _ "go-spring.org/starter-pulsar"
 )

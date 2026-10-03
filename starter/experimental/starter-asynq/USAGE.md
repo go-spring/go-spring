@@ -39,7 +39,6 @@ require (
     go-spring.org/spring        v1.3.x
     go-spring.org/starter-asynq latest
     go-spring.org/starter-actuator latest   // optional: health endpoint for §4
-    go-spring.org/starter-governance-file latest // optional: resilience/fault on enqueue
 )
 ```
 
@@ -60,7 +59,6 @@ import (
 
     starter "go-spring.org/starter-asynq"
     _ "go-spring.org/starter-actuator"
-    _ "go-spring.org/starter-governance-file"
 )
 
 const taskType = "example:greet"
@@ -204,8 +202,9 @@ gs.Run()
    observe.go: span name `enqueue`, the `messaging.system`/`messaging.operation` labels, the
    task type as `messaging.destination.name` detail) and puts it on the ctx. It emits nothing.
 3. The executor runs: the one `NewClient` built from the injected `*resilience.Manager` wrapped
-   with the injected `*fault.Injector` — with starter-governance-file, a rate-limit rejection or
-   open circuit aborts **before** Redis is touched; without it the executor is a pass-through.
+   with the injected `*fault.Injector` — with a configured governance rules source, a rate-limit
+   rejection or open circuit aborts **before** Redis is touched; without governance (no
+   cloud/governance bean in the container) the executor is a pass-through.
    The resilience layer **emits**: the span, the call-level `messaging.client.operation.duration`,
    the attempt-level `messaging.client.attempt.duration` histograms, the `messaging.client.active_requests`
    gauge, the `resilience.client.calls` counter and the `_app_asynq_access` access log.
@@ -281,7 +280,7 @@ than the run abandons it (asynq then retries it on the next delivery — asynq s
 
 ### 4.5 Governance guard (optional)
 
-With starter-governance-file + a configured rules source, open the circuit / set a rate limit on service
+With governance (a configured rules source), open the circuit / set a rate limit on service
 `asynq:<addr>`: `Client.Enqueue` returns the rejection **without touching Redis**; the
 promoted `asynq.Client` path would bypass the guard entirely (see §5 row 2).
 

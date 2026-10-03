@@ -21,12 +21,21 @@ import (
 	"testing"
 
 	"github.com/hibiken/asynq"
+	"go-spring.org/cloud/governance"
+	"go-spring.org/cloud/resilience"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/testing/assert"
 )
 
 // TestDefaultDriverPlain builds the plain RedisConnOpt: addr/user/pass/db map
 // through unchanged, and TLS is not enabled.
+
+// testCenter bundles unarmed authorities into the governance center the client
+// takes, so a container-less test still exercises the real injection path.
+func testCenter() *governance.Center {
+	return governance.NewCenter(governance.Config{}, resilience.NewManager(nil), nil, nil, nil, nil)
+}
+
 func TestDefaultDriverPlain(t *testing.T) {
 	d := DefaultDriver{}
 	opt, err := d.RedisConnOpt(context.Background(), Config{
@@ -64,13 +73,13 @@ func TestNewClientDriverFallback(t *testing.T) {
 	cp := &gs.ContextProvider{Context: context.Background()}
 
 	// No Driver bean → the bundled DefaultDriver assembles the client.
-	c, err := newClient(cp, Config{Addr: "127.0.0.1:6379"}, nil, nil, nil)
+	c, err := newClient(cp, Config{Addr: "127.0.0.1:6379"}, nil, testCenter())
 	assert.Error(t, err).Nil()
 	_ = c.Close()
 
 	// A provided Driver bean override is used as-is.
 	fd := &fakeDriver{}
-	c, err = newClient(cp, Config{Addr: "127.0.0.1:6379"}, fd, nil, nil)
+	c, err = newClient(cp, Config{Addr: "127.0.0.1:6379"}, fd, testCenter())
 	assert.Error(t, err).Nil()
 	_ = c.Close()
 	assert.That(t, fd.called).True()

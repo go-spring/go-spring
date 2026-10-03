@@ -18,14 +18,12 @@ package StarterNeo4j
 
 import (
 	"context"
+	"go-spring.org/cloud/governance"
 	"time"
 
 	"go-spring.org/cloud"
 	"go-spring.org/cloud/actuator/health"
-	"go-spring.org/cloud/discovery"
-	"go-spring.org/cloud/fault"
 	"go-spring.org/cloud/mesh"
-	"go-spring.org/cloud/resilience"
 	"go-spring.org/log"
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/gs"
@@ -45,14 +43,13 @@ func init() {
 		// instance inherits unless it sets its own.
 		p = flatten.WithFallback(p, "spring.neo4j.instances", "spring.neo4j.default")
 		return conf.BindEach(p, "${spring.neo4j.instances}", func(name string, c Config) error {
-			// newClient bundles the injected governance beans into the
+			// newClient reads the authorities off the injected governance center and bundles them into the
 			// [cloud.ClientParams] it hands the driver, which passes it to
 			// [NewClient] — so the client is assembled complete in one step. The
 			// wrapper bean owns the resulting resilience executor and Destroy
-			// tears it down. The instance's discovery.Discovery
-			// backend bean is injected by name from the entry's ${discovery}
-			// label (default "default"; optional, so an app with no backend
-			// beans at all gets nil here). The Driver bean
+			// tears it down. The entry's ${discovery} label is bound as a value
+			// (family default "none", meaning "no backend") and resolved against
+			// the center's discovery directory. The Driver bean
 			// is selected by the entry's ${driver} key: unset → "?" (nullable
 			// by-type — injects the single Driver bean when one is provided,
 			// nil otherwise, and the ctor falls back to the bundled
@@ -60,14 +57,10 @@ func init() {
 			// does not exist fails loud.
 			r.Provide(newClient,
 				gs.IndexArg(1, gs.ValueArg(c)),
-				gs.IndexArg(2, gs.TagArg("${spring.neo4j.instances."+name+".discovery:=${spring.neo4j.default.discovery:=none}}?")),
+				gs.IndexArg(2, gs.TagArg("${spring.neo4j.instances."+name+".discovery:=${spring.neo4j.default.discovery:=none}}")),
 				gs.IndexArg(3, gs.TagArg("${spring.neo4j.instances."+name+".driver:=${spring.neo4j.default.driver:=?}}")),
-				// The governance beans are REQUIRED: each is registered by the package that
-				// owns it (cloud/resilience, cloud/loadbalance, cloud/fault), which this
-				// starter imports — "governance off" is spring.governance.enabled=false, never
-				// an absent bean.
-				gs.IndexArg(4, gs.TagArg("")), // *resilience.Manager
-				gs.IndexArg(5, gs.TagArg("")), // *fault.Injector
+				// The governance center is the family's sole injection point: it hands
+				// out the resilience/fault/loadbalance authorities.
 			).Name(name).Destroy((*Client).Destroy).Caller(1)
 			// Contribute a health indicator for this instance, injecting the
 			// wrapper just registered above by name. Its probe only calls
@@ -100,8 +93,8 @@ func init() {
 // oversight.
 //
 // When c.ServiceName is set and mesh mode is off, a Resolver is built against
-// backend (the discovery backend the entry's ${discovery} label resolved to),
-// one endpoint is picked, and its address is spliced into the URI host. That pick
+// the backend the entry's ${discovery} label names, looked up in the center's
+// discovery directory, one endpoint is picked, and its address is spliced into the URI host. That pick
 // is a seed: the driver exposes no dialer injection point, so a running client
 // does not re-pick per query. What does keep following the naming service is the
 // driver's AddressResolver hook, installed by CreateClient over the same resolver
@@ -109,14 +102,15 @@ func init() {
 // host disappears. In mesh mode the sidecar owns discovery+LB, so the URI is used
 // unchanged. See Config.ServiceName.
 //
-// mgr and inj are the authority beans the owning packages register. The ctor
-// bundles them — together with backend — into the [cloud.ClientParams] it hands
-// the driver, which passes it to [NewClient] — so the client is assembled
-// complete in one step,
+// center is the governance center — the family's sole injection point. The ctor
+// reads the resilience and fault authorities from it and bundles them — together
+// with backend — into the [cloud.ClientParams] it hands the driver, which passes
+// it to [NewClient] — so the client is assembled complete in one step,
 // with the zero bundle degrading to an observed-only, loudly-unmanaged executor.
-func newClient(ctx *gs.ContextProvider, c Config, backend discovery.Discovery, d Driver, mgr *resilience.Manager, inj *fault.Injector) (*Client, error) {
+func newClient(ctx *gs.ContextProvider, c Config, discoveryLabel string, d Driver, center *governance.Center) (*Client, error) {
 	log.Debugf(ctx.Context, log.TagAppDef, "creating neo4j client, uri=%s service-name=%s", c.URI, c.ServiceName)
 
+	backend, _ := center.Discovery().Get(discoveryLabel)
 	if c.ServiceName != "" && !mesh.Enabled() {
 		uri, err := resolveURI(ctx.Context, c, backend)
 		if err != nil {
@@ -131,7 +125,7 @@ func newClient(ctx *gs.ContextProvider, c Config, backend discovery.Discovery, d
 		d = DefaultDriver{}
 	}
 	client, err := d.CreateClient(ctx.Context, c,
-		cloud.ClientParams{Resilience: mgr, Fault: inj, Discovery: backend})
+		cloud.ClientParams{Resilience: center.Resilience(), Fault: center.Fault(), Discovery: backend})
 	if err != nil {
 		log.Errorf(ctx.Context, log.TagAppDef, "neo4j: create client failed: %v", err)
 		return nil, errutil.Explain(err, "failed to create neo4j client")

@@ -35,7 +35,7 @@ require (
     github.com/golang-jwt/jwt/v5     v5.3.1
     go-spring.org/spring             v1.3.x
     go-spring.org/starter-oauth2-server latest
-    // optional ecosystem: starter-actuator / starter-otel / starter-governance-file
+    // optional ecosystem: starter-actuator / starter-otel
 )
 ```
 

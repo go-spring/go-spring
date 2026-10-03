@@ -31,12 +31,13 @@ package StarterRabbitMQ
 
 import (
 	"context"
+	"go-spring.org/cloud/chain"
+	"go-spring.org/cloud/governance"
 	"sync"
 
 	amqp "github.com/rabbitmq/amqp091-go"
 	"go-spring.org/cloud/fault"
 	"go-spring.org/cloud/observability"
-	"go-spring.org/cloud/resilience"
 	"go-spring.org/log"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/propagation"
@@ -132,7 +133,7 @@ var _ propagation.TextMapCarrier = deliveryCarrier{}
 // the stable serviceLabel it executes under, colocated so a guard lookup
 // reads the pair atomically (no torn exec/serviceLabel combination).
 type clientGuard struct {
-	exec         resilience.ClientExecutor
+	exec         chain.Executor
 	serviceLabel string
 }
 
@@ -141,12 +142,10 @@ type clientGuard struct {
 // resilience enabled appear here.
 var clientGuards sync.Map // *amqp.Connection -> *clientGuard
 
-// The governance beans are REQUIRED: each is registered by the package that
-// owns it (cloud/resilience, cloud/loadbalance, cloud/fault), which this
-// starter imports — "governance off" is spring.governance.enabled=false, never
-// an absent bean.
-func applyResilience(conn *amqp.Connection, serviceLabel string, mgr *resilience.Manager, inj *fault.Injector) error {
-	exec := fault.WrapClientExecutor(mgr.ClientExecutorFor("rabbitmq", serviceLabel), serviceLabel, inj)
+// applyResilience builds the connection's guarded executor from the governance
+// center's resilience authority, wrapped with its fault authority.
+func applyResilience(conn *amqp.Connection, serviceLabel string, center *governance.Center) error {
+	exec := fault.WrapClientExecutor(center.Resilience().ClientExecutorFor("rabbitmq", serviceLabel), serviceLabel, center.Fault())
 	clientGuards.Store(conn, &clientGuard{exec: exec, serviceLabel: serviceLabel})
 	return nil
 }

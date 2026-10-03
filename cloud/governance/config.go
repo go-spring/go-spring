@@ -70,7 +70,7 @@ type Config struct {
 	// "sentinel"). Centralizing the driver means one place switches the backend
 	// for every service, instead of each starter's own ${...driver}. It is one key
 	// for both directions because a [resilience.Driver] implements both: the
-	// backend that builds an outbound executor also builds the inbound admission
+	// backend that builds an outbound executor also builds the inbound inbound
 	// executor, so there is nothing to select twice.
 	Driver string `value:"${driver:=default}"`
 
@@ -126,13 +126,13 @@ type ClientConfig struct {
 // ServerConfig is the inbound half of the governance document: what this process
 // needs in its role as a CALLEE.
 type ServerConfig struct {
-	// Default is the inbound admission model applied to every route that no Rule
+	// Default is the inbound inbound model applied to every route that no Rule
 	// matches. Bind via spring.governance.server.default.* (e.g.
 	// spring.governance.server.default.rate-limit=1000,
 	// spring.governance.server.default.max-concurrent=32).
 	Default resilience.ServerPolicy `value:"${default:=}"`
 
-	// Rules are per-route admission entries, matched by the same exact label the
+	// Rules are per-route inbound entries, matched by the same exact label the
 	// inbound middleware passes to [resilience.Manager.ServerExecutorFor]. They let one
 	// process run several servers (or routes) under different limits — a public
 	// endpoint and an internal one do not share a budget. A matched Rule fully
@@ -192,7 +192,7 @@ type ClientRule struct {
 }
 
 // ServerRule is the inbound counterpart of [ClientRule]: one per-entrance
-// admission entry. It carries no Selection — there is no endpoint to choose
+// inbound entry. It carries no Selection — there is no endpoint to choose
 // inbound — and no retry, because [resilience.ServerPolicy] cannot express one.
 // Labels are unique across the list (a duplicate is rejected at dispatch);
 // an empty label matches nothing (use Default instead).
@@ -204,7 +204,7 @@ type ClientRule struct {
 // passes" is what keeps the two blocks readable as one mechanism.
 type ServerRule struct {
 	// Service is the inbound label this ServerRule matches, exact-compare — the
-	// identity the admission middleware passes, which is THIS process's entrance:
+	// identity the inbound middleware passes, which is THIS process's entrance:
 	// the listening address ("gin:0.0.0.0:8080", "http-server::9090") or a label
 	// the caller supplies (thrift). It is not the name of a callee. Matching is
 	// plain equality, so it must be spelled exactly as the starter spells it.

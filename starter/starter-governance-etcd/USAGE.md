@@ -13,9 +13,9 @@ everything below is go-spring's increment.
 **Activation**: any `spring.governance.source.etcd.*` property arms the conditional module (`gs.OnProperty`
 is a **prefix** check, so a single sub-key is enough to fire it), and a single
 `governance.Source` bean is registered. A blank import with no such property registers nothing.
-The bean alone does not arm governance — the wiring bean of
-[`starter-governance-file`](../starter-governance-file/README.md) is what injects it into the center; import
-that too. Exactly one source is active per process (the center holds a single source), so configure
+The bean alone does not arm governance — the center bean of
+[`cloud/governance`](../../cloud/governance/README.md) takes it as a REQUIRED constructor
+argument (a container with no Source bean fails startup); import that too. Exactly one source is active per process (the center holds a single source), so configure
 exactly one of file/http/etcd/nacos.
 
 ---
@@ -38,7 +38,6 @@ demo/
 require (
     go.etcd.io/etcd/client/v3        latest
     go-spring.org/spring             v1.3.x
-    go-spring.org/starter-governance-file     latest
     go-spring.org/starter-governance-etcd latest
 )
 ```
@@ -56,7 +55,6 @@ import (
     "go-spring.org/cloud/resilience"
     "go-spring.org/spring/gs"
 
-    _ "go-spring.org/starter-governance-file"
     _ "go-spring.org/starter-governance-etcd"
 )
 
@@ -83,7 +81,7 @@ func (p *printer) Run(ctx context.Context) error {
 }
 
 // newPrinter builds the printer over the injected manager. A nil manager — a
-// container without starter-governance-file — is normalized to a fresh unarmed one.
+// container without cloud/governance's bean — is normalized to a fresh unarmed one.
 func newPrinter(mgr *resilience.Manager) *printer {
     if mgr == nil {
         mgr = resilience.NewManager()
@@ -171,10 +169,11 @@ import starter-governance-etcd
   │     └─ NewEtcdSource: initial Get (5s ctx) seeds the snapshot
   │           ├─ key missing  → "governance etcd source: key <key> is empty"   (startup error)
   │           └─ bad document → governance.Parse error                              (startup error)
-  ├─ import starter-governance-file: its wiring bean field-injects the Source (autowire "?")
-  │     └─ BindDefault(src) subscribes + adopts Snapshot(); GoLive() arms the center
-  ├─ source bean Init: the watch goroutine starts
-  └─ on SIGTERM: wiring.Destroy() → center.Close() → EtcdSource.Close()
+  ├─ source bean wired: Init opens the watch stream
+  ├─ center bean wired: the Source arrives as a NULLABLE constructor argument —
+  │     NewCenter subscribes + adopts Snapshot() at construction
+  ├─ center bean Init hook: GoLive() arms the center
+  └─ on SIGTERM: center bean Destroy hook → center.Close() → EtcdSource.Close()
 ```
 
 The source builds and owns its etcd client (`clientv3.New` with a 5s dial timeout), separate from
@@ -233,7 +232,7 @@ a non-properties document therefore needs an explicit `format`.
 The document itself is parsed by `governance.Parse`, which requires **at least one `spring.governance.*` key** — a
 document that parses but carries none (truncated, or emptied) is an error, not "no governance".
 The rules keys (`spring.governance.enabled`, `spring.governance.client.default.*`, `spring.governance.client.rules[n].*`, `spring.governance.client.fault.*`) are
-documented in [`starter-governance-file`](../starter-governance-file/USAGE.md); they are identical across
+documented in [`cloud/governance`'s SOURCE_USAGE](../../cloud/governance/SOURCE_USAGE.md); they are identical across
 backends.
 
 ---
@@ -304,7 +303,7 @@ compose is unavailable.
 
 | Symptom | Likely cause | Fix |
 |---------|--------------|-----|
-| Governance stays off (`enabled=false`) despite the key changing | no governance center linked → no wiring bean, the Source is never injected | Link `cloud/governance` (any governance source starter does it). |
+| Governance stays off (`enabled=false`) despite the key changing | no governance center linked → no center bean, the Source is never collected | Link `cloud/governance` (any governance source starter does it). |
 | Startup fails `key <key> is empty` | Required key not present before boot | Seed the key before starting. |
 | Startup fails `get <key> failed` | etcd unreachable, wrong port, or auth required but no `username`/`password` | Check endpoint and credentials. |
 | Startup fails on an empty `endpoint`/`key` | `spring.governance.source.etcd.*` partially configured (`OnProperty` fired on any sub-key) | Provide both required keys, or remove the whole prefix. |

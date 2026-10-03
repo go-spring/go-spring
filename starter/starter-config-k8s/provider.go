@@ -52,8 +52,8 @@ const (
 	kindSecret    = "secret"
 )
 
-// "k8s" is registered as a configuration provider in starter.go's init, on
-// the single controller instance shared with the root bean, so that a
+// "k8s" is registered as a configuration provider in starter.go's init, as
+// the controller instance itself (so the runtime can close it), so that a
 // spring.config.import entry such as
 //
 //	optional:k8s:configmap/app-config?namespace=default&key=application.yaml
@@ -162,7 +162,7 @@ func (c *k8sCtrl) loadFromClient(client k8sClient, cs configSource, optional boo
 		return nil, err
 	}
 
-	log.Infof(context.Background(), starterTag, "loaded k8s config from %s/%s keys=%d", cs.namespace, cs.objectName, len(m))
+	log.Infof(context.Background(), starterTag, "loaded k8s config from kind=%s namespace=%s name=%s keys=%d", cs.kind, cs.namespace, cs.objectName, len(m))
 	return m, nil
 }
 

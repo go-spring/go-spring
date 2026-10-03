@@ -38,7 +38,6 @@ require (
     go-spring.org/starter-pulsar       latest
     go-spring.org/starter-actuator     latest   // optional: readiness + OTel metrics mount
     go-spring.org/starter-otel         latest   // optional: real trace export
-    go-spring.org/starter-governance-file   latest   // optional: breaker/limiter policy
 )
 ```
 
@@ -51,7 +50,6 @@ import (
     "go-spring.org/spring/gs"
     _ "demo/messaging"
     _ "go-spring.org/starter-actuator"
-    _ "go-spring.org/starter-governance-file"
     _ "go-spring.org/starter-otel"
     _ "go-spring.org/starter-pulsar"
 )

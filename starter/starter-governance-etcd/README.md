@@ -3,8 +3,8 @@
 [English](README.md) | [中文](README_CN.md)
 
 `starter-governance-etcd` is the etcd member of the governance rule-source family
-— the same datasource shape as the file and http sources in
-[`starter-governance-file`](../starter-governance-file/README.md). It watches ONE etcd key
+— the same datasource shape as the file and http sources built into
+[`cloud/governance`](../../cloud/governance). It watches ONE etcd key
 holding a governance rule document and pushes each changed version into the
 governance center through the `governance.Source` contract of
 [`go-spring.org/cloud/governance`](../../cloud/governance).
@@ -36,18 +36,14 @@ go get go-spring.org/starter-governance-etcd
 
 ## Quick Start
 
-### 1. Import the starter (and the wiring)
+### 1. Import the starter
 
 ```go
-import (
-    _ "go-spring.org/starter-governance-file"
-    _ "go-spring.org/starter-governance-etcd"
-)
+import _ "go-spring.org/starter-governance-etcd"
 ```
 
-`starter-governance-file` is the module that hands the injected `governance.Source`
-bean to the center; importing only the etcd adapter registers the bean but arms
-nothing.
+This starter transitively links `cloud/governance`; once configured it registers
+a `governance.Source` bean, which arms the center.
 
 ### 2. Configure the source
 

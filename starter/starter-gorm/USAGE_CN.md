@@ -36,7 +36,6 @@ require (
     go-spring.org/starter-gorm-mysql latest  // 传递引入 starter-gorm (gormcore)
     go-spring.org/starter-actuator latest   // 可选:探针 + /metrics
     go-spring.org/starter-otel     latest   // 可选:真实 trace/指标导出
-    go-spring.org/starter-governance-file latest // 可选:运行期故障注入
 )
 ```
 
@@ -50,7 +49,6 @@ import (
 
     "go-spring.org/spring/gs"
     _ "go-spring.org/starter-actuator"
-    _ "go-spring.org/starter-governance-file"
     _ "go-spring.org/starter-gorm-mysql" // 注册 spring.gorm.mysql.instances.* 下的实例
     _ "go-spring.org/starter-otel"
 )
@@ -140,7 +138,7 @@ spring.observability.metrics.exporter=prometheus
 spring.observability.metrics.port=0        # /metrics 仅经 actuator
 
 # --- 服务治理(运行期故障注入 / 熔断 / 重试)-------------------------------
-# NOTE: governance RULES go in conf/governance.properties, referenced by spring.governance.source.file.path in app.properties (see starter-governance-file USAGE).
+# NOTE: governance RULES go in conf/governance.properties, referenced by spring.governance.source.file.path in app.properties (see cloud/governance's SOURCE_USAGE).
 spring.governance.enabled=true
 spring.governance.driver=default
 spring.governance.client.default.error-threshold=20
@@ -183,16 +181,16 @@ curl -s :9370/metrics | grep db_client_operation_duration
 
 ```
 import starter-gorm-mysql
-  └─ init: gormcore.Module(Dialect[Config]{Prefix:"spring.gorm.mysql", ...})
-        └─ gs.Module(gs.OnProperty("spring.gorm.mysql"))   [前缀判定:任一条目即触发]
+  └─ init: gs.Module(gs.OnProperty("spring.gorm.mysql.instances"))   [前缀判定:任一条目即触发]
+        └─ 注册写在该 starter(本文件)里,构造仍共享在 gormcore
 gs.Run()
-  ├─ 配置绑定:conf.BindEach 遍历 ${spring.gorm.mysql} → 每个 <name> 一份 Config
+  ├─ 配置绑定:conf.BindEach 遍历 ${spring.gorm.mysql.instances} → 每个 <name> 一份 Config
   ├─ 每个实例 <name>:
-  │    ├─ Dialect.Build(ctx, c)   方言构造 DSN/dialector;处理 TLS、服务发现
-  │    │                          (仅 mysql 等)、service label
-  │    ├─ gormcore.Open:  gorm.Open → ApplyPool(连接池旋钮)→ ApplyDBCustomizers
+  │    ├─ build(ctx, c)   方言构造 DSN/dialector;处理 TLS、服务发现
+  │    │                  (仅 mysql 等)、service label
+  │    ├─ gormcore.NewDB:  gormcore.Open:  gorm.Open → ApplyPool(连接池旋钮)→ ApplyDBCustomizers
   │    │                  (用户 seam,按注册顺序)→ observe 插件(observe.enabled=false 除外)
-  │    │                  → 治理:由 Options.Governance.ExecutorFor 构建 resilience executor
+  │    │                  → 治理:由 Params.ExecutorFor 构建 resilience executor
   │    │                  → ApplyCallbacks 替换六个 gorm processor
   │    ├─ ping 时启动探测:gormcore.HealthCheck(内部调用 Ping,受 ping-timeout 约束)—— 在装配完成之后
   │    ├─ Provide *DB .Name(<dialect>.<entry>).Destroy((*DB).Destroy)
@@ -205,7 +203,7 @@ gs.Run()
      注销 TLS)→ 关闭底层 *sql.DB 连接池
 ```
 
-装配在 `gormcore.Open` 内全部完成(观测 + 治理一并应用,构造函数返回时 DB 即为
+装配由 `gormcore.NewDB` 调用 `gormcore.Open` 全部完成(观测 + 治理一并应用,构造函数返回时 DB 即为
 完整状态,之后无人再修补),然后才探测。任一步失败(方言构建、gorm.Open、连接池、
 customizer、observe 插件、治理)都会让该实例创建失败并执行方言的 closers——
 地址/凭据配错在启动期暴露,而不是第一次查询时。
@@ -250,7 +248,7 @@ gorm:query processor 链
   是正常结果不是故障,不得触发熔断(DB 侧的 redis.Nil 对应物)。
 - **拒绝错误传播**(resilience/callbacks.go:76-83):resilience 拒绝(限流/熔断开/
   舱壁满)或 fault 注入错误会写到 `tx.Error`;真实操作错误保持 gorm 原样。
-- **治理关闭时零开销**:治理 bean 始终存在(本 starter 空白导入 starter-governance-file),
+- **治理关闭时零开销**:治理 bean 始终存在(本 starter 传递链接 cloud/governance,治理 bean 由各自的拥有包注册),
   故"关闭"指 manager 未装弹(`spring.governance.enabled=false` / 无规则源),其解析出的
   executor 是透明直通——回调仍包裹但无任何行为,链路留在原地不产生成本。若以零值
   governance 打开(手搓客户端、example、测试),则得到 `resilience.Unmanaged`:仅观测,
@@ -345,7 +343,7 @@ health.go:33-35),因此探针失败不会触发 resilience 熔断。
 
 ### 4.4 故障 / resilience 演练(免重启)
 
-用 §1 的治理配置加文件 source(见 starter-governance-file)或 example-load 布局
+用 §1 的治理配置加文件 source(见 cloud/governance 的 SOURCE_USAGE_CN.md)或 example-load 布局
 (`starter-gorm-mysql/example-load`):
 
 1. 以 `spring.governance.client.fault.enabled=false` 启动;基线查询全部成功。

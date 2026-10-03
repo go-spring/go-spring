@@ -19,6 +19,7 @@ package StarterGoRedis
 import (
 	"context"
 	"errors"
+	"go-spring.org/cloud/chain"
 	"testing"
 
 	"github.com/redis/go-redis/v9"
@@ -74,8 +75,8 @@ func TestRealErrorsTripBreaker(t *testing.T) {
 
 	// Breaker now open: the command is short-circuited before next runs.
 	seen, onCmd := call(h, nil)
-	assert.Error(t, seen).Is(resilience.ErrCircuitOpen)
-	assert.Error(t, onCmd).Is(resilience.ErrCircuitOpen)
+	assert.Error(t, seen).Is(chain.ErrCircuitOpen)
+	assert.Error(t, onCmd).Is(chain.ErrCircuitOpen)
 }
 
 // TestRateLimitRejects confirms the flow-control path: once the burst is spent,
@@ -92,7 +93,7 @@ func TestRateLimitRejects(t *testing.T) {
 	assert.Error(t, stub(context.Background(), cmd())).Nil()
 	assert.Error(t, stub(context.Background(), cmd())).Nil()
 	rejected := cmd()
-	assert.Error(t, stub(context.Background(), rejected)).Is(resilience.ErrRateLimited)
-	assert.Error(t, rejected.Err()).Is(resilience.ErrRateLimited)
+	assert.Error(t, stub(context.Background(), rejected)).Is(chain.ErrRateLimited)
+	assert.Error(t, rejected.Err()).Is(chain.ErrRateLimited)
 	assert.That(t, ran).Equal(2) // the rejected command never reached next
 }

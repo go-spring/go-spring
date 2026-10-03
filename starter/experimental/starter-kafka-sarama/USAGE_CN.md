@@ -31,7 +31,6 @@ require (
     go-spring.org/spring        v1.3.x
     go-spring.org/starter-kafka-sarama latest
     go-spring.org/starter-otel    latest   // 可选：真实 trace/metric 导出
-    go-spring.org/starter-governance-file latest // 可选：resilience/fault 策略
     go-spring.org/starter-actuator latest  // 可选：探针 + /metrics 挂载
 )
 ```
@@ -44,7 +43,6 @@ package main
 import (
     "go-spring.org/spring/gs"
     _ "go-spring.org/starter-actuator"
-    _ "go-spring.org/starter-governance-file"
     _ "go-spring.org/starter-kafka-sarama"
     _ "go-spring.org/starter-otel"
     _ "demo/service"
@@ -323,7 +321,7 @@ broker 死亡/未认证时进程到不了"服务中"—— 不存在首次 produ
 
 ### 4.2 被保护 vs 未保护路径
 
-配置 starter-governance-file，对服务 `kafka|127.0.0.1:9092` 设 breaker/rate-limit 策略：
+配好治理规则源后，对服务 `kafka|127.0.0.1:9092` 设 breaker/rate-limit 策略：
 
 ```go
 wrapped := StarterKafkaSarama.WrapSyncProducer(cl, producer, prop)

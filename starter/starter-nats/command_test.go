@@ -23,7 +23,7 @@ import (
 	"testing"
 
 	"github.com/nats-io/nats.go"
-	"go-spring.org/cloud/resilience"
+	"go-spring.org/cloud/observability"
 	"go-spring.org/stdlib/testing/assert"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/propagation"
@@ -59,8 +59,7 @@ type passthroughExecutor struct{}
 func (passthroughExecutor) Execute(ctx context.Context, fn func(context.Context) error) error {
 	return fn(ctx)
 }
-func (passthroughExecutor) Close() error                          { return nil }
-func (passthroughExecutor) Refresh(resilience.ClientPolicy) error { return nil }
+func (passthroughExecutor) Close() error { return nil }
 
 // newInstrumentedConn returns a Conn whose resilience executor is armed but
 // whose embedded *nats.Conn is nil — every test below drives a seam instead of
@@ -68,7 +67,7 @@ func (passthroughExecutor) Refresh(resilience.ClientPolicy) error { return nil }
 // operations actually emit spans.
 func newInstrumentedConn() *Conn {
 	return &Conn{
-		exec:         resilience.WrapClientExecutor(passthroughExecutor{}, "nats", "nats:test"),
+		exec:         observability.WrapClientExecutor(passthroughExecutor{}, "nats", "nats:test"),
 		serviceLabel: "nats:test",
 	}
 }

@@ -48,10 +48,11 @@ methods — `NewClientExecutor(service, Policy)` for outbound and
 `NewServerExecutor(service, ServerPolicy)` for inbound — because the two directions do
 not share a model, and a sentinel-style backend maps them onto different native
 primitives. One object still answers for both, so `spring.governance.driver=sentinel`
-remains a single key that switches the whole process. The bundled engine answers
-to `"default"` without a bean, via `NewDefaultDriver(nil)`; it projects an
-`ServerPolicy` onto its `ClientPolicy` engine (`ServerPolicy.AsPolicy`), which is exact for
-it because it has no inbound-only primitives.
+remains a single key that switches the whole process. The bundled driver answers
+to `"default"` without a bean, via `NewDefaultDriver(nil)`; it builds a
+`defaultExecutor` for outbound and a separate `admissionExecutor` for inbound —
+two engines, neither expressed in terms of the other, over the organs they share
+(the circuit breaker, the rate-limit budget, the bulkhead).
 
 ```go
 // contribute a backend (typically from a starter's init)
@@ -159,7 +160,7 @@ sentinel driver from `starter/starter-governance-sentinel`.
   flow/circuit-breaker rules. Adapters depend only on `ClientExecutor`.
 - **The container is the driver directory.** This package holds no registry:
   a backend is contributed as a bean named after itself, exported as
-  `Driver`, and the governance wiring bean collects every such bean into a
+  `Driver`, and the manager's constructor collects every such bean into a
   name-keyed map. `spring.governance.driver` selects one, resolved through
   that directory — the same "container as directory" shape `discovery`
   and the client starter `Driver`s use. The bundled builtin answers to

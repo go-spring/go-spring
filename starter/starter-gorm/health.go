@@ -27,7 +27,7 @@ import (
 // — a readiness check must reflect the backend, not the rate limiter, and must
 // not feed the observe plugin or the breaker's statistics — so it delegates to
 // [Ping] on the embedded *gorm.DB, which pings the underlying *sql.DB with no
-// gorm callbacks in the path. The startup probe in [Module] and the actuator
+// gorm callbacks in the path. The startup probe in [NewDB] and the actuator
 // probe in [NewClientHealth] both delegate here, so there is exactly one
 // implementation.
 func HealthCheck(ctx context.Context, db *DB) error {

@@ -403,7 +403,7 @@ land, the reference's `version`/`group` must match what the provider exported.
 
 ### 4.4 Governance merge path (dynamic timeout from the center)
 
-Optional; active only when starter-governance-file is imported and its rules document sets
+Optional; active only when a governance rules source is configured and its rules document sets
 `spring.governance.enabled=true`. The poller injects the `*resilience.Manager` and the
 `*governance.Center` as nullable constructor params (starter.go:59) and
 subscribes to governance policies under two service labels (dync.go:252-253):
@@ -420,7 +420,7 @@ center's source, watch the reference override re-push without restart.
 ### 4.5 Fault drill (provider side, no restart)
 
 1. Add `fault` to the service's filter chain: `...services.greet.filter=loadtest,fault`.
-2. Import starter-governance-file; configure `spring.governance.client.fault.*` (rate/error/scope) via a hot source.
+2. Configure a governance rules source; set `spring.governance.client.fault.*` (rate/error/scope) in its rules.
 3. With `scope: loadtest`, only invocations carrying the load-test marker burn — mark them by
    injecting the outbound carrier (cloud/traffic) from a marked upstream, or use
    `scope: real` in a dedicated environment.

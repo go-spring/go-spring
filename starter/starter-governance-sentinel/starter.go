@@ -34,6 +34,7 @@ package StarterGovernanceSentinel
 
 import (
 	"context"
+	"go-spring.org/cloud/chain"
 
 	sentinel "github.com/alibaba/sentinel-golang/api"
 
@@ -42,9 +43,6 @@ import (
 	"go-spring.org/spring/gs"
 )
 
-// SentinelName is the name this backend answers to in the governance document.
-const SentinelName = "sentinel"
-
 func init() {
 	// Initialise sentinel once at import time. Contribution then always succeeds
 	// so a misconfigured environment fails loudly here rather than on first use.
@@ -52,16 +50,19 @@ func init() {
 		panic("starter-governance-sentinel: sentinel init failed: " + err.Error())
 	}
 	// Contribute the backend as a named bean: the container is the driver
-	// directory, and the wiring bean collects every bean
-	// exported as resilience.Driver into a name-keyed map. The Export is
-	// load-bearing — gs indexes beans by their exact type, so without it the
-	// concrete *sentinelDriver would be invisible to that map.
+	// directory, and the resilience manager is built over every bean exported as
+	// resilience.Driver, keyed by bean name. The Export is load-bearing — gs
+	// indexes beans by their exact type, so without it the concrete
+	// *sentinelDriver would be invisible to that map.
 	gs.Provide(func() *sentinelDriver { return &sentinelDriver{} }).
 		Name(SentinelName).
 		Export(gs.As[resilience.Driver]()).
 		Caller(1)
 	log.Infof(context.Background(), log.TagAppDef, "registered sentinel resilience driver")
 }
+
+// SentinelName is the name this backend answers to in the governance document.
+const SentinelName = "sentinel"
 
 type sentinelDriver struct{}
 
@@ -71,33 +72,16 @@ type sentinelDriver struct{}
 // the same backend is contributed as the bean named [SentinelName].
 func NewSentinelDriver() resilience.Driver { return sentinelDriver{} }
 
-func (sentinelDriver) NewClientExecutor(service string, p resilience.ClientPolicy) (resilience.ClientExecutor, error) {
+func (sentinelDriver) NewClientExecutor(service string, p resilience.ClientPolicy) (chain.Executor, error) {
 	return newSentinelExecutor(service, p)
 }
 
-// NewServerExecutor builds the inbound admission executor. Sentinel maps the shared
-// knobs (flow rule, circuit breaker, isolation) onto the SAME primitives for both
-// directions — its flow rule is keyed by resource, and the resource is the route
-// label here — so the driver projects the admission model exactly as the bundled
-// one does, and nothing is lost. Sentinel's genuinely inbound-only primitives
-// (system rules, hotspot rules) have no [resilience.ServerPolicy] field to arrive
-// through yet; when they do, they land in this method.
-func (sentinelDriver) NewServerExecutor(service string, p resilience.ServerPolicy) (resilience.ServerExecutor, error) {
-	e, err := newSentinelExecutor(service, p.AsPolicy())
-	if err != nil {
-		return nil, err
-	}
-	return sentinelServerExecutor{e}, nil
-}
-
-// sentinelServerExecutor adapts the sentinel engine — which is defined over
-// [resilience.ClientPolicy] — to the inbound seam, whose model is
-// [resilience.ServerPolicy]. Only the refresh seam needs the wrapper: the engine is
-// the same type, and the admission model is re-projected on each refresh.
-type sentinelServerExecutor struct {
-	*sentinelExecutor
-}
-
-func (e sentinelServerExecutor) Refresh(p resilience.ServerPolicy) error {
-	return e.sentinelExecutor.Refresh(p.AsPolicy())
+// NewServerExecutor builds the inbound inbound engine
+// (server_executor.go), which maps the inbound model onto sentinel's flow,
+// circuit-breaker and isolation rules for one route. Sentinel's genuinely
+// inbound-only primitives (system rules, hotspot rules) have no
+// [resilience.ServerPolicy] field to arrive through yet; when they do, they land
+// there.
+func (sentinelDriver) NewServerExecutor(service string, p resilience.ServerPolicy) (chain.Executor, error) {
+	return newSentinelServerExecutor(service, p)
 }

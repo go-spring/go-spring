@@ -58,7 +58,7 @@ belong to `gs`; see the spring documentation.
 ## 4. Operations
 
 The security middlewares emit no logs or metrics; observability comes from the
-server side and from `starter-governance-file`. The CSRF cookie/header names default
+server side and from governance (`cloud/governance`). The CSRF cookie/header names default
 to `csrf_token` / `X-CSRF-Token`, matching the gin and echo shells.
 
 A request's signals come from `ServerPolicy` — the same division every other

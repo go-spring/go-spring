@@ -30,10 +30,10 @@ package StarterMilvus
 
 import (
 	"context"
+	"go-spring.org/cloud/chain"
 	"sync"
 
 	"go-spring.org/cloud/observability"
-	"go-spring.org/cloud/resilience"
 	"google.golang.org/grpc"
 
 	"github.com/milvus-io/milvus-sdk-go/v2/client"
@@ -44,18 +44,18 @@ import (
 // starter-tdengine's clientSlot.
 type guardSlot struct {
 	mu   sync.RWMutex
-	exec resilience.ClientExecutor
+	exec chain.Executor
 }
 
 // apply installs the executor the interceptors route through.
-func (s *guardSlot) apply(exec resilience.ClientExecutor) {
+func (s *guardSlot) apply(exec chain.Executor) {
 	s.mu.Lock()
 	s.exec = exec
 	s.mu.Unlock()
 }
 
 // load returns the applied executor, or nil before [NewClient] applies it.
-func (s *guardSlot) load() resilience.ClientExecutor {
+func (s *guardSlot) load() chain.Executor {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.exec

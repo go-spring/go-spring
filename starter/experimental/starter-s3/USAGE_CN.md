@@ -39,7 +39,6 @@ require (
     go-spring.org/starter-s3       latest
     go-spring.org/starter-actuator latest   # 可选：readiness 端点
     go-spring.org/starter-otel     latest   # 可选：真实 span/metric 导出
-    go-spring.org/starter-governance-file latest # 可选：retry/limiter/breaker/fault
 )
 ```
 
@@ -51,7 +50,6 @@ package main
 import (
     "go-spring.org/spring/gs"
     _ "go-spring.org/starter-actuator"
-    _ "go-spring.org/starter-governance-file"
     _ "go-spring.org/starter-otel"
     _ "go-spring.org/starter-s3"
 )
@@ -184,8 +182,8 @@ atomic.Value，因为活动的 tripper 是多种具体类型之一）——并�
    发射器在 `Execute` 入口读 operation，声明若嵌在执行器之内就会按次运行、无人读取。
 3. Resilience round-tripper（在声明之内）：请求进入构造期由构造函数下传的
    `cloud.ClientParams`（`*resilience.Manager` / `*fault.Injector` bean）为服务
-   `s3:<endpoint>` 构建的 executor——引入
-   starter-governance-file 后 retry / rate-limit / circuit-breaker / bulkhead 生效（经治理
+   `s3:<endpoint>` 构建的 executor——配好
+   治理规则源后 retry / rate-limit / circuit-breaker / bulkhead 生效（经治理
    中心可热切换），否则降级为仅观测的 unmanaged 执行器；`*fault.Injector`（nil 安全）
    可为演练注入失败。该 executor 是唯一发射点：开启调用 span、记录调用级
    `db.client.operation.duration`、每次重试的尝试级 `db.client.attempt.duration`，并写
@@ -255,7 +253,7 @@ example 在 GetObject 后自断言 `bytes.Equal(got, content)`——任何传输
 Debug、纯成功 Info。`db.operation` 是 HTTP 方法（有界，作指标标签）；`db.statement`
 是 URL path（逐调用，仅进 span 与日志）。
 
-### 4.5 fault/resilience 演练（需 starter-governance-file）
+### 4.5 fault/resilience 演练（需治理：一个已配置的规则源）
 
 按端点服务标签 `s3:127.0.0.1:9000` 配置治理规则：对该服务的 `fault.rate` 让一部分
 上传经 executor 失败——可通过 resilience 层的 outcome span/计数观测。

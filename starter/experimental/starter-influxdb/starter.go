@@ -18,19 +18,16 @@ package StarterInfluxdb
 
 import (
 	"context"
+	"go-spring.org/cloud/governance"
 
 	"go-spring.org/cloud"
 	"go-spring.org/cloud/actuator/health"
-	"go-spring.org/cloud/fault"
-	"go-spring.org/cloud/resilience"
 	"go-spring.org/log"
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
 	"go-spring.org/stdlib/flatten"
 )
-
-var starterTag = log.RegisterAppTag("influxdb", "")
 
 func init() {
 	// Register multiple InfluxDB clients as a group, one per entry under
@@ -52,12 +49,8 @@ func init() {
 			r.Provide(newClient,
 				gs.IndexArg(1, gs.ValueArg(c)),
 				gs.IndexArg(2, gs.TagArg("${spring.influxdb.instances."+name+".driver:=${spring.influxdb.default.driver:=?}}")),
-				// The governance beans are REQUIRED: each is registered by the package that
-				// owns it (cloud/resilience, cloud/loadbalance, cloud/fault), which this
-				// starter imports — "governance off" is spring.governance.enabled=false, never
-				// an absent bean.
-				gs.IndexArg(3, gs.TagArg("")), // *resilience.Manager
-				gs.IndexArg(4, gs.TagArg("")), // *fault.Injector
+				// The governance center is the family's sole injection point: it hands
+				// out the resilience/fault/loadbalance authorities.
 			).Name(name).Destroy((*Client).Destroy).Caller(1)
 			// Contribute a health indicator for this instance, injecting the
 			// client just registered above by name. Skipped when c.Health is
@@ -72,6 +65,8 @@ func init() {
 	})
 }
 
+var starterTag = log.RegisterAppTag("influxdb", "")
+
 // newClient creates a new InfluxDB client based on the provided configuration.
 // The Driver returns the client COMPLETE — governance (the declaration+
 // resilience transport) is applied while it is built — and when c.Ping is set
@@ -80,19 +75,20 @@ func init() {
 // default, so a server that is not up yet does not block startup. There is no
 // Init hook: the client is complete when the driver returns it.
 //
-// mgr and inj are the governance beans the container injects (both nil in a
-// standalone, non-gs call); the ctor bundles them into the
+// center is the governance center the container injects (nil in a standalone,
+// non-gs call) — the family's sole injection point; the ctor reads the
+// resilience and fault authorities from it and bundles them into the
 // [cloud.ClientParams] it hands the driver, which passes it to [NewClient] —
 // so the client is assembled complete in one step, with the zero bundle
 // degrading to an observed-only, loudly-unmanaged executor.
-func newClient(ctx *gs.ContextProvider, c Config, d Driver, mgr *resilience.Manager, inj *fault.Injector) (*Client, error) {
+func newClient(ctx *gs.ContextProvider, c Config, d Driver, center *governance.Center) (*Client, error) {
 	log.Debugf(ctx.Context, starterTag, "creating influxdb client, url=%s org=%s bucket=%s", c.ServerURL, c.Org, c.Bucket)
 
 	// No company Driver bean → fall back to the bundled default assembly.
 	if d == nil {
 		d = DefaultDriver{}
 	}
-	w, err := d.CreateClient(ctx.Context, c, cloud.ClientParams{Resilience: mgr, Fault: inj})
+	w, err := d.CreateClient(ctx.Context, c, cloud.ClientParams{Resilience: center.Resilience(), Fault: center.Fault()})
 	if err != nil {
 		return nil, err
 	}

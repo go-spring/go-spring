@@ -36,7 +36,6 @@ require (
     go-spring.org/starter-influxdb   latest
     go-spring.org/starter-actuator   latest   // 可选：readiness + /metrics
     go-spring.org/starter-otel       latest   // 可选：真实 trace/metric 导出
-    go-spring.org/starter-governance-file latest   // 可选：resilience/fault 策略
 )
 ```
 
@@ -48,7 +47,6 @@ package main
 import (
     "go-spring.org/spring/gs"
     _ "go-spring.org/starter-actuator"
-    _ "go-spring.org/starter-governance-file"
     _ "go-spring.org/starter-influxdb"
     _ "go-spring.org/starter-otel"
     _ "demo/service"
@@ -317,7 +315,7 @@ server 在启动**之后**挂掉：readiness 翻 DOWN（§4.1）；阻塞写返�
 
 ### 4.4 治理演练
 
-配置 starter-governance-file 后，服务 `influxdb:http://127.0.0.1:8086` 上的限流/熔断策略
+配置治理规则源后，服务 `influxdb:http://127.0.0.1:8086` 上的限流/熔断策略
 对经 transport executor 的**每一个**请求生效（写、查、健康探测）。压测 `WritePoints`
 并观察拒绝以 `_app_influxdb_access` 记录与 resilience observer 的 outcome 计数器浮出。
 运行期翻策略——executor 热更新，无需重启。注入故障（`spring.governance.client.fault.*`）也在同一

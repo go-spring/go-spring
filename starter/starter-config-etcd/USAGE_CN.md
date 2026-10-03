@@ -96,7 +96,7 @@ etcdctl put gs-config-demo "demo.message=hello-2"     # 绑定的 gs.Dync 字段
 
 ```
 blank-import starter-config-etcd
-  └─ init(): conf.RegisterProvider("etcd", etcdController.Load)
+  └─ init(): conf.RegisterProvider("etcd", newEtcdCtrl())
 
 gs.Run() → App.Start()
   1. 挂载 gs.RefreshProperties / gs.AppStarted 门面目标

@@ -37,7 +37,6 @@ require (
     go-spring.org/spring        v1.3.x
     go-spring.org/starter-asynq latest
     go-spring.org/starter-actuator latest   // 可选：§4 的健康端点
-    go-spring.org/starter-governance-file latest // 可选：投递上的 resilience/fault
 )
 ```
 
@@ -58,7 +57,6 @@ import (
 
     starter "go-spring.org/starter-asynq"
     _ "go-spring.org/starter-actuator"
-    _ "go-spring.org/starter-governance-file"
 )
 
 const taskType = "example:greet"
@@ -199,7 +197,7 @@ gs.Run()
    span 名 `enqueue`、`messaging.system`/`messaging.operation` 标签、任务类型作
    `messaging.destination.name` detail），放到 ctx 上，自身不发射任何信号。
 3. executor 执行：`NewClient` 用注入的 `*resilience.Manager` 构建、并由注入的
-   `*fault.Injector` 包裹的那一个——带 starter-governance-file 时，限流拒绝/熔断开启会在
+   `*fault.Injector` 包裹的那一个——配好治理规则源时，限流拒绝/熔断开启会在
    **接触 Redis 之前**中止；未引入则为直通。resilience 层负责**发射**：span、call 级
    `messaging.client.operation.duration`、attempt 级 `messaging.client.attempt.duration`
    直方图、`messaging.client.active_requests` gauge、`resilience.client.calls` 计数器
@@ -276,7 +274,7 @@ grep -c "boom" <log>                     # handler 错误经 asynq 日志浮出
 
 ### 4.5 治理守护（可选）
 
-带 starter-governance-file + 已配置的规则来源时，对服务 `asynq:<addr>` 开熔断/限流：
+配好治理规则源后，对服务 `asynq:<addr>` 开熔断/限流：
 `Client.Enqueue` 直接返回拒绝、**不触 Redis**；提升来的 `asynq.Client` 路径则完全绕过
 守护（见 §5 第 2 行）。
 

@@ -19,10 +19,10 @@ package StarterGateway
 import (
 	"context"
 	"fmt"
+	"go-spring.org/cloud/chain"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
-	"sort"
 
 	"go-spring.org/cloud/discovery"
 	"go-spring.org/cloud/loadbalance"
@@ -85,14 +85,9 @@ func (t *RouteTable) poolFor(up *Upstream) (*loadbalance.Pool, error) {
 	if disName == "" {
 		return nil, &parseError{what: "lb:// upstream without a discovery backend (set upstream.discovery or spring.gateway.discovery)", token: up.Service}
 	}
-	d, ok := t.backends[disName]
+	d, ok := t.disc.Get(disName)
 	if !ok || d == nil {
-		labels := make([]string, 0, len(t.backends))
-		for k := range t.backends {
-			labels = append(labels, k)
-		}
-		sort.Strings(labels)
-		return nil, &parseError{what: fmt.Sprintf("lb:// upstream cites discovery backend %q but no such bean exists (registered: %v)", disName, labels), token: up.Service}
+		return nil, &parseError{what: fmt.Sprintf("lb:// upstream cites discovery backend %q but no such backend exists (registered: %v)", disName, t.disc.Labels()), token: up.Service}
 	}
 	resolver, err := discovery.NewResolver(t.ctx, d, up.Service)
 	if err != nil {
@@ -125,7 +120,7 @@ func (t *RouteTable) poolFor(up *Upstream) (*loadbalance.Pool, error) {
 // failure — no live upstream instance — is a clean 503 instead of a dial to an
 // empty host. The Director then just applies the chosen target; on a resilience
 // retry the same target is reused.
-func (t *RouteTable) newProxyHandler(routeID string, up *Upstream, exec resilience.ClientExecutor, service string) (http.Handler, error) {
+func (t *RouteTable) newProxyHandler(routeID string, up *Upstream, exec chain.Executor, service string) (http.Handler, error) {
 	pick, err := t.buildPicker(up)
 	if err != nil {
 		return nil, err

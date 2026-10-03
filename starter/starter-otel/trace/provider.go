@@ -17,7 +17,9 @@
 package trace
 
 import (
+	"sort"
 	"strings"
+	"sync"
 
 	"go-spring.org/cloud/observability"
 	"go-spring.org/stdlib/errutil"
@@ -68,7 +70,7 @@ func NewTracerProvider(cfg TraceConfig, res *resource.Resource) (*sdktrace.Trace
 	}
 	f, ok := lookupSpanExporter(cfg.Exporter)
 	if !ok {
-		return nil, unknownExporterErr(cfg.Exporter)
+		return nil, errutil.Explain(nil, "observability: unknown trace exporter %q (registered: %s)", cfg.Exporter, strings.Join(exporterNames(), ", "))
 	}
 	exp, err := f(cfg)
 	if err != nil {
@@ -166,4 +168,54 @@ type TraceConfig struct {
 	Insecure     bool    `value:"${insecure:=true}"`
 	SamplerRatio float64 `value:"${sampler-ratio:=1.0}"`
 	Propagator   string  `value:"${propagator:=w3c}"` // w3c[,<extra>...] | <name>[,<name>...] | none; see NewPropagator
+}
+
+// SpanExporterFactory builds a span exporter for one backend from the trace
+// config. Register one under a name (typically from an init) to add a trace
+// backend beyond the built-ins; NewTracerProvider looks it up by cfg.Exporter.
+type SpanExporterFactory func(cfg TraceConfig) (sdktrace.SpanExporter, error)
+
+var (
+	exporterMu  sync.RWMutex
+	exporterReg = map[string]SpanExporterFactory{}
+)
+
+// RegisterSpanExporter makes a span exporter factory available under name. It
+// panics on empty name, nil factory, or a duplicate - mirroring the
+// driver-registry idiom used elsewhere (the propagator registry in this very
+// package, starter-gateway's RegisterFilter) so a mis-wired or duplicate
+// registration fails loudly at init.
+func RegisterSpanExporter(name string, f SpanExporterFactory) {
+	if name == "" {
+		panic("trace: register span exporter with empty name")
+	}
+	if f == nil {
+		panic("trace: register nil span exporter factory for " + name)
+	}
+	exporterMu.Lock()
+	defer exporterMu.Unlock()
+	if _, ok := exporterReg[name]; ok {
+		panic("trace: span exporter already registered: " + name)
+	}
+	exporterReg[name] = f
+}
+
+func lookupSpanExporter(name string) (SpanExporterFactory, bool) {
+	exporterMu.RLock()
+	defer exporterMu.RUnlock()
+	f, ok := exporterReg[name]
+	return f, ok
+}
+
+// exporterNames returns the sorted registered exporter names, for inclusion in
+// "unknown exporter" error messages.
+func exporterNames() []string {
+	exporterMu.RLock()
+	defer exporterMu.RUnlock()
+	names := make([]string, 0, len(exporterReg))
+	for n := range exporterReg {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+	return names
 }

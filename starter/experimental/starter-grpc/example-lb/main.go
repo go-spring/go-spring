@@ -183,7 +183,7 @@ func main() {
 	// the label directory directly (a gs.Run app would export a named
 	// discovery.Discovery bean instead).
 	d := newDisco(eps)
-	StarterGrpc.SetDiscoveryBackends(map[string]discovery.Discovery{"default": d})
+	StarterGrpc.SetDiscoveryBackends(discovery.NewManager(map[string]discovery.Discovery{"default": d}))
 	StarterGrpc.RegisterBalancer(smokeBalancer, loadbalance.RoundRobin,
 		loadbalance.TrackerConfig{Threshold: 3, SuspendFor: 2 * time.Second})
 

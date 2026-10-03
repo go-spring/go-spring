@@ -34,7 +34,6 @@ require (
     github.com/gin-gonic/gin    v1.12.0
     go-spring.org/spring        v1.3.x
     go-spring.org/starter-gin   latest
-    go-spring.org/starter-governance-file latest // optional: admission + fault via the governance center
     go-spring.org/starter-otel       latest // optional: real trace/metric export
 )
 ```
@@ -48,7 +47,6 @@ import (
     _ "demo/router"
 
     "go-spring.org/spring/gs"
-    _ "go-spring.org/starter-governance-file"
     _ "go-spring.org/starter-gin"
     _ "go-spring.org/starter-otel"
 )
@@ -133,7 +131,7 @@ spring.observability.metrics.path=/metrics
 
 # --- governance (inbound admission + fault drills) ----------------------------
 # Same keys example-resilience uses: 5 QPS limit → burst shed with 429.
-# NOTE: governance RULES go in conf/governance.properties, referenced by spring.governance.source.file.path in app.properties (see starter-governance-file USAGE).
+# NOTE: governance RULES go in conf/governance.properties, referenced by spring.governance.source.file.path in app.properties (see cloud/governance's SOURCE_USAGE).
 spring.governance.enabled=true
 spring.governance.driver=default
 spring.governance.server.default.rate-limit=5    # INBOUND admission: 5 QPS on every route

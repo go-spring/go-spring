@@ -33,7 +33,7 @@ import (
 // It is the one policy field a running executor cannot adopt — a pool is built
 // once — which is why Open reads it here.
 func TestOpenSizesThePoolFromTheGovernanceRule(t *testing.T) {
-	mgr := resilience.NewManager()
+	mgr := resilience.NewManager(nil)
 	assert.Error(t, mgr.Apply(resilience.Settings{
 		Enabled: true,
 		ResolveClientPolicy: func(string) resilience.ClientPolicy {

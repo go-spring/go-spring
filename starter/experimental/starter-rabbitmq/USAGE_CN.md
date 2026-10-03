@@ -36,7 +36,6 @@ require (
     go-spring.org/starter-rabbitmq   latest
     go-spring.org/starter-actuator   latest   // 可选：探针 + /metrics
     go-spring.org/starter-otel       latest   // 可选：真实 trace/metric 导出
-    go-spring.org/starter-governance-file latest   // 可选：GuardedPublish 的运行期治理
 )
 ```
 
@@ -50,7 +49,6 @@ import (
 
     "go-spring.org/spring/gs"
     _ "go-spring.org/starter-actuator"
-    _ "go-spring.org/starter-governance-file"
     _ "go-spring.org/starter-otel"
     _ "go-spring.org/starter-rabbitmq"
 )
@@ -308,7 +306,7 @@ docker stop demo-rabbit && go run .   # example 下：broker 停掉跑 ./check.s
 
 ### 4.2 受守卫 vs 未守卫路径
 
-引入 starter-governance-file，并对 rabbitmq 服务（label 为
+配好治理规则源后，对 rabbitmq 服务（label 为
 `rabbitmq:<vhost>`(冒号格式;vhost 为空时回落 `rabbitmq:<url>`)，starter.go:138）配置 fault 规则：
 
 1. `GuardedPublish` 调用 → resilience 哨兵错误，publish 根本不进 channel，

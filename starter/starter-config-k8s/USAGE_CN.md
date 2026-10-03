@@ -129,9 +129,9 @@ kubectl logs -f deploy/config-k8s-example    # 绑定的 gs.Dync 字段数秒内
 
 ```
 blank import starter-config-k8s
-  ├─ init (provider.go:67): conf.RegisterProvider("k8s", k8sController.Load)
-  └─ init (starter.go:29):  gs.Provide(k8sController).Name("k8sController")
-                            .Export(gs.As[gs.Rooter]()).Destroy((*k8sCtrl).Destroy)
+  └─ init (starter.go:34): conf.RegisterProvider("k8s", newK8sCtrl())
+                           —— 注册控制器本身，这样运行时才能在退出时调用它的
+                             Close 停掉 informer
 
 gs.Run()
   ├─ AppConfig.Refresh (gs_conf/conf.go:83-128) —— 先于任何 bean 装配：
@@ -147,10 +147,10 @@ gs.Run()
   │            变更不会被漏掉 (provider.go:158-161)
   │         e. parseEntries → flatten → 合入属性存储
   │    └─ 合并后的快照成为所有 value tag 绑定的属性存储
-  ├─ 容器装配：k8sController 作为 bean 实例化纯粹是为了 .Destroy 生命周期
-  │  （无 autowire 字段）；app.started 置 true (app.go:179-183)
+  ├─ 容器装配：控制器根本不是 bean；app.started 置 true (app.go:179-183)
   ├─ Runner/Server 启动；就绪
-  └─ SIGTERM → bean 析构 Destroy → manager.stopAll() 停掉全部 informer
+  └─ SIGTERM → conf.CloseProviders() → k8sCtrl.Close → manager.stopAll()
+     停掉全部 informer
 ```
 
 为什么先于 bean：provider 的输出必须在 `value:` tag 解析之前就进入属性存储，这样来自

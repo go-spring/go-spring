@@ -33,7 +33,6 @@ require (
     go-spring.org/spring        v1.3.x
     go-spring.org/starter-kafka-sarama latest
     go-spring.org/starter-otel    latest   // optional: real trace/metric export
-    go-spring.org/starter-governance-file latest // optional: resilience/fault policy
     go-spring.org/starter-actuator latest  // optional: probes + /metrics mount
 )
 ```
@@ -46,7 +45,6 @@ package main
 import (
     "go-spring.org/spring/gs"
     _ "go-spring.org/starter-actuator"
-    _ "go-spring.org/starter-governance-file"
     _ "go-spring.org/starter-kafka-sarama"
     _ "go-spring.org/starter-otel"
     _ "demo/service"
@@ -341,7 +339,7 @@ The process never reaches "serving" with a dead/unauthenticated broker — no fi
 surprise [client.go:42-46].
 ### 4.2 Guarded vs unguarded paths
 
-With starter-governance-file and a breaker/rate-limit policy on service `kafka|127.0.0.1:9092`:
+With a configured governance rules source and a breaker/rate-limit policy on service `kafka|127.0.0.1:9092`:
 
 ```go
 wrapped := StarterKafkaSarama.WrapSyncProducer(cl, producer, prop)

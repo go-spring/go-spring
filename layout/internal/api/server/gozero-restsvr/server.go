@@ -88,7 +88,7 @@ func (s *Server) Run(ctx context.Context, sig gs.ReadySignal) error {
 
 	select {
 	case err := <-errCh:
-		if err == http.ErrServerClosed {
+		if errutil.IsServerClosed(err) {
 			return nil
 		}
 		return errutil.Explain(err, "failed to serve on %s", s.httpSvr.Addr)

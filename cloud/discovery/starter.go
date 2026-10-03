@@ -26,6 +26,18 @@ import (
 // per process by Go's package-init semantics — no coordination between
 // backends is needed.
 func init() {
+	// The directory of every discovery.Discovery bean in the container, keyed by
+	// bean name (the label a client cites). Registered here, by the package that
+	// owns the concept, for the same reason the registration server is: linking
+	// this package is what puts it in the container. It is the authority the
+	// governance center holds and hands out, so a client reaches discovery
+	// through the center like every other authority. The map is optional (nil
+	// when the app declares no backend bean), and a nil map is an empty
+	// directory — every lookup misses.
+	gs.Provide(func(backends map[string]Discovery) *Manager {
+		return NewManager(backends)
+	}, gs.IndexArg(0, gs.TagArg("?"))).Caller(1)
+
 	// Activated only when the registration intent signal is set: a
 	// ${spring.discovery.service-name} means this process publishes itself.
 	// Pure consumers leave it unset and nothing registers anywhere. The

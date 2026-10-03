@@ -3,6 +3,7 @@ module go-spring.org/cloud
 go 1.26.1
 
 require (
+	github.com/fsnotify/fsnotify v1.9.0
 	github.com/stretchr/testify v1.11.1
 	go-spring.org/spring v1.3.4
 	go-spring.org/stdlib v0.1.7

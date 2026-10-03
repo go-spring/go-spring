@@ -39,6 +39,7 @@ package errutil
 import (
 	"errors"
 	"fmt"
+	"net/http"
 )
 
 // ErrForbiddenMethod is returned when a prohibited method is called.
@@ -54,6 +55,14 @@ var ErrForbiddenMethod = errors.New("forbidden method")
 // It is commonly used as a placeholder to indicate functionality that is
 // intentionally left unimplemented or pending future development.
 var ErrUnimplementedMethod = errors.New("unimplemented method")
+
+// IsServerClosed reports whether err is (or wraps) http.ErrServerClosed —
+// i.e. the http.Server exited because Shutdown or Close was called, which
+// is a graceful stop and not a failure. Use this instead of comparing
+// err == http.ErrServerClosed directly, so wrapped errors are matched too.
+func IsServerClosed(err error) bool {
+	return errors.Is(err, http.ErrServerClosed)
+}
 
 // Explain wraps an existing error by adding *explanatory semantics* —
 // a human-readable interpretation of the underlying cause.

@@ -64,9 +64,10 @@ func TestDriverPoolIsBoundByCaller(t *testing.T) {
 	// The manager is applied to the bundle the driver receives; binding an
 	// unarmed manager is safe, so the pool is subscribed and armed when the
 	// manager goes live — standing in for a center that pushes later.
-	mgr := loadbalance.NewManager()
+	mgr, err := loadbalance.NewManager(nil) // no factory bean contributed
+	assert.Error(t, err).Nil()
 	w, err := drv.CreateClient(context.Background(), Config{Addr: "10.0.0.1:6379"},
-		cloud.ClientParams{Resilience: resilience.NewManager(), Loadbalance: mgr})
+		cloud.ClientParams{Resilience: resilience.NewManager(nil), Loadbalance: mgr})
 	assert.Error(t, err).Nil()
 
 	// The rule gives this service a strategy the pool was not built with.
@@ -90,8 +91,10 @@ func TestDriverPoolIsBoundByCaller(t *testing.T) {
 // pick pool passes nil and NewClient binds nothing — no nil dereference, no
 // forced governance awareness.
 func TestDriverPoolNilIsFine(t *testing.T) {
+	lb, err := loadbalance.NewManager(nil) // no factory bean contributed
+	assert.Error(t, err).Nil()
 	w, err := NewClient(redis.NewClient(&redis.Options{Addr: "127.0.0.1:0"}), Config{Addr: "10.0.0.1:6379"}, nil,
-		cloud.ClientParams{Resilience: resilience.NewManager(), Loadbalance: loadbalance.NewManager()})
+		cloud.ClientParams{Resilience: resilience.NewManager(nil), Loadbalance: lb})
 	assert.Error(t, err).Nil()
 	assert.That(t, w.lbPool).Nil()
 	assert.That(t, w.detach).Nil()

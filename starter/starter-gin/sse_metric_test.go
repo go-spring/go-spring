@@ -25,6 +25,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"go-spring.org/cloud/governance"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
@@ -414,6 +415,13 @@ func writeSSE(c *gin.Context, n int, flush bool) {
 
 // The handler must run exactly once: adding c.Next() to responseCapture must
 // not cause the route handler to execute twice.
+
+// testCenter builds the governance center bean the middleware chain takes, so a
+// container-less test still exercises the real injection path.
+func testCenter() *governance.Center {
+	return governance.NewCenter(governance.Config{}, nil, nil, nil, nil, nil)
+}
+
 func TestSSEHandlerRunsOnce(t *testing.T) {
 	var runs int
 	runStream(t, true, true, false, func(c *gin.Context) {
@@ -965,7 +973,7 @@ func TestEngineMiddleware_RunsBeforeBuiltins(t *testing.T) {
 			Enabled:   true,
 			RequestID: RequestIDConfig{Enabled: true},
 		},
-	}, nil, nil, nil); err != nil {
+	}, testCenter(), nil); err != nil {
 		t.Fatalf("ApplyMiddlewares: %v", err)
 	}
 	e.GET("/x", func(c *gin.Context) { c.String(http.StatusOK, "ok") })
@@ -1004,7 +1012,7 @@ func TestEngineMiddleware_NilIsNoOp(t *testing.T) {
 			Enabled:   true,
 			RequestID: RequestIDConfig{Enabled: true},
 		},
-	}, nil, nil, nil); err != nil {
+	}, testCenter(), nil); err != nil {
 		t.Fatalf("ApplyMiddlewares: %v", err)
 	}
 	e.GET("/x", func(c *gin.Context) { c.String(http.StatusOK, "ok") })
@@ -1043,7 +1051,7 @@ func TestApplyMiddlewares_ManualComposition(t *testing.T) {
 			Enabled:   true,
 			RequestID: RequestIDConfig{Enabled: true},
 		},
-	}, nil, nil, nil); err != nil {
+	}, testCenter(), nil); err != nil {
 		t.Fatalf("ApplyMiddlewares: %v", err)
 	}
 	e.GET("/m", func(c *gin.Context) { c.String(http.StatusOK, "ok") })

@@ -20,7 +20,7 @@ import (
 	"context"
 	"math"
 
-	"go-spring.org/cloud/fault"
+	"go-spring.org/cloud/governance"
 	"go-spring.org/cloud/traffic"
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
@@ -39,10 +39,12 @@ func init() {
 	gs.Provide(
 		NewSimpleTrpcServer,
 		gs.IndexArg(0, gs.TagArg("${spring.trpc.server}")),
-		gs.IndexArg(2, gs.TagArg("?")), // nullable fault.Injector bean
 		gs.IndexArg(3, gs.TagArg("?")), // nullable traffic.Propagator bean
 	).Export(gs.As[gs.Server]()).
-		Condition(gs.OnProperty("spring.trpc.server.addr"))
+		Condition(gs.And(
+			gs.OnProperty("spring.trpc.server.enabled").HavingValue("true").MatchIfMissing(),
+			gs.OnProperty("spring.trpc.server.addr"),
+		))
 }
 
 // ServiceRegister binds a service handler onto a tRPC server.Server. This
@@ -59,6 +61,10 @@ type ServiceRegister func(s *server.Server)
 // trpc.NewServerWithConfig, so there is no trpc_go.yaml and all config lives in
 // conf/app.properties like every other Go-Spring service.
 type Config struct {
+	// Enabled gates the starter (enabled, default true) — the starter convention:
+	// the switch opts OUT, the addr key below opts IN.
+	Enabled bool `value:"${enabled:=true}"`
+
 	// Addr is the host:port the service listens on, split into tRPC's IP/Port.
 	Addr string `value:"${addr}"`
 	// ServiceName is the fully-qualified tRPC service name (trpc.app.server.service).
@@ -110,9 +116,10 @@ type MetricsConfig struct {
 type SimpleTrpcServer struct {
 	cfg Config
 	reg ServiceRegister
-	// inj is the governance starter's fault injector bean (nil when governance
-	// is not imported); it backs the always-registered "fault" server filter.
-	inj *fault.Injector
+	// center is the governance center bean (nil when governance is not
+	// imported); its fault authority backs the always-registered "fault"
+	// server filter.
+	center *governance.Center
 	// prop is the application's load-test convention bean (nil-normalized to
 	// go-spring's default); the "loadtest" server filter reads the inbound marker
 	// through it.
@@ -122,19 +129,19 @@ type SimpleTrpcServer struct {
 }
 
 // NewSimpleTrpcServer creates a SimpleTrpcServer from ${spring.trpc.server}
-// config and the registered ServiceRegister bean. inj is the governance
-// starter's fault injector bean, captured here and reused by the "fault" server
-// filter (nil when governance is not imported). prop is the application's
+// config and the registered ServiceRegister bean. center is the governance
+// center bean, captured here and its fault authority reused by the "fault"
+// server filter (nil when governance is not imported). prop is the application's
 // load-test convention bean, handed to the "loadtest" server filter (nil means
 // go-spring's default).
-func NewSimpleTrpcServer(cfg Config, reg ServiceRegister, inj *fault.Injector, prop traffic.Propagator) *SimpleTrpcServer {
+func NewSimpleTrpcServer(cfg Config, reg ServiceRegister, center *governance.Center, prop traffic.Propagator) *SimpleTrpcServer {
 	if prop == nil {
 		// DefaultBinding is complete, so this cannot fail.
 		prop, _ = traffic.NewDefaultPropagator(traffic.DefaultBinding())
 	}
 	log.Debugf(context.Background(), log.TagAppDef, "trpc server created addr=%s service=%s network=%s protocol=%s",
 		cfg.Addr, cfg.ServiceName, cfg.Network, cfg.Protocol)
-	return &SimpleTrpcServer{cfg: cfg, reg: reg, inj: inj, prop: prop, done: make(chan struct{})}
+	return &SimpleTrpcServer{cfg: cfg, reg: reg, center: center, prop: prop, done: make(chan struct{})}
 }
 
 // Run builds the tRPC server from a programmatic *trpc.Config (no trpc_go.yaml)
@@ -187,7 +194,7 @@ func (s *SimpleTrpcServer) Run(ctx context.Context, sig gs.ReadySignal) error {
 	// starters' fault.WrapClientExecutor. Always registered; the filter captures the
 	// injector once, and the center swaps its config in place, so fault can be
 	// hot-toggled at runtime without a restart.
-	filter.Register("fault", FaultServerFilter(s.inj), nil)
+	filter.Register("fault", FaultServerFilter(s.center.Fault()), nil)
 
 	// Bind the concrete service handler; the adapter itself stays service-agnostic.
 	s.reg(s.svr)

@@ -65,16 +65,6 @@ import (
 	"go-spring.org/spring/gs"
 )
 
-var (
-	// starterTag identifies logs emitted by the batch starter.
-	starterTag = log.RegisterAppTag("batch", "")
-)
-
-// enabled matches when the starter is not explicitly disabled. It is the
-// baseline gate for both bean contributions so an app that sets
-// spring.batch.enabled=false pays nothing.
-var enabled = gs.OnProperty("spring.batch.enabled").HavingValue("true").MatchIfMissing()
-
 func init() {
 	// The Launcher bean. Its exported fields (Config, Defs, Repos) are
 	// autowired by the container; Init resolves them into (repo, defs) at
@@ -96,6 +86,16 @@ func init() {
 		Condition(enabled, gs.OnBean[JobDefinition]()).
 		Export(gs.As[gs.Server]())
 }
+
+var (
+	// starterTag identifies logs emitted by the batch starter.
+	starterTag = log.RegisterAppTag("batch", "")
+)
+
+// enabled matches when the starter is not explicitly disabled. It is the
+// baseline gate for both bean contributions so an app that sets
+// spring.batch.enabled=false pays nothing.
+var enabled = gs.OnProperty("spring.batch.enabled").HavingValue("true").MatchIfMissing()
 
 // Server drives the run-on-startup batch jobs and plugs the runner into the
 // Go-Spring server lifecycle. Its exported fields are populated by the IoC

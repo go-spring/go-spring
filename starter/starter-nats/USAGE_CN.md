@@ -34,7 +34,6 @@ require (
     go-spring.org/starter-nats    latest
     go-spring.org/starter-actuator latest   // 可选：探针 + /metrics 挂载
     go-spring.org/starter-otel     latest   // 可选：真实 trace/metric 导出
-    go-spring.org/starter-governance-file latest // 可选：运行时 resilience/fault
 )
 ```
 
@@ -48,7 +47,6 @@ import (
 
     "go-spring.org/spring/gs"
     _ "go-spring.org/starter-actuator"
-    _ "go-spring.org/starter-governance-file"
     _ "go-spring.org/starter-nats"
     _ "go-spring.org/starter-otel"
 )

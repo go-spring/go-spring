@@ -27,21 +27,16 @@ func init() {
 
 	// The compiled, hot-reloadable route table. Its ${spring.gateway} config
 	// and optional FilterWrapper beans (jwt-auth, lua) are populated by field
-	// injection; the container's named discovery backend beans are collected by
-	// the constructor (lb:// upstreams resolve their label against them), and so
-	// are the governance authorities it drives per-route protection and endpoint
-	// selection with; route compilation is deferred to server startup (warmup).
+	// injection; the governance center is collected by the constructor, and with
+	// it the discovery directory (lb:// upstreams resolve their label against it)
+	// and the authorities it drives per-route protection and endpoint selection
+	// with; route compilation is deferred to server startup (warmup).
 	// Discovery runs inside the backend (loaders have no resources), so there is
 	// no destroy half to register.
 	gs.Provide(newRouteTable,
-		gs.IndexArg(2, gs.TagArg("?")),
-		// The governance beans are REQUIRED: each is registered by the package that
-		// owns it (cloud/resilience, cloud/loadbalance, cloud/fault), which this
-		// starter imports — "governance off" is spring.governance.enabled=false, never
-		// an absent bean.
-		gs.IndexArg(3, gs.TagArg("")),
-		gs.IndexArg(4, gs.TagArg("")),
-		gs.IndexArg(5, gs.TagArg("?")),
+		// The governance center is the family's sole injection point: it hands
+		// out the resilience/loadbalance authorities and the discovery directory.
+		gs.IndexArg(3, gs.TagArg("?")),
 	).Caller(1)
 
 	// The listen-port server, wired into graceful drain as a gs.Server. Named

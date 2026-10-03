@@ -98,12 +98,12 @@ func TestProviderTypeSymmetry(t *testing.T) {
 	if err := os.WriteFile(file, []byte("v"), 0o644); err != nil {
 		t.Fatalf("write: %v", err)
 	}
-	if _, err := ct.load(false, file); err == nil {
+	if _, err := ct.Load(false, file); err == nil {
 		t.Fatalf("configtree on a file must error")
 	}
 
 	// optional:true tolerates a missing path for both providers.
-	if m, err := ct.load(true, filepath.Join(tmp, "nope")); err != nil || m != nil {
+	if m, err := ct.Load(true, filepath.Join(tmp, "nope")); err != nil || m != nil {
 		t.Fatalf("optional missing configtree: m=%v err=%v", m, err)
 	}
 }

@@ -60,3 +60,20 @@ func TestSplitHostPort(t *testing.T) {
 		assert.That(t, err).NotNil()
 	}
 }
+
+// TestIsLoopback pins the classification: loopback IPs and "localhost" are
+// loopback; wildcard and public addresses are not, since they accept off-host
+// traffic.
+func TestIsLoopback(t *testing.T) {
+	// Plain loopback IPs and "localhost" are loopback.
+	assert.That(t, IsLoopback("127.0.0.1:9981")).True()
+	assert.That(t, IsLoopback("[::1]:9981")).True()
+	assert.That(t, IsLoopback("localhost:9981")).True()
+	// Wildcard and public addresses are not: they accept off-host traffic.
+	assert.That(t, IsLoopback(":9981")).False()
+	assert.That(t, IsLoopback("0.0.0.0:9981")).False()
+	assert.That(t, IsLoopback("10.0.0.1:9981")).False()
+	// A bare host without a port still classifies.
+	assert.That(t, IsLoopback("127.0.0.1")).True()
+	assert.That(t, IsLoopback("example.com")).False()
+}

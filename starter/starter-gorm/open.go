@@ -18,7 +18,7 @@ package gormcore
 
 import (
 	"go-spring.org/cloud"
-	"go-spring.org/cloud/resilience"
+	"go-spring.org/cloud/chain"
 	gormobserve "go-spring.org/starter-gorm/observe"
 	gormresilience "go-spring.org/starter-gorm/resilience"
 	"go-spring.org/stdlib/errutil"
@@ -28,9 +28,10 @@ import (
 // Options carries the per-instance inputs a dialect starter hands to [Open]: the
 // observability label, the teardown closers for driver-scoped state (discovery
 // watches, registered TLS configs), and the container's facilities. The first
-// group comes from the dialect's [Build] (via [Spec]); the last is filled by the
-// module wiring, which is the only place the governance beans are reachable — a
-// dialect never depends on cloud/governance.
+// group comes from the dialect's build (via [Spec]); the last is filled by
+// [NewDB], whose caller — a dialect starter's wiring — is the only place the
+// governance center is reachable, since a dialect never depends on
+// cloud/governance.
 type Options struct {
 	Engine         string   // db.system + service label (e.g. "mysql", "postgresql")
 	Service        string   // precomputed resilience.ServiceLabel for this instance
@@ -59,7 +60,7 @@ type DB struct {
 	serviceLabel   string
 	observeEnabled bool
 	closers        []func()
-	exec           resilience.ClientExecutor // from Params.ExecutorFor; unmanaged (observe-only) when no container
+	exec           chain.Executor // from Params.ExecutorFor; unmanaged (observe-only) when no container
 }
 
 // Open opens gorm with the given dialector, applies the pool settings and runs

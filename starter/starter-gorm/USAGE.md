@@ -41,7 +41,6 @@ require (
     go-spring.org/starter-gorm-mysql latest  // brings in starter-gorm (gormcore)
     go-spring.org/starter-actuator latest   // optional: probes + /metrics
     go-spring.org/starter-otel     latest   // optional: real trace/metric export
-    go-spring.org/starter-governance-file latest // optional: runtime fault injection
 )
 ```
 
@@ -55,7 +54,6 @@ import (
 
     "go-spring.org/spring/gs"
     _ "go-spring.org/starter-actuator"
-    _ "go-spring.org/starter-governance-file"
     _ "go-spring.org/starter-gorm-mysql" // registers instances under spring.gorm.mysql.instances.*
     _ "go-spring.org/starter-otel"
 )
@@ -148,7 +146,7 @@ spring.observability.metrics.exporter=prometheus
 spring.observability.metrics.port=0        # /metrics via actuator only
 
 # --- governance (runtime fault injection / breaker / retry) ------------------
-# NOTE: governance RULES go in conf/governance.properties, referenced by spring.governance.source.file.path in app.properties (see starter-governance-file USAGE).
+# NOTE: governance RULES go in conf/governance.properties, referenced by spring.governance.source.file.path in app.properties (see cloud/governance's SOURCE_USAGE).
 spring.governance.enabled=true
 spring.governance.driver=default
 spring.governance.client.default.error-threshold=20
@@ -193,17 +191,17 @@ curl -s :9370/metrics | grep db_client_operation_duration
 
 ```
 import starter-gorm-mysql
-  └─ init: gormcore.Module(Dialect[Config]{Prefix:"spring.gorm.mysql", ...})
-        └─ gs.Module(gs.OnProperty("spring.gorm.mysql"))     [prefix check: any entry fires it]
+  └─ init: gs.Module(gs.OnProperty("spring.gorm.mysql.instances"))  [prefix check: any entry fires it]
+        └─ registration lives in the starter (this file), construction is shared
 gs.Run()
-  ├─ config bind: conf.BindEach over ${spring.gorm.mysql} → one Config per <name>
+  ├─ config bind: conf.BindEach over ${spring.gorm.mysql.instances} → one Config per <name>
   ├─ per instance <name>:
-  │    ├─ Dialect.Build(ctx, c)      dialect builds DSN/dialector; resolves TLS,
-  │    │                             service discovery (mysql only), service label
-  │    ├─ gormcore.Open:  gorm.Open → ApplyPool (pool knobs) → ApplyDBCustomizers
+  │    ├─ build(ctx, c)      dialect builds DSN/dialector; resolves TLS,
+  │    │                     service discovery (mysql only), service label
+  │    ├─ gormcore.NewDB:  gormcore.Open:  gorm.Open → ApplyPool (pool knobs) → ApplyDBCustomizers
   │    │                  (user seam, registration order) → observe plugin
   │    │                  (unless observe.enabled=false) → governance: builds the
-  │    │                  resilience executor from Options.Governance.ExecutorFor
+  │    │                  resilience executor from Params.ExecutorFor
   │    │                  → ApplyCallbacks replaces the six gorm processors
   │    ├─ if ping: startup probe: gormcore.HealthCheck (delegates to Ping, bounded
   │    │                  by ping-timeout) — after assembly
@@ -218,7 +216,7 @@ gs.Run()
      TLS deregistration) → underlying *sql.DB pool closed
 ```
 
-Assembly completes inside `gormcore.Open` (observe + governance both applied, so
+Assembly completes inside `gormcore.Open`, called by `gormcore.NewDB` (observe + governance both applied, so
 the DB is complete when the constructor returns — nothing patches it afterwards)
 before the client is probed. Failure at any step (dialect build, gorm.Open, pool,
 customizer, observe plugin, governance) fails that instance's creation and runs
@@ -379,7 +377,7 @@ health.go:33-35).
 
 ### 4.4 Fault / resilience drill (no restart)
 
-Using the governance config from §1 plus a file source (see starter-governance-file)
+Using the governance config from §1 plus a file source (see cloud/governance's SOURCE_USAGE)
 or the example-load layout (`starter-gorm-mysql/example-load`):
 
 1. Start the app with `spring.governance.client.fault.enabled=false`; baseline queries succeed.

@@ -18,6 +18,7 @@ package StarterGoRedis
 
 import (
 	"context"
+	"go-spring.org/cloud/chain"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -63,7 +64,7 @@ return allowed
 //
 // Two limits are deliberate. Sliding-window scopes are counted as token buckets
 // (the atomic script is what makes a shared budget correct, and a window does not
-// map onto one script cheaply). Queueing ([resilience.ClientPolicy.RateLimitMaxWait])
+// map onto one script cheaply). Queueing ([resilience.RateSpec.MaxWait])
 // is not offered either: waiting for a token would mean polling Redis, so a redis
 // store rejects an over-limit unit immediately — keep queueing for the in-process
 // store.
@@ -95,25 +96,25 @@ func NewCounters(client redis.UniversalClient) (resilience.Counters, error) {
 
 // Allow charges n units of scope's budget to Redis. Keys are namespaced under
 // "ratelimit:" so per-scope counters never collide with application data.
-func (c *redisCounters) Allow(ctx context.Context, scope string, p resilience.ClientPolicy, n int) error {
-	if p.RateLimit <= 0 || n <= 0 { // no budget configured
+func (c *redisCounters) Allow(ctx context.Context, scope string, spec resilience.RateSpec, n int) error {
+	if spec.RateLimit <= 0 || n <= 0 { // no budget configured
 		return nil
 	}
-	burst := p.Burst
+	burst := spec.Burst
 	if burst <= 0 {
-		if burst = int(p.RateLimit); burst < 1 {
+		if burst = int(spec.RateLimit); burst < 1 {
 			burst = 1
 		}
 	}
 	res, err := redisTokenBucket.Run(ctx, c.client,
 		[]string{c.prefix + scope},
-		p.RateLimit, float64(burst), time.Now().UnixMilli(), n,
+		spec.RateLimit, float64(burst), time.Now().UnixMilli(), n,
 	).Int64()
 	if err != nil {
 		return err
 	}
 	if res != 1 {
-		return resilience.ErrRateLimited
+		return chain.ErrRateLimited
 	}
 	return nil
 }

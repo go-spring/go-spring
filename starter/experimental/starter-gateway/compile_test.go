@@ -31,11 +31,15 @@ import (
 // recompile: direct http upstreams need no discovery or wrappers.
 func newTestTable(t *testing.T) *RouteTable {
 	t.Helper()
+	lbMgr, err := loadbalance.NewManager(nil) // no factory bean contributed
+	if err != nil {
+		t.Fatal(err)
+	}
 	tbl := &RouteTable{
 		ctx:      context.Background(),
 		obs:      newObserver(),
-		mgr:      resilience.NewManager(),
-		lbMgr:    loadbalance.NewManager(),
+		mgr:      resilience.NewManager(nil),
+		lbMgr:    lbMgr,
 		counters: newMemoryCounters(),
 	}
 	return tbl

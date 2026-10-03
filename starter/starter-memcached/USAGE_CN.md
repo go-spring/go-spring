@@ -40,7 +40,6 @@ require (
     go-spring.org/spring                    v1.3.x
     go-spring.org/starter-memcached         latest
     go-spring.org/starter-actuator          latest   // 可选：/readiness 折入 memcache 健康
-    go-spring.org/starter-governance-file        latest   // 可选：memcached 操作的 resilience/fault
 )
 ```
 
@@ -236,7 +235,7 @@ starter）。
 
 `driver` key 按名指定 Driver bean：留空 = 先回退家族级 `spring.<family>.default.driver`，再按类型注入唯一 Driver bean（见 §2.1），配置
 bean 名则显式选定一个；无 `resilience` key：resilience/fault 来自治理中心
-（starter-governance-file 的 `spring.governance.*` 配置），按服务 `memcached:<service-name 或实例名>` 隔离。
+（`cloud/governance` 的 `spring.governance.*` 配置），按服务 `memcached:<service-name 或实例名>` 隔离。
 
 ---
 

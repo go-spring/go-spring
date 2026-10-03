@@ -41,8 +41,8 @@ func (f *fakeSource) resolve(label string) Selection {
 }
 
 // manager returns a Manager armed against this source.
-func (f *fakeSource) manager() *Manager {
-	m := NewManager()
+func (f *fakeSource) manager(t *testing.T) *Manager {
+	m := newManager(t)
 	m.Apply(Settings{Enabled: true, Resolve: f.resolve})
 	return m
 }
@@ -66,7 +66,7 @@ func (f *fakeSource) labelCount() int {
 // manager (governance absent from the process) a pool keeps the strategy it was
 // built with, the returned stop is a no-op, and a double stop is harmless.
 func TestBindWithoutManager(t *testing.T) {
-	m := NewManager()
+	m := newManager(t)
 
 	p := NewPool(staticSource(eps("a", "b")...), NewRoundRobin())
 	stop := m.Bind(p, "demo:service")
@@ -85,7 +85,7 @@ func TestBindWithoutManager(t *testing.T) {
 // thresholds are readable back off the pool.
 func TestBindAppliesCurrentAndLaterChanges(t *testing.T) {
 	f := &fakeSource{cur: Selection{Balancer: LeastConn, OutlierThreshold: 2, OutlierSuspendFor: 30}}
-	m := f.manager()
+	m := f.manager(t)
 
 	p := NewPool(staticSource(eps("a", "b")...), NewRoundRobin())
 	stop := m.Bind(p, "demo:service")
@@ -105,7 +105,7 @@ func TestBindAppliesCurrentAndLaterChanges(t *testing.T) {
 // the pool follow the 9:1 weights instead.
 func TestBindStrategyTakesEffect(t *testing.T) {
 	f := &fakeSource{}
-	m := f.manager()
+	m := f.manager(t)
 
 	src := staticSource(
 		discovery.Endpoint{Addr: "a", Healthy: true, Weight: 9},
@@ -139,7 +139,7 @@ func TestBindStrategyTakesEffect(t *testing.T) {
 // that does not exist leaves the last accepted one in force.
 func TestBindUnknownNameKeepsLastGood(t *testing.T) {
 	f := &fakeSource{}
-	m := f.manager()
+	m := f.manager(t)
 
 	p := NewPool(staticSource(eps("a")...), NewRoundRobin())
 	stop := m.Bind(p, "demo:service")
@@ -162,7 +162,7 @@ func TestBindUnknownNameKeepsLastGood(t *testing.T) {
 // client), so each bind subscribes independently and a change reaches every pool.
 func TestBindIsPerPoolNotPerLabel(t *testing.T) {
 	f := &fakeSource{}
-	m := f.manager()
+	m := f.manager(t)
 
 	p1 := NewPool(staticSource(eps("a")...), NewRoundRobin())
 	p2 := NewPool(staticSource(eps("a")...), NewRoundRobin())
@@ -186,7 +186,7 @@ func TestBindIsPerPoolNotPerLabel(t *testing.T) {
 // back off, so a later bind is a no-op that does not even consult the resolver.
 func TestApplyDisabledDisarms(t *testing.T) {
 	f := &fakeSource{cur: Selection{Balancer: LeastConn}}
-	m := f.manager()
+	m := f.manager(t)
 
 	p := NewPool(staticSource(eps("a")...), NewRoundRobin())
 	stop := m.Bind(p, "demo:service")
@@ -206,19 +206,19 @@ func TestApplyDisabledDisarms(t *testing.T) {
 
 // TestSelectionForUnarmedIsZero pins the read path on an unarmed manager.
 func TestSelectionForUnarmedIsZero(t *testing.T) {
-	m := NewManager()
+	m := newManager(t)
 	assert.That(t, m.SelectionFor("demo:service")).Equal(Selection{})
 	assert.That(t, m.Enabled()).False()
 }
 
 // TestBindBeforeArmingSurvives is the regression guard for a silent loss of the
-// binding: a pool is built during bean CONSTRUCTION, which runs before the
-// wiring bean arms the center (Centre.GoLive is an Init hook). A subscription
+// binding: a pool is built during bean CONSTRUCTION, which can run before the
+// center bean goes live (GoLive is that bean's Init hook). A subscription
 // taken at that moment must be REMEMBERED and armed once the manager is armed —
 // dropping it would leave the pool unmanaged for the life of the process, with
 // nothing to indicate it.
 func TestBindBeforeArmingSurvives(t *testing.T) {
-	m := NewManager() // unarmed: this is the state at construction time
+	m := newManager(t) // unarmed: this is the state at construction time
 	pool := NewPool(staticSource(eps("a")...), NewRoundRobin())
 
 	stop := m.Bind(pool, "demo:service")
@@ -244,7 +244,7 @@ func TestBindBeforeArmingSurvives(t *testing.T) {
 // cycle: a manager that is explicitly disabled still remembers subscriptions, so
 // switching governance back on reaches the pools that bound while it was off.
 func TestBindWhileDisabledArmsOnEnable(t *testing.T) {
-	m := NewManager()
+	m := newManager(t)
 	m.Apply(Settings{Enabled: false})
 
 	pool := NewPool(staticSource(eps("a")...), NewRoundRobin())

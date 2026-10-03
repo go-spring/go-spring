@@ -25,6 +25,7 @@ package StarterElasticsearch
 
 import (
 	"context"
+	"go-spring.org/cloud/chain"
 	"net/http"
 	"sync"
 
@@ -77,7 +78,7 @@ type Client struct {
 	// the governance bundle it is handed. It is never nil: a zero bundle degrades
 	// to [resilience.Unmanaged] (observed, with a one-time warning) rather than
 	// leaving the round-tripper declaration-only.
-	exec resilience.ClientExecutor
+	exec chain.Executor
 	// serviceLabel is the resilience service key ("elasticsearch:<...>") exec
 	// scopes limiter/breaker state by.
 	serviceLabel string

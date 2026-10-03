@@ -75,8 +75,7 @@ file starter 的目录语义一致;无可识别扩展名且未强制 `format` �
 - 对象的每次 add/update/delete 触发一次全局属性 refresh,重跑 provider 并把新值传播到绑定的
   `gs.Dync` 字段。refresh 经进程级门面 `gs.RefreshProperties()` 触达框架——不再有
   autowire 注入的 refresher。
-- controller bean 的析构函数在关停时停止所有 informer(它保持 bean 身份只是为了
-  `.Destroy` 生命周期;已无 autowire 字段)。
+- controller 的 `Close` —— 运行时在关停时调用的 provider 生命周期钩子 —— 停止所有 informer。
 
 ## 设计要点
 

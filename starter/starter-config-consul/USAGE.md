@@ -118,7 +118,7 @@ self-asserts the hot-reload within 15 s, then exits 0 on SIGTERM).
 
 ```
 blank import starter-config-consul
-  └─ init(): conf.RegisterProvider("consul", consulCtrl.Load)      starter.go:55
+  └─ init(): conf.RegisterProvider("consul", newConsulCtrl())      starter.go:55
 
 gs.Run()
   ├─ config phase (BEAN-LESS, hence pre-bean):
@@ -295,7 +295,8 @@ Design suspects (for the audit ledger):
   one import per key.
 - Watch errors retry silently every 2 s with no log from this module and no staleness signal
   (metric/health) — "config is stale" is unobservable.
-- Watch goroutines are never stopped on shutdown; a deleted non-optional key still degrades to a
-  stale snapshot (§4.6), but since the WARN addition that degradation is visible in the logs.
+- A deleted non-optional key still degrades to a stale snapshot (§4.6), but since the WARN
+  addition that degradation is visible in the logs. The watchers themselves are stopped by
+  `Close` at shutdown.
 - Refresh is all-or-nothing and global: one changed KV entry re-reads every import and every file;
   fine at this scale, worth remembering when imports grow.

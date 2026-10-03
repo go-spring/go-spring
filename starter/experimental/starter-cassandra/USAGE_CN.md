@@ -37,7 +37,6 @@ require (
     go-spring.org/starter-cassandra latest
     go-spring.org/starter-actuator  latest   // 可选：readiness + /metrics
     go-spring.org/starter-otel      latest   // 可选：真实 trace/metric 导出
-    go-spring.org/starter-governance-file latest  // 可选：resilience/fault 策略
 )
 ```
 
@@ -50,7 +49,6 @@ import (
     "go-spring.org/spring/gs"
     _ "go-spring.org/starter-actuator"
     _ "go-spring.org/starter-cassandra"
-    _ "go-spring.org/starter-governance-file"
     _ "go-spring.org/starter-otel"
     _ "demo/service"
 )
@@ -299,7 +297,7 @@ curl -s :9370/metrics | grep db.client   # 调用级/尝试级直方图 + active
 （`Consistency(...)` 返回 `*gocql.Query`）—— 不会新增 access log 行、指标无变化、
 无 span（这些路径设计上不声明身份，§2.3）。
 
-### 4.3 故障 / resilience 演练（需 starter-governance-file）
+### 4.3 故障 / resilience 演练（需治理：配好规则源）
 
 为 service `cassandra:127.0.0.1` 在 `spring.governance.*` 下配 breaker 或 limiter，压测 `Exec`
 插入，观察拒绝以快速错误返回且语句**未执行**（Cassandra 侧无行），并有 resilience

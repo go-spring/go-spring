@@ -38,7 +38,6 @@ require (
     go-spring.org/cloud             latest
     go-spring.org/starter-mongodb   latest
     go-spring.org/starter-actuator  latest   // 可选：readiness + health
-    go-spring.org/starter-governance-file latest  // 可选：resilience/fault 策略
     go-spring.org/starter-otel      latest   // 可选：真实 trace/metric 导出
 )
 ```
@@ -51,7 +50,6 @@ package main
 import (
     "go-spring.org/spring/gs"
     _ "go-spring.org/starter-actuator"
-    _ "go-spring.org/starter-governance-file"
     _ "go-spring.org/starter-mongodb"
     _ "demo/service"
 )
@@ -128,7 +126,7 @@ spring.mongodb.instances.disc.server-selection-timeout=10s
 
 # --- 治理：作用于建连 seam 的策略（rate-limit 让建连保护可观测；
 #     breaker/retry/timeout 同样生效）----------------------------------------
-# NOTE: governance RULES go in conf/governance.properties, referenced by spring.governance.source.file.path in app.properties (see starter-governance-file USAGE).
+# NOTE: governance RULES go in conf/governance.properties, referenced by spring.governance.source.file.path in app.properties (see cloud/governance's SOURCE_USAGE).
 spring.governance.enabled=true
 spring.governance.driver=default
 spring.governance.client.default.rate-limit=5
@@ -268,11 +266,11 @@ key——观测无条件开启（见 §3.3）。
 
 ### 3.2 resilience / fault（spring.governance.*，不在实例前缀下）
 
-策略 key 位于顶层 `spring.governance.*`（starter-governance-file 治理中心）；`newClient` 把注入的
+策略 key 位于顶层 `spring.governance.*`（cloud/governance 治理中心）；`newClient` 把注入的
 `*resilience.Manager` / `*fault.Injector`（`mgr`/`inj`）与 `*loadbalance.Manager`（`lbMgr`）打包成
 `cloud.ClientParams` 交给 `NewClient`，由 `params.ExecutorFor("mongodb", "mongodb:<service-name|uri>")`
 一次解出 `fault.WrapClientExecutor(mgr.ClientExecutorFor("mongodb", "mongodb:<service-name|uri>"), "mongodb:<service-name|uri>", inj)`
-[client.go:113-121]。相关 key（全集见 starter-governance-file USAGE）：`spring.governance.enabled`、
+[client.go:113-121]。相关 key（全集见 cloud/governance 的 SOURCE_USAGE_CN.md）：`spring.governance.enabled`、
 `spring.governance.driver`、`spring.governance.<driver>.rate-limit` / `error-threshold` / `open-duration` /
 `max-retries` / `timeout`，以及 `spring.governance.client.fault.*` 注入块（enable/rate/error）。⚠ 记住
 seam 在**建连层**：breaker 策略表现为拒绝*连接*；故障注入按拨号触发，不按命令。
@@ -334,7 +332,7 @@ grep _app_mongodb_access app.log | tail -1
 ### 4.3 建连层 resilience 演练（取自 example-cloudnative）
 
 ```properties
-# NOTE: governance RULES go in conf/governance.properties, referenced by spring.governance.source.file.path in app.properties (see starter-governance-file USAGE).
+# NOTE: governance RULES go in conf/governance.properties, referenced by spring.governance.source.file.path in app.properties (see cloud/governance's SOURCE_USAGE).
 spring.governance.enabled=true
 spring.governance.driver=default
 spring.governance.client.default.rate-limit=5
@@ -349,7 +347,7 @@ executor 热更新，无需重启（治理中心）。
 ### 4.4 故障注入 + 压测演练（example-load）
 
 ```properties
-# NOTE: governance RULES go in conf/governance.properties, referenced by spring.governance.source.file.path in app.properties (see starter-governance-file USAGE).
+# NOTE: governance RULES go in conf/governance.properties, referenced by spring.governance.source.file.path in app.properties (see cloud/governance's SOURCE_USAGE).
 spring.governance.client.fault.enabled=true
 spring.governance.client.fault.rate=0.5
 spring.governance.client.fault.error=generic    # 或：timeout / reset

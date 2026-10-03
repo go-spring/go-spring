@@ -24,6 +24,7 @@ import (
 
 	"github.com/labstack/echo/v4"
 	"go-spring.org/cloud/fault"
+	"go-spring.org/cloud/governance"
 	"go-spring.org/cloud/traffic"
 	"go-spring.org/spring/conf"
 	"go-spring.org/stdlib/flatten"
@@ -43,6 +44,12 @@ func bindConfig(t *testing.T, props map[string]any) Config {
 	return c
 }
 
+// testCenter wraps a fault injector in the governance center bean the middleware
+// takes, so a test can arm the fault layer without a container.
+func testCenter(inj *fault.Injector) *governance.Center {
+	return governance.NewCenter(governance.Config{}, nil, nil, inj, nil, nil)
+}
+
 // newTestEngine builds a real echo engine with the starter's middleware chain
 // applied for the given config, mirroring NewSimpleEchoServer minus the HTTP
 // server wrapper. Behavior is asserted through e.ServeHTTP on httptest types.
@@ -50,7 +57,7 @@ func newTestEngine(t *testing.T, props map[string]any) *echo.Echo {
 	t.Helper()
 	e := echo.New()
 	e.HideBanner = true
-	assert.That(t, applyMiddlewares(e, bindConfig(t, props), nil, nil, nil)).Nil()
+	assert.That(t, applyMiddlewares(e, bindConfig(t, props), testCenter(nil), nil)).Nil()
 	return e
 }
 
@@ -376,7 +383,7 @@ func TestFaultMiddleware_Injects503ThenPassesThrough(t *testing.T) {
 
 	e := echo.New()
 	e.HideBanner = true
-	assert.That(t, applyMiddlewares(e, bindConfig(t, map[string]any{}), nil, in, nil)).Nil()
+	assert.That(t, applyMiddlewares(e, bindConfig(t, map[string]any{}), testCenter(in), nil)).Nil()
 	e.GET("/x", func(c echo.Context) error {
 		return c.String(http.StatusOK, "ok")
 	})
@@ -419,7 +426,7 @@ func TestNewSimpleEchoServer_HealthEndpointRegistered(t *testing.T) {
 	svr, err := NewSimpleEchoServer(func(e *echo.Echo) {}, nil, bindConfig(t, map[string]any{
 		"health.enabled": true,
 		"health.path":    "/livez",
-	}), nil, nil, nil)
+	}), testCenter(nil), nil)
 	assert.That(t, err).Nil()
 	e := svr.svr.Handler.(*echo.Echo)
 
@@ -431,7 +438,7 @@ func TestNewSimpleEchoServer_HealthEndpointRegistered(t *testing.T) {
 	// Health disabled by default: the route is absent, and an unrouted request
 	// gets echo's own 404 — buildFault passes handler errors through and only
 	// rewrites INJECTED faults as 503 (mirroring gin's buildFault).
-	svr2, err2 := NewSimpleEchoServer(func(e *echo.Echo) {}, nil, bindConfig(t, map[string]any{}), nil, nil, nil)
+	svr2, err2 := NewSimpleEchoServer(func(e *echo.Echo) {}, nil, bindConfig(t, map[string]any{}), testCenter(nil), nil)
 	assert.That(t, err2).Nil()
 	e2 := svr2.svr.Handler.(*echo.Echo)
 	w2 := httptest.NewRecorder()

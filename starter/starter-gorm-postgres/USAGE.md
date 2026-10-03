@@ -139,20 +139,22 @@ curl -s '127.0.0.1:16686/api/traces?service=demo&limit=1' | grep '"data":\['
 
 ```
 import starter-gorm-postgres
-  └─ init: gormcore.Module(Dialect{Prefix: "spring.gorm.postgres", Engine: "postgresql", ...})
+  └─ init: gs.Module(gs.OnProperty("spring.gorm.postgres.instances"), ...)   — registration in starter.go
 gs.Run()
-  ├─ OnProperty("spring.gorm.postgres") fires; conf.BindEach binds one Config per <name> entry
+  ├─ OnProperty("spring.gorm.postgres.instances") fires; conf.BindEach binds one Config per <name> entry
   ├─ per instance: build(ctx, c)
   │    ├─ host/service-name presence check (one must be set)
   │    ├─ DSN(): "host=.. port=.. user=.. password=.. dbname=.. sslmode=.." (+ optional parts)
   │    └─ discovery (service-name set, mesh off): pgx.ParseConfig(DSN) once, then the pgx
   │         DialFunc is replaced with a pool-backed round-robin dialer; plain mode uses the
   │         DSN directly
-  ├─ gormcore.Open: gorm.Open -> ApplyPool (incl. startup ping, ping-timeout bound)
-  │    -> ApplyDBCustomizers -> *DB bean (Name=<name>, Init, Destroy)
+  ├─ gormcore.NewDB: gormcore.Open: gorm.Open -> ApplyPool (pool knobs)
+  │    -> ApplyDBCustomizers -> observe plugin (db.system=postgresql, unless
+  │       observe.enabled=false) -> governance: resilience/fault executor callbacks
+  │       on resource "gorm:postgresql:<host|service-name>" -> *DB bean
+  ├─ if ping: startup probe: gormcore.HealthCheck (bounded by ping-timeout)
+  ├─ Provide *DB .Name(postgres.<entry>).Destroy((*DB).Destroy)
   ├─ health indicator "gorm:postgres:<name>" exported as health.Indicator
-  ├─ DB.Init (after Observability field-inject): observe plugin (db.system=postgresql)
-  │    + resilience/fault executor callbacks on resource "gorm:postgresql:<host|service-name>"
   └─ DB.Destroy (SIGTERM): executor close -> discovery watch stop -> pool close
 ```
 

@@ -24,14 +24,18 @@ package discovery
 //
 // The tags are deliberately plain — the family-wide default fallback
 // (${<family>.default.discovery}) cannot live here: its key carries the family
-// prefix, and tags are static strings. Each starter's wiring carries the
-// fallback on its backend-injection TagArg instead:
+// prefix, and tags are static strings. Each starter's wiring binds the resolved
+// label as a value argument instead, with the fallback in the tag:
 //
 //	${<family>.instances.<name>.discovery:=${<family>.default.discovery:=none}}
 //
+// The starter then resolves that label against the discovery directory the
+// governance center carries (discovery.Manager.Get), so "none" — the sentinel
+// that names nothing — reads a nil backend.
+//
 // Resolution order: the entry's own ${discovery} wins; unset falls back to the
 // family default; both unset while service-name is set fails loud at
-// assembly. Citing a label that names no backend bean also fails loud.
+// assembly. Citing a label that names no backend also fails loud.
 //
 // A ${scheme} key is deliberately NOT here: http-client has no such key and
 // elasticsearch gives it a different meaning, so each family keeps its own.
@@ -41,10 +45,11 @@ type Addressing struct {
 	// when set, Discovery must resolve to a backend bean or assembly fails.
 	ServiceName string `value:"${service-name:=}"`
 
-	// Discovery names the discovery backend bean that resolves ServiceName
-	// (bean name = "<backend>.<name>", registered by a discovery starter).
-	// Empty means unset: no discovery backend is wired, and the entry must
-	// not route by service-name alone. Falls back to the family-wide
-	// ${<family>.default.discovery} via the starter's wiring, not this tag.
+	// Discovery is the label of the discovery backend that resolves
+	// ServiceName (label = bean name = "<backend>.<name>", registered by a
+	// discovery starter). Empty means unset: no discovery backend is wired, and
+	// the entry must not route by service-name alone. Falls back to the
+	// family-wide ${<family>.default.discovery} via the starter's wiring, not
+	// this tag.
 	Discovery string `value:"${discovery:=}"`
 }

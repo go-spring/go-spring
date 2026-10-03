@@ -16,8 +16,11 @@
 
 // Package governance is the centralized service-governance authority for the
 // process: it owns ONE refreshable [Config] document and ONE source, and
-// distributes them to the three module authorities that do the actual work —
-// resilience, endpoint selection and fault injection.
+// distributes them to the module authorities that do the actual work —
+// resilience, endpoint selection and fault injection. It also holds the
+// discovery directory ([discovery.Manager]), which no rule applies to: it is
+// carried so a client has one injection point for everything it needs, not a
+// fourth policy.
 //
 // The division of labour is deliberate. This package owns the DOCUMENT: the
 // rule list, the label matching, the source handling. The module packages own
@@ -36,16 +39,16 @@
 // listener, a static injection) can drive the whole family by implementing two
 // methods.
 //
-// A client never calls this package. It injects the module authority it needs
-// ([resilience.Manager], [loadbalance.Manager] or [fault.Injector]) and asks that
-// authority for an executor, a binding or an injector; the authority is the same
-// bean the center drives, which is what routes a config push to that client. This
-// package is therefore reached only by the wiring, on the way to those
-// authorities — there is no process-wide facade and no global state.
+// A client injects the ONE center bean and reads from it whichever authority it
+// needs ([Center.Resilience], [Center.Loadbalance], [Center.Fault],
+// [Center.Discovery]); each authority is held by the center rather than wired in
+// separately, and for the three policy authorities it is the same bean the
+// center drives, which is what routes a config push to that client. There is no
+// process-wide facade and no global state.
 //
 // Governance scope: govern covers BOTH directions — every outbound call that runs
 // through a resilience executor, and every inbound request that runs through an
-// admission executor (gin / echo / http-server / grpc / thrift middleware). The
+// inbound executor (gin / echo / http-server / grpc / thrift middleware). The
 // two are separate resolutions over separate blocks of the same document
 // ([Config.Client] / [Config.Server]), so a push retunes one without disturbing
 // the other. dubbo, which has its own URL-param governance model, is adapted
@@ -59,6 +62,7 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"go-spring.org/cloud/discovery"
 	"go-spring.org/cloud/fault"
 	"go-spring.org/cloud/loadbalance"
 	"go-spring.org/cloud/resilience"
@@ -81,18 +85,19 @@ import (
 type Center struct {
 	cfg atomic.Pointer[Config]
 
-	// res, lb and inj are the module authorities this center distributes to.
-	// They are injected rather than constructed here, because the starter must
-	// also export them as beans for clients to inject — one instance serves both
-	// directions.
-	res *resilience.Manager
-	lb  *loadbalance.Manager
-	inj *fault.Injector
+	// res, lb, inj and disc are the module authorities this center distributes
+	// to. They are injected rather than constructed here, because each is
+	// registered as a bean by the package that owns it, and the starter must
+	// hand the same instances on — one instance serves both directions.
+	res  *resilience.Manager
+	lb   *loadbalance.Manager
+	inj  *fault.Injector
+	disc *discovery.Manager
 
-	// live guards [Center.GoLive] against a second run: gs may reach it through
-	// more than one path (the wiring bean, a test), and re-dispatching would
-	// re-notify every subscriber for no reason. It also gates [Center.OnReady],
-	// which queues callbacks until it flips.
+	// live guards [Center.GoLive] against a second run — gs reaches it through
+	// the bean's Init hook and a test may call it directly on top of that — since
+	// re-dispatching would re-notify every subscriber for no reason. It also
+	// gates [Center.OnReady], which queues callbacks until it flips.
 	live atomic.Bool
 
 	// readyMu guards readyCbs, the [Center.OnReady] callback queue. OnReady is a
@@ -108,7 +113,7 @@ type Center struct {
 	// non-comparable dynamic types), because a replaced source cannot always
 	// be unsubscribed — so stale callbacks must no-op instead of retracted.
 	srcMu sync.Mutex
-	src   *sourceHandle // active source; nil until BindDefault or SetSource binds one
+	src   *sourceHandle // active source; nil until the constructor or SetSource binds one
 }
 
 // sourceHandle tokens the active [Source] so callbacks from a REPLACED source
@@ -116,14 +121,57 @@ type Center struct {
 // panic on non-comparable dynamic types).
 type sourceHandle struct{ src Source }
 
-// NewCenter builds a Center over the three module authorities. The cfg is adopted
-// atomically; callers mutate it only via [Center.adopt]. The authorities are
-// owned by the caller — the wiring starter, or [Arm] for tests — so the same
-// instances can also be exported as beans for clients to inject.
-func NewCenter(cfg Config, res *resilience.Manager, lb *loadbalance.Manager, inj *fault.Injector) *Center {
-	c := &Center{res: res, lb: lb, inj: inj}
+// NewCenter builds a Center over the module authorities and, when src is
+// non-nil, immediately binds it as the active source: the center is born with
+// the source the container contributed, exactly as the authorities arrive as
+// constructor parameters.
+//
+// The container ALWAYS passes one — the bean's constructor declares src
+// required, so a process with no Source bean fails startup rather than running
+// with governance silently off. The nil branch exists for a hand-built center
+// (an embedder, a test): it leaves the center with no source at all, where
+// [Center.SetSource] is the only way in and a center with neither stays disabled
+// (every client resolves a transparent pass-through).
+//
+// The cfg is adopted atomically; callers mutate it only via [Center.adopt]. The
+// authorities are owned by the caller — the wiring starter, or a test — so the
+// same instances can also be registered as beans for clients to inject.
+func NewCenter(cfg Config, res *resilience.Manager, lb *loadbalance.Manager,
+	inj *fault.Injector, disc *discovery.Manager, src Source) *Center {
+	c := &Center{res: res, lb: lb, inj: inj, disc: disc}
 	c.cfg.Store(&cfg)
+	if src != nil {
+		c.bindSource(src)
+	}
 	return c
+}
+
+// Resilience returns the resilience authority the center distributes to. The
+// Center is the governance family's sole spokesperson: a client starter injects
+// the ONE *Center bean and reads whichever authority it needs from here,
+// instead of wiring each authority bean in separately. The bean is registered
+// by the cloud/governance package itself and always instantiated (it exports as
+// a gs.Rooter), so a successfully started app never holds a nil Center.
+func (c *Center) Resilience() *resilience.Manager {
+	return c.res
+}
+
+// Fault returns the fault-injection authority; see [Center.Resilience].
+func (c *Center) Fault() *fault.Injector {
+	return c.inj
+}
+
+// Loadbalance returns the endpoint-selection authority; see [Center.Resilience].
+func (c *Center) Loadbalance() *loadbalance.Manager {
+	return c.lb
+}
+
+// Discovery returns the directory of named discovery backends; see
+// [Center.Resilience]. It is not a policy authority like the other three — the
+// center holds it so a client reaches discovery through the same injection point
+// it reaches everything else.
+func (c *Center) Discovery() *discovery.Manager {
+	return c.disc
 }
 
 // GoLive completes the center's startup: it distributes the CURRENT snapshot to
@@ -271,56 +319,17 @@ func (c *Center) isActive(h *sourceHandle) bool {
 	return c.src == h
 }
 
-// SetSource eagerly binds s as the active source. Before the wiring starter's
-// [Center.BindDefault] it pre-empts the default source; afterwards it late-arms —
-// s.Snapshot() applies immediately and later pushes drive the center, while the
-// previous source's callbacks go stale via the handle guard. Eager binding
-// avoids a pending-registration state entirely, and works on the standalone
-// path ([Arm]-built centers, tests) where nothing would ever consume a pending
-// value.
+// SetSource binds s as the active source, replacing whatever was bound — the
+// source the constructor took, or an earlier SetSource. s.Snapshot() applies
+// immediately and later pushes drive the center, while the replaced source's
+// callbacks go stale via the handle guard. Binding eagerly (rather than
+// remembering a pending value) is what lets the standalone path — a hand-built
+// center, a test — work with nothing but this call.
 func (c *Center) SetSource(s Source) {
 	if s == nil {
 		panic(errutil.Explain(nil, "governance: SetSource(nil)"))
 	}
 	c.bindSource(s)
-}
-
-// SetDrivers installs the directory of resilience driver backends the container
-// provided, keyed by bean name, onto the resilience authority this center
-// resolves against. It delegates rather than taking a manager from the caller so
-// the directory can never land on a different manager than the one the center
-// drives. It must run before [Center.GoLive], which validates the configured
-// name against it. A nil map leaves the bundled driver as the only backend.
-func (c *Center) SetDrivers(dir map[string]resilience.Driver) { c.res.SetDrivers(dir) }
-
-// SetBalancerFactories installs the directory of load-balancing strategy
-// backends the container provided, keyed by bean name, onto the loadbalance
-// authority this center drives. It is the endpoint-selection counterpart of
-// [Center.SetDrivers]: a rule's `balancer` name is resolved against this table
-// plus the built-in strategies, so a deployment adds a strategy — with its own
-// parameters — by contributing a named [go-spring.org/cloud/loadbalance.Factory]
-// bean. It must run before [Center.GoLive]; a nil map or a name that shadows a
-// built-in is left to the manager, which reports a collision as an error.
-func (c *Center) SetBalancerFactories(dir map[string]loadbalance.Factory) error {
-	return c.lb.SetFactories(dir)
-}
-
-// BindDefault installs s as the active source only when none is bound yet, so
-// an explicit [Center.SetSource] always outranks the wiring default. The wiring
-// starter calls it once at startup with the bean-injected source. The
-// check-then-bind is not atomic with concurrent SetSource, but wiring runs
-// single-threaded before the app serves; the guard machinery makes a lost race
-// harmless anyway (the loser's callbacks go stale).
-func (c *Center) BindDefault(s Source) {
-	if s == nil {
-		return
-	}
-	c.srcMu.Lock()
-	bound := c.src != nil
-	c.srcMu.Unlock()
-	if !bound {
-		c.bindSource(s)
-	}
 }
 
 // Close closes the active source when it happens to be closeable (the [Source]
@@ -373,8 +382,8 @@ func (c *Center) clientServiceFor(label string) (resilience.ClientPolicy, loadba
 	return cfg.Client.Default.ClientPolicy, cfg.Client.Default.Selection
 }
 
-// serverPolicyFor resolves label's inbound admission model, which the resilience
-// module builds the route's admission executor from. It is the server-side
+// serverPolicyFor resolves label's inbound inbound model, which the resilience
+// module builds the route's inbound executor from. It is the server-side
 // counterpart of [Center.clientServiceFor] and reads the OTHER block of the document:
 // the client's Policy and the server's ServerPolicy are separate resolutions over
 // separate rules, so a label configured on one side has no bearing on the other.

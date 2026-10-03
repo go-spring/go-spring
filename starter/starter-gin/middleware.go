@@ -25,9 +25,8 @@ import (
 	"github.com/gin-contrib/gzip"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	"go-spring.org/cloud/fault"
+	"go-spring.org/cloud/governance"
 	"go-spring.org/cloud/propagate"
-	"go-spring.org/cloud/resilience"
 	"go-spring.org/cloud/traffic"
 	"go-spring.org/stdlib/errutil"
 )
@@ -90,12 +89,13 @@ func RequestIDFromContext(ctx context.Context) string {
 // from its RouterRegister; the individual constructors (RequestID, Observe, ...)
 // are also exported for finer-grained composition.
 //
-// mgr is the governance starter's *resilience.Manager bean, which supplies the
-// admission middleware's policy; a nil manager disables admission (a transparent
-// pass-through). inj is the governance starter's *fault.Injector bean the fault
-// middleware gates requests on (nil likewise, which disables injection). prop is
-// the application's load-test convention bean (nil means go-spring's default).
-func ApplyMiddlewares(e *gin.Engine, cfg Config, mgr *resilience.Manager, inj *fault.Injector, prop traffic.Propagator) error {
+// center is the governance center bean, whose resilience authority supplies the
+// inbound middleware's policy; a nil center reads a nil manager, which disables
+// inbound (a transparent pass-through). Its fault authority backs the fault
+// middleware the requests are gated on (nil likewise, which disables injection).
+// prop is the application's load-test convention bean (nil means go-spring's
+// default).
+func ApplyMiddlewares(e *gin.Engine, cfg Config, center *governance.Center, prop traffic.Propagator) error {
 	mw := cfg.Middleware
 
 	// LoadTest identification is outermost of all: it tags the request context
@@ -126,12 +126,12 @@ func ApplyMiddlewares(e *gin.Engine, cfg Config, mgr *resilience.Manager, inj *f
 	}
 	e.Use(Observe(accessCfg))
 
-	// Resilience admission (opt-in): runs the request through the configured
+	// Resilience inbound (opt-in): runs the request through the configured
 	// rate-limit / bulkhead / breaker before the handler chain. Sits inside
 	// Observe so 429/503 rejects are still observed.
-	adm, err := buildServerPolicy(cfg, mgr)
+	adm, err := buildServerPolicy(cfg, center.Resilience())
 	if err != nil {
-		return errutil.Explain(err, "gin: resilience admission")
+		return errutil.Explain(err, "gin: resilience inbound")
 	}
 	if adm != nil {
 		e.Use(adm)
@@ -142,9 +142,9 @@ func ApplyMiddlewares(e *gin.Engine, cfg Config, mgr *resilience.Manager, inj *f
 	// when governance is not imported), letting an operator "set fire" to the
 	// running server and hot-toggle it at runtime without a restart — the center
 	// swaps the injector's config in place. Sits inside Observe so the resulting
-	// 503s are observed, and after admission so a rate-limited request is not
+	// 503s are observed, and after inbound so a rate-limited request is not
 	// also faulted.
-	e.Use(buildFault(inj))
+	e.Use(buildFault(center.Fault()))
 
 	// Policy middlewares - opt-in, and they sit inside Observe so short-circuit
 	// responses (204, 403) are still observed.

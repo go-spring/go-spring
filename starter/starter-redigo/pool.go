@@ -19,6 +19,7 @@ package StarterRedigo
 import (
 	"context"
 	"crypto/tls"
+	"go-spring.org/cloud/chain"
 	"net"
 
 	"github.com/gomodule/redigo/redis"
@@ -46,12 +47,12 @@ type Pool struct {
 	// promoted Close so teardown also detaches the binding and executor.
 	*redis.Pool
 
-	cfg          Config                    // address fields feed the governance service label
-	exec         resilience.ClientExecutor // the executor every command runs under, set by [NewPool] from the governance bundle; always non-nil on a NewPool-built pool
-	chain        []CommandInterceptor      // user interceptor chain, first entry outermost; nil when none registered
-	serviceLabel string                    // governance service label (stable per pool)
-	lbPool       *loadbalance.Pool         // endpoint-selection pool, nil when discovery is not in effect
-	stop         func()                    // detaches the endpoint-selection binding
+	cfg          Config               // address fields feed the governance service label
+	exec         chain.Executor       // the executor every command runs under, set by [NewPool] from the governance bundle; always non-nil on a NewPool-built pool
+	chain        []CommandInterceptor // user interceptor chain, first entry outermost; nil when none registered
+	serviceLabel string               // governance service label (stable per pool)
+	lbPool       *loadbalance.Pool    // endpoint-selection pool, nil when discovery is not in effect
+	stop         func()               // detaches the endpoint-selection binding
 }
 
 // params carries the container's facilities (see [cloud.ClientParams]).

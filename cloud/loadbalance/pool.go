@@ -33,7 +33,7 @@ import (
 // [discovery.Resolver] (kept fresh by discovery Watch), filters it, and hands
 // the survivors to a [Balancer] to choose one.
 //
-// The filter chain has three stages: static admission (Disabled or unhealthy
+// The filter chain has three stages: static eligible (Disabled or unhealthy
 // per the discovery endpoint flags), suspension ([Tracker], for instances
 // still registered but failing), and soft drain (zero weight at the naming
 // service). Pick owns the fallbacks: a filter that would empty the set is
@@ -136,10 +136,10 @@ func (p *Pool) Pick(info PickInfo) (discovery.Endpoint, error) {
 		return discovery.Endpoint{}, ErrNoAvailable
 	}
 
-	// Static admission: the shared Endpoint contract filter (never Disabled,
+	// Static eligible: the shared Endpoint contract filter (never Disabled,
 	// prefer Healthy). It returns empty only when every endpoint is disabled —
 	// an explicit exclusion that must not be overridden by any fallback below.
-	candidates := admission(eps)
+	candidates := eligible(eps)
 	if len(candidates) == 0 {
 		return discovery.Endpoint{}, ErrNoAvailable
 	}
@@ -172,12 +172,12 @@ func (p *Pool) Complete(ep discovery.Endpoint, err error) {
 	p.tracker.Record(ep.Addr, err == nil)
 }
 
-// admission returns the endpoints allowed to receive traffic under the
+// eligible returns the endpoints allowed to receive traffic under the
 // [discovery.Endpoint] contract: prefer !Disabled && Healthy, degrade to
 // !Disabled when none are healthy, never Disabled. It is a pure filter: empty
 // only when every endpoint is disabled — an explicit exclusion the caller must
 // not override with a fallback.
-func admission(eps []discovery.Endpoint) []discovery.Endpoint {
+func eligible(eps []discovery.Endpoint) []discovery.Endpoint {
 	out := eps[:0:0]
 	for _, ep := range eps {
 		if !ep.Disabled && ep.Healthy {

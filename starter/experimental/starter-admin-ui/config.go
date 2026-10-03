@@ -25,6 +25,10 @@ import "time"
 // It is a value struct (not a bean): the container binds it, the Server holds
 // it, and no other consumer needs to inject it.
 type Config struct {
+	// Enabled gates the starter (enabled, default true) — the starter convention:
+	// the switch opts OUT, the addr key below opts IN.
+	Enabled bool `value:"${enabled:=true}"`
+
 	// Addr is the listen address for the Admin UI HTTP server. There is no
 	// default: setting this key is what activates the starter (matching
 	// starter-actuator's spring.actuator.addr contract). Documented layout:

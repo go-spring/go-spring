@@ -40,12 +40,12 @@ func newConfigTreeCtrl() *configTreeCtrl {
 	return &configTreeCtrl{watchCore: newWatchCore()}
 }
 
-// load implements conf/provider.Provider for the "configtree" source.
+// Load implements conf/provider.Provider for the "configtree" source.
 // It walks a directory tree, turning each non-dot leaf file into a property
 // keyed by its dotted relative path and valued by its trimmed raw content, and
 // installs a watcher on every directory in the tree so any change triggers an
 // application property refresh.
-func (c *configTreeCtrl) load(optional bool, source string) (map[string]string, error) {
+func (c *configTreeCtrl) Load(optional bool, source string) (map[string]string, error) {
 	path := source
 	if path == "" {
 		return nil, errutil.Explain(nil, "configtree: missing path")

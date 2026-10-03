@@ -129,23 +129,23 @@ grep "SQLite round trip OK:" smoke.out    # 必须打印；仅看退出码不算
 
 ```
 import starter-gorm-sqlite
-  └─ init(): gormcore.Module(Dialect{Prefix: "spring.gorm.sqlite", ...})
+  └─ init(): gs.Module(gs.OnProperty("spring.gorm.sqlite.instances"), ...)   —— 注册在 starter.go
         │
 gs.Run()
-  ├─ OnProperty("spring.gorm.sqlite") 仅在存在 ≥1 条目时触发
+  ├─ OnProperty("spring.gorm.sqlite.instances") 仅在存在 ≥1 条目时触发
   ├─ conf.BindEach: 每个条目 → Config（value tag；file 过 expr "$ != ''" 校验）
   ├─ build(): Config → Spec{Dialector: glebarez/sqlite.Open(DSN), Pool,
-  │          Resource: "gorm:sqlite"+file, ObserveEnabled}      — starter.go:49-56
-  ├─ gormcore.Open: gorm.Open → ApplyPool（启动 ping，PingTimeout 兜底）
-  │                 → DBCustomizers → *DB wrapper
-  ├─ gs 注入 Observability → DB.Init(): observe 插件（db.system=sqlite）
-  │                 + resilience/fault executor 回调（resource "gorm:sqlite"）
+  │          Service: "gorm:sqlite"+file, ObserveEnabled}
+  ├─ gormcore.NewDB → gormcore.Open: gorm.Open → ApplyPool（连接池旋钮）
+  │                 → DBCustomizers（用户 seam）→ observe 插件（observe.enabled=false 除外）
+  │                 → 治理：resilience 回调替换六个 gorm processor → *DB wrapper
+  ├─ ping 时启动探测：gormcore.HealthCheck（内部调用 Ping，受 ping-timeout 约束）—— 在装配完成之后
   ├─ 运行；就绪检查折叠进 gorm:sqlite:<name> PING 指示器
   └─ SIGTERM → DB.Destroy(): 关 executor → closers（sqlite 无）→ 关连接池
 ```
 
 没有 TLS 注册（无传输层）、没有 discovery 拨号器（"服务器"就是文件路径）——
-`starter.go:46-48` 的注释明确写了这一点。
+`build` 的注释明确写了这一点。
 
 ### 2.2 一次查询的逐层走读
 

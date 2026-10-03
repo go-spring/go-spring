@@ -41,7 +41,6 @@ require (
     go-spring.org/starter-s3       latest
     go-spring.org/starter-actuator latest   # optional: readiness endpoint
     go-spring.org/starter-otel     latest   # optional: real span/metric export
-    go-spring.org/starter-governance-file latest # optional: retry/limiter/breaker/fault
 )
 ```
 
@@ -53,7 +52,6 @@ package main
 import (
     "go-spring.org/spring/gs"
     _ "go-spring.org/starter-actuator"
-    _ "go-spring.org/starter-governance-file"
     _ "go-spring.org/starter-otel"
     _ "go-spring.org/starter-s3"
 )
@@ -196,7 +194,7 @@ straight through to `http.DefaultTransport`.
 3. Resilience round-tripper, inside the declaration: the request enters the executor built at
    construction for service `s3:<endpoint>` from the `cloud.ClientParams` the ctor passed
    down (`*resilience.Manager` / `*fault.Injector` beans) — retry / rate-limit /
-   circuit-breaker / bulkhead when starter-governance-file applies them (hot-reloadable through
+   circuit-breaker / bulkhead when a governance rules source applies them (hot-reloadable through
    the governance center), an observed-only unmanaged executor otherwise; the
    `*fault.Injector` (nil-safe) may inject failures for drills. This executor is the SINGLE
    emitter: it opens the call span, records the call-level `db.client.operation.duration`,
@@ -274,7 +272,7 @@ successful one carrying the URL-path argument logs at Debug, a plain success at 
 `db.operation` is the HTTP method (bounded — a metric label); `db.statement` is the URL
 path (per-call, span + log only).
 
-### 4.5 Fault/resilience drill (needs starter-governance-file)
+### 4.5 Fault/resilience drill (needs governance: a configured rules source)
 
 Applies per endpoint service label `s3:127.0.0.1:9000`: a governance rule with
 `fault.rate` against that service makes a fraction of uploads fail through the executor —

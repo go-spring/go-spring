@@ -390,7 +390,7 @@ reference 的 `version`/`group` 必须与 provider 导出的一致。
 
 ### 4.4 治理合入通道（中心的动态超时）
 
-可选；仅当引入 starter-governance-file 且 `spring.governance.enabled=true` 时激活。poller 以可空构造函数
+可选；仅当配好治理规则源且 `spring.governance.enabled=true` 时激活。poller 以可空构造函数
 参数注入 `*resilience.Manager` 与 `*governance.Center`（starter.go:59），并订阅两类治理
 服务 label（dync.go:252-253）：
 
@@ -406,7 +406,7 @@ override 免重启重新下发。
 ### 4.5 故障演练（provider 侧，免重启）
 
 1. 给 service 的 filter 链加 `fault`：`...services.greet.filter=loadtest,fault`。
-2. 引入 starter-governance-file；经热源配置 `spring.governance.client.fault.*`（rate/error/scope）。
+2. 配好治理规则源；在规则里配置 `spring.governance.client.fault.*`（rate/error/scope）。
 3. `scope: loadtest` 时只有带压测标记的调用被烧——由带标记的上游注入出站 carrier
    （cloud/traffic）来打标，或在专属环境用 `scope: real`。
 4. 观察：consumer 收到注入错误；带标记调用在实现内 propagator 的 `IsLoadTest(ctx)` 为 true

@@ -36,7 +36,6 @@ require (
     go-spring.org/starter-echo       latest
     go-spring.org/starter-actuator   latest   // 探针，:9370
     go-spring.org/starter-otel       latest   // 可选：/metrics 挂同一端口
-    go-spring.org/starter-governance-file latest   // 可选：运行时故障注入
 )
 ```
 
@@ -52,7 +51,6 @@ import (
     "go-spring.org/spring/gs"
     _ "go-spring.org/starter-actuator"
     _ "go-spring.org/starter-echo"
-    _ "go-spring.org/starter-governance-file"
     _ "go-spring.org/starter-otel"
 )
 

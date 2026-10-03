@@ -57,9 +57,9 @@ use (
 	./starter/experimental/starter-cassandra/example
 	./starter/starter-config-apollo
 	./starter/starter-config-apollo/example
-	./starter/starter-config-bus
-	./starter/starter-config-bus/example
-	./starter/starter-config-bus/example-otel
+	./starter/experimental/starter-config-bus
+	./starter/experimental/starter-config-bus/example
+	./starter/experimental/starter-config-bus/example-otel
 	./starter/starter-config-consul
 	./starter/starter-config-consul/example
 	./starter/starter-config-k8s
@@ -236,8 +236,7 @@ use (
 	./starter/starter-gorm-sqlserver/example
 	./starter/starter-gorm-sqlserver/example-load
 	./starter/starter-gorm-sqlserver/example-otel
-	./starter/starter-governance-file
-	./starter/starter-governance-file/example
+	./cloud/governance/example
 	./starter/starter-governance-etcd
 	./starter/starter-governance-etcd/example
 	./starter/starter-governance-nacos

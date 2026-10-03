@@ -22,7 +22,7 @@ import (
 
 // ServerPolicy is a backend-neutral description of the protection wanted for INBOUND
 // traffic — the server-side counterpart of [ClientPolicy] (see [Driver.NewServerExecutor]).
-// It is what a server applies to the requests it receives: admission control,
+// It is what a server applies to the requests it receives: inbound control,
 // not call protection.
 //
 // The two types are deliberately NOT one type with half the fields ignored. Both
@@ -57,7 +57,7 @@ type ServerPolicy struct {
 	Burst int `value:"${burst:=0}"`
 
 	// RateLimitMaxWait is how long an over-limit request may WAIT for a token
-	// before being rejected with [ErrRateLimited] (queueing / traffic shaping).
+	// before being rejected with [chain.ErrRateLimited] (queueing / traffic shaping).
 	// 0 (the default) keeps the reject-immediately behavior; a positive value
 	// turns excess requests into bounded waits, smoothing bursts instead of
 	// failing them. The wait also ends when the request's ctx is done. Ignored
@@ -132,7 +132,7 @@ type ServerPolicy struct {
 
 	// MaxConcurrent caps the number of requests a server handles at the same
 	// time (the bulkhead / isolation stage). Excess requests are rejected with
-	// [ErrBulkheadFull] rather than queued, so a slow handler cannot exhaust the
+	// [chain.ErrBulkheadFull] rather than queued, so a slow handler cannot exhaust the
 	// server's goroutines or connections. 0 disables the bulkhead.
 	MaxConcurrent int `value:"${max-concurrent:=0}"`
 
@@ -157,51 +157,43 @@ func (p ServerPolicy) IsZero() bool {
 		p.MaxConcurrent == 0 && p.AttemptTimeout == 0
 }
 
+// RateSpec returns the rate-limit stage's view of p, exactly as
+// [ClientPolicy.RateSpec] does for the outbound side: the stage and any [Counters]
+// store read the same vocabulary from either direction, and the two agree on every
+// shared knob's meaning.
+func (p ServerPolicy) RateSpec() RateSpec {
+	return RateSpec{
+		RateLimit: p.RateLimit,
+		Burst:     p.Burst,
+		Algorithm: p.Algorithm,
+		Window:    p.Window,
+		MaxWait:   p.RateLimitMaxWait,
+	}
+}
+
+// breakerSpec returns the circuit breaker's thresholds for p, in the breaker's own
+// vocabulary (see [breakerSpec]).
+func (p ServerPolicy) breakerSpec() breakerSpec {
+	return breakerSpec{
+		strategy:      p.ResolvedBreakerStrategy(),
+		threshold:     p.ErrorThreshold,
+		rateThreshold: p.ErrorRateThreshold,
+		minRequests:   p.MinRequests,
+		window:        p.BreakerWindow,
+		slowThreshold: p.SlowCallDurationThreshold,
+		slowRate:      p.SlowCallRateThreshold,
+		halfOpenN:     p.HalfOpenRequests,
+	}
+}
+
 // ResolvedBreakerStrategy returns the strategy a driver should apply, by the
 // same resolution as [ClientPolicy.ResolvedBreakerStrategy] — the two directions must
 // not disagree on what an unset strategy means.
 func (p ServerPolicy) ResolvedBreakerStrategy() BreakerStrategy {
-	if p.BreakerStrategy == BreakerErrorRate || p.slowCallActive() {
-		return BreakerErrorRate
-	}
-	return BreakerConsecutive
-}
-
-// slowCallActive reports whether the slow-call pair alone activates rate-based
-// counting.
-func (p ServerPolicy) slowCallActive() bool {
-	return p.SlowCallDurationThreshold > 0 && p.SlowCallRateThreshold > 0
+	return resolveBreakerStrategy(p.BreakerStrategy, p.SlowCallDurationThreshold, p.SlowCallRateThreshold)
 }
 
 // BreakerActive reports whether any breaker strategy is configured.
 func (p ServerPolicy) BreakerActive() bool {
-	return p.ErrorThreshold > 0 || p.ErrorRateThreshold > 0 || p.slowCallActive()
-}
-
-// AsPolicy projects a onto the shared engine configuration: the knobs the two
-// directions have in common carry over verbatim, and the retry family is left
-// zero — not because it is set to zero here, but because [ServerPolicy] has no way
-// to express it. The bundled driver's [Driver.NewServerExecutor] uses it to reuse its
-// ClientPolicy-based engine for inbound traffic, and a backend with no inbound story of
-// its own can do the same. A backend with a native inbound model (a sentinel
-// system or hotspot rule, say) maps ServerPolicy directly instead.
-func (p ServerPolicy) AsPolicy() ClientPolicy {
-	return ClientPolicy{
-		RateLimit:                 p.RateLimit,
-		Burst:                     p.Burst,
-		RateLimitMaxWait:          p.RateLimitMaxWait,
-		Algorithm:                 p.Algorithm,
-		Window:                    p.Window,
-		ErrorThreshold:            p.ErrorThreshold,
-		OpenDuration:              p.OpenDuration,
-		BreakerStrategy:           p.BreakerStrategy,
-		ErrorRateThreshold:        p.ErrorRateThreshold,
-		MinRequests:               p.MinRequests,
-		BreakerWindow:             p.BreakerWindow,
-		SlowCallDurationThreshold: p.SlowCallDurationThreshold,
-		SlowCallRateThreshold:     p.SlowCallRateThreshold,
-		HalfOpenRequests:          p.HalfOpenRequests,
-		MaxConcurrent:             p.MaxConcurrent,
-		AttemptTimeout:            p.AttemptTimeout,
-	}
+	return p.breakerSpec().active()
 }

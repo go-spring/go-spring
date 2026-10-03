@@ -5,7 +5,7 @@
 `starter-governance-sentinel` registers [alibaba/sentinel-golang][sentinel] as the
 production driver for the resilience framework defined in
 [`cloud/resilience`](../../cloud/resilience). Blank-import it
-alongside [`starter-governance-file`](../starter-governance-file) and name it in the
+and name it in the
 governance document (`spring.governance.driver=sentinel`) — every client that resolves its
 executor through the governance center then gets adaptive rate limiting,
 circuit breaking, and bulkhead isolation on top of the same neutral `ClientPolicy`,
@@ -13,7 +13,7 @@ with no per-client key and no code change.
 
 It follows the *global / infrastructure* archetype (see
 [starter/DESIGN.md](../DESIGN.md) §2.4): it contributes exactly one bean — the
-`sentinel`-named `resilience.Driver` that [`starter-governance-file`](../starter-governance-file)
+`sentinel`-named `resilience.Driver` that [`cloud/resilience`](../../cloud/resilience)
 collects into the driver directory — and opens no port. `sentinel.InitDefault`
 runs at import time so a broken environment fails loudly on boot rather than on
 first use.

@@ -18,11 +18,11 @@
 // own budget ([rateState]), the [Counters] seam (where a cross-replica budget
 // lives), and the counting algorithms. The stage's policy knobs
 // (rate-limit/burst/algorithm/window/rate-limit-max-wait) live with every other
-// stage's in policy.go; the seam that builds an [ClientExecutor] over them is
+// stage's in policy.go; the seam that builds an [chain.Executor] over them is
 // executor.go, and the stage runs inside executor_default.go.
 //
 // Rate limiting is a stage of a protected call, not an API of its own: the call
-// either gets its budget or comes back as [ErrRateLimited]. By default the stage
+// either gets its budget or comes back as [chain.ErrRateLimited]. By default the stage
 // counts in a budget the executor holds for its service, exactly like the other
 // stages hold their state — one budget per service, since one executor serves
 // one service and the manager builds one executor per label.
@@ -36,6 +36,7 @@ package resilience
 
 import (
 	"context"
+	"go-spring.org/cloud/chain"
 	"sync"
 	"time"
 
@@ -69,75 +70,101 @@ const (
 // caller that spends it. An implementation may also see only one policy per
 // scope — alternating policies on one scope would ask it to restart that
 // scope's budget on every call.
-type Counters interface {
-	// Allow consumes n units of scope's budget under p. It returns
-	// [ErrRateLimited] when the budget is exhausted (after waiting up to
-	// [ClientPolicy.RateLimitMaxWait]) and the store's own error when the counters
-	// could not be read or updated. A zero [ClientPolicy.RateLimit] means unlimited,
-	// and n <= 0 always passes.
-	Allow(ctx context.Context, scope string, p ClientPolicy, n int) error
+// RateSpec is the rate-limit stage's own vocabulary: the knobs a budget is built
+// from. Both directions assemble it from their policy (see
+// [ClientPolicy.RateSpec] / [ServerPolicy.RateSpec]), so the stage — and any
+// [Counters] store behind it — never sees a direction and needs no second
+// implementation for inbound. A zero RateLimit means unlimited.
+type RateSpec struct {
+	// RateLimit is the sustained budget in units per second. 0 disables the
+	// stage.
+	RateLimit float64
+
+	// Burst is how many units may exceed RateLimit momentarily; 0 means the
+	// stage's default (a small multiple of RateLimit).
+	Burst int
+
+	// Algorithm picks the counting scheme; empty means [TokenBucket], the other
+	// value is [SlidingWindow].
+	Algorithm Algorithm
+
+	// Window is the rolling interval [SlidingWindow] counts over; 0 means one
+	// second. Ignored by [TokenBucket].
+	Window time.Duration
+
+	// MaxWait is how long an over-limit call may WAIT for a unit before being
+	// rejected; 0 keeps the reject-immediately behavior. Ignored when RateLimit is
+	// 0.
+	MaxWait time.Duration
 }
 
-// allow charges one unit of the rate-limit stage for this executor's service and
-// reports [ErrRateLimited] when there is none. It spends the supplied store when
-// the driver was handed one — that is what gives the budget a reach beyond this
-// executor — and otherwise the budget this executor holds (rate), built for the
-// current policy. The store is charged under the executor's service: an executor
-// covers one service, so keys belong to whoever needs them, not here.
-func (e *defaultExecutor) allow(ctx context.Context, rate rateState, p ClientPolicy) error {
-	if e.counters != nil {
-		return e.counters.Allow(ctx, e.service, p, 1)
+type Counters interface {
+	// Allow consumes n units of scope's budget under spec. It returns
+	// [chain.ErrRateLimited] when the budget is exhausted (after waiting up to
+	// [RateSpec.MaxWait]) and the store's own error when the counters could not be
+	// read or updated. A zero [RateSpec.RateLimit] means unlimited, and n <= 0
+	// always passes.
+	Allow(ctx context.Context, scope string, spec RateSpec, n int) error
+}
+
+// allowRate charges one unit of the rate-limit stage for scope — an executor's
+// service, or an inbound executor's route — and reports [chain.ErrRateLimited] when
+// there is none. It spends the supplied store when the driver was handed one
+// (that is what gives the budget a reach beyond this executor) and otherwise the
+// budget the caller holds (rate). The store is charged under scope: an executor
+// covers one service or route, so keys belong to whoever needs them, not here.
+func allowRate(ctx context.Context, rate rateState, spec RateSpec, scope string, counters Counters) error {
+	if counters != nil {
+		return counters.Allow(ctx, scope, spec, 1)
 	}
-	if p.RateLimit <= 0 {
+	if spec.RateLimit <= 0 {
 		return nil
 	}
 	if rate.window != nil {
 		if rate.window.allowN(1) {
 			return nil
 		}
-		return ErrRateLimited
+		return chain.ErrRateLimited
 	}
-	if rate.bucket.waitN(ctx, 1, p.RateLimitMaxWait) {
+	if rate.bucket.waitN(ctx, 1, spec.MaxWait) {
 		return nil
 	}
-	return ErrRateLimited
+	return chain.ErrRateLimited
 }
 
-// rateState is the budget ONE executor holds for its ONE service. It is rebuilt
-// whenever the policy changes (see [defaultExecutor.adopt]), so a hot-reloaded
-// rate starts its budget over exactly as a freshly built executor would, and the
-// hot path never diffs policies. The zero value means "no rate limit
+// rateState is the budget ONE executor or inbound executor holds for its ONE
+// service or route, built from a [RateSpec]. The zero value means "no rate limit
 // configured", which the stage treats as unlimited.
 type rateState struct {
 	bucket *tokenBucket
 	window *slidingWindow
 }
 
-// newRateState builds the local budget p asks for.
-func newRateState(p ClientPolicy) rateState {
-	if p.RateLimit <= 0 {
+// newRateState builds the local budget spec asks for.
+func newRateState(spec RateSpec) rateState {
+	if spec.RateLimit <= 0 {
 		return rateState{}
 	}
-	if p.Algorithm == SlidingWindow {
-		win := p.Window
+	if spec.Algorithm == SlidingWindow {
+		win := spec.Window
 		if win <= 0 {
 			win = time.Second
 		}
-		limit := p.RateLimit * win.Seconds()
+		limit := spec.RateLimit * win.Seconds()
 		if limit < 1 {
 			limit = 1
 		}
 		return rateState{window: &slidingWindow{limit: limit, window: win, curStart: time.Now()}}
 	}
-	burst := p.Burst
+	burst := spec.Burst
 	if burst <= 0 {
 		// A small burst keeps steady traffic from being clipped by timing jitter
 		// while still bounding spikes.
-		if burst = int(p.RateLimit); burst < 1 {
+		if burst = int(spec.RateLimit); burst < 1 {
 			burst = 1
 		}
 	}
-	return rateState{bucket: newTokenBucket(p.RateLimit, burst)}
+	return rateState{bucket: newTokenBucket(spec.RateLimit, burst)}
 }
 
 // tokenBucket is a minimal, dependency-free rate limiter. Tokens refill

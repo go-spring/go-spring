@@ -181,8 +181,7 @@ go run . -manual & curl http://127.0.0.1:9090/clickhouse_version
 
 ```
 import starter-gorm-clickhouse
-  └─ init(): gormcore.Module(Dialect{Prefix: "spring.gorm.clickhouse",
-        Engine: "clickhouse", HealthPrefix: "gorm:clickhouse:"})
+  └─ init(): gs.Module(gs.OnProperty("spring.gorm.clickhouse.instances"), ...)   —— 注册在 starter.go
 gs.Run()
   ├─ conf.BindEach → 每条目一个 Config
   ├─ build()                                        — starter.go:61-131
@@ -194,9 +193,10 @@ gs.Run()
   │    │      + opts.DialContext = resolver 选点     （discovery 时）
   │    │      → clickhouse.New(Config{Conn: ch.OpenDB(opts)})
   │    └─ 直连路径：clickhouse.Open(DSN)              （无 TLS、无 discovery）
-  ├─ gormcore.Open: gorm.Open → ApplyPool（启动 ping）→ DBCustomizers
-  ├─ DB.Init(): observe 插件（db.system=clickhouse）+ resilience 回调
-  │            （resource "gorm:clickhouse" + service-name/addr）
+  ├─ gormcore.NewDB: gorm.Open → ApplyPool（连接池旋钮）→ DBCustomizers → observe
+  │      插件（db.system=clickhouse）+ resilience 回调（resource
+  │      "gorm:clickhouse" + service-name/addr）→ *DB bean，名为 <dialect>.<entry>
+  ├─ ping 时启动探测：gormcore.HealthCheck（受 ping-timeout 约束）
   └─ SIGTERM → DB.Destroy(): executor → closers（停 discovery watch）→ 关连接池
 ```
 
@@ -308,7 +308,7 @@ example 的 `discovery` 实例用哑值 `0.0.0.0:0`；`Response from discovered 
 ```bash
 cd example-load && docker compose up -d
 go run . -duration=10s                        # SELECT 1 基线
-# 放火（starter-governance-file 热加载）：
+# 放火（cloud/governance 热加载）：
 #   spring.governance.client.fault.enabled=true  spring.governance.client.fault.rate=0.5  spring.governance.client.fault.error=generic
 go run . -duration=10s                        # 错误分布显示 ~50% 注入
 ```

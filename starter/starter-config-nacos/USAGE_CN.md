@@ -116,7 +116,7 @@ curl -fsS -X POST 'http://127.0.0.1:8848/nacos/v1/cs/configs' \
 
 ```
 blank-import starter-config-nacos
-  └─ init(): conf.RegisterProvider("nacos", nacosController.Load)      starter.go:58
+  └─ init(): conf.RegisterProvider("nacos", newNacosCtrl())      starter.go:58
 
 gs.Run()
   ├─ App.Start(): app.p.Refresh()                                     app.go "Start"

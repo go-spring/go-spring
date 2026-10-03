@@ -57,6 +57,7 @@ package StarterKafkaSarama
 
 import (
 	"context"
+	"go-spring.org/cloud/chain"
 	"sync"
 
 	"github.com/IBM/sarama"
@@ -182,7 +183,7 @@ var _ propagation.TextMapCarrier = consumerCarrier{}
 // runs it inline. Splitting this out keeps the guarded methods trivial and
 // makes the pass-through / rejection paths independently testable without a
 // live broker.
-func guard(exec resilience.ClientExecutor, ctx context.Context, call func(context.Context) error) error {
+func guard(exec chain.Executor, ctx context.Context, call func(context.Context) error) error {
 	if exec == nil {
 		return call(ctx)
 	}
@@ -193,7 +194,7 @@ func guard(exec resilience.ClientExecutor, ctx context.Context, call func(contex
 // the stable serviceLabel it executes under, colocated so a guard lookup
 // reads the pair atomically (no torn exec/serviceLabel combination).
 type clientGuard struct {
-	exec         resilience.ClientExecutor
+	exec         chain.Executor
 	serviceLabel string
 }
 
@@ -235,7 +236,7 @@ func closeResilience(client sarama.Client) {
 // executorFor loads the executor and serviceLabel attached to client. Returns
 // (nil, "") when resilience is disabled for that client, so the seams fall
 // back to a direct call.
-func executorFor(client sarama.Client) (resilience.ClientExecutor, string) {
+func executorFor(client sarama.Client) (chain.Executor, string) {
 	v, ok := clientGuards.Load(client)
 	if !ok {
 		return nil, ""
@@ -286,7 +287,7 @@ func WrapSyncProducer(cl sarama.Client, p sarama.SyncProducer, prop traffic.Prop
 // not the protected data path.
 type guardedSyncProducer struct {
 	p            sarama.SyncProducer
-	exec         resilience.ClientExecutor
+	exec         chain.Executor
 	serviceLabel string
 	prop         traffic.Propagator
 }

@@ -35,7 +35,6 @@ require (
     go-spring.org/spring         v1.3.x
     go-spring.org/starter-trpc   latest
     go-spring.org/starter-otel     latest   // 可选：真实 trace/metric 导出
-    go-spring.org/starter-governance-file latest // 可选：运行期 fault 注入
 )
 ```
 
@@ -48,7 +47,6 @@ import (
     "go-spring.org/spring/gs"
     _ "demo/service"
 
-    _ "go-spring.org/starter-governance-file"
     _ "go-spring.org/starter-otel"
     _ "go-spring.org/starter-trpc"
 )

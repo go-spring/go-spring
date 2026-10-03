@@ -42,13 +42,20 @@ import (
 	"go-spring.org/stdlib/flatten"
 )
 
+func init() {
+	// Register the controller itself, not just its Load method: the runtime
+	// holds the registered provider so it can stop the listeners at shutdown
+	// (see provider.Provider).
+	conf.RegisterProvider("apollo", newApolloCtrl())
+}
+
 // agolloChangeEvent / agolloFullChangeEvent alias agollo's event types so the
 // listener implementation stays readable without importing the storage package
 // name everywhere.
 type agolloChangeEvent = agstorage.ChangeEvent
 type agolloFullChangeEvent = agstorage.FullChangeEvent
 
-// apolloClient is the slice of agollo.Client the controller actually uses.
+// apolloClient is the subset of agollo.Client the controller actually uses.
 // Narrowing to an interface keeps the type fakeable in tests without
 // standing up the sixteen-method agollo.Client surface (whose Config cannot
 // even be constructed outside agollo).
@@ -57,6 +64,9 @@ type apolloClient interface {
 	// namespace has not been synced yet.
 	GetConfigContent(namespace string) string
 	AddChangeListener(listener agstorage.ChangeListener)
+	// Close stops the client's long polling, which is what ends the change
+	// callbacks at shutdown.
+	Close()
 }
 
 // agolloClientAdapter adapts a real agollo.Client to apolloClient.
@@ -69,10 +79,6 @@ func (a agolloClientAdapter) GetConfigContent(namespace string) string {
 		return cfg.GetContent()
 	}
 	return ""
-}
-
-func init() {
-	conf.RegisterProvider("apollo", newApolloCtrl().Load)
 }
 
 var starterTag = log.RegisterAppTag("config_apollo", "")
@@ -92,6 +98,25 @@ func newApolloCtrl() *apolloCtrl {
 		clients:  map[string]apolloClient{},
 		listened: map[string]struct{}{},
 	}
+}
+
+// Close stops the long polling of every client and drops the caches. It
+// implements provider.Provider. Closing is final only for this application
+// instance: the next Load builds fresh clients and re-listens.
+func (c *apolloCtrl) Close() error {
+	c.mu.Lock()
+	clients := c.clients
+	c.clients = map[string]apolloClient{}
+	c.listened = map[string]struct{}{}
+	c.mu.Unlock()
+
+	for _, cli := range clients {
+		cli.Close()
+	}
+	if n := len(clients); n > 0 {
+		log.Infof(context.Background(), starterTag, "closed %d apollo client(s)", n)
+	}
+	return nil
 }
 
 // TriggerRefresh is called by the config listener when a watched namespace
@@ -160,7 +185,8 @@ func clientKey(cs apolloSource) string {
 	return cs.server + "|" + cs.appID + "|" + cs.cluster + "|" + cs.secret + "|" + cs.namespace
 }
 
-// clientFor returns a cached agollo Client, creating one if necessary.
+// clientFor returns a cached agollo Client, creating one if necessary. A
+// created client is logged so a silent reconnect after Close is visible.
 func (c *apolloCtrl) clientFor(cs apolloSource) (apolloClient, error) {
 	key := clientKey(cs)
 
@@ -184,6 +210,8 @@ func (c *apolloCtrl) clientFor(cs apolloSource) (apolloClient, error) {
 	if err != nil {
 		return nil, errutil.Explain(err, "create apollo client for %s failed", cs.server)
 	}
+	log.Infof(context.Background(), starterTag, "created apollo client server=%s appId=%s cluster=%s namespace=%s",
+		cs.server, cs.appID, cs.cluster, cs.namespace)
 	c.clients[key] = agolloClientAdapter{Client: cli}
 	return c.clients[key], nil
 }
@@ -192,17 +220,23 @@ func (c *apolloCtrl) clientFor(cs apolloSource) (apolloClient, error) {
 // parses it according to the declared format, and installs a change listener
 // that triggers an application property refresh.
 func (c *apolloCtrl) Load(optional bool, source string) (map[string]string, error) {
+	ctx := context.Background()
+
 	cs, err := parseSource(source)
 	if err != nil {
-		log.Errorf(context.Background(), starterTag, "parse source %q failed: %v", source, err)
+		log.Errorf(ctx, starterTag, "parse source %q failed: %v", source, err)
 		return nil, err
 	}
 
 	cli, err := c.clientFor(cs)
 	if err != nil {
-		log.Errorf(context.Background(), starterTag, "create apollo client for appId=%s failed: %v", cs.appID, err)
+		log.Errorf(ctx, starterTag, "create apollo client for server=%s appId=%s cluster=%s failed: %v",
+			cs.server, cs.appID, cs.cluster, err)
 		return nil, err
 	}
+
+	log.Debugf(ctx, starterTag, "loading apollo namespace=%s server=%s appId=%s cluster=%s format=%s",
+		cs.namespace, cs.server, cs.appID, cs.cluster, cs.format)
 
 	// Install the listener BEFORE the fetch so a later change is never missed.
 	c.registerListener(cli, cs)
@@ -210,7 +244,7 @@ func (c *apolloCtrl) Load(optional bool, source string) (map[string]string, erro
 	content := cli.GetConfigContent(cs.namespace)
 	if content == "" {
 		if optional {
-			log.Warnf(context.Background(), starterTag, "optional apollo namespace %s is empty (skipped)", cs.namespace)
+			log.Warnf(ctx, starterTag, "optional apollo namespace %s is empty (skipped)", cs.namespace)
 			return nil, nil
 		}
 		return nil, errutil.Explain(nil, "apollo namespace %s is empty", cs.namespace)
@@ -218,9 +252,11 @@ func (c *apolloCtrl) Load(optional bool, source string) (map[string]string, erro
 
 	m, err := reader.Read(cs.format, []byte(content))
 	if err != nil {
+		log.Errorf(ctx, starterTag, "parse apollo namespace=%s as %s failed: %v", cs.namespace, cs.format, err)
 		return nil, errutil.Explain(err, "parse apollo namespace %s as %s failed", cs.namespace, cs.format)
 	}
-	log.Infof(context.Background(), starterTag, "loaded apollo namespace %s keys=%d", cs.namespace, len(m))
+	log.Infof(ctx, starterTag, "loaded apollo namespace=%s server=%s appId=%s cluster=%s keys=%d",
+		cs.namespace, cs.server, cs.appID, cs.cluster, len(m))
 	return flatten.Flatten(m), nil
 }
 
@@ -237,6 +273,8 @@ func (c *apolloCtrl) registerListener(cli apolloClient, cs apolloSource) {
 	c.listened[lk] = struct{}{}
 	c.mu.Unlock()
 
+	log.Infof(context.Background(), starterTag, "watching apollo namespace=%s server=%s appId=%s cluster=%s",
+		cs.namespace, cs.server, cs.appID, cs.cluster)
 	cli.AddChangeListener(&apolloListener{ctrl: c})
 }
 
@@ -245,10 +283,28 @@ type apolloListener struct {
 	ctrl *apolloCtrl
 }
 
-func (l *apolloListener) OnChange(*agolloChangeEvent) {
-	l.ctrl.TriggerRefresh(context.Background())
+func (l *apolloListener) OnChange(ev *agolloChangeEvent) {
+	// Stamp the trigger with the change's identity (which namespace) so the
+	// refresh records logged and metered by observability.RefreshConf carry
+	// what this round is about. The event is nil-guarded: agollo always
+	// passes one, but this listener must not panic over a missing namespace.
+	ns := ""
+	if ev != nil {
+		ns = ev.Namespace
+	}
+	l.ctrl.TriggerRefresh(log.WithFields(context.Background(),
+		log.String("source", "apollo"),
+		log.String("namespace", ns),
+	))
 }
 
-func (l *apolloListener) OnNewestChange(*agolloFullChangeEvent) {
-	l.ctrl.TriggerRefresh(context.Background())
+func (l *apolloListener) OnNewestChange(ev *agolloFullChangeEvent) {
+	ns := ""
+	if ev != nil {
+		ns = ev.Namespace
+	}
+	l.ctrl.TriggerRefresh(log.WithFields(context.Background(),
+		log.String("source", "apollo"),
+		log.String("namespace", ns),
+	))
 }

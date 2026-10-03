@@ -24,6 +24,7 @@
 package StarterS3
 
 import (
+	"go-spring.org/cloud/chain"
 	"net/http"
 	"sync"
 
@@ -64,7 +65,7 @@ type Client struct {
 	// exec is the resilience executor protecting requests, built by [NewClient]
 	// from the [cloud.ClientParams] the container supplied; the zero bundle
 	// degrades to an observed-only, unmanaged executor rather than a bare client.
-	exec resilience.ClientExecutor
+	exec chain.Executor
 	// serviceLabel is the resilience service key ("s3:<endpoint>") exec scopes
 	// limiter/breaker state by.
 	serviceLabel string
@@ -108,7 +109,7 @@ func NewClient(client *minio.Client, transport http.RoundTripper, cfg Config, pa
 // installTransport (re)installs the client's transport stack onto dyn: the
 // declaration transport is OUTERMOST and wraps the resilience round-tripper,
 // which wraps http.DefaultTransport. The order is load-bearing: the resilience
-// emitter reads the operation at [ClientExecutor.Execute] entry, so the
+// emitter reads the operation at [chain.Executor.Execute] entry, so the
 // declaration must be on the context the round-tripper passes into Execute —
 // a declaration nested inside the executor would run per attempt and be read by
 // nobody. Declaration outermost is what makes the emitted call cover every

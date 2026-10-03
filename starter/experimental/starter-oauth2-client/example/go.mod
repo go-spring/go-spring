@@ -7,7 +7,6 @@ require golang.org/x/oauth2 v0.36.0
 require (
 	go-spring.org/log v0.1.4
 	go-spring.org/spring v1.3.4
-	go-spring.org/starter-governance-file v0.0.0
 )
 
 require (
@@ -31,4 +30,3 @@ require (
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 )
 
-replace go-spring.org/starter-governance-file => ../../../starter-governance-file

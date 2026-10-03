@@ -21,6 +21,11 @@ import "go-spring.org/cloud/security"
 // NacosConfig binds the Nacos naming-server connection under
 // ${spring.discovery.nacos}.
 type NacosConfig struct {
+	// Enabled turns this named block off without deleting it. Default true;
+	// a disabled block contributes no beans (no client, no registration,
+	// no discovery, no health indicator).
+	Enabled bool `value:"${enabled:=true}"`
+
 	// Server is the Nacos server address, e.g. "127.0.0.1:8848". Setting it is
 	// what activates this starter (fail-loud opt-in; no silent localhost).
 	Server string `value:"${server}"`

@@ -38,7 +38,6 @@ require (
     go-spring.org/starter-rocketmq   latest
     go-spring.org/starter-actuator   latest   // 可选：/metrics 挂载
     go-spring.org/starter-otel       latest   // 可选：真实 trace/metric 导出
-    go-spring.org/starter-governance-file latest   // 可选：resilience/fault 策略
 )
 ```
 
@@ -50,7 +49,6 @@ package main
 import (
     "go-spring.org/spring/gs"
     _ "go-spring.org/starter-actuator"
-    _ "go-spring.org/starter-governance-file"
     _ "go-spring.org/starter-otel"
     _ "demo/service"
 )

@@ -19,6 +19,7 @@ package resilience
 import (
 	"context"
 	"errors"
+	"go-spring.org/cloud/chain"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -32,7 +33,7 @@ var errFail = errors.New("test: fail")
 // armed returns a manager armed with a resolver backed by fixedPolicies.
 func armed(t *testing.T, policies map[string]ClientPolicy, driver string) *Manager {
 	t.Helper()
-	m := NewManager()
+	m := NewManager(nil)
 	if err := m.Apply(Settings{
 		Enabled:             true,
 		Driver:              driver,
@@ -44,7 +45,7 @@ func armed(t *testing.T, policies map[string]ClientPolicy, driver string) *Manag
 }
 
 // runOnce runs fn through e and reports whether it ran.
-func runOnce(t *testing.T, e ClientExecutor) bool {
+func runOnce(t *testing.T, e chain.Executor) bool {
 	t.Helper()
 	ran := false
 	err := e.Execute(context.Background(), func(context.Context) error {
@@ -58,7 +59,7 @@ func runOnce(t *testing.T, e ClientExecutor) bool {
 }
 
 func TestManagerUnarmedIsPassThrough(t *testing.T) {
-	m := NewManager()
+	m := NewManager(nil)
 	if !runOnce(t, m.ClientExecutorFor("redis", "redis:cache")) {
 		t.Fatal("unarmed manager must run fn")
 	}
@@ -71,7 +72,7 @@ func TestManagerUnarmedIsPassThrough(t *testing.T) {
 }
 
 func TestManagerDisabledIsPassThrough(t *testing.T) {
-	m := NewManager()
+	m := NewManager(nil)
 	if err := m.Apply(Settings{
 		Enabled:             false,
 		ResolveClientPolicy: func(string) ClientPolicy { return ClientPolicy{AttemptTimeout: time.Second} },
@@ -89,8 +90,7 @@ func TestManagerDisabledIsPassThrough(t *testing.T) {
 }
 
 func TestManagerUnknownDriverFailsApply(t *testing.T) {
-	m := NewManager()
-	m.SetDrivers(map[string]Driver{"sentinel": NewDefaultDriver(nil)})
+	m := NewManager(map[string]Driver{"sentinel": NewDefaultDriver(nil)})
 	err := m.Apply(Settings{Enabled: true, Driver: "nope", ResolveClientPolicy: func(string) ClientPolicy { return ClientPolicy{} }})
 	if err == nil {
 		t.Fatal("an enabled settings naming an uninstalled driver must fail Apply")
@@ -117,14 +117,14 @@ func TestManagerSharesOneExecutorPerLabel(t *testing.T) {
 	a := m.ClientExecutorFor("redis", "redis:cache")
 	b := m.ClientExecutorFor("redis", "redis:cache")
 
-	fail := func(e ClientExecutor) {
+	fail := func(e chain.Executor) {
 		_ = e.Execute(context.Background(), func(context.Context) error { return errFail })
 	}
 	fail(a)
 	fail(b) // second failure across BOTH handles trips the shared breaker
 
 	err := a.Execute(context.Background(), func(context.Context) error { return nil })
-	if err != ErrCircuitOpen {
+	if err != chain.ErrCircuitOpen {
 		t.Fatalf("breaker state must be shared across handles for one label, got %v", err)
 	}
 }
@@ -139,7 +139,7 @@ func TestManagerSubscribeArmsAndNotifies(t *testing.T) {
 		defer mu.Unlock()
 		return policies[label]
 	}
-	m := NewManager()
+	m := NewManager(nil)
 	if err := m.Apply(Settings{Enabled: true, ResolveClientPolicy: resolve}); err != nil {
 		t.Fatalf("Apply: %v", err)
 	}
@@ -205,10 +205,9 @@ func TestSubscription_ZeroIsInert(t *testing.T) {
 // drops the memoized executors: they were built by the previous driver and must
 // not outlive it.
 func TestManagerApplyRebuildsOnDriverSwitch(t *testing.T) {
-	m := NewManager()
 	var mu sync.Mutex
 	var built []string
-	m.SetDrivers(map[string]Driver{
+	m := NewManager(map[string]Driver{
 		"a": namedDriver{name: "a", built: &built, mu: &mu},
 		"b": namedDriver{name: "b", built: &built, mu: &mu},
 	})
@@ -236,11 +235,10 @@ func TestManagerApplyRebuildsOnDriverSwitch(t *testing.T) {
 // namedDriver records the name of every driver asked to build an executor.
 // TestManagerServerLaneIsSeparate pins that the two directions are separate
 // lanes over separate models: ServerExecutorFor builds through Driver.NewServerExecutor
-// (not NewClientExecutor), reads the admission resolver, and a client-side policy change
+// (not NewClientExecutor), reads the inbound resolver, and a client-side policy change
 // never touches the inbound model.
 func TestManagerServerLaneIsSeparate(t *testing.T) {
-	m := NewManager()
-	m.SetDrivers(map[string]Driver{"counting": &countingDriver{}})
+	m := NewManager(map[string]Driver{"counting": &countingDriver{}})
 
 	var mu sync.Mutex
 	policies := map[string]ClientPolicy{"redis:cache": {AttemptTimeout: time.Second}}
@@ -264,7 +262,7 @@ func TestManagerServerLaneIsSeparate(t *testing.T) {
 
 	runOnce(t, m.ClientExecutorFor("redis", "redis:cache"))
 	if err := m.ServerExecutorFor("gin", "gin::8080").Execute(context.Background(), func(context.Context) error { return nil }); err != nil {
-		t.Fatalf("admission Execute: %v", err)
+		t.Fatalf("inbound Execute: %v", err)
 	}
 
 	drv := m.drivers["counting"].(*countingDriver)
@@ -272,7 +270,7 @@ func TestManagerServerLaneIsSeparate(t *testing.T) {
 		t.Fatalf("want one outbound build, got %d", got)
 	}
 	if got := drv.serverPolicies.Load(); got != 1 {
-		t.Fatalf("ServerExecutorFor must build through NewServerExecutor, got %d admission builds", got)
+		t.Fatalf("ServerExecutorFor must build through NewServerExecutor, got %d inbound builds", got)
 	}
 	if got := drv.lastServerPolicy.Load().(ServerPolicy).RateLimit; got != 7 {
 		t.Fatalf("ServerExecutorFor must resolve the ADMISSION resolver, got rate limit %v", got)
@@ -291,24 +289,24 @@ func TestManagerServerLaneIsSeparate(t *testing.T) {
 		t.Fatalf("second Apply: %v", err)
 	}
 	if got := drv.serverPolicies.Load(); got != 1 {
-		t.Fatalf("an outbound-only change must not rebuild inbound admission, got %d builds", got)
+		t.Fatalf("an outbound-only change must not rebuild inbound inbound, got %d builds", got)
 	}
 }
 
 // countingDriver records how many executors it built per direction, and what
-// admission model it was last handed.
+// inbound model it was last handed.
 type countingDriver struct {
 	executors        atomic.Int32
 	serverPolicies   atomic.Int32
 	lastServerPolicy atomic.Value // ServerPolicy
 }
 
-func (d *countingDriver) NewClientExecutor(service string, p ClientPolicy) (ClientExecutor, error) {
+func (d *countingDriver) NewClientExecutor(service string, p ClientPolicy) (chain.Executor, error) {
 	d.executors.Add(1)
 	return NewDefaultDriver(nil).NewClientExecutor(service, p)
 }
 
-func (d *countingDriver) NewServerExecutor(service string, a ServerPolicy) (ServerExecutor, error) {
+func (d *countingDriver) NewServerExecutor(service string, a ServerPolicy) (chain.Executor, error) {
 	d.serverPolicies.Add(1)
 	d.lastServerPolicy.Store(a)
 	return NewDefaultDriver(nil).NewServerExecutor(service, a)
@@ -320,16 +318,93 @@ type namedDriver struct {
 	mu    *sync.Mutex
 }
 
-func (d namedDriver) NewClientExecutor(service string, p ClientPolicy) (ClientExecutor, error) {
+func (d namedDriver) NewClientExecutor(service string, p ClientPolicy) (chain.Executor, error) {
 	d.mu.Lock()
 	*d.built = append(*d.built, d.name)
 	d.mu.Unlock()
 	return NewDefaultDriver(nil).NewClientExecutor(service, p)
 }
 
-func (d namedDriver) NewServerExecutor(service string, a ServerPolicy) (ServerExecutor, error) {
+func (d namedDriver) NewServerExecutor(service string, a ServerPolicy) (chain.Executor, error) {
 	d.mu.Lock()
 	*d.built = append(*d.built, d.name)
 	d.mu.Unlock()
 	return NewDefaultDriver(nil).NewServerExecutor(service, a)
+}
+
+// policyDriver records every (service, policy) it was asked to build, so a test can
+// tell WHICH labels a push rebuilt.
+type policyDriver struct {
+	mu    sync.Mutex
+	built []string
+}
+
+func (d *policyDriver) NewClientExecutor(service string, p ClientPolicy) (chain.Executor, error) {
+	d.mu.Lock()
+	d.built = append(d.built, service+"@"+p.AttemptTimeout.String())
+	d.mu.Unlock()
+	return NewDefaultDriver(nil).NewClientExecutor(service, p)
+}
+
+func (d *policyDriver) NewServerExecutor(service string, p ServerPolicy) (chain.Executor, error) {
+	return NewDefaultDriver(nil).NewServerExecutor(service, p)
+}
+
+func (d *policyDriver) snapshot() []string {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return append([]string(nil), d.built...)
+}
+
+// TestManagerApplyEvictsOnlyChangedLabels pins both halves of a push: a label whose
+// policy moved is rebuilt under the new one, and a label whose policy did NOT move
+// keeps the executor it already had — with its breaker and rate-limit state —
+// instead of being churned by an unrelated change.
+func TestManagerApplyEvictsOnlyChangedLabels(t *testing.T) {
+	d := &policyDriver{}
+	m := NewManager(map[string]Driver{"rec": d})
+
+	var mu sync.Mutex
+	policies := map[string]ClientPolicy{
+		"redis:cache": {AttemptTimeout: time.Second},
+		"redis:queue": {AttemptTimeout: time.Second},
+	}
+	resolve := func(label string) ClientPolicy {
+		mu.Lock()
+		defer mu.Unlock()
+		return policies[label]
+	}
+
+	if err := m.Apply(Settings{Enabled: true, Driver: "rec", ResolveClientPolicy: resolve}); err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+	runOnce(t, m.ClientExecutorFor("redis", "redis:cache"))
+	runOnce(t, m.ClientExecutorFor("redis", "redis:queue"))
+	if got := d.snapshot(); len(got) != 2 {
+		t.Fatalf("want both labels built, got %v", got)
+	}
+
+	// Move ONE label's policy.
+	mu.Lock()
+	policies["redis:cache"] = ClientPolicy{AttemptTimeout: 2 * time.Second}
+	mu.Unlock()
+	if err := m.Apply(Settings{Enabled: true, Driver: "rec", ResolveClientPolicy: resolve}); err != nil {
+		t.Fatalf("second Apply: %v", err)
+	}
+	if got := d.snapshot(); len(got) != 2 {
+		t.Fatalf("a push must not build eagerly, got %v", got)
+	}
+
+	// The unchanged label keeps its executor.
+	runOnce(t, m.ClientExecutorFor("redis", "redis:queue"))
+	if got := d.snapshot(); len(got) != 2 {
+		t.Fatalf("the unchanged label must keep its executor, got %v", got)
+	}
+
+	// The changed one is rebuilt, under the policy the push moved it to.
+	runOnce(t, m.ClientExecutorFor("redis", "redis:cache"))
+	got := d.snapshot()
+	if len(got) != 3 || got[2] != "redis:cache@2s" {
+		t.Fatalf("the changed label must be rebuilt under the new policy, got %v", got)
+	}
 }

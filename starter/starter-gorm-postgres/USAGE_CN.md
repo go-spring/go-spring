@@ -138,19 +138,21 @@ curl -s '127.0.0.1:16686/api/traces?service=demo&limit=1' | grep '"data":\['
 
 ```
 import starter-gorm-postgres
-  └─ init: gormcore.Module(Dialect{Prefix: "spring.gorm.postgres", Engine: "postgresql", ...})
+  └─ init: gs.Module(gs.OnProperty("spring.gorm.postgres.instances"), ...)   —— 注册在 starter.go
 gs.Run()
-  ├─ OnProperty("spring.gorm.postgres") 命中；conf.BindEach 为每个 <name> 条目绑定一份 Config
+  ├─ OnProperty("spring.gorm.postgres.instances") 命中；conf.BindEach 为每个 <name> 条目绑定一份 Config
   ├─ 每实例：build(ctx, c)
   │    ├─ host/service-name 存在性检查（必须设其一）
   │    ├─ DSN(): "host=.. port=.. user=.. password=.. dbname=.. sslmode=.."（+ 可选段）
   │    └─ 服务发现（设了 service-name 且 mesh 关闭）：先 pgx.ParseConfig(DSN)，再把 pgx
   │         DialFunc 替换为基于 round-robin pick pool 的拨号闭包；直连模式直接用 DSN
-  ├─ gormcore.Open：gorm.Open -> ApplyPool（含启动 ping、ping-timeout 上限）
-  │    -> ApplyDBCustomizers -> *DB bean（Name=<name>，Init，Destroy）
+  ├─ gormcore.NewDB：gormcore.Open：gorm.Open -> ApplyPool（连接池旋钮）
+  │    -> ApplyDBCustomizers -> observe 插件（db.system=postgresql，observe.enabled=false 除外）
+  │       -> 治理：资源 "gorm:postgresql:<host|service-name>" 的 resilience/fault executor 回调
+  │       -> *DB
+  ├─ ping 时启动探测：gormcore.HealthCheck（受 ping-timeout 约束）
+  ├─ Provide *DB .Name(postgres.<entry>).Destroy((*DB).Destroy)
   ├─ 健康指示器 "gorm:postgres:<name>" 以 health.Indicator 导出
-  ├─ DB.Init（在注入 Observability 字段之后）：observe 插件（db.system=postgresql）
-  │    + 资源 "gorm:postgresql:<host|service-name>" 的 resilience/fault executor 回调
   └─ DB.Destroy（SIGTERM）：关 executor -> 停发现 watch -> 关连接池
 ```
 

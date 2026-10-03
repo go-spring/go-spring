@@ -25,14 +25,11 @@ package StarterHTTPClient
 
 import (
 	"context"
+	"go-spring.org/cloud/governance"
 	"io"
 	"net/http"
-	"sort"
 
 	"go-spring.org/cloud/discovery"
-	"go-spring.org/cloud/fault"
-	"go-spring.org/cloud/loadbalance"
-	"go-spring.org/cloud/resilience"
 	"go-spring.org/cloud/traffic"
 	"go-spring.org/log"
 	"go-spring.org/spring/conf"
@@ -76,15 +73,10 @@ func init() {
 				gs.IndexArg(1, gs.ValueArg(name)),
 				gs.IndexArg(2, gs.ValueArg(c)),
 				gs.IndexArg(3, gs.TagArg("${spring.http-client.instances."+name+".driver:=${spring.http-client.default.driver:=?}}")),
-				gs.IndexArg(4, gs.TagArg("?")),
-				// The governance beans are REQUIRED: each is registered by the package that
-				// owns it (cloud/resilience, cloud/loadbalance, cloud/fault), which this
-				// starter imports — "governance off" is spring.governance.enabled=false, never
-				// an absent bean.
-				gs.IndexArg(5, gs.TagArg("")),
-				gs.IndexArg(6, gs.TagArg("")),
-				gs.IndexArg(7, gs.TagArg("")),  // *loadbalance.Manager
-				gs.IndexArg(8, gs.TagArg("?")), // nullable traffic.Propagator bean
+				// The governance center is the family's sole injection point: it hands
+				// out the resilience/fault/loadbalance authorities and the discovery
+				// directory the entry's ${discovery} label resolves against.
+				gs.IndexArg(5, gs.TagArg("?")), // nullable traffic.Propagator bean
 			).Name(name).Destroy((*route).Close).Caller(1)
 			return nil
 		}); err != nil {
@@ -102,31 +94,25 @@ func init() {
 	})
 }
 
-// newRoute assembles one entry's transport. backends is every named discovery
-// backend bean in the container (bean name = label); the entry resolves its
-// ${discovery} label against it, so different entries may cite different
-// registries.
+// newRoute assembles one entry's transport. The entry resolves its ${discovery}
+// label against the discovery directory the center carries, so different entries
+// may cite different registries.
 //
-// mgr and inj are the authority beans the owning packages register (nil when it
-// is not imported — gs autowires a missing bean as nil); they are threaded to
-// the driver, which hands them to the transport assembler. Neither the entry's
-// own config nor its service label carries them: governance is a bean, not a
-// bound value.
-func newRoute(ctx *gs.ContextProvider, name string, c Config, d Driver, backends map[string]discovery.Discovery, mgr *resilience.Manager, inj *fault.Injector, lbMgr *loadbalance.Manager, prop traffic.Propagator) (*route, error) {
+// center is the governance center bean — the family's sole injection point, which
+// also carries the discovery directory and the resilience/fault/loadbalance
+// authorities (all nil-safe). It is threaded to the driver, which hands it to the
+// transport assembler. Neither the entry's own config nor its service label
+// carries the authorities: they are beans, not bound values.
+func newRoute(ctx *gs.ContextProvider, name string, c Config, d Driver, center *governance.Center, prop traffic.Propagator) (*route, error) {
 	var backend discovery.Discovery
 	if c.Discovery != "" {
-		b, ok := backends[c.Discovery]
+		b, ok := center.Discovery().Get(c.Discovery)
 		if !ok {
-			labels := make([]string, 0, len(backends))
-			for k := range backends {
-				labels = append(labels, k)
-			}
-			sort.Strings(labels)
-			return nil, errutil.Explain(nil, "http-client: entry %q cites discovery backend %q but no such bean exists (registered: %v)", name, c.Discovery, labels)
+			return nil, errutil.Explain(nil, "http-client: entry %q cites discovery backend %q but no such backend exists (registered: %v)", name, c.Discovery, center.Discovery().Labels())
 		}
 		backend = b
 	}
-	rt, closeFn, err := assembleTransport(ctx, name, c, backend, d, mgr, inj, lbMgr, prop)
+	rt, closeFn, err := assembleTransport(ctx, name, c, backend, d, center, prop)
 	if err != nil {
 		return nil, err
 	}
@@ -161,8 +147,8 @@ func newDispatchTransport(routes []*route) (*dispatchTransport, error) {
 // Driver bean (the bundled DefaultDriver when none is provided). backend is the
 // entry's already-resolved discovery backend (nil when it cites none). closeFn
 // (when non-nil) releases the discovery watch and resilience executor behind it.
-// mgr and inj are the governance beans, forwarded to the driver unchanged.
-func assembleTransport(ctx *gs.ContextProvider, name string, c Config, backend discovery.Discovery, d Driver, mgr *resilience.Manager, inj *fault.Injector, lbMgr *loadbalance.Manager, prop traffic.Propagator) (rt http.RoundTripper, closeFn func() error, err error) {
+// center is the governance center, forwarded to the driver unchanged.
+func assembleTransport(ctx *gs.ContextProvider, name string, c Config, backend discovery.Discovery, d Driver, center *governance.Center, prop traffic.Propagator) (rt http.RoundTripper, closeFn func() error, err error) {
 	if err = c.validate(); err != nil {
 		return nil, nil, err
 	}
@@ -178,7 +164,7 @@ func assembleTransport(ctx *gs.ContextProvider, name string, c Config, backend d
 		gctx = ctx.Context
 	}
 	log.Debugf(gctx, log.TagAppDef, "assembling http transport, addr=%s service-name=%s", c.Addr, c.ServiceName)
-	rt, closeFn, err = d.CreateTransport(gctx, name, c, backend, mgr, inj, lbMgr, prop)
+	rt, closeFn, err = d.CreateTransport(gctx, name, c, backend, center, prop)
 	if err != nil {
 		log.Errorf(gctx, log.TagAppDef, "http-client: create transport failed: %v", err)
 		return nil, nil, err

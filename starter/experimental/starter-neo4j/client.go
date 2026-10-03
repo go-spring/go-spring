@@ -22,6 +22,7 @@ package StarterNeo4j
 
 import (
 	"context"
+	"go-spring.org/cloud/chain"
 
 	"github.com/neo4j/neo4j-go-driver/v5/neo4j"
 	"go-spring.org/cloud"
@@ -62,7 +63,7 @@ type Client struct {
 	// a one-time warning) rather than silently running bare. A zero Client built
 	// by hand (a test) leaves it nil, and [Query] / [RunWithResilience] then run
 	// their call inline.
-	exec resilience.ClientExecutor
+	exec chain.Executor
 }
 
 // NewClient builds a complete Client — identity and governance both — over a

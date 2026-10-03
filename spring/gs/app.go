@@ -25,6 +25,7 @@ import (
 	"testing"
 
 	"go-spring.org/log"
+	"go-spring.org/spring/conf"
 	"go-spring.org/spring/gs/internal/gs"
 	"go-spring.org/spring/gs/internal/gs_app"
 	"go-spring.org/spring/gs/internal/gs_bean"
@@ -139,11 +140,25 @@ func Run() {
 	newApp().Run()
 }
 
+// closeConfigProviders stops every registered config provider, so the watchers
+// and listeners they installed do not outlive the application. It is the
+// deferred safety net; the graceful shutdown path closes them earlier, while
+// the container is still alive.
+func closeConfigProviders(ctx context.Context) {
+	if err := conf.CloseProviders(); err != nil {
+		log.Errorf(ctx, log.TagAppDef, "close config providers failed: %v", err)
+	}
+}
+
 // Run starts the application, applies configuration, and waits for
 // termination signals (e.g., SIGTERM, Ctrl+C) to trigger a graceful shutdown.
 func (s *AppStarter) Run() {
 	defer log.Destroy()
 	defer runStoppers(s.app.Context())
+	// The graceful shutdown path closes the config providers itself; this
+	// covers the paths that never reach it, e.g. a failure to start. Close is
+	// a documented no-op the second time.
+	defer closeConfigProviders(s.app.Context())
 
 	// Error has already been logged
 	if err := s.startApp(); err != nil {
@@ -201,6 +216,9 @@ func RunTest(t *testing.T, f any) {
 func (s *AppStarter) RunTest(t *testing.T, f any) {
 	defer log.Destroy()
 	defer runStoppers(s.app.Context())
+	// See Run: the graceful path closes the providers, this covers a failed
+	// start (where the test binary keeps running with the watchers still live).
+	defer closeConfigProviders(s.app.Context())
 
 	ft, fv, err := validateRunTestFunc(f)
 	if err != nil {

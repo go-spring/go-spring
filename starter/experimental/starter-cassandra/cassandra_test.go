@@ -19,10 +19,12 @@ package StarterCassandra
 import (
 	"context"
 	"errors"
+	"go-spring.org/cloud/chain"
 	"testing"
 
 	"github.com/gocql/gocql"
 	"go-spring.org/cloud"
+	"go-spring.org/cloud/observability"
 	"go-spring.org/cloud/resilience"
 	"go-spring.org/stdlib/testing/assert"
 )
@@ -55,7 +57,7 @@ func TestParseConsistency(t *testing.T) {
 
 // newGuardedClient builds a Client whose guard is wired to a real executor
 // from the default resilience driver, wrapped by the resilience observe layer
-// ([resilience.WrapClientExecutor]) exactly as the container wiring does — the
+// ([observability.WrapClientExecutor]) exactly as the container wiring does — the
 // guard declares the operation and this wrapper emits from it. The embedded
 // *gocql.Session is nil — the tests drive Client.guard directly with a stubbed
 // call, so no live Cassandra cluster is needed.
@@ -63,7 +65,7 @@ func newGuardedClient(t *testing.T, p resilience.ClientPolicy) *Client {
 	d := resilience.NewDefaultDriver(nil)
 	inner, err := d.NewClientExecutor("svc", p)
 	assert.Error(t, err).Nil()
-	exec := resilience.WrapClientExecutor(inner, "cassandra", "cassandra:test")
+	exec := observability.WrapClientExecutor(inner, "cassandra", "cassandra:test")
 	return &Client{exec: exec, serviceLabel: "cassandra:test"}
 }
 
@@ -88,6 +90,6 @@ func TestGuardRateLimit(t *testing.T) {
 		return nil
 	}
 	assert.Error(t, c.guard(context.Background(), "exec", "INSERT INTO t VALUES(1)", stub)).Nil()
-	assert.Error(t, c.guard(context.Background(), "exec", "INSERT INTO t VALUES(2)", stub)).Is(resilience.ErrRateLimited)
+	assert.Error(t, c.guard(context.Background(), "exec", "INSERT INTO t VALUES(2)", stub)).Is(chain.ErrRateLimited)
 	assert.That(t, ran).Equal(1) // the rejected statement never ran
 }

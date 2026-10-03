@@ -14,10 +14,6 @@
  * limitations under the License.
  */
 
-// The governance beans are REQUIRED: each is registered by the package that
-// owns it (cloud/resilience, cloud/loadbalance, cloud/fault), which this
-// starter imports — "governance off" is spring.governance.enabled=false, never
-// an absent bean.
 package main
 
 import (

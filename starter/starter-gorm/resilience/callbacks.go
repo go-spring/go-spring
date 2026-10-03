@@ -16,11 +16,11 @@
 
 // Package gormresilience is the shared gorm resilience adapter. It replaces
 // gorm's standard create/query/update/delete/row/raw callback processors with
-// wrappers that run each operation under one [resilience.ClientExecutor], so every
+// wrappers that run each operation under one [chain.Executor], so every
 // gorm dialect starter (mysql, postgres, clickhouse, sqlserver) shares one
 // implementation instead of copy-pasting the ~100-line callback chain each.
 //
-// It is the gorm seam of resilience: the same backend-neutral Executor that
+// It is the gorm seam of resilience: the same backend-neutral chain.Executor that
 // other adapters drive through a redis.Hook, an http.RoundTripper or a grpc
 // interceptor is here driven through gorm's callback chain. The executor is
 // built per-instance by the starter (which knows its Config + driver + the
@@ -32,6 +32,7 @@ package gormresilience
 
 import (
 	"context"
+	"go-spring.org/cloud/chain"
 
 	"go-spring.org/cloud/resilience"
 	"gorm.io/gorm"
@@ -49,7 +50,7 @@ type callbackProcessor interface {
 // the op is treated as success; resilience rejections (ErrRateLimited /
 // ErrCircuitOpen / ErrBulkheadFull) surface on tx.Error so the caller sees them.
 // It is a no-op for any processor gorm has not registered (Get returns nil).
-func ApplyCallbacks(db *gorm.DB, exec resilience.ClientExecutor, service string) error {
+func ApplyCallbacks(db *gorm.DB, exec chain.Executor, service string) error {
 	steps := []struct {
 		p    callbackProcessor
 		name string
@@ -93,7 +94,7 @@ func ApplyCallbacks(db *gorm.DB, exec resilience.ClientExecutor, service string)
 // A real op error propagates through the executor (feeding retry/breaker); the
 // rejection sentinels are returned as-is so ApplyCallbacks' wrapper can put them
 // on tx.Error.
-func runGuard(ctx context.Context, exec resilience.ClientExecutor, service string, call func() error) error {
+func runGuard(ctx context.Context, exec chain.Executor, service string, call func() error) error {
 	if ctx == nil {
 		ctx = context.Background()
 	}

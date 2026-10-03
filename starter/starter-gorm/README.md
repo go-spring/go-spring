@@ -10,15 +10,16 @@ transitively.
 
 ## What it does
 
-Five dialect starters exist, and each one owns only its dialect: the `Config`
-block, the DSN, and TLS/discovery dialing. Everything dialect-agnostic lives
+Five dialect starters exist, and each one owns its dialect — the `Config` block,
+the DSN, TLS/discovery dialing — and the `gs.Module` block that registers its
+beans, written out in the starter so a reader sees exactly what it contributes:
+one `*DB` plus a paired health indicator per configured
+`spring.gorm.<dialect>.instances.<name>` entry. Everything dialect-agnostic lives
 here, shared by all five instead of copy-pasted:
 
-- the per-instance open/ping/customize sequence, connection-pool tuning, and the
-  `*DB` wrapper bean (embeds `*gorm.DB`, so every gorm method promotes
-  unchanged);
-- multi-instance assembly via `Module`: one `*DB` bean plus a paired health
-  indicator per configured `spring.gorm.<dialect>.instances.<name>` entry;
+- the per-entry construction the starters' beans run, `NewDB`: the
+  open/ping/customize sequence, connection-pool tuning, and the `*DB` wrapper
+  bean (embeds `*gorm.DB`, so every gorm method promotes unchanged);
 - the gorm observe plugin — it DECLARES each Create/Query/Update/Delete as a
   client operation (its name, `db.system`/`db.operation` labels, SQL statement
   and access tag) on the call's context. The signals themselves — the call
@@ -29,8 +30,8 @@ here, shared by all five instead of copy-pasted:
 - the resilience callbacks — every operation runs under one backend-neutral
   `resilience.ClientExecutor`, with `gorm.ErrRecordNotFound` counted as success;
 - the post-open `DBCustomizer` extension seam, and the dialect-qualified bean
-  naming (`<dialect>.<name>`) that lets two dialects carry an instance of the
-  same name without colliding.
+  name (`<dialect>.<name>`) each starter applies, so two dialects can carry an
+  instance of the same name without colliding.
 
 ## Full reference
 

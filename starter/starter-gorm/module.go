@@ -18,25 +18,16 @@ package gormcore
 
 import (
 	"context"
-	"strings"
 	"time"
 
 	"go-spring.org/cloud"
-	"go-spring.org/cloud/actuator/health"
-	"go-spring.org/cloud/discovery"
-	"go-spring.org/cloud/fault"
-	"go-spring.org/cloud/loadbalance"
-	"go-spring.org/cloud/resilience"
-	"go-spring.org/spring/conf"
-	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
-	"go-spring.org/stdlib/flatten"
 	"gorm.io/gorm"
 )
 
-// Spec is the per-instance result of a dialect's [Dialect.Build]: everything
-// [Open] needs beyond the shared label strings. Closers are run on teardown (and
-// on open failure) to release driver-scoped state such as discovery watches and
+// Spec is the per-instance result of a dialect's Build: everything [NewDB] needs
+// beyond the dialect's own literal labels. Closers are run on teardown (and on
+// open failure) to release driver-scoped state such as discovery watches and
 // registered TLS configs.
 type Spec struct {
 	Dialector      gorm.Dialector
@@ -46,130 +37,64 @@ type Spec struct {
 	Closers        []func()
 }
 
-// Dialect describes one gorm dialect starter: its configuration prefix, its
-// observability labels, and how to build the driver-specific dialector for a
-// Config value.
-type Dialect[C any] struct {
-	Prefix       string // e.g. "spring.gorm.mysql"
-	BeanPrefix   string // bean-name qualifier, e.g. "mysql"; defaults to the Prefix tail
-	Engine       string // db.system + observe + service label, e.g. "mysql"
-	HealthPrefix string // e.g. "gorm:mysql:"
-	// Build assembles the dialector for one entry. params carries the container's
-	// facilities (see [cloud.ClientParams]): params.Discovery is the discovery
-	// backend bean the entry's ${discovery} label resolved to (nil when the label
-	// named no bean) and params.Loadbalance the injected endpoint-selection
-	// authority — handed in on the struct rather than as loose arguments so the
-	// signature stays stable as capabilities are added. Dialects with no network
-	// transport (e.g. sqlite) ignore both, and so do dialects that dial a fixed
-	// address. A dialect that builds a pick pool for a discovery-routed entry
-	// passes them to [Common.NewPickPool], which binds the pool to the entry's
-	// governance label; both are nil in a standalone call.
-	Build func(ctx context.Context, c C, params cloud.ClientParams) (Spec, error)
+// NewDB assembles the client for one configured entry from the dialect's [Spec]:
+// [Open] (which installs the observe plugin and the governance-driven resilience
+// stack), the teardown closers on any failure, and the opt-in startup ping. It is
+// the construction half of an entry; the registration half — the gs.Module, the
+// per-entry *DB bean and its name, the paired health.Indicator and the
+// ${discovery} binding — lives in each dialect starter, so a reader of that
+// starter sees exactly what it registers.
+//
+// engine is the dialect's db.system / service label (e.g. "mysql",
+// "microsoft.sql_server"); params carries the container's facilities (see
+// [cloud.ClientParams]); ping runs the startup connectivity probe (the entry's
+// ping key), whose window is spec.Pool.PingTimeout (0 = 5s).
+func NewDB(ctx context.Context, engine string, spec Spec, params cloud.ClientParams, ping bool) (*DB, error) {
+	// Assembly: open + pool + customizers + observe plugin + governance, all of
+	// it in Open — the dialect Build never sees the governance authorities, so
+	// the wiring bundles them into the Options it hands Open. Only then probe, so
+	// the client is complete before it is checked, and a failure at any step
+	// releases what was just assembled.
+	db, err := Open(spec.Dialector, spec.Pool, Options{
+		Engine:         engine,
+		Service:        spec.Service,
+		ObserveEnabled: spec.ObserveEnabled,
+		Closers:        spec.Closers,
+		Params:         params,
+	})
+	if err != nil {
+		runClosers(spec.Closers)
+		return nil, err
+	}
+	// Fail fast (opt-in, e.g. ping=true): probe the assembled DB with a ping at
+	// startup so an unreachable database surfaces during boot rather than on the
+	// first query. HealthCheck goes straight to the raw pool on purpose: it is a
+	// connectivity check, not business traffic, so it must not open a span or
+	// spend limiter/breaker budget. A failure abandons the DB, so release what
+	// was just applied. With ping unset the probe is skipped and a database that
+	// is not up yet only surfaces on first use.
+	if ping {
+		timeout := spec.Pool.PingTimeout
+		if timeout <= 0 {
+			timeout = 5 * time.Second
+		}
+		pctx, cancel := context.WithTimeout(ctx, timeout)
+		defer cancel()
+		if err := HealthCheck(pctx, db); err != nil {
+			_ = db.Destroy()
+			return nil, errutil.Explain(err, "gorm: startup ping failed")
+		}
+	}
+	return db, nil
 }
 
-// Module declares a dialect starter as a gs module: it wires one *DB bean (plus
-// a paired health.Indicator) per entry under Prefix, with the open/pool/customize
-// sequence and the observe/resilience lifecycle shared from this package. Call
-// from a dialect starter's init function.
-//
-// Every *DB bean is named "<BeanPrefix>.<entry>". The dialect qualifier keeps
-// each dialect's instances in their own bean-name space, so two dialects may
-// carry an instance of the same name — without it both would register the same
-// (name, *DB) pair and the container would refuse to start.
-func Module[C ConfigSwitches](d Dialect[C]) {
-	beanPrefix := d.BeanPrefix
-	if beanPrefix == "" {
-		beanPrefix = d.Prefix[strings.LastIndex(d.Prefix, ".")+1:]
+// runClosers runs the driver-registered teardown hooks, tolerating nils, so an
+// entry that fails to assemble releases exactly the driver-scoped state its
+// dialect had already acquired (discovery watches, registered TLS configs).
+func runClosers(closers []func()) {
+	for _, closer := range closers {
+		if closer != nil {
+			closer()
+		}
 	}
-	gs.Module(gs.OnProperty(d.Prefix+".instances"), func(r gs.BeanProvider, p flatten.Storage) error {
-		// Any key an entry does not define falls back to the family-wide
-		// "default" bucket: <prefix>.default.<k> is the value every entry
-		// inherits unless it sets its own.
-		p = flatten.WithFallback(p, d.Prefix+".instances", d.Prefix+".default")
-		return conf.BindEach(p, "${"+d.Prefix+".instances}", func(name string, c C) error {
-			beanName := beanPrefix + "." + name
-			// disc is the discovery backend bean cited by this entry's
-			// ${discovery} label (nil when the key is unset or the entry dials
-			// a static address); it is handed to the dialect Build, which is the
-			// only consumer, and never carried on the Config value.
-			r.Provide(func(ctx *gs.ContextProvider, disc discovery.Discovery,
-				mgr *resilience.Manager, inj *fault.Injector, lbMgr *loadbalance.Manager) (*DB, error) {
-				// The container's facilities, assembled once: the dialect Build
-				// reads params.Discovery / params.Loadbalance while it constructs
-				// the dialector, and Open reads params.Resilience / params.Fault to
-				// install the executor. Both see the same bundle.
-				params := cloud.ClientParams{Resilience: mgr, Fault: inj, Loadbalance: lbMgr, Discovery: disc}
-				spec, err := d.Build(ctx.Context, c, params)
-				if err != nil {
-					return nil, err
-				}
-				// Assembly: open + pool + customizers + observe plugin +
-				// governance, all of it in Open — the dialect Build never sees
-				// the governance beans, so the wiring bundles them into the
-				// Options it hands Open. Only then probe, so the client is
-				// complete before it is checked, and a failure at any step
-				// releases what was just assembled.
-				db, err := Open(spec.Dialector, spec.Pool, Options{
-					Engine:         d.Engine,
-					Service:        spec.Service,
-					ObserveEnabled: spec.ObserveEnabled,
-					Closers:        spec.Closers,
-					Params:         params,
-				})
-				if err != nil {
-					for _, closer := range spec.Closers {
-						if closer != nil {
-							closer()
-						}
-					}
-					return nil, err
-				}
-				// Fail fast (opt-in, e.g. ping=true): probe the assembled DB with
-				// a ping at startup so an unreachable database surfaces during boot
-				// rather than on the first query. HealthCheck goes straight to the
-				// raw pool on purpose: it is a connectivity check, not business
-				// traffic, so it must not open a span or spend limiter/breaker
-				// budget. A failure abandons the DB, so release what was just
-				// applied. With ping unset the probe is skipped and a database that
-				// is not up yet only surfaces on first use.
-				if c.PingEnabled() {
-					timeout := spec.Pool.PingTimeout
-					if timeout <= 0 {
-						timeout = 5 * time.Second
-					}
-					pctx, cancel := context.WithTimeout(ctx.Context, timeout)
-					defer cancel()
-					if err := HealthCheck(pctx, db); err != nil {
-						_ = db.Destroy()
-						return nil, errutil.Explain(err, "gorm: startup ping failed")
-					}
-				}
-				return db, nil
-			},
-				// Bind the constructor's disc parameter: the backend bean named
-				// by this entry's ${discovery} key, falling back to the dialect
-				// family's ${<prefix>.default.discovery} ("none" is a
-				// never-existing bean name, so an unset key yields the optional
-				// nil).
-				gs.IndexArg(1, gs.TagArg("${"+d.Prefix+".instances."+name+".discovery:=${"+d.Prefix+".default.discovery:=none}}?")),
-				// The governance beans are REQUIRED: each is registered by the package that
-				// owns it (cloud/resilience, cloud/loadbalance, cloud/fault), which this
-				// starter imports — "governance off" is spring.governance.enabled=false, never
-				// an absent bean.
-				gs.IndexArg(2, gs.TagArg("")),
-				gs.IndexArg(3, gs.TagArg("")),
-				gs.IndexArg(4, gs.TagArg("")),
-			).Name(beanName).Destroy((*DB).Destroy).Caller(1)
-
-			// Contribute a health indicator for this instance unless the user
-			// disabled it (health=false), injecting the wrapper just registered
-			// above by name. Its probe only calls HealthCheck (see health.go).
-			if c.HealthEnabled() {
-				r.Provide(func(w *DB) *health.Indicator {
-					return NewClientHealth(d.HealthPrefix, name, w)
-				}, gs.TagArg(beanName)).Name(d.HealthPrefix + name).Caller(1)
-			}
-			return nil
-		})
-	})
 }

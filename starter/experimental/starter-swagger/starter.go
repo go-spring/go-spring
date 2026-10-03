@@ -21,13 +21,6 @@ import (
 	"go-spring.org/spring/gs"
 )
 
-// newEndpoint adapts the UI into the bean the actuator auto-mounts on the
-// management port, so enabling this starter surfaces interactive API docs with
-// zero wiring — no HTTP server or listening port of its own.
-func newEndpoint(ui *UI) *endpoint.Endpoint {
-	return &endpoint.Endpoint{Pattern: ui.Path(), Handler: ui}
-}
-
 func init() {
 	// Contribute the Swagger UI as an endpoint.Endpoint. The actuator autowires
 	// every bean exported as endpoint.Endpoint and mounts it on the management
@@ -42,4 +35,11 @@ func init() {
 		Condition(gs.OnProperty("spring.swagger.enabled").HavingValue("true").MatchIfMissing())
 	gs.Provide(newEndpoint).
 		Condition(gs.OnProperty("spring.swagger.enabled").HavingValue("true").MatchIfMissing())
+}
+
+// newEndpoint adapts the UI into the bean the actuator auto-mounts on the
+// management port, so enabling this starter surfaces interactive API docs with
+// zero wiring — no HTTP server or listening port of its own.
+func newEndpoint(ui *UI) *endpoint.Endpoint {
+	return &endpoint.Endpoint{Pattern: ui.Path(), Handler: ui}
 }

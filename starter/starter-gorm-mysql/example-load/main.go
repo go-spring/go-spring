@@ -35,7 +35,6 @@ import (
 
 	"go-spring.org/starter-gorm"
 	_ "go-spring.org/starter-gorm-mysql"
-	_ "go-spring.org/starter-governance-file" // registers the centralized governance center
 )
 
 // Service is the root bean holding the autowired client instance "load".

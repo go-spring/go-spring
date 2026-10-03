@@ -110,7 +110,7 @@ func (e *Executor) Run(ctx context.Context, sig gs.ReadySignal) error {
 		_ = e.srv.Shutdown(context.Background())
 	}()
 	err := e.srv.ListenAndServe()
-	if err == http.ErrServerClosed {
+	if errutil.IsServerClosed(err) {
 		return nil
 	}
 	return err

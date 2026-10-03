@@ -26,6 +26,7 @@ package StarterConfigEtcd
 
 import (
 	"context"
+	"errors"
 	"net/url"
 	"path/filepath"
 	"strings"
@@ -43,13 +44,13 @@ import (
 )
 
 func init() {
-	// Register "etcd" as a remote configuration provider. The provider is
-	// the controller's Load method — the controller itself lives in this
-	// closure only (no package-level variable), so its state is reachable
-	// solely through the registered provider. Watch-triggered refreshes go
-	// through the gs.RefreshProperties package-level facade, so the
-	// controller needs no bean wiring at all.
-	conf.RegisterProvider("etcd", newEtcdCtrl().Load)
+	// Register "etcd" as a remote configuration provider. The controller
+	// itself is registered (not just its Load method): the runtime holds the
+	// registered provider so it can stop the watchers at shutdown (see
+	// provider.Provider). Watch-triggered refreshes go through the
+	// gs.RefreshProperties package-level facade, so the controller needs no
+	// bean wiring at all.
+	conf.RegisterProvider("etcd", newEtcdCtrl())
 }
 
 var starterTag = log.RegisterAppTag("config_etcd", "")
@@ -65,15 +66,61 @@ type etcdCtrl struct {
 	mu       sync.Mutex
 	clients  map[string]*clientv3.Client
 	listened map[string]struct{}
+
+	// ctx is the watch generation: Close cancels it, which stops every watch
+	// goroutine; the next Load starts a fresh one (see rearm).
+	ctx context.Context
+	// cancel cancels ctx.
+	cancel context.CancelFunc
+	// stopped is true between Close and the next Load.
+	stopped bool
 }
 
 // newEtcdCtrl creates a controller with its caches ready, so the lazy
 // nil-checks are kept out of the hot paths.
 func newEtcdCtrl() *etcdCtrl {
+	ctx, cancel := context.WithCancel(context.Background())
 	return &etcdCtrl{
 		clients:  map[string]*clientv3.Client{},
 		listened: map[string]struct{}{},
+		ctx:      ctx,
+		cancel:   cancel,
 	}
+}
+
+// rearm restarts the watch generation after a Close, so the first Load of a new
+// application instance can install watchers again.
+func (c *etcdCtrl) rearm() {
+	c.mu.Lock()
+	if c.stopped {
+		c.ctx, c.cancel = context.WithCancel(context.Background())
+		c.stopped = false
+	}
+	c.mu.Unlock()
+}
+
+// Close stops every watch goroutine and closes every client. It implements
+// provider.Provider. Closing is final only for this application instance: the
+// caches are dropped, so the next Load builds fresh clients and re-watches.
+func (c *etcdCtrl) Close() error {
+	c.mu.Lock()
+	c.cancel()
+	c.stopped = true
+	clients := c.clients
+	c.clients = map[string]*clientv3.Client{}
+	c.listened = map[string]struct{}{}
+	c.mu.Unlock()
+
+	var errs []error
+	for _, cli := range clients {
+		if err := cli.Close(); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	if n := len(clients); n > 0 {
+		log.Infof(context.Background(), starterTag, "closed %d etcd client(s)", n)
+	}
+	return errors.Join(errs...)
 }
 
 // TriggerRefresh is called by the watch goroutines when a watched key
@@ -162,6 +209,7 @@ func (c *etcdCtrl) clientFor(cs configSource) (*clientv3.Client, error) {
 	if err != nil {
 		return nil, errutil.Explain(err, "create etcd client for %s failed", cs.endpoint)
 	}
+	log.Infof(context.Background(), starterTag, "created etcd client endpoint=%s", cs.endpoint)
 	c.clients[key] = cli
 	return cli, nil
 }
@@ -170,6 +218,8 @@ func (c *etcdCtrl) clientFor(cs configSource) (*clientv3.Client, error) {
 // from etcd, parses it according to the declared format, and installs a
 // change watcher that triggers an application property refresh.
 func (c *etcdCtrl) Load(optional bool, source string) (map[string]string, error) {
+	c.rearm()
+
 	cs, err := parseSource(source)
 	if err != nil {
 		log.Errorf(context.Background(), starterTag, "parse source %q failed: %v", source, err)
@@ -213,7 +263,7 @@ func (c *etcdCtrl) Load(optional bool, source string) (map[string]string, error)
 		return nil, errutil.Explain(err, "parse etcd key %s as %s failed", cs.key, cs.format)
 	}
 
-	log.Infof(context.Background(), starterTag, "loaded etcd config from key=%s keys=%d", cs.key, len(m))
+	log.Infof(context.Background(), starterTag, "loaded etcd config from endpoint=%s key=%s keys=%d", cs.endpoint, cs.key, len(m))
 	return flatten.Flatten(m), nil
 }
 
@@ -231,11 +281,14 @@ func (c *etcdCtrl) registerWatcher(cli *clientv3.Client, cs configSource, option
 		return
 	}
 	c.listened[lk] = struct{}{}
+	ctx := c.ctx
 	c.mu.Unlock()
+
+	log.Infof(context.Background(), starterTag, "watching etcd key=%s endpoint=%s", cs.key, cs.endpoint)
 
 	go func() {
 		for {
-			ch := cli.Watch(context.Background(), cs.key)
+			ch := cli.Watch(ctx, cs.key)
 			for wr := range ch {
 				if err := wr.Err(); err != nil {
 					log.Warnf(context.Background(), starterTag,
@@ -252,16 +305,40 @@ func (c *etcdCtrl) registerWatcher(cli *clientv3.Client, cs configSource, option
 						"etcd key %s deleted; stale snapshot retained until the key is restored", cs.key)
 				}
 				if len(wr.Events) > 0 {
-					c.TriggerRefresh(context.Background())
+					// Stamp the trigger with the change's identity (which key, which
+					// etcd revision) so the refresh records logged and metered by
+					// observability.RefreshConf carry what this round is about. The
+					// last event's ModRevision doubles as the refresh identifier: it
+					// is unique per key change within etcd, so two refreshes from the
+					// same key are distinguishable.
+					rev := int64(0)
+					if ev := wr.Events[len(wr.Events)-1]; ev.Kv != nil {
+						rev = ev.Kv.ModRevision
+					}
+					c.TriggerRefresh(log.WithFields(context.Background(),
+						log.String("source", "etcd"),
+						log.String("key", cs.key),
+						log.Int("mod_revision", rev),
+					))
 				}
 			}
-			// The channel closes only when the watcher is genuinely dead
-			// (client closed / unrecoverable error). Without this loop the
-			// goroutine would exit silently and this key would never refresh
-			// again; resubscribe and keep watching.
+			// The channel closes either because the application is shutting
+			// down (Close cancelled the watch generation) or because the
+			// watcher is genuinely dead (unrecoverable error). The former
+			// exits; the latter would otherwise exit silently and this key
+			// would never refresh again, so resubscribe and keep watching.
+			select {
+			case <-ctx.Done():
+				return
+			default:
+			}
 			log.Errorf(context.Background(), starterTag,
 				"etcd watch channel for key %s closed; resubscribing in 5s", cs.key)
-			time.Sleep(5 * time.Second)
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(5 * time.Second):
+			}
 		}
 	}()
 }

@@ -18,6 +18,7 @@ package batch
 
 import (
 	"context"
+	"go-spring.org/cloud/chain"
 
 	"go-spring.org/cloud/resilience"
 )
@@ -62,7 +63,7 @@ type ChunkStep[I, O any] struct {
 	// Executor, when set, is used to guard each chunk instead of building one
 	// from Retry — plug in a production driver (e.g. sentinel) here. When both
 	// Executor and Retry are unset, a chunk runs once with no retry.
-	Executor resilience.ClientExecutor
+	Executor chain.Executor
 }
 
 // StepName implements [Step].
@@ -70,7 +71,7 @@ func (s *ChunkStep[I, O]) StepName() string { return s.Name }
 
 // executor returns the resilience executor guarding each chunk, or nil when no
 // protection is configured (the chunk then runs once).
-func (s *ChunkStep[I, O]) executor() (resilience.ClientExecutor, error) {
+func (s *ChunkStep[I, O]) executor() (chain.Executor, error) {
 	if s.Executor != nil {
 		return s.Executor, nil
 	}

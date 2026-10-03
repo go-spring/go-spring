@@ -49,7 +49,7 @@ func histAttrs(t *testing.T, m metricdata.Metrics) []map[string]string {
 // thing only a server has — a response half the handler records after answering.
 func TestDeclaredServerOperationEmitsFamilySignals(t *testing.T) {
 	rdr := withMeter(t)
-	exec := NewManager().ServerExecutorFor("http-server", "http-server::9090")
+	exec := NewManager(nil).ServerExecutorFor("http-server", "http-server::9090")
 
 	ctx := observability.WithOperation(context.Background(), observability.Operation{
 		Name:   "GET /users",
@@ -83,11 +83,11 @@ func TestDeclaredServerOperationEmitsFamilySignals(t *testing.T) {
 }
 
 // TestUndeclaredServerRouteKeepsItsSignals proves a route that declares nothing
-// still reports exactly what this layer always reported: the admission metrics
+// still reports exactly what this layer always reported: the inbound metrics
 // under resilience.server.*, and no family metric invented on its behalf.
 func TestUndeclaredServerRouteKeepsItsSignals(t *testing.T) {
 	rdr := withMeter(t)
-	exec := NewManager().ServerExecutorFor("http-server", "http-server::9090")
+	exec := NewManager(nil).ServerExecutorFor("http-server", "http-server::9090")
 
 	assert.Error(t, exec.Execute(context.Background(), func(context.Context) error { return nil })).Nil()
 

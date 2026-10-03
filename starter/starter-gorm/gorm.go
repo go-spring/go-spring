@@ -98,7 +98,7 @@ type Common struct {
 	// the entry to discovery routing (the connection then dials a live instance
 	// resolved from the backend instead of the configured address), Discovery
 	// cites the backend bean (falling back to ${<dialect-prefix>.default.
-	// discovery} via the module wiring). See discovery.Addressing for the
+	// discovery} via the dialect starter's wiring). See discovery.Addressing for the
 	// shared contract.
 	discovery.Addressing
 
@@ -127,25 +127,6 @@ func (c PoolSettings) Pool() PoolConfig {
 		SlowThreshold:   c.SlowThreshold,
 	}
 }
-
-// ConfigSwitches is the per-instance switch surface [Module] reads off a dialect
-// Config. The wiring is generic over the dialect Config type and cannot read its
-// struct fields directly, so the two switches it gates on — the startup [Ping]
-// and the [Health] indicator — are surfaced through these accessors instead;
-// every dialect Config satisfies them through the embedded [PoolSettings] (or
-// [Common]).
-type ConfigSwitches interface {
-	PingEnabled() bool
-	HealthEnabled() bool
-}
-
-// PingEnabled reports whether the startup connectivity probe runs for this
-// instance (the [Ping] key).
-func (c PoolSettings) PingEnabled() bool { return c.Ping }
-
-// HealthEnabled reports whether this instance contributes a health.Indicator
-// (the [Health] key).
-func (c PoolSettings) HealthEnabled() bool { return c.Health }
 
 // NewResolver resolves the discovery backend the entry's ${discovery} label
 // cites into a by-name resolver that re-reads the service's live endpoint

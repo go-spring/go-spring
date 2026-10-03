@@ -18,6 +18,7 @@ package StarterNeo4j
 
 import (
 	"context"
+	"go-spring.org/cloud/chain"
 	"testing"
 
 	"github.com/neo4j/neo4j-go-driver/v5/neo4j"
@@ -63,6 +64,6 @@ func TestRunWithResilienceRateLimit(t *testing.T) {
 		return nil
 	}
 	assert.Error(t, RunWithResilience(context.Background(), c, fn)).Nil()
-	assert.Error(t, RunWithResilience(context.Background(), c, fn)).Is(resilience.ErrRateLimited)
+	assert.Error(t, RunWithResilience(context.Background(), c, fn)).Is(chain.ErrRateLimited)
 	assert.That(t, ran).Equal(1) // the rejected call never ran
 }

@@ -27,19 +27,11 @@ import (
 )
 
 func init() {
-	// One controller instance backs both halves of the starter: the "k8s"
-	// config provider registered with conf (see provider.go) and the root
-	// bean that lets the container run its destructor on shutdown (it owns
-	// the informer lifecycle). It lives in this closure only — no
-	// package-level variable — so its state is reachable solely through
-	// those two registrations. Refreshes go through the gs.RefreshProperties
-	// package-level facade, so the controller has no autowired dependencies.
-	c := newK8sCtrl()
-	conf.RegisterProvider("k8s", c.Load)
-	gs.Provide(c).
-		Name("k8sController").
-		Export(gs.As[gs.Rooter]()).
-		Destroy((*k8sCtrl).Destroy)
+	// Register the controller itself, not just its Load method: the runtime
+	// holds the registered provider so it can stop the informers at shutdown
+	// (see provider.Provider). Refreshes go through the gs.RefreshProperties
+	// package-level facade, so the controller needs no bean wiring at all.
+	conf.RegisterProvider("k8s", newK8sCtrl())
 }
 
 var starterTag = log.RegisterAppTag("config_k8s", "")
@@ -102,10 +94,12 @@ func (c *k8sCtrl) TriggerRefresh(ctx context.Context) {
 	_ = observability.RefreshConf(ctx, gs.RefreshProperties)
 }
 
-// Destroy tears down every informer. It is the bean destructor, invoked once by
-// the container on shutdown.
-func (c *k8sCtrl) Destroy() {
+// Close tears down every informer. It is the provider lifecycle hook, invoked
+// once by the runtime on shutdown. A Load that follows re-arms: the watch
+// manager forgets its watcher ids, so ensureWatch starts fresh informers.
+func (c *k8sCtrl) Close() error {
 	if c.manager != nil {
 		c.manager.stopAll()
 	}
+	return nil
 }

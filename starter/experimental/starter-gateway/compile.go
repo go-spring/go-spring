@@ -18,6 +18,7 @@ package StarterGateway
 
 import (
 	"context"
+	"go-spring.org/cloud/chain"
 	"net/http"
 	"net/url"
 	"reflect"
@@ -27,6 +28,7 @@ import (
 	"sync/atomic"
 
 	"go-spring.org/cloud/discovery"
+	"go-spring.org/cloud/governance"
 	"go-spring.org/cloud/loadbalance"
 	"go-spring.org/cloud/resilience"
 	"go-spring.org/log"
@@ -87,15 +89,15 @@ type RouteTable struct {
 	lastPtr   uintptr    // identity of the last-compiled routes map
 	discovery string     // default backend label (spring.gateway.discovery)
 
-	// backends is the container's named discovery backend beans (bean name =
-	// label), injected once by newRouteTable. lb:// upstreams resolve their
-	// ${discovery} label (or the gateway default above) against it at compile
-	// time; it never changes across hot reloads.
-	backends map[string]discovery.Discovery
+	// disc is the process's discovery directory, read off the governance center
+	// once by newRouteTable. lb:// upstreams resolve their ${discovery} label
+	// (or the gateway default above) against it at compile time; it never
+	// changes across hot reloads.
+	disc *discovery.Manager
 
 	// execs pools resilience executors by policy name so routes sharing a policy
 	// share breaker/limiter state. Rebuilt on each recompile.
-	execs map[string]resilience.ClientExecutor
+	execs map[string]chain.Executor
 
 	// mgr and lbMgr are the governance authorities the container injected (a
 	// fresh unarmed instance when no center is linked, so the table is
@@ -123,30 +125,48 @@ type RouteTable struct {
 // newRouteTable builds the table. Config (Cfg) and bean-backed filters (Wrappers)
 // are populated by field injection after the constructor returns, so route
 // compilation is deferred to warmup() — called from GatewayServer.Run — where a
-// bad initial config fails startup. backends is the container's named discovery
-// backend beans (optional: an app with none gets an empty directory, and any
-// lb:// upstream then fails to compile with the label it could not resolve).
+// bad initial config fails startup. The discovery directory comes off the center
+// (see the center note below): it is the container's named Discovery backends,
+// discovery directory (optional: an app with no backend bean gets an empty one,
+// whose lookups miss, and any lb:// upstream then fails to compile with the
+// label it could not resolve).
 //
-// mgr and lbMgr are the authority beans the owning packages register; both are
-// nil when it is not imported (gs autowires a missing bean as nil) and are
-// normalized here to fresh unarmed authorities — a nil *Manager panics on its
-// first method call, so doing it once at assembly keeps every other method free
-// of nil branches, and an unarmed authority is exactly "governance off".
-func newRouteTable(ctx *gs.ContextProvider, o *observer, backends map[string]discovery.Discovery,
-	mgr *resilience.Manager, lbMgr *loadbalance.Manager, counters resilience.Counters) *RouteTable {
+// center is the governance center bean — the sole injection point, which also
+// carries the discovery directory; it is nil when governance is not imported
+// (gs autowires a missing bean as nil) and its authorities are normalized here
+// to fresh unarmed ones — a nil *Manager panics on its first method call, so
+// doing it once at assembly keeps every other method free of nil branches, and
+// an unarmed authority is exactly "governance off".
+//
+// The error is the load-balancing authority's: with no factory bean contributed
+// to the fallback there is nothing to reject, but it is reported at startup
+// rather than swallowed.
+func newRouteTable(ctx *gs.ContextProvider, o *observer,
+	center *governance.Center, counters resilience.Counters) (*RouteTable, error) {
 	if counters == nil {
 		// No counter store was contributed, so per-route and per-client budgets are
 		// this process's own — the same reach a per-service executor would have.
 		counters = newMemoryCounters()
 	}
+	mgr := center.Resilience()
+	if mgr == nil {
+		mgr = resilience.NewManager(nil)
+	}
+	lbMgr := center.Loadbalance()
+	if lbMgr == nil {
+		var err error
+		if lbMgr, err = loadbalance.NewManager(nil); err != nil { // no factory bean contributed
+			return nil, err
+		}
+	}
 	return &RouteTable{
 		ctx:      ctx.Context,
 		obs:      o,
-		backends: backends,
+		disc:     center.Discovery(),
 		mgr:      mgr,
 		lbMgr:    lbMgr,
 		counters: counters,
-	}
+	}, nil
 }
 
 // Init runs after field injection. It warns when routes are configured but the
@@ -296,7 +316,7 @@ func (t *RouteTable) reconcileSelection(routes []*Route) {
 	}
 }
 
-// buildExecutors turns each named resilience policy into an Executor. Routes
+// buildExecutors turns each named resilience policy into an chain.Executor. Routes
 // reference these by name so they share breaker state. Each executor comes from
 // the INJECTED [resilience.Manager] under "gateway:<name>", so gateway's
 // per-route protection is governed centrally and hot-reloaded in place: the
@@ -305,11 +325,11 @@ func (t *RouteTable) reconcileSelection(routes []*Route) {
 // Cfg.Resilience stays as the name registry routes reference (its local policy
 // VALUES are not consumed — the governance rules document owns all policy
 // values now, uniformly with every other starter).
-func (t *RouteTable) buildExecutors() (map[string]resilience.ClientExecutor, error) {
+func (t *RouteTable) buildExecutors() (map[string]chain.Executor, error) {
 	if len(t.Cfg.Resilience) == 0 {
 		return nil, nil
 	}
-	out := make(map[string]resilience.ClientExecutor, len(t.Cfg.Resilience))
+	out := make(map[string]chain.Executor, len(t.Cfg.Resilience))
 	for name := range t.Cfg.Resilience {
 		// Always non-nil: a transparent pass-through when governance is off; the
 		// real policy-carrying executor otherwise, observed under the same label
@@ -326,7 +346,7 @@ func gatewayLabel(name string) string { return "gateway:" + name }
 
 // compileRoute assembles one Route: predicates, an upstream, the resilience
 // executor its policy references, and the filter chain wrapping the proxy.
-func (t *RouteTable) compileRoute(id string, raw RouteRaw, execs map[string]resilience.ClientExecutor) (*Route, error) {
+func (t *RouteTable) compileRoute(id string, raw RouteRaw, execs map[string]chain.Executor) (*Route, error) {
 	preds, err := buildPredicates(raw)
 	if err != nil {
 		return nil, err
@@ -337,7 +357,7 @@ func (t *RouteTable) compileRoute(id string, raw RouteRaw, execs map[string]resi
 		return nil, err
 	}
 
-	var exec resilience.ClientExecutor
+	var exec chain.Executor
 	var service string
 	if name := strings.TrimSpace(raw.Resilience.Policy); name != "" {
 		e, ok := execs[name]

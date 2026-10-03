@@ -32,6 +32,7 @@ package StarterMQTT
 
 import (
 	"context"
+	"go-spring.org/cloud/chain"
 	"sync"
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
@@ -60,7 +61,7 @@ import (
 // the stable serviceLabel it executes under, colocated so a guard lookup
 // reads the pair atomically (no torn exec/serviceLabel combination).
 type clientGuard struct {
-	exec         resilience.ClientExecutor
+	exec         chain.Executor
 	serviceLabel string
 }
 

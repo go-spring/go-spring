@@ -19,6 +19,7 @@ package fault
 import (
 	"context"
 	"errors"
+	"go-spring.org/cloud/chain"
 	"sync/atomic"
 	"syscall"
 	"testing"
@@ -30,9 +31,9 @@ import (
 )
 
 // newExec builds a default-driver executor for service under p. The service
-// matters: an executor is bound to one service (see [resilience.ClientExecutor]), and
+// matters: an executor is bound to one service (see [chain.Executor]), and
 // the injector matches its rules by that service.
-func newExec(t *testing.T, service string, p resilience.ClientPolicy) resilience.ClientExecutor {
+func newExec(t *testing.T, service string, p resilience.ClientPolicy) chain.Executor {
 	t.Helper()
 	d := resilience.NewDefaultDriver(nil)
 	exec, err := d.NewClientExecutor(service, p)
@@ -126,7 +127,7 @@ func TestInjector_BreakerOpensUnderFault(t *testing.T) {
 
 	err := exec.Execute(context.Background(), countFn(&calls, nil))
 	assert.Error(t, err).NotNil()
-	assert.That(t, errors.Is(err, resilience.ErrCircuitOpen)).True()
+	assert.That(t, errors.Is(err, chain.ErrCircuitOpen)).True()
 	// fn not called on the rejected attempt (only the first call's attempts ran).
 	assert.That(t, atomic.LoadInt32(&calls)).Equal(firstCalls)
 }
@@ -184,7 +185,7 @@ func TestInjector_HotSwap(t *testing.T) {
 // injection by the load-test marker on the call's context.
 func TestInjector_ScopeGatesLoadTestTraffic(t *testing.T) {
 	// Rate 1 + generic error => every in-scope call is faulted.
-	mk := func(scope string) resilience.ClientExecutor {
+	mk := func(scope string) chain.Executor {
 		in := NewInjector(Configs{Client: Config{Enabled: true, Rate: 1, Error: "generic", Scope: scope}}, nil)
 		return WrapClientExecutor(newExec(t, "svc", resilience.ClientPolicy{}), "svc", in)
 	}

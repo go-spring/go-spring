@@ -202,7 +202,7 @@ func TestWatchLoopAdvancesIndex(t *testing.T) {
 		result(&api.KVPair{Value: []byte("a=2\n")}, 9, nil)
 
 	c := newConsulCtrl()
-	go c.watchLoop(fake, configSource{kvPath: "app.properties"}, false)
+	go c.watchLoop(context.Background(), fake, configSource{kvPath: "app.properties"}, false)
 
 	deadline := time.Now().Add(5 * time.Second)
 	for fake.done() < 3 && time.Now().Before(deadline) {

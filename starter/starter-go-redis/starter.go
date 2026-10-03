@@ -18,6 +18,7 @@ package StarterGoRedis
 
 import (
 	"context"
+	"go-spring.org/cloud/governance"
 	"time"
 
 	"github.com/redis/go-redis/extra/redisotel/v9"
@@ -25,10 +26,6 @@ import (
 	"go-spring.org/cloud"
 	"go-spring.org/cloud/actuator/health"
 	"go-spring.org/cloud/cache"
-	"go-spring.org/cloud/discovery"
-	"go-spring.org/cloud/fault"
-	"go-spring.org/cloud/loadbalance"
-	"go-spring.org/cloud/resilience"
 	"go-spring.org/log"
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/gs"
@@ -68,14 +65,9 @@ func init() {
 				r.Provide(newClient,
 					gs.IndexArg(1, gs.ValueArg(c)),
 					gs.IndexArg(2, gs.TagArg("${spring.go-redis.instances."+name+".driver:=${spring.go-redis.default.driver:=?}}")),
-					gs.IndexArg(3, gs.TagArg("${spring.go-redis.instances."+name+".discovery:=${spring.go-redis.default.discovery:=none}}?")),
-					// The governance beans are REQUIRED: each is registered by the package that
-					// owns it (cloud/resilience, cloud/loadbalance, cloud/fault), which this
-					// starter imports — "governance off" is spring.governance.enabled=false, never
-					// an absent bean.
-					gs.IndexArg(4, gs.TagArg("")),
-					gs.IndexArg(5, gs.TagArg("")),
-					gs.IndexArg(6, gs.TagArg("")),
+					gs.IndexArg(3, gs.TagArg("${spring.go-redis.instances."+name+".discovery:=${spring.go-redis.default.discovery:=none}}")),
+					// The governance center is the family's sole injection point: it hands
+					// out the resilience/fault/loadbalance authorities.
 				).Name(name).Destroy((*Client).Destroy).Caller(1)
 				// Contribute a health indicator for this instance unless the
 				// user disabled it (health=false), injecting the
@@ -90,11 +82,8 @@ func init() {
 				r.Provide(newClusterClient,
 					gs.IndexArg(1, gs.ValueArg(c)),
 					gs.IndexArg(2, gs.TagArg("${spring.go-redis.instances."+name+".driver:=${spring.go-redis.default.driver:=?}}")),
-					// The governance beans are REQUIRED: each is registered by the package
-					// that owns it, which this starter imports — "governance off" is
-					// spring.governance.enabled=false, never an absent bean.
-					gs.IndexArg(3, gs.TagArg("")),
-					gs.IndexArg(4, gs.TagArg("")),
+					// The governance center is the family's sole injection point: it hands
+					// out the resilience/fault/loadbalance authorities.
 				).Name(name).Destroy((*Client).Destroy).Caller(1)
 				if c.Health {
 					r.Provide(func(w *Client) *health.Indicator {
@@ -125,25 +114,30 @@ func init() {
 // adaptation. The per-command span and access log come from the resilience
 // layer, which reads the identity this starter declares.
 //
-// disc is the discovery backend bean cited by the entry's ${discovery} label
-// (nil when the key is unset or the entry does not use service discovery).
+// disc is the backend the entry's ${discovery} label resolves to in the center's
+// discovery directory (nil when the key is unset, sentinel "none", or names
+// nothing, and the entry does not use service discovery).
 //
-// mgr, inj and lbMgr are the governance beans the container injects (all nil in
-// a standalone, non-gs call). They are bundled into a [cloud.ClientParams] and
+// center is the governance center the container injects (nil in a standalone,
+// non-gs call) — the family's sole injection point. Its resilience, fault and
+// loadbalance authorities are bundled into a [cloud.ClientParams] and
 // handed to the Driver — not applied to the Driver's product afterwards: the
 // Driver passes the bundle to [NewClient], which applies the resilience executor
-// and binds the pool the Driver built to lbMgr. The client is therefore
+// and binds the pool the Driver built to the loadbalance authority. The client is therefore
 // assembled complete in one step, with the zero bundle degrading to an
 // observed-only, loudly-unmanaged executor.
-func newClient(ctx *gs.ContextProvider, c Config, d Driver, disc discovery.Discovery,
-	mgr *resilience.Manager, inj *fault.Injector, lbMgr *loadbalance.Manager) (*Client, error) {
+func newClient(ctx *gs.ContextProvider, c Config, d Driver, discoveryLabel string,
+	center *governance.Center) (*Client, error) {
 	log.Debugf(ctx.Context, log.TagAppDef, "creating redis client, addr=%s mode=%s", c.Addr, c.Mode)
 
 	if err := validateConfig(ctx.Context, c); err != nil {
 		return nil, err
 	}
+
+	disc, _ := center.Discovery().Get(discoveryLabel)
+
 	// Fail loud when the entry routes through discovery but the cited label
-	// names no backend bean — the container is the discovery directory.
+	// names no backend — the center's discovery directory is the table.
 	if c.ServiceName != "" && disc == nil {
 		if c.Discovery == "" {
 			return nil, errutil.Explain(nil, "redis: instance routes by service-name but sets no discovery backend (set ${spring.go-redis.instances.<name>.discovery} to the name of a discovery backend bean)")
@@ -163,7 +157,7 @@ func newClient(ctx *gs.ContextProvider, c Config, d Driver, disc discovery.Disco
 	// governance all applied while it was built. There is no Init hook and
 	// nothing runs after this: the bean is finished when the ctor returns.
 	w, err := d.CreateClient(ctx.Context, c,
-		cloud.ClientParams{Resilience: mgr, Fault: inj, Loadbalance: lbMgr, Discovery: disc})
+		cloud.ClientParams{Resilience: center.Resilience(), Fault: center.Fault(), Loadbalance: center.Loadbalance(), Discovery: disc})
 	if err != nil {
 		log.Errorf(ctx.Context, log.TagAppDef, "redis: create client failed: %v", err)
 		return nil, errutil.Explain(err, "failed to create redis client")
@@ -195,12 +189,13 @@ func newClient(ctx *gs.ContextProvider, c Config, d Driver, disc discovery.Disco
 // per-node via ClusterClient.OnNewNode, so the pool metrics cover every node
 // discovered.
 //
-// mgr and inj are the governance beans the container injects (both nil in a
-// standalone, non-gs call); they are bundled into a [cloud.ClientParams] and
+// center is the governance center the container injects (nil in a standalone,
+// non-gs call) — the family's sole injection point; its resilience and fault
+// authorities are bundled into a [cloud.ClientParams] and
 // handed to the Driver, which builds the per-command executor while assembling
 // the client. Cluster mode self-discovers its nodes, so no endpoint-selection
 // pool exists and the bundle carries no loadbalance authority.
-func newClusterClient(ctx *gs.ContextProvider, c Config, d Driver, mgr *resilience.Manager, inj *fault.Injector) (*Client, error) {
+func newClusterClient(ctx *gs.ContextProvider, c Config, d Driver, center *governance.Center) (*Client, error) {
 	log.Debugf(ctx.Context, log.TagAppDef, "creating redis cluster client, addrs=%v", c.Addrs)
 
 	if err := validateConfig(ctx.Context, c); err != nil {
@@ -217,7 +212,7 @@ func newClusterClient(ctx *gs.ContextProvider, c Config, d Driver, mgr *resilien
 		return nil, errutil.Explain(nil, "redis: the configured Driver does not support cluster mode (implement ClusterDriver)")
 	}
 	w, err := cd.CreateClusterClient(ctx.Context, c,
-		cloud.ClientParams{Resilience: mgr, Fault: inj})
+		cloud.ClientParams{Resilience: center.Resilience(), Fault: center.Fault()})
 	if err != nil {
 		log.Errorf(ctx.Context, log.TagAppDef, "redis: create cluster client failed: %v", err)
 		return nil, errutil.Explain(err, "failed to create redis cluster client")

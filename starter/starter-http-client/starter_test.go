@@ -19,11 +19,37 @@ package StarterHTTPClient
 import (
 	"testing"
 
+	"go-spring.org/cloud/discovery"
+	"go-spring.org/cloud/governance"
+	"go-spring.org/cloud/loadbalance"
+	"go-spring.org/cloud/resilience"
 	"go-spring.org/cloud/security"
 	"go-spring.org/spring/conf"
 	"go-spring.org/stdlib/flatten"
 	"go-spring.org/stdlib/testing/assert"
 )
+
+// TestNewRoute_ResolvesDiscoveryLabel pins the entry's ${discovery} label -> the
+// directory the center carries: a cited label that names no backend fails loud
+// (naming the label and what IS registered), and a known one assembles.
+func TestNewRoute_ResolvesDiscoveryLabel(t *testing.T) {
+	disc := discovery.NewManager(map[string]discovery.Discovery{
+		"default": discovery.NewStaticDiscovery(discovery.Endpoint{Addr: "10.0.0.1:8080", Healthy: true, Weight: 1}),
+	})
+	lb, e := loadbalance.NewManager(nil) // no factory bean contributed
+	assert.Error(t, e).Nil()
+	center := governance.NewCenter(governance.Config{},
+		resilience.NewManager(nil), lb, nil, disc, nil)
+
+	_, err := newRoute(nil, "x", Config{ServiceName: "user-svc", Discovery: "nope"}, nil, center, nil)
+	assert.Error(t, err).Matches("no such backend")
+	assert.String(t, err.Error()).Contains("default") // the registered labels are reported
+
+	rt, err := newRoute(nil, "x", Config{ServiceName: "user-svc", Discovery: "default"}, nil, center, nil)
+	assert.That(t, err).Nil()
+	assert.That(t, rt).NotNil()
+	_ = rt.Close()
+}
 
 // The governance service label must be STABLE across addressing modes: an
 // entry that keeps service-name set must resolve to http:<service-name> whether

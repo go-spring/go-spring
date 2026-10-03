@@ -31,6 +31,7 @@ package StarterMemcached
 import (
 	"context"
 	"fmt"
+	"go-spring.org/cloud/chain"
 
 	"github.com/bradfitz/gomemcache/memcache"
 	"go-spring.org/cloud"
@@ -74,7 +75,7 @@ type Client struct {
 
 	// exec is the resilience executor protecting every operation, applied by
 	// [NewClient] while it builds; no-op when governance is off.
-	exec resilience.ClientExecutor
+	exec chain.Executor
 	// serviceLabel is the resilience service key ("memcached:<service-name or
 	// instance-name>") exec scopes limiter/breaker state by.
 	serviceLabel string

@@ -1,0 +1,118 @@
+/*
+ * Copyright 2025 The Go-Spring Authors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package resilience
+
+import (
+	"context"
+	"go-spring.org/cloud/chain"
+	"testing"
+	"time"
+
+	"go-spring.org/stdlib/errutil"
+	"go-spring.org/stdlib/testing/assert"
+)
+
+// recordingListener captures breaker state transitions for test assertions.
+type recordingListener struct {
+	events []struct {
+		service  string
+		from, to BreakerState
+	}
+}
+
+func (l *recordingListener) OnBreakerStateChange(service string, from, to BreakerState) {
+	l.events = append(l.events, struct {
+		service  string
+		from, to BreakerState
+	}{service, from, to})
+}
+
+// TestBreakerEvents verifies the default driver emits closed→open (trip),
+// open→half-open (probe) and half-open→closed (recovery) transitions to a
+// listener attached via SetBreakerEventListener.
+func TestBreakerEvents(t *testing.T) {
+	d := NewDefaultDriver(nil)
+	exec, err := d.NewClientExecutor("svc", ClientPolicy{ErrorThreshold: 2, OpenDuration: 5 * time.Millisecond})
+	assert.Error(t, err).Nil()
+	defer func() { _ = exec.Close() }()
+
+	rec := &recordingListener{}
+	exec.(BreakerEventListenerSetter).SetBreakerEventListener(rec)
+
+	boom := errutil.Explain(nil, "boom")
+	ctx := context.Background()
+	// Two consecutive failures trip the breaker (closed → open).
+	_ = exec.Execute(ctx, func(context.Context) error { return boom })
+	_ = exec.Execute(ctx, func(context.Context) error { return boom })
+	assert.That(t, len(rec.events)).Equal(1)
+	assert.That(t, rec.events[0].from).Equal(BreakerClosed)
+	assert.That(t, rec.events[0].to).Equal(BreakerOpen)
+
+	// The breaker is open: this call is rejected before fn runs, no transition.
+	_ = exec.Execute(ctx, func(context.Context) error { return nil })
+	assert.That(t, len(rec.events)).Equal(1)
+
+	// Wait out the cool-down so the next call is admitted as a half-open trial.
+	time.Sleep(20 * time.Millisecond)
+	// Trial succeeds: open → half-open (probe admitted), then half-open → closed.
+	_ = exec.Execute(ctx, func(context.Context) error { return nil })
+	assert.That(t, len(rec.events)).Equal(3)
+	assert.That(t, rec.events[1].from).Equal(BreakerOpen)
+	assert.That(t, rec.events[1].to).Equal(BreakerHalfOpen)
+	assert.That(t, rec.events[2].from).Equal(BreakerHalfOpen)
+	assert.That(t, rec.events[2].to).Equal(BreakerClosed)
+}
+
+// TestBreakerEventsNoListener confirms the breaker still works (no panic) when
+// no listener is attached.
+func TestBreakerEventsNoListener(t *testing.T) {
+	d := NewDefaultDriver(nil)
+	exec, err := d.NewClientExecutor("svc", ClientPolicy{ErrorThreshold: 1, OpenDuration: time.Second})
+	assert.Error(t, err).Nil()
+	defer func() { _ = exec.Close() }()
+
+	err = exec.Execute(context.Background(), func(context.Context) error { return errutil.Explain(nil, "boom") })
+	assert.Error(t, err).NotNil() // tripped, no panic
+}
+
+// TestExecutorRebuildStartsClean pins what replaced hot reload: a policy change
+// is a NEW executor from the driver, and a fresh executor starts with fresh
+// per-service state — a breaker tripped under the old (tight) policy is gone, so
+// calls run again.
+func TestExecutorRebuildStartsClean(t *testing.T) {
+	d := NewDefaultDriver(nil)
+
+	tight, err := d.NewClientExecutor("svc", ClientPolicy{ErrorThreshold: 1, OpenDuration: time.Hour})
+	assert.Error(t, err).Nil()
+	defer func() { _ = tight.Close() }()
+
+	ctx := context.Background()
+	boom := errutil.Explain(nil, "boom")
+	_ = tight.Execute(ctx, func(context.Context) error { return boom }) // trips (threshold 1)
+	assert.Error(t, tight.Execute(ctx, func(context.Context) error { return nil })).Is(chain.ErrCircuitOpen)
+
+	// The same service under a looser policy: a newly built executor, so its
+	// breaker starts closed and the call runs.
+	loose, err := d.NewClientExecutor("svc", ClientPolicy{ErrorThreshold: 100, OpenDuration: time.Hour})
+	assert.Error(t, err).Nil()
+	defer func() { _ = loose.Close() }()
+	assert.Error(t, loose.Execute(ctx, func(context.Context) error { return nil })).Nil()
+
+	// A policy the driver cannot build is refused at the door.
+	_, err = d.NewClientExecutor("svc", ClientPolicy{RateLimit: -1})
+	assert.Error(t, err).NotNil()
+}

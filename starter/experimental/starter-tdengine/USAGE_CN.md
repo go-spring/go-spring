@@ -35,7 +35,6 @@ require (
     go-spring.org/starter-tdengine latest
     go-spring.org/starter-actuator latest        // 可选：readiness + /metrics
     go-spring.org/starter-otel     latest        // 可选：真实 trace/metric 导出
-    go-spring.org/starter-governance-file latest      // 可选：resilience/fault 策略
 )
 ```
 
@@ -47,7 +46,6 @@ package main
 import (
     "go-spring.org/spring/gs"
     _ "go-spring.org/starter-actuator"
-    _ "go-spring.org/starter-governance-file"
     _ "go-spring.org/starter-otel"
     _ "go-spring.org/starter-tdengine"
     _ "demo/service"
@@ -300,7 +298,7 @@ grep _app_tdengine_access app.log | tail -1
 
 ### 4.3 resilience 演练
 
-引入 starter-governance-file 后，为 service `tdengine:127.0.0.1:6041`（§2.3）配策略——
+配好治理规则源后，为 service `tdengine:127.0.0.1:6041`（§2.3）配策略——
 例如限流。压测 `ExecContext`；超限语句以 `resilience.ErrRateLimited` 拒绝，
 **不会到达连接**（有单测 [tdengine_test.go:62-76]），体现在
 `resilience.client.calls{resilience.outcome="rate_limited"}` 与 `_app_tdengine_access` tag 下的一条

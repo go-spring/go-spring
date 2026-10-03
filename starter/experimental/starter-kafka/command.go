@@ -31,6 +31,7 @@ package StarterKafka
 
 import (
 	"context"
+	"go-spring.org/cloud/chain"
 	"sync"
 
 	"github.com/twmb/franz-go/pkg/kgo"
@@ -44,7 +45,7 @@ import (
 // the stable serviceLabel it executes under, colocated so a guard lookup
 // reads the pair atomically (no torn exec/serviceLabel combination).
 type clientGuard struct {
-	exec         resilience.ClientExecutor
+	exec         chain.Executor
 	serviceLabel string
 }
 
@@ -93,7 +94,7 @@ func closeResilience(cl *kgo.Client) {
 
 // guardOf resolves the resilience executor attached to cl, or nil when the
 // client carries none (a stand-alone client, e.g. built outside the starter).
-func guardOf(cl *kgo.Client) resilience.ClientExecutor {
+func guardOf(cl *kgo.Client) chain.Executor {
 	if v, ok := clientGuards.Load(cl); ok {
 		return v.(*clientGuard).exec
 	}

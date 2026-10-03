@@ -136,8 +136,8 @@ attached to the client (rate limit, circuit breaking, fault injection):
 res, err := StarterRocketmq.GuardedSend(ctx, s.Client, p, msg)
 ```
 
-When `starter-governance-file` is not imported this behaves exactly like
-`p.SendSync(ctx, msg)`.
+When governance is not wired in (no `cloud/governance` bean in the container)
+this behaves exactly like `p.SendSync(ctx, msg)`.
 
 The [Messaging Driver](#messaging-driver) publish and consume paths route
 through the same executor, so driver traffic is protected and declared too.

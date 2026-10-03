@@ -9,7 +9,7 @@ group、namespace、`ListenConfig`）见 [Nacos 文档](https://nacos.io/docs/la
 以下都是 go-spring 的增量。
 
 **本 starter 是什么**：治理规则源家族的 Nacos 适配器，是一个 `governance.Source` 实现；
-治理中心本身的呈现是 [starter-governance-file](../starter-governance-file) 的职责。存在
+治理中心本身的呈现是 [cloud/governance](../../cloud/governance) 的职责。存在
 `spring.governance.source.nacos.*` 配置项之前，空导入本包是惰性的。
 
 ---
@@ -32,7 +32,6 @@ demo/
 ```
 require (
     go-spring.org/spring                  v1.3.x
-    go-spring.org/starter-governance-file       latest
     go-spring.org/starter-governance-nacos latest
 )
 ```
@@ -46,7 +45,6 @@ import (
     "go-spring.org/cloud/resilience"
     "go-spring.org/spring/gs"
 
-    _ "go-spring.org/starter-governance-file"
     _ "go-spring.org/starter-governance-nacos"
 )
 
@@ -65,7 +63,7 @@ func (p *poller) Run(ctx context.Context) error {
 }
 
 // newPoller 在注入的 manager 之上构建 poller。manager 为 nil——没有
-// starter-governance-file 的容器——时归一化为一个新的未武装实例。
+// cloud/governance bean 的容器——时归一化为一个新的未武装实例。
 func newPoller(mgr *resilience.Manager) *poller {
     if mgr == nil {
         mgr = resilience.NewManager()
@@ -159,7 +157,7 @@ type Source interface {
             .Export(gs.As[governance.Source]())
 
 gs.Run()
-  ├─ Bean 装配：导出的 Source Bean 被注入 starter-governance-file 的 wiring
+  ├─ Bean 装配：导出的 Source Bean 被注入 cloud/governance 的 wiring
   ├─ 规则源 Bean Init: ListenConfig 安装 OnChange 监听器
   ├─ 你的 Runner 运行（治理已武装——Rooter 先于 Runner）
   └─ SIGTERM 时：规则源 Bean Destroy → Close：CancelListenConfig + CloseClient
@@ -213,11 +211,11 @@ gs.Run()
 这与 `starter-config-nacos` import 串的 `timeout-ms` 不同。
 
 ⚠ `spring.governance.source.*` 只是引导面。规则文档本身永不走 `app.properties`——它住在自己的 dataId 里，
-其键是 `spring.governance.*` 词表，文档见 [starter-governance-file 的 USAGE](../starter-governance-file/USAGE.md)。
+其键是 `spring.governance.*` 词表，文档见 [cloud/governance 的 SOURCE_USAGE_CN.md](../../cloud/governance/SOURCE_USAGE_CN.md)。
 
 ### 3.1 文档的逐字节可移植性
 
-文档由 `starter-governance-file` 的 file 源与 http 源共用的同一个 `governance.Parse` 解析：先扁平化，
+文档由 cloud/governance 内置的 file 源与 http 源共用的同一个 `governance.Parse` 解析：先扁平化，
 要求至少含一个 `spring.governance.*` 键，再绑定进 `governance.Config`。因此一份能作为本地规则文件工作的文档，
 作为 Nacos dataId（反之亦然，以及作为 etcd 值配合
 [starter-governance-etcd](../starter-governance-etcd)）也能原样工作。

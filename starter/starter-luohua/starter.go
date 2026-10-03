@@ -52,6 +52,22 @@ import (
 	"go-spring.org/stdlib/i18n"
 )
 
+func init() {
+	// Armed by any spring.luohua.* key (OnProperty is a prefix check); Enabled
+	// (default true) is the master switch inside.
+	gs.Module(gs.OnProperty("spring.luohua"), func(r gs.BeanProvider, p flatten.Storage) error {
+		var c Config
+		if err := conf.Bind(p, &c, "${spring.luohua:=}"); err != nil {
+			return err
+		}
+		if !c.Enabled {
+			return nil
+		}
+		log.Infof(context.Background(), tagAppLuohua, "luohua baseline armed")
+		return apply(r, c)
+	})
+}
+
 // tagAppLuohua is the static log tag luohua stamps on its own startup lines. A
 // company adds its own semantic tags once, here — this is the log-tag
 // vocabulary extension point.
@@ -72,22 +88,6 @@ func disabled(p flatten.Storage) (bool, error) {
 		return false, err
 	}
 	return !e.Enabled, nil
-}
-
-func init() {
-	// Armed by any spring.luohua.* key (OnProperty is a prefix check); Enabled
-	// (default true) is the master switch inside.
-	gs.Module(gs.OnProperty("spring.luohua"), func(r gs.BeanProvider, p flatten.Storage) error {
-		var c Config
-		if err := conf.Bind(p, &c, "${spring.luohua:=}"); err != nil {
-			return err
-		}
-		if !c.Enabled {
-			return nil
-		}
-		log.Infof(context.Background(), tagAppLuohua, "luohua baseline armed")
-		return apply(r, c)
-	})
 }
 
 // apply runs each enabled capability through its public seam. Order matters
@@ -122,8 +122,8 @@ func apply(r gs.BeanProvider, c Config) error {
 // (selectable by spring.governance.driver=luohua).
 func init() {
 	// Contributing the backend as a bean named "luohua" makes it selectable by
-	// spring.governance.driver=luohua: the wiring bean collects every bean
-	// exported as resilience.Driver into a name-keyed directory. Like the bundled
+	// spring.governance.driver=luohua: the resilience manager is built over every
+	// bean exported as resilience.Driver, keyed by bean name. Like the bundled
 	// "default" (and sentinel's blank-import contribution) this is an init-time
 	// availability registration, not a config-gated activation — the driver only
 	// governs when the process actually selects it.
@@ -189,7 +189,7 @@ func init() {
 	// Contributing the company Balancer as a NAMED Factory bean is the whole
 	// extension — no change to cloud/loadbalance. The bean name IS the strategy
 	// name a selection rule cites, and the Export is what makes the bean visible
-	// to the governance wiring's directory map.
+	// to the directory the manager is built over.
 	gs.Provide(func() loadbalance.Factory { return luohuaFactory{} }).
 		Name(luohuaStrategy).
 		Export(gs.As[loadbalance.Factory]()).Caller(1)

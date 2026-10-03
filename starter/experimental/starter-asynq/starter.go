@@ -18,12 +18,11 @@ package StarterAsynq
 
 import (
 	"context"
+	"go-spring.org/cloud/governance"
 
 	"github.com/hibiken/asynq"
 	"go-spring.org/cloud"
 	"go-spring.org/cloud/actuator/health"
-	"go-spring.org/cloud/fault"
-	"go-spring.org/cloud/resilience"
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/flatten"
@@ -50,12 +49,8 @@ func init() {
 			r.Provide(newClient,
 				gs.IndexArg(1, gs.ValueArg(c)),
 				gs.IndexArg(2, gs.TagArg("${spring.asynq.instances."+name+".driver:=${spring.asynq.default.driver:=?}}")),
-				// The governance beans are REQUIRED: each is registered by the package that
-				// owns it (cloud/resilience, cloud/loadbalance, cloud/fault), which this
-				// starter imports — "governance off" is spring.governance.enabled=false, never
-				// an absent bean.
-				gs.IndexArg(3, gs.TagArg("")), // *resilience.Manager
-				gs.IndexArg(4, gs.TagArg("")), // *fault.Injector
+				// The governance center is the family's sole injection point: it hands
+				// out the resilience/fault/loadbalance authorities.
 			).Name(name).Destroy((*Client).Destroy).Caller(1)
 
 			if c.Server.Enabled {
@@ -95,7 +90,7 @@ func init() {
 // mgr is required (blank-imported governance); a standalone, non-gs caller
 // passes a fresh manager, which is exactly "governance off". The zero bundle
 // degrades to an observed-only, loudly-unmanaged executor.
-func newClient(ctx *gs.ContextProvider, c Config, d Driver, mgr *resilience.Manager, inj *fault.Injector) (*Client, error) {
+func newClient(ctx *gs.ContextProvider, c Config, d Driver, center *governance.Center) (*Client, error) {
 	// No company Driver bean → fall back to the bundled default assembly.
 	if d == nil {
 		d = DefaultDriver{}
@@ -104,7 +99,7 @@ func newClient(ctx *gs.ContextProvider, c Config, d Driver, mgr *resilience.Mana
 	if err != nil {
 		return nil, err
 	}
-	return NewClient(connOpt, c.Addr, cloud.ClientParams{Resilience: mgr, Fault: inj}), nil
+	return NewClient(connOpt, c.Addr, cloud.ClientParams{Resilience: center.Resilience(), Fault: center.Fault()}), nil
 }
 
 // newServer builds the worker Server bean. The asynq server is constructed here

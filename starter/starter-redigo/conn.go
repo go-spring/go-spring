@@ -18,6 +18,7 @@ package StarterRedigo
 
 import (
 	"context"
+	"go-spring.org/cloud/chain"
 	"time"
 
 	"github.com/gomodule/redigo/redis"
@@ -170,7 +171,7 @@ func (c *Conn) run(ctx context.Context, cmd string, args []interface{},
 // (rate-limited / circuit-open / bulkhead-full) surface to the caller verbatim.
 // The executor plumbing (nil-as-success + rejection/fault translation) lives in
 // [resilience.Run], shared with the other client adapters.
-func resilienceInterceptor(exec resilience.ClientExecutor, service string) CommandInterceptor {
+func resilienceInterceptor(exec chain.Executor, service string) CommandInterceptor {
 	return func(next CommandHandler) CommandHandler {
 		return func(ctx context.Context, cmd string, args []interface{}) (interface{}, error) {
 			return resilience.Run(ctx, exec,

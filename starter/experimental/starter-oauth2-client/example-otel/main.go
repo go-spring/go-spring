@@ -42,7 +42,6 @@ import (
 	"go-spring.org/spring/gs"
 	"golang.org/x/oauth2"
 
-	_ "go-spring.org/starter-governance-file"
 	StarterOAuth2Client "go-spring.org/starter-oauth2-client"
 	_ "go-spring.org/starter-otel"
 )

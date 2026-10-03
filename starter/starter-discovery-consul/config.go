@@ -24,6 +24,11 @@ import (
 
 // ConsulConfig binds the Consul agent connection under ${spring.discovery.consul}.
 type ConsulConfig struct {
+	// Enabled turns this named block off without deleting it. Default true;
+	// a disabled block contributes no beans (no client, no registration,
+	// no discovery, no health indicator).
+	Enabled bool `value:"${enabled:=true}"`
+
 	// Address is the Consul HTTP API address, e.g. "127.0.0.1:8500". Setting it
 	// is what activates this starter (fail-loud opt-in; no silent localhost).
 	Address string `value:"${address}"`

@@ -212,7 +212,7 @@ func TestBinaryProtocolNoPropagation(t *testing.T) {
 }
 
 // rejecting denies every call without reaching the service — the shape of an
-// inbound admission rejection.
+// inbound inbound rejection.
 var rejecting thrift.ProcessorMiddleware = func(name string, next thrift.TProcessorFunction) thrift.TProcessorFunction {
 	return thrift.WrappedTProcessorFunction{
 		Wrapped: func(ctx context.Context, seqID int32, in, out thrift.TProtocol) (bool, thrift.TException) {
@@ -223,7 +223,7 @@ var rejecting thrift.ProcessorMiddleware = func(name string, next thrift.TProces
 
 // TestRejectionIsStillObserved guards the ORDER promise: with Observe listed
 // first it is the outermost middleware, so a call a later middleware rejects
-// still returns through it and is traced. Put admission one layer above the
+// still returns through it and is traced. Put inbound one layer above the
 // per-method functions instead and a rejection short-circuits before any of
 // them runs, leaving no trace at all.
 func TestRejectionIsStillObserved(t *testing.T) {

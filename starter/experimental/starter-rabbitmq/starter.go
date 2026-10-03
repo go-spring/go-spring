@@ -18,7 +18,7 @@ package StarterRabbitMQ
 
 import (
 	amqp "github.com/rabbitmq/amqp091-go"
-	"go-spring.org/cloud/fault"
+	"go-spring.org/cloud/governance"
 	"go-spring.org/cloud/messaging"
 	"go-spring.org/cloud/resilience"
 	"go-spring.org/cloud/traffic"
@@ -49,12 +49,7 @@ func init() {
 				gs.IndexArg(1, gs.ValueArg(name)),
 				gs.IndexArg(2, gs.ValueArg(c)),
 				gs.IndexArg(3, gs.TagArg("${spring.rabbitmq.instances."+name+".driver:=${spring.rabbitmq.default.driver:=?}}")),
-				// The governance beans are REQUIRED: each is registered by the package that
-				// owns it (cloud/resilience, cloud/loadbalance, cloud/fault), which this
-				// starter imports — "governance off" is spring.governance.enabled=false, never
-				// an absent bean.
-				gs.IndexArg(4, gs.TagArg("")), // *resilience.Manager
-				gs.IndexArg(5, gs.TagArg("")), // *fault.Injector
+				// The governance center is the family's sole injection point.
 			).Name(name).Destroy(destroyClient).Caller(1)
 
 			// Export the broker-neutral messaging.Driver over this connection as a
@@ -85,11 +80,11 @@ func init() {
 // probe channel opened and closed to confirm the AMQP layer is usable. A failed
 // probe releases what was just assembled.
 //
-// mgr and inj are the governance beans cloud/resilience and cloud/fault
-// provide. mgr is required: this starter imports those packages, so "governance
-// off" is spring.governance.enabled=false, never an absent bean; a standalone, non-gs
-// caller passes a fresh manager, which is exactly "governance off".
-func newClient(ctx *gs.ContextProvider, name string, c Config, d Driver, mgr *resilience.Manager, inj *fault.Injector) (*amqp.Connection, error) {
+// center is the governance center bean — the family's sole injection point. It
+// is required when linked: "governance off" is spring.governance.enabled=false,
+// never an absent bean; a standalone, non-gs caller passes nil, which reads
+// unarmed authorities — exactly "governance off".
+func newClient(ctx *gs.ContextProvider, name string, c Config, d Driver, center *governance.Center) (*amqp.Connection, error) {
 	log.Debugf(ctx.Context, log.TagAppDef, "creating rabbitmq connection, url=%s vhost=%s", c.URL, c.Vhost)
 
 	// No company Driver bean → fall back to the bundled default assembly.
@@ -140,7 +135,7 @@ func newClient(ctx *gs.ContextProvider, name string, c Config, d Driver, mgr *re
 	}()
 
 	// Assemble fully before probing: attach the resilience executor first.
-	if err := applyResilience(conn, resilience.ServiceLabel("rabbitmq", c.Vhost, c.URL), mgr, inj); err != nil {
+	if err := applyResilience(conn, resilience.ServiceLabel("rabbitmq", c.Vhost, c.URL), center); err != nil {
 		log.Errorf(ctx.Context, log.TagAppDef, "rabbitmq: resilience setup failed: %v", err)
 		_ = conn.Close()
 		return nil, err
