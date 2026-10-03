@@ -39,10 +39,10 @@ func TestDefaultDriverBuildsAWorkingCache(t *testing.T) {
 	}
 	defer func() { _ = c.Destroy() }()
 
-	if err := c.Set("k", []byte("v")); err != nil {
+	if err := c.Set(context.Background(), "k", []byte("v")); err != nil {
 		t.Fatalf("Set: %v", err)
 	}
-	if b, err := c.Get("k"); err != nil || string(b) != "v" {
+	if b, err := c.Get(context.Background(), "k"); err != nil || string(b) != "v" {
 		t.Fatalf("Get = %q, %v; want \"v\", nil", b, err)
 	}
 }

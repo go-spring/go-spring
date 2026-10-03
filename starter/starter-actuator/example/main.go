@@ -94,7 +94,7 @@ func main() {
 // /readiness reflects the aggregated indicator (UP, then DOWN once the
 // dependency is toggled, then UP again), /startup reports readiness completion,
 // and /info returns build metadata. It then triggers a graceful shutdown and
-// asserts the drain sequence flips /readiness to OUT_OF_SERVICE while liveness
+// asserts the drain sequence flips /readiness and /healthz to OUT_OF_SERVICE
 // stays up. It exits non-zero on any failure.
 func runTest() {
 	const base = "http://127.0.0.1:9370"
@@ -138,17 +138,17 @@ func runTest() {
 	depDown.Store(false)
 	mustStatus(base+"/readiness", http.StatusOK)
 
-	// Trigger graceful shutdown. The server flips readiness to OUT_OF_SERVICE and
-	// finishes its own drain before stopping. Poll until /readiness reports 503
-	// while /health stays 200, proving the pod would be drained from Service
-	// endpoints before it stops accepting traffic.
+	// Trigger graceful shutdown. The server flips readiness (and liveness) to
+	// OUT_OF_SERVICE and finishes its own drain before stopping. Poll until
+	// /readiness reports 503 and /health reports 503 too, telling every poller
+	// this instance is going away before it stops serving.
 	syscall.Kill(os.Getpid(), syscall.SIGTERM)
 
 	deadline := time.Now().Add(1500 * time.Millisecond)
 	for time.Now().Before(deadline) {
 		if statusOf(base+"/readiness") == http.StatusServiceUnavailable {
-			mustStatus(base+"/health", http.StatusOK)
-			fmt.Println("readiness OUT_OF_SERVICE during drain, health still UP")
+			mustStatus(base+"/health", http.StatusServiceUnavailable)
+			fmt.Println("readiness and health OUT_OF_SERVICE during drain")
 			return
 		}
 		time.Sleep(50 * time.Millisecond)

@@ -56,19 +56,38 @@ curl http://127.0.0.1:9370/info        # 这是哪个版本？
 ```yaml
 startupProbe:
   httpGet: { path: /startupz, port: 9370 }
+  failureThreshold: 30        # 预算 = failureThreshold × periodSeconds；
+  periodSeconds: 2            # 必须覆盖最坏启动时长（见下）
 livenessProbe:
   httpGet: { path: /healthz, port: 9370 }
 readinessProbe:
   httpGet: { path: /readyz, port: 9370 }
 ```
 
+## 工作模型
+
+actuator 和所有 `gs.Server` 一样，应用就绪后才开始服务——等的是同一道就绪屏障。
+三个探针的分工只有一种：
+
+- **startupProbe → `/startupz`**：启动期唯一在工作的探针。应用就绪前它探的是
+  一个还没人应答的端口，每次 connection refused 都在烧预算
+  （`failureThreshold × periodSeconds`）——这是设计内机制，所以预算**必须**
+  覆盖最坏启动时长：部署的必配项，不是可选项。首次成功之前，liveness 和
+  readiness 根本不被轮询。
+- **livenessProbe → `/healthz`**：只判"进程活没活"。超阈值失败会重启容器；
+  绝不能因为启动慢或依赖挂而触发。优雅排空期间和其他探针一样回 `503`
+  OUT_OF_SERVICE——实例要下线了。
+- **readinessProbe → `/readyz`**：只判"该不该接流量"。失败只是把 pod 摘出
+  Service 端点，永远不杀进程。
+
+
 ## 端点
 
 | 端点 | 它回答什么 |
 | --- | --- |
-| `/healthz`（别名 `/health`） | 进程在就返回 `200`。它**故意不**检查依赖——数据库挂了该摘流量，不该重启 Pod。 |
-| `/readyz`（别名 `/readiness`） | 应用启动完**且**关键依赖都通过才 `200`。没启动完、正在停机、关键依赖挂了都是 `503`。只是非关键依赖挂了：`200`、状态 `DEGRADED`——还在服务，问题写在响应体里。 |
-| `/startupz`（别名 `/startup`） | 启动完成前 `503`，之后 `200`。这是慢启动的保命符：K8s 重试这个探针，而不是因为存活探针太久不通过就把 Pod 杀了。 |
+| `/healthz`（别名 `/health`） | 进程在就返回 `200`；优雅排空期间 `503` OUT_OF_SERVICE。它**故意不**检查依赖——数据库挂了该摘流量，不该重启 Pod。 |
+| `/readyz`（别名 `/readiness`） | 关键依赖都通过则 `200`；关键依赖挂了或优雅排空期间 `503`。只是非关键依赖挂了：`200`、状态 `DEGRADED`——还在服务，问题写在响应体里。 |
+| `/startupz`（别名 `/startup`） | startup 组 indicator 的聚合。应用就绪前端口无人应答（connection refused 烧 startupProbe 预算——见上面的工作模型）；开始服务后由它报告启动健康度。 |
 | `/info` | 编译进二进制的版本信息（模块路径/版本、Go 版本、从代码库构建时的 git 版本/时间）。 |
 | `/metrics` | 不是本 starter 提供的。引入 `starter-otel` 并配 Prometheus exporter 后，它的抓取 handler 会挂到这里——同一个端口，监控只看一处。 |
 
@@ -119,7 +138,9 @@ spec:
 | 属性 | 默认值 | 干什么的 |
 | --- | --- | --- |
 | `spring.actuator.addr` | — | 监听地址。必填——配上它 starter 才生效。`:9370` 绑所有网卡，集群内探针够得着；和业务端口（`:9090`）、pprof（`127.0.0.1:9981`）分开。 |
-| `spring.actuator.endpoints.include` | `""` | 端点白名单，逗号分隔的路径（`/info,/metrics`）。空 = 默认集合（`/info`＋探针＋贡献端点）。非空 = 只留你列的。探针永不过滤。贡献方标了 `Sensitive` 的端点只有列在这里才注册。 |
+| `spring.actuator.check-timeout` | `3s` | 一次探针扫描（全部 indicator 并发）的总预算，共享。应低于 kubelet 探针的 `timeoutSeconds`。 |
+| `spring.actuator.read-header-timeout` | `5s` | 读请求头的期限（slowloris 防护）。`0` 关闭。 |
+| `spring.actuator.read-timeout` / `write-timeout` / `idle-timeout` | `0` | 对应 `http.Server` 同名字段；`0` = 不限时。管理端口都是短的探针/指标请求，默认全关——端口能被不可信网络触达时再设 `write-timeout`。 |
 | `spring.actuator.token` | `""` | 整个端口要求 `Authorization: Bearer <token>`。优先于 Basic。 |
 | `spring.actuator.username` / `spring.actuator.password` | `""` | HTTP Basic 凭据（两个都配才生效）。什么鉴权都不配又绑非 loopback 地址 → 启动打 WARN。 |
 

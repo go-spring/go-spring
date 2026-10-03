@@ -17,17 +17,10 @@
 package StarterActuator
 
 import (
-	"go-spring.org/cloud/actuator/endpoint"
 	"go-spring.org/spring/gs"
 )
 
 func init() {
-	// Mark that a management server collecting endpoint.Endpoint beans is
-	// linked in, so contributors (e.g. starter-otel's Prometheus /metrics with
-	// metrics.port=0) can WARN at startup when they would otherwise be
-	// silently homeless. See endpoint.MarkServing.
-	endpoint.MarkServing()
-
 	// Register the actuator as a gs.Server under a distinct name so it coexists
 	// with the application's main HTTP server (which also exports gs.Server).
 	// The starter convention: spring.actuator.enabled defaults to on (the

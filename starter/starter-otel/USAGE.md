@@ -333,7 +333,7 @@ All under `spring.observability.*`. 17 keys total (verified against `grep -rhoE 
 | `metrics.exporter` | string | otlp-grpc | otlp-grpc \| otlp-http \| prometheus \| stdout \| none (§2.2). | Unknown name → setup fails listing valid names. |
 | `metrics.endpoint` | string | "" | otlp only; same SDK-default fallback as trace. Dead key for prometheus/stdout. | Same lazy-failure mode as trace.endpoint, plus the same one-shot startup probe WARN (internal/probe). |
 | `metrics.insecure` | bool | true | otlp only. | Dead key for prometheus/stdout — set with no effect. |
-| `metrics.port` | int | **9090** | prometheus only: >0 starts a **dedicated second HTTP server** bound synchronously at setup (metric/prometheus/exporter.go `serveMetrics`); 0 = scrape handler served solely via the actuator mount. | ⚠ Default 9090 + actuator → `/metrics` on BOTH ports (the endpoint bean is contributed regardless). 0 + no actuator in the process → startup WARN naming the remediation (2026-08, endpoint.IsServing() detection); port in use → boot fails loudly. |
+| `metrics.port` | int | **9090** | prometheus only: >0 starts a **dedicated second HTTP server** bound synchronously at setup (metric/prometheus/exporter.go `serveMetrics`); 0 = scrape handler served solely via the actuator mount. | ⚠ Default 9090 + actuator → `/metrics` on BOTH ports (the endpoint bean is contributed regardless). 0 + no actuator in the process → `/metrics` is silently nowhere (an uncollected endpoint bean is unwired, per gs semantics); port in use → boot fails loudly. |
 | `metrics.path` | string | /metrics | prometheus only; used by BOTH the standalone server and the actuator mount (starter.go:220). | Custom path changes both surfaces — point your Prometheus scrape config at it. |
 | `metrics.interval` | duration | 10s | Push cadence for otlp/stdout PeriodicReader (metric/provider.go:101-107). Dead for prometheus/none. | 0/negative keeps the reader's own default (not "as fast as possible"). |
 | `metrics.runtime.enable` | bool | true | Feeds Go runtime metrics (GC, heap, goroutines, GOMAXPROCS) via OTel contrib, started exactly once per process (starter.go:204-212). | Disable loses `go_goroutine_count` etc. — the example smoke asserts on those. |
@@ -442,7 +442,7 @@ curl -s :8002/hello/world >/dev/null
 | Boot fails: `unknown exporter` / `unknown propagator` | Typo in `trace.exporter` / `metrics.exporter` / `trace.propagator` | The error lists registered exporters; use one of those names. |
 | Boot fails: prometheus scrape server bind error | `metrics.port` > 0 and the port is in use (bind is synchronous by design — metric/prometheus/exporter.go) | Free the port, change it, or set 0 and mount via actuator. |
 | `/metrics` answers on :9090 too, wanted actuator-only | Default `metrics.port=9090` starts the dedicated server even when the actuator mount exists | Set `spring.observability.metrics.port=0`. |
-| `/metrics` is nowhere + startup WARN `prometheus exporter has no place to serve` | `port=0` but starter-actuator not linked into the process (endpoint.IsServing()==false) — detected at startup since 2026-08 | Import starter-actuator (and set `spring.actuator.addr`) or use a positive `metrics.port`. |
+| `/metrics` is nowhere, no log | `port=0` but starter-actuator is not linked into the process (or `spring.actuator.addr` unset) — the uncollected endpoint bean is simply unwired | Import starter-actuator (and set `spring.actuator.addr`) or use a positive `metrics.port`. |
 | Cross-service traces break at this hop, logs lose trace_id | trace pillar off (`trace.enable=false`/`none`) also skips propagator installation and you have no valid span context | Keep tracing enabled (propagator is cross-cutting — §6 suspect 5) and install the log.FieldsFromContext hook (§1). |
 | Shutdown hangs after SIGTERM | Stopper context is `WithoutCancel` (gs/stopper.go:92); a wedged collector holds the flush | Fix collector reachability/TLS; export timeouts are the OTLP exporter's own. |
 | All services named `go-spring-app` in the backend | Neither `service-name` nor `spring.application.name` set | Set one; the fallback is silent. |
@@ -464,7 +464,9 @@ Design suspects (for the audit ledger):
    **FIXED** — README now documents process-global stoppers and optional endpoint with SDK-default
    fallback (README.md "Graceful Shutdown", exporter tables).
 2. ~~Silent dead-end: prometheus + `port=0` + no actuator → `/metrics` nowhere, no log.~~
-   Fixed 2026-08: detected via endpoint.IsServing() and WARNed with remediation.
+   Accepted 2026-10: the cross-package `endpoint.IsServing()` global was removed (onion-model:
+   no global signalling state); an uncollected endpoint bean is unwired and silent, like any
+   other root-unreachable bean in gs. Doc rows above state the symptom + remediation.
 3. Per-exporter dead keys with no warning (`endpoint`/`insecure` vs `port`/`path`/`interval`).
 4. `insecure=true` default; `service-name` silent fallback to `go-spring-app`.
 5. Propagator key is inside the trace pillar — `trace.enable=false` silently disables cross-service

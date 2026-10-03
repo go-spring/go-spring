@@ -31,9 +31,9 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
-// scope is the instrumentation scope name every meter and tracer in this
+// componentName is the instrumentation componentName name every meter and tracer in this
 // package reports under.
-const scope = "go-spring.org/cloud/discovery"
+const componentName = "go-spring.org/cloud/discovery"
 
 // Registration reasons a backend passes to [Observer.RegisterAttempt]: the first
 // publish of an instance, and a background re-publish after the center lost it.
@@ -93,7 +93,7 @@ type instrumentSet struct {
 var instruments = sync.OnceValue(buildInstruments)
 
 func buildInstruments() *instrumentSet {
-	m := otel.Meter(scope)
+	m := otel.Meter(componentName)
 	in := &instrumentSet{meter: m}
 	in.opDuration, _ = m.Float64Histogram("discovery.operation.duration",
 		metric.WithDescription("Duration of discovery-center operations"),
@@ -327,7 +327,7 @@ func (o *Observer) startOp(ctx context.Context, op, service, reason string) (con
 	if reason != "" {
 		attrs = append(attrs, attribute.String("discovery.reason", reason))
 	}
-	return otel.Tracer(scope).Start(ctx, op,
+	return otel.Tracer(componentName).Start(ctx, op,
 		trace.WithSpanKind(trace.SpanKindClient),
 		trace.WithAttributes(attrs...))
 }

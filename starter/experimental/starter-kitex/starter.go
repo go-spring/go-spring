@@ -85,11 +85,13 @@ type Config struct {
 // by default. Global-first: when a real global TracerProvider is installed
 // (starter-otel), the kitex suite attaches to it and the remaining fields are
 // ignored — the global pipeline owns exporters and sampling. Without a global
-// pipeline the starter builds its own provider exporting OTLP/gRPC to Endpoint
-// (see globalTracingActive for how the decision is made).
+// pipeline and Endpoint set the starter builds its own provider exporting
+// OTLP/gRPC to Endpoint; an empty Endpoint with no global pipeline creates no
+// provider (a WARN points at the endpoint key or starter-otel). Addresses are
+// never defaulted here. (See globalTracingActive for the decision.)
 type TracingCfg struct {
 	Enable   bool   `value:"${enable:=true}"`
-	Endpoint string `value:"${endpoint:=127.0.0.1:4317}"`
+	Endpoint string `value:"${endpoint:=}"`
 	Insecure bool   `value:"${insecure:=true}"`
 }
 
@@ -161,11 +163,13 @@ func globalTracingActive() bool {
 //	                           metric flow into the unified pipeline. No
 //	                           provider is created and the TracingCfg endpoint
 //	                           fields are ignored.
-//	No global pipeline       → fall back to building a local provider via
-//	                           provider.NewOpenTelemetryProvider (exporting
-//	                           OTLP/gRPC to TracingCfg.Endpoint) so a kitex-only
-//	                           setup lights up spans with zero extra config,
-//	                           and log a hint toward starter-otel.
+//	No global pipeline + a   → fall back to building a local provider via
+//	set TracingCfg.Endpoint    provider.NewOpenTelemetryProvider (exporting
+//	                           OTLP/gRPC to TracingCfg.Endpoint), and log a
+//	                           hint toward starter-otel.
+//	No global pipeline, no   → no provider; WARN at startup (set the endpoint
+//	Endpoint                   or import starter-otel) — addresses are never
+//	                           defaulted here.
 //
 // Metrics (cfg.Metrics.Enable, default true):
 //
@@ -194,6 +198,9 @@ func observabilityOptions(cfg Config) (opts []server.Option, localProvider provi
 		if active {
 			log.Infof(context.Background(), log.TagAppDef,
 				"kitex tracing attached to the global otel pipeline (starter-otel); kitex tracing.* endpoint keys are ignored")
+		} else if cfg.Tracing.Endpoint == "" {
+			log.Warnf(context.Background(), log.TagAppDef,
+				"kitex tracing enabled without a global otel pipeline and without spring.kitex.server.tracing.endpoint; no tracing provider is created (set the endpoint or import starter-otel)")
 		} else {
 			popts := []provider.Option{
 				provider.WithServiceName(cfg.ServiceName),

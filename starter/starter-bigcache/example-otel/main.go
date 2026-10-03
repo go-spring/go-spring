@@ -49,9 +49,9 @@ import (
 
 // Service injects the "hot" BigCache instance. The bean is created by
 // starter-bigcache under ${spring.bigcache.instances.hot}; starter-bigcache
-// registers its OTel gauges (labeled cache.name="hot") as a side effect of
+// registers its OTel gauges (labeled instance="hot") as a side effect of
 // constructing the client. The bean is the *Cache wrapper (bigcache
-// has no hook extension point), so the per-op span and metrics are emitted by
+// has no hook extension point), so the per-op counter is emitted by
 // the wrapper's own observe step as the Get/Set calls below run - there is no
 // executor chain underneath; the OTel gauges above are independent of it.
 type Service struct {
@@ -92,18 +92,18 @@ func runTest(s *Service) {
 	// Generate traffic that produces both hits and misses, so the gauges read
 	// non-zero values when scraped.
 	for i := range 20 {
-		if err := s.Hot.Set(fmt.Sprintf("hit-%d", i), []byte("v")); err != nil {
+		if err := s.Hot.Set(ctx, fmt.Sprintf("hit-%d", i), []byte("v")); err != nil {
 			log.Errorf(ctx, log.TagAppDef, "SET failed: %v", err)
 			os.Exit(1)
 		}
-		if _, err := s.Hot.Get(fmt.Sprintf("hit-%d", i)); err != nil {
+		if _, err := s.Hot.Get(ctx, fmt.Sprintf("hit-%d", i)); err != nil {
 			log.Errorf(ctx, log.TagAppDef, "GET hit failed: %v", err)
 			os.Exit(1)
 		}
 	}
 	// Misses: read keys that were never set.
 	for i := range 5 {
-		if _, err := s.Hot.Get(fmt.Sprintf("absent-%d", i)); !errors.Is(err, bigcache.ErrEntryNotFound) {
+		if _, err := s.Hot.Get(ctx, fmt.Sprintf("absent-%d", i)); !errors.Is(err, bigcache.ErrEntryNotFound) {
 			log.Errorf(ctx, log.TagAppDef, "expected entry-not-found for absent key, got err=%v", err)
 			os.Exit(1)
 		}
@@ -122,28 +122,28 @@ func runTest(s *Service) {
 
 	// --- Statistics gauges, one set per instance -------------------------------
 	// The OTel gauge "bigcache.hits" renders as the Prometheus metric
-	// "bigcache_hits", and the cache.name attribute as cache_name.
-	hotHits := series(body, "bigcache_hits", `cache_name="hot"`)
+	// "bigcache_hits", and the instance attribute as instance.
+	hotHits := series(body, "bigcache_hits", `instance="hot"`)
 	if len(hotHits) == 0 {
-		fail(`metrics: no bigcache_hits series with cache_name="hot"`)
+		fail(`metrics: no bigcache_hits series with instance="hot"`)
 	}
 	// 20 hits were driven through `hot`; a series stuck at zero would mean the
 	// gauge never reached Stats().
 	if v := value(hotHits[0]); v < 20 {
-		fail("bigcache_hits{cache_name=\"hot\"} = %v, want >= 20", v)
+		fail("bigcache_hits{instance=\"hot\"} = %v, want >= 20", v)
 	}
-	hotMisses := series(body, "bigcache_misses", `cache_name="hot"`)
+	hotMisses := series(body, "bigcache_misses", `instance="hot"`)
 	if len(hotMisses) == 0 || value(hotMisses[0]) < 5 {
-		fail("bigcache_misses{cache_name=\"hot\"} is missing or below the 5 misses driven")
+		fail("bigcache_misses{instance=\"hot\"} is missing or below the 5 misses driven")
 	}
 
 	fmt.Println("OK: statistics gauges carry hot's counters")
 
 	// --- Per-operation signals -------------------------------------------------
 	// These are the starter's headline signals: every Get/Set/Delete emits a
-	// counter and a histogram, tagged with the operation, the status and the
-	// instance. They appear once the first operation of each kind has run.
-	total := series(body, "bigcache_operation_total", `cache_name="hot"`)
+	// counter, tagged with the operation, the status and the instance. They
+	// appear once the first operation of each kind has run.
+	total := series(body, "bigcache_operation_total", `instance="hot"`)
 	var sawGetOK, sawSetOK bool
 	for _, line := range total {
 		if strings.Contains(line, `status="error"`) {
@@ -159,17 +159,14 @@ func runTest(s *Service) {
 	if !sawGetOK || !sawSetOK {
 		fail("bigcache_operation_total is missing the get and/or set series")
 	}
-	if len(series(body, "bigcache_operation_duration_seconds_count", `cache_name="hot"`)) == 0 {
-		fail("the operation duration histogram is missing")
-	}
-	// The key is a span attribute and never a metric label - the cardinality
+	// The key never enters a metric label - the cardinality
 	// guarantee, checked rather than asserted in prose.
 	for line := range strings.SplitSeq(body, "\n") {
 		if strings.Contains(line, "bigcache_key=") {
 			fail("a cache key leaked into a metric label: %s", line)
 		}
 	}
-	fmt.Println("OK: per-operation counter + histogram present, misses counted as ok, no key label")
+	fmt.Println("OK: per-operation counter present, misses counted as ok, no key label")
 
 	syscall.Kill(os.Getpid(), syscall.SIGTERM)
 }

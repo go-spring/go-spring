@@ -29,6 +29,5 @@ func init() {
 ```
 
 Pattern 不能和 actuator 内置 pattern（`/healthz`、`/readyz`、`/info`...）或
-其他端点冲突，重复 pattern 启动时 panic。声明 `Sensitive` 的端点只有显式列入
-`spring.actuator.endpoints.include` 才注册——敏感性由贡献者声明，actuator 不代为
-裁决。过滤按 pattern 的路径匹配（去掉方法前缀），如 /env、/metrics。
+其他端点冲突，重复 pattern 启动时 panic。贡献出来的端点直接注册：端点存不存在
+由贡献者自己的 enable 开关决定，访问控制交给管理端口的鉴权，不做逐端点过滤。

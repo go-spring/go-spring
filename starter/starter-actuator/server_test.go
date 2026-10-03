@@ -23,7 +23,6 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"go-spring.org/cloud/actuator/endpoint"
 	"go-spring.org/cloud/actuator/health"
 	"go-spring.org/stdlib/testing/assert"
 )
@@ -64,49 +63,25 @@ func TestStartup_NonCriticalDownIsDegraded(t *testing.T) {
 	assert.String(t, rec.Body.String()).Contains(`"DEGRADED"`)
 }
 
-// --- per-endpoint include filter -------------------------------------------
+// --- endpoint registration ---------------------------------------------------
 
-func registeredNames(s *Server) map[string]bool {
-	// Recreate the registration decisions Run() would make (probes excluded:
-	// they are always registered by design).
-	names := map[string]bool{}
-	for _, rt := range []*endpoint.Endpoint{
-		{Pattern: "GET /info", Handler: http.HandlerFunc(s.handleInfo)},
-	} {
-		if s.endpointEnabled(context.Background(), rt) {
-			names[endpointPath(rt.Pattern)] = true
-		}
+func TestEndpoints_UnconditionalRegistration(t *testing.T) {
+	// Contributed endpoints register unconditionally: contributing the bean
+	// means exposing the endpoint, and the probes are always there.
+	s := &Server{cfg: Config{Address: "127.0.0.1:0"}}
+	h := s.buildHandler(context.Background())
+
+	for _, path := range []string{"/healthz", "/readyz", "/startupz", "/info"} {
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
+		assert.Number(t, rec.Code).NotEqual(http.StatusNotFound)
 	}
-	for _, ep := range s.Endpoints {
-
-		if s.endpointEnabled(context.Background(), ep) {
-			names[endpointPath(ep.Pattern)] = true
-		}
-	}
-	return names
-}
-
-func TestEndpointFilter_SensitiveDefaultOff(t *testing.T) {
-	// A contributed endpoint that declares itself sensitive registers ONLY
-	// when explicitly listed in include — even when the list is empty.
-	s := &Server{Endpoints: []*endpoint.Endpoint{
-		&endpoint.Endpoint{Pattern: "/metrics"},
-		&endpoint.Endpoint{Pattern: "/pprof", Sensitive: true},
-	}}
-	names := registeredNames(s)
-	assert.That(t, names["/metrics"]).True()
-	assert.That(t, names["/pprof"]).False()
-
-	s.Cfg.EndpointInclude = "/pprof"
-	names = registeredNames(s)
-	assert.That(t, names["/pprof"]).True()
-	assert.That(t, names["/metrics"]).False() // whitelist mode now
 }
 
 // --- authentication guard ---------------------------------------------------
 
 func TestAuth_BearerToken(t *testing.T) {
-	s := &Server{Cfg: Config{Token: "s3cret", Address: "127.0.0.1:9370"}}
+	s := &Server{cfg: Config{Token: "s3cret", Address: "127.0.0.1:9370"}}
 	h := s.buildHandler(context.Background())
 
 	// No header / wrong token -> 401.
@@ -129,7 +104,7 @@ func TestAuth_BearerToken(t *testing.T) {
 }
 
 func TestAuth_Basic(t *testing.T) {
-	s := &Server{Cfg: Config{Username: "admin", Password: "pw", Address: "127.0.0.1:9370"}}
+	s := &Server{cfg: Config{Username: "admin", Password: "pw", Address: "127.0.0.1:9370"}}
 	h := s.buildHandler(context.Background())
 
 	rec := httptest.NewRecorder()
@@ -147,29 +122,9 @@ func TestAuth_Basic(t *testing.T) {
 func TestAuth_DisabledByDefault(t *testing.T) {
 	// No credentials configured: the guard is a no-op and loopback serving
 	// needs no header.
-	s := &Server{Cfg: Config{Address: "127.0.0.1:9370"}}
+	s := &Server{cfg: Config{Address: "127.0.0.1:9370"}}
 	h := s.buildHandler(context.Background())
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/healthz", nil))
 	assert.Number(t, rec.Code).Equal(http.StatusOK)
-}
-
-func TestEndpointFilter_IncludeWhitelist(t *testing.T) {
-	s := &Server{
-		Cfg:       Config{EndpointInclude: "/metrics"},
-		Endpoints: []*endpoint.Endpoint{&endpoint.Endpoint{Pattern: "/metrics"}},
-	}
-	names := registeredNames(s)
-	assert.That(t, names["/metrics"]).True()
-	// Everything not in the whitelist is off.
-	for _, off := range []string{"/info"} {
-		assert.That(t, names[off]).False()
-	}
-}
-
-func TestEndpointFilter_CaseInsensitiveAndWhitespace(t *testing.T) {
-	s := &Server{Cfg: Config{EndpointInclude: " /Info , /Metrics "}, Endpoints: []*endpoint.Endpoint{&endpoint.Endpoint{Pattern: "/metrics"}}}
-	names := registeredNames(s)
-	assert.That(t, names["/info"]).True()
-	assert.That(t, names["/metrics"]).True()
 }

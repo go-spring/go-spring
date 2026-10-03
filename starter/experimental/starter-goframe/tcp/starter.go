@@ -40,6 +40,7 @@ import (
 	etcdreg "github.com/gogf/gf/contrib/registry/etcd/v2"
 	"github.com/gogf/gf/v2/net/gsvc"
 	"github.com/gogf/gf/v2/net/gtcp"
+	"go-spring.org/log"
 	"go-spring.org/spring/gs"
 
 	"go-spring.org/starter-goframe/internal/logger"
@@ -211,6 +212,7 @@ func (s *TCPServer) Run(ctx context.Context, sig gs.ReadySignal) error {
 // Run goroutine treat the resulting Accept error as expected shutdown rather
 // than a real serve failure.
 func (s *TCPServer) Stop(ctx context.Context) error {
+	log.Infof(ctx, log.TagAppDef, "goframe tcp server shutting down")
 	if s.registered != nil {
 		// Best-effort deregister; if etcd is already gone there is nothing
 		// useful the caller can do with the error.

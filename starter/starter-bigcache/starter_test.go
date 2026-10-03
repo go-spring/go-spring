@@ -56,7 +56,7 @@ func TestInstanceWiring(t *testing.T) {
 			t.Fatal("no Driver bean is provided by default; newClient falls back to DefaultDriver internally")
 		}
 
-		if err := ts.Hot.Set("k", []byte("v")); err != nil {
+		if err := ts.Hot.Set(context.Background(), "k", []byte("v")); err != nil {
 			t.Fatalf("Set through the wrapper: %v", err)
 		}
 		b, err := ts.Facade.GetBytes(context.Background(), "k")
@@ -120,7 +120,7 @@ func TestFamilyDefaultBucket(t *testing.T) {
 		if ts.Hot == nil {
 			t.Fatal("expected the instance bean to be built from the inherited defaults")
 		}
-		if err := ts.Hot.Set("k", []byte("v")); err != nil {
+		if err := ts.Hot.Set(context.Background(), "k", []byte("v")); err != nil {
 			t.Fatalf("Set: %v", err)
 		}
 	})

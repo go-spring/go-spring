@@ -32,8 +32,8 @@ import (
 	"trpc.group/trpc-go/trpc-go/filter"
 )
 
-// scope is the instrumentation scope name every meter and tracer in this package reports under.
-const scope = "go-spring.org/starter-trpc"
+// componentName is the instrumentation componentName name every meter and tracer in this package reports under.
+const componentName = "go-spring.org/starter-trpc"
 
 // rpcSystem is the value the RPC family's rpc.system label carries for this
 // backend. Together with rpc.method and status it is one of the three keys
@@ -86,7 +86,7 @@ func logCall(ctx context.Context, method, status string, dur time.Duration, err 
 func TracingServerFilter() filter.ServerFilter {
 	return func(ctx context.Context, req interface{}, next filter.ServerHandleFunc) (interface{}, error) {
 		name := rpcName(ctx)
-		ctx, span := otel.Tracer(scope).Start(ctx, name,
+		ctx, span := otel.Tracer(componentName).Start(ctx, name,
 			trace.WithSpanKind(trace.SpanKindServer),
 			trace.WithAttributes(
 				attribute.String("rpc.system", rpcSystem),
@@ -121,7 +121,7 @@ type instrumentSet struct {
 var instruments = sync.OnceValue(buildInstruments)
 
 func buildInstruments() *instrumentSet {
-	m := otel.Meter(scope)
+	m := otel.Meter(componentName)
 	requestCount, _ := m.Int64Counter(
 		"rpc.server.request_count",
 		metric.WithDescription("Number of RPC requests received"),

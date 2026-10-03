@@ -14,43 +14,33 @@
  * limitations under the License.
  */
 
-// observe.go is what this starter's observability IS: the per-call signals it
-// emits itself — a span and two metrics — plus the cache-statistics gauges, the
+// observe.go is what this starter's observability IS: the per-call signal it
+// emits itself — an operation counter — plus the cache-statistics gauges, the
 // one signal that is not per-call.
 //
 // bigcache emits its own signals rather than declaring an operation for the
 // framework's emitter: this is an in-process cache with no external dependency,
 // so neither the protection stages nor the access log an executor chain would
-// produce have anything to act on. The span still rides the framework's
-// span-attribute carrier — a span this file opens picks up whatever a layer
-// above put there, with no cooperation from either side (see
-// [observability.SpanAttributesProcessor]).
+// produce have anything to act on. There is no span either: trace topology is
+// made of edges, and a microsecond in-process call adds none — a span here
+// would only pad sampled traces with nodes that never have a story.
 package StarterBigCache
 
 import (
 	"context"
 	"errors"
-	"time"
 
 	"github.com/allegro/bigcache/v3"
-	"go-spring.org/cloud/observability"
 	"go-spring.org/stdlib/errutil"
 	"go-spring.org/stdlib/singleton"
-	"go-spring.org/stdlib/strutil"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/metric"
-	"go.opentelemetry.io/otel/trace"
 )
 
-// scope is the instrumentation scope name every meter and tracer in this package
+// componentName is the instrumentation componentName name every meter in this package
 // reports under.
-const scope = "go-spring.org/starter-bigcache"
-
-// maxKeyAttr bounds the key captured as the span's bigcache.key attribute. A key
-// can be long, and a span attribute has no use for all of it.
-const maxKeyAttr = 128
+const componentName = "go-spring.org/starter-bigcache"
 
 // The operation names and the status axis the per-call metric carries.
 const (
@@ -62,21 +52,16 @@ const (
 	statusError = "error"
 )
 
-// statSnapshot is one reading of a cache's statistics. Every gauge of a
-// collection reads from the same snapshot, so two gauges can never describe
-// different instants — and the five that come from Stats() do not each rescan
-// every shard, which at the default 1024 shards is the difference between one
-// pass and five.
+// statSnapshot is one reading of a cache's statistics, taken by reading each
+// source once. Stats() walks every shard under its read lock, so it is the
+// reason the snapshot exists: every gauge of a collection reads from the same
+// snapshot, so two gauges can never describe different instants — and the five
+// that come from Stats() do not each rescan every shard, which at the default
+// 1024 shards is the difference between one pass and five.
 type statSnapshot struct {
 	stats bigcache.Stats
 	len   int
 	cap   int
-}
-
-// snapshot reads each source once. Stats() walks every shard under its read
-// lock, so it is the reason the snapshot exists.
-func snapshot(c *bigcache.BigCache) statSnapshot {
-	return statSnapshot{stats: c.Stats(), len: c.Len(), cap: c.Capacity()}
 }
 
 // statInstrument describes one gauge to register.
@@ -132,18 +117,17 @@ var statInstruments = []statInstrument{
 	},
 }
 
-// instrumentSet holds this starter's instruments: the per-call counter and
-// duration histogram, plus the cache-statistics gauges. It is one per process and
-// carries no per-instance state — the labels travel with each record, and with
-// each cache's registration of the gauges.
+// instrumentSet holds this starter's instruments: the per-call counter plus the
+// cache-statistics gauges. It is one per process and carries no per-instance
+// state — the labels travel with each record, and with each cache's registration
+// of the gauges.
 //
 // It rides the OTel globals: when starter-otel is not imported the global
 // MeterProvider is a no-op, so this adds negligible overhead.
 type instrumentSet struct {
-	meter    metric.Meter
-	gauges   []metric.Int64ObservableGauge
-	total    metric.Int64Counter
-	duration metric.Float64Histogram
+	meter  metric.Meter
+	gauges []metric.Int64ObservableGauge
+	total  metric.Int64Counter
 }
 
 // instruments is the one instrument set this starter uses for the whole process.
@@ -169,7 +153,7 @@ var instruments singleton.Singleton[*instrumentSet]
 // rather than retried behind the application's back.
 func buildInstruments() (*instrumentSet, error) {
 	return instruments.Init(func() (*instrumentSet, error) {
-		m := otel.Meter(scope)
+		m := otel.Meter(componentName)
 		in := &instrumentSet{meter: m}
 
 		in.gauges = make([]metric.Int64ObservableGauge, len(statInstruments))
@@ -188,15 +172,6 @@ func buildInstruments() (*instrumentSet, error) {
 			return nil, errutil.Explain(err, "bigcache: create counter %q", "bigcache.operation.total")
 		}
 		in.total = total
-
-		duration, err := m.Float64Histogram("bigcache.operation.duration",
-			metric.WithDescription("Duration of cache operations, by operation and status"),
-			metric.WithUnit("s"),
-			metric.WithExplicitBucketBoundaries(observability.DurationBuckets()...))
-		if err != nil {
-			return nil, errutil.Explain(err, "bigcache: create histogram %q", "bigcache.operation.duration")
-		}
-		in.duration = duration
 		return in, nil
 	})
 }
@@ -249,13 +224,13 @@ func newStatObserver(client *bigcache.BigCache, name string) (*statObserver, err
 // creation, silently dropping the new callbacks. A process with more than one
 // cache would then report only the first one, with no error to show for it.
 func (o *statObserver) observeGauges(c *bigcache.BigCache) (metric.Registration, error) {
-	attrs := metric.WithAttributes(attribute.String("cache.name", o.name))
+	attrs := metric.WithAttributes(attribute.String("instance", o.name))
 	insts := make([]metric.Observable, len(o.in.gauges))
 	for i, g := range o.in.gauges {
 		insts[i] = g
 	}
 	return o.in.meter.RegisterCallback(func(_ context.Context, ob metric.Observer) error {
-		snap := snapshot(c)
+		snap := statSnapshot{stats: c.Stats(), len: c.Len(), cap: c.Capacity()}
 		for i, inst := range statInstruments {
 			ob.ObserveInt64(o.in.gauges[i], inst.read(snap), attrs)
 		}
@@ -283,38 +258,19 @@ func statusOf(err error) string {
 	return statusOK
 }
 
-// observe runs one cache operation: it opens the operation's span, runs fn under
-// it, and records the outcome under the status it maps to. It is the one place a
-// bigcache call becomes a signal, and the instance's name rides every one of
-// them, so several caches in a process stay distinguishable.
-func (o *statObserver) observe(ctx context.Context, op, key string, fn func(context.Context) error) error {
-	// Internal, not client: the dependency is in this process, so there is no edge
-	// to add to the trace topology. The key is an attribute and never a metric
-	// label — cache keys are drawn from an open set, and one as a label would
-	// multiply the series without bound.
-	ctx, span := otel.Tracer(scope).Start(ctx, op,
-		trace.WithSpanKind(trace.SpanKindInternal),
-		trace.WithAttributes(
-			attribute.String("bigcache.operation", op),
-			attribute.String("bigcache.key", strutil.Truncate(key, maxKeyAttr)),
-		))
-
-	start := time.Now()
+// observe runs one cache operation and records the outcome under the status it
+// maps to. It is the one place a bigcache call becomes a signal, and the
+// instance's name rides every one of them, so several caches in a process stay
+// distinguishable. The key never enters the metric — cache keys are drawn from
+// an open set, and one as a label would multiply the series without bound.
+func (o *statObserver) observe(ctx context.Context, op string, fn func(context.Context) error) error {
 	err := fn(ctx)
 	status := statusOf(err)
-
-	span.SetAttributes(attribute.String("status", status))
-	if status == statusError {
-		span.SetStatus(codes.Error, err.Error())
-	}
-	span.End()
-
 	attrs := metric.WithAttributes(
 		attribute.String("operation", op),
 		attribute.String("status", status),
-		attribute.String("cache.name", o.name),
+		attribute.String("instance", o.name),
 	)
 	o.in.total.Add(ctx, 1, attrs)
-	o.in.duration.Record(ctx, time.Since(start).Seconds(), attrs)
 	return err
 }

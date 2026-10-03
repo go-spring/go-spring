@@ -193,37 +193,40 @@ import starter-actuator
         │   以自己的名字导出 gs.Server，与应用主 HTTP server（同样导出
         │   gs.Server）共存
 gs.Run()
-  ├─ 配置绑定: addr / endpoints.include / token / username / password
+  ├─ 配置绑定: addr / token / username / password
   ├─ bean 装配: []health.Indicator、[]endpoint.Endpoint——全部可选
-  ├─ Server.Run(): 监听、注册路由、包上鉴权 guard；
-  │     没配鉴权且非 loopback → WARN——立刻开始 SERVING，不等应用就绪
-  ├─ 就绪: sig.TriggerAndWait() → 全部 server（含本 server）报告 ready 后，
-  │     s.ready 置 true
+  ├─ 就绪: sig.TriggerAndWait() → 阻塞到全部 server（含本 server）报告
+  │     ready，s.ready 置 true
+  ├─ Server.Run(): 开始服务——监听、路由、鉴权 guard（没配鉴权且非
+  │     loopback → WARN）；和其他 gs.Server 一样，过了就绪屏障才开始服务
   ├─ 收到 SIGTERM: PreStop 置 draining=true
   │     → /readyz 应答 503 OUT_OF_SERVICE，但 server 继续服务，
   │       K8s 得以在 Stop() 之前把 pod 摘出 Service
   └─ Stop: http.Server.Shutdown 随停机上下文走
 ```
 
-为什么先服务、后就绪：就绪探针要抓到「没就绪 → 就绪」的翻转，存活探针要在慢启动
-全程有人应声——不然 Pod 会被白白重启。
+工作模型：启动期 kubelet 轮询 startupProbe，探的是一个还没人应答的端口；
+connection refused 会持续烧探针预算，直到应用就绪。startupProbe 的预算
+（failureThreshold × periodSeconds）必须覆盖最坏启动时长——这是部署的必配项，
+不是可选项。
 
 ### 2.2 端点注册顺序
 
 ```
 探针:      /healthz /readyz /startupz（+ /health /readiness /startup 别名）
-           ——无条件注册，过滤器碰不了它们（否则破坏 Kubernetes 契约）
-自省:      /info——过 include 过滤器
-贡献端点:  每个 []endpoint.Endpoint bean，过滤键 = pattern 的路径
-           （去掉方法前缀，如 "/metrics"）；注册在内建之后，贡献者遮不了
-           /health——路径重复时 ServeMux 启动即 panic，错误藏不住
+自省:      /info
+贡献端点:  每个 []endpoint.Endpoint bean——全部无条件注册；贡献端点即要暴露
+           的端点。注册在内建之后，贡献者遮不了 /health——路径重复时 ServeMux
+           启动即 panic，错误藏不住
 ```
 
 ### 2.3 一次 readiness 请求，从头走到尾
 
 启动后的 `GET /readyz`，两个 indicator 都注册了，mysql 正常、redis 挂了：
 
-1. 还没就绪、或正在排空？→ 直接 `503 {"status":"OUT_OF_SERVICE"}`。
+1. 正在排空？→ 直接 `503 {"status":"OUT_OF_SERVICE"}`。（"还没就绪"的窗口不会
+   走到这里：过了就绪屏障才开始服务，kubelet 观察到的是 connection
+   refused——见工作模型。）
 2. 否则扫描 readiness 组里的每个 indicator。归属：显式 `HealthGroups()`，否则默认
    **readiness + startup，绝不含 liveness**——依赖检查永远不能触发 Pod 重启。
 3. 扫描有 **3s 总超时**：单个慢依赖拖不过典型 kubelet 超时；迟到的 indicator 看到
@@ -267,8 +270,7 @@ curl -s :9370/healthz                      # {"status": "UP"}
 curl -s :9370/startupz | jq .status        # 启动完成后 "UP"
 ```
 
-启动早期还能抓到 `curl -i :9370/readyz` → `503 OUT_OF_SERVICE`——就绪屏障跨越之前；
-example 的自测断言的就是这个序列。
+启动早期端口无人应答（就绪屏障还没跨过——connection refused，见工作模型）
 
 ### 3.2 critical indicator DOWN → readyz 503、healthz 仍 200
 
@@ -295,28 +297,19 @@ curl -i -X POST :8002/admin/cache/up
 kill -TERM <pid>                           # 或 Ctrl+C
 # 立刻、反复地：
 curl -s -o /dev/null -w '%{http_code}\n' :9370/readyz   # 503 OUT_OF_SERVICE
-curl -s -o /dev/null -w '%{http_code}\n' :9370/healthz  # 200——整个排空窗口内
-                                                          # 探针持续可答
+curl -s -o /dev/null -w '%{http_code}\n' :9370/healthz  # 503——所有探针都告诉轮询方
+                                                          # 这个实例要下线了
 ```
 
 `PreStop` 在 server 停止**之前**置 `draining`，Kubernetes 趁 in-flight 请求收尾把 pod
 摘出 Service。example 的 `runTest` 自动化了全程（SIGTERM + 轮询）。`/startupz` 按设计
 无视排空。
 
-### 3.5 端点过滤
+### 3.5 端点可见性
 
-```properties
-spring.actuator.endpoints.include=/info,/metrics
-```
-
-```bash
-curl -i :9370/info        # 200（默认开，也在 include 里）
-curl -i :9370/metrics     # 200（贡献端点在白名单里）
-curl -i :9370/readyz      # 200——探针不受过滤影响
-```
-
-不想让 `metrics` 这类贡献端点出现？去它自己的 starter 里关——没有 exclude 名单。
-没配鉴权 + 非 loopback 地址还会打：
+所有端点——探针、`/info`、贡献端点——全部无条件注册。没有 include/exclude
+名单：贡献端点即要暴露的端点，端点存不存在由贡献者自己的 enable 开关决定；
+访问控制是整端口鉴权（见下），不做逐端点过滤。没配鉴权 + 非 loopback 地址还会打：
 `WARN actuator listening on ":9370" without authentication; ...`。
 
 ### 3.6 鉴权
@@ -357,14 +350,15 @@ actuator 是 Server 原型的 starter：自己端口上的管理 HTTP server—�
 
 **值得知道的决策**
 
-- **先服务、后就绪。** 绑定即应答；`sig.TriggerAndWait` 只是旁观聚合。探针契约
-  要求如此。
+- **和其他 server 一样等就绪。** 不做提前服务：启动期靠 startupProbe 预算
+  （就绪前 connection refused）兜住，这是上面工作模型的设计机制。
 - **`health.Indicator` 在 `cloud/actuator/health`，不在 starter 里。** 每个贡献方
   （redis、gorm……）都要够得着它，又不必 import 本 starter。
 - **`PreStop` 翻转 readiness。** `draining=true` → `/readyz` 503、in-flight 请求
   收完；端点控制器摘 pod，然后各 server 停止。
 - **端点贡献。** 内建先注册、贡献者后挂；重复 pattern 启动即 panic——配置错误要
-  响。敏感性是贡献方的事（`Endpoint.Sensitive`），actuator 不代裁。
+  响。端点存不存在由贡献者自己的 enable 开关决定；访问控制是整端口
+  guard，不做逐端点过滤。
 - **每次 readiness 扫描一个 3s 预算。** 单个慢 indicator 拖不垮探针。
 
 **否决过的备选**
@@ -375,6 +369,10 @@ actuator 是 Server 原型的 starter：自己端口上的管理 HTTP server—�
   导出拉取，后端怎么组合都行。
 - **未决：3s 预算是共享的。** indicator 一多单个预算被摊薄，慢的会饿死其余。
   候选：逐 indicator 上限。
+- **否决：端点 include/exclude 白名单。** 贡献端点即要暴露的端点，它自己的
+  enable 开关就是关停键，整端口鉴权就是访问控制，不再加第三道门。
+  将来真需要逐端点控制时，条件挂在 `endpoint.Endpoint` 上（贡献方自述），
+  而不是集中式名单。
 
 ---
 
@@ -384,10 +382,9 @@ actuator 是 Server 原型的 starter：自己端口上的管理 HTTP server—�
 |------|--------|--------|
 | 完全没有 actuator 端点 | `spring.actuator.addr` 没配 | 配上——这个 key 就是开关。 |
 | 启动失败：`actuator: failed to listen on :9370` | 端口被占（另一个 actuator、pprof 撞了） | 换 `addr` 或放端口。 |
-| 启动后 `/readyz` 一直 503 OUT_OF_SERVICE | 别的 `gs.Server` 一直没报 ready，就绪屏障没跨过去 | 查哪个 server 卡了就绪；`s.ready` 只在全部 server ready 后翻转。 |
+| 启动期完全无应答（connection refused） | 别的 `gs.Server` 一直没报 ready，就绪屏障没跨过去，服务一直没开始 | 查哪个 server 卡了就绪；actuator 只在全部 server ready 后才开始服务。 |
 | `/readyz` 503 DOWN、`/healthz` 200 | critical readiness indicator 挂了——行为正确 | 读 `components`，看是哪个依赖、什么错。 |
-| `/metrics` 404 | 没 import starter-otel，或非空 `endpoints.include` 漏了 `metrics` | import starter-otel；白名单时记得贡献端点。 |
-| 敏感贡献端点 404、日志无痕 | 默认关；过滤只打 Debug 日志 | 把它的路径加进 `endpoints.include`（大小写不敏感精确匹配）。 |
+| `/metrics` 404 | 没 import starter-otel | import starter-otel。 |
 | 启动 panic：`http: multiple registrations for /...` | 贡献 pattern 撞了内建或其他贡献者 | 改贡献方 pattern——panic 就是设计好的快速失败。 |
 | 所有端点 401 | 配了 token（或 Basic 对）——guard 连探针一起管 | 探针和抓取方带上头，或删掉这些 key 只绑 loopback。 |
 | 探针间歇性 503 DOWN，报 `context deadline exceeded` | 某个 indicator 吃光了共享的 3s 预算 | 让 `CheckHealth` 尊重 ctx / 收紧检查。 |

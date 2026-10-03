@@ -29,8 +29,8 @@ import (
 	"go.opentelemetry.io/otel/metric"
 )
 
-// scope is the instrumentation scope name every meter and tracer in this package reports under.
-const scope = "go-spring.org/starter-hertz"
+// componentName is the instrumentation componentName name every meter and tracer in this package reports under.
+const componentName = "go-spring.org/starter-hertz"
 
 // --- metrics ----------------------------------------------------------------
 
@@ -50,7 +50,7 @@ type instrumentSet struct {
 var instruments = sync.OnceValue(buildInstruments)
 
 func buildInstruments() *instrumentSet {
-	m := otel.Meter(scope)
+	m := otel.Meter(componentName)
 	requestCount, _ := m.Int64Counter(
 		"http.server.request_count",
 		metric.WithDescription("Number of HTTP requests received"),

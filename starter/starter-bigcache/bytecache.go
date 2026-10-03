@@ -42,7 +42,7 @@ func NewByteCache(c *Cache) cache.ByteCache {
 // The context is passed on rather than dropped: it is the caller's, and the
 // wrapper it reaches opens the operation's span with it.
 func (b *byteCache) GetBytes(ctx context.Context, key string) ([]byte, error) {
-	data, err := b.c.get(ctx, key)
+	data, err := b.c.Get(ctx, key)
 	if errors.Is(err, bigcache.ErrEntryNotFound) {
 		return nil, cache.ErrMiss
 	}
@@ -56,12 +56,12 @@ func (b *byteCache) GetBytes(ctx context.Context, key string) ([]byte, error) {
 // seconds. BigCache ignores it - entries expire by the global LifeWindow set at
 // construction - so configure the lifetime via ${spring.bigcache} instead.
 func (b *byteCache) SetBytes(ctx context.Context, key string, val []byte, _ int) error {
-	return b.c.set(ctx, key, val)
+	return b.c.Set(ctx, key, val)
 }
 
 // Delete removes key. Deleting an absent key is not an error.
 func (b *byteCache) Delete(ctx context.Context, key string) error {
-	err := b.c.delete(ctx, key)
+	err := b.c.Delete(ctx, key)
 	if errors.Is(err, bigcache.ErrEntryNotFound) {
 		return nil
 	}

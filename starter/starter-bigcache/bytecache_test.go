@@ -22,10 +22,6 @@ import (
 	"testing"
 
 	"go-spring.org/cloud/cache"
-	"go-spring.org/cloud/observability"
-	"go.opentelemetry.io/otel"
-	sdktrace "go.opentelemetry.io/otel/sdk/trace"
-	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 )
 
 // TestByteCachePrimitives pins the translation this adapter exists for: the
@@ -66,37 +62,5 @@ func TestByteCachePrimitives(t *testing.T) {
 	}
 	if _, err := bc.GetBytes(ctx, "k"); !errors.Is(err, cache.ErrMiss) {
 		t.Fatalf("GetBytes(k) after Delete = %v, want cache.ErrMiss", err)
-	}
-}
-
-// TestByteCacheCarriesTheCallersContext pins the thread the adapter must not
-// drop: the cloud/cache façade annotates the context it is given, and the span
-// this layer opens picks that up only if the context travels with the call. It
-// is the end-to-end half of the contract [observability.SpanAttributesProcessor]
-// implements — the layer above contributes its attributes, and neither side has
-// to know about the other.
-func TestByteCacheCarriesTheCallersContext(t *testing.T) {
-	spans := tracetest.NewSpanRecorder()
-	prev := otel.GetTracerProvider()
-	otel.SetTracerProvider(sdktrace.NewTracerProvider(
-		sdktrace.WithSpanProcessor(observability.SpanAttributesProcessor()),
-		sdktrace.WithSpanProcessor(spans)))
-	t.Cleanup(func() { otel.SetTracerProvider(prev) })
-
-	c := newTestCache(t, "hot")
-	defer func() { _ = c.Destroy() }()
-
-	facade := cache.New(NewByteCache(c))
-	if _, err := facade.GetBytes(context.Background(), "k"); err != nil {
-		t.Fatalf("GetBytes: %v", err)
-	}
-
-	ended := spans.Ended()
-	if len(ended) != 1 {
-		t.Fatalf("recorded %d spans, want 1", len(ended))
-	}
-	attrs := spanAttrsOf(ended[0])
-	if attrs["cache.key"] != "k" || attrs["cache.operation"] != "get" {
-		t.Fatalf("span attributes = %v, want the façade's cache.key/cache.operation on it", attrs)
 	}
 }

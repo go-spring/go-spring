@@ -52,9 +52,9 @@ const (
 	statusError = "error"
 )
 
-// scope is the instrumentation scope name every meter and tracer in this
+// componentName is the instrumentation componentName name every meter and tracer in this
 // package reports under.
-const scope = "go-spring.org/cloud/cache"
+const componentName = "go-spring.org/cloud/cache"
 
 // observedCache is the [ByteCache] decorator [New] wraps every backend in. It
 // records the cache semantics — hit vs miss vs error — that no backend's own
@@ -103,7 +103,7 @@ type instrumentSet struct {
 var instruments = sync.OnceValue(buildInstruments)
 
 func buildInstruments() *instrumentSet {
-	m := otel.Meter(scope)
+	m := otel.Meter(componentName)
 	in := &instrumentSet{}
 	in.total, _ = m.Int64Counter("cache.operation.total",
 		metric.WithDescription("Cache operations executed, by operation and status"),

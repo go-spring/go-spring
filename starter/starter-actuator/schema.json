@@ -6,14 +6,6 @@
     "spring.actuator.addr": {
       "type": "string"
     },
-    "spring.actuator.endpoints.include": {
-      "type": "string",
-      "default": ""
-    },
-    "spring.actuator.endpoints.exclude": {
-      "type": "string",
-      "default": ""
-    },
     "spring.actuator.token": {
       "type": "string",
       "default": ""

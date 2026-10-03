@@ -33,26 +33,26 @@ func TestCommandSurface(t *testing.T) {
 	c := newTestCache(t, "hot") // holds k=v
 	defer func() { _ = c.Destroy() }()
 
-	if b, err := c.Get("k"); err != nil || string(b) != "v" {
+	if b, err := c.Get(context.Background(), "k"); err != nil || string(b) != "v" {
 		t.Fatalf("Get(k) = %q, %v; want \"v\", nil", b, err)
 	}
-	if _, err := c.Get("absent"); !errors.Is(err, bigcache.ErrEntryNotFound) {
+	if _, err := c.Get(context.Background(), "absent"); !errors.Is(err, bigcache.ErrEntryNotFound) {
 		t.Fatalf("Get(absent) = %v, want bigcache.ErrEntryNotFound", err)
 	}
 
-	if err := c.Set("k2", []byte("v2")); err != nil {
+	if err := c.Set(context.Background(), "k2", []byte("v2")); err != nil {
 		t.Fatalf("Set: %v", err)
 	}
-	if b, err := c.Get("k2"); err != nil || string(b) != "v2" {
+	if b, err := c.Get(context.Background(), "k2"); err != nil || string(b) != "v2" {
 		t.Fatalf("Get(k2) = %q, %v; want \"v2\", nil", b, err)
 	}
 
-	if err := c.Delete("k2"); err != nil {
+	if err := c.Delete(context.Background(), "k2"); err != nil {
 		t.Fatalf("Delete: %v", err)
 	}
 	// Deleting an absent key reports the sentinel here; the adapter is what
 	// turns it into a no-op.
-	if err := c.Delete("absent"); !errors.Is(err, bigcache.ErrEntryNotFound) {
+	if err := c.Delete(context.Background(), "absent"); !errors.Is(err, bigcache.ErrEntryNotFound) {
 		t.Fatalf("Delete(absent) = %v, want bigcache.ErrEntryNotFound", err)
 	}
 }
@@ -76,13 +76,13 @@ func TestDelegations(t *testing.T) {
 	}
 	defer func() { _ = c.Destroy() }()
 
-	if err := c.Set("k", []byte("v")); err != nil {
+	if err := c.Set(context.Background(), "k", []byte("v")); err != nil {
 		t.Fatalf("Set: %v", err)
 	}
-	if _, err := c.Get("k"); err != nil {
+	if _, err := c.Get(context.Background(), "k"); err != nil {
 		t.Fatalf("Get hit: %v", err)
 	}
-	if _, err := c.Get("absent"); !errors.Is(err, bigcache.ErrEntryNotFound) {
+	if _, err := c.Get(context.Background(), "absent"); !errors.Is(err, bigcache.ErrEntryNotFound) {
 		t.Fatalf("Get miss: %v", err)
 	}
 

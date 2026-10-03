@@ -16,6 +16,8 @@
 
 package StarterActuator
 
+import "time"
+
 // Config is the actuator's configuration under ${spring.actuator}. It carries
 // only configured values; the server that consumes it lives in server.go.
 //
@@ -36,16 +38,24 @@ type Config struct {
 	// reach it), pprof (127.0.0.1:9981).
 	Address string `value:"${addr}"`
 
-	// EndpointInclude is the comma-separated endpoint whitelist
-	// (spring.actuator.endpoints.include). Entries are endpoint paths as
-	// written in the Endpoint pattern (minus any method prefix): /info and
-	// a contributed endpoint's own path (e.g. /metrics). When non-empty,
-	// only the listed endpoints are registered (whitelist mode). Probe
-	// endpoints (/healthz, /readyz, /startupz and their aliases) are always
-	// registered: filtering them would break the Kubernetes contract. A
-	// sensitive endpoint (Endpoint.Sensitive) is default-off and requires
-	// explicit inclusion here even when this list is empty.
-	EndpointInclude string `value:"${endpoints.include:=}"`
+	// CheckTimeout bounds a single probe check across all indicators so one
+	// slow dependency cannot stall the probe past a typical kubelet probe
+	// timeout (spring.actuator.check-timeout, default 3s).
+	CheckTimeout time.Duration `value:"${check-timeout:=3s}" expr:"$ > 0"`
+
+	// ReadHeaderTimeout is the deadline for reading request headers, the
+	// slowloris guard (spring.actuator.read-header-timeout, default 5s). Zero
+	// disables it.
+	ReadHeaderTimeout time.Duration `value:"${read-header-timeout:=5s}" expr:"$ >= 0"`
+
+	// ReadTimeout, WriteTimeout and IdleTimeout mirror http.Server's fields
+	// (spring.actuator.read-timeout / write-timeout / idle-timeout, default 0 =
+	// no limit). A management port serves short probe/metrics requests, so the
+	// defaults leave these off; set WriteTimeout if the port is reachable from
+	// untrusted networks.
+	ReadTimeout  time.Duration `value:"${read-timeout:=0}" expr:"$ >= 0"`
+	WriteTimeout time.Duration `value:"${write-timeout:=0}" expr:"$ >= 0"`
+	IdleTimeout  time.Duration `value:"${idle-timeout:=0}" expr:"$ >= 0"`
 
 	// Token, when set, requires an "Authorization: Bearer <token>" header on
 	// every request to the management port (spring.actuator.token). Takes

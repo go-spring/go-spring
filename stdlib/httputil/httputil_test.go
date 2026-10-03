@@ -19,6 +19,7 @@ package httputil
 import (
 	"crypto/tls"
 	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"go-spring.org/stdlib/testing/assert"
@@ -111,4 +112,15 @@ func TestFlattenHeader(t *testing.T) {
 		assert.String(t, FlattenHeader(h)).
 			Equal("Accept: text/plain; Accept: application/json; Host: example.com")
 	})
+}
+
+func TestWriteJSON(t *testing.T) {
+	rec := httptest.NewRecorder()
+	WriteJSON(rec, http.StatusServiceUnavailable, map[string]string{"status": "DOWN"})
+
+	assert.String(t, rec.Header().Get("Content-Type")).Equal("application/json; charset=utf-8")
+	assert.String(t, rec.Body.String()).Equal(`{
+  "status": "DOWN"
+}
+`)
 }

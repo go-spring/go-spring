@@ -139,7 +139,7 @@ func operationInstruments(prefix string) *opInstrumentSet {
 	if s, ok := opInstruments.m[prefix]; ok {
 		return s
 	}
-	m := otel.Meter(scope)
+	m := otel.Meter(componentName)
 	s := &opInstrumentSet{}
 	s.duration, _ = m.Float64Histogram(prefix+".operation.duration",
 		metric.WithDescription("Duration of one logical client operation, retries and backoff included"),
@@ -183,7 +183,7 @@ func (w *wrappedClientExecutor) Execute(ctx context.Context, fn func(context.Con
 		ins = operationInstruments(op.Metric)
 	}
 
-	ctx, span := otel.Tracer(scope).Start(ctx, w.spanName(op, hasOp),
+	ctx, span := otel.Tracer(componentName).Start(ctx, w.spanName(op, hasOp),
 		trace.WithSpanKind(spanKind(op, hasOp)),
 		trace.WithAttributes(w.spanAttrs(op, hasOp)...))
 	// The in-flight gauge brackets the whole call, retries included, exactly as

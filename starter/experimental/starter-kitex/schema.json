@@ -28,7 +28,7 @@
         },
         "endpoint": {
           "type": "string",
-          "default": "127.0.0.1:4317"
+          "default": ""
         },
         "insecure": {
           "type": "boolean",

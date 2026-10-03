@@ -28,9 +28,9 @@ import (
 	"go.opentelemetry.io/otel/metric"
 )
 
-// scope is the instrumentation scope name every meter and tracer in this
+// componentName is the instrumentation componentName name every meter and tracer in this
 // package reports under.
-const scope = "go-spring.org/cloud/experimental/session"
+const componentName = "go-spring.org/cloud/experimental/session"
 
 // Options configures how a [Manager] carries the session id in the HTTP cookie
 // and how long an idle session survives. The zero value is not usable; pass it
@@ -133,7 +133,7 @@ var instruments = sync.OnceValue(buildInstruments)
 
 func buildInstruments() *instrumentSet {
 	in := &instrumentSet{}
-	in.total, _ = otel.Meter(scope).
+	in.total, _ = otel.Meter(componentName).
 		Int64Counter("session.operation.total",
 			metric.WithDescription("Session store operations, by operation and status"),
 			metric.WithUnit("{operation}"))

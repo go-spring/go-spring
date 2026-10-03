@@ -28,9 +28,9 @@ import (
 	"go.opentelemetry.io/otel/metric"
 )
 
-// scope is the instrumentation scope name every meter and tracer in this
+// componentName is the instrumentation componentName name every meter and tracer in this
 // package reports under.
-const scope = "go-spring.org/cloud/loadbalance"
+const componentName = "go-spring.org/cloud/loadbalance"
 
 // suspendState is one endpoint address's suspension bookkeeping. suspendedAt
 // doubles as the state flag: zero means "not suspended", non-zero is when the
@@ -112,7 +112,7 @@ type instrumentSet struct {
 var instruments = sync.OnceValue(buildInstruments)
 
 func buildInstruments() *instrumentSet {
-	m := otel.Meter(scope)
+	m := otel.Meter(componentName)
 	in := &instrumentSet{}
 	in.suspensions, _ = m.Int64Counter("loadbalance.endpoint.suspension.total",
 		metric.WithDescription("Endpoints suspended for consecutive failures, including re-suspensions after failed half-open trials"),

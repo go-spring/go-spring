@@ -54,8 +54,8 @@ protect and no external call to record. See [Design Notes](README.md#design-note
 Refer to the [main.go](example/main.go) file.
 
 ```go
-err := s.Cache.Set("key", []byte("value"))
-value, err := s.Cache.Get("key")
+err := s.Cache.Set(ctx, "key", []byte("value"))
+value, err := s.Cache.Get(ctx, "key")
 ```
 
 ## Core Features
@@ -84,7 +84,7 @@ See [example/README.md](example/README.md) for the list, and
   When several Driver beans coexist, an instance selects one by name: `spring.bigcache.instances.<name>.driver = <bean-name>`
   (empty = fall back to the family-wide `spring.<family>.default.driver`, then to the single Driver bean by type; naming a missing bean fails startup).
 * **Observability**: Get/Set/Delete emit a `get`/`set`/`delete` span and the `bigcache.operation.total`
-  counter and `bigcache.operation.duration` histogram, labelled `operation` × `status` × `cache.name`.
+  counter and `bigcache.operation.duration` histogram, labelled `operation` × `status` × `instance`.
   The key rides the span as `bigcache.key`, never a metric label.
 * **Hit/miss statistics**: on by default (`stats-enabled`) — read `cache.Stats()` for the
   hit/miss/collision counters, or scrape the OTel observable gauges the starter exports. Set

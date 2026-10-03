@@ -25,6 +25,7 @@ import (
 	"context"
 
 	"github.com/allegro/bigcache/v3"
+	"go-spring.org/stdlib/errutil"
 )
 
 // Cache wraps a *bigcache.BigCache so Get/Set/Delete carry their semantic
@@ -71,11 +72,15 @@ type Cache struct {
 // facility is taken either — an in-process cache has nothing to protect, and
 // nothing to declare to an emitter.
 //
-// The error is the process-wide instrument set failing to build (see
-// [newStatObserver]) — never the raw cache, which is already open and healthy
+// The error is a rejected argument (an empty instanceName) or the process-wide
+// instrument set failing to build (see [newStatObserver]) — never the raw cache,
+// which is already open and healthy
 // when this is called. The caller owns that raw cache, so it must close it when
 // this returns an error; [Driver.CreateClient] does.
 func NewCache(client *bigcache.BigCache, instanceName string) (*Cache, error) {
+	if err := errutil.RequireField("bigcache", "instance-name", instanceName); err != nil {
+		return nil, err
+	}
 	obs, err := newStatObserver(client, instanceName)
 	if err != nil {
 		return nil, err
@@ -101,18 +106,13 @@ func (c *Cache) Destroy() error {
 // [statusOf] folds into the ok status rather than an error, so callers keep
 // treating it as the normal outcome it is.
 //
-// The exported forms carry no context — that is the shape a Cache bean is used
-// in — so a call made straight on the wrapper starts a trace of its own. The
-// unexported forms are what the [cache.ByteCache] adapter calls, and it has a
-// context to give: a call arriving through the cloud/cache façade keeps the
-// caller's, so its span joins that trace and picks up whatever span attributes a
-// layer above contributed.
+// The exported forms take a context even though bigcache's raw API has none: the
+// context carries the metric record — the counter the wrapper emits is labeled
+// with the operation and its outcome, whatever the caller was doing.
 
-func (c *Cache) Get(key string) ([]byte, error) { return c.get(context.Background(), key) }
-
-func (c *Cache) get(ctx context.Context, key string) ([]byte, error) {
+func (c *Cache) Get(ctx context.Context, key string) ([]byte, error) {
 	var b []byte
-	err := c.obs.observe(ctx, opGet, key, func(context.Context) error {
+	err := c.obs.observe(ctx, opGet, func(context.Context) error {
 		var err error
 		b, err = c.client.Get(key)
 		return err
@@ -120,20 +120,14 @@ func (c *Cache) get(ctx context.Context, key string) ([]byte, error) {
 	return b, err
 }
 
-func (c *Cache) Set(key string, entry []byte) error {
-	return c.set(context.Background(), key, entry)
-}
-
-func (c *Cache) set(ctx context.Context, key string, entry []byte) error {
-	return c.obs.observe(ctx, opSet, key, func(context.Context) error {
+func (c *Cache) Set(ctx context.Context, key string, entry []byte) error {
+	return c.obs.observe(ctx, opSet, func(context.Context) error {
 		return c.client.Set(key, entry)
 	})
 }
 
-func (c *Cache) Delete(key string) error { return c.delete(context.Background(), key) }
-
-func (c *Cache) delete(ctx context.Context, key string) error {
-	return c.obs.observe(ctx, opDelete, key, func(context.Context) error {
+func (c *Cache) Delete(ctx context.Context, key string) error {
+	return c.obs.observe(ctx, opDelete, func(context.Context) error {
 		return c.client.Delete(key)
 	})
 }

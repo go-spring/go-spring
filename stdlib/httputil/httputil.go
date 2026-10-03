@@ -21,6 +21,7 @@
 package httputil
 
 import (
+	"encoding/json"
 	"net"
 	"net/http"
 	"sort"
@@ -100,4 +101,15 @@ func FlattenHeader(h http.Header) string {
 		}
 	}
 	return b.String()
+}
+
+// WriteJSON writes v to w as an indented JSON response with the given status
+// code. Encoding errors are swallowed on purpose: the status code and content
+// type are already on the wire, so there is nothing useful left to do.
+func WriteJSON(w http.ResponseWriter, code int, v any) {
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.WriteHeader(code)
+	enc := json.NewEncoder(w)
+	enc.SetIndent("", "  ")
+	_ = enc.Encode(v)
 }

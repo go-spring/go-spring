@@ -219,14 +219,6 @@ func setupMetrics(r gs.BeanProvider, cfg metric.MetricsConfig, res *resource.Res
 		if ps.Handler != nil {
 			r.Provide(&endpoint.Endpoint{Pattern: cfg.Path, Handler: ps.Handler})
 		}
-		// Homeless-endpoint detection: with metrics.port=0 the scrape handler
-		// is served ONLY through the actuator. If no management server is
-		// linked into the process (endpoint.IsServing()==false), /metrics is
-		// silently unreachable - WARN with remediation instead.
-		if ps.Server == nil && ps.Handler != nil && !endpoint.IsServing() {
-			log.Warnf(context.Background(), log.TagAppDef,
-				"observability: prometheus exporter has no place to serve %s: metrics.port=0 relies on starter-actuator, which is not linked into this process; set spring.observability.metrics.port>0 to start a dedicated scrape server, or import starter-actuator (and set spring.actuator.addr)", cfg.Path)
-		}
 	}
 
 	log.Infof(context.Background(), log.TagAppDef, "metrics provider initialized exporter=%s runtime_metrics=%v", cfg.Exporter, cfg.Runtime.Enable)

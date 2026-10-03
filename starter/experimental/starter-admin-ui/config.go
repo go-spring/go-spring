@@ -34,7 +34,7 @@ type Config struct {
 	// starter-actuator's spring.actuator.addr contract). Documented layout:
 	// main HTTP server (:9090), actuator (:9370), admin UI (:9280), pprof
 	// (127.0.0.1:9981), so all four can coexist in a single process.
-	Addr string `value:"${addr:=}"`
+	Addr string `value:"${addr}"`
 
 	// Token, when set, requires each request to present it as an
 	// "Authorization: Bearer <token>" header. Takes precedence over

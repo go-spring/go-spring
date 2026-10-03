@@ -51,8 +51,8 @@ type Service struct {
 参考 [main.go](example/main.go) 文件。
 
 ```go
-err := s.Cache.Set("key", []byte("value"))
-value, err := s.Cache.Get("key")
+err := s.Cache.Set(ctx, "key", []byte("value"))
+value, err := s.Cache.Get(ctx, "key")
 ```
 
 ## 核心特性
@@ -79,7 +79,7 @@ value, err := s.Cache.Get("key")
   Driver bean 时，实例可按名指定：`spring.bigcache.instances.<name>.driver = <bean 名>`（留空 = 按类型注入唯一
   Driver bean；指定的 bean 不存在则启动失败）。
 * **可观测**：Get/Set/Delete 自己发射 `get`/`set`/`delete` span，以及 `bigcache.operation.total` 计数器与
-  `bigcache.operation.duration` 直方图，标签为 `operation` × `status` × `cache.name`。
+  `bigcache.operation.duration` 直方图，标签为 `operation` × `status` × `instance`。
   key 作为 `bigcache.key` 只进 span，永不作为指标标签。
 * **命中率统计**：默认开启（`stats-enabled`）——读取 `cache.Stats()` 获取命中/未命中/冲突计数，
   或抓取 starter 导出的 OTel 可观测 gauge。设 `stats-enabled=false` 可省掉 bigcache 开启期间维护的每 key 记账。

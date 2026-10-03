@@ -39,6 +39,7 @@ import (
 	"github.com/go-kratos/kratos/v2"
 	klog "github.com/go-kratos/kratos/v2/log"
 	kws "github.com/tx7do/kratos-transport/transport/websocket"
+	"go-spring.org/log"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
 	clientv3 "go.etcd.io/etcd/client/v3"
@@ -168,6 +169,7 @@ func (s *WsServer) Run(ctx context.Context, sig gs.ReadySignal) error {
 // its shutdown sequence. The App teardown itself is driven by Run via
 // app.Stop() (which takes no context), so ctx is unused here.
 func (s *WsServer) Stop(ctx context.Context) error {
+	log.Infof(ctx, log.TagAppDef, "kratos ws server shutting down")
 	close(s.done)
 	return nil
 }

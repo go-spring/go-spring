@@ -40,8 +40,8 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
-// scope is the instrumentation scope name every meter and tracer in this package reports under.
-const scope = "go-spring.org/starter-mqtt"
+// componentName is the instrumentation componentName name every meter and tracer in this package reports under.
+const componentName = "go-spring.org/starter-mqtt"
 
 // accessTag is the static log tag for the mqtt access log. It is registered
 // here, at package init, because a tag must exist before the framework's first
@@ -130,7 +130,7 @@ type connStateCounter struct {
 // current — invoked at wiring time (inside the driver), not at package init, so
 // an SDK installed later still receives the records.
 func newConnStateCounter() *connStateCounter {
-	changes, _ := otel.Meter(scope).Int64Counter("messaging.client.connection.state_changes",
+	changes, _ := otel.Meter(componentName).Int64Counter("messaging.client.connection.state_changes",
 		metric.WithDescription("Connection-state transitions reported by the messaging client"),
 		metric.WithUnit("{event}"))
 	return &connStateCounter{changes: changes}

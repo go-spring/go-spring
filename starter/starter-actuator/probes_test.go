@@ -27,12 +27,10 @@ import (
 	"go-spring.org/stdlib/testing/assert"
 )
 
-// readyServer builds a Server that has already crossed its readiness barrier and
-// is not draining, so handleReadiness reflects only the indicator aggregate.
+// readyServer builds a Server that is not draining, so handleReadiness
+// reflects only the indicator aggregate.
 func readyServer(inds ...*health.Indicator) *Server {
-	s := &Server{Indicators: inds}
-	s.ready.Store(true)
-	return s
+	return &Server{indicators: inds}
 }
 
 func doReadiness(s *Server) *httptest.ResponseRecorder {

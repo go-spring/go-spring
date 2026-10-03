@@ -31,9 +31,9 @@ import (
 	"go.opentelemetry.io/otel/metric"
 )
 
-// scope is the instrumentation scope name every meter and tracer in this
+// componentName is the instrumentation componentName name every meter and tracer in this
 // package reports under.
-const scope = "go-spring.org/cloud/experimental/outbox"
+const componentName = "go-spring.org/cloud/experimental/outbox"
 
 // Relay drains a [Store] to a broker through a [messaging.Driver]. Run it on
 // one goroutine per relay instance; multiple relays against the same store are
@@ -67,7 +67,7 @@ var instruments = sync.OnceValue(buildInstruments)
 
 func buildInstruments() *instrumentSet {
 	in := &instrumentSet{}
-	in.delivered, _ = otel.Meter(scope).
+	in.delivered, _ = otel.Meter(componentName).
 		Int64Counter("outbox.record.total",
 			metric.WithDescription("Outbox records relayed, by outcome"),
 			metric.WithUnit("{record}"))

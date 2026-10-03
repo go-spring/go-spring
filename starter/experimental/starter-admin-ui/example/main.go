@@ -32,6 +32,7 @@ import (
 
 	"go-spring.org/spring/gs"
 	_ "go-spring.org/starter-admin-ui"
+	"go-spring.org/stdlib/httputil"
 )
 
 // fakeActuator is a stand-in for a real starter-actuator instance. It serves
@@ -47,10 +48,10 @@ type fakeActuator struct {
 func (f *fakeActuator) start() {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, http.StatusOK, map[string]any{"status": "UP"})
+		httputil.WriteJSON(w, http.StatusOK, map[string]any{"status": "UP"})
 	})
 	mux.HandleFunc("GET /readiness", func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, http.StatusOK, map[string]any{
+		httputil.WriteJSON(w, http.StatusOK, map[string]any{
 			"status": "UP",
 			"components": map[string]any{
 				"redis:" + f.name: map[string]any{"status": "UP"},
@@ -58,10 +59,10 @@ func (f *fakeActuator) start() {
 		})
 	})
 	mux.HandleFunc("GET /startup", func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, http.StatusOK, map[string]any{"status": "UP"})
+		httputil.WriteJSON(w, http.StatusOK, map[string]any{"status": "UP"})
 	})
 	mux.HandleFunc("GET /info", func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, http.StatusOK, map[string]any{
+		httputil.WriteJSON(w, http.StatusOK, map[string]any{
 			"go": runtime.Version(),
 			"module": map[string]string{
 				"path":    "example.com/" + f.name,
@@ -72,12 +73,6 @@ func (f *fakeActuator) start() {
 	})
 	srv := &http.Server{Addr: fmt.Sprintf(":%d", f.port), Handler: mux, ReadHeaderTimeout: 3 * time.Second}
 	go func() { _ = srv.ListenAndServe() }()
-}
-
-func writeJSON(w http.ResponseWriter, code int, v any) {
-	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	w.WriteHeader(code)
-	_ = json.NewEncoder(w).Encode(v)
 }
 
 var manual = flag.Bool("manual", false, "run in manual verification mode (server stays up)")

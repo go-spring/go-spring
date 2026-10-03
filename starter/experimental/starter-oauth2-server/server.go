@@ -18,7 +18,6 @@ package StarterOAuth2Server
 
 import (
 	"crypto/subtle"
-	"encoding/json"
 	"net/http"
 	"net/url"
 	"slices"
@@ -27,6 +26,7 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
+	"go-spring.org/stdlib/httputil"
 )
 
 // UserAuthFunc authenticates the end-user at the authorization endpoint and, on
@@ -437,8 +437,6 @@ func redirectError(w http.ResponseWriter, r *http.Request, redirectURI, code, st
 // writeJSON serializes v as JSON with no-store caching, as token responses must
 // not be cached.
 func writeJSON(w http.ResponseWriter, status int, v any) {
-	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "no-store")
-	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(v)
+	httputil.WriteJSON(w, status, v)
 }

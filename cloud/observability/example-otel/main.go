@@ -59,8 +59,8 @@ import (
 	oteltrace "go.opentelemetry.io/otel/trace"
 )
 
-// scope is the instrumentation scope the demo's span reports under.
-const scope = "go-spring.org/cloud/observability/example"
+// componentName is the instrumentation componentName the demo's span reports under.
+const componentName = "go-spring.org/cloud/observability/example"
 
 // attrTenant is the attribute the layer inside the window writes.
 const attrTenant = "biz.tenant"
@@ -205,7 +205,7 @@ func call(ctx context.Context, fn func(context.Context) error, opts ...sdktrace.
 	rec := tracetest.NewSpanRecorder()
 	otel.SetTracerProvider(sdktrace.NewTracerProvider(append(opts, sdktrace.WithSpanProcessor(rec))...))
 
-	ctx, span := otel.Tracer(scope).Start(ctx, "op")
+	ctx, span := otel.Tracer(componentName).Start(ctx, "op")
 	err := fn(ctx)
 	span.End()
 	if err != nil {

@@ -30,8 +30,8 @@ import (
 	"go.opentelemetry.io/otel/metric"
 )
 
-// scope is the instrumentation scope name every meter and tracer in this package reports under.
-const scope = "go-spring.org/starter-gateway"
+// componentName is the instrumentation componentName name every meter and tracer in this package reports under.
+const componentName = "go-spring.org/starter-gateway"
 
 // accessTag is the static log tag for the gateway access log.
 var accessTag = log.RegisterAppTag("gateway", "access")
@@ -60,7 +60,7 @@ type instrumentSet struct {
 var instruments = sync.OnceValue(buildInstruments)
 
 func buildInstruments() *instrumentSet {
-	m := otel.Meter(scope)
+	m := otel.Meter(componentName)
 	requests, _ := m.Int64Counter(
 		"gateway.requests",
 		metric.WithDescription("Requests proxied by the gateway"),

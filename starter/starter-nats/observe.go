@@ -46,9 +46,9 @@ import (
 // property refresh — see [log.RegisterTag].
 var accessTag = log.RegisterAppTag("nats", "access")
 
-// scope is the instrumentation scope name every meter and tracer in this package
+// componentName is the instrumentation componentName name every meter and tracer in this package
 // reports under.
-const scope = "go-spring.org/starter-nats"
+const componentName = "go-spring.org/starter-nats"
 
 // maxSubject bounds the subject captured as messaging.destination.name. A
 // subject can be long and a span or a log line has no use for all of it.
@@ -138,7 +138,7 @@ var instruments = sync.OnceValue(buildInstruments)
 func resetInstruments() { instruments = sync.OnceValue(buildInstruments) }
 
 func buildInstruments() *instrumentSet {
-	m := otel.Meter(scope)
+	m := otel.Meter(componentName)
 	in := &instrumentSet{}
 	in.connChanges, _ = m.Int64Counter("messaging.client.connection.state_changes",
 		metric.WithDescription("Connection-state transitions reported by the messaging client"),

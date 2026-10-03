@@ -106,7 +106,7 @@ func main() {
 
 	http.HandleFunc("/get", func(w http.ResponseWriter, r *http.Request) {
 		s := svrBean.Interface().(*Service)
-		v, err := s.Hot.Get("key")
+		v, err := s.Hot.Get(context.Background(), "key")
 		if err != nil {
 			_, _ = w.Write([]byte(err.Error()))
 			return
@@ -115,7 +115,7 @@ func main() {
 	})
 	http.HandleFunc("/set", func(w http.ResponseWriter, r *http.Request) {
 		s := svrBean.Interface().(*Service)
-		if err := s.Hot.Set("key", []byte("value")); err != nil {
+		if err := s.Hot.Set(context.Background(), "key", []byte("value")); err != nil {
 			_, _ = w.Write([]byte(err.Error()))
 			return
 		}
@@ -130,18 +130,18 @@ func runTest(s *Service) {
 	ctx := context.Background()
 
 	// SET/GET 往返。
-	_ = s.Hot.Set("key", []byte("value"))
-	v, _ := s.Hot.Get("key")
+	_ = s.Hot.Set(context.Background(), "key", []byte("value"))
+	v, _ := s.Hot.Get(context.Background(), "key")
 	fmt.Println("get:", string(v))
 
 	// DELETE 之后是 miss：bigcache 用 ErrEntryNotFound 表示不存在。
-	_ = s.Hot.Delete("key")
-	_, err := s.Hot.Get("key")
+	_ = s.Hot.Delete(context.Background(), "key")
+	_, err := s.Hot.Get(context.Background(), "key")
 	fmt.Println("miss is ErrEntryNotFound:", errors.Is(err, bigcache.ErrEntryNotFound))
 
 	// 实例之间互不可见：写入 cold 的 key 在 hot 上查不到。
-	_ = s.Cold.Set("only-cold", []byte("cold-value"))
-	_, err = s.Hot.Get("only-cold")
+	_ = s.Cold.Set(context.Background(), "only-cold", []byte("cold-value"))
+	_, err = s.Hot.Get(context.Background(), "only-cold")
 	fmt.Println("hot does not see cold:", errors.Is(err, bigcache.ErrEntryNotFound))
 
 	// stats-enabled 默认开，这里的命中/未命中计数可读——同时也导出为 OTel gauge（§4.1）。
@@ -213,7 +213,7 @@ gs.Run()
   │                    进程级，每进程只解析一次，走 singleton.Singleton
   │                    ——第一个被构造的 cache 为之后所有 cache 绑定这套仪器
   │                  → statObserver.observeGauges(client)    [observe.go:251]
-  │                    把本实例的统计注册到共享 gauge 上，标签 cache.name=<name>
+  │                    把本实例的统计注册到共享 gauge 上，标签 instance=<name>
   │    ctor 返回即 bean 完备：没有 Init 步骤，之后没有任何东西再修补这个 cache。
   ├─（可选）*cache.Cache bean "bigcache:<name>"               [starter.go:61]
   │    惰性——无人注入则不实例化
@@ -248,25 +248,18 @@ bigcache（不像 go-redis 或 gorm）不提供插件或拦截器接缝，所以
 ### 2.3 一次 `Get("key")` 未命中，逐层走读
 
 ```
-c.Get("key")                                  [client.go:111]
-  自成一条 trace：导出形式不带 context，所以这个 span 是根 span
-  （下面的 cache 抽象会传调用方的 context）
-  → c.get(context.Background(), "key")        [client.go:113]
-      → obs.observe(ctx, "get", key, fn)       [observe.go:290]
-          开 span "get"，kind=Internal，属性：
-              bigcache.operation="get"
-              bigcache.key="key"      （超过 128 字节截断）
+c.Get(ctx, "key")                                                     [client.go:115]
+      → obs.observe(ctx, "get", fn)            [observe.go:267]
           执行 fn → c.client.Get("key") → bigcache.ErrEntryNotFound
-          statusOf(err) → "ok"                 [observe.go:279]
+          statusOf(err) → "ok"                 [observe.go:259]
               未命中不算失败：缓存作出了回答，只是 key 不在
-          span.SetAttributes(status="ok"); span.End()
-          counter  bigcache.operation.total   {operation="get",status="ok",cache.name="hot"} += 1
-          histogram bigcache.operation.duration{operation="get",status="ok",cache.name="hot"}
+          counter  bigcache.operation.total   {operation="get",status="ok",instance="hot"} += 1
   原样把 bigcache.ErrEntryNotFound 返回给调用方
 ```
 
-key 只作为 span 属性，**绝不**作为指标标签：缓存 key 来自开放集合，一旦成为标签，序列数会无界增长
-（[observe.go:290-320](observe.go#L290-L320)）。
+没有 span：trace 拓扑由边缘构成，进程内的微秒级调用不产生任何边缘。key 也**绝不**进指标——
+缓存 key 来自开放集合，一旦成为标签，序列数会无界增长
+（[observe.go:267-282](observe.go#L267-L282)）。
 
 ---
 
@@ -357,25 +350,24 @@ spring.observability.trace.exporter=none
 cd example-otel && go run . -manual
 # 制造流量，然后：
 curl -s :9090/metrics | grep 'bigcache_'
-# bigcache_operation_total{operation="get",status="ok",cache_name="hot"} 计数调用次数；
-# bigcache_operation_duration_seconds_bucket/_sum/_count 是直方图；
-# bigcache_hits{cache_name="hot"} 仅在 stats-enabled=true 时增长
+# bigcache_operation_total{operation="get",status="ok",instance="hot"} 计数调用次数；
+# bigcache_hits{instance="hot"} 仅在 stats-enabled=true 时增长
 ```
 
-信号读法：计数器与直方图带 `operation=<get|set|delete>`、`status=<ok|error>`、
-`cache.name=<name>`。未命中计入 `status="ok"`——命中率是 gauge 的职责，不在 status 轴上。gauge
+信号读法：计数器带 `operation=<get|set|delete>`、`status=<ok|error>`、
+`instance=<name>`。未命中计入 `status="ok"`——命中率是 gauge 的职责，不在 status 轴上。gauge
 在抓取时拉取（无逐调用开销），且是**按进程**而非按调用。meter scope 为
 `go-spring.org/starter-bigcache`（[observe.go:49](observe.go#L49)）。
 
-注意 `bigcache_operation_total` 及其直方图只在**首个**同类操作之后出现：gauge 是可观测仪器
-（始终上报），而计数器与直方图是事件（发生后才上报）。刚启动就 `grep` 不到并不代表接线坏了
+注意 `bigcache_operation_total` 只在**首个**同类操作之后出现：gauge 是可观测仪器
+（始终上报），而计数器是事件（发生后才上报）。刚启动就 `grep` 不到并不代表接线坏了
 ——先打一次 `Get`。`example-otel` 也断言了这些序列，包括未命中计入 `status="ok"`、以及缓存 key
 从不成为标签。
 
 ### 4.2 淘汰演练（example 的 `evict` 实例）
 
 `hard-max-cache-size=1`（1 MB）配 `max-entry-size=1024`，写超上限即淘汰最旧条目。可观测形状：
-`bigcache_entries{cache_name="evict"}` 在上限处走平，同时被淘汰 key 的 `bigcache_misses` 上升。
+`bigcache_entries{instance="evict"}` 在上限处走平，同时被淘汰 key 的 `bigcache_misses` 上升。
 `example/` 从缓存侧断言它：常驻条目数少于写入数，且 `OnRemove` 钩子被触发过。
 
 ### 4.3 缓存抽象接线，以及被忽略的 TTL
@@ -407,13 +399,11 @@ wire bean hot(<注册处 file:line>), err constructor returned error: bigcache: 
 （[driver.go:96-102](driver.go#L96-L102)）。注意这是 `NewCache` 失败的**唯一**途径——被调用时原生
 cache 已经打开且健康。
 
-### 4.5 span，直接打出来
+### 4.5 span：没有，是有意的
 
-wrapper 每个操作开一个 span（§2.3）。`example-otel` 把它们交给 starter-otel 内建的 `stdout`
-exporter（`spring.observability.trace.exporter=stdout`），于是它们与示例输出一起打印，跑在 §4.1
-同一个 `check.sh` 里——读一个 span 就是那份契约：以操作命名、`kind=Internal`、携带
-`bigcache.operation`、`bigcache.key` 与 `status`。想送到 collector，设
-`spring.observability.trace.exporter=otlp-grpc` 并给一个 endpoint。
+wrapper 不开 span。trace 的价值在于边缘，而进程内的微秒级调用没有边缘——计数器（§2.3）与
+gauge（§4.2）就是全部信号。如果某次缓存调用确实需要出现在 trace 里，由掌握业务上下文的调用方
+去记录。
 
 ---
 
@@ -430,7 +420,7 @@ exporter（`spring.observability.trace.exporter=stdout`），于是它们与示�
 | 条目提前消失 | `hard-max-cache-size` 硬顶在淘汰最旧条目 | 调高或取消硬顶。 |
 | 超过 `life-window` 的值仍被返回 | `life-window` 不会藏起条目，而没有东西把它移除——`clean-window=0` 时永远不会 | 设一个非零 `clean-window`，或把这个实例当作没有读侧 TTL。 |
 | 传给 `Set` 的 TTL 过了还读到旧值 | `life-window` 是按实例的；逐调用 TTL 被忽略 | 按 `life-window` 设；或改用多个实例。 |
-| 日志里没有逐调用记录 | 本来就没有——bigcache 不写访问日志，本 starter 也不发射 | 改读 span 与指标。 |
+| 日志里没有逐调用记录 | 本来就没有——bigcache 不写访问日志，本 starter 也不发射 | 改读指标。 |
 | 两个副本数据不一致 | 条目在各进程堆内；副本之间没有任何失效同步 | 预期行为——需要一致性请用网络后端。 |
 
 ---

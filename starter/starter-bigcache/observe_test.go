@@ -28,13 +28,9 @@ import (
 	"go-spring.org/stdlib/singleton"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/metric"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/metric/metricdata"
-	sdktrace "go.opentelemetry.io/otel/sdk/trace"
-	"go.opentelemetry.io/otel/sdk/trace/tracetest"
-	"go.opentelemetry.io/otel/trace"
 )
 
 // TestGaugesReportEveryInstance pins why the cache-statistics gauges are
@@ -56,14 +52,14 @@ func TestGaugesReportEveryInstance(t *testing.T) {
 	cold := newTestCache(t, "cold")
 
 	if got, want := gaugeCacheNames(t, reader, "bigcache.entries"), []string{"cold", "hot"}; !slices.Equal(got, want) {
-		t.Fatalf("bigcache.entries reported cache.name = %v, want %v", got, want)
+		t.Fatalf("bigcache.entries reported instance = %v, want %v", got, want)
 	}
 
 	if err := cold.Destroy(); err != nil {
 		t.Fatalf("Destroy(cold): %v", err)
 	}
 	if got, want := gaugeCacheNames(t, reader, "bigcache.entries"), []string{"hot"}; !slices.Equal(got, want) {
-		t.Fatalf("after destroying cold, bigcache.entries reported cache.name = %v, want %v", got, want)
+		t.Fatalf("after destroying cold, bigcache.entries reported instance = %v, want %v", got, want)
 	}
 	_ = hot
 }
@@ -86,7 +82,7 @@ func TestCreationTimeCallbackServesOneInstanceOnly(t *testing.T) {
 		if _, err := m.Int64ObservableGauge("trap.gauge",
 			metric.WithDescription("the trap"),
 			metric.WithInt64Callback(func(_ context.Context, o metric.Int64Observer) error {
-				o.Observe(1, metric.WithAttributes(attribute.String("cache.name", name)))
+				o.Observe(1, metric.WithAttributes(attribute.String("instance", name)))
 				return nil
 			})); err != nil {
 			t.Fatalf("Int64ObservableGauge(%q): %v", name, err)
@@ -94,7 +90,7 @@ func TestCreationTimeCallbackServesOneInstanceOnly(t *testing.T) {
 	}
 
 	if got, want := gaugeCacheNames(t, reader, "trap.gauge"), []string{"hot"}; !slices.Equal(got, want) {
-		t.Fatalf("creation-time callbacks reported cache.name = %v, want %v - if this "+
+		t.Fatalf("creation-time callbacks reported instance = %v, want %v - if this "+
 			"now reports both, the SDK stopped dropping repeated callbacks and the "+
 			"per-instance registration is no longer required", got, want)
 	}
@@ -124,15 +120,10 @@ func TestStatusOf(t *testing.T) {
 	}
 }
 
-// TestObserveEmitsSpanAndMetrics pins the per-call signals: one span per
-// operation, named and attributed the same way the metrics are labelled, so a
-// trace and a dashboard describe a call identically.
-func TestObserveEmitsSpanAndMetrics(t *testing.T) {
-	spans := tracetest.NewSpanRecorder()
-	prevTracer := otel.GetTracerProvider()
-	otel.SetTracerProvider(sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(spans)))
-	t.Cleanup(func() { otel.SetTracerProvider(prevTracer) })
-
+// TestObserveEmitsMetrics pins the per-call signal: every operation is counted
+// once under the operation and status the call mapped to, and a miss reads as
+// ok — the same outcome a dashboard sees.
+func TestObserveEmitsMetrics(t *testing.T) {
 	reader := sdkmetric.NewManualReader()
 	prevMeter := otel.GetMeterProvider()
 	otel.SetMeterProvider(sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader)))
@@ -143,42 +134,17 @@ func TestObserveEmitsSpanAndMetrics(t *testing.T) {
 	c := newTestCache(t, "hot")
 	defer func() { _ = c.Destroy() }()
 
-	if _, err := c.Get("k"); err != nil {
+	if _, err := c.Get(context.Background(), "k"); err != nil {
 		t.Fatalf("Get hit: %v", err)
 	}
-	if _, err := c.Get("absent"); !errors.Is(err, bigcache.ErrEntryNotFound) {
+	if _, err := c.Get(context.Background(), "absent"); !errors.Is(err, bigcache.ErrEntryNotFound) {
 		t.Fatalf("Get miss: %v", err)
 	}
-	if err := c.Set("k2", []byte("v")); err != nil {
+	if err := c.Set(context.Background(), "k2", []byte("v")); err != nil {
 		t.Fatalf("Set: %v", err)
 	}
-	if err := c.Delete("k2"); err != nil {
+	if err := c.Delete(context.Background(), "k2"); err != nil {
 		t.Fatalf("Delete: %v", err)
-	}
-
-	ended := spans.Ended()
-	if len(ended) != 4 {
-		t.Fatalf("recorded %d spans, want 4", len(ended))
-	}
-	for i, want := range []struct{ name, op, key string }{
-		{"get", opGet, "k"},
-		{"get", opGet, "absent"}, // a miss is a normal outcome, and reads as one
-		{"set", opSet, "k2"},
-		{"delete", opDelete, "k2"},
-	} {
-		s := ended[i]
-		if s.Name() != want.name {
-			t.Fatalf("span %d name = %q, want %q", i, s.Name(), want.name)
-		}
-		// Internal, not client: the dependency is in this process.
-		if s.SpanKind() != trace.SpanKindInternal {
-			t.Fatalf("span %d kind = %v, want Internal", i, s.SpanKind())
-		}
-		attrs := spanAttrsOf(s)
-		if attrs["bigcache.operation"] != want.op || attrs["bigcache.key"] != want.key || attrs["status"] != statusOK {
-			t.Fatalf("span %d attributes = %v, want operation=%s key=%s status=%s",
-				i, attrs, want.op, want.key, statusOK)
-		}
 	}
 
 	got := operationTotals(t, reader)
@@ -194,18 +160,13 @@ func TestObserveEmitsSpanAndMetrics(t *testing.T) {
 }
 
 // TestObserveMarksFailures pins the other half of the contract: a call that
-// fails is a failure on both signals, under the status they share, and the
-// caller gets its own error back untouched.
+// fails is counted as a failure, and the caller gets its own error back
+// untouched.
 //
 // The failure is injected rather than provoked through bigcache, which offers no
 // reachable error path for an operation on a live cache — the branch still has to
 // work, so it is exercised directly.
 func TestObserveMarksFailures(t *testing.T) {
-	spans := tracetest.NewSpanRecorder()
-	prevTracer := otel.GetTracerProvider()
-	otel.SetTracerProvider(sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(spans)))
-	t.Cleanup(func() { otel.SetTracerProvider(prevTracer) })
-
 	reader := sdkmetric.NewManualReader()
 	prevMeter := otel.GetMeterProvider()
 	otel.SetMeterProvider(sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader)))
@@ -216,34 +177,14 @@ func TestObserveMarksFailures(t *testing.T) {
 	defer func() { _ = c.Destroy() }()
 
 	boom := errors.New("boom")
-	err := c.obs.observe(context.Background(), opSet, "k", func(context.Context) error { return boom })
+	err := c.obs.observe(context.Background(), opSet, func(context.Context) error { return boom })
 	if !errors.Is(err, boom) {
 		t.Fatalf("observe returned %v, want the call's own error", err)
-	}
-
-	ended := spans.Ended()
-	if len(ended) != 1 {
-		t.Fatalf("recorded %d spans, want 1", len(ended))
-	}
-	if got := ended[0].Status().Code; got != codes.Error {
-		t.Fatalf("span status = %v, want Error", got)
-	}
-	if got := spanAttrsOf(ended[0])["status"]; got != statusError {
-		t.Fatalf("span status attribute = %q, want %q", got, statusError)
 	}
 
 	if got := operationTotals(t, reader); got["set.error"] != 1 {
 		t.Fatalf("bigcache.operation.total reported %v, want set.error=1", got)
 	}
-}
-
-// spanAttrsOf flattens a span's attributes.
-func spanAttrsOf(s sdktrace.ReadOnlySpan) map[string]string {
-	out := make(map[string]string, len(s.Attributes()))
-	for _, kv := range s.Attributes() {
-		out[string(kv.Key)] = kv.Value.AsString()
-	}
-	return out
 }
 
 // operationTotals collects bigcache.operation.total into a "operation.status" ->
@@ -360,7 +301,7 @@ func newTestCache(t *testing.T, name string) *Cache {
 	return c
 }
 
-// gaugeCacheNames collects one gauge and returns the sorted cache.name of every
+// gaugeCacheNames collects one gauge and returns the sorted instance of every
 // datapoint it carries.
 func gaugeCacheNames(t *testing.T, r *sdkmetric.ManualReader, instrument string) []string {
 	t.Helper()
@@ -379,7 +320,7 @@ func gaugeCacheNames(t *testing.T, r *sdkmetric.ManualReader, instrument string)
 				t.Fatalf("%s: data is %T, want metricdata.Gauge[int64]", instrument, m.Data)
 			}
 			for _, dp := range gauge.DataPoints {
-				if v, ok := dp.Attributes.Value(attribute.Key("cache.name")); ok {
+				if v, ok := dp.Attributes.Value(attribute.Key("instance")); ok {
 					names = append(names, v.AsString())
 				}
 			}

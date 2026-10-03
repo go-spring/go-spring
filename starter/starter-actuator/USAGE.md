@@ -197,41 +197,43 @@ import starter-actuator
         │   exports gs.Server under its own name, so it coexists with the app's
         │   main HTTP server (which also exports gs.Server)
 gs.Run()
-  ├─ config bind: addr / endpoints.include / token / username / password
+  ├─ config bind: addr / token / username / password
   ├─ bean wiring: []health.Indicator, []endpoint.Endpoint — all optional
-  ├─ Server.Run(): listen, register routes, wrap with the auth guard,
-  │               WARN if unauthenticated && non-loopback — SERVING IMMEDIATELY,
-  │               before the app is ready
-  ├─ readiness: sig.TriggerAndWait() → once ALL servers (this one included)
-  │     report ready, s.ready flips to true
+  ├─ readiness: sig.TriggerAndWait() → blocks until ALL servers (this one
+  │     included) report ready, then s.ready flips to true
+  ├─ Server.Run(): serve — listen, routes, auth guard (WARN if unauthenticated
+  │     && non-loopback); like every gs.Server, serving starts only after the
+  │     readiness barrier
   ├─ on SIGTERM: PreStop sets draining=true
   │     → /readyz answers 503 OUT_OF_SERVICE but the server KEEPS SERVING,
   │       so K8s pulls the pod from Service endpoints before Stop()
   └─ Stop: http.Server.Shutdown rides the shutdown context
 ```
 
-Why serving comes before readiness: a readiness probe must catch the
-not-ready → ready flip, and a liveness probe must answer all through a slow boot —
-otherwise the pod gets restarted for no reason.
+Working model: during startup the kubelet polls the startupProbe against a
+port nobody answers yet; connection refused burns the probe budget until the app
+is ready. A startupProbe whose budget (failureThreshold x periodSeconds) covers
+the worst-case boot time is a deployment REQUIREMENT, not an option.
 
 ### 2.2 Endpoint registration order
 
 ```
 probes:          /healthz /readyz /startupz (+ /health /readiness /startup aliases)
-                 — always registered, no filter can touch them (that would break
-                 the Kubernetes contract)
-introspection:   /info — passes the include filter
-contributed:     every []endpoint.Endpoint bean, filter key = the pattern's path
-                 (method prefix dropped, e.g. "/metrics"); registered after the
-                 built-ins, so a contributor can never shadow /health — and a
-                 duplicate path panics ServeMux at startup, so the mistake is loud
+introspection:   /info
+contributed:     every []endpoint.Endpoint bean — all registered unconditionally;
+                 a component that contributes an endpoint means to expose it.
+                 Contributed endpoints register after the built-ins, so a
+                 contributor can never shadow /health — and a duplicate path
+                 panics ServeMux at startup, so the mistake is loud
 ```
 
 ### 2.3 One readiness request, end to end
 
 `GET /readyz` after startup, both indicators registered, mysql up, redis down:
 
-1. Not ready yet, or draining? → immediate `503 {"status":"OUT_OF_SERVICE"}`.
+1. Draining? → immediate `503 {"status":"OUT_OF_SERVICE"}`. (The not-ready
+   window is never seen here: serving starts only after the readiness barrier,
+   and the kubelet observes it as connection refused — see the working model.)
 2. Otherwise sweep every indicator in the readiness group. Which group an indicator
    belongs to: explicit `HealthGroups()`, else the default **readiness + startup,
    never liveness** — a dependency check must never be able to restart the pod.
@@ -279,8 +281,8 @@ curl -s :9370/healthz                      # {"status": "UP"}
 curl -s :9370/startupz | jq .status        # "UP" after startup
 ```
 
-Early in startup you can still catch `curl -i :9370/readyz` → `503 OUT_OF_SERVICE`
-before the readiness barrier crosses — the example's self-test asserts exactly this.
+Early in startup the port answers nobody (the readiness barrier has not
+crossed yet — connection refused, per the working model)
 
 ### 3.2 Critical indicator DOWN → readyz 503, healthz stays 200
 
@@ -308,8 +310,9 @@ curl -i -X POST :8002/admin/cache/up
 kill -TERM <pid>                           # or Ctrl+C
 # immediately, repeatedly:
 curl -s -o /dev/null -w '%{http_code}\n' :9370/readyz   # 503 OUT_OF_SERVICE
-curl -s -o /dev/null -w '%{http_code}\n' :9370/healthz  # 200 — probes stay answerable
-                                                          # through the drain window
+curl -s -o /dev/null -w '%{http_code}\n' :9370/healthz  # 503 OUT_OF_SERVICE — every probe
+                                                          # tells pollers the instance
+                                                          # is going away
 ```
 
 `PreStop` sets `draining` **before** the server stops, so Kubernetes pulls the pod
@@ -317,20 +320,13 @@ from Service endpoints while in-flight requests finish. The example's `runTest`
 automates this whole sequence (SIGTERM + poll loop). `/startupz` ignores draining by
 design.
 
-### 3.5 Endpoint filtering
+### 3.5 Endpoint visibility
 
-```properties
-spring.actuator.endpoints.include=/info,/metrics
-```
-
-```bash
-curl -i :9370/info        # 200 (default-on, also in include)
-curl -i :9370/metrics     # 200 (contributed endpoint in whitelist)
-curl -i :9370/readyz      # 200 — probes exempt from the filter
-```
-
-Want a contributed endpoint like `metrics` gone? Turn it off in its own starter —
-there is no exclude list. No auth + non-loopback addr also logs:
+Every endpoint — probes, `/info`, contributed ones — registers unconditionally.
+There is no include/exclude list: a component that contributes an endpoint
+means to expose it, and whether the endpoint exists at all is the contributor's
+own enable switch. Access control is port-wide auth (below), not per-endpoint
+filtering. No auth + non-loopback addr also logs:
 `WARN actuator listening on ":9370" without authentication; ...`.
 
 ### 3.6 Auth
@@ -373,15 +369,17 @@ The actuator is a Server-archetype starter: a management HTTP server on its own 
 
 **Decisions worth knowing**
 
-- **Serves during startup, not after readiness.** Bind and answer immediately;
-  `sig.TriggerAndWait` only watches the aggregate. The probe contract demands it.
+- **Waits for readiness like every other server.** No eager serving: during
+  startup the startupProbe budget (connection refused until ready) is the
+  intended mechanism — configure it per the working model above.
 - **`health.Indicator` lives in `cloud/actuator/health`, not in the starter.** Every
   contributor (redis, gorm, ...) must reach it without importing this starter.
 - **`PreStop` flips readiness.** `draining=true` → `/readyz` 503 while in-flight
   requests finish; the endpoint controller pulls the pod, then servers stop.
 - **Endpoint contribution.** Built-ins register first, contributors after; a
   duplicate pattern panics ServeMux at boot — misconfiguration fails loudly.
-  Sensitivity is the contributor's call (`Endpoint.Sensitive`), not the actuator's.
+  Whether an endpoint exists at all is the contributor's own enable switch;
+  access control is the port-wide guard, not per-endpoint filtering.
 - **One 3s budget per readiness sweep.** One slow indicator cannot stall the probe.
 
 **Rejected alternatives**
@@ -392,6 +390,11 @@ The actuator is a Server-archetype starter: a management HTTP server on its own 
   actuator; pull via interface export composes with any subset of backends.
 - **Open: the 3s budget is shared.** Many indicators thin it out and one slow one
   starves the rest. Candidate: a per-indicator bound.
+- **Rejected: an endpoint include/exclude whitelist.** A component that
+  contributes an endpoint means to expose it; its own enable switch is the
+  off-button, and port-wide auth is the access control. No third gate.
+  If per-endpoint control is ever genuinely needed, the condition belongs on
+  `endpoint.Endpoint` itself (contributor-declared), not on a central list.
 
 ---
 
@@ -401,10 +404,9 @@ The actuator is a Server-archetype starter: a management HTTP server on its own 
 |---------|-----|-----|
 | No actuator endpoints at all | `spring.actuator.addr` missing | Set it — the key is the switch. |
 | Boot fails: `actuator: failed to listen on :9370` | port taken (another actuator, pprof overlap) | Change `addr` or free the port. |
-| `/readyz` stuck at 503 OUT_OF_SERVICE after startup | some other `gs.Server` never reported ready — the barrier never crossed | Find which server blocks readiness; `s.ready` flips only when ALL servers are ready. |
+| No answer at all during startup (connection refused) | some other `gs.Server` never reported ready — the barrier never crossed, serving never starts | Find which server blocks readiness; the actuator serves only when ALL servers are ready. |
 | `/readyz` 503 DOWN, `/healthz` 200 | a critical readiness indicator is failing — working as intended | Read `components` for the failing dependency and its error. |
-| `/metrics` 404 | starter-otel not imported, or `metrics` missing from a non-empty `endpoints.include` | Import starter-otel; remember contributed endpoints when whitelisting. |
-| Sensitive contributed endpoint 404, nothing in logs | default-off; filtering logs at Debug only | Add its path to `endpoints.include` (case-insensitive exact match). |
+| `/metrics` 404 | starter-otel not imported | Import starter-otel. |
 | Boot panic: `http: multiple registrations for /...` | contributed pattern collides with a built-in or another contributor | Change the contributor's pattern — the panic is the intended fail-fast. |
 | Every endpoint answers 401 | token (or Basic pair) configured — the guard covers probes too | Give probes and scrapers the header, or drop the keys and stay loopback. |
 | Probe intermittently 503 DOWN with `context deadline exceeded` | one indicator is eating the shared 3s budget | Make `CheckHealth` honor ctx / tighten the check. |

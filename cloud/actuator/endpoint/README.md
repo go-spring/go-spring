@@ -30,7 +30,6 @@ func init() {
 
 Pattern must not collide with the actuator's built-in patterns (`/healthz`,
 `/readyz`, `/info`, ...) or with another endpoint; a duplicate pattern panics
-at startup. A `Sensitive` endpoint registers only when explicitly listed in
-`spring.actuator.endpoints.include` — sensitivity is declared by the
-contributor, not adjudicated by the actuator. The filter matches the pattern's
-path (the pattern minus any method prefix), e.g. /env, /metrics.
+at startup. A contributed endpoint is served as-is: whether it exists at all
+is the contributor's own enable switch, and access control is the management
+port's authentication, not per-endpoint filtering.

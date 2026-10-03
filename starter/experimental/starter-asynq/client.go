@@ -29,6 +29,7 @@ import (
 	"go-spring.org/cloud"
 	"go-spring.org/cloud/observability"
 	"go-spring.org/cloud/resilience"
+	"go-spring.org/log"
 	"go-spring.org/spring/gs"
 )
 
@@ -155,6 +156,7 @@ func (o *Server) Run(ctx context.Context, sig gs.ReadySignal) error {
 // no context, so ctx is unused here - the drain is bounded by the configured
 // ShutdownTimeout.
 func (o *Server) Stop(ctx context.Context) error {
+	log.Infof(ctx, log.TagAppDef, "asynq worker shutting down")
 	o.srv.Shutdown()
 	return nil
 }

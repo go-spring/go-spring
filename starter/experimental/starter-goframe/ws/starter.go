@@ -35,6 +35,7 @@ import (
 	"github.com/gogf/gf/v2/frame/g"
 	"github.com/gogf/gf/v2/net/ghttp"
 	"github.com/gogf/gf/v2/net/gsvc"
+	"go-spring.org/log"
 	"go-spring.org/spring/gs"
 
 	"go-spring.org/starter-goframe/internal/logger"
@@ -113,6 +114,7 @@ func (s *WSServer) Run(ctx context.Context, sig gs.ReadySignal) error {
 // from etcd when a registry is set) and unblocks Run. ghttp Shutdown takes no
 // context, so ctx is unused here.
 func (s *WSServer) Stop(ctx context.Context) error {
+	log.Infof(ctx, log.TagAppDef, "goframe ws server shutting down")
 	err := s.svr.Shutdown()
 	close(s.done)
 	return err

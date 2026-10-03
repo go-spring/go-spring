@@ -218,7 +218,7 @@ conf/app.properties 就能点亮 metrics 与 tracing"）。它**不自建中间�
 | `registry.etcd` | string | —（空） | 非空 → `etcd.NewEtcdRegistry([]string{addr})` + `WithRegistry`；Run 时注册、`svr.Stop()` 时注销。空 = 无注册直连。 ⚠ 单地址字符串，不是列表。 | etcd 不可用时配置 → 启动报 "failed to create etcd registry"。 |
 | `compatible-unary-middleware` | bool | false | 加 `server.WithCompatibleMiddlewareForUnary`。 ⚔ thrift 生成服务需要 `true`——kitex thrift codegen 在生成的 NewServer 里加、protobuf 不加；本 starter 自建 server，须在此显式补开。 | thrift + false → unary 调用行为异常（kitex 兼容语义）。 |
 | `tracing.enable` | bool | true | 挂载 kitex tracing suite。⚠ key 是 `enable`，**不是** `enabled`（死 key——example-otel 笔误已修，勿再犯）。有全局管道（starter-otel）时 suite 直接挂全局、不建 kitex provider；无全局时建自有回落 provider。 | `tracing.enabled=…` → 静默忽略，tracing 保持开启。`false` → 完全不挂 suite——kitex 侧 span/指标被显式退出。 |
-| `tracing.endpoint` | string | 127.0.0.1:4317 | kitex 自有**回落** provider 的 OTLP/gRPC 导出端点。有全局管道时被忽略。 | 那里没有 collector（回落姿势）→ 运行期导出报错/丢 span。 |
+| `tracing.endpoint` | string | "" | kitex 自有**回落** provider 的 OTLP/gRPC 导出端点；要建回落 provider 就必须显式设置——地址永不设默认。有全局管道时被忽略。 | 无全局且未设端点 → 不建 provider，启动时 WARN。设置的端点没有 collector → 运行期导出报错/丢 span。 |
 | `tracing.insecure` | bool | true | 回落 provider 加 `provider.WithInsecure()`（明文 OTLP）。有全局管道时被忽略。 | 对明文 collector 设 false → 导出失败。 |
 | `metrics.enable` | bool | true | 门控 kitex 指标。同样注意是 `enable` 不是 `enabled`。 | `metrics.enabled=…` → 静默忽略。 |
 | `metrics.port` / `metrics.path` | int / string | 0（未配）/ /metrics | 独立 monitor-prometheus HTTP 监听**只在 port 显式配置时启动**（此处从不默认绑端口）。port 未配且有全局管道时，kitex RPC 指标经 tracing suite 的 `kitex.server.duration` 直方图走全局；两者皆无则休眠（INFO 日志说明如何开启）。 | 端口被占 → 库内 `log.Fatal` 在首批流量时杀死进程。 |

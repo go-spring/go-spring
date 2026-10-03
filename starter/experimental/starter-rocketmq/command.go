@@ -72,8 +72,8 @@ import (
 // instead and the resilience layer emits the span — the inject/extract helpers
 // below move the W3C context inside those declare seams.
 
-// scope is the instrumentation scope name every meter and tracer in this package reports under.
-const scope = "go-spring.org/starter-rocketmq"
+// componentName is the instrumentation componentName name every meter and tracer in this package reports under.
+const componentName = "go-spring.org/starter-rocketmq"
 
 // injectTraceContext inserts the current W3C trace context into msg's user
 // properties, so a subscriber can continue the trace across the broker. It is
@@ -103,7 +103,7 @@ func extractTraceContext(ctx context.Context, props map[string]string) context.C
 //	_, err := producer.SendSync(ctx, msg)
 //	StarterRocketmq.EndSpan(span, err)
 func StartProducerSpan(ctx context.Context, msg *primitive.Message) (context.Context, trace.Span) {
-	tracer := otel.GetTracerProvider().Tracer(scope)
+	tracer := otel.GetTracerProvider().Tracer(componentName)
 	ctx, span := tracer.Start(ctx, "rocketmq.produce",
 		trace.WithSpanKind(trace.SpanKindProducer),
 		trace.WithAttributes(
@@ -125,7 +125,7 @@ func StartProducerSpan(ctx context.Context, msg *primitive.Message) (context.Con
 //	StarterRocketmq.EndSpan(span, err)
 func StartConsumerSpan(ctx context.Context, ext *primitive.MessageExt) (context.Context, trace.Span) {
 	ctx = otel.GetTextMapPropagator().Extract(ctx, msgCarrier{&ext.Message})
-	tracer := otel.GetTracerProvider().Tracer(scope)
+	tracer := otel.GetTracerProvider().Tracer(componentName)
 	ctx, span := tracer.Start(ctx, "rocketmq.consume "+ext.Topic,
 		trace.WithSpanKind(trace.SpanKindConsumer),
 		trace.WithAttributes(

@@ -78,8 +78,9 @@ type DubboRegistry struct {
 	Group     string `value:"${group:=}"`
 	Namespace string `value:"${namespace:=}"`
 	TTL       string `value:"${ttl:=10s}"`
-	// Address format: {protocol}://address
-	Address    string            `value:"${address:=}"`
+	// Address is required: a configured registry entry with no address has no
+	// alternative source. Format: {protocol}://address
+	Address    string            `value:"${address}"`
 	Username   string            `value:"${username:=}"`
 	Password   string            `value:"${password:=}"`
 	Simplified bool              `value:"${simplified:=false}"`

@@ -79,7 +79,7 @@ func main() {
 	// Define a handler to GET a value from the hot cache.
 	http.HandleFunc("/get", func(w http.ResponseWriter, r *http.Request) {
 		s := svrBean.Interface().(*Service)
-		v, err := s.Hot.Get("key")
+		v, err := s.Hot.Get(context.Background(), "key")
 		if err != nil {
 			_, _ = w.Write([]byte(err.Error()))
 			return
@@ -90,7 +90,7 @@ func main() {
 	// Define a handler to SET a value into the hot cache.
 	http.HandleFunc("/set", func(w http.ResponseWriter, r *http.Request) {
 		s := svrBean.Interface().(*Service)
-		if err := s.Hot.Set("key", []byte("value")); err != nil {
+		if err := s.Hot.Set(context.Background(), "key", []byte("value")); err != nil {
 			_, _ = w.Write([]byte(err.Error()))
 			return
 		}
@@ -126,37 +126,37 @@ func runTest(s *Service) {
 	ctx := context.Background()
 
 	// Feature 1: SET/GET on the hot cache.
-	if err := s.Hot.Set("key", []byte("value")); err != nil {
+	if err := s.Hot.Set(context.Background(), "key", []byte("value")); err != nil {
 		log.Errorf(ctx, log.TagAppDef, "SET failed: %v", err)
 		os.Exit(1)
 	}
-	v, err := s.Hot.Get("key")
+	v, err := s.Hot.Get(context.Background(), "key")
 	if err != nil || string(v) != "value" {
 		log.Errorf(ctx, log.TagAppDef, "GET failed: v=%q err=%v", string(v), err)
 		os.Exit(1)
 	}
 
 	// Feature 2: DELETE + entry-not-found miss.
-	if err := s.Hot.Delete("key"); err != nil {
+	if err := s.Hot.Delete(context.Background(), "key"); err != nil {
 		log.Errorf(ctx, log.TagAppDef, "DELETE failed: %v", err)
 		os.Exit(1)
 	}
-	if _, err := s.Hot.Get("key"); !errors.Is(err, bigcache.ErrEntryNotFound) {
+	if _, err := s.Hot.Get(context.Background(), "key"); !errors.Is(err, bigcache.ErrEntryNotFound) {
 		log.Errorf(ctx, log.TagAppDef, "expected entry-not-found after delete, got err=%v", err)
 		os.Exit(1)
 	}
 
 	// Feature 3: the second named instance is fully independent — a write to
 	// `cold` must not be visible through `hot`, proving multi-instance wiring.
-	if err := s.Cold.Set("only-cold", []byte("cold-value")); err != nil {
+	if err := s.Cold.Set(context.Background(), "only-cold", []byte("cold-value")); err != nil {
 		log.Errorf(ctx, log.TagAppDef, "cold SET failed: %v", err)
 		os.Exit(1)
 	}
-	if _, err := s.Hot.Get("only-cold"); !errors.Is(err, bigcache.ErrEntryNotFound) {
+	if _, err := s.Hot.Get(context.Background(), "only-cold"); !errors.Is(err, bigcache.ErrEntryNotFound) {
 		log.Errorf(ctx, log.TagAppDef, "hot must not see cold's key, got err=%v", err)
 		os.Exit(1)
 	}
-	cv, err := s.Cold.Get("only-cold")
+	cv, err := s.Cold.Get(context.Background(), "only-cold")
 	if err != nil || string(cv) != "cold-value" {
 		log.Errorf(ctx, log.TagAppDef, "cold GET failed: v=%q err=%v", string(cv), err)
 		os.Exit(1)
@@ -167,9 +167,9 @@ func runTest(s *Service) {
 	// Feature 4: hit/miss statistics. hot has stats-enabled (from the default
 	// bucket), so a hit and a miss both show up in Stats() - the read side of
 	// cache-effectiveness monitoring.
-	_ = s.Hot.Set("stat-key", []byte("v"))
-	_, _ = s.Hot.Get("stat-key")  // hit
-	_, _ = s.Hot.Get("never-set") // miss
+	_ = s.Hot.Set(context.Background(), "stat-key", []byte("v"))
+	_, _ = s.Hot.Get(context.Background(), "stat-key")  // hit
+	_, _ = s.Hot.Get(context.Background(), "never-set") // miss
 	if st := s.Hot.Stats(); st.Hits == 0 || st.Misses == 0 {
 		log.Errorf(ctx, log.TagAppDef, "Stats() = %+v, want a hit and a miss recorded", st)
 		os.Exit(1)
@@ -287,20 +287,20 @@ func runTest(s *Service) {
 	// life-window marks it stale, and the cleaner is what removes it. So after
 	// waiting past the window, one instance has stopped serving the entry while
 	// the other still serves it.
-	if err := s.Cleaned.Set("stale", []byte("v")); err != nil {
+	if err := s.Cleaned.Set(context.Background(), "stale", []byte("v")); err != nil {
 		log.Errorf(ctx, log.TagAppDef, "cleaned SET failed: %v", err)
 		os.Exit(1)
 	}
-	if err := s.Uncleaned.Set("stale", []byte("v")); err != nil {
+	if err := s.Uncleaned.Set(context.Background(), "stale", []byte("v")); err != nil {
 		log.Errorf(ctx, log.TagAppDef, "uncleaned SET failed: %v", err)
 		os.Exit(1)
 	}
 	time.Sleep(2500 * time.Millisecond)
-	if _, err := s.Cleaned.Get("stale"); !errors.Is(err, bigcache.ErrEntryNotFound) {
+	if _, err := s.Cleaned.Get(context.Background(), "stale"); !errors.Is(err, bigcache.ErrEntryNotFound) {
 		log.Errorf(ctx, log.TagAppDef, "cleaned: an entry past its life-window is still served (err=%v)", err)
 		os.Exit(1)
 	}
-	if v, err := s.Uncleaned.Get("stale"); err != nil || string(v) != "v" {
+	if v, err := s.Uncleaned.Get(context.Background(), "stale"); err != nil || string(v) != "v" {
 		log.Errorf(ctx, log.TagAppDef, "uncleaned: want the stale value still served, got v=%q err=%v", string(v), err)
 		os.Exit(1)
 	}

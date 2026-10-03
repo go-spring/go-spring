@@ -117,7 +117,7 @@ func main() {
 
 	http.HandleFunc("/get", func(w http.ResponseWriter, r *http.Request) {
 		s := svrBean.Interface().(*Service)
-		v, err := s.Hot.Get("key")
+		v, err := s.Hot.Get(context.Background(), "key")
 		if err != nil {
 			_, _ = w.Write([]byte(err.Error()))
 			return
@@ -126,7 +126,7 @@ func main() {
 	})
 	http.HandleFunc("/set", func(w http.ResponseWriter, r *http.Request) {
 		s := svrBean.Interface().(*Service)
-		if err := s.Hot.Set("key", []byte("value")); err != nil {
+		if err := s.Hot.Set(context.Background(), "key", []byte("value")); err != nil {
 			_, _ = w.Write([]byte(err.Error()))
 			return
 		}
@@ -141,18 +141,18 @@ func runTest(s *Service) {
 	ctx := context.Background()
 
 	// SET/GET round-trip.
-	_ = s.Hot.Set("key", []byte("value"))
-	v, _ := s.Hot.Get("key")
+	_ = s.Hot.Set(context.Background(), "key", []byte("value"))
+	v, _ := s.Hot.Get(context.Background(), "key")
 	fmt.Println("get:", string(v))
 
 	// DELETE, then a miss: bigcache reports absence as ErrEntryNotFound.
-	_ = s.Hot.Delete("key")
-	_, err := s.Hot.Get("key")
+	_ = s.Hot.Delete(context.Background(), "key")
+	_, err := s.Hot.Get(context.Background(), "key")
 	fmt.Println("miss is ErrEntryNotFound:", errors.Is(err, bigcache.ErrEntryNotFound))
 
 	// Instances are independent: a key in `cold` is invisible through `hot`.
-	_ = s.Cold.Set("only-cold", []byte("cold-value"))
-	_, err = s.Hot.Get("only-cold")
+	_ = s.Cold.Set(context.Background(), "only-cold", []byte("cold-value"))
+	_, err = s.Hot.Get(context.Background(), "only-cold")
 	fmt.Println("hot does not see cold:", errors.Is(err, bigcache.ErrEntryNotFound))
 
 	// stats-enabled (on by default) makes the hit/miss counters readable here —
@@ -228,7 +228,7 @@ gs.Run()
   │                    instrument set for every later one
   │                  → statObserver.observeGauges(client)    [observe.go:251]
   │                    registers THIS cache's statistics against the shared
-  │                    gauges, labelled cache.name=<name>
+  │                    gauges, labelled instance=<name>
   │    The bean is complete when the ctor returns: no Init step, nothing
   │    patches the cache afterwards.
   ├─ (optional) *cache.Cache bean "bigcache:<name>"           [starter.go:61]
@@ -268,26 +268,19 @@ governance bean and no `cloud.ClientParams` — a seam with nothing behind it.
 ### 2.3 One `Get("key")` on a miss, layer by layer
 
 ```
-c.Get("key")                                  [client.go:111]
-  starts a trace of its own: the exported form carries no context, so the span
-  becomes a root span (the cache façade below passes the caller's context instead)
-  → c.get(context.Background(), "key")        [client.go:113]
-      → obs.observe(ctx, "get", key, fn)       [observe.go:290]
-          start span "get", kind=Internal, attributes:
-              bigcache.operation="get"
-              bigcache.key="key"      (truncated at 128 bytes)
+c.Get(ctx, "key")                                                     [client.go:115]
+      → obs.observe(ctx, "get", fn)            [observe.go:267]
           run fn → c.client.Get("key") → bigcache.ErrEntryNotFound
-          statusOf(err) → "ok"                 [observe.go:279]
+          statusOf(err) → "ok"                 [observe.go:259]
               a miss is NOT a failure: the cache answered, the key was absent
-          span.SetAttributes(status="ok"); span.End()
-          counter  bigcache.operation.total   {operation="get",status="ok",cache.name="hot"} += 1
-          histogram bigcache.operation.duration{operation="get",status="ok",cache.name="hot"}
+          counter  bigcache.operation.total   {operation="get",status="ok",instance="hot"} += 1
   returns bigcache.ErrEntryNotFound verbatim to the caller
 ```
 
-The key is a span attribute and **never** a metric label: cache keys come from an open set, and
-one as a label would multiply the series without bound
-([observe.go:290-320](observe.go#L290-L320)).
+There is no span: trace topology is made of edges, and a microsecond in-process call adds none.
+The key never enters the metric either — cache keys come from an open set, and one as a label
+would multiply the series without bound
+([observe.go:267-282](observe.go#L267-L282)).
 
 ---
 
@@ -384,27 +377,26 @@ spring.observability.trace.exporter=none
 cd example-otel && go run . -manual
 # generate traffic, then:
 curl -s :9090/metrics | grep 'bigcache_'
-# bigcache_operation_total{operation="get",status="ok",cache_name="hot"} counts the calls;
-# bigcache_operation_duration_seconds_* is the histogram;
-# bigcache_hits{cache_name="hot"} grows only with stats-enabled=true
+# bigcache_operation_total{operation="get",status="ok",instance="hot"} counts the calls;
+# bigcache_hits{instance="hot"} grows only with stats-enabled=true
 ```
 
-Reading the signals: the counter and histogram carry `operation=<get|set|delete>`,
-`status=<ok|error>` and `cache.name=<name>`. A miss counts as `status="ok"` — hit rate is the
+Reading the signals: the counter carries `operation=<get|set|delete>`,
+`status=<ok|error>` and `instance=<name>`. A miss counts as `status="ok"` — hit rate is the
 gauges' job, not the status axis'. Gauges are pulled on scrape (no per-call cost) and are
 **per process**, not per call. The meter scope is `go-spring.org/starter-bigcache`
 ([observe.go:49](observe.go#L49)).
 
-Note that `bigcache_operation_total` and its histogram appear only **after** the first
-operation of that kind: the gauges are observable (always reported), the counter and histogram
-are events (reported once something happened). An empty `grep` right after boot is not a
+Note that `bigcache_operation_total` appears only **after** the first
+operation of that kind: the gauges are observable (always reported), the counter
+is an event (reported once something happened). An empty `grep` right after boot is not a
 wiring fault — drive one `Get` first. `example-otel` asserts these series too, including that a
 miss counts as `status="ok"` and that no cache key ever becomes a label.
 
 ### 4.2 Eviction drill (the example's `evict` instance)
 
 With `hard-max-cache-size=1` (1 MB) and `max-entry-size=1024`, writing past the cap evicts the
-oldest entries. Observable shape: `bigcache_entries{cache_name="evict"}` plateaus at capacity
+oldest entries. Observable shape: `bigcache_entries{instance="evict"}` plateaus at capacity
 while `bigcache_misses` climbs for the evicted keys. `example/` asserts it from the cache side:
 resident entries below what was written, and the `OnRemove` hook having fired.
 
@@ -440,14 +432,12 @@ The raw cache built a moment earlier is closed on the way out, so a failed const
 leaves the eviction goroutine behind ([driver.go:96-102](driver.go#L96-L102)). Note this is
 the *only* way `NewCache` fails — the raw cache is already open and healthy when it is called.
 
-### 4.5 Spans, printed
+### 4.5 Spans: none, deliberately
 
-The wrapper opens one span per operation (§2.3). `example-otel` sends them to starter-otel's
-built-in `stdout` exporter (`spring.observability.trace.exporter=stdout`), so they print
-alongside the example's output under the same `check.sh` as §4.1 — read one span and you have the
-contract: named after the operation, `kind=Internal`, carrying `bigcache.operation`,
-`bigcache.key` and `status`. To ship spans to a collector instead, set
-`spring.observability.trace.exporter=otlp-grpc` plus an endpoint.
+The wrapper opens no span. A trace is worth what its edges say, and an in-process microsecond
+call has no edge — the counter (§2.3) and the gauges (§4.2) are the whole story. If a cache call
+ever needs to appear in a trace, the call site — which knows the business context — is the place
+to record it.
 
 ---
 
@@ -464,7 +454,7 @@ contract: named after the operation, `kind=Internal`, carrying `bigcache.operati
 | Entries disappear early | `hard-max-cache-size` cap evicting the oldest | Raise or remove the cap. |
 | A value past its `life-window` is still returned | `life-window` does not hide entries, and nothing removed it — with `clean-window=0` nothing ever does | Set a non-zero `clean-window`, or treat the instance as having no read-side TTL. |
 | Stale values served past the TTL you passed to `Set` | `life-window` is per instance; a per-call TTL is ignored | Size by `life-window`, or use separate instances. |
-| No per-call line in the log | There is none — bigcache writes no access log and the starter emits none | Read the span and the metrics instead. |
+| No per-call line in the log | There is none — bigcache writes no access log and the starter emits none | Read the metrics instead. |
 | Two replicas disagree | Entries are process-local heap; nothing is invalidated across replicas | Expected — use a networked backend for coherence. |
 
 ---

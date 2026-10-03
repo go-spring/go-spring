@@ -43,9 +43,9 @@ import (
 	tracenoop "go.opentelemetry.io/otel/trace/noop"
 )
 
-// scope is the instrumentation scope name every meter and tracer in this package
+// componentName is the instrumentation componentName name every meter and tracer in this package
 // reports under.
-const scope = "go-spring.org/starter-gin"
+const componentName = "go-spring.org/starter-gin"
 
 // OTel HTTP semantic-convention attribute keys, stable since semconv v1.27.0.
 // Hardcoded (rather than importing semconv/v1.27.0) to keep the starter
@@ -404,7 +404,7 @@ func (t *httpTracer) Begin(ctx context.Context, r *http.Request, f requestFacts)
 		spanName = f.method + " " + f.route
 	}
 	ctx = otel.GetTextMapPropagator().Extract(ctx, propagation.HeaderCarrier(r.Header))
-	ctx, span := otel.Tracer(scope).Start(ctx, spanName,
+	ctx, span := otel.Tracer(componentName).Start(ctx, spanName,
 		trace.WithSpanKind(trace.SpanKindServer),
 	)
 	// Request attributes, set up front so they appear even when a later
@@ -486,7 +486,7 @@ type instrumentSet struct {
 var instruments = sync.OnceValue(buildInstruments)
 
 func buildInstruments() *instrumentSet {
-	m := otel.Meter(scope)
+	m := otel.Meter(componentName)
 	in := &instrumentSet{meter: m}
 	in.duration, _ = m.Float64Histogram(
 		"http.server.request.duration",

@@ -424,7 +424,7 @@ curl -s :8002/hello/world >/dev/null
 | 启动失败:`unknown exporter` / `unknown propagator` | `trace.exporter` / `metrics.exporter` / `trace.propagator` 拼错 | 错误信息已列出注册名;改用合法名。 |
 | 启动失败:prometheus scrape server 绑定报错 | `metrics.port` > 0 且端口占用(同步绑定是刻意的,metric/prometheus/exporter.go) | 腾端口、换端口,或设 0 走 actuator 挂载。 |
 | `/metrics` 也在 :9090 应答,只想走 actuator | 默认 `metrics.port=9090` 会起独立 server,即使 actuator 挂载存在 | 设 `spring.observability.metrics.port=0`。 |
-| `/metrics` 哪都不在 + 启动 WARN `prometheus exporter has no place to serve` | `port=0` 且进程内没链入 starter-actuator(endpoint.IsServing()==false)——2026-08 起启动即检测 | 引入 starter-actuator(并配 `spring.actuator.addr`)或改用正端口 `metrics.port`。 |
+| `/metrics` 哪都不在、无日志 | `port=0` 且进程内没链入 starter-actuator(或没配 `spring.actuator.addr`)——无人收集的 endpoint bean 就是不被装配 | 引入 starter-actuator(并配 `spring.actuator.addr`)或改用正端口 `metrics.port`。 |
 | 跨服务链路在本跳断开、日志丢 trace_id | trace 支柱关闭(`trace.enable=false`/`none`)同时不装传播器、无有效 span context | 保持 trace 开启(传播器是横切关注点——§6 嫌疑 5),并装 log.FieldsFromContext 钩子(§1)。 |
 | SIGTERM 后停机挂住 | stopper 的 context 是 `WithoutCancel`(gs/stopper.go:92);collector 连接打结会拖住 flush | 修 collector 可达性/TLS;导出超时由 OTLP exporter 自身决定。 |
 | 后端里所有服务都叫 `go-spring-app` | `service-name` 与 `spring.application.name` 都没设 | 设其一;回落是静默的。 |
@@ -446,7 +446,8 @@ curl -s :8002/hello/world >/dev/null
    **已修复** —— README 现在如实写进程级 stopper 与可选 endpoint/SDK 默认回落
    (README.md "Graceful Shutdown"、exporter 表)。
 2. ~~静默死角:prometheus + `port=0` + 无 actuator → `/metrics` 哪都不在,无日志。~~
-   2026-08 已修:经 endpoint.IsServing() 启动检测并 WARN 修复建议。
+   2026-10 拍板接受:跨包全局信号 `endpoint.IsServing()` 已删(洋葱模型:不留全局信号状态);
+   无人收集的 endpoint bean 不被装配、保持静默,与 gs 里其他根不可达 bean 一致。排障行已写明症状与修复。
 3. 按 exporter 的死 key 无告警(`endpoint`/`insecure` 对 `port`/`path`/`interval` 各管各的)。
 4. `insecure=true` 默认;`service-name` 静默回落 `go-spring-app`。
 5. propagator key 在 trace 支柱内部——`trace.enable=false` 会静默关掉跨服务上下文传播,

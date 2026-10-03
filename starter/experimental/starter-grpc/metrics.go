@@ -29,8 +29,8 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-// scope is the instrumentation scope name every meter and tracer in this package reports under.
-const scope = "go-spring.org/starter-grpc"
+// componentName is the instrumentation componentName name every meter and tracer in this package reports under.
+const componentName = "go-spring.org/starter-grpc"
 
 // --- metrics ----------------------------------------------------------------
 
@@ -52,7 +52,7 @@ type instrumentSet struct {
 var instruments = sync.OnceValue(buildInstruments)
 
 func buildInstruments() *instrumentSet {
-	m := otel.Meter(scope)
+	m := otel.Meter(componentName)
 	requestCount, _ := m.Int64Counter(
 		"rpc.server.request_count",
 		metric.WithDescription("Number of RPC requests received"),

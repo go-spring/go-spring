@@ -110,8 +110,8 @@ func newMetricsServer(cfg MetricsConfig) (prometheus.Registerer, *http.Server) {
 // The helpers ride the global TracerProvider and propagator that starter-otel
 // installs; without it they are no-ops and touch no message bytes.
 
-// scope is the instrumentation scope name every meter and tracer in this package reports under.
-const scope = "go-spring.org/starter-pulsar"
+// componentName is the instrumentation componentName name every meter and tracer in this package reports under.
+const componentName = "go-spring.org/starter-pulsar"
 
 // injectTraceContext inserts the current W3C trace context into msg.Properties,
 // so a subscriber can continue the trace across the broker. With no valid span
@@ -144,7 +144,7 @@ func extractTraceContext(ctx context.Context, props map[string]string) context.C
 // routed through [GuardedSend] is spanned by the resilience layer instead (from
 // the operation GuardedSend declares), so do not wrap both around the same send.
 func StartProducerSpan(ctx context.Context, msg *pulsar.ProducerMessage) (context.Context, trace.Span) {
-	tracer := otel.GetTracerProvider().Tracer(scope)
+	tracer := otel.GetTracerProvider().Tracer(componentName)
 	ctx, span := tracer.Start(ctx, "pulsar.produce",
 		trace.WithSpanKind(trace.SpanKindProducer),
 		trace.WithAttributes(
@@ -165,7 +165,7 @@ func StartProducerSpan(ctx context.Context, msg *pulsar.ProducerMessage) (contex
 //	StarterPulsar.EndSpan(span, err)
 func StartConsumerSpan(ctx context.Context, msg pulsar.Message) (context.Context, trace.Span) {
 	ctx = extractTraceContext(ctx, msg.Properties())
-	tracer := otel.GetTracerProvider().Tracer(scope)
+	tracer := otel.GetTracerProvider().Tracer(componentName)
 	ctx, span := tracer.Start(ctx, "pulsar.consume "+msg.Topic(),
 		trace.WithSpanKind(trace.SpanKindConsumer),
 		trace.WithAttributes(

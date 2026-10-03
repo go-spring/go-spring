@@ -120,7 +120,7 @@ func serverOperationInstruments(prefix string) *opServerInstrumentSet {
 	if s, ok := opServerInstruments.m[prefix]; ok {
 		return s
 	}
-	m := otel.Meter(scope)
+	m := otel.Meter(componentName)
 	s := &opServerInstrumentSet{}
 	s.duration, _ = m.Float64Histogram(prefix+".request.duration",
 		metric.WithDescription("Duration of one inbound request"),
@@ -145,7 +145,7 @@ func (w *wrappedServerExecutor) Execute(ctx context.Context, fn func(context.Con
 	// a server cannot, and this is the holder that closes that gap.
 	ctx, resp := WithResponse(ctx)
 
-	ctx, span := otel.Tracer(scope).Start(ctx, w.serverSpanName(op, hasOp),
+	ctx, span := otel.Tracer(componentName).Start(ctx, w.serverSpanName(op, hasOp),
 		trace.WithSpanKind(trace.SpanKindServer),
 		trace.WithAttributes(w.serverSpanAttrs(op, hasOp)...))
 
