@@ -91,12 +91,10 @@ func createPool(ctx context.Context, name string, c Config, d Driver, observers 
 	}
 	pool, err := d.CreatePool(c)
 	if err != nil {
-		log.Error(cctx, log.TagAppDef,
-			log.Err(err),
-			log.Msg("ants: create pool failed"))
+		log.Error(cctx, log.TagAppDef, err, log.Msg("ants: create pool failed"))
 		return nil, err
 	}
-	log.Info(cctx, log.TagAppDef, log.Msg("ants pool initialized"))
+	log.Info(cctx, log.TagAppDef, log.Msg("init ants pool success"))
 	// Wrap the pool's Submit to route through the observer chain, snapshotting
 	// the resolved observers once at build time.
 	return &observedPool{

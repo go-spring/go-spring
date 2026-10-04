@@ -107,7 +107,9 @@ func build(ctx context.Context, c Config, params cloud.ClientParams) (gormcore.S
 		return gormcore.Spec{}, errutil.Explain(nil, "gorm sqlserver: one of host or service-name must be set")
 	}
 
-	log.Debugf(ctx, log.TagAppDef, "creating gorm sqlserver client, host=%s service-name=%s db=%s", c.Host, c.ServiceName, c.DB)
+	log.Debug(ctx, log.TagAppDef, func() []log.Field {
+		return []log.Field{log.String("host", c.Host), log.String("service_name", c.ServiceName), log.String("db", c.DB), log.Msg("creating gorm sqlserver client")}
+	})
 
 	service := resilience.ServiceLabel("gorm:sqlserver", c.ServiceName, c.Host)
 
@@ -118,13 +120,13 @@ func build(ctx context.Context, c Config, params cloud.ClientParams) (gormcore.S
 
 	lb, _, stopSelection, err := c.NewPickPool(ctx, params.Discovery, service, params.Loadbalance)
 	if err != nil {
-		log.Errorf(ctx, log.TagAppDef, "gorm sqlserver: build discovery resolver failed: %v", err)
+		log.Error(ctx, log.TagAppDef, err, log.Msg("gorm sqlserver build discovery resolver failed"))
 		return gormcore.Spec{}, err
 	}
 	if lb != nil {
 		msCfg, err := msdsn.Parse(c.DSN())
 		if err != nil {
-			log.Errorf(ctx, log.TagAppDef, "gorm sqlserver: parse DSN failed: %v", err)
+			log.Error(ctx, log.TagAppDef, err, log.Msg("gorm sqlserver parse DSN failed"))
 			return gormcore.Spec{}, err
 		}
 		connector := mssql.NewConnectorConfig(msCfg)

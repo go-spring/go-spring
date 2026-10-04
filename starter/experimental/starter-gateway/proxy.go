@@ -140,7 +140,7 @@ func (t *RouteTable) newProxyHandler(routeID string, up *Upstream, exec chain.Ex
 			}
 		},
 		ErrorHandler: func(w http.ResponseWriter, r *http.Request, err error) {
-			log.Warnf(r.Context(), log.TagAppDef, "gateway: route %q upstream error: %v", routeID, err)
+			log.Warn(r.Context(), log.TagAppDef, log.String("route", routeID), log.Err(err), log.Msg("gateway: route upstream failed"))
 			http.Error(w, "502 Bad Gateway", http.StatusBadGateway)
 		},
 	}
@@ -148,7 +148,7 @@ func (t *RouteTable) newProxyHandler(routeID string, up *Upstream, exec chain.Ex
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		target, done, err := pick(r)
 		if err != nil {
-			log.Warnf(r.Context(), log.TagAppDef, "gateway: route %q no upstream: %v", routeID, err)
+			log.Warn(r.Context(), log.TagAppDef, log.String("route", routeID), log.Err(err), log.Msg("gateway: route no upstream"))
 			http.Error(w, "503 Service Unavailable", http.StatusServiceUnavailable)
 			return
 		}

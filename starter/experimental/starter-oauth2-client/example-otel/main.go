@@ -144,40 +144,40 @@ func runTest(s *Service) {
 	// call, then attaches it as a bearer token to the downstream request.
 	resp, err := s.Client.Get("http://127.0.0.1:9402/api/hello")
 	if err != nil {
-		log.Errorf(ctx, log.TagAppDef, "request failed: %v", err)
+		log.Errorf(ctx, log.TagAppDef, err, "request failed")
 		os.Exit(1)
 	}
 	body, _ := io.ReadAll(resp.Body)
 	_ = resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		log.Errorf(ctx, log.TagAppDef, "unexpected status %d: %s", resp.StatusCode, string(body))
+		log.Errorf(ctx, log.TagAppDef, fmt.Errorf("unexpected status %d: %s", resp.StatusCode, string(body)), "unexpected status %d: %s", resp.StatusCode, string(body))
 		os.Exit(1)
 	}
 	if string(body) != "hello from protected resource" {
-		log.Errorf(ctx, log.TagAppDef, "unexpected body: %q", string(body))
+		log.Errorf(ctx, log.TagAppDef, fmt.Errorf("unexpected body: %q", string(body)), "unexpected body: %q", string(body))
 		os.Exit(1)
 	}
 
 	// Feature 2: the TokenSource exposes the raw bearer token directly.
 	tok, err := s.TokenSrc.Token()
 	if err != nil {
-		log.Errorf(ctx, log.TagAppDef, "token source failed: %v", err)
+		log.Errorf(ctx, log.TagAppDef, err, "token source failed")
 		os.Exit(1)
 	}
 	if tok.AccessToken != issuedToken {
-		log.Errorf(ctx, log.TagAppDef, "unexpected token: %q", tok.AccessToken)
+		log.Errorf(ctx, log.TagAppDef, fmt.Errorf("unexpected token: %q", tok.AccessToken), "unexpected token: %q", tok.AccessToken)
 		os.Exit(1)
 	}
 
 	// Feature 2b: after a fetch, the cached token is observable without forcing
 	// another round-trip to the auth server.
 	if !s.TokenSrc.Valid() {
-		log.Errorf(ctx, log.TagAppDef, "expected cached token to be valid")
+		log.Errorf(ctx, log.TagAppDef, fmt.Errorf("expected cached token to be valid"), "expected cached token to be valid")
 		os.Exit(1)
 	}
 	if peek := s.TokenSrc.Peek(); peek == nil || peek.AccessToken != issuedToken {
-		log.Errorf(ctx, log.TagAppDef, "unexpected peeked token: %+v", peek)
+		log.Errorf(ctx, log.TagAppDef, fmt.Errorf("unexpected peeked token: %+v", peek), "unexpected peeked token: %+v", peek)
 		os.Exit(1)
 	}
 
@@ -186,7 +186,7 @@ func runTest(s *Service) {
 	if !strings.Contains(authURL, "client_id=web-client") ||
 		!strings.Contains(authURL, "state=xyz-state") ||
 		!strings.HasPrefix(authURL, "http://127.0.0.1:9401/oauth/authorize") {
-		log.Errorf(ctx, log.TagAppDef, "unexpected auth code URL: %s", authURL)
+		log.Errorf(ctx, log.TagAppDef, fmt.Errorf("unexpected auth code URL: %s", authURL), "unexpected auth code URL: %s", authURL)
 		os.Exit(1)
 	}
 
@@ -195,17 +195,17 @@ func runTest(s *Service) {
 	// transparently, so the caller sees a single successful response.
 	flakyResp, err := s.Client.Get("http://127.0.0.1:9402/api/flaky")
 	if err != nil {
-		log.Errorf(ctx, log.TagAppDef, "flaky request failed: %v", err)
+		log.Errorf(ctx, log.TagAppDef, err, "flaky request failed")
 		os.Exit(1)
 	}
 	flakyBody, _ := io.ReadAll(flakyResp.Body)
 	_ = flakyResp.Body.Close()
 	if flakyResp.StatusCode != http.StatusOK || string(flakyBody) != "recovered after retries" {
-		log.Errorf(ctx, log.TagAppDef, "resilience retry did not recover: status=%d body=%q", flakyResp.StatusCode, string(flakyBody))
+		log.Errorf(ctx, log.TagAppDef, fmt.Errorf("resilience retry did not recover: status=%d body=%q", flakyResp.StatusCode, string(flakyBody)), "resilience retry did not recover: status=%d body=%q", flakyResp.StatusCode, string(flakyBody))
 		os.Exit(1)
 	}
 	if got := atomic.LoadInt32(&flakyHits); got != 3 {
-		log.Errorf(ctx, log.TagAppDef, "expected 3 attempts (2 failures + 1 success), got %d", got)
+		log.Errorf(ctx, log.TagAppDef, fmt.Errorf("expected 3 attempts (2 failures + 1 success), got %d", got), "expected 3 attempts (2 failures + 1 success), got %d", got)
 		os.Exit(1)
 	}
 

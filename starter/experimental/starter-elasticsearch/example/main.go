@@ -146,7 +146,7 @@ func runTest(s *Service) {
 
 	// Feature 1: readiness probe — verify cluster connectivity.
 	if err := StarterElasticsearch.HealthCheck(ctx, s.ES); err != nil {
-		log.Errorf(ctx, log.TagAppDef, "HealthCheck failed: %v", err)
+		log.Errorf(ctx, log.TagAppDef, err, "HealthCheck failed")
 		os.Exit(1)
 	}
 
@@ -156,7 +156,7 @@ func runTest(s *Service) {
 		s.ES.Index.WithDocumentID("1"),
 		s.ES.Index.WithRefresh("true"))
 	if err != nil || idxRes.IsError() {
-		log.Errorf(ctx, log.TagAppDef, "Index failed: err=%v res=%v", err, idxRes)
+		log.Errorf(ctx, log.TagAppDef, err, "Index failed: err=%v res=%v", err, idxRes)
 		os.Exit(1)
 	}
 	_ = idxRes.Body.Close()
@@ -164,13 +164,13 @@ func runTest(s *Service) {
 	// Feature 3: get the document back by ID.
 	getRes, err := s.ES.Get(indexName, "1")
 	if err != nil || getRes.IsError() {
-		log.Errorf(ctx, log.TagAppDef, "Get failed: err=%v res=%v", err, getRes)
+		log.Errorf(ctx, log.TagAppDef, err, "Get failed: err=%v res=%v", err, getRes)
 		os.Exit(1)
 	}
 	getBody, _ := io.ReadAll(getRes.Body)
 	_ = getRes.Body.Close()
 	if !strings.Contains(string(getBody), `"found":true`) {
-		log.Errorf(ctx, log.TagAppDef, "Get did not find the document: %s", getBody)
+		log.Errorf(ctx, log.TagAppDef, fmt.Errorf("Get did not find the document: %s", getBody), "Get did not find the document: %s", getBody)
 		os.Exit(1)
 	}
 
@@ -180,13 +180,13 @@ func runTest(s *Service) {
 		s.ES.Search.WithIndex(indexName),
 		s.ES.Search.WithBody(strings.NewReader(query)))
 	if err != nil || searchRes.IsError() {
-		log.Errorf(ctx, log.TagAppDef, "Search failed: err=%v res=%v", err, searchRes)
+		log.Errorf(ctx, log.TagAppDef, err, "Search failed: err=%v res=%v", err, searchRes)
 		os.Exit(1)
 	}
 	searchBody, _ := io.ReadAll(searchRes.Body)
 	_ = searchRes.Body.Close()
 	if !strings.Contains(string(searchBody), `"title":"hello"`) {
-		log.Errorf(ctx, log.TagAppDef, "Search did not return the document: %s", searchBody)
+		log.Errorf(ctx, log.TagAppDef, fmt.Errorf("Search did not return the document: %s", searchBody), "Search did not return the document: %s", searchBody)
 		os.Exit(1)
 	}
 
@@ -196,7 +196,7 @@ func runTest(s *Service) {
 	// registered discovery backend (service-name=es-cluster), not from conf's
 	// static addresses, so a successful cluster probe proves discovery is wired.
 	if err := StarterElasticsearch.HealthCheck(ctx, s.DiscES); err != nil {
-		log.Errorf(ctx, log.TagAppDef, "discovery HealthCheck failed: %v", err)
+		log.Errorf(ctx, log.TagAppDef, err, "discovery HealthCheck failed")
 		os.Exit(1)
 	}
 	fmt.Println("Response from discovered server: cluster reachable")

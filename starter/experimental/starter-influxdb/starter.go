@@ -82,7 +82,14 @@ var starterTag = log.RegisterAppTag("influxdb", "")
 // so the client is assembled complete in one step, with the zero bundle
 // degrading to an observed-only, loudly-unmanaged executor.
 func newClient(ctx *gs.ContextProvider, c Config, d Driver, center *governance.Center) (*Client, error) {
-	log.Debugf(ctx.Context, starterTag, "creating influxdb client, url=%s org=%s bucket=%s", c.ServerURL, c.Org, c.Bucket)
+	log.Debug(ctx.Context, starterTag, func() []log.Field {
+		return []log.Field{
+			log.String("url", c.ServerURL),
+			log.String("org", c.Org),
+			log.String("bucket", c.Bucket),
+			log.Msg("creating influxdb client"),
+		}
+	})
 
 	// No company Driver bean → fall back to the bundled default assembly.
 	if d == nil {

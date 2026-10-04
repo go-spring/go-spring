@@ -18,6 +18,8 @@ package StarterTransactionATGorm
 
 import (
 	"context"
+	"fmt"
+	"go-spring.org/stdlib/errutil"
 	"time"
 
 	"go-spring.org/cloud/experimental/transaction/at"
@@ -73,8 +75,11 @@ func (r *recoveryRunner) Run(ctx context.Context) error {
 func recoverBranch(ctx context.Context, b at.Branch) error {
 	gb, ok := b.(*gormBranch)
 	if !ok {
-		log.Errorf(ctx, log.TagAppDef,
-			"at recovery: branch %q is not a gorm branch (type %T); skipping", b.ID(), b)
+		err := errutil.Explain(nil, "at recovery: branch %s has unsupported type %T", b.ID(), b)
+		log.Error(ctx, log.TagAppDef, err,
+			log.String("branch", b.ID()),
+			log.String("type", fmt.Sprintf("%T", b)),
+			log.Msg("at recovery: skip non-gorm branch"))
 		return nil
 	}
 	resource, db := gb.resource, gb.db
@@ -86,8 +91,7 @@ func recoverBranch(ctx context.Context, b at.Branch) error {
 	var xids []string
 	if err := db.Model(&undoRow{}).Distinct().Order("xid").
 		Pluck("xid", &xids).Error; err != nil {
-		log.Error(ctx, log.TagAppDef,
-			log.Err(err),
+		log.Error(ctx, log.TagAppDef, err,
 			log.Msg("at recovery: scanning undo logs failed (orphaned entries, if any, are left for manual recovery)"))
 		return err
 	}
@@ -107,7 +111,8 @@ func recoverBranch(ctx context.Context, b at.Branch) error {
 			oldest = first.CreatedAt
 		}
 	}
-	log.Error(ctx, log.TagAppDef,
+	err := errutil.Explain(nil, "found %d orphaned undo-log entries from a previous run", count)
+	log.Error(ctx, log.TagAppDef, err,
 		log.Int("entries", count),
 		log.String("oldest", oldest.Format(time.RFC3339)),
 		log.Int("transactions", len(xids)),
@@ -115,9 +120,8 @@ func recoverBranch(ctx context.Context, b at.Branch) error {
 
 	for _, xid := range xids {
 		if err := gb.Rollback(ctx, xid); err != nil {
-			log.Error(ctx, log.TagAppDef,
+			log.Error(ctx, log.TagAppDef, err,
 				log.String("xid", xid),
-				log.Err(err),
 				log.Msg("at recovery: rolling back global transaction failed (undo logs kept for manual recovery)"))
 			continue
 		}

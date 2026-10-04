@@ -32,7 +32,9 @@ func init() {
 	// The destroy callback closes the pooled Lua VMs at shutdown so their
 	// runtime resources are released.
 	gs.Group("${spring.lua.filter.instances}", newFilter, destroyFilter)
-	log.Debugf(context.Background(), starterTag, "lua filter group registered")
+	log.Debug(context.Background(), starterTag, func() []log.Field {
+		return []log.Field{log.Msg("lua filter group registered")}
+	})
 }
 
 var (

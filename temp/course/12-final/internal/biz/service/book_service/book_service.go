@@ -18,6 +18,7 @@ package book_service
 
 import (
 	"context"
+	"fmt"
 	"strconv"
 
 	"bookman/internal/dao/book_dao"
@@ -45,7 +46,7 @@ type BookService struct {
 func (s *BookService) ListBooks(ctx context.Context) ([]proto.Book, error) {
 	books, err := s.BookDao.ListBooks()
 	if err != nil {
-		log.Errorf(ctx, TagBookService, "ListBooks return err: %s", err.Error())
+		log.Errorf(ctx, TagBookService, fmt.Errorf("ListBooks return err: %s", err.Error()), "ListBooks return err: %s", err.Error())
 		return nil, err
 	}
 	ret := make([]proto.Book, 0, len(books))
@@ -67,7 +68,7 @@ func (s *BookService) ListBooks(ctx context.Context) ([]proto.Book, error) {
 func (s *BookService) GetBook(ctx context.Context, isbn string) (proto.Book, error) {
 	book, err := s.BookDao.GetBook(isbn)
 	if err != nil {
-		log.Errorf(ctx, TagBookService, "GetBook return err: %s", err.Error())
+		log.Errorf(ctx, TagBookService, fmt.Errorf("GetBook return err: %s", err.Error()), "GetBook return err: %s", err.Error())
 		return proto.Book{}, err
 	}
 	return proto.Book{

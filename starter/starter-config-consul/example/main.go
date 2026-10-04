@@ -98,7 +98,7 @@ func runTest(d *Demo) {
 	// Publish a new value for the imported KV path via the Consul HTTP API.
 	want := "hello-" + time.Now().Format("150405")
 	if err := publish(want); err != nil {
-		log.Errorf(ctx, log.TagAppDef, "publish config failed: %v", err)
+		log.Errorf(ctx, log.TagAppDef, err, "publish config failed")
 		os.Exit(1)
 	}
 
@@ -114,7 +114,7 @@ func runTest(d *Demo) {
 		}
 		time.Sleep(200 * time.Millisecond)
 	}
-	log.Errorf(ctx, log.TagAppDef, "hot-reload timeout: message=%q want=%q", d.Message.Value(), want)
+	log.Errorf(ctx, log.TagAppDef, fmt.Errorf("hot-reload timeout: message=%q want=%q", d.Message.Value(), want), "hot-reload timeout: message=%q want=%q", d.Message.Value(), want)
 	os.Exit(1)
 }
 

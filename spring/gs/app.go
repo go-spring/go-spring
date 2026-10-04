@@ -126,7 +126,7 @@ func (s *AppStarter) startApp() error {
 	// Start application
 	if err := s.app.Start(); err != nil {
 		err = errutil.Explain(err, "start app failed")
-		log.Errorf(s.app.Context(), log.TagAppDef, "%s", err)
+		log.Errorf(s.app.Context(), log.TagAppDef, err, "")
 		return err
 	}
 
@@ -150,7 +150,7 @@ func Run() {
 func (s *AppStarter) teardown() {
 	ctx := context.WithoutCancel(s.app.Context())
 	if err := conf.CloseProviders(ctx); err != nil {
-		log.Errorf(ctx, log.TagAppDef, "close config providers failed: %v", err)
+		log.Errorf(ctx, log.TagAppDef, err, "close config providers failed")
 	}
 	runStoppers(ctx)
 	log.Destroy()

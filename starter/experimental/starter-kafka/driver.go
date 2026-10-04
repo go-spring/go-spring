@@ -100,7 +100,7 @@ func (DefaultDriver) CreateClient(ctx context.Context, c Config, params cloud.Cl
 	if c.TLS.Enabled {
 		tc, err := c.TLS.BuildClient()
 		if err != nil {
-			log.Errorf(ctx, log.TagAppDef, "kafka: build TLS failed: %v", err)
+			log.Error(ctx, log.TagAppDef, err, log.Msg("kafka: build TLS failed"))
 			return nil, errutil.Explain(err, "kafka: build TLS")
 		}
 		opts = append(opts, kgo.DialTLSConfig(tc))
@@ -203,7 +203,7 @@ func (logger) Log(level kgo.LogLevel, msg string, keyvals ...any) {
 	}
 	switch level {
 	case kgo.LogLevelError:
-		log.Errorf(ctx, log.TagAppDef, "kafka: %s", line)
+		log.Errorf(ctx, log.TagAppDef, fmt.Errorf("kafka: %s", line), "kafka: %s", line)
 	case kgo.LogLevelWarn:
 		log.Warnf(ctx, log.TagAppDef, "kafka: %s", line)
 	default:

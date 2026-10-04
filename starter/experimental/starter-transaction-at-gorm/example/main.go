@@ -206,11 +206,11 @@ func runTest(s *BankService) {
 	// Path 1 — commit: debit 30 and decrement 2. Both writes succeed, the global
 	// transaction commits, both changes stick and every undo log is dropped.
 	if err := s.purchase(ctx, 30, 2, false); err != nil {
-		log.Errorf(ctx, log.TagAppDef, "commit path: unexpected error %v", err)
+		log.Errorf(ctx, log.TagAppDef, err, "commit path: unexpected error")
 		os.Exit(1)
 	}
 	if b, c, u := s.balance(), s.stockCount(), s.undoRows(); b != 70 || c != 8 || u != 0 {
-		log.Errorf(ctx, log.TagAppDef, "commit path: balance=%d stock=%d undo=%d, want 70/8/0", b, c, u)
+		log.Errorf(ctx, log.TagAppDef, fmt.Errorf("commit path: balance=%d stock=%d undo=%d, want 70/8/0", b, c, u), "commit path: balance=%d stock=%d undo=%d, want 70/8/0", b, c, u)
 		os.Exit(1)
 	}
 	fmt.Println("commit path OK: balance=70 stock=8 undo=0")
@@ -220,11 +220,11 @@ func runTest(s *BankService) {
 	// exactly as they were after path 1 and no undo log is left behind.
 	err := s.purchase(ctx, 50, 5, true)
 	if err == nil {
-		log.Errorf(ctx, log.TagAppDef, "rollback path: expected an error, got nil")
+		log.Errorf(ctx, log.TagAppDef, fmt.Errorf("rollback path: expected an error, got nil"), "rollback path: expected an error, got nil")
 		os.Exit(1)
 	}
 	if b, c, u := s.balance(), s.stockCount(), s.undoRows(); b != 70 || c != 8 || u != 0 {
-		log.Errorf(ctx, log.TagAppDef, "rollback path: balance=%d stock=%d undo=%d, want 70/8/0 (restored)", b, c, u)
+		log.Errorf(ctx, log.TagAppDef, fmt.Errorf("rollback path: balance=%d stock=%d undo=%d, want 70/8/0 (restored)", b, c, u), "rollback path: balance=%d stock=%d undo=%d, want 70/8/0 (restored)", b, c, u)
 		os.Exit(1)
 	}
 	fmt.Println("rollback path OK: balance=70 stock=8 undo=0 -", err.Error())
@@ -237,7 +237,7 @@ func runTest(s *BankService) {
 		return tx.Model(&account{}).Where("id = ?", 1).
 			Update("balance", gorm.Expr("balance - ?", 1)).Error
 	}); err != nil {
-		log.Errorf(ctx, log.TagAppDef, "isolation path: first tx failed %v", err)
+		log.Errorf(ctx, log.TagAppDef, err, "isolation path: first tx failed")
 		os.Exit(1)
 	}
 	gctx2, xid2 := s.coord.Begin(ctx)
@@ -246,7 +246,7 @@ func runTest(s *BankService) {
 			Update("balance", gorm.Expr("balance - ?", 1)).Error
 	})
 	if !errors.Is(err, at.ErrLockConflict) {
-		log.Errorf(ctx, log.TagAppDef, "isolation path: want ErrLockConflict, got %v", err)
+		log.Errorf(ctx, log.TagAppDef, err, "isolation path: want ErrLockConflict, got")
 		os.Exit(1)
 	}
 	_ = s.coord.Rollback(context.Background(), xid2)

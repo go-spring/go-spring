@@ -74,9 +74,7 @@ func newClient(ctx *gs.ContextProvider, name string, c Config, d Driver, center 
 	cl, err := d.CreateClient(ctx.Context, c,
 		cloud.ClientParams{Resilience: center.Resilience(), Fault: center.Fault()})
 	if err != nil {
-		log.Error(cctx, log.TagAppDef,
-			log.Err(err),
-			log.Msg("kafka sarama: create client failed"))
+		log.Error(cctx, log.TagAppDef, err, log.Msg("kafka sarama: create client failed"))
 		return nil, errutil.Explain(err, "failed to create kafka client: %s", c.Brokers)
 	}
 	// The Driver returned the client complete — governance was attached while it
@@ -86,12 +84,12 @@ func newClient(ctx *gs.ContextProvider, name string, c Config, d Driver, center 
 		if len(cl.Brokers()) == 0 {
 			closeResilience(cl)
 			cl.Close()
-			log.Error(cctx, log.TagAppDef,
-				log.Msg("kafka sarama: no brokers after metadata fetch"))
-			return nil, errutil.Explain(nil, "kafka client has no brokers after metadata fetch: %s", c.Brokers)
+			err := errutil.Explain(nil, "kafka client has no brokers after metadata fetch: %s", c.Brokers)
+			log.Error(cctx, log.TagAppDef, err, log.Msg("kafka sarama: no brokers found"))
+			return nil, err
 		}
 	}
-	log.Info(cctx, log.TagAppDef, log.Msg("kafka sarama client initialized"))
+	log.Info(cctx, log.TagAppDef, log.Msg("create kafka sarama client success"))
 	return cl, nil
 }
 

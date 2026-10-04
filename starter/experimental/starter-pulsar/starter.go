@@ -118,16 +118,13 @@ func newClient(ctx *gs.ContextProvider, name string, c Config, d Driver, center 
 	// failure abandons the client, so release what was just assembled.
 	if c.Ping {
 		if _, err = cl.TopicPartitions(c.HealthCheckTopic); err != nil {
-			log.Error(cctx, log.TagAppDef,
-				log.String("topic", c.HealthCheckTopic),
-				log.Err(err),
-				log.Msg("pulsar: ping failed"))
+			log.Error(cctx, log.TagAppDef, err, log.String("topic", c.HealthCheckTopic), log.Msg("pulsar: ping failed"))
 			closeResilience(cl)
 			cl.Close()
 			shutdownMetrics(cl)
 			return nil, errutil.Explain(err, "pulsar broker probe failed on %s (topic=%s)", c.URL, c.HealthCheckTopic)
 		}
 	}
-	log.Info(cctx, log.TagAppDef, log.Msg("pulsar client initialized"))
+	log.Info(cctx, log.TagAppDef, log.Msg("create pulsar client success"))
 	return cl, nil
 }

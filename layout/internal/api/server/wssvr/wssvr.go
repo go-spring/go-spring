@@ -68,7 +68,7 @@ func (s *Server) Run(ctx context.Context, sig gs.ReadySignal) error {
 		h := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			conn, err := s.upgrader.Upgrade(w, r, nil)
 			if err != nil {
-				log.Errorf(r.Context(), log.TagAppDef, "failed to upgrade websocket: %v", err)
+				log.Errorf(r.Context(), log.TagAppDef, err, "failed to upgrade websocket")
 				return
 			}
 			serve(conn)

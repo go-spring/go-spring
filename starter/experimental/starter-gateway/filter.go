@@ -277,7 +277,7 @@ func rateLimitFilter(args []string, counters resilience.Counters) (Filter, error
 				// Fail open on anything else: the executor already logged a
 				// failing counter store (e.g. a Redis blip) and let the call
 				// through, so a broken limiter must not take the gateway down.
-				log.Warnf(r.Context(), log.TagAppDef, "gateway: rate limit check failed: %v", err)
+				log.Warn(r.Context(), log.TagAppDef, log.Err(err), log.Msg("gateway: rate limit check failed"))
 			}
 			next.ServeHTTP(w, r)
 		})

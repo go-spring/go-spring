@@ -59,7 +59,15 @@ func newAuthenticator(ctx *gs.ContextProvider, name string, c Config) (*Authenti
 		return nil, err
 	}
 
-	log.Debugf(ctx.Context, log.TagAppDef, "creating jwt authenticator source=%v issuer=%s algorithm=%s required=%v", src, c.Issuer, c.Algorithm, c.Required)
+	log.Debug(ctx.Context, log.TagAppDef, func() []log.Field {
+		return []log.Field{
+			log.Int("source", int(src)),
+			log.String("issuer", c.Issuer),
+			log.String("algorithm", c.Algorithm),
+			log.Bool("required", c.Required),
+			log.Msg("creating jwt authenticator"),
+		}
+	})
 
 	methods, err := validMethods(c, src)
 	if err != nil {

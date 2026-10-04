@@ -185,7 +185,7 @@ func (s *EtcdSource) apply(data string) {
 	}
 	cfg, err := governance.Parse(s.key, []byte(data), s.format)
 	if err != nil {
-		log.Errorf(context.Background(), starterTag, "governance etcd source: key %s got an invalid value (keeping last good config): %v", s.key, err)
+		log.Error(context.Background(), starterTag, err, log.String("key", s.key), log.Msg("governance etcd source got an invalid value (keeping last good config)"))
 		return
 	}
 	s.doc = data

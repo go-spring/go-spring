@@ -70,7 +70,16 @@ func newMailer(ctx *gs.ContextProvider, name string, c Config, center *governanc
 		return nil, err
 	}
 
-	log.Debugf(ctx.Context, log.TagAppDef, "creating mailer host=%s port=%d auth=%s tls=%s from=%s", c.Host, c.Port, c.AuthType, c.TLS.Mode, c.From)
+	log.Debug(ctx.Context, log.TagAppDef, func() []log.Field {
+		return []log.Field{
+			log.String("host", c.Host),
+			log.Int("port", c.Port),
+			log.String("auth", c.AuthType),
+			log.String("tls", c.TLS.Mode),
+			log.String("from", c.From),
+			log.Msg("creating mailer"),
+		}
+	})
 
 	opts := []mail.Option{
 		mail.WithPort(c.Port),
@@ -126,7 +135,7 @@ func newMailer(ctx *gs.ContextProvider, name string, c Config, center *governanc
 		}
 	}
 
-	log.Infof(ctx.Context, log.TagAppDef, "mailer created host=%s port=%d", c.Host, c.Port)
+	log.Info(ctx.Context, log.TagAppDef, log.String("host", c.Host), log.Int("port", c.Port), log.Msg("create mailer success"))
 	// The chain owns everything, one statement per layer: identity over
 	// governance over the raw adapter. Governance is applied HERE, while the
 	// mailer is built, so a *Mailer cannot exist half-assembled; a hand-built

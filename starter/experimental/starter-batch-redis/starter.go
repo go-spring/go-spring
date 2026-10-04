@@ -68,7 +68,14 @@ func init() {
 				return errutil.Explain(nil, "batch-redis: instance %q missing required property %q",
 					name, "spring.batch-repository.instances."+name+".client")
 			}
-			log.Debugf(context.Background(), log.TagAppDef, "creating batch redis repository name=%s client=%s keyPrefix=%s", name, c.Client, c.KeyPrefix)
+			log.Debug(context.Background(), log.TagAppDef, func() []log.Field {
+				return []log.Field{
+					log.String("name", name),
+					log.String("client", c.Client),
+					log.String("key_prefix", c.KeyPrefix),
+					log.Msg("creating batch redis repository"),
+				}
+			})
 			// TagArg injects the *redis.Client bean by name — this is the
 			// seam that ties the JobRepository to a specific redis instance.
 			r.Provide(newRedisRepository, gs.ValueArg(c), gs.TagArg(c.Client)).

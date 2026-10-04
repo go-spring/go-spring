@@ -179,11 +179,14 @@ entries happens before load (`conf.go`).
 
 agollo runs its own config-change notification long-poll (`/notifications/v2`, see
 [Apollo's config design](https://www.apolloconfig.com/#/en/design/apollo-design)).
-The starter bridges those events into gs's refresh chain:
+The starter bridges those events into gs's refresh chain. Only OnChange
+(content actually differs) triggers a refresh; agollo also dispatches
+OnNewestChange on every config fetch, which the listener intentionally
+ignores to avoid double-firing a full refresh per publish:
 
 ```
 Apollo publish → agollo long-poll fires ChangeEvent / FullChangeEvent
-  → apolloListener.OnChange / OnNewestChange                    starter.go
+  → apolloListener.OnChange (OnNewestChange is a no-op)         starter.go
     → apolloCtrl.TriggerRefresh                                 starter.go
       → gs.RefreshProperties()                                  gs_app/app.go
         → App.RefreshProperties: guard "app not started yet", then

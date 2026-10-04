@@ -178,13 +178,13 @@ func (s *subscriber) Subscribe(_ context.Context, handler messaging.Handler) err
 				return handler(attemptCtx, fromDelivery(&d))
 			})
 			if herr != nil {
-				log.Errorf(msgCtx, log.TagAppDef, "rabbitmq driver handler error on %q: %v", s.queue, herr)
+				log.Error(msgCtx, log.TagAppDef, herr, log.String("queue", s.queue), log.Msg("rabbitmq driver handler failed"))
 				if err := d.Nack(false, true); err != nil {
-					log.Warnf(msgCtx, log.TagAppDef, "rabbitmq: nack failed on %q, message may be redelivered: %v", s.queue, err)
+					log.Warn(msgCtx, log.TagAppDef, log.String("queue", s.queue), log.Err(err), log.Msg("rabbitmq: nack failed, message may be redelivered"))
 				}
 			} else if err := d.Ack(false); err != nil {
 				// A failed ack means the broker will redeliver the message.
-				log.Warnf(msgCtx, log.TagAppDef, "rabbitmq: ack failed on %q, message may be redelivered: %v", s.queue, err)
+				log.Warn(msgCtx, log.TagAppDef, log.String("queue", s.queue), log.Err(err), log.Msg("rabbitmq: ack failed, message may be redelivered"))
 			}
 		}
 	}()

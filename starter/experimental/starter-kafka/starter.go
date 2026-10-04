@@ -96,7 +96,14 @@ const pingTimeout = 10 * time.Second
 // while building.
 func newClient(ctx *gs.ContextProvider, name string, c Config, d Driver,
 	center *governance.Center) (*Client, error) {
-	log.Debugf(ctx.Context, log.TagAppDef, "creating kafka client, brokers=%s group=%s topic=%s", c.Brokers, c.Group, c.Topic)
+	log.Debug(ctx.Context, log.TagAppDef, func() []log.Field {
+		return []log.Field{
+			log.String("brokers", c.Brokers),
+			log.String("group", c.Group),
+			log.String("topic", c.Topic),
+			log.Msg("creating kafka client"),
+		}
+	})
 
 	// No company Driver bean → fall back to the bundled default assembly.
 	if d == nil {
@@ -104,7 +111,7 @@ func newClient(ctx *gs.ContextProvider, name string, c Config, d Driver,
 	}
 	raw, err := d.CreateClient(ctx.Context, c, cloud.ClientParams{Resilience: center.Resilience(), Fault: center.Fault()})
 	if err != nil {
-		log.Errorf(ctx.Context, log.TagAppDef, "kafka: create client failed: %v", err)
+		log.Error(ctx.Context, log.TagAppDef, err, log.Msg("kafka: create client failed"))
 		return nil, errutil.Explain(err, "failed to create kafka client: %s", c.Brokers)
 	}
 
@@ -118,11 +125,11 @@ func newClient(ctx *gs.ContextProvider, name string, c Config, d Driver,
 		pingCtx, cancel := context.WithTimeout(ctx.Context, pingTimeout)
 		defer cancel()
 		if err = raw.Ping(pingCtx); err != nil {
-			log.Errorf(ctx.Context, log.TagAppDef, "kafka: ping failed: %v", err)
+			log.Error(ctx.Context, log.TagAppDef, err, log.Msg("kafka: ping failed"))
 			_ = cl.Close()
 			return nil, errutil.Explain(err, "failed to ping kafka: %s", c.Brokers)
 		}
 	}
-	log.Infof(ctx.Context, log.TagAppDef, "kafka client initialized, brokers=%s", c.Brokers)
+	log.Info(ctx.Context, log.TagAppDef, log.String("brokers", c.Brokers), log.Msg("create kafka client success"))
 	return cl, nil
 }

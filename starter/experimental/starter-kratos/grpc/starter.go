@@ -99,8 +99,15 @@ type GrpcServer struct {
 // the registered ServiceRegister bean. The kratos logger bridges framework logs
 // into go-spring's log module (see internal/logger).
 func NewGrpcServer(cfg Config, reg ServiceRegister) *GrpcServer {
-	log.Debugf(context.Background(), log.TagAppDef, "kratos grpc server created name=%s addr=%s network=%s timeout=%s",
-		cfg.Name, cfg.Addr, cfg.Network, cfg.Timeout)
+	log.Debug(context.Background(), log.TagAppDef, func() []log.Field {
+		return []log.Field{
+			log.String("name", cfg.Name),
+			log.String("addr", cfg.Addr),
+			log.String("network", cfg.Network),
+			log.String("timeout", cfg.Timeout.String()),
+			log.Msg("create kratos grpc server success"),
+		}
+	})
 	return &GrpcServer{cfg: cfg, reg: reg, log: logger.NewLogger(), done: make(chan struct{})}
 }
 
@@ -179,9 +186,7 @@ func (s *GrpcServer) Run(ctx context.Context, sig gs.ReadySignal) error {
 	select {
 	case err := <-errCh:
 		if err != nil {
-			log.Error(ctx, log.TagAppDef,
-				log.Err(err),
-				log.Msg("kratos grpc app exited with error"))
+			log.Error(ctx, log.TagAppDef, err, log.Msg("kratos grpc app exited with error"))
 		}
 		return errutil.Explain(err, "kratos grpc app exited with error")
 	case <-s.done:

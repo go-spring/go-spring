@@ -68,7 +68,7 @@ func (e *luohuaExecutor) Execute(ctx context.Context, fn func(context.Context) e
 	// a process where spring.governance.driver=luohua is in effect is observable in logs.
 	// This is the company hook point — a real luohua company would hang its own
 	// policy/abort/audit logic here.
-	log.Debugf(ctx, log.TagAppDef, "luohua/governance service=%s", e.service)
+	log.Debug(ctx, log.TagAppDef, func() []log.Field { return []log.Field{log.String("service", e.service), log.Msg("luohua/governance")} })
 	return e.inner.Execute(ctx, fn)
 }
 
@@ -107,7 +107,9 @@ type luohuaServerExecutor struct {
 }
 
 func (e *luohuaServerExecutor) Execute(ctx context.Context, fn func(context.Context) error) error {
-	log.Debugf(ctx, log.TagAppDef, "luohua/governance inbound service=%s", e.service)
+	log.Debug(ctx, log.TagAppDef, func() []log.Field {
+		return []log.Field{log.String("service", e.service), log.Msg("luohua/governance inbound")}
+	})
 	return e.inner.Execute(ctx, fn)
 }
 

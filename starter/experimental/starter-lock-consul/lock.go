@@ -58,7 +58,13 @@ type consulLocker struct {
 // fails fast when Address is empty (see starter.go), and normalises the TTL
 // into consul's accepted range.
 func newConsulLocker(ctx *gs.ContextProvider, c Config) (*consulLocker, error) {
-	log.Debugf(ctx.Context, log.TagAppDef, "creating consul locker, address=%s key-prefix=%s", c.Address, c.KeyPrefix)
+	log.Debug(ctx.Context, log.TagAppDef, func() []log.Field {
+		return []log.Field{
+			log.String("address", c.Address),
+			log.String("key_prefix", c.KeyPrefix),
+			log.Msg("creating consul locker"),
+		}
+	})
 
 	if c.Address == "" {
 		return nil, errutil.Explain(nil, "lock-consul: address is required")
@@ -91,7 +97,7 @@ func newConsulLocker(ctx *gs.ContextProvider, c Config) (*consulLocker, error) {
 
 	cli, err := api.NewClient(cfg)
 	if err != nil {
-		log.Errorf(ctx.Context, log.TagAppDef, "lock-consul: create client for %s failed: %v", c.Address, err)
+		log.Error(ctx.Context, log.TagAppDef, err, log.String("address", c.Address), log.Msg("lock-consul: create client failed"))
 		return nil, errutil.Explain(err, "lock-consul: create client for %s failed", c.Address)
 	}
 
@@ -99,7 +105,7 @@ func newConsulLocker(ctx *gs.ContextProvider, c Config) (*consulLocker, error) {
 	if kp == "" {
 		kp = "lock/"
 	}
-	log.Infof(ctx.Context, log.TagAppDef, "consul locker initialized, address=%s", c.Address)
+	log.Info(ctx.Context, log.TagAppDef, log.String("address", c.Address), log.Msg("create consul locker success"))
 	return &consulLocker{
 		client:    cli,
 		keyPrefix: kp,

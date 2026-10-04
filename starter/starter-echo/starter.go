@@ -124,8 +124,13 @@ func NewSimpleEchoServer(register RouterRegister, outer EngineMiddleware, cfg Co
 			return nil, errutil.Explain(err, "echo: build TLS")
 		}
 	}
-	log.Debugf(context.Background(), log.TagAppDef, "echo server created addr=%s tls=%v readTimeout=%s writeTimeout=%s idleTimeout=%s",
-		addr, tlsEnabled, cfg.ReadTimeout, cfg.WriteTimeout, cfg.IdleTimeout)
+	log.Debug(context.Background(), log.TagAppDef, func() []log.Field {
+		return []log.Field{
+			log.String("addr", addr), log.Bool("tls", tlsEnabled),
+			log.String("read_timeout", cfg.ReadTimeout.String()), log.String("write_timeout", cfg.WriteTimeout.String()),
+			log.String("idle_timeout", cfg.IdleTimeout.String()), log.Msg("create echo server success"),
+		}
+	})
 
 	return &SimpleEchoServer{
 		svr: &http.Server{
@@ -170,9 +175,7 @@ func (s *SimpleEchoServer) Run(ctx context.Context, sig gs.ReadySignal) error {
 		return nil
 	}
 	if err != nil {
-		log.Error(ctx, log.TagAppDef,
-			log.Err(err),
-			log.Msg("echo server failed"))
+		log.Error(ctx, log.TagAppDef, err, log.Msg("echo server failed"))
 	}
 	return errutil.Explain(err, "failed to serve on %s", s.svr.Addr)
 }

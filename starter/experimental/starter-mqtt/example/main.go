@@ -114,7 +114,7 @@ func runTest(s *Service) {
 
 	// Health: the injected client exposes its live connection status.
 	if !s.Client.IsConnected() {
-		log.Errorf(ctx, log.TagAppDef, "client not connected")
+		log.Errorf(ctx, log.TagAppDef, fmt.Errorf("client not connected"), "client not connected")
 		os.Exit(1)
 	}
 
@@ -135,19 +135,19 @@ func runTest(s *Service) {
 	// Give the subscription a moment to register on the broker.
 	time.Sleep(300 * time.Millisecond)
 	if err := s.publish("value"); err != nil {
-		log.Errorf(ctx, log.TagAppDef, "PUBLISH failed: %v", err)
+		log.Errorf(ctx, log.TagAppDef, err, "PUBLISH failed")
 		os.Exit(1)
 	}
 
 	select {
 	case body := <-result:
 		if body != "value" {
-			log.Errorf(ctx, log.TagAppDef, "SUBSCRIBE failed: body=%q", body)
+			log.Errorf(ctx, log.TagAppDef, fmt.Errorf("SUBSCRIBE failed: body=%q", body), "SUBSCRIBE failed: body=%q", body)
 			os.Exit(1)
 		}
 		fmt.Println("Response from server:", body)
 	case err := <-errCh:
-		log.Errorf(ctx, log.TagAppDef, "SUBSCRIBE failed: %v", err)
+		log.Errorf(ctx, log.TagAppDef, err, "SUBSCRIBE failed")
 		os.Exit(1)
 	}
 

@@ -47,7 +47,7 @@ func init() {
 		mux.Handle("/echo", requireApp(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			conn, err := upgrader.Upgrade(w, r, nil)
 			if err != nil {
-				log.Errorf(r.Context(), log.TagAppDef, "Failed to upgrade /echo: %v", err)
+				log.Errorf(r.Context(), log.TagAppDef, err, "Failed to upgrade /echo")
 				return
 			}
 			c.Echo(conn)
@@ -57,7 +57,7 @@ func init() {
 		mux.Handle("/json", requireApp(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			conn, err := upgrader.Upgrade(w, r, nil)
 			if err != nil {
-				log.Errorf(r.Context(), log.TagAppDef, "Failed to upgrade /json: %v", err)
+				log.Errorf(r.Context(), log.TagAppDef, err, "Failed to upgrade /json")
 				return
 			}
 			c.EchoJSON(conn)
@@ -68,7 +68,7 @@ func init() {
 		mux.Handle("/guard", requireApp(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			conn, err := upgrader.Upgrade(w, r, nil)
 			if err != nil {
-				log.Errorf(r.Context(), log.TagAppDef, "Failed to upgrade /guard: %v", err)
+				log.Errorf(r.Context(), log.TagAppDef, err, "Failed to upgrade /guard")
 				return
 			}
 			c.Echo(conn)
@@ -184,58 +184,58 @@ func runTest() {
 	// server-advertised subprotocol so negotiation is exercised.
 	echoConn, _, err := dialer.Dial("ws://127.0.0.1:9696/echo", authHeader)
 	if err != nil {
-		log.Errorf(ctx, log.TagAppDef, "Failed to connect /echo: %v", err)
+		log.Errorf(ctx, log.TagAppDef, err, "Failed to connect /echo")
 		os.Exit(1)
 	}
 	defer echoConn.Close()
 
 	if sp := echoConn.Subprotocol(); sp != "echo.v1" {
-		log.Errorf(ctx, log.TagAppDef, "unexpected negotiated subprotocol: %q", sp)
+		log.Errorf(ctx, log.TagAppDef, fmt.Errorf("unexpected negotiated subprotocol: %q", sp), "unexpected negotiated subprotocol: %q", sp)
 		os.Exit(1)
 	}
 
 	if err = echoConn.WriteMessage(websocket.TextMessage, []byte("Hello, WebSocket!")); err != nil {
-		log.Errorf(ctx, log.TagAppDef, "Error sending text message: %v", err)
+		log.Errorf(ctx, log.TagAppDef, err, "Error sending text message")
 		os.Exit(1)
 	}
 	_, msg, err := echoConn.ReadMessage()
 	if err != nil {
-		log.Errorf(ctx, log.TagAppDef, "Error reading text message: %v", err)
+		log.Errorf(ctx, log.TagAppDef, err, "Error reading text message")
 		os.Exit(1)
 	}
 	fmt.Println("Response from server:", string(msg))
 	if string(msg) != "Hello, WebSocket!" {
-		log.Errorf(ctx, log.TagAppDef, "Unexpected text echo: %q", string(msg))
+		log.Errorf(ctx, log.TagAppDef, fmt.Errorf("Unexpected text echo: %q", string(msg)), "Unexpected text echo: %q", string(msg))
 		os.Exit(1)
 	}
 
 	// Feature 2: JSON echo on /json.
 	jsonConn, _, err := websocket.DefaultDialer.Dial("ws://127.0.0.1:9696/json", authHeader)
 	if err != nil {
-		log.Errorf(ctx, log.TagAppDef, "Failed to connect /json: %v", err)
+		log.Errorf(ctx, log.TagAppDef, err, "Failed to connect /json")
 		os.Exit(1)
 	}
 	defer jsonConn.Close()
 
 	if err = jsonConn.WriteJSON(EchoRequest{Name: "world"}); err != nil {
-		log.Errorf(ctx, log.TagAppDef, "Error sending JSON: %v", err)
+		log.Errorf(ctx, log.TagAppDef, err, "Error sending JSON")
 		os.Exit(1)
 	}
 	var resp EchoResponse
 	if err = jsonConn.ReadJSON(&resp); err != nil {
-		log.Errorf(ctx, log.TagAppDef, "Error reading JSON: %v", err)
+		log.Errorf(ctx, log.TagAppDef, err, "Error reading JSON")
 		os.Exit(1)
 	}
 	fmt.Println("Response from server:", resp.Message)
 	if resp.Message != "Hi, world" {
-		log.Errorf(ctx, log.TagAppDef, "Unexpected JSON echo: %q", resp.Message)
+		log.Errorf(ctx, log.TagAppDef, fmt.Errorf("Unexpected JSON echo: %q", resp.Message), "Unexpected JSON echo: %q", resp.Message)
 		os.Exit(1)
 	}
 
 	// Feature 3a: middleware allows /guard when header is present.
 	guardConn, _, err := websocket.DefaultDialer.Dial("ws://127.0.0.1:9696/guard", authHeader)
 	if err != nil {
-		log.Errorf(ctx, log.TagAppDef, "Failed to connect /guard with header: %v", err)
+		log.Errorf(ctx, log.TagAppDef, err, "Failed to connect /guard with header")
 		os.Exit(1)
 	}
 	guardConn.Close()
@@ -245,7 +245,7 @@ func runTest() {
 	badConn, badResp, err := websocket.DefaultDialer.Dial("ws://127.0.0.1:9696/guard", nil)
 	if err == nil {
 		badConn.Close()
-		log.Errorf(ctx, log.TagAppDef, "Expected /guard to reject unauthenticated dial, but it succeeded")
+		log.Errorf(ctx, log.TagAppDef, fmt.Errorf("Expected /guard to reject unauthenticated dial, but it succeeded"), "Expected /guard to reject unauthenticated dial, but it succeeded")
 		os.Exit(1)
 	}
 	if badResp == nil || badResp.StatusCode != http.StatusForbidden {
@@ -253,7 +253,7 @@ func runTest() {
 		if badResp != nil {
 			got = badResp.StatusCode
 		}
-		log.Errorf(ctx, log.TagAppDef, "Expected 403 from /guard without header, got status=%d err=%v", got, err)
+		log.Errorf(ctx, log.TagAppDef, err, "Expected 403 from /guard without header, got status=%d err", got)
 		os.Exit(1)
 	}
 	fmt.Println("Response from server: /guard rejected request without X-App header (status 403)")

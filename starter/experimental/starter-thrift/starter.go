@@ -101,8 +101,14 @@ type SimpleThriftServer struct {
 // configuration. center is the injected governance center the inbound
 // middleware is armed from.
 func NewSimpleThriftServer(cfg Config, proc thrift.TProcessor, center *governance.Center) *SimpleThriftServer {
-	log.Debugf(context.Background(), log.TagAppDef, "thrift server created addr=%s protocol=%s transport=%s",
-		cfg.Addr, cfg.Protocol, cfg.Transport)
+	log.Debug(context.Background(), log.TagAppDef, func() []log.Field {
+		return []log.Field{
+			log.String("addr", cfg.Addr),
+			log.String("protocol", cfg.Protocol),
+			log.String("transport", cfg.Transport),
+			log.Msg("create thrift server success"),
+		}
+	})
 	return &SimpleThriftServer{cfg: cfg, proc: proc, center: center}
 }
 
@@ -198,9 +204,7 @@ func (s *SimpleThriftServer) Run(ctx context.Context, sig gs.ReadySignal) error 
 	<-sig.TriggerAndWait()
 	log.Info(ctx, log.TagAppDef, log.Msg("thrift server starting"))
 	if err = s.svr.Serve(); err != nil {
-		log.Error(ctx, log.TagAppDef,
-			log.Err(err),
-			log.Msg("thrift server failed"))
+		log.Error(ctx, log.TagAppDef, err, log.Msg("thrift server failed"))
 		return errutil.Explain(err, "failed to serve on %s", s.cfg.Addr)
 	}
 	return nil

@@ -64,7 +64,9 @@ func (d RedisDriver) CreateClient(ctx context.Context, c StarterRedigo.Config, p
 func luohuaCommandInterceptor(tag string) StarterRedigo.CommandInterceptor {
 	return func(next StarterRedigo.CommandHandler) StarterRedigo.CommandHandler {
 		return func(ctx context.Context, cmd string, args []any) (any, error) {
-			log.Debugf(ctx, log.TagAppDef, "luohua/redis tag=%s: %s", tag, cmd)
+			log.Debug(ctx, log.TagAppDef, func() []log.Field {
+				return []log.Field{log.String("tag", tag), log.String("cmd", cmd), log.Msg("luohua/redis")}
+			})
 			return next(ctx, cmd, args)
 		}
 	}

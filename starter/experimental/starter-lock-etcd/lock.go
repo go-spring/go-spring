@@ -48,7 +48,13 @@ type etcdLocker struct {
 // never boots with a silently broken lock backend; with Ping off (the default)
 // construction skips the probe.
 func newEtcdLocker(ctx *gs.ContextProvider, c Config) (*etcdLocker, error) {
-	log.Debugf(ctx.Context, log.TagAppDef, "creating etcd locker, endpoints=%v key-prefix=%s", c.Endpoints, c.KeyPrefix)
+	log.Debug(ctx.Context, log.TagAppDef, func() []log.Field {
+		return []log.Field{
+			log.Strings("endpoints", c.Endpoints),
+			log.String("key_prefix", c.KeyPrefix),
+			log.Msg("creating etcd locker"),
+		}
+	})
 
 	if len(c.Endpoints) == 0 {
 		return nil, errutil.Explain(nil, "lock-etcd: endpoints is required")
@@ -56,7 +62,7 @@ func newEtcdLocker(ctx *gs.ContextProvider, c Config) (*etcdLocker, error) {
 
 	tlsCfg, err := c.TLS.BuildClient()
 	if err != nil {
-		log.Errorf(ctx.Context, log.TagAppDef, "lock-etcd: build TLS failed: %v", err)
+		log.Error(ctx.Context, log.TagAppDef, err, log.Msg("lock-etcd: build TLS failed"))
 		return nil, errutil.Explain(err, "lock-etcd: build TLS")
 	}
 
@@ -68,7 +74,7 @@ func newEtcdLocker(ctx *gs.ContextProvider, c Config) (*etcdLocker, error) {
 		TLS:         tlsCfg,
 	})
 	if err != nil {
-		log.Errorf(ctx.Context, log.TagAppDef, "lock-etcd: create client failed: %v", err)
+		log.Error(ctx.Context, log.TagAppDef, err, log.Msg("lock-etcd: create client failed"))
 		return nil, errutil.Explain(err, "lock-etcd: failed to create etcd client")
 	}
 
@@ -79,13 +85,13 @@ func newEtcdLocker(ctx *gs.ContextProvider, c Config) (*etcdLocker, error) {
 		pctx, cancel := context.WithTimeout(ctx.Context, c.DialTimeout)
 		defer cancel()
 		if _, err := cli.Status(pctx, c.Endpoints[0]); err != nil {
-			log.Errorf(pctx, log.TagAppDef, "lock-etcd: startup probe failed for %s: %v", c.Endpoints[0], err)
+			log.Error(pctx, log.TagAppDef, err, log.String("endpoint", c.Endpoints[0]), log.Msg("lock-etcd: startup probe failed"))
 			_ = cli.Close()
 			return nil, errutil.Explain(err, "lock-etcd: startup probe failed for %s", c.Endpoints[0])
 		}
 	}
 
-	log.Infof(ctx.Context, log.TagAppDef, "etcd locker initialized, endpoints=%v", c.Endpoints)
+	log.Info(ctx.Context, log.TagAppDef, log.Strings("endpoints", c.Endpoints), log.Msg("create etcd locker success"))
 	return &etcdLocker{
 		client:    cli,
 		keyPrefix: c.KeyPrefix,

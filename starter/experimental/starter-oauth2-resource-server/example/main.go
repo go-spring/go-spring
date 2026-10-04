@@ -152,6 +152,6 @@ func runTest() {
 }
 
 func fail(format string, args ...any) {
-	log.Errorf(context.Background(), log.TagAppDef, "example: "+format, args...)
+	log.Errorf(context.Background(), log.TagAppDef, fmt.Errorf("example: "+format, args...), "example: "+format, args...)
 	os.Exit(1)
 }

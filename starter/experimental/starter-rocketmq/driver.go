@@ -126,7 +126,7 @@ func emit(level log.Level, msg string, fields map[string]interface{}) {
 	}
 	switch level {
 	case log.ErrorLevel:
-		log.Errorf(ctx, log.TagAppDef, "rocketmq: %s", line)
+		log.Errorf(ctx, log.TagAppDef, fmt.Errorf("rocketmq: %s", line), "rocketmq: %s", line)
 	case log.WarnLevel:
 		log.Warnf(ctx, log.TagAppDef, "rocketmq: %s", line)
 	case log.DebugLevel:

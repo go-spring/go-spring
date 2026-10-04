@@ -153,7 +153,7 @@ func do(method, path, token string) (int, string, string) {
 }
 
 func fail(format string, args ...any) {
-	log.Errorf(context.Background(), log.TagAppDef, format, args...)
+	log.Errorf(context.Background(), log.TagAppDef, fmt.Errorf(format, args...), format, args...)
 	os.Exit(1)
 }
 

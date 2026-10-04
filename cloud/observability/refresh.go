@@ -132,7 +132,7 @@ func RefreshConf(ctx context.Context, fn func(context.Context) error) error {
 		fields = append(fields, log.Err(err), log.Msg("property refresh failed"))
 		log.Warn(ctx, configTag, fields...)
 	} else {
-		fields = append(fields, log.Msg("property refresh completed"))
+		fields = append(fields, log.Msg("refresh properties success"))
 		log.Info(ctx, configTag, fields...)
 	}
 	return err

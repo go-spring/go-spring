@@ -168,45 +168,45 @@ func runTest(s *Service) {
 
 	// Feature 1: String SET/GET.
 	if _, err := redis.String(c.Do("SET", "key", "value")); err != nil {
-		log.Errorf(ctx, log.TagAppDef, "SET failed: %v", err)
+		log.Errorf(ctx, log.TagAppDef, err, "SET failed")
 		os.Exit(1)
 	}
 	v, err := redis.String(c.Do("GET", "key"))
 	if err != nil || v != "value" {
-		log.Errorf(ctx, log.TagAppDef, "GET failed: v=%q err=%v", v, err)
+		log.Errorf(ctx, log.TagAppDef, err, "GET failed: v=%q err", v)
 		os.Exit(1)
 	}
 
 	// Feature 2: INCR counter — reset then increment three times.
 	if _, err := c.Do("DEL", "counter"); err != nil {
-		log.Errorf(ctx, log.TagAppDef, "DEL counter failed: %v", err)
+		log.Errorf(ctx, log.TagAppDef, err, "DEL counter failed")
 		os.Exit(1)
 	}
 	var n int
 	for i := 0; i < 3; i++ {
 		n, err = redis.Int(c.Do("INCR", "counter"))
 		if err != nil {
-			log.Errorf(ctx, log.TagAppDef, "INCR failed: %v", err)
+			log.Errorf(ctx, log.TagAppDef, err, "INCR failed")
 			os.Exit(1)
 		}
 	}
 	if n != 3 {
-		log.Errorf(ctx, log.TagAppDef, "INCR final value expected 3, got %d", n)
+		log.Errorf(ctx, log.TagAppDef, fmt.Errorf("INCR final value expected 3, got %d", n), "INCR final value expected 3, got %d", n)
 		os.Exit(1)
 	}
 
 	// Feature 3: EXPIRE + TTL.
 	if _, err := redis.String(c.Do("SET", "ttl-key", "ttl-value")); err != nil {
-		log.Errorf(ctx, log.TagAppDef, "SET ttl-key failed: %v", err)
+		log.Errorf(ctx, log.TagAppDef, err, "SET ttl-key failed")
 		os.Exit(1)
 	}
 	if _, err := c.Do("EXPIRE", "ttl-key", 30); err != nil {
-		log.Errorf(ctx, log.TagAppDef, "EXPIRE failed: %v", err)
+		log.Errorf(ctx, log.TagAppDef, err, "EXPIRE failed")
 		os.Exit(1)
 	}
 	ttl, err := redis.Int(c.Do("TTL", "ttl-key"))
 	if err != nil || ttl <= 0 || ttl > 30 {
-		log.Errorf(ctx, log.TagAppDef, "TTL out of range: ttl=%v err=%v", ttl, err)
+		log.Errorf(ctx, log.TagAppDef, err, "TTL out of range: ttl=%v err", ttl)
 		os.Exit(1)
 	}
 
@@ -218,12 +218,12 @@ func runTest(s *Service) {
 	dc := s.DiscoveryRedis.Get()
 	defer func() { _ = dc.Close() }()
 	if _, err := redis.String(dc.Do("SET", "disc-key", "disc-value")); err != nil {
-		log.Errorf(ctx, log.TagAppDef, "discovery SET failed: %v", err)
+		log.Errorf(ctx, log.TagAppDef, err, "discovery SET failed")
 		os.Exit(1)
 	}
 	dv, err := redis.String(dc.Do("GET", "disc-key"))
 	if err != nil || dv != "disc-value" {
-		log.Errorf(ctx, log.TagAppDef, "discovery GET failed: v=%q err=%v", dv, err)
+		log.Errorf(ctx, log.TagAppDef, err, "discovery GET failed: v=%q err", dv)
 		os.Exit(1)
 	}
 	fmt.Println("Response from discovered server:", dv)
@@ -233,7 +233,7 @@ func runTest(s *Service) {
 	// read straight off the autowired *Pool (the embedded
 	// *redis.Pool) with no extra wiring.
 	if _, err := c.Do("PING"); err != nil {
-		log.Errorf(ctx, log.TagAppDef, "health ping failed: %v", err)
+		log.Errorf(ctx, log.TagAppDef, err, "health ping failed")
 		os.Exit(1)
 	}
 	stats := s.Redis.Stats()

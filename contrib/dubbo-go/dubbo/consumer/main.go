@@ -132,12 +132,12 @@ func runTest(c *Consumer) {
 	want := "Hello, Dubbo-Go!"
 	resp, err := c.Greet(ctx, want)
 	if err != nil {
-		log.Errorf(ctx, log.TagAppDef, "error calling %s: %v", greet.MethodGreet, err)
+		log.Errorf(ctx, log.TagAppDef, err, "error calling %s", greet.MethodGreet)
 		os.Exit(1)
 	}
 	fmt.Println("Response from discovered provider:", resp)
 	if resp != want {
-		log.Errorf(ctx, log.TagAppDef, "unexpected greet body: %q", resp)
+		log.Errorf(ctx, log.TagAppDef, fmt.Errorf("unexpected greet body: %q", resp), "unexpected greet body: %q", resp)
 		os.Exit(1)
 	}
 
@@ -148,11 +148,11 @@ func runTest(c *Consumer) {
 		name := fmt.Sprintf("Dubbo-Go caller #%d", i)
 		got, err := c.Greet(ctx, name)
 		if err != nil {
-			log.Errorf(ctx, log.TagAppDef, "error on greet #%d: %v", i, err)
+			log.Errorf(ctx, log.TagAppDef, err, "error on greet #%d", i)
 			os.Exit(1)
 		}
 		if got != name {
-			log.Errorf(ctx, log.TagAppDef, "greet #%d echoed %q, want %q", i, got, name)
+			log.Errorf(ctx, log.TagAppDef, fmt.Errorf("greet #%d echoed %q, want %q", i, got, name), "greet #%d echoed %q, want %q", i, got, name)
 			os.Exit(1)
 		}
 		log.Infof(ctx, log.TagAppDef, "greet #%d ok: %q", i, got)

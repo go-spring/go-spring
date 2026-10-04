@@ -172,7 +172,7 @@ func (s *subscriber) Subscribe(_ context.Context, handler messaging.Handler) err
 				return handler(attemptCtx, fromMessageExt(ext))
 			})
 			if herr != nil {
-				log.Errorf(msgCtx, log.TagAppDef, "rocketmq driver handler error on %q: %v", ext.Topic, herr)
+				log.Error(msgCtx, log.TagAppDef, herr, log.String("topic", ext.Topic), log.Msg("rocketmq driver handler failed"))
 				return consumer.ConsumeRetryLater, herr
 			}
 		}

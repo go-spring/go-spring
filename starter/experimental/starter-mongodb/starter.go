@@ -158,7 +158,7 @@ func newClient(ctx *gs.ContextProvider, c Config, discoveryLabel string,
 	}
 	tlsCfg, err := c.TLS.BuildClient()
 	if err != nil {
-		log.Error(cctx, log.TagAppDef, log.Err(err), log.Msg("mongodb: build TLS failed"))
+		log.Error(cctx, log.TagAppDef, err, log.Msg("mongodb: build TLS failed"))
 		return nil, errutil.Explain(err, "mongodb: build TLS")
 	}
 	if tlsCfg != nil {
@@ -176,7 +176,7 @@ func newClient(ctx *gs.ContextProvider, c Config, discoveryLabel string,
 	var baseDial func(ctx context.Context, network, address string) (net.Conn, error)
 	pool, err := newPickPool(ctx.Context, c, backend)
 	if err != nil {
-		log.Error(cctx, log.TagAppDef, log.Err(err), log.Msg("mongodb: build discovery resolver failed"))
+		log.Error(cctx, log.TagAppDef, err, log.Msg("mongodb: build discovery resolver failed"))
 		return nil, err
 	}
 	if pool != nil {
@@ -208,7 +208,7 @@ func newClient(ctx *gs.ContextProvider, c Config, discoveryLabel string,
 
 	raw, err := mongo.Connect(opts)
 	if err != nil {
-		log.Error(cctx, log.TagAppDef, log.Err(err), log.Msg("mongodb: connect failed"))
+		log.Error(cctx, log.TagAppDef, err, log.Msg("mongodb: connect failed"))
 		return nil, errutil.Explain(err, "mongodb: create client")
 	}
 	// NewClient resolves the executor off the governance bundle and stores the
@@ -241,12 +241,12 @@ func newClient(ctx *gs.ContextProvider, c Config, discoveryLabel string,
 		pingCtx, cancel := pingContext(ctx.Context, c.ConnectTimeout)
 		defer cancel()
 		if err := HealthCheck(pingCtx, w); err != nil {
-			log.Error(cctx, log.TagAppDef, log.Err(err), log.Msg("mongodb: ping failed"))
+			log.Error(cctx, log.TagAppDef, err, log.Msg("mongodb: ping failed"))
 			_ = w.Destroy()
 			return nil, errutil.Explain(err, "mongodb: ping %s", c.URI)
 		}
 	}
-	log.Info(cctx, log.TagAppDef, log.Msg("mongodb client initialized"))
+	log.Info(cctx, log.TagAppDef, log.Msg("init mongodb client success"))
 	return w, nil
 }
 

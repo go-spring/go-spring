@@ -184,16 +184,26 @@ func Warnf(ctx context.Context, tag *Tag, format string, args ...any) {
 	}
 }
 
-// Error logs structured fields at ErrorLevel.
-func Error(ctx context.Context, tag *Tag, fields ...Field) {
+// Error logs an error at ErrorLevel. A non-nil err is emitted under the fixed
+// error key; a nil err emits no error field.
+func Error(ctx context.Context, tag *Tag, err error, fields ...Field) {
 	if l := getLogger(tag); l.GetLevel().Enable(ErrorLevel) {
+		if err != nil {
+			fields = append([]Field{Err(err)}, fields...)
+		}
 		record(ctx, ErrorLevel, tag.tag, l, 2, fields...)
 	}
 }
 
-// Errorf logs a formatted message at ErrorLevel.
-func Errorf(ctx context.Context, tag *Tag, format string, args ...any) {
+// Errorf logs an error with a formatted message at ErrorLevel. A non-nil err
+// is emitted under the fixed error key; a nil err emits no error field.
+func Errorf(ctx context.Context, tag *Tag, err error, format string, args ...any) {
 	if l := getLogger(tag); l.GetLevel().Enable(ErrorLevel) {
+		if err != nil {
+			fields := append([]Field{Err(err)}, Msgf(format, args...))
+			record(ctx, ErrorLevel, tag.tag, l, 2, fields...)
+			return
+		}
 		record(ctx, ErrorLevel, tag.tag, l, 2, Msgf(format, args...))
 	}
 }

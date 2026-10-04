@@ -155,7 +155,7 @@ func newEtcdBackend(c EtcdConfig, name string) (*etcdBackend, error) {
 		TLS:         tlsCfg,
 	})
 	if err != nil {
-		log.Errorf(context.Background(), starterTag, "create etcd client for endpoints=%v failed: %v", c.Endpoints, err)
+		log.Error(context.Background(), starterTag, err, log.Strings("endpoints", c.Endpoints), log.Msg("create etcd client failed"))
 		return nil, errutil.Explain(err, "discovery-etcd: failed to create etcd client")
 	}
 	if c.Ping {

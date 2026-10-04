@@ -127,45 +127,45 @@ func runTest(s *Service) {
 
 	// Feature 1: String SET/GET.
 	if _, err := s.Redis.Set(ctx, "key", "value", 0).Result(); err != nil {
-		log.Errorf(ctx, log.TagAppDef, "SET failed: %v", err)
+		log.Errorf(ctx, log.TagAppDef, err, "SET failed")
 		os.Exit(1)
 	}
 	v, err := s.Redis.Get(ctx, "key").Result()
 	if err != nil || v != "value" {
-		log.Errorf(ctx, log.TagAppDef, "GET failed: v=%q err=%v", v, err)
+		log.Errorf(ctx, log.TagAppDef, err, "GET failed: v=%q err", v)
 		os.Exit(1)
 	}
 
 	// Feature 2: INCR counter — reset then increment three times.
 	if _, err := s.Redis.Del(ctx, "counter").Result(); err != nil {
-		log.Errorf(ctx, log.TagAppDef, "DEL counter failed: %v", err)
+		log.Errorf(ctx, log.TagAppDef, err, "DEL counter failed")
 		os.Exit(1)
 	}
 	var n int64
 	for i := 0; i < 3; i++ {
 		n, err = s.Redis.Incr(ctx, "counter").Result()
 		if err != nil {
-			log.Errorf(ctx, log.TagAppDef, "INCR failed: %v", err)
+			log.Errorf(ctx, log.TagAppDef, err, "INCR failed")
 			os.Exit(1)
 		}
 	}
 	if n != 3 {
-		log.Errorf(ctx, log.TagAppDef, "INCR final value expected 3, got %d", n)
+		log.Errorf(ctx, log.TagAppDef, fmt.Errorf("INCR final value expected 3, got %d", n), "INCR final value expected 3, got %d", n)
 		os.Exit(1)
 	}
 
 	// Feature 3: EXPIRE + TTL.
 	if _, err := s.Redis.Set(ctx, "ttl-key", "ttl-value", 0).Result(); err != nil {
-		log.Errorf(ctx, log.TagAppDef, "SET ttl-key failed: %v", err)
+		log.Errorf(ctx, log.TagAppDef, err, "SET ttl-key failed")
 		os.Exit(1)
 	}
 	if _, err := s.Redis.Expire(ctx, "ttl-key", 30*time.Second).Result(); err != nil {
-		log.Errorf(ctx, log.TagAppDef, "EXPIRE failed: %v", err)
+		log.Errorf(ctx, log.TagAppDef, err, "EXPIRE failed")
 		os.Exit(1)
 	}
 	ttl, err := s.Redis.TTL(ctx, "ttl-key").Result()
 	if err != nil || ttl <= 0 || ttl > 30*time.Second {
-		log.Errorf(ctx, log.TagAppDef, "TTL out of range: ttl=%v err=%v", ttl, err)
+		log.Errorf(ctx, log.TagAppDef, err, "TTL out of range: ttl=%v err", ttl)
 		os.Exit(1)
 	}
 
@@ -175,12 +175,12 @@ func runTest(s *Service) {
 	// registered discovery backend (service-name=redis-cluster), not from
 	// conf's dummy addr, so a successful round-trip proves discovery is wired.
 	if _, err := s.DiscoveryRedis.Set(ctx, "disc-key", "disc-value", 0).Result(); err != nil {
-		log.Errorf(ctx, log.TagAppDef, "discovery SET failed: %v", err)
+		log.Errorf(ctx, log.TagAppDef, err, "discovery SET failed")
 		os.Exit(1)
 	}
 	dv, err := s.DiscoveryRedis.Get(ctx, "disc-key").Result()
 	if err != nil || dv != "disc-value" {
-		log.Errorf(ctx, log.TagAppDef, "discovery GET failed: v=%q err=%v", dv, err)
+		log.Errorf(ctx, log.TagAppDef, err, "discovery GET failed: v=%q err", dv)
 		os.Exit(1)
 	}
 	fmt.Println("Response from discovered server:", dv)
@@ -190,7 +190,7 @@ func runTest(s *Service) {
 	// monitoring — no starter wrapper needed, they are read straight off the
 	// autowired client.
 	if err := s.Redis.Ping(ctx).Err(); err != nil {
-		log.Errorf(ctx, log.TagAppDef, "health ping failed: %v", err)
+		log.Errorf(ctx, log.TagAppDef, err, "health ping failed")
 		os.Exit(1)
 	}
 	stats := s.Redis.PoolStats()
@@ -201,12 +201,12 @@ func runTest(s *Service) {
 	// conf) connects to the master resolved via the sentinels, but is still a
 	// plain *redis.Client, so the command surface is identical to single mode.
 	if _, err := s.SentinelRedis.Set(ctx, "sentinel-key", "sentinel-value", 0).Result(); err != nil {
-		log.Errorf(ctx, log.TagAppDef, "sentinel SET failed: %v", err)
+		log.Errorf(ctx, log.TagAppDef, err, "sentinel SET failed")
 		os.Exit(1)
 	}
 	sv, err := s.SentinelRedis.Get(ctx, "sentinel-key").Result()
 	if err != nil || sv != "sentinel-value" {
-		log.Errorf(ctx, log.TagAppDef, "sentinel GET failed: v=%q err=%v", sv, err)
+		log.Errorf(ctx, log.TagAppDef, err, "sentinel GET failed: v=%q err", sv)
 		os.Exit(1)
 	}
 	fmt.Println("Response from sentinel master:", sv)
@@ -216,12 +216,12 @@ func runTest(s *Service) {
 	// slots; it is injected as the same *StarterGoRedis.Client wrapper type the
 	// other modes use. redisotel attaches its pool metrics per node via OnNewNode.
 	if _, err := s.ClusterRedis.Set(ctx, "cluster-key", "cluster-value", 0).Result(); err != nil {
-		log.Errorf(ctx, log.TagAppDef, "cluster SET failed: %v", err)
+		log.Errorf(ctx, log.TagAppDef, err, "cluster SET failed")
 		os.Exit(1)
 	}
 	cv, err := s.ClusterRedis.Get(ctx, "cluster-key").Result()
 	if err != nil || cv != "cluster-value" {
-		log.Errorf(ctx, log.TagAppDef, "cluster GET failed: v=%q err=%v", cv, err)
+		log.Errorf(ctx, log.TagAppDef, err, "cluster GET failed: v=%q err", cv)
 		os.Exit(1)
 	}
 	fmt.Println("Response from cluster:", cv)

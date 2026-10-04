@@ -728,7 +728,8 @@ func (l *httpAccessLog) Emit(ff finalizeFacts) {
 
 	switch {
 	case resp.status >= http.StatusInternalServerError:
-		log.Error(ctx, accessLogTag, fields...)
+		err := errutil.Explain(nil, "upstream returned status %d", resp.status)
+		log.Error(ctx, accessLogTag, err, fields...)
 	case resp.status >= http.StatusBadRequest:
 		log.Warn(ctx, accessLogTag, fields...)
 	default:

@@ -130,7 +130,7 @@ func (s *HTTPSource) Subscribe(cb func(Config)) { s.push.Subscribe(cb) }
 func (s *HTTPSource) poll() {
 	cfg, err := s.fetch(context.Background())
 	if err != nil {
-		log.Errorf(context.Background(), starterTag, "governance http source: poll %s failed (keeping last good config): %v", s.url, err)
+		log.Error(context.Background(), starterTag, err, log.String("url", s.url), log.Msg("governance http source: poll failed (keeping last good config)"))
 		return
 	}
 	if reflect.DeepEqual(s.push.Snapshot(), cfg) {

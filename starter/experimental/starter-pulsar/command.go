@@ -87,7 +87,7 @@ func newMetricsServer(cfg MetricsConfig) (prometheus.Registerer, *http.Server) {
 	}
 	go func() {
 		if err := srv.ListenAndServe(); err != nil && !errutil.IsServerClosed(err) {
-			log.Warnf(context.Background(), log.TagAppDef, "pulsar: metrics server exited unexpectedly: %v", err)
+			log.Warn(context.Background(), log.TagAppDef, log.Err(err), log.Msg("pulsar: metrics server exited unexpectedly"))
 		}
 	}()
 	return reg, srv
@@ -227,7 +227,7 @@ func AttachGovernance(cl pulsar.Client, url string, params cloud.ClientParams) {
 func closeResilience(cl pulsar.Client) {
 	if v, ok := clientGuards.LoadAndDelete(cl); ok {
 		if err := v.(*clientGuard).exec.Close(); err != nil {
-			log.Warnf(context.Background(), log.TagAppDef, "pulsar: resilience executor close failed: %v", err)
+			log.Warn(context.Background(), log.TagAppDef, log.Err(err), log.Msg("pulsar: resilience executor close failed"))
 		}
 	}
 }

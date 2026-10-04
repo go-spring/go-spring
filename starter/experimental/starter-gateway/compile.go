@@ -183,9 +183,10 @@ func (t *RouteTable) Init() error {
 		ids = append(ids, id)
 	}
 	sort.Strings(ids)
-	log.Warnf(t.ctx, log.TagAppDef,
-		"gateway: %d route(s) configured but spring.gateway.server.addr is not set, they will not be served: %s",
-		len(ids), strings.Join(ids, ", "))
+	log.Warn(t.ctx, log.TagAppDef,
+		log.Int("routes", len(ids)),
+		log.String("ids", strings.Join(ids, ", ")),
+		log.Msg("gateway: routes configured but spring.gateway.server.addr is not set, they will not be served"))
 	return nil
 }
 
@@ -206,7 +207,7 @@ func (t *RouteTable) current() []*Route {
 			// Keep serving the previous table: a bad hot edit must never take the
 			// gateway down. Surface it loudly via log + metric.
 			t.obs.reloadError(t.ctx)
-			log.Errorf(t.ctx, log.TagAppDef, "gateway: route reload failed, keeping previous table: %v", err)
+			log.Error(t.ctx, log.TagAppDef, err, log.Msg("gateway: route reload failed, keeping previous table"))
 			// Adopt the pointer so we do not retry the same broken map every request.
 			atomic.StoreUintptr(&t.lastPtr, reflect.ValueOf(raw).Pointer())
 		}

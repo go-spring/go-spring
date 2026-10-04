@@ -157,44 +157,44 @@ func runTest(s *Service) {
 
 	// Feature 1: String SET/GET.
 	if err := s.Memcached.Set(ctx, &memcache.Item{Key: "key", Value: []byte("value")}); err != nil {
-		log.Errorf(ctx, log.TagAppDef, "SET failed: %v", err)
+		log.Errorf(ctx, log.TagAppDef, err, "SET failed")
 		os.Exit(1)
 	}
 	item, err := s.Memcached.Get(ctx, "key")
 	if err != nil {
-		log.Errorf(ctx, log.TagAppDef, "GET failed: err=%v", err)
+		log.Errorf(ctx, log.TagAppDef, err, "GET failed: err")
 		os.Exit(1)
 	}
 	if string(item.Value) != "value" {
-		log.Errorf(ctx, log.TagAppDef, "GET mismatch: v=%q", string(item.Value))
+		log.Errorf(ctx, log.TagAppDef, fmt.Errorf("GET mismatch: v=%q", string(item.Value)), "GET mismatch: v=%q", string(item.Value))
 		os.Exit(1)
 	}
 
 	// Feature 2: INCR counter — seed then increment three times.
 	if err := s.Memcached.Set(ctx, &memcache.Item{Key: "counter", Value: []byte("0")}); err != nil {
-		log.Errorf(ctx, log.TagAppDef, "SET counter failed: %v", err)
+		log.Errorf(ctx, log.TagAppDef, err, "SET counter failed")
 		os.Exit(1)
 	}
 	var n uint64
 	for i := 0; i < 3; i++ {
 		n, err = s.Memcached.Increment(ctx, "counter", 1)
 		if err != nil {
-			log.Errorf(ctx, log.TagAppDef, "INCR failed: %v", err)
+			log.Errorf(ctx, log.TagAppDef, err, "INCR failed")
 			os.Exit(1)
 		}
 	}
 	if n != 3 {
-		log.Errorf(ctx, log.TagAppDef, "INCR final value expected 3, got %d", n)
+		log.Errorf(ctx, log.TagAppDef, fmt.Errorf("INCR final value expected 3, got %d", n), "INCR final value expected 3, got %d", n)
 		os.Exit(1)
 	}
 
 	// Feature 3: DELETE + cache-miss GET.
 	if err := s.Memcached.Delete(ctx, "key"); err != nil {
-		log.Errorf(ctx, log.TagAppDef, "DELETE failed: %v", err)
+		log.Errorf(ctx, log.TagAppDef, err, "DELETE failed")
 		os.Exit(1)
 	}
 	if _, err := s.Memcached.Get(ctx, "key"); !errors.Is(err, memcache.ErrCacheMiss) {
-		log.Errorf(ctx, log.TagAppDef, "expected cache miss after delete, got err=%v", err)
+		log.Errorf(ctx, log.TagAppDef, err, "expected cache miss after delete, got err")
 		os.Exit(1)
 	}
 
@@ -204,12 +204,12 @@ func runTest(s *Service) {
 	// registered discovery backend (service-name=memcached-cluster), not from
 	// conf, so a successful round-trip proves discovery is wired.
 	if err := s.DiscoveryMemcached.Set(ctx, &memcache.Item{Key: "disc-key", Value: []byte("disc-value")}); err != nil {
-		log.Errorf(ctx, log.TagAppDef, "discovery SET failed: %v", err)
+		log.Errorf(ctx, log.TagAppDef, err, "discovery SET failed")
 		os.Exit(1)
 	}
 	discItem, err := s.DiscoveryMemcached.Get(ctx, "disc-key")
 	if err != nil || string(discItem.Value) != "disc-value" {
-		log.Errorf(ctx, log.TagAppDef, "discovery GET failed: err=%v", err)
+		log.Errorf(ctx, log.TagAppDef, err, "discovery GET failed: err")
 		os.Exit(1)
 	}
 	fmt.Println("Response from discovered server:", string(discItem.Value))
@@ -217,7 +217,7 @@ func runTest(s *Service) {
 	// Feature 5: health check. The client's Ping probes every configured server
 	// and is the readiness signal — read straight off the autowired client.
 	if err := s.Memcached.Ping(ctx); err != nil {
-		log.Errorf(ctx, log.TagAppDef, "health ping failed: %v", err)
+		log.Errorf(ctx, log.TagAppDef, err, "health ping failed")
 		os.Exit(1)
 	}
 

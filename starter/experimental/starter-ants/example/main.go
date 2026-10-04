@@ -95,20 +95,20 @@ func runTest(s *Service) {
 			atomic.AddInt64(&counter, 1)
 		})
 		if err != nil {
-			log.Errorf(ctx, log.TagAppDef, "CPU submit failed: %v", err)
+			log.Errorf(ctx, log.TagAppDef, err, "CPU submit failed")
 			os.Exit(1)
 		}
 	}
 	wg.Wait()
 	if atomic.LoadInt64(&counter) != 100 {
-		log.Errorf(ctx, log.TagAppDef, "expected 100 tasks to run, got %d", counter)
+		log.Errorf(ctx, log.TagAppDef, fmt.Errorf("expected 100 tasks to run, got %d", counter), "expected 100 tasks to run, got %d", counter)
 		os.Exit(1)
 	}
 
 	// Feature 2: instance isolation — the two named pools are fully independent,
 	// which is proven by their distinct capacities coming from configuration.
 	if s.IO.Cap() != 2 || s.CPU.Cap() != 8 {
-		log.Errorf(ctx, log.TagAppDef, "unexpected caps: io=%d cpu=%d", s.IO.Cap(), s.CPU.Cap())
+		log.Errorf(ctx, log.TagAppDef, fmt.Errorf("unexpected caps: io=%d cpu=%d", s.IO.Cap(), s.CPU.Cap()), "unexpected caps: io=%d cpu=%d", s.IO.Cap(), s.CPU.Cap())
 		os.Exit(1)
 	}
 
@@ -118,14 +118,14 @@ func runTest(s *Service) {
 	block := make(chan struct{})
 	for i := 0; i < 2; i++ {
 		if err := s.IO.Submit(func() { <-block }); err != nil {
-			log.Errorf(ctx, log.TagAppDef, "IO submit to fill pool failed: %v", err)
+			log.Errorf(ctx, log.TagAppDef, err, "IO submit to fill pool failed")
 			os.Exit(1)
 		}
 	}
 	// Give the workers a moment to pick up both blocking tasks.
 	time.Sleep(time.Millisecond * 50)
 	if err := s.IO.Submit(func() {}); err == nil {
-		log.Errorf(ctx, log.TagAppDef, "expected error on full nonblocking pool, got nil")
+		log.Errorf(ctx, log.TagAppDef, fmt.Errorf("expected error on full nonblocking pool, got nil"), "expected error on full nonblocking pool, got nil")
 		os.Exit(1)
 	}
 	fmt.Println("Nonblocking pool correctly rejected submit")
@@ -144,14 +144,14 @@ func runTest(s *Service) {
 		defer pwg.Done()
 		panic("boom")
 	}); err != nil {
-		log.Errorf(ctx, log.TagAppDef, "submit panicking task failed: %v", err)
+		log.Errorf(ctx, log.TagAppDef, err, "submit panicking task failed")
 		os.Exit(1)
 	}
 	pwg.Wait()
 	// Give the deferred panic handler a moment to run after Done returns.
 	time.Sleep(time.Millisecond * 50)
 	if atomic.LoadInt64(&panics) == 0 {
-		log.Errorf(ctx, log.TagAppDef, "expected panic handler to fire, got 0")
+		log.Errorf(ctx, log.TagAppDef, fmt.Errorf("expected panic handler to fire, got 0"), "expected panic handler to fire, got 0")
 		os.Exit(1)
 	}
 	fmt.Println("Panic handler fired:", atomic.LoadInt64(&panics), "times")

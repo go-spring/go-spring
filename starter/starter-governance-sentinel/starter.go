@@ -58,7 +58,7 @@ func init() {
 		Name(SentinelName).
 		Export(gs.As[resilience.Driver]()).
 		Caller(1)
-	log.Infof(context.Background(), log.TagAppDef, "registered sentinel resilience driver")
+	log.Info(context.Background(), log.TagAppDef, log.Msg("registered sentinel resilience driver"))
 }
 
 // SentinelName is the name this backend answers to in the governance document.

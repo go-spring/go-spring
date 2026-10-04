@@ -100,36 +100,36 @@ func main() {
 func runTest(s *Service) {
 	ctx := context.Background()
 	if err := StarterMongoDB.HealthCheck(ctx, s.Mongo); err != nil {
-		log.Errorf(ctx, log.TagAppDef, "HealthCheck failed: %v", err)
+		log.Errorf(ctx, log.TagAppDef, err, "HealthCheck failed")
 		os.Exit(1)
 	}
 
 	// Drop the collection first so this smoke test is deterministic
 	// and idempotent across repeated runs.
 	if err := s.coll().Drop(ctx); err != nil {
-		log.Errorf(ctx, log.TagAppDef, "DROP failed: %v", err)
+		log.Errorf(ctx, log.TagAppDef, err, "DROP failed")
 		os.Exit(1)
 	}
 
 	// Feature 1: InsertOne.
 	insertRes, err := s.coll().InsertOne(ctx, bson.M{"key": "key", "value": "value"})
 	if err != nil {
-		log.Errorf(ctx, log.TagAppDef, "INSERT failed: %v", err)
+		log.Errorf(ctx, log.TagAppDef, err, "INSERT failed")
 		os.Exit(1)
 	}
 	if insertRes == nil || insertRes.InsertedID == nil {
-		log.Errorf(ctx, log.TagAppDef, "INSERT returned no InsertedID")
+		log.Errorf(ctx, log.TagAppDef, fmt.Errorf("INSERT returned no InsertedID"), "INSERT returned no InsertedID")
 		os.Exit(1)
 	}
 
 	// Feature 2: FindOne — value should equal "value".
 	var res bson.M
 	if err = s.coll().FindOne(ctx, bson.M{"key": "key"}).Decode(&res); err != nil {
-		log.Errorf(ctx, log.TagAppDef, "FIND failed: %v", err)
+		log.Errorf(ctx, log.TagAppDef, err, "FIND failed")
 		os.Exit(1)
 	}
 	if fmt.Sprint(res["value"]) != "value" {
-		log.Errorf(ctx, log.TagAppDef, "FIND value mismatch: got %v", res["value"])
+		log.Errorf(ctx, log.TagAppDef, fmt.Errorf("FIND value mismatch: got %v", res["value"]), "FIND value mismatch: got %v", res["value"])
 		os.Exit(1)
 	}
 
@@ -139,20 +139,20 @@ func runTest(s *Service) {
 		bson.M{"$set": bson.M{"value": "value2"}},
 	)
 	if err != nil {
-		log.Errorf(ctx, log.TagAppDef, "UPDATE failed: %v", err)
+		log.Errorf(ctx, log.TagAppDef, err, "UPDATE failed")
 		os.Exit(1)
 	}
 	if updateRes.ModifiedCount != 1 {
-		log.Errorf(ctx, log.TagAppDef, "UPDATE ModifiedCount expected 1, got %d", updateRes.ModifiedCount)
+		log.Errorf(ctx, log.TagAppDef, fmt.Errorf("UPDATE ModifiedCount expected 1, got %d", updateRes.ModifiedCount), "UPDATE ModifiedCount expected 1, got %d", updateRes.ModifiedCount)
 		os.Exit(1)
 	}
 	var res2 bson.M
 	if err = s.coll().FindOne(ctx, bson.M{"key": "key"}).Decode(&res2); err != nil {
-		log.Errorf(ctx, log.TagAppDef, "FIND after UPDATE failed: %v", err)
+		log.Errorf(ctx, log.TagAppDef, err, "FIND after UPDATE failed")
 		os.Exit(1)
 	}
 	if fmt.Sprint(res2["value"]) != "value2" {
-		log.Errorf(ctx, log.TagAppDef, "FIND after UPDATE value mismatch: got %v", res2["value"])
+		log.Errorf(ctx, log.TagAppDef, fmt.Errorf("FIND after UPDATE value mismatch: got %v", res2["value"]), "FIND after UPDATE value mismatch: got %v", res2["value"])
 		os.Exit(1)
 	}
 
@@ -163,20 +163,20 @@ func runTest(s *Service) {
 	// dummy uri, so a successful round-trip proves discovery is wired.
 	discColl := s.DiscMongo.Database("test").Collection("disc")
 	if err := discColl.Drop(ctx); err != nil {
-		log.Errorf(ctx, log.TagAppDef, "discovery DROP failed: %v", err)
+		log.Errorf(ctx, log.TagAppDef, err, "discovery DROP failed")
 		os.Exit(1)
 	}
 	if _, err := discColl.InsertOne(ctx, bson.M{"key": "key", "value": "disc-value"}); err != nil {
-		log.Errorf(ctx, log.TagAppDef, "discovery INSERT failed: %v", err)
+		log.Errorf(ctx, log.TagAppDef, err, "discovery INSERT failed")
 		os.Exit(1)
 	}
 	var discRes bson.M
 	if err := discColl.FindOne(ctx, bson.M{"key": "key"}).Decode(&discRes); err != nil {
-		log.Errorf(ctx, log.TagAppDef, "discovery FIND failed: %v", err)
+		log.Errorf(ctx, log.TagAppDef, err, "discovery FIND failed")
 		os.Exit(1)
 	}
 	if fmt.Sprint(discRes["value"]) != "disc-value" {
-		log.Errorf(ctx, log.TagAppDef, "discovery FIND value mismatch: got %v", discRes["value"])
+		log.Errorf(ctx, log.TagAppDef, fmt.Errorf("discovery FIND value mismatch: got %v", discRes["value"]), "discovery FIND value mismatch: got %v", discRes["value"])
 		os.Exit(1)
 	}
 	fmt.Println("Response from discovered server:", discRes["value"])

@@ -152,7 +152,7 @@ func runTest() {
 	mem := demoDriver
 	db := demoDB
 	fail := func(format string, args ...any) {
-		log.Errorf(ctx, log.TagAppDef, format, args...)
+		log.Errorf(ctx, log.TagAppDef, fmt.Errorf(format, args...), format, args...)
 		os.Exit(1)
 	}
 

@@ -161,7 +161,7 @@ func (s *Server) Run(ctx context.Context, sig gs.ReadySignal) error {
 // http.Server.Shutdown so the drain rides the shutdown context, and waits for
 // the poller to exit.
 func (s *Server) Stop(ctx context.Context) error {
-	log.Infof(ctx, log.TagAppDef, "admin-ui server shutting down")
+	log.Info(ctx, log.TagAppDef, log.Msg("admin-ui server shutting down"))
 	if s.stop != nil {
 		// Idempotent close guard — Stop is called at most once by the framework,
 		// but a nil-safety close is cheap and defensive.
@@ -409,9 +409,9 @@ func (s *Server) newHandler() http.Handler {
 
 	guard := security.Guard{Token: s.Config.Token, Username: s.Config.Username, Password: s.Config.Password}
 	if !guard.Enabled() && !netutil.IsLoopback(s.Config.Addr) {
-		log.Warnf(context.Background(), log.TagAppDef,
-			"admin-ui server listening on %q without authentication; set ${spring.admin-ui.token} or ${spring.admin-ui.username}/${spring.admin-ui.password}",
-			s.Config.Addr)
+		log.Warn(context.Background(), log.TagAppDef,
+			log.String("addr", s.Config.Addr),
+			log.Msg("admin-ui server listening without authentication; set ${spring.admin-ui.token} or ${spring.admin-ui.username}/${spring.admin-ui.password}"))
 	}
 	return guard.Wrap(mux)
 }

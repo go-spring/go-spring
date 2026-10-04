@@ -31,7 +31,7 @@ framework binds each tag to the most specific configured logger and rebinds atom
 
 	log.Info(ctx, TagRequestIn,
 		log.String("user_id", "10001"),
-		log.Msg("login succeeded"),
+		log.Msg("login success"),
 	)
 
 Trace and Debug take a lazy field builder so level-disabled call sites allocate nothing:

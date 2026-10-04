@@ -224,7 +224,7 @@ func runTest(r *Runner) {
 }
 
 func fail(ctx context.Context, format string, args ...any) {
-	log.Errorf(ctx, log.TagAppDef, format, args...)
+	log.Errorf(ctx, log.TagAppDef, fmt.Errorf(format, args...), format, args...)
 	os.Exit(1)
 }
 

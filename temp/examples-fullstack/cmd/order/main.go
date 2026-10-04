@@ -167,7 +167,7 @@ func (a *orderApp) placeOrder(w http.ResponseWriter, r *http.Request) {
 		log.Warnf(ctx, bizTag, "saga %s compensated: %v", sagaID, err)
 		writeJSON(w, http.StatusConflict, `{"status":"compensated","saga":"`+sagaID+`"}`)
 	default:
-		log.Errorf(ctx, bizTag, "saga %s failed: status=%s err=%v", sagaID, res.Status, err)
+		log.Errorf(ctx, bizTag, err, "saga %s failed: status=%s err", sagaID, res.Status)
 		writeJSON(w, http.StatusInternalServerError, `{"status":"`+res.Status.String()+`","saga":"`+sagaID+`"}`)
 	}
 }

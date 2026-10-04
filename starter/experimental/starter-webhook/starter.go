@@ -104,7 +104,13 @@ func newNotifier(ctx *gs.ContextProvider, name string, c Config, center *governa
 	if _, _, err := buildPayload(c.Channel, &Notification{}, c.Secret, time.Now()); err != nil {
 		return nil, err
 	}
-	log.Debugf(ctx.Context, log.TagAppDef, "creating webhook notifier url=%s channel=%s", c.URL, c.Channel)
+	log.Debug(ctx.Context, log.TagAppDef, func() []log.Field {
+		return []log.Field{
+			log.String("url", c.URL),
+			log.String("channel", c.Channel),
+			log.Msg("creating webhook notifier"),
+		}
+	})
 
 	// Governance is applied HERE, in the constructor: the bundle is the single
 	// composition point ([cloud.ClientParams.ExecutorFor]) that turns the

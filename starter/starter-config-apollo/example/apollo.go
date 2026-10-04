@@ -55,10 +55,14 @@ func (s *apolloStore) get() (string, int64) {
 
 var store = &apolloStore{message: "hello-from-apollo"}
 
-// mockConfigService serves the endpoints agollo drives: /services/config (meta
-// service discovery), /configfiles/json/{appId}/{cluster}/{ns} (cold load),
-// /configs/{appId}/{cluster}/{ns} (the re-fetch after a notification) and
-// /notifications/v2 (the long poll). POST /publish is a knob for manual runs.
+// mockConfigService serves the endpoints agollo drives:
+//
+//	/services/config (meta service discovery),
+//	/configfiles/json/{appId}/{cluster}/{ns} (cold load),
+//	/configs/{appId}/{cluster}/{ns} (the re-fetch after a notification) ,
+//	/notifications/v2 (the long poll).
+//
+// POST /publish is a knob for manual runs.
 func mockConfigService() {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
@@ -99,7 +103,8 @@ func notifyLongPoll(w http.ResponseWriter, r *http.Request) {
 		NamespaceName  string `json:"namespaceName"`
 		NotificationID int64  `json:"notificationId"`
 	}
-	if err := json.Unmarshal([]byte(r.URL.Query().Get("notifications")), &notifies); err != nil || len(notifies) == 0 {
+	notifications := r.URL.Query().Get("notifications")
+	if err := json.Unmarshal([]byte(notifications), &notifies); err != nil || len(notifies) == 0 {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}

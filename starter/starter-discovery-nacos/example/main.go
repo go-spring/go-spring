@@ -93,7 +93,7 @@ func (v *VerifyRunner) Run(ctx context.Context) error {
 func (v *VerifyRunner) verify(ctx context.Context) {
 	d := v.backend
 	if d == nil {
-		log.Errorf(ctx, log.TagAppDef, "discovery backend %q not wired", "nacos.main")
+		log.Errorf(ctx, log.TagAppDef, fmt.Errorf("discovery backend %q not wired", "nacos.main"), "discovery backend %q not wired", "nacos.main")
 		return
 	}
 	var eps []discovery.Endpoint

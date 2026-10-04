@@ -114,7 +114,7 @@ func NewSimpleHttpServer(h *HttpServeMux, cfg SimpleHttpServerConfig) *SimpleHtt
 func (s *SimpleHttpServer) Run(ctx context.Context, sig ReadySignal) error {
 	ln, err := net.Listen("tcp", s.svr.Addr)
 	if err != nil {
-		log.Errorf(ctx, httpServerTag, "failed to listen on %s: %v", s.svr.Addr, err)
+		log.Errorf(ctx, httpServerTag, err, "failed to listen on %s", s.svr.Addr)
 		return errutil.Explain(err, "failed to listen on %s", s.svr.Addr)
 	}
 
@@ -127,7 +127,7 @@ func (s *SimpleHttpServer) Run(ctx context.Context, sig ReadySignal) error {
 		return nil
 	}
 
-	log.Errorf(ctx, httpServerTag, "HTTP server serve error: %v", err)
+	log.Errorf(ctx, httpServerTag, err, "HTTP server serve error")
 	return errutil.Explain(err, "failed to serve on %s", s.svr.Addr)
 }
 

@@ -169,7 +169,7 @@ func (s *subscriber) Subscribe(ctx context.Context, handler messaging.Handler) e
 				if loopCtx.Err() != nil {
 					return // context cancelled by Close
 				}
-				log.Errorf(loopCtx, log.TagAppDef, "pulsar driver receive error: %v", err)
+				log.Error(loopCtx, log.TagAppDef, err, log.Msg("pulsar driver receive failed"))
 				continue
 			}
 			// Extract the load-test marker the producer put in Properties so the
@@ -184,11 +184,11 @@ func (s *subscriber) Subscribe(ctx context.Context, handler messaging.Handler) e
 				return handler(attemptCtx, fromPulsarMsg(msg))
 			})
 			if herr != nil {
-				log.Errorf(msgCtx, log.TagAppDef, "pulsar driver handler error on %q: %v", msg.Topic(), herr)
+				log.Error(msgCtx, log.TagAppDef, herr, log.String("topic", msg.Topic()), log.Msg("pulsar driver handler failed"))
 				s.c.Nack(msg)
 			} else if err := s.c.Ack(msg); err != nil {
 				// A failed ack means the broker will redeliver the message.
-				log.Warnf(msgCtx, log.TagAppDef, "pulsar: ack failed on %q, message may be redelivered: %v", msg.Topic(), err)
+				log.Warn(msgCtx, log.TagAppDef, log.String("topic", msg.Topic()), log.Err(err), log.Msg("pulsar: ack failed, message may be redelivered"))
 			}
 		}
 	}()

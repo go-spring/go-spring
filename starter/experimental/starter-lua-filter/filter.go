@@ -52,7 +52,7 @@ func newFilter(ctx *gs.ContextProvider, name string, c Config) (*Filter, error) 
 	if err != nil {
 		return nil, err
 	}
-	log.Infof(ctx.Context, starterTag, "lua filter created script=%s", c.Script)
+	log.Info(ctx.Context, starterTag, log.String("script", c.Script), log.Msg("create lua filter success"))
 	f := &Filter{name: c.Script, script: c.Script}
 	f.proto.Store(proto)
 	f.pool.New = func() any {

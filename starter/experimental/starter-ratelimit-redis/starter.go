@@ -81,7 +81,9 @@ func setup(r gs.BeanProvider, p flatten.Storage) error {
 	if c.Client == "" {
 		return errutil.Explain(nil, "ratelimit-redis: missing required property %q", "spring.ratelimit.redis.client")
 	}
-	log.Debugf(context.Background(), log.TagAppDef, "contributing redis rate-limit counters client=%s", c.Client)
+	log.Debug(context.Background(), log.TagAppDef, func() []log.Field {
+		return []log.Field{log.String("client", c.Client), log.Msg("contributing redis rate-limit counters")}
+	})
 	// TagArg injects the *goredis.Client bean by name — the seam that ties the
 	// counters to one Redis instance. The ctor returns the interface type, so gs
 	// indexes the bean under resilience.Counters: no Export is needed, and that

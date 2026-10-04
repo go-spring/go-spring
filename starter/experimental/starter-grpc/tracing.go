@@ -42,7 +42,7 @@ import (
 func TracingUnaryInterceptor() grpc.UnaryServerInterceptor {
 	return func(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
 		ctx = extractTraceContext(ctx)
-		ctx, span := otel.Tracer(scope).Start(ctx, info.FullMethod,
+		ctx, span := otel.Tracer(componentName).Start(ctx, info.FullMethod,
 			trace.WithSpanKind(trace.SpanKindServer),
 			trace.WithAttributes(
 				attribute.String("rpc.system", "grpc"),
@@ -71,7 +71,7 @@ func TracingUnaryInterceptor() grpc.UnaryServerInterceptor {
 func TracingStreamInterceptor() grpc.StreamServerInterceptor {
 	return func(srv any, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
 		ctx := extractTraceContext(ss.Context())
-		ctx, span := otel.Tracer(scope).Start(ctx, info.FullMethod,
+		ctx, span := otel.Tracer(componentName).Start(ctx, info.FullMethod,
 			trace.WithSpanKind(trace.SpanKindServer),
 			trace.WithAttributes(
 				attribute.String("rpc.system", "grpc"),

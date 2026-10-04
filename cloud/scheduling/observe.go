@@ -162,14 +162,12 @@ func record(ev event) {
 	}
 	switch status {
 	case "panic":
-		log.Error(ctx, accessTag, append(fields,
+		log.Error(ctx, accessTag, ev.Err, append(fields,
 			log.Float("duration_ms", ms(ev.Duration)),
-			log.Err(ev.Err),
 			log.Msg("scheduler: job panicked"))...)
 	case "error":
-		log.Error(ctx, accessTag, append(fields,
+		log.Error(ctx, accessTag, ev.Err, append(fields,
 			log.Float("duration_ms", ms(ev.Duration)),
-			log.Err(ev.Err),
 			log.Msg("scheduler: job failed"))...)
 	case "skipped_policy", "skipped_lock":
 		log.Debug(ctx, accessTag, func() []log.Field {

@@ -59,9 +59,9 @@ func WarnOnce(kind, endpoint string, timeout time.Duration) {
 		_ = conn.Close()
 		return
 	}
-	log.Warnf(context.Background(), log.TagAppDef,
-		"%s: OTLP endpoint %q is not reachable (probe: %v) - telemetry will be silently dropped until it comes up; check spring.observability.%s.endpoint",
-		kind, endpoint, err, kind)
+	log.Warn(context.Background(), log.TagAppDef,
+		log.String("kind", kind), log.String("endpoint", endpoint), log.Err(err),
+		log.Msg("OTLP endpoint is not reachable - telemetry will be silently dropped until it comes up; check spring.observability.<kind>.endpoint"))
 }
 
 var (

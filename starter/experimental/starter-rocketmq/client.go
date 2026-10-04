@@ -197,12 +197,12 @@ func (cl *Client) Close() error {
 	}
 	for _, p := range cl.producers {
 		if err := p.Shutdown(); err != nil {
-			log.Errorf(context.Background(), log.TagAppDef, "rocketmq: shutdown producer failed: %v", err)
+			log.Error(context.Background(), log.TagAppDef, err, log.Msg("rocketmq: shutdown producer failed"))
 		}
 	}
 	for _, c := range cl.consumers {
 		if err := c.Shutdown(); err != nil {
-			log.Errorf(context.Background(), log.TagAppDef, "rocketmq: shutdown consumer failed: %v", err)
+			log.Error(context.Background(), log.TagAppDef, err, log.Msg("rocketmq: shutdown consumer failed"))
 		}
 	}
 	cl.producers = nil

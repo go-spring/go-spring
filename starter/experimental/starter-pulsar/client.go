@@ -55,7 +55,7 @@ func destroyClient(cl pulsar.Client) error {
 func shutdownMetrics(cl pulsar.Client) {
 	if v, ok := metricsServers.LoadAndDelete(cl); ok {
 		if err := v.(*http.Server).Shutdown(context.Background()); err != nil {
-			log.Warnf(context.Background(), log.TagAppDef, "pulsar: metrics server shutdown failed: %v", err)
+			log.Warn(context.Background(), log.TagAppDef, log.Err(err), log.Msg("pulsar: metrics server shutdown failed"))
 		}
 	}
 }

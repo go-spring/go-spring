@@ -68,7 +68,14 @@ func init() {
 				return errutil.Explain(nil, "session-redis: instance %q missing required property %q",
 					name, "spring.session.redis.instances."+name+".client")
 			}
-			log.Debugf(context.Background(), log.TagAppDef, "creating session store name=%s client=%s keyPrefix=%s", name, c.Client, c.KeyPrefix)
+			log.Debug(context.Background(), log.TagAppDef, func() []log.Field {
+				return []log.Field{
+					log.String("name", name),
+					log.String("client", c.Client),
+					log.String("key_prefix", c.KeyPrefix),
+					log.Msg("creating session store"),
+				}
+			})
 			// TagArg injects the *redis.Client bean by name — this is the seam
 			// that ties the store to a specific redis instance.
 			r.Provide(newStore, gs.ValueArg(c), gs.TagArg(c.Client)).

@@ -467,8 +467,10 @@ func (r *discoveryResolver) pollLoop(seed []discovery.Endpoint) {
 		case <-t.C:
 			eps, err := r.discovery.Resolve(r.ctx, r.serviceName)
 			if err != nil {
-				log.Errorf(r.ctx, log.TagAppDef, "grpc resolver resolve %q via %q failed, keeping last snapshot: %v",
-					r.serviceName, r.backend, err)
+				log.Error(r.ctx, log.TagAppDef, err,
+					log.String("service", r.serviceName),
+					log.String("resolver", r.backend),
+					log.Msg("grpc resolver resolve failed, keeping last snapshot"))
 				continue
 			}
 			key := epsKey(eps)

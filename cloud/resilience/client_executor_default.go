@@ -178,9 +178,9 @@ func (e *defaultExecutor) Execute(ctx context.Context, fn func(context.Context) 
 		if op, ok := observability.OperationFrom(ctx); ok && op.NonIdempotent {
 			attempts = 1
 			if _, seen := warnedNonIdempotent.LoadOrStore(e.service, struct{}{}); !seen {
-				log.Warnf(ctx, log.TagAppDef,
-					"resilience: retries configured for service %q are suppressed — its operations are non-idempotent, "+
-						"so a retry would repeat the side effect rather than the attempt", e.service)
+				log.Warn(ctx, log.TagAppDef, log.String("service", e.service),
+					log.Msg("resilience: retries suppressed — operations are non-idempotent, "+
+						"so a retry would repeat the side effect rather than the attempt"))
 			}
 		}
 	}
@@ -211,8 +211,8 @@ func (e *defaultExecutor) Execute(ctx context.Context, fn func(context.Context) 
 		// unreachable counter backend into an outage.
 		if lerr := allowRate(budgetCtx, rate, policy.RateSpec(), e.service, e.counters); lerr != nil {
 			if !errors.Is(lerr, chain.ErrRateLimited) {
-				log.Warnf(budgetCtx, log.TagAppDef,
-					"resilience: rate-limit counters unavailable, allowing call: %v", lerr)
+				log.Warn(budgetCtx, log.TagAppDef, log.Err(lerr),
+					log.Msg("resilience: rate-limit counters unavailable, allowing call"))
 			} else {
 				e.retryBudgetRelease(budgetHeld)
 				return chain.ErrRateLimited

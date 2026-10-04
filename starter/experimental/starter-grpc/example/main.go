@@ -138,7 +138,7 @@ func runTest() {
 
 	conn, err := grpc.NewClient(":9494", grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
-		log.Errorf(ctx, log.TagAppDef, "Failed to connect: %v", err)
+		log.Errorf(ctx, log.TagAppDef, err, "Failed to connect")
 		os.Exit(1)
 	}
 	defer conn.Close()
@@ -158,20 +158,20 @@ func runTest() {
 		grpc.Header(&header),
 	)
 	if err != nil {
-		log.Errorf(ctx, log.TagAppDef, "Error calling Echo: %v", err)
+		log.Errorf(ctx, log.TagAppDef, err, "Error calling Echo")
 		os.Exit(1)
 	}
 	fmt.Println("Response from server:", response.Message)
 
 	// Assertion 1: response body echoed unchanged.
 	if response.Message != "Hello, gRPC!" {
-		log.Errorf(ctx, log.TagAppDef, "unexpected echo body: %q", response.Message)
+		log.Errorf(ctx, log.TagAppDef, fmt.Errorf("unexpected echo body: %q", response.Message), "unexpected echo body: %q", response.Message)
 		os.Exit(1)
 	}
 
 	// Assertion 3: handler-side response header propagated to client.
 	if v := header.Get("x-handler"); len(v) == 0 || v[0] != "echo" {
-		log.Errorf(ctx, log.TagAppDef, "missing/incorrect x-handler header: %v", v)
+		log.Errorf(ctx, log.TagAppDef, fmt.Errorf("missing/incorrect x-handler header: %v", v), "missing/incorrect x-handler header: %v", v)
 		os.Exit(1)
 	}
 
@@ -185,12 +185,12 @@ func runTest() {
 	// the server reports SERVING.
 	healthResp, err := healthpb.NewHealthClient(conn).Check(ctx, &healthpb.HealthCheckRequest{})
 	if err != nil {
-		log.Errorf(ctx, log.TagAppDef, "health check failed: %v", err)
+		log.Errorf(ctx, log.TagAppDef, err, "health check failed")
 		os.Exit(1)
 	}
 	fmt.Println("Health status:", healthResp.Status)
 	if healthResp.Status != healthpb.HealthCheckResponse_SERVING {
-		log.Errorf(ctx, log.TagAppDef, "unexpected health status: %v", healthResp.Status)
+		log.Errorf(ctx, log.TagAppDef, fmt.Errorf("unexpected health status: %v", healthResp.Status), "unexpected health status: %v", healthResp.Status)
 		os.Exit(1)
 	}
 

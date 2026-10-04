@@ -171,9 +171,7 @@ func newClient(ctx *gs.ContextProvider, c Config, d Driver, discoveryLabel strin
 	w, err := d.CreateClient(ctx.Context, c,
 		cloud.ClientParams{Resilience: center.Resilience(), Fault: center.Fault(), Loadbalance: center.Loadbalance(), Discovery: disc})
 	if err != nil {
-		log.Error(cctx, log.TagAppDef,
-			log.Err(err),
-			log.Msg("redis: create client failed"))
+		log.Error(cctx, log.TagAppDef, err, log.Msg("redis: create client failed"))
 		return nil, errutil.Explain(err, "failed to create redis client")
 	}
 	// Fail fast (opt-in, e.g. ping=true): ping the backend at startup so a
@@ -189,14 +187,12 @@ func newClient(ctx *gs.ContextProvider, c Config, d Driver, discoveryLabel strin
 		err = HealthCheck(pingCtx, w)
 		cancel()
 		if err != nil {
-			log.Error(cctx, log.TagAppDef,
-				log.Err(err),
-				log.Msg("redis: startup ping failed"))
+			log.Error(cctx, log.TagAppDef, err, log.Msg("redis: startup ping failed"))
 			_ = w.Destroy()
 			return nil, errutil.Explain(err, "redis: startup ping failed")
 		}
 	}
-	log.Info(cctx, log.TagAppDef, log.Msg("redis client initialized"))
+	log.Info(cctx, log.TagAppDef, log.Msg("create redis client success"))
 	return w, nil
 }
 
@@ -229,16 +225,15 @@ func newClusterClient(ctx *gs.ContextProvider, c Config, d Driver, center *gover
 	}
 	cd, ok := d.(ClusterDriver)
 	if !ok {
-		log.Error(cctx, log.TagAppDef,
+		err := errutil.Explain(nil, "redis: the configured Driver does not support cluster mode (implement ClusterDriver)")
+		log.Error(cctx, log.TagAppDef, err,
 			log.Msg("redis: the configured Driver does not support cluster mode (implement ClusterDriver)"))
-		return nil, errutil.Explain(nil, "redis: the configured Driver does not support cluster mode (implement ClusterDriver)")
+		return nil, err
 	}
 	w, err := cd.CreateClusterClient(ctx.Context, c,
 		cloud.ClientParams{Resilience: center.Resilience(), Fault: center.Fault()})
 	if err != nil {
-		log.Error(cctx, log.TagAppDef,
-			log.Err(err),
-			log.Msg("redis: create cluster client failed"))
+		log.Error(cctx, log.TagAppDef, err, log.Msg("redis: create cluster client failed"))
 		return nil, errutil.Explain(err, "failed to create redis cluster client")
 	}
 	if c.Ping {
@@ -246,14 +241,12 @@ func newClusterClient(ctx *gs.ContextProvider, c Config, d Driver, center *gover
 		err = HealthCheck(pingCtx, w)
 		cancel()
 		if err != nil {
-			log.Error(cctx, log.TagAppDef,
-				log.Err(err),
-				log.Msg("redis: cluster startup ping failed"))
+			log.Error(cctx, log.TagAppDef, err, log.Msg("redis: startup cluster ping failed"))
 			_ = w.Destroy()
 			return nil, errutil.Explain(err, "redis: startup ping failed")
 		}
 	}
-	log.Info(cctx, log.TagAppDef, log.Msg("redis cluster client initialized"))
+	log.Info(cctx, log.TagAppDef, log.Msg("create redis cluster client success"))
 	return w, nil
 }
 
@@ -265,8 +258,8 @@ func validateConfig(ctx context.Context, c Config) error {
 		// A removed key must not fail the bind — that would turn the framework's
 		// own change into a failed deploy — but it must not pass in silence
 		// either: the behaviour it used to switch is gone for every instance.
-		log.Warnf(ctx, log.TagAppDef,
-			"redis: otel.tracing.enabled is removed and ignored — the per-command span is emitted by the resilience layer; remove the key from your configuration")
+		log.Warn(ctx, log.TagAppDef,
+			log.Msg("redis: otel.tracing.enabled is removed and ignored — the per-command span is emitted by the resilience layer; remove the key from your configuration"))
 	}
 	switch c.Mode {
 	case "", "single":

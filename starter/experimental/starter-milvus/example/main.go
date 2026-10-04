@@ -64,7 +64,7 @@ func runTest(s *Service) {
 
 	// Create a collection with a float vector field (dim 8).
 	if err := s.Client.NewCollection(ctx, coll, 8); err != nil {
-		log.Errorf(ctx, log.TagAppDef, "CREATE failed: %v", err)
+		log.Errorf(ctx, log.TagAppDef, err, "CREATE failed")
 		os.Exit(1)
 	}
 
@@ -74,13 +74,13 @@ func runTest(s *Service) {
 		{0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8},
 	})
 	if _, err := s.Client.Insert(ctx, coll, "", idCol, vecCol); err != nil {
-		log.Errorf(ctx, log.TagAppDef, "INSERT failed: %v", err)
+		log.Errorf(ctx, log.TagAppDef, err, "INSERT failed")
 		os.Exit(1)
 	}
 	_ = s.Client.Flush(ctx, coll, false)
 
 	if err := s.Client.LoadCollection(ctx, coll, false); err != nil {
-		log.Errorf(ctx, log.TagAppDef, "LOAD failed: %v", err)
+		log.Errorf(ctx, log.TagAppDef, err, "LOAD failed")
 		os.Exit(1)
 	}
 
@@ -88,11 +88,11 @@ func runTest(s *Service) {
 	sp, _ := entity.NewIndexFlatSearchParam()
 	results, err := s.Client.Search(ctx, coll, nil, "", []string{"id"}, vec2search, "vector", entity.L2, 1, sp)
 	if err != nil {
-		log.Errorf(ctx, log.TagAppDef, "SEARCH failed: %v", err)
+		log.Errorf(ctx, log.TagAppDef, err, "SEARCH failed")
 		os.Exit(1)
 	}
 	if len(results) == 0 {
-		log.Errorf(ctx, log.TagAppDef, "SEARCH returned no results")
+		log.Errorf(ctx, log.TagAppDef, fmt.Errorf("SEARCH returned no results"), "SEARCH returned no results")
 		os.Exit(1)
 	}
 

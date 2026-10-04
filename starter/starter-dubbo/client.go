@@ -172,8 +172,9 @@ func RegisterReference[T any](name string, ctor func(*client.Client, ...client.R
 		// (the fail-fast default), the opt-out cannot be honored. WARN instead
 		// of failing silently. To opt out, set spring.dubbo.consumer.check=false.
 		if !cfg.Check && d.Consumer().Check {
-			log.Warnf(context.Background(), log.TagAppDef,
-				"dubbo: references.%s.check=false cannot be honored while consumer.check is true (default); set spring.dubbo.consumer.check=false to opt out of the fail-fast check", name)
+			log.Warn(context.Background(), log.TagAppDef,
+				log.String("reference", name),
+				log.Msg("dubbo: references.check=false cannot be honored while consumer.check is true (default); set spring.dubbo.consumer.check=false to opt out of the fail-fast check"))
 		}
 		return ctor(cli, cfg.options()...)
 	}, gs.IndexArg(2, gs.TagArg("${spring.dubbo.consumer.references."+name+"}"))).Caller(2)

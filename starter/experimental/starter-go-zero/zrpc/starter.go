@@ -108,7 +108,13 @@ type ZrpcServer struct {
 // NewZrpcServer builds a ZrpcServer from ${spring.go-zero.zrpc.server} config
 // and the registered ServiceRegister bean.
 func NewZrpcServer(cfg Config, reg ServiceRegister) *ZrpcServer {
-	log.Debugf(context.Background(), log.TagAppDef, "go-zero zrpc server created listenOn=%s name=%s", cfg.ListenOn, cfg.Name)
+	log.Debug(context.Background(), log.TagAppDef, func() []log.Field {
+		return []log.Field{
+			log.String("listen_on", cfg.ListenOn),
+			log.String("name", cfg.Name),
+			log.Msg("create go-zero zrpc server success"),
+		}
+	})
 	return &ZrpcServer{cfg: cfg, reg: reg, done: make(chan struct{})}
 }
 

@@ -93,18 +93,18 @@ func runTest(s *Service) {
 	// non-zero values when scraped.
 	for i := range 20 {
 		if err := s.Hot.Set(ctx, fmt.Sprintf("hit-%d", i), []byte("v")); err != nil {
-			log.Errorf(ctx, log.TagAppDef, "SET failed: %v", err)
+			log.Errorf(ctx, log.TagAppDef, err, "SET failed")
 			os.Exit(1)
 		}
 		if _, err := s.Hot.Get(ctx, fmt.Sprintf("hit-%d", i)); err != nil {
-			log.Errorf(ctx, log.TagAppDef, "GET hit failed: %v", err)
+			log.Errorf(ctx, log.TagAppDef, err, "GET hit failed")
 			os.Exit(1)
 		}
 	}
 	// Misses: read keys that were never set.
 	for i := range 5 {
 		if _, err := s.Hot.Get(ctx, fmt.Sprintf("absent-%d", i)); !errors.Is(err, bigcache.ErrEntryNotFound) {
-			log.Errorf(ctx, log.TagAppDef, "expected entry-not-found for absent key, got err=%v", err)
+			log.Errorf(ctx, log.TagAppDef, err, "expected entry-not-found for absent key, got err")
 			os.Exit(1)
 		}
 	}

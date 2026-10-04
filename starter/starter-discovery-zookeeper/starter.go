@@ -210,7 +210,7 @@ func connectZookeeper(c ZookeeperConfig) (*zk.Conn, error) {
 	}
 	conn, _, err := zk.Connect(c.Servers, c.SessionTimeout)
 	if err != nil {
-		log.Errorf(context.Background(), starterTag, "connect zookeeper servers=%v failed: %v", c.Servers, err)
+		log.Error(context.Background(), starterTag, err, log.Strings("servers", c.Servers), log.Msg("connect zookeeper failed"))
 		return nil, errutil.Explain(err, "discovery-zookeeper: connect to %v", c.Servers)
 	}
 	if c.Username != "" || c.Password != "" {

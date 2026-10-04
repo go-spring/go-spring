@@ -179,7 +179,7 @@ func (d *consulDiscovery) watchLoop(name string, e *serviceEntry) {
 			log.Warn(ctx, starterTag,
 				log.String("status", discovery.StatusOf(err)),
 				log.Err(err),
-				log.Msg("discovery-consul: watch failed (keeping stale snapshot)"))
+				log.Msg("discovery-consul: watch failed (keeping stale snapshot; retrying)"))
 			select {
 			case <-d.bgCtx.Done():
 				return
@@ -194,7 +194,9 @@ func (d *consulDiscovery) watchLoop(name string, e *serviceEntry) {
 			// the next query answer immediately instead of blocking. Worth a line:
 			// the snapshot about to be served is only as fresh as the restart.
 			log.Info(ctx, starterTag,
-				log.Msgf("discovery-consul: watch saw the index go backwards (%d -> %d); treating it as an agent restart", idx, meta.LastIndex))
+				log.Int("prev_index", int64(idx)),
+				log.Int("index", int64(meta.LastIndex)),
+				log.Msg("discovery-consul: watch saw the index go backwards; treating it as an agent restart"))
 			idx = 0
 			continue
 		}

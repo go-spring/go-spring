@@ -170,10 +170,11 @@ func (d *etcdDiscovery) watchLoop(name string, e *serviceEntry) {
 			return
 		}
 		d.obs.Synced(name, err)
-		log.Error(ctx, starterTag,
+		log.Error(ctx, starterTag, err,
 			log.String("status", discovery.StatusOf(err)),
-			log.Err(err),
-			log.Msgf("discovery-etcd: watch %q ended; re-arming in %s", prefix, backoff))
+			log.String("prefix", prefix),
+			log.String("backoff", backoff.String()),
+			log.Msg("discovery-etcd: watch ended; re-arming"))
 		select {
 		case <-d.bgCtx.Done():
 			return
@@ -210,8 +211,9 @@ func (d *etcdDiscovery) drainWatch(name string, e *serviceEntry, prefix string, 
 			d.obs.Synced(name, err)
 			log.Warn(ctx, starterTag,
 				log.String("status", discovery.StatusOf(err)),
+				log.String("prefix", prefix),
 				log.Err(err),
-				log.Msgf("discovery-etcd: refresh %q failed (keeping stale snapshot)", prefix))
+				log.Msg("discovery-etcd: refresh failed (keeping stale snapshot)"))
 			continue
 		}
 		e.mu.Lock()
@@ -237,7 +239,7 @@ func kvsToEndpoints(obs *discovery.Observer, kvs []*mvccpb.KeyValue) []discovery
 				log.String("center", obs.Center()),
 				log.String("key", string(kv.Key)),
 				log.Err(err),
-				log.Msg("discovery-etcd: skipping a malformed instance payload"))
+				log.Msg("discovery-etcd: skip malformed instance payload"))
 			continue
 		}
 		eps = append(eps, discovery.Endpoint{

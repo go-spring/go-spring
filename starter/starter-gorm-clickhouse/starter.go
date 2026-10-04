@@ -106,7 +106,9 @@ func build(ctx context.Context, c Config, params cloud.ClientParams) (gormcore.S
 		return gormcore.Spec{}, errutil.Explain(nil, "gorm clickhouse: one of addr or service-name must be set")
 	}
 
-	log.Debugf(ctx, log.TagAppDef, "creating gorm clickhouse client, addr=%s service-name=%s db=%s", c.Addr, c.ServiceName, c.DB)
+	log.Debug(ctx, log.TagAppDef, func() []log.Field {
+		return []log.Field{log.String("addr", c.Addr), log.String("service_name", c.ServiceName), log.String("db", c.DB), log.Msg("creating gorm clickhouse client")}
+	})
 
 	service := resilience.ServiceLabel("gorm:clickhouse", c.ServiceName, c.Addr)
 
@@ -135,7 +137,7 @@ func build(ctx context.Context, c Config, params cloud.ClientParams) (gormcore.S
 		if c.TLS.Enabled {
 			tlsCfg, terr := c.TLS.BuildClient()
 			if terr != nil {
-				log.Errorf(ctx, log.TagAppDef, "gorm clickhouse: build TLS failed: %v", terr)
+				log.Error(ctx, log.TagAppDef, terr, log.Msg("gorm clickhouse build TLS failed"))
 				return gormcore.Spec{}, errutil.Explain(terr, "gorm-clickhouse: build TLS")
 			}
 			opts.TLS = tlsCfg
@@ -143,7 +145,7 @@ func build(ctx context.Context, c Config, params cloud.ClientParams) (gormcore.S
 		if useDiscovery {
 			lb, _, stopSelection, derr := c.NewPickPool(ctx, params.Discovery, service, params.Loadbalance)
 			if derr != nil {
-				log.Errorf(ctx, log.TagAppDef, "gorm clickhouse: build discovery resolver failed: %v", derr)
+				log.Error(ctx, log.TagAppDef, derr, log.Msg("gorm clickhouse build discovery resolver failed"))
 				return gormcore.Spec{}, derr
 			}
 			// ch.Options.DialContext is 2-arg: func(ctx, addr string) (net.Conn, error).

@@ -73,12 +73,12 @@ func runTest(s *Service) {
 
 	exists, err := s.Client.BucketExists(ctx, bucket)
 	if err != nil {
-		log.Errorf(ctx, log.TagAppDef, "BUCKETExists failed: %v", err)
+		log.Errorf(ctx, log.TagAppDef, err, "BUCKETExists failed")
 		os.Exit(1)
 	}
 	if !exists {
 		if err = s.Client.MakeBucket(ctx, bucket, minio.MakeBucketOptions{}); err != nil {
-			log.Errorf(ctx, log.TagAppDef, "MakeBucket failed: %v", err)
+			log.Errorf(ctx, log.TagAppDef, err, "MakeBucket failed")
 			os.Exit(1)
 		}
 	}
@@ -87,28 +87,28 @@ func runTest(s *Service) {
 	if _, err = s.Client.PutObject(ctx, bucket, "hello.txt",
 		bytes.NewReader(content), int64(len(content)),
 		minio.PutObjectOptions{ContentType: "text/plain"}); err != nil {
-		log.Errorf(ctx, log.TagAppDef, "PutObject failed: %v", err)
+		log.Errorf(ctx, log.TagAppDef, err, "PutObject failed")
 		os.Exit(1)
 	}
 
 	obj, err := s.Client.GetObject(ctx, bucket, "hello.txt", minio.GetObjectOptions{})
 	if err != nil {
-		log.Errorf(ctx, log.TagAppDef, "GetObject failed: %v", err)
+		log.Errorf(ctx, log.TagAppDef, err, "GetObject failed")
 		os.Exit(1)
 	}
 	got, err := io.ReadAll(obj)
 	_ = obj.Close()
 	if err != nil || !bytes.Equal(got, content) {
-		log.Errorf(ctx, log.TagAppDef, "READBACK failed: got=%q err=%v", got, err)
+		log.Errorf(ctx, log.TagAppDef, err, "READBACK failed: got=%q err", got)
 		os.Exit(1)
 	}
 
 	if _, err = s.Client.StatObject(ctx, bucket, "hello.txt", minio.StatObjectOptions{}); err != nil {
-		log.Errorf(ctx, log.TagAppDef, "StatObject failed: %v", err)
+		log.Errorf(ctx, log.TagAppDef, err, "StatObject failed")
 		os.Exit(1)
 	}
 	if err = s.Client.RemoveObject(ctx, bucket, "hello.txt", minio.RemoveObjectOptions{}); err != nil {
-		log.Errorf(ctx, log.TagAppDef, "RemoveObject failed: %v", err)
+		log.Errorf(ctx, log.TagAppDef, err, "RemoveObject failed")
 		os.Exit(1)
 	}
 

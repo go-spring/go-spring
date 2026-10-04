@@ -128,7 +128,7 @@ func (r *Relay) Close() error {
 // cancellation it stops fetching but finishes the record in flight (or marks
 // it failed for the next run), then returns ctx.Err().
 func (r *Relay) Run(ctx context.Context) error {
-	log.Info(ctx, log.TagAppDef, log.Msg("outbox relay: started"))
+	log.Info(ctx, log.TagAppDef, log.Msg("start outbox relay success"))
 	defer log.Info(context.Background(), log.TagAppDef, log.Msg("outbox relay: stopped"))
 	ticker := time.NewTicker(r.cfg.PollInterval)
 	defer ticker.Stop()
@@ -152,7 +152,7 @@ func (r *Relay) runBatch(ctx context.Context) error {
 		// A failing store must not crash the process — the relay keeps
 		// polling — but it must not be silent either: a dead database would
 		// otherwise be indistinguishable from an idle relay.
-		log.Errorf(ctx, log.TagAppDef, "outbox relay: fetch failed (keep polling): %v", err)
+		log.Error(ctx, log.TagAppDef, err, log.Msg("outbox relay: fetch failed (keep polling)"))
 		return nil
 	}
 	for i := range recs {

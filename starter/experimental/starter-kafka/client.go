@@ -149,7 +149,7 @@ func (s *subscriber) Subscribe(ctx context.Context, handler messaging.Handler) e
 			if errs := fetches.Errors(); len(errs) > 0 {
 				for _, e := range errs {
 					if e.Err != context.Canceled {
-						log.Errorf(loopCtx, log.TagAppDef, "kafka driver poll error on %q: %v", e.Topic, e.Err)
+						log.Error(loopCtx, log.TagAppDef, e.Err, log.String("topic", e.Topic), log.Msg("kafka driver poll failed"))
 					}
 				}
 			}
@@ -167,7 +167,7 @@ func (s *subscriber) Subscribe(ctx context.Context, handler messaging.Handler) e
 				if err := GuardedConsume(msgCtx, s.cl, rec, func(attemptCtx context.Context) error {
 					return handler(attemptCtx, fromRecord(rec))
 				}); err != nil {
-					log.Errorf(msgCtx, log.TagAppDef, "kafka driver handler error on %q: %v", rec.Topic, err)
+					log.Error(msgCtx, log.TagAppDef, err, log.String("topic", rec.Topic), log.Msg("kafka driver handler failed"))
 				}
 			})
 		}

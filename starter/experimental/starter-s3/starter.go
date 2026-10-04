@@ -80,7 +80,13 @@ func init() {
 // passes it to [NewClient] — so the client is assembled complete in one step,
 // with the zero bundle degrading to an observed-only, loudly-unmanaged executor.
 func newClient(ctx *gs.ContextProvider, c Config, d Driver, center *governance.Center) (*Client, error) {
-	log.Debugf(ctx.Context, log.TagAppDef, "creating s3 client, endpoint=%s region=%s", c.Endpoint, c.Region)
+	log.Debug(ctx.Context, log.TagAppDef, func() []log.Field {
+		return []log.Field{
+			log.String("endpoint", c.Endpoint),
+			log.String("region", c.Region),
+			log.Msg("creating s3 client"),
+		}
+	})
 
 	// No company Driver bean → fall back to the bundled default assembly.
 	if d == nil {
@@ -103,12 +109,12 @@ func newClient(ctx *gs.ContextProvider, c Config, d Driver, center *governance.C
 	// block startup.
 	if c.Ping {
 		if err := HealthCheck(ctx.Context, client); err != nil {
-			log.Errorf(ctx.Context, log.TagAppDef, "s3: startup probe failed: %v", err)
+			log.Error(ctx.Context, log.TagAppDef, err, log.Msg("s3: startup probe failed"))
 			_ = client.Destroy()
 			return nil, errutil.Explain(err, "failed to reach s3 endpoint %s", c.Endpoint)
 		}
 	}
-	log.Infof(ctx.Context, log.TagAppDef, "s3 client initialized, endpoint=%s", c.Endpoint)
+	log.Info(ctx.Context, log.TagAppDef, log.String("endpoint", c.Endpoint), log.Msg("init s3 client success"))
 	return client, nil
 }
 

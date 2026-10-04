@@ -109,7 +109,7 @@ func (DefaultDriver) CreateClient(ctx context.Context, c Config, params cloud.Cl
 
 	cl, err := pulsar.NewClient(opts)
 	if err != nil {
-		log.Errorf(ctx, log.TagAppDef, "pulsar: create client failed: %v", err)
+		log.Error(ctx, log.TagAppDef, err, log.Msg("pulsar: create client failed"))
 		if srv != nil {
 			_ = srv.Shutdown(ctx)
 		}
@@ -235,7 +235,7 @@ func emit(level log.Level, fields plog.Fields, msg string) {
 	}
 	switch level {
 	case log.ErrorLevel:
-		log.Errorf(ctx, log.TagAppDef, "pulsar: %s", line)
+		log.Errorf(ctx, log.TagAppDef, fmt.Errorf("pulsar: %s", line), "pulsar: %s", line)
 	case log.WarnLevel:
 		log.Warnf(ctx, log.TagAppDef, "pulsar: %s", line)
 	case log.DebugLevel:

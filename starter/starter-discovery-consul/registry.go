@@ -144,7 +144,8 @@ func (r *consulRegistry) Register(ctx context.Context, reg discovery.Instance) e
 				log.String("status", discovery.StatusOf(err)),
 				log.Err(err),
 			},
-			log.Msgf("consul initial TTL pass for check=%s failed (the heartbeat below retries it)", checkID),
+			log.String("check_id", checkID),
+			log.Msg("consul initial TTL pass failed (the heartbeat below retries it)"),
 		)...)
 	}
 
@@ -284,22 +285,25 @@ func (r *consulRegistry) heartbeat(id, service string, stop <-chan struct{}) {
 			}
 			failures++
 			if failures >= persistAfter {
-				log.Error(ctx, starterTag,
-					log.Msgf("consul TTL heartbeat for check=%s failed %d times in a row; re-registering the service to recover", checkID, failures),
-					log.Err(err))
+				log.Error(ctx, starterTag, err,
+					log.String("check_id", checkID),
+					log.Int("failures", failures),
+					log.Msg("consul TTL heartbeat failed repeatedly; re-registering the service to recover"))
 				// Re-register (upsert) instead of only logging: recreates the
 				// service and check if Consul already dropped them.
 				if rerr := r.reRegister(id); rerr != nil {
-					log.Error(ctx, starterTag,
+					log.Error(ctx, starterTag, rerr,
+						log.String("id", id),
 						log.String("status", discovery.StatusOf(rerr)),
-						log.Err(rerr),
-						log.Msgf("consul re-register for service=%s failed", id))
+						log.Msg("consul re-register failed; the heartbeat retries it"))
 				}
 			} else {
 				log.Warn(ctx, starterTag,
 					log.String("status", discovery.StatusOf(err)),
+					log.String("check_id", checkID),
+					log.Int("failures", failures),
 					log.Err(err),
-					log.Msgf("consul TTL heartbeat for check=%s failed (%d/%d)", checkID, failures, persistAfter))
+					log.Msg("consul TTL heartbeat failed"))
 			}
 		}
 	}

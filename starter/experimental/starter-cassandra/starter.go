@@ -79,7 +79,13 @@ func init() {
 // [NewClient] — so the client is assembled complete in one step, with the zero
 // bundle degrading to an observed-only, loudly-unmanaged executor.
 func newClient(ctx *gs.ContextProvider, c Config, d Driver, center *governance.Center) (*Client, error) {
-	log.Debugf(ctx.Context, log.TagAppDef, "creating cassandra client, hosts=%v keyspace=%s", c.Hosts, c.Keyspace)
+	log.Debug(ctx.Context, log.TagAppDef, func() []log.Field {
+		return []log.Field{
+			log.Strings("hosts", c.Hosts),
+			log.String("keyspace", c.Keyspace),
+			log.Msg("creating cassandra client"),
+		}
+	})
 
 	if (c.Username == "") != (c.Password == "") {
 		return nil, errutil.Explain(nil, "cassandra username and password must be set together")
@@ -106,11 +112,11 @@ func newClient(ctx *gs.ContextProvider, c Config, d Driver, center *governance.C
 	// cluster that is not up yet must not block startup.
 	if c.Ping {
 		if err := HealthCheck(ctx.Context, client); err != nil {
-			log.Errorf(ctx.Context, log.TagAppDef, "cassandra: startup probe failed: %v", err)
+			log.Error(ctx.Context, log.TagAppDef, err, log.Msg("cassandra: startup probe failed"))
 			_ = client.Close()
 			return nil, errutil.Explain(err, "failed to reach cassandra cluster %v", c.Hosts)
 		}
 	}
-	log.Infof(ctx.Context, log.TagAppDef, "cassandra client initialized, hosts=%v", c.Hosts)
+	log.Info(ctx.Context, log.TagAppDef, log.Strings("hosts", c.Hosts), log.Msg("init cassandra client success"))
 	return client, nil
 }

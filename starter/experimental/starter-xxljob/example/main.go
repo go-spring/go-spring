@@ -153,7 +153,7 @@ func runTest(s *Service) {
 
 	resp, err := http.Post("http://"+adminAddr+"/api/trigger", "application/json", nil)
 	if err != nil {
-		log.Errorf(ctx, log.TagAppDef, "TRIGGER failed: %v", err)
+		log.Errorf(ctx, log.TagAppDef, err, "TRIGGER failed")
 		os.Exit(1)
 	}
 	_ = resp.Body.Close()
@@ -162,7 +162,7 @@ func runTest(s *Service) {
 	case <-handlerRan:
 		fmt.Println("xxl-job round trip OK: demoJob ran")
 	case <-time.After(15 * time.Second):
-		log.Errorf(ctx, log.TagAppDef, "HANDLER timed out")
+		log.Errorf(ctx, log.TagAppDef, fmt.Errorf("HANDLER timed out"), "HANDLER timed out")
 		os.Exit(1)
 	}
 
@@ -173,7 +173,7 @@ func runTest(s *Service) {
 		b, _ := json.Marshal(body)
 		resp, err := http.Post(url, "application/json", bytes.NewReader(b))
 		if err != nil {
-			log.Errorf(ctx, log.TagAppDef, "%s failed: %v", url, err)
+			log.Errorf(ctx, log.TagAppDef, err, "%s failed", url)
 			os.Exit(1)
 		}
 		return resp
@@ -184,7 +184,7 @@ func runTest(s *Service) {
 		ExecutorTimeout: 30, LogDateTime: time.Now().UnixMilli(),
 	})
 	if tresp, err := http.Post("http://"+adminAddr+"/api/trigger", "application/json", bytes.NewReader(triggerBody)); err != nil {
-		log.Errorf(ctx, log.TagAppDef, "TRIGGER sleepJob failed: %v", err)
+		log.Errorf(ctx, log.TagAppDef, err, "TRIGGER sleepJob failed")
 		os.Exit(1)
 	} else {
 		_ = tresp.Body.Close()
@@ -196,7 +196,7 @@ func runTest(s *Service) {
 	_ = json.NewDecoder(idleResp.Body).Decode(&idle)
 	_ = idleResp.Body.Close()
 	if idle.Code != 500 {
-		log.Errorf(ctx, log.TagAppDef, "IDLEBEAT expected 500 (running), got %d", idle.Code)
+		log.Errorf(ctx, log.TagAppDef, fmt.Errorf("IDLEBEAT expected 500 (running), got %d", idle.Code), "IDLEBEAT expected 500 (running), got %d", idle.Code)
 		os.Exit(1)
 	}
 
@@ -206,7 +206,7 @@ func runTest(s *Service) {
 	_ = json.NewDecoder(killResp.Body).Decode(&kill)
 	_ = killResp.Body.Close()
 	if kill.Code != 200 {
-		log.Errorf(ctx, log.TagAppDef, "KILL expected 200, got %d", kill.Code)
+		log.Errorf(ctx, log.TagAppDef, fmt.Errorf("KILL expected 200, got %d", kill.Code), "KILL expected 200, got %d", kill.Code)
 		os.Exit(1)
 	}
 
@@ -214,7 +214,7 @@ func runTest(s *Service) {
 	case <-sleepDone:
 		fmt.Println("kill round trip OK: sleepJob (jobId=2, logId=2002) cancelled")
 	case <-time.After(15 * time.Second):
-		log.Errorf(ctx, log.TagAppDef, "KILL did not cancel sleepJob")
+		log.Errorf(ctx, log.TagAppDef, fmt.Errorf("KILL did not cancel sleepJob"), "KILL did not cancel sleepJob")
 		os.Exit(1)
 	}
 
@@ -234,7 +234,7 @@ func runTest(s *Service) {
 			for _, c := range arr {
 				if c.LogID == 2002 {
 					if c.HandleCode != 500 {
-						log.Errorf(ctx, log.TagAppDef, "CALLBACK handleCode=%d, want 500 (killed)", c.HandleCode)
+						log.Errorf(ctx, log.TagAppDef, fmt.Errorf("CALLBACK handleCode=%d, want 500 (killed)", c.HandleCode), "CALLBACK handleCode=%d, want 500 (killed)", c.HandleCode)
 						os.Exit(1)
 					}
 					fmt.Printf("callback shape OK: %+v\n", c)
@@ -245,7 +245,7 @@ func runTest(s *Service) {
 		}
 		time.Sleep(100 * time.Millisecond)
 	}
-	log.Errorf(ctx, log.TagAppDef, "CALLBACK for logId=2002 not received or wrong shape")
+	log.Errorf(ctx, log.TagAppDef, fmt.Errorf("CALLBACK for logId=2002 not received or wrong shape"), "CALLBACK for logId=2002 not received or wrong shape")
 	os.Exit(1)
 }
 

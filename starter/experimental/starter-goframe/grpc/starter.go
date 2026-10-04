@@ -89,8 +89,14 @@ func NewGRPCServer(cfg Config, reg ServiceRegister) *GRPCServer {
 		gsvc.SetRegistry(etcdreg.New(cfg.Registry.Etcd))
 	}
 
-	log.Debugf(context.Background(), log.TagAppDef, "goframe grpc server created name=%s address=%s registry=%s",
-		cfg.Name, cfg.Address, cfg.Registry.Etcd)
+	log.Debug(context.Background(), log.TagAppDef, func() []log.Field {
+		return []log.Field{
+			log.String("name", cfg.Name),
+			log.String("address", cfg.Address),
+			log.String("registry", cfg.Registry.Etcd),
+			log.Msg("create goframe grpc server success"),
+		}
+	})
 
 	grpcCfg := grpcx.Server.NewConfig()
 	grpcCfg.Name = cfg.Name
@@ -112,7 +118,7 @@ func NewGRPCServer(cfg Config, reg ServiceRegister) *GRPCServer {
 // owned by the Go-Spring lifecycle.
 func (s *GRPCServer) Run(ctx context.Context, sig gs.ReadySignal) error {
 	<-sig.TriggerAndWait()
-	log.Infof(ctx, log.TagAppDef, "goframe grpc server starting")
+	log.Info(ctx, log.TagAppDef, log.Msg("goframe grpc server starting"))
 	s.svr.Start()
 	<-s.done
 	return nil
@@ -122,7 +128,7 @@ func (s *GRPCServer) Run(ctx context.Context, sig gs.ReadySignal) error {
 // from etcd when a registry is set and calls grpc.Server.GracefulStop) and
 // unblocks Run. grpcx Stop takes no context, so ctx only tags the shutdown log.
 func (s *GRPCServer) Stop(ctx context.Context) error {
-	log.Infof(ctx, log.TagAppDef, "goframe grpc server shutting down")
+	log.Info(ctx, log.TagAppDef, log.Msg("goframe grpc server shutting down"))
 	s.svr.Stop()
 	close(s.done)
 	return nil

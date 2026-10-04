@@ -167,7 +167,7 @@ func (s *NacosSource) apply(data string) {
 	}
 	cfg, err := governance.Parse(s.src.dataID, []byte(data), s.src.format)
 	if err != nil {
-		log.Errorf(context.Background(), starterTag, "governance nacos source: %s/%s published an invalid document (keeping last good config): %v", s.src.group, s.src.dataID, err)
+		log.Error(context.Background(), starterTag, err, log.String("group", s.src.group), log.String("data_id", s.src.dataID), log.Msg("governance nacos source published an invalid document (keeping last good config)"))
 		return
 	}
 	s.doc = data

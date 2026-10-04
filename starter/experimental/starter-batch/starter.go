@@ -152,14 +152,16 @@ func (s *Server) Run(ctx context.Context, sig gs.ReadySignal) error {
 			log.Info(jobCtx, starterTag, log.Msg("batch: launching job on startup"))
 			je, err := s.Launcher.Launch(runCtx, jobName, params)
 			if err != nil {
-				log.Error(jobCtx, starterTag, log.Err(err), log.Msg("batch: job failed"))
+				log.Error(jobCtx, starterTag, err, log.Msg("batch: job failed"))
 				return
 			}
-			log.Info(jobCtx, starterTag, log.Msgf("batch: job finished with status=%s", je.Status))
+			log.Info(jobCtx, starterTag, log.String("status", je.Status.String()), log.Msg("batch: job finished"))
 		}()
 	}
-	log.Infof(ctx, starterTag,
-		"batch runner started (%d job definition(s), %d run-on-startup)", len(s.Launcher.Names()), launched)
+	log.Info(ctx, starterTag,
+		log.Int("jobs", len(s.Launcher.Names())),
+		log.Int("run_on_startup", launched),
+		log.Msg("start batch runner success"))
 
 	<-ctx.Done()
 	return nil
@@ -189,8 +191,9 @@ func (s *Server) Stop(ctx context.Context) error {
 	case <-done:
 		return nil
 	case <-time.After(timeout):
-		log.Warnf(ctx, starterTag,
-			"batch: drain timed out after %s; abandoning in-flight launches", timeout)
+		log.Warn(ctx, starterTag,
+			log.String("timeout", timeout.String()),
+			log.Msg("batch: drain timed out; abandoning in-flight launches"))
 		return nil
 	}
 }

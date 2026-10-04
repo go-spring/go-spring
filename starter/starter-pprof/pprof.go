@@ -68,9 +68,9 @@ func NewSimplePProfServer(ctx *gs.ContextProvider, c Config) *SimplePProfServer 
 
 	guard := security.Guard{Token: c.Token, Username: c.Username, Password: c.Password}
 	if !guard.Enabled() && !netutil.IsLoopback(c.Address) {
-		log.Warnf(ctx.Context, log.TagAppDef,
-			"pprof server listening on %q without authentication; set ${spring.pprof.token} or ${spring.pprof.username}/${spring.pprof.password}",
-			c.Address)
+		log.Warn(ctx.Context, log.TagAppDef,
+			log.String("addr", c.Address),
+			log.Msg("pprof server listening without authentication; set ${spring.pprof.token} or ${spring.pprof.username}/${spring.pprof.password}"))
 	}
 
 	cfg := gs.SimpleHttpServerConfig{Address: c.Address}

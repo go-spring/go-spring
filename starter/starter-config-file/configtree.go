@@ -68,20 +68,16 @@ func (c *configTreeCtrl) Load(optional bool, source string) (map[string]string, 
 		if os.IsNotExist(err) && optional {
 			log.Warn(ctx, starterTag,
 				log.String("dir", path),
-				log.Msg("optional configtree path not found, skipped"))
+				log.Msg("skip optional configtree path not found"))
 			return nil, nil
 		}
-		log.Error(ctx, starterTag,
-			log.String("dir", path),
-			log.Err(err),
-			log.Msg("stat failed"))
+		log.Error(ctx, starterTag, err, log.String("dir", path), log.Msg("stat failed"))
 		return nil, errutil.Explain(err, "configtree: stat %s failed", path)
 	}
 	if !info.IsDir() {
-		log.Error(ctx, starterTag,
-			log.String("dir", path),
-			log.Msg("configtree expects a directory, got a file"))
-		return nil, errutil.Explain(nil, "configtree expects a directory, got file %s (a single config document belongs to the file-watch provider)", path)
+		err := errutil.Explain(nil, "configtree expects a directory, got file %s (a single config document belongs to the file-watch provider)", path)
+		log.Error(ctx, starterTag, err, log.String("dir", path), log.Msg("configtree expects a directory, got a file"))
+		return nil, err
 	}
 
 	m, err := walkConfigTree(path, func(dir string) { c.ensureWatch(ctx, dir) })
@@ -91,7 +87,7 @@ func (c *configTreeCtrl) Load(optional bool, source string) (map[string]string, 
 	log.Info(ctx, starterTag,
 		log.String("dir", path),
 		log.Int("keys", len(m)),
-		log.Msg("loaded configtree"))
+		log.Msg("load configtree success"))
 	return m, nil
 }
 

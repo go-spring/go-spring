@@ -140,9 +140,8 @@ func (b *ConfigBus) record(ctx context.Context, outcome string, ev RefreshEvent,
 			log.Msg("config bus: refreshed properties on event"))...)
 	case outcomeRefreshError:
 		instruments().refreshDur.Record(ctx, dur.Seconds(), attrs)
-		log.Error(ctx, starterTag, append(eventFields(outcome),
+		log.Error(ctx, starterTag, err, append(eventFields(outcome),
 			log.String("prefix", ev.Prefix),
-			log.Err(err),
 			log.Msg("config bus: property refresh failed"))...)
 	case outcomeIgnored:
 		log.Debug(ctx, starterTag, func() []log.Field {
@@ -172,10 +171,9 @@ func eventFields(outcome string) []log.Field {
 func (b *ConfigBus) recordPublish(ctx context.Context, outcome string, dur time.Duration, err error) {
 	instruments().publishes.Add(ctx, 1, metric.WithAttributes(attribute.String("status", outcome)))
 	if err != nil {
-		log.Error(ctx, starterTag, append(eventFields(outcome),
+		log.Error(ctx, starterTag, err, append(eventFields(outcome),
 			log.String("subject", b.Config.Subject),
 			log.Float("duration_ms", float64(dur.Nanoseconds())/1e6),
-			log.Err(err),
 			log.Msg("config bus: publish refresh event failed"))...)
 		return
 	}

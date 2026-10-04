@@ -177,7 +177,7 @@ func loadFiles(l *flatten.LayeredStorage, dir string, activeProfiles []string) e
 				log.Tracef(context.Background(), log.TagAppDef, "config file not found, skipping: %s", filename)
 				continue
 			}
-			log.Errorf(context.Background(), log.TagAppDef, "load config file %s failed: %v", filename, err)
+			log.Errorf(context.Background(), log.TagAppDef, err, "load config file %s failed", filename)
 			return errutil.Explain(err, "load config file %s failed", filename)
 		}
 

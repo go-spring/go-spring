@@ -167,19 +167,19 @@ func runTest() {
 	client := proto.NewEchoServiceClientFactory(transport, protocolFactory)
 
 	if err := transport.Open(); err != nil {
-		log.Errorf(ctx, log.TagAppDef, "Error opening transport: %v", err)
+		log.Errorf(ctx, log.TagAppDef, err, "Error opening transport")
 		os.Exit(1)
 	}
 
 	// Feature 1: Echo RPC — canonical request/response.
 	resp1, err := client.Echo(ctx, &proto.EchoRequest{Message: "Hello, Thrift!"})
 	if err != nil {
-		log.Errorf(ctx, log.TagAppDef, "Error calling Echo (1): %v", err)
+		log.Errorf(ctx, log.TagAppDef, err, "Error calling Echo (1)")
 		os.Exit(1)
 	}
 	fmt.Println("Response from server:", resp1.Message)
 	if resp1.Message != "Hello, Thrift!" {
-		log.Errorf(ctx, log.TagAppDef, "unexpected echo body (1): %q", resp1.Message)
+		log.Errorf(ctx, log.TagAppDef, fmt.Errorf("unexpected echo body (1): %q", resp1.Message), "unexpected echo body (1): %q", resp1.Message)
 		os.Exit(1)
 	}
 
@@ -190,19 +190,18 @@ func runTest() {
 	// compact; the client above matches, see runTest doc.)
 	resp2, err := client.Echo(ctx, &proto.EchoRequest{Message: "Middleware works!"})
 	if err != nil {
-		log.Errorf(ctx, log.TagAppDef, "Error calling Echo (2): %v", err)
+		log.Errorf(ctx, log.TagAppDef, err, "Error calling Echo (2)")
 		os.Exit(1)
 	}
 	fmt.Println("Response from server:", resp2.Message)
 	if resp2.Message != "Middleware works!" {
-		log.Errorf(ctx, log.TagAppDef, "unexpected echo body (2): %q", resp2.Message)
+		log.Errorf(ctx, log.TagAppDef, fmt.Errorf("unexpected echo body (2): %q", resp2.Message), "unexpected echo body (2): %q", resp2.Message)
 		os.Exit(1)
 	}
 
 	// Feature 2: TProcessor middleware/decorator invocation count.
 	if got := atomic.LoadInt64(&middlewareCallCount); got != 2 {
-		log.Errorf(ctx, log.TagAppDef,
-			"loggingProcessor middleware fired %d time(s), want 2", got)
+		log.Errorf(ctx, log.TagAppDef, fmt.Errorf("loggingProcessor middleware fired %d time(s), want 2", got), "loggingProcessor middleware fired %d time(s), want 2", got)
 		os.Exit(1)
 	}
 

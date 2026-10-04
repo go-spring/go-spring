@@ -96,7 +96,7 @@ func (c *consulCtrl) Close(ctx context.Context) error {
 	c.listened = map[string]struct{}{}
 	c.mu.Unlock()
 	if n > 0 {
-		log.Infof(ctx, starterTag, "stopped %d consul watcher(s)", n)
+		log.Info(ctx, starterTag, log.Int("watchers", n), log.Msg("stopped consul watchers"))
 	}
 	return nil
 }
@@ -217,7 +217,7 @@ func (c *consulCtrl) clientFor(ctx context.Context, cs configSource) (kvAPI, err
 	if err != nil {
 		return nil, errutil.Explain(err, "create consul client for %s failed", cs.address)
 	}
-	log.Info(ctx, starterTag, log.Msg("created consul client"))
+	log.Info(ctx, starterTag, log.Msg("create consul client success"))
 	kv := raw.KV()
 	c.clients[key] = kv
 	return kv, nil
@@ -237,10 +237,7 @@ func (c *consulCtrl) Load(optional bool, source string) (map[string]string, erro
 
 	cs, err := parseSource(source)
 	if err != nil {
-		log.Error(ctx, starterTag,
-			log.String("source", source),
-			log.Err(err),
-			log.Msg("parse consul source failed"))
+		log.Error(ctx, starterTag, err, log.String("source", source), log.Msg("parse consul source failed"))
 		return nil, err
 	}
 
@@ -258,9 +255,7 @@ func (c *consulCtrl) Load(optional bool, source string) (map[string]string, erro
 
 	cli, err := c.clientFor(ctx, cs)
 	if err != nil {
-		log.Error(ctx, starterTag,
-			log.Err(err),
-			log.Msg("create consul client failed"))
+		log.Error(ctx, starterTag, err, log.Msg("create consul client failed"))
 		return nil, err
 	}
 
@@ -271,45 +266,42 @@ func (c *consulCtrl) Load(optional bool, source string) (map[string]string, erro
 		if optional {
 			log.Warn(ctx, starterTag,
 				log.Err(err),
-				log.Msg("optional config get kv failed, skipped"))
+				log.Msg("skip optional config get kv failed"))
 			return nil, nil
 		}
-		log.Error(ctx, starterTag,
-			log.Err(err),
-			log.Msg("get consul kv failed"))
+		log.Error(ctx, starterTag, err, log.Msg("get consul kv failed"))
 		return nil, errutil.Explain(err, "get consul kv %s failed", cs.kvPath)
 	}
 	if pair == nil {
 		if optional {
 			log.Warn(ctx, starterTag,
-				log.Msg("optional config kv not found, skipped"))
+				log.Msg("skip optional config kv not found"))
 			return nil, nil
 		}
-		log.Error(ctx, starterTag, log.Msg("consul kv not found"))
-		return nil, errutil.Explain(nil, "consul kv %s not found", cs.kvPath)
+		err := errutil.Explain(nil, "consul kv %s not found", cs.kvPath)
+		log.Error(ctx, starterTag, err, log.Msg("consul kv not found"))
+		return nil, err
 	}
 	if len(pair.Value) == 0 {
 		if optional {
 			log.Warn(ctx, starterTag,
-				log.Msg("optional config kv is empty, skipped"))
+				log.Msg("skip optional config kv is empty"))
 			return nil, nil
 		}
-		log.Error(ctx, starterTag, log.Msg("consul kv is empty"))
-		return nil, errutil.Explain(nil, "consul kv %s is empty", cs.kvPath)
+		err := errutil.Explain(nil, "consul kv %s is empty", cs.kvPath)
+		log.Error(ctx, starterTag, err, log.Msg("consul kv is empty"))
+		return nil, err
 	}
 
 	m, err := reader.Read(cs.format, pair.Value)
 	if err != nil {
-		log.Error(ctx, starterTag,
-			log.String("format", cs.format),
-			log.Err(err),
-			log.Msg("parse consul kv failed"))
+		log.Error(ctx, starterTag, err, log.String("format", cs.format), log.Msg("parse consul kv failed"))
 		return nil, errutil.Explain(err, "parse consul kv %s as %s failed", cs.kvPath, cs.format)
 	}
 
 	log.Info(ctx, starterTag,
 		log.Int("keys", len(m)),
-		log.Msg("loaded consul config"))
+		log.Msg("load consul config success"))
 	return flatten.Flatten(m), nil
 }
 

@@ -279,10 +279,12 @@ func (r *zkRegistry) monitorSession() {
 			var heal bool
 			degraded, heal = reconcileSession(degraded, r.state())
 			if degraded && !wasDegraded {
-				log.Error(context.Background(), starterTag,
+				err := errutil.Explain(nil, "zookeeper session lost in state %s; registered nodes will be re-created", r.state())
+				log.Error(context.Background(), starterTag, err,
 					log.String("system", r.obs.System()),
 					log.String("center", r.obs.Center()),
-					log.Msgf("zookeeper session lost (state=%s); registered nodes are gone or going, they will be re-created once the session is re-established", r.state()))
+					log.String("state", r.state().String()),
+					log.Msg("zookeeper session lost; registered nodes are gone or going, they will be re-created once the session is re-established"))
 			}
 			if heal {
 				r.healAll()
@@ -328,11 +330,11 @@ func (r *zkRegistry) healAll() {
 				log.Msg("re-created registered zookeeper node(s) after session recovery"))
 			return
 		} else {
-			log.Error(ctx, starterTag,
+			log.Error(ctx, starterTag, err,
 				log.String("service", service),
 				log.String("status", discovery.StatusOf(err)),
-				log.Err(err),
-				log.Msgf("re-create zookeeper node(s) failed; retrying in %s", backoff))
+				log.String("backoff", backoff.String()),
+				log.Msg("re-create zookeeper node(s) failed; retrying"))
 		}
 		select {
 		case <-r.done:

@@ -257,10 +257,7 @@ func (c *k8sCtrl) Load(optional bool, source string) (map[string]string, error) 
 
 	cs, err := parseSource(source)
 	if err != nil {
-		log.Error(ctx, starterTag,
-			log.String("source", source),
-			log.Err(err),
-			log.Msg("parse k8s source failed"))
+		log.Error(ctx, starterTag, err, log.String("source", source), log.Msg("parse k8s source failed"))
 		return nil, err
 	}
 
@@ -282,12 +279,10 @@ func (c *k8sCtrl) Load(optional bool, source string) (map[string]string, error) 
 		if optional {
 			log.Warn(ctx, starterTag,
 				log.Err(err),
-				log.Msg("optional config build client failed, skipped"))
+				log.Msg("skip optional config build client failed"))
 			return nil, nil
 		}
-		log.Error(ctx, starterTag,
-			log.Err(err),
-			log.Msg("build k8s client failed"))
+		log.Error(ctx, starterTag, err, log.Msg("build k8s client failed"))
 		return nil, err
 	}
 	return c.loadFromClient(ctx, client, cs, optional)
@@ -301,12 +296,10 @@ func (c *k8sCtrl) loadFromClient(ctx context.Context, client k8sClient, cs confi
 	if err != nil {
 		if apierrors.IsNotFound(err) && optional {
 			log.Warn(ctx, starterTag,
-				log.Msg("optional config not found, skipped"))
+				log.Msg("skip optional config not found"))
 			return nil, nil
 		}
-		log.Error(ctx, starterTag,
-			log.Err(err),
-			log.Msg("fetch k8s object failed"))
+		log.Error(ctx, starterTag, err, log.Msg("fetch k8s object failed"))
 		return nil, err
 	}
 
@@ -322,7 +315,7 @@ func (c *k8sCtrl) loadFromClient(ctx context.Context, client k8sClient, cs confi
 
 	log.Info(ctx, starterTag,
 		log.Int("keys", len(m)),
-		log.Msg("loaded k8s config"))
+		log.Msg("load k8s config success"))
 	return m, nil
 }
 
@@ -473,9 +466,8 @@ func (c *k8sCtrl) ensureWatch(ctx context.Context, client k8sClient, cs configSo
 		},
 	}
 	if _, err := informer.AddEventHandler(handler); err != nil {
-		log.Error(ctx, starterTag,
-			log.Err(err),
-			log.Msg("k8s config: adding the event handler failed; it will not hot-reload until a restart"))
+		log.Error(ctx, starterTag, err,
+			log.Msg("k8s config: add the event handler failed; it will not hot-reload until a restart"))
 		c.manager.forget(id)
 		return
 	}
@@ -492,14 +484,16 @@ func (c *k8sCtrl) ensureWatch(ctx context.Context, client k8sClient, cs configSo
 	case ok := <-synced:
 		if !ok {
 			close(stop)
-			log.Error(ctx, starterTag,
+			err := errutil.Explain(nil, "k8s config watch stopped before cache sync")
+			log.Error(ctx, starterTag, err,
 				log.Msg("k8s config: watch stopped before cache sync; it will not hot-reload until a restart"))
 			c.manager.forget(id)
 			return
 		}
 	case <-time.After(watchSyncTimeout):
 		close(stop)
-		log.Error(ctx, starterTag,
+		err := errutil.Explain(nil, "k8s config cache sync timed out after %s", watchSyncTimeout)
+		log.Error(ctx, starterTag, err,
 			log.String("timeout", watchSyncTimeout.String()),
 			log.Msg("k8s config: cache sync timed out; it will not hot-reload until a restart"))
 		c.manager.forget(id)
@@ -531,6 +525,6 @@ func (m *watchManager) stopAll(ctx context.Context) {
 		close(s)
 	}
 	if n := len(stops); n > 0 {
-		log.Infof(ctx, starterTag, "stopped %d k8s informer(s)", n)
+		log.Info(ctx, starterTag, log.Int("informers", n), log.Msg("stopped k8s informers"))
 	}
 }

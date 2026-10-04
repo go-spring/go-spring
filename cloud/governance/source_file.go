@@ -152,7 +152,7 @@ func (s *FileSource) Subscribe(cb func(Config)) { s.push.Subscribe(cb) }
 func (s *FileSource) reload() {
 	cfg, err := s.load()
 	if err != nil {
-		log.Errorf(context.Background(), starterTag, "governance file source: reload %s failed (keeping last good config): %v", s.path, err)
+		log.Error(context.Background(), starterTag, err, log.String("path", s.path), log.Msg("governance file source: reload failed (keeping last good config)"))
 		return
 	}
 	if reflect.DeepEqual(s.push.Snapshot(), cfg) {

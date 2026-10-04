@@ -169,11 +169,13 @@ import 嵌套：只处理一层——被导入 source 内部声明的 `spring.co
 
 agollo 自带配置变更通知 long-poll（`/notifications/v2`，见
 [Apollo 配置设计](https://www.apolloconfig.com/#/zh/design/apollo-design)）。starter
-把这些事件桥进 gs 的刷新链：
+把这些事件桥进 gs 的刷新链。只有 OnChange（内容真的变了）会触发刷新；agollo
+在每次配置拉取时都会派发 OnNewestChange，listener 有意忽略它，避免一次发布
+双触发全量刷新：
 
 ```
 Apollo 发布 → agollo long-poll 触发 ChangeEvent / FullChangeEvent
-  → apolloListener.OnChange / OnNewestChange                    starter.go
+  → apolloListener.OnChange（OnNewestChange 为空实现）          starter.go
     → apolloCtrl.TriggerRefresh                                 starter.go
       → gs.RefreshProperties()                                  gs_app/app.go
         → App.RefreshProperties：先 guard "app not started yet"，随后

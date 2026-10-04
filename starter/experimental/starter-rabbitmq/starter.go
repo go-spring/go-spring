@@ -104,9 +104,7 @@ func newClient(ctx *gs.ContextProvider, name string, c Config, d Driver, center 
 	}
 	conn, err := d.CreateClient(ctx.Context, c)
 	if err != nil {
-		log.Error(cctx, log.TagAppDef,
-			log.Err(err),
-			log.Msg("rabbitmq: create client failed"))
+		log.Error(cctx, log.TagAppDef, err, log.Msg("rabbitmq: create client failed"))
 		return nil, errutil.Explain(err, "failed to create rabbitmq client: %s", c.URL)
 	}
 
@@ -158,9 +156,7 @@ func newClient(ctx *gs.ContextProvider, name string, c Config, d Driver, center 
 	if c.Ping {
 		ch, err := conn.Channel()
 		if err != nil {
-			log.Error(cctx, log.TagAppDef,
-				log.Err(err),
-				log.Msg("rabbitmq: open probe channel failed"))
+			log.Error(cctx, log.TagAppDef, err, log.Msg("rabbitmq: open probe channel failed"))
 			_ = cl.Close()
 			return nil, errutil.Explain(err, "failed to open probe channel: %s", c.URL)
 		}
@@ -170,6 +166,6 @@ func newClient(ctx *gs.ContextProvider, name string, c Config, d Driver, center 
 				log.Msg("rabbitmq: close probe channel failed"))
 		}
 	}
-	log.Info(cctx, log.TagAppDef, log.Msg("rabbitmq connection initialized"))
+	log.Info(cctx, log.TagAppDef, log.Msg("create rabbitmq connection success"))
 	return cl, nil
 }

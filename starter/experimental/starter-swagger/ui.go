@@ -87,7 +87,10 @@ func NewUI(cfg Config) (*UI, error) {
 		return nil, errutil.Explain(err, "swagger: rendering page")
 	}
 
-	log.Infof(context.Background(), log.TagAppDef, "swagger ui configured basePath=%s specFile=%s", cfg.BasePath, cfg.SpecFile)
+	log.Info(context.Background(), log.TagAppDef,
+		log.String("base_path", cfg.BasePath),
+		log.String("spec_file", cfg.SpecFile),
+		log.Msg("swagger ui configured"))
 	return &UI{
 		basePath: base,
 		specURL:  specURL,

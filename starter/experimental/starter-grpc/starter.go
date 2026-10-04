@@ -201,7 +201,9 @@ func NewSimpleGrpcServer(cfg Config, reg ServiceRegister,
 		// DefaultBinding is complete, so this cannot fail.
 		prop, _ = traffic.NewDefaultPropagator(traffic.DefaultBinding())
 	}
-	log.Debugf(context.Background(), log.TagAppDef, "grpc server created addr=%s", cfg.Addr)
+	log.Debug(context.Background(), log.TagAppDef, func() []log.Field {
+		return []log.Field{log.String("addr", cfg.Addr), log.Msg("create grpc server success")}
+	})
 	return &SimpleGrpcServer{
 		cfg:        cfg,
 		reg:        reg,
@@ -334,17 +336,13 @@ func (s *SimpleGrpcServer) Run(ctx context.Context, sig gs.ReadySignal) error {
 
 	listener, err := net.Listen("tcp", s.cfg.Addr)
 	if err != nil {
-		log.Error(ctx, log.TagAppDef,
-			log.Err(err),
-			log.Msg("grpc server failed to listen"))
+		log.Error(ctx, log.TagAppDef, err, log.Msg("grpc server failed to listen"))
 		return errutil.Explain(err, "failed to listen on %s", s.cfg.Addr)
 	}
 	<-sig.TriggerAndWait()
 	log.Info(ctx, log.TagAppDef, log.Msg("grpc server starting"))
 	if err = s.svr.Serve(listener); err != nil {
-		log.Error(ctx, log.TagAppDef,
-			log.Err(err),
-			log.Msg("grpc server failed"))
+		log.Error(ctx, log.TagAppDef, err, log.Msg("grpc server failed"))
 		return errutil.Explain(err, "failed to serve on %s", s.cfg.Addr)
 	}
 	return nil

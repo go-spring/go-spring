@@ -221,7 +221,8 @@ func accessLog(skip map[string]struct{}) app.HandlerFunc {
 
 		switch status := c.Response.StatusCode(); {
 		case status >= http.StatusInternalServerError:
-			log.Error(ctx, accessLogTag, fields...)
+			err := errutil.Explain(nil, "upstream returned status %d", status)
+			log.Error(ctx, accessLogTag, err, fields...)
 		case status >= http.StatusBadRequest:
 			log.Warn(ctx, accessLogTag, fields...)
 		default:

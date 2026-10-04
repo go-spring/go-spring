@@ -92,7 +92,7 @@ func runStoppers(ctx context.Context) {
 	ctx = context.WithoutCancel(ctx)
 	for name, s := range reg {
 		if err := s(ctx); err != nil {
-			log.Errorf(ctx, log.TagAppDef, "stopper %q failed: %v", name, err)
+			log.Errorf(ctx, log.TagAppDef, err, "stopper %q failed", name)
 			continue
 		}
 		log.Debugf(ctx, log.TagAppDef, "stopper %q done", name)

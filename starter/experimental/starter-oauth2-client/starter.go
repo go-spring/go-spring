@@ -100,7 +100,14 @@ func newClient(ctx *gs.ContextProvider, name string, c Config, center *governanc
 		EndpointParams: c.endpointParams(),
 	}
 
-	log.Debugf(ctx.Context, log.TagAppDef, "creating oauth2 client clientID=%s tokenURL=%s timeout=%s", c.ClientID, c.TokenURL, c.Timeout)
+	log.Debug(ctx.Context, log.TagAppDef, func() []log.Field {
+		return []log.Field{
+			log.String("client_id", c.ClientID),
+			log.String("token_url", c.TokenURL),
+			log.String("timeout", c.Timeout.String()),
+			log.Msg("creating oauth2 client"),
+		}
+	})
 
 	client := cfg.Client(otelContext(c.Timeout))
 	if c.Timeout > 0 {

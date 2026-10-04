@@ -152,13 +152,13 @@ func runTest(s *Service) {
 
 	go func() {
 		if err := s.publish(ctx, "value"); err != nil {
-			log.Errorf(ctx, log.TagAppDef, "PUBLISH failed: %v", err)
+			log.Errorf(ctx, log.TagAppDef, err, "PUBLISH failed")
 			os.Exit(1)
 		}
 	}()
 	body, err := s.consume(recvCtx)
 	if err != nil || body != "value" {
-		log.Errorf(ctx, log.TagAppDef, "CONSUME failed: body=%q err=%v", body, err)
+		log.Errorf(ctx, log.TagAppDef, err, "CONSUME failed: body=%q err", body)
 		os.Exit(1)
 	}
 

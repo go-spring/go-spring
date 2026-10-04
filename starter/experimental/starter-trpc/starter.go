@@ -139,8 +139,15 @@ func NewSimpleTrpcServer(cfg Config, reg ServiceRegister, center *governance.Cen
 		// DefaultBinding is complete, so this cannot fail.
 		prop, _ = traffic.NewDefaultPropagator(traffic.DefaultBinding())
 	}
-	log.Debugf(context.Background(), log.TagAppDef, "trpc server created addr=%s service=%s network=%s protocol=%s",
-		cfg.Addr, cfg.ServiceName, cfg.Network, cfg.Protocol)
+	log.Debug(context.Background(), log.TagAppDef, func() []log.Field {
+		return []log.Field{
+			log.String("addr", cfg.Addr),
+			log.String("service", cfg.ServiceName),
+			log.String("network", cfg.Network),
+			log.String("protocol", cfg.Protocol),
+			log.Msg("create trpc server success"),
+		}
+	})
 	return &SimpleTrpcServer{cfg: cfg, reg: reg, center: center, prop: prop, done: make(chan struct{})}
 }
 
@@ -215,9 +222,7 @@ func (s *SimpleTrpcServer) Run(ctx context.Context, sig gs.ReadySignal) error {
 	select {
 	case err = <-errCh:
 		if err != nil {
-			log.Error(ctx, log.TagAppDef,
-				log.Err(err),
-				log.Msg("trpc server failed"))
+			log.Error(ctx, log.TagAppDef, err, log.Msg("trpc server failed"))
 		}
 		return errutil.Explain(err, "failed to serve on %s", s.cfg.Addr)
 	case <-s.done:

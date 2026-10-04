@@ -106,6 +106,6 @@ func newCoordinator(c Config, lock at.GlobalLock) at.Coordinator {
 	if c.Tracing {
 		opts = append(opts, at.WithObserver(transaction.AtObserver{}))
 	}
-	log.Infof(context.Background(), log.TagAppDef, "at coordinator created tracing=%v", c.Tracing)
+	log.Info(context.Background(), log.TagAppDef, log.Bool("tracing", c.Tracing), log.Msg("create at coordinator success"))
 	return at.NewCoordinator(opts...)
 }

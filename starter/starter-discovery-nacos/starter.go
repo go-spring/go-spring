@@ -145,7 +145,9 @@ func newNacosBackend(c NacosConfig, name string) (*nacosBackend, error) {
 		client.CloseClient()
 		return nil, err
 	}
-	log.Debugf(context.Background(), starterTag, "nacos backend for server=%s group=%s ready", c.Server, c.Group)
+	log.Debug(context.Background(), starterTag, func() []log.Field {
+		return []log.Field{log.String("server", c.Server), log.String("group", c.Group), log.Msg("nacos backend ready")}
+	})
 	return &nacosBackend{
 		reg:       reg,
 		disc:      newNacosDiscovery(client, c.Group, c.Cluster, obs),
@@ -233,7 +235,7 @@ func newNamingClient(c NacosConfig) (*naming_client.NamingClient, error) {
 	cc := constant.NewClientConfig(opts...)
 	ic, err := clients.NewNamingClient(vo.NacosClientParam{ClientConfig: cc, ServerConfigs: sc})
 	if err != nil {
-		log.Errorf(context.Background(), starterTag, "create nacos naming client for server=%s failed: %v", c.Server, err)
+		log.Error(context.Background(), starterTag, err, log.String("server", c.Server), log.Msg("create nacos naming client failed"))
 		return nil, errutil.Explain(err, "discovery-nacos: create naming client for %s", c.Server)
 	}
 	if c.Ping {

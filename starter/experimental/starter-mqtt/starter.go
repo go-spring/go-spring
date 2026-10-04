@@ -99,9 +99,7 @@ func newClient(ctx *gs.ContextProvider, name string, c Config, d Driver, center 
 	client, err := d.CreateClient(ctx.Context, c,
 		cloud.ClientParams{Resilience: center.Resilience(), Fault: center.Fault()})
 	if err != nil {
-		log.Error(cctx, log.TagAppDef,
-			log.Err(err),
-			log.Msg("mqtt: create client failed"))
+		log.Error(cctx, log.TagAppDef, err, log.Msg("mqtt: create client failed"))
 		return nil, errutil.Explain(err, "failed to create mqtt client: %s", c.Broker)
 	}
 
@@ -113,14 +111,12 @@ func newClient(ctx *gs.ContextProvider, name string, c Config, d Driver, center 
 	token := client.Connect()
 	token.Wait()
 	if err := token.Error(); err != nil {
-		log.Error(cctx, log.TagAppDef,
-			log.Err(err),
-			log.Msg("mqtt: connect failed"))
+		log.Error(cctx, log.TagAppDef, err, log.Msg("mqtt: connect failed"))
 		closeResilience(client)
 		client.Disconnect(250)
 		return nil, err
 	}
-	log.Info(cctx, log.TagAppDef, log.Msg("mqtt client initialized"))
+	log.Info(cctx, log.TagAppDef, log.Msg("create mqtt client success"))
 	return client, nil
 }
 

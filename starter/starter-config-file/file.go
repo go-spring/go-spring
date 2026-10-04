@@ -76,21 +76,17 @@ func (c *fileWatchCtrl) Load(optional bool, source string) (map[string]string, e
 		if os.IsNotExist(err) && optional {
 			log.Warn(ctx, starterTag,
 				log.String("path", path),
-				log.Msg("optional config path not found, skipped"))
+				log.Msg("skip optional config path not found"))
 			return nil, nil
 		}
-		log.Error(ctx, starterTag,
-			log.String("path", path),
-			log.Err(err),
-			log.Msg("stat failed"))
+		log.Error(ctx, starterTag, err, log.String("path", path), log.Msg("stat failed"))
 		return nil, errutil.Explain(err, "file-watch: stat %s failed", path)
 	}
 
 	if info.IsDir() {
-		log.Error(ctx, starterTag,
-			log.String("path", path),
-			log.Msg("file-watch expects a single file, got a directory"))
-		return nil, errutil.Explain(nil, "file-watch expects a single file, got directory %s (a directory of scalar key files belongs to the configtree provider)", path)
+		err := errutil.Explain(nil, "file-watch expects a single file, got directory %s (a directory of scalar key files belongs to the configtree provider)", path)
+		log.Error(ctx, starterTag, err, log.String("path", path), log.Msg("file-watch expects a single file, got a directory"))
+		return nil, err
 	}
 
 	// Watch the parent directory, never the file itself: Kubernetes updates a
@@ -112,6 +108,6 @@ func (c *fileWatchCtrl) Load(optional bool, source string) (map[string]string, e
 	log.Info(ctx, starterTag,
 		log.String("path", path),
 		log.Int("keys", len(m)),
-		log.Msg("loaded file-watch config"))
+		log.Msg("load file-watch config success"))
 	return m, nil
 }

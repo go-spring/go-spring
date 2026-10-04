@@ -48,7 +48,7 @@ func tracingMiddleware() app.HandlerFunc {
 		})
 
 		ctx = otel.GetTextMapPropagator().Extract(ctx, propagation.HeaderCarrier(hdr))
-		ctx, span := otel.Tracer(scope).Start(ctx, "HTTP "+string(c.Request.Method()),
+		ctx, span := otel.Tracer(componentName).Start(ctx, "HTTP "+string(c.Request.Method()),
 			trace.WithSpanKind(trace.SpanKindServer),
 		)
 

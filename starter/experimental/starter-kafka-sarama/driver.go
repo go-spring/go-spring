@@ -88,7 +88,7 @@ func (DefaultDriver) CreateClient(ctx context.Context, c Config, params cloud.Cl
 	if c.TLS.Enabled {
 		tc, err := c.TLS.BuildClient()
 		if err != nil {
-			log.Errorf(ctx, log.TagAppDef, "kafka sarama: build TLS failed: %v", err)
+			log.Error(ctx, log.TagAppDef, err, log.Msg("kafka sarama: build TLS failed"))
 			return nil, errutil.Explain(err, "kafka: build TLS")
 		}
 		cfg.Net.TLS.Enable = true

@@ -96,20 +96,18 @@ func (s *Server) Run(ctx context.Context, sig gs.ReadySignal) error {
 	log.Debug(ctx, starterTag, func() []log.Field {
 		return []log.Field{
 			log.Int("centers", len(s.Registries)),
-			log.Msg("registering the instance into the configured discovery centers"),
+			log.Msg("register the instance into the configured discovery centers"),
 		}
 	})
 	for _, r := range s.Registries {
 		if err := r.Register(ctx, s.inst); err != nil {
-			log.Error(ctx, starterTag,
-				log.Err(err),
-				log.Msg("register service failed"))
+			log.Error(ctx, starterTag, err, log.Msg("register service failed"))
 			return errutil.Explain(err, "discovery: register %q", s.inst.ServiceName)
 		}
 	}
 	log.Info(ctx, starterTag,
 		log.Int("centers", len(s.Registries)),
-		log.Msg("registered the instance in the configured discovery centers"))
+		log.Msg("register instance success"))
 
 	<-ctx.Done()
 	return nil
@@ -143,9 +141,8 @@ func (s *Server) UpdateWeight(ctx context.Context, weight int) error {
 	ctx = log.WithFields(ctx, instanceFields(s.inst)...)
 	for _, r := range s.Registries {
 		if err := r.UpdateWeight(ctx, s.inst, weight); err != nil {
-			log.Error(ctx, starterTag,
+			log.Error(ctx, starterTag, err,
 				log.Int("weight", weight),
-				log.Err(err),
 				log.Msg("update weight failed"))
 			return errutil.Explain(err, "discovery: update weight to %d", weight)
 		}

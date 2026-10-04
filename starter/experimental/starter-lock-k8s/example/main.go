@@ -125,7 +125,7 @@ func main() {
 func (d *ElectionDemo) runElection() {
 	ctx := context.Background()
 	if d.Locker == nil {
-		log.Errorf(ctx, log.TagAppDef, "locker was not injected")
+		log.Errorf(ctx, log.TagAppDef, fmt.Errorf("locker was not injected"), "locker was not injected")
 		_ = syscall.Kill(os.Getpid(), syscall.SIGTERM)
 		return
 	}
@@ -138,7 +138,7 @@ func (d *ElectionDemo) runElection() {
 		RetryInterval:    500 * time.Millisecond,
 	})
 	if err != nil {
-		log.Error(ctx, log.TagAppDef, log.Msg("election config"), log.Err(err))
+		log.Error(ctx, log.TagAppDef, err, log.Msg("election config"))
 		return
 	}
 

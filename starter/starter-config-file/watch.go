@@ -36,6 +36,7 @@ package StarterConfigFile
 import (
 	"context"
 	"errors"
+	"go-spring.org/stdlib/errutil"
 	"sync"
 
 	"github.com/fsnotify/fsnotify"
@@ -125,15 +126,17 @@ func (c *watchCore) ensureWatch(ctx context.Context, dir string) {
 	w, err := fsnotify.NewWatcher()
 	if err != nil {
 		c.mu.Unlock()
-		log.Warnf(ctx, starterTag,
-			"create file watcher for %s failed, hot-reload disabled for it (static snapshot kept): %v", dir, err)
+		log.Warn(ctx, starterTag,
+			log.String("dir", dir), log.Err(err),
+			log.Msg("create file watcher failed, hot-reload disabled for it (static snapshot kept)"))
 		return
 	}
 	if err = w.Add(dir); err != nil {
 		_ = w.Close()
 		c.mu.Unlock()
-		log.Warnf(ctx, starterTag,
-			"watch directory %s failed, hot-reload disabled for it (static snapshot kept): %v", dir, err)
+		log.Warn(ctx, starterTag,
+			log.String("dir", dir), log.Err(err),
+			log.Msg("watch directory failed, hot-reload disabled for it (static snapshot kept)"))
 		return
 	}
 	c.watchers[dir] = w
@@ -170,7 +173,7 @@ func (c *watchCore) watchLoop(w *fsnotify.Watcher) {
 				c.reportClosed(w)
 				return
 			}
-			log.Warnf(context.Background(), starterTag, "file watcher error: %v", err)
+			log.Warn(context.Background(), starterTag, log.Err(err), log.Msg("file watcher error"))
 		}
 	}
 }
@@ -183,6 +186,6 @@ func (c *watchCore) reportClosed(w *fsnotify.Watcher) {
 	if !c.isCurrent(w) {
 		return
 	}
-	log.Errorf(context.Background(), starterTag,
-		"file watcher closed; hot-reload is disabled until restart")
+	err := errutil.Explain(nil, "file watcher closed unexpectedly")
+	log.Error(context.Background(), starterTag, err, log.Msg("file watcher closed; hot-reload is disabled until restart"))
 }

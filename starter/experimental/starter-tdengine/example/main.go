@@ -73,24 +73,24 @@ func runTest(s *Service) {
 	}
 	for _, q := range stmts {
 		if _, err := s.Client.ExecContext(ctx, q); err != nil {
-			log.Errorf(ctx, log.TagAppDef, "EXEC failed (%s): %v", q, err)
+			log.Errorf(ctx, log.TagAppDef, err, "EXEC failed (%s)", q)
 			os.Exit(1)
 		}
 	}
 
 	rows, err := s.Client.QueryContext(ctx, "SELECT COUNT(*) FROM power.meters")
 	if err != nil {
-		log.Errorf(ctx, log.TagAppDef, "QUERY failed: %v", err)
+		log.Errorf(ctx, log.TagAppDef, err, "QUERY failed")
 		os.Exit(1)
 	}
 	defer rows.Close()
 	if !rows.Next() {
-		log.Errorf(ctx, log.TagAppDef, "QUERY failed: no rows")
+		log.Errorf(ctx, log.TagAppDef, fmt.Errorf("QUERY failed: no rows"), "QUERY failed: no rows")
 		os.Exit(1)
 	}
 	var n int
 	if err = rows.Scan(&n); err != nil || n < 1 {
-		log.Errorf(ctx, log.TagAppDef, "SCAN failed: n=%d err=%v", n, err)
+		log.Errorf(ctx, log.TagAppDef, err, "SCAN failed: n=%d err", n)
 		os.Exit(1)
 	}
 

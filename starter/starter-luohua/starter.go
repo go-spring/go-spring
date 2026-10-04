@@ -63,7 +63,7 @@ func init() {
 		if !c.Enabled {
 			return nil
 		}
-		log.Infof(context.Background(), tagAppLuohua, "luohua baseline armed")
+		log.Info(context.Background(), tagAppLuohua, log.Msg("luohua baseline armed"))
 		return apply(r, c)
 	})
 }

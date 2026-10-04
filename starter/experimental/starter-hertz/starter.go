@@ -111,8 +111,16 @@ func NewSimpleHertzServer(register RouterRegister, cfg Config, center *governanc
 
 	addr := cfg.Addr
 	tlsEnabled := cfg.TLS.Enabled
-	log.Debugf(context.Background(), log.TagAppDef, "hertz server created addr=%s tls=%v readTimeout=%s writeTimeout=%s idleTimeout=%s",
-		addr, tlsEnabled, cfg.ReadTimeout, cfg.WriteTimeout, cfg.IdleTimeout)
+	log.Debug(context.Background(), log.TagAppDef, func() []log.Field {
+		return []log.Field{
+			log.String("addr", addr),
+			log.Bool("tls", tlsEnabled),
+			log.String("read_timeout", cfg.ReadTimeout.String()),
+			log.String("write_timeout", cfg.WriteTimeout.String()),
+			log.String("idle_timeout", cfg.IdleTimeout.String()),
+			log.Msg("create hertz server success"),
+		}
+	})
 
 	return &SimpleHertzServer{h: h}, nil
 }
@@ -120,9 +128,9 @@ func NewSimpleHertzServer(register RouterRegister, cfg Config, center *governanc
 // Run starts the Hertz engine after Go-Spring signals readiness.
 func (s *SimpleHertzServer) Run(ctx context.Context, sig gs.ReadySignal) error {
 	<-sig.TriggerAndWait()
-	log.Infof(ctx, log.TagAppDef, "hertz server starting")
+	log.Info(ctx, log.TagAppDef, log.Msg("hertz server starting"))
 	if err := s.h.Run(); err != nil {
-		log.Errorf(ctx, log.TagAppDef, "hertz server failed: %v", err)
+		log.Error(ctx, log.TagAppDef, err, log.Msg("hertz server failed"))
 		return err
 	}
 	return nil
@@ -131,6 +139,6 @@ func (s *SimpleHertzServer) Run(ctx context.Context, sig gs.ReadySignal) error {
 // Stop gracefully shuts the Hertz engine down, propagating ctx into the
 // engine's context-aware Shutdown so the drain rides the shutdown context.
 func (s *SimpleHertzServer) Stop(ctx context.Context) error {
-	log.Infof(ctx, log.TagAppDef, "hertz server shutting down")
+	log.Info(ctx, log.TagAppDef, log.Msg("hertz server shutting down"))
 	return s.h.Shutdown(ctx)
 }

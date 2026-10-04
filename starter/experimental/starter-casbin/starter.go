@@ -103,7 +103,14 @@ func newEnforcer(ctx context.Context, c Config, adapter persist.Adapter, watcher
 		err error
 	)
 
-	log.Debugf(ctx, log.TagAppDef, "creating casbin enforcer model=%s adapter=%s watcher=%s", c.Model, c.Adapter, c.Watcher)
+	log.Debug(ctx, log.TagAppDef, func() []log.Field {
+		return []log.Field{
+			log.String("model", c.Model),
+			log.String("adapter", c.Adapter),
+			log.String("watcher", c.Watcher),
+			log.Msg("creating casbin enforcer"),
+		}
+	})
 
 	// `policy` and `adapter` are mutually exclusive storage selections: the
 	// enforcer must load from exactly one place. Configuring both is almost
@@ -124,7 +131,7 @@ func newEnforcer(ctx context.Context, c Config, adapter persist.Adapter, watcher
 		e, err = casbin.NewEnforcer(c.Model, c.Policy)
 	}
 	if err != nil {
-		log.Errorf(ctx, log.TagAppDef, "create casbin enforcer failed: %v", err)
+		log.Error(ctx, log.TagAppDef, err, log.Msg("create casbin enforcer failed"))
 		return nil, errutil.Explain(err, "failed to create casbin enforcer")
 	}
 	e.EnableAutoSave(c.AutoSave)

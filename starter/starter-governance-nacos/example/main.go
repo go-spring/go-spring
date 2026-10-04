@@ -97,7 +97,7 @@ func (p *poller) Run(ctx context.Context) error {
 		// Publish the updated document once the source has seeded its snapshot.
 		time.Sleep(time.Second)
 		if err := publish(rulesV2); err != nil {
-			log.Errorf(ctx, log.TagAppDef, "publish rules failed: %v", err)
+			log.Errorf(ctx, log.TagAppDef, err, "publish rules failed")
 			os.Exit(1)
 		}
 
@@ -118,7 +118,7 @@ func (p *poller) Run(ctx context.Context) error {
 				return
 			}
 			if time.Now().After(deadline) {
-				log.Errorf(ctx, log.TagAppDef, "rule push timeout: timeout=%v", pol.AttemptTimeout)
+				log.Errorf(ctx, log.TagAppDef, fmt.Errorf("rule push timeout: timeout=%v", pol.AttemptTimeout), "rule push timeout: timeout=%v", pol.AttemptTimeout)
 				os.Exit(1)
 			}
 		}
@@ -150,7 +150,7 @@ func main() {
 	// does an initial GetConfig, so a missing document would fail startup by
 	// design.
 	if err := publish(rulesV1); err != nil {
-		log.Errorf(context.Background(), log.TagAppDef, "seed rules failed: %v", err)
+		log.Errorf(context.Background(), log.TagAppDef, err, "seed rules failed")
 		os.Exit(1)
 	}
 

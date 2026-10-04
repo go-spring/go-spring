@@ -82,7 +82,7 @@ func runTest(d *Demo) {
 	want := "v-" + time.Now().Format("150405")
 	_ = os.Setenv("GS_DEMO_MESSAGE", want)
 	if err := d.Bus.Publish(ctx, ""); err != nil {
-		log.Errorf(ctx, log.TagAppDef, "publish refresh failed: %v", err)
+		log.Errorf(ctx, log.TagAppDef, err, "publish refresh failed")
 		os.Exit(1)
 	}
 
@@ -97,7 +97,7 @@ func runTest(d *Demo) {
 		}
 		time.Sleep(200 * time.Millisecond)
 	}
-	log.Errorf(ctx, log.TagAppDef, "refresh timeout: message=%q want=%q", d.Message.Value(), want)
+	log.Errorf(ctx, log.TagAppDef, fmt.Errorf("refresh timeout: message=%q want=%q", d.Message.Value(), want), "refresh timeout: message=%q want=%q", d.Message.Value(), want)
 	os.Exit(1)
 }
 

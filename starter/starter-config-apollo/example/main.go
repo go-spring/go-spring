@@ -26,6 +26,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"go-spring.org/stdlib/errutil"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -84,7 +85,8 @@ func runTest(d *Demo) {
 	// Cold load: the imported namespace was read at startup.
 	got := d.Message.Value()
 	if got != "hello-from-apollo" {
-		log.Error(ctx, log.TagAppDef,
+		err := errutil.Explain(nil, "config mismatch: got %q, want %q", got, "hello-from-apollo")
+		log.Error(ctx, log.TagAppDef, err,
 			log.String("got", got),
 			log.String("want", "hello-from-apollo"),
 			log.Msg("CONFIG mismatch"))
@@ -108,7 +110,8 @@ func runTest(d *Demo) {
 		}
 		time.Sleep(100 * time.Millisecond)
 	}
-	log.Error(ctx, log.TagAppDef,
+	err := errutil.Explain(nil, "hot-reload timeout: got %q, want %q", d.Message.Value(), want)
+	log.Error(ctx, log.TagAppDef, err,
 		log.String("got", d.Message.Value()),
 		log.String("want", want),
 		log.Msg("hot-reload timeout"))

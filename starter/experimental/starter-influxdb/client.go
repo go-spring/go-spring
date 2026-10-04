@@ -161,8 +161,7 @@ func (o *Client) ManagedWriteAPI() api.WriteAPI {
 				// same endpoint. This batch never crosses the resilience executor
 				// (see the method doc), so the line is the only failure signal
 				// the single emitter cannot produce for it.
-				log.Error(context.Background(), accessTag, append(asyncWriteFields(),
-					log.Err(err),
+				log.Error(context.Background(), accessTag, err, append(asyncWriteFields(),
 					log.Msg("influxdb: async write failed"))...)
 			}
 		}()

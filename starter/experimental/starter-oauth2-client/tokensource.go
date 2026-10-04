@@ -81,7 +81,13 @@ func newTokenSource(ctx *gs.ContextProvider, name string, c Config) (*TokenSourc
 		EndpointParams: c.endpointParams(),
 	}
 
-	log.Debugf(ctx.Context, log.TagAppDef, "creating oauth2 token source clientID=%s tokenURL=%s", c.ClientID, c.TokenURL)
+	log.Debug(ctx.Context, log.TagAppDef, func() []log.Field {
+		return []log.Field{
+			log.String("client_id", c.ClientID),
+			log.String("token_url", c.TokenURL),
+			log.Msg("creating oauth2 token source"),
+		}
+	})
 
 	// The token source needs a context carrying the instrumented HTTP client,
 	// but it must stay local: ctx is the shared *gs.ContextProvider, so

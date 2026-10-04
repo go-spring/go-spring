@@ -117,13 +117,11 @@ func newClient(ctx *gs.ContextProvider, name string, c Config, d Driver, center 
 	// traffic. A failure abandons the client, so release what was just applied.
 	if c.Ping {
 		if err = probeNameServer(c.NameServers); err != nil {
-			log.Error(cctx, log.TagAppDef,
-				log.Err(err),
-				log.Msg("rocketmq: ping failed"))
+			log.Error(cctx, log.TagAppDef, err, log.Msg("rocketmq: ping failed"))
 			_ = cl.Close()
 			return nil, errutil.Explain(err, "rocketmq name server probe failed on %v", c.NameServers)
 		}
 	}
-	log.Info(cctx, log.TagAppDef, log.Msg("rocketmq client initialized"))
+	log.Info(cctx, log.TagAppDef, log.Msg("init rocketmq client success"))
 	return cl, nil
 }

@@ -73,18 +73,18 @@ func runTest(s *Service) {
 	}
 	for _, q := range stmts {
 		if err := s.Client.Exec(ctx, q); err != nil {
-			log.Errorf(ctx, log.TagAppDef, "EXEC failed (%s): %v", q, err)
+			log.Errorf(ctx, log.TagAppDef, err, "EXEC failed (%s)", q)
 			os.Exit(1)
 		}
 	}
 	if err := s.Client.Exec(ctx, "INSERT INTO demo.greetings (id, message) VALUES (1, 'hello') IF NOT EXISTS"); err != nil {
-		log.Errorf(ctx, log.TagAppDef, "EXEC failed (insert): %v", err)
+		log.Errorf(ctx, log.TagAppDef, err, "EXEC failed (insert)")
 		os.Exit(1)
 	}
 
 	var msg string
 	if err := s.Client.Query("SELECT message FROM demo.greetings WHERE id = 1").WithContext(ctx).Scan(&msg); err != nil || msg != "hello" {
-		log.Errorf(ctx, log.TagAppDef, "QUERY failed: msg=%q err=%v", msg, err)
+		log.Errorf(ctx, log.TagAppDef, err, "QUERY failed: msg=%q err", msg)
 		os.Exit(1)
 	}
 

@@ -128,7 +128,13 @@ type SimpleKitexServer struct {
 // NewSimpleKitexServer creates a SimpleKitexServer from ${spring.kitex.server}
 // config and the registered ServiceRegister bean.
 func NewSimpleKitexServer(cfg Config, reg ServiceRegister) *SimpleKitexServer {
-	log.Debugf(context.Background(), log.TagAppDef, "kitex server created addr=%s service=%s", cfg.Addr, cfg.ServiceName)
+	log.Debug(context.Background(), log.TagAppDef, func() []log.Field {
+		return []log.Field{
+			log.String("addr", cfg.Addr),
+			log.String("service", cfg.ServiceName),
+			log.Msg("create kitex server success"),
+		}
+	})
 	return &SimpleKitexServer{cfg: cfg, reg: reg, done: make(chan struct{})}
 }
 
@@ -196,11 +202,11 @@ func observabilityOptions(cfg Config) (opts []server.Option, localProvider provi
 
 	if cfg.Tracing.Enable {
 		if active {
-			log.Infof(context.Background(), log.TagAppDef,
-				"kitex tracing attached to the global otel pipeline (starter-otel); kitex tracing.* endpoint keys are ignored")
+			log.Info(context.Background(), log.TagAppDef,
+				log.Msg("kitex tracing attached to the global otel pipeline (starter-otel); kitex tracing.* endpoint keys are ignored"))
 		} else if cfg.Tracing.Endpoint == "" {
-			log.Warnf(context.Background(), log.TagAppDef,
-				"kitex tracing enabled without a global otel pipeline and without spring.kitex.server.tracing.endpoint; no tracing provider is created (set the endpoint or import starter-otel)")
+			log.Warn(context.Background(), log.TagAppDef,
+				log.Msg("kitex tracing enabled without a global otel pipeline and without spring.kitex.server.tracing.endpoint; no tracing provider is created (set the endpoint or import starter-otel)"))
 		} else {
 			popts := []provider.Option{
 				provider.WithServiceName(cfg.ServiceName),
@@ -213,8 +219,9 @@ func observabilityOptions(cfg Config) (opts []server.Option, localProvider provi
 				popts = append(popts, provider.WithInsecure())
 			}
 			localProvider = provider.NewOpenTelemetryProvider(popts...)
-			log.Infof(context.Background(), log.TagAppDef,
-				"kitex tracing running on its own otel provider (endpoint=%s); import starter-otel for unified observability", cfg.Tracing.Endpoint)
+			log.Info(context.Background(), log.TagAppDef,
+				log.String("endpoint", cfg.Tracing.Endpoint),
+				log.Msg("kitex tracing running on its own otel provider; import starter-otel for unified observability"))
 		}
 		opts = append(opts, server.WithSuite(tracing.NewServerSuite()))
 	}
@@ -229,11 +236,11 @@ func observabilityOptions(cfg Config) (opts []server.Option, localProvider provi
 			opts = append(opts, server.WithTracer(prometheus.NewServerTracer(
 				fmt.Sprintf(":%d", cfg.Metrics.Port), cfg.Metrics.Path)))
 		case active:
-			log.Infof(context.Background(), log.TagAppDef,
-				"kitex metrics ride the global otel pipeline (rpc.server.duration via the tracing suite); set metrics.port for a dedicated prometheus endpoint")
+			log.Info(context.Background(), log.TagAppDef,
+				log.Msg("kitex metrics ride the global otel pipeline (rpc.server.duration via the tracing suite); set metrics.port for a dedicated prometheus endpoint"))
 		default:
-			log.Infof(context.Background(), log.TagAppDef,
-				"kitex metrics disabled: no global otel pipeline and no metrics.port configured; set spring.kitex.server.metrics.port to start a dedicated prometheus endpoint")
+			log.Info(context.Background(), log.TagAppDef,
+				log.Msg("kitex metrics disabled: no global otel pipeline and no metrics.port configured; set spring.kitex.server.metrics.port to start a dedicated prometheus endpoint"))
 		}
 	}
 	return opts, localProvider
@@ -308,9 +315,7 @@ func (s *SimpleKitexServer) Run(ctx context.Context, sig gs.ReadySignal) error {
 	select {
 	case err = <-errCh:
 		if err != nil {
-			log.Error(ctx, log.TagAppDef,
-				log.Err(err),
-				log.Msg("kitex server failed"))
+			log.Error(ctx, log.TagAppDef, err, log.Msg("kitex server failed"))
 		}
 		return errutil.Explain(err, "failed to serve on %s", s.cfg.Addr)
 	case <-s.done:

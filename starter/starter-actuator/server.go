@@ -118,9 +118,7 @@ func (s *Server) Run(ctx context.Context, sig gs.ReadySignal) error {
 
 	ln, err := net.Listen("tcp", s.cfg.Address)
 	if err != nil {
-		log.Error(ctx, log.TagAppDef,
-			log.Err(err),
-			log.Msg("actuator: failed to listen"))
+		log.Error(ctx, log.TagAppDef, err, log.Msg("listen actuator failed"))
 		return errutil.Explain(err, "actuator: failed to listen on %s", s.cfg.Address)
 	}
 
@@ -144,9 +142,7 @@ func (s *Server) Run(ctx context.Context, sig gs.ReadySignal) error {
 		log.Info(ctx, log.TagAppDef, log.Msg("actuator server closed gracefully"))
 		return nil
 	}
-	log.Error(ctx, log.TagAppDef,
-		log.Err(err),
-		log.Msg("actuator serve error"))
+	log.Error(ctx, log.TagAppDef, err, log.Msg("serve actuator failed"))
 	return errutil.Explain(err, "actuator: failed to serve on %s", s.cfg.Address)
 }
 
@@ -182,14 +178,16 @@ func (s *Server) buildHandler(ctx context.Context) http.Handler {
 	}, s.endpoints...)
 	for _, e := range endpoints {
 		mux.Handle(e.Pattern, e.Handler)
-		log.Debugf(ctx, log.TagAppDef, "registered endpoint: %s", e.Pattern)
+		log.Debug(ctx, log.TagAppDef, func() []log.Field {
+			return []log.Field{log.String("endpoint", e.Pattern), log.Msg("registered endpoint")}
+		})
 	}
 
 	guard := security.Guard{Token: s.cfg.Token, Username: s.cfg.Username, Password: s.cfg.Password}
 	if !guard.Enabled() && !netutil.IsLoopback(s.cfg.Address) {
-		log.Warnf(ctx, log.TagAppDef,
-			"actuator listening on %q without authentication; set ${spring.actuator.token} or ${spring.actuator.username}/${spring.actuator.password}",
-			s.cfg.Address)
+		log.Warn(ctx, log.TagAppDef,
+			log.String("addr", s.cfg.Address),
+			log.Msg("actuator listening without authentication; set ${spring.actuator.token} or ${spring.actuator.username}/${spring.actuator.password}"))
 	}
 	return guard.Wrap(mux)
 }
@@ -200,7 +198,7 @@ func (s *Server) Stop(ctx context.Context) error {
 	if s.svr == nil {
 		return nil
 	}
-	log.Infof(ctx, log.TagAppDef, "stopping actuator server")
+	log.Info(ctx, log.TagAppDef, log.Msg("stopping actuator server"))
 	return s.svr.Shutdown(ctx)
 }
 

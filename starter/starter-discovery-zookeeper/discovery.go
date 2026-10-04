@@ -209,8 +209,9 @@ func (d *zkDiscovery) watchLoop(name string, e *serviceEntry) {
 			d.obs.Synced(name, err)
 			log.Warn(ctx, starterTag,
 				log.String("status", discovery.StatusOf(err)),
+				log.String("path", path),
 				log.Err(err),
-				log.Msgf("discovery-zookeeper: arm watch %q failed (keeping stale snapshot)", path))
+				log.Msg("discovery-zookeeper: arm watch failed (keeping stale snapshot; retrying)"))
 			select {
 			case <-d.done:
 				return
@@ -254,8 +255,9 @@ func (d *zkDiscovery) fetchWatches(name string, e *serviceEntry) []<-chan zk.Eve
 		d.obs.Synced(name, err)
 		log.Warn(ctx, starterTag,
 			log.String("status", discovery.StatusOf(err)),
+			log.String("path", path),
 			log.Err(err),
-			log.Msgf("discovery-zookeeper: list %q failed (keeping stale snapshot)", path))
+			log.Msg("discovery-zookeeper: list failed (keeping stale snapshot)"))
 		return nil
 	}
 	vals := make(map[string][]byte, len(children))
@@ -278,8 +280,9 @@ func (d *zkDiscovery) fetchWatches(name string, e *serviceEntry) []<-chan zk.Eve
 		d.obs.Synced(name, readErr)
 		log.Warn(ctx, starterTag,
 			log.String("status", discovery.StatusOf(readErr)),
+			log.String("path", path),
 			log.Err(readErr),
-			log.Msgf("discovery-zookeeper: refresh %q failed (keeping stale snapshot)", path))
+			log.Msg("discovery-zookeeper: refresh failed (keeping stale snapshot)"))
 		// The watches already armed stay live, so the next change re-runs this.
 		return evs
 	}
@@ -329,7 +332,7 @@ func valuesToEndpoints(obs *discovery.Observer, vals map[string][]byte) []discov
 				log.String("center", obs.Center()),
 				log.String("node", name),
 				log.Err(err),
-				log.Msg("discovery-zookeeper: skipping a malformed instance payload"))
+				log.Msg("discovery-zookeeper: skip malformed instance payload"))
 			continue
 		}
 		eps = append(eps, discovery.Endpoint{

@@ -104,7 +104,14 @@ type RestServer struct {
 // NewRestServer builds a RestServer from ${spring.go-zero.rest.server} config
 // and the registered HandlerRegister bean.
 func NewRestServer(cfg Config, reg HandlerRegister) *RestServer {
-	log.Debugf(context.Background(), log.TagAppDef, "go-zero rest server created host=%s port=%d name=%s", cfg.Host, cfg.Port, cfg.Name)
+	log.Debug(context.Background(), log.TagAppDef, func() []log.Field {
+		return []log.Field{
+			log.String("host", cfg.Host),
+			log.Int("port", cfg.Port),
+			log.String("name", cfg.Name),
+			log.Msg("create go-zero rest server success"),
+		}
+	})
 	return &RestServer{cfg: cfg, reg: reg, done: make(chan struct{})}
 }
 

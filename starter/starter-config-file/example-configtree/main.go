@@ -110,15 +110,15 @@ func runTest(d *Demo) {
 
 	// Every flat key file becomes one property; all three are visible at startup.
 	if got := d.User.Value(); got != "alice" {
-		log.Errorf(ctx, log.TagAppDef, "unexpected db.user: %q", got)
+		log.Errorf(ctx, log.TagAppDef, fmt.Errorf("unexpected db.user: %q", got), "unexpected db.user: %q", got)
 		os.Exit(1)
 	}
 	if got := d.Password.Value(); got != "s3cr3t" {
-		log.Errorf(ctx, log.TagAppDef, "unexpected db.password: %q", got)
+		log.Errorf(ctx, log.TagAppDef, fmt.Errorf("unexpected db.password: %q", got), "unexpected db.password: %q", got)
 		os.Exit(1)
 	}
 	if got := d.Port.Value(); got != "8080" {
-		log.Errorf(ctx, log.TagAppDef, "unexpected server.port: %q", got)
+		log.Errorf(ctx, log.TagAppDef, fmt.Errorf("unexpected server.port: %q", got), "unexpected server.port: %q", got)
 		os.Exit(1)
 	}
 	fmt.Printf("initial: db.user=%s server.port=%s\n", d.User.Value(), d.Port.Value())
@@ -130,7 +130,7 @@ func runTest(d *Demo) {
 		"db.password": "s3cr3t",
 		"server.port": "8080",
 	}); err != nil {
-		log.Errorf(ctx, log.TagAppDef, "update mount failed: %v", err)
+		log.Errorf(ctx, log.TagAppDef, err, "update mount failed")
 		os.Exit(1)
 	}
 
@@ -145,7 +145,7 @@ func runTest(d *Demo) {
 		}
 		time.Sleep(200 * time.Millisecond)
 	}
-	log.Errorf(ctx, log.TagAppDef, "hot-reload timeout: db.user=%q want=%q", d.User.Value(), want)
+	log.Errorf(ctx, log.TagAppDef, fmt.Errorf("hot-reload timeout: db.user=%q want=%q", d.User.Value(), want), "hot-reload timeout: db.user=%q want=%q", d.User.Value(), want)
 	os.Exit(1)
 }
 

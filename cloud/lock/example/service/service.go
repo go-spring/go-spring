@@ -83,7 +83,7 @@ func (d *Demo) criticalSection(ctx context.Context) error {
 	if err != nil {
 		return errutil.Explain(err, "acquire jobs/rollup")
 	}
-	log.Info(ctx, log.TagAppDef, log.Msg("demo: critical section entered"),
+	log.Info(ctx, log.TagAppDef, log.Msg("demo: entered critical section"),
 		log.String("lock.key", held.Key()), log.String("token", held.Token()))
 	select {
 	case <-held.Lost():
@@ -93,7 +93,7 @@ func (d *Demo) criticalSection(ctx context.Context) error {
 	if err := held.Unlock(ctx); err != nil {
 		return errutil.Explain(err, "unlock jobs/rollup")
 	}
-	log.Info(ctx, log.TagAppDef, log.Msg("demo: critical section done"))
+	log.Info(ctx, log.TagAppDef, log.Msg("demo: finished critical section"))
 	return nil
 }
 

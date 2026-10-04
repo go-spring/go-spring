@@ -144,8 +144,8 @@ func (e *serverExecutor) Execute(ctx context.Context, fn func(context.Context) e
 	// outage.
 	if lerr := allowRate(ctx, rate, e.policy.RateSpec(), e.service, e.counters); lerr != nil {
 		if !errors.Is(lerr, chain.ErrRateLimited) {
-			log.Warnf(ctx, log.TagAppDef,
-				"resilience: rate-limit counters unavailable, allowing request: %v", lerr)
+			log.Warn(ctx, log.TagAppDef, log.Err(lerr),
+				log.Msg("resilience: rate-limit counters unavailable, allowing request"))
 		} else {
 			return chain.ErrRateLimited
 		}

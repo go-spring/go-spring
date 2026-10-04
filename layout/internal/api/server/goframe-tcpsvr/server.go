@@ -80,7 +80,7 @@ func (s *Server) Run(ctx context.Context, sig gs.ReadySignal) error {
 			if errors.Is(err, net.ErrClosed) {
 				return nil
 			}
-			log.Errorf(ctx, log.TagAppDef, "failed to accept goframe tcp conn: %v", err)
+			log.Errorf(ctx, log.TagAppDef, err, "failed to accept goframe tcp conn")
 			return err
 		}
 		go serve(ctx, conn)

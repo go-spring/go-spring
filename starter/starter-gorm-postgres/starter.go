@@ -114,7 +114,9 @@ func build(ctx context.Context, c Config, params cloud.ClientParams) (gormcore.S
 			"gorm postgres: tls.enabled=true conflicts with sslmode=disable; set sslmode to require (or a verifying mode) or turn tls off")
 	}
 
-	log.Debugf(ctx, log.TagAppDef, "creating gorm postgres client, host=%s service-name=%s db=%s", c.Host, c.ServiceName, c.DB)
+	log.Debug(ctx, log.TagAppDef, func() []log.Field {
+		return []log.Field{log.String("host", c.Host), log.String("service_name", c.ServiceName), log.String("db", c.DB), log.Msg("creating gorm postgres client")}
+	})
 
 	service := resilience.ServiceLabel("gorm:postgresql", c.ServiceName, c.Host)
 
@@ -125,7 +127,7 @@ func build(ctx context.Context, c Config, params cloud.ClientParams) (gormcore.S
 
 	lb, ld, stopSelection, err := c.NewPickPool(ctx, params.Discovery, service, params.Loadbalance)
 	if err != nil {
-		log.Errorf(ctx, log.TagAppDef, "gorm postgres: build discovery resolver failed: %v", err)
+		log.Error(ctx, log.TagAppDef, err, log.Msg("gorm postgres build discovery resolver failed"))
 		return gormcore.Spec{}, err
 	}
 
@@ -133,13 +135,13 @@ func build(ctx context.Context, c Config, params cloud.ClientParams) (gormcore.S
 	// startup and gives one injection point for TLS and the discovery dialer.
 	pgxCfg, err := pgx.ParseConfig(c.DSN())
 	if err != nil {
-		log.Errorf(ctx, log.TagAppDef, "gorm postgres: parse pgx config failed: %v", err)
+		log.Error(ctx, log.TagAppDef, err, log.Msg("gorm postgres parse pgx config failed"))
 		return gormcore.Spec{}, err
 	}
 	if c.TLS.Enabled {
 		tlsCfg, terr := c.TLS.BuildClient()
 		if terr != nil {
-			log.Errorf(ctx, log.TagAppDef, "gorm postgres: build TLS failed: %v", terr)
+			log.Error(ctx, log.TagAppDef, terr, log.Msg("gorm postgres build TLS failed"))
 			return gormcore.Spec{}, errutil.Explain(terr, "gorm postgres: build TLS")
 		}
 		pgxCfg.TLSConfig = tlsCfg

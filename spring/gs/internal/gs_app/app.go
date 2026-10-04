@@ -324,7 +324,7 @@ func (app *App) Start() error {
 					}
 				}()
 				if err := svr.Run(ctx, svrSig); err != nil {
-					log.Errorf(ctx, log.TagAppDef, "server serve error: %v", err)
+					log.Errorf(ctx, log.TagAppDef, err, "server serve error")
 					svrSig.Intercept()
 					app.ShutDown()
 				} else {
@@ -384,7 +384,7 @@ func (app *App) WaitForShutdown() {
 			var err error
 			err = svr.Stop(stopCtx)
 			if err != nil {
-				log.Errorf(ctx, log.TagAppDef, "shutdown server failed: %v", err)
+				log.Errorf(ctx, log.TagAppDef, err, "shutdown server failed")
 			}
 		}, goutil.DetachCancel)
 	}
@@ -402,7 +402,7 @@ func (app *App) WaitForShutdown() {
 	// servers': closing must not be cut short by the very cancellation that
 	// started the shutdown.
 	if err := conf.CloseProviders(stopCtx); err != nil {
-		log.Errorf(app.ctx, log.TagAppDef, "close config providers failed: %v", err)
+		log.Errorf(app.ctx, log.TagAppDef, err, "close config providers failed")
 	}
 
 	app.c.Close()

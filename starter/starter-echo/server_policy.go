@@ -150,9 +150,9 @@ func observeEnabled(cfg Config) bool {
 	}
 	m := cfg.Middleware
 	if !m.Tracing.Enabled || !m.Metrics.Enabled || !m.AccessLog.Enabled {
-		log.Warnf(context.Background(), log.TagAppDef,
-			"echo: middleware.tracing/metrics/accessLog 的按信号开关已合并 —— 三者现在是一组,"+
-				"任一为 false 即整组关闭(span/指标/访问日志同生共死);请改用 middleware.observability.enabled")
+		log.Warn(context.Background(), log.TagAppDef,
+			log.Msg("echo: middleware.tracing/metrics/accessLog 的按信号开关已合并 —— 三者现在是一组,"+
+				"任一为 false 即整组关闭(span/指标/访问日志同生共死);请改用 middleware.observability.enabled"))
 		return false
 	}
 	return true

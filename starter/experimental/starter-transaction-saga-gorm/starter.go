@@ -55,9 +55,9 @@ func init() {
 // *gorm.DB, creating the saga_snapshots table if absent (fail-fast on error).
 func newGormStore(_ gormConfig, db *gorm.DB) (transaction.Store, error) {
 	if err := db.AutoMigrate(&sagaSnapshot{}); err != nil {
-		log.Errorf(context.Background(), log.TagAppDef, "auto-migrate saga_snapshots failed: %v", err)
+		log.Error(context.Background(), log.TagAppDef, err, log.Msg("auto-migrate saga_snapshots failed"))
 		return nil, err
 	}
-	log.Infof(context.Background(), log.TagAppDef, "gorm saga store created")
+	log.Info(context.Background(), log.TagAppDef, log.Msg("create gorm saga store success"))
 	return &gormStore{db: db}, nil
 }

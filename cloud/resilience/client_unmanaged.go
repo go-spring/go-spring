@@ -58,9 +58,9 @@ type unmanagedExecutor struct {
 
 func (e *unmanagedExecutor) Execute(ctx context.Context, fn func(context.Context) error) error {
 	if _, seen := warnedUnmanaged.LoadOrStore(e.service, struct{}{}); !seen {
-		log.Warnf(ctx, log.TagAppDef,
-			"resilience: client %q runs unmanaged — no rate limit, circuit breaker or retry applies to it; "+
-				"it is observed only (assemble it through the container to govern it)", e.service)
+		log.Warn(ctx, log.TagAppDef, log.String("service", e.service),
+			log.Msg("resilience: client runs unmanaged — no rate limit, circuit breaker or retry applies to it; "+
+				"it is observed only (assemble it through the container to govern it)"))
 	}
 	return e.inner.Execute(ctx, fn)
 }

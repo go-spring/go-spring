@@ -80,11 +80,11 @@ func runTest(s *Service) {
 	// Feature 1: TryAcquire on a free key succeeds.
 	held, ok, err := s.Lock.TryAcquire(ctx, "demo")
 	if err != nil {
-		log.Errorf(ctx, log.TagAppDef, "TryAcquire failed: %v", err)
+		log.Errorf(ctx, log.TagAppDef, err, "TryAcquire failed")
 		os.Exit(1)
 	}
 	if !ok || held == nil {
-		log.Errorf(ctx, log.TagAppDef, "TryAcquire should have succeeded on a free key")
+		log.Errorf(ctx, log.TagAppDef, fmt.Errorf("TryAcquire should have succeeded on a free key"), "TryAcquire should have succeeded on a free key")
 		os.Exit(1)
 	}
 	fmt.Println("Acquired lock:", held.Key(), "token=", held.Token())
@@ -92,29 +92,29 @@ func runTest(s *Service) {
 	// Feature 2: A second TryAcquire on the same key must observe contention.
 	_, ok2, err := s.Lock.TryAcquire(ctx, "demo")
 	if err != nil {
-		log.Errorf(ctx, log.TagAppDef, "second TryAcquire returned error: %v", err)
+		log.Errorf(ctx, log.TagAppDef, err, "second TryAcquire returned error")
 		os.Exit(1)
 	}
 	if ok2 {
-		log.Errorf(ctx, log.TagAppDef, "second TryAcquire should have failed while lock is held")
+		log.Errorf(ctx, log.TagAppDef, fmt.Errorf("second TryAcquire should have failed while lock is held"), "second TryAcquire should have failed while lock is held")
 		os.Exit(1)
 	}
 	fmt.Println("Contention observed as expected")
 
 	// Feature 3: Unlock releases the lock, and a subsequent TryAcquire succeeds.
 	if err := held.Unlock(ctx); err != nil {
-		log.Errorf(ctx, log.TagAppDef, "Unlock failed: %v", err)
+		log.Errorf(ctx, log.TagAppDef, err, "Unlock failed")
 		os.Exit(1)
 	}
 	// Unlock is idempotent: a second Unlock must return nil.
 	if err := held.Unlock(ctx); err != nil {
-		log.Errorf(ctx, log.TagAppDef, "second Unlock should be a no-op, got: %v", err)
+		log.Errorf(ctx, log.TagAppDef, err, "second Unlock should be a no-op, got")
 		os.Exit(1)
 	}
 
 	held2, ok3, err := s.Lock.TryAcquire(ctx, "demo")
 	if err != nil || !ok3 {
-		log.Errorf(ctx, log.TagAppDef, "TryAcquire after Unlock failed: ok=%v err=%v", ok3, err)
+		log.Errorf(ctx, log.TagAppDef, err, "TryAcquire after Unlock failed: ok=%v err", ok3)
 		os.Exit(1)
 	}
 	_ = held2.Unlock(ctx)
@@ -125,7 +125,7 @@ func runTest(s *Service) {
 	defer cancel()
 	held3, err := s.Lock.Acquire(acquireCtx, "acq-demo", lock.WithTTL(5*time.Second))
 	if err != nil {
-		log.Errorf(ctx, log.TagAppDef, "Acquire failed: %v", err)
+		log.Errorf(ctx, log.TagAppDef, err, "Acquire failed")
 		os.Exit(1)
 	}
 	_ = held3.Unlock(ctx)

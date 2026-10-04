@@ -76,11 +76,11 @@ func runTest(s *Service) {
 	// Generate traffic — Redis SET/GET to produce per-command spans.
 	for i := 0; i < 20; i++ {
 		if _, err := s.Redis.Set(ctx, "otel-key", "otel-value", 0).Result(); err != nil {
-			log.Errorf(ctx, log.TagAppDef, "SET failed: %v", err)
+			log.Errorf(ctx, log.TagAppDef, err, "SET failed")
 			os.Exit(1)
 		}
 		if _, err := s.Redis.Get(ctx, "otel-key").Result(); err != nil {
-			log.Errorf(ctx, log.TagAppDef, "GET failed: %v", err)
+			log.Errorf(ctx, log.TagAppDef, err, "GET failed")
 			os.Exit(1)
 		}
 	}

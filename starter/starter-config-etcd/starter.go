@@ -118,7 +118,7 @@ func (c *etcdCtrl) Close(ctx context.Context) error {
 		}
 	}
 	if n := len(clients); n > 0 {
-		log.Infof(ctx, starterTag, "closed %d etcd client(s)", n)
+		log.Info(ctx, starterTag, log.Int("clients", n), log.Msg("closed etcd clients"))
 	}
 	return errors.Join(errs...)
 }
@@ -221,7 +221,7 @@ func (c *etcdCtrl) clientFor(ctx context.Context, cs configSource) (*clientv3.Cl
 	if err != nil {
 		return nil, errutil.Explain(err, "create etcd client for %s failed", cs.endpoint)
 	}
-	log.Info(ctx, starterTag, log.Msg("created etcd client"))
+	log.Info(ctx, starterTag, log.Msg("create etcd client success"))
 	c.clients[key] = cli
 	return cli, nil
 }
@@ -239,10 +239,7 @@ func (c *etcdCtrl) Load(optional bool, source string) (map[string]string, error)
 
 	cs, err := parseSource(source)
 	if err != nil {
-		log.Error(ctx, starterTag,
-			log.String("source", source),
-			log.Err(err),
-			log.Msg("parse etcd source failed"))
+		log.Error(ctx, starterTag, err, log.String("source", source), log.Msg("parse etcd source failed"))
 		return nil, err
 	}
 
@@ -260,9 +257,7 @@ func (c *etcdCtrl) Load(optional bool, source string) (map[string]string, error)
 
 	cli, err := c.clientFor(ctx, cs)
 	if err != nil {
-		log.Error(ctx, starterTag,
-			log.Err(err),
-			log.Msg("create etcd client failed"))
+		log.Error(ctx, starterTag, err, log.Msg("create etcd client failed"))
 		return nil, err
 	}
 
@@ -275,37 +270,33 @@ func (c *etcdCtrl) Load(optional bool, source string) (map[string]string, error)
 		if optional {
 			log.Warn(ctx, starterTag,
 				log.Err(err),
-				log.Msg("optional config get key failed, skipped"))
+				log.Msg("skip optional config get key failed"))
 			return nil, nil
 		}
-		log.Error(ctx, starterTag,
-			log.Err(err),
-			log.Msg("get etcd key failed"))
+		log.Error(ctx, starterTag, err, log.Msg("get etcd key failed"))
 		return nil, errutil.Explain(err, "get etcd key %s failed", cs.key)
 	}
 	if len(resp.Kvs) == 0 {
 		if optional {
 			log.Warn(ctx, starterTag,
-				log.Msg("optional config key is empty, skipped"))
+				log.Msg("skip optional config key is empty"))
 			return nil, nil
 		}
-		log.Error(ctx, starterTag, log.Msg("etcd key is empty"))
-		return nil, errutil.Explain(nil, "etcd key %s is empty", cs.key)
+		err := errutil.Explain(nil, "etcd key %s is empty", cs.key)
+		log.Error(ctx, starterTag, err, log.Msg("etcd key is empty"))
+		return nil, err
 	}
 
 	content := resp.Kvs[0].Value
 	m, err := reader.Read(cs.format, content)
 	if err != nil {
-		log.Error(ctx, starterTag,
-			log.String("format", cs.format),
-			log.Err(err),
-			log.Msg("parse etcd key failed"))
+		log.Error(ctx, starterTag, err, log.String("format", cs.format), log.Msg("parse etcd key failed"))
 		return nil, errutil.Explain(err, "parse etcd key %s as %s failed", cs.key, cs.format)
 	}
 
 	log.Info(ctx, starterTag,
 		log.Int("keys", len(m)),
-		log.Msg("loaded etcd config"))
+		log.Msg("load etcd config success"))
 	return flatten.Flatten(m), nil
 }
 
@@ -378,8 +369,8 @@ func (c *etcdCtrl) registerWatcher(ctx context.Context, cli *clientv3.Client, cs
 				return
 			default:
 			}
-			log.Error(wctx, starterTag,
-				log.Msg("etcd watch channel closed; resubscribing in 5s"))
+			err := errutil.Explain(nil, "etcd watch channel closed")
+			log.Error(wctx, starterTag, err, log.Msg("etcd watch channel closed; resubscribing in 5s"))
 			select {
 			case <-wctx.Done():
 				return

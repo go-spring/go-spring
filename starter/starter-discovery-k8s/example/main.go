@@ -90,7 +90,7 @@ func (r *resolveRunner) Run(ctx context.Context) error {
 		defer func() { _ = syscall.Kill(os.Getpid(), syscall.SIGTERM) }()
 		d := r.backend
 		if d == nil {
-			log.Errorf(ctx, log.TagAppDef, "discovery backend %q not wired", backendName)
+			log.Errorf(ctx, log.TagAppDef, fmt.Errorf("discovery backend %q not wired", backendName), "discovery backend %q not wired", backendName)
 			return
 		}
 		eps, err := d.Resolve(ctx, targetService)

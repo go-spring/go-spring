@@ -113,7 +113,7 @@ func (o *Relay) Init() error {
 
 	if o.cfg.AutoMigrate {
 		if err := Migrate(o.db); err != nil {
-			log.Error(octx, starterTag, log.Err(err), log.Msg("outbox: auto-migrate failed"))
+			log.Error(octx, starterTag, err, log.Msg("outbox: auto-migrate failed"))
 			return err
 		}
 	}
@@ -129,7 +129,7 @@ func (o *Relay) Init() error {
 	if driver == "" {
 		driver = "(autowired messaging.Driver bean)"
 	}
-	log.Info(octx, starterTag, log.Msgf("outbox relay started (driver=%s)", driver))
+	log.Info(octx, starterTag, log.String("driver", driver), log.Msg("start outbox relay success"))
 	return nil
 }
 
@@ -163,12 +163,19 @@ func (logObserver) OnPublished(rec *outbox.Record) {}
 
 // OnRetry implements [outbox.Observer].
 func (logObserver) OnRetry(rec *outbox.Record, err error, nextRetry time.Time) {
-	log.Warnf(context.Background(), starterTag, "outbox: record %d to %q failed (%v), retry at %s",
-		rec.ID, rec.Destination, err, nextRetry.Format(time.RFC3339))
+	log.Warn(context.Background(), starterTag,
+		log.Int("id", rec.ID),
+		log.String("destination", rec.Destination),
+		log.Err(err),
+		log.String("retry_at", nextRetry.Format(time.RFC3339)),
+		log.Msg("outbox: record send failed, will retry"))
 }
 
 // OnDead implements [outbox.Observer].
 func (logObserver) OnDead(rec *outbox.Record, err error) {
-	log.Errorf(context.Background(), starterTag, "outbox: record %d to %q dead after %d attempt(s): %v",
-		rec.ID, rec.Destination, rec.Attempts+1, err)
+	log.Error(context.Background(), starterTag, err,
+		log.Int("id", rec.ID),
+		log.String("destination", rec.Destination),
+		log.Int("attempts", rec.Attempts+1),
+		log.Msg("outbox: record dead after attempts"))
 }

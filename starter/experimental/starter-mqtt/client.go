@@ -107,7 +107,7 @@ func (s *subscriber) Subscribe(_ context.Context, handler messaging.Handler) err
 		if err := GuardedConsume(context.Background(), s.cl, m, func(ctx context.Context) error {
 			return handler(ctx, msg)
 		}); err != nil {
-			log.Errorf(context.Background(), log.TagAppDef, "mqtt driver handler error on %q: %v", m.Topic(), err)
+			log.Error(context.Background(), log.TagAppDef, err, log.String("topic", m.Topic()), log.Msg("mqtt driver handler failed"))
 		}
 	})
 	token.Wait()
