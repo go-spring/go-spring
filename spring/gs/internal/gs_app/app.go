@@ -398,8 +398,10 @@ func (app *App) WaitForShutdown() {
 	// Stop config providers before the container goes away: their watchers and
 	// listeners call RefreshProperties, and an app that is mid-close must not be
 	// refreshed. This is also what releases the resources a provider acquired
-	// while loading (see provider.Provider).
-	if err := conf.CloseProviders(); err != nil {
+	// while loading (see provider.Provider). The context is stopCtx, like the
+	// servers': closing must not be cut short by the very cancellation that
+	// started the shutdown.
+	if err := conf.CloseProviders(stopCtx); err != nil {
 		log.Errorf(app.ctx, log.TagAppDef, "close config providers failed: %v", err)
 	}
 

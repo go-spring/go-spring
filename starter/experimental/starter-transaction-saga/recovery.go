@@ -49,25 +49,36 @@ func newRecoveryRunner() *recoveryRunner { return &recoveryRunner{} }
 func (r *recoveryRunner) Run(ctx context.Context) error {
 	pending, err := r.Store.Pending(ctx)
 	if err != nil {
-		log.Errorf(ctx, log.TagAppDef, "saga recovery: scanning pending sagas failed: %v", err)
+		log.Error(ctx, log.TagAppDef,
+			log.Err(err),
+			log.Msg("saga recovery: scanning pending sagas failed"))
 		return nil
 	}
 	for _, snap := range pending {
+		// Every line about this saga names it from here on: the ID rides on a
+		// context minted per entry, so it never leaks into the next saga's lines.
+		sagaCtx := log.WithFields(ctx, log.String("saga", snap.ID))
+
 		steps, ok := r.Registry.Lookup(snap.Method)
 		if !ok {
 			// Recovery depends on the steps being registered at wiring time under
 			// the same method name GlobalTransactional recorded; without them the
 			// saga cannot be rebuilt.
-			log.Warnf(ctx, log.TagAppDef,
-				"saga recovery: no steps registered for method %q (saga %q); skipping", snap.Method, snap.ID)
+			log.Warn(sagaCtx, log.TagAppDef,
+				log.String("method", snap.Method),
+				log.Msg("saga recovery: no steps registered for the method; skipping"))
 			continue
 		}
-		res, err := r.Coord.Recover(ctx, transaction.Saga{ID: snap.ID, Method: snap.Method, Steps: steps})
+		res, err := r.Coord.Recover(sagaCtx, transaction.Saga{ID: snap.ID, Method: snap.Method, Steps: steps})
 		if err != nil {
-			log.Errorf(ctx, log.TagAppDef, "saga recovery: recovering saga %q failed: %v", snap.ID, err)
+			log.Error(sagaCtx, log.TagAppDef,
+				log.Err(err),
+				log.Msg("saga recovery: recovering saga failed"))
 			continue
 		}
-		log.Infof(ctx, log.TagAppDef, "saga recovery: saga %q recovered with status %s", snap.ID, res.Status)
+		log.Info(sagaCtx, log.TagAppDef,
+			log.String("status", res.Status.String()),
+			log.Msg("saga recovery: saga recovered"))
 	}
 	return nil
 }

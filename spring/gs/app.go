@@ -140,25 +140,26 @@ func Run() {
 	newApp().Run()
 }
 
-// closeConfigProviders stops every registered config provider, so the watchers
-// and listeners they installed do not outlive the application. It is the
-// deferred safety net; the graceful shutdown path closes them earlier, while
-// the container is still alive.
-func closeConfigProviders(ctx context.Context) {
-	if err := conf.CloseProviders(); err != nil {
+// teardown releases everything the application owns. Run and RunTest defer it
+// so a failure to start tears down the same way a graceful shutdown does. The
+// config providers are closed here as a safety net: the graceful shutdown path
+// closes them earlier, while the container is still alive, and closing twice is
+// a documented no-op. The context is stripped of cancellation, like the
+// servers' Stop: by the time this runs the app context is already cancelled,
+// and a close that talks to a remote server must still be allowed to finish.
+func (s *AppStarter) teardown() {
+	ctx := context.WithoutCancel(s.app.Context())
+	if err := conf.CloseProviders(ctx); err != nil {
 		log.Errorf(ctx, log.TagAppDef, "close config providers failed: %v", err)
 	}
+	runStoppers(ctx)
+	log.Destroy()
 }
 
 // Run starts the application, applies configuration, and waits for
 // termination signals (e.g., SIGTERM, Ctrl+C) to trigger a graceful shutdown.
 func (s *AppStarter) Run() {
-	defer log.Destroy()
-	defer runStoppers(s.app.Context())
-	// The graceful shutdown path closes the config providers itself; this
-	// covers the paths that never reach it, e.g. a failure to start. Close is
-	// a documented no-op the second time.
-	defer closeConfigProviders(s.app.Context())
+	defer s.teardown()
 
 	// Error has already been logged
 	if err := s.startApp(); err != nil {
@@ -214,11 +215,7 @@ func RunTest(t *testing.T, f any) {
 // the test object, registers it as a root bean, initializes the application,
 // starts the application, executes the test, and ensures graceful shutdown.
 func (s *AppStarter) RunTest(t *testing.T, f any) {
-	defer log.Destroy()
-	defer runStoppers(s.app.Context())
-	// See Run: the graceful path closes the providers, this covers a failed
-	// start (where the test binary keeps running with the watchers still live).
-	defer closeConfigProviders(s.app.Context())
+	defer s.teardown()
 
 	ft, fv, err := validateRunTestFunc(f)
 	if err != nil {

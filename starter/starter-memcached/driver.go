@@ -44,8 +44,10 @@ import (
 // (spring.memcached.instances.<name>) and c.ServiceName its discovery name, so
 // the driver sets both on the wrapper it builds; params carries the container's
 // facilities — the resilience/fault/loadbalance authorities and the discovery
-// backend — and [NewClient] applies them while building. Nothing patches the
-// client afterwards.
+// backend — and [NewClient] applies them while building. The only thing that
+// may touch the client afterwards is post-processing that reorganizes the
+// embedded InnerClient — its operation chain — before the client takes
+// traffic.
 //
 // params is one struct rather than a parameter per capability so this interface
 // — which every company driver implements — stays stable as capabilities are

@@ -79,7 +79,18 @@ func init() {
 // authority is present, the observed-only resilience.Unmanaged one otherwise (a
 // standalone, non-gs caller passes nil, which is exactly "governance off").
 func newClient(ctx *gs.ContextProvider, name string, c Config, d Driver, center *governance.Center) (mqtt.Client, error) {
-	log.Debugf(ctx.Context, log.TagAppDef, "creating mqtt client, broker=%s client-id=%s", c.Broker, c.ClientID)
+	// The client's identity rides on a context derived here: every line below
+	// carries it without repeating it. The provider's own context is left
+	// alone — that one is the shared application context, not this
+	// constructor's.
+	cctx := log.WithFields(ctx.Context, log.String("broker", c.Broker))
+
+	log.Debug(cctx, log.TagAppDef, func() []log.Field {
+		return []log.Field{
+			log.String("client_id", c.ClientID),
+			log.Msg("creating mqtt client"),
+		}
+	})
 
 	// No company Driver bean → fall back to the bundled default assembly.
 	if d == nil {
@@ -88,7 +99,9 @@ func newClient(ctx *gs.ContextProvider, name string, c Config, d Driver, center 
 	client, err := d.CreateClient(ctx.Context, c,
 		cloud.ClientParams{Resilience: center.Resilience(), Fault: center.Fault()})
 	if err != nil {
-		log.Errorf(ctx.Context, log.TagAppDef, "mqtt: create client failed: %v", err)
+		log.Error(cctx, log.TagAppDef,
+			log.Err(err),
+			log.Msg("mqtt: create client failed"))
 		return nil, errutil.Explain(err, "failed to create mqtt client: %s", c.Broker)
 	}
 
@@ -100,12 +113,14 @@ func newClient(ctx *gs.ContextProvider, name string, c Config, d Driver, center 
 	token := client.Connect()
 	token.Wait()
 	if err := token.Error(); err != nil {
-		log.Errorf(ctx.Context, log.TagAppDef, "mqtt: connect failed broker=%s: %v", c.Broker, err)
+		log.Error(cctx, log.TagAppDef,
+			log.Err(err),
+			log.Msg("mqtt: connect failed"))
 		closeResilience(client)
 		client.Disconnect(250)
 		return nil, err
 	}
-	log.Infof(ctx.Context, log.TagAppDef, "mqtt client initialized, broker=%s", c.Broker)
+	log.Info(cctx, log.TagAppDef, log.Msg("mqtt client initialized"))
 	return client, nil
 }
 

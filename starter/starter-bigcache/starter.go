@@ -52,7 +52,7 @@ func init() {
 				// No governance beans are injected: bigcache is in-process, so there
 				// is no policy a rule could apply and no emitter to declare to. See
 				// [NewCache].
-			).Name(name).Destroy((*Cache).Destroy).Caller(1)
+			).Name(name).Destroy((*Cache).Close).Caller(1)
 
 			// Expose this instance as a cache.Cache (the adapter lives in
 			// this package's bytecache.go). Named "bigcache:<name>" — cache.Cache

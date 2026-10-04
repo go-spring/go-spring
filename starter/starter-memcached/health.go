@@ -35,7 +35,7 @@ import (
 // metrics or the breaker's statistics. gomemcache's Ping carries no context, so
 // ctx cannot bound the probe; the client's own dial/read timeouts do.
 func HealthCheck(ctx context.Context, c *Client) error {
-	return c.client.Ping()
+	return c.Client.Ping()
 }
 
 // NewClientHealth builds an indicator for a memcached client. It is registered

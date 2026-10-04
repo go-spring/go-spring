@@ -174,7 +174,7 @@ func TestUpdateWeightHotReloadLive(t *testing.T) {
 			ep, err := lb.Pick(eps, loadbalance.PickInfo{})
 			assert.Error(t, err).Nil()
 			m[ep.Addr]++
-			lb.Complete(ep, nil)
+			lb.Complete(context.Background(), ep, nil)
 		}
 		return m
 	}

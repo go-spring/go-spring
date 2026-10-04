@@ -26,6 +26,7 @@ trap 'compose down -v >/dev/null 2>&1 || true' EXIT
 compose up -d
 
 # Wait for RabbitMQ to accept AMQP connections (up to 60s; broker boot is slow).
+echo "== waiting for the service to be ready =="
 for _ in $(seq 1 60); do
     if (exec 3<>/dev/tcp/127.0.0.1/5672) 2>/dev/null; then
         exec 3>&- 3<&- 2>/dev/null || true
@@ -36,6 +37,7 @@ done
 # Give the broker a moment to finish accepting logins after the port opens.
 sleep 3
 
+echo "== example boot =="
 go run . &
 pid=$!
 ( sleep 40; kill -9 "${pid}" 2>/dev/null ) &
@@ -44,4 +46,9 @@ rc=0
 wait "${pid}" 2>/dev/null || rc=$?
 kill "${watchdog}" 2>/dev/null || true
 wait "${watchdog}" 2>/dev/null || true
-exit "${rc}"
+if [ "${rc}" -ne 0 ]; then
+    echo "== FAILED ==" >&2
+    exit "${rc}"
+fi
+echo "== OK =="
+exit 0

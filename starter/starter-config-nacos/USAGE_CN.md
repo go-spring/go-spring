@@ -9,7 +9,7 @@
 go-spring 的增量。
 
 **激活方式**——只有单一角色：只要 `spring.config.import` 出现 `nacos:` 条目即生效（blank
-import 在 `init()` 里注册 provider：`starter.go:58`）。没有 `enabled` 开关。
+import 在 `init()` 里注册 provider：`starter.go:49`）。没有 `enabled` 开关。
 
 nacos 治理规则源现已独立为 `go-spring.org/starter-governance-nacos` 模块（`spring.governance.source.nacos.*`）。
 
@@ -116,7 +116,7 @@ curl -fsS -X POST 'http://127.0.0.1:8848/nacos/v1/cs/configs' \
 
 ```
 blank-import starter-config-nacos
-  └─ init(): conf.RegisterProvider("nacos", newNacosCtrl())      starter.go:58
+  └─ init(): conf.RegisterProvider("nacos", newNacosCtrl())      starter.go:49
 
 gs.Run()
   ├─ App.Start(): app.p.Refresh()                                     app.go "Start"
@@ -124,11 +124,11 @@ gs.Run()
   │         └─ conf.Load("optional:nacos:...")                        provider.go:74
   │              ├─ 剥 "optional:" 前缀 → optional=true                provider.go:85
   │              ├─ 剥 "nacos:" 前缀 → 查 provider 表                  provider.go:89
-  │              └─ nacosCtrl.Load(optional, source)                  starter.go:202
-  │                   ├─ parseSource → configSource                   starter.go:103
-  │                   ├─ clientFor（按 server|ns|user|pass 缓存）      starter.go:153
-  │                   ├─ registerListener（去重）                      starter.go:249
-  │                   ├─ GetConfig → reader.Read(format) → flatten    starter.go:219-244
+  │              └─ nacosCtrl.Load(optional, source)                  starter.go:244
+  │                   ├─ parseSource → configSource                   starter.go:149
+  │                   ├─ clientFor（按 server|ns|user|pass 缓存）      starter.go:211
+  │                   ├─ registerListener（去重）                      starter.go:323
+  │                   ├─ GetConfig → reader.Read(format) → flatten    starter.go:244
   │                   └─ key 合入分层属性存储
   ├─ IoC 容器装配
   ├─ Runners → Servers → 就绪
@@ -145,7 +145,7 @@ import 在**任何 bean 装配之前**解析：所有 bean 的 `value:"${...}"` 
 ```
 Nacos 推送 dataId 变更
   └─ SDK OnChange（registerListener 安装，按 client+group+dataId 去重）
-       └─ nacosCtrl.TriggerRefresh                                     starter.go:83
+       └─ nacosCtrl.TriggerRefresh                                     starter.go:129
             └─ gs.RefreshProperties()（app 启动前返回错误）
                  └─ App.RefreshProperties()                            app.go:247
                       ├─ 重新加载全部来源：文件、env、命令行参数，并重放每个
@@ -163,7 +163,7 @@ Nacos 推送 dataId 变更
 listener 在拉取**之前**被无条件注册。若 `ListenConfig` 只在 `GetConfig` 成功后才安装，
 `optional:` 导入遇上尚不存在的 dataId 时会提前返回、永远装不上 listener——之后再发布也
 不会触发刷新。正是这个顺序保证了 `optional:` 导入在 dataId 出现后仍能热更新
-（starter.go:249）。
+（starter.go:323）。
 
 ### 2.3 治理规则推送链路（已移出）
 
@@ -177,19 +177,19 @@ nacos 治理规则源现已独立为 `go-spring.org/starter-governance-nacos` �
 
 核心文法（provider.go:74-104）：`[optional:]<provider>:<path>`——先剥 `optional:` 前缀，
 再取 provider 名，第一个 `:` 之后的全部是 path。`nacos` 的 path 形如
-`<host>:<port>/<dataId>?<query>`（按 `nacos://` URL 解析，starter.go:103-145）。每个 import
+`<host>:<port>/<dataId>?<query>`（按 `nacos://` URL 解析，starter.go:149）。每个 import
 条目一个 dataId；多条 import 在 `spring.config.import` 里并列。
 
 | 部分 / 参数 | 类型 | 默认值 | 行为与联动 | 配错后果 |
 |---|---|---|---|---|
-| `optional:` | 前缀 | 无（即 required） | 位于整个 source 串最前、`nacos:` 之前。拉取失败**或内容为空**时跳过该来源（warn 日志），放行启动（starter.go:219-235）。 | 不写时 dataId 缺失或服务端宕机会中止启动——生产通常应该如此，bootstrap 配置则相反。 |
-| `host:port` | string | — | **必填**。必须是 `host:port`；仅单台 server（不支持地址列表）。端口非数字在解析期被拒（starter.go:187-197）。 | `noport` / `1.2.3.4:x` → 启动报错 `nacos server address must be host:port`。⚠ 集群用户需前置 VIP。 |
+| `optional:` | 前缀 | 无（即 required） | 位于整个 source 串最前、`nacos:` 之前。拉取失败**或内容为空**时跳过该来源（warn 日志），放行启动（starter.go:244）。 | 不写时 dataId 缺失或服务端宕机会中止启动——生产通常应该如此，bootstrap 配置则相反。 |
+| `host:port` | string | — | **必填**。必须是 `host:port`；仅单台 server（不支持地址列表）。端口在创建 client 时校验，而非解析期（starter.go:221）。 | 端口缺失或非数字（`nohost/dataId`、`1.2.3.4:x/dataId`）→ 启动报错 `create nacos config client ... failed: address ... must be host:port`。⚠ 集群用户需前置 VIP。 |
 | `dataId` | string | — | **必填**。第一个 `/` 之后的路径段；同时驱动格式推断。 | 缺失（`...8848` 无 path）→ 启动报错 `missing data id`。 |
-| `group` | string | `DEFAULT_GROUP` | query 参数（starter.go:126-128）。Nacos group 语义见官方文档。 | group 错 → "config not found"；配了 `optional:` 则退化为静默跳过——用启动日志 `loaded nacos config` 核对。 |
+| `group` | string | `DEFAULT_GROUP` | query 参数（starter.go:166）。Nacos group 语义见官方文档。 | group 错 → "config not found"；配了 `optional:` 则退化为静默跳过——用启动日志 `loaded nacos config` 核对。 |
 | `namespace` | string | 空（public） | 填 namespace **id** 而非名称。参与 client 缓存 key，不同 namespace 得到不同 client。 | 填了名称 → 空配置（同 group 错的失败形态）。 |
 | `username` / `password` | string | 空 | 服务端鉴权；同样参与 client 缓存 key。 | 开鉴权的服务端上缺失 → 启动时 GetConfig 报错（optional 则跳过）。 |
-| `format` | string | dataId 扩展名，否则 `properties` | reader 支持的格式：`properties` / `yaml` / `toml` / `json`。无扩展名的 dataId 默认 properties（starter.go:129-135）。 | 内容/格式不符 → 启动报错 `parse nacos config ... as <fmt> failed`（`TestLoadParseErrorPropagates` 钉死）。 |
-| `timeout-ms` | uint64 | `5000` | 每个 source 的 SDK 请求超时（starter.go:136-143）。非数字在解析期被拒。 | 过小 → 慢 Nacos 下启动抖动。 |
+| `format` | string | dataId 扩展名，否则 `properties` | reader 支持的格式：`properties` / `yaml` / `toml` / `json`。无扩展名的 dataId 默认 properties（starter.go:179）。 | 内容/格式不符 → 启动报错 `parse nacos config ... as <fmt> failed`（`TestLoadParseErrorPropagates` 钉死）。 |
+| `timeout-ms` | uint64 | `5000` | 每个 source 的 SDK 请求超时（starter.go:183）。非数字在解析期被拒。 | 过小 → 慢 Nacos 下启动抖动。 |
 
 ⚠ **没有** `endpoint` 参数，也没有集群/地址列表形态——server 永远是单个 `host:port`。
 
@@ -231,7 +231,8 @@ nacos 治理规则源现已独立为 `go-spring.org/starter-governance-nacos` �
 
 | 演练 | 结果 |
 |---|---|
-| `nacos:onlydata`（无 `host:port`） | 启动报错 `missing nacos server address` |
+| `nacos:onlydata`（无 `/`） | 启动报错 `missing data id`（被解析为 host `onlydata`，无路径） |
+| `nacos:/app.yaml`（无 host） | 启动报错 `missing nacos server address` |
 | `nacos:127.0.0.1:8848`（无 dataId） | 启动报错 `missing data id` |
 | `...?timeout-ms=abc` | 启动报错 `invalid timeout-ms`（解析期拒绝） |
 | required 导入 + dataId 不存在 | 启动报错 `get nacos config ... failed` / `is empty` |
@@ -274,7 +275,7 @@ nacos 治理规则源现已独立为 `go-spring.org/starter-governance-nacos` �
 嫌疑清单（供设计裁决）：
 
 - **仅单 server 地址形态**：无集群列表 / `endpoint` 参数；每个 client 由单个 `host:port`
-  构建（starter.go:170）。集群部署需要外部 VIP。
+  构建（starter.go:221）。集群部署需要外部 VIP。
 - **刷新粒度**：一个 dataId 变更触发全部来源与 import 的整体重载——正确但偏重；
   listener 去重是保障其安全的关键。
 - **无 listener 存活信号**：无健康指示器/指标；listener 静默死亡只能表现为配置过期。

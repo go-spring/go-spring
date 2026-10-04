@@ -210,9 +210,18 @@ func (cl *Client) Close() error {
 	return nil
 }
 
+// GuardedProducer returns the chain producer's synchronous sends run through:
+// identity over governance over the raw adapter, governance from this client's
+// executor. Wrap the returned head in your own [InnerProducer] layer to modify
+// what a send does — the topics a layer rewrites are what gets declared.
+func (cl *Client) GuardedProducer(p rocketmq.Producer) InnerProducer {
+	return NewObsProducer(NewGuardProducer(NewRawProducer(p), cl.exec))
+}
+
 // execute routes call through the client's resilience executor, and otherwise
-// runs it inline. A Client built by [NewClient] always carries an executor; the
-// nil branch serves a bare Client (tests, or a caller assembling one by hand).
+// runs it inline. It serves the per-delivery consume path (whose pipeline
+// inverts the chain's composition, like starter-nats's Consume) and a bare
+// Client (tests, or a caller assembling one by hand).
 func (cl *Client) execute(ctx context.Context, call func(context.Context) error) error {
 	if cl.exec == nil {
 		return call(ctx)

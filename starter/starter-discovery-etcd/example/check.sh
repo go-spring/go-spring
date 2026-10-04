@@ -37,6 +37,7 @@ trap 'compose down -v >/dev/null 2>&1 || true' EXIT
 compose up -d
 
 # Wait for etcd to answer health (up to 60s).
+echo "== waiting for the service to be ready =="
 for _ in $(seq 1 60); do
     if curl -fsS "http://127.0.0.1:2379/health" 2>/dev/null | grep -q "true"; then
         break
@@ -62,4 +63,9 @@ if ! grep -q "discovered endpoint=" "${out}"; then
     exit 1
 fi
 rm -f "${out}"
-exit "${rc}"
+if [ "${rc}" -ne 0 ]; then
+    echo "== FAILED ==" >&2
+    exit "${rc}"
+fi
+echo "== OK =="
+exit 0

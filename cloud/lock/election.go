@@ -131,13 +131,16 @@ func (e *Election) Run(ctx context.Context) error {
 // at Info, a lost term at Warn, a term ended by shutdown at Info. A failed
 // release is Warned too — the broker may redeliver the key later than expected.
 func (e *Election) serveTerm(ctx context.Context, held Lock) {
+	// The lock's name rides on the context for the whole term: the transitions
+	// below carry it without repeating it, and so does anything the leader
+	// callback logs, which runs under the same key.
+	ctx = log.WithFields(ctx, log.String("lock.key", e.cfg.Key))
+
 	termCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
 	e.leader.Store(true)
-	log.Info(ctx, log.TagAppDef,
-		log.String("lock.key", e.cfg.Key),
-		log.Msg("election: became leader"))
+	log.Info(ctx, log.TagAppDef, log.Msg("election: became leader"))
 
 	var wg sync.WaitGroup
 	if e.cfg.OnStartedLeading != nil {
@@ -161,17 +164,12 @@ func (e *Election) serveTerm(ctx context.Context, held Lock) {
 		e.cfg.OnStoppedLeading()
 	}
 	if lost {
-		log.Warn(ctx, log.TagAppDef,
-			log.String("lock.key", e.cfg.Key),
-			log.Msg("election: leadership lost"))
+		log.Warn(ctx, log.TagAppDef, log.Msg("election: leadership lost"))
 	} else {
-		log.Info(ctx, log.TagAppDef,
-			log.String("lock.key", e.cfg.Key),
-			log.Msg("election: term ended"))
+		log.Info(ctx, log.TagAppDef, log.Msg("election: term ended"))
 	}
 	if err := held.Unlock(context.WithoutCancel(ctx)); err != nil {
 		log.Warn(ctx, log.TagAppDef,
-			log.String("lock.key", e.cfg.Key),
 			log.Err(err),
 			log.Msg("election: release failed"))
 	}

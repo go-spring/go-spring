@@ -32,11 +32,11 @@ import (
 )
 
 // errGovernanceStub is returned by the test executor to prove a call was
-// routed through the guard instead of reaching the broker.
+// routed through the governance layer instead of reaching the broker.
 var errGovernanceStub = errors.New("governance: rejected by test stub")
 
 // stubExecutor counts Execute calls and always rejects, so a test can assert
-// the driver path went through the executor without a live broker.
+// the chain path went through the executor without a live broker.
 type stubExecutor struct{ called atomic.Int32 }
 
 func (s *stubExecutor) Execute(context.Context, func(context.Context) error) error {
@@ -45,41 +45,56 @@ func (s *stubExecutor) Execute(context.Context, func(context.Context) error) err
 }
 func (s *stubExecutor) Close() error { return nil }
 
-// applyResilience always attaches an executor, whether or not the governance
-// beans are wired. Whether it protects anything is decided by the governance
-// rule for the service label, not by a per-instance switch: a manager with no
-// rule yields a transparent pass-through, so attaching one costs a call frame
-// and changes nothing else.
-func TestApplyResilienceAttachesGuard(t *testing.T) {
-	conn := &amqp.Connection{}
+// fakeTail is a scripted InnerPublisher tail: it counts the publishes that
+// reached it. It stands in for the raw adapter so chain tests need no broker.
+type fakeTail struct {
+	ran int
+	err error
+}
 
+func (f *fakeTail) Publish(context.Context, *amqp.Channel, string, string, bool, bool, amqp.Publishing) error {
+	f.ran++
+	return f.err
+}
+
+func (f *fakeTail) Release(bool) error { return nil }
+
+// newStubbedClient builds a Client whose governance layer runs the stub
+// executor over a fake tail.
+func newStubbedClient(stub *stubExecutor, tail *fakeTail) *Client {
+	guard := &GuardPublisher{exec: stub, next: tail}
+	return &Client{InnerPublisher: NewObsPublisher(guard), guard: guard}
+}
+
+// NewClient always attaches an executor, whether or not the governance beans
+// are wired. Whether it protects anything is decided by the governance rule for
+// the service label, not by a per-instance switch: a manager with no rule
+// yields a transparent pass-through.
+func TestNewClientAttachesGovernance(t *testing.T) {
 	// An unarmed center models a container with no governance rules: the
-	// executor is a transparent pass-through.
+	// executor is a transparent pass-through, and the publish reaches the tail.
 	center := governance.NewCenter(governance.Config{}, resilience.NewManager(nil), nil, fault.NewInjector(fault.Configs{}, nil), nil, nil)
-	if err := applyResilience(conn, "rabbitmq:test", center); err != nil {
-		t.Fatal(err)
+	cl := NewClient(nil, "rabbitmq:test", center)
+	guard := &GuardPublisher{exec: cl.guard.exec, next: &fakeTail{}}
+	cl.InnerPublisher = NewObsPublisher(guard)
+
+	err := cl.InnerPublisher.Publish(context.Background(), nil, "ex", "k", false, false, amqp.Publishing{})
+	if err != nil {
+		t.Fatalf("unarmed executor must pass the publish through: %v", err)
 	}
-	if _, ok := clientGuards.Load(conn); !ok {
-		t.Fatal("applyResilience must attach an executor")
-	}
-	closeResilience(conn)
 }
 
 // TestDriverPublishGuarded verifies the driver's Publish routes through the
-// resilience executor the direct client API uses: with an executor attached,
-// the publish is rejected by the executor and the channel is never touched.
+// same chain the direct client API uses: with the stub executor armed, the
+// publish is rejected by the executor and the channel is never touched.
 func TestDriverPublishGuarded(t *testing.T) {
-	conn := &amqp.Connection{}
 	stub := &stubExecutor{}
-	clientGuards.Store(conn, &clientGuard{exec: stub, serviceLabel: "rabbitmq:test"})
-	defer func() {
-		clientGuards.Delete(conn)
-	}()
+	cl := newStubbedClient(stub, &fakeTail{})
 	// A nil channel is safe here: the executor rejects before the guarded
 	// closure runs, which is exactly what this test asserts.
 	prop, err := traffic.NewDefaultPropagator(traffic.DefaultBinding())
 	assert.Error(t, err).Nil()
-	p := &publisher{conn: conn, queue: "q", prop: prop}
+	p := &publisher{cl: cl, queue: "q", prop: prop}
 	err = p.Publish(context.Background(), &messaging.Message{Payload: []byte("x")})
 	if !errors.Is(err, errGovernanceStub) {
 		t.Fatalf("expected stub rejection, got %v", err)
@@ -87,4 +102,32 @@ func TestDriverPublishGuarded(t *testing.T) {
 	if n := stub.called.Load(); n != 1 {
 		t.Fatalf("executor must run exactly once, ran %d", n)
 	}
+}
+
+// queueLayer wraps the chain head and namespaces every queue name it passes
+// down — the kind of behavior change no amqp middleware could express.
+type queueLayer struct {
+	InnerPublisher
+	prefix string
+}
+
+func (q queueLayer) Publish(ctx context.Context, ch *amqp.Channel, exchange, key string, mandatory, immediate bool, pub amqp.Publishing) error {
+	return q.InnerPublisher.Publish(ctx, ch, exchange, q.prefix+key, mandatory, immediate, pub)
+}
+
+// TestInnerPublisherReorganize pins the wrap-head protocol: a custom layer
+// over the chain head rewrites the routing key, and the publish runs through
+// it — the tail sees the rewritten key.
+func TestInnerPublisherReorganize(t *testing.T) {
+	tail := &fakeTail{}
+	// No executor (nil) models governance off: the guard runs the call inline.
+	guard := &GuardPublisher{next: tail}
+	cl := &Client{InnerPublisher: NewObsPublisher(guard), guard: guard}
+	cl.InnerPublisher = queueLayer{InnerPublisher: cl.InnerPublisher, prefix: "tenant."}
+
+	err := cl.InnerPublisher.Publish(context.Background(), nil, "", "jobs", false, false, amqp.Publishing{})
+	if err != nil {
+		t.Fatalf("publish through the wrap-head layer: %v", err)
+	}
+	assert.That(t, tail.ran).Equal(1)
 }

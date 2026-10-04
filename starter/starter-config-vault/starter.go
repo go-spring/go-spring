@@ -106,7 +106,7 @@ func (c *vaultCtrl) rearm() {
 // Close stops every poll goroutine. It implements provider.Provider. Closing is
 // final only for this application instance: the caches are dropped, so the next
 // Load polls again from a fresh baseline.
-func (c *vaultCtrl) Close() error {
+func (c *vaultCtrl) Close(ctx context.Context) error {
 	c.mu.Lock()
 	c.cancel()
 	c.stopped = true
@@ -116,7 +116,7 @@ func (c *vaultCtrl) Close() error {
 	c.loadedFP = map[string]string{}
 	c.mu.Unlock()
 	if n > 0 {
-		log.Infof(context.Background(), starterTag, "stopped %d vault watcher(s)", n)
+		log.Infof(ctx, starterTag, "stopped %d vault watcher(s)", n)
 	}
 	return nil
 }
@@ -233,7 +233,21 @@ func clientKey(cs configSource) string {
 }
 
 // clientFor returns a cached client for the source, creating one if necessary.
-func (c *vaultCtrl) clientFor(cs configSource) (*api.Client, error) {
+// sourceFields returns the fields identifying a watched secret. They are
+// attached to a context with log.WithFields rather than repeated at each call
+// site, and the keys match the ones the poll trigger stamps so a line and the
+// refresh it concerns join on the same names.
+func sourceFields(cs configSource) []log.Field {
+	return []log.Field{
+		log.String("address", cs.address),
+		log.String("mount", cs.mount),
+		log.String("path", cs.path),
+	}
+}
+
+// clientFor returns a cached client for the source, creating one if necessary.
+// Its log line takes the source fields from ctx, which Load has already stamped.
+func (c *vaultCtrl) clientFor(ctx context.Context, cs configSource) (*api.Client, error) {
 	key := clientKey(cs)
 
 	c.mu.Lock()
@@ -253,7 +267,7 @@ func (c *vaultCtrl) clientFor(cs configSource) (*api.Client, error) {
 	if cs.namespace != "" {
 		cli.SetNamespace(cs.namespace)
 	}
-	log.Infof(context.Background(), starterTag, "created vault client address=%s mount=%s", cs.address, cs.mount)
+	log.Info(ctx, starterTag, log.Msg("created vault client"))
 	c.clients[key] = cli
 	return cli, nil
 }
@@ -269,26 +283,50 @@ func watchKey(cs configSource) string {
 func (c *vaultCtrl) Load(optional bool, source string) (map[string]string, error) {
 	c.rearm()
 
+	// Load is the top of this chain and Provider.Load takes no context, so the
+	// one ctx the whole load shares is minted here — the helpers below receive
+	// it instead of each minting their own.
+	ctx := context.Background()
+
 	cs, err := parseSource(source)
 	if err != nil {
-		log.Errorf(context.Background(), starterTag, "parse source %q failed: %v", source, err)
+		log.Error(ctx, starterTag,
+			log.String("source", source),
+			log.Err(err),
+			log.Msg("parse vault source failed"))
 		return nil, err
 	}
 
-	log.Debugf(context.Background(), starterTag, "loading vault config from address=%s mount=%s path=%s kvVersion=%d key=%s format=%s", cs.address, cs.mount, cs.path, cs.kvVersion, cs.key, cs.format)
+	// The source's identity rides on the context from here on: every event this
+	// load and its helpers print carries it without repeating it at each call
+	// site.
+	ctx = log.WithFields(ctx, sourceFields(cs)...)
 
-	cli, err := c.clientFor(cs)
+	log.Debug(ctx, starterTag, func() []log.Field {
+		return []log.Field{
+			log.Int("kv_version", cs.kvVersion),
+			log.String("key", cs.key),
+			log.String("format", cs.format),
+			log.Msg("loading vault config"),
+		}
+	})
+
+	cli, err := c.clientFor(ctx, cs)
 	if err != nil {
-		log.Errorf(context.Background(), starterTag, "create vault client for address=%s failed: %v", cs.address, err)
+		log.Error(ctx, starterTag,
+			log.Err(err),
+			log.Msg("create vault client failed"))
 		return nil, err
 	}
 
-	c.registerWatch(cli, cs)
+	c.registerWatch(ctx, cli, cs)
 
-	data, err := c.readSecret(context.Background(), cli, cs)
+	data, err := c.readSecret(ctx, cli, cs)
 	if err != nil {
 		if optional {
-			log.Warnf(context.Background(), starterTag, "optional config read secret %s/%s failed (skipped): %v", cs.mount, cs.path, err)
+			log.Warn(ctx, starterTag,
+				log.Err(err),
+				log.Msg("optional config read secret failed, skipped"))
 			return nil, nil
 		}
 		return nil, err
@@ -301,10 +339,11 @@ func (c *vaultCtrl) Load(optional bool, source string) (map[string]string, error
 
 	if data == nil {
 		if optional {
-			log.Warnf(context.Background(), starterTag, "optional config secret %s/%s not found (skipped)", cs.mount, cs.path)
+			log.Warn(ctx, starterTag,
+				log.Msg("optional config secret not found, skipped"))
 			return nil, nil
 		}
-		log.Errorf(context.Background(), starterTag, "vault secret %s/%s not found", cs.mount, cs.path)
+		log.Error(ctx, starterTag, log.Msg("vault secret not found"))
 		return nil, errutil.Explain(nil, "vault secret %s/%s not found", cs.mount, cs.path)
 	}
 
@@ -312,7 +351,9 @@ func (c *vaultCtrl) Load(optional bool, source string) (map[string]string, error
 	if err != nil {
 		return nil, err
 	}
-	log.Infof(context.Background(), starterTag, "loaded vault config from address=%s mount=%s path=%s keys=%d", cs.address, cs.mount, cs.path, len(props))
+	log.Info(ctx, starterTag,
+		log.Int("keys", len(props)),
+		log.Msg("loaded vault config"))
 	return props, nil
 }
 
@@ -385,7 +426,7 @@ func withPrefix(prefix string, m map[string]string) map[string]string {
 }
 
 // registerWatch spawns a background goroutine that polls the secret.
-func (c *vaultCtrl) registerWatch(cli *api.Client, cs configSource) {
+func (c *vaultCtrl) registerWatch(ctx context.Context, cli *api.Client, cs configSource) {
 	lk := watchKey(cs)
 
 	c.mu.Lock()
@@ -394,11 +435,17 @@ func (c *vaultCtrl) registerWatch(cli *api.Client, cs configSource) {
 		return
 	}
 	c.listened[lk] = struct{}{}
-	ctx := c.ctx
+	// The goroutine outlives this load, so it runs on the controller's
+	// generation context, not on the load's. It carries the same fields, which
+	// is what lets the loop's own lines name the secret without interpolating
+	// it.
+	wctx := log.WithFields(c.ctx, sourceFields(cs)...)
 	c.mu.Unlock()
 
-	log.Infof(context.Background(), starterTag, "watching vault secret=%s/%s address=%s pollMs=%d", cs.mount, cs.path, cs.address, cs.pollMs)
-	go c.watchLoop(ctx, cli, cs, lk)
+	log.Info(ctx, starterTag,
+		log.Int("poll_ms", cs.pollMs),
+		log.Msg("watching vault secret for changes"))
+	go c.watchLoop(wctx, cli, cs, lk)
 }
 
 // watchLoop polls the secret and triggers a refresh whenever the content
@@ -426,18 +473,22 @@ func (c *vaultCtrl) watchLoop(ctx context.Context, cli *api.Client, cs configSou
 		data, err := c.readSecret(ctx, cli, cs)
 		if err != nil {
 			if !failing {
-				log.Warnf(context.Background(), starterTag,
-					"vault poll on %s/%s failing, changes are missed until it recovers: %v", cs.mount, cs.path, err)
+				log.Warn(ctx, starterTag,
+					log.Err(err),
+					log.Msg("vault poll failing, changes are missed until it recovers"))
 				failing = true
 			} else {
-				log.Debugf(context.Background(), starterTag,
-					"vault poll on %s/%s still failing: %v", cs.mount, cs.path, err)
+				log.Debug(ctx, starterTag, func() []log.Field {
+					return []log.Field{
+						log.Err(err),
+						log.Msg("vault poll still failing"),
+					}
+				})
 			}
 			continue
 		}
 		if failing {
-			log.Infof(context.Background(), starterTag,
-				"vault poll on %s/%s recovered", cs.mount, cs.path)
+			log.Info(ctx, starterTag, log.Msg("vault poll recovered"))
 			failing = false
 		}
 		c.mu.Lock()

@@ -27,15 +27,16 @@ import (
 	"go-spring.org/gs-http-gen/lib/version"
 )
 
-// init sets the working directory of the program to the directory
-// where this source file resides. This ensures that relative paths
-// used later in the program (e.g., for output) are resolved correctly.
+// init sets the working directory of the application to the directory
+// where this source file resides.
+// This ensures that any relative file operations are based on the source file location,
+// not the process launch path.
 func init() {
+	var execDir string
 	_, filename, _, ok := runtime.Caller(0)
-	if !ok {
-		panic("cannot determine caller directory")
+	if ok {
+		execDir = filepath.Dir(filename)
 	}
-	execDir := filepath.Dir(filename)
 	err := os.Chdir(execDir)
 	if err != nil {
 		panic(err)
@@ -44,7 +45,7 @@ func init() {
 	if err != nil {
 		panic(err)
 	}
-	fmt.Println("working directory:", workDir)
+	fmt.Println(workDir)
 }
 
 func main() {

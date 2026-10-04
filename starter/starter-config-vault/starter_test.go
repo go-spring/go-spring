@@ -17,10 +17,18 @@
 package StarterConfigVault
 
 import (
+	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/hashicorp/vault/api"
 	"go-spring.org/stdlib/testing/assert"
@@ -168,4 +176,215 @@ func TestClientAndWatchKey(t *testing.T) {
 	cs := configSource{address: "http://h:1", namespace: "ns", token: "tk", mount: "m", path: "p"}
 	assert.That(t, clientKey(cs)).Equal("http://h:1|ns|tk")
 	assert.That(t, watchKey(cs)).Equal("http://h:1|ns|tk|m|p")
+}
+
+// fakeVault is an in-process Vault KV server backed by httptest. It serves one
+// mutable secret per (kvVersion, mount, path) and counts the reads it served,
+// so tests can observe both content changes and polling activity.
+type fakeVault struct {
+	srv     *httptest.Server
+	reads   atomic.Int64
+	mu      sync.Mutex
+	kv2     map[string]map[string]any // mount/path -> data (nil value = 404)
+	kv1     map[string]map[string]any
+	failAll bool
+}
+
+func newFakeVault() *fakeVault {
+	f := &fakeVault{
+		kv2: map[string]map[string]any{},
+		kv1: map[string]map[string]any{},
+	}
+	f.srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		f.reads.Add(1)
+		f.mu.Lock()
+		defer f.mu.Unlock()
+		if f.failAll {
+			w.WriteHeader(http.StatusBadGateway)
+			return
+		}
+		// KV v2 reads hit /v1/<mount>/data/<path>; KV v1 reads hit /v1/<mount>/<path>.
+		if idx := strings.Index(r.URL.Path, "/data/"); idx > 0 {
+			data, found := f.kv2[r.URL.Path[len("/v1/"):idx]+"/"+r.URL.Path[idx+len("/data/"):]]
+			writeSecret(w, data, found, true)
+			return
+		}
+		data, found := f.kv1[strings.TrimPrefix(r.URL.Path, "/v1/")]
+		writeSecret(w, data, found, false)
+	}))
+	return f
+}
+
+func writeSecret(w http.ResponseWriter, data map[string]any, found, kv2 bool) {
+	if !found || data == nil {
+		w.WriteHeader(http.StatusNotFound)
+		_ = json.NewEncoder(w).Encode(map[string]any{"errors": []string{"not found"}})
+		return
+	}
+	if kv2 {
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"data": map[string]any{"data": data, "metadata": map[string]any{"version": 1}},
+		})
+		return
+	}
+	_ = json.NewEncoder(w).Encode(map[string]any{"data": data})
+}
+
+// source builds an import path for the fake server.
+func (f *fakeVault) source(mount, path string) string {
+	u, _ := url.Parse(f.srv.URL)
+	return u.Host + "/" + mount + "/" + path + "?token=tk&poll-ms=50"
+}
+
+func (f *fakeVault) Close() { f.srv.Close() }
+
+// waitFor polls cond until it holds or the deadline passes.
+func waitFor(t *testing.T, cond func() bool) {
+	t.Helper()
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		if cond() {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatalf("condition not met within timeout")
+}
+
+func TestLoadKVv2AndV1(t *testing.T) {
+	f := newFakeVault()
+	defer f.Close()
+	f.mu.Lock()
+	f.kv2["secret/app"] = map[string]any{"greeting": "hi", "db": map[string]any{"host": "h1"}}
+	f.kv1["kv1/app"] = map[string]any{"port": 3306}
+	f.mu.Unlock()
+
+	c := newVaultCtrl()
+	defer c.Close(context.Background())
+
+	m, err := c.Load(false, f.source("secret", "app")+"&kv-version=2")
+	assert.That(t, err).Nil()
+	assert.That(t, m["greeting"]).Equal("hi")
+	assert.That(t, m["db.host"]).Equal("h1")
+
+	m, err = c.Load(false, f.source("kv1", "app")+"&kv-version=1")
+	assert.That(t, err).Nil()
+	assert.That(t, m["port"]).Equal("3306")
+
+	// The same source hits the client cache: one client entry, no error.
+	cs, _ := parseSource(f.source("secret", "app") + "&kv-version=2")
+	cli, err := c.clientFor(context.Background(), cs)
+	assert.That(t, err).Nil()
+	cli2, _ := c.clientFor(context.Background(), cs)
+	assert.That(t, cli == cli2).True()
+
+	// Single-field mode reads the named field as a document.
+	f.mu.Lock()
+	f.kv2["secret/doc"] = map[string]any{"application.properties": "demo.message=hello\n"}
+	f.mu.Unlock()
+	m, err = c.Load(false, f.source("secret", "doc")+"&key=application.properties&format=properties")
+	assert.That(t, err).Nil()
+	assert.That(t, m["demo.message"]).Equal("hello")
+}
+
+func TestLoadNotFoundAndOptional(t *testing.T) {
+	f := newFakeVault()
+	defer f.Close()
+	c := newVaultCtrl()
+	defer c.Close(context.Background())
+
+	// Required missing secret: hard error naming mount/path.
+	_, err := c.Load(false, f.source("secret", "nope"))
+	assert.That(t, err).NotNil()
+
+	// Optional missing secret: nil props, nil error; the watcher stays armed.
+	m, err := c.Load(true, f.source("secret", "nope"))
+	assert.That(t, err).Nil()
+	assert.That(t, m).Nil()
+
+	// Optional transport failure: skipped as well.
+	f.mu.Lock()
+	f.failAll = true
+	f.mu.Unlock()
+	m, err = c.Load(true, f.source("secret", "other"))
+	assert.That(t, err).Nil()
+	assert.That(t, m).Nil()
+	f.mu.Lock()
+	f.failAll = false
+	f.mu.Unlock()
+
+	// Required transport failure: error propagates.
+	f.mu.Lock()
+	f.failAll = true
+	f.mu.Unlock()
+	_, err = c.Load(false, f.source("secret", "other2"))
+	assert.That(t, err).NotNil()
+	f.mu.Lock()
+	f.failAll = false
+	f.mu.Unlock()
+}
+
+func TestCloseStopsPollersAndRearms(t *testing.T) {
+	f := newFakeVault()
+	defer f.Close()
+	f.mu.Lock()
+	f.kv2["secret/app"] = map[string]any{"k": "v"}
+	f.mu.Unlock()
+
+	c := newVaultCtrl()
+	_, err := c.Load(false, f.source("secret", "app"))
+	assert.That(t, err).Nil()
+
+	// The poller ticks; after Close the request count freezes.
+	base := f.reads.Load()
+	waitFor(t, func() bool { return f.reads.Load() > base })
+	assert.That(t, c.Close(context.Background())).Nil()
+	frozen := f.reads.Load()
+	time.Sleep(200 * time.Millisecond)
+	assert.That(t, f.reads.Load() == frozen).True()
+
+	// A new Load rearms: the poll generation restarts (fresh baseline, fresh
+	// watcher), so reads resume.
+	_, err = c.Load(false, f.source("secret", "app"))
+	assert.That(t, err).Nil()
+	base = f.reads.Load()
+	waitFor(t, func() bool { return f.reads.Load() > base })
+
+	// Dedup: a second Load of the same source does not add another poller.
+	_, err = c.Load(false, f.source("secret", "app"))
+	assert.That(t, err).Nil()
+	waitFor(t, func() bool { return f.reads.Load() > base })
+	c.Close(context.Background())
+}
+
+func TestWatchLoopDetectsChange(t *testing.T) {
+	f := newFakeVault()
+	defer f.Close()
+	f.mu.Lock()
+	f.kv2["secret/app"] = map[string]any{"k": "v1"}
+	f.mu.Unlock()
+
+	c := newVaultCtrl()
+	defer c.Close(context.Background())
+	_, err := c.Load(false, f.source("secret", "app"))
+	assert.That(t, err).Nil()
+
+	// Change the content; the poller sees a new fingerprint. gs.RefreshProperties
+	// is not runnable outside a running app, so the refresh itself errors and is
+	// dropped — but the poll loop must keep running (self-healing), not exit.
+	f.mu.Lock()
+	f.kv2["secret/app"] = map[string]any{"k": "v2"}
+	f.mu.Unlock()
+	base := f.reads.Load()
+	waitFor(t, func() bool { return f.reads.Load() > base+2 })
+
+	// Recovery logging path: fail for a while, then recover.
+	f.mu.Lock()
+	f.failAll = true
+	f.mu.Unlock()
+	waitFor(t, func() bool { return f.reads.Load() > base+4 })
+	f.mu.Lock()
+	f.failAll = false
+	f.mu.Unlock()
+	waitFor(t, func() bool { return f.reads.Load() > base+6 })
 }

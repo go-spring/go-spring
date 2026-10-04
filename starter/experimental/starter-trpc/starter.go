@@ -149,6 +149,10 @@ func NewSimpleTrpcServer(cfg Config, reg ServiceRegister, center *governance.Cen
 // internally, so it runs in a goroutine while Run parks on the done channel;
 // Stop closes the server and done to hand control back to Go-Spring.
 func (s *SimpleTrpcServer) Run(ctx context.Context, sig gs.ReadySignal) error {
+	// The listening address rides on the context: every line this server logs
+	// about its own lifecycle carries it without repeating it.
+	ctx = log.WithFields(ctx, log.String("addr", s.cfg.Addr))
+
 	host, port, err := netutil.SplitHostPort(s.cfg.Addr)
 	if err != nil {
 		return errutil.Explain(err, "failed to parse addr %s", s.cfg.Addr)
@@ -201,7 +205,7 @@ func (s *SimpleTrpcServer) Run(ctx context.Context, sig gs.ReadySignal) error {
 
 	<-sig.TriggerAndWait()
 
-	log.Infof(ctx, log.TagAppDef, "trpc server starting on %s", s.cfg.Addr)
+	log.Info(ctx, log.TagAppDef, log.Msg("trpc server starting"))
 	errCh := make(chan error, 1)
 	go func() {
 		// Serve binds the listener and blocks until Close/ a signal.
@@ -211,7 +215,9 @@ func (s *SimpleTrpcServer) Run(ctx context.Context, sig gs.ReadySignal) error {
 	select {
 	case err = <-errCh:
 		if err != nil {
-			log.Errorf(ctx, log.TagAppDef, "trpc server failed on %s: %v", s.cfg.Addr, err)
+			log.Error(ctx, log.TagAppDef,
+				log.Err(err),
+				log.Msg("trpc server failed"))
 		}
 		return errutil.Explain(err, "failed to serve on %s", s.cfg.Addr)
 	case <-s.done:
@@ -223,7 +229,9 @@ func (s *SimpleTrpcServer) Run(ctx context.Context, sig gs.ReadySignal) error {
 // signals Run to return so Go-Spring can complete shutdown. tRPC's Close takes
 // no context, so ctx only tags the shutdown log.
 func (s *SimpleTrpcServer) Stop(ctx context.Context) error {
-	log.Infof(ctx, log.TagAppDef, "trpc server shutting down on %s", s.cfg.Addr)
+	log.Info(ctx, log.TagAppDef,
+		log.String("addr", s.cfg.Addr),
+		log.Msg("trpc server shutting down"))
 	if s.svr != nil {
 		_ = s.svr.Close(nil)
 	}

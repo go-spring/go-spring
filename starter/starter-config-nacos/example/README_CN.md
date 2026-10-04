@@ -17,12 +17,6 @@ cd starter-config-nacos/example
 go run . -manual
 ```
 
-预期输出：
-```
-initial value
-updated value
-```
-
 需要先启动 Nacos：
 ```bash
 # 启动 Nacos
@@ -32,7 +26,20 @@ docker compose up -d
 go run . -manual
 ```
 
-服务保持运行，可以用对应 CLI 工具验证。`Ctrl+C` 退出服务。
+服务保持运行，`Ctrl+C` 退出服务。另开一个终端发布新值，即可看到变化打印：
+
+```bash
+curl -fsS -X POST 'http://127.0.0.1:8848/nacos/v1/cs/configs' \
+  -d 'dataId=gs-config-demo&group=DEFAULT_GROUP&content=demo.message=manual-1'
+# 打印：demo.message: "..." -> "manual-1"
+```
+
+不带 `-manual` 时，示例会自己发布一个新值、等待绑定字段热更新，打印
+`hot-reload observed: hello-<hhmmss>` 后退出：
+
+```bash
+go run .
+```
 
 ## 冒烟测试
 

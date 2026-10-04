@@ -219,11 +219,13 @@ func (t *Tracker) admitLocked(addr string, suspendFor time.Duration) bool {
 	return true
 }
 
-// Record folds a request outcome back into the tracker. success=true clears the
-// endpoint's failure state (or closes a half-open trial); success=false counts
-// toward suspension (or re-suspends a failed half-open trial). It is a no-op when
-// the tracker is disabled.
-func (t *Tracker) Record(addr string, success bool) {
+// Record folds a request outcome back into the tracker. ctx is the context of
+// the request whose outcome this is, carried into the suspension log lines so
+// they keep its trace and values; it is read, never canceled, here. success=true
+// clears the endpoint's failure state (or closes a half-open trial);
+// success=false counts toward suspension (or re-suspends a failed half-open
+// trial). It is a no-op when the tracker is disabled.
+func (t *Tracker) Record(ctx context.Context, addr string, success bool) {
 	if t == nil {
 		return
 	}
@@ -246,7 +248,7 @@ func (t *Tracker) Record(addr string, success bool) {
 		s.halfOpen = false
 		if wasDown {
 			t.ins.suspended.Add(context.Background(), -1)
-			log.Info(context.Background(), log.TagAppDef,
+			log.Info(ctx, log.TagAppDef,
 				log.String("address", addr),
 				log.Msg("loadbalance: endpoint recovered, back in rotation"))
 		}
@@ -259,7 +261,7 @@ func (t *Tracker) Record(addr string, success bool) {
 		s.halfOpen = false
 		s.suspendedAt = t.now()
 		t.ins.suspensions.Add(context.Background(), 1)
-		log.Warn(context.Background(), log.TagAppDef,
+		log.Warn(ctx, log.TagAppDef,
 			log.String("address", addr),
 			log.Msg("loadbalance: half-open trial failed, endpoint re-suspended"))
 		return
@@ -269,7 +271,7 @@ func (t *Tracker) Record(addr string, success bool) {
 		s.suspendedAt = t.now()
 		t.ins.suspensions.Add(context.Background(), 1)
 		t.ins.suspended.Add(context.Background(), 1)
-		log.Warn(context.Background(), log.TagAppDef,
+		log.Warn(ctx, log.TagAppDef,
 			log.String("address", addr),
 			log.Int("failures", s.failures),
 			log.Float("suspend_for_ms", float64(cfg.SuspendFor.Nanoseconds())/1e6),

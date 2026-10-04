@@ -26,6 +26,7 @@ package StarterGoZeroRest
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/zeromicro/go-zero/core/logx"
 	"github.com/zeromicro/go-zero/core/service"
@@ -112,6 +113,10 @@ func NewRestServer(cfg Config, reg HandlerRegister) *RestServer {
 // so it runs in a goroutine while Run parks on the done channel; Stop closes
 // done to hand control back to Go-Spring.
 func (s *RestServer) Run(ctx context.Context, sig gs.ReadySignal) error {
+	// The listening address rides on the context: every line this server logs
+	// about its own lifecycle carries it without repeating it.
+	ctx = log.WithFields(ctx, log.String("addr", fmt.Sprintf("%s:%d", s.cfg.Host, s.cfg.Port)))
+
 	rc := rest.RestConf{
 		ServiceConf: service.ServiceConf{
 			Name: s.cfg.Name,
@@ -147,7 +152,7 @@ func (s *RestServer) Run(ctx context.Context, sig gs.ReadySignal) error {
 
 	<-sig.TriggerAndWait()
 
-	log.Infof(ctx, log.TagAppDef, "go-zero rest server starting on %s:%d", s.cfg.Host, s.cfg.Port)
+	log.Info(ctx, log.TagAppDef, log.Msg("go-zero rest server starting"))
 	errCh := make(chan error, 1)
 	go func() {
 		// Start binds the listener and blocks until Stop is called.
@@ -168,7 +173,9 @@ func (s *RestServer) Run(ctx context.Context, sig gs.ReadySignal) error {
 // sequence. The server teardown itself happens in Run via svr.Stop() (which
 // takes no context), so ctx only tags the shutdown log.
 func (s *RestServer) Stop(ctx context.Context) error {
-	log.Infof(ctx, log.TagAppDef, "go-zero rest server shutting down on %s:%d", s.cfg.Host, s.cfg.Port)
+	log.Info(ctx, log.TagAppDef,
+		log.String("addr", fmt.Sprintf("%s:%d", s.cfg.Host, s.cfg.Port)),
+		log.Msg("go-zero rest server shutting down"))
 	close(s.done)
 	return nil
 }

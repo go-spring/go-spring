@@ -173,7 +173,7 @@ import starter-nats
 gs.Run()
   ├─ 配置绑定：每个 spring.nats.instances.<name> → Config（value tag；url 经 expr 校验 ≠ ""）
   ├─ 每个 name：Provide(newConn, IndexArg(1,ValueArg(name)), IndexArg(2,ValueArg(c)))
-  │             .Name(name).Destroy((*Conn).Destroy).Caller(1)  [starter.go:45-54]
+  │             .Name(name).Destroy((*Conn).Close).Caller(1)    [starter.go:45-54]
   ├─ newConn：Driver bean（由 ${spring.nats.instances.<name>.driver} 按实例选择：留空 = 按类型注入，
   │     配置 = 按 bean 名注入，指定的 bean 不存在则启动失败；无则回退到内置
   │     DefaultDriver）→ CreateClient(ctx, Config, cloud.ClientParams{Resilience: mgr, Fault: inj})
@@ -191,7 +191,7 @@ gs.Run()
   ├─ ping 时启动连通性检查（裸 client 的 IsConnected）；失败则销毁该 bean
   │           [driver.go:197-202]
   ├─ Run / 就绪
-  └─ SIGTERM：(*Conn).Destroy → exec.Close()（错误在 Drain 后向上返回）再 conn.Drain()
+  └─ SIGTERM：(*Conn).Close = InnerConn.Release(true)：先 exec.Close() 再 Drain
               —— 在途订阅收尾后关闭 socket [client.go:105-113]
 ```
 
@@ -214,7 +214,7 @@ gs.Run()
    从 executor 的 attempt ctx 注入 `nm.Header`（消费侧得以延续 trace），
    连接的 resilience executor——唯一发射点——打开 producer span（经 Publish 的 ctx 挂到
    调用方活动 span 下）、记录时长并写 access log。
-4. 裸 `c.conn.PublishMsg`（异步缓冲写——broker 确认前即返回；需确认用 Flush，
+4. 裸 `conn.PublishMsg`（异步缓冲写——broker 确认前即返回；需确认用 Flush，
    见 [nats.go 文档](https://docs.nats.io/)）。executor 包裹的正是这次线上调用，
    因此每条消息恰好计一次。
 

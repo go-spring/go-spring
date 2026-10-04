@@ -83,7 +83,10 @@ func newTokenSource(ctx *gs.ContextProvider, name string, c Config) (*TokenSourc
 
 	log.Debugf(ctx.Context, log.TagAppDef, "creating oauth2 token source clientID=%s tokenURL=%s", c.ClientID, c.TokenURL)
 
-	ctx.Context = otelContext(c.Timeout)
-
-	return &TokenSource{src: cfg.TokenSource(ctx.Context)}, nil
+	// The token source needs a context carrying the instrumented HTTP client,
+	// but it must stay local: ctx is the shared *gs.ContextProvider, so
+	// assigning to its Context field would hand this background-based context
+	// to every other bean in the process — and drop the application context
+	// they were reading.
+	return &TokenSource{src: cfg.TokenSource(otelContext(c.Timeout))}, nil
 }

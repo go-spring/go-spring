@@ -112,13 +112,19 @@ func NewServer(cfg Config, indicators []*health.Indicator, endpoints []*endpoint
 // other gs.Server, then serves. See the README's working-model section for why
 // the startup window intentionally answers nobody.
 func (s *Server) Run(ctx context.Context, sig gs.ReadySignal) error {
+	// The management address rides on the context: every line this server logs
+	// about its own lifecycle carries it without repeating it.
+	ctx = log.WithFields(ctx, log.String("addr", s.cfg.Address))
+
 	ln, err := net.Listen("tcp", s.cfg.Address)
 	if err != nil {
-		log.Errorf(ctx, log.TagAppDef, "failed to listen on %s: %v", s.cfg.Address, err)
+		log.Error(ctx, log.TagAppDef,
+			log.Err(err),
+			log.Msg("actuator: failed to listen"))
 		return errutil.Explain(err, "actuator: failed to listen on %s", s.cfg.Address)
 	}
 
-	log.Infof(ctx, log.TagAppDef, "actuator listening on %s", s.cfg.Address)
+	log.Info(ctx, log.TagAppDef, log.Msg("actuator listening"))
 
 	s.svr = &http.Server{
 		Handler:           s.buildHandler(ctx),
@@ -135,10 +141,12 @@ func (s *Server) Run(ctx context.Context, sig gs.ReadySignal) error {
 
 	err = s.svr.Serve(ln)
 	if errutil.IsServerClosed(err) {
-		log.Infof(ctx, log.TagAppDef, "actuator server closed gracefully")
+		log.Info(ctx, log.TagAppDef, log.Msg("actuator server closed gracefully"))
 		return nil
 	}
-	log.Errorf(ctx, log.TagAppDef, "actuator serve error: %v", err)
+	log.Error(ctx, log.TagAppDef,
+		log.Err(err),
+		log.Msg("actuator serve error"))
 	return errutil.Explain(err, "actuator: failed to serve on %s", s.cfg.Address)
 }
 

@@ -28,6 +28,7 @@ compose up -d
 # Wait for the Consul HTTP API via the leader status endpoint. A raw TCP probe
 # (/dev/tcp) both fails in some shells and accepts before Consul finishes
 # booting; the leader endpoint is the real readiness signal.
+echo "== waiting for the service to be ready =="
 for _ in $(seq 1 60); do
     if curl -fsS "http://127.0.0.1:8500/v1/status/leader" >/dev/null 2>&1; then
         break
@@ -35,6 +36,7 @@ for _ in $(seq 1 60); do
     sleep 1
 done
 
+echo "== example boot =="
 go run . &
 pid=$!
 ( sleep 60; kill -9 "${pid}" 2>/dev/null ) &
@@ -43,4 +45,9 @@ rc=0
 wait "${pid}" 2>/dev/null || rc=$?
 kill "${watchdog}" 2>/dev/null || true
 wait "${watchdog}" 2>/dev/null || true
-exit "${rc}"
+if [ "${rc}" -ne 0 ]; then
+    echo "== FAILED ==" >&2
+    exit "${rc}"
+fi
+echo "== OK =="
+exit 0

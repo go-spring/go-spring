@@ -7,7 +7,7 @@ starter 本体（`starter.go`、`starter_test.go`）、gs 核心（`spring/conf/
 portal 操作、access key）见 [Apollo 官方文档](https://www.apolloconfig.com/#/design/apollo-introduction)** ——
 本文只写 go-spring 的增量。
 
-**激活方式**：blank import 即注册 `apollo` 配置 provider（`starter.go:79`）。在
+**激活方式**：blank import 即注册 `apollo` 配置 provider（`starter.go`）。在
 `spring.config.import` 出现 `apollo:` 条目之前 starter 不做任何事；没有 `enabled` key、
 没有属性前缀、无可注入 bean。
 
@@ -17,7 +17,7 @@ portal 操作、access key）见 [Apollo 官方文档](https://www.apolloconfig.
 
 一个真实服务：从 Apollo 冷加载 namespace、portal 发布后热刷新 `gs.Dync` 字段、
 并经 HTTP 暴露该值用于验证。与冒烟验证过的 [example/](example/)（mock Apollo 服务 +
-冷加载断言）同构，扩展为真实 Apollo 与 HTTP 探针。文件树：
+冷加载与热更新断言）同构，扩展为真实 Apollo 与 HTTP 探针。文件树：
 
 ```
 demo/
@@ -89,7 +89,7 @@ func main() { gs.Run() }
 #   ?appId=demo&cluster=default&secret=...&format=properties
 #
 # 多条目：逗号分隔；key 冲突时后加载的覆盖先加载的（与文件 import 同规则，
-# conf.go:202）。
+# conf.go）。
 spring.config.import=optional:apollo:127.0.0.1:8080/application?appId=demo&format=properties
 
 # 验证探针用 server（端口必须显式配置——不设默认值）。
@@ -100,16 +100,17 @@ spring.http.server.enabled=false
 **前置依赖**（一个外部系统）：import 字符串所指地址可达的 Apollo config service，
 含 app `demo`、cluster `default`、已发布 namespace `application`。本地最快的起法是
 Apollo 官方 [Quick Start docker-compose](https://www.apolloconfig.com/#/zh/deployment/quick-start-docker)；
-CI/离线场景可用 starter example 内置的 mock Apollo（`main.go:73-92`），它恰好实现
-agollo 冷加载需要的两个端点（`/services/config` 与 `/configfiles/json/{appId}/{cluster}/{namespace}`）
-——免 docker。
+CI/离线场景可用 starter example 内置的 mock Apollo（`main.go`），它实现 agollo
+驱动的端点：`/services/config`、`/configfiles/json/{appId}/{cluster}/{namespace}`
+（冷加载）、`/notifications/v2`（长轮询）、`/configs/{appId}/{cluster}/{namespace}`
+（收到通知后的回拉）——冷加载与热更新都能覆盖，且免 docker。
 
 **验证（冷加载）**：
 
 ```bash
 go run . &
 curl -s :8002/message            # {"message":"hello-from-apollo"}（或你发布的值）
-grep 'loaded apollo namespace' <日志流>   # "loaded apollo namespace application keys=N"
+grep 'loaded apollo namespace' <日志流>   # msg="loaded apollo namespace" namespace=.. keys=N
 ```
 
 **验证（热加载）**：在 Apollo portal 修改 `application` namespace 的 `demo.message`
@@ -122,7 +123,7 @@ curl -s :8002/message            # 新值，进程未动
 example 自带的冒烟门（与 `example/check.sh` 同构）：
 
 ```bash
-cd example && ./check.sh && echo SMOKE-OK   # 断言输出含 "Apollo cold-load OK:"
+cd example && ./check.sh && echo SMOKE-OK   # 断言输出含 "Apollo cold-load OK:" 与 "hot-reload observed:"
 ```
 
 ---
@@ -132,21 +133,21 @@ cd example && ./check.sh && echo SMOKE-OK   # 断言输出含 "Apollo cold-load 
 ### 2.1 import 何时解析 —— pre-bean，以及为什么重要
 
 `spring.config.import` 在 gs 加载应用属性阶段处理，即 `App.Start` 的第 2 步
-（`gs_app/app.go:285-294`），**早于** IoC 容器装配：
+（`gs_app/app.go`），**早于** IoC 容器装配：
 
 ```
 blank-import starter-config-apollo
-  └─ init(): conf.RegisterProvider("apollo", newApolloCtrl())   starter.go:77-80
+  └─ init(): conf.RegisterProvider("apollo", newApolloCtrl())   starter.go
 gs.Run() → App.Start()
   ├─ 1. 挂载 gs.RefreshProperties / gs.AppStarted 门面目标
-  ├─ 2. app.p.Refresh() —— 加载 app.properties，展开 spring.config.import     gs_conf/conf.go:216-240
-  │       └─ conf.Load(source) → 前缀拆分 [optional:]<provider>:<path>        provider.go:84-92
-  │             └─ apolloCtrl.Load(optional, path)                             starter.go:191
-  │                   ├─ parseSource → url.Parse("apollo://"+path)            starter.go:113-148
-  │                   ├─ clientFor → agollo.StartWithConfig（每元组一个）     starter.go:158-186
+  ├─ 2. app.p.Refresh() —— 加载 app.properties，展开 spring.config.import     gs_conf/conf.go
+  │       └─ conf.Load(source) → 前缀拆分 [optional:]<provider>:<path>        provider.go
+  │             └─ apolloCtrl.Load(optional, path)                             starter.go
+  │                   ├─ parseSource → url.Parse("apollo://"+path)            starter.go
+  │                   ├─ clientFor → agollo.StartWithConfig（每元组一个）     starter.go
   │                   ├─ registerListener（先于 fetch——"a later change
-  │                   │   is never missed"，starter.go:204）                   starter.go:226-241
-  │                   └─ GetConfigContent → reader.Read(format) → flatten     starter.go:207-221
+  │                   │   is never missed"，starter.go）                   starter.go
+  │                   └─ GetConfigContent → reader.Read(format) → flatten     starter.go
   ├─ 3. initLog
   ├─ 4. IoC 容器装配
   ├─ 5. Runners，6. Servers → 就绪
@@ -159,10 +160,10 @@ required（非 `optional:`）import 失败（namespace 空、format 错、server
 `spring.config.import` 每次 Refresh 都会重新走一遍管线（见 2.2）。
 
 import 嵌套：只处理一层——被导入 source 内部声明的 `spring.config.import` 会被静默
-忽略（`gs_conf/conf.go:213-215`）。source 字符串在加载前支持 `${...}` 占位符解析
-（`conf.go:224`），因此 `apollo:${APOLLO_ADDR:=127.0.0.1:8080}/application?appId=demo`
+忽略（`gs_conf/conf.go`）。source 字符串在加载前支持 `${...}` 占位符解析
+（`conf.go`），因此 `apollo:${APOLLO_ADDR:=127.0.0.1:8080}/application?appId=demo`
 合法，是把地址挡在配置文件之外的受支持方式。重复的 import 条目在加载前去重
-（`conf.go:223`）。
+（`conf.go`）。
 
 ### 2.2 watch / 热刷新路径
 
@@ -172,24 +173,24 @@ agollo 自带配置变更通知 long-poll（`/notifications/v2`，见
 
 ```
 Apollo 发布 → agollo long-poll 触发 ChangeEvent / FullChangeEvent
-  → apolloListener.OnChange / OnNewestChange                    starter.go:248-254
-    → apolloCtrl.TriggerRefresh                                 starter.go:95-99
-      → gs.RefreshProperties()                                  gs_app/app.go:149-151
+  → apolloListener.OnChange / OnNewestChange                    starter.go
+    → apolloCtrl.TriggerRefresh                                 starter.go
+      → gs.RefreshProperties()                                  gs_app/app.go
         → App.RefreshProperties：先 guard "app not started yet"，随后
           重载全部 source（文件、env、cmd args、所有 import）、按层优先级
-          合并、传播进容器                                      gs_app/app.go:247-256
+          合并、传播进容器                                      gs_app/app.go
             → 所有 gs.Dync[T] 字段原子更新
 ```
 
 该路径两个值得记住的性质：
 
 - **启动前是 no-op。** app 启动前到达的事件碰到的 `gs.RefreshProperties()` 会返回
-  错误，被无害丢弃（由 `TestListenerChangeFiresRefresh` 钉死，`starter_test.go:133-139`）
-  ——初始加载已捕获该状态（`starter.go:93-94`）。
+  错误，被无害丢弃（由 `TestListenerChangeFiresRefresh` 钉死，`starter_test.go`）
+  ——初始加载已捕获该状态（`starter.go`）。
 - **整应用刷新，而非按 namespace。** 一个 key 变更会重载*所有* source，因此绑定
   本地文件的 Dync 字段在同一窗口内的文件改动也会被重读。只有 `gs.Dync[T]` 会重新
   绑定；普通 `value:` 字段仅启动期生效（gs 不存在 per-key callback）。监听器按
-  source 去重注册（`TestListenerRegisteredOncePerSource`，`starter_test.go:118-128`），
+  source 去重注册（`TestListenerRegisteredOncePerSource`，`starter_test.go`），
   刷新引发的重复 Load 不会堆叠监听器。
 
 ### 2.3 一次冷加载逐层走读
@@ -197,18 +198,18 @@ Apollo 发布 → agollo long-poll 触发 ChangeEvent / FullChangeEvent
 `optional:apollo:127.0.0.1:8080/application?appId=demo`：
 
 1. `conf.Load` 剥掉 `optional:` → `optional=true`；按第一个 `:` 拆分 → provider
-   `apollo`、path `127.0.0.1:8080/application?appId=demo`（`provider.go:84-92`）。
+   `apollo`、path `127.0.0.1:8080/application?appId=demo`（`provider.go`）。
 2. `parseSource` 前缀 `apollo://` 后 `url.Parse`：host、path 里的 namespace、query
    参数；补默认 cluster=`default`、format 取 namespace 扩展名否则 `properties`
-   （`starter.go:113-148`）。
+   （`starter.go`）。
 3. `clientFor` 构造缓存 key `server|appId|cluster|secret|namespace`；未命中则
    `agollo.StartWithConfig` 创建 client，`IsBackupConfig: false`（不落本地缓存文件）、
-   指向 `http://<server>`（`starter.go:150-186`）。
+   指向 `http://<server>`（`starter.go`）。
 4. 先注册 change listener，再 `GetConfigContent` 取内容；内容为空且 optional →
-   warn 跳过；为空且 required → 报错（`starter.go:207-214`）。
+   warn 跳过；为空且 required → 报错（`starter.go`）。
 5. `reader.Read(format, content)` 解析、`flatten.Flatten` 把嵌套格式拍平成 dotted key，
-   该 map 作为 app 层 source 并入分层存储（`starter.go:216-221`、
-   `gs_conf/conf.go:233-237`）。
+   该 map 作为 app 层 source 并入分层存储（`starter.go`、
+   `gs_conf/conf.go`）。
 
 ---
 
@@ -216,7 +217,7 @@ Apollo 发布 → agollo long-poll 触发 ChangeEvent / FullChangeEvent
 
 ### 3.1 import 字符串语法
 
-形态（核心语法 `provider.go:60-72`，apollo 细则 `starter.go:111-148`）：
+形态（核心语法 `provider.go`，apollo 细则 `starter.go`）：
 
 ```
 [optional:]apollo:<host>[:<port>]/<namespace>?appId=<id>[&cluster=<c>][&secret=<s>][&format=<f>]
@@ -226,14 +227,14 @@ Apollo 发布 → agollo long-poll 触发 ChangeEvent / FullChangeEvent
 
 | 组成 | 类型 | 默认值 | 行为 / 联动 | 配错后果 |
 |------|------|--------|-------------|----------|
-| `optional:` | flag | 缺省 | namespace 为空*或从未同步*时打 warn（`optional apollo namespace %s is empty (skipped)`，`starter.go:210`）且不贡献任何 key。 | 不加时同样情况是启动错误——预期中的 fail-fast；若 namespace 会晚些创建则反直觉。 |
-| `apollo` | 名字 | — | starter init 注册的 provider key。 | 拼错 → 启动报 `unsupported provider type ...`（`provider.go:96`）。 |
-| host[:port] | string | — | Apollo meta/config server；以 `http://<host>` 传给 agollo。占位符（`${APOLLO_ADDR}`）先行解析。 | 缺失（source 以 `/` 开头）→ `missing apollo server address in ...`（`starter.go:118-120`）。地址错 → agollo 拉取失败（required 启动失败 / optional 静默跳过）。 |
-| namespace | string | — | 每个 import 条目恰好一个 namespace。其文件扩展名决定默认 format。 | 缺失 → `missing namespace in ...`（`starter.go:122-124`）。访问非公开 namespace 未带 `secret` 得到空内容 → 后果取决于 `optional:`。 |
-| `appId` | string | — | 必填，无默认。 | 缺失 → `missing appId in ...`（`starter.go:134-136`）。 |
+| `optional:` | flag | 缺省 | namespace 为空*或从未同步*时打 warn（`optional apollo namespace %s is empty (skipped)`，`starter.go`）且不贡献任何 key。 | 不加时同样情况是启动错误——预期中的 fail-fast；若 namespace 会晚些创建则反直觉。 |
+| `apollo` | 名字 | — | starter init 注册的 provider key。 | 拼错 → 启动报 `unsupported provider type ...`（`provider.go`）。 |
+| host[:port] | string | — | Apollo meta/config server；以 `http://<host>` 传给 agollo。占位符（`${APOLLO_ADDR}`）先行解析。 | 缺失（source 以 `/` 开头）→ `missing apollo server address in ...`（`starter.go`）。地址错 → agollo 拉取失败（required 启动失败 / optional 静默跳过）。 |
+| namespace | string | — | 每个 import 条目恰好一个 namespace。其文件扩展名决定默认 format。 | 缺失 → `missing namespace in ...`（`starter.go`）。访问非公开 namespace 未带 `secret` 得到空内容 → 后果取决于 `optional:`。 |
+| `appId` | string | — | 必填，无默认。 | 缺失 → `missing appId in ...`（`starter.go`）。 |
 | `cluster` | string | `default` | 参与client 缓存 key——同 appId+namespace 在两个 cluster 是两个 client、两个 import，不去重。 | 拼错会静默读到另一个（可能为空的）cluster；叠加 `optional:` 时*安静地*失败。 |
 | `secret` | string | 空 | 受保护 namespace 的 access key。⚠ 落进 import 字符串，随之进入配置文件与加载层日志。 | 受保护 namespace 缺失/错误 → 空内容 → required 启动报错或 optional 跳过。 |
-| `format` | string | namespace 扩展名，否则 `properties` | 显式解析器覆盖（`properties`/`yaml`/`yml`/`json`/`toml`，`reader.Read` 所支持者）。`TestParseSourceFormatOverride` 钉死。 | 与实际内容不符 → `parse apollo namespace %s as %s failed`（`starter.go:218`）；即使 `optional:` 也启动报错（parse 失败永不 optional）。 |
+| `format` | string | namespace 扩展名，否则 `properties` | 显式解析器覆盖（`properties`/`yaml`/`yml`/`json`/`toml`，`reader.Read` 所支持者）。`TestParseSourceFormatOverride` 钉死。 | 与实际内容不符 → `parse apollo namespace %s as %s failed`（`starter.go`）；即使 `optional:` 也启动报错（parse 失败永不 optional）。 |
 
 支持的格式以 `spring/conf/reader` 为准；未知值在 `reader.Read` 内报错。
 
@@ -261,15 +262,16 @@ starter 模块自身绑定的属性 key 为**零**——没有 `apollo.*` 前缀
 ```bash
 go run . &
 curl -s :8002/message                          # 已发布的值
-grep -E 'loaded apollo namespace' <log>        # keys=N —— N 为拍平后的 key 数
-cd example && ./check.sh                       # CI 门："Apollo cold-load OK:" 标记
+grep -E 'loaded apollo namespace' <log>        # msg= 带 namespace=.. keys=N（N 为拍平后的 key 数）
+cd example && ./check.sh                       # CI 门：冷加载 + 热更新标记
 ```
 
 example 自包含：在 `127.0.0.1:18080` 起 mock Apollo、导入
 `optional:apollo:127.0.0.1:18080/application?appId=demo&format=properties`，若
-`demo.message` 未冷加载为 `hello-from-apollo` 则非零退出（`main.go:94-103`）。注意
-mock 的 `/notifications/v2` 返回 304（`main.go:85-86`）——agollo 会持续 long-poll，
-这正是演练 4.2 所依赖的机制。
+`demo.message` 未冷加载为 `hello-from-apollo`、或未热更新为示例自己发布的新值，
+则非零退出（`main.go`）。mock 的 `/notifications/v2` 会持有每次长轮询，直到自己的
+notification id 前进，因此「发布 → 通知 → 回拉 → 刷新」这条链与演练 4.2 所依赖的
+机制完全一致。
 
 ### 4.2 watch 推送（热加载，免重启）
 
@@ -287,15 +289,15 @@ spring.config.import=apollo:127.0.0.1:8080/app.json?appId=demo
 
 在 `app.json` 发布非 JSON 内容 → 启动失败
 `parse apollo namespace app.json as json failed`（`TestLoadParseErrorPropagates`，
-`starter_test.go:109-114`）。注意 `optional:` 不能软化 parse 错误——只有空/缺失
-namespace 是 optional 的（`starter.go:207-214`）。
+`starter_test.go`）。注意 `optional:` 不能软化 parse 错误——只有空/缺失
+namespace 是 optional 的（`starter.go`）。
 
 ### 4.4 optional 与 required 对比
 
 - required、namespace 缺失/为空：启动中止，`apollo namespace %s is empty`。
 - 同一 source 加 `optional:`：warn 一行 `optional apollo namespace ... is empty
   (skipped)`，启动继续，字段落在 `:=` 默认值（demo 中为 `none`）——由
-  `TestLoadOptionalSkipsOnMissingNamespace` 钉死（`starter_test.go:94-105`）。
+  `TestLoadOptionalSkipsOnMissingNamespace` 钉死（`starter_test.go`）。
 - 语法错误（缺 appId / host / namespace）无论 `optional:` 与否都失败
   （`TestParseSourceMissingAppID`）。
 
@@ -307,7 +309,7 @@ namespace 是 optional 的（`starter.go:207-214`）。
 - **运行期**：agollo 按自身节奏重试（其日志，非 gs 的）；gs 侧症状就是*配置滞留*
   ——Dync 值不再移动。没有健康指示器、没有指标、连接丢失不产生 gs 日志（见 §6）。
   server 恢复后下一次成功 poll 触发 listener，值追平。
-- `IsBackupConfig: false`（`starter.go:178`）意味着没有本地缓存文件桥接宕机期重启：
+- `IsBackupConfig: false`（`starter.go`）意味着没有本地缓存文件桥接宕机期重启：
   宕机中重启且 import 为 required 会失败。
 
 ---
@@ -343,7 +345,7 @@ namespace 是 optional 的（`starter.go:207-214`）。
 - agollo 连接无健康指示器 / 指标 / 专属日志 tag：运行期 server 挂掉对 gs 可观测性
   不可见（只有配置滞留）。
 - 每个 (server, appId, cluster, secret, namespace) 元组一个 agollo client
-  （`starter.go:150-155`）——namespace 多则 long-poll 连接多；agollo 本身支持多
+  （`starter.go`）——namespace 多则 long-poll 连接多；agollo 本身支持多
   namespace client → 候选合并。
 - `optional:` 语义把"尚未同步"与"合法为空"混为一谈——发布为*空*的 namespace 与
   appId/cluster 拼错无法区分。

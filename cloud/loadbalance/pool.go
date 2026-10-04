@@ -17,6 +17,7 @@
 package loadbalance
 
 import (
+	"context"
 	"sync"
 	"sync/atomic"
 
@@ -167,9 +168,14 @@ func (p *Pool) Pick(info PickInfo) (discovery.Endpoint, error) {
 // balancer's own accounting and records the outcome with the suspension
 // tracker, so every strategy — not just least-conn — feeds suspension.
 // Invoke it exactly once per picked endpoint, after the request ends.
-func (p *Pool) Complete(ep discovery.Endpoint, err error) {
-	(*p.bal.Load()).Complete(ep, err)
-	p.tracker.Record(ep.Addr, err == nil)
+//
+// ctx is the context of that request — the one whose outcome this is — and is
+// threaded through to the balancer and the tracker so their logs and
+// instrumentation carry the request's trace and values. It is read, never
+// canceled, by this call.
+func (p *Pool) Complete(ctx context.Context, ep discovery.Endpoint, err error) {
+	(*p.bal.Load()).Complete(ctx, ep, err)
+	p.tracker.Record(ctx, ep.Addr, err == nil)
 }
 
 // eligible returns the endpoints allowed to receive traffic under the

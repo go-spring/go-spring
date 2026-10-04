@@ -128,7 +128,7 @@ import starter-memcached
   └─ init: gs.Module(OnProperty("spring.memcached"), BindEach)       starter.go:42-43
         per spring.memcached.instances.<name> entry:
           r.Provide(newClient, IndexArg(name,c), IndexArg(3,?Driver))  starter.go:47-51
-              .Name(name).Destroy((*Client).Destroy)     # no InitMethod — see below
+              .Name(name).Destroy((*Client).Close)       # no InitMethod — see below
           r.Provide(health indicator "memcache:"+name)               starter.go:65
 gs.Run()
   ├─ config bind: ${spring.memcached.instances.<name>} → Config (value tags)   config.go:24-58
@@ -138,7 +138,8 @@ gs.Run()
   ├─ ctor: Client.applyGovernance(mgr, inj): resilience/fault executor
   ├─ ctor: HealthCheck (raw client) — assembly is complete before the probe
   ├─ readiness: health indicator folds HealthCheck into /readiness   `health.go`
-  └─ shutdown: Client.Destroy — close pool, release executor         client.go
+  └─ shutdown: Client.Close = InnerClient.Release(true) — executor
+       released first, pool closed last                          client.go
 ```
 
 **Assembly extension point**: client assembly is owned by a `Driver` (interface,
@@ -219,10 +220,10 @@ discovery+LB, `driver.go:76-78` comment).
 3. The raw client performs the actual write; the span closes with the error.
 
 All 17 operations (get/get_and_touch/get_multi/touch/set/add/replace/append/prepend/cas/delete/
-delete_all/increment/decrement/ping/flush_all) follow this same shape (`client.go`). Together with
-`Close` they are the whole `*Client` surface: the raw client is a private field, so nothing is
-promoted and there is no exported way to reach it — a caller cannot bypass the observe and
-governance layers by accident.
+delete_all/increment/decrement/ping/flush_all) follow this same shape — one method per command on
+the chain's `ObsClient`/`GuardClient` head pair, promoted into `*Client` by the embedded `InnerClient`. The raw
+client is the exported `Client` field: a read-only handle; reorganizing the chain is
+wrapping the head in a custom layer, not a bypass of the governance layer.
 
 ### 2.4 The cache abstraction bean
 

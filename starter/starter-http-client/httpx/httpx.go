@@ -366,7 +366,7 @@ func (t *balancedTransport) RoundTrip(req *http.Request) (*http.Response, error)
 	r.Host = ep.Addr
 
 	resp, err := t.base.RoundTrip(r)
-	t.pool.Complete(ep, err)
+	t.pool.Complete(req.Context(), ep, err)
 	return resp, err
 }
 

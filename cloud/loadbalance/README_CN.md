@@ -40,7 +40,7 @@ for {
     ep, err := pool.Pick(loadbalance.PickInfo{})
     if err != nil { return err }
     err = call(ep.Addr)     // 你的 RPC / HTTP 调用
-    pool.Complete(ep, err)  // 必须配对：销账 + 喂摘除器
+    pool.Complete(ctx, ep, err)  // 必须配对：销账 + 喂摘除器
 }
 ```
 
@@ -80,7 +80,8 @@ pool := loadbalance.NewPool(resolver, bal)
 是 no-op）和**有状态**（least_conn 维护在途表；p2c 维护延迟模型）。所有策略
 状态按 endpoint 地址键，实例增删、快照重排都不影响幸存实例的存量状态。
 
-自定义策略实现 `Balancer`（Pick/Complete，须并发安全），再作为一个命名
+自定义策略实现 `Balancer`（Pick/Complete，须并发安全；`Complete` 收本次所结
+请求的 ctx），再作为一个命名
 `Factory` bean 贡献给容器——bean 名即规则引用的策略名，策略自己的参数从
 `Params` 里读：
 
@@ -125,7 +126,7 @@ ep, _ := pool.Pick(loadbalance.PickInfo{Zone: "us-east-1a,us-east-1"})
 ## Tracker：离群摘除
 
 `Tracker` 解决 discovery 看不到的故障形态：实例还注册着、健康检查也过，但
-实际请求持续失败（僵尸实例）。它只从 `Complete(err)` 学习，无需额外调用：
+实际请求持续失败（僵尸实例）。它只从传给 `Complete` 的 `err` 学习，无需额外调用：
 
 ```
 正常 --连续失败达 Threshold--> 摘除（SuspendFor 冷却，Pick 不再选中）
@@ -182,3 +183,7 @@ outlier-threshold: 5
 两段必须**恰好配对一次**。漏调 `Complete` 的后果： `least_conn` 在途计数
 泄漏（该实例被饿死）、`p2c` 延迟模型失真、`Tracker` 收不到成败信号（摘除
 失效）。
+
+`Complete` 收本次所结请求的 ctx：策略自己的遥测与日志借此挂到引发状态变化的
+那次请求上（`Tracker` 的摘除、恢复两条日志因此能串进链路）。它做的是内存
+记账——不得发起 I/O，也不得依赖这个 ctx 仍然存活。

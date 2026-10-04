@@ -10,6 +10,7 @@ set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")"
 
 out="$(mktemp)"
+echo "== example boot =="
 go run . >"${out}" 2>&1 &
 pid=$!
 # The example stops itself once its assertions pass; the watchdog only fires if
@@ -30,5 +31,6 @@ if [ "${rc}" -ne 0 ] || ! grep -q "session example ok" "${out}"; then
     rm -f "${out}"
     exit 1
 fi
+echo "== OK =="
 rm -f "${out}"
 exit 0

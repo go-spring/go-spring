@@ -17,22 +17,38 @@ cd starter-config-vault/example
 go run . -manual
 ```
 
-Expected output:
-```
-initial value
-updated value
-```
-
-Start Vault first:
+Vault must be running first, and the token plus the AES decrypt key must be in
+the environment (see `check.sh`):
 ```bash
 # Start Vault
 docker compose up -d
+
+export VAULT_TOKEN=root
+export GS_CONFIG_DECRYPT_AES_KEY=MTIzNDU2Nzg5MDEyMzQ1Ng==
 
 # Run example (manual mode, keeps running)
 go run . -manual
 ```
 
 The service keeps running. Press `Ctrl+C` to stop.
+
+In another terminal, publish a new document and watch both fields print:
+
+```bash
+curl -fsS -X POST -H "X-Vault-Token: $VAULT_TOKEN" \
+  -d '{"data":{"application.properties":"demo.message=manual-1\n"}}' \
+  http://127.0.0.1:8200/v1/secret/data/gs-config-demo
+# prints: demo.message: "..." -> "manual-1"
+```
+
+Without `-manual` the example writes a new (partly encrypted) document to
+Vault, waits for both bound fields to hot-reload, prints
+`hot-reload observed: hello-<hhmmss>` and `decrypted password: topsecret`, and
+exits:
+
+```bash
+go run .
+```
 
 ## Smoke Test
 

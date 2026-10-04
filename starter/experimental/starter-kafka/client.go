@@ -68,7 +68,7 @@ import (
 // prop is the load-test convention the driver carries: publish stamps the
 // marker into a record header and consume reads it back. A nil propagator
 // falls back to [traffic.NewDefaultPropagator].
-func NewDriver(cl *kgo.Client, prop traffic.Propagator) messaging.Driver {
+func NewDriver(cl *Client, prop traffic.Propagator) messaging.Driver {
 	if prop == nil {
 		// DefaultBinding is complete, so this cannot fail.
 		prop, _ = traffic.NewDefaultPropagator(traffic.DefaultBinding())
@@ -77,7 +77,7 @@ func NewDriver(cl *kgo.Client, prop traffic.Propagator) messaging.Driver {
 }
 
 type driver struct {
-	cl   *kgo.Client
+	cl   *Client
 	prop traffic.Propagator
 }
 
@@ -91,7 +91,7 @@ func (b *driver) NewSubscriber(_ context.Context, source, _ string) (messaging.S
 
 // publisher produces envelopes to a fixed topic.
 type publisher struct {
-	cl    *kgo.Client
+	cl    *Client
 	topic string
 	prop  traffic.Propagator
 }
@@ -126,7 +126,7 @@ func (p *publisher) Close() error { return nil }
 // access log; with governance off the executor is a pass-through and the
 // handler runs inline.
 type subscriber struct {
-	cl     *kgo.Client
+	cl     *Client
 	topic  string
 	prop   traffic.Propagator
 	cancel context.CancelFunc
@@ -145,7 +145,7 @@ func (s *subscriber) Subscribe(ctx context.Context, handler messaging.Handler) e
 	go func() {
 		defer close(s.done)
 		for loopCtx.Err() == nil {
-			fetches := s.cl.PollFetches(loopCtx)
+			fetches := s.cl.Kafka.PollFetches(loopCtx)
 			if errs := fetches.Errors(); len(errs) > 0 {
 				for _, e := range errs {
 					if e.Err != context.Canceled {

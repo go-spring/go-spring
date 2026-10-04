@@ -44,6 +44,7 @@ import (
 
 	"github.com/apache/rocketmq-client-go/v2"
 	"github.com/apache/rocketmq-client-go/v2/primitive"
+	"go-spring.org/cloud/chain"
 	"go-spring.org/cloud/observability"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -185,37 +186,117 @@ func (c msgCarrier) Keys() []string {
 // Resilience guard
 // -----------------------------------------------------------------------------
 
-// GuardedSend sends msg synchronously on producer, routed through the
-// resilience executor attached to cl when governance is enabled. When
-// governance is disabled this behaves exactly like producer.SendSync. On
-// rejection (rate-limit or open circuit) the returned error is a resilience
-// sentinel and the underlying send is never invoked.
+// InnerProducer is the seam a producer's synchronous send runs through, one
+// chain per producer. rocketmq-client-go offers no hook or plugin point, so
+// this interface is the ONLY way to modify what happens under [GuardedSend].
 //
-// The publish declares its operation (topic as Detail, direction and system as
-// Attrs) before the send, so the resilience executor — the single emitter —
-// opens the span, records the durations (call-level and attempt-level) and
-// writes the access log from the declaration. The W3C trace context is injected
-// from the attempt ctx the executor hands inward, so the traceparent carries the
-// executor's span and links the broker trace to this call; with no executor the
-// injection carries whatever span the caller's ctx holds.
+// The default chain is the identity layer over the governance layer over a raw
+// adapter, and it is where a custom layer goes: implement this interface (embed
+// the head you found to inherit the methods you do not care about), then wrap
+// the head [NewGuardedProducer] returns. The chain under the layer keeps doing
+// its job — the topics a layer rewrites are what the identity layer declares,
+// and the executor still protects every send.
 //
-// The client (not the producer) carries the executor because producers are
-// caller-created and may be recreated over a client's lifetime, while the
-// executor is always scoped to the client the starter created. The
-// synchronous Producer.SendSync blocks until the broker acknowledges, which
-// is the path worth protecting; SendAsync and SendOneWay are intentionally
-// untouched.
-func GuardedSend(ctx context.Context, cl *Client, producer rocketmq.Producer, msg *primitive.Message) (*primitive.SendResult, error) {
-	ctx = observability.WithOperation(ctx, operation(opPublish, msg.Topic))
+// Release follows the chain protocol, with one rocketmq-specific note: the
+// producer's own lifecycle belongs to the [Client] registry that created it
+// (Close shuts every registered producer down), so the raw layer's Release is a
+// pass-through at either depth.
+type InnerProducer interface {
+	// SendSync sends msg synchronously, blocking until the broker acknowledges.
+	SendSync(ctx context.Context, msg *primitive.Message) (*primitive.SendResult, error)
+	// Release releases the layer's own resources, then hands releaseRaw to
+	// the layer under it.
+	Release(releaseRaw bool) error
+}
+
+// RawProducer is the adapter layer: it injects the W3C trace context into the
+// message (from the attempt ctx the layers above handed down, so the
+// traceparent carries the executor's span) and makes the synchronous send.
+// [NewRawProducer] builds it.
+type RawProducer struct{ p rocketmq.Producer }
+
+// NewRawProducer wraps a producer as the chain's tail.
+func NewRawProducer(p rocketmq.Producer) *RawProducer { return &RawProducer{p: p} }
+
+// Release is the protocol's pass-through: the producer's shutdown belongs to
+// the [Client] registry that created it, not to the chain.
+func (r *RawProducer) Release(bool) error { return nil }
+
+func (r *RawProducer) SendSync(ctx context.Context, msg *primitive.Message) (*primitive.SendResult, error) {
+	injectTraceContext(ctx, msg)
+	return r.p.SendSync(ctx, msg)
+}
+
+// GuardProducer is the governance layer: it runs every send under the
+// resilience executor (the client's, because producers are caller-created and
+// recreated over a client's lifetime while the executor stays scoped to the
+// client), which is also the single emitter of the send's span, metrics and
+// access log. [NewGuardProducer] builds it.
+type GuardProducer struct {
+	exec chain.Executor
+	next InnerProducer
+}
+
+// NewGuardProducer builds the governance layer over next, running every send
+// under exec.
+func NewGuardProducer(next InnerProducer, exec chain.Executor) *GuardProducer {
+	return &GuardProducer{exec: exec, next: next}
+}
+
+// Release hands releaseRaw to the layer under it — the executor belongs to the
+// client and is closed by the client's Close, not here.
+func (g *GuardProducer) Release(releaseRaw bool) error { return g.next.Release(releaseRaw) }
+
+func (g *GuardProducer) SendSync(ctx context.Context, msg *primitive.Message) (*primitive.SendResult, error) {
 	var res *primitive.SendResult
-	err := cl.execute(ctx, func(attemptCtx context.Context) error {
-		injectTraceContext(attemptCtx, msg)
+	var err error
+	if g.exec == nil {
+		res, err = g.next.SendSync(ctx, msg)
+		return res, err
+	}
+	err = g.exec.Execute(ctx, func(attemptCtx context.Context) error {
 		var serr error
-		res, serr = producer.SendSync(attemptCtx, msg)
+		res, serr = g.next.SendSync(attemptCtx, msg)
 		return serr
 	})
 	if err != nil {
 		return nil, err
 	}
 	return res, nil
+}
+
+// ObsProducer is the identity layer at the head: it names the send — the
+// publish, with its topic — and hands the context down. It emits nothing
+// itself: emission happens in the governance layer under it. [NewObsProducer]
+// builds it.
+type ObsProducer struct {
+	next InnerProducer
+}
+
+// NewObsProducer builds the identity layer over next.
+func NewObsProducer(next InnerProducer) *ObsProducer { return &ObsProducer{next: next} }
+
+// Release hands releaseRaw to the layer under it — this layer holds no
+// resource.
+func (o *ObsProducer) Release(releaseRaw bool) error { return o.next.Release(releaseRaw) }
+
+func (o *ObsProducer) SendSync(ctx context.Context, msg *primitive.Message) (*primitive.SendResult, error) {
+	return o.next.SendSync(observability.WithOperation(ctx, operation(opPublish, msg.Topic)), msg)
+}
+
+// GuardedSend sends msg synchronously on producer, routed through the
+// resilience executor attached to cl when governance is enabled. When
+// governance is disabled this behaves exactly like producer.SendSync. On
+// rejection (rate-limit or open circuit) the returned error is a resilience
+// sentinel and the underlying send is never invoked.
+//
+// It is a thin convenience over the per-producer chain ([NewGuardedProducer]);
+// the publish declares its operation (topic as Detail) and the executor emits
+// the span, metrics and access log from that declaration.
+//
+// The synchronous Producer.SendSync blocks until the broker acknowledges, which
+// is the path worth protecting; SendAsync and SendOneWay are intentionally
+// untouched.
+func GuardedSend(ctx context.Context, cl *Client, producer rocketmq.Producer, msg *primitive.Message) (*primitive.SendResult, error) {
+	return cl.GuardedProducer(producer).SendSync(ctx, msg)
 }

@@ -9,7 +9,7 @@ semantics (KV store, blocking queries, ACL tokens, datacenters) are
 everything below is go-spring's increment.
 
 **Activation**: blank-importing the package registers the `consul` config provider plus the
-change-to-refresh bridge (`starter.go:44-56`). It activates only when a `consul:` entry appears in
+change-to-refresh bridge (the `init()` in `starter.go`). It activates only when a `consul:` entry appears in
 `spring.config.import`; the import string is the *entire* configuration surface — the starter binds
 no `value:` tags of its own.
 
@@ -48,7 +48,7 @@ require (
 # Grammar: [optional:]consul:<host>:<port>/<kv-path>?<query>
 # "optional:" lets the app start even when the key does not exist yet; the
 # value is filled in once published and refreshed live via the blocking-query
-# watcher (starter.go:196-220 for the optional skips, §2.2 for the watch).
+# watcher (Load's optional-skip branches in starter.go; §2.2 for the watch).
 spring.config.import=optional:consul:127.0.0.1:8500/gs-config-demo?format=properties
 ```
 
@@ -118,7 +118,7 @@ self-asserts the hot-reload within 15 s, then exits 0 on SIGTERM).
 
 ```
 blank import starter-config-consul
-  └─ init(): conf.RegisterProvider("consul", newConsulCtrl())      starter.go:55
+  └─ init(): conf.RegisterProvider("consul", newConsulCtrl())      starter.go init()
 
 gs.Run()
   ├─ config phase (BEAN-LESS, hence pre-bean):
@@ -142,16 +142,16 @@ started (early `TriggerRefresh` is a no-op).
 
 ### 2.2 Watch / refresh path, walked
 
-1. `registerWatch` (`starter.go:234-249`) dedupes on `clientKey + "|" + kvPath`; repeated Loads of
+1. `registerWatch` (`registerWatch` in `starter.go`) dedupes on `clientKey + "|" + kvPath`; repeated Loads of
    the same source — which happen on *every* property refresh — spawn exactly one goroutine
    (`TestWatchRegisteredOncePerSource`).
-2. `watchLoop` (`starter.go:252-283`) issues a Consul **blocking query**: `Get` with
+2. `watchLoop` (`watchLoop` in `starter.go`) issues a Consul **blocking query**: `Get` with
    `WaitIndex: lastIndex`, `WaitTime: 5m`. It swallows the initial index (first poll only
    establishes the baseline), triggers `TriggerRefresh()` when `LastIndex` advances, resets to 0 on
    index regression (Consul restart / index reset), and retries after 2 s on transport errors.
 3. `TriggerRefresh` → `gs.RefreshProperties()` (`app.go:149-151`) → full
    `AppConfig.Refresh()` rebuilds the layered storage from scratch (files, env, cmd, imports — so
-   the KV entry is *re-fetched*, `starter.go:196`) → the container propagates the new snapshot to
+   the KV entry is *re-fetched* by `Load`) → the container propagates the new snapshot to
    every `gs.Dync[T]` field atomically (`app.go:234-256`). Non-`Dync` bindings never re-run.
 4. A failed refresh (e.g. the KV key was deleted while non-optional) leaves the old snapshot in
    place, now logged: the watcher emits a WARN naming the key on deletion and a WARN on each
@@ -171,7 +171,7 @@ There are **no property keys** in this starter — the only `value:` tags in the
 the example's demo bean (`${demo.message:=none}`, a top-level absolute reference to a key *inside
 the imported KV entry*, not a starter key). The full surface is the import string:
 
-Grammar (core split at `provider.go:84-92`, consul part at `starter.go:104-137`):
+Grammar (core split at `provider.go:84-92`, consul part at `parseSource` in `starter.go`):
 
 ```
 [optional:]consul:<host>:<port>/<kv-path>?format=..&scheme=..&token=..&datacenter=..
@@ -179,15 +179,15 @@ Grammar (core split at `provider.go:84-92`, consul part at `starter.go:104-137`)
 
 | Part | Type | Default | Behavior / interactions | Misconfiguration consequence |
 |------|------|---------|-------------------------|------------------------------|
-| `optional:` prefix | flag | absent | Core-layer semantics (`provider.go:85-88`): with it, a failed Get / missing key / empty value at **cold load** is skipped with a Warn log (`starter.go:198-220`). ⚠ Does **not** cover parse errors, client-creation errors, or the watch-time refresh path. | Without it, a missing key or unreachable agent aborts startup (`consul kv <path> not found`). |
-| `host:port` | string | — | Consul agent address (HTTP API). **Required** — empty host fails parse (`starter.go:109-111`). | Startup error `missing consul server address in %q`. |
-| `<kv-path>` | string | — | Exactly **one** KV entry per import (`cli.Get`, not a prefix list). Leading `/` trimmed. Required (`starter.go:112-115`). | Startup error `missing kv path in %q`. No way to read a key directory. |
-| `format` | string | extension of kv-path, else `properties` | Content parser selector (`reader.Read`, `starter.go:222`): `properties`/`yaml`/`toml`/`json`. Inferred from the path's extension — a key named `app` containing YAML parses as properties unless `?format=yaml` is set. | Parse error at load: `parse consul kv %s as %s failed` — fails even when `optional:` (parse errors are not optional-skipped, `starter.go:222-226`). |
-| `scheme` | string | `http` | Passed to `api.Config.Scheme` (`starter.go:161-166`). Part of the client cache key. | `https` against a plain-HTTP port → every Get errors; non-optional startup failure, optional → skipped silently. |
+| `optional:` prefix | flag | absent | Core-layer semantics (`provider.go:85-88`): with it, a failed Get / missing key / empty value at **cold load** is skipped with a Warn log (`Load`'s optional-skip branches). ⚠ Does **not** cover parse errors, client-creation errors, or the watch-time refresh path. | Without it, a missing key or unreachable agent aborts startup (`consul kv <path> not found`). |
+| `host:port` | string | — | Consul agent address (HTTP API). **Required** — empty host fails parse (the host check in `parseSource`). | Startup error `missing consul server address in %q`. |
+| `<kv-path>` | string | — | Exactly **one** KV entry per import (`cli.Get`, not a prefix list). Leading `/` trimmed. Required (the kv-path check in `parseSource`). | Startup error `missing kv path in %q`. No way to read a key directory. |
+| `format` | string | extension of kv-path, else `properties` | Content parser selector (`reader.Read`, called by `Load`): `properties`/`yaml`/`toml`/`json`. Inferred from the path's extension — a key named `app` containing YAML parses as properties unless `?format=yaml` is set. | Parse error at load: `parse consul kv %s as %s failed` — fails even when `optional:` (parse errors are not optional-skipped, the parse-error branch of `Load`). |
+| `scheme` | string | `http` | Passed to `api.Config.Scheme` (set in `parseSource`). Part of the client cache key. | `https` against a plain-HTTP port → every Get errors; non-optional startup failure, optional → skipped silently. |
 | `token` | string | empty (anonymous) | Consul ACL token, sent with every request. ⚠ Inline in the import string it lands in config files/logs — no env-var or token-file fallback. | Wrong/insufficient token → 403 on Get; surfaces as `get consul kv %s failed`. |
-| `datacenter` | string | agent default | `QueryOptions.Datacenter` override for cold load and watch (`starter.go:196, 256`). Part of the client cache key. | Unknown dc → error path same as above. |
+| `datacenter` | string | agent default | `QueryOptions.Datacenter` override for cold load and watch (cold-load `Get` and the watch `QueryOptions`). Part of the client cache key. | Unknown dc → error path same as above. |
 
-Clients are cached per `(address, scheme, token, datacenter)` tuple (`clientKey`, `starter.go:142-144`);
+Clients are cached per `(address, scheme, token, datacenter)` tuple (`clientKey`);
 watches dedupe per client+kvPath. Two imports sharing a tuple share one client and two watch
 goroutines.
 
@@ -203,12 +203,12 @@ values for non-`Dync` bindings and for the merged property set.
 
 ```bash
 consul kv put gs-config-demo "demo.message=hello"
-go run .    # expect log: loaded consul config from kvPath=gs-config-demo keys=1 (tag "def")
+go run .    # expect log: loaded consul config from kvPath=gs-config-demo keys=1 (tag `_app_config_consul`)
 ```
 
 Turn on debug to see the parse: the starter logs `loading config from address=... kvPath=...
-format=...` at Debug level (`starter.go:186`). Missing/failed loads log at Error/Warn with the same
-`def` app tag — `grep 'consul' app.log`.
+format=...` at Debug level (the Debug log in `Load`). Missing/failed loads log at Error/Warn with the same
+`_app_config_consul` tag — `grep 'consul' app.log`.
 
 ### 4.2 Watch push (hot-reload, no restart)
 
@@ -230,7 +230,7 @@ go run .                              # startup fails: parse consul kv app-json 
 ```
 
 Note `optional:` does **not** rescue this — only fetch-failure/missing/empty are optional-skipped
-(`starter.go:196-220` vs `222-226`; `TestLoadParseErrorPropagates`).
+(the optional-skip branches vs the parse-error branch of `Load`; `TestLoadParseErrorPropagates`).
 
 ### 4.4 Optional vs required
 
@@ -247,10 +247,10 @@ failed`).
 ### 4.5 Consul down at steady state
 
 With the app running and the KV published, `docker compose stop`: the watcher's blocking query
-errors, retries every 2 s (`starter.go:261-263`), and the app keeps serving the last snapshot —
-config goes stale but nothing crashes and nothing logs per retry beyond the SDK's transport errors.
+errors, retries every 2 s (in `watchLoop`), and the app keeps serving the last snapshot —
+config goes stale but nothing crashes; the first failure logs one WARN and subsequent retries only Debug.
 Restart Consul and the next KV change resumes hot-reload automatically (index regression resets the
-baseline, `starter.go:269-271`).
+baseline, the index-regression reset in `watchLoop`).
 
 ### 4.6 Key deleted at steady state (non-optional)
 
@@ -293,8 +293,9 @@ Design suspects (for the audit ledger):
   like vault's → candidate out-of-band credential path.
 - One KV entry per import only; no prefix/list read (directory of keys) — apps modeled that way need
   one import per key.
-- Watch errors retry silently every 2 s with no log from this module and no staleness signal
-  (metric/health) — "config is stale" is unobservable.
+- Watch errors retry every 2 s: one WARN on the first failure, Debug afterwards, one Info on
+  recovery — but no staleness signal (metric/health), so "config is stale" stays unobservable
+  beyond the logs.
 - A deleted non-optional key still degrades to a stale snapshot (§4.6), but since the WARN
   addition that degradation is visible in the logs. The watchers themselves are stopped by
   `Close` at shutdown.

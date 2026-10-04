@@ -17,6 +17,7 @@
 package loadbalance
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -37,7 +38,7 @@ func TestPoolHealthFilter(t *testing.T) {
 		ep, err := p.Pick(PickInfo{})
 		assert.Error(t, err).Nil()
 		m[ep.Addr]++
-		p.Complete(ep, nil)
+		p.Complete(context.Background(), ep, nil)
 	}
 	// The unhealthy instance is never picked.
 	assert.Number(t, m["b"]).Equal(0)
@@ -53,9 +54,9 @@ func TestPoolEvictionViaComplete(t *testing.T) {
 		ep, err := p.Pick(PickInfo{})
 		assert.Error(t, err).Nil()
 		if ep.Addr == "a" {
-			p.Complete(ep, errutil.Explain(nil, "boom"))
+			p.Complete(context.Background(), ep, errutil.Explain(nil, "boom"))
 		} else {
-			p.Complete(ep, nil)
+			p.Complete(context.Background(), ep, nil)
 		}
 	}
 	assert.That(t, p.Tracker().Suspended("a")).True()
@@ -65,7 +66,7 @@ func TestPoolEvictionViaComplete(t *testing.T) {
 		ep, err := p.Pick(PickInfo{})
 		assert.Error(t, err).Nil()
 		assert.String(t, ep.Addr).Equal("b")
-		p.Complete(ep, nil)
+		p.Complete(context.Background(), ep, nil)
 	}
 }
 
@@ -83,7 +84,7 @@ func TestPoolWithoutTrackerConfig(t *testing.T) {
 	for range 10 {
 		ep, err := p.Pick(PickInfo{})
 		assert.Error(t, err).Nil()
-		p.Complete(ep, errutil.Explain(nil, "boom")) // failures, but no thresholds set
+		p.Complete(context.Background(), ep, errutil.Explain(nil, "boom")) // failures, but no thresholds set
 	}
 	// Both endpoints keep receiving traffic.
 	m := map[string]int{}
@@ -91,7 +92,7 @@ func TestPoolWithoutTrackerConfig(t *testing.T) {
 		ep, err := p.Pick(PickInfo{})
 		assert.Error(t, err).Nil()
 		m[ep.Addr]++
-		p.Complete(ep, nil)
+		p.Complete(context.Background(), ep, nil)
 	}
 	assert.Number(t, m["a"]).Equal(5)
 	assert.Number(t, m["b"]).Equal(5)
@@ -109,7 +110,7 @@ func TestPoolZeroWeightDrains(t *testing.T) {
 		ep, err := p.Pick(PickInfo{})
 		assert.Error(t, err).Nil()
 		assert.String(t, ep.Addr).Equal("a")
-		p.Complete(ep, nil)
+		p.Complete(context.Background(), ep, nil)
 	}
 }
 
@@ -127,7 +128,7 @@ func TestPoolAllZeroWeightFallsBack(t *testing.T) {
 		ep, err := p.Pick(PickInfo{})
 		assert.Error(t, err).Nil()
 		m[ep.Addr]++
-		p.Complete(ep, nil)
+		p.Complete(context.Background(), ep, nil)
 	}
 	assert.Number(t, m["a"]+m["b"]).Equal(20)
 	assert.Number(t, m["a"]).Equal(10)
@@ -146,6 +147,6 @@ func TestPoolNegativeWeightKept(t *testing.T) {
 		ep, err := p.Pick(PickInfo{})
 		assert.Error(t, err).Nil()
 		assert.String(t, ep.Addr).Equal("a")
-		p.Complete(ep, nil)
+		p.Complete(context.Background(), ep, nil)
 	}
 }

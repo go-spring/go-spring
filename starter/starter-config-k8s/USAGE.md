@@ -1,7 +1,7 @@
 # starter-config-k8s Usage — Reference Manual
 
 Detailed usage reference. Overview: [README.md](README.md). Every behavior claim below is verified
-against the starter source (`starter.go`, `provider.go`, `informer.go`, `provider_test.go`), the
+against the starter source (`starter.go`, `starter_test.go`), the
 core grammar in `spring/conf/provider/provider.go:59-104`, the refresh chain in
 `spring/gs/internal/gs_conf/conf.go` and `spring/gs/internal/gs_app/app.go`, and the runnable
 [example/](example/). Kubernetes ConfigMap/Secret semantics themselves are
@@ -9,7 +9,7 @@ core grammar in `spring/conf/provider/provider.go:59-104`, the refresh chain in
 below is go-spring's increment.
 
 **Activation**: a blank import registers the `k8s` config provider
-(`provider.go:67`); the provider activates only when a `k8s:` entry appears in
+(`starter.go`); the provider activates only when a `k8s:` entry appears in
 `spring.config.import`. There is no `enabled` key and no other switch.
 
 ---
@@ -52,7 +52,7 @@ import (
     "go-spring.org/spring/gs"
 
     // Blank-import registers the "k8s" config provider consumed via
-    // spring.config.import (provider.go init).
+    // spring.config.import (starter.go init).
     _ "go-spring.org/starter-config-k8s"
 )
 
@@ -124,9 +124,9 @@ kubectl logs -f deploy/config-k8s-example    # bound gs.Dync field updates withi
 ```
 
 The reload path is real: the informer on the object fires on every add/update/delete
-(`informer.go:105-109`) and calls `RefreshProperties` (`starter.go:55-63`), which re-runs the
+(`starter.go`) and calls `RefreshProperties` (`starter.go`), which re-runs the
 whole import chain and updates all `gs.Dync[T]` fields (`gs_app/app.go:234-256`). Unit test
-`TestHotReloadTriggersRefresh` (`provider_test.go:126-152`) proves the trigger with a fake
+`TestHotReloadTriggersRefresh` (`starter_test.go`) proves the trigger with a fake
 clientset.
 
 ---
@@ -137,7 +137,7 @@ clientset.
 
 ```
 blank import starter-config-k8s
-  └─ init (starter.go:34): conf.RegisterProvider("k8s", newK8sCtrl())
+  └─ init (starter.go): conf.RegisterProvider("k8s", newK8sCtrl())
                            — the controller itself, so its Close can stop the
                              informers at shutdown
 
@@ -148,17 +148,17 @@ gs.Run()
   │       imports declared inside an imported file are ignored (conf.go:213-215)
   │    3. for each entry, conf.Load strips [optional:]<provider>: then calls
   │       the provider (provider/provider.go:84-103) → k8sCtrl.Load
-  │         a. parseSource (provider.go:85-117)
-  │         b. buildClient — in-cluster or kubeconfig (informer.go:38-59)
-  │         c. fetch the object via the API server (provider.go:175-192)
+  │         a. parseSource (starter.go)
+  │         b. buildClient — in-cluster or kubeconfig (starter.go)
+  │         c. fetch the object via the API server (starter.go)
   │         d. ensureWatch — informer installed BEFORE returning, so a change
-  │            landing right after the initial read is not missed (provider.go:158-161)
+  │            landing right after the initial read is not missed (starter.go)
   │         e. parseEntries → flatten → merged into the property storage
   │    └─ merged snapshot becomes the storage every value tag binds against
   ├─ container wiring: the controller is not a bean at all; app.started flips
   │  true (app.go:179-183)
   ├─ Runners/Servers start; ready
-  └─ SIGTERM → conf.CloseProviders() → k8sCtrl.Close → manager.stopAll()
+  └─ SIGTERM → conf.CloseProviders(ctx) → k8sCtrl.Close → manager.stopAll()
      stops every informer
 ```
 
@@ -166,19 +166,19 @@ Why pre-bean: the provider's output must be part of the property storage *before
 tags resolve, so ConfigMap-sourced keys can inject into ordinary bean fields at first wiring —
 the same reason `.env` and all config providers run in step 2 of the lifecycle, ahead of
 starters. Before the app has started, `TriggerRefresh` is a harmless no-op
-(starter.go:52-63): the startup load already captured the initial state, and the
+(starter.go): the startup load already captured the initial state, and the
 `gs.RefreshProperties()` facade returns an error until `started` (app.go:247-250).
 
 ### 2.2 The watch/refresh path, walked once
 
-1. `ensureWatch` deduplicates by `kind/namespace/name` (`informer.go:76-84`) — repeated imports
+1. `ensureWatch` deduplicates by `kind/namespace/name` (`starter.go`) — repeated imports
    of the same object never stack informers.
 2. A namespaced, `metadata.name=`-field-selected SharedInformerFactory is created with resync
-   period 0 (event-driven only; `informer.go:86-93`), on ConfigMaps or Secrets per kind.
-3. Add/Update/Delete handlers all funnel into `k8sCtrl.TriggerRefresh` (`informer.go:105-109`).
+   period 0 (event-driven only; `starter.go`), on ConfigMaps or Secrets per kind.
+3. Add/Update/Delete handlers all funnel into `k8sCtrl.TriggerRefresh` (`starter.go`).
 4. Watch setup is best-effort: if handler registration or cache sync fails, the id is
    forgotten so a later Load may retry, and only hot-reload for that object is lost — the
-   static snapshot still loads (`informer.go:110-125`, comment at `provider.go:158-161`).
+   static snapshot still loads (`starter.go`, comment at `starter.go`).
 5. After startup, each event calls `gs.RefreshProperties()` → full `AppConfig.Refresh` →
    **every** provider re-runs its import (the ConfigMap is re-fetched, not diffed) → merged
    storage swapped atomically → all `gs.Dync[T]` fields update. Only `gs.Dync[T]` hot-reloads;
@@ -196,9 +196,9 @@ top-level absolute key flattened out of the ConfigMap document.
 ### 3.1 Import-string grammar
 
 Overall form (core, `provider/provider.go:62-64`):
-`[optional:]<provider>:<path>` — `optional:` is cut first (provider.go:85-88), then the first
-`:` splits provider from path (provider.go:89-92); a bare path defaults to the `file` provider.
-For this starter the `<path>` part is parsed by `parseSource` (`provider.go:85-117`) as:
+`[optional:]<provider>:<path>` — `optional:` is cut first (starter.go), then the first
+`:` splits provider from path (starter.go); a bare path defaults to the `file` provider.
+For this starter the `<path>` part is parsed by `parseSource` (`starter.go`) as:
 
 ```
 <kind>/<name>[?namespace=..&key=..&format=..&kubeconfig=..]
@@ -206,16 +206,16 @@ For this starter the `<path>` part is parsed by `parseSource` (`provider.go:85-1
 
 | Param | Type | Default | Behavior / interactions | Misconfiguration consequence |
 |-------|------|---------|-------------------------|------------------------------|
-| `optional:` prefix | flag | off | With it, client-build failure AND NotFound of the object are logged (Warn) and skipped → app boots with defaults (provider.go:133-138, 150-153). | — (that's its purpose); hides typos in the object name until you drop the prefix. |
-| `kind` | string | — **required** | Path segment before the first `/`, lowercased. Only `configmap` and `secret` (provider.go:51-54, 106-110). Secrets' Data is already base64-decoded by the API (provider.go:185-188). | `deployment/x` → boot error "unsupported k8s config kind"; missing `/` or empty name → "must be `<kind>/<name>`". |
-| `name` | string | — **required** | Object name; also the informer's field selector (`informer.go:91`). | Not-found without `optional:` → boot error "get configmap/secret … not found". |
-| `namespace` | query | `default` | Both the Get and the informer's namespace scope (provider.go:95-96, informer.go:89). Cross-namespace reads need RBAC there. | Forbidden → boot error (or silent skip under `optional:`). |
-| `key` | query | all entries | Selects ONE data entry of the object (provider.go:212-214). ⚠ In `key=` mode an entry with an unknown extension is a hard error demanding `format=` (provider.go:222-224), while the same entry is silently *skipped* in all-entries mode — see §6. | `?key=README` on a ConfigMap containing a bare `README` → boot error "entry … has no known format; set format=". |
-| `format` | query | by extension | Forces the parser for every read entry (provider.go:215, 111-115). Value must be known to `reader.Has` — validated at parse time. | Unknown value → boot error "unsupported k8s config format" even before any cluster call. |
-| `kubeconfig` | query | in-cluster | Path to a kubeconfig file for out-of-cluster runs (informer.go:43-47). Empty → `rest.InClusterConfig()` (informer.go:49-52). | Outside a cluster with no param → boot error "in-cluster config (set kubeconfig when running outside a cluster)" — or Warn+skip under `optional:`. |
+| `optional:` prefix | flag | off | With it, client-build failure AND NotFound of the object are logged (Warn) and skipped → app boots with defaults (starter.go, 150-153). | — (that's its purpose); hides typos in the object name until you drop the prefix. |
+| `kind` | string | — **required** | Path segment before the first `/`, lowercased. Only `configmap` and `secret` (starter.go, 106-110). Secrets' Data is already base64-decoded by the API (starter.go). | `deployment/x` → boot error "unsupported k8s config kind"; missing `/` or empty name → "must be `<kind>/<name>`". |
+| `name` | string | — **required** | Object name; also the informer's field selector (`starter.go`). | Not-found without `optional:` → boot error "get configmap/secret … not found". |
+| `namespace` | query | `default` | Both the Get and the informer's namespace scope (starter.go, starter.go). Cross-namespace reads need RBAC there. | Forbidden → boot error (or silent skip under `optional:`). |
+| `key` | query | all entries | Selects ONE data entry of the object (starter.go). ⚠ In `key=` mode an entry with an unknown extension is a hard error demanding `format=` (starter.go), while the same entry is silently *skipped* in all-entries mode — see §6. | `?key=README` on a ConfigMap containing a bare `README` → boot error "entry … has no known format; set format=". |
+| `format` | query | by extension | Forces the parser for every read entry (starter.go, 111-115). Value must be known to `reader.Has` — validated at parse time. | Unknown value → boot error "unsupported k8s config format" even before any cluster call. |
+| `kubeconfig` | query | in-cluster | Path to a kubeconfig file for out-of-cluster runs (starter.go). Empty → `rest.InClusterConfig()` (starter.go). | Outside a cluster with no param → boot error "in-cluster config (set kubeconfig when running outside a cluster)" — or Warn+skip under `optional:`. |
 
 For ConfigMaps, `data` and `binaryData` are merged into a single
-`name -> bytes` map before parsing (`provider.go:194-200`) — an entry counts the
+`name -> bytes` map before parsing (`starter.go`) — an entry counts the
 same regardless of which field carries it, and `key=`/`format=` apply uniformly
 to both.
 
@@ -224,7 +224,7 @@ to both.
 | Key | Type | Default | Behavior / interactions | Misconfiguration consequence |
 |-----|------|---------|-------------------------|------------------------------|
 | `spring.config.import` | list | empty | Core key (bound at `gs_conf/conf.go:218`). One level only: `spring.config.import` inside an imported document is ignored (`conf.go:213-215`). Multiple entries = later-loaded sources override earlier ones (`conf.go:202`). | Missing `k8s:` entry → provider never runs (starter inert). |
-| ConfigMap/Secret data keys (e.g. `demo.message`) | any | none | Flattened from each parsed entry (`provider.go:233`); become top-level absolute properties bindable by any `value:"${...}"` tag anywhere. | Bad YAML/properties inside an entry → boot error "parse entry %q" (provider.go:230-232). |
+| ConfigMap/Secret data keys (e.g. `demo.message`) | any | none | Flattened from each parsed entry (`starter.go`); become top-level absolute properties bindable by any `value:"${...}"` tag anywhere. | Bad YAML/properties inside an entry → boot error "parse entry %q" (starter.go). |
 | `spring.http.server.enabled=false` | bool | true | Example-only convenience to skip the default HTTP server for a config-only app. | — |
 
 ---
@@ -254,7 +254,7 @@ kubectl logs -f deploy/config-k8s-example  # any gs.Dync consumer sees hello-v2 
 ```
 
 Seconds vs the ~1-minute kubelet projection of a volume mount: the informer talks to the API
-server directly (package doc, `provider.go:24-30`). Deleting the ConfigMap also fires the
+server directly (package doc, `starter.go`). Deleting the ConfigMap also fires the
 informer (DeleteFunc), but the re-import then fails — properties keep the last good snapshot
 only until another refresh succeeds; treat delete-while-running as an incident, not a feature.
 
@@ -279,7 +279,7 @@ spring.config.import=k8s:configmap/app-config?...        # required: missing obj
 spring.config.import=optional:k8s:configmap/app-config?... # missing object = Warn + defaults
 ```
 
-`optional:` covers two distinct failures (provider.go:133-138 and 150-153): no cluster/client
+`optional:` covers two distinct failures (starter.go and 150-153): no cluster/client
 buildable, and object NotFound. Everything else — RBAC Forbidden, malformed content, bad
 `format=` — is still fatal.
 
@@ -299,7 +299,7 @@ spring.config.import=k8s:secret/app-creds?key=db.properties
 ```
 
 Covered by `TestLoadSecretPropsWithKeyFilter` and `TestUnknownExtensionSkippedButKeyFilterErrors`
-(provider_test.go:74-124). Reproduce the unit suite anytime with:
+(starter_test.go). Reproduce the unit suite anytime with:
 
 ```bash
 cd starter/starter-config-k8s && go test -gcflags="all=-N -l" ./...
@@ -318,7 +318,7 @@ cd starter/starter-config-k8s && go test -gcflags="all=-N -l" ./...
 | `demo.message` stays at default in-cluster | import not actually listed in `spring.config.import`, or `key=` selects an entry that doesn't exist | empty `key=` match yields an empty (not failed) import — verify the data-entry name |
 | Boot error `entry "README" has no known format; set format=` | `key=` selected an extension-less entry | add `&format=properties` (etc.), or import without `key=` so it's skipped |
 | Boot error `unsupported k8s config kind "deployment"` | only `configmap`/`secret` supported | pick one of the two kinds |
-| Logs show nothing from the starter | Debug-level lines hidden (provider.go:129 logs the parsed source at Debug) | raise logger level for tag `_app_config_k8s` |
+| Logs show nothing from the starter | Debug-level lines hidden (starter.go logs the parsed source at Debug) | raise logger level for tag `_app_config_k8s` |
 
 ---
 
@@ -335,13 +335,12 @@ cd starter/starter-config-k8s && go test -gcflags="all=-N -l" ./...
 Suspects (carried over + new, for the audit ledger):
 
 - `key=` with an extension-less entry hard-fails while all-entries mode silently skips the same
-  entry — inconsistent severity for one misconfig (`provider.go:222-226`).
-- A clientset is rebuilt per import (no shared client cache across imports of the same
-  kubeconfig) — minor waste; candidate dedup following the etcd/nacos `clientFor` pattern.
+  entry — inconsistent severity for one misconfig (`starter.go`).
 - Refresh is whole-app, not per-object: one ConfigMap edit re-runs *every* import (file, etcd,
   nacos, …) — correct but O(all sources) per push; fine at config-edit frequency, worth
   remembering if imports ever become chatty.
 - Delete-event handling is a latent gap: the informer fires refresh on delete, the re-import
   then fails, and the "last good snapshot" behavior is emergent rather than designed.
-- No observability surface of its own (no log tag, no health indicator for "watch alive",
-  no metric on refresh count) — a silent stale-config failure mode is undetectable from outside.
+- No health indicator for "watch alive" — if the informer silently loses its watch, the
+  loaded snapshot keeps serving and the failure is invisible from outside. (Logs carry tag
+  `_app_config_k8s`, and refreshes are logged and metered by `observability.RefreshConf`.)

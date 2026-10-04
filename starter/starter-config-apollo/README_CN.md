@@ -60,8 +60,8 @@ apollo:<host>:<port>/<namespace>?appId=&cluster=&secret=&format=
 
 **mock config service 而非 docker 化 quick-start。** Apollo quick-start 需要
 MySQL 加 configservice/admin/portal 三件套；starter 的契约是 provider seam，
-example 的 mock 恰好实现 agollo 所需的两个端点，即可端到端覆盖，无需整栈、
-CI 也不依赖 docker。
+example 的 mock 实现 agollo 驱动的端点（含 `notifications/v2` 长轮询），即可端到端
+覆盖冷加载与热更新，无需整栈、CI 也不依赖 docker。
 
 ### 日志 tag
 

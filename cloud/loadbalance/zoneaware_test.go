@@ -17,6 +17,7 @@
 package loadbalance
 
 import (
+	"context"
 	"testing"
 
 	"go-spring.org/cloud/discovery"
@@ -59,7 +60,7 @@ func TestZoneAwareCompleteForwards(t *testing.T) {
 	assert.Error(t, err).Nil()
 	assert.String(t, e1.Addr).NotEqual(e2.Addr) // in-flight count survived the wrap
 
-	b.Complete(e1, nil)
+	b.Complete(context.Background(), e1, nil)
 	e3, err := b.Pick(set, PickInfo{Zone: "z1"})
 	assert.Error(t, err).Nil()
 	assert.String(t, e3.Addr).Equal(e1.Addr) // decrement reached the delegate

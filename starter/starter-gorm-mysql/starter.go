@@ -218,7 +218,7 @@ func newDiscoveryConn(ctx context.Context, c Config, backend discovery.Discovery
 		conn, derr := nd.DialContext(ctx, "tcp", ep.Addr)
 		// The dial outcome is the only signal this picker has; feeding it makes
 		// outlier suspension evict an instance that keeps refusing connections.
-		lb.Complete(ep, derr)
+		lb.Complete(ctx, ep, derr)
 		return conn, derr
 	})
 	return &discoveryConn{netName: netName, stop: stop}, nil

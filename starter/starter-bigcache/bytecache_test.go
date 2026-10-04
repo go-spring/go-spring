@@ -30,7 +30,7 @@ import (
 // an error below, a no-op above.
 func TestByteCachePrimitives(t *testing.T) {
 	c := newTestCache(t, "hot") // holds k=v
-	defer func() { _ = c.Destroy() }()
+	defer func() { _ = c.Close() }()
 
 	bc := NewByteCache(c)
 	ctx := context.Background()

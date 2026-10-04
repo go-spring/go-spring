@@ -17,6 +17,7 @@
 package loadbalance
 
 import (
+	"context"
 	"testing"
 
 	"go-spring.org/cloud/discovery"
@@ -50,7 +51,7 @@ func counts(t *testing.T, b Balancer, set []discovery.Endpoint, info PickInfo, n
 		ep, err := b.Pick(set, info)
 		assert.Error(t, err).Nil()
 		m[ep.Addr]++
-		b.Complete(ep, nil)
+		b.Complete(context.Background(), ep, nil)
 	}
 	return m
 }

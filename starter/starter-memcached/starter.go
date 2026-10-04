@@ -59,7 +59,7 @@ func init() {
 				gs.IndexArg(4, gs.TagArg("${spring.memcached.instances."+name+".discovery:=${spring.memcached.default.discovery:=none}}")),
 				// The governance center is the family's sole injection point: it hands
 				// out the resilience/fault/loadbalance authorities.
-			).Name(name).Destroy((*Client).Destroy).Caller(1)
+			).Name(name).Destroy((*Client).Close).Caller(1)
 			// Contribute a health indicator for this instance unless the user
 			// disabled it (health=false), injecting the client just registered
 			// above by name.
@@ -93,7 +93,18 @@ func init() {
 // to an observed-only, loudly-unmanaged executor.
 func newClient(ctx *gs.ContextProvider, name string, c Config, d Driver, discoveryLabel string,
 	center *governance.Center) (*Client, error) {
-	log.Debugf(ctx.Context, log.TagAppDef, "creating memcached client, servers=%v service-name=%s", c.Servers, c.ServiceName)
+	// The client's identity rides on a context derived here: every line below
+	// carries it without repeating it. The provider's own context is left
+	// alone — that one is the shared application context, not this
+	// constructor's.
+	cctx := log.WithFields(ctx.Context, log.Strings("servers", c.Servers))
+
+	log.Debug(cctx, log.TagAppDef, func() []log.Field {
+		return []log.Field{
+			log.String("service_name", c.ServiceName),
+			log.Msg("creating memcached client"),
+		}
+	})
 
 	disc, _ := center.Discovery().Get(discoveryLabel)
 
@@ -134,10 +145,10 @@ func newClient(ctx *gs.ContextProvider, name string, c Config, d Driver, discove
 	if c.Ping {
 		if err := HealthCheck(ctx.Context, client); err != nil {
 			log.Errorf(ctx.Context, log.TagAppDef, "memcached: startup ping failed: %v", err)
-			_ = client.Destroy()
+			_ = client.Close()
 			return nil, errutil.Explain(err, "memcached: startup ping failed")
 		}
 	}
-	log.Infof(ctx.Context, log.TagAppDef, "memcached client initialized, servers=%v", c.Servers)
+	log.Info(cctx, log.TagAppDef, log.Msg("memcached client initialized"))
 	return client, nil
 }

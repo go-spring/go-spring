@@ -51,25 +51,37 @@ func newRecoveryRunner() *recoveryRunner { return &recoveryRunner{} }
 func (r *recoveryRunner) Run(ctx context.Context) error {
 	pending, err := r.Store.Pending(ctx)
 	if err != nil {
-		log.Errorf(ctx, log.TagAppDef, "tcc recovery: scanning pending transactions failed: %v", err)
+		log.Error(ctx, log.TagAppDef,
+			log.Err(err),
+			log.Msg("tcc recovery: scanning pending transactions failed"))
 		return nil
 	}
 	for _, snap := range pending {
+		// Every line about this transaction names it from here on: the ID rides
+		// on a context minted per entry, so it never leaks into the next
+		// transaction's lines.
+		tccCtx := log.WithFields(ctx, log.String("transaction", snap.ID))
+
 		parts, ok := r.Registry.Lookup(snap.Method)
 		if !ok {
 			// Recovery depends on the participants being registered at wiring time
 			// under the same method name GlobalTCC recorded; without them the
 			// transaction cannot be rebuilt.
-			log.Warnf(ctx, log.TagAppDef,
-				"tcc recovery: no participants registered for method %q (transaction %q); skipping", snap.Method, snap.ID)
+			log.Warn(tccCtx, log.TagAppDef,
+				log.String("method", snap.Method),
+				log.Msg("tcc recovery: no participants registered for the method; skipping"))
 			continue
 		}
-		res, err := r.Coord.Recover(ctx, tcc.Transaction{ID: snap.ID, Method: snap.Method, Participants: parts})
+		res, err := r.Coord.Recover(tccCtx, tcc.Transaction{ID: snap.ID, Method: snap.Method, Participants: parts})
 		if err != nil {
-			log.Errorf(ctx, log.TagAppDef, "tcc recovery: recovering transaction %q failed: %v", snap.ID, err)
+			log.Error(tccCtx, log.TagAppDef,
+				log.Err(err),
+				log.Msg("tcc recovery: recovering transaction failed"))
 			continue
 		}
-		log.Infof(ctx, log.TagAppDef, "tcc recovery: transaction %q recovered with status %s", snap.ID, res.Status)
+		log.Info(tccCtx, log.TagAppDef,
+			log.String("status", res.Status.String()),
+			log.Msg("tcc recovery: transaction recovered"))
 	}
 	return nil
 }

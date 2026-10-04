@@ -37,6 +37,7 @@ trap 'compose down -v >/dev/null 2>&1 || true' EXIT
 compose up -d
 
 # Wait for ZooKeeper to answer the "ruok" four-letter command with "imok" (up to 60s).
+echo "== waiting for the service to be ready =="
 for _ in $(seq 1 60); do
     if [ "$( (echo ruok; sleep 1) | nc 127.0.0.1 2181 2>/dev/null)" = "imok" ]; then
         break
@@ -62,4 +63,9 @@ if ! grep -q "discovered endpoint=" "${out}"; then
     exit 1
 fi
 rm -f "${out}"
-exit "${rc}"
+if [ "${rc}" -ne 0 ]; then
+    echo "== FAILED ==" >&2
+    exit "${rc}"
+fi
+echo "== OK =="
+exit 0

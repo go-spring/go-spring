@@ -126,7 +126,7 @@ import starter-memcached
   └─ init: gs.Module(OnProperty("spring.memcached"), BindEach)       starter.go:42-43
         对每个 spring.memcached.instances.<name> 项：
           r.Provide(newClient, IndexArg(name,c), IndexArg(3,?Driver))  starter.go:47-51
-              .Name(name).Destroy((*Client).Destroy)     # 无 InitMethod —— 见下
+              .Name(name).Destroy((*Client).Close)       # 无 InitMethod —— 见下
           r.Provide(健康指示器 "memcache:"+name)                      starter.go:65
 gs.Run()
   ├─ 配置绑定：${spring.memcached.instances.<name>} → Config（value tag）       config.go:24-58
@@ -136,7 +136,8 @@ gs.Run()
   ├─ 构造期 Client.applyGovernance(mgr, inj)：resilience/fault executor
   ├─ 构造期 HealthCheck（走裸 client）—— 装配完整后再探测
   ├─ 就绪：健康指示器把 HealthCheck 折入 /readiness                    `health.go`
-  └─ 停机：Client.Destroy —— 关连接池、释放 executor                  client.go
+  └─ 停机：Client.Close = InnerClient.Release(true) —— 先释放
+       executor，最后关连接池                            client.go
 ```
 
 **装配扩展点**：client 装配由 `Driver`（接口，`driver.go:31-52`）负责。公司/伞包 starter 可把
@@ -202,7 +203,7 @@ mesh 模式下完全跳过 discovery，`servers` 原样使用（sidecar 负责�
 
 全部 17 个操作（get/get_and_touch/get_multi/touch/set/add/replace/append/prepend/cas/delete/
 delete_all/increment/decrement/ping/flush_all）同构（`client.go`）。连同 `Close` 一起，它们就是
-`*Client` 的全部表面：裸 client 是私有字段，没有方法被提升，也没有任何导出途径能拿到它 ——
+`*Client` 的命令面：命令方法从嵌入的 `InnerClient` 链头直接提升；裸 client 以 `Client` 字段只读交付；重组链条走包裹链头 ——
 调用方不可能"不小心"绕过 observe 与治理层。
 
 ### 2.4 缓存抽象 bean

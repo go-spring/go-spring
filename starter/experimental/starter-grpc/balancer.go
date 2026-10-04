@@ -383,8 +383,8 @@ func (p *gsPicker) Pick(info balancer.PickInfo) (balancer.PickResult, error) {
 	return balancer.PickResult{
 		SubConn: sc,
 		Done: func(di balancer.DoneInfo) {
-			bal.Complete(ep, di.Err)
-			p.pb.tracker.Record(ep.Addr, di.Err == nil)
+			bal.Complete(info.Ctx, ep, di.Err)
+			p.pb.tracker.Record(info.Ctx, ep.Addr, di.Err == nil)
 		},
 	}, nil
 }

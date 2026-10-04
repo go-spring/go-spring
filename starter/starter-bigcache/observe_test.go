@@ -55,7 +55,7 @@ func TestGaugesReportEveryInstance(t *testing.T) {
 		t.Fatalf("bigcache.entries reported instance = %v, want %v", got, want)
 	}
 
-	if err := cold.Destroy(); err != nil {
+	if err := cold.Close(); err != nil {
 		t.Fatalf("Destroy(cold): %v", err)
 	}
 	if got, want := gaugeCacheNames(t, reader, "bigcache.entries"), []string{"hot"}; !slices.Equal(got, want) {
@@ -132,7 +132,7 @@ func TestObserveEmitsMetrics(t *testing.T) {
 
 	// The helper seeds "k" on the raw client, so it emits nothing itself.
 	c := newTestCache(t, "hot")
-	defer func() { _ = c.Destroy() }()
+	defer func() { _ = c.Close() }()
 
 	if _, err := c.Get(context.Background(), "k"); err != nil {
 		t.Fatalf("Get hit: %v", err)
@@ -174,10 +174,10 @@ func TestObserveMarksFailures(t *testing.T) {
 	t.Cleanup(func() { otel.SetMeterProvider(prevMeter) })
 
 	c := newTestCache(t, "hot")
-	defer func() { _ = c.Destroy() }()
+	defer func() { _ = c.Close() }()
 
 	boom := errors.New("boom")
-	err := c.obs.observe(context.Background(), opSet, func(context.Context) error { return boom })
+	err := c.InnerCache.(*ObsCache).obs.observe(context.Background(), opSet, func(context.Context) error { return boom })
 	if !errors.Is(err, boom) {
 		t.Fatalf("observe returned %v, want the call's own error", err)
 	}

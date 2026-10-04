@@ -18,7 +18,10 @@ package StarterNats
 
 import (
 	"context"
+	"time"
+
 	"errors"
+	"github.com/nats-io/nats.go"
 	"go-spring.org/cloud/chain"
 	"testing"
 
@@ -26,60 +29,85 @@ import (
 	"go-spring.org/stdlib/testing/assert"
 )
 
-// newConnWithPolicy builds a Conn whose guard is wired to a real executor from
-// the default resilience driver, but whose embedded *nats.Conn is nil. The
-// tests never invoke methods that touch the embedded conn — they drive guard
-// directly with a stubbed call — so no live nats server is needed.
-func newConnWithPolicy(t *testing.T, p resilience.ClientPolicy) *Conn {
+// fakeTail is a scripted InnerConn tail: it counts the calls that reached it
+// and answers from a settable error. It stands in for the raw adapter so chain
+// tests need no live nats server.
+type fakeTail struct {
+	ran int
+	err error
+}
+
+func (f *fakeTail) PublishMsg(msg *nats.Msg) error {
+	f.ran++
+	return f.err
+}
+
+func (f *fakeTail) PublishMsgContext(ctx context.Context, msg *nats.Msg) error {
+	f.ran++
+	return f.err
+}
+
+func (f *fakeTail) RequestGuarded(context.Context, string, []byte, time.Duration) (*nats.Msg, error) {
+	f.ran++
+	return nil, f.err
+}
+
+func (f *fakeTail) Release(bool) error { return nil }
+
+// newGuardedConn builds a Conn whose chain is identity over governance over a
+// fake tail, with the governance layer's executor from the default resilience
+// driver.
+func newGuardedConn(t *testing.T, p resilience.ClientPolicy) (*Conn, *fakeTail) {
 	d := resilience.NewDefaultDriver(nil)
 	exec, err := d.NewClientExecutor("svc", p)
 	assert.Error(t, err).Nil()
-	return &Conn{exec: exec, serviceLabel: "nats:test"}
+	tail := &fakeTail{}
+	guard := &GuardConn{exec: exec, next: tail}
+	return &Conn{InnerConn: NewObsConn(guard), guard: guard}, tail
 }
 
-// TestGuardPassThrough proves the zero-config opt-in: a Conn with no executor
-// attached runs the call inline and returns its result unchanged, matching the
-// contract of the redis/http adapters that return the base unchanged when
-// resilience is disabled.
-func TestGuardPassThrough(t *testing.T) {
-	h := &Conn{}
+// TestChainPassThrough proves the degraded stance: a chain whose governance
+// layer has no executor runs the call inline and returns its result unchanged.
+func TestChainPassThrough(t *testing.T) {
+	tail := &fakeTail{}
+	guard := &GuardConn{next: tail}
+	c := &Conn{InnerConn: NewObsConn(guard), guard: guard}
+
 	boom := errors.New("boom")
-
-	assert.Error(t, h.guard(context.Background(), func(context.Context) error { return nil })).Nil()
-	assert.Error(t, h.guard(context.Background(), func(context.Context) error { return boom })).Is(boom)
+	tail.err = boom
+	assert.Error(t, c.PublishMsgContext(context.Background(), &nats.Msg{Subject: "t.s"})).Is(boom)
+	assert.That(t, tail.ran).Equal(1)
 }
 
-// TestGuardRateLimit confirms the flow-control path: once the burst is spent,
-// further calls are rejected without invoking the stub.
-func TestGuardRateLimit(t *testing.T) {
-	h := newConnWithPolicy(t, resilience.ClientPolicy{RateLimit: 1, Burst: 2})
-	var ran int
-	stub := func(context.Context) error {
-		ran++
-		return nil
+// TestChainRateLimit confirms the flow-control path: once the burst is spent,
+// further publishes are rejected without reaching the tail.
+func TestChainRateLimit(t *testing.T) {
+	c, tail := newGuardedConn(t, resilience.ClientPolicy{RateLimit: 1, Burst: 2})
+	pub := func() error {
+		return c.PublishMsgContext(context.Background(), &nats.Msg{Subject: "t.s"})
 	}
 
-	assert.Error(t, h.guard(context.Background(), stub)).Nil()
-	assert.Error(t, h.guard(context.Background(), stub)).Nil()
-	assert.Error(t, h.guard(context.Background(), stub)).Is(chain.ErrRateLimited)
-	assert.That(t, ran).Equal(2) // the rejected call never reached the stub
+	assert.Error(t, pub()).Nil()
+	assert.Error(t, pub()).Nil()
+	assert.Error(t, pub()).Is(chain.ErrRateLimited)
+	assert.That(t, tail.ran).Equal(2) // the rejected call never reached the tail
 }
 
-// TestGuardCircuitOpen confirms genuine failures still open the circuit and
-// the rejection short-circuits the next call before the stub runs.
-func TestGuardCircuitOpen(t *testing.T) {
-	h := newConnWithPolicy(t, resilience.ClientPolicy{ErrorThreshold: 2})
-	boom := errors.New("connection reset")
+// TestChainCircuitOpen confirms genuine failures still open the circuit and the
+// rejection short-circuits the next call before the tail runs.
+func TestChainCircuitOpen(t *testing.T) {
+	c, tail := newGuardedConn(t, resilience.ClientPolicy{ErrorThreshold: 2})
+	tail.err = errors.New("connection reset")
+	pub := func() error {
+		return c.PublishMsgContext(context.Background(), &nats.Msg{Subject: "t.s"})
+	}
 
-	assert.Error(t, h.guard(context.Background(), func(context.Context) error { return boom })).Is(boom)
-	assert.Error(t, h.guard(context.Background(), func(context.Context) error { return boom })).Is(boom)
+	assert.Error(t, pub()).Is(tail.err)
+	assert.Error(t, pub()).Is(tail.err)
 
-	// Breaker is now open: a call whose stub would succeed is rejected upfront.
-	var ran int
-	err := h.guard(context.Background(), func(context.Context) error {
-		ran++
-		return nil
-	})
+	// Breaker is now open: a call that would succeed is rejected upfront.
+	tail.err = nil
+	err := pub()
 	assert.Error(t, err).Is(chain.ErrCircuitOpen)
-	assert.That(t, ran).Equal(0)
+	assert.That(t, tail.ran).Equal(2)
 }

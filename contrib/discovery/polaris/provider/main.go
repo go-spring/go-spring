@@ -37,8 +37,6 @@ func main() {
 	gs.Run()
 }
 
-// init pins the working directory to this provider/ directory so it loads its
-// own conf/app.properties regardless of the process launch path.
 // init sets the working directory of the application to the directory
 // where this source file resides.
 // This ensures that any relative file operations are based on the source file location,

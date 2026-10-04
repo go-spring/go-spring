@@ -107,7 +107,7 @@ func (c *nacosCtrl) rearm() {
 // Close closes every client — which stops its listeners and polling — and drops
 // the caches. It implements provider.Provider. Closing is final only for this
 // application instance: the next Load builds fresh clients and re-listens.
-func (c *nacosCtrl) Close() error {
+func (c *nacosCtrl) Close(ctx context.Context) error {
 	c.mu.Lock()
 	c.cancel()
 	c.stopped = true
@@ -195,6 +195,18 @@ func clientKey(cs configSource) string {
 	return cs.server + "|" + cs.namespace + "|" + cs.username + "|" + cs.password
 }
 
+// sourceFields returns the fields identifying a watched data id. They are
+// attached to a context with log.WithFields rather than repeated at each call
+// site, and the keys match the ones the change listener stamps so a line and
+// the refresh it concerns join on the same names.
+func sourceFields(cs configSource) []log.Field {
+	return []log.Field{
+		log.String("server", cs.server),
+		log.String("data_id", cs.dataID),
+		log.String("group", cs.group),
+	}
+}
+
 // clientFor returns a cached client for the source, creating one if necessary.
 func (c *nacosCtrl) clientFor(cs configSource) (config_client.IConfigClient, error) {
 	key := clientKey(cs)
@@ -232,53 +244,83 @@ func (c *nacosCtrl) clientFor(cs configSource) (config_client.IConfigClient, err
 func (c *nacosCtrl) Load(optional bool, source string) (map[string]string, error) {
 	c.rearm()
 
+	// Load is the top of this chain and Provider.Load takes no context, so the
+	// one ctx the whole load shares is minted here — the helpers below receive
+	// it instead of each minting their own.
+	ctx := context.Background()
+
 	cs, err := parseSource(source)
 	if err != nil {
-		log.Errorf(context.Background(), starterTag, "parse source %q failed: %v", source, err)
+		log.Error(ctx, starterTag,
+			log.String("source", source),
+			log.Err(err),
+			log.Msg("parse nacos source failed"))
 		return nil, err
 	}
 
-	log.Debugf(context.Background(), starterTag, "loading nacos config from server=%s group=%s dataId=%s format=%s", cs.server, cs.group, cs.dataID, cs.format)
+	// The source's identity rides on the context from here on: every event this
+	// load and its helpers print carries it without repeating it at each call
+	// site.
+	ctx = log.WithFields(ctx, sourceFields(cs)...)
+
+	log.Debug(ctx, starterTag, func() []log.Field {
+		return []log.Field{
+			log.String("format", cs.format),
+			log.Msg("loading nacos config"),
+		}
+	})
 
 	cli, err := c.clientFor(cs)
 	if err != nil {
-		log.Errorf(context.Background(), starterTag, "create nacos client for server=%s failed: %v", cs.server, err)
+		log.Error(ctx, starterTag,
+			log.Err(err),
+			log.Msg("create nacos client failed"))
 		return nil, err
 	}
 
-	c.registerListener(cli, cs)
+	c.registerListener(ctx, cli, cs)
 
 	content, err := cli.GetConfig(vo.ConfigParam{DataId: cs.dataID, Group: cs.group})
 	if err != nil {
 		if optional {
-			log.Warnf(context.Background(), starterTag, "optional config get %s/%s failed (skipped): %v", cs.group, cs.dataID, err)
+			log.Warn(ctx, starterTag,
+				log.Err(err),
+				log.Msg("optional config get failed, skipped"))
 			return nil, nil
 		}
-		log.Errorf(context.Background(), starterTag, "get nacos config %s/%s failed: %v", cs.group, cs.dataID, err)
+		log.Error(ctx, starterTag,
+			log.Err(err),
+			log.Msg("get nacos config failed"))
 		return nil, errutil.Explain(err, "get nacos config %s/%s failed", cs.group, cs.dataID)
 	}
 	if content == "" {
 		if optional {
-			log.Warnf(context.Background(), starterTag, "optional config %s/%s is empty (skipped)", cs.group, cs.dataID)
+			log.Warn(ctx, starterTag,
+				log.Msg("optional config is empty, skipped"))
 			return nil, nil
 		}
-		log.Errorf(context.Background(), starterTag, "nacos config %s/%s is empty", cs.group, cs.dataID)
+		log.Error(ctx, starterTag, log.Msg("nacos config is empty"))
 		return nil, errutil.Explain(nil, "nacos config %s/%s is empty", cs.group, cs.dataID)
 	}
 
 	m, err := reader.Read(cs.format, []byte(content))
 	if err != nil {
-		log.Errorf(context.Background(), starterTag, "parse nacos config %s/%s as %s failed: %v", cs.group, cs.dataID, cs.format, err)
+		log.Error(ctx, starterTag,
+			log.String("format", cs.format),
+			log.Err(err),
+			log.Msg("parse nacos config failed"))
 		return nil, errutil.Explain(err, "parse nacos config %s/%s as %s failed", cs.group, cs.dataID, cs.format)
 	}
 
-	log.Infof(context.Background(), starterTag, "loaded nacos config from %s/%s keys=%d", cs.group, cs.dataID, len(m))
+	log.Info(ctx, starterTag,
+		log.Int("keys", len(m)),
+		log.Msg("loaded nacos config"))
 	return flatten.Flatten(m), nil
 }
 
 // registerListener installs a Nacos change listener for the given data id,
 // deduplicated across repeated Load calls.
-func (c *nacosCtrl) registerListener(cli config_client.IConfigClient, cs configSource) {
+func (c *nacosCtrl) registerListener(ctx context.Context, cli config_client.IConfigClient, cs configSource) {
 	lk := clientKey(cs) + "|" + cs.group + "|" + cs.dataID
 
 	c.mu.Lock()
@@ -286,23 +328,33 @@ func (c *nacosCtrl) registerListener(cli config_client.IConfigClient, cs configS
 		c.mu.Unlock()
 		return
 	}
+	// A Close may have run between this Load fetched its client and got here:
+	// the client is already closed and the caches dropped. Marking listened
+	// now would make the next generation's Load skip registration on its
+	// fresh client, silently killing hot-reload — bail out instead.
+	if c.stopped || c.clients[clientKey(cs)] != cli {
+		c.mu.Unlock()
+		return
+	}
 	c.listened[lk] = struct{}{}
-	ctx := c.ctx
+	// The listener outlives this load, so it runs on the controller's
+	// generation context, not on the load's. It carries the same fields, which
+	// is what lets the trigger below name the data id without listing it again.
+	wctx := log.WithFields(c.ctx, sourceFields(cs)...)
 	c.mu.Unlock()
 
 	err := cli.ListenConfig(vo.ConfigParam{
 		DataId: cs.dataID,
 		Group:  cs.group,
 		OnChange: func(namespace, group, dataId, data string) {
-			// Stamp the trigger with the change's identity (which data id in
-			// which group/namespace) so the refresh records logged and metered
-			// by observability.RefreshConf carry what this round is about.
-			// Nacos hands the listener no change revision, so the coordinates
-			// plus the new content's length are all the identity available.
-			c.TriggerRefresh(log.WithFields(ctx,
+			// Stamp the trigger with what this round adds to the identity the
+			// context already carries (server/data_id/group, stamped by
+			// registerListener) so the refresh records logged and metered by
+			// observability.RefreshConf carry what this round is about. Nacos
+			// hands the listener no change revision, so the namespace plus the
+			// new content's length are all the identity left to add.
+			c.TriggerRefresh(log.WithFields(wctx,
 				log.String("source", "nacos"),
-				log.String("data_id", dataId),
-				log.String("group", group),
 				log.String("namespace", namespace),
 				log.Int("data_len", len(data)),
 			))
@@ -310,11 +362,11 @@ func (c *nacosCtrl) registerListener(cli config_client.IConfigClient, cs configS
 	})
 	if err != nil {
 		// Un-mark so the next Load retries, and surface the failure: a
-		// listener that never installs means this dataId silently stops
+		// listener that never installs means this data id silently stops
 		// hot-reloading.
-		log.Errorf(context.Background(), starterTag,
-			"nacos listen config %s/%s failed; %s will not hot-reload until the listen succeeds: %v",
-			cs.group, cs.dataID, cs.dataID, err)
+		log.Error(ctx, starterTag,
+			log.Err(err),
+			log.Msg("nacos listen config failed; it will not hot-reload until the listen succeeds"))
 		c.mu.Lock()
 		delete(c.listened, lk)
 		c.mu.Unlock()

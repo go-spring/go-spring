@@ -212,10 +212,95 @@ func TestWatchLoopAdvancesIndex(t *testing.T) {
 }
 
 func TestTriggerRefreshNilRefresherIsNoop(t *testing.T) {
-	// Before the IoC container autowires the PropertiesRefresher, a Consul
-	// index bump must be a harmless no-op rather than a nil dereference.
+	// Before the app has started, the gs.RefreshProperties facade returns an
+	// error and the change is dropped — a Consul index bump must be harmless.
 	c := newConsulCtrl()
 	c.TriggerRefresh(context.Background())
+}
+
+func TestCloseStopsWatchersAndRearms(t *testing.T) {
+	// Close cancels the watch generation and clears the dedup set; the next
+	// Load re-arms (fresh generation) and registers the watch again.
+	fake := newFakeKV().result(&api.KVPair{Value: []byte("a=1\n")}, 1, nil)
+	c, err := newCtrlWithFake("127.0.0.1:8500/app.properties", fake)
+	assert.That(t, err).Nil()
+	_, err = c.Load(false, "127.0.0.1:8500/app.properties")
+	assert.That(t, err).Nil()
+
+	ctx := c.currentCtx()
+
+	assert.That(t, c.Close(context.Background())).Nil()
+	assert.That(t, ctx.Err()).NotNil() // generation canceled: loops see it and exit
+
+	c.mu.Lock()
+	assert.That(t, len(c.listened)).Equal(0)
+	c.mu.Unlock()
+
+	// A Load after Close re-arms and re-watches.
+	_, err = c.Load(false, "127.0.0.1:8500/app.properties")
+	assert.That(t, err).Nil()
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	assert.That(t, len(c.listened)).Equal(1)
+	assert.That(t, c.ctx.Err()).Nil()
+}
+
+func TestWatchLoopExitsOnCancelAndRetriesThroughFailures(t *testing.T) {
+	// Script: failure, failure, recovery with a changed index, then a failure
+	// that repeats — the loop must retry through all of them (not exit), then
+	// return once the generation context is canceled.
+	fake := newFakeKV().
+		result(nil, 0, errors.New("consul down")).
+		result(nil, 0, errors.New("consul down")).
+		result(&api.KVPair{Value: []byte("a=2\n")}, 7, nil).
+		result(nil, 0, errors.New("consul down"))
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	c := newConsulCtrl()
+	go func() { c.watchLoop(ctx, fake, configSource{kvPath: "app.properties"}, false); close(done) }()
+
+	deadline := time.Now().Add(5 * time.Second)
+	for fake.done() < 4 && time.Now().Before(deadline) {
+		time.Sleep(5 * time.Millisecond)
+	}
+	assert.That(t, fake.done()).Equal(4) // retried through every failure
+
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("watchLoop did not exit after cancel")
+	}
+}
+
+func TestClientForCachesPerConnectionTuple(t *testing.T) {
+	// Same source twice → one cached handle; a different datacenter is a
+	// different cache key.
+	fake := newFakeKV().result(&api.KVPair{Value: []byte("a=1\n")}, 1, nil)
+	c, err := newCtrlWithFake("127.0.0.1:8500/app.properties?datacenter=dc1", fake)
+	assert.That(t, err).Nil()
+
+	cs, err := parseSource("127.0.0.1:8500/app.properties?datacenter=dc1")
+	assert.That(t, err).Nil()
+	got, err := c.clientFor(context.Background(), cs)
+	assert.That(t, err).Nil()
+	assert.That(t, got).Equal(fake)
+
+	again, err := c.clientFor(context.Background(), cs)
+	assert.That(t, err).Nil()
+	assert.That(t, again).Equal(fake)
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	assert.That(t, len(c.clients)).Equal(1)
+}
+
+// currentCtx exposes the watch generation for lifecycle tests.
+func (c *consulCtrl) currentCtx() context.Context {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.ctx
 }
 
 // Compile-time guard: the real Consul KV handle satisfies the fake-able

@@ -17,6 +17,7 @@
 package loadbalance
 
 import (
+	"context"
 	"sync"
 
 	"go-spring.org/cloud/discovery"
@@ -112,4 +113,4 @@ func (b *weighted) Pick(eps []discovery.Endpoint, _ PickInfo) (discovery.Endpoin
 }
 
 // Complete is a no-op: smooth WRR advances all of its state inside Pick.
-func (b *weighted) Complete(discovery.Endpoint, error) {}
+func (b *weighted) Complete(_ context.Context, _ discovery.Endpoint, _ error) {}

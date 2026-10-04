@@ -124,3 +124,45 @@ func TestFromMessageExt(t *testing.T) {
 	assert.That(t, prop.IsLoadTest(roundTrip)).True()
 	assert.That(t, msg.Timestamp.UnixMilli()).Equal(int64(1700000000000))
 }
+
+// fakeProducerTail is a scripted InnerProducer tail: it records the messages
+// it was handed. It stands in for the raw adapter so chain tests need no
+// broker (a full rocketmq.Producer fake would drag in the SDK's internal
+// callback types).
+type fakeProducerTail struct {
+	msgs []*primitive.Message
+}
+
+func (f *fakeProducerTail) SendSync(_ context.Context, msg *primitive.Message) (*primitive.SendResult, error) {
+	f.msgs = append(f.msgs, msg)
+	return &primitive.SendResult{}, nil
+}
+
+func (f *fakeProducerTail) Release(bool) error { return nil }
+
+// topicLayer wraps the chain head and namespaces every topic it passes down —
+// the kind of behavior change no rocketmq middleware could express.
+type topicLayer struct {
+	InnerProducer
+	prefix string
+}
+
+func (t topicLayer) SendSync(ctx context.Context, msg *primitive.Message) (*primitive.SendResult, error) {
+	return t.InnerProducer.SendSync(ctx, primitive.NewMessage(t.prefix+msg.Topic, msg.Body))
+}
+
+// TestInnerProducerReorganize pins the wrap-head protocol: a custom layer over
+// the guarded producer's chain head rewrites the topic, and the send runs
+// through it — the tail sees the rewritten topic.
+func TestInnerProducerReorganize(t *testing.T) {
+	cl := &Client{}
+	fake := &fakeProducerTail{}
+	head := NewObsProducer(NewGuardProducer(fake, cl.exec))
+	wrapped := topicLayer{InnerProducer: head, prefix: "tenant."}
+
+	msg := primitive.NewMessage("orders", []byte("x"))
+	_, err := wrapped.SendSync(context.Background(), msg)
+	assert.Error(t, err).Nil()
+	assert.That(t, len(fake.msgs)).Equal(1)
+	assert.That(t, fake.msgs[0].Topic).Equal("tenant.orders")
+}

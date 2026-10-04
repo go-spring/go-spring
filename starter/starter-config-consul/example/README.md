@@ -17,13 +17,7 @@ cd starter-config-consul/example
 go run . -manual
 ```
 
-Expected output:
-```
-initial value
-updated value
-```
-
-Start Consul first:
+Consul must be running first:
 ```bash
 # Start Consul
 docker compose up -d
@@ -33,6 +27,20 @@ go run . -manual
 ```
 
 The service keeps running. Press `Ctrl+C` to stop.
+
+In another terminal, publish a new value and watch it print:
+
+```bash
+curl -fsS -X PUT -d 'demo.message=manual-1' http://127.0.0.1:8500/v1/kv/gs-config-demo
+# prints: demo.message: "..." -> "manual-1"
+```
+
+Without `-manual` the example publishes a new value itself, waits for the bound
+field to hot-reload, prints `hot-reload observed: hello-<hhmmss>`, and exits:
+
+```bash
+go run .
+```
 
 ## Smoke Test
 

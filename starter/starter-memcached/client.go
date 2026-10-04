@@ -15,12 +15,12 @@
  */
 
 // client.go is the "resource entity" concept of this starter: the Client
-// wrapper memcached clients are injected as, its lifecycle (Init/Destroy), and
-// the per-operation command surface. It mirrors starter-redigo's pool.go (the
-// command surface mirrors its conn.go). Every command method is routed through
-// the shared run/runErr seam, which wraps the operation in an observe span and
-// the resilience executor — gomemcache exposes no hook or plugin point, so the
-// command surface is hand-written.
+// wrapper memcached clients are injected as, its lifecycle (Init/Close), and
+// the InnerClient chain the command surface runs through. gomemcache exposes
+// no hook or plugin point and delivers a concrete type, so the chain is the
+// only seam: the executor layer declares each operation's identity and runs it
+// under governance, the adapter layer discards the context, and a custom layer
+// may sit between them.
 //
 // Every command method takes a ctx. gomemcache itself cannot honor it on the
 // wire (the socket wait is bounded by Config.Timeout), but ctx still governs
@@ -31,23 +31,22 @@ package StarterMemcached
 import (
 	"context"
 	"fmt"
-	"go-spring.org/cloud/chain"
 
 	"github.com/bradfitz/gomemcache/memcache"
 	"go-spring.org/cloud"
+	"go-spring.org/cloud/chain"
 	"go-spring.org/cloud/observability"
 	"go-spring.org/cloud/resilience"
 )
 
 // Client wraps a memcache client so every operation carries its semantic
 // identity and flows through the governance executor, which is also where the
-// operation's span, metrics and access log are emitted. The raw client is an
-// unexported field, not an embedded
-// one: [NewClient] is the only way to build a Client, so a client can never
-// exist without its identity, and the command surface below is the whole API.
-// There is deliberately no exported accessor for the raw client: that would let
-// a caller bypass the observe and governance layers without it showing up in
-// review.
+// operation's span, metrics and access log are emitted. The type holds exactly
+// two exported things, both deliberate: the embedded [InnerClient] the command
+// surface runs through — reorganized by wrapping the current head in a layer
+// of your own, a plain assignment in reviewable sight — and [Client.Client],
+// the raw instance. [NewClient] is the only way to build one, so a client can
+// never exist without its identity.
 //
 // Every command method takes a ctx: the span inherits it, but gomemcache's wire
 // call cannot honor it (the socket wait is bounded by timeout) — a limitation
@@ -59,26 +58,22 @@ import (
 // *memcache.Client. [Driver.CreateClient] returns this type too, so a custom
 // driver works with the same type the ecosystem sees.
 type Client struct {
-	// client is the raw gomemcache client. Unexported so [NewClient] is the
-	// only constructor and nothing outside this package can reach it — see the
-	// type doc.
-	client *memcache.Client
+	// The embedded InnerClient is the chain the command surface runs through,
+	// exposed so a driver's post-processing (or the app, right after wiring)
+	// can reorganize it: wrap the current head in its own [InnerClient] layer,
+	// and the chain below — identity, governance, adapter — keeps doing its
+	// job under the layer: the keys the layer rewrites are what the identity
+	// layer declares, and the executor still protects every call. Rebuilding
+	// is a build-time move — write it before the client takes traffic, not
+	// racing it.
+	InnerClient
 
-	// serviceName is the discovery service-name the entry addresses (empty when
-	// directly addressed), and instanceName is the instance name (the
-	// spring.memcached.instances.<instanceName> map key). The governance service
-	// label prefers the service name — governance targets the downstream service,
-	// the same identity every caller of that service shares — and falls back to
-	// the instance name. Both are fixed by [NewClient].
-	serviceName  string
-	instanceName string
-
-	// exec is the resilience executor protecting every operation, applied by
-	// [NewClient] while it builds; no-op when governance is off.
-	exec chain.Executor
-	// serviceLabel is the resilience service key ("memcached:<service-name or
-	// instance-name>") exec scopes limiter/breaker state by.
-	serviceLabel string
+	// Client is the raw gomemcache client this wrapper bottoms out in — the
+	// original object, not a wrapper. A handle to READ (and to hand to the
+	// chain constructors when a driver builds its own assembly), never to
+	// reassign or to run commands through — that would bypass the governance
+	// and observation layers.
+	Client *memcache.Client
 }
 
 // NewClient builds a complete Client — identity, governance and all — over a
@@ -98,163 +93,353 @@ type Client struct {
 // Execute, so the call order relative to the center's wiring is
 // irrelevant.
 func NewClient(client *memcache.Client, instanceName, serviceName string, params cloud.ClientParams) *Client {
-	c := &Client{
-		client:       client,
-		instanceName: instanceName,
-		serviceName:  serviceName,
-	}
-	c.serviceLabel = resilience.ServiceLabel("memcached", c.serviceName, c.instanceName)
-	c.exec = params.ExecutorFor("memcached", c.serviceLabel)
-	return c
+	raw := NewRawClient(client)
+	guard := NewGuardClient(raw, instanceName, serviceName, params)
+	return &Client{Client: client, InnerClient: NewObsClient(guard)}
 }
 
-// Close closes the client's idle connections. It exists because the raw client
-// has it: the field is unexported, so nothing is promoted and the method would
-// otherwise be reachable only through [Client.Destroy]. gomemcache documents
-// that the client stays usable after Close, so calling it here and again from
-// Destroy is safe.
-func (c *Client) Close() error { return c.client.Close() }
+// Close tears the client down through its chain — the head's Release(true),
+// layer by layer, the connection pool last — and is also the gs destroy
+// method, registered on the bean. The pool close comes last on purpose: once
+// the executor is gone the client is no longer protected, and there is no
+// reason to keep sockets alive past that point.
+func (c *Client) Close() error { return c.InnerClient.Release(true) }
 
-// Destroy releases the resilience executor (if governance was applied) and
-// closes the client's idle connection pool. Discovery runs inside the backend
-// (the loader has no resources), so there is nothing else to release. It is the
-// gs destroy method.
+// InnerClient is the command seam the client's internals are hollowed into:
+// the business traffic gomemcache carries, each call carrying its context.
+// gomemcache offers no hook or plugin point, so this interface is the ONLY way
+// to modify what happens under the promoted command methods.
 //
-// The pool close comes first: once the executor is gone the client is no longer
-// protected, and there is no reason to keep sockets alive past that point.
-// Returns the pool's error; the executor's Close is best-effort.
-func (c *Client) Destroy() error {
-	err := c.client.Close()
-	if c.exec != nil {
-		_ = c.exec.Close()
+// The default chain is the identity layer over the governance layer over a
+// raw adapter, and the embedded InnerClient is where a custom layer goes:
+// implement this interface (embed the head you found to inherit the methods
+// you do not care about), then assign your layer over it. The chain under the
+// layer keeps doing its job — the keys the layer rewrites are what the
+// identity layer declares, and the executor still protects every call —
+// which is usually the point of adding it.
+//
+// Release tears the chain down, layer by layer, and releaseRaw picks how far
+// down: every layer takes away its OWN resources and passes the flag to the
+// layer under it unchanged, and only the instance layer at the bottom acts on
+// the flag — closing the raw client when it is set. Release(false) is the
+// shallow release — every layer's own cleanup, the instance left running;
+// Release(true) is the full teardown, and [Client.Close] is nothing but the
+// head's Release(true).
+type InnerClient interface {
+	// Get returns the item for key, or memcache.ErrCacheMiss when absent.
+	Get(ctx context.Context, key string) (*memcache.Item, error)
+	// GetAndTouch returns the item for key and updates its expiration.
+	GetAndTouch(ctx context.Context, key string, seconds int32) (*memcache.Item, error)
+	// GetMulti fetches the items for keys in one round trip; missing keys are
+	// absent from the map.
+	GetMulti(ctx context.Context, keys []string) (map[string]*memcache.Item, error)
+	// Touch updates the expiration of key without fetching it.
+	Touch(ctx context.Context, key string, seconds int32) error
+	// Set stores item, overwriting any existing value for its key.
+	Set(ctx context.Context, item *memcache.Item) error
+	// Add stores item only when its key holds no value yet.
+	Add(ctx context.Context, item *memcache.Item) error
+	// Replace overwrites item's key only when it already holds a value.
+	Replace(ctx context.Context, item *memcache.Item) error
+	// Append appends item's value to the value stored under its key.
+	Append(ctx context.Context, item *memcache.Item) error
+	// Prepend prepends item's value to the value stored under its key.
+	Prepend(ctx context.Context, item *memcache.Item) error
+	// CompareAndSwap stores item only when its cas token still matches.
+	CompareAndSwap(ctx context.Context, item *memcache.Item) error
+	// Delete removes the value stored under key.
+	Delete(ctx context.Context, key string) error
+	// DeleteAll issues "flush_all" to a single server in the pool.
+	DeleteAll(ctx context.Context) error
+	// Increment adds delta to the counter stored under key.
+	Increment(ctx context.Context, key string, delta uint64) (uint64, error)
+	// Decrement subtracts delta from the counter stored under key.
+	Decrement(ctx context.Context, key string, delta uint64) (uint64, error)
+	// Ping tests the connectivity of every server with a no-op request.
+	Ping(ctx context.Context) error
+	// FlushAll issues "flush_all" to every server in the pool.
+	FlushAll(ctx context.Context) error
+	// Release releases the layer's own resources, then hands releaseRaw to
+	// the layer under it.
+	Release(releaseRaw bool) error
+}
+
+// RawClient adapts the raw gomemcache client to [InnerClient]: it is the tail
+// of the default chain, discarding the context — gomemcache's own API has
+// none — and returning its errors verbatim. It is a plain adapter: no
+// governance or observability of its own lives here, and no resource but the
+// client itself. [NewRawClient] builds it.
+type RawClient struct{ raw *memcache.Client }
+
+// NewRawClient wraps a raw gomemcache client as the [InnerClient] tail of a
+// chain.
+func NewRawClient(raw *memcache.Client) *RawClient { return &RawClient{raw: raw} }
+
+// Release closes the raw client's idle connection pool — and only with
+// releaseRaw: the instance layer has no resource of its own, so the shallow
+// release is a no-op and the client keeps running. gomemcache documents that
+// the client stays usable after a close, so a full teardown's pool close is
+// safe even after earlier Close calls.
+func (r *RawClient) Release(releaseRaw bool) error {
+	if !releaseRaw {
+		return nil
+	}
+	return r.raw.Close()
+}
+
+func (r *RawClient) Get(_ context.Context, key string) (*memcache.Item, error) {
+	return r.raw.Get(key)
+}
+
+func (r *RawClient) GetAndTouch(_ context.Context, key string, seconds int32) (*memcache.Item, error) {
+	return r.raw.GetAndTouch(key, seconds)
+}
+
+func (r *RawClient) GetMulti(_ context.Context, keys []string) (map[string]*memcache.Item, error) {
+	return r.raw.GetMulti(keys)
+}
+
+func (r *RawClient) Touch(_ context.Context, key string, seconds int32) error {
+	return r.raw.Touch(key, seconds)
+}
+
+func (r *RawClient) Set(_ context.Context, item *memcache.Item) error { return r.raw.Set(item) }
+
+func (r *RawClient) Add(_ context.Context, item *memcache.Item) error { return r.raw.Add(item) }
+
+func (r *RawClient) Replace(_ context.Context, item *memcache.Item) error {
+	return r.raw.Replace(item)
+}
+
+func (r *RawClient) Append(_ context.Context, item *memcache.Item) error {
+	return r.raw.Append(item)
+}
+
+func (r *RawClient) Prepend(_ context.Context, item *memcache.Item) error {
+	return r.raw.Prepend(item)
+}
+
+func (r *RawClient) CompareAndSwap(_ context.Context, item *memcache.Item) error {
+	return r.raw.CompareAndSwap(item)
+}
+
+func (r *RawClient) Delete(_ context.Context, key string) error { return r.raw.Delete(key) }
+
+func (r *RawClient) DeleteAll(_ context.Context) error { return r.raw.DeleteAll() }
+
+func (r *RawClient) Increment(_ context.Context, key string, delta uint64) (uint64, error) {
+	return r.raw.Increment(key, delta)
+}
+
+func (r *RawClient) Decrement(_ context.Context, key string, delta uint64) (uint64, error) {
+	return r.raw.Decrement(key, delta)
+}
+
+func (r *RawClient) Ping(_ context.Context) error { return r.raw.Ping() }
+
+func (r *RawClient) FlushAll(_ context.Context) error { return r.raw.FlushAll() }
+
+// ObsClient is the identity layer at the head of the default chain: it names
+// each call — op and key, declared as the call's semantic identity via
+// [observability.WithOperation] — and hands the context down. It emits nothing
+// itself and holds no resource: emission happens where the whole call is seen,
+// retries included, which for this starter is the governance layer under it.
+// This layer is the analog of starter-bigcache's observation layer — the
+// vocabulary lives in observe.go — and is what makes a custom layer's behavior
+// (the keys it rewrote, the time it took) visible in the signals.
+// [NewObsClient] builds it.
+type ObsClient struct {
+	next InnerClient
+}
+
+// NewObsClient builds the identity layer over next.
+func NewObsClient(next InnerClient) *ObsClient { return &ObsClient{next: next} }
+
+// Release hands releaseRaw to the layer under it — this layer holds no
+// resource, so there is nothing to take away at either depth.
+func (o *ObsClient) Release(releaseRaw bool) error { return o.next.Release(releaseRaw) }
+
+// withOp declares one call's semantic identity: op names the command and key
+// is its argument, neither ever a metric label (see observe.go for the
+// vocabulary and why the key rides in Detail only).
+func withOp(ctx context.Context, op, key string) context.Context {
+	return observability.WithOperation(ctx, operation(op, key))
+}
+
+func (o *ObsClient) Get(ctx context.Context, key string) (*memcache.Item, error) {
+	return o.next.Get(withOp(ctx, "get", key), key)
+}
+
+func (o *ObsClient) GetAndTouch(ctx context.Context, key string, seconds int32) (*memcache.Item, error) {
+	return o.next.GetAndTouch(withOp(ctx, "get_and_touch", key), key, seconds)
+}
+
+func (o *ObsClient) GetMulti(ctx context.Context, keys []string) (map[string]*memcache.Item, error) {
+	return o.next.GetMulti(withOp(ctx, "get_multi", fmt.Sprintf("%d keys", len(keys))), keys)
+}
+
+func (o *ObsClient) Touch(ctx context.Context, key string, seconds int32) error {
+	return o.next.Touch(withOp(ctx, "touch", key), key, seconds)
+}
+
+func (o *ObsClient) Set(ctx context.Context, item *memcache.Item) error {
+	return o.next.Set(withOp(ctx, "set", item.Key), item)
+}
+
+func (o *ObsClient) Add(ctx context.Context, item *memcache.Item) error {
+	return o.next.Add(withOp(ctx, "add", item.Key), item)
+}
+
+func (o *ObsClient) Replace(ctx context.Context, item *memcache.Item) error {
+	return o.next.Replace(withOp(ctx, "replace", item.Key), item)
+}
+
+func (o *ObsClient) Append(ctx context.Context, item *memcache.Item) error {
+	return o.next.Append(withOp(ctx, "append", item.Key), item)
+}
+
+func (o *ObsClient) Prepend(ctx context.Context, item *memcache.Item) error {
+	return o.next.Prepend(withOp(ctx, "prepend", item.Key), item)
+}
+
+func (o *ObsClient) CompareAndSwap(ctx context.Context, item *memcache.Item) error {
+	return o.next.CompareAndSwap(withOp(ctx, "cas", item.Key), item)
+}
+
+func (o *ObsClient) Delete(ctx context.Context, key string) error {
+	return o.next.Delete(withOp(ctx, "delete", key), key)
+}
+
+func (o *ObsClient) DeleteAll(ctx context.Context) error {
+	return o.next.DeleteAll(withOp(ctx, "delete_all", ""))
+}
+
+func (o *ObsClient) Increment(ctx context.Context, key string, delta uint64) (uint64, error) {
+	return o.next.Increment(withOp(ctx, "increment", key), key, delta)
+}
+
+func (o *ObsClient) Decrement(ctx context.Context, key string, delta uint64) (uint64, error) {
+	return o.next.Decrement(withOp(ctx, "decrement", key), key, delta)
+}
+
+func (o *ObsClient) Ping(ctx context.Context) error {
+	return o.next.Ping(withOp(ctx, "ping", ""))
+}
+
+func (o *ObsClient) FlushAll(ctx context.Context) error {
+	return o.next.FlushAll(withOp(ctx, "flush_all", ""))
+}
+
+// GuardClient is the governance layer of the default chain: it runs every
+// operation under the resilience executor, which applies rate limiting,
+// breaking and bulkheading — and emits the span, duration metrics and access
+// log from the one point that sees the whole call, retries included. A cache
+// miss (resilience.Tolerate) neither trips the breaker nor retries; protection
+// rejections (rate-limited / circuit-open / bulkhead-full) surface to the
+// caller. bigcache has no such layer — it is in-process, with nothing to
+// protect — which is exactly the RPC/non-RPC split this layer embodies. When
+// governance is off the resolved executor is a no-op, so the call runs with a
+// single function-call overhead. [NewGuardClient] builds it.
+type GuardClient struct {
+	exec chain.Executor
+	next InnerClient
+}
+
+// NewGuardClient builds the governance layer over next, constructing its own
+// executor along the way: params carries the container's facilities (see
+// [cloud.ClientParams]) and instanceName/serviceName fix the governance label
+// ("memcached:<service-name or instance-name>") its limiter and breaker state
+// scope by. The executor is the layer's own business end to end — built here,
+// used here, closed at the layer's Release — and never leaves it.
+func NewGuardClient(next InnerClient, instanceName, serviceName string, params cloud.ClientParams) *GuardClient {
+	label := resilience.ServiceLabel("memcached", serviceName, instanceName)
+	return &GuardClient{exec: params.ExecutorFor("memcached", label), next: next}
+}
+
+// guard runs one payload under the executor with the cache-miss tolerance. It
+// is a free function because its generic parameter cannot live on a method.
+func guard[T any](ctx context.Context, exec chain.Executor, fn func(context.Context) (T, error)) (T, error) {
+	return resilience.Run(ctx, exec, fn, resilience.Tolerate(memcache.ErrCacheMiss))
+}
+
+// guardErr is the error-only variant of [guard].
+func guardErr(ctx context.Context, exec chain.Executor, fn func(context.Context) error) error {
+	_, err := guard(ctx, exec, func(ctx context.Context) (struct{}, error) { return struct{}{}, fn(ctx) })
+	return err
+}
+
+// Release hands releaseRaw to the layer under it, and on the FULL teardown
+// takes down the executor — the layer's own resource, closed only then
+// because a rebuilt chain's guard reuses this same executor; the shallow
+// release leaves both the executor and the instance running.
+func (g *GuardClient) Release(releaseRaw bool) error {
+	err := g.next.Release(releaseRaw)
+	if releaseRaw && g.exec != nil {
+		_ = g.exec.Close()
 	}
 	return err
 }
 
-// run routes a payload-bearing operation of client c through the shared seam:
-// op names the command and key is its argument, both declared as the call's
-// semantic identity; fn then runs under the resilience executor via
-// [resilience.Run]. A cache miss (resilience.Tolerate) neither trips the breaker
-// nor retries; protection rejections (rate-limited / circuit-open /
-// bulkhead-full) surface to the caller. When governance is off the resolved
-// executor is a no-op, so fn runs with a single function-call overhead.
-//
-// The span, duration metrics and access log are not emitted here: declaring the
-// identity is this layer's whole job now, and the resilience layer emits from
-// the one point on the chain that sees the whole call, retries included.
-func run[T any](ctx context.Context, c *Client, op, key string, fn func() (T, error)) (T, error) {
-	ctx = observability.WithOperation(ctx, operation(op, key))
-	return resilience.Run(ctx, c.exec,
-		func(context.Context) (T, error) { return fn() },
-		resilience.Tolerate(memcache.ErrCacheMiss))
+func (g *GuardClient) Get(ctx context.Context, key string) (*memcache.Item, error) {
+	return guard(ctx, g.exec, func(context.Context) (*memcache.Item, error) { return g.next.Get(ctx, key) })
 }
 
-// runErr is the error-only variant of [run], for operations that return no
-// payload (Set/Delete/Ping/...). It shares the same span + resilience +
-// ErrCacheMiss semantics; the two-variant split keeps the call sites typed
-// rather than routing through any + runtime assertion.
-func runErr(ctx context.Context, c *Client, op, key string, fn func() error) error {
-	_, err := run(ctx, c, op, key, func() (struct{}, error) { return struct{}{}, fn() })
-	return err
+func (g *GuardClient) GetAndTouch(ctx context.Context, key string, seconds int32) (*memcache.Item, error) {
+	return guard(ctx, g.exec, func(context.Context) (*memcache.Item, error) { return g.next.GetAndTouch(ctx, key, seconds) })
 }
 
-// Get returns the item for key. Returns memcache.ErrCacheMiss when the key is
-// not present.
-func (c *Client) Get(ctx context.Context, key string) (*memcache.Item, error) {
-	return run(ctx, c, "get", key, func() (*memcache.Item, error) { return c.client.Get(key) })
+func (g *GuardClient) GetMulti(ctx context.Context, keys []string) (map[string]*memcache.Item, error) {
+	return guard(ctx, g.exec, func(context.Context) (map[string]*memcache.Item, error) { return g.next.GetMulti(ctx, keys) })
 }
 
-// GetAndTouch returns the item for key and updates its expiration. seconds is
-// the new expiration time, in seconds.
-func (c *Client) GetAndTouch(ctx context.Context, key string, seconds int32) (*memcache.Item, error) {
-	return run(ctx, c, "get_and_touch", key, func() (*memcache.Item, error) {
-		return c.client.GetAndTouch(key, seconds)
-	})
+func (g *GuardClient) Touch(ctx context.Context, key string, seconds int32) error {
+	return guardErr(ctx, g.exec, func(context.Context) error { return g.next.Touch(ctx, key, seconds) })
 }
 
-// GetMulti fetches the items for keys in one round trip. Missing keys are
-// simply absent from the returned map; keys absent from the map are cache
-// misses, not errors.
-func (c *Client) GetMulti(ctx context.Context, keys []string) (map[string]*memcache.Item, error) {
-	return run(ctx, c, "get_multi", fmt.Sprintf("%d keys", len(keys)), func() (map[string]*memcache.Item, error) {
-		return c.client.GetMulti(keys)
-	})
+func (g *GuardClient) Set(ctx context.Context, item *memcache.Item) error {
+	return guardErr(ctx, g.exec, func(context.Context) error { return g.next.Set(ctx, item) })
 }
 
-// Touch updates the expiration time of the item for key without fetching it.
-// seconds is the new expiration time, in seconds.
-func (c *Client) Touch(ctx context.Context, key string, seconds int32) error {
-	return runErr(ctx, c, "touch", key, func() error { return c.client.Touch(key, seconds) })
+func (g *GuardClient) Add(ctx context.Context, item *memcache.Item) error {
+	return guardErr(ctx, g.exec, func(context.Context) error { return g.next.Add(ctx, item) })
 }
 
-// Set stores item, overwriting any existing value for its key.
-func (c *Client) Set(ctx context.Context, item *memcache.Item) error {
-	return runErr(ctx, c, "set", item.Key, func() error { return c.client.Set(item) })
+func (g *GuardClient) Replace(ctx context.Context, item *memcache.Item) error {
+	return guardErr(ctx, g.exec, func(context.Context) error { return g.next.Replace(ctx, item) })
 }
 
-// Add stores item only when its key holds no value yet; it returns
-// memcache.ErrNotStored otherwise.
-func (c *Client) Add(ctx context.Context, item *memcache.Item) error {
-	return runErr(ctx, c, "add", item.Key, func() error { return c.client.Add(item) })
+func (g *GuardClient) Append(ctx context.Context, item *memcache.Item) error {
+	return guardErr(ctx, g.exec, func(context.Context) error { return g.next.Append(ctx, item) })
 }
 
-// Replace overwrites the value of item's key only when it already holds a
-// value; it returns memcache.ErrNotStored otherwise.
-func (c *Client) Replace(ctx context.Context, item *memcache.Item) error {
-	return runErr(ctx, c, "replace", item.Key, func() error { return c.client.Replace(item) })
+func (g *GuardClient) Prepend(ctx context.Context, item *memcache.Item) error {
+	return guardErr(ctx, g.exec, func(context.Context) error { return g.next.Prepend(ctx, item) })
 }
 
-// Append appends item's value to the value already stored under its key.
-func (c *Client) Append(ctx context.Context, item *memcache.Item) error {
-	return runErr(ctx, c, "append", item.Key, func() error { return c.client.Append(item) })
+func (g *GuardClient) CompareAndSwap(ctx context.Context, item *memcache.Item) error {
+	return guardErr(ctx, g.exec, func(context.Context) error { return g.next.CompareAndSwap(ctx, item) })
 }
 
-// Prepend prepends item's value to the value already stored under its key.
-func (c *Client) Prepend(ctx context.Context, item *memcache.Item) error {
-	return runErr(ctx, c, "prepend", item.Key, func() error { return c.client.Prepend(item) })
+func (g *GuardClient) Delete(ctx context.Context, key string) error {
+	return guardErr(ctx, g.exec, func(context.Context) error { return g.next.Delete(ctx, key) })
 }
 
-// CompareAndSwap stores item only when its cas token (from a prior Get)
-// still matches the stored value; it returns memcache.ErrCASConflict on a
-// mismatch.
-func (c *Client) CompareAndSwap(ctx context.Context, item *memcache.Item) error {
-	return runErr(ctx, c, "cas", item.Key, func() error { return c.client.CompareAndSwap(item) })
+func (g *GuardClient) DeleteAll(ctx context.Context) error {
+	return guardErr(ctx, g.exec, func(context.Context) error { return g.next.DeleteAll(ctx) })
 }
 
-// Delete removes the value stored under key. Returns memcache.ErrCacheMiss
-// when the key holds no value.
-func (c *Client) Delete(ctx context.Context, key string) error {
-	return runErr(ctx, c, "delete", key, func() error { return c.client.Delete(key) })
+func (g *GuardClient) Increment(ctx context.Context, key string, delta uint64) (uint64, error) {
+	return guard(ctx, g.exec, func(context.Context) (uint64, error) { return g.next.Increment(ctx, key, delta) })
 }
 
-// DeleteAll issues the memcached "flush_all" command to a single server in
-// the pool (the one the empty key hashes to). To invalidate every server, use
-// FlushAll.
-func (c *Client) DeleteAll(ctx context.Context) error {
-	return runErr(ctx, c, "delete_all", "", func() error { return c.client.DeleteAll() })
+func (g *GuardClient) Decrement(ctx context.Context, key string, delta uint64) (uint64, error) {
+	return guard(ctx, g.exec, func(context.Context) (uint64, error) { return g.next.Decrement(ctx, key, delta) })
 }
 
-// Increment adds delta to the uint64 counter stored under key and returns the
-// new value. Returns memcache.ErrCacheMiss when the key holds no value.
-func (c *Client) Increment(ctx context.Context, key string, delta uint64) (uint64, error) {
-	return run(ctx, c, "increment", key, func() (uint64, error) { return c.client.Increment(key, delta) })
+func (g *GuardClient) Ping(ctx context.Context) error {
+	return guardErr(ctx, g.exec, func(context.Context) error { return g.next.Ping(ctx) })
 }
 
-// Decrement subtracts delta from the uint64 counter stored under key and
-// returns the new value. Returns memcache.ErrCacheMiss when the key holds no
-// value.
-func (c *Client) Decrement(ctx context.Context, key string, delta uint64) (uint64, error) {
-	return run(ctx, c, "decrement", key, func() (uint64, error) { return c.client.Decrement(key, delta) })
-}
-
-// Ping tests the connectivity of every server in the pool with a no-op
-// request.
-func (c *Client) Ping(ctx context.Context) error {
-	return runErr(ctx, c, "ping", "", func() error { return c.client.Ping() })
-}
-
-// FlushAll issues the memcached "flush_all" command to every server in the
-// pool, invalidating all items on each.
-func (c *Client) FlushAll(ctx context.Context) error {
-	return runErr(ctx, c, "flush_all", "", func() error { return c.client.FlushAll() })
+func (g *GuardClient) FlushAll(ctx context.Context) error {
+	return guardErr(ctx, g.exec, func(context.Context) error { return g.next.FlushAll(ctx) })
 }

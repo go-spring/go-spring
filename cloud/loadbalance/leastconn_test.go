@@ -17,6 +17,7 @@
 package loadbalance
 
 import (
+	"context"
 	"testing"
 
 	"go-spring.org/stdlib/testing/assert"
@@ -35,15 +36,15 @@ func TestLeastConn(t *testing.T) {
 	assert.String(t, e1.Addr).NotEqual(e2.Addr)
 
 	// Release e1; it now has the fewest in-flight and must be chosen.
-	b.Complete(e1, nil)
+	b.Complete(context.Background(), e1, nil)
 	e3, err := b.Pick(set, PickInfo{})
 	assert.Error(t, err).Nil()
 	assert.String(t, e3.Addr).Equal(e1.Addr)
 
 	// A repeated Complete for the same request is a harmless no-op: the count
 	// deletes at zero instead of going negative (interface contract).
-	b.Complete(e1, nil)
-	b.Complete(e1, nil)
+	b.Complete(context.Background(), e1, nil)
+	b.Complete(context.Background(), e1, nil)
 	e4, err := b.Pick(set, PickInfo{})
 	assert.Error(t, err).Nil()
 	assert.String(t, e4.Addr).Equal(e1.Addr) // e1's count was not driven negative

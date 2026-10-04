@@ -54,25 +54,42 @@ func newFileWatchCtrl() *fileWatchCtrl {
 // installs a watcher on its parent directory that triggers an application
 // property refresh on change.
 func (c *fileWatchCtrl) Load(optional bool, source string) (map[string]string, error) {
+	// Load is the top of this chain and Provider.Load takes no context, so the
+	// one ctx the whole load shares is minted here — ensureWatch below receives
+	// it instead of minting its own.
+	ctx := context.Background()
+
 	path := source
 	if path == "" {
 		return nil, errutil.Explain(nil, "file-watch: missing path")
 	}
 
-	log.Debugf(context.Background(), starterTag, "loading file-watch config from %s", path)
+	log.Debug(ctx, starterTag, func() []log.Field {
+		return []log.Field{
+			log.String("path", path),
+			log.Msg("loading file-watch config"),
+		}
+	})
 
 	info, err := os.Stat(path)
 	if err != nil {
 		if os.IsNotExist(err) && optional {
-			log.Warnf(context.Background(), starterTag, "optional config path %s not found (skipped)", path)
+			log.Warn(ctx, starterTag,
+				log.String("path", path),
+				log.Msg("optional config path not found, skipped"))
 			return nil, nil
 		}
-		log.Errorf(context.Background(), starterTag, "stat %s failed: %v", path, err)
+		log.Error(ctx, starterTag,
+			log.String("path", path),
+			log.Err(err),
+			log.Msg("stat failed"))
 		return nil, errutil.Explain(err, "file-watch: stat %s failed", path)
 	}
 
 	if info.IsDir() {
-		log.Errorf(context.Background(), starterTag, "file-watch expects a single file, got directory %s", path)
+		log.Error(ctx, starterTag,
+			log.String("path", path),
+			log.Msg("file-watch expects a single file, got a directory"))
 		return nil, errutil.Explain(nil, "file-watch expects a single file, got directory %s (a directory of scalar key files belongs to the configtree provider)", path)
 	}
 
@@ -82,7 +99,7 @@ func (c *fileWatchCtrl) Load(optional bool, source string) (map[string]string, e
 	// atomic rename too. In both cases the file's inode changes, so a per-file
 	// inotify watch would be left on a stale inode after the first update.
 	// Watching the directory keeps hot-reload working across the swap.
-	c.ensureWatch(filepath.Dir(path))
+	c.ensureWatch(ctx, filepath.Dir(path))
 
 	// Format is detected by extension through the shared conf reader registry,
 	// so there is no per-provider format map to maintain.
@@ -92,6 +109,9 @@ func (c *fileWatchCtrl) Load(optional bool, source string) (map[string]string, e
 	}
 	m := flatten.Flatten(parsed)
 
-	log.Infof(context.Background(), starterTag, "loaded file-watch config from file=%s keys=%d", path, len(m))
+	log.Info(ctx, starterTag,
+		log.String("path", path),
+		log.Int("keys", len(m)),
+		log.Msg("loaded file-watch config"))
 	return m, nil
 }

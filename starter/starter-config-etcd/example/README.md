@@ -17,13 +17,7 @@ cd starter-config-etcd/example
 go run . -manual
 ```
 
-Expected output:
-```
-initial value
-updated value
-```
-
-Start etcd first:
+etcd must be running first:
 ```bash
 # Start etcd
 docker compose up -d
@@ -33,6 +27,20 @@ go run . -manual
 ```
 
 The service keeps running. Press `Ctrl+C` to stop.
+
+In another terminal, publish a new value and watch it print:
+
+```bash
+docker exec starter-etcd-config etcdctl put gs-config-demo 'demo.message=manual-1'
+# prints: demo.message: "..." -> "manual-1"
+```
+
+Without `-manual` the example publishes a new value itself, waits for the bound
+field to hot-reload, prints `hot-reload observed: hello-<hhmmss>`, and exits:
+
+```bash
+go run .
+```
 
 ## Smoke Test
 

@@ -38,6 +38,7 @@ trap 'compose down -v >/dev/null 2>&1 || true' EXIT
 compose up -d
 
 # Wait for Nacos to report readiness (up to 120s; first boot is slow).
+echo "== waiting for the service to be ready =="
 for _ in $(seq 1 120); do
     if curl -fsS "http://127.0.0.1:8848/nacos/v1/console/health/readiness" >/dev/null 2>&1; then
         break
@@ -63,4 +64,9 @@ if ! grep -q "registered addr=" "${out}"; then
     exit 1
 fi
 rm -f "${out}"
-exit "${rc}"
+if [ "${rc}" -ne 0 ]; then
+    echo "== FAILED ==" >&2
+    exit "${rc}"
+fi
+echo "== OK =="
+exit 0

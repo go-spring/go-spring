@@ -9,7 +9,7 @@ portal workflows, access keys) are the [Apollo documentation](https://www.apollo
 everything below is go-spring's increment.
 
 **Activation**: a blank import registers the `apollo` config provider
-(`starter.go:79`). The starter does nothing until an `apollo:` entry appears in
+(`starter.go`). The starter does nothing until an `apollo:` entry appears in
 `spring.config.import`; there is no `enabled` key, no property prefix, and no injectable
 bean.
 
@@ -20,7 +20,7 @@ bean.
 A realistic service that cold-loads a namespace from Apollo, hot-reloads a `gs.Dync`
 field on portal publish, and exposes the value over HTTP for verification. It is
 isomorphic to the smoke-tested [example/](example/) (mock Apollo service + cold-load
-assert), extended with a real Apollo server and an HTTP probe. File tree:
+and hot-reload asserts), extended with a real Apollo server and an HTTP probe. File tree:
 
 ```
 demo/
@@ -92,7 +92,7 @@ func main() { gs.Run() }
 #   ?appId=demo&cluster=default&secret=...&format=properties
 #
 # Multiple entries: comma-separated; later entries override earlier ones on key
-# collision (same rule as file imports, conf.go:202).
+# collision (same rule as file imports, conf.go).
 spring.config.import=optional:apollo:127.0.0.1:8080/application?appId=demo&format=properties
 
 # Server for the verification probe (port must be explicit — no defaults).
@@ -105,15 +105,18 @@ address in the import string, with app `demo`, cluster `default`, namespace
 `application` published. Quickest local stack is Apollo's official
 [Quick Start docker-compose](https://www.apolloconfig.com/#/en/deployment/quick-start-docker);
 for CI or offline work the starter's own example embeds a mock Apollo service
-(`main.go:73-92`) that serves exactly the two endpoints agollo needs
-(`/services/config` and `/configfiles/json/{appId}/{cluster}/{namespace}`) — no docker.
+(`main.go`) that serves the endpoints agollo drives — `/services/config`,
+`/configfiles/json/{appId}/{cluster}/{namespace}` (cold load),
+`/notifications/v2` (the long poll) and `/configs/{appId}/{cluster}/{namespace}`
+(the post-notification re-fetch) — so it exercises cold load *and* hot reload
+with no docker.
 
 **Verify (cold load)**:
 
 ```bash
 go run . &
 curl -s :8002/message            # {"message":"hello-from-apollo"} (or your published value)
-grep 'loaded apollo namespace' <log stream>   # "loaded apollo namespace application keys=N"
+grep 'loaded apollo namespace' <log stream>   # msg="loaded apollo namespace" namespace=.. keys=N
 ```
 
 **Verify (hot reload)**: in the Apollo portal, change `demo.message` in the
@@ -127,7 +130,7 @@ curl -s :8002/message            # new value, process untouched
 The example's own smoke gate (same shape as `example/check.sh`):
 
 ```bash
-cd example && ./check.sh && echo SMOKE-OK   # asserts "Apollo cold-load OK:" in output
+cd example && ./check.sh && echo SMOKE-OK   # asserts "Apollo cold-load OK:" and "hot-reload observed:" in output
 ```
 
 ---
@@ -137,21 +140,21 @@ cd example && ./check.sh && echo SMOKE-OK   # asserts "Apollo cold-load OK:" in 
 ### 2.1 When imports resolve — pre-bean, and why that matters
 
 `spring.config.import` is processed while gs loads application properties, i.e. in
-step 2 of `App.Start` (`gs_app/app.go:285-294`), **before** the IoC container is wired:
+step 2 of `App.Start` (`gs_app/app.go`), **before** the IoC container is wired:
 
 ```
 blank-import starter-config-apollo
-  └─ init(): conf.RegisterProvider("apollo", newApolloCtrl())   starter.go:77-80
+  └─ init(): conf.RegisterProvider("apollo", newApolloCtrl())   starter.go
 gs.Run() → App.Start()
   ├─ 1. mount the gs.RefreshProperties / gs.AppStarted facade targets
-  ├─ 2. app.p.Refresh() — load app.properties, expand spring.config.import      gs_conf/conf.go:216-240
-  │       └─ conf.Load(source) → prefix-split [optional:]<provider>:<path>      provider.go:84-92
-  │             └─ apolloCtrl.Load(optional, path)                               starter.go:191
-  │                   ├─ parseSource → url.Parse("apollo://"+path)              starter.go:113-148
-  │                   ├─ clientFor → agollo.StartWithConfig (one per tuple)     starter.go:158-186
+  ├─ 2. app.p.Refresh() — load app.properties, expand spring.config.import      gs_conf/conf.go
+  │       └─ conf.Load(source) → prefix-split [optional:]<provider>:<path>      provider.go
+  │             └─ apolloCtrl.Load(optional, path)                               starter.go
+  │                   ├─ parseSource → url.Parse("apollo://"+path)              starter.go
+  │                   ├─ clientFor → agollo.StartWithConfig (one per tuple)     starter.go
   │                   ├─ registerListener (BEFORE the fetch — "a later change
-  │                   │   is never missed", starter.go:204)                     starter.go:226-241
-  │                   └─ GetConfigContent → reader.Read(format) → flatten       starter.go:207-221
+  │                   │   is never missed", starter.go)                     starter.go
+  │                   └─ GetConfigContent → reader.Read(format) → flatten       starter.go
   ├─ 3. initLog
   ├─ 4. wire IoC container
   ├─ 5. Runners, 6. Servers → readiness
@@ -166,11 +169,11 @@ contract. It also means `spring.config.import` is read **once per Refresh**: a
 listener firing re-runs the whole pipeline (see 2.2).
 
 Import nesting: only one level is processed — a `spring.config.import` declared
-*inside* an imported source is silently ignored (`gs_conf/conf.go:213-215`). Source
-strings support `${...}` placeholder resolution before loading (`conf.go:224`), so
+*inside* an imported source is silently ignored (`gs_conf/conf.go`). Source
+strings support `${...}` placeholder resolution before loading (`conf.go`), so
 `apollo:${APOLLO_ADDR:=127.0.0.1:8080}/application?appId=demo` is valid and is the
 supported way to keep addresses out of the file. Deduplication of identical import
-entries happens before load (`conf.go:223`).
+entries happens before load (`conf.go`).
 
 ### 2.2 The watch / hot-reload path
 
@@ -180,12 +183,12 @@ The starter bridges those events into gs's refresh chain:
 
 ```
 Apollo publish → agollo long-poll fires ChangeEvent / FullChangeEvent
-  → apolloListener.OnChange / OnNewestChange                    starter.go:248-254
-    → apolloCtrl.TriggerRefresh                                 starter.go:95-99
-      → gs.RefreshProperties()                                  gs_app/app.go:149-151
+  → apolloListener.OnChange / OnNewestChange                    starter.go
+    → apolloCtrl.TriggerRefresh                                 starter.go
+      → gs.RefreshProperties()                                  gs_app/app.go
         → App.RefreshProperties: guard "app not started yet", then
           reload ALL sources (files, env, cmd args, every import), merge by
-          layer priority, propagate to the container             gs_app/app.go:247-256
+          layer priority, propagate to the container             gs_app/app.go
             → all gs.Dync[T] fields update atomically
 ```
 
@@ -193,13 +196,13 @@ Two properties of this path worth knowing:
 
 - **No-op before start.** Events arriving before the app has started hit a
   `gs.RefreshProperties()` that returns an error and are dropped harmlessly
-  (pinned by `TestListenerChangeFiresRefresh`, `starter_test.go:133-139`) — the
-  initial load already captured the state (`starter.go:93-94`).
+  (pinned by `TestListenerChangeFiresRefresh`, `starter_test.go`) — the
+  initial load already captured the state (`starter.go`).
 - **Whole-app refresh, not per-namespace.** One changed key triggers a reload of
   *every* source, so a Dync field backed by a local file also re-reads. Only
   `gs.Dync[T]` re-binds; plain `value:` fields are startup-only (no per-key callback
   exists in gs). Listener registration is deduplicated per source
-  (`TestListenerRegisteredOncePerSource`, `starter_test.go:118-128`), so the repeated
+  (`TestListenerRegisteredOncePerSource`, `starter_test.go`), so the repeated
   Loads from refreshes never stack listeners.
 
 ### 2.3 One cold load, layer by layer
@@ -207,19 +210,19 @@ Two properties of this path worth knowing:
 `optional:apollo:127.0.0.1:8080/application?appId=demo`:
 
 1. `conf.Load` strips `optional:` → `optional=true`; splits on the first `:` →
-   provider `apollo`, path `127.0.0.1:8080/application?appId=demo` (`provider.go:84-92`).
+   provider `apollo`, path `127.0.0.1:8080/application?appId=demo` (`provider.go`).
 2. `parseSource` prepends `apollo://` and `url.Parse`s: host, path-namespace, query
    params; fills defaults cluster=`default`, format from namespace extension else
-   `properties` (`starter.go:113-148`).
+   `properties` (`starter.go`).
 3. `clientFor` builds a cache key `server|appId|cluster|secret|namespace`; on miss,
    `agollo.StartWithConfig` creates a client with `IsBackupConfig: false` (no local
-   cache file) pointed at `http://<server>` (`starter.go:150-186`).
+   cache file) pointed at `http://<server>` (`starter.go`).
 4. The change listener is registered, then `GetConfigContent` fetches the namespace
    content; empty content + optional → warn and skip; empty + required → error
-   (`starter.go:207-214`).
+   (`starter.go`).
 5. `reader.Read(format, content)` parses, `flatten.Flatten` flattens nested formats
    into dotted keys, and the map joins the layered storage as an app-level source
-   (`starter.go:216-221`, `gs_conf/conf.go:233-237`).
+   (`starter.go`, `gs_conf/conf.go`).
 
 ---
 
@@ -227,7 +230,7 @@ Two properties of this path worth knowing:
 
 ### 3.1 Import-string grammar
 
-Form (`provider.go:60-72` core grammar, `starter.go:111-148` apollo specifics):
+Form (`provider.go` core grammar, `starter.go` apollo specifics):
 
 ```
 [optional:]apollo:<host>[:<port>]/<namespace>?appId=<id>[&cluster=<c>][&secret=<s>][&format=<f>]
@@ -238,14 +241,14 @@ later entries override earlier ones on key collision.
 
 | Part | Type | Default | Behavior / interactions | Misconfiguration consequence |
 |------|------|---------|-------------------------|------------------------------|
-| `optional:` | flag | absent | Empty *or never-synced* namespace logs a warn (`optional apollo namespace %s is empty (skipped)`, `starter.go:210`) and contributes no keys. | Without it, an empty/missing namespace is a startup error — intended fail-fast, surprising if the namespace is created later. |
-| `apollo` | name | — | Provider key registered by the starter's `init`. | Typo → `unsupported provider type ...` at startup (`provider.go:96`). |
-| host[:port] | string | — | Apollo meta/config server; passed to agollo as `http://<host>`. Placeholders (`${APOLLO_ADDR}`) resolve first. | Missing (source starts with `/`) → `missing apollo server address in ...` (`starter.go:118-120`). Wrong address → agollo fetch failure at startup (required) or silent skip (optional). |
-| namespace | string | — | Exactly ONE namespace per import entry. Its file extension drives the default format. | Missing → `missing namespace in ...` (`starter.go:122-124`). Asking for a non-public namespace without `secret` yields empty content → depends on `optional:`. |
-| `appId` | string | — | Required, no default. | Missing → `missing appId in ...` (`starter.go:134-136`). |
+| `optional:` | flag | absent | Empty *or never-synced* namespace logs a warn (`optional apollo namespace %s is empty (skipped)`, `starter.go`) and contributes no keys. | Without it, an empty/missing namespace is a startup error — intended fail-fast, surprising if the namespace is created later. |
+| `apollo` | name | — | Provider key registered by the starter's `init`. | Typo → `unsupported provider type ...` at startup (`provider.go`). |
+| host[:port] | string | — | Apollo meta/config server; passed to agollo as `http://<host>`. Placeholders (`${APOLLO_ADDR}`) resolve first. | Missing (source starts with `/`) → `missing apollo server address in ...` (`starter.go`). Wrong address → agollo fetch failure at startup (required) or silent skip (optional). |
+| namespace | string | — | Exactly ONE namespace per import entry. Its file extension drives the default format. | Missing → `missing namespace in ...` (`starter.go`). Asking for a non-public namespace without `secret` yields empty content → depends on `optional:`. |
+| `appId` | string | — | Required, no default. | Missing → `missing appId in ...` (`starter.go`). |
 | `cluster` | string | `default` | Part of the client cache key — same appId+namespace in two clusters are two clients/two imports, no dedup. | Typo silently reads a different (possibly empty) cluster; combined with `optional:` this fails *quietly*. |
 | `secret` | string | empty | Access key for protected namespaces. ⚠ Lands in the import string and thus in config files/logs of the loading layer. | Missing/wrong for a protected namespace → empty content → required-import startup error or optional-import skip. |
-| `format` | string | namespace extension, else `properties` | Explicit parser override (`properties`/`yaml`/`yml`/`json`/`toml`, whatever `reader.Read` supports). Pinned by `TestParseSourceFormatOverride`. | Wrong format for the actual content → `parse apollo namespace %s as %s failed` (`starter.go:218`); startup error even when `optional:` (a parse failure is never optional). |
+| `format` | string | namespace extension, else `properties` | Explicit parser override (`properties`/`yaml`/`yml`/`json`/`toml`, whatever `reader.Read` supports). Pinned by `TestParseSourceFormatOverride`. | Wrong format for the actual content → `parse apollo namespace %s as %s failed` (`starter.go`); startup error even when `optional:` (a parse failure is never optional). |
 
 Supported formats are those of `spring/conf/reader`; unknown values error inside
 `reader.Read`.
@@ -277,15 +280,16 @@ drills 4.1/4.2).
 ```bash
 go run . &
 curl -s :8002/message                          # published value
-grep -E 'loaded apollo namespace' <log>        # keys=N — N is the flattened key count
-cd example && ./check.sh                       # CI gate: "Apollo cold-load OK:" marker
+grep -E 'loaded apollo namespace' <log>        # msg= with namespace=.. keys=N (N = flattened key count)
+cd example && ./check.sh                       # CI gate: cold-load + hot-reload markers
 ```
 
 The example is self-contained: it starts the mock Apollo on `127.0.0.1:18080`, imports
 `optional:apollo:127.0.0.1:18080/application?appId=demo&format=properties`, and exits
-non-zero unless `demo.message` cold-loads as `hello-from-apollo` (`main.go:94-103`).
-Note the mock's `/notifications/v2` returning 304 (`main.go:85-86`) — agollo keeps
-long-polling, which is what drill 4.2 rides on.
+non-zero unless `demo.message` cold-loads as `hello-from-apollo` and then hot-reloads
+to the value the example itself publishes (`main.go`). The mock's `/notifications/v2`
+holds each long poll until its notification id advances, so the
+publish → notify → re-fetch → refresh chain is the same one drill 4.2 rides on.
 
 ### 4.2 Watch push (hot reload, no restart)
 
@@ -305,15 +309,15 @@ spring.config.import=apollo:127.0.0.1:8080/app.json?appId=demo
 
 Publish non-JSON content in `app.json` → startup fails with
 `parse apollo namespace app.json as json failed` (`TestLoadParseErrorPropagates`,
-`starter_test.go:109-114`). Note `optional:` does NOT soften a parse error — only an
-empty/missing namespace is optional (`starter.go:207-214`).
+`starter_test.go`). Note `optional:` does NOT soften a parse error — only an
+empty/missing namespace is optional (`starter.go`).
 
 ### 4.4 Optional vs required entries
 
 - Required, namespace missing/empty: startup aborts with `apollo namespace %s is empty`.
 - Same source with `optional:`: warn line `optional apollo namespace ... is empty
   (skipped)` and startup proceeds with the field's `:=` default (`none` in the demo) —
-  pinned by `TestLoadOptionalSkipsOnMissingNamespace` (`starter_test.go:94-105`).
+  pinned by `TestLoadOptionalSkipsOnMissingNamespace` (`starter_test.go`).
 - Grammar errors (missing appId / host / namespace) fail regardless of `optional:`
   (`TestParseSourceMissingAppID`).
 
@@ -326,7 +330,7 @@ empty/missing namespace is optional (`starter.go:207-214`).
   the symptom is simply *stale config* — Dync values stop moving. There is no health
   indicator, no metric, no gs log line for a lost connection (see §6). When the
   server returns, the next successful poll fires the listener and values catch up.
-- `IsBackupConfig: false` (`starter.go:178`) means no local cache file bridges the
+- `IsBackupConfig: false` (`starter.go`) means no local cache file bridges the
   outage across restarts: restart during an outage with a required import fails.
 
 ---
@@ -364,7 +368,7 @@ Design suspects (kept from the previous edition, extended):
 - No health indicator / metric / dedicated log tag for the agollo connection: a dead
   server at runtime is invisible to gs observability (only stale config).
 - One agollo client per (server, appId, cluster, secret, namespace) tuple
-  (`starter.go:150-155`) — many namespaces means many long-poll connections; agollo
+  (`starter.go`) — many namespaces means many long-poll connections; agollo
   itself supports multi-namespace clients → candidate consolidation.
 - `optional:` semantics conflate "not synced yet" with "legitimately empty" — a
   namespace published *empty* is indistinguishable from a wrong appId/cluster typo.

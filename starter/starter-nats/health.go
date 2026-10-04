@@ -34,12 +34,12 @@ var errNotConnected = errors.New("nats connection is not established")
 // connection that dropped after startup reports unhealthy until it reconnects.
 // It goes straight to the bare *nats.Conn on purpose — a readiness check must
 // reflect the backend, not the rate limiter, and must not feed the operation
-// metrics or the breaker's statistics — so it touches the unexported conn field
+// metrics or the breaker's statistics — so it touches the raw Conn field
 // directly rather than any delegating wrapper method. The startup probe in
 // [newConn] and the actuator probe in [NewClientHealth] both delegate here, so
 // there is exactly one implementation.
 func HealthCheck(ctx context.Context, c *Conn) error {
-	if c.conn == nil || !c.conn.IsConnected() {
+	if c.Conn == nil || !c.Conn.IsConnected() {
 		return errNotConnected
 	}
 	return nil

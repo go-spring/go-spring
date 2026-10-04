@@ -85,7 +85,18 @@ func init() {
 // it to [NewClient] — so the client is assembled complete in one step, with the
 // zero bundle degrading to an observed-only, loudly-unmanaged executor.
 func newClient(ctx *gs.ContextProvider, name string, c Config, d Driver, center *governance.Center) (*Client, error) {
-	log.Debugf(ctx.Context, log.TagAppDef, "creating rocketmq client, name-servers=%v ping=%v", c.NameServers, c.Ping)
+	// The client's identity rides on a context derived here: every line below
+	// carries it without repeating it. The provider's own context is left
+	// alone — that one is the shared application context, not this
+	// constructor's.
+	cctx := log.WithFields(ctx.Context, log.Strings("name_servers", c.NameServers))
+
+	log.Debug(cctx, log.TagAppDef, func() []log.Field {
+		return []log.Field{
+			log.Bool("ping", c.Ping),
+			log.Msg("creating rocketmq client"),
+		}
+	})
 
 	if (c.AccessKey == "") != (c.SecretKey == "") {
 		return nil, errutil.Explain(nil, "rocketmq access-key and secret-key must be set together (client %s)", name)
@@ -106,11 +117,13 @@ func newClient(ctx *gs.ContextProvider, name string, c Config, d Driver, center 
 	// traffic. A failure abandons the client, so release what was just applied.
 	if c.Ping {
 		if err = probeNameServer(c.NameServers); err != nil {
-			log.Errorf(ctx.Context, log.TagAppDef, "rocketmq: ping failed on %v: %v", c.NameServers, err)
+			log.Error(cctx, log.TagAppDef,
+				log.Err(err),
+				log.Msg("rocketmq: ping failed"))
 			_ = cl.Close()
 			return nil, errutil.Explain(err, "rocketmq name server probe failed on %v", c.NameServers)
 		}
 	}
-	log.Infof(ctx.Context, log.TagAppDef, "rocketmq client initialized, name-servers=%v", c.NameServers)
+	log.Info(cctx, log.TagAppDef, log.Msg("rocketmq client initialized"))
 	return cl, nil
 }

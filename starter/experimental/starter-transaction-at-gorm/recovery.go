@@ -79,15 +79,22 @@ func recoverBranch(ctx context.Context, b at.Branch) error {
 	}
 	resource, db := gb.resource, gb.db
 
+	// The branch's resource names every line below: it rides on the context so
+	// the recovery trail stays greppable per resource without repeating it.
+	ctx = log.WithFields(ctx, log.String("resource", resource))
+
 	var xids []string
 	if err := db.Model(&undoRow{}).Distinct().Order("xid").
 		Pluck("xid", &xids).Error; err != nil {
-		log.Errorf(ctx, log.TagAppDef,
-			"at recovery: scanning undo logs on resource %q failed: %v (orphaned entries, if any, are left for manual recovery)", resource, err)
+		log.Error(ctx, log.TagAppDef,
+			log.Err(err),
+			log.Msg("at recovery: scanning undo logs failed (orphaned entries, if any, are left for manual recovery)"))
 		return err
 	}
 	if len(xids) == 0 {
-		log.Debugf(ctx, log.TagAppDef, "at recovery: no orphaned undo logs on resource %q", resource)
+		log.Debug(ctx, log.TagAppDef, func() []log.Field {
+			return []log.Field{log.Msg("at recovery: no orphaned undo logs")}
+		})
 		return nil
 	}
 
@@ -100,18 +107,23 @@ func recoverBranch(ctx context.Context, b at.Branch) error {
 			oldest = first.CreatedAt
 		}
 	}
-	log.Errorf(ctx, log.TagAppDef,
-		"at recovery: found %d orphaned undo-log entries on resource %q (oldest %s) from %d interrupted global transaction(s) of a previous run; rolling back",
-		count, resource, oldest.Format(time.RFC3339), len(xids))
+	log.Error(ctx, log.TagAppDef,
+		log.Int("entries", count),
+		log.String("oldest", oldest.Format(time.RFC3339)),
+		log.Int("transactions", len(xids)),
+		log.Msg("at recovery: found orphaned undo-log entries from a previous run; rolling back"))
 
 	for _, xid := range xids {
 		if err := gb.Rollback(ctx, xid); err != nil {
-			log.Errorf(ctx, log.TagAppDef,
-				"at recovery: rolling back global transaction %q on resource %q failed: %v (undo logs kept for manual recovery)", xid, resource, err)
+			log.Error(ctx, log.TagAppDef,
+				log.String("xid", xid),
+				log.Err(err),
+				log.Msg("at recovery: rolling back global transaction failed (undo logs kept for manual recovery)"))
 			continue
 		}
-		log.Infof(ctx, log.TagAppDef,
-			"at recovery: global transaction %q rolled back on resource %q", xid, resource)
+		log.Info(ctx, log.TagAppDef,
+			log.String("xid", xid),
+			log.Msg("at recovery: global transaction rolled back"))
 	}
 	return nil
 }

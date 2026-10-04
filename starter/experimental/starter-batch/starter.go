@@ -144,13 +144,18 @@ func (s *Server) Run(ctx context.Context, sig gs.ReadySignal) error {
 		s.wg.Add(1)
 		go func() {
 			defer s.wg.Done()
-			log.Infof(runCtx, starterTag, "batch: launching job %q on startup", jobName)
+			// The job's identity rides on a context derived here for the life of
+			// this launch: every line below carries it without repeating it. The
+			// goroutine outlives any request, so the context is minted here.
+			jobCtx := log.WithFields(runCtx, log.String("job", jobName))
+
+			log.Info(jobCtx, starterTag, log.Msg("batch: launching job on startup"))
 			je, err := s.Launcher.Launch(runCtx, jobName, params)
 			if err != nil {
-				log.Errorf(runCtx, starterTag, "batch: job %q failed: %v", jobName, err)
+				log.Error(jobCtx, starterTag, log.Err(err), log.Msg("batch: job failed"))
 				return
 			}
-			log.Infof(runCtx, starterTag, "batch: job %q finished with status=%s", jobName, je.Status)
+			log.Info(jobCtx, starterTag, log.Msgf("batch: job finished with status=%s", je.Status))
 		}()
 	}
 	log.Infof(ctx, starterTag,

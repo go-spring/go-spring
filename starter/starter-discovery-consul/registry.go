@@ -253,6 +253,16 @@ func (r *consulRegistry) UpdateWeight(ctx context.Context, reg discovery.Instanc
 // are the per-instance signal an operator alerts on, and the service name is
 // what joins them to the registration metrics for the same instance.
 func (r *consulRegistry) heartbeat(id, service string, stop <-chan struct{}) {
+	// This instance's identity rides on the context for the life of the
+	// heartbeat: every line below carries it without repeating it. The goroutine
+	// outlives any request, so the context is minted here.
+	ctx := log.WithFields(context.Background(),
+		log.String("system", r.obs.System()),
+		log.String("center", r.obs.Center()),
+		log.String("service", service),
+		log.String("operation", "register"),
+		log.String("reason", discovery.ReasonSelfHeal),
+	)
 	checkID := "service:" + id
 	interval := r.ttl / 2
 	if interval <= 0 {
@@ -274,46 +284,22 @@ func (r *consulRegistry) heartbeat(id, service string, stop <-chan struct{}) {
 			}
 			failures++
 			if failures >= persistAfter {
-				log.Error(context.Background(), starterTag, append(
-					[]log.Field{
-						log.String("system", r.obs.System()),
-						log.String("center", r.obs.Center()),
-						log.String("service", service),
-						log.String("operation", "register"),
-						log.String("reason", discovery.ReasonSelfHeal),
-					},
+				log.Error(ctx, starterTag,
 					log.Msgf("consul TTL heartbeat for check=%s failed %d times in a row; re-registering the service to recover", checkID, failures),
-					log.Err(err),
-				)...)
+					log.Err(err))
 				// Re-register (upsert) instead of only logging: recreates the
 				// service and check if Consul already dropped them.
 				if rerr := r.reRegister(id); rerr != nil {
-					log.Error(context.Background(), starterTag, append(
-						[]log.Field{
-							log.String("system", r.obs.System()),
-							log.String("center", r.obs.Center()),
-							log.String("service", service),
-							log.String("operation", "register"),
-							log.String("reason", discovery.ReasonSelfHeal),
-							log.String("status", discovery.StatusOf(rerr)),
-							log.Err(rerr),
-						},
-						log.Msgf("consul re-register for service=%s failed", id),
-					)...)
+					log.Error(ctx, starterTag,
+						log.String("status", discovery.StatusOf(rerr)),
+						log.Err(rerr),
+						log.Msgf("consul re-register for service=%s failed", id))
 				}
 			} else {
-				log.Warn(context.Background(), starterTag, append(
-					[]log.Field{
-						log.String("system", r.obs.System()),
-						log.String("center", r.obs.Center()),
-						log.String("service", service),
-						log.String("operation", "register"),
-						log.String("reason", discovery.ReasonSelfHeal),
-						log.String("status", discovery.StatusOf(err)),
-						log.Err(err),
-					},
-					log.Msgf("consul TTL heartbeat for check=%s failed (%d/%d)", checkID, failures, persistAfter),
-				)...)
+				log.Warn(ctx, starterTag,
+					log.String("status", discovery.StatusOf(err)),
+					log.Err(err),
+					log.Msgf("consul TTL heartbeat for check=%s failed (%d/%d)", checkID, failures, persistAfter))
 			}
 		}
 	}

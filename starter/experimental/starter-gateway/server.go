@@ -77,6 +77,10 @@ func (s *GatewayServer) tlsConfig() (*tls.Config, error) {
 // Run listens immediately, then serves after readiness is signaled, aligning the
 // gateway with the framework's graceful-drain orchestration.
 func (s *GatewayServer) Run(ctx context.Context, sig gs.ReadySignal) error {
+	// The listening address rides on the context: every line this server logs
+	// about its own lifecycle carries it without repeating it.
+	ctx = log.WithFields(ctx, log.String("addr", s.Cfg.Addr))
+
 	// Compile the route table now that FilterWrapper beans have been injected, so
 	// a bad initial config (unknown filter, missing wrapper bean) fails startup.
 	if err := s.tbl.warmup(); err != nil {
@@ -98,9 +102,11 @@ func (s *GatewayServer) Run(ctx context.Context, sig gs.ReadySignal) error {
 	}
 
 	<-sig.TriggerAndWait()
-	log.Infof(ctx, log.TagAppDef, "gateway: serving on %s", s.Cfg.Addr)
+	log.Info(ctx, log.TagAppDef, log.Msg("gateway: serving"))
 	if err = s.svr.Serve(listener); err != nil && !errutil.IsServerClosed(err) {
-		log.Errorf(ctx, log.TagAppDef, "gateway: failed to serve on %s: %v", s.Cfg.Addr, err)
+		log.Error(ctx, log.TagAppDef,
+			log.Err(err),
+			log.Msg("gateway: failed to serve"))
 		return errutil.Explain(err, "gateway: failed to serve on %s", s.Cfg.Addr)
 	}
 	return nil
@@ -110,6 +116,8 @@ func (s *GatewayServer) Run(ctx context.Context, sig gs.ReadySignal) error {
 // finish; ctx is propagated into http.Server.Shutdown so the drain rides the
 // shutdown context.
 func (s *GatewayServer) Stop(ctx context.Context) error {
-	log.Infof(ctx, log.TagAppDef, "gateway: shutting down on %s", s.Cfg.Addr)
+	log.Info(ctx, log.TagAppDef,
+		log.String("addr", s.Cfg.Addr),
+		log.Msg("gateway: shutting down"))
 	return s.svr.Shutdown(ctx)
 }

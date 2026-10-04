@@ -17,4 +17,9 @@ rc=0
 wait "${pid}" 2>/dev/null || rc=$?
 kill "${watchdog}" 2>/dev/null || true
 wait "${watchdog}" 2>/dev/null || true
-exit "${rc}"
+if [ "${rc}" -ne 0 ]; then
+    echo "== FAILED ==" >&2
+    exit "${rc}"
+fi
+echo "== OK =="
+exit 0

@@ -28,6 +28,7 @@ compose up -d
 
 # Wait for the name server port (up to 90s; the JVM boot is slow).
 namesrv_ready=false
+echo "== waiting for the service to be ready =="
 for _ in $(seq 1 90); do
     if (exec 3<>/dev/tcp/127.0.0.1/9876) 2>/dev/null; then
         exec 3>&- 3<&- 2>/dev/null || true
@@ -84,6 +85,7 @@ if [ "${topics_ready}" != true ]; then
     exit 1
 fi
 
+echo "== example boot =="
 go run . > smoke.out 2>&1 &
 pid=$!
 ( sleep 90; kill -9 "${pid}" 2>/dev/null ) &
@@ -97,9 +99,11 @@ wait "${watchdog}" 2>/dev/null || true
 # gs.Run returns (exit code 0) even when bean wiring fails at startup, so gate
 # on the example's success marker rather than the exit code alone.
 if [ "${rc}" -ne 0 ] || ! grep -q "Response from server:" smoke.out; then
+    echo "== FAILED ==" >&2
     cat smoke.out >&2 || true
     rm -f smoke.out
     exit 1
 fi
+echo "== OK =="
 rm -f smoke.out
 exit 0

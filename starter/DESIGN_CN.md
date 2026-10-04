@@ -215,6 +215,26 @@ Web(`gin`、`echo`、`hertz`……)与 RPC(`grpc`、`kitex`、`thrift`、`dubbo`
   ——包括坐在同一个池上的 ORM——都被覆盖，无需在每个调用点加 `Guarded*` helper。当库既没有拦截器、
   其 send 又不带 ctx 时，starter 改从调用点接缝插桩：包住 producer、让每条消费记录都过一遍 helper、
   trace 上下文随记录头传递。
+- **库交付具体类型的客户端，掏空成链条。** 当被包装的库既没有
+  hook/plugin 点、又交回具体 struct（gomemcache、bigcache、gocql、nats.go、
+  go-mail、amqp091、franz-go、rocketmq-client-go）时，单纯包装改不了行为——
+  所以 starter 的客户端嵌入一个 `Inner*` 接口（带 ctx 的命令面，加
+  `Release(releaseRaw bool) error`），并把原始实例作为只读把手导出。默认链
+  三层、每层一职：身份层（`Obs*`：经 `observability.WithOperation` 声明操作
+  ——所有客户端都有）、治理层（`Guard*`：在 resilience executor 下执行调用，
+  executor 的构造/使用/关闭全在层内——只有被治理的 RPC 类客户端有；bigcache
+  的进程内缓存没有）、适配层（`Raw*`：丢掉库不收的 ctx，做线上调用）。三条
+  规矩：(1) `Release` 把标记原样下传，每层先释放自己的资源——只有适配层对
+  标记行动（关实例），外壳的 `Close`（即 gs destroy 回调）就是链头的
+  `Release(true)`；(2) 链条重组走包裹链头——`c.Inner = myLayer{c.Inner}`，
+  层改写的 key 正是身份层声明的，治理照常保护下层；(3) per-delivery 的消费
+  路径不上链：其流水线（提取 trace → 声明 → 进 executor 执行）与链条由外向
+  内的组合方向相反，保留在外壳上的融合 wrapper。三种已验证形状：平铺命令面
+  （memcached、nats、mail）、链条挂在每条查询上的 builder（cassandra）、
+  工厂/注册表实体 + per-producer 链（rocketmq）；bean 原先是裸客户端 + 包级
+  `sync.Map` 守卫注册表的（kafka、rabbitmq），包装实体把两者一并取代。若库
+  交付的是接口或 hook（go-redis、gorm、mongodb、redigo、neo4j、pulsar、
+  mqtt、sarama），则不掏——包装交付的接口本身就是本模式的缝。
 - **消息驱动的约定。** 每个 publisher 一个 producer，每个 subscriber 一个 push consumer，handler
   出错即触发重投。
 - **进程级 driver bean 服务每一个实例。** 因为 `Driver` bean 是进程级的，自定义 driver 委托给内置

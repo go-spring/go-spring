@@ -161,8 +161,10 @@ func httpGet(url string) (string, error) {
 	return string(b), err
 }
 
-// init pins the working directory to this source file's directory so relative
-// config paths resolve regardless of how the binary is invoked.
+// init sets the working directory of the application to the directory
+// where this source file resides.
+// This ensures that any relative file operations are based on the source file location,
+// not the process launch path.
 func init() {
 	var execDir string
 	_, filename, _, ok := runtime.Caller(0)

@@ -10,7 +10,7 @@ go-spring's increment.
 
 **Activation**: any `spring.cassandra.instances.*` key (the module is `OnProperty("spring.cassandra")`, a
 prefix check [starter.go:36]). Each `spring.cassandra.instances.<name>` entry creates one
-`*StarterCassandra.Client` bean named `<name>` (wrapping an unexported `*gocql.Session`), plus a
+`*StarterCassandra.Client` bean named `<name>` (holding the `*gocql.Session` as a read-only `Session` field), plus a
 health indicator named `cassandra:<name>` [starter.go:46-60].
 
 ---
@@ -70,7 +70,7 @@ import (
 
 type Service struct {
     // Always the wrapper type *StarterCassandra.Client. The raw
-    // *gocql.Session is an unexported field; Query/Bind return the guarded
+    // *gocql.Session is the read-only Session field; Query/Bind return the guarded
     // wrapper, and the remaining session methods (Close, NewBatch,
     // ExecuteBatch, ...) are delegated explicitly.
     Main *StarterCassandra.Client `autowire:"a"`
@@ -137,7 +137,7 @@ import starter-cassandra
               │            IndexArg(2, ?Driver),
               │            IndexArg(3, *resilience.Manager),
               │            IndexArg(4, *fault.Injector)).Name(<name>)
-              │       .Destroy((*Client).Destroy)
+              │       .Destroy((*Client).Close)
               └─ Provide health.Indicator named "cassandra:<name>",
                       injecting the client by name (TagArg) [starter.go:58-61]
 
@@ -153,13 +153,13 @@ gs.Run()
   │       over the injected *resilience.Manager / *fault.Injector beans — exec chain complete at construction
   ├─ ping=true only: fail-fast probe — newClient calls HealthCheck [starter.go:100], one system.local scan to the raw session
   ├─ readiness: indicator delegates to HealthCheck, which queries system.local [health.go:34]
-  └─ SIGTERM → Destroy [client.go]: exec.Close → session.Close
+  └─ SIGTERM → Close [client.go]: exec.Close → session.Close
 ```
 
 There is no `Init` hook: `NewClient` fixes the client's identity and applies the
 governance bundle as part of driver assembly, so the bean is complete the moment `newClient`
 returns. Because governance is applied inside the constructor — before the probe — a probe
-failure tears down an already-governed client (`Destroy`) rather than leaking the executor.
+failure tears down an already-governed client (`Close`) rather than leaking the executor.
 
 An unknown consistency value or an unreachable cluster fails the boot — the process never reaches
 "serving" with a dead Cassandra.
@@ -182,17 +182,21 @@ problems surface on first use instead. The probe is bounded by gocql's own
 
 gocql exposes no reject-capable middleware (no hook chain like go-redis), so the guard rides
 the query object itself: `Client.Query`/`Client.Bind` mirror the raw session methods and
-return a guarded `*Query` wrapper [query.go] whose execution methods route through the
-guard + executor. `Client.Exec` is a thin alias over that wrapper (kept for callers written
-against the earlier opt-in helper). Every statement execution method — `Exec`, `Iter`, `Scan`,
-`ScanCAS`, `MapScan`, `MapScanCAS` — is guarded+declared with no opt-in at the call site:
+return a guarded `*Query` builder [query.go] whose execution methods run through a per-query
+chain — identity layer (`ObsQuery`, declares) over governance layer (`GuardQuery`, executor)
+over raw adapter (`RawQuery`, executes the builder's current statement). `Client.Exec` is a
+thin alias over that builder (kept for callers written against the earlier opt-in helper).
+Every statement execution method — `Exec`, `Iter`, `Scan`, `ScanCAS`, `MapScan`, `MapScanCAS` —
+is guarded+declared with no opt-in at the call site; a custom layer may wrap the builder's
+embedded `InnerQuery` head to rewrite what a statement does (the rewrite is what gets
+declared):
 
 `Client.Exec(ctx, stmt, values...)` / `Client.Query(...).Exec()` [client.go, query.go]:
 
-1. `guard` declares the statement's identity on the ctx (`observability.WithOperation`,
+1. `ObsQuery` declares the statement's identity on the ctx (`observability.WithOperation`,
    [observe.go]): span name `exec`, the `db.system`/`db.operation` labels, and the bounded
    `db.statement` detail (truncated to 512 bytes).
-2. `exec.Execute(ctx, call)` asks the governance executor for a permit — limiter/
+2. `GuardQuery` asks the governance executor for a permit — limiter/
    breaker scoped to the service label `cassandra:<hosts[0]>` (per instance, keyed on the
    FIRST host only [client.go]). On rejection the statement is **never attempted**.
    With governance off the client runs on the observed-only, loudly-unmanaged executor: the

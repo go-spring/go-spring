@@ -67,12 +67,27 @@ var manual = flag.Bool("manual", false, "run in manual verification mode (server
 
 func main() {
 	flag.Parse()
+
+	// Unset env vars that leak from the developer shell so runs are reproducible
+	// and consistent with sibling starter examples.
+	_ = os.Unsetenv("_")
+	_ = os.Unsetenv("TERM")
+	_ = os.Unsetenv("TERM_SESSION_ID")
+
 	demoBean := gs.Provide(&Demo{}).Export(gs.As[gs.Rooter]())
+	demo := demoBean.Interface().(*Demo)
+	// Print on every change so a manual run (-manual) can watch the hot-reload
+	// happen; the self-test reads the field directly.
+	demo.Message.OnChanged(func(newVal, oldVal string) {
+		if newVal != oldVal {
+			fmt.Printf("demo.message: %q -> %q\n", oldVal, newVal)
+		}
+	})
 
 	if !*manual {
 		go func() {
 			time.Sleep(500 * time.Millisecond)
-			runTest(demoBean.Interface().(*Demo))
+			runTest(demo)
 		}()
 	} else {
 

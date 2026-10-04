@@ -88,14 +88,28 @@ func (s *Server) Run(ctx context.Context, sig gs.ReadySignal) error {
 
 	<-sig.TriggerAndWait()
 
-	log.Debugf(ctx, starterTag, "registering service=%s id=%s addr=%s weight=%d into %d discovery center(s)", s.inst.ServiceName, s.inst.ID, s.inst.Addr, s.inst.Weight, len(s.Registries))
+	// This instance's identity rides on the context from here on: the lines
+	// below carry it without repeating it, as does every registry backend the
+	// registration fans out into.
+	ctx = log.WithFields(ctx, instanceFields(s.inst)...)
+
+	log.Debug(ctx, starterTag, func() []log.Field {
+		return []log.Field{
+			log.Int("centers", len(s.Registries)),
+			log.Msg("registering the instance into the configured discovery centers"),
+		}
+	})
 	for _, r := range s.Registries {
 		if err := r.Register(ctx, s.inst); err != nil {
-			log.Errorf(ctx, starterTag, "register service=%s failed: %v", s.inst.ServiceName, err)
+			log.Error(ctx, starterTag,
+				log.Err(err),
+				log.Msg("register service failed"))
 			return errutil.Explain(err, "discovery: register %q", s.inst.ServiceName)
 		}
 	}
-	log.Infof(ctx, starterTag, "registered %q at %s in %d discovery center(s)", s.inst.ServiceName, s.inst.Addr, len(s.Registries))
+	log.Info(ctx, starterTag,
+		log.Int("centers", len(s.Registries)),
+		log.Msg("registered the instance in the configured discovery centers"))
 
 	<-ctx.Done()
 	return nil
@@ -126,9 +140,13 @@ func (s *Server) UpdateWeight(ctx context.Context, weight int) error {
 	if s.inst.Addr == "" {
 		return errutil.Explain(nil, "discovery: instance not registered yet")
 	}
+	ctx = log.WithFields(ctx, instanceFields(s.inst)...)
 	for _, r := range s.Registries {
 		if err := r.UpdateWeight(ctx, s.inst, weight); err != nil {
-			log.Errorf(ctx, starterTag, "update weight service=%s to %d failed: %v", s.inst.ServiceName, weight, err)
+			log.Error(ctx, starterTag,
+				log.Int("weight", weight),
+				log.Err(err),
+				log.Msg("update weight failed"))
 			return errutil.Explain(err, "discovery: update weight to %d", weight)
 		}
 	}
@@ -136,10 +154,25 @@ func (s *Server) UpdateWeight(ctx context.Context, weight int) error {
 }
 
 func (s *Server) deregister(ctx context.Context) {
+	ctx = log.WithFields(ctx, instanceFields(s.inst)...)
 	for _, r := range s.Registries {
 		if err := r.Deregister(ctx, s.inst); err != nil {
-			log.Warnf(ctx, starterTag, "deregister %q: %v", s.inst.ServiceName, err)
+			log.Warn(ctx, starterTag,
+				log.Err(err),
+				log.Msg("deregister failed"))
 		}
+	}
+}
+
+// instanceFields returns the fields identifying the instance being
+// registered. They are attached to a context with log.WithFields rather than
+// repeated at each call site, and "service" is the name the metric and span
+// instruments use.
+func instanceFields(inst Instance) []log.Field {
+	return []log.Field{
+		log.String("service", inst.ServiceName),
+		log.String("id", inst.ID),
+		log.String("addr", inst.Addr),
 	}
 }
 

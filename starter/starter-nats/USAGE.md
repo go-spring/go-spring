@@ -175,7 +175,7 @@ import starter-nats
 gs.Run()
   ├─ config bind: each spring.nats.instances.<name> → Config (value tags; url expr-validated ≠ "")
   ├─ per name: Provide(newConn, IndexArg(1,ValueArg(name)), IndexArg(2,ValueArg(c)))
-  │             .Name(name).Destroy((*Conn).Destroy).Caller(1)  [starter.go:45-54]
+  │             .Name(name).Destroy((*Conn).Close).Caller(1)    [starter.go:45-54]
   ├─ newConn: Driver bean, selected per entry by ${spring.nats.instances.<name>.driver}
   │     (empty = `spring.nats.default.driver` then by type; set = by bean name — naming a missing bean fails startup);
   │     falls back to bundled DefaultDriver when none is
@@ -194,7 +194,7 @@ gs.Run()
   ├─ if ping: startup connectivity check on the bare client (IsConnected); failure destroys the bean
   │           [driver.go:197-202]
   ├─ Run / readiness
-  └─ SIGTERM: (*Conn).Destroy → exec.Close() (error returned after Drain) then conn.Drain()
+  └─ SIGTERM: (*Conn).Close = InnerConn.Release(true): exec.Close() then Drain
               — in-flight subscriptions finish, then the socket closes [client.go:105-113]
 ```
 
@@ -219,7 +219,7 @@ are logged (`nats disconnected` Warn) and the client auto-reconnects [driver.go:
    `nm.Header` (so the consumer continues the trace), and the connection's resilience
    executor — the single emitter — opens the producer span (parented on the caller's
    active span via the Publish ctx), records the durations and writes the access log.
-4. Raw `c.conn.PublishMsg` (async buffered write — returns before broker ack; use Flush
+4. Raw `conn.PublishMsg` (async buffered write — returns before broker ack; use Flush
    for confirmation; see [nats.go docs](https://docs.nats.io/)). The executor wraps this
    same wire call, so the message is counted exactly once.
 

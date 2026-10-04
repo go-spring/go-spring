@@ -172,7 +172,7 @@ func (d resolverDialer) DialContext(ctx context.Context, _, _ string) (net.Conn,
 	conn, derr := d.nd.DialContext(ctx, "tcp", ep.Addr)
 	// The dial outcome is the only signal this picker has; feeding it makes
 	// outlier suspension evict an instance that keeps refusing connections.
-	d.lb.Complete(ep, derr)
+	d.lb.Complete(ctx, ep, derr)
 	return conn, derr
 }
 

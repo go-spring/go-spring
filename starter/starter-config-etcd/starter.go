@@ -102,7 +102,7 @@ func (c *etcdCtrl) rearm() {
 // Close stops every watch goroutine and closes every client. It implements
 // provider.Provider. Closing is final only for this application instance: the
 // caches are dropped, so the next Load builds fresh clients and re-watches.
-func (c *etcdCtrl) Close() error {
+func (c *etcdCtrl) Close(ctx context.Context) error {
 	c.mu.Lock()
 	c.cancel()
 	c.stopped = true
@@ -118,7 +118,7 @@ func (c *etcdCtrl) Close() error {
 		}
 	}
 	if n := len(clients); n > 0 {
-		log.Infof(context.Background(), starterTag, "closed %d etcd client(s)", n)
+		log.Infof(ctx, starterTag, "closed %d etcd client(s)", n)
 	}
 	return errors.Join(errs...)
 }
@@ -189,8 +189,20 @@ func clientKey(cs configSource) string {
 	return cs.endpoint + "|" + cs.username + "|" + cs.password
 }
 
+// sourceFields returns the fields identifying a watched key. They are attached
+// to a context with log.WithFields rather than repeated at each call site, and
+// the keys match the ones the watch trigger stamps so a line and the refresh it
+// concerns join on the same names.
+func sourceFields(cs configSource) []log.Field {
+	return []log.Field{
+		log.String("endpoint", cs.endpoint),
+		log.String("key", cs.key),
+	}
+}
+
 // clientFor returns a cached client for the source, creating one if necessary.
-func (c *etcdCtrl) clientFor(cs configSource) (*clientv3.Client, error) {
+// Its log line takes the source fields from ctx, which Load has already stamped.
+func (c *etcdCtrl) clientFor(ctx context.Context, cs configSource) (*clientv3.Client, error) {
 	key := clientKey(cs)
 
 	c.mu.Lock()
@@ -209,7 +221,7 @@ func (c *etcdCtrl) clientFor(cs configSource) (*clientv3.Client, error) {
 	if err != nil {
 		return nil, errutil.Explain(err, "create etcd client for %s failed", cs.endpoint)
 	}
-	log.Infof(context.Background(), starterTag, "created etcd client endpoint=%s", cs.endpoint)
+	log.Info(ctx, starterTag, log.Msg("created etcd client"))
 	c.clients[key] = cli
 	return cli, nil
 }
@@ -220,50 +232,80 @@ func (c *etcdCtrl) clientFor(cs configSource) (*clientv3.Client, error) {
 func (c *etcdCtrl) Load(optional bool, source string) (map[string]string, error) {
 	c.rearm()
 
+	// Load is the top of this chain and Provider.Load takes no context, so the
+	// one ctx the whole load shares is minted here — the helpers below receive
+	// it instead of each minting their own.
+	ctx := context.Background()
+
 	cs, err := parseSource(source)
 	if err != nil {
-		log.Errorf(context.Background(), starterTag, "parse source %q failed: %v", source, err)
+		log.Error(ctx, starterTag,
+			log.String("source", source),
+			log.Err(err),
+			log.Msg("parse etcd source failed"))
 		return nil, err
 	}
 
-	log.Debugf(context.Background(), starterTag, "loading etcd config from endpoint=%s key=%s format=%s", cs.endpoint, cs.key, cs.format)
+	// The source's identity rides on the context from here on: every event this
+	// load and its helpers print carries it without repeating it at each call
+	// site.
+	ctx = log.WithFields(ctx, sourceFields(cs)...)
 
-	cli, err := c.clientFor(cs)
+	log.Debug(ctx, starterTag, func() []log.Field {
+		return []log.Field{
+			log.String("format", cs.format),
+			log.Msg("loading etcd config"),
+		}
+	})
+
+	cli, err := c.clientFor(ctx, cs)
 	if err != nil {
-		log.Errorf(context.Background(), starterTag, "create etcd client for endpoint=%s failed: %v", cs.endpoint, err)
+		log.Error(ctx, starterTag,
+			log.Err(err),
+			log.Msg("create etcd client failed"))
 		return nil, err
 	}
 
-	c.registerWatcher(cli, cs, optional)
+	c.registerWatcher(ctx, cli, cs, optional)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	getCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
-	resp, err := cli.Get(ctx, cs.key)
+	resp, err := cli.Get(getCtx, cs.key)
 	if err != nil {
 		if optional {
-			log.Warnf(context.Background(), starterTag, "optional config get key %s failed (skipped): %v", cs.key, err)
+			log.Warn(ctx, starterTag,
+				log.Err(err),
+				log.Msg("optional config get key failed, skipped"))
 			return nil, nil
 		}
-		log.Errorf(context.Background(), starterTag, "get etcd key %s failed: %v", cs.key, err)
+		log.Error(ctx, starterTag,
+			log.Err(err),
+			log.Msg("get etcd key failed"))
 		return nil, errutil.Explain(err, "get etcd key %s failed", cs.key)
 	}
 	if len(resp.Kvs) == 0 {
 		if optional {
-			log.Warnf(context.Background(), starterTag, "optional config key %s is empty (skipped)", cs.key)
+			log.Warn(ctx, starterTag,
+				log.Msg("optional config key is empty, skipped"))
 			return nil, nil
 		}
-		log.Errorf(context.Background(), starterTag, "etcd key %s is empty", cs.key)
+		log.Error(ctx, starterTag, log.Msg("etcd key is empty"))
 		return nil, errutil.Explain(nil, "etcd key %s is empty", cs.key)
 	}
 
 	content := resp.Kvs[0].Value
 	m, err := reader.Read(cs.format, content)
 	if err != nil {
-		log.Errorf(context.Background(), starterTag, "parse etcd key %s as %s failed: %v", cs.key, cs.format, err)
+		log.Error(ctx, starterTag,
+			log.String("format", cs.format),
+			log.Err(err),
+			log.Msg("parse etcd key failed"))
 		return nil, errutil.Explain(err, "parse etcd key %s as %s failed", cs.key, cs.format)
 	}
 
-	log.Infof(context.Background(), starterTag, "loaded etcd config from endpoint=%s key=%s keys=%d", cs.endpoint, cs.key, len(m))
+	log.Info(ctx, starterTag,
+		log.Int("keys", len(m)),
+		log.Msg("loaded etcd config"))
 	return flatten.Flatten(m), nil
 }
 
@@ -272,7 +314,7 @@ func (c *etcdCtrl) Load(optional bool, source string) (map[string]string, error)
 // declared the key optional: deleting an optional key is an expected transition
 // (its properties simply disappear), while deleting a required one leaves the
 // last snapshot in place, which the watcher surfaces as a warning.
-func (c *etcdCtrl) registerWatcher(cli *clientv3.Client, cs configSource, optional bool) {
+func (c *etcdCtrl) registerWatcher(ctx context.Context, cli *clientv3.Client, cs configSource, optional bool) {
 	lk := clientKey(cs) + "|" + cs.key
 
 	c.mu.Lock()
@@ -281,18 +323,22 @@ func (c *etcdCtrl) registerWatcher(cli *clientv3.Client, cs configSource, option
 		return
 	}
 	c.listened[lk] = struct{}{}
-	ctx := c.ctx
+	// The goroutine outlives this load, so it runs on the controller's
+	// generation context, not on the load's. It carries the same fields, which
+	// is what lets the loop's own lines name the key without interpolating it.
+	wctx := log.WithFields(c.ctx, sourceFields(cs)...)
 	c.mu.Unlock()
 
-	log.Infof(context.Background(), starterTag, "watching etcd key=%s endpoint=%s", cs.key, cs.endpoint)
+	log.Info(ctx, starterTag, log.Msg("watching etcd key for changes"))
 
 	go func() {
 		for {
-			ch := cli.Watch(ctx, cs.key)
+			ch := cli.Watch(wctx, cs.key)
 			for wr := range ch {
 				if err := wr.Err(); err != nil {
-					log.Warnf(context.Background(), starterTag,
-						"etcd watch on key %s returned an error: %v", cs.key, err)
+					log.Warn(wctx, starterTag,
+						log.Err(err),
+						log.Msg("etcd watch returned an error"))
 				}
 				deleted := false
 				for _, ev := range wr.Events {
@@ -301,8 +347,8 @@ func (c *etcdCtrl) registerWatcher(cli *clientv3.Client, cs configSource, option
 					}
 				}
 				if deleted && !optional {
-					log.Warnf(context.Background(), starterTag,
-						"etcd key %s deleted; stale snapshot retained until the key is restored", cs.key)
+					log.Warn(wctx, starterTag,
+						log.Msg("etcd key deleted; stale snapshot retained until the key is restored"))
 				}
 				if len(wr.Events) > 0 {
 					// Stamp the trigger with the change's identity (which key, which
@@ -328,14 +374,14 @@ func (c *etcdCtrl) registerWatcher(cli *clientv3.Client, cs configSource, option
 			// exits; the latter would otherwise exit silently and this key
 			// would never refresh again, so resubscribe and keep watching.
 			select {
-			case <-ctx.Done():
+			case <-wctx.Done():
 				return
 			default:
 			}
-			log.Errorf(context.Background(), starterTag,
-				"etcd watch channel for key %s closed; resubscribing in 5s", cs.key)
+			log.Error(wctx, starterTag,
+				log.Msg("etcd watch channel closed; resubscribing in 5s"))
 			select {
-			case <-ctx.Done():
+			case <-wctx.Done():
 				return
 			case <-time.After(5 * time.Second):
 			}

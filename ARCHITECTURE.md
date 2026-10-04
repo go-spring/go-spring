@@ -188,7 +188,11 @@ fixed feature set and hope it fits. So in the framework layers — `stdlib/`,
   and no way for two instances in one process to contaminate each other. A
   registry keeps its place as the *selection* mechanism (a config value picks an
   implementation), but what it hands back has to be a layer carrying the behavior
-  and the state, not a global that the behavior writes into.
+  and the state, not a global that the behavior writes into. The client-side
+  embodiment of this rule is the hollowed client chain — a client whose library
+  delivers a concrete, hook-less type embeds an `Inner*` interface (identity
+  layer over governance layer over raw adapter) instead of holding the raw
+  instance privately; see [starter/DESIGN.md §2.2](starter/DESIGN.md).
 - **A layer owns its state; it may still read through a shared instrument set.**
   The rule above is about the state a layer accumulates — that state's lifetime is
   the wrapped object's. Its *instruments* are a different thing: the OTel SDK

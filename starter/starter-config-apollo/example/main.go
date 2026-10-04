@@ -15,18 +15,17 @@
  */
 
 // Package main is the example for starter-config-apollo. It starts a mock
-// Apollo config service (enough of the meta + config protocol for agollo to
-// fetch a namespace), imports the starter, and asserts the remote property
-// cold-loads into a Dync field. No docker, no real Apollo stack — the cold-
-// load path is what the starter guarantees; hot reload is the same seam and
-// is exercised by the unit test.
+// Apollo config service (apollo.go), imports the starter, and verifies the whole
+// remote-config link: the property cold-loads into a Dync field at startup,
+// then a publish advances the mock's notification id, agollo's long poll
+// returns, and the starter triggers a refresh that updates the bound field —
+// no docker, no real Apollo stack.
 package main
 
 import (
 	"context"
 	"flag"
 	"fmt"
-	"net/http"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -38,8 +37,6 @@ import (
 	_ "go-spring.org/starter-config-apollo"
 )
 
-const mockAddr = "127.0.0.1:18080"
-
 // Demo holds a Dync property loaded from Apollo.
 type Demo struct {
 	Message gs.Dync[string] `value:"${demo.message:=none}"`
@@ -50,14 +47,28 @@ var manual = flag.Bool("manual", false, "run in manual verification mode (server
 func main() {
 	flag.Parse()
 
+	// Unset env vars that leak from the developer shell so runs are reproducible
+	// and consistent with sibling starter examples.
+	_ = os.Unsetenv("_")
+	_ = os.Unsetenv("TERM")
+	_ = os.Unsetenv("TERM_SESSION_ID")
+
 	go mockConfigService()
 
 	svrBean := gs.Provide(&Demo{}).Export(gs.As[gs.Rooter]())
+	demo := svrBean.Interface().(*Demo)
+	// Print on every change so a manual run (-manual) can watch the hot-reload
+	// happen; the self-test reads the field directly.
+	demo.Message.OnChanged(func(newVal, oldVal string) {
+		if newVal != oldVal {
+			fmt.Printf("demo.message: %q -> %q\n", oldVal, newVal)
+		}
+	})
 
 	if !*manual {
 		go func() {
 			time.Sleep(1 * time.Second)
-			runTest(svrBean.Interface().(*Demo))
+			runTest(demo)
 		}()
 	} else {
 		fmt.Println("=== Manual verification mode ===")
@@ -67,50 +78,60 @@ func main() {
 	gs.Run()
 }
 
-// mockConfigService serves the two endpoints agollo needs for a cold load:
-// /services/config (meta service discovery) and /configs/{appId}/{cluster}/{ns}
-// (the namespace content).
-func mockConfigService() {
-	mux := http.NewServeMux()
-	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprintf(os.Stderr, "[mock-apollo] %s %s\n", r.Method, r.URL.String())
-		switch r.URL.Path {
-		case "/services/config":
-			fmt.Fprintf(w, `[{"appName":"demo","instanceId":"mock","homepageUrl":"http://%s"}]`, mockAddr)
-		case "/configfiles/json/demo/default/application":
-			// The /configfiles/json/... endpoint returns the raw JSON object
-			// (unmarshalled straight into the configurations map), not the
-			// ApolloConfig envelope.
-			fmt.Fprint(w, `{"demo.message":"hello-from-apollo"}`)
-		case "/notifications/v2":
-			w.WriteHeader(http.StatusNotModified) // no pending change
-		default:
-			w.WriteHeader(http.StatusNotFound)
-		}
-	})
-	_ = http.ListenAndServe(mockAddr, mux)
-}
-
 func runTest(d *Demo) {
 	ctx := context.Background()
+
+	// Cold load: the imported namespace was read at startup.
 	got := d.Message.Value()
 	if got != "hello-from-apollo" {
-		log.Errorf(ctx, log.TagAppDef, "CONFIG mismatch: got %q", got)
+		log.Error(ctx, log.TagAppDef,
+			log.String("got", got),
+			log.String("want", "hello-from-apollo"),
+			log.Msg("CONFIG mismatch"))
 		os.Exit(1)
 	}
 	fmt.Println("Apollo cold-load OK:", got)
-	syscall.Kill(os.Getpid(), syscall.SIGTERM)
+
+	// Publish a new value: the mock bumps its notification id, agollo's long
+	// poll returns and it re-fetches the namespace, and the starter triggers a
+	// property refresh that updates the bound gs.Dync field. Poll until the new
+	// value is visible or time out.
+	want := "hello-" + time.Now().Format("150405")
+	store.set(want)
+
+	deadline := time.Now().Add(15 * time.Second)
+	for time.Now().Before(deadline) {
+		if d.Message.Value() == want {
+			fmt.Println("hot-reload observed:", want)
+			syscall.Kill(os.Getpid(), syscall.SIGTERM)
+			return
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	log.Error(ctx, log.TagAppDef,
+		log.String("got", d.Message.Value()),
+		log.String("want", want),
+		log.Msg("hot-reload timeout"))
+	os.Exit(1)
 }
 
+// init sets the working directory of the application to the directory
+// where this source file resides.
+// This ensures that any relative file operations are based on the source file location,
+// not the process launch path.
 func init() {
 	var execDir string
 	_, filename, _, ok := runtime.Caller(0)
 	if ok {
 		execDir = filepath.Dir(filename)
 	}
-	if err := os.Chdir(execDir); err != nil {
+	err := os.Chdir(execDir)
+	if err != nil {
 		panic(err)
 	}
-	workDir, _ := os.Getwd()
+	workDir, err := os.Getwd()
+	if err != nil {
+		panic(err)
+	}
 	fmt.Println(workDir)
 }

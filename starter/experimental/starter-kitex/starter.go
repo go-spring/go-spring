@@ -246,6 +246,10 @@ func observabilityOptions(cfg Config) (opts []server.Option, localProvider provi
 // internally, so it runs in a goroutine while Run parks on the done channel;
 // Stop closes done to hand control back to Go-Spring.
 func (s *SimpleKitexServer) Run(ctx context.Context, sig gs.ReadySignal) error {
+	// The listening address rides on the context: every line this server logs
+	// about its own lifecycle carries it without repeating it.
+	ctx = log.WithFields(ctx, log.String("addr", s.cfg.Addr))
+
 	addr, err := net.ResolveTCPAddr("tcp", s.cfg.Addr)
 	if err != nil {
 		return errutil.Explain(err, "failed to resolve addr %s", s.cfg.Addr)
@@ -294,7 +298,7 @@ func (s *SimpleKitexServer) Run(ctx context.Context, sig gs.ReadySignal) error {
 
 	<-sig.TriggerAndWait()
 
-	log.Infof(ctx, log.TagAppDef, "kitex server starting on %s", s.cfg.Addr)
+	log.Info(ctx, log.TagAppDef, log.Msg("kitex server starting"))
 	errCh := make(chan error, 1)
 	go func() {
 		// Run binds the listener, registers into etcd and then blocks.
@@ -304,7 +308,9 @@ func (s *SimpleKitexServer) Run(ctx context.Context, sig gs.ReadySignal) error {
 	select {
 	case err = <-errCh:
 		if err != nil {
-			log.Errorf(ctx, log.TagAppDef, "kitex server failed on %s: %v", s.cfg.Addr, err)
+			log.Error(ctx, log.TagAppDef,
+				log.Err(err),
+				log.Msg("kitex server failed"))
 		}
 		return errutil.Explain(err, "failed to serve on %s", s.cfg.Addr)
 	case <-s.done:
@@ -318,7 +324,9 @@ func (s *SimpleKitexServer) Run(ctx context.Context, sig gs.ReadySignal) error {
 // threading the shutdown context into the provider's Shutdown. Kitex's Stop
 // takes no context, so ctx is otherwise only used for logging.
 func (s *SimpleKitexServer) Stop(ctx context.Context) error {
-	log.Infof(ctx, log.TagAppDef, "kitex server shutting down on %s", s.cfg.Addr)
+	log.Info(ctx, log.TagAppDef,
+		log.String("addr", s.cfg.Addr),
+		log.Msg("kitex server shutting down"))
 	err := s.svr.Stop()
 	if s.otelProvider != nil {
 		_ = s.otelProvider.Shutdown(ctx)

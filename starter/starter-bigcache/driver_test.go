@@ -37,7 +37,7 @@ func TestDefaultDriverBuildsAWorkingCache(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateClient: %v", err)
 	}
-	defer func() { _ = c.Destroy() }()
+	defer func() { _ = c.Close() }()
 
 	if err := c.Set(context.Background(), "k", []byte("v")); err != nil {
 		t.Fatalf("Set: %v", err)

@@ -7,7 +7,9 @@ Kubernetes ConfigMap config loading with starter-config-k8s.
 - **ConfigMap loading**: Read config from K8s ConfigMap
 - **Hot reload**: Watch ConfigMap changes and refresh dynamically
 
-> Note: This example needs to run inside a Kubernetes cluster. `check.sh` skips when no cluster is available.
+> Note: reading and watching a real ConfigMap needs a Kubernetes cluster. Without
+> one the example still boots and self-terminates (the import is `optional:`),
+> and `check.sh` exercises the provider against the client-go fake clientset.
 
 ## Manual Testing
 
@@ -21,10 +23,18 @@ go run . -manual
 
 Running directly on a local machine prints a message and exits normally. Press `Ctrl+C` to stop after verification.
 
+In another terminal, edit the ConfigMap and watch the field print:
+
+```bash
+kubectl edit configmap app-config      # or: kubectl patch configmap app-config ...
+# prints: demo.message: "..." -> "manual-1"
+```
+
 ## Smoke Test
 
 ```bash
 ./check.sh
 ```
 
-`check.sh` runs the example; skips automatically when no K8s cluster is available.
+`check.sh` runs the unit tests (fake clientset, no cluster needed) and then boots
+the example; outside a cluster the example self-terminates with exit code 0.

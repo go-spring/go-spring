@@ -17,6 +17,7 @@
 package loadbalance
 
 import (
+	"context"
 	"sync"
 
 	"go-spring.org/cloud/discovery"
@@ -84,7 +85,7 @@ func (b *leastConn) Pick(eps []discovery.Endpoint, _ PickInfo) (discovery.Endpoi
 // Complete decrements the in-flight count for ep.Addr. The count reaching zero
 // deletes the entry, so a repeated Complete for the same request is a harmless
 // no-op rather than a negative count.
-func (b *leastConn) Complete(ep discovery.Endpoint, _ error) {
+func (b *leastConn) Complete(_ context.Context, ep discovery.Endpoint, _ error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	if n := b.inflight[ep.Addr]; n <= 1 {

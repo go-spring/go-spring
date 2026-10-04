@@ -50,7 +50,7 @@ func (p *closeRecorderProvider) Load(optional bool, source string) (map[string]s
 	return nil, nil
 }
 
-func (p *closeRecorderProvider) Close() error {
+func (p *closeRecorderProvider) Close(context.Context) error {
 	p.closes.Add(1)
 	return nil
 }

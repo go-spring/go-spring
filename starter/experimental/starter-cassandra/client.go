@@ -15,12 +15,12 @@
  */
 
 // client.go is the "resource entity" concept of this starter: the Client
-// wrapper Cassandra sessions are injected as, plus its lifecycle (construction/
-// Destroy), the service label, and the guard seam that declares each statement's
-// identity and routes it through the resilience executor. gocql exposes no
-// reject-capable middleware, so the guard rides the guarded *Query wrapper every
-// Client.Query/Client.Bind call returns (query.go) — coverage of the normal
-// statement path is transparent, no opt-in helper required.
+// wrapper Cassandra sessions are injected as, its lifecycle (construction/
+// Close), and the statement builders that run through per-query chains
+// (query.go). gocql exposes no reject-capable middleware, so the chain rides
+// the guarded *Query wrapper every Client.Query/Client.Bind call returns —
+// coverage of the normal statement path is transparent, no opt-in helper
+// required.
 package StarterCassandra
 
 import (
@@ -29,17 +29,14 @@ import (
 
 	"github.com/gocql/gocql"
 	"go-spring.org/cloud"
-	"go-spring.org/cloud/observability"
 	"go-spring.org/cloud/resilience"
 )
 
-// Client is the wrapper bean Cassandra sessions are injected as. The raw
-// *gocql.Session is an unexported field, not an embedded one: [NewClient] is
-// the only way to build a Client, so a client can never exist without its
-// identity (the service label), and the method surface below is the whole API.
-// There is deliberately no exported accessor for the raw session: that would let
-// a caller bypass the declaration and governance layers without it showing up in
-// review.
+// Client is the wrapper bean Cassandra sessions are injected as. It holds the
+// raw *gocql.Session as the exported [Client.Session] — a read-only handle,
+// never to run statements through, that would bypass the chains — plus what
+// every per-query chain is assembled around. [NewClient] is the only way to
+// build a Client, so a client can never exist without its identity.
 //
 // The type is exported because gocql (like gomemcache) offers no
 // reject-capable hook/plugin point, so the only way to observe and protect
@@ -48,22 +45,19 @@ import (
 // too, so a custom driver works with the same type the ecosystem sees.
 //
 // gocql exposes more than the guarded statement path (session tuning, batches,
-// metadata). None of that promotes any more — the field is unexported — so
-// each of those methods is delegated explicitly below.
+// metadata). None of that promotes — the session is a plain field — so each of
+// those methods is delegated explicitly below.
 type Client struct {
-	// session is the raw gocql session. Unexported so [NewClient] is the only
-	// constructor — see the type doc.
-	session *gocql.Session
-
-	// serviceLabel is the resilience service key ("cassandra:<host>") exec
-	// scopes limiter/breaker state by. Fixed by [NewClient] from the connection
-	// config.
-	serviceLabel string
+	// Session is the raw gocql session — the original object, not a wrapper.
+	// A handle to READ (session tuning goes through the delegations below),
+	// never to run statements through: that would bypass the chain.
+	Session *gocql.Session
 
 	// exec is the resilience executor protecting every statement, set by
-	// [NewClient] from the governance bundle — an observed-only, loudly-unmanaged
-	// executor when the bundle is zero. It is also the single emitter of the
-	// statement's span, metrics and access log.
+	// [NewClient] from the governance bundle — an observed-only,
+	// loudly-unmanaged executor when the bundle is zero. Held for teardown
+	// only: the chains are per-query, so there is no session-level chain head
+	// whose Release could close it — [Client.Close] is that release point.
 	exec chain.Executor
 }
 
@@ -92,35 +86,46 @@ func NewClient(session *gocql.Session, cfg Config, params cloud.ClientParams) *C
 	}
 	serviceLabel := resilience.ServiceLabel("cassandra", host)
 	return &Client{
-		session:      session,
-		serviceLabel: serviceLabel,
-		exec:         params.ExecutorFor("cassandra", serviceLabel),
+		Session: session,
+		exec:    params.ExecutorFor("cassandra", serviceLabel),
 	}
 }
 
-// Destroy releases the resilience executor and closes the session. It is the gs
-// destroy method.
-func (o *Client) Destroy() error {
+// Close releases the resilience executor and closes the session. It is the gs
+// destroy method, and the one place the client touches the executor: the
+// chains are per-query, so the executor's session-level release point lives
+// here rather than in a layer. gocql's Close is idempotent, so calling Close
+// twice is safe apart from the executor already being closed (best-effort).
+func (o *Client) Close() error {
 	if o.exec != nil {
 		_ = o.exec.Close()
 	}
-	o.session.Close()
+	o.Session.Close()
 	return nil
 }
 
-// guard declares the statement's identity and routes call through the client's
-// executor. It is the single guarded seam every statement path rides — the
-// Query/Bind wrappers in query.go and the Exec alias below.
-//
-// The span, duration metrics and access log are not emitted here: declaring the
-// identity is this layer's whole job now, and the resilience layer (inside exec)
-// emits from the one point on the chain that sees the whole call, retries
-// included. When the client runs unmanaged (a zero governance bundle) the
-// executor is an observed-only pass-through, so the call runs with a single
-// function-call overhead.
-func (o *Client) guard(ctx context.Context, op, stmt string, call func(context.Context) error) error {
-	ctx = observability.WithOperation(ctx, operation(op, stmt))
-	return o.exec.Execute(ctx, call)
+// Query mirrors (*gocql.Session).Query but returns a guarded wrapper instead
+// of a raw *gocql.Query, so the normal statement path is transparently
+// protected. It is the only signature change versus a raw session — see the
+// Query type comment in query.go for the chaining caveat.
+func (o *Client) Query(stmt string, values ...any) *Query {
+	q := &Query{Query: o.Session.Query(stmt, values...), stmt: stmt}
+	q.InnerQuery = o.chain(q)
+	return q
+}
+
+// Bind mirrors (*gocql.Session).Bind for the same reason as Query: bound
+// statements get the same transparent chain.
+func (o *Client) Bind(stmt string, b func(q *gocql.QueryInfo) ([]any, error)) *Query {
+	q := &Query{Query: o.Session.Bind(stmt, b), stmt: stmt}
+	q.InnerQuery = o.chain(q)
+	return q
+}
+
+// chain assembles one query's chain: identity over governance over the query's
+// own raw adapter.
+func (o *Client) chain(q *Query) InnerQuery {
+	return NewObsQuery(NewGuardQuery(NewRawQuery(q), o.exec), q.stmt)
 }
 
 // Exec executes a statement synchronously through the guarded path. It is a
@@ -141,53 +146,47 @@ func (o *Client) Exec(ctx context.Context, stmt string, values ...any) error {
 
 // AwaitSchemaAgreement waits for schema agreement across the cluster.
 func (o *Client) AwaitSchemaAgreement(ctx context.Context) error {
-	return o.session.AwaitSchemaAgreement(ctx)
+	return o.Session.AwaitSchemaAgreement(ctx)
 }
 
 // SetConsistency sets the default consistency level for the session.
-func (o *Client) SetConsistency(cons gocql.Consistency) { o.session.SetConsistency(cons) }
+func (o *Client) SetConsistency(cons gocql.Consistency) { o.Session.SetConsistency(cons) }
 
 // SetPageSize sets the default page size for queries on the session.
-func (o *Client) SetPageSize(n int) { o.session.SetPageSize(n) }
+func (o *Client) SetPageSize(n int) { o.Session.SetPageSize(n) }
 
 // SetPrefetch sets the default prefetch (fraction of the page size) for the
 // session.
-func (o *Client) SetPrefetch(p float64) { o.session.SetPrefetch(p) }
+func (o *Client) SetPrefetch(p float64) { o.Session.SetPrefetch(p) }
 
 // SetTrace sets the tracer the session reports query traces to.
-func (o *Client) SetTrace(trace gocql.Tracer) { o.session.SetTrace(trace) }
-
-// Close closes the session's connections. It exists because the raw session has
-// it: the field is unexported, so nothing is promoted and the method would
-// otherwise be reachable only through [Client.Destroy]. gocql documents that
-// Close is idempotent, so calling it here and again from Destroy is safe.
-func (o *Client) Close() { o.session.Close() }
+func (o *Client) SetTrace(trace gocql.Tracer) { o.Session.SetTrace(trace) }
 
 // Closed reports whether the session has been closed.
-func (o *Client) Closed() bool { return o.session.Closed() }
+func (o *Client) Closed() bool { return o.Session.Closed() }
 
 // KeyspaceMetadata returns the metadata for the named keyspace.
 func (o *Client) KeyspaceMetadata(keyspace string) (*gocql.KeyspaceMetadata, error) {
-	return o.session.KeyspaceMetadata(keyspace)
+	return o.Session.KeyspaceMetadata(keyspace)
 }
 
 // NewBatch creates a new batch of the given type.
-func (o *Client) NewBatch(typ gocql.BatchType) *gocql.Batch { return o.session.NewBatch(typ) }
+func (o *Client) NewBatch(typ gocql.BatchType) *gocql.Batch { return o.Session.NewBatch(typ) }
 
 // ExecuteBatch executes a batch, atomically by default. Batch execution does
 // not ride the guarded statement path (the same coverage the pre-wrapper client
 // had): route individual statements through [Client.Query]/[Client.Exec] when
 // per-statement resilience is wanted.
-func (o *Client) ExecuteBatch(batch *gocql.Batch) error { return o.session.ExecuteBatch(batch) }
+func (o *Client) ExecuteBatch(batch *gocql.Batch) error { return o.Session.ExecuteBatch(batch) }
 
 // ExecuteBatchCAS executes a batch as a light-weight transaction, returning
 // whether it was applied and the result iterator.
 func (o *Client) ExecuteBatchCAS(batch *gocql.Batch, dest ...any) (applied bool, iter *gocql.Iter, err error) {
-	return o.session.ExecuteBatchCAS(batch, dest...)
+	return o.Session.ExecuteBatchCAS(batch, dest...)
 }
 
 // MapExecuteBatchCAS executes a batch as a light-weight transaction, scanning
 // the first row into dest.
 func (o *Client) MapExecuteBatchCAS(batch *gocql.Batch, dest map[string]any) (applied bool, iter *gocql.Iter, err error) {
-	return o.session.MapExecuteBatchCAS(batch, dest)
+	return o.Session.MapExecuteBatchCAS(batch, dest)
 }

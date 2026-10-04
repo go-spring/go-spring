@@ -60,6 +60,7 @@ var manual = flag.Bool("manual", false, "run in manual verification mode (server
 
 func main() {
 	flag.Parse()
+
 	// Unset env vars that leak from the developer shell so runs are reproducible
 	// and consistent with sibling starter examples.
 	_ = os.Unsetenv("_")

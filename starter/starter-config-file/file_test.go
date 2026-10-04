@@ -17,6 +17,7 @@
 package StarterConfigFile
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"testing"
@@ -112,7 +113,7 @@ func TestCloseReleasesWatchersAndLoadRearms(t *testing.T) {
 		t.Fatalf("after Load: %d watchers, want 1", n)
 	}
 
-	if err := ctl.Close(); err != nil {
+	if err := ctl.Close(context.Background()); err != nil {
 		t.Fatalf("Close: %v", err)
 	}
 	if n := watchCount(&ctl.watchCore); n != 0 {
@@ -125,7 +126,7 @@ func TestCloseReleasesWatchersAndLoadRearms(t *testing.T) {
 	if n := watchCount(&ctl.watchCore); n != 1 {
 		t.Errorf("after Load following Close: %d watchers, want 1", n)
 	}
-	if err := ctl.Close(); err != nil {
+	if err := ctl.Close(context.Background()); err != nil {
 		t.Fatalf("final Close: %v", err)
 	}
 }

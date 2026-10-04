@@ -17,6 +17,7 @@
 package loadbalance
 
 import (
+	"context"
 	"math"
 	"math/rand/v2"
 	"sync"
@@ -128,7 +129,7 @@ func (b *p2c) Pick(eps []discovery.Endpoint, _ PickInfo) (discovery.Endpoint, er
 // Complete pops the oldest outstanding Pick timestamp for ep.Addr, feeds the
 // observed duration into the latency EWMA (or the failure penalty when err is
 // non-nil), and releases the in-flight slot.
-func (b *p2c) Complete(ep discovery.Endpoint, err error) {
+func (b *p2c) Complete(_ context.Context, ep discovery.Endpoint, err error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 

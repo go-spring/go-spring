@@ -111,6 +111,10 @@ func NewHttpServer(cfg Config, reg ServiceRegister) *HttpServer {
 // goroutine while Run parks on the done channel; Stop closes done to hand control
 // back to Go-Spring after tearing the App down.
 func (s *HttpServer) Run(ctx context.Context, sig gs.ReadySignal) error {
+	// The listening address rides on the context: every line this server logs
+	// about its own lifecycle carries it without repeating it.
+	ctx = log.WithFields(ctx, log.String("addr", s.cfg.Addr))
+
 	// Middleware order: recovery outermost, then tracing (starts the span), then
 	// the access log (one line per call — the per-call signal kratos/v2 does not
 	// emit itself), then metrics (records under the active span/context).
@@ -166,7 +170,7 @@ func (s *HttpServer) Run(ctx context.Context, sig gs.ReadySignal) error {
 
 	<-sig.TriggerAndWait()
 
-	log.Infof(ctx, log.TagAppDef, "kratos http server starting on %s", s.cfg.Addr)
+	log.Info(ctx, log.TagAppDef, log.Msg("kratos http server starting"))
 	errCh := make(chan error, 1)
 	go func() {
 		errCh <- s.app.Run()
@@ -175,7 +179,9 @@ func (s *HttpServer) Run(ctx context.Context, sig gs.ReadySignal) error {
 	select {
 	case err := <-errCh:
 		if err != nil {
-			log.Errorf(ctx, log.TagAppDef, "kratos http app exited with error: %v", err)
+			log.Error(ctx, log.TagAppDef,
+				log.Err(err),
+				log.Msg("kratos http app exited with error"))
 		}
 		return errutil.Explain(err, "kratos http app exited with error")
 	case <-s.done:
@@ -187,7 +193,9 @@ func (s *HttpServer) Run(ctx context.Context, sig gs.ReadySignal) error {
 // its shutdown sequence. The App teardown itself is driven by Run via
 // app.Stop() (which takes no context), so ctx only tags the shutdown log.
 func (s *HttpServer) Stop(ctx context.Context) error {
-	log.Infof(ctx, log.TagAppDef, "kratos http server shutting down on %s", s.cfg.Addr)
+	log.Info(ctx, log.TagAppDef,
+		log.String("addr", s.cfg.Addr),
+		log.Msg("kratos http server shutting down"))
 	close(s.done)
 	return nil
 }

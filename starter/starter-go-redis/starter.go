@@ -128,7 +128,17 @@ func init() {
 // observed-only, loudly-unmanaged executor.
 func newClient(ctx *gs.ContextProvider, c Config, d Driver, discoveryLabel string,
 	center *governance.Center) (*Client, error) {
-	log.Debugf(ctx.Context, log.TagAppDef, "creating redis client, addr=%s mode=%s", c.Addr, c.Mode)
+	// The client's identity rides on a context derived here: every line below
+	// carries it without repeating it. The provider's own context is left
+	// alone — that one is the shared application context, not this
+	// constructor's.
+	cctx := log.WithFields(ctx.Context,
+		log.String("addr", c.Addr),
+		log.String("mode", c.Mode))
+
+	log.Debug(cctx, log.TagAppDef, func() []log.Field {
+		return []log.Field{log.Msg("creating redis client")}
+	})
 
 	if err := validateConfig(ctx.Context, c); err != nil {
 		return nil, err
@@ -147,7 +157,9 @@ func newClient(ctx *gs.ContextProvider, c Config, d Driver, discoveryLabel strin
 	// When service discovery owns the address, a configured addr can never take
 	// effect — say so instead of dropping it silently.
 	if c.ServiceName != "" && c.Addr != "" {
-		log.Warnf(ctx.Context, log.TagAppDef, "redis: addr %q is ignored for instance with service-name %q: the address is resolved via service discovery", c.Addr, c.ServiceName)
+		log.Warn(cctx, log.TagAppDef,
+			log.String("service_name", c.ServiceName),
+			log.Msg("redis: addr is ignored for an instance with a service-name: the address is resolved via service discovery"))
 	}
 	// No company Driver bean → fall back to the bundled default assembly.
 	if d == nil {
@@ -159,7 +171,9 @@ func newClient(ctx *gs.ContextProvider, c Config, d Driver, discoveryLabel strin
 	w, err := d.CreateClient(ctx.Context, c,
 		cloud.ClientParams{Resilience: center.Resilience(), Fault: center.Fault(), Loadbalance: center.Loadbalance(), Discovery: disc})
 	if err != nil {
-		log.Errorf(ctx.Context, log.TagAppDef, "redis: create client failed: %v", err)
+		log.Error(cctx, log.TagAppDef,
+			log.Err(err),
+			log.Msg("redis: create client failed"))
 		return nil, errutil.Explain(err, "failed to create redis client")
 	}
 	// Fail fast (opt-in, e.g. ping=true): ping the backend at startup so a
@@ -175,12 +189,14 @@ func newClient(ctx *gs.ContextProvider, c Config, d Driver, discoveryLabel strin
 		err = HealthCheck(pingCtx, w)
 		cancel()
 		if err != nil {
-			log.Errorf(ctx.Context, log.TagAppDef, "redis: startup ping failed: %v", err)
+			log.Error(cctx, log.TagAppDef,
+				log.Err(err),
+				log.Msg("redis: startup ping failed"))
 			_ = w.Destroy()
 			return nil, errutil.Explain(err, "redis: startup ping failed")
 		}
 	}
-	log.Infof(ctx.Context, log.TagAppDef, "redis client initialized, addr=%s mode=%s", c.Addr, c.Mode)
+	log.Info(cctx, log.TagAppDef, log.Msg("redis client initialized"))
 	return w, nil
 }
 
@@ -196,7 +212,12 @@ func newClient(ctx *gs.ContextProvider, c Config, d Driver, discoveryLabel strin
 // the client. Cluster mode self-discovers its nodes, so no endpoint-selection
 // pool exists and the bundle carries no loadbalance authority.
 func newClusterClient(ctx *gs.ContextProvider, c Config, d Driver, center *governance.Center) (*Client, error) {
-	log.Debugf(ctx.Context, log.TagAppDef, "creating redis cluster client, addrs=%v", c.Addrs)
+	// See newClient: the cluster's node list rides on a context derived here.
+	cctx := log.WithFields(ctx.Context, log.Strings("addrs", c.Addrs))
+
+	log.Debug(cctx, log.TagAppDef, func() []log.Field {
+		return []log.Field{log.Msg("creating redis cluster client")}
+	})
 
 	if err := validateConfig(ctx.Context, c); err != nil {
 		return nil, err
@@ -208,13 +229,16 @@ func newClusterClient(ctx *gs.ContextProvider, c Config, d Driver, center *gover
 	}
 	cd, ok := d.(ClusterDriver)
 	if !ok {
-		log.Errorf(ctx.Context, log.TagAppDef, "redis: the configured Driver does not support cluster mode (implement ClusterDriver)")
+		log.Error(cctx, log.TagAppDef,
+			log.Msg("redis: the configured Driver does not support cluster mode (implement ClusterDriver)"))
 		return nil, errutil.Explain(nil, "redis: the configured Driver does not support cluster mode (implement ClusterDriver)")
 	}
 	w, err := cd.CreateClusterClient(ctx.Context, c,
 		cloud.ClientParams{Resilience: center.Resilience(), Fault: center.Fault()})
 	if err != nil {
-		log.Errorf(ctx.Context, log.TagAppDef, "redis: create cluster client failed: %v", err)
+		log.Error(cctx, log.TagAppDef,
+			log.Err(err),
+			log.Msg("redis: create cluster client failed"))
 		return nil, errutil.Explain(err, "failed to create redis cluster client")
 	}
 	if c.Ping {
@@ -222,12 +246,14 @@ func newClusterClient(ctx *gs.ContextProvider, c Config, d Driver, center *gover
 		err = HealthCheck(pingCtx, w)
 		cancel()
 		if err != nil {
-			log.Errorf(ctx.Context, log.TagAppDef, "redis: cluster startup ping failed: %v", err)
+			log.Error(cctx, log.TagAppDef,
+				log.Err(err),
+				log.Msg("redis: cluster startup ping failed"))
 			_ = w.Destroy()
 			return nil, errutil.Explain(err, "redis: startup ping failed")
 		}
 	}
-	log.Infof(ctx.Context, log.TagAppDef, "redis cluster client initialized, addrs=%v", c.Addrs)
+	log.Info(cctx, log.TagAppDef, log.Msg("redis cluster client initialized"))
 	return w, nil
 }
 

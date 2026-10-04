@@ -57,16 +57,30 @@ var manual = flag.Bool("manual", false, "run in manual verification mode (server
 
 func main() {
 	flag.Parse()
+
 	// Unset shell-leaked env vars so runs are reproducible across examples.
 	_ = os.Unsetenv("_")
 	_ = os.Unsetenv("TERM")
 	_ = os.Unsetenv("TERM_SESSION_ID")
 
 	demoBean := gs.Provide(&Demo{}).Export(gs.As[gs.Rooter]())
+	demo := demoBean.Interface().(*Demo)
+	// Print on every change so a manual run (-manual) can watch the hot-reload
+	// happen; the self-test reads the field directly.
+	demo.Message.OnChanged(func(newVal, oldVal string) {
+		if newVal != oldVal {
+			fmt.Printf("demo.message: %q -> %q\n", oldVal, newVal)
+		}
+	})
 
 	if !*manual {
-		time.Sleep(500 * time.Millisecond)
-		report(demoBean.Interface().(*Demo))
+		// Read the bound field only after the app has started: properties are
+		// loaded (and the Dync fields injected) during gs.Run(), so reading on
+		// this goroutine before it would show a zero value even in a cluster.
+		go func() {
+			time.Sleep(500 * time.Millisecond)
+			report(demo)
+		}()
 	} else {
 
 		fmt.Println("=== Manual verification mode ===")

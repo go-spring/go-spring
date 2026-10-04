@@ -70,6 +70,7 @@ var manual = flag.Bool("manual", false, "run in manual verification mode (server
 
 func main() {
 	flag.Parse()
+
 	_ = os.Unsetenv("_")
 	_ = os.Unsetenv("TERM")
 	_ = os.Unsetenv("TERM_SESSION_ID")
@@ -193,9 +194,10 @@ func writeSecret(kv map[string]string) error {
 	return nil
 }
 
-// init sets the working directory of the application to the directory where
-// this source file resides, so relative file operations are based on the source
-// file location, not the process launch path.
+// init sets the working directory of the application to the directory
+// where this source file resides.
+// This ensures that any relative file operations are based on the source file location,
+// not the process launch path.
 func init() {
 	var execDir string
 	_, filename, _, ok := runtime.Caller(0)

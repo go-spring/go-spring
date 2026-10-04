@@ -17,6 +17,7 @@
 package provider
 
 import (
+	"context"
 	"errors"
 	"os"
 	"strings"
@@ -51,7 +52,12 @@ type Provider interface {
 
 	// Close stops everything Load installed (watchers, listeners, clients).
 	// It must be safe to call repeatedly.
-	Close() error
+	//
+	// The context is the shutdown context: it carries the shutdown's trace and
+	// values but is not cancelled, so a close that talks to a remote server
+	// (stopping a listener, revoking a lease) still gets to finish. It is the
+	// provider's own timeout, if any, that bounds the call.
+	Close(ctx context.Context) error
 }
 
 // ProviderFunc adapts a plain read function to Provider, for a source that
@@ -65,7 +71,7 @@ func (f ProviderFunc) Load(optional bool, source string) (map[string]string, err
 
 // Close implements Provider: a plain function installs nothing, so there is
 // nothing to stop.
-func (ProviderFunc) Close() error { return nil }
+func (ProviderFunc) Close(context.Context) error { return nil }
 
 // Register registers a Provider for a specific configuration source type.
 // Must be called in init functions only.
@@ -134,10 +140,10 @@ func Load(source string) (map[string]string, error) {
 // itself is left intact: registration happens in init, but Close runs once per
 // application instance, and a later instance must still find its providers.
 // Every failing provider is reported; one failure does not skip the rest.
-func CloseAll() error {
+func CloseAll(ctx context.Context) error {
 	var errs []error
 	for name, p := range providers {
-		if err := p.Close(); err != nil {
+		if err := p.Close(ctx); err != nil {
 			errs = append(errs, errutil.Explain(err, "close provider %s error", name))
 		}
 	}

@@ -158,6 +158,15 @@ func (d *consulDiscovery) Resolve(ctx context.Context, name string, opts ...disc
 // stale addresses are safer than none. It runs until the backend's lifetime
 // context ends.
 func (d *consulDiscovery) watchLoop(name string, e *serviceEntry) {
+	// The watched service's identity rides on the context for the life of this
+	// watcher: every line below carries it without repeating it. The goroutine
+	// outlives any request, so the context is minted here.
+	ctx := log.WithFields(context.Background(),
+		log.String("system", d.obs.System()),
+		log.String("center", d.obs.Center()),
+		log.String("service", name),
+		log.String("operation", "sync"),
+	)
 	var idx uint64
 	for d.bgCtx.Err() == nil {
 		q := (&api.QueryOptions{WaitTime: 5 * time.Minute, WaitIndex: idx}).WithContext(d.bgCtx)
@@ -167,17 +176,10 @@ func (d *consulDiscovery) watchLoop(name string, e *serviceEntry) {
 				return
 			}
 			d.obs.Synced(name, err)
-			log.Warn(context.Background(), starterTag, append(
-				[]log.Field{
-					log.String("system", d.obs.System()),
-					log.String("center", d.obs.Center()),
-					log.String("service", name),
-					log.String("operation", "sync"),
-					log.String("status", discovery.StatusOf(err)),
-					log.Err(err),
-				},
-				log.Msg("discovery-consul: watch failed (keeping stale snapshot)"),
-			)...)
+			log.Warn(ctx, starterTag,
+				log.String("status", discovery.StatusOf(err)),
+				log.Err(err),
+				log.Msg("discovery-consul: watch failed (keeping stale snapshot)"))
 			select {
 			case <-d.bgCtx.Done():
 				return
@@ -191,15 +193,8 @@ func (d *consulDiscovery) watchLoop(name string, e *serviceEntry) {
 			// The agent restarted and its index counter reset; dropping ours makes
 			// the next query answer immediately instead of blocking. Worth a line:
 			// the snapshot about to be served is only as fresh as the restart.
-			log.Info(context.Background(), starterTag, append(
-				[]log.Field{
-					log.String("system", d.obs.System()),
-					log.String("center", d.obs.Center()),
-					log.String("service", name),
-					log.String("operation", "sync"),
-				},
-				log.Msgf("discovery-consul: watch saw the index go backwards (%d -> %d); treating it as an agent restart", idx, meta.LastIndex),
-			)...)
+			log.Info(ctx, starterTag,
+				log.Msgf("discovery-consul: watch saw the index go backwards (%d -> %d); treating it as an agent restart", idx, meta.LastIndex))
 			idx = 0
 			continue
 		}

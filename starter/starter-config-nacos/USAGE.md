@@ -1,7 +1,7 @@
 # starter-config-nacos Usage — Reference
 
 Detailed usage reference. Overview: [README.md](README.md). All behavior claims are verified
-against the starter source (`starter.go`, `starter_test.go`, `fake_client_test.go`),
+against the starter source (`starter.go`, `starter_test.go`),
 the core import grammar (`spring/conf/provider/provider.go:74-104`)
 and the refresh chain (`spring/gs/internal/gs_app/app.go`), and the docker-gated smoke-verified
 [example/](example/). **Nacos's own semantics (dataId / group / namespace, server deployment,
@@ -9,7 +9,7 @@ console usage) are the [Nacos docs](https://nacos.io/en/docs/v2/guide/user/confi
 everything below is go-spring's increment.
 
 **Activation** — a single role: active whenever a `nacos:` entry appears in
-`spring.config.import` (the blank import registers the provider: `starter.go:58`). No `enabled`
+`spring.config.import` (the blank import registers the provider: `starter.go:49`). No `enabled`
 key.
 
 Governance rule sourcing from Nacos now lives in its own module,
@@ -120,7 +120,7 @@ assert) and `example/check.sh` is the docker-gated smoke gate.
 
 ```
 blank-import starter-config-nacos
-  └─ init(): conf.RegisterProvider("nacos", newNacosCtrl())      starter.go:58
+  └─ init(): conf.RegisterProvider("nacos", newNacosCtrl())      starter.go:49
 
 gs.Run()
   ├─ App.Start(): app.p.Refresh()                                     app.go "Start"
@@ -128,11 +128,11 @@ gs.Run()
   │         └─ conf.Load("optional:nacos:...")                        provider.go:74
   │              ├─ cut "optional:" prefix → optional=true            provider.go:85
   │              ├─ cut "nacos:" prefix → provider lookup             provider.go:89
-  │              └─ nacosCtrl.Load(optional, source)                  starter.go:202
-  │                   ├─ parseSource → configSource                   starter.go:103
-  │                   ├─ clientFor (cached per server|ns|user|pass)   starter.go:153
-  │                   ├─ registerListener (deduped)                   starter.go:249
-  │                   ├─ GetConfig → reader.Read(format) → flatten    starter.go:219-244
+  │              └─ nacosCtrl.Load(optional, source)                  starter.go:244
+  │                   ├─ parseSource → configSource                   starter.go:149
+  │                   ├─ clientFor (cached per server|ns|user|pass)   starter.go:211
+  │                   ├─ registerListener (deduped)                   starter.go:323
+  │                   ├─ GetConfig → reader.Read(format) → flatten    starter.go:244
   │                   └─ keys merged into the layered property storage
   ├─ IoC container wiring
   ├─ Runners → Servers → ready
@@ -150,7 +150,7 @@ error before the app has started, so an early `TriggerRefresh` is a safe no-op.
 ```
 Nacos push on dataId
   └─ SDK OnChange (installed by registerListener, deduped per client+group+dataId)
-       └─ nacosCtrl.TriggerRefresh                                     starter.go:83
+       └─ nacosCtrl.TriggerRefresh                                     starter.go:129
             └─ gs.RefreshProperties()  (returns error before the app starts)
                  └─ App.RefreshProperties()                            app.go:247
                       ├─ reloads ALL sources: files, env, cmd args, and re-runs every
@@ -169,7 +169,7 @@ The listener is registered **before** the fetch, unconditionally. If `ListenConf
 were only installed after a successful `GetConfig`, an `optional:` import against a
 data id that does not exist yet would return early and never install the listener —
 a later publish would never trigger a refresh. This ordering is why `optional:`
-imports still hot-reload once the data id appears (starter.go:249).
+imports still hot-reload once the data id appears (starter.go:323).
 
 ### 2.3 Governance rules-push path (moved out)
 
@@ -184,19 +184,19 @@ Governance rule sourcing from Nacos now lives in its own module,
 
 Core grammar (provider.go:74-104): `[optional:]<provider>:<path>` — `optional:` prefix first,
 then the provider name, then everything after the first `:` is the path. For `nacos` the path is
-`<host>:<port>/<dataId>?<query>` (parsed as a `nacos://` URL, starter.go:103-145). One dataId
+`<host>:<port>/<dataId>?<query>` (parsed as a `nacos://` URL, starter.go:149). One dataId
 per import entry; list multiple imports space/comma-separated in `spring.config.import`.
 
 | Part / param | Type | Default | Behavior / interactions | Misconfiguration consequence |
 |---|---|---|---|---|
-| `optional:` | prefix | absent (required) | Prefix of the **whole** source string, before `nacos:`. Skips the source on fetch error **or empty content** (warn log), letting startup proceed (starter.go:219-235). | Without it, a missing dataId or a down server aborts startup — usually what you want in prod, wrong for boostrap configs. |
-| `host:port` | string | — | **Required.** Exactly `host:port`; one server only (no cluster list). Non-numeric port rejected at parse (starter.go:187-197). | `noport` or `1.2.3.4:x` → startup error `nacos server address must be host:port`. ⚠ Nacos cluster users must front a VIP or accept single-server. |
+| `optional:` | prefix | absent (required) | Prefix of the **whole** source string, before `nacos:`. Skips the source on fetch error **or empty content** (warn log), letting startup proceed (starter.go:244). | Without it, a missing dataId or a down server aborts startup — usually what you want in prod, wrong for boostrap configs. |
+| `host:port` | string | — | **Required.** Exactly `host:port`; one server only (no cluster list). The port is validated when the client is created, not at parse (starter.go:221). | Missing or non-numeric port (`nohost/dataId`, `1.2.3.4:x/dataId`) → startup error `create nacos config client ... failed: address ... must be host:port`. ⚠ Nacos cluster users must front a VIP or accept single-server. |
 | `dataId` | string | — | **Required.** Path segment after the first `/`; also drives format inference. | Missing (`...8848` with no path) → startup error `missing data id`. |
-| `group` | string | `DEFAULT_GROUP` | Query param (starter.go:126-128). Nacos group semantics: official docs. | Wrong group → "config not found"; with `optional:` this degrades to a silent skip — verify with the startup `loaded nacos config` log. |
+| `group` | string | `DEFAULT_GROUP` | Query param (starter.go:166). Nacos group semantics: official docs. | Wrong group → "config not found"; with `optional:` this degrades to a silent skip — verify with the startup `loaded nacos config` log. |
 | `namespace` | string | empty (public) | Namespace **id**, not name. Part of the client cache key, so different namespaces get different clients. | Name-instead-of-id → empty config (same failure mode as wrong group). |
 | `username` / `password` | string | empty | Server auth; also part of the client cache key. | Missing on an auth-enabled server → GetConfig error at startup (or skip if optional). |
-| `format` | string | dataId extension, else `properties` | One of the reader's formats: `properties` / `yaml` / `toml` / `json`. Extension-less dataIds default to properties (starter.go:129-135). | Content/format mismatch → startup error `parse nacos config ... as <fmt> failed` (pinned by `TestLoadParseErrorPropagates`). |
-| `timeout-ms` | uint64 | `5000` | SDK request timeout per source (starter.go:136-143). Non-numeric rejected at parse. | Too low → flaky startup against a slow Nacos. |
+| `format` | string | dataId extension, else `properties` | One of the reader's formats: `properties` / `yaml` / `toml` / `json`. Extension-less dataIds default to properties (starter.go:179). | Content/format mismatch → startup error `parse nacos config ... as <fmt> failed` (pinned by `TestLoadParseErrorPropagates`). |
+| `timeout-ms` | uint64 | `5000` | SDK request timeout per source (starter.go:183). Non-numeric rejected at parse. | Too low → flaky startup against a slow Nacos. |
 
 ⚠ There is **no** `endpoint` query param and no cluster/address-list form — server is always a
 single `host:port`.
@@ -241,7 +241,8 @@ Governance rule sourcing from Nacos now lives in its own module,
 
 | Drill | Outcome |
 |---|---|
-| `nacos:onlydata` (no `host:port`) | startup error `missing nacos server address` |
+| `nacos:onlydata` (no `/`) | startup error `missing data id` (parsed as host `onlydata`, no path) |
+| `nacos:/app.yaml` (no host) | startup error `missing nacos server address` |
 | `nacos:127.0.0.1:8848` (no dataId) | startup error `missing data id` |
 | `...?timeout-ms=abc` | startup error `invalid timeout-ms` (parse-time rejection) |
 | required import, dataId absent | startup error `get nacos config ... failed` / `is empty` |
@@ -285,7 +286,7 @@ Governance rule sourcing from Nacos now lives in its own module,
 Suspects (for the audit ledger):
 
 - **Single-server address form**: no cluster list / `endpoint` param; every client is built from
-  one `host:port` (starter.go:170). Cluster deployments need an external VIP.
+  one `host:port` (starter.go:221). Cluster deployments need an external VIP.
 - **Refresh granularity**: one changed dataId triggers a full re-load of *all* sources and
   imports — correct but chatty; the listener dedup is what keeps this safe.
 - **No listener liveness signal**: no health indicator/metric; a silently dead listener

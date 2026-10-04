@@ -17,6 +17,7 @@
 package loadbalance
 
 import (
+	"context"
 	"slices"
 	"sort"
 	"strconv"
@@ -105,7 +106,7 @@ func (b *consistentHash) Pick(eps []discovery.Endpoint, info PickInfo) (discover
 }
 
 // Complete is a no-op: the ring cache is rebuilt from Pick inputs, not outcomes.
-func (b *consistentHash) Complete(discovery.Endpoint, error) {}
+func (b *consistentHash) Complete(_ context.Context, _ discovery.Endpoint, _ error) {}
 
 // rebuild reconstructs the ring only when the endpoint set changed, keyed by a
 // cheap order-independent fingerprint. Caller holds b.mu.

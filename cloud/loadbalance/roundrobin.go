@@ -17,6 +17,7 @@
 package loadbalance
 
 import (
+	"context"
 	"sync/atomic"
 
 	"go-spring.org/cloud/discovery"
@@ -53,4 +54,4 @@ func (b *roundRobin) Pick(eps []discovery.Endpoint, _ PickInfo) (discovery.Endpo
 }
 
 // Complete is a no-op: round-robin keeps no per-request state.
-func (b *roundRobin) Complete(discovery.Endpoint, error) {}
+func (b *roundRobin) Complete(_ context.Context, _ discovery.Endpoint, _ error) {}

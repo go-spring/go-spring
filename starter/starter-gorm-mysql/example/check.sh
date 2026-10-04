@@ -27,12 +27,14 @@ compose up -d
 
 # Wait for MySQL to report healthy (up to ~90s; first-run init is slow, and the
 # port opens before the server can actually serve queries).
+echo "== waiting for the service to be ready =="
 for _ in $(seq 1 45); do
     status="$(docker inspect -f '{{.State.Health.Status}}' starter-gorm-mysql 2>/dev/null || true)"
     [ "${status}" = "healthy" ] && break
     sleep 2
 done
 
+echo "== example boot =="
 go run . &
 pid=$!
 ( sleep 60; kill -9 "${pid}" 2>/dev/null ) &
@@ -41,4 +43,9 @@ rc=0
 wait "${pid}" 2>/dev/null || rc=$?
 kill "${watchdog}" 2>/dev/null || true
 wait "${watchdog}" 2>/dev/null || true
-exit "${rc}"
+if [ "${rc}" -ne 0 ]; then
+    echo "== FAILED ==" >&2
+    exit "${rc}"
+fi
+echo "== OK =="
+exit 0

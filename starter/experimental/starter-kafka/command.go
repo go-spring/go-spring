@@ -15,13 +15,11 @@
  */
 
 // command.go is the "produce/consume seam" concept of this starter: the
-// resilience layer (the [AttachGovernance] attach plus the clientGuards
-// registry) and the two guarded entry points an application calls instead of the
-// client's own methods — [GuardedProduceSync] and [GuardedConsume]. They are the
-// only places the resilience seam can attach: franz-go's async Produce returns
-// immediately, so only the synchronous ProduceSync path can be wrapped, and its
-// poll loop is owned by whoever calls PollFetches, so consumption can only be
-// guarded per record.
+// InnerKafka chain the synchronous produces ride (see entity.go) and the
+// per-record consume seam. franz-go's async Produce returns immediately, so
+// only the synchronous ProduceSync path can be chained, and the poll loop is
+// owned by whoever calls PollFetches, so consumption can only be guarded per
+// record.
 //
 // The per-call signals are not emitted here: each entry point declares the
 // operation's identity (see [operation]) on the ctx and hands the call to the
@@ -32,113 +30,102 @@ package StarterKafka
 import (
 	"context"
 	"go-spring.org/cloud/chain"
-	"sync"
 
 	"github.com/twmb/franz-go/pkg/kgo"
-	"go-spring.org/cloud"
 	"go-spring.org/cloud/observability"
 	"go-spring.org/cloud/resilience"
-	"go-spring.org/log"
 )
 
-// clientGuard is the per-client resilience attachment: the executor chain and
-// the stable serviceLabel it executes under, colocated so a guard lookup
-// reads the pair atomically (no torn exec/serviceLabel combination).
-type clientGuard struct {
-	exec         chain.Executor
-	serviceLabel string
+// serviceLabelOf fixes the governance label a broker list scopes
+// limiter/breaker state by.
+func serviceLabelOf(brokers string) string {
+	return resilience.ServiceLabel("kafka", brokers)
 }
 
-// clientGuards indexes the guard by the raw client bean, so the package-level
-// GuardedProduceSync can resolve it from a bare *kgo.Client and the destructor
-// can Close it. Only clients with resilience enabled appear here.
-var clientGuards sync.Map // *kgo.Client -> *clientGuard
-
-// AttachGovernance completes a franz-go client with the container's
-// service-governance capabilities: it resolves the client's executor from params
-// and indexes it by the raw client, so [GuardedProduceSync] and the consumer
-// loop can find it from the bare *kgo.Client. serviceLabel scopes the
-// limiter/breaker state per instance.
-//
-// This is the kafka (franz-go) seam of resilience: franz-go's async Produce
-// returns immediately (a record is handed to the internal producer and a
-// callback fires on completion), so wrapping it in exec.Execute has no meaning.
-// The synchronous ProduceSync path, which blocks until the broker acknowledges,
-// is what GuardedProduceSync protects.
-//
-// It is called by [DefaultDriver.CreateClient] while the client is being built —
-// governance is applied IN the constructor, not by a later step — and a custom
-// [Driver] calls it for the same reason: the client is only in the driver's
-// hands, so this is the one place the guard can be attached. brokers is the
-// client's identity; the executor is the one [cloud.ClientParams.ExecutorFor]
-// composes — the resilience authority's executor wrapped with fault injection
-// when the bundle is populated, and the observe-only [resilience.Unmanaged] one
-// when it is zero, so a client assembled without a container is still observed
-// (and says so once) rather than running bare.
-func AttachGovernance(cl *kgo.Client, brokers string, params cloud.ClientParams) {
-	serviceLabel := resilience.ServiceLabel("kafka", brokers)
-	clientGuards.Store(cl, &clientGuard{
-		exec:         params.ExecutorFor("kafka", serviceLabel),
-		serviceLabel: serviceLabel,
+// runGuarded routes call through the executor via [resilience.Run] — the
+// shared client-operation body — so the nil-executor pass-through and the
+// fault-injection edge (an attempt short-circuited before call ran) are
+// classified in one place. The call's declared identity (see [operation])
+// rides the ctx and is read by the executor, which emits the span, the metrics
+// and the access log.
+func runGuarded(ctx context.Context, exec chain.Executor, call func(context.Context) error) error {
+	_, err := resilience.Run(ctx, exec, func(attemptCtx context.Context) (struct{}, error) {
+		return struct{}{}, call(attemptCtx)
 	})
-}
-
-// closeResilience closes and forgets the guard behind cl, if any.
-func closeResilience(cl *kgo.Client) {
-	if v, ok := clientGuards.LoadAndDelete(cl); ok {
-		if err := v.(*clientGuard).exec.Close(); err != nil {
-			log.Warnf(context.Background(), log.TagAppDef, "kafka: resilience executor close failed: %v", err)
-		}
-	}
-}
-
-// guardOf resolves the resilience executor attached to cl, or nil when the
-// client carries none (a stand-alone client, e.g. built outside the starter).
-func guardOf(cl *kgo.Client) chain.Executor {
-	if v, ok := clientGuards.Load(cl); ok {
-		return v.(*clientGuard).exec
-	}
-	return nil
-}
-
-// guard routes call through the executor attached to cl, and otherwise runs it
-// inline. When resilience is disabled for the client this is a no-op
-// pass-through, so enabling protection is a zero-code opt-in on the caller side.
-//
-// Routing goes through [resilience.Run] — the shared client-operation body —
-// rather than the executor's Execute directly, so the nil-executor pass-through
-// and the fault-injection edge (an attempt short-circuited before call ran) are
-// classified in one place. The call's declared identity (see [operation]) rides
-// the ctx and is read by the executor, which emits the span, the metrics and the
-// access log.
-func guard(ctx context.Context, cl *kgo.Client, call func(context.Context) error) error {
-	_, err := resilience.Run(ctx, guardOf(cl),
-		func(attemptCtx context.Context) (struct{}, error) {
-			return struct{}{}, call(attemptCtx)
-		})
 	return err
 }
 
-// GuardedProduceSync produces recs synchronously on cl, routed through the
-// resilience executor attached to cl when governance is enabled. When
-// governance is disabled this behaves exactly like cl.ProduceSync. On
-// rejection (rate-limit or open circuit) the returned ProduceResults carries
-// the rejection error on every record, so .FirstErr() surfaces the sentinel
-// just like a real produce failure and the underlying produce is never invoked.
+// InnerKafka is the seam a client's synchronous produces run through.
+// franz-go delivers a concrete client and its hooks only observe (they do not
+// wrap or reject), so this interface is the ONLY way to modify what happens
+// under the promoted ProduceSync.
 //
-// The publish's identity is declared here, from the first record's topic, before
-// the call enters the executor — so the executor's span, metrics and access log
-// are named `publish` and carry the topic (see [operation]).
+// The default chain is the identity layer over the governance layer over a raw
+// adapter, and the embedded InnerKafka is where a custom layer goes: implement
+// this interface (embed the head you found to inherit the methods you do not
+// care about), then assign your layer over it. The chain under the layer keeps
+// doing its job — the topics a layer rewrites are what the identity layer
+// declares, and the executor still protects every produce.
 //
 // franz-go exposes two produce APIs: Produce (async, callback on completion)
-// and ProduceSync (blocks for broker ack). Only the synchronous path is
-// guarded here; the async path returns immediately so an executor around
-// it would be meaningless.
-func GuardedProduceSync(ctx context.Context, cl *kgo.Client, recs ...*kgo.Record) kgo.ProduceResults {
-	ctx = observability.WithOperation(ctx, operation(opPublish, topicOf(recs)))
+// and ProduceSync (blocks for broker ack). Only the synchronous path rides the
+// chain; the async path returns immediately so an executor around it would be
+// meaningless.
+//
+// Release follows the chain protocol; the raw client's own lifecycle (flush
+// then close) belongs to [Client.Close], so the raw layer's Release is a
+// pass-through at either depth.
+type InnerKafka interface {
+	// ProduceSync produces recs synchronously, blocking until the broker
+	// acknowledges.
+	ProduceSync(ctx context.Context, recs ...*kgo.Record) kgo.ProduceResults
+	// Release releases the layer's own resources, then hands releaseRaw to
+	// the layer under it.
+	Release(releaseRaw bool) error
+}
+
+// RawKafka is the adapter layer: it makes the synchronous produce on the raw
+// client. The W3C trace context rides the record headers via the kotel hooks
+// the driver installs, so the adapter adds nothing of its own.
+// [NewRawKafka] builds it.
+type RawKafka struct{ cl *kgo.Client }
+
+// NewRawKafka wraps a raw client as the chain's tail.
+func NewRawKafka(cl *kgo.Client) *RawKafka { return &RawKafka{cl: cl} }
+
+// Release is the protocol's pass-through: the client's flush-and-close belongs
+// to [Client.Close], not the chain.
+func (r *RawKafka) Release(bool) error { return nil }
+
+func (r *RawKafka) ProduceSync(ctx context.Context, recs ...*kgo.Record) kgo.ProduceResults {
+	return r.cl.ProduceSync(ctx, recs...)
+}
+
+// GuardKafka is the governance layer: it runs every synchronous produce under
+// the resilience executor, which applies rate limiting, breaking and fault
+// injection — and emits the produce's span, metrics and access log from the
+// one point that sees the whole call, attempts included. [NewGuardKafka]
+// builds it, executor included: the executor is the layer's own business end
+// to end — built, used and closed inside it.
+type GuardKafka struct {
+	exec chain.Executor
+	next InnerKafka
+}
+
+// NewGuardKafka builds the governance layer over next, running every produce
+// under exec.
+func NewGuardKafka(next InnerKafka, exec chain.Executor) *GuardKafka {
+	return &GuardKafka{exec: exec, next: next}
+}
+
+// Release hands releaseRaw to the layer under it — the executor is closed by
+// [Client.Close], with the client it is scoped to.
+func (g *GuardKafka) Release(releaseRaw bool) error { return g.next.Release(releaseRaw) }
+
+func (g *GuardKafka) ProduceSync(ctx context.Context, recs ...*kgo.Record) kgo.ProduceResults {
 	var results kgo.ProduceResults
-	err := guard(ctx, cl, func(attemptCtx context.Context) error {
-		results = cl.ProduceSync(attemptCtx, recs...)
+	err := runGuarded(ctx, g.exec, func(attemptCtx context.Context) error {
+		results = g.next.ProduceSync(attemptCtx, recs...)
 		return results.FirstErr()
 	})
 	if err != nil {
@@ -153,9 +140,39 @@ func GuardedProduceSync(ctx context.Context, cl *kgo.Client, recs ...*kgo.Record
 	return results
 }
 
-// GuardedConsume runs one consumed record's handler under the resilience
-// executor attached to cl, declaring the consume's identity from the record's
-// topic first. It is the consume counterpart of [GuardedProduceSync], for an
+// ObsKafka is the identity layer at the head: it names the produce — with the
+// batch's topic (its first record's; an empty batch declares no destination) —
+// and hands the context down. It emits nothing itself: emission happens in the
+// governance layer under it. [NewObsKafka] builds it.
+type ObsKafka struct {
+	next InnerKafka
+}
+
+// NewObsKafka builds the identity layer over next.
+func NewObsKafka(next InnerKafka) *ObsKafka { return &ObsKafka{next: next} }
+
+// Release hands releaseRaw to the layer under it — this layer holds no
+// resource.
+func (o *ObsKafka) Release(releaseRaw bool) error { return o.next.Release(releaseRaw) }
+
+func (o *ObsKafka) ProduceSync(ctx context.Context, recs ...*kgo.Record) kgo.ProduceResults {
+	return o.next.ProduceSync(observability.WithOperation(ctx, operation(opPublish, topicOf(recs))), recs...)
+}
+
+// GuardedProduceSync produces recs synchronously on the client, routed through
+// its chain. When governance is disabled this behaves exactly like
+// Kafka.ProduceSync. On rejection (rate-limit or open circuit) the returned
+// ProduceResults carries the rejection error on every record, so .FirstErr()
+// surfaces the sentinel just like a real produce failure and the underlying
+// produce is never invoked. It is a thin convenience over the embedded
+// [InnerKafka] head.
+func GuardedProduceSync(ctx context.Context, cl *Client, recs ...*kgo.Record) kgo.ProduceResults {
+	return cl.InnerKafka.ProduceSync(ctx, recs...)
+}
+
+// GuardedConsume runs one consumed record's handler under the client's
+// governance layer, declaring the consume's identity from the record's topic
+// first. It is the consume counterpart of [GuardedProduceSync], for an
 // application that owns its own poll loop.
 //
 // The managed subscription ([NewDriver]'s subscriber) runs through this same
@@ -163,19 +180,12 @@ func GuardedProduceSync(ctx context.Context, cl *kgo.Client, recs ...*kgo.Record
 // same span name, the same messaging.* metrics and the same access log as one
 // delivered by the driver.
 //
-// It exists because the raw *kgo.Client bean cannot be made to route its own
-// PollFetches through the guard — franz-go's hooks observe a record, they do not
-// wrap the call — so an application that polls directly would otherwise consume
-// with no limiter/breaker/retry/timeout, no messaging.* metrics and no access
-// log, leaving only kotel's client-level telemetry. Calling this once per record
-// restores the governed path without giving up the raw loop.
-//
-// Like [GuardedProduceSync], the declaration is made before the executor runs:
-// the emitter reads the operation at Execute entry, so one declared per attempt
-// would be read by nobody.
-func GuardedConsume(ctx context.Context, cl *kgo.Client, rec *kgo.Record, handler func(context.Context) error) error {
+// It is not a chain method because its pipeline is per-record and driven by
+// whoever owns the poll loop — franz-go's hooks observe a record, they do not
+// wrap the call — so it uses the client's execute seam instead.
+func GuardedConsume(ctx context.Context, cl *Client, rec *kgo.Record, handler func(context.Context) error) error {
 	ctx = observability.WithOperation(ctx, operation(opConsume, rec.Topic))
-	return guard(ctx, cl, handler)
+	return cl.execute(ctx, handler)
 }
 
 // topicOf returns the destination of a produce batch, taken from its first

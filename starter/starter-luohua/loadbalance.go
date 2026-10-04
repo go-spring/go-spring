@@ -17,6 +17,8 @@
 package luohua
 
 import (
+	"context"
+
 	"go-spring.org/cloud/discovery"
 	"go-spring.org/cloud/loadbalance"
 	"go-spring.org/stdlib/errutil"
@@ -76,4 +78,4 @@ func (b luohuaBalancer) Pick(eps []discovery.Endpoint, _ loadbalance.PickInfo) (
 }
 
 // Complete implements [loadbalance.Balancer]. The policy is stateless.
-func (luohuaBalancer) Complete(discovery.Endpoint, error) {}
+func (luohuaBalancer) Complete(_ context.Context, _ discovery.Endpoint, _ error) {}

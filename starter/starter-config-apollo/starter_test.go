@@ -171,7 +171,7 @@ func TestCloseReleasesClientAndLoadRearms(t *testing.T) {
 	assert.Number(t, fake.listens).Equal(1)
 	assert.Number(t, len(c.clients)).Equal(1)
 
-	assert.That(t, c.Close()).Nil()
+	assert.That(t, c.Close(context.Background())).Nil()
 	assert.Number(t, fake.closed).Equal(1)
 	assert.Number(t, len(c.clients)).Equal(0)
 	assert.Number(t, len(c.listened)).Equal(0)

@@ -61,7 +61,7 @@ func (t *RouteTable) buildPicker(up *Upstream) (picker, error) {
 			return nil, nil, err
 		}
 		u := &url.URL{Scheme: "http", Host: ep.Addr}
-		done := func(err error) { pool.Complete(ep, err) }
+		done := func(err error) { pool.Complete(r.Context(), ep, err) }
 		return u, done, nil
 	}, nil
 }

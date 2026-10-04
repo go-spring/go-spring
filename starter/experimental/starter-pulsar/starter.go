@@ -88,7 +88,18 @@ func init() {
 // surfacing on the first produce/consume. A failed probe releases what was just
 // assembled.
 func newClient(ctx *gs.ContextProvider, name string, c Config, d Driver, center *governance.Center) (pulsar.Client, error) {
-	log.Debugf(ctx.Context, log.TagAppDef, "creating pulsar client, url=%s ping=%v", c.URL, c.Ping)
+	// The client's identity rides on a context derived here: every line below
+	// carries it without repeating it. The provider's own context is left
+	// alone — that one is the shared application context, not this
+	// constructor's.
+	cctx := log.WithFields(ctx.Context, log.String("url", c.URL))
+
+	log.Debug(cctx, log.TagAppDef, func() []log.Field {
+		return []log.Field{
+			log.Bool("ping", c.Ping),
+			log.Msg("creating pulsar client"),
+		}
+	})
 
 	// No company Driver bean → fall back to the bundled default assembly.
 	if d == nil {
@@ -107,13 +118,16 @@ func newClient(ctx *gs.ContextProvider, name string, c Config, d Driver, center 
 	// failure abandons the client, so release what was just assembled.
 	if c.Ping {
 		if _, err = cl.TopicPartitions(c.HealthCheckTopic); err != nil {
-			log.Errorf(ctx.Context, log.TagAppDef, "pulsar: ping failed on %s (topic=%s): %v", c.URL, c.HealthCheckTopic, err)
+			log.Error(cctx, log.TagAppDef,
+				log.String("topic", c.HealthCheckTopic),
+				log.Err(err),
+				log.Msg("pulsar: ping failed"))
 			closeResilience(cl)
 			cl.Close()
 			shutdownMetrics(cl)
 			return nil, errutil.Explain(err, "pulsar broker probe failed on %s (topic=%s)", c.URL, c.HealthCheckTopic)
 		}
 	}
-	log.Infof(ctx.Context, log.TagAppDef, "pulsar client initialized, url=%s", c.URL)
+	log.Info(cctx, log.TagAppDef, log.Msg("pulsar client initialized"))
 	return cl, nil
 }

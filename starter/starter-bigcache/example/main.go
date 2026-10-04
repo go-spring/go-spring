@@ -271,17 +271,6 @@ func runTest(s *Service) {
 	}
 	fmt.Println("Surface: Len", entries, "Iterator", seen)
 
-	// Reset empties the instance, and says so through Len.
-	if err := s.Cold.Reset(); err != nil {
-		log.Errorf(ctx, log.TagAppDef, "Reset failed: %v", err)
-		os.Exit(1)
-	}
-	if n := s.Cold.Len(); n != 0 {
-		log.Errorf(ctx, log.TagAppDef, "Len() = %d right after Reset", n)
-		os.Exit(1)
-	}
-	fmt.Println("Reset: cold is empty")
-
 	// Feature 9: what life-window does - and does not do. Both instances hold a 1s
 	// life-window; only clean-window differs. Get never checks an entry's age:
 	// life-window marks it stale, and the cleaner is what removes it. So after

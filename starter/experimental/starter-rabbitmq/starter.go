@@ -50,7 +50,7 @@ func init() {
 				gs.IndexArg(2, gs.ValueArg(c)),
 				gs.IndexArg(3, gs.TagArg("${spring.rabbitmq.instances."+name+".driver:=${spring.rabbitmq.default.driver:=?}}")),
 				// The governance center is the family's sole injection point.
-			).Name(name).Destroy(destroyClient).Caller(1)
+			).Name(name).Destroy((*Client).Close).Caller(1)
 
 			// Export the broker-neutral messaging.Driver over this connection as a
 			// bean, so consumers (starter-outbox-gorm, app pub/sub) autowire it like
@@ -59,8 +59,8 @@ func init() {
 			// The load-test convention bean is a NULLABLE injection (index 1):
 			// present when the application provides one, absent otherwise, and
 			// NewDriver falls back to the canonical convention.
-			r.Provide(func(conn *amqp.Connection, prop traffic.Propagator) messaging.Driver {
-				return NewDriver(conn, prop)
+			r.Provide(func(cl *Client, prop traffic.Propagator) messaging.Driver {
+				return NewDriver(cl, prop)
 			}, gs.TagArg(name), gs.IndexArg(1, gs.TagArg("?"))).Name(name).Caller(1)
 			return nil
 		})
@@ -84,8 +84,19 @@ func init() {
 // is required when linked: "governance off" is spring.governance.enabled=false,
 // never an absent bean; a standalone, non-gs caller passes nil, which reads
 // unarmed authorities — exactly "governance off".
-func newClient(ctx *gs.ContextProvider, name string, c Config, d Driver, center *governance.Center) (*amqp.Connection, error) {
-	log.Debugf(ctx.Context, log.TagAppDef, "creating rabbitmq connection, url=%s vhost=%s", c.URL, c.Vhost)
+func newClient(ctx *gs.ContextProvider, name string, c Config, d Driver, center *governance.Center) (*Client, error) {
+	// The connection's identity rides on a context derived here: every line
+	// below carries it without repeating it. The provider's own context is left
+	// alone — that one is the shared application context, not this
+	// constructor's.
+	cctx := log.WithFields(ctx.Context, log.String("url", c.URL))
+
+	log.Debug(cctx, log.TagAppDef, func() []log.Field {
+		return []log.Field{
+			log.String("vhost", c.Vhost),
+			log.Msg("creating rabbitmq connection"),
+		}
+	})
 
 	// No company Driver bean → fall back to the bundled default assembly.
 	if d == nil {
@@ -93,7 +104,9 @@ func newClient(ctx *gs.ContextProvider, name string, c Config, d Driver, center 
 	}
 	conn, err := d.CreateClient(ctx.Context, c)
 	if err != nil {
-		log.Errorf(ctx.Context, log.TagAppDef, "rabbitmq: create client failed: %v", err)
+		log.Error(cctx, log.TagAppDef,
+			log.Err(err),
+			log.Msg("rabbitmq: create client failed"))
 		return nil, errutil.Explain(err, "failed to create rabbitmq client: %s", c.URL)
 	}
 
@@ -109,11 +122,11 @@ func newClient(ctx *gs.ContextProvider, name string, c Config, d Driver, center 
 	go func() {
 		for e := range closeCh {
 			if e == nil {
-				log.Info(ctx.Context, log.TagAppDef, append(connState.record(ctx.Context, connClosed),
-					log.Msgf("rabbitmq connection closed: %s", c.URL))...)
+				log.Info(cctx, log.TagAppDef, append(connState.record(ctx.Context, connClosed),
+					log.Msg("rabbitmq connection closed"))...)
 				continue
 			}
-			log.Warn(ctx.Context, log.TagAppDef, append(connState.record(ctx.Context, connClosed),
+			log.Warn(cctx, log.TagAppDef, append(connState.record(ctx.Context, connClosed),
 				log.Int("code", e.Code),
 				log.String("reason", e.Reason),
 				log.Bool("server", e.Server),
@@ -124,22 +137,19 @@ func newClient(ctx *gs.ContextProvider, name string, c Config, d Driver, center 
 	go func() {
 		for b := range blockCh {
 			if b.Active {
-				log.Warn(ctx.Context, log.TagAppDef, append(connState.record(ctx.Context, connBlocked),
+				log.Warn(cctx, log.TagAppDef, append(connState.record(ctx.Context, connBlocked),
 					log.String("reason", b.Reason),
 					log.Msg("rabbitmq connection blocked"))...)
 			} else {
-				log.Info(ctx.Context, log.TagAppDef, append(connState.record(ctx.Context, connUnblocked),
+				log.Info(cctx, log.TagAppDef, append(connState.record(ctx.Context, connUnblocked),
 					log.Msg("rabbitmq connection unblocked"))...)
 			}
 		}
 	}()
 
-	// Assemble fully before probing: attach the resilience executor first.
-	if err := applyResilience(conn, resilience.ServiceLabel("rabbitmq", c.Vhost, c.URL), center); err != nil {
-		log.Errorf(ctx.Context, log.TagAppDef, "rabbitmq: resilience setup failed: %v", err)
-		_ = conn.Close()
-		return nil, err
-	}
+	// Assemble fully before probing: wrap the connection in its client — the
+	// chain carries the governance, no registry involved.
+	cl := NewClient(conn, resilience.ServiceLabel("rabbitmq", c.Vhost, c.URL), center)
 	// Then confirm the AMQP channel layer is usable, not just the TCP handshake
 	// (when Ping is enabled). The probe goes straight to the raw connection on
 	// purpose: it is a connectivity check, not business traffic, so it must not
@@ -148,24 +158,18 @@ func newClient(ctx *gs.ContextProvider, name string, c Config, d Driver, center 
 	if c.Ping {
 		ch, err := conn.Channel()
 		if err != nil {
-			log.Errorf(ctx.Context, log.TagAppDef, "rabbitmq: open probe channel failed url=%s: %v", c.URL, err)
-			closeResilience(conn)
-			_ = conn.Close()
+			log.Error(cctx, log.TagAppDef,
+				log.Err(err),
+				log.Msg("rabbitmq: open probe channel failed"))
+			_ = cl.Close()
 			return nil, errutil.Explain(err, "failed to open probe channel: %s", c.URL)
 		}
 		if err := ch.Close(); err != nil {
-			log.Warnf(ctx.Context, log.TagAppDef, "rabbitmq: close probe channel failed url=%s: %v", c.URL, err)
+			log.Warn(cctx, log.TagAppDef,
+				log.Err(err),
+				log.Msg("rabbitmq: close probe channel failed"))
 		}
 	}
-	log.Infof(ctx.Context, log.TagAppDef, "rabbitmq connection initialized, url=%s", c.URL)
-	return conn, nil
-}
-
-// destroyClient closes the RabbitMQ connection. amqp091 closes the notifier
-// channels as part of Close, which drains the log-bridging goroutines. When a
-// resilience executor is attached its Close releases any background resources
-// of a production driver.
-func destroyClient(conn *amqp.Connection) error {
-	closeResilience(conn)
-	return conn.Close()
+	log.Info(cctx, log.TagAppDef, log.Msg("rabbitmq connection initialized"))
+	return cl, nil
 }

@@ -72,7 +72,7 @@ func newWatchCore() watchCore {
 
 // Close stops every watcher. A Load that follows re-arms watchCore: ensureWatch
 // finds the directory absent from the set and starts a fresh watcher.
-func (c *watchCore) Close() error {
+func (c *watchCore) Close(ctx context.Context) error {
 	c.mu.Lock()
 	watchers := c.watchers
 	c.watchers = map[string]*fsnotify.Watcher{}
@@ -115,7 +115,7 @@ func (c *watchCore) TriggerRefresh(ctx context.Context) {
 // repeated Load calls (startup + every refresh) do not stack watchers on the
 // same directory. Watching is best-effort: if a watcher cannot be created,
 // startup still succeeds with a static snapshot, only losing hot-reload.
-func (c *watchCore) ensureWatch(dir string) {
+func (c *watchCore) ensureWatch(ctx context.Context, dir string) {
 	c.mu.Lock()
 	if _, ok := c.watchers[dir]; ok {
 		c.mu.Unlock()
@@ -125,14 +125,14 @@ func (c *watchCore) ensureWatch(dir string) {
 	w, err := fsnotify.NewWatcher()
 	if err != nil {
 		c.mu.Unlock()
-		log.Warnf(context.Background(), starterTag,
+		log.Warnf(ctx, starterTag,
 			"create file watcher for %s failed, hot-reload disabled for it (static snapshot kept): %v", dir, err)
 		return
 	}
 	if err = w.Add(dir); err != nil {
 		_ = w.Close()
 		c.mu.Unlock()
-		log.Warnf(context.Background(), starterTag,
+		log.Warnf(ctx, starterTag,
 			"watch directory %s failed, hot-reload disabled for it (static snapshot kept): %v", dir, err)
 		return
 	}

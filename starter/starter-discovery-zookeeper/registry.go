@@ -306,6 +306,16 @@ func reconcileSession(degraded bool, st zk.State) (stillDegraded, heal bool) {
 // attempt (the session is not usable yet) is retried with exponential backoff
 // (1s doubling, capped at 1min) until all nodes are back or Close is called.
 func (r *zkRegistry) healAll() {
+	// What identifies this self-heal pass rides on the context: every line
+	// below carries it without repeating it. The goroutine outlives any
+	// request, so the context is minted here.
+	ctx := log.WithFields(context.Background(),
+		log.String("system", r.obs.System()),
+		log.String("center", r.obs.Center()),
+		log.String("operation", "register"),
+		log.String("reason", discovery.ReasonSelfHeal),
+	)
+
 	backoff := r.backoffBase
 	for {
 		select {
@@ -314,24 +324,15 @@ func (r *zkRegistry) healAll() {
 		default:
 		}
 		if service, err := r.reRegisterAll(); err == nil {
-			log.Info(context.Background(), starterTag,
-				log.String("system", r.obs.System()),
-				log.String("center", r.obs.Center()),
+			log.Info(ctx, starterTag,
 				log.Msg("re-created registered zookeeper node(s) after session recovery"))
 			return
 		} else {
-			log.Error(context.Background(), starterTag, append(
-				[]log.Field{
-					log.String("system", r.obs.System()),
-					log.String("center", r.obs.Center()),
-					log.String("service", service),
-					log.String("operation", "register"),
-					log.String("reason", discovery.ReasonSelfHeal),
-					log.String("status", discovery.StatusOf(err)),
-					log.Err(err),
-				},
-				log.Msgf("re-create zookeeper node(s) failed; retrying in %s", backoff),
-			)...)
+			log.Error(ctx, starterTag,
+				log.String("service", service),
+				log.String("status", discovery.StatusOf(err)),
+				log.Err(err),
+				log.Msgf("re-create zookeeper node(s) failed; retrying in %s", backoff))
 		}
 		select {
 		case <-r.done:

@@ -117,16 +117,18 @@ func runTest() {
 	syscall.Kill(os.Getpid(), syscall.SIGTERM)
 }
 
-// init sets the working directory to the directory where this source file
-// resides, so relative config loading (conf/app.properties) works regardless
-// of the process launch path.
+// init sets the working directory of the application to the directory
+// where this source file resides.
+// This ensures that any relative file operations are based on the source file location,
+// not the process launch path.
 func init() {
 	var execDir string
 	_, filename, _, ok := runtime.Caller(0)
 	if ok {
 		execDir = filepath.Dir(filename)
 	}
-	if err := os.Chdir(execDir); err != nil {
+	err := os.Chdir(execDir)
+	if err != nil {
 		panic(err)
 	}
 	workDir, err := os.Getwd()

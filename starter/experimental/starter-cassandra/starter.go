@@ -52,7 +52,7 @@ func init() {
 				gs.IndexArg(2, gs.TagArg("${spring.cassandra.instances."+name+".driver:=${spring.cassandra.default.driver:=?}}")),
 				// The governance center is the family's sole injection point: it hands
 				// out the resilience/fault/loadbalance authorities.
-			).Name(name).Destroy((*Client).Destroy).Caller(1)
+			).Name(name).Destroy((*Client).Close).Caller(1)
 			// Contribute a health indicator for this instance, injecting the
 			// client just registered above by name. The probe delegates to
 			// HealthCheck, which goes straight to the raw session. Skipped when
@@ -107,7 +107,7 @@ func newClient(ctx *gs.ContextProvider, c Config, d Driver, center *governance.C
 	if c.Ping {
 		if err := HealthCheck(ctx.Context, client); err != nil {
 			log.Errorf(ctx.Context, log.TagAppDef, "cassandra: startup probe failed: %v", err)
-			_ = client.Destroy()
+			_ = client.Close()
 			return nil, errutil.Explain(err, "failed to reach cassandra cluster %v", c.Hosts)
 		}
 	}

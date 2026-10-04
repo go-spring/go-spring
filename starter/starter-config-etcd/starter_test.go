@@ -17,6 +17,7 @@
 package StarterConfigEtcd
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -66,4 +67,112 @@ func TestClientKey(t *testing.T) {
 	assert.That(t, clientKey(cs)).Equal(clientKey(same))
 	other, _ := parseSource("h:2379/a?username=u2")
 	assert.That(t, clientKey(cs)).NotEqual(clientKey(other))
+}
+
+func TestLifecycleRearmAndClose(t *testing.T) {
+	c := newEtcdCtrl()
+	assert.That(t, c.stopped).Equal(false)
+
+	// rearm on a live generation keeps the same watch generation.
+	ctx1 := c.ctx
+	c.rearm()
+	assert.That(t, c.ctx == ctx1).Equal(true)
+
+	// Close stops the generation and empties the caches.
+	assert.That(t, c.Close(context.Background())).Nil()
+	assert.That(t, c.stopped).Equal(true)
+	assert.That(t, len(c.clients)).Equal(0)
+	assert.That(t, len(c.listened)).Equal(0)
+
+	// rearm after Close starts a fresh generation for the next Load.
+	c.rearm()
+	assert.That(t, c.stopped).Equal(false)
+	assert.That(t, c.ctx == ctx1).Equal(false)
+	assert.That(t, c.ctx.Err()).Nil()
+
+	// Close twice is safe: the second cancel targets the live generation.
+	assert.That(t, c.Close(context.Background())).Nil()
+	assert.That(t, c.Close(context.Background())).Nil()
+}
+
+func TestClientForCacheAndClose(t *testing.T) {
+	// clientv3.New is lazy: it succeeds instantly against an unreachable
+	// endpoint, so no live etcd is needed here.
+	c := newEtcdCtrl()
+	cs := configSource{endpoint: "127.0.0.1:1", key: "k", dialTimeout: time.Second}
+
+	cli1, err := c.clientFor(context.Background(), cs)
+	assert.That(t, err).Nil()
+	cli2, err := c.clientFor(context.Background(), cs)
+	assert.That(t, err).Nil()
+	assert.That(t, cli2 == cli1).Equal(true)
+	assert.That(t, len(c.clients)).Equal(1)
+
+	// Close closes the cached client and drops the cache.
+	assert.That(t, c.Close(context.Background())).Nil()
+	assert.That(t, len(c.clients)).Equal(0)
+
+	// The next clientFor builds a fresh client.
+	cli3, err := c.clientFor(context.Background(), cs)
+	assert.That(t, err).Nil()
+	assert.That(t, cli3 == cli1).Equal(false)
+	assert.That(t, c.Close(context.Background())).Nil()
+}
+
+func TestLoadRejectsBadSources(t *testing.T) {
+	c := newEtcdCtrl()
+	defer c.Close(context.Background())
+
+	// Malformed URL, missing host, missing key, bad dial-timeout: each fails
+	// before any client is built, regardless of optional.
+	for _, src := range []string{"%zz", "127.0.0.1:2379", "127.0.0.1:2379/k?dial-timeout=bogus"} {
+		_, err := c.Load(false, src)
+		assert.That(t, err).NotNil()
+		_, err = c.Load(true, src)
+		assert.That(t, err).NotNil()
+	}
+	assert.That(t, len(c.clients)).Equal(0)
+}
+
+func TestLoadGetFailure(t *testing.T) {
+	c := newEtcdCtrl()
+	defer c.Close(context.Background())
+
+	// Nothing listens on 127.0.0.1:1: the client is built lazily, but the Get
+	// fails. Required -> error; optional -> skipped without error.
+	_, err := c.Load(false, "127.0.0.1:1/k?dial-timeout=100ms")
+	assert.That(t, err).NotNil()
+
+	m, err := c.Load(true, "127.0.0.1:1/k2?dial-timeout=100ms")
+	assert.That(t, err).Nil()
+	assert.That(t, m).Nil()
+}
+
+func TestRegisterWatcherDedup(t *testing.T) {
+	c := newEtcdCtrl()
+	defer c.Close(context.Background())
+
+	cs, err := parseSource("127.0.0.1:1/k?dial-timeout=100ms")
+	assert.That(t, err).Nil()
+	cli, err := c.clientFor(context.Background(), cs)
+	assert.That(t, err).Nil()
+
+	// Repeated Load calls install exactly one watcher per client+key.
+	c.registerWatcher(context.Background(), cli, cs, false)
+	c.registerWatcher(context.Background(), cli, cs, false)
+	assert.That(t, len(c.listened)).Equal(1)
+
+	// A different key gets its own watcher entry.
+	cs2 := cs
+	cs2.key = "k2"
+	c.registerWatcher(context.Background(), cli, cs2, true)
+	assert.That(t, len(c.listened)).Equal(2)
+}
+
+func TestTriggerRefreshBeforeStart(t *testing.T) {
+	// Before the app has started, the refresh facade returns an error that
+	// TriggerRefresh deliberately drops: the call must not panic.
+	c := newEtcdCtrl()
+	defer c.Close(context.Background())
+	c.TriggerRefresh(context.Background())
 }

@@ -7,7 +7,7 @@
 [Consul 官方文档](https://developer.hashicorp.com/consul/docs/dynamic-app-config/kv)** —— 下文只写
 go-spring 的增量。
 
-**激活方式**：blank import 即注册 `consul` 配置 provider 与变更→刷新桥接（`starter.go:44-56`）。
+**激活方式**：blank import 即注册 `consul` 配置 provider 与变更→刷新桥接（`starter.go` 的 `init()`）。
 仅当 `spring.config.import` 中出现 `consul:` 条目时才真正生效；import 字符串就是**全部**配置面
 —— starter 自身不绑定任何 `value:` tag。
 
@@ -45,7 +45,7 @@ require (
 # 从 Consul KV 导入配置。
 # 语法：[optional:]consul:<host>:<port>/<kv-path>?<query>
 # "optional:" 让应用在 key 尚不存在时也能启动；发布后即被读取，
-# 并经 blocking-query watcher 活着刷新（optional 跳过逻辑见 starter.go:196-220，
+# 并经 blocking-query watcher 活着刷新（optional 跳过逻辑见 `Load` 的对应分支，
 # watch 见 §2.2）。
 spring.config.import=optional:consul:127.0.0.1:8500/gs-config-demo?format=properties
 ```
@@ -116,7 +116,7 @@ consul kv put gs-config-demo "demo.message=hello-2"
 
 ```
 blank import starter-config-consul
-  └─ init(): conf.RegisterProvider("consul", newConsulCtrl())      starter.go:55
+  └─ init(): conf.RegisterProvider("consul", newConsulCtrl())      starter.go init()
 
 gs.Run()
   ├─ 配置阶段（无 bean 参与，因此是 pre-bean）：
@@ -139,16 +139,16 @@ watch 回调经进程级门面 `gs.RefreshProperties()` 触达刷新，app 启�
 
 ### 2.2 watch / refresh 路径走读
 
-1. `registerWatch`（`starter.go:234-249`）按 `clientKey + "|" + kvPath` 去重；同一 source 的
+1. `registerWatch`（`starter.go` 的 `registerWatch`）按 `clientKey + "|" + kvPath` 去重；同一 source 的
    重复 Load —— 每次属性刷新都会发生 —— 恰好只产生一个 goroutine
    （`TestWatchRegisteredOncePerSource`）。
-2. `watchLoop`（`starter.go:252-283`）发 Consul **blocking query**：`Get` 带
+2. `watchLoop`（`starter.go` 的 `watchLoop`）发 Consul **blocking query**：`Get` 带
    `WaitIndex: lastIndex`、`WaitTime: 5m`。它吞掉初始 index（首次轮询只建立基线），
    `LastIndex` 前进时触发 `TriggerRefresh()`，index 回退时重置为 0（Consul 重启/index 重置），
    传输错误 2 秒后重试。
 3. `TriggerRefresh` → `gs.RefreshProperties()`（`app.go:149-151`）→ 完整的
    `AppConfig.Refresh()` 从零重建分层存储（文件、env、cmd、import —— KV 条目因此被**重新
-   拉取**，`starter.go:196`）→ 容器把新快照原子传播到每个 `gs.Dync[T]` 字段
+   拉取**，由 `Load` 完成）→ 容器把新快照原子传播到每个 `gs.Dync[T]` 字段
    （`app.go:234-256`）。非 `Dync` 绑定不会重跑。
 4. 刷新失败（例如非 optional 的 key 被删除）会保留旧快照并记日志：watcher 对删除打一条
    点名 key 的 WARN、对每次刷新失败各打一条 WARN，loop 继续监听。
@@ -165,7 +165,7 @@ starter **没有属性 key** —— 模块树里仅有的 `value:` tag 属于 ex
 （`${demo.message:=none}`，是对 KV 条目*内部* key 的顶层绝对引用，不是 starter 的 key）。
 全部配置面就是 import 字符串：
 
-语法（核心切分在 `provider.go:84-92`，consul 部分在 `starter.go:104-137`）：
+语法（核心切分在 `provider.go:84-92`，consul 部分在 `starter.go` 的 `parseSource`）：
 
 ```
 [optional:]consul:<host>:<port>/<kv-path>?format=..&scheme=..&token=..&datacenter=..
@@ -173,15 +173,15 @@ starter **没有属性 key** —— 模块树里仅有的 `value:` tag 属于 ex
 
 | 组成 | 类型 | 默认值 | 行为 / 联动 | 配错后果 |
 |------|------|--------|------------|----------|
-| `optional:` 前缀 | 开关 | 无 | 核心层语义（`provider.go:85-88`）：**冷加载**时 Get 失败 / key 缺失 / 值为空均跳过并打 Warn（`starter.go:198-220`）。⚠ **不**覆盖解析错误、client 创建错误，也不覆盖 watch 期刷新路径。 | 不加则 key 缺失或 agent 不可达直接中止启动（`consul kv <path> not found`）。 |
-| `host:port` | string | — | Consul agent 地址（HTTP API）。**必填** —— host 为空解析失败（`starter.go:109-111`）。 | 启动报错 `missing consul server address in %q`。 |
-| `<kv-path>` | string | — | 每个 import 恰好**一个** KV 条目（`cli.Get`，非前缀列表）。前导 `/` 被去除。必填（`starter.go:112-115`）。 | 启动报错 `missing kv path in %q`。无法读 key 目录。 |
-| `format` | string | kv-path 扩展名，否则 `properties` | 内容解析器选择（`reader.Read`，`starter.go:222`）：`properties`/`yaml`/`toml`/`json`。按路径扩展名推断 —— 名为 `app` 的 key 里放 YAML，不加 `?format=yaml` 会按 properties 解析。 | 加载期解析错误：`parse consul kv %s as %s failed` —— 即便 `optional:` 也失败（解析错误不在 optional 豁免内，`starter.go:222-226`）。 |
-| `scheme` | string | `http` | 传入 `api.Config.Scheme`（`starter.go:161-166`）。参与 client 缓存 key。 | 对纯 HTTP 端口用 `https` → 每次 Get 报错；非 optional 启动失败，optional 则静默跳过。 |
+| `optional:` 前缀 | 开关 | 无 | 核心层语义（`provider.go:85-88`）：**冷加载**时 Get 失败 / key 缺失 / 值为空均跳过并打 Warn（`Load` 的 optional 跳过分支）。⚠ **不**覆盖解析错误、client 创建错误，也不覆盖 watch 期刷新路径。 | 不加则 key 缺失或 agent 不可达直接中止启动（`consul kv <path> not found`）。 |
+| `host:port` | string | — | Consul agent 地址（HTTP API）。**必填** —— host 为空解析失败（`parseSource` 的 host 检查）。 | 启动报错 `missing consul server address in %q`。 |
+| `<kv-path>` | string | — | 每个 import 恰好**一个** KV 条目（`cli.Get`，非前缀列表）。前导 `/` 被去除。必填（`parseSource` 的 kv-path 检查）。 | 启动报错 `missing kv path in %q`。无法读 key 目录。 |
+| `format` | string | kv-path 扩展名，否则 `properties` | 内容解析器选择（`reader.Read`，由 `Load` 调用）：`properties`/`yaml`/`toml`/`json`。按路径扩展名推断 —— 名为 `app` 的 key 里放 YAML，不加 `?format=yaml` 会按 properties 解析。 | 加载期解析错误：`parse consul kv %s as %s failed` —— 即便 `optional:` 也失败（解析错误不在 optional 豁免内，`Load` 的解析错误分支）。 |
+| `scheme` | string | `http` | 传入 `api.Config.Scheme`（在 `parseSource` 中设置）。参与 client 缓存 key。 | 对纯 HTTP 端口用 `https` → 每次 Get 报错；非 optional 启动失败，optional 则静默跳过。 |
 | `token` | string | 空（匿名） | Consul ACL token，随每个请求发送。⚠ 内联在 import 字符串里会落进配置文件/日志 —— 没有 env/token-file 兜底。 | token 错误/权限不足 → Get 403；表现为 `get consul kv %s failed`。 |
-| `datacenter` | string | agent 默认 | 冷加载与 watch 的 `QueryOptions.Datacenter` 覆盖（`starter.go:196, 256`）。参与 client 缓存 key。 | 未知 dc → 走上述错误路径。 |
+| `datacenter` | string | agent 默认 | 冷加载与 watch 的 `QueryOptions.Datacenter` 覆盖（冷加载 `Get` 与 watch 的 `QueryOptions`）。参与 client 缓存 key。 | 未知 dc → 走上述错误路径。 |
 
-client 按 `(address, scheme, token, datacenter)` 元组缓存（`clientKey`，`starter.go:142-144`）；
+client 按 `(address, scheme, token, datacenter)` 元组缓存（`clientKey`）；
 watch 按 client+kvPath 去重。两个 import 共享元组则共享一个 client、各有一个 watch goroutine。
 
 优先级说明：导入源位于 `StorageAppFile` 层（与 `app.properties` 平级），低于 profile 文件、env
@@ -196,11 +196,11 @@ KV 值。
 
 ```bash
 consul kv put gs-config-demo "demo.message=hello"
-go run .    # 预期日志： loaded consul config from kvPath=gs-config-demo keys=1（tag "def"）
+go run .    # 预期日志： loaded consul config from kvPath=gs-config-demo keys=1（tag `_app_config_consul`）
 ```
 
 开 Debug 级可看解析明细：starter 以 Debug 记录 `loading config from address=... kvPath=...
-format=...`（`starter.go:186`）。缺失/失败同样以 `def` app tag 记 Error/Warn ——
+format=...`（`Load` 的 Debug 日志）。缺失/失败同样以 `_app_config_consul` tag 记 Error/Warn ——
 `grep 'consul' app.log`。
 
 ### 4.2 watch 推送（热刷新，不重启）
@@ -223,7 +223,7 @@ go run .                              # 启动失败： parse consul kv app-json
 ```
 
 注意 `optional:` 救不了这个 —— 只有 拉取失败/缺失/为空 走 optional 跳过
-（`starter.go:196-220` 对比 `222-226`；`TestLoadParseErrorPropagates`）。
+（`Load` 的 optional 跳过分支对比解析错误分支；`TestLoadParseErrorPropagates`）。
 
 ### 4.4 optional vs 必填
 
@@ -239,15 +239,14 @@ agent 不可达时同样可对比：停掉 docker（`compose stop`），比较 `
 ### 4.5 稳态时 Consul 宕机
 
 应用运行中且 KV 已发布时执行 `docker compose stop`：watcher 的 blocking query 报错，每 2 秒
-重试（`starter.go:261-263`），应用继续用最后快照服务 —— 配置变陈旧但不崩溃，除 SDK 传输错误
-外无每轮重试日志。重启 Consul 后下一次 KV 变更自动恢复热刷新（index 回退会重置基线，
-`starter.go:269-271`）。
+重试（`watchLoop` 的错误路径），应用继续用最后快照服务 —— 配置变陈旧但不崩溃；首次失败打一条 WARN，其后重试仅 Debug。重启 Consul 后下一次 KV 变更自动恢复热刷新（index 回退会重置基线，
+`watchLoop` 的 index 回退重置）。
 
 ### 4.6 稳态时 key 被删除（非 optional）
 
 运行中删除 key：watch 触发刷新，但刷新内的 re-Load 失败（key 不存在）→ `RefreshProperties`
 报错 → watcher 打一条点名 key 的 WARN 和一条刷新失败 WARN，**旧快照保留**（快照只在成功时交换，
-`conf.go:130`）。应用继续用最后已知值；没有任何信号标记配置已陈旧。
+`conf.go:130`）。应用继续用最后已知值；上述 WARN 即陈旧信号。
 
 ---
 
@@ -281,6 +280,6 @@ agent 不可达时同样可对比：停掉 docker（`compose stop`），比较 `
 
 - ACL token 内联在 import 字符串里会落进配置文件——没有像 vault 那样的 env / token-file 兜底 → 候选带外凭证通道。
 - 一个 import 只读一个 KV 条目；不支持前缀/列表读取（key 目录）——按目录建模的应用只能每个 key 一个 import。
-- watch 出错每 2 秒静默重试，本模块不打日志、无陈旧度信号（指标/健康检查）——“配置已陈旧”不可观测。
+- watch 出错每 2 秒重试：首次失败打一条 WARN、其后仅 Debug、恢复打一条 Info——但没有陈旧度信号（指标/健康检查），“配置已陈旧”在日志之外不可观测。
 - 非 optional key 被删除时仍退化为陈旧快照（§4.6），但加了 WARN 后该退化在日志中可见；watch goroutine 本身由 `Close` 在停机时停止。
 - 刷新是全有或全无且全局：一个 KV 条目变更会重读所有 import 和所有文件；当前规模无碍，import 变多后需记在案。

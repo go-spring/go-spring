@@ -21,24 +21,19 @@
 //	declare    — GuardedPublish (and the driver's consume path in client.go)
 //	             declare the operation's identity (see [operation]) on the ctx
 //	             and inject/extract the W3C trace context across the broker.
-//	resilience — applyResilience + guard drive the backend-neutral executor
-//	             through the opt-in GuardedPublish call site, since amqp091
-//	             exposes no reject-capable middleware. The executor is also the
-//	             single emitter: it reads the declared operation off the ctx and
+//	resilience — the InnerPublisher chain (see entity.go) runs every publish
+//	             under the connection-scoped executor, since amqp091 exposes
+//	             no reject-capable middleware. The executor is also the single
+//	             emitter: it reads the declared operation off the ctx and
 //	             opens the span, records the durations (call-level and
 //	             attempt-level) and writes the one access log.
 package StarterRabbitMQ
 
 import (
 	"context"
-	"go-spring.org/cloud/chain"
-	"go-spring.org/cloud/governance"
-	"sync"
-
 	amqp "github.com/rabbitmq/amqp091-go"
-	"go-spring.org/cloud/fault"
+	"go-spring.org/cloud/chain"
 	"go-spring.org/cloud/observability"
-	"go-spring.org/log"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/propagation"
 )
@@ -129,74 +124,111 @@ func (c deliveryCarrier) Keys() []string {
 var _ propagation.TextMapCarrier = publishingCarrier{}
 var _ propagation.TextMapCarrier = deliveryCarrier{}
 
-// clientGuard is the per-client resilience attachment: the executor chain and
-// the stable serviceLabel it executes under, colocated so a guard lookup
-// reads the pair atomically (no torn exec/serviceLabel combination).
-type clientGuard struct {
-	exec         chain.Executor
-	serviceLabel string
-}
-
-// clientGuards indexes the guard by the raw client bean, so GuardedPublish can resolve
-// it from a bare *amqp.Connection and the destructor can Close it. Only clients with
-// resilience enabled appear here.
-var clientGuards sync.Map // *amqp.Connection -> *clientGuard
-
-// applyResilience builds the connection's guarded executor from the governance
-// center's resilience authority, wrapped with its fault authority.
-func applyResilience(conn *amqp.Connection, serviceLabel string, center *governance.Center) error {
-	exec := fault.WrapClientExecutor(center.Resilience().ClientExecutorFor("rabbitmq", serviceLabel), serviceLabel, center.Fault())
-	clientGuards.Store(conn, &clientGuard{exec: exec, serviceLabel: serviceLabel})
-	return nil
-}
-
-// closeResilience closes and forgets the executor behind conn, if any.
-func closeResilience(conn *amqp.Connection) {
-	if v, ok := clientGuards.LoadAndDelete(conn); ok {
-		if err := v.(*clientGuard).exec.Close(); err != nil {
-			log.Warnf(context.Background(), log.TagAppDef, "rabbitmq: resilience executor close failed: %v", err)
-		}
-	}
-}
-
-// guard routes call through the executor attached to conn, and otherwise runs it
-// inline. When resilience is disabled for the connection this is a no-op
-// pass-through, so enabling protection is a zero-code opt-in on the caller side.
-func guard(ctx context.Context, conn *amqp.Connection, call func(context.Context) error) error {
-	v, ok := clientGuards.Load(conn)
-	if !ok {
-		return call(ctx)
-	}
-	g := v.(*clientGuard)
-	return g.exec.Execute(ctx, call)
-}
-
-// GuardedPublish publishes pub to exchange/routingKey on ch, routed through the
-// resilience executor attached to conn when governance is enabled.
-// When governance is disabled this behaves exactly like ch.PublishWithContext.
-// On rejection (rate-limit or open circuit) the returned error is a resilience
-// sentinel and the underlying publish is never invoked.
+// InnerPublisher is the seam a connection's publishes run through. amqp091
+// exposes no reject-capable middleware and delivers a concrete connection, so
+// this interface is the ONLY way to modify what happens under the promoted
+// Publish.
 //
-// It declares the publish's identity (see [operation]) on the ctx before running
-// the call, so the executor emits the span, the durations and the access log; it
-// also injects the current W3C trace context into pub.Headers from the attempt
-// ctx the executor hands inward, so the traceparent carries the executor's span
-// and links the broker trace to this call. The publish is driven inside the
-// executor, so pub is a copy — a caller that needs the injected headers back on
-// its own Publishing should publish directly instead.
+// The default chain is the identity layer over the governance layer over a raw
+// adapter, and the embedded InnerPublisher is where a custom layer goes:
+// implement this interface (embed the head you found to inherit the methods you
+// do not care about), then assign your layer over it. The chain under the layer
+// keeps doing its job — the destinations a layer rewrites are what the identity
+// layer declares, and the executor still protects every publish.
 //
-// The connection (not the channel) is passed to resolve the executor because a
-// channel may outlive the connection bean in some patterns, while the executor
-// is always scoped to the connection the starter created.
-func GuardedPublish(ctx context.Context, conn *amqp.Connection, ch *amqp.Channel, exchange, key string, mandatory, immediate bool, pub amqp.Publishing) error {
+// Release follows the chain protocol; the connection's own lifecycle belongs to
+// [Client.Close], so the raw layer's Release is a pass-through at either depth.
+type InnerPublisher interface {
+	// Publish publishes pub to exchange/routingKey on ch (a caller-created
+	// channel; channels are not safe for concurrent use).
+	Publish(ctx context.Context, ch *amqp.Channel, exchange, key string, mandatory, immediate bool, pub amqp.Publishing) error
+	// Release releases the layer's own resources, then hands releaseRaw to
+	// the layer under it.
+	Release(releaseRaw bool) error
+}
+
+// RawPublisher is the adapter layer: it injects the W3C trace context into the
+// publishing (from the attempt ctx the layers above handed down, so the
+// traceparent carries the executor's span) and makes the wire call.
+type RawPublisher struct{}
+
+// NewRawPublisher builds the adapter layer.
+func NewRawPublisher() *RawPublisher { return &RawPublisher{} }
+
+// Release is the protocol's pass-through: the connection's lifecycle belongs
+// to [Client.Close], not the chain.
+func (r *RawPublisher) Release(bool) error { return nil }
+
+func (r *RawPublisher) Publish(ctx context.Context, ch *amqp.Channel, exchange, key string, mandatory, immediate bool, pub amqp.Publishing) error {
+	injectW3C(ctx, &pub)
+	return ch.PublishWithContext(ctx, exchange, key, mandatory, immediate, pub)
+}
+
+// GuardPublisher is the governance layer: it runs every publish under the
+// resilience executor, which applies rate limiting, breaking and fault
+// injection — and emits the publish's span, metrics and access log from the one
+// point that sees the whole call, attempts included. [NewGuardPublisher]
+// builds it.
+type GuardPublisher struct {
+	exec chain.Executor
+	next InnerPublisher
+}
+
+// NewGuardPublisher builds the governance layer over next, running every
+// publish under exec.
+func NewGuardPublisher(next InnerPublisher, exec chain.Executor) *GuardPublisher {
+	return &GuardPublisher{exec: exec, next: next}
+}
+
+// Release hands releaseRaw to the layer under it — the executor is closed by
+// [Client.Close], with the connection it is scoped to.
+func (g *GuardPublisher) Release(releaseRaw bool) error { return g.next.Release(releaseRaw) }
+
+func (g *GuardPublisher) Publish(ctx context.Context, ch *amqp.Channel, exchange, key string, mandatory, immediate bool, pub amqp.Publishing) error {
+	if g.exec == nil {
+		return g.next.Publish(ctx, ch, exchange, key, mandatory, immediate, pub)
+	}
+	return g.exec.Execute(ctx, func(attemptCtx context.Context) error {
+		return g.next.Publish(attemptCtx, ch, exchange, key, mandatory, immediate, pub)
+	})
+}
+
+// ObsPublisher is the identity layer at the head: it names the publish — with
+// the destination (the exchange, or the queue when the default exchange routes
+// by routing key) — and hands the context down. It emits nothing itself:
+// emission happens in the governance layer under it. [NewObsPublisher] builds
+// it.
+type ObsPublisher struct {
+	next InnerPublisher
+}
+
+// NewObsPublisher builds the identity layer over next.
+func NewObsPublisher(next InnerPublisher) *ObsPublisher { return &ObsPublisher{next: next} }
+
+// Release hands releaseRaw to the layer under it — this layer holds no
+// resource.
+func (o *ObsPublisher) Release(releaseRaw bool) error { return o.next.Release(releaseRaw) }
+
+func (o *ObsPublisher) Publish(ctx context.Context, ch *amqp.Channel, exchange, key string, mandatory, immediate bool, pub amqp.Publishing) error {
 	dest := exchange
 	if dest == "" {
 		// The default exchange routes by queue name carried in the routing key.
 		dest = key
 	}
-	ctx = observability.WithOperation(ctx, operation(opPublish, dest))
-	return guard(ctx, conn, func(attemptCtx context.Context) error {
-		injectW3C(attemptCtx, &pub)
-		return ch.PublishWithContext(attemptCtx, exchange, key, mandatory, immediate, pub)
-	})
+	return o.next.Publish(observability.WithOperation(ctx, operation(opPublish, dest)),
+		ch, exchange, key, mandatory, immediate, pub)
+}
+
+// GuardedPublish publishes pub to exchange/routingKey on ch, routed through
+// the client's chain when governance is enabled. When governance is disabled
+// this behaves exactly like ch.PublishWithContext. On rejection (rate-limit or
+// open circuit) the returned error is a resilience sentinel and the underlying
+// publish is never invoked.
+//
+// It is a thin convenience over the client's embedded [InnerPublisher] head;
+// the publish declares its identity, and the publish is driven inside the
+// executor, so pub is a copy — a caller that needs the injected headers back
+// on its own Publishing should publish directly instead.
+func GuardedPublish(ctx context.Context, cl *Client, ch *amqp.Channel, exchange, key string, mandatory, immediate bool, pub amqp.Publishing) error {
+	return cl.InnerPublisher.Publish(ctx, ch, exchange, key, mandatory, immediate, pub)
 }

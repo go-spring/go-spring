@@ -7,6 +7,7 @@
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")"
 
+echo "== example boot =="
 go run . > smoke.out 2>&1 &
 pid=$!
 ( sleep 60; kill -9 "${pid}" 2>/dev/null ) &
@@ -20,9 +21,11 @@ wait "${watchdog}" 2>/dev/null || true
 if [ "${rc}" -ne 0 ] || ! grep -q "xxl-job round trip OK:" smoke.out \
     || ! grep -q "kill round trip OK:" smoke.out \
     || ! grep -q "callback shape OK:" smoke.out; then
+    echo "== FAILED ==" >&2
     cat smoke.out >&2 || true
     rm -f smoke.out
     exit 1
 fi
+echo "== OK =="
 rm -f smoke.out
 exit 0

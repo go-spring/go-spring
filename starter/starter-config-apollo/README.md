@@ -87,9 +87,10 @@ the starter relies on agollo's own parsing there and only parses namespace
 
 **A mock config service instead of a dockerized quick-start.** Apollo's
 quick-start stack needs MySQL plus the configservice/admin/portal trio; since
-the starter's contract is the provider seam, the example's mock — serving
-exactly the two endpoints agollo needs — exercises it end to end without the
-stack (and without a docker dependency in CI).
+the starter's contract is the provider seam, the example's mock — serving the
+endpoints agollo drives, including the `notifications/v2` long poll — exercises
+cold load *and* hot reload end to end without the stack (and without a docker
+dependency in CI).
 
 ### Log tag
 

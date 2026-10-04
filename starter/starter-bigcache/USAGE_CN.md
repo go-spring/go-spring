@@ -89,7 +89,8 @@ import (
 )
 
 // 注入 wrapper，每个已配置实例一个字段，按 bean 名匹配。
-// 原生 *bigcache.BigCache 不可注入：它是 wrapper 的未导出字段（见 README「设计说明」）。
+// 原生 *bigcache.BigCache 不作为 bean 注入：只能通过 wrapper 的 Client 字段拿到，
+// 只读交付（见 README「设计说明」）。
 type Service struct {
 	Hot   *StarterBigCache.Cache `autowire:"hot"`
 	Cold  *StarterBigCache.Cache `autowire:"cold"`
@@ -196,7 +197,7 @@ import _ "go-spring.org/starter-bigcache"
               └─ conf.BindEach("${spring.bigcache.instances}") [starter.go:39]
                  按 map 的 key 为每个 <name> 绑定一个 Config
                     └─ r.Provide(newClient, name@1, c@2, driver@3).Name(name)
-                       .Destroy((*Cache).Destroy)              [starter.go:48]
+                       .Destroy((*Cache).Close)              [starter.go:48]
                        索引 0（*gs.ContextProvider）自动装配；Driver 参数由
                        ${...<name>.driver} 选定
 
@@ -208,39 +209,43 @@ gs.Run()
   │        → bigcache.New(ctx, conf)          ← 唯一可能因原生缓存而失败的步骤
   │          （例如 shards 不是 2 的幂）
   │        → NewCache(client, name)                          [client.go:78]
-  │             → newStatObserver(client, name)              [observe.go:229]
-  │                  → buildInstruments()                    [observe.go:170]
-  │                    进程级，每进程只解析一次，走 singleton.Singleton
-  │                    ——第一个被构造的 cache 为之后所有 cache 绑定这套仪器
-  │                  → statObserver.observeGauges(client)    [observe.go:251]
-  │                    把本实例的统计注册到共享 gauge 上，标签 instance=<name>
-  │    ctor 返回即 bean 完备：没有 Init 步骤，之后没有任何东西再修补这个 cache。
+  │             → NewRawCache(client)                        [client.go:116]
+  │             → NewObsCache(tail, client, name)            [client.go:161]
+  │                  → newStatObserver(client, name)         [observe.go:229]
+  │                      → buildInstruments()                [observe.go:170]
+  │                        进程级，每进程只解析一次，走 singleton.Singleton
+  │                        ——第一个被构造的 cache 为之后所有 cache 绑定这套仪器
+  │                      把本实例的统计注册到共享 gauge 上，标签 instance=<name>
+  │             链头成为嵌入的 InnerCache；Client 保留原生实例
+  │             作为只读把手
+  │    ctor 返回即 bean 完备：没有 Init 步骤；之后唯一允许触碰这个 cache 的
+  │    是接流量前在链头外再包一层自定义层。
   ├─（可选）*cache.Cache bean "bigcache:<name>"               [starter.go:61]
   │    惰性——无人注入则不实例化
   ├─ 就绪：所有根可达 bean 构造完毕后应用就绪
-  └─ 停机：(*Cache).Destroy                                  [client.go:89]
-       obs.close() → reg.Unregister()  （gauge 不再上报这个 cache）
-       client.Close() → 停止后台淘汰 goroutine
+  └─ 停机：(*Cache).Close = InnerCache.Release(true)       [client.go:241]
+       ObsCache.Release → obs.close() → reg.Unregister()  （gauge 不再上报）
+       标记继续下传 → RawCache.Release(true) → client.Close()
+       （停止后台淘汰 goroutine）
 ```
 
 两个值得知道的顺序事实：
 
 - **销毁顺序是承重的。** `Unregister` 排在最前：cache 一旦关闭，它的统计就没有意义，而遗留的
   注册既会上报一个已死的 cache，又会把它钉在内存里（[client.go:89](client.go#L89)）。
-- **⚠ `Close()` 不幂等。** bigcache 内部会关闭一个 channel，所以先 `Close()` 再 `Destroy()`、
-  或任一个调两次，都会 panic。`Destroy` 是正路；只有当你自己（在容器之外）持有 cache 时才用
-  `Close()`。
+- **⚠ `Close()` 不幂等。** bigcache 内部会关闭一个 channel，`Close()` 调两次会 panic。
+  关闭路径只有一条——`Close()`——容器注册的销毁方法也是它。
 
-### 2.2 命令面——手写，因为 bigcache 没有 hook 点
+### 2.2 命令面——走链条，因为 bigcache 没有 hook 点
 
 bigcache（不像 go-redis 或 gorm）不提供插件或拦截器接缝，所以逐调用可观测性只能靠持有 wrapper
 本身（[client.go:48-50](client.go#L48-L50)）。这决定了公开类型的形状：
 
 - `Get`/`Set`/`Delete` 被重新实现并观测——它们是承载业务流量的三个操作
   （[client.go:111-135](client.go#L111-L135)）。
-- 其余原生方法（`Stats`、`Len`、`Capacity`、`Reset`、`Close`、`KeyMetadata`、`Iterator`）以纯委托
+- 其余原生方法（`Stats`、`Len`、`Capacity`、`Close`、`KeyMetadata`、`Iterator`）以纯委托
   形式重新导出，有意不观测。
-- 原生 `*bigcache.BigCache` 是未导出字段且**不提供访问器**，调用方无法绕过观测层。
+- 原生 `*bigcache.BigCache` 是导出的 `Client` 字段——只读把手，供链构造器使用；重组链条 = 在链头外包一层自定义层，不是绕过链条的暗道。
 
 这些调用下面没有执行器：这里没有任何东西要走出进程，所以没有防护可施加，也没有值得写的访问日志。
 因此本 starter 不接治理 bean、也不要 `cloud.ClientParams`——那会是一个背后空无一物的接缝。
@@ -249,8 +254,8 @@ bigcache（不像 go-redis 或 gorm）不提供插件或拦截器接缝，所以
 
 ```
 c.Get(ctx, "key")                                                     [client.go:115]
-      → obs.observe(ctx, "get", fn)            [observe.go:267]
-          执行 fn → c.client.Get("key") → bigcache.ErrEntryNotFound
+      → 链头 ObsCache.Get → obs.observe(ctx, "get", fn)  [observe.go:267]
+          执行 fn → 下层 RawCache.Get → client.Get("key") → bigcache.ErrEntryNotFound
           statusOf(err) → "ok"                 [observe.go:259]
               未命中不算失败：缓存作出了回答，只是 key 不在
           counter  bigcache.operation.total   {operation="get",status="ok",instance="hot"} += 1
@@ -414,8 +419,8 @@ gauge（§4.2）就是全部信号。如果某次缓存调用确实需要出现�
 | 启动失败：`bigcache: create instance "<name>": ...` | 原生缓存建不起来——最常见是 `shards` 不是 2 的幂 | 修正该实例的取值。 |
 | 启动失败：`bigcache: create gauge "<metric>": ...` | 自定义 `MeterProvider` 拒绝了某个仪器（进程级） | 检查 OTel 配置；消息里点名的就是被拒的那个仪器。 |
 | gauge 全零而 `Len()` 正常 | `stats-enabled` 被设成了 `false` | 对需要观察的实例改回 `true`。 |
-| 一次停机/重启循环后 gauge 消失 | `Destroy` 注销了它们并关闭了 cache | 预期行为——注册的生命周期就是 cache 的生命周期。 |
-| panic："close of closed channel" | 先 `Close()` 又 `Destroy()`——或任一调了两次 | 只调 `Destroy()`；那才是容器的路径。 |
+| 一次停机/重启循环后 gauge 消失 | `Close` 注销了它们并关闭了 cache | 预期行为——注册的生命周期就是 cache 的生命周期。 |
+| panic："close of closed channel" | `Close()` 调了两次 | 只调一次 `Close()`；容器的销毁注册就是它。 |
 | 值被截断 / realloc 抖动 | `max-entry-size` 估低 | 它是预分配提示——按真实条目大小设。 |
 | 条目提前消失 | `hard-max-cache-size` 硬顶在淘汰最旧条目 | 调高或取消硬顶。 |
 | 超过 `life-window` 的值仍被返回 | `life-window` 不会藏起条目，而没有东西把它移除——`clean-window=0` 时永远不会 | 设一个非零 `clean-window`，或把这个实例当作没有读侧 TTL。 |

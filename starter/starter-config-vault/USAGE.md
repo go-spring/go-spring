@@ -143,25 +143,25 @@ reason the starter can offer nothing else: it runs before the IoC container exis
 
 ```
 blank-import starter-config-vault
-  └─ init(): conf.RegisterProvider("vault", newVaultCtrl())   [starter.go:60]
+  └─ init(): conf.RegisterProvider("vault", newVaultCtrl())   [starter.go:52]
 
 gs.Run()
   ├─ config load: conf/app.properties read
   │    └─ loadFileImports sees spring.config.import=vault:...
-  │         └─ conf.Load → vaultController.Load(optional, source)   [starter.go:228]
-  │              ├─ parseSource: "vault://"+source → URL → host, mount/path, query  [starter.go:107]
-  │              ├─ resolveToken: ?token → VAULT_TOKEN → ?token-file / VAULT_TOKEN_FILE  [starter.go:164]
-  │              ├─ clientFor: cached api.Client per address|namespace|token         [starter.go:193]
-  │              ├─ registerWatch: spawn watchLoop goroutine (poll every poll-ms)    [starter.go:347]
-  │              ├─ readSecret: KVv2(mount).Get / KVv1(mount).Get, 5s timeout       [starter.go:280]
+  │         └─ conf.Load → vaultController.Load(optional, source)   [starter.go:283]
+  │              ├─ parseSource: "vault://"+source → URL → host, mount/path, query  [starter.go:150]
+  │              ├─ resolveToken: ?token → VAULT_TOKEN → ?token-file / VAULT_TOKEN_FILE  [starter.go:207]
+  │              ├─ clientFor: cached api.Client per address|namespace|token         [starter.go:250]
+  │              ├─ registerWatch: spawn watchLoop goroutine (poll every poll-ms)    [starter.go:429]
+  │              ├─ readSecret: KVv2(mount).Get / KVv1(mount).Get, 5s timeout       [starter.go:362]
   │              │    └─ 404 → nil data → optional? warn+skip : error "secret not found"
-  │              ├─ toProperties: flatten whole map, or key-mode parse one field     [starter.go:315]
+  │              ├─ toProperties: flatten whole map, or key-mode parse one field     [starter.go:397]
   │              └─ return props → added as StorageAppFile layer
   ├─ bean wiring: controller stays outside the IoC container (no bean at all)
   ├─ field binding: ${demo.message} resolves from the Vault layer; gs.Dync fields register for refresh
   ├─ Run / readiness
   └─ steady state: each watchLoop ticks
-       ├─ readSecret; on error → continue (silently)
+       ├─ readSecret; on error → warn once (then debug), keep polling
        ├─ fingerprint(json.Marshal(data)) vs last loaded fingerprint
        └─ changed → TriggerRefresh → gs.RefreshProperties()
             └─ re-runs the whole property load: imports re-resolve, Load re-reads the
@@ -171,16 +171,16 @@ gs.Run()
 Key timings verified from source:
 
 - **Not cold-load only.** A per-secret polling watcher runs forever (`watchLoop`,
-  starter.go:366-381), default every 5000 ms (example uses 1000 ms). Secret rotation is
+  starter.go:464), default every 5000 ms (example uses 1000 ms). Secret rotation is
   picked up without restart — *but only into `gs.Dync[T]` fields*; plain `value` tags are
   bound once and never re-read (gs refresh is Dync-only).
 - **Refresh is guarded by start state**: before the app has started,
   `gs.RefreshProperties()` returns an error and `TriggerRefresh` is a harmless
-  no-op — the startup load already captured the config (starter.go:82-89).
+  no-op — the startup load already captured the config (starter.go:128).
 - **Fingerprint is content-based** (`json.Marshal` of the KV data map): a KV v2 write that
   produces identical data does NOT trigger a refresh; KV v2 version numbers are ignored.
 - **The watcher never re-reads the token**: an expired token keeps the client cached
-  (clientKey = address|namespace|token), and `watchLoop` swallows read errors — see §4.4.
+  (clientKey = address|namespace|token), and read failures only log (see §4.4) — see §4.4.
 - **The watcher is registered before the secret is first read** (`registerWatch` precedes
   `readSecret` in the chain above), so an `optional:` secret that does not exist at startup
   is still hot-reloaded once it is created.
@@ -212,7 +212,7 @@ starter surface). The entire surface is the import string:
 [optional:]vault:<host>:<port>/<mount>/<path>?<query params>
 ```
 
-Parsed by prefixing `vault://` and using `url.Parse` (starter.go:107-161), so `host:port`
+Parsed by prefixing `vault://` and using `url.Parse` (starter.go:150), so `host:port`
 must be a valid URL host, and the path must contain exactly `<mount>/<path>` split on the
 first `/` (both parts non-empty).
 
@@ -240,7 +240,7 @@ first `/` (both parts non-empty).
 
 ### 3.3 Token resolution and `optional:` semantics
 
-Resolution order (starter.go:164-185): `?token=` → `VAULT_TOKEN` env → `?token-file=` →
+Resolution order (starter.go:207): `?token=` → `VAULT_TOKEN` env → `?token-file=` →
 `VAULT_TOKEN_FILE` env (file content trimmed). ⚠ **A missing token fails at startup even for
 `optional:` sources** — token resolution runs inside `parseSource`, before the optional
 check. `optional:` only softens *secret read* failures (404 / transport): with it the app
@@ -287,10 +287,12 @@ go run .   # WARN "optional config secret secret/nope not found (skipped)" → s
 ### 4.4 Token expired / wrong mid-run
 
 Start correctly, then revoke the token: `vault token revoke <id>`. The app keeps running —
-startup is unaffected — but every subsequent poll fails and `watchLoop` `continue`s
-silently (starter.go:370-373): **no log line, no counter, config silently goes stale**. New
-writes to Vault never arrive; recovery requires restarting the process (the watcher never
-re-reads the token). This is the drill to run before trusting rotation in production.
+startup is unaffected — but every subsequent poll fails and `watchLoop` `continue`s:
+the first failure logs a WARN ("vault poll failing, changes are missed until it
+recovers"), later ones debug, and recovery logs once at info. Between WARN and
+recovery, **new writes to Vault never arrive**; full recovery requires restarting the
+process (the watcher never re-reads the token). This is the drill to run before
+trusting rotation in production.
 
 ### 4.5 Vault sealed / down at startup
 
@@ -299,7 +301,7 @@ re-reads the token). This is the drill to run before trusting rotation in produc
 - optional source: WARN `optional config read secret ... failed (skipped)`, app starts
   with defaults — verify the fields show their `:=` fallback values.
 
-Note the 5-second read timeout (starter.go:281): a hung Vault delays startup by up to 5s
+Note the 5-second read timeout (starter.go:363): a hung Vault delays startup by up to 5s
 per import.
 
 ### 4.6 Missing token
@@ -320,7 +322,7 @@ Fails even with `optional:` (§3.3).
 | `vault secret <mount>/<path> not found` | Wrong mount/path, or KV v1 secret read with default `kv-version=2` | Fix path; add `&kv-version=1`; KV v2 paths must NOT include `data/`. |
 | `vault path must be <mount>/<path>` | Path with fewer than two segments (e.g. `vault:...:8200/secret`) | Ensure `<host>:<port>/<mount>/<path>`. |
 | App starts, but Vault-sourced values stay at defaults | `optional:` swallowed a read failure, or wrong `prefix` | Grep startup logs for `optional config ... (skipped)`; check prefix vs your `${...}` keys. |
-| Secret rotated in Vault, app never updates | Field is a plain value (not `gs.Dync`), or poll failing silently (revoked token) | Bind via `gs.Dync[T]`; run the §4.4 drill; restart to recover a dead token. |
+| Secret rotated in Vault, app never updates | Field is a plain value (not `gs.Dync`), or poll failing (revoked token — WARN on first failure) | Bind via `gs.Dync[T]`; run the §4.4 drill; restart to recover a dead token. |
 | Connection reset / TLS errors | HTTPS Vault without `&scheme=https` | Add it — the default is `http`. |
 | `parse vault field "x" as properties failed` or `has no field "x"` | Single-field mode mismatch | `key=` must name an existing string field; `format=` must match its content. |
 | `kv-version must be 1 or 2` / `invalid poll-ms` | Non-numeric or out-of-range query params | Fix values; both are validated at parse time. |
@@ -346,8 +348,9 @@ Design suspects (for the audit ledger; first three carried over from the previou
 2. Poll-only change detection: no sys/leases notify, KV v2 version numbers ignored —
    same-content rewrite does not refresh; undocumented behavior confirmed by
    `fingerprint()` (content hash only).
-3. Poll errors silently skipped (`continue`) with no failure counter or log — a dead token
-   or sealed Vault degrades into silently-stale config (drill §4.4).
+3. Poll errors are skipped (`continue`) after a WARN on the first failure (debug after,
+   info on recovery) — no failure counter, and a dead token or sealed Vault still degrades
+   into stale config until restart (drill §4.4).
 4. `resolveToken` runs inside `parseSource`, so a missing token fails even `optional:`
    sources — defensible fail-fast, but asymmetric with `optional:`'s stated meaning.
 5. `scheme` rides in the query string (`?scheme=https`) instead of accepting a real

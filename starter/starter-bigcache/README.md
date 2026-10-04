@@ -42,12 +42,13 @@ type Service struct {
 }
 ```
 
-The bean is the starter's `*Cache` wrapper. The raw `*bigcache.BigCache` is held in an
-unexported field with no accessor, so every operation stays behind the wrapper: Get/Set/Delete
-emit the operation's span and metrics themselves, and the remaining raw methods
-(Stats, Len, Reset, Close, …) are re-exposed as plain delegations. Nothing rate-limits or breaks
-these calls, and no access log is written: an in-process cache has no external dependency to
-protect and no external call to record. See [Design Notes](README.md#design-notes).
+The bean is the starter's `*Cache` wrapper. Get/Set/Delete run through an embedded
+`InnerCache` chain — the observability layer over a raw adapter — so every business
+operation emits its metrics itself; the remaining raw methods (Stats, Len, Close, …) are
+re-exposed as plain delegations, and the raw `*bigcache.BigCache` is handed out as the
+`Client` field as a read-only handle; chains are reorganized by wrapping the head. Nothing rate-limits or breaks these calls, and no
+access log is written: an in-process cache has no external dependency to protect and no
+external call to record. See [Design Notes](README.md#design-notes).
 
 ### 4. Use the BigCache Instance
 
@@ -66,7 +67,7 @@ The [example](example/) self-asserts the wiring and the whole command surface; r
 * **SET/GET** — write a value with `Set(...)` and read it back with `Get(...)`.
 * **DELETE + miss** — remove a key with `Delete(...)` and confirm a subsequent `Get(...)` returns `ErrEntryNotFound`.
 * **Instance isolation** — a key written to one named instance is not visible through another, proving multi-instance wiring.
-* **Beyond Get/Set/Delete** — `Len`, `Iterator` and `Reset`.
+* **Beyond Get/Set/Delete** — `Len` and `Iterator`.
 * **`life-window` semantics** — two instances share a 1s window and differ only in `clean-window`; one stopped
   serving the stale entry, the other still serves it.
 * **A custom Driver** — one Driver bean, selected by name, that reaches `bigcache.Config.OnRemove`.

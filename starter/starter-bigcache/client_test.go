@@ -31,7 +31,7 @@ import (
 // façade above.
 func TestCommandSurface(t *testing.T) {
 	c := newTestCache(t, "hot") // holds k=v
-	defer func() { _ = c.Destroy() }()
+	defer func() { _ = c.Close() }()
 
 	if b, err := c.Get(context.Background(), "k"); err != nil || string(b) != "v" {
 		t.Fatalf("Get(k) = %q, %v; want \"v\", nil", b, err)
@@ -74,7 +74,7 @@ func TestDelegations(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewCache: %v", err)
 	}
-	defer func() { _ = c.Destroy() }()
+	defer func() { _ = c.Close() }()
 
 	if err := c.Set(context.Background(), "k", []byte("v")); err != nil {
 		t.Fatalf("Set: %v", err)
@@ -109,20 +109,87 @@ func TestDelegations(t *testing.T) {
 	if entries != 1 {
 		t.Fatalf("Iterator walked %d entries, want 1", entries)
 	}
+}
 
-	if err := c.Reset(); err != nil {
-		t.Fatalf("Reset: %v", err)
+// TestInnerChainReorganize pins the seam [Cache.Inner] opens: a custom layer
+// wraps the head it found — keeping the observation layer under it — and the
+// command surface then runs through it. The layer here rewrites keys, which is
+// exactly the kind of behavior change no bigcache hook could express.
+func TestInnerChainReorganize(t *testing.T) {
+	c := newTestCache(t, "hot") // holds k=v
+	defer func() { _ = c.Close() }()
+
+	c.InnerCache = prefixLayer{InnerCache: c.InnerCache, prefix: "app:"}
+
+	// The old key is invisible through the layer; the prefixed one is not.
+	if _, err := c.Get(context.Background(), "k"); !errors.Is(err, bigcache.ErrEntryNotFound) {
+		t.Fatalf("Get(k) = %v, want miss under the rewritten namespace", err)
 	}
-	if got := c.Len(); got != 0 {
-		t.Fatalf("Len after Reset = %d, want 0", got)
+	if err := c.Set(context.Background(), "k", []byte("v")); err != nil {
+		t.Fatalf("Set: %v", err)
+	}
+	if b, err := c.Get(context.Background(), "k"); err != nil || string(b) != "v" {
+		t.Fatalf("Get(k) = %q, %v; want \"v\" in the rewritten namespace", b, err)
+	}
+	// The raw cache sees the prefixed key, proving the layer sits over it.
+	if c.Len() != 2 {
+		t.Fatalf("Len = %d, want 2 (k and app:k)", c.Len())
 	}
 }
 
-// TestCloseAndDestroyAreAlternatives pins the hazard the delegate carries:
-// bigcache's Close is not idempotent (it closes a channel), so a cache handed to
-// the container must not be closed by hand — the container's Destroy is what
-// closes it, and a second close panics.
-func TestCloseAndDestroyAreAlternatives(t *testing.T) {
+// TestInnerChainExternalRebuild pins the full outside-the-package rebuild
+// protocol: shallow-close the old head (the reporting goes, the instance
+// stays), build the new chain over the same instance layer with a custom layer
+// in the middle, and take over Inner.
+func TestInnerChainExternalRebuild(t *testing.T) {
+	c := newTestCache(t, "hot") // holds k=v
+	defer func() { _ = c.Close() }()
+
+	if err := c.InnerCache.Release(false); err != nil {
+		t.Fatalf("shallow close: %v", err)
+	}
+	raw := NewRawCache(c.Client)
+	obs, err := NewObsCache(&prefixLayer{InnerCache: raw, prefix: "app:"}, c.Client, "hot")
+	if err != nil {
+		t.Fatalf("NewObsCache: %v", err)
+	}
+	c.InnerCache = obs
+
+	if _, err := c.Get(context.Background(), "k"); !errors.Is(err, bigcache.ErrEntryNotFound) {
+		t.Fatalf("Get(k) = %v, want miss under the rewritten namespace", err)
+	}
+	if err := c.Set(context.Background(), "k", []byte("v")); err != nil {
+		t.Fatalf("Set: %v", err)
+	}
+	if b, err := c.Get(context.Background(), "k"); err != nil || string(b) != "v" {
+		t.Fatalf("Get(k) = %q, %v; want \"v\" in the rewritten namespace", b, err)
+	}
+}
+
+// prefixLayer namespaces every key it passes down. It embeds the head it found,
+// so it inherits nothing to override — every operation here rewrites its key.
+type prefixLayer struct {
+	InnerCache
+	prefix string
+}
+
+func (p prefixLayer) Get(ctx context.Context, key string) ([]byte, error) {
+	return p.InnerCache.Get(ctx, p.prefix+key)
+}
+
+func (p prefixLayer) Set(ctx context.Context, key string, entry []byte) error {
+	return p.InnerCache.Set(ctx, p.prefix+key, entry)
+}
+
+func (p prefixLayer) Delete(ctx context.Context, key string) error {
+	return p.InnerCache.Delete(ctx, p.prefix+key)
+}
+
+// TestDoubleClosePanics pins the hazard the delegate carries: bigcache's Close
+// is not idempotent (it closes a channel), and Close is the one teardown path —
+// the container's destroy registration is the same method — so calling it twice
+// panics.
+func TestDoubleClosePanics(t *testing.T) {
 	raw, err := bigcache.New(context.Background(), bigcache.DefaultConfig(time.Minute))
 	if err != nil {
 		t.Fatalf("bigcache.New: %v", err)
@@ -138,8 +205,8 @@ func TestCloseAndDestroyAreAlternatives(t *testing.T) {
 
 	defer func() {
 		if recover() == nil {
-			t.Error("expected the second close to panic — Close and Destroy are alternatives, not a sequence")
+			t.Error("expected the second close to panic — Close is not idempotent")
 		}
 	}()
-	_ = c.Destroy()
+	_ = c.Close()
 }

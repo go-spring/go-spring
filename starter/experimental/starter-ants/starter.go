@@ -74,7 +74,16 @@ func init() {
 // bundled DefaultDriver when no Driver bean is present, and wraps the
 // resulting pool with the observer chain folded from observers.
 func createPool(ctx context.Context, name string, c Config, d Driver, observers []PoolObserver) (Pool, error) {
-	log.Debugf(ctx, log.TagAppDef, "creating ants pool %q, size=%d", name, c.Size)
+	// The pool's identity rides on a context derived here: every line below
+	// carries it without repeating it. The caller's context is left alone —
+	// that one is the shared application context, not this constructor's.
+	cctx := log.WithFields(ctx,
+		log.String("name", name),
+		log.Int("size", c.Size))
+
+	log.Debug(cctx, log.TagAppDef, func() []log.Field {
+		return []log.Field{log.Msg("creating ants pool")}
+	})
 
 	// No company Driver bean → fall back to the bundled default assembly.
 	if d == nil {
@@ -82,10 +91,12 @@ func createPool(ctx context.Context, name string, c Config, d Driver, observers 
 	}
 	pool, err := d.CreatePool(c)
 	if err != nil {
-		log.Errorf(ctx, log.TagAppDef, "ants: create pool %q failed: %v", name, err)
+		log.Error(cctx, log.TagAppDef,
+			log.Err(err),
+			log.Msg("ants: create pool failed"))
 		return nil, err
 	}
-	log.Infof(ctx, log.TagAppDef, "ants pool %q initialized, size=%d", name, c.Size)
+	log.Info(cctx, log.TagAppDef, log.Msg("ants pool initialized"))
 	// Wrap the pool's Submit to route through the observer chain, snapshotting
 	// the resolved observers once at build time.
 	return &observedPool{

@@ -21,6 +21,7 @@ import (
 	"errors"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/nats-io/nats.go"
 	"go-spring.org/cloud/observability"
@@ -31,12 +32,39 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
-// The declaration seams (publishCtx / wrapConsume) exist so this file can drive
-// them without a NATS server: the embedded *nats.Conn stays nil and the wire
-// call is a stub, which is why publishCtx takes `send` and wrapConsume returns a
-// plain nats.MsgHandler. The signals themselves are emitted by the resilience
-// executor, so the Conn under test carries a real resilience wrapper over a
-// pass-through inner (exactly the composition the wiring builds).
+// subjectLayer wraps the chain head and namespaces every subject it passes
+// down — the kind of behavior change no nats middleware could express.
+type subjectLayer struct {
+	InnerConn
+	prefix string
+}
+
+func (s subjectLayer) PublishMsgContext(ctx context.Context, msg *nats.Msg) error {
+	return s.InnerConn.PublishMsgContext(ctx, &nats.Msg{
+		Subject: s.prefix + msg.Subject, Data: msg.Data, Header: msg.Header,
+	})
+}
+
+// TestInnerConnReorganize pins the wrap-head protocol: a custom layer over the
+// chain head rewrites the subject, and the publish runs through it — the tail
+// sees the rewritten subject.
+func TestInnerConnReorganize(t *testing.T) {
+	tail := &fakeTail{}
+	guard := &GuardConn{next: tail}
+	c := &Conn{InnerConn: NewObsConn(guard), guard: guard}
+	c.InnerConn = subjectLayer{InnerConn: c.InnerConn, prefix: "tenant."}
+
+	msg := &nats.Msg{Subject: "orders", Data: []byte("x")}
+	assert.Error(t, c.PublishMsgContext(context.Background(), msg)).Nil()
+	assert.That(t, tail.ran).Equal(1)
+}
+
+// The fake tails (injectTail, fakeTail) exist so this file can drive the chain
+// without a NATS server: the raw connection stays nil and the wire call is a
+// stub. The signals themselves are emitted by the resilience executor, so the
+// Conn under test carries a real resilience wrapper over a pass-through inner
+// (exactly the composition the wiring builds); wrapConsume returns a plain
+// nats.MsgHandler for the same reason.
 
 // TestMain installs a real tracer provider so spans are recording and carry a
 // valid SpanContext. The OTel globals bind to the first provider set, so this
@@ -61,15 +89,36 @@ func (passthroughExecutor) Execute(ctx context.Context, fn func(context.Context)
 }
 func (passthroughExecutor) Close() error { return nil }
 
-// newInstrumentedConn returns a Conn whose resilience executor is armed but
-// whose embedded *nats.Conn is nil — every test below drives a seam instead of
-// the wire. The executor is a real resilience wrapper, so the declared
-// operations actually emit spans.
-func newInstrumentedConn() *Conn {
-	return &Conn{
-		exec:         observability.WrapClientExecutor(passthroughExecutor{}, "nats", "nats:test"),
-		serviceLabel: "nats:test",
-	}
+// injectTail is the fake raw adapter: it replicates the real adapter's one
+// observable side effect — injecting the trace context from the ctx it receives
+// (the executor's attempt ctx) into the message header — so the trace tests can
+// assert on it without a wire.
+type injectTail struct{ err error }
+
+func (injectTail) PublishMsg(msg *nats.Msg) error { panic("unexpected") }
+func (t injectTail) PublishMsgContext(ctx context.Context, msg *nats.Msg) error {
+	injectW3C(ctx, msg)
+	return t.err
+}
+func (injectTail) RequestGuarded(context.Context, string, []byte, time.Duration) (*nats.Msg, error) {
+	panic("unexpected")
+}
+func (injectTail) Release(bool) error { return nil }
+
+// newInstrumentedConn returns a Conn whose chain is identity over governance
+// over an injecting tail — the executor is a real resilience wrapper, so the
+// declared operations actually emit spans, and the tail's injection carries the
+// executor's attempt ctx.
+func newInstrumentedConn(t *testing.T) *Conn {
+	t.Helper()
+	return newInstrumentedConnErr(nil)
+}
+
+func newInstrumentedConnErr(err error) *Conn {
+	guard := &GuardConn{exec: observability.WrapClientExecutor(passthroughExecutor{}, "nats", "nats:test")}
+	c := &Conn{InnerConn: NewObsConn(guard), guard: guard}
+	guard.next = injectTail{err: err}
+	return c
 }
 
 // traceIDOf extracts the trace context a producer injected into msg.Header.
@@ -98,13 +147,12 @@ func spanContextKey(t *testing.T) context.Context {
 // caller's trace ID. This is the whole point of the ctx-aware entry, and it is
 // what PublishMsg cannot do.
 func TestPublishMsgContextParentsOnCallerSpan(t *testing.T) {
-	c := newInstrumentedConn()
+	c := newInstrumentedConn(t)
 	ctx := spanContextKey(t)
 	wantTraceID := trace.SpanContextFromContext(ctx).TraceID()
 
 	msg := &nats.Msg{Subject: "t.subject"}
-	err := c.publishCtx(ctx, msg.Subject, msg, func() error { return nil })
-	assert.Error(t, err).Nil()
+	assert.Error(t, c.PublishMsgContext(ctx, msg)).Nil()
 
 	if got := traceIDOf(t, msg); got != wantTraceID {
 		t.Fatalf("producer span must join the caller's trace: got %s want %s", got, wantTraceID)
@@ -115,11 +163,10 @@ func TestPublishMsgContextParentsOnCallerSpan(t *testing.T) {
 // must differ from the ambient one — if this ever matches, the documented
 // limitation has gone stale.
 func TestPublishMsgStartsNewRoot(t *testing.T) {
-	c := newInstrumentedConn()
+	c := newInstrumentedConn(t)
 
 	msg := &nats.Msg{Subject: "t.subject"}
-	err := c.publishCtx(context.Background(), msg.Subject, msg, func() error { return nil })
-	assert.Error(t, err).Nil()
+	assert.Error(t, c.PublishMsg(msg)).Nil()
 
 	ambientTraceID := trace.SpanContextFromContext(spanContextKey(t)).TraceID()
 	if got := traceIDOf(t, msg); got == ambientTraceID {
@@ -127,14 +174,13 @@ func TestPublishMsgStartsNewRoot(t *testing.T) {
 	}
 }
 
-// publishCtx must surface the send error unchanged so the resilience and driver
+// The chain must surface the tail error unchanged so the resilience and driver
 // layers keep their error contract.
 func TestPublishCtxPropagatesSendError(t *testing.T) {
-	c := newInstrumentedConn()
 	want := errors.New("wire down")
+	c := newInstrumentedConnErr(want)
 
-	err := c.publishCtx(context.Background(), "t.subject", &nats.Msg{},
-		func() error { return want })
+	err := c.PublishMsgContext(context.Background(), &nats.Msg{Subject: "t.subject"})
 	if !errors.Is(err, want) {
 		t.Fatalf("send error must propagate: got %v", err)
 	}
@@ -144,13 +190,11 @@ func TestPublishCtxPropagatesSendError(t *testing.T) {
 // is extracted into the handler's ctx, which is what links a subscriber's span
 // back to the publisher across the broker.
 func TestWrapConsumeExtractsUpstreamTrace(t *testing.T) {
-	c := newInstrumentedConn()
+	c := newInstrumentedConn(t)
 
 	// A producer publishes, injecting its trace context into the header.
 	producerMsg := &nats.Msg{Subject: "t.subject", Data: []byte("x")}
-	err := c.publishCtx(context.Background(), producerMsg.Subject, producerMsg,
-		func() error { return nil })
-	assert.Error(t, err).Nil()
+	assert.Error(t, c.PublishMsgContext(context.Background(), producerMsg)).Nil()
 	wantTraceID := traceIDOf(t, producerMsg)
 
 	var got trace.TraceID
@@ -171,7 +215,7 @@ func TestWrapConsumeExtractsUpstreamTrace(t *testing.T) {
 // A handler error must reach the caller of wrapConsume so it can be recorded on
 // the consumer span (and, in the driver, keep the nack/redelivery contract).
 func TestWrapConsumeReportsHandlerError(t *testing.T) {
-	c := newInstrumentedConn()
+	c := newInstrumentedConn(t)
 	want := errors.New("handler failed")
 
 	var seen error
@@ -189,24 +233,18 @@ func TestWrapConsumeReportsHandlerError(t *testing.T) {
 	}
 }
 
-// With no executor attached, the seams must run the call inline: no span is
-// opened, no header is written (the ctx holds no valid span) and the handler
-// still runs.
-func TestSeamsDelegateWithoutExecutor(t *testing.T) {
-	c := &Conn{} // no executor, nil embedded connection
+// With no executor attached, the chain must run the call inline: the handler
+// still runs (through the layers, tail included) and no header is written (the
+// ctx holds no valid span).
+func TestChainDelegatesWithoutExecutor(t *testing.T) {
+	tail := &fakeTail{}
+	guard := &GuardConn{next: tail}
+	c := &Conn{InnerConn: NewObsConn(guard), guard: guard}
 
 	msg := &nats.Msg{Subject: "t.subject"}
-	sent := false
-	err := c.publishCtx(context.Background(), msg.Subject, msg, func() error {
-		sent = true
-		return nil
-	})
-	assert.Error(t, err).Nil()
-	if !sent {
-		t.Fatal("publishCtx must call send when no executor is attached")
-	}
-	if len(msg.Header) != 0 {
-		t.Fatalf("an unarmed ctx has no span to inject, got header %v", msg.Header)
+	assert.Error(t, c.PublishMsgContext(context.Background(), msg)).Nil()
+	if tail.ran != 1 {
+		t.Fatal("the publish must reach the tail when no executor is attached")
 	}
 
 	called := false

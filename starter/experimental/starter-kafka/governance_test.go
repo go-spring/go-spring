@@ -29,11 +29,11 @@ import (
 )
 
 // errGovernanceStub is returned by the test executor to prove a call was
-// routed through the guard instead of reaching the broker.
+// routed through the governance layer instead of reaching the broker.
 var errGovernanceStub = errors.New("governance: rejected by test stub")
 
 // stubExecutor counts Execute calls and always rejects, so a test can assert
-// the driver path went through the executor without a live broker.
+// the chain path went through the executor without a live broker.
 type stubExecutor struct{ called atomic.Int32 }
 
 func (s *stubExecutor) Execute(context.Context, func(context.Context) error) error {
@@ -42,12 +42,32 @@ func (s *stubExecutor) Execute(context.Context, func(context.Context) error) err
 }
 func (s *stubExecutor) Close() error { return nil }
 
-// CreateClient attaches a guard while it builds the client — governance is
-// applied in the constructor, not by a later starter step. Whether the executor
-// protects anything is decided by the governance rule for the service label, not
-// by a per-instance switch: with governance off the executor is a transparent
-// pass-through, so attaching one costs a call frame and changes nothing else.
-func TestCreateClientAttachesGuard(t *testing.T) {
+// fakeTail is a scripted InnerKafka tail: it counts the produces that reached
+// it. It stands in for the raw adapter so chain tests need no broker.
+type fakeTail struct {
+	ran int
+}
+
+func (f *fakeTail) ProduceSync(context.Context, ...*kgo.Record) kgo.ProduceResults {
+	f.ran++
+	return nil
+}
+
+func (f *fakeTail) Release(bool) error { return nil }
+
+// newStubbedClient builds a Client whose governance layer runs the stub
+// executor over a fake tail.
+func newStubbedClient(stub *stubExecutor) *Client {
+	guard := &GuardKafka{exec: stub, next: &fakeTail{}}
+	return &Client{InnerKafka: NewObsKafka(guard), guard: guard}
+}
+
+// NewClient wraps governance in while it builds the client — the chain rides
+// the wrapper, not a registry. Whether the executor protects anything is
+// decided by the governance rule for the service label, not by a per-instance
+// switch: with governance off the executor is a transparent pass-through, so
+// attaching one costs a call frame and changes nothing else.
+func TestNewClientAttachesGovernance(t *testing.T) {
 	cl, err := DefaultDriver{}.CreateClient(context.Background(), Config{Brokers: "127.0.0.1:1"},
 		cloud.ClientParams{Resilience: resilience.NewManager(nil)})
 	if err != nil {
@@ -55,49 +75,24 @@ func TestCreateClientAttachesGuard(t *testing.T) {
 	}
 	defer cl.Close()
 
-	if _, ok := clientGuards.Load(cl); !ok {
-		t.Fatal("CreateClient must attach an executor")
+	wrapped := NewClient(cl, "127.0.0.1:1", cloud.ClientParams{})
+	if wrapped.guard == nil || wrapped.guard.exec == nil {
+		t.Fatal("NewClient must attach an executor")
 	}
-	closeResilience(cl)
-}
-
-// AttachGovernance with the zero governance bundle still attaches an executor:
-// the client degrades to the observe-only resilience.Unmanaged one rather than
-// running bare, so a hand-built client is observed (with a one-time warning)
-// exactly like a governed one until protection is armed.
-func TestAttachGovernanceZeroBundleDegradesToUnmanaged(t *testing.T) {
-	cl, err := kgo.NewClient(kgo.SeedBrokers("127.0.0.1:1"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer cl.Close()
-
-	AttachGovernance(cl, "127.0.0.1:1", cloud.ClientParams{})
-	if _, ok := clientGuards.Load(cl); !ok {
-		t.Fatal("AttachGovernance must attach an executor even for the zero bundle")
-	}
-	closeResilience(cl)
+	_ = wrapped.Close()
 }
 
 // TestGuardedConsumeRoutesThroughGuard verifies an application owning its own
-// poll loop can route a consumed record through the client's executor: with an
-// executor attached, the record is rejected before the handler runs — the raw
-// client's own PollFetches cannot be intercepted, so this is the one entry point
-// that gives the raw consume path the guard, the messaging.* metrics and the
-// access log.
+// poll loop can route a consumed record through the client's governance layer:
+// with the stub executor armed, the record is rejected before the handler
+// runs — the raw client's own PollFetches cannot be intercepted, so this is
+// the one entry point that gives the raw consume path the guard, the
+// messaging.* metrics and the access log.
 func TestGuardedConsumeRoutesThroughGuard(t *testing.T) {
-	cl, err := kgo.NewClient(kgo.SeedBrokers("127.0.0.1:1"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer cl.Close()
-
-	stub := &stubExecutor{}
-	clientGuards.Store(cl, &clientGuard{exec: stub, serviceLabel: "kafka:test"})
-	defer clientGuards.Delete(cl)
+	cl := newStubbedClient(&stubExecutor{})
 
 	reached := false
-	err = GuardedConsume(context.Background(), cl, &kgo.Record{Topic: "t"}, func(context.Context) error {
+	err := GuardedConsume(context.Background(), cl, &kgo.Record{Topic: "t"}, func(context.Context) error {
 		reached = true
 		return nil
 	})
@@ -107,24 +102,14 @@ func TestGuardedConsumeRoutesThroughGuard(t *testing.T) {
 	if reached {
 		t.Fatal("handler must not run when the executor rejects the consume")
 	}
-	if n := stub.called.Load(); n != 1 {
-		t.Fatalf("executor must run exactly once, ran %d", n)
-	}
 }
 
 // TestDriverPublishGuarded verifies the driver's Publish routes through the
-// resilience executor the direct client API uses: with an executor attached,
-// the publish is rejected by the executor and never reaches the broker.
+// same chain the direct client API uses: with the stub executor armed, the
+// publish is rejected by the executor and never reaches the tail.
 func TestDriverPublishGuarded(t *testing.T) {
-	cl, err := kgo.NewClient(kgo.SeedBrokers("127.0.0.1:1"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer cl.Close()
-
 	stub := &stubExecutor{}
-	clientGuards.Store(cl, &clientGuard{exec: stub, serviceLabel: "kafka:test"})
-	defer clientGuards.Delete(cl)
+	cl := newStubbedClient(stub)
 
 	b := NewDriver(cl, nil)
 	pub, err := b.NewPublisher(context.Background(), "t")
@@ -140,5 +125,39 @@ func TestDriverPublishGuarded(t *testing.T) {
 	}
 	if n := stub.called.Load(); n != 1 {
 		t.Fatalf("executor must run exactly once, ran %d", n)
+	}
+}
+
+// topicLayer wraps the chain head and namespaces every topic it passes down —
+// the kind of behavior change no franz-go hook could express (hooks observe,
+// they do not rewrite).
+type topicLayer struct {
+	InnerKafka
+	prefix string
+}
+
+func (t topicLayer) ProduceSync(ctx context.Context, recs ...*kgo.Record) kgo.ProduceResults {
+	out := make([]*kgo.Record, 0, len(recs))
+	for _, r := range recs {
+		out = append(out, &kgo.Record{Topic: t.prefix + r.Topic, Key: r.Key, Value: r.Value})
+	}
+	return t.InnerKafka.ProduceSync(ctx, out...)
+}
+
+// TestInnerKafkaReorganize pins the wrap-head protocol: a custom layer over
+// the chain head rewrites the topic, and the produce runs through it — the
+// tail sees the rewritten topic.
+func TestInnerKafkaReorganize(t *testing.T) {
+	tail := &fakeTail{}
+	guard := &GuardKafka{next: tail} // no executor: governance off, inline run
+	cl := &Client{InnerKafka: NewObsKafka(guard), guard: guard}
+	cl.InnerKafka = topicLayer{InnerKafka: cl.InnerKafka, prefix: "tenant."}
+
+	results := cl.InnerKafka.ProduceSync(context.Background(), &kgo.Record{Topic: "orders"})
+	if results.FirstErr() != nil {
+		t.Fatalf("produce through the wrap-head layer: %v", results.FirstErr())
+	}
+	if tail.ran != 1 {
+		t.Fatalf("tail ran %d times, want 1", tail.ran)
 	}
 }

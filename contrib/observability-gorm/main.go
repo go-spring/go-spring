@@ -43,8 +43,6 @@ func main() {
 	gs.Run()
 }
 
-// init pins the working directory to this source directory so gs loads
-// conf/app.properties regardless of where the binary is launched from.
 // init sets the working directory of the application to the directory
 // where this source file resides.
 // This ensures that any relative file operations are based on the source file location,

@@ -57,7 +57,15 @@ import (
 // executor. A standalone, non-gs caller passes nil, which is exactly "governance
 // off".
 func newClient(ctx *gs.ContextProvider, name string, c Config, d Driver, center *governance.Center) (sarama.Client, error) {
-	log.Debugf(ctx.Context, log.TagAppDef, "creating kafka sarama client, brokers=%s", c.Brokers)
+	// The client's identity rides on a context derived here: every line below
+	// carries it without repeating it. The provider's own context is left
+	// alone — that one is the shared application context, not this
+	// constructor's.
+	cctx := log.WithFields(ctx.Context, log.String("brokers", c.Brokers))
+
+	log.Debug(cctx, log.TagAppDef, func() []log.Field {
+		return []log.Field{log.Msg("creating kafka sarama client")}
+	})
 
 	// No company Driver bean → fall back to the bundled default assembly.
 	if d == nil {
@@ -66,7 +74,9 @@ func newClient(ctx *gs.ContextProvider, name string, c Config, d Driver, center 
 	cl, err := d.CreateClient(ctx.Context, c,
 		cloud.ClientParams{Resilience: center.Resilience(), Fault: center.Fault()})
 	if err != nil {
-		log.Errorf(ctx.Context, log.TagAppDef, "kafka sarama: create client failed: %v", err)
+		log.Error(cctx, log.TagAppDef,
+			log.Err(err),
+			log.Msg("kafka sarama: create client failed"))
 		return nil, errutil.Explain(err, "failed to create kafka client: %s", c.Brokers)
 	}
 	// The Driver returned the client complete — governance was attached while it
@@ -76,11 +86,12 @@ func newClient(ctx *gs.ContextProvider, name string, c Config, d Driver, center 
 		if len(cl.Brokers()) == 0 {
 			closeResilience(cl)
 			cl.Close()
-			log.Errorf(ctx.Context, log.TagAppDef, "kafka sarama: no brokers after metadata fetch: %s", c.Brokers)
+			log.Error(cctx, log.TagAppDef,
+				log.Msg("kafka sarama: no brokers after metadata fetch"))
 			return nil, errutil.Explain(nil, "kafka client has no brokers after metadata fetch: %s", c.Brokers)
 		}
 	}
-	log.Infof(ctx.Context, log.TagAppDef, "kafka sarama client initialized, brokers=%s", c.Brokers)
+	log.Info(cctx, log.TagAppDef, log.Msg("kafka sarama client initialized"))
 	return cl, nil
 }
 

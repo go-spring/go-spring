@@ -71,12 +71,32 @@ var manual = flag.Bool("manual", false, "run in manual verification mode (server
 
 func main() {
 	flag.Parse()
+
+	// Unset env vars that leak from the developer shell so runs are reproducible
+	// and consistent with sibling starter examples.
+	_ = os.Unsetenv("_")
+	_ = os.Unsetenv("TERM")
+	_ = os.Unsetenv("TERM_SESSION_ID")
+
 	demoBean := gs.Provide(&Demo{}).Export(gs.As[gs.Rooter]())
+	demo := demoBean.Interface().(*Demo)
+	// Print on every change so a manual run (-manual) can watch the hot-reload
+	// happen; the self-test reads the fields directly.
+	demo.Message.OnChanged(func(newVal, oldVal string) {
+		if newVal != oldVal {
+			fmt.Printf("demo.message: %q -> %q\n", oldVal, newVal)
+		}
+	})
+	demo.Password.OnChanged(func(newVal, oldVal string) {
+		if newVal != oldVal {
+			fmt.Printf("demo.password: %q -> %q\n", oldVal, newVal)
+		}
+	})
 
 	if !*manual {
 		go func() {
 			time.Sleep(500 * time.Millisecond)
-			runTest(demoBean.Interface().(*Demo))
+			runTest(demo)
 		}()
 	} else {
 
@@ -137,14 +157,14 @@ func publish(ctx context.Context, doc string) error {
 	return err
 }
 
-// init sets the AES decrypt key and Vault token in the environment (so both the
-// provider and the decryption seam are configured), and points the working
-// directory at this source file's directory so the relative config path
-// resolves.
 // init sets the working directory of the application to the directory
 // where this source file resides.
 // This ensures that any relative file operations are based on the source file location,
 // not the process launch path.
+//
+// Note: the Vault token and the AES decrypt key are read from the environment
+// (VAULT_TOKEN, GS_CONFIG_DECRYPT_AES_KEY); export both before running, as
+// check.sh does.
 func init() {
 	var execDir string
 	_, filename, _, ok := runtime.Caller(0)

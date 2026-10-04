@@ -171,7 +171,8 @@ func init() {
 	if ok {
 		execDir = filepath.Dir(filename)
 	}
-	if err := os.Chdir(execDir); err != nil {
+	err := os.Chdir(execDir)
+	if err != nil {
 		panic(err)
 	}
 	workDir, err := os.Getwd()

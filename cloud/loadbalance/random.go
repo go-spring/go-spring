@@ -17,6 +17,7 @@
 package loadbalance
 
 import (
+	"context"
 	"math/rand/v2"
 
 	"go-spring.org/cloud/discovery"
@@ -52,4 +53,4 @@ func (b *randomBalancer) Pick(eps []discovery.Endpoint, _ PickInfo) (discovery.E
 }
 
 // Complete is a no-op: random keeps no per-request state.
-func (b *randomBalancer) Complete(discovery.Endpoint, error) {}
+func (b *randomBalancer) Complete(_ context.Context, _ discovery.Endpoint, _ error) {}

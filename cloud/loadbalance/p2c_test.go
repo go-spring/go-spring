@@ -17,6 +17,7 @@
 package loadbalance
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -34,7 +35,7 @@ func TestP2CSpreadWhenHealthy(t *testing.T) {
 		ep, err := b.Pick(eps("a", "b", "c"), PickInfo{})
 		assert.Error(t, err).Nil()
 		m[ep.Addr]++
-		b.Complete(ep, nil)
+		b.Complete(context.Background(), ep, nil)
 	}
 	// p2c is not uniform by design: timing noise in the EWMA makes it prefer
 	// the momentarily-cheapest of each drawn pair, and a momentarily slower
@@ -55,9 +56,9 @@ func TestP2CAvoidsFailingEndpoint(t *testing.T) {
 		ep, err := b.Pick(set, PickInfo{})
 		assert.Error(t, err).Nil()
 		if ep.Addr == "b" {
-			b.Complete(ep, errutil.Explain(nil, "boom"))
+			b.Complete(context.Background(), ep, errutil.Explain(nil, "boom"))
 		} else {
-			b.Complete(ep, nil)
+			b.Complete(context.Background(), ep, nil)
 		}
 	}
 	m := map[string]int{}
@@ -65,7 +66,7 @@ func TestP2CAvoidsFailingEndpoint(t *testing.T) {
 		ep, err := b.Pick(set, PickInfo{})
 		assert.Error(t, err).Nil()
 		m[ep.Addr]++
-		b.Complete(ep, nil)
+		b.Complete(context.Background(), ep, nil)
 	}
 	assert.Number(t, m["a"]).GreaterThan(190)
 }
@@ -78,12 +79,12 @@ func TestP2CInflightDrains(t *testing.T) {
 
 	e1, err := b.Pick(set, PickInfo{})
 	assert.Error(t, err).Nil()
-	b.Complete(e1, nil)
+	b.Complete(context.Background(), e1, nil)
 
 	// A fresh instance with no history scores 0 and is preferred (exploration).
 	e2, err := b.Pick(set, PickInfo{})
 	assert.Error(t, err).Nil()
-	b.Complete(e2, nil)
+	b.Complete(context.Background(), e2, nil)
 }
 
 func TestP2CEmpty(t *testing.T) {
@@ -115,10 +116,10 @@ func TestP2CStalenessAgingReadmits(t *testing.T) {
 		ep, err := b.Pick(set, PickInfo{})
 		assert.Error(t, err).Nil()
 		if ep.Addr == "a" {
-			b.Complete(ep, errutil.Explain(nil, "boom"))
+			b.Complete(context.Background(), ep, errutil.Explain(nil, "boom"))
 			break
 		}
-		b.Complete(ep, nil)
+		b.Complete(context.Background(), ep, nil)
 	}
 	assert.Number(t, b.score("a")).GreaterThan(b.score("b") + 1) // a looks costly
 

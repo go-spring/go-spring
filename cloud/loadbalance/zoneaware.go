@@ -17,6 +17,7 @@
 package loadbalance
 
 import (
+	"context"
 	"strings"
 
 	"go-spring.org/cloud/discovery"
@@ -121,8 +122,8 @@ func (b *zoneAware) Pick(eps []discovery.Endpoint, info PickInfo) (discovery.End
 
 // Complete forwards to the delegate so strategies composed under zone_aware
 // keep their per-request accounting.
-func (b *zoneAware) Complete(ep discovery.Endpoint, err error) {
-	b.delegate.Complete(ep, err)
+func (b *zoneAware) Complete(ctx context.Context, ep discovery.Endpoint, err error) {
+	b.delegate.Complete(ctx, ep, err)
 }
 
 // parseZoneLevels parses the caller's zone hint into an ordered fallback list: a

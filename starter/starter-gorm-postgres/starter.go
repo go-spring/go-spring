@@ -158,7 +158,7 @@ func build(ctx context.Context, c Config, params cloud.ClientParams) (gormcore.S
 			// The dial outcome is the only signal this picker has; feeding it
 			// makes outlier suspension evict an instance that keeps refusing
 			// connections.
-			lb.Complete(ep, derr)
+			lb.Complete(ctx, ep, derr)
 			return conn, derr
 		}
 		closer = stopSelection

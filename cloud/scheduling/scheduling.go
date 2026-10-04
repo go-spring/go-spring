@@ -413,6 +413,11 @@ type task struct {
 // fire is measured from completion; otherwise it dispatches per concurrency
 // policy without blocking the loop.
 func (t *task) loop(ctx context.Context) {
+	// The job's name rides on the context: every line about this job carries it
+	// under the same key the metric and the access log use, without repeating
+	// it at each call site.
+	ctx = log.WithFields(ctx, log.String("job", t.job.name))
+
 	for {
 		t.mu.Lock()
 		tc := TriggerContext{
@@ -432,9 +437,8 @@ func (t *task) loop(ctx context.Context) {
 			// the other lifecycle lines.
 			_, oneShot := t.job.trigger.(after)
 			if !oneShot && ctx.Err() == nil {
-				log.Warn(context.Background(), log.TagAppDef,
-					log.String("task", t.job.name),
-					log.Msg("scheduler: task's trigger reports no further fire time"))
+				log.Warn(ctx, log.TagAppDef,
+					log.Msg("scheduler: job's trigger reports no further fire time"))
 			}
 			return
 		}
@@ -515,6 +519,9 @@ func (t *task) dispatch(ctx context.Context, scheduled time.Time) {
 // Each run is attributed to the fire that scheduled it, so a queued fire reports
 // its own time rather than the one it waited behind.
 func (t *task) queueWorker(ctx context.Context, scheduled time.Time) {
+	// See loop: the job's name rides on the context.
+	ctx = log.WithFields(ctx, log.String("job", t.job.name))
+
 	for {
 		t.runOnce(ctx, scheduled)
 		t.mu.Lock()
@@ -528,11 +535,8 @@ func (t *task) queueWorker(ctx context.Context, scheduled time.Time) {
 			if ctx.Err() != nil {
 				t.running = false
 				t.mu.Unlock()
-				log.Debug(context.Background(), log.TagAppDef, func() []log.Field {
-					return []log.Field{
-						log.String("task", t.job.name),
-						log.Msg("scheduler: queued fire dropped on stop"),
-					}
+				log.Debug(ctx, log.TagAppDef, func() []log.Field {
+					return []log.Field{log.Msg("scheduler: queued fire dropped on stop")}
 				})
 				return
 			}
@@ -554,6 +558,9 @@ func (t *task) runOnce(parent context.Context, scheduled time.Time) {
 		ctx, cancel = context.WithTimeout(parent, t.opts.Timeout)
 		defer cancel()
 	}
+	// See loop: the job's name rides on the context. It survives the timeout
+	// above either way — the derive happens on whichever context won.
+	ctx = log.WithFields(ctx, log.String("job", t.job.name))
 
 	if t.opts.Locker != nil {
 		key := t.opts.LockKey
@@ -579,8 +586,7 @@ func (t *task) runOnce(parent context.Context, scheduled time.Time) {
 		// now relies on its TTL expiring, which the holder should know about.
 		defer func() {
 			if err := l.Unlock(context.WithoutCancel(ctx)); err != nil {
-				log.Warn(context.Background(), log.TagAppDef,
-					log.String("task", t.job.name),
+				log.Warn(ctx, log.TagAppDef,
 					log.String("key", key),
 					log.Err(err),
 					log.Msg("scheduler: lock release failed; the lock now relies on its TTL"))

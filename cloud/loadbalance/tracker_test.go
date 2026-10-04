@@ -17,6 +17,7 @@
 package loadbalance
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -29,12 +30,12 @@ func TestTrackerSuspendAndRecover(t *testing.T) {
 	tr.now = func() time.Time { return now }
 
 	// One failure is below threshold: still eligible.
-	tr.Record("a", false)
+	tr.Record(context.Background(), "a", false)
 	assert.That(t, tr.Suspended("a")).False()
 	assert.Slice(t, addrs(tr.Allows(eps("a", "b")))).Length(2)
 
 	// Second consecutive failure trips suspension.
-	tr.Record("a", false)
+	tr.Record(context.Background(), "a", false)
 	assert.That(t, tr.Suspended("a")).True()
 	assert.Slice(t, addrs(tr.Allows(eps("a", "b")))).Equal([]string{"b"})
 
@@ -47,24 +48,24 @@ func TestTrackerSuspendAndRecover(t *testing.T) {
 	assert.Slice(t, addrs(tr.Allows(eps("a", "b")))).Length(2)
 
 	// A successful trial fully restores it.
-	tr.Record("a", true)
+	tr.Record(context.Background(), "a", true)
 	assert.That(t, tr.Suspended("a")).False()
 
 	// If the trial fails instead, it re-suspends for another window.
-	tr.Record("a", false)
-	tr.Record("a", false)
+	tr.Record(context.Background(), "a", false)
+	tr.Record(context.Background(), "a", false)
 	assert.That(t, tr.Suspended("a")).True()
 	now = now.Add(1100 * time.Millisecond)
 	tr.Allows(eps("a"))   // admit trial -> half-open
-	tr.Record("a", false) // trial fails
+	tr.Record(context.Background(), "a", false) // trial fails
 	assert.That(t, tr.Suspended("a")).True()
 }
 
 func TestTrackerDisabled(t *testing.T) {
 	tr := NewTracker(TrackerConfig{Threshold: 0})
-	tr.Record("a", false)
-	tr.Record("a", false)
-	tr.Record("a", false)
+	tr.Record(context.Background(), "a", false)
+	tr.Record(context.Background(), "a", false)
+	tr.Record(context.Background(), "a", false)
 	assert.That(t, tr.Suspended("a")).False()
 	assert.Slice(t, addrs(tr.Allows(eps("a", "b")))).Length(2)
 }
@@ -75,8 +76,8 @@ func TestTrackerAdmissibleIsPure(t *testing.T) {
 	now := time.Unix(0, 0)
 	tr := NewTracker(TrackerConfig{Threshold: 1, SuspendFor: time.Minute})
 	tr.now = func() time.Time { return now }
-	tr.Record("a", false)
-	tr.Record("b", false)
+	tr.Record(context.Background(), "a", false)
+	tr.Record(context.Background(), "b", false)
 	assert.Slice(t, addrs(tr.Admissible(eps("a", "b")))).Length(0)
 	assert.Slice(t, addrs(tr.Admissible(eps("a", "b", "c")))).Equal([]string{"c"})
 }
@@ -87,8 +88,8 @@ func TestTrackerAllSuspendedFallsBack(t *testing.T) {
 	now := time.Unix(0, 0)
 	tr := NewTracker(TrackerConfig{Threshold: 1, SuspendFor: time.Minute})
 	tr.now = func() time.Time { return now }
-	tr.Record("a", false)
-	tr.Record("b", false)
+	tr.Record(context.Background(), "a", false)
+	tr.Record(context.Background(), "b", false)
 	assert.That(t, tr.Suspended("a")).True()
 	assert.That(t, tr.Suspended("b")).True()
 	assert.Slice(t, addrs(tr.Allows(eps("a", "b")))).Equal([]string{"a", "b"})

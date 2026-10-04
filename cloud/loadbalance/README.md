@@ -41,7 +41,7 @@ for {
     ep, err := pool.Pick(loadbalance.PickInfo{})
     if err != nil { return err }
     err = call(ep.Addr)     // your RPC/HTTP call
-    pool.Complete(ep, err)  // must be paired: settles accounting + feeds the tracker
+    pool.Complete(ctx, ep, err)  // must be paired: settles accounting + feeds the tracker
 }
 ```
 
@@ -89,7 +89,8 @@ keeps an in-flight table; p2c keeps a latency model). All state is keyed by
 endpoint address, so instances coming and going — or a reordered snapshot —
 never disturbs the state of the survivors.
 
-A custom strategy implements `Balancer` (Pick/Complete, concurrency-safe) and is
+A custom strategy implements `Balancer` (Pick/Complete, concurrency-safe;
+`Complete` receives the context of the request it settles) and is
 contributed as a named `Factory` bean — the bean name is the strategy name a
 rule cites, and the strategy's own parameters arrive in `Params`:
 
@@ -139,7 +140,7 @@ ep, _ := pool.Pick(loadbalance.PickInfo{Zone: "us-east-1a,us-east-1"})
 
 The `Tracker` covers the failure mode discovery cannot see: an instance that
 is still registered and passes health checks but keeps failing real requests
-(a zombie). It learns only from `Complete(err)` — no extra calls:
+(a zombie). It learns only from the `err` passed to `Complete` — no extra calls:
 
 ```
 healthy --consecutive failures reach Threshold--> suspended (cooling down for
@@ -211,3 +212,9 @@ drive selection from your own config instead of the manager.
 The two calls must be paired **exactly once**. Skipping `Complete`:
 `least_conn`'s in-flight count leaks (that instance starves), `p2c`'s latency
 model drifts, and the `Tracker` goes blind (suspension stops working).
+
+`Complete` takes the context of the request it settles, which is what lets a
+strategy's own telemetry and logging attach to the request that caused the
+state change — the tracker's suspension and recovery lines are traced to it.
+What it does is in-memory bookkeeping: it must not perform I/O, and it must
+not depend on the context still being live.

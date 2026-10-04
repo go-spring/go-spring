@@ -107,8 +107,18 @@ func init() {
 // machinery. The bean is nil in a standalone (non-gs) call, and the zero bundle
 // degrades to an observed-only, loudly-unmanaged executor rather than failing.
 func createPool(ctx *gs.ContextProvider, c Config, d Driver, discoveryLabel string, center *governance.Center) (*Pool, error) {
+	// The pool's identity rides on a context derived here: every line below
+	// carries it without repeating it. The provider's own context is left
+	// alone — that one is the shared application context, not this
+	// constructor's.
+	cctx := log.WithFields(ctx.Context, log.String("addr", c.Addr))
 
-	log.Debugf(ctx.Context, log.TagAppDef, "creating redigo client, addr=%s service-name=%s", c.Addr, c.ServiceName)
+	log.Debug(cctx, log.TagAppDef, func() []log.Field {
+		return []log.Field{
+			log.String("service_name", c.ServiceName),
+			log.Msg("creating redigo client"),
+		}
+	})
 
 	if err := errutil.RequireAny("redis",
 		errutil.Field{Name: "addr", Value: c.Addr},
@@ -164,13 +174,15 @@ func createPool(ctx *gs.ContextProvider, c Config, d Driver, discoveryLabel stri
 	// command chain (span et al.) — a harmless, even useful, first blip.
 	if c.Ping {
 		if err := HealthCheck(ctx.Context, w); err != nil {
-			log.Errorf(ctx.Context, log.TagAppDef, "redigo: startup ping failed: %v", err)
+			log.Error(cctx, log.TagAppDef,
+				log.Err(err),
+				log.Msg("redigo: startup ping failed"))
 			_ = w.Close() // stop resolver watch + close pool
 			return nil, errutil.Explain(err, "redis: startup ping failed")
 		}
 	}
 
-	log.Infof(ctx.Context, log.TagAppDef, "redigo client initialized, addr=%s", c.Addr)
+	log.Info(cctx, log.TagAppDef, log.Msg("redigo client initialized"))
 	return w, nil
 }
 

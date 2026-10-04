@@ -10,9 +10,9 @@ against the starter source (`starter.go`, `watch.go`, `filewatch.go`, `configtre
 watch+refresh bridge. Each is activated individually by its entry in `spring.config.import`:
 
 - `file-watch:<file>` — one configuration document per import (a ConfigMap key holding
-  `application.yaml`), parsed by extension (starter.go:41).
+  `application.yaml`), parsed by extension (starter.go:46).
 - `configtree:<dir>` — a directory tree of scalar key files (a Secret / env-style ConfigMap
-  mount); each leaf file is one property keyed by its dotted relative path (starter.go:35).
+  mount); each leaf file is one property keyed by its dotted relative path (starter.go:36).
 
 The centerpiece is **hot reload without restart**: both providers watch the parent directory,
 so the kubelet's atomic `..data` symlink swap on a ConfigMap/Secret update becomes a live
@@ -134,8 +134,8 @@ echo 'demo:\n  message: flipped' > example/mount/application.yaml
 
 ```
 import starter-config-file
-  ├─ init: conf.RegisterProvider("file-watch", newFileWatchCtrl())      (starter.go:41)
-  └─ init: conf.RegisterProvider("configtree", newConfigTreeCtrl())  (starter.go:35)
+  ├─ init: conf.RegisterProvider("file-watch", newFileWatchCtrl())      (starter.go:46)
+  └─ init: conf.RegisterProvider("configtree", newConfigTreeCtrl())  (starter.go:36)
         │
 gs.Run() → App.Start()                                                (app.go:285)
   1. mount the gs.RefreshProperties / gs.AppStarted facade targets

@@ -17,12 +17,6 @@ cd starter-config-consul/example
 go run . -manual
 ```
 
-预期输出：
-```
-initial value
-updated value
-```
-
 需要先启动 Consul：
 ```bash
 # 启动 Consul
@@ -32,7 +26,19 @@ docker compose up -d
 go run . -manual
 ```
 
-服务保持运行，可以用对应 CLI 工具验证。`Ctrl+C` 退出服务。
+服务保持运行，`Ctrl+C` 退出服务。另开一个终端发布新值，即可看到变化打印：
+
+```bash
+curl -fsS -X PUT -d 'demo.message=manual-1' http://127.0.0.1:8500/v1/kv/gs-config-demo
+# 打印：demo.message: "..." -> "manual-1"
+```
+
+不带 `-manual` 时，示例会自己发布一个新值、等待绑定字段热更新，打印
+`hot-reload observed: hello-<hhmmss>` 后退出：
+
+```bash
+go run .
+```
 
 ## 冒烟测试
 

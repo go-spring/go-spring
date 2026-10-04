@@ -17,6 +17,7 @@
 package conf
 
 import (
+	"context"
 	"reflect"
 	"time"
 
@@ -69,9 +70,9 @@ func RegisterProvider(name string, p provider.Provider) {
 
 // CloseProviders stops every registered provider, releasing the watchers and
 // listeners they installed while loading. The application runtime calls it once
-// while shutting down.
-func CloseProviders() error {
-	return provider.CloseAll()
+// while shutting down, passing the shutdown context (see provider.Provider).
+func CloseProviders(ctx context.Context) error {
+	return provider.CloseAll(ctx)
 }
 
 // RegisterDecryptor registers a property-level decryption scheme, the seam

@@ -228,8 +228,6 @@ func fail(ctx context.Context, format string, args ...any) {
 	os.Exit(1)
 }
 
-// init pins the working directory to this source file's directory so relative
-// config paths resolve regardless of how the binary is invoked.
 // init sets the working directory of the application to the directory
 // where this source file resides.
 // This ensures that any relative file operations are based on the source file location,

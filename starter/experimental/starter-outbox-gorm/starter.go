@@ -106,9 +106,14 @@ func newRelay(_ *gs.ContextProvider, c Config, db *gorm.DB, drv messaging.Driver
 // background. The delivery driver was injected at construction; the relay
 // publishes through it once the loop polls a pending record.
 func (o *Relay) Init() error {
+	// The relay's identity rides on a context derived here: every line below
+	// carries it without repeating it. The context is minted locally — the
+	// bean's own lifecycle entry, not a shared application context.
+	octx := log.WithFields(context.Background(), log.String("instance", o.instanceName))
+
 	if o.cfg.AutoMigrate {
 		if err := Migrate(o.db); err != nil {
-			log.Errorf(context.Background(), starterTag, "outbox %q: auto-migrate failed: %v", o.instanceName, err)
+			log.Error(octx, starterTag, log.Err(err), log.Msg("outbox: auto-migrate failed"))
 			return err
 		}
 	}
@@ -124,7 +129,7 @@ func (o *Relay) Init() error {
 	if driver == "" {
 		driver = "(autowired messaging.Driver bean)"
 	}
-	log.Infof(context.Background(), starterTag, "outbox relay %q started (driver=%s)", o.instanceName, driver)
+	log.Info(octx, starterTag, log.Msgf("outbox relay started (driver=%s)", driver))
 	return nil
 }
 
@@ -136,11 +141,14 @@ func (o *Relay) Destroy() error {
 	if o.cancel == nil {
 		return nil
 	}
+	// The relay's identity rides on a context derived here, teardown's own
+	// scope, so the line below carries it without repeating it.
+	octx := log.WithFields(context.Background(), log.String("instance", o.instanceName))
 	o.cancel()
 	select {
 	case <-o.done:
 	case <-time.After(DrainTimeout):
-		log.Warnf(context.Background(), starterTag, "outbox relay %q: drain timed out", o.instanceName)
+		log.Warn(octx, starterTag, log.Msg("outbox relay: drain timed out"))
 	}
 	return nil
 }

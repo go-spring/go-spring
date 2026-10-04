@@ -28,6 +28,7 @@ compose up -d
 # Wait for a TCP port to accept connections (up to $2 seconds, default 30).
 wait_port() {
     local port="$1" tries="${2:-30}"
+echo "== waiting for the service to be ready =="
     for _ in $(seq 1 "${tries}"); do
         if (exec 3<>"/dev/tcp/127.0.0.1/${port}") 2>/dev/null; then
             exec 3>&- 3<&- 2>/dev/null || true
@@ -44,6 +45,7 @@ wait_port 6379 30 || true
 wait_port 26379 30 || true
 wait_port 7000 60 || true
 
+echo "== example boot =="
 go run . &
 pid=$!
 ( sleep 30; kill -9 "${pid}" 2>/dev/null ) &
@@ -52,4 +54,9 @@ rc=0
 wait "${pid}" 2>/dev/null || rc=$?
 kill "${watchdog}" 2>/dev/null || true
 wait "${watchdog}" 2>/dev/null || true
-exit "${rc}"
+if [ "${rc}" -ne 0 ]; then
+    echo "== FAILED ==" >&2
+    exit "${rc}"
+fi
+echo "== OK =="
+exit 0

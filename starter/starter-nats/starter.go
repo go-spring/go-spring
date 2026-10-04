@@ -16,7 +16,7 @@
 
 // starter.go is the gs registration + glue concept: it binds each
 // ${spring.nats} entry to a *Conn bean (built by newConn in driver.go) and its
-// destroy callback ((*Conn).Destroy in client.go).
+// destroy callback ((*Conn).Close in client.go).
 package StarterNats
 
 import (
@@ -50,7 +50,7 @@ func init() {
 				gs.IndexArg(1, gs.ValueArg(name)),
 				gs.IndexArg(2, gs.ValueArg(c)),
 				gs.IndexArg(3, gs.TagArg("${spring.nats.instances."+name+".driver:=${spring.nats.default.driver:=?}}")),
-			).Name(name).Destroy((*Conn).Destroy).Caller(1)
+			).Name(name).Destroy((*Conn).Close).Caller(1)
 
 			// Export the broker-neutral messaging.Driver over this connection as a
 			// bean, so consumers (starter-outbox-gorm, app pub/sub) autowire it like

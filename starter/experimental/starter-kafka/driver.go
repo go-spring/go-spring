@@ -67,8 +67,7 @@ type DefaultDriver struct{}
 
 // CreateClient creates a new *kgo.Client from the provided configuration. It
 // owns full client assembly — the kotel trace/metric hooks, the log bridge,
-// consumer group/topic, SASL mechanism, TLS and producer options — and, last of
-// all, attaches the governance bundle (see [AttachGovernance]), so the returned
+// consumer group/topic, SASL mechanism, TLS and producer options — so the returned
 // client is complete. The startup ping is deliberately not here: it is the
 // starter's lifecycle concern (see newClient in starter.go).
 //
@@ -115,11 +114,11 @@ func (DefaultDriver) CreateClient(ctx context.Context, c Config, params cloud.Cl
 	if err != nil {
 		return nil, err
 	}
-	// The client is complete when returned: governance is applied HERE, while it
-	// is built, not by a later starter step. AttachGovernance indexes the executor
-	// by this raw client, which is the only handle the package's produce/consume
-	// path has on it.
-	AttachGovernance(cl, c.Brokers, params)
+	// The driver builds the RAW client; params stays in the interface for the
+	// drivers that need it, but the bundled default ignores it — governance is
+	// applied one step up, by [NewClient] while it wraps the client in its
+	// chain.
+	_ = params // see above
 	return cl, nil
 }
 

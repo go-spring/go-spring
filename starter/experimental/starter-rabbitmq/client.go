@@ -34,7 +34,7 @@ import (
 	"go-spring.org/log"
 )
 
-// NewDriver adapts a RabbitMQ connection to the broker-neutral messaging.Driver,
+// NewDriver adapts a RabbitMQ client to the broker-neutral messaging.Driver,
 // so application code can publish/consume messaging.Message envelopes without
 // depending on the amqp API. destination/source strings are queue names: a
 // publisher sends to the default exchange keyed by the queue name, and a
@@ -51,7 +51,7 @@ import (
 // The driver DECLARES each operation's identity (see [operation]) and routes it
 // through the connection's resilience executor — the single emitter of the span,
 // the durations and the access log. It does not instrument anything itself:
-// publish rides [GuardedPublish], and the consume handler runs under [guard]
+// publish rides [GuardedPublish], and the consume handler runs under [Client.execute]
 // after the upstream W3C context is extracted from the delivery headers, so a
 // trace links producer to consumer across services. All of it is a no-op
 // without starter-otel.
@@ -59,21 +59,21 @@ import (
 // prop is the process's load-test convention (nullable — nil falls back to
 // traffic.NewDefaultPropagator), carried on every publisher/subscriber this
 // driver hands out.
-func NewDriver(conn *amqp.Connection, prop traffic.Propagator) messaging.Driver {
+func NewDriver(cl *Client, prop traffic.Propagator) messaging.Driver {
 	if prop == nil {
 		// DefaultBinding is complete, so this cannot fail.
 		prop, _ = traffic.NewDefaultPropagator(traffic.DefaultBinding())
 	}
-	return &driver{conn: conn, prop: prop}
+	return &driver{cl: cl, prop: prop}
 }
 
 type driver struct {
-	conn *amqp.Connection
+	cl   *Client
 	prop traffic.Propagator
 }
 
 func (b *driver) NewPublisher(_ context.Context, destination string) (messaging.Publisher, error) {
-	ch, err := b.conn.Channel()
+	ch, err := b.cl.Conn.Channel()
 	if err != nil {
 		return nil, err
 	}
@@ -81,11 +81,11 @@ func (b *driver) NewPublisher(_ context.Context, destination string) (messaging.
 		_ = ch.Close()
 		return nil, err
 	}
-	return &publisher{conn: b.conn, ch: ch, queue: destination, prop: b.prop}, nil
+	return &publisher{cl: b.cl, ch: ch, queue: destination, prop: b.prop}, nil
 }
 
 func (b *driver) NewSubscriber(_ context.Context, source, _ string) (messaging.Subscriber, error) {
-	ch, err := b.conn.Channel()
+	ch, err := b.cl.Conn.Channel()
 	if err != nil {
 		return nil, err
 	}
@@ -93,14 +93,14 @@ func (b *driver) NewSubscriber(_ context.Context, source, _ string) (messaging.S
 		_ = ch.Close()
 		return nil, err
 	}
-	return &subscriber{conn: b.conn, ch: ch, queue: source, prop: b.prop}, nil
+	return &subscriber{cl: b.cl, ch: ch, queue: source, prop: b.prop}, nil
 }
 
 // publisher sends envelopes to a fixed queue via the default exchange. It holds
 // the owning connection so Publish can resolve the connection-scoped resilience
 // executor (channels carry no identity of their own).
 type publisher struct {
-	conn  *amqp.Connection
+	cl    *Client
 	ch    *amqp.Channel
 	queue string
 	prop  traffic.Propagator
@@ -130,7 +130,7 @@ func (p *publisher) Publish(ctx context.Context, msg *messaging.Message) error {
 	// trace context, then runs the send under the connection's executor — a
 	// no-op pass-through when governance is off for this connection, a rejection
 	// sentinel when rate-limited/circuit-open.
-	return GuardedPublish(ctx, p.conn, p.ch, "", p.queue, false, false, pub)
+	return GuardedPublish(ctx, p.cl, p.ch, "", p.queue, false, false, pub)
 }
 
 func (p *publisher) Close() error { return p.ch.Close() }
@@ -143,7 +143,7 @@ func (p *publisher) Close() error { return p.ch.Close() }
 // It holds the owning connection so Subscribe can resolve the connection-scoped
 // resilience executor (channels carry no identity of their own).
 type subscriber struct {
-	conn  *amqp.Connection
+	cl    *Client
 	ch    *amqp.Channel
 	queue string
 	prop  traffic.Propagator
@@ -174,7 +174,7 @@ func (s *subscriber) Subscribe(_ context.Context, handler messaging.Handler) err
 			// The handler runs under the connection's resilience executor, which
 			// emits the consume span, durations and access log; without an
 			// executor guard runs it inline.
-			herr := guard(msgCtx, s.conn, func(attemptCtx context.Context) error {
+			herr := s.cl.execute(msgCtx, func(attemptCtx context.Context) error {
 				return handler(attemptCtx, fromDelivery(&d))
 			})
 			if herr != nil {

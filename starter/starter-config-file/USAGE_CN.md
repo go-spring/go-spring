@@ -10,9 +10,9 @@
 各自由 `spring.config.import` 中的对应条目独立激活：
 
 - `file-watch:<file>` — 每条 import 一个配置文档（承载 `application.yaml` 的 ConfigMap key），
-  按扩展名解析（starter.go:41）。
+  按扩展名解析（starter.go:46）。
 - `configtree:<dir>` — 标量 key 文件组成的目录树（Secret / env 风格 ConfigMap 挂载）；
-  每个叶子文件是一条 property，key 为其点分相对路径（starter.go:35）。
+  每个叶子文件是一条 property，key 为其点分相对路径（starter.go:36）。
 
 本 starter 的核心是**免重启热更新**：两个 provider 都 watch 父目录，因此 kubelet 更新
 ConfigMap/Secret 时的原子 `..data` 符号链接交换会被转成 `gs.Dync` 字段的实时刷新。

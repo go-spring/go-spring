@@ -17,6 +17,7 @@
 package StarterGateway
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -59,7 +60,7 @@ func TestSelectionHashKeyAffinity(t *testing.T) {
 	pickFor := func(clientIP string) string {
 		ep, err := pool.Pick(loadbalance.PickInfo{HashKey: clientIP})
 		assert.Error(t, err).Nil()
-		pool.Complete(ep, nil)
+		pool.Complete(context.Background(), ep, nil)
 		return ep.Addr
 	}
 

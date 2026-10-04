@@ -23,7 +23,6 @@ import (
 	"go-spring.org/cloud/governance"
 	"time"
 
-	"github.com/twmb/franz-go/pkg/kgo"
 	"go-spring.org/cloud"
 	"go-spring.org/cloud/messaging"
 	"go-spring.org/cloud/traffic"
@@ -55,7 +54,7 @@ func init() {
 				gs.IndexArg(3, gs.TagArg("${spring.kafka.instances."+name+".driver:=${spring.kafka.default.driver:=?}}")),
 				// The governance center is the family's sole injection point: it hands
 				// out the resilience/fault/loadbalance authorities.
-			).Name(name).Destroy(destroyClient).Caller(1)
+			).Name(name).Destroy((*Client).Close).Caller(1)
 
 			// Export the broker-neutral messaging.Driver over this client as a bean,
 			// so consumers (starter-outbox-gorm, app pub/sub) autowire it like any
@@ -64,7 +63,7 @@ func init() {
 			// traffic.Propagator (index 1) is a NULLABLE injection: the single
 			// propagator bean when the application provides one, nil otherwise (the
 			// driver then falls back to traffic.NewDefaultPropagator).
-			r.Provide(func(cl *kgo.Client, prop traffic.Propagator) messaging.Driver {
+			r.Provide(func(cl *Client, prop traffic.Propagator) messaging.Driver {
 				return NewDriver(cl, prop)
 			}, gs.TagArg(name), gs.IndexArg(1, gs.TagArg("?"))).Name(name).Caller(1)
 			return nil
@@ -96,53 +95,34 @@ const pingTimeout = 10 * time.Second
 // them into the [cloud.ClientParams] handed to the driver, which applies them
 // while building.
 func newClient(ctx *gs.ContextProvider, name string, c Config, d Driver,
-	center *governance.Center) (*kgo.Client, error) {
+	center *governance.Center) (*Client, error) {
 	log.Debugf(ctx.Context, log.TagAppDef, "creating kafka client, brokers=%s group=%s topic=%s", c.Brokers, c.Group, c.Topic)
 
 	// No company Driver bean → fall back to the bundled default assembly.
 	if d == nil {
 		d = DefaultDriver{}
 	}
-	cl, err := d.CreateClient(ctx.Context, c, cloud.ClientParams{Resilience: center.Resilience(), Fault: center.Fault()})
+	raw, err := d.CreateClient(ctx.Context, c, cloud.ClientParams{Resilience: center.Resilience(), Fault: center.Fault()})
 	if err != nil {
 		log.Errorf(ctx.Context, log.TagAppDef, "kafka: create client failed: %v", err)
 		return nil, errutil.Explain(err, "failed to create kafka client: %s", c.Brokers)
 	}
 
-	// The driver returned the client complete — governance attached while it was
-	// built. Then probe connectivity (when Ping is enabled). The probe goes
-	// straight to the raw client on purpose: it is a connectivity check, not
-	// business traffic, so it must not spend limiter/breaker budget. A failure
-	// abandons the client, so release the executor the driver attached.
+	// Wrap the raw client in its chain — governance applied HERE, while the
+	// client is built. Then probe connectivity (when Ping is enabled). The probe
+	// goes straight to the raw client on purpose: it is a connectivity check,
+	// not business traffic, so it must not spend limiter/breaker budget. A
+	// failure abandons the client, chain and all.
+	cl := NewClient(raw, c.Brokers, cloud.ClientParams{Resilience: center.Resilience(), Fault: center.Fault()})
 	if c.Ping {
 		pingCtx, cancel := context.WithTimeout(ctx.Context, pingTimeout)
 		defer cancel()
-		if err = cl.Ping(pingCtx); err != nil {
+		if err = raw.Ping(pingCtx); err != nil {
 			log.Errorf(ctx.Context, log.TagAppDef, "kafka: ping failed: %v", err)
-			closeResilience(cl)
-			cl.Close()
+			_ = cl.Close()
 			return nil, errutil.Explain(err, "failed to ping kafka: %s", c.Brokers)
 		}
 	}
 	log.Infof(ctx.Context, log.TagAppDef, "kafka client initialized, brokers=%s", c.Brokers)
 	return cl, nil
-}
-
-// destroyClient flushes any buffered produce records before closing so
-// in-flight messages are not dropped on shutdown. When a resilience executor is
-// attached its Close releases any background resources of a production driver.
-func destroyClient(cl *kgo.Client) error {
-	closeResilience(cl)
-	ctx, cancel := context.WithTimeout(context.Background(), pingTimeout)
-	defer cancel()
-	flushErr := cl.Flush(ctx)
-	cl.Close()
-	if flushErr != nil {
-		// A failed flush means buffered produce records were never delivered:
-		// those messages are lost, so shutdown must not swallow the error.
-		log.Errorf(context.Background(), log.TagAppDef,
-			"kafka: flush before close failed, buffered messages may be LOST: %v", flushErr)
-		return flushErr
-	}
-	return nil
 }

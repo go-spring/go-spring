@@ -9,7 +9,7 @@
 
 **激活**：任一 `spring.cassandra.instances.*` key（模块为 `OnProperty("spring.cassandra")` 前缀
 匹配 [starter.go:36]）。每个 `spring.cassandra.instances.<name>` 条目创建一个名为 `<name>` 的
-`*StarterCassandra.Client` bean（包装未导出的 `*gocql.Session`），并注册名为
+`*StarterCassandra.Client` bean（以只读 `Session` 字段持有 `*gocql.Session`），并注册名为
 `cassandra:<name>` 的健康指示器 [starter.go:46-60]。
 
 ---
@@ -69,7 +69,7 @@ import (
 
 type Service struct {
     // 始终用 wrapper 类型 *StarterCassandra.Client。裸
-    // *gocql.Session 是未导出字段；Query/Bind 返回带防护的 wrapper，
+    // *gocql.Session 是只读的 Session 字段；Query/Bind 返回带防护的 wrapper，
     // 其余 session 方法（Close、NewBatch、ExecuteBatch……）为显式委托。
     Main *StarterCassandra.Client `autowire:"a"`
     Raw  *StarterCassandra.Client `autowire:"b"` // 第二个实例，同一集群
@@ -134,7 +134,7 @@ import starter-cassandra
               │            IndexArg(2, ?Driver),
               │            IndexArg(3, *resilience.Manager),
               │            IndexArg(4, *fault.Injector)).Name(<name>)
-              │       .Destroy((*Client).Destroy)
+              │       .Destroy((*Client).Close)
               └─ Provide 名为 "cassandra:<name>" 的 health.Indicator，
                   按名注入上面的 client（TagArg）[starter.go:58-61]
 
@@ -150,12 +150,12 @@ gs.Run()
   │     mgr/inj 为注入的 *resilience.Manager / *fault.Injector bean —— 构造期 exec 链即就绪
   ├─ 仅 ping=true：fail-fast 探活——newClient 调 HealthCheck [starter.go:100]，一条 system.local 查询直达裸 session
   ├─ readiness：indicator 委托 HealthCheck 查询 system.local [health.go:34]
-  └─ SIGTERM → Destroy [client.go]：exec.Close → session.Close
+  └─ SIGTERM → Close [client.go]：exec.Close → session.Close
 ```
 
 没有 `Init` 钩子：`NewClient` 在 driver 装配期即固定 client 身份并应用治理包，`newClient`
 返回时 bean 已完整。由于治理在构造期应用、先于探活，因此探活失败会销毁一个已受治理的
-client（`Destroy`），不会泄漏执行器。
+client（`Close`），不会泄漏执行器。
 
 consistency 值未知、集群不可达都会中止启动——进程绝不会带着一个死掉的
 Cassandra 进入 serving。
@@ -184,7 +184,7 @@ wrapper [query.go]，其执行方法全部过守卫 + 执行器。`Client.Exec` 
 
 `Client.Exec(ctx, stmt, values...)` / `Client.Query(...).Exec()` [client.go, query.go]：
 
-1. `guard` 在 ctx 上声明该语句的身份（`observability.WithOperation`，[observe.go]）：
+1. `ObsQuery` 在 ctx 上声明该语句的身份（`observability.WithOperation`，[observe.go]）：
    span 名 `exec`、`db.system`/`db.operation` 标签、有界的 `db.statement` 明细
    （截断到 512 字节）。
 2. `exec.Execute(ctx, call)` 向治理执行器申请许可 —— limiter/breaker 作用于
@@ -211,7 +211,7 @@ access-log。
 
 `Exec` 的分层顺序（由外向内）：fault 注入器（`fault.WrapClientExecutor` 包住注入 manager 解析
 出的执行器）→ resilience 发射器（`resilience.WrapClientExecutor`：语句的 span、调用级/尝试级
-直方图、in-flight 计数、outcome 计数与 access log —— 它读取 guard 声明的 operation）→
+直方图、in-flight 计数、outcome 计数与 access log —— 它读取声明层放进 ctx 的 operation）→
 resilience 执行器（限流/熔断/重试核心）→ gocql。fault 注入器
 包裹的是核心执行的那个操作函数，因此注入故障与 breaker 拒绝都会走完
 重试/熔断/超时并被计数和记录。

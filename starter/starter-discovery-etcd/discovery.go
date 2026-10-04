@@ -150,6 +150,15 @@ func (d *etcdDiscovery) Resolve(ctx context.Context, name string, opts ...discov
 // is reported to the freshness metric so the stale window stays visible instead
 // of only ever appearing as a warn line.
 func (d *etcdDiscovery) watchLoop(name string, e *serviceEntry) {
+	// The watched service's identity rides on the context for the life of this
+	// watcher: every line below carries it without repeating it. The goroutine
+	// outlives any request, so the context is minted here.
+	ctx := log.WithFields(context.Background(),
+		log.String("system", d.obs.System()),
+		log.String("center", d.obs.Center()),
+		log.String("service", name),
+		log.String("operation", "sync"),
+	)
 	prefix := d.servicePrefix(name)
 	backoff := watchReArmBase
 	for d.bgCtx.Err() == nil {
@@ -161,17 +170,10 @@ func (d *etcdDiscovery) watchLoop(name string, e *serviceEntry) {
 			return
 		}
 		d.obs.Synced(name, err)
-		log.Error(context.Background(), starterTag, append(
-			[]log.Field{
-				log.String("system", d.obs.System()),
-				log.String("center", d.obs.Center()),
-				log.String("service", name),
-				log.String("operation", "sync"),
-				log.String("status", discovery.StatusOf(err)),
-				log.Err(err),
-			},
-			log.Msgf("discovery-etcd: watch %q ended; re-arming in %s", prefix, backoff),
-		)...)
+		log.Error(ctx, starterTag,
+			log.String("status", discovery.StatusOf(err)),
+			log.Err(err),
+			log.Msgf("discovery-etcd: watch %q ended; re-arming in %s", prefix, backoff))
 		select {
 		case <-d.bgCtx.Done():
 			return
@@ -188,26 +190,28 @@ func (d *etcdDiscovery) watchLoop(name string, e *serviceEntry) {
 // and returns why the stream ended: etcd's own reason when it cancelled the
 // watch, or errWatchEnded when the channel simply closed.
 func (d *etcdDiscovery) drainWatch(name string, e *serviceEntry, prefix string, wch clientv3.WatchChan) error {
+	// The watched service's identity rides on the context for the life of this
+	// drain: every line below carries it without repeating it. The watcher
+	// outlives any request, so the context is minted here.
+	ctx := log.WithFields(context.Background(),
+		log.String("system", d.obs.System()),
+		log.String("center", d.obs.Center()),
+		log.String("service", name),
+		log.String("operation", "sync"),
+	)
 	for resp := range wch {
 		if err := resp.Err(); err != nil {
 			return errutil.Explain(err, "discovery-etcd: watch %q cancelled", prefix)
 		}
-		ctx, cancel := context.WithTimeout(context.Background(), fetchTimeout)
-		eps, err := d.fetch(ctx, prefix)
+		fetchCtx, cancel := context.WithTimeout(context.Background(), fetchTimeout)
+		eps, err := d.fetch(fetchCtx, prefix)
 		cancel()
 		if err != nil {
 			d.obs.Synced(name, err)
-			log.Warn(context.Background(), starterTag, append(
-				[]log.Field{
-					log.String("system", d.obs.System()),
-					log.String("center", d.obs.Center()),
-					log.String("service", name),
-					log.String("operation", "sync"),
-					log.String("status", discovery.StatusOf(err)),
-					log.Err(err),
-				},
-				log.Msgf("discovery-etcd: refresh %q failed (keeping stale snapshot)", prefix),
-			)...)
+			log.Warn(ctx, starterTag,
+				log.String("status", discovery.StatusOf(err)),
+				log.Err(err),
+				log.Msgf("discovery-etcd: refresh %q failed (keeping stale snapshot)", prefix))
 			continue
 		}
 		e.mu.Lock()

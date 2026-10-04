@@ -150,18 +150,29 @@ func (s *SimpleEchoServer) Run(ctx context.Context, sig gs.ReadySignal) error {
 		return errutil.Explain(err, "failed to listen on %s", s.svr.Addr)
 	}
 	<-sig.TriggerAndWait()
-	log.Infof(ctx, log.TagAppDef, "echo server starting on %s (tls=%v)", s.svr.Addr, s.tls)
+
+	// The listening address rides on the context: every line this server logs
+	// about its own lifecycle carries it without repeating it.
+	ctx = log.WithFields(ctx, log.String("addr", s.svr.Addr))
+
+	log.Info(ctx, log.TagAppDef,
+		log.Bool("tls", s.tls),
+		log.Msg("echo server starting"))
 	if s.tls {
 		err = s.svr.Serve(tls.NewListener(ln, s.tlsConf))
 	} else {
 		err = s.svr.Serve(ln)
 	}
 	if errutil.IsServerClosed(err) {
-		log.Debugf(ctx, log.TagAppDef, "echo server stopped on %s", s.svr.Addr)
+		log.Debug(ctx, log.TagAppDef, func() []log.Field {
+			return []log.Field{log.Msg("echo server stopped")}
+		})
 		return nil
 	}
 	if err != nil {
-		log.Errorf(ctx, log.TagAppDef, "echo server failed on %s: %v", s.svr.Addr, err)
+		log.Error(ctx, log.TagAppDef,
+			log.Err(err),
+			log.Msg("echo server failed"))
 	}
 	return errutil.Explain(err, "failed to serve on %s", s.svr.Addr)
 }
@@ -170,6 +181,8 @@ func (s *SimpleEchoServer) Run(ctx context.Context, sig gs.ReadySignal) error {
 // in-flight requests to complete. The shutdown context is propagated to
 // http.Server.Shutdown.
 func (s *SimpleEchoServer) Stop(ctx context.Context) error {
-	log.Infof(ctx, log.TagAppDef, "echo server shutting down on %s", s.svr.Addr)
+	log.Info(ctx, log.TagAppDef,
+		log.String("addr", s.svr.Addr),
+		log.Msg("echo server shutting down"))
 	return s.svr.Shutdown(ctx)
 }

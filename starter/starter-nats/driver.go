@@ -171,7 +171,18 @@ func (DefaultDriver) CreateClient(ctx context.Context, c Config, params cloud.Cl
 // bundle degrading to an observed-only, loudly-unmanaged executor.
 func newConn(ctx *gs.ContextProvider, name string, c Config, d Driver,
 	center *governance.Center) (*Conn, error) {
-	log.Debugf(ctx.Context, log.TagAppDef, "creating nats connection, url=%s name=%s", c.URL, c.Name)
+	// The connection's identity rides on a context derived here: every line
+	// below carries it without repeating it. The provider's own context is left
+	// alone — that one is the shared application context, not this
+	// constructor's.
+	cctx := log.WithFields(ctx.Context, log.String("url", c.URL))
+
+	log.Debug(cctx, log.TagAppDef, func() []log.Field {
+		return []log.Field{
+			log.String("name", c.Name),
+			log.Msg("creating nats connection"),
+		}
+	})
 
 	// No company Driver bean → fall back to the bundled default assembly.
 	if d == nil {
@@ -180,7 +191,9 @@ func newConn(ctx *gs.ContextProvider, name string, c Config, d Driver,
 	conn, err := d.CreateClient(ctx.Context, c,
 		cloud.ClientParams{Resilience: center.Resilience(), Fault: center.Fault()})
 	if err != nil {
-		log.Errorf(ctx.Context, log.TagAppDef, "nats: create client failed: %v", err)
+		log.Error(cctx, log.TagAppDef,
+			log.Err(err),
+			log.Msg("nats: create client failed"))
 		return nil, errutil.Explain(err, "failed to create nats client: %s", c.URL)
 	}
 	// The Driver returned the connection complete — identity, governance and (when
@@ -196,11 +209,13 @@ func newConn(ctx *gs.ContextProvider, name string, c Config, d Driver,
 	// connection only surfaces on first use.
 	if c.Ping {
 		if err := HealthCheck(ctx.Context, conn); err != nil {
-			log.Errorf(ctx.Context, log.TagAppDef, "nats: startup connectivity check failed: %s", c.URL)
-			_ = conn.Destroy()
+			log.Error(cctx, log.TagAppDef,
+				log.Err(err),
+				log.Msg("nats: startup connectivity check failed"))
+			_ = conn.Close()
 			return nil, errutil.Explain(err, "nats: startup connectivity check failed: %s", c.URL)
 		}
 	}
-	log.Infof(ctx.Context, log.TagAppDef, "nats connection initialized, url=%s", c.URL)
+	log.Info(cctx, log.TagAppDef, log.Msg("nats connection initialized"))
 	return conn, nil
 }

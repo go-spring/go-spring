@@ -41,10 +41,10 @@ type Service struct {
 }
 ```
 
-注入的 bean 是 starter 的 `*Cache` 封装。原生 `*bigcache.BigCache` 存放于未导出字段且不提供访问器，
-因此所有操作都留在封装之后：Get/Set/Delete 自己发射操作的 span 与指标，其余原生方法
-（Stats、Len、Reset、Close 等）则以纯委托形式重新导出。这些调用不会被限流或熔断，也不写访问日志：
-进程内缓存没有需要保护的外部依赖，也没有进程外的调用需要记录。见[设计说明](README_CN.md#设计说明)。
+注入的 bean 是 starter 的 `*Cache` 封装。Get/Set/Delete 走嵌入的 `InnerCache` 链条——
+观测层套在原生适配器之上——因此每个业务操作自己发射指标；其余原生方法（Stats、Len、
+Close 等）以纯委托形式重新导出，原生 `*bigcache.BigCache` 以 `Client` 字段只读交付；链条重组走包裹链头。这些调用不会被限流或熔断，也不写访问日志：进程内缓存没有需要保护的外部依赖，
+也没有进程外的调用需要记录。见[设计说明](README_CN.md#设计说明)。
 
 ### 4. 使用 BigCache 实例
 
@@ -62,7 +62,7 @@ value, err := s.Cache.Get(ctx, "key")
 * **SET/GET** —— 用 `Set(...)` 写入，再用 `Get(...)` 读回。
 * **DELETE + 未命中** —— 用 `Delete(...)` 删除键，确认随后的 `Get(...)` 返回 `ErrEntryNotFound`。
 * **实例隔离** —— 写入某个命名实例的键在另一个实例中不可见，证明多实例接线正确。
-* **Get/Set/Delete 之外** —— `Len`、`Iterator` 与 `Reset`。
+* **Get/Set/Delete 之外** —— `Len` 与 `Iterator`。
 * **`life-window` 的真实语义** —— 两个实例共用 1s 窗口、只有 `clean-window` 不同：一个不再服务陈旧条目，
   另一个照样服务。
 * **自定义 Driver** —— 一个按名选择的 Driver bean，用来触达 `bigcache.Config.OnRemove`。

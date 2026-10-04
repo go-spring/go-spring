@@ -169,7 +169,7 @@ func (DefaultDriver) CreateClient(ctx context.Context, c Config, params cloud.Cl
 			// The dial outcome is the only signal this picker has; feeding it
 			// makes outlier suspension evict an instance that keeps refusing
 			// connections.
-			lb.Complete(ep, derr)
+			lb.Complete(ctx, ep, derr)
 			return conn, derr
 		}
 		return NewClient(redis.NewClient(opts), c, lb, params)

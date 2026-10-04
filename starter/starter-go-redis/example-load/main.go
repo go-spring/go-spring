@@ -23,6 +23,7 @@ package main
 import (
 	"context"
 	"flag"
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -76,12 +77,23 @@ func runLoad(s *Service) {
 	}
 }
 
-// init pins the working directory to this file's directory so conf/ resolves.
+// init sets the working directory of the application to the directory
+// where this source file resides.
+// This ensures that any relative file operations are based on the source file location,
+// not the process launch path.
 func init() {
+	var execDir string
 	_, filename, _, ok := runtime.Caller(0)
 	if ok {
-		if err := os.Chdir(filepath.Dir(filename)); err != nil {
-			panic(err)
-		}
+		execDir = filepath.Dir(filename)
 	}
+	err := os.Chdir(execDir)
+	if err != nil {
+		panic(err)
+	}
+	workDir, err := os.Getwd()
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println(workDir)
 }

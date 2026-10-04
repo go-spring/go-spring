@@ -25,16 +25,15 @@ fi
 trap 'compose down -v >/dev/null 2>&1 || true' EXIT
 compose up -d
 
-# Wait for the Vault HTTP port. Dev-mode Vault boots quickly, but allow up to
-# 30s for the image to start.
+# Wait for the Vault health endpoint (a raw TCP probe accepts before Vault can
+# serve). Dev-mode Vault boots quickly; allow up to 30s for the image to start.
+echo "== waiting for the service to be ready =="
 for _ in $(seq 1 30); do
-    if (exec 3<>/dev/tcp/127.0.0.1/8200) 2>/dev/null; then
-        exec 3>&- 3<&- 2>/dev/null || true
+    if curl -fsS "http://127.0.0.1:8200/v1/sys/health" >/dev/null 2>&1; then
         break
     fi
     sleep 1
 done
-sleep 2
 
 export VAULT_TOKEN=root
 # AES key for decrypting the demo.password=ENC(aes:...) property (see
@@ -42,6 +41,7 @@ export VAULT_TOKEN=root
 # a real deployment supplies the key out of band (mounted Secret, Vault
 # Agent sink) — it is inlined here only to keep the smoke test self-contained.
 export GS_CONFIG_DECRYPT_AES_KEY="MTIzNDU2Nzg5MDEyMzQ1Ng=="
+echo "== example boot =="
 go run . &
 pid=$!
 ( sleep 60; kill -9 "${pid}" 2>/dev/null ) &
@@ -50,4 +50,9 @@ rc=0
 wait "${pid}" 2>/dev/null || rc=$?
 kill "${watchdog}" 2>/dev/null || true
 wait "${watchdog}" 2>/dev/null || true
-exit "${rc}"
+if [ "${rc}" -ne 0 ]; then
+    echo "== FAILED ==" >&2
+    exit "${rc}"
+fi
+echo "== OK =="
+exit 0

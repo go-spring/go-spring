@@ -296,6 +296,19 @@ func (r *etcdRegistry) etcdPublish(ctx context.Context, h *hold) (<-chan *client
 // elapses, so it re-runs the publish step with exponential backoff (base 1s
 // doubling, capped at 1min) until the instance is registered again.
 func (r *etcdRegistry) watchKeepAlive(key string, h *hold, ka <-chan *clientv3.LeaseKeepAliveResponse) {
+	// This instance's identity rides on the context for the life of the
+	// keep-alive drain: every line below carries it without repeating it. The
+	// goroutine outlives any request, so the context is minted here. The lines
+	// that log against an attempt's span re-attach these same fields to that
+	// span context, so they carry the identity and still join the trace.
+	fields := []log.Field{
+		log.String("system", r.obs.System()),
+		log.String("center", r.obs.Center()),
+		log.String("service", h.reg.ServiceName),
+		log.String("operation", "register"),
+		log.String("reason", discovery.ReasonSelfHeal),
+	}
+	ctx := log.WithFields(context.Background(), fields...)
 	for {
 		// Drain renewals; the lease is kept alive as long as we consume them.
 		// The channel closing is the keep-alive death signal.
@@ -304,16 +317,8 @@ func (r *etcdRegistry) watchKeepAlive(key string, h *hold, ka <-chan *clientv3.L
 		if h.stopped() {
 			return
 		}
-		log.Error(context.Background(), starterTag, append(
-			[]log.Field{
-				log.String("system", r.obs.System()),
-				log.String("center", r.obs.Center()),
-				log.String("service", h.reg.ServiceName),
-				log.String("operation", "register"),
-				log.String("reason", discovery.ReasonSelfHeal),
-			},
-			log.Msgf("keepalive for key=%s died (etcd unreachable or lease lost); re-registering with backoff", key),
-		)...)
+		log.Error(ctx, starterTag,
+			log.Msgf("keepalive for key=%s died (etcd unreachable or lease lost); re-registering with backoff", key))
 		backoff := r.backoffBase
 		for {
 			if h.stopped() {
@@ -331,31 +336,15 @@ func (r *etcdRegistry) watchKeepAlive(key string, h *hold, ka <-chan *clientv3.L
 				return err
 			})
 			if err == nil {
-				log.Info(spanCtx, starterTag, append(
-					[]log.Field{
-						log.String("system", r.obs.System()),
-						log.String("center", r.obs.Center()),
-						log.String("service", h.reg.ServiceName),
-						log.String("operation", "register"),
-						log.String("reason", discovery.ReasonSelfHeal),
-					},
-					log.Msgf("re-registered key=%s under a new lease", key),
-				)...)
+				log.Info(log.WithFields(spanCtx, fields...), starterTag,
+					log.Msgf("re-registered key=%s under a new lease", key))
 				ka = nka
 				break
 			}
-			log.Error(spanCtx, starterTag, append(
-				[]log.Field{
-					log.String("system", r.obs.System()),
-					log.String("center", r.obs.Center()),
-					log.String("service", h.reg.ServiceName),
-					log.String("operation", "register"),
-					log.String("reason", discovery.ReasonSelfHeal),
-					log.String("status", discovery.StatusOf(err)),
-					log.Err(err),
-				},
-				log.Msgf("re-register key=%s failed; retrying in %s", key, backoff),
-			)...)
+			log.Error(log.WithFields(spanCtx, fields...), starterTag,
+				log.String("status", discovery.StatusOf(err)),
+				log.Err(err),
+				log.Msgf("re-register key=%s failed; retrying in %s", key, backoff))
 			select {
 			case <-h.done:
 				return

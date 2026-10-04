@@ -168,7 +168,7 @@ func newRawPool(c Config, tlsConfig *tls.Config, lb *loadbalance.Pool) *redis.Po
 						// The dial outcome is the only signal this picker has;
 						// feeding it makes outlier suspension evict an instance
 						// that keeps refusing connections.
-						lb.Complete(ep, derr)
+						lb.Complete(ctx, ep, derr)
 						return conn, derr
 					}))
 				// Addr becomes a label for the pool; the dialer picks a live

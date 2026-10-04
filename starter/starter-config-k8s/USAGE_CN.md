@@ -7,7 +7,7 @@
 自身的语义见 [Kubernetes 官方文档](https://kubernetes.io/zh-cn/docs/concepts/configuration/configmap/)——
 以下内容都是 go-spring 的增量。
 
-**激活方式**：blank import 注册 `k8s` 配置 provider（`provider.go:67`）；仅当
+**激活方式**：blank import 注册 `k8s` 配置 provider（`starter.go`）；仅当
 `spring.config.import` 中出现 `k8s:` 条目时才真正生效。没有 `enabled` key，也没有其他开关。
 
 ---
@@ -46,7 +46,7 @@ import (
     "go-spring.org/spring/gs"
 
     // Blank import 注册 "k8s" 配置 provider，供 spring.config.import 消费
-    // （provider.go 的 init）。
+    // （starter.go 的 init）。
     _ "go-spring.org/starter-config-k8s"
 )
 
@@ -116,10 +116,10 @@ kubectl edit configmap app-config            # 把 demo.message 改成 "v2"
 kubectl logs -f deploy/config-k8s-example    # 绑定的 gs.Dync 字段数秒内更新
 ```
 
-重载路径是真实的：对象上的 informer 在每次 add/update/delete 触发（`informer.go:105-109`），
-调用 `RefreshProperties`（`starter.go:55-63`），后者重跑整条 import 链并更新所有
+重载路径是真实的：对象上的 informer 在每次 add/update/delete 触发（`starter.go`），
+调用 `RefreshProperties`（`starter.go`），后者重跑整条 import 链并更新所有
 `gs.Dync[T]` 字段（`gs_app/app.go:234-256`）。单测 `TestHotReloadTriggersRefresh`
-（`provider_test.go:126-152`）用 fake clientset 证明了该触发。
+（`starter_test.go`）用 fake clientset 证明了该触发。
 
 ---
 
@@ -129,7 +129,7 @@ kubectl logs -f deploy/config-k8s-example    # 绑定的 gs.Dync 字段数秒内
 
 ```
 blank import starter-config-k8s
-  └─ init (starter.go:34): conf.RegisterProvider("k8s", newK8sCtrl())
+  └─ init (starter.go): conf.RegisterProvider("k8s", newK8sCtrl())
                            —— 注册控制器本身，这样运行时才能在退出时调用它的
                              Close 停掉 informer
 
@@ -140,37 +140,37 @@ gs.Run()
   │       被导入文件里再声明的 import 会被忽略 (conf.go:213-215)
   │    3. 对每个条目，conf.Load 先剥离 [optional:]<provider>: 再调 provider
   │       (provider/provider.go:84-103) → k8sCtrl.Load
-  │         a. parseSource (provider.go:85-117)
-  │         b. buildClient —— 集群内或 kubeconfig (informer.go:38-59)
-  │         c. 经 API server fetch 对象 (provider.go:175-192)
+  │         a. parseSource (starter.go)
+  │         b. buildClient —— 集群内或 kubeconfig (starter.go)
+  │         c. 经 API server fetch 对象 (starter.go)
   │         d. ensureWatch —— informer 在返回前装好，初次读取之后立刻落下的
-  │            变更不会被漏掉 (provider.go:158-161)
+  │            变更不会被漏掉 (starter.go)
   │         e. parseEntries → flatten → 合入属性存储
   │    └─ 合并后的快照成为所有 value tag 绑定的属性存储
   ├─ 容器装配：控制器根本不是 bean；app.started 置 true (app.go:179-183)
   ├─ Runner/Server 启动；就绪
-  └─ SIGTERM → conf.CloseProviders() → k8sCtrl.Close → manager.stopAll()
+  └─ SIGTERM → conf.CloseProviders(ctx) → k8sCtrl.Close → manager.stopAll()
      停掉全部 informer
 ```
 
 为什么先于 bean：provider 的输出必须在 `value:` tag 解析之前就进入属性存储，这样来自
 ConfigMap 的 key 才能在首次装配时注入普通 bean 字段——这也是 `.env` 与所有 config
 provider 都跑在生命周期第 2 步、先于 starter 的原因。app 启动之前，
-`TriggerRefresh` 是无害 no-op（starter.go:52-63）：启动加载已捕获初始状态，且
+`TriggerRefresh` 是无害 no-op（starter.go）：启动加载已捕获初始状态，且
 `gs.RefreshProperties()` 门面在 `started` 之前本就返回错误（app.go:247-250）。
 
 ### 2.2 watch/refresh 路径逐层走读
 
-1. `ensureWatch` 按 `kind/namespace/name` 去重（`informer.go:76-84`）——同一对象被多次
+1. `ensureWatch` 按 `kind/namespace/name` 去重（`starter.go`）——同一对象被多次
    import 不会堆叠 informer。
 2. 创建命名空间限定、`metadata.name=` field selector 圈定单对象的
-   SharedInformerFactory，resync 周期为 0（纯事件驱动；`informer.go:86-93`），按 kind
+   SharedInformerFactory，resync 周期为 0（纯事件驱动；`starter.go`），按 kind
    挂在 ConfigMaps 或 Secrets 上。
 3. Add/Update/Delete 三个 handler 全部汇入 `k8sCtrl.TriggerRefresh`
-   （`informer.go:105-109`）。
+   （`starter.go`）。
 4. watch 建立是 best-effort：handler 注册或 cache 同步失败时遗忘该 id（后续 Load 可
-   重试），只损失该对象的热刷新——静态快照仍会加载（`informer.go:110-125`，
-   `provider.go:158-161` 注释）。
+   重试），只损失该对象的热刷新——静态快照仍会加载（`starter.go`，
+   `starter.go` 注释）。
 5. 启动完成后，每个事件调用 `gs.RefreshProperties()` → 全量
    `AppConfig.Refresh` → **每个** provider 重跑自己的 import（ConfigMap 被重新拉取而非
    diff）→ 原子换掉合并存储 → 所有 `gs.Dync[T]` 字段更新。只有 `gs.Dync[T]` 会热刷新；
@@ -188,9 +188,9 @@ provider 都跑在生命周期第 2 步、先于 starter 的原因。app 启动�
 ### 3.1 import 字符串文法
 
 总体形态（核心，`provider/provider.go:62-64`）：`[optional:]<provider>:<path>` —— 先切
-`optional:`（provider.go:85-88），再按第一个 `:` 切分 provider 与 path（provider.go:89-92）；
+`optional:`（starter.go），再按第一个 `:` 切分 provider 与 path（starter.go）；
 裸 path 默认走 `file` provider。本 starter 的 `<path>` 部分由 `parseSource`
-（`provider.go:85-117`）解析为：
+（`starter.go`）解析为：
 
 ```
 <kind>/<name>[?namespace=..&key=..&format=..&kubeconfig=..]
@@ -198,16 +198,16 @@ provider 都跑在生命周期第 2 步、先于 starter 的原因。app 启动�
 
 | 参数 | 类型 | 默认值 | 行为 / 联动 | 配错后果 |
 |-------|------|---------|-------------|----------|
-| `optional:` 前缀 | 标志 | 关 | 加上后，client 构建失败与对象 NotFound 都只记 Warn 并跳过 → 以默认值启动（provider.go:133-138、150-153）。 | ——（这正是它的用途）；对象名写错会被掩盖，直到去掉前缀。 |
-| `kind` | string | — **必填** | path 中第一个 `/` 之前的段，转小写。仅支持 `configmap` 与 `secret`（provider.go:51-54、106-110）。Secret 的 Data 已由 API 层 base64 解码（provider.go:185-188）。 | `deployment/x` → 启动报错 "unsupported k8s config kind"；缺 `/` 或 name 为空 → "must be `<kind>/<name>`"。 |
-| `name` | string | — **必填** | 对象名；同时是 informer 的 field selector（informer.go:91）。 | 无 `optional:` 时不存在 → 启动报错 "get configmap/secret … not found"。 |
-| `namespace` | query | `default` | 同时作用于 Get 与 informer 的命名空间范围（provider.go:95-96、informer.go:89）。跨命名空间读取需要那里的 RBAC。 | Forbidden → 启动报错（`optional:` 下则静默跳过）。 |
-| `key` | query | 全部条目 | 只选对象的一个 data 条目（provider.go:212-214）。⚠ `key=` 模式下，扩展名未知的条目是硬错误、要求 `format=`（provider.go:222-224）；而同一条目在全条目模式下会被静默*跳过*——见 §6。 | 对含裸 `README` 的 ConfigMap 用 `?key=README` → 启动报错 "entry … has no known format; set format="。 |
-| `format` | query | 按扩展名 | 为所有读到的条目强制指定解析器（provider.go:215、111-115）。取值必须是 `reader.Has` 认识的格式——parse 阶段即校验。 | 未知取值 → 连集群都还没碰就启动报错 "unsupported k8s config format"。 |
-| `kubeconfig` | query | 集群内 | 集群外运行时的 kubeconfig 文件路径（informer.go:43-47）。空 → `rest.InClusterConfig()`（informer.go:49-52）。 | 集群外且未给参数 → 启动报错 "in-cluster config (set kubeconfig when running outside a cluster)"——`optional:` 下为 Warn+跳过。 |
+| `optional:` 前缀 | 标志 | 关 | 加上后，client 构建失败与对象 NotFound 都只记 Warn 并跳过 → 以默认值启动（starter.go、150-153）。 | ——（这正是它的用途）；对象名写错会被掩盖，直到去掉前缀。 |
+| `kind` | string | — **必填** | path 中第一个 `/` 之前的段，转小写。仅支持 `configmap` 与 `secret`（starter.go、106-110）。Secret 的 Data 已由 API 层 base64 解码（starter.go）。 | `deployment/x` → 启动报错 "unsupported k8s config kind"；缺 `/` 或 name 为空 → "must be `<kind>/<name>`"。 |
+| `name` | string | — **必填** | 对象名；同时是 informer 的 field selector（starter.go）。 | 无 `optional:` 时不存在 → 启动报错 "get configmap/secret … not found"。 |
+| `namespace` | query | `default` | 同时作用于 Get 与 informer 的命名空间范围（starter.go、starter.go）。跨命名空间读取需要那里的 RBAC。 | Forbidden → 启动报错（`optional:` 下则静默跳过）。 |
+| `key` | query | 全部条目 | 只选对象的一个 data 条目（starter.go）。⚠ `key=` 模式下，扩展名未知的条目是硬错误、要求 `format=`（starter.go）；而同一条目在全条目模式下会被静默*跳过*——见 §6。 | 对含裸 `README` 的 ConfigMap 用 `?key=README` → 启动报错 "entry … has no known format; set format="。 |
+| `format` | query | 按扩展名 | 为所有读到的条目强制指定解析器（starter.go、111-115）。取值必须是 `reader.Has` 认识的格式——parse 阶段即校验。 | 未知取值 → 连集群都还没碰就启动报错 "unsupported k8s config format"。 |
+| `kubeconfig` | query | 集群内 | 集群外运行时的 kubeconfig 文件路径（starter.go）。空 → `rest.InClusterConfig()`（starter.go）。 | 集群外且未给参数 → 启动报错 "in-cluster config (set kubeconfig when running outside a cluster)"——`optional:` 下为 Warn+跳过。 |
 
 对 ConfigMap，`data` 与 `binaryData` 会先合并为一个 `name -> bytes` map 再解析
-（`provider.go:194-200`）——条目无论放在哪个字段都一视同仁，`key=`/`format=`
+（`starter.go`）——条目无论放在哪个字段都一视同仁，`key=`/`format=`
 对两者统一生效。
 
 ### 3.2 属性 key
@@ -215,7 +215,7 @@ provider 都跑在生命周期第 2 步、先于 starter 的原因。app 启动�
 | Key | 类型 | 默认值 | 行为 / 联动 | 配错后果 |
 |-----|------|---------|-------------|----------|
 | `spring.config.import` | list | 空 | 核心 key（绑定于 `gs_conf/conf.go:218`）。只有一层：被导入文档里的 `spring.config.import` 会被忽略（`conf.go:213-215`）。多条目时后加载的覆盖先加载的（`conf.go:202`）。 | 缺 `k8s:` 条目 → provider 永不运行（starter 静默不生效）。 |
-| ConfigMap/Secret 的 data key（如 `demo.message`） | 任意 | 无 | 由每个解析出的条目展平而来（provider.go:233）；成为顶层绝对属性，任何地方的 `value:"${...}"` tag 都可绑定。 | 条目内容是坏 YAML/properties → 启动报错 "parse entry %q"（provider.go:230-232）。 |
+| ConfigMap/Secret 的 data key（如 `demo.message`） | 任意 | 无 | 由每个解析出的条目展平而来（starter.go）；成为顶层绝对属性，任何地方的 `value:"${...}"` tag 都可绑定。 | 条目内容是坏 YAML/properties → 启动报错 "parse entry %q"（starter.go）。 |
 | `spring.http.server.enabled=false` | bool | true | 仅 example 为聚焦配置验证而关掉默认 HTTP server。 | —— |
 
 ---
@@ -244,7 +244,7 @@ kubectl logs -f deploy/config-k8s-example  # 任意 gs.Dync 消费方数秒内�
 ```
 
 秒级 vs 卷挂载约 1 分钟的 kubelet 投影延迟：informer 直连 API server（包文档，
-`provider.go:24-30`）。删除 ConfigMap 同样触发 informer（DeleteFunc），但随后的 re-import
+`starter.go`）。删除 ConfigMap 同样触发 informer（DeleteFunc），但随后的 re-import
 会失败——属性只是暂时保留上一份好快照，直到下一次刷新成功；把"运行中删除"当事故，
 不要当特性。
 
@@ -268,7 +268,7 @@ spring.config.import=k8s:configmap/app-config?...        # 必填：对象缺失
 spring.config.import=optional:k8s:configmap/app-config?... # 对象缺失 = Warn + 默认值
 ```
 
-`optional:` 覆盖两类不同失败（provider.go:133-138 与 150-153）：集群/client 不可构建、
+`optional:` 覆盖两类不同失败（starter.go 与 150-153）：集群/client 不可构建、
 对象 NotFound。其余——RBAC Forbidden、内容畸形、`format=` 非法——依然致命。
 
 ### 4.5 启动时 API server 不可达
@@ -286,7 +286,7 @@ spring.config.import=k8s:secret/app-creds?key=db.properties
 ```
 
 由 `TestLoadSecretPropsWithKeyFilter` 与 `TestUnknownExtensionSkippedButKeyFilterErrors`
-覆盖（provider_test.go:74-124）。单测套件随时可跑：
+覆盖（starter_test.go）。单测套件随时可跑：
 
 ```bash
 cd starter/starter-config-k8s && go test -gcflags="all=-N -l" ./...
@@ -305,7 +305,7 @@ cd starter/starter-config-k8s && go test -gcflags="all=-N -l" ./...
 | 集群内 `demo.message` 一直是默认值 | import 实际没写进 `spring.config.import`，或 `key=` 选了不存在的条目 | `key=` 无匹配得到的是空（而非失败）的 import——核对 data 条目名 |
 | 启动报错 `entry "README" has no known format; set format=` | `key=` 选中了无扩展名条目 | 加 `&format=properties`（等），或去掉 `key=` 让其被跳过 |
 | 启动报错 `unsupported k8s config kind "deployment"` | 只支持 `configmap`/`secret` | 二选一 |
-| 看不到 starter 的日志 | Debug 级日志被隐藏（provider.go:129 以 Debug 记录解析出的 source） | 调高 tag `_app_config_k8s` 的 logger 级别 |
+| 看不到 starter 的日志 | Debug 级日志被隐藏（starter.go 以 Debug 记录解析出的 source） | 调高 tag `_app_config_k8s` 的 logger 级别 |
 
 ---
 
@@ -322,12 +322,10 @@ cd starter/starter-config-k8s && go test -gcflags="all=-N -l" ./...
 设计嫌疑清单（保留原有 + 新增，供审计台账）：
 
 - 无扩展名条目在 `key=` 模式下硬失败，而全条目模式对同一条目静默跳过——同一误配的
-  严重度不一致（`provider.go:222-226`）。
-- 每个 import 重建一次 clientset（同一 kubeconfig 不共享 client 缓存）——轻度浪费；
-  候选按 etcd/nacos 的 `clientFor` 模式去重。
+  严重度不一致（`starter.go`）。
 - 刷新是应用级而非对象级：改一个 ConfigMap 会重跑*所有* import（file、etcd、nacos……）
   ——正确但每次推送成本是 O(全部来源)；配置编辑频率下无碍，import 变多时需记住这一点。
 - Delete 事件处理是潜在缺口：informer 在删除时触发刷新、随后的 re-import 失败，
   "保留上一份好快照"的行为是涌现的而非设计的。
-- 没有自己的可观测面（无日志 tag、无 "watch 存活" 健康指示、无刷新计数指标）——
-  静默的配置过期失效模式从外部无法察觉。
+- 没有 "watch 存活" 的健康指示——informer 静默失联时已加载快照继续服务，故障从外部
+  不可见。（日志带 tag `_app_config_k8s`，刷新由 `observability.RefreshConf` 统一记录与计量。）

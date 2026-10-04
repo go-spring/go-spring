@@ -31,6 +31,7 @@ compose up -d
 # native port opens). The container-internal probe also avoids any host-side
 # network quirks.
 cass_ready=false
+echo "== waiting for the service to be ready =="
 for _ in $(seq 1 120); do
     if docker exec cassandra-example cqlsh -e "DESCRIBE CLUSTER" >/dev/null 2>&1; then
         cass_ready=true
@@ -44,6 +45,7 @@ if [ "${cass_ready}" != true ]; then
     exit 1
 fi
 
+echo "== example boot =="
 go run . > smoke.out 2>&1 &
 pid=$!
 ( sleep 90; kill -9 "${pid}" 2>/dev/null ) &
@@ -57,9 +59,11 @@ wait "${watchdog}" 2>/dev/null || true
 # gs.Run returns (exit code 0) even when bean wiring fails at startup, so gate
 # on the example's success marker rather than the exit code alone.
 if [ "${rc}" -ne 0 ] || ! grep -q "Cassandra round trip OK:" smoke.out; then
+    echo "== FAILED ==" >&2
     cat smoke.out >&2 || true
     rm -f smoke.out
     exit 1
 fi
+echo "== OK =="
 rm -f smoke.out
 exit 0

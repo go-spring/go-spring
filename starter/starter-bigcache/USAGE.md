@@ -98,8 +98,8 @@ import (
 )
 
 // Inject the wrapper, one field per configured instance, keyed by bean name.
-// The raw *bigcache.BigCache is not injectable: it lives in an unexported field
-// of the wrapper (see README "Design Notes").
+// The raw *bigcache.BigCache is not injectable as a bean: it is reachable only
+// as the wrapper's read-only Client field (see README "Design Notes").
 type Service struct {
 	Hot   *StarterBigCache.Cache `autowire:"hot"`
 	Cold  *StarterBigCache.Cache `autowire:"cold"`
@@ -209,7 +209,7 @@ import _ "go-spring.org/starter-bigcache"
               └─ conf.BindEach("${spring.bigcache.instances}") [starter.go:39]
                  one Config bound per <name>, driven by the map keys
                     └─ r.Provide(newClient, name@1, c@2, driver@3).Name(name)
-                       .Destroy((*Cache).Destroy)              [starter.go:48]
+                       .Destroy((*Cache).Close)              [starter.go:48]
                        index 0 (*gs.ContextProvider) is autowired; the Driver
                        param is selected by ${...<name>.driver}
 
@@ -221,22 +221,27 @@ gs.Run()
   │        → bigcache.New(ctx, conf)          ← the only step that can fail on
   │          the raw cache (e.g. shards not a power of two)
   │        → NewCache(client, name)                          [client.go:78]
-  │             → newStatObserver(client, name)              [observe.go:229]
-  │                  → buildInstruments()                    [observe.go:170]
-  │                    process-wide, resolved ONCE per process via
-  │                    singleton.Singleton — the first cache built binds the
-  │                    instrument set for every later one
-  │                  → statObserver.observeGauges(client)    [observe.go:251]
-  │                    registers THIS cache's statistics against the shared
-  │                    gauges, labelled instance=<name>
-  │    The bean is complete when the ctor returns: no Init step, nothing
-  │    patches the cache afterwards.
+  │             → NewRawCache(client)                        [client.go:116]
+  │             → NewObsCache(tail, client, name)            [client.go:161]
+  │                  → newStatObserver(client, name)         [observe.go:229]
+  │                      → buildInstruments()                [observe.go:170]
+  │                        process-wide, resolved ONCE per process via
+  │                        singleton.Singleton — the first cache built binds the
+  │                        instrument set for every later one
+  │                      registers THIS cache's statistics against the shared
+  │                      gauges, labelled instance=<name>
+  │             the chain head becomes the embedded InnerCache; Cache.Client
+  │             keeps the raw instance as a read-only handle
+  │    The bean is complete when the ctor returns: no Init step; the only thing
+  │    that may touch the cache afterwards is wrapping the chain head in a
+  │    custom layer, before traffic.
   ├─ (optional) *cache.Cache bean "bigcache:<name>"           [starter.go:61]
   │    lazy — un-injected, it never instantiates
   ├─ readiness: the app is up once every root-reachable bean is built
-  └─ shutdown: (*Cache).Destroy                              [client.go:89]
-       obs.close() → reg.Unregister()  (gauges stop reporting this cache)
-       client.Close() → stops the background eviction goroutine
+  └─ shutdown: (*Cache).Close = InnerCache.Release(true)   [client.go:241]
+       ObsCache.Release → obs.close() → reg.Unregister()  (gauges stop reporting)
+       flag passes down → RawCache.Release(true) → client.Close()
+       (stops the background eviction goroutine)
 ```
 
 Two ordering facts worth knowing:
@@ -245,21 +250,22 @@ Two ordering facts worth knowing:
   its statistics are meaningless, and a registration left behind would report a dead cache
   *and* pin it in memory ([client.go:89](client.go#L89)).
 - **⚠ `Close()` is not idempotent.** bigcache closes a channel internally, so calling `Close()`
-  and then `Destroy()` — or either one twice — panics. `Destroy` is the normal path; use
-  `Close()` only when you own the cache outside the container.
+  twice panics. There is one close path — `Close()` — and the container's destroy registration
+  is that same method.
 
-### 2.2 The command surface — hand-written, because bigcache has no hook point
+### 2.2 The command surface — chained, because bigcache has no hook point
 
 bigcache (unlike go-redis or gorm) exposes no plugin or interceptor seam, so per-operation
-observability can only come from holding the wrapper
-([client.go:48-50](client.go#L48-L50)). That decides the shape of the public type:
+observability can only come from the chain the wrapper runs its commands through — the
+embedded `InnerCache`. That decides the shape of the public type:
 
-- `Get`/`Set`/`Delete` are re-implemented and observed — the three operations that carry
-  business traffic ([client.go:111-135](client.go#L111-L135)).
-- Every other raw method (`Stats`, `Len`, `Capacity`, `Reset`, `Close`, `KeyMetadata`,
-  `Iterator`) is re-exposed as a plain pass-through delegation, deliberately unobserved.
-- The raw `*bigcache.BigCache` is an unexported field with **no accessor**, so a caller cannot
-  bypass the observation layer.
+- `Get`/`Set`/`Delete` are promoted from the embedded chain head (`ObsCache` by default) —
+  the three operations that carry business traffic, each observed on its way down.
+- Every other raw method (`Stats`, `Len`, `Capacity`, `KeyMetadata`, `Iterator`) is
+  re-exposed as a plain pass-through delegation, deliberately unobserved.
+- The raw `*bigcache.BigCache` is the exported `Client` field — a read-only handle
+  for the chain constructors; reorganizing the chain is wrapping the head in a
+  custom layer, not a bypass of it.
 
 No executor sits under these calls: nothing here reaches out of the process, so there is no
 protection to apply and no access log worth writing. The starter consequently takes no
@@ -269,8 +275,8 @@ governance bean and no `cloud.ClientParams` — a seam with nothing behind it.
 
 ```
 c.Get(ctx, "key")                                                     [client.go:115]
-      → obs.observe(ctx, "get", fn)            [observe.go:267]
-          run fn → c.client.Get("key") → bigcache.ErrEntryNotFound
+      → chain head ObsCache.Get → obs.observe(ctx, "get", fn)  [observe.go:267]
+          run fn → RawCache.Get under it → client.Get("key") → bigcache.ErrEntryNotFound
           statusOf(err) → "ok"                 [observe.go:259]
               a miss is NOT a failure: the cache answered, the key was absent
           counter  bigcache.operation.total   {operation="get",status="ok",instance="hot"} += 1
@@ -448,8 +454,8 @@ to record it.
 | Startup fails: `bigcache: create instance "<name>": ...` | The raw cache could not be built — most often `shards` not a power of two | Fix the value for that instance. |
 | Startup fails: `bigcache: create gauge "<metric>": ...` | A custom `MeterProvider` refused an instrument (process-wide) | Check the OTel setup; the named instrument is the one refused. |
 | Gauges all zero while `Len()` works | `stats-enabled` was set to `false` | Turn it back on for instances you watch. |
-| Gauges vanished after a shutdown/restart cycle | `Destroy` unregistered them and closed the cache | Expected — the registration's lifetime is the cache's. |
-| Panic: "close of closed channel" | `Close()` called, then `Destroy()` — or either twice | Call `Destroy()` only; it is the container's path. |
+| Gauges vanished after a shutdown/restart cycle | `Close` unregistered them and closed the cache | Expected — the registration's lifetime is the cache's. |
+| Panic: "close of closed channel" | `Close()` called twice | Call `Close()` once; it is the container's path too. |
 | Values truncated / realloc churn | `max-entry-size` under-guessed | It is a pre-allocation hint — size it to real entries. |
 | Entries disappear early | `hard-max-cache-size` cap evicting the oldest | Raise or remove the cap. |
 | A value past its `life-window` is still returned | `life-window` does not hide entries, and nothing removed it — with `clean-window=0` nothing ever does | Set a non-zero `clean-window`, or treat the instance as having no read-side TTL. |

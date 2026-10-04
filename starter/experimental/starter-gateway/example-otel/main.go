@@ -58,14 +58,23 @@ func startBackend() {
 	go func() { _ = http.Serve(ln, mux) }()
 }
 
-// init pins the working directory to this source file's directory so relative
-// config loading (conf/app.properties) does not depend on the launch path.
+// init sets the working directory of the application to the directory
+// where this source file resides.
+// This ensures that any relative file operations are based on the source file location,
+// not the process launch path.
 func init() {
+	var execDir string
 	_, filename, _, ok := runtime.Caller(0)
-	if !ok {
-		return
+	if ok {
+		execDir = filepath.Dir(filename)
 	}
-	if err := os.Chdir(filepath.Dir(filename)); err != nil {
+	err := os.Chdir(execDir)
+	if err != nil {
 		panic(err)
 	}
+	workDir, err := os.Getwd()
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println(workDir)
 }

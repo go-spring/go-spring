@@ -27,6 +27,7 @@ trap 'compose down -v >/dev/null 2>&1 || true' EXIT
 compose up -d
 
 # Wait for the MinIO health endpoint (up to 60s).
+echo "== waiting for the service to be ready =="
 for _ in $(seq 1 60); do
     if curl -fsS http://127.0.0.1:9000/minio/health/live >/dev/null 2>&1; then
         break
@@ -34,6 +35,7 @@ for _ in $(seq 1 60); do
     sleep 1
 done
 
+echo "== example boot =="
 go run . > smoke.out 2>&1 &
 pid=$!
 ( sleep 60; kill -9 "${pid}" 2>/dev/null ) &
@@ -47,9 +49,11 @@ wait "${watchdog}" 2>/dev/null || true
 # gs.Run returns (exit code 0) even when bean wiring fails at startup, so gate
 # on the example's success marker rather than the exit code alone.
 if [ "${rc}" -ne 0 ] || ! grep -q "Object round trip OK:" smoke.out; then
+    echo "== FAILED ==" >&2
     cat smoke.out >&2 || true
     rm -f smoke.out
     exit 1
 fi
+echo "== OK =="
 rm -f smoke.out
 exit 0

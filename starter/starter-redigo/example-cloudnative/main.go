@@ -195,15 +195,18 @@ func fail(format string, args ...any) {
 	os.Exit(1)
 }
 
-// init sets the working directory to this source file's directory so relative
-// config lookups (conf/) resolve against the source location.
+// init sets the working directory of the application to the directory
+// where this source file resides.
+// This ensures that any relative file operations are based on the source file location,
+// not the process launch path.
 func init() {
 	var execDir string
 	_, filename, _, ok := runtime.Caller(0)
 	if ok {
 		execDir = filepath.Dir(filename)
 	}
-	if err := os.Chdir(execDir); err != nil {
+	err := os.Chdir(execDir)
+	if err != nil {
 		panic(err)
 	}
 	workDir, err := os.Getwd()

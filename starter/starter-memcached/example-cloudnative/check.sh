@@ -26,6 +26,7 @@ trap 'compose down -v >/dev/null 2>&1 || true' EXIT
 compose up -d
 
 # Wait for memcached to accept connections (up to 30s).
+echo "== waiting for the service to be ready =="
 for _ in $(seq 1 30); do
     if (exec 3<>"/dev/tcp/127.0.0.1/11211") 2>/dev/null; then
         exec 3>&- 3<&- 2>/dev/null || true
@@ -34,6 +35,7 @@ for _ in $(seq 1 30); do
     sleep 1
 done
 
+echo "== example boot =="
 go run -gcflags="all=-N -l" . &
 pid=$!
 ( sleep 60; kill -9 "${pid}" 2>/dev/null ) &
@@ -42,4 +44,9 @@ rc=0
 wait "${pid}" 2>/dev/null || rc=$?
 kill "${watchdog}" 2>/dev/null || true
 wait "${watchdog}" 2>/dev/null || true
-exit "${rc}"
+if [ "${rc}" -ne 0 ]; then
+    echo "== FAILED ==" >&2
+    exit "${rc}"
+fi
+echo "== OK =="
+exit 0

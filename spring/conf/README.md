@@ -219,8 +219,9 @@ props, err = conf.Load("optional:file:config.yaml")
 
 Register custom providers (e.g., etcd, Consul, environment variables) with
 `RegisterProvider` to support additional configuration sources. A provider is a
-lifecycle object: besides `Load` it implements `Close`, which the runtime calls
-once at shutdown to stop the watchers and listeners `Load` installed.
+lifecycle object: besides `Load` it implements `Close(ctx)`, which the runtime
+calls once at shutdown — with the shutdown context, which carries trace values
+but is not cancelled — to stop the watchers and listeners `Load` installed.
 
 ### Supported File Formats
 

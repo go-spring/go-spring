@@ -41,8 +41,9 @@ import (
 // the ecosystem sees and future wrapper capabilities are reachable from it. It
 // returns the cache COMPLETE: name is the config entry's key
 // (spring.bigcache.instances.<name>) and becomes the label every signal carries,
-// so the driver sets it on the wrapper it builds. Nothing patches the cache
-// afterwards.
+// so the driver sets it on the wrapper it builds. The only thing that may touch
+// the cache afterwards is post-processing that reorganizes the embedded InnerCache — its
+// operation chain — before the cache takes traffic.
 //
 // A driver attributes its own construction failures: the error it returns is
 // passed through to the container unwrapped, so it must name the stage that
@@ -55,7 +56,7 @@ import (
 // `cloud.ClientParams`: those bundle the container's governance authorities
 // (resilience, fault, loadbalance, discovery), and bigcache has no external
 // dependency for any of them to act on — it does not route through the executor
-// chain at all, emitting its own signals instead (see [statObserver]). Handing a
+// chain at all, emitting its own signals instead (see [ObsCache]). Handing a
 // driver facilities it must never use would be a seam with nothing behind it.
 //
 // name is passed as an argument rather than carried on Config: Config stays a

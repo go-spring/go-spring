@@ -29,6 +29,7 @@ compose up -d
 # Wait for the redis port to accept connections (up to 30s).
 wait_port() {
     local port="$1" tries="${2:-30}"
+echo "== waiting for the service to be ready =="
     for _ in $(seq 1 "${tries}"); do
         if (exec 3<>"/dev/tcp/127.0.0.1/${port}") 2>/dev/null; then
             exec 3>&- 3<&- 2>/dev/null || true
@@ -45,6 +46,7 @@ wait_port 6379 30 || {
 }
 
 out=$(mktemp)
+echo "== example boot =="
 go run . >"${out}" 2>&1 &
 pid=$!
 ( sleep 60; kill -9 "${pid}" 2>/dev/null ) &

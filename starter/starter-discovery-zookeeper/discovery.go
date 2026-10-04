@@ -180,6 +180,15 @@ func (d *zkDiscovery) fetch(ctx context.Context, path string) ([]discovery.Endpo
 // snapshot — stale addresses are safer than none — and is retried with
 // backoff.
 func (d *zkDiscovery) watchLoop(name string, e *serviceEntry) {
+	// The watched service's identity rides on the context for the life of this
+	// watcher: every line below carries it without repeating it. The goroutine
+	// outlives any request, so the context is minted here.
+	ctx := log.WithFields(context.Background(),
+		log.String("system", d.obs.System()),
+		log.String("center", d.obs.Center()),
+		log.String("service", name),
+		log.String("operation", "sync"),
+	)
 	path := d.servicePath(name)
 	for {
 		// Arm the children watch first, then snapshot with GetW on every
@@ -198,17 +207,10 @@ func (d *zkDiscovery) watchLoop(name string, e *serviceEntry) {
 			// snapshot and retry arming later. Reported so the stale window is
 			// visible rather than only living inside this retry loop.
 			d.obs.Synced(name, err)
-			log.Warn(context.Background(), starterTag, append(
-				[]log.Field{
-					log.String("system", d.obs.System()),
-					log.String("center", d.obs.Center()),
-					log.String("service", name),
-					log.String("operation", "sync"),
-					log.String("status", discovery.StatusOf(err)),
-					log.Err(err),
-				},
-				log.Msgf("discovery-zookeeper: arm watch %q failed (keeping stale snapshot)", path),
-			)...)
+			log.Warn(ctx, starterTag,
+				log.String("status", discovery.StatusOf(err)),
+				log.Err(err),
+				log.Msgf("discovery-zookeeper: arm watch %q failed (keeping stale snapshot)", path))
 			select {
 			case <-d.done:
 				return
@@ -237,21 +239,23 @@ func (d *zkDiscovery) watchLoop(name string, e *serviceEntry) {
 // freshness clock and hide the loss behind a healthy-looking gauge, which is
 // the one signal this side of the instrumentation has.
 func (d *zkDiscovery) fetchWatches(name string, e *serviceEntry) []<-chan zk.Event {
+	// The watched service's identity rides on the context for the life of this
+	// watcher: every line below carries it without repeating it. The goroutine
+	// outlives any request, so the context is minted here.
+	ctx := log.WithFields(context.Background(),
+		log.String("system", d.obs.System()),
+		log.String("center", d.obs.Center()),
+		log.String("service", name),
+		log.String("operation", "sync"),
+	)
 	path := d.servicePath(name)
 	children, _, err := d.conn.Children(path)
 	if err != nil {
 		d.obs.Synced(name, err)
-		log.Warn(context.Background(), starterTag, append(
-			[]log.Field{
-				log.String("system", d.obs.System()),
-				log.String("center", d.obs.Center()),
-				log.String("service", name),
-				log.String("operation", "sync"),
-				log.String("status", discovery.StatusOf(err)),
-				log.Err(err),
-			},
-			log.Msgf("discovery-zookeeper: list %q failed (keeping stale snapshot)", path),
-		)...)
+		log.Warn(ctx, starterTag,
+			log.String("status", discovery.StatusOf(err)),
+			log.Err(err),
+			log.Msgf("discovery-zookeeper: list %q failed (keeping stale snapshot)", path))
 		return nil
 	}
 	vals := make(map[string][]byte, len(children))
@@ -272,17 +276,10 @@ func (d *zkDiscovery) fetchWatches(name string, e *serviceEntry) []<-chan zk.Eve
 	}
 	if readErr != nil {
 		d.obs.Synced(name, readErr)
-		log.Warn(context.Background(), starterTag, append(
-			[]log.Field{
-				log.String("system", d.obs.System()),
-				log.String("center", d.obs.Center()),
-				log.String("service", name),
-				log.String("operation", "sync"),
-				log.String("status", discovery.StatusOf(readErr)),
-				log.Err(readErr),
-			},
-			log.Msgf("discovery-zookeeper: refresh %q failed (keeping stale snapshot)", path),
-		)...)
+		log.Warn(ctx, starterTag,
+			log.String("status", discovery.StatusOf(readErr)),
+			log.Err(readErr),
+			log.Msgf("discovery-zookeeper: refresh %q failed (keeping stale snapshot)", path))
 		// The watches already armed stay live, so the next change re-runs this.
 		return evs
 	}

@@ -17,6 +17,7 @@
 package provider
 
 import (
+	"context"
 	"errors"
 	"testing"
 
@@ -35,7 +36,7 @@ func (p testProvider) Load(optional bool, source string) (map[string]string, err
 	return p.content, nil
 }
 
-func (p testProvider) Close() error {
+func (p testProvider) Close(context.Context) error {
 	if p.closes != nil {
 		*p.closes++
 	}
@@ -90,7 +91,7 @@ func TestCloseAllClosesEveryProvider(t *testing.T) {
 	Register(name1, testProvider{closes: &closes})
 	Register(name2, testProvider{closes: &closes})
 
-	assert.That(t, CloseAll()).Nil()
+	assert.That(t, CloseAll(context.Background())).Nil()
 	assert.That(t, closes).Equal(2)
 }
 
@@ -107,7 +108,7 @@ func TestCloseAllReportsFailureAndContinues(t *testing.T) {
 	})
 	Register(healthy, testProvider{closes: &closes})
 
-	err := CloseAll()
+	err := CloseAll(context.Background())
 	assert.Error(t, err).Matches("close provider failingProviderForTest error")
 	// A failing provider must not skip the rest.
 	assert.That(t, closes).Equal(2)
@@ -122,7 +123,7 @@ func TestCloseAllKeepsRegistryForTheNextInstance(t *testing.T) {
 
 	Register(name, testProvider{content: map[string]string{"loaded": "true"}})
 
-	assert.That(t, CloseAll()).Nil()
+	assert.That(t, CloseAll(context.Background())).Nil()
 
 	m, err := Load(name + ":anything")
 	assert.That(t, err).Nil()
@@ -132,7 +133,7 @@ func TestCloseAllKeepsRegistryForTheNextInstance(t *testing.T) {
 func TestProviderFuncCloseIsNoop(t *testing.T) {
 	assert.That(t, ProviderFunc(func(bool, string) (map[string]string, error) {
 		return nil, nil
-	}).Close()).Nil()
+	}).Close(context.Background())).Nil()
 }
 
 func TestLoadUnsupportedProvider(t *testing.T) {

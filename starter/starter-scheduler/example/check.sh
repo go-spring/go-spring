@@ -9,6 +9,7 @@ set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")"
 
 out=$(mktemp)
+echo "== example boot =="
 go run . >"${out}" 2>&1 &
 pid=$!
 ( sleep 30; kill -9 "${pid}" 2>/dev/null ) &
@@ -27,3 +28,4 @@ if ! grep -q "starter-scheduler smoke test passed" "${out}"; then
     echo "ERROR: expected success marker not found in output"
     exit 1
 fi
+echo "== OK =="

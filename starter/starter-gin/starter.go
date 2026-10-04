@@ -171,7 +171,14 @@ func (s *SimpleGinServer) Run(ctx context.Context, sig gs.ReadySignal) error {
 	}
 
 	<-sig.TriggerAndWait()
-	log.Infof(ctx, log.TagAppDef, "gin server starting on %s (tls=%v)", s.svr.Addr, s.tls)
+
+	// The listening address rides on the context: every line this server logs
+	// about its own lifecycle carries it without repeating it.
+	ctx = log.WithFields(ctx, log.String("addr", s.svr.Addr))
+
+	log.Info(ctx, log.TagAppDef,
+		log.Bool("tls", s.tls),
+		log.Msg("gin server starting"))
 
 	if s.tls {
 		err = s.svr.Serve(tls.NewListener(ln, s.tlsConf))
@@ -180,11 +187,16 @@ func (s *SimpleGinServer) Run(ctx context.Context, sig gs.ReadySignal) error {
 	}
 
 	if errutil.IsServerClosed(err) {
-		log.Debugf(ctx, log.TagAppDef, "gin server stopped on %s", s.svr.Addr)
+		log.Debug(ctx, log.TagAppDef, func() []log.Field {
+			return []log.Field{log.Msg("gin server stopped")}
+		})
+
 		return nil
 	}
 	if err != nil {
-		log.Errorf(ctx, log.TagAppDef, "gin server failed on %s: %v", s.svr.Addr, err)
+		log.Error(ctx, log.TagAppDef,
+			log.Err(err),
+			log.Msg("gin server failed"))
 	}
 	return errutil.Explain(err, "failed to serve on %s", s.svr.Addr)
 }
@@ -193,6 +205,8 @@ func (s *SimpleGinServer) Run(ctx context.Context, sig gs.ReadySignal) error {
 // in-flight requests to complete. The shutdown context is propagated to
 // http.Server.Shutdown.
 func (s *SimpleGinServer) Stop(ctx context.Context) error {
-	log.Infof(ctx, log.TagAppDef, "gin server shutting down on %s", s.svr.Addr)
+	log.Info(ctx, log.TagAppDef,
+		log.String("addr", s.svr.Addr),
+		log.Msg("gin server shutting down"))
 	return s.svr.Shutdown(ctx)
 }

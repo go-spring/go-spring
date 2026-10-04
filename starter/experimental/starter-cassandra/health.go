@@ -33,7 +33,7 @@ import (
 // metrics or the breaker's statistics.
 func HealthCheck(ctx context.Context, c *Client) error {
 	var release string
-	return c.session.Query("SELECT release_version FROM system.local").WithContext(ctx).Scan(&release)
+	return c.Session.Query("SELECT release_version FROM system.local").WithContext(ctx).Scan(&release)
 }
 
 // NewClientHealth builds an indicator for a Cassandra client. It is registered

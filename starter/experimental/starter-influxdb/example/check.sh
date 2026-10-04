@@ -28,6 +28,7 @@ compose up -d
 
 # Wait for the health endpoint to report pass (up to 90s; first boot runs the
 # setup migration).
+echo "== waiting for the service to be ready =="
 for _ in $(seq 1 90); do
     if curl -fsS http://127.0.0.1:8086/health 2>/dev/null | grep -q '"pass"'; then
         break
@@ -35,6 +36,7 @@ for _ in $(seq 1 90); do
     sleep 1
 done
 
+echo "== example boot =="
 go run . > smoke.out 2>&1 &
 pid=$!
 ( sleep 60; kill -9 "${pid}" 2>/dev/null ) &
@@ -48,9 +50,11 @@ wait "${watchdog}" 2>/dev/null || true
 # gs.Run returns (exit code 0) even when bean wiring fails at startup, so gate
 # on the example's success marker rather than the exit code alone.
 if [ "${rc}" -ne 0 ] || ! grep -q "InfluxDB round trip OK:" smoke.out; then
+    echo "== FAILED ==" >&2
     cat smoke.out >&2 || true
     rm -f smoke.out
     exit 1
 fi
+echo "== OK =="
 rm -f smoke.out
 exit 0

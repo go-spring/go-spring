@@ -35,6 +35,7 @@ compose up -d
 # Wait for a TCP port to accept connections (up to $2 seconds, default 30).
 wait_port() {
     local port="$1" tries="${2:-30}"
+echo "== waiting for the service to be ready =="
     for _ in $(seq 1 "${tries}"); do
         if (exec 3<>"/dev/tcp/127.0.0.1/${port}") 2>/dev/null; then
             exec 3>&- 3<&- 2>/dev/null || true

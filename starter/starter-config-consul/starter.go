@@ -88,7 +88,7 @@ func (c *consulCtrl) rearm() {
 // deliberately kept: a Consul handle holds no goroutine and nothing to release
 // (its HTTP transport is what we want to reuse), and closing is therefore final
 // only for this application instance, not for the handles.
-func (c *consulCtrl) Close() error {
+func (c *consulCtrl) Close(ctx context.Context) error {
 	c.mu.Lock()
 	c.cancel()
 	c.stopped = true
@@ -96,7 +96,7 @@ func (c *consulCtrl) Close() error {
 	c.listened = map[string]struct{}{}
 	c.mu.Unlock()
 	if n > 0 {
-		log.Infof(context.Background(), starterTag, "stopped %d consul watcher(s)", n)
+		log.Infof(ctx, starterTag, "stopped %d consul watcher(s)", n)
 	}
 	return nil
 }
@@ -183,9 +183,22 @@ func clientKey(cs configSource) string {
 	return cs.address + "|" + cs.scheme + "|" + cs.token + "|" + cs.datacenter
 }
 
+// sourceFields returns the fields identifying a watched KV path. They are
+// attached to a context with log.WithFields rather than repeated at each call
+// site, and the keys match the ones the watch trigger stamps so a line and the
+// refresh it concerns join on the same names.
+func sourceFields(cs configSource) []log.Field {
+	return []log.Field{
+		log.String("address", cs.address),
+		log.String("kv_path", cs.kvPath),
+		log.String("datacenter", cs.datacenter),
+	}
+}
+
 // clientFor returns a cached KV handle for the source, creating one if
-// necessary.
-func (c *consulCtrl) clientFor(cs configSource) (kvAPI, error) {
+// necessary. Its log line takes the source fields from ctx, which Load has
+// already stamped.
+func (c *consulCtrl) clientFor(ctx context.Context, cs configSource) (kvAPI, error) {
 	key := clientKey(cs)
 
 	c.mu.Lock()
@@ -204,7 +217,7 @@ func (c *consulCtrl) clientFor(cs configSource) (kvAPI, error) {
 	if err != nil {
 		return nil, errutil.Explain(err, "create consul client for %s failed", cs.address)
 	}
-	log.Infof(context.Background(), starterTag, "created consul client address=%s datacenter=%s", cs.address, cs.datacenter)
+	log.Info(ctx, starterTag, log.Msg("created consul client"))
 	kv := raw.KV()
 	c.clients[key] = kv
 	return kv, nil
@@ -217,55 +230,86 @@ func (c *consulCtrl) clientFor(cs configSource) (kvAPI, error) {
 func (c *consulCtrl) Load(optional bool, source string) (map[string]string, error) {
 	c.rearm()
 
+	// Load is the top of this chain and Provider.Load takes no context, so the
+	// one ctx the whole load shares is minted here — the helpers below receive
+	// it instead of each minting their own.
+	ctx := context.Background()
+
 	cs, err := parseSource(source)
 	if err != nil {
-		log.Errorf(context.Background(), starterTag, "parse source %q failed: %v", source, err)
+		log.Error(ctx, starterTag,
+			log.String("source", source),
+			log.Err(err),
+			log.Msg("parse consul source failed"))
 		return nil, err
 	}
 
-	log.Debugf(context.Background(), starterTag, "loading config from address=%s kvPath=%s format=%s", cs.address, cs.kvPath, cs.format)
+	// The source's identity rides on the context from here on: every event this
+	// load and its helpers print carries it without repeating it at each call
+	// site.
+	ctx = log.WithFields(ctx, sourceFields(cs)...)
 
-	cli, err := c.clientFor(cs)
+	log.Debug(ctx, starterTag, func() []log.Field {
+		return []log.Field{
+			log.String("format", cs.format),
+			log.Msg("loading consul config"),
+		}
+	})
+
+	cli, err := c.clientFor(ctx, cs)
 	if err != nil {
-		log.Errorf(context.Background(), starterTag, "create client for address=%s failed: %v", cs.address, err)
+		log.Error(ctx, starterTag,
+			log.Err(err),
+			log.Msg("create consul client failed"))
 		return nil, err
 	}
 
-	c.registerWatch(cli, cs, optional)
+	c.registerWatch(ctx, cli, cs, optional)
 
 	pair, _, err := cli.Get(cs.kvPath, &api.QueryOptions{Datacenter: cs.datacenter})
 	if err != nil {
 		if optional {
-			log.Warnf(context.Background(), starterTag, "optional config get kv %s failed (skipped): %v", cs.kvPath, err)
+			log.Warn(ctx, starterTag,
+				log.Err(err),
+				log.Msg("optional config get kv failed, skipped"))
 			return nil, nil
 		}
-		log.Errorf(context.Background(), starterTag, "get consul kv %s failed: %v", cs.kvPath, err)
+		log.Error(ctx, starterTag,
+			log.Err(err),
+			log.Msg("get consul kv failed"))
 		return nil, errutil.Explain(err, "get consul kv %s failed", cs.kvPath)
 	}
 	if pair == nil {
 		if optional {
-			log.Warnf(context.Background(), starterTag, "optional config kv %s not found (skipped)", cs.kvPath)
+			log.Warn(ctx, starterTag,
+				log.Msg("optional config kv not found, skipped"))
 			return nil, nil
 		}
-		log.Errorf(context.Background(), starterTag, "consul kv %s not found", cs.kvPath)
+		log.Error(ctx, starterTag, log.Msg("consul kv not found"))
 		return nil, errutil.Explain(nil, "consul kv %s not found", cs.kvPath)
 	}
 	if len(pair.Value) == 0 {
 		if optional {
-			log.Warnf(context.Background(), starterTag, "optional config kv %s is empty (skipped)", cs.kvPath)
+			log.Warn(ctx, starterTag,
+				log.Msg("optional config kv is empty, skipped"))
 			return nil, nil
 		}
-		log.Errorf(context.Background(), starterTag, "consul kv %s is empty", cs.kvPath)
+		log.Error(ctx, starterTag, log.Msg("consul kv is empty"))
 		return nil, errutil.Explain(nil, "consul kv %s is empty", cs.kvPath)
 	}
 
 	m, err := reader.Read(cs.format, pair.Value)
 	if err != nil {
-		log.Errorf(context.Background(), starterTag, "parse consul kv %s as %s failed: %v", cs.kvPath, cs.format, err)
+		log.Error(ctx, starterTag,
+			log.String("format", cs.format),
+			log.Err(err),
+			log.Msg("parse consul kv failed"))
 		return nil, errutil.Explain(err, "parse consul kv %s as %s failed", cs.kvPath, cs.format)
 	}
 
-	log.Infof(context.Background(), starterTag, "loaded consul config from address=%s kvPath=%s keys=%d", cs.address, cs.kvPath, len(m))
+	log.Info(ctx, starterTag,
+		log.Int("keys", len(m)),
+		log.Msg("loaded consul config"))
 	return flatten.Flatten(m), nil
 }
 
@@ -275,7 +319,7 @@ func (c *consulCtrl) Load(optional bool, source string) (map[string]string, erro
 // optional path is an expected transition (its properties simply disappear),
 // while deleting a required one leaves the last snapshot in place, which the
 // watcher surfaces as a warning.
-func (c *consulCtrl) registerWatch(cli kvAPI, cs configSource, optional bool) {
+func (c *consulCtrl) registerWatch(ctx context.Context, cli kvAPI, cs configSource, optional bool) {
 	lk := clientKey(cs) + "|" + cs.kvPath
 
 	c.mu.Lock()
@@ -284,11 +328,26 @@ func (c *consulCtrl) registerWatch(cli kvAPI, cs configSource, optional bool) {
 		return
 	}
 	c.listened[lk] = struct{}{}
-	ctx := c.ctx
+	// The goroutine outlives this load, so it runs on the controller's
+	// generation context, not on the load's. It carries the same fields, which
+	// is what lets the loop's own lines name the KV path without interpolating
+	// it.
+	wctx := log.WithFields(c.ctx, sourceFields(cs)...)
 	c.mu.Unlock()
 
-	log.Infof(context.Background(), starterTag, "watching consul kv=%s address=%s datacenter=%s", cs.kvPath, cs.address, cs.datacenter)
-	go c.watchLoop(ctx, cli, cs, optional)
+	log.Info(ctx, starterTag, log.Msg("watching consul kv for changes"))
+	go c.watchLoop(wctx, cli, cs, optional)
+}
+
+// unwatch drops the dedup entry for a source's watch. Called when a watch
+// goroutine exits because its generation was canceled: the entry would
+// otherwise block re-watching after the next rearm (a Load that raced Close
+// registers on an already-dead generation).
+func (c *consulCtrl) unwatch(cs configSource) {
+	lk := clientKey(cs) + "|" + cs.kvPath
+	c.mu.Lock()
+	delete(c.listened, lk)
+	c.mu.Unlock()
 }
 
 // watchLoop runs the blocking-query loop for a single KV path. Errors retry
@@ -313,26 +372,32 @@ func (c *consulCtrl) watchLoop(ctx context.Context, cli kvAPI, cs configSource, 
 		}
 		if err != nil {
 			if ctx.Err() != nil {
+				c.unwatch(cs)
 				return // shutting down
 			}
 			if !failing {
-				log.Warnf(context.Background(), starterTag,
-					"consul watch on %s failing, retrying every 2s (changes are missed until it recovers): %v", cs.kvPath, err)
+				log.Warn(ctx, starterTag,
+					log.Err(err),
+					log.Msg("consul watch failing, retrying every 2s (changes are missed until it recovers)"))
 				failing = true
 			} else {
-				log.Debugf(context.Background(), starterTag,
-					"consul watch on %s still failing: %v", cs.kvPath, err)
+				log.Debug(ctx, starterTag, func() []log.Field {
+					return []log.Field{
+						log.Err(err),
+						log.Msg("consul watch still failing"),
+					}
+				})
 			}
 			select {
 			case <-ctx.Done():
+				c.unwatch(cs)
 				return
 			case <-time.After(2 * time.Second):
 			}
 			continue
 		}
 		if failing {
-			log.Infof(context.Background(), starterTag,
-				"consul watch on %s recovered", cs.kvPath)
+			log.Info(ctx, starterTag, log.Msg("consul watch recovered"))
 			failing = false
 		}
 		if meta.LastIndex < lastIndex {
@@ -347,8 +412,8 @@ func (c *consulCtrl) watchLoop(ctx context.Context, cli kvAPI, cs configSource, 
 		if meta.LastIndex > lastIndex {
 			lastIndex = meta.LastIndex
 			if pair == nil && !optional {
-				log.Warnf(context.Background(), starterTag,
-					"consul kv %s deleted; stale snapshot retained until the key is restored", cs.kvPath)
+				log.Warn(ctx, starterTag,
+					log.Msg("consul kv deleted; stale snapshot retained until the key is restored"))
 			}
 			// Stamp the trigger with the change's identity (which KV entry, which
 			// consul revision) so the refresh records logged and metered by

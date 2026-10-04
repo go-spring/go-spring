@@ -42,6 +42,7 @@
 package loadbalance
 
 import (
+	"context"
 	"errors"
 
 	"go-spring.org/cloud/discovery"
@@ -103,14 +104,17 @@ type Balancer interface {
 	// when eps is empty.
 	Pick(eps []discovery.Endpoint, info PickInfo) (discovery.Endpoint, error)
 
-	// Complete marks the request that Pick issued to ep as finished: err is the
-	// request's final error, nil on success. Strategies that keep per-request
-	// state settle it here (least-conn decrements its in-flight count);
-	// stateless strategies declare a no-op so callers never nil-check. The
-	// two-method shape keeps the hot path free of per-request closures. Callers
-	// must invoke it exactly once per picked endpoint, after the request ends
-	// (least_conn tolerates a repeat — its count deletes at zero).
-	Complete(ep discovery.Endpoint, err error)
+	// Complete marks the request that Pick issued to ep as finished. ctx is the
+	// context of the request that triggered this completion — it carries that
+	// request's trace and values and is read for logging and instrumentation
+	// only; the strategy must not cancel it. err is the request's final error,
+	// nil on success. Strategies that keep per-request state settle it here
+	// (least-conn decrements its in-flight count); stateless strategies declare
+	// a no-op so callers never nil-check. The two-method shape keeps the hot
+	// path free of per-request closures. Callers must invoke it exactly once per
+	// picked endpoint, after the request ends (least_conn tolerates a repeat —
+	// its count deletes at zero).
+	Complete(ctx context.Context, ep discovery.Endpoint, err error)
 }
 
 // Factory builds a fresh, independent [Balancer] for one target. It is the

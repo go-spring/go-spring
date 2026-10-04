@@ -45,6 +45,7 @@ compose up -d
 # wait_tcp HOST PORT [TRIES] — returns 0 once the port accepts a connection.
 wait_tcp() {
     local host="$1" port="$2" tries="${3:-30}"
+echo "== waiting for the service to be ready =="
     for _ in $(seq 1 "${tries}"); do
         if (exec 3<>"/dev/tcp/${host}/${port}") 2>/dev/null; then
             exec 3>&- 3<&- 2>/dev/null || true

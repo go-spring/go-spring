@@ -158,6 +158,10 @@ func (s *SimpleThriftServer) transportFactory() (thrift.TTransportFactory, error
 
 // Run starts the Thrift server after Go-Spring signals readiness.
 func (s *SimpleThriftServer) Run(ctx context.Context, sig gs.ReadySignal) error {
+	// The listening address rides on the context: every line this server logs
+	// about its own lifecycle carries it without repeating it.
+	ctx = log.WithFields(ctx, log.String("addr", s.cfg.Addr))
+
 	transport, err := s.newTransport()
 	if err != nil {
 		return errutil.Explain(err, "failed to listen on %s", s.cfg.Addr)
@@ -192,9 +196,11 @@ func (s *SimpleThriftServer) Run(ctx context.Context, sig gs.ReadySignal) error 
 	proc := thrift.WrapProcessor(s.proc, mws...)
 	s.svr = thrift.NewTSimpleServer4(proc, transport, transFactory, protoFactory)
 	<-sig.TriggerAndWait()
-	log.Infof(ctx, log.TagAppDef, "thrift server starting on %s", s.cfg.Addr)
+	log.Info(ctx, log.TagAppDef, log.Msg("thrift server starting"))
 	if err = s.svr.Serve(); err != nil {
-		log.Errorf(ctx, log.TagAppDef, "thrift server failed on %s: %v", s.cfg.Addr, err)
+		log.Error(ctx, log.TagAppDef,
+			log.Err(err),
+			log.Msg("thrift server failed"))
 		return errutil.Explain(err, "failed to serve on %s", s.cfg.Addr)
 	}
 	return nil
@@ -205,6 +211,8 @@ func (s *SimpleThriftServer) Run(ctx context.Context, sig gs.ReadySignal) error 
 // mature frameworks for production-grade thrift shutdown) — and takes no
 // context, so ctx only tags the shutdown log.
 func (s *SimpleThriftServer) Stop(ctx context.Context) error {
-	log.Infof(ctx, log.TagAppDef, "thrift server shutting down on %s", s.cfg.Addr)
+	log.Info(ctx, log.TagAppDef,
+		log.String("addr", s.cfg.Addr),
+		log.Msg("thrift server shutting down"))
 	return s.svr.Stop()
 }

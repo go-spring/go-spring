@@ -29,7 +29,7 @@ type byteCache struct{ c *Cache }
 // NewByteCache wraps a *Cache as a [cache.ByteCache] - the raw bytes-native
 // primitives the "bigcache" driver layers a typed [cache.Cache] façade over.
 // Every operation flows through the wrapper's command surface, which emits the
-// operation's span and metrics there (see [statObserver]), so the façade inherits
+// operation's span and metrics there (see [ObsCache]), so the façade inherits
 // them. The starter's own registration calls this to expose each instance as a
 // [cache.Cache] bean; call it directly to build a ByteCache for ad-hoc use.
 func NewByteCache(c *Cache) cache.ByteCache {

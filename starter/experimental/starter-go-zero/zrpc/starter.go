@@ -117,6 +117,10 @@ func NewZrpcServer(cfg Config, reg ServiceRegister) *ZrpcServer {
 // Start blocks internally, so it runs in a goroutine while Run parks on the done
 // channel; Stop closes done to hand control back to Go-Spring.
 func (s *ZrpcServer) Run(ctx context.Context, sig gs.ReadySignal) error {
+	// The listening address rides on the context: every line this server logs
+	// about its own lifecycle carries it without repeating it.
+	ctx = log.WithFields(ctx, log.String("addr", s.cfg.ListenOn))
+
 	conf := zrpc.RpcServerConf{
 		ServiceConf: service.ServiceConf{
 			Name: s.cfg.Name,
@@ -160,7 +164,7 @@ func (s *ZrpcServer) Run(ctx context.Context, sig gs.ReadySignal) error {
 
 	<-sig.TriggerAndWait()
 
-	log.Infof(ctx, log.TagAppDef, "go-zero zrpc server starting on %s", s.cfg.ListenOn)
+	log.Info(ctx, log.TagAppDef, log.Msg("go-zero zrpc server starting"))
 	errCh := make(chan error, 1)
 	go func() {
 		// Start binds the listener, registers the provider under Etcd.Key when
@@ -182,7 +186,9 @@ func (s *ZrpcServer) Run(ctx context.Context, sig gs.ReadySignal) error {
 // sequence. The server teardown itself happens in Run via svr.Stop() (which
 // takes no context), so ctx only tags the shutdown log.
 func (s *ZrpcServer) Stop(ctx context.Context) error {
-	log.Infof(ctx, log.TagAppDef, "go-zero zrpc server shutting down on %s", s.cfg.ListenOn)
+	log.Info(ctx, log.TagAppDef,
+		log.String("addr", s.cfg.ListenOn),
+		log.Msg("go-zero zrpc server shutting down"))
 	close(s.done)
 	return nil
 }

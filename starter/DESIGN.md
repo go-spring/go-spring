@@ -303,6 +303,35 @@ Database, cache, and message-queue clients (`go-redis`, `gorm-*`, `mongodb`,
   send takes no ctx, the starter instruments through call-site seams: wrap the
   producer, run each consumed record through a helper, and let trace context ride
   the record headers.
+- **A client whose library delivers a concrete type is hollowed into a chain.**
+  When the wrapped library offers no hook/plugin point *and* hands back a
+  concrete struct (gomemcache, bigcache, gocql, nats.go, go-mail, amqp091,
+  franz-go, rocketmq-client-go), wrapping alone cannot modify behavior — so the
+  starter's client embeds an `Inner*` interface (the command surface with ctx,
+  plus `Release(releaseRaw bool) error`) and exports the raw instance as a
+  read-only handle. The default chain is three layers with one capability each:
+  the identity layer (`Obs*`: declares the operation via
+  `observability.WithOperation` — every client has one), the governance layer
+  (`Guard*`: runs the call under the resilience executor, which it builds, uses
+  and closes inside the layer — only governed, RPC-style clients have one;
+  bigcache's in-process cache has none), and the raw adapter (`Raw*`: discards
+  the context the library never takes, does the wire call). Three rules keep it
+  honest: (1) `Release` passes the flag down unchanged and every layer releases
+  its own resources — only the adapter acts on the flag to close the instance,
+  and the shell's `Close` (the gs destroy method) is the head's
+  `Release(true)`; (2) chain reorganization is wrap-head —
+  `c.Inner = myLayer{c.Inner}` — the keys a layer rewrites are what the
+  identity layer declares, and governance keeps protecting underneath; (3) the
+  per-delivery consume path does NOT ride the chain: its pipeline (extract
+  trace → declare → run under the executor) inverts the chain's outside-in
+  composition, so it keeps a fused wrapper on the shell. Three proven shapes:
+  a flat command surface (memcached, nats, mail), a builder whose chain rides
+  each query (cassandra), and a factory/registry entity with per-producer
+  chains (rocketmq); where the bean used to be the raw client guarded through a
+  package-level `sync.Map` registry (kafka, rabbitmq), the wrapper replaces
+  both. If the library delivers an interface or a hook (go-redis, gorm,
+  mongodb, redigo, neo4j, pulsar, mqtt, sarama), do not hollow — wrapping the
+  delivered interface already is this pattern's seam.
 - **Messaging-driver convention.** One producer per publisher, one push consumer per
   subscriber, and a handler error triggers redelivery.
 - **A process-wide driver bean serves every instance.** Because the `Driver` bean is

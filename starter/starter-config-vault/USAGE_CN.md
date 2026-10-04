@@ -134,25 +134,25 @@ example 还演示了属性级解密：文档值为 `ENC(aes:<base64>)` 时，con
 
 ```
 blank-import starter-config-vault
-  └─ init(): conf.RegisterProvider("vault", newVaultCtrl())   [starter.go:60]
+  └─ init(): conf.RegisterProvider("vault", newVaultCtrl())   [starter.go:52]
 
 gs.Run()
   ├─ 配置加载：读 conf/app.properties
   │    └─ loadFileImports 看到 spring.config.import=vault:...
-  │         └─ conf.Load → vaultController.Load(optional, source)   [starter.go:228]
-  │              ├─ parseSource："vault://"+source → URL → host、mount/path、query  [starter.go:107]
-  │              ├─ resolveToken：?token → VAULT_TOKEN → ?token-file / VAULT_TOKEN_FILE  [starter.go:164]
-  │              ├─ clientFor：按 address|namespace|token 缓存 api.Client         [starter.go:193]
-  │              ├─ registerWatch：启动 watchLoop goroutine（每 poll-ms 轮询）    [starter.go:347]
-  │              ├─ readSecret：KVv2(mount).Get / KVv1(mount).Get，5s 超时        [starter.go:280]
+  │         └─ conf.Load → vaultController.Load(optional, source)   [starter.go:283]
+  │              ├─ parseSource："vault://"+source → URL → host、mount/path、query  [starter.go:150]
+  │              ├─ resolveToken：?token → VAULT_TOKEN → ?token-file / VAULT_TOKEN_FILE  [starter.go:207]
+  │              ├─ clientFor：按 address|namespace|token 缓存 api.Client         [starter.go:250]
+  │              ├─ registerWatch：启动 watchLoop goroutine（每 poll-ms 轮询）    [starter.go:429]
+  │              ├─ readSecret：KVv2(mount).Get / KVv1(mount).Get，5s 超时        [starter.go:362]
   │              │    └─ 404 → nil data → optional? 警告+跳过 : 报错 "secret not found"
-  │              ├─ toProperties：整表 flatten，或 key 模式解析单字段             [starter.go:315]
+  │              ├─ toProperties：整表 flatten，或 key 模式解析单字段             [starter.go:397]
   │              └─ 返回 props → 加入 StorageAppFile 层
   ├─ bean 装配：controller 不进 IoC 容器（完全无 bean）
   ├─ 字段绑定：${demo.message} 从 Vault 层解析；gs.Dync 字段注册进刷新
   ├─ Run / 就绪
   └─ 稳态：每个 watchLoop 周期执行
-       ├─ readSecret；出错 → continue（静默）
+       ├─ readSecret；出错 → continue（首次 WARN，之后 debug，恢复 info）
        ├─ fingerprint(json.Marshal(data)) 对比上次加载指纹
        └─ 有变化 → TriggerRefresh → gs.RefreshProperties()
             └─ 重跑整个属性加载：import 重新解析、Load 重读 secret、
@@ -162,15 +162,15 @@ gs.Run()
 从源码核实的关键时序：
 
 - **不是 cold-load only。** 每个 secret 有一个永久轮询 watcher（`watchLoop`，
-  starter.go:366-381），默认 5000 ms（example 用 1000 ms）。secret 轮换无需重启即可被
+  starter.go:464），默认 5000 ms（example 用 1000 ms）。secret 轮换无需重启即可被
   感知——*但只刷新 `gs.Dync[T]` 字段*；普通 `value` tag 只在启动时绑定一次（gs 的
   refresh 仅 Dync 生效）。
 - **刷新受启动状态保护**：app 启动前 `gs.RefreshProperties()` 返回错误，`TriggerRefresh`
-  是无害 no-op——启动加载已经捕获了状态（starter.go:82-89）。
+  是无害 no-op——启动加载已经捕获了状态（starter.go:128）。
 - **指纹基于内容**（KV data map 的 `json.Marshal`）：内容完全相同的 KV v2 重写**不会**
   触发刷新；KV v2 version 号被忽略。
 - **watcher 从不重读 token**：过期 token 的 client 仍按
-  address|namespace|token 缓存，且 `watchLoop` 吞掉读错误——见 §4.4。
+  address|namespace|token 缓存，且 `watchLoop` 对读错误只降级记录——见 §4.4。
 - **watcher 在首次读取 secret 之前注册**（上面链路中 `registerWatch` 先于
   `readSecret`），因此 `optional:` 且启动时还不存在的 secret，创建之后依然能热刷新。
 - **指纹基线是共享的，而非每次轮询自建**：每次成功的 `Load` 都会写入供轮询循环比较的
@@ -199,7 +199,7 @@ gs.Run()
 [optional:]vault:<host>:<port>/<mount>/<path>?<query params>
 ```
 
-解析方式是前面拼 `vault://` 后走 `url.Parse`（starter.go:107-161），因此 `host:port`
+解析方式是前面拼 `vault://` 后走 `url.Parse`（starter.go:150），因此 `host:port`
 必须是合法 URL host，path 必须是按第一个 `/` 切分的 `<mount>/<path>`（两段都非空）。
 
 ### 3.1 路径部分
@@ -226,7 +226,7 @@ gs.Run()
 
 ### 3.3 token 解析与 `optional:` 语义
 
-解析顺序（starter.go:164-185）：`?token=` → `VAULT_TOKEN` 环境变量 → `?token-file=` →
+解析顺序（starter.go:207）：`?token=` → `VAULT_TOKEN` 环境变量 → `?token-file=` →
 `VAULT_TOKEN_FILE` 环境变量（文件内容 trim）。⚠ **缺 token 时即使 `optional:` 源也会启动
 失败**——token 解析发生在 `parseSource` 内部，早于 optional 判断。`optional:` 只软化
 *secret 读取*失败（404 / 网络错）：有它，应用带着零个 key 启动；没它，第一次读失败即中止
@@ -272,8 +272,9 @@ go run .   # WARN "optional config secret secret/nope not found (skipped)" → �
 ### 4.4 运行中 token 过期 / 错误
 
 正常启动后撤销 token：`vault token revoke <id>`。应用继续运行——启动不受影响——但此后
-每次轮询都失败，而 `watchLoop` 直接 `continue`（starter.go:370-373）：**无日志、无计数器，
-配置静默变陈旧**。Vault 的新写入永远到不了；恢复需要重启进程（watcher 从不重读 token）。
+每次轮询都失败，`watchLoop` 直接 `continue`：首次失败打一条 WARN（"vault poll failing,
+changes are missed until it recovers"），之后降为 debug，恢复时打一条 info。从 WARN 到恢复
+之间，**Vault 的新写入到不了应用**；彻底恢复需要重启进程（watcher 从不重读 token）。
 生产上信任轮换机制之前先跑这个演练。
 
 ### 4.5 启动时 Vault sealed / 宕机
@@ -283,7 +284,7 @@ go run .   # WARN "optional config secret secret/nope not found (skipped)" → �
 - optional 源：WARN `optional config read secret ... failed (skipped)`，应用带默认值
   启动——验证字段显示 `:=` 回退值。
 
-注意 5 秒读超时（starter.go:281）：挂起的 Vault 会让每个 import 最多拖慢启动 5 秒。
+注意 5 秒读超时（starter.go:363）：挂起的 Vault 会让每个 import 最多拖慢启动 5 秒。
 
 ### 4.6 缺 token
 
@@ -303,7 +304,7 @@ env -u VAULT_TOKEN go run .   # ERROR "no vault token found (set VAULT_TOKEN, VA
 | `vault secret <mount>/<path> not found` | mount/path 错，或 KV v1 secret 被默认 `kv-version=2` 读 | 修路径；加 `&kv-version=1`；KV v2 路径不得含 `data/`。 |
 | `vault path must be <mount>/<path>` | path 少于两段（如 `vault:...:8200/secret`） | 补全 `<host>:<port>/<mount>/<path>`。 |
 | 应用起来了，Vault 值一直是默认值 | `optional:` 吞掉了读失败，或 `prefix` 错 | grep 启动日志 `optional config ... (skipped)`；核对 prefix 与 `${...}` key。 |
-| Vault 改了，应用不更新 | 字段非 `gs.Dync`，或轮询已静默失败（token 被撤销） | 用 `gs.Dync[T]` 绑定；跑 §4.4 演练；死 token 靠重启恢复。 |
+| Vault 改了，应用不更新 | 字段非 `gs.Dync`，或轮询已失败（token 被撤销——首次失败有 WARN） | 用 `gs.Dync[T]` 绑定；跑 §4.4 演练；死 token 靠重启恢复。 |
 | connection reset / TLS 报错 | HTTPS Vault 没加 `&scheme=https` | 加上——默认 `http`。 |
 | `parse vault field "x" ... failed` / `has no field "x"` | 单字段模式不匹配 | `key=` 必须指向已存在的 string 字段；`format=` 须匹配其内容。 |
 | `kv-version must be 1 or 2` / `invalid poll-ms` | query 参数非数字或越界 | 修正取值；两者都在解析期校验。 |
@@ -328,8 +329,8 @@ env -u VAULT_TOKEN go run .   # ERROR "no vault token found (set VAULT_TOKEN, VA
    key 更可读 → 候选拆分"连接类"参数为 key。
 2. 仅轮询的变更感知：无 sys/leases 通知，KV v2 version 号被忽略——同内容重写不刷新；
    `fingerprint()` 只做内容哈希，行为已核实但未文档化。
-3. 轮询出错静默 `continue`，无失败计数与日志——死 token 或 sealed Vault 退化为静默陈旧
-   配置（演练 §4.4）。
+3. 轮询出错 `continue`：首次失败打 WARN（之后 debug、恢复 info），但无失败计数——死
+   token 或 sealed Vault 仍会退化为陈旧配置，直到重启（演练 §4.4）。
 4. `resolveToken` 在 `parseSource` 内执行，缺 token 连 `optional:` 源也失败——fail-fast
    可辩护，但与 `optional:` 的字面语义不对称。
 5. `scheme` 藏在 query（`?scheme=https`）而非接受真正的 `vault://host/...` /

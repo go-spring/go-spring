@@ -27,6 +27,7 @@ compose up -d
 
 # Wait for Elasticsearch to accept connections (up to 60s — single-node start
 # can be slow on first pull / JVM warm-up).
+echo "== waiting for the service to be ready =="
 for _ in $(seq 1 60); do
     if curl -sf http://127.0.0.1:9200 >/dev/null 2>&1; then
         break
@@ -34,6 +35,7 @@ for _ in $(seq 1 60); do
     sleep 1
 done
 
+echo "== example boot =="
 go run -gcflags="all=-N -l" . &
 pid=$!
 ( sleep 60; kill -9 "${pid}" 2>/dev/null ) &
@@ -42,4 +44,9 @@ rc=0
 wait "${pid}" 2>/dev/null || rc=$?
 kill "${watchdog}" 2>/dev/null || true
 wait "${watchdog}" 2>/dev/null || true
-exit "${rc}"
+if [ "${rc}" -ne 0 ]; then
+    echo "== FAILED ==" >&2
+    exit "${rc}"
+fi
+echo "== OK =="
+exit 0

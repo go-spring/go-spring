@@ -26,6 +26,7 @@ trap 'compose down -v >/dev/null 2>&1 || true' EXIT
 compose up -d
 
 # Wait for redis to answer PING (up to 30s).
+echo "== waiting for the service to be ready =="
 for _ in $(seq 1 30); do
     if docker exec asynq-redis redis-cli ping 2>/dev/null | grep -q PONG; then
         break
@@ -33,6 +34,7 @@ for _ in $(seq 1 30); do
     sleep 1
 done
 
+echo "== example boot =="
 go run . > smoke.out 2>&1 &
 pid=$!
 ( sleep 60; kill -9 "${pid}" 2>/dev/null ) &
@@ -44,9 +46,11 @@ kill "${watchdog}" 2>/dev/null || true
 wait "${watchdog}" 2>/dev/null || true
 
 if [ "${rc}" -ne 0 ] || ! grep -q "Asynq round trip OK:" smoke.out; then
+    echo "== FAILED ==" >&2
     cat smoke.out >&2 || true
     rm -f smoke.out
     exit 1
 fi
+echo "== OK =="
 rm -f smoke.out
 exit 0

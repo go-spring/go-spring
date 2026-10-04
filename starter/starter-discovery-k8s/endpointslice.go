@@ -185,6 +185,16 @@ func (d *endpointSliceDiscovery) listSlices(ctx context.Context, name string) ([
 // backend. A failed refresh keeps the stale snapshot — stale addresses are
 // safer than none.
 func (d *endpointSliceDiscovery) watchInformer(name string, e *esEntry) {
+	// The watched service's identity rides on the context for the life of this
+	// watcher: every line below carries it without repeating it. The goroutine
+	// outlives any request, so the context is minted here.
+	ctx := log.WithFields(context.Background(),
+		log.String("system", d.obs.System()),
+		log.String("center", d.obs.Center()),
+		log.String("service", name),
+		log.String("operation", "sync"),
+	)
+
 	factory := informers.NewSharedInformerFactoryWithOptions(
 		d.client,
 		d.cfg.ResyncPeriod,
@@ -211,17 +221,10 @@ func (d *endpointSliceDiscovery) watchInformer(name string, e *esEntry) {
 	}
 	if _, err := informer.AddEventHandler(handler); err != nil {
 		d.obs.Synced(name, err)
-		log.Warn(context.Background(), starterTag, append(
-			[]log.Field{
-				log.String("system", d.obs.System()),
-				log.String("center", d.obs.Center()),
-				log.String("service", name),
-				log.String("operation", "sync"),
-				log.String("status", discovery.StatusOf(err)),
-				log.Err(err),
-			},
-			log.Msg("discovery-k8s: informer handler registration failed; serving seed/stale snapshots"),
-		)...)
+		log.Warn(ctx, starterTag,
+			log.String("status", discovery.StatusOf(err)),
+			log.Err(err),
+			log.Msg("discovery-k8s: informer handler registration failed; serving seed/stale snapshots"))
 		return
 	}
 
@@ -231,17 +234,10 @@ func (d *endpointSliceDiscovery) watchInformer(name string, e *esEntry) {
 		h.stop()
 		err := errutil.Explain(nil, "discovery-k8s: cache sync for %q failed", name)
 		d.obs.Synced(name, err)
-		log.Warn(context.Background(), starterTag, append(
-			[]log.Field{
-				log.String("system", d.obs.System()),
-				log.String("center", d.obs.Center()),
-				log.String("service", name),
-				log.String("operation", "sync"),
-				log.String("status", discovery.StatusOf(err)),
-				log.Err(err),
-			},
-			log.Msg("discovery-k8s: cache sync failed; serving seed snapshots"),
-		)...)
+		log.Warn(ctx, starterTag,
+			log.String("status", discovery.StatusOf(err)),
+			log.Err(err),
+			log.Msg("discovery-k8s: cache sync failed; serving seed snapshots"))
 		return
 	}
 
@@ -259,17 +255,10 @@ func (d *endpointSliceDiscovery) watchInformer(name string, e *esEntry) {
 			slices, err := lister.List(labels.Everything())
 			if err != nil {
 				d.obs.Synced(name, err)
-				log.Warn(context.Background(), starterTag, append(
-					[]log.Field{
-						log.String("system", d.obs.System()),
-						log.String("center", d.obs.Center()),
-						log.String("service", name),
-						log.String("operation", "sync"),
-						log.String("status", discovery.StatusOf(err)),
-						log.Err(err),
-					},
-					log.Msg("discovery-k8s: refresh from the informer cache failed (keeping stale snapshot)"),
-				)...)
+				log.Warn(ctx, starterTag,
+					log.String("status", discovery.StatusOf(err)),
+					log.Err(err),
+					log.Msg("discovery-k8s: refresh from the informer cache failed (keeping stale snapshot)"))
 				continue
 			}
 			eps := slicesToEndpoints(cfg, slices)

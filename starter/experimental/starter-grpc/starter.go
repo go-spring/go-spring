@@ -312,6 +312,10 @@ func (s *SimpleGrpcServer) buildOptions() ([]grpc.ServerOption, error) {
 
 // Run starts the gRPC server after Go-Spring signals readiness.
 func (s *SimpleGrpcServer) Run(ctx context.Context, sig gs.ReadySignal) error {
+	// The listening address rides on the context: every line this server logs
+	// about its own lifecycle carries it without repeating it.
+	ctx = log.WithFields(ctx, log.String("addr", s.cfg.Addr))
+
 	opts, err := s.buildOptions()
 	if err != nil {
 		return err
@@ -330,13 +334,17 @@ func (s *SimpleGrpcServer) Run(ctx context.Context, sig gs.ReadySignal) error {
 
 	listener, err := net.Listen("tcp", s.cfg.Addr)
 	if err != nil {
-		log.Errorf(ctx, log.TagAppDef, "grpc server failed to listen on %s: %v", s.cfg.Addr, err)
+		log.Error(ctx, log.TagAppDef,
+			log.Err(err),
+			log.Msg("grpc server failed to listen"))
 		return errutil.Explain(err, "failed to listen on %s", s.cfg.Addr)
 	}
 	<-sig.TriggerAndWait()
-	log.Infof(ctx, log.TagAppDef, "grpc server starting on %s", s.cfg.Addr)
+	log.Info(ctx, log.TagAppDef, log.Msg("grpc server starting"))
 	if err = s.svr.Serve(listener); err != nil {
-		log.Errorf(ctx, log.TagAppDef, "grpc server failed on %s: %v", s.cfg.Addr, err)
+		log.Error(ctx, log.TagAppDef,
+			log.Err(err),
+			log.Msg("grpc server failed"))
 		return errutil.Explain(err, "failed to serve on %s", s.cfg.Addr)
 	}
 	return nil
@@ -345,7 +353,9 @@ func (s *SimpleGrpcServer) Run(ctx context.Context, sig gs.ReadySignal) error {
 // Stop gracefully stops the underlying gRPC server. grpc's GracefulStop
 // takes no context, so ctx only tags the shutdown log.
 func (s *SimpleGrpcServer) Stop(ctx context.Context) error {
-	log.Infof(ctx, log.TagAppDef, "grpc server shutting down on %s", s.cfg.Addr)
+	log.Info(ctx, log.TagAppDef,
+		log.String("addr", s.cfg.Addr),
+		log.Msg("grpc server shutting down"))
 	s.svr.GracefulStop()
 	return nil
 }
