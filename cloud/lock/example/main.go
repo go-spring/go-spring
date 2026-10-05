@@ -24,10 +24,19 @@
 package main
 
 import (
+	"os"
+
 	"go-spring.org/spring/gs"
 
 	_ "go-spring.org/cloud/lock/example/service"
 	_ "go-spring.org/starter-lock-memory"
 )
 
-func main() { gs.Run() }
+func main() {
+	// Unset env vars that leak from the developer shell so runs are reproducible
+	// and consistent with sibling examples.
+	_ = os.Unsetenv("_")
+	_ = os.Unsetenv("TERM")
+	_ = os.Unsetenv("TERM_SESSION_ID")
+	gs.Run()
+}

@@ -18,11 +18,13 @@
 // for a real Apollo stack (which would need MySQL plus configservice/admin/
 // portal) by serving exactly the endpoints agollo drives, so the example can
 // exercise the cold load and the notification-driven hot reload with no docker.
+
 package main
 
 import (
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
 	"os"
 	"sync"
@@ -59,10 +61,11 @@ var store = &apolloStore{message: "hello-from-apollo"}
 //
 //	/services/config (meta service discovery),
 //	/configfiles/json/{appId}/{cluster}/{ns} (cold load),
-//	/configs/{appId}/{cluster}/{ns} (the re-fetch after a notification) ,
+//	/configs/{appId}/{cluster}/{ns} (the re-fetch after a notification),
 //	/notifications/v2 (the long poll).
 //
-// POST /publish is a knob for manual runs.
+// POST /publish?value=... is a knob for manual runs. It returns only after the
+// listener is bound, so the caller can start the app knowing the mock accepts.
 func mockConfigService() {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
@@ -85,13 +88,27 @@ func mockConfigService() {
 		case "/notifications/v2":
 			notifyLongPoll(w, r)
 		case "/publish":
+			if r.Method != http.MethodPost {
+				w.WriteHeader(http.StatusMethodNotAllowed)
+				return
+			}
 			store.set(r.URL.Query().Get("value"))
 			w.WriteHeader(http.StatusOK)
 		default:
 			w.WriteHeader(http.StatusNotFound)
 		}
 	})
-	_ = http.ListenAndServe(mockAddr, mux)
+	ln, err := net.Listen("tcp", mockAddr)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "[mock-apollo] listen on %s failed: %v\n", mockAddr, err)
+		os.Exit(1)
+	}
+	go func() {
+		if err := http.Serve(ln, mux); err != nil {
+			fmt.Fprintf(os.Stderr, "[mock-apollo] serve failed: %v\n", err)
+			os.Exit(1)
+		}
+	}()
 }
 
 // notifyLongPoll implements Apollo's notifications/v2 contract: it holds the

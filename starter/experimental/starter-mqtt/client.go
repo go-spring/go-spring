@@ -20,6 +20,7 @@
 // mirrors starter-go-redis's client.go — the entity wraps the concrete client
 // and owns its operation surface — while the observe + resilience seam for the
 // raw client lives in command.go.
+
 package StarterMQTT
 
 import (

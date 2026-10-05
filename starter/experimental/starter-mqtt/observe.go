@@ -25,6 +25,7 @@
 // per-call signal — it is driven by the paho client's own connect / lost /
 // reconnecting callbacks — so it is not the resilience layer's to emit and
 // stays starter-local.
+
 package StarterMQTT
 
 import (

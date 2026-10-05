@@ -57,7 +57,7 @@ type Demo struct {
 
 远程配置变更时，Provider 的变更监听器会触发一次应用属性刷新，所有绑定的 `gs.Dync`
 字段都会被原子更新。完整的“发布 → 热更新”流程参见
-[example-config](example/main.go)。
+[example](example/main.go)。
 
 ## 工作原理
 
@@ -66,6 +66,13 @@ type Demo struct {
 - 远端变更触发监听器，其回调直接调用框架的进程级门面 `gs.RefreshProperties()`：
   重新加载所有配置源（重跑本 Provider），并通过两阶段原子提交重新绑定所有
   `gs.Dync` 字段。
+
+## 设计要点
+
+**引导期基础设施，而非 bean。** provider 运行在属性刷新阶段，早于任何 bean 存在，因此它从 import 字符串自建 Nacos SDK client，而不是通过注入获得。client 按连接元组缓存，重复刷新不会泄漏 client 及其后台 gRPC 连接；远端变更经进程级门面 `gs.RefreshProperties()` 触达容器，完全不走 bean 装配。
+
+**只做配置中心是有意为之。** Nacos config 与 Nacos naming 位于不同层，因此本 starter 只承担配置中心角色——对齐 Spring Cloud Alibaba 的 `nacos-config` / `nacos-discovery` 拆分。
+
 ### 日志 tag
 
 本模块的运行期日志使用 tag `_app_config_nacos`（nacos 配置源）。如需与主日志分开单独调整，可为该 tag 绑定独立的 logger：
@@ -76,8 +83,4 @@ logger.config_nacos.level=WARN
 logger.config_nacos.tag=_app_config_nacos
 ```
 
-## 设计要点
-
-**引导期基础设施，而非 bean。** provider 运行在属性刷新阶段，早于任何 bean 存在，因此它从 import 字符串自建 Nacos SDK client，而不是通过注入获得。client 按连接元组缓存，重复刷新不会泄漏 client 及其后台 gRPC 连接；远端变更经进程级门面 `gs.RefreshProperties()` 触达容器，完全不走 bean 装配。
-
-**只做配置中心是有意为之。** Nacos config 与 Nacos naming 位于不同层，因此本 starter 只承担配置中心角色——对齐 Spring Cloud Alibaba 的 `nacos-config` / `nacos-discovery` 拆分。
+完整参考（逐 key 语义、装配时序、故障演练）见 [USAGE_CN.md](USAGE_CN.md)。

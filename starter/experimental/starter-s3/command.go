@@ -19,6 +19,7 @@
 // on the context (see observe.go). It emits nothing — the resilience layer
 // inside it reads the declaration to emit the span, the metrics and the access
 // log.
+
 package StarterS3
 
 import (

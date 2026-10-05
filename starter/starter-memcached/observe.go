@@ -19,6 +19,7 @@
 // layer, the one place on the executor chain that sees a whole call (retries
 // included). This file therefore holds no emission code: only the vocabulary
 // that this starter alone knows, because only it knows these calls reach a cache.
+
 package StarterMemcached
 
 import (

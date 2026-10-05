@@ -94,7 +94,7 @@ func (c *k8sCtrl) Close() {
 // clientFor returns a cached clientset for the kubeconfig path, creating one
 // if necessary. The cache is what keeps repeated refreshes from leaking a
 // clientset's connection pool per Load call.
-func (c *k8sCtrl) clientFor(kubeconfig string) (k8sClient, error) {
+func (c *k8sCtrl) clientFor(ctx context.Context, kubeconfig string) (k8sClient, error) {
 	c.clientMu.Lock()
 	defer c.clientMu.Unlock()
 
@@ -122,6 +122,7 @@ func (c *k8sCtrl) clientFor(kubeconfig string) (k8sClient, error) {
 	if err != nil {
 		return nil, errutil.Explain(err, "k8s config: build clientset")
 	}
+	log.Infof(ctx, starterTag, "create k8s client success")
 	c.clients[kubeconfig] = cli
 	return cli, nil
 }
@@ -219,7 +220,7 @@ func (c *k8sCtrl) Load(ctx context.Context, optional bool, source string) (map[s
 		}
 	})
 
-	client, err := c.clientFor(cs.kubeconfig)
+	client, err := c.clientFor(ctx, cs.kubeconfig)
 	if err != nil {
 		if optional {
 			log.Warn(ctx, starterTag,

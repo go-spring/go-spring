@@ -17,6 +17,7 @@
 // driver.go is the "construction seam" concept: the Driver interface +
 // the bundled DefaultDriver, which owns connection assembly (TLS build + amqp
 // dial). It mirrors starter-kafka's driver.go.
+
 package StarterRabbitMQ
 
 import (

@@ -17,6 +17,7 @@
 // starter.go is the gs wiring: one executor per entry under
 // "${spring.xxljob}". The executor is a gs.Server (its callback HTTP server),
 // and it registers/removes itself with the admin on startup/shutdown.
+
 package StarterXxljob
 
 import (

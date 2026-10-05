@@ -18,6 +18,7 @@
 // wrapper Neo4j drivers are injected as, plus its lifecycle (construction/
 // Destroy). The call-site command seam (Query / RunWithResilience) lives in
 // command.go.
+
 package StarterNeo4j
 
 import (

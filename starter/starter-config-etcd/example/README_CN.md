@@ -1,4 +1,4 @@
-# starter-config-etcd Example
+# starter-config-etcd 示例
 
 演示 starter-config-etcd 的 etcd KV 配置管理。
 

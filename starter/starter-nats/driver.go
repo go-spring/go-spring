@@ -18,6 +18,7 @@
 // bundled DefaultDriver, which owns the raw connection assembly (URL/options/auth/
 // TLS + nats.Connect) and wraps the result into the exported *Conn (identity +
 // JetStream context). It mirrors starter-memcached's driver.go.
+
 package StarterNats
 
 import (

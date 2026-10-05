@@ -17,6 +17,7 @@
 // driver.go is the "construction seam" concept: the Driver interface + the
 // bundled DefaultDriver, which owns full client assembly (broker URL, options,
 // TLS, credentials, will + mqtt.NewClient). It mirrors starter-kafka's driver.go.
+
 package StarterMQTT
 
 import (

@@ -8,20 +8,19 @@ Kubernetes ConfigMap config loading with starter-config-k8s.
 - **Hot reload**: Watch ConfigMap changes and refresh dynamically
 
 > Note: reading and watching a real ConfigMap needs a Kubernetes cluster. Without
-> one the example still boots and self-terminates (the import is `optional:`),
-> and `check.sh` exercises the provider against the client-go fake clientset.
+> one the example still boots and self-terminates (the import is `optional:`).
 
 ## Manual Testing
 
-Needs to run inside a K8s cluster.
-
-Terminal 1, start the service and keep it running:
 ```bash
 cd starter-config-k8s/example
 go run . -manual
 ```
 
-Running directly on a local machine prints a message and exits normally. Press `Ctrl+C` to stop after verification.
+Must be run inside a K8s cluster (see `deploy/`). Running directly on a local
+machine prints a message and exits normally.
+
+The service keeps running. Press `Ctrl+C` to stop.
 
 In another terminal, edit the ConfigMap and watch the field print:
 
@@ -36,5 +35,5 @@ kubectl edit configmap app-config      # or: kubectl patch configmap app-config 
 ./check.sh
 ```
 
-`check.sh` runs the unit tests (fake clientset, no cluster needed) and then boots
-the example; outside a cluster the example self-terminates with exit code 0.
+`check.sh` boots the example; outside a cluster the read is skipped, the field
+shows its default and the example self-terminates, exit code 0 means pass.

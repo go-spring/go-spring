@@ -20,6 +20,7 @@
 // included). This file therefore holds no emission code: only the vocabulary
 // that this starter alone knows, because only it knows these commands reach a
 // redis backend.
+
 package StarterRedigo
 
 import (

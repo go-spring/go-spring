@@ -21,6 +21,7 @@
 // for transactions, admin and other Kafka-specific features the driver does not
 // model. The produce/consume resilience layer and the operation declarations
 // live in command.go.
+
 package StarterKafka
 
 import (

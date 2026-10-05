@@ -18,11 +18,11 @@ package StarterConfigEtcd
 
 import (
 	"context"
-	"errors"
 	"sync"
 	"testing"
 	"time"
 
+	"go-spring.org/stdlib/errutil"
 	"go-spring.org/stdlib/testing/assert"
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
 	mvccpb "go.etcd.io/etcd/api/v3/mvccpb"
@@ -95,13 +95,13 @@ func TestLifecycleRearmAndClose(t *testing.T) {
 	cs := configSource{endpoint: "127.0.0.1:1", key: "k", dialTimeout: time.Second}
 	cli, err := c.clientFor(context.Background(), cs)
 	assert.That(t, err).Nil()
-	c.watch.registerWatcher(cli, cs, false, 0)
+	c.watch.registerWatch(cli, cs, false, 0)
 	assert.That(t, c.watch.ctx == ctx1).Equal(false)
 	assert.That(t, c.watch.ctx.Err()).Nil()
 	assert.That(t, len(c.watch.listened)).Equal(1)
 
 	// A second registration on the live generation is deduplicated and keeps it.
-	c.watch.registerWatcher(cli, cs, false, 0)
+	c.watch.registerWatch(cli, cs, false, 0)
 	assert.That(t, len(c.watch.listened)).Equal(1)
 	assert.That(t, c.watch.ctx.Err()).Nil()
 }
@@ -169,18 +169,18 @@ func TestRegisterWatcherDedup(t *testing.T) {
 	assert.That(t, err).Nil()
 
 	// Repeated Load calls install exactly one watcher per client+key.
-	c.watch.registerWatcher(cli, cs, false, 0)
-	c.watch.registerWatcher(cli, cs, false, 0)
+	c.watch.registerWatch(cli, cs, false, 0)
+	c.watch.registerWatch(cli, cs, false, 0)
 	assert.That(t, len(c.watch.listened)).Equal(1)
 
 	// A different key gets its own watcher entry.
 	cs2 := cs
 	cs2.key = "k2"
-	c.watch.registerWatcher(cli, cs2, true, 0)
+	c.watch.registerWatch(cli, cs2, true, 0)
 	assert.That(t, len(c.watch.listened)).Equal(2)
 }
 
-// fakeEtcd fakes the etcd client surface (see etcdAPI) so the load and watch
+// fakeEtcd fakes the etcd client surface (see etcdClient) so the load and watch
 // success paths can be driven without a live server.
 type fakeEtcd struct {
 	mu      sync.Mutex
@@ -215,7 +215,7 @@ func (f *fakeEtcd) Get(context.Context, string, ...clientv3.OpOption) (*clientv3
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if len(f.gets) == 0 {
-		return nil, errors.New("empty get script")
+		return nil, errutil.Explain(nil, "empty get script")
 	}
 	i := f.served
 	if i >= len(f.gets) {
@@ -262,7 +262,7 @@ func (f *fakeEtcd) delivered() int {
 
 // newCtrlWithFake pre-seeds the controller's client cache for source so
 // clientFor returns the fake without any network.
-func newCtrlWithFake(source string, fake etcdAPI) (*etcdCtrl, error) {
+func newCtrlWithFake(source string, fake etcdClient) (*etcdCtrl, error) {
 	cs, err := parseSource(source)
 	if err != nil {
 		return nil, err
@@ -294,7 +294,7 @@ func TestLoadPropertiesFromClient(t *testing.T) {
 
 func TestLoadOptionalSkipsOnGetFailureAndEmptyKey(t *testing.T) {
 	// optional:true turns a fetch failure and an empty key into a skip.
-	fail := newFakeEtcd().get(nil, errors.New("down"))
+	fail := newFakeEtcd().get(nil, errutil.Explain(nil, "down"))
 	c, err := newCtrlWithFake("127.0.0.1:2379/app.properties", fail)
 	assert.That(t, err).Nil()
 	defer c.Close()

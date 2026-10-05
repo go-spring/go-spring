@@ -103,3 +103,5 @@ logger.config_etcd.type=Logger
 logger.config_etcd.level=WARN
 logger.config_etcd.tag=_app_config_etcd
 ```
+
+Full reference (per-key semantics, assembly timing, fault drills): [USAGE.md](USAGE.md).

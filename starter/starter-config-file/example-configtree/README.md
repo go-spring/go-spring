@@ -15,20 +15,28 @@ cd starter-config-file/example-configtree
 go run . -manual
 ```
 
-The program keeps running. Press Ctrl+C to exit. Without `-manual`, `runTest()` runs automatically and exits.
+The service keeps running. Press `Ctrl+C` to stop.
+
+In another terminal, rewrite a key file and watch it print:
+
+```bash
+echo manual-1 > mount/db.user
+# prints: db.user: "alice" -> "manual-1"
+```
+
+Without `-manual` the example rewrites the mount itself (the kubelet's atomic
+`..data` swap), waits for the bound fields to hot-reload, prints
+`hot-reload observed: db.user= bob-<hhmmss>`, and exits:
+
+```bash
+go run .
+```
 
 ## Smoke Test
 
 ```bash
-cd starter-config-file/example-configtree
-bash check.sh
+./check.sh
 ```
 
-Lays down a Secret-style mount, binds `gs.Dync[string]` fields to `db.user` /
-`db.password` / `server.port`, atomically swaps `..data`, and asserts the bound
-fields hot-reload. Exits non-zero on failure.
-
-## When to use configtree vs file-watch
-
-- `configtree:<dir>` — a directory of scalar key files (path → key, content → value). Typical of a Kubernetes Secret / env-style ConfigMap mount.
-- `file-watch:<file>` — a single whole configuration document. Typical of a ConfigMap key holding `application.yaml`.
+`check.sh` lays down a Secret-style mount, rewrites it and asserts the bound
+fields hot-reload, exit code 0 means pass.

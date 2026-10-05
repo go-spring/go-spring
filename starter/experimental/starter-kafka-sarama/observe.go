@@ -26,6 +26,7 @@
 // there is no non-per-call signal left to own. (The sarama logging bridge in
 // logger.go is not an instrument — it routes sarama's own connection events
 // into go-spring's log — so it stays, but it emits no observation.)
+
 package StarterKafkaSarama
 
 import (

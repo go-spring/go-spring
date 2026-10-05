@@ -45,6 +45,11 @@ var manual = flag.Bool("manual", false, "run in manual verification mode (server
 
 func main() {
 	flag.Parse()
+	// Unset env vars that leak from the developer shell so runs are reproducible
+	// and consistent with sibling examples.
+	_ = os.Unsetenv("_")
+	_ = os.Unsetenv("TERM")
+	_ = os.Unsetenv("TERM_SESSION_ID")
 	// Here `s` is not referenced by any other object, so we register it as a
 	// root bean to keep it in the container graph.
 	svrBean := gs.Provide(&Service{}).Export(gs.As[gs.Rooter]())

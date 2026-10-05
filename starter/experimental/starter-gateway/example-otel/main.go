@@ -38,6 +38,11 @@ import (
 const backendAddr = "127.0.0.1:19000"
 
 func main() {
+	// Unset env vars that leak from the developer shell so runs are reproducible
+	// and consistent with sibling examples.
+	_ = os.Unsetenv("_")
+	_ = os.Unsetenv("TERM")
+	_ = os.Unsetenv("TERM_SESSION_ID")
 	// Start the upstream so the example works with no external service. A real
 	// collector is still needed for trace export (see README).
 	startBackend()

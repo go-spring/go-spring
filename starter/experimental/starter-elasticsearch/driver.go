@@ -17,6 +17,7 @@
 // driver.go is the "construction seam" concept of this starter: the Driver
 // interface + the bundled DefaultDriver, which owns full client assembly
 // (including service-discovery resolution).
+
 package StarterElasticsearch
 
 import (

@@ -53,6 +53,7 @@
 // globals that starter-otel installs. Without starter-otel the global providers
 // are no-ops, so the declaration and the wrap cost almost nothing and change no
 // message bytes.
+
 package StarterKafkaSarama
 
 import (

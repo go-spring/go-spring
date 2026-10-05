@@ -18,6 +18,7 @@
 // the infra log tag and registers the per-instance Pulsar client group under
 // "${spring.pulsar}", wiring each Config entry to newClient (the dispatch + probe
 // + resilience wiring) and destroyClient (the lifecycle in client.go).
+
 package StarterPulsar
 
 import (

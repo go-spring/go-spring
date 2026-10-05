@@ -47,7 +47,10 @@ import (
 	"go-spring.org/log"
 	"go-spring.org/spring/conf/decrypt/aes"
 	"go-spring.org/spring/gs"
+	"go-spring.org/stdlib/errutil"
 
+	// Blank-import registers the "vault" config provider, consumable via
+	// spring.config.import with live hot-reload.
 	_ "go-spring.org/starter-config-vault"
 )
 
@@ -73,7 +76,7 @@ func main() {
 	flag.Parse()
 
 	// Unset env vars that leak from the developer shell so runs are reproducible
-	// and consistent with sibling starter examples.
+	// and consistent with sibling examples.
 	_ = os.Unsetenv("_")
 	_ = os.Unsetenv("TERM")
 	_ = os.Unsetenv("TERM_SESSION_ID")
@@ -99,7 +102,6 @@ func main() {
 			runTest(demo)
 		}()
 	} else {
-
 		fmt.Println("=== Manual verification mode ===")
 		fmt.Println("Server is running. Follow the README commands in another terminal.")
 		fmt.Println("Press Ctrl+C to stop.")
@@ -139,7 +141,7 @@ func runTest(d *Demo) {
 		}
 		time.Sleep(200 * time.Millisecond)
 	}
-	log.Errorf(ctx, log.TagAppDef, fmt.Errorf("timeout: message=%q (want %q) password=%q (want %q)", d.Message.Value(), wantMessage, d.Password.Value(), wantPassword), "timeout: message=%q (want %q) password=%q (want %q)", d.Message.Value(), wantMessage, d.Password.Value(), wantPassword)
+	log.Errorf(ctx, log.TagAppDef, errutil.Explain(nil, "message=%q (want %q) password=%q (want %q)", d.Message.Value(), wantMessage, d.Password.Value(), wantPassword), "timeout")
 	os.Exit(1)
 }
 

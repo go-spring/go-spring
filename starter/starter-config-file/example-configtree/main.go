@@ -30,7 +30,7 @@
 //		  server.port         -> ..data/server.port        (symlink, value "8080")
 //
 //	 1. app.properties imports the tree via spring.config.import=configtree:./mount
-//	 2. A bean binds db.user to a gs.Dync[string] field.
+//	 2. A bean binds the whole tree to a gs.Dync[Config] struct field.
 //	 3. The test rewrites the Secret the way the kubelet does — write a new
 //	    timestamped dir, then atomically rename ..data onto it. The provider's
 //	    directory watcher sees the rename and triggers a property refresh, and
@@ -53,17 +53,28 @@ import (
 
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
+	"go-spring.org/stdlib/errutil"
 
+	// Blank-import registers the "configtree" config provider, consumable via
+	// spring.config.import; it reloads when the mounted tree changes.
 	_ "go-spring.org/starter-config-file"
 )
 
 const mountDir = "./mount"
 
-// Demo binds dynamic fields sourced from the watched Secret-style mount.
+// Config is the Secret-style mount bound as one struct: the flat key files
+// db.user / db.password / server.port map onto fields, so a refresh re-binds
+// the whole tree atomically.
+type Config struct {
+	User     string `value:"${db.user:=none}"`
+	Password string `value:"${db.password:=none}"`
+	Port     string `value:"${server.port:=none}"`
+}
+
+// Demo binds the config tree as a single dynamic struct. It is registered as a
+// root object so the container creates it eagerly.
 type Demo struct {
-	User     gs.Dync[string] `value:"${db.user:=none}"`
-	Password gs.Dync[string] `value:"${db.password:=none}"`
-	Port     gs.Dync[string] `value:"${server.port:=none}"`
+	Config gs.Dync[Config] `value:"${ROOT}"`
 }
 
 var manual = flag.Bool("manual", false, "run in manual verification mode (server stays up)")
@@ -71,6 +82,8 @@ var manual = flag.Bool("manual", false, "run in manual verification mode (server
 func main() {
 	flag.Parse()
 
+	// Unset env vars that leak from the developer shell so runs are reproducible
+	// and consistent with sibling examples.
 	_ = os.Unsetenv("_")
 	_ = os.Unsetenv("TERM")
 	_ = os.Unsetenv("TERM_SESSION_ID")
@@ -90,12 +103,26 @@ func main() {
 		os.Exit(1)
 	}
 
-	demo := gs.Provide(&Demo{}).Export(gs.As[gs.Rooter]())
+	demoBean := gs.Provide(&Demo{}).Export(gs.As[gs.Rooter]())
+	demo := demoBean.Interface().(*Demo)
+	// Print on every change so a manual run (-manual) can watch the hot-reload
+	// happen; the self-test reads the fields directly.
+	demo.Config.OnChanged(func(newVal, oldVal Config) {
+		if newVal.User != oldVal.User {
+			fmt.Printf("db.user: %q -> %q\n", oldVal.User, newVal.User)
+		}
+		if newVal.Password != oldVal.Password {
+			fmt.Printf("db.password: %q -> %q\n", oldVal.Password, newVal.Password)
+		}
+		if newVal.Port != oldVal.Port {
+			fmt.Printf("server.port: %q -> %q\n", oldVal.Port, newVal.Port)
+		}
+	})
 
 	if !*manual {
 		go func() {
-			time.Sleep(time.Millisecond * 500)
-			runTest(demo.Interface().(*Demo))
+			time.Sleep(500 * time.Millisecond)
+			runTest(demo)
 		}()
 	} else {
 		fmt.Println("=== Manual verification mode ===")
@@ -109,19 +136,19 @@ func runTest(d *Demo) {
 	ctx := context.Background()
 
 	// Every flat key file becomes one property; all three are visible at startup.
-	if got := d.User.Value(); got != "alice" {
-		log.Errorf(ctx, log.TagAppDef, fmt.Errorf("unexpected db.user: %q", got), "unexpected db.user: %q", got)
+	if got := d.Config.Value().User; got != "alice" {
+		log.Errorf(ctx, log.TagAppDef, errutil.Explain(nil, "got %q", got), "unexpected db.user")
 		os.Exit(1)
 	}
-	if got := d.Password.Value(); got != "s3cr3t" {
-		log.Errorf(ctx, log.TagAppDef, fmt.Errorf("unexpected db.password: %q", got), "unexpected db.password: %q", got)
+	if got := d.Config.Value().Password; got != "s3cr3t" {
+		log.Errorf(ctx, log.TagAppDef, errutil.Explain(nil, "got %q", got), "unexpected db.password")
 		os.Exit(1)
 	}
-	if got := d.Port.Value(); got != "8080" {
-		log.Errorf(ctx, log.TagAppDef, fmt.Errorf("unexpected server.port: %q", got), "unexpected server.port: %q", got)
+	if got := d.Config.Value().Port; got != "8080" {
+		log.Errorf(ctx, log.TagAppDef, errutil.Explain(nil, "got %q", got), "unexpected server.port")
 		os.Exit(1)
 	}
-	fmt.Printf("initial: db.user=%s server.port=%s\n", d.User.Value(), d.Port.Value())
+	fmt.Printf("initial: db.user=%s server.port=%s\n", d.Config.Value().User, d.Config.Value().Port)
 
 	// Update the Secret the way Kubernetes does (atomic ..data symlink swap).
 	want := "bob-" + time.Now().Format("150405")
@@ -138,14 +165,15 @@ func runTest(d *Demo) {
 	// re-reads the tree and updates the bound gs.Dync field.
 	deadline := time.Now().Add(15 * time.Second)
 	for time.Now().Before(deadline) {
-		if got := d.User.Value(); got == want {
+		if got := d.Config.Value().User; got == want {
 			fmt.Println("hot-reload observed: db.user=", got)
 			syscall.Kill(os.Getpid(), syscall.SIGTERM)
 			return
 		}
 		time.Sleep(200 * time.Millisecond)
 	}
-	log.Errorf(ctx, log.TagAppDef, fmt.Errorf("hot-reload timeout: db.user=%q want=%q", d.User.Value(), want), "hot-reload timeout: db.user=%q want=%q", d.User.Value(), want)
+	err := errutil.Explain(nil, "db.user=%q want=%q", d.Config.Value().User, want)
+	log.Errorf(ctx, log.TagAppDef, err, "hot-reload timeout")
 	os.Exit(1)
 }
 

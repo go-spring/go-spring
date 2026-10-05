@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 #
-# Smoke test for starter-nacos. Brings up a standalone Nacos via docker compose,
-# runs the example (which self-asserts and exits non-zero on failure), then
-# tears the container down. Skipped gracefully when docker is unavailable.
+# Smoke test for starter-config-nacos. Brings up a standalone Nacos via docker
+# compose, runs the example (which self-asserts and exits non-zero on failure),
+# then tears the container down. Skipped gracefully when docker is unavailable.
 #
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")"

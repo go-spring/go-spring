@@ -66,6 +66,11 @@ const componentName = "go-spring.org/cloud/observability/example"
 const attrTenant = "biz.tenant"
 
 func main() {
+	// Unset env vars that leak from the developer shell so runs are reproducible
+	// and consistent with sibling examples.
+	_ = os.Unsetenv("_")
+	_ = os.Unsetenv("TERM")
+	_ = os.Unsetenv("TERM_SESSION_ID")
 	if err := run(); err != nil {
 		fmt.Fprintln(os.Stderr, "example failed:", err)
 		os.Exit(1)

@@ -23,10 +23,6 @@
 //  3. The example publishes a new value to Nacos; the provider's change
 //     listener triggers a property refresh, and the bound field updates
 //     without a restart.
-//
-// The publisher client below is built directly from the SDK rather than
-// injected, keeping the demonstration focused on the provider and refresh
-// link.
 package main
 
 import (
@@ -47,6 +43,8 @@ import (
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
 
+	// Blank-import registers the "nacos" config provider, consumable via
+	// spring.config.import with live hot-reload.
 	_ "go-spring.org/starter-config-nacos"
 )
 
@@ -69,7 +67,7 @@ func main() {
 	flag.Parse()
 
 	// Unset env vars that leak from the developer shell so runs are reproducible
-	// and consistent with sibling starter examples.
+	// and consistent with sibling examples.
 	_ = os.Unsetenv("_")
 	_ = os.Unsetenv("TERM")
 	_ = os.Unsetenv("TERM_SESSION_ID")
@@ -90,7 +88,6 @@ func main() {
 			runTest(demo)
 		}()
 	} else {
-
 		fmt.Println("=== Manual verification mode ===")
 		fmt.Println("Server is running. Follow the README commands in another terminal.")
 		fmt.Println("Press Ctrl+C to stop.")
@@ -120,7 +117,8 @@ func runTest(d *Demo) {
 		}
 		time.Sleep(200 * time.Millisecond)
 	}
-	log.Errorf(ctx, log.TagAppDef, fmt.Errorf("hot-reload timeout: message=%q want=%q", d.Message.Value(), want), "hot-reload timeout: message=%q want=%q", d.Message.Value(), want)
+	err := errutil.Explain(nil, "message=%q want=%q", d.Message.Value(), want)
+	log.Errorf(ctx, log.TagAppDef, err, "hot-reload timeout")
 	os.Exit(1)
 }
 

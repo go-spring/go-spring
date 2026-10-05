@@ -100,6 +100,11 @@ var manual = flag.Bool("manual", false, "run in manual verification mode (server
 
 func main() {
 	flag.Parse()
+	// Unset env vars that leak from the developer shell so runs are reproducible
+	// and consistent with sibling examples.
+	_ = os.Unsetenv("_")
+	_ = os.Unsetenv("TERM")
+	_ = os.Unsetenv("TERM_SESSION_ID")
 	// Install a real tracer provider and the W3C propagator so the starter's
 	// httpx otelhttp layer produces a valid client span and injects a
 	// traceparent header. Without this the global tracer is a no-op and nothing

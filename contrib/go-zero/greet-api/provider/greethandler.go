@@ -19,6 +19,7 @@
 // and expects a symbol per @handler declared in the IDL; the entry-point
 // functions here parse the request, delegate to the Go-Spring-owned logic
 // bean exposed via ServiceContext, and render the response.
+
 package main
 
 import (

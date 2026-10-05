@@ -24,6 +24,7 @@
 // redisotel still supplies the connection-POOL metrics (an observable-gauge
 // family, not per-call — see [instrument] in starter.go); its per-command span
 // is gone, because it duplicated the call span the resilience layer now opens.
+
 package StarterGoRedis
 
 import (

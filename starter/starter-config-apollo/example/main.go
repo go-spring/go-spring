@@ -14,19 +14,22 @@
  * limitations under the License.
  */
 
-// Package main is the example for starter-config-apollo. It starts a mock
-// Apollo config service (apollo.go), imports the starter, and verifies the whole
-// remote-config link: the property cold-loads into a Dync field at startup,
-// then a publish advances the mock's notification id, agollo's long poll
-// returns, and the starter triggers a refresh that updates the bound field —
-// no docker, no real Apollo stack.
+// This example demonstrates the Apollo remote configuration provider and the
+// namespace -> bean hot-reload link:
+//
+//  1. app.properties imports config from a mock Apollo service started by this
+//     example via spring.config.import=optional:apollo:.../application?appId=demo
+//     (no docker, no real Apollo stack).
+//  2. A bean binds demo.message to a gs.Dync[string] field.
+//  3. The example publishes a new value to the mock; agollo's long poll returns
+//     on the notification id bump, the starter triggers a property refresh, and
+//     the bound field updates without a restart.
 package main
 
 import (
 	"context"
 	"flag"
 	"fmt"
-	"go-spring.org/stdlib/errutil"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -35,10 +38,16 @@ import (
 
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
+	"go-spring.org/stdlib/errutil"
+
+	// Blank-import registers the "apollo" config provider, consumable via
+	// spring.config.import with live hot-reload.
 	_ "go-spring.org/starter-config-apollo"
 )
 
-// Demo holds a Dync property loaded from Apollo.
+// Demo binds a dynamic configuration field sourced from the imported Apollo
+// namespace. It is registered as a root object so the container creates it
+// eagerly.
 type Demo struct {
 	Message gs.Dync[string] `value:"${demo.message:=none}"`
 }
@@ -49,15 +58,15 @@ func main() {
 	flag.Parse()
 
 	// Unset env vars that leak from the developer shell so runs are reproducible
-	// and consistent with sibling starter examples.
+	// and consistent with sibling examples.
 	_ = os.Unsetenv("_")
 	_ = os.Unsetenv("TERM")
 	_ = os.Unsetenv("TERM_SESSION_ID")
 
-	go mockConfigService()
+	mockConfigService()
 
-	svrBean := gs.Provide(&Demo{}).Export(gs.As[gs.Rooter]())
-	demo := svrBean.Interface().(*Demo)
+	demoBean := gs.Provide(&Demo{}).Export(gs.As[gs.Rooter]())
+	demo := demoBean.Interface().(*Demo)
 	// Print on every change so a manual run (-manual) can watch the hot-reload
 	// happen; the self-test reads the field directly.
 	demo.Message.OnChanged(func(newVal, oldVal string) {
@@ -68,7 +77,7 @@ func main() {
 
 	if !*manual {
 		go func() {
-			time.Sleep(1 * time.Second)
+			time.Sleep(500 * time.Millisecond)
 			runTest(demo)
 		}()
 	} else {
@@ -85,11 +94,8 @@ func runTest(d *Demo) {
 	// Cold load: the imported namespace was read at startup.
 	got := d.Message.Value()
 	if got != "hello-from-apollo" {
-		err := errutil.Explain(nil, "config mismatch: got %q, want %q", got, "hello-from-apollo")
-		log.Error(ctx, log.TagAppDef, err,
-			log.String("got", got),
-			log.String("want", "hello-from-apollo"),
-			log.Msg("CONFIG mismatch"))
+		err := errutil.Explain(nil, "got %q, want %q", got, "hello-from-apollo")
+		log.Errorf(ctx, log.TagAppDef, err, "config mismatch")
 		os.Exit(1)
 	}
 	fmt.Println("Apollo cold-load OK:", got)
@@ -110,11 +116,8 @@ func runTest(d *Demo) {
 		}
 		time.Sleep(100 * time.Millisecond)
 	}
-	err := errutil.Explain(nil, "hot-reload timeout: got %q, want %q", d.Message.Value(), want)
-	log.Error(ctx, log.TagAppDef, err,
-		log.String("got", d.Message.Value()),
-		log.String("want", want),
-		log.Msg("hot-reload timeout"))
+	err := errutil.Explain(nil, "got %q, want %q", d.Message.Value(), want)
+	log.Errorf(ctx, log.TagAppDef, err, "hot-reload timeout")
 	os.Exit(1)
 }
 

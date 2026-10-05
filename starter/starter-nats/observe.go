@@ -25,6 +25,7 @@
 // per-call signal — it is driven by the NATS client's own disconnect /
 // reconnect / close callbacks — so it is not the resilience layer's to emit and
 // stays starter-local.
+
 package StarterNats
 
 import (

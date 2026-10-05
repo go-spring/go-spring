@@ -16,6 +16,7 @@
 
 // config.go is the config concept: the per-instance Config bound under
 // ${spring.nats}.* and the nested JetStreamConfig.
+
 package StarterNats
 
 import (

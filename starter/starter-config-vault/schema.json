@@ -1,12 +1,18 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "spring.config.import (vault://...)",
-  "description": "Vault remote configuration provider. Configured via spring.config.import URL.",
+  "title": "spring.config.import (vault)",
   "type": "object",
+  "description": "The vault provider has no bound prefix; it is consumed via spring.config.import=optional:vault:<host>:<port>/<mount>/<path>?scheme=&namespace=&key=&format=&prefix=&kv-version=&poll-ms=&timeout-ms=&token=&token-file=",
   "properties": {
-    "vault-url": {
-      "type": "string",
-      "description": "URL format: vault://host:port/path/to/secret?token=xxx&scheme={http|https}&poll-ms=5000&timeout-ms=5000"
-    }
+    "scheme": { "type": "string", "default": "http" },
+    "namespace": { "type": "string", "description": "Vault Enterprise namespace" },
+    "key": { "type": "string", "description": "read one secret field holding a whole document; default read the whole secret" },
+    "format": { "type": "string", "description": "properties/yaml/json/toml; default properties" },
+    "prefix": { "type": "string", "description": "prefix applied to every key read from the secret" },
+    "kv-version": { "type": "string", "description": "KV engine version, 1 or 2; default 2" },
+    "poll-ms": { "type": "string", "description": "watcher poll interval in milliseconds; default 5000" },
+    "timeout-ms": { "type": "string", "description": "request timeout in milliseconds; default 5000" },
+    "token": { "type": "string", "description": "Vault token; falls back to VAULT_TOKEN, then token-file / VAULT_TOKEN_FILE" },
+    "token-file": { "type": "string", "description": "file holding the Vault token" }
   }
 }

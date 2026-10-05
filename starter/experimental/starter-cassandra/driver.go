@@ -17,6 +17,7 @@
 // driver.go is the "construction seam" concept of this starter: the Driver
 // interface + the bundled DefaultDriver, which owns full session assembly
 // (ClusterConfig, authenticator, consistency, TLS, timeouts).
+
 package StarterCassandra
 
 import (

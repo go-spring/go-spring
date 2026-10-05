@@ -210,16 +210,16 @@ users:
 	assert.Error(t, err).Nil()
 
 	c := newK8sCtrl()
-	a, err := c.clientFor(kc)
+	a, err := c.clientFor(context.Background(), kc)
 	assert.Error(t, err).Nil()
-	b, err := c.clientFor(kc)
+	b, err := c.clientFor(context.Background(), kc)
 	assert.Error(t, err).Nil()
 	assert.That(t, a == b).True() // cached, not rebuilt per Load
 
 	// failures are not cached: the map stays empty.
-	_, err = c.clientFor("/nonexistent/kubeconfig")
+	_, err = c.clientFor(context.Background(), "/nonexistent/kubeconfig")
 	assert.Error(t, err).Matches("load kubeconfig")
-	_, err = c.clientFor("/nonexistent/kubeconfig")
+	_, err = c.clientFor(context.Background(), "/nonexistent/kubeconfig")
 	assert.Error(t, err).Matches("load kubeconfig")
 }
 

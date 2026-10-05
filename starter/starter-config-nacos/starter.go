@@ -77,7 +77,7 @@ func newNacosCtrl() *nacosCtrl {
 
 // Close closes every client — which stops its listeners and polling.
 func (c *nacosCtrl) Close() {
-	c.watch.stop()
+	c.watch.Close()
 	c.clientMu.Lock()
 	clients := c.clients
 	c.clients = map[string]nacosClient{}
@@ -180,7 +180,7 @@ func clientKey(cs configSource) string {
 }
 
 // clientFor returns a cached client for the source, creating one if necessary.
-func (c *nacosCtrl) clientFor(cs configSource) (nacosClient, error) {
+func (c *nacosCtrl) clientFor(ctx context.Context, cs configSource) (nacosClient, error) {
 	key := clientKey(cs)
 
 	c.clientMu.Lock()
@@ -206,6 +206,7 @@ func (c *nacosCtrl) clientFor(cs configSource) (nacosClient, error) {
 	if err != nil {
 		return nil, errutil.Explain(err, "create nacos config client for %s failed", cs.server)
 	}
+	log.Infof(ctx, starterTag, "create nacos client success")
 	c.clients[key] = cli
 	return cli, nil
 }
@@ -237,7 +238,7 @@ func (c *nacosCtrl) Load(ctx context.Context, optional bool, source string) (map
 		}
 	})
 
-	cli, err := c.clientFor(cs)
+	cli, err := c.clientFor(ctx, cs)
 	if err != nil {
 		log.Errorf(ctx, starterTag, err, "create nacos client failed")
 		return nil, err

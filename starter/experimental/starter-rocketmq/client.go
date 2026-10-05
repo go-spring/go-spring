@@ -21,6 +21,7 @@
 // credentials and instance name. The wrapper holds those common options once,
 // reapplies them to everything it creates, and registers every producer and
 // consumer so Close can shut them all down in one place.
+
 package StarterRocketmq
 
 import (

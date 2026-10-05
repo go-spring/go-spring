@@ -1,12 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "spring.config.import (file://...)",
-  "description": "Local file configuration provider. Configured via spring.config.import URL.",
+  "title": "spring.config.import (file-watch, configtree)",
   "type": "object",
-  "properties": {
-    "file-url": {
-      "type": "string",
-      "description": "URL format: file:///path/to/config.[yaml|json|toml|properties]"
-    }
-  }
+  "description": "The file-watch and configtree providers have no bound prefix and no query parameters. file-watch reads one configuration document: spring.config.import=optional:file-watch:<file-path>. configtree reads a directory of scalar key files: spring.config.import=optional:configtree:<dir-path>."
 }

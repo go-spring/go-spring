@@ -49,6 +49,11 @@ var manual = flag.Bool("manual", false, "run in manual verification mode (server
 
 func main() {
 	flag.Parse()
+	// Unset env vars that leak from the developer shell so runs are reproducible
+	// and consistent with sibling examples.
+	_ = os.Unsetenv("_")
+	_ = os.Unsetenv("TERM")
+	_ = os.Unsetenv("TERM_SESSION_ID")
 	// Build the application's single HTTP handler. It mounts the authorization
 	// server's endpoints under /oauth2 and protects the business API with the
 	// unified security filter chain (CORS + authentication + authorization).

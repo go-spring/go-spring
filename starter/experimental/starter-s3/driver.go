@@ -18,6 +18,7 @@
 // interface + the bundled DefaultDriver, which owns full client assembly
 // (credentials, region, bucket-lookup style, and the dynamic transport the
 // wrapper's declaration+resilience stack is installed into).
+
 package StarterS3
 
 import (

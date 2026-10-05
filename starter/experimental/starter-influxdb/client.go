@@ -20,6 +20,7 @@
 // declaration+resilience transport into a client whose HTTP client is fixed at
 // construction time. It mirrors starter-s3's client.go. The transport-level
 // declaration lives in observe.go.
+
 package StarterInfluxdb
 
 import (

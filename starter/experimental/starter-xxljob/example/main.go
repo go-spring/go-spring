@@ -89,6 +89,11 @@ var manual = flag.Bool("manual", false, "run in manual verification mode (server
 
 func main() {
 	flag.Parse()
+	// Unset env vars that leak from the developer shell so runs are reproducible
+	// and consistent with sibling examples.
+	_ = os.Unsetenv("_")
+	_ = os.Unsetenv("TERM")
+	_ = os.Unsetenv("TERM_SESSION_ID")
 
 	// Mock admin: /api/registry (accept register/heartbeat), /api/registry/remove,
 	// and /api/trigger which calls back into the executor's /run.

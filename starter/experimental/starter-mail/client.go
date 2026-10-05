@@ -18,6 +18,7 @@
 // wrapper mail beans are injected as, hollowed into an InnerMailer chain — the
 // identity layer declares each send, the governance layer runs it under the
 // resilience executor, the adapter layer builds and delivers the messages.
+
 package StarterMail
 
 import (

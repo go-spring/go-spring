@@ -20,6 +20,7 @@
 // assembly itself — including the governance executed from the driver — lives in
 // driver.go (Driver interface).
 // The per-produce command seam lives in command.go.
+
 package StarterKafkaSarama
 
 import (

@@ -31,6 +31,7 @@
 //
 // nats exposes no reject-capable middleware, so the chain is driven at the call
 // site rather than threaded in as an interceptor.
+
 package StarterNats
 
 import (

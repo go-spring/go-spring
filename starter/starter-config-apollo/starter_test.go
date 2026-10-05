@@ -239,15 +239,13 @@ func TestListenerRegisteredOncePerSource(t *testing.T) {
 	assert.That(t, fake.listens).Equal(1)
 }
 
-// TestListenerChangeFiresRefresh pins the listener seam: OnChange reaches
-// TriggerRefresh and OnNewestChange stays a no-op (agollo dispatches both on
-// a real change; refreshing in both would double-fire a full property
-// refresh). TriggerRefresh itself must be a harmless no-op before the app
-// has started rather than a nil dereference.
+// TestListenerChangeFiresRefresh pins the listener seam: OnChange runs the
+// refresh inline and OnNewestChange stays a no-op (agollo dispatches both on a
+// real change; refreshing in both would double-fire a full property refresh).
+// Both must be harmless no-ops before the app has started rather than a nil
+// dereference.
 func TestListenerChangeFiresRefresh(t *testing.T) {
-	l := &apolloListener{ctrl: newApolloCtrl()}
+	l := &apolloListener{}
 	l.OnChange(&agstorage.ChangeEvent{})
 	l.OnNewestChange(&agstorage.FullChangeEvent{})
-	c := newApolloCtrl()
-	c.TriggerRefresh("test")
 }

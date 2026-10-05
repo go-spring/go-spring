@@ -18,6 +18,7 @@
 // interface + the bundled DefaultDriver, which owns full client assembly
 // (version/SASL/TLS/producer opts + sarama.NewClient). It mirrors
 // starter-kafka's driver.go.
+
 package StarterKafkaSarama
 
 import (

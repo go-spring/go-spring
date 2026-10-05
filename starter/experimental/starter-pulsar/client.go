@@ -21,6 +21,7 @@
 // pulsar.Client), so unlike the redis/memcached starters there is no Client
 // wrapper type here — only the destroy path that releases the client, its
 // resilience executor, and its metrics server.
+
 package StarterPulsar
 
 import (

@@ -1,4 +1,4 @@
-# starter-config-nacos Example
+# starter-config-nacos 示例
 
 演示 starter-config-nacos 的 Nacos 配置管理。
 

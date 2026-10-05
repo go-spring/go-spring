@@ -15,7 +15,22 @@ cd starter-config-file/example
 go run . -manual
 ```
 
-The program keeps running. Press Ctrl+C to exit. Without `-manual`, `runTest()` runs automatically and exits.
+The service keeps running. Press `Ctrl+C` to stop.
+
+In another terminal, rewrite the mounted file and watch it print:
+
+```bash
+echo 'demo.message=manual-1' > mount/application.properties
+# prints: demo.message: "..." -> "manual-1"
+```
+
+Without `-manual` the example rewrites the mount itself (the kubelet's atomic
+`..data` swap), waits for the bound field to hot-reload, prints
+`hot-reload observed: updated-<hhmmss>`, and exits:
+
+```bash
+go run .
+```
 
 ## Smoke Test
 

@@ -61,7 +61,7 @@ func newWatchCore() watchCore {
 }
 
 // stop cancels the listener generation and clears the dedup set.
-func (w *watchCore) stop() {
+func (w *watchCore) Close() {
 	w.mu.Lock()
 	w.cancel()
 	w.ctx, w.cancel = context.WithCancel(context.Background())

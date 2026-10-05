@@ -25,6 +25,7 @@
 // newMetricsServer in command.go) stay where they are: they are library-native
 // connection/producer/consumer stats, not per-call signals, so they are not the
 // resilience layer's to emit and the starter keeps them.
+
 package StarterPulsar
 
 import (

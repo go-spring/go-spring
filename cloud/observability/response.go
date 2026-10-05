@@ -34,6 +34,7 @@
 // worth a metric label. So these reach all three signals, exactly as Attrs do.
 // Per-call data that is unbounded in principle still belongs in
 // [Operation.Detail], which is declared up front and never labelled.
+
 package observability
 
 import (

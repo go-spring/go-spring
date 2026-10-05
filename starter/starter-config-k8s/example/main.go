@@ -14,19 +14,17 @@
  * limitations under the License.
  */
 
-// Command example demonstrates wiring starter-config-k8s: importing a
-// ConfigMap through the "k8s" provider and binding one of its keys to a
-// hot-reloadable gs.Dync field.
+// This example demonstrates the Kubernetes ConfigMap configuration provider and
+// the ConfigMap -> bean hot-reload link:
 //
-// The import in conf/app.properties is marked "optional:", so the app boots
-// cleanly whether or not a cluster is reachable:
-//
-//   - Outside a cluster (local `go run .`): the API read is skipped, the bound
-//     field shows its default, and the example self-terminates — proving the
-//     wiring compiles and registers without a control plane.
-//   - In a cluster (see deploy/): the ConfigMap is read at startup and an
-//     informer watches it, so `kubectl edit configmap app-config` updates the
-//     bound field within seconds, no restart and no volume mount.
+//  1. app.properties imports a ConfigMap through the "k8s" provider via
+//     spring.config.import=optional:k8s:configmap/app-config?...
+//  2. A bean binds demo.message to a gs.Dync[string] field.
+//  3. In a cluster the ConfigMap is read at startup and watched by an informer,
+//     so an edit triggers a property refresh and the bound field updates
+//     without a restart. Outside a cluster the import is "optional:", so the
+//     read is skipped, the field shows its default, and the example
+//     self-terminates cleanly.
 package main
 
 import (
@@ -42,8 +40,8 @@ import (
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
 
-	// Blank-import registers the "k8s" config provider consumed via
-	// spring.config.import.
+	// Blank-import registers the "k8s" config provider, consumable via
+	// spring.config.import with live hot-reload.
 	_ "go-spring.org/starter-config-k8s"
 )
 
@@ -58,7 +56,8 @@ var manual = flag.Bool("manual", false, "run in manual verification mode (server
 func main() {
 	flag.Parse()
 
-	// Unset shell-leaked env vars so runs are reproducible across examples.
+	// Unset env vars that leak from the developer shell so runs are reproducible
+	// and consistent with sibling examples.
 	_ = os.Unsetenv("_")
 	_ = os.Unsetenv("TERM")
 	_ = os.Unsetenv("TERM_SESSION_ID")
@@ -74,15 +73,11 @@ func main() {
 	})
 
 	if !*manual {
-		// Read the bound field only after the app has started: properties are
-		// loaded (and the Dync fields injected) during gs.Run(), so reading on
-		// this goroutine before it would show a zero value even in a cluster.
 		go func() {
 			time.Sleep(500 * time.Millisecond)
-			report(demo)
+			runTest(demo)
 		}()
 	} else {
-
 		fmt.Println("=== Manual verification mode ===")
 		fmt.Println("Server is running. Follow the README commands in another terminal.")
 		fmt.Println("Press Ctrl+C to stop.")
@@ -90,13 +85,15 @@ func main() {
 	gs.Run()
 }
 
-// report prints the bound value and self-terminates. Outside a cluster the value
+// runTest reads the bound value and self-terminates. Outside a cluster the value
 // is the default ("none"); in a cluster it is whatever the ConfigMap holds, and
 // a subsequent `kubectl edit configmap app-config` would hot-reload it.
-func report(d *Demo) {
+func runTest(d *Demo) {
 	ctx := context.Background()
 	fmt.Println("demo.message =", d.Message.Value())
-	log.Infof(ctx, log.TagAppDef, "config-k8s example wired; demo.message=%q", d.Message.Value())
+	log.Info(ctx, log.TagAppDef,
+		log.String("demo.message", d.Message.Value()),
+		log.Msg("config-k8s example wired"))
 	_ = syscall.Kill(os.Getpid(), syscall.SIGTERM)
 }
 

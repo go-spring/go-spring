@@ -1,4 +1,4 @@
-# starter-config-file Example
+# starter-config-file 示例
 
 演示 starter-config-file 的本地文件配置热更新。
 
@@ -15,7 +15,19 @@ cd starter-config-file/example
 go run . -manual
 ```
 
-程序保持运行，等待 Ctrl+C 退出。不带 -manual 时 runTest() 会自动执行并退出。
+服务保持运行，`Ctrl+C` 退出。另开一个终端改写挂载文件，即可看到变化打印：
+
+```bash
+echo 'demo.message=manual-1' > mount/application.properties
+# 打印：demo.message: "..." -> "manual-1"
+```
+
+不带 `-manual` 时，示例自己改写挂载（kubelet 式的 `..data` 原子交换）、等待绑定
+字段热更新，打印 `hot-reload observed: updated-<hhmmss>` 后退出：
+
+```bash
+go run .
+```
 
 ## 冒烟测试
 

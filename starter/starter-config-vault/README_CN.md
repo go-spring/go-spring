@@ -3,13 +3,13 @@
 [English](README.md) | [中文](README_CN.md)
 
 `starter-config-vault` 将 [HashiCorp Vault](https://www.vaultproject.io/) 集成为
-Go-Spring 的**远程配置中心**与**密钥存储**,基于
-github.com/hashicorp/vault/api 实现。空导入该包即注册一个 `vault` 配置提供者:
-启动时读取 KV secret、将其字段暴露为应用属性,并在运行时热更新 —— 无需重启。
+Go-Spring 的**远程配置中心**与**密钥存储**，基于
+github.com/hashicorp/vault/api 实现。空导入该包即注册一个 `vault` 配置 Provider：
+启动时读取 KV secret、将其字段暴露为应用属性，并在运行时热更新 —— 无需重启。
 
-该 starter 只承担配置中心角色。它与 `spring/conf/decrypt` 的
-[属性级解密](#属性级解密) 天然配合:配置值可以是 `ENC(...)` 密文,在绑定前被解密。
-Vault Agent / CSI 挂载到*文件*的 secret 应改用 `starter-config-file` 读取;本
+本 starter 只承担配置中心角色。它与 `spring/conf/decrypt` 的
+[属性级解密](#属性级解密) 天然配合：配置值可以是 `ENC(...)` 密文，在绑定前被解密。
+Vault Agent / CSI 挂载到*文件*的 secret 应改用 `starter-config-file` 读取；本
 starter 直接对接 Vault API。
 
 ## 安装
@@ -20,7 +20,7 @@ go get go-spring.org/starter-config-vault
 
 ## 快速开始
 
-### 1. 导入包
+### 1. 引入包
 
 ```go
 import _ "go-spring.org/starter-config-vault"
@@ -28,49 +28,49 @@ import _ "go-spring.org/starter-config-vault"
 
 ### 2. 从 Vault 导入配置
 
-在配置文件中按 `[optional:]vault:<host>:<port>/<mount>/<path>?<query>` 语法声明导入:
+在配置文件中按 `[optional:]vault:<host>:<port>/<mount>/<path>?<query>` 语法声明导入：
 
 ```properties
 spring.config.import=optional:vault:127.0.0.1:8200/secret/gs-config-demo?kv-version=2
 ```
 
-查询参数:
+查询参数：
 
 | 键           | 默认值       | 说明                                                       |
 |--------------|--------------|------------------------------------------------------------|
-| `kv-version` | `2`          | KV 引擎版本:`1` 或 `2`                                      |
+| `kv-version` | `2`          | KV 引擎版本：`1` 或 `2`                                      |
 | `scheme`     | `http`       | `http` 或 `https`                                          |
-| `namespace`  | (空)         | Vault 企业版 namespace                                      |
-| `key`        | (空)         | 只读取某个字段作为文档,而非映射全部字段                     |
-| `format`     | `properties` | 该字段的格式:`properties`/`yaml`/`toml`/`json`             |
-| `prefix`     | (空)         | 为产生的每个属性 key 添加前缀                               |
-| `poll-ms`    | `5000`       | 变更检测的轮询间隔(毫秒)                                  |
-| `token`      | (空)         | Vault token —— **不推荐**,优先用 `VAULT_TOKEN`(见下)     |
+| `namespace`  | （空）         | Vault 企业版 namespace                                      |
+| `key`        | （空）         | 只读取某个字段作为文档，而非映射全部字段                     |
+| `format`     | `properties` | 该字段的格式：`properties`/`yaml`/`toml`/`json`             |
+| `prefix`     | （空）         | 为产生的每个属性 key 添加前缀                               |
+| `poll-ms`    | `5000`       | 变更检测的轮询间隔（毫秒）                                  |
+| `token`      | （空）         | Vault token —— **不推荐**，优先用 `VAULT_TOKEN`（见下）     |
 
-**两种内容模式:**
+**两种内容模式：**
 
-- **整 secret(默认):** secret 的每个字段成为一个属性。
+- **整 secret（默认）：** secret 的每个字段成为一个属性。
   secret `{ "demo.message": "hi", "db.password": "x" }` 产生
   `demo.message=hi` 与 `db.password=x`。
-- **单字段(`?key=...`):** 指定字段保存一整份文档,按 `format` 解析。适合把
+- **单字段（`?key=...`）：** 指定字段保存一整份文档，按 `format` 解析。适合把
   `properties`/`yaml` 文本整块存进一个字段。
 
-加 `optional:` 前缀可让 secret 尚不存在时应用照常启动;写入后再补齐取值。
+加 `optional:` 前缀可让 secret 尚不存在时应用照常启动；写入后再补齐取值。
 
 ### 3. 在带外提供 token
 
-Vault token 是凭据,不得写进配置文件。提供者按以下顺序解析:
+Vault token 是凭据，不得写进配置文件。provider 按以下顺序解析：
 
-1. `token` 查询参数(仅本地演示可用,其余场景不推荐);
-2. `VAULT_TOKEN` 环境变量;
+1. `token` 查询参数（仅本地演示可用，其余场景不推荐）；
+2. `VAULT_TOKEN` 环境变量；
 3. 由 `token-file` 查询参数或 `VAULT_TOKEN_FILE` 环境变量指定的 token 文件
-   (如 Kubernetes 注入的 token)。
+   （如 Kubernetes 注入的 token）。
 
 三者皆无则启动即 fail-fast 报清晰错误。
 
 ### 4. 绑定动态字段
 
-将导入的 key 绑定到 `gs.Dync[T]` 字段即可实时更新:
+将导入的 key 绑定到 `gs.Dync[T]` 字段即可实时更新：
 
 ```go
 type Demo struct {
@@ -78,62 +78,62 @@ type Demo struct {
 }
 ```
 
-secret 变更时,提供者的轮询 watcher 触发一次应用属性刷新,所有绑定的
+secret 变更时，provider 的轮询 watcher 触发一次应用属性刷新，所有绑定的
 `gs.Dync` 字段原子更新。完整的 写入 → 热更新 流程见
-[example-config](example/main.go)。
+[example](example/main.go)。
 
 ## 属性级解密
 
-独立于 Vault,Go-Spring 支持 Jasypt 风格的属性解密:任何解析后被 `ENC(...)`
-包裹或以 `{cipher}` 开头的值,都会在绑定前解密,应用代码只看到明文。
+独立于 Vault，Go-Spring 支持 Jasypt 风格的属性解密：任何解析后被 `ENC(...)`
+包裹或以 `{cipher}` 开头的值，都会在绑定前解密，应用代码只看到明文。
 
 ```properties
 db.password=ENC(aes:<base64 密文>)
-# 或 Spring Cloud Config 风格:
+# 或 Spring Cloud Config 风格：
 db.password={cipher}aes:<base64 密文>
 ```
 
-标记内必须指名驱动,因此多种方案可在同一份配置中共存。
+标记内必须指名驱动，因此多种方案可在同一份配置中共存。
 
-内置 `aes` 驱动使用 AES-GCM。密钥在带外提供 —— 绝不进配置文件:
+内置 `aes` 驱动使用 AES-GCM。密钥在带外提供 —— 绝不进配置文件：
 
 | 变量                         | 说明                                       |
 |------------------------------|--------------------------------------------|
-| `GS_CONFIG_DECRYPT_AES_KEY` | base64 编码的 AES 密钥(16/24/32 字节)     |
+| `GS_CONFIG_DECRYPT_AES_KEY` | base64 编码的 AES 密钥（16/24/32 字节）     |
 | `GS_CONFIG_DECRYPT_AES_KEY_FILE` | 保存 base64 密钥的文件路径                  |
 
-带标记却无法解密的值会让启动失败,而非降级为损坏的默认值。要接入非对称方案或
-云 KMS,在 `init` 中注册驱动并在标记内指名:
+带标记却无法解密的值会让启动失败，而非降级为损坏的默认值。要接入非对称方案或
+云 KMS，在 `init` 中注册驱动并在标记内指名：
 
 ```go
 conf.RegisterDecryptDriver("kms", func() (decrypt.Decryptor, error) { ... })
 ```
 
-该能力适用于任意配置源(本地文件、Vault、Nacos……);Vault 示例端到端演示了一个
+该能力适用于任意配置源（本地文件、Vault、Nacos……）；Vault 示例端到端演示了一个
 `ENC(...)` 值。
 
 ## 工作原理
 
-- 启动时 `spring.config.import` 调用 `vault` 提供者:据 source 字符串建客户端、解析
+- 启动时 `spring.config.import` 调用 `vault` Provider：据 source 字符串建客户端、解析
   token、读取 KV secret、启动轮询 watcher。
-- secret 变更在下一次轮询被检测到,回调直接调用框架的进程级门面
-  `gs.RefreshProperties()`,重新加载所有配置源(重跑本提供者)并通过两阶段原子提交
+- secret 变更在下一次轮询被检测到，回调直接调用框架的进程级门面
+  `gs.RefreshProperties()`，重新加载所有配置源（重跑本 Provider）并通过两阶段原子提交
   重绑所有 `gs.Dync` 字段。
-- 绑定过程中,任何被 `ENC(...)` / `{cipher}` 包裹的值由 `spring/conf/decrypt`
+- 绑定过程中，任何被 `ENC(...)` / `{cipher}` 包裹的值由 `spring/conf/decrypt`
   解密。
 
 ## 设计要点
 
-**轮询,因为 Vault 没有 push。** Vault 不提供原生变更通知,轮询是唯一选择。
-本 starter 不去造一层假的 push 接口,而是把精力放在轻量轮询与"每次变更恰好检测一次"上。
+**轮询，因为 Vault 没有 push。** Vault 不提供原生变更通知，轮询是唯一选择。
+本 starter 不去造一层假的 push 接口，而是把精力放在轻量轮询与“每次变更恰好检测一次”上。
 
-**变更基线取应用真正加载到的值。** 每次成功加载都会记录 secret 数据的共享指纹;轮询循环
-拿本次读取与之比较,检测到变更后重跑 provider 并重新播种指纹——因此一次变更恰好触发一次
-刷新。若以 watcher 自己的首次轮询做基线,会静默丢掉 `optional:` 下"secret 在启动后才被
-创建"的场景;而以加载时的播种为基线,启动本身也不会引发伪刷新。watcher 同样在首次读取
-secret 之前注册,因此 secret 尚不存在时热更新依然可用。
+**变更基线取应用真正加载到的值。** 每次成功加载都会记录 secret 数据的共享指纹；轮询循环
+拿本次读取与之比较，检测到变更后重跑 provider 并重新播种指纹——因此一次变更恰好触发一次
+刷新。若以 watcher 自己的首次轮询做基线，会静默丢掉 `optional:` 下“secret 在启动后才被
+创建”的场景；而以加载时的播种为基线，启动本身也不会引发伪刷新。watcher 同样在首次读取
+secret 之前注册，因此 secret 尚不存在时热更新依然可用。
 
-**token 有意走带外解析。** token 只从查询串、`VAULT_TOKEN` 或 token 文件解析,
+**token 有意走带外解析。** token 只从查询串、`VAULT_TOKEN` 或 token 文件解析，
 绝不从 `spring.config.vault.*` 属性读取。否则一个自身要读属性的解密缝隙就可能与 token
 陷入鸡生蛋循环。
 
@@ -146,3 +146,5 @@ logger.config_vault.type=Logger
 logger.config_vault.level=WARN
 logger.config_vault.tag=_app_config_vault
 ```
+
+完整参考（逐 key 语义、装配时序、故障演练）见 [USAGE_CN.md](USAGE_CN.md)。

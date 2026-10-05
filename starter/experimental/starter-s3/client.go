@@ -21,6 +21,7 @@
 // be installed after the raw minio client — whose transport is fixed at
 // construction — has been built. It mirrors starter-memcached's client.go. The
 // per-request declaration seam lives in command.go.
+
 package StarterS3
 
 import (

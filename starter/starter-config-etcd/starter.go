@@ -44,10 +44,10 @@ func init() {
 	conf.RegisterProvider("etcd", newEtcdCtrl())
 }
 
-// etcdAPI is the slice of the etcd client this starter consumes. It exists so
+// etcdClient is the slice of the etcd client this starter consumes. It exists so
 // tests can fake the etcd backend without a live server, mirroring consul's
 // kvAPI.
-type etcdAPI interface {
+type etcdClient interface {
 	Get(ctx context.Context, key string, opts ...clientv3.OpOption) (*clientv3.GetResponse, error)
 	Watch(ctx context.Context, key string, opts ...clientv3.OpOption) clientv3.WatchChan
 	Close() error
@@ -63,23 +63,23 @@ type etcdAPI interface {
 type etcdCtrl struct {
 	watch    watchCore
 	clientMu sync.Mutex
-	clients  map[string]etcdAPI
+	clients  map[string]etcdClient
 }
 
 func newEtcdCtrl() *etcdCtrl {
 	return &etcdCtrl{
-		clients: map[string]etcdAPI{},
+		clients: map[string]etcdClient{},
 		watch:   newWatchCore(),
 	}
 }
 
 // Close stops every watch goroutine and closes every client.
 func (c *etcdCtrl) Close() {
-	c.watch.stop()
+	c.watch.Close()
 
 	c.clientMu.Lock()
 	clients := c.clients
-	c.clients = map[string]etcdAPI{}
+	c.clients = map[string]etcdClient{}
 	c.clientMu.Unlock()
 
 	for _, cli := range clients {
@@ -181,7 +181,7 @@ func clientKey(cs configSource) string {
 
 // clientFor returns a cached client for the source, creating one if necessary.
 // Its log line takes the source fields from ctx, which Load has already stamped.
-func (c *etcdCtrl) clientFor(ctx context.Context, cs configSource) (etcdAPI, error) {
+func (c *etcdCtrl) clientFor(ctx context.Context, cs configSource) (etcdClient, error) {
 	key := clientKey(cs)
 
 	c.clientMu.Lock()
@@ -238,7 +238,7 @@ func (c *etcdCtrl) Load(ctx context.Context, optional bool, source string) (map[
 	// skipping it. Registering regardless of the read's outcome keeps the
 	// "missing optional key is still watched" behaviour.
 	m, since, err := loadFromClient(ctx, cli, cs, optional)
-	c.watch.registerWatcher(cli, cs, optional, since)
+	c.watch.registerWatch(cli, cs, optional, since)
 	if err != nil {
 		return nil, err
 	}
@@ -249,7 +249,7 @@ func (c *etcdCtrl) Load(ctx context.Context, optional bool, source string) (map[
 // parses it into flattened properties. It also returns the store revision the
 // read observed (0 when unknown), which the caller seeds the watcher with so
 // the watch resumes from exactly there.
-func loadFromClient(ctx context.Context, cli etcdAPI, cs configSource, optional bool) (map[string]string, int64, error) {
+func loadFromClient(ctx context.Context, cli etcdClient, cs configSource, optional bool) (map[string]string, int64, error) {
 	getCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 	resp, err := cli.Get(getCtx, cs.key)

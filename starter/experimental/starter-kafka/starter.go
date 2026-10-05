@@ -16,6 +16,7 @@
 
 // starter.go is the DI glue: the gs registration, the newClient dispatch to an
 // optional Driver bean, the startup ping + resilience wiring, and the destroy hook.
+
 package StarterKafka
 
 import (

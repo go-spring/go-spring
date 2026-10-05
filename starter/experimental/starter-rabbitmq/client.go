@@ -20,6 +20,7 @@
 // conversion helpers. The raw *amqp.Connection bean stays available for
 // exchanges, custom routing, publisher confirms and other AMQP features this
 // driver does not model.
+
 package StarterRabbitMQ
 
 import (

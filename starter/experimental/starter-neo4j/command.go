@@ -19,6 +19,7 @@
 // operation's semantic identity (see observe.go) or route it through the
 // resilience guard, plus the queryResilience guard that resolves the executor
 // for a driver.
+
 package StarterNeo4j
 
 import (

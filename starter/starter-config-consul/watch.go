@@ -83,7 +83,7 @@ func (w *watchCore) Close() {
 // import declared the path optional: deleting an optional path is an expected
 // transition (its properties simply disappear), while deleting a required one
 // leaves the last snapshot in place, which the watcher surfaces as a warning.
-func (w *watchCore) registerWatch(cli kvAPI, cs configSource, optional bool, since uint64) {
+func (w *watchCore) registerWatch(cli consulClient, cs configSource, optional bool, since uint64) {
 	lk := clientKey(cs) + "|" + cs.kvPath
 
 	w.mu.Lock()
@@ -121,7 +121,7 @@ const failLogInterval = 5 * time.Minute
 // watchLoop runs the blocking-query loop for a single KV path. Errors retry
 // visibly-but-throttled: a failure logs a warning, then one warning every
 // failLogEvery consecutive failures, and recovery logs once at info.
-func watchLoop(ctx context.Context, cli kvAPI, cs configSource, optional bool, since uint64) {
+func watchLoop(ctx context.Context, cli consulClient, cs configSource, optional bool, since uint64) {
 	// Resume from the index the initial read observed: the first query then
 	// reports any change after that read instead of folding it into the
 	// baseline and losing it. since == 0 means no index was observed (the read

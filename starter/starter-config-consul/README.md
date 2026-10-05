@@ -59,7 +59,7 @@ type Demo struct {
 
 When the KV value changes, the provider's blocking-query watcher triggers an
 application property refresh, and all bound `gs.Dync` fields are updated
-atomically. See [example-config](example/main.go) for the full
+atomically. See [example](example/main.go) for the full
 publish to hot-reload flow.
 
 ## How It Works
@@ -89,6 +89,7 @@ Cloud Alibaba's `nacos-config` / `nacos-discovery`.
 provider only needs "did the index change since last time", which a blocking
 `KV().Get` loop expresses in ~30 lines and keeps the watcher structurally
 identical to the etcd variant.
+
 ### Log tag
 
 Runtime logs from this module carry the tag `_app_config_consul` (consul config source). Tune them independently of the
@@ -99,3 +100,5 @@ logger.config_consul.type=Logger
 logger.config_consul.level=WARN
 logger.config_consul.tag=_app_config_consul
 ```
+
+Full reference (per-key semantics, assembly timing, fault drills): [USAGE.md](USAGE.md).

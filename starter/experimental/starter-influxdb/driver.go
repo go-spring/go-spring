@@ -18,6 +18,7 @@
 // interface + the bundled DefaultDriver, which owns full client assembly (the
 // injected HTTP client carrying the dynamic transport that [NewClient] fills).
 // It mirrors starter-elasticsearch's driver.go.
+
 package StarterInfluxdb
 
 import (

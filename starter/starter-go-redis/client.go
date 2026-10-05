@@ -22,6 +22,7 @@
 // endpoint-selection subscription, while the per-command hook layers (the
 // declaration layer in observe.go and the executor below) ride the client's
 // hook chain.
+
 package StarterGoRedis
 
 import (

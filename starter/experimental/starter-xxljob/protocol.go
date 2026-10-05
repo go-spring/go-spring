@@ -18,6 +18,7 @@
 // response bodies the executor's callback server receives and the admin REST
 // endpoints it calls. Field names match the xxl-job protocol (camelCase), so
 // the structs round-trip against a stock xxl-job-admin unchanged.
+
 package StarterXxljob
 
 import "time"

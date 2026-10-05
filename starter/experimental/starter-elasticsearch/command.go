@@ -17,6 +17,7 @@
 // command.go is the "command seam" concept of this starter: the declaration
 // transport — the outer http.RoundTripper that puts each request's semantic
 // identity on the context, for the resilience layer inside it to emit.
+
 package StarterElasticsearch
 
 import (

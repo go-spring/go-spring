@@ -20,6 +20,7 @@
 // runs it under the resilience executor, the adapter layer makes the wire
 // call. This wrapper replaces the earlier per-client guard registry: the chain
 // travels with the client, not a package-global map.
+
 package StarterKafka
 
 import (

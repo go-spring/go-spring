@@ -57,7 +57,7 @@ type Demo struct {
 
 KV 值变更时，Provider 的阻塞查询 watcher 会触发一次应用属性刷新，所有绑定的
 `gs.Dync` 字段都会被原子更新。完整的“发布 -> 热更新”流程参见
-[example-config](example/main.go)。
+[example](example/main.go)。
 
 ## 工作原理
 
@@ -90,3 +90,5 @@ logger.config_consul.type=Logger
 logger.config_consul.level=WARN
 logger.config_consul.tag=_app_config_consul
 ```
+
+完整参考（逐 key 语义、装配时序、故障演练）见 [USAGE_CN.md](USAGE_CN.md)。

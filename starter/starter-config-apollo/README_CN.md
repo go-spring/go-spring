@@ -3,8 +3,11 @@
 [English](README.md) | [中文](README_CN.md)
 
 `starter-config-apollo` 接入 [Apollo](https://github.com/apolloconfig/apollo)
-作为远程配置中心。空白导入即注册 `apollo` 配置 provider，经
-`spring.config.import` 消费，通过 agollo 的变更通知实现实时热刷新。
+作为远程配置中心，构建于 github.com/apolloconfig/agollo/v4。空白导入即注册
+`apollo` 配置 Provider，经 `spring.config.import` 消费；远端配置变更通过 agollo
+的变更通知在运行期热刷新，无需重启。
+
+本 starter 只承担配置中心角色。
 
 ## 安装
 
@@ -14,19 +17,36 @@ go get go-spring.org/starter-config-apollo
 
 ## 快速开始
 
-### 1. 导入
+### 1. 引入包
 
 ```go
 import _ "go-spring.org/starter-config-apollo"
 ```
 
-### 2. 配置
+### 2. 从 Apollo 导入配置
+
+在配置文件中使用 Provider 语法声明导入
+`[optional:]apollo:<host>:<port>/<namespace>?<query>`：
 
 ```properties
-spring.config.import=optional:apollo:127.0.0.1:8080/application?appId=demo&format=properties
+spring.config.import=optional:apollo:127.0.0.1:8080/application?appId=demo
 ```
 
-### 3. 使用
+查询参数：
+
+| 参数      | 默认值                            | 说明                                              |
+|-----------|-----------------------------------|---------------------------------------------------|
+| `appId`   | （必填）                          | Apollo 应用 id                                    |
+| `cluster` | `default`                         | Apollo 集群名                                     |
+| `secret`  | （空）                            | 需要访问密钥的命名空间所用的访问密钥              |
+| `format`  | 命名空间扩展名，否则 `properties` | 内容格式：`properties`/`yaml`/`yml`/`json`        |
+
+加上 `optional:` 前缀后，即使命名空间尚不存在（或为空）应用也能正常启动；发布后
+其值会被自动补全。
+
+### 3. 绑定动态字段
+
+将导入的配置项绑定到 `gs.Dync[T]` 字段即可实现实时更新：
 
 ```go
 type Demo struct {
@@ -34,17 +54,19 @@ type Demo struct {
 }
 ```
 
-## Source 语法
+远端命名空间变更时，Provider 的变更监听器会触发一次应用属性刷新，所有绑定的
+`gs.Dync` 字段都会被原子重新绑定。完整的 发布 → 热更新 流程见
+[example](example/main.go)。
 
-```
-apollo:<host>:<port>/<namespace>?appId=&cluster=&secret=&format=
-```
+## 工作原理
 
-- `namespace` — Apollo 命名空间（如 `application`、`application.properties`）
-- `appId` — 必填
-- `cluster` — 默认 `default`
-- `secret` — 可选访问密钥（带访问密钥的命名空间）
-- `format` — 配置格式；默认按命名空间后缀推断，否则 `properties`
+- 每个 `(server, appId, cluster, secret, namespace)` 元组一个 agollo client ——
+  agollo 在 client 创建时即固定 namespace。
+- 变更监听器安装**先于**首次获取，因此导入一个尚不存在的命名空间，一旦出现仍能
+  热刷新。
+- 纯命名空间名（`application`）是 Apollo 原生的 `properties`；带
+  `.yaml`/`.yml`/`.json` 扩展名的命名空间会让 Apollo 服务端返回该格式，Provider
+  据此解析。
 
 ## 设计要点
 
@@ -73,10 +95,4 @@ logger.config_apollo.level=WARN
 logger.config_apollo.tag=_app_config_apollo
 ```
 
-## 说明
-
-- 每个 `(server, appId, cluster, secret, namespace)` 元组一个 agollo client。
-- 变更监听**先于首次获取**安装，因此 `optional:` 导入一个尚不存在的命名
-  空间，一旦出现仍能热刷新。
-- 尚未提供 `governance.Source` 接入；如需 Apollo 支撑治理规则，照
-  `starter-config-nacos` 的 `governance.go` 模式添加。
+完整参考（逐 key 语义、装配时序、故障演练）见 [USAGE_CN.md](USAGE_CN.md)。

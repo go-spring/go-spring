@@ -17,6 +17,7 @@
 // starter.go is the "registration + glue" concept of this starter: the gs.Module
 // that binds one *sarama.Client per entry under ${spring.kafka-sarama}, and the
 // bridge from sarama's package-level logger into go-spring's log.
+
 package StarterKafkaSarama
 
 import (

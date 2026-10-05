@@ -23,6 +23,7 @@
 // error unwinds back through tracing/metrics/resilience and is fully
 // observed — the same placement rationale FaultUnaryInterceptor documents for
 // injected errors.
+
 package StarterGrpc
 
 import (

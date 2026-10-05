@@ -19,6 +19,7 @@
 // recovered panic is additionally reported through the shared goutil chain —
 // structured log via go-spring.org/log — with the panicking frames still on
 // the stack, instead of going only to echo's logger.
+
 package StarterEcho
 
 import (

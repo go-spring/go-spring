@@ -18,12 +18,12 @@ package StarterConfigConsul
 
 import (
 	"context"
-	"errors"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/hashicorp/consul/api"
+	"go-spring.org/stdlib/errutil"
 	"go-spring.org/stdlib/testing/assert"
 )
 
@@ -84,7 +84,7 @@ func (f *fakeKV) Get(string, *api.QueryOptions) (*api.KVPair, *api.QueryMeta, er
 	f.mu.Lock()
 	if len(f.script) == 0 {
 		f.mu.Unlock()
-		return nil, nil, errors.New("empty script")
+		return nil, nil, errutil.Explain(nil, "empty script")
 	}
 	i := f.served
 	repeat := false
@@ -112,7 +112,7 @@ func (f *fakeKV) done() int {
 
 // newCtrlWithFake pre-seeds the controller's client cache for source so
 // clientFor returns the fake without any network.
-func newCtrlWithFake(source string, fake kvAPI) (*consulCtrl, error) {
+func newCtrlWithFake(source string, fake consulClient) (*consulCtrl, error) {
 	cs, err := parseSource(source)
 	if err != nil {
 		return nil, err
@@ -134,7 +134,7 @@ func TestLoadProperties(t *testing.T) {
 
 func TestLoadOptionalSkipsOnFetchFailureMissingAndEmpty(t *testing.T) {
 	// optional:true turns a fetch error into a skip, not a startup failure.
-	fakeErr := newFakeKV().result(nil, 0, errors.New("down"))
+	fakeErr := newFakeKV().result(nil, 0, errutil.Explain(nil, "down"))
 	c, err := newCtrlWithFake("127.0.0.1:8500/app.properties", fakeErr)
 	assert.That(t, err).Nil()
 	m, err := c.Load(context.Background(), true, "127.0.0.1:8500/app.properties")
@@ -242,10 +242,10 @@ func TestWatchLoopExitsOnCancelAndRetriesThroughFailures(t *testing.T) {
 	// that repeats — the loop must retry through all of them (not exit), then
 	// return once the generation context is canceled.
 	fake := newFakeKV().
-		result(nil, 0, errors.New("consul down")).
-		result(nil, 0, errors.New("consul down")).
+		result(nil, 0, errutil.Explain(nil, "consul down")).
+		result(nil, 0, errutil.Explain(nil, "consul down")).
 		result(&api.KVPair{Value: []byte("a=2\n")}, 7, nil).
-		result(nil, 0, errors.New("consul down"))
+		result(nil, 0, errutil.Explain(nil, "consul down"))
 
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
@@ -296,4 +296,4 @@ func (c *consulCtrl) currentCtx() context.Context {
 
 // Compile-time guard: the real Consul KV handle satisfies the fake-able
 // interface the controller depends on.
-var _ kvAPI = (*api.KV)(nil)
+var _ consulClient = (*api.KV)(nil)

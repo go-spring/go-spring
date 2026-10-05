@@ -19,6 +19,7 @@
 // (thin, mail-style: stateless per call, no destroy hook) and owns the
 // Notifier send path — payload build, operation declaration, resilience
 // executor.
+
 package StarterWebhook
 
 import (

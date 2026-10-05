@@ -20,4 +20,5 @@
 // NewSimpleGrpcServer receives them all as bean collections. There is no
 // package-level registration API — each container carries its own stack, so
 // two containers in one process never share interceptors.
+
 package StarterGrpc

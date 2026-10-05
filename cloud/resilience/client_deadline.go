@@ -28,6 +28,7 @@
 // N times that timeout, and every hop keeps working on a request its caller
 // abandoned long ago. With it the chain spends one budget, and the hop that
 // runs out is the one that stops.
+
 package resilience
 
 import (

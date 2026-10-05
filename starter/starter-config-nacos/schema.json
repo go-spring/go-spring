@@ -1,12 +1,15 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "spring.config.import (nacos://...)",
-  "description": "Nacos remote configuration provider. Configured via spring.config.import URL.",
+  "title": "spring.config.import (nacos)",
   "type": "object",
+  "description": "The nacos provider has no bound prefix; it is consumed via spring.config.import=optional:nacos:<host>:<port>/<data-id>?group=&namespace=&username=&password=&format=&timeout-ms=&retry-ms=",
   "properties": {
-    "nacos-url": {
-      "type": "string",
-      "description": "URL format: nacos://host:port/data-id?group=xxx&namespace=xxx"
-    }
+    "group": { "type": "string", "default": "DEFAULT_GROUP" },
+    "namespace": { "type": "string", "description": "Nacos namespace id" },
+    "username": { "type": "string" },
+    "password": { "type": "string" },
+    "format": { "type": "string", "description": "properties/yaml/json/toml; default inferred from the data-id extension, else properties" },
+    "timeout-ms": { "type": "string", "description": "request timeout in milliseconds; default 5000" },
+    "retry-ms": { "type": "string", "description": "watcher retry interval in milliseconds; default 2000" }
   }
 }

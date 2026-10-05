@@ -67,6 +67,8 @@ func main() {
 	// does not depend on which terminal started it. `_` is the one that matters:
 	// single-character variable names are not portable - on Windows the shell
 	// sets them, and inheriting one breaks the run.
+	// Unset env vars that leak from the developer shell so runs are reproducible
+	// and consistent with sibling examples.
 	_ = os.Unsetenv("_")
 	_ = os.Unsetenv("TERM")
 	_ = os.Unsetenv("TERM_SESSION_ID")

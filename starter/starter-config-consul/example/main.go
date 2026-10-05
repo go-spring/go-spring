@@ -38,7 +38,10 @@ import (
 	"github.com/hashicorp/consul/api"
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
+	"go-spring.org/stdlib/errutil"
 
+	// Blank-import registers the "consul" config provider, consumable via
+	// spring.config.import with live hot-reload.
 	_ "go-spring.org/starter-config-consul"
 )
 
@@ -59,7 +62,7 @@ func main() {
 	flag.Parse()
 
 	// Unset env vars that leak from the developer shell so runs are reproducible
-	// and consistent with sibling starter examples.
+	// and consistent with sibling examples.
 	_ = os.Unsetenv("_")
 	_ = os.Unsetenv("TERM")
 	_ = os.Unsetenv("TERM_SESSION_ID")
@@ -109,7 +112,7 @@ func runTest(d *Demo) {
 		}
 		time.Sleep(200 * time.Millisecond)
 	}
-	err := fmt.Errorf("hot-reload timeout: message=%q want=%q", d.Message.Value(), want)
+	err := errutil.Explain(nil, "message=%q want=%q", d.Message.Value(), want)
 	log.Errorf(ctx, log.TagAppDef, err, "hot-reload timeout")
 	os.Exit(1)
 }

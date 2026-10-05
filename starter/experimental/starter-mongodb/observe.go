@@ -33,6 +33,7 @@
 // pure observer that cannot return an error), while protection rides the dial
 // seam (resilience.NewDialer, see client.go). See the package docs on
 // [dbObserver] for the status vocabulary this forces.
+
 package StarterMongoDB
 
 import (

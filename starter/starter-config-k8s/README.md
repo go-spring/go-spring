@@ -35,29 +35,14 @@ import _ "go-spring.org/starter-config-k8s"
 
 ### 2. Import config from a ConfigMap/Secret
 
-Source form: `<kind>/<name>[?namespace=..&key=..&format=..&kubeconfig=..]`.
+Declare the import in your configuration file using the provider syntax
+`[optional:]k8s:<kind>/<name>?<query>`:
 
 ```properties
 spring.config.import=k8s:configmap/app-config?namespace=default&key=application.yaml
 ```
 
-- `secret/<name>` reads a Secret instead (its `data` is already base64-decoded).
-- Add `optional:` (`optional:k8s:configmap/...`) to boot even when the object or
-  cluster is absent — the read is skipped and bound fields fall back to defaults.
-- To run out-of-cluster, add `&kubeconfig=/home/me/.kube/config`.
-
-### 3. Bind a hot-reloadable field
-
-```go
-type Demo struct {
-    Message gs.Dync[string] `value:"${demo.message:=none}"`
-}
-```
-
-`kubectl edit configmap app-config` (change `demo.message`) updates the bound
-field within seconds, no restart.
-
-## Source parameters
+Query parameters:
 
 | Part | Default | Description |
 | --- | --- | --- |
@@ -68,10 +53,46 @@ field within seconds, no restart.
 | `format` | (by extension) | Force a parser (`yaml`/`properties`/`toml`/`json`) for entries without a recognized extension. |
 | `kubeconfig` | (empty) | Path to a kubeconfig; empty uses in-cluster auth. |
 
+- `secret/<name>` reads a Secret instead (its `data` is already base64-decoded).
+- Add `optional:` (`optional:k8s:configmap/...`) to boot even when the object or
+  cluster is absent — the read is skipped and bound fields fall back to defaults.
+- To run out-of-cluster, add `&kubeconfig=/home/me/.kube/config`.
+
 Each `data` entry is parsed as a config document by its key's extension
 (`application.yaml` to YAML) and flattened into properties, mirroring the file
 starter's directory semantics; entries with an unknown extension and no forced
 `format` are skipped (unless selected explicitly via `key`).
+
+### 3. Bind a dynamic field
+
+```go
+type Demo struct {
+    Message gs.Dync[string] `value:"${demo.message:=none}"`
+}
+```
+
+`kubectl edit configmap app-config` (change `demo.message`) updates the bound
+field within seconds, no restart.
+
+## RBAC
+
+The ServiceAccount needs `get/list/watch` on the target `configmaps`/`secrets`
+in its namespace (`get` for the initial read, `list/watch` for the informer).
+See [example/deploy/rbac.yaml](example/deploy/rbac.yaml).
+
+## Verifying in a cluster
+
+The unit tests cover parse/read/key-filter/optional-missing and the
+informer-driven refresh with the client-go fake clientset. End-to-end
+hot-reload needs a real cluster:
+
+```bash
+kubectl apply -f example/deploy/rbac.yaml
+kubectl apply -f example/deploy/configmap.yaml
+# build/push an image for example/ and apply example/deploy/deployment.yaml, then:
+kubectl logs deploy/config-k8s-example      # prints demo.message from the ConfigMap
+kubectl edit configmap app-config           # change demo.message; the field hot-reloads
+```
 
 ## How It Works
 
@@ -109,22 +130,4 @@ logger.config_k8s.level=WARN
 logger.config_k8s.tag=_app_config_k8s
 ```
 
-## RBAC
-
-The ServiceAccount needs `get/list/watch` on the target `configmaps`/`secrets`
-in its namespace (`get` for the initial read, `list/watch` for the informer).
-See [example/deploy/rbac.yaml](example/deploy/rbac.yaml).
-
-## Verifying in a cluster
-
-The unit tests cover parse/read/key-filter/optional-missing and the
-informer-driven refresh with the client-go fake clientset. End-to-end
-hot-reload needs a real cluster:
-
-```bash
-kubectl apply -f example/deploy/rbac.yaml
-kubectl apply -f example/deploy/configmap.yaml
-# build/push an image for example/ and apply example/deploy/deployment.yaml, then:
-kubectl logs deploy/config-k8s-example      # prints demo.message from the ConfigMap
-kubectl edit configmap app-config           # change demo.message; the field hot-reloads
-```
+Full reference (per-key semantics, assembly timing, fault drills): [USAGE.md](USAGE.md).

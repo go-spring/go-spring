@@ -7,6 +7,6 @@
     "appId": { "type": "string", "description": "required" },
     "cluster": { "type": "string", "default": "default" },
     "secret": { "type": "string", "default": "" },
-    "format": { "type": "string", "description": "properties/yaml/json; default inferred from namespace extension" }
+    "format": { "type": "string", "description": "properties/yaml/json/toml; default inferred from the namespace extension, else properties" }
   }
 }

@@ -26,6 +26,7 @@
 // with the instrumented version. JetStream is not delegated either — the field
 // of the same name on Conn shadows it (as it did before, when Conn embedded the
 // raw connection and the field shadowed the promoted method).
+
 package StarterNats
 
 import (

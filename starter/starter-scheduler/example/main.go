@@ -121,6 +121,11 @@ func (w *reportWork) run(ctx context.Context) error {
 
 func main() {
 	flag.Parse()
+	// Unset env vars that leak from the developer shell so runs are reproducible
+	// and consistent with sibling examples.
+	_ = os.Unsetenv("_")
+	_ = os.Unsetenv("TERM")
+	_ = os.Unsetenv("TERM_SESSION_ID")
 
 	// Every job is a bean of the cloud type *scheduling.Job, registered with
 	// gs.Provide so the container resolves its constructor's dependencies. No

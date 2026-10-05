@@ -2,14 +2,22 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "spring.config.bus",
   "type": "object",
+  "description": "The refresh bus reuses a NATS connection as its transport and carries only refresh signals, never configuration content. Every instance that shares a subject re-runs the application property refresh when a signal arrives.",
   "properties": {
     "subject": {
       "type": "string",
-      "default": "spring.config.refresh"
+      "default": "spring.config.refresh",
+      "description": "the NATS subject that refresh events are published to and subscribed from; all instances sharing it form one bus"
     },
     "watch-prefixes": {
       "type": "string",
-      "default": ""
+      "default": "",
+      "description": "comma-separated prefixes scoping which broadcasts this instance reacts to; empty refreshes on every event"
+    },
+    "origin": {
+      "type": "string",
+      "default": "",
+      "description": "labels this instance as the publisher in a broadcast's RefreshEvent and producer span; defaults to the host name when empty"
     },
     "health": {
       "type": "boolean",

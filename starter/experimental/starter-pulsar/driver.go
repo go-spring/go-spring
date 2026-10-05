@@ -19,6 +19,7 @@
 // (ClientOptions, authentication — mTLS / token — TLS, the native Prometheus
 // metrics registry, the go-spring log bridge, and pulsar.NewClient). It mirrors
 // starter-kafka's driver.go.
+
 package StarterPulsar
 
 import (

@@ -1,10 +1,16 @@
-# starter-config-apollo example
+# starter-config-apollo Example
 
-Self-contained: the example starts a mock Apollo config service (the meta,
-configfiles, configs and notifications/v2 endpoints agollo drives), imports the
-starter, and asserts the whole remote-config link — the property cold-loads into
-a Dync field, and a publish to the mock hot-reloads it. No docker, no real
-Apollo stack.
+Apollo config management with starter-config-apollo.
+
+## Features
+
+- **Config loading**: Read config from the Apollo namespace
+- **Config hot reload**: Publish a new value to the mock; the app picks it up in real time
+- **Dync dynamic binding**: Bind config via `Dync[T]`; refreshes automatically
+
+> Self-contained: the example starts an in-process mock Apollo service (the meta,
+> configfiles, configs and notifications/v2 endpoints agollo drives), so no
+> docker and no real Apollo stack are needed.
 
 ## Manual Testing
 
@@ -30,5 +36,8 @@ and exits.
 ## Smoke Test
 
 ```bash
-./check.sh   # the smoke test
+./check.sh
 ```
+
+`check.sh` runs the example (it starts the mock itself), which cold-loads the
+value, publishes a new one and verifies the refresh, exit code 0 means pass.

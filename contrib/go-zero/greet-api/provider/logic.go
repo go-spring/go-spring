@@ -19,6 +19,7 @@
 // internal/logic and edited in place; here we replace the scaffold with a
 // Go-Spring bean, colocated with the ServiceContext that exposes it so the
 // logic participates in DI just like every other Go-Spring component.
+
 package main
 
 import (

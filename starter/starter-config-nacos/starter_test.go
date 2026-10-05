@@ -18,12 +18,12 @@ package StarterConfigNacos
 
 import (
 	"context"
-	"errors"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/nacos-group/nacos-sdk-go/v2/vo"
+	"go-spring.org/stdlib/errutil"
 	"go-spring.org/stdlib/testing/assert"
 )
 
@@ -146,7 +146,7 @@ func TestLoadProperties(t *testing.T) {
 
 func TestLoadOptionalSkipsOnFetchFailureAndEmpty(t *testing.T) {
 	// optional:true turns a fetch error into a skip, not a startup failure.
-	c, err := newCtrlWithFake("127.0.0.1:8848/app.properties", &fakeConfigClient{getErr: errors.New("down")})
+	c, err := newCtrlWithFake("127.0.0.1:8848/app.properties", &fakeConfigClient{getErr: errutil.Explain(nil, "down")})
 	assert.That(t, err).Nil()
 	m, err := c.Load(context.Background(), true, "127.0.0.1:8848/app.properties")
 	assert.That(t, err).Nil()
@@ -200,7 +200,7 @@ func TestListenerInstallRetriedUntilItSucceeds(t *testing.T) {
 	// A failed ListenConfig must not leave hot-reload off until some unrelated
 	// Load — which may never come. The install keeps retrying in the background
 	// until it succeeds.
-	fake := &fakeConfigClient{data: "a=1\n", listenErr: errors.New("listen down")}
+	fake := &fakeConfigClient{data: "a=1\n", listenErr: errutil.Explain(nil, "listen down")}
 	src := "127.0.0.1:8848/app.properties?retry-ms=10"
 	c, err := newCtrlWithFake(src, fake)
 	assert.That(t, err).Nil()

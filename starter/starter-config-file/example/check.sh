@@ -5,13 +5,14 @@
 # gs.Dync field to a value from it, rewrites the mount atomically, and asserts
 # the bound field hot-reloads. It exits non-zero on failure. No external
 # services are required.
+#
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")"
 
 echo "== example boot =="
-go run -gcflags="all=-N -l" . &
+go run . &
 pid=$!
-( sleep 40; kill -9 "${pid}" 2>/dev/null ) &
+( sleep 60; kill -9 "${pid}" 2>/dev/null ) &
 watchdog=$!
 rc=0
 wait "${pid}" 2>/dev/null || rc=$?

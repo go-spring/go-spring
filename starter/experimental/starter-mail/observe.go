@@ -25,6 +25,7 @@
 // destination, no consumer side), so the labels are email.* rather than
 // messaging.*. The result axis (status) is the ecosystem-wide one, so a mail
 // failure still joins the same query shape as every other client.
+
 package StarterMail
 
 import (

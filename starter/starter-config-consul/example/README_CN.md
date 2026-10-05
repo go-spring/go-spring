@@ -1,4 +1,4 @@
-# starter-config-consul Example
+# starter-config-consul 示例
 
 演示 starter-config-consul 的 Consul KV 配置管理。
 

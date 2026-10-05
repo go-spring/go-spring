@@ -19,6 +19,7 @@
 // exposes (see logic.go). Unlike the stock go-zero scaffold — which wires
 // ServiceContext up in main() and splits logic into internal/logic — here it
 // is a tiny bean whose fields are injected by Go-Spring.
+
 package main
 
 // ServiceContext exposes the per-endpoint logic beans to the HTTP handlers.

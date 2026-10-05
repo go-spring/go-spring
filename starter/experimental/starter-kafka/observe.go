@@ -25,6 +25,7 @@
 // on the franz-go client (messaging.kafka.* connections, bytes, per-node
 // health). That is third-party instrumentation this starter merely enables, not
 // a per-call signal, so it stays where kotel puts it.
+
 package StarterKafka
 
 import (

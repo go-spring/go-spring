@@ -17,6 +17,7 @@
 // bytecache.go adapts the starter's *Client to the shared [cache.ByteCache]
 // primitives the "memcached" cache driver layers its typed [cache.Cache] façade
 // over.
+
 package StarterMemcached
 
 import (

@@ -18,6 +18,7 @@
 // the infra log tag and registers the per-instance RocketMQ client group under
 // "${spring.rocketmq}", wiring each Config entry to newClient (the dispatch +
 // probe) and the Client wrapper's Close (the lifecycle in client.go).
+
 package StarterRocketmq
 
 import (

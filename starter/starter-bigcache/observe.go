@@ -24,6 +24,7 @@
 // produce have anything to act on. There is no span either: trace topology is
 // made of edges, and a microsecond in-process call adds none — a span here
 // would only pad sampled traces with nodes that never have a story.
+
 package StarterBigCache
 
 import (

@@ -26,6 +26,7 @@
 // wire (the socket wait is bounded by Config.Timeout), but ctx still governs
 // cancellation of the resilience layer (rate-limit wait, retry backoff,
 // breaker checks) and is inherited by the observe span.
+
 package StarterMemcached
 
 import (

@@ -390,7 +390,7 @@ func TestWatchLoopDetectsChange(t *testing.T) {
 	waitFor(t, func() bool { return f.reads.Load() > base+6 })
 }
 
-// fakeVaultAPI implements vaultAPI so the read path can be driven through the
+// fakeVaultAPI implements vaultClient so the read path can be driven through the
 // seam without a server; the httptest-backed fakeVault above exercises the real
 // client.
 type fakeVaultAPI struct {
@@ -411,7 +411,7 @@ func (f *fakeVaultAPI) Get(context.Context, string) (*api.KVSecret, error) {
 }
 
 func TestReadSecretThroughFakeClient(t *testing.T) {
-	// The read path, driven through the vaultAPI seam instead of a server: the
+	// The read path, driven through the vaultClient seam instead of a server: the
 	// v1/v2 dispatch and the returned data are the same code either way.
 	f := &fakeVaultAPI{data: map[string]any{"greeting": "hi"}}
 	c := newVaultCtrl()

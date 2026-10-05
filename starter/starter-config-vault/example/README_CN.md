@@ -1,4 +1,4 @@
-# starter-config-vault Example
+# starter-config-vault 示例
 
 演示 starter-config-vault 的 Vault 加密配置管理。
 

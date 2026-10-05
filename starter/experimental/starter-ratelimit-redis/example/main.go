@@ -98,6 +98,11 @@ func serve(exec chain.Executor) http.HandlerFunc {
 
 func main() {
 	flag.Parse()
+	// Unset env vars that leak from the developer shell so runs are reproducible
+	// and consistent with sibling examples.
+	_ = os.Unsetenv("_")
+	_ = os.Unsetenv("TERM")
+	_ = os.Unsetenv("TERM_SESSION_ID")
 
 	if !*manual {
 		go func() {

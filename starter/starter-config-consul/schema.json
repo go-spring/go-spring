@@ -1,12 +1,13 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "spring.config.import (consul://...)",
-  "description": "Consul KV remote configuration provider. Configured via spring.config.import URL.",
+  "title": "spring.config.import (consul)",
   "type": "object",
+  "description": "The consul provider has no bound prefix; it is consumed via spring.config.import=optional:consul:<host>:<port>/<kv-path>?scheme=&token=&datacenter=&format=&retry-ms=",
   "properties": {
-    "consul-url": {
-      "type": "string",
-      "description": "URL format: consul://host:port/path/to/key?scheme={http|https}&token=xxx&retry-ms=2000"
-    }
+    "scheme": { "type": "string", "default": "http" },
+    "token": { "type": "string", "description": "Consul ACL token" },
+    "datacenter": { "type": "string", "description": "Consul datacenter" },
+    "format": { "type": "string", "description": "properties/yaml/json/toml; default inferred from the kv-path extension, else properties" },
+    "retry-ms": { "type": "string", "description": "watcher retry interval in milliseconds; default 2000" }
   }
 }

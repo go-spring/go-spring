@@ -20,6 +20,7 @@
 // included). This file therefore holds no emission code: only the vocabulary
 // that this starter alone knows, because only it knows these statements reach a
 // TDengine backend.
+
 package StarterTdengine
 
 import (

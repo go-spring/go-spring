@@ -66,7 +66,7 @@ func newWatchCore() watchCore {
 }
 
 // stop cancels the poll generation and clears the dedup set.
-func (w *watchCore) stop() {
+func (w *watchCore) Close() {
 	w.mu.Lock()
 	w.cancel()
 	w.ctx, w.cancel = context.WithCancel(context.Background())
@@ -99,12 +99,12 @@ func (w *watchCore) updateBaseline(cs configSource, fp string) {
 // returns, and the poll loop compares its fingerprint. Load hands its own
 // implementation in (see vaultCtrl.readSecret) so both sides observe the same
 // backend.
-type readFunc func(ctx context.Context, cli vaultAPI, cs configSource) (map[string]any, error)
+type readFunc func(ctx context.Context, cli vaultClient, cs configSource) (map[string]any, error)
 
 // registerWatch spawns a background goroutine that polls the secret. read is
 // the secret fetch the load path also uses, handed over so the poll loop and
 // Load observe the same backend.
-func (w *watchCore) registerWatch(cli vaultAPI, cs configSource, read readFunc) {
+func (w *watchCore) registerWatch(cli vaultClient, cs configSource, read readFunc) {
 	lk := watchKey(cs)
 
 	w.mu.Lock()
@@ -156,7 +156,7 @@ const failLogInterval = 5 * time.Minute
 // Read failures are self-healing (the loop keeps polling) but never silent:
 // a failure logs a warning, then one warning every failLogEvery consecutive
 // failures, and recovery logs once at info.
-func watchLoop(ctx context.Context, cli vaultAPI, cs configSource,
+func watchLoop(ctx context.Context, cli vaultClient, cs configSource,
 	read readFunc, baseline func() string) {
 	interval := time.Duration(cs.pollMs) * time.Millisecond
 	// failLogEvery is how many consecutive failures pass between alarm logs,

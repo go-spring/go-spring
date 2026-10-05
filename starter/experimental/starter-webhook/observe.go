@@ -25,6 +25,7 @@
 // a fixed external receiver (the span is a producer kind and the system is
 // "webhook"), so messaging.system / messaging.operation describe it faithfully,
 // and the metric prefix is messaging.client.
+
 package StarterWebhook
 
 import (

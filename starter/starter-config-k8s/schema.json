@@ -1,12 +1,12 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "spring.config.import (k8s://...)",
-  "description": "Kubernetes ConfigMap/Secret configuration provider. Configured via spring.config.import URL.",
+  "title": "spring.config.import (k8s)",
   "type": "object",
+  "description": "The k8s provider has no bound prefix; it is consumed via spring.config.import=optional:k8s:<kind>/<name>?namespace=&key=&format=&kubeconfig=, where <kind> is configmap or secret",
   "properties": {
-    "k8s-url": {
-      "type": "string",
-      "description": "URL format: k8s://namespace/configmap-name or k8s://namespace/secret-name"
-    }
+    "namespace": { "type": "string", "default": "default" },
+    "key": { "type": "string", "description": "read only this data entry; default read every entry" },
+    "format": { "type": "string", "description": "override the parsed format; default inferred from each entry's extension" },
+    "kubeconfig": { "type": "string", "description": "kubeconfig path; empty means in-cluster" }
   }
 }

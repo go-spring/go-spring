@@ -21,6 +21,7 @@ package main
 
 import (
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -74,6 +75,11 @@ func init() {
 }
 
 func main() {
+	// Unset env vars that leak from the developer shell so runs are reproducible
+	// and consistent with sibling examples.
+	_ = os.Unsetenv("_")
+	_ = os.Unsetenv("TERM")
+	_ = os.Unsetenv("TERM_SESSION_ID")
 	gs.Web(true).Configure(func(app gs.App) {
 		app.Property("spring.gin.server.addr", "127.0.0.1:18080")
 		app.Property("spring.luohua.identity.secret", "example-secret")

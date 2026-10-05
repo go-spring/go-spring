@@ -44,7 +44,10 @@ import (
 
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
+	"go-spring.org/stdlib/errutil"
 
+	// Blank-import registers the "file-watch" config provider, consumable via
+	// spring.config.import; it reloads when the mounted files change.
 	_ "go-spring.org/starter-config-file"
 )
 
@@ -62,7 +65,7 @@ func main() {
 	flag.Parse()
 
 	// Unset env vars that leak from the developer shell so runs are reproducible
-	// and consistent with sibling starter examples.
+	// and consistent with sibling examples.
 	_ = os.Unsetenv("_")
 	_ = os.Unsetenv("TERM")
 	_ = os.Unsetenv("TERM_SESSION_ID")
@@ -78,12 +81,20 @@ func main() {
 		os.Exit(1)
 	}
 
-	demo := gs.Provide(&Demo{}).Export(gs.As[gs.Rooter]())
+	demoBean := gs.Provide(&Demo{}).Export(gs.As[gs.Rooter]())
+	demo := demoBean.Interface().(*Demo)
+	// Print on every change so a manual run (-manual) can watch the hot-reload
+	// happen; the self-test reads the field directly.
+	demo.Message.OnChanged(func(newVal, oldVal string) {
+		if newVal != oldVal {
+			fmt.Printf("demo.message: %q -> %q\n", oldVal, newVal)
+		}
+	})
 
 	if !*manual {
 		go func() {
-			time.Sleep(time.Millisecond * 500)
-			runTest(demo.Interface().(*Demo))
+			time.Sleep(500 * time.Millisecond)
+			runTest(demo)
 		}()
 	} else {
 		fmt.Println("=== Manual verification mode ===")
@@ -98,7 +109,7 @@ func runTest(d *Demo) {
 
 	// The initial mounted value is visible at startup.
 	if got := d.Message.Value(); got != "initial" {
-		log.Errorf(ctx, log.TagAppDef, fmt.Errorf("unexpected initial value: %q", got), "unexpected initial value: %q", got)
+		log.Errorf(ctx, log.TagAppDef, errutil.Explain(nil, "got %q", got), "unexpected initial value")
 		os.Exit(1)
 	}
 	fmt.Println("initial value:", d.Message.Value())
@@ -122,7 +133,8 @@ func runTest(d *Demo) {
 		}
 		time.Sleep(200 * time.Millisecond)
 	}
-	log.Errorf(ctx, log.TagAppDef, fmt.Errorf("hot-reload timeout: message=%q want=%q", d.Message.Value(), want), "hot-reload timeout: message=%q want=%q", d.Message.Value(), want)
+	err := errutil.Explain(nil, "message=%q want=%q", d.Message.Value(), want)
+	log.Errorf(ctx, log.TagAppDef, err, "hot-reload timeout")
 	os.Exit(1)
 }
 

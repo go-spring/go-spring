@@ -19,6 +19,7 @@
 // driver v2 exposes no per-operation hook comparable to go-redis's ProcessHook,
 // so observation rides the command monitor while resilience rides the dial seam
 // (wrapped in client.go's Init) — the analog of starter-go-redis's command.go.
+
 package StarterMongoDB
 
 import (

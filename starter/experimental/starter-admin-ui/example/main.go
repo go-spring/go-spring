@@ -79,6 +79,11 @@ var manual = flag.Bool("manual", false, "run in manual verification mode (server
 
 func main() {
 	flag.Parse()
+	// Unset env vars that leak from the developer shell so runs are reproducible
+	// and consistent with sibling examples.
+	_ = os.Unsetenv("_")
+	_ = os.Unsetenv("TERM")
+	_ = os.Unsetenv("TERM_SESSION_ID")
 	// Bring up two fake actuator instances that the Admin UI is configured to
 	// poll. Ports match the ones referenced in conf/app.properties.
 	(&fakeActuator{name: "alpha", port: 19371}).start()

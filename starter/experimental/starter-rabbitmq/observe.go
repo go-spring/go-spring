@@ -25,6 +25,7 @@
 // per-call signal — it is driven by the amqp091 connection's own NotifyClose /
 // NotifyBlocked channels — so it is not the resilience layer's to emit and
 // stays starter-local.
+
 package StarterRabbitMQ
 
 import (

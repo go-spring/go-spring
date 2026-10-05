@@ -166,6 +166,7 @@ parsing by extension through the shared conf reader registry; requiring a
 recognizable extension keeps the import string query-free and the starter
 dependency-light. Values in a `configtree` mount are raw strings and are never
 parsed at all.
+
 ### Log tag
 
 Runtime logs from this module carry the tag `_app_config_file` (file config source). Tune them independently of the
@@ -176,3 +177,5 @@ logger.config_file.type=Logger
 logger.config_file.level=WARN
 logger.config_file.tag=_app_config_file
 ```
+
+Full reference (per-key semantics, assembly timing, fault drills): [USAGE.md](USAGE.md).

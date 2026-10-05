@@ -21,6 +21,7 @@
 // the guarded *Query wrapper every Client.Query/Client.Bind call returns —
 // coverage of the normal statement path is transparent, no opt-in helper
 // required.
+
 package StarterCassandra
 
 import (

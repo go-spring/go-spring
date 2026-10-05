@@ -27,6 +27,7 @@
 //	             emitter: it reads the declared operation off the ctx and
 //	             opens the span, records the durations (call-level and
 //	             attempt-level) and writes the one access log.
+
 package StarterRabbitMQ
 
 import (

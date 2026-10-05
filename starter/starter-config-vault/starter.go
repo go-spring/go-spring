@@ -45,7 +45,7 @@ func init() {
 	conf.RegisterProvider("vault", newVaultCtrl())
 }
 
-// vaultKV is one KV read on a mount, and vaultAPI is the slice of the Vault
+// vaultKV is one KV read on a mount, and vaultClient is the slice of the Vault
 // client this starter consumes. They exist so tests can fake the Vault backend
 // without a live server, mirroring consul's kvAPI.
 //
@@ -56,7 +56,7 @@ type vaultKV interface {
 	Get(ctx context.Context, path string) (*api.KVSecret, error)
 }
 
-type vaultAPI interface {
+type vaultClient interface {
 	KVv1(mount string) vaultKV
 	KVv2(mount string) vaultKV
 }
@@ -73,21 +73,21 @@ func (r realVault) KVv2(mount string) vaultKV { return r.c.KVv2(mount) }
 type vaultCtrl struct {
 	watch    watchCore
 	clientMu sync.Mutex
-	clients  map[string]vaultAPI
+	clients  map[string]vaultClient
 }
 
 func newVaultCtrl() *vaultCtrl {
 	return &vaultCtrl{
-		clients: map[string]vaultAPI{},
+		clients: map[string]vaultClient{},
 		watch:   newWatchCore(),
 	}
 }
 
 // Close stops every poll goroutine. It implements provider.Provider.
 func (c *vaultCtrl) Close() {
-	c.watch.stop()
+	c.watch.Close()
 	c.clientMu.Lock()
-	c.clients = map[string]vaultAPI{}
+	c.clients = map[string]vaultClient{}
 	c.clientMu.Unlock()
 }
 
@@ -222,7 +222,7 @@ func clientKey(cs configSource) string {
 
 // clientFor returns a cached client for the source, creating one if necessary.
 // Its log line takes the source fields from ctx, which Load has already stamped.
-func (c *vaultCtrl) clientFor(ctx context.Context, cs configSource) (vaultAPI, error) {
+func (c *vaultCtrl) clientFor(ctx context.Context, cs configSource) (vaultClient, error) {
 	key := clientKey(cs)
 
 	c.clientMu.Lock()
@@ -286,7 +286,7 @@ func (c *vaultCtrl) Load(ctx context.Context, optional bool, source string) (map
 // loadFromClient reads the secret once, applies the optional/not-found rules,
 // and parses it into flattened properties. The caller installs the watcher
 // before calling it, so a change landing right after the read is not missed.
-func (c *vaultCtrl) loadFromClient(ctx context.Context, cli vaultAPI, cs configSource, optional bool) (map[string]string, error) {
+func (c *vaultCtrl) loadFromClient(ctx context.Context, cli vaultClient, cs configSource, optional bool) (map[string]string, error) {
 	data, err := c.readSecret(ctx, cli, cs)
 	if err != nil {
 		if optional {
@@ -321,7 +321,7 @@ func (c *vaultCtrl) loadFromClient(ctx context.Context, cli vaultAPI, cs configS
 // readSecret fetches the raw KV data map for the source. The source's
 // timeout-ms bounds the read and is honored on shutdown: cancelling the parent
 // context aborts an in-flight poll.
-func (c *vaultCtrl) readSecret(ctx context.Context, cli vaultAPI, cs configSource) (map[string]any, error) {
+func (c *vaultCtrl) readSecret(ctx context.Context, cli vaultClient, cs configSource) (map[string]any, error) {
 	ctx, cancel := context.WithTimeout(ctx, time.Duration(cs.timeoutMs)*time.Millisecond)
 	defer cancel()
 

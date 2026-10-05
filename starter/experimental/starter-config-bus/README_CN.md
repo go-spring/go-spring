@@ -7,9 +7,9 @@
 主题，一旦收到信号就重新执行应用级属性刷新——因此一次广播即可刷新集群中的**所有**
 实例，等效于 Spring Cloud Bus 的刷新广播。
 
-它与远程配置中心 starter（`starter-config-{nacos,etcd,consul}`）互补:后者已能通过
-自身 watch 刷新单个实例,而总线负责跨实例广播,以及来自配置中心之外的刷新触发（例如
-强制全集群重载）。总线只传递刷新**信号**,绝不传递配置内容——配置内容仍以配置中心
+它与远程配置中心 starter（`starter-config-{nacos,etcd,consul}`）互补：后者已能通过
+自身 watch 刷新单个实例，而总线负责跨实例广播，以及来自配置中心之外的刷新触发（例如
+强制全集群重载）。总线只传递刷新**信号**，绝不传递配置内容——配置内容仍以配置中心
 或本地文件为准。
 
 ## 安装
@@ -32,7 +32,7 @@ import (
 ### 2. 指定总线使用的 NATS 连接
 
 定义一个名字与 `spring.config.bus.nats-instance`（默认 `config-bus`）一致的 NATS
-实例:
+实例：
 
 ```properties
 spring.nats.instances.config-bus.url=nats://127.0.0.1:4222
@@ -40,19 +40,19 @@ spring.nats.instances.config-bus.url=nats://127.0.0.1:4222
 
 ### 3. 配置总线（可选）
 
-所有配置项位于 `spring.config.bus` 前缀下:
+所有配置项位于 `spring.config.bus` 前缀下：
 
 | 配置项           | 默认值                  | 说明                                                                     |
 |------------------|-------------------------|--------------------------------------------------------------------------|
 | `subject`        | `spring.config.refresh` | 发布与订阅刷新事件的 NATS 主题。                                          |
 | `nats-instance`  | `config-bus`            | 作为传输通道的 `spring.nats.instances.*` 连接名。                        |
-| `watch-prefixes` | (空)                    | 逗号分隔的前缀;设置后,仅当广播前缀与其中之一有交集（或为全量广播）时,本实例才刷新。 |
-| `origin`        | (主机名)                | 发布方标识，写入每次广播的 `RefreshEvent.Origin` 与 producer span，用于区分"本实例刷新了"和"某个实例刷新了"。 |
+| `watch-prefixes` | （空）                    | 逗号分隔的前缀；设置后，仅当广播前缀与其中之一有交集（或为全量广播）时，本实例才刷新。 |
+| `origin`        | （主机名）                | 发布方标识，写入每次广播的 `RefreshEvent.Origin` 与 producer span，用于区分“本实例刷新了”和“某个实例刷新了”。 |
 | `health`        | `true`                  | 是否贡献 `config-bus:configBus` 这个 `health.Indicator`。置 `false` 可让总线不出现在聚合就绪报告里。 |
 
 ### 4. 广播刷新
 
-通过 `autowire:"configBus"` 注入总线并发布:
+通过 `autowire:"configBus"` 注入总线并发布：
 
 ```go
 type Service struct {
@@ -67,25 +67,25 @@ _ = svc.Bus.Publish(ctx, "")
 _ = svc.Bus.Publish(ctx, "db")
 ```
 
-订阅该主题的每个实例都会重新执行 `RefreshProperties`,所有绑定的 `gs.Dync` 字段随之
+订阅该主题的每个实例都会重新执行 `RefreshProperties`，所有绑定的 `gs.Dync` 字段随之
 热更新。完整的广播 → 刷新流程见 [example](example/main.go)。
 
 ## 工作原理
 
-- 启动时 `ConfigBus` bean 被急切创建（以名字 `configBus` 导出 `gs.Rooter`）,并在
+- 启动时 `ConfigBus` bean 被急切创建（以名字 `configBus` 导出 `gs.Rooter`），并在
   配置的 NATS 连接上订阅 `spring.config.bus.subject`。
 - `Publish(ctx, prefix)` 在主题上发送一条精简的 JSON `RefreshEvent{prefix, origin}`。
-  空前缀表示全量刷新;非空前缀允许带前缀过滤的订阅者跳过（事件前缀与某个已订阅前缀
+  空前缀表示全量刷新；非空前缀允许带前缀过滤的订阅者跳过（事件前缀与某个已订阅前缀
   双向有交集即生效——`db` 订阅者会响应 `db.pool` 事件，反之亦然）。ctx 把 producer span
   挂到你的 trace 下。
-- 收到消息后,每个订阅者直接调用框架的进程级门面 `gs.RefreshProperties()`,重新加载
-  所有配置源,并通过两阶段原子提交重新绑定每个 `gs.Dync` 字段。
+- 收到消息后，每个订阅者直接调用框架的进程级门面 `gs.RefreshProperties()`，重新加载
+  所有配置源，并通过两阶段原子提交重新绑定每个 `gs.Dync` 字段。
 - 总线不拥有 NATS 连接：它按实例名注入 `*StarterNats.Conn`，生命周期与关闭都交给
   `starter-nats`。
 
 ## 设计要点
 
-**只搬信号，不搬配置内容。** 总线只告诉订阅者"现在从你自己的源重新拉一次"；配置中心
+**只搬信号，不搬配置内容。** 总线只告诉订阅者“现在从你自己的源重新拉一次”；配置中心
 或本地文件仍是唯一事实源。报文格式错误只记 warn 并丢弃；空负载是合法的全量刷新。应用
 永远不能把消息体当配置。
 

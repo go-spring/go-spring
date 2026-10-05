@@ -1,9 +1,15 @@
 # starter-config-apollo 示例
 
-自包含：示例启动一个 mock Apollo config service（agollo 驱动的 meta、
-configfiles、configs 与 notifications/v2 端点），导入 starter，断言整条远程
-配置链路 —— 属性冷加载进 Dync 字段，向 mock 发布新值后热更新。无需 docker，
-也无需真实 Apollo 栈。
+演示 starter-config-apollo 的 Apollo 配置管理。
+
+## 功能验证
+
+- **配置加载**：从 Apollo namespace 读取配置
+- **配置热更新**：向 mock 发布新值，应用实时感知变化
+- **Dync 动态绑定**：通过 `Dync[T]` 绑定配置，自动刷新
+
+> 自包含：示例内置一个 mock Apollo 服务（agollo 驱动的 meta、configfiles、
+> configs 与 notifications/v2 端点），无需 docker，也无需真实 Apollo 栈。
 
 ## 手动验证
 
@@ -28,5 +34,7 @@ curl -fsS -X POST 'http://127.0.0.1:18080/publish?value=manual-1'
 ## 冒烟测试
 
 ```bash
-./check.sh   # 冒烟测试
+./check.sh
 ```
+
+`check.sh` 运行示例（mock 由示例自身启动），冷加载取值、发布新值并验证配置刷新，退出码 0 表示通过。

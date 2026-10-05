@@ -49,6 +49,11 @@ const backendAddr = "127.0.0.1:18080"
 
 func main() {
 	flag.Parse()
+	// Unset env vars that leak from the developer shell so runs are reproducible
+	// and consistent with sibling examples.
+	_ = os.Unsetenv("_")
+	_ = os.Unsetenv("TERM")
+	_ = os.Unsetenv("TERM_SESSION_ID")
 
 	// In-process backend the declarative client calls. Dedicated ServeMux so it
 	// never clashes with the gs built-in server.

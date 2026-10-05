@@ -137,6 +137,11 @@ func newDB() (*gorm.DB, error) {
 var demoDB *gorm.DB
 
 func main() {
+	// Unset env vars that leak from the developer shell so runs are reproducible
+	// and consistent with sibling examples.
+	_ = os.Unsetenv("_")
+	_ = os.Unsetenv("TERM")
+	_ = os.Unsetenv("TERM_SESSION_ID")
 	go func() {
 		time.Sleep(500 * time.Millisecond)
 		runTest()

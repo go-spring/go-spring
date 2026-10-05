@@ -19,6 +19,7 @@
 // parsing the DSN into a taosWS connector, wrapping it in the guarded
 // connector/conn pair, and building the *sql.DB pool. It mirrors
 // starter-gorm-mysql's driver shape.
+
 package StarterTdengine
 
 import (

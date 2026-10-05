@@ -18,6 +18,7 @@
 // interface + the bundled DefaultDriver, which owns full client assembly
 // (including service-discovery resolution). It mirrors starter-redigo's
 // driver.go.
+
 package StarterMemcached
 
 import (

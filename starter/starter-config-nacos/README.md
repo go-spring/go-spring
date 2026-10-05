@@ -60,7 +60,7 @@ type Demo struct {
 
 When the remote config changes, the provider's change listener triggers an
 application property refresh, and all bound `gs.Dync` fields are updated
-atomically. See [example-config](example/main.go) for the full
+atomically. See [example](example/main.go) for the full
 publish to hot-reload flow.
 
 ## How It Works
@@ -72,16 +72,6 @@ publish to hot-reload flow.
   process-level `gs.RefreshProperties()` facade. That reloads all configuration
   sources (re-running this provider) and re-binds every `gs.Dync` field via a
   two-phase, atomic commit.
-### Log tag
-
-Runtime logs from this module carry the tag `_app_config_nacos` (nacos config source). Tune them independently of the
-main log by binding a logger to the tag:
-
-```properties
-logger.config_nacos.type=Logger
-logger.config_nacos.level=WARN
-logger.config_nacos.tag=_app_config_nacos
-```
 
 ## Design Notes
 
@@ -95,3 +85,16 @@ process-level `gs.RefreshProperties()` facade rather than bean wiring.
 **Config-only role — intentional.** Nacos config and Nacos naming live at
 different layers, so this starter covers the config center only — mirroring
 Spring Cloud Alibaba's `nacos-config` / `nacos-discovery` split.
+
+### Log tag
+
+Runtime logs from this module carry the tag `_app_config_nacos` (nacos config source). Tune them independently of the
+main log by binding a logger to the tag:
+
+```properties
+logger.config_nacos.type=Logger
+logger.config_nacos.level=WARN
+logger.config_nacos.tag=_app_config_nacos
+```
+
+Full reference (per-key semantics, assembly timing, fault drills): [USAGE.md](USAGE.md).

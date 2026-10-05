@@ -60,7 +60,7 @@ func newWatchCore() watchCore {
 
 // stop cancels the watch generation and clears the dedup set. The controller's
 // Close calls it and then closes the clients on its own side.
-func (w *watchCore) stop() {
+func (w *watchCore) Close() {
 	w.mu.Lock()
 	w.cancel()
 	w.ctx, w.cancel = context.WithCancel(context.Background())
@@ -76,7 +76,7 @@ func (w *watchCore) stop() {
 	}
 }
 
-// registerWatcher installs an etcd change watcher for the given key,
+// registerWatch installs an etcd change watcher for the given key,
 // deduplicated across repeated Load calls. since is the revision the initial
 // read observed (0 when unknown): the watch resumes from there so a change
 // landing right after that read is delivered rather than skipped. optional
@@ -84,7 +84,7 @@ func (w *watchCore) stop() {
 // key is an expected transition (its properties simply disappear), while
 // deleting a required one leaves the last snapshot in place, which the watcher
 // surfaces as a warning.
-func (w *watchCore) registerWatcher(cli etcdAPI, cs configSource, optional bool, since int64) {
+func (w *watchCore) registerWatch(cli etcdClient, cs configSource, optional bool, since int64) {
 	lk := clientKey(cs) + "|" + cs.key
 
 	w.mu.Lock()
@@ -123,7 +123,7 @@ const failLogInterval = 5 * time.Minute
 // during the gap is replayed rather than lost, and it throttles the failure
 // alarm: a failure warns, a sustained one re-warns every failLogEvery
 // consecutive failures, and recovery logs once.
-func watchLoop(wctx context.Context, cli etcdAPI, cs configSource, optional bool, since int64) {
+func watchLoop(wctx context.Context, cli etcdClient, cs configSource, optional bool, since int64) {
 	// failLogEvery is how many failure events pass between alarm logs, derived
 	// from the alarm cadence and the retry cadence so a sustained failure
 	// re-warns about every failLogInterval. Clamped to at least 1, so a retry

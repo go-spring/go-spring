@@ -85,7 +85,7 @@ type Demo struct {
 
 When the secret changes, the provider's polling watcher triggers an application
 property refresh, and all bound `gs.Dync` fields are updated atomically. See
-[example-config](example/main.go) for the full write to hot-reload
+[example](example/main.go) for the full write to hot-reload
 flow.
 
 ## Property-level decryption
@@ -154,6 +154,7 @@ works even when the secret does not exist yet.
 the query string, `VAULT_TOKEN`, or a token file — never from a
 `spring.config.vault.*` property. A decryption seam that itself reads
 properties could otherwise enter a chicken-and-egg loop with the token.
+
 ### Log tag
 
 Runtime logs from this module carry the tag `_app_config_vault` (vault config source). Tune them independently of the
@@ -164,3 +165,5 @@ logger.config_vault.type=Logger
 logger.config_vault.level=WARN
 logger.config_vault.tag=_app_config_vault
 ```
+
+Full reference (per-key semantics, assembly timing, fault drills): [USAGE.md](USAGE.md).

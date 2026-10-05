@@ -48,6 +48,11 @@ var manual = flag.Bool("manual", false, "run in manual verification mode (server
 
 func main() {
 	flag.Parse()
+	// Unset env vars that leak from the developer shell so runs are reproducible
+	// and consistent with sibling examples.
+	_ = os.Unsetenv("_")
+	_ = os.Unsetenv("TERM")
+	_ = os.Unsetenv("TERM_SESSION_ID")
 	// mgrA and mgrB share ONE Redis-backed store. They model two replicas: no
 	// in-process state is shared between them, only Redis. What A writes, B reads.
 	gs.Provide(func(store session.SessionStore) *gs.HttpServeMux {

@@ -58,7 +58,8 @@ type Demo struct {
 
 When the remote namespace changes, the provider's change listener triggers an
 application property refresh and every bound `gs.Dync` field is re-bound
-atomically.
+atomically. See [example](example/main.go) for the full publish to hot-reload
+flow.
 
 ## How It Works
 
@@ -103,7 +104,4 @@ logger.config_apollo.level=WARN
 logger.config_apollo.tag=_app_config_apollo
 ```
 
-## Limitations
-
-- No `governance.Source` integration yet; if Apollo should back governance
-  rules, follow the `governance.go` pattern in `starter-config-nacos`.
+Full reference (per-key semantics, assembly timing, fault drills): [USAGE.md](USAGE.md).

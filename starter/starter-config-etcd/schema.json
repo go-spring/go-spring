@@ -1,12 +1,13 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "spring.config.import (etcd://...)",
-  "description": "Etcd KV remote configuration provider. Configured via spring.config.import URL.",
+  "title": "spring.config.import (etcd)",
   "type": "object",
+  "description": "The etcd provider has no bound prefix; it is consumed via spring.config.import=optional:etcd:<host>:<port>/<key>?username=&password=&format=&dial-timeout=&retry-ms=",
   "properties": {
-    "etcd-url": {
-      "type": "string",
-      "description": "URL format: etcd://host:port/path/to/key?username=..&password=..&format=..&dial-timeout=..&retry-ms=5000"
-    }
+    "username": { "type": "string" },
+    "password": { "type": "string" },
+    "format": { "type": "string", "description": "properties/yaml/json/toml; default inferred from the key extension, else properties" },
+    "dial-timeout": { "type": "string", "description": "dial timeout as a Go duration; default 5s" },
+    "retry-ms": { "type": "string", "description": "watcher retry interval in milliseconds; default 5000" }
   }
 }

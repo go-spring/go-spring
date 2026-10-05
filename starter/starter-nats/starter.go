@@ -17,6 +17,7 @@
 // starter.go is the gs registration + glue concept: it binds each
 // ${spring.nats} entry to a *Conn bean (built by newConn in driver.go) and its
 // destroy callback ((*Conn).Close in client.go).
+
 package StarterNats
 
 import (

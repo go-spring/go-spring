@@ -20,6 +20,7 @@
 // under the resilience executor, the adapter layer injects the W3C trace context
 // and makes the wire call. This wrapper replaces the earlier per-connection
 // guard registry: the chain travels with the client, not a package-global map.
+
 package StarterRabbitMQ
 
 import (

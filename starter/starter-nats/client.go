@@ -20,6 +20,7 @@
 // under the resilience executor, the adapter layer does the wire call. The
 // live-health probe lives in health.go; consume keeps a hand-written wrapper
 // (see command.go for why its per-delivery pipeline cannot ride the chain).
+
 package StarterNats
 
 import (

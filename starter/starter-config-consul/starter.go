@@ -43,9 +43,9 @@ func init() {
 	conf.RegisterProvider("consul", newConsulCtrl())
 }
 
-// kvAPI is the slice of the Consul API surface this starter consumes. It
+// consulClient is the slice of the Consul API surface this starter consumes. It
 // exists so tests can fake the KV backend without a live Consul agent.
-type kvAPI interface {
+type consulClient interface {
 	Get(key string, q *api.QueryOptions) (*api.KVPair, *api.QueryMeta, error)
 }
 
@@ -56,12 +56,12 @@ type kvAPI interface {
 type consulCtrl struct {
 	watch    watchCore
 	clientMu sync.Mutex
-	clients  map[string]kvAPI
+	clients  map[string]consulClient
 }
 
 func newConsulCtrl() *consulCtrl {
 	return &consulCtrl{
-		clients: map[string]kvAPI{},
+		clients: map[string]consulClient{},
 		watch:   newWatchCore(),
 	}
 }
@@ -154,7 +154,7 @@ func clientKey(cs configSource) string {
 
 // clientFor returns a cached KV handle for the source, creating one if
 // necessary.
-func (c *consulCtrl) clientFor(ctx context.Context, cs configSource) (kvAPI, error) {
+func (c *consulCtrl) clientFor(ctx context.Context, cs configSource) (consulClient, error) {
 	key := clientKey(cs)
 
 	c.clientMu.Lock()
@@ -227,7 +227,7 @@ func (c *consulCtrl) Load(ctx context.Context, optional bool, source string) (ma
 // and parses it into flattened properties. It also returns the KV index the read
 // observed (0 when unknown), which the caller seeds the watcher with so the
 // watch resumes from exactly there.
-func loadFromClient(ctx context.Context, cli kvAPI, cs configSource, optional bool) (map[string]string, uint64, error) {
+func loadFromClient(ctx context.Context, cli consulClient, cs configSource, optional bool) (map[string]string, uint64, error) {
 	pair, meta, err := cli.Get(cs.kvPath, &api.QueryOptions{Datacenter: cs.datacenter})
 	var since uint64
 	if meta != nil {

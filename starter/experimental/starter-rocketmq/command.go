@@ -37,6 +37,7 @@
 // EndSpan) stay for apps that drive a raw send or consumer themselves; a call
 // routed through GuardedSend or the driver DECLARES its operation instead and is
 // emitted by the resilience layer, so do not wrap both around the same call.
+
 package StarterRocketmq
 
 import (

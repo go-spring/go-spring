@@ -20,6 +20,7 @@
 // on the transport chain that sees a whole call (retries included). This file
 // therefore holds no emission code: only the vocabulary this starter alone
 // knows, because only it knows these requests reach an Elasticsearch cluster.
+
 package StarterElasticsearch
 
 import (

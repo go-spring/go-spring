@@ -151,3 +151,5 @@ logger.config_file.type=Logger
 logger.config_file.level=WARN
 logger.config_file.tag=_app_config_file
 ```
+
+完整参考（逐 key 语义、装配时序、故障演练）见 [USAGE_CN.md](USAGE_CN.md)。

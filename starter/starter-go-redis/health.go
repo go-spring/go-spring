@@ -17,6 +17,7 @@
 // health.go builds this starter's health.Indicator beans: one per configured
 // instance, exported so an application that also imports starter-actuator gets
 // Redis readiness folded into /readiness with no extra wiring.
+
 package StarterGoRedis
 
 import (

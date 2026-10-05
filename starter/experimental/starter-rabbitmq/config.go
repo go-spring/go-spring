@@ -16,6 +16,7 @@
 
 // config.go is the config concept: the per-instance Config bound under
 // ${spring.rabbitmq}.*.
+
 package StarterRabbitMQ
 
 import (

@@ -93,3 +93,5 @@ logger.config_etcd.type=Logger
 logger.config_etcd.level=WARN
 logger.config_etcd.tag=_app_config_etcd
 ```
+
+完整参考（逐 key 语义、装配时序、故障演练）见 [USAGE_CN.md](USAGE_CN.md)。

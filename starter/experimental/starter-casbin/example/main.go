@@ -93,6 +93,11 @@ var manual = flag.Bool("manual", false, "run in manual verification mode (server
 
 func main() {
 	flag.Parse()
+	// Unset env vars that leak from the developer shell so runs are reproducible
+	// and consistent with sibling examples.
+	_ = os.Unsetenv("_")
+	_ = os.Unsetenv("TERM")
+	_ = os.Unsetenv("TERM_SESSION_ID")
 	// Seed a writable policy file from the checked-in fixture, then contribute
 	// the adapter + watcher the config names ("file"/"local") as ordinary beans.
 	// The starter's Module injects them by name, so there is no global registry.

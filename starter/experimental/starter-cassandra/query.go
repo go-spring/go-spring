@@ -22,6 +22,7 @@
 // resilience executor, and the adapter layer executes the builder's current
 // *gocql.Query. A custom layer may wrap the chain head to modify what a
 // statement does — the rewrites are what the identity layer declares.
+
 package StarterCassandra
 
 import (

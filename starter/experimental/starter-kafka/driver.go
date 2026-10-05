@@ -18,6 +18,7 @@
 // interface + the bundled DefaultDriver, which owns full client assembly
 // (SASL/TLS/hooks/producer opts + kgo.NewClient). It mirrors starter-redigo's
 // driver.go.
+
 package StarterKafka
 
 import (
