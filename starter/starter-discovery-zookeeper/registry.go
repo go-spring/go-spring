@@ -326,8 +326,7 @@ func (r *zkRegistry) healAll() {
 		default:
 		}
 		if service, err := r.reRegisterAll(); err == nil {
-			log.Info(ctx, starterTag,
-				log.Msg("re-created registered zookeeper node(s) after session recovery"))
+			log.Infof(ctx, starterTag, "re-created registered zookeeper node(s) after session recovery")
 			return
 		} else {
 			log.Error(ctx, starterTag, err,

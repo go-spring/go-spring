@@ -169,7 +169,10 @@ The listener is registered **before** the fetch, unconditionally. If `ListenConf
 were only installed after a successful `GetConfig`, an `optional:` import against a
 data id that does not exist yet would return early and never install the listener —
 a later publish would never trigger a refresh. This ordering is why `optional:`
-imports still hot-reload once the data id appears (starter.go:323).
+imports still hot-reload once the data id appears (starter.go:323). A failed
+`ListenConfig` is then retried in the background every `retry-ms` until it
+succeeds — a one-shot attempt would otherwise leave hot-reload off until some
+unrelated refresh re-ran the import.
 
 ### 2.3 Governance rules-push path (moved out)
 
@@ -197,6 +200,7 @@ per import entry; list multiple imports space/comma-separated in `spring.config.
 | `username` / `password` | string | empty | Server auth; also part of the client cache key. | Missing on an auth-enabled server → GetConfig error at startup (or skip if optional). |
 | `format` | string | dataId extension, else `properties` | One of the reader's formats: `properties` / `yaml` / `toml` / `json`. Extension-less dataIds default to properties (starter.go:179). | Content/format mismatch → startup error `parse nacos config ... as <fmt> failed` (pinned by `TestLoadParseErrorPropagates`). |
 | `timeout-ms` | uint64 | `5000` | SDK request timeout per source (starter.go:183). Non-numeric rejected at parse. | Too low → flaky startup against a slow Nacos. |
+| `retry-ms` | int | `2000` | Install-retry interval after a failed `ListenConfig` (starter.go:167), in ms and ≥ 1. Non-numeric or ≤ 0 rejected at parse. | Too large → a transient install failure keeps hot-reload off for longer. |
 
 ⚠ There is **no** `endpoint` query param and no cluster/address-list form — server is always a
 single `host:port`.
@@ -245,6 +249,7 @@ Governance rule sourcing from Nacos now lives in its own module,
 | `nacos:/app.yaml` (no host) | startup error `missing nacos server address` |
 | `nacos:127.0.0.1:8848` (no dataId) | startup error `missing data id` |
 | `...?timeout-ms=abc` | startup error `invalid timeout-ms` (parse-time rejection) |
+| `...?retry-ms=abc` | startup error `invalid retry-ms` (parse-time rejection) |
 | required import, dataId absent | startup error `get nacos config ... failed` / `is empty` |
 | `optional:` + any of the above fetch failures | warn log, app starts without those keys |
 

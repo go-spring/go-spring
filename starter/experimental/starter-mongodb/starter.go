@@ -112,9 +112,7 @@ func newClient(ctx *gs.ContextProvider, c Config, discoveryLabel string,
 		log.String("uri", c.URI),
 		log.String("service_name", c.ServiceName))
 
-	log.Debug(cctx, log.TagAppDef, func() []log.Field {
-		return []log.Field{log.Msg("creating mongodb client")}
-	})
+	log.Debugf(cctx, log.TagAppDef, "creating mongodb client")
 
 	// Resolve the entry's ${discovery} label against the center's directory. A
 	// label that names nothing (including the "none" sentinel) reads a nil
@@ -158,7 +156,7 @@ func newClient(ctx *gs.ContextProvider, c Config, discoveryLabel string,
 	}
 	tlsCfg, err := c.TLS.BuildClient()
 	if err != nil {
-		log.Error(cctx, log.TagAppDef, err, log.Msg("mongodb: build TLS failed"))
+		log.Errorf(cctx, log.TagAppDef, err, "mongodb: build TLS failed")
 		return nil, errutil.Explain(err, "mongodb: build TLS")
 	}
 	if tlsCfg != nil {
@@ -176,7 +174,7 @@ func newClient(ctx *gs.ContextProvider, c Config, discoveryLabel string,
 	var baseDial func(ctx context.Context, network, address string) (net.Conn, error)
 	pool, err := newPickPool(ctx.Context, c, backend)
 	if err != nil {
-		log.Error(cctx, log.TagAppDef, err, log.Msg("mongodb: build discovery resolver failed"))
+		log.Errorf(cctx, log.TagAppDef, err, "mongodb: build discovery resolver failed")
 		return nil, err
 	}
 	if pool != nil {
@@ -208,7 +206,7 @@ func newClient(ctx *gs.ContextProvider, c Config, discoveryLabel string,
 
 	raw, err := mongo.Connect(opts)
 	if err != nil {
-		log.Error(cctx, log.TagAppDef, err, log.Msg("mongodb: connect failed"))
+		log.Errorf(cctx, log.TagAppDef, err, "mongodb: connect failed")
 		return nil, errutil.Explain(err, "mongodb: create client")
 	}
 	// NewClient resolves the executor off the governance bundle and stores the
@@ -241,12 +239,12 @@ func newClient(ctx *gs.ContextProvider, c Config, discoveryLabel string,
 		pingCtx, cancel := pingContext(ctx.Context, c.ConnectTimeout)
 		defer cancel()
 		if err := HealthCheck(pingCtx, w); err != nil {
-			log.Error(cctx, log.TagAppDef, err, log.Msg("mongodb: ping failed"))
+			log.Errorf(cctx, log.TagAppDef, err, "mongodb: ping failed")
 			_ = w.Destroy()
 			return nil, errutil.Explain(err, "mongodb: ping %s", c.URI)
 		}
 	}
-	log.Info(cctx, log.TagAppDef, log.Msg("init mongodb client success"))
+	log.Infof(cctx, log.TagAppDef, "init mongodb client success")
 	return w, nil
 }
 

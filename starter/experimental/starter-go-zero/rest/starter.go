@@ -159,7 +159,7 @@ func (s *RestServer) Run(ctx context.Context, sig gs.ReadySignal) error {
 
 	<-sig.TriggerAndWait()
 
-	log.Info(ctx, log.TagAppDef, log.Msg("go-zero rest server starting"))
+	log.Infof(ctx, log.TagAppDef, "go-zero rest server starting")
 	errCh := make(chan error, 1)
 	go func() {
 		// Start binds the listener and blocks until Stop is called.

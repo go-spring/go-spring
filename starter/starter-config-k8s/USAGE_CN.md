@@ -116,8 +116,8 @@ kubectl edit configmap app-config            # 把 demo.message 改成 "v2"
 kubectl logs -f deploy/config-k8s-example    # 绑定的 gs.Dync 字段数秒内更新
 ```
 
-重载路径是真实的：对象上的 informer 在每次 add/update/delete 触发（`starter.go`），
-调用 `RefreshProperties`（`starter.go`），后者重跑整条 import 链并更新所有
+重载路径是真实的：对象上的 informer 在每次 add/update/delete 触发（`watch.go`），
+调用 `RefreshProperties`（`watch.go`），后者重跑整条 import 链并更新所有
 `gs.Dync[T]` 字段（`gs_app/app.go:234-256`）。单测 `TestHotReloadTriggersRefresh`
 （`starter_test.go`）用 fake clientset 证明了该触发。
 
@@ -141,36 +141,35 @@ gs.Run()
   │    3. 对每个条目，conf.Load 先剥离 [optional:]<provider>: 再调 provider
   │       (provider/provider.go:84-103) → k8sCtrl.Load
   │         a. parseSource (starter.go)
-  │         b. buildClient —— 集群内或 kubeconfig (starter.go)
+  │         b. clientFor —— 带缓存的 clientset，集群内或来自 kubeconfig (starter.go)
   │         c. 经 API server fetch 对象 (starter.go)
   │         d. ensureWatch —— informer 在返回前装好，初次读取之后立刻落下的
-  │            变更不会被漏掉 (starter.go)
+  │            变更不会被漏掉 (watch.go)
   │         e. parseEntries → flatten → 合入属性存储
   │    └─ 合并后的快照成为所有 value tag 绑定的属性存储
   ├─ 容器装配：控制器根本不是 bean；app.started 置 true (app.go:179-183)
   ├─ Runner/Server 启动；就绪
-  └─ SIGTERM → conf.CloseProviders(ctx) → k8sCtrl.Close → manager.stopAll()
+  └─ SIGTERM → conf.CloseProviders() → k8sCtrl.Close → manager.stopAll()
      停掉全部 informer
 ```
 
 为什么先于 bean：provider 的输出必须在 `value:` tag 解析之前就进入属性存储，这样来自
 ConfigMap 的 key 才能在首次装配时注入普通 bean 字段——这也是 `.env` 与所有 config
 provider 都跑在生命周期第 2 步、先于 starter 的原因。app 启动之前，
-`TriggerRefresh` 是无害 no-op（starter.go）：启动加载已捕获初始状态，且
+刷新是无害 no-op（watch.go）：启动加载已捕获初始状态，且
 `gs.RefreshProperties()` 门面在 `started` 之前本就返回错误（app.go:247-250）。
 
 ### 2.2 watch/refresh 路径逐层走读
 
-1. `ensureWatch` 按 `kind/namespace/name` 去重（`starter.go`）——同一对象被多次
+1. `ensureWatch` 按 `kind/namespace/name` 去重（`watch.go`）——同一对象被多次
    import 不会堆叠 informer。
 2. 创建命名空间限定、`metadata.name=` field selector 圈定单对象的
-   SharedInformerFactory，resync 周期为 0（纯事件驱动；`starter.go`），按 kind
+   SharedInformerFactory，resync 周期为 0（纯事件驱动；`watch.go`），按 kind
    挂在 ConfigMaps 或 Secrets 上。
-3. Add/Update/Delete 三个 handler 全部汇入 `k8sCtrl.TriggerRefresh`
-   （`starter.go`）。
+3. Add/Update/Delete 三个 handler 全部汇入 `k8sCtrl.trigger`
+   （`watch.go`）。
 4. watch 建立是 best-effort：handler 注册或 cache 同步失败时遗忘该 id（后续 Load 可
-   重试），只损失该对象的热刷新——静态快照仍会加载（`starter.go`，
-   `starter.go` 注释）。
+   重试），只损失该对象的热刷新——静态快照仍会加载（`watch.go`）。
 5. 启动完成后，每个事件调用 `gs.RefreshProperties()` → 全量
    `AppConfig.Refresh` → **每个** provider 重跑自己的 import（ConfigMap 被重新拉取而非
    diff）→ 原子换掉合并存储 → 所有 `gs.Dync[T]` 字段更新。只有 `gs.Dync[T]` 会热刷新；

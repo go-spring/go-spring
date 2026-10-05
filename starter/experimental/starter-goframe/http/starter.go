@@ -163,9 +163,9 @@ func (s *HTTPServer) initMetrics(svr *ghttp.Server, cfg Config) {
 // called, keeping the server bean alive for the container.
 func (s *HTTPServer) Run(ctx context.Context, sig gs.ReadySignal) error {
 	<-sig.TriggerAndWait()
-	log.Info(ctx, log.TagAppDef, log.Msg("goframe http server starting"))
+	log.Infof(ctx, log.TagAppDef, "goframe http server starting")
 	if err := s.svr.Start(); err != nil {
-		log.Error(ctx, log.TagAppDef, err, log.Msg("goframe http server start failed"))
+		log.Errorf(ctx, log.TagAppDef, err, "goframe http server start failed")
 		return err
 	}
 	<-s.done
@@ -176,7 +176,7 @@ func (s *HTTPServer) Run(ctx context.Context, sig gs.ReadySignal) error {
 // from etcd when a registry is set), flushes the metric provider if any with
 // the shutdown context, and unblocks Run.
 func (s *HTTPServer) Stop(ctx context.Context) error {
-	log.Info(ctx, log.TagAppDef, log.Msg("goframe http server shutting down"))
+	log.Infof(ctx, log.TagAppDef, "goframe http server shutting down")
 	err := s.svr.Shutdown()
 	if s.metricStop != nil {
 		_ = s.metricStop(ctx)

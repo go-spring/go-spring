@@ -91,14 +91,11 @@ func recoverBranch(ctx context.Context, b at.Branch) error {
 	var xids []string
 	if err := db.Model(&undoRow{}).Distinct().Order("xid").
 		Pluck("xid", &xids).Error; err != nil {
-		log.Error(ctx, log.TagAppDef, err,
-			log.Msg("at recovery: scanning undo logs failed (orphaned entries, if any, are left for manual recovery)"))
+		log.Errorf(ctx, log.TagAppDef, err, "at recovery: scanning undo logs failed (orphaned entries, if any, are left for manual recovery)")
 		return err
 	}
 	if len(xids) == 0 {
-		log.Debug(ctx, log.TagAppDef, func() []log.Field {
-			return []log.Field{log.Msg("at recovery: no orphaned undo logs")}
-		})
+		log.Debugf(ctx, log.TagAppDef, "at recovery: no orphaned undo logs")
 		return nil
 	}
 

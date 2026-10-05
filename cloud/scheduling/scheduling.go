@@ -437,8 +437,7 @@ func (t *task) loop(ctx context.Context) {
 			// the other lifecycle lines.
 			_, oneShot := t.job.trigger.(after)
 			if !oneShot && ctx.Err() == nil {
-				log.Warn(ctx, log.TagAppDef,
-					log.Msg("scheduler: job's trigger reports no further fire time"))
+				log.Warnf(ctx, log.TagAppDef, "scheduler: job's trigger reports no further fire time")
 			}
 			return
 		}
@@ -535,9 +534,7 @@ func (t *task) queueWorker(ctx context.Context, scheduled time.Time) {
 			if ctx.Err() != nil {
 				t.running = false
 				t.mu.Unlock()
-				log.Debug(ctx, log.TagAppDef, func() []log.Field {
-					return []log.Field{log.Msg("scheduler: queued fire dropped on stop")}
-				})
+				log.Debugf(ctx, log.TagAppDef, "scheduler: queued fire dropped on stop")
 				return
 			}
 			t.mu.Unlock()

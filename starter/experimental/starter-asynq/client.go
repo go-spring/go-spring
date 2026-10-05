@@ -156,7 +156,7 @@ func (o *Server) Run(ctx context.Context, sig gs.ReadySignal) error {
 // no context, so ctx is unused here - the drain is bounded by the configured
 // ShutdownTimeout.
 func (o *Server) Stop(ctx context.Context) error {
-	log.Info(ctx, log.TagAppDef, log.Msg("asynq worker shutting down"))
+	log.Infof(ctx, log.TagAppDef, "asynq worker shutting down")
 	o.srv.Shutdown()
 	return nil
 }

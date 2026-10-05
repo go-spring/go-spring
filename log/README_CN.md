@@ -154,6 +154,18 @@ log.Info(ctx, tag, log.String("user_id", "10001"), log.Msg("登录成功"))
 log.Infof(ctx, tag, "用户 %s 登录成功", userID)
 ```
 
+该用哪种风格：
+
+- **只有一条消息、不带字段** —— 用格式化版本（`Tracef` / `Debugf` / `Infof` / `Warnf` /
+  `Errorf` / `Fatalf`）。这些方法正是为这种场景提供的：用 `log.Msg(…)` 包一条消息只是徒增仪式。
+- **只要带了任意字段** —— 用结构化版本，消息作为最后一个字段：
+  `log.Info(ctx, tag, log.String("order_id", id), log.Msg("下单成功"))`。
+
+传给格式化版本的消息会被当作格式串，因此字面量 `%` 需写成 `%%`，否则就得改用结构化版本。
+`Error` 在两种风格下都把错误作为独立参数：`log.Errorf(ctx, tag, err, "…")` 与
+`log.Error(ctx, tag, err, log.String("k", v), log.Msg("…"))`；其余级别通过 `log.Err(err)`
+字段传入。
+
 常用字段构造函数：
 
 | 类别 | 函数 |

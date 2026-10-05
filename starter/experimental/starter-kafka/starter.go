@@ -111,7 +111,7 @@ func newClient(ctx *gs.ContextProvider, name string, c Config, d Driver,
 	}
 	raw, err := d.CreateClient(ctx.Context, c, cloud.ClientParams{Resilience: center.Resilience(), Fault: center.Fault()})
 	if err != nil {
-		log.Error(ctx.Context, log.TagAppDef, err, log.Msg("kafka: create client failed"))
+		log.Errorf(ctx.Context, log.TagAppDef, err, "kafka: create client failed")
 		return nil, errutil.Explain(err, "failed to create kafka client: %s", c.Brokers)
 	}
 
@@ -125,7 +125,7 @@ func newClient(ctx *gs.ContextProvider, name string, c Config, d Driver,
 		pingCtx, cancel := context.WithTimeout(ctx.Context, pingTimeout)
 		defer cancel()
 		if err = raw.Ping(pingCtx); err != nil {
-			log.Error(ctx.Context, log.TagAppDef, err, log.Msg("kafka: ping failed"))
+			log.Errorf(ctx.Context, log.TagAppDef, err, "kafka: ping failed")
 			_ = cl.Close()
 			return nil, errutil.Explain(err, "failed to ping kafka: %s", c.Brokers)
 		}

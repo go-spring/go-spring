@@ -304,7 +304,7 @@ func TestInjecting(t *testing.T) {
 		assert.That(t, s.Server.arg.readTimeout).Equal(0)
 		assert.That(t, s.Server.arg.writeTimeout).Equal(100)
 
-		err = r.RefreshProperties(flatten.NewPropertiesStorage(flatten.MapProperties(map[string]any{
+		err = r.RefreshProperties(context.Background(), flatten.NewPropertiesStorage(flatten.MapProperties(map[string]any{
 			"spring": map[string]any{
 				"force-autowire-is-nullable": true,
 			},

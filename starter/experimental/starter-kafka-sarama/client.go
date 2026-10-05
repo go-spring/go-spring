@@ -63,9 +63,7 @@ func newClient(ctx *gs.ContextProvider, name string, c Config, d Driver, center 
 	// constructor's.
 	cctx := log.WithFields(ctx.Context, log.String("brokers", c.Brokers))
 
-	log.Debug(cctx, log.TagAppDef, func() []log.Field {
-		return []log.Field{log.Msg("creating kafka sarama client")}
-	})
+	log.Debugf(cctx, log.TagAppDef, "creating kafka sarama client")
 
 	// No company Driver bean → fall back to the bundled default assembly.
 	if d == nil {
@@ -74,7 +72,7 @@ func newClient(ctx *gs.ContextProvider, name string, c Config, d Driver, center 
 	cl, err := d.CreateClient(ctx.Context, c,
 		cloud.ClientParams{Resilience: center.Resilience(), Fault: center.Fault()})
 	if err != nil {
-		log.Error(cctx, log.TagAppDef, err, log.Msg("kafka sarama: create client failed"))
+		log.Errorf(cctx, log.TagAppDef, err, "kafka sarama: create client failed")
 		return nil, errutil.Explain(err, "failed to create kafka client: %s", c.Brokers)
 	}
 	// The Driver returned the client complete — governance was attached while it
@@ -85,11 +83,11 @@ func newClient(ctx *gs.ContextProvider, name string, c Config, d Driver, center 
 			closeResilience(cl)
 			cl.Close()
 			err := errutil.Explain(nil, "kafka client has no brokers after metadata fetch: %s", c.Brokers)
-			log.Error(cctx, log.TagAppDef, err, log.Msg("kafka sarama: no brokers found"))
+			log.Errorf(cctx, log.TagAppDef, err, "kafka sarama: no brokers found")
 			return nil, err
 		}
 	}
-	log.Info(cctx, log.TagAppDef, log.Msg("create kafka sarama client success"))
+	log.Infof(cctx, log.TagAppDef, "create kafka sarama client success")
 	return cl, nil
 }
 

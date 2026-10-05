@@ -212,7 +212,7 @@ func (s *SimpleTrpcServer) Run(ctx context.Context, sig gs.ReadySignal) error {
 
 	<-sig.TriggerAndWait()
 
-	log.Info(ctx, log.TagAppDef, log.Msg("trpc server starting"))
+	log.Infof(ctx, log.TagAppDef, "trpc server starting")
 	errCh := make(chan error, 1)
 	go func() {
 		// Serve binds the listener and blocks until Close/ a signal.
@@ -222,7 +222,7 @@ func (s *SimpleTrpcServer) Run(ctx context.Context, sig gs.ReadySignal) error {
 	select {
 	case err = <-errCh:
 		if err != nil {
-			log.Error(ctx, log.TagAppDef, err, log.Msg("trpc server failed"))
+			log.Errorf(ctx, log.TagAppDef, err, "trpc server failed")
 		}
 		return errutil.Explain(err, "failed to serve on %s", s.cfg.Addr)
 	case <-s.done:

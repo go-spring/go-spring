@@ -93,7 +93,7 @@ func (d *Demo) criticalSection(ctx context.Context) error {
 	if err := held.Unlock(ctx); err != nil {
 		return errutil.Explain(err, "unlock jobs/rollup")
 	}
-	log.Info(ctx, log.TagAppDef, log.Msg("demo: finished critical section"))
+	log.Infof(ctx, log.TagAppDef, "demo: finished critical section")
 	return nil
 }
 
@@ -113,7 +113,7 @@ func (d *Demo) contendedSkip(ctx context.Context) error {
 	if ok {
 		return errutil.Explain(nil, "demo: contended TryAcquire unexpectedly succeeded")
 	}
-	log.Info(ctx, log.TagAppDef, log.Msg("demo: contended TryAcquire correctly skipped"))
+	log.Infof(ctx, log.TagAppDef, "demo: contended TryAcquire correctly skipped")
 	return nil
 }
 
@@ -137,7 +137,7 @@ func (d *Demo) electionHandover(ctx context.Context) error {
 	if err := waitLeader(first, true); err != nil {
 		return err
 	}
-	log.Info(ctx, log.TagAppDef, log.Msg("demo: first candidate became leader"))
+	log.Infof(ctx, log.TagAppDef, "demo: first candidate became leader")
 
 	stop()
 	if err := waitLeader(first, false); err != nil {
@@ -158,7 +158,7 @@ func (d *Demo) electionHandover(ctx context.Context) error {
 	if err := waitLeader(second, true); err != nil {
 		return err
 	}
-	log.Info(ctx, log.TagAppDef, log.Msg("demo: leadership handed over to the second candidate"))
+	log.Infof(ctx, log.TagAppDef, "demo: leadership handed over to the second candidate")
 	return nil
 }
 

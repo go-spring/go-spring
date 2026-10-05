@@ -151,7 +151,7 @@ gs.Run()
   │         └─ conf.Load → vaultController.Load(optional, source)   [starter.go:283]
   │              ├─ parseSource: "vault://"+source → URL → host, mount/path, query  [starter.go:150]
   │              ├─ resolveToken: ?token → VAULT_TOKEN → ?token-file / VAULT_TOKEN_FILE  [starter.go:207]
-  │              ├─ clientFor: cached api.Client per address|namespace|token         [starter.go:250]
+  │              ├─ clientFor: cached vaultAPI per address|namespace|token           [starter.go:235]
   │              ├─ registerWatch: spawn watchLoop goroutine (poll every poll-ms)    [starter.go:429]
   │              ├─ readSecret: KVv2(mount).Get / KVv1(mount).Get, 5s timeout       [starter.go:362]
   │              │    └─ 404 → nil data → optional? warn+skip : error "secret not found"
@@ -163,7 +163,7 @@ gs.Run()
   └─ steady state: each watchLoop ticks
        ├─ readSecret; on error → warn once (then debug), keep polling
        ├─ fingerprint(json.Marshal(data)) vs last loaded fingerprint
-       └─ changed → TriggerRefresh → gs.RefreshProperties()
+       └─ changed → observability.RefreshConf → gs.RefreshProperties()
             └─ re-runs the whole property load: imports re-resolve, Load re-reads the
                secret, layers rebuild, and gs.Dync[T] fields swap their values
 ```
@@ -175,7 +175,7 @@ Key timings verified from source:
   picked up without restart — *but only into `gs.Dync[T]` fields*; plain `value` tags are
   bound once and never re-read (gs refresh is Dync-only).
 - **Refresh is guarded by start state**: before the app has started,
-  `gs.RefreshProperties()` returns an error and `TriggerRefresh` is a harmless
+  `gs.RefreshProperties()` returns an error and the refresh is a harmless
   no-op — the startup load already captured the config (starter.go:128).
 - **Fingerprint is content-based** (`json.Marshal` of the KV data map): a KV v2 write that
   produces identical data does NOT trigger a refresh; KV v2 version numbers are ignored.
@@ -194,7 +194,7 @@ Key timings verified from source:
 `vault kv put secret/gs-config-demo application.properties="demo.message=rotated"` →
 
 1. next `watchLoop` tick (≤ poll-ms later) re-reads the secret;
-2. fingerprint differs from the one captured at load → `TriggerRefresh`;
+2. fingerprint differs from the one captured at load → the watcher fires the refresh;
 3. `RefreshProperties` re-runs the config pipeline: `spring.config.import` re-resolves,
    `Load` re-reads the (new) secret, updates the stored fingerprint;
 4. property layers rebuild top-down, `demo.message` now resolves to `rotated`;

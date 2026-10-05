@@ -72,8 +72,10 @@ func NewAppConfig() *AppConfig {
 }
 
 // Refresh refreshes the configuration by merging multiple sources.
-func (c *AppConfig) Refresh() (flatten.Storage, error) {
-	log.Debugf(context.Background(), log.TagAppDef, "refreshing configuration")
+// The context carries the refresh's cancellation and trace, and is passed
+// through to the configuration providers.
+func (c *AppConfig) Refresh(ctx context.Context) (flatten.Storage, error) {
+	log.Debugf(ctx, log.TagAppDef, "refreshing configuration")
 
 	if err := loadDotEnv(); err != nil {
 		return nil, errutil.Explain(err, "load .env file failed")
@@ -98,9 +100,9 @@ func (c *AppConfig) Refresh() (flatten.Storage, error) {
 	if err != nil {
 		return nil, errutil.Explain(err, "resolve spring.app.config.dir failed")
 	}
-	log.Debugf(context.Background(), log.TagAppDef, "config directory: %s", confDir)
+	log.Debugf(ctx, log.TagAppDef, "config directory: %s", confDir)
 
-	if err = loadFiles(l, confDir, nil); err != nil {
+	if err = loadFiles(ctx, l, confDir, nil); err != nil {
 		return nil, errutil.Explain(err, "load base config files failed")
 	}
 
@@ -111,12 +113,12 @@ func (c *AppConfig) Refresh() (flatten.Storage, error) {
 	}
 	activeProfiles := dedupe(strings.Split(strActiveProfiles, ","))
 	if len(activeProfiles) > 0 {
-		log.Debugf(context.Background(), log.TagAppDef, "active profiles: %v", activeProfiles)
-		if err = loadFiles(l, confDir, activeProfiles); err != nil {
+		log.Debugf(ctx, log.TagAppDef, "active profiles: %v", activeProfiles)
+		if err = loadFiles(ctx, l, confDir, activeProfiles); err != nil {
 			return nil, errutil.Explain(err, "load profile config files %v failed", activeProfiles)
 		}
 	}
-	log.Debugf(context.Background(), log.TagAppDef, "configuration refresh complete")
+	log.Debugf(ctx, log.TagAppDef, "configuration refresh complete")
 
 	c.Layered.Store(l)
 	return l, nil
@@ -146,7 +148,7 @@ func dedupe(arr []string) []string {
 //
 // Non-existent files are skipped, while other loading errors abort the process.
 // Loaded files may declare additional imports via spring.config.import.
-func loadFiles(l *flatten.LayeredStorage, dir string, activeProfiles []string) error {
+func loadFiles(ctx context.Context, l *flatten.LayeredStorage, dir string, activeProfiles []string) error {
 	extensions := []string{".properties", ".yaml", ".yml", ".toml", ".tml", ".json"}
 
 	var files []string
@@ -170,18 +172,18 @@ func loadFiles(l *flatten.LayeredStorage, dir string, activeProfiles []string) e
 		}
 
 		// Load the file
-		p, err := conf.Load(filename)
+		p, err := conf.Load(ctx, filename)
 		if err != nil {
 			// Don't use `os.IsNotExist`
 			if errors.Is(err, os.ErrNotExist) {
-				log.Tracef(context.Background(), log.TagAppDef, "config file not found, skipping: %s", filename)
+				log.Tracef(ctx, log.TagAppDef, "config file not found, skipping: %s", filename)
 				continue
 			}
-			log.Errorf(context.Background(), log.TagAppDef, err, "load config file %s failed", filename)
+			log.Errorf(ctx, log.TagAppDef, err, "load config file %s failed", filename)
 			return errutil.Explain(err, "load config file %s failed", filename)
 		}
 
-		log.Debugf(context.Background(), log.TagAppDef, "loaded config file: %s", filename)
+		log.Debugf(ctx, log.TagAppDef, "loaded config file: %s", filename)
 
 		// Add the file to the layered storage
 		if activeProfiles == nil {
@@ -191,7 +193,7 @@ func loadFiles(l *flatten.LayeredStorage, dir string, activeProfiles []string) e
 		}
 
 		// Load file imports; later-loaded sources override earlier ones
-		if err = loadFileImports(l, p, activeProfiles); err != nil {
+		if err = loadFileImports(ctx, l, p, activeProfiles); err != nil {
 			return errutil.Explain(err, "load imports for config file %s failed", filename)
 		}
 	}
@@ -204,7 +206,7 @@ func loadFiles(l *flatten.LayeredStorage, dir string, activeProfiles []string) e
 // Only one level of import is processed: imports declared inside an
 // imported file are silently ignored (the imported file's own
 // spring.config.import key is never read).
-func loadFileImports(l *flatten.LayeredStorage, p *flatten.Properties, activeProfiles []string) error {
+func loadFileImports(ctx context.Context, l *flatten.LayeredStorage, p *flatten.Properties, activeProfiles []string) error {
 	var i struct {
 		Imports []string `value:"${spring.config.import:=}"`
 	}
@@ -216,11 +218,11 @@ func loadFileImports(l *flatten.LayeredStorage, p *flatten.Properties, activePro
 		if err != nil {
 			return errutil.Explain(err, "resolve import path %s failed", source)
 		}
-		c, err := conf.Load(str)
+		c, err := conf.Load(ctx, str)
 		if err != nil {
 			return errutil.Explain(err, "load import file %s failed", str)
 		}
-		log.Debugf(context.Background(), log.TagAppDef, "loaded imported config file: %s", str)
+		log.Debugf(ctx, log.TagAppDef, "loaded imported config file: %s", str)
 		if activeProfiles == nil {
 			l.AddStorage(flatten.StorageAppFile, flatten.NewPropertiesStorage(c), str)
 		} else {

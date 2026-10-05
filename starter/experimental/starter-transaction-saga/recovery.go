@@ -49,7 +49,7 @@ func newRecoveryRunner() *recoveryRunner { return &recoveryRunner{} }
 func (r *recoveryRunner) Run(ctx context.Context) error {
 	pending, err := r.Store.Pending(ctx)
 	if err != nil {
-		log.Error(ctx, log.TagAppDef, err, log.Msg("saga recovery: scanning pending sagas failed"))
+		log.Errorf(ctx, log.TagAppDef, err, "saga recovery: scanning pending sagas failed")
 		return nil
 	}
 	for _, snap := range pending {
@@ -69,7 +69,7 @@ func (r *recoveryRunner) Run(ctx context.Context) error {
 		}
 		res, err := r.Coord.Recover(sagaCtx, transaction.Saga{ID: snap.ID, Method: snap.Method, Steps: steps})
 		if err != nil {
-			log.Error(sagaCtx, log.TagAppDef, err, log.Msg("saga recovery: recovering saga failed"))
+			log.Errorf(sagaCtx, log.TagAppDef, err, "saga recovery: recovering saga failed")
 			continue
 		}
 		log.Info(sagaCtx, log.TagAppDef,

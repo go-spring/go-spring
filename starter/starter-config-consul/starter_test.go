@@ -126,7 +126,7 @@ func TestLoadProperties(t *testing.T) {
 	fake := newFakeKV().result(&api.KVPair{Value: []byte("greeting=hello\nnum=42\n")}, 1, nil)
 	c, err := newCtrlWithFake("127.0.0.1:8500/app.properties", fake)
 	assert.That(t, err).Nil()
-	m, err := c.Load(false, "127.0.0.1:8500/app.properties")
+	m, err := c.Load(context.Background(), false, "127.0.0.1:8500/app.properties")
 	assert.That(t, err).Nil()
 	assert.That(t, m["greeting"]).Equal("hello")
 	assert.That(t, m["num"]).Equal("42")
@@ -137,7 +137,7 @@ func TestLoadOptionalSkipsOnFetchFailureMissingAndEmpty(t *testing.T) {
 	fakeErr := newFakeKV().result(nil, 0, errors.New("down"))
 	c, err := newCtrlWithFake("127.0.0.1:8500/app.properties", fakeErr)
 	assert.That(t, err).Nil()
-	m, err := c.Load(true, "127.0.0.1:8500/app.properties")
+	m, err := c.Load(context.Background(), true, "127.0.0.1:8500/app.properties")
 	assert.That(t, err).Nil()
 	assert.That(t, len(m)).Equal(0)
 
@@ -145,23 +145,23 @@ func TestLoadOptionalSkipsOnFetchFailureMissingAndEmpty(t *testing.T) {
 	fakeMissing := newFakeKV().result(nil, 0, nil)
 	c2, err := newCtrlWithFake("127.0.0.1:8500/app.properties", fakeMissing)
 	assert.That(t, err).Nil()
-	m2, err := c2.Load(true, "127.0.0.1:8500/app.properties")
+	m2, err := c2.Load(context.Background(), true, "127.0.0.1:8500/app.properties")
 	assert.That(t, err).Nil()
 	assert.That(t, len(m2)).Equal(0)
 
 	fakeEmpty := newFakeKV().result(&api.KVPair{}, 0, nil)
 	c3, err := newCtrlWithFake("127.0.0.1:8500/app.properties", fakeEmpty)
 	assert.That(t, err).Nil()
-	m3, err := c3.Load(true, "127.0.0.1:8500/app.properties")
+	m3, err := c3.Load(context.Background(), true, "127.0.0.1:8500/app.properties")
 	assert.That(t, err).Nil()
 	assert.That(t, len(m3)).Equal(0)
 
 	// Non-optional propagates all three.
-	_, err = c.Load(false, "127.0.0.1:8500/app.properties")
+	_, err = c.Load(context.Background(), false, "127.0.0.1:8500/app.properties")
 	assert.That(t, err).NotNil()
-	_, err = c2.Load(false, "127.0.0.1:8500/app.properties")
+	_, err = c2.Load(context.Background(), false, "127.0.0.1:8500/app.properties")
 	assert.That(t, err).NotNil()
-	_, err = c3.Load(false, "127.0.0.1:8500/app.properties")
+	_, err = c3.Load(context.Background(), false, "127.0.0.1:8500/app.properties")
 	assert.That(t, err).NotNil()
 }
 
@@ -170,7 +170,7 @@ func TestLoadParseErrorPropagates(t *testing.T) {
 	fake := newFakeKV().result(&api.KVPair{Value: []byte("{not-json")}, 1, nil)
 	c, err := newCtrlWithFake("127.0.0.1:8500/app.json", fake)
 	assert.That(t, err).Nil()
-	_, err = c.Load(false, "127.0.0.1:8500/app.json")
+	_, err = c.Load(context.Background(), false, "127.0.0.1:8500/app.json")
 	assert.That(t, err).NotNil()
 }
 
@@ -182,12 +182,12 @@ func TestWatchRegisteredOncePerSource(t *testing.T) {
 	c, err := newCtrlWithFake("127.0.0.1:8500/app.properties", fake)
 	assert.That(t, err).Nil()
 	for i := 0; i < 2; i++ {
-		_, err = c.Load(false, "127.0.0.1:8500/app.properties")
+		_, err = c.Load(context.Background(), false, "127.0.0.1:8500/app.properties")
 		assert.That(t, err).Nil()
 	}
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	assert.That(t, len(c.listened)).Equal(1)
+	c.watch.mu.Lock()
+	defer c.watch.mu.Unlock()
+	assert.That(t, len(c.watch.listened)).Equal(1)
 }
 
 func TestWatchLoopAdvancesIndex(t *testing.T) {
@@ -201,8 +201,7 @@ func TestWatchLoopAdvancesIndex(t *testing.T) {
 		result(&api.KVPair{Value: []byte("a=1\n")}, 5, nil).
 		result(&api.KVPair{Value: []byte("a=2\n")}, 9, nil)
 
-	c := newConsulCtrl()
-	go c.watchLoop(context.Background(), fake, configSource{kvPath: "app.properties"}, false)
+	go watchLoop(context.Background(), fake, configSource{kvPath: "app.properties"}, false, 0)
 
 	deadline := time.Now().Add(5 * time.Second)
 	for fake.done() < 3 && time.Now().Before(deadline) {
@@ -211,38 +210,31 @@ func TestWatchLoopAdvancesIndex(t *testing.T) {
 	assert.That(t, fake.done()).Equal(3)
 }
 
-func TestTriggerRefreshNilRefresherIsNoop(t *testing.T) {
-	// Before the app has started, the gs.RefreshProperties facade returns an
-	// error and the change is dropped — a Consul index bump must be harmless.
-	c := newConsulCtrl()
-	c.TriggerRefresh(context.Background())
-}
-
 func TestCloseStopsWatchersAndRearms(t *testing.T) {
 	// Close cancels the watch generation and clears the dedup set; the next
 	// Load re-arms (fresh generation) and registers the watch again.
 	fake := newFakeKV().result(&api.KVPair{Value: []byte("a=1\n")}, 1, nil)
 	c, err := newCtrlWithFake("127.0.0.1:8500/app.properties", fake)
 	assert.That(t, err).Nil()
-	_, err = c.Load(false, "127.0.0.1:8500/app.properties")
+	_, err = c.Load(context.Background(), false, "127.0.0.1:8500/app.properties")
 	assert.That(t, err).Nil()
 
 	ctx := c.currentCtx()
 
-	assert.That(t, c.Close(context.Background())).Nil()
+	c.Close()
 	assert.That(t, ctx.Err()).NotNil() // generation canceled: loops see it and exit
 
-	c.mu.Lock()
-	assert.That(t, len(c.listened)).Equal(0)
-	c.mu.Unlock()
+	c.watch.mu.Lock()
+	assert.That(t, len(c.watch.listened)).Equal(0)
+	c.watch.mu.Unlock()
 
 	// A Load after Close re-arms and re-watches.
-	_, err = c.Load(false, "127.0.0.1:8500/app.properties")
+	_, err = c.Load(context.Background(), false, "127.0.0.1:8500/app.properties")
 	assert.That(t, err).Nil()
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	assert.That(t, len(c.listened)).Equal(1)
-	assert.That(t, c.ctx.Err()).Nil()
+	c.watch.mu.Lock()
+	defer c.watch.mu.Unlock()
+	assert.That(t, len(c.watch.listened)).Equal(1)
+	assert.That(t, c.watch.ctx.Err()).Nil()
 }
 
 func TestWatchLoopExitsOnCancelAndRetriesThroughFailures(t *testing.T) {
@@ -257,8 +249,7 @@ func TestWatchLoopExitsOnCancelAndRetriesThroughFailures(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
-	c := newConsulCtrl()
-	go func() { c.watchLoop(ctx, fake, configSource{kvPath: "app.properties"}, false); close(done) }()
+	go func() { watchLoop(ctx, fake, configSource{kvPath: "app.properties"}, false, 0); close(done) }()
 
 	deadline := time.Now().Add(5 * time.Second)
 	for fake.done() < 4 && time.Now().Before(deadline) {
@@ -291,16 +282,16 @@ func TestClientForCachesPerConnectionTuple(t *testing.T) {
 	assert.That(t, err).Nil()
 	assert.That(t, again).Equal(fake)
 
-	c.mu.Lock()
-	defer c.mu.Unlock()
+	c.watch.mu.Lock()
+	defer c.watch.mu.Unlock()
 	assert.That(t, len(c.clients)).Equal(1)
 }
 
 // currentCtx exposes the watch generation for lifecycle tests.
 func (c *consulCtrl) currentCtx() context.Context {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	return c.ctx
+	c.watch.mu.Lock()
+	defer c.watch.mu.Unlock()
+	return c.watch.ctx
 }
 
 // Compile-time guard: the real Consul KV handle satisfies the fake-able

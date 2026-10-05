@@ -21,20 +21,18 @@ import (
 	"errors"
 	"sync"
 	"testing"
+	"time"
 
-	"github.com/nacos-group/nacos-sdk-go/v2/clients/config_client"
 	"github.com/nacos-group/nacos-sdk-go/v2/vo"
 	"go-spring.org/stdlib/testing/assert"
 )
 
 // fakeConfigClient stands in for a nacos server: it serves one document and
-// records the installed listener. Unimplemented methods come from the embedded
-// interface (nil panics if wrongly touched). getErr/listenErr inject failures
-// for error-path tests; listens counts ListenConfig calls so listener-dedup can
-// be asserted; closes counts CloseClient calls for lifecycle tests.
+// records the installed listener. It implements exactly the nacosClient
+// surface the starter consumes. getErr/listenErr inject failures for error-path
+// tests; listens counts ListenConfig calls so listener-dedup can be asserted;
+// closes counts CloseClient calls for lifecycle tests.
 type fakeConfigClient struct {
-	config_client.IConfigClient
-
 	mu        sync.Mutex
 	data      string
 	getErr    error
@@ -62,6 +60,14 @@ func (f *fakeConfigClient) ListenConfig(p vo.ConfigParam) error {
 }
 
 func (f *fakeConfigClient) CancelListenConfig(vo.ConfigParam) error { return nil }
+
+// listensCount reads the counter under the lock: an install-retry goroutine may
+// still be running when a test checks it.
+func (f *fakeConfigClient) listensCount() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.listens
+}
 
 func (f *fakeConfigClient) CloseClient() {
 	f.mu.Lock()
@@ -132,7 +138,7 @@ func newCtrlWithFake(source string, fake *fakeConfigClient) (*nacosCtrl, error) 
 func TestLoadProperties(t *testing.T) {
 	c, err := newCtrlWithFake("127.0.0.1:8848/app.properties", &fakeConfigClient{data: "greeting=hello\nnum=42\n"})
 	assert.That(t, err).Nil()
-	m, err := c.Load(false, "127.0.0.1:8848/app.properties")
+	m, err := c.Load(context.Background(), false, "127.0.0.1:8848/app.properties")
 	assert.That(t, err).Nil()
 	assert.That(t, m["greeting"]).Equal("hello")
 	assert.That(t, m["num"]).Equal("42")
@@ -142,21 +148,21 @@ func TestLoadOptionalSkipsOnFetchFailureAndEmpty(t *testing.T) {
 	// optional:true turns a fetch error into a skip, not a startup failure.
 	c, err := newCtrlWithFake("127.0.0.1:8848/app.properties", &fakeConfigClient{getErr: errors.New("down")})
 	assert.That(t, err).Nil()
-	m, err := c.Load(true, "127.0.0.1:8848/app.properties")
+	m, err := c.Load(context.Background(), true, "127.0.0.1:8848/app.properties")
 	assert.That(t, err).Nil()
 	assert.That(t, len(m)).Equal(0)
 
 	// Same for an empty-but-present config.
 	c2, err := newCtrlWithFake("127.0.0.1:8848/app.properties", &fakeConfigClient{})
 	assert.That(t, err).Nil()
-	m2, err := c2.Load(true, "127.0.0.1:8848/app.properties")
+	m2, err := c2.Load(context.Background(), true, "127.0.0.1:8848/app.properties")
 	assert.That(t, err).Nil()
 	assert.That(t, len(m2)).Equal(0)
 
 	// Non-optional propagates both.
-	_, err = c.Load(false, "127.0.0.1:8848/app.properties")
+	_, err = c.Load(context.Background(), false, "127.0.0.1:8848/app.properties")
 	assert.That(t, err).NotNil()
-	_, err = c2.Load(false, "127.0.0.1:8848/app.properties")
+	_, err = c2.Load(context.Background(), false, "127.0.0.1:8848/app.properties")
 	assert.That(t, err).NotNil()
 }
 
@@ -164,13 +170,13 @@ func TestLoadParseErrorPropagates(t *testing.T) {
 	// Content that does not parse as the declared format must fail the load.
 	c, err := newCtrlWithFake("127.0.0.1:8848/app.json", &fakeConfigClient{data: "{not-json"})
 	assert.That(t, err).Nil()
-	_, err = c.Load(false, "127.0.0.1:8848/app.json")
+	_, err = c.Load(context.Background(), false, "127.0.0.1:8848/app.json")
 	assert.That(t, err).NotNil()
 }
 
 func TestLoadInvalidSourceFailsBeforeClient(t *testing.T) {
 	c := newNacosCtrl()
-	_, err := c.Load(false, "127.0.0.1:8848")
+	_, err := c.Load(context.Background(), false, "127.0.0.1:8848")
 	assert.That(t, err).NotNil()
 	// No client was created for the malformed source.
 	assert.That(t, len(c.clients)).Equal(0)
@@ -184,28 +190,36 @@ func TestListenerRegisteredOncePerSource(t *testing.T) {
 	// listener is registered exactly once — Nacos dedup keys are per
 	// client+group+dataId and a second ListenConfig would double-fire.
 	for i := 0; i < 2; i++ {
-		_, err = c.Load(false, "127.0.0.1:8848/app.properties")
+		_, err = c.Load(context.Background(), false, "127.0.0.1:8848/app.properties")
 		assert.That(t, err).Nil()
 	}
 	assert.That(t, fake.listens).Equal(1)
 }
 
-func TestListenerFailureRetriedOnNextLoad(t *testing.T) {
-	// A failed ListenConfig must not be remembered as installed: the next
-	// Load retries, otherwise the dataId would silently never hot-reload.
+func TestListenerInstallRetriedUntilItSucceeds(t *testing.T) {
+	// A failed ListenConfig must not leave hot-reload off until some unrelated
+	// Load — which may never come. The install keeps retrying in the background
+	// until it succeeds.
 	fake := &fakeConfigClient{data: "a=1\n", listenErr: errors.New("listen down")}
-	c, err := newCtrlWithFake("127.0.0.1:8848/app.properties", fake)
+	src := "127.0.0.1:8848/app.properties?retry-ms=10"
+	c, err := newCtrlWithFake(src, fake)
 	assert.That(t, err).Nil()
-	_, err = c.Load(false, "127.0.0.1:8848/app.properties")
-	assert.That(t, err).Nil() // load itself succeeds; only listening failed
-	assert.That(t, fake.listens).Equal(0)
+	defer c.Close()
 
+	_, err = c.Load(context.Background(), false, src)
+	assert.That(t, err).Nil() // load itself succeeds; only listening failed
+	assert.That(t, fake.listensCount()).Equal(0)
+
+	// No second Load: the background retry installs on its own.
 	fake.mu.Lock()
 	fake.listenErr = nil
 	fake.mu.Unlock()
-	_, err = c.Load(false, "127.0.0.1:8848/app.properties")
-	assert.That(t, err).Nil()
-	assert.That(t, fake.listens).Equal(1)
+
+	deadline := time.Now().Add(5 * time.Second)
+	for fake.listensCount() == 0 && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
+	assert.That(t, fake.listensCount()).Equal(1)
 }
 
 func TestListenerSeparatePerGroupAndDataID(t *testing.T) {
@@ -218,7 +232,7 @@ func TestListenerSeparatePerGroupAndDataID(t *testing.T) {
 		"127.0.0.1:8848/app.properties?group=OTHER",
 		"127.0.0.1:8848/other.properties",
 	} {
-		_, err = c.Load(false, src)
+		_, err = c.Load(context.Background(), false, src)
 		assert.That(t, err).Nil()
 	}
 	assert.That(t, fake.listens).Equal(3)
@@ -226,11 +240,11 @@ func TestListenerSeparatePerGroupAndDataID(t *testing.T) {
 
 func TestOnChangeCallbackIsSafeBeforeAppStart(t *testing.T) {
 	// A push delivered before the app started must be dropped harmlessly
-	// (gs.RefreshProperties errors, TriggerRefresh ignores it).
+	// (gs.RefreshProperties errors; the fire-and-check path ignores it).
 	fake := &fakeConfigClient{data: "a=1\n"}
 	c, err := newCtrlWithFake("127.0.0.1:8848/app.properties", fake)
 	assert.That(t, err).Nil()
-	_, err = c.Load(false, "127.0.0.1:8848/app.properties")
+	_, err = c.Load(context.Background(), false, "127.0.0.1:8848/app.properties")
 	assert.That(t, err).Nil()
 	assert.That(t, fake.onChange).NotNil()
 	fake.onChange("ns", "DEFAULT_GROUP", "app.properties", "a=2\n")
@@ -240,19 +254,21 @@ func TestCloseClosesClientsAndDropsCaches(t *testing.T) {
 	fake := &fakeConfigClient{data: "a=1\n"}
 	c, err := newCtrlWithFake("127.0.0.1:8848/app.properties", fake)
 	assert.That(t, err).Nil()
-	_, err = c.Load(false, "127.0.0.1:8848/app.properties")
+	_, err = c.Load(context.Background(), false, "127.0.0.1:8848/app.properties")
 	assert.That(t, err).Nil()
 
-	assert.That(t, c.Close(context.Background())).Nil()
+	c.Close()
 	assert.That(t, fake.closes).Equal(1)
-	c.mu.Lock()
+	c.clientMu.Lock()
 	assert.That(t, len(c.clients)).Equal(0)
-	assert.That(t, len(c.listened)).Equal(0)
-	assert.That(t, c.stopped).Equal(true)
-	c.mu.Unlock()
+	c.clientMu.Unlock()
+	c.watch.mu.Lock()
+	assert.That(t, len(c.watch.listened)).Equal(0)
+	assert.That(t, c.watch.ctx.Err()).Nil() // next generation already minted
+	c.watch.mu.Unlock()
 
 	// Close is safe to call twice.
-	assert.That(t, c.Close(context.Background())).Nil()
+	c.Close()
 	assert.That(t, fake.closes).Equal(1)
 }
 
@@ -263,60 +279,25 @@ func TestRearmOnNextLoadAfterClose(t *testing.T) {
 	src := "127.0.0.1:8848/app.properties"
 	c, err := newCtrlWithFake(src, fake1)
 	assert.That(t, err).Nil()
-	_, err = c.Load(false, src)
+	_, err = c.Load(context.Background(), false, src)
 	assert.That(t, err).Nil()
-	assert.That(t, c.Close(context.Background())).Nil()
+	c.Close()
 
 	fake2 := &fakeConfigClient{data: "a=2\n"}
 	cs, err := parseSource(src)
 	assert.That(t, err).Nil()
-	c.mu.Lock()
+	c.clientMu.Lock()
 	c.clients[clientKey(cs)] = fake2 // the new generation's client
-	c.mu.Unlock()
+	c.clientMu.Unlock()
 
-	m, err := c.Load(false, src)
+	m, err := c.Load(context.Background(), false, src)
 	assert.That(t, err).Nil()
 	assert.That(t, m["a"]).Equal("2")
 	assert.That(t, fake2.listens).Equal(1)
 	assert.That(t, fake1.listens).Equal(1) // old client untouched
 
-	c.mu.Lock()
-	stopped := c.stopped
-	c.mu.Unlock()
-	assert.That(t, stopped).Equal(false)
-}
-
-func TestRegisterListenerSkipsStaleClientAfterClose(t *testing.T) {
-	// Close ran between Load's clientFor and registerListener: the listener
-	// must NOT be marked on the stale client, so the next generation's Load
-	// still registers on its fresh client.
-	fake := &fakeConfigClient{data: "a=1\n"}
-	src := "127.0.0.1:8848/app.properties"
-	c, err := newCtrlWithFake(src, fake)
-	assert.That(t, err).Nil()
-	cs, err := parseSource(src)
-	assert.That(t, err).Nil()
-
-	assert.That(t, c.Close(context.Background())).Nil()
-	c.registerListener(context.Background(), fake, cs) // stale call from an in-flight Load
-
-	c.mu.Lock()
-	assert.That(t, len(c.listened)).Equal(0)
-	c.mu.Unlock()
-
-	// New generation: fresh client, listener must install.
-	fake2 := &fakeConfigClient{data: "a=1\n"}
-	c.mu.Lock()
-	c.clients[clientKey(cs)] = fake2
-	c.mu.Unlock()
-	_, err = c.Load(false, src)
-	assert.That(t, err).Nil()
-	assert.That(t, fake2.listens).Equal(1)
-}
-
-func TestTriggerRefreshNilRefresherIsNoop(t *testing.T) {
-	// Before the app has started, gs.RefreshProperties returns an error and
-	// the push is dropped rather than panicking.
-	c := newNacosCtrl()
-	c.TriggerRefresh(context.Background())
+	c.watch.mu.Lock()
+	live := c.watch.ctx.Err() == nil
+	c.watch.mu.Unlock()
+	assert.That(t, live).Equal(true)
 }

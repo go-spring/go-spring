@@ -17,6 +17,7 @@
 package conf_test
 
 import (
+	"context"
 	"fmt"
 	"image"
 	"io"
@@ -568,7 +569,7 @@ func TestProperties_Bind(t *testing.T) {
 			},
 		}
 
-		p, err := conf.Load("./testdata/config/app.yaml")
+		p, err := conf.Load(context.Background(), "./testdata/config/app.yaml")
 		assert.That(t, err).Nil()
 
 		//fileID := p.AddFile("bind_test.go")

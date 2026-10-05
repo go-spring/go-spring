@@ -149,10 +149,10 @@ func (s *Server) Run(ctx context.Context, sig gs.ReadySignal) error {
 			// goroutine outlives any request, so the context is minted here.
 			jobCtx := log.WithFields(runCtx, log.String("job", jobName))
 
-			log.Info(jobCtx, starterTag, log.Msg("batch: launching job on startup"))
+			log.Infof(jobCtx, starterTag, "batch: launching job on startup")
 			je, err := s.Launcher.Launch(runCtx, jobName, params)
 			if err != nil {
-				log.Error(jobCtx, starterTag, err, log.Msg("batch: job failed"))
+				log.Errorf(jobCtx, starterTag, err, "batch: job failed")
 				return
 			}
 			log.Info(jobCtx, starterTag, log.String("status", je.Status.String()), log.Msg("batch: job finished"))

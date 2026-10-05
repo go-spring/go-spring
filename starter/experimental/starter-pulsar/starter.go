@@ -125,6 +125,6 @@ func newClient(ctx *gs.ContextProvider, name string, c Config, d Driver, center 
 			return nil, errutil.Explain(err, "pulsar broker probe failed on %s (topic=%s)", c.URL, c.HealthCheckTopic)
 		}
 	}
-	log.Info(cctx, log.TagAppDef, log.Msg("create pulsar client success"))
+	log.Infof(cctx, log.TagAppDef, "create pulsar client success")
 	return cl, nil
 }

@@ -112,7 +112,7 @@ func newClient(ctx *gs.ContextProvider, c Config, d Driver, center *governance.C
 	// cluster that is not up yet must not block startup.
 	if c.Ping {
 		if err := HealthCheck(ctx.Context, client); err != nil {
-			log.Error(ctx.Context, log.TagAppDef, err, log.Msg("cassandra: startup probe failed"))
+			log.Errorf(ctx.Context, log.TagAppDef, err, "cassandra: startup probe failed")
 			_ = client.Close()
 			return nil, errutil.Explain(err, "failed to reach cassandra cluster %v", c.Hosts)
 		}

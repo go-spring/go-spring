@@ -18,7 +18,6 @@ package provider
 
 import (
 	"context"
-	"errors"
 	"os"
 	"strings"
 
@@ -48,30 +47,30 @@ func init() {
 type Provider interface {
 	// Load returns the source content as a flattened map[string]string.
 	// When optional is true and the source does not exist, it returns (nil, nil).
-	Load(optional bool, source string) (map[string]string, error)
+	// The context carries the refresh's cancellation and trace, so a remote
+	// source can bound its network calls with it.
+	Load(ctx context.Context, optional bool, source string) (map[string]string, error)
 
 	// Close stops everything Load installed (watchers, listeners, clients).
-	// It must be safe to call repeatedly.
-	//
-	// The context is the shutdown context: it carries the shutdown's trace and
-	// values but is not cancelled, so a close that talks to a remote server
-	// (stopping a listener, revoking a lease) still gets to finish. It is the
-	// provider's own timeout, if any, that bounds the call.
-	Close(ctx context.Context) error
+	// It must be safe to call repeatedly, reports nothing and takes no context:
+	// closing tears down local resources synchronously, so there is nothing to
+	// cancel, no trace to carry, and no failure a caller could act on — a
+	// provider that cannot close a resource logs it itself.
+	Close()
 }
 
 // ProviderFunc adapts a plain read function to Provider, for a source that
 // holds no resource to release.
-type ProviderFunc func(optional bool, source string) (map[string]string, error)
+type ProviderFunc func(ctx context.Context, optional bool, source string) (map[string]string, error)
 
 // Load implements Provider.
-func (f ProviderFunc) Load(optional bool, source string) (map[string]string, error) {
-	return f(optional, source)
+func (f ProviderFunc) Load(ctx context.Context, optional bool, source string) (map[string]string, error) {
+	return f(ctx, optional, source)
 }
 
 // Close implements Provider: a plain function installs nothing, so there is
 // nothing to stop.
-func (ProviderFunc) Close(context.Context) error { return nil }
+func (ProviderFunc) Close() {}
 
 // Register registers a Provider for a specific configuration source type.
 // Must be called in init functions only.
@@ -89,7 +88,8 @@ func Register(name string, p Provider) {
 }
 
 // Load loads a configuration source and returns its content as a flattened map[string]string.
-//
+// The context carries the refresh's cancellation and trace; a provider talking
+// to a remote server should bound its network calls with it.
 // The source string format is:
 //
 //	[optional:]<provider>:<path>
@@ -103,7 +103,7 @@ func Register(name string, p Provider) {
 //   - "optional:etcd:localhost:2379/config"   // custom provider, optional
 //
 // When optional is true and the source does not exist, Load returns (nil, nil).
-func Load(source string) (map[string]string, error) {
+func Load(ctx context.Context, source string) (map[string]string, error) {
 	// For example, a spring.config.import value of optional:file:./myconfig.properties
 	// allows your application to start, even if the myconfig.properties file is missing.
 
@@ -128,7 +128,7 @@ func Load(source string) (map[string]string, error) {
 		err := errutil.Explain(nil, "unsupported provider type %s", provider)
 		return nil, errutil.Explain(err, "conf: read config %q error", config)
 	}
-	m, err := p.Load(optional, source)
+	m, err := p.Load(ctx, optional, source)
 	if err != nil {
 		return nil, errutil.Explain(err, "conf: read config %q error", config)
 	}
@@ -139,20 +139,15 @@ func Load(source string) (map[string]string, error) {
 // independent and must not rely on one another having been closed. The registry
 // itself is left intact: registration happens in init, but Close runs once per
 // application instance, and a later instance must still find its providers.
-// Every failing provider is reported; one failure does not skip the rest.
-func CloseAll(ctx context.Context) error {
-	var errs []error
-	for name, p := range providers {
-		if err := p.Close(ctx); err != nil {
-			errs = append(errs, errutil.Explain(err, "close provider %s error", name))
-		}
+func CloseAll() {
+	for _, p := range providers {
+		p.Close()
 	}
-	return errors.Join(errs...)
 }
 
 // LoadFile loads a configuration file and returns its content as a flattened map[string]string.
 // If the file does not exist and optional is true, it returns nil without error.
-func LoadFile(optional bool, source string) (map[string]string, error) {
+func LoadFile(ctx context.Context, optional bool, source string) (map[string]string, error) {
 	m, err := reader.ReadFile(source)
 	if err != nil {
 		if os.IsNotExist(err) && optional {

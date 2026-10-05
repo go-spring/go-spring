@@ -34,8 +34,6 @@ type configTreeCtrl struct {
 	watchCore
 }
 
-// newConfigTreeCtrl creates the "configtree" provider controller with its
-// watch machinery ready.
 func newConfigTreeCtrl() *configTreeCtrl {
 	return &configTreeCtrl{watchCore: newWatchCore()}
 }
@@ -45,20 +43,21 @@ func newConfigTreeCtrl() *configTreeCtrl {
 // keyed by its dotted relative path and valued by its trimmed raw content, and
 // installs a watcher on every directory in the tree so any change triggers an
 // application property refresh.
-func (c *configTreeCtrl) Load(optional bool, source string) (map[string]string, error) {
-	// Load is the top of this chain and Provider.Load takes no context, so the
-	// one ctx the whole load shares is minted here — the watch callback below
-	// receives it instead of minting its own.
-	ctx := context.Background()
-
+func (c *configTreeCtrl) Load(ctx context.Context, optional bool, source string) (map[string]string, error) {
 	path := source
 	if path == "" {
 		return nil, errutil.Explain(nil, "configtree: missing path")
 	}
 
+	// The source's identity rides on the context from here on: every event this
+	// load and its helpers print carries it without repeating it at each call
+	// site.
+	ctx = log.WithFields(ctx,
+		log.String("dir", path),
+	)
+
 	log.Debug(ctx, starterTag, func() []log.Field {
 		return []log.Field{
-			log.String("dir", path),
 			log.Msg("loading configtree"),
 		}
 	})
@@ -67,16 +66,15 @@ func (c *configTreeCtrl) Load(optional bool, source string) (map[string]string, 
 	if err != nil {
 		if os.IsNotExist(err) && optional {
 			log.Warn(ctx, starterTag,
-				log.String("dir", path),
 				log.Msg("skip optional configtree path not found"))
 			return nil, nil
 		}
-		log.Error(ctx, starterTag, err, log.String("dir", path), log.Msg("stat failed"))
+		log.Error(ctx, starterTag, err, log.Msg("stat failed"))
 		return nil, errutil.Explain(err, "configtree: stat %s failed", path)
 	}
 	if !info.IsDir() {
 		err := errutil.Explain(nil, "configtree expects a directory, got file %s (a single config document belongs to the file-watch provider)", path)
-		log.Error(ctx, starterTag, err, log.String("dir", path), log.Msg("configtree expects a directory, got a file"))
+		log.Error(ctx, starterTag, err, log.Msg("configtree expects a directory, got a file"))
 		return nil, err
 	}
 
@@ -84,10 +82,7 @@ func (c *configTreeCtrl) Load(optional bool, source string) (map[string]string, 
 	if err != nil {
 		return nil, err
 	}
-	log.Info(ctx, starterTag,
-		log.String("dir", path),
-		log.Int("keys", len(m)),
-		log.Msg("load configtree success"))
+	log.Info(ctx, starterTag, log.Msg("load configtree success"))
 	return m, nil
 }
 

@@ -161,7 +161,7 @@ func (s *Server) Run(ctx context.Context, sig gs.ReadySignal) error {
 // http.Server.Shutdown so the drain rides the shutdown context, and waits for
 // the poller to exit.
 func (s *Server) Stop(ctx context.Context) error {
-	log.Info(ctx, log.TagAppDef, log.Msg("admin-ui server shutting down"))
+	log.Infof(ctx, log.TagAppDef, "admin-ui server shutting down")
 	if s.stop != nil {
 		// Idempotent close guard — Stop is called at most once by the framework,
 		// but a nil-safety close is cheap and defensive.

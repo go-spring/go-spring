@@ -130,6 +130,26 @@ func TestGroup(t *testing.T) {
 	assert.Number(t, groupDestroyed.Load()).Equal(2)
 }
 
+// valueEmbedPod is a configuration struct meant to be embedded anonymously
+// in a bean rather than registered as a bean of its own.
+type valueEmbedPod struct {
+	Name string `value:"${pod.name:=}"`
+}
+
+type valueEmbedSvc struct {
+	valueEmbedPod
+}
+
+// TestValueTagEmbedBinds proves a struct with `value` tags, embedded
+// anonymously in a bean, still gets its fields bound from configuration —
+// no separate bean registration needed.
+func TestValueTagEmbedBinds(t *testing.T) {
+	t.Setenv("GS_POD_NAME", "pod-xyz")
+	RunTest(t, func(s *valueEmbedSvc) {
+		assert.That(t, s.Name).Equal("pod-xyz")
+	})
+}
+
 func TestOnOnce(t *testing.T) {
 
 	t.Run("no conditions", func(t *testing.T) {

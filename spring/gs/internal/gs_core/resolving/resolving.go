@@ -138,8 +138,8 @@ func (c *Resolving) applyModules(p flatten.Storage) error {
 				return errutil.Explain(err, "failed to apply module at %s", m.FileLine)
 			} else if !ok {
 				log.Debug(context.Background(), log.TagAppDef, func() []log.Field {
-				return []log.Field{log.String("module", m.FileLine), log.Msg("module skipped (condition not met)")}
-			})
+					return []log.Field{log.String("module", m.FileLine), log.Msg("module skipped (condition not met)")}
+				})
 				continue
 			}
 		}
@@ -359,15 +359,13 @@ func (c *Resolving) checkDuplicateBeans() error {
 			beanID := gs.BeanID{Name: b.GetName(), Type: t}
 			if d, ok := beansByID[beanID]; ok {
 				log.Debug(context.Background(), log.TagAppDef, func() []log.Field {
-				return []log.Field{log.String("bean", b.String()), log.String("conflict", d.String()), log.Any("type", t), log.Msg("duplicate bean detected")}
-			})
+					return []log.Field{log.String("bean", b.String()), log.String("conflict", d.String()), log.Any("type", t), log.Msg("duplicate bean detected")}
+				})
 				return errutil.Explain(nil, "found duplicate beans %s and %s", b, d)
 			}
 			beansByID[beanID] = b
 		}
 	}
-	log.Debug(context.Background(), log.TagAppDef, func() []log.Field {
-		return []log.Field{log.Msg("no duplicate beans detected")}
-	})
+	log.Debugf(context.Background(), log.TagAppDef, "no duplicate beans detected")
 	return nil
 }

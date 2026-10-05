@@ -6,7 +6,7 @@
   "properties": {
     "etcd-url": {
       "type": "string",
-      "description": "URL format: etcd://host:port/path/to/key"
+      "description": "URL format: etcd://host:port/path/to/key?username=..&password=..&format=..&dial-timeout=..&retry-ms=5000"
     }
   }
 }

@@ -169,7 +169,7 @@ func (s *WsServer) Run(ctx context.Context, sig gs.ReadySignal) error {
 // its shutdown sequence. The App teardown itself is driven by Run via
 // app.Stop() (which takes no context), so ctx is unused here.
 func (s *WsServer) Stop(ctx context.Context) error {
-	log.Info(ctx, log.TagAppDef, log.Msg("kratos ws server shutting down"))
+	log.Infof(ctx, log.TagAppDef, "kratos ws server shutting down")
 	close(s.done)
 	return nil
 }

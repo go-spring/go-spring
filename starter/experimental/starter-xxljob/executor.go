@@ -119,7 +119,7 @@ func (e *Executor) Run(ctx context.Context, sig gs.ReadySignal) error {
 // Stop gracefully shuts the callback server down, propagating ctx into
 // http.Server.Shutdown so the drain rides the shutdown context.
 func (e *Executor) Stop(ctx context.Context) error {
-	log.Info(ctx, log.TagAppDef, log.Msg("xxl-job executor shutting down"))
+	log.Infof(ctx, log.TagAppDef, "xxl-job executor shutting down")
 	return e.srv.Shutdown(ctx)
 }
 

@@ -178,8 +178,9 @@ func (p *Properties) ObjectsCount() int {
 //
 // This method is designed for runtime dynamic configuration updates. It validates all
 // values before committing them, so a validation failure applies no partial updates.
-// It is thread-safe.
-func (p *Properties) Refresh(prop flatten.Storage) (err error) {
+// It is thread-safe. The ctx carries the refresh's identity, so the update's
+// logs name what the round is about.
+func (p *Properties) Refresh(ctx context.Context, prop flatten.Storage) (err error) {
 	if prop == nil {
 		return errutil.Explain(nil, "properties storage cannot be nil")
 	}
@@ -199,7 +200,7 @@ func (p *Properties) Refresh(prop flatten.Storage) (err error) {
 		return nil
 	}
 
-	log.Debugf(context.Background(), log.TagAppDef, "refreshing %d dynamic objects", len(p.objects))
+	log.Debugf(ctx, log.TagAppDef, "refreshing %d dynamic objects", len(p.objects))
 
 	newValues, err := p.onValid(p.objects)
 	if err != nil {
@@ -216,7 +217,7 @@ func (p *Properties) Refresh(prop flatten.Storage) (err error) {
 		obj.target.onFinish(newValues[i], oldValues[i])
 	}
 
-	log.Debugf(context.Background(), log.TagAppDef, "dynamic objects refreshed successfully")
+	log.Debugf(ctx, log.TagAppDef, "dynamic objects refreshed successfully")
 	return nil
 }
 

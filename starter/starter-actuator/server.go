@@ -118,11 +118,11 @@ func (s *Server) Run(ctx context.Context, sig gs.ReadySignal) error {
 
 	ln, err := net.Listen("tcp", s.cfg.Address)
 	if err != nil {
-		log.Error(ctx, log.TagAppDef, err, log.Msg("listen actuator failed"))
+		log.Errorf(ctx, log.TagAppDef, err, "listen actuator failed")
 		return errutil.Explain(err, "actuator: failed to listen on %s", s.cfg.Address)
 	}
 
-	log.Info(ctx, log.TagAppDef, log.Msg("actuator listening"))
+	log.Infof(ctx, log.TagAppDef, "actuator listening")
 
 	s.svr = &http.Server{
 		Handler:           s.buildHandler(ctx),
@@ -139,10 +139,10 @@ func (s *Server) Run(ctx context.Context, sig gs.ReadySignal) error {
 
 	err = s.svr.Serve(ln)
 	if errutil.IsServerClosed(err) {
-		log.Info(ctx, log.TagAppDef, log.Msg("actuator server closed gracefully"))
+		log.Infof(ctx, log.TagAppDef, "actuator server closed gracefully")
 		return nil
 	}
-	log.Error(ctx, log.TagAppDef, err, log.Msg("serve actuator failed"))
+	log.Errorf(ctx, log.TagAppDef, err, "serve actuator failed")
 	return errutil.Explain(err, "actuator: failed to serve on %s", s.cfg.Address)
 }
 
@@ -198,7 +198,7 @@ func (s *Server) Stop(ctx context.Context) error {
 	if s.svr == nil {
 		return nil
 	}
-	log.Info(ctx, log.TagAppDef, log.Msg("stopping actuator server"))
+	log.Infof(ctx, log.TagAppDef, "stopping actuator server")
 	return s.svr.Shutdown(ctx)
 }
 

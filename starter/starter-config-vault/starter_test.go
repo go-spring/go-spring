@@ -147,12 +147,13 @@ func TestToProperties(t *testing.T) {
 
 func TestFingerprint(t *testing.T) {
 	// nil and empty are distinct fingerprints; content order is normalized
-	// (json.Marshal sorts map keys) so equal maps always match; the digest
-	// is fixed-length regardless of payload size.
-	assert.That(t, fingerprint(nil)).Equal("<nil>")
+	// (json.Marshal sorts map keys) so equal maps always match; the digest is
+	// always 64 hex chars, including for nil, so the refresh id can truncate it.
+	nilFP := fingerprint(nil)
+	assert.That(t, len(nilFP)).Equal(64) // sha256 hex
 	empty := fingerprint(map[string]any{})
-	assert.That(t, empty).NotEqual("<nil>")
 	assert.That(t, len(empty)).Equal(64) // sha256 hex
+	assert.That(t, nilFP).NotEqual(empty)
 	assert.That(t, fingerprint(map[string]any{"a": "1", "b": "2"})).
 		Equal(fingerprint(map[string]any{"b": "2", "a": "1"}))
 	assert.That(t, fingerprint(map[string]any{"a": "1"})).
@@ -260,14 +261,14 @@ func TestLoadKVv2AndV1(t *testing.T) {
 	f.mu.Unlock()
 
 	c := newVaultCtrl()
-	defer c.Close(context.Background())
+	defer c.Close()
 
-	m, err := c.Load(false, f.source("secret", "app")+"&kv-version=2")
+	m, err := c.Load(context.Background(), false, f.source("secret", "app")+"&kv-version=2")
 	assert.That(t, err).Nil()
 	assert.That(t, m["greeting"]).Equal("hi")
 	assert.That(t, m["db.host"]).Equal("h1")
 
-	m, err = c.Load(false, f.source("kv1", "app")+"&kv-version=1")
+	m, err = c.Load(context.Background(), false, f.source("kv1", "app")+"&kv-version=1")
 	assert.That(t, err).Nil()
 	assert.That(t, m["port"]).Equal("3306")
 
@@ -282,7 +283,7 @@ func TestLoadKVv2AndV1(t *testing.T) {
 	f.mu.Lock()
 	f.kv2["secret/doc"] = map[string]any{"application.properties": "demo.message=hello\n"}
 	f.mu.Unlock()
-	m, err = c.Load(false, f.source("secret", "doc")+"&key=application.properties&format=properties")
+	m, err = c.Load(context.Background(), false, f.source("secret", "doc")+"&key=application.properties&format=properties")
 	assert.That(t, err).Nil()
 	assert.That(t, m["demo.message"]).Equal("hello")
 }
@@ -291,14 +292,14 @@ func TestLoadNotFoundAndOptional(t *testing.T) {
 	f := newFakeVault()
 	defer f.Close()
 	c := newVaultCtrl()
-	defer c.Close(context.Background())
+	defer c.Close()
 
 	// Required missing secret: hard error naming mount/path.
-	_, err := c.Load(false, f.source("secret", "nope"))
+	_, err := c.Load(context.Background(), false, f.source("secret", "nope"))
 	assert.That(t, err).NotNil()
 
 	// Optional missing secret: nil props, nil error; the watcher stays armed.
-	m, err := c.Load(true, f.source("secret", "nope"))
+	m, err := c.Load(context.Background(), true, f.source("secret", "nope"))
 	assert.That(t, err).Nil()
 	assert.That(t, m).Nil()
 
@@ -306,7 +307,7 @@ func TestLoadNotFoundAndOptional(t *testing.T) {
 	f.mu.Lock()
 	f.failAll = true
 	f.mu.Unlock()
-	m, err = c.Load(true, f.source("secret", "other"))
+	m, err = c.Load(context.Background(), true, f.source("secret", "other"))
 	assert.That(t, err).Nil()
 	assert.That(t, m).Nil()
 	f.mu.Lock()
@@ -317,7 +318,7 @@ func TestLoadNotFoundAndOptional(t *testing.T) {
 	f.mu.Lock()
 	f.failAll = true
 	f.mu.Unlock()
-	_, err = c.Load(false, f.source("secret", "other2"))
+	_, err = c.Load(context.Background(), false, f.source("secret", "other2"))
 	assert.That(t, err).NotNil()
 	f.mu.Lock()
 	f.failAll = false
@@ -332,29 +333,29 @@ func TestCloseStopsPollersAndRearms(t *testing.T) {
 	f.mu.Unlock()
 
 	c := newVaultCtrl()
-	_, err := c.Load(false, f.source("secret", "app"))
+	_, err := c.Load(context.Background(), false, f.source("secret", "app"))
 	assert.That(t, err).Nil()
 
 	// The poller ticks; after Close the request count freezes.
 	base := f.reads.Load()
 	waitFor(t, func() bool { return f.reads.Load() > base })
-	assert.That(t, c.Close(context.Background())).Nil()
+	c.Close()
 	frozen := f.reads.Load()
 	time.Sleep(200 * time.Millisecond)
 	assert.That(t, f.reads.Load() == frozen).True()
 
 	// A new Load rearms: the poll generation restarts (fresh baseline, fresh
 	// watcher), so reads resume.
-	_, err = c.Load(false, f.source("secret", "app"))
+	_, err = c.Load(context.Background(), false, f.source("secret", "app"))
 	assert.That(t, err).Nil()
 	base = f.reads.Load()
 	waitFor(t, func() bool { return f.reads.Load() > base })
 
 	// Dedup: a second Load of the same source does not add another poller.
-	_, err = c.Load(false, f.source("secret", "app"))
+	_, err = c.Load(context.Background(), false, f.source("secret", "app"))
 	assert.That(t, err).Nil()
 	waitFor(t, func() bool { return f.reads.Load() > base })
-	c.Close(context.Background())
+	c.Close()
 }
 
 func TestWatchLoopDetectsChange(t *testing.T) {
@@ -365,8 +366,8 @@ func TestWatchLoopDetectsChange(t *testing.T) {
 	f.mu.Unlock()
 
 	c := newVaultCtrl()
-	defer c.Close(context.Background())
-	_, err := c.Load(false, f.source("secret", "app"))
+	defer c.Close()
+	_, err := c.Load(context.Background(), false, f.source("secret", "app"))
 	assert.That(t, err).Nil()
 
 	// Change the content; the poller sees a new fingerprint. gs.RefreshProperties
@@ -387,4 +388,39 @@ func TestWatchLoopDetectsChange(t *testing.T) {
 	f.failAll = false
 	f.mu.Unlock()
 	waitFor(t, func() bool { return f.reads.Load() > base+6 })
+}
+
+// fakeVaultAPI implements vaultAPI so the read path can be driven through the
+// seam without a server; the httptest-backed fakeVault above exercises the real
+// client.
+type fakeVaultAPI struct {
+	data  map[string]any
+	err   error
+	reads int
+}
+
+func (f *fakeVaultAPI) KVv1(string) vaultKV { return f }
+func (f *fakeVaultAPI) KVv2(string) vaultKV { return f }
+
+func (f *fakeVaultAPI) Get(context.Context, string) (*api.KVSecret, error) {
+	f.reads++
+	if f.err != nil {
+		return nil, f.err
+	}
+	return &api.KVSecret{Data: f.data}, nil
+}
+
+func TestReadSecretThroughFakeClient(t *testing.T) {
+	// The read path, driven through the vaultAPI seam instead of a server: the
+	// v1/v2 dispatch and the returned data are the same code either way.
+	f := &fakeVaultAPI{data: map[string]any{"greeting": "hi"}}
+	c := newVaultCtrl()
+	defer c.Close()
+
+	cs, err := parseSource("127.0.0.1:8200/secret/app?token=tk&kv-version=2")
+	assert.That(t, err).Nil()
+	data, err := c.readSecret(context.Background(), f, cs)
+	assert.That(t, err).Nil()
+	assert.That(t, data["greeting"]).Equal("hi")
+	assert.That(t, f.reads).Equal(1)
 }

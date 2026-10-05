@@ -17,6 +17,7 @@
 package gs_conf
 
 import (
+	"context"
 	"os"
 	"testing"
 
@@ -35,14 +36,14 @@ func TestAppConfig(t *testing.T) {
 	t.Run("local dir resolve error", func(t *testing.T) {
 		t.Cleanup(clean)
 		_ = os.Setenv("GS_SPRING_APP_CONFIG_DIR", "${a}")
-		_, err := NewAppConfig().Refresh()
+		_, err := NewAppConfig().Refresh(context.Background())
 		assert.Error(t, err).Matches(`property \"a\" does not exist`)
 	})
 
 	t.Run("config file not exist", func(t *testing.T) {
 		t.Cleanup(clean)
 		_ = os.Setenv("GS_SPRING_APP_CONFIG_DIR", "./nonexistent")
-		p, err := NewAppConfig().Refresh()
+		p, err := NewAppConfig().Refresh(context.Background())
 		assert.That(t, err).Nil()
 		assert.That(t, p).NotNil()
 	})
@@ -50,7 +51,7 @@ func TestAppConfig(t *testing.T) {
 	t.Run("success - load from properties file", func(t *testing.T) {
 		t.Cleanup(clean)
 		_ = os.Setenv("GS_SPRING_APP_CONFIG_DIR", "./testdata/conf")
-		p, err := NewAppConfig().Refresh()
+		p, err := NewAppConfig().Refresh(context.Background())
 		assert.That(t, err).Nil()
 
 		var config struct {
@@ -69,7 +70,7 @@ func TestAppConfig(t *testing.T) {
 		t.Cleanup(clean)
 		_ = os.Setenv("GS_SPRING_APP_CONFIG_DIR", "./testdata/conf")
 		_ = os.Setenv("GS_SPRING_APP_NAME", "env-override-app")
-		p, err := NewAppConfig().Refresh()
+		p, err := NewAppConfig().Refresh(context.Background())
 		assert.That(t, err).Nil()
 
 		var config struct {
@@ -85,7 +86,7 @@ func TestAppConfig(t *testing.T) {
 		os.Args = []string{"test", "-D", "spring.app.name=cmd-override-app"}
 		_ = os.Setenv("GS_SPRING_APP_CONFIG_DIR", "./testdata/conf")
 		_ = os.Setenv("GS_SPRING_APP_NAME", "env-override-app")
-		p, err := NewAppConfig().Refresh()
+		p, err := NewAppConfig().Refresh(context.Background())
 		assert.That(t, err).Nil()
 
 		var config struct {
@@ -101,7 +102,7 @@ func TestAppConfig(t *testing.T) {
 		c := NewAppConfig()
 		c.Properties.Set("spring.app.name", "sysconf-default")
 		_ = os.Setenv("GS_SPRING_APP_CONFIG_DIR", "./testdata/conf")
-		p, err := c.Refresh()
+		p, err := c.Refresh(context.Background())
 		assert.That(t, err).Nil()
 
 		var config struct {
@@ -124,7 +125,7 @@ func TestAppConfig(t *testing.T) {
 
 		_ = os.Setenv("GS_SPRING_APP_CONFIG_DIR", tmpDir)
 		_ = os.Setenv("GS_SPRING_PROFILES_ACTIVE", "dev")
-		p, err := NewAppConfig().Refresh()
+		p, err := NewAppConfig().Refresh(context.Background())
 		assert.That(t, err).Nil()
 
 		var config struct {
@@ -152,7 +153,7 @@ func TestAppConfig(t *testing.T) {
 
 		_ = os.Setenv("GS_SPRING_APP_CONFIG_DIR", tmpDir)
 		_ = os.Setenv("GS_SPRING_PROFILES_ACTIVE", "dev,prod")
-		p, err := NewAppConfig().Refresh()
+		p, err := NewAppConfig().Refresh(context.Background())
 		assert.That(t, err).Nil()
 
 		var config struct {
@@ -180,7 +181,7 @@ func TestAppConfig(t *testing.T) {
 		assert.That(t, err).Nil()
 
 		_ = os.Setenv("GS_SPRING_APP_CONFIG_DIR", tmpDir)
-		p, err := NewAppConfig().Refresh()
+		p, err := NewAppConfig().Refresh(context.Background())
 		assert.That(t, err).Nil()
 
 		var config struct {
@@ -205,7 +206,7 @@ func TestAppConfig(t *testing.T) {
 		assert.That(t, err).Nil()
 
 		_ = os.Setenv("GS_SPRING_APP_CONFIG_DIR", tmpDir)
-		_, err = NewAppConfig().Refresh()
+		_, err = NewAppConfig().Refresh(context.Background())
 		assert.Error(t, err).Matches("load import file /nonexistent/file\\.properties failed")
 	})
 
@@ -217,7 +218,7 @@ func TestAppConfig(t *testing.T) {
 		assert.That(t, err).Nil()
 
 		_ = os.Setenv("GS_SPRING_APP_CONFIG_DIR", tmpDir)
-		_, err = NewAppConfig().Refresh()
+		_, err = NewAppConfig().Refresh(context.Background())
 		// The placeholder is resolved while binding the imports key, so the
 		// failure surfaces through the bind path rather than loadFileImports.
 		assert.Error(t, err).Matches("load imports for config file .*app\\.properties failed: bind imports config failed.*property \"missing.key\" does not exist")
@@ -232,7 +233,7 @@ func TestAppConfig(t *testing.T) {
 		assert.That(t, err).Nil()
 
 		_ = os.Setenv("GS_SPRING_APP_CONFIG_DIR", tmpDir)
-		_, err = NewAppConfig().Refresh()
+		_, err = NewAppConfig().Refresh(context.Background())
 		assert.Error(t, err).Matches("load config file .*app\\.yaml failed")
 	})
 
@@ -241,7 +242,7 @@ func TestAppConfig(t *testing.T) {
 		// A directory is not a readable .env file and is not "not exist".
 		_ = os.Setenv(EnvFile, t.TempDir())
 
-		_, err := NewAppConfig().Refresh()
+		_, err := NewAppConfig().Refresh(context.Background())
 		assert.Error(t, err).Matches("load \\.env file failed")
 	})
 }

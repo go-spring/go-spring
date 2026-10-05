@@ -137,7 +137,7 @@ func build(ctx context.Context, c Config, params cloud.ClientParams) (gormcore.S
 		if c.TLS.Enabled {
 			tlsCfg, terr := c.TLS.BuildClient()
 			if terr != nil {
-				log.Error(ctx, log.TagAppDef, terr, log.Msg("gorm clickhouse build TLS failed"))
+				log.Errorf(ctx, log.TagAppDef, terr, "gorm clickhouse build TLS failed")
 				return gormcore.Spec{}, errutil.Explain(terr, "gorm-clickhouse: build TLS")
 			}
 			opts.TLS = tlsCfg
@@ -145,7 +145,7 @@ func build(ctx context.Context, c Config, params cloud.ClientParams) (gormcore.S
 		if useDiscovery {
 			lb, _, stopSelection, derr := c.NewPickPool(ctx, params.Discovery, service, params.Loadbalance)
 			if derr != nil {
-				log.Error(ctx, log.TagAppDef, derr, log.Msg("gorm clickhouse build discovery resolver failed"))
+				log.Errorf(ctx, log.TagAppDef, derr, "gorm clickhouse build discovery resolver failed")
 				return gormcore.Spec{}, derr
 			}
 			// ch.Options.DialContext is 2-arg: func(ctx, addr string) (net.Conn, error).

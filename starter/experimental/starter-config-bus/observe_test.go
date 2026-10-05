@@ -18,6 +18,7 @@ package StarterConfigBus
 
 import (
 	"context"
+
 	"encoding/json"
 	"errors"
 	"os"
@@ -124,7 +125,7 @@ func hasHist(t *testing.T, name string, want map[string]string) bool {
 // newTestBus builds a bus without the container or a NATS connection; its
 // metrics come from the package-wide instrument set (see observe.go). refresh
 // is the property-refresh seam, which onMessage calls.
-func newTestBus(refresh func(context.Context) error) *ConfigBus {
+func newTestBus(refresh func(refreshID string) error) *ConfigBus {
 	return &ConfigBus{
 		Config:  Config{Subject: "t.subject", Origin: "test-origin"},
 		refresh: refresh,
@@ -144,7 +145,7 @@ func msgFor(t *testing.T, ev RefreshEvent) *nats.Msg {
 // outcome, and the outcomes are exclusive — so their sum is the number of
 // broadcasts received, with no double counting.
 func TestObserveCountsEachStatus(t *testing.T) {
-	b := newTestBus(func(context.Context) error { return nil })
+	b := newTestBus(func(string) error { return nil })
 	ctx := context.Background()
 
 	// refreshed: applies, refresh succeeds.
@@ -162,7 +163,7 @@ func TestObserveCountsEachStatus(t *testing.T) {
 	// refresh_error: the event applies but the refresh itself fails. The error is
 	// returned so the consumer span (held by starter-nats) is marked failed.
 	b.prefixes = nil
-	failing := newTestBus(func(context.Context) error { return errors.New("source unreachable") })
+	failing := newTestBus(func(string) error { return errors.New("source unreachable") })
 	assert.Error(t, failing.onMessage(ctx, msgFor(t, RefreshEvent{Prefix: "db"}))).NotNil()
 
 	// Exactly one broadcast ended in each outcome, so each series holds 1 and
@@ -180,7 +181,7 @@ func TestObserveCountsEachStatus(t *testing.T) {
 // an ignored or malformed broadcast leaves the histogram untouched rather than
 // recording a meaningless zero.
 func TestObserveRecordsDurationOnlyWhenRefreshRuns(t *testing.T) {
-	b := newTestBus(func(context.Context) error { return nil })
+	b := newTestBus(func(string) error { return nil })
 	ctx := context.Background()
 
 	// ignored_prefix: no refresh, so no duration for this instance's prefixes.
@@ -200,7 +201,7 @@ func TestObserveRecordsDurationOnlyWhenRefreshRuns(t *testing.T) {
 // The publish direction has its own counter and vocabulary, kept separate from
 // the receive outcomes so a single dimension never mixes two directions.
 func TestObserveCountsPublishStatus(t *testing.T) {
-	b := newTestBus(func(context.Context) error { return nil })
+	b := newTestBus(func(string) error { return nil })
 	// No observer is armed on the Conn here; recordPublish is driven directly,
 	// which is the same call Publish makes once the wire call returns.
 	b.recordPublish(context.Background(), outcomePublishOK, 0, nil)

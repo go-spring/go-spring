@@ -125,7 +125,7 @@ func build(ctx context.Context, c Config, params cloud.ClientParams) (gormcore.S
 	// unique name and reference it in the DSN as tls=<name>.
 	tlsCfg, err := c.TLS.BuildClient()
 	if err != nil {
-		log.Error(ctx, log.TagAppDef, err, log.Msg("gorm mysql build TLS failed"))
+		log.Errorf(ctx, log.TagAppDef, err, "gorm mysql build TLS failed")
 		return gormcore.Spec{}, errutil.Explain(err, "gorm-mysql: build TLS")
 	}
 	if tlsCfg != nil {
@@ -142,7 +142,7 @@ func build(ctx context.Context, c Config, params cloud.ClientParams) (gormcore.S
 	service := resilience.ServiceLabel("gorm:mysql", c.ServiceName, c.Addr)
 	conn, err := newDiscoveryConn(ctx, c, params.Discovery, service, params.Loadbalance)
 	if err != nil {
-		log.Error(ctx, log.TagAppDef, err, log.Msg("gorm mysql build discovery dialer failed"))
+		log.Errorf(ctx, log.TagAppDef, err, "gorm mysql build discovery dialer failed")
 		if tlsCloser != nil {
 			tlsCloser()
 		}

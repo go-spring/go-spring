@@ -168,7 +168,7 @@ func assembleTransport(ctx *gs.ContextProvider, name string, c Config, backend d
 	})
 	rt, closeFn, err = d.CreateTransport(gctx, name, c, backend, center, prop)
 	if err != nil {
-		log.Error(gctx, log.TagAppDef, err, log.Msg("http-client create transport failed"))
+		log.Errorf(gctx, log.TagAppDef, err, "http-client create transport failed")
 		return nil, nil, err
 	}
 	return rt, closeFn, nil

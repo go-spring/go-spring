@@ -169,7 +169,7 @@ func (s *subscriber) Subscribe(ctx context.Context, handler messaging.Handler) e
 				if loopCtx.Err() != nil {
 					return // context cancelled by Close
 				}
-				log.Error(loopCtx, log.TagAppDef, err, log.Msg("pulsar driver receive failed"))
+				log.Errorf(loopCtx, log.TagAppDef, err, "pulsar driver receive failed")
 				continue
 			}
 			// Extract the load-test marker the producer put in Properties so the

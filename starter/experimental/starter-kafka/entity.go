@@ -78,8 +78,7 @@ func (c *Client) Close() error {
 	if flushErr != nil {
 		// A failed flush means buffered produce records were never delivered:
 		// those messages are lost, so shutdown must not swallow the error.
-		log.Error(context.Background(), log.TagAppDef, flushErr,
-			log.Msg("kafka: flush before close failed, buffered messages may be LOST"))
+		log.Errorf(context.Background(), log.TagAppDef, flushErr, "kafka: flush before close failed, buffered messages may be LOST")
 		return flushErr
 	}
 	return nil

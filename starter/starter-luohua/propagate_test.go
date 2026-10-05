@@ -40,7 +40,7 @@ func logLine(ctx context.Context) string {
 	buf := bytes.NewBuffer(nil)
 	log.Stdout = buf
 	defer func() { log.Stdout = prev }()
-	log.Info(ctx, luohuaTestTag, log.Msg("probe"))
+	log.Infof(ctx, luohuaTestTag, "probe")
 	return buf.String()
 }
 

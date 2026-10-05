@@ -70,9 +70,9 @@ func RegisterProvider(name string, p provider.Provider) {
 
 // CloseProviders stops every registered provider, releasing the watchers and
 // listeners they installed while loading. The application runtime calls it once
-// while shutting down, passing the shutdown context (see provider.Provider).
-func CloseProviders(ctx context.Context) error {
-	return provider.CloseAll(ctx)
+// while shutting down (see provider.Provider).
+func CloseProviders() {
+	provider.CloseAll()
 }
 
 // RegisterDecryptor registers a property-level decryption scheme, the seam
@@ -86,9 +86,11 @@ func RegisterDecryptor(name string, f decrypt.Factory) {
 
 // Load creates a Properties instance from a configuration source.
 // The source format is [optional:]<provider>:<path> or just <path>.
+// The context carries the refresh's cancellation and trace; a provider
+// talking to a remote server bounds its network calls with it.
 // Returns an error if the file type is not supported or parsing fails.
-func Load(source string) (*flatten.Properties, error) {
-	data, err := provider.Load(source)
+func Load(ctx context.Context, source string) (*flatten.Properties, error) {
+	data, err := provider.Load(ctx, source)
 	if err != nil {
 		return nil, err
 	}

@@ -57,7 +57,7 @@ type AuthServer struct {
 func newAuthServer(ctx *gs.ContextProvider, c Config) (*AuthServer, error) {
 	sgn, err := newSigner(ctx.Context, c)
 	if err != nil {
-		log.Error(ctx.Context, log.TagAppDef, err, log.Msg("create signer failed"))
+		log.Errorf(ctx.Context, log.TagAppDef, err, "create signer failed")
 		return nil, err
 	}
 	log.Info(ctx.Context, log.TagAppDef,

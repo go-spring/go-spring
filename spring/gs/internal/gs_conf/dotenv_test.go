@@ -17,6 +17,7 @@
 package gs_conf
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"testing"
@@ -452,7 +453,7 @@ func TestAppConfigDotEnv(t *testing.T) {
 			_ = os.Unsetenv(EnvFile)
 		}()
 
-		p, err := NewAppConfig().Refresh()
+		p, err := NewAppConfig().Refresh(context.Background())
 		assert.That(t, err).Nil()
 
 		var config struct {
@@ -484,7 +485,7 @@ func TestAppConfigDotEnv(t *testing.T) {
 			_ = os.Unsetenv(EnvFile)
 		}()
 
-		p, err := NewAppConfig().Refresh()
+		p, err := NewAppConfig().Refresh(context.Background())
 		assert.That(t, err).Nil()
 
 		var config struct {

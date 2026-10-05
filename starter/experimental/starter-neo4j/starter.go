@@ -116,15 +116,13 @@ func newClient(ctx *gs.ContextProvider, c Config, discoveryLabel string, d Drive
 		log.String("uri", c.URI),
 		log.String("service_name", c.ServiceName))
 
-	log.Debug(cctx, log.TagAppDef, func() []log.Field {
-		return []log.Field{log.Msg("creating neo4j client")}
-	})
+	log.Debugf(cctx, log.TagAppDef, "creating neo4j client")
 
 	backend, _ := center.Discovery().Get(discoveryLabel)
 	if c.ServiceName != "" && !mesh.Enabled() {
 		uri, err := resolveURI(ctx.Context, c, backend)
 		if err != nil {
-			log.Error(cctx, log.TagAppDef, err, log.Msg("neo4j: resolve service-name failed"))
+			log.Errorf(cctx, log.TagAppDef, err, "neo4j: resolve service-name failed")
 			return nil, err
 		}
 		c.URI = uri
@@ -137,7 +135,7 @@ func newClient(ctx *gs.ContextProvider, c Config, discoveryLabel string, d Drive
 	client, err := d.CreateClient(ctx.Context, c,
 		cloud.ClientParams{Resilience: center.Resilience(), Fault: center.Fault(), Discovery: backend})
 	if err != nil {
-		log.Error(cctx, log.TagAppDef, err, log.Msg("neo4j: create client failed"))
+		log.Errorf(cctx, log.TagAppDef, err, "neo4j: create client failed")
 		return nil, errutil.Explain(err, "failed to create neo4j client")
 	}
 	// The Driver returned the client complete — identity and governance both
@@ -153,12 +151,12 @@ func newClient(ctx *gs.ContextProvider, c Config, discoveryLabel string, d Drive
 		vctx, cancel := verifyContext(ctx.Context, c.SocketConnectTimeout)
 		defer cancel()
 		if err := HealthCheck(vctx, client); err != nil {
-			log.Error(cctx, log.TagAppDef, err, log.Msg("neo4j: verify connectivity failed"))
+			log.Errorf(cctx, log.TagAppDef, err, "neo4j: verify connectivity failed")
 			_ = client.Destroy()
 			return nil, errutil.Explain(err, "failed to verify neo4j connectivity: %s", c.URI)
 		}
 	}
-	log.Info(cctx, log.TagAppDef, log.Msg("create neo4j client success"))
+	log.Infof(cctx, log.TagAppDef, "create neo4j client success")
 	return client, nil
 }
 

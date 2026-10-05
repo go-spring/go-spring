@@ -143,13 +143,13 @@ gs.Run() → App.Start()                                               (app.go:2
   3. initLog，随后 IoC 容器装配
   4. app.started = true → RefreshProperties 从此合法                (app.go:309)
   5. Runners、Servers、就绪信号
-  └─ 任一被 watch 目录有事件: watchLoop → TriggerRefresh
+  └─ 任一被 watch 目录有事件: watchLoop → observability.RefreshConf
        → gs.RefreshProperties(): 重新加载全部来源、按优先级合并、
          原子更新所有 gs.Dync 字段                                   (app.go:247)
 ```
 
 controller 之所以不需要是 bean，尽管配置加载发生在 bean 装配前：watch 回调经进程级
-`gs.RefreshProperties()` 门面触达刷新，app 启动前门面返回错误，因此 `TriggerRefresh`
+`gs.RefreshProperties()` 门面触达刷新，app 启动前门面返回错误，因此刷新
 在启动前被刻意设计为 no-op——早期的 watch 事件被无害丢弃，因为启动加载刚捕获过状态。
 这正是两个 provider 挂在同一个 controller 单例上的原因。
 
@@ -171,7 +171,7 @@ controller 之所以不需要是 bean，尽管配置加载发生在 bean 装配�
    父目录而非文件本身的原因，filewatch.go:67-73）。常见编辑器同样以原子 rename 保存，
    因此普通编辑走的也是同一条路径。
 3. `watchLoop` 对每个事件都响应、不过滤文件名（这是正确的：K8s 更新表现为 `..data` 上的
-   事件而非 key 文件上的事件 —— watch.go:112-116）→ `TriggerRefresh`。
+   事件而非 key 文件上的事件 —— watch.go:112-116）→ `observability.RefreshConf`。
 4. `RefreshProperties` 在应用未完成装配时拒绝执行（app.go:248）；否则重新跑完整配置
    加载 —— 两个 provider、环境变量、命令行参数 —— 按优先级合并后原子替换 `gs.Dync`
    值。一次交换通常产生两个事件（临时符号链接 create + rename），因此每次更新会看到
@@ -241,7 +241,7 @@ echo 'demo: [broken' > example/mount/application.yaml   # 非法 yaml
 
 下一次刷新的 `Load` 失败；`RefreshProperties` 在**任何**部分更新之前中止
 （app.go:246-255：校验失败 ⇒ 不做部分更新），因此最近一次的正确值继续生效。
-刷新错误现在由 `TriggerRefresh` 打 WARN（`property refresh after file change failed,
+刷新错误现在由 `observability.RefreshConf` 打 WARN（`property refresh after file change failed,
 previous snapshot retained: ...`）；watcher 创建失败与 fsnotify channel 错误同样各打 WARN。
 反之，启动时必需文件损坏会以 `file-watch: read ... failed` 大声失败。
 
@@ -292,7 +292,7 @@ log tag `_app_config_file`：每次加载 —— `loading ... from <path>`（Deb
 - watcher 创建失败仍退化为静态快照，但现在会打一条点名目录的 WARN（本轮已修），降级可见。
 - 每个目录事件都触发全量刷新（不按文件名过滤、无防抖）—— 正确但在编辑风暴下啰嗦；
   每次 K8s 交换会触发 ~2 次全量重载。
-- `TriggerRefresh` 现在会把 `RefreshProperties` 的错误打成 WARN（本轮已修），被 watch 的
+- `observability.RefreshConf` 现在会把 `RefreshProperties` 的错误打成 WARN（本轮已修），被 watch 的
   文件损坏时不再静默降级。
 - `optional:` 语义落在各 provider 内（两个 Load 函数重复 os.IsNotExist 判断）而非
   provider 框架 —— 轻度重复。

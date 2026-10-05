@@ -46,13 +46,12 @@ type closeRecorderProvider struct {
 	closes atomic.Int32
 }
 
-func (p *closeRecorderProvider) Load(optional bool, source string) (map[string]string, error) {
+func (p *closeRecorderProvider) Load(ctx context.Context, optional bool, source string) (map[string]string, error) {
 	return nil, nil
 }
 
-func (p *closeRecorderProvider) Close(context.Context) error {
+func (p *closeRecorderProvider) Close() {
 	p.closes.Add(1)
-	return nil
 }
 
 // TestRunTestClosesConfigProviders proves the shutdown path reaches the config

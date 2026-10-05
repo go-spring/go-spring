@@ -17,6 +17,7 @@
 package conf_test
 
 import (
+	"context"
 	"fmt"
 	"math/rand"
 	"strings"
@@ -30,7 +31,7 @@ import (
 func TestProperties_Load(t *testing.T) {
 
 	t.Run("success", func(t *testing.T) {
-		p, err := conf.Load("./testdata/config/app.properties")
+		p, err := conf.Load(context.Background(), "./testdata/config/app.properties")
 		assert.That(t, err).Nil()
 		assert.That(t, p.Data()).Equal(map[string]string{
 			"properties.list[0]":          "1",
@@ -43,17 +44,17 @@ func TestProperties_Load(t *testing.T) {
 	})
 
 	t.Run("file not exist", func(t *testing.T) {
-		_, err := conf.Load("./testdata/config/xxx.yml")
+		_, err := conf.Load(context.Background(), "./testdata/config/xxx.yml")
 		assert.Error(t, err).Matches("no such file or directory")
 	})
 
 	t.Run("unsupported ext", func(t *testing.T) {
-		_, err := conf.Load("./testdata/config/app.unknown")
+		_, err := conf.Load(context.Background(), "./testdata/config/app.unknown")
 		assert.Error(t, err).Matches("unsupported config format")
 	})
 
 	t.Run("syntax error", func(t *testing.T) {
-		_, err := conf.Load("./testdata/config/err.yaml")
+		_, err := conf.Load(context.Background(), "./testdata/config/err.yaml")
 		assert.Error(t, err).Matches("did not find expected node content")
 	})
 }

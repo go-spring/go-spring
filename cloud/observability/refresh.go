@@ -85,7 +85,7 @@ func resetInstruments() { instruments = sync.OnceValue(buildInstruments) }
 // It wraps the refresh function instead of referencing it: callers pass their
 // own (typically gs.RefreshProperties), so this package stays spring-free.
 //
-//	observability.RefreshConf(ctx, gs.RefreshProperties)
+//	observability.RefreshConf(id, func() error { return gs.RefreshProperties(id) })
 //
 // Logs are recorded here too, centrally: a refresh is a rare, fleet-wide
 // event, so the funnel is also the natural place for its log line. Callers
@@ -99,15 +99,17 @@ func resetInstruments() { instruments = sync.OnceValue(buildInstruments) }
 // time() - last_success_timestamp exceeding a threshold). fn's error is
 // returned unchanged — this is instrumentation, not error policy.
 //
-// ctx is the refresh's context: it flows to the metric records (available
-// for exemplar sampling) and into fn. Refresh events originate from backend
-// watch callbacks (k8s informer handlers, SDK listeners) that often carry no
-// context, so callers without one pass context.Background() at the boundary.
-func RefreshConf(ctx context.Context, fn func(context.Context) error) error {
+// The refreshID names the trigger (source, path, revision); it is stamped
+// onto a fresh context for the metric records and the summary log. The
+// refresh itself runs on the application's own context (see
+// gs.RefreshProperties) — this function does not supply it, which is why fn
+// takes no context.
+func RefreshConf(refreshID string, fn func() error) error {
 	in := instruments()
 
+	ctx := log.WithFields(context.Background(), log.String("refresh_id", refreshID))
 	start := time.Now()
-	err := fn(ctx)
+	err := fn()
 	elapsed := time.Since(start)
 
 	status := statusOK
@@ -124,16 +126,16 @@ func RefreshConf(ctx context.Context, fn func(context.Context) error) error {
 	// disagree. The log level carries the outcome: a failed refresh at Warn
 	// (the previous snapshot is retained, so it is degraded, not broken), a
 	// successful one at Info (refreshes are rare and always worth a line).
-	fields := []log.Field{
+	summary := []log.Field{
 		log.String("status", status),
 		log.Float("duration_ms", float64(elapsed.Nanoseconds())/1e6),
 	}
 	if err != nil {
-		fields = append(fields, log.Err(err), log.Msg("property refresh failed"))
-		log.Warn(ctx, configTag, fields...)
+		summary = append(summary, log.Err(err), log.Msg("property refresh failed"))
+		log.Warn(ctx, configTag, summary...)
 	} else {
-		fields = append(fields, log.Msg("refresh properties success"))
-		log.Info(ctx, configTag, fields...)
+		summary = append(summary, log.Msg("refresh properties success"))
+		log.Info(ctx, configTag, summary...)
 	}
 	return err
 }

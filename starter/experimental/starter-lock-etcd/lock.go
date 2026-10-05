@@ -62,7 +62,7 @@ func newEtcdLocker(ctx *gs.ContextProvider, c Config) (*etcdLocker, error) {
 
 	tlsCfg, err := c.TLS.BuildClient()
 	if err != nil {
-		log.Error(ctx.Context, log.TagAppDef, err, log.Msg("lock-etcd: build TLS failed"))
+		log.Errorf(ctx.Context, log.TagAppDef, err, "lock-etcd: build TLS failed")
 		return nil, errutil.Explain(err, "lock-etcd: build TLS")
 	}
 
@@ -74,7 +74,7 @@ func newEtcdLocker(ctx *gs.ContextProvider, c Config) (*etcdLocker, error) {
 		TLS:         tlsCfg,
 	})
 	if err != nil {
-		log.Error(ctx.Context, log.TagAppDef, err, log.Msg("lock-etcd: create client failed"))
+		log.Errorf(ctx.Context, log.TagAppDef, err, "lock-etcd: create client failed")
 		return nil, errutil.Explain(err, "lock-etcd: failed to create etcd client")
 	}
 

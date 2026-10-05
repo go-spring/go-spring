@@ -131,13 +131,13 @@ key 可以喂给任意 bean 的配置。etcd Get 本身发生在第 2 步——�
 ```
 被 watch 的 key 上发生 etcd PUT
   → clientv3.Watch channel 投递带事件的 WatchResponse
-  → watcher goroutine：len(wr.Events) > 0 → etcdCtrl.TriggerRefresh()
+  → watcher goroutine：len(wr.Events) > 0 → observability.RefreshConf()
   → gs.RefreshProperties() → App.RefreshProperties()：
        重跑整个属性加载（所有文件 + 所有 import）→ 合并
        → 传播到容器 → gs.Dync[T] 字段原子更新
 ```
 
-- app 启动之前，`gs.RefreshProperties()` 返回错误，`TriggerRefresh` 是**无害 no-op**——
+- app 启动之前，`gs.RefreshProperties()` 返回错误，刷新是**无害 no-op**——
   初始加载已经捕获了状态（starter.go 注释）。
 - watch 是**单 key** watch（无 `WithPrefix`）：只盯 import 里点名的那个精确 key。
   删除同样算事件：必填 import 的 key 被删后会打 WARN（`etcd key ... deleted; stale snapshot

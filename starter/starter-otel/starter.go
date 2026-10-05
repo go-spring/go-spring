@@ -116,7 +116,7 @@ func setup(r gs.BeanProvider, p flatten.Storage) error {
 		return err
 	}
 	if !cfg.Enable {
-		log.Info(context.Background(), log.TagAppDef, log.Msg("observability disabled; skipping OTel setup"))
+		log.Infof(context.Background(), log.TagAppDef, "observability disabled; skipping OTel setup")
 		return nil
 	}
 
@@ -209,7 +209,7 @@ func setupMetrics(r gs.BeanProvider, cfg metric.MetricsConfig, res *resource.Res
 		if err := startRuntime(opts); err != nil {
 			return err
 		}
-		log.Info(context.Background(), log.TagAppDef, log.Msg("runtime metrics enabled"))
+		log.Infof(context.Background(), log.TagAppDef, "runtime metrics enabled")
 	}
 	// Pull-based (prometheus) exporter: contribute the scrape handler as an
 	// endpoint.Endpoint so starter-actuator, if present, serves /metrics on

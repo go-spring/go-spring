@@ -336,13 +336,13 @@ func (s *SimpleGrpcServer) Run(ctx context.Context, sig gs.ReadySignal) error {
 
 	listener, err := net.Listen("tcp", s.cfg.Addr)
 	if err != nil {
-		log.Error(ctx, log.TagAppDef, err, log.Msg("grpc server failed to listen"))
+		log.Errorf(ctx, log.TagAppDef, err, "grpc server failed to listen")
 		return errutil.Explain(err, "failed to listen on %s", s.cfg.Addr)
 	}
 	<-sig.TriggerAndWait()
-	log.Info(ctx, log.TagAppDef, log.Msg("grpc server starting"))
+	log.Infof(ctx, log.TagAppDef, "grpc server starting")
 	if err = s.svr.Serve(listener); err != nil {
-		log.Error(ctx, log.TagAppDef, err, log.Msg("grpc server failed"))
+		log.Errorf(ctx, log.TagAppDef, err, "grpc server failed")
 		return errutil.Explain(err, "failed to serve on %s", s.cfg.Addr)
 	}
 	return nil

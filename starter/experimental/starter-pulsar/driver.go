@@ -109,7 +109,7 @@ func (DefaultDriver) CreateClient(ctx context.Context, c Config, params cloud.Cl
 
 	cl, err := pulsar.NewClient(opts)
 	if err != nil {
-		log.Error(ctx, log.TagAppDef, err, log.Msg("pulsar: create client failed"))
+		log.Errorf(ctx, log.TagAppDef, err, "pulsar: create client failed")
 		if srv != nil {
 			_ = srv.Shutdown(ctx)
 		}

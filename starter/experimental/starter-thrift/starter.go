@@ -202,9 +202,9 @@ func (s *SimpleThriftServer) Run(ctx context.Context, sig gs.ReadySignal) error 
 	proc := thrift.WrapProcessor(s.proc, mws...)
 	s.svr = thrift.NewTSimpleServer4(proc, transport, transFactory, protoFactory)
 	<-sig.TriggerAndWait()
-	log.Info(ctx, log.TagAppDef, log.Msg("thrift server starting"))
+	log.Infof(ctx, log.TagAppDef, "thrift server starting")
 	if err = s.svr.Serve(); err != nil {
-		log.Error(ctx, log.TagAppDef, err, log.Msg("thrift server failed"))
+		log.Errorf(ctx, log.TagAppDef, err, "thrift server failed")
 		return errutil.Explain(err, "failed to serve on %s", s.cfg.Addr)
 	}
 	return nil

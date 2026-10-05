@@ -124,7 +124,7 @@ kubectl logs -f deploy/config-k8s-example    # bound gs.Dync field updates withi
 ```
 
 The reload path is real: the informer on the object fires on every add/update/delete
-(`starter.go`) and calls `RefreshProperties` (`starter.go`), which re-runs the
+(`watch.go`) and calls `RefreshProperties` (`watch.go`), which re-runs the
 whole import chain and updates all `gs.Dync[T]` fields (`gs_app/app.go:234-256`). Unit test
 `TestHotReloadTriggersRefresh` (`starter_test.go`) proves the trigger with a fake
 clientset.
@@ -149,36 +149,36 @@ gs.Run()
   │    3. for each entry, conf.Load strips [optional:]<provider>: then calls
   │       the provider (provider/provider.go:84-103) → k8sCtrl.Load
   │         a. parseSource (starter.go)
-  │         b. buildClient — in-cluster or kubeconfig (starter.go)
+  │         b. clientFor — cached clientset, in-cluster or from kubeconfig (starter.go)
   │         c. fetch the object via the API server (starter.go)
   │         d. ensureWatch — informer installed BEFORE returning, so a change
-  │            landing right after the initial read is not missed (starter.go)
+  │            landing right after the initial read is not missed (watch.go)
   │         e. parseEntries → flatten → merged into the property storage
   │    └─ merged snapshot becomes the storage every value tag binds against
   ├─ container wiring: the controller is not a bean at all; app.started flips
   │  true (app.go:179-183)
   ├─ Runners/Servers start; ready
-  └─ SIGTERM → conf.CloseProviders(ctx) → k8sCtrl.Close → manager.stopAll()
+  └─ SIGTERM → conf.CloseProviders() → k8sCtrl.Close → manager.stopAll()
      stops every informer
 ```
 
 Why pre-bean: the provider's output must be part of the property storage *before* `value:`
 tags resolve, so ConfigMap-sourced keys can inject into ordinary bean fields at first wiring —
 the same reason `.env` and all config providers run in step 2 of the lifecycle, ahead of
-starters. Before the app has started, `TriggerRefresh` is a harmless no-op
-(starter.go): the startup load already captured the initial state, and the
+starters. Before the app has started, the refresh is a harmless no-op
+(watch.go): the startup load already captured the initial state, and the
 `gs.RefreshProperties()` facade returns an error until `started` (app.go:247-250).
 
 ### 2.2 The watch/refresh path, walked once
 
-1. `ensureWatch` deduplicates by `kind/namespace/name` (`starter.go`) — repeated imports
+1. `ensureWatch` deduplicates by `kind/namespace/name` (`watch.go`) — repeated imports
    of the same object never stack informers.
 2. A namespaced, `metadata.name=`-field-selected SharedInformerFactory is created with resync
-   period 0 (event-driven only; `starter.go`), on ConfigMaps or Secrets per kind.
-3. Add/Update/Delete handlers all funnel into `k8sCtrl.TriggerRefresh` (`starter.go`).
+   period 0 (event-driven only; `watch.go`), on ConfigMaps or Secrets per kind.
+3. Add/Update/Delete handlers all funnel into `k8sCtrl.trigger` (`watch.go`).
 4. Watch setup is best-effort: if handler registration or cache sync fails, the id is
    forgotten so a later Load may retry, and only hot-reload for that object is lost — the
-   static snapshot still loads (`starter.go`, comment at `starter.go`).
+   static snapshot still loads (`watch.go`).
 5. After startup, each event calls `gs.RefreshProperties()` → full `AppConfig.Refresh` →
    **every** provider re-runs its import (the ConfigMap is re-fetched, not diffed) → merged
    storage swapped atomically → all `gs.Dync[T]` fields update. Only `gs.Dync[T]` hot-reloads;

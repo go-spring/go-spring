@@ -144,14 +144,13 @@ func Run() {
 // so a failure to start tears down the same way a graceful shutdown does. The
 // config providers are closed here as a safety net: the graceful shutdown path
 // closes them earlier, while the container is still alive, and closing twice is
-// a documented no-op. The context is stripped of cancellation, like the
-// servers' Stop: by the time this runs the app context is already cancelled,
-// and a close that talks to a remote server must still be allowed to finish.
+// a documented no-op. The context for the stoppers is stripped of cancellation,
+// like the servers' Stop: by the time this runs the app context is already
+// cancelled, and a stopper that talks to a remote server must still be allowed
+// to finish.
 func (s *AppStarter) teardown() {
 	ctx := context.WithoutCancel(s.app.Context())
-	if err := conf.CloseProviders(ctx); err != nil {
-		log.Errorf(ctx, log.TagAppDef, err, "close config providers failed")
-	}
+	conf.CloseProviders()
 	runStoppers(ctx)
 	log.Destroy()
 }

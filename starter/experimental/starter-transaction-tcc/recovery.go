@@ -51,7 +51,7 @@ func newRecoveryRunner() *recoveryRunner { return &recoveryRunner{} }
 func (r *recoveryRunner) Run(ctx context.Context) error {
 	pending, err := r.Store.Pending(ctx)
 	if err != nil {
-		log.Error(ctx, log.TagAppDef, err, log.Msg("tcc recovery: scanning pending transactions failed"))
+		log.Errorf(ctx, log.TagAppDef, err, "tcc recovery: scanning pending transactions failed")
 		return nil
 	}
 	for _, snap := range pending {
@@ -72,7 +72,7 @@ func (r *recoveryRunner) Run(ctx context.Context) error {
 		}
 		res, err := r.Coord.Recover(tccCtx, tcc.Transaction{ID: snap.ID, Method: snap.Method, Participants: parts})
 		if err != nil {
-			log.Error(tccCtx, log.TagAppDef, err, log.Msg("tcc recovery: recovering transaction failed"))
+			log.Errorf(tccCtx, log.TagAppDef, err, "tcc recovery: recovering transaction failed")
 			continue
 		}
 		log.Info(tccCtx, log.TagAppDef,

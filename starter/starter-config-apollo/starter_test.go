@@ -165,13 +165,13 @@ func TestCloseReleasesClientAndLoadRearms(t *testing.T) {
 	c, err := newCtrlWithFake(source, fake)
 	assert.That(t, err).Nil()
 
-	if _, err = c.Load(false, source); err != nil {
+	if _, err = c.Load(context.Background(), false, source); err != nil {
 		t.Fatalf("Load: %v", err)
 	}
 	assert.Number(t, fake.listens).Equal(1)
 	assert.Number(t, len(c.clients)).Equal(1)
 
-	assert.That(t, c.Close(context.Background())).Nil()
+	c.Close()
 	assert.Number(t, fake.closed).Equal(1)
 	assert.Number(t, len(c.clients)).Equal(0)
 	assert.Number(t, len(c.listened)).Equal(0)
@@ -183,7 +183,7 @@ func TestCloseReleasesClientAndLoadRearms(t *testing.T) {
 	assert.That(t, err).Nil()
 	c.clients[clientKey(cs)] = fake
 
-	if _, err = c.Load(false, source); err != nil {
+	if _, err = c.Load(context.Background(), false, source); err != nil {
 		t.Fatalf("Load after Close: %v", err)
 	}
 	assert.Number(t, fake.listens).Equal(2)
@@ -194,7 +194,7 @@ func TestCloseReleasesClientAndLoadRearms(t *testing.T) {
 func TestLoadProperties(t *testing.T) {
 	c, err := newCtrlWithFake("127.0.0.1:8080/application?appId=demo", &fakeApolloClient{content: "greeting=hello\nnum=42\n"})
 	assert.That(t, err).Nil()
-	m, err := c.Load(false, "127.0.0.1:8080/application?appId=demo")
+	m, err := c.Load(context.Background(), false, "127.0.0.1:8080/application?appId=demo")
 	assert.That(t, err).Nil()
 	assert.That(t, m["greeting"]).Equal("hello")
 	assert.That(t, m["num"]).Equal("42")
@@ -208,11 +208,11 @@ func TestLoadOptionalSkipsOnMissingNamespace(t *testing.T) {
 	c, err := newCtrlWithFake(src, &fakeApolloClient{})
 	assert.That(t, err).Nil()
 
-	m, err := c.Load(true, src)
+	m, err := c.Load(context.Background(), true, src)
 	assert.That(t, err).Nil()
 	assert.That(t, len(m)).Equal(0)
 
-	_, err = c.Load(false, src)
+	_, err = c.Load(context.Background(), false, src)
 	assert.That(t, err).NotNil()
 }
 
@@ -221,7 +221,7 @@ func TestLoadOptionalSkipsOnMissingNamespace(t *testing.T) {
 func TestLoadParseErrorPropagates(t *testing.T) {
 	c, err := newCtrlWithFake("127.0.0.1:8080/app.json?appId=demo", &fakeApolloClient{content: "{not-json"})
 	assert.That(t, err).Nil()
-	_, err = c.Load(false, "127.0.0.1:8080/app.json?appId=demo")
+	_, err = c.Load(context.Background(), false, "127.0.0.1:8080/app.json?appId=demo")
 	assert.That(t, err).NotNil()
 }
 
@@ -233,7 +233,7 @@ func TestListenerRegisteredOncePerSource(t *testing.T) {
 	c, err := newCtrlWithFake(src, fake)
 	assert.That(t, err).Nil()
 	for i := 0; i < 2; i++ {
-		_, err = c.Load(false, src)
+		_, err = c.Load(context.Background(), false, src)
 		assert.That(t, err).Nil()
 	}
 	assert.That(t, fake.listens).Equal(1)
@@ -249,5 +249,5 @@ func TestListenerChangeFiresRefresh(t *testing.T) {
 	l.OnChange(&agstorage.ChangeEvent{})
 	l.OnNewestChange(&agstorage.FullChangeEvent{})
 	c := newApolloCtrl()
-	c.TriggerRefresh(context.Background())
+	c.TriggerRefresh("test")
 }

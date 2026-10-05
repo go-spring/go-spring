@@ -125,11 +125,11 @@ var currentApp atomic.Pointer[App]
 // RefreshProperties refreshes the properties of the running application and
 // propagates the changes to the IoC container. It returns an error when no
 // app has started yet (or ever, e.g. in unit tests that never call Run).
-// The ctx is the refresh's context, accepted for cancellation and trace
-// propagation; the reload pipeline does not consume it yet.
-func RefreshProperties(ctx context.Context) error {
+// The refreshID names what triggered the round (source, path, revision), so
+// every log line the refresh round emits names what it is about.
+func RefreshProperties(refreshID string) error {
 	if app := currentApp.Load(); app != nil {
-		return app.RefreshProperties(ctx)
+		return app.RefreshProperties(refreshID)
 	}
 	return errutil.Explain(nil, "no running app, cannot refresh properties")
 }
@@ -231,19 +231,25 @@ func (app *App) Provide(objOrCtor any, args ...gs.Arg) *gs_bean.BeanDefinition {
 //   - All dynamic field updates are atomic
 //   - If validation fails, no partial updates are applied
 //
-// The ctx is the refresh's context, accepted for cancellation and trace
-// propagation; the reload pipeline does not consume it yet.
-func (app *App) RefreshProperties(ctx context.Context) error {
+// The refresh runs on the application's own context and is bounded by its
+// lifetime; the refreshID names the trigger, stamped onto that context so
+// the whole round's logs name what it is about.
+func (app *App) RefreshProperties(refreshID string) error {
 	if !app.started.Load() {
 		return errutil.Explain(nil, "app not started yet, cannot refresh properties")
 	}
 	app.refreshMu.Lock()
 	defer app.refreshMu.Unlock()
-	p, err := app.p.Refresh()
+	// The refresh runs on the application's own context — bounded by the
+	// application's lifetime, so a refresh in flight when the app shuts down
+	// is aborted — with the trigger's identity stamped on top as explicit
+	// fields.
+	ctx := log.WithFields(app.ctx, log.String("refresh_id", refreshID))
+	p, err := app.p.Refresh(ctx)
 	if err != nil {
 		return err
 	}
-	return app.c.RefreshProperties(p)
+	return app.c.RefreshProperties(ctx, p)
 }
 
 // initLog initializes the application's logging system based on configuration.
@@ -280,7 +286,7 @@ func (app *App) Start() error {
 	app.c.Provide(&ContextProvider{app.ctx})
 
 	// Load and refresh application properties
-	p, err := app.p.Refresh()
+	p, err := app.p.Refresh(app.ctx)
 	if err != nil {
 		return err
 	}
@@ -398,12 +404,10 @@ func (app *App) WaitForShutdown() {
 	// Stop config providers before the container goes away: their watchers and
 	// listeners call RefreshProperties, and an app that is mid-close must not be
 	// refreshed. This is also what releases the resources a provider acquired
-	// while loading (see provider.Provider). The context is stopCtx, like the
-	// servers': closing must not be cut short by the very cancellation that
-	// started the shutdown.
-	if err := conf.CloseProviders(stopCtx); err != nil {
-		log.Errorf(app.ctx, log.TagAppDef, err, "close config providers failed")
-	}
+	// while loading (see provider.Provider). Closing is synchronous and takes no
+	// context, so it cannot be cut short by the very cancellation that started
+	// the shutdown.
+	conf.CloseProviders()
 
 	app.c.Close()
 	// Detach from the package-level RefreshProperties facade so a shut-down

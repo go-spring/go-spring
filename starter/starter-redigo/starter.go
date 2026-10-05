@@ -156,7 +156,7 @@ func createPool(ctx *gs.ContextProvider, c Config, d Driver, discoveryLabel stri
 			Discovery:   disc,
 		})
 	if err != nil {
-		log.Error(ctx.Context, log.TagAppDef, err, log.Msg("redigo create client failed"))
+		log.Errorf(ctx.Context, log.TagAppDef, err, "redigo create client failed")
 		return nil, errutil.Explain(err, "failed to create redis client")
 	}
 	if w == nil || w.Pool == nil {
@@ -174,13 +174,13 @@ func createPool(ctx *gs.ContextProvider, c Config, d Driver, discoveryLabel stri
 	// command chain (span et al.) — a harmless, even useful, first blip.
 	if c.Ping {
 		if err := HealthCheck(ctx.Context, w); err != nil {
-			log.Error(cctx, log.TagAppDef, err, log.Msg("redigo: startup ping failed"))
+			log.Errorf(cctx, log.TagAppDef, err, "redigo: startup ping failed")
 			_ = w.Close() // stop resolver watch + close pool
 			return nil, errutil.Explain(err, "redis: startup ping failed")
 		}
 	}
 
-	log.Info(cctx, log.TagAppDef, log.Msg("create redigo client success"))
+	log.Infof(cctx, log.TagAppDef, "create redigo client success")
 	return w, nil
 }
 

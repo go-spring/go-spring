@@ -142,7 +142,7 @@ gs.Run()
   │         └─ conf.Load → vaultController.Load(optional, source)   [starter.go:283]
   │              ├─ parseSource："vault://"+source → URL → host、mount/path、query  [starter.go:150]
   │              ├─ resolveToken：?token → VAULT_TOKEN → ?token-file / VAULT_TOKEN_FILE  [starter.go:207]
-  │              ├─ clientFor：按 address|namespace|token 缓存 api.Client         [starter.go:250]
+  │              ├─ clientFor：按 address|namespace|token 缓存 vaultAPI           [starter.go:235]
   │              ├─ registerWatch：启动 watchLoop goroutine（每 poll-ms 轮询）    [starter.go:429]
   │              ├─ readSecret：KVv2(mount).Get / KVv1(mount).Get，5s 超时        [starter.go:362]
   │              │    └─ 404 → nil data → optional? 警告+跳过 : 报错 "secret not found"
@@ -154,7 +154,7 @@ gs.Run()
   └─ 稳态：每个 watchLoop 周期执行
        ├─ readSecret；出错 → continue（首次 WARN，之后 debug，恢复 info）
        ├─ fingerprint(json.Marshal(data)) 对比上次加载指纹
-       └─ 有变化 → TriggerRefresh → gs.RefreshProperties()
+       └─ 有变化 → observability.RefreshConf → gs.RefreshProperties()
             └─ 重跑整个属性加载：import 重新解析、Load 重读 secret、
                层重建，gs.Dync[T] 字段换值
 ```
@@ -165,7 +165,7 @@ gs.Run()
   starter.go:464），默认 5000 ms（example 用 1000 ms）。secret 轮换无需重启即可被
   感知——*但只刷新 `gs.Dync[T]` 字段*；普通 `value` tag 只在启动时绑定一次（gs 的
   refresh 仅 Dync 生效）。
-- **刷新受启动状态保护**：app 启动前 `gs.RefreshProperties()` 返回错误，`TriggerRefresh`
+- **刷新受启动状态保护**：app 启动前 `gs.RefreshProperties()` 返回错误，刷新
   是无害 no-op——启动加载已经捕获了状态（starter.go:128）。
 - **指纹基于内容**（KV data map 的 `json.Marshal`）：内容完全相同的 KV v2 重写**不会**
   触发刷新；KV v2 version 号被忽略。
@@ -182,7 +182,7 @@ gs.Run()
 `vault kv put secret/gs-config-demo application.properties="demo.message=rotated"` →
 
 1. 下一个 `watchLoop` tick（≤ poll-ms 后）重读 secret；
-2. 指纹与加载时不同 → `TriggerRefresh`；
+2. 指纹与加载时不同 → watcher 触发刷新；
 3. `RefreshProperties` 重跑配置管线：`spring.config.import` 重新解析，`Load` 重读
    （新）secret，更新存储的指纹；
 4. 层自上而下重建，`demo.message` 现在解析为 `rotated`；

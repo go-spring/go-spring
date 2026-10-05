@@ -169,13 +169,11 @@ func (s *SimpleEchoServer) Run(ctx context.Context, sig gs.ReadySignal) error {
 		err = s.svr.Serve(ln)
 	}
 	if errutil.IsServerClosed(err) {
-		log.Debug(ctx, log.TagAppDef, func() []log.Field {
-			return []log.Field{log.Msg("echo server stopped")}
-		})
+		log.Debugf(ctx, log.TagAppDef, "echo server stopped")
 		return nil
 	}
 	if err != nil {
-		log.Error(ctx, log.TagAppDef, err, log.Msg("echo server failed"))
+		log.Errorf(ctx, log.TagAppDef, err, "echo server failed")
 	}
 	return errutil.Explain(err, "failed to serve on %s", s.svr.Addr)
 }

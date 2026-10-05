@@ -192,14 +192,12 @@ func (s *SimpleGinServer) Run(ctx context.Context, sig gs.ReadySignal) error {
 	}
 
 	if errutil.IsServerClosed(err) {
-		log.Debug(ctx, log.TagAppDef, func() []log.Field {
-			return []log.Field{log.Msg("gin server stopped")}
-		})
+		log.Debugf(ctx, log.TagAppDef, "gin server stopped")
 
 		return nil
 	}
 	if err != nil {
-		log.Error(ctx, log.TagAppDef, err, log.Msg("gin server failed"))
+		log.Errorf(ctx, log.TagAppDef, err, "gin server failed")
 	}
 	return errutil.Explain(err, "failed to serve on %s", s.svr.Addr)
 }

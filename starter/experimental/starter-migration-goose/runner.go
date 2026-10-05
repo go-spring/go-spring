@@ -128,7 +128,7 @@ func migrateOne(ctx context.Context, db *gorm.DB, cfg Config) error {
 		return err
 	}
 	if len(res) == 0 {
-		log.Info(ctx, log.TagAppDef, log.Msg("goose: no pending migrations"))
+		log.Infof(ctx, log.TagAppDef, "goose: no pending migrations")
 		return nil
 	}
 	for _, m := range res {

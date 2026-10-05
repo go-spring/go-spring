@@ -109,7 +109,7 @@ func newClient(ctx *gs.ContextProvider, c Config, d Driver, center *governance.C
 	// block startup.
 	if c.Ping {
 		if err := HealthCheck(ctx.Context, client); err != nil {
-			log.Error(ctx.Context, log.TagAppDef, err, log.Msg("s3: startup probe failed"))
+			log.Errorf(ctx.Context, log.TagAppDef, err, "s3: startup probe failed")
 			_ = client.Destroy()
 			return nil, errutil.Explain(err, "failed to reach s3 endpoint %s", c.Endpoint)
 		}

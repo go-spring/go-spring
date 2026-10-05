@@ -113,7 +113,7 @@ func (o *Relay) Init() error {
 
 	if o.cfg.AutoMigrate {
 		if err := Migrate(o.db); err != nil {
-			log.Error(octx, starterTag, err, log.Msg("outbox: auto-migrate failed"))
+			log.Errorf(octx, starterTag, err, "outbox: auto-migrate failed")
 			return err
 		}
 	}
@@ -148,7 +148,7 @@ func (o *Relay) Destroy() error {
 	select {
 	case <-o.done:
 	case <-time.After(DrainTimeout):
-		log.Warn(octx, starterTag, log.Msg("outbox relay: drain timed out"))
+		log.Warnf(octx, starterTag, "outbox relay: drain timed out")
 	}
 	return nil
 }

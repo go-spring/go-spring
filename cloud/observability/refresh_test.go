@@ -74,12 +74,12 @@ func TestRefreshConf(t *testing.T) {
 
 	// Success path: nil passes through, fn runs exactly once, counted ok.
 	calls := 0
-	assert.That(t, RefreshConf(context.Background(), func(context.Context) error { calls++; return nil })).Nil()
+	assert.That(t, RefreshConf("test", func() error { calls++; return nil })).Nil()
 	assert.That(t, calls).Equal(1)
 
 	// Failure path: the error passes through unchanged and counts as error.
 	sentinel := errors.New("boom")
-	assert.That(t, errors.Is(RefreshConf(context.Background(), func(context.Context) error { return sentinel }), sentinel)).True()
+	assert.That(t, errors.Is(RefreshConf("test", func() error { return sentinel }), sentinel)).True()
 
 	// One ok and one error: statuses are exclusive, sum equals refreshes run.
 	got := refreshTotals(t, rdr)

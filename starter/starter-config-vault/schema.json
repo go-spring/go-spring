@@ -6,7 +6,7 @@
   "properties": {
     "vault-url": {
       "type": "string",
-      "description": "URL format: vault://host:port/path/to/secret?token=xxx&scheme={http|https}"
+      "description": "URL format: vault://host:port/path/to/secret?token=xxx&scheme={http|https}&poll-ms=5000&timeout-ms=5000"
     }
   }
 }

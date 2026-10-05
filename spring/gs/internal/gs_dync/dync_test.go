@@ -17,6 +17,7 @@
 package gs_dync
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"reflect"
@@ -226,7 +227,7 @@ func TestDync(t *testing.T) {
 		prop := flatten.NewPropertiesStorage(flatten.MapProperties(map[string]any{
 			"config.s1.value": "99",
 		}))
-		err := p.Refresh(prop)
+		err := p.Refresh(context.Background(), prop)
 		assert.That(t, err).Nil()
 		assert.That(t, p.Data()).Equal(prop)
 
@@ -256,7 +257,7 @@ func TestDync(t *testing.T) {
 			"config.s2.value": "456",
 			"config.s4.value": "123",
 		}))
-		err = p.Refresh(prop)
+		err = p.Refresh(context.Background(), prop)
 		assert.That(t, err).Nil()
 		assert.That(t, p.ObjectsCount()).Equal(2)
 		assert.That(t, cfg.S1.Value.Value()).Equal(99)
@@ -267,7 +268,7 @@ func TestDync(t *testing.T) {
 			"config.s2.value": "456",
 			"config.s3.value": "xyz",
 		}))
-		err = p.Refresh(prop)
+		err = p.Refresh(context.Background(), prop)
 		assert.That(t, err).Nil()
 		assert.That(t, p.ObjectsCount()).Equal(2)
 		assert.That(t, cfg.S1.Value.Value()).Equal(99)
@@ -278,7 +279,7 @@ func TestDync(t *testing.T) {
 			"config.s2.value": "abc",
 			"config.s3.value": "xyz",
 		}))
-		err = p.Refresh(prop)
+		err = p.Refresh(context.Background(), prop)
 		assert.Error(t, err).Matches("strconv.ParseInt: parsing \"xyz\": invalid syntax")
 		assert.Error(t, err).Matches("strconv.ParseInt: parsing \"abc\": invalid syntax")
 
@@ -300,7 +301,7 @@ func TestDync(t *testing.T) {
 		prop := flatten.NewPropertiesStorage(flatten.NewProperties(nil))
 		p := New(prop)
 
-		err := p.Refresh(nil)
+		err := p.Refresh(context.Background(), nil)
 		assert.Error(t, err).Matches("properties storage cannot be nil")
 		assert.That(t, p.Data()).Equal(prop)
 	})
@@ -324,13 +325,13 @@ func TestDync(t *testing.T) {
 		assert.That(t, err).Nil()
 		assert.That(t, v.Value().S1.Value).Equal(99)
 
-		err = p.Refresh(flatten.NewPropertiesStorage(flatten.MapProperties(map[string]any{
+		err = p.Refresh(context.Background(), flatten.NewPropertiesStorage(flatten.MapProperties(map[string]any{
 			"config.s1.value": "xyz",
 		})))
 		assert.Error(t, err).Matches("strconv.ParseInt: parsing \"xyz\": invalid syntax")
 		assert.That(t, v.Value().S1.Value).Equal(99)
 
-		err = p.Refresh(flatten.NewPropertiesStorage(flatten.MapProperties(map[string]any{
+		err = p.Refresh(context.Background(), flatten.NewPropertiesStorage(flatten.MapProperties(map[string]any{
 			"config.s1.value": "10",
 		})))
 		assert.That(t, err).Nil()
@@ -653,7 +654,7 @@ func TestValue_ComplexTypes(t *testing.T) {
 		assert.That(t, v.Value().Port).Equal(8080)
 
 		// Try to refresh with invalid value — should roll back
-		err = p.Refresh(flatten.NewPropertiesStorage(flatten.MapProperties(map[string]any{
+		err = p.Refresh(context.Background(), flatten.NewPropertiesStorage(flatten.MapProperties(map[string]any{
 			"cfg.port": "not_a_number",
 		})))
 		assert.That(t, err).NotNil()
@@ -678,7 +679,7 @@ func TestValue_ComplexTypes(t *testing.T) {
 		assert.That(t, v.Value().Host).Equal("old-host")
 		assert.That(t, v.Value().Port).Equal(1111)
 
-		err = p.Refresh(flatten.NewPropertiesStorage(flatten.MapProperties(map[string]any{
+		err = p.Refresh(context.Background(), flatten.NewPropertiesStorage(flatten.MapProperties(map[string]any{
 			"cfg.host": "new-host",
 			"cfg.port": "9999",
 		})))
@@ -699,7 +700,7 @@ func TestValue_ComplexTypes(t *testing.T) {
 		assert.That(t, v.Value()["a"]).Equal(1)
 		assert.That(t, v.Value()["b"]).Equal(2)
 
-		err = p.Refresh(flatten.NewPropertiesStorage(flatten.MapProperties(map[string]any{
+		err = p.Refresh(context.Background(), flatten.NewPropertiesStorage(flatten.MapProperties(map[string]any{
 			"cfg.x": "10",
 			"cfg.y": "20",
 		})))
@@ -719,7 +720,7 @@ func TestValue_ComplexTypes(t *testing.T) {
 		assert.That(t, err).Nil()
 		assert.That(t, v.Value()["a"]).Equal(1)
 
-		err = p.Refresh(flatten.NewPropertiesStorage(flatten.MapProperties(map[string]any{
+		err = p.Refresh(context.Background(), flatten.NewPropertiesStorage(flatten.MapProperties(map[string]any{
 			"cfg.b": "not_an_int",
 		})))
 		assert.That(t, err).NotNil()

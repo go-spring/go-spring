@@ -145,14 +145,14 @@ gs.Run() → App.Start()                                                (app.go:
   3. initLog, then IoC container wiring
   4. app.started = true → RefreshProperties becomes legal               (app.go:309)
   5. Runners, Servers, readiness
-  └─ on any watched-directory event: watchLoop → TriggerRefresh
+  └─ on any watched-directory event: watchLoop → observability.RefreshConf
        → gs.RefreshProperties(): reload ALL sources, merge by
          priority, update every gs.Dync field atomically               (app.go:247)
 ```
 
 Why the controller needs no bean although config loads pre-bean: the watch callback
 reaches the refresh through the process-level `gs.RefreshProperties()` facade, which
-returns an error before the app has started, so `TriggerRefresh` is deliberately a
+returns an error before the app has started, so the refresh is deliberately a
 no-op pre-start — early watch events are dropped harmlessly because the startup load
 just captured the state. This is why both providers hang off ONE controller singleton.
 
@@ -175,7 +175,7 @@ Other timing facts:
    is exactly why the watch is on the parent dir, never the file — filewatch.go:67-73). Common
    editors save by atomic rename too, so an ordinary edit hits the same path.
 3. `watchLoop` reacts to every event without name filtering (correct: a K8s update surfaces as
-   an event on `..data`, not on the key files — watch.go:112-116) → `TriggerRefresh`.
+   an event on `..data`, not on the key files — watch.go:112-116) → `observability.RefreshConf`.
 4. `RefreshProperties` refuses to run if the app hasn't finished wiring (app.go:248); otherwise
    it re-runs the whole config load — both providers, env, cmd args — merges by priority and
    swaps `gs.Dync` values atomically. One swap typically produces two events (temp-symlink
@@ -247,7 +247,7 @@ echo 'demo: [broken' > example/mount/application.yaml   # invalid yaml
 
 The next refresh's `Load` fails; `RefreshProperties` aborts **before** any partial update
 (app.go:246-255: validation failure ⇒ no partial updates), so the last-good values stay live.
-The refresh error is now logged by `TriggerRefresh` as a WARN
+The refresh error is now logged by `observability.RefreshConf` as a WARN
 (`property refresh after file change failed, previous snapshot retained: ...`); watcher
 creation failures and fsnotify channel errors are logged as WARNs too. Startup with a
 malformed required file, by contrast, fails loudly with `file-watch: read ... failed`.
@@ -301,7 +301,7 @@ Design suspects (kept from the previous audit, plus new ones — for the audit l
   directory (fixed in this pass).
 - Every directory event triggers a full refresh (no file-name filtering, no debounce) —
   correct but chatty under edit storms; each K8s swap fires ~2 full reloads.
-- Refresh errors from `RefreshProperties` are now logged as WARNs in `TriggerRefresh`
+- Refresh errors from `RefreshProperties` are now logged as WARNs in `observability.RefreshConf`
   (fixed in this pass), so a malformed watched file no longer degrades silently.
 - `optional:` semantics live in each provider (os.IsNotExist checks duplicated in both Load
   functions) rather than in the provider framework — minor duplication.

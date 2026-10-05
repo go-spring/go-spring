@@ -207,7 +207,7 @@ func (t *RouteTable) current() []*Route {
 			// Keep serving the previous table: a bad hot edit must never take the
 			// gateway down. Surface it loudly via log + metric.
 			t.obs.reloadError(t.ctx)
-			log.Error(t.ctx, log.TagAppDef, err, log.Msg("gateway: route reload failed, keeping previous table"))
+			log.Errorf(t.ctx, log.TagAppDef, err, "gateway: route reload failed, keeping previous table")
 			// Adopt the pointer so we do not retry the same broken map every request.
 			atomic.StoreUintptr(&t.lastPtr, reflect.ValueOf(raw).Pointer())
 		}

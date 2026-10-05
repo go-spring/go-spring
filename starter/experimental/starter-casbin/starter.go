@@ -131,7 +131,7 @@ func newEnforcer(ctx context.Context, c Config, adapter persist.Adapter, watcher
 		e, err = casbin.NewEnforcer(c.Model, c.Policy)
 	}
 	if err != nil {
-		log.Error(ctx, log.TagAppDef, err, log.Msg("create casbin enforcer failed"))
+		log.Errorf(ctx, log.TagAppDef, err, "create casbin enforcer failed")
 		return nil, errutil.Explain(err, "failed to create casbin enforcer")
 	}
 	e.EnableAutoSave(c.AutoSave)

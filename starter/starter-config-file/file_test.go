@@ -32,7 +32,7 @@ func TestLoad_ParsesByExtension(t *testing.T) {
 		t.Fatalf("write: %v", err)
 	}
 
-	m, err := ctl.Load(false, path)
+	m, err := ctl.Load(context.Background(), false, path)
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
@@ -49,7 +49,7 @@ func TestLoad_YamlNestedFlattened(t *testing.T) {
 		t.Fatalf("write: %v", err)
 	}
 
-	m, err := ctl.Load(false, path)
+	m, err := ctl.Load(context.Background(), false, path)
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
@@ -66,7 +66,7 @@ func TestLoad_UnsupportedExtensionErrors(t *testing.T) {
 	if err := os.WriteFile(path, []byte("# hi"), 0o644); err != nil {
 		t.Fatalf("write: %v", err)
 	}
-	if _, err := ctl.Load(false, path); err == nil {
+	if _, err := ctl.Load(context.Background(), false, path); err == nil {
 		t.Fatalf("Load on .md must error")
 	}
 }
@@ -74,7 +74,7 @@ func TestLoad_UnsupportedExtensionErrors(t *testing.T) {
 func TestLoad_EmptyPathErrors(t *testing.T) {
 	ctl := newFileWatchCtrl()
 
-	if _, err := ctl.Load(false, ""); err == nil {
+	if _, err := ctl.Load(context.Background(), false, ""); err == nil {
 		t.Fatalf("Load on empty path must error")
 	}
 }
@@ -82,7 +82,7 @@ func TestLoad_EmptyPathErrors(t *testing.T) {
 func TestLoad_OptionalMissingReturnsNil(t *testing.T) {
 	ctl := newFileWatchCtrl()
 
-	m, err := ctl.Load(true, filepath.Join(t.TempDir(), "nope"))
+	m, err := ctl.Load(context.Background(), true, filepath.Join(t.TempDir(), "nope"))
 	if err != nil || m != nil {
 		t.Fatalf("optional missing: m=%v err=%v", m, err)
 	}
@@ -106,27 +106,23 @@ func TestCloseReleasesWatchersAndLoadRearms(t *testing.T) {
 		t.Fatalf("write: %v", err)
 	}
 
-	if _, err := ctl.Load(false, path); err != nil {
+	if _, err := ctl.Load(context.Background(), false, path); err != nil {
 		t.Fatalf("Load: %v", err)
 	}
 	if n := watchCount(&ctl.watchCore); n != 1 {
 		t.Fatalf("after Load: %d watchers, want 1", n)
 	}
 
-	if err := ctl.Close(context.Background()); err != nil {
-		t.Fatalf("Close: %v", err)
-	}
+	ctl.Close()
 	if n := watchCount(&ctl.watchCore); n != 0 {
 		t.Errorf("after Close: %d watchers, want 0", n)
 	}
 
-	if _, err := ctl.Load(false, path); err != nil {
+	if _, err := ctl.Load(context.Background(), false, path); err != nil {
 		t.Fatalf("Load after Close: %v", err)
 	}
 	if n := watchCount(&ctl.watchCore); n != 1 {
 		t.Errorf("after Load following Close: %d watchers, want 1", n)
 	}
-	if err := ctl.Close(context.Background()); err != nil {
-		t.Fatalf("final Close: %v", err)
-	}
+	ctl.Close()
 }

@@ -120,13 +120,13 @@ func build(ctx context.Context, c Config, params cloud.ClientParams) (gormcore.S
 
 	lb, _, stopSelection, err := c.NewPickPool(ctx, params.Discovery, service, params.Loadbalance)
 	if err != nil {
-		log.Error(ctx, log.TagAppDef, err, log.Msg("gorm sqlserver build discovery resolver failed"))
+		log.Errorf(ctx, log.TagAppDef, err, "gorm sqlserver build discovery resolver failed")
 		return gormcore.Spec{}, err
 	}
 	if lb != nil {
 		msCfg, err := msdsn.Parse(c.DSN())
 		if err != nil {
-			log.Error(ctx, log.TagAppDef, err, log.Msg("gorm sqlserver parse DSN failed"))
+			log.Errorf(ctx, log.TagAppDef, err, "gorm sqlserver parse DSN failed")
 			return gormcore.Spec{}, err
 		}
 		connector := mssql.NewConnectorConfig(msCfg)

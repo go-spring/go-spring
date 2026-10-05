@@ -79,7 +79,6 @@
 package gs
 
 import (
-	"context"
 	"reflect"
 	"runtime"
 	"strings"
@@ -560,11 +559,11 @@ func Group[T any, R any](tag string, fn func(cp *ContextProvider, name string, c
 // that most recently completed Start — the process-level bridge for
 // infrastructure living outside the IoC container (config providers,
 // watch goroutines), which cannot use bean injection. It returns an error
-// when no app has started. The ctx is the refresh's context: it flows to
-// the observability records around the reload and is the seam future
-// cancellation of the reload pipeline will hang off.
-func RefreshProperties(ctx context.Context) error {
-	return gs_app.RefreshProperties(ctx)
+// when no app has started. The refresh runs on the application's own
+// context, bounded by its lifetime; the refreshID names the trigger, stamped
+// onto that context so the whole round's logs name what it is about.
+func RefreshProperties(refreshID string) error {
+	return gs_app.RefreshProperties(refreshID)
 }
 
 // AppStarted reports whether the running application has finished wiring its

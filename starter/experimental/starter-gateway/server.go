@@ -51,9 +51,7 @@ type GatewayServer struct {
 }
 
 func newGatewayServer(tbl *RouteTable) *GatewayServer {
-	log.Debug(context.Background(), log.TagAppDef, func() []log.Field {
-		return []log.Field{log.Msg("create gateway server success")}
-	})
+	log.Debugf(context.Background(), log.TagAppDef, "create gateway server success")
 	return &GatewayServer{tbl: tbl}
 }
 
@@ -104,9 +102,9 @@ func (s *GatewayServer) Run(ctx context.Context, sig gs.ReadySignal) error {
 	}
 
 	<-sig.TriggerAndWait()
-	log.Info(ctx, log.TagAppDef, log.Msg("gateway: serving"))
+	log.Infof(ctx, log.TagAppDef, "gateway: serving")
 	if err = s.svr.Serve(listener); err != nil && !errutil.IsServerClosed(err) {
-		log.Error(ctx, log.TagAppDef, err, log.Msg("gateway: serve failed"))
+		log.Errorf(ctx, log.TagAppDef, err, "gateway: serve failed")
 		return errutil.Explain(err, "gateway: failed to serve on %s", s.Cfg.Addr)
 	}
 	return nil

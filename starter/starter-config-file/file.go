@@ -43,8 +43,6 @@ type fileWatchCtrl struct {
 	watchCore
 }
 
-// newFileWatchCtrl creates the "file-watch" provider controller with its
-// watch machinery ready.
 func newFileWatchCtrl() *fileWatchCtrl {
 	return &fileWatchCtrl{watchCore: newWatchCore()}
 }
@@ -53,20 +51,21 @@ func newFileWatchCtrl() *fileWatchCtrl {
 // (format detected by extension via the shared conf reader registry) and
 // installs a watcher on its parent directory that triggers an application
 // property refresh on change.
-func (c *fileWatchCtrl) Load(optional bool, source string) (map[string]string, error) {
-	// Load is the top of this chain and Provider.Load takes no context, so the
-	// one ctx the whole load shares is minted here — ensureWatch below receives
-	// it instead of minting its own.
-	ctx := context.Background()
-
+func (c *fileWatchCtrl) Load(ctx context.Context, optional bool, source string) (map[string]string, error) {
 	path := source
 	if path == "" {
 		return nil, errutil.Explain(nil, "file-watch: missing path")
 	}
 
+	// The source's identity rides on the context from here on: every event this
+	// load and its helpers print carries it without repeating it at each call
+	// site.
+	ctx = log.WithFields(ctx,
+		log.String("dir", path),
+	)
+
 	log.Debug(ctx, starterTag, func() []log.Field {
 		return []log.Field{
-			log.String("path", path),
 			log.Msg("loading file-watch config"),
 		}
 	})
@@ -75,17 +74,16 @@ func (c *fileWatchCtrl) Load(optional bool, source string) (map[string]string, e
 	if err != nil {
 		if os.IsNotExist(err) && optional {
 			log.Warn(ctx, starterTag,
-				log.String("path", path),
 				log.Msg("skip optional config path not found"))
 			return nil, nil
 		}
-		log.Error(ctx, starterTag, err, log.String("path", path), log.Msg("stat failed"))
+		log.Error(ctx, starterTag, err, log.Msg("stat failed"))
 		return nil, errutil.Explain(err, "file-watch: stat %s failed", path)
 	}
 
 	if info.IsDir() {
 		err := errutil.Explain(nil, "file-watch expects a single file, got directory %s (a directory of scalar key files belongs to the configtree provider)", path)
-		log.Error(ctx, starterTag, err, log.String("path", path), log.Msg("file-watch expects a single file, got a directory"))
+		log.Error(ctx, starterTag, err, log.Msg("file-watch expects a single file, got a directory"))
 		return nil, err
 	}
 
@@ -96,18 +94,20 @@ func (c *fileWatchCtrl) Load(optional bool, source string) (map[string]string, e
 	// inotify watch would be left on a stale inode after the first update.
 	// Watching the directory keeps hot-reload working across the swap.
 	c.ensureWatch(ctx, filepath.Dir(path))
+	return loadFromFile(ctx, path)
+}
 
-	// Format is detected by extension through the shared conf reader registry,
-	// so there is no per-provider format map to maintain.
+// loadFromFile reads the file once and parses it into flattened properties.
+// Format is detected by extension through the shared conf reader registry, so
+// there is no per-provider format map to maintain. The caller installs the
+// watcher before calling it, so a change landing right after the read is not
+// missed.
+func loadFromFile(ctx context.Context, path string) (map[string]string, error) {
 	parsed, err := reader.ReadFile(path)
 	if err != nil {
 		return nil, errutil.Explain(err, "file-watch: read %s failed", path)
 	}
 	m := flatten.Flatten(parsed)
-
-	log.Info(ctx, starterTag,
-		log.String("path", path),
-		log.Int("keys", len(m)),
-		log.Msg("load file-watch config success"))
+	log.Info(ctx, starterTag, log.Msg("load file-watch config success"))
 	return m, nil
 }

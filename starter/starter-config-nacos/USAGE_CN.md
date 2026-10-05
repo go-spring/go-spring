@@ -163,7 +163,8 @@ Nacos 推送 dataId 变更
 listener 在拉取**之前**被无条件注册。若 `ListenConfig` 只在 `GetConfig` 成功后才安装，
 `optional:` 导入遇上尚不存在的 dataId 时会提前返回、永远装不上 listener——之后再发布也
 不会触发刷新。正是这个顺序保证了 `optional:` 导入在 dataId 出现后仍能热更新
-（starter.go:323）。
+（starter.go:323）。而 `ListenConfig` 一旦失败，会在后台按 `retry-ms` 重试到成功
+—— 只尝试一次的话，这个 dataId 的热更要等到某次无关的刷新重跑 import 才可能恢复。
 
 ### 2.3 治理规则推送链路（已移出）
 
@@ -190,6 +191,7 @@ nacos 治理规则源现已独立为 `go-spring.org/starter-governance-nacos` �
 | `username` / `password` | string | 空 | 服务端鉴权；同样参与 client 缓存 key。 | 开鉴权的服务端上缺失 → 启动时 GetConfig 报错（optional 则跳过）。 |
 | `format` | string | dataId 扩展名，否则 `properties` | reader 支持的格式：`properties` / `yaml` / `toml` / `json`。无扩展名的 dataId 默认 properties（starter.go:179）。 | 内容/格式不符 → 启动报错 `parse nacos config ... as <fmt> failed`（`TestLoadParseErrorPropagates` 钉死）。 |
 | `timeout-ms` | uint64 | `5000` | 每个 source 的 SDK 请求超时（starter.go:183）。非数字在解析期被拒。 | 过小 → 慢 Nacos 下启动抖动。 |
+| `retry-ms` | int | `2000` | `ListenConfig` 失败后的安装重试间隔（starter.go:167），毫秒且 ≥ 1。非数字或 ≤ 0 在解析期被拒。 | 过大 → 安装瞬时失败后热更空窗更久。 |
 
 ⚠ **没有** `endpoint` 参数，也没有集群/地址列表形态——server 永远是单个 `host:port`。
 
@@ -235,6 +237,7 @@ nacos 治理规则源现已独立为 `go-spring.org/starter-governance-nacos` �
 | `nacos:/app.yaml`（无 host） | 启动报错 `missing nacos server address` |
 | `nacos:127.0.0.1:8848`（无 dataId） | 启动报错 `missing data id` |
 | `...?timeout-ms=abc` | 启动报错 `invalid timeout-ms`（解析期拒绝） |
+| `...?retry-ms=abc` | 启动报错 `invalid retry-ms`（解析期拒绝） |
 | required 导入 + dataId 不存在 | 启动报错 `get nacos config ... failed` / `is empty` |
 | `optional:` + 上述任一拉取失败 | warn 日志，应用照常启动但缺这些 key |
 

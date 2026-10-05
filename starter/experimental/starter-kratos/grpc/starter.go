@@ -177,7 +177,7 @@ func (s *GrpcServer) Run(ctx context.Context, sig gs.ReadySignal) error {
 
 	<-sig.TriggerAndWait()
 
-	log.Info(ctx, log.TagAppDef, log.Msg("kratos grpc server starting"))
+	log.Infof(ctx, log.TagAppDef, "kratos grpc server starting")
 	errCh := make(chan error, 1)
 	go func() {
 		errCh <- s.app.Run()
@@ -186,7 +186,7 @@ func (s *GrpcServer) Run(ctx context.Context, sig gs.ReadySignal) error {
 	select {
 	case err := <-errCh:
 		if err != nil {
-			log.Error(ctx, log.TagAppDef, err, log.Msg("kratos grpc app exited with error"))
+			log.Errorf(ctx, log.TagAppDef, err, "kratos grpc app exited with error")
 		}
 		return errutil.Explain(err, "kratos grpc app exited with error")
 	case <-s.done:

@@ -76,7 +76,7 @@ func TestLoadConfigMapYAML(t *testing.T) {
 	assert.Error(t, err).Nil()
 	assert.String(t, m["server.port"]).Equal("8080")
 	assert.String(t, m["name"]).Equal("demo")
-	c.manager.stopAll(context.Background())
+	c.manager.stopAll()
 }
 
 func TestLoadSecretPropsWithKeyFilter(t *testing.T) {
@@ -98,7 +98,7 @@ func TestLoadSecretPropsWithKeyFilter(t *testing.T) {
 	assert.String(t, m["db.pass"]).Equal("secret")
 	_, ok := m["ignore.me"]
 	assert.That(t, ok).False()
-	c.manager.stopAll(context.Background())
+	c.manager.stopAll()
 }
 
 func TestLoadOptionalMissing(t *testing.T) {
@@ -128,13 +128,13 @@ func TestUnknownExtensionSkippedButKeyFilterErrors(t *testing.T) {
 	m, err := c.loadFromClient(context.Background(), client, cs, false)
 	assert.Error(t, err).Nil()
 	assert.String(t, m["a"]).Equal("1")
-	c.manager.stopAll(context.Background())
+	c.manager.stopAll()
 
 	cs, err = parseSource("configmap/mixed?key=README")
 	assert.Error(t, err).Nil()
 	_, err = c.loadFromClient(context.Background(), client, cs, false)
 	assert.Error(t, err).Matches("no known format")
-	c.manager.stopAll(context.Background())
+	c.manager.stopAll()
 }
 
 func TestHotReloadTriggersRefresh(t *testing.T) {
@@ -150,7 +150,7 @@ func TestHotReloadTriggersRefresh(t *testing.T) {
 
 	_, err = c.loadFromClient(context.Background(), client, cs, false)
 	assert.Error(t, err).Nil()
-	defer c.manager.stopAll(context.Background())
+	defer c.manager.stopAll()
 
 	drain(fired)
 	_, err = client.CoreV1().ConfigMaps("default").Update(context.Background(),
@@ -178,16 +178,16 @@ func TestLoadBadKubeconfigOptionalSkips(t *testing.T) {
 	c := newK8sCtrl()
 
 	// optional: a client that cannot be built is skipped with no error.
-	m, err := c.Load(true, "configmap/x?kubeconfig=/nonexistent/kubeconfig")
+	m, err := c.Load(context.Background(), true, "configmap/x?kubeconfig=/nonexistent/kubeconfig")
 	assert.Error(t, err).Nil()
 	assert.That(t, m == nil).True()
 
 	// required: the same failure is fatal.
-	_, err = c.Load(false, "configmap/x?kubeconfig=/nonexistent/kubeconfig")
+	_, err = c.Load(context.Background(), false, "configmap/x?kubeconfig=/nonexistent/kubeconfig")
 	assert.Error(t, err).Matches("load kubeconfig")
 
 	// parse failures are fatal regardless of optional.
-	_, err = c.Load(true, "deployment/x")
+	_, err = c.Load(context.Background(), true, "deployment/x")
 	assert.Error(t, err).Matches("unsupported k8s config kind")
 }
 
@@ -241,7 +241,7 @@ func TestEnsureWatchDedupAndRearmAfterClose(t *testing.T) {
 	assert.That(t, stops == 1).True()
 
 	// Close forgets everything; a later Load re-arms a fresh informer.
-	assert.Error(t, c.Close(context.Background())).Nil()
+	c.Close()
 	c.manager.mu.Lock()
 	watched = len(c.manager.watched)
 	c.manager.mu.Unlock()
@@ -249,7 +249,7 @@ func TestEnsureWatchDedupAndRearmAfterClose(t *testing.T) {
 
 	_, err = c.loadFromClient(context.Background(), client, cs, false)
 	assert.Error(t, err).Nil()
-	c.manager.stopAll(context.Background())
+	c.manager.stopAll()
 }
 
 func TestWatchSyncTimeoutForgetsAndStillLoads(t *testing.T) {

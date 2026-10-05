@@ -212,7 +212,7 @@ func (s *TCPServer) Run(ctx context.Context, sig gs.ReadySignal) error {
 // Run goroutine treat the resulting Accept error as expected shutdown rather
 // than a real serve failure.
 func (s *TCPServer) Stop(ctx context.Context) error {
-	log.Info(ctx, log.TagAppDef, log.Msg("goframe tcp server shutting down"))
+	log.Infof(ctx, log.TagAppDef, "goframe tcp server shutting down")
 	if s.registered != nil {
 		// Best-effort deregister; if etcd is already gone there is nothing
 		// useful the caller can do with the error.

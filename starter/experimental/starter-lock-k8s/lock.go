@@ -63,7 +63,7 @@ func newK8sLocker(ctx *gs.ContextProvider, c Config) (*k8sLocker, error) {
 
 	client, err := buildClient(c)
 	if err != nil {
-		log.Error(ctx.Context, log.TagAppDef, err, log.Msg("lock-k8s: build client failed"))
+		log.Errorf(ctx.Context, log.TagAppDef, err, "lock-k8s: build client failed")
 		return nil, err
 	}
 	log.Info(ctx.Context, log.TagAppDef, log.String("namespace", c.Namespace), log.Msg("create k8s locker success"))

@@ -101,7 +101,7 @@ func (s *Server) Run(ctx context.Context, sig gs.ReadySignal) error {
 	})
 	for _, r := range s.Registries {
 		if err := r.Register(ctx, s.inst); err != nil {
-			log.Error(ctx, starterTag, err, log.Msg("register service failed"))
+			log.Errorf(ctx, starterTag, err, "register service failed")
 			return errutil.Explain(err, "discovery: register %q", s.inst.ServiceName)
 		}
 	}

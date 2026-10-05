@@ -65,11 +65,11 @@ func (c *Injecting) DynamicObjectsCount() int {
 // RefreshProperties updates the dynamic properties in the container. It is a
 // no-op when no gs.Dync values were registered (c.props is nil), since there
 // is nothing dynamic to propagate.
-func (c *Injecting) RefreshProperties(p flatten.Storage) error {
+func (c *Injecting) RefreshProperties(ctx context.Context, p flatten.Storage) error {
 	if c.props == nil {
 		return nil
 	}
-	if err := c.props.Refresh(p); err != nil {
+	if err := c.props.Refresh(ctx, p); err != nil {
 		return errutil.Explain(err, "refresh dynamic properties failed")
 	}
 	return nil
@@ -119,7 +119,7 @@ func (c *Injecting) Refresh(roots, beans []*gs_bean.BeanDefinition) (err error) 
 		// always unwound by then: pushBean/popBean are defer-balanced in
 		// wireBean, so there is no leftover-beans condition to check here.
 		if err != nil {
-			log.Error(context.Background(), log.TagAppDef, err, log.Msg("wire beans failed"))
+			log.Errorf(context.Background(), log.TagAppDef, err, "wire beans failed")
 		}
 	}()
 

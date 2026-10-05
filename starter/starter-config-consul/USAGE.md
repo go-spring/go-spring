@@ -138,18 +138,19 @@ gs.Run()
 is wired (`app.go:272-279` startup sequence). The provider must therefore be registered from an
 `init()` — package-level state, not a bean — and the watch callback reaches the refresh through
 the process-level `gs.RefreshProperties()` facade, which returns an error before the app has
-started (early `TriggerRefresh` is a no-op).
+started (an early refresh is a no-op).
 
 ### 2.2 Watch / refresh path, walked
 
-1. `registerWatch` (`registerWatch` in `starter.go`) dedupes on `clientKey + "|" + kvPath`; repeated Loads of
+1. `registerWatch` (`watch.go`) dedupes on `clientKey + "|" + kvPath`; repeated Loads of
    the same source — which happen on *every* property refresh — spawn exactly one goroutine
    (`TestWatchRegisteredOncePerSource`).
-2. `watchLoop` (`watchLoop` in `starter.go`) issues a Consul **blocking query**: `Get` with
-   `WaitIndex: lastIndex`, `WaitTime: 5m`. It swallows the initial index (first poll only
-   establishes the baseline), triggers `TriggerRefresh()` when `LastIndex` advances, resets to 0 on
-   index regression (Consul restart / index reset), and retries after 2 s on transport errors.
-3. `TriggerRefresh` → `gs.RefreshProperties()` (`app.go:149-151`) → full
+2. `watchLoop` (`watch.go`) issues a Consul **blocking query**: `Get` with
+   `WaitIndex: lastIndex`, `WaitTime: 5m`. It resumes from the KV index the initial read
+   observed, so a change landing right after that read is still delivered; it triggers the
+   refresh when `LastIndex` advances, resets to 0 on index regression (Consul restart / index
+   reset), and retries after 2 s on transport errors.
+3. `observability.RefreshConf()` → `gs.RefreshProperties()` (`app.go:149-151`) → full
    `AppConfig.Refresh()` rebuilds the layered storage from scratch (files, env, cmd, imports — so
    the KV entry is *re-fetched* by `Load`) → the container propagates the new snapshot to
    every `gs.Dync[T]` field atomically (`app.go:234-256`). Non-`Dync` bindings never re-run.

@@ -32,44 +32,31 @@ package StarterConfigK8s
 
 import (
 	"context"
-	"fmt"
 	"maps"
 	"net/url"
 	"strings"
 	"sync"
-	"time"
 
-	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
-	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/clientcmd"
 
-	"go-spring.org/cloud/observability"
 	"go-spring.org/log"
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/conf/reader"
-	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
 	"go-spring.org/stdlib/flatten"
 )
 
+var starterTag = log.RegisterAppTag("config", "k8s")
+
 func init() {
-	// Register the controller itself, not just its Load method: the runtime
-	// holds the registered provider so it can stop the informers at shutdown.
-	// Refreshes go through the gs.RefreshProperties
-	// package-level facade, so the controller needs no bean wiring at all.
 	conf.RegisterProvider("k8s", newK8sCtrl())
 }
 
-var starterTag = log.RegisterAppTag("config_k8s", "")
-
-// watchSyncTimeout bounds how long Load waits for a new informer's initial
-// cache sync before giving up on hot-reload for that object.
-var watchSyncTimeout = 30 * time.Second
+type k8sClient = kubernetes.Interface
 
 // k8sCtrl is the single object that owns the full lifecycle of k8s
 // configuration: loading ConfigMaps/Secrets, watching via informers, and
@@ -88,12 +75,34 @@ type k8sCtrl struct {
 	onTrigger func() // test hook; nil in production
 }
 
-// k8sClient is the subset of the Kubernetes API used here.
-type k8sClient = kubernetes.Interface
+func newK8sCtrl() *k8sCtrl {
+	return &k8sCtrl{
+		manager: &watchManager{watched: map[string]struct{}{}},
+		clients: map[string]k8sClient{},
+	}
+}
 
-// buildClient builds a clientset: in-cluster when kubeconfig is empty, otherwise
-// from the kubeconfig file.
-func buildClient(kubeconfig string) (k8sClient, error) {
+// Close tears down every informer. It is the provider lifecycle hook, invoked
+// once by the runtime on shutdown. A Load that follows re-arms: the watch
+// manager forgets its watcher ids, so ensureWatch starts fresh informers.
+func (c *k8sCtrl) Close() {
+	if c.manager != nil {
+		c.manager.stopAll()
+	}
+}
+
+// clientFor returns a cached clientset for the kubeconfig path, creating one
+// if necessary. The cache is what keeps repeated refreshes from leaking a
+// clientset's connection pool per Load call.
+func (c *k8sCtrl) clientFor(kubeconfig string) (k8sClient, error) {
+	c.clientMu.Lock()
+	defer c.clientMu.Unlock()
+
+	if cli, ok := c.clients[kubeconfig]; ok {
+		return cli, nil
+	}
+
+	// In-cluster when kubeconfig is empty, otherwise from the kubeconfig file.
 	var (
 		cfg *rest.Config
 		err error
@@ -109,74 +118,12 @@ func buildClient(kubeconfig string) (k8sClient, error) {
 			return nil, errutil.Explain(err, "k8s config: in-cluster config (set kubeconfig when running outside a cluster)")
 		}
 	}
-	client, err := kubernetes.NewForConfig(cfg)
+	cli, err := kubernetes.NewForConfig(cfg)
 	if err != nil {
 		return nil, errutil.Explain(err, "k8s config: build clientset")
 	}
-	return client, nil
-}
-
-// newK8sCtrl creates a controller with its watch manager and client cache
-// ready, so neither ensureWatch nor clientFor needs a lazy nil-check.
-func newK8sCtrl() *k8sCtrl {
-	return &k8sCtrl{
-		manager: &watchManager{watched: map[string]struct{}{}},
-		clients: map[string]k8sClient{},
-	}
-}
-
-// sourceFields returns the fields identifying a watched object. They are
-// attached to a context with log.WithFields rather than repeated at each call
-// site; the informer event handlers stamp the same object under "object" when
-// they trigger a refresh.
-func sourceFields(cs configSource) []log.Field {
-	return []log.Field{
-		log.String("kind", cs.kind),
-		log.String("namespace", cs.namespace),
-		log.String("name", cs.objectName),
-	}
-}
-
-// clientFor returns a cached clientset for the kubeconfig path, creating one
-// if necessary. The cache is what keeps repeated refreshes from leaking a
-// clientset's connection pool per Load call.
-func (c *k8sCtrl) clientFor(kubeconfig string) (k8sClient, error) {
-	c.clientMu.Lock()
-	defer c.clientMu.Unlock()
-
-	if cli, ok := c.clients[kubeconfig]; ok {
-		return cli, nil
-	}
-	cli, err := buildClient(kubeconfig)
-	if err != nil {
-		return nil, err
-	}
 	c.clients[kubeconfig] = cli
 	return cli, nil
-}
-
-// TriggerRefresh is called by the informer event handlers when a watched
-// ConfigMap or Secret changes. Before the app has started,
-// gs.RefreshProperties returns an error and the change is dropped — the
-// initial config load already captured the state.
-func (c *k8sCtrl) TriggerRefresh(ctx context.Context) {
-	if c.onTrigger != nil {
-		c.onTrigger()
-		return
-	}
-	// The refresh outcome (status, duration, error) is logged and metered
-	// centrally by observability.RefreshConf; this layer only records backend events.
-	_ = observability.RefreshConf(ctx, gs.RefreshProperties)
-}
-
-// Close tears down every informer. It is the provider lifecycle hook, invoked
-// once by the runtime on shutdown. A Load that follows re-arms: the watch
-// manager forgets its watcher ids, so ensureWatch starts fresh informers.
-func (c *k8sCtrl) Close(ctx context.Context) error {
-	if c.manager != nil {
-		c.manager.stopAll(ctx)
-	}
-	return nil
 }
 
 // Object kinds accepted in a provider source.
@@ -249,12 +196,7 @@ func parseSource(source string) (configSource, error) {
 // Load implements conf/provider.Provider. It reads the target ConfigMap/Secret
 // through the API server, parses its data entries, and installs an informer
 // that triggers an application property refresh on change.
-func (c *k8sCtrl) Load(optional bool, source string) (map[string]string, error) {
-	// Load is the top of this chain and Provider.Load takes no context, so the
-	// one ctx the whole load shares is minted here — the helpers below receive
-	// it instead of each minting their own.
-	ctx := context.Background()
-
+func (c *k8sCtrl) Load(ctx context.Context, optional bool, source string) (map[string]string, error) {
 	cs, err := parseSource(source)
 	if err != nil {
 		log.Error(ctx, starterTag, err, log.String("source", source), log.Msg("parse k8s source failed"))
@@ -264,12 +206,15 @@ func (c *k8sCtrl) Load(optional bool, source string) (map[string]string, error) 
 	// The source's identity rides on the context from here on: every event this
 	// load and its helpers print carries it without repeating it at each call
 	// site.
-	ctx = log.WithFields(ctx, sourceFields(cs)...)
+	ctx = log.WithFields(ctx,
+		log.String("kind", cs.kind),
+		log.String("namespace", cs.namespace),
+		log.String("key", cs.dataKey),
+		log.String("format", cs.format),
+		log.String("name", cs.objectName))
 
 	log.Debug(ctx, starterTag, func() []log.Field {
 		return []log.Field{
-			log.String("key", cs.dataKey),
-			log.String("format", cs.format),
 			log.Msg("loading k8s config"),
 		}
 	})
@@ -282,7 +227,7 @@ func (c *k8sCtrl) Load(optional bool, source string) (map[string]string, error) 
 				log.Msg("skip optional config build client failed"))
 			return nil, nil
 		}
-		log.Error(ctx, starterTag, err, log.Msg("build k8s client failed"))
+		log.Errorf(ctx, starterTag, err, "build k8s client failed")
 		return nil, err
 	}
 	return c.loadFromClient(ctx, client, cs, optional)
@@ -295,11 +240,10 @@ func (c *k8sCtrl) loadFromClient(ctx context.Context, client k8sClient, cs confi
 	data, err := fetch(ctx, client, cs)
 	if err != nil {
 		if apierrors.IsNotFound(err) && optional {
-			log.Warn(ctx, starterTag,
-				log.Msg("skip optional config not found"))
+			log.Warnf(ctx, starterTag, "skip optional config not found")
 			return nil, nil
 		}
-		log.Error(ctx, starterTag, err, log.Msg("fetch k8s object failed"))
+		log.Errorf(ctx, starterTag, err, "fetch k8s object failed")
 		return nil, err
 	}
 
@@ -313,9 +257,7 @@ func (c *k8sCtrl) loadFromClient(ctx context.Context, client k8sClient, cs confi
 		return nil, err
 	}
 
-	log.Info(ctx, starterTag,
-		log.Int("keys", len(m)),
-		log.Msg("load k8s config success"))
+	log.Infof(ctx, starterTag, "load k8s config success")
 	return m, nil
 }
 
@@ -325,13 +267,21 @@ func (c *k8sCtrl) loadFromClient(ctx context.Context, client k8sClient, cs confi
 func fetch(ctx context.Context, client k8sClient, cs configSource) (map[string][]byte, error) {
 	switch cs.kind {
 	case kindConfigMap:
-		cm, err := client.CoreV1().ConfigMaps(cs.namespace).Get(ctx, cs.objectName, metav1.GetOptions{})
+		cm, err := client.CoreV1().ConfigMaps(cs.namespace).
+			Get(ctx, cs.objectName, metav1.GetOptions{})
 		if err != nil {
 			return nil, errutil.Explain(err, "k8s config: get configmap %s/%s", cs.namespace, cs.objectName)
 		}
-		return configMapData(cm), nil
+		// Merge the ConfigMap's string Data and BinaryData into one name -> bytes map.
+		out := make(map[string][]byte, len(cm.Data)+len(cm.BinaryData))
+		for k, v := range cm.Data {
+			out[k] = []byte(v)
+		}
+		maps.Copy(out, cm.BinaryData)
+		return out, nil
 	case kindSecret:
-		sec, err := client.CoreV1().Secrets(cs.namespace).Get(ctx, cs.objectName, metav1.GetOptions{})
+		sec, err := client.CoreV1().Secrets(cs.namespace).
+			Get(ctx, cs.objectName, metav1.GetOptions{})
 		if err != nil {
 			return nil, errutil.Explain(err, "k8s config: get secret %s/%s", cs.namespace, cs.objectName)
 		}
@@ -339,17 +289,6 @@ func fetch(ctx context.Context, client k8sClient, cs configSource) (map[string][
 	default:
 		return nil, errutil.Explain(nil, "k8s config: unsupported kind %q", cs.kind)
 	}
-}
-
-// configMapData merges a ConfigMap's string Data and BinaryData into one
-// name -> bytes map.
-func configMapData(cm *corev1.ConfigMap) map[string][]byte {
-	out := make(map[string][]byte, len(cm.Data)+len(cm.BinaryData))
-	for k, v := range cm.Data {
-		out[k] = []byte(v)
-	}
-	maps.Copy(out, cm.BinaryData)
-	return out
 }
 
 // parseEntries parses each selected data entry as a config document and merges
@@ -383,148 +322,4 @@ func parseEntries(cs configSource, data map[string][]byte, m map[string]string) 
 		maps.Copy(m, flatten.Flatten(parsed))
 	}
 	return nil
-}
-
-// watchManager tracks informers so they can be stopped on shutdown, and
-// deduplicates watchers so repeated Load calls do not stack informers.
-type watchManager struct {
-	mu      sync.Mutex
-	watched map[string]struct{}
-	stops   []chan struct{}
-}
-
-// objVersion extracts an informer object's resourceVersion for refresh
-// tagging. The handlers receive the concrete typed objects, which all
-// implement metav1.Object; wrappers like cache.DeletedFinalStateUnknown do
-// not, and yield an empty version.
-func objVersion(obj any) string {
-	if o, ok := obj.(metav1.Object); ok {
-		return o.GetResourceVersion()
-	}
-	return ""
-}
-
-// ensureWatch starts a namespaced, name-scoped informer on the target object
-// and triggers a full property refresh on every add/update/delete.
-func (c *k8sCtrl) ensureWatch(ctx context.Context, client k8sClient, cs configSource) {
-	id := fmt.Sprintf("%s/%s/%s", cs.kind, cs.namespace, cs.objectName)
-
-	c.manager.mu.Lock()
-	if _, ok := c.manager.watched[id]; ok {
-		c.manager.mu.Unlock()
-		return
-	}
-	c.manager.watched[id] = struct{}{}
-	c.manager.mu.Unlock()
-
-	factory := informers.NewSharedInformerFactoryWithOptions(
-		client,
-		0, // event-driven only; no periodic resync needed for a single object
-		informers.WithNamespace(cs.namespace),
-		informers.WithTweakListOptions(func(opts *metav1.ListOptions) {
-			opts.FieldSelector = "metadata.name=" + cs.objectName
-		}),
-	)
-
-	var informer cache.SharedIndexInformer
-	switch cs.kind {
-	case kindConfigMap:
-		informer = factory.Core().V1().ConfigMaps().Informer()
-	case kindSecret:
-		informer = factory.Core().V1().Secrets().Informer()
-	default:
-		return
-	}
-
-	handler := cache.ResourceEventHandlerFuncs{
-		// Stamp each trigger with the change's identity (which object, which
-		// resourceVersion) so the refresh records logged and metered by
-		// observability.RefreshConf carry what this round is about. The
-		// resourceVersion doubles as the refresh identifier: it advances on
-		// every write to the object, so two refreshes from the same object are
-		// distinguishable. UpdateFunc stamps the new object's version.
-		AddFunc: func(obj any) {
-			c.TriggerRefresh(log.WithFields(context.Background(),
-				log.String("source", "k8s"),
-				log.String("object", id),
-				log.String("resource_version", objVersion(obj)),
-			))
-		},
-		UpdateFunc: func(_, newObj any) {
-			c.TriggerRefresh(log.WithFields(context.Background(),
-				log.String("source", "k8s"),
-				log.String("object", id),
-				log.String("resource_version", objVersion(newObj)),
-			))
-		},
-		DeleteFunc: func(obj any) {
-			c.TriggerRefresh(log.WithFields(context.Background(),
-				log.String("source", "k8s"),
-				log.String("object", id),
-				log.String("resource_version", objVersion(obj)),
-			))
-		},
-	}
-	if _, err := informer.AddEventHandler(handler); err != nil {
-		log.Error(ctx, starterTag, err,
-			log.Msg("k8s config: add the event handler failed; it will not hot-reload until a restart"))
-		c.manager.forget(id)
-		return
-	}
-
-	stop := make(chan struct{})
-	factory.Start(stop)
-	// Bound the sync wait: WaitForCacheSync alone would block Load (and thus
-	// app startup) forever when the API server keeps failing the initial LIST
-	// (e.g. RBAC missing the watch verb) — the reflector retries indefinitely
-	// and the cache never syncs.
-	synced := make(chan bool, 1)
-	go func() { synced <- cache.WaitForCacheSync(stop, informer.HasSynced) }()
-	select {
-	case ok := <-synced:
-		if !ok {
-			close(stop)
-			err := errutil.Explain(nil, "k8s config watch stopped before cache sync")
-			log.Error(ctx, starterTag, err,
-				log.Msg("k8s config: watch stopped before cache sync; it will not hot-reload until a restart"))
-			c.manager.forget(id)
-			return
-		}
-	case <-time.After(watchSyncTimeout):
-		close(stop)
-		err := errutil.Explain(nil, "k8s config cache sync timed out after %s", watchSyncTimeout)
-		log.Error(ctx, starterTag, err,
-			log.String("timeout", watchSyncTimeout.String()),
-			log.Msg("k8s config: cache sync timed out; it will not hot-reload until a restart"))
-		c.manager.forget(id)
-		return
-	}
-
-	c.manager.mu.Lock()
-	c.manager.stops = append(c.manager.stops, stop)
-	c.manager.mu.Unlock()
-
-	log.Info(ctx, starterTag, log.Msg("watching k8s object for changes"))
-}
-
-// forget drops a watcher id so a later Load may retry starting it.
-func (m *watchManager) forget(id string) {
-	m.mu.Lock()
-	delete(m.watched, id)
-	m.mu.Unlock()
-}
-
-// stopAll stops every running informer.
-func (m *watchManager) stopAll(ctx context.Context) {
-	m.mu.Lock()
-	stops := m.stops
-	m.stops = nil
-	m.watched = map[string]struct{}{}
-	m.mu.Unlock()
-	for _, s := range stops {
-		close(s)
-	}
-	if n := len(stops); n > 0 {
-		log.Info(ctx, starterTag, log.Int("informers", n), log.Msg("stopped k8s informers"))
-	}
 }

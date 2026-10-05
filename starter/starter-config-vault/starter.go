@@ -19,19 +19,11 @@
 // "vault" config provider that can be consumed via spring.config.import, together
 // with the bridge that wires secret changes into the application-wide property
 // refresh for live hot-reload.
-//
-// This starter covers the config-center role only: it reads a KV secret and
-// exposes its fields as application properties. A Vault Agent / CSI-mounted
-// secret file is read with starter-config-file instead; this starter talks to
-// the Vault API directly.
 package StarterConfigVault
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/json"
 	"errors"
-	"fmt"
 	"net/url"
 	"os"
 	"strconv"
@@ -40,95 +32,63 @@ import (
 	"time"
 
 	"github.com/hashicorp/vault/api"
-	"go-spring.org/cloud/observability"
 	"go-spring.org/log"
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/conf/reader"
-	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
 	"go-spring.org/stdlib/flatten"
 )
 
+var starterTag = log.RegisterAppTag("config", "vault")
+
 func init() {
-	// Register "vault" as a remote configuration provider. The controller
-	// itself is registered (not just its Load method): the runtime holds the
-	// registered provider so it can stop the pollers at shutdown (see
-	// provider.Provider). Poll-triggered refreshes go through the
-	// gs.RefreshProperties package-level facade, so the controller needs no
-	// bean wiring at all.
 	conf.RegisterProvider("vault", newVaultCtrl())
 }
 
-var starterTag = log.RegisterAppTag("config_vault", "")
+// vaultKV is one KV read on a mount, and vaultAPI is the slice of the Vault
+// client this starter consumes. They exist so tests can fake the Vault backend
+// without a live server, mirroring consul's kvAPI.
+//
+// The adapter is needed because *api.Client's KVv1/KVv2 return concrete types
+// and Go has no covariant returns, so it cannot satisfy these interfaces as
+// written.
+type vaultKV interface {
+	Get(ctx context.Context, path string) (*api.KVSecret, error)
+}
 
-// vaultCtrl is the single object that owns the full lifecycle of vault
-// configuration: loading secrets, polling for changes, and triggering
-// property refresh.
+type vaultAPI interface {
+	KVv1(mount string) vaultKV
+	KVv2(mount string) vaultKV
+}
+
+type realVault struct{ c *api.Client }
+
+func (r realVault) KVv1(mount string) vaultKV { return r.c.KVv1(mount) }
+func (r realVault) KVv2(mount string) vaultKV { return r.c.KVv2(mount) }
+
+// vaultCtrl owns the full lifecycle of vault configuration: loading secrets
+// through its client cache, and polling for changes through its watchCore,
+// which also keeps the loaded-fingerprint baseline. The two sides keep
+// separate mutexes: the client cache never contends with the pollers.
 type vaultCtrl struct {
-	mu       sync.Mutex
-	clients  map[string]*api.Client
-	listened map[string]struct{}
-	loadedFP map[string]string // fingerprint of last loaded data
-
-	// ctx is the poll generation: Close cancels it, which stops every poll
-	// goroutine; the next Load starts a fresh one (see rearm).
-	ctx context.Context
-	// cancel cancels ctx.
-	cancel context.CancelFunc
-	// stopped is true between Close and the next Load.
-	stopped bool
+	watch    watchCore
+	clientMu sync.Mutex
+	clients  map[string]vaultAPI
 }
 
-// newVaultCtrl creates a controller with its caches ready, so the lazy
-// nil-checks are kept out of the hot paths.
 func newVaultCtrl() *vaultCtrl {
-	ctx, cancel := context.WithCancel(context.Background())
 	return &vaultCtrl{
-		clients:  map[string]*api.Client{},
-		listened: map[string]struct{}{},
-		loadedFP: map[string]string{},
-		ctx:      ctx,
-		cancel:   cancel,
+		clients: map[string]vaultAPI{},
+		watch:   newWatchCore(),
 	}
 }
 
-// rearm restarts the poll generation after a Close, so the first Load of a new
-// application instance can install pollers again.
-func (c *vaultCtrl) rearm() {
-	c.mu.Lock()
-	if c.stopped {
-		c.ctx, c.cancel = context.WithCancel(context.Background())
-		c.stopped = false
-	}
-	c.mu.Unlock()
-}
-
-// Close stops every poll goroutine. It implements provider.Provider. Closing is
-// final only for this application instance: the caches are dropped, so the next
-// Load polls again from a fresh baseline.
-func (c *vaultCtrl) Close(ctx context.Context) error {
-	c.mu.Lock()
-	c.cancel()
-	c.stopped = true
-	n := len(c.listened)
-	c.clients = map[string]*api.Client{}
-	c.listened = map[string]struct{}{}
-	c.loadedFP = map[string]string{}
-	c.mu.Unlock()
-	if n > 0 {
-		log.Info(ctx, starterTag, log.Int("watchers", n), log.Msg("stopped vault watchers"))
-	}
-	return nil
-}
-
-// TriggerRefresh is called by the polling watchers when a secret's content
-// fingerprint changes. Before the app has started, gs.RefreshProperties
-// returns an error and the change is dropped — the initial config load
-// already captured the state.
-func (c *vaultCtrl) TriggerRefresh(ctx context.Context) {
-	// The refresh outcome (status, duration, error) is logged and metered
-	// centrally by observability.RefreshConf; this layer only records backend events.
-	_ = observability.RefreshConf(ctx, gs.RefreshProperties)
+// Close stops every poll goroutine. It implements provider.Provider.
+func (c *vaultCtrl) Close() {
+	c.watch.stop()
+	c.clientMu.Lock()
+	c.clients = map[string]vaultAPI{}
+	c.clientMu.Unlock()
 }
 
 // configSource holds the parsed components of a vault provider source string.
@@ -143,17 +103,37 @@ type configSource struct {
 	format    string
 	prefix    string
 	pollMs    int
+	timeoutMs int
+}
+
+// redactSource masks the token query parameter of a source string so
+// the remainder is safe to print. Everything user-visible — parse errors, log
+// fields — must carry the redacted form; the raw form never reaches output.
+func redactSource(source string) string {
+	i := strings.Index(source, "?")
+	if i < 0 {
+		return source
+	}
+	q := strings.Split(source[i+1:], "&")
+	kept := q[:0]
+	for _, kv := range q {
+		if strings.HasPrefix(kv, "token=") {
+			kv = "token=***"
+		}
+		kept = append(kept, kv)
+	}
+	return source[:i+1] + strings.Join(kept, "&")
 }
 
 // parseSource parses a provider source of the form
-// <host>:<port>/<mount>/<path>?kv-version=..&token=..&namespace=..&scheme=..&key=..&format=..&prefix=..&poll-ms=..
+// <host>:<port>/<mount>/<path>?kv-version=..&token=..&namespace=..&scheme=..&key=..&format=..&prefix=..&poll-ms=..&timeout-ms=..
 func parseSource(source string) (configSource, error) {
 	u, err := url.Parse("vault://" + source)
 	if err != nil {
-		return configSource{}, errutil.Explain(err, "invalid vault source %q", source)
+		return configSource{}, errutil.Explain(err, "invalid vault source %q", redactSource(source))
 	}
 	if u.Host == "" {
-		return configSource{}, errutil.Explain(nil, "missing vault server address in %q", source)
+		return configSource{}, errutil.Explain(nil, "missing vault server address in %q", redactSource(source))
 	}
 	full := strings.TrimPrefix(u.Path, "/")
 	mount, path, ok := strings.Cut(full, "/")
@@ -176,6 +156,7 @@ func parseSource(source string) (configSource, error) {
 		prefix:    q.Get("prefix"),
 		kvVersion: 2,
 		pollMs:    5000,
+		timeoutMs: 5000,
 	}
 	if cs.format == "" {
 		cs.format = "properties"
@@ -190,9 +171,16 @@ func parseSource(source string) (configSource, error) {
 	if v := q.Get("poll-ms"); v != "" {
 		n, err := strconv.Atoi(v)
 		if err != nil || n <= 0 {
-			return configSource{}, errutil.Explain(nil, "invalid poll-ms in %q", source)
+			return configSource{}, errutil.Explain(nil, "invalid poll-ms in %q", redactSource(source))
 		}
 		cs.pollMs = n
+	}
+	if v := q.Get("timeout-ms"); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil || n <= 0 {
+			return configSource{}, errutil.Explain(nil, "invalid timeout-ms in %q", redactSource(source))
+		}
+		cs.timeoutMs = n
 	}
 
 	token, err := resolveToken(q)
@@ -233,25 +221,12 @@ func clientKey(cs configSource) string {
 }
 
 // clientFor returns a cached client for the source, creating one if necessary.
-// sourceFields returns the fields identifying a watched secret. They are
-// attached to a context with log.WithFields rather than repeated at each call
-// site, and the keys match the ones the poll trigger stamps so a line and the
-// refresh it concerns join on the same names.
-func sourceFields(cs configSource) []log.Field {
-	return []log.Field{
-		log.String("address", cs.address),
-		log.String("mount", cs.mount),
-		log.String("path", cs.path),
-	}
-}
-
-// clientFor returns a cached client for the source, creating one if necessary.
 // Its log line takes the source fields from ctx, which Load has already stamped.
-func (c *vaultCtrl) clientFor(ctx context.Context, cs configSource) (*api.Client, error) {
+func (c *vaultCtrl) clientFor(ctx context.Context, cs configSource) (vaultAPI, error) {
 	key := clientKey(cs)
 
-	c.mu.Lock()
-	defer c.mu.Unlock()
+	c.clientMu.Lock()
+	defer c.clientMu.Unlock()
 
 	if cli, ok := c.clients[key]; ok {
 		return cli, nil
@@ -267,55 +242,51 @@ func (c *vaultCtrl) clientFor(ctx context.Context, cs configSource) (*api.Client
 	if cs.namespace != "" {
 		cli.SetNamespace(cs.namespace)
 	}
-	log.Info(ctx, starterTag, log.Msg("create vault client success"))
-	c.clients[key] = cli
-	return cli, nil
-}
-
-// watchKey identifies a watched secret.
-func watchKey(cs configSource) string {
-	return clientKey(cs) + "|" + cs.mount + "|" + cs.path
+	log.Infof(ctx, starterTag, "create vault client success")
+	v := realVault{cli}
+	c.clients[key] = v
+	return v, nil
 }
 
 // Load implements conf/provider.Provider. It reads a KV secret, turns it into
 // a flattened property map, and installs a polling watcher that triggers an
 // application property refresh when the secret changes.
-func (c *vaultCtrl) Load(optional bool, source string) (map[string]string, error) {
-	c.rearm()
-
-	// Load is the top of this chain and Provider.Load takes no context, so the
-	// one ctx the whole load shares is minted here — the helpers below receive
-	// it instead of each minting their own.
-	ctx := context.Background()
-
+func (c *vaultCtrl) Load(ctx context.Context, optional bool, source string) (map[string]string, error) {
 	cs, err := parseSource(source)
 	if err != nil {
-		log.Error(ctx, starterTag, err, log.String("source", source), log.Msg("parse vault source failed"))
+		log.Error(ctx, starterTag, err,
+			log.String("source", redactSource(source)),
+			log.Msg("parse vault source failed"))
 		return nil, err
 	}
 
 	// The source's identity rides on the context from here on: every event this
 	// load and its helpers print carries it without repeating it at each call
 	// site.
-	ctx = log.WithFields(ctx, sourceFields(cs)...)
+	ctx = log.WithFields(ctx,
+		log.String("address", cs.address),
+		log.String("mount", cs.mount),
+		log.String("format", cs.format),
+		log.Int("kv_version", cs.kvVersion),
+		log.String("key", cs.key),
+		log.String("path", cs.path))
 
-	log.Debug(ctx, starterTag, func() []log.Field {
-		return []log.Field{
-			log.Int("kv_version", cs.kvVersion),
-			log.String("key", cs.key),
-			log.String("format", cs.format),
-			log.Msg("loading vault config"),
-		}
-	})
+	log.Debugf(ctx, starterTag, "loading vault config")
 
 	cli, err := c.clientFor(ctx, cs)
 	if err != nil {
-		log.Error(ctx, starterTag, err, log.Msg("create vault client failed"))
+		log.Errorf(ctx, starterTag, err, "create vault client failed")
 		return nil, err
 	}
 
-	c.registerWatch(ctx, cli, cs)
+	c.watch.registerWatch(cli, cs, c.readSecret)
+	return c.loadFromClient(ctx, cli, cs, optional)
+}
 
+// loadFromClient reads the secret once, applies the optional/not-found rules,
+// and parses it into flattened properties. The caller installs the watcher
+// before calling it, so a change landing right after the read is not missed.
+func (c *vaultCtrl) loadFromClient(ctx context.Context, cli vaultAPI, cs configSource, optional bool) (map[string]string, error) {
 	data, err := c.readSecret(ctx, cli, cs)
 	if err != nil {
 		if optional {
@@ -327,19 +298,15 @@ func (c *vaultCtrl) Load(optional bool, source string) (map[string]string, error
 		return nil, err
 	}
 
-	lk := watchKey(cs)
-	c.mu.Lock()
-	c.loadedFP[lk] = fingerprint(data)
-	c.mu.Unlock()
+	c.watch.updateBaseline(cs, fingerprint(data))
 
 	if data == nil {
 		if optional {
-			log.Warn(ctx, starterTag,
-				log.Msg("skip optional config secret not found"))
+			log.Warnf(ctx, starterTag, "skip optional config secret not found")
 			return nil, nil
 		}
 		err := errutil.Explain(nil, "vault secret %s/%s not found", cs.mount, cs.path)
-		log.Error(ctx, starterTag, err, log.Msg("vault secret not found"))
+		log.Errorf(ctx, starterTag, err, "vault secret not found")
 		return nil, err
 	}
 
@@ -347,16 +314,15 @@ func (c *vaultCtrl) Load(optional bool, source string) (map[string]string, error
 	if err != nil {
 		return nil, err
 	}
-	log.Info(ctx, starterTag,
-		log.Int("keys", len(props)),
-		log.Msg("load vault config success"))
+	log.Infof(ctx, starterTag, "load vault config success")
 	return props, nil
 }
 
-// readSecret fetches the raw KV data map for the source. ctx bounds the read
-// (5s) and is honored on shutdown: cancelling it aborts an in-flight poll.
-func (c *vaultCtrl) readSecret(ctx context.Context, cli *api.Client, cs configSource) (map[string]any, error) {
-	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+// readSecret fetches the raw KV data map for the source. The source's
+// timeout-ms bounds the read and is honored on shutdown: cancelling the parent
+// context aborts an in-flight poll.
+func (c *vaultCtrl) readSecret(ctx context.Context, cli vaultAPI, cs configSource) (map[string]any, error) {
+	ctx, cancel := context.WithTimeout(ctx, time.Duration(cs.timeoutMs)*time.Millisecond)
 	defer cancel()
 
 	var (
@@ -419,106 +385,4 @@ func withPrefix(prefix string, m map[string]string) map[string]string {
 		out[prefix+"."+k] = v
 	}
 	return out
-}
-
-// registerWatch spawns a background goroutine that polls the secret.
-func (c *vaultCtrl) registerWatch(ctx context.Context, cli *api.Client, cs configSource) {
-	lk := watchKey(cs)
-
-	c.mu.Lock()
-	if _, ok := c.listened[lk]; ok {
-		c.mu.Unlock()
-		return
-	}
-	c.listened[lk] = struct{}{}
-	// The goroutine outlives this load, so it runs on the controller's
-	// generation context, not on the load's. It carries the same fields, which
-	// is what lets the loop's own lines name the secret without interpolating
-	// it.
-	wctx := log.WithFields(c.ctx, sourceFields(cs)...)
-	c.mu.Unlock()
-
-	log.Info(ctx, starterTag,
-		log.Int("poll_ms", cs.pollMs),
-		log.Msg("watching vault secret for changes"))
-	go c.watchLoop(wctx, cli, cs, lk)
-}
-
-// watchLoop polls the secret and triggers a refresh whenever the content
-// fingerprint differs from the last loaded value.
-//
-// The fingerprint is deliberately NOT updated here: loadedFP is the
-// "currently loaded" baseline, and only Load moves it forward (Load re-runs
-// as part of the RefreshProperties cycle and stamps the new fingerprint once
-// the data is actually loaded). Leaving the stale value behind is what makes
-// a failed refresh retry on the next poll instead of silently swallowing the
-// change.
-//
-// Read failures are self-healing (the loop keeps polling) but never silent:
-// the first failure logs a warning, subsequent ones only debug, and recovery
-// logs once at info.
-func (c *vaultCtrl) watchLoop(ctx context.Context, cli *api.Client, cs configSource, lk string) {
-	interval := time.Duration(cs.pollMs) * time.Millisecond
-	failing := false
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-time.After(interval):
-		}
-		data, err := c.readSecret(ctx, cli, cs)
-		if err != nil {
-			if !failing {
-				log.Warn(ctx, starterTag,
-					log.Err(err),
-					log.Msg("vault poll failing, changes are missed until it recovers"))
-				failing = true
-			} else {
-				log.Debug(ctx, starterTag, func() []log.Field {
-					return []log.Field{
-						log.Err(err),
-						log.Msg("vault poll still failing"),
-					}
-				})
-			}
-			continue
-		}
-		if failing {
-			log.Info(ctx, starterTag, log.Msg("vault poll recovered"))
-			failing = false
-		}
-		c.mu.Lock()
-		fp := c.loadedFP[lk]
-		c.mu.Unlock()
-		if fpNew := fingerprint(data); fpNew != fp {
-			// Stamp the trigger with the change's identity (which secret, new
-			// content fingerprint) so the refresh records logged and metered by
-			// observability.RefreshConf carry what this round is about. Vault
-			// hands the poller no version metadata, so the fingerprint is the
-			// refresh identifier: it is exactly the value that differs from the
-			// loaded baseline this round is refreshing to.
-			c.TriggerRefresh(log.WithFields(context.Background(),
-				log.String("source", "vault"),
-				log.String("mount", cs.mount),
-				log.String("path", cs.path),
-				log.String("fingerprint", fpNew),
-			))
-		}
-	}
-}
-
-// fingerprint produces a stable, fixed-length digest of a KV data map for
-// change detection. encoding/json sorts map keys, so the marshaled form is
-// deterministic regardless of map iteration order; the SHA-256 digest keeps
-// the stored fingerprint constant-size (and avoids holding a second plain
-// copy of the secret in memory) even for large payloads.
-func fingerprint(data map[string]any) string {
-	if data == nil {
-		return "<nil>"
-	}
-	b, err := json.Marshal(data)
-	if err != nil {
-		return ""
-	}
-	return fmt.Sprintf("%x", sha256.Sum256(b))
 }

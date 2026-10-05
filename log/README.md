@@ -188,6 +188,20 @@ log.Info(ctx, tag, log.String("user_id", "10001"), log.Msg("login succeeded"))
 log.Infof(ctx, tag, "user %s logged in", userID)
 ```
 
+Which style to use:
+
+- **A lone message, no fields** — use the formatted variant (`Tracef` / `Debugf` / `Infof` /
+  `Warnf` / `Errorf` / `Fatalf`). Those exist precisely for this case: wrapping a single message
+  in `log.Msg(...)` is only ceremony.
+- **Any field at all** — use the structured form, with the message as the last field:
+  `log.Info(ctx, tag, log.String("order_id", id), log.Msg("order placed"))`.
+
+A message handed to a formatted variant is a format string, so a literal `%` must be written
+`%%` — or the call must use the structured form. `Error` carries its error as a dedicated argument
+in both styles: `log.Errorf(ctx, tag, err, "...")` and
+`log.Error(ctx, tag, err, log.String("k", v), log.Msg("..."))`. Every other level takes the error
+as the `log.Err(err)` field.
+
 Common field constructors:
 
 | Category | Functions |

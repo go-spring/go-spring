@@ -122,7 +122,7 @@ func (DefaultDriver) CreateClient(ctx context.Context, c Config, params cloud.Cl
 	if c.TLS.Enabled {
 		tlsCfg, err := c.TLS.BuildClient()
 		if err != nil {
-			log.Error(ctx, log.TagAppDef, err, log.Msg("nats build TLS failed"))
+			log.Errorf(ctx, log.TagAppDef, err, "nats build TLS failed")
 			return nil, errutil.Explain(err, "nats: build TLS")
 		}
 		if tlsCfg != nil {
@@ -147,7 +147,7 @@ func (DefaultDriver) CreateClient(ctx context.Context, c Config, params cloud.Cl
 	if c.JetStream.Enabled {
 		js, err := jetstream.New(nc)
 		if err != nil {
-			log.Error(ctx, log.TagAppDef, err, log.Msg("nats create jetstream context failed"))
+			log.Errorf(ctx, log.TagAppDef, err, "nats create jetstream context failed")
 			nc.Close()
 			return nil, errutil.Explain(err, "failed to create jetstream context")
 		}
@@ -191,7 +191,7 @@ func newConn(ctx *gs.ContextProvider, name string, c Config, d Driver,
 	conn, err := d.CreateClient(ctx.Context, c,
 		cloud.ClientParams{Resilience: center.Resilience(), Fault: center.Fault()})
 	if err != nil {
-		log.Error(cctx, log.TagAppDef, err, log.Msg("nats: create client failed"))
+		log.Errorf(cctx, log.TagAppDef, err, "nats: create client failed")
 		return nil, errutil.Explain(err, "failed to create nats client: %s", c.URL)
 	}
 	// The Driver returned the connection complete — identity, governance and (when
@@ -207,11 +207,11 @@ func newConn(ctx *gs.ContextProvider, name string, c Config, d Driver,
 	// connection only surfaces on first use.
 	if c.Ping {
 		if err := HealthCheck(ctx.Context, conn); err != nil {
-			log.Error(cctx, log.TagAppDef, err, log.Msg("nats: check connectivity at startup failed"))
+			log.Errorf(cctx, log.TagAppDef, err, "nats: check connectivity at startup failed")
 			_ = conn.Close()
 			return nil, errutil.Explain(err, "nats: startup connectivity check failed: %s", c.URL)
 		}
 	}
-	log.Info(cctx, log.TagAppDef, log.Msg("create nats connection success"))
+	log.Infof(cctx, log.TagAppDef, "create nats connection success")
 	return conn, nil
 }

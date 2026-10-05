@@ -139,13 +139,13 @@ Notes verified in source:
 ```
 etcd PUT on a watched key
   → clientv3.Watch channel delivers a WatchResponse with events
-  → watcher goroutine: len(wr.Events) > 0 → etcdCtrl.TriggerRefresh()
+  → watcher goroutine: len(wr.Events) > 0 → observability.RefreshConf()
   → gs.RefreshProperties() → App.RefreshProperties():
        re-run the WHOLE property load (all files + all imports) → merge
        → propagate to the container → gs.Dync[T] fields update atomically
 ```
 
-- Before the app has started, `gs.RefreshProperties()` returns an error, so `TriggerRefresh` is a
+- Before the app has started, `gs.RefreshProperties()` returns an error, so the refresh is a
   **harmless no-op** — the initial load already captured the state (starter.go comments).
 - The watch is a **single-key** watch (no `WithPrefix`): only the exact key named in the import.
   Deletes also count as events: a delete on a *required* imported key logs a WARN

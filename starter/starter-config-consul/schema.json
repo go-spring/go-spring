@@ -6,7 +6,7 @@
   "properties": {
     "consul-url": {
       "type": "string",
-      "description": "URL format: consul://host:port/path/to/key?scheme={http|https}&token=xxx"
+      "description": "URL format: consul://host:port/path/to/key?scheme={http|https}&token=xxx&retry-ms=2000"
     }
   }
 }

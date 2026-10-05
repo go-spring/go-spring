@@ -135,18 +135,18 @@ gs.Run()
 **为什么是 pre-bean**：import 在 `AppConfig.Refresh()` 内解析，而它先于 IoC 容器装配执行
 （`app.go:272-279` 启动序列）。因此 provider 必须从 `init()` 注册 —— 包级状态而非 bean ——
 watch 回调经进程级门面 `gs.RefreshProperties()` 触达刷新，app 启动前门面返回错误，
-提前 `TriggerRefresh` 是安全 no-op。
+提前刷新是安全 no-op。
 
 ### 2.2 watch / refresh 路径走读
 
-1. `registerWatch`（`starter.go` 的 `registerWatch`）按 `clientKey + "|" + kvPath` 去重；同一 source 的
+1. `registerWatch`（`watch.go`）按 `clientKey + "|" + kvPath` 去重；同一 source 的
    重复 Load —— 每次属性刷新都会发生 —— 恰好只产生一个 goroutine
    （`TestWatchRegisteredOncePerSource`）。
-2. `watchLoop`（`starter.go` 的 `watchLoop`）发 Consul **blocking query**：`Get` 带
-   `WaitIndex: lastIndex`、`WaitTime: 5m`。它吞掉初始 index（首次轮询只建立基线），
-   `LastIndex` 前进时触发 `TriggerRefresh()`，index 回退时重置为 0（Consul 重启/index 重置），
-   传输错误 2 秒后重试。
-3. `TriggerRefresh` → `gs.RefreshProperties()`（`app.go:149-151`）→ 完整的
+2. `watchLoop`（`watch.go`）发 Consul **blocking query**：`Get` 带
+   `WaitIndex: lastIndex`、`WaitTime: 5m`。它从初始读取观测到的 KV index 续订，
+   因此紧接该读取之后落下的变更仍会被投递；`LastIndex` 前进时触发刷新，
+   index 回退时重置为 0（Consul 重启/index 重置），传输错误 2 秒后重试。
+3. `observability.RefreshConf()` → `gs.RefreshProperties()`（`app.go:149-151`）→ 完整的
    `AppConfig.Refresh()` 从零重建分层存储（文件、env、cmd、import —— KV 条目因此被**重新
    拉取**，由 `Load` 完成）→ 容器把新快照原子传播到每个 `gs.Dync[T]` 字段
    （`app.go:234-256`）。非 `Dync` 绑定不会重跑。

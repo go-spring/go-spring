@@ -128,9 +128,9 @@ func NewSimpleHertzServer(register RouterRegister, cfg Config, center *governanc
 // Run starts the Hertz engine after Go-Spring signals readiness.
 func (s *SimpleHertzServer) Run(ctx context.Context, sig gs.ReadySignal) error {
 	<-sig.TriggerAndWait()
-	log.Info(ctx, log.TagAppDef, log.Msg("hertz server starting"))
+	log.Infof(ctx, log.TagAppDef, "hertz server starting")
 	if err := s.h.Run(); err != nil {
-		log.Error(ctx, log.TagAppDef, err, log.Msg("hertz server failed"))
+		log.Errorf(ctx, log.TagAppDef, err, "hertz server failed")
 		return err
 	}
 	return nil
@@ -139,6 +139,6 @@ func (s *SimpleHertzServer) Run(ctx context.Context, sig gs.ReadySignal) error {
 // Stop gracefully shuts the Hertz engine down, propagating ctx into the
 // engine's context-aware Shutdown so the drain rides the shutdown context.
 func (s *SimpleHertzServer) Stop(ctx context.Context) error {
-	log.Info(ctx, log.TagAppDef, log.Msg("hertz server shutting down"))
+	log.Infof(ctx, log.TagAppDef, "hertz server shutting down")
 	return s.h.Shutdown(ctx)
 }

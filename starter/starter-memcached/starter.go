@@ -127,7 +127,7 @@ func newClient(ctx *gs.ContextProvider, name string, c Config, d Driver, discove
 	client, err := d.CreateClient(ctx.Context, name, c,
 		cloud.ClientParams{Resilience: center.Resilience(), Fault: center.Fault(), Discovery: disc})
 	if err != nil {
-		log.Error(ctx.Context, log.TagAppDef, err, log.Msg("memcached create client failed"))
+		log.Errorf(ctx.Context, log.TagAppDef, err, "memcached create client failed")
 		return nil, errutil.Explain(err, "failed to create memcached client")
 	}
 	// The Driver returned the client complete — identity and governance both
@@ -144,11 +144,11 @@ func newClient(ctx *gs.ContextProvider, name string, c Config, d Driver, discove
 	// surfaces on first use.
 	if c.Ping {
 		if err := HealthCheck(ctx.Context, client); err != nil {
-			log.Error(ctx.Context, log.TagAppDef, err, log.Msg("memcached startup ping failed"))
+			log.Errorf(ctx.Context, log.TagAppDef, err, "memcached startup ping failed")
 			_ = client.Close()
 			return nil, errutil.Explain(err, "memcached: startup ping failed")
 		}
 	}
-	log.Info(cctx, log.TagAppDef, log.Msg("create memcached client success"))
+	log.Infof(cctx, log.TagAppDef, "create memcached client success")
 	return client, nil
 }

@@ -170,7 +170,7 @@ func (s *ZrpcServer) Run(ctx context.Context, sig gs.ReadySignal) error {
 
 	<-sig.TriggerAndWait()
 
-	log.Info(ctx, log.TagAppDef, log.Msg("go-zero zrpc server starting"))
+	log.Infof(ctx, log.TagAppDef, "go-zero zrpc server starting")
 	errCh := make(chan error, 1)
 	go func() {
 		// Start binds the listener, registers the provider under Etcd.Key when
