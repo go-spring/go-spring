@@ -272,3 +272,11 @@ conf.Bind(flatten.NewPropertiesStorage(props), &cfg, "${app}") // 所有字段�
 - `RegisterConverter` - 新增自定义类型的转换
 - `RegisterValidateFunc` - 新增自定义校验函数
 - `RegisterDecryptor` - 新增属性级解密方案
+
+## 运行时刷新与生命周期
+
+- **运行时热更新只有 `gs.Dync[T]` 一个原语。** 粗粒度 per-field 全量重绑,无 diff、无 per-key 回调。`gs.OnProperty` 是启动期条件、**不是**运行时监听器——要「对某键变化做出反应」须自己轮询 Dync 或自建 watcher。
+- **刷新入口是进程级门面** `gs.RefreshProperties(ctx)` / `gs.AppStarted()`;旧的 `gs.PropertiesRefresher` bean 已删——别再引入 Refresher 注入。新 config provider 直调门面;pre-start 调用返回 error,由调用方 warn/drop。
+- **config provider 是带生命周期的对象。** 除 `Load` 外实现 `Close`(停 watcher/listener/client 并清缓存)。`Close` 可重复调用,下一次 `Load` 要能**重新武装**(生成代次 ctx、清空 `clients`/`listened` 等 map)。注册控制器对象本身,**绝不**注册 `ctrl.Load` 方法值(丢接收者);纯函数来源用 `provider.ProviderFunc` 包一层(其 `Close` 是 no-op)。
+- **`CloseAll` 由应用运行时在关停时调用一次**(优雅路径在容器关闭前;`gs.Run` / `gs.RunTest` 另有 defer 兜底,覆盖启动失败)。注册表不拥有生命周期、`Close` 后不清空注册表——同一进程可先后跑多个实例(如 `gs.RunTest` 连跑);目录不等于生命周期所有者。
+- **家族配置两桶;自持子命名空间的家族保持自己的形状。** client/resource 家族前缀下恰好两个子桶:`spring.<family>.default.*`(家族级,每项可被实例覆盖)与 `spring.<family>.instances.<name>.*`(实例级,`<name>` 即 bean 名)——不得出现其它直接子键。不变式:**永远不要让用户自选的名字和框架 key 同层**。`default` 只放可覆盖的默认值;不可覆盖的策略另设命名空间(`spring.governance.*`)。在 `instances` 内再加一层框架级的家族(`spring.lock.instances.<backend>.<name>`)在家族前缀处保留一个 `default`。单实例家族(`spring.http.server`)键直挂前缀下。

@@ -97,8 +97,11 @@ metadata differs.
 
 ## Observability
 
-`Observe(driver, system)` wraps a Driver with the whole instrumentation layer,
-broker-neutral because the envelope's headers are a W3C trace-context carrier:
+Instrumentation is built **in each broker starter**, not in this package — the
+template is `starter-nats/observe.go`. There is no `Observe(driver, system)`
+decorator here; that was the earlier form, since dismantled. What the abstraction
+requires of a starter stays broker-neutral in shape, because the envelope's
+headers are a W3C trace-context carrier:
 
 - **Trace**: a producer span around each `Publish`, a consumer span around each
   handler call; the trace context is injected into the message headers on
@@ -111,10 +114,13 @@ broker-neutral because the envelope's headers are a W3C trace-context carrier:
 - **Log**: one access line per message (`messaging.access` tag) — Warn on
   error, Debug on success.
 
-A driver starter applies this once where it constructs its Driver. Handlers'
-errors pass through unchanged: how a failure surfaces (nack, redelivery) stays
-the driver's contract. Without an OTel provider installed everything is a
-no-op.
+A driver starter wires this once where it constructs its Driver. `kafka` is
+deliberately **not** wrapped: its instrumentation is a kgo client-level hook, so
+wrapping it would double-count — its hook's metric names, attributes and log tag
+are already aligned with the family vocabulary, and must not be changed back.
+Handlers' errors pass through unchanged: how a failure surfaces (nack,
+redelivery) stays the driver's contract. Without an OTel provider installed
+everything is a no-op.
 
 ## What the abstraction deliberately does not model
 

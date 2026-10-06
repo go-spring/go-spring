@@ -96,7 +96,10 @@ A starter's `spring.lock.instances.<backend>.<name>.ttl` is an *overridable defa
 what the caller left unset, and a per-call `WithTTL` always wins. A negative
 `WithRenewInterval` (auto-renew disabled) survives the layering. Backends call
 `Resolve` at the top of `Acquire`/`TryAcquire` to get this precedence; a
-backend with no starter-level knobs passes a zero `DefaultOptions`.
+backend with no starter-level knobs passes a zero `DefaultOptions` (which
+composes exactly like `Apply`). Use `Resolve`, not `Apply`: `Apply` normalizes a
+zero TTL to 30s, so a backend could no longer tell "the caller asked for 30s"
+from "nothing was passed".
 
 Pick TTL deliberately: it is the maximum blast radius of a crashed holder.
 Auto-renew keeps a live holder's lease alive; when renew fails, `Lost()` fires.

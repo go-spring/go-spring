@@ -182,3 +182,41 @@ no run to trace.
   outside one day.
 - Each process's scheduler is independent — this is not a distributed scheduler;
   replica coordination is what the `WithLock` layer adds.
+
+## Design notes
+
+- `cloud/scheduling` deliberately hooks no service governance: no
+  `ClientExecutorFor` seam and no resource label (the governance README's §6
+  label table excludes it on purpose). Rate limiting is meaningless (the
+  cadence is self-controlled), retry is harmful (a side-effecting task would
+  run twice in a short window), a circuit breaker is a net negative (open =
+  the job silently stops running), timeout already exists as the local
+  `WithTimeout`, and endpoint selection does not apply. What needs governing is
+  a call the job body makes (say an http-client `http:` label), not the job
+  itself; job health is covered by the `scheduling.runs` outcome plus the lag
+  metric. The full rationale lives in `cloud/governance/README.md`.
+- `NewScheduler` returns the exported concrete `*Scheduler` (all fields
+  private) — the `Scheduler` interface was removed. `NewJob` returns
+  `(*Job, error)` (error, not panic), and `Schedule(j *Job)` is the one
+  registration form; the `Job` interface was removed. The criterion is "an
+  abstraction layer is only warranted when multiple components are
+  interchangeable" — do not add an interface to a single implementation.
+- A job bean starts under the pointer condition `gs.OnBean[*Job]()`. A value
+  condition on `Job` never matches (already tripped over); `AsJob` / `Runnable`
+  are gone (a method value is already a func), and nothing needs `Export`.
+- `WithLock(l lock.Locker, key string, ttl time.Duration)` goes through the
+  same option entry as `WithTimeout` / `WithConcurrencyPolicy` (a `Job` has no
+  chained setter). It takes `cloud/lock.Locker` directly — no intermediate
+  Locker type, no adapter; the lock bean is injected into the job constructor,
+  and the server keeps no Lockers map.
+- Observability is built in (`observe.go`: `scheduling.runs{job,status}` /
+  `run.duration` / `lag` plus same-key logs and one span per run; per-call
+  instruments); `Observer` / `WithObserver` / `Event` were all removed. The
+  instrumentation scope is `go-spring.org/cloud/scheduling`.
+- `FixedDelay`'s serial execution is auto-derived: `Schedule` does a concrete
+  `trigger.(fixedDelay)` type assertion, because seriality is the invariant of
+  its "measured from completion" semantics, not a user option. The
+  `serialTrigger` marker interface was removed; if "fixedRate/cron + serial" is
+  ever needed, add a `WithSerial()` option (`isSerial = opts.Serial ||
+  isFixedDelay`). A custom `Trigger` is an exported extension point, but the
+  README writes no extension chapter for it (a low-frequency case).

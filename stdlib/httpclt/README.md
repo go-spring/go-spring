@@ -105,6 +105,21 @@ Transport, timeouts, cookie jar, and TLS config are never constructed inside
 why client-side integrations (`starter-http-client`, tests, contract stubs)
 stay pluggable without touching generated code.
 
+A few rules keep this seam stable:
+
+- `DoRequest` is the **only** extension point. Replace it wholesale to inject a
+  custom transport plus logging/metrics/tracing — do not introduce a second
+  package-level var, and do not extend `Metadata` with new fields.
+- `Metadata` is **pure data**: target/schema/method/pattern/rawPath/query/body/
+  header/config, with no client carrier or name. Fields such as `Client`,
+  `ClientName`, or `DefaultClient` have been rejected and must not come back.
+- Under routing, `Target` is the dispatch key: a direct connection fills in
+  `addr`, service discovery fills in the service name, and one `Target` maps to
+  exactly one strategy. Route in the layer that still holds the declared target
+  — the lookup happens inside the `DoRequest` hook (`route(meta.Target)`), and
+  `dispatchTransport` degrades to a pure routing table (`route()` + `Close()`)
+  rather than implementing `http.RoundTripper`.
+
 For a real wiring example see `starter-http-client`: it assembles a
 process-wide `dispatchTransport`, routes each request by `req.Host` (i.e. the
 Target) to its configured transport, and replaces `httpclt.DoRequest`

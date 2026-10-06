@@ -21,6 +21,12 @@ records the resulting outcomes.
   spring.governance.client.fault.* drives outbound calls, spring.governance.server.fault.* drives
   inbound requests, and each side counts its own MaxDuration/MaxAffected
   guardrails. An outbound fire that self-heals leaves the inbound one armed.
+- Shares the one governance document with resilience: the fault config is nested
+  inside the direction blocks (`spring.governance.client.fault` /
+  `spring.governance.server.fault`), and the old top-level `fault.*` keys are
+  dead. The guardrail counters are **process-global per direction** — an accepted
+  trade-off: `Config.Rules` still targets per service, but `MaxAffected` /
+  `MaxDuration` count globally.
 - Four injection kinds: `generic` (a retryable injected error), `timeout`
   (`context.DeadlineExceeded`), `reset` (`syscall.ECONNRESET`), `refused`
   (`syscall.ECONNREFUSED`); plus a pure latency mode. Per-service rules via
@@ -197,3 +203,10 @@ next call.
 - **Dialer / RoundTripper seams in the first cut.** Deferred until an HTTP or
   gRPC starter pilots fault; the package is shaped so `WrapDialer` /
   `WrapRoundTripper` drop in alongside `WrapClientExecutor`.
+- **A global `InjectorFor()` resolver.** Rejected: the injector is built once at
+  construction (`gs.Provide` directly builds the one `*fault.Injector`), so
+  there is no global resolver. Client side `fault.WrapClientExecutor`
+  **short-circuits at construction** when the injector is nil (it returns the
+  inner executor directly); server side calls
+  `fault.ApplyServer(ctx, inj, service, fn)` per call, with the middleware
+  installed unconditionally (nil passes through).

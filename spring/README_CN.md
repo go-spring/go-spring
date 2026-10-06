@@ -675,6 +675,26 @@ http:
 
 这种方式非常适合**多数据源**、**多租户**、**动态插件**等需要根据配置批量创建 Bean 的场景。
 
+### 装配与注入内部机制（贡献者向）
+
+- `gs.Provide(objOrCtor, args...)` 收构造函数 `func(...)bean` 或 `func(...)(bean, error)`。**interface 是合法 bean 类型**（`typeutil.IsBeanType` 对 `chan`/`func`/`interface`/pointer-to-struct 为真），尽管 `gs.Provide` doc 注释说「必须是引用类型」。
+- ctor 参数用 Arg 助手：`gs.TagArg("name")` 按名、`gs.TagArg("")` 按类型、`gs.TagArg("?")` 可空、`gs.ValueArg(v)` 固定值、`gs.IndexArg(n, arg)` 按位置（也是注入可变参数的方式）、`gs.BindArg(fn)` 动态。
+- **ctor 首参为 `*gs.ContextProvider` 时，其后每个参数必须显式 `gs.IndexArg(1, ...)`。** 裸 `TagArg`/`ValueArg` 会绑到 index 0 的 ctx 而启动炸（`cannot assign type string to type *gs_app.ContextProvider` 或 `property "spring.xxx" is not a simple value`）；单参裸 `ValueArg` 也炸（`gs_arg.NewArgList` 按位置绑、不跳过 ctx）。凡 `gs.Module`/`gs.Group` 循环里 `newClient(cp, name, c)` 都按此写。
+- `gs.Module(c PropertyCondition, fn)` 的参数类型是 `PropertyCondition`，**不能传 `gs.And(...)`**（`gs.And` 返回 `gs.Condition`）。而 `gs.Provide(...).Condition(...)` 是 variadic `gs.Condition`，可以塞 `And`/`Not`。→ `gs.Module` 的能力 gating 用「体内绑 master 判断」，`gs.Provide` 用 `.Condition` 追加。这也是「命名实例族不走 `gs.And`」的由来。
+- `gs.Group[T, R](tag string, fn func(cp *gs.ContextProvider, name string, c T) (R, error), d func(R) error)`：`fn` 收 **3 个参数**（ContextProvider、条目名、配置值），`tag` 必须是 `${...}` 形式否则 panic，map key 作 bean 名、第三参 `d` 作 Destroy。需要额外注入依赖时手写 `gs.Module` + `conf.BindEach`。
+- func 类型 arg 注入：`gs.TagArg("?")` → 单个可空 bean（无 bean 时 nil，零值保留，两个 bean 报歧义）；`[]SomeFuncType` → 集合（空切片 / 按名排序）；map 集合 `map[string]Iface` 的 `?` 给**空非 nil map**，判别码须同时容忍空 map 与 nil。`gs.IndexArg(n, gs.TagArg("?"))` 可单独出现，不会被「indexed 与 non-indexed 混用」拒绝。
+- ctor 返回值上带 tag 的结构体字段会被 gs autowire（不止直接 `gs.Provide(&Struct{})`）；未带 tag 的 ctor 参数按类型绑，带 tag 的字段随后填。
+- gs 只实例化 **root 可达**的 bean（唯一 root = `*gs_app.App`，按类型收 `[]Rooter`/`[]Runner`/`[]Server`）。无 `.Export(gs.As[Rooter/Runner/Server]())` 且不被任何可达 bean 注入的 bean，ctor/Init 都**不执行**（prod 死，单测因手动构造照过）。Init 顺序 **Rooter 先于 Runner**；排序用 `.DependsOn(gs.BeanIDFor[T]())`。排查信号：grep 不到 Export 也搜不到注入者。
+- `gs.Provide` 只能在 init 期调用（`gs.Run()` 翻转 `inited` 前；`main` 里也行，package var 初始化会 panic）；`gs.Configure`（内部 `inited=true`）必须排在 `gs.Provide` **之后**。
+- `gs.Provide` 返回 `*gs_bean.BeanDefinition`（`spring/gs/internal/`）：外部包能接收并链式调 `.Condition()`/`.Name()`/`.Export()`/`.SetFileLine()`，但**不能在签名里命名该类型**；封装 helper 无法返回它。`gs.Provide` 记 `Caller(2)` 作 debug file:line，封装 helper 会指向 helper，要用 `b.SetFileLine(file, line)` + `runtime.Caller(1)` 指回 app。
+- `autowire` tag 可以是 `${...}` 配置表达式（wiring 时解析成 bean 名，`:=` 默认值支持）。`autowire:""` 按类型；`autowire:"<name>"` 按名。
+- `gs.Group` 每项只 `r.Provide(fn, ...).Name(name).Destroy(d)`，拿不到注册表 → **挂不上 `Name`+`Export` 同时**。要「每实例具名并导出为接口」，手写 `gs.Module` + `conf.BindEach` + `r.Provide(fn, ...).Name(name).Export(gs.As[Iface]()).Caller(1)`。
+- 条件（`OnMissingBean`）在**所有 module 注册完之后**求值：跨 starter 的"默认实现让位"可靠、不依赖 init 顺序；但让位方若**不导出**那个接口类型则看不见别家，默认会静默顶替。
+- struct-bean 的**具名结构体字段**（`Cfg Config`）里的 value 标签**不会被绑定**；要拆 Config 必须走构造函数 + `gs.TagArg("${prefix}")`（Config 字段用相对键）。嵌入字段是否绑定未验证（用户否掉嵌入，勿用）。
+- `gs.OnOnce` = `gs_cond.And` + 进程级只求值一次并缓存：同进程跑多套配置的测试第二次用首次缓存结果、全部误判。组合条件一律用 **`gs.And`**（无缓存）。
+- gs **无 auto-close**：bean 的 Destroy 仅在显式注册时运行。注册形式三种、grep 别只搜单行 `Destroy(`：`gs.Group(tag, ctor, destroyFn)` 第 3 参、`.Destroy(fn)` 链式（常跨行）、`.DestroyMethod("name")`。
+- `RunTest` 强制 `spring.force-autowire-is-nullable=true`：容器测试里可空/必填**无法区分**，`?` 漏写也全绿；"零 bean 不报错"这类只能靠读码/裸 `gs.Run()` 验证。
+
 ## 8. 🔁 动态配置
 
 Go-Spring 原生支持**轻量级配置热更新**机制。通过泛型类型 `gs.Dync[T]` 和 `RefreshProperties(ctx)`，
@@ -878,6 +898,12 @@ func init() {
 ```
 
 收到退出信号（如 Ctrl+C）后，框架会统一调用所有 Server 的 `Stop()` 方法实现优雅关闭。
+
+### 生命周期陷阱（贡献者向）
+
+- **`Run` 绝不能阻塞。** 阻塞的 Runner 让应用永远到不了 "application started successfully"（日志只到 "application starting"），且信号处理器始终没装上，任何 SIGTERM 都被直接杀死（exit 143）。正确写法：`go func(){ ... }()` 后立即 `return nil`；等待 server 副作用的 Runner 同理。
+- **就绪信号在所有 Runner 返回之后才触发**，server 的 `TriggerAndWait()` 等它。"等 server 副作用的 Runner"会死锁（注册等就绪、就绪等 Runner）。同步等待 server 副作用的代码一律放后台 goroutine。
+- **`gs.Server` 接口已是 `Stop(ctx context.Context) error` 单一路径**，可选 `Stopper`/`StopContext` 已删（2026-09-07）。框架传的 ctx 无取消无 deadline、只带 values，排水时限是各 server 自己的责任（可在 `Stop` 内自建 timeout）。`spring/gs/stopper.go` 的进程级 `type Stopper func(context.Context) error`（带返回值）是另一概念。另有一个**现行**的可选停机接口 `PreStopper`（`PreStop(ctx)`，用于优雅排水）——别把它和已删的 `Stopper`/`StopContext` 混为一谈。
 
 ## 10. 🧪 单元测试
 

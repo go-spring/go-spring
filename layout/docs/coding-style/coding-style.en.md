@@ -43,6 +43,30 @@ Extensibility is a judgment call, not a reflex. It lives in tension with Section
 - **Outward contracts: change with care**: An exported API that downstream projects depend on is a contract. Prefer adding over breaking; evaluate blast radius before a breaking change.
 - **Deprecate, don't ambush**: When a stable outward API genuinely must go, mark it with a `// Deprecated:` comment pointing to the replacement and allow a transition window before removal. This deprecation flow applies only to published stable APIs — it is the deliberate exception to "change it outright" above, not a contradiction of it.
 
+### 1.4 The Shape of a Cross-Cutting Concern
+
+Choose the shape by asking whether the concern needs to *do something after* the call, or *own the call's lifetime*:
+
+- **Before-only, may short-circuit** → a plain function, called on the first line of the method (e.g. `security.Require(ctx, "orders:write") error`).
+- **Anything after the call** (commit/rollback, recover, timing, restoring state, rewriting the response) — including `@AfterReturning` / `@AfterThrowing` concerns like "emit on success" / "report on failure" → a wrapping decorator `func(cfg) func(ctx, proceed) error`, or a middleware chain.
+
+Decide by "is there work after the call", not by "Java writes it as AOP". A wrapper is ordinary function nesting — it does **not** justify a shared interceptor-chain protocol (see `ARCHITECTURE.md` §6.3). The cost is real either way: the functional form is opt-in, so forgetting it at the top of a method silently loses the guard; the wrapping form is enforced by construction. A "must never be missed" concern should consider the wrapping form even if it is purely a precondition (`Require` is a deliberate acceptance of the functional form's cost).
+
+### 1.5 Audit Criteria
+
+Criteria for reviewing whether an existing abstraction / API / seam should exist. These resolve the ambiguities the rules above leave open.
+
+- **"An extension point needs two real consumers" applies only to protocols / interfaces / seams.** Leaf APIs aimed at application code (composition helpers, sentinel errors, convenience functions) cannot be judged by an in-repo grep — their target consumers are, by definition, outside the repository (2026-08-26).
+- **Documented boundaries are exempt — read the docs first.** A deletion of an API that any `DESIGN.md` / `README` promised is a broken contract, even with zero in-repo consumers; a verifier must read the docs before judging.
+- **Deleting beats privatizing.** A zero-consumer exported surface is deleted outright; privatizing is the fallback that silently changes behavior.
+- **Merging parallel structures: check the semantic payload first.** A unified signature must not drop the semantics a closure carried.
+- **The grep range must include `examples/`.**
+- **"mirrors / keep in sync" cross-reference comments are a greppable drift signal** — mark them as a shared contract.
+- **"An exception to the unified contract" first asks whether it carries tech-stack-specific semantics** (e.g. neo4j encryption determined by the URI scheme is a deliberate fork, not a dedup miss).
+- **A claim that a wrapper overrides a user callback must first verify whether the inner escapes to the user surface** (construction-time wrapping + private fields = unreachable).
+- **A docs sweep and its code migration must ship in the same PR.**
+- **Stop condition: one consecutive round with no surviving proposal is convergence.**
+
 ## 2. Naming Conventions
 
 - **Package names**: All lowercase, short and descriptive (`errutil`, `assert`, `gs`); no underscores or camelCase, and don't repeat the package's contents.
@@ -53,6 +77,7 @@ Extensibility is a judgment call, not a reflex. It lives in tension with Section
 - **Variables**: Concise yet meaningful; avoid unnecessarily long names.
 - **Method receivers**: Short and consistent (1–2 letters); don't use `me`/`this`/`that`.
 - **Boolean method names**: Prefer dropping the `Is` prefix — use the state adjective directly (`Enabled()`, `Healthy()`). Keep `Is` only when the remaining word cannot stand alone as a yes/no question without ambiguity (`IsLeader()` — `Leader()` reads like it returns who the leader is; `IsZero()`). Criterion: delete `Is` and see whether the name still works.
+- **File names**: `function name + the instance qualifier the directory already expresses` → drop the qualifier. Criterion: keep the qualifier only when dropping it leaves nothing meaningful (`gorm.go` in `starter-gorm/`, `pprof.go` in `starter-pprof/`, `server.go` in `starter-oauth2-server/`) — that is the "package's main file" convention. Go gives special meaning only to `_test` / `_GOOS` / `_GOARCH`. Do **not** rename: `example-*/example.go` (`example` marks "runnable sample", not an instance qualifier), generated code (`pb/service.pb.go`, kitex `k-echo.go`, `service.triple.go`), or Go-idiomatic `cloud/<x>/<x>.go`. Renaming also updates the references in USAGE / DESIGN / README.
 
 ## 3. Code Formatting and Organization
 
@@ -97,12 +122,14 @@ The project uniformly uses the **dual-semantic error-wrapping pattern** of `stdl
 
 > **Project rule**: Don't construct errors directly with `errors.New`/`fmt.Errorf`; always wrap through `errutil`.
 
-- **Explanatory wrapping** (`errutil.Explain`) — adds business semantics: `errutil.Explain(err, "failed to connect to database")`.
-- **Path wrapping** (`errutil.Stack`) — tracks the call chain: `errutil.Stack(err, "InitService")`.
+- **Explanatory wrapping** (`errutil.Explain`) — adds business semantics: `errutil.Explain(err, "failed to connect to database")`. Wrapping an existing error keeps the message byte-for-byte (`fmt.Errorf("%s: %w", msg, err)`); constructing in place uses `errutil.Explain(nil, "component: detail")` (nil degrades to `fmt.Errorf`).
+- **Sentinel exception**: `var ErrX = errors.New(...)` keeps `errors.New` (there is no sentinel constructor in `errutil`). To add detail onto an existing sentinel, use `errutil.Explain(Sentinel, "detail %q", x)` — the message order changes (`errors.Is` is unaffected), so grep for tests that lock the order before changing.
+- **Do not use `errutil.Stack`** — its `>>` is call-path semantics and appears only in layout templates, `log/plugin.go`, and the IDL parser. Do not use "consistent with other examples" as an excuse to fall back to `fmt.Errorf`; when you meet non-compliant old code, the direction is to convert it to `errutil`.
 - **Fail fast, return early**: Return business errors as early as possible; for unrecoverable programming errors during initialization, panic directly.
 - **The panic boundary for constructors and validation**: Constructors (`New*`, returning a runtime component with a lifecycle) always return an `error`, never panic. Option/DSL value builders (`WithX`, `FixedRate` — functions returning a configuration value, always used inside an inline expression, with no error channel) and init-time registration (`Register*`) may panic to fail fast. The criterion: is the returned thing a runtime component, or a wiring-time configuration value?
 - **Preserve the unwrap chain**: `errutil` internally guarantees `%w` semantics, fully supporting `errors.Is()`/`errors.As()`.
 - **Sufficient context**: Error messages should carry enough context to locate the source.
+- **Panic recovery reports through `stdlib/goutil`**: `OnPanic func(ctx, PanicInfo{Panic, Stack})` is a single-slot function pointer (direct assignment replaces it, last writer wins) — do **not** build a chained `RegisterOnPanic`. `goutil.ReportPanic(ctx, r)` is the public reporting entry for an already-recovered panic, and `goutil.SafeRun(ctx, f)` routes a panic through the normal error path. New recover points always use `ReportPanic` / `SafeRun`; `stdlib` must never import `log` (the bridge is `log` assigning `goutil.OnPanic` in its own init).
 
 ## 5. Log and Metric Leveling
 
@@ -128,6 +155,21 @@ Dimension discipline: unbounded cardinality (keys, addresses, destination values
 - **Function docs**: Every exported function must have a comment — description, parameters and return values, error conditions (if any); complex cases may include examples.
 - **Self-documenting code**: Use clear naming and simple structure so the code explains itself; don't add unnecessary comments.
 - **AI-collaboration comments**: When you need to constrain AI behavior, add special comments, e.g. `// AI: do NOT refactor this function`.
+- **Comments describe the current contract only** — not history, positioning, or analogy. Delete clauses like "historically it was", "same shape as package X", "following the X pattern"; keep the behavior contract itself (2026-08-30).
+- **No per-method comments on interface implementations** (e.g. `propagate.Carrier`, otel `TextMapCarrier`): the contract is written at the interface, so repeating it at the implementation is describing implementation. A type-level doc saying "which adapter this serves" is enough (2026-09-29).
+- **File comments are separated from the `package` clause by a blank line.** A comment explaining "this file" (first line shaped like `<file>.go is/xxx`, `This file ...`) must be split from `package` by a blank line, or the Go toolchain treats it as the package doc comment. Only `// Package X ...` / `// Command X ...` sit directly above `package`. Both forms compile; this is the doc-attribution rule (2026-10-05).
+- **Every exported semantic struct field gets its own doc comment**; the type's doc comment keeps only a one-line overall positioning (2026-09-03).
+
+### 6.1 README Files and Structure
+
+- **The Chinese README is `README_CN.md` repo-wide** (`README.zh.md` / `README_zh.md` are gone). The one exception is `layout/`, a self-contained sample project whose docs all pair as `*.en.md` + `*.zh.md` — do not "unify" it (2026-10-02).
+- **Chinese README section titles are fully localized**: `## 使用方式`, `### API 列表` (no variants like "API 总览"; the English side is uniformly `### API`), `## 关键设计`, `## 许可证`; inline terms keep English (Apache License 2.0, API, identifiers); the license line is uniformly "Apache License 2.0，详见 [LICENSE](../../LICENSE)。". The English README keeps `## Usage` / `## License` (2026-08-23).
+- **The EN and CN READMEs mirror section-for-section**, not just in punctuation.
+- **Chinese body punctuation is full-width** (`，` `：` `（）` `。` `、` `——`); code blocks, inline code, links, and English terms are unchanged. Grep for `[一-鿿][,:;()]` must return zero. "The file was originally half-width" is to-be-fixed, not to-be-kept (2026-09-07).
+- **A README carries no layering/marketing modifiers** ("belongs to the zero-dependency `stdlib` layer" / "Part of … stdlib layer") — only function / behavior / boundary. Genuine design reasons ("keeps this library zero-dependency") may stay; DESIGN docs may keep layering prose (2026-08-19).
+- **In `cloud/**/README*.md`, reference identifiers with backticks** (`` `WrapClientExecutor` ``), not godoc-style `[WrapClientExecutor]` (in Markdown `[X]` is a literal bracket); the only exceptions are Markdown links `[label](url)` and anchors `](#...)`. Go source comments still use `[X]` (2026-10-01).
+- **A stdlib package writes one merged README** (`README.md` EN + `README_CN.md`), in a fixed order: language switch line → positioning & scenarios (with a "what it is not" boundary) → Usage → Design → License; no `DESIGN` (2026-08-16). Other modules (`log` / `spring` / `cloud` / `starter` / `contrib`) keep the README + DESIGN four-file set — do not unify them.
+- **Docs must not retain stale API signatures or references to non-existent fields / deleted types**; after an API change, sweep every `.md` repo-wide (`temp/` is the user's writing area — leave it).
 
 ## 7. Testing Style
 
@@ -136,6 +178,8 @@ Dimension discipline: unbounded cardinality (keys, addresses, destination values
 - **Table-driven tests**: For multi-input/output scenarios, the table-driven pattern is recommended; table-driven and subtests can be mixed — use whichever is more concise.
 - **Boundaries of raw assertions**: Use `t.Error`/`t.Fatal` only where there's no corresponding assertion — e.g. timeout protection, `select` branches, or unrecoverable initialization failures.
 - **Tests alongside production**: Test files live in the same package directory as production code; tests are living documentation.
+- **Every `X_test.go` must have a matching `X.go`** — no orphan test files without a main file. Shared test infrastructure (TestMain / OTel wiring / metric-assertion helpers) goes either in the test paired with the package's main file (e.g. `starter_test.go`) or in the test of its primary consumer — never in a standalone `observe_test.go` with no main file (2026-10-02).
+- **Contract tests** (Spring Cloud Contract-style CDC: provider-side `Verify` + consumer-side `StubServer`) currently live in `cloud/experimental/contract/` (`cloud/contract/` does not exist yet — that is the target once a real consumer appears); a new protocol contract engine joins it as a sibling package. The HTTP engine stays zero-third-party-dependency (a deliberate choice, not a layer rule); do not propose moving it back to `stdlib` or to `contrib` (2026-08-16, 2026-09-10).
 
 ## 8. Go Idioms
 
@@ -145,6 +189,7 @@ Dimension discipline: unbounded cardinality (keys, addresses, destination values
 - **Avoid over-abstraction**: Abstract only when truly needed; follow YAGNI and don't pre-plan for an uncertain future.
 - **Minimal dependencies**: Add only necessary external dependencies.
 - **Subprocess IO**: When invoking external commands, wire stdout/stderr straight to `os.Stdout/Stderr` to keep output streaming; buffer only when you need to parse the output.
+- **Generics**: When a generic helper's type parameter cannot be cleanly inferred, keep the parameter as `T` and convert explicitly at the call site — do not use `any` + a runtime `.(T)` assertion. Note that when `T` is inferred as an interface, passing a concrete value fails to compile (Go never implicitly satisfies an interface for a type argument); convert at the call site (`greet.GreetServiceHandler(&GreetProvider{})`) so the argument has the interface type — compile-time safe, no panic path. `any` + runtime assertion is reserved for cases where the call site genuinely cannot express the conversion. A generic guard function must be a free function (Go methods may not have type parameters).
 
 ## 9. Concurrency-Safe Design
 

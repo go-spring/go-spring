@@ -180,6 +180,7 @@ use (
 	./starter/experimental/starter-transaction-saga
 	./starter/experimental/starter-transaction-saga-gorm
 	./starter/experimental/starter-transaction-tcc
+	./starter/experimental/starter-transaction-tcc-gorm
 	./starter/experimental/starter-transaction-tcc/example
 	./starter/experimental/starter-transaction-tcc/example-otel
 	./starter/experimental/starter-trpc

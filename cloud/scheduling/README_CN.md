@@ -134,3 +134,32 @@ fixed-rate/cron 任务到了触发点而上一次还在跑：
   `WithJitter` 遇非正时长 panic；`DailyWindow` 遇 nil 触发器或跨出一天的窗口
   panic。
 - 每个进程的调度器独立——这不是分布式调度器；副本协同由 `WithLock` 层叠加。
+
+## 设计说明
+
+- `cloud/scheduling` 刻意不接服务治理：不接 `ClientExecutorFor` 缝、不给资源标签
+  （治理 README 的 §6 标签表刻意不含它）。限流无意义（频率自控）、重试有害
+  （副作用型任务短时双跑）、熔断负收益（打开 = 任务静默不跑）、超时已有本地
+  `WithTimeout`、选点不适用；要治理的是任务体内发起的调用（如 http-client 的
+  `http:` 标签），不是任务本身；任务健康由 `scheduling.runs` 的 outcome 加 lag
+  指标覆盖。完整理由落在 `cloud/governance/README.md`。
+- `NewScheduler` 返回导出的具体类型 `*Scheduler`（字段全私有）——`Scheduler`
+  接口已删。`NewJob` 返回 `(*Job, error)`（返回错误而非 panic），`Schedule(j *Job)`
+  是唯一的注册形态；`Job` 接口已删。判据是「多组件可互换才立抽象层」——别给
+  单实现加接口。
+- job bean 的启动条件是 `gs.OnBean[*Job]()`（指针类型）。写 `Job` 值类型条件
+  永不满足（已踩过）；`AsJob` / `Runnable` 已删（方法值天然是 func），也无需
+  `Export`。
+- `WithLock(l lock.Locker, key string, ttl time.Duration)` 走与 `WithTimeout` /
+  `WithConcurrencyPolicy` 同一个选项入口（`Job` 没有链式 setter）。它直接收
+  `cloud/lock.Locker`——不引入中间 Locker 类型、无适配器；锁 bean 注入 job 构造
+  函数，Server 没有 Lockers map。
+- 观测内置（`observe.go`：`scheduling.runs{job,status}` / `run.duration` /
+  `lag`，加同键日志、每次运行一个 span、per-call instruments）；
+  `Observer` / `WithObserver` / `Event` 全删。插桩 scope 为
+  `go-spring.org/cloud/scheduling`。
+- `FixedDelay` 的串行是自动推导的：`Schedule` 里做 `trigger.(fixedDelay)` 具体
+  类型断言，因为串行是其「从完成时间起算」语义的不变量，不是用户选项。
+  `serialTrigger` 标记接口已删；将来若需「fixedRate/cron + 串行」再加
+  `WithSerial()` 选项（`isSerial = opts.Serial || isFixedDelay`）。自定义
+  `Trigger` 是导出扩展点，但 README 不为它写扩展章节（低频场景）。

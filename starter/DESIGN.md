@@ -86,6 +86,39 @@ lifecycle by exporting a `gs.Server` bean.
   (a dashboard, a bean/config inspector) answers before the ready signal rather than
   waiting on it, so an operator can watch the boot. A dev-facing docs UI instead
   mounts on the existing app/actuator mux rather than owning a port of its own.
+- **A server `Config`'s first field is an `Enabled` switch (opt-out), and the
+  condition combines it with the address (opt-in).** Field name `Enabled`, tag
+  `value:"${enabled:=true}"` (past participle, not `Enable`); the semantics are
+  "the switch governs exit, the addr governs entry". The condition is
+  `gs.And(gs.OnProperty("spring.xxx.enabled").HavingValue("true").MatchIfMissing(),
+  gs.OnProperty("spring.xxx.addr"))`.
+  - **Not applied** (do not force it): `websocket` / `websocket-coder` (infrastructure
+    with no server of its own), `xxljob` (a named-instance family where the
+    `instances` key is itself the opt-in), and `oauth2-server` (the other activation
+    model, `enabled` defaulting off).
+  - **Landed range — do not treat this as repo-wide.** The `Enabled` first field +
+    `gs.And` combination currently exists only in actuator / echo / thrift / trpc /
+    admin-ui; gin / hertz / grpc / gateway / go-zero / goframe are **still
+    addr/port-only** (first field `Address`/`Addr`/`Name`, condition
+    `OnProperty(<prefix>.addr)`). §2.1's own "the port configuration is the gate"
+    rule above describes that older shape — the two have not yet been reconciled,
+    so do not hold it against an old starter.
+  - **A named-instance family (discovery's zookeeper/consul/etcd/nacos/k8s, ...)
+    does not use `gs.And`**: `Config`'s first field is `Enabled`
+    (`${enabled:=true}`) and the `BindEach` callback opens with `if !c.Enabled {
+    return nil }`; a required `servers`/`address` is still the entry condition.
+- **Two probes, two per-instance switches.** Field `Ping`
+  (`value:"${ping:=false}"` — a construction-time connectivity probe, off by
+  default so an unready backend cannot block boot) and field `Health`
+  (`value:"${health:=true}"` — the `health.Indicator` readiness probe, on by
+  default). Both are breaking key renames (no relaxed binding; an old key silently
+  stops working). Exclusions: `starter-mqtt` adds no ping (paho does not connect at
+  construction, so turning it off hands out a permanently unconnected client);
+  `asynq` / `outbox-gorm` add only health; `spring.<x>.server.health.enabled` is the
+  server's own liveness route and is untouched. Shape exceptions: `starter-gorm`
+  puts `Ping` / `Health` in `PoolSettings` with each dialect's `Config` anonymously
+  embedding it; `starter-gateway` uses a property condition; `starter-config-bus`
+  uses `gs.Module` + `conf.Bind` to reach `c.Health`.
 
 ### 2.2 Client starters (driver mode + multi-instance)
 
@@ -348,6 +381,85 @@ Database, cache, and message-queue clients (`go-redis`, `gorm-*`, `mongodb`,
 - **Each backend adapts the shared TTL knob to what its store accepts.**
 - **A stateless client registers neither a health indicator nor a destroy hook.** A
   client that holds no connection has nothing to probe and nothing to close.
+- **The driver's contract is one signature.** `CreateClient(ctx context.Context,
+  c Config, params cloud.ClientParams) (T, error)`, where `T` is the *module's
+  exported client type* — the wrapper if there is one, the bare type if not. A
+  driver only builds; it does not register, and it returns an identity-complete
+  type, never a partial one. A few old starters still carry the shorter
+  `CreateClient(ctx, name string, c Config)` — untidy lag, not a second shape.
+- **`Config` is what the user writes; `ClientParams` is what the container
+  provides.** One declares, the other injects — never put a container bean into
+  a `Config` field. `cloud.ClientParams` is the bag the container hands over:
+  `Resilience *resilience.Manager` / `Fault *fault.Injector` / `Loadbalance
+  *loadbalance.Manager` / `Discovery discovery.Discovery`, plus `ExecutorFor(system,
+  label) chain.Executor` and `PolicyFor(label) ClientPolicy`. **A zero value is
+  meaningful**: a hand-built client (an example, a test) passes the zero
+  `ClientParams` and degrades to `resilience.Unmanaged` — still observed, with a
+  one-time warning — rather than being silently unprotected.
+- **Construction is one phase, in the constructor — there is no `Init` hook.**
+  `NewClient(raw, instanceName, serviceName, params)` pins the identity, installs
+  the observe layer (which belongs to *what the client is* and needs no external
+  input), and wires governance through `params` — all before it returns.
+  Initialization is what happens the moment the object exists, which is the same
+  moment as its creation. The probe (`c.client.Ping()` on the raw client, not a
+  method invented for it) runs after assembly, and a failed probe must release
+  the governance that was just installed.
+- **Type hardening: no exported `Raw()`.** Where a client holds its bare client as
+  an unexported field, `NewClient` is the only constructor and there is **no**
+  exported accessor back to the raw instance — that would be a hole silently
+  bypassing observe and governance.
+- **Embed or unexported field — decide by where the instrumentation sits.**
+  *Instrumentation in the wrapper's own methods* → hold the wrapped thing as an
+  **unexported field** and write out the full wrapped API; *instrumentation
+  inside the wrapped object* (the library's hook / transport / monitor /
+  interceptor / connector) → the wrapper is only a holder, so **embed** it and
+  forward nothing. Both costs are real and neither is "the" answer: embedding
+  goes silently unreachable when the upstream library adds a method (a concrete
+  type cannot carry a compile-time assertion the way an interface can);
+  unexported fields cost boilerplate proportional to the wrapped method set.
+  Known trap: redundant embedding shadows (embedding both `*T` and the `*S` that
+  `T` itself embeds lets the shallower `*S` win; if the field is already exported,
+  hand-writing `&Wrapper{T: raw}` leaves the shallower one nil → panic on access).
+- **A driver bean is selected per instance by a name chain.** The constructor's
+  driver parameter is
+  `gs.TagArg("${spring.<prefix>.instances." + name + ".driver:=${spring.<prefix>.default.driver:=?}}")`
+  — the instance key first, then the family `default.driver`, then `?` (inject the
+  sole driver bean by type). A configured bean name that resolves to nothing fails
+  startup. No `Config` field; http-client follows the same per-entry shape.
+- **A client that needs governance injects the required `*governance.Center`.**
+  Import `go-spring.org/cloud/governance` (or blank-import any governance source
+  starter), then take an **injected, required** `*governance.Center` (by type, no
+  `"?"` / `IndexArg`) and expand it via `center.Resilience()` / `Fault()` /
+  `Loadbalance()` / `Discovery()`. Turning governance off is
+  `spring.governance.enabled=false`, not an absent bean; writing it nullable turns
+  "forgot the import" into a silent downgrade. Keep `?` for exactly two cases:
+  0..N collections (`[]*health.Indicator`, `Registries`, `Jobs`,
+  `map[string]discovery.Discovery`, ... — `?` means an empty collection is legal,
+  otherwise it is `no beans collected`) and 0..1 with a meaningful nil
+  (`traffic.Propagator`, `resilience.Counters`, gorm's `disc`). `gs.IndexArg`
+  always takes two args: to drop nullability write `gs.IndexArg(N, gs.TagArg(""))`
+  (`gs.IndexArg(N)` does not compile).
+- **A multi-instance health indicator's `.Name` is globally unique across
+  starters.** Provide it as `.Name(module-prefix + ":" + name)` (e.g. `"mongo:" +
+  name`). General rule: every bean that `.Export(gs.As[SharedInterface]())` must
+  have a globally unique Name, and the lightest way is the module prefix.
+- **dubbo's config model is one `*Instance` under `${spring.dubbo}`** carrying
+  eight top-level nodes: `application` / `registries` / `protocols` (global, not
+  provider-level) / `provider` / `consumer` / `metrics` / `tracing` (the v3 OTel
+  surface) / `shutdown`; `internal-signal` is a `bool` defaulting true (the
+  binder rejects pointer value types). References live under
+  `${spring.dubbo.consumer.references.<name>}`, services under
+  `${spring.dubbo.provider.services.<name>}` (optionally `.methods.<m>`). There is
+  **no `${spring.dubbo.client}` key**: the `*client.Client` bean is derived by
+  `NewClient` from the shared `*Instance`. Non-Triple consumers (classic dubbo /
+  JSON-RPC / REST) get a hand-written typed struct wrapper in the **application**
+  (e.g. `consumer/main.go`), never hand-written into `idl/` (`idl/` holds only
+  constants, or it misleads as generated code). `RegisterReference[T any](name
+  string, ctor func(*client.Client, ...client.ReferenceOption) (T, error))`
+  registers a typed stub bean; the starter ships the helper, the app calls it per
+  stub. Provider-side dynamic config is not needed: `dyncPoller` watches only
+  `${spring.dubbo.consumer}`, and a provider override re-exports through dubbo-go
+  itself.
 
 ### 2.3 Contributor starters (no port of their own)
 
@@ -856,6 +968,53 @@ baseline (its identity, wire vocabulary, error catalog, standard drivers).
 - **A capability's default in-memory store rides `gs.OnMissingBean`**, so a
   durable-store starter displaces it for every consumer with no business-code
   change.
+- **A struct field name is never a bare generic word** (`name`, `service`, `key`),
+  especially when a near-synonym sibling sits in the same struct — it must carry a
+  semantic direction. The legal vocabulary, uniform across starters: the instance
+  name (the `instances` map key) is `instanceName`; the derived governance label
+  (the result of `resilience.ServiceLabel(...)`) is `serviceLabel`. `serviceName`
+  stays as-is — it mirrors the config key `service-name` and is a config-field name,
+  not part of this vocabulary. Split singular/plural collisions: `Manager.driver`
+  (the selected backend) becomes `driverName`, distinct from `drivers` (the backend
+  directory map). A name that does not match its use is fixed (e.g.
+  `memcached/liveServers.key`, which stores an address-snapshot signature, becomes
+  `snapshotKey`). Explicitly **not** renamed: the `service` inside
+  `cloud/governance/resilience|fault`, `starter-governance-sentinel`, and
+  `starter-luohua` — there `service` is the parameter name of the
+  `NewClientExecutor(service string, ...)` contract itself. Do not paper over a
+  bare name with a comment.
+- **`func init()` sits at the top of a starter file, immediately after the import
+  block** — no `type` / `var` / `const` / `func` declarations may precede it. This
+  applies to `starter/**/starter.go` (and any file that registers beans) and to
+  cloud-side `starter.go`; it does **not** apply to an example `main.go`, generated
+  `pb.go`, or non-starter internal packages (`log`, `conf`, ...).
+- **A starter's registration lives in the starter file; only its construction is
+  shared.** The whole registration process — `gs.Module` + `conf.BindEach` +
+  `r.Provide` + `IndexArg` + bean naming + `health.Indicator` — must be written out
+  in the starter, never hidden behind a generic helper; only the *construction*
+  (open, observe, governance, closer rollback, ping) may be extracted into a
+  non-generic shared function. The divide: the registration/DI part sinks into the
+  starter, the construction part may live in a shared package — copy the ~25 lines
+  of boilerplate if need be.
+- **A config struct bound by `conf.BindEach` / `gs.ValueArg` carries config values
+  only.** Every field has a `value:` tag; a runtime-resolved bean (a Discovery
+  backend, Registry, Client, Executor) is never smuggled in an unexported field as
+  a conveyor belt — it is passed as an explicit parameter to the extension-point
+  function (`Driver.CreateClient` / `Dialect.Build` / `NewPool`). The scan signal
+  is a field in a config struct with no tag (a pure scalar derived from config,
+  such as gorm-mysql's `tlsParam`, is not a dependency and may stay).
+- **Config keys match exactly — no relaxed binding.** No kebab/camel/underscore
+  interchange in binding or `OnProperty`; never normalize case or separators.
+- **A wrapper bean's field-injection tag is a top-level absolute property
+  reference**: `value:"${resilience:=}"` resolves top-level `resilience.*`,
+  `value:"${fault:=}"` top-level `fault.*` — **no** instance prefix, shared across
+  instances. Only the ctor's base `Config` bound through `conf.BindEach` carries the
+  instance prefix. The several binding paths (wrapper-bean field injection =
+  absolute, `BindEach` ctor `Config` = instance-prefixed) have different semantics
+  for the same-looking key — the criterion is the binding path, not the key name.
+- **`gs.OnProperty("spring.X")` is a prefix/branch check**: any `spring.X.*` present
+  matches. When `gs.Group("${spring.X}")` is registered, do not leave an orphan
+  top-level `spring.X.<leaf>` key — the leaf would be read as a bean name.
 
 ## 4. Adding a New Starter — Checklist
 

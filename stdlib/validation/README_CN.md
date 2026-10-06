@@ -94,6 +94,10 @@ return out // "validation: field \"SignUp.Email\" failed on the \"email\" rule"
 - `Field` 是 struct 字段路径,不是 JSON tag;渲染层可自行改写。
 - `Localize` 每条失败返回一个字符串、顺序与列表一致,且永不为空。
 - 本包零第三方依赖——从校验器错误类型的映射永远在调用侧,几行而已。
+- **刻意不做框架**:没有 `Validator` 接口、没有 driver/registry,也没有
+  `Handle` / `WriteError` / `JSONDecoder` 之类的 HTTP 包装——这些已删除且不会
+  回归。HTTP 请求校验由 `gs-http-gen` 从 IDL 生成;配置侧校验用 `spring/conf`
+  的 expr tag。本包只保留中立错误模型。
 
 ## 许可证
 

@@ -63,3 +63,15 @@ useDiscovery := c.ServiceName != "" && !mesh.Enabled()
 静态地址。对于经 `discovery` 解析的基础设施客户端，优先用
 `discovery.NewResolver`——它已内置该检查，mesh 模式下返回 nil Resolver，调用方
 直接拨号配置地址。
+
+## 设计说明
+
+- `mesh.Enabled()` 是纯函数、无状态：不缓存、无副作用，只用 `os`/`strings`，
+  每次调用现读 `GS_MESH_MODE`。空串与未设置在 `os.Getenv` 里无从区分，均落到
+  auto。
+- 没有 `SetEnabled`、没有三态 `atomic.Value`、没有 `starter-mesh` 模块。
+  `cloud/mesh` 不塞 context、log 或 `sync.Once` 启动日志——可观测性归消费侧
+  starter。
+- `mesh.Enabled` 只在 client 构造期被调一次，绝不在请求热路径上：`loadbalance`
+  零 mesh 引用，`httpx` 在 `NewTransport` 而非 `RoundTrip` 里检查。
+- 测试用 `t.Setenv("GS_MESH_MODE", ...)` 驱动。

@@ -18,13 +18,9 @@ package StarterBatchRedis
 
 import (
 	"context"
-	"crypto/sha1"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"sort"
-	"strings"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -45,10 +41,9 @@ import (
 //	<prefix>steps:<jobExecutionID>  hash, field=stepName → JSON StepExecution
 //	<prefix>seq                     counter used to mint fresh execution IDs
 //
-// The instanceKey is derived from JobName + sorted Params (SHA-1 hex), which
-// mirrors the unexported instanceKey helper in stdlib/batch/repository.go so
-// the Redis backend and the in-memory backend agree on what "same instance"
-// means.
+// The instance key is derived from JobName + sorted Params (SHA-1 hex) by
+// batch.InstanceKey, the one helper every backend calls so they agree on what
+// "same instance" means.
 type redisRepository struct {
 	cfg    Config
 	client *redis.Client
@@ -88,29 +83,6 @@ func (r *redisRepository) seqKey() string {
 	return r.cfg.KeyPrefix + "seq"
 }
 
-// instanceKey mirrors the unexported helper in stdlib/batch/repository.go: it
-// sorts params by key and SHA-1s "<name>\0<k>=<v>\0..." so two runs with the
-// same JobName + Params hash to the same key, regardless of map iteration
-// order. Keeping the exact algorithm in lockstep with the memory repo means
-// callers see identical instance semantics on either backend.
-func instanceKey(name string, params batch.Params) string {
-	keys := make([]string, 0, len(params))
-	for k := range params {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-	var b strings.Builder
-	b.WriteString(name)
-	for _, k := range keys {
-		b.WriteByte(0)
-		b.WriteString(k)
-		b.WriteByte('=')
-		b.WriteString(params[k])
-	}
-	sum := sha1.Sum([]byte(b.String()))
-	return hex.EncodeToString(sum[:])
-}
-
 // applyTTL sets EXPIRE on `key` when Config.TTL > 0. TTL == 0 leaves the key
 // without an expiry so long-running jobs never lose their history mid-run;
 // callers that care about GC set a positive TTL to bound Redis growth.
@@ -129,7 +101,7 @@ func (r *redisRepository) applyTTL(ctx context.Context, key string) error {
 // restart=false. This matches the contract of the memory repo and the
 // interface docstring in stdlib/batch/repository.go.
 func (r *redisRepository) ObtainExecution(ctx context.Context, name string, params batch.Params) (*batch.JobExecution, bool, error) {
-	ik := instanceKey(name, params)
+	ik := batch.InstanceKey(name, params)
 	jkey := r.jobKey(ik)
 
 	raw, err := r.client.Get(ctx, jkey).Bytes()
@@ -173,7 +145,7 @@ func (r *redisRepository) SaveJobExecution(ctx context.Context, je *batch.JobExe
 	if je == nil {
 		return errutil.Explain(nil, "batch-redis: SaveJobExecution nil execution")
 	}
-	return r.writeJob(ctx, instanceKey(je.JobName, je.Params), je)
+	return r.writeJob(ctx, batch.InstanceKey(je.JobName, je.Params), je)
 }
 
 // writeJob is the single JSON+SET+EXPIRE path used by both ObtainExecution

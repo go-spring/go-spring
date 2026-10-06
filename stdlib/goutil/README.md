@@ -234,6 +234,13 @@ a concurrency framework.
   during initialization to plug into their logging / metrics stack. A
   variable rather than a getter/setter pair, because there is exactly one
   configuration point and set-once is enough.
+- **One slot, not a chain.** `OnPanic` is a single function pointer — a direct
+  assignment replaces it (last writer wins). Do not add a chained registry
+  (e.g. a `RegisterOnPanic`-style API); new recover sites call `ReportPanic` or
+  `SafeRun` rather than registering handlers.
+- **The log bridge points one way.** The `log` module wires itself in by
+  directly assigning `goutil.OnPanic` from its `init`; the dependency direction
+  is `log → stdlib` only. `stdlib` must never import `log`.
 - **Explicit `CancelMode`**: `InheritCancel` passes the context through;
   `DetachCancel` wraps it with `context.WithoutCancel` so the goroutine
   outlives its launcher. Chosen at every call site — no "default" that

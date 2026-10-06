@@ -101,6 +101,11 @@ return out // "validation: field \"SignUp.Email\" failed on the \"email\" rule"
   blank one.
 - This package imports nothing third-party — mapping from your validator's
   error type is always a few caller-side lines.
+- **Deliberately not a framework.** There is no `Validator` interface, no
+  driver/registry, and no `Handle` / `WriteError` / `JSONDecoder` HTTP wrapper —
+  those were removed and will not return. HTTP request validation is generated
+  from IDL by `gs-http-gen`; config-side validation uses `spring/conf`'s expr
+  tags. Only the neutral error model lives here.
 
 ## License
 

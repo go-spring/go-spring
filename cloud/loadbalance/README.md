@@ -207,6 +207,75 @@ holds the factory table. `Pool.ApplyBalancer` (strategy) and
 `Pool.Selection()` reads back the policy most recently accepted — useful when you
 drive selection from your own config instead of the manager.
 
+## Coverage: what is governed, and the re-pick test
+
+Selection is driven **only** through the governance channel — the `balancer`
+name plus the `balancer-params` sub-map's `replicas` / `zone-key` / `delegate`,
+via `Selection.Params` → `Manager.Apply` → `Pool.ApplyBalancer` (hot-swapped in
+place). A starter invents no local static `balancer` key of its own; each
+starter's pool defaults to `loadbalance.NewRoundRobin()` directly (no lookup by
+name, no error). The `Factory` parameterization is kept, to carry parameters on
+the governance channel.
+
+Covered clients: every discovery-mode `loadbalance.Pool` consumer —
+`httpx`/`gateway`, all four gorm dialects, `redigo`, `go-redis`, `mongodb`,
+`grpc`.
+
+> Self-check: **does this client pick an endpoint again on every request /
+> every connect?** Yes → its label can carry a `balancer`. No → don't expect
+> `spring.governance.client.rules[N].balancer` to affect it.
+
+The "no" cases, each deliberate:
+
+- **Direct connect** (a fixed addr/host): no candidate set to choose from.
+- **Pick-once** (`neo4j`): the host is frozen into the startup URI; there is no
+  per-request pick left to govern (its governance stops at the protection policy).
+- **Mature library owns the choice** (`elasticsearch` / `memcached` / the MQ
+  family / `s3`): the selection lives inside the library (ES's node selector,
+  memcached's per-key consistent hash). The rule: don't build a second selector
+  when the library already has a good one — feed it the live addresses instead.
+
+**Eviction granularity for a DB/cache client is the connection, not the query.**
+For gorm / redigo / go-redis / mongodb the pick happens at connect time, so the
+only success/failure signal the `Tracker` can see is the dial result; a failed
+single query is handled by that client's own resilience executor and does not
+feed the tracker.
+
+**`grpc` picks under a process-level label.** Its selection label is the
+process-wide `grpc:client`, so setting `balancer=` on it also retunes every
+builtin `gs_*` balancer; to isolate per service, register a custom name via
+`RegisterBalancer` (custom `Factory` beans are exempt from the process-level
+override by design).
+
+**Building a pool** takes three parts: `WithTrackerConfig` + a paired
+`Pick` / `Complete` at the connect site + subscribing to the governance-pushed
+`Selection`. New clients copy this (it is written into `starter/DESIGN.md` §4 as
+a checklist). One label may map to several pools (the sink is a pool, not an
+object), so the manager does **not** memoize: each `Bind` is an independent
+subscription owned by the pool, and a pool must cancel it on destruction.
+
+## Weight semantics
+
+- `Endpoint.Weight == 0` means **drain**. (2026-08-27)
+- Every consumer-side LB strategy uniformly filters out `Weight == 0` endpoints
+  (after health/tracker filtering); when all are zero it falls back to the
+  pre-filter set (never black-holes), and **negative** weights stay in rotation.
+- On the write side, registrar `Register` normalizes `weight <= 0` to 1 ("unset"
+  never lands at 0); `UpdateWeight(0)` is an explicit drain and is allowed to
+  land at 0. Do not normalize 0 back to 1 — that is `Register`'s job.
+- **Drain and deregister (`Disabled`) are two different things**: the former
+  rotates with zero loss, the latter removes immediately.
+
+## Address freshness: a separate axis
+
+Who picks a node is independent of whether the address set follows the naming
+service. The covered clients re-read on every connect/request; the
+library-owned ones attach their own live set: ES installs a
+`ConnectionPoolFunc`, memcached installs a `ServerSelector` (keeping its
+CRC32-of-key hash plus address ordering), and neo4j installs the driver's
+`AddressResolver` (only in `neo4j://` routing mode). On a read failure each
+keeps the last usable set and **never returns an empty set**.
+
 ## The Pick/Complete contract
 
 The two calls must be paired **exactly once**. Skipping `Complete`:

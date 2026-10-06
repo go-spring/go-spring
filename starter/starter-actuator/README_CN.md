@@ -80,6 +80,14 @@ actuator 和所有 `gs.Server` 一样，应用就绪后才开始服务——等�
 - **readinessProbe → `/readyz`**：只判"该不该接流量"。失败只是把 pod 摘出
   Service 端点，永远不杀进程。
 
+唯一合理的工作模型就是上面这套：微服务必须配 startupProbe，预算覆盖最坏启动时长；
+liveness 只判死、readiness 只判流量，启动期探 readiness 无消费者。所以**没有**任何
+"提前应答 / 早期监听"逻辑：actuator 的 `Run` 绑定监听后 `<-sig.TriggerAndWait()` 再
+`Serve(ln)`，与 `SimpleHttpServer` 完全同构（旁路 goroutine 与 `ready` 标志已删——
+`Serve` 即就绪，且没有消费者要更早的信号）（2026-10-03）。排空期三个探针统一 `503`
+OUT_OF_SERVICE（liveness 也判 draining）；非排空期 liveness/startup 无门槛，readiness
+才看 indicator。
+
 
 ## 端点
 

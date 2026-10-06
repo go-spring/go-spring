@@ -122,6 +122,67 @@ format (default JSON); passed to a single `Get`/`Set` it covers the rare entry
 whose format differs from the rest. A mismatched codec fails on decode instead
 of corrupting data silently.
 
+## Wrapping a concrete-typed backend: the InnerCache chain
+
+Hollowing a client into an `InnerCache`-headed chain — an interface the wrapper's
+internals run through — applies only to a component whose **raw client is
+delivered as a concrete type**. That is the whole judgement:
+
+- **Concrete type** (a `*bigcache.BigCache`, a memcached client) → hollow it out,
+  exposing an `InnerCache` interface as the single seam the chain is built on.
+- **Already an interface, or carrying a native hook** (go-redis's
+  `UniversalClient`, gRPC's `ClientConn`, a gorm `Plugin`, mongo's
+  `CommandMonitor`, kgo's `kotel`) → wrap or use the hook directly; the user can
+  already build their own onion, so a second seam is duplicate construction.
+
+The chain's shape:
+
+- The shell embeds the chain head (so the command methods are promoted directly)
+  plus an exported field for the raw object — a **read-only handle** for a chain
+  builder / `Driver` to assemble through, never to reassign or to run commands
+  on. The shell carries zero feature knowledge; one layer, one job.
+- `Release(releaseRaw bool)` is the teardown protocol: each layer releases its own
+  resources and passes the flag down unchanged, and only the tail acts on it,
+  `true` shutting the instance down. The shell's own `Destroy` was deleted —
+  `Close()` is the head's `Release(true)`, doubling as the gs destroy.
+- **Reassembly** is `c.InnerClient = myLayer{c.InnerClient}` — no extra handle, no
+  constructor. A layer's rewritten key flows naturally into the identity /
+  observation layer, and governance keeps protecting the layers below. The
+  earlier "shallow close + full reassembly" protocol is retired.
+- When replacing an observation head that is still live, `Release(false)` it first
+  to drop the old registration, or the signals are reported twice.
+- An in-process cache is two layers: `ObsCache` (all observability, per-call
+  counters + gauge, holding the raw `statObserver`; `Release` unregisters) →
+  `RawCache` (a pure adapter, dropping ctx; `Release(true)` closes the instance).
+  An RPC-shaped client is three: `ObsClient` (identity, `WithOperation(op, key)`)
+  → `GuardClient` (governance; the executor's construction / use / release all
+  live in the layer) → `RawClient`.
+- The whole command surface goes into the interface, and a generic guard must be a
+  free function (Go methods cannot take type parameters).
+- Multi-round intermediate forms that were rejected, not to be raised again:
+  constructor-injected chains (forces the user off the default `Driver`), an
+  observation field hung on the shell (an impure shell), a registry keyed by
+  instance, and `RawCache` holding a registry (cross-layer pollution).
+
+The MQ family adds one general lesson: a per-delivery consume pipeline
+(extract → declare → exec) runs in the opposite direction from a chain, so it
+cannot go on one — keep a fused wrapper (`Client.execute` / `GuardedConsume`). A
+chain takes only **synchronous publish** commands, not async produce; hollowing a
+bare bean + `sync.Map` registry means introducing a wrapper entity and a
+bean-type change (accepted under `experimental`).
+
+## The wrapper surface
+
+A cache wrapper never grows a `Reset`-like destructive method. `Reset` (clear
+everything) has no place on the cache's face:
+
+- `StarterBigCache.Cache.Reset()` was deleted and must never come back; other
+  cache starters' wrappers follow the same rule.
+- Pass-through methods are introspection only (`Len` / `Stats` / `Iterator`, …);
+  `Reset` / `FlushAll` are never among them. Emptying a cache is an operational
+  action — rebuild the instance, or change the config — not a method call.
+  (2026-10-04)
+
 ## Boundaries
 
 - No in-process `Memory`, no `MultiLevel`, no aspect bridge. Use bigcache for

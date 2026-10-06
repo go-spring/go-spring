@@ -111,6 +111,10 @@ statement at the top of the method.
   `MatchCSRFToken` (constant-time compare), `DefaultCSRFCookieName` /
   `DefaultCSRFHeaderName`.
 - **Error sentinels** `ErrUnauthenticated` (→ 401) and `ErrForbidden` (→ 403).
+- **`Guard`** — the management-port guard shared by the actuator, pprof and
+  admin-ui server starters; it lives here in `cloud/security` (the old
+  `stdlib/httpauth` package was removed). Its loopback helper `IsLoopback`
+  lives in `stdlib/netutil`.
 - **`TLSConfig`** — the shared `tls.*` property block every TLS-speaking
   starter embeds; see the next section.
 
@@ -118,7 +122,9 @@ statement at the top of the method.
 
 `TLSConfig` is the shared TLS configuration used by every Go-Spring starter
 that terminates or dials TLS (redis, gorm dialects, kafka, nats, mqtt, grpc,
-gin, gateway, neo4j, cassandra, registry/lock backends, ...). It binds the
+gin, gateway, neo4j, cassandra, registry/lock backends, ...). It lives here in
+`cloud/security` — the standalone `cloud/tlsconf` package was folded in and
+removed. It binds the
 off-by-default `tls.*` property block to a `*tls.Config`, loading the key
 pair and CA bundle from disk when provided.
 
@@ -169,6 +175,11 @@ its own, in its own idiom, on top of the shared identity model — stdlib
 family's own concern (`starter-http-server` ships one; gin uses
 `gin-contrib/cors`, echo its built-in).
 
+A new server family follows the same rule: write a thin shell in the family's
+own idiom on top of this identity model, and parse tokens / compare CSRF
+through the shared pure helpers (`ParseBearerToken`, `MatchCSRFToken`, ...)
+rather than copying the logic. The hertz shell is not written yet.
+
 ## Design
 
 ### Responsibilities & boundaries
@@ -178,6 +189,10 @@ family's own concern (`starter-http-server` ships one; gin uses
   session-cookie implementations live in starters or the calling app.
 - Not a session library (see `cloud/experimental/session`), not an OAuth2 authorization
   server (see `starter-oauth2-server`).
+- The single home of the security primitives — `Authentication` /
+  `TokenValidator` / CSRF / `TLSConfig` / `Guard`. Do not split them into new
+  `xxconf`-style concatenated packages; a new shared capability folds into an
+  existing single-word package.
 - HTTP middleware, route-level `Authorize`, and CORS stay with each server
   family; only the security-sensitive logic those shells share is exposed here
   as pure helpers, so behavior cannot drift between families. The method-level

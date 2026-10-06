@@ -84,6 +84,20 @@ making everyday Go development more convenient and enjoyable.
 |--------|-------------|
 | [testing](./testing/) | Fluent assertion library with `assert` (fail-continue) and `require` (fail-fast) modes and type-specific assertions |
 
+## Package Conventions
+
+- Each package ships a single bilingual README (`README.md` + `README_CN.md`),
+  merged rather than one file per language in a docs directory, and no
+  `example/` directory.
+- A new subpackage must satisfy all three: it appears in at least two places
+  inside the repo (extraction, not pre-planting), its helpers share one verb
+  (one package, one job), and the standard library genuinely lacks it.
+- A package name points at the standard-library package it wraps
+  (`timeutil` → `time`, `randutil` → `crypto/rand`).
+- Zero-reference packages are kept, not deleted: `fileutil`, `iterutil`,
+  `md5util`, and `textstyle` stay even with no in-repo importers — do not
+  propose removing them.
+
 ## License
 
 Apache License 2.0

@@ -76,6 +76,8 @@ if err := errutil.RequireAny("http-client",
 - **一律 `%w`，不定义自己的错误类型**：内部统一走 `fmt.Errorf("... %w", err)`，所以 `errors.Is` / `errors.As` 在整条链上依然可用。与标准库互通就是目的，调用方也别再显式写 `%w`——那会二次包装。
 - **`nil` 入参行为统一**：内层 err 为 `nil` 时，两个动词都退化成 `fmt.Errorf(format, args...)`。于是可以直接写 `errutil.Explain(nil, "reason: %s", x)`，不用先判空。
 - **明确不做栈追踪库**：`Stack` 只按名字记传递路径，不抓 `runtime.Callers` 帧；更完整的调用栈交给专门的 tracing 包。
+- **既能构造也能包装**：生产代码与测试都应经 `errutil` 构造或包裹错误，而不是裸 `fmt.Errorf` / `errors.New`；`errutil.Explain(nil, "...")` 就是惯用的构造写法（退化为 `fmt.Errorf`）。唯一例外是哨兵错误——`var ErrX = errors.New(...)` 保持 `errors.New`，因为 errutil 没有哨兵构造器。给已有哨兵补细节用 `errutil.Explain(Sentinel, "detail %q", x)`，但注意报文顺序会变（`errors.Is` 不受影响），改前先 grep 是否有测试锁定顺序。
+- **`Stack` 仅限保留场景**：`>>` 是调用路径语义，只出现在 layout 模板、`log/plugin.go` 与 IDL 解析器中；普通包不要使用 `errutil.Stack`。
 
 ## 许可证
 

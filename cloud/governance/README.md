@@ -84,6 +84,21 @@ resilience（原语）   ← 叶子（只依赖 observability）
 - resilience 的插桩在 `cloud/resilience/observe.go` 的 `WrapClientExecutor`，由
   `Manager.backing` 在 resolve 时应用到尚未发布到缓存的 executor 上，client 不直接调用。
 
+### cloud/traffic：域外数据面叶子
+
+`cloud/traffic` 只依赖 `cloud/propagate`，是数据面叶子；控制面从不向它下发期望态（`Binding` 是构造期注入的静态值），但 `fault` 的 `scope` 门控依赖它的压测标记。它自身的边界规则：
+
+- `IsLoadTest` 既不是裸 var、也无包级门面：它是 `traffic.Propagator` 接口的方法，消费者（业务代码、fault、otel processor、各 starter）各自注入一个 `traffic.Propagator` 再调 `prop.IsLoadTest(ctx)`；包内零包级状态；无人 provide 时 nil 回落到 `NewDefaultPropagator()`。（2026-09-29）
+- 接口 4 方法：`IsLoadTest`/`WithLoadTest`/`Extract(ctx, propagate.Carrier)`/`Inject(ctx, propagate.Carrier)`；`Propagate(p, parent, child)` 是包级纯函数。消费者模式 = 构造器尾参 `prop traffic.Propagator` + nil 回落 + `gs.TagArg("?")`，无处默认 provide。
+- `Binding` 4 字段：`Key` / `Value` / `Bind` / `Bound`（`WireValue` 已改名 `Value`）；EqualFold 等值语义；构造期 validate 已删，`NewDefaultPropagator(binding Binding) (DefaultPropagator, error)` 恒返回 nil error（签名保留 error 备将来）。别加无参/不返回 error 的第二入口。
+- `Extract` 扫 `Keys()` EqualFold 匹配，命中即 `WithLoadTest` 并直接 return；nil carrier 兜底；`Inject` 单写 `Key`。读侧故意比写侧宽：`Accept` 认 `"1"`/`"true"`/`"on"`/`"yes"`/`"t"`（入口常是 k6/PTS/网关）。
+- 标识常量是**未导出**的 `canonicalKey = "x-loadtest"` 与 `canonicalValue = "1"`；HTTP header 走 `Header.Get/Set`（textproto 规范化），gRPC metadata 才用裸 Carrier。`canonical` 子包已删，全部并入 traffic。
+- 别翻案：别恢复访问器缝、双 key 字段、Accept 谓词、包级门面；别给 traffic 加具体协议类型参数（HTTP 也不行，会破坏「接口对称覆盖全部协议」）。
+- `propagate.Carrier` 是接口（`Keys`/`Values`/`Set`），三个通用 map 适配器 `MultiMap`/`StringMap`/`Header` 留在 `cloud/propagate`；协议特化解码适配器放回各 starter 私有（如 dubbo `attachmentCarrier`、rabbitmq `tableCarrier`）。
+- 全链路：`loadtest.Run` 默认给 Op ctx 打标（source=`loadtest.Run`）；httpx transport 自动注入出站 header；gin `LoadTest` 中间件 + grpc `LoadTestUnaryInterceptor` / `LoadTestStreamInterceptor` 入站解析（默认开、装最外层/链首）。出站注入=httpx；入站解析=gin/echo/hertz + grpc + trpc + dubbo；MQ 双向=kafka/kafka-sarama/rabbitmq/nats/pulsar。
+- redis/gorm 是数据存储客户端，压测标记走 ctx 消费侧（影子 key/表由用户加层），不注入 header。载体受限未做（同 trace 限制）：kitex、thrift、mqtt。
+- 兜底点 error 落地：能返回 error 的装配处/叶子构造函数（`httpx.NewTransport`、luohua.apply）传播；返回不了的约 20 处统一 `prop, _ = traffic.NewDefaultPropagator(traffic.DefaultBinding())` + 注释 "DefaultBinding is complete, so this cannot fail"。
+
 ## 为什么定时任务（cloud/scheduling）刻意不接治理（拍板：2026-09-15）
 
 逐项审过限流/重试/熔断对定时任务的价值，结论是**不接 `resilience.Manager.ClientExecutorFor`，也不给
@@ -374,6 +389,64 @@ starter 侧注入同一个 `*fault.Injector` bean 接入，零耦合 cloud/gover
 **两个方向的火互不污染**，包括护栏：`MaxAffected` / `MaxDuration` 的计数器是**按方向各算**的。所以"出站烧到熔断自愈"不会顺手关掉入站的演练，反之亦然——这正是拆方向要买的东西。
 
 **入站放火（`ApplyServer`）验证的不是本进程的重试栈**（入站没有重试），而是：本服务自己的错误路径与错误响应、observe 归类、入站熔断器是否把 5xx 计为失败，以及上游客户端面对 503 / 慢响应时的重试与断路器行为。出站放火（`WrapClientExecutor`）才验证本进程的 retry / breaker / timeout / fallback。生态里的混沌工程同样两侧都做（Chaos Mesh 的 HTTPChaos `target: Request`、Istio 的 `SIDECAR_INBOUND` fault filter），所以 `server.fault` 不是可选装饰。
+
+## 9. 家族接缝、注入与治理判据
+
+### 9.1 家族结构与依赖方向
+
+`cloud/` 下这些包**平级**，不再有伞包中间层（早期「收拢进 `cloud/governance/`」的形态已废弃）：
+
+- `cloud/governance` —— 中心 / 规则文档 / 源适配器（本包）。
+- `cloud/resilience` —— 端点保护原语，**叶子**，不 import 家族其他成员。
+- `cloud/fault` —— 混沌注入。
+- `cloud/chain` —— `Executor` 契约，**最底层**（拒绝哨兵也在这一层）。
+- `cloud/observability` —— 插桩与 span 属性载体。
+- `cloud/loadbalance` —— 端点选择，与 discovery 成对。
+
+依赖方向严格单向：`chain ← observability ← resilience`。配置根一律 `spring.governance.*`（旧 `${govern}.*` 已废弃）。
+
+### 9.2 注入约定：Center 必填、authority 可空
+
+- `*governance.Center` 是治理的唯一注入点：所有 client/server starter 注入它，不再散装注入 `*resilience.Manager` / `*fault.Injector` / `*loadbalance.Manager`。（2026-10-03）
+- 注入 `*governance.Center` 一律**按类型必填**，不写 `TagArg("?")` / `IndexArg`；其 getter（`Resilience()` / `Fault()` / `Loadbalance()` / `Discovery()`）不做 nil 判空。唯一例外是文档明确承诺 nil-center 可用的导出独立 API（如 http-client 的 `NewTransport`）。（2026-10-03）
+- 恒在性判据（支撑上一条）：`cloud/governance` 包 `init` 注册 Center bean，`Source` 是必填构造参数（缺了启动即失败），且 bean `Export(gs.As[gs.Rooter]())` 强制实例化——任何链接了这些 starter 的应用，启动成功时 Center 必然存在。可空注入与 getter 判空全是迁移残留死代码。
+- 只有 gs 注入的构造函数/接线点收 `*governance.Center`；内部与导出的单 authority 组合子（`buildServerPolicy(cfg,mgr)` / `buildFault(inj)` / `FaultUnaryInterceptor(inj)` / `FaultServerFilter(inj)` / `Admit(label,system,mgr)` / `ServerPolicy(label,mgr)` / `NewPickPool(...,lbMgr)`）保持收单 authority，由调用处喂 `center.X()`。（2026-10-03，延续 echo 先例）
+- `governance.NewCenter(cfg, res, lb, inj, disc, source)`：构造期一次装配、之后不变的数据全部走构造参数；目录（Driver/Factory map）与 Source 都从这里进。
+
+### 9.3 driver 与出站/入站方向
+
+- driver 留根一份：一个 `Manager` 造两侧 executor，`Driver` 接口两个方法（`NewClientExecutor` 出站 / `NewServerExecutor` 入站），`spring.governance.driver=sentinel` 一句话切全进程两侧；不再把 driver 下沉到 client。（2026-09-29）
+- 配置按方向拆 block：`spring.governance.client.{default,rules,fault}` 与 `spring.governance.server.{default,rules,fault}`；入站模型 `ServerPolicy` = `ClientPolicy` 减 retry 族与 max-duration。（2026-09-29，旧 `govern.default/rules/fault` 已不绑定任何东西）
+- rules 不按方向拆：一条 rule 由 label 定位，label 自带方向（`gin::8080` 入站 / `redis:cache` 出站），一份足够；只有 fault 必须拆 block，因其有无 label 的全局旋钮（rate/latency/error/scope/护栏）。（2026-09-29）
+- 「模型拆、引擎不拆」；出站与入站各有一个引擎（`defaultExecutor` 带重试 / `serverExecutor` 不带重试，`AttemptTimeout` 是整通预算），两者不 embed、不投影——`ServerPolicy.AsPolicy() ClientPolicy` **已删除**；`Refresh` 已从 executor 接口删除，热更换成「淘汰+重建」；库内方向词是 `side`（旧泛型 `lane` 已废弃）。（2026-09-29 提出，2026-10-03 定稿）
+- 命名：真有对偶的概念才加方向前缀且显式带 `Client`/`Server`——出站 `ClientPolicy` / `ClientExecutor` / `ClientRule` / `ClientDefaultPolicy` / `Manager.ClientExecutorFor` / `Manager.ClientPolicyFor` / `Driver.NewClientExecutor` / `observability.WrapClientExecutor` / `fault.WrapClientExecutor` / 指标 `resilience.client.*` 对 `resilience.server.*`；没有对偶的不加（`Driver` / `loadbalance.Selection` / `Counters` / `Fallback` / `ServiceLabel` / `Retryable` / fault 的 `Config`/`Rule`）。`admission` 只作概念保留（文档里的「入站准入」；代码里没有对应的导出名）。（2026-09-29）
+- Driver 后端 starter 命名归 `governance-` 家族（`starter-resilience` → `starter-governance-sentinel`，对齐 `StarterGovernanceEtcd`/`StarterGovernanceNacos`）；选择键是治理文档的 `spring.governance.driver=sentinel`，**不是** per-client key。容器外用法保留 `NewSentinelDriver()`。（2026-09-13）
+
+### 9.4 Source 契约的 ctx 与 trace_id
+
+- `governance.Source` = `Snapshot() Config` + `Subscribe(cb func(ctx context.Context, cfg Config))`：单 callback（Center 是唯一消费者），契约无 error、无 Close（Destroy 经 `interface{ Close() error }` 断言可选关闭）。ctx 是 2026-10-06 的破坏性加法：一次策略推送从「源发现变更」到「中心应用」共用一个 `trace_id`——两个内置源与两个 starter 在**每次变更**处起 root 铸 `trace_id` + 自身坐标，其周期行（poll/reload 失败）用循环 ctx（不铸）。
+- 统一防护语义：启动坏文档 fail-fast；运行期坏推送保 last good + log；byte-equal/DeepEqual 去重不推。
+- 所有源变更走 `Center.adopt(ctx, cfg)` 单一 sink：`dispatch` 里执行 `res.Apply(...)` + `lb.Apply(...)` + `inj.SetConfig(fault.Configs{Client, Server})`，fault 随任意 Source 生效。
+- 新 Source 后端接线套路：`OnProperty("spring.governance.source.<name>")` 条件单例 + `Export(gs.As[governance.Source]())`。
+- 测试铁律：`gs_init.Beans()` 在 `testing.Testing()` 时克隆全局 bean 定义，服务装配测试**不能走 `gs.RunTest`**（生产不受影响）。
+
+### 9.5 规则、label 与命名
+
+- `governance.ClientRule` / `governance.ServerRule` 与 `fault.Rule` 字段单数，只挂一个 label，键为 `Service`（`${service:=}`）；fault 空 service 仍是 catch-all。（2026-09-28）
+- `Center.dispatch` 在存快照前做重复 label 校验，重复即**拒绝整个文档**（旧快照继续服务）；无 first-match 语义残留。
+- Rule 不是 `map[label]`：label 含冒号（`gorm:mysql:orders`），进 YAML/properties key 位会让映射解析错乱；label 退到 `Service` 值里就 dot/colon-safe。
+- label 优先 discovery 的 service-name（治理目标是下游服务身份，配合服务发现），退回实例名；新 starter 一律 `resilience.ServiceLabel(前缀, service-name, ...回退)`。
+- `resource` 一词在治理里一律改叫 `service`（文档键 + 运行时缝 + emit 属性键）：`ServiceLabel`、`Manager.ClientExecutorFor(system, service)`、`Driver.NewClientExecutor(service, p)`、`fault.Injector.gate`（未导出）、`resourceState`→`serviceState`、`Center.clientServiceFor`、httpx `Config.Service`、gorm `module.Spec` / `Options.Service`、metric/log/trace 键 `resource`→`service`、span `resilience.service`。`resource` 只留给无关语义（Go 资源 `no resources to release`、sentinel 自己的 resource name、AT 事务 branch、OTel `sdk/resource`、OAuth2 resource server、k8s `resourcelock`），别误改。（2026-09-28）
+
+### 9.6 什么该收进治理（判据 P1–P4）
+
+- 四条判据须同时满足：**P1 是策略不是身份**（值会因流量/运维变，不是 addr/dsn/uri/密码/db/tls）；**P2 可按 label 寻址**（客户端已算出 `http:user-svc` 这类 label）；**P3 组件能不重建对象就采纳新值**（否则只是「文档集中了、改完还得重启」，最易被忽略）；**P4 跨 starter 重复或与已有 govern 概念重叠**。（2026-09-12）
+- 落点判据（第 5 条）：只有**保护 / 选择 / 放火**三类的键才进 `resilience.ClientPolicy` / `ServerPolicy`；往里塞连接池尺寸等实现细节会让 Policy 变杂物袋。
+- 明确不收（避免反复议）：① 身份/凭据/寻址（addr/dsn/uri/user/password/db/tls）；② 决定 bean 存不存在的装配开关（`health.enabled` / `observe.enabled` / `discovery` / 选择用 `driver`）；③ 中间件开关（cors/gzip/secureHeaders/accessLog）；④ 服务端 read/write/idle timeout（`http.Server` 构造期参数）；⑤ 算法内部常数（`p2c.go` 的 ewmaBeta/ewmaTau/p2cFailurePenalty、consistenthash replicas）；⑥ lock TTL / session IdleTimeout / outbox 轮询退避（lock 已有自己的三层解析）。
+- 客户端 dial/read/write timeout、server 构造期参数、池尺寸、gorm slow-threshold、入站准入上限、实例权重：**逐项裁决后不做**（P3 不成立 + 落点不成立）。
+- grpc 客户端不再自带实例摘除：内置 balancer 的硬编码 5 次/30s 已删，改治理驱动、**初始禁用**（「不配置=不生效」）；要摘除就在治理文档的 client 默认策略里配 `outlier-threshold`，定向到具体 service 用 `spring.governance.client.rules[N]`。（旧 `govern.*` 键已废弃）
+- `Selection.Balancer` / `OutlierThreshold` / `OutlierSuspendFor` 刻意不进 `IsZero`（由 Pool 消费而非 Executor 消费）；`loadbalance.Tracker.SetConfig` / `Pool.ApplyBalancer` / `Pool.ApplySuspension` 提供原地刷新；未知名策略忽略而非致命（Source 契约无错误通道）。
+- 订阅 API 是 `resilience.Manager.Subscribe(label, cb) resilience.Subscription`（`Cancel()` 幂等、可与推送并发、零值安全）；摘掉最后一个订阅者删 map 条目。（`governance.Register` 这个入口不存在。）
 
 ---
 

@@ -22,6 +22,8 @@ package StarterKafkaSarama
 
 import (
 	"github.com/IBM/sarama"
+	"go-spring.org/cloud/messaging"
+	"go-spring.org/cloud/traffic"
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/flatten"
@@ -54,6 +56,17 @@ func init() {
 				// The governance center is the family's sole injection point: it hands
 				// out the resilience/fault/loadbalance authorities.
 			).Name(name).Destroy(destroyClient).Caller(1)
+
+			// Export the broker-neutral messaging.Driver over this client as a bean,
+			// so consumers (app pub/sub) autowire it like any client bean. It shares
+			// the connection's bean name; beans are keyed by (name, type), so it
+			// stays distinct from the raw sarama.Client bean. The traffic.Propagator
+			// (index 1) is a NULLABLE injection: the single propagator bean when the
+			// application provides one, nil otherwise (the driver then falls back to
+			// traffic.NewDefaultPropagator).
+			r.Provide(func(cl sarama.Client, prop traffic.Propagator) messaging.Driver {
+				return NewDriver(cl, prop)
+			}, gs.TagArg(name), gs.IndexArg(1, gs.TagArg("?"))).Name(name).Caller(1)
 			return nil
 		})
 	})

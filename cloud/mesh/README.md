@@ -70,3 +70,17 @@ fall back to the configured static address. For infra clients that resolve via
 `discovery`, prefer `discovery.NewResolver` — it already folds this check in
 and returns a nil Resolver in mesh mode, so callers dial the configured address
 directly.
+
+## Design notes
+
+- `mesh.Enabled()` is a pure, stateless function: no caching, no side effects,
+  `os`/`strings` only, and it reads `GS_MESH_MODE` on every call. An empty
+  value and an unset variable are indistinguishable to `os.Getenv`, so both
+  fall through to auto.
+- There is no `SetEnabled`, no tri-state `atomic.Value`, and no `starter-mesh`
+  module. `cloud/mesh` carries no context, log, or `sync.Once` startup
+  logging — observability is the consumer starter's job.
+- `mesh.Enabled` is consulted once, at client-construction time, never on a
+  request's hot path: `loadbalance` holds zero mesh references, and `httpx`
+  checks it in `NewTransport`, not `RoundTrip`.
+- Tests drive it with `t.Setenv("GS_MESH_MODE", ...)`.

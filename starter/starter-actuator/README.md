@@ -86,6 +86,17 @@ therefore have exactly one division of labor:
   traffic". Failure just removes the pod from Service endpoints — nothing is
   killed, ever.
 
+The only reasonable working model is the one above: a microservice must configure
+a startupProbe whose budget covers the worst-case boot; liveness only judges
+death and readiness only judges traffic. Probing readiness during boot has no
+consumer. So there is **no** early-answer / early-listen logic: the actuator's
+`Run` binds the listener and then blocks on `<-sig.TriggerAndWait()` before
+`Serve(ln)`, exactly like `SimpleHttpServer` (the bypass goroutine and the
+`ready` flag were deleted — `Serve` is ready, and nothing consumes an earlier
+signal) (2026-10-03). During drain all three probes answer `503 OUT_OF_SERVICE`
+(liveness judges draining too); outside drain, liveness/startup have no
+threshold and only readiness consults the indicators.
+
 
 ## Endpoints
 

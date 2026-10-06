@@ -91,8 +91,10 @@ _ = sub.Subscribe(ctx, messaging.DeadLetter(
 
 ## 可观测
 
-`Observe(driver, system)` 给 Driver 包上完整的插桩层，能做成 broker 无关的，
-靠的是信封的 headers 本身就是 W3C trace-context 载体：
+插桩**在各 broker starter 自建**，不在本包——范本 `starter-nats/observe.go`。
+这里没有 `Observe(driver, system)` 装饰器；那是被拆掉之前的形态。抽象对各 starter
+的要求在形态上保持 broker 无关，靠的是信封的 headers 本身就是 W3C trace-context
+载体：
 
 - **Trace**：每次 `Publish` 开 producer span、每次 handler 调用开 consumer
   span；发布时把 trace context 注入消息 headers、消费时提取，链路跨服务把
@@ -104,9 +106,10 @@ _ = sub.Subscribe(ctx, messaging.DeadLetter(
 - **日志**：每条消息一行访问日志（`messaging.access` tag）——错误 Warn、
   成功 Debug。
 
-driver starter 在构造 Driver 的地方包一次即可。handler 的 error 原样透传：
-失败如何呈现（nack、重投）仍是 driver 的契约。未装 OTel provider 时全部是
-no-op。
+driver starter 在构造 Driver 的地方接一次即可。`kafka` 刻意**不**自己包：它的
+插桩是 kgo 客户端级 hook，包了必双计——其 hook 的指标名、属性、日志 tag 已对齐族内
+词汇，勿改回。handler 的 error 原样透传：失败如何呈现（nack、重投）仍是 driver 的
+契约。未装 OTel provider 时全部是 no-op。
 
 ## 抽象刻意不建模的部分
 

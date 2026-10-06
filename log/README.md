@@ -89,6 +89,8 @@ it is a tuning handle. Register a custom tag only when you can answer the questi
 3. **A registered tag is a public configuration contract.** `logger.<tag>.*` becomes user-visible
    configuration and must be documented (e.g. in the starter README); a tag that is not documented
    should not exist.
+4. **Framework code does not use `log.TagBizDef`.** Its fallback is `log.TagAppDef`; `TagBizDef` is
+   the *business* fallback and belongs to applications.
 
 Naming: `subType` is a short technology or product name (no `starter_` or family prefixes — the
 `_app_` prefix already conveys that, and the 4-segment budget is scarce); the optional `action`
@@ -276,6 +278,78 @@ Common field constructors:
 | Error | `Err` (records the error message under the fixed `error` key; nil records null) |
 | Slices | `Bools` / `Ints` / `Uints` / `Floats` / `Strings` |
 | Composite | `Reflect` (encode any value via reflection) / `Any` / `Array` / `Object` (nested fields) / `FieldsFromMap` |
+
+### Writing the message
+
+A message records a constant event description - the module or the acting subject; every variable
+value (a key, a path, an id, a backoff, a count, a duration) goes into a structured field, never
+spliced into the text. In particular do not interpolate variables into the message with `Msgf`:
+sampling identifies repeated lines by their message text, and an interpolated value makes every
+occurrence look new, defeating it. `Msgf` stays legitimate only where the content is inherently
+dynamic - relaying user input, echoing a peer's raw reply, or bridging an arbitrary value from an
+external framework (an adapter's `Msgf("%v")`). Structured logging is not an excuse to drop the
+human words: prefer `log.Warn(ctx, tag, fields...)` over a `Warnf` prose line, but still write a
+message a human can read.
+
+Wording follows the event's time-tense, and each tense keeps one shape:
+
+| Tense | Shape | Example |
+|-------|-------|---------|
+| about to act | verb, imperative | `start ...` |
+| acting now | progressive | `creating rocketmq client`, `loading nacos config` |
+| done, an action result | verb + `success` | `load vault config success` |
+| done, a state change | the state sentence itself | `election: became leader`, `nats connection closed` |
+| failed | verb phrase + `failed` | `create apollo client failed` |
+| skipped | `skip` prefix | `skip ...` |
+
+`success` and `failed` must pair greppably, and the verb must match the module's own failure
+message (`create ... failed` pairs with `create ... success`, not a mechanical `init`).
+Connection/recovery and terminal events (`mqtt connected`, `watch recovered`, `client closed`,
+`server stopped`) never take `success`. The progressive form is explicitly accepted - do not
+flatten every line to the imperative. (2026-10-04)
+
+Finally, do not wrap the logger to save a few lines: `log.Warn` hard-codes the caller skip to 2,
+so a wrapper makes every call site report the wrapper's own line. Either inline `log.X`, or call
+`log.Record(ctx, level, tag, skip, ...)` and compute the skip yourself.
+
+### Field conventions
+
+- **Align field keys with the observability vocabulary.** A key should match the metric attribute
+  / span attribute of the same name, so a log joins to its metric and its trace by field. When one
+  operation emits both a metric and a log, both share one set of keys (`system` / `service` /
+  `operation` / `status`); define those keys in one place, not once at every site - a drifted key
+  is a silently broken join. Where the two sides' prefixes disagree, follow the metric and do not
+  invent a third name. (2026-09-16, 2026-10-04)
+- **Attach scope-constant fields to the context.** A field that holds for a whole scope is mounted
+  once, with `ctx = log.WithFields(ctx, ...)`, at the scope boundary (a config starter's `Load`, an
+  election's `serveTerm`, a discovery watcher's `watchInformer`), instead of being re-spliced into
+  every line. Two contexts in one function get separate names (`ctx` for this call, `wctx` for the
+  goroutine's life), and one group of fields uses one helper. A function with no context mints one
+  once at the top (`ctx := context.Background()`) and says where the chain starts - not a fresh
+  `Background()` in every helper. (2026-10-04)
+- **Log with the operation's own context.** A cancelled context still carries the path's identity;
+  swapping in `context.Background()` drops the correlation. Only a background loop that genuinely
+  has no context starts from `Background`.
+
+### Choosing a level
+
+A key action node - a state change, a lifecycle event, a cross-boundary action - must log; only
+the level differs, and the level carries the consequence while the fields carry the dimensions:
+
+- high-frequency success → `Debug` (off by default)
+- normal, low-frequency flow → `Info`
+- self-healing or degraded, no operator needed → `Warn`
+- needs a human → `Error`
+
+Dropping the `Debug` lines drops the scene an investigation needs - keep them. (2026-09-24)
+
+### Errors in logs
+
+- Production code never passes nil to `log.Error`, tests included: a warning about a state or a
+  lifecycle edge must still be a real error, built with `errutil.Explain(nil, "<context>")`; a nil
+  guard is only a fallback for third-party input. Printing an error log without giving the reason
+  is worthless. (2026-10-04)
+- `log.Any("error", err)` migrates to `log.Err(err)`; write new code with `Err`.
 
 ## Output Formats
 

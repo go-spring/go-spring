@@ -178,6 +178,57 @@ outlier-threshold: 5
 工厂表。`Pool.ApplyBalancer`（策略）与 `Pool.ApplySuspension`（阈值）是同样两半的直接
 入口，`Pool.Selection()` 可读回最近一次被接受的选择——自己管配置、不经 Manager 时用得上。
 
+## 覆盖范围与「会重新挑端点吗」自查
+
+选路**只**走治理动态通道——`balancer` 名 + `balancer-params` 子映射里的 `replicas` /
+`zone-key` / `delegate`，经 `Selection.Params` → `Manager.Apply` → `Pool.ApplyBalancer`
+原地热更。starter 不新增自己的本地静态 `balancer` 键；各 starter 构造池时默认策略直接
+`loadbalance.NewRoundRobin()`（不走注册表查名，无 error）。`Factory` 参数化保留，服务于
+治理通道递参。
+
+覆盖到的客户端：所有走发现模式的 `loadbalance.Pool` 消费者——`httpx`/`gateway`、gorm
+四方言、`redigo`、`go-redis`、`mongodb`、`grpc`。
+
+> 自查：**这条 client 每次请求/每次建连会重新挑端点吗？** 会 → 它的服务标签就能配
+> `balancer`；不会 → 别指望 `spring.governance.client.rules[N].balancer` 对它生效。
+
+「不会」的每种，都是有意为之：
+
+- **直连**（固定 addr/host）：没有候选集可选。
+- **只挑一次**（`neo4j`）：host 固化进启动 URI，没有「每次挑选」可管（治理只到保护策略）。
+- **成熟库自持选择**（`elasticsearch` / `memcached` / MQ 族 / `s3`）：选择权在库内部
+  （ES 的节点选择器、memcached 的按 key 一致性哈希）。判据：**库里已经有成熟选择器时
+  不自己造一个**，只把实时地址喂给它。
+
+**DB/缓存类客户端剔除粒度是「连接」而非「查询」。** gorm / redigo / go-redis / mongodb
+的挑选发生在建连时，能喂给 `Tracker` 的成败信号只有 dial 结果本身；单条查询失败归各自
+的 resilience executor 管，不参与点数。
+
+**`grpc` 在进程级标签下挑点。** 它的选点标签是进程级 `grpc:client`，配 `balancer=` 会
+同时改掉所有内置 `gs_*`；要按服务隔离，就用 `RegisterBalancer` 注册自定义名字（自定义
+`Factory` bean 按设计豁免进程级覆盖）。
+
+**建池三件套** = `WithTrackerConfig` + 建连处 `Pick`/`Complete` 配对 + 订阅治理下发的
+`Selection`；新增 client 照做（已写进 `starter/DESIGN.md` §4 检查项）。同一 label 可能
+对应多个池（sink 是池不是对象）→ manager 不做 memoize：每次 `Bind` 是一条由池自己持有的
+独立订阅，池销毁时必须撤销。
+
+## 权重语义
+
+- `Endpoint.Weight == 0` = 摘流（drain）。（2026-08-27）
+- 消费端所有 LB 策略统一剔除 Weight==0 端点（健康/tracker 过滤后），全零时回退过滤前
+  集合（防黑洞）；**负权重**保留在轮换。
+- 写侧 registrar 的 Register 把 weight ≤0 归一为 1（"未配置"永不落 0）；`UpdateWeight(0)`
+  是显式摘流、允许落 0。别把 0 归一成 1——那是写侧 Register 的职责。
+- **摘流与注销（Disabled）是两回事**：前者零损失轮转，后者立即移除。
+
+## 地址新鲜度：独立的一条轴
+
+谁挑节点，与地址集跟不跟命名服务是两件独立的事。覆盖到的客户端每次建连/每请求重读；
+库自持选择的那些装自己的活集：ES 装 `ConnectionPoolFunc`、memcached 装 `ServerSelector`
+（保持 CRC32-of-key 哈希 + 地址排序）、neo4j 装 driver 的 `AddressResolver`（仅 `neo4j://`
+路由模式）。读失败时各自保留上一份可用集，**绝不返回空集**。
+
 ## Pick/Complete 契约
 
 两段必须**恰好配对一次**。漏调 `Complete` 的后果： `least_conn` 在途计数

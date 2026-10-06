@@ -804,6 +804,26 @@ http:
 This approach is very suitable for scenarios that require batch creation of beans based on configuration,
 such as **multiple data sources**, **multi-tenancy**, **dynamic plugins**, etc.
 
+### Assembly & Injection Internals (contributor notes)
+
+- `gs.Provide(objOrCtor, args...)` takes a constructor `func(...)bean` or `func(...)(bean, error)`. **An interface is a legal bean type** (`typeutil.IsBeanType` is true for `chan` / `func` / `interface` / pointer-to-struct), even though the `gs.Provide` doc comment says "must be a reference type".
+- Constructor parameters are built with `Arg` helpers: `gs.TagArg("name")` by name, `gs.TagArg("")` by type, `gs.TagArg("?")` nullable, `gs.ValueArg(v)` a fixed value, `gs.IndexArg(n, arg)` by position (also how a variadic is injected), `gs.BindArg(fn)` dynamic.
+- **When a ctor's first parameter is `*gs.ContextProvider`, every parameter after it must be written as an explicit `gs.IndexArg(1, ...)`.** A bare `TagArg` / `ValueArg` binds to index 0 (the ctx) and blows up at startup (`cannot assign type string to type *gs_app.ContextProvider`, or `property "spring.xxx" is not a simple value`); a single bare `ValueArg` also blows up (`gs_arg.NewArgList` binds by position and does not skip the ctx). Anything like `newClient(cp, name, c)` inside a `gs.Module` / `gs.Group` loop is written this way.
+- `gs.Module(c PropertyCondition, fn)`'s parameter type is `PropertyCondition`, so it **cannot take `gs.And(...)`** (`gs.And` returns `gs.Condition`). `gs.Provide(...).Condition(...)` is variadic `gs.Condition` and *can* take `And` / `Not`. → gate a `gs.Module` by binding the master key inside its body; append conditions to a `gs.Provide` via `.Condition`. This is why a named-instance family does not use `gs.And`.
+- `gs.Group[T, R](tag string, fn func(cp *gs.ContextProvider, name string, c T) (R, error), d func(R) error)`: `fn` takes **three** parameters (ContextProvider, entry name, config value); `tag` must be `${...}` or it panics; the map key is the bean name, and the third parameter `d` is Destroy. To inject extra dependencies, hand-write `gs.Module` + `conf.BindEach`.
+- Func-type arg injection: `gs.TagArg("?")` → a single nullable bean (nil when absent, zero value kept, two beans = ambiguity); `[]SomeFuncType` → a collection (empty slice / name-sorted); a map collection `map[string]Iface` with `?` gets an **empty, non-nil map**, so the discriminant must tolerate both an empty map and nil. `gs.IndexArg(n, gs.TagArg("?"))` may appear alone and is not rejected as "indexed / non-indexed mixed".
+- A struct field with a tag on the ctor's **return** value is autowired by gs (not only a direct `gs.Provide(&Struct{})`); untagged ctor parameters bind by type, tagged fields are filled afterwards.
+- gs instantiates only **root-reachable** beans (the sole root = `*gs_app.App`, collecting `[]Rooter` / `[]Runner` / `[]Server` by type). A bean with no `.Export(gs.As[Rooter/Runner/Server]())` and no injector has its ctor / Init **never run** (dead in prod; unit tests pass because they construct manually). Init order is **Rooter before Runner**; order with `.DependsOn(gs.BeanIDFor[T]())`. Triage signal: no `Export` and no injector found by grep.
+- `gs.Provide` may only be called during init (before `gs.Run()` flips `inited`; also inside `main`, but a package-var initializer panics); `gs.Configure` (which sets `inited=true` internally) must come **after** `gs.Provide`.
+- `gs.Provide` returns `*gs_bean.BeanDefinition` (`spring/gs/internal/`): an external package can receive it and chain `.Condition()` / `.Name()` / `.Export()` / `.SetFileLine()`, but **cannot name that type in a signature** — so a helper cannot return it. `gs.Provide` records `Caller(2)` as the debug file:line, so a helper would point at itself; use `b.SetFileLine(file, line)` + `runtime.Caller(1)` to point back at the app.
+- The `autowire` tag may be a `${...}` config expression (resolved to a bean name at wiring, with `:=` defaults). `autowire:""` is by type; `autowire:"<name>"` by name.
+- `gs.Group` only does `r.Provide(fn, ...).Name(name).Destroy(d)` per entry and has no registry access, so it **cannot attach `Name` and `Export` at once**. To get "each instance named and exported as an interface", hand-write `gs.Module` + `conf.BindEach` + `r.Provide(fn, ...).Name(name).Export(gs.As[Iface]()).Caller(1)`.
+- Conditions (`OnMissingBean`) are evaluated **after all modules are registered**: cross-starter "default yields" is reliable and independent of init order — but a yielder that does **not export** that interface type cannot see the other, and its default silently takes over.
+- A struct-bean's **named struct field** (`Cfg Config`) does **not** get its value tags bound; to split a Config, use a constructor + `gs.TagArg("${prefix}")` (the Config's fields then use relative keys). Whether an embedded field binds is unverified — do not use embedding.
+- `gs.OnOnce` = `gs_cond.And` + evaluate-once-and-cache per process: a test that runs several configs in one process gets the first result on every later run (all misjudged). Combine conditions with **`gs.And`** (no cache).
+- gs has **no auto-close**: a bean's Destroy runs only if explicitly registered. Three registration forms — grep for more than a single-line `Destroy(`: `gs.Group(tag, ctor, destroyFn)` (3rd param), chained `.Destroy(fn)` (often across lines), `.DestroyMethod("name")`.
+- `gs.RunTest` forces `spring.force-autowire-is-nullable=true`: inside a container test, nullable and required **cannot be distinguished**, so a forgotten `?` still passes green; "a zero-bean injection does not error" can only be verified by reading code or a bare `gs.Run()`.
+
 ## 8. 🔁 Dynamic Configuration
 
 Go-Spring natively supports a **lightweight configuration hot update** mechanism.
@@ -1027,6 +1047,12 @@ func init() {
 
 After receiving an exit signal (such as Ctrl+C), the framework uniformly calls
 the `Stop()` method of all servers to achieve graceful shutdown.
+
+### Lifecycle Pitfalls (contributor notes)
+
+- **`Run` must never block.** A blocking Runner keeps the app from ever reaching "application started successfully" (the log stops at "application starting"), and the signal handler is never installed, so any SIGTERM kills the process outright (exit 143). Correct form: `go func(){ ... }()` then `return nil` immediately; a Runner that waits on a server side effect is the same.
+- **The ready signal fires only after all Runners return**, and a server's `TriggerAndWait()` waits on it. A "Runner that waits on a server side effect" deadlocks (registration waits for ready; ready waits for the Runner). Any code that synchronously waits on a server side effect goes in a background goroutine.
+- **`gs.Server`'s interface is now the single `Stop(ctx context.Context) error`**; the optional `Stopper` / `StopContext` are deleted (2026-09-07). The ctx the framework passes has no cancellation and no deadline (values only), so the drain deadline is each server's own responsibility (build a timeout inside `Stop`). The process-level `type Stopper func(context.Context) error` (with a return value) in `spring/gs/stopper.go` is a different concept. There is also a **current** optional stop interface `PreStopper` (`PreStop(ctx)`, for graceful drain) — do not confuse it with the deleted `Stopper` / `StopContext`.
 
 ## 10. 🧪 Unit Testing
 

@@ -82,6 +82,63 @@ from.
 A metric has no such window. It is a single measurement, not a process, so every
 label is supplied at the moment it is recorded.
 
+## Metrics
+
+A metric answers "how many / how long / how is it now". A node needs one when
+someone watches it for a trend, a rate, or an alert. Three shapes cover that, and
+the shape decides the name:
+
+| Shape | When | Name |
+|---|---|---|
+| **operation** | a per-request / per-message cross-boundary action | `<family>.operation.total` + `<family>.operation.duration`, with an exclusive `status` axis (summing over `status` gives the operation count) |
+| **event** | a low-frequency, semantically significant state change | a dedicated counter named after the event (`lock.lost.total`, `loadbalance.endpoint.suspension.total`) - not the total/duration template |
+| **state** | "how is it now", read continuously | a gauge (`messaging.operation.active`, `loadbalance.endpoint.suspended`) |
+
+Conventions that keep the vocabulary joinable:
+
+- **Unbounded values never become metric attributes.** A key, an address, a
+  destination - they go on the span or the log, never on a label. Metric
+  attributes are **closed** by default; opening one requires a cardinality guard
+  (Micrometer's `maximumAllowableTags` is the reference). A purely low-frequency
+  config change (a governance policy applied) is served by a log alone - no
+  metric is forced.
+- **Name the capability, not the implementation.** Components of one kind share a
+  metric name and shape; the implementation is a dimension value (`db.system`,
+  `messaging.system`). More detail means a new field, not a new name.
+- **The status axis is `status`** (`ok` / `error` / …), never `outcome` /
+  `result`. The one exception is `config-bus`'s `outcome`, a message-disposition
+  axis (`malformed` / `ignored` / `refreshed`) with a different semantic.
+  (2026-09-22)
+- **The duration noun root is always `duration`** (`<family>.operation.duration`),
+  with unit `WithUnit("s")`; a log's duration field uses `duration_ms` (same root
+  plus `_ms`). `scheduling.lag` is a queue backlog, not an operation duration, and
+  is not a violation. Seeing `cost` / `latency` / `elapsed` / `outcome` is a
+  signal to fix. (2026-09-22)
+- **The duration histogram bucket boundaries have exactly one definition**: the
+  unexported `durationBuckets` plus the exported `DurationBuckets()` (which
+  returns a clone), both in `cloud/observability/buckets.go`. A call site writes
+  `metric.WithExplicitBucketBoundaries(observability.DurationBuckets()...)`. A
+  domain that needs its own bounds defines them **locally** (`cloud/scheduling`'s
+  `lagBuckets`), never by exporting the variable - its elements would then be
+  mutable in place. (2026-09-30)
+- **An instrument is created at wiring / construction time by default, never in a
+  package-level `init`** - the OTel global meter only delegates to the first
+  provider, so an `init`-time instrument binds to noop forever. The cloud-layer
+  idiom is a package-level `sync.OnceValue` resolved on first use.
+- **Multi-instance instrumentation registers at `Meter.RegisterCallback` and
+  unregisters with `Unregister`**, not via a create-time callback
+  (`WithInt64Callback`) - the second instance's callback is silently dropped.
+  Per-instance means lifetime: the instance needs a `Close` / `Destroy` hook, or
+  the callback leaks and duplicate series appear (which Prometheus rejects
+  outright). A nil observer follows the module's passthrough convention rather
+  than panicking, and `Close()` on nil is a no-op. (2026-09-30)
+
+One sanctioned exception: `RefreshConf` builds its instrument at the top of each
+`Run`, because it must come after starter-otel installs the global provider and
+`Run` is low-frequency. The general rule is that a bean carries only what the
+container must arbitrate; a read-only process-level seam like `otel.Meter()` is
+not a global escape.
+
 ## Two shapes that look unreachable, and are not
 
 Both are the `before Start` row above: neither needs the span object, only the
@@ -166,6 +223,73 @@ rec.AddAttempt(d, status, err)
 the chain wins, so two nested executors each keep their own. Read it once at the
 loop entry and keep the pointer — a per-write lookup would hand an inner
 executor the outer call's records.
+
+## Calling the tracer
+
+- **Call `otel.Tracer` / `otel.Meter` at the use site** (`otel.Tracer(name).Start(...)`); do not
+  cache them in a package-level `var`. A tracer captured at init no longer forwards to a new
+  provider after one is set / restored / set again, so its spans are all lost. (2026-09-24)
+- **A helper that starts a span hands the span-carrying context back to its caller**, or the log
+  lines written right next to the call cannot join the span just created.
+- **The instrumentation seam is callback-shaped.**
+  `Observer.RegisterAttempt(ctx, service, reason string, fn func(ctx context.Context) error) error`
+  takes its `system` at `NewObserver(system, ...)` construction (not on each call), hands `fn` the
+  span context, and treats `fn`'s error as the reported result. It does **not** return
+  `(ctx, finisher)`: that shape lets callers write `_, attempt :=` and drop the context. Seeing a
+  `(context.Context, func(error))` return shape is the anti-pattern signal. The observed operation
+  must genuinely take a context; a library that cannot gets a `func(context.Context) error`
+  placeholder. (2026-09-17)
+
+## Where instrumentation lives
+
+- **The capability lives in `cloud`; a starter only controls whether it is enabled.** A starter
+  answers "is it on" and knows nothing about how the signals are produced.
+- **A new component plugs into observation through the local instrumentation idiom** - the templates
+  are `cloud/lock/observe.go` and `starter/starter-redigo/observe.go`. That idiom is: a static
+  package tag via `log.RegisterAppTag("<system>", "access")`; access-log levels with log's native
+  semantics (error `Warn` / success-with-fields `Debug`, whose signature is the lazy
+  `func() []Field` / plain `Info`, with silence meaning the tag's logger level is configured off);
+  span attributes and metric names following the OTel `db.*` / `messaging.*` conventions.
+  (2026-09-05)
+- **Same-kind components share one observation vocabulary** - same name, same shape, same value
+  wordlist. Component-specific fields may differ (the completeness / commonality / flexibility
+  principles). A missing signal, or a missing `status` (so success cannot be told from failure), is
+  a defect, not a style difference. Ask: if the backend is swapped, do the operational assets still
+  read? (2026-09-18)
+- **Backend-native OTel instrumentation is a legitimate signal source.** Elasticsearch's
+  `elastictransport`, go-redis's `redisotel` and kafka's `kotel` are fine as-is - do not add a second
+  layer on top of them, and do not call them violations for not calling `otel.Tracer(` themselves.
+- **The `observe` suite has been removed** (`cloud/observe` was deleted whole); each domain builds
+  its own instrumentation, and `DurationBuckets` is the one piece unified in `cloud/observability`.
+- **Process-level instrument state need not be global.** A multi-instance component uses a
+  per-instance `Observer` (built at block construction, `Close()`d at teardown, state held in
+  instance fields) - template `cloud/discovery.Observer`. (2026-09-30)
+
+## Extending observability
+
+- **Built on go-spring's `log` and OTel's spans and metrics; there is no bespoke API.** Unification
+  happens at the two existing layers, not in a new one: spans' protocol is the context
+  (`trace.SpanFromContext`), logs' hook is `log.FieldsFromContext`. Metric labels stay closed;
+  business labels get their own `otel.Meter(...)` instrument. (2026-09-17)
+- **Every observability point must be both uniform and leave a customization slot**, promised by a
+  written convention and checked mechanically (`scripts/check-observability.sh`, driven by the
+  family rules). The checker's criterion is the set of common content the family rules require;
+  anything outside that list is not policed.
+- **Acceptance criteria V1–V5**: V1 vocabulary compliance / V2 same-kind joinable /
+  **V3 every instrumentation point has a convention-defined extension entry and is checked** /
+  V4 only existing log+otel APIs / V5 drift is caught by CI. V3 is the problem's landing point;
+  V1/V2 are prerequisites; V5 prevents recurrence.
+- **Process-level dimensions enter through environment variables, not a new go-spring API**:
+  `starter-otel`'s `NewResource` merges `resource.Default()`, so `OTEL_RESOURCE_ATTRIBUTES`
+  declares process dimensions and `OTEL_SERVICE_NAME` overrides the service name. **Trap (do not
+  revert):** `resource.Default()` must come **first**, then go-spring's own attributes - OTel's
+  default resource unconditionally carries `service.name` (`unknown_service:<binary>`), and the
+  reversed order clobbers the configured name; the `service.name` from `resource.Environment()` must
+  also be read explicitly for `OTEL_SERVICE_NAME` to win. (2026-09-17)
+- **A user-defined log field name is used verbatim** as the log key and the span attribute key -
+  never rewritten.
+- **`attribute.Value.AsString()` returns "" for non-STRING values** (a bool renders as
+  `load_test=` and makes an assertion silently pass); assert with `Value.Emit()`.
 
 ## What it does not cover
 

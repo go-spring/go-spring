@@ -61,6 +61,10 @@ msgs := errs.Localize(i18n.Localizer(src, ctx))
   validation messages and typical business text.
 - Zero dependencies — the locale context key is unexported, so it cannot
   collide with keys from other packages.
+- **Opaque locales, exact match.** Locale identifiers are opaque strings — the
+  package defines no language constants or tag enum. Keys match exactly, with
+  no sub-tag fallback: a bundle registered under `zh` is never served for a
+  `zh-CN` request.
 
 ## License
 

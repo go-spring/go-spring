@@ -55,6 +55,9 @@ msgs := errs.Localize(i18n.Localizer(src, ctx))
 - 不是 ICU MessageFormat:没有复数/性别的 DSL。位置插值足够覆盖校验消
   息与常见业务文案。
 - 零依赖;locale 的 context key 未导出,不会与其他包的 key 冲突。
+- **locale 不透明、精确匹配**:locale 标识就是普通字符串——本包不定义语言
+  常量,也不做标签枚举。key 精确比对,无子标签回退:注册在 `zh` 下的 bundle,
+  `zh-CN` 请求命不中。
 
 ## 许可证
 

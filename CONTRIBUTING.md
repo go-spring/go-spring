@@ -91,6 +91,45 @@ All contributions are assumed to be licensed under the [Apache License 2.0](LICE
 * Run `go test ./...` to ensure all tests pass.
 * For examples or integration tests, provide instructions if needed.
 
+## Build and Tooling
+
+* **`go mod tidy` under `go.work` does not use the workspace replaces** — it pulls the published `spring` through GOPROXY and fails wholesale on an unpublished local module (404) or a lagging version. Workaround: `go mod tidy -e` (tolerate that error, still update `go.mod`/`go.sum`), then verify with `go build ./...` (which does use the `go.work` local tree). Do not read a tidy error as "the change is broken".
+* **A module not in `go.work`** (`temp/`, ...) fails a plain `go build` with `directory prefix . does not contain modules listed in go.work`; build it with `GOWORK=off` (it points back to this repo through its own `replace`).
+* **Build a member module from the repo root** with `go build -C <abs-module-dir> ./...` (the shell cwd resets; a `cd` may trigger a permission prompt).
+* **`scripts/check-go-modules.sh` is not read-only** — it runs `go fix` + `modernize`, **rewriting sources in place**, which the automated commit sweep picks up. For read-only checks use `gofmt -l` / `go vet` / `go build` / `go test` / `bash scripts/check-config-namespace.sh` / `bash scripts/check-observability.sh`.
+* **The contrib dubbo examples are verified end to end only by docker-gated smoke scripts** — one **per example** (`contrib/<example>/scripts/smoke-test.sh`, 23 of them); there is no repo-level `scripts/smoke-test.sh`. With no docker the script silently `exit 0`s, so a clean build/vet does **not** mean it runs.
+
+## Examples
+
+* Every example's `func init()` uses the same "chdir to the source directory" boilerplate (with the `workDir` print):
+
+  ```go
+  // init sets the working directory of the application to the directory
+  // where this source file resides.
+  // This ensures that any relative file operations are based on the source file location,
+  // not the process launch path.
+  func init() {
+  	var execDir string
+  	_, filename, _, ok := runtime.Caller(0)
+  	if ok {
+  		execDir = filepath.Dir(filename)
+  	}
+  	err := os.Chdir(execDir)
+  	if err != nil {
+  		panic(err)
+  	}
+  	workDir, err := os.Getwd()
+  	if err != nil {
+  		panic(err)
+  	}
+  	fmt.Println(workDir)
+  }
+  ```
+
+  * Printing the working directory at startup is deliberate (it needs the `fmt` import) — do not delete it as noise.
+  * When an example does something else in `init()` too (reading a script, setting an env var), do not replace the whole block — align only the boilerplate prefix. `temp/` is neither swept nor committed.
+* `example/check.sh`'s four pitfalls must be copied from the existing new-starter skeleton: ① every example dir is named `example`, so `compose()` must pass an explicit `-p gs-<name>-example` (otherwise `down -v` tears down another's containers); ② `gs.Run` exits 0 on a startup failure, so after `go run . > smoke.out 2>&1` you must `grep -q "<success marker>" smoke.out`; ③ commands like `mqadmin` fail-successfully (return 0 on failure), so gate on the output text (`| grep -q success`); ④ in a foreground sandbox the `/dev/tcp` probe always fails — use an in-container probe (e.g. `docker exec <c> cqlsh -e "DESCRIBE CLUSTER"`) as the readiness gate. Skeleton = `-p` project name + marker gate + in-container readiness probe + watchdog.
+
 ## Coding Guidelines
 
 ### Naming Rules
@@ -264,6 +303,45 @@ Thank you for contributing to Go-Spring!
 
 * 运行 `go test ./...` 确保所有测试通过
 * 对于示例或集成测试，请提供使用说明（如适用）
+
+## 构建与工具
+
+* **go.work 下 `go mod tidy` 不走 go.work 替换、走 GOPROXY 拉发布版 spring**，遇未发布本地包（404）或滞后版本会整体失败。对策：`go mod tidy -e` 容忍该错误改 `go.mod`/`go.sum`，再用 `go build ./...` 验证（走 go.work 本地树）。别因 tidy 报错认为改动有问题。
+* **不在 go.work 的模块**（`temp/` 等）直接 `go build` 报 `directory prefix . does not contain modules listed in go.work`，必须 `GOWORK=off`（靠各自的 `replace` 块指回本仓）。
+* **从仓库根编译成员模块**用 `go build -C <abs-module-dir> ./...`（shell cwd 会重置，`cd` 可能触发权限提示）。
+* **`scripts/check-go-modules.sh` 不是只读校验**：它跑 `go fix` + `modernize` **原地改写源码**，会被自动提交扫走。只读手段用 `gofmt -l` / `go vet` / `go build` / `go test` / `bash scripts/check-config-namespace.sh` / `bash scripts/check-observability.sh`。
+* **contrib dubbo examples 只由 docker-gated 的冒烟脚本端到端验证**——脚本是**每个 contrib example 各一份**（`contrib/<example>/scripts/smoke-test.sh`，共 23 份），不是仓库级的 `scripts/smoke-test.sh`；无 docker 时静默 `exit 0`，所以 build/vet 过**不**代表能跑。
+
+## Example
+
+* 全仓 example 的 `func init()` 统一成同一「chdir 到源码目录」完整版样板（含 `workDir` 打印）：
+
+  ```go
+  // init sets the working directory of the application to the directory
+  // where this source file resides.
+  // This ensures that any relative file operations are based on the source file location,
+  // not the process launch path.
+  func init() {
+  	var execDir string
+  	_, filename, _, ok := runtime.Caller(0)
+  	if ok {
+  		execDir = filepath.Dir(filename)
+  	}
+  	err := os.Chdir(execDir)
+  	if err != nil {
+  		panic(err)
+  	}
+  	workDir, err := os.Getwd()
+  	if err != nil {
+  		panic(err)
+  	}
+  	fmt.Println(workDir)
+  }
+  ```
+
+  * 启动时打印工作目录是有意的（含 `fmt` import），别当噪音删。
+  * init 里除样板外还有别的事的（如读脚本、设环境变量），不要整段替换，只对齐样板前缀。`temp/` 不参与扫改也不提交。
+* `example/check.sh` 冒烟脚本四坑必须照抄现有新 starter 骨架：①所有 example 目录都叫 `example`，`compose()` 必须显式 `-p gs-<name>-example`（否则 `down -v` 会拆掉别家的容器）；②`gs.Run` 启动失败退出码是 0，`go run . > smoke.out 2>&1` 后必须 `grep -q "<成功标记>" smoke.out`；③mqadmin 等命令假成功（失败也退 0），gate 在输出文本上（`| grep -q success`）；④前台沙箱里 `/dev/tcp` 探测恒失败，用容器内探测（如 `docker exec <c> cqlsh -e "DESCRIBE CLUSTER"`）做就绪门槛。骨架 = `-p` 项目名 + marker 门 + 容器内就绪探测 + watchdog。
 
 ## 编码规范
 

@@ -95,6 +95,17 @@ if err := errutil.RequireAny("http-client",
 - **Deliberately not a stack-trace library.** `Stack` records a name for each
   step; it does not capture `runtime.Callers` frames. Anything richer belongs
   in a dedicated tracing package.
+- **Constructing, not just wrapping.** Production code and tests construct or
+  wrap errors through `errutil` rather than bare `fmt.Errorf` / `errors.New`;
+  `errutil.Explain(nil, "...")` is the idiomatic constructor (it degrades to
+  `fmt.Errorf`). The one exception is a sentinel — `var ErrX = errors.New(...)`
+  stays `errors.New`, because `errutil` ships no sentinel constructor. To add
+  detail to an existing sentinel use `errutil.Explain(Sentinel, "detail %q", x)`,
+  but note the message order changes (`errors.Is` is unaffected) — grep for
+  tests that pin the order before changing one.
+- **`Stack` is reserved.** `>>` is call-path semantics, found only in layout
+  templates, `log/plugin.go`, and the IDL parser; ordinary packages should not
+  reach for `errutil.Stack`.
 
 ## License
 

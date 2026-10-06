@@ -64,6 +64,27 @@ Web(`gin`、`echo`、`hertz`……)与 RPC(`grpc`、`kitex`、`thrift`、`dubbo`
 - **面向运维的 server 在启动期就提供服务。** 运维 / 诊断 server（看板、bean / 配置查看器）在就绪
   信号之前就应答，而不是等它，好让运维能看到启动过程。面向开发者的文档 UI 则挂到已有的
   app/actuator mux 上，不自己占一个端口。
+- **server starter 的 `Config` 第一个字段是 `Enabled` 开关(opt-out),条件与 addr(opt-in)组合。**
+  字段名 `Enabled`,tag `value:"${enabled:=true}"`(用过去分词,不用 `Enable`);语义 = 开关管退出、
+  addr 管进入。条件为
+  `gs.And(gs.OnProperty("spring.xxx.enabled").HavingValue("true").MatchIfMissing(),
+  gs.OnProperty("spring.xxx.addr"))`。
+  - **不适用**(勿强加):`websocket` / `websocket-coder`(基础设施工件,不拥有 server)、`xxljob`
+    (命名实例族,`instances` 键即 opt-in)、`oauth2-server`(enabled 默认关的另一种激活模型)。
+  - **已落地范围——别当全仓已统一。** `Enabled` 首字段 + `gs.And` 组合目前只在 actuator / echo /
+    thrift / trpc / admin-ui;gin / hertz / grpc / gateway / go-zero / goframe **仍是 addr/port-only**
+    (首字段是 `Address`/`Addr`/`Name`,条件只有 `OnProperty(<prefix>.addr)`)。上面那条「端口配置
+    本身就是启动闸门」描述的是这个旧形状——两条尚未对齐,别拿去指责老 starter。
+  - **命名实例族**(discovery 的 zookeeper/consul/etcd/nacos/k8s 等)**不走 `gs.And`**:`Config`
+    首字段 `Enabled`(`${enabled:=true}`)+ `BindEach` 回调开头 `if !c.Enabled { return nil }`;
+    `servers`/`address` 必填仍是进入条件。
+- **两类探测、两个每实例开关。** 字段 `Ping`(`value:"${ping:=false}"`,构造期启动连通性探测,默认关,
+  免得未就绪的后端拖住启动)、字段 `Health`(`value:"${health:=true}"`,`health.Indicator` 就绪探测,
+  默认开)。两者均为破坏性键改名(无 relaxed binding,旧键静默失效)。排除项:`starter-mqtt` 不加
+  ping(paho 构造不连接,关掉会交出永久未连接的 client);`asynq`/`outbox-gorm` 只加 health;
+  `spring.<x>.server.health.enabled` 是 server 自服务的 liveness 路由,不动。形状例外:`starter-gorm`
+  把 `Ping`/`Health` 放进 `PoolSettings`、各方言 `Config` 匿名嵌入;`starter-gateway` 用属性条件;
+  `starter-config-bus` 改 `gs.Module`+`conf.Bind` 才能拿到 `c.Health`。
 
 ### 2.2 Client 类(driver 模式 + 多实例)
 
@@ -248,6 +269,52 @@ Web(`gin`、`echo`、`hertz`……)与 RPC(`grpc`、`kitex`、`thrift`、`dubbo`
 - **每个后端把共享的 TTL 旋钮适配成自己 store 接受的形式。**
 - **无状态 client 既不注册 health indicator 也不注册 destroy 钩子。** 不持有连接的 client 没有可
   探测项，也没有可关闭的东西。
+- **driver 的契约是一个签名。** `CreateClient(ctx context.Context, c Config, params
+  cloud.ClientParams) (T, error)`,`T` 是**模块导出的客户端类型**——有包装体返回包装体,没有则返回裸类型。
+  driver 只做构建,不做注册,返回**身份完整**的类型,绝不返回残缺体。少数老 starter 仍是较短的
+  `CreateClient(ctx, name string, c Config)`,属未收尾的滞后,不是第二种形状。
+- **`Config` 是用户在 properties 里写的,`ClientParams` 是容器提供的。** 一个声明、一个注入——别把容器
+  bean 塞进 `Config` 字段。`cloud.ClientParams` 是容器提供的那一袋:`Resilience *resilience.Manager` /
+  `Fault *fault.Injector` / `Loadbalance *loadbalance.Manager` / `Discovery discovery.Discovery`,外加
+  `ExecutorFor(system, label) chain.Executor` 与 `PolicyFor(label) ClientPolicy`。**零值有意义**:手搓的
+  client(example、测试)传零值,退化为 `resilience.Unmanaged`——仍被观测、并明说一次,而不是静默无保护。
+- **构造是一期、在构造函数里完成——没有 `Init` 钩子。** `NewClient(raw, instanceName, serviceName,
+  params)` 定身份、装 observe 层(observe 属「客户端是什么」,不需要外部输入)、经 `params` 装治理,
+  全部在返回前完成。初始化 = 对象存在后立刻要做的事,与创建是同一件事。探测(直接 `c.client.Ping()`
+  走裸 client,不为它包一个方法)在装配之后;探测失败时构造函数必须释放刚装上的治理。
+- **类型硬化:不提供导出的 `Raw()`。** 裸 client 作未导出字段时,`NewClient` 是唯一构造入口,且**没有**
+  导出的访问器回到裸实例——那等于开一个静默绕过 observe + 治理的洞。
+- **内嵌还是未导出字段——按插桩装在哪决定。** *插桩在包装体自己的方法里* → 把被包装物作**未导出字段**
+  并把被包装 API 写全;*插桩在被包装对象内部*(库的 hook / transport / monitor / interceptor /
+  connector)→ 包装体只是持有者,那就**内嵌**,零转发。两个方向的代价都真实,按实现分、不追求统一:
+  内嵌 = 上游库加方法时静默不可达(具体类型无法像接口那样写编译期断言兜住);未导出字段 = 样板与被包装
+  类型的方法数成正比。已知坑:冗余内嵌会遮蔽(同时内嵌 `*T` 与 `T` 自己也内嵌的 `*S`,`*S` 在更浅深度胜出;
+  字段已导出时手写 `&Wrapper{T: raw}` 会让更浅那条为 nil → 访问即 panic)。
+- **driver bean 靠名字链按实例选择。** 构造函数里的 driver 参数是
+  `gs.TagArg("${spring.<prefix>.instances." + name + ".driver:=${spring.<prefix>.default.driver:=?}}")`
+  ——先看本实例键,再回退家族 `default.driver`,最后 `?`(按类型注入唯一的 driver bean)。配了 bean 名
+  但找不到则启动失败。不加 `Config` 字段;http-client 也走 per-entry。
+- **需要治理的 client 注入**必填**的 `*governance.Center`。** import `go-spring.org/cloud/governance`
+  (或 blank-import 任一 governance 源 starter),按类型注入**必填**的 `*governance.Center`(不写 `"?"` /
+  `IndexArg`),再由 `center.Resilience()` / `Fault()` / `Loadbalance()` / `Discovery()` 展开。关治理是
+  `spring.governance.enabled=false`,不是 bean 不存在;写可空会把「忘 import」变成静默降级。`?` 只保留给
+  两类:**0..N 集合**(`[]*health.Indicator`、`Registries`、`Jobs`、`map[string]discovery.Discovery` 等,
+  `?` = 空集合合法,否则报 `no beans collected`)与 **0..1 有默认值**(`traffic.Propagator`、
+  `resilience.Counters`、gorm `disc`,nil 是有意义状态)。`gs.IndexArg` 必须两参:去可空写
+  `gs.IndexArg(N, gs.TagArg(""))`(`gs.IndexArg(N)` 编译不过)。
+- **多实例 health indicator 的 `.Name` 跨 starter 全局唯一。** 提供成 `.Name(模块前缀 + ":" + name)`
+  (如 `"mongo:" + name`)。通用规则:凡 `.Export(gs.As[共享接口]())` 的 bean,其 Name 必须跨 starter 唯一,
+  最轻做法是模块前缀。
+- **dubbo 的 config model 是 `${spring.dubbo}` 下的单个 `*Instance`**,承载 8 个顶层节点:`application` /
+  `registries` / `protocols`(**全局非 provider 级**)/ `provider` / `consumer` / `metrics` / `tracing`
+  (v3 OTel 面)/ `shutdown`;`internal-signal` 用 `bool` 缺省 true(binder 拒指针值类型)。references 在
+  `${spring.dubbo.consumer.references.<name>}`,服务在 `${spring.dubbo.provider.services.<name>}`
+  (可带 `.methods.<m>`)。**没有 `${spring.dubbo.client}` 这个键**:`*client.Client` bean 由
+  `NewClient` 从共享 `*Instance` 派生。非 Triple consumer(classic dubbo / JSON-RPC / REST)手写 typed
+  struct wrapper 放**应用**(如 `consumer/main.go`),不手写进 `idl/`(`idl/` 只放常量,否则误导为代码生成)。
+  `RegisterReference[T any](name string, ctor func(*client.Client, ...client.ReferenceOption) (T, error))`
+  注册 typed stub bean;starter 提供 helper,app 逐 stub 显式调用。Provider 侧动态配置不需要:`dyncPoller`
+  只 watch `${spring.dubbo.consumer}`,provider 参数 override 后由 dubbo-go 自身 re-export。
 
 ### 2.3 Contributor 类(不自持端口)
 
@@ -590,6 +657,32 @@ WebSocket(`websocket`、`websocket-coder`)、中间件(`lua-filter`)、鉴权
   辅助函数留在 starter 层，而不是中立底座。
 - **能力的默认内存 store 走 `gs.OnMissingBean`**，于是持久化 store 的 starter 可为所有消费方替换它，
   业务代码无需改动。
+- **结构体字段名不允许是光杆通用词**(`name`、`service`、`key` 这类),尤其当同一 struct 里存在近义兄弟
+  字段时——必须自带语义方向。全仓 starter 统一词汇:实例名(instances map 的 key)→ `instanceName`;
+  派生出的治理标签(`resilience.ServiceLabel(...)` 的结果)→ `serviceLabel`。`serviceName` 保持不动——
+  它镜像配置键 `service-name`,属配置字段命名,不进这套词汇。单复数对撞要拆:`Manager.driver`(被选中的
+  后端)→ `driverName`,与 `drivers`(后端目录 map)分开。名字与实际用途不符要改(如 `memcached/liveServers.key`
+  存的是地址快照签名 → `snapshotKey`)。明确不改:`cloud/governance/resilience|fault` 内部的 `service`、
+  `starter-governance-sentinel`、`starter-luohua`——那里 `service` 是 `NewClientExecutor(service string, ...)`
+  契约本身的形参名。不要靠注释解释光杆名。
+- **`func init()` 必须紧跟 import 块、排在 starter 文件顶部**,前面不允许有 type/var/const/func 声明。
+  适用 `starter/**/starter.go`(及一切注册 bean 的文件)与 cloud 侧 starter.go;不适用 example `main.go`、
+  生成 `pb.go`、log/conf 等非 starter 内部包。
+- **一个 starter 的注册写在 starter 文件里,只有构造过程可共享。** 整个注册过程(`gs.Module` + `conf.BindEach`
+  + `r.Provide` + `IndexArg` + bean 命名 + `health.Indicator`)必须写在 starter 里,不许藏在泛型 helper 背后;
+  只有**构造过程**(open、observe、治理、closers 回滚、ping)允许抽进非泛型共享函数。分界线 = 注册/DI 段下沉到
+  starter,构造段才留共享包;允许为此复制 ~25 行样板。
+- **`conf.BindEach` / `gs.ValueArg` 绑定的配置 struct 只装配置值。** 每字段有 `value:` tag;运行时解析出的 bean
+  (Discovery 后端、Registry、Client、Executor)绝不许塞进它的未导出字段当传送带,必须作为扩展点函数
+  (`Driver.CreateClient` / `Dialect.Build` / `NewPool`)的显式参数传入。扫描信号 = 配置 struct 里无 tag 的字段
+  (从配置推导出的**纯标量**,如 gorm-mysql 的 `tlsParam`,不算依赖,可留)。
+- **配置 key 一律精确匹配,不做 relaxed binding。** 别在绑定或 `OnProperty` 里做大小写/分隔符归一。
+- **starter wrapper bean 的字段注入 tag 是顶层绝对属性引用**:`value:"${resilience:=}"` 解析到顶层
+  `resilience.*`、`value:"${fault:=}"` 到顶层 `fault.*`,**不**拼实例前缀,跨所有实例共享;只有 ctor 的
+  base `Config` 走 `conf.BindEach` 才带实例前缀。几种绑定路径(字段注入 = 绝对引用、`BindEach` ctor `Config`
+  = 拼实例前缀)对同名 key 语义不同——判据是**绑定路径**,不是 key 名。
+- **`gs.OnProperty("spring.X")` 是前缀/分支检查**:任一 `spring.X.*` 存在即匹配。注册了 `gs.Group("${spring.X}")`
+  时别留孤儿顶层 `spring.X.<leaf>` 键,否则 leaf 被当 bean 名。
 
 ## 4. 新增 starter —— 检查清单
 

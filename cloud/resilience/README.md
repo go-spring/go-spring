@@ -263,3 +263,106 @@ sentinel driver from `starter/starter-governance-sentinel`.
   token-bucket only, and counts a sliding-window scope as a token bucket.
 - **No retry inside inbound admission.** Retrying an already-written response is
   impossible; retry is only meaningful on the client seams.
+
+## 5. Engine structure & governance wiring
+
+- **Two engines, one contract.** Outbound and inbound are two fully isolated
+  engines — `defaultExecutor` (outbound, with retry) and `serverExecutor`
+  (inbound, no retry; `AttemptTimeout` is the whole-handler budget). Neither is
+  expressed in terms of the other, and `ServerPolicy.AsPolicy() ClientPolicy`
+  has been deleted. The two interfaces (`ClientExecutor` / `ServerExecutor`)
+  were merged into a single `Executor`, **defined in the leaf package
+  `cloud/chain`** (`chain.Executor`); resilience keeps no alias of its own, and
+  direction isolation is carried by the two policy types plus the manager's two
+  registries.
+- **Shared organs, neutral parameters.** The breaker state machine, the
+  rate-limit bucket, `serviceState` and `Counters` exist once each and take
+  their own vocabulary: `RateSpec` is exported (the store implementation and the
+  gateway filter read it), `breakerSpec` stays package-private, and
+  `resolveBreakerStrategy` picks the strategy.
+- **Strictly one-way dependencies:** `chain ← observability ← resilience`. The
+  rejection sentinels live in `chain`; `BreakerState` /
+  `BreakerEventListener(Setter)` are defined in `observability/breaker.go`, and
+  resilience refers to them through aliases for compatibility.
+- **Naming:** the two halves are a `side` (`clientSide` / `serverSide`, fields
+  `m.client` / `m.server`); the word `lane` is rejected.
+- **The manager is un-generic:** two concrete types `clientSide` / `serverSide`
+  with `resolve` as the single function field; the registry holds
+  `*entry{exec, policy}` pointers; `Apply` compares the policy per label —
+  changed ⇒ evict, unchanged ⇒ keep (so breaker / rate-limit state survives).
+- **The executor binds one service at construction.** `Execute(ctx, fn)` takes
+  no service: whoever owns protection state knows, at construction, what it
+  protects. Never add a service or any per-call dimension to `Execute` — to
+  partition by key, hand in a `Counters` and put the key in the scope.
+- **The breaker must be built lazily on the first call** (`snapshot()` /
+  `buildState()`), never at executor construction — otherwise
+  `SetBreakerEventListener` cannot attach (the `WrapClientExecutor` in
+  `Manager.ClientExecutorFor` is handed over by hand).
+- **One label, one executor on the managed path.** Clients always go through
+  `Manager.ClientExecutorFor`; none builds its own via `Subscribe` +
+  `NewExecutor`. Don't give a single client a "needs to see the resolved policy"
+  escape (that forces it around the manager) — change things at the govern-rule
+  layer instead. httpx was the only client that bypassed the manager with a
+  `min-requests=5` floor; that floor is deleted and it now uses
+  `ClientExecutorFor("http", service)`. `Policy.MinRequests`'s `<=0 → 1` default
+  is unchanged.
+- **A hot swap is "evict + rebuild".** `Refresh` is removed from both executor
+  interfaces; a policy change evicts the entry and the next call rebuilds it,
+  while an unchanged policy keeps the state.
+- **Rate limiting is one stage**, offered as 1+3: layer 1 is the executor's own
+  per-service budget (`rateState`, the default path); layer 3 is the `Counters`
+  interface, which serves cross-replica shared stores only (scope = the service
+  the executor is bound to). Layer 2 (in-process sharing) is rejected — don't
+  add a memory `Counters` implementation back (`NewMemoryCounters` is deleted);
+  counting by key is the caller's (gateway's) own job; document `Counters` as
+  cross-replica only.
+- **The breaker records once per logical call; rate-limit counts per attempt.**
+- **`ClientPolicy` / `ServerPolicy` are single defs** carrying all their own
+  value tags; governance's `ClientRule` / `ClientDefaultPolicy` / `ServerRule`
+  embed them directly, with no binding twin and no translation layer. New
+  governable knobs go straight on the Policy (with a tag); function fields do
+  not belong in a Policy.
+- **`Timeout` was renamed `AttemptTimeout`** (matching the key); the
+  `RetryPredicate` function field is deleted (never assigned anywhere) — retry
+  classification goes only through the `Retryable` interface plus
+  default-retry-all. Policy fields: backoff
+  `InitialInterval` / `Multiplier` / `MaxInterval` / `RandomizationFactor`,
+  whole budget `MaxDuration`, breaker strategy
+  `BreakerStrategy` / `ErrorRateThreshold` / `MinRequests` / `BreakerWindow`;
+  all zero = the old behavior. A `Policy` cannot be compared with `== Policy{}`
+  — use `IsZero()`. A second split type is allowed only for a hard structural
+  reason (today only the loadbalance factory's argument translation, consuming
+  `Selection.Params`).
+- **The driver directory lives in the container.** The registry is gone
+  (`RegisterDriver` / `GetDriver` / `RegisterLimiter` / `GetLimiter` and both
+  init-registered `"default"`s are deleted); resilience is a zero-global,
+  zero-gs-dependency contract package. A backend is a named bean +
+  `Export(gs.As[resilience.Driver]())`; the container collects them into
+  `map[string]resilience.Driver` and hands them to
+  `resilience.NewManager(drivers)` — no wiring bean, no `BindDrivers` /
+  `SetDrivers`. Name resolution lives inside the `Manager` (`driverName` +
+  `Manager.driverFor(name)`): an empty name falls back to the builtin driver;
+  at startup an unresolvable name **panics and lists the available names**
+  (validated in `(*Center).GoLive`, only when Enabled) — no more silent noop
+  fallback. The builtin driver is `resilience.NewDefaultDriver(counters
+  Counters)`. `spring.governance.driver` stays in the governance document (read
+  via `autowire:"${...}"`, while govern keys come from `Source.Snapshot()` —
+  moving it would split the config system). A `gs.Provide` whose ctor returns a
+  concrete type must `Export` (gs indexes by exact type). The limiter's
+  selection key comes from the gateway route-filter parameter and is not the
+  same source as the driver's document key — do not merge them into one change.
+  `httpx.Config.ResilienceDriver` is the `resilience.Driver` object itself
+  (httpx is container-free).
+- **Backend-only capabilities.** Cluster-wide rate limiting, warm-up,
+  per-caller limiting and system-adaptive protection (Sentinel's SystemRule
+  family) are Driver-backend features, not core `Policy` fields; a sentinel
+  installation exposes them along its native config surface.
+- **Observability bridge.** Instrumentation wrapping for the outbound/inbound
+  executors lives in **`cloud/observability`**
+  (`WrapClientExecutor(inner, system, service)` / `WrapServerExecutor(inner,
+  system, service)`, returning `chain.Executor`); outbound fire lives in
+  `cloud/fault.WrapClientExecutor(inner, service, in)`; the rejection sentinels
+  live in `cloud/chain`. The standalone `observe-resilience` module is deleted.
+  Inbound wrappers over gRPC must use `grpc.ChainUnaryInterceptor` /
+  `ChainStreamInterceptor` — `grpc.UnaryInterceptor` is a setter, not an
+  append, so a later one replaces an earlier one.

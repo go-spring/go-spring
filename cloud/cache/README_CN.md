@@ -103,6 +103,48 @@ type ByteCache interface {
 缓存的格式（默认 JSON）；传给某一次 Get/Set，覆盖与整体格式不同的个别条目。
 codec 不匹配会在解码时报错，不会静默写坏数据。
 
+## InnerCache 掏空模式
+
+把客户端掏空成 `InnerCache` 链头（外壳内部经由的接口链条）的模式，只适用于
+「原始客户端以具体类型交付」的组件。判据全在这里：
+
+- **具体类型交付**（`*bigcache.BigCache`、memcached client）→ 掏空它，暴露一个
+  `InnerCache` 接口，作为链唯一的缝。
+- **本身就是接口，或带原生 hook**（go-redis 的 `UniversalClient`、grpc 的
+  `ClientConn`、gorm Plugin、mongo `CommandMonitor`、kotel）→ 直接包装或直用 hook；
+  用户自己就能套洋葱，再造缝是重复建设。
+
+链条形状：
+
+- 外壳嵌入链头（命令方法直接提升）+ 导出原始对象字段——**只读把手**，供链构造器 /
+  Driver 组装，严禁重赋值或直接跑命令。外壳零功能知识；每层一职。
+- `Release(releaseRaw bool)` 是透传协议：每层先释放本层资源、把标记原样传下层，只有
+  链尾对标记行动，`true` 关实例。外壳自身的 `Destroy` 已删——`Close()` = 链头
+  `Release(true)`，兼任 gs destroy。
+- **重组** = `c.InnerClient = myLayer{c.InnerClient}`：零额外把手、零构造，层改写的
+  key 自然流进身份 / 观测层，治理照常保护下层。早期「浅关 + 全量重组装」协议已废弃。
+- 替换仍存活的观测头须先 `Release(false)` 撤旧注册，否则双倍上报。
+- 进程内缓存两层：`ObsCache`（全部可观测，per-call 计数 + gauge，持原始
+  `statObserver`；`Release` 撤注册）→ `RawCache`（纯适配器，丢 ctx，`Release(true)`
+  才关实例）；RPC 类客户端三层：`ObsClient`（身份声明 `WithOperation(op, key)`）→
+  `GuardClient`（治理，executor 的构造 / 使用 / 释放全在层内）→ `RawClient`。
+- 命令面全量进接口；泛型守卫函数必须是自由函数（Go 方法不许类型参数）。
+- 多轮被否的中间形态（别再提）：构造函数注入链（逼用户放弃默认 Driver）、obs 挂外壳
+  字段（外壳不纯）、注册表按实例键控、`RawCache` 持注册（跨层污染）。
+
+MQ 族通用教训：per-delivery consume 流水线（extract → declare → exec）与链条由外向内
+方向相反，无法上链——保留融合 wrapper（`Client.execute` / `GuardedConsume`）；链条只收
+**同步发布**命令，异步 produce 不上链；裸 bean + `sync.Map` 注册表形态的掏空 = 引入包装
+实体、bean 类型变更（experimental 允许）。
+
+## Cache 包装面
+
+Cache 封装永不加 `Reset`（清空全部）类破坏性方法：
+
+- `StarterBigCache.Cache.Reset()` 已删且永不回加，其他 cache starter 封装同。
+- 透传只收内省类（`Len` / `Stats` / `Iterator` 等）；`Reset` / `FlushAll` 类一律不加。
+  清空缓存是运维动作（重建实例 / 改配置），不是一次方法调用。（2026-10-04）
+
 ## 边界
 
 - 不做进程内 `Memory`、`MultiLevel`、aspect 桥接。进程内这一层用 bigcache，

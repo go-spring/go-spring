@@ -82,6 +82,16 @@
 |--------|-------------|
 | [testing](./testing/) | 流式 API 断言库：`assert`（失败继续）与 `require`（失败即停）两种模式，类型专属断言 |
 
+## 包约定
+
+- 每个包只放一份双语 README（`README.md` + `README_CN.md`），合并在一起，
+  而不是在 docs 目录里按语言分文件；不放 `example/` 目录。
+- 新子包必须同时满足三个条件：仓内出现两处以上（提取而非预埋）、各 helper
+  共享同一动词（一包一职）、标准库确实没有。
+- 包名指向它所包装的标准库包（`timeutil` → `time`、`randutil` → `crypto/rand`）。
+- 零引用包保留、不删：`fileutil`、`iterutil`、`md5util`、`textstyle` 即使
+  仓内无任何引用也保留——别再提议删除。
+
 ## 许可证
 
 Apache License 2.0

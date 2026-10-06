@@ -227,6 +227,11 @@ func ProcessBatch(items []Item) error {
 
 - **全局 `OnPanic` 缝隙**：一个包级 `var`，应用在初始化时覆盖它以接入日志 / 监控栈。
   刻意选择"变量"而不是 getter/setter：整个进程只有一个配置点，set-once 已经够用。
+- **单槽，不做链**：`OnPanic` 是单函数指针——直接赋值即替换（后写者胜）。不要加链式
+  注册表（如 `RegisterOnPanic` 命名的 API）；新的 recover 点用 `ReportPanic` 或
+  `SafeRun`，而不是注册 handler。
+- **日志桥只单向**：`log` 模块在其 `init` 里直赋 `goutil.OnPanic` 完成接线，依赖方向
+  只能是 `log → stdlib`。`stdlib` 绝不能 import `log`。
 - **显式 `CancelMode`**：`InheritCancel` 透传原 context；`DetachCancel` 用
   `context.WithoutCancel` 包装，让 goroutine 生命周期超过发起者。每个调用点必须显式
   指定，不设"默认"，避免行为默默改变。

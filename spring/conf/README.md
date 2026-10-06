@@ -286,3 +286,38 @@ All extensions must be registered during `init()`:
 - `RegisterConverter` - add type conversion for custom types
 - `RegisterValidateFunc` - add custom validation functions
 - `RegisterDecryptor` - add property-level decryption schemes
+
+## Runtime Refresh and Lifecycle
+
+- **The only hot-update primitive is `gs.Dync[T]`.** It re-binds a field wholesale
+  (coarse, per-field), with no diff and no per-key callback. `gs.OnProperty` is a
+  startup-time condition, **not** a runtime listener — to react to a key change,
+  poll a `Dync` yourself or build a watcher.
+- **The refresh entry is the process-level facade** `gs.RefreshProperties(ctx)` /
+  `gs.AppStarted()`; the old `gs.PropertiesRefresher` bean is gone — do not
+  reintroduce a Refresher injection. A new config provider calls the facade
+  directly; a pre-start call returns an error the caller warns and drops.
+- **A config provider is a lifecycle object.** Besides `Load` it implements
+  `Close` (stop watchers/listeners/clients and clear caches). `Close` is
+  idempotent, and the next `Load` must be able to **re-arm** (generate a fresh
+  generation context, empty the `clients`/`listened` maps, ...). Register the
+  controller object itself, **never** the `ctrl.Load` method value (that drops
+  the receiver); wrap a pure-function source in `provider.ProviderFunc` (whose
+  `Close` is a no-op).
+- **`CloseAll` is called once by the application runtime at shutdown** (the
+  graceful path, before the container closes; `gs.Run` / `gs.RunTest` carry a
+  `defer` fallback covering a failed startup). The registry does not own the
+  lifecycle and is **not** emptied after `Close` — the same process may run
+  several instances in sequence (e.g. back-to-back `gs.RunTest`); a directory is
+  not a lifecycle owner.
+- **Family config is two buckets; a family that owns its child namespace keeps
+  its own shape.** A client/resource family holds exactly
+  `spring.<family>.default.*` (family-wide, each overridable per instance) and
+  `spring.<family>.instances.<name>.*` (one instance; `<name>` is the bean name)
+  — no other direct child. The invariant: never let a user-chosen name share a
+  level with a framework key. `default` holds only overridable defaults;
+  non-overridable policy gets its own namespace (`spring.governance.*`). A family
+  that adds a framework level inside `instances`
+  (`spring.lock.instances.<backend>.<name>`) keeps one `default` at the family
+  prefix. A single-instance family (`spring.http.server`) keeps its keys directly
+  under the prefix.

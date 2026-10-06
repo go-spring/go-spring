@@ -43,6 +43,30 @@
 - **对外契约：谨慎改**：下游项目依赖的导出 API 是契约。优先加新而非破坏；破坏性变更前先评估影响面。
 - **弃用要有流程，不搞突袭**：稳定的对外 API 确需移除时，用 `// Deprecated:` 注释标注并指向替代，给一个过渡期后再删。此弃用流程只适用于已发布的稳定 API——它是上面"直接改"的有意例外，而非矛盾。
 
+### 1.4 横切关注点的形态
+
+按「这个关注点需不需要在调用之后做事 / 拥有调用的生命周期」选形态：
+
+- **只在调用前看一眼、可能短路** → 普通函数，在方法开头一行调用（如 `security.Require(ctx, "orders:write") error`）。
+- **调用之后还要做事**（提交/回滚、recover、计时收尾、恢复状态、改响应）——包括 `@AfterReturning` / `@AfterThrowing` 这类「成功才发事件」「异常才上报」→ 包裹式装饰器 `func(cfg) func(ctx, proceed) error`，或中间件链。
+
+用「调用之后还要不要做事」判，不要只因「Java 里写成了 AOP」就上包裹。包裹是普通函数的嵌套，**不**因此建共享拦截器链协议（见 `ARCHITECTURE.md` §6.3）。代价两边都真实：函数式是 opt-in，忘写在方法开头就漏防；包裹式天然强制。「绝不能漏」的关注点即便只有前置，也应考虑包裹形态（`Require` 定成前置是明确接受该代价）。
+
+### 1.5 审计判据
+
+审查一个既有抽象 / API / seam 该不该存在的判据。它们化解上面规则留下的模糊地带。
+
+- **「扩展点须有 2 个真实消费方」只适用于协议 / 接口 / seam**：面向应用代码的叶子 API（组合助手、哨兵错误、便捷函数）不能用仓内 grep 判死——其目标消费方按定义在仓库外（2026-08-26）。
+- **文档化边界豁免要主动查文档**：各 `DESIGN.md` / `README` 承诺过的 API 删除 = 撕毁契约，即使仓内零消费；verifier 必须先读文档再判。
+- **删除优于私有化**：零消费方导出面直接删；私有化为回退默认会静默改变行为。
+- **平行结构合并先核对语义载荷**：统一签名不能丢闭包携带的语义。
+- **grep 范围必须含 `examples/`**。
+- **「mirrors / keep in sync」互指注释是可 grep 的漂移信号**，应标记为共享契约。
+- **「统一契约的例外」先问是否承载该技术栈固有语义**（如 neo4j 加密由 URI scheme 决定 = 刻意分叉，非去重遗漏）。
+- **wrapper 覆盖用户回调的指控先验证 inner 是否逃逸用户面**（构造期包装 + 私有字段 = 不可达）。
+- **文档 sweep 与代码迁移必须同 PR 强制配对**。
+- **停机约定：连续一轮无幸存提案即视为收敛。**
+
 ## 2. 命名约定
 
 - **包名**：全小写，简短且具描述性（`errutil`, `assert`, `gs`），不用下划线或驼峰，不与包内内容重复
@@ -55,6 +79,7 @@
 - **布尔方法名**：优先去掉 `Is` 前缀——状态形容词直接用（`Enabled()`、`Healthy()`）；
   只有去掉后剩下的词无法独立表达"是/否"、会产生歧义时才保留 `Is`（`IsLeader()`——
   `Leader()` 读起来像返回 leader 是谁；`IsZero()`）。判据：删掉 `Is`，名字还成不成立
+- **文件名**：文件名 = 职能名 + 目录已表达的实例限定符 → 去掉限定符。判据：去掉后剩不下有意义的名字（`gorm.go` 在 `starter-gorm/`、`pprof.go` 在 `starter-pprof/`、`server.go` 在 `starter-oauth2-server/`）则保留，那是「包的主文件」惯例。Go 只对 `_test`/`_GOOS`/`_GOARCH` 赋予特殊含义。**不动**：`example-*/example.go`（`example` 是「可运行样例」的种类标记，非实例限定符）、生成代码（`pb/service.pb.go`、kitex `k-echo.go`、`service.triple.go`）、`cloud/<x>/<x>.go` 这类文件匹配包名的 Go 惯例。改名要顺带更新 USAGE/DESIGN/README 里的引用
 
 ## 3. 代码格式与组织
 
@@ -99,8 +124,9 @@
 
 > **项目规则**：不用 `errors.New`/`fmt.Errorf` 直接构造错误，统一通过 `errutil` 包装
 
-- **解释性包装**（`errutil.Explain`）- 添加业务语义：`errutil.Explain(err, "failed to connect to database")`
-- **路径包装**（`errutil.Stack`）- 跟踪调用链路：`errutil.Stack(err, "InitService")`
+- **解释性包装**（`errutil.Explain`）- 添加业务语义：`errutil.Explain(err, "failed to connect to database")`。包裹已有错误时报文逐字不变（`fmt.Errorf("%s: %w", msg, err)`）；就地构造用 `errutil.Explain(nil, "组件: 细节")`（nil 时退化为 `fmt.Errorf`）。
+- **sentinel 例外**：`var ErrX = errors.New(...)` 保持 `errors.New`（errutil 无 sentinel 构造器）；需在已有 sentinel 上加细节时用 `errutil.Explain(Sentinel, "细节 %q", x)`，注意报文顺序会变（`errors.Is` 不受影响），改前先 grep 是否有测试锁定顺序。
+- **不用 `errutil.Stack`**——它的 `>>` 是调用路径语义，只出现在 layout 模板 / `log/plugin.go` / IDL 解析器。不要拿「跟别的例子一致」当借口退回 `fmt.Errorf`；遇到不合规旧代码，方向是把它改成 errutil。
 - **快错早返回**：业务错误尽早返回；初始化阶段不可恢复的编程错误直接 panic
 - **构造与校验的 panic 边界**：构造函数（`New*`，返回带生命周期的运行期组件）一律
   返回 `error`，不 panic；Option/DSL 值构造（`WithX`、`FixedRate` 这类返回配置值、
@@ -108,6 +134,7 @@
   快错——判据是"返回的东西是运行期组件还是接线期的配置值"
 - **保持解包链**：`errutil` 内部保证 `%w` 语义，完整支持 `errors.Is()`/`errors.As()`
 - **足够上下文**：错误信息应包含足以定位来源的上下文
+- **panic 兜底统一经 `stdlib/goutil` 上报**：`OnPanic func(ctx, PanicInfo{Panic, Stack})` 是单槽函数指针（直接赋值即替换，后写者胜），**不做链式注册**（别实现 `RegisterOnPanic` 命名链）；`goutil.ReportPanic(ctx, r)` 是已 recover 场景的公开上报口，`SafeRun(ctx, f)` 让 panic 走正常错误路径。新 recover 点一律 `goutil.ReportPanic`/`SafeRun`；`stdlib` 不能 import `log`（log 桥在 `log` 模块 init 里直赋 `goutil.OnPanic`）。
 
 ## 5. 日志与指标分层
 
@@ -144,6 +171,21 @@
 - **函数文档**：每个导出函数必须有注释——功能描述、参数与返回值、错误情况（如有），复杂场景可附示例
 - **代码自文档**：用清晰命名和简洁结构让代码自解释，不加不必要的注释
 - **AI 协作注释**：需约束 AI 行为时可加特殊注释，例如 `// AI: do NOT refactor this function`
+- **注释只讲当前契约**，不讲历史沿革/定位/类比：删掉「历史上曾是」「与 XX 包同款」「沿用 XX 模式」类从句，保留行为契约本身（2026-08-30）
+- **实现已知接口的每个方法不加逐方法注释**（如 `propagate.Carrier`、otel `TextMapCarrier`）——契约在接口处已写，实现处复述 = 讲实现；类型级 doc 说「这个 adapter 服务谁」即可（2026-09-29）
+- **文件注释与 `package` 子句空行分开**：解释「当前文件」而非「包」的注释（首行形如 `<文件名>.go is/xxx`、`This file ...`）必须与 `package` 用空行隔开，否则被 Go 工具链当成包文档注释；只有 `// Package X ...` / `// Command X ...` 才紧贴。两种写法都编译通过，这是文档归属规则（2026-10-05）
+- **导出 struct 的每个有语义字段写独立 doc comment**，类型 doc comment 只留整体定位一句话（2026-09-03）
+
+### 6.1 README 文件名与结构
+
+- **全仓中文 README 文件名统一 `README_CN.md`**（`README.zh.md` / `README_zh.md` 已归零）。唯一例外：`layout/` 是自成体系的示例工程，整套文档用 `*.en.md` + `*.zh.md` 成对规则，不要为「统一」去动它（2026-10-02）
+- **中文 README 章节标题完全本地化**：`## 使用方式`、`### API 列表`（不许「API 总览」等变体，英文侧统一 `### API`）、`## 关键设计`、`## 许可证`；正文行内术语（Apache License 2.0、API、标识符）保留英文原词；许可证正文统一「Apache License 2.0，详见 [LICENSE](../../LICENSE)。」。英文 README 保持 `## Usage`/`## License`（2026-08-23）
+- **中英双版 README 结构必须对齐**（章节一一对应），不只对齐标点
+- **中文正文标点统一全角**（`，` `：` `（）` `。` `、` `——`），代码块、行内代码、链接、英文术语照旧；审校 grep `[一-鿿][,:;()]` 应为零命中。「文件原有半角风格」属待修而非待沿用（2026-09-07）
+- **README 不写分层/定位营销式定语**（「属于零依赖的 `stdlib` 层」/ "Part of … stdlib layer"），只讲功能/行为/边界。真实设计理由（「保持本库零依赖」等）可保留；DESIGN 内部可保留分层叙述（2026-08-19）
+- **`cloud/**/README*.md` 引用标识符一律用反引号** `` `WrapClientExecutor` ``，不写 godoc 式 `[WrapClientExecutor]`（markdown 里 `[X]` 是字面量方括号）；唯一例外是 markdown 链接 `[label](url)` 与锚点 `](#...)`。Go 源码注释照旧用 `[X]`（2026-10-01）
+- **stdlib 每个包只写一份合并版 README**（`README.md` EN + `README_CN.md`），结构固定为：语言切换行 → 定位与场景（含「不是什么」边界）→ Usage/使用方式 → Design/关键设计 → License；不再建 DESIGN（2026-08-16）。其余模块（log/spring/cloud/starter/contrib）仍是 README + DESIGN 四件套，别擅自统一成合并版
+- **文档里不得留过时 API 签名或引用不存在的字段/已删除的类型**；改 API 后同步扫全仓 `.md`（`temp/` 是用户写作目录，不动）
 
 ## 7. 测试风格
 
@@ -152,6 +194,8 @@
 - **表驱动测试**：多输入输出场景推荐表驱动模式；表驱动与子测试可混用，哪个简洁用哪个
 - **原始断言的边界**：仅在没有对应断言的场景才用 `t.Error`/`t.Fatal` —— 如超时保护、`select` 分支或无法恢复的初始化失败
 - **测试伴随生产**：测试文件与生产代码放在同一包目录，测试即活文档
+- **每个 `X_test.go` 必须有对应的 `X.go`**，不保留没有主文件的孤立测试文件。共享测试基建（TestMain/OTel 装配/metric 断言 helper）要么放进与包级主文件配对的 test（如 `starter_test.go`），要么放进其最主要消费者的 test，别为 helper 单开无主文件的 `observe_test.go`（2026-10-02）
+- **契约测试**（Spring Cloud Contract 风格 CDC：provider 侧 `Verify` + consumer 侧 `StubServer`）**当前住在 `cloud/experimental/contract/`**（`cloud/contract/` 尚不存在，那是出现真实消费方之后的目标位）；新增协议契约引擎届时作为它的兄弟包。HTTP 引擎保持零第三方依赖（是自主选择而非层规则）；别再提议搬回 stdlib 或去 contrib（2026-08-16、2026-09-10）
 
 ## 8. Go 语言习惯
 
@@ -161,6 +205,7 @@
 - **避免过度抽象**：只在真正需要时抽象，遵循 YAGNI，不为不确定的未来预规划
 - **最小依赖**：只添加必要的外部依赖
 - **子进程 IO**：调用外部命令时 stdout/stderr 直连 `os.Stdout/Stderr` 保持流式输出，仅在需要解析输出时才 buffer
+- **泛型**：泛型 helper 的类型参数不能被干净推断时，保持参数为 `T` 并在调用点显式转换，不用 `any` + 运行时 `.(T)` 断言。注意具体值不匹配被推断为接口的类型参数时编译失败（Go 不为类型实参做隐式接口满足）：在调用点显式转换（`greet.GreetServiceHandler(&GreetProvider{})`）使参数具有接口类型，编译期安全、无 panic 路径。`any` + 运行时断言仅保留给调用点确实无法表达转换的场合。泛型守卫函数必须是自由函数（Go 方法不许类型参数）
 
 ## 9. 并发安全设计
 

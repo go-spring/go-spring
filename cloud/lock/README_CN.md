@@ -92,7 +92,9 @@ locker.Acquire(ctx, key,
 starter 的 `spring.lock.instances.<backend>.<name>.ttl` 是*可覆盖的默认值*：只填调用方未设置的部分，
 单次调用的 `WithTTL` 永远优先。负的 `WithRenewInterval`（关闭续租）在分层中
 被保留。后端在 `Acquire`/`TryAcquire` 开头调用 `Resolve` 以获得
-该优先级；无 starter 级配置的后端传零值 `DefaultOptions` 即可。
+该优先级；无 starter 级配置的后端传零值 `DefaultOptions`（组合结果与 `Apply`
+完全一致）。用 `Resolve` 而不是 `Apply`：`Apply` 会把零 TTL 归一为 30s，后端
+就分不清「调用方要 30s」和「啥都没传」。
 
 慎重选择 TTL：它是持有者崩溃后的最大影响半径。自动续租为存活持有者延续租约；
 续租失败时 `Lost()` 触发。

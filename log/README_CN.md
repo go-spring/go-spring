@@ -68,6 +68,7 @@ tag 不是模块身份标识，而是调控句柄。只有当你能回答"谁需
    后台中继任务、第三方框架桥接进来的日志（用 `RegisterRPCTag` 单独收口）。说不出谁会单独调它，就用默认 tag。
 3. **注册的 tag 是公开的配置契约。** `logger.<tag>.*` 从此成为用户可见的配置面，必须写进文档（如 starter
    的 README）；没写进文档的 tag 不应该存在。
+4. **框架代码不用 `log.TagBizDef`。** 框架的兜底是 `log.TagAppDef`；`TagBizDef` 是**业务**兜底，归应用。
 
 命名：`subType` 用短技术/产品名（不加 `starter_` 或家族前缀——`_app_` 前缀已经表达了这层含义，且
 4 段的长度预算很紧张）；可选的 `action` 给「比模块本身更窄」的日志人群命名。访问日志即便在模块内
@@ -227,6 +228,64 @@ log.Infof(ctx, tag, "用户 %s 登录成功", userID)
 | 错误 | `Err`（固定 `error` 键记录错误消息，nil 记 null） |
 | 切片 | `Bools` / `Ints` / `Uints` / `Floats` / `Strings` |
 | 复合 | `Reflect`（反射编码任意值）/ `Any` / `Array` / `Object`（嵌套字段）/ `FieldsFromMap` |
+
+### 消息措辞
+
+消息记录的是恒定的**事件描述**——模块或动作主体；一切变量值（key、path、id、backoff、计数、耗时）
+都进结构化字段，绝不插进文本里。尤其不要用 `Msgf` 把变量插进 message：采样按 message 文本识别
+重复行，插值会让每次出现都看着像新的，采样/去重即失效。`Msgf` 仅剩的合法场景是内容天然动态的文本
+——透传用户输入、打印对端返回原文、桥接外部框架的任意值（适配层的 `Msgf("%v")`）。结构化不等于
+丢人话：优先用 `log.Warn(ctx, tag, fields...)` 而不是 `Warnf` 散文，但消息仍要写成能读的人话。
+
+措辞按事件的时间态分类，句式各自统一：
+
+| 时间态 | 句式 | 示例 |
+|--------|------|------|
+| 即将动手 | 动词原形 | `start ...` |
+| 正在动手 | 进行时 | `creating rocketmq client`、`loading nacos config` |
+| 搞完了（动作结果类） | 动词原形 + `success` | `load vault config success` |
+| 搞完了（状态变迁类） | 保留状态句 | `election: became leader`、`nats connection closed` |
+| 失败 | 动词短语 + `failed` | `create apollo client failed` |
+| 跳过 | `skip` 开头 | `skip ...` |
+
+`success` 与 `failed` 必须成对可 grep，动词须与该模块自己的失败消息配对（`create ... failed` 配
+`create ... success`，不机械用 `init`）。连接/回路恢复与终态（`mqtt connected`、`watch recovered`、
+`client closed`、`server stopped`）不加 `success`。进行时被明确接受——别一刀切改成原形。（2026-10-04）
+
+最后：别为省几行包一层 logger 函数，`log.Warn` 把 caller skip 硬编码为 2，包装会让所有调用点都报成
+包装器那一行。要么内联 `log.X`，要么用 `log.Record(ctx, level, tag, skip, ...)` 自算 skip。
+
+### 字段约定
+
+- **字段键名对齐可观测词汇。** 键名应与同名的 metric 属性 / span attribute 一致，让日志按字段直接
+  join 到指标与链路。同一操作同时产 metric 和日志时，两者共用同一组键（`system` / `service` /
+  `operation` / `status`）；键集中在一处定义、别在多处各写一遍——漂移的键是静默失效的 join。两侧
+  前缀不一致时先按 metric 走，别发明第三个名字。（2026-09-16、2026-10-04）
+- **同一作用域恒定的字段挂到 ctx 上。** 一个贯穿整个作用域的字段只挂一次，用
+  `ctx = log.WithFields(ctx, ...)` 挂在作用域边界（config starter 的 `Load`、election 的 `serveTerm`、
+  discovery watcher 的 `watchInformer`），不在每条日志行重复拼。一个函数里两个 ctx 分开命名（`ctx`
+  本次调用 / `wctx` goroutine 生命周期），同组字段用同一 helper。接口没有 ctx 时在函数顶 mint 一次
+  （`ctx := context.Background()`）并写明链的起点，不要每个 helper 各 mint。（2026-10-04）
+- **用操作自己的 ctx 记日志。** 被 cancel 的 ctx 仍带链路标识，换成 `context.Background()` 会丢串联。
+  只有确无 ctx 的后台循环才用 `Background`。
+
+### 级别选择
+
+关键动作节点（状态变迁、生命周期事件、跨边界动作）必有日志，区别只在等级——等级承载后果，字段承载维度：
+
+- 高频成功 → `Debug`（默认关）
+- 正常低频流转 → `Info`
+- 异常可自愈/有降级，无需人介入 → `Warn`
+- 需人介入 → `Error`
+
+砍掉 `Debug` 等于排查时无现场——留着。（2026-09-24）
+
+### 日志中的错误
+
+- 生产代码 `log.Error` 禁传 nil（含测试）：状态推断/生命周期类告警也必须就地
+  `errutil.Explain(nil, "<上下文描述>")` 构造成真 error 传入；nil 卫语句仅作第三方兜底。判定原则：
+  「打印错误日志但是不给错误的原因就是扯淡」。（2026-10-04）
+- `log.Any("error", err)` 逐步迁到 `log.Err(err)`，新代码一律用 `Err`。
 
 ## 输出格式
 

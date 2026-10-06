@@ -14,6 +14,10 @@
 - **一个方向一份配置**，一侧的火碰不到另一侧：`spring.governance.client.fault.*` 烧出站调用，
   `spring.governance.server.fault.*` 烧入站请求，两侧各算自己的 MaxDuration/MaxAffected 护栏——
   出站烧到自愈不会顺手关掉入站那场演练。
+- 与 resilience 共用唯一治理文档：fault 配置嵌在方向块内
+  （`spring.governance.client.fault` / `spring.governance.server.fault`），旧顶层
+  `fault.*` 已废。护栏计数器是**按方向各算的进程级计数**——已接受的取舍：`Config.Rules`
+  仍做 per-service 定向，但 `MaxAffected` / `MaxDuration` 全局计数。
 - 四种注入类型：`generic`（可重试的注入错误）、`timeout`（`context.DeadlineExceeded`）、
   `reset`（`syscall.ECONNRESET`）、`refused`（`syscall.ECONNREFUSED`）；另有纯延迟模式。
   per-service 定向走 `Config.Rules`。
@@ -161,3 +165,7 @@ label 可供标记挂靠。
   `Injector.maybe(service)` 按第一条匹配的 ClientRule（或 catch-all）分发，支持"只给 redis 放火、其余全量慢调用"。
 - **首批做 Dialer / RoundTripper 接缝**：推迟到有 HTTP 或 gRPC starter 试点放火时。包结构已留好
   形状，`WrapDialer`/`WrapRoundTripper` 可与 `WrapClientExecutor` 并列落下。
+- **注入全局 `InjectorFor()` 解析器**：否决——injector 在构造期一次建好（`gs.Provide` 直接造
+  唯一的 `*fault.Injector`），没有全局解析器。client 侧 `fault.WrapClientExecutor` 在 injector
+  为 nil 时**构造期短路**（直接返回 inner executor）；server 侧 per-call 调
+  `fault.ApplyServer(ctx, inj, service, fn)`，中间件无条件安装（nil 透通）。

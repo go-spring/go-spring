@@ -85,6 +85,18 @@ fmt.Println(out.Message)
 `DoRequest` 决定。这正是 client 侧集成（`starter-http-client`、测试、contract
 桩）可插拔而不改生成代码的原因。
 
+几条规则保证这个缝隙稳定：
+
+- `DoRequest` 是**唯一**扩展点。整体替换它即可注入自定义 transport 加日志/指标/
+  追踪；不要引入第二个全局 var，也不要往 `Metadata` 加新字段。
+- `Metadata` 是**纯数据**：只含 target/schema/method/pattern/rawPath/query/body/
+  header/config，没有任何 client 载体或名字字段。`Client`、`ClientName`、
+  `DefaultClient` 均已被否，不得回归。
+- 走路由时 `Target` 就是分派 key：直连填 `addr`、discovery 填 service-name，
+  同一个 `Target` 只能对应一种策略。路由要放在还拿得到声明目标的那一层——查表
+  发生在 `DoRequest` hook 里（`route(meta.Target)`），`dispatchTransport` 退化为
+  纯路由表（`route()` + `Close()`），不实现 `http.RoundTripper`。
+
 实际接线参考 `starter-http-client`：它组装进程级 `dispatchTransport`，按
 `req.Host`（即 Target）分派到各自配置好的 transport，整体替换 `httpclt.DoRequest`
 ——生成代码对此完全无感。discovery、负载均衡、resilience、trace 透传等能力的

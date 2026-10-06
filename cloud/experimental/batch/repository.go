@@ -105,9 +105,13 @@ type JobRepository interface {
 	ListStepExecutions(ctx context.Context, jobExecutionID string) ([]*StepExecution, error)
 }
 
-// instanceKey derives a stable identifier for a job instance from its name and
+// InstanceKey derives a stable identifier for a job instance from its name and
 // params, so ObtainExecution can find a prior execution of the same instance.
-func instanceKey(name string, params Params) string {
+// It is exported because every backend must agree on what "the same instance"
+// means: a durable repository (e.g. the Redis one) calls this rather than
+// reimplementing the algorithm, which is the only way the two backends can be
+// trusted to hash to the same key.
+func InstanceKey(name string, params Params) string {
 	keys := make([]string, 0, len(params))
 	for k := range params {
 		keys = append(keys, k)
@@ -152,7 +156,7 @@ func NewMemoryRepository() JobRepository {
 }
 
 func (r *memoryRepository) ObtainExecution(_ context.Context, name string, params Params) (*JobExecution, bool, error) {
-	key := instanceKey(name, params)
+	key := InstanceKey(name, params)
 	r.mu.Lock()
 	defer r.mu.Unlock()
 

@@ -101,13 +101,17 @@ if err := security.Require(ctx, "orders:write"); err != nil {
   `DefaultSafeMethods`、`NewCSRFToken` / `MatchCSRFToken`（常量时间比较）、
   `DefaultCSRFCookieName` / `DefaultCSRFHeaderName`。
 - **错误哨兵** `ErrUnauthenticated`（→ 401）与 `ErrForbidden`（→ 403）。
+- **`Guard`**——actuator、pprof、admin-ui 三个 server starter 共用的管理端口守卫；
+  它就在 `cloud/security` 本体（旧的 `stdlib/httpauth` 已删）。其回环判定助手
+  `IsLoopback` 在 `stdlib/netutil`。
 - **`TLSConfig`**——所有走 TLS 的 starter 共享的 `tls.*` 属性块；见下一节。
 
 ## TLS：共享的 `tls.*` 块
 
 `TLSConfig` 是所有终结或拨号 TLS 的 Go-Spring starter（redis、gorm 各方言、
 kafka、nats、mqtt、grpc、gin、gateway、neo4j、cassandra、registry/lock 各
-后端……）共享的 TLS 配置。它把默认关闭的 `tls.*` 属性块绑定成
+后端……）共享的 TLS 配置。它就在 `cloud/security` 本体——独立的
+`cloud/tlsconf` 包已并入并删除。它把默认关闭的 `tls.*` 属性块绑定成
 `*tls.Config`，并在提供了路径时从磁盘加载密钥对与 CA。
 
 在 starter 自己的配置前缀下以 `tls` key 内嵌，绑定出的属性读作该前缀下的
@@ -152,6 +156,10 @@ grpc，看到的同名旋钮行为一致。
 `starter-echo`。CORS 同理（`starter-http-server` 自带一份；gin 用
 `gin-contrib/cors`，echo 用其内建）。
 
+新的 server 家族遵循同样的规则：用自家惯用法在本身份模型之上写一层薄壳，
+token 解析与 CSRF 比较必须调用共享纯函数（`ParseBearerToken`、
+`MatchCSRFToken`……），不要复制逻辑。hertz 壳尚未写。
+
 ## 设计
 
 ### 职责与边界
@@ -161,6 +169,8 @@ grpc，看到的同名旋钮行为一致。
   session-cookie 的具体实现在 starter 或调用方应用中。
 - 不是 session 库（见 `cloud/experimental/session`），不是 OAuth2 授权服务器（见
   `starter-oauth2-server`）。
+- 安全件的唯一家——`Authentication` / `TokenValidator` / CSRF / `TLSConfig` /
+  `Guard`。别把它们拆进新的 `xxconf` 类拼接包名；新共享能力并入已有的单词包。
 - HTTP 中间件、路由级 `Authorize` 与 CORS 随各 server 家族走；只有这些壳共用
   的安全敏感逻辑以纯函数形式暴露在本包，保证各家族行为不漂移。方法级
   `Require` 留在本包——同一权限集，两道闸：路由闸用 server 惯用法，方法开头的
