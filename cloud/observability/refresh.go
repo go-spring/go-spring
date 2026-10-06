@@ -85,7 +85,9 @@ func resetInstruments() { instruments = sync.OnceValue(buildInstruments) }
 // It wraps the refresh function instead of referencing it: callers pass their
 // own (typically gs.RefreshProperties), so this package stays spring-free.
 //
-//	observability.RefreshConf(id, func() error { return gs.RefreshProperties(id) })
+//	observability.RefreshConf(ctx, func(ctx context.Context) error {
+//		return gs.RefreshProperties(ctx)
+//	})
 //
 // Logs are recorded here too, centrally: a refresh is a rare, fleet-wide
 // event, so the funnel is also the natural place for its log line. Callers
@@ -99,17 +101,17 @@ func resetInstruments() { instruments = sync.OnceValue(buildInstruments) }
 // time() - last_success_timestamp exceeding a threshold). fn's error is
 // returned unchanged — this is instrumentation, not error policy.
 //
-// The refreshID names the trigger (source, path, revision); it is stamped
-// onto a fresh context for the metric records and the summary log. The
-// refresh itself runs on the application's own context (see
-// gs.RefreshProperties) — this function does not supply it, which is why fn
-// takes no context.
-func RefreshConf(refreshID string, fn func() error) error {
+// ctx is the trigger's context and the only carrier of identity: whatever
+// fields it was given at the head of the path (the backend's coordinates, the
+// path's trace_id) are what the round's records and logs show. The funnel adds
+// none of its own, so fn must log with the context it is handed, not one it
+// closed over. The refresh itself runs on the application's own context (see
+// gs.RefreshProperties), which re-roots these fields onto it.
+func RefreshConf(ctx context.Context, fn func(ctx context.Context) error) error {
 	in := instruments()
 
-	ctx := log.WithFields(context.Background(), log.String("refresh_id", refreshID))
 	start := time.Now()
-	err := fn()
+	err := fn(ctx)
 	elapsed := time.Since(start)
 
 	status := statusOK

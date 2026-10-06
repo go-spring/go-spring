@@ -46,6 +46,7 @@ import (
 	"go-spring.org/cloud/governance"
 	"go-spring.org/log"
 	"go-spring.org/stdlib/errutil"
+	"go-spring.org/stdlib/randutil"
 	clientv3 "go.etcd.io/etcd/client/v3"
 )
 
@@ -175,7 +176,7 @@ func (s *EtcdSource) Close() error {
 func (s *EtcdSource) Snapshot() governance.Config { return s.push.Snapshot() }
 
 // Subscribe registers cb as the push target (the center is the only consumer).
-func (s *EtcdSource) Subscribe(cb func(governance.Config)) { s.push.Subscribe(cb) }
+func (s *EtcdSource) Subscribe(cb func(ctx context.Context, cfg governance.Config)) { s.push.Subscribe(cb) }
 
 // apply parses one delivered value and, when the rules actually changed,
 // pushes it. Byte-equal re-deliveries and bad values push nothing.
@@ -183,14 +184,19 @@ func (s *EtcdSource) apply(data string) {
 	if data == s.doc {
 		return
 	}
+	// One delivery is one path: it starts here and continues into the center
+	// that applies it, so the delivery mints the trace_id both lines carry.
+	ctx := log.RootFields(
+		log.String("trace_id", randutil.Hex(16)),
+		log.String("key", s.key))
 	cfg, err := governance.Parse(s.key, []byte(data), s.format)
 	if err != nil {
-		log.Error(context.Background(), starterTag, err, log.String("key", s.key), log.Msg("governance etcd source got an invalid value (keeping last good config)"))
+		log.Error(ctx, starterTag, err, log.Msg("governance etcd source got an invalid value (keeping last good config)"))
 		return
 	}
 	s.doc = data
 	if reflect.DeepEqual(s.push.Snapshot(), cfg) {
 		return
 	}
-	s.push.Push(cfg)
+	s.push.Push(ctx, cfg)
 }

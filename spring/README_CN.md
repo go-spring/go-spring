@@ -188,7 +188,7 @@ func (s *Service) Refresh(w http.ResponseWriter, r *http.Request) {
 	// 模拟环境变量变更，触发配置刷新。根据配置优先级规则，环境变量优先级高于内存配置
 	os.Setenv("GS_REFRESH-TIME", time.Now().Format(timeLayout))
 	// 调用刷新接口，所有使用 Dync 包装的字段都会自动更新
-	s.AppConfig.RefreshProperties()
+	gs.RefreshProperties(r.Context())
 	w.Write([]byte("OK!"))
 }
 
@@ -215,7 +215,7 @@ curl http://127.0.0.1:9090/refresh  # 触发热刷新，刷新时间会更新
 - ✅ **配置自动绑定**：`value` 标签直接将配置绑定到结构体字段，无需手动解析  
 - ✅ **分层配置体系**：遵循优先级规则，环境变量 > 内存配置 > 默认值，天然支持多环境  
 - ✅ **动态配置热更新**：通过 `gs.Dync[T]` 泛型原生支持，配置变更实时生效，无需重启应用  
-- ✅ **配置刷新机制**：提供 `gs.RefreshProperties()` 手动触发配置重新加载，可配合配置中心使用  
+- ✅ **配置刷新机制**：提供 `gs.RefreshProperties(ctx)` 手动触发配置重新加载，可配合配置中心使用  
 
 ## 4. 🧩 Bean 管理
 
@@ -677,7 +677,7 @@ http:
 
 ## 8. 🔁 动态配置
 
-Go-Spring 原生支持**轻量级配置热更新**机制。通过泛型类型 `gs.Dync[T]` 和 `RefreshProperties()`，
+Go-Spring 原生支持**轻量级配置热更新**机制。通过泛型类型 `gs.Dync[T]` 和 `RefreshProperties(ctx)`，
 应用可以在运行时实时感知配置变更，无需重启应用。 
 这一特性在微服务架构的**灰度发布**、**动态调参**、**配置中心集成**等场景中非常实用。
 
@@ -703,9 +703,9 @@ version := config.Version.Value() // 总是获取最新值
 
 框架会在配置变更时**自动更新**内部值，无需你手动处理。
 
-#### 2. 调用 `RefreshProperties()` 触发刷新
+#### 2. 调用 `RefreshProperties(ctx)` 触发刷新
 
-当外部配置发生变化后，直接调用包级函数 `gs.RefreshProperties()` 触发刷新
+当外部配置发生变化后，直接调用包级函数 `gs.RefreshProperties(ctx)` 触发刷新
 （它作用于最近一次启动的 app，供容器外的组件——如配置中心的 watch 回调——使用）：
 
 ```go
@@ -713,8 +713,9 @@ func RefreshHandler(w http.ResponseWriter, r *http.Request) {
 	// 模拟配置变更（实际场景中通常由配置中心推送变更）
 	// 带 GS_ 前缀的环境变量映射进属性命名空间：GS_APP_VERSION -> app.version
 	os.Setenv("GS_APP_VERSION", "v2.0.1")
-	// 触发刷新，所有 gs.Dync[T] 字段会自动更新
-	_ = gs.RefreshProperties()
+	// 触发刷新，所有 gs.Dync[T] 字段会自动更新。
+	// context 承载触发点的字段；把触发点在它上面命名，刷新这一轮的日志才知道自己在讲什么。
+	_ = gs.RefreshProperties(r.Context())
 	fmt.Fprintln(w, "Version updated!")
 }
 ```

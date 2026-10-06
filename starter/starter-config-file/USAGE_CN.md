@@ -144,12 +144,12 @@ gs.Run() → App.Start()                                               (app.go:2
   4. app.started = true → RefreshProperties 从此合法                (app.go:309)
   5. Runners、Servers、就绪信号
   └─ 任一被 watch 目录有事件: watchLoop → observability.RefreshConf
-       → gs.RefreshProperties(): 重新加载全部来源、按优先级合并、
+       → gs.RefreshProperties(ctx): 重新加载全部来源、按优先级合并、
          原子更新所有 gs.Dync 字段                                   (app.go:247)
 ```
 
 controller 之所以不需要是 bean，尽管配置加载发生在 bean 装配前：watch 回调经进程级
-`gs.RefreshProperties()` 门面触达刷新，app 启动前门面返回错误，因此刷新
+`gs.RefreshProperties(ctx)` 门面触达刷新，app 启动前门面返回错误，因此刷新
 在启动前被刻意设计为 no-op——早期的 watch 事件被无害丢弃，因为启动加载刚捕获过状态。
 这正是两个 provider 挂在同一个 controller 单例上的原因。
 

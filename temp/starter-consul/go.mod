@@ -4,8 +4,8 @@ go 1.26
 
 require (
 	github.com/hashicorp/consul/api v1.34.1
-	go-spring.org/log v0.1.4
-	go-spring.org/spring v1.3.4
+	go-spring.org/log v0.0.0-00010101000000-000000000000
+	go-spring.org/spring v0.0.0-00010101000000-000000000000
 )
 
 require (
@@ -43,4 +43,11 @@ require (
 	golang.org/x/net v0.54.0 // indirect
 	golang.org/x/sys v0.44.0 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
+)
+
+replace (
+	go-spring.org/gs-mock => ../../gs/gs-mock
+	go-spring.org/log => ../../log
+	go-spring.org/spring => ../../spring
+	go-spring.org/stdlib => ../../stdlib
 )

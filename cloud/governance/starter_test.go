@@ -215,7 +215,7 @@ func TestStarter_LatePushDrivesArmedModules(t *testing.T) {
 	}
 
 	// A live push swaps both the resilience side and the fault side.
-	src.Push(govCfg(400, fault.Config{Enabled: true, Rate: 0.5}))
+	src.Push(context.Background(), govCfg(400, fault.Config{Enabled: true, Rate: 0.5}))
 	if p := res.ClientPolicyFor("x"); p.AttemptTimeout != 400*time.Millisecond {
 		t.Fatalf("push should reach the resilience manager: want 400ms, got %v", p.AttemptTimeout)
 	}

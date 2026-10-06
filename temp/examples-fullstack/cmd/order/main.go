@@ -101,13 +101,13 @@ func init() {
 	// selected by name "api" — the sub-key of spring.security.jwt.instances.api in
 	// app.properties. The handler chain is: trace span (outermost) -> JWT auth ->
 	// business mux, so authentication happens inside the request's span.
-	gs.Provide(newOrderMux, gs.IndexArg(1, gs.TagArg("api")))
+	gs.Provide(newOrderMux, gs.IndexArg(1, gs.TagArg("api")), gs.IndexArg(3, gs.TagArg(discoveryName)))
 }
 
 // newOrderMux assembles the order service's HTTP handler as a *gs.HttpServeMux so
 // the built-in Go-Spring HTTP server (${spring.http.server}) serves it.
-func newOrderMux(coord transaction.Coordinator, auth *StarterSecurityJWT.Authenticator, flags *Flags) *gs.HttpServeMux {
-	app := &orderApp{coord: coord, flags: flags, inv: &inventoryClient{}}
+func newOrderMux(coord transaction.Coordinator, auth *StarterSecurityJWT.Authenticator, flags *Flags, disc discovery.Discovery) *gs.HttpServeMux {
+	app := &orderApp{coord: coord, flags: flags, inv: &inventoryClient{disc: disc}}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/orders", app.placeOrder)
 	return &gs.HttpServeMux{Handler: traceServer(auth.Wrap(mux))}
@@ -178,11 +178,13 @@ func writeJSON(w http.ResponseWriter, code int, body string) {
 	_, _ = io.WriteString(w, body)
 }
 
-// inventoryClient talks to service B through Consul discovery. It builds one
+// inventoryClient talks to service B through Consul discovery. The backend is
+// injected by name (the bean consuldisc.Register provides); it builds one
 // Resolver lazily (on first use, by which time B has registered) and reuses it;
 // requests target the logical host "inventory" and the dialer connects to a live
 // instance, ignoring that host.
 type inventoryClient struct {
+	disc discovery.Discovery
 	once sync.Once
 	hc   *http.Client
 	err  error
@@ -190,18 +192,23 @@ type inventoryClient struct {
 
 func (c *inventoryClient) client() (*http.Client, error) {
 	c.once.Do(func() {
-		rsv, err := discovery.NewResolver(context.Background(), discoveryName, "inventory")
+		rsv, err := discovery.NewResolver(context.Background(), c.disc, "inventory")
 		if err != nil {
 			c.err = err
 			return
 		}
 		nd := &net.Dialer{}
 		c.hc = &http.Client{Transport: &http.Transport{DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
-			ep, err := rsv.Pick()
+			eps, err := rsv()
 			if err != nil {
 				return nil, err
 			}
-			return nd.DialContext(ctx, "tcp", ep.Addr)
+			if len(eps) == 0 {
+				return nil, fmt.Errorf("inventory: no endpoints registered")
+			}
+			// A real app leaves the pick to loadbalance.Pool; the sample dials the
+			// first snapshot entry to keep the client hand-written.
+			return nd.DialContext(ctx, "tcp", eps[0].Addr)
 		}}}
 	})
 	return c.hc, c.err
@@ -277,6 +284,11 @@ func (c *inventoryClient) call(ctx context.Context, url string, body []byte) (st
 }
 
 func main() {
+	// Unset env vars that leak from the developer shell so runs are reproducible
+	// and consistent with sibling examples.
+	_ = os.Unsetenv("_")
+	_ = os.Unsetenv("TERM")
+	_ = os.Unsetenv("TERM_SESSION_ID")
 	gs.Run()
 }
 

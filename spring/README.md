@@ -235,7 +235,7 @@ func (s *Service) Refresh(w http.ResponseWriter, r *http.Request) {
 	// than in-memory configuration
 	os.Setenv("GS_REFRESH-TIME", time.Now().Format(timeLayout))
 	// Call refresh interface, all fields wrapped with Dync will be automatically updated
-	s.AppConfig.RefreshProperties()
+	gs.RefreshProperties(r.Context())
 	w.Write([]byte("OK!"))
 }
 
@@ -269,7 +269,7 @@ This example covers many core features of Go-Spring:
   naturally supports multiple environments
 - ✅ **Dynamic configuration hot reloading**: Natively supported via `gs.Dync[T]` generic,
   configuration changes take effect in real-time without application restart
-- ✅ **Configuration refresh mechanism**: Provides `gs.RefreshProperties()`
+- ✅ **Configuration refresh mechanism**: Provides `gs.RefreshProperties(ctx)`
   to support manual triggering of configuration reload, can be used with configuration centers
 
 ## 4. 🧩 Bean Management
@@ -807,7 +807,7 @@ such as **multiple data sources**, **multi-tenancy**, **dynamic plugins**, etc.
 ## 8. 🔁 Dynamic Configuration
 
 Go-Spring natively supports a **lightweight configuration hot update** mechanism.
-Through the generic type `gs.Dync[T]` and `RefreshProperties()`,
+Through the generic type `gs.Dync[T]` and `RefreshProperties(ctx)`,
 applications can perceive configuration changes in real-time at runtime
 without restarting the application.
 This feature is very useful in scenarios such as **gray release**,
@@ -839,9 +839,9 @@ version := config.Version.Value() // Always gets the latest value
 The framework will **automatically update** the internal value when the configuration changes,
 no manual handling required from you.
 
-#### 2. Call `RefreshProperties()` to trigger refresh
+#### 2. Call `RefreshProperties(ctx)` to trigger refresh
 
-After external configuration changes, call the package-level `gs.RefreshProperties()`
+After external configuration changes, call the package-level `gs.RefreshProperties(ctx)`
 to trigger the refresh (it targets the most recently started app — the bridge for
 components outside the IoC container, such as config-center watch callbacks):
 
@@ -850,8 +850,10 @@ func RefreshHandler(w http.ResponseWriter, r *http.Request) {
 	// Simulate configuration change (in real scenarios it's usually pushed by configuration center)
 	// GS_-prefixed env vars map into the property namespace: GS_APP_VERSION -> app.version
 	os.Setenv("GS_APP_VERSION", "v2.0.1")
-	// Trigger refresh, all gs.Dync[T] fields will update automatically
-	_ = gs.RefreshProperties()
+	// Trigger refresh, all gs.Dync[T] fields will update automatically.
+	// The context carries the trigger's fields; name the trigger on it so the
+	// refresh round's logs say what it is about.
+	_ = gs.RefreshProperties(r.Context())
 	fmt.Fprintln(w, "Version updated!")
 }
 ```

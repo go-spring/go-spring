@@ -328,7 +328,8 @@ without requiring a separate configuration file.
 Before the container starts, Go-Spring first registers some built-in Beans:
 
 - `ContextProvider`: used to obtain the application's root context.
-- `PropertiesRefresher`: used to trigger dynamic configuration refresh.
+- `gs.RefreshProperties(ctx)`: the package-level facade that triggers a dynamic
+  configuration refresh (no injection needed).
 
 Then the container recursively traverses the dependency graph starting from Root Beans, creates Beans on demand, and completes dependency injection.
 After injection is complete, the container collects all Beans that implement the `Runner` and `Server` interfaces for execution in subsequent phases.
@@ -531,17 +532,14 @@ func (s *MyService) Handle() {
 }
 ```
 
-Then the `PropertiesRefresher` object can be used to trigger configuration refresh at runtime.
+At runtime, any frame can trigger a configuration refresh through the package-level
+facade; the context it is given carries the trigger's fields.
 Dynamic refresh only applies to configuration fields declared with `gs.Dync[T]`.
 
 ```go
-type ConfigManager struct {
-	Refresher *gs.PropertiesRefresher `autowire:""`
-}
-
-func (m *ConfigManager) ReloadConfig() error {
+func ReloadConfig(ctx context.Context) error {
 	os.Setenv("GS_SERVICE_TIMEOUT", "10s")
-	return m.Refresher.RefreshProperties()
+	return gs.RefreshProperties(ctx)
 }
 ```
 

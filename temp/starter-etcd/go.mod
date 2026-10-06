@@ -3,8 +3,8 @@ module go-spring.org/starter-etcd
 go 1.26
 
 require (
-	go-spring.org/log v0.1.4
-	go-spring.org/spring v1.3.4
+	go-spring.org/log v0.0.0-00010101000000-000000000000
+	go-spring.org/spring v0.0.0-00010101000000-000000000000
 	go.etcd.io/etcd/client/v3 v3.6.2
 )
 
@@ -46,4 +46,11 @@ require (
 	google.golang.org/grpc v1.80.0 // indirect
 	google.golang.org/protobuf v1.36.11 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
+)
+
+replace (
+	go-spring.org/gs-mock => ../../gs/gs-mock
+	go-spring.org/log => ../../log
+	go-spring.org/spring => ../../spring
+	go-spring.org/stdlib => ../../stdlib
 )

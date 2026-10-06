@@ -12,7 +12,6 @@ require (
 	github.com/jtolds/gls v4.20.0+incompatible // indirect
 	github.com/magiconair/properties v1.8.10 // indirect
 	github.com/pelletier/go-toml v1.9.5 // indirect
-	github.com/rogpeppe/go-internal v1.14.1 // indirect
 	github.com/smarty/assertions v1.16.0 // indirect
 	github.com/smartystreets/goconvey v1.8.1 // indirect
 	github.com/spf13/cast v1.10.0 // indirect
@@ -23,4 +22,11 @@ require (
 	golang.org/x/exp v0.0.0-20260410095643-746e56fc9e2f // indirect
 	golang.org/x/sys v0.47.0 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
+)
+
+replace (
+	go-spring.org/gs-mock => ../../gs/gs-mock
+	go-spring.org/log => ../../log
+	go-spring.org/spring => ../../spring
+	go-spring.org/stdlib => ../../stdlib
 )

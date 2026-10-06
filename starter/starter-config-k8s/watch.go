@@ -30,6 +30,7 @@ import (
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
+	"go-spring.org/stdlib/randutil"
 )
 
 // watchManager tracks informers so they can be stopped on shutdown, and
@@ -80,17 +81,18 @@ func objVersion(obj any) string {
 // (status, duration, error) is logged and metered centrally by
 // observability.RefreshConf.
 func (c *k8sCtrl) trigger(id string, obj any, event string) {
-	refreshID := fmt.Sprintf("k8s:%s@%s", id, objVersion(obj))
-	log.Info(context.Background(), starterTag,
-		log.String("refresh_id", refreshID),
+	ctx := log.RootFields(
+		log.String("trace_id", randutil.Hex(16)),
+		log.String("object", id),
 		log.String("event", event),
-		log.Msg("watched object changed, triggering refresh"))
+		log.String("resource_version", objVersion(obj)))
+	log.Info(ctx, starterTag, log.Msg("watched object changed, triggering refresh"))
 	if c.onTrigger != nil {
 		c.onTrigger()
 		return
 	}
-	_ = observability.RefreshConf(refreshID, func() error {
-		return gs.RefreshProperties(refreshID)
+	_ = observability.RefreshConf(ctx, func(ctx context.Context) error {
+		return gs.RefreshProperties(ctx)
 	})
 }
 

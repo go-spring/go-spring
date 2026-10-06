@@ -178,10 +178,13 @@ app.properties 内嵌规则的路径——规则一律经 Source 进入。
 
 ```go
 type Source interface {
-    Snapshot() Config                       // 最新已提交值；推送前为零 Config
-    Subscribe(cb func(Config))              // 每份新配置提交后回调
+    Snapshot() Config                              // 最新已提交值；推送前为零 Config
+    Subscribe(cb func(ctx context.Context, cfg Config)) // 每份新配置，并带上产生它的那次变更的 context
 }
 ```
+
+交给 `cb` 的 context 就是**那次变更自己的**——source 用它命名了什么（坐标、变更的 `trace_id`），
+中心就按同一身份记录"我对这次变更做了什么"。对某次投递无话可说的 source，传 `context.Background()`。
 
 刻意的省略（来自接口文档注释）：
 
@@ -430,7 +433,7 @@ bean 的*副本*，而你自建的 center 在它之外——两者永不相遇�
 src := governance.NewPushSource(governance.Config{})
 ctr.SetSource(src)   // 任意时刻：替换构造期绑定的那个源（后写覆盖）
 // 每个上游事件：
-src.Push(cfg)
+src.Push(ctx, cfg)
 ```
 
 `SetSource` 胜过注入 bean 与默认；同一时刻只有一个活跃 source；中心从不合并——整体替换；

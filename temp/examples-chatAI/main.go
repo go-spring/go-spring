@@ -20,6 +20,7 @@ import (
 	"embed"
 	"fmt"
 	"net/http"
+	"os"
 	"time"
 
 	"go-spring.org/spring/gs"
@@ -29,6 +30,11 @@ import (
 var files embed.FS
 
 func main() {
+	// Unset env vars that leak from the developer shell so runs are reproducible
+	// and consistent with sibling examples.
+	_ = os.Unsetenv("_")
+	_ = os.Unsetenv("TERM")
+	_ = os.Unsetenv("TERM_SESSION_ID")
 
 	// Serve static files from the embedded file system under the "/public/" path
 	http.Handle("/public/", http.StripPrefix("/public/", http.FileServer(http.FS(files))))

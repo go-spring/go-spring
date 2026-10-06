@@ -40,9 +40,8 @@ func init() {
 const timeLayout = "2006-01-02 15:04:05.999 -0700 MST"
 
 type Service struct {
-	AppConfig   *gs.PropertiesRefresher `autowire:""`
-	StartTime   time.Time               `value:"${start-time}"`
-	RefreshTime gs.Dync[time.Time]      `value:"${refresh-time}"`
+	StartTime   time.Time          `value:"${start-time}"`
+	RefreshTime gs.Dync[time.Time] `value:"${refresh-time}"`
 }
 
 func (s *Service) Echo(w http.ResponseWriter, r *http.Request) {
@@ -54,11 +53,16 @@ func (s *Service) Echo(w http.ResponseWriter, r *http.Request) {
 
 func (s *Service) Refresh(w http.ResponseWriter, r *http.Request) {
 	_ = os.Setenv("GS_REFRESH-TIME", time.Now().Format(timeLayout))
-	_ = s.AppConfig.RefreshProperties()
+	_ = gs.RefreshProperties(r.Context())
 	_, _ = w.Write([]byte("OK!"))
 }
 
 func main() {
+	// Unset env vars that leak from the developer shell so runs are reproducible
+	// and consistent with sibling examples.
+	_ = os.Unsetenv("_")
+	_ = os.Unsetenv("TERM")
+	_ = os.Unsetenv("TERM_SESSION_ID")
 	gs.Configure(func(app gs.App) {
 		app.Property("start-time", time.Now().Format(timeLayout))
 		app.Property("refresh-time", time.Now().Format(timeLayout))

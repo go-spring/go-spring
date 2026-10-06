@@ -17,12 +17,15 @@
 package discovery
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"strings"
 	"sync"
 	"testing"
 	"time"
 
+	"go-spring.org/log"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/testing/assert"
 )
@@ -34,10 +37,18 @@ import (
 type fakeRegistry struct {
 	mu     sync.Mutex
 	events []string
+	ctxs   map[string]context.Context // the context each op was last called with
 	fail   map[string]error
 }
 
-func (f *fakeRegistry) record(op string) error {
+func (f *fakeRegistry) record(op string, ctx context.Context) error {
+	f.mu.Lock()
+	if f.ctxs == nil {
+		f.ctxs = map[string]context.Context{}
+	}
+	f.ctxs[op] = ctx
+	f.mu.Unlock()
+
 	if err := f.fail[op]; err != nil {
 		return err
 	}
@@ -45,6 +56,14 @@ func (f *fakeRegistry) record(op string) error {
 	f.events = append(f.events, op)
 	f.mu.Unlock()
 	return nil
+}
+
+// ctxFor returns the context the named operation was last called with, so a
+// test can assert what rode on it.
+func (f *fakeRegistry) ctxFor(op string) context.Context {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.ctxs[op]
 }
 
 func (f *fakeRegistry) snapshot() []string {
@@ -65,19 +84,20 @@ func (f *fakeRegistry) has(op string) bool {
 func (f *fakeRegistry) reset() {
 	f.mu.Lock()
 	f.events = nil
+	f.ctxs = nil
 	f.mu.Unlock()
 }
 
 func (f *fakeRegistry) Register(ctx context.Context, inst Instance) error {
-	return f.record("register")
+	return f.record("register", ctx)
 }
 
 func (f *fakeRegistry) Deregister(ctx context.Context, inst Instance) error {
-	return f.record("deregister")
+	return f.record("deregister", ctx)
 }
 
 func (f *fakeRegistry) UpdateWeight(ctx context.Context, inst Instance, weight int) error {
-	return f.record("update-weight")
+	return f.record("update-weight", ctx)
 }
 
 // compile-time contract: the fake stands in for a real backend registry.
@@ -200,6 +220,53 @@ func TestUpdateWeightBeforeRegister(t *testing.T) {
 	assert.Error(t, err).Matches("not registered yet")
 }
 
+// TestUpdateWeightInheritsTheCallerPath proves the runtime API is a step inside
+// the caller's path, not a path of its own: it hands the caller's identity
+// through and mints none of its own, so a caller that already carries a
+// trace_id (a management endpoint's span) does not end up with two.
+func TestUpdateWeightInheritsTheCallerPath(t *testing.T) {
+	regA.reset()
+	s := &Server{
+		inst:       Instance{ServiceName: "orders", Addr: "10.0.0.5:8080"},
+		Registries: []Registry{regA},
+	}
+
+	caller := log.WithFields(context.Background(), log.String("trace_id", "caller-id"))
+	assert.Error(t, s.UpdateWeight(caller, 1)).Nil()
+
+	got := renderFields(log.CarriedFields(regA.ctxFor("update-weight")))
+	assert.String(t, got).Contains("trace_id=caller-id")
+	assert.String(t, got).Contains("service=orders") // the instance identity rides along
+	assert.Number(t, strings.Count(got, "trace_id=")).Equal(1)
+}
+
+// TestDeregisterMintsItsOwnRoot proves the drain is a path of its own: it roots
+// itself rather than hanging off the shutdown context, so it carries its own
+// trace_id instead of inheriting the caller's.
+func TestDeregisterMintsItsOwnRoot(t *testing.T) {
+	regA.reset()
+	s := &Server{
+		inst:       Instance{ServiceName: "orders", Addr: "10.0.0.5:8080"},
+		Registries: []Registry{regA},
+	}
+
+	caller := log.WithFields(context.Background(), log.String("trace_id", "caller-id"))
+	s.PreStop(caller)
+
+	got := renderFields(log.CarriedFields(regA.ctxFor("deregister")))
+	assert.String(t, got).Contains("trace_id=")
+	assert.String(t, got).Contains("service=orders")
+	assert.That(t, !strings.Contains(got, "caller-id")).True("the drain mints its own id, it does not inherit the caller's")
+}
+
+// renderFields renders fields the way a log line does, so a test can read a
+// field's value through the public surface instead of the Field internals.
+func renderFields(fields []log.Field) string {
+	var buf bytes.Buffer
+	log.EncodeFields(log.NewTextEncoder(&buf, " "), fields)
+	return buf.String()
+}
+
 // TestDeregisterContinuesPastFailure pins the shutdown contract: one center
 // failing its deregister must not stop the others — every center gets the
 // drain call, and the failure itself surfaces in the log (Warn), not as an
@@ -214,7 +281,7 @@ func TestDeregisterContinuesPastFailure(t *testing.T) {
 		inst:       Instance{ServiceName: "orders", Addr: "10.0.0.5:8080"},
 		Registries: []Registry{regA, regB},
 	}
-	s.deregister(context.Background())
+	s.deregister()
 
 	if !regB.has("deregister") {
 		t.Fatal("the sweep must continue past a failing center")

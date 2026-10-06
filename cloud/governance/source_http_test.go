@@ -17,6 +17,7 @@
 package governance
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"sync"
@@ -126,7 +127,7 @@ func TestHTTPSource_PollAndPush(t *testing.T) {
 	var mu sync.Mutex
 	var pushes int
 	var pushed Config
-	s.Subscribe(func(cfg Config) { mu.Lock(); pushed = cfg; pushes++; mu.Unlock() })
+	s.Subscribe(func(_ context.Context, cfg Config) { mu.Lock(); pushed = cfg; pushes++; mu.Unlock() })
 
 	if cfg := s.Snapshot(); cfg.Client.Default.AttemptTimeout != 100*time.Millisecond {
 		t.Fatalf("initial snapshot: %+v", cfg.Client.Default)

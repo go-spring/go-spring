@@ -48,6 +48,7 @@ import (
 	"go-spring.org/log"
 	"go-spring.org/stdlib/errutil"
 	"go-spring.org/stdlib/goutil"
+	"go-spring.org/stdlib/randutil"
 	"go-spring.org/stdlib/timeutil"
 )
 
@@ -592,6 +593,14 @@ func (t *task) runOnce(parent context.Context, scheduled time.Time) {
 	}
 
 	ctx, span := traceRun(ctx, t.job.name)
+	// The run's identity comes from that span whenever a tracer is installed:
+	// the log hook emits the span's trace_id, so minting one here would put a
+	// second value under the same key. Only a span that yields no valid
+	// identity — no tracer, so the span is a no-op — leaves the run to name
+	// itself, and the id is minted per run because it must not outlive it.
+	if !span.SpanContext().IsValid() {
+		ctx = log.WithFields(ctx, log.String("trace_id", randutil.Hex(16)))
+	}
 	start := time.Now()
 	err := safeRun(ctx, t.job.run)
 	end := time.Now()

@@ -177,7 +177,7 @@ agollo 自带配置变更通知 long-poll（`/notifications/v2`，见
 Apollo 发布 → agollo long-poll 触发 ChangeEvent / FullChangeEvent
   → apolloListener.OnChange（OnNewestChange 为空实现）          starter.go
     → apolloCtrl.TriggerRefresh                                 starter.go
-      → gs.RefreshProperties()                                  gs_app/app.go
+      → gs.RefreshProperties(ctx)                                  gs_app/app.go
         → App.RefreshProperties：先 guard "app not started yet"，随后
           重载全部 source（文件、env、cmd args、所有 import）、按层优先级
           合并、传播进容器                                      gs_app/app.go
@@ -186,7 +186,7 @@ Apollo 发布 → agollo long-poll 触发 ChangeEvent / FullChangeEvent
 
 该路径两个值得记住的性质：
 
-- **启动前是 no-op。** app 启动前到达的事件碰到的 `gs.RefreshProperties()` 会返回
+- **启动前是 no-op。** app 启动前到达的事件碰到的 `gs.RefreshProperties(ctx)` 会返回
   错误，被无害丢弃（由 `TestListenerChangeFiresRefresh` 钉死，`starter_test.go`）
   ——初始加载已捕获该状态（`starter.go`）。
 - **整应用刷新，而非按 namespace。** 一个 key 变更会重载*所有* source，因此绑定

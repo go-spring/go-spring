@@ -167,7 +167,7 @@ tags resolve, so ConfigMap-sourced keys can inject into ordinary bean fields at 
 the same reason `.env` and all config providers run in step 2 of the lifecycle, ahead of
 starters. Before the app has started, the refresh is a harmless no-op
 (watch.go): the startup load already captured the initial state, and the
-`gs.RefreshProperties()` facade returns an error until `started` (app.go:247-250).
+`gs.RefreshProperties(ctx)` facade returns an error until `started` (app.go:247-250).
 
 ### 2.2 The watch/refresh path, walked once
 
@@ -179,7 +179,7 @@ starters. Before the app has started, the refresh is a harmless no-op
 4. Watch setup is best-effort: if handler registration or cache sync fails, the id is
    forgotten so a later Load may retry, and only hot-reload for that object is lost — the
    static snapshot still loads (`watch.go`).
-5. After startup, each event calls `gs.RefreshProperties()` → full `AppConfig.Refresh` →
+5. After startup, each event calls `gs.RefreshProperties(ctx)` → full `AppConfig.Refresh` →
    **every** provider re-runs its import (the ConfigMap is re-fetched, not diffed) → merged
    storage swapped atomically → all `gs.Dync[T]` fields update. Only `gs.Dync[T]` hot-reloads;
    plain fields and `OnProperty` conditions are startup-only.

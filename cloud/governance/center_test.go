@@ -17,6 +17,7 @@
 package governance
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -243,7 +244,7 @@ func TestAdopt_NotifiesOnlyChangedLabels(t *testing.T) {
 		Service:      "redis:cache",
 		ClientPolicy: resilience.ClientPolicy{AttemptTimeout: dur(200)},
 	}}
-	c.adopt(cfg)
+	c.adopt(context.Background(), cfg)
 	if redisN != 2 {
 		t.Fatalf("redis must be notified on its policy change: got %d, want 2", redisN)
 	}
@@ -255,7 +256,7 @@ func TestAdopt_NotifiesOnlyChangedLabels(t *testing.T) {
 	}
 
 	// A no-op adopt (same config) notifies nobody.
-	c.adopt(cfg)
+	c.adopt(context.Background(), cfg)
 	if redisN != 2 || gormN != 1 {
 		t.Fatalf("no-op adopt must not notify: redis=%d gorm=%d, want 2/1", redisN, gormN)
 	}
@@ -267,7 +268,7 @@ func TestAdopt_DefaultChangeFansOutToAllUnoverridden(t *testing.T) {
 	c.res.Subscribe("redis:cache", func(resilience.ClientPolicy) { a++ })
 	c.res.Subscribe("gorm:mysql:primary", func(resilience.ClientPolicy) { b++ })
 	// Both read Default; changing Default must notify both.
-	c.adopt(enabledTimeout(300))
+	c.adopt(context.Background(), enabledTimeout(300))
 	if a != 2 || b != 2 {
 		t.Fatalf("default change should fan out to both: a=%d b=%d, want 2/2", a, b)
 	}
@@ -314,7 +315,7 @@ func TestSource_AdoptSwapsFaultConfig(t *testing.T) {
 	cfg := enabledTimeout(100)
 	cfg.Client.Fault = fault.Config{Enabled: true, Rate: 0.5}
 	cfg.Server.Fault = fault.Config{Enabled: true, Rate: 1, Latency: dur(5)}
-	c.adopt(cfg)
+	c.adopt(context.Background(), cfg)
 
 	if p := c.clientPolicyFor("x"); p.AttemptTimeout != dur(100) {
 		t.Fatalf("adopt resilience side: want 100ms, got %v", p.AttemptTimeout)
@@ -348,11 +349,11 @@ func TestSetSource_LateArm_StaleGuard(t *testing.T) {
 	}
 
 	// A's pushes are stale now; B's still drive the center.
-	pushA.Push(enabledTimeout(999))
+	pushA.Push(context.Background(), enabledTimeout(999))
 	if p := c.clientPolicyFor("x"); p.AttemptTimeout != dur(200) {
 		t.Fatalf("stale source A push must be dropped: want 200ms, got %v", p.AttemptTimeout)
 	}
-	pushB.Push(enabledTimeout(300))
+	pushB.Push(context.Background(), enabledTimeout(300))
 	if p := c.clientPolicyFor("x"); p.AttemptTimeout != dur(300) {
 		t.Fatalf("source B push should apply: want 300ms, got %v", p.AttemptTimeout)
 	}
@@ -479,7 +480,7 @@ func TestSelectionFor_AppliesCurrentThenChanges(t *testing.T) {
 	assert.Number(t, pool.Tracker().Config().Threshold).Equal(5)
 
 	// A pushed change reaches the live pool in place.
-	c.adopt(selectionConfig(label, loadbalance.Weighted, 3, time.Minute))
+	c.adopt(context.Background(), selectionConfig(label, loadbalance.Weighted, 3, time.Minute))
 	assert.That(t, pool.Selection().Balancer).Equal(loadbalance.Weighted)
 	assert.Number(t, pool.Tracker().Config().Threshold).Equal(3)
 }
@@ -496,7 +497,7 @@ func TestSelectionFor_UnknownBalancerKeepsLastGood(t *testing.T) {
 	defer stop()
 	assert.That(t, pool.Selection().Balancer).Equal(loadbalance.LeastConn)
 
-	c.adopt(selectionConfig(label, "no_such_strategy", 0, 0))
+	c.adopt(context.Background(), selectionConfig(label, "no_such_strategy", 0, 0))
 	assert.That(t, pool.Selection().Balancer).Equal(loadbalance.LeastConn)
 }
 
@@ -530,7 +531,7 @@ func TestSelectionFor_StopDetaches(t *testing.T) {
 	stop()
 	stop()
 
-	c.adopt(selectionConfig(label, loadbalance.Weighted, 0, 0))
+	c.adopt(context.Background(), selectionConfig(label, loadbalance.Weighted, 0, 0))
 	assert.That(t, pool.Selection().Balancer).Equal(loadbalance.LeastConn)
 }
 

@@ -18,11 +18,17 @@ package main
 
 import (
 	"net/http"
+	"os"
 
 	"go-spring.org/spring/gs"
 )
 
 func main() {
+	// Unset env vars that leak from the developer shell so runs are reproducible
+	// and consistent with sibling examples.
+	_ = os.Unsetenv("_")
+	_ = os.Unsetenv("TERM")
+	_ = os.Unsetenv("TERM_SESSION_ID")
 	// Register an HTTP handler for the "/echo" endpoint.
 	http.HandleFunc("/echo", func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte("hello world!"))

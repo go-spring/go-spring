@@ -19,7 +19,7 @@
 // advertises this instance into Consul); it does not ship a client-side resolver.
 // The unified cloud/discovery abstraction is exactly the seam meant to close
 // that gap, so the reference app supplies its own Consul-backed Discovery here
-// and registers it once via discovery.Register — the gateway's lb://order route
+// and exposes it as a named discovery.Discovery bean — the gateway's lb://order route
 // and the order service's order->inventory call then resolve through it with no
 // per-caller Consul code.
 //
@@ -37,6 +37,7 @@ import (
 
 	"github.com/hashicorp/consul/api"
 	"go-spring.org/cloud/discovery"
+	"go-spring.org/spring/gs"
 )
 
 // Backend resolves service names against a Consul agent. The first Resolve of
@@ -58,15 +59,17 @@ type consulEntry struct {
 }
 
 // Register builds a Consul-backed Discovery for the agent at addr (e.g.
-// "127.0.0.1:8500") and publishes it in cloud/discovery under
-// name, so discovery.GetDiscovery(name) (used by the gateway) and any Resolver find
-// it. It is meant to be called once at process start.
+// "127.0.0.1:8500") and provides it as a bean named name, exported as a
+// [discovery.Discovery]: the container is the directory a client cites by
+// that label, so the gateway and this service resolve through it. It is
+// meant to be called once, from init.
 func Register(name, addr string) error {
 	b, err := New(addr)
 	if err != nil {
 		return err
 	}
-	discovery.RegisterDiscovery(name, b)
+	gs.Provide(func() discovery.Discovery { return b }).Name(name).
+		Export(gs.As[discovery.Discovery]())
 	return nil
 }
 

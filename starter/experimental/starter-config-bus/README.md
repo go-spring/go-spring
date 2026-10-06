@@ -86,7 +86,7 @@ full broadcast to refresh flow.
   watched prefix in either direction, so a `db` watcher reacts to a `db.pool`
   event and vice versa). The ctx parents the producer span on your trace.
 - On receipt each subscriber calls the framework's process-level
-  `gs.RefreshProperties()` facade, which reloads all configuration sources and
+  `gs.RefreshProperties(ctx)` facade, which reloads all configuration sources and
   re-binds every `gs.Dync` field via a two-phase, atomic commit.
 - The bus does not own the NATS connection: it injects a `*StarterNats.Conn` by
   instance name and leaves lifecycle and close to `starter-nats`.

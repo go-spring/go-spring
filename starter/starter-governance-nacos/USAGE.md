@@ -131,8 +131,8 @@ The runnable [example/](example) does all of this, self-asserts, and exits 0;
 
 ```go
 type Source interface {
-    Snapshot() Config                       // latest committed value; zero Config before any push
-    Subscribe(cb func(Config))              // invoked with each new config after it commits
+    Snapshot() Config                                    // latest committed value; zero Config before any push
+    Subscribe(cb func(ctx context.Context, cfg Config))  // invoked with each new config after it commits
 }
 ```
 

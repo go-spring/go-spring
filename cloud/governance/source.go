@@ -17,6 +17,7 @@
 package governance
 
 import (
+	"context"
 	"sync"
 )
 
@@ -45,12 +46,18 @@ type Source interface {
 	// returns a zero Config (a disabled center).
 	Snapshot() Config
 
-	// Subscribe registers cb, invoked with each new config after it commits.
-	// At most one subscription is consumed — the center is the only consumer —
-	// so a second Subscribe may replace the first. cb must be safe for
-	// concurrent invocation; delivering synchronously inside Subscribe is
-	// allowed (the center's guard tolerates it).
-	Subscribe(cb func(Config))
+	// Subscribe registers cb, invoked with each new config after it commits,
+	// and with the context of the change that produced it. At most one
+	// subscription is consumed — the center is the only consumer — so a second
+	// Subscribe may replace the first. cb must be safe for concurrent
+	// invocation; delivering synchronously inside Subscribe is allowed (the
+	// center's guard tolerates it).
+	//
+	// The context is the change's own: it carries whatever the source named the
+	// change with (its coordinates, the change's trace_id), so the consumer logs
+	// what it did about the change against the same identity. A source that has
+	// nothing to say about a delivery passes [context.Background].
+	Subscribe(cb func(ctx context.Context, cfg Config))
 }
 
 // PushSource is a ready-made mutable [Source]: it holds one snapshot and
@@ -73,7 +80,7 @@ type Source interface {
 type PushSource struct {
 	mu  sync.Mutex
 	cfg Config
-	cb  func(Config)
+	cb  func(ctx context.Context, cfg Config)
 }
 
 // NewPushSource returns a PushSource holding cfg as its initial snapshot.
@@ -91,21 +98,22 @@ func (p *PushSource) Snapshot() Config {
 // Subscribe registers cb. If a callback was already registered it is replaced
 // (the single-consumer contract makes replacement, not fan-out, the right
 // semantic).
-func (p *PushSource) Subscribe(cb func(Config)) {
+func (p *PushSource) Subscribe(cb func(ctx context.Context, cfg Config)) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.cb = cb
 }
 
-// Push adopts cfg as the new snapshot and, once subscribed, delivers it to
-// the callback. Before any Subscribe the push only moves the snapshot: the
-// center picks it up when it binds (its bind adopts Snapshot()).
-func (p *PushSource) Push(cfg Config) {
+// Push adopts cfg as the new snapshot and, once subscribed, delivers it to the
+// callback together with ctx, the change's own context. Before any Subscribe the
+// push only moves the snapshot: the center picks it up when it binds (its bind
+// adopts Snapshot()).
+func (p *PushSource) Push(ctx context.Context, cfg Config) {
 	p.mu.Lock()
 	p.cfg = cfg
 	cb := p.cb
 	p.mu.Unlock()
 	if cb != nil {
-		cb(cfg)
+		cb(ctx, cfg)
 	}
 }

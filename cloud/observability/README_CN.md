@@ -109,11 +109,15 @@ func (myInterceptor) Do(ctx context.Context, ...) {
 这个全局事件应有的那一条日志。调用方只记自己的后端事件。
 
 ```go
-_ = observability.RefreshConf(ctx, gs.RefreshProperties)
+_ = observability.RefreshConf(ctx, func(ctx context.Context) error {
+	return gs.RefreshProperties(ctx)
+})
 ```
 
-刷新函数由调用方传入（而非包内引用），因此本包不依赖 spring；fn 的错误
-原样返回——这里是插桩，不是错误策略。
+`ctx` 是触发点自己的 context，也是身份的唯一载体：路径起点给它的字段（后端坐标、
+路径的 `trace_id`）就是这一轮的记录与日志会显示的东西。漏斗自己不加任何身份。
+刷新函数由调用方传入（而非包内引用），因此本包不依赖 spring；fn 的错误原样返回——
+这里是插桩，不是错误策略。
 
 ## Operation 与 Recorder：客户端 starter 的"声明"接口
 

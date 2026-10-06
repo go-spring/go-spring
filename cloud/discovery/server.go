@@ -22,6 +22,7 @@ import (
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
+	"go-spring.org/stdlib/randutil"
 )
 
 // The registration core: the ONE server that owns this process's publication
@@ -118,14 +119,13 @@ func (s *Server) Run(ctx context.Context, sig gs.ReadySignal) error {
 // discovery removes it while in-flight requests keep being served (the
 // lossless-drain sequence).
 func (s *Server) PreStop(ctx context.Context) {
-	s.deregister(ctx)
+	s.deregister()
 }
 
-// Stop deregisters as a fallback should PreStop not have run, propagating ctx
-// into each Deregister call. Deregister is idempotent, so repeat calls are
-// no-ops.
+// Stop deregisters as a fallback should PreStop not have run. Deregister is
+// idempotent, so repeat calls are no-ops.
 func (s *Server) Stop(ctx context.Context) error {
-	s.deregister(ctx)
+	s.deregister()
 	return nil
 }
 
@@ -150,8 +150,8 @@ func (s *Server) UpdateWeight(ctx context.Context, weight int) error {
 	return nil
 }
 
-func (s *Server) deregister(ctx context.Context) {
-	ctx = log.WithFields(ctx, instanceFields(s.inst)...)
+func (s *Server) deregister() {
+	ctx := log.RootFields(append(instanceFields(s.inst), log.String("trace_id", randutil.Hex(16)))...)
 	for _, r := range s.Registries {
 		if err := r.Deregister(ctx, s.inst); err != nil {
 			log.Warn(ctx, starterTag,

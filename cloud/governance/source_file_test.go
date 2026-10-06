@@ -17,6 +17,7 @@
 package governance
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"sync"
@@ -110,7 +111,7 @@ func TestFileSource_HotReload(t *testing.T) {
 
 	var mu sync.Mutex
 	var got Config
-	s.Subscribe(func(cfg Config) { mu.Lock(); got = cfg; mu.Unlock() })
+	s.Subscribe(func(_ context.Context, cfg Config) { mu.Lock(); got = cfg; mu.Unlock() })
 
 	// Atomic-rename edit, the harder case vs in-place write.
 	tmp := path + ".tmp"
@@ -147,7 +148,7 @@ func TestFileSource_BadEditKeepsLastGood(t *testing.T) {
 	}
 
 	var pushes int
-	s.Subscribe(func(Config) { pushes++ })
+	s.Subscribe(func(context.Context, Config) { pushes++ })
 
 	// awaitStable waits until the file's mtime is old enough that the watcher
 	// has certainly processed it, plus a beat.

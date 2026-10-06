@@ -87,6 +87,22 @@ func TestNoFieldsIsTheSameContext(t *testing.T) {
 	}
 }
 
+// TestRootFieldsMintsAPathHead proves RootFields yields a usable context
+// carrying exactly the fields it was given -- a fresh root for a frame that
+// starts a path rather than extending one.
+func TestRootFieldsMintsAPathHead(t *testing.T) {
+	ctx := RootFields(String("trace_id", "t1"), String("data_id", "d1"))
+	assert.String(t, keyOrder(contextFields(ctx))).Equal("trace_id,data_id")
+
+	assert.String(t, keyOrder(contextFields(RootFields()))).Equal("")
+
+	// It reaches log output like any other carried field.
+	out := captureOutput(t, func() {
+		Info(ctx, ctxTestTag, Msgf("hello"))
+	})
+	assert.String(t, out).Contains("trace_id=t1")
+}
+
 // TestCollectWithoutCollectorIsNoOp proves accumulating outside an installed
 // Collector is silently ignored rather than panicking: instrumentation must not
 // break a request.
@@ -118,6 +134,34 @@ func TestContextFieldsOrderCarrierThenCollector(t *testing.T) {
 	Collect(ctx, String("order", "o1"))
 
 	assert.String(t, keyOrder(contextFields(ctx))).Equal("user,order")
+}
+
+// TestCarriedFieldsReRootsOntoAnotherContext is the reader's contract: a frame
+// that cannot derive from the source context re-roots the fields it carries
+// onto a context of its own, and the result carries the same fields.
+func TestCarriedFieldsReRootsOntoAnotherContext(t *testing.T) {
+	src := WithFields(context.Background(), String("user", "u1"))
+
+	dst := WithFields(context.Background(), CarriedFields(src)...)
+	assert.String(t, keyOrder(CarriedFields(dst))).Equal("user")
+}
+
+// TestCarriedFieldsLeavesCollectorBehind proves the reader exposes only the
+// WithFields chain: a Collector's fields are bound to the request that
+// installed it and do not ride along when the fields are re-rooted.
+func TestCarriedFieldsLeavesCollectorBehind(t *testing.T) {
+	src, _ := NewCollector(context.Background())
+	src = WithFields(src, String("user", "u1"))
+	Collect(src, String("order", "o1"))
+
+	assert.String(t, keyOrder(CarriedFields(src))).Equal("user")
+}
+
+// TestCarriedFieldsWithoutFields pins the reader's empty result: no chain, and
+// no panic on a nil context.
+func TestCarriedFieldsWithoutFields(t *testing.T) {
+	assert.String(t, keyOrder(CarriedFields(context.Background()))).Equal("")
+	assert.String(t, keyOrder(CarriedFields(nil))).Equal("")
 }
 
 // TestContextFieldsReachLogOutput is the end-to-end contract: a field put on a

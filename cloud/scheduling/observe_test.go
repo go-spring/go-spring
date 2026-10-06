@@ -19,15 +19,70 @@ package scheduling_test
 import (
 	"context"
 	"errors"
+	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"go-spring.org/cloud/scheduling"
+	"go-spring.org/log"
 	"go-spring.org/stdlib/testing/assert"
 	"go.opentelemetry.io/otel"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/metric/metricdata"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/trace/noop"
 )
+
+// withTracer installs a real tracer provider for a test; the run's span is
+// started from whichever provider is current at that moment.
+func withTracer(t *testing.T) {
+	t.Helper()
+	prev := otel.GetTracerProvider()
+	otel.SetTracerProvider(sdktrace.NewTracerProvider())
+	t.Cleanup(func() { otel.SetTracerProvider(prev) })
+}
+
+// withoutTracer installs a no-op tracer provider, so a run's span carries no
+// valid identity. A test that asserts the run names itself must say so itself
+// rather than trusting the ambient provider.
+func withoutTracer(t *testing.T) {
+	t.Helper()
+	prev := otel.GetTracerProvider()
+	otel.SetTracerProvider(noop.NewTracerProvider())
+	t.Cleanup(func() { otel.SetTracerProvider(prev) })
+}
+
+// TestRunLeavesIdentityToItsSpan proves a run does not mint a trace_id of its
+// own when a tracer is installed: the span it opens supplies one, and a minted
+// id would put a second value under the same key.
+func TestRunLeavesIdentityToItsSpan(t *testing.T) {
+	withTracer(t)
+
+	s := scheduling.NewScheduler()
+	var mu sync.Mutex
+	var runs []context.Context
+	_, err := s.Schedule(mustJob(t, "spanned", scheduling.FixedRate(20*time.Millisecond),
+		func(ctx context.Context) error {
+			mu.Lock()
+			runs = append(runs, ctx)
+			mu.Unlock()
+			return nil
+		}))
+	assert.Error(t, err).Nil()
+
+	assert.Error(t, s.Start(context.Background())).Nil()
+	time.Sleep(60 * time.Millisecond) // ~3 runs
+	stopCtx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	assert.Error(t, s.Stop(stopCtx)).Nil()
+
+	mu.Lock()
+	defer mu.Unlock()
+	assert.That(t, len(runs) >= 1).True("expected at least 1 run")
+	assert.That(t, !strings.Contains(renderFields(log.CarriedFields(runs[0])), "trace_id=")).
+		True("the run must not mint a trace_id when its span already provides one")
+}
 
 // withMeter installs a manual reader as the global meter provider for a test;
 // the built-in instrumentation binds to the provider current at record time, so

@@ -142,7 +142,7 @@ Imports resolve **before any bean is wired** because every bean's `value:"${...}
 against the *merged* property storage — remote keys must already be present for binding to see
 them. Consequence: the provider itself cannot be an injected bean; it is a package-level
 controller registered in `init()`, and on a change it reaches the refresh through the
-process-level `gs.RefreshProperties()` facade (no bean wiring at all). The facade returns an
+process-level `gs.RefreshProperties(ctx)` facade (no bean wiring at all). The facade returns an
 error before the app has started, so an early `TriggerRefresh` is a safe no-op.
 
 ### 2.2 Watch / hot-reload path
@@ -151,8 +151,8 @@ error before the app has started, so an early `TriggerRefresh` is a safe no-op.
 Nacos push on dataId
   └─ SDK OnChange (installed by registerListener, deduped per client+group+dataId)
        └─ nacosCtrl.TriggerRefresh                                     starter.go:129
-            └─ gs.RefreshProperties()  (returns error before the app starts)
-                 └─ App.RefreshProperties()                            app.go:247
+            └─ gs.RefreshProperties(ctx)  (returns error before the app starts)
+                 └─ App.RefreshProperties(ctx)                            app.go:247
                       ├─ reloads ALL sources: files, env, cmd args, and re-runs every
                       │   spring.config.import entry (→ nacosCtrl.Load again — this is why
                       │   the listener registration must be deduped; pinned by

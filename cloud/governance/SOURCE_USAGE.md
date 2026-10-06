@@ -185,10 +185,15 @@ interface (`cloud/governance/source.go:43`):
 
 ```go
 type Source interface {
-    Snapshot() Config                       // latest committed value; zero Config before any push
-    Subscribe(cb func(Config))              // invoked with each new config after it commits
+    Snapshot() Config                              // latest committed value; zero Config before any push
+    Subscribe(cb func(ctx context.Context, cfg Config)) // each new config, with the context of the change that produced it
 }
 ```
+
+The context handed to `cb` is the change's own — whatever the source named it
+with (its coordinates, the change's `trace_id`) — so the center logs what it did
+about the change against the same identity the source used. A source with
+nothing to say about a delivery passes `context.Background()`.
 
 Deliberate omissions (from the interface's doc comment):
 
@@ -456,7 +461,7 @@ or build a center with `NewCenter` and assert on the authorities you passed it.
 src := governance.NewPushSource(governance.Config{})
 ctr.SetSource(src)   // any time: replaces whatever source is bound (last write wins)
 // on each upstream event:
-src.Push(cfg)
+src.Push(ctx, cfg)
 ```
 
 `SetSource` outranks the injected bean and the default; exactly one source is active at a time;

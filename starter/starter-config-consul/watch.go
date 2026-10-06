@@ -18,7 +18,6 @@ package StarterConfigConsul
 
 import (
 	"context"
-	"fmt"
 	"sync"
 	"time"
 
@@ -28,6 +27,7 @@ import (
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
 	"go-spring.org/stdlib/goutil"
+	"go-spring.org/stdlib/randutil"
 )
 
 // watchCore owns the whole watch side of the provider: the watch generation
@@ -100,10 +100,7 @@ func (w *watchCore) registerWatch(cli consulClient, cs configSource, optional bo
 	// The goroutine outlives this load, so it runs on the watch generation's
 	// context, not on the load's. It carries the same fields, which is what
 	// lets the loop's own lines name the KV path without interpolating it.
-	ctx = log.WithFields(ctx,
-		log.String("address", cs.address),
-		log.String("kv_path", cs.kvPath),
-		log.String("datacenter", cs.datacenter))
+	ctx = log.WithFields(ctx, sourceFields(cs)...)
 
 	log.Infof(ctx, starterTag, "watching consul kv for changes")
 
@@ -111,6 +108,18 @@ func (w *watchCore) registerWatch(cli consulClient, cs configSource, optional bo
 		defer wg.Done()
 		watchLoop(ctx, cli, cs, optional, since)
 	}, goutil.InheritCancel)
+}
+
+// sourceFields names the KV entry a watch generation is bound to. The same
+// tuple goes on the generation's context (the loop's own lines) and on the
+// root each change event mints for itself, so both name it without
+// interpolating it.
+func sourceFields(cs configSource) []log.Field {
+	return []log.Field{
+		log.String("address", cs.address),
+		log.String("kv_path", cs.kvPath),
+		log.String("datacenter", cs.datacenter),
+	}
 }
 
 // failLogInterval is the alarm cadence: a sustained failure re-warns about this
@@ -207,9 +216,7 @@ func watchLoop(ctx context.Context, cli consulClient, cs configSource, optional 
 			}
 			// Stamp the trigger with the change's identity (which KV entry, which
 			// consul revision) so the refresh records logged and metered by
-			// observability.RefreshConf carry what this round is about. The LastIndex
-			// doubles as the refresh identifier: it is unique per KV change within
-			// consul, so two refreshes from the same path are distinguishable.
+			// observability.RefreshConf carry what this round is about.
 			// A generation canceled between the query and this trigger means
 			// the application is shutting down: the change is real, but no
 			// one will consume a refreshed snapshot, and a synchronous
@@ -218,14 +225,14 @@ func watchLoop(ctx context.Context, cli consulClient, cs configSource, optional 
 				return
 			}
 
-			refreshID := fmt.Sprintf("consul:%s@%d", cs.kvPath, meta.LastIndex)
+			rctx := log.RootFields(append(sourceFields(cs),
+				log.String("trace_id", randutil.Hex(16)),
+				log.Uint("last_index", meta.LastIndex))...)
 
-			log.Info(ctx, starterTag,
-				log.String("refresh_id", refreshID),
-				log.Msg("consul kv changed, triggering refresh"))
+			log.Info(rctx, starterTag, log.Msg("consul kv changed, triggering refresh"))
 
-			_ = observability.RefreshConf(refreshID, func() error {
-				return gs.RefreshProperties(refreshID)
+			_ = observability.RefreshConf(rctx, func(ctx context.Context) error {
+				return gs.RefreshProperties(ctx)
 			})
 		}
 	}

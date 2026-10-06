@@ -154,7 +154,7 @@ gs.Run()
   └─ 稳态：每个 watchLoop 周期执行
        ├─ readSecret；出错 → continue（首次 WARN，之后 debug，恢复 info）
        ├─ fingerprint(json.Marshal(data)) 对比上次加载指纹
-       └─ 有变化 → observability.RefreshConf → gs.RefreshProperties()
+       └─ 有变化 → observability.RefreshConf → gs.RefreshProperties(ctx)
             └─ 重跑整个属性加载：import 重新解析、Load 重读 secret、
                层重建，gs.Dync[T] 字段换值
 ```
@@ -165,7 +165,7 @@ gs.Run()
   starter.go:464），默认 5000 ms（example 用 1000 ms）。secret 轮换无需重启即可被
   感知——*但只刷新 `gs.Dync[T]` 字段*；普通 `value` tag 只在启动时绑定一次（gs 的
   refresh 仅 Dync 生效）。
-- **刷新受启动状态保护**：app 启动前 `gs.RefreshProperties()` 返回错误，刷新
+- **刷新受启动状态保护**：app 启动前 `gs.RefreshProperties(ctx)` 返回错误，刷新
   是无害 no-op——启动加载已经捕获了状态（starter.go:128）。
 - **指纹基于内容**（KV data map 的 `json.Marshal`）：内容完全相同的 KV v2 重写**不会**
   触发刷新；KV v2 version 号被忽略。

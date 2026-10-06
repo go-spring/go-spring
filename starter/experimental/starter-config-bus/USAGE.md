@@ -211,10 +211,10 @@ Two timing facts matter for a *bus*:
      empty, the instance watches nothing, or the event prefix overlaps a watched prefix
      **in either direction** — a `db` watcher reacts to a `db.pool` event and vice versa
      (matching is raw string-prefix, so `db` also matches `dbs`);
-   - `gs.RefreshProperties()` — the process-level refresh facade mounted by the
+   - `gs.RefreshProperties(ctx)` — the process-level refresh facade mounted by the
      app (no injected refresher field). Failure is counted `refresh_error` and returned, so
      the consumer span is marked failed.
-4. `App.RefreshProperties()` (`app.go:247-255`): re-loads **all** configured sources
+4. `App.RefreshProperties(ctx)` (`app.go:247-255`): re-loads **all** configured sources
    (files, env, cmd args), re-merges by priority, and pushes the new storage into the
    container via `c.RefreshProperties(p)` — which re-resolves every `gs.Dync[T]` binding
    atomically (`gs_core/injecting`). Non-Dync `value:` fields are **not** re-bound.

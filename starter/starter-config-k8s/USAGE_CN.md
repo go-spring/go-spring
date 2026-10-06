@@ -157,7 +157,7 @@ gs.Run()
 ConfigMap 的 key 才能在首次装配时注入普通 bean 字段——这也是 `.env` 与所有 config
 provider 都跑在生命周期第 2 步、先于 starter 的原因。app 启动之前，
 刷新是无害 no-op（watch.go）：启动加载已捕获初始状态，且
-`gs.RefreshProperties()` 门面在 `started` 之前本就返回错误（app.go:247-250）。
+`gs.RefreshProperties(ctx)` 门面在 `started` 之前本就返回错误（app.go:247-250）。
 
 ### 2.2 watch/refresh 路径逐层走读
 
@@ -170,7 +170,7 @@ provider 都跑在生命周期第 2 步、先于 starter 的原因。app 启动�
    （`watch.go`）。
 4. watch 建立是 best-effort：handler 注册或 cache 同步失败时遗忘该 id（后续 Load 可
    重试），只损失该对象的热刷新——静态快照仍会加载（`watch.go`）。
-5. 启动完成后，每个事件调用 `gs.RefreshProperties()` → 全量
+5. 启动完成后，每个事件调用 `gs.RefreshProperties(ctx)` → 全量
    `AppConfig.Refresh` → **每个** provider 重跑自己的 import（ConfigMap 被重新拉取而非
    diff）→ 原子换掉合并存储 → 所有 `gs.Dync[T]` 字段更新。只有 `gs.Dync[T]` 会热刷新；
    普通字段与 `OnProperty` 条件只在启动时生效。

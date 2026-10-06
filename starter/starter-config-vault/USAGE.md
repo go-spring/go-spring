@@ -163,7 +163,7 @@ gs.Run()
   └─ steady state: each watchLoop ticks
        ├─ readSecret; on error → warn once (then debug), keep polling
        ├─ fingerprint(json.Marshal(data)) vs last loaded fingerprint
-       └─ changed → observability.RefreshConf → gs.RefreshProperties()
+       └─ changed → observability.RefreshConf → gs.RefreshProperties(ctx)
             └─ re-runs the whole property load: imports re-resolve, Load re-reads the
                secret, layers rebuild, and gs.Dync[T] fields swap their values
 ```
@@ -175,7 +175,7 @@ Key timings verified from source:
   picked up without restart — *but only into `gs.Dync[T]` fields*; plain `value` tags are
   bound once and never re-read (gs refresh is Dync-only).
 - **Refresh is guarded by start state**: before the app has started,
-  `gs.RefreshProperties()` returns an error and the refresh is a harmless
+  `gs.RefreshProperties(ctx)` returns an error and the refresh is a harmless
   no-op — the startup load already captured the config (starter.go:128).
 - **Fingerprint is content-based** (`json.Marshal` of the KV data map): a KV v2 write that
   produces identical data does NOT trigger a refresh; KV v2 version numbers are ignored.

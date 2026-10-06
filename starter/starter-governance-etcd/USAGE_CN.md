@@ -137,8 +137,8 @@ ETCDCTL_API=3 etcdctl put /app/governance.yaml 'govern: {enabled: true, default:
 
 ```go
 type Source interface {
-    Snapshot() Config                  // 最新已提交值；任何推送前为零值 Config
-    Subscribe(cb func(Config))         // 每次新配置提交后调用
+    Snapshot() Config                                    // 最新已提交值；任何推送前为零值 Config
+    Subscribe(cb func(ctx context.Context, cfg Config))  // 每次新配置提交后调用
 }
 ```
 

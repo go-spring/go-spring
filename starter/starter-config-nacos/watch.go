@@ -18,7 +18,6 @@ package StarterConfigNacos
 
 import (
 	"context"
-	"fmt"
 	"sync"
 	"time"
 
@@ -27,6 +26,7 @@ import (
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/goutil"
+	"go-spring.org/stdlib/randutil"
 )
 
 // watchCore owns the whole watch side of the provider: the listener
@@ -80,6 +80,17 @@ func (w *watchCore) Close() {
 	}
 }
 
+// sourceFields names the config entry a watch generation is bound to. The same
+// tuple goes on the generation's context (the loop's own lines) and on the
+// root each change event mints for itself.
+func sourceFields(cs configSource) []log.Field {
+	return []log.Field{
+		log.String("server", cs.server),
+		log.String("data_id", cs.dataID),
+		log.String("group", cs.group),
+	}
+}
+
 // failLogInterval is the alarm cadence: a sustained failure re-warns about this
 // often. The retry loop turns it into a failure count instead of reading the
 // clock every retry.
@@ -109,10 +120,7 @@ func (w *watchCore) registerWatch(cli nacosClient, cs configSource) {
 	ctx := w.ctx
 	w.mu.Unlock()
 
-	ctx = log.WithFields(ctx,
-		log.String("server", cs.server),
-		log.String("data_id", cs.dataID),
-		log.String("group", cs.group))
+	ctx = log.WithFields(ctx, sourceFields(cs)...)
 
 	if err := listen(ctx, cli, cs); err == nil {
 		return
@@ -140,15 +148,13 @@ func listen(ctx context.Context, cli nacosClient, cs configSource) error {
 			if ctx.Err() != nil {
 				return
 			}
-			// The refresh id names the group/data id this round is about; nacos
-			// hands the listener no change revision, so the pair is the whole
-			// native identity available.
-			refreshID := fmt.Sprintf("nacos:%s/%s", cs.group, cs.dataID)
-			log.Info(ctx, starterTag,
-				log.String("refresh_id", refreshID),
-				log.Msg("nacos config changed, triggering refresh"))
-			_ = observability.RefreshConf(refreshID, func() error {
-				return gs.RefreshProperties(refreshID)
+			// nacos hands the listener no change revision, so the group/data id
+			// pair is the whole native identity available.
+			rctx := log.RootFields(append(sourceFields(cs),
+				log.String("trace_id", randutil.Hex(16)))...)
+			log.Info(rctx, starterTag, log.Msg("nacos config changed, triggering refresh"))
+			_ = observability.RefreshConf(rctx, func(ctx context.Context) error {
+				return gs.RefreshProperties(ctx)
 			})
 		},
 	})

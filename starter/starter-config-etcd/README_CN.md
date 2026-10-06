@@ -62,7 +62,7 @@ etcd key 变更时，Provider 的 watcher 会触发一次应用属性刷新，�
 - 启动时，`spring.config.import` 会调用 `etcd` Provider：它从 source 串自建 clientv3、
   读取 key，并对该 key 安装一个 `etcd Watch`。
 - key 变更会推送一次 watch 事件，其回调直接调用框架的进程级门面
-  `gs.RefreshProperties()`：重新加载所有配置源（重跑本 Provider），并通过两阶段
+  `gs.RefreshProperties(ctx)`：重新加载所有配置源（重跑本 Provider），并通过两阶段
   原子提交重新绑定所有 `gs.Dync` 字段。
 
 ## 设计要点

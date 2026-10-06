@@ -38,15 +38,16 @@ func init() {
 }
 
 func main() {
+	// Unset env vars that leak from the developer shell so runs are reproducible
+	// and consistent with sibling examples.
+	_ = os.Unsetenv("_")
+	_ = os.Unsetenv("TERM")
+	_ = os.Unsetenv("TERM_SESSION_ID")
 	gs.Run()
 }
 
 // TestRunner performs a simple test after the application starts.
-type TestRunner struct {
-	// PropertiesRefresher is injected by Go-Spring and can reload dynamic
-	// configuration values without restarting the application.
-	AppConfig *gs.PropertiesRefresher `autowire:""`
-}
+type TestRunner struct{}
 
 // Run waits for the HTTP server to start, then performs test requests.
 func (r *TestRunner) Run(ctx context.Context) error {
@@ -72,7 +73,7 @@ func (r *TestRunner) Run(ctx context.Context) error {
 		if err := os.Setenv("GS_DYNC_REFRESH_TIME", refreshTime); err != nil {
 			panic(err)
 		}
-		if err := r.AppConfig.RefreshProperties(); err != nil {
+		if err := gs.RefreshProperties(ctx); err != nil {
 			panic(err)
 		}
 

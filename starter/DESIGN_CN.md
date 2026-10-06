@@ -314,8 +314,8 @@ WebSocket(`websocket`、`websocket-coder`)、中间件(`lua-filter`)、鉴权
 - **变更监听必须无条件先注册,在拉取之前。** provider 必须在"拉取的
   `optional`+不存在提前 return"**之前**装好 watch/监听器。否则应用在 key 尚不存在时
   启动就永远不注册 watch,后续 publish 也永不触发刷新。监听器按 `(client, key)` 去重。
-- **热更新复用框架刷新,经进程级门面 `gs.RefreshProperties()`。** 控制器不再是
-  bean:远端变更时监听器直接调用 `gs.RefreshProperties()`(由最近一次 `Start` 的
+- **热更新复用框架刷新,经进程级门面 `gs.RefreshProperties(ctx)`。** 控制器不再是
+  bean:远端变更时监听器直接调用 `gs.RefreshProperties(ctx)`(由最近一次 `Start` 的
   app 挂载的包级门面,供容器外的 watch goroutine 使用,无需依赖注入)。该调用
   重新加载所有配置源(重跑 provider),并通过 `gs_dync` 的两阶段原子提交重新绑定
   所有 `gs.Dync[T]` 字段;app 启动前门面返回错误,提前触发是安全的 no-op。
@@ -618,7 +618,7 @@ WebSocket(`websocket`、`websocket-coder`)、中间件(`lua-filter`)、鉴权
    默认开启开关。
 6. 配置 Provider? → `provider.go` 里 `conf.RegisterProvider`(无 `config.go`、
    无 bean),从 source 串解析参数、缓存 client、在拉取前无条件注册监听、变更回调
-   直接调 `gs.RefreshProperties()` 门面,配 `example-config/`。
+   直接调 `gs.RefreshProperties(ctx)` 门面,配 `example-config/`。
 7. Discovery starter？→ 定义 `obsSystem`,并在「首次发布」与「自愈路径」共享的缝上上报
    （`discovery.RegisterAttempt` 带 `ReasonInitial`/`ReasonSelfHeal`、`DeregisterAttempt`、
    `WeightChange`,以及成功与失败两侧的 `discovery.Synced`);绝不要改成包 `Registry`

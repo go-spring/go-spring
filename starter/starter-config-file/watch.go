@@ -35,10 +35,10 @@ package StarterConfigFile
 
 import (
 	"context"
-	"fmt"
 	"sync"
 
 	"go-spring.org/stdlib/errutil"
+	"go-spring.org/stdlib/randutil"
 
 	"github.com/fsnotify/fsnotify"
 	"go-spring.org/cloud/observability"
@@ -141,12 +141,13 @@ func watchLoop(w *fsnotify.Watcher, isCurrent func() bool) {
 				// carry what this round is about. fsnotify hands over no revision, so
 				// the event name is all the identity available; a Kubernetes ConfigMap
 				// update surfaces here as the "..data" symlink.
-				refreshID := fmt.Sprintf("file:%s:%s", e.Name, e.Op.String())
-				log.Info(context.Background(), starterTag,
-					log.String("refresh_id", refreshID),
-					log.Msg("watched file changed, triggering refresh"))
-				_ = observability.RefreshConf(refreshID, func() error {
-					return gs.RefreshProperties(refreshID)
+				ctx := log.RootFields(
+					log.String("trace_id", randutil.Hex(16)),
+					log.String("path", e.Name),
+					log.String("op", e.Op.String()))
+				log.Info(ctx, starterTag, log.Msg("watched file changed, triggering refresh"))
+				_ = observability.RefreshConf(ctx, func(ctx context.Context) error {
+					return gs.RefreshProperties(ctx)
 				})
 				continue
 			}

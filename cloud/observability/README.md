@@ -118,12 +118,17 @@ once and records the outcome — `config.refresh.total` by exclusive `status`,
 one log line for a fleet-wide event. Callers log only their backend events.
 
 ```go
-_ = observability.RefreshConf(ctx, gs.RefreshProperties)
+_ = observability.RefreshConf(ctx, func(ctx context.Context) error {
+	return gs.RefreshProperties(ctx)
+})
 ```
 
-The refresh function is passed in (not referenced), so the package stays
-spring-free; fn's error is returned unchanged — this is instrumentation, not
-error policy.
+`ctx` is the trigger's own context and the only carrier of identity: the fields
+the path was given at its head — the backend's coordinates, the path's
+`trace_id` — are what the round's records and logs show. The funnel adds none of
+its own. The refresh function is passed in (not referenced), so the package
+stays spring-free; fn's error is returned unchanged — this is instrumentation,
+not error policy.
 
 ## Operation and Recorder: what client starters declare
 

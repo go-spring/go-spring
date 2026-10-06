@@ -247,13 +247,13 @@ func (c *Center) OnReady(cb func()) {
 // A push that names an unusable driver is not fatal — unlike at startup, the
 // process is already serving, so the push is adopted and the affected services
 // fall back to a pass-through, with the error logged.
-func (c *Center) adopt(cfg Config) {
+func (c *Center) adopt(ctx context.Context, cfg Config) {
 	if err := c.dispatch(cfg); err != nil {
-		log.Warn(context.Background(), log.TagAppDef,
+		log.Warn(ctx, log.TagAppDef,
 			log.Err(err),
 			log.Msg("governance: policy applied with an unusable driver; affected services fall back to pass-through"))
 	}
-	log.Info(context.Background(), log.TagAppDef,
+	log.Info(ctx, log.TagAppDef,
 		log.Bool("enabled", cfg.Enabled),
 		log.String("driver", cfg.Driver),
 		log.Int("client_rules", len(cfg.Client.Rules)),
@@ -303,13 +303,15 @@ func (c *Center) bindSource(s Source) {
 	c.srcMu.Lock()
 	c.src = h
 	c.srcMu.Unlock()
-	s.Subscribe(func(cfg Config) {
+	s.Subscribe(func(ctx context.Context, cfg Config) {
 		if !c.isActive(h) {
 			return // replaced source: drop
 		}
-		c.adopt(cfg)
+		c.adopt(ctx, cfg)
 	})
-	c.adopt(s.Snapshot())
+	// The priming adopt is the bind, not a change: it has no change context to
+	// carry, and its line names what it applied on its own.
+	c.adopt(context.Background(), s.Snapshot())
 }
 
 // isActive reports whether h is still the bound source handle.

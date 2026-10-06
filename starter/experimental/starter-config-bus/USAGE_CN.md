@@ -202,9 +202,9 @@ gs.Run() → App.Start()                                                       [
    - `shouldRefresh(ev.Prefix)` 过滤（starter.go:203-213）：事件 prefix 为空、实例未配置
      watch、或事件 prefix 与某个 watched prefix **双向重叠**时放行——`db` watcher 对
      `db.pool` 事件有反应，反之亦然；
-   - `gs.RefreshProperties()`——app 挂载的进程级刷新门面（无注入的
+   - `gs.RefreshProperties(ctx)`——app 挂载的进程级刷新门面（无注入的
      refresher 字段）。
-4. `App.RefreshProperties()`（app.go:247-255）：重新加载**全部**已配置 source
+4. `App.RefreshProperties(ctx)`（app.go:247-255）：重新加载**全部**已配置 source
    （文件、env、命令行参数），按优先级重新合并，把新 storage 推进容器
    `c.RefreshProperties(p)`——后者原子地重解析所有 `gs.Dync[T]` 绑定
    （gs_core/injecting）。普通 `value:` 字段**不会**重新绑定。

@@ -435,8 +435,8 @@ application can load configuration from it at startup and hot-reload at runtime.
   key exists never registers a watch, and a later publish never triggers a
   reload. Dedup listeners per `(client, key)`.
 - **Hot-reload reuses the framework refresh, via the process-level
-  `gs.RefreshProperties()` facade.** The controller is no longer a bean: on a
-  remote change the watch/listener calls `gs.RefreshProperties()` directly — a
+  `gs.RefreshProperties(ctx)` facade.** The controller is no longer a bean: on a
+  remote change the watch/listener calls `gs.RefreshProperties(ctx)` directly — a
   package-level facade mounted by the app from its most recent `Start`, meant
   exactly for out-of-container infrastructure (config providers, watch
   goroutines) that cannot use dependency injection. The call reloads every
@@ -892,7 +892,7 @@ baseline (its identity, wire vocabulary, error catalog, standard drivers).
    app-supplied register bean, port-as-startup-gate (no `enabled` toggle — see §2.1).
 6. Config-provider? → `provider.go` with `conf.RegisterProvider` (no `config.go`,
    no bean), parse params from the source string, cache the client, register the
-   listener unconditionally before the fetch, call the `gs.RefreshProperties()`
+   listener unconditionally before the fetch, call the `gs.RefreshProperties(ctx)`
    facade from the change callback, ship `example-config/`.
 7. Discovery starter? → define `obsSystem` and report at the seams the initial
    publish and the self-healing path share (`discovery.RegisterAttempt` with

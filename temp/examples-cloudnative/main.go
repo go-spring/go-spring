@@ -52,8 +52,9 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"go-spring.org/cloud/actuator/health"
+	"go-spring.org/cloud/chain"
 	"go-spring.org/cloud/discovery"
-	"go-spring.org/cloud/governance/resilience"
+	"go-spring.org/cloud/resilience"
 	"go-spring.org/spring/gs"
 
 	_ "go-spring.org/starter-actuator"    // registers the actuator Server bean (gated on spring.actuator.addr)
@@ -102,7 +103,7 @@ var dep = &health.Indicator{
 
 // exec is the resilience executor built from the builtin "default" driver. It
 // is shared by the /limited route and by the arbitrary-function demo.
-var exec resilience.Executor
+var exec chain.Executor
 
 // ----------------------------------------------------------------------------
 // Bean wiring
@@ -140,7 +141,7 @@ var manual = flag.Bool("manual", false, "run in manual verification mode (server
 func main() {
 	flag.Parse()
 	// Unset env vars that leak from the developer shell so runs are reproducible
-	// and consistent with sibling starter examples.
+	// and consistent with sibling examples.
 	_ = os.Unsetenv("_")
 	_ = os.Unsetenv("TERM")
 	_ = os.Unsetenv("TERM_SESSION_ID")
@@ -158,9 +159,9 @@ func main() {
 
 	// Build the resilience executor from the bundled "default" driver — the same
 	// backend the governance center falls back to when govern.driver is unset, and
-	// the only one cloud/governance/resilience ships with (no external dependency).
+	// the only one cloud/resilience ships with (no external dependency).
 	var err error
-	exec, err = resilience.NewDefaultDriver(nil).NewExecutor("example:cloudnative", resilience.Policy{RateLimit: 3})
+	exec, err = resilience.NewDefaultDriver(nil).NewServerExecutor("example:cloudnative", resilience.ServerPolicy{RateLimit: 3})
 	if err != nil {
 		fail("resilience executor: %v", err)
 	}
@@ -185,8 +186,7 @@ func main() {
 				next: http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 					_, _ = w.Write([]byte("ok"))
 				}),
-				exec:     exec,
-				resource: func(*http.Request) string { return "app:limited" },
+				exec: exec,
 			}
 			e.GET("/limited", gin.WrapH(limited))
 		}
@@ -261,7 +261,7 @@ func runTest() {
 		switch {
 		case err == nil:
 			admitted++
-		case errors.Is(err, resilience.ErrRateLimited):
+		case errors.Is(err, chain.ErrRateLimited):
 			rejected++
 		default:
 			fail("execute: %v", err)
@@ -435,7 +435,7 @@ func init() {
 }
 
 // admissionHandler is the application's own server-side admission wrapper: each
-// request flows through a resilience.Executor so rate limiting / bulkhead /
+// request flows through a chain.Executor so rate limiting / bulkhead /
 // breaker shed overload with HTTP 429/503 before the business handler runs.
 // Inbound serving is not retried (the Executor's policy carries MaxRetries=0),
 // since handlers are not idempotent. Server-side resilience is the application's
@@ -443,9 +443,8 @@ func init() {
 // the library. It is a minimal, static-policy shedder; for adaptive load shedding
 // (AIMD, feedback-based) wire a dedicated limiter here instead.
 type admissionHandler struct {
-	next     http.Handler
-	exec     resilience.Executor
-	resource func(*http.Request) string
+	next http.Handler
+	exec chain.Executor
 }
 
 func (h *admissionHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -460,7 +459,7 @@ func (h *admissionHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	})
 	if err != nil && !served {
 		switch {
-		case errors.Is(err, resilience.ErrCircuitOpen):
+		case errors.Is(err, chain.ErrCircuitOpen):
 			http.Error(w, "service unavailable", http.StatusServiceUnavailable)
 		default: // ErrRateLimited, ErrBulkheadFull
 			http.Error(w, "too many requests", http.StatusTooManyRequests)

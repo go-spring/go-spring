@@ -140,8 +140,8 @@ skipped gracefully when docker is absent.
 
 ```go
 type Source interface {
-    Snapshot() Config                  // latest committed value; zero Config before any push
-    Subscribe(cb func(Config))         // invoked with each new config after it commits
+    Snapshot() Config                                    // latest committed value; zero Config before any push
+    Subscribe(cb func(ctx context.Context, cfg Config))  // invoked with each new config after it commits
 }
 ```
 

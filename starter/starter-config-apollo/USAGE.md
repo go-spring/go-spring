@@ -188,7 +188,7 @@ ignores to avoid double-firing a full refresh per publish:
 Apollo publish → agollo long-poll fires ChangeEvent / FullChangeEvent
   → apolloListener.OnChange (OnNewestChange is a no-op)         starter.go
     → apolloCtrl.TriggerRefresh                                 starter.go
-      → gs.RefreshProperties()                                  gs_app/app.go
+      → gs.RefreshProperties(ctx)                                  gs_app/app.go
         → App.RefreshProperties: guard "app not started yet", then
           reload ALL sources (files, env, cmd args, every import), merge by
           layer priority, propagate to the container             gs_app/app.go
@@ -198,7 +198,7 @@ Apollo publish → agollo long-poll fires ChangeEvent / FullChangeEvent
 Two properties of this path worth knowing:
 
 - **No-op before start.** Events arriving before the app has started hit a
-  `gs.RefreshProperties()` that returns an error and are dropped harmlessly
+  `gs.RefreshProperties(ctx)` that returns an error and are dropped harmlessly
   (pinned by `TestListenerChangeFiresRefresh`, `starter_test.go`) — the
   initial load already captured the state (`starter.go`).
 - **Whole-app refresh, not per-namespace.** One changed key triggers a reload of

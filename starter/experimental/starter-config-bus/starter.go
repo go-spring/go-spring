@@ -134,8 +134,9 @@ type ConfigBus struct {
 
 	// refresh is the property-refresh entry point, held as a field so tests can
 	// drive onMessage without a running application. The metrics come from the
-	// package-wide instrument set (see observe.go).
-	refresh func(refreshID string) error
+	// package-wide instrument set (see observe.go). It receives onMessage's
+	// context, which carries the publisher's trace from the consumer span.
+	refresh func(ctx context.Context) error
 }
 
 // Init prepares the bus and starts its listener: it resolves the publisher
@@ -196,7 +197,10 @@ func (b *ConfigBus) onMessage(ctx context.Context, m *nats.Msg) error {
 		return nil
 	}
 	start := time.Now()
-	if err := b.refresh("config-bus:" + b.origin); err != nil {
+	// The consumer span opened by Conn.Consume is this path's identity: ctx
+	// carries the publisher's trace, so the refresh logs join that trace
+	// instead of a locally minted id.
+	if err := b.refresh(ctx); err != nil {
 		b.record(ctx, outcomeRefreshError, ev, time.Since(start), err)
 		return err
 	}

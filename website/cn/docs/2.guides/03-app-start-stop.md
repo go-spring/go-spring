@@ -328,7 +328,7 @@ Go-Spring 的日志系统是单独设计的，
 容器启动前，Go-Spring 会先注册一些内置 Bean：
 
 - `ContextProvider`：用于获取应用的 root context。
-- `PropertiesRefresher`：用于触发动态配置刷新。
+- `gs.RefreshProperties(ctx)`：包级门面，用于触发动态配置刷新（无需注入）。
 
 随后，容器从 Root Bean 开始递归遍历依赖图，按需创建 Bean 并完成依赖注入。
 注入完成后，容器会收集所有实现了 `Runner` 和 `Server` 接口的 Bean，供后续阶段执行。
@@ -531,17 +531,13 @@ func (s *MyService) Handle() {
 }
 ```
 
-随后可以通过 `PropertiesRefresher` 对象在运行时触发配置刷新。
+运行时任何位置都可以通过包级门面触发配置刷新；传给它的 context 承载触发点的字段。
 动态刷新仅适用于使用 `gs.Dync[T]` 声明的配置字段。
 
 ```go
-type ConfigManager struct {
-	Refresher *gs.PropertiesRefresher `autowire:""`
-}
-
-func (m *ConfigManager) ReloadConfig() error {
+func ReloadConfig(ctx context.Context) error {
 	os.Setenv("GS_SERVICE_TIMEOUT", "10s")
-	return m.Refresher.RefreshProperties()
+	return gs.RefreshProperties(ctx)
 }
 ```
 

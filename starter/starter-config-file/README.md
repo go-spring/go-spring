@@ -137,7 +137,7 @@ accepted — values are raw strings. See
   every update — which is why the watch is on the parent directory (stable)
   rather than the file itself (whose inode is swapped on each update).
 - A change fires the watcher, whose callback calls the framework's process-level
-  `gs.RefreshProperties()` facade. That reloads all configuration sources
+  `gs.RefreshProperties(ctx)` facade. That reloads all configuration sources
   (re-running this provider) and re-binds every `gs.Dync` field via a
   two-phase, atomic commit.
 

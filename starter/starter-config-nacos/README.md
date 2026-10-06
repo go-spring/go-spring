@@ -69,7 +69,7 @@ publish to hot-reload flow.
   config client from the source string, fetches the data id, and registers a
   change listener.
 - A remote change fires the listener, whose callback calls the framework's
-  process-level `gs.RefreshProperties()` facade. That reloads all configuration
+  process-level `gs.RefreshProperties(ctx)` facade. That reloads all configuration
   sources (re-running this provider) and re-binds every `gs.Dync` field via a
   two-phase, atomic commit.
 
@@ -80,7 +80,7 @@ refresh, before any bean exists, so it builds its own Nacos SDK client from the
 import string instead of receiving one through injection. Clients are cached per
 connection tuple so repeated refreshes do not leak clients and their background
 gRPC connections, and a remote change reaches the container through the
-process-level `gs.RefreshProperties()` facade rather than bean wiring.
+process-level `gs.RefreshProperties(ctx)` facade rather than bean wiring.
 
 **Config-only role — intentional.** Nacos config and Nacos naming live at
 different layers, so this starter covers the config center only — mirroring

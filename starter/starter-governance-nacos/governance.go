@@ -47,6 +47,7 @@ import (
 	"go-spring.org/cloud/governance"
 	"go-spring.org/log"
 	"go-spring.org/stdlib/errutil"
+	"go-spring.org/stdlib/randutil"
 )
 
 var starterTag = log.RegisterAppTag("governance_nacos", "")
@@ -156,7 +157,7 @@ func (s *NacosSource) Close() error {
 func (s *NacosSource) Snapshot() governance.Config { return s.push.Snapshot() }
 
 // Subscribe registers cb as the push target (the center is the only consumer).
-func (s *NacosSource) Subscribe(cb func(governance.Config)) { s.push.Subscribe(cb) }
+func (s *NacosSource) Subscribe(cb func(ctx context.Context, cfg governance.Config)) { s.push.Subscribe(cb) }
 
 // apply parses one delivered document and, when the rules actually changed,
 // pushes it. Byte-equal re-deliveries (nacos may re-push on reconnect) and bad
@@ -165,14 +166,20 @@ func (s *NacosSource) apply(data string) {
 	if data == s.doc {
 		return
 	}
+	// One delivery is one path: it starts here and continues into the center
+	// that applies it, so the delivery mints the trace_id both lines carry.
+	ctx := log.RootFields(
+		log.String("trace_id", randutil.Hex(16)),
+		log.String("group", s.src.group),
+		log.String("data_id", s.src.dataID))
 	cfg, err := governance.Parse(s.src.dataID, []byte(data), s.src.format)
 	if err != nil {
-		log.Error(context.Background(), starterTag, err, log.String("group", s.src.group), log.String("data_id", s.src.dataID), log.Msg("governance nacos source published an invalid document (keeping last good config)"))
+		log.Error(ctx, starterTag, err, log.Msg("governance nacos source published an invalid document (keeping last good config)"))
 		return
 	}
 	s.doc = data
 	if reflect.DeepEqual(s.push.Snapshot(), cfg) {
 		return
 	}
-	s.push.Push(cfg)
+	s.push.Push(ctx, cfg)
 }

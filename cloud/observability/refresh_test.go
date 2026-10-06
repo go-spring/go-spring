@@ -21,6 +21,7 @@ import (
 	"errors"
 	"testing"
 
+	"go-spring.org/log"
 	"go-spring.org/stdlib/testing/assert"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/sdk/metric"
@@ -74,15 +75,31 @@ func TestRefreshConf(t *testing.T) {
 
 	// Success path: nil passes through, fn runs exactly once, counted ok.
 	calls := 0
-	assert.That(t, RefreshConf("test", func() error { calls++; return nil })).Nil()
+	assert.That(t, RefreshConf(context.Background(), func(context.Context) error { calls++; return nil })).Nil()
 	assert.That(t, calls).Equal(1)
 
 	// Failure path: the error passes through unchanged and counts as error.
 	sentinel := errors.New("boom")
-	assert.That(t, errors.Is(RefreshConf("test", func() error { return sentinel }), sentinel)).True()
+	assert.That(t, errors.Is(RefreshConf(context.Background(), func(context.Context) error { return sentinel }), sentinel)).True()
 
 	// One ok and one error: statuses are exclusive, sum equals refreshes run.
 	got := refreshTotals(t, rdr)
 	assert.That(t, got["ok"]).Equal(int64(1))
 	assert.That(t, got["error"]).Equal(int64(1))
+}
+
+// TestRefreshConfHandsFnTheTriggerContext proves the funnel adds no identity of
+// its own: fn logs against exactly the context the trigger built, so whatever
+// the trigger named the path with is what the round's lines show.
+func TestRefreshConfHandsFnTheTriggerContext(t *testing.T) {
+	withReader(t)
+
+	var fields []log.Field
+	_ = RefreshConf(
+		log.WithFields(context.Background(), log.String("data_id", "d1"), log.String("trace_id", "t1")),
+		func(ctx context.Context) error { fields = log.CarriedFields(ctx); return nil })
+
+	assert.Number(t, len(fields)).Equal(2)
+	assert.String(t, fields[0].Key).Equal("data_id")
+	assert.String(t, fields[1].Key).Equal("trace_id")
 }

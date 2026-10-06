@@ -60,15 +60,44 @@ func WithFields(ctx context.Context, fields ...Field) context.Context {
 	}
 	// The stored slice is shared with sibling contexts derived from the same
 	// parent, so build a fresh one instead of appending in place.
-	prev := carriedFields(ctx)
+	prev := CarriedFields(ctx)
 	next := make([]Field, 0, len(prev)+len(fields))
 	next = append(next, prev...)
 	next = append(next, fields...)
 	return context.WithValue(ctx, carrierKey{}, next)
 }
 
-// carriedFields returns the fields the context carries, or nil.
-func carriedFields(ctx context.Context) []Field {
+// RootFields returns a fresh root context carrying exactly fields -- the head of
+// a path, with nothing to inherit. It is [WithFields] rooted at
+// [context.Background] rather than at an existing context, for the frame that
+// mints a path instead of extending one:
+//
+//	ctx := log.RootFields(log.String("trace_id", id), log.String("data_id", d))
+//
+// Nothing upstream is carried, so fields cannot accumulate across calls the way
+// they do down a derivation chain. With no fields it is [context.Background].
+func RootFields(fields ...Field) context.Context {
+	return WithFields(context.Background(), fields...)
+}
+
+// CarriedFields returns the fields the [WithFields] chain put on the context,
+// outermost source first, or nil when it carries none (a nil context carries
+// none either).
+//
+// It is the read side of [WithFields]: a frame that cannot derive from the
+// source context -- a long-lived context that must borrow a request's fields,
+// say -- re-roots them onto one of its own:
+//
+//	ctx = log.WithFields(appCtx, log.CarriedFields(reqCtx)...)
+//
+// Only the WithFields chain is returned. What a [Collector] has gathered is
+// bound to the request that installed it and is not carried across; what a
+// user-installed [FieldsFromContext] would contribute is not stored on the
+// context at all.
+func CarriedFields(ctx context.Context) []Field {
+	if ctx == nil {
+		return nil
+	}
 	if c, ok := ctx.Value(carrierKey{}).([]Field); ok {
 		return c
 	}
@@ -163,7 +192,7 @@ func contextFields(ctx context.Context) []Field {
 	if ctx == nil {
 		return nil
 	}
-	carried := carriedFields(ctx)
+	carried := CarriedFields(ctx)
 	collected := collectedFields(ctx)
 	if len(carried) == 0 && len(collected) == 0 {
 		return nil

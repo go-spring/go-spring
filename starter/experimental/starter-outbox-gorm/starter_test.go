@@ -17,10 +17,16 @@
 package StarterOutboxGorm
 
 import (
+	"bytes"
 	"context"
+	"errors"
+	"strings"
 	"testing"
+	"time"
 
+	"go-spring.org/cloud/experimental/outbox"
 	"go-spring.org/cloud/messaging"
+	"go-spring.org/log"
 	"go-spring.org/spring/gs"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
@@ -76,4 +82,25 @@ func newTestDBProvider() *gorm.DB {
 		panic(err)
 	}
 	return db
+}
+
+// TestLogObserverNamesTheInstance pins the observer's lines to the relay they
+// belong to: the observer is called without a context, so the constant has to
+// ride on the observer itself, and every retry/dead line names it.
+func TestLogObserverNamesTheInstance(t *testing.T) {
+	prev := log.Stdout
+	buf := bytes.NewBuffer(nil)
+	log.Stdout = buf
+	defer func() { log.Stdout = prev }()
+
+	logObserver{instance: "orders"}.OnRetry(
+		&outbox.Record{ID: 7, Destination: "nats"}, errors.New("boom"), time.Now())
+
+	out := buf.String()
+	if !strings.Contains(out, "outbox: record send failed, will retry") {
+		t.Fatalf("expected the retry line, got: %s", out)
+	}
+	if !strings.Contains(out, "instance=orders") {
+		t.Fatalf("the retry line must name its relay instance, got: %s", out)
+	}
 }

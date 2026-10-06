@@ -125,11 +125,11 @@ var currentApp atomic.Pointer[App]
 // RefreshProperties refreshes the properties of the running application and
 // propagates the changes to the IoC container. It returns an error when no
 // app has started yet (or ever, e.g. in unit tests that never call Run).
-// The refreshID names what triggered the round (source, path, revision), so
-// every log line the refresh round emits names what it is about.
-func RefreshProperties(refreshID string) error {
+// ctx carries the trigger's fields (see App.RefreshProperties); every log line
+// the refresh round emits names what it is about.
+func RefreshProperties(ctx context.Context) error {
 	if app := currentApp.Load(); app != nil {
-		return app.RefreshProperties(refreshID)
+		return app.RefreshProperties(ctx)
 	}
 	return errutil.Explain(nil, "no running app, cannot refresh properties")
 }
@@ -176,8 +176,7 @@ type App struct {
 // NewApp creates a new App instance with an initialized root context.
 func NewApp() *App {
 	// nolint: staticcheck
-	ctx := context.WithValue(context.Background(), "app", "")
-	ctx, cancel := context.WithCancel(ctx)
+	ctx, cancel := context.WithCancel(context.Background())
 	return &App{
 		c:      gs_core.New(),
 		p:      gs_conf.NewAppConfig(),
@@ -232,9 +231,10 @@ func (app *App) Provide(objOrCtor any, args ...gs.Arg) *gs_bean.BeanDefinition {
 //   - If validation fails, no partial updates are applied
 //
 // The refresh runs on the application's own context and is bounded by its
-// lifetime; the refreshID names the trigger, stamped onto that context so
-// the whole round's logs name what it is about.
-func (app *App) RefreshProperties(refreshID string) error {
+// lifetime. The fields ctx carries (the trigger's identity, e.g. trace_id)
+// are re-rooted onto that context, so the whole round's logs name what it is
+// about; ctx may be nil.
+func (app *App) RefreshProperties(ctx context.Context) error {
 	if !app.started.Load() {
 		return errutil.Explain(nil, "app not started yet, cannot refresh properties")
 	}
@@ -242,9 +242,10 @@ func (app *App) RefreshProperties(refreshID string) error {
 	defer app.refreshMu.Unlock()
 	// The refresh runs on the application's own context — bounded by the
 	// application's lifetime, so a refresh in flight when the app shuts down
-	// is aborted — with the trigger's identity stamped on top as explicit
-	// fields.
-	ctx := log.WithFields(app.ctx, log.String("refresh_id", refreshID))
+	// is aborted — with the trigger's fields re-rooted onto it, since the
+	// refresh cannot be derived from the trigger's context without losing
+	// that bound.
+	ctx = log.WithFields(app.ctx, log.CarriedFields(ctx)...)
 	p, err := app.p.Refresh(ctx)
 	if err != nil {
 		return err

@@ -136,7 +136,7 @@ gs.Run()
 
 import 在**任何 bean 装配之前**解析：所有 bean 的 `value:"${...}"` 标签绑定的是**合并后**
 的属性存储——远程 key 必须先就位，绑定才能看到。推论：provider 本身不能是注入 bean，
-它是 `init()` 里注册的包级 controller；变更时经进程级门面 `gs.RefreshProperties()`
+它是 `init()` 里注册的包级 controller；变更时经进程级门面 `gs.RefreshProperties(ctx)`
 触达刷新，完全不需要 bean 装配。app 启动前门面返回错误，提前 `TriggerRefresh`
 是安全 no-op。
 
@@ -146,8 +146,8 @@ import 在**任何 bean 装配之前**解析：所有 bean 的 `value:"${...}"` 
 Nacos 推送 dataId 变更
   └─ SDK OnChange（registerListener 安装，按 client+group+dataId 去重）
        └─ nacosCtrl.TriggerRefresh                                     starter.go:129
-            └─ gs.RefreshProperties()（app 启动前返回错误）
-                 └─ App.RefreshProperties()                            app.go:247
+            └─ gs.RefreshProperties(ctx)（app 启动前返回错误）
+                 └─ App.RefreshProperties(ctx)                            app.go:247
                       ├─ 重新加载全部来源：文件、env、命令行参数，并重放每个
                       │   spring.config.import 条目（→ 再次 nacosCtrl.Load——
                       │   这正是 listener 注册必须去重的原因；

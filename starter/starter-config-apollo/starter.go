@@ -23,7 +23,6 @@ package StarterConfigApollo
 
 import (
 	"context"
-	"fmt"
 	"net/url"
 	"path/filepath"
 	"strings"
@@ -39,6 +38,7 @@ import (
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
 	"go-spring.org/stdlib/flatten"
+	"go-spring.org/stdlib/randutil"
 )
 
 var starterTag = log.RegisterAppTag("config", "apollo")
@@ -294,15 +294,14 @@ func (c *apolloCtrl) registerListener(ctx context.Context, cli apolloClient, cs 
 type apolloListener struct{}
 
 func (l *apolloListener) OnChange(ev *agstorage.ChangeEvent) {
-	// The refresh id names the namespace this round is about; agollo hands
-	// the listener no change revision, so the namespace is the whole native
-	// identity available.
-	refreshID := fmt.Sprintf("apollo:%s", ev.Namespace)
-	log.Info(context.Background(), starterTag,
-		log.String("refresh_id", refreshID),
-		log.Msg("apollo namespace changed, triggering refresh"))
-	_ = observability.RefreshConf(refreshID, func() error {
-		return gs.RefreshProperties(refreshID)
+	// agollo hands the listener no change revision, so the namespace is the
+	// whole native identity available.
+	ctx := log.RootFields(
+		log.String("trace_id", randutil.Hex(16)),
+		log.String("namespace", ev.Namespace))
+	log.Info(ctx, starterTag, log.Msg("apollo namespace changed, triggering refresh"))
+	_ = observability.RefreshConf(ctx, func(ctx context.Context) error {
+		return gs.RefreshProperties(ctx)
 	})
 }
 

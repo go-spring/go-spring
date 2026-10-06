@@ -127,8 +127,8 @@ go run . -manual
 
 ```go
 type Source interface {
-    Snapshot() Config                       // 最近一次已提交的值；任何推送前为零值 Config
-    Subscribe(cb func(Config))              // 每个新配置提交后回调
+    Snapshot() Config                                    // 最近一次已提交的值；任何推送前为零值 Config
+    Subscribe(cb func(ctx context.Context, cfg Config))  // 每个新配置提交后回调
 }
 ```
 

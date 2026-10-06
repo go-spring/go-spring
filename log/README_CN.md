@@ -122,7 +122,15 @@ logger 的 `level` 支持两种形式：
 ctx = log.WithFields(ctx, log.String("user", u), log.String("tenant", t))
 ```
 
-`WithFields` 是**向下流动**的：内层追加的字段，外层看不到。若要在请求结束时打**一条**汇总行
+`WithFields` 是**向下流动**的：内层追加的字段，外层看不到。
+`log.RootFields(...)` 铸的是链的**起点**：一个只携带所给字段的全新 root，给那些**开启**
+一条路径的位置（后台 worker、watch 触发点）用，而不是去接续已有的链。它不继承任何上游字段，
+所以字段不会跨调用累积。
+
+```go
+ctx := log.RootFields(log.String("trace_id", id), log.String("data_id", d))
+```
+若要在请求结束时打**一条**汇总行
 （wide event 形态：handler 边执行边累积，最后一行承载结果），用 `Collector`——它是共享且可变的：
 
 ```go
@@ -137,6 +145,50 @@ log.Info(ctx, tag, col.Fields()...)
 用这样的 context 打印的每条日志都会自动带上两个通道的字段——没有任何调用点需要显式声明，
 这正是**框架自己打的日志行同样能带上**的原因。字段在写入时快照，生命周期与 context 完全一致，
 没有清理 API 需要调用。同名字段后者胜出，顺序为：`WithFields` 链 → `Collector` → `FieldsFromContext`。
+
+`log.CarriedFields(ctx)` 把 `WithFields` 链读回来，供那些无法从源 context 派生的位置，
+把它的字段搬运到另一个 context 上：
+
+```go
+// 把请求的字段搬到长生命周期的 context 上。
+ctx = log.WithFields(appCtx, log.CarriedFields(reqCtx)...)
+```
+
+它只返回 `WithFields` 链：`Collector` 的字段绑定在装载它的那个请求上，不随之传递。
+
+#### trace 身份与其 context 同寿
+
+一个后台工作单元——一次 job 运行、一次 watch 触发的刷新、一次 resolve 或 weight 更新——就是一条**路径**。
+每条路径从它起始的 context 上带一个 `trace_id`，于是它的每一行日志（包括框架自己打的）都能归回同一个故事。
+
+一个单元能从父 ctx 继承的只有两样：**取消**与**字段**。判据全在这里，它决定该伸手拿哪个构造函数：
+
+- **要取消，就派生**——`log.WithFields(parent, ...)` 并赋给新变量，id 铸在这上面。而且只能从这个单元的
+  **监督者**派生，因为父子链正是监督者的"停"能到达这个单元的途径（调度器取消在途运行）。
+- **只要身份，就起 root**——`log.RootFields(...)`，需要什么字段自己重新挂上去。不要仅为继承字段而从
+  长寿命 ctx 派生：那等于把这个单元挂到一个比它活得久的 scope 上，正是"有界"的反面。`RootFields` 是
+  一条**边界**，不是"手头没有 ctx"时的退路。
+
+身份的寿命等于 context 的寿命，其余都由此推出：
+
+- **铸在有界路径的起点。** 定时任务每跑一次得一个 id，跑一千次得一千个。id 靠**撑起一轮值得消歧的活**才挣得存在：
+  多轮交错/并发，或者这一轮的行还有下游消费者接着写。**孤零零一条诊断行**不需要它——**启动阶段的 debug 轨迹**
+  也不需要，哪怕它很长，因为它是顺序的、没有歧义：那里的 id 只是看起来像关联的噪声。反过来，**手上已有真 ctx
+  时就用它**，不要伸手去够 `context.Background()`。
+- **不铸在比这条路径活得更久的 ctx 上。** 应用根、调度器根、长生命周期循环的 ctx（discovery
+  watcher、client 缓存的 ctx）活得比任何一轮都久，铸上去就是一个 id 盖住成千上万轮互不相关的活动——
+  trace 泄露。这些 ctx 只放该对象恒定的字段。
+- **代际不是路径。** 有界但可能很长的单元——领导任期、watch 重连代际——不铸：一个 id 盖住数小时的
+  无关活动，什么也串不起来。
+- **派生，不要写回。** 绝不把每轮的 ctx 赋给共享或长生命周期的变量；也不要把路径 ctx 存进 struct，
+  或交给比这一轮活得更久的 goroutine。
+- **有 span 的地方不铸。** 进程外路径已经带着 span 给的真 `trace_id`；手铸一个会让同一个 key 出现两个值。
+  正确做法是把路径的恒定字段重新挂到 span 的 ctx 上。自己开 span 的单元同理——而当没装 tracer 时，那个 span
+  拿不出任何身份，此时这个单元才自己命名自己。
+
+本包只承载这个 id，不负责生成它：由调用方铸，用
+[`randutil.Hex(16)`](../stdlib/randutil/README_CN.md) 得到 32 个十六进制字符——与 OTel TraceID 同宽。
+空的 `RootFields()` 就是 `context.Background()`：一个纯起点，无字段也无身份。
 
 ## 日志 API
 

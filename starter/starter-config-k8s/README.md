@@ -101,7 +101,7 @@ kubectl edit configmap app-config           # change demo.message; the field hot
 - Every add/update/delete on the object triggers a full application property
   refresh, re-running the provider and propagating new values to bound
   `gs.Dync` fields. The refresh reaches the framework through the
-  process-level `gs.RefreshProperties()` facade — no autowired refresher.
+  process-level `gs.RefreshProperties(ctx)` facade — no autowired refresher.
 - The controller's `Close` — the provider lifecycle hook the runtime calls on
   shutdown — stops every informer.
 

@@ -63,13 +63,13 @@ type Demo struct {
 
 - 启动时，`spring.config.import` 会调用 `nacos` Provider：它从 source 串自建配置客户端、
   拉取 data id，并注册变更监听器。
-- 远端变更触发监听器，其回调直接调用框架的进程级门面 `gs.RefreshProperties()`：
+- 远端变更触发监听器，其回调直接调用框架的进程级门面 `gs.RefreshProperties(ctx)`：
   重新加载所有配置源（重跑本 Provider），并通过两阶段原子提交重新绑定所有
   `gs.Dync` 字段。
 
 ## 设计要点
 
-**引导期基础设施，而非 bean。** provider 运行在属性刷新阶段，早于任何 bean 存在，因此它从 import 字符串自建 Nacos SDK client，而不是通过注入获得。client 按连接元组缓存，重复刷新不会泄漏 client 及其后台 gRPC 连接；远端变更经进程级门面 `gs.RefreshProperties()` 触达容器，完全不走 bean 装配。
+**引导期基础设施，而非 bean。** provider 运行在属性刷新阶段，早于任何 bean 存在，因此它从 import 字符串自建 Nacos SDK client，而不是通过注入获得。client 按连接元组缓存，重复刷新不会泄漏 client 及其后台 gRPC 连接；远端变更经进程级门面 `gs.RefreshProperties(ctx)` 触达容器，完全不走 bean 装配。
 
 **只做配置中心是有意为之。** Nacos config 与 Nacos naming 位于不同层，因此本 starter 只承担配置中心角色——对齐 Spring Cloud Alibaba 的 `nacos-config` / `nacos-discovery` 拆分。
 

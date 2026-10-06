@@ -117,7 +117,7 @@ conf.RegisterDecryptDriver("kms", func() (decrypt.Decryptor, error) { ... })
 - 启动时 `spring.config.import` 调用 `vault` Provider：据 source 字符串建客户端、解析
   token、读取 KV secret、启动轮询 watcher。
 - secret 变更在下一次轮询被检测到，回调直接调用框架的进程级门面
-  `gs.RefreshProperties()`，重新加载所有配置源（重跑本 Provider）并通过两阶段原子提交
+  `gs.RefreshProperties(ctx)`，重新加载所有配置源（重跑本 Provider）并通过两阶段原子提交
   重绑所有 `gs.Dync` 字段。
 - 绑定过程中，任何被 `ENC(...)` / `{cipher}` 包裹的值由 `spring/conf/decrypt`
   解密。

@@ -17,9 +17,11 @@
 package governance
 
 import (
+	"context"
 	"testing"
 
 	"go-spring.org/cloud/resilience"
+	"go-spring.org/log"
 )
 
 // TestSource_PushSourceDrivesCenter covers the custom-source end-to-end path:
@@ -40,7 +42,7 @@ func TestSource_PushSourceDrivesCenter(t *testing.T) {
 
 	var got resilience.ClientPolicy
 	res.Subscribe("redis:cache", func(p resilience.ClientPolicy) { got = p })
-	src.Push(enabledTimeout(200))
+	src.Push(context.Background(), enabledTimeout(200))
 	if got.AttemptTimeout != dur(200) {
 		t.Fatalf("push should fan out: want 200ms, got %v", got.AttemptTimeout)
 	}
@@ -54,13 +56,13 @@ func TestSource_PushSourceDrivesCenter(t *testing.T) {
 func TestPushSource_Concurrent(t *testing.T) {
 	p := NewPushSource(Config{})
 	done := make(chan struct{})
-	go func() { defer close(done); p.Subscribe(func(Config) {}) }()
+	go func() { defer close(done); p.Subscribe(func(context.Context, Config) {}) }()
 	for i := range 100 {
-		p.Push(enabledTimeout(i))
+		p.Push(context.Background(), enabledTimeout(i))
 		_ = p.Snapshot()
 	}
 	<-done
-	p.Push(enabledTimeout(1))
+	p.Push(context.Background(), enabledTimeout(1))
 }
 
 // TestDestroy_ClosesCloseableSource pins Destroy's optional-close contract:
@@ -96,6 +98,25 @@ func newCloseableSource(cfg Config) *closeableSource {
 	return &closeableSource{Push: NewPushSource(cfg)}
 }
 
-func (s *closeableSource) Snapshot() Config          { return s.Push.Snapshot() }
-func (s *closeableSource) Subscribe(cb func(Config)) { s.Push.Subscribe(cb) }
-func (s *closeableSource) Close() error              { s.closed = true; return nil }
+func (s *closeableSource) Snapshot() Config                                   { return s.Push.Snapshot() }
+func (s *closeableSource) Subscribe(cb func(ctx context.Context, cfg Config)) { s.Push.Subscribe(cb) }
+func (s *closeableSource) Close() error                                       { s.closed = true; return nil }
+
+// TestPushDeliversTheChangesContext proves the change's context survives the
+// seam unchanged: the subscriber - and through it the center - logs what it did
+// about the change against the identity the source named it with.
+func TestPushDeliversTheChangesContext(t *testing.T) {
+	p := NewPushSource(Config{})
+	var got context.Context
+	p.Subscribe(func(ctx context.Context, _ Config) { got = ctx })
+
+	change := log.RootFields(log.String("trace_id", "t1"))
+	p.Push(change, enabledTimeout(100))
+
+	if got != change {
+		t.Fatal("the pushed context must reach the subscriber unchanged")
+	}
+	if fields := log.CarriedFields(got); len(fields) != 1 || fields[0].Key != "trace_id" {
+		t.Fatalf("the change's fields must ride along: %+v", fields)
+	}
+}

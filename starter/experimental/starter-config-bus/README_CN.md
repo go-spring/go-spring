@@ -78,7 +78,7 @@ _ = svc.Bus.Publish(ctx, "db")
   空前缀表示全量刷新；非空前缀允许带前缀过滤的订阅者跳过（事件前缀与某个已订阅前缀
   双向有交集即生效——`db` 订阅者会响应 `db.pool` 事件，反之亦然）。ctx 把 producer span
   挂到你的 trace 下。
-- 收到消息后，每个订阅者直接调用框架的进程级门面 `gs.RefreshProperties()`，重新加载
+- 收到消息后，每个订阅者直接调用框架的进程级门面 `gs.RefreshProperties(ctx)`，重新加载
   所有配置源，并通过两阶段原子提交重新绑定每个 `gs.Dync` 字段。
 - 总线不拥有 NATS 连接：它按实例名注入 `*StarterNats.Conn`，生命周期与关闭都交给
   `starter-nats`。

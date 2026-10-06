@@ -117,8 +117,10 @@ func (o *Relay) Init() error {
 			return err
 		}
 	}
-	o.relay = outbox.NewRelay(newStore(o.db), o.drv, o.cfg.relayConfig(), logObserver{})
-	ctx, cancel := context.WithCancel(context.Background())
+	o.relay = outbox.NewRelay(newStore(o.db), o.drv, o.cfg.relayConfig(), logObserver{instance: o.instanceName})
+	// The loop runs on a context derived from octx rather than a bare
+	// background one, so the relay's own lines name the instance too.
+	ctx, cancel := context.WithCancel(octx)
 	o.cancel, o.done = cancel, make(chan struct{})
 	go func() {
 		defer close(o.done)
@@ -156,14 +158,19 @@ func (o *Relay) Destroy() error {
 // logObserver is the default [outbox.Observer]: retries and dead letters are
 // worth a log line; successful publishes are not (the broker-side access log
 // already records them).
-type logObserver struct{}
+type logObserver struct {
+	// instance names the relay these events belong to: the observer is called
+	// without a context, so the constant has to travel on the observer itself.
+	instance string
+}
 
 // OnPublished implements [outbox.Observer].
 func (logObserver) OnPublished(rec *outbox.Record) {}
 
 // OnRetry implements [outbox.Observer].
-func (logObserver) OnRetry(rec *outbox.Record, err error, nextRetry time.Time) {
+func (o logObserver) OnRetry(rec *outbox.Record, err error, nextRetry time.Time) {
 	log.Warn(context.Background(), starterTag,
+		log.String("instance", o.instance),
 		log.Int("id", rec.ID),
 		log.String("destination", rec.Destination),
 		log.Err(err),
@@ -172,8 +179,9 @@ func (logObserver) OnRetry(rec *outbox.Record, err error, nextRetry time.Time) {
 }
 
 // OnDead implements [outbox.Observer].
-func (logObserver) OnDead(rec *outbox.Record, err error) {
+func (o logObserver) OnDead(rec *outbox.Record, err error) {
 	log.Error(context.Background(), starterTag, err,
+		log.String("instance", o.instance),
 		log.Int("id", rec.ID),
 		log.String("destination", rec.Destination),
 		log.Int("attempts", rec.Attempts+1),

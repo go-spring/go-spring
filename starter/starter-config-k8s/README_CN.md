@@ -93,7 +93,7 @@ kubectl edit configmap app-config           # 修改 demo.message；字段热更
 - provider 启动时读取一次对象，将其 `data` 展平为属性，并安装一个限定命名空间与名称的
   informer。
 - 对象的每次 add/update/delete 触发一次全局属性 refresh，重跑 provider 并把新值传播到绑定的
-  `gs.Dync` 字段。refresh 经进程级门面 `gs.RefreshProperties()` 触达框架——不再有
+  `gs.Dync` 字段。refresh 经进程级门面 `gs.RefreshProperties(ctx)` 触达框架——不再有
   autowire 注入的 refresher。
 - controller 的 `Close` —— 运行时在关停时调用的 provider 生命周期钩子 —— 停止所有 informer。
 

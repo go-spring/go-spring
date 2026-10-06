@@ -79,6 +79,7 @@
 package gs
 
 import (
+	"context"
 	"reflect"
 	"runtime"
 	"strings"
@@ -560,10 +561,11 @@ func Group[T any, R any](tag string, fn func(cp *ContextProvider, name string, c
 // infrastructure living outside the IoC container (config providers,
 // watch goroutines), which cannot use bean injection. It returns an error
 // when no app has started. The refresh runs on the application's own
-// context, bounded by its lifetime; the refreshID names the trigger, stamped
-// onto that context so the whole round's logs name what it is about.
-func RefreshProperties(refreshID string) error {
-	return gs_app.RefreshProperties(refreshID)
+// context, bounded by its lifetime; ctx carries the trigger's fields — name
+// the trigger on it (e.g. with log.WithFields) so the whole round's logs say
+// what it is about. ctx may be nil.
+func RefreshProperties(ctx context.Context) error {
+	return gs_app.RefreshProperties(ctx)
 }
 
 // AppStarted reports whether the running application has finished wiring its

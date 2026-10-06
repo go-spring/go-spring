@@ -26,6 +26,7 @@ import (
 
 	"go-spring.org/log"
 	"go-spring.org/stdlib/errutil"
+	"go-spring.org/stdlib/randutil"
 )
 
 // HTTPSource is a Source that PULLS rules from an HTTP endpoint on
@@ -85,7 +86,9 @@ func (s *HTTPSource) Start() error {
 	if s.started {
 		return nil
 	}
-	ctx, cancel := context.WithCancel(context.Background())
+	// The source's own identity rides on its loop context: the lines below name
+	// the URL without repeating it.
+	ctx, cancel := context.WithCancel(log.RootFields(log.String("url", s.url)))
 	s.cancel, s.started = cancel, true
 
 	go func() {
@@ -96,7 +99,7 @@ func (s *HTTPSource) Start() error {
 			case <-ctx.Done():
 				return
 			case <-tk.C:
-				s.poll()
+				s.poll(ctx)
 			}
 		}
 	}()
@@ -123,20 +126,24 @@ func (s *HTTPSource) Close() error {
 func (s *HTTPSource) Snapshot() Config { return s.push.Snapshot() }
 
 // Subscribe registers cb as the push target (the center is the only consumer).
-func (s *HTTPSource) Subscribe(cb func(Config)) { s.push.Subscribe(cb) }
+func (s *HTTPSource) Subscribe(cb func(ctx context.Context, cfg Config)) { s.push.Subscribe(cb) }
 
 // poll fetches once and, on a good fetch that actually changed the rules,
 // pushes it.
-func (s *HTTPSource) poll() {
-	cfg, err := s.fetch(context.Background())
+func (s *HTTPSource) poll(ctx context.Context) {
+	cfg, err := s.fetch(ctx)
 	if err != nil {
-		log.Error(context.Background(), starterTag, err, log.String("url", s.url), log.Msg("governance http source: poll failed (keeping last good config)"))
+		log.Error(ctx, starterTag, err, log.Msg("governance http source: poll failed (keeping last good config)"))
 		return
 	}
 	if reflect.DeepEqual(s.push.Snapshot(), cfg) {
 		return
 	}
-	s.push.Push(cfg)
+	// A changed document starts a path here and continues into the center that
+	// applies it: the change mints the trace_id both sides log against.
+	s.push.Push(log.RootFields(
+		log.String("trace_id", randutil.Hex(16)),
+		log.String("url", s.url)), cfg)
 }
 
 // fetch performs one GET and parses the body through the shared core.

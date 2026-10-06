@@ -299,17 +299,16 @@ func (r *etcdRegistry) etcdPublish(ctx context.Context, h *hold) (<-chan *client
 func (r *etcdRegistry) watchKeepAlive(key string, h *hold, ka <-chan *clientv3.LeaseKeepAliveResponse) {
 	// This instance's identity rides on the context for the life of the
 	// keep-alive drain: every line below carries it without repeating it. The
-	// goroutine outlives any request, so the context is minted here. The lines
-	// that log against an attempt's span re-attach these same fields to that
-	// span context, so they carry the identity and still join the trace.
-	fields := []log.Field{
+	// goroutine outlives any request, so the context is minted here, and each
+	// re-registration attempt derives from it (see the attempt below), so the
+	// attempt's span and the drain's lines carry one identity.
+	ctx := log.RootFields(
 		log.String("system", r.obs.System()),
 		log.String("center", r.obs.Center()),
 		log.String("service", h.reg.ServiceName),
 		log.String("operation", "register"),
 		log.String("reason", discovery.ReasonSelfHeal),
-	}
-	ctx := log.WithFields(context.Background(), fields...)
+	)
 	for {
 		// Drain renewals; the lease is kept alive as long as we consume them.
 		// The channel closing is the keep-alive death signal.
@@ -327,29 +326,31 @@ func (r *etcdRegistry) watchKeepAlive(key string, h *hold, ka <-chan *clientv3.L
 			if h.stopped() {
 				return
 			}
-			// The attempt's span ctx is what these lines log against, so the
-			// failure that is being retried and the span recording it are the
-			// same event in the trace, not two unconnected ones.
+			// The attempt derives from the drain's context, so its lines inherit
+			// the identity fields above and join the attempt's own span: the
+			// failure being retried and the span recording it are one event in
+			// the trace, not two unconnected ones.
 			var nka <-chan *clientv3.LeaseKeepAliveResponse
-			var spanCtx context.Context
-			err := r.obs.RegisterAttempt(context.Background(), h.reg.ServiceName, discovery.ReasonSelfHeal, func(ctx context.Context) error {
-				spanCtx = ctx
+			err := r.obs.RegisterAttempt(ctx, h.reg.ServiceName, discovery.ReasonSelfHeal, func(actx context.Context) error {
 				var err error
-				nka, err = r.etcdPublish(ctx, h)
-				return err
-			})
-			if err == nil {
-				log.Info(log.WithFields(spanCtx, fields...), starterTag,
+				nka, err = r.etcdPublish(actx, h)
+				if err != nil {
+					log.Error(actx, starterTag, err,
+						log.String("status", discovery.StatusOf(err)),
+						log.String("key", key),
+						log.String("backoff", backoff.String()),
+						log.Msg("re-register failed; retrying"))
+					return err
+				}
+				log.Info(actx, starterTag,
 					log.String("key", key),
 					log.Msg("re-registered under a new lease"))
+				return nil
+			})
+			if err == nil {
 				ka = nka
 				break
 			}
-			log.Error(log.WithFields(spanCtx, fields...), starterTag, err,
-				log.String("status", discovery.StatusOf(err)),
-				log.String("key", key),
-				log.String("backoff", backoff.String()),
-				log.Msg("re-register failed; retrying"))
 			select {
 			case <-h.done:
 				return

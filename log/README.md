@@ -152,6 +152,14 @@ ctx = log.WithFields(ctx, log.String("user", u), log.String("tenant", t))
 ```
 
 `WithFields` flows downward: a deeper frame that adds a field cannot be seen by the frame above it.
+`log.RootFields(...)` mints the other end of the chain: a fresh root carrying exactly the given
+fields, for a frame that *starts* a path (a background worker, a watch trigger) rather than
+extending one. Nothing upstream is inherited, so fields cannot accumulate across calls.
+
+```go
+ctx := log.RootFields(log.String("trace_id", id), log.String("data_id", d))
+```
+
 For a single summary line printed at the end of a request - the wide-event shape, where handlers
 accumulate as they go and one line carries the result - use a `Collector`, which is shared and
 mutable:
@@ -169,6 +177,63 @@ Every log event printed with such a context picks both channels up automatically
 to opt in, which is why framework-emitted lines carry them too. Fields are snapshotted when added,
 and live exactly as long as the context does; there is no cleanup to call. On a duplicate key the
 later source wins, in this order: `WithFields` chain → `Collector` → `FieldsFromContext`.
+
+`log.CarriedFields(ctx)` reads the `WithFields` chain back out, for a frame that cannot derive from
+the source context and must carry its fields onto another one:
+
+```go
+// Re-root a request's fields onto a long-lived context.
+ctx = log.WithFields(appCtx, log.CarriedFields(reqCtx)...)
+```
+
+It returns the chain only: a `Collector`'s fields are bound to the request that installed it and do
+not travel with the call.
+
+#### Trace identity lives as long as its context
+
+A unit of background work - one job run, one watch-triggered refresh, one resolve or weight update -
+is a *path*. Every path carries a `trace_id` from the context it starts on, so all of its lines,
+framework-emitted ones included, group back into one story.
+
+A unit inherits exactly two things from a parent context: **cancellation** and **fields**. That is
+the whole judgement, and it decides which constructor to reach for:
+
+- **Want cancellation? Derive** - `log.WithFields(parent, ...)` on a new variable, minting the id
+  there. Derive only from the unit's *supervisor*, because the parent link is what makes the
+  supervisor's stop reach the unit (a scheduler cancelling an in-flight run).
+- **Want only identity? Start a root** - `log.RootFields(...)`, re-attaching whatever fields the
+  unit needs. Never derive from a long-lived context merely to inherit its fields: that chains the
+  unit onto a scope which outlives it, the opposite of bounded. `RootFields` is a *boundary*, not
+  the fallback for a frame that happens to have no context at hand.
+
+The identity's scope is the context's lifetime, and the rest follows from it:
+
+- **Mint at the head of a bounded path.** One run of a scheduled job gets one id; a job that fires a
+  thousand times gets a thousand. An id earns its place by spanning a round worth *disambiguating*:
+  several interleaved or concurrent rounds, or a round whose lines a consumer continues. A lone
+  diagnostic line needs none - and neither does a startup phase's debug trail, which is sequential
+  and unambiguous even when it is long: an id there is noise that looks like correlation. And where
+  a real context is already in scope, log with it instead of reaching for `context.Background()`.
+- **Never mint on a context that outlives the path.** An application root, a scheduler's root, a
+  long-lived loop's context (a discovery watcher, a client's cached context) all outlive any single
+  round, so an id there covers thousands of unrelated rounds - a trace leak. Those contexts carry
+  only the fields constant for the object they describe.
+- **A generation is not a path.** Bounded but potentially very long units - a leadership term, a
+  watch's reconnect generation - get no id: one id over hours of unrelated activity correlates
+  nothing.
+- **Derive, never write back.** Never assign a per-round context into a shared or long-lived
+  variable, and never store a path context on a struct or hand it to a goroutine that outlives the
+  round.
+- **Where a span exists, do not mint.** A cross-process path already carries a real `trace_id` from
+  its span; a hand-minted one would put a second value under the same key. Re-attach the path's
+  constant fields onto the span's context instead. A unit that opens a span of its own is in the
+  same position - and when no tracer is installed, that span yields no identity at all, so the unit
+  falls back to naming itself.
+
+This package carries the id but does not invent it: the caller mints it, with
+[`randutil.Hex(16)`](../stdlib/randutil/README.md) giving 32 hex characters - the width of an OTel
+TraceID. An empty `RootFields()` is `context.Background()`: a plain starting point, no fields and no
+identity.
 
 ## Logging API
 

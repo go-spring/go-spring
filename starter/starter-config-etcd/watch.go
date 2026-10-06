@@ -18,7 +18,6 @@ package StarterConfigEtcd
 
 import (
 	"context"
-	"fmt"
 	"sync"
 	"time"
 
@@ -27,6 +26,7 @@ import (
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
 	"go-spring.org/stdlib/goutil"
+	"go-spring.org/stdlib/randutil"
 	clientv3 "go.etcd.io/etcd/client/v3"
 )
 
@@ -101,9 +101,7 @@ func (w *watchCore) registerWatch(cli etcdClient, cs configSource, optional bool
 	// The goroutine outlives this load, so it runs on the watch generation's
 	// context, not on the load's. It carries the same fields, which is what
 	// lets the loop's own lines name the key without interpolating it.
-	ctx = log.WithFields(ctx,
-		log.String("endpoint", cs.endpoint),
-		log.String("key", cs.key))
+	ctx = log.WithFields(ctx, sourceFields(cs)...)
 
 	log.Infof(ctx, starterTag, "watching etcd key for changes")
 
@@ -111,6 +109,16 @@ func (w *watchCore) registerWatch(cli etcdClient, cs configSource, optional bool
 		defer wg.Done()
 		watchLoop(ctx, cli, cs, optional, since)
 	}, goutil.InheritCancel)
+}
+
+// sourceFields names the key a watch generation is bound to. The same tuple
+// goes on the generation's context (the loop's own lines) and on the root each
+// change event mints for itself.
+func sourceFields(cs configSource) []log.Field {
+	return []log.Field{
+		log.String("endpoint", cs.endpoint),
+		log.String("key", cs.key),
+	}
 }
 
 // failLogInterval is the alarm cadence: a sustained failure re-warns about this
@@ -149,23 +157,20 @@ func watchLoop(wctx context.Context, cli etcdClient, cs configSource, optional b
 
 	// fire stamps the trigger with the change's identity (which key, which
 	// etcd revision) so the refresh records logged and metered by
-	// observability.RefreshConf carry what this round is about. The
-	// revision doubles as the refresh identifier: it is unique per key
-	// change within etcd, so two refreshes from the same key are
-	// distinguishable. A generation canceled before the trigger means the
-	// application is shutting down; drop the change instead of stalling
-	// Close's join with a pointless refresh.
+	// observability.RefreshConf carry what this round is about. A generation
+	// canceled before the trigger means the application is shutting down; drop
+	// the change instead of stalling Close's join with a pointless refresh.
 	fire := func(rev int64) {
 		if wctx.Err() != nil {
 			return
 		}
-		refreshID := fmt.Sprintf("etcd:%s@%d", cs.key, rev)
-		log.Info(wctx, starterTag,
-			log.String("refresh_id", refreshID),
-			log.Msg("etcd key changed, triggering refresh"))
+		ctx := log.RootFields(append(sourceFields(cs),
+			log.String("trace_id", randutil.Hex(16)),
+			log.Int("mod_revision", rev))...)
+		log.Info(ctx, starterTag, log.Msg("etcd key changed, triggering refresh"))
 
-		_ = observability.RefreshConf(refreshID, func() error {
-			return gs.RefreshProperties(refreshID)
+		_ = observability.RefreshConf(ctx, func(ctx context.Context) error {
+			return gs.RefreshProperties(ctx)
 		})
 	}
 

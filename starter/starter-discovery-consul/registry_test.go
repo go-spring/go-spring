@@ -82,7 +82,7 @@ func TestReRegister(t *testing.T) {
 	// An unknown id is a no-op (the instance was deregistered; the heartbeat's
 	// recovery path must not resurrect it).
 	r := &consulRegistry{heartbeats: map[string]chan struct{}{}, regs: map[string]discovery.Instance{}}
-	assert.Error(t, r.reRegister("orders-1.2.3.4:80")).Nil()
+	assert.Error(t, r.reRegister(context.Background(), "orders-1.2.3.4:80")).Nil()
 
 	// A known id attempts the upsert against the (here unreachable) agent: a
 	// connection error proves the recovery path actually re-registers rather
@@ -157,7 +157,7 @@ func TestSelfHealIsReported(t *testing.T) {
 
 	// The agent is unreachable: the escalation fails and the instance is no
 	// longer discoverable, which is the state worth alerting on.
-	assert.Error(t, r.reRegister(id)).NotNil()
+	assert.Error(t, r.reRegister(context.Background(), id)).NotNil()
 	assert.Number(t, sumValue(t, "discovery.registration.attempts_total", map[string]string{
 		"system": obsSystem, "service": "payments",
 		"reason": discovery.ReasonSelfHeal, "status": "failed",
@@ -166,7 +166,7 @@ func TestSelfHealIsReported(t *testing.T) {
 
 	// The agent comes back: the same escalation succeeds and the gauge clears.
 	r.client = reachableClient(t)
-	assert.Error(t, r.reRegister(id)).Nil()
+	assert.Error(t, r.reRegister(context.Background(), id)).Nil()
 	assert.Number(t, sumValue(t, "discovery.registration.attempts_total", map[string]string{
 		"system": obsSystem, "service": "payments",
 		"reason": discovery.ReasonSelfHeal, "status": "ok",

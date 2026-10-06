@@ -146,12 +146,12 @@ gs.Run() → App.Start()                                                (app.go:
   4. app.started = true → RefreshProperties becomes legal               (app.go:309)
   5. Runners, Servers, readiness
   └─ on any watched-directory event: watchLoop → observability.RefreshConf
-       → gs.RefreshProperties(): reload ALL sources, merge by
+       → gs.RefreshProperties(ctx): reload ALL sources, merge by
          priority, update every gs.Dync field atomically               (app.go:247)
 ```
 
 Why the controller needs no bean although config loads pre-bean: the watch callback
-reaches the refresh through the process-level `gs.RefreshProperties()` facade, which
+reaches the refresh through the process-level `gs.RefreshProperties(ctx)` facade, which
 returns an error before the app has started, so the refresh is deliberately a
 no-op pre-start — early watch events are dropped harmlessly because the startup load
 just captured the state. This is why both providers hang off ONE controller singleton.

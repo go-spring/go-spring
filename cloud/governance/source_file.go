@@ -26,6 +26,7 @@ import (
 	"github.com/fsnotify/fsnotify"
 	"go-spring.org/log"
 	"go-spring.org/stdlib/errutil"
+	"go-spring.org/stdlib/randutil"
 )
 
 // FileSource is a Source backed by ONE standalone rules file — the
@@ -93,7 +94,9 @@ func (s *FileSource) Start() error {
 	}
 	s.watcher = w
 
-	go s.watchLoop(w)
+	// The source's own identity rides on its loop context: the lines below name
+	// the file without repeating it.
+	go s.watchLoop(w, log.RootFields(log.String("path", s.path)))
 	return nil
 }
 
@@ -122,7 +125,7 @@ func (s *FileSource) Close() error {
 // watchLoop coalesces directory events into reloads. Reacting to every event
 // (not just the rules file's name) is deliberate: an atomic-rename update
 // surfaces as events on temp names or the "..data" symlink, not on the file.
-func (s *FileSource) watchLoop(w *fsnotify.Watcher) {
+func (s *FileSource) watchLoop(w *fsnotify.Watcher, ctx context.Context) {
 	for {
 		select {
 		case <-s.stopped:
@@ -131,7 +134,7 @@ func (s *FileSource) watchLoop(w *fsnotify.Watcher) {
 			if !ok {
 				return
 			}
-			s.reload()
+			s.reload(ctx)
 		case _, ok := <-w.Errors:
 			if !ok {
 				return
@@ -144,21 +147,25 @@ func (s *FileSource) watchLoop(w *fsnotify.Watcher) {
 func (s *FileSource) Snapshot() Config { return s.push.Snapshot() }
 
 // Subscribe registers cb as the push target (the center is the only consumer).
-func (s *FileSource) Subscribe(cb func(Config)) { s.push.Subscribe(cb) }
+func (s *FileSource) Subscribe(cb func(ctx context.Context, cfg Config)) { s.push.Subscribe(cb) }
 
 // reload re-reads and re-parses the file; on success it pushes the new config
 // (skipping no-op re-deliveries of an identical one). On failure it keeps the
 // last good snapshot and logs.
-func (s *FileSource) reload() {
+func (s *FileSource) reload(ctx context.Context) {
 	cfg, err := s.load()
 	if err != nil {
-		log.Error(context.Background(), starterTag, err, log.String("path", s.path), log.Msg("governance file source: reload failed (keeping last good config)"))
+		log.Error(ctx, starterTag, err, log.Msg("governance file source: reload failed (keeping last good config)"))
 		return
 	}
 	if reflect.DeepEqual(s.push.Snapshot(), cfg) {
 		return // a touch that did not change the rules pushes nothing
 	}
-	s.push.Push(cfg)
+	// A changed document starts a path here and continues into the center that
+	// applies it: the change mints the trace_id both sides log against.
+	s.push.Push(log.RootFields(
+		log.String("trace_id", randutil.Hex(16)),
+		log.String("path", s.path)), cfg)
 }
 
 // load reads and parses the rules file into a Config through the

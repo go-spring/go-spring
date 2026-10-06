@@ -169,15 +169,26 @@ func (r *consulRegistry) Register(ctx context.Context, reg discovery.Instance) e
 // agent restarted and lost it — UpdateTTL alone can never recover (the check
 // is gone), while ServiceRegister recreates service and check, after which the
 // regular TTL passes keep it alive again.
-func (r *consulRegistry) reRegister(id string) error {
+func (r *consulRegistry) reRegister(ctx context.Context, id string) error {
 	r.mu.Lock()
 	reg, ok := r.regs[id]
 	r.mu.Unlock()
 	if !ok {
 		return nil
 	}
-	return r.obs.RegisterAttempt(context.Background(), reg.ServiceName, discovery.ReasonSelfHeal, func(context.Context) error {
-		return r.upsert(reg)
+	// The attempt derives from the heartbeat's context, so its line inherits the
+	// instance's fields and joins the attempt's own span: the retry being
+	// reported and the span recording it are one event in the trace, not two
+	// unconnected ones.
+	return r.obs.RegisterAttempt(ctx, reg.ServiceName, discovery.ReasonSelfHeal, func(actx context.Context) error {
+		err := r.upsert(reg)
+		if err != nil {
+			log.Error(actx, starterTag, err,
+				log.String("id", id),
+				log.String("status", discovery.StatusOf(err)),
+				log.Msg("consul re-register failed; the heartbeat retries it"))
+		}
+		return err
 	})
 }
 
@@ -290,13 +301,9 @@ func (r *consulRegistry) heartbeat(id, service string, stop <-chan struct{}) {
 					log.Int("failures", failures),
 					log.Msg("consul TTL heartbeat failed repeatedly; re-registering the service to recover"))
 				// Re-register (upsert) instead of only logging: recreates the
-				// service and check if Consul already dropped them.
-				if rerr := r.reRegister(id); rerr != nil {
-					log.Error(ctx, starterTag, rerr,
-						log.String("id", id),
-						log.String("status", discovery.StatusOf(rerr)),
-						log.Msg("consul re-register failed; the heartbeat retries it"))
-				}
+				// service and check if Consul already dropped them. The attempt
+				// reports its own outcome against its span.
+				_ = r.reRegister(ctx, id)
 			} else {
 				log.Warn(ctx, starterTag,
 					log.String("status", discovery.StatusOf(err)),

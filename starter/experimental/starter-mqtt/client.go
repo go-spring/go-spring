@@ -105,11 +105,24 @@ func (s *subscriber) Subscribe(_ context.Context, handler messaging.Handler) err
 		// pass-through when governance is off for this client, a rejection
 		// sentinel when rate-limited/circuit-open. The paho callback is
 		// fire-and-forget, so a handler error is only logged.
-		if err := GuardedConsume(context.Background(), s.cl, m, func(ctx context.Context) error {
+		var attemptCtx context.Context
+		err := GuardedConsume(context.Background(), s.cl, m, func(ctx context.Context) error {
+			attemptCtx = ctx
 			return handler(ctx, msg)
-		}); err != nil {
-			log.Error(context.Background(), log.TagAppDef, err, log.String("topic", m.Topic()), log.Msg("mqtt driver handler failed"))
+		})
+		if err == nil {
+			return
 		}
+		// The failure line is the attempt's own: it joins the span and access
+		// log the seam emitted for this message, rather than sitting outside
+		// them. A rejection that never reached the handler has no attempt
+		// context, and the message's topic was never named on one either, so
+		// that case keeps the bare line.
+		ctx := attemptCtx
+		if ctx == nil {
+			ctx = context.Background()
+		}
+		log.Error(ctx, log.TagAppDef, err, log.String("topic", m.Topic()), log.Msg("mqtt driver handler failed"))
 	})
 	token.Wait()
 	return token.Error()

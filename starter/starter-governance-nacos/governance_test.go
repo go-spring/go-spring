@@ -17,6 +17,7 @@
 package StarterGovernanceNacos
 
 import (
+	"context"
 	"sync"
 	"testing"
 	"time"
@@ -103,7 +104,7 @@ func TestNacosSource_PushChain(t *testing.T) {
 	var mu sync.Mutex
 	var pushes int
 	var pushed governance.Config
-	src.Subscribe(func(cfg governance.Config) { mu.Lock(); pushed = cfg; pushes++; mu.Unlock() })
+	src.Subscribe(func(_ context.Context, cfg governance.Config) { mu.Lock(); pushed = cfg; pushes++; mu.Unlock() })
 
 	if cfg := src.Snapshot(); cfg.Client.Default.AttemptTimeout != 100*time.Millisecond {
 		t.Fatalf("seed snapshot: %+v", cfg.Client.Default)
