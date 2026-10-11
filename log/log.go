@@ -127,112 +127,85 @@ func getLogger(tag *Tag) Logger {
 }
 
 // Trace logs a message at TraceLevel using a lazy field generator.
+// The msg parameter must be a constant string without formatting verbs;
+// put variable data into fields returned by the generator instead.
 // The generator function is only invoked if the level is enabled.
-func Trace(ctx context.Context, tag *Tag, fn func() []Field) {
+func Trace(ctx context.Context, tag *Tag, msg string, fn func() []Field) {
 	if l := getLogger(tag); l.GetLevel().Enable(TraceLevel) {
-		record(ctx, TraceLevel, tag.tag, l, 2, fn()...)
-	}
-}
-
-// Tracef logs a formatted message at TraceLevel.
-func Tracef(ctx context.Context, tag *Tag, format string, args ...any) {
-	if l := getLogger(tag); l.GetLevel().Enable(TraceLevel) {
-		record(ctx, TraceLevel, tag.tag, l, 2, Msgf(format, args...))
+		var fields []Field
+		if fn != nil {
+			fields = fn()
+		}
+		record(ctx, TraceLevel, tag.tag, l, 2, append([]Field{Msg(msg)}, fields...)...)
 	}
 }
 
 // Debug logs a message at DebugLevel using a lazy field generator.
+// The msg parameter must be a constant string without formatting verbs;
+// put variable data into fields returned by the generator instead.
 // The generator function is only invoked if the level is enabled.
-func Debug(ctx context.Context, tag *Tag, fn func() []Field) {
+func Debug(ctx context.Context, tag *Tag, msg string, fn func() []Field) {
 	if l := getLogger(tag); l.GetLevel().Enable(DebugLevel) {
-		record(ctx, DebugLevel, tag.tag, l, 2, fn()...)
+		var fields []Field
+		if fn != nil {
+			fields = fn()
+		}
+		record(ctx, DebugLevel, tag.tag, l, 2, append([]Field{Msg(msg)}, fields...)...)
 	}
 }
 
-// Debugf logs a formatted message at DebugLevel.
-func Debugf(ctx context.Context, tag *Tag, format string, args ...any) {
-	if l := getLogger(tag); l.GetLevel().Enable(DebugLevel) {
-		record(ctx, DebugLevel, tag.tag, l, 2, Msgf(format, args...))
-	}
-}
-
-// Info logs structured fields at InfoLevel.
-func Info(ctx context.Context, tag *Tag, fields ...Field) {
+// Info logs a message with structured fields at InfoLevel.
+// The msg parameter must be a constant string without formatting verbs;
+// put variable data into fields instead.
+func Info(ctx context.Context, tag *Tag, msg string, fields ...Field) {
 	if l := getLogger(tag); l.GetLevel().Enable(InfoLevel) {
+		fields = append([]Field{Msg(msg)}, fields...)
 		record(ctx, InfoLevel, tag.tag, l, 2, fields...)
 	}
 }
 
-// Infof logs a formatted message at InfoLevel.
-func Infof(ctx context.Context, tag *Tag, format string, args ...any) {
-	if l := getLogger(tag); l.GetLevel().Enable(InfoLevel) {
-		record(ctx, InfoLevel, tag.tag, l, 2, Msgf(format, args...))
-	}
-}
-
-// Warn logs structured fields at WarnLevel.
-func Warn(ctx context.Context, tag *Tag, fields ...Field) {
+// Warn logs a message with structured fields at WarnLevel.
+// The msg parameter must be a constant string without formatting verbs;
+// put variable data into fields instead.
+func Warn(ctx context.Context, tag *Tag, msg string, fields ...Field) {
 	if l := getLogger(tag); l.GetLevel().Enable(WarnLevel) {
+		fields = append([]Field{Msg(msg)}, fields...)
 		record(ctx, WarnLevel, tag.tag, l, 2, fields...)
 	}
 }
 
-// Warnf logs a formatted message at WarnLevel.
-func Warnf(ctx context.Context, tag *Tag, format string, args ...any) {
-	if l := getLogger(tag); l.GetLevel().Enable(WarnLevel) {
-		record(ctx, WarnLevel, tag.tag, l, 2, Msgf(format, args...))
-	}
-}
-
-// Error logs an error at ErrorLevel. A non-nil err is emitted under the fixed
-// error key; a nil err emits no error field.
-func Error(ctx context.Context, tag *Tag, err error, fields ...Field) {
+// Error logs an error with a message and structured fields at ErrorLevel.
+// A non-nil err is emitted under the fixed error key; a nil err emits no error
+// field. The msg parameter must be a constant string without formatting verbs;
+// put variable data into fields instead.
+func Error(ctx context.Context, tag *Tag, err error, msg string, fields ...Field) {
 	if l := getLogger(tag); l.GetLevel().Enable(ErrorLevel) {
 		if err != nil {
-			fields = append([]Field{Err(err)}, fields...)
+			fields = append([]Field{Err(err), Msg(msg)}, fields...)
+		} else {
+			fields = append([]Field{Msg(msg)}, fields...)
 		}
 		record(ctx, ErrorLevel, tag.tag, l, 2, fields...)
 	}
 }
 
-// Errorf logs an error with a formatted message at ErrorLevel. A non-nil err
-// is emitted under the fixed error key; a nil err emits no error field.
-func Errorf(ctx context.Context, tag *Tag, err error, format string, args ...any) {
-	if l := getLogger(tag); l.GetLevel().Enable(ErrorLevel) {
-		if err != nil {
-			fields := append([]Field{Err(err)}, Msgf(format, args...))
-			record(ctx, ErrorLevel, tag.tag, l, 2, fields...)
-			return
-		}
-		record(ctx, ErrorLevel, tag.tag, l, 2, Msgf(format, args...))
-	}
-}
-
-// Panic logs structured fields at PanicLevel.
-func Panic(ctx context.Context, tag *Tag, fields ...Field) {
+// Panic logs a message with structured fields at PanicLevel.
+// The msg parameter must be a constant string without formatting verbs;
+// put variable data into fields instead.
+func Panic(ctx context.Context, tag *Tag, msg string, fields ...Field) {
 	if l := getLogger(tag); l.GetLevel().Enable(PanicLevel) {
+		fields = append([]Field{Msg(msg)}, fields...)
 		record(ctx, PanicLevel, tag.tag, l, 2, fields...)
 	}
 }
 
-// Panicf logs a formatted message at PanicLevel.
-func Panicf(ctx context.Context, tag *Tag, format string, args ...any) {
-	if l := getLogger(tag); l.GetLevel().Enable(PanicLevel) {
-		record(ctx, PanicLevel, tag.tag, l, 2, Msgf(format, args...))
-	}
-}
-
-// Fatal logs structured fields at FatalLevel.
-func Fatal(ctx context.Context, tag *Tag, fields ...Field) {
+// Fatal logs a message with structured fields at FatalLevel.
+// The msg parameter must be a constant string without formatting verbs;
+// put variable data into fields instead.
+func Fatal(ctx context.Context, tag *Tag, msg string, fields ...Field) {
 	if l := getLogger(tag); l.GetLevel().Enable(FatalLevel) {
+		fields = append([]Field{Msg(msg)}, fields...)
 		record(ctx, FatalLevel, tag.tag, l, 2, fields...)
-	}
-}
-
-// Fatalf logs a formatted message at FatalLevel.
-func Fatalf(ctx context.Context, tag *Tag, format string, args ...any) {
-	if l := getLogger(tag); l.GetLevel().Enable(FatalLevel) {
-		record(ctx, FatalLevel, tag.tag, l, 2, Msgf(format, args...))
 	}
 }
 

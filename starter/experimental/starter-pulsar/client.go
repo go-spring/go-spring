@@ -44,7 +44,7 @@ var metricsServers sync.Map // pulsar.Client -> *http.Server
 // When a resilience executor is attached its Close releases any background
 // resources of a production driver.
 func destroyClient(cl pulsar.Client) error {
-	closeResilience(cl)
+	forgetObserver(cl)
 	cl.Close()
 	shutdownMetrics(cl)
 	return nil
@@ -56,7 +56,7 @@ func destroyClient(cl pulsar.Client) error {
 func shutdownMetrics(cl pulsar.Client) {
 	if v, ok := metricsServers.LoadAndDelete(cl); ok {
 		if err := v.(*http.Server).Shutdown(context.Background()); err != nil {
-			log.Warn(context.Background(), log.TagAppDef, log.Err(err), log.Msg("pulsar: metrics server shutdown failed"))
+			log.Warn(context.Background(), log.TagAppDef, "pulsar: metrics server shutdown failed", log.Err(err))
 		}
 	}
 }

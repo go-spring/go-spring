@@ -42,10 +42,11 @@ type CommandHandler func(
 //     that must neither start a span nor consume a breaker permit).
 //
 // Conn's own capabilities are expressed as interceptors too: the command path
-// is user interceptors (outermost) → observe span → resilience executor → the
-// inner call. Because user layers sit outside the executor, a short-circuit
-// does NOT count toward the circuit breaker / rate limiter and does NOT emit a
-// span; an observer-style layer that wants the command to count must call next.
+// is user interceptors (outermost) → resilience executor (declaration +
+// emission) → the inner call. Because user layers sit outside the executor, a
+// short-circuit does NOT count toward the circuit breaker / rate limiter and
+// does NOT emit a span; an observer-style layer that wants the command to count
+// must call next.
 //
 // Compose via [Pool.UseCommandInterceptor]; the FIRST registered interceptor is
 // the OUTERMOST layer.
@@ -53,10 +54,10 @@ type CommandInterceptor func(next CommandHandler) CommandHandler
 
 // Conn wraps a redis.Conn so every command flows through an interceptor chain
 // assembled once at construction (see Pool.wrapConn): user interceptors (via
-// [Pool.UseCommandInterceptor], first-registered outermost), then the observe
-// layer (trace span + duration metric + access log, see observe.go), then the
-// resilience layer (executor), then the inner call — all uniform
-// [CommandInterceptor] layers. Conn itself holds only the composed wrap.
+// [Pool.UseCommandInterceptor], first-registered outermost), then the resilience
+// layer (declaration + emission: trace span + duration metric + access log, see
+// observe.go), then the inner call — all uniform [CommandInterceptor] layers.
+// Conn itself holds only the composed wrap.
 //
 // It implements the optional DoContext / DoWithTimeout interfaces so the wrapper
 // is transparent to type-asserting helpers (redis.DoContext etc.): when the
@@ -78,7 +79,7 @@ type CommandInterceptor func(next CommandHandler) CommandHandler
 type Conn struct {
 	redis.Conn
 	// wrap is the command chain composed once at construction
-	// (user → observe → resilience). nil when every layer is disabled — then a
+	// (user → resilience). nil when every layer is disabled — then a
 	// command IS the inner call, with zero wrapper overhead.
 	wrap CommandInterceptor
 }
@@ -160,11 +161,16 @@ func (c *Conn) run(ctx context.Context, cmd string, args []interface{},
 	return h(ctx, cmd, args)
 }
 
-// resilienceInterceptor is the resilience layer of the command chain: it runs
-// next under the executor (circuit breaker / rate limiter / bulkhead / retry).
-// The executor derives its per-attempt context from ctx; the inner call receives
-// that attempt context, which only DoContext threads through (the others ignore
-// it — redigo's Do and DoWithTimeout take no context).
+// resilienceInterceptor is the single command-chain layer: it builds the
+// command's identity (see opFor in observe.go) and runs next under the executor
+// (circuit breaker / rate limiter / bulkhead / retry), passing the op explicitly
+// so the executor both governs and emits from it. The executor derives its
+// per-attempt context from ctx; the inner call receives that attempt context,
+// which only DoContext threads through (the others ignore it — redigo's Do and
+// DoWithTimeout take no context).
+//
+// A skipped command (skipOps) declares the zero Operation and is reported as an
+// "undeclared" call, exactly as before.
 //
 // redis.ErrNil (a cache miss) is mapped to success so it never trips the
 // breaker — the redigo analog of gorm.ErrRecordNotFound; protection rejections
@@ -174,7 +180,7 @@ func (c *Conn) run(ctx context.Context, cmd string, args []interface{},
 func resilienceInterceptor(exec chain.Executor, service string) CommandInterceptor {
 	return func(next CommandHandler) CommandHandler {
 		return func(ctx context.Context, cmd string, args []interface{}) (interface{}, error) {
-			return resilience.Run(ctx, exec,
+			return resilience.Run(ctx, exec, opFor(cmd, args),
 				func(attemptCtx context.Context) (interface{}, error) {
 					return next(attemptCtx, cmd, args)
 				}, resilience.Tolerate(redis.ErrNil))

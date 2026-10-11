@@ -173,7 +173,7 @@ func (c *consulCtrl) clientFor(ctx context.Context, cs configSource) (consulClie
 	if err != nil {
 		return nil, errutil.Explain(err, "create consul client for %s failed", cs.address)
 	}
-	log.Infof(ctx, starterTag, "create consul client success")
+	log.Info(ctx, starterTag, "create consul client success")
 	kv := raw.KV()
 	c.clients[key] = kv
 	return kv, nil
@@ -186,9 +186,8 @@ func (c *consulCtrl) clientFor(ctx context.Context, cs configSource) (consulClie
 func (c *consulCtrl) Load(ctx context.Context, optional bool, source string) (map[string]string, error) {
 	cs, err := parseSource(source)
 	if err != nil {
-		log.Error(ctx, starterTag, err,
-			log.String("source", redactSource(source)),
-			log.Msg("parse consul source failed"))
+		log.Error(ctx, starterTag, err, "parse consul source failed",
+			log.String("source", redactSource(source)))
 		return nil, err
 	}
 
@@ -202,11 +201,11 @@ func (c *consulCtrl) Load(ctx context.Context, optional bool, source string) (ma
 		log.String("datacenter", cs.datacenter),
 	)
 
-	log.Debugf(ctx, starterTag, "loading consul config")
+	log.Debug(ctx, starterTag, "loading consul config", nil)
 
 	cli, err := c.clientFor(ctx, cs)
 	if err != nil {
-		log.Errorf(ctx, starterTag, err, "create consul client failed")
+		log.Error(ctx, starterTag, err, "create consul client failed")
 		return nil, err
 	}
 
@@ -235,39 +234,38 @@ func loadFromClient(ctx context.Context, cli consulClient, cs configSource, opti
 	}
 	if err != nil {
 		if optional {
-			log.Warn(ctx, starterTag,
-				log.Err(err),
-				log.Msg("skip optional config get kv failed"))
+			log.Warn(ctx, starterTag, "skip optional config get kv failed",
+				log.Err(err))
 			return nil, since, nil
 		}
-		log.Errorf(ctx, starterTag, err, "get consul kv failed")
+		log.Error(ctx, starterTag, err, "get consul kv failed")
 		return nil, since, errutil.Explain(err, "get consul kv %s failed", cs.kvPath)
 	}
 	if pair == nil {
 		if optional {
-			log.Warnf(ctx, starterTag, "skip optional config kv not found")
+			log.Warn(ctx, starterTag, "skip optional config kv not found")
 			return nil, since, nil
 		}
 		err := errutil.Explain(nil, "consul kv %s not found", cs.kvPath)
-		log.Errorf(ctx, starterTag, err, "consul kv not found")
+		log.Error(ctx, starterTag, err, "consul kv not found")
 		return nil, since, err
 	}
 	if len(pair.Value) == 0 {
 		if optional {
-			log.Warnf(ctx, starterTag, "skip optional config kv is empty")
+			log.Warn(ctx, starterTag, "skip optional config kv is empty")
 			return nil, since, nil
 		}
 		err := errutil.Explain(nil, "consul kv %s is empty", cs.kvPath)
-		log.Errorf(ctx, starterTag, err, "consul kv is empty")
+		log.Error(ctx, starterTag, err, "consul kv is empty")
 		return nil, since, err
 	}
 
 	m, err := reader.Read(cs.format, pair.Value)
 	if err != nil {
-		log.Errorf(ctx, starterTag, err, "parse consul kv failed")
+		log.Error(ctx, starterTag, err, "parse consul kv failed")
 		return nil, since, errutil.Explain(err, "parse consul kv %s as %s failed", cs.kvPath, cs.format)
 	}
 
-	log.Infof(ctx, starterTag, "load consul config success")
+	log.Info(ctx, starterTag, "load consul config success")
 	return flatten.Flatten(m), since, nil
 }

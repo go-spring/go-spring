@@ -14,16 +14,16 @@
  * limitations under the License.
  */
 
-// observe.go declares what a webhook delivery IS. The signals themselves — the
-// span, the duration metrics, the access log — are emitted by the resilience
-// layer, the one place on the executor chain that sees a whole call (retries
-// included). This file therefore holds no emission code: only the vocabulary
-// that this starter alone knows, because only it knows these calls are an
-// outbound notification to a chat-platform receiver.
+// observe.go is what a webhook delivery's observability IS: the operation
+// vocabulary this starter alone knows, plus the emission it drives itself.
 //
-// The vocabulary is the messaging family's: a delivery is a producer publish to
-// a fixed external receiver (the span is a producer kind and the system is
-// "webhook"), so messaging.system / messaging.operation describe it faithfully,
+// A delivery does not go through the resilience executor — its transport has no
+// seam for one — so this starter emits its own signals through
+// [observability.OperationObserver], which produces exactly what the executor
+// path would (the same span, metric names, labels and access log) and applies no
+// governance. The vocabulary is the messaging family's: a delivery is a producer
+// publish to a fixed external receiver (the span is a producer kind and the system
+// is "webhook"), so messaging.system / messaging.operation describe it faithfully,
 // and the metric prefix is messaging.client.
 
 package StarterWebhook
@@ -31,9 +31,9 @@ package StarterWebhook
 import (
 	"net/url"
 
-	"go-spring.org/cloud/observability"
 	"go-spring.org/stdlib/strutil"
 
+	"go-spring.org/cloud/chain"
 	"go-spring.org/log"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -62,8 +62,8 @@ var accessTag = log.RegisterAppTag("webhook", "access")
 // target is exactly what makes a line worth reading, and never a label. A
 // delivery that resolves no host (an unparseable URL) carries no detail at all,
 // which is also what levels its success log at Info.
-func operation(channel, endpoint string) observability.Operation {
-	o := observability.Operation{
+func operation(channel, endpoint string) chain.Operation {
+	o := chain.Operation{
 		Name:   "webhook.send",
 		Metric: "messaging.client",
 		Attrs: []attribute.KeyValue{

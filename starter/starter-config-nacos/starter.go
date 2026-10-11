@@ -206,7 +206,7 @@ func (c *nacosCtrl) clientFor(ctx context.Context, cs configSource) (nacosClient
 	if err != nil {
 		return nil, errutil.Explain(err, "create nacos config client for %s failed", cs.server)
 	}
-	log.Infof(ctx, starterTag, "create nacos client success")
+	log.Info(ctx, starterTag, "create nacos client success")
 	c.clients[key] = cli
 	return cli, nil
 }
@@ -217,9 +217,8 @@ func (c *nacosCtrl) clientFor(ctx context.Context, cs configSource) (nacosClient
 func (c *nacosCtrl) Load(ctx context.Context, optional bool, source string) (map[string]string, error) {
 	cs, err := parseSource(source)
 	if err != nil {
-		log.Error(ctx, starterTag, err,
-			log.String("source", redactSource(source)),
-			log.Msg("parse nacos source failed"))
+		log.Error(ctx, starterTag, err, "parse nacos source failed",
+			log.String("source", redactSource(source)))
 		return nil, err
 	}
 
@@ -232,15 +231,13 @@ func (c *nacosCtrl) Load(ctx context.Context, optional bool, source string) (map
 		log.String("format", cs.format),
 		log.String("group", cs.group))
 
-	log.Debug(ctx, starterTag, func() []log.Field {
-		return []log.Field{
-			log.Msg("loading nacos config"),
-		}
+	log.Debug(ctx, starterTag, "loading nacos config", func() []log.Field {
+		return []log.Field{}
 	})
 
 	cli, err := c.clientFor(ctx, cs)
 	if err != nil {
-		log.Errorf(ctx, starterTag, err, "create nacos client failed")
+		log.Error(ctx, starterTag, err, "create nacos client failed")
 		return nil, err
 	}
 
@@ -255,30 +252,29 @@ func loadFromClient(ctx context.Context, cli nacosClient, cs configSource, optio
 	content, err := cli.GetConfig(vo.ConfigParam{DataId: cs.dataID, Group: cs.group})
 	if err != nil {
 		if optional {
-			log.Warn(ctx, starterTag,
-				log.Err(err),
-				log.Msg("skip optional config get failed"))
+			log.Warn(ctx, starterTag, "skip optional config get failed",
+				log.Err(err))
 			return nil, nil
 		}
-		log.Errorf(ctx, starterTag, err, "get nacos config failed")
+		log.Error(ctx, starterTag, err, "get nacos config failed")
 		return nil, errutil.Explain(err, "get nacos config %s/%s failed", cs.group, cs.dataID)
 	}
 	if content == "" {
 		if optional {
-			log.Warnf(ctx, starterTag, "skip optional config is empty")
+			log.Warn(ctx, starterTag, "skip optional config is empty")
 			return nil, nil
 		}
 		err := errutil.Explain(nil, "nacos config %s/%s is empty", cs.group, cs.dataID)
-		log.Errorf(ctx, starterTag, err, "nacos config is empty")
+		log.Error(ctx, starterTag, err, "nacos config is empty")
 		return nil, err
 	}
 
 	m, err := reader.Read(cs.format, []byte(content))
 	if err != nil {
-		log.Error(ctx, starterTag, err, log.String("format", cs.format), log.Msg("parse nacos config failed"))
+		log.Error(ctx, starterTag, err, "parse nacos config failed", log.String("format", cs.format))
 		return nil, errutil.Explain(err, "parse nacos config %s/%s as %s failed", cs.group, cs.dataID, cs.format)
 	}
 
-	log.Infof(ctx, starterTag, "load nacos config success")
+	log.Info(ctx, starterTag, "load nacos config success")
 	return flatten.Flatten(m), nil
 }

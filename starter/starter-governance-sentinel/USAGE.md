@@ -16,7 +16,7 @@ directory into the governance center). `init` (starter.go) calls `sentinel.InitD
 (panicking on failure — "a misconfigured environment fails loudly here rather than on first
 use", per the source comment) and contributes the backend as the `sentinel`-named
 `resilience.Driver` bean. No port, **no configuration keys of its own** — the governance
-document's `spring.governance.driver=sentinel` selects it, and policies are configured per service.
+document's `spring.resilience.driver=sentinel` selects it, and policies are configured per service.
 
 ---
 
@@ -48,9 +48,6 @@ require (
 package main
 
 import (
-    "context"
-    "errors"
-    "net"
     "net/http"
     "sync/atomic"
     "time"
@@ -62,27 +59,15 @@ import (
 
 func main() {
     driver := StarterGovernanceSentinel.NewSentinelDriver()
-    demoClientDialer(driver)
     demoComposedRetry(driver)
 }
 
-// demoClientDialer: a breaker with threshold 3 trips after three refused dials;
-// the fourth is short-circuited with the neutral ErrCircuitOpen BEFORE touching
-// the network.
-exec, _ := driver.NewExecutor("dead-service", resilience.ClientPolicy{ErrorThreshold: 3, OpenDuration: time.Minute})
-ln, _ := net.Listen("tcp", "127.0.0.1:0"); deadAddr := ln.Addr().String(); _ = ln.Close()
-base := resilience.DialFunc((&net.Dialer{Timeout: time.Second}).DialContext)
-dial := resilience.NewDialer(base, exec)
-for i := 1; i <= 3; i++ { _, err := dial(ctx, "tcp", deadAddr) /* real dial error */ }
-_, err := dial(ctx, "tcp", deadAddr)
-errors.Is(err, resilience.ErrCircuitOpen) // true — breaker open, network untouched
-
 // demoComposedRetry: flaky upstream 503s twice then succeeds — recovered within
 // the retry budget while rate limit and breaker stay transparent.
-exec2, _ := driver.NewExecutor("sentinel:test", resilience.ClientPolicy{
+exec, _ := driver.NewExecutor("sentinel:test", resilience.ClientPolicy{
     RateLimit: 100, ErrorThreshold: 10, MaxRetries: 3, Timeout: time.Second,
 })
-client := &http.Client{Transport: resilience.NewRoundTripper(http.DefaultTransport, exec2)}
+client := &http.Client{Transport: resilience.NewRoundTripper(http.DefaultTransport, exec, nil)}
 resp, _ := client.Get("http://127.0.0.1:PORT/flaky") // 200; server hit exactly 3 times
 ```
 
@@ -90,15 +75,15 @@ resp, _ := client.Get("http://127.0.0.1:PORT/flaky") // 200; server hit exactly 
 
 ```bash
 cd starter/starter-governance-sentinel/example && ./check.sh
-# expects: "client Dialer: circuit opened after 3 refused dials",
-#          "composed policy: recovered after 3 attempts ...", exit 0
+# expects: "composed policy: recovered after 3 attempts ...", exit 0
 ```
 
-The more common production path is declarative: set `spring.governance.driver=sentinel` once in the
-governance document and every client resolves through this backend — clients do not pick a
+The more common production path is declarative: set `spring.resilience.driver=sentinel` once in
+the app config and every client resolves through this backend — clients do not pick a
 driver at all: they inject the `*resilience.Manager` bean and call
-`mgr.ClientExecutorFor(system, label)` (see §2.2). With `spring.governance.driver` unset everything stays on
-the zero-dependency `default` driver.
+`mgr.ClientExecutorFor(system, label)` (see §2.2). It is a static startup key, not part
+of the governance document (the backend is fixed for the process's lifetime). With it
+unset everything stays on the zero-dependency `default` driver.
 
 ---
 
@@ -110,7 +95,7 @@ the zero-dependency `default` driver.
 import starter-governance-sentinel
   └─ init(): sentinel.InitDefault()          // panics on failure
              gs.Provide(...).Name("sentinel").Export(gs.As[resilience.Driver]())
-             // the container is the driver directory; spring.governance.driver=sentinel selects it
+             // named so spring.resilience.driver=sentinel selects it at wiring
 ```
 
 - `sentinelDriver.NewClientExecutor(service, p)` (starter.go) → `newSentinelExecutor(service, p)`
@@ -118,8 +103,8 @@ import starter-governance-sentinel
   executor with an empty per-service loaded set.
 - `sentinelDriver.NewServerExecutor(service, a)` is the INBOUND twin: sentinel keys everything by
   resource name and the route label doubles as that name, so its flow/breaker/isolation
-  primitives serve both directions unchanged — the driver projects the `ServerPolicy` onto them
-  (`a.AsPolicy()`). Sentinel's genuinely inbound-only primitives (system rules, hotspot rules)
+  primitives serve both directions unchanged — the driver maps the `ServerPolicy` through the
+  shared translation (rules.go). Sentinel's genuinely inbound-only primitives (system rules, hotspot rules)
   have no `ServerPolicy` field to arrive through yet; when they do, they land in this method.
 - sentinel keys everything by resource name — the service label doubles as that name — so
   **rules load lazily** the first time a service is seen: `ensureRules()` installs, under mutex, at most
@@ -132,7 +117,7 @@ import starter-governance-sentinel
 starter) is the single call OUTBOUND clients use — on the `*resilience.Manager` bean they
 inject. `resilience.Manager.ServerExecutorFor(system, service)` is its inbound twin, used by protocol
 starters' admission middleware; it resolves the same label in a separate lane and builds through
-`Driver.NewServerExecutor` instead of `Driver.NewClientExecutor`, so `spring.governance.driver=sentinel` covers both
+`Driver.NewServerExecutor` instead of `Driver.NewClientExecutor`, so `spring.resilience.driver=sentinel` covers both
 directions with one key while the two configs stay independent:
 
 - It returns a stable `managedExecutor` holding the system and service labels; the backing
@@ -151,7 +136,7 @@ directions with one key while the two configs stay independent:
 
 ### 2.3 One Execute call, layer by layer
 
-`exec.Execute(ctx, fn)` (executor.go):
+`exec.Execute(ctx, chain.Call{}, fn)` (executor.go):
 
 1. `ensureRules()` — load/verify flow + breaker + isolation rules for the executor's `service`.
 2. **Bulkhead first**: if `MaxConcurrent>0`, one Entry under `"my-service$bulkhead"`
@@ -193,17 +178,24 @@ re-registered when `ensureRules` re-runs.
   `ErrBulkheadFull`, everything else (i.e. flow rejection) → `ErrRateLimited` — so callers
   import only the resilience package.
 
-### 2.6 Policy → sentinel rule translation (verified in `ensureRules`/`loadBreakerRule`)
+### 2.6 Policy → sentinel rule translation (verified in `rules.go`, shared by both engines)
 
 | Policy field | Sentinel rule | Default when zero |
 |---|---|---|
-| `RateLimit` | flow.ClientRule Direct/Reject, `StatIntervalInMs=1000`, `Threshold=RateLimit` | not installed when `<=0` |
-| `BreakerStrategy=ErrorRate` | circuitbreaker.ErrorRatio; `Threshold=ErrorRateThreshold`; `MinRequestAmount=MinRequests` | MinRequests → 1 |
-| `BreakerStrategy=Consecutive` | circuitbreaker.ErrorCount; `Threshold=float64(ErrorThreshold)`; `MinRequestAmount=1` | — |
+| `RateLimit` + `Window` | flow `Threshold` (normalized per window: per-second × StatIntervalInMs/1000) + `StatIntervalInMs` | Window → 1000ms; not installed when `<=0` |
+| `RateLimitMaxWait` | flow `ControlBehavior=Throttling` + `MaxQueueingTimeMs` (queue instead of reject) | 0 → Reject |
+| `RateLimitWarmUpDuration`/`WarmUpColdFactor` | flow `WarmUp` + `WarmUpPeriodSec`/`WarmUpColdFactor` (exclusive with queueing — warm-up wins, Reject only) | 0 → Direct; ColdFactor → 3 |
+| `BreakerStrategy=error-rate` | circuitbreaker.ErrorRatio; `Threshold=ErrorRateThreshold`; `MinRequestAmount=MinRequests` | MinRequests → 1 |
+| `BreakerStrategy=slow-call` | circuitbreaker.SlowRequestRatio; `MaxAllowedRtMs=SlowCallDurationThreshold`; `Threshold=SlowCallRateThreshold` | same |
+| `BreakerStrategy=error-count` | circuitbreaker.ErrorCount; `Threshold=float64(ErrorThreshold)` (exact) | same |
+| `BreakerStrategy=consecutive` | same as error-count — **approximation** (sentinel has no consecutive-run breaker) | — |
 | `OpenDuration` | `RetryTimeoutMs` | 5000ms |
 | `BreakerWindow` | `StatIntervalMs` | 1000ms |
-| (both strategies) | `ProbeNum=1` — exactly-one-trial half-open, aligning with the builtin's single-permit gate | — |
-| `MaxConcurrent` | isolation.ClientRule Concurrency under `service$bulkhead` | not installed when `<=0` |
+| `HalfOpenRequests` | `ProbeNum` | 0/1 → 1 |
+| `MaxConcurrent` | isolation Concurrency under `service$bulkhead` | not installed when `<=0` |
+
+Legitimate ignores (v1.0.4 has no counterpart): `Burst`, `Algorithm`,
+`BulkheadQueueDuration`.
 
 Retry and per-attempt timeout are NOT sentinel concepts — they wrap the entry check in this
 executor (`Execute`/`runOnce`).
@@ -233,7 +225,7 @@ cd starter/starter-governance-sentinel && go test ./...
 
 Or: `StarterGovernanceSentinel.NewSentinelDriver()` must return non-nil; the import-time Info log
 "registered sentinel resilience driver" (tag: app default) confirms init ran. The container
-half — the bean is collected and `spring.governance.driver=sentinel` selects it — is pinned by
+half — the bean is collected and `spring.resilience.driver=sentinel` selects it — is pinned by
 cloud/governance's driver-directory test.
 
 ### 4.2 Breaker drill (from the example)
@@ -275,7 +267,7 @@ drills above — the seam observe-resilience's WrapExecutor consumes.
 |---------|--------------|-----|
 | Process panics at import: "sentinel init failed" | broken environment for `sentinel.InitDefault()` (config/log dirs) | Fix the env — the panic is by design, fail-loudly at import (suspect #1). |
 | Startup reports `no driver named "sentinel"` | starter not blank-imported | Add `import _ "go-spring.org/starter-governance-sentinel"`. |
-| Consumers stay on builtin resilience | the governance document's `spring.governance.driver` is not `sentinel` | Set `spring.governance.driver=sentinel` — one process-wide switch, effective everywhere (suspect #3). |
+| Consumers stay on builtin resilience | the governance document's `spring.resilience.driver` is not `sentinel` | Set `spring.resilience.driver=sentinel` — one process-wide switch, effective everywhere (suspect #3). |
 | Breaker never opens | `MinRequestAmount` not yet reached, or `ErrorThreshold`/window mis-sized | Check the defaults table §2.6 (`MinRequests` → 1, window → 1000ms). |
 | Breaker state looks reset after a config push | `Refresh` clears rules; sentinel replaces them and resets the stat window | Intended lazy-reload semantic (§2.4). |
 | Doubled resources in the sentinel console/metrics | bulkhead lives under `<label>$bulkhead` | Driver-internal naming (suspect #2) — filter by suffix. |
@@ -299,5 +291,5 @@ Design suspects (kept from the previous edition; for the audit ledger):
    crash rather than a normal boot error.
 2. Bulkhead lives under a `service$bulkhead` suffixed name — sentinel console/metrics show
    twice the services; leakage of driver internals into observability.
-3. Driver selection is process-wide (`spring.governance.driver`) and latched per service at first
-   resolve, so a later change to the key does not rebuild already-resolved executors.
+3. Driver selection is a static startup choice (`spring.resilience.driver`, injected as a bean
+   by name at wiring), so changing the backend takes a restart — it is not a hot-reload key.

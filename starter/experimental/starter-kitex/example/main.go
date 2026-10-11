@@ -89,19 +89,19 @@ func runTest() {
 
 	cli, err := echoservice.NewClient("echo", client.WithHostPorts(":8888"))
 	if err != nil {
-		log.Errorf(ctx, log.TagAppDef, err, "failed to create client")
+		log.Error(ctx, log.TagAppDef, err, "failed to create client")
 		os.Exit(1)
 	}
 
 	resp, err := cli.Echo(ctx, &echo.EchoRequest{Message: "Hello, Kitex!"})
 	if err != nil {
-		log.Errorf(ctx, log.TagAppDef, err, "error calling Echo")
+		log.Error(ctx, log.TagAppDef, err, "error calling Echo")
 		os.Exit(1)
 	}
 	fmt.Println("Response from server:", resp.Message)
 
 	if resp.Message != "Hello, Kitex!" {
-		log.Errorf(ctx, log.TagAppDef, fmt.Errorf("unexpected echo body: %q", resp.Message), "unexpected echo body: %q", resp.Message)
+		log.Error(ctx, log.TagAppDef, fmt.Errorf("unexpected echo body: %q", resp.Message), "unexpected echo body", log.Any("message", resp.Message))
 		os.Exit(1)
 	}
 

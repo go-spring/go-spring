@@ -74,10 +74,10 @@ func logCall(ctx context.Context, method, status string, dur time.Duration, err 
 		log.Float("duration_ms", float64(dur.Nanoseconds())/1e6),
 	}
 	if err != nil {
-		log.Warn(ctx, accessTag, append(fields, log.Err(err))...)
+		log.Warn(ctx, accessTag, "rpc call failed", append(fields, log.Err(err))...)
 		return
 	}
-	log.Info(ctx, accessTag, fields...)
+	log.Info(ctx, accessTag, "rpc call completed", fields...)
 }
 
 // TracingServerFilter is a tRPC ServerFilter that starts and ends an OTel

@@ -190,7 +190,8 @@ gs.Run()
   │      config.go:376-498; application.name blank or 0 registries → fail fast)
   ├─ RegisterReference beans bind ${spring.dubbo.consumer.references.<n>} → typed stubs via NewClient
   ├─ wiring order note: Rooters (dyncPoller) are wired BEFORE Runners (governance engine)
-  │     — see dync.go:79-83 comment; the injected center's OnReady re-polls to close the gap
+  │     — see the dyncPoller.Init comment; the center is a constructor dependency, so the
+  │     first poll already sees the armed governance authority
   ├─ SimpleDubboServer.Run: buildOptions(provider, protocols, registries) → d.NewServer()
   │     → regAll(): every ServiceRegister bean invoked → <-sig.TriggerAndWait() → svr.Serve()  [server.go:282-312]
   ├─ readiness: ready signal fires after Run's trigger; in-flight RPCs drain on Stop
@@ -315,8 +316,7 @@ reference/method); values below `-1` fail startup with a validation error;
 ### 3.6 consumer (19 keys) + consumer.references.<n> (19) + methods.<m> (12)
 
 Same structure on the client side (client.go:28-92 for consumer level, 101-168 for references).
-This tree is bound **twice** — statically for the client bean and as `gs.Dync` for hot reload
-(§4.2).
+This tree is bound once, statically (dubbo consumer config is startup config — see §4.2).
 
 | Gotcha | Detail |
 |--------|--------|
@@ -366,22 +366,22 @@ grep -ri "_rpc_dubbo" logs/ | head        # dubbo-go framework logs via the brid
 
 ### 4.2 Hot reload drill (timeout/retries, no restart)
 
-`${spring.dubbo}` is bound once statically for `Instance` — fields consumed at build/refer time
-are **frozen**: protocols, registries, filters (dync.go:49), serialization, interface/group
-routing (they define the override key). `${spring.dubbo.consumer}` is bound **again** as
-`gs.Dync[DubboConsumer]` (dync.go:56) and the `dyncPoller` pushes the dynamically-applicable
-subset into an in-memory config center (mapconfig) as flat dubbo URL params: `timeout`,
+`${spring.dubbo}` — including the consumer tree — is bound once, statically for `Instance`:
+fields consumed at build/refer time are **frozen** (protocols, registries, filters,
+serialization, interface/group routing), and so is the whole consumer node; a change to either
+needs a restart. The `dyncPoller` pushes the dynamically-applicable subset of the consumer
+node into an in-memory config center (mapconfig) as flat dubbo URL params: `timeout`,
 `retries`, `loadbalance`, `cluster`, `group`, `version`, `serialization`, `sticky`,
 `force.tag`, `weight`, and per-method `methods.<m>.{timeout,retries,loadbalance,weight,sticky,
-tps.limit.*,execute.limit*}` (dync.go:46-48, 154-228).
+tps.limit.*,execute.limit*}` (dync.go, consumerToOverrideRules).
 
-Chain (README Design Notes, confirmed in code):
+The only hot-reload line is governance (README Design Notes, confirmed in code):
 
 ```
-property change (file/nacos/env) → gs RefreshProperties → gs.Dync swap
-  → dyncPoller.OnChanged → poll() → diff vs last snapshot (no-op refreshes skipped)
-  → mapconfig.RefreshOverrideRules → dubbo-go consumerConfigurationListener /
-    referenceConfigurationListener → invoker URL updated → next call uses new params
+governance center push → resilience Subscribe(label) → poll() → diff vs last snapshot
+  (no-op refreshes skipped) → mapconfig.RefreshOverrideRules → dubbo-go
+    consumerConfigurationListener / referenceConfigurationListener → invoker URL updated
+    → next call uses new params
 ```
 
 Drill:
@@ -403,8 +403,8 @@ land, the reference's `version`/`group` must match what the provider exported.
 
 ### 4.4 Governance merge path (dynamic timeout from the center)
 
-Optional; active only when a governance rules source is configured and its rules document sets
-`spring.governance.enabled=true`. The poller injects the `*resilience.Manager` and the
+Optional; active only when a governance rules source is configured and its rules document carries
+policy for the labels below. The poller injects the `*resilience.Manager` and the
 `*governance.Center` as nullable constructor params (starter.go:59) and
 subscribes to governance policies under two service labels (dync.go:252-253):
 
@@ -413,9 +413,10 @@ subscribes to governance policies under two service labels (dync.go:252-253):
 
 `Policy.Timeout` (ms) and `Policy.MaxRetries` override the `timeout`/`retries` params when > 0
 (dync.go:277-284); note MaxRetries maps to dubbo's **cluster** retries, not resilience-layer
-retry. Ordering is handled: Rooters wire before Runners, so the injected `*governance.Center`'s
-`OnReady` re-polls once the engine is live (dync.go:79-88). Drill: flip `spring.governance.*` timeout in the
-center's source, watch the reference override re-push without restart.
+retry. Ordering is handled: the center is a constructor dependency of the poller, so gs wires
+the poller after the center and the first poll already sees the armed authority. Drill: flip
+`spring.governance.*` timeout in the center's source, watch the reference override re-push
+without restart.
 
 ### 4.5 Fault drill (provider side, no restart)
 
@@ -465,8 +466,8 @@ into the bridge.
 Design suspects (audit ledger):
 
 1. Config surface too large to document exhaustively — itself a signal.
-2. Duplicate binding of the same tree (static `Instance` + `Dync` consumer) with a frozen-field
-   list only visible in code (dync.go:46-49).
+2. The frozen-field list (which consumer keys take effect only at restart) is visible only in
+   code (dync.go, dyncPoller).
 3. ~~Dash-vs-dot key separators differ by nesting level~~ — resolved as documented-canonical
    (see §3.6 "Separator mix"): dotted keys mirror dubbo URL params on dynamic levels, dashed
    keys are the starter's own style on static levels; kept for compatibility, exact-match only.

@@ -86,7 +86,7 @@ res, err := neo4j.ExecuteQuery(ctx, s.Neo4j,
 
 neo4j-go-driver 使用二进制 Bolt 协议，**没有官方的 OpenTelemetry instrumentation**，
 也没有类似 SQL/MongoDB 驱动的 command-monitor 钩子，因此没有能拦截每个请求的透明切面。
-观测按调用点可选开启，经由 `StarterNeo4j.Query` / `StartSpan` 两个辅助函数——它们只**声明**
+观测按调用点可选开启，经由 `StarterNeo4j.Query` / `Operation` 两个辅助函数——它们只**声明**
 每个操作是什么（`observe.go`）：操作名、`db.system`/`db.operation` 标签，以及作为 `db.statement`
 span/日志细节的 Cypher 文本。信号本身由 resilience 层发射——它是 executor 链条上唯一看得见
 整次调用（含重试）的点——所以除 call 级 `db.client.operation.duration` 直方图外，每次调用还多一条

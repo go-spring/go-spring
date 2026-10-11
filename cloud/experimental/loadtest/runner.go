@@ -57,7 +57,7 @@ type namedAssert struct {
 // ([traffic.NewDefaultPropagator]), no duration (run until ctx cancels), no
 // asserts.
 func New() *Runner {
-	prop, _ := traffic.NewDefaultPropagator(traffic.DefaultBinding()) // DefaultBinding is complete, so this cannot fail.
+	prop := traffic.NewDefaultPropagator(traffic.DefaultBinding()) // DefaultBinding is complete, so this cannot fail.
 	return &Runner{
 		driver:   ClosedLoop{Concurrency: 1},
 		classify: DefaultClassify,
@@ -71,7 +71,7 @@ func New() *Runner {
 func (r *Runner) Propagator(p traffic.Propagator) *Runner {
 	if p == nil {
 		// DefaultBinding is complete, so this cannot fail.
-		p, _ = traffic.NewDefaultPropagator(traffic.DefaultBinding())
+		p = traffic.NewDefaultPropagator(traffic.DefaultBinding())
 	}
 	r.prop = p
 	return r

@@ -18,14 +18,13 @@ package StarterGin
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"go-spring.org/cloud/chain"
+	"go-spring.org/cloud/observability"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
 	"go-spring.org/cloud/fault"
-	"go-spring.org/cloud/propagate"
 	"go-spring.org/cloud/resilience"
 )
 
@@ -41,13 +40,9 @@ import (
 // restart, independently of every outbound client's policy. The executor is
 // wrapped with observe-resilience so breaker trips / rejects emit span + counter
 // + histogram + access log.
-func buildServerPolicy(cfg Config, mgr *resilience.Manager) (gin.HandlerFunc, error) {
-	if mgr == nil {
-		mgr = resilience.NewManager(nil)
-	}
+func buildServerPolicy(cfg Config) (gin.HandlerFunc, error) {
 	service := resilience.ServiceLabel("gin", cfg.Address)
-	exec := mgr.ServerExecutorFor("gin", service)
-	return resilienceServerPolicy(exec, service), nil
+	return resilienceServerPolicy(observability.NewServerObserver("gin", service), service), nil
 }
 
 // resilienceServerPolicy is the inbound inbound middleware: each request runs
@@ -60,25 +55,20 @@ func buildServerPolicy(cfg Config, mgr *resilience.Manager) (gin.HandlerFunc, er
 // structural here: [resilience.ServerPolicy] has no retry field, so the executor
 // built from the server block has no retry stage at all; a Written() guard also
 // prevents reentry regardless.
-func resilienceServerPolicy(exec chain.Executor, service string) gin.HandlerFunc {
+func resilienceServerPolicy(obs *observability.ServerObserver, service string) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		// The caller's remaining budget, when it sent one: the handler — and every
-		// outbound call it makes — then runs on the earlier of that and this
-		// server's own handling budget, so a request chain spends one allowance
-		// instead of one per hop. A request that carried no budget is bounded by
-		// this server's policy alone, exactly as before.
-		ctx, cancel := resilience.WithBudget(c.Request.Context(), propagate.Header(c.Request.Header))
-		defer cancel()
-
 		var served bool
-		err := exec.Execute(ctx, func(ctx context.Context) error {
+		// The observer emits the request span, the inbound family metrics and the
+		// access log. This route declares no operation (the zero Operation takes
+		// the fallback path), so those signals keep the shape the inbound layer has
+		// always produced.
+		_ = obs.Observe(c.Request.Context(), chain.Operation{}, func(ctx context.Context) error {
 			if served {
 				return nil // reentry guard: handler already ran this request
 			}
-			// Hand the bounded context to the handler chain: the inbound
-			// executor derived it, and gin reads it back off the request, so the
-			// deadline that bounds this request is the one the handler — and its
-			// outbound clients — actually run under.
+			// Hand the observed context to the handler chain: the observer derived
+			// it, and gin reads it back off the request, so the span the handler and
+			// its outbound clients run under is the one this request produced.
 			c.Request = c.Request.WithContext(ctx)
 			c.Next()
 			served = c.Writer.Written()
@@ -87,19 +77,6 @@ func resilienceServerPolicy(exec chain.Executor, service string) gin.HandlerFunc
 			}
 			return nil
 		})
-		if err == nil {
-			return
-		}
-		switch {
-		case errors.Is(err, chain.ErrRateLimited), errors.Is(err, chain.ErrBulkheadFull):
-			if !c.Writer.Written() {
-				c.AbortWithStatus(http.StatusTooManyRequests)
-			}
-		case errors.Is(err, chain.ErrCircuitOpen):
-			if !c.Writer.Written() {
-				c.AbortWithStatus(http.StatusServiceUnavailable)
-			}
-		}
 	}
 }
 
@@ -120,8 +97,8 @@ func (e errHTTP5xx) Error() string { return fmt.Sprintf("http: server returned %
 // for every request: the center hot-swaps the injector's config in place
 // ([fault.Injector.SetConfig]) rather than replacing the bean, so this reference
 // always observes the live config and fault stays runtime-toggleable without a
-// restart. A nil inj — governance not imported — makes Apply a transparent
-// pass-through, so the middleware is always installed.
+// restart. The bean is always present (an absent bean fails startup) and inert
+// by default, so the middleware is always installed.
 func buildFault(inj *fault.Injector) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		err := fault.ApplyServer(c.Request.Context(), inj, "gin", func() error {

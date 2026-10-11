@@ -99,13 +99,12 @@ type GrpcServer struct {
 // the registered ServiceRegister bean. The kratos logger bridges framework logs
 // into go-spring's log module (see internal/logger).
 func NewGrpcServer(cfg Config, reg ServiceRegister) *GrpcServer {
-	log.Debug(context.Background(), log.TagAppDef, func() []log.Field {
+	log.Debug(context.Background(), log.TagAppDef, "create kratos grpc server success", func() []log.Field {
 		return []log.Field{
 			log.String("name", cfg.Name),
 			log.String("addr", cfg.Addr),
 			log.String("network", cfg.Network),
 			log.String("timeout", cfg.Timeout.String()),
-			log.Msg("create kratos grpc server success"),
 		}
 	})
 	return &GrpcServer{cfg: cfg, reg: reg, log: logger.NewLogger(), done: make(chan struct{})}
@@ -177,7 +176,7 @@ func (s *GrpcServer) Run(ctx context.Context, sig gs.ReadySignal) error {
 
 	<-sig.TriggerAndWait()
 
-	log.Infof(ctx, log.TagAppDef, "kratos grpc server starting")
+	log.Info(ctx, log.TagAppDef, "kratos grpc server starting")
 	errCh := make(chan error, 1)
 	go func() {
 		errCh <- s.app.Run()
@@ -186,7 +185,7 @@ func (s *GrpcServer) Run(ctx context.Context, sig gs.ReadySignal) error {
 	select {
 	case err := <-errCh:
 		if err != nil {
-			log.Errorf(ctx, log.TagAppDef, err, "kratos grpc app exited with error")
+			log.Error(ctx, log.TagAppDef, err, "kratos grpc app exited with error")
 		}
 		return errutil.Explain(err, "kratos grpc app exited with error")
 	case <-s.done:
@@ -199,8 +198,8 @@ func (s *GrpcServer) Run(ctx context.Context, sig gs.ReadySignal) error {
 // app.Stop() (which takes no context), so ctx only tags the shutdown log.
 func (s *GrpcServer) Stop(ctx context.Context) error {
 	log.Info(ctx, log.TagAppDef,
-		log.String("addr", s.cfg.Addr),
-		log.Msg("kratos grpc server shutting down"))
+		"kratos grpc server shutting down",
+		log.String("addr", s.cfg.Addr))
 	close(s.done)
 	return nil
 }

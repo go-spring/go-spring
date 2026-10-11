@@ -93,7 +93,7 @@ func (s *store) reserve(c *gin.Context) {
 	held := len(s.reserved)
 	s.mu.Unlock()
 
-	log.Infof(c.Request.Context(), bizTag, "reserved token=%s held=%d", token, held)
+	log.Info(c.Request.Context(), bizTag, "reserved", log.String("token", token), log.Int("held", held))
 	c.JSON(http.StatusOK, gin.H{"token": token})
 }
 
@@ -113,7 +113,7 @@ func (s *store) release(c *gin.Context) {
 	held := len(s.reserved)
 	s.mu.Unlock()
 
-	log.Infof(c.Request.Context(), bizTag, "released token=%s existed=%t held=%d", token, existed, held)
+	log.Info(c.Request.Context(), bizTag, "released", log.String("token", token), log.Bool("existed", existed), log.Int("held", held))
 	c.JSON(http.StatusOK, gin.H{"released": token})
 }
 

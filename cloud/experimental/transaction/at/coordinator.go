@@ -22,6 +22,7 @@ import (
 	"slices"
 	"sync"
 
+	"go-spring.org/cloud/chain"
 	"go-spring.org/cloud/resilience"
 	"go-spring.org/stdlib/errutil"
 	"go-spring.org/stdlib/randutil"
@@ -201,10 +202,10 @@ func runWithPolicy(ctx context.Context, p RetryPolicy, resource string, fn func(
 	if p.IsZero() {
 		return fn(ctx)
 	}
-	exec, err := resilience.NewDefaultDriver(nil).NewClientExecutor(resource, p)
+	exec, err := resilience.NewDefaultDriver(nil).NewClientExecutor(resource, resilience.ClientPolicy{Retry: p})
 	if err != nil {
 		return err
 	}
 	defer func() { _ = exec.Close() }()
-	return exec.Execute(ctx, fn)
+	return exec.Execute(ctx, chain.Operation{}, fn)
 }

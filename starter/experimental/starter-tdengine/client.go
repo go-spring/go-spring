@@ -28,7 +28,7 @@ import (
 	"database/sql/driver"
 	"go-spring.org/cloud/chain"
 
-	"go-spring.org/cloud"
+	"go-spring.org/cloud/governance"
 	"go-spring.org/cloud/resilience"
 )
 
@@ -49,9 +49,9 @@ type Client struct {
 	// slot is the per-statement guard [NewClient] installed on every pooled
 	// connection; the resilience executor is applied on it by [NewClient].
 	slot *clientSlot
-	// exec is the resilience executor, applied by [NewClient]; it is always
-	// non-nil — a client without the container degrades to
-	// [resilience.Unmanaged], so statements are always observed.
+	// exec is the resilience executor, applied by [NewClient] from the
+	// [governance.Center] the container supplies; the center is required to
+	// carry a [resilience.Manager], so statements are always observed.
 	exec chain.Executor
 	// serviceLabel is the resilience service key ("tdengine:<dsn addr>") exec
 	// scopes limiter/breaker state by.
@@ -65,17 +65,18 @@ type Client struct {
 // the pool, and applies the pool sizes from c. connector must be a ready-to-use
 // driver.Connector (parsed DSN + dialer) — it is normally the Driver's product.
 //
-// params carries the container's facilities (see [cloud.ClientParams]), and is
+// center carries the container's facilities (see [governance.Center]), and is
 // applied HERE so a Client cannot exist half-assembled: there is no Init step,
 // no later patching, and nothing the container has to remember to call. It
-// resolves the executor once — [cloud.ClientParams.ExecutorFor] — and installs
-// it on the slot every pooled connection consults. A hand-built client passes
-// the zero [cloud.ClientParams]; its executor then degrades to
-// [resilience.Unmanaged] — observed, with a one-time warning that no protection
-// applies — rather than silently running bare. The manager resolves its backing
+// resolves the executor once — [governance.Center.ExecutorFor] — and installs
+// it on the slot every pooled connection consults. A hand-built client must
+// supply a [governance.Center] over a
+// [resilience.Manager]: [governance.Center.Resilience] is required,
+// so a nil center is a construction error — never a graceful
+// downgrade. The manager resolves its backing
 // executor lazily, so the call order relative to the center's wiring is
 // irrelevant.
-func NewClient(connector driver.Connector, c Config, params cloud.ClientParams) *Client {
+func NewClient(connector driver.Connector, c Config, center *governance.Center) *Client {
 	slot := &clientSlot{}
 	db := sql.OpenDB(guardedConnector{base: connector, slot: slot})
 	db.SetMaxOpenConns(c.MaxOpenConns)
@@ -83,7 +84,7 @@ func NewClient(connector driver.Connector, c Config, params cloud.ClientParams) 
 	db.SetConnMaxLifetime(c.ConnMaxLifetime)
 	cl := &Client{DB: db, slot: slot}
 	cl.serviceLabel = serviceLabel(c)
-	cl.exec = params.ExecutorFor("tdengine", cl.serviceLabel)
+	cl.exec = center.ExecutorFor("tdengine", cl.serviceLabel)
 	slot.exec = cl.exec
 	return cl
 }

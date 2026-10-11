@@ -148,32 +148,28 @@ func (c Common) NewResolver(ctx context.Context, backend discovery.Discovery) (d
 }
 
 // NewPickPool builds the shared per-connection endpoint selector over the
-// resolver from [Common.NewResolver]: a [loadbalance.Pool] built from the entry's balancer config the
-// dialect starter's DialContext calls on every new connection. It returns
-// (nil, nil, ...) when discovery is not in effect; otherwise the pool (and its
+// resolver from [Common.NewResolver]: a [loadbalance.Chain] the dialect
+// starter's DialContext reads on every new connection. It returns
+// (nil, nil, ...) when discovery is not in effect; otherwise the chain (and its
 // source resolver, which has no resources to release).
 //
 // service is the entry's governance label ([resilience.ServiceLabel], e.g.
-// "gorm:mysql:orders-db"). The pool is built with a suspension tracker and its
-// endpoint selection is bound to that label, so one spring.governance.client.rules[N] rule that
-// matches the entry's protection executor also governs its balancing strategy
-// and outlier suspension. The returned stop func detaches that binding and must
-// run on client teardown; it is a no-op when governance is not in the process
-// and when discovery is not in effect.
+// "gorm:mysql:orders-db"). The chain is built with a suspension tracker and
+// registered under that label as it is built, so one
+// spring.governance.client.rules[N] rule that matches the entry's protection
+// executor also governs its balancing strategy and outlier suspension — and a
+// rule that moves that selection REBUILDS the chain (balancer, tracker and pool)
+// rather than retuning it. The registration is one-way — released with the
+// loadbalance authority, not on client teardown (see loadbalance.Manager.Close).
 //
 // lbMgr is the injected endpoint-selection authority, threaded down from the
-// dialect (which receives it from the gs module ctor). A nil manager is the
-// standalone case (no container); a pass-through one is exactly "governance
-// off", where Bind is a no-op — normalizing here keeps the binding free of a nil
-// branch.
-func (c Common) NewPickPool(ctx context.Context, backend discovery.Discovery, service string, lbMgr *loadbalance.Manager) (*loadbalance.Pool, discovery.Resolver, func(), error) {
+// dialect (which receives it from the gs module ctor); it must be non-nil.
+func (c Common) NewPickPool(ctx context.Context, backend discovery.Discovery, service string, lbMgr *loadbalance.Manager) (*loadbalance.Chain, discovery.Resolver, error) {
 	resolver, err := c.NewResolver(ctx, backend)
 	if err != nil || resolver == nil {
-		return nil, resolver, func() {}, err
+		return nil, resolver, err
 	}
-	bal := loadbalance.NewRoundRobin()
-	pool := loadbalance.NewPool(resolver, bal)
-	return pool, resolver, lbMgr.Bind(pool, service), nil
+	return lbMgr.Chain(ctx, resolver, service), resolver, nil
 }
 
 // logWriter adapts GORM's logger onto the repo log core: every message GORM
@@ -186,7 +182,7 @@ type logWriter struct{}
 // trailing newline; the newline is stripped before re-logging.
 func (logWriter) Printf(format string, args ...any) {
 	if msg := strings.TrimRight(fmt.Sprintf(format, args...), "\r\n"); msg != "" {
-		log.Warnf(context.Background(), log.TagAppDef, "%s", msg)
+		log.Warn(context.Background(), log.TagAppDef, "done", log.String("msg", msg))
 	}
 }
 

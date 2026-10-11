@@ -143,8 +143,8 @@ func newConsulBackend(c ConsulConfig, name string) (*consulBackend, error) {
 		return nil, err
 	}
 	disc := newConsulDiscovery(client, "", obs)
-	log.Debug(context.Background(), starterTag, func() []log.Field {
-		return []log.Field{log.String("address", c.Address), log.Msg("consul backend ready")}
+	log.Debug(context.Background(), starterTag, "consul backend ready", func() []log.Field {
+		return []log.Field{log.String("address", c.Address)}
 	})
 	return &consulBackend{reg: reg, disc: disc, obs: obs}, nil
 }
@@ -215,7 +215,7 @@ func newConsulClient(c ConsulConfig) (*api.Client, error) {
 	}
 	client, err := api.NewClient(cfg)
 	if err != nil {
-		log.Error(context.Background(), starterTag, err, log.String("address", c.Address), log.Msg("create consul client failed"))
+		log.Error(context.Background(), starterTag, err, "create consul client failed", log.String("address", c.Address))
 		return nil, errutil.Explain(err, "discovery-consul: create client for %s", c.Address)
 	}
 	return client, nil

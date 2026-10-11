@@ -306,7 +306,7 @@ instance (per-dial `Pick()`).
 cd example-load && docker compose up -d
 go run . -duration=10s                       # baseline SELECT 1 throughput
 # set fire — edit conf/governance.properties (hot-reload via cloud/governance's file source):
-#   spring.governance.client.fault.enabled=true  spring.governance.client.fault.rate=0.5  spring.governance.client.fault.error=generic
+#   spring.governance.client.fault.rate=0.5  spring.governance.client.fault.error=generic
 go run . -duration=10s                       # error breakdown shows ~50% injected
 ```
 

@@ -68,12 +68,11 @@ func init() {
 				return errutil.Explain(nil, "session-redis: instance %q missing required property %q",
 					name, "spring.session.redis.instances."+name+".client")
 			}
-			log.Debug(context.Background(), log.TagAppDef, func() []log.Field {
+			log.Debug(context.Background(), log.TagAppDef, "creating session store", func() []log.Field {
 				return []log.Field{
 					log.String("name", name),
 					log.String("client", c.Client),
 					log.String("key_prefix", c.KeyPrefix),
-					log.Msg("creating session store"),
 				}
 			})
 			// TagArg injects the *redis.Client bean by name — this is the seam

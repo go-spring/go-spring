@@ -41,7 +41,7 @@ func TestHealthError(t *testing.T) {
 
 // TestDynamicTransportSwap proves the indirection passes through to the base
 // transport until Swap installs a replacement — the mechanism [NewClient] uses
-// to install declaration+resilience while the client is built.
+// to install resilience while the client is built.
 func TestDynamicTransportSwap(t *testing.T) {
 	var served string
 	base := roundTripFunc(func(r *http.Request) (*http.Response, error) {

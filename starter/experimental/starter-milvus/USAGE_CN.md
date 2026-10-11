@@ -153,16 +153,16 @@ import starter-milvus
                    [starter.go:47-49]
 
 gs.Run()
-  ├─ 构造 newClient [starter.go:69]：NewClient(ctx, c, cloud.ClientParams{...})
+  ├─ 构造 newClient [starter.go:69]：NewClient(ctx, c, center)
   ├─ NewClient [client.go:82] 一次组装完拨号 + 守卫 + 治理：
   │   client.NewClient(ctx, {Address, Username, Password, DBName,
   │   DialOptions: guardDialOptions(slot)}) gRPC 拨号（守卫拦截器随拨号装上，
   │   治理应用之前为透传）
   ├─ 随后定身份并应用治理：
   │   service = ServiceLabel("milvus", addr) →
-  │   params.ExecutorFor("milvus", service)——构造期把注入的 `*resilience.Manager` /
-  │   `*fault.Injector` 打包成 cloud.ClientParams →（fault 包裹 mgr.ClientExecutorFor）→
-  │   slot.apply——此后每个 RPC 都过守卫；零值 params → 只观测的 Unmanaged executor
+  │   center.ExecutorFor("milvus", service)——构造期传入的注入 `*governance.Center`
+  │   携带 `*resilience.Manager` / `*fault.Injector` →（fault 包裹 mgr.ClientExecutorFor）→
+  │   slot.apply——此后每个 RPC 都过守卫；resilience manager 必填，center 始终存在
   ├─ 仅 ping=true：fail-fast 探针 HealthCheck（ListCollections 一次），出错 → Destroy()+启动失败
   │   [starter.go:89]——地址/凭据错，进程到不了 "serving"
   ├─ readiness：指示器周期性重复 HealthCheck（同一个 ListCollections 探针）
@@ -184,15 +184,15 @@ gs.Run()
 这就是全部，外加守卫。**守卫是 gRPC 拦截器链** [guard.go]：`NewClient` 传入自定义
 dial options，SDK 自己的 `DefaultGrpcOpts`（keepalive、连接退避、2GB 收包上限）被先补
 回、再追加守卫拦截器（unary + stream 建流）——是叠加不是替换。拦截器读每 client 一个
-slot，该 slot 由 `NewClient` 内部创建、用 `params.ExecutorFor("milvus", "milvus:<addr>")`
+slot，该 slot 由 `NewClient` 内部创建、用 `center.ExecutorFor("milvus", "milvus:<addr>")`
 应用并保持私有——它不能出现在导出的签名里（拨号时 dial options 已固定，所以构造器把
-拨号和应用两步一并收进来）——执行器由构造期打包的
+拨号和应用两步一并收进来）——执行器由构造期传入的 `*governance.Center` 携带的
 `*resilience.Manager` 与 `*fault.Injector` 构建
-（零值 params → 只观测的 `Unmanaged` executor，透传；治理在客户端构造时即应用，
+（resilience manager 必填——容器始终提供；治理在客户端构造时即应用，
 所以 `newClient` 的 fail-fast 探针在 slot 应用之后才跑，治理开启时探针本身也过守卫）。
 拦截器同时是**声明 seam**：
 它在 `exec.Execute` 之前把 RPC 身份放到调用方 ctx 上
-（`observability.WithOperation(ctx, operation(method))`），executor 内的发射器在 Execute
+（`chain.WithOperation(ctx, operation(method))`），executor 内的发射器在 Execute
 入口读取它——那是唯一能看到整次调用（含重试）的位置——据此命名 span、`db.client.*` 指标
 与访问日志。声明若放进 executor 的 fn 内（逐次尝试）则无人读取，故置于此处、executor 之外。
 collection/index/search/insert
@@ -254,8 +254,8 @@ curl -s :9370/metrics | grep 'resilience\.'  # 治理关闭时为空：outcome �
 治理（cloud/governance + `spring.governance.*` 规则）关闭时，限流/熔断/重试/超时都不生效，
 但**观测仍在**：发射点在治理 executor 之外，`db.client.operation.duration`、
 `db.client.attempt.duration` 两个直方图与 `_app_milvus_access` 访问日志照旧产出（直方图还需
-`starter-otel` 安装 provider）。真正消失的只有 `resilience.*` outcome 指标。非经容器（零值
-`ClientParams`）时 executor 退化为 `resilience.Unmanaged`：只观测 + 一次性"无保护生效"告警。
+`starter-otel` 安装 provider）。真正消失的只有 `resilience.*` outcome 指标。组装 client 必须提供
+resilience manager（容器始终提供），不存在 unmanaged/仅观测的兜底。
 Milvus 服务端自身的指标在服务端的 `:9091`（example compose 已暴露），不经本 client。
 
 ### 4.4 往返冒烟（与 example/check.sh 同构）

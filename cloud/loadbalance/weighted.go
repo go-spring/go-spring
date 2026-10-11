@@ -25,9 +25,9 @@ import (
 
 // weightedFactory is the [Factory] behind the [Weighted] name. The strategy has
 // no parameters: any key in the bag is rejected by [Params.Done].
-type weightedFactory struct{}
+func init() { Register(Weighted, buildWeighted) }
 
-func (weightedFactory) Build(_ Directory, p *Params) (Balancer, error) {
+func buildWeighted(p *Params) (Balancer, error) {
 	if err := p.Done(); err != nil {
 		return nil, err
 	}

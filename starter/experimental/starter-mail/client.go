@@ -16,8 +16,8 @@
 
 // client.go is the "resource entity" concept of this starter: the Mailer
 // wrapper mail beans are injected as, hollowed into an InnerMailer chain — the
-// identity layer declares each send, the governance layer runs it under the
-// resilience executor, the adapter layer builds and delivers the messages.
+// governance layer builds each send's identity and runs it under the resilience
+// executor, the adapter layer builds and delivers the messages.
 
 package StarterMail
 
@@ -26,9 +26,8 @@ import (
 	"context"
 
 	"github.com/wneessen/go-mail"
-	"go-spring.org/cloud"
 	"go-spring.org/cloud/chain"
-	"go-spring.org/cloud/observability"
+	"go-spring.org/cloud/governance"
 	"go-spring.org/cloud/resilience"
 	"go-spring.org/stdlib/errutil"
 )
@@ -232,12 +231,12 @@ type GuardMailer struct {
 }
 
 // NewGuardMailer builds the governance layer over next, constructing its own
-// executor: params carries the container's facilities (see [cloud.ClientParams])
+// executor: center carries the container's facilities (see [governance.Center])
 // and instanceName/host fix the governance label its limiter and breaker state
 // scope by.
-func NewGuardMailer(next InnerMailer, instanceName, host string, params cloud.ClientParams) *GuardMailer {
+func NewGuardMailer(next InnerMailer, instanceName, host string, center *governance.Center) *GuardMailer {
 	label := resilience.ServiceLabel("mail", instanceName, host)
-	return &GuardMailer{exec: params.ExecutorFor("mail", label), next: next}
+	return &GuardMailer{exec: center.ExecutorFor("mail", label), next: next}
 }
 
 // Release hands releaseRaw to the layer under it, and on the FULL teardown
@@ -250,18 +249,24 @@ func (g *GuardMailer) Release(releaseRaw bool) error {
 	return err
 }
 
-// Send runs the batch under the executor with retry.
+// Send builds the batch's semantic identity (see observe.go), merges in the
+// non-idempotent marker that stops a configured retry from sending the same
+// mail twice, and runs the batch under the executor with that one operation —
+// passed explicitly, so the executor reads the whole description from its
+// signature.
 func (g *GuardMailer) Send(ctx context.Context, msgs ...*Message) error {
-	_, err := resilience.Run(ctx, g.exec, func(attemptCtx context.Context) (struct{}, error) {
+	op := operation(msgs)
+	op.Retry = chain.RetryPolicy{NonIdempotent: true}
+	_, err := resilience.Run(ctx, g.exec, op, func(attemptCtx context.Context) (struct{}, error) {
 		return struct{}{}, g.next.Send(attemptCtx, msgs...)
 	})
 	return err
 }
 
-// ObsMailer is the identity layer at the head: it names the batch (see
-// observe.go) and hands the context down. It emits nothing itself — emission
-// happens in the governance layer under it, the one point that sees the whole
-// call. [NewObsMailer] builds it.
+// ObsMailer is the head layer: it hands the batch down. The identity the layer
+// once declared on the context now travels as the explicit operation the
+// governance layer under it builds and passes to [resilience.Run], so there is
+// nothing to declare here. [NewObsMailer] builds it.
 type ObsMailer struct {
 	next InnerMailer
 }
@@ -273,7 +278,7 @@ func NewObsMailer(next InnerMailer) *ObsMailer { return &ObsMailer{next: next} }
 // resource.
 func (o *ObsMailer) Release(releaseRaw bool) error { return o.next.Release(releaseRaw) }
 
-// Send declares the batch's semantic identity, then hands it down.
+// Send hands the batch down.
 func (o *ObsMailer) Send(ctx context.Context, msgs ...*Message) error {
-	return o.next.Send(observability.WithOperation(ctx, operation(msgs)), msgs...)
+	return o.next.Send(ctx, msgs...)
 }

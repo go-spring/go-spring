@@ -85,7 +85,7 @@ func runTest(s *Service) {
 	// Subscribe before publishing so the message is not missed.
 	sub, err := driver.NewSubscriber(ctx, topic, group)
 	if err != nil {
-		log.Errorf(ctx, log.TagAppDef, err, "SUBSCRIBE failed")
+		log.Error(ctx, log.TagAppDef, err, "SUBSCRIBE failed")
 		os.Exit(1)
 	}
 	msgs := make(chan *messaging.Message, 1)
@@ -93,13 +93,13 @@ func runTest(s *Service) {
 		msgs <- msg
 		return nil
 	}); err != nil {
-		log.Errorf(ctx, log.TagAppDef, err, "SUBSCRIBE failed")
+		log.Error(ctx, log.TagAppDef, err, "SUBSCRIBE failed")
 		os.Exit(1)
 	}
 
 	pub, err := driver.NewPublisher(ctx, topic)
 	if err != nil {
-		log.Errorf(ctx, log.TagAppDef, err, "PUBLISH failed")
+		log.Error(ctx, log.TagAppDef, err, "PUBLISH failed")
 		os.Exit(1)
 	}
 	err = pub.Publish(ctx, &messaging.Message{
@@ -109,19 +109,19 @@ func runTest(s *Service) {
 	})
 	_ = pub.Close()
 	if err != nil {
-		log.Errorf(ctx, log.TagAppDef, err, "PUBLISH failed")
+		log.Error(ctx, log.TagAppDef, err, "PUBLISH failed")
 		os.Exit(1)
 	}
 
 	select {
 	case msg := <-msgs:
 		if string(msg.Payload) != "value" || msg.Headers["from"] != "example" {
-			log.Errorf(ctx, log.TagAppDef, fmt.Errorf("CONSUME failed: body=%q headers=%v", msg.Payload, msg.Headers), "CONSUME failed: body=%q headers=%v", msg.Payload, msg.Headers)
+			log.Error(ctx, log.TagAppDef, fmt.Errorf("CONSUME failed: body=%q headers=%v", msg.Payload, msg.Headers), "CONSUME failed: body", log.Any("payload", msg.Payload), log.Any("headers", msg.Headers))
 			os.Exit(1)
 		}
 		fmt.Println("Response from server:", string(msg.Payload))
 	case <-time.After(20 * time.Second):
-		log.Errorf(ctx, log.TagAppDef, fmt.Errorf("CONSUME failed: timed out waiting for message"), "CONSUME failed: timed out waiting for message")
+		log.Error(ctx, log.TagAppDef, fmt.Errorf("CONSUME failed: timed out waiting for message"), "CONSUME failed: timed out waiting for message")
 		os.Exit(1)
 	}
 	_ = sub.Close()

@@ -125,17 +125,14 @@ func (d *dnsDiscovery) Resolve(ctx context.Context, name string, opts ...discove
 			// the failure but nothing says the addresses handed out are old.
 			// Logged against the caller's ctx — a cancelled ctx still carries the
 			// trace identity, so this line stays joinable to the request.
-			log.Warn(ctx, starterTag, append(
-				[]log.Field{
-					log.String("system", d.obs.System()),
-					log.String("center", d.obs.Center()),
-					log.String("service", name),
-					log.String("operation", "sync"),
-					log.String("status", discovery.StatusOf(err)),
-					log.Err(err),
-				},
-				log.Msg("discovery-k8s: dns refresh failed; serving the stale snapshot"),
-			)...)
+			log.Warn(ctx, starterTag, "discovery-k8s: dns refresh failed; serving the stale snapshot", []log.Field{
+				log.String("system", d.obs.System()),
+				log.String("center", d.obs.Center()),
+				log.String("service", name),
+				log.String("operation", "sync"),
+				log.String("status", discovery.StatusOf(err)),
+				log.Err(err),
+			}...)
 		} else {
 			e.eps, e.fetchedAt = eps, time.Now()
 			d.obs.Synced(name, nil)

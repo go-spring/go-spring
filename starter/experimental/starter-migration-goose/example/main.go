@@ -95,7 +95,7 @@ func runTest(app *App) {
 	db.Table("goose_db_version").Count(&applied)
 	db.Table("widgets").Count(&widgets)
 	if applied < 2 || widgets != 2 {
-		log.Errorf(ctx, log.TagAppDef, fmt.Errorf("startup apply: goose_db_version=%d widgets=%d, want 2/2", applied, widgets), "startup apply: goose_db_version=%d widgets=%d, want 2/2", applied, widgets)
+		log.Error(ctx, log.TagAppDef, fmt.Errorf("startup apply: goose_db_version=%d widgets=%d, want 2/2", applied, widgets), "startup apply: goose_db_version", log.Int("applied", applied), log.Int("widgets", widgets))
 		os.Exit(1)
 	}
 	fmt.Println("startup apply OK: 2 migrations applied, widgets seeded with 2 rows")
@@ -106,12 +106,12 @@ func runTest(app *App) {
 	provider, err := goose.NewProvider("", sqlDB, os.DirFS("./sql"),
 		goose.WithStore(mustStore(goose.DialectSQLite3)))
 	if err != nil {
-		log.Errorf(ctx, log.TagAppDef, err, "idempotency: provider")
+		log.Error(ctx, log.TagAppDef, err, "idempotency: provider")
 		os.Exit(1)
 	}
 	res, err := provider.Up(ctx)
 	if err != nil || len(res) != 0 {
-		log.Errorf(ctx, log.TagAppDef, err, "idempotency: applied %d migration(s), err=%v, want 0/nil", len(res), err)
+		log.Error(ctx, log.TagAppDef, err, "idempotency: applied", log.Int("res", len(res)), log.Any("err", err))
 		os.Exit(1)
 	}
 	fmt.Println("idempotency OK: second run applied 0 migrations")

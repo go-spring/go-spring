@@ -138,8 +138,9 @@ gs.Run()
   ├─ newNotifier：
   │    ├─ 用空 Notification 干跑一次 buildPayload——校验 channel 取值、
   │    │   （dingtalk/feishu）签名可用性，全程无网络请求
-  │    ├─ params := cloud.ClientParams{Resilience: mgr, Fault: inj}
-  │    ├─ exec := params.ExecutorFor("webhook", "webhook:<name>:<channel>")
+  │    ├─ obs := observability.NewOperationObserver("webhook",
+  │    │      resilience.ServiceLabel("webhook", c.Channel, name)) ——本 starter 自带的
+  │    │      发射器；不注入治理中心（投递没有 executor 接缝）
   │    └─ &http.Client{Timeout: c.Timeout} —— 每 notifier 一个 client，不池化
   ├─ bean 就绪：*Notifier 注入所有 `autowire:"<name>"` 处
   ├─ Run / 服务：无后台 goroutine、无探测（理由见顶部激活说明）
@@ -163,8 +164,8 @@ resilience 服务标签为 `webhook:<name>:<channel>`——按实例**且**按�
      （`timestamp` + `sign` 字段）。
    - `wecom` / `slack`：markdown / text 消息，secret 被忽略。
    - 未知 channel → 报错 `webhook: unknown channel ... (want generic|dingtalk|feishu|wecom|slack)`。
-2. **声明** —— `Send` 经 `observability.WithOperation` 在 context 上声明本次投递的
-   语义身份（`observability.Operation`：span 名 `webhook.send`、指标前缀
+2. **声明** —— `Send` 经 `chain.WithOperation` 在 context 上声明本次投递的
+   语义身份（`chain.Operation`：span 名 `webhook.send`、指标前缀
    `messaging.client`、有界 label `messaging.system=webhook` / `messaging.operation=send` /
    `webhook.channel`，以及目标主机——只有 scheme://host——作为无界 `Detail`），
    再经 `resilience.Run` 把 POST 路由穿过该 notifier 的 resilience executor。

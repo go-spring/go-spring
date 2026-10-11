@@ -84,14 +84,13 @@ func (c *etcdCtrl) Close() {
 
 	for _, cli := range clients {
 		if err := cli.Close(); err != nil {
-			log.Warn(context.Background(), starterTag,
-				log.Err(err),
-				log.Msg("closing etcd client failed"))
+			log.Warn(context.Background(), starterTag, "closing etcd client failed",
+				log.Err(err))
 		}
 	}
 
 	if len(clients) > 0 {
-		log.Infof(context.Background(), starterTag, "etcd clients closed")
+		log.Info(context.Background(), starterTag, "etcd clients closed")
 	}
 }
 
@@ -200,7 +199,7 @@ func (c *etcdCtrl) clientFor(ctx context.Context, cs configSource) (etcdClient, 
 	if err != nil {
 		return nil, errutil.Explain(err, "create etcd client for %s failed", cs.endpoint)
 	}
-	log.Infof(ctx, starterTag, "create etcd client success")
+	log.Info(ctx, starterTag, "create etcd client success")
 	c.clients[key] = cli
 	return cli, nil
 }
@@ -211,9 +210,8 @@ func (c *etcdCtrl) clientFor(ctx context.Context, cs configSource) (etcdClient, 
 func (c *etcdCtrl) Load(ctx context.Context, optional bool, source string) (map[string]string, error) {
 	cs, err := parseSource(source)
 	if err != nil {
-		log.Error(ctx, starterTag, err,
-			log.String("source", redactSource(source)),
-			log.Msg("parse etcd source failed"))
+		log.Error(ctx, starterTag, err, "parse etcd source failed",
+			log.String("source", redactSource(source)))
 		return nil, err
 	}
 
@@ -225,11 +223,11 @@ func (c *etcdCtrl) Load(ctx context.Context, optional bool, source string) (map[
 		log.String("format", cs.format),
 		log.String("key", cs.key))
 
-	log.Debugf(ctx, starterTag, "loading etcd config")
+	log.Debug(ctx, starterTag, "loading etcd config", nil)
 
 	cli, err := c.clientFor(ctx, cs)
 	if err != nil {
-		log.Errorf(ctx, starterTag, err, "create etcd client failed")
+		log.Error(ctx, starterTag, err, "create etcd client failed")
 		return nil, err
 	}
 
@@ -259,31 +257,30 @@ func loadFromClient(ctx context.Context, cli etcdClient, cs configSource, option
 	}
 	if err != nil {
 		if optional {
-			log.Warn(ctx, starterTag,
-				log.Err(err),
-				log.Msg("skip optional config get key failed"))
+			log.Warn(ctx, starterTag, "skip optional config get key failed",
+				log.Err(err))
 			return nil, since, nil
 		}
-		log.Errorf(ctx, starterTag, err, "get etcd key failed")
+		log.Error(ctx, starterTag, err, "get etcd key failed")
 		return nil, since, errutil.Explain(err, "get etcd key %s failed", cs.key)
 	}
 	if len(resp.Kvs) == 0 {
 		if optional {
-			log.Warnf(ctx, starterTag, "skip optional config key is empty")
+			log.Warn(ctx, starterTag, "skip optional config key is empty")
 			return nil, since, nil
 		}
 		err := errutil.Explain(nil, "etcd key %s is empty", cs.key)
-		log.Errorf(ctx, starterTag, err, "etcd key is empty")
+		log.Error(ctx, starterTag, err, "etcd key is empty")
 		return nil, since, err
 	}
 
 	content := resp.Kvs[0].Value
 	m, err := reader.Read(cs.format, content)
 	if err != nil {
-		log.Error(ctx, starterTag, err, log.String("format", cs.format), log.Msg("parse etcd key failed"))
+		log.Error(ctx, starterTag, err, "parse etcd key failed", log.String("format", cs.format))
 		return nil, since, errutil.Explain(err, "parse etcd key %s as %s failed", cs.key, cs.format)
 	}
 
-	log.Infof(ctx, starterTag, "load etcd config success")
+	log.Info(ctx, starterTag, "load etcd config success")
 	return flatten.Flatten(m), since, nil
 }

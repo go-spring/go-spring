@@ -97,7 +97,7 @@ func main() { gs.Run() }
 ```properties
 # 治理规则放在自己的 etcd key 上，由 starter-governance-etcd 监听——
 # spring.governance.* 下的任何东西都不走 app.properties。
-spring.governance.source.etcd.endpoint=127.0.0.1:2379
+spring.governance.source.etcd.endpoints=127.0.0.1:2379
 spring.governance.source.etcd.key=/app/governance.yaml
 ```
 
@@ -106,10 +106,9 @@ spring.governance.source.etcd.key=/app/governance.yaml
 ```yaml
 spring:
   governance:
-    enabled: true
+    driver: default
     client:
       default:
-        enabled: true
         attempt-timeout: 100ms
 ```
 
@@ -119,7 +118,7 @@ spring:
 docker compose up -d
 ETCDCTL_API=3 etcdctl put /app/governance.yaml "$(cat governance.yaml)"   # 启动前先播种
 go run .
-ETCDCTL_API=3 etcdctl put /app/governance.yaml 'govern: {enabled: true, default: {enabled: true, attempt-timeout: 300ms}}'
+ETCDCTL_API=3 etcdctl put /app/governance.yaml 'govern: {default: {attempt-timeout: 300ms}}'
 # 无需重启：源推送新文档，PolicyFor 翻到 300ms
 ```
 
@@ -190,7 +189,8 @@ import starter-governance-etcd
    与 fault seam。
 
 key 上的 **DELETE** 不是 PUT，因此被忽略，上一份好快照继续生效——删文档不是关闭治理的方式。
-关闭的正确姿势是 `spring.governance.enabled=false`（一个存在的键）。
+关闭的正确姿势是发布一份什么都不配的文档（空的 `client`/`server`、零值 `Default`、无规则），但仍要带一个
+`spring.governance.*` 键，如 `spring.resilience.driver=default`。
 
 ### 2.4 日志 tag
 
@@ -222,8 +222,8 @@ logger.governance_etcd.tag=_app_governance_etcd
 回退 `properties`。因此无扩展名的 key 配非 properties 文档时必须显式给 `format`。
 
 文档本身由 `governance.Parse` 解析，它要求**至少有一个 `spring.governance.*` 键**——能解析但一个 `spring.governance.*`
-键都没有的文档（被截断或被清空）是错误，而非"没有治理"。规则键（`spring.governance.enabled`、
-`spring.governance.client.default.*`、`spring.governance.client.rules[n].*`、`spring.governance.client.fault.*`）见
+键都没有的文档（被截断或被清空）是错误，而非"没有治理"。规则键（`spring.governance.client.default.*`、
+`spring.governance.client.rules[n].*`、`spring.governance.client.fault.*`）见
 [`cloud/governance` 的 SOURCE_USAGE_CN.md](../../cloud/governance/SOURCE_USAGE_CN.md)，各后端完全一致。
 
 ---
@@ -246,7 +246,7 @@ key 必须在应用启动前存在——源的构造期会执行一次初始 `Ge
 
 ```bash
 go run . &
-etcdctl put /app/governance.yaml 'govern: {enabled: true, default: {enabled: true, attempt-timeout: 300ms}}'
+etcdctl put /app/governance.yaml 'govern: {default: {attempt-timeout: 300ms}}'
 ```
 
 无需重启；注入的 resilience 权威的 `PolicyFor("...")` 下次调用即翻到新超时。
@@ -274,7 +274,8 @@ etcdctl put /app/governance.yaml 'govern: { broken'      # 或不含任何 sprin
 ### 4.5 删除 key
 
 `etcdctl del /app/governance.yaml` 触发 DELETE 事件，源会忽略它（只应用 PUT）。治理保持上一份
-好规则，且无日志。要关闭治理，请发布 `spring.governance.enabled=false` 的文档。
+好规则，且无日志。要关闭治理，请发布一份什么都不配的文档（空的 `client`/`server`、零值 `Default`、无规则），
+但仍要带一个 `spring.governance.*` 键，如 `spring.resilience.driver=default`。
 
 ### 4.6 冒烟测试
 
@@ -291,12 +292,12 @@ cd example && ./check.sh    # docker 门控：compose 起 etcd，跑自校验 ex
 
 | 症状 | 可能原因 | 处置 |
 |------|----------|------|
-| key 变了但治理仍关（`enabled=false`） | 未链接治理中心 → 无中心 Bean，Source 从未被收集 | 链接 `cloud/governance`（任一治理源 starter 都会做）。 |
+| key 变了但治理仍关（无策略生效） | 未链接治理中心 → 无中心 Bean，Source 从未被收集 | 链接 `cloud/governance`（任一治理源 starter 都会做）。 |
 | 启动报 `key <key> is empty` | 启动前必填 key 不存在 | 启动前先播种 key。 |
 | 启动报 `get <key> failed` | etcd 不可达 / 端口错 / 需认证却未配 `username`/`password` | 检查端点与凭据。 |
 | 启动报 `endpoint`/`key` 为空 | `spring.governance.source.etcd.*` 只配了一部分（任一子键都会触发 `OnProperty`） | 补齐两个必填键，或删掉整个前缀。 |
 | `put` 之后规则不变 | (a) 值与当前逐字节相同或 DeepEqual 相等；(b) 值不可解析 / 不含 `spring.governance.*` 键（Error 日志，保留上一份好配置）；(c) 另一个源已占用中心的唯一源位 | 看 `_app_governance_etcd` 日志行；只配一个源。 |
-| 删 key 后治理仍是旧规则 | DELETE 不是 PUT，按设计被忽略 | 重新 PUT 一份文档；要关闭用 `spring.governance.enabled=false`。 |
+| 删 key 后治理仍是旧规则 | DELETE 不是 PUT，按设计被忽略 | 重新 PUT 一份文档；要关闭就发布一份什么都不配、但仍带 `spring.governance.*` 键的文档。 |
 | 无扩展名的 key 报解析错误 | 格式推断回退到了 `properties` | 设置 `spring.governance.source.etcd.format`。 |
 
 ---

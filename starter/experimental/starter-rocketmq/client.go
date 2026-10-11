@@ -28,6 +28,7 @@ import (
 	"context"
 	"errors"
 	"go-spring.org/cloud/chain"
+	"go-spring.org/cloud/observability"
 	"strings"
 	"sync"
 
@@ -35,7 +36,6 @@ import (
 	"github.com/apache/rocketmq-client-go/v2/consumer"
 	"github.com/apache/rocketmq-client-go/v2/primitive"
 	"github.com/apache/rocketmq-client-go/v2/producer"
-	"go-spring.org/cloud"
 	"go-spring.org/cloud/resilience"
 	"go-spring.org/log"
 )
@@ -58,10 +58,9 @@ type Client struct {
 	nameServers []string
 	cfg         Config
 
-	// exec / serviceLabel carry the resilience executor [NewClient] applies from
-	// the governance bundle it is handed; exec is never nil — a hand-built client
-	// degrades to an observed-only, loudly-unmanaged executor.
-	exec         chain.Executor
+	// obs is the observer [NewClient] attaches: it emits each send's span,
+	// metrics and access log. serviceLabel is the label it reports under.
+	obs          *observability.OperationObserver
 	serviceLabel string
 
 	mu        sync.Mutex
@@ -77,16 +76,15 @@ type Client struct {
 // Client and initializing it are the same act, so the container has no lifecycle
 // hook to register and no way to hand out a half-built client.
 //
-// params carries the container's facilities (see [cloud.ClientParams]), and is
-// applied HERE so a Client cannot exist half-assembled: the executor comes from
-// params.ExecutorFor, with a hand-built client (the zero [cloud.ClientParams])
-// degrading to [resilience.Unmanaged] — observed, with a one-time warning that no
-// protection applies. It is the constructor the bundled [DefaultDriver] uses; a
+// The observer is attached HERE so a Client cannot exist half-assembled. A
+// rocketmq client has no seam for the resilience executor, so there is no
+// governance: the observer emits the span, metrics and access log, and nothing
+// throttles or retries. It is the constructor the bundled [DefaultDriver] uses; a
 // company Driver may call it too.
-func NewClient(nameServers []string, c Config, params cloud.ClientParams) *Client {
+func NewClient(nameServers []string, c Config) *Client {
 	cl := &Client{nameServers: primitive.NamesrvAddr(nameServers), cfg: c}
 	cl.serviceLabel = resilience.ServiceLabel("rocketmq", strings.Join(nameServers, ","))
-	cl.exec = params.ExecutorFor("rocketmq", cl.serviceLabel)
+	cl.obs = observability.NewOperationObserver("rocketmq", cl.serviceLabel)
 	return cl
 }
 
@@ -192,18 +190,14 @@ func (cl *Client) Close() error {
 	}
 	cl.closed = true
 
-	if cl.exec != nil {
-		_ = cl.exec.Close()
-		cl.exec = nil
-	}
 	for _, p := range cl.producers {
 		if err := p.Shutdown(); err != nil {
-			log.Errorf(context.Background(), log.TagAppDef, err, "rocketmq: shutdown producer failed")
+			log.Error(context.Background(), log.TagAppDef, err, "rocketmq: shutdown producer failed")
 		}
 	}
 	for _, c := range cl.consumers {
 		if err := c.Shutdown(); err != nil {
-			log.Errorf(context.Background(), log.TagAppDef, err, "rocketmq: shutdown consumer failed")
+			log.Error(context.Background(), log.TagAppDef, err, "rocketmq: shutdown consumer failed")
 		}
 	}
 	cl.producers = nil
@@ -212,20 +206,20 @@ func (cl *Client) Close() error {
 }
 
 // GuardedProducer returns the chain producer's synchronous sends run through:
-// identity over governance over the raw adapter, governance from this client's
-// executor. Wrap the returned head in your own [InnerProducer] layer to modify
+// identity over the raw adapter, emission from this client's observer. Wrap the
+// returned head in your own [InnerProducer] layer to modify
 // what a send does — the topics a layer rewrites are what gets declared.
 func (cl *Client) GuardedProducer(p rocketmq.Producer) InnerProducer {
-	return NewObsProducer(NewGuardProducer(NewRawProducer(p), cl.exec))
+	return NewObsProducer(NewRawProducer(p), cl.obs)
 }
 
 // execute routes call through the client's resilience executor, and otherwise
 // runs it inline. It serves the per-delivery consume path (whose pipeline
 // inverts the chain's composition, like starter-nats's Consume) and a bare
 // Client (tests, or a caller assembling one by hand).
-func (cl *Client) execute(ctx context.Context, call func(context.Context) error) error {
-	if cl.exec == nil {
+func (cl *Client) execute(ctx context.Context, op chain.Operation, call func(context.Context) error) error {
+	if cl.obs == nil {
 		return call(ctx)
 	}
-	return cl.exec.Execute(ctx, call)
+	return cl.obs.Observe(ctx, op, call)
 }

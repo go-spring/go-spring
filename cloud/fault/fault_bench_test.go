@@ -20,6 +20,7 @@ import (
 	"context"
 	"testing"
 
+	"go-spring.org/cloud/chain"
 	"go-spring.org/cloud/resilience"
 )
 
@@ -37,21 +38,22 @@ func BenchmarkExecutor_Baseline(b *testing.B) {
 	ctx := context.Background()
 	b.ResetTimer()
 	for b.Loop() {
-		_ = exec.Execute(ctx, noopFn)
+		_ = exec.Execute(ctx, chain.Operation{}, noopFn)
 	}
 }
 
-// BenchmarkFaultExecutor_Disabled measures fault-wrapped overhead when injection
-// is off (Enabled false) — the steady-state cost a production config pays.
-func BenchmarkFaultExecutor_Disabled(b *testing.B) {
+// BenchmarkFaultExecutor_Inert measures fault-wrapped overhead when the config
+// is inert (no rate, no latency) — the steady-state cost a production config
+// pays.
+func BenchmarkFaultExecutor_Inert(b *testing.B) {
 	d := resilience.NewDefaultDriver(nil)
 	raw, _ := d.NewClientExecutor("svc", resilience.ClientPolicy{})
 	defer func() { _ = raw.Close() }()
-	exec := WrapClientExecutor(raw, "svc", NewInjector(Configs{Client: Config{}}, nil)) // Enabled false
+	exec := WrapClientExecutor(raw, "svc", NewInjector(Configs{Client: Config{}}, nil)) // inert
 	ctx := context.Background()
 	b.ResetTimer()
 	for b.Loop() {
-		_ = exec.Execute(ctx, noopFn)
+		_ = exec.Execute(ctx, chain.Operation{}, noopFn)
 	}
 }
 
@@ -61,10 +63,10 @@ func BenchmarkFaultExecutor_Injecting(b *testing.B) {
 	d := resilience.NewDefaultDriver(nil)
 	raw, _ := d.NewClientExecutor("svc", resilience.ClientPolicy{})
 	defer func() { _ = raw.Close() }()
-	exec := WrapClientExecutor(raw, "svc", NewInjector(Configs{Client: Config{Enabled: true, Rate: 1, Error: "generic"}}, nil))
+	exec := WrapClientExecutor(raw, "svc", NewInjector(Configs{Client: Config{Rate: 1, Error: "generic"}}, nil))
 	ctx := context.Background()
 	b.ResetTimer()
 	for b.Loop() {
-		_ = exec.Execute(ctx, noopFn)
+		_ = exec.Execute(ctx, chain.Operation{}, noopFn)
 	}
 }

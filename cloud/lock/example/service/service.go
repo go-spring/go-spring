@@ -83,7 +83,7 @@ func (d *Demo) criticalSection(ctx context.Context) error {
 	if err != nil {
 		return errutil.Explain(err, "acquire jobs/rollup")
 	}
-	log.Info(ctx, log.TagAppDef, log.Msg("demo: entered critical section"),
+	log.Info(ctx, log.TagAppDef, "demo: entered critical section",
 		log.String("lock.key", held.Key()), log.String("token", held.Token()))
 	select {
 	case <-held.Lost():
@@ -93,7 +93,7 @@ func (d *Demo) criticalSection(ctx context.Context) error {
 	if err := held.Unlock(ctx); err != nil {
 		return errutil.Explain(err, "unlock jobs/rollup")
 	}
-	log.Infof(ctx, log.TagAppDef, "demo: finished critical section")
+	log.Info(ctx, log.TagAppDef, "demo: finished critical section")
 	return nil
 }
 
@@ -113,7 +113,7 @@ func (d *Demo) contendedSkip(ctx context.Context) error {
 	if ok {
 		return errutil.Explain(nil, "demo: contended TryAcquire unexpectedly succeeded")
 	}
-	log.Infof(ctx, log.TagAppDef, "demo: contended TryAcquire correctly skipped")
+	log.Info(ctx, log.TagAppDef, "demo: contended TryAcquire correctly skipped")
 	return nil
 }
 
@@ -137,7 +137,7 @@ func (d *Demo) electionHandover(ctx context.Context) error {
 	if err := waitLeader(first, true); err != nil {
 		return err
 	}
-	log.Infof(ctx, log.TagAppDef, "demo: first candidate became leader")
+	log.Info(ctx, log.TagAppDef, "demo: first candidate became leader")
 
 	stop()
 	if err := waitLeader(first, false); err != nil {
@@ -158,7 +158,7 @@ func (d *Demo) electionHandover(ctx context.Context) error {
 	if err := waitLeader(second, true); err != nil {
 		return err
 	}
-	log.Infof(ctx, log.TagAppDef, "demo: leadership handed over to the second candidate")
+	log.Info(ctx, log.TagAppDef, "demo: leadership handed over to the second candidate")
 	return nil
 }
 

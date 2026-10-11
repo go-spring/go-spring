@@ -142,8 +142,9 @@ gs.Run()
   ├─ newNotifier:
   │    ├─ dry-run buildPayload with an empty Notification — validates channel value and
   │    │   (for dingtalk/feishu) that signing works, WITHOUT any network call
-  │    ├─ params := cloud.ClientParams{Resilience: mgr, Fault: inj}
-  │    ├─ exec := params.ExecutorFor("webhook", "webhook:<name>:<channel>")
+  │    ├─ obs := observability.NewOperationObserver("webhook",
+  │    │      resilience.ServiceLabel("webhook", c.Channel, name)) — this starter's own
+  │    │      emitter; no governance center is injected (a delivery has no executor seam)
   │    └─ &http.Client{Timeout: c.Timeout} — per-notifier client, no pooling
   ├─ bean ready: *Notifier injected wherever `autowire:"<name>"` appears
   ├─ Run / serve: no background goroutines, no probe (rationale in §Activation)
@@ -169,17 +170,17 @@ so two notifiers on the same URL but different names get independent breaker/lim
    - `wecom` / `slack`: markdown / text messages, secret ignored.
    - Unknown channel → error `webhook: unknown channel ... (want generic|dingtalk|feishu|wecom|slack)`.
 2. **Declaration** — `Send` declares the delivery's semantic identity
-   (`observability.Operation`: span name `webhook.send`, metric prefix `messaging.client`,
+   (`chain.Operation`: span name `webhook.send`, metric prefix `messaging.client`,
    the bounded labels `messaging.system=webhook` / `messaging.operation=send` /
    `webhook.channel`, and the destination host — scheme://host only — as unbounded `Detail`)
-   on the context via `observability.WithOperation`, then routes the POST through the
+   on the context via `chain.WithOperation`, then routes the POST through the
    notifier's resilience executor (`resilience.Run`). A send **declares**; it emits nothing
    itself.
 3. **ClientExecutor + emission (the resilience layer)** — the POST closure runs through the
    governance executor under the service label: rate limit / circuit breaking / retry (if
-   configured via governance) / fault injection when a governance rules source is armed; an
-   observed-only, unmanaged executor otherwise (it warns once per client that no protection
-   applies). The observe wrapper on the executor chain is the single **emitter**:
+   configured via governance) / fault injection when a governance rules source is armed; the
+   resilience manager is required — the container always supplies it, so a client is never
+   assembled without one. The observe wrapper on the executor chain is the single **emitter**:
    it opens the call span `webhook.send` (covering every attempt), records the call-level
    `messaging.client.operation.duration`, the per-attempt `messaging.client.attempt.duration`
    histogram (the downstream's own latency, per try), the in-flight

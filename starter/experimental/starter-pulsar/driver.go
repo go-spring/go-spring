@@ -30,7 +30,7 @@ import (
 	"github.com/apache/pulsar-client-go/pulsar"
 	plog "github.com/apache/pulsar-client-go/pulsar/log"
 	"github.com/prometheus/client_golang/prometheus"
-	"go-spring.org/cloud"
+	"go-spring.org/cloud/governance"
 	"go-spring.org/log"
 	"go-spring.org/stdlib/errutil"
 )
@@ -51,17 +51,17 @@ import (
 // custom driver in this package may call it) rather than leaving a half-built
 // client for the starter to complete.
 //
-// params supplies the container's service-governance capabilities (see
-// [cloud.ClientParams]); it is one struct rather than a parameter per
+// center supplies the container's service-governance capabilities (see
+// [governance.Center]); it is one object rather than a parameter per
 // capability so this interface — which every company driver implements — stays
 // stable as capabilities are added. A driver that has no use for one of its
-// fields simply ignores it.
+// authorities simply ignores it.
 //
 // At most one Driver bean is expected per process; every client under
 // ${spring.pulsar} is built through it, and per-instance differences are
 // expressed through [Config].
 type Driver interface {
-	CreateClient(ctx context.Context, c Config, params cloud.ClientParams) (pulsar.Client, error)
+	CreateClient(ctx context.Context, c Config, center *governance.Center) (pulsar.Client, error)
 }
 
 // DefaultDriver is the default implementation of the Driver interface.
@@ -74,7 +74,7 @@ type DefaultDriver struct{}
 // via [AttachGovernance], so the client is complete when returned) — but not the
 // startup broker probe (Ping), which is the starter's lifecycle concern (see
 // newClient in starter.go).
-func (DefaultDriver) CreateClient(ctx context.Context, c Config, params cloud.ClientParams) (pulsar.Client, error) {
+func (DefaultDriver) CreateClient(ctx context.Context, c Config, center *governance.Center) (pulsar.Client, error) {
 	opts := pulsar.ClientOptions{
 		URL:                        c.URL,
 		OperationTimeout:           c.OperationTimeout,
@@ -110,7 +110,7 @@ func (DefaultDriver) CreateClient(ctx context.Context, c Config, params cloud.Cl
 
 	cl, err := pulsar.NewClient(opts)
 	if err != nil {
-		log.Errorf(ctx, log.TagAppDef, err, "pulsar: create client failed")
+		log.Error(ctx, log.TagAppDef, err, "pulsar: create client failed")
 		if srv != nil {
 			_ = srv.Shutdown(ctx)
 		}
@@ -121,9 +121,9 @@ func (DefaultDriver) CreateClient(ctx context.Context, c Config, params cloud.Cl
 	}
 	// The client is complete the moment it is returned: fix its identity (the
 	// service label) and attach the governance executor here, so nothing patches
-	// it afterwards. A zero governance bundle degrades the executor to an
-	// observed-only, loudly-unmanaged one rather than leaving the client bare.
-	AttachGovernance(cl, c.URL, params)
+	// it afterwards. The center is required to carry a [resilience.Manager];
+	// resolving the executor panics without one.
+	AttachObserver(cl, c.URL)
 	return cl, nil
 }
 
@@ -236,12 +236,14 @@ func emit(level log.Level, fields plog.Fields, msg string) {
 	}
 	switch level {
 	case log.ErrorLevel:
-		log.Errorf(ctx, log.TagAppDef, fmt.Errorf("pulsar: %s", line), "pulsar: %s", line)
+		log.Error(ctx, log.TagAppDef, fmt.Errorf("pulsar: %s", line), "pulsar", log.String("line", line))
 	case log.WarnLevel:
-		log.Warnf(ctx, log.TagAppDef, "pulsar: %s", line)
+		log.Warn(ctx, log.TagAppDef, "pulsar", log.String("line", line))
 	case log.DebugLevel:
-		log.Debugf(ctx, log.TagAppDef, "pulsar: %s", line)
+		log.Debug(ctx, log.TagAppDef, "pulsar", func() []log.Field {
+			return []log.Field{log.String("line", line)}
+		})
 	default:
-		log.Infof(ctx, log.TagAppDef, "pulsar: %s", line)
+		log.Info(ctx, log.TagAppDef, "pulsar", log.String("line", line))
 	}
 }

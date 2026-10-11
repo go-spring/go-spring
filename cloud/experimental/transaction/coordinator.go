@@ -23,6 +23,7 @@ import (
 	"sync"
 	"time"
 
+	"go-spring.org/cloud/chain"
 	"go-spring.org/cloud/resilience"
 	"go-spring.org/log"
 	"go-spring.org/stdlib/errutil"
@@ -277,17 +278,15 @@ func (c *coordinator) finish(ctx context.Context, s Saga, res *Result, completed
 		attribute.String("status", res.Status.String()),
 	))
 	if res.Status == StatusCommitted {
-		log.Info(ctx, log.TagAppDef,
+		log.Info(ctx, log.TagAppDef, "transaction: saga committed",
 			log.String("saga", s.ID),
 			log.String("status", res.Status.String()),
-			log.Int("steps", len(completed)),
-			log.Msg("transaction: saga committed"))
+			log.Int("steps", len(completed)))
 	} else {
-		log.Warn(ctx, log.TagAppDef,
+		log.Warn(ctx, log.TagAppDef, "transaction: saga did not commit",
 			log.String("saga", s.ID),
 			log.String("status", res.Status.String()),
-			log.Int("steps", len(completed)),
-			log.Msg("transaction: saga did not commit"))
+			log.Int("steps", len(completed)))
 	}
 	if c.store == nil {
 		return
@@ -320,15 +319,16 @@ func (c *coordinator) snapshot(s Saga, status Status, completed []completedStep,
 // runWithPolicy runs fn once when the policy is zero, or under the bundled
 // resilience "default" executor (retry, per-attempt timeout, ...) otherwise. It
 // reuses [resilience.ClientPolicy] so Saga step retries and outbound resilience share
-// one knob set instead of duplicating retry logic here.
+// one knob set instead of duplicating retry logic here; the step's node becomes the
+// executor's policy retry node.
 func runWithPolicy(ctx context.Context, p RetryPolicy, resource string, fn func(context.Context) error) error {
 	if p.IsZero() {
 		return fn(ctx)
 	}
-	exec, err := resilience.NewDefaultDriver(nil).NewClientExecutor(resource, p)
+	exec, err := resilience.NewDefaultDriver(nil).NewClientExecutor(resource, resilience.ClientPolicy{Retry: p})
 	if err != nil {
 		return err
 	}
 	defer func() { _ = exec.Close() }()
-	return exec.Execute(ctx, fn)
+	return exec.Execute(ctx, chain.Operation{}, fn)
 }

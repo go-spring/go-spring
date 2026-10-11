@@ -1,1 +1,1 @@
-layout/docs/coding-style/coding-style.md
+layout/docs/coding-style/coding-style.en.md

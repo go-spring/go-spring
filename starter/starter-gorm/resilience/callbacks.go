@@ -50,17 +50,26 @@ type callbackProcessor interface {
 // the op is treated as success; resilience rejections (ErrRateLimited /
 // ErrCircuitOpen / ErrBulkheadFull) surface on tx.Error so the caller sees them.
 // It is a no-op for any processor gorm has not registered (Get returns nil).
-func ApplyCallbacks(db *gorm.DB, exec chain.Executor, service string) error {
+//
+// opFor supplies the [chain.Operation] the wrapped processor is about to run —
+// its identity, built where the operation's kind and its dialect are known (see
+// the observe plugin's Plugin.Operation). It is asked once per call, at the
+// wrap point, and the result is passed EXPLICITLY to the executor rather than
+// carried on the context. A nil opFor (observe disabled) runs every call with
+// the zero Operation, so the resilience layer falls back to its generic
+// signals.
+func ApplyCallbacks(db *gorm.DB, exec chain.Executor, service string, opFor func(*gorm.DB, string) chain.Operation) error {
 	steps := []struct {
 		p    callbackProcessor
 		name string
+		kind string
 	}{
-		{db.Callback().Create(), "gorm:create"},
-		{db.Callback().Query(), "gorm:query"},
-		{db.Callback().Update(), "gorm:update"},
-		{db.Callback().Delete(), "gorm:delete"},
-		{db.Callback().Row(), "gorm:row"},
-		{db.Callback().Raw(), "gorm:raw"},
+		{db.Callback().Create(), "gorm:create", "create"},
+		{db.Callback().Query(), "gorm:query", "query"},
+		{db.Callback().Update(), "gorm:update", "update"},
+		{db.Callback().Delete(), "gorm:delete", "delete"},
+		{db.Callback().Row(), "gorm:row", "row"},
+		{db.Callback().Raw(), "gorm:raw", "raw"},
 	}
 	for _, s := range steps {
 		orig := s.p.Get(s.name)
@@ -68,8 +77,15 @@ func ApplyCallbacks(db *gorm.DB, exec chain.Executor, service string) error {
 			continue
 		}
 		fn := orig
+		kind := s.kind
 		wrapped := func(tx *gorm.DB) {
-			err := runGuard(tx.Statement.Context, exec, service, func() error {
+			// Build the call's identity where the processor (and so its kind and
+			// dialect) is known, then pass it explicitly to the executor.
+			var op chain.Operation
+			if opFor != nil {
+				op = opFor(tx, kind)
+			}
+			err := runGuard(tx.Statement.Context, exec, service, op, func() error {
 				fn(tx)
 				return tx.Error
 			})
@@ -89,16 +105,16 @@ func ApplyCallbacks(db *gorm.DB, exec chain.Executor, service string) error {
 	return nil
 }
 
-// runGuard executes call under exec via [resilience.Run], treating
-// gorm.ErrRecordNotFound ("no rows") as success so it never trips the breaker.
-// A real op error propagates through the executor (feeding retry/breaker); the
-// rejection sentinels are returned as-is so ApplyCallbacks' wrapper can put them
-// on tx.Error.
-func runGuard(ctx context.Context, exec chain.Executor, service string, call func() error) error {
+// runGuard executes call under exec via [resilience.Run] for the operation op,
+// treating gorm.ErrRecordNotFound ("no rows") as success so it never trips the
+// breaker. A real op error propagates through the executor (feeding
+// retry/breaker); the rejection sentinels are returned as-is so ApplyCallbacks'
+// wrapper can put them on tx.Error.
+func runGuard(ctx context.Context, exec chain.Executor, service string, op chain.Operation, call func() error) error {
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	_, err := resilience.Run(ctx, exec,
+	_, err := resilience.Run(ctx, exec, op,
 		func(context.Context) (struct{}, error) { return struct{}{}, call() },
 		resilience.Tolerate(gorm.ErrRecordNotFound))
 	return err

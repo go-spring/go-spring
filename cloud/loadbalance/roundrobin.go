@@ -25,9 +25,9 @@ import (
 
 // roundRobinFactory is the [Factory] behind the [RoundRobin] name. The strategy
 // has no parameters: any key in the bag is rejected by [Params.Done].
-type roundRobinFactory struct{}
+func init() { Register(RoundRobin, buildRoundRobin) }
 
-func (roundRobinFactory) Build(_ Directory, p *Params) (Balancer, error) {
+func buildRoundRobin(p *Params) (Balancer, error) {
 	if err := p.Done(); err != nil {
 		return nil, err
 	}

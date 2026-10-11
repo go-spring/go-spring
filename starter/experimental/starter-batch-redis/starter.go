@@ -68,12 +68,11 @@ func init() {
 				return errutil.Explain(nil, "batch-redis: instance %q missing required property %q",
 					name, "spring.batch-repository.instances."+name+".client")
 			}
-			log.Debug(context.Background(), log.TagAppDef, func() []log.Field {
+			log.Debug(context.Background(), log.TagAppDef, "creating batch redis repository", func() []log.Field {
 				return []log.Field{
 					log.String("name", name),
 					log.String("client", c.Client),
 					log.String("key_prefix", c.KeyPrefix),
-					log.Msg("creating batch redis repository"),
 				}
 			})
 			// TagArg injects the *redis.Client bean by name — this is the

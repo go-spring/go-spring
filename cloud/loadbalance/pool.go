@@ -18,19 +18,25 @@ package loadbalance
 
 import (
 	"context"
-	"sync"
 	"sync/atomic"
 
 	"go-spring.org/cloud/discovery"
 )
 
+// Pool is the INNER layer of client-side load balancing: ONE immutable
+// generation of a complete endpoint-selection chain — a [discovery.Resolver]
+// source, the filter chain, a [Balancer] and its [Tracker] — built once and
+// never retuned. It is what a [Chain] assembles (see [Chain.build]) and swaps
+// whole on a governance refresh; request paths reach it THROUGH the chain, via
+// [Chain.Pick] and [Chain.Complete]. Building one directly with [NewPool] is
+// the standalone case, for callers with no governance manager behind them.
+//
 // The endpoint source of a Pool is a [discovery.Resolver] — a plain
 // `func() ([]Endpoint, error)`, typically bound to one service name via
 // [discovery.NewResolver] — re-read live on every Pick. A source error (a
 // registry hiccup, an unknown service) propagates out of [Pool.Pick] instead
 // of being treated as "no endpoints".
-// Pool is the runtime that ties client-side load balancing together. On every
-// [Pool.Pick] it takes the live endpoint snapshot from its
+// On every [Pool.Pick] it takes the live endpoint snapshot from its
 // [discovery.Resolver] (kept fresh by discovery Watch), filters it, and hands
 // the survivors to a [Balancer] to choose one.
 //
@@ -41,16 +47,21 @@ import (
 // skipped, except Disabled — a disabled endpoint never receives traffic even
 // when it is the only one left.
 type Pool struct {
-	src     discovery.Resolver
-	bal     atomic.Pointer[Balancer]
-	tracker *Tracker
-	sel     atomic.Pointer[Selection]
+	// src is the endpoint source, re-read on every Pick.
+	src discovery.Resolver
 
-	// selMu serializes the read-modify-write of sel in [Pool.ApplyBalancer] and
-	// [Pool.ApplySuspension], so two concurrent policy applications cannot drop
-	// each other's half. It guards nothing on the hot path: Pick and Complete
-	// never touch it.
-	selMu sync.Mutex
+	// bal is the strategy in force. It is set once at construction and never
+	// swapped, so a Pick reads it without a lock.
+	bal atomic.Pointer[Balancer]
+
+	// tracker is the pool's own outlier-suspension state, built from the
+	// selection's thresholds.
+	tracker *Tracker
+
+	// sel records the selection the pool was built from, for inspection through
+	// [Pool.Selection]. It is written once at construction (see
+	// [Pool.recordSelection]).
+	sel atomic.Pointer[Selection]
 }
 
 // PoolOption configures a [Pool].
@@ -81,39 +92,15 @@ func NewPool(src discovery.Resolver, bal Balancer, opts ...PoolOption) *Pool {
 	return p
 }
 
-// ApplyBalancer installs b as the pool's strategy — the strategy half of a
-// resolved selection policy. The manager builds b from its [Directory] and calls
-// this, so a pool never resolves a strategy name itself and stays free of the
-// factory table. s carries the applied name and parameters, recorded for
-// inspection through [Pool.Selection].
+// recordSelection stores s as the pool's selection in force, whole. A pool built
+// from a resolved selection (see [Chain.build]) records it here, where a pool built
+// from a bare [Balancer] has no name to record and leaves [Pool.Selection] zero.
 //
-// The swap is in place and lock-free on the hot path. The old strategy's own
-// state (least_conn in-flight counts, a hash ring, p2c's latency model) is not
-// carried across — a switch starts it over.
-func (p *Pool) ApplyBalancer(b Balancer, s Selection) {
-	p.selMu.Lock()
-	defer p.selMu.Unlock()
-	sel := p.Selection()
-	sel.Balancer = s.Balancer
-	sel.Params = s.Params
-	p.sel.Store(&sel)
-	p.bal.Store(&b)
-}
-
-// ApplySuspension retunes the pool's suspension tracker — the other half of a
-// resolved selection policy, applied on its own so a rule that only changes
-// thresholds still works while the strategy stays as it was. The tracker
-// retunes in place, keeping the per-endpoint failure state so a mid-flight
-// threshold change does not forget what the pool already observed.
-func (p *Pool) ApplySuspension(cfg TrackerConfig) {
-	p.selMu.Lock()
-	sel := p.Selection()
-	sel.OutlierThreshold = cfg.Threshold
-	sel.OutlierSuspendFor = cfg.SuspendFor
-	p.sel.Store(&sel)
-	p.selMu.Unlock()
-
-	p.tracker.SetConfig(cfg)
+// It is called once, before the pool is shared, and is the only writer: a pool's
+// strategy and suspension never change after construction. A changed selection
+// does not retune a pool, it REPLACES it (see [Chain]).
+func (p *Pool) recordSelection(s Selection) {
+	p.sel.Store(&s)
 }
 
 // Tracker returns the pool's suspension tracker. Every pool owns one (a fully

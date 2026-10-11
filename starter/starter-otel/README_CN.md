@@ -186,7 +186,7 @@ func installLogCorrelation() {
 启动时调用一次即可；此后一个请求的日志自动与其 trace 关联，无需任何逐调用点代码：
 
 ```go
-log.Infof(ctx, tag, "handling request")
+log.Info(ctx, tag, "handling request")
 // -> ...||trace_id=29b84b8a2f4eaa447120bf01282c3930||span_id=bc6627138bf150f7||msg=handling request
 ```
 

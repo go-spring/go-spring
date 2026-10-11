@@ -187,7 +187,7 @@ gs.Run()
   │      config.go:376-498；application.name 为空或 0 个 registry → 快速失败）
   ├─ RegisterReference bean 绑定 ${spring.dubbo.consumer.references.<n>} → 经 NewClient 产类型化 stub
   ├─ 装配顺序注意：Rooter（dyncPoller）先于 Runner（治理引擎）装配
-  │     ——见 dync.go:79-83 注释；注入 center 的 OnReady 会补一次 poll 弥合时差
+  │     ——见 dyncPoller.Init 注释；center 是构造依赖，首次 poll 看到的必然是已 arm 的治理权威
   ├─ SimpleDubboServer.Run：buildOptions(provider, protocols, registries) → d.NewServer()
   │     → regAll()：逐个调用 ServiceRegister bean → <-sig.TriggerAndWait() → svr.Serve()  [server.go:282-312]
   ├─ 就绪：Run 触发就绪信号后生效；Stop 时排水在途 RPC
@@ -305,8 +305,8 @@ dubbo-go 默认）。
 
 ### 3.6 consumer（19 个 key）+ consumer.references.<n>（19）+ methods.<m>（12）
 
-客户端同构（consumer 级见 client.go:28-92，reference 级见 101-168）。这棵树被绑定**两次**
-——一次静态供 client bean，一次 `gs.Dync` 供热更新（§4.2）。
+客户端同构（consumer 级见 client.go:28-92，reference 级见 101-168）。这棵树只做一次静态
+绑定（dubbo consumer 配置是启动配置——见 §4.2）。
 
 | 坑 | 细节 |
 |----|------|
@@ -354,20 +354,19 @@ grep -ri "_rpc_dubbo" logs/ | head        # 经日志桥转发的 dubbo-go 框�
 
 ### 4.2 热更新演练（timeout/retries，免重启）
 
-`${spring.dubbo}` 为 `Instance` 做一次静态绑定——在构建/Refer 期消费的字段全部**冻结**：
-protocols、registries、filter（dync.go:49）、serialization、interface/group 路由（它们构成
-override key）。`${spring.dubbo.consumer}` 会**再**绑定为 `gs.Dync[DubboConsumer]`
-（dync.go:56），`dyncPoller` 把其中可动态生效的子集以扁平 dubbo URL 参数推进内存配置中心
-（mapconfig）：`timeout`、`retries`、`loadbalance`、`cluster`、`group`、`version`、
-`serialization`、`sticky`、`force.tag`、`weight`，以及按方法
+`${spring.dubbo}`（含 consumer 子树）为 `Instance` 做一次静态绑定——在构建/Refer 期消费
+的字段全部**冻结**（protocols、registries、filter、serialization、interface/group 路由），
+整个 consumer 节点同样静态：任一变更都需要重启。`dyncPoller` 把 consumer 节点中可动态
+生效的子集以扁平 dubbo URL 参数推进内存配置中心（mapconfig）：`timeout`、`retries`、
+`loadbalance`、`cluster`、`group`、`version`、`serialization`、`sticky`、`force.tag`、
+`weight`，以及按方法
 `methods.<m>.{timeout,retries,loadbalance,weight,sticky,tps.limit.*,execute.limit*}`
-（dync.go:46-48、154-228）。
+（dync.go，consumerToOverrideRules）。
 
-链路（README 设计说明，已对码确认）：
+唯一的热更新线是治理（README 设计说明，已对码确认）：
 
 ```
-属性变更（file/nacos/env）→ gs RefreshProperties → gs.Dync 原子换值
-  → dyncPoller.OnChanged → poll() → 与上次快照 diff（无变化刷新跳过）
+治理中心推送 → resilience Subscribe(label) → poll() → 与上次快照 diff（无变化刷新跳过）
   → mapconfig.RefreshOverrideRules → dubbo-go consumerConfigurationListener /
     referenceConfigurationListener → invoker URL 更新 → 下次调用生效
 ```
@@ -390,7 +389,7 @@ reference 的 `version`/`group` 必须与 provider 导出的一致。
 
 ### 4.4 治理合入通道（中心的动态超时）
 
-可选；仅当配好治理规则源且 `spring.governance.enabled=true` 时激活。poller 以可空构造函数
+可选；仅当配好治理规则源且文档为下面的 label 配了策略时激活。poller 以可空构造函数
 参数注入 `*resilience.Manager` 与 `*governance.Center`（starter.go:59），并订阅两类治理
 服务 label（dync.go:252-253）：
 
@@ -399,9 +398,9 @@ reference 的 `version`/`group` 必须与 provider 导出的一致。
 
 `Policy.Timeout`（毫秒）与 `Policy.MaxRetries` 在 > 0 时覆盖 `timeout`/`retries` 参数
 （dync.go:277-284）；注意 MaxRetries 映射到 dubbo 的 **cluster** 重试，不是 resilience 层
-重试。顺序问题已处理：Rooter 先于 Runner 装配，引擎就绪后注入的 `*governance.Center` 的
-`OnReady` 补一次 poll（dync.go:79-88）。演练：在治理源里改 `spring.governance.*` 超时，观察 reference
-override 免重启重新下发。
+重试。顺序问题已处理：center 是 poller 的构造依赖，gs 把 poller 排在 center 之后装配，
+首次 poll 看到的必然是已 arm 的权威。演练：在治理源里改 `spring.governance.*` 超时，观察
+reference override 免重启重新下发。
 
 ### 4.5 故障演练（provider 侧，免重启）
 
@@ -449,8 +448,7 @@ internal/logger/logger.go init()。dubbo-go 框架的每行日志经 go-spring l
 设计嫌疑清单（交设计裁决）：
 
 1. 配置面大到无法逐条文档化——本身就是信号。
-2. 同一棵树重复绑定（静态 `Instance` + `Dync` consumer），冻结字段清单只存在于代码
-   （dync.go:46-49）。
+2. 冻结字段清单（哪些 consumer key 只在重启时生效）只存在于代码（dync.go，dyncPoller）。
 3. ~~连字符 vs 点号分隔符随嵌套层级不同~~——已按文档化规范口径解决（见 §3.6"分隔符
    混用"）：动态层级点号对齐 dubbo URL 参数、静态层级连字符为 starter 自身风格；兼容
    保留，仅精确匹配。

@@ -37,17 +37,17 @@ func newSaramaLogger() sarama.StdLogger { return saramaLogger{} }
 
 // Print concatenates the arguments with sprint semantics and logs one line.
 func (saramaLogger) Print(v ...any) {
-	log.Infof(context.Background(), log.TagAppDef, "kafka: %s", trimNL(fmt.Sprint(v...)))
+	log.Info(context.Background(), log.TagAppDef, "kafka", log.Any("value", trimNL(fmt.Sprint(v...))))
 }
 
 // Printf logs a formatted message.
 func (saramaLogger) Printf(format string, v ...any) {
-	log.Infof(context.Background(), log.TagAppDef, "kafka: %s", trimNL(fmt.Sprintf(format, v...)))
+	log.Info(context.Background(), log.TagAppDef, "kafka", log.Any("value", trimNL(fmt.Sprintf(format, v...))))
 }
 
 // Println joins its arguments with spaces and logs one line.
 func (saramaLogger) Println(v ...any) {
-	log.Infof(context.Background(), log.TagAppDef, "kafka: %s", trimNL(fmt.Sprintln(v...)))
+	log.Info(context.Background(), log.TagAppDef, "kafka", log.Any("value", trimNL(fmt.Sprintln(v...))))
 }
 
 // trimNL strips the trailing newline that fmt.Sprintln/Sarama append so log

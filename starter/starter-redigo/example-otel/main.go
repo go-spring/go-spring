@@ -38,7 +38,7 @@ import (
 	"time"
 
 	"github.com/gomodule/redigo/redis"
-	"go-spring.org/cloud"
+	"go-spring.org/cloud/governance"
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
 	_ "go-spring.org/starter-otel"
@@ -58,12 +58,12 @@ func init() {
 // AnotherRedisDriver is a custom implementation of the Driver interface.
 type AnotherRedisDriver struct{}
 
-func (AnotherRedisDriver) CreateClient(ctx context.Context, c StarterRedigo.Config, params cloud.ClientParams) (*StarterRedigo.Pool, error) {
-	log.Infof(context.Background(), log.TagAppDef, "AnotherRedisDriver::CreateClient")
+func (AnotherRedisDriver) CreateClient(ctx context.Context, c StarterRedigo.Config, center *governance.Center) (*StarterRedigo.Pool, error) {
+	log.Info(context.Background(), log.TagAppDef, "AnotherRedisDriver::CreateClient")
 	// Delegate to the standard one-shot assembly, then the driver could
-	// customize the pool via its public API (e.g. UseCommandInterceptor). params
+	// customize the pool via its public API (e.g. UseCommandInterceptor). center
 	// carries the container's facilities, applied inside NewPool.
-	return StarterRedigo.NewPool(ctx, c, params)
+	return StarterRedigo.NewPool(ctx, c, center)
 }
 
 type Service struct {
@@ -161,45 +161,45 @@ func runTest(s *Service) {
 
 	// Feature 1: String SET/GET.
 	if _, err := redis.String(c.Do("SET", "key", "value")); err != nil {
-		log.Errorf(ctx, log.TagAppDef, err, "SET failed")
+		log.Error(ctx, log.TagAppDef, err, "SET failed")
 		os.Exit(1)
 	}
 	v, err := redis.String(c.Do("GET", "key"))
 	if err != nil || v != "value" {
-		log.Errorf(ctx, log.TagAppDef, err, "GET failed: v=%q err", v)
+		log.Error(ctx, log.TagAppDef, err, "GET failed: v", log.String("v", v))
 		os.Exit(1)
 	}
 
 	// Feature 2: INCR counter — reset then increment three times.
 	if _, err := c.Do("DEL", "counter"); err != nil {
-		log.Errorf(ctx, log.TagAppDef, err, "DEL counter failed")
+		log.Error(ctx, log.TagAppDef, err, "DEL counter failed")
 		os.Exit(1)
 	}
 	var n int
 	for i := 0; i < 3; i++ {
 		n, err = redis.Int(c.Do("INCR", "counter"))
 		if err != nil {
-			log.Errorf(ctx, log.TagAppDef, err, "INCR failed")
+			log.Error(ctx, log.TagAppDef, err, "INCR failed")
 			os.Exit(1)
 		}
 	}
 	if n != 3 {
-		log.Errorf(ctx, log.TagAppDef, fmt.Errorf("INCR final value expected 3, got %d", n), "INCR final value expected 3, got %d", n)
+		log.Error(ctx, log.TagAppDef, fmt.Errorf("INCR final value expected 3, got %d", n), "INCR final value expected 3", log.Int("n", n))
 		os.Exit(1)
 	}
 
 	// Feature 3: EXPIRE + TTL.
 	if _, err := redis.String(c.Do("SET", "ttl-key", "ttl-value")); err != nil {
-		log.Errorf(ctx, log.TagAppDef, err, "SET ttl-key failed")
+		log.Error(ctx, log.TagAppDef, err, "SET ttl-key failed")
 		os.Exit(1)
 	}
 	if _, err := c.Do("EXPIRE", "ttl-key", 30); err != nil {
-		log.Errorf(ctx, log.TagAppDef, err, "EXPIRE failed")
+		log.Error(ctx, log.TagAppDef, err, "EXPIRE failed")
 		os.Exit(1)
 	}
 	ttl, err := redis.Int(c.Do("TTL", "ttl-key"))
 	if err != nil || ttl <= 0 || ttl > 30 {
-		log.Errorf(ctx, log.TagAppDef, err, "TTL out of range: ttl=%v err", ttl)
+		log.Error(ctx, log.TagAppDef, err, "TTL out of range: ttl", log.Any("ttl", ttl))
 		os.Exit(1)
 	}
 
@@ -209,19 +209,19 @@ func runTest(s *Service) {
 	dc := s.DiscoveryRedis.Get()
 	defer func() { _ = dc.Close() }()
 	if _, err := redis.String(dc.Do("SET", "disc-key", "disc-value")); err != nil {
-		log.Errorf(ctx, log.TagAppDef, err, "discovery SET failed")
+		log.Error(ctx, log.TagAppDef, err, "discovery SET failed")
 		os.Exit(1)
 	}
 	dv, err := redis.String(dc.Do("GET", "disc-key"))
 	if err != nil || dv != "disc-value" {
-		log.Errorf(ctx, log.TagAppDef, err, "discovery GET failed: v=%q err", dv)
+		log.Error(ctx, log.TagAppDef, err, "discovery GET failed: v", log.String("dv", dv))
 		os.Exit(1)
 	}
 	fmt.Println("Response from discovered server:", dv)
 
 	// Feature 5: health check + pool monitoring.
 	if _, err := c.Do("PING"); err != nil {
-		log.Errorf(ctx, log.TagAppDef, err, "health ping failed")
+		log.Error(ctx, log.TagAppDef, err, "health ping failed")
 		os.Exit(1)
 	}
 	stats := s.Redis.Stats()

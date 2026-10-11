@@ -22,7 +22,6 @@
 package StarterRocketmq
 
 import (
-	"go-spring.org/cloud"
 	"go-spring.org/cloud/governance"
 	"go-spring.org/cloud/messaging"
 	"go-spring.org/cloud/traffic"
@@ -81,10 +80,10 @@ func init() {
 // produce/consume. A failed probe abandons the client and releases what was just
 // assembled.
 //
-// mgr and inj are the authority beans the owning packages register; the ctor
-// bundles them into the [cloud.ClientParams] it hands the driver, which passes
+// The ctor hands the governance center to the driver, which passes
 // it to [NewClient] — so the client is assembled complete in one step, with the
-// zero bundle degrading to an observed-only, loudly-unmanaged executor.
+// resilience manager required: the container supplies it via the governance
+// center, so a center without one fails at construction.
 func newClient(ctx *gs.ContextProvider, name string, c Config, d Driver, center *governance.Center) (*Client, error) {
 	// The client's identity rides on a context derived here: every line below
 	// carries it without repeating it. The provider's own context is left
@@ -92,10 +91,9 @@ func newClient(ctx *gs.ContextProvider, name string, c Config, d Driver, center 
 	// constructor's.
 	cctx := log.WithFields(ctx.Context, log.Strings("name_servers", c.NameServers))
 
-	log.Debug(cctx, log.TagAppDef, func() []log.Field {
+	log.Debug(cctx, log.TagAppDef, "creating rocketmq client", func() []log.Field {
 		return []log.Field{
 			log.Bool("ping", c.Ping),
-			log.Msg("creating rocketmq client"),
 		}
 	})
 
@@ -107,8 +105,7 @@ func newClient(ctx *gs.ContextProvider, name string, c Config, d Driver, center 
 	if d == nil {
 		d = DefaultDriver{}
 	}
-	cl, err := d.CreateClient(ctx.Context, c,
-		cloud.ClientParams{Resilience: center.Resilience(), Fault: center.Fault()})
+	cl, err := d.CreateClient(ctx.Context, c, center)
 	if err != nil {
 		return nil, err
 	}
@@ -118,11 +115,11 @@ func newClient(ctx *gs.ContextProvider, name string, c Config, d Driver, center 
 	// traffic. A failure abandons the client, so release what was just applied.
 	if c.Ping {
 		if err = probeNameServer(c.NameServers); err != nil {
-			log.Errorf(cctx, log.TagAppDef, err, "rocketmq: ping failed")
+			log.Error(cctx, log.TagAppDef, err, "rocketmq: ping failed")
 			_ = cl.Close()
 			return nil, errutil.Explain(err, "rocketmq name server probe failed on %v", c.NameServers)
 		}
 	}
-	log.Infof(cctx, log.TagAppDef, "init rocketmq client success")
+	log.Info(cctx, log.TagAppDef, "init rocketmq client success")
 	return cl, nil
 }

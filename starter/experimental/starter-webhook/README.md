@@ -75,8 +75,8 @@ is the body. Non-2xx answers (and vendor error bodies) surface as errors.
   or the Feishu signature automatically.
 - **Resilience** — every Send routes through the governance executor
   (`webhook:<name>:<channel>`), so a flapping endpoint gets circuit-broken
-  instead of piling up. With no governance center linked this degrades to an
-  observed-only, unmanaged executor (it warns once per client).
+  instead of piling up. The resilience manager is required — the container
+  always supplies it, so a client is never assembled without one.
 - **Observability** — each Send **declares** its semantic identity (span
   `webhook.send`; metric prefix `messaging.client`; bounded labels
   `messaging.system`, `messaging.operation`, `webhook.channel`) and routes

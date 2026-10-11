@@ -22,7 +22,6 @@ import (
 	"strings"
 	"time"
 
-	"go-spring.org/cloud"
 	"go-spring.org/cloud/actuator/health"
 	"go-spring.org/log"
 	"go-spring.org/spring/conf"
@@ -77,16 +76,14 @@ func init() {
 // first use; the probe is off by default, so a server that is not up yet does
 // not block startup. A failed probe abandons the client.
 //
-// mgr and inj are the authority beans the owning packages register. The wiring
-// injects them NULLABLY, so both are nil in a container without
-// the container as well as in a standalone (non-gs) call; the ctor bundles
-// them into the [cloud.ClientParams] it hands the driver, and the zero bundle
-// degrades to an observed-only, loudly-unmanaged executor.
+// center is the governance center the container injects — the family's sole
+// injection point; the ctor hands it to the driver, which passes it to
+// [NewClient]. The resilience manager is required — the container supplies it
+// via the governance center — so a center without one fails at construction.
 func newClient(ctx *gs.ContextProvider, c Config, d Driver, center *governance.Center) (*Client, error) {
-	log.Debug(ctx.Context, log.TagAppDef, func() []log.Field {
+	log.Debug(ctx.Context, log.TagAppDef, "creating tdengine client", func() []log.Field {
 		return []log.Field{
 			log.String("dsn_addr", dsnAddr(c.DSN)),
-			log.Msg("creating tdengine client"),
 		}
 	})
 
@@ -94,7 +91,7 @@ func newClient(ctx *gs.ContextProvider, c Config, d Driver, center *governance.C
 	if d == nil {
 		d = DefaultDriver{}
 	}
-	cl, err := d.CreateClient(ctx.Context, c, cloud.ClientParams{Resilience: center.Resilience(), Fault: center.Fault()})
+	cl, err := d.CreateClient(ctx.Context, c, center)
 	if err != nil {
 		return nil, err
 	}

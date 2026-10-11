@@ -64,7 +64,7 @@ pool := loadbalance.NewPool(resolver, bal)
 ## Balancer：策略
 
 策略决定"从幸存者里选谁"。七种内置；治理规则按名引用其中之一，
-容器贡献的任意 `Factory` bean 也可以按同样的方式被引用。
+任何链接进来的包注册的策略也可以按同样的方式被引用。
 
 | 场景 | 策略 | 理由 |
 |---|---|---|
@@ -81,14 +81,11 @@ pool := loadbalance.NewPool(resolver, bal)
 状态按 endpoint 地址键，实例增删、快照重排都不影响幸存实例的存量状态。
 
 自定义策略实现 `Balancer`（Pick/Complete，须并发安全；`Complete` 收本次所结
-请求的 ctx），再作为一个命名
-`Factory` bean 贡献给容器——bean 名即规则引用的策略名，策略自己的参数从
-`Params` 里读：
+请求的 ctx），再提供一个 `Factory`——注册名即规则引用的策略名，策略自己的
+参数从 `Params` 里读：
 
 ```go
-type myFactory struct{}
-
-func (myFactory) Build(_ loadbalance.Directory, p *loadbalance.Params) (loadbalance.Balancer, error) {
+func myFactory(p *loadbalance.Params) (loadbalance.Balancer, error) {
     window, err := p.Duration("window", time.Second) // 策略自己的参数
     if err != nil {
         return nil, err
@@ -99,11 +96,12 @@ func (myFactory) Build(_ loadbalance.Directory, p *loadbalance.Params) (loadbala
     return &myBalancer{window: window}, nil
 }
 
-// starter 的 init 里：
-gs.Provide(func() loadbalance.Factory { return myFactory{} }).
-    Name("my_strategy").
-    Export(gs.As[loadbalance.Factory]()).Caller(1)
+// 定义该策略的包的 init 里：
+func init() { loadbalance.Register("my_strategy", myFactory) }
 ```
+
+策略从定义它的包的 init 注册，注册进唯一一份进程级注册表；因此**链接该包**
+即完成注册。
 
 核心不认识任何策略参数——`Params` 就是规则里的扁平 `balancer-params` 映射，
 策略读自己拥有的键、拒绝其余。新增一个策略及其专属参数，本包一行都不用改。
@@ -141,28 +139,39 @@ ep, _ := pool.Pick(loadbalance.PickInfo{Zone: "us-east-1a,us-east-1"})
 
 ## 受管选择（治理）
 
-池的策略与摘除阈值可以从进程外驱动：按**服务标签**而不是构造期参数传进来。调用方注入
-`*loadbalance.Manager` bean（见 [manager.go](manager.go)），把池交给它：
+链的策略与摘除阈值可以从进程外驱动：按**服务标签**而不是构造期参数传进来。调用方注入
+`*loadbalance.Manager` bean（见 [manager.go](manager.go)），在它下面建链：
 
 ```go
 // mgr 是注入进来的 *loadbalance.Manager;nil 表示进程里没有治理
-stop := mgr.Bind(pool, "http:user-svc")
-defer stop()
+var chain *loadbalance.Chain
+if mgr != nil {
+	chain = mgr.Chain(resolver, "http:user-svc") // 注册:变更即整代重建
+} else {
+	chain = loadbalance.NewChain(resolver, "http:user-svc") // standalone
+}
+ep, err := chain.Pick(loadbalance.PickInfo{})
 ```
 
-- `Bind(pool, label)` **立刻**应用该标签当前的 `Selection`，之后每次变更再应用一次，
-  全部原地生效——不重建、不重连，下一次 `Pick` 就走新策略。它返回解绑函数：生命周期
-  短于进程的池**必须**调用，否则 Manager 会留着一个指向已死池的回调。
-- 给**尚未武装**的 Manager 绑定是安全的，而且是容器接线期建池的常态：订阅会被记住，
-  等第一次 `Apply` 时自动武装。完全没有注入 Manager 时（容器里没有 `cloud/governance`
-  的 bean,或独立调用方）池保持构造时的策略——透明旁路。
-- 策略名留空 = 保持当前策略；策略名写错 = **被忽略**，沿用上一个可用策略。摘除阈值
+- `mgr.Chain(resolver, label)` 把链注册到该标签下,于是标签当前的 `Selection` **立刻**
+  作用在它建出的这一代上，之后每次变更都**整条重建**——全新的 balancer、tracker、池，
+  与它替换掉的那一代毫无共享。`Chain` 是唯一对外出口：请求路径直接 `chain.Pick` /
+  `chain.Complete`，内层 `Pool` 不对外暴露。注册是**单向且永久**的：
+  没有解绑，所以链必须比管它的 Manager 活得久（bean 管理的链本就如此）。全部引用由
+  `Manager.Close` 在 Manager 生命结束时统一释放。
+- 给**尚未武装**的 Manager 注册是安全的，而且是容器接线期建链的常态：先建出基础代，
+  等第一次 `Apply` 时重建。完全没有 Manager 时（容器里没有 `cloud/governance`
+  的 bean,或独立调用方）链只建一次、永不重建——透明旁路。
+- 解析出来的 `Selection` 是完整的，所以策略名留空 = 基础策略（round_robin）——重建没有
+  "当前策略"可以继承。策略名写错 = **被忽略**，沿用上一代可用配置。摘除阈值
   总是应用。
 - 摘除那一半只在 `Pick` 配对了 `Complete` 的池上才有效果——`Tracker` 一直在，
   但没有配对就没有成败可计，阈值就是设在了空气上。
 
 `Manager.Apply(Settings{...})` 是治理中心唯一的入口——启动时用来源快照调一次，之后每次
-推送再调；`Manager.SelectionFor(label)` 读回某标签当前解析出的选择。
+推送再调。中心只**推**规则、匹配由本包做——`Settings.Default` 加一份 `Rules` 列表，首条
+`Service` 等于 label 的 Rule 胜出，和 `fault` 早就是同一副形态。**没有读回**：manager 只会把结果
+**推**给 sink——重建注册过的 `Chain`（gRPC 客户端也在内：它的链建在 READY 快照源上，刷新像其他链一样到达）。
 
 规则给出策略名，并把策略自己的参数放进一个对本包不透明的扁平子映射：
 
@@ -173,17 +182,16 @@ balancer-params:
 outlier-threshold: 5
 ```
 
-`Bind` 是"策略名变成策略"的唯一位置：它拿名字去 Manager 的 `Directory`——内置策略
-加上容器贡献的 `Factory` bean——解析出一个已构造的 `Balancer` 交给池，所以池永远不持有
-工厂表。`Pool.ApplyBalancer`（策略）与 `Pool.ApplySuspension`（阈值）是同样两半的直接
-入口，`Pool.Selection()` 可读回最近一次被接受的选择——自己管配置、不经 Manager 时用得上。
+`Chain.build` 是"策略名变成策略"的唯一位置：它拿名字去包注册表——内置策略
+加上链接进来的包注册的策略——构造出池，所以池永远不持有
+工厂表。`Pool.Selection()` 可读回该池**构建时**用的选择——自己管配置、不经 Manager 时用得上。
 
 ## 覆盖范围与「会重新挑端点吗」自查
 
 选路**只**走治理动态通道——`balancer` 名 + `balancer-params` 子映射里的 `replicas` /
-`zone-key` / `delegate`，经 `Selection.Params` → `Manager.Apply` → `Pool.ApplyBalancer`
-原地热更。starter 不新增自己的本地静态 `balancer` 键；各 starter 构造池时默认策略直接
-`loadbalance.NewRoundRobin()`（不走注册表查名，无 error）。`Factory` 参数化保留，服务于
+`zone-key` / `delegate`，经 `Selection.Params` → `Manager.Apply` → 重建出的 `Chain` 新一代
+（热更新，但整条重建）。starter 不新增自己的本地静态 `balancer` 键；各链的基础代直接
+是 round_robin（不走注册表查名，无 error）。`Factory` 参数化保留，服务于
 治理通道递参。
 
 覆盖到的客户端：所有走发现模式的 `loadbalance.Pool` 消费者——`httpx`/`gateway`、gorm
@@ -206,7 +214,7 @@ outlier-threshold: 5
 
 **`grpc` 在进程级标签下挑点。** 它的选点标签是进程级 `grpc:client`，配 `balancer=` 会
 同时改掉所有内置 `gs_*`；要按服务隔离，就用 `RegisterBalancer` 注册自定义名字（自定义
-`Factory` bean 按设计豁免进程级覆盖）。
+名字保留自己的策略，按设计豁免进程级覆盖）。
 
 **建池三件套** = `WithTrackerConfig` + 建连处 `Pick`/`Complete` 配对 + 订阅治理下发的
 `Selection`；新增 client 照做（已写进 `starter/DESIGN.md` §4 检查项）。同一 label 可能

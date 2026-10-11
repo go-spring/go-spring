@@ -28,7 +28,7 @@ import (
 // Probe delegates to the pool ping, and a broken backend surfaces as an
 // error (DOWN) rather than a panic.
 func TestGormHealth(t *testing.T) {
-	ok, err := Open(fakeDialector{}, PoolConfig{PingTimeout: time.Second}, Options{})
+	ok, err := Open(fakeDialector{}, PoolConfig{PingTimeout: time.Second}, Options{Center: testCenter(t)})
 	assert.Error(t, err).Nil("open")
 	defer func() { _ = ok.Destroy() }()
 
@@ -42,7 +42,7 @@ func TestGormHealth(t *testing.T) {
 
 	// A dialector whose pool pings fine after open but whose ping fails later
 	// (e.g. server gone away) is simulated by closing the pool.
-	closed, err := Open(fakeDialector{}, PoolConfig{PingTimeout: time.Second}, Options{})
+	closed, err := Open(fakeDialector{}, PoolConfig{PingTimeout: time.Second}, Options{Center: testCenter(t)})
 	assert.Error(t, err).Nil("open")
 	if err := closed.Destroy(); err != nil {
 		t.Fatalf("destroy: %v", err)

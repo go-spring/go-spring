@@ -97,10 +97,9 @@ spring.governance.source.nacos.group=DEFAULT_GROUP
 ```yaml
 spring:
   governance:
-    enabled: true
+    driver: default
     client:
       default:
-        enabled: true
         attempt-timeout: 100ms
         max-retries: 2
 ```
@@ -202,7 +201,8 @@ key; an extension-less or unknown-extension dataId defaults to `properties`.
 
 `governance.Parse` binds through the same `conf` value-tag machinery with prefix `govern`, and rejects a
 document that parses but carries no `spring.governance.*` key (a truncated or emptied document) — turning
-governance off is `spring.governance.enabled=false`, a key that IS present.
+governance off is publishing a document that configures nothing (empty `client`/`server`, a zero
+`Default`, no rules) yet still carries one `spring.governance.*` key, e.g. `spring.resilience.driver=default`.
 
 ---
 
@@ -293,8 +293,8 @@ on exit.
 | Startup fails `nacos server address must be host:port` | `server` has no `:` or an empty host/port | Use `host:port`, one server. |
 | Startup fails `governance nacos source: get <group>/<dataId> failed` | dataId missing, wrong group/namespace, wrong credentials, or server down | Create the dataId under the right group/namespace; check auth. |
 | Startup fails inside `governance.Parse` | dataId holds an unparseable or `spring.governance.*`-less document | Publish a valid document first — the seed fails fast by design. |
-| Governance configured, `PolicyFor` stays zero | `spring.governance.enabled` false (the default) in the document | Set `spring.governance.enabled=true` — it is the master switch. |
-| A publish does not change the policy | logs `published an invalid document (keeping last good config)` | Fix the document; "off" is `spring.governance.enabled=false`, not an empty document. |
+| Governance configured, `PolicyFor` stays zero | No rule matches the label, or the resolved `Default` is all-zero | Give the label a matching rule (or a non-zero `Default`) — there is no master switch. |
+| A publish does not change the policy | logs `published an invalid document (keeping last good config)` | Fix the document; "off" is a valid document that configures nothing (still carrying a `spring.governance.*` key), not an empty one. |
 | A publish of identical content does nothing | by design — byte-equal re-deliveries and DeepEqual-equal documents push nothing | Expected. |
 | Custom Source bean silently ignored | missing `Export(gs.As[governance.Source]())` | Add the Export — without it the bean is invisible to interface injection. |
 | Rules change never arrives | Nacos connectivity, or the push target is not the watched `(group, dataId)` | Verify the publish lands on the configured group/dataId. |

@@ -84,7 +84,7 @@ func main() {
 }
 
 func fail(format string, args ...any) {
-	log.Errorf(context.Background(), log.TagAppDef, fmt.Errorf(format, args...), format, args...)
+	log.Record(context.Background(), log.ErrorLevel, log.TagAppDef, 2, log.Msgf(format, args...))
 	os.Exit(1)
 }
 

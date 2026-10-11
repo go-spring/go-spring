@@ -20,8 +20,8 @@ import (
 	"context"
 	"testing"
 
-	"go-spring.org/cloud"
 	"go-spring.org/cloud/discovery"
+	"go-spring.org/cloud/governance"
 	"go-spring.org/spring/gs"
 )
 
@@ -32,9 +32,9 @@ type recordingDriver struct {
 	called bool
 }
 
-func (d *recordingDriver) CreateClient(ctx context.Context, c Config, params cloud.ClientParams) (*Pool, error) {
+func (d *recordingDriver) CreateClient(ctx context.Context, c Config, center *governance.Center) (*Pool, error) {
 	d.called = true
-	return NewPool(ctx, c, params)
+	return NewPool(ctx, c, center)
 }
 
 // TestDriverBeanDefault proves that when no company Driver bean is provided the
@@ -99,15 +99,16 @@ func TestDriverBeanNamedSelection(t *testing.T) {
 	})
 }
 
-// captureDriver records the discovery backend each CreateClient received, so
-// tests can assert which backend label an entry resolved to.
+// captureDriver records the discovery backend each CreateClient resolved, so
+// tests can assert which backend label an entry named. The driver resolves the
+// label itself from the center's directory — the same act [NewPool] performs.
 type captureDriver struct {
 	got discovery.Discovery
 }
 
-func (d *captureDriver) CreateClient(ctx context.Context, c Config, params cloud.ClientParams) (*Pool, error) {
-	d.got = params.Discovery
-	return NewPool(ctx, c, params)
+func (d *captureDriver) CreateClient(ctx context.Context, c Config, center *governance.Center) (*Pool, error) {
+	d.got, _ = center.Discovery().Get(c.Discovery)
+	return NewPool(ctx, c, center)
 }
 
 // TestDiscoveryDefaultFallback pins the two-layer citation semantics: an

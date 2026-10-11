@@ -438,7 +438,7 @@ func (t *task) loop(ctx context.Context) {
 			// the other lifecycle lines.
 			_, oneShot := t.job.trigger.(after)
 			if !oneShot && ctx.Err() == nil {
-				log.Warnf(ctx, log.TagAppDef, "scheduler: job's trigger reports no further fire time")
+				log.Warn(ctx, log.TagAppDef, "scheduler: job's trigger reports no further fire time")
 			}
 			return
 		}
@@ -535,7 +535,7 @@ func (t *task) queueWorker(ctx context.Context, scheduled time.Time) {
 			if ctx.Err() != nil {
 				t.running = false
 				t.mu.Unlock()
-				log.Debugf(ctx, log.TagAppDef, "scheduler: queued fire dropped on stop")
+				log.Debug(ctx, log.TagAppDef, "scheduler: queued fire dropped on stop", nil)
 				return
 			}
 			t.mu.Unlock()
@@ -585,9 +585,9 @@ func (t *task) runOnce(parent context.Context, scheduled time.Time) {
 		defer func() {
 			if err := l.Unlock(context.WithoutCancel(ctx)); err != nil {
 				log.Warn(ctx, log.TagAppDef,
+					"scheduler: lock release failed; the lock now relies on its TTL",
 					log.String("key", key),
-					log.Err(err),
-					log.Msg("scheduler: lock release failed; the lock now relies on its TTL"))
+					log.Err(err))
 			}
 		}()
 	}

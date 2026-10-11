@@ -221,10 +221,9 @@ func (d *endpointSliceDiscovery) watchInformer(name string, e *esEntry) {
 	}
 	if _, err := informer.AddEventHandler(handler); err != nil {
 		d.obs.Synced(name, err)
-		log.Warn(ctx, starterTag,
+		log.Warn(ctx, starterTag, "discovery-k8s: informer handler registration failed; serving seed/stale snapshots",
 			log.String("status", discovery.StatusOf(err)),
-			log.Err(err),
-			log.Msg("discovery-k8s: informer handler registration failed; serving seed/stale snapshots"))
+			log.Err(err))
 		return
 	}
 
@@ -234,10 +233,9 @@ func (d *endpointSliceDiscovery) watchInformer(name string, e *esEntry) {
 		h.stop()
 		err := errutil.Explain(nil, "discovery-k8s: cache sync for %q failed", name)
 		d.obs.Synced(name, err)
-		log.Warn(ctx, starterTag,
+		log.Warn(ctx, starterTag, "discovery-k8s: cache sync failed; serving seed snapshots",
 			log.String("status", discovery.StatusOf(err)),
-			log.Err(err),
-			log.Msg("discovery-k8s: cache sync failed; serving seed snapshots"))
+			log.Err(err))
 		return
 	}
 
@@ -255,10 +253,9 @@ func (d *endpointSliceDiscovery) watchInformer(name string, e *esEntry) {
 			slices, err := lister.List(labels.Everything())
 			if err != nil {
 				d.obs.Synced(name, err)
-				log.Warn(ctx, starterTag,
+				log.Warn(ctx, starterTag, "discovery-k8s: refresh from the informer cache failed (keeping stale snapshot)",
 					log.String("status", discovery.StatusOf(err)),
-					log.Err(err),
-					log.Msg("discovery-k8s: refresh from the informer cache failed (keeping stale snapshot)"))
+					log.Err(err))
 				continue
 			}
 			eps := slicesToEndpoints(cfg, slices)

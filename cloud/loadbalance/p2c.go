@@ -28,9 +28,9 @@ import (
 
 // p2cFactory is the [Factory] behind the [P2C] name. The strategy has no
 // parameters: any key in the bag is rejected by [Params.Done].
-type p2cFactory struct{}
+func init() { Register(P2C, buildP2C) }
 
-func (p2cFactory) Build(_ Directory, p *Params) (Balancer, error) {
+func buildP2C(p *Params) (Balancer, error) {
 	if err := p.Done(); err != nil {
 		return nil, err
 	}

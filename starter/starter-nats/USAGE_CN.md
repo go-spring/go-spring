@@ -89,8 +89,7 @@ func newConsumer(drv messaging.Driver) *Consumer {
 
 func (c *Consumer) Init(ctx context.Context) error {
     return c.Sub.Subscribe(ctx, func(ctx context.Context, m *messaging.Message) error {
-        log.Infof(ctx, log.TagAppDef, "order received: %s trace-id-from-header=%v",
-            string(m.Payload), m.Headers["traceparent"])
+        log.Info(ctx, log.TagAppDef, "order received", log.String("payload", string(m.Payload)), log.Any("traceparent", m.Headers["traceparent"]))
         return nil // 返回 error 走 Recover 错误路径
     })
 }
@@ -144,7 +143,7 @@ spring.governance.source.file.path=conf/governance.yaml
 ```yaml
 spring:
   governance:
-    enabled: true
+    driver: default
     resilience:
       nats:                 # 对应 ResourceLabel 方案，见 §4.3
         rate-limit: 100
@@ -176,17 +175,17 @@ gs.Run()
   │             .Name(name).Destroy((*Conn).Close).Caller(1)    [starter.go:45-54]
   ├─ newConn：Driver bean（由 ${spring.nats.instances.<name>.driver} 按实例选择：留空 = 按类型注入，
   │     配置 = 按 bean 名注入，指定的 bean 不存在则启动失败；无则回退到内置
-  │     DefaultDriver）→ CreateClient(ctx, Config, cloud.ClientParams{Resilience: mgr, Fault: inj})
+  │     DefaultDriver）→ CreateClient(ctx, Config, center)
   │           （nats.Connect —— 快速失败探针；broker 不可用则中断启动）
-  ├─ CreateClient：NewConn(nc, url, params)——一步同时定身份与应用治理，
+  ├─ CreateClient：NewConn(nc, url, center)——一步同时定身份与应用治理，
   │           Driver 返回时 Conn 即完整（`nats:<url>` service label；
-  │           params.ExecutorFor → fault.WrapClientExecutor(mgr.ClientExecutorFor("nats", service), service, inj)，
-  │           零值 bundle 时降级为 resilience.Unmanaged）
+  │           center.ExecutorFor → fault.WrapClientExecutor(mgr.ClientExecutorFor("nats", service), service, inj)；
+  │           resilience manager 必填——容器始终提供）
   │           [driver.go:145; client.go:86-93]
   ├─ jetstream.enabled → jetstream.New(nc)；失败会关闭 nc 并中断启动
   │           [driver.go:149-157]
-  ├─ newConn：把 mgr/inj（= 注入的 *resilience.Manager / *fault.Injector bean）
-  │           打包进交给 Driver 的 cloud.ClientParams；此后无任何补装配
+  ├─ newConn：接收注入的 *governance.Center——容器唯一注入点，持有
+  │           resilience/fault/loadbalance 三个 authority——并交给 Driver；此后无任何补装配
   │           [driver.go:181-182]
   ├─ ping 时启动连通性检查（裸 client 的 IsConnected）；失败则销毁该 bean
   │           [driver.go:197-202]
@@ -267,9 +266,9 @@ handler 是第二个副作用，不是第二次尝试。
 `RequestGuarded` 不声明操作，因此 executor 只发射本层的兜底信号（`resilience.client.duration`、
 以 service 命名的 span），不会产生 `messaging.client.*` 信号——它没有专属的操作 span。
 
-`Governance.ExecutorFor` 内部包裹顺序（见 `cloud/governance/governance.go`，由
+`Center.ExecutorFor` 内部包裹顺序（见 `cloud/governance/center.go`，由
 [NewConn](client.go:86-93) 调用）：`mgr.ClientExecutorFor("nats", service)`（由注入的
-`*resilience.Manager` bean 装备；bundle 为零值时降级为 `resilience.Unmanaged` 仅观测的 executor）→
+`*resilience.Manager` bean 装备——必填，容器始终提供）→
 `fault.WrapClientExecutor`（故障注入，最外层）。manager 的 resolve 步骤会用 observe 发射器包裹后端
 executor（见 `resilience/observe.go`），因此声明的操作其 span/counter/histogram/access-log 只在链上
 唯一能看到完整一次调用的那点产生一次。拒绝时 guarded 调用返回

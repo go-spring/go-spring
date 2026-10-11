@@ -127,7 +127,7 @@ func TestRefreshConfigWithoutRootKeepsDefaultLoggerLayout(t *testing.T) {
 	err := RefreshConfig(nil)
 	assert.Error(t, err).Nil()
 
-	Info(context.Background(), TagAppDef, Msg("hello"))
+	Info(context.Background(), TagAppDef, "hello")
 	if !strings.Contains(logBuf.String(), "_app_def||msg=hello\n") {
 		t.Fatalf("expected default logger output, got %q", logBuf.String())
 	}

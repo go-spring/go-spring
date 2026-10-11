@@ -78,14 +78,14 @@ func runTest() {
 	// Swagger UI assets plus our own spec URL.
 	page := mustGet(ctx, "http://127.0.0.1:9696/swagger/")
 	if !strings.Contains(page, "swagger-ui") || !strings.Contains(page, "openapi.json") {
-		log.Errorf(ctx, log.TagAppDef, fmt.Errorf("UI page missing expected markers: %q", page), "UI page missing expected markers: %q", page)
+		log.Error(ctx, log.TagAppDef, fmt.Errorf("UI page missing expected markers: %q", page), "UI page missing expected markers", log.String("page", page))
 		os.Exit(1)
 	}
 	fmt.Println("Response from server: /swagger/ served the Swagger UI shell")
 
 	// Feature 2: index.html resolves to the same shell.
 	if idx := mustGet(ctx, "http://127.0.0.1:9696/swagger/index.html"); !strings.Contains(idx, "swagger-ui") {
-		log.Errorf(ctx, log.TagAppDef, fmt.Errorf("index.html missing UI markers: %q", idx), "index.html missing UI markers: %q", idx)
+		log.Error(ctx, log.TagAppDef, fmt.Errorf("index.html missing UI markers: %q", idx), "index.html missing UI markers", log.String("idx", idx))
 		os.Exit(1)
 	}
 	fmt.Println("Response from server: /swagger/index.html served the same shell")
@@ -93,7 +93,7 @@ func runTest() {
 	// Feature 3: the generated OpenAPI document is served verbatim.
 	spec := mustGet(ctx, "http://127.0.0.1:9696/swagger/openapi.json")
 	if !strings.Contains(spec, "\"openapi\"") || !strings.Contains(spec, "Greeter API") {
-		log.Errorf(ctx, log.TagAppDef, fmt.Errorf("spec missing expected content: %q", spec), "spec missing expected content: %q", spec)
+		log.Error(ctx, log.TagAppDef, fmt.Errorf("spec missing expected content: %q", spec), "spec missing expected content", log.String("spec", spec))
 		os.Exit(1)
 	}
 	fmt.Println("Response from server: /swagger/openapi.json served the OpenAPI document")
@@ -106,13 +106,13 @@ func runTest() {
 func mustGet(ctx context.Context, url string) string {
 	resp, err := http.Get(url)
 	if err != nil {
-		log.Errorf(ctx, log.TagAppDef, err, "GET %s failed", url)
+		log.Error(ctx, log.TagAppDef, err, "GET", log.String("url", url))
 		os.Exit(1)
 	}
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode != http.StatusOK {
-		log.Errorf(ctx, log.TagAppDef, fmt.Errorf("GET %s status=%d body=%q", url, resp.StatusCode, string(body)), "GET %s status=%d body=%q", url, resp.StatusCode, string(body))
+		log.Error(ctx, log.TagAppDef, fmt.Errorf("GET %s status=%d body=%q", url, resp.StatusCode, string(body)), "GET", log.String("url", url), log.Int("status_code", resp.StatusCode), log.String("body", string(body)))
 		os.Exit(1)
 	}
 	return string(body)

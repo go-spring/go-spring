@@ -25,9 +25,9 @@ import (
 
 // leastConnFactory is the [Factory] behind the [LeastConn] name. The strategy
 // has no parameters: any key in the bag is rejected by [Params.Done].
-type leastConnFactory struct{}
+func init() { Register(LeastConn, buildLeastConn) }
 
-func (leastConnFactory) Build(_ Directory, p *Params) (Balancer, error) {
+func buildLeastConn(p *Params) (Balancer, error) {
 	if err := p.Done(); err != nil {
 		return nil, err
 	}

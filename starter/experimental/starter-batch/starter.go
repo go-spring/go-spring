@@ -149,19 +149,18 @@ func (s *Server) Run(ctx context.Context, sig gs.ReadySignal) error {
 			// goroutine outlives any request, so the context is minted here.
 			jobCtx := log.WithFields(runCtx, log.String("job", jobName))
 
-			log.Infof(jobCtx, starterTag, "batch: launching job on startup")
+			log.Info(jobCtx, starterTag, "batch: launching job on startup")
 			je, err := s.Launcher.Launch(runCtx, jobName, params)
 			if err != nil {
-				log.Errorf(jobCtx, starterTag, err, "batch: job failed")
+				log.Error(jobCtx, starterTag, err, "batch: job failed")
 				return
 			}
-			log.Info(jobCtx, starterTag, log.String("status", je.Status.String()), log.Msg("batch: job finished"))
+			log.Info(jobCtx, starterTag, "batch: job finished", log.String("status", je.Status.String()))
 		}()
 	}
-	log.Info(ctx, starterTag,
+	log.Info(ctx, starterTag, "start batch runner success",
 		log.Int("jobs", len(s.Launcher.Names())),
-		log.Int("run_on_startup", launched),
-		log.Msg("start batch runner success"))
+		log.Int("run_on_startup", launched))
 
 	<-ctx.Done()
 	return nil
@@ -191,9 +190,8 @@ func (s *Server) Stop(ctx context.Context) error {
 	case <-done:
 		return nil
 	case <-time.After(timeout):
-		log.Warn(ctx, starterTag,
-			log.String("timeout", timeout.String()),
-			log.Msg("batch: drain timed out; abandoning in-flight launches"))
+		log.Warn(ctx, starterTag, "batch: drain timed out; abandoning in-flight launches",
+			log.String("timeout", timeout.String()))
 		return nil
 	}
 }

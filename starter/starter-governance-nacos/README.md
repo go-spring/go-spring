@@ -74,10 +74,9 @@ Put the rules in their OWN dataId, with the same `spring.governance.*` keys an
 ```yaml
 spring:
   governance:
-    enabled: true
+    driver: default
     client:
       default:
-        enabled: true
         attempt-timeout: 100ms
     client:
       rules:
@@ -86,7 +85,7 @@ spring:
 ```
 
 Every published version is re-parsed and pushed into the center. The rule
-vocabulary (`spring.governance.enabled`, `spring.governance.client.default.*`, `spring.governance.client.rules[n].*`,
+vocabulary (`spring.governance.client.default.*`, `spring.governance.client.rules[n].*`,
 `spring.governance.client.fault.*`) belongs to the governance domain; see
 [cloud/governance's SOURCE_USAGE](../../cloud/governance/SOURCE_USAGE.md) for the full
 reference. Introducing the governance center itself is still

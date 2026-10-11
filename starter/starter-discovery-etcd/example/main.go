@@ -95,7 +95,7 @@ func (v *VerifyRunner) Run(ctx context.Context) error {
 func (v *VerifyRunner) verify(ctx context.Context) {
 	d := v.backend
 	if d == nil {
-		log.Errorf(ctx, log.TagAppDef, fmt.Errorf("discovery backend %q not wired", "etcd.main"), "discovery backend %q not wired", "etcd.main")
+		log.Error(ctx, log.TagAppDef, fmt.Errorf("discovery backend %q not wired", "etcd.main"), "discovery backend", log.String("value", "etcd.main"))
 		return
 	}
 	var eps []discovery.Endpoint
@@ -109,9 +109,9 @@ func (v *VerifyRunner) verify(ctx context.Context) {
 		time.Sleep(500 * time.Millisecond)
 	}
 	if err != nil {
-		log.Warnf(ctx, log.TagAppDef, "resolve orders failed: %v", err)
+		log.Warn(ctx, log.TagAppDef, "resolve orders failed", log.Any("err", err))
 	} else if len(eps) == 0 {
-		log.Warnf(ctx, log.TagAppDef, "service orders has no instances yet")
+		log.Warn(ctx, log.TagAppDef, "service orders has no instances yet")
 	}
 	for _, e := range eps {
 		fmt.Printf("discovered endpoint=%s weight=%d metadata=%v\n", e.Addr, e.Weight, e.Metadata)

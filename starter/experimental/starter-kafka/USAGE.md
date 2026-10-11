@@ -115,8 +115,7 @@ spring.observability.metrics.exporter=prometheus
 
 # --- governance (rate limit on the sync produce path) -----------------------
 # NOTE: governance RULES go in conf/governance.properties, referenced by spring.governance.source.file.path in app.properties (see cloud/governance's SOURCE_USAGE).
-spring.governance.enabled=true
-spring.governance.driver=default
+spring.resilience.driver=default
 spring.governance.client.default.rate-limit=8
 ```
 
@@ -151,16 +150,15 @@ import starter-kafka
 gs.Run()
   ├─ ctor newClient [starter.go:96]:
   │   1. optional Driver bean — none → bundled DefaultDriver                [starter.go:101-102]
-  │   2. d.CreateClient: full client assembly AND completion — the driver
-  │      attaches governance while it builds: AttachGovernance → params.
-  │      ExecutorFor("kafka", "kafka:<brokers>")                 [driver.go:78,122]
-  │      (= fault.WrapClientExecutor(mgr.ClientExecutorFor("kafka", service),
-  │      service, inj) when the bundle is populated; the observe-only
-  │      resilience.Unmanaged executor when it is zero), indexed by client
-  │      pointer in the package-level sync.Map                    [command.go:83-89]
+  │   2. d.CreateClient(ctx, c, center): full client assembly — the driver
+  │      builds the raw client and returns it. center is the injected
+  │      *governance.Center (the family's sole injection point: it hands out the
+  │      resilience/fault/loadbalance authorities — e.g. center.ExecutorFor("kafka",
+  │      "kafka:<brokers>")). Governance is applied one step up, by NewClient while
+  │      it wraps the returned client in its chain  [driver.go:78,122; starter.go:109,120]
   │   3. then probe (when ping=true): Ping with 10s timeout — bad
   │      brokers/credentials/TLS fail the boot instead of the first produce; a failed ping
-  │      releases the executor the driver attached                [starter.go:113,119]
+  │      abandons the client, chain and all                  [starter.go:113,119]
   ├─ no Init hook; the *kgo.Client bean is ready after the ctor; nothing
   │  patches it — governance was applied inside the constructor
   ├─ Destroy(destroyClient) [starter.go:130]:
@@ -178,15 +176,15 @@ assembly (`starter.go:100-102`). When several Driver beans coexist, an entry sel
 by name: `spring.kafka.instances.<name>.driver = <bean-name>` (empty = inject the single Driver
 bean by type; naming a missing bean fails startup).
 
-`CreateClient` receives the governance bundle and must finish the client by calling
-`AttachGovernance` — the guard is indexed by the raw `*kgo.Client` the driver returns, so a
-custom Driver has to attach it there; the resilience registry keyed by that pointer is why
-`GuardedProduceSync` can be a free function taking the raw bean: the guard resolves the executor
-without wrapping the client type [command.go:83-89,102-109].
+`CreateClient` receives the injected `*governance.Center` — the family's sole injection point — and
+returns the raw client; governance is applied one step up, by `NewClient` wrapping that raw
+`*kgo.Client` in the client's chain, so nothing patches the client afterwards. `GuardedProduceSync`
+takes the wrapper `*Client` and resolves the executor from its chain, so a custom Driver only has to
+return the raw client [command.go, entity.go].
 
 ### 2.2 Client assembly — what DefaultDriver installs, in order
 
-`DefaultDriver.CreateClient` builds one `kgo.NewClient` call and then completes it
+`DefaultDriver.CreateClient` builds one `kgo.NewClient` call and returns the raw client
 [driver.go:78-124]:
 
 1. `kgo.SeedBrokers(strings.Split(c.Brokers, ",")...)` — brokers is a CSV of seeds; the client
@@ -201,8 +199,9 @@ without wrapping the client type [command.go:83-89,102-109].
 4. `kgo.ConsumerGroup` / `kgo.ConsumeTopics` from `group`/`topic` config — **fixed at
    construction**; that is a franz-go constraint the driver inherits (§2.3).
 5. SASL mechanism, TLS (`c.TLS.BuildClient()`), producer options (compression/acks/batch/linger).
-6. `AttachGovernance(cl, c.Brokers, params)` [driver.go:122] — governance attached last, inside the
-   constructor, so the returned client is complete (see §2.1 step 2 and §4.5).
+6. returns the raw client — no governance step here: the bundled default ignores `center`, and
+   governance is applied one step up by `NewClient` while it wraps the returned client in its
+   chain (see §2.1 step 2 and §4.5).
 
 Only the startup ping is deliberately **not** in the driver — it is the starter's lifecycle
 concern [starter.go:113]. Resilience wiring **is** in the driver now: it is applied while the
@@ -223,7 +222,7 @@ client is built, not by a later step.
    same resilience executor the raw client API uses (a no-op pass-through when no governance rule
    matches this client's service label) [client.go:93-99], broker ack / rejection surfaced to
    the caller.
-5. `GuardedProduceSync` declares the publish's identity (`observability.WithOperation`, span name
+5. `GuardedProduceSync` declares the publish's identity (`chain.WithOperation`, span name
    `publish`, metric prefix `messaging.client`, topic as Detail) and hands the call to the client's
    resilience executor, which emits the span, the call-level/attempt-level duration histograms, the
    calls counter and the one access log [command.go, observe.go]. Access log tag: `messaging.access`
@@ -266,7 +265,7 @@ franz-go's async `Produce` returns immediately, so only the synchronous path can
 - With a rule matching, the call passes through the assembled executor
   `fault.WrapClientExecutor(mgr.ClientExecutorFor("kafka", service), service, inj)` [command.go:86] — runtime
   fault injection and resilience outcome metrics around the produce; service label
-  `kafka:<brokers>` (format `prefix:name`, [resilience/policy.go:216-230]).
+  `kafka:<brokers>` (format `prefix:name`, [resilience/client_policy.go:216-230]).
 - On rejection (rate-limit / open breaker) the produce is **never invoked**; the rejection error
   is encoded as a per-record error so `.FirstErr()` surfaces it like a produce failure
   [command.go:150-157]. example-cloudnative asserts bursts get `resilience.ErrRateLimited`.
@@ -312,7 +311,7 @@ per-instance prefix binding). `value:` tags reconciled against source: 21 keys t
 The `driver` key names the Driver bean for this entry: unset → assembly is owned by the
 optional Driver bean injected by type (see §2.1) or the bundled `DefaultDriver`; set → that
 bean by name, and naming a missing bean fails startup. (`driver` in a conf below refers to the
-governance-resilience `spring.governance.driver` selecting a rule source, not this starter.)
+governance-resilience `spring.resilience.driver` selecting the resilience backend, not this starter.)
 
 ### 3.2 SASL
 
@@ -452,4 +451,4 @@ Design suspects (audit ledger; carried over from the previous edition, none fixe
 - ~~`destroyClient` discards the Flush error~~ fixed: Flush failure now logs an ERROR naming
   the data-loss consequence and propagates out of the destroy hook.
 - no health indicator from the starter (family asymmetry: go-redis/redigo register one).
-- resilience executors keyed by `*kgo.Client` pointer in package-level sync.Maps [command.go:83-89] — the guard is attached inside `CreateClient` (via `AttachGovernance`); a custom Driver returning a client without calling it would silently skip the guard.
+- ~~resilience executors keyed by `*kgo.Client` pointer in package-level sync.Maps~~ fixed: the guard rides the client's own chain — `NewClient` wraps the raw client the Driver returns, so a custom Driver only has to return it and the chain is built for it [entity.go].

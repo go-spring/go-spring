@@ -93,8 +93,8 @@ func RequestIDFromContext(ctx context.Context) string {
 // inbound middleware's policy; a nil center reads a nil manager, which disables
 // inbound (a transparent pass-through). Its fault authority backs the fault
 // middleware the requests are gated on (nil likewise, which disables injection).
-// prop is the application's load-test convention bean (nil means go-spring's
-// default).
+// prop is the load-test convention bean — the application.s when it provides
+// one, go-spring.s default otherwise.
 func ApplyMiddlewares(e *gin.Engine, cfg Config, center *governance.Center, prop traffic.Propagator) error {
 	mw := cfg.Middleware
 
@@ -129,7 +129,7 @@ func ApplyMiddlewares(e *gin.Engine, cfg Config, center *governance.Center, prop
 	// Resilience inbound (opt-in): runs the request through the configured
 	// rate-limit / bulkhead / breaker before the handler chain. Sits inside
 	// Observe so 429/503 rejects are still observed.
-	adm, err := buildServerPolicy(cfg, center.Resilience())
+	adm, err := buildServerPolicy(cfg)
 	if err != nil {
 		return errutil.Explain(err, "gin: resilience inbound")
 	}
@@ -194,10 +194,6 @@ func ApplyMiddlewares(e *gin.Engine, cfg Config, center *governance.Center, prop
 // Installed outermost (before RequestID and Observe), the marker reaches every
 // downstream layer; without the header the middleware is a no-op.
 func LoadTest(prop traffic.Propagator) gin.HandlerFunc {
-	if prop == nil {
-		// DefaultBinding is complete, so this cannot fail.
-		prop, _ = traffic.NewDefaultPropagator(traffic.DefaultBinding())
-	}
 	return func(c *gin.Context) {
 		ctx := prop.Extract(c.Request.Context(), propagate.Header(c.Request.Header))
 		c.Request = c.Request.WithContext(ctx)

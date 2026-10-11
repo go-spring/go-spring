@@ -61,7 +61,7 @@ func (b *safeBuffer) String() string {
 func init() {
 	log.Stdout = logBuf
 	goutil.OnPanic = func(ctx context.Context, info goutil.PanicInfo) {
-		log.Panicf(ctx, log.TagAppDef, "panic: %v\n%s\n", info.Panic, info.Stack)
+		log.Panic(ctx, log.TagAppDef, "panic", log.Any("panic", info.Panic), log.Any("stack", info.Stack))
 	}
 }
 
@@ -206,7 +206,7 @@ func TestApp(t *testing.T) {
 		err := app.Start()
 		assert.Error(t, err).String("server intercepted")
 		time.Sleep(50 * time.Millisecond)
-		assert.String(t, logBuf.String()).Contains("server serve error: server return error")
+		assert.String(t, logBuf.String()).Contains("error=server return error||msg=server serve error")
 	})
 
 	t.Run("server panic", func(t *testing.T) {
@@ -225,7 +225,7 @@ func TestApp(t *testing.T) {
 		err := app.Start()
 		assert.Error(t, err).String("server intercepted")
 		time.Sleep(50 * time.Millisecond)
-		assert.String(t, logBuf.String()).Contains("panic: server panic")
+		assert.String(t, logBuf.String()).Contains("msg=panic||panic=server panic")
 	})
 
 	t.Run("server intercept releases ready waiters", func(t *testing.T) {
@@ -347,7 +347,7 @@ func TestApp(t *testing.T) {
 		assert.That(t, err).Nil()
 		app.WaitForShutdown()
 		time.Sleep(50 * time.Millisecond)
-		assert.String(t, logBuf.String()).Contains("shutdown server failed: server shutdown error")
+		assert.String(t, logBuf.String()).Contains("error=server shutdown error||msg=shutdown server failed")
 	})
 
 	t.Run("wait for shutdown waits for stop", func(t *testing.T) {

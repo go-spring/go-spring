@@ -20,66 +20,22 @@ import (
 	"context"
 	"testing"
 
-	"go-spring.org/cloud/observability"
 	"go-spring.org/stdlib/testing/assert"
 )
 
-// The guarded entries no longer emit: they DECLARE the operation on the ctx and
-// route the call through the resilience executor, which is where the span,
-// metrics and access log are produced. These tests drive that seam without a
-// live broker — the fake client's Publish is a stub — and with a real resilience
-// wrapper over a capturing inner, so the declaration is observable exactly where
-// the emitter would read it.
+// The guarded entries emit through the client's observer, which produces the
+// span, metrics and access log from the declared operation. With no observer
+// attached (a standalone client) the calls run inline. These tests drive both
+// stances without a live broker — the fake client's Publish is a stub.
 
-// captureExecutor records the operation the ctx carries and then runs the call
-// inline. It is the innermost layer the tests chain under the emitting resilience
-// wrapper, so what it reads is precisely what the emitter reads.
-type captureExecutor struct {
-	op    observability.Operation
-	hasOp bool
-}
+// TestGuardedPublishRunsInline proves both guarded entries still run when no
+// observer is attached (a standalone, non-container client): the publish reaches
+// paho and the consume handler runs.
+func TestGuardedPublishRunsInline(t *testing.T) {
+	cl := &fakeMQTTClient{} // no observer registered
 
-func (c *captureExecutor) Execute(ctx context.Context, fn func(context.Context) error) error {
-	c.op, c.hasOp = observability.OperationFrom(ctx)
-	return fn(ctx)
-}
-func (c *captureExecutor) Close() error { return nil }
-
-// instrumentedClient returns a fake client whose guard is the real resilience
-// wrapper over a capturing inner — the composition the wiring builds — plus the
-// capturing inner so a test can read the declared operation.
-func instrumentedClient(t *testing.T) (*fakeMQTTClient, *captureExecutor) {
-	t.Helper()
-	cl := &fakeMQTTClient{}
-	cap := &captureExecutor{}
-	clientGuards.Store(cl, &clientGuard{
-		exec:         observability.WrapClientExecutor(cap, "mqtt", "mqtt:test"),
-		serviceLabel: "mqtt:test",
-	})
-	t.Cleanup(func() { closeResilience(cl) })
-	return cl, cap
-}
-
-// GuardedPublish must declare the publish identity before the executor reads it,
-// so the emitted span is named "publish" and reports under messaging.client.*.
-func TestGuardedPublishDeclaresPublishOperation(t *testing.T) {
-	cl, cap := instrumentedClient(t)
-
-	err := GuardedPublish(context.Background(), cl, "sensors/temp", 1, false, []byte("21.5"))
-	assert.Error(t, err).Nil()
-
-	assert.That(t, cap.hasOp).True()
-	assert.That(t, cap.op.Name).Equal("publish")
-	assert.That(t, cap.op.Metric).Equal("messaging.client")
-	assert.That(t, cap.op.LogTag).Equal(accessTag)
-	// The publish actually ran through the guarded call site.
+	assert.Error(t, GuardedPublish(context.Background(), cl, "sensors/temp", 1, false, []byte("21.5"))).Nil()
 	assert.That(t, cl.published.Load()).Equal(int32(1))
-}
-
-// GuardedConsume declares the consume identity and runs the handler under the
-// executor, so a raw-client subscription is observed the same way a publish is.
-func TestGuardedConsumeDeclaresConsumeOperation(t *testing.T) {
-	cl, cap := instrumentedClient(t)
 
 	ran := false
 	err := GuardedConsume(context.Background(), cl, fakeMessage("sensors/temp"), func(context.Context) error {
@@ -87,29 +43,21 @@ func TestGuardedConsumeDeclaresConsumeOperation(t *testing.T) {
 		return nil
 	})
 	assert.Error(t, err).Nil()
-
 	assert.That(t, ran).True()
-	assert.That(t, cap.hasOp).True()
-	assert.That(t, cap.op.Name).Equal("consume")
-	assert.That(t, cap.op.Metric).Equal("messaging.client")
 }
 
-// With no executor attached (governance off) both entries still declare the
-// operation and run the call inline — a standalone, non-gs caller's behaviour.
-func TestGuardedEntriesRunInlineWithoutExecutor(t *testing.T) {
-	cl := &fakeMQTTClient{} // no guard registered
+// TestOperationVocabulary pins what a publish and a consume declare: the span
+// name, the family metric prefix and the access tag. The observer emits from
+// this operation, so this is the contract.
+func TestOperationVocabulary(t *testing.T) {
+	pub := operation(opPublish, "sensors/temp")
+	assert.That(t, pub.Name).Equal("publish")
+	assert.That(t, pub.Metric).Equal("messaging.client")
+	assert.That(t, pub.LogTag).Equal(accessTag)
 
-	rerr := GuardedPublish(context.Background(), cl, "sensors/temp", 1, false, []byte("x"))
-	assert.Error(t, rerr).Nil()
-	assert.That(t, cl.published.Load()).Equal(int32(1))
-
-	ran := false
-	rerr = GuardedConsume(context.Background(), cl, fakeMessage("sensors/temp"), func(context.Context) error {
-		ran = true
-		return nil
-	})
-	assert.Error(t, rerr).Nil()
-	assert.That(t, ran).True()
+	con := operation(opConsume, "sensors/temp")
+	assert.That(t, con.Name).Equal("consume")
+	assert.That(t, con.Metric).Equal("messaging.client")
 }
 
 // fakeMessage is a minimal mqtt.Message carrying only the topic.

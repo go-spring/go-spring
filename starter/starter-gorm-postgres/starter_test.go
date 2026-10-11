@@ -21,9 +21,23 @@ import (
 	"testing"
 	"time"
 
-	"go-spring.org/cloud"
+	"go-spring.org/cloud/fault"
+	"go-spring.org/cloud/governance"
+	"go-spring.org/cloud/resilience"
 	"go-spring.org/starter-gorm"
 )
+
+// testCenter is the governance center Open requires to assemble a DB: a
+// resilience manager with no rules — enough for the pool-sizing lookup, with no
+// governance document to serve.
+func testCenter(t *testing.T) *governance.Center {
+	t.Helper()
+	ctr, err := governance.NewProcessCenter(resilience.NewManager(nil), fault.NewInjector(fault.Configs{}, nil))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return ctr
+}
 
 // TestBuildPlainDSN is the regression test for the plain-DSN (non-discovery)
 // open path. Previously newClient only opened the gorm.DB inside the discovery
@@ -43,7 +57,7 @@ func TestBuildPlainDSN(t *testing.T) {
 	}
 	c.PingTimeout = 500 * time.Millisecond
 
-	spec, err := build(context.Background(), c, cloud.ClientParams{})
+	spec, err := build(context.Background(), c, nil)
 	if err != nil {
 		t.Fatalf("build failed: %v", err)
 	}
@@ -56,6 +70,7 @@ func TestBuildPlainDSN(t *testing.T) {
 		Service:        spec.Service,
 		ObserveEnabled: spec.ObserveEnabled,
 		Closers:        spec.Closers,
+		Center:         testCenter(t),
 	})
 	if err == nil {
 		_ = client.Destroy()

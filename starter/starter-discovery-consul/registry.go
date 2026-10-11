@@ -134,7 +134,7 @@ func (r *consulRegistry) Register(ctx context.Context, reg discovery.Instance) e
 	// The first TTL pass is best-effort: the heartbeat below retries it every
 	// half TTL, so a failure here only delays "passing", it never fails Register.
 	if err := r.client.Agent().UpdateTTL(checkID, "", api.HealthPassing); err != nil {
-		log.Warn(ctx, starterTag, append(
+		log.Warn(ctx, starterTag, "consul initial TTL pass failed (the heartbeat below retries it)", append(
 			[]log.Field{
 				log.String("system", r.obs.System()),
 				log.String("center", r.obs.Center()),
@@ -145,7 +145,6 @@ func (r *consulRegistry) Register(ctx context.Context, reg discovery.Instance) e
 				log.Err(err),
 			},
 			log.String("check_id", checkID),
-			log.Msg("consul initial TTL pass failed (the heartbeat below retries it)"),
 		)...)
 	}
 
@@ -183,10 +182,9 @@ func (r *consulRegistry) reRegister(ctx context.Context, id string) error {
 	return r.obs.RegisterAttempt(ctx, reg.ServiceName, discovery.ReasonSelfHeal, func(actx context.Context) error {
 		err := r.upsert(reg)
 		if err != nil {
-			log.Error(actx, starterTag, err,
+			log.Error(actx, starterTag, err, "consul re-register failed; the heartbeat retries it",
 				log.String("id", id),
-				log.String("status", discovery.StatusOf(err)),
-				log.Msg("consul re-register failed; the heartbeat retries it"))
+				log.String("status", discovery.StatusOf(err)))
 		}
 		return err
 	})
@@ -296,21 +294,19 @@ func (r *consulRegistry) heartbeat(id, service string, stop <-chan struct{}) {
 			}
 			failures++
 			if failures >= persistAfter {
-				log.Error(ctx, starterTag, err,
+				log.Error(ctx, starterTag, err, "consul TTL heartbeat failed repeatedly; re-registering the service to recover",
 					log.String("check_id", checkID),
-					log.Int("failures", failures),
-					log.Msg("consul TTL heartbeat failed repeatedly; re-registering the service to recover"))
+					log.Int("failures", failures))
 				// Re-register (upsert) instead of only logging: recreates the
 				// service and check if Consul already dropped them. The attempt
 				// reports its own outcome against its span.
 				_ = r.reRegister(ctx, id)
 			} else {
-				log.Warn(ctx, starterTag,
+				log.Warn(ctx, starterTag, "consul TTL heartbeat failed",
 					log.String("status", discovery.StatusOf(err)),
 					log.String("check_id", checkID),
 					log.Int("failures", failures),
-					log.Err(err),
-					log.Msg("consul TTL heartbeat failed"))
+					log.Err(err))
 			}
 		}
 	}

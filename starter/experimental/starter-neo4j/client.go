@@ -26,7 +26,7 @@ import (
 	"go-spring.org/cloud/chain"
 
 	"github.com/neo4j/neo4j-go-driver/v5/neo4j"
-	"go-spring.org/cloud"
+	"go-spring.org/cloud/governance"
 	"go-spring.org/cloud/resilience"
 )
 
@@ -35,7 +35,7 @@ import (
 // be handed to neo4j.ExecuteQuery and to this starter's own [Query] /
 // [RunWithResilience] seam unchanged. [NewClient] is the only way to build a
 // Client, so a driver can never exist without its identity (the service label),
-// and the resilience executor [NewClient] builds from the governance bundle it
+// and the resilience executor [NewClient] builds from the governance center it
 // is handed is the only extra capability it carries.
 //
 // The wrapper is a pure holder here, which is why the driver is embedded rather
@@ -59,9 +59,9 @@ type Client struct {
 	serviceLabel string
 
 	// exec is the resilience executor protecting queries, fixed by [NewClient]
-	// from the governance bundle it is handed. On a client built there it is
-	// never nil — a zero bundle degrades to resilience.Unmanaged (observed, with
-	// a one-time warning) rather than silently running bare. A zero Client built
+	// from the governance center it is handed. The center is required to carry a
+	// [resilience.Manager] — [governance.Center.ExecutorFor] panics without one —
+	// rather than silently running bare. A zero Client built
 	// by hand (a test) leaves it nil, and [Query] / [RunWithResilience] then run
 	// their call inline.
 	exec chain.Executor
@@ -71,27 +71,28 @@ type Client struct {
 // live raw driver, handing back a wrapper ready to use. client must be ready
 // for use — it is normally the Driver's product.
 //
-// The declaration layer for neo4j is the per-call [StartSpan] / [Query] seam
+// The identity for neo4j is built by the per-call [Operation] / [Query] seam
 // (observe.go): the driver exposes no interception point, so the operation's
-// identity is carried on the ctx by the free-function call path rather than by
-// any per-instance object. There is therefore no Init step — building a Client
+// identity is built at the free-function call path and passed explicitly to the
+// executor rather than carried on the ctx or held by any per-instance object.
+// There is therefore no Init step — building a Client
 // and initializing it are the same act, so the container has no lifecycle hook
 // to register and no way to hand out a half-built client.
 //
-// params carries the container's facilities (see [cloud.ClientParams]), applied
+// center carries the container's facilities (see [governance.Center]), applied
 // HERE so a Client cannot exist half-assembled: there is no later patching and
-// nothing the wiring has to remember to call. A hand-built client passes the
-// zero [cloud.ClientParams]; its executor then degrades to resilience.Unmanaged —
-// observed, with a one-time warning that no protection applies — rather than
-// silently running bare. The manager's ClientExecutorFor resolves its backing
+// nothing the wiring has to remember to call. A hand-built client must supply a
+// center holding a [resilience.Manager]: [governance.Center.ExecutorFor] is
+// required, so a nil center is a construction error —
+// [governance.Center.ExecutorFor] panics — never a graceful downgrade. The manager's ClientExecutorFor resolves its backing
 // executor lazily, on each Execute, so the call order relative to
 // the center's wiring is irrelevant.
-func NewClient(client neo4j.DriverWithContext, cfg Config, params cloud.ClientParams) *Client {
+func NewClient(client neo4j.DriverWithContext, cfg Config, center *governance.Center) *Client {
 	c := &Client{
 		DriverWithContext: client,
 	}
 	c.serviceLabel = resilience.ServiceLabel("neo4j", cfg.ServiceName, cfg.URI)
-	c.exec = params.ExecutorFor("neo4j", c.serviceLabel)
+	c.exec = center.ExecutorFor("neo4j", c.serviceLabel)
 	return c
 }
 

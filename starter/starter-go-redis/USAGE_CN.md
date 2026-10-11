@@ -148,22 +148,23 @@ import starter-go-redis
               └─ Provide 名为 "redis:<name>" 的 health.Indicator（由 health 控制，默认开）
 
 gs.Run()
-  └─ 构造 newClient [starter.go:143]——先完整装配，再探测：
-       ├─ validateConfig → 查 driver → driver.CreateClient(ctx, c, disc, params)
-       │    （构造函数把注入的 bean 打包成
-       │      cloud.ClientParams{Resilience: mgr, Fault: inj, Loadbalance: lbMgr}）
-       │    └─ DefaultDriver 建好裸客户端后连同 params 交给 NewClient [client.go:88]
+  └─ 构造 newClient [starter.go:129]——先完整装配，再探测：
+       ├─ validateConfig → 查 driver → driver.CreateClient(ctx, c, center)
+       │    （容器注入唯一的 *governance.Center——全家族唯一的注入点；
+       │      c.Discovery 已带上家族级 discovery 回退标签，由 Driver 自行解析）
+       │    └─ DefaultDriver 建好裸客户端后连同 center 交给 NewClient [client.go:106]
        │         → instrument()（redisotel 连接池指标，由 otel.metrics.enabled 门控）
        │         → applyDeclaration（声明身份 hook）——声明属于构造的一部分
-       │         → serviceLabel → params.ExecutorFor("redis", service)
+       │         → serviceLabel → center.ExecutorFor("redis", service)
        │              （= fault.WrapClientExecutor(mgr.ClientExecutorFor("redis", service), service, inj)；
-       │               零值 bundle 退化为仅观测的 Unmanaged executor）
-       │         → 走服务发现的条目在此 lbMgr.Bind(pool, label)
+       │               resilience manager 必填——容器始终提供）
+       │         → 走服务发现的条目：Driver 建 center.Loadbalance().Chain(resolver, label)
+       │              （建链这一步本身就是治理注册）
        │         → AddHook(resilienceHook)——命令链装配完成
        └─ ping 时在裸客户端上执行启动 HealthCheck（上限 dial-timeout 或 5s）；失败则 Destroy
           释放刚装配好的资源
   ├─ 就绪：探针翻转 UP（指示器执行 HealthCheck）
-  └─ SIGTERM → Destroy [client.go:148]：exec.Close → 摘除 selection 订阅 → client.Close
+  └─ SIGTERM → Destroy [client.go:148]：exec.Close → client.Close
 ```
 
 没有 `Init` 钩子了：旧 Init 做的事（标签、executor、selection 绑定、hook 顺序）全部发生在构造函数内，
@@ -186,7 +187,7 @@ redisotel（连接池指标）→ operationHook（声明身份）→ resilienceH
 - **redisotel 最外层**：由 `NewClient` 中的 `instrument()` 添加，早于 `NewClient` 添加的
   resilience hook。如今只剩连接池指标——它原先附带的每命令 span 已删，因为它与 resilience 层现在
   开的 call span 重复。
-- **operationHook 在熔断器之外**：把命令的语义身份挂到 ctx（`observability.WithOperation`
+- **operationHook 在熔断器之外**：把命令的语义身份挂到 ctx（`chain.WithOperation`
   [observe.go]），自身不发任何信号。跳过的命令（PING）不声明身份，原样放行。
 - **resilienceHook 最内层**：保护决策贴近网络，同时它是**唯一发射点**——从 ctx 读出声明身份，
   开唯一的 call span（覆盖整个重试循环），记录 call 级与 attempt 级时延直方图和状态计数器，
@@ -221,11 +222,12 @@ redisotel（连接池指标）→ operationHook（声明身份）→ resilienceH
 `0.0.0.0:0` 来证明这点）。sentinel/cluster 模式下设置 `service-name` 会在启动期被拒绝：
 这两种拓扑自己发现节点 [starter.go:174-198]。
 
-**池的策略归治理管，不是写死的。** 它挂着 suspension tracker，由 Driver 交给 `NewClient`（包装体持有），再由 `NewClient` 经治理 bundle 的 `lbMgr.Bind(pool, label)` 绑到
-`redis:<service-name|master-name|addr>`，所以该 label 命中的
-`spring.governance.client.rules[N].balancer` / `outlier-threshold` / `outlier-suspend-for` 会**原地**驱动它——下一次拨号
-就用新策略。dialer 把拨号结果喂给 `Complete`，所以 `outlier-threshold` 摘的是**反复连不上**的实例。
-sentinel 与 cluster 客户端自己发现节点、没有池，这些 key 到不了它们。详见
+**链的策略归治理管，不是写死的。** 它挂着 suspension tracker，由 Driver 交给 `NewClient`（包装体持有）；
+建链这一步（`center.Loadbalance().Chain(resolver, label)`）本身就是注册到
+`redis:<service-name|master-name|addr>` 的动作，所以 Driver 拿已有的治理中心（center）就能完成注册、不需要额外步骤，该 label 命中的
+`spring.governance.client.rules[N].balancer` / `outlier-threshold` / `outlier-suspend-for` 会**整条重建**——下一次拨号
+在全新的 balancer 与 suspension tracker 上走新策略。dialer 把拨号结果喂给 `Complete`，所以 `outlier-threshold` 摘的是**反复连不上**的实例。
+sentinel 与 cluster 客户端自己发现节点、没有链路，这些 key 到不了它们。详见
 `cloud/governance/README.md` §3.1。
 
 ---

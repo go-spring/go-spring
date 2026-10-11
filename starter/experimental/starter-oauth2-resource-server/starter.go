@@ -43,12 +43,11 @@ func init() {
 			if _, err := c.source(); err != nil {
 				return errutil.Explain(err, "oauth2-resource-server: instance %q", name)
 			}
-			log.Debug(context.Background(), log.TagAppDef, func() []log.Field {
+			log.Debug(context.Background(), log.TagAppDef, "creating jwt validator", func() []log.Field {
 				return []log.Field{
 					log.String("name", name),
 					log.String("issuer_uri", c.IssuerURI),
 					log.String("algorithm", c.Algorithm),
-					log.Msg("creating jwt validator"),
 				}
 			})
 			r.Provide(newValidator, gs.ValueArg(c)).

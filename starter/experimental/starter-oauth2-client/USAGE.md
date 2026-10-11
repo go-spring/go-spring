@@ -59,7 +59,8 @@ import (
 // they are injected by that name.
 type Service struct {
     // Ready-to-use client: fetches and refreshes the bearer token, attaches it
-    // to every request, retries/breaks via the governance executor.
+    // to every request, retries/breaks via the executor read from the injected
+    // *governance.Center (center).
     Client *http.Client `autowire:"downstream"`
     // Raw token source for non-HTTP call sites (gRPC metadata, WebSocket).
     // NOTE: not resilience-wrapped — see §2.3.
@@ -99,8 +100,7 @@ spring.oauth2.authcode.instances.login.scopes=openid,profile
 # --- governance (resilience for the *http.Client transport) ------------------
 # Same service label as the client: oauth2:<client-id>.
 # NOTE: governance RULES go in conf/governance.properties, referenced by spring.governance.source.file.path in app.properties (see cloud/governance's SOURCE_USAGE).
-spring.governance.enabled=true
-spring.governance.driver=default
+spring.resilience.driver=default
 spring.governance.client.default.max-retries=3
 spring.governance.client.default.error-threshold=10
 spring.governance.client.default.attempt-timeout=2s
@@ -195,10 +195,14 @@ resilience. You call `AuthCodeURL(state)` and `Exchange(ctx, code)` yourself; th
    the executor wraps the outer transport, not the token exchange — see §4.4 drill).
 4. The access token is cached; the `Authorization: Bearer <token>` header is set on the
    outbound request *before* the base transport runs.
-5. `resilience.NewRoundTripper` executes the request through the executor built from the
-   injected `*resilience.Manager` for service label `oauth2:<client-id>` — retry / circuit
-   breaker / rate limit policy from the governance document; transparent no-op when
-   governance is off. The executor already carries the observe layer, so trips/rejects/
+5. `resilience.NewRoundTripper` executes the request through the executor the constructor
+   reads from the injected `*governance.Center` (`center`) via
+   `center.Resilience().ClientExecutorFor("oauth2", "oauth2:<client-id>")` — retry / circuit
+   breaker / rate limit policy from the governance document. The center is the governance
+   family's sole injection point (a required bean in a gs app); an unarmed center — or a nil one
+   on a standalone call — reads a nil resilience manager whose executor is a transparent
+   pass-through, so "governance off" is a document that configures nothing, never an absent bean.
+   The executor already carries the observe layer, so trips/rejects/
    retries emit span + counter + histogram + access log.
 6. `otelhttp` emits the client span (method/url); without starter-otel these are no-ops.
 7. Response unwinds; on 401 the oauth2 layer does not retry (client_credentials has no

@@ -24,13 +24,12 @@
 package StarterRedigo
 
 import (
-	"context"
 	"fmt"
 	"strings"
 
-	"go-spring.org/cloud/observability"
 	"go-spring.org/stdlib/strutil"
 
+	"go-spring.org/cloud/chain"
 	"go-spring.org/log"
 	"go.opentelemetry.io/otel/attribute"
 )
@@ -61,8 +60,8 @@ const maxStatement = 512
 // usually a key, drawn from an open set, so as a metric label it would multiply
 // the series without bound. A command with no arguments carries no detail at
 // all, which is also what levelled its success log at Info.
-func operation(cmd string, args []interface{}) observability.Operation {
-	op := observability.Operation{
+func operation(cmd string, args []interface{}) chain.Operation {
+	op := chain.Operation{
 		Name:   cmd,
 		Metric: "db.client",
 		Attrs: []attribute.KeyValue{
@@ -79,19 +78,16 @@ func operation(cmd string, args []interface{}) observability.Operation {
 	return op
 }
 
-// operationInterceptor is the declaration layer of the command chain: it puts
-// the command's identity on the context, which the resilience layer inside it
-// reads to emit the span, the metrics and the access log. A skipped op is
-// forwarded untouched.
-func operationInterceptor() CommandInterceptor {
-	return func(next CommandHandler) CommandHandler {
-		return func(ctx context.Context, cmd string, args []interface{}) (interface{}, error) {
-			if _, skip := skipOps[strings.ToUpper(cmd)]; skip {
-				return next(ctx, cmd, args)
-			}
-			return next(observability.WithOperation(ctx, operation(cmd, args)), cmd, args)
-		}
+// opFor builds the operation for one command, or the zero Operation when the
+// command declares no identity (see skipOps) — an "undeclared" call the
+// resilience layer still runs and reports as such. It is the single place the
+// skip decision is made; the resilience interceptor (see conn.go) calls it to
+// build the op it passes explicitly to the executor.
+func opFor(cmd string, args []interface{}) chain.Operation {
+	if _, skip := skipOps[strings.ToUpper(cmd)]; skip {
+		return chain.Operation{}
 	}
+	return operation(cmd, args)
 }
 
 // summarizeCommand renders a short, loggable summary of the command — the

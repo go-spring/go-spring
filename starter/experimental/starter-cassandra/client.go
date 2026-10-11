@@ -29,7 +29,7 @@ import (
 	"go-spring.org/cloud/chain"
 
 	"github.com/gocql/gocql"
-	"go-spring.org/cloud"
+	"go-spring.org/cloud/governance"
 	"go-spring.org/cloud/resilience"
 )
 
@@ -55,10 +55,11 @@ type Client struct {
 	Session *gocql.Session
 
 	// exec is the resilience executor protecting every statement, set by
-	// [NewClient] from the governance bundle — an observed-only,
-	// loudly-unmanaged executor when the bundle is zero. Held for teardown
-	// only: the chains are per-query, so there is no session-level chain head
-	// whose Release could close it — [Client.Close] is that release point.
+	// [NewClient] from the governance center, which is required to carry a
+	// [resilience.Manager] — a client is never assembled without one. Held for
+	// teardown only: the chains are per-query, so there is no session-level
+	// chain head whose Release could close it — [Client.Close] is that release
+	// point.
 	exec chain.Executor
 }
 
@@ -67,17 +68,18 @@ type Client struct {
 // Driver's product. The wrapper derives its service label from the connection
 // config.
 //
-// params carries the container's facilities (see [cloud.ClientParams]), and is
+// center carries the container's facilities (see [governance.Center]), and is
 // applied HERE so a Client cannot exist half-assembled: there is no Init step,
 // no later patching, and nothing the container has to remember to call. A
-// hand-built client passes the zero [cloud.ClientParams]; its executor then degrades to
-// resilience.Unmanaged — observed, with a one-time warning that no protection
-// applies — rather than silently running bare.
+// hand-built client must supply a [governance.Center] over a
+// [resilience.Manager]: [governance.Center.Resilience] is required, so a nil
+// center is a construction error — [governance.Center.ExecutorFor] panics —
+// never a graceful downgrade to an unprotected client.
 //
 // The manager's ClientExecutorFor resolves its backing executor lazily, on each
 // Execute, so the call order relative to the center's wiring is
 // irrelevant.
-func NewClient(session *gocql.Session, cfg Config, params cloud.ClientParams) *Client {
+func NewClient(session *gocql.Session, cfg Config, center *governance.Center) *Client {
 	// The service label prefers the first contact point. Guard the index so a
 	// malformed Config (empty hosts, which the value:"${hosts}" expr is meant to
 	// reject) degrades to the bare prefix instead of panicking in the ctor.
@@ -88,7 +90,7 @@ func NewClient(session *gocql.Session, cfg Config, params cloud.ClientParams) *C
 	serviceLabel := resilience.ServiceLabel("cassandra", host)
 	return &Client{
 		Session: session,
-		exec:    params.ExecutorFor("cassandra", serviceLabel),
+		exec:    center.ExecutorFor("cassandra", serviceLabel),
 	}
 }
 
@@ -123,10 +125,10 @@ func (o *Client) Bind(stmt string, b func(q *gocql.QueryInfo) ([]any, error)) *Q
 	return q
 }
 
-// chain assembles one query's chain: identity over governance over the query's
-// own raw adapter.
+// chain assembles one query's chain: the guarded layer (identity + governance)
+// over the query's own raw adapter.
 func (o *Client) chain(q *Query) InnerQuery {
-	return NewObsQuery(NewGuardQuery(NewRawQuery(q), o.exec), q.stmt)
+	return NewGuardQuery(NewRawQuery(q), o.exec, q.stmt)
 }
 
 // Exec executes a statement synchronously through the guarded path. It is a

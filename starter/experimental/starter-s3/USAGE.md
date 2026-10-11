@@ -153,11 +153,12 @@ gs.Run()
   │    │      several coexist → the entry selects one by name:
   │    │      spring.s3.instances.<name>.driver = <bean-name>, empty = `spring.s3.default.driver`, then the single
   │    │      Driver bean by type, naming a missing bean fails startup)
-  │    │      → d.CreateClient(cfg, cloud.ClientParams{Resilience: mgr, Fault: inj}):
+  │    │      → d.CreateClient(cfg, center):
   │    │        static creds + region + bucket-lookup + a dynamicTransport inside minio.Options
   │    │      → NewClient builds the *Client wrapper: identity, exec =
-  │    │        params.ExecutorFor("s3", "s3:<endpoint>") (mgr/inj are the injected
-  │    │        *resilience.Manager / *fault.Injector beans), then installs the transport —
+  │    │        center.ExecutorFor("s3", "s3:<endpoint>") (center is the injected
+  │    │        *governance.Center, holding the *resilience.Manager /
+  │    │        *fault.Injector beans), then installs the transport —
   │    │        declaration outermost, resilience inside
   │    ├─ ping=true only: fail-fast probe HealthCheck(ctx, client) — one ListBuckets
   │    │      straight to the raw client; an unreachable endpoint or rejected credentials
@@ -175,7 +176,7 @@ setter, while the real transport (declaration + resilience) is assembled by the 
 RoundTripper indirection (RWMutex-guarded, not atomic.Value, because the active tripper is
 one of several concrete types) — and returns the `*Client` wrapper built over it:
 `NewClient` swaps the declaration+resilience stack in (its executor comes from the
-`cloud.ClientParams` the ctor passes down). Until the swap happens, requests pass
+`*governance.Center` the ctor passes down). Until the swap happens, requests pass
 straight through to `http.DefaultTransport`.
 
 ### 2.3 One upload, layer by layer
@@ -184,18 +185,19 @@ straight through to `http.DefaultTransport`.
 
 1. `Client.PutObject` is the raw `*minio.Client`'s method (promoted), which signs the request (SigV4
    static credentials) and issues the HTTP request through the configured transport — the
-   swapped-in declaration transport.
-2. declareTransport (command.go), outermost: it declares the request's identity on the
-   context — `db.system=s3`, `db.operation=PUT` (bounded, becomes a metric label), and
+   swapped-in resilience transport.
+2. Resilience round-tripper (command.go/client.go): it builds the request's identity through
+   `callFor` — `db.system=s3`, `db.operation=PUT` (bounded, becomes a metric label), and
    `db.statement=/bucket/key` (per-call detail) with span name `"PUT /bucket/key"` — and
-   delegates inward. It MUST sit outside the resilience round-tripper: the emitter reads the
-   operation at `Execute` entry, so a declaration nested inside the executor would run per
-   attempt and be read by nobody.
-3. Resilience round-tripper, inside the declaration: the request enters the executor built at
-   construction for service `s3:<endpoint>` from the `cloud.ClientParams` the ctor passed
+   passes it explicitly to the executor at `Execute` entry, so the emitted call covers every
+   attempt (retries included); a declaration made per attempt inside the executor would be
+   read by nobody.
+3. The request enters the executor built at
+   construction for service `s3:<endpoint>` from the `*governance.Center` the ctor passed
    down (`*resilience.Manager` / `*fault.Injector` beans) — retry / rate-limit /
    circuit-breaker / bulkhead when a governance rules source applies them (hot-reloadable through
-   the governance center), an observed-only unmanaged executor otherwise; the
+   the governance center); the resilience manager is required and always supplied by the
+   container, so there is no unmanaged/observe-only fallback. The
    `*fault.Injector` (nil-safe) may inject failures for drills. This executor is the SINGLE
    emitter: it opens the call span, records the call-level `db.client.operation.duration`,
    the attempt-level `db.client.attempt.duration` per retry, and writes one access log —

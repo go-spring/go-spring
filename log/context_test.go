@@ -98,7 +98,7 @@ func TestRootFieldsMintsAPathHead(t *testing.T) {
 
 	// It reaches log output like any other carried field.
 	out := captureOutput(t, func() {
-		Info(ctx, ctxTestTag, Msgf("hello"))
+		Info(ctx, ctxTestTag, "hello")
 	})
 	assert.String(t, out).Contains("trace_id=t1")
 }
@@ -172,7 +172,7 @@ func TestContextFieldsReachLogOutput(t *testing.T) {
 	ctx = WithFields(ctx, String("user", "u1"))
 
 	out := captureOutput(t, func() {
-		Info(ctx, ctxTestTag, Msgf("hello"))
+		Info(ctx, ctxTestTag, "hello")
 	})
 	assert.String(t, out).Contains("user=u1")
 }
@@ -185,7 +185,7 @@ func TestCollectedFieldsReachLogOutput(t *testing.T) {
 	Collect(ctx, String("order", "o1"))
 
 	out := captureOutput(t, func() {
-		Info(ctx, ctxTestTag, Msgf("hello"))
+		Info(ctx, ctxTestTag, "hello")
 	})
 	assert.String(t, out).Contains("order=o1")
 }
@@ -204,7 +204,7 @@ func TestFieldsFromContextHookKeepsLastWord(t *testing.T) {
 	ctx := WithFields(context.Background(), String("user", "from-carrier"))
 
 	out := captureOutput(t, func() {
-		Info(ctx, ctxTestTag, Msgf("hello"))
+		Info(ctx, ctxTestTag, "hello")
 	})
 	assert.String(t, out).Contains("user=from-carrier")
 	assert.String(t, out).Contains("user=from-hook")

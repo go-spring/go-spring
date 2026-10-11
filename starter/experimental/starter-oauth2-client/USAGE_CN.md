@@ -56,7 +56,7 @@ import (
 // "downstream" 注册(见 conf/app.properties),按名注入。
 type Service struct {
     // 开箱即用的 client:取 token、刷新 token、给每个请求附 bearer 头,
-    // 经治理 executor 做 retry/breaker。
+    // 经从注入的 *governance.Center(center)读取的 executor 做 retry/breaker。
     Client *http.Client `autowire:"downstream"`
     // 面向非 HTTP 调用点(gRPC metadata、WebSocket)的裸 token 源。
     // 注意:没有 resilience 包裹——见 §2.3。
@@ -96,8 +96,7 @@ spring.oauth2.authcode.instances.login.scopes=openid,profile
 # --- governance(*http.Client transport 的韧性)-------------------------------
 # 与 client 同一服务标签:oauth2:<client-id>。
 # NOTE: governance RULES go in conf/governance.properties, referenced by spring.governance.source.file.path in app.properties (see cloud/governance's SOURCE_USAGE_CN.md).
-spring.governance.enabled=true
-spring.governance.driver=default
+spring.resilience.driver=default
 spring.governance.client.default.max-retries=3
 spring.governance.client.default.error-threshold=10
 spring.governance.client.default.attempt-timeout=2s
@@ -187,10 +186,12 @@ governance 开启时的 `s.Client.Get("https://api.example.com/service")`:
    (executor 包的是外层 transport,不含 token 交换——见 §4.4 演练)。
 4. access token 入缓存;出站请求在 base transport 运行*之前*带上
    `Authorization: Bearer <token>` 头。
-5. `resilience.NewRoundTripper` 经注入的 `*resilience.Manager` 为服务标签
-   `oauth2:<client-id>` 构建的 executor 执行请求——retry/熔断/限流策略来自治理文档;
-   governance 关闭时是透明空操作。该 executor 已自带 observe 层,trip/reject/retry 会发
-   span + 计数 + 直方图 + 访问日志。
+5. `resilience.NewRoundTripper` 经构造函数从注入的 `*governance.Center`（`center`）上读取的
+   executor 执行请求——`center.Resilience().ClientExecutorFor("oauth2", "oauth2:<client-id>")`——
+   retry/熔断/限流策略来自治理文档。center 是治理家族唯一的注入点（gs 应用里必填）；未武装的
+   center（或独立调用时的 nil center）读到的是 nil resilience manager，其 executor 为透明直通，
+   故"治理关闭"是"配置了一份什么都没设的文档"，绝非 bean 缺失。该 executor 已自带 observe 层,
+   trip/reject/retry 会发 span + 计数 + 直方图 + 访问日志。
 6. `otelhttp` 发 client span(method/url);无 starter-otel 时为空操作。
 7. 响应解栈;401 时 oauth2 层不重试(client_credentials 无 refresh token)——下一次调用
    重新取 token。

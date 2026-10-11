@@ -172,11 +172,10 @@ func (b *ConfigBus) subscribe() error {
 		return errutil.Explain(err, "config bus: subscribe to %q failed", b.Config.Subject)
 	}
 	b.sub = sub
-	log.Info(context.Background(), starterTag,
+	log.Info(context.Background(), starterTag, "subscribe config bus success",
 		log.String("subject", b.Config.Subject),
 		log.Strings("prefixes", b.prefixes),
-		log.String("origin", b.origin),
-		log.Msg("subscribe config bus success"))
+		log.String("origin", b.origin))
 	return nil
 }
 

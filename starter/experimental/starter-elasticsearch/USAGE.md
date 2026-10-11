@@ -157,17 +157,22 @@ import starter-elasticsearch
 
 gs.Run()
   ├─ ctor newClient:
-  │    ├─ service-name set && !mesh.Enabled() → resolveAddresses(c, backend):
-  │    │      read snapshot → "scheme://host:port" overrides c.Addresses
-  │    │      (fails fast: no backend bean cited, or no endpoints for the service)
+  │    ├─ the ctor folds the family-wide `${spring.elasticsearch.default.discovery}`
+  │    │      fallback into c.Discovery and hands the injected *governance.Center
+  │    │      (variable center) to the driver
   │    ├─ optional Driver bean (none → bundled DefaultDriver; several coexist →
   │    │      the entry selects one by name: spring.elasticsearch.instances.<name>.driver =
   │    │      <bean-name>, empty = the family-wide `spring.elasticsearch.default.driver`, then the single Driver bean by type, naming a
-  │    │      missing bean fails startup) → driver.CreateClient(ctx, c, backend, params):
+  │    │      missing bean fails startup) → driver.CreateClient(ctx, c, center):
+  │    │      when service-name set && !mesh.Enabled() the DRIVER resolves the backend
+  │    │      itself — center.Discovery().Get(c.Discovery) — and reads its snapshot
+  │    │      → "scheme://host:port" overrides c.Addresses
+  │    │      (fails fast: no backend cited, or no endpoints for the service);
   │    │      DefaultDriver installs the dynamicTransport indirection and returns
   │    │      the *Client wrapper; NewClient fixes identity, derives the service
-  │    │      label and sets exec = params.ExecutorFor("elasticsearch", service)
-  │    │      (fault(governed executor), or observe-only Unmanaged for the zero params),
+  │    │      label and sets exec = center.ExecutorFor("elasticsearch", service)
+  │    │      (fault(governed executor); the governance center is required, so the
+  │    │      injected resilience manager is always present),
   │    │      then installs the transport: declaration outermost, resilience inside
   │    └─ ping=true only: fail-fast probe HealthCheck(ctx, client) — one Info straight to
   │        the raw client; failure releases the client (Destroy) and aborts boot
@@ -199,7 +204,7 @@ Rationale (source comments, [command.go] and [client.go]):
 
 - **The starter DECLARES, the resilience layer EMITS.** There is exactly one emitter on the
   chain. The declaration transport ([command.go]) turns the method + URL path into an
-  `observability.Operation` and puts it on the request context; the executor reads it at
+  `chain.Operation` and puts it on the request context; the executor reads it at
   Execute entry and emits the one span, both duration histograms, the in-flight gauge and the
   access log.
 - **The declaration sits OUTSIDE the executor, not as its base.** The executor reads the
@@ -234,7 +239,7 @@ Rationale (source comments, [command.go] and [client.go]):
 4. The resilience executor asks for a permit scoped to the service label, e.g.
    `elasticsearch:es-cluster` or `elasticsearch:http://127.0.0.1:9200` (first address;
    derived via `resilience.ServiceLabel` in `NewClient`) — per cluster, not per request.
-   With governance off, the executor is the observe-only `resilience.Unmanaged`.
+   The resilience manager is required — the container always supplies it; no unmanaged fallback.
 5. On completion the executor emits the one span, the call-level and attempt-level duration
    histograms and the access log. The caller sees exactly what plain go-elasticsearch returns —
    including 4xx `res.IsError()` bodies; only transport-level errors (5xx are mapped to a
@@ -248,10 +253,11 @@ always pass one explicitly [starter.go, health.go]; user code should use
 
 ### 2.4 Discovery addressing — seed plus a live node set
 
-When `service-name` is set and mesh mode is off, the endpoints are resolved once in the ctor and
+When `service-name` is set and mesh mode is off, the endpoints are resolved once in the driver
+(the driver resolves the backend itself via `center.Discovery().Get(c.Discovery)`) and
 baked into `c.Addresses`; the loader is a pure snapshot function with no resources and no
 background watch, so nothing is kept alive and nothing needs stopping on shutdown
-[starter.go, driver.go]. That read is the **fail-fast gate and the seed** — the
+[driver.go]. That read is the **fail-fast gate and the seed** — the
 live feed is a custom `ConnectionPoolFunc` the driver installs over the same resolver
 [pool.go]: the transport's node set is re-read from the naming service, so a node joining or
 leaving the cluster becomes usable without a restart. The propagation budget is one second
@@ -351,12 +357,11 @@ grep _app_elasticsearch_access app.log | tail -1
 
 ```properties
 # NOTE: governance RULES go in conf/governance.properties, referenced by spring.governance.source.file.path in app.properties (see cloud/governance's SOURCE_USAGE).
-spring.governance.enabled=true
-spring.governance.driver=default
+spring.resilience.driver=default
 spring.governance.client.default.rate-limit=5          # burst > 5 concurrent → ErrRateLimited rejections
 spring.governance.client.default.error-threshold=20
 spring.governance.client.default.open-duration=5s
-spring.governance.client.fault.enabled=false           # flip to true + rate=0.5 + error=timeout to "set fire"
+# spring.governance.client.fault.rate=0.5              # set a rate (+ error=timeout) to "set fire"; unset = inert
 ```
 
 Run [example-load/](example-load/) (`go run . -concurrency=16 -duration=5s`): the printed

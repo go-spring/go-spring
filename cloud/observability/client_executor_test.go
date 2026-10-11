@@ -19,14 +19,15 @@ package observability
 import (
 	"testing"
 
+	"go-spring.org/cloud/chain"
 	"go-spring.org/stdlib/testing/assert"
 	"go.opentelemetry.io/otel/attribute"
 )
 
 // dbOperation is a declared client operation in the db family: the vocabulary
 // a gorm-style client would declare.
-func dbOperation() Operation {
-	return Operation{
+func dbOperation() chain.Operation {
+	return chain.Operation{
 		Name:   "get",
 		Metric: "db.client",
 		Attrs: []attribute.KeyValue{
@@ -43,7 +44,7 @@ func dbOperation() Operation {
 // avoid.
 func TestSuccessQuiet(t *testing.T) {
 	// Undeclared: quiet, whatever the (zero) operation says.
-	assert.That(t, successQuiet(false, Operation{})).True()
+	assert.That(t, successQuiet(false, chain.Operation{})).True()
 	// Declared with per-call detail: quiet.
 	withDetail := dbOperation()
 	withDetail.Detail = []attribute.KeyValue{attribute.String("db.statement", "k")}
@@ -56,7 +57,7 @@ func TestSuccessQuiet(t *testing.T) {
 // attributes come off the context and are shared, so writing through them would
 // corrupt a sibling call's labels.
 func TestCallLabelsDoNotAlias(t *testing.T) {
-	w := &wrappedClientExecutor{system: "memcached", service: "memcached.cache"}
+	w := &callEmitter{system: "memcached", service: "memcached.cache"}
 	attrs := make([]attribute.KeyValue, 1, 4) // spare capacity: an in-place append would fit
 	attrs[0] = attribute.String("db.system", "memcached")
 
@@ -76,7 +77,7 @@ func TestCallLabelsDoNotAlias(t *testing.T) {
 // after the operation and carries its attributes, the undeclared path keeps the
 // service label and this layer's own attributes.
 func TestSpanNameAndAttrs(t *testing.T) {
-	w := &wrappedClientExecutor{system: "memcached", service: "memcached.svc"}
+	w := &callEmitter{system: "memcached", service: "memcached.svc"}
 
 	op := dbOperation()
 	assert.String(t, w.spanName(op, true)).Equal("get")
@@ -86,7 +87,7 @@ func TestSpanNameAndAttrs(t *testing.T) {
 	assert.Number(t, len(declared)).Equal(2)
 	assert.String(t, string(declared[0].Key)).Equal("db.system")
 
-	fallback := w.spanAttrs(Operation{}, false)
+	fallback := w.spanAttrs(chain.Operation{}, false)
 	assert.Number(t, len(fallback)).Equal(2)
 	assert.String(t, string(fallback[0].Key)).Equal("resilience.system")
 }

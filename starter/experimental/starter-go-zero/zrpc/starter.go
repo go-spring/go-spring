@@ -108,11 +108,10 @@ type ZrpcServer struct {
 // NewZrpcServer builds a ZrpcServer from ${spring.go-zero.zrpc.server} config
 // and the registered ServiceRegister bean.
 func NewZrpcServer(cfg Config, reg ServiceRegister) *ZrpcServer {
-	log.Debug(context.Background(), log.TagAppDef, func() []log.Field {
+	log.Debug(context.Background(), log.TagAppDef, "create go-zero zrpc server success", func() []log.Field {
 		return []log.Field{
 			log.String("listen_on", cfg.ListenOn),
 			log.String("name", cfg.Name),
-			log.Msg("create go-zero zrpc server success"),
 		}
 	})
 	return &ZrpcServer{cfg: cfg, reg: reg, done: make(chan struct{})}
@@ -170,7 +169,7 @@ func (s *ZrpcServer) Run(ctx context.Context, sig gs.ReadySignal) error {
 
 	<-sig.TriggerAndWait()
 
-	log.Infof(ctx, log.TagAppDef, "go-zero zrpc server starting")
+	log.Info(ctx, log.TagAppDef, "go-zero zrpc server starting")
 	errCh := make(chan error, 1)
 	go func() {
 		// Start binds the listener, registers the provider under Etcd.Key when
@@ -192,9 +191,8 @@ func (s *ZrpcServer) Run(ctx context.Context, sig gs.ReadySignal) error {
 // sequence. The server teardown itself happens in Run via svr.Stop() (which
 // takes no context), so ctx only tags the shutdown log.
 func (s *ZrpcServer) Stop(ctx context.Context) error {
-	log.Info(ctx, log.TagAppDef,
-		log.String("addr", s.cfg.ListenOn),
-		log.Msg("go-zero zrpc server shutting down"))
+	log.Info(ctx, log.TagAppDef, "go-zero zrpc server shutting down",
+		log.String("addr", s.cfg.ListenOn))
 	close(s.done)
 	return nil
 }

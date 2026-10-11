@@ -81,9 +81,9 @@ func init() {
 // probe releases what was just assembled.
 //
 // center is the governance center bean — the family's sole injection point. It
-// is required when linked: "governance off" is spring.governance.enabled=false,
-// never an absent bean; a standalone, non-gs caller passes nil, which reads
-// unarmed authorities — exactly "governance off".
+// is required when linked: "governance off" is a document that configures
+// nothing, never an absent bean; a standalone, non-gs caller passes nil, which
+// reads unarmed authorities — exactly "governance off".
 func newClient(ctx *gs.ContextProvider, name string, c Config, d Driver, center *governance.Center) (*Client, error) {
 	// The connection's identity rides on a context derived here: every line
 	// below carries it without repeating it. The provider's own context is left
@@ -91,10 +91,9 @@ func newClient(ctx *gs.ContextProvider, name string, c Config, d Driver, center 
 	// constructor's.
 	cctx := log.WithFields(ctx.Context, log.String("url", c.URL))
 
-	log.Debug(cctx, log.TagAppDef, func() []log.Field {
+	log.Debug(cctx, log.TagAppDef, "creating rabbitmq connection", func() []log.Field {
 		return []log.Field{
 			log.String("vhost", c.Vhost),
-			log.Msg("creating rabbitmq connection"),
 		}
 	})
 
@@ -104,7 +103,7 @@ func newClient(ctx *gs.ContextProvider, name string, c Config, d Driver, center 
 	}
 	conn, err := d.CreateClient(ctx.Context, c)
 	if err != nil {
-		log.Errorf(cctx, log.TagAppDef, err, "rabbitmq: create client failed")
+		log.Error(cctx, log.TagAppDef, err, "rabbitmq: create client failed")
 		return nil, errutil.Explain(err, "failed to create rabbitmq client: %s", c.URL)
 	}
 
@@ -120,34 +119,30 @@ func newClient(ctx *gs.ContextProvider, name string, c Config, d Driver, center 
 	go func() {
 		for e := range closeCh {
 			if e == nil {
-				log.Info(cctx, log.TagAppDef, append(connState.record(ctx.Context, connClosed),
-					log.Msg("rabbitmq connection closed"))...)
+				log.Info(cctx, log.TagAppDef, "rabbitmq connection closed", connState.record(ctx.Context, connClosed)...)
 				continue
 			}
-			log.Warn(cctx, log.TagAppDef, append(connState.record(ctx.Context, connClosed),
+			log.Warn(cctx, log.TagAppDef, "rabbitmq connection closed", append(connState.record(ctx.Context, connClosed),
 				log.Int("code", e.Code),
 				log.String("reason", e.Reason),
 				log.Bool("server", e.Server),
-				log.Bool("recover", e.Recover),
-				log.Msg("rabbitmq connection closed"))...)
+				log.Bool("recover", e.Recover))...)
 		}
 	}()
 	go func() {
 		for b := range blockCh {
 			if b.Active {
-				log.Warn(cctx, log.TagAppDef, append(connState.record(ctx.Context, connBlocked),
-					log.String("reason", b.Reason),
-					log.Msg("rabbitmq connection blocked"))...)
+				log.Warn(cctx, log.TagAppDef, "rabbitmq connection blocked", append(connState.record(ctx.Context, connBlocked),
+					log.String("reason", b.Reason))...)
 			} else {
-				log.Info(cctx, log.TagAppDef, append(connState.record(ctx.Context, connUnblocked),
-					log.Msg("rabbitmq connection unblocked"))...)
+				log.Info(cctx, log.TagAppDef, "rabbitmq connection unblocked", connState.record(ctx.Context, connUnblocked)...)
 			}
 		}
 	}()
 
 	// Assemble fully before probing: wrap the connection in its client — the
-	// chain carries the governance, no registry involved.
-	cl := NewClient(conn, resilience.ServiceLabel("rabbitmq", c.Vhost, c.URL), center)
+	// emitting layer travels with the client, no registry involved.
+	cl := NewClient(conn, resilience.ServiceLabel("rabbitmq", c.Vhost, c.URL))
 	// Then confirm the AMQP channel layer is usable, not just the TCP handshake
 	// (when Ping is enabled). The probe goes straight to the raw connection on
 	// purpose: it is a connectivity check, not business traffic, so it must not
@@ -156,16 +151,15 @@ func newClient(ctx *gs.ContextProvider, name string, c Config, d Driver, center 
 	if c.Ping {
 		ch, err := conn.Channel()
 		if err != nil {
-			log.Errorf(cctx, log.TagAppDef, err, "rabbitmq: open probe channel failed")
+			log.Error(cctx, log.TagAppDef, err, "rabbitmq: open probe channel failed")
 			_ = cl.Close()
 			return nil, errutil.Explain(err, "failed to open probe channel: %s", c.URL)
 		}
 		if err := ch.Close(); err != nil {
-			log.Warn(cctx, log.TagAppDef,
-				log.Err(err),
-				log.Msg("rabbitmq: close probe channel failed"))
+			log.Warn(cctx, log.TagAppDef, "rabbitmq: close probe channel failed",
+				log.Err(err))
 		}
 	}
-	log.Infof(cctx, log.TagAppDef, "create rabbitmq connection success")
+	log.Info(cctx, log.TagAppDef, "create rabbitmq connection success")
 	return cl, nil
 }

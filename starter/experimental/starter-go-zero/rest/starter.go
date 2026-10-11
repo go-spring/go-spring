@@ -104,12 +104,11 @@ type RestServer struct {
 // NewRestServer builds a RestServer from ${spring.go-zero.rest.server} config
 // and the registered HandlerRegister bean.
 func NewRestServer(cfg Config, reg HandlerRegister) *RestServer {
-	log.Debug(context.Background(), log.TagAppDef, func() []log.Field {
+	log.Debug(context.Background(), log.TagAppDef, "create go-zero rest server success", func() []log.Field {
 		return []log.Field{
 			log.String("host", cfg.Host),
 			log.Int("port", cfg.Port),
 			log.String("name", cfg.Name),
-			log.Msg("create go-zero rest server success"),
 		}
 	})
 	return &RestServer{cfg: cfg, reg: reg, done: make(chan struct{})}
@@ -159,7 +158,7 @@ func (s *RestServer) Run(ctx context.Context, sig gs.ReadySignal) error {
 
 	<-sig.TriggerAndWait()
 
-	log.Infof(ctx, log.TagAppDef, "go-zero rest server starting")
+	log.Info(ctx, log.TagAppDef, "go-zero rest server starting")
 	errCh := make(chan error, 1)
 	go func() {
 		// Start binds the listener and blocks until Stop is called.
@@ -180,9 +179,8 @@ func (s *RestServer) Run(ctx context.Context, sig gs.ReadySignal) error {
 // sequence. The server teardown itself happens in Run via svr.Stop() (which
 // takes no context), so ctx only tags the shutdown log.
 func (s *RestServer) Stop(ctx context.Context) error {
-	log.Info(ctx, log.TagAppDef,
-		log.String("addr", fmt.Sprintf("%s:%d", s.cfg.Host, s.cfg.Port)),
-		log.Msg("go-zero rest server shutting down"))
+	log.Info(ctx, log.TagAppDef, "go-zero rest server shutting down",
+		log.String("addr", fmt.Sprintf("%s:%d", s.cfg.Host, s.cfg.Port)))
 	close(s.done)
 	return nil
 }

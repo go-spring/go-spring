@@ -96,7 +96,7 @@ func init() {
         mux.Handle("/echo", requireApp(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
             conn, err := websocket.Accept(w, r, opts)
             if err != nil {
-                log.Errorf(r.Context(), log.TagAppDef, "accept /echo failed: %v", err)
+                log.Error(r.Context(), log.TagAppDef, err, "Failed to accept /echo")
                 return
             }
             c.Echo(r.Context(), conn)

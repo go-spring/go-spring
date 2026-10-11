@@ -193,31 +193,24 @@ ctx = log.WithFields(appCtx, log.CarriedFields(reqCtx)...)
 
 ## 日志 API
 
-各级别均提供两种风格：结构化版本与格式化版本。注意字段参数的形式分两档：
+每个级别都要求一个 `msg` 字符串参数，后面跟字段。消息必须是**不带格式化动词的常量字符串**——
+变量一律进结构化字段，绝不拼进消息。注意字段参数的形式分两档：
 
-- `Trace` / `Debug` 接收**惰性构造函数** `func() []Field`--级别禁用时闭包不执行、零分配，
+- `Trace` / `Debug` 接收**惰性构造函数** `func() []Field`——级别禁用时闭包不执行、零分配，
   适合高频调试日志
-- `Info` ~ `Fatal` 接收**现成字段** `...Field`--调用前字段已构造
+- `Info` ~ `Fatal` 接收**现成字段** `...Field`——调用前字段已构造
 
 ```go
-log.Debug(ctx, tag, func() []log.Field {
+log.Debug(ctx, tag, "登录成功", func() []log.Field {
 	return []log.Field{log.String("user_id", "10001")} // 级别禁用时不执行
 })
-log.Info(ctx, tag, log.String("user_id", "10001"), log.Msg("登录成功"))
-log.Infof(ctx, tag, "用户 %s 登录成功", userID)
+log.Info(ctx, tag, "用户登录", log.String("user_id", "10001"))
 ```
 
-该用哪种风格：
-
-- **只有一条消息、不带字段** —— 用格式化版本（`Tracef` / `Debugf` / `Infof` / `Warnf` /
-  `Errorf` / `Fatalf`）。这些方法正是为这种场景提供的：用 `log.Msg(…)` 包一条消息只是徒增仪式。
-- **只要带了任意字段** —— 用结构化版本，消息作为最后一个字段：
-  `log.Info(ctx, tag, log.String("order_id", id), log.Msg("下单成功"))`。
-
-传给格式化版本的消息会被当作格式串，因此字面量 `%` 需写成 `%%`，否则就得改用结构化版本。
-`Error` 在两种风格下都把错误作为独立参数：`log.Errorf(ctx, tag, err, "…")` 与
-`log.Error(ctx, tag, err, log.String("k", v), log.Msg("…"))`；其余级别通过 `log.Err(err)`
-字段传入。
+`Error` 把错误作为独立参数：
+`log.Error(ctx, tag, err, "处理订单请求失败", log.String("k", v))`；其余级别通过
+`log.Err(err)` 字段传入。极少数确实需要格式化消息的场景（透传用户输入、桥接外部框架），
+用 `log.Record` 配合 `log.Msgf(…)`——那是自定义场景的逃生通道，不是默认用法。
 
 常用字段构造函数：
 
@@ -232,10 +225,10 @@ log.Infof(ctx, tag, "用户 %s 登录成功", userID)
 ### 消息措辞
 
 消息记录的是恒定的**事件描述**——模块或动作主体；一切变量值（key、path、id、backoff、计数、耗时）
-都进结构化字段，绝不插进文本里。尤其不要用 `Msgf` 把变量插进 message：采样按 message 文本识别
-重复行，插值会让每次出现都看着像新的，采样/去重即失效。`Msgf` 仅剩的合法场景是内容天然动态的文本
-——透传用户输入、打印对端返回原文、桥接外部框架的任意值（适配层的 `Msgf("%v")`）。结构化不等于
-丢人话：优先用 `log.Warn(ctx, tag, fields...)` 而不是 `Warnf` 散文，但消息仍要写成能读的人话。
+都进结构化字段，绝不插进文本里：采样按 message 文本识别重复行，插值会让每次出现都看着像新的，
+采样/去重即失效。这一点由 API 强制——`msg` 参数是纯字符串；`Msgf` 仅剩的合法场景是内容天然动态的
+文本（透传用户输入、打印对端返回原文、桥接外部框架的任意值），且只能经 `log.Record` 使用。结构化
+不等于丢人话：`log.Warn(ctx, tag, "加载配置失败", fields...)` 的消息仍要写成能读的人话。
 
 措辞按事件的时间态分类，句式各自统一：
 
@@ -349,16 +342,11 @@ func main() {
 
   ctx := context.Background()
 
-  // 简单格式化日志
-  log.Infof(ctx, log.TagAppDef, "应用启动完成，版本: %s", "v1.0.0")
-  log.Errorf(ctx, log.TagBizDef, "处理订单请求失败: %v", err)
-
-  // 结构化日志
-  log.Info(ctx, log.TagAppDef,
-    log.String("event", "user_login"),
-    log.Int("user_id", 10001),
-    log.Msg("用户登录成功"),
+  // 结构化日志：常量消息 + 字段
+  log.Info(ctx, log.TagAppDef, "应用启动完成",
+    log.String("version", "v1.0.0"),
   )
+  log.Error(ctx, log.TagBizDef, err, "处理订单请求失败")
 }
 ```
 
@@ -551,7 +539,7 @@ appender 集合：读端完全无锁，刷新瞬间不丢日志。同时 `Refres
 ### 性能设计
 
 - **零分配字段构造**：主 API 接收 `func() []Field` 构造函数，级别被禁用的调用点不会为字段
-  分配任何内存；`Infof` 等格式化版本更易用，但属于较慢路径。
+  分配任何内存；不存在格式化版本——消息永远是常量字符串，变量一律走字段。
 - **对象池复用**：日志事件与编码 buffer 均来自 `sync.Pool`，超过 10 KB 的 buffer 不回池
   （可用环境变量 `GS_LOGGER_BUFFER_CAP` 调整）。
 - **字段值类型**：`Field` 为值类型，`Bool`/`Int`/`String`/`Msg` 等基础 helper 构造字段时

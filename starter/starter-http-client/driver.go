@@ -57,13 +57,12 @@ import (
 // passed as an argument rather than carried on Config so a custom driver can
 // actually reach it — Config stays a pure bound value.
 //
-// center is the governance center the container injected into the starter
-// (nil when no center is linked — gs autowires a missing bean as nil) — the
-// family's sole injection point.
+// center is the governance center the container injected into the starter —
+// the family's sole injection point, required (wiring fails fast when no
+// center bean exists).
 // It is handed to the driver rather than read from a package-level seam, so
 // a custom driver can wrap, replace or simply forward it; the bundled
-// DefaultDriver forwards it to [httpx.NewTransport], which normalizes a nil
-// center to unarmed authorities. prop is the application's load-test convention
+// DefaultDriver forwards it to [httpx.NewTransport] verbatim. prop is the application's load-test convention
 // bean (nil when none is provided), forwarded the same way.
 type Driver interface {
 	CreateTransport(ctx context.Context, name string, c Config, backend discovery.Discovery, center *governance.Center, prop traffic.Propagator) (rt http.RoundTripper, close func() error, err error)

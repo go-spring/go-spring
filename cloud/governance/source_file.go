@@ -21,7 +21,6 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
-	"sync"
 
 	"github.com/fsnotify/fsnotify"
 	"go-spring.org/log"
@@ -36,23 +35,32 @@ import (
 // bypasses gs's properties-refresh pipeline: a governance rule change refreshes
 // governance only, never re-binds the whole app.
 //
-// The file uses the SAME keys an app.properties entry would (spring.governance.enabled,
-// spring.governance.client.default.attempt-timeout, spring.governance.client.rules[0].resources, ...), parsed by
+// The file uses the SAME keys an app.properties entry would
+// (spring.governance.client.default.attempt-timeout, spring.governance.client.rules[0].resources, ...), parsed by
 // extension through the shared conf reader registry (json/properties/yaml/
 // toml), so a rules file is literally a snippet of app.config carved out.
 //
 // A parse failure on reload keeps the last good snapshot and logs — the Source
 // contract is "everything pushed is vouched for"; a bad edit must not blank
 // live governance. A failure on the INITIAL load fails construction, so a
-// misconfigured path surfaces at startup instead of arming a disabled center.
+// misconfigured path surfaces at startup instead of leaving the center on its
+// empty document.
 type FileSource struct {
 	path string
 
-	// push holds the snapshot and the subscriber; this source is a transport
-	// (fsnotify) that parses and feeds it.
-	push *PushSource
+	// PushSource is embedded so this transport inherits the [Source] read and
+	// subscribe pair (the fsnotify loop feeds it through reload). Embedding also
+	// promotes Push — the INTERNAL commit path that skips reload's parse and
+	// change-dedup guards — so callers must never call Push directly.
+	*PushSource
 
-	mu      sync.Mutex
+	// watcher and stopped are touched only by Start and Close, with no lock: gs
+	// runs Init synchronously while wiring and Destroy exactly once at shutdown,
+	// so Start runs at most once and Close at most once, in that order (the
+	// watchLoop goroutine reads stopped, an immutable channel, and synchronizes
+	// through its close, not a field). Close additionally tolerates a source that
+	// was never started — a caller may build one, read its snapshot and drop it
+	// without watching.
 	watcher *fsnotify.Watcher
 	stopped chan struct{}
 }
@@ -66,20 +74,14 @@ func NewFileSource(path string) (*FileSource, error) {
 	if err != nil {
 		return nil, err
 	}
-	src.push = NewPushSource(cfg)
+	src.PushSource = NewPushSource(cfg)
 	return src, nil
 }
 
-// Start begins watching the rules file. Idempotent; used by Init so the
-// watcher runs whether or not the center ever subscribes (a bean-injected
-// source that loses priority to an explicit SetSource still stays warm).
+// Start begins watching the rules file. It is the gs bean Init hook, called
+// once, so it is single-shot: the watcher runs independently of whether the
+// center ever reads a snapshot.
 func (s *FileSource) Start() error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if s.watcher != nil {
-		return nil
-	}
-
 	w, err := fsnotify.NewWatcher()
 	if err != nil {
 		return errutil.Explain(err, "governance file source: create watcher failed")
@@ -106,20 +108,11 @@ func (s *FileSource) Init() error { return s.Start() }
 // Close stops the watcher. Implements the optional-close contract the
 // governance center probes for on Destroy.
 func (s *FileSource) Close() error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if s.watcher == nil {
+	if s.watcher == nil { // never started — nothing to stop
 		return nil
 	}
-	select {
-	case <-s.stopped:
-		// already closed
-	default:
-		close(s.stopped)
-	}
-	err := s.watcher.Close()
-	s.watcher = nil
-	return err
+	close(s.stopped)
+	return s.watcher.Close()
 }
 
 // watchLoop coalesces directory events into reloads. Reacting to every event
@@ -143,27 +136,21 @@ func (s *FileSource) watchLoop(w *fsnotify.Watcher, ctx context.Context) {
 	}
 }
 
-// Snapshot returns the latest good snapshot.
-func (s *FileSource) Snapshot() Config { return s.push.Snapshot() }
-
-// Subscribe registers cb as the push target (the center is the only consumer).
-func (s *FileSource) Subscribe(cb func(ctx context.Context, cfg Config)) { s.push.Subscribe(cb) }
-
 // reload re-reads and re-parses the file; on success it pushes the new config
 // (skipping no-op re-deliveries of an identical one). On failure it keeps the
 // last good snapshot and logs.
 func (s *FileSource) reload(ctx context.Context) {
 	cfg, err := s.load()
 	if err != nil {
-		log.Error(ctx, starterTag, err, log.Msg("governance file source: reload failed (keeping last good config)"))
+		log.Error(ctx, starterTag, err, "governance file source: reload failed (keeping last good config)")
 		return
 	}
-	if reflect.DeepEqual(s.push.Snapshot(), cfg) {
+	if reflect.DeepEqual(s.Snapshot(), cfg) {
 		return // a touch that did not change the rules pushes nothing
 	}
 	// A changed document starts a path here and continues into the center that
 	// applies it: the change mints the trace_id both sides log against.
-	s.push.Push(log.RootFields(
+	s.Push(log.RootFields(
 		log.String("trace_id", randutil.Hex(16)),
 		log.String("path", s.path)), cfg)
 }

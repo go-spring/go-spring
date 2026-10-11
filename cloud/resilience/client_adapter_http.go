@@ -25,8 +25,6 @@ import (
 	"go-spring.org/cloud/chain"
 	"io"
 	"net/http"
-
-	"go-spring.org/cloud/propagate"
 )
 
 // httpStatusError wraps an HTTP response status that the adapter treated as a
@@ -66,33 +64,54 @@ func (e *httpStatusError) Retryable() bool { return e.retryable }
 // the net/http client arranges for standard body types). Transport errors
 // always count as failures. The final response or error is returned to the
 // caller unchanged.
-func NewRoundTripper(base http.RoundTripper, exec chain.Executor) http.RoundTripper {
+//
+// callFor resolves the [chain.Operation] for a request, so an adapter that knows the
+// logical operation — its target and scenario — declares it by derivation. An
+// http.RoundTripper is handed only the request, so this derivation is the seam's
+// ctx-free way to name a call; a nil callFor falls back to a Call derived from
+// the request (its host).
+func NewRoundTripper(base http.RoundTripper, exec chain.Executor,
+	callFor func(*http.Request) chain.Operation) http.RoundTripper {
 	if exec == nil {
 		return base
 	}
 	if base == nil {
 		base = http.DefaultTransport
 	}
-	return &roundTripper{base: base, exec: exec}
+	return &roundTripper{base: base, exec: exec, callFor: callFor}
 }
 
 type roundTripper struct {
-	base http.RoundTripper
-	exec chain.Executor
+	base    http.RoundTripper
+	exec    chain.Executor
+	callFor func(*http.Request) chain.Operation
+}
+
+// call resolves the [chain.Operation] for a request: the adapter's callFor when it
+// supplied one, else a minimal Call derived from the request. An http.RoundTripper
+// is handed only the request, so a request-derived default is the seam's only
+// ctx-free option; an adapter that knows the logical operation supplies callFor.
+func (rt *roundTripper) call(req *http.Request) chain.Operation {
+	if rt.callFor != nil {
+		return rt.callFor(req)
+	}
+	if req.URL != nil {
+		return chain.Operation{Target: req.URL.Host}
+	}
+	return chain.Operation{}
 }
 
 func (rt *roundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 	var resp *http.Response
-	err := rt.exec.Execute(req.Context(), func(ctx context.Context) error {
+	err := rt.exec.Execute(req.Context(), rt.call(req), func(ctx context.Context) error {
+		// A shallow copy carrying the attempt's context: the transport must run
+		// under the deadline exec derived for this attempt, and a retry derives a
+		// fresh one. Nothing here mutates the headers, so they need no copy of
+		// their own — only the context changes, and only the body is replaced.
+		attempt := req.WithContext(ctx)
 		// Rewind the body for each attempt so retries send the full payload;
 		// requests without a rewindable body simply run once (the executor's
 		// retry loop stops on the first success).
-		attempt := req.Clone(ctx)
-		// What is left of this call's budget travels with it: the next hop reads
-		// it and bounds its own work by the remainder instead of starting an
-		// allowance of its own. Cloned headers, so each attempt — and each retry
-		// within one call — carries the budget as it stands then.
-		InjectBudget(ctx, propagate.Header(attempt.Header))
 		if req.GetBody != nil {
 			body, err := req.GetBody()
 			if err != nil {

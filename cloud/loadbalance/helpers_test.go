@@ -66,7 +66,5 @@ func staticSource(eps ...discovery.Endpoint) discovery.Resolver {
 // factories.
 func newManager(t *testing.T) *Manager {
 	t.Helper()
-	m, err := NewManager(nil)
-	assert.Error(t, err).Nil()
-	return m
+	return NewManager()
 }

@@ -176,9 +176,9 @@ gs.Run()
   │       metadata, so bad brokers/credentials/TLS fail HERE, not on first use
   │       [client.go:53-69 comment, driver.go:71-112]
   │    3. attachExecutor (inside the driver, the moment the client is built):
-  │       params.ExecutorFor("kafka", "kafka:<brokers>") — the governed executor
-  │       (fault-wrapped) when the container is present, the observed-only
-  │       resilience.Unmanaged one (with a one-time warning) when it is not —
+  │       center.ExecutorFor("kafka", "kafka:<brokers>") — the governed executor
+  │       (fault-wrapped); the governance center is required and always supplied
+  │       by the container —
   │       indexed by client in a sync.Map. Governance is applied IN THE
   │       CONSTRUCTOR, so the driver returns the client COMPLETE and there is
   │       no post-hoc patch step [driver.go CreateClient, command.go attachExecutor]
@@ -193,9 +193,9 @@ gs.Run()
 A company/umbrella starter may provide its own `Driver` as an **optional container bean** (a
 `gs.Provide(func() StarterKafkaSarama.Driver{...})`, so it can inject config bound from the
 properties file at wiring time); every instance under `spring.kafka-sarama` is then built through
-it. `CreateClient` receives the container's `cloud.ClientParams` bundle and returns the client
-complete — it must attach the executor it builds from `params` the same way the bundled driver does
-(see `attachExecutor`). When no such bean exists the starter falls back to the bundled
+it. `CreateClient` receives the container's `*governance.Center` (the parameter `center`) and
+returns the client complete — it must attach the executor it builds from `center` the same way the
+bundled driver does (see `attachExecutor`). When no such bean exists the starter falls back to the bundled
 `DefaultDriver` (`driver.go:67-112`) inside assembly (`client.go:73-75`). When several Driver beans
 coexist, an entry selects one by name:
 `spring.kafka-sarama.instances.<name>.driver = <bean-name>` (empty = inject the
@@ -215,7 +215,7 @@ surface:
 
 ```
 SendMessage / SendMessages
-  → declare: observability.WithOperation(ctx, operation("publish", msg.Topic))
+  → build op: operation("publish", msg.Topic), passed explicitly to the observer
   → fault.WrapClientExecutor (injected faults when spring.governance.client.fault enabled)
     → resilience executor wrapper (span + outcome counter + call/attempt duration + access log)
       → resilience executor (breaker / rate limit / retry, policy from governance center)
@@ -235,8 +235,8 @@ publish span is a NEW ROOT, and a per-call deadline is expressed via resilience
 
 `publish(ctx, "hello", "value")` on a wrapped producer with tracing live:
 
-1. `SendMessage` declares the operation `publish` on topic `hello`
-   (`observability.WithOperation`) and enters the executor — the starter emits nothing
+1. `SendMessage` builds the operation `publish` on topic `hello`
+   and passes it explicitly to the observer — the starter emits nothing
    itself (observe.go). Attribute namespace: `messaging.system=kafka`,
    `messaging.operation=publish`, `messaging.destination.name=<topic>`.
 2. The resilience layer opens the publish span and, at the call level, records

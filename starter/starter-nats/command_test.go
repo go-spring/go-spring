@@ -50,8 +50,7 @@ func (s subjectLayer) PublishMsgContext(ctx context.Context, msg *nats.Msg) erro
 // sees the rewritten subject.
 func TestInnerConnReorganize(t *testing.T) {
 	tail := &fakeTail{}
-	guard := &GuardConn{next: tail}
-	c := &Conn{InnerConn: NewObsConn(guard), guard: guard}
+	c := &Conn{InnerConn: NewObsConn(tail, nil)}
 	c.InnerConn = subjectLayer{InnerConn: c.InnerConn, prefix: "tenant."}
 
 	msg := &nats.Msg{Subject: "orders", Data: []byte("x")}
@@ -79,16 +78,6 @@ func TestMain(m *testing.M) {
 	os.Exit(code)
 }
 
-// passthroughExecutor is the innermost layer the tests chain under the emitting
-// resilience wrapper: it runs the call and nothing else, so every span under
-// assertion comes from the wrapper above it.
-type passthroughExecutor struct{}
-
-func (passthroughExecutor) Execute(ctx context.Context, fn func(context.Context) error) error {
-	return fn(ctx)
-}
-func (passthroughExecutor) Close() error { return nil }
-
 // injectTail is the fake raw adapter: it replicates the real adapter's one
 // observable side effect — injecting the trace context from the ctx it receives
 // (the executor's attempt ctx) into the message header — so the trace tests can
@@ -115,10 +104,8 @@ func newInstrumentedConn(t *testing.T) *Conn {
 }
 
 func newInstrumentedConnErr(err error) *Conn {
-	guard := &GuardConn{exec: observability.WrapClientExecutor(passthroughExecutor{}, "nats", "nats:test")}
-	c := &Conn{InnerConn: NewObsConn(guard), guard: guard}
-	guard.next = injectTail{err: err}
-	return c
+	obs := observability.NewOperationObserver("nats", "nats:test")
+	return &Conn{InnerConn: NewObsConn(injectTail{err: err}, obs), obs: obs}
 }
 
 // traceIDOf extracts the trace context a producer injected into msg.Header.
@@ -238,8 +225,7 @@ func TestWrapConsumeReportsHandlerError(t *testing.T) {
 // ctx holds no valid span).
 func TestChainDelegatesWithoutExecutor(t *testing.T) {
 	tail := &fakeTail{}
-	guard := &GuardConn{next: tail}
-	c := &Conn{InnerConn: NewObsConn(guard), guard: guard}
+	c := &Conn{InnerConn: NewObsConn(tail, nil)}
 
 	msg := &nats.Msg{Subject: "t.subject"}
 	assert.Error(t, c.PublishMsgContext(context.Background(), msg)).Nil()

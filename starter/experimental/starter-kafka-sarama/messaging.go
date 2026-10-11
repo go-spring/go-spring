@@ -59,13 +59,8 @@ import (
 // seams. sarama's send API takes no context, so a publish's span is a new root
 // (see [WrapSyncProducer]); the load-test marker is carried the same way.
 //
-// prop is the load-test convention the driver carries; a nil propagator falls
-// back to [traffic.NewDefaultPropagator].
+// prop is the load-test convention the driver carries (required).
 func NewDriver(cl sarama.Client, prop traffic.Propagator) messaging.Driver {
-	if prop == nil {
-		// DefaultBinding is complete, so this cannot fail.
-		prop, _ = traffic.NewDefaultPropagator(traffic.DefaultBinding())
-	}
 	return &driver{cl: cl, prop: prop}
 }
 
@@ -147,12 +142,12 @@ func (s *subscriber) Subscribe(ctx context.Context, handler messaging.Handler) e
 		defer close(s.done)
 		defer func() {
 			if cerr := cg.Close(); cerr != nil {
-				log.Warn(loopCtx, log.TagAppDef, log.String("topic", s.topic), log.Msg("close kafka-sarama consumer group failed"))
+				log.Warn(loopCtx, log.TagAppDef, "close kafka-sarama consumer group failed", log.String("topic", s.topic))
 			}
 		}()
 		for loopCtx.Err() == nil {
 			if err := cg.Consume(loopCtx, []string{s.topic}, h); err != nil && loopCtx.Err() == nil {
-				log.Error(loopCtx, log.TagAppDef, err, log.String("topic", s.topic), log.Msg("kafka-sarama consumer group failed"))
+				log.Error(loopCtx, log.TagAppDef, err, "kafka-sarama consumer group failed", log.String("topic", s.topic))
 			}
 		}
 	}()
@@ -195,7 +190,7 @@ func (h *groupHandler) ConsumeClaim(session sarama.ConsumerGroupSession, claim s
 				return h.handler(ctx, fromConsumerMessage(msg))
 			})
 			if err != nil {
-				log.Error(session.Context(), log.TagAppDef, err, log.String("topic", msg.Topic), log.Msg("kafka-sarama driver handler failed"))
+				log.Error(session.Context(), log.TagAppDef, err, "kafka-sarama driver handler failed", log.String("topic", msg.Topic))
 				// Leave the record unmarked so it is redelivered on the next
 				// rebalance / restart rather than silently dropped.
 				continue

@@ -77,7 +77,7 @@ func runTest(s *Service) {
 		AddTag("host", "server-01").
 		AddField("usage_idle", 42.5)
 	if err := s.Client.WritePoints(ctx, p); err != nil {
-		log.Errorf(ctx, log.TagAppDef, err, "WRITE failed")
+		log.Error(ctx, log.TagAppDef, err, "WRITE failed")
 		os.Exit(1)
 	}
 
@@ -95,7 +95,7 @@ func runTest(s *Service) {
 		time.Sleep(500 * time.Millisecond)
 	}
 	if !strings.Contains(table, "usage_idle") || !strings.Contains(table, "42.5") {
-		log.Errorf(ctx, log.TagAppDef, fmt.Errorf("QUERY failed: table=%q", table), "QUERY failed: table=%q", table)
+		log.Error(ctx, log.TagAppDef, fmt.Errorf("QUERY failed: table=%q", table), "QUERY failed: table", log.String("table", table))
 		os.Exit(1)
 	}
 

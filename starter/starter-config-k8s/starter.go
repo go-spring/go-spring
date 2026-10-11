@@ -122,7 +122,7 @@ func (c *k8sCtrl) clientFor(ctx context.Context, kubeconfig string) (k8sClient, 
 	if err != nil {
 		return nil, errutil.Explain(err, "k8s config: build clientset")
 	}
-	log.Infof(ctx, starterTag, "create k8s client success")
+	log.Info(ctx, starterTag, "create k8s client success")
 	c.clients[kubeconfig] = cli
 	return cli, nil
 }
@@ -200,7 +200,7 @@ func parseSource(source string) (configSource, error) {
 func (c *k8sCtrl) Load(ctx context.Context, optional bool, source string) (map[string]string, error) {
 	cs, err := parseSource(source)
 	if err != nil {
-		log.Error(ctx, starterTag, err, log.String("source", source), log.Msg("parse k8s source failed"))
+		log.Error(ctx, starterTag, err, "parse k8s source failed", log.String("source", source))
 		return nil, err
 	}
 
@@ -214,21 +214,18 @@ func (c *k8sCtrl) Load(ctx context.Context, optional bool, source string) (map[s
 		log.String("format", cs.format),
 		log.String("name", cs.objectName))
 
-	log.Debug(ctx, starterTag, func() []log.Field {
-		return []log.Field{
-			log.Msg("loading k8s config"),
-		}
+	log.Debug(ctx, starterTag, "loading k8s config", func() []log.Field {
+		return []log.Field{}
 	})
 
 	client, err := c.clientFor(ctx, cs.kubeconfig)
 	if err != nil {
 		if optional {
-			log.Warn(ctx, starterTag,
-				log.Err(err),
-				log.Msg("skip optional config build client failed"))
+			log.Warn(ctx, starterTag, "skip optional config build client failed",
+				log.Err(err))
 			return nil, nil
 		}
-		log.Errorf(ctx, starterTag, err, "build k8s client failed")
+		log.Error(ctx, starterTag, err, "build k8s client failed")
 		return nil, err
 	}
 	return c.loadFromClient(ctx, client, cs, optional)
@@ -241,10 +238,10 @@ func (c *k8sCtrl) loadFromClient(ctx context.Context, client k8sClient, cs confi
 	data, err := fetch(ctx, client, cs)
 	if err != nil {
 		if apierrors.IsNotFound(err) && optional {
-			log.Warnf(ctx, starterTag, "skip optional config not found")
+			log.Warn(ctx, starterTag, "skip optional config not found")
 			return nil, nil
 		}
-		log.Errorf(ctx, starterTag, err, "fetch k8s object failed")
+		log.Error(ctx, starterTag, err, "fetch k8s object failed")
 		return nil, err
 	}
 
@@ -258,7 +255,7 @@ func (c *k8sCtrl) loadFromClient(ctx context.Context, client k8sClient, cs confi
 		return nil, err
 	}
 
-	log.Infof(ctx, starterTag, "load k8s config success")
+	log.Info(ctx, starterTag, "load k8s config success")
 	return m, nil
 }
 

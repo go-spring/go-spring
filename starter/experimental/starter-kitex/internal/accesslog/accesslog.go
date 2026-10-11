@@ -58,10 +58,10 @@ func Server() endpoint.Middleware {
 				log.Float("duration_ms", float64(dur.Nanoseconds())/1e6),
 			}
 			if err != nil {
-				log.Warn(ctx, tag, append(fields, log.Err(err))...)
+				log.Warn(ctx, tag, "kitex call failed", append(fields, log.Err(err))...)
 				return err
 			}
-			log.Info(ctx, tag, fields...)
+			log.Info(ctx, tag, "kitex call completed", fields...)
 			return nil
 		}
 	}

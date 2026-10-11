@@ -9,7 +9,7 @@ Detailed usage reference. Overview: [README.md](README.md). All behavior claims 
 the source (`cloud/governance`: `starter.go`, `source_file.go`, `source_http.go`,
 `starter_test.go`, `source_file_test.go`, `source_http_test.go`), the core package it wires
 (`center.go`, `source.go`, `fault/config.go`,
-`resilience/policy.go`, `resilience/manager.go`, `loadbalance/manager.go`), and the runnable
+`resilience/client_policy.go`, `resilience/manager.go`, `loadbalance/manager.go`), and the runnable
 [example/](example/) (`example/main.go` prints the
 resolved policy + fault config every second, prompts you to edit the rules file live, and
 self-terminates after 6s unless `-manual`).
@@ -88,13 +88,13 @@ func (p *printer) Run(ctx context.Context) error {
     for i := 0; ; i++ {
         var pol resilience.ClientPolicy
         if p.Res != nil {
-            pol = p.Res.PolicyFor("demo:service")
+            pol = p.Res.ClientPolicyFor("demo:service")
         }
         fmt.Printf("policy: enabled=%v timeout=%v retries=%d rate-limit=%v",
-            !pol.IsZero(), pol.Timeout, pol.MaxRetries, pol.RateLimit)
+            !pol.IsZero(), pol.AttemptTimeout, pol.MaxRetries, pol.RateLimit)
         if p.Inj != nil {
-            c := p.Inj.Config()
-            fmt.Printf(" | fault: enabled=%v rate=%v", c.Enabled, c.Rate)
+            c := p.Inj.ClientConfig()
+            fmt.Printf(" | fault: armed=%v rate=%v", !c.Inert(), c.Rate)
         }
         fmt.Println()
         if i == 3 {
@@ -137,17 +137,13 @@ spring.governance.source.file.path=conf/governance.yaml
 ```yaml
 spring:
   governance:
-    enabled: true
+    driver: default
     client:
       default:
-        enabled: true
         attempt-timeout: 100ms
         max-retries: 2
-    client:
       fault:
-        enabled: false        # flip to true mid-run — see §4.2
-        rate: 0.5
-    client:
+        # rate: 0.5            # set a rate to arm mid-run — see §4.2
       rules:
         - service: demo:service
           attempt-timeout: 50ms
@@ -157,10 +153,10 @@ spring:
 
 ```bash
 go run . -manual
-# policy: enabled=true timeout=100ms retries=2 rate-limit=0 | fault: enabled=false rate=0.5
-# >>> edit conf/governance.yaml now: policy AND fault toggle live
-#   ... change attempt-timeout to 77ms, or fault.enabled to true ...
-# policy: enabled=true timeout=77ms retries=2 rate-limit=0 | fault: enabled=true rate=0.5
+# policy: enabled=true timeout=100ms retries=2 rate-limit=0 | fault: client(armed=false rate=0) server(armed=false rate=0)
+# >>> edit conf/governance.yaml now: policy AND fault toggle live (e.g. set client.fault.rate=0.5)
+#   ... change attempt-timeout to 77ms, or arm the client fire with a rate ...
+# policy: enabled=true timeout=77ms retries=2 rate-limit=0 | fault: client(armed=true rate=0.5) server(armed=false rate=0)
 ```
 
 The change lands within ~1s of saving (fsnotify), with no restart and no app-wide re-bind.
@@ -220,7 +216,7 @@ link cloud/governance        (any client/server starter does it for you)
   │      cloud/loadbalance → *loadbalance.Manager
   │      cloud/fault      → *fault.Injector
   ├─ cloud/governance starter.go: gs.Provide(*governance.Center) over those beans,
-  │      .Init((*Center).GoLive).Destroy((*Center).Close)
+  │      .Destroy((*Center).Close)
   │      .Export(gs.As[gs.Rooter]())            ← the wall + the fix, see below
   └─ cloud/governance starter.go: two conditional gs.Module beans (the built-in sources)
          ├─ OnProperty("spring.governance.source.file")  → *FileSource, Export(As[governance.Source]())
@@ -231,16 +227,17 @@ gs.Run()
   ├─ config bind: source config from ${spring.governance.source.file|http.*} (expr-validated)
   ├─ bean wiring: everything is a constructor argument
   │      resilience.Manager  ← every bean exported as resilience.Driver
-  │      loadbalance.Manager ← every bean exported as loadbalance.Factory
+  │      loadbalance.Manager ← built with no arguments; resolves strategies out of the
+  │                             package registry (loadbalance.Register)
   │      source bean: construct, then Init: Start() — fsnotify / poll loop begins
   │      Center ← the two managers, fault.Injector, discovery.Manager, and the source
   │        (REQUIRED: no source bean ⇒ startup fails on this parameter)
   │        └─ NewCenter binds the source: subscribe (stale-guarded by handle pointer)
   │             + adopt Snapshot()
-  ├─ center bean Init hook:
-  │      GoLive(): dispatch the snapshot into the three module authorities —
-  │        resilience.Manager.Apply, loadbalance.Manager.Apply, fault.Injector.SetConfig
-  │        — then markLive() (→ fires every queued OnReady callback)
+  ├─ center bean construction:
+  │      NewCenter dispatches the initial document into the three module
+  │        authorities — resilience.Manager.Apply, loadbalance.Manager.Apply,
+  │        fault.Injector.SetConfig — and fails on a document that cannot serve
   ├─ your Runners run (policy already armed — Rooter precedes Runner)
   └─ on SIGTERM: center bean Destroy hook → center.Close()
         (closes the source iff it implements Close; FileSource stops its watcher,
@@ -261,15 +258,12 @@ Two design points worth knowing (both from source comments, verified):
   so the wiring drives exactly the authorities a client injects. There is no process-level
   singleton to reach behind the container.
 
-### 2.3 Rooter vs Runner, and why OnReady exists
+### 2.3 Rooter vs Runner
 
 gs collects and runs `gs.Rooter` beans before `gs.Runner` beans. The center bean is a Rooter, so
 governance is armed before your Runners start — the common case needs nothing. A push-based
 caller that is *itself* a Rooter (e.g. starter-dubbo's poller) and injects the center is wired
-after it, so it already sees a live center. `center.OnReady(cb)` — a method on the injected
-`*governance.Center` bean — is the general guard for anything that can still run early: cb queues until the authority goes live, then
-fires exactly once; if it is already live, cb fires immediately. The double-checked locking
-guarantees each callback runs exactly once whichever side wins the race.
+after it, so it already sees a live center.
 
 ### 2.4 One rules edit, end to end
 
@@ -282,16 +276,22 @@ guarantees each callback runs exactly once whichever side wins the race.
    machinery (`cloud/governance/rules.go:51-69`). A parse failure or a
    govern-key-less document logs `reload ... failed (keeping last good config)` and stops.
 3. Unchanged config (DeepEqual) pushes nothing — a touch does not churn executors.
-4. The center's subscribed callback adopts the config (`adopt` → `dispatch`): it stores the atomic
-   snapshot, hands resilience and endpoint selection their halves through each manager's `ApplyServer`
-   (re-resolving every subscribed label and notifying only subscribers whose policy actually
-   changed), and hot-swaps fault in place via `injector.SetConfig(cfg.Fault)` (`center.go`).
+4. The center's subscribed callback adopts the config (`adopt` → `dispatch`), in TWO phases: first
+   `Center.Validate` checks the document (duplicate labels, every balancer name)
+   without touching anything, and only if it passes does the commit store the atomic snapshot and
+   PUSH each module its own slice — `resilience.Manager.Apply` (a default plus the
+   client/server rule lists) and `loadbalance.Manager.Apply` (a default plus the selection rules),
+   translated from the document inside `dispatch` — then hot-swap fault in place via
+   `injector.SetConfig(fault.Configs{Client, Server})` (`center.go`). Nothing in the commit can fail,
+   so a rejected document leaves the snapshot and all three authorities on the last good one. Each
+   manager does its own label matching and notifies only subscribers whose policy actually changed.
 5. Authority effect: client starters never import governance — they inject the module authority
    they need (`*resilience.Manager`, `*loadbalance.Manager`, `*fault.Injector`) and ask it for an
    executor, a binding or an injector; a nil authority (a container that never linked
-   cloud/governance) means unarmed, i.e. a transparent pass-through. Resolution is lazy at call time: the executor's
-   Refresh swaps the live policy, and the fault injector's config is swapped in place, so
-   `fault.enabled: true` takes effect on the very next call with no restart.
+   cloud/governance) means unarmed, i.e. a transparent pass-through. The backing executor is resolved
+   lazily, at call time (see `ClientExecutorFor`); a center push evicts it and the next call rebuilds
+   it under the new policy, while the fault injector's config is swapped in place, so
+   arming a fault (setting its `rate`) takes effect on the very next call with no restart.
 
 ---
 
@@ -318,15 +318,14 @@ in their own modules: `spring.governance.source.nacos.*` (starter-governance-nac
 byte-portable across all of these backends.
 
 There is no default path: without a `spring.governance.source.*` key the center gets no source and the
-container fails to start (a hand-built center may pass nil and arm itself with `SetSource` later). ⚠ `spring.governance.source.*` is bootstrap ONLY — the rules themselves never live in
+container fails to start (a hand-built center may pass nil and stay disabled). ⚠ `spring.governance.source.*` is bootstrap ONLY — the rules themselves never live in
 app.properties.
 
 ### 3.2 Rules document — top level
 
 | Key | Type | Default | Behavior | Misconfiguration consequence |
 |-----|------|---------|----------|------------------------------|
-| `spring.governance.enabled` | bool | false | Master switch. false → the resilience authority's `PolicyFor` always returns a zero Policy (pass-through) regardless of Default/Rules. | Everything configured but still off — the #1 "why doesn't it work" cause. |
-| `spring.governance.driver` | string | "default" | Resilience backend for ALL services, resolved against the container's driver directory: a contributed driver bean's name (e.g. "sentinel"), or "default" for the bundled one. | Unknown driver → startup panic listing the available names (a typo must not silently disable protection). |
+| `spring.resilience.driver` | string | "default" | Resilience backend for ALL services. It is a STATIC app-config key, **not** a document key: it names the contributed driver bean to inject (e.g. "sentinel"), or "default" for the bundled one. | Unknown driver → the named `Driver` bean cannot be injected, so startup fails (a typo must not silently disable protection). |
 | `spring.governance.client.default.*` | resilience.ClientPolicy | all off | Baseline policy for every service no ClientRule matches. | — |
 | `spring.governance.client.rules[n].*` | []ClientRule | empty | The ClientRule whose Service equals the label wins (labels are unique — a duplicate is rejected). ⚠ A matched ClientRule **fully replaces** Default — no field-wise merge: a zero policy field means "disabled", so a partial merge could not distinguish "explicitly 0" from "unset" (`cloud/governance/center.go:364`). List specific rules first. | ClientRule setting only `attempt-timeout` silently turns OFF the default's retries for that service. |
 | `spring.governance.client.fault.*` | fault.Config | all off | OUTBOUND fault injection — the fire that tests this process's own retry/breaker/timeout, see §3.4. | — |
@@ -340,8 +339,8 @@ Service labels live in a **value**, never a key (`config.go`): `redis:cache`,
 ### 3.3 Policy knobs (16, usable under `spring.governance.client.default.*` and each `spring.governance.client.rules[n].*`, all default 0/off)
 
 The INBOUND model (`resilience.ServerPolicy`, under `spring.governance.server.*`) accepts the same knobs
-**minus the retry family** (`max-retries` / `retry-budget` / `initial-interval` / `multiplier` /
-`max-interval` / `randomization-factor`) and minus `max-duration`: a handler that already
+**minus the retry family** (`retry.max-retries` / `retry.retry-budget` / `retry.initial-interval` /
+`retry.multiplier` / `retry.max-interval` / `retry.randomization-factor`) and minus `max-duration`: a handler that already
 produced side effects cannot be replayed, so inbound has no retry to express, and with one
 attempt there is nothing for `max-duration` to bound (`attempt-timeout` is the whole handling
 budget). The other 16 knobs keep their names and meanings, so a value moves between directions
@@ -357,11 +356,11 @@ without relearning.
 | `half-open-requests` | int | breaker | trials admitted in half-open before deciding (0/1 = single trial; close after all succeed). |
 | `max-concurrent` | int | isolate | concurrent-call cap. |
 | `max-conns` | int | resource | connection-pool cap — the resource half of isolation. Read when the client is CONSTRUCTED (a pool is built once), so unlike every other knob a change reaches the next client built, not the running one; 0 leaves the backend default. |
-| `max-retries` / `initial-interval` / `multiplier` / `max-interval` / `randomization-factor` | … | retry | exponential backoff family. |
-| `retry-budget` | int | retry | cap on in-flight retries across one executor; over-budget retries get `resilience: retry budget exceeded`. |
+| `retry.max-retries` / `retry.initial-interval` / `retry.multiplier` / `retry.max-interval` / `retry.randomization-factor` | … | retry | the retry node — default OFF; retry is declared per call and a center can push a node here. |
+| `retry.retry-budget` | int | retry | cap on in-flight retries across one executor; over-budget retries get `resilience: retry budget exceeded`. |
 | `attempt-timeout` / `max-duration` | duration / duration | timeout | per-attempt bound; overall bound (attempt budget = min(Timeout, remaining MaxDuration)). |
 
-Driver selection and the on/off switch are process-wide (`spring.governance.enabled`/`spring.governance.driver`) and
+Driver selection is a static startup choice (`spring.resilience.driver`, an app-config key, not a governance-document key) and
 deliberately NOT re-bindable per service. Semantics of each knob (backoff math, breaker states)
 are `cloud/resilience` territory — the starter only binds and fans them out.
 
@@ -373,12 +372,11 @@ gate (outbound), the server block drives `ApplyServer`'s inbound-handler gate. E
 
 | Key | Type | Default | Behavior |
 |-----|------|---------|----------|
-| `enabled` | bool | false | When false nothing is injected even if rate/error are set. |
-| `rate` | float | 0 | Per-call probability of injecting the configured error (0..1). |
+| `rate` | float | 0 | Per-call probability of injecting the configured error (0..1). Setting it (or `latency`) is what arms the side; 0 and no latency means inert. |
 | `latency` | duration | 0 | Injected before each call and before the error decision, on EVERY call regardless of rate — models a uniformly slow downstream without forcing errors. |
 | `error` | string | "" | `""`/`generic` (retryable ErrInjected) \| `timeout` (wraps DeadlineExceeded) \| `reset` (wraps ECONNRESET). Empty + rate 0 injects nothing. |
 | `scope` | string | "" | `""` all traffic \| `real` only unmarked \| `loadtest` only traffic carrying the load-test marker (X-LoadTest via the traffic middleware). Unknown value behaves as "". |
-| `max-duration` | duration | 0 | Safety auto-off: after this long since the first affected call, injection stops — a forgotten fire self-heals. ⚠ Hot-reload: shortening takes effect promptly; lengthening does NOT un-trip an already-expired fire (re-arm by toggling enabled off→on). |
+| `max-duration` | duration | 0 | Safety auto-off: after this long since the first affected call, injection stops — a forgotten fire self-heals. ⚠ Hot-reload: shortening takes effect promptly; lengthening does NOT un-trip an already-expired fire (re-arm by clearing `rate` to 0 and setting it again). |
 | `max-affected` | int64 | 0 | Blast-radius cap: stop after this many faulted calls. |
 | `rules[n].service` / `.rate` / `.latency` / `.error` | … | empty | Per-service overrides; FIRST matching rule wins. ⚠ Asymmetry vs resilience: a fault rule with an EMPTY service is a catch-all; when no rule matches, the top-level values still apply — adding rules only adds specificity. |
 
@@ -390,32 +388,34 @@ gate (outbound), the server block drives `ApplyServer`'s inbound-handler gate. E
 
 ```bash
 cd example && go run . -manual
-# baseline:  policy: enabled=true timeout=100ms retries=2 rate-limit=0 | fault: client(enabled=false rate=0.5) server(enabled=false rate=0.5)
+# baseline:  policy: enabled=true timeout=100ms retries=2 rate-limit=0 | fault: client(armed=false rate=0) server(armed=false rate=0)
 sed -i '' 's/attempt-timeout: 100ms/attempt-timeout: 77ms/' conf/governance.yaml   # lands within ~1s
 ```
 
 Negative drill — bad edit keeps the last good config (watch the log tag `governance`):
 
 ```bash
-echo "spring.governance: {enabled: true}" > conf/governance.yaml   # truncated: still carries a spring.governance key
+echo "spring.governance: {client: {default: {attempt-timeout: 1s}}}" > conf/governance.yaml  # truncated: still carries a spring.governance key
 printf '' > conf/governance.yaml                              # EMPTY: no spring.governance.* key → reload error
 # log: governance file source: reload conf/governance.yaml failed (keeping last good config): ...
 ```
 
-Turning governance off is `spring.governance.enabled=false` — a key that IS present — never an emptied file.
+Turning governance off is publishing a document that configures nothing — empty `client`/`server`, a
+zero `Default`, no rules — yet still carries one `spring.governance.*` key (e.g.
+`spring.governance.client.default.attempt-timeout=1s`); never an emptied file.
 
 ### 4.2 Fault drill, no restart
 
-The drill below arms the CLIENT fire (flip `client.fault.enabled`); `server.fault.enabled` is the
+The drill below arms the CLIENT fire (set a `client.fault.rate`); the `server.fault.*` block is the
 inbound twin and behaves identically against the requests this process receives.
 
-1. Start with `client.fault.enabled: false` in governance.yaml.
-2. Flip it to true and save — `injector.SetConfig` swaps in place; the next call is subject to it.
+1. Start with no `client.fault.rate` in governance.yaml.
+2. Set `client.fault.rate: 0.5` and save — `injector.SetConfig` swaps in place; the next call is subject to it.
 3. With `scope: loadtest`, only traffic marked `X-LoadTest: 1` burns; `real` inverts that
    (dedicated environments only); empty scope hits everything.
 4. Add the guards before walking away: `max-duration: 5m` (auto-off) and
    `max-affected: 1000` (blast-radius cap).
-5. Extinguish by flipping `enabled` back to false (or wait out max-duration).
+5. Extinguish by clearing the `rate` (or wait out max-duration).
 
 ### 4.3 Probing the authorities from your own code
 
@@ -426,8 +426,7 @@ if mgr.Enabled() { ... }                           // armed? (false before live)
 p := mgr.PolicyFor("redis:cache")                  // zero Policy = pass-through
 sub := mgr.Subscribe("redis:cache", func(p resilience.ClientPolicy) { /* re-arm client */ })
 defer sub.Cancel()                                 // MUST cancel if the client is not process-lifetime
-lbMgr.Bind(pool, "redis:cache")                    // bind a pool's endpoint selection to the label
-ctr.OnReady(func() { /* runs once when the authority goes live */ })
+lbMgr.Chain(resolver, "redis:cache")  // build a chain registered under the label
 c := inj.ClientConfig()                            // read the live outbound fault config
 s := inj.ServerConfig()                            // and the inbound one
 ```
@@ -441,17 +440,17 @@ There is no package singleton to arm: a test builds its own center over its own 
 
 ```go
 res, lb, inj := resilience.NewManager(), loadbalance.NewManager(), fault.NewInjector(fault.Configs{})
-cfg := governance.Config{Enabled: true}
+cfg := governance.Config{}
 cfg.Client.Default.AttemptTimeout = 100 * time.Millisecond
-ctr := governance.NewCenter(cfg, res, lb, inj)
-if err := ctr.GoLive(); err != nil { t.Fatal(err) }
+ctr, err := governance.NewCenter(res, lb, inj, disc, governance.NewPushSource(cfg))
+if err != nil { t.Fatal(err) }
 defer ctr.Close()
 // assert through res.PolicyFor(...) / res.ClientExecutorFor(...)
 ```
 
 ⚠ `gs.RunTest` does NOT wire this center for you: gs clones global bean definitions for test
 isolation, so the test app wires a *copy* of the beans while the center you built lives
-outside it — the two never meet. The governance package's own tests drive `Center.GoLive()`
+outside it — the two never meet. The governance package's own tests drive `NewCenter`
 directly instead (`cloud/governance/starter_test.go`). In app tests, either inject the authority bean your code already takes,
 or build a center with `NewCenter` and assert on the authorities you passed it.
 
@@ -459,13 +458,14 @@ or build a center with `NewCenter` and assert on the authorities you passed it.
 
 ```go
 src := governance.NewPushSource(governance.Config{})
-ctr.SetSource(src)   // any time: replaces whatever source is bound (last write wins)
+ctr := governance.NewCenter(res, lb, inj, disc, src)  // or export src as a bean
 // on each upstream event:
 src.Push(ctx, cfg)
 ```
 
-`SetSource` outranks the injected bean and the default; exactly one source is active at a time;
-the center never merges — whole-replace; removing a custom source is not supported (restart).
+The source is bound for life at construction (the bean route hands it to the same constructor);
+exactly one source serves a center; the center never merges — whole-replace; changing the source
+is a restart.
 
 ---
 
@@ -473,16 +473,16 @@ the center never merges — whole-replace; removing a custom source is not suppo
 
 | Symptom | Likely cause | Fix |
 |---------|--------------|-----|
-| Everything configured, nothing governed | `spring.governance.enabled` false (default) | Set `spring.governance.enabled=true` — it is the master switch. |
+| Everything configured, nothing governed | No rule matches the call's label, or the resolved `Default` is all-zero | Give the service a matching rule (or a non-zero `Default`) — there is no master switch. |
 | Rules file edited, policy never changes | Wrong path; or the file is a symlink target the dir-watch misses (rare) | Check the startup-armed path; check the log tag `governance` for `reload ... failed`. |
-| `reload ... failed (keeping last good config)` in logs | Truncated/emptied document (no `spring.governance.*` key) or syntax error | Fix the document; "off" is `spring.governance.enabled=false`, not an empty file. |
+| `reload ... failed (keeping last good config)` in logs | Truncated/emptied document (no `spring.governance.*` key) or syntax error | Fix the document; "off" is a document that configures nothing yet still carries a `spring.governance.*` key, not an empty file. |
 | Startup error `governance source: ... contains no spring.governance.* keys` | First load of an empty document | Same as above, at construction time — deliberate. |
 | Custom Source bean silently ignored | Missing `Export(gs.As[governance.Source]())` | Add the Export — without it the bean is invisible to interface injection. |
 | HTTP source stuck on old rules | Console auth/availability: every poll fails, keep-last-good | Check `headers.*`; check the console returns 200 with a valid document. |
 | Per-service rule killed the default's retries | Matched rule fully REPLACES default (no merge) | Restate every knob you want kept in the rule. |
-| Fault `max-duration` raised but fire stays out | Lengthening does not un-trip an expired fire | Toggle `fault.enabled` off→on to re-arm. |
+| Fault `max-duration` raised but fire stays out | Lengthening does not un-trip an expired fire | Re-arm by clearing `fault.rate` to 0 and setting it again. |
 | RunTest asserts on governance, sees disabled center | RunTest clones beans; the center you build or configure lives outside the clone | Inject the authority bean your code takes, or build a center with `governance.NewCenter` in the test. |
-| A Rooter bean starts before governance is armed | Rooter-vs-Rooter order is unspecified | Wrap the dependent work in the injected center's `OnReady`. |
+| A Rooter bean starts before governance is armed | Rooter-vs-Rooter order is unspecified | Inject the center as a constructor dependency — gs wires the dependents after it, so they always see a live center. |
 
 ---
 
@@ -508,6 +508,6 @@ Design suspects (audit ledger; carried over from the previous edition, none newl
 6. Concepts the doc must define (Center / Source / Snapshot vs Subscribe / authorities) — the
    mental model is real work for a first-time user.
 7. ~~Rooter beans may initialize before governance arms, with no ordering guarantee~~ — FIXED:
-   `Center.OnReady` queues-and-fires exactly once at `GoLive`.
+   the center is a constructor dependency of every governed bean, so dependents wire after it.
 8. ~~Fault injection required a restart to toggle~~ — FIXED: `injector.SetConfig` swaps in place
    on every source push (`center.go`, `dispatch`).

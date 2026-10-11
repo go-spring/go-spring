@@ -126,8 +126,7 @@ spring.http-client.instances.discovered.discovery=static
 # 内置 DefaultDriver 连续失败 2 次后熔断,持续 30s。
 spring.http-client.instances.guarded.addr=127.0.0.1:9473
 # NOTE: governance RULES go in conf/governance.properties, referenced by spring.governance.source.file.path in app.properties (see cloud/governance's SOURCE_USAGE).
-spring.governance.enabled=true
-spring.governance.driver=default
+spring.resilience.driver=default
 spring.governance.client.default.error-threshold=2
 spring.governance.client.default.open-duration=30s
 
@@ -195,7 +194,7 @@ gs.Run()
 - **discovery/LB 在 resilience 之下**:"a retry re-picks a fresh endpoint and the breaker
   keys on the logical service name"(httpx.go:32-34)。熔断按逻辑调用计数,重试在实例级
   失败后会换实例。
-- **resilience 包住 balanced transport**:`resilience.NewRoundTripper(base, exec)`
+- **resilience 包住 balanced transport**:`resilience.NewRoundTripper(base, exec, nil)`
   ——service 标签是 `resilience.ServiceLabel("http", ServiceName, Addr)`(httpx.go:342-347),
   与策略解析用的是同一个标签,所以限流/熔断状态和 driver 的规则名同武装它的 governance 规则一致。
   每个 client 一个标签:改写 host 换实例发生在更下一层(httpx.go:307-318),不会泄进标签。
@@ -208,7 +207,7 @@ gs.Run()
 - **熔断按逻辑调用计数而非按尝试**(历史 bug 已修):executor 在重试循环结束后对整个
   `Execute` 只记录一次熔断结果,"rather than once per attempt … which would trip the
   circuit far faster than the configured ErrorThreshold … implies (the 'resilience on =>
-  breaker trips instantly' symptom)"(resilience/executor_default.go)。限流器仍按尝试
+  breaker trips instantly' symptom)"(resilience/client_executor.go)。限流器仍按尝试
   计费——每次尝试都是真实的下游请求。
 
 ### 2.3 一次请求逐层走读
@@ -227,9 +226,9 @@ gs.Run()
 4. executor 把整个 round-trip 作为一次受保护调用执行:限流 → 熔断闸门 → 每次尝试
    超时(`attempt-timeout`)→ 带退避的重试循环,整体受 `MaxDuration` 约束;熔断对
    整个调用只记录**一次**结果(§2.2)。
-5. balancedTransport `pool.Pick()` 选一个存活实例(round_robin 等),克隆请求并把
-   `URL.Host`/`Host` 改写为实例地址,经 `res.Done` 回报结果——least-conn 统计与
-   outlier suspension 因此能看到每次调用(httpx.go:245-262)。
+5. balancedTransport `chain.Pick()` 选一个存活实例(round_robin 等),克隆请求并把
+   `URL.Host`/`Host` 改写为实例地址,把结果回报给链——least-conn 统计与
+   outlier suspension 因此能看到每次调用(httpx.go:351-371)。
 6. otelhttp transport 打开 client span、注入 `traceparent`、建连。
 7. 响应回卷:span 结束(executor 包过则带 `resilience.outcome`)、计数
    `resilience.client.calls{outcome=...}`、按 `observability.level` 出访问日志。
@@ -289,7 +288,7 @@ service-name 即可;只有彻底删掉 service-name 才会换 key。
 另:直连模式下熔断按 host:port 计——同一后端两种 `addr` 写法得到两个熔断器。
 
 **不在这里**(`spring.http-client.*` 下没有):超时、重试、熔断、限流、故障注入。所有
-策略是进程级 `spring.governance.*`(见 cloud/governance 的 SOURCE_USAGE_CN.md)——`spring.governance.enabled`、`spring.governance.driver`、
+策略是进程级 `spring.governance.*`(见 cloud/governance 的 SOURCE_USAGE_CN.md)——
 `spring.governance.client.default.<策略字段>`(rate-limit / burst / error-threshold / open-duration /
 breaker-strategy / error-rate-threshold / min-requests / max-concurrent / max-retries /
 initial-interval / multiplier / max-interval / attempt-timeout / max-duration),故障注入在
@@ -327,8 +326,8 @@ kill %1
 ```
 
 把 conf/governance.properties 里规则的 `balancer` 从 `round_robin` 换成 `least_conn`,或加第三个
-endpoint,看打散变化——池是原地换策略的,不用重启;用真实发现
-中心注销实例后,后端快照会丢掉它,绑 loader 的 `Pool` 不再选它(httpx.go:200-221)。
+endpoint,看打散变化——链路是整条重建的,不用重启;用真实发现
+中心注销实例后,后端快照会丢掉它,链路不再选它(httpx.go:207-243)。
 
 ### 4.3 熔断演练 ——打开、快速失败、恢复
 
@@ -350,7 +349,6 @@ fault 挂在同一治理 source 上;`spring.governance.client.fault.*` 热加载
 
 ```properties
 # NOTE: governance RULES go in conf/governance.properties, referenced by spring.governance.source.file.path in app.properties (see cloud/governance's SOURCE_USAGE).
-spring.governance.client.fault.enabled=true
 spring.governance.client.fault.rate=0.5
 spring.governance.client.fault.error=timeout    # 或 generic / reset
 ```
@@ -380,7 +378,7 @@ spring.governance.client.fault.error=timeout    # 或 generic / reset
 |------|----------|------|
 | 请求报 `http-client: no transport for target "x"` | 没有 addr/service-name 等于客户端 `Target` 的配置项(错配在请求期而非装配期暴露——starter.go:188-195) | 补一条配置或修正 Target;必须精确匹配。 |
 | 容器启动失败:"one of addr or service-name is required" / "discovery is required" | validate() 规则(config.go) | 至少配一种寻址;只配 service-name 时必须配 `discovery`。 |
-| 一切正常但没有熔断/限流 | 未设 `spring.governance.enabled`——治理 executor 在其未启用时是透明 no-op | 配置一个治理规则源并配策略。 |
+| 一切正常但没有熔断/限流 | 没有治理规则匹配客户端的 label,或解析出的 `Default` 全零 | 配置一个治理规则源,并配上匹配该 label 的策略。 |
 | 单次失败即熔断 | `breaker-strategy=error-rate` 且 `min-requests` 未配置 | 在 governance rule 里显式配 `min-requests`(如 5)或调高 `error-rate-threshold`;未配置时熔断可能在第一次失败就跳闸。 |
 | addr ↔ service-name 切换后策略"失效" | ⚠ label 耦合:service key 变了(§3) | 把 `spring.governance.client.rules[].services` 更新为新 label。 |
 | 客户端无 trace / 指标 | 未 import starter-otel;otelhttp 与 meter 依赖 OTel globals | 空导入 starter-otel 并配 `spring.observability.*`。 |
@@ -406,7 +404,7 @@ spring.governance.client.fault.error=timeout    # 或 generic / reset
 2. ~~虚构的 `resilience.*` key~~ —— 已修 2026-08-27:README/conf 注释改指 `spring.governance.*`。
 3. ~~死 key `timeout`~~ —— 已修 2026-08-27:已从 Config 与 README 移除。
 4. ~~熔断按尝试计数("开 resilience => 100% 失败/秒开")~~ —— 已修:executor 现在按逻辑
-   Execute 只记录一次熔断结果(resilience/executor_default.go);限流器有意仍按尝试计费。
+   Execute 只记录一次熔断结果(resilience/client_executor.go);限流器有意仍按尝试计费。
 5. 静默全局接管 `httpclt.DoRequest`;未知 target 在请求期而非装配期失败。
 6. ~~治理 label 随寻址模式静默变化~~ —— 已修 2026-08-28:只要设置 service-name,label 就是
    `http:<service-name>`(允许与 addr 同配作纯 label);完全没有 service-name 才是 `http:<addr>`。

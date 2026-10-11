@@ -38,9 +38,9 @@ type picker func(r *http.Request) (target *url.URL, done func(err error), err er
 
 // buildPicker returns a picker for an upstream. A direct http(s):// upstream
 // yields a fixed target; an lb://<service> upstream resolves through discovery
-// and a load-balancing pool that re-reads the service's live endpoint snapshot
-// on each pick (freshness lives inside the discovery backend).
-func (t *RouteTable) buildPicker(up *Upstream) (picker, error) {
+// and an endpoint-selection chain that re-reads the service's live endpoint
+// snapshot on each pick (freshness lives inside the discovery backend).
+func (t *RouteTable) buildPicker(routeID string, up *Upstream) (picker, error) {
 	if up.URL != nil {
 		u := up.URL
 		return func(*http.Request) (*url.URL, func(error), error) {
@@ -48,39 +48,47 @@ func (t *RouteTable) buildPicker(up *Upstream) (picker, error) {
 		}, nil
 	}
 
-	pool, err := t.poolFor(up)
+	chain, err := t.chainFor(routeID, up)
 	if err != nil {
 		return nil, err
 	}
-	// Expose the pool on the compiled upstream so the route table can keep it in
-	// step with governance (see RouteTable.reconcileSelection).
-	up.pool = pool
 	return func(r *http.Request) (*url.URL, func(error), error) {
-		ep, err := pool.Pick(loadbalance.PickInfo{HashKey: clientIP(r)})
+		ep, err := chain.Pick(loadbalance.PickInfo{HashKey: clientIP(r)})
 		if err != nil {
 			return nil, nil, err
 		}
 		u := &url.URL{Scheme: "http", Host: ep.Addr}
-		done := func(err error) { pool.Complete(r.Context(), ep, err) }
+		done := func(err error) { chain.Complete(r.Context(), ep, err) }
 		return u, done, nil
 	}, nil
 }
 
-// poolFor returns the load-balancing pool for an lb:// service, built over a
-// discovery resolver bound to the backend bean the upstream's label cites. Each
-// pool starts on round-robin with a disabled suspension tracker: both the
+// chainFor returns the endpoint-selection chain for an lb:// service, built over
+// a discovery resolver bound to the backend bean the upstream's label cites. Each
+// chain starts on round-robin with a disabled suspension tracker: both the
 // strategy and the suspension thresholds are governance decisions (the rule
-// matching "gateway:<route-id>") applied in place by
-// [RouteTable.reconcileSelection]. A route to a service that fails repeatedly
+// matching "gateway:<route-id>"), which REGISTER the chain and rebuild it from
+// scratch when the selection moves. A route to a service that fails repeatedly
 // therefore drops the instance from its candidate set for the cool-down, so a
 // zombie upstream stops generating 502s until it proves itself again.
 // Resolver freshness lives inside the discovery backend and the resolver has no
-// background watch, so the pool has no resources to release beyond its
-// governance subscription, which the route table owns and cancels.
-func (t *RouteTable) poolFor(up *Upstream) (*loadbalance.Pool, error) {
+// background watch, so the chain has no resources to release.
+//
+// The chain is CACHED per route id and REUSED across recompiles, and it is
+// registered under its governance label ONCE, here, at creation. Both halves
+// matter: registration is one-way (see loadbalance.Manager.Chain), so recompiling
+// into a fresh chain would strand the old registration and pin a discarded chain
+// for the life of the process. A route whose target (discovery backend or
+// service) changed does get a new chain — its resolver is a different service,
+// so the old one cannot serve it — and with it a new registration. Caller holds
+// [RouteTable.mu].
+func (t *RouteTable) chainFor(routeID string, up *Upstream) (*loadbalance.Chain, error) {
 	disName := up.Discovery
 	if disName == "" {
 		disName = t.discovery
+	}
+	if e, ok := t.chains[routeID]; ok && e.disc == disName && e.service == up.Service {
+		return e.chain, nil
 	}
 	if disName == "" {
 		return nil, &parseError{what: "lb:// upstream without a discovery backend (set upstream.discovery or spring.gateway.discovery)", token: up.Service}
@@ -97,15 +105,19 @@ func (t *RouteTable) poolFor(up *Upstream) (*loadbalance.Pool, error) {
 		// NewResolver yields (nil, nil) when discovery is not in effect — empty
 		// name or mesh mode active. A gateway lb:// upstream needs a live
 		// resolver, so surface that as a route-table compile error rather than
-		// handing a nil source to the load-balancing pool.
+		// handing a nil source to the chain.
 		return nil, &parseError{what: "lb:// upstream cannot resolve (empty service name or mesh mode active — in mesh mode route to the service's stable address instead)", token: up.Service}
 	}
 	// Round-robin is only the starting strategy, and the tracker starts
 	// disabled: both are governance decisions now (the rule matching
-	// "gateway:<route-id>"), applied in place by RouteTable.reconcileSelection.
-	// Attaching a disabled tracker costs nothing when nothing governs the route.
-	bal := loadbalance.NewRoundRobin()
-	return loadbalance.NewPool(resolver, bal), nil
+	// "gateway:<route-id>"). Building the chain under that label is what
+	// registers it, so the selection in force applies from the first request.
+	chain := t.lbMgr.Chain(t.ctx, resolver, gatewayLabel(routeID))
+	if t.chains == nil {
+		t.chains = make(map[string]chainEntry)
+	}
+	t.chains[routeID] = chainEntry{chain: chain, disc: disName, service: up.Service}
+	return chain, nil
 }
 
 // newProxyHandler assembles the terminal handler of a route's chain: a reverse
@@ -121,13 +133,13 @@ func (t *RouteTable) poolFor(up *Upstream) (*loadbalance.Pool, error) {
 // empty host. The Director then just applies the chosen target; on a resilience
 // retry the same target is reused.
 func (t *RouteTable) newProxyHandler(routeID string, up *Upstream, exec chain.Executor, service string) (http.Handler, error) {
-	pick, err := t.buildPicker(up)
+	pick, err := t.buildPicker(routeID, up)
 	if err != nil {
 		return nil, err
 	}
 
 	base := http.DefaultTransport.(*http.Transport).Clone()
-	transport := resilience.NewRoundTripper(base, exec)
+	transport := resilience.NewRoundTripper(base, exec, nil)
 
 	rp := &httputil.ReverseProxy{
 		Transport: transport,
@@ -140,7 +152,7 @@ func (t *RouteTable) newProxyHandler(routeID string, up *Upstream, exec chain.Ex
 			}
 		},
 		ErrorHandler: func(w http.ResponseWriter, r *http.Request, err error) {
-			log.Warn(r.Context(), log.TagAppDef, log.String("route", routeID), log.Err(err), log.Msg("gateway: route upstream failed"))
+			log.Warn(r.Context(), log.TagAppDef, "gateway: route upstream failed", log.String("route", routeID), log.Err(err))
 			http.Error(w, "502 Bad Gateway", http.StatusBadGateway)
 		},
 	}
@@ -148,7 +160,7 @@ func (t *RouteTable) newProxyHandler(routeID string, up *Upstream, exec chain.Ex
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		target, done, err := pick(r)
 		if err != nil {
-			log.Warn(r.Context(), log.TagAppDef, log.String("route", routeID), log.Err(err), log.Msg("gateway: route no upstream"))
+			log.Warn(r.Context(), log.TagAppDef, "gateway: route no upstream", log.String("route", routeID), log.Err(err))
 			http.Error(w, "503 Service Unavailable", http.StatusServiceUnavailable)
 			return
 		}

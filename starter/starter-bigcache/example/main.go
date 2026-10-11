@@ -129,38 +129,38 @@ func runTest(s *Service) {
 
 	// Feature 1: SET/GET on the hot cache.
 	if err := s.Hot.Set(context.Background(), "key", []byte("value")); err != nil {
-		log.Errorf(ctx, log.TagAppDef, err, "SET failed")
+		log.Error(ctx, log.TagAppDef, err, "SET failed")
 		os.Exit(1)
 	}
 	v, err := s.Hot.Get(context.Background(), "key")
 	if err != nil || string(v) != "value" {
-		log.Errorf(ctx, log.TagAppDef, err, "GET failed: v=%q err", string(v))
+		log.Error(ctx, log.TagAppDef, err, "GET failed: v", log.String("v", string(v)))
 		os.Exit(1)
 	}
 
 	// Feature 2: DELETE + entry-not-found miss.
 	if err := s.Hot.Delete(context.Background(), "key"); err != nil {
-		log.Errorf(ctx, log.TagAppDef, err, "DELETE failed")
+		log.Error(ctx, log.TagAppDef, err, "DELETE failed")
 		os.Exit(1)
 	}
 	if _, err := s.Hot.Get(context.Background(), "key"); !errors.Is(err, bigcache.ErrEntryNotFound) {
-		log.Errorf(ctx, log.TagAppDef, err, "expected entry-not-found after delete, got err")
+		log.Error(ctx, log.TagAppDef, err, "expected entry-not-found after delete, got err")
 		os.Exit(1)
 	}
 
 	// Feature 3: the second named instance is fully independent — a write to
 	// `cold` must not be visible through `hot`, proving multi-instance wiring.
 	if err := s.Cold.Set(context.Background(), "only-cold", []byte("cold-value")); err != nil {
-		log.Errorf(ctx, log.TagAppDef, err, "cold SET failed")
+		log.Error(ctx, log.TagAppDef, err, "cold SET failed")
 		os.Exit(1)
 	}
 	if _, err := s.Hot.Get(context.Background(), "only-cold"); !errors.Is(err, bigcache.ErrEntryNotFound) {
-		log.Errorf(ctx, log.TagAppDef, err, "hot must not see cold's key, got err")
+		log.Error(ctx, log.TagAppDef, err, "hot must not see cold's key, got err")
 		os.Exit(1)
 	}
 	cv, err := s.Cold.Get(context.Background(), "only-cold")
 	if err != nil || string(cv) != "cold-value" {
-		log.Errorf(ctx, log.TagAppDef, err, "cold GET failed: v=%q err", string(cv))
+		log.Error(ctx, log.TagAppDef, err, "cold GET failed: v", log.String("cv", string(cv)))
 		os.Exit(1)
 	}
 
@@ -173,7 +173,7 @@ func runTest(s *Service) {
 	_, _ = s.Hot.Get(context.Background(), "stat-key")  // hit
 	_, _ = s.Hot.Get(context.Background(), "never-set") // miss
 	if st := s.Hot.Stats(); st.Hits == 0 || st.Misses == 0 {
-		log.Errorf(ctx, log.TagAppDef, fmt.Errorf("Stats() = %+v, want a hit and a miss recorded", st), "Stats() = %+v, want a hit and a miss recorded", st)
+		log.Error(ctx, log.TagAppDef, fmt.Errorf("Stats() = %+v, want a hit and a miss recorded", st), "Stats()", log.Any("st", st))
 		os.Exit(1)
 	} else {
 		fmt.Println("Hot stats:", "hits:", st.Hits, "misses:", st.Misses)
@@ -185,18 +185,18 @@ func runTest(s *Service) {
 	// life-window alone, so the per-call TTL is ignored - write with a 1s TTL,
 	// sleep past it, and the value is still readable.
 	if err := s.Cache.Set(ctx, "abstraction", "value", 1); err != nil {
-		log.Errorf(ctx, log.TagAppDef, err, "façade SET failed")
+		log.Error(ctx, log.TagAppDef, err, "façade SET failed")
 		os.Exit(1)
 	}
 	time.Sleep(1100 * time.Millisecond)
 	var av string
 	if err := s.Cache.Get(ctx, "abstraction", &av); err != nil || av != "value" {
-		log.Errorf(ctx, log.TagAppDef, err, "per-call TTL must be ignored: v=%q err", av)
+		log.Error(ctx, log.TagAppDef, err, "per-call TTL must be ignored: v", log.String("av", av))
 		os.Exit(1)
 	}
 	var absent string
 	if err := s.Cache.Get(ctx, "no-such-key", &absent); !errors.Is(err, cache.ErrMiss) {
-		log.Errorf(ctx, log.TagAppDef, err, "expected cache.ErrMiss, got err")
+		log.Error(ctx, log.TagAppDef, err, "expected cache.ErrMiss, got err")
 		os.Exit(1)
 	}
 
@@ -207,18 +207,18 @@ func runTest(s *Service) {
 	big := make([]byte, 900)
 	for i := range 4000 {
 		if err := s.Evict.Set(fmt.Sprintf("k-%d", i), big); err != nil {
-			log.Errorf(ctx, log.TagAppDef, err, "evict SET failed")
+			log.Error(ctx, log.TagAppDef, err, "evict SET failed")
 			os.Exit(1)
 		}
 	}
 	if n := s.Evict.Len(); n >= 4000 {
-		log.Errorf(ctx, log.TagAppDef, fmt.Errorf("hard cap never evicted: %d entries resident", n), "hard cap never evicted: %d entries resident", n)
+		log.Error(ctx, log.TagAppDef, fmt.Errorf("hard cap never evicted: %d entries resident", n), "hard cap never evicted", log.Int("n", n))
 		os.Exit(1)
 	} else {
 		fmt.Println("Eviction: 4000 written,", n, "resident")
 	}
 	if n := removals.Load(); n == 0 {
-		log.Errorf(ctx, log.TagAppDef, fmt.Errorf("OnRemove never fired - the Driver's hook is not wired"), "OnRemove never fired - the Driver's hook is not wired")
+		log.Error(ctx, log.TagAppDef, fmt.Errorf("OnRemove never fired - the Driver's hook is not wired"), "OnRemove never fired - the Driver's hook is not wired")
 		os.Exit(1)
 	} else {
 		fmt.Println("OnRemove fired", n, "times")
@@ -230,15 +230,15 @@ func runTest(s *Service) {
 	// goroutine was launched, so wait for it instead of racing it.
 	base := "http://127.0.0.1:9090"
 	if err := waitForHTTP(base+"/get", 5*time.Second); err != nil {
-		log.Errorf(ctx, log.TagAppDef, err, "HTTP server never came up")
+		log.Error(ctx, log.TagAppDef, err, "HTTP server never came up")
 		os.Exit(1)
 	}
 	if body, err := httpGet(base + "/set"); err != nil || body != "OK" {
-		log.Errorf(ctx, log.TagAppDef, err, "GET /set: body=%q err", body)
+		log.Error(ctx, log.TagAppDef, err, "GET /set: body", log.String("body", body))
 		os.Exit(1)
 	}
 	if body, err := httpGet(base + "/get"); err != nil || body != "value" {
-		log.Errorf(ctx, log.TagAppDef, err, "GET /get: body=%q err", body)
+		log.Error(ctx, log.TagAppDef, err, "GET /get: body", log.String("body", body))
 		os.Exit(1)
 	}
 	fmt.Println("HTTP: /set then /get round-trip OK")
@@ -248,13 +248,13 @@ func runTest(s *Service) {
 	// plain pass-through, and these are the ones with real uses.
 	for i := range 100 {
 		if err := s.Cold.Set(fmt.Sprintf("bulk-%d", i), []byte("v")); err != nil {
-			log.Errorf(ctx, log.TagAppDef, err, "bulk SET failed")
+			log.Error(ctx, log.TagAppDef, err, "bulk SET failed")
 			os.Exit(1)
 		}
 	}
 	entries := s.Cold.Len()
 	if entries < 100 {
-		log.Errorf(ctx, log.TagAppDef, fmt.Errorf("Len() = %d after 100 writes", entries), "Len() = %d after 100 writes", entries)
+		log.Error(ctx, log.TagAppDef, fmt.Errorf("Len() = %d after 100 writes", entries), "Len()", log.Int("entries", entries))
 		os.Exit(1)
 	}
 	// Iterator walks every live entry: SetNext advances, Value returns the entry
@@ -262,13 +262,13 @@ func runTest(s *Service) {
 	seen := 0
 	for it := s.Cold.Iterator(); it.SetNext(); {
 		if _, err := it.Value(); err != nil {
-			log.Errorf(ctx, log.TagAppDef, err, "iterator Value")
+			log.Error(ctx, log.TagAppDef, err, "iterator Value")
 			os.Exit(1)
 		}
 		seen++
 	}
 	if seen != entries {
-		log.Errorf(ctx, log.TagAppDef, fmt.Errorf("Iterator saw %d entries, Len() says %d", seen, entries), "Iterator saw %d entries, Len() says %d", seen, entries)
+		log.Error(ctx, log.TagAppDef, fmt.Errorf("Iterator saw %d entries, Len() says %d", seen, entries), "Iterator saw", log.Int("seen", seen), log.Int("entries", entries))
 		os.Exit(1)
 	}
 	fmt.Println("Surface: Len", entries, "Iterator", seen)
@@ -279,20 +279,20 @@ func runTest(s *Service) {
 	// waiting past the window, one instance has stopped serving the entry while
 	// the other still serves it.
 	if err := s.Cleaned.Set(context.Background(), "stale", []byte("v")); err != nil {
-		log.Errorf(ctx, log.TagAppDef, err, "cleaned SET failed")
+		log.Error(ctx, log.TagAppDef, err, "cleaned SET failed")
 		os.Exit(1)
 	}
 	if err := s.Uncleaned.Set(context.Background(), "stale", []byte("v")); err != nil {
-		log.Errorf(ctx, log.TagAppDef, err, "uncleaned SET failed")
+		log.Error(ctx, log.TagAppDef, err, "uncleaned SET failed")
 		os.Exit(1)
 	}
 	time.Sleep(2500 * time.Millisecond)
 	if _, err := s.Cleaned.Get(context.Background(), "stale"); !errors.Is(err, bigcache.ErrEntryNotFound) {
-		log.Errorf(ctx, log.TagAppDef, err, "cleaned: an entry past its life-window is still served (err=%v)", err)
+		log.Error(ctx, log.TagAppDef, err, "cleaned: an entry past its life-window is still served (err", log.Any("err", err))
 		os.Exit(1)
 	}
 	if v, err := s.Uncleaned.Get(context.Background(), "stale"); err != nil || string(v) != "v" {
-		log.Errorf(ctx, log.TagAppDef, err, "uncleaned: want the stale value still served, got v=%q err", string(v))
+		log.Error(ctx, log.TagAppDef, err, "uncleaned: want the stale value still served, got v", log.String("v", string(v)))
 		os.Exit(1)
 	}
 	fmt.Println("life-window: with a cleaner the stale entry is gone; without one Get still serves it")

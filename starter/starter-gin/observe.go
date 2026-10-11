@@ -729,10 +729,10 @@ func (l *httpAccessLog) Emit(ff finalizeFacts) {
 	switch {
 	case resp.status >= http.StatusInternalServerError:
 		err := errutil.Explain(nil, "upstream returned status %d", resp.status)
-		log.Error(ctx, accessLogTag, err, fields...)
+		log.Error(ctx, accessLogTag, err, "access denied by upstream", fields...)
 	case resp.status >= http.StatusBadRequest:
-		log.Warn(ctx, accessLogTag, fields...)
+		log.Warn(ctx, accessLogTag, "upstream returned client error status", fields...)
 	default:
-		log.Info(ctx, accessLogTag, fields...)
+		log.Info(ctx, accessLogTag, "access log", fields...)
 	}
 }

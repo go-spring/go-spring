@@ -125,7 +125,7 @@ func (p *loggingProcessor) Process(ctx context.Context, iprot, oprot thrift.TPro
     if err != nil {
         return false, thrift.WrapTException(err)
     }
-    log.Infof(ctx, log.TagAppDef, "thrift middleware: method=%s seq=%d", name, seqId)
+    log.Info(ctx, log.TagAppDef, "thrift middleware: method", log.String("name", name), log.Int("seq_id", seqId))
     if fn, ok := p.inner.ProcessorMap()[name]; ok {
         return fn.Process(ctx, seqId, iprot, oprot)
     }

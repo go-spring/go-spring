@@ -69,8 +69,8 @@ type SimpleHertzServer struct {
 // center is the governance center bean gs injects (nil in a standalone call);
 // the inbound fault middleware captures its injector once here rather than
 // resolving per request, so a config swap on the bean takes effect without
-// re-resolution. prop is the application's load-test convention bean (nil means
-// go-spring's default), handed to the inbound LoadTest middleware.
+// re-resolution. prop is the load-test convention bean — the application.s when it provides
+// one, go-spring.s default otherwise — handed to the inbound LoadTest middleware.
 func NewSimpleHertzServer(register RouterRegister, cfg Config, center *governance.Center, prop traffic.Propagator) (*SimpleHertzServer, error) {
 	opts := []config.Option{
 		server.WithHostPorts(cfg.Addr),
@@ -111,14 +111,13 @@ func NewSimpleHertzServer(register RouterRegister, cfg Config, center *governanc
 
 	addr := cfg.Addr
 	tlsEnabled := cfg.TLS.Enabled
-	log.Debug(context.Background(), log.TagAppDef, func() []log.Field {
+	log.Debug(context.Background(), log.TagAppDef, "create hertz server success", func() []log.Field {
 		return []log.Field{
 			log.String("addr", addr),
 			log.Bool("tls", tlsEnabled),
 			log.String("read_timeout", cfg.ReadTimeout.String()),
 			log.String("write_timeout", cfg.WriteTimeout.String()),
 			log.String("idle_timeout", cfg.IdleTimeout.String()),
-			log.Msg("create hertz server success"),
 		}
 	})
 
@@ -128,9 +127,9 @@ func NewSimpleHertzServer(register RouterRegister, cfg Config, center *governanc
 // Run starts the Hertz engine after Go-Spring signals readiness.
 func (s *SimpleHertzServer) Run(ctx context.Context, sig gs.ReadySignal) error {
 	<-sig.TriggerAndWait()
-	log.Infof(ctx, log.TagAppDef, "hertz server starting")
+	log.Info(ctx, log.TagAppDef, "hertz server starting")
 	if err := s.h.Run(); err != nil {
-		log.Errorf(ctx, log.TagAppDef, err, "hertz server failed")
+		log.Error(ctx, log.TagAppDef, err, "hertz server failed")
 		return err
 	}
 	return nil
@@ -139,6 +138,6 @@ func (s *SimpleHertzServer) Run(ctx context.Context, sig gs.ReadySignal) error {
 // Stop gracefully shuts the Hertz engine down, propagating ctx into the
 // engine's context-aware Shutdown so the drain rides the shutdown context.
 func (s *SimpleHertzServer) Stop(ctx context.Context) error {
-	log.Infof(ctx, log.TagAppDef, "hertz server shutting down")
+	log.Info(ctx, log.TagAppDef, "hertz server shutting down")
 	return s.h.Shutdown(ctx)
 }

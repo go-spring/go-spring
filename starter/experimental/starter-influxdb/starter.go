@@ -20,7 +20,6 @@ import (
 	"context"
 	"go-spring.org/cloud/governance"
 
-	"go-spring.org/cloud"
 	"go-spring.org/cloud/actuator/health"
 	"go-spring.org/log"
 	"go-spring.org/spring/conf"
@@ -68,7 +67,7 @@ func init() {
 var starterTag = log.RegisterAppTag("influxdb", "")
 
 // newClient creates a new InfluxDB client based on the provided configuration.
-// The Driver returns the client COMPLETE — governance (the declaration+
+// The Driver returns the client COMPLETE — governance (the
 // resilience transport) is applied while it is built — and when c.Ping is set
 // this ctor afterwards probes the server once, so that misconfiguration or an
 // unreachable server fails fast rather than on first use; the probe is off by
@@ -76,18 +75,17 @@ var starterTag = log.RegisterAppTag("influxdb", "")
 // Init hook: the client is complete when the driver returns it.
 //
 // center is the governance center the container injects (nil in a standalone,
-// non-gs call) — the family's sole injection point; the ctor reads the
-// resilience and fault authorities from it and bundles them into the
-// [cloud.ClientParams] it hands the driver, which passes it to [NewClient] —
-// so the client is assembled complete in one step, with the zero bundle
-// degrading to an observed-only, loudly-unmanaged executor.
+// non-gs call) — the family's sole injection point; the ctor hands it to the
+// driver, which passes it to [NewClient] —
+// so the client is assembled complete in one step, with the resilience manager
+// required: the container supplies it via the governance center, so a center
+// without one fails at construction.
 func newClient(ctx *gs.ContextProvider, c Config, d Driver, center *governance.Center) (*Client, error) {
-	log.Debug(ctx.Context, starterTag, func() []log.Field {
+	log.Debug(ctx.Context, starterTag, "creating influxdb client", func() []log.Field {
 		return []log.Field{
 			log.String("url", c.ServerURL),
 			log.String("org", c.Org),
 			log.String("bucket", c.Bucket),
-			log.Msg("creating influxdb client"),
 		}
 	})
 
@@ -95,7 +93,7 @@ func newClient(ctx *gs.ContextProvider, c Config, d Driver, center *governance.C
 	if d == nil {
 		d = DefaultDriver{}
 	}
-	w, err := d.CreateClient(ctx.Context, c, cloud.ClientParams{Resilience: center.Resilience(), Fault: center.Fault()})
+	w, err := d.CreateClient(ctx.Context, c, center)
 	if err != nil {
 		return nil, err
 	}

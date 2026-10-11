@@ -83,9 +83,12 @@ use (
 	./starter/experimental/starter-go-zero/rest/example-otel
 	./starter/experimental/starter-go-zero/zrpc/example
 	./starter/experimental/starter-go-zero/zrpc/example-otel
-	./starter/experimental/starter-grpc
-	./starter/experimental/starter-grpc/example
-	./starter/experimental/starter-grpc/example-otel
+	./starter/experimental/starter-goframe
+	./starter/experimental/starter-grpc-client
+	./starter/experimental/starter-grpc-client/example
+	./starter/experimental/starter-grpc-server
+	./starter/experimental/starter-grpc-server/example
+	./starter/experimental/starter-grpc-server/example-otel
 	./starter/experimental/starter-hertz
 	./starter/experimental/starter-hertz/example
 	./starter/experimental/starter-hertz/example-otel

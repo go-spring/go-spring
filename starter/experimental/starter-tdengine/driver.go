@@ -28,8 +28,7 @@ import (
 	"go-spring.org/cloud/chain"
 
 	taosws "github.com/taosdata/driver-go/v3/taosWS"
-	"go-spring.org/cloud"
-	"go-spring.org/cloud/observability"
+	"go-spring.org/cloud/governance"
 	"go-spring.org/cloud/resilience"
 	"go-spring.org/stdlib/errutil"
 )
@@ -44,19 +43,19 @@ import (
 //
 // CreateClient returns the module's exported [Client] — the wrapper apps inject
 // — not the raw *sql.DB, so a driver takes part in the type the rest of the
-// ecosystem sees. It returns the client COMPLETE: params supplies the
-// container's facilities (see [cloud.ClientParams]), which [NewClient] applies
+// ecosystem sees. It returns the client COMPLETE: center supplies the
+// container's facilities (see [governance.Center]), which [NewClient] applies
 // while building. Nothing patches the client afterwards.
 //
-// params is one struct rather than a parameter per capability so this interface
+// center is one object rather than a parameter per capability so this interface
 // — which every company driver implements — stays stable as capabilities are
-// added. A driver that has no use for one of its fields simply ignores it.
+// added. A driver that has no use for one of its authorities simply ignores it.
 //
 // At most one Driver bean is expected per process; every client under
 // ${spring.tdengine} is built through it, and per-instance differences are
 // expressed through [Config].
 type Driver interface {
-	CreateClient(ctx context.Context, c Config, params cloud.ClientParams) (*Client, error)
+	CreateClient(ctx context.Context, c Config, center *governance.Center) (*Client, error)
 }
 
 // DefaultDriver is the default implementation of the Driver interface.
@@ -67,11 +66,11 @@ type DefaultDriver struct{}
 // connector — and hands the connector to [NewClient], which builds the guarded
 // pool so the starter can route per-statement resilience + observability
 // (database/sql offers no transport to swap, so the guard rides the driver.Conn
-// level). params is passed straight through to [NewClient], so the client is
+// level). center is passed straight through to [NewClient], so the client is
 // assembled complete — identity and governance both applied — before it is
 // returned. It does not run the startup ping probe, which is the starter's
 // lifecycle concern (newClient in starter.go).
-func (DefaultDriver) CreateClient(ctx context.Context, c Config, params cloud.ClientParams) (*Client, error) {
+func (DefaultDriver) CreateClient(ctx context.Context, c Config, center *governance.Center) (*Client, error) {
 	cfg, err := taosws.ParseDSN(c.DSN)
 	if err != nil {
 		return nil, errutil.Explain(err, "tdengine: invalid dsn")
@@ -83,7 +82,7 @@ func (DefaultDriver) CreateClient(ctx context.Context, c Config, params cloud.Cl
 	// NewClient is the only way to build a Client: it fixes the identity,
 	// installs the per-statement guard and applies governance (see [NewClient]),
 	// so the client it returns is complete.
-	return NewClient(conn, c, params), nil
+	return NewClient(conn, c, center), nil
 }
 
 // clientSlot carries the resilience executor [NewClient] installs. Connections
@@ -117,24 +116,22 @@ func (c guardedConnector) Driver() driver.Driver { return c.base.Driver() }
 // chain, so the guard lives at the driver.Conn level — the database/sql analog of
 // the gorm callback chain and the http.RoundTripper adapters.
 //
-// The statement's semantic identity is declared on the context BEFORE it enters
-// the executor (see [operation] and [observability.WithOperation]). The order
-// matters: the executor reads the declaration at Execute entry, so a declaration
-// made inside it — per attempt — would be read by nobody. The executor is also
-// the one emitter of the span, the metrics and the access log; this layer only
-// declares.
+// The statement's semantic identity is built where it is known — here, from the
+// statement text (see [operation]) — and passed EXPLICITLY as the operation
+// argument to [resilience.Run], which reads it at Execute entry. The executor is
+// also the one emitter of the span, the metrics and the access log; this layer
+// only names the call.
 type guardedConn struct {
 	base driver.Conn
 	slot *clientSlot
 }
 
-// ExecContext declares the statement's identity, then runs it through the
-// executor, which emits the call's signals. When no executor is applied the
-// statement runs inline and the declaration is inert.
+// ExecContext names the statement, then runs it through the executor, which
+// emits the call's signals. When no executor is applied the statement runs
+// inline and the operation is inert.
 func (g guardedConn) ExecContext(ctx context.Context, query string, args []driver.NamedValue) (driver.Result, error) {
-	ctx = observability.WithOperation(ctx, operation("exec", query))
 	var res driver.Result
-	err := g.run(ctx, func(ctx context.Context) error {
+	err := g.run(ctx, operation("exec", query), func(ctx context.Context) error {
 		var err error
 		res, err = execContext(g.base, ctx, query, args)
 		return err
@@ -145,13 +142,12 @@ func (g guardedConn) ExecContext(ctx context.Context, query string, args []drive
 	return res, nil
 }
 
-// QueryContext declares the statement's identity, then runs it through the
-// executor, which emits the call's signals. When no executor is applied the
-// statement runs inline and the declaration is inert.
+// QueryContext names the statement, then runs it through the executor, which
+// emits the call's signals. When no executor is applied the statement runs
+// inline and the operation is inert.
 func (g guardedConn) QueryContext(ctx context.Context, query string, args []driver.NamedValue) (driver.Rows, error) {
-	ctx = observability.WithOperation(ctx, operation("query", query))
 	var rows driver.Rows
-	err := g.run(ctx, func(ctx context.Context) error {
+	err := g.run(ctx, operation("query", query), func(ctx context.Context) error {
 		var err error
 		rows, err = queryContext(g.base, ctx, query, args)
 		return err
@@ -162,14 +158,14 @@ func (g guardedConn) QueryContext(ctx context.Context, query string, args []driv
 	return rows, nil
 }
 
-// run executes call under the slot's resilience executor, with the statement's
-// identity already declared on ctx. [resilience.Run] is the shared seam: a
-// protection rejection is returned verbatim, a fault injector's short-circuited
-// error is preferred over a nil call error, and the operation's own error is
-// returned otherwise. When no executor is applied, Run runs the call inline, so
-// the declaration is carried but nothing emits — the zero-config pass-through.
-func (g guardedConn) run(ctx context.Context, call func(context.Context) error) error {
-	_, err := resilience.Run(ctx, g.slot.exec, func(attemptCtx context.Context) (struct{}, error) {
+// run executes call under the slot's resilience executor with op as the
+// statement's identity. [resilience.Run] is the shared seam: a protection
+// rejection is returned verbatim, a fault injector's short-circuited error is
+// preferred over a nil call error, and the operation's own error is returned
+// otherwise. When no executor is applied, Run runs the call inline, so the
+// operation is ignored — the zero-config pass-through.
+func (g guardedConn) run(ctx context.Context, op chain.Operation, call func(context.Context) error) error {
+	_, err := resilience.Run(ctx, g.slot.exec, op, func(attemptCtx context.Context) (struct{}, error) {
 		return struct{}{}, call(attemptCtx)
 	})
 	return err

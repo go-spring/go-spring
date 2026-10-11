@@ -188,11 +188,11 @@ func (l *observedLocker) record(ctx context.Context, op, key, status string, sta
 	}
 	switch status {
 	case "error", "not_held":
-		log.Warn(ctx, lockTag, append(fields(), log.Err(err), log.Msg("lock operation failed"))...)
+		log.Warn(ctx, lockTag, "lock operation failed", append(fields(), log.Err(err))...)
 	case "missed":
-		log.Info(ctx, lockTag, fields()...)
+		log.Info(ctx, lockTag, "lock acquisition missed", fields()...)
 	default:
-		log.Debug(ctx, lockTag, fields)
+		log.Debug(ctx, lockTag, "lock operation finished", fields)
 	}
 }
 
@@ -321,7 +321,7 @@ func (h *observedLock) reportLost() {
 		}
 	}
 	if h.released.Load() {
-		log.Debug(h.ctx, lockTag, func() []log.Field {
+		log.Debug(h.ctx, lockTag, "lock released", func() []log.Field {
 			return append(fields(), log.String("status", "resigned"))
 		})
 		return
@@ -333,7 +333,6 @@ func (h *observedLock) reportLost() {
 	h.locker.ins.lost.Add(h.ctx, 1, metric.WithAttributes(
 		attribute.String("system", h.locker.system),
 	))
-	log.Warn(h.ctx, lockTag, append(fields(),
-		log.String("status", "lost"),
-		log.Msg("lock lost while still held"))...)
+	log.Warn(h.ctx, lockTag, "lock lost while still held", append(fields(),
+		log.String("status", "lost"))...)
 }

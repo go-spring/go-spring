@@ -80,12 +80,11 @@ func (f *fakeConsumer) Close()              {}
 // logs the failure instead of panicking, and shuts down cleanly.
 func TestSubscriberAckErrorCoversWarnPath(t *testing.T) {
 	fc := &fakeConsumer{ackErr: errors.New("ack refused")}
-	prop, err := traffic.NewDefaultPropagator(traffic.DefaultBinding())
-	assert.Error(t, err).Nil()
+	prop := traffic.NewDefaultPropagator(traffic.DefaultBinding())
 	s := &subscriber{c: fc, prop: prop}
 
 	done := make(chan struct{})
-	err = s.Subscribe(context.Background(), func(_ context.Context, m *messaging.Message) error {
+	err := s.Subscribe(context.Background(), func(_ context.Context, m *messaging.Message) error {
 		defer close(done)
 		assert.That(t, len(m.Payload) > 0).True()
 		return nil

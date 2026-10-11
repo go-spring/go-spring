@@ -22,83 +22,98 @@ import (
 	"go-spring.org/stdlib/testing/assert"
 )
 
-func TestDirectoryBuildsBuiltins(t *testing.T) {
-	dir := builtinDirectory()
+func TestRegistryBuildsBuiltins(t *testing.T) {
 	for _, name := range []string{RoundRobin, LeastConn, ConsistentHash, Weighted, ZoneAware, Random, P2C} {
-		b, err := dir.Build(name, NewParams(nil))
+		b, err := New(name, NewParams(nil))
 		assert.Error(t, err).Nil()
 		assert.That(t, b).NotNil()
 	}
 
-	_, err := dir.Build("does-not-exist", NewParams(nil))
+	_, err := New("does-not-exist", NewParams(nil))
 	assert.Error(t, err).Matches("no strategy registered")
 
-	assert.That(t, dir.Names()).Equal([]string{
+	assert.That(t, Names()).Equal([]string{
 		ConsistentHash, LeastConn, P2C, Random, RoundRobin, Weighted, ZoneAware,
 	})
 }
 
-// TestDirectoryContribution covers the extension point: a deployment adds a
-// strategy by contributing a named Factory, and a name that shadows a built-in
-// is refused rather than silently winning.
-func TestDirectoryContribution(t *testing.T) {
-	dir, err := NewDirectory(map[string]Factory{"mine": stubFactory{}})
-	assert.Error(t, err).Nil()
-	assert.That(t, dir.Names()).Equal([]string{
-		ConsistentHash, LeastConn, "mine", P2C, Random, RoundRobin, Weighted, ZoneAware,
-	})
-	if _, err := dir.Build("mine", NewParams(nil)); err != nil {
-		t.Fatalf("contributed strategy not built: %v", err)
-	}
-
-	_, err = NewDirectory(map[string]Factory{RoundRobin: stubFactory{}})
-	assert.Error(t, err).Matches("shadows a built-in")
-
-	_, err = NewDirectory(map[string]Factory{"": stubFactory{}})
-	assert.Error(t, err).Matches("empty name")
-
-	_, err = NewDirectory(map[string]Factory{"nil": nil})
-	assert.Error(t, err).Matches("nil factory")
+// TestRegisterRejectsBadContributions pins the guards every strategy file's init
+// relies on: an empty name, a nil factory, and a name already taken are all
+// programming errors — at init there is no error channel, and a duplicate would
+// mean two packages claiming one strategy name.
+//
+// Only the REJECTION paths are tested: registering a new name would write the
+// process-wide table that [TestRegistryBuildsBuiltins] pins exactly.
+func TestRegisterRejectsBadContributions(t *testing.T) {
+	assert.Panic(t, func() { Register("", buildRoundRobin) }, "empty name")
+	assert.Panic(t, func() { Register("nil", nil) }, "nil factory")
+	assert.Panic(t, func() { Register(RoundRobin, buildRoundRobin) }, "already registered")
 }
 
 // TestParamsPartition covers the strict-partition guarantee carried over from
 // the typed Config: a parameter aimed at another strategy is rejected at
 // construction, not silently dropped.
 func TestParamsPartition(t *testing.T) {
-	dir := builtinDirectory()
-
-	_, err := dir.Build(LeastConn, NewParams(map[string]string{ParamReplicas: "200"}))
+	_, err := New(LeastConn, NewParams(map[string]string{ParamReplicas: "200"}))
 	assert.Error(t, err).Matches("not understood by this strategy")
 
-	_, err = dir.Build(ConsistentHash, NewParams(map[string]string{ParamZoneKey: "zone"}))
+	_, err = New(ConsistentHash, NewParams(map[string]string{ParamZoneKey: "zone"}))
 	assert.Error(t, err).Matches("not understood by this strategy")
 
 	// A strategy's own parameters pass; the empty bag passes everywhere.
-	if _, err := dir.Build(ConsistentHash, NewParams(map[string]string{ParamReplicas: "200"})); err != nil {
+	if _, err := New(ConsistentHash, NewParams(map[string]string{ParamReplicas: "200"})); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := dir.Build(ZoneAware, NewParams(map[string]string{ParamZoneKey: "zone", ParamDelegate: LeastConn})); err != nil {
+	if _, err := New(ZoneAware, NewParams(map[string]string{ParamZoneKey: "zone", ParamDelegate: LeastConn})); err != nil {
 		t.Fatal(err)
 	}
 
 	// A present-but-unparsable value is an error, never a silent default.
-	_, err = dir.Build(ConsistentHash, NewParams(map[string]string{ParamReplicas: "many"}))
+	_, err = New(ConsistentHash, NewParams(map[string]string{ParamReplicas: "many"}))
 	assert.Error(t, err).Matches("not an integer")
 
 	// zone_aware delegate errors: unknown name, and self-delegation.
-	_, err = dir.Build(ZoneAware, NewParams(map[string]string{ParamDelegate: "nope"}))
+	_, err = New(ZoneAware, NewParams(map[string]string{ParamDelegate: "nope"}))
 	assert.Error(t, err).Matches("zone_aware delegate")
-	_, err = dir.Build(ZoneAware, NewParams(map[string]string{ParamDelegate: ZoneAware}))
+	_, err = New(ZoneAware, NewParams(map[string]string{ParamDelegate: ZoneAware}))
 	assert.Error(t, err).Matches("cannot delegate to itself")
 }
 
-// stubFactory is a minimal contributed strategy, used only to exercise the
-// directory's own rules.
-type stubFactory struct{}
-
-func (stubFactory) Build(_ Directory, p *Params) (Balancer, error) {
-	if err := p.Done(); err != nil {
-		return nil, err
+// TestValidateCoversDefaultAndEveryRule pins the dry-run entry point: it reports
+// what a chain rebuild would reject — an unregistered name, or parameters the
+// strategy refuses — for the default and for every rule, and passes settings a
+// rebuild would accept.
+func TestValidateCoversDefaultAndEveryRule(t *testing.T) {
+	// A well-formed settings: an empty default (the base strategy) plus rules that
+	// name real strategies with the parameters those strategies own.
+	ok := Settings{
+		Default: Selection{},
+		Rules: []Rule{
+			{Service: "redis:cache", Selection: Selection{Balancer: LeastConn}},
+			{Service: "gorm:db", Selection: Selection{
+				Balancer: ConsistentHash,
+				Params:   map[string]string{ParamReplicas: "200"},
+			}},
+		},
 	}
-	return NewRoundRobin(), nil
+	assert.Error(t, Validate(ok)).Nil()
+
+	// An unregistered name in the DEFAULT.
+	badDefault := Settings{Default: Selection{Balancer: "no_such_strategy"}}
+	assert.Error(t, Validate(badDefault)).Matches("no strategy registered")
+
+	// An unregistered name in a RULE — the default being fine must not mask it.
+	badRule := Settings{Rules: []Rule{{Service: "redis:cache", Selection: Selection{Balancer: "no_such_strategy"}}}}
+	assert.Error(t, Validate(badRule)).Matches("no strategy registered")
+
+	// A registered name whose parameters the strategy rejects: caught here rather
+	// than at the next rebuild.
+	badParams := Settings{Rules: []Rule{{Service: "redis:cache", Selection: Selection{
+		Balancer: ConsistentHash,
+		Params:   map[string]string{ParamReplicas: "many"},
+	}}}}
+	assert.Error(t, Validate(badParams)).Matches("not an integer")
+
+	// An empty Balancer is the base strategy, not an error.
+	assert.Error(t, Validate(Settings{Rules: []Rule{{Service: "x"}}})).Nil()
 }

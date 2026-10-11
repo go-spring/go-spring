@@ -99,7 +99,7 @@ func (c *apolloCtrl) Close() {
 		cli.Close()
 	}
 	if n := len(clients); n > 0 {
-		log.Infof(context.Background(), starterTag, "apollo client(s) closed")
+		log.Info(context.Background(), starterTag, "apollo client(s) closed")
 	}
 }
 
@@ -204,7 +204,7 @@ func (c *apolloCtrl) clientFor(ctx context.Context, cs configSource) (apolloClie
 	if err != nil {
 		return nil, errutil.Explain(err, "create apollo client for %s failed", cs.server)
 	}
-	log.Infof(ctx, starterTag, "create apollo client success")
+	log.Info(ctx, starterTag, "create apollo client success")
 	c.clients[key] = agolloClientAdapter{Client: cli}
 	return c.clients[key], nil
 }
@@ -215,7 +215,7 @@ func (c *apolloCtrl) clientFor(ctx context.Context, cs configSource) (apolloClie
 func (c *apolloCtrl) Load(ctx context.Context, optional bool, source string) (map[string]string, error) {
 	cs, err := parseSource(source)
 	if err != nil {
-		log.Error(ctx, starterTag, err, log.String("source", redactSource(source)), log.Msg("parse apollo source failed"))
+		log.Error(ctx, starterTag, err, "parse apollo source failed", log.String("source", redactSource(source)))
 		return nil, err
 	}
 
@@ -236,15 +236,14 @@ func (c *apolloCtrl) Load(ctx context.Context, optional bool, source string) (ma
 		// but the error is still logged — an unreachable config server is
 		// never silently ignored.
 		if optional {
-			log.Warn(ctx, starterTag, log.Err(err),
-				log.Msg("skip optional apollo import when create apollo client failed"))
+			log.Warn(ctx, starterTag, "skip optional apollo import when create apollo client failed", log.Err(err))
 			return nil, nil
 		}
-		log.Errorf(ctx, starterTag, err, "create apollo client failed")
+		log.Error(ctx, starterTag, err, "create apollo client failed")
 		return nil, err
 	}
 
-	log.Debugf(ctx, starterTag, "loading apollo namespace")
+	log.Debug(ctx, starterTag, "loading apollo namespace", nil)
 
 	// Install the listener BEFORE the fetch so a later change is never missed.
 	c.registerListener(ctx, cli, cs)
@@ -258,7 +257,7 @@ func loadFromClient(ctx context.Context, cli apolloClient, cs configSource, opti
 	content := cli.GetConfigContent(cs.namespace)
 	if content == "" {
 		if optional {
-			log.Warnf(ctx, starterTag, "skip empty optional apollo namespace")
+			log.Warn(ctx, starterTag, "skip empty optional apollo namespace")
 			return nil, nil
 		}
 		return nil, errutil.Explain(nil, "apollo namespace %s is empty", cs.namespace)
@@ -266,10 +265,10 @@ func loadFromClient(ctx context.Context, cli apolloClient, cs configSource, opti
 
 	m, err := reader.Read(cs.format, []byte(content))
 	if err != nil {
-		log.Errorf(ctx, starterTag, err, "parse apollo namespace failed")
+		log.Error(ctx, starterTag, err, "parse apollo namespace failed")
 		return nil, errutil.Explain(err, "parse apollo namespace %s as %s failed", cs.namespace, cs.format)
 	}
-	log.Infof(ctx, starterTag, "load apollo namespace success")
+	log.Info(ctx, starterTag, "load apollo namespace success")
 	return flatten.Flatten(m), nil
 }
 
@@ -286,7 +285,7 @@ func (c *apolloCtrl) registerListener(ctx context.Context, cli apolloClient, cs 
 	c.listened[lk] = struct{}{}
 	c.mu.Unlock()
 
-	log.Infof(ctx, starterTag, "watching apollo namespace for changes")
+	log.Info(ctx, starterTag, "watching apollo namespace for changes")
 	cli.AddChangeListener(&apolloListener{})
 }
 
@@ -299,7 +298,7 @@ func (l *apolloListener) OnChange(ev *agstorage.ChangeEvent) {
 	ctx := log.RootFields(
 		log.String("trace_id", randutil.Hex(16)),
 		log.String("namespace", ev.Namespace))
-	log.Info(ctx, starterTag, log.Msg("apollo namespace changed, triggering refresh"))
+	log.Info(ctx, starterTag, "apollo namespace changed, triggering refresh")
 	_ = observability.RefreshConf(ctx, func(ctx context.Context) error {
 		return gs.RefreshProperties(ctx)
 	})

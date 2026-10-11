@@ -17,10 +17,10 @@
 // client.go is the "resource entity" concept of this starter: the Client
 // wrapper S3 clients are injected as, its construction ([NewClient]) and
 // teardown ([Client.Destroy]), the resilience service label, and the
-// dynamicTransport indirection that lets the declaration+resilience transport
+// dynamicTransport indirection that lets the resilience transport
 // be installed after the raw minio client — whose transport is fixed at
 // construction — has been built. It mirrors starter-memcached's client.go. The
-// per-request declaration seam lives in command.go.
+// per-request identity seam lives in command.go.
 
 package StarterS3
 
@@ -30,7 +30,7 @@ import (
 	"sync"
 
 	"github.com/minio/minio-go/v7"
-	"go-spring.org/cloud"
+	"go-spring.org/cloud/governance"
 	"go-spring.org/cloud/resilience"
 )
 
@@ -64,8 +64,8 @@ type Client struct {
 	dyn *dynamicTransport
 
 	// exec is the resilience executor protecting requests, built by [NewClient]
-	// from the [cloud.ClientParams] the container supplied; the zero bundle
-	// degrades to an observed-only, unmanaged executor rather than a bare client.
+	// from the [governance.Center] the container supplied; the center is required
+	// to carry a [resilience.Manager] rather than a bare client.
 	exec chain.Executor
 	// serviceLabel is the resilience service key ("s3:<endpoint>") exec scopes
 	// limiter/breaker state by.
@@ -80,17 +80,17 @@ type Client struct {
 // anything else (typically nil), and the client then runs with no declaration or
 // resilience transport because its HTTP transport is not reachable.
 //
-// params carries the container's facilities (see [cloud.ClientParams]), and is
+// center carries the container's facilities (see [governance.Center]), and is
 // applied HERE so a Client cannot exist half-assembled: there is no Init step,
 // no later patching, and nothing the container has to remember to call. A
-// hand-built client passes the zero [cloud.ClientParams]; its executor then
-// degrades to resilience.Unmanaged — observed, with a one-time warning that no
-// protection applies — rather than silently running bare.
+// hand-built client must supply a [governance.Center] over a
+// [resilience.Manager]: [governance.Center.Resilience] is required, so a nil
+// center is a construction error — never a graceful downgrade.
 //
 // The manager's ClientExecutorFor resolves its backing executor lazily, on each
 // Execute, so the call order relative to the center's wiring is
 // irrelevant.
-func NewClient(client *minio.Client, transport http.RoundTripper, cfg Config, params cloud.ClientParams) *Client {
+func NewClient(client *minio.Client, transport http.RoundTripper, cfg Config, center *governance.Center) *Client {
 	c := &Client{
 		Client: client,
 		cfg:    cfg,
@@ -102,26 +102,24 @@ func NewClient(client *minio.Client, transport http.RoundTripper, cfg Config, pa
 		c.dyn = t
 	}
 	c.serviceLabel = resilience.ServiceLabel("s3", c.cfg.Endpoint)
-	c.exec = params.ExecutorFor("s3", c.serviceLabel)
+	c.exec = center.ExecutorFor("s3", c.serviceLabel)
 	c.installTransport()
 	return c
 }
 
 // installTransport (re)installs the client's transport stack onto dyn: the
-// declaration transport is OUTERMOST and wraps the resilience round-tripper,
-// which wraps http.DefaultTransport. The order is load-bearing: the resilience
-// emitter reads the operation at [chain.Executor.Execute] entry, so the
-// declaration must be on the context the round-tripper passes into Execute —
-// a declaration nested inside the executor would run per attempt and be read by
-// nobody. Declaration outermost is what makes the emitted call cover every
-// attempt, retries included. It is a no-op when dyn is nil: a custom driver that
-// did not install the indirection has nothing to swap.
+// resilience round-tripper, given [callFor] as its operation resolver so it
+// builds each request's identity and passes it explicitly to the executor,
+// wrapping http.DefaultTransport. The identity is built at the point the
+// executor reads the operation ([chain.Executor.Execute] entry), so the emitted
+// call covers every attempt, retries included — a declaration nested inside the
+// executor would run per attempt. It is a no-op when dyn is nil: a custom driver
+// that did not install the indirection has nothing to swap.
 func (c *Client) installTransport() {
 	if c.dyn == nil {
 		return
 	}
-	declare := &declareTransport{next: resilience.NewRoundTripper(http.DefaultTransport, c.exec)}
-	c.dyn.Swap(declare)
+	c.dyn.Swap(resilience.NewRoundTripper(http.DefaultTransport, c.exec, callFor))
 }
 
 // Destroy releases the resilience executor. The minio client holds no
@@ -137,12 +135,13 @@ func (c *Client) Destroy() error {
 // be swapped after construction. minio fixes the transport at construction
 // time, so to keep the wrapped transport installable after the raw client is
 // built the fixed transport is this indirection and [Client.installTransport]
-// swaps in the declaration+resilience transport. Until then it passes straight
+// swaps in the resilience transport (which builds each request's identity
+// through [callFor]). Until then it passes straight
 // through to http.DefaultTransport.
 //
 // The slot is guarded by a RWMutex rather than an atomic.Value because the
 // active round-tripper can be any of several distinct concrete types
-// (http.DefaultTransport, *declareTransport, the resilience round-tripper), and
+// (http.DefaultTransport, the resilience round-tripper), and
 // atomic.Value requires every stored value to have the same concrete type.
 type dynamicTransport struct {
 	mu  sync.RWMutex

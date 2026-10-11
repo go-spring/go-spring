@@ -24,9 +24,9 @@
 package StarterS3
 
 import (
-	"go-spring.org/cloud/observability"
 	"go-spring.org/stdlib/strutil"
 
+	"go-spring.org/cloud/chain"
 	"go-spring.org/log"
 	"go.opentelemetry.io/otel/attribute"
 )
@@ -52,8 +52,8 @@ var accessTag = log.RegisterAppTag("s3", "access")
 // in Detail as db.statement, reaching the span and the log but never a label.
 // The span Name keeps the descriptive "METHOD /path" form: Name is a span
 // name, not a label, so it is the right place for a path to survive.
-func operation(method, path string) observability.Operation {
-	op := observability.Operation{
+func operation(method, path string) chain.Operation {
+	op := chain.Operation{
 		Name:   method + " " + path,
 		Metric: "db.client",
 		Attrs: []attribute.KeyValue{

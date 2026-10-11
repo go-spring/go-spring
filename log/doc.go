@@ -27,18 +27,19 @@ framework binds each tag to the most specific configured logger and rebinds atom
 
 	var TagRequestIn = log.RegisterRPCTag("http", "in")
 
-	log.Infof(ctx, TagRequestIn, "hello %s", name)
-
-	log.Info(ctx, TagRequestIn,
+	log.Info(ctx, TagRequestIn, "login success",
 		log.String("user_id", "10001"),
-		log.Msg("login success"),
 	)
 
-Trace and Debug take a lazy field builder so level-disabled call sites allocate nothing:
+The message must be a constant string without formatting verbs: put variable data into
+structured fields, never format it into the message. Trace and Debug take a lazy field
+builder so level-disabled call sites allocate nothing:
 
-	log.Debug(ctx, TagRequestIn, func() []log.Field {
+	log.Debug(ctx, TagRequestIn, "login success", func() []log.Field {
 		return []log.Field{log.String("user_id", "10001")}
 	})
+
+For cases that genuinely need a formatted message, use [Record] with [Msgf].
 
 Register a custom tag only when its logs need to be tuned independently of the main log
 (access logs, retry/circuit-breaker events, background relays, third-party framework bridges);

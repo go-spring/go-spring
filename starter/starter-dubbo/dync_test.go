@@ -17,12 +17,11 @@
 package StarterDubbo
 
 import (
-	"sync/atomic"
 	"testing"
 	"time"
-	"unsafe"
 
 	"dubbo.apache.org/dubbo-go/v3/config_center"
+	"go-spring.org/cloud/chain"
 	"go-spring.org/cloud/fault"
 	"go-spring.org/cloud/governance"
 	"go-spring.org/cloud/loadbalance"
@@ -32,19 +31,23 @@ import (
 
 const testApp = "test-app"
 
-// setDyncConsumer pushes a DubboConsumer into the poller's Consumer field.
-func setDyncConsumer(p *dyncPoller, c DubboConsumer) {
-	type dync struct{ v atomic.Value }
-	(*dync)(unsafe.Pointer(&p.Consumer)).v.Store(c)
+// setConsumer pushes a DubboConsumer into the poller's statically bound
+// consumer field.
+func setConsumer(p *dyncPoller, c DubboConsumer) {
+	p.consumer = c
 }
 
 // newTestPoller builds a poller over a fresh UNARMED resilience manager, so
-// these (non-governance) tests see Enabled()==false and do not inherit overrides
+// these (non-governance) tests see an unarmed manager and do not inherit overrides
 // from another test. There is no process-global authority to reset any more —
 // each test owns its manager.
 func newTestPoller() *dyncPoller {
-	return newDyncPoller(DubboApplication{Name: testApp},
-		governance.NewCenter(governance.Config{}, resilience.NewManager(nil), nil, nil, nil, nil))
+	ctr, err := governance.NewCenter(resilience.NewManager(nil),
+		loadbalance.NewManager(), fault.NewInjector(fault.Configs{}, nil), nil, governance.NewPushSource(governance.Config{}))
+	if err != nil {
+		panic(err)
+	}
+	return newDyncPoller(DubboApplication{Name: testApp}, DubboConsumer{}, ctr)
 }
 
 // armedPoller builds a poller over a center constructed from cfg, then drives
@@ -52,13 +55,10 @@ func newTestPoller() *dyncPoller {
 // old package-level Arm helper provided. It returns only the poller: tests assert on the
 // published override rules, not on the center.
 func armedPoller(cfg governance.Config) *dyncPoller {
-	lb, err := loadbalance.NewManager(nil) // no factory bean contributed
-	if err != nil {
-		panic(err)
-	}
+	lb := loadbalance.NewManager()
 	res := resilience.NewManager(nil)
-	ctr := governance.NewCenter(cfg, res, lb, fault.NewInjector(fault.Configs{Client: fault.Config{}}, nil), nil, nil)
-	if err := ctr.GoLive(); err != nil {
+	ctr, err := governance.NewCenter(res, lb, fault.NewInjector(fault.Configs{Client: fault.Config{}}, nil), nil, governance.NewPushSource(cfg))
+	if err != nil {
 		panic(err)
 	}
 	return &dyncPoller{
@@ -84,7 +84,7 @@ func TestDyncPoller_NoChange(t *testing.T) {
 	dc := mapconfig.Singleton()
 	p := newTestPoller()
 
-	setDyncConsumer(p, DubboConsumer{
+	setConsumer(p, DubboConsumer{
 		References: map[string]DubboReference{
 			"greet": {Interface: "greet.GreetService", Timeout: "3000", Retries: 3},
 		},
@@ -105,14 +105,14 @@ func TestDyncPoller_ChangeDetected(t *testing.T) {
 	p := newTestPoller()
 	svcKey := "greet.GreetService::"
 
-	setDyncConsumer(p, DubboConsumer{
+	setConsumer(p, DubboConsumer{
 		References: map[string]DubboReference{
 			"greet": {Interface: "greet.GreetService", LoadBalance: "roundrobin"},
 		},
 	})
 	p.poll()
 
-	setDyncConsumer(p, DubboConsumer{
+	setConsumer(p, DubboConsumer{
 		References: map[string]DubboReference{
 			"greet": {Interface: "greet.GreetService", LoadBalance: "leastactive"},
 		},
@@ -135,7 +135,7 @@ func TestDyncPoller_EmptyRefsSkipped(t *testing.T) {
 	p := newTestPoller()
 	// Retries=-1 = unset (the config-bound default). A zero-value 0 would now
 	// mean an explicit "no retries" and legitimately publish an app rule.
-	setDyncConsumer(p, DubboConsumer{Retries: -1})
+	setConsumer(p, DubboConsumer{Retries: -1})
 
 	p.poll()
 
@@ -150,7 +150,7 @@ func TestDyncPoller_ClusterAndLoadBalance(t *testing.T) {
 	p := newTestPoller()
 	svcKey := "greet.GreetService::"
 
-	setDyncConsumer(p, DubboConsumer{
+	setConsumer(p, DubboConsumer{
 		References: map[string]DubboReference{
 			"greet": {Interface: "greet.GreetService", Cluster: "failfast", LoadBalance: "roundrobin"},
 		},
@@ -176,7 +176,7 @@ func TestDyncPoller_ConsumerDefaults(t *testing.T) {
 	p := newTestPoller()
 	svcKey := "greet.GreetService::"
 
-	setDyncConsumer(p, DubboConsumer{
+	setConsumer(p, DubboConsumer{
 		LoadBalance:    "roundrobin",
 		Cluster:        "failfast",
 		RequestTimeout: "5s",
@@ -215,7 +215,7 @@ func TestDyncPoller_MultipleRefs(t *testing.T) {
 	dc := mapconfig.Singleton()
 	p := newTestPoller()
 
-	setDyncConsumer(p, DubboConsumer{
+	setConsumer(p, DubboConsumer{
 		References: map[string]DubboReference{
 			"app-a": {Interface: "svc.A", LoadBalance: "random"},
 			"app-b": {Interface: "svc.B", LoadBalance: "p2c"},
@@ -248,7 +248,7 @@ func TestDyncPoller_AllDynamicFields(t *testing.T) {
 	p := newTestPoller()
 	svcKey := "svc.Full:1.0:v2" // version=1.0, group=v2 → colonSeparatedKey
 
-	setDyncConsumer(p, DubboConsumer{
+	setConsumer(p, DubboConsumer{
 		References: map[string]DubboReference{
 			"full-app": {
 				Interface:     "svc.Full",
@@ -310,7 +310,7 @@ func TestDyncPoller_Init(t *testing.T) {
 	dc.RefreshOverrideRules(nil)
 	p := newTestPoller()
 
-	setDyncConsumer(p, DubboConsumer{
+	setConsumer(p, DubboConsumer{
 		References: map[string]DubboReference{
 			"greet": {Interface: "greet.GreetService", Timeout: "3000"},
 		},
@@ -320,8 +320,7 @@ func TestDyncPoller_Init(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Init must push the initial rules even though OnChanged does not fire on
-	// the init bind (RefreshField runs onCommit, not onFinish).
+	// Init must push the initial rules.
 	if raw := getRule(t, dc, "greet.GreetService::"); raw == "" {
 		t.Fatal("expected initial override push on Init")
 	}
@@ -331,7 +330,7 @@ func TestDyncPoller_SnapshotLast(t *testing.T) {
 	p := newTestPoller()
 	svcKey := "greet.GreetService::"
 
-	setDyncConsumer(p, DubboConsumer{
+	setConsumer(p, DubboConsumer{
 		References: map[string]DubboReference{
 			"greet": {Interface: "greet.GreetService", LoadBalance: "random", Cluster: "failover"},
 		},
@@ -351,7 +350,7 @@ func TestDyncPoller_ConsumerOnly(t *testing.T) {
 	dc := mapconfig.Singleton()
 	p := newTestPoller()
 
-	setDyncConsumer(p, DubboConsumer{
+	setConsumer(p, DubboConsumer{
 		LoadBalance: "roundrobin",
 		Cluster:     "failfast",
 	})
@@ -375,7 +374,7 @@ func TestDyncPoller_RefWithoutInterface(t *testing.T) {
 	dc := mapconfig.Singleton()
 	p := newTestPoller()
 
-	setDyncConsumer(p, DubboConsumer{
+	setConsumer(p, DubboConsumer{
 		LoadBalance: "roundrobin",
 		References: map[string]DubboReference{
 			"greet": {LoadBalance: "random"},
@@ -399,7 +398,7 @@ func TestDyncPoller_SidePresent(t *testing.T) {
 	p := newTestPoller()
 	svcKey := "greet.GreetService::"
 
-	setDyncConsumer(p, DubboConsumer{
+	setConsumer(p, DubboConsumer{
 		References: map[string]DubboReference{
 			"greet": {Interface: "greet.GreetService", LoadBalance: "roundrobin"},
 		},
@@ -432,22 +431,20 @@ func TestDyncPoller_SidePresent(t *testing.T) {
 func TestDyncPoller_GovernOverride(t *testing.T) {
 	dc := mapconfig.Singleton()
 	p := armedPoller(governance.Config{
-		Enabled: true,
-		Driver:  "default",
 		Client: governance.ClientConfig{
 			Default: governance.ClientDefaultPolicy{
-				ClientPolicy: resilience.ClientPolicy{AttemptTimeout: 2 * time.Second, MaxRetries: 4},
+				ClientPolicy: resilience.ClientPolicy{AttemptTimeout: 2 * time.Second, Retry: chain.RetryPolicy{MaxRetries: 4}},
 			},
 			// Per-reference override: a different timeout for one service. The key
 			// is the full dubbo service label ("dubbo:" + colonSeparatedKey).
 			Rules: []governance.ClientRule{{
 				Service:      "dubbo:greet.GreetService::",
-				ClientPolicy: resilience.ClientPolicy{AttemptTimeout: 500 * time.Millisecond, MaxRetries: 1},
+				ClientPolicy: resilience.ClientPolicy{AttemptTimeout: 500 * time.Millisecond, Retry: chain.RetryPolicy{MaxRetries: 1}},
 			}},
 		},
 	})
 
-	setDyncConsumer(p, DubboConsumer{
+	setConsumer(p, DubboConsumer{
 		// Dubbo-native values that the center must override:
 		RequestTimeout: "3000", // overridden to 2000 (2s) by center default
 		Retries:        9,      // overridden to 4 by center default
@@ -485,19 +482,16 @@ func TestDyncPoller_GovernOverride(t *testing.T) {
 	}
 }
 
-// TestDyncPoller_GovernDisabledIsNoop confirms a disabled center (or nil) leaves
-// the dubbo-native timeout/retries untouched - the Level A path is inert.
-func TestDyncPoller_GovernDisabledIsNoop(t *testing.T) {
+// TestDyncPoller_EmptyGovernIsNoop confirms a document that configures nothing
+// (there is no enabled switch any more) leaves the dubbo-native timeout/retries
+// untouched - the Level A path is inert.
+func TestDyncPoller_EmptyGovernIsNoop(t *testing.T) {
 	dc := mapconfig.Singleton()
-	// Disabled authority: Enabled=false even though Default has a policy.
-	p := armedPoller(governance.Config{
-		Enabled: false,
-		Client: governance.ClientConfig{
-			Default: governance.ClientDefaultPolicy{ClientPolicy: resilience.ClientPolicy{AttemptTimeout: 2 * time.Second}},
-		},
-	})
+	// An empty document: the center goes live and the manager is armed, but
+	// ClientPolicyFor resolves zero, so nothing is overridden.
+	p := armedPoller(governance.Config{})
 
-	setDyncConsumer(p, DubboConsumer{
+	setConsumer(p, DubboConsumer{
 		RequestTimeout: "3000", Retries: 2,
 		References: map[string]DubboReference{
 			"greet": {Interface: "greet.GreetService", Timeout: "3000", Retries: 3},
@@ -508,9 +502,9 @@ func TestDyncPoller_GovernDisabledIsNoop(t *testing.T) {
 	appRaw := getRule(t, dc, testApp)
 	appURLs, _ := dc.Parser().ParseToUrls(appRaw)
 	if v := appURLs[0].GetParam("timeout", ""); v != "3000" {
-		t.Fatalf("disabled center must not override: timeout want 3000, got %q", v)
+		t.Fatalf("empty govern must not override: timeout want 3000, got %q", v)
 	}
 	if v := appURLs[0].GetParam("retries", ""); v != "2" {
-		t.Fatalf("disabled center must not override: retries want 2, got %q", v)
+		t.Fatalf("empty govern must not override: retries want 2, got %q", v)
 	}
 }

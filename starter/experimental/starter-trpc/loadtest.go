@@ -34,13 +34,8 @@ import (
 //
 // It is the tRPC inbound companion to cloud/traffic's outbound carrier
 // injection, letting a load-test flag ride a tRPC hop end to end. Without the
-// marker the filter is a no-op pass-through. A nil propagator means go-spring's
-// default convention.
+// marker the filter is a no-op pass-through.
 func LoadTestServerFilter(prop traffic.Propagator) filter.ServerFilter {
-	if prop == nil {
-		// DefaultBinding is complete, so this cannot fail.
-		prop, _ = traffic.NewDefaultPropagator(traffic.DefaultBinding())
-	}
 	return func(ctx context.Context, req interface{}, next filter.ServerHandleFunc) (interface{}, error) {
 		// tRPC metadata values are []byte; walk them into the seam's string
 		// multi-map.

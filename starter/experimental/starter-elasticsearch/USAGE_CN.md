@@ -165,16 +165,21 @@ import starter-elasticsearch
 
 gs.Run()
   ├─ 构造 newClient：
-  │    ├─ 设置了 service-name 且 !mesh.Enabled() → resolveAddresses(c, backend)：
-  │    │      读快照 → "scheme://host:port" 覆盖 c.Addresses
-  │    │      （快速失败：无 `${discovery}` 后端 bean、或该服务无端点）
+  │    ├─ 构造器把家族级 `${spring.elasticsearch.default.discovery}` 兜底
+  │    │      折进 c.Discovery，并把注入的 *governance.Center（变量 center）
+  │    │      交给 driver
   │    ├─ 可选 Driver bean（无则用内置 DefaultDriver；多个并存时实例可按名指定：
   │    │      `spring.elasticsearch.instances.<name>.driver = <bean 名>`，留空 = 按类型注入
-  │    │      唯一 Driver bean，指定的 bean 不存在则启动失败）→ driver.CreateClient(ctx, c, backend, params)：
+  │    │      唯一 Driver bean，指定的 bean 不存在则启动失败）→ driver.CreateClient(ctx, c, center)：
+  │    │      设置了 service-name 且 !mesh.Enabled() 时由 DRIVER 自行解析后端——
+  │    │      center.Discovery().Get(c.Discovery)——并读其快照
+  │    │      → "scheme://host:port" 覆盖 c.Addresses
+  │    │      （快速失败：无 `${discovery}` 后端、或该服务无端点）；
   │    │      DefaultDriver 安装 dynamicTransport 间接层，并返回 *Client 包装体；
   │    │      NewClient 定身份、派生 service label 并置
-  │    │      exec = params.ExecutorFor("elasticsearch", service)
-  │    │      （fault(受治理 executor)，零值 params 则降级为只观测的 Unmanaged），
+  │    │      exec = center.ExecutorFor("elasticsearch", service)
+  │    │      （fault(受治理 executor)；治理中心必填，故注入的 resilience manager
+  │    │      始终存在），
   │    │      然后装入传输层：声明层在最外层，resilience 在其内
   │    └─ 仅 ping=true：fail-fast 探测 HealthCheck(ctx, client)——一次直连裸 client 的
   │        Info；失败则释放 client（Destroy）并中止启动
@@ -205,7 +210,7 @@ elasticsearch API（Index/Get/...）
 设计理由（源码注释，[command.go] 与 [client.go]）：
 
 - **starter 只声明，resilience 层发射。** 链上只有一个发射点。声明传输层（[command.go]）
-  把 method + URL 路径变成 `observability.Operation` 放到请求 context 上；executor 在
+  把 method + URL 路径变成 `chain.Operation` 放到请求 context 上；executor 在
   Execute 入口读取它，发射唯一的 span、两个 duration 直方图、in-flight gauge 与访问日志。
 - **声明层在 executor 之外，而非它的 base。** executor 在被保护调用运行**之前**就读走操作，
   所以放在它内部的声明没人读。因此传输栈是「声明层最外 → resilience round-tripper →
@@ -232,7 +237,7 @@ elasticsearch API（Index/Get/...）
 3. resilience executor 以 service label 为作用域申请许可，例如
    `elasticsearch:es-cluster` 或 `elasticsearch:http://127.0.0.1:9200`（取首个地址，
    在 `NewClient` 里经 `resilience.ServiceLabel` 派生）——按集群而非按请求。
-   治理关闭时 executor 是只观测的 `resilience.Unmanaged`。
+   resilience manager 必填——容器始终提供；不存在 unmanaged/仅观测的兜底。
 4. declareTransport（在 executor 之外）把操作放到请求 context 上：span 名与 `db.statement`
    是 `POST /demo-docs/_search`（其 URL 路径），`db.operation` 是 `POST`（有界的那部分），
    `db.system` 是 `elasticsearch` [command.go]。
@@ -247,8 +252,9 @@ elasticsearch API（Index/Get/...）
 
 ### 2.4 discovery 寻址——种子 + 活的节点集
 
-设置 `service-name` 且 mesh 模式关闭时，端点在构造函数里解析一次并固化进 `c.Addresses`；loader 是
-纯快照函数，无资源、无后台 watch，所以不保活也无需在停机时 Stop [starter.go, driver.go]。
+设置 `service-name` 且 mesh 模式关闭时，端点在 driver 里解析一次（由 driver 自行经
+`center.Discovery().Get(c.Discovery)` 解析后端）并固化进 `c.Addresses`；loader 是
+纯快照函数，无资源、无后台 watch，所以不保活也无需在停机时 Stop [driver.go]。
 这次读是**fail-fast 闸门兼种子**——真正持续供数的是 driver 用同一个 resolver
 装上的自定义 `ConnectionPoolFunc` [pool.go]：transport 的节点集会从命名服务重读，所以节点加入/离开
 **不用重启**即可用。传播预算是 1 秒（`refreshInterval`，在请求路径上检查），注册中心抖动或空快照
@@ -343,12 +349,11 @@ grep _app_elasticsearch_access app.log | tail -1
 
 ```properties
 # NOTE: governance RULES go in conf/governance.properties, referenced by spring.governance.source.file.path in app.properties (see cloud/governance's SOURCE_USAGE).
-spring.governance.enabled=true
-spring.governance.driver=default
+spring.resilience.driver=default
 spring.governance.client.default.rate-limit=5          # 并发 > 5 → ErrRateLimited 拒绝
 spring.governance.client.default.error-threshold=20
 spring.governance.client.default.open-duration=5s
-spring.governance.client.fault.enabled=false           # 置 true + rate=0.5 + error=timeout 即"放火"
+# spring.governance.client.fault.rate=0.5              # 配上 rate(+ error=timeout)即"放火";不配即惰性
 ```
 
 运行 [example-load/](example-load/)（`go run . -concurrency=16 -duration=5s`）：打印的

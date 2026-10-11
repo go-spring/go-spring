@@ -125,11 +125,10 @@ spring.governance.source.file.path=conf/governance.yaml
 ```yaml
 spring:
   governance:
-    enabled: true
+    driver: default
     server:
       fault:
-        enabled: false        # 置 true 即免重启"放火"
-        rate: 0.2
+        # rate: 0.2           # 配上 rate 即免重启"放火"
         error: timeout
         scope: loadtest       # 只影响带 x-loadtest 标记的流量
 ```
@@ -312,14 +311,14 @@ kill -TERM %1                   # 日志："trpc server shutting down ..." 后�
 
 ### 4.4 故障演练（免重启）
 
-1. 按 §1 的 `governance.yaml` 启动（`fault.enabled: false`），filter 链里有 `fault`。
+1. 按 §1 的 `governance.yaml` 启动（不设 `fault.rate`，注入为空），filter 链里有 `fault`。
 2. 打基线流量 → 全部成功。
-3. 把文件里 `fault.enabled` 置 true —— 治理 source 热加载；filter 持有注入的
+3. 把文件里 `fault.rate` 配上 `0.2` —— 治理 source 热加载；filter 持有注入的
    `*fault.Injector`，其配置由治理中心就地替换，无需重启。
 4. 带标流量着火（客户端调用 metadata 带 `x-loadtest: 1`），正常流量不受影响：约 20% 的
    带标调用被注入 `timeout`。
 5. 观测着火：`rpc.server.request.duration` 桶位移动、被注入调用的 span 带 Error 状态、
-   `rpc.server.request_count` 照常计数。置回 false 灭火。
+   `rpc.server.request_count` 照常计数。清空 rate 灭火。
 
 ### 4.5 压测标记录演练
 

@@ -21,9 +21,7 @@ import (
 	"go-spring.org/cloud/governance"
 	"time"
 
-	"go-spring.org/cloud"
 	"go-spring.org/cloud/actuator/health"
-	"go-spring.org/cloud/mesh"
 	"go-spring.org/log"
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/gs"
@@ -43,13 +41,14 @@ func init() {
 		// instance inherits unless it sets its own.
 		p = flatten.WithFallback(p, "spring.neo4j.instances", "spring.neo4j.default")
 		return conf.BindEach(p, "${spring.neo4j.instances}", func(name string, c Config) error {
-			// newClient reads the authorities off the injected governance center and bundles them into the
-			// [cloud.ClientParams] it hands the driver, which passes it to
+			// newClient reads the authorities off the injected governance center
+			// and hands the center straight to the driver, which passes it to
 			// [NewClient] — so the client is assembled complete in one step. The
 			// wrapper bean owns the resulting resilience executor and Destroy
 			// tears it down. The entry's ${discovery} label is bound as a value
-			// (family default "none", meaning "no backend") and resolved against
-			// the center's discovery directory. The Driver bean
+			// (family default "none", meaning "no backend") and folded into the
+			// config; the driver resolves it against the center's discovery
+			// directory. The Driver bean
 			// is selected by the entry's ${driver} key: unset → "?" (nullable
 			// by-type — injects the single Driver bean when one is provided,
 			// nil otherwise, and the ctor falls back to the bundled
@@ -85,28 +84,33 @@ func init() {
 // ships no official OpenTelemetry instrumentation, nor a command-monitor hook
 // comparable to the SQL/MongoDB drivers, so there is no transparent seam that
 // sees every request. The starter therefore exposes an opt-in call-site seam
-// ([Query] / [StartSpan]) that declares each operation's semantic identity; the
+// ([Query] / [Operation]) that builds each operation's semantic identity and
+// passes it explicitly to the executor; the
 // resilience layer — installed by [NewClient] — is what emits the
-// span, the db.client.* metrics and the access log from that declaration. Calls
+// span, the db.client.* metrics and the access log from that identity. Calls
 // that bypass the seam (a bare neo4j.ExecuteQuery / session.Run) are unobserved
 // and unguarded, a documented gap driven by upstream driver support, not an
 // oversight.
 //
-// When c.ServiceName is set and mesh mode is off, a Resolver is built against
-// the backend the entry's ${discovery} label names, looked up in the center's
-// discovery directory, one endpoint is picked, and its address is spliced into the URI host. That pick
-// is a seed: the driver exposes no dialer injection point, so a running client
-// does not re-pick per query. What does keep following the naming service is the
-// driver's AddressResolver hook, installed by CreateClient over the same resolver
-// — it is how a neo4j:// (routing) client re-finds the cluster after the seeded
-// host disappears. In mesh mode the sidecar owns discovery+LB, so the URI is used
-// unchanged. See Config.ServiceName.
+// When c.ServiceName is set and mesh mode is off, the driver builds a Resolver
+// against the backend the entry's ${discovery} label names, looked up in the
+// center's discovery directory, picks one endpoint, and splices its address into
+// the URI host. That pick is a seed: the driver exposes no dialer injection
+// point, so a running client does not re-pick per query. What does keep
+// following the naming service is the driver's AddressResolver hook, installed
+// by CreateClient over the same resolver — it is how a neo4j:// (routing) client
+// re-finds the cluster after the seeded host disappears. In mesh mode the
+// sidecar owns discovery+LB, so the URI is used unchanged. See Config.ServiceName.
+//
+// discoveryLabel is the entry's ${discovery} label (already carrying the family
+// default). It is folded into the config so the driver resolves the backend
+// itself — see the fold below.
 //
 // center is the governance center — the family's sole injection point. The ctor
-// reads the resilience and fault authorities from it and bundles them — together
-// with backend — into the [cloud.ClientParams] it hands the driver, which passes
-// it to [NewClient] — so the client is assembled complete in one step,
-// with the zero bundle degrading to an observed-only, loudly-unmanaged executor.
+// hands the center straight to the driver, which passes it to [NewClient] — so
+// the client is assembled complete in one step, with the resilience manager
+// required: the container supplies it via the governance center, so a center
+// without one fails at construction.
 func newClient(ctx *gs.ContextProvider, c Config, discoveryLabel string, d Driver, center *governance.Center) (*Client, error) {
 	// The client's identity rides on a context derived here: every line below
 	// carries it without repeating it. The provider's own context is left
@@ -116,26 +120,24 @@ func newClient(ctx *gs.ContextProvider, c Config, discoveryLabel string, d Drive
 		log.String("uri", c.URI),
 		log.String("service_name", c.ServiceName))
 
-	log.Debugf(cctx, log.TagAppDef, "creating neo4j client")
+	log.Debug(cctx, log.TagAppDef, "creating neo4j client", nil)
 
-	backend, _ := center.Discovery().Get(discoveryLabel)
-	if c.ServiceName != "" && !mesh.Enabled() {
-		uri, err := resolveURI(ctx.Context, c, backend)
-		if err != nil {
-			log.Errorf(cctx, log.TagAppDef, err, "neo4j: resolve service-name failed")
-			return nil, err
-		}
-		c.URI = uri
+	// The wiring tag applies the family-default discovery fallback (discoveryLabel);
+	// fold it into the config so the driver reads one label — c.Discovery — and
+	// resolves the backend (and seeds the URI) itself, failing construction if it
+	// names no bean. "none" is the tag's sentinel for "no backend" and is left as
+	// an empty c.Discovery.
+	if discoveryLabel != "" && discoveryLabel != "none" {
+		c.Discovery = discoveryLabel
 	}
 
 	// No company Driver bean → fall back to the bundled default assembly.
 	if d == nil {
 		d = DefaultDriver{}
 	}
-	client, err := d.CreateClient(ctx.Context, c,
-		cloud.ClientParams{Resilience: center.Resilience(), Fault: center.Fault(), Discovery: backend})
+	client, err := d.CreateClient(ctx.Context, c, center)
 	if err != nil {
-		log.Errorf(cctx, log.TagAppDef, err, "neo4j: create client failed")
+		log.Error(cctx, log.TagAppDef, err, "neo4j: create client failed")
 		return nil, errutil.Explain(err, "failed to create neo4j client")
 	}
 	// The Driver returned the client complete — identity and governance both
@@ -151,12 +153,12 @@ func newClient(ctx *gs.ContextProvider, c Config, discoveryLabel string, d Drive
 		vctx, cancel := verifyContext(ctx.Context, c.SocketConnectTimeout)
 		defer cancel()
 		if err := HealthCheck(vctx, client); err != nil {
-			log.Errorf(cctx, log.TagAppDef, err, "neo4j: verify connectivity failed")
+			log.Error(cctx, log.TagAppDef, err, "neo4j: verify connectivity failed")
 			_ = client.Destroy()
 			return nil, errutil.Explain(err, "failed to verify neo4j connectivity: %s", c.URI)
 		}
 	}
-	log.Infof(cctx, log.TagAppDef, "create neo4j client success")
+	log.Info(cctx, log.TagAppDef, "create neo4j client success")
 	return client, nil
 }
 

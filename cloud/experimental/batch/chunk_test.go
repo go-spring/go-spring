@@ -22,8 +22,8 @@ import (
 	"sync"
 	"testing"
 
+	"go-spring.org/cloud/chain"
 	"go-spring.org/cloud/experimental/batch"
-	"go-spring.org/cloud/resilience"
 	"go-spring.org/stdlib/errutil"
 	"go-spring.org/stdlib/testing/assert"
 )
@@ -150,7 +150,7 @@ func TestChunkStep_RetryRecoversChunk(t *testing.T) {
 			return nil
 		}),
 		ChunkSize: 5,
-		Retry:     resilience.ClientPolicy{MaxRetries: 3},
+		Retry:     chain.RetryPolicy{MaxRetries: 3},
 	}
 
 	job := &batch.Job{Name: "flaky-job", Steps: []batch.Step{step}}

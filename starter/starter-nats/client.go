@@ -26,7 +26,8 @@ package StarterNats
 import (
 	"github.com/nats-io/nats.go"
 	"github.com/nats-io/nats.go/jetstream"
-	"go-spring.org/cloud"
+	"go-spring.org/cloud/observability"
+	"go-spring.org/cloud/resilience"
 )
 
 // Conn wraps a NATS connection together with an optional JetStream context. It
@@ -60,24 +61,20 @@ type Conn struct {
 	// guard is the chain's governance layer, held for Consume: its per-delivery
 	// wrapper cannot ride the chain (see command.go), so it runs the executor
 	// directly. Unaffected by head reorganization.
-	guard *GuardConn
+	obs *observability.OperationObserver
 }
 
 // NewConn builds a complete Conn — identity, governance and all — over a
 // connected raw client. raw must be ready to use (dialed with its
 // options/auth/TLS applied) — it is normally the Driver's product. url is the
-// configured server address; it is the identity the governance label scopes
-// limiter/breaker state by.
-//
-// params carries the container's facilities (see [cloud.ClientParams]), and is
-// applied HERE so a Conn cannot exist half-assembled: there is no Init step, no
-// later patching, and nothing the container has to remember to call. A
-// hand-built connection passes the zero [cloud.ClientParams]; its executor then
-// degrades to resilience.Unmanaged — observed, with a one-time warning that no
-// protection applies — rather than silently running bare.
-func NewConn(raw *nats.Conn, url string, params cloud.ClientParams) *Conn {
-	guard := NewGuardConn(NewRawConn(raw), url, params)
-	return &Conn{Conn: raw, InnerConn: NewObsConn(guard), guard: guard}
+// configured server address; it is the identity the observer's service label
+// scopes its signals by. The observer is attached HERE so a Conn cannot exist
+// half-assembled. A nats client has no seam for the resilience executor, so
+// there is no governance: the observer emits the span, metrics and access log,
+// and nothing throttles or retries.
+func NewConn(raw *nats.Conn, url string) *Conn {
+	obs := observability.NewOperationObserver("nats", resilience.ServiceLabel("nats", url))
+	return &Conn{Conn: raw, InnerConn: NewObsConn(NewRawConn(raw), obs), obs: obs}
 }
 
 // Close tears the connection down through its chain — the head's Release(true):

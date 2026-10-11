@@ -78,8 +78,9 @@ governance transport.
 - **Health indicator per instance** — the same probe is registered as
   `s3:<name>` and folded into `/readiness` by `starter-actuator` when
   imported.
-- **Instrumentation** — the starter DECLARES each request's semantic identity
-  (a `declareTransport` puts it on the context); the resilience layer on the
+- **Instrumentation** — the starter BUILDS each request's semantic identity
+  (the resilience round-tripper's `callFor` resolver) and passes it explicitly to
+  the executor; the resilience layer on the
   same HTTP transport EMITS the signals from the one point that sees the whole
   call, retries included. One OTel client span (`db.system`/`db.operation`/
   `db.statement` attributes), the `db.client.operation.duration` histogram plus
@@ -91,8 +92,8 @@ governance transport.
   own.
 - **Resilience** — rate limiting, circuit breaking and fault injection are
   enforced on the client's HTTP transport through the executor built from the
-  injected governance beans at construction; a hand-built client (no container
-  governance) degrades to an observed-only, unmanaged executor that warns once.
+  injected governance beans at construction; the resilience manager is required
+  — the container always supplies it, so there is no unmanaged/observe-only fallback.
 
 ## Advanced Features
 

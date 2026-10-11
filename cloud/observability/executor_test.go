@@ -22,6 +22,7 @@ import (
 	"testing"
 
 	"go-spring.org/cloud/chain"
+	"go-spring.org/cloud/resilience"
 
 	"go-spring.org/stdlib/errutil"
 	"go-spring.org/stdlib/testing/assert"
@@ -31,7 +32,7 @@ import (
 // status classification without wiring a real driver.
 type fakeExecutor struct{ err error }
 
-func (f fakeExecutor) Execute(ctx context.Context, fn func(context.Context) error) error {
+func (f fakeExecutor) Execute(ctx context.Context, call chain.Operation, fn func(context.Context) error) error {
 	return f.err
 }
 func (fakeExecutor) Close() error { return nil }
@@ -63,7 +64,7 @@ func TestClassifyStatusAndOutcome(t *testing.T) {
 		{errors.Join(chain.ErrCircuitOpen, errutil.Explain(nil, "detail")), "error", "circuit_open"},
 	}
 	for _, c := range cases {
-		assert.That(t, ClassifyStatus(c.err)).Equal(c.status)
+		assert.That(t, resilience.ClassifyStatus(c.err)).Equal(c.status)
 		assert.That(t, classifyOutcome(c.err)).Equal(c.outcome)
 	}
 }
@@ -82,7 +83,7 @@ func TestWrapClientExecutor_PassesErrorThrough(t *testing.T) {
 		errutil.Explain(nil, "downstream"),
 	} {
 		exec := WrapClientExecutor(fakeExecutor{err: err}, "redis", "svc")
-		got := exec.Execute(context.Background(), func(ctx context.Context) error { return nil })
+		got := exec.Execute(context.Background(), chain.Operation{}, func(ctx context.Context) error { return nil })
 		assert.That(t, errors.Is(got, err)).True()
 	}
 	_ = chain.ErrBulkheadFull // keep import even if slice above changes

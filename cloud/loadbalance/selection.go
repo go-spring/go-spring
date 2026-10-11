@@ -24,14 +24,16 @@ package loadbalance
 import "time"
 
 // Selection is the resolved endpoint-selection policy: the strategy (by name),
-// the strategy's own parameters, and the outlier-suspension thresholds. The
-// parameters take effect together with a name change — a rule that only retunes
-// thresholds leaves the current strategy untouched.
+// the strategy's own parameters, and the outlier-suspension thresholds.
+//
+// It is the COMPLETE description of how a label selects endpoints: a resolved
+// selection leaves nothing to the configuration it replaces (see [Chain]).
 type Selection struct {
 	// Balancer is the strategy name to select endpoints with (e.g.
-	// "least_conn"). It names an entry in the process's [Directory]: a built-in
-	// strategy, or one a deployment contributed as a [Factory] bean. Empty means
-	// "leave the pool's current strategy alone".
+	// "least_conn"). It names an entry in the process's strategy registry: a built-in
+	// strategy, or one a deployment contributed as a [Factory] bean. Empty means the
+	// base strategy, round-robin — there being no "current strategy" to leave alone,
+	// a rebuild having nothing to inherit.
 	Balancer string `value:"${balancer:=}"`
 
 	// Params carries the strategy's own construction parameters — flat, and
@@ -55,13 +57,13 @@ type Selection struct {
 	OutlierSuspendFor time.Duration `value:"${outlier-suspend-for:=0}"`
 }
 
-// Selection returns the endpoint-selection policy currently in force.
+// Selection returns the selection the pool was BUILT from.
 //
-// The strategy name is the last one *accepted*: applying an empty name leaves
-// it untouched, and an unknown name is ignored, so the name keeps describing
-// the strategy actually in force. The balancer handed to [NewPool] is not
-// recorded here — it had no name to record. It is an inspection and test
-// helper.
+// A pool never changes its strategy after construction, so this is what the
+// pool is — not what some later document said. A name that failed to build is
+// not recorded (the last good generation stays in force instead, see [Chain]),
+// and a pool built from a bare [Balancer] records nothing — it had no name to
+// record. It is an inspection and test helper.
 func (p *Pool) Selection() Selection {
 	if s := p.sel.Load(); s != nil {
 		return *s

@@ -164,8 +164,8 @@ returns `StarterRocketmq.Driver`). It is an optional container bean: every
 client under `spring.rocketmq.instances.*` is built through it, and the starter falls
 back to its bundled `DefaultDriver` only when no `Driver` bean is present.
 Embed `StarterRocketmq.DefaultDriver` and delegate `CreateClient` so the
-default assembly is preserved. `CreateClient` takes the container's
-`cloud.ClientParams` bundle (see `go-spring.org/cloud`) and passes
+default assembly is preserved. `CreateClient` takes the container's injected
+`*governance.Center` (see `go-spring.org/cloud/governance`) and passes
 it through, so the client is assembled complete — identity and executor — in one
 step; delegate it as-is and governance keeps applying:
 
@@ -181,8 +181,8 @@ type myDriver struct {
 }
 
 func (d myDriver) CreateClient(ctx context.Context, c StarterRocketmq.Config,
-    params cloud.ClientParams) (*StarterRocketmq.Client, error) {
-    return d.DefaultDriver.CreateClient(ctx, c, params)
+    center *governance.Center) (*StarterRocketmq.Client, error) {
+    return d.DefaultDriver.CreateClient(ctx, c, center)
 }
 ```
 

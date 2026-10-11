@@ -22,80 +22,95 @@ import (
 	"time"
 
 	"github.com/redis/go-redis/v9"
-	"go-spring.org/cloud"
 	"go-spring.org/cloud/discovery"
+	"go-spring.org/cloud/fault"
+	"go-spring.org/cloud/governance"
 	"go-spring.org/cloud/loadbalance"
 	"go-spring.org/cloud/resilience"
 	"go-spring.org/stdlib/testing/assert"
 )
 
-// poolDriver is a stand-in for a company Driver whose topology needs a pick
-// pool: it builds one, hands it to NewClient along with the governance bundle,
-// and returns the wrapper — exactly as the Driver contract asks, WITHOUT any
-// knowledge of governance. This test exists to pin that NewClient does the
-// binding, and that the driver's only obligation is to return the pool inside
-// the wrapper it builds.
+// testCenter builds a governance center over res and lb with an unarmed fault
+// injector and an empty document: everything a driver reads, with no wiring.
+func testCenter(t *testing.T, res *resilience.Manager, lb *loadbalance.Manager) *governance.Center {
+	t.Helper()
+	ctr, err := governance.NewCenter(res, lb, fault.NewInjector(fault.Configs{}, nil), nil,
+		governance.NewPushSource(governance.Config{}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return ctr
+}
+
+// poolDriver is a stand-in for a company Driver whose topology needs an
+// endpoint-selection chain: it builds one over its endpoint source, hands it to
+// NewClient along with the governance bundle, and returns the wrapper — exactly
+// as the Driver contract asks. This test exists to pin that a chain built by a
+// driver is governed from construction (it registers itself, see
+// [loadbalance.Manager.Chain]) and that NewClient needs no binding step.
 type poolDriver struct {
 	endpoints []discovery.Endpoint
-	// returned records the pool the driver handed over, so the test can assert
-	// the binding landed on THAT pool rather than on some other.
-	returned *loadbalance.Pool
+	// returned records the chain the driver handed over, so the test can assert
+	// governance landed on THAT chain rather than on some other.
+	returned *loadbalance.Chain
 }
 
-func (d *poolDriver) CreateClient(_ context.Context, c Config, params cloud.ClientParams) (*Client, error) {
+func (d *poolDriver) CreateClient(ctx context.Context, c Config, center *governance.Center) (*Client, error) {
 	src := func() ([]discovery.Endpoint, error) { return d.endpoints, nil }
-	bal := loadbalance.NewRoundRobin()
-	d.returned = loadbalance.NewPool(src, bal)
+	d.returned = center.Loadbalance().Chain(ctx, src, serviceLabel(c))
 	// A real *redis.Client is not needed: this driver builds no dialer.
-	return NewClient(redis.NewClient(&redis.Options{Addr: "127.0.0.1:0"}), c, d.returned, params)
+	return NewClient(redis.NewClient(&redis.Options{Addr: "127.0.0.1:0"}), c, d.returned, center)
 }
 
-// TestDriverPoolIsBoundByCaller pins the split the Driver interface encodes: the
-// driver returns the wrapper holding the pool it built and says nothing about
-// governance, and NewClient binds that pool to the bundle's manager. A driver
-// that returns a pool must get governance for free, and one that returns none
-// must not be forced to care.
-func TestDriverPoolIsBoundByCaller(t *testing.T) {
+// TestDriverChainIsGovernedFromConstruction pins the split the Driver interface
+// encodes: the driver builds the chain over its own endpoint source and hands it
+// over — that build IS the governance registration, so one rule reaches the
+// chain the driver returned without NewClient doing anything. A driver that
+// builds a chain must get governance for free, and one that builds none must not
+// be forced to care.
+func TestDriverChainIsGovernedFromConstruction(t *testing.T) {
 	drv := &poolDriver{endpoints: []discovery.Endpoint{
 		{Addr: "10.0.0.1:6379", Healthy: true},
 		{Addr: "10.0.0.2:6379", Healthy: true},
 	}}
 
-	// The manager is applied to the bundle the driver receives; binding an
-	// unarmed manager is safe, so the pool is subscribed and armed when the
-	// manager goes live — standing in for a center that pushes later.
-	mgr, err := loadbalance.NewManager(nil) // no factory bean contributed
-	assert.Error(t, err).Nil()
-	w, err := drv.CreateClient(context.Background(), Config{Addr: "10.0.0.1:6379"},
-		cloud.ClientParams{Resilience: resilience.NewManager(nil), Loadbalance: mgr})
+	// The manager is applied to the bundle the driver receives; a chain built
+	// against an unarmed manager is rebuilt when the manager goes live — standing
+	// in for a center that pushes later.
+	mgr := loadbalance.NewManager()
+	cfg := Config{Addr: "10.0.0.1:6379"}
+	w, err := drv.CreateClient(context.Background(), cfg,
+		testCenter(t, resilience.NewManager(nil), mgr))
 	assert.Error(t, err).Nil()
 
-	// The rule gives this service a strategy the pool was not built with.
-	mgr.Apply(loadbalance.Settings{Enabled: true, Resolve: func(string) loadbalance.Selection {
-		return loadbalance.Selection{
+	// The rule gives this service a strategy the chain was not built with, and
+	// targets the very label the driver registered under.
+	mgr.Apply(context.Background(), loadbalance.Settings{Rules: []loadbalance.Rule{{
+		Service: serviceLabel(cfg),
+		Selection: loadbalance.Selection{
 			Balancer:          loadbalance.ConsistentHash,
 			OutlierThreshold:  3,
 			OutlierSuspendFor: time.Second,
-		}
-	}})
+		},
+	}}})
 
-	// The binding landed on the pool the driver returned...
+	// The rule landed on the chain the driver returned, as a rebuild — a fresh
+	// generation, not the base one retuned.
 	assert.That(t, drv.returned).NotNil()
+	assert.Number(t, drv.returned.Generation()).Equal(uint64(2))
 	assert.That(t, drv.returned.Selection().Balancer).Equal(loadbalance.ConsistentHash)
 	assert.Number(t, drv.returned.Tracker().Config().Threshold).Equal(3)
-	// ...and Destroy releases it rather than leaking the subscription.
+	// Destroy still releases the client.
 	assert.Error(t, w.Destroy()).Nil()
 }
 
-// TestDriverPoolNilIsFine pins the other half: a driver whose topology needs no
-// pick pool passes nil and NewClient binds nothing — no nil dereference, no
+// TestDriverChainNilIsFine pins the other half: a driver whose topology needs no
+// pick chain passes nil and NewClient stores nothing — no nil dereference, no
 // forced governance awareness.
-func TestDriverPoolNilIsFine(t *testing.T) {
-	lb, err := loadbalance.NewManager(nil) // no factory bean contributed
-	assert.Error(t, err).Nil()
+func TestDriverChainNilIsFine(t *testing.T) {
+	lb := loadbalance.NewManager()
 	w, err := NewClient(redis.NewClient(&redis.Options{Addr: "127.0.0.1:0"}), Config{Addr: "10.0.0.1:6379"}, nil,
-		cloud.ClientParams{Resilience: resilience.NewManager(nil), Loadbalance: lb})
+		testCenter(t, resilience.NewManager(nil), lb))
 	assert.Error(t, err).Nil()
-	assert.That(t, w.lbPool).Nil()
-	assert.That(t, w.detach).Nil()
+	assert.That(t, w.lbChain).Nil()
 }

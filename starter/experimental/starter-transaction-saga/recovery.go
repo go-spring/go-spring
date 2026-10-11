@@ -49,7 +49,7 @@ func newRecoveryRunner() *recoveryRunner { return &recoveryRunner{} }
 func (r *recoveryRunner) Run(ctx context.Context) error {
 	pending, err := r.Store.Pending(ctx)
 	if err != nil {
-		log.Errorf(ctx, log.TagAppDef, err, "saga recovery: scanning pending sagas failed")
+		log.Error(ctx, log.TagAppDef, err, "saga recovery: scanning pending sagas failed")
 		return nil
 	}
 	for _, snap := range pending {
@@ -62,19 +62,17 @@ func (r *recoveryRunner) Run(ctx context.Context) error {
 			// Recovery depends on the steps being registered at wiring time under
 			// the same method name GlobalTransactional recorded; without them the
 			// saga cannot be rebuilt.
-			log.Warn(sagaCtx, log.TagAppDef,
-				log.String("method", snap.Method),
-				log.Msg("saga recovery: skip method with no registered steps"))
+			log.Warn(sagaCtx, log.TagAppDef, "saga recovery: skip method with no registered steps",
+				log.String("method", snap.Method))
 			continue
 		}
 		res, err := r.Coord.Recover(sagaCtx, transaction.Saga{ID: snap.ID, Method: snap.Method, Steps: steps})
 		if err != nil {
-			log.Errorf(sagaCtx, log.TagAppDef, err, "saga recovery: recovering saga failed")
+			log.Error(sagaCtx, log.TagAppDef, err, "saga recovery: recovering saga failed")
 			continue
 		}
-		log.Info(sagaCtx, log.TagAppDef,
-			log.String("status", res.Status.String()),
-			log.Msg("saga recovery: saga recovered"))
+		log.Info(sagaCtx, log.TagAppDef, "saga recovery: saga recovered",
+			log.String("status", res.Status.String()))
 	}
 	return nil
 }

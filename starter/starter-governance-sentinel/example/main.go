@@ -16,12 +16,12 @@
 
 // Command example is a self-contained smoke test for the resilience client-side
 // seams that were not already covered by starter-oauth2-client's HTTP
-// round-tripper demo:
+// round-tripper demo: the three composable policies acceptance calls for — rate
+// limit + circuit breaker + retry — all carried by the recommended sentinel
+// driver.
 //
-//   - the client-side dialer seam (resilience.NewDialer), exercising the circuit
-//     breaker at connection establishment;
-//   - the three composable policies acceptance calls for — rate limit + circuit
-//     breaker + retry — all carried by the recommended sentinel driver.
+// (The former dialer-seam demo lived here too; it has moved with the seam to
+// the mongodb starter, the one client with no per-command hook to protect.)
 //
 // It asserts every expectation and exits non-zero on failure, so no external
 // services (or docker) are required. The blank import of the parent module
@@ -29,16 +29,14 @@
 package main
 
 import (
-	"context"
-	"errors"
 	"fmt"
-	"go-spring.org/cloud/chain"
 	"net"
 	"net/http"
 	"os"
 	"sync/atomic"
 	"time"
 
+	"go-spring.org/cloud/chain"
 	"go-spring.org/cloud/resilience"
 
 	StarterGovernanceSentinel "go-spring.org/starter-governance-sentinel"
@@ -52,45 +50,9 @@ func main() {
 	_ = os.Unsetenv("TERM_SESSION_ID")
 	driver := StarterGovernanceSentinel.NewSentinelDriver()
 
-	demoClientDialer(driver)
 	demoComposedRetry(driver)
 
 	fmt.Println("resilience seams smoke: OK")
-}
-
-// demoClientDialer drives the dialer seam against an address with no listener.
-// A breaker with threshold 3 trips after three refused dials; the fourth is
-// short-circuited with the neutral ErrCircuitOpen before touching the network.
-func demoClientDialer(driver resilience.Driver) {
-	exec, err := driver.NewClientExecutor("sentinel:dialer", resilience.ClientPolicy{ErrorThreshold: 3, OpenDuration: time.Minute})
-	if err != nil {
-		fail("dialer executor: %v", err)
-	}
-
-	// Reserve a port, then close it so dials are refused deterministically.
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		fail("reserve port: %v", err)
-	}
-	deadAddr := ln.Addr().String()
-	_ = ln.Close()
-
-	base := resilience.DialFunc((&net.Dialer{Timeout: time.Second}).DialContext)
-	dial := resilience.NewDialer(base, exec)
-
-	for i := 1; i <= 3; i++ {
-		if _, err := dial(context.Background(), "tcp", deadAddr); err == nil {
-			fail("dial %d unexpectedly succeeded", i)
-		} else if errors.Is(err, chain.ErrCircuitOpen) {
-			fail("dial %d opened breaker too early", i)
-		}
-	}
-
-	_, err = dial(context.Background(), "tcp", deadAddr)
-	if !errors.Is(err, chain.ErrCircuitOpen) {
-		fail("breaker did not open after 3 failures: %v", err)
-	}
-	fmt.Println("client Dialer: circuit opened after 3 refused dials")
 }
 
 // demoComposedRetry composes rate limit + circuit breaker + retry in one policy
@@ -101,8 +63,8 @@ func demoComposedRetry(driver resilience.Driver) {
 	exec, err := driver.NewClientExecutor("sentinel:composed", resilience.ClientPolicy{
 		RateLimit:      100,
 		ErrorThreshold: 10,
-		MaxRetries:     3,
 		AttemptTimeout: time.Second,
+		Retry:          chain.RetryPolicy{MaxRetries: 3},
 	})
 	if err != nil {
 		fail("composed executor: %v", err)
@@ -126,7 +88,7 @@ func demoComposedRetry(driver resilience.Driver) {
 	go func() { _ = srv.Serve(ln) }()
 	defer func() { _ = srv.Close() }()
 
-	client := &http.Client{Transport: resilience.NewRoundTripper(http.DefaultTransport, exec)}
+	client := &http.Client{Transport: resilience.NewRoundTripper(http.DefaultTransport, exec, nil)}
 	resp, err := client.Get("http://" + ln.Addr().String() + "/flaky")
 	if err != nil {
 		fail("composed request: %v", err)

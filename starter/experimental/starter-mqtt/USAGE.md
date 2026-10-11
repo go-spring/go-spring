@@ -170,7 +170,7 @@ gs.Run()
   │       bridges connect/lost/reconnecting events into go-spring log  [driver.go:64-72],
   │       builds TLS (security BuildClient) and registers the will            [driver.go:74-85]
   │    3. CreateClient installs the governance executor while it builds the
-  │       client — params.ExecutorFor("mqtt", "mqtt:<broker>"), indexed by
+  │       client — center.ExecutorFor("mqtt", "mqtt:<broker>"), indexed by
   │       client [driver.go:115-123] — so the client is complete when returned
   │    4. then probe: client.Connect() + token.Wait() — a dead broker,
   │       bad credentials or TLS mismatch abort the boot; a failed
@@ -194,14 +194,14 @@ guards** [command.go:17-29]:
 
 ```
 CreateClient [driver.go:115-123] (the assembly seam):
-  exec = params.ExecutorFor("mqtt", "mqtt:<broker>")   // injected cloud.ClientParams{Resilience: mgr, Fault: inj}
+  exec = center.ExecutorFor("mqtt", "mqtt:<broker>")   // injected *governance.Center
   attachGuard(cl, exec, label) — stored in sync.Map keyed by the mqtt.Client value  [command.go:98-100]
-  (params.ExecutorFor = fault.WrapClientExecutor(mgr.ClientExecutorFor("mqtt", label), label, inj)
-   when mgr is present, else the observed-only resilience.Unmanaged)
+  (center.ExecutorFor = fault.WrapClientExecutor(mgr.ClientExecutorFor("mqtt", label), label, inj);
+   the resilience manager is required — the container always supplies it)
 
 GuardedPublish [command.go:134-141]:
-  ctx = observability.WithOperation(ctx, operation(opPublish, topic))  // declare
-  guard() → executor.Execute(ctx, call)                               [command.go:114-121]
+  ctx = chain.WithOperation(ctx, operation(opPublish, topic))  // declare
+  guard() → executor.Execute(ctx, chain.Call{}, call)                 [command.go:114-121]
   call = cl.Publish(...) + token.Wait() + token.Error()
 ```
 
@@ -227,16 +227,17 @@ topic [driver.go:121].
   `GuardedConsume` [client.go:107-109].
 
 The manager is required — this starter imports the package that registers it, so "governance off"
-is `spring.governance.enabled=false`, never an absent bean; a standalone, non-gs caller
-passes nil, and the client's executor degrades to the observed-only
-`resilience.Unmanaged` (with a one-time warning) rather than to a silent no-op
+is a rules document that configures nothing (still carrying one `spring.governance.*` key), never
+an absent bean; a standalone, non-gs caller must supply one too
+— `center.ExecutorFor` panics on a nil `center.Resilience()`, so a client assembled without it is a wiring
+error, not a silent no-op
 [starter.go:87-88, driver.go:115-123].
 
 ### 2.3 One publish and one consume, layer by layer
 
 **Guarded publish** `GuardedPublish(ctx, cl, "sensors/temp", 1, false, payload)`:
 
-1. `observability.WithOperation(ctx, operation(opPublish, topic))` declares the publish
+1. `chain.WithOperation(ctx, operation(opPublish, topic))` declares the publish
    identity (`messaging.system`, `messaging.operation`, topic in Detail) [command.go:135,
    observe.go:78-99].
 2. `guard` resolves the executor for this client from the sync.Map [command.go:114-121].
@@ -325,7 +326,7 @@ With a configured governance rules source, add a breaker/limiter policy for serv
 ```yaml
 spring:
   governance:
-    enabled: true
+    driver: default
     resilience:
       mqtt:tcp://127.0.0.1:1883:
         rateLimiter: { limit: 1, period: 1s }

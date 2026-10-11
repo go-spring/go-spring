@@ -163,7 +163,7 @@ import starter-redigo
 
 gs.Run()
   ├─ 构造 createPool [starter.go]：RequireAny(addr|service-name) → 查 driver
-  │   → d.CreateClient(c, backend, params)（= NewPool）：TLS 构建 → discovery resolver → 原始池
+  │   → d.CreateClient(ctx, c, center)（= NewPool）：TLS 构建 → discovery resolver → 原始池
   │     → 构造期即应用治理：resilience executor + 端点选择绑定
   │     → 装声明层 → setupDial（插桩过的 Dial 包裹）
   │   → HealthCheck 启动探测（仅 ping=true 时），在装配完成之后 [starter.go]
@@ -244,7 +244,7 @@ pool.Get()（你的代码）
 | `addr` | string | — | 静态目标。⚠ `addr` / `service-name` 至少其一（RequireAny [starter.go:111]）。 | 都缺 → 启动报错；都配 → service-name 生效，addr 被忽略。 |
 | `service-name` | string | — | 经发现解析地址；`addr` 只作标签。每次拨号选端点 + conn-max-lifetime 回收。 | 后端未注册 → 启动报错。 |
 | `scheme` | string | — | 把发现端点收窄到单一 scheme。仅 service-name 时生效。 | — |
-| `discovery` | string | — | 用哪个发现后端。wiring 把该 label 解析成 bean，并以 `backend` 参数传给 driver（`CreateClient` / `NewPool`）。未配置时回退 `${spring.redigo.default.discovery}`。 | service-name 已设但两层都未配置或名字无对应 bean → 启动报错。 |
+| `discovery` | string | — | 用哪个发现后端。driver 自行解析：`center.Discovery().Get(c.Discovery)`；未配置时由构造器把家族级回退（${spring.redigo.default.discovery}）折叠进 `c.Discovery`。 | service-name 已设但两层都未配置或名字无对应 bean → 启动报错。 |
 | `password` / `username` | string | — | 拨号认证；username 非空才附加 [pool.go:94-96]。 | 配错 → 首次拨号（或 ping）失败。 |
 | `db` | int | 0 | 每条新连接执行 `SELECT`（仅非 0 时）[pool.go:125-131]。 | 越界 → 拨号失败。 |
 | `pool-size` | int | 10 | MaxActive。`Wait:true` → 耗尽时阻塞。 | 过小 → 时延而非报错。 |
@@ -293,10 +293,12 @@ curl -s :9370/metrics | grep -E 'redigo|db.client'   # 时延直方图 + 在途 
 用 `discovery` 实例（`service-name` + `conn-max-lifetime=30s`），迁移/扩缩后端 Redis；
 `Stats()`（ActiveCount/IdleCount）显示 30s 内连接回收到新端点——无需重启、无需重建客户端。
 
-池的策略归治理管，不是写死的：它挂着 suspension tracker，并经注入的 `*loadbalance.Manager`
-bean 上的 `loadbalance.Manager.Bind(pool, label)` 绑到 `redigo:<service-name|addr>`，所以该
+池的策略归治理管，不是写死的：它挂着 suspension tracker，并在
+`lbMgr.Chain(resolver, label)` 调用时注册到 `redigo:<service-name|addr>`
+（注入的 `*loadbalance.Manager` bean），所以该
 label 命中的 `spring.governance.client.rules[N].balancer` /
-`outlier-threshold` / `outlier-suspend-for` 会**原地**驱动它——下一次拨号就用新策略。dialer 把拨号
+`outlier-threshold` / `outlier-suspend-for` 会**整条重建**——下一次拨号在全新的 balancer 与
+suspension tracker 上走新策略。dialer 把拨号
 结果喂给 `Complete`，所以 `outlier-threshold` 摘的是**反复连不上**的实例；单条命令的失败归
 resilience executor 管。直连（只配 `addr`）的池没有候选集，这些 key 对它无效。详见
 `cloud/governance/README.md` §3.1。

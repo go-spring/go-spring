@@ -162,11 +162,10 @@ spring.observability.metrics.port=0        # /metrics 只由 actuator 提供
 ```yaml
 spring:
   governance:
-    enabled: true
+    driver: default
     client:
       fault:
-        enabled: false
-        rate: 0.2
+        # rate: 0.2           # 配上 rate 即点火
         error: timeout
 ```
 

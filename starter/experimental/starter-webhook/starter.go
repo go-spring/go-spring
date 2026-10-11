@@ -27,14 +27,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"go-spring.org/cloud/chain"
-	"go-spring.org/cloud/governance"
 	"io"
 	"net/http"
 	"net/url"
 	"time"
 
-	"go-spring.org/cloud"
 	"go-spring.org/cloud/observability"
 	"go-spring.org/cloud/resilience"
 	"go-spring.org/log"
@@ -85,43 +82,35 @@ type Notification struct {
 type Notifier struct {
 	cfg    Config
 	client *http.Client
-	exec   chain.Executor
+	obs    *observability.OperationObserver
 }
 
 // newNotifier builds a Notifier from config. There is deliberately no startup
 // probe: the only universal probe would be a real POST, and sending a junk
 // notification at boot is worse than failing on first use.
 //
-// center is the governance center gs injects (nil in a standalone call) — the
-// family's sole injection point; the ctor reads the resilience and fault
-// authorities from it and bundles them into the [cloud.ClientParams] it applies
-// while building, so the notifier is complete in one step — there is no
-// applyGovernance step after construction and nothing the container has to
-// remember to call. A zero bundle (a hand-built notifier, or a container without
-// governance) degrades to resilience.Unmanaged: the notifier is still
-// observed and warns once that no protection applies, rather than running
-// silently bare.
-func newNotifier(ctx *gs.ContextProvider, name string, c Config, center *governance.Center) (*Notifier, error) {
+// A webhook delivery is emitted by this starter's own observer rather than
+// routed through the resilience executor (see observe.go) — a delivery has no
+// seam for one — so no governance center is injected here.
+func newNotifier(ctx *gs.ContextProvider, name string, c Config) (*Notifier, error) {
 	if _, _, err := buildPayload(c.Channel, &Notification{}, c.Secret, time.Now()); err != nil {
 		return nil, err
 	}
-	log.Debug(ctx.Context, log.TagAppDef, func() []log.Field {
+	log.Debug(ctx.Context, log.TagAppDef, "creating webhook notifier", func() []log.Field {
 		return []log.Field{
 			log.String("url", c.URL),
 			log.String("channel", c.Channel),
-			log.Msg("creating webhook notifier"),
 		}
 	})
 
-	// Governance is applied HERE, in the constructor: the bundle is the single
-	// composition point ([cloud.ClientParams.ExecutorFor]) that turns the
-	// injected manager/injector into the executor every Send runs on.
-	params := cloud.ClientParams{Resilience: center.Resilience(), Fault: center.Fault()}
-	exec := params.ExecutorFor("webhook", resilience.ServiceLabel("webhook", c.Channel, name))
+	// A webhook delivery does not route through the resilience executor — its
+	// transport has no seam for one — so it emits its own signals. This is the
+	// single composition point that builds that observer.
+	obs := observability.NewOperationObserver("webhook", resilience.ServiceLabel("webhook", c.Channel, name))
 	return &Notifier{
 		cfg:    c,
 		client: &http.Client{Timeout: c.Timeout},
-		exec:   exec,
+		obs:    obs,
 	}, nil
 }
 
@@ -131,8 +120,7 @@ func (n *Notifier) Channel() string { return n.cfg.Channel }
 // Send delivers the notification: it builds the channel payload, declares the
 // delivery's semantic identity (see observe.go) on the context, and routes the
 // POST through the resilience executor (rate limit / circuit breaking / fault
-// injection when the center is linked; an observed-only, unmanaged
-// executor otherwise) via [resilience.Run].
+// injection from the manager the container supplies) via [resilience.Run].
 //
 // The span, the duration metrics and the access log are emitted by the
 // resilience layer, the one point on the chain that sees the whole call,
@@ -149,14 +137,12 @@ func (n *Notifier) Send(ctx context.Context, notification *Notification) error {
 		return errutil.Explain(err, "webhook: invalid url %q", n.cfg.URL)
 	}
 
-	ctx = observability.WithOperation(ctx, operation(n.cfg.Channel, endpoint))
-	// A zero-value Notifier (built by hand in tests) has no executor;
-	// resilience.Run falls back to running the closure directly, so Send stays
-	// usable either way.
-	_, err = resilience.Run(ctx, n.exec, func(attemptCtx context.Context) (struct{}, error) {
-		return struct{}{}, n.post(attemptCtx, endpoint, body)
+	// The delivery's span, duration metrics and access log are emitted here, by
+	// this starter's own observer — a webhook has no seam for the resilience
+	// executor, so there is no governance on this path.
+	return n.obs.Observe(ctx, operation(n.cfg.Channel, endpoint), func(callCtx context.Context) error {
+		return n.post(callCtx, endpoint, body)
 	})
-	return err
 }
 
 // post performs the HTTP POST and treats any non-2xx answer, or a vendor

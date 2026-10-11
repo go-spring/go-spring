@@ -100,12 +100,11 @@ func newClient(ctx *gs.ContextProvider, name string, c Config, center *governanc
 		EndpointParams: c.endpointParams(),
 	}
 
-	log.Debug(ctx.Context, log.TagAppDef, func() []log.Field {
+	log.Debug(ctx.Context, log.TagAppDef, "creating oauth2 client", func() []log.Field {
 		return []log.Field{
 			log.String("client_id", c.ClientID),
 			log.String("token_url", c.TokenURL),
 			log.String("timeout", c.Timeout.String()),
-			log.Msg("creating oauth2 client"),
 		}
 	})
 
@@ -121,8 +120,8 @@ func newClient(ctx *gs.ContextProvider, name string, c Config, center *governanc
 	// resolves its backing implementation per call, so the order of this setup
 	// relative to the container's wiring is irrelevant.
 	service := resilience.ServiceLabel("oauth2", c.ClientID)
-	exec := center.Resilience().ClientExecutorFor("oauth2", service)
-	client.Transport = resilience.NewRoundTripper(client.Transport, exec)
+	exec := center.ExecutorFor("oauth2", service)
+	client.Transport = resilience.NewRoundTripper(client.Transport, exec, nil)
 	return client, nil
 }
 

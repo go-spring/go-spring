@@ -704,7 +704,7 @@ func BenchmarkAddingFields(b *testing.B) {
 		b.ResetTimer()
 		b.RunParallel(func(pb *testing.PB) {
 			for pb.Next() {
-				log.Info(context.Background(), log.TagAppDef, fakeGSlogFields()...)
+				log.Info(context.Background(), log.TagAppDef, getMessage(0), fakeGSlogFields()...)
 			}
 		})
 	})

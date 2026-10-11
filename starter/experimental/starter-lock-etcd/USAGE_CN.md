@@ -87,9 +87,9 @@ func (b *Batch) Run(ctx context.Context) {
     defer lk.Unlock(ctx)
     select {
     case <-lk.Lost(): // lease 过期 / 连接丢失 —— 中止批处理
-        log.Warnf(ctx, log.TagAppDef, "lock lost mid-run, aborting")
+        log.Warn(ctx, log.TagAppDef, "lock lost mid-run, aborting")
     case <-time.After(30 * time.Second):
-        log.Infof(ctx, log.TagAppDef, "batch finished")
+        log.Info(ctx, log.TagAppDef, "batch finished")
     }
 }
 ```

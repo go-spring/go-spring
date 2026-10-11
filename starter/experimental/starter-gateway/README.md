@@ -103,8 +103,8 @@ Register your own filter with `StarterGateway.RegisterFilter(name, factory)`.
   `consistent_hash` / `weighted`) plus optional outlier suspension: an upstream
   instance that fails repeatedly is suspended for a cool-down and readmitted via
   a half-open trial. Both are governance rules matched by `gateway:<route-id>`
-  (`balancer` / `outlier-threshold` / `outlier-suspend-for`) applied to the live
-  pool, not keys on the route
+  (`balancer` / `outlier-threshold` / `outlier-suspend-for`) that rebuild the
+  route's selection chain from scratch, not keys on the route
   and `upstream.discovery` (backend name), or a gateway-wide default via
   `spring.gateway.discovery`.
 

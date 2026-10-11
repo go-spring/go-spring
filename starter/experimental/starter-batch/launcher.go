@@ -172,7 +172,7 @@ func pickRepository(cfg Config, repos map[string]batch.JobRepository) (batch.Job
 	}
 	switch len(repos) {
 	case 0:
-		log.Infof(context.Background(), log.TagAppDef, "batch: no JobRepository bean present; using in-process NewMemoryRepository (not durable across restarts)")
+		log.Info(context.Background(), log.TagAppDef, "batch: no JobRepository bean present; using in-process NewMemoryRepository (not durable across restarts)")
 		return batch.NewMemoryRepository(), nil
 	case 1:
 		for _, repo := range repos {

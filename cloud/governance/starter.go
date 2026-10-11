@@ -63,26 +63,36 @@ func init() {
 	// package (any client or server starter links it) must also hold a Source
 	// bean — file/http/nacos/…, whatever the deployment's rules come from. A
 	// process that contributes none fails startup on this very parameter rather
-	// than running with governance silently off. It is a constructor parameter
+	// than running with no governance document at all. It is a constructor parameter
 	// rather than a field installed later because the center must be born with
-	// it: nothing then has to arbitrate between "the bean's source" and "a
-	// caller's SetSource", so the rule reduces to the plain last-write-wins of
-	// [Center.SetSource].
+	// it: the source is bound for life, so there is nothing to arbitrate and no
+	// replacement path to guard.
 	//
-	// The bean IS the startup: [Center.GoLive] is its Init hook and
-	// [Center.Close] its Destroy hook, so there is no separate wiring bean whose
-	// only job would be to call them. That also settles the ordering for anything
-	// that depends on the center — gs wires it before its dependents, so a Rooter
-	// that injects it never observes a center that has not gone live.
+	// The nil fallback below is for the container's NULLABLE wiring mode
+	// (spring.force-autowire-is-nullable, which gs.RunTest forces on): a missing
+	// bean resolves to nil there instead of failing, so the bean normalizes it to
+	// an empty source. That keeps [NewCenter]'s contract strict — src is never nil
+	// — while the fail-loud behavior of a real deployment is untouched: with
+	// nullable off, gs rejects the missing bean before this constructor runs.
+	//
+	// The bean's construction IS the startup: [NewCenter] arms the authorities
+	// with the initial document and fails on a document that cannot serve, and
+	// [Center.Close] is the Destroy hook — so there is no separate wiring bean
+	// and no Init hook whose only job would be to call them. That also settles
+	// the ordering for anything that depends on the center — gs wires it before
+	// its dependents, so a dependent never observes an unarmed center.
 	//
 	// Exported as a gs.Rooter so gs instantiates the center even when no client
 	// injects one: without a collected-type export an unreachable bean is never
 	// constructed, and none of the startup would run.
 	gs.Provide(func(res *resilience.Manager, lb *loadbalance.Manager, inj *fault.Injector,
-		disc *discovery.Manager, src Source) *Center {
-		return NewCenter(Config{}, res, lb, inj, disc, src)
+		disc *discovery.Manager, src Source) (*Center, error) {
+		if src == nil { // nullable wiring only; see above
+			src = NewPushSource(Config{})
+		}
+		return NewCenter(res, lb, inj, disc, src)
 	}).
-		Init((*Center).GoLive).Destroy((*Center).Close).
+		Destroy((*Center).Close).
 		Export(gs.As[gs.Rooter]()).Caller(1)
 
 	// The two built-in source adapters, registered by the package that owns

@@ -167,6 +167,7 @@ func TestOpenLifecycle(t *testing.T) {
 	}, Options{
 		Engine:         "fake",
 		Service:        "gorm:fake:life",
+		Center:         testCenter(t),
 		ObserveEnabled: true, // exercises the observe plugin + resilience callbacks path
 		Closers:        []func(){func() { closerRan = true }},
 	})
@@ -178,9 +179,9 @@ func TestOpenLifecycle(t *testing.T) {
 	}
 
 	// Open installs both the observe plugin and the resilience callbacks, so the
-	// DB is complete on return — nothing patches it here. With the zero
-	// governance bundle the executor is resilience.Unmanaged (observed-only), and
-	// ApplyCallbacks still wraps every processor, so this must succeed.
+	// DB is complete on return — nothing patches it here. The executor comes from
+	// an unarmed manager (observe-only pass-through), and ApplyCallbacks still
+	// wraps every processor, so this must succeed.
 
 	if err := Ping(context.Background(), db.DB); err != nil {
 		t.Fatalf("ping after init: %v", err)
@@ -202,7 +203,7 @@ func TestOpenLifecycle(t *testing.T) {
 }
 
 func TestOpenDialectorFailure(t *testing.T) {
-	_, err := Open(fakeDialector{failInit: true}, PoolConfig{}, Options{})
+	_, err := Open(fakeDialector{failInit: true}, PoolConfig{}, Options{Center: testCenter(t)})
 	if err == nil || !strings.Contains(err.Error(), "gorm open") {
 		t.Fatalf("want gorm open error, got %v", err)
 	}
@@ -213,7 +214,7 @@ func TestOpenPingFailure(t *testing.T) {
 	// gorm.Open auto-pings on Initialize, so a failing backend surfaces as the
 	// open error here; the starter must fail fast instead of returning an
 	// unusable DB.
-	_, err := Open(fakeDialector{failPing: true}, PoolConfig{PingTimeout: 500 * time.Millisecond}, Options{})
+	_, err := Open(fakeDialector{failPing: true}, PoolConfig{PingTimeout: 500 * time.Millisecond}, Options{Center: testCenter(t)})
 	if err == nil || !strings.Contains(err.Error(), "ping refused") {
 		t.Fatalf("want ping failure to fail the open, got %v", err)
 	}
@@ -221,7 +222,7 @@ func TestOpenPingFailure(t *testing.T) {
 
 func TestOpenCustomizerFailureClosesPool(t *testing.T) {
 	withCustomizers(t, func(*gorm.DB) error { return errors.New("boom") })
-	db, err := Open(fakeDialector{}, PoolConfig{PingTimeout: time.Second}, Options{})
+	db, err := Open(fakeDialector{}, PoolConfig{PingTimeout: time.Second}, Options{Center: testCenter(t)})
 	if err == nil || !strings.Contains(err.Error(), "gorm customizer") {
 		t.Fatalf("want gorm customizer error, got %v", err)
 	}

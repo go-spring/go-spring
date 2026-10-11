@@ -28,7 +28,7 @@ import (
 	"go-spring.org/cloud/chain"
 
 	"github.com/milvus-io/milvus-sdk-go/v2/client"
-	"go-spring.org/cloud"
+	"go-spring.org/cloud/governance"
 	"go-spring.org/cloud/resilience"
 	"go-spring.org/stdlib/errutil"
 )
@@ -50,7 +50,7 @@ type Client struct {
 	cfg Config
 
 	// exec is the resilience executor the guard interceptors route through,
-	// set by [NewClient] from the governance bundle; it is also the single
+	// set by [NewClient] from the governance center; it is also the single
 	// emitter of each RPC's span, metrics and access log.
 	exec chain.Executor
 	// serviceLabel is the resilience service key ("milvus:<addr>") exec scopes
@@ -67,19 +67,20 @@ type Client struct {
 // exported seam taking an unexported *guardSlot could not be called from
 // outside the package, so it would be an exported name in appearance only.
 //
-// params carries the container's facilities (see [cloud.ClientParams]), and is
+// center carries the container's facilities (see [governance.Center]), and is
 // applied HERE so a Client cannot exist half-assembled: there is no Init step,
 // no later patching, and nothing the container has to remember to call. A
-// hand-built client passes the zero [cloud.ClientParams]; its executor then
-// degrades to resilience.Unmanaged — observed, with a one-time warning that no
-// protection applies — rather than silently running bare.
+// hand-built client must supply a [governance.Center] over a
+// [resilience.Manager]: [governance.Center.Resilience] is required, so a nil
+// center is a construction error — [governance.Center.ExecutorFor] panics —
+// never a graceful downgrade to an unprotected client.
 //
-// The executor is resolved through [cloud.ClientParams.ExecutorFor] and handed
+// The executor is resolved through [governance.Center.ExecutorFor] and handed
 // to the slot before any RPC can flow, so every subsequent call — the caller's
 // startup probe included — already runs under the guard. The manager resolves
 // its backing executor lazily, on each Execute, so the call order relative to
 // the center's wiring is irrelevant.
-func NewClient(ctx context.Context, cfg Config, params cloud.ClientParams) (*Client, error) {
+func NewClient(ctx context.Context, cfg Config, center *governance.Center) (*Client, error) {
 	slot := &guardSlot{}
 	raw, err := client.NewClient(ctx, client.Config{
 		Address:     cfg.Addr,
@@ -93,7 +94,7 @@ func NewClient(ctx context.Context, cfg Config, params cloud.ClientParams) (*Cli
 	}
 	o := &Client{Client: raw, cfg: cfg}
 	o.serviceLabel = resilience.ServiceLabel("milvus", cfg.Addr)
-	o.exec = params.ExecutorFor("milvus", o.serviceLabel)
+	o.exec = center.ExecutorFor("milvus", o.serviceLabel)
 	slot.apply(o.exec)
 	return o, nil
 }

@@ -17,7 +17,7 @@
 // client.go is the "resource entity" concept of this starter: the Client
 // wrapper Elasticsearch clients are injected as, its construction ([NewClient])
 // and teardown ([Client.Destroy]), the service label, and the
-// dynamicTransport indirection that lets the declaration+resilience transport
+// dynamicTransport indirection that lets the resilience transport
 // be installed after the raw client — whose transport is fixed at construction
 // — has been built. It mirrors starter-memcached's client.go. The per-request
 // declaration seam lives in command.go.
@@ -31,16 +31,16 @@ import (
 	"sync"
 
 	"github.com/elastic/go-elasticsearch/v8"
-	"go-spring.org/cloud"
+	"go-spring.org/cloud/governance"
 	"go-spring.org/cloud/resilience"
 )
 
 // Client is the wrapper bean Elasticsearch clients are injected as. It embeds
 // the concrete *elasticsearch.Client, so its whole surface promotes unchanged —
 // both the lifecycle/administrative methods (Close, Perform, Metrics, ...) and
-// the API tree. There is no per-method delegation to keep in step: the
-// declaration does not live on the wrapper at all, but on the client's HTTP
-// transport (command.go), which [NewClient] swaps in. The wrapper's whole job is
+// the API tree. There is no per-method delegation to keep in step: the request
+// naming does not live on the wrapper at all, but on the client's HTTP transport
+// (command.go), which [NewClient] swaps in. The wrapper's whole job is
 // thus to own that transport stack and the
 // identity it is scoped by, so it stays a holder rather than a re-declaration of
 // the client API.
@@ -52,10 +52,10 @@ import (
 // method-bearing func type. Embedding *elasticsearch.Client promotes it whole;
 // there is no separate embedded *esapi.API, which would sit at a shallower depth
 // and shadow the promoted tree. Its members route through the client's HTTP
-// transport, so promotion exposes no path around the declaration and governance
-// layers.
+// transport, so promotion exposes no path around the governance (and request
+// naming) layers.
 //
-// The type is exported because the declaration+resilience layers live on the client's
+// The type is exported because the resilience layer lives on the client's
 // HTTP transport and because the API tree is the app-facing surface; apps inject
 // *Client rather than *elasticsearch.Client. [Driver.CreateClient] returns this
 // type too, so a custom driver works with the same type the ecosystem sees.
@@ -71,14 +71,14 @@ type Client struct {
 	cfg Config
 
 	// dyn is the dynamic transport [DefaultDriver] installed as the client's
-	// transport; [NewClient] swaps the declaration+resilience transport into it.
+	// transport; [NewClient] swaps the resilience transport into it.
 	// nil for a custom driver that built the raw client without the indirection.
 	dyn *dynamicTransport
 
 	// exec is the resilience executor protecting requests, set by [NewClient] from
-	// the governance bundle it is handed. It is never nil: a zero bundle degrades
-	// to [resilience.Unmanaged] (observed, with a one-time warning) rather than
-	// leaving the round-tripper declaration-only.
+	// the governance center it is handed. The center is required to carry a
+	// [resilience.Manager]: [governance.Center.ExecutorFor] panics on a center
+	// without one rather than leaving the round-tripper unprotected.
 	exec chain.Executor
 	// serviceLabel is the resilience service key ("elasticsearch:<...>") exec
 	// scopes limiter/breaker state by.
@@ -89,22 +89,23 @@ type Client struct {
 // governance and transport stack. client must be ready for use — it is normally
 // the Driver's product — and transport must be the [dynamicTransport] that was
 // handed to elasticsearch.Config at construction time, so the
-// declaration+resilience transport can be swapped into it; a custom driver that
+// resilience transport can be swapped into it; a custom driver that
 // installed no indirection passes anything else (typically nil).
 //
-// params carries the container's facilities (see [cloud.ClientParams]), and is
+// center carries the container's facilities (see [governance.Center]), and is
 // applied HERE so a Client cannot exist half-assembled: there is no Init step,
 // no later patching, and nothing the container has to remember to call. A
-// hand-built client passes the zero [cloud.ClientParams]; its executor then
-// degrades to [resilience.Unmanaged] — observed, with a one-time warning that
-// no protection applies — rather than silently running bare.
+// hand-built client must supply a center holding a [resilience.Manager]:
+// [governance.Center.ExecutorFor] is required, so a nil center
+// is a construction error — [governance.Center.ExecutorFor] panics — never a
+// graceful downgrade to an unprotected client.
 //
 // The service label falls back across the address fields via the shared
 // [resilience.ServiceLabel] helper, so limiter and breaker state is scoped per
 // Elasticsearch cluster rather than per request. The manager's ClientExecutorFor
 // resolves its backing executor lazily, on each Execute, so the call order
 // relative to the center's wiring is irrelevant.
-func NewClient(client *elasticsearch.Client, transport http.RoundTripper, cfg Config, params cloud.ClientParams) *Client {
+func NewClient(client *elasticsearch.Client, transport http.RoundTripper, cfg Config, center *governance.Center) *Client {
 	c := &Client{
 		Client: client,
 		cfg:    cfg,
@@ -119,27 +120,23 @@ func NewClient(client *elasticsearch.Client, transport http.RoundTripper, cfg Co
 		first = cfg.Addresses[0]
 	}
 	c.serviceLabel = resilience.ServiceLabel("elasticsearch", cfg.ServiceName, cfg.CloudID, first)
-	c.exec = params.ExecutorFor("elasticsearch", c.serviceLabel)
+	c.exec = center.ExecutorFor("elasticsearch", c.serviceLabel)
 	c.installTransport()
 	return c
 }
 
 // installTransport (re)installs the client's transport stack onto dyn: the
-// declaration transport is outermost and wraps the resilience round-tripper,
-// which in turn wraps http.DefaultTransport. The order is the contract, not a
-// preference — the declaration must run BEFORE the executor, which reads the
-// operation at Execute entry — so the declaration wraps the round-tripper
-// instead of being its base (a declaration made inside the executor is read by
-// nobody). When the client runs unmanaged (a zero [cloud.ClientParams]
-// bundle), exec is the observe-only [resilience.Unmanaged] executor, so the
-// stack is still declaration + observe. It is a no-op when dyn is nil: a custom
+// resilience round-tripper wraps http.DefaultTransport, and it derives each
+// request's operation itself through [callFor] — passed as the callFor callback,
+// so the operation the executor reads at Execute entry is declared from the
+// request, not carried on the context. It is a no-op when dyn is nil: a custom
 // driver that did not install the indirection has nothing to swap.
 func (c *Client) installTransport() {
 	if c.dyn == nil {
 		return
 	}
-	rt := resilience.NewRoundTripper(http.DefaultTransport, c.exec)
-	c.dyn.Swap(&declareTransport{base: rt})
+	rt := resilience.NewRoundTripper(http.DefaultTransport, c.exec, callFor)
+	c.dyn.Swap(rt)
 }
 
 // Destroy releases the resilience executor and closes the underlying client.
@@ -156,12 +153,12 @@ func (c *Client) Destroy() error {
 // be swapped after construction. elasticsearch fixes the transport at
 // construction time, so to keep resilience hot-swappable the fixed transport is
 // this indirection and [Client.installTransport] swaps in the
-// declaration+resilience transport. Until then it passes straight through to
+// resilience transport. Until then it passes straight through to
 // http.DefaultTransport.
 //
 // The slot is guarded by a RWMutex rather than an atomic.Value because the
 // active round-tripper can be any of several distinct concrete types
-// (http.DefaultTransport, *declareTransport, the resilience round-tripper), and
+// (http.DefaultTransport, the resilience round-tripper), and
 // atomic.Value requires every stored value to have the same concrete type.
 type dynamicTransport struct {
 	mu  sync.RWMutex

@@ -77,8 +77,9 @@ func Tolerate(sentinel error) Option {
 	}
 }
 
-// Run executes call under exec. Protection is scoped to the service exec was built
-// for, so the caller names nothing.
+// Run executes fn under exec for the call described by call. Protection is
+// scoped to the service exec was built for, so the caller names nothing beyond
+// the call's own identity.
 // It is the single "run one client operation through the resilience executor"
 // body that every client adapter (redis.Hook, gorm callback, connection wrapper,
 // http.RoundTripper, ...) otherwise copy-pastes, extracted so the nil-as-success
@@ -96,23 +97,23 @@ func Tolerate(sentinel error) Option {
 //
 //   - A resilience rejection ([chain.ErrRateLimited] / [chain.ErrCircuitOpen] /
 //     [chain.ErrBulkheadFull]) is returned verbatim.
-//   - On a normal downstream failure, the returned error is call's own error.
-//   - When a fault injector short-circuited the attempt before call ran (call's
+//   - On a normal downstream failure, the returned error is fn's own error.
+//   - When a fault injector short-circuited the attempt before fn ran (fn's
 //     error is nil but the executor still returns an injected error), the
 //     injected error is preferred so it is not silently swallowed as success.
-func Run[T any](ctx context.Context, exec chain.Executor,
-	call func(context.Context) (T, error), opts ...Option) (T, error) {
+func Run[T any](ctx context.Context, exec chain.Executor, call chain.Operation,
+	fn func(context.Context) (T, error), opts ...Option) (T, error) {
 
 	o := newOptions(opts)
 	nilErr := o.nilErr
 
 	var result T
 	if exec == nil {
-		return call(ctx)
+		return fn(ctx)
 	}
 	var callErr error
-	execErr := exec.Execute(ctx, func(attemptCtx context.Context) error {
-		result, callErr = call(attemptCtx)
+	execErr := exec.Execute(ctx, call, func(attemptCtx context.Context) error {
+		result, callErr = fn(attemptCtx)
 		if callErr != nil && !nilErr(callErr) {
 			return callErr // a real failure feeds the breaker/retry
 		}
@@ -124,7 +125,7 @@ func Run[T any](ctx context.Context, exec chain.Executor,
 		}
 		// On the normal failure path execErr equals callErr (the closure returned
 		// it). They diverge only when the closure never ran — e.g. a fault injector
-		// short-circuited the attempt before reaching call, leaving callErr nil
+		// short-circuited the attempt before reaching fn, leaving callErr nil
 		// while the executor still returns the injected error. Prefer execErr so
 		// the failure is not silently swallowed as success.
 		if callErr == nil {

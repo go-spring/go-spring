@@ -59,7 +59,7 @@ func (m *watchManager) stopAll() {
 		close(s)
 	}
 	if len(stops) > 0 {
-		log.Infof(context.Background(), starterTag, "k8s informers stopped")
+		log.Info(context.Background(), starterTag, "k8s informers stopped")
 	}
 }
 
@@ -86,7 +86,7 @@ func (c *k8sCtrl) trigger(id string, obj any, event string) {
 		log.String("object", id),
 		log.String("event", event),
 		log.String("resource_version", objVersion(obj)))
-	log.Info(ctx, starterTag, log.Msg("watched object changed, triggering refresh"))
+	log.Info(ctx, starterTag, "watched object changed, triggering refresh")
 	if c.onTrigger != nil {
 		c.onTrigger()
 		return
@@ -153,7 +153,7 @@ func (c *k8sCtrl) ensureWatch(ctx context.Context, client k8sClient, cs configSo
 		},
 	}
 	if _, err := informer.AddEventHandler(handler); err != nil {
-		log.Errorf(ctx, starterTag, err, "k8s config: add the event handler failed; it will not hot-reload until a restart")
+		log.Error(ctx, starterTag, err, "k8s config: add the event handler failed; it will not hot-reload until a restart")
 		c.manager.forget(id)
 		return
 	}
@@ -171,16 +171,15 @@ func (c *k8sCtrl) ensureWatch(ctx context.Context, client k8sClient, cs configSo
 		if !ok {
 			close(stop)
 			err := errutil.Explain(nil, "k8s config watch stopped before cache sync")
-			log.Errorf(ctx, starterTag, err, "k8s config: watch stopped before cache sync; it will not hot-reload until a restart")
+			log.Error(ctx, starterTag, err, "k8s config: watch stopped before cache sync; it will not hot-reload until a restart")
 			c.manager.forget(id)
 			return
 		}
 	case <-time.After(watchSyncTimeout):
 		close(stop)
 		err := errutil.Explain(nil, "k8s config cache sync timed out after %s", watchSyncTimeout)
-		log.Error(ctx, starterTag, err,
-			log.String("timeout", watchSyncTimeout.String()),
-			log.Msg("k8s config: cache sync timed out; it will not hot-reload until a restart"))
+		log.Error(ctx, starterTag, err, "k8s config: cache sync timed out; it will not hot-reload until a restart",
+			log.String("timeout", watchSyncTimeout.String()))
 		c.manager.forget(id)
 		return
 	}
@@ -198,5 +197,5 @@ func (c *k8sCtrl) ensureWatch(ctx context.Context, client k8sClient, cs configSo
 	c.manager.stops = append(c.manager.stops, stop)
 	c.manager.mu.Unlock()
 
-	log.Infof(ctx, starterTag, "watching k8s object for changes")
+	log.Info(ctx, starterTag, "watching k8s object for changes")
 }

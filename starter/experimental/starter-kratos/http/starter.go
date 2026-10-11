@@ -99,13 +99,12 @@ type HttpServer struct {
 // the registered ServiceRegister bean. The kratos logger bridges framework logs
 // into go-spring's log module (see internal/logger).
 func NewHttpServer(cfg Config, reg ServiceRegister) *HttpServer {
-	log.Debug(context.Background(), log.TagAppDef, func() []log.Field {
+	log.Debug(context.Background(), log.TagAppDef, "create kratos http server success", func() []log.Field {
 		return []log.Field{
 			log.String("name", cfg.Name),
 			log.String("addr", cfg.Addr),
 			log.String("network", cfg.Network),
 			log.String("timeout", cfg.Timeout.String()),
-			log.Msg("create kratos http server success"),
 		}
 	})
 	return &HttpServer{cfg: cfg, reg: reg, log: logger.NewLogger(), done: make(chan struct{})}
@@ -177,7 +176,7 @@ func (s *HttpServer) Run(ctx context.Context, sig gs.ReadySignal) error {
 
 	<-sig.TriggerAndWait()
 
-	log.Infof(ctx, log.TagAppDef, "kratos http server starting")
+	log.Info(ctx, log.TagAppDef, "kratos http server starting")
 	errCh := make(chan error, 1)
 	go func() {
 		errCh <- s.app.Run()
@@ -186,7 +185,7 @@ func (s *HttpServer) Run(ctx context.Context, sig gs.ReadySignal) error {
 	select {
 	case err := <-errCh:
 		if err != nil {
-			log.Errorf(ctx, log.TagAppDef, err, "kratos http app exited with error")
+			log.Error(ctx, log.TagAppDef, err, "kratos http app exited with error")
 		}
 		return errutil.Explain(err, "kratos http app exited with error")
 	case <-s.done:
@@ -199,8 +198,8 @@ func (s *HttpServer) Run(ctx context.Context, sig gs.ReadySignal) error {
 // app.Stop() (which takes no context), so ctx only tags the shutdown log.
 func (s *HttpServer) Stop(ctx context.Context) error {
 	log.Info(ctx, log.TagAppDef,
-		log.String("addr", s.cfg.Addr),
-		log.Msg("kratos http server shutting down"))
+		"kratos http server shutting down",
+		log.String("addr", s.cfg.Addr))
 	close(s.done)
 	return nil
 }

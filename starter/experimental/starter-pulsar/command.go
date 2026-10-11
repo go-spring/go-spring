@@ -45,6 +45,7 @@ import (
 	"context"
 	"fmt"
 	"go-spring.org/cloud/chain"
+	"go-spring.org/cloud/observability"
 	"net/http"
 	"sync"
 	"time"
@@ -52,8 +53,6 @@ import (
 	"github.com/apache/pulsar-client-go/pulsar"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
-	"go-spring.org/cloud"
-	"go-spring.org/cloud/observability"
 	"go-spring.org/cloud/resilience"
 	"go-spring.org/log"
 	"go-spring.org/stdlib/errutil"
@@ -88,7 +87,7 @@ func newMetricsServer(cfg MetricsConfig) (prometheus.Registerer, *http.Server) {
 	}
 	go func() {
 		if err := srv.ListenAndServe(); err != nil && !errutil.IsServerClosed(err) {
-			log.Warn(context.Background(), log.TagAppDef, log.Err(err), log.Msg("pulsar: metrics server exited unexpectedly"))
+			log.Warn(context.Background(), log.TagAppDef, "pulsar: metrics server exited unexpectedly", log.Err(err))
 		}
 	}()
 	return reg, srv
@@ -192,64 +191,53 @@ func EndSpan(span trace.Span, err error) {
 // Resilience guard
 // -----------------------------------------------------------------------------
 
-// clientGuard is the per-client resilience attachment: the executor chain and
-// the stable serviceLabel it executes under, colocated so a guard lookup
-// reads the pair atomically (no torn exec/serviceLabel combination).
-type clientGuard struct {
-	exec         chain.Executor
+// clientObserver is the per-client emission attachment: the observer and the
+// stable serviceLabel it reports under, colocated so a lookup reads the pair
+// atomically (no torn observer/serviceLabel combination).
+type clientObserver struct {
+	obs          *observability.OperationObserver
 	serviceLabel string
 }
 
-// clientGuards indexes the guard by the raw client bean, so GuardedSend can resolve
-// it from a bare pulsar.Client and the destructor can Close it.
-var clientGuards sync.Map // pulsar.Client -> *clientGuard
+// clientGuards indexes the observer by the raw client bean, so GuardedSend can
+// resolve it from a bare pulsar.Client.
+var clientGuards sync.Map // pulsar.Client -> *clientObserver
 
-// AttachGovernance fixes the client's service label and attaches its resilience
-// executor, called by the Driver while it builds the client (see
-// [Driver.CreateClient]) so the client is complete when it is returned — there is
-// no later patch step. This is the pulsar seam of resilience:
-// pulsar-client-go exposes no reject-capable middleware and producers are
-// caller-created, so the executor is driven through an opt-in call-site guard
-// (GuardedSend) on the synchronous Producer.Send path.
-//
-// params is the container's governance bundle; [cloud.ClientParams.ExecutorFor]
-// returns the governed executor when the bundle carries a manager and an
-// observed-only, loudly-unmanaged one otherwise, so a standalone, non-gs caller
-// (passing the zero bundle) still gets an observed client rather than a bare one.
-func AttachGovernance(cl pulsar.Client, url string, params cloud.ClientParams) {
+// AttachObserver fixes the client's service label and attaches its observer,
+// called by the Driver while it builds the client (see [Driver.CreateClient]) so
+// the client is complete when it is returned — there is no later patch step.
+// This is the pulsar seam of observation: pulsar-client-go exposes no
+// per-message middleware and producers are caller-created, so emission is driven
+// through the opt-in call-site seam (GuardedSend) on the synchronous
+// Producer.Send path. A pulsar client has no seam for the resilience executor,
+// so there is no governance: the observer emits the span, metrics and access
+// log, and nothing throttles or retries.
+func AttachObserver(cl pulsar.Client, url string) {
 	label := resilience.ServiceLabel(pulsarSystem, url)
-	clientGuards.Store(cl, &clientGuard{
-		exec:         params.ExecutorFor(pulsarSystem, label),
+	clientGuards.Store(cl, &clientObserver{
+		obs:          observability.NewOperationObserver(pulsarSystem, label),
 		serviceLabel: label,
 	})
 }
 
-// closeResilience closes and forgets the executor behind cl, if any.
-func closeResilience(cl pulsar.Client) {
-	if v, ok := clientGuards.LoadAndDelete(cl); ok {
-		if err := v.(*clientGuard).exec.Close(); err != nil {
-			log.Warn(context.Background(), log.TagAppDef, log.Err(err), log.Msg("pulsar: resilience executor close failed"))
-		}
-	}
+// forgetObserver drops the observer behind cl, if any.
+func forgetObserver(cl pulsar.Client) {
+	clientGuards.Delete(cl)
 }
 
-// guard routes call through the executor attached to cl; a client with no
-// attachment (a driver that skipped [AttachGovernance]) has the call run inline. A
-// client built through the Driver always has one — the governed executor under
-// governance, the observed-only unmanaged one otherwise — so enabling protection
-// is a zero-code opt-in on the caller side.
-func guard(ctx context.Context, cl pulsar.Client, call func(context.Context) error) error {
+// observe runs call under the observer attached to cl; a client with no
+// attachment (a driver that skipped [AttachObserver]) has the call run inline.
+func observe(ctx context.Context, cl pulsar.Client, op chain.Operation, call func(context.Context) error) error {
 	v, ok := clientGuards.Load(cl)
 	if !ok {
 		return call(ctx)
 	}
-	g := v.(*clientGuard)
-	return g.exec.Execute(ctx, call)
+	return v.(*clientObserver).obs.Observe(ctx, op, call)
 }
 
 // GuardedSend sends msg synchronously on producer, routed through the resilience
-// executor attached to cl (see [AttachGovernance]): the governed executor under
-// governance, an observed-only pass-through otherwise. On rejection (rate-limit
+// executor attached to cl (see [AttachGovernance]): the governed executor. On
+// rejection (rate-limit
 // or open circuit) the returned error is a resilience sentinel and the underlying
 // send is never invoked.
 //
@@ -267,9 +255,8 @@ func guard(ctx context.Context, cl pulsar.Client, call func(context.Context) err
 // synchronous Producer.Send blocks until the broker acknowledges, which is the
 // path worth protecting; the asynchronous SendAsync is intentionally untouched.
 func GuardedSend(ctx context.Context, cl pulsar.Client, producer pulsar.Producer, msg *pulsar.ProducerMessage) (pulsar.MessageID, error) {
-	ctx = observability.WithOperation(ctx, operation(opPublish, producer.Topic()))
 	var id pulsar.MessageID
-	err := guard(ctx, cl, func(attemptCtx context.Context) error {
+	err := observe(ctx, cl, operation(opPublish, producer.Topic()), func(attemptCtx context.Context) error {
 		injectTraceContext(attemptCtx, msg)
 		var serr error
 		id, serr = producer.Send(attemptCtx, msg)

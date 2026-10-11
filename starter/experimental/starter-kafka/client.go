@@ -66,14 +66,9 @@ import (
 // propagator). Per-request client spans are already emitted by the kotel hooks
 // installed on the client.
 //
-// prop is the load-test convention the driver carries: publish stamps the
-// marker into a record header and consume reads it back. A nil propagator
-// falls back to [traffic.NewDefaultPropagator].
+// prop is the load-test convention the driver carries (required): publish
+// stamps the marker into a record header and consume reads it back.
 func NewDriver(cl *Client, prop traffic.Propagator) messaging.Driver {
-	if prop == nil {
-		// DefaultBinding is complete, so this cannot fail.
-		prop, _ = traffic.NewDefaultPropagator(traffic.DefaultBinding())
-	}
 	return &driver{cl: cl, prop: prop}
 }
 
@@ -112,9 +107,9 @@ func (p *publisher) Publish(ctx context.Context, msg *messaging.Message) error {
 	// synthetic load. recordCarrier doubles as the traffic carrier: its Set is
 	// idempotent, so re-injection never appends a second header.
 	p.prop.Inject(ctx, recordCarrier{rec})
-	// Route through the same resilience executor the raw client API uses
-	// (GuardedProduceSync): a no-op pass-through when governance is off for
-	// this client, a rejection sentinel when rate-limited/circuit-open.
+	// Route through the client's observer (GuardedProduceSync), which emits the
+	// publish's span, metrics and access log. A kafka client has no seam for the
+	// resilience executor, so nothing throttles or retries here.
 	return GuardedProduceSync(ctx, p.cl, rec).FirstErr()
 }
 
@@ -122,10 +117,10 @@ func (p *publisher) Close() error { return nil }
 
 // subscriber delivers records from the client's configured topics to a handler,
 // filtered to a single topic. It runs one background poll loop that stops when
-// Close cancels its context. Each delivery is declared (see [operation]) and run
-// under the client's resilience executor, which emits its span, metrics and
-// access log; with governance off the executor is a pass-through and the
-// handler runs inline.
+// Close cancels its context. Each delivery is named (see [operation]) and run
+// under the client's observer, which emits its span, metrics and access log.
+// A kafka client has no seam for the resilience executor, so the handler runs
+// inline with no governance.
 type subscriber struct {
 	cl     *Client
 	topic  string
@@ -150,7 +145,7 @@ func (s *subscriber) Subscribe(ctx context.Context, handler messaging.Handler) e
 			if errs := fetches.Errors(); len(errs) > 0 {
 				for _, e := range errs {
 					if e.Err != context.Canceled {
-						log.Error(loopCtx, log.TagAppDef, e.Err, log.String("topic", e.Topic), log.Msg("kafka driver poll failed"))
+						log.Error(loopCtx, log.TagAppDef, e.Err, "kafka driver poll failed", log.String("topic", e.Topic))
 					}
 				}
 			}
@@ -161,14 +156,14 @@ func (s *subscriber) Subscribe(ctx context.Context, handler messaging.Handler) e
 				msgCtx := otel.GetTextMapPropagator().Extract(loopCtx, recordCarrier{rec})
 				// Extract the load-test marker the producer put in a record header.
 				msgCtx = s.prop.Extract(msgCtx, recordCarrier{rec})
-				// Declare the consume's identity and run the handler under the
-				// client's executor: it emits the span, metrics and access log.
+				// Name the consume and run the handler under the client's
+				// observer: it emits the span, metrics and access log.
 				// This is the same entry point an application owning its own poll
 				// loop calls ([GuardedConsume]), so the two paths cannot drift.
 				if err := GuardedConsume(msgCtx, s.cl, rec, func(attemptCtx context.Context) error {
 					return handler(attemptCtx, fromRecord(rec))
 				}); err != nil {
-					log.Error(msgCtx, log.TagAppDef, err, log.String("topic", rec.Topic), log.Msg("kafka driver handler failed"))
+					log.Error(msgCtx, log.TagAppDef, err, "kafka driver handler failed", log.String("topic", rec.Topic))
 				}
 			})
 		}

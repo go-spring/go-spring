@@ -95,7 +95,7 @@ func runTest(d *Demo) {
 	got := d.Message.Value()
 	if got != "hello-from-apollo" {
 		err := errutil.Explain(nil, "got %q, want %q", got, "hello-from-apollo")
-		log.Errorf(ctx, log.TagAppDef, err, "config mismatch")
+		log.Error(ctx, log.TagAppDef, err, "config mismatch")
 		os.Exit(1)
 	}
 	fmt.Println("Apollo cold-load OK:", got)
@@ -117,7 +117,7 @@ func runTest(d *Demo) {
 		time.Sleep(100 * time.Millisecond)
 	}
 	err := errutil.Explain(nil, "got %q, want %q", d.Message.Value(), want)
-	log.Errorf(ctx, log.TagAppDef, err, "hot-reload timeout")
+	log.Error(ctx, log.TagAppDef, err, "hot-reload timeout")
 	os.Exit(1)
 }
 

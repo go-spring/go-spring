@@ -8,9 +8,10 @@
       "type": "object",
       "description": "Governance rules source bound at spring.governance.source.etcd.*",
       "properties": {
-        "endpoint": {
-          "type": "string",
-          "description": "Etcd endpoint, required"
+        "endpoints": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Etcd cluster endpoints, required"
         },
         "key": {
           "type": "string",
@@ -24,6 +25,11 @@
           "type": "string",
           "default": ""
         },
+        "dial-timeout": {
+          "type": "string",
+          "description": "Client dial timeout, e.g. 5s",
+          "default": "5s"
+        },
         "format": {
           "type": "string",
           "description": "Override document format; inferred from key extension by default",
@@ -31,7 +37,7 @@
         }
       },
       "required": [
-        "endpoint",
+        "endpoints",
         "key"
       ]
     }

@@ -87,10 +87,10 @@ func serveMetrics(addr, path string, handler http.Handler) (*http.Server, error)
 	mux := http.NewServeMux()
 	mux.Handle(path, handler)
 	srv := &http.Server{Addr: addr, Handler: mux, ReadHeaderTimeout: 5 * time.Second}
-	log.Info(context.Background(), log.TagAppDef, log.String("addr", ln.Addr().String()), log.String("path", path), log.Msg("prometheus scrape server listening"))
+	log.Info(context.Background(), log.TagAppDef, "prometheus scrape server listening", log.String("addr", ln.Addr().String()), log.String("path", path))
 	go func() {
 		if err := srv.Serve(ln); err != nil && !errutil.IsServerClosed(err) {
-			log.Errorf(context.Background(), log.TagAppDef, err, "prometheus scrape server stopped")
+			log.Error(context.Background(), log.TagAppDef, err, "prometheus scrape server stopped")
 		}
 	}()
 	return srv, nil

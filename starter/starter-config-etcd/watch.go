@@ -72,7 +72,7 @@ func (w *watchCore) Close() {
 
 	wg.Wait()
 	if n > 0 {
-		log.Infof(context.Background(), starterTag, "etcd watchers stopped")
+		log.Info(context.Background(), starterTag, "etcd watchers stopped")
 	}
 }
 
@@ -103,7 +103,7 @@ func (w *watchCore) registerWatch(cli etcdClient, cs configSource, optional bool
 	// lets the loop's own lines name the key without interpolating it.
 	ctx = log.WithFields(ctx, sourceFields(cs)...)
 
-	log.Infof(ctx, starterTag, "watching etcd key for changes")
+	log.Info(ctx, starterTag, "watching etcd key for changes")
 
 	goutil.Go(ctx, func(ctx context.Context) {
 		defer wg.Done()
@@ -167,7 +167,7 @@ func watchLoop(wctx context.Context, cli etcdClient, cs configSource, optional b
 		ctx := log.RootFields(append(sourceFields(cs),
 			log.String("trace_id", randutil.Hex(16)),
 			log.Int("mod_revision", rev))...)
-		log.Info(ctx, starterTag, log.Msg("etcd key changed, triggering refresh"))
+		log.Info(ctx, starterTag, "etcd key changed, triggering refresh")
 
 		_ = observability.RefreshConf(ctx, func(ctx context.Context) error {
 			return gs.RefreshProperties(ctx)
@@ -196,13 +196,12 @@ func watchLoop(wctx context.Context, cli etcdClient, cs configSource, optional b
 			}
 			if err := wr.Err(); err != nil {
 				if failures%failLogEvery == 0 {
-					log.Warn(wctx, starterTag,
-						log.Err(err),
-						log.Msg("etcd watch returned an error"))
+					log.Warn(wctx, starterTag, "etcd watch returned an error",
+						log.Err(err))
 				}
 				failures++
 			} else if failures > 0 {
-				log.Infof(wctx, starterTag, "etcd watch recovered")
+				log.Info(wctx, starterTag, "etcd watch recovered")
 				failures = 0
 			}
 			deleted := false
@@ -212,7 +211,7 @@ func watchLoop(wctx context.Context, cli etcdClient, cs configSource, optional b
 				}
 			}
 			if deleted && !optional {
-				log.Warnf(wctx, starterTag, "etcd key deleted; stale snapshot retained until the key is restored")
+				log.Warn(wctx, starterTag, "etcd key deleted; stale snapshot retained until the key is restored")
 			}
 			if len(wr.Events) > 0 {
 				rev := resume
@@ -235,10 +234,9 @@ func watchLoop(wctx context.Context, cli etcdClient, cs configSource, optional b
 		}
 		if failures%failLogEvery == 0 {
 			err := errutil.Explain(nil, "etcd watch channel closed")
-			log.Warn(wctx, starterTag,
+			log.Warn(wctx, starterTag, "etcd watch channel closed, resubscribing",
 				log.Err(err),
-				log.Int("retry_ms", cs.retryMs),
-				log.Msg("etcd watch channel closed, resubscribing"))
+				log.Int("retry_ms", cs.retryMs))
 		}
 		failures++
 		select {

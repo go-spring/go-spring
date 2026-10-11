@@ -413,9 +413,10 @@ asserted end-to-end by `runTest`:
 * **`Instance` holds one `DubboConfig`, bound once from `${spring.dubbo}`.**
   Static levels use hyphens (the starter's own style) and dynamic levels use dots
   (aligned with dubbo's URL parameter names); keys are matched exactly.
-* **Config changes are pushed to a running instance.** A properties change flows
-  through go-spring's refresh → `Dync` → override rules → dubbo-go's
-  config-center listeners → the live invoker URLs, so it takes effect on the
-  next call — no restart. Consumer-level defaults publish as
-  `<appName>.configurators`, each reference as
+* **Governance changes are pushed to a running instance.** dubbo's own consumer
+  config is startup config (bound once statically; a change needs a restart) —
+  the only hot-reload line is governance: a center push → the poller's Subscribe
+  callback → override rules → dubbo-go's config-center listeners → the live
+  invoker URLs, so it takes effect on the next call. Consumer-level defaults
+  publish as `<appName>.configurators`, each reference as
   `<interface>:<version>:<group>.configurators`.

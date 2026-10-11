@@ -10,7 +10,7 @@ that makes the store reach the driver bean, and the self-asserting [example/](ex
 **Activation**: any `spring.ratelimit.redis.*` key arms the starter's module, and the block's one key
 must be set: `spring.ratelimit.redis.client` names the `*goredis.Client` bean (provided by
 starter-go-redis under `spring.go-redis.instances.<client>`) whose Redis instance backs the
-counters. The starter contributes ONE bean of type `resilience.Counters`. With none in the container
+counters. The starter contributes ONE bean of type `resilience.ClusterLimiter`. With none in the container
 each executor counts in a budget of its own, so contributing this one is the whole switch:
 [cloud/governance](../../../cloud/governance/README.md)'s driver bean injects it, and every executor in the
 process then spends one Redis budget per scope — across replicas, which an executor-local budget
@@ -120,7 +120,7 @@ spring.governance.source.file.path=conf/governance.yaml
 ```yaml
 spring:
   governance:
-    enabled: true
+    driver: default
     client:
       rules:
         - service: ratelimit-redis:api
@@ -153,15 +153,15 @@ import starter-go-redis + starter-ratelimit-redis
   └─ gs.Module(gs.OnProperty("spring.ratelimit.redis"))
         └─ conf.Bind("${spring.ratelimit.redis}") → Config{Client}
              ├─ fail fast when Client == ""   (boot error naming the property)
-             └─ Provide func(client *goredis.Client) (resilience.Counters, error)
+             └─ Provide func(client *goredis.Client) (resilience.ClusterLimiter, error)
                   (gs.TagArg(c.Client); the interface return type IS the bean type —
                    no Export is needed)
 
 gs.Run()
-  ├─ this store is now the container's only resilience.Counters bean
+  ├─ this store is now the container's only resilience.ClusterLimiter bean
   ├─ bean wiring: the *goredis.Client bean named by client is injected by name;
-  │     NewCounters wraps its UniversalClient (a nil client is a ctor error)
-  ├─ the resilience driver bean injects resilience.Counters, so every executor
+  │     NewClusterLimiter wraps its UniversalClient (a nil client is a ctor error)
+  ├─ the resilience driver bean injects resilience.ClusterLimiter, so every executor
   │     it builds spends this store — and the store itself instantiates because
   │     that driver needs it
   └─ on SIGTERM: nothing to release — the store holds no state of its own and
@@ -170,9 +170,9 @@ gs.Run()
 
 ### 2.2 One Execute call, layer by layer
 
-`exec.Execute(ctx, fn)` with the rule `rate-limit: 2, burst: 5`:
+`exec.Execute(ctx, chain.Operation{}, fn)` with the rule `rate-limit: 2, burst: 5`:
 
-1. The executor's rate-limit stage calls `Counters.Allow(ctx, service, policy, 1)` — the executor
+1. The executor's rate-limit stage calls `ClusterLimiter.Allow(ctx, service, policy, 1)` — the executor
    charges every attempt, and the scope is the service the executor was built for.
 2. Zero `RateLimit` short-circuits to an unlimited pass-through with **no Redis round-trip**. A lost
    rule therefore means no limiting at all: that is a governance-config symptom, not a store one.
@@ -271,7 +271,7 @@ cd example && ./check.sh    # docker-gated: compose up redis, run self-asserting
 | No limiting at all, everything 200 | the service's policy has `rate-limit: 0`, or Redis is unreachable (the executor fails open) | Set an explicit positive `rate-limit` in the rules file; check Redis. |
 | The burst is larger/smaller than the window arithmetic suggests | the rule asks for `algorithm: sliding-window`, which the shared store counts as a token bucket | Model the cap as `rate-limit`/`burst`, or keep sliding windows on the in-memory store. |
 | Calls pile up instead of being rejected | `rate-limit-max-wait` is set but the shared store does not queue | Keep queueing for the in-memory store, or drop the knob. |
-| A `spring.governance.enabled=false` app has no limiting | the center is switched off, so every executor is a pass-through | Enable governance; this starter only moves the counters. |
+| An app whose document configures no rate limit has no limiting | with no matching rule (or a zero `Default`), every executor is a pass-through | Give the label a rule with a positive `rate-limit`; this starter only moves the counters. |
 
 ---
 

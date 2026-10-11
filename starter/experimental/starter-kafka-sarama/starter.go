@@ -61,9 +61,8 @@ func init() {
 			// so consumers (app pub/sub) autowire it like any client bean. It shares
 			// the connection's bean name; beans are keyed by (name, type), so it
 			// stays distinct from the raw sarama.Client bean. The traffic.Propagator
-			// (index 1) is a NULLABLE injection: the single propagator bean when the
-			// application provides one, nil otherwise (the driver then falls back to
-			// traffic.NewDefaultPropagator).
+			// (index 1) resolves to the propagator bean: the application.s when it
+			// provides one, go-spring.s default otherwise.
 			r.Provide(func(cl sarama.Client, prop traffic.Propagator) messaging.Driver {
 				return NewDriver(cl, prop)
 			}, gs.TagArg(name), gs.IndexArg(1, gs.TagArg("?"))).Name(name).Caller(1)

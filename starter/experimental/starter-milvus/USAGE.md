@@ -155,16 +155,16 @@ import starter-milvus
                    right *Client, Export(gs.As[health.Indicator]()) [starter.go:47-49]
 
 gs.Run()
-  ├─ ctor newClient [starter.go:69]: NewClient(ctx, c, cloud.ClientParams{...})
+  ├─ ctor newClient [starter.go:69]: NewClient(ctx, c, center)
   ├─ NewClient [client.go:82] owns the whole assembly — dial + guard + governance:
   │   client.NewClient(ctx, {Address, Username, Password, DBName,
   │   DialOptions: guardDialOptions(slot)}) — gRPC dial with the guard
   │   interceptors installed (inert until governance is applied)
   ├─ ...then fixes identity and applies governance:
   │   service = ServiceLabel("milvus", addr) →
-  │   params.ExecutorFor("milvus", service) — the injected *resilience.Manager / *fault.Injector
-  │   bundled by the ctor → (fault-wrapped mgr.ClientExecutorFor) → slot.apply — the
-  │   interceptors guard every RPC from here on; zero params → observed-only Unmanaged executor
+  │   center.ExecutorFor("milvus", service) — the injected *governance.Center the ctor
+  │   hands in → (fault-wrapped mgr.ClientExecutorFor) → slot.apply — the
+  │   interceptors guard every RPC from here on; the resilience manager is required, so the center is always present
   ├─ ping=true only: fail-fast probe HealthCheck (ListCollections once), error → Destroy()+boot fails
   │   [starter.go:89] — a wrong address or bad credential never reaches "serving"
   ├─ readiness: indicator repeats HealthCheck (the same ListCollections probe) periodically
@@ -190,15 +190,15 @@ That is the whole story, plus the guard. **The guard is a gRPC interceptor chain
 (keepalive, connect backoff, 2GB recv limit) are re-added first and the guard
 interceptors (unary + stream-open) appended — additive, not a replacement. The
 interceptors read a per-client slot that `NewClient` creates, applies with
-`params.ExecutorFor("milvus", "milvus:<addr>")`, and keeps private — the slot cannot appear
+`center.ExecutorFor("milvus", "milvus:<addr>")`, and keeps private — the slot cannot appear
 in an exported signature, so the constructor owns both the dial and the governing step.
 The executor is built from the `*resilience.Manager` and
-`*fault.Injector` the ctor bundles into a `cloud.ClientParams`
-(governance off → observed-only `Unmanaged` executor, passthrough;
+`*fault.Injector` carried by the injected `*governance.Center`
+(the resilience manager is required — the container always supplies it;
 governance is applied as the client is built, so the fail-fast probe in
 `newClient` runs *after* the slot is applied and on a governance-on boot the probe itself rides the
 guard). The interceptor is also the **declaration seam**: it puts the RPC's identity on the
-caller's context before `exec.Execute` runs (`observability.WithOperation(ctx, operation(method))`),
+caller's context before `exec.Execute` runs (`chain.WithOperation(ctx, operation(method))`),
 and the emitter inside the executor reads it at Execute entry — the one place that sees the
 whole call, retries included — to name the span, the `db.client.*` metrics and the access log.
 Declaring inside the executor's fn would be read by nobody (per attempt), so it is placed here,

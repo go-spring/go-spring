@@ -25,21 +25,16 @@ import (
 
 	"go-spring.org/cloud/governance"
 	"go-spring.org/cloud/resilience"
-	"go-spring.org/spring/gs"
 	mapconfig "go-spring.org/starter-dubbo/internal/mapconfig"
 )
 
-// dyncPoller watches ${spring.dubbo.consumer} (the entire consumer node:
-// consumer-level defaults + per-reference overrides + per-method tuning) via
-// gs.Dync. On each hot-reload (delivered as a Dync change callback), it diffs
-// against the last snapshot and pushes the dynamically-applicable fields into
-// the in-memory config center as flat dubbo URL params.
-//
-// Note the two dynamic mechanisms at play here: this Dync binds ORDINARY app
-// config (dubbo's own consumer settings), NOT the governance Source contract —
-// governance policy (timeout/retries from the center) flows in through the
-// injected resilience manager (Enabled/ClientPolicyFor/Subscribe) and is merged into
-// the same override push in consumerToOverrideRules.
+// dyncPoller pushes dubbo's consumer settings (the entire ${spring.dubbo.consumer}
+// node: consumer-level defaults + per-reference overrides + per-method tuning)
+// into the in-memory config center as flat dubbo URL params. The consumer node
+// is bound ONCE, statically — dubbo config is startup config; the only
+// hot-reload line is governance: the poller subscribes each dubbo service label
+// on the resilience authority and re-pushes the merged overrides when the
+// center's policy changes.
 //
 // Dynamic fields are those dubbo-go reads from URL params at call time:
 // timeout, retries, loadbalance, cluster, group, version, serialization,
@@ -51,30 +46,31 @@ type dyncPoller struct {
 
 	// ctr is the governance center bean, nil when the governance center is
 	// not imported. It is the poller's sole governance entry: [dyncPoller.mgr]
-	// reads the resilience authority off it, and its ready signal re-runs the
-	// poll once governance goes live (gs wires Rooters before Runners, so this
-	// poller may initialize before the center is live).
+	// reads the resilience authority off it, whose Subscribe callbacks re-run
+	// the poll on every governance push.
 	ctr *governance.Center
 
-	// Consumer is the entire consumer node under ${spring.dubbo.consumer},
-	// hot-reloaded by go-spring on RefreshProperties.
-	Consumer gs.Dync[DubboConsumer] `value:"${spring.dubbo.consumer}"`
+	// consumer is the entire consumer node under ${spring.dubbo.consumer},
+	// bound once at construction.
+	consumer DubboConsumer
 
 	mu     sync.Mutex                   // guards last and regged
 	last   map[string]map[string]string // last pushed override snapshot, for change detection
 	regged map[string]bool              // dubbo service labels already subscribed on the center
 }
 
-// newDyncPoller creates the poller bean. ctr is the governance center bean; it
-// is nil when governance is not imported, which leaves the poller on the legacy
-// ${spring.dubbo.consumer}-only behavior.
-func newDyncPoller(app DubboApplication, ctr *governance.Center) *dyncPoller {
+// newDyncPoller creates the poller bean. consumer is the statically bound
+// ${spring.dubbo.consumer} node. ctr is the governance center bean; it is nil
+// when governance is not imported, which leaves the poller pushing the
+// dubbo-native values only.
+func newDyncPoller(app DubboApplication, consumer DubboConsumer, ctr *governance.Center) *dyncPoller {
 	return &dyncPoller{
-		dynCfg:  mapconfig.Singleton(),
-		appName: app.Name,
-		ctr:     ctr,
-		last:    make(map[string]map[string]string),
-		regged:  make(map[string]bool),
+		dynCfg:   mapconfig.Singleton(),
+		appName:  app.Name,
+		ctr:      ctr,
+		consumer: consumer,
+		last:     make(map[string]map[string]string),
+		regged:   make(map[string]bool),
 	}
 }
 
@@ -85,28 +81,20 @@ func (p *dyncPoller) mgr() *resilience.Manager {
 	return p.ctr.Resilience()
 }
 
-// Init registers a change callback on the consumer Dync and pushes the current
-// override rules once. Subsequent hot-reloads fire the callback, which re-runs
-// poll; poll's internal diff skips no-op refreshes.
+// Init pushes the current override rules once. Later re-pushes come from the
+// governance line alone: each Subscribe callback registered in poll re-runs it,
+// and poll's internal diff skips no-op refreshes.
 //
 // The center is a Rooter whose Init hook is its GoLive, and this poller takes it
 // as a constructor dependency — so by the time this Init runs the center has
 // always gone live, and the first poll below already sees the armed authority.
-// ctr.OnReady is kept as the guard for the paths that can still run early (a
-// manually built center, a test); it is what first subscribes the poller to the
-// center's policy changes, and OnReady fires immediately when the center is
-// already live.
 func (p *dyncPoller) Init() error {
-	p.Consumer.OnChanged(func(_, _ DubboConsumer) { p.poll() })
-	if p.ctr != nil {
-		p.ctr.OnReady(func() { p.poll() })
-	}
-	p.poll() // initial push: OnChanged does not fire on the init bind
+	p.poll() // initial push
 	return nil
 }
 
 func (p *dyncPoller) poll() {
-	consumer := p.Consumer.Value()
+	consumer := p.consumer
 
 	rules := p.consumerToOverrideRules(&consumer)
 
@@ -116,8 +104,8 @@ func (p *dyncPoller) poll() {
 	// lock: Subscribe arms its callback synchronously, and that callback re-enters
 	// poll - holding p.mu across Subscribe would self-deadlock. The re-entrant poll
 	// is a no-op (changed() finds the same snapshot). When the governance center is
-	// absent (nil manager) or governance is not armed (Enabled false) the whole
-	// block is skipped.
+	// absent (nil manager) or the manager is still unarmed — before the center has
+	// gone live — the whole block is skipped.
 	if p.mgr() != nil && p.mgr().Enabled() {
 		labels := dubboServiceLabels(p.appName, &consumer)
 		var toReg []string
@@ -160,9 +148,11 @@ func (p *dyncPoller) poll() {
 // instead of being merged into a single last-wins rule.
 func (p *dyncPoller) consumerToOverrideRules(c *DubboConsumer) map[string]map[string]string {
 	appName := p.appName
-	// governed is read once: the same "is governance on?" answer gates both the
-	// app-level and the per-reference override, and the manager's Enabled is a
-	// locked read.
+	// governed is read once: the same "is the manager armed?" answer gates both
+	// the app-level and the per-reference override, and Enabled is a locked read.
+	// Once the center has gone live this is always true, which is harmless —
+	// applyGovernOverride writes only set (>0) values, so a document that
+	// configures nothing leaves dubbo's native values untouched.
 	governed := p.mgr() != nil && p.mgr().Enabled()
 	rules := make(map[string]map[string]string)
 
@@ -291,19 +281,19 @@ func dubboServiceLabels(appName string, c *DubboConsumer) map[string]bool {
 
 // applyGovernOverride overrides timeout and retries in params from the
 // governance policy. Policy.Timeout (a Duration) is written as milliseconds
-// (dubbo's canonical timeout unit); Policy.MaxRetries as an integer. Both are
+// (dubbo's canonical timeout unit); Policy.Retry.MaxRetries as an integer. Both are
 // applied only when > 0: a 0 means "no override", so a center that does not
 // configure them leaves the dubbo-native value untouched.
 //
 // Note: dubbo retries is cluster-failover-level (retries across providers), so
-// Policy.MaxRetries here maps to dubbo cluster retries, not resilience-layer
+// Policy.Retry.MaxRetries here maps to dubbo cluster retries, not resilience-layer
 // retry - the center documents dubbo's timeout/retry in dubbo's own semantics.
 func applyGovernOverride(params map[string]string, p resilience.ClientPolicy) {
 	if p.AttemptTimeout > 0 {
 		params["timeout"] = strconv.FormatInt(int64(p.AttemptTimeout/time.Millisecond), 10)
 	}
-	if p.MaxRetries > 0 {
-		params["retries"] = strconv.Itoa(p.MaxRetries)
+	if p.Retry.MaxRetries > 0 {
+		params["retries"] = strconv.Itoa(p.Retry.MaxRetries)
 	}
 }
 

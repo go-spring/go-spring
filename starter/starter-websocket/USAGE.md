@@ -91,7 +91,7 @@ func init() {
         mux.Handle("/echo", requireApp(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
             conn, err := upgrader.Upgrade(w, r, nil)
             if err != nil {
-                log.Errorf(r.Context(), log.TagAppDef, "upgrade /echo failed: %v", err)
+                log.Error(r.Context(), log.TagAppDef, err, "Failed to upgrade /echo")
                 return
             }
             c.Echo(conn)

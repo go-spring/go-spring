@@ -18,9 +18,10 @@ package StarterThrift
 
 import (
 	"context"
-	"go-spring.org/cloud/chain"
 	"strings"
 	"testing"
+
+	"go-spring.org/cloud/chain"
 
 	"github.com/apache/thrift/lib/go/thrift"
 )
@@ -35,7 +36,7 @@ type stubServerExecutor struct {
 	fnErr    error
 }
 
-func (s *stubServerExecutor) Execute(ctx context.Context, fn func(context.Context) error) error {
+func (s *stubServerExecutor) Execute(ctx context.Context, call chain.Operation, fn func(context.Context) error) error {
 	if s.reject != nil {
 		return s.reject
 	}

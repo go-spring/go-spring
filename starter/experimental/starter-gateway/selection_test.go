@@ -55,12 +55,13 @@ func TestClientIP(t *testing.T) {
 // different clients spread across both — which is the whole reason the key is
 // computed on the proxy path.
 func TestSelectionHashKeyAffinity(t *testing.T) {
-	pool := gatewayPool(t, "10.0.0.1:80", "10.0.0.2:80")
+	mgr := loadbalance.NewManager()
+	chain := mgr.Chain(context.Background(), gatewaySource(t, "10.0.0.1:80", "10.0.0.2:80"), gatewayLabel("orders"))
 
 	pickFor := func(clientIP string) string {
-		ep, err := pool.Pick(loadbalance.PickInfo{HashKey: clientIP})
+		ep, err := chain.Pick(loadbalance.PickInfo{HashKey: clientIP})
 		assert.Error(t, err).Nil()
-		pool.Complete(context.Background(), ep, nil)
+		chain.Complete(context.Background(), ep, nil)
 		return ep.Addr
 	}
 
@@ -71,15 +72,18 @@ func TestSelectionHashKeyAffinity(t *testing.T) {
 	}
 	assert.Number(t, len(seen)).Equal(2)
 
-	// A governed strategy change — the same in-place sink the route's governance
-	// subscription drives through the manager — makes the hint authoritative.
-	sel := loadbalance.Selection{Balancer: loadbalance.ConsistentHash}
-	pool.ApplyBalancer(loadbalance.NewConsistentHash(0), sel)
-	assert.That(t, pool.Selection().Balancer).Equal(loadbalance.ConsistentHash)
+	// A rule for the route's label REBUILDS the chain — the route's governance
+	// path, driven through the manager exactly as a center push drives it — and
+	// the new generation makes the hint authoritative.
+	mgr.Apply(context.Background(), loadbalance.Settings{Rules: []loadbalance.Rule{{
+		Service:   gatewayLabel("orders"),
+		Selection: loadbalance.Selection{Balancer: loadbalance.ConsistentHash},
+	}}})
+	assert.That(t, chain.Selection().Balancer).Equal(loadbalance.ConsistentHash)
 
-	first := pickFor("203.0.113.7")
+	pinned := pickFor("203.0.113.7")
 	for range 8 {
-		assert.That(t, pickFor("203.0.113.7")).Equal(first)
+		assert.That(t, pickFor("203.0.113.7")).Equal(pinned)
 	}
 
 	// Distinct clients still spread, so affinity is per key and not "always the
@@ -91,18 +95,15 @@ func TestSelectionHashKeyAffinity(t *testing.T) {
 	assert.Number(t, len(used)).Equal(2)
 }
 
-// gatewayPool builds the pool the proxy builds for a discovered upstream: a
-// static endpoint set behind the shared loadbalance machinery.
-func gatewayPool(t *testing.T, addrs ...string) *loadbalance.Pool {
+// gatewaySource is the endpoint source the proxy feeds a discovered upstream's
+// chain: a static endpoint set.
+func gatewaySource(t *testing.T, addrs ...string) discovery.Resolver {
 	t.Helper()
 	eps := make([]discovery.Endpoint, 0, len(addrs))
 	for _, a := range addrs {
 		eps = append(eps, discovery.Endpoint{Addr: a, Healthy: true, Weight: 1})
 	}
-	bal := loadbalance.NewRoundRobin()
-	return loadbalance.NewPool(func() ([]discovery.Endpoint, error) {
-		return eps, nil
-	}, bal)
+	return func() ([]discovery.Endpoint, error) { return eps, nil }
 }
 
 // TestClientIPHeadersAreNotTheOnlySource keeps the helper honest for a request

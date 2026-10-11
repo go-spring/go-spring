@@ -17,7 +17,7 @@
 // driver.go is the "construction seam" concept of this starter: the discovery
 // dial seam that client construction (newClient in starter.go) owns. Unlike
 // go-redis/memcached there is no Driver abstraction here — the seam is the
-// discovery dial: newPickPool builds a resolver-backed endpoint picker and
+// discovery dial: newPickChain builds a resolver-backed endpoint picker and
 // starter.go feeds its picks into the per-connection dial.
 
 package StarterMongoDB
@@ -31,20 +31,21 @@ import (
 	"go-spring.org/stdlib/errutil"
 )
 
-// newPickPool resolves the discovery backend the starter wiring resolved from
-// c.Discovery into a by-name Resolver and wraps it in a round-robin loadbalance
-// pool, so each new connection can pick a live instance from the service's
-// current endpoint snapshot. It returns (nil, nil) when discovery is not in
-// effect — service-name unset or mesh mode enabled (a sidecar owns discovery+LB)
-// — in which case the caller dials the configured URI hosts directly. It fails
+// newPickChain resolves the discovery backend the starter wiring resolved from
+// c.Discovery into a by-name Resolver and wraps it in a load-balancing chain, so
+// each new connection can pick a live instance from the service's current
+// endpoint snapshot. It returns (nil, nil) when discovery is not in effect —
+// service-name unset or mesh mode enabled (a sidecar owns discovery+LB) — in
+// which case the caller dials the configured URI hosts directly. It fails
 // loudly when service-name is set (and mesh is off) but backend is nil (no
 // backend bean cited by the ${discovery} label). Resolver freshness lives inside
-// the backend, so the pool has no resources to release.
+// the backend, so the chain has no resources to release.
 //
-// The pool is returned unbound: binding it to the service's governance label
-// needs the governance center's loadbalance authority, which the constructor
-// holds (see newClient), not this dial seam.
-func newPickPool(ctx context.Context, c Config, backend discovery.Discovery) (*loadbalance.Pool, error) {
+// The chain is registered with lbMgr under the service's governance label as it
+// is built (see [loadbalance.Manager.Chain]), so the endpoint selection in force
+// applies from the first dial, and a rule that moves that selection REBUILDS the
+// chain from scratch rather than retuning it. lbMgr must be non-nil.
+func newPickChain(ctx context.Context, c Config, backend discovery.Discovery, lbMgr *loadbalance.Manager) (*loadbalance.Chain, error) {
 	if c.ServiceName != "" && backend == nil && !mesh.Enabled() {
 		if c.Discovery == "" {
 			return nil, errutil.Explain(nil, "mongodb: instance routes by service-name but sets no discovery backend (set spring.mongodb.instances.<name>.discovery to the name of a discovery backend bean)")
@@ -55,7 +56,5 @@ func newPickPool(ctx context.Context, c Config, backend discovery.Discovery) (*l
 	if err != nil || resolver == nil {
 		return nil, err
 	}
-	bal := loadbalance.NewRoundRobin()
-	// The tracker makes outlier suspension possible.
-	return loadbalance.NewPool(resolver, bal), nil
+	return lbMgr.Chain(ctx, resolver, serviceLabel(c)), nil
 }

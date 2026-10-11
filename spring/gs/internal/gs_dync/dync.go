@@ -200,7 +200,9 @@ func (p *Properties) Refresh(ctx context.Context, prop flatten.Storage) (err err
 		return nil
 	}
 
-	log.Debugf(ctx, log.TagAppDef, "refreshing %d dynamic objects", len(p.objects))
+	log.Debug(ctx, log.TagAppDef, "refreshing dynamic objects", func() []log.Field {
+		return []log.Field{log.Int("objects", len(p.objects))}
+	})
 
 	newValues, err := p.onValid(p.objects)
 	if err != nil {
@@ -217,7 +219,7 @@ func (p *Properties) Refresh(ctx context.Context, prop flatten.Storage) (err err
 		obj.target.onFinish(newValues[i], oldValues[i])
 	}
 
-	log.Debugf(ctx, log.TagAppDef, "dynamic objects refreshed successfully")
+	log.Debug(ctx, log.TagAppDef, "dynamic objects refreshed successfully", nil)
 	return nil
 }
 

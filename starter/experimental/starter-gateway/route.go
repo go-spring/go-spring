@@ -36,8 +36,6 @@ package StarterGateway
 import (
 	"net/http"
 	"net/url"
-
-	"go-spring.org/cloud/loadbalance"
 )
 
 // Predicate reports whether a request matches a route. It is the Go-idiomatic
@@ -55,18 +53,15 @@ type Filter func(next http.Handler) http.Handler
 // Upstream is a route's forwarding target. Exactly one of URL or Service is set:
 // URL for a direct http(s):// target, Service for an lb://<name> target resolved
 // through discovery + load balancing.
+//
+// An lb:// upstream needs no field here to carry its endpoint selection: the
+// chain [RouteTable.chainFor] builds is registered under the route's governance
+// label as it is built, and the route table keeps it in step with governance
+// through that registration, not through the compiled upstream.
 type Upstream struct {
 	URL       *url.URL // direct target: http(s)://host[:port]
 	Service   string   // lb://<service-name>, resolved via discovery
 	Discovery string   // discovery backend name; empty uses the gateway default
-
-	// pool is the load-balancing pool for an lb:// upstream, nil for a direct
-	// one. It is kept on the compiled upstream so the route table can drive it
-	// from governance: the balancer strategy and outlier suspension for a route
-	// come from the governance rule matching "gateway:<route-id>", applied in place
-	// by [RouteTable.reconcileSelection] on every recompile and on every
-	// governance push.
-	pool *loadbalance.Pool
 }
 
 // Route is a fully compiled routing rule: a set of predicates (AND-combined), a

@@ -72,7 +72,7 @@ luohua 刻意**不造自己的治理引擎** —— 出站调用已走治理 sta
 写在治理规则文档里即可(见 cloud/governance 的 SOURCE_USAGE_CN.md):
 
 ```properties
-spring.governance.driver=default
+spring.resilience.driver=default
 spring.governance.client.rules[0].service=orders
 spring.governance.client.rules[0].attempt-timeout=500ms
 spring.governance.client.rules[0].max-retries=2

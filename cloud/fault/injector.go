@@ -17,11 +17,13 @@
 package fault
 
 import (
+	"context"
 	"math/rand/v2"
 	"sync/atomic"
 	"time"
 
 	"go-spring.org/cloud/traffic"
+	"go-spring.org/stdlib/timeutil"
 )
 
 // side is one direction's live fault state: the config it reads and the
@@ -68,8 +70,8 @@ type Configs struct {
 // execute path. The load-test propagator is shared, because the load-test marker
 // is a property of the call, not of the direction.
 //
-// A side's zero config (or Enabled false) injects nothing, so an Injector built
-// from zero [Configs] is a transparent no-op in both directions.
+// A side's zero config is inert (see [Config.Inert]) and injects nothing, so an
+// Injector built from zero [Configs] is a transparent no-op in both directions.
 type Injector struct {
 	client side
 	server side
@@ -80,13 +82,9 @@ type Injector struct {
 // side can be replaced later with [Injector.SetConfig].
 //
 // prop is the load-test convention this injector asks when a rule's Scope
-// distinguishes synthetic from real traffic; nil means go-spring's
-// ([traffic.NewDefaultPropagator]).
+// distinguishes synthetic from real traffic (required — the starter injects
+// the propagator bean).
 func NewInjector(c Configs, prop traffic.Propagator) *Injector {
-	if prop == nil {
-		// DefaultBinding is complete, so this cannot fail.
-		prop, _ = traffic.NewDefaultPropagator(traffic.DefaultBinding())
-	}
 	in := &Injector{prop: prop}
 	in.SetConfig(c)
 	return in
@@ -112,9 +110,9 @@ func (in *Injector) ClientConfig() Config { return in.client.config() }
 // ServerConfig returns a snapshot of the inbound side's live config.
 func (in *Injector) ServerConfig() Config { return in.server.config() }
 
-// maybe decides the fault applied to one call of this side, given its service
-// and the config snapshot the caller already read (one call decides from one
-// snapshot, so a push landing mid-call cannot half-apply):
+// maybe decides the fault applied to one call of this side, given its
+// service, from one snapshot of the side's live config (a push landing
+// mid-call cannot half-apply):
 //   - sleep is a latency to apply first (always, when the effective Latency > 0);
 //   - inject reports whether an error should be returned instead of calling the
 //     real operation fn, decided at the effective Rate;
@@ -125,8 +123,9 @@ func (in *Injector) ServerConfig() Config { return in.server.config() }
 // values; see the inline comments for the guardrails that gate everything.
 // Latency and error are independent knobs; a call that gets either counts as
 // affected for the guardrails.
-func (s *side) maybe(c Config, service string) (inject bool, sleep time.Duration, err error) {
-	if !c.Enabled {
+func (s *side) maybe(service string) (inject bool, sleep time.Duration, err error) {
+	c := s.config()
+	if c.Inert() {
 		return false, 0, nil
 	}
 
@@ -190,4 +189,52 @@ func matchRule(rules []Rule, service string) (Rule, bool) {
 		}
 	}
 	return Rule{}, false
+}
+
+// scopeApplies reports whether fault injection should run for a call, given the
+// live config's Scope and the call's load-test marker. Scope "" (or unknown)
+// injects into all traffic; "real" skips load-test calls; "loadtest" skips real
+// calls. It is the shared gate used by both the client-side [WrapClientExecutor] and
+// the server-side [ApplyServer], so the two directions honour the same scoping rule.
+func scopeApplies(c Config, prop traffic.Propagator, ctx context.Context) bool {
+	switch c.Scope {
+	case "real":
+		return !prop.IsLoadTest(ctx)
+	case "loadtest":
+		return prop.IsLoadTest(ctx)
+	default:
+		return true
+	}
+}
+
+// gate gates fn with one side's fault rules, applying the configured latency
+// before fn and returning the injected error instead of calling fn when the rate
+// hits. It is the ONE shared fault sequence — both directions run through it (the
+// client-side [WrapClientExecutor] per-attempt closure with the client side, the
+// server-side [ApplyServer] with the server side) — so scope gating, guardrails and
+// cancellation semantics cannot drift apart.
+//
+// The side is a parameter rather than a receiver so the DIRECTION is fixed by the
+// caller inside this package: [WrapClientExecutor] and [ApplyServer] each name their own
+// side, and no caller outside can aim a gate at the wrong half of the process.
+//
+// fn receives the caller's (or the executor's per-attempt) context so
+// cancellation propagates into the real operation. The latency sleep is
+// cancellable via ctx; on cancel the context error is returned so the
+// caller's own timeout/budget logic reacts rather than retrying blindly.
+// gate does NOT retry — retry is a client concern; for the full
+// retry/timeout/breaker treatment on a client call use [WrapClientExecutor] with a
+// chain.Executor.
+func (in *Injector) gate(ctx context.Context, s *side, service string, fn func(context.Context) error) error {
+	if c := s.config(); !scopeApplies(c, in.prop, ctx) {
+		return fn(ctx)
+	}
+	inject, sleep, injErr := s.maybe(service)
+	if sleep > 0 && !timeutil.Sleep(ctx, sleep) {
+		return ctx.Err()
+	}
+	if inject {
+		return injErr
+	}
+	return fn(ctx)
 }

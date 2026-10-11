@@ -29,7 +29,6 @@ import (
 
 	amqp "github.com/rabbitmq/amqp091-go"
 	"go-spring.org/cloud/messaging"
-	"go-spring.org/cloud/observability"
 	"go-spring.org/cloud/propagate"
 	"go-spring.org/cloud/traffic"
 	"go-spring.org/log"
@@ -57,14 +56,9 @@ import (
 // trace links producer to consumer across services. All of it is a no-op
 // without starter-otel.
 //
-// prop is the process's load-test convention (nullable — nil falls back to
-// traffic.NewDefaultPropagator), carried on every publisher/subscriber this
-// driver hands out.
+// prop is the process.s load-test convention (required), carried on every
+// publisher/subscriber this driver hands out.
 func NewDriver(cl *Client, prop traffic.Propagator) messaging.Driver {
-	if prop == nil {
-		// DefaultBinding is complete, so this cannot fail.
-		prop, _ = traffic.NewDefaultPropagator(traffic.DefaultBinding())
-	}
 	return &driver{cl: cl, prop: prop}
 }
 
@@ -171,21 +165,20 @@ func (s *subscriber) Subscribe(_ context.Context, handler messaging.Handler) err
 			// same ctx.
 			msgCtx := extractW3C(context.Background(), &d)
 			msgCtx = s.prop.Extract(msgCtx, tableCarrier(d.Headers))
-			msgCtx = observability.WithOperation(msgCtx, operation(opConsume, s.queue))
-			// The handler runs under the connection's resilience executor, which
-			// emits the consume span, durations and access log; without an
-			// executor guard runs it inline.
-			herr := s.cl.execute(msgCtx, func(attemptCtx context.Context) error {
+			// The handler runs under the connection's observer, which emits the
+			// consume span, durations and access log; without an observer it runs
+			// inline.
+			herr := s.cl.execute(msgCtx, operation(opConsume, s.queue), func(attemptCtx context.Context) error {
 				return handler(attemptCtx, fromDelivery(&d))
 			})
 			if herr != nil {
-				log.Error(msgCtx, log.TagAppDef, herr, log.String("queue", s.queue), log.Msg("rabbitmq driver handler failed"))
+				log.Error(msgCtx, log.TagAppDef, herr, "rabbitmq driver handler failed", log.String("queue", s.queue))
 				if err := d.Nack(false, true); err != nil {
-					log.Warn(msgCtx, log.TagAppDef, log.String("queue", s.queue), log.Err(err), log.Msg("rabbitmq: nack failed, message may be redelivered"))
+					log.Warn(msgCtx, log.TagAppDef, "rabbitmq: nack failed, message may be redelivered", log.String("queue", s.queue), log.Err(err))
 				}
 			} else if err := d.Ack(false); err != nil {
 				// A failed ack means the broker will redeliver the message.
-				log.Warn(msgCtx, log.TagAppDef, log.String("queue", s.queue), log.Err(err), log.Msg("rabbitmq: ack failed, message may be redelivered"))
+				log.Warn(msgCtx, log.TagAppDef, "rabbitmq: ack failed, message may be redelivered", log.String("queue", s.queue), log.Err(err))
 			}
 		}
 	}()

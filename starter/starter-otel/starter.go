@@ -116,12 +116,12 @@ func setup(r gs.BeanProvider, p flatten.Storage) error {
 		return err
 	}
 	if !cfg.Enable {
-		log.Infof(context.Background(), log.TagAppDef, "observability disabled; skipping OTel setup")
+		log.Info(context.Background(), log.TagAppDef, "observability disabled; skipping OTel setup")
 		return nil
 	}
 
-	log.Debug(context.Background(), log.TagAppDef, func() []log.Field {
-		return []log.Field{log.String("service_name", cfg.ServiceName), log.Bool("trace_enable", cfg.Trace.Enable), log.Bool("metrics_enable", cfg.Metrics.Enable), log.Msg("setting up OTel")}
+	log.Debug(context.Background(), log.TagAppDef, "setting up OTel", func() []log.Field {
+		return []log.Field{log.String("service_name", cfg.ServiceName), log.Bool("trace_enable", cfg.Trace.Enable), log.Bool("metrics_enable", cfg.Metrics.Enable)}
 	})
 
 	res, err := trace.NewResource(cfg.ServiceName)
@@ -158,9 +158,8 @@ func setupTrace(cfg trace.TraceConfig, res *resource.Resource) error {
 
 	if !cfg.Enable || cfg.Exporter == "none" {
 		if prop != nil {
-			log.Info(context.Background(), log.TagAppDef,
-				log.String("propagator", cfg.Propagator),
-				log.Msg("trace export disabled; propagator still installed for context propagation"))
+			log.Info(context.Background(), log.TagAppDef, "trace export disabled; propagator still installed for context propagation",
+				log.String("propagator", cfg.Propagator))
 		}
 		return nil
 	}
@@ -174,7 +173,7 @@ func setupTrace(cfg trace.TraceConfig, res *resource.Resource) error {
 	// stopper (not a bean destroyer) to flush buffered spans at shutdown.
 	gs.RegisterStopper("otel-trace", tp.Shutdown)
 
-	log.Info(context.Background(), log.TagAppDef, log.String("exporter", cfg.Exporter), log.String("propagator", cfg.Propagator), log.Msg("init trace provider success"))
+	log.Info(context.Background(), log.TagAppDef, "init trace provider success", log.String("exporter", cfg.Exporter), log.String("propagator", cfg.Propagator))
 	return nil
 }
 
@@ -209,7 +208,7 @@ func setupMetrics(r gs.BeanProvider, cfg metric.MetricsConfig, res *resource.Res
 		if err := startRuntime(opts); err != nil {
 			return err
 		}
-		log.Infof(context.Background(), log.TagAppDef, "runtime metrics enabled")
+		log.Info(context.Background(), log.TagAppDef, "runtime metrics enabled")
 	}
 	// Pull-based (prometheus) exporter: contribute the scrape handler as an
 	// endpoint.Endpoint so starter-actuator, if present, serves /metrics on
@@ -224,7 +223,7 @@ func setupMetrics(r gs.BeanProvider, cfg metric.MetricsConfig, res *resource.Res
 		}
 	}
 
-	log.Info(context.Background(), log.TagAppDef, log.String("exporter", cfg.Exporter), log.Bool("runtime_metrics", cfg.Runtime.Enable), log.Msg("init metrics provider success"))
+	log.Info(context.Background(), log.TagAppDef, "init metrics provider success", log.String("exporter", cfg.Exporter), log.Bool("runtime_metrics", cfg.Runtime.Enable))
 	return nil
 }
 

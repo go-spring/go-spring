@@ -45,8 +45,7 @@ func init() {
 			// falls back to DefaultDriver); set → that bean name, and naming
 			// a bean that does not exist fails loud. The trailing governance
 			// center (index 4) is the family's sole injection point: newConn
-			// reads the resilience/fault authorities from it and bundles them
-			// into the cloud.ClientParams it hands the Driver.
+			// hands it to the Driver, which applies its authorities.
 			r.Provide(newConn,
 				gs.IndexArg(1, gs.ValueArg(name)),
 				gs.IndexArg(2, gs.ValueArg(c)),
@@ -57,9 +56,8 @@ func init() {
 			// bean, so consumers (starter-outbox-gorm, app pub/sub) autowire it like
 			// any client bean. It shares the connection's bean name; beans are keyed
 			// by (name, type), so it stays distinct from the raw *Conn bean. The
-			// traffic.Propagator (index 1) is a NULLABLE injection: the single
-			// propagator bean when the application provides one, nil otherwise (the
-			// driver then falls back to traffic.NewDefaultPropagator).
+			// traffic.Propagator (index 1) resolves to the propagator bean: the
+			// application.s when it provides one, go-spring.s default otherwise.
 			r.Provide(func(conn *Conn, prop traffic.Propagator) messaging.Driver {
 				return NewDriver(conn, prop)
 			}, gs.TagArg(name), gs.IndexArg(1, gs.TagArg("?"))).Name(name).Caller(1)

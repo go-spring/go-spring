@@ -152,11 +152,11 @@ func runTest() {
 		fail("forged token: expected 401, got %d", status)
 	}
 
-	log.Infof(context.Background(), log.TagAppDef, "example: all checks passed")
+	log.Info(context.Background(), log.TagAppDef, "example: all checks passed")
 	os.Exit(0)
 }
 
 func fail(format string, args ...any) {
-	log.Errorf(context.Background(), log.TagAppDef, fmt.Errorf("example: "+format, args...), "example: "+format, args...)
+	log.Record(context.Background(), log.ErrorLevel, log.TagAppDef, 2, log.Msgf("example: "+format, args...))
 	os.Exit(1)
 }

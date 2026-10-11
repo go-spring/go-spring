@@ -25,16 +25,13 @@ import (
 )
 
 // TestSource_PushSourceDrivesCenter covers the custom-source end-to-end path:
-// a PushSource installed via [Center.SetSource] arms the center from its
-// snapshot and later pushes fan out to the module authorities — the same
-// fan-out any source drives.
+// a PushSource handed to NewCenter arms the center from its snapshot and later
+// pushes fan out to the module authorities — the same fan-out any source drives.
 func TestSource_PushSourceDrivesCenter(t *testing.T) {
-	c, res, _, _ := newTestCenterWith(Config{}, nil)
-
-	src := NewPushSource(enabledTimeout(100))
-	c.SetSource(src)
-	if !c.Enabled() {
-		t.Fatal("PushSource snapshot should arm the center")
+	src := NewPushSource(timeoutConfig(100))
+	res, lb, inj := newAuthorities()
+	if _, err := NewCenter(res, lb, inj, nil, src); err != nil {
+		t.Fatal(err)
 	}
 	if p := res.ClientPolicyFor("redis:cache"); p.AttemptTimeout != dur(100) {
 		t.Fatalf("snapshot policy: want 100ms, got %v", p.AttemptTimeout)
@@ -42,7 +39,7 @@ func TestSource_PushSourceDrivesCenter(t *testing.T) {
 
 	var got resilience.ClientPolicy
 	res.Subscribe("redis:cache", func(p resilience.ClientPolicy) { got = p })
-	src.Push(context.Background(), enabledTimeout(200))
+	src.Push(context.Background(), timeoutConfig(200))
 	if got.AttemptTimeout != dur(200) {
 		t.Fatalf("push should fan out: want 200ms, got %v", got.AttemptTimeout)
 	}
@@ -58,20 +55,23 @@ func TestPushSource_Concurrent(t *testing.T) {
 	done := make(chan struct{})
 	go func() { defer close(done); p.Subscribe(func(context.Context, Config) {}) }()
 	for i := range 100 {
-		p.Push(context.Background(), enabledTimeout(i))
+		p.Push(context.Background(), timeoutConfig(i))
 		_ = p.Snapshot()
 	}
 	<-done
-	p.Push(context.Background(), enabledTimeout(1))
+	p.Push(context.Background(), timeoutConfig(1))
 }
 
 // TestDestroy_ClosesCloseableSource pins Destroy's optional-close contract:
 // a source implementing Close is closed; one without Close is left alone.
 func TestDestroy_ClosesCloseableSource(t *testing.T) {
 	// With a closeable source.
-	c := newTestCenter(Config{})
+	res, lb, inj := newAuthorities()
 	src := newCloseableSource(Config{})
-	c.SetSource(src)
+	c, err := NewCenter(res, lb, inj, nil, src)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if err := c.Close(); err != nil {
 		t.Fatal(err)
 	}
@@ -80,8 +80,11 @@ func TestDestroy_ClosesCloseableSource(t *testing.T) {
 	}
 
 	// With a plain PushSource (no Close method): Destroy is a no-op.
-	c2 := newTestCenter(Config{})
-	c2.SetSource(NewPushSource(Config{}))
+	res2, lb2, inj2 := newAuthorities()
+	c2, err := NewCenter(res2, lb2, inj2, nil, NewPushSource(Config{}))
+	if err != nil {
+		t.Fatal(err)
+	}
 	if err := c2.Close(); err != nil {
 		t.Fatal(err)
 	}
@@ -111,7 +114,7 @@ func TestPushDeliversTheChangesContext(t *testing.T) {
 	p.Subscribe(func(ctx context.Context, _ Config) { got = ctx })
 
 	change := log.RootFields(log.String("trace_id", "t1"))
-	p.Push(change, enabledTimeout(100))
+	p.Push(change, timeoutConfig(100))
 
 	if got != change {
 		t.Fatal("the pushed context must reach the subscriber unchanged")

@@ -76,7 +76,9 @@ func RegisterStopper(name string, s Stopper) {
 	stopperMu.Lock()
 	defer stopperMu.Unlock()
 	stoppers[name] = s
-	log.Debugf(context.Background(), log.TagAppDef, "global stopper registered: %s", name)
+	log.Debug(context.Background(), log.TagAppDef, "global stopper registered", func() []log.Field {
+		return []log.Field{log.String("name", name)}
+	})
 }
 
 // runStoppers invokes every registered stopper. Stoppers are independent and run
@@ -92,10 +94,12 @@ func runStoppers(ctx context.Context) {
 	ctx = context.WithoutCancel(ctx)
 	for name, s := range reg {
 		if err := s(ctx); err != nil {
-			log.Errorf(ctx, log.TagAppDef, err, "stopper %q failed", name)
+			log.Error(ctx, log.TagAppDef, err, "stopper failed", log.String("name", name))
 			continue
 		}
-		log.Debugf(ctx, log.TagAppDef, "stopper %q done", name)
+		log.Debug(ctx, log.TagAppDef, "stopper done", func() []log.Field {
+			return []log.Field{log.String("name", name)}
+		})
 	}
 }
 

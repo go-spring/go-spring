@@ -65,10 +65,7 @@ func main() {
 	_ = os.Unsetenv("TERM")
 	_ = os.Unsetenv("TERM_SESSION_ID")
 
-	prop, err := traffic.NewDefaultPropagator(traffic.DefaultBinding())
-	if err != nil {
-		panic(err)
-	}
+	prop := traffic.NewDefaultPropagator(traffic.DefaultBinding())
 
 	// Here `s` is not referenced by any other object,
 	// so we need to register it as a root object.
@@ -145,14 +142,14 @@ func runTest(s *Service) {
 	ctx := context.Background()
 
 	if err := s.publish(ctx, "value"); err != nil {
-		log.Errorf(ctx, log.TagAppDef, err, "PUBLISH failed")
+		log.Error(ctx, log.TagAppDef, err, "PUBLISH failed")
 		os.Exit(1)
 	}
 
 	// Consuming can lag behind producing, so poll with a bounded timeout.
 	body, err := s.consume(ctx, 10*time.Second)
 	if err != nil || body != "value" {
-		log.Errorf(ctx, log.TagAppDef, err, "CONSUME failed: body=%q err", body)
+		log.Error(ctx, log.TagAppDef, err, "CONSUME failed: body", log.String("body", body))
 		os.Exit(1)
 	}
 

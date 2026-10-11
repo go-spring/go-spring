@@ -166,11 +166,10 @@ spring.observability.metrics.port=0        # /metrics served by actuator only
 ```yaml
 spring:
   governance:
-    enabled: true
+    driver: default
     client:
       fault:
-        enabled: false
-        rate: 0.2
+        # rate: 0.2           # set a rate to arm the fire
         error: timeout
 ```
 

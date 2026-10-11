@@ -27,7 +27,6 @@ import (
 
 	"github.com/nats-io/nats.go"
 	"github.com/nats-io/nats.go/jetstream"
-	"go-spring.org/cloud"
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
@@ -48,16 +47,16 @@ import (
 // [NewConn], which fixes the identity and the governance exec — and nothing
 // patches the connection afterwards.
 //
-// params supplies the container's facilities (see [cloud.ClientParams]); it is
-// one struct rather than a parameter per capability so this interface — which
+// center supplies the container's facilities (see [governance.Center]); it is
+// one object rather than a parameter per capability so this interface — which
 // every company driver implements — stays stable as capabilities are added. A
-// driver that has no use for one of its fields simply ignores it.
+// driver that has no use for one of its authorities simply ignores it.
 //
 // At most one Driver bean is expected per process; every connection under
 // ${spring.nats} is built through it, and per-instance differences are expressed
 // through [Config].
 type Driver interface {
-	CreateClient(ctx context.Context, c Config, params cloud.ClientParams) (*Conn, error)
+	CreateClient(ctx context.Context, c Config, center *governance.Center) (*Conn, error)
 }
 
 // DefaultDriver is the default implementation of the Driver interface.
@@ -68,12 +67,12 @@ type DefaultDriver struct{}
 // name/reconnect/timeout options, the async error/disconnect/reconnect/close
 // handlers (which both log and count, see connStateCounter), the user/token/
 // creds/nkey auth and TLS — and then hands the raw connection to [NewConn], which
-// fixes its identity and applies the params bundle.
+// fixes its identity and applies the center's facilities.
 //
 // A custom Driver that omits the handlers therefore reports no connection-layer
 // events at all, rather than losing them to a starter-side override: nats.Conn's
 // Set*Handler methods replace a slot, so the two cannot be layered.
-func (DefaultDriver) CreateClient(ctx context.Context, c Config, params cloud.ClientParams) (*Conn, error) {
+func (DefaultDriver) CreateClient(ctx context.Context, c Config, center *governance.Center) (*Conn, error) {
 	// Connection-layer events are counted as well as logged, from this one
 	// place (see connStateCounter for why the pair cannot be split).
 	connState := newConnStateCounter()
@@ -87,21 +86,18 @@ func (DefaultDriver) CreateClient(ctx context.Context, c Config, params cloud.Cl
 			if sub != nil {
 				subj = sub.Subject
 			}
-			log.Error(ctx, log.TagAppDef, err, log.String("subject", subj), log.Msg("nats async error"))
+			log.Error(ctx, log.TagAppDef, err, "nats async error", log.String("subject", subj))
 		}),
 		nats.DisconnectErrHandler(func(_ *nats.Conn, err error) {
-			log.Warn(ctx, log.TagAppDef, append(connState.record(ctx, connDisconnected),
-				log.Err(err),
-				log.Msg("nats disconnected"))...)
+			log.Warn(ctx, log.TagAppDef, "nats disconnected", append(connState.record(ctx, connDisconnected),
+				log.Err(err))...)
 		}),
 		nats.ReconnectHandler(func(nc *nats.Conn) {
-			log.Info(ctx, log.TagAppDef, append(connState.record(ctx, connReconnected),
-				log.String("url", nc.ConnectedUrl()),
-				log.Msg("nats reconnected"))...)
+			log.Info(ctx, log.TagAppDef, "nats reconnected", append(connState.record(ctx, connReconnected),
+				log.String("url", nc.ConnectedUrl()))...)
 		}),
 		nats.ClosedHandler(func(_ *nats.Conn) {
-			log.Info(ctx, log.TagAppDef, append(connState.record(ctx, connClosed),
-				log.Msg("nats connection closed"))...)
+			log.Info(ctx, log.TagAppDef, "nats connection closed", connState.record(ctx, connClosed)...)
 		}),
 	}
 	if c.Username != "" {
@@ -123,7 +119,7 @@ func (DefaultDriver) CreateClient(ctx context.Context, c Config, params cloud.Cl
 	if c.TLS.Enabled {
 		tlsCfg, err := c.TLS.BuildClient()
 		if err != nil {
-			log.Errorf(ctx, log.TagAppDef, err, "nats build TLS failed")
+			log.Error(ctx, log.TagAppDef, err, "nats build TLS failed")
 			return nil, errutil.Explain(err, "nats: build TLS")
 		}
 		if tlsCfg != nil {
@@ -135,20 +131,20 @@ func (DefaultDriver) CreateClient(ctx context.Context, c Config, params cloud.Cl
 
 	nc, err := nats.Connect(c.URL, opts...)
 	if err != nil {
-		log.Error(ctx, log.TagAppDef, err, log.String("url", c.URL), log.Msg("nats connect failed"))
+		log.Error(ctx, log.TagAppDef, err, "nats connect failed", log.String("url", c.URL))
 		return nil, errutil.Explain(err, "failed to connect nats: %s", c.URL)
 	}
 	// NewConn is the only way to build a Conn: identity and the governance
 	// executor are both applied here, so the driver returns a connection that is
 	// complete (see [Driver]).
-	conn := NewConn(nc, c.URL, params)
+	conn := NewConn(nc, c.URL)
 	// JetStream is derived from the same connection rather than opening a second
 	// one, and it is part of the assembled client: a failure here discards the
 	// connection rather than leaking it.
 	if c.JetStream.Enabled {
 		js, err := jetstream.New(nc)
 		if err != nil {
-			log.Errorf(ctx, log.TagAppDef, err, "nats create jetstream context failed")
+			log.Error(ctx, log.TagAppDef, err, "nats create jetstream context failed")
 			nc.Close()
 			return nil, errutil.Explain(err, "failed to create jetstream context")
 		}
@@ -166,10 +162,10 @@ func (DefaultDriver) CreateClient(ctx context.Context, c Config, params cloud.Cl
 // they show up alongside app logs.
 //
 // center is the governance center the container injects — the family's sole
-// injection point; the ctor reads the resilience and fault authorities from it
-// and bundles them into the [cloud.ClientParams] it hands the driver, which passes it to
-// [NewConn] — so the connection is assembled complete in one step, with the zero
-// bundle degrading to an observed-only, loudly-unmanaged executor.
+// injection point; the ctor hands it to the driver, which passes it to
+// [NewConn] — so the connection is assembled complete in one step, with the
+// resilience manager required: the container supplies it via the governance
+// center, so a center without one fails at construction.
 func newConn(ctx *gs.ContextProvider, name string, c Config, d Driver,
 	center *governance.Center) (*Conn, error) {
 	// The connection's identity rides on a context derived here: every line
@@ -178,10 +174,9 @@ func newConn(ctx *gs.ContextProvider, name string, c Config, d Driver,
 	// constructor's.
 	cctx := log.WithFields(ctx.Context, log.String("url", c.URL))
 
-	log.Debug(cctx, log.TagAppDef, func() []log.Field {
+	log.Debug(cctx, log.TagAppDef, "creating nats connection", func() []log.Field {
 		return []log.Field{
 			log.String("name", c.Name),
-			log.Msg("creating nats connection"),
 		}
 	})
 
@@ -189,10 +184,9 @@ func newConn(ctx *gs.ContextProvider, name string, c Config, d Driver,
 	if d == nil {
 		d = DefaultDriver{}
 	}
-	conn, err := d.CreateClient(ctx.Context, c,
-		cloud.ClientParams{Resilience: center.Resilience(), Fault: center.Fault()})
+	conn, err := d.CreateClient(ctx.Context, c, center)
 	if err != nil {
-		log.Errorf(cctx, log.TagAppDef, err, "nats: create client failed")
+		log.Error(cctx, log.TagAppDef, err, "nats: create client failed")
 		return nil, errutil.Explain(err, "failed to create nats client: %s", c.URL)
 	}
 	// The Driver returned the connection complete — identity, governance and (when
@@ -208,11 +202,11 @@ func newConn(ctx *gs.ContextProvider, name string, c Config, d Driver,
 	// connection only surfaces on first use.
 	if c.Ping {
 		if err := HealthCheck(ctx.Context, conn); err != nil {
-			log.Errorf(cctx, log.TagAppDef, err, "nats: check connectivity at startup failed")
+			log.Error(cctx, log.TagAppDef, err, "nats: check connectivity at startup failed")
 			_ = conn.Close()
 			return nil, errutil.Explain(err, "nats: startup connectivity check failed: %s", c.URL)
 		}
 	}
-	log.Infof(cctx, log.TagAppDef, "create nats connection success")
+	log.Info(cctx, log.TagAppDef, "create nats connection success")
 	return conn, nil
 }

@@ -142,15 +142,15 @@ gs.Run()
   ├─ 探测（ping=true 时）：client.DialWithContext（受 timeout 约束）后 Close
   │     └─ host/port/auth/TLS 配错 ⇒ 启动报错，拒绝拉起（源码注释：
   │        "so a misconfiguration surfaces at boot rather than on the first send"）
-  ├─ 构造期应用治理：exec = cloud.ClientParams{...}.ExecutorFor("mail", label)
+  ├─ 构造期应用治理：exec = center.ExecutorFor("mail", label)
   ├─ bean 就绪：*Mailer 注入所有 `autowire:"<name>"` 处
   ├─ Run / 服务：无后台 goroutine、无连接池
   └─ SIGTERM：destroy hook 关闭 resilience 执行器（SMTP 客户端不持有存活资源）
 ```
 
-此处用 `gs.Module`（而非 `gs.Group`）是为了让构造函数在配置之外还能接住治理 bean。SMTP
-客户端每次 Send 自行拨号并关闭，没有连接池要释放——`Destroy` hook 唯一释放的是 resilience
-执行器。
+此处用 `gs.Module`（而非 `gs.Group`）是为了让构造函数在配置之外还能接住注入的
+`*governance.Center`（变量 `center`）。SMTP 客户端每次 Send 自行拨号并关闭，没有连接池
+要释放——`Destroy` hook 唯一释放的是 resilience 执行器。
 
 ### 2.2 一次发送的逐层走读
 
@@ -164,10 +164,11 @@ gs.Run()
 2. **投递阶段** —— 单次 `DialAndSendWithContext` 开一条 SMTP 连接发完全部消息后关闭。
    部分失败语义归 go-mail；starter 只把错误包一层 `errutil.Explain(err, "mail: send failed")`。
 3. **声明** —— `Send` 把本次批量发送的语义身份
-   （`observability.Operation`：span 名 `mail.send`、指标前缀 `email.client`、有界 label
-   `email.system=smtp` / `email.operation=send`、批量大小作为 `Detail`，以及
-   `NonIdempotent: true`）经 `observability.WithOperation` 放到 context 上，再把投递经
-   `resilience.Run` 交给 mailer 的 resilience 执行器。发送只**声明**，自身不发任何信号。
+   （`chain.Operation`：span 名 `mail.send`、指标前缀 `email.client`、有界 label
+   `email.system=smtp` / `email.operation=send`、批量大小作为 `Detail`）
+   经 `chain.WithOperation` 放到 context 上；调用的身份
+   （`chain.Call{NonIdempotent: true}`）则作为 `resilience.Run` 的参数显式传递，再把投递
+   交给 mailer 的 resilience 执行器。发送只**声明**，自身不发任何信号。身份走签名，命名走 ctx。
    - detail 是**收件人数量，绝不是收件人地址或主题**：二者都是个人数据，而失败的发送会
      无条件在 Warn 级别写出 detail —— 地址会在发送正出问题时被记下来。它们留在调用方
      自己的记录里。

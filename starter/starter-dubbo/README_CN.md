@@ -374,7 +374,8 @@ trace-id,记录的调用位置(file:line)也会指向桥接层而非真实打点
   WARN——并不能真正关掉检查。
 * **`Instance` 持有单份 `DubboConfig`，由 `${spring.dubbo}` 一次性绑定。** 静态层级用
   连字符（starter 自身风格），动态层级用点号（对齐 dubbo URL 参数名）；键只做精确匹配。
-* **配置变更会推送到运行中的实例。** 一次 properties 变更经 go-spring 刷新 → `Dync`
-  → override 规则 → dubbo-go 的配置中心 listener → 线上 invoker URL，因此下次调用即
-  生效，无需重启。consumer 级默认发布为 `<appName>.configurators`，各 reference 发布为
+* **治理变更会推送到运行中的实例。** dubbo 自身的 consumer 配置是启动配置（静态绑定，
+  变更需重启）；唯一的热更新线是治理：治理中心推送 → poller 经 Subscribe 感知 →
+  override 规则 → dubbo-go 的配置中心 listener → 线上 invoker URL，下次调用即生效。
+  consumer 级默认发布为 `<appName>.configurators`，各 reference 发布为
   `<interface>:<version>:<group>.configurators`。

@@ -56,47 +56,47 @@ redis.call('EXPIRE', KEYS[1], ttl)
 return allowed
 `)
 
-// redisCounters is a Redis-backed [resilience.Counters]: one token budget per
-// scope, shared by every replica, in contrast to the bundled in-memory store,
-// which counts each replica on its own. The counters live in Redis and the
-// refill/consume runs as one atomic script, so replicas cannot overspend a
-// budget between them.
+// redisClusterLimiter is a Redis-backed [resilience.ClusterLimiter]: one token
+// budget per scope, shared by every replica, in contrast to the stage's default
+// in-process budget, which each executor keeps to itself. The counters live in
+// Redis and the refill/consume runs as one atomic script, so replicas cannot
+// overspend a budget between them.
 //
 // Two limits are deliberate. Sliding-window scopes are counted as token buckets
 // (the atomic script is what makes a shared budget correct, and a window does not
 // map onto one script cheaply). Queueing ([resilience.RateSpec.MaxWait])
 // is not offered either: waiting for a token would mean polling Redis, so a redis
 // store rejects an over-limit unit immediately — keep queueing for the in-process
-// store.
-type redisCounters struct {
+// budget.
+type redisClusterLimiter struct {
 	client redis.UniversalClient
 	prefix string
 }
 
-var _ resilience.Counters = (*redisCounters)(nil)
+var _ resilience.ClusterLimiter = (*redisClusterLimiter)(nil)
 
-// NewCounters returns a Redis-backed [resilience.Counters] over client.
+// NewClusterLimiter returns a Redis-backed [resilience.ClusterLimiter] over client.
 // Contribute it to the container and the resilience driver injects it, so every
 // executor in the process — and every replica running this starter — spends one
 // budget per scope, instead of each executor counting privately:
 //
-//	gs.Provide(func() (resilience.Counters, error) {
-//	    return experimental.NewCounters(client)
+//	gs.Provide(func() (resilience.ClusterLimiter, error) {
+//	    return experimental.NewClusterLimiter(client)
 //	})
 //
-// It returns the interface, so the bean is indexed under [resilience.Counters]
+// It returns the interface, so the bean is indexed under [resilience.ClusterLimiter]
 // and needs no Export. A nil client fails here with an error rather than
 // surfacing as a counter error on the first protected call.
-func NewCounters(client redis.UniversalClient) (resilience.Counters, error) {
+func NewClusterLimiter(client redis.UniversalClient) (resilience.ClusterLimiter, error) {
 	if client == nil {
-		return nil, errutil.Explain(nil, "starter-go-redis: nil redis counters client")
+		return nil, errutil.Explain(nil, "starter-go-redis: nil redis cluster-limiter client")
 	}
-	return &redisCounters{client: client, prefix: "ratelimit:"}, nil
+	return &redisClusterLimiter{client: client, prefix: "ratelimit:"}, nil
 }
 
 // Allow charges n units of scope's budget to Redis. Keys are namespaced under
 // "ratelimit:" so per-scope counters never collide with application data.
-func (c *redisCounters) Allow(ctx context.Context, scope string, spec resilience.RateSpec, n int) error {
+func (c *redisClusterLimiter) Allow(ctx context.Context, scope string, spec resilience.RateSpec, n int) error {
 	if spec.RateLimit <= 0 || n <= 0 { // no budget configured
 		return nil
 	}

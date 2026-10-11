@@ -202,7 +202,7 @@ Call it once at startup; then a request's logs join its trace with no
 per-call-site code:
 
 ```go
-log.Infof(ctx, tag, "handling request")
+log.Info(ctx, tag, "handling request")
 // → ...||trace_id=29b84b8a2f4eaa447120bf01282c3930||span_id=bc6627138bf150f7||msg=handling request
 ```
 

@@ -38,12 +38,11 @@ const (
 	ParamDelegate = "delegate"
 )
 
-// zoneAwareFactory is the [Factory] behind the [ZoneAware] name. It composes
-// with any sibling strategy through [Directory], which is why a factory
-// receives the directory it was built from.
-type zoneAwareFactory struct{}
+func init() { Register(ZoneAware, buildZoneAware) }
 
-func (zoneAwareFactory) Build(dir Directory, p *Params) (Balancer, error) {
+// buildZoneAware is the [Factory] behind the [ZoneAware] name. It composes with
+// any sibling strategy, resolved by name out of the package registry.
+func buildZoneAware(p *Params) (Balancer, error) {
 	zoneKey := p.String(ParamZoneKey, DefaultZoneKey)
 
 	// An unknown or self-naming delegate is a construction error, not a silent
@@ -54,7 +53,7 @@ func (zoneAwareFactory) Build(dir Directory, p *Params) (Balancer, error) {
 		if name == ZoneAware {
 			return nil, errutil.Explain(nil, "loadbalance: zone_aware cannot delegate to itself")
 		}
-		bal, err := dir.Build(name, nil)
+		bal, err := New(name, nil)
 		if err != nil {
 			return nil, errutil.Explain(err, "loadbalance: zone_aware delegate %q", name)
 		}

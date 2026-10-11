@@ -31,9 +31,9 @@ package StarterRabbitMQ
 import (
 	"context"
 
-	"go-spring.org/cloud/observability"
 	"go-spring.org/stdlib/strutil"
 
+	"go-spring.org/cloud/chain"
 	"go-spring.org/log"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -84,8 +84,8 @@ func spanKind(direction string) trace.SpanKind {
 	return trace.SpanKindProducer
 }
 
-func operation(direction, destination string) observability.Operation {
-	op := observability.Operation{
+func operation(direction, destination string) chain.Operation {
+	op := chain.Operation{
 		Name:   direction,
 		Metric: "messaging.client",
 		Attrs: []attribute.KeyValue{

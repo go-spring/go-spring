@@ -30,8 +30,8 @@ import (
 
 	mssql "github.com/microsoft/go-mssqldb"
 	"github.com/microsoft/go-mssqldb/msdsn"
-	"go-spring.org/cloud"
 	"go-spring.org/cloud/actuator/health"
+	"go-spring.org/cloud/discovery"
 	"go-spring.org/cloud/governance"
 	"go-spring.org/cloud/loadbalance"
 	"go-spring.org/cloud/resilience"
@@ -63,19 +63,19 @@ func init() {
 			// name.
 			beanName := "sqlserver." + name
 			r.Provide(func(ctx *gs.ContextProvider, discoveryLabel string, center *governance.Center) (*gormcore.DB, error) {
-				// The entry's ${discovery} label is resolved against the center's
-				// discovery directory here, and the label's "none" sentinel makes an
-				// unset key resolve to a nil backend (a static-address entry). The
-				// center is the family's sole injection point: it also hands out the
-				// resilience/fault/loadbalance authorities, bundled into the one
-				// ClientParams the dialect and NewDB both read.
-				disc, _ := center.Discovery().Get(discoveryLabel)
-				params := cloud.ClientParams{Resilience: center.Resilience(), Fault: center.Fault(), Loadbalance: center.Loadbalance(), Discovery: disc}
-				spec, err := build(ctx.Context, c, params)
+				// The wiring tag applies the family-default discovery fallback
+				// (discoveryLabel); fold it into the config so the dialect's build
+				// reads one label — c.Discovery — and resolves the backend itself,
+				// failing construction if it names no bean. "none" is the tag's
+				// sentinel for "no backend".
+				if discoveryLabel != "" && discoveryLabel != "none" {
+					c.Discovery = discoveryLabel
+				}
+				spec, err := build(ctx.Context, c, center)
 				if err != nil {
 					return nil, err
 				}
-				return gormcore.NewDB(ctx.Context, "microsoft.sql_server", spec, params, c.Ping)
+				return gormcore.NewDB(ctx.Context, "microsoft.sql_server", spec, center, c.Ping)
 			},
 				gs.IndexArg(1, gs.TagArg("${spring.gorm.sqlserver.instances."+name+".discovery:=${spring.gorm.sqlserver.default.discovery:=none}}")),
 			).Name(beanName).Destroy((*gormcore.DB).Destroy).Caller(1)
@@ -102,44 +102,46 @@ func init() {
 // resolverDialer adapter, which implements mssql.Dialer. In mesh mode a sidecar
 // owns discovery+LB, so the configured Host is used as-is. When c.ServiceName
 // is empty this stays a plain DSN dial, unchanged from before.
-func build(ctx context.Context, c Config, params cloud.ClientParams) (gormcore.Spec, error) {
+func build(ctx context.Context, c Config, center *governance.Center) (gormcore.Spec, error) {
 	if c.Host == "" && c.ServiceName == "" {
 		return gormcore.Spec{}, errutil.Explain(nil, "gorm sqlserver: one of host or service-name must be set")
 	}
 
-	log.Debug(ctx, log.TagAppDef, func() []log.Field {
-		return []log.Field{log.String("host", c.Host), log.String("service_name", c.ServiceName), log.String("db", c.DB), log.Msg("creating gorm sqlserver client")}
+	log.Debug(ctx, log.TagAppDef, "creating gorm sqlserver client", func() []log.Field {
+		return []log.Field{log.String("host", c.Host), log.String("service_name", c.ServiceName), log.String("db", c.DB)}
 	})
 
 	service := resilience.ServiceLabel("gorm:sqlserver", c.ServiceName, c.Host)
 
-	var (
-		dialector gorm.Dialector
-		closer    func()
-	)
+	// Resolve the discovery backend the entry cites before building the dialer:
+	// the build reads one label (c.Discovery) and fails construction when it
+	// names no bean, rather than silently dialing the static host.
+	var backend discovery.Discovery
+	if c.ServiceName != "" {
+		backend, _ = center.Discovery().Get(c.Discovery)
+		if backend == nil {
+			return gormcore.Spec{}, errutil.Explain(nil, "gorm sqlserver: instance routes by service-name but cites discovery backend %q, which names no bean", c.Discovery)
+		}
+	}
 
-	lb, _, stopSelection, err := c.NewPickPool(ctx, params.Discovery, service, params.Loadbalance)
+	var dialector gorm.Dialector
+
+	lb, _, err := c.NewPickPool(ctx, backend, service, center.Loadbalance())
 	if err != nil {
-		log.Errorf(ctx, log.TagAppDef, err, "gorm sqlserver build discovery resolver failed")
+		log.Error(ctx, log.TagAppDef, err, "gorm sqlserver build discovery resolver failed")
 		return gormcore.Spec{}, err
 	}
 	if lb != nil {
 		msCfg, err := msdsn.Parse(c.DSN())
 		if err != nil {
-			log.Errorf(ctx, log.TagAppDef, err, "gorm sqlserver parse DSN failed")
+			log.Error(ctx, log.TagAppDef, err, "gorm sqlserver parse DSN failed")
 			return gormcore.Spec{}, err
 		}
 		connector := mssql.NewConnectorConfig(msCfg)
 		connector.Dialer = resolverDialer{lb: lb, nd: &net.Dialer{}}
 		dialector = sqlserver.New(sqlserver.Config{Conn: sql.OpenDB(connector)})
-		closer = stopSelection
 	} else {
 		dialector = sqlserver.Open(c.DSN())
-	}
-
-	closers := []func(){}
-	if closer != nil {
-		closers = append(closers, closer)
 	}
 
 	return gormcore.Spec{
@@ -147,7 +149,6 @@ func build(ctx context.Context, c Config, params cloud.ClientParams) (gormcore.S
 		Pool:           c.Pool(),
 		Service:        service,
 		ObserveEnabled: c.ObserveEnabled,
-		Closers:        closers,
 	}, nil
 }
 
@@ -158,11 +159,12 @@ func build(ctx context.Context, c Config, params cloud.ClientParams) (gormcore.S
 // resolverDialer, and its watch is stopped via the closer [build] attaches to
 // the client.
 
-// resolverDialer adapts the shared round-robin pick pool to mssql's Dialer
+// resolverDialer adapts the shared endpoint-selection chain to mssql's Dialer
 // (DialContext(ctx, network, addr)). The network and addr arguments are ignored
-// — the dialer picks a live endpoint via the Resolver on every call.
+// — the dialer picks a live endpoint from the chain's current generation on
+// every call.
 type resolverDialer struct {
-	lb *loadbalance.Pool
+	lb *loadbalance.Chain
 	nd *net.Dialer
 }
 
@@ -178,6 +180,6 @@ func (d resolverDialer) DialContext(ctx context.Context, _, _ string) (net.Conn,
 	return conn, derr
 }
 
-// The pool (built by [gormcore.Common.NewPickPool]) is adapted to mssql's
+// The chain (built by [gormcore.Common.NewPickPool]) is adapted to mssql's
 // Dialer interface via resolverDialer, and its watch is stopped via the closer
 // [build] attaches to the client.

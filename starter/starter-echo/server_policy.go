@@ -18,14 +18,12 @@ package StarterEcho
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"go-spring.org/cloud/chain"
 	"net/http"
 
 	"github.com/labstack/echo/v4"
 	"go-spring.org/cloud/observability"
-	"go-spring.org/cloud/propagate"
 	"go-spring.org/cloud/resilience"
 	"go-spring.org/log"
 	"go.opentelemetry.io/otel/attribute"
@@ -45,12 +43,9 @@ import (
 //
 // The label is "echo:<address>", the same one the fault middleware's sibling
 // tables use for this server, so one governance rule covers the whole inbound side.
-func buildServerPolicy(cfg Config, mgr *resilience.Manager) echo.MiddlewareFunc {
-	if mgr == nil {
-		mgr = resilience.NewManager(nil)
-	}
+func buildServerPolicy(cfg Config) echo.MiddlewareFunc {
 	service := resilience.ServiceLabel("echo", cfg.Address)
-	return resilienceServerPolicy(mgr.ServerExecutorFor("echo", service), service, observeEnabled(cfg))
+	return resilienceServerPolicy(observability.NewServerObserver("echo", service), service, observeEnabled(cfg))
 }
 
 // resilienceServerPolicy is the inbound inbound middleware: each request runs
@@ -63,42 +58,26 @@ func buildServerPolicy(cfg Config, mgr *resilience.Manager) echo.MiddlewareFunc 
 // effects cannot be replayed (inbound serving is not idempotent). Leave
 // [resilience.ServerPolicy] has no retry field at all, so the executor built from the
 // server block has no retry stage; the committed guard also prevents reentry.
-func resilienceServerPolicy(exec chain.Executor, service string, observe bool) echo.MiddlewareFunc {
+func resilienceServerPolicy(obs *observability.ServerObserver, service string, observe bool) echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
 			ctx := c.Request().Context()
-			if observe {
-				// Declare what this request IS, so the executor's emitter names the
-				// span, the HTTP family metrics and the access log from it. This
-				// package emits nothing itself.
-				//
-				// The route is known here — echo resolves it before the handler
-				// chain runs, which is also why the span can be named after it
-				// rather than after the raw path.
-				ctx = observability.WithOperation(ctx, operation(c))
-			}
-			// The caller's remaining budget, when it sent one: the handler — and
-			// every outbound call it makes — then runs on the earlier of that and
-			// this server's own handling budget, so a request chain spends one
-			// allowance instead of one per hop.
-			ctx, cancel := resilience.WithBudget(ctx, propagate.Header(c.Request().Header))
-			defer cancel()
 
 			var served bool
 			var handlerErr error
-			err := exec.Execute(ctx, func(ctx context.Context) error {
+			run := func(ctx context.Context) error {
 				if served {
 					return nil // reentry guard: handler already ran this request
 				}
-				// Hand the bounded context to the handler: the inbound executor
-				// derived it, so the deadline that bounds this request is the one
-				// the handler and its outbound clients actually run under.
+				// Hand the observed context to the handler: the observer derived it,
+				// so the span the handler and its outbound clients run under is the
+				// one this request produced.
 				c.SetRequest(c.Request().WithContext(ctx))
 				handlerErr = next(c)
 				served = c.Response().Committed || handlerErr != nil
 				if observe {
 					// The response half: the status code is the outcome of the work,
-					// so it exists only now. Recorded here, read back by the emitter.
+					// so it exists only now. Recorded here, read back by the observer.
 					observability.ResponseFrom(ctx).Add(
 						attribute.Int("http.response.status_code", c.Response().Status))
 				}
@@ -109,21 +88,21 @@ func resilienceServerPolicy(exec chain.Executor, service string, observe bool) e
 					return errHTTP5xx{code: c.Response().Status}
 				}
 				return nil
-			})
+			}
+
+			if observe {
+				// Declare what this request IS — the observer names the span, the
+				// HTTP family metrics and the access log from it. The route is
+				// known here: echo resolves it before the handler chain runs.
+				_ = obs.Observe(ctx, operation(c), run)
+			} else {
+				_ = run(ctx)
+			}
 
 			// A handler's own error (or a committed response) belongs to the
 			// caller: return it so echo's HTTPErrorHandler renders it, exactly as
 			// the fault middleware lets it through.
-			if handlerErr != nil {
-				return handlerErr
-			}
-			switch {
-			case errors.Is(err, chain.ErrRateLimited), errors.Is(err, chain.ErrBulkheadFull):
-				return echo.NewHTTPError(http.StatusTooManyRequests)
-			case errors.Is(err, chain.ErrCircuitOpen):
-				return echo.NewHTTPError(http.StatusServiceUnavailable)
-			}
-			return nil
+			return handlerErr
 		}
 	}
 }
@@ -151,8 +130,8 @@ func observeEnabled(cfg Config) bool {
 	m := cfg.Middleware
 	if !m.Tracing.Enabled || !m.Metrics.Enabled || !m.AccessLog.Enabled {
 		log.Warn(context.Background(), log.TagAppDef,
-			log.Msg("echo: middleware.tracing/metrics/accessLog 的按信号开关已合并 —— 三者现在是一组,"+
-				"任一为 false 即整组关闭(span/指标/访问日志同生共死);请改用 middleware.observability.enabled"))
+			"echo: middleware.tracing/metrics/accessLog 的按信号开关已合并 —— 三者现在是一组,"+
+				"任一为 false 即整组关闭(span/指标/访问日志同生共死);请改用 middleware.observability.enabled")
 		return false
 	}
 	return true
@@ -168,7 +147,7 @@ func observeEnabled(cfg Config) bool {
 // the host and the scheme are per-request and open-ended, so they are Detail:
 // span and log only. The one thing not known here is the response status, which
 // the handler records as it answers (see resilienceServerPolicy).
-func operation(c echo.Context) observability.Operation {
+func operation(c echo.Context) chain.Operation {
 	r := c.Request()
 	route := c.Path()
 	name := r.Method
@@ -177,7 +156,7 @@ func operation(c echo.Context) observability.Operation {
 	} else {
 		name += " " + r.URL.Path
 	}
-	return observability.Operation{
+	return chain.Operation{
 		Name:   name,
 		Metric: "http.server",
 		Attrs: []attribute.KeyValue{

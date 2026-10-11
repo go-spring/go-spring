@@ -30,11 +30,9 @@ import (
 // company owns its routing/affinity decision here, and a deployment can retune
 // the zone through the strategy's own parameter.
 func TestLoadBalanceCompanyRegisteredAndZoneAffine(t *testing.T) {
-	dir, err := loadbalance.NewDirectory(map[string]loadbalance.Factory{luohuaStrategy: luohuaFactory{}})
-	if err != nil {
-		t.Fatalf("luohua factory not accepted: %v", err)
-	}
-	b, err := dir.Build(luohuaStrategy, loadbalance.NewParams(nil))
+	// The strategy is registered by this package's own init (see starter.go), so
+	// a rule citing "luohua" resolves with nothing else wired.
+	b, err := loadbalance.New(luohuaStrategy, loadbalance.NewParams(nil))
 	if err != nil {
 		t.Fatalf("luohua balancer not built: %v", err)
 	}
@@ -44,7 +42,7 @@ func TestLoadBalanceCompanyRegisteredAndZoneAffine(t *testing.T) {
 
 	// The zone parameter overrides the default, so one strategy pins traffic to
 	// whichever zone a rule names.
-	other, err := dir.Build(luohuaStrategy, loadbalance.NewParams(map[string]string{"zone": "cn-other-2"}))
+	other, err := loadbalance.New(luohuaStrategy, loadbalance.NewParams(map[string]string{"zone": "cn-other-2"}))
 	if err != nil {
 		t.Fatalf("luohua balancer with a zone parameter: %v", err)
 	}
@@ -57,7 +55,7 @@ func TestLoadBalanceCompanyRegisteredAndZoneAffine(t *testing.T) {
 	}
 
 	// An unknown parameter is rejected at construction, not silently dropped.
-	if _, err := dir.Build(luohuaStrategy, loadbalance.NewParams(map[string]string{"zoen": "typo"})); err == nil {
+	if _, err := loadbalance.New(luohuaStrategy, loadbalance.NewParams(map[string]string{"zoen": "typo"})); err == nil {
 		t.Fatal("a misspelled parameter must fail construction")
 	}
 

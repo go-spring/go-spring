@@ -101,12 +101,11 @@ type SimpleThriftServer struct {
 // configuration. center is the injected governance center the inbound
 // middleware is armed from.
 func NewSimpleThriftServer(cfg Config, proc thrift.TProcessor, center *governance.Center) *SimpleThriftServer {
-	log.Debug(context.Background(), log.TagAppDef, func() []log.Field {
+	log.Debug(context.Background(), log.TagAppDef, "create thrift server success", func() []log.Field {
 		return []log.Field{
 			log.String("addr", cfg.Addr),
 			log.String("protocol", cfg.Protocol),
 			log.String("transport", cfg.Transport),
-			log.Msg("create thrift server success"),
 		}
 	})
 	return &SimpleThriftServer{cfg: cfg, proc: proc, center: center}
@@ -198,13 +197,13 @@ func (s *SimpleThriftServer) Run(ctx context.Context, sig gs.ReadySignal) error 
 		mws = append(mws, Observe())
 	}
 	mws = append(mws, AccessLog())
-	mws = append(mws, Admit(resilience.ServiceLabel("thrift", s.cfg.Addr), "thrift", s.center.Resilience()))
+	mws = append(mws, Admit(resilience.ServiceLabel("thrift", s.cfg.Addr), "thrift", s.center))
 	proc := thrift.WrapProcessor(s.proc, mws...)
 	s.svr = thrift.NewTSimpleServer4(proc, transport, transFactory, protoFactory)
 	<-sig.TriggerAndWait()
-	log.Infof(ctx, log.TagAppDef, "thrift server starting")
+	log.Info(ctx, log.TagAppDef, "thrift server starting")
 	if err = s.svr.Serve(); err != nil {
-		log.Errorf(ctx, log.TagAppDef, err, "thrift server failed")
+		log.Error(ctx, log.TagAppDef, err, "thrift server failed")
 		return errutil.Explain(err, "failed to serve on %s", s.cfg.Addr)
 	}
 	return nil
@@ -215,8 +214,7 @@ func (s *SimpleThriftServer) Run(ctx context.Context, sig gs.ReadySignal) error 
 // mature frameworks for production-grade thrift shutdown) — and takes no
 // context, so ctx only tags the shutdown log.
 func (s *SimpleThriftServer) Stop(ctx context.Context) error {
-	log.Info(ctx, log.TagAppDef,
-		log.String("addr", s.cfg.Addr),
-		log.Msg("thrift server shutting down"))
+	log.Info(ctx, log.TagAppDef, "thrift server shutting down",
+		log.String("addr", s.cfg.Addr))
 	return s.svr.Stop()
 }

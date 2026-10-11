@@ -21,7 +21,7 @@ import (
 	"strings"
 	"testing"
 
-	"go-spring.org/cloud/observability"
+	"go-spring.org/cloud/chain"
 	"go-spring.org/stdlib/testing/assert"
 	"go.opentelemetry.io/otel/attribute"
 	"google.golang.org/grpc"
@@ -74,28 +74,27 @@ func TestOperationWithoutSlashKeepsWholeWord(t *testing.T) {
 	assert.String(t, attrsLine(op.Detail)).Equal("db.method=Flush")
 }
 
-// captureExecutor is a chain.Executor that runs fn with the ctx it was handed,
-// so the test sees exactly the ctx the emitter reads the operation from at
-// Execute entry.
+// captureExecutor is a chain.Executor that records the operation it is handed
+// at Execute entry and runs fn with the ctx it was given.
 type captureExecutor struct {
 	seen observation
 }
 
 type observation struct {
-	op observability.Operation
+	op chain.Operation
 	ok bool
 }
 
-func (e *captureExecutor) Execute(ctx context.Context, fn func(context.Context) error) error {
-	e.seen.op, e.seen.ok = observability.OperationFrom(ctx)
+func (e *captureExecutor) Execute(ctx context.Context, op chain.Operation, fn func(context.Context) error) error {
+	e.seen.op, e.seen.ok = op, true
 	return fn(ctx)
 }
 func (e *captureExecutor) Close() error { return nil }
 
 // TestUnaryGuardDeclaresOperationBeforeExecuting pins the wire-up: the
-// interceptor must put the declaration on the context the executor reads it
-// from BEFORE exec.Execute runs. A declaration made inside the executor's fn
-// would be read by nobody; here the executor's own entry already sees it.
+// interceptor must pass the operation as the argument to exec.Execute, so the
+// executor's own entry already sees it — the identity covers every attempt, not
+// just the ones made inside fn.
 func TestUnaryGuardDeclaresOperationBeforeExecuting(t *testing.T) {
 	exec := &captureExecutor{}
 	slot := &guardSlot{}

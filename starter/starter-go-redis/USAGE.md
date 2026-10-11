@@ -151,22 +151,24 @@ import starter-go-redis
               └─ Provide health.Indicator named "redis:<name>" (gated by health, default on)
 
 gs.Run()
-  └─ ctor newClient [starter.go:143] — assembles the client COMPLETELY, then probes:
-       ├─ validateConfig → driver lookup → driver.CreateClient(ctx, c, disc, params)
-       │    (the ctor bundles the injected beans into
-       │     cloud.ClientParams{Resilience: mgr, Fault: inj, Loadbalance: lbMgr})
-       │    └─ DefaultDriver builds the raw client, hands it (with params) to NewClient [client.go:88]
+  └─ ctor newClient [starter.go:129] — assembles the client COMPLETELY, then probes:
+       ├─ validateConfig → driver lookup → driver.CreateClient(ctx, c, center)
+       │    (the container injects one *governance.Center — the family's sole
+       │     injection point; c.Discovery already carries the family-default
+       │     discovery label, which the Driver resolves itself)
+       │    └─ DefaultDriver builds the raw client, hands it (with center) to NewClient [client.go:106]
        │         → instrument() (redisotel pool metrics, gated by otel.metrics.enabled)
        │         → applyDeclaration (identity hook)   — declaration is part of construction
-       │         → serviceLabel → params.ExecutorFor("redis", service)
+       │         → serviceLabel → center.ExecutorFor("redis", service)
        │              (= fault.WrapClientExecutor(mgr.ClientExecutorFor("redis", service), service, inj);
-       │               a zero bundle degrades to an observe-only Unmanaged executor)
-       │         → lbMgr.Bind(pool, label) for a discovery-routed entry
+       │               the resilience manager is required — the container always supplies it)
+       │         → center.Loadbalance().Chain(resolver, label) for a discovery-routed entry
+       │              (built by the Driver; the build IS the governance registration)
        │         → AddHook(resilienceHook) — command chain complete
        └─ if ping: startup HealthCheck on the raw client (bounded by dial-timeout or 5s); on failure
           Destroy releases what was just assembled
   ├─ readiness: probes flip UP (indicator runs HealthCheck)
-  └─ SIGTERM → Destroy [client.go:148]: exec.Close → detach selection → client.Close
+  └─ SIGTERM → Destroy [client.go:148]: exec.Close → client.Close
 ```
 
 There is no `Init` hook: everything the old Init did (label, executor, selection binding,
@@ -191,7 +193,7 @@ Rationale (source comments, [client.go] and [command.go]):
   resilience hook. Only its pool metrics remain — the per-command span it used to attach is gone,
   because it duplicated the call span the resilience layer now opens.
 - **operationHook outside the breaker**: it puts the command's identity on the ctx
-  (`observability.WithOperation`, [observe.go]) and emits nothing. A skipped op (PING) declares no
+  (`chain.WithOperation`, [observe.go]) and emits nothing. A skipped op (PING) declares no
   identity and is forwarded untouched.
 - **resilienceHook innermost**: protection decisions sit closest to the wire, and it is the single
   emitter — reading the declared identity off the ctx, it opens the one call span (covering the
@@ -231,14 +233,15 @@ starter logs a WARN naming the ignored `addr` at startup (the example sets a dum
 Setting `service-name` in sentinel or cluster mode is
 rejected at startup: those topologies discover their own nodes [starter.go].
 
-**The pool's strategy is governed, not hardcoded.** It is built with a suspension tracker, passed by the Driver to
-`NewClient` (which keeps it on the wrapper), and bound to
-`redis:<service-name|master-name|addr>` by `NewClient` via the governance bundle's `lbMgr.Bind(pool, label)` — the
-binding lives inside the constructor so a company Driver only has to pass the bundle through, and
-`spring.governance.client.rules[N].balancer` / `outlier-threshold` / `outlier-suspend-for` for that label drive it
-in place — the next dial uses the new strategy. The dialer feeds `Complete` with the dial
+**The chain's strategy is governed, not hardcoded.** It is built with a suspension tracker and handed by the Driver
+to `NewClient` (which keeps it on the wrapper); building it is itself the registration under
+`redis:<service-name|master-name|addr>` — `center.Loadbalance().Chain(resolver, label)` — so the Driver registers it
+against the governance center it already receives and a company Driver needs no extra step, and
+`spring.governance.client.rules[N].balancer` / `outlier-threshold` / `outlier-suspend-for` for that label **rebuild
+the chain from scratch** — the next dial runs the new strategy on a fresh balancer and suspension tracker. The
+dialer feeds `Complete` with the dial
 outcome, so `outlier-threshold` evicts instances that keep refusing *connections*. Sentinel and
-cluster clients self-discover and have no pool, so these keys do not reach them. See
+cluster clients self-discover and have no chain, so these keys do not reach them. See
 `cloud/governance/README.md` §3.1.
 
 ---

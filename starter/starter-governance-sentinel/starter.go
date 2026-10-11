@@ -23,13 +23,13 @@
 //	import _ "go-spring.org/starter-governance-sentinel"
 //
 // which registers the backend as a bean named "sentinel". Selecting it is then a
-// one-line change to the governance document — spring.governance.driver=sentinel — with no
-// code change and no per-starter key: the center resolves the driver centrally
-// and every client picks it up through the same seam. This is the whole point of
-// the abstraction/driver split. The bundled zero-dependency "default" driver
-// stays available for tests and lightweight use; this module exists so
-// production traffic can lean on sentinel-golang's adaptive flow control and
-// circuit breaking instead.
+// one-line change to the static config — spring.resilience.driver=sentinel — with
+// no code change and no per-starter key: the resilience manager injects that
+// named bean once at startup and every client picks it up through the same seam.
+// This is the whole point of the abstraction/driver split. The bundled
+// zero-dependency "default" driver stays available for tests and lightweight use;
+// this module exists so production traffic can lean on sentinel-golang's adaptive
+// flow control and circuit breaking instead.
 package StarterGovernanceSentinel
 
 import (
@@ -49,19 +49,21 @@ func init() {
 	if err := sentinel.InitDefault(); err != nil {
 		panic("starter-governance-sentinel: sentinel init failed: " + err.Error())
 	}
-	// Contribute the backend as a named bean: the container is the driver
-	// directory, and the resilience manager is built over every bean exported as
-	// resilience.Driver, keyed by bean name. The Export is load-bearing — gs
-	// indexes beans by their exact type, so without it the concrete
-	// *sentinelDriver would be invisible to that map.
+	// Contribute the backend as a bean NAMED [SentinelName]: the resilience
+	// manager injects the [resilience.Driver] bean whose name
+	// ${spring.resilience.driver} selects, so this name is what makes the backend
+	// selectable. The Export is load-bearing — gs indexes beans by their exact
+	// type, so without it the concrete *sentinelDriver would be invisible to that
+	// lookup.
 	gs.Provide(func() *sentinelDriver { return &sentinelDriver{} }).
 		Name(SentinelName).
 		Export(gs.As[resilience.Driver]()).
 		Caller(1)
-	log.Infof(context.Background(), log.TagAppDef, "registered sentinel resilience driver")
+	log.Info(context.Background(), log.TagAppDef, "registered sentinel resilience driver")
 }
 
-// SentinelName is the name this backend answers to in the governance document.
+// SentinelName is the bean name this backend answers to, and the value
+// ${spring.resilience.driver} takes to select it.
 const SentinelName = "sentinel"
 
 type sentinelDriver struct{}

@@ -21,7 +21,6 @@ import (
 	"io"
 	"net/http"
 	"reflect"
-	"sync"
 	"time"
 
 	"go-spring.org/log"
@@ -47,14 +46,19 @@ type HTTPSource struct {
 	client   *http.Client
 	headers  map[string]string // e.g. an Authorization header for the console
 
-	// push holds the snapshot and the subscriber; this source is a transport
-	// (polling) that parses and feeds it.
-	push *PushSource
+	// PushSource is embedded so this transport inherits the [Source] read and
+	// subscribe pair (the polling loop feeds it through poll). Embedding also
+	// promotes Push — the INTERNAL commit path that skips poll's change-dedup
+	// guard — so callers must never call Push directly.
+	*PushSource
 
-	mu      sync.Mutex
-	cancel  context.CancelFunc
-	started bool
-	stopped bool
+	// cancel is set by Start and called by Close, with no lock: gs runs Init
+	// synchronously while wiring and Destroy exactly once at shutdown, so Start
+	// runs at most once and Close at most once, in that order (the polling
+	// goroutine reads only construction-fixed fields). Close tolerates a source
+	// that was never started — a caller may build one, read its snapshot and drop
+	// it without polling.
+	cancel context.CancelFunc
 }
 
 // NewHTTPSource loads url once and returns an HTTPSource holding that
@@ -74,22 +78,18 @@ func NewHTTPSource(url string, interval time.Duration, format string, headers ma
 	if err != nil {
 		return nil, err
 	}
-	src.push = NewPushSource(cfg)
+	src.PushSource = NewPushSource(cfg)
 	src.interval = interval
 	return src, nil
 }
 
-// Start begins the polling loop. Idempotent.
+// Start begins the polling loop. It is the gs bean Init hook, called once, so
+// it is single-shot.
 func (s *HTTPSource) Start() error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if s.started {
-		return nil
-	}
 	// The source's own identity rides on its loop context: the lines below name
 	// the URL without repeating it.
 	ctx, cancel := context.WithCancel(log.RootFields(log.String("url", s.url)))
-	s.cancel, s.started = cancel, true
+	s.cancel = cancel
 
 	go func() {
 		tk := time.NewTicker(s.interval)
@@ -112,36 +112,27 @@ func (s *HTTPSource) Init() error { return s.Start() }
 // Close stops the polling loop. Implements the optional-close contract the
 // governance center probes for on Destroy.
 func (s *HTTPSource) Close() error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if !s.started || s.stopped {
+	if s.cancel == nil { // never started — nothing to stop
 		return nil
 	}
-	s.stopped = true
 	s.cancel()
 	return nil
 }
-
-// Snapshot returns the latest good snapshot.
-func (s *HTTPSource) Snapshot() Config { return s.push.Snapshot() }
-
-// Subscribe registers cb as the push target (the center is the only consumer).
-func (s *HTTPSource) Subscribe(cb func(ctx context.Context, cfg Config)) { s.push.Subscribe(cb) }
 
 // poll fetches once and, on a good fetch that actually changed the rules,
 // pushes it.
 func (s *HTTPSource) poll(ctx context.Context) {
 	cfg, err := s.fetch(ctx)
 	if err != nil {
-		log.Error(ctx, starterTag, err, log.Msg("governance http source: poll failed (keeping last good config)"))
+		log.Error(ctx, starterTag, err, "governance http source: poll failed (keeping last good config)")
 		return
 	}
-	if reflect.DeepEqual(s.push.Snapshot(), cfg) {
+	if reflect.DeepEqual(s.Snapshot(), cfg) {
 		return
 	}
 	// A changed document starts a path here and continues into the center that
 	// applies it: the change mints the trace_id both sides log against.
-	s.push.Push(log.RootFields(
+	s.Push(log.RootFields(
 		log.String("trace_id", randutil.Hex(16)),
 		log.String("url", s.url)), cfg)
 }

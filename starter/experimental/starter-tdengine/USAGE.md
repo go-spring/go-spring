@@ -161,18 +161,18 @@ gs.Run()
   │     when several Driver beans coexist, the entry selects one by name:
   │     spring.tdengine.instances.<name>.driver = <bean-name> (empty = the single Driver
   │     bean by type; naming a missing bean fails startup)
-  │     → d.CreateClient(ctx, c, params): the ctor bundles the injected beans into
-  │       params = cloud.ClientParams{Resilience: mgr, Fault: inj}
-  │       (*resilience.Manager / *fault.Injector) and passes it in →
+  │     → d.CreateClient(ctx, c, center): the ctor hands the driver the injected
+  │       *governance.Center (variable center); the *resilience.Manager / *fault.Injector
+  │       it needs are read from the center (via center.Resilience() / center.Fault()) →
   │       ParseDSN → taosws.NewConnector → NewClient
   │     → NewClient [client.go]: builds the slot, wraps the connector
   │       (guardedConnector), opens the *sql.DB pool, applies pool settings —
   │       identity + guard installed in one act, no Init hook
   │     → NewClient computes serviceLabel ("tdengine:<dsn addr>") and
-  │       exec = params.ExecutorFor("tdengine", serviceLabel), then installs it on the
-  │       slot — the client is complete when it is returned. The zero bundle (no
-  │       *resilience.Manager) degrades to resilience.Unmanaged: observed only,
-  │       with a one-time warning that no protection applies
+  │       exec = center.ExecutorFor("tdengine", serviceLabel), then installs it on the
+  │       slot — the client is complete when it is returned. The resilience manager
+  │       is required — the container always supplies it; there is no
+  │       unmanaged/observe-only fallback
   │     → ping=true only: fail-fast probe HealthCheck(ctx, cl) — a PingContext bounded
   │       by 10s, run AFTER assembly; on error the half-built client is Destroyed and
   │       the boot fails
@@ -205,15 +205,15 @@ One statement, e.g. `QueryContext("SELECT COUNT(*) ...")`:
 ```
 *sql.DB pool
   └─ guardedConn.QueryContext [driver.go]
-        ├─ declare: observability.WithOperation(ctx, operation("query", sql)) — the
+        ├─ declare: chain.WithOperation(ctx, operation("query", sql)) — the
         │    statement's identity goes on ctx BEFORE the executor runs, because the
         │    executor reads it at Execute entry: a declaration made inside it (per
         │    attempt) would be read by nobody [observe.go].
-        ├─ run: resilience.Run(ctx, exec, call)
+        ├─ run: resilience.Run(ctx, exec, chain.Call{}, call)
         │    (OUTER: rate limit / breaker / fault decide BEFORE the statement runs; a
         │     rejection never reaches the connection — unit-tested [tdengine_test.go:62-76].
-        │     With no container the executor is resilience.Unmanaged: the call is observed
-        │     but unprotected, so the declaration still reaches the emitter.)
+        │     The resilience manager is required — the container always supplies it, so
+        │     the declaration always reaches the governed emitter.)
         │    └─ the resilience executor EMITS (the starter emits nothing itself): one
         │         call span ("query"), the call-level db.client.operation.duration and
         │         one db.client.attempt.duration per downstream attempt, the
@@ -237,9 +237,9 @@ What is NOT covered by the guard [driver.go:189-198]:
 
 A slot whose executor is nil passes statements through untouched — the zero-config
 pass-through, unit-tested at the slot level [tdengine_test.go:51-58]. Through the
-constructor the slot always gets an executor ([NewClient] installs one), so in practice a
-statement is always observed: governed when the container is present, `Unmanaged`
-(observed only, warned once) when it is not.
+constructor the slot always gets an executor ([NewClient] installs one), and the
+resilience manager is required — the container always supplies it, so in practice a
+statement is always observed and governed.
 
 ### 2.3 Service label
 

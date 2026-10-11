@@ -20,10 +20,24 @@ import (
 	"testing"
 	"time"
 
-	"go-spring.org/cloud"
+	"go-spring.org/cloud/fault"
+	"go-spring.org/cloud/governance"
 	"go-spring.org/cloud/resilience"
 	"go-spring.org/stdlib/testing/assert"
 )
+
+// testCenter returns a process governance center — an unarmed resilience manager
+// (observe-only pass-through) plus an injector with no rules (transparent
+// pass-through) — what a hand-built client takes now that Open receives a
+// *governance.Center rather than a bundle of authorities.
+func testCenter(t *testing.T) *governance.Center {
+	t.Helper()
+	center, err := governance.NewProcessCenter(resilience.NewManager(nil), fault.NewInjector(fault.Configs{}, nil))
+	if err != nil {
+		t.Fatalf("new process center: %v", err)
+	}
+	return center
+}
 
 // TestOpenSizesThePoolFromTheGovernanceRule proves the RESOURCE half of isolation
 // reaches the pool from the rule document rather than from a per-instance key:
@@ -33,18 +47,18 @@ import (
 // It is the one policy field a running executor cannot adopt — a pool is built
 // once — which is why Open reads it here.
 func TestOpenSizesThePoolFromTheGovernanceRule(t *testing.T) {
-	mgr := resilience.NewManager(nil)
-	assert.Error(t, mgr.Apply(resilience.Settings{
-		Enabled: true,
-		ResolveClientPolicy: func(string) resilience.ClientPolicy {
-			return resilience.ClientPolicy{MaxConns: 7}
-		},
+	center := testCenter(t)
+	// Arm the rule on the manager the center exposes. It must be applied AFTER
+	// the center is built: NewProcessCenter dispatches its own (empty) document on
+	// construction, which would otherwise wipe a rule set on the manager first.
+	assert.Error(t, center.Resilience().Apply(resilience.Settings{
+		Client: resilience.ClientSettings{Default: resilience.ClientPolicy{MaxConns: 7}},
 	})).Nil()
 
 	db, err := Open(fakeDialector{}, PoolConfig{PingTimeout: time.Second}, Options{
 		Engine:  "sqlite",
 		Service: "gorm:sqlite:test",
-		Params:  cloud.ClientParams{Resilience: mgr},
+		Center:  center,
 	})
 	assert.Error(t, err).Nil("open")
 	defer func() { _ = db.Destroy() }()
@@ -58,7 +72,7 @@ func TestOpenSizesThePoolFromTheGovernanceRule(t *testing.T) {
 // a replacement: with no container, the per-instance setting still decides, so
 // an app that never adopted the governance rule sees no change.
 func TestOpenLeavesThePoolAloneWithoutARule(t *testing.T) {
-	db, err := Open(fakeDialector{}, PoolConfig{PingTimeout: time.Second, MaxOpenConns: 3}, Options{})
+	db, err := Open(fakeDialector{}, PoolConfig{PingTimeout: time.Second, MaxOpenConns: 3}, Options{Center: testCenter(t)})
 	assert.Error(t, err).Nil("open")
 	defer func() { _ = db.Destroy() }()
 

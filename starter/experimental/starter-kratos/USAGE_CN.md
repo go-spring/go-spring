@@ -87,7 +87,7 @@ func init() {
 type GreeterService struct{ v1.UnimplementedGreeterServer }
 
 func (s *GreeterService) SayHello(ctx context.Context, in *v1.HelloRequest) (*v1.HelloReply, error) {
-    log.Infof(ctx, log.TagBizDef, "SayHello name=%s", in.Name)
+    log.Info(ctx, log.TagBizDef, "SayHello", log.String("name", in.Name))
     return &v1.HelloReply{Message: "Hello " + in.Name}, nil
 }
 ```

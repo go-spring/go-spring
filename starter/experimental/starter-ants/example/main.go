@@ -45,7 +45,7 @@ func init() {
 	prev := goutil.OnPanic
 	goutil.OnPanic = func(ctx context.Context, info goutil.PanicInfo) {
 		atomic.AddInt64(&panics, 1)
-		log.Warnf(ctx, log.TagAppDef, "recovered panic: %v", info.Panic)
+		log.Warn(ctx, log.TagAppDef, "recovered panic", log.Any("panic", info.Panic))
 		prev(ctx, info)
 	}
 }
@@ -100,20 +100,20 @@ func runTest(s *Service) {
 			atomic.AddInt64(&counter, 1)
 		})
 		if err != nil {
-			log.Errorf(ctx, log.TagAppDef, err, "CPU submit failed")
+			log.Error(ctx, log.TagAppDef, err, "CPU submit failed")
 			os.Exit(1)
 		}
 	}
 	wg.Wait()
 	if atomic.LoadInt64(&counter) != 100 {
-		log.Errorf(ctx, log.TagAppDef, fmt.Errorf("expected 100 tasks to run, got %d", counter), "expected 100 tasks to run, got %d", counter)
+		log.Error(ctx, log.TagAppDef, fmt.Errorf("expected 100 tasks to run, got %d", counter), "expected 100 tasks to run", log.Int("counter", counter))
 		os.Exit(1)
 	}
 
 	// Feature 2: instance isolation — the two named pools are fully independent,
 	// which is proven by their distinct capacities coming from configuration.
 	if s.IO.Cap() != 2 || s.CPU.Cap() != 8 {
-		log.Errorf(ctx, log.TagAppDef, fmt.Errorf("unexpected caps: io=%d cpu=%d", s.IO.Cap(), s.CPU.Cap()), "unexpected caps: io=%d cpu=%d", s.IO.Cap(), s.CPU.Cap())
+		log.Error(ctx, log.TagAppDef, fmt.Errorf("unexpected caps: io=%d cpu=%d", s.IO.Cap(), s.CPU.Cap()), "unexpected caps: io", log.Int("cap", s.IO.Cap()), log.Int("cap", s.CPU.Cap()))
 		os.Exit(1)
 	}
 
@@ -123,14 +123,14 @@ func runTest(s *Service) {
 	block := make(chan struct{})
 	for i := 0; i < 2; i++ {
 		if err := s.IO.Submit(func() { <-block }); err != nil {
-			log.Errorf(ctx, log.TagAppDef, err, "IO submit to fill pool failed")
+			log.Error(ctx, log.TagAppDef, err, "IO submit to fill pool failed")
 			os.Exit(1)
 		}
 	}
 	// Give the workers a moment to pick up both blocking tasks.
 	time.Sleep(time.Millisecond * 50)
 	if err := s.IO.Submit(func() {}); err == nil {
-		log.Errorf(ctx, log.TagAppDef, fmt.Errorf("expected error on full nonblocking pool, got nil"), "expected error on full nonblocking pool, got nil")
+		log.Error(ctx, log.TagAppDef, fmt.Errorf("expected error on full nonblocking pool, got nil"), "expected error on full nonblocking pool, got nil")
 		os.Exit(1)
 	}
 	fmt.Println("Nonblocking pool correctly rejected submit")
@@ -149,14 +149,14 @@ func runTest(s *Service) {
 		defer pwg.Done()
 		panic("boom")
 	}); err != nil {
-		log.Errorf(ctx, log.TagAppDef, err, "submit panicking task failed")
+		log.Error(ctx, log.TagAppDef, err, "submit panicking task failed")
 		os.Exit(1)
 	}
 	pwg.Wait()
 	// Give the deferred panic handler a moment to run after Done returns.
 	time.Sleep(time.Millisecond * 50)
 	if atomic.LoadInt64(&panics) == 0 {
-		log.Errorf(ctx, log.TagAppDef, fmt.Errorf("expected panic handler to fire, got 0"), "expected panic handler to fire, got 0")
+		log.Error(ctx, log.TagAppDef, fmt.Errorf("expected panic handler to fire, got 0"), "expected panic handler to fire, got 0")
 		os.Exit(1)
 	}
 	fmt.Println("Panic handler fired:", atomic.LoadInt64(&panics), "times")

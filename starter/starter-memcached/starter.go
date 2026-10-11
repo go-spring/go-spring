@@ -17,7 +17,6 @@
 package StarterMemcached
 
 import (
-	"go-spring.org/cloud"
 	"go-spring.org/cloud/actuator/health"
 	"go-spring.org/cloud/cache"
 	"go-spring.org/cloud/governance"
@@ -81,16 +80,16 @@ func init() {
 // newClient creates a new Memcached client based on the provided configuration,
 // wrapped so every operation flows through the module-local observe layer (trace+metric+log).
 //
-// disc is the backend the entry's ${discovery} label resolves to in the center's
-// discovery directory (nil when the key is unset, sentinel "none", or names
-// nothing, and the entry uses a static server list).
+// discoveryLabel is the entry's ${discovery} label (already carrying the
+// family default). It is folded into the config so the driver resolves the
+// backend itself — see the fold below.
 //
 // center is the governance center the container injects (nil in a standalone,
-// non-gs call) — the family's sole injection point; the ctor reads the
-// resilience and fault authorities from it and bundles them — together with disc — into
-// the [cloud.ClientParams] it hands the driver, which passes it to [NewClient]:
-// the client is assembled complete in one step, with the zero bundle degrading
-// to an observed-only, loudly-unmanaged executor.
+// non-gs call) — the family's sole injection point; the ctor hands the center
+// straight to the driver, which passes it to [NewClient]: the client is
+// assembled complete in one step, with the resilience manager required: the
+// container supplies it via the governance center, so a center without one
+// fails at construction.
 func newClient(ctx *gs.ContextProvider, name string, c Config, d Driver, discoveryLabel string,
 	center *governance.Center) (*Client, error) {
 	// The client's identity rides on a context derived here: every line below
@@ -99,35 +98,29 @@ func newClient(ctx *gs.ContextProvider, name string, c Config, d Driver, discove
 	// constructor's.
 	cctx := log.WithFields(ctx.Context, log.Strings("servers", c.Servers))
 
-	log.Debug(cctx, log.TagAppDef, func() []log.Field {
+	log.Debug(cctx, log.TagAppDef, "creating memcached client", func() []log.Field {
 		return []log.Field{
 			log.String("service_name", c.ServiceName),
-			log.Msg("creating memcached client"),
 		}
 	})
-
-	disc, _ := center.Discovery().Get(discoveryLabel)
 
 	if len(c.Servers) == 0 && c.ServiceName == "" {
 		return nil, errutil.Explain(nil, "memcached: one of servers or service-name must be set")
 	}
-	// Fail loud when the entry routes through discovery but no backend resolved:
-	// either the ${discovery} label is unset, or it names no registered bean
-	// (the container is the discovery directory).
-	if c.ServiceName != "" && disc == nil {
-		if c.Discovery == "" {
-			return nil, errutil.Explain(nil, "memcached: instance %q routes by service-name but sets no discovery backend (set ${spring.memcached.instances.%s.discovery} to the name of a discovery backend bean)", name, name)
-		}
-		return nil, errutil.Explain(nil, "memcached: instance %q cites discovery backend %q but no such bean exists (register a discovery backend bean under that name)", name, c.Discovery)
+	// The wiring tag applies the family-default discovery fallback (discoveryLabel);
+	// fold it into the config so the driver reads one label — c.Discovery — and
+	// resolves the backend itself, failing construction if it names no bean. "none"
+	// is the tag's sentinel for "no backend" and is left as an empty c.Discovery.
+	if discoveryLabel != "" && discoveryLabel != "none" {
+		c.Discovery = discoveryLabel
 	}
 	// No company Driver bean → fall back to the bundled default assembly.
 	if d == nil {
 		d = DefaultDriver{}
 	}
-	client, err := d.CreateClient(ctx.Context, name, c,
-		cloud.ClientParams{Resilience: center.Resilience(), Fault: center.Fault(), Discovery: disc})
+	client, err := d.CreateClient(ctx.Context, name, c, center)
 	if err != nil {
-		log.Errorf(ctx.Context, log.TagAppDef, err, "memcached create client failed")
+		log.Error(ctx.Context, log.TagAppDef, err, "memcached create client failed")
 		return nil, errutil.Explain(err, "failed to create memcached client")
 	}
 	// The Driver returned the client complete — identity and governance both
@@ -144,11 +137,11 @@ func newClient(ctx *gs.ContextProvider, name string, c Config, d Driver, discove
 	// surfaces on first use.
 	if c.Ping {
 		if err := HealthCheck(ctx.Context, client); err != nil {
-			log.Errorf(ctx.Context, log.TagAppDef, err, "memcached startup ping failed")
+			log.Error(ctx.Context, log.TagAppDef, err, "memcached startup ping failed")
 			_ = client.Close()
 			return nil, errutil.Explain(err, "memcached: startup ping failed")
 		}
 	}
-	log.Infof(cctx, log.TagAppDef, "create memcached client success")
+	log.Info(cctx, log.TagAppDef, "create memcached client success")
 	return client, nil
 }

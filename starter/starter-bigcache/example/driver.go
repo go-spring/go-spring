@@ -50,7 +50,7 @@ type HookingBigCacheDriver struct{}
 func (HookingBigCacheDriver) CreateClient(ctx context.Context, name string,
 	c StarterBigCache.Config) (*StarterBigCache.Cache, error) {
 
-	log.Infof(ctx, log.TagAppDef, "HookingBigCacheDriver::CreateClient(%s)", name)
+	log.Info(ctx, log.TagAppDef, "HookingBigCacheDriver::CreateClient", log.String("name", name))
 
 	conf := bigcache.DefaultConfig(c.LifeWindow)
 	conf.Shards = c.Shards

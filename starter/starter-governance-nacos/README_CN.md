@@ -61,10 +61,9 @@ spring.governance.source.nacos.group=DEFAULT_GROUP
 ```yaml
 spring:
   governance:
-    enabled: true
+    driver: default
     client:
       default:
-        enabled: true
         attempt-timeout: 100ms
     client:
       rules:
@@ -72,7 +71,7 @@ spring:
           attempt-timeout: 50ms
 ```
 
-每个已发布版本都会被重新解析并推送进治理中心。规则词表（`spring.governance.enabled`、`spring.governance.client.default.*`、
+每个已发布版本都会被重新解析并推送进治理中心。规则词表（`spring.governance.client.default.*`、
 `spring.governance.client.rules[n].*`、`spring.governance.client.fault.*`）属于治理域，完整参考见
 [cloud/governance 的 SOURCE_USAGE_CN.md](../../cloud/governance/SOURCE_USAGE_CN.md)。引入治理中心本身仍是
 [cloud/governance](../../cloud/governance) 的职责——本模块只提供规则源。

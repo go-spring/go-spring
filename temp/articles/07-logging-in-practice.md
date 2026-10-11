@@ -40,7 +40,7 @@ var TagHttpAccess = log.RegisterAppTag("http", "access")
 func Access() func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			log.Infof(r.Context(), TagHttpAccess, "access %s %s", r.Method, r.URL.Path)
+			log.Info(r.Context(), TagHttpAccess, "access", log.String("method", r.Method), log.String("path", r.URL.Path))
 			next.ServeHTTP(w, r)
 		})
 	}
@@ -65,7 +65,7 @@ var TagBookService = log.RegisterBizTag("book", "service")
 func (s *BookService) GetBook(ctx context.Context, isbn string) (proto.Book, error) {
 	book, err := s.BookDao.GetBook(isbn)
 	if err != nil {
-		log.Errorf(ctx, TagBookService, "GetBook return err: %s", err.Error())
+		log.Error(ctx, TagBookService, err, "GetBook return err")
 		return proto.Book{}, err
 	}
 	// ...

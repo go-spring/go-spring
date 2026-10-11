@@ -154,16 +154,17 @@ gs.Run()
   │     DefaultDriver（d == nil）；容器中存在多个 Driver bean
   │     时，实例可按名指定：`spring.tdengine.instances.<name>.driver = <bean 名>`
   │     （留空 = 先回退家族级 `spring.<family>.default.driver`，再按类型注入唯一 Driver bean；指定的 bean 不存在则启动失败）
-  │     → d.CreateClient(ctx, c, params)：构造器把注入的 bean 收进
-  │       params = cloud.ClientParams{Resilience: mgr, Fault: inj}
-  │       （*resilience.Manager / *fault.Injector）并传入 →
+  │     → d.CreateClient(ctx, c, center)：构造器把注入的
+  │       *governance.Center（变量 center）交给 driver；它所需的
+  │       *resilience.Manager / *fault.Injector 从治理中心读取
+  │       （经 center.Resilience() / center.Fault()）→
   │       ParseDSN → taosws.NewConnector → NewClient
   │     → NewClient [client.go]：建 slot、包 guardedConnector、
   │       开 *sql.DB 池、应用连接池参数——身份 + 守卫一次装好，无 Init 钩子
   │     → NewClient 算出 serviceLabel（"tdengine:<dsn addr>"）与
-  │       exec = params.ExecutorFor("tdengine", serviceLabel)，并装到 slot 上——
-  │       client 返回时即已完整。零值包（无 *resilience.Manager）退化为
-  │       resilience.Unmanaged：仅观测，并一次性告警提示不受任何保护
+  │       exec = center.ExecutorFor("tdengine", serviceLabel)，并装到 slot 上——
+  │       client 返回时即已完整。resilience manager 必填——容器始终提供，
+  │       不存在 unmanaged/仅观测的兜底
   │     → 仅 ping=true：fail-fast 探测 HealthCheck(ctx, cl)——一次 PingContext，10s
   │       上限，在装配完成之后跑；失败则 Destroy 半成品 client，启动失败
   ├─ readiness：指示器对每实例跑 HealthCheck（即 db.PingContext）
@@ -193,14 +194,14 @@ taosWS connector 包进 `guardedConnector`，池内每条连接都是 `guardedCo
 ```
 *sql.DB 池
   └─ guardedConn.QueryContext [driver.go]
-        ├─ 声明：observability.WithOperation(ctx, operation("query", sql))——语句身份
+        ├─ 声明：chain.WithOperation(ctx, operation("query", sql))——语句身份
         │    在 executor 运行**之前**放到 ctx 上，因为 executor 在 Execute 入口读它：
         │    在它内部（每次尝试）声明则无人读取 [observe.go]。
-        ├─ run：resilience.Run(ctx, exec, call)
+        ├─ run：resilience.Run(ctx, exec, chain.Call{}, call)
         │    （外层：限流/熔断/故障注入在语句执行**之前**裁决；被拒绝的语句
         │     根本到不了连接——有单测 [tdengine_test.go:62-76]。
-        │     无容器时 executor 为 resilience.Unmanaged：调用被观测但不受保护，
-        │     声明仍能到达发射器。）
+        │     resilience manager 必填、容器始终提供，调用被观测且受治理，
+        │     声明总能到达发射器。）
         │    └─ resilience executor **发射**（starter 自身不发射任何东西）：一个 call
         │         span（"query"）、call 级 db.client.operation.duration、每次下游尝试一条
         │         db.client.attempt.duration、resilience.client.calls 计数，以及一条访问
@@ -223,7 +224,7 @@ executor 在最外层，因此发射器看得见整次调用。driver-go 自身�
 
 槽位执行器为 nil 时语句原样透传——零配置直通，在槽位层有单测覆盖
 [tdengine_test.go:51-58]。经构造器出来的槽位一定有执行器（由 [NewClient] 装入），
-所以实际中语句总被观测：有容器时受治理，无容器时走 `Unmanaged`（仅观测，一次性告警）。
+且 resilience manager 必填、容器始终提供，所以实际中语句总被观测并受治理。
 
 ### 2.3 service label
 

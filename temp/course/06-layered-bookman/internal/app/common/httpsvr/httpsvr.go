@@ -48,7 +48,7 @@ func NewServeMux(c *controller.Controller) *gs.HttpServeMux {
 func Access() func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			log.Infof(r.Context(), TagHttpAccess, "access %s %s", r.Method, r.URL.Path)
+			log.Info(r.Context(), TagHttpAccess, "access", log.String("method", r.Method), log.String("path", r.URL.Path))
 			next.ServeHTTP(w, r)
 		})
 	}

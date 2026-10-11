@@ -1,15 +1,15 @@
 # starter-ratelimit-redis
 
 Go-Spring 限流阶段的 Redis 计数器后端：贡献一份
-[`resilience.Counters`](../../../cloud/resilience/ratelimit.go) 计数器存储，
+[`resilience.ClusterLimiter`](../../../cloud/resilience/ratelimit.go) 计数器存储，
 其令牌桶状态放在 Redis 里，于是服务多副本（replica）共享每个 scope 的同一个预算，
 而不是每个副本各自计数。
 
 ## 功能
 
-- 只贡献一个 `resilience.Counters` 类型的 bean，建立在
+- 只贡献一个 `resilience.ClusterLimiter` 类型的 bean，建立在
   [`spring.ratelimit.redis.client`](#配置方式) 所指名的 `*goredis.Client` bean 之上。
-- 不需要让谁让位：容器里没有 `resilience.Counters` bean 时，每个 executor 用自己持有的一份
+- 不需要让谁让位：容器里没有 `resilience.ClusterLimiter` bean 时，每个 executor 用自己持有的一份
   预算计数（"一份预算覆盖该 label 的所有调用方"依然成立——manager 按 label 建一份 executor）。
   贡献本存储就是全部的开关：resilience driver 会注入它，它构建的每个 executor 从此花同一个
   共享预算——限流由计数器构成，而不由 executor 构成。改变的只是预算能扩多宽，覆盖范围不变。
@@ -31,7 +31,7 @@ spring.ratelimit.redis.client=cache
 
 配置块存在即打开本 starter；只 import 未配置则什么都不贡献，每个 executor 保持自己的私有预算。限流参数
 （`rate-limit`、`burst`、`algorithm`、`window`、`rate-limit-max-wait`）是治理规则文档上的
-[`resilience.ClientPolicy`](../../../cloud/resilience/policy.go) 字段，不是 starter 配置。
+[`resilience.ClientPolicy`](../../../cloud/resilience/client_policy.go) 字段，不是 starter 配置。
 
 ## 使用方式
 
@@ -48,7 +48,7 @@ spring.gateway.route.api.filters=rateLimit(rate=100)
 
 ```go
 exec := mgr.ClientExecutorFor("ratelimit-redis", "ratelimit-redis:api")
-err := exec.Execute(ctx, func(context.Context) error { return nil })
+err := exec.Execute(ctx, chain.Operation{}, func(context.Context) error { return nil })
 // errors.Is(err, resilience.ErrRateLimited) → 429
 ```
 
@@ -65,12 +65,12 @@ err := exec.Execute(ctx, func(context.Context) error { return nil })
 ## 测试
 
 `go test ./...` 用 miniredis 覆盖共享预算语义（两个存储对同一 Redis）、scope 隔离、批量
-全有或全无、零速率直通、并发放行数和 key TTL，以及装配契约：配置后贡献 `resilience.Counters`
+全有或全无、零速率直通、并发放行数和 key TTL，以及装配契约：配置后贡献 `resilience.ClusterLimiter`
 bean、未配置则不贡献，client 名为空时启动失败。[example](example) 提供 docker 冒烟脚本（`example/check.sh`），
 两个"副本"共享一个预算打真实 Redis。
 
 ## 设计说明
 
-* **它插的是计数器接缝，不是 driver 接缝。** `resilience` 有两条接缝：`Driver` 决定*用哪个引擎*执行 policy（一个把限流 + 熔断 + 重试 + 超时打包的 Executor），`Counters` 决定*计数器放在哪里*。从 `Driver` 去接 Redis 会把熔断与重试一并拖离 `default`/`sentinel`，因此分布式限流走 `Counters`，与进程内熔断保持正交。
+* **它插的是计数器接缝，不是 driver 接缝。** `resilience` 有两条接缝：`Driver` 决定*用哪个引擎*执行 policy（一个把限流 + 熔断 + 重试 + 超时打包的 Executor），`ClusterLimiter` 决定*计数器放在哪里*。从 `Driver` 去接 Redis 会把熔断与重试一并拖离 `default`/`sentinel`，因此分布式限流走 `ClusterLimiter`，与进程内熔断保持正交。
 * **计数逻辑不在这里实现。** 那条原子 Lua 令牌桶住在 `starter-go-redis` 的 experimental 子包里；本 starter 只决定计数器放在哪，因此依赖该子包——它若迁移，本 starter 跟着走。
 * **key 形如 `ratelimit:<scope>`，落在同一个 Redis 里。** 不同 scope 各自独立预算，因此 scope 名就是隔离机制；`n > 1` 的请求在单条脚本内全有或全无。

@@ -111,8 +111,8 @@ type Config struct {
 	Service string
 
 	// ResilienceDriver is the resilience backend to protect calls with. The
-	// caller resolves it by name from the container's driver directory (the
-	// starter's ${...driver} entry key) and passes the driver itself, since this
+	// caller resolves it from the container (the ${spring.resilience.driver} bean)
+	// and passes the driver itself, since this
 	// package is container-free. When neither chain.Executor nor ResilienceDriver is
 	// set, the executor is resolved from the injected [resilience.Manager] under
 	// Service; with governance off the armed policy is zero and the executor is
@@ -165,30 +165,12 @@ type Config struct {
 // rather than on the first request.
 //
 // center is the governance center bean the caller received from the container;
-// a standalone caller passes nil, which is normalized below to fresh unarmed
-// authorities.
-// prop is the application's load-test convention bean (nil means go-spring's
-// default), which stamps the marker onto every outbound request.
+// it must not be nil — the wiring fails fast when no center bean exists, and a
+// standalone caller assembles one with governance.NewCenter first.
+// prop is the load-test convention bean — the application's when it provides
+// one, go-spring's default otherwise — which stamps the marker onto every
+// outbound request.
 func NewTransport(cfg Config, center *governance.Center, prop traffic.Propagator) (rt http.RoundTripper, close func() error, err error) {
-	// A standalone caller that has no container passes a nil center; normalize it
-	// to fresh unarmed authorities so every later use is nil-free. A nil
-	// resilience manager would panic on its first method call, so normalizing at
-	// the assembly point keeps every other caller free of nil branches; a nil
-	// fault injector is nil-safe and simply leaves the fault layer transparent.
-	if center == nil {
-		lb, e := loadbalance.NewManager(nil) // no factory bean contributed
-		if e != nil {
-			return nil, nil, e
-		}
-		center = governance.NewCenter(governance.Config{},
-			resilience.NewManager(nil), lb,
-			fault.NewInjector(fault.Configs{}, nil), discovery.NewManager(nil), nil)
-	}
-	if prop == nil {
-		if prop, err = traffic.NewDefaultPropagator(traffic.DefaultBinding()); err != nil {
-			return nil, nil, err
-		}
-	}
 
 	// Base dialer: an explicit Base wins; otherwise DefaultTransport, cloned with
 	// the configured TLS surface when enabled (nil BuildClient keeps system
@@ -212,11 +194,6 @@ func NewTransport(cfg Config, center *governance.Center, prop traffic.Propagator
 	var resolver discovery.Resolver
 	closeFns := []func() error{}
 
-	// pool is the load-balancing pool when discovery is in effect, else nil. It
-	// is kept outside the branch below because the governance subscription
-	// further down drives it (balancer + outlier suspension).
-	var pool *loadbalance.Pool
-
 	// Discovery + load balancing. NewResolver returns (nil, nil) — "discovery
 	// not in effect" — when no service name is configured or mesh mode is on
 	// (a sidecar then owns discovery+LB); in that case requests flow to whatever
@@ -227,21 +204,24 @@ func NewTransport(cfg Config, center *governance.Center, prop traffic.Propagator
 		return nil, nil, err
 	}
 	if resolver != nil {
-		// Round-robin is only the starting strategy: the governance subscription
-		// below replaces it when a rule for this service names one.
-		bal := loadbalance.NewRoundRobin()
-
-		// The tracker is attached unconditionally and starts disabled
-		// (Threshold 0): outlier suspension is a governance decision now, so
-		// the policy resolved below turns it on — and can turn it off again —
-		// without rebuilding the transport. Attaching a disabled tracker has no
-		// effect on routing, so this costs nothing when governance is off.
+		// Endpoint selection is governed unconditionally: the chain is built
+		// through the center's manager and registers itself under the service's
+		// label as it is built. A caller-supplied Executor or ResilienceDriver
+		// replaces the PROTECTION executor below (see the switch), but it no
+		// longer opts the client out of selection governance.
+		//
+		// Building the chain IS the registration: the selection in force applies
+		// from the first request, and a rule that moves this service's selection
+		// REBUILDS the whole chain — balancer, tracker and pool — rather than
+		// retuning it. The chain owns a suspension tracker unconditionally
+		// (disabled until a rule sets thresholds), so outlier suspension is a
+		// governance decision with no wiring cost when governance is off.
 		//
 		// The resolver (bound by-name re-read of the backend snapshot) feeds the
-		// Pool as its endpoint source, so it follows the naming service in real
+		// chain as its endpoint source, so it follows the naming service in real
 		// time.
-		pool = loadbalance.NewPool(resolver, bal)
-		base = &balancedTransport{base: base, pool: pool}
+		chain := center.Loadbalance().Chain(context.Background(), resolver, cfg.service())
+		base = &balancedTransport{base: base, chain: chain}
 	} else if cfg.Addr != "" {
 		// Direct mode: pin every request to the configured address so callers
 		// need not set a Target on the generated client.
@@ -272,13 +252,10 @@ func NewTransport(cfg Config, center *governance.Center, prop traffic.Propagator
 	default:
 		exec = center.Resilience().ClientExecutorFor("http", cfg.service())
 		managerOwned = true
-		// The pool's endpoint-selection half follows the governance rule through
-		// its own subscription on the loadbalance manager — the protection policy
-		// reaches the executor, the selection reaches the pool, and neither change
-		// rebuilds anything. A nil pool (direct addressing) opts out.
-		if pool != nil {
-			center.Loadbalance().Bind(pool, cfg.service())
-		}
+		// The chain's endpoint-selection half follows the governance rule through
+		// the registration its construction performed — the protection policy
+		// reaches the executor, the selection reaches the chain, and each change
+		// takes effect on its own path. Direct addressing has no chain.
 	}
 
 	// Default wrap: fault( observe( rawExec ) ) — observe is applied first, on
@@ -305,7 +282,7 @@ func NewTransport(cfg Config, center *governance.Center, prop traffic.Propagator
 		}
 	}
 	exec = wrap(exec)
-	base = resilience.NewRoundTripper(base, exec)
+	base = resilience.NewRoundTripper(base, exec, nil)
 	// The manager owns its executor for the process lifetime, so closing it with
 	// one transport would be wrong; only an httpx-built one is released here.
 	if !managerOwned {
@@ -349,12 +326,12 @@ func (t *trafficTransport) RoundTrip(req *http.Request) (*http.Response, error) 
 // and reports the outcome back so least-conn accounting and outlier suspension see
 // every call. It sits below the resilience layer, so retries pick afresh.
 type balancedTransport struct {
-	base http.RoundTripper
-	pool *loadbalance.Pool
+	base  http.RoundTripper
+	chain *loadbalance.Chain
 }
 
 func (t *balancedTransport) RoundTrip(req *http.Request) (*http.Response, error) {
-	ep, err := t.pool.Pick(loadbalance.PickInfo{})
+	ep, err := t.chain.Pick(loadbalance.PickInfo{})
 	if err != nil {
 		return nil, err
 	}
@@ -366,7 +343,7 @@ func (t *balancedTransport) RoundTrip(req *http.Request) (*http.Response, error)
 	r.Host = ep.Addr
 
 	resp, err := t.base.RoundTrip(r)
-	t.pool.Complete(req.Context(), ep, err)
+	t.chain.Complete(req.Context(), ep, err)
 	return resp, err
 }
 

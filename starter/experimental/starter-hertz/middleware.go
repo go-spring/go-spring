@@ -164,14 +164,10 @@ func accessLogSkipSet(cfg Config) map[string]struct{} {
 // recognise synthetic load through the propagator's IsLoadTest. It is the
 // inbound companion to cloud/traffic's outbound injection: together
 // they let a load-test flag ride an HTTP hop end to end. An empty header falls
-// back to the propagator's own header name; prop nil means go-spring's default.
+// back to the propagator.s own header name.
 // Without the marker it is a no-op. Hertz stores headers as []byte; Peek returns
 // the raw value.
 func LoadTest(prop traffic.Propagator) app.HandlerFunc {
-	if prop == nil {
-		// DefaultBinding is complete, so this cannot fail.
-		prop, _ = traffic.NewDefaultPropagator(traffic.DefaultBinding())
-	}
 	return func(ctx context.Context, c *app.RequestContext) {
 		// Hertz stores header names and values as []byte; VisitAll walks them
 		// into the seam's string multi-map.
@@ -222,11 +218,11 @@ func accessLog(skip map[string]struct{}) app.HandlerFunc {
 		switch status := c.Response.StatusCode(); {
 		case status >= http.StatusInternalServerError:
 			err := errutil.Explain(nil, "upstream returned status %d", status)
-			log.Error(ctx, accessLogTag, err, fields...)
+			log.Error(ctx, accessLogTag, err, "access denied by upstream", fields...)
 		case status >= http.StatusBadRequest:
-			log.Warn(ctx, accessLogTag, fields...)
+			log.Warn(ctx, accessLogTag, "upstream returned client error status", fields...)
 		default:
-			log.Info(ctx, accessLogTag, fields...)
+			log.Info(ctx, accessLogTag, "access log", fields...)
 		}
 	}
 }

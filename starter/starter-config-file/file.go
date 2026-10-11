@@ -64,26 +64,23 @@ func (c *fileWatchCtrl) Load(ctx context.Context, optional bool, source string) 
 		log.String("dir", path),
 	)
 
-	log.Debug(ctx, starterTag, func() []log.Field {
-		return []log.Field{
-			log.Msg("loading file-watch config"),
-		}
+	log.Debug(ctx, starterTag, "loading file-watch config", func() []log.Field {
+		return []log.Field{}
 	})
 
 	info, err := os.Stat(path)
 	if err != nil {
 		if os.IsNotExist(err) && optional {
-			log.Warn(ctx, starterTag,
-				log.Msg("skip optional config path not found"))
+			log.Warn(ctx, starterTag, "skip optional config path not found")
 			return nil, nil
 		}
-		log.Error(ctx, starterTag, err, log.Msg("stat failed"))
+		log.Error(ctx, starterTag, err, "stat failed")
 		return nil, errutil.Explain(err, "file-watch: stat %s failed", path)
 	}
 
 	if info.IsDir() {
 		err := errutil.Explain(nil, "file-watch expects a single file, got directory %s (a directory of scalar key files belongs to the configtree provider)", path)
-		log.Error(ctx, starterTag, err, log.Msg("file-watch expects a single file, got a directory"))
+		log.Error(ctx, starterTag, err, "file-watch expects a single file, got a directory")
 		return nil, err
 	}
 
@@ -108,6 +105,6 @@ func loadFromFile(ctx context.Context, path string) (map[string]string, error) {
 		return nil, errutil.Explain(err, "file-watch: read %s failed", path)
 	}
 	m := flatten.Flatten(parsed)
-	log.Info(ctx, starterTag, log.Msg("load file-watch config success"))
+	log.Info(ctx, starterTag, "load file-watch config success")
 	return m, nil
 }

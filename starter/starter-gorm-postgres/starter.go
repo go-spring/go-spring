@@ -28,8 +28,8 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/stdlib"
-	"go-spring.org/cloud"
 	"go-spring.org/cloud/actuator/health"
+	"go-spring.org/cloud/discovery"
 	"go-spring.org/cloud/governance"
 	"go-spring.org/cloud/loadbalance"
 	"go-spring.org/cloud/resilience"
@@ -61,19 +61,19 @@ func init() {
 			// name.
 			beanName := "postgres." + name
 			r.Provide(func(ctx *gs.ContextProvider, discoveryLabel string, center *governance.Center) (*gormcore.DB, error) {
-				// The entry's ${discovery} label is resolved against the center's
-				// discovery directory here, and the label's "none" sentinel makes an
-				// unset key resolve to a nil backend (a static-address entry). The
-				// center is the family's sole injection point: it also hands out the
-				// resilience/fault/loadbalance authorities, bundled into the one
-				// ClientParams the dialect and NewDB both read.
-				disc, _ := center.Discovery().Get(discoveryLabel)
-				params := cloud.ClientParams{Resilience: center.Resilience(), Fault: center.Fault(), Loadbalance: center.Loadbalance(), Discovery: disc}
-				spec, err := build(ctx.Context, c, params)
+				// The wiring tag applies the family-default discovery fallback
+				// (discoveryLabel); fold it into the config so the dialect's build
+				// reads one label — c.Discovery — and resolves the backend itself,
+				// failing construction if it names no bean. "none" is the tag's
+				// sentinel for "no backend".
+				if discoveryLabel != "" && discoveryLabel != "none" {
+					c.Discovery = discoveryLabel
+				}
+				spec, err := build(ctx.Context, c, center)
 				if err != nil {
 					return nil, err
 				}
-				return gormcore.NewDB(ctx.Context, "postgresql", spec, params, c.Ping)
+				return gormcore.NewDB(ctx.Context, "postgresql", spec, center, c.Ping)
 			},
 				gs.IndexArg(1, gs.TagArg("${spring.gorm.postgres.instances."+name+".discovery:=${spring.gorm.postgres.default.discovery:=none}}")),
 			).Name(beanName).Destroy((*gormcore.DB).Destroy).Caller(1)
@@ -101,7 +101,7 @@ func init() {
 // changes take effect without rebuilding the client. In mesh mode a sidecar
 // owns discovery+LB, so the configured Host is used as-is. When c.ServiceName
 // is empty this is a plain DSN dial, unchanged from before.
-func build(ctx context.Context, c Config, params cloud.ClientParams) (gormcore.Spec, error) {
+func build(ctx context.Context, c Config, center *governance.Center) (gormcore.Spec, error) {
 	if c.Host == "" && c.ServiceName == "" {
 		return gormcore.Spec{}, errutil.Explain(nil, "gorm postgres: one of host or service-name must be set")
 	}
@@ -114,20 +114,28 @@ func build(ctx context.Context, c Config, params cloud.ClientParams) (gormcore.S
 			"gorm postgres: tls.enabled=true conflicts with sslmode=disable; set sslmode to require (or a verifying mode) or turn tls off")
 	}
 
-	log.Debug(ctx, log.TagAppDef, func() []log.Field {
-		return []log.Field{log.String("host", c.Host), log.String("service_name", c.ServiceName), log.String("db", c.DB), log.Msg("creating gorm postgres client")}
+	log.Debug(ctx, log.TagAppDef, "creating gorm postgres client", func() []log.Field {
+		return []log.Field{log.String("host", c.Host), log.String("service_name", c.ServiceName), log.String("db", c.DB)}
 	})
 
 	service := resilience.ServiceLabel("gorm:postgresql", c.ServiceName, c.Host)
 
-	var (
-		dialector gorm.Dialector
-		closer    func()
-	)
+	// Resolve the discovery backend the entry cites before building the dialer:
+	// the build reads one label (c.Discovery) and fails construction when it
+	// names no bean, rather than silently dialing the static host.
+	var backend discovery.Discovery
+	if c.ServiceName != "" {
+		backend, _ = center.Discovery().Get(c.Discovery)
+		if backend == nil {
+			return gormcore.Spec{}, errutil.Explain(nil, "gorm postgres: instance routes by service-name but cites discovery backend %q, which names no bean", c.Discovery)
+		}
+	}
 
-	lb, ld, stopSelection, err := c.NewPickPool(ctx, params.Discovery, service, params.Loadbalance)
+	var dialector gorm.Dialector
+
+	lb, ld, err := c.NewPickPool(ctx, backend, service, center.Loadbalance())
 	if err != nil {
-		log.Errorf(ctx, log.TagAppDef, err, "gorm postgres build discovery resolver failed")
+		log.Error(ctx, log.TagAppDef, err, "gorm postgres build discovery resolver failed")
 		return gormcore.Spec{}, err
 	}
 
@@ -135,13 +143,13 @@ func build(ctx context.Context, c Config, params cloud.ClientParams) (gormcore.S
 	// startup and gives one injection point for TLS and the discovery dialer.
 	pgxCfg, err := pgx.ParseConfig(c.DSN())
 	if err != nil {
-		log.Errorf(ctx, log.TagAppDef, err, "gorm postgres parse pgx config failed")
+		log.Error(ctx, log.TagAppDef, err, "gorm postgres parse pgx config failed")
 		return gormcore.Spec{}, err
 	}
 	if c.TLS.Enabled {
 		tlsCfg, terr := c.TLS.BuildClient()
 		if terr != nil {
-			log.Errorf(ctx, log.TagAppDef, terr, "gorm postgres build TLS failed")
+			log.Error(ctx, log.TagAppDef, terr, "gorm postgres build TLS failed")
 			return gormcore.Spec{}, errutil.Explain(terr, "gorm postgres: build TLS")
 		}
 		pgxCfg.TLSConfig = tlsCfg
@@ -163,21 +171,14 @@ func build(ctx context.Context, c Config, params cloud.ClientParams) (gormcore.S
 			lb.Complete(ctx, ep, derr)
 			return conn, derr
 		}
-		closer = stopSelection
 	}
 	dialector = postgres.New(postgres.Config{Conn: stdlib.OpenDB(*pgxCfg)})
-
-	closers := []func(){}
-	if closer != nil {
-		closers = append(closers, closer)
-	}
 
 	return gormcore.Spec{
 		Dialector:      dialector,
 		Pool:           c.Pool(),
 		Service:        service,
 		ObserveEnabled: c.ObserveEnabled,
-		Closers:        closers,
 	}, nil
 }
 

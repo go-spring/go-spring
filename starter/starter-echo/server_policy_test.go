@@ -17,54 +17,24 @@
 package StarterEcho
 
 import (
-	"context"
-	"go-spring.org/cloud/chain"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
 	"github.com/labstack/echo/v4"
+	"go-spring.org/cloud/observability"
 )
-
-// stubExecutor is an chain.Executor whose behavior the test dictates, so the
-// inbound middleware's HTTP mapping can be exercised without a governance
-// center. reject simulates a pre-fn rejection; attempts > 1 simulates a policy
-// with retries (fn invoked repeatedly until it succeeds); fnErr records what
-// the middleware fed back as the call's outcome.
-type stubExecutor struct {
-	reject   error
-	attempts int
-	runs     int
-	fnErr    error
-}
-
-func (s *stubExecutor) Execute(ctx context.Context, fn func(context.Context) error) error {
-	if s.reject != nil {
-		return s.reject
-	}
-	n := max(s.attempts, 1)
-	var err error
-	for range n {
-		s.runs++
-		err = fn(ctx)
-		s.fnErr = err
-		if err == nil {
-			return nil
-		}
-	}
-	return err
-}
-
-func (s *stubExecutor) Close() error { return nil }
 
 // serveServerPolicy drives one GET through an echo engine carrying only the
 // inbound middleware, and reports the response plus how often the handler
-// itself ran.
-func serveServerPolicy(t *testing.T, exec chain.Executor, handler echo.HandlerFunc) (*httptest.ResponseRecorder, int) {
+// itself ran. The middleware runs with observation on, over a real server
+// observer (the process-wide providers are no-ops here).
+func serveServerPolicy(t *testing.T, handler echo.HandlerFunc) (*httptest.ResponseRecorder, int) {
 	t.Helper()
 	e := echo.New()
 	handlerRuns := 0
-	e.Use(resilienceServerPolicy(exec, "echo:test", false))
+	obs := observability.NewServerObserver("echo", "echo:test")
+	e.Use(resilienceServerPolicy(obs, "echo:test", true))
 	e.GET("/x", func(c echo.Context) error {
 		handlerRuns++
 		return handler(c)
@@ -75,49 +45,21 @@ func serveServerPolicy(t *testing.T, exec chain.Executor, handler echo.HandlerFu
 }
 
 func TestServerPolicy_PassThroughRunsHandlerOnce(t *testing.T) {
-	exec := &stubExecutor{}
-	rec, handlerRuns := serveServerPolicy(t, exec, func(c echo.Context) error {
+	rec, handlerRuns := serveServerPolicy(t, func(c echo.Context) error {
 		return c.String(http.StatusOK, "ok")
 	})
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status: got %d, want 200", rec.Code)
 	}
-	if handlerRuns != 1 || exec.runs != 1 {
-		t.Fatalf("handler/executor runs: got %d/%d, want 1/1", handlerRuns, exec.runs)
-	}
-}
-
-func TestServerPolicy_RejectsMapToStatus(t *testing.T) {
-	cases := []struct {
-		name string
-		exec error
-		want int
-	}{
-		{"rate limited", chain.ErrRateLimited, http.StatusTooManyRequests},
-		{"bulkhead full", chain.ErrBulkheadFull, http.StatusTooManyRequests},
-		{"circuit open", chain.ErrCircuitOpen, http.StatusServiceUnavailable},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			exec := &stubExecutor{reject: tc.exec}
-			rec, handlerRuns := serveServerPolicy(t, exec, func(c echo.Context) error {
-				return c.String(http.StatusOK, "ok")
-			})
-			if rec.Code != tc.want {
-				t.Fatalf("status: got %d, want %d", rec.Code, tc.want)
-			}
-			if handlerRuns != 0 {
-				t.Fatalf("a rejected request must not reach the handler, ran %d times", handlerRuns)
-			}
-		})
+	if handlerRuns != 1 {
+		t.Fatalf("handler runs: got %d, want 1", handlerRuns)
 	}
 }
 
 // A handler's own error belongs to the caller: it must reach echo's
-// HTTPErrorHandler untouched, so the inbound layer only owns its rejections.
+// HTTPErrorHandler untouched.
 func TestServerPolicy_HandlerErrorPassesThrough(t *testing.T) {
-	exec := &stubExecutor{}
-	rec, _ := serveServerPolicy(t, exec, func(c echo.Context) error {
+	rec, _ := serveServerPolicy(t, func(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusTeapot, "handler said so")
 	})
 	if rec.Code != http.StatusTeapot {
@@ -125,37 +67,12 @@ func TestServerPolicy_HandlerErrorPassesThrough(t *testing.T) {
 	}
 }
 
-// A handler-emitted 5xx must be reported to the executor as a failure, or the
-// breaker would never see server-side errors.
-func TestServerPolicy_Handler5xxFeedsBreaker(t *testing.T) {
-	exec := &stubExecutor{}
-	rec, _ := serveServerPolicy(t, exec, func(c echo.Context) error {
+// A handler-emitted 5xx must survive the middleware untouched.
+func TestServerPolicy_Handler5xxSurvives(t *testing.T) {
+	rec, _ := serveServerPolicy(t, func(c echo.Context) error {
 		return c.String(http.StatusInternalServerError, "boom")
 	})
 	if rec.Code != http.StatusInternalServerError {
 		t.Fatalf("the handler's own response must survive: got %d, want 500", rec.Code)
-	}
-	if exec.fnErr == nil {
-		t.Fatal("a 5xx must be fed back to the executor as a failure")
-	}
-}
-
-// Inbound serving is not idempotent, so the reentry guard must stop a retrying
-// policy from replaying the handler: the executor may call fn again, but the
-// handler runs exactly once. The retry therefore sees no error and the loop
-// stops — a second fn invocation, not a third.
-func TestServerPolicy_DoesNotReplayHandler(t *testing.T) {
-	exec := &stubExecutor{attempts: 3}
-	rec, handlerRuns := serveServerPolicy(t, exec, func(c echo.Context) error {
-		return c.String(http.StatusInternalServerError, "boom")
-	})
-	if handlerRuns != 1 {
-		t.Fatalf("handler must run exactly once despite retries, ran %d times", handlerRuns)
-	}
-	if exec.runs != 2 {
-		t.Fatalf("guard should stop the retry loop at the second fn call: got %d runs, want 2", exec.runs)
-	}
-	if rec.Code != http.StatusInternalServerError {
-		t.Fatalf("status: got %d, want 500", rec.Code)
 	}
 }

@@ -81,17 +81,19 @@ see [README 配置指南 §6](../governance/README.md)):
 
 ```properties
 # outbound: WrapExecutor's per-attempt gate (mgr.ClientExecutorFor → fault.WrapClientExecutor)
-spring.governance.client.fault.enabled=true
-spring.governance.client.fault.rate=0.5
+spring.governance.client.fault.rate=0.5             # set a rate (or a latency) to arm a fire
 spring.governance.client.fault.error=generic        # "" | "generic" | "timeout" | "reset" | "refused"
 spring.governance.client.fault.latency=50ms         # optional, applied to every call
 spring.governance.client.fault.latency-jitter=20ms   # optional, sleep latency ± U[0,20ms]
 
 # inbound: ApplyServer's inbound-handler gate (gin / echo / grpc / hertz / trpc / dubbo)
-spring.governance.server.fault.enabled=true
 spring.governance.server.fault.rate=0.2
 spring.governance.server.fault.error=timeout
 ```
+
+A side is armed by the presence of a `rate` or a `latency` (global or per-rule);
+clear both to disarm it. There is no separate `enabled` key — a block that
+configures neither injects nothing.
 
 Read the live values with `Injector.ClientConfig()` / `Injector.ServerConfig()`.
 
@@ -135,8 +137,8 @@ calls, `ApplyServer` for inbound requests — plus the load-test binary
 *inside* its `Execute`, then delegates to the inner executor:
 
 ```
-faultExecutor.Execute(ctx, fn) =>
-    inner.Execute(ctx, func(attempt) {
+faultExecutor.Execute(ctx, call, fn) =>
+    inner.Execute(ctx, call, func(attempt) {
         sleep? -> cancel? return ctx.Err()
         inject? -> return InjectedError
         return fn(attempt)
@@ -174,10 +176,10 @@ service label for a flag to hang on.
 
 **Hot-reload.** Each side holds its `Config` behind `atomic.Pointer`; the
 governance center calls `SetConfig` on every source push, so faults toggle at
-runtime without a restart. There is no "must be enabled at boot" caveat: the
-wrap and the middleware are structural and always installed (`nil` injector ⇒
-transparent pass-through), so a `enabled=false → true` push takes effect on the
-next call.
+runtime without a restart. There is no "must be armed at boot" caveat: the wrap
+and the middleware are structural and always installed (`nil` injector ⇒
+transparent pass-through), so an inert → armed push takes effect on the next
+call.
 
 ## 3. Constraints
 
@@ -186,8 +188,7 @@ next call.
   authorities); importing fault pulls in nothing new.
 - **nil transparency.** `WrapClientExecutor(nil, service, nil)` returns nil, and a nil *injector*
   is transparent: `WrapClientExecutor(exec, service, nil)` runs `fn` untouched while no fault is configured
-  — the same zero-config invariant resilience's `NewDialer`/`NewRoundTripper`
-  uphold.
+  — the same zero-config invariant resilience's `NewRoundTripper` upholds.
 - **Forwarded lifecycle.** `faultExecutor.Close` delegates to the inner
   executor; fault has no resources or policy of its own to manage.
 

@@ -122,7 +122,7 @@ func resetOperationInstruments() {
 // say) declares nothing precisely to keep the noise down — so it stays quiet.
 // A declared call is levelled by its detail: one carrying a key or a subject is
 // frequent and uninteresting until it fails, one carrying none is worth a line.
-func successQuiet(hasOp bool, op Operation) bool {
+func successQuiet(hasOp bool, op chain.Operation) bool {
 	if !hasOp {
 		return true
 	}
@@ -133,7 +133,7 @@ func successQuiet(hasOp bool, op Operation) bool {
 // publish and a consume keep the producer/consumer edge they add to the trace,
 // and Internal — the kind an in-process client call has always had — when the
 // client declared none or left the kind unspecified.
-func spanKind(op Operation, hasOp bool) trace.SpanKind {
+func spanKind(op chain.Operation, hasOp bool) trace.SpanKind {
 	if hasOp && op.SpanKind != trace.SpanKindUnspecified {
 		return op.SpanKind
 	}
@@ -164,25 +164,9 @@ func attrsToLogFields(attrs []attribute.KeyValue) []log.Field {
 // field name promises.
 func durMs(d time.Duration) float64 { return float64(d.Nanoseconds()) / 1e6 }
 
-// classifyStatus maps a chain.Executor's return error onto the status axis
-// go-spring uses everywhere else — `ok` / `error`, the two words a cross-family
-// query joins on. A protected call is not a special case: it reports the same
-// two values as an inbound request or a discovery lookup.
-//
-// What protection decided is a different question, and it has its own key (see
-// [classifyOutcome]). Keeping them apart is the same split as `status` beside
-// `rpc.grpc.status_code`: the shared axis carries the outcome, the
-// family-specific key carries the detail.
-// ClassifyStatus maps an error onto the status axis go-spring uses everywhere
-// else — `ok` / `error`, the two words a cross-family query joins on. Engines and
-// emitters alike use it, so it is exported from the emission package rather
-// than duplicated per engine.
-func ClassifyStatus(err error) string {
-	if err == nil {
-		return "ok"
-	}
-	return "error"
-}
+// ClassifyStatus lives in the resilience package, beside the sentinels whose
+// errors it classifies; this emitter reads it from there (resilience.ClassifyStatus)
+// rather than owning a word that is really the governance layer's.
 
 // classifyOutcome names what the resilience stages did to a call, when they did
 // anything: they rejected it (rate limit, open circuit, bulkhead) or it ran out

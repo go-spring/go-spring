@@ -21,7 +21,9 @@ import (
 	"testing"
 
 	"github.com/hibiken/asynq"
+	"go-spring.org/cloud/fault"
 	"go-spring.org/cloud/governance"
+	"go-spring.org/cloud/loadbalance"
 	"go-spring.org/cloud/resilience"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/testing/assert"
@@ -33,7 +35,12 @@ import (
 // testCenter bundles unarmed authorities into the governance center the client
 // takes, so a container-less test still exercises the real injection path.
 func testCenter() *governance.Center {
-	return governance.NewCenter(governance.Config{}, resilience.NewManager(nil), nil, nil, nil, nil)
+	ctr, err := governance.NewCenter(resilience.NewManager(nil),
+		loadbalance.NewManager(), fault.NewInjector(fault.Configs{}, nil), nil, governance.NewPushSource(governance.Config{}))
+	if err != nil {
+		panic(err)
+	}
+	return ctr
 }
 
 func TestDefaultDriverPlain(t *testing.T) {

@@ -174,7 +174,7 @@ gs.Run()
   │       connect/lost/reconnecting 事件桥接进 go-spring 日志    [driver.go:64-72]，
   │       构建 TLS（security BuildClient）并注册 will                  [driver.go:74-85]
   │    3. CreateClient 在构建 client 的同时装上治理 executor ——
-  │       params.ExecutorFor("mqtt", "mqtt:<broker>")，按 client 索引
+  │       center.ExecutorFor("mqtt", "mqtt:<broker>")，按 client 索引
   │       [driver.go:115-123] —— 因此 client 返回时即已完整
   │    4. 再探测：client.Connect() + token.Wait() —— broker 挂了、
   │       凭证错误或 TLS 不匹配都会中止启动；探测失败释放刚装配的内容 [starter.go:99-110]
@@ -196,14 +196,14 @@ paho.mqtt.golang 没有 reject-capable 中间件，所以不存在透明 client 
 
 ```
 CreateClient [driver.go:115-123]（装配 seam）：
-  exec = params.ExecutorFor("mqtt", "mqtt:<broker>")   // 注入的 cloud.ClientParams{Resilience: mgr, Fault: inj}
+  exec = center.ExecutorFor("mqtt", "mqtt:<broker>")   // 注入的 *governance.Center
   attachGuard(cl, exec, label) —— 以 mqtt.Client 值为键存入 sync.Map  [command.go:98-100]
-  （mgr 存在时 params.ExecutorFor = fault.WrapClientExecutor(mgr.ClientExecutorFor("mqtt", label), label, inj)，
-   否则为仅观测的 resilience.Unmanaged）
+  （center.ExecutorFor = fault.WrapClientExecutor(mgr.ClientExecutorFor("mqtt", label), label, inj)；
+   resilience manager 必填——容器始终提供）
 
 GuardedPublish [command.go:134-141]：
-  ctx = observability.WithOperation(ctx, operation(opPublish, topic))  // 声明
-  guard() → executor.Execute(ctx, call)                               [command.go:114-121]
+  ctx = chain.WithOperation(ctx, operation(opPublish, topic))  // 声明
+  guard() → executor.Execute(ctx, chain.Call{}, call)                 [command.go:114-121]
   call = cl.Publish(...) + token.Wait() + token.Error()
 ```
 
@@ -224,16 +224,16 @@ GuardedPublish [command.go:134-141]：
   [client.go:98]；该 error 之后仅记日志 [client.go:107-111]。除 panic 外，每次投递都经
   `GuardedConsume` 声明并受保护 [client.go:107-109]。
 
-manager 是必需的 —— 这个 starter 传递链接 cloud/governance，"关治理"是
-`spring.governance.enabled=false`，而不是 bean 缺失；独立（非 gs）调用者传 nil，
-client 的 executor 退化为仅观测的 `resilience.Unmanaged`（并打一次告警），而不是静默的
-no-op [starter.go:87-88, driver.go:115-123]。
+manager 是必需的 —— 这个 starter 传递链接 cloud/governance，"关治理"是发布一份什么都不配、
+但仍带一个 `spring.governance.*` 键的文档，而不是 bean 缺失；独立（非 gs）调用者也必须提供一个
+——`center.ExecutorFor` 对 nil `center.Resilience()` 直接 panic，所以不带 manager 组装的 client 是装配
+错误，而不是静默 no-op [starter.go:87-88, driver.go:115-123]。
 
 ### 2.3 一次发布与一次消费的逐层走读
 
 **受保护发布** `GuardedPublish(ctx, cl, "sensors/temp", 1, false, payload)`：
 
-1. `observability.WithOperation(ctx, operation(opPublish, topic))` 声明 publish 身份
+1. `chain.WithOperation(ctx, operation(opPublish, topic))` 声明 publish 身份
    （`messaging.system`、`messaging.operation`，topic 走 Detail）[command.go:135,
    observe.go:78-99]。
 2. `guard` 从 sync.Map 解析该 client 的 executor [command.go:114-121]。
@@ -317,7 +317,7 @@ docker start <mosquitto> && go run .   # 正常启动，日志 "mqtt client init
 ```yaml
 spring:
   governance:
-    enabled: true
+    driver: default
     resilience:
       mqtt:tcp://127.0.0.1:1883:
         rateLimiter: { limit: 1, period: 1s }

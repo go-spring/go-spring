@@ -22,7 +22,6 @@ import (
 	"testing"
 	"time"
 
-	"go-spring.org/cloud"
 	"go-spring.org/stdlib/testing/assert"
 	"gorm.io/gorm"
 )
@@ -47,7 +46,7 @@ func specFor(closers ...func()) Spec {
 // is assembled complete — observe plugin and resilience callbacks installed — and
 // no startup probe runs, so the wiring can skip a backend that is not up yet.
 func TestNewDBAssemblesWithoutProbe(t *testing.T) {
-	db, err := NewDB(context.Background(), "fake", specFor(), cloud.ClientParams{}, false)
+	db, err := NewDB(context.Background(), "fake", specFor(), testCenter(t), false)
 	assert.Error(t, err).Nil("new db")
 	defer func() { _ = db.Destroy() }()
 
@@ -59,7 +58,7 @@ func TestNewDBAssemblesWithoutProbe(t *testing.T) {
 // TestNewDBProbePasses proves the opt-in startup probe runs against a reachable
 // backend without rejecting it.
 func TestNewDBProbePasses(t *testing.T) {
-	db, err := NewDB(context.Background(), "fake", specFor(), cloud.ClientParams{}, true)
+	db, err := NewDB(context.Background(), "fake", specFor(), testCenter(t), true)
 	assert.Error(t, err).Nil("new db with ping")
 	defer func() { _ = db.Destroy() }()
 
@@ -75,7 +74,7 @@ func TestNewDBReleasesClosersOnOpenFailure(t *testing.T) {
 	closerRan := false
 	spec := Spec{Dialector: fakeDialector{failInit: true}, Closers: []func(){func() { closerRan = true }}}
 
-	db, err := NewDB(context.Background(), "fake", spec, cloud.ClientParams{}, false)
+	db, err := NewDB(context.Background(), "fake", spec, testCenter(t), false)
 	if err == nil {
 		_ = db.Destroy()
 		t.Fatal("an initialize failure must fail the assembly")
@@ -102,7 +101,7 @@ func TestNewDBProbeFailureAbandonsClient(t *testing.T) {
 	})
 
 	closerRan := false
-	db, err := NewDB(context.Background(), "fake", specFor(func() { closerRan = true }), cloud.ClientParams{}, true)
+	db, err := NewDB(context.Background(), "fake", specFor(func() { closerRan = true }), testCenter(t), true)
 	if err == nil {
 		_ = db.Destroy()
 		t.Fatal("a failed startup probe must fail the assembly")

@@ -55,7 +55,7 @@ func (r *Runner) Run(ctx context.Context) error {
 	for _, name := range names {
 		cfg := r.Entries[name]
 		if !cfg.Enabled {
-			log.Info(ctx, log.TagAppDef, log.String("name", name), log.Msg("skip disabled migration"))
+			log.Info(ctx, log.TagAppDef, "skip disabled migration", log.String("name", name))
 			continue
 		}
 		db, err := r.resolveDB(name, cfg)
@@ -128,11 +128,11 @@ func migrateOne(ctx context.Context, db *gorm.DB, cfg Config) error {
 		return err
 	}
 	if len(res) == 0 {
-		log.Infof(ctx, log.TagAppDef, "goose: no pending migrations")
+		log.Info(ctx, log.TagAppDef, "goose: no pending migrations")
 		return nil
 	}
 	for _, m := range res {
-		log.Info(ctx, log.TagAppDef, log.String("path", m.Source.Path), log.Msg("goose: applied migration"))
+		log.Info(ctx, log.TagAppDef, "goose: applied migration", log.String("path", m.Source.Path))
 	}
 	return nil
 }

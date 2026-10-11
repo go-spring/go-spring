@@ -55,9 +55,9 @@ func init() {
 // *gorm.DB, creating the tcc_snapshots table if absent (fail-fast on error).
 func newGormStore(_ gormConfig, db *gorm.DB) (tcc.Store, error) {
 	if err := db.AutoMigrate(&tccSnapshot{}); err != nil {
-		log.Errorf(context.Background(), log.TagAppDef, err, "auto-migrate tcc_snapshots failed")
+		log.Error(context.Background(), log.TagAppDef, err, "auto-migrate tcc_snapshots failed")
 		return nil, err
 	}
-	log.Infof(context.Background(), log.TagAppDef, "create gorm tcc store success")
+	log.Info(context.Background(), log.TagAppDef, "create gorm tcc store success")
 	return &gormStore{db: db}, nil
 }

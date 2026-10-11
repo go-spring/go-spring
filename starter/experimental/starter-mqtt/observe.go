@@ -31,9 +31,9 @@ package StarterMQTT
 import (
 	"context"
 
-	"go-spring.org/cloud/observability"
 	"go-spring.org/stdlib/strutil"
 
+	"go-spring.org/cloud/chain"
 	"go-spring.org/log"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -89,8 +89,8 @@ func spanKind(direction string) trace.SpanKind {
 	return trace.SpanKindProducer
 }
 
-func operation(direction, topic string) observability.Operation {
-	op := observability.Operation{
+func operation(direction, topic string) chain.Operation {
+	op := chain.Operation{
 		Name:   direction,
 		Metric: "messaging.client",
 		Attrs: []attribute.KeyValue{
@@ -104,7 +104,6 @@ func operation(direction, topic string) observability.Operation {
 		// Publishing and handling both repeat a side effect when retried — a second
 		// message delivered, or a second run of the handler — so the executor chain must
 		// not retry this operation whatever retry a governance rule asks for.
-		NonIdempotent: true,
 	}
 	if topic != "" {
 		op.Detail = []attribute.KeyValue{

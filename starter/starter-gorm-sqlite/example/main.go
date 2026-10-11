@@ -83,34 +83,34 @@ func runTest(s *Service) {
 
 	var version string
 	if err := s.DB.WithContext(ctx).Raw("SELECT sqlite_version()").Scan(&version).Error; err != nil {
-		log.Errorf(ctx, log.TagAppDef, err, "VERSION failed")
+		log.Error(ctx, log.TagAppDef, err, "VERSION failed")
 		os.Exit(1)
 	}
 
 	if err := s.DB.WithContext(ctx).AutoMigrate(&greeting{}); err != nil {
-		log.Errorf(ctx, log.TagAppDef, err, "MIGRATE failed")
+		log.Error(ctx, log.TagAppDef, err, "MIGRATE failed")
 		os.Exit(1)
 	}
 	g := greeting{Message: "hello"}
 	if err := s.DB.WithContext(ctx).Create(&g).Error; err != nil {
-		log.Errorf(ctx, log.TagAppDef, err, "CREATE failed")
+		log.Error(ctx, log.TagAppDef, err, "CREATE failed")
 		os.Exit(1)
 	}
 
 	// Transaction update: read then update inside a real gorm transaction.
 	var loaded greeting
 	if err := s.DB.WithContext(ctx).First(&loaded, 1).Error; err != nil || loaded.Message != "hello" {
-		log.Errorf(ctx, log.TagAppDef, err, "READ failed: msg=%q err", loaded.Message)
+		log.Error(ctx, log.TagAppDef, err, "READ failed: msg", log.Any("message", loaded.Message))
 		os.Exit(1)
 	}
 	if err := s.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		return tx.Model(&greeting{}).Where("id = 1").Update("message", "world").Error
 	}); err != nil {
-		log.Errorf(ctx, log.TagAppDef, err, "TX failed")
+		log.Error(ctx, log.TagAppDef, err, "TX failed")
 		os.Exit(1)
 	}
 	if err := s.DB.WithContext(ctx).First(&loaded, 1).Error; err != nil || loaded.Message != "world" {
-		log.Errorf(ctx, log.TagAppDef, err, "TX-READ failed: msg=%q err", loaded.Message)
+		log.Error(ctx, log.TagAppDef, err, "TX-READ failed: msg", log.Any("message", loaded.Message))
 		os.Exit(1)
 	}
 

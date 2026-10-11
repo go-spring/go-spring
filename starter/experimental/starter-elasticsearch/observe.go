@@ -24,9 +24,9 @@
 package StarterElasticsearch
 
 import (
-	"go-spring.org/cloud/observability"
 	"go-spring.org/stdlib/strutil"
 
+	"go-spring.org/cloud/chain"
 	"go-spring.org/log"
 	"go.opentelemetry.io/otel/attribute"
 )
@@ -53,8 +53,8 @@ var accessTag = log.RegisterAppTag("elasticsearch", "access")
 // makes a line worth reading — and never a label. What is bounded is the HTTP
 // method, which rides in db.operation as the classifiable part; the full
 // "METHOD /path" names the span, which is not a label either.
-func operation(method, path string) observability.Operation {
-	op := observability.Operation{
+func operation(method, path string) chain.Operation {
+	op := chain.Operation{
 		Name:   method + " " + path,
 		Metric: "db.client",
 		Attrs: []attribute.KeyValue{

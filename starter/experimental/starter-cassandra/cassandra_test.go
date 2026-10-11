@@ -23,11 +23,24 @@ import (
 	"testing"
 
 	"github.com/gocql/gocql"
-	"go-spring.org/cloud"
+	"go-spring.org/cloud/fault"
+	"go-spring.org/cloud/governance"
 	"go-spring.org/cloud/observability"
 	"go-spring.org/cloud/resilience"
 	"go-spring.org/stdlib/testing/assert"
 )
+
+// newTestCenter builds a governance center over an unarmed resilience manager
+// and an empty fault injector — the container-supplied facilities a Client is
+// assembled with.
+func newTestCenter(t *testing.T) *governance.Center {
+	t.Helper()
+	ctr, err := governance.NewProcessCenter(resilience.NewManager(nil), fault.NewInjector(fault.Configs{}, nil))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return ctr
+}
 
 // TestParseConsistency covers the config-string mapping, including the
 // default and the rejection of unknown values.
@@ -55,16 +68,16 @@ func TestParseConsistency(t *testing.T) {
 
 // --- chain (transparent per-statement resilience via the per-query chain) ---
 
-// fakeTail is a scripted InnerQuery tail: it records the context's declared
-// operation and answers from a settable error. It stands in for the raw adapter
-// so chain tests need no live Cassandra cluster.
+// fakeTail is a scripted InnerQuery tail: it counts executions and answers from
+// a settable error. It stands in for the raw adapter so chain tests need no
+// live Cassandra cluster.
 type fakeTail struct {
-	ops []string
-	err error
+	execs int
+	err   error
 }
 
-func (f *fakeTail) Exec(ctx context.Context) error {
-	f.ops = append(f.ops, opOf(ctx))
+func (f *fakeTail) Exec(context.Context) error {
+	f.execs++
 	return f.err
 }
 
@@ -77,13 +90,9 @@ func (f *fakeTail) MapScanCAS(context.Context, map[string]any) (bool, error) {
 }
 func (f *fakeTail) Release(bool) error { return nil }
 
-// opOf reads the operation the identity layer declared onto the context: the
-// db.operation attribute from the declared Attrs.
-func opOf(ctx context.Context) string {
-	op, ok := observability.OperationFrom(ctx)
-	if !ok {
-		return ""
-	}
+// opName reads the db.operation attribute of an operation the guarded layer
+// passed explicitly to the executor.
+func opName(op chain.Operation) string {
 	for _, kv := range op.Attrs {
 		if string(kv.Key) == "db.operation" {
 			return kv.Value.AsString()
@@ -91,6 +100,20 @@ func opOf(ctx context.Context) string {
 	}
 	return ""
 }
+
+// captureExec records the operation each call carries and delegates to the
+// wrapped executor, so the chain tests can assert the identity reaches the
+// executor explicitly rather than through the context.
+type captureExec struct {
+	next chain.Executor
+	ops  []string
+}
+
+func (c *captureExec) Execute(ctx context.Context, op chain.Operation, fn func(context.Context) error) error {
+	c.ops = append(c.ops, opName(op))
+	return c.next.Execute(ctx, op, fn)
+}
+func (c *captureExec) Close() error { return c.next.Close() }
 
 // newGuardedExec builds an executor from the default resilience driver, wrapped
 // by the resilience observe layer exactly as the container wiring does.
@@ -101,19 +124,20 @@ func newGuardedExec(t *testing.T, p resilience.ClientPolicy) chain.Executor {
 	return observability.WrapClientExecutor(inner, "cassandra", "cassandra:test")
 }
 
-// TestGuardPassThrough proves the degraded stance: a chain assembled without a
-// container (the zero governance bundle) still runs the call — its executor is
-// the observed-only resilience.Unmanaged, which applies no rate limit, breaker
-// or retry — so the call runs inline and returns its result unchanged, with the
-// identity layer's declaration visible to the tail.
+// TestGuardPassThrough proves the pass-through stance: a chain over an unarmed
+// manager still runs the call — its executor applies no rate limit, breaker or
+// retry — so the call runs inline and returns its result unchanged, with the
+// guarded layer's identity passed explicitly to the executor.
 func TestGuardPassThrough(t *testing.T) {
-	c := NewClient(nil, Config{Hosts: []string{"127.0.0.1"}}, cloud.ClientParams{})
+	c := NewClient(nil, Config{Hosts: []string{"127.0.0.1"}}, newTestCenter(t))
 	tail := &fakeTail{}
-	head := NewObsQuery(NewGuardQuery(tail, c.exec), "SELECT 1")
+	cap := &captureExec{next: c.exec}
+	head := NewGuardQuery(tail, cap, "SELECT 1")
 
 	boom := errors.New("boom")
 	assert.Error(t, head.Exec(context.Background())).Nil()
-	assert.That(t, tail.ops).Equal([]string{"exec"})
+	assert.That(t, cap.ops).Equal([]string{"exec"})
+	assert.That(t, tail.execs).Equal(1)
 	tail.err = boom
 	assert.Error(t, head.Exec(context.Background())).Is(boom)
 }
@@ -121,35 +145,36 @@ func TestGuardPassThrough(t *testing.T) {
 // TestGuardRateLimit confirms the flow-control path: once the burst is spent,
 // the statement is rejected without reaching the tail.
 func TestGuardRateLimit(t *testing.T) {
-	c := &Client{exec: newGuardedExec(t, resilience.ClientPolicy{RateLimit: 1, Burst: 1})}
+	cap := &captureExec{next: newGuardedExec(t, resilience.ClientPolicy{RateLimit: 1, Burst: 1})}
 	tail := &fakeTail{}
-	head := NewObsQuery(NewGuardQuery(tail, c.exec), "INSERT INTO t VALUES(?)")
+	head := NewGuardQuery(tail, cap, "INSERT INTO t VALUES(?)")
 
 	assert.Error(t, head.Exec(context.Background())).Nil()
 	assert.Error(t, head.Exec(context.Background())).Is(chain.ErrRateLimited)
-	assert.That(t, len(tail.ops)).Equal(1) // the rejected statement never ran
+	assert.That(t, cap.ops).Equal([]string{"exec", "exec"}) // identity reaches the executor on every call
+	assert.That(t, tail.execs).Equal(1)                     // the rejected statement never ran
 }
 
-// rewriteLayer wraps a chain head and rewrites the statement's identity — the
-// kind of behavior change no gocql middleware could express.
-type rewriteLayer struct {
+// passthroughLayer wraps a chain head and delegates — the wrap-head protocol on
+// the builder, which now carries no identity of its own (the guarded layer below
+// builds and passes it to the executor).
+type passthroughLayer struct {
 	InnerQuery
-	stmt string
 }
 
-func (r rewriteLayer) Exec(ctx context.Context) error {
-	return r.InnerQuery.Exec(observability.WithOperation(ctx, operation("exec", r.stmt)))
-}
+func (p passthroughLayer) Exec(ctx context.Context) error { return p.InnerQuery.Exec(ctx) }
 
 // TestInnerQueryReorganize pins the wrap-head protocol on the builder: a custom
-// layer over the query's chain head rewrites what the identity layer below it
-// declares, and the terminal method runs through it.
+// layer over the query's chain head still runs the terminal method through the
+// guarded chain below it, whose identity reaches the executor.
 func TestInnerQueryReorganize(t *testing.T) {
-	c := NewClient(nil, Config{Hosts: []string{"127.0.0.1"}}, cloud.ClientParams{})
+	c := NewClient(nil, Config{Hosts: []string{"127.0.0.1"}}, newTestCenter(t))
 	tail := &fakeTail{}
-	head := NewObsQuery(NewGuardQuery(tail, c.exec), "SELECT original")
+	cap := &captureExec{next: c.exec}
+	head := NewGuardQuery(tail, cap, "SELECT original")
 
-	wrapped := rewriteLayer{InnerQuery: head, stmt: "SELECT rewritten"}
+	wrapped := passthroughLayer{InnerQuery: head}
 	assert.Error(t, wrapped.Exec(context.Background())).Nil()
-	assert.That(t, tail.ops).Equal([]string{"exec"})
+	assert.That(t, cap.ops).Equal([]string{"exec"})
+	assert.That(t, tail.execs).Equal(1)
 }

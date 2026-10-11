@@ -52,7 +52,7 @@ func init() {
 		return func(h *server.Hertz) {
 			h.GET("/echo/:name", func(ctx context.Context, c *app.RequestContext) {
 				name := c.Param("name")
-				log.Infof(ctx, log.TagAppDef, "handling /echo/%s", name)
+				log.Info(ctx, log.TagAppDef, "handling /echo/", log.String("name", name))
 				c.JSON(http.StatusOK, map[string]string{"message": "Hello, " + name})
 			})
 		}

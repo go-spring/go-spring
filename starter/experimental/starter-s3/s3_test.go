@@ -22,7 +22,6 @@ import (
 	"testing"
 
 	"github.com/minio/minio-go/v7"
-	"go-spring.org/cloud/observability"
 	"go-spring.org/stdlib/testing/assert"
 	"go.opentelemetry.io/otel/attribute"
 )
@@ -75,25 +74,14 @@ func TestDynamicTransportSwap(t *testing.T) {
 	assert.That(t, served).Equal("swapped")
 }
 
-// TestDeclareTransportDeclaresOperation proves the declaration seam puts the
-// request's identity on the context it hands inward: the resilience emitter
-// reads it there at Execute entry, so a declaration that did not survive the
-// inward call would mean no signals at all. It also pins the cardinality fix:
-// the bounded HTTP method is a label (Attrs), the unbounded path is detail
-// (Detail, as db.statement).
-func TestDeclareTransportDeclaresOperation(t *testing.T) {
-	var got observability.Operation
-	var has bool
-	next := roundTripFunc(func(r *http.Request) (*http.Response, error) {
-		got, has = observability.OperationFrom(r.Context())
-		return httptest.NewRecorder().Result(), nil
-	})
-
-	tr := &declareTransport{next: next}
+// TestCallForDeclaresOperation proves the identity seam builds the request's
+// operation with the family's vocabulary — the operation the resilience
+// round-tripper passes explicitly to the executor at Execute entry. It also pins
+// the cardinality fix: the bounded HTTP method is a label (Attrs), the unbounded
+// path is detail (Detail, as db.statement).
+func TestCallForDeclaresOperation(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPut, "http://127.0.0.1:9000/bucket/key", nil)
-	_, err := tr.RoundTrip(req)
-	assert.Error(t, err).Nil()
-	assert.That(t, has).True()
+	got := callFor(req)
 	assert.That(t, got.Name).Equal("PUT /bucket/key")
 	assert.That(t, got.Metric).Equal("db.client")
 	assert.That(t, got.LogTag).Equal(accessTag)

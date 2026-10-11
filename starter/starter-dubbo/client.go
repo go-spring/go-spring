@@ -173,8 +173,8 @@ func RegisterReference[T any](name string, ctor func(*client.Client, ...client.R
 		// of failing silently. To opt out, set spring.dubbo.consumer.check=false.
 		if !cfg.Check && d.Consumer().Check {
 			log.Warn(context.Background(), log.TagAppDef,
-				log.String("reference", name),
-				log.Msg("dubbo: references.check=false cannot be honored while consumer.check is true (default); set spring.dubbo.consumer.check=false to opt out of the fail-fast check"))
+				"dubbo: references.check=false cannot be honored while consumer.check is true (default); set spring.dubbo.consumer.check=false to opt out of the fail-fast check",
+				log.String("reference", name))
 		}
 		return ctor(cli, cfg.options()...)
 	}, gs.IndexArg(2, gs.TagArg("${spring.dubbo.consumer.references."+name+"}"))).Caller(2)

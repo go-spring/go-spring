@@ -18,7 +18,6 @@ package StarterMQTT
 
 import (
 	mqtt "github.com/eclipse/paho.mqtt.golang"
-	"go-spring.org/cloud"
 	"go-spring.org/cloud/governance"
 	"go-spring.org/cloud/messaging"
 	"go-spring.org/log"
@@ -73,11 +72,10 @@ func init() {
 // what was just assembled.
 //
 // center is the governance center the container injects — the family's sole
-// injection point; the ctor reads the resilience and fault authorities from it
-// and bundles them into the cloud.ClientParams it hands the driver, which
-// resolves the executor through it — the governed one when the resilience
-// authority is present, the observed-only resilience.Unmanaged one otherwise (a
-// standalone, non-gs caller passes nil, which is exactly "governance off").
+// injection point; the ctor hands it to the driver, which
+// resolves the executor through it — the governed one, from the resilience
+// authority the container always supplies via the governance center, so a
+// center without one fails at construction.
 func newClient(ctx *gs.ContextProvider, name string, c Config, d Driver, center *governance.Center) (mqtt.Client, error) {
 	// The client's identity rides on a context derived here: every line below
 	// carries it without repeating it. The provider's own context is left
@@ -85,10 +83,9 @@ func newClient(ctx *gs.ContextProvider, name string, c Config, d Driver, center 
 	// constructor's.
 	cctx := log.WithFields(ctx.Context, log.String("broker", c.Broker))
 
-	log.Debug(cctx, log.TagAppDef, func() []log.Field {
+	log.Debug(cctx, log.TagAppDef, "creating mqtt client", func() []log.Field {
 		return []log.Field{
 			log.String("client_id", c.ClientID),
-			log.Msg("creating mqtt client"),
 		}
 	})
 
@@ -96,10 +93,9 @@ func newClient(ctx *gs.ContextProvider, name string, c Config, d Driver, center 
 	if d == nil {
 		d = DefaultDriver{}
 	}
-	client, err := d.CreateClient(ctx.Context, c,
-		cloud.ClientParams{Resilience: center.Resilience(), Fault: center.Fault()})
+	client, err := d.CreateClient(ctx.Context, c, center)
 	if err != nil {
-		log.Errorf(cctx, log.TagAppDef, err, "mqtt: create client failed")
+		log.Error(cctx, log.TagAppDef, err, "mqtt: create client failed")
 		return nil, errutil.Explain(err, "failed to create mqtt client: %s", c.Broker)
 	}
 
@@ -111,12 +107,12 @@ func newClient(ctx *gs.ContextProvider, name string, c Config, d Driver, center 
 	token := client.Connect()
 	token.Wait()
 	if err := token.Error(); err != nil {
-		log.Errorf(cctx, log.TagAppDef, err, "mqtt: connect failed")
-		closeResilience(client)
+		log.Error(cctx, log.TagAppDef, err, "mqtt: connect failed")
+		forgetObserver(client)
 		client.Disconnect(250)
 		return nil, err
 	}
-	log.Infof(cctx, log.TagAppDef, "create mqtt client success")
+	log.Info(cctx, log.TagAppDef, "create mqtt client success")
 	return client, nil
 }
 
@@ -124,7 +120,7 @@ func newClient(ctx *gs.ContextProvider, name string, c Config, d Driver, center 
 // in-flight work to complete. When a resilience executor is attached its Close
 // releases any background resources of a production driver.
 func destroyClient(client mqtt.Client) error {
-	closeResilience(client)
+	forgetObserver(client)
 	client.Disconnect(250)
 	return nil
 }

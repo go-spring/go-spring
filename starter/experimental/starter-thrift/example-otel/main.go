@@ -60,7 +60,7 @@ type Controller struct{}
 
 // Echo satisfies proto.EchoService.
 func (c *Controller) Echo(ctx context.Context, req *proto.EchoRequest) (*proto.EchoResponse, error) {
-	log.Infof(ctx, log.TagAppDef, "handling Echo: %s", req.Message)
+	log.Info(ctx, log.TagAppDef, "handling Echo", log.Any("message", req.Message))
 	return &proto.EchoResponse{Message: req.Message}, nil
 }
 

@@ -85,7 +85,7 @@ The neo4j-go-driver speaks the binary Bolt protocol and ships **no official
 OpenTelemetry instrumentation**, nor a command-monitor hook comparable to the
 SQL/MongoDB drivers — there is no transparent seam to intercept every request.
 Observation is therefore opt-in per call site via the `StarterNeo4j.Query` /
-`StartSpan` helpers, which **declare** what each operation is (`observe.go`):
+`Operation` helpers, which **declare** what each operation is (`observe.go`):
 the operation name, the `db.system`/`db.operation` labels, and the Cypher text
 as `db.statement` span/log detail. The signals themselves are emitted by the
 resilience layer — the one point on the executor chain that sees a whole call,

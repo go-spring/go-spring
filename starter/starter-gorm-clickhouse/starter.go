@@ -28,8 +28,8 @@ import (
 	"net"
 
 	ch "github.com/ClickHouse/clickhouse-go/v2"
-	"go-spring.org/cloud"
 	"go-spring.org/cloud/actuator/health"
+	"go-spring.org/cloud/discovery"
 	"go-spring.org/cloud/governance"
 	"go-spring.org/cloud/loadbalance"
 	"go-spring.org/cloud/mesh"
@@ -61,19 +61,19 @@ func init() {
 			// name.
 			beanName := "clickhouse." + name
 			r.Provide(func(ctx *gs.ContextProvider, discoveryLabel string, center *governance.Center) (*gormcore.DB, error) {
-				// The entry's ${discovery} label is resolved against the center's
-				// discovery directory here, and the label's "none" sentinel makes an
-				// unset key resolve to a nil backend (a static-address entry). The
-				// center is the family's sole injection point: it also hands out the
-				// resilience/fault/loadbalance authorities, bundled into the one
-				// ClientParams the dialect and NewDB both read.
-				disc, _ := center.Discovery().Get(discoveryLabel)
-				params := cloud.ClientParams{Resilience: center.Resilience(), Fault: center.Fault(), Loadbalance: center.Loadbalance(), Discovery: disc}
-				spec, err := build(ctx.Context, c, params)
+				// The wiring tag applies the family-default discovery fallback
+				// (discoveryLabel); fold it into the config so the dialect's build
+				// reads one label — c.Discovery — and resolves the backend itself,
+				// failing construction if it names no bean. "none" is the tag's
+				// sentinel for "no backend".
+				if discoveryLabel != "" && discoveryLabel != "none" {
+					c.Discovery = discoveryLabel
+				}
+				spec, err := build(ctx.Context, c, center)
 				if err != nil {
 					return nil, err
 				}
-				return gormcore.NewDB(ctx.Context, "clickhouse", spec, params, c.Ping)
+				return gormcore.NewDB(ctx.Context, "clickhouse", spec, center, c.Ping)
 			},
 				gs.IndexArg(1, gs.TagArg("${spring.gorm.clickhouse.instances."+name+".discovery:=${spring.gorm.clickhouse.default.discovery:=none}}")),
 			).Name(beanName).Destroy((*gormcore.DB).Destroy).Caller(1)
@@ -101,20 +101,30 @@ func init() {
 // client. In mesh mode a sidecar owns discovery+LB, so the configured Addr is
 // used as-is. When c.ServiceName is empty this is a plain DSN dial, unchanged
 // from before.
-func build(ctx context.Context, c Config, params cloud.ClientParams) (gormcore.Spec, error) {
+func build(ctx context.Context, c Config, center *governance.Center) (gormcore.Spec, error) {
 	if c.Addr == "" && c.ServiceName == "" {
 		return gormcore.Spec{}, errutil.Explain(nil, "gorm clickhouse: one of addr or service-name must be set")
 	}
 
-	log.Debug(ctx, log.TagAppDef, func() []log.Field {
-		return []log.Field{log.String("addr", c.Addr), log.String("service_name", c.ServiceName), log.String("db", c.DB), log.Msg("creating gorm clickhouse client")}
+	log.Debug(ctx, log.TagAppDef, "creating gorm clickhouse client", func() []log.Field {
+		return []log.Field{log.String("addr", c.Addr), log.String("service_name", c.ServiceName), log.String("db", c.DB)}
 	})
 
 	service := resilience.ServiceLabel("gorm:clickhouse", c.ServiceName, c.Addr)
 
+	// Resolve the discovery backend the entry cites before building the dialer:
+	// the build reads one label (c.Discovery) and fails construction when it
+	// names no bean, rather than silently dialing the static address.
+	var backend discovery.Discovery
+	if c.ServiceName != "" {
+		backend, _ = center.Discovery().Get(c.Discovery)
+		if backend == nil {
+			return gormcore.Spec{}, errutil.Explain(nil, "gorm clickhouse: instance routes by service-name but cites discovery backend %q, which names no bean", c.Discovery)
+		}
+	}
+
 	var (
 		dialector = clickhouse.Open(c.DSN())
-		closer    func()
 	)
 
 	// The native driver (ch.OpenDB) is required whenever we must inject a custom
@@ -137,19 +147,20 @@ func build(ctx context.Context, c Config, params cloud.ClientParams) (gormcore.S
 		if c.TLS.Enabled {
 			tlsCfg, terr := c.TLS.BuildClient()
 			if terr != nil {
-				log.Errorf(ctx, log.TagAppDef, terr, "gorm clickhouse build TLS failed")
+				log.Error(ctx, log.TagAppDef, terr, "gorm clickhouse build TLS failed")
 				return gormcore.Spec{}, errutil.Explain(terr, "gorm-clickhouse: build TLS")
 			}
 			opts.TLS = tlsCfg
 		}
 		if useDiscovery {
-			lb, _, stopSelection, derr := c.NewPickPool(ctx, params.Discovery, service, params.Loadbalance)
+			lb, _, derr := c.NewPickPool(ctx, backend, service, center.Loadbalance())
 			if derr != nil {
-				log.Errorf(ctx, log.TagAppDef, derr, "gorm clickhouse build discovery resolver failed")
+				log.Error(ctx, log.TagAppDef, derr, "gorm clickhouse build discovery resolver failed")
 				return gormcore.Spec{}, derr
 			}
 			// ch.Options.DialContext is 2-arg: func(ctx, addr string) (net.Conn, error).
-			// The addr is ignored; the dialer picks a live endpoint via the Resolver.
+			// The addr is ignored; the dialer picks a live endpoint from the
+			// chain's current generation.
 			nd := &net.Dialer{}
 			opts.DialContext = func(ctx context.Context, _ string) (net.Conn, error) {
 				ep, perr := lb.Pick(loadbalance.PickInfo{})
@@ -163,14 +174,8 @@ func build(ctx context.Context, c Config, params cloud.ClientParams) (gormcore.S
 				lb.Complete(ctx, ep, derr)
 				return conn, derr
 			}
-			closer = stopSelection
 		}
 		dialector = clickhouse.New(clickhouse.Config{Conn: ch.OpenDB(opts)})
-	}
-
-	closers := []func(){}
-	if closer != nil {
-		closers = append(closers, closer)
 	}
 
 	return gormcore.Spec{
@@ -178,7 +183,6 @@ func build(ctx context.Context, c Config, params cloud.ClientParams) (gormcore.S
 		Pool:           c.Pool(),
 		Service:        service,
 		ObserveEnabled: c.ObserveEnabled,
-		Closers:        closers,
 	}, nil
 }
 

@@ -21,7 +21,6 @@ import (
 	"go-spring.org/cloud/governance"
 
 	"github.com/hibiken/asynq"
-	"go-spring.org/cloud"
 	"go-spring.org/cloud/actuator/health"
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/gs"
@@ -88,8 +87,10 @@ func init() {
 // initializing it are the same act.
 //
 // mgr is required (blank-imported governance); a standalone, non-gs caller
-// passes a fresh manager, which is exactly "governance off". The zero bundle
-// degrades to an observed-only, loudly-unmanaged executor.
+// passes a fresh manager, which is exactly "governance off". The resilience
+// manager is required — the container supplies it via the governance center —
+// so a bundle carrying none is a construction error, never a graceful
+// downgrade.
 func newClient(ctx *gs.ContextProvider, c Config, d Driver, center *governance.Center) (*Client, error) {
 	// No company Driver bean → fall back to the bundled default assembly.
 	if d == nil {
@@ -99,7 +100,7 @@ func newClient(ctx *gs.ContextProvider, c Config, d Driver, center *governance.C
 	if err != nil {
 		return nil, err
 	}
-	return NewClient(connOpt, c.Addr, cloud.ClientParams{Resilience: center.Resilience(), Fault: center.Fault()}), nil
+	return NewClient(connOpt, c.Addr), nil
 }
 
 // newServer builds the worker Server bean. The asynq server is constructed here

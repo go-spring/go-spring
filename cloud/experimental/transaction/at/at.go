@@ -65,16 +65,16 @@ package at
 import (
 	"context"
 
+	"go-spring.org/cloud/chain"
 	"go-spring.org/cloud/experimental/transaction"
-	"go-spring.org/cloud/resilience"
 )
 
 // RetryPolicy governs how a branch's second-phase operation (commit or
-// rollback) is retried on failure. It reuses [resilience.ClientPolicy] rather than
-// inventing a second knob set, so the same declarative fields (MaxRetries,
-// Timeout, ...) govern both outbound resilience and AT phase retries. The zero
-// value means a single attempt with no retry.
-type RetryPolicy = resilience.ClientPolicy
+// rollback) is retried on failure. It is [chain.RetryPolicy] — the same node
+// that governs outbound resilience retry — rather than a second knob set, so one
+// retry vocabulary covers both. The zero value means a single attempt with no
+// retry.
+type RetryPolicy = chain.RetryPolicy
 
 // SQLType is the kind of DML a branch captured, which determines how a row is
 // restored on rollback: an inserted row is deleted, a deleted row is

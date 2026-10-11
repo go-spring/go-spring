@@ -34,7 +34,7 @@ func TestParseGovernanceDoc(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !cfg.Enabled || cfg.Client.Default.AttemptTimeout != 100*time.Millisecond {
+	if cfg.Client.Default.AttemptTimeout != 100*time.Millisecond {
 		t.Fatalf("properties parse: %+v", cfg)
 	}
 
@@ -52,8 +52,8 @@ func TestParseGovernanceDoc(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !cfg.Enabled {
-		t.Fatal("explicit-format parse should bind enabled")
+	if cfg.Client.Default.AttemptTimeout != 100*time.Millisecond {
+		t.Fatal("explicit-format parse should bind the policy")
 	}
 
 	// no spring.governance.* keys → error, never a silently disabled center.
@@ -67,13 +67,20 @@ func TestParseGovernanceDoc(t *testing.T) {
 }
 
 // TestParse_LegacyKeysArmNothing pins the no-compatibility promise of the
-// client/server split: the pre-split keys (spring.governance.default / spring.governance.rules /
-// spring.governance.fault) are simply unknown now, so a document still written against them
-// binds NOTHING — neither direction gets a policy or a fire, and the failure is
-// loud only where it should be (the operator's own document review).
+// client/server split AND of the removed on/off switches: keys that no longer
+// exist (spring.governance.default / spring.governance.rules /
+// spring.governance.fault, and now spring.governance.enabled itself) are simply
+// unknown, so a document still written against them binds NOTHING — neither
+// direction gets a policy or a fire.
+//
+// Note the consequence, because binding is PULL-based (only the struct's own
+// fields are resolved; unknown keys are ignored rather than rejected): a stale
+// `spring.governance.enabled=false` no longer suppresses anything. A document
+// that carried that key alongside live rules or a fault rate will, on upgrade,
+// arm what the key used to suppress.
 func TestParse_LegacyKeysArmNothing(t *testing.T) {
 	cfg, err := Parse("governance.properties", []byte(`spring.governance.enabled=true
-spring.governance.driver=default
+spring.resilience.driver=default
 spring.governance.default.attempt-timeout=100ms
 spring.governance.rules[0].service=redis:cache
 spring.governance.rules[0].attempt-timeout=50ms
@@ -83,17 +90,15 @@ spring.governance.fault.rate=1
 	if err != nil {
 		t.Fatal(err)
 	}
-	// The document still binds the keys that survived the split.
-	if !cfg.Enabled || cfg.Driver != "default" {
-		t.Fatalf("enabled/driver must still bind: %+v", cfg)
-	}
+	// The document binds only the keys that survived; the driver key is no longer
+	// part of the document (it is a startup property now), so it binds nothing.
 	if !cfg.Client.Default.ClientPolicy.IsZero() || len(cfg.Client.Rules) != 0 {
 		t.Fatalf("legacy spring.governance.default/rules must arm no outbound policy: %+v", cfg.Client)
 	}
 	if !cfg.Server.Default.IsZero() || len(cfg.Server.Rules) != 0 {
 		t.Fatalf("legacy keys must arm no inbound governance: %+v", cfg.Server)
 	}
-	if cfg.Client.Fault.Enabled || cfg.Server.Fault.Enabled {
+	if !cfg.Client.Fault.Inert() || !cfg.Server.Fault.Inert() {
 		t.Fatalf("legacy spring.governance.fault must arm neither fire: %+v / %+v", cfg.Client.Fault, cfg.Server.Fault)
 	}
 }

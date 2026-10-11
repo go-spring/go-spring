@@ -101,7 +101,7 @@ func runTest(d *Demo) {
 	// Publish a new value for the imported data id via the Nacos HTTP open API.
 	want := "hello-" + time.Now().Format("150405")
 	if err := publish(want); err != nil {
-		log.Errorf(ctx, log.TagAppDef, err, "publish config failed")
+		log.Error(ctx, log.TagAppDef, err, "publish config failed")
 		os.Exit(1)
 	}
 
@@ -118,7 +118,7 @@ func runTest(d *Demo) {
 		time.Sleep(200 * time.Millisecond)
 	}
 	err := errutil.Explain(nil, "message=%q want=%q", d.Message.Value(), want)
-	log.Errorf(ctx, log.TagAppDef, err, "hot-reload timeout")
+	log.Error(ctx, log.TagAppDef, err, "hot-reload timeout")
 	os.Exit(1)
 }
 

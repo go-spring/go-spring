@@ -19,13 +19,17 @@ package StarterGovernanceSentinel
 import (
 	"context"
 	"errors"
-	"go-spring.org/cloud/chain"
 	"net/http"
 	"net/http/httptest"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"go-spring.org/cloud/chain"
+
+	"github.com/alibaba/sentinel-golang/core/circuitbreaker"
+	"github.com/alibaba/sentinel-golang/core/flow"
 
 	"go-spring.org/cloud/resilience"
 	"go-spring.org/stdlib/testing/assert"
@@ -35,7 +39,7 @@ import (
 // constructor returns a working Driver, so a caller outside the container can
 // build executors with no compile-time dependency on the sentinel library. The
 // container-level half — that importing this module makes "sentinel" selectable
-// by spring.governance.driver — is covered by the driver-directory test.
+// by spring.resilience.driver — is covered by the driver-directory test.
 func TestDriverBuilds(t *testing.T) {
 	d := NewSentinelDriver()
 	assert.That(t, d).NotNil()
@@ -57,7 +61,7 @@ func newExec(t *testing.T, service string, p resilience.ClientPolicy) chain.Exec
 func TestSentinelPassThrough(t *testing.T) {
 	e := newExec(t, "svc-passthrough", resilience.ClientPolicy{})
 	var calls int
-	err := e.Execute(context.Background(), func(context.Context) error {
+	err := e.Execute(context.Background(), chain.Operation{}, func(context.Context) error {
 		calls++
 		return nil
 	})
@@ -70,7 +74,7 @@ func TestSentinelRateLimit(t *testing.T) {
 	// flow-control block, surfaced through the neutral ErrRateLimited.
 	e := newExec(t, "svc-ratelimit", resilience.ClientPolicy{RateLimit: 2})
 	run := func() error {
-		return e.Execute(context.Background(), func(context.Context) error { return nil })
+		return e.Execute(context.Background(), chain.Operation{}, func(context.Context) error { return nil })
 	}
 	assert.Error(t, run()).Nil()
 	assert.Error(t, run()).Nil()
@@ -92,8 +96,8 @@ func TestSentinelRoundTripperRetry(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	e := newExec(t, "sentinel:test", resilience.ClientPolicy{MaxRetries: 3, AttemptTimeout: time.Second})
-	client := &http.Client{Transport: resilience.NewRoundTripper(http.DefaultTransport, e)}
+	e := newExec(t, "sentinel:test", resilience.ClientPolicy{AttemptTimeout: time.Second, Retry: chain.RetryPolicy{MaxRetries: 3}})
+	client := &http.Client{Transport: resilience.NewRoundTripper(http.DefaultTransport, e, nil)}
 
 	resp, err := client.Get(srv.URL)
 	assert.Error(t, err).Nil()
@@ -114,7 +118,7 @@ func TestSentinelBulkhead(t *testing.T) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		_ = e.Execute(context.Background(), func(context.Context) error {
+		_ = e.Execute(context.Background(), chain.Operation{}, func(context.Context) error {
 			close(entered)
 			<-release
 			return nil
@@ -122,14 +126,14 @@ func TestSentinelBulkhead(t *testing.T) {
 	}()
 
 	<-entered // first call holds the only concurrency slot
-	err := e.Execute(context.Background(), func(context.Context) error { return nil })
+	err := e.Execute(context.Background(), chain.Operation{}, func(context.Context) error { return nil })
 	assert.Error(t, err).Is(chain.ErrBulkheadFull)
 
 	close(release)
 	wg.Wait()
 
 	// Slot freed: a subsequent call is admitted again.
-	assert.Error(t, e.Execute(context.Background(), func(context.Context) error { return nil })).Nil()
+	assert.Error(t, e.Execute(context.Background(), chain.Operation{}, func(context.Context) error { return nil })).Nil()
 }
 
 // TestSentinelBulkheadHeldAcrossRetries verifies the isolation slot is held for
@@ -138,7 +142,7 @@ func TestSentinelBulkhead(t *testing.T) {
 // call must be rejected for the entire retry sequence — not admitted in the
 // gap between attempts.
 func TestSentinelBulkheadHeldAcrossRetries(t *testing.T) {
-	e := newExec(t, "svc-bulk-retry", resilience.ClientPolicy{MaxConcurrent: 1, MaxRetries: 3, InitialInterval: 20 * time.Millisecond})
+	e := newExec(t, "svc-bulk-retry", resilience.ClientPolicy{MaxConcurrent: 1, Retry: chain.RetryPolicy{MaxRetries: 3, InitialInterval: 20 * time.Millisecond}})
 
 	release := make(chan struct{})
 	entered := make(chan struct{})
@@ -146,7 +150,7 @@ func TestSentinelBulkheadHeldAcrossRetries(t *testing.T) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		_ = e.Execute(context.Background(), func(context.Context) error {
+		_ = e.Execute(context.Background(), chain.Operation{}, func(context.Context) error {
 			close(entered)
 			<-release // park with the slot held across what would be retries
 			return nil
@@ -156,7 +160,7 @@ func TestSentinelBulkheadHeldAcrossRetries(t *testing.T) {
 	<-entered
 	// While the first call holds the slot (parked inside fn), the second is
 	// rejected — proving the bulkhead is held for the duration of Execute.
-	err := e.Execute(context.Background(), func(context.Context) error { return nil })
+	err := e.Execute(context.Background(), chain.Operation{}, func(context.Context) error { return nil })
 	assert.Error(t, err).Is(chain.ErrBulkheadFull)
 
 	close(release)
@@ -176,7 +180,7 @@ func TestSentinelErrorRateBreaker(t *testing.T) {
 	})
 	tripped := false
 	for i := range 10 {
-		err := e.Execute(context.Background(), func(context.Context) error {
+		err := e.Execute(context.Background(), chain.Operation{}, func(context.Context) error {
 			if i%2 == 0 {
 				return errors.New("fail")
 			}
@@ -199,19 +203,19 @@ func TestSentinelHalfOpenRecovery(t *testing.T) {
 	e := newExec(t, "svc-halfopen", resilience.ClientPolicy{ErrorThreshold: 1, OpenDuration: 30 * time.Millisecond})
 
 	// Trip the breaker.
-	_ = e.Execute(context.Background(), func(context.Context) error {
+	_ = e.Execute(context.Background(), chain.Operation{}, func(context.Context) error {
 		return errors.New("boom")
 	})
 	// Open: short-circuited.
-	err := e.Execute(context.Background(), func(context.Context) error { return nil })
+	err := e.Execute(context.Background(), chain.Operation{}, func(context.Context) error { return nil })
 	assert.Error(t, err).Is(chain.ErrCircuitOpen)
 
 	// After cool-down a successful trial closes the circuit.
 	time.Sleep(40 * time.Millisecond)
-	err = e.Execute(context.Background(), func(context.Context) error { return nil })
+	err = e.Execute(context.Background(), chain.Operation{}, func(context.Context) error { return nil })
 	assert.Error(t, err).Nil()
 	// Now closed: a normal call runs.
-	err = e.Execute(context.Background(), func(context.Context) error { return nil })
+	err = e.Execute(context.Background(), chain.Operation{}, func(context.Context) error { return nil })
 	assert.Error(t, err).Nil()
 }
 
@@ -220,16 +224,16 @@ func TestSentinelHalfOpenRecovery(t *testing.T) {
 func TestSentinelHalfOpenReopensOnFailedTrial(t *testing.T) {
 	e := newExec(t, "svc-reopen", resilience.ClientPolicy{ErrorThreshold: 1, OpenDuration: 30 * time.Millisecond})
 
-	_ = e.Execute(context.Background(), func(context.Context) error {
+	_ = e.Execute(context.Background(), chain.Operation{}, func(context.Context) error {
 		return errors.New("boom")
 	})
 	time.Sleep(40 * time.Millisecond) // half-open
 
 	// Failing trial re-opens the circuit.
-	_ = e.Execute(context.Background(), func(context.Context) error {
+	_ = e.Execute(context.Background(), chain.Operation{}, func(context.Context) error {
 		return errors.New("still bad")
 	})
-	err := e.Execute(context.Background(), func(context.Context) error { return nil })
+	err := e.Execute(context.Background(), chain.Operation{}, func(context.Context) error { return nil })
 	assert.Error(t, err).Is(chain.ErrCircuitOpen)
 }
 
@@ -252,18 +256,153 @@ func TestSentinelBreakerEvents(t *testing.T) {
 	e.(resilience.BreakerEventListenerSetter).SetBreakerEventListener(rec)
 
 	// Trip: closed -> open.
-	_ = e.Execute(context.Background(), func(context.Context) error { return errors.New("boom") })
+	_ = e.Execute(context.Background(), chain.Operation{}, func(context.Context) error { return errors.New("boom") })
 	assert.That(t, len(rec.events)).Equal(1)
 	assert.That(t, rec.events[0].to).Equal("open")
 
 	// Breaker open: rejected before fn runs, no transition.
-	_ = e.Execute(context.Background(), func(context.Context) error { return nil })
+	_ = e.Execute(context.Background(), chain.Operation{}, func(context.Context) error { return nil })
 	assert.That(t, len(rec.events)).Equal(1)
 
 	// After cool-down a successful trial: open -> half-open -> closed.
 	time.Sleep(40 * time.Millisecond)
-	_ = e.Execute(context.Background(), func(context.Context) error { return nil })
+	_ = e.Execute(context.Background(), chain.Operation{}, func(context.Context) error { return nil })
 	assert.That(t, len(rec.events)).Equal(3)
 	assert.That(t, rec.events[1].to).Equal("half_open")
 	assert.That(t, rec.events[2].to).Equal("closed")
+}
+
+// The rule-mapping tests below pin the TRANSLATION (rules.go): after one
+// Execute the sentinel registry must hold exactly the rule shapes the neutral
+// policy asks for — unit-normalized thresholds, the right control behaviors and
+// breaker strategies — because a silently wrong field is worse than an absent
+// rule: it protects against the wrong thing with confidence.
+
+// runOnce drives one Execute purely to trigger lazy rule loading; the call's
+// own outcome is irrelevant here (a warm-up rule, for instance, legitimately
+// rejects the very first call — cold start is the point of warm-up).
+func runOnce(t *testing.T, e chain.Executor) {
+	t.Helper()
+	_ = e.Execute(context.Background(), chain.Operation{}, func(context.Context) error { return nil })
+}
+
+// TestSentinelFlowRuleQueueing pins the queueing translation: RateLimitMaxWait
+// selects Throttling with MaxQueueingTimeMs, and Window scales both the stat
+// interval AND the threshold (per-second → per-interval) so the effective rate
+// is unchanged.
+func TestSentinelFlowRuleQueueing(t *testing.T) {
+	const svc = "svc-rule-queue"
+	e := newExec(t, svc, resilience.ClientPolicy{
+		RateLimit:        10,
+		Window:           2 * time.Second,
+		RateLimitMaxWait: 250 * time.Millisecond,
+	})
+	runOnce(t, e)
+
+	rules := flow.GetRulesOfResource(svc)
+	assert.That(t, len(rules)).Equal(1)
+	r := rules[0]
+	assert.That(t, r.StatIntervalInMs).Equal(uint32(2000))
+	assert.That(t, r.Threshold).Equal(float64(20)) // 10/s * 2s
+	assert.That(t, r.ControlBehavior).Equal(flow.Throttling)
+	assert.That(t, r.MaxQueueingTimeMs).Equal(uint32(250))
+}
+
+// TestSentinelFlowRuleWarmUp pins the warm-up translation: WarmUpPeriodSec and
+// ColdFactor land on the rule, and warm-up forces Reject (sentinel pairs WarmUp
+// with Reject only) even when a max-wait was also set.
+func TestSentinelFlowRuleWarmUp(t *testing.T) {
+	const svc = "svc-rule-warmup"
+	e := newExec(t, svc, resilience.ClientPolicy{
+		RateLimit:               5,
+		RateLimitWarmUpDuration: 30 * time.Second,
+		WarmUpColdFactor:        10,
+		RateLimitMaxWait:        time.Second, // must lose to warm-up
+	})
+	runOnce(t, e)
+
+	rules := flow.GetRulesOfResource(svc)
+	assert.That(t, len(rules)).Equal(1)
+	r := rules[0]
+	assert.That(t, r.TokenCalculateStrategy).Equal(flow.WarmUp)
+	assert.That(t, r.ControlBehavior).Equal(flow.Reject)
+	assert.That(t, r.WarmUpPeriodSec).Equal(uint32(30))
+	assert.That(t, r.WarmUpColdFactor).Equal(uint32(10))
+}
+
+// TestSentinelBreakerRuleSlowCall pins the slow-call translation: the resolved
+// strategy selects sentinel's SlowRequestRatio with MaxAllowedRtMs from the
+// slow-call threshold, and HalfOpenRequests > 1 widens ProbeNum.
+func TestSentinelBreakerRuleSlowCall(t *testing.T) {
+	const svc = "svc-rule-slowcall"
+	e := newExec(t, svc, resilience.ClientPolicy{
+		BreakerStrategy:           resilience.BreakerSlowCall,
+		SlowCallDurationThreshold: 200 * time.Millisecond,
+		SlowCallRateThreshold:     0.5,
+		MinRequests:               3,
+		BreakerWindow:             2 * time.Second,
+		OpenDuration:              time.Minute,
+		HalfOpenRequests:          2,
+	})
+	runOnce(t, e)
+
+	rules := circuitbreaker.GetRulesOfResource(svc)
+	assert.That(t, len(rules)).Equal(1)
+	r := rules[0]
+	assert.That(t, r.Strategy).Equal(circuitbreaker.SlowRequestRatio)
+	assert.That(t, r.MaxAllowedRtMs).Equal(uint64(200))
+	assert.That(t, r.Threshold).Equal(0.5)
+	assert.That(t, r.MinRequestAmount).Equal(uint64(3))
+	assert.That(t, r.StatIntervalMs).Equal(uint32(2000))
+	assert.That(t, r.ProbeNum).Equal(uint64(2))
+}
+
+// TestSentinelBreakerRuleErrorCount pins the error-count translation: an exact
+// windowed count with MinRequests honored, unlike the consecutive approximation.
+func TestSentinelBreakerRuleErrorCount(t *testing.T) {
+	const svc = "svc-rule-errcount"
+	e := newExec(t, svc, resilience.ClientPolicy{
+		BreakerStrategy:  resilience.BreakerErrorCount,
+		ErrorThreshold:   7,
+		MinRequests:      2,
+		HalfOpenRequests: 3,
+	})
+	runOnce(t, e)
+
+	rules := circuitbreaker.GetRulesOfResource(svc)
+	assert.That(t, len(rules)).Equal(1)
+	r := rules[0]
+	assert.That(t, r.Strategy).Equal(circuitbreaker.ErrorCount)
+	assert.That(t, r.Threshold).Equal(float64(7))
+	assert.That(t, r.MinRequestAmount).Equal(uint64(2))
+	assert.That(t, r.ProbeNum).Equal(uint64(3))
+}
+
+// TestSentinelServerRuleMapping pins that the inbound engine maps through the
+// SAME helpers (rules.go): one Execute must load the normalized flow rule and
+// the chosen breaker rule for the route, exactly as the outbound engine does.
+func TestSentinelServerRuleMapping(t *testing.T) {
+	const svc = "route-rule-map"
+	e, err := NewSentinelDriver().NewServerExecutor(svc, resilience.ServerPolicy{
+		RateLimit:                 10,
+		Window:                    2 * time.Second,
+		RateLimitMaxWait:          100 * time.Millisecond,
+		BreakerStrategy:           resilience.BreakerSlowCall,
+		SlowCallDurationThreshold: 150 * time.Millisecond,
+		SlowCallRateThreshold:     0.8,
+		HalfOpenRequests:          2,
+	})
+	assert.Error(t, err).Nil()
+	runOnce(t, e)
+
+	fl := flow.GetRulesOfResource(svc)
+	assert.That(t, len(fl)).Equal(1)
+	assert.That(t, fl[0].Threshold).Equal(float64(20))
+	assert.That(t, fl[0].ControlBehavior).Equal(flow.Throttling)
+
+	cb := circuitbreaker.GetRulesOfResource(svc)
+	assert.That(t, len(cb)).Equal(1)
+	assert.That(t, cb[0].Strategy).Equal(circuitbreaker.SlowRequestRatio)
+	assert.That(t, cb[0].MaxAllowedRtMs).Equal(uint64(150))
+	assert.That(t, cb[0].ProbeNum).Equal(uint64(2))
 }

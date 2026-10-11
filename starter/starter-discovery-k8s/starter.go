@@ -45,8 +45,8 @@ func init() {
 				gs.IndexArg(1, gs.ValueArg(c)),
 				gs.IndexArg(2, gs.ValueArg(name)),
 			).Name("k8s." + name).Destroy(destroyBackendBean).Caller(1)
-			log.Debug(context.Background(), starterTag, func() []log.Field {
-				return []log.Field{log.String("name", "k8s."+name), log.String("mode", c.Mode), log.String("namespace", c.Namespace), log.Msg("declared k8s discovery backend bean")}
+			log.Debug(context.Background(), starterTag, "declared k8s discovery backend bean", func() []log.Field {
+				return []log.Field{log.String("name", "k8s."+name), log.String("mode", c.Mode), log.String("namespace", c.Namespace)}
 			})
 			return nil
 		})
@@ -69,8 +69,8 @@ const obsSystem = "k8s"
 // newBackendBean builds the discovery backend for c. It runs at injection
 // time, so an invalid mode or an unreachable API server fails startup.
 func newBackendBean(ctx *gs.ContextProvider, c Config, name string) (discovery.Discovery, error) {
-	log.Debug(ctx.Context, starterTag, func() []log.Field {
-		return []log.Field{log.String("mode", c.Mode), log.String("namespace", c.Namespace), log.Msg("creating k8s discovery backend")}
+	log.Debug(ctx.Context, starterTag, "creating k8s discovery backend", func() []log.Field {
+		return []log.Field{log.String("mode", c.Mode), log.String("namespace", c.Namespace)}
 	})
 	b, err := newBackend(ctx, c, name)
 	if err != nil {

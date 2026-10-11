@@ -51,7 +51,7 @@ func currentLoadTestPropagator() traffic.Propagator {
 		return *p
 	}
 	// DefaultBinding is complete, so this cannot fail.
-	p, _ := traffic.NewDefaultPropagator(traffic.DefaultBinding())
+	p := traffic.NewDefaultPropagator(traffic.DefaultBinding())
 	return p
 }
 

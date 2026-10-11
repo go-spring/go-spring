@@ -51,12 +51,16 @@ info, err := s.Client.Enqueue(ctx, asynq.NewTask("example:greet", payload))
 
 ## Core Features
 
-- **Two roles, one instance** — a `Client` (always wired, guarded enqueue) and
+- **Two roles, one instance** — a `Client` (always wired, observed enqueue) and
   a `Server` (only when `server.enabled=true`; a long-running worker is an
   opt-in). Both share the same Redis connection settings.
-- **Guarded enqueue** — `Client.Enqueue` routes through the governance
-  executor (rate limit / circuit breaking); with no governance center linked (no
-  rules armed) it degrades to `Client.EnqueueContext`.
+- **One injected center** — the constructor takes the governance family's sole
+  injection point, the required `*governance.Center` (the `center` parameter),
+  the one object a client reads its resilience/fault authorities from
+  (`center.Resilience()`, `center.Fault()`). An asynq producer client exposes no
+  seam for a resilience executor, so nothing from the center governs the enqueue
+  path: `Client.Enqueue` runs under the observer, which emits the span, the
+  metrics and the access log, and nothing throttles or retries.
 - **Graceful shutdown** — `Server` drains in-flight tasks up to
   `shutdown-timeout` on destroy.
 - **Health indicator** — an `asynq:<name>` probe pings Redis through a fresh
@@ -76,10 +80,10 @@ independent producer/worker pair.
 
 ## Observability
 
-The starter **declares** what each guarded enqueue is (`observe.go`): the span name `enqueue`, the
+The starter **declares** what each observed enqueue is (`observe.go`): the span name `enqueue`, the
 `messaging.system`/`messaging.operation` labels, and the task type as `messaging.destination.name`
-span/log detail. The signals themselves are emitted by the resilience layer — the one point on the
-executor chain that sees a whole call, retries included — so beside the call-level
+span/log detail. The signals themselves are emitted by the observer — the one point on the call
+path that sees a whole call — so beside the call-level
 `messaging.client.operation.duration` histogram every call also reports an attempt-level
 `messaging.client.attempt.duration` one, plus the `messaging.client.active_requests` gauge, the
 `resilience.client.calls` counter and an access log tagged `_app_asynq_access`. All of it is a no-op

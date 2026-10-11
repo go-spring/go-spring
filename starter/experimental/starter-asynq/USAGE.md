@@ -5,7 +5,7 @@ against the starter source (`starter.go`, `client.go`, `driver.go`, `config.go`,
 `health/health.go`) and the runnable [example/](example/) (docker-gated smoke: `example/check.sh`).
 **Asynq's own semantics — task types, retries, scheduling, queues, the Inspector — are
 [asynq's documentation](https://github.com/hibiken/asynq)**; everything below is go-spring's
-increment (assembly, governance, observability, health).
+increment (assembly, observability, health).
 
 **Activation**: any `spring.asynq.instances.<name>` subtree (`gs.OnProperty("spring.asynq")` is a prefix
 check, starter.go:36). One instance always yields a producer `*Client`; a worker `*Server`
@@ -97,9 +97,9 @@ func main() {
         time.Sleep(700 * time.Millisecond)
         ctx := context.Background()
         payload, _ := json.Marshal(map[string]string{"msg": "hello asynq"})
-        // Use the wrapper's Enqueue — the guarded, observed path (§2.3).
+        // Use the wrapper's Enqueue — the observed path (§2.3).
         if _, err := svrBean.Interface().(*Service).Client.Enqueue(ctx, asynq.NewTask(taskType, payload), asynq.Queue("default")); err != nil {
-            log.Errorf(ctx, log.TagAppDef, "ENQUEUE failed: %v", err)
+            log.Error(ctx, log.TagAppDef, err, "ENQUEUE failed")
         }
         fmt.Println("Asynq round trip OK:", <-completed)
     }()
@@ -167,8 +167,10 @@ import starter-asynq
 gs.Run()
   ├─ bean wiring: app beans autowire *Client / *Server by instance name
   ├─ ctor newClient (starter.go): resolves RedisConnOpt, then NewClient fixes
-  │    the service label (resilience.ServiceLabel("asynq", addr)) and applies
-  │    the injected manager/injector governance bundle — no Init hook
+  │    the service label (resilience.ServiceLabel("asynq", addr)) and attaches
+  │    the observer; the ctor injects the required *governance.Center (center),
+  │    but the asynq client has no resilience seam, so nothing from it applies
+  │    — no Init hook
   ├─ ctor newServer (starter.go): builds asynq.NewServer(connOpt, Config{...})
   │    — no Init hook
   ├─ Rooter Init phase: app Service.Init registers handlers (mux created lazily,
@@ -177,8 +179,8 @@ gs.Run()
   ├─ Runner phase: Server.Run — srv.Start(mux), sig.TriggerAndWait() → ready,
   │    then blocks on <-ctx.Done()
   └─ on SIGTERM: Server.Stop → srv.Shutdown() drains in-flight tasks bounded by
-       shutdown-timeout; Destroy also calls Stop; Client.Destroy closes producer
-       and the resilience executor
+       shutdown-timeout; Destroy also calls Stop; Client.Destroy closes the
+       producer (no resilience executor is held)
 ```
 
 ### 2.2 Design rationale cited from source
@@ -197,15 +199,17 @@ gs.Run()
 ### 2.3 One task, layer by layer (enqueue → run)
 
 1. App calls the **wrapper's** `Client.Enqueue(ctx, task, opts...)` (client.go:77-91). Do not
-   call the promoted `*asynq.Client.Enqueue` — only the wrapper routes through the guard.
+   call the promoted `*asynq.Client.Enqueue` — only the wrapper runs the call under the observer.
 2. The starter **declares** the operation's identity (`operation("enqueue", task.Type())`,
    observe.go: span name `enqueue`, the `messaging.system`/`messaging.operation` labels, the
    task type as `messaging.destination.name` detail) and puts it on the ctx. It emits nothing.
-3. The executor runs: the one `NewClient` built from the injected `*resilience.Manager` wrapped
-   with the injected `*fault.Injector` — with a configured governance rules source, a rate-limit
-   rejection or open circuit aborts **before** Redis is touched; without governance (no
-   cloud/governance bean in the container) the executor is a pass-through.
-   The resilience layer **emits**: the span, the call-level `messaging.client.operation.duration`,
+3. The enqueue runs under the **observer**, not an executor. `newClient` injects the required
+   `*governance.Center` (`center`) — the governance family's sole injection point, the one object
+   a client reads its resilience/fault authorities from (`center.Resilience()`, `center.Fault()`) —
+   but an asynq producer client exposes no seam for a resilience executor (client.go:57-59), so no
+   authority from the center governs this path: nothing throttles or retries, and a rate-limit /
+   open-circuit / fault rule on `asynq:<addr>` is never consulted.
+   The observer **emits**: the span, the call-level `messaging.client.operation.duration`,
    the attempt-level `messaging.client.attempt.duration` histograms, the `messaging.client.active_requests`
    gauge, the `resilience.client.calls` counter and the `_app_asynq_access` access log.
 4. `Client.EnqueueContext` writes the task to Redis (asynq semantics: queue/priority from opts).
@@ -225,7 +229,7 @@ these ARE instance-prefixed).
 
 | Key | Type | Default | Behavior / interactions | Misconfiguration consequence |
 |-----|------|---------|-------------------------|------------------------------|
-| `spring.asynq.instances.<n>.addr` | string | — | Redis `host:port`; also feeds the governance service label `asynq:<addr>`. Required (`expr:"$ != ''"`). | Missing → bind-time startup error. |
+| `spring.asynq.instances.<n>.addr` | string | — | Redis `host:port`; also forms the observer's service label `asynq:<addr>`. Required (`expr:"$ != ''"`). | Missing → bind-time startup error. |
 | `..username` / `..password` | string | empty | Redis ACL auth. | Wrong → enqueue/handler failures at runtime, not at boot (health probe catches it). |
 | `..db` | int | 0 | Redis database index. | Mismatched db between producer/worker instances → tasks enqueued but never consumed. |
 | `..tls.*` | block | off | Shared security (`enabled`, `cert-file`, `key-file`, `ca-file`, `server-name`, `insecure-skip-verify`); when on, DefaultDriver builds a TLS RedisClientOpt (driver.go:58-77). | Half-configured TLS → driver build error at bean construction. |
@@ -278,11 +282,13 @@ Start a slow handler (sleep 3s), send a task, then `kill -TERM` the process duri
 the worker drains up to `shutdown-timeout` (8s default) before exiting; a timeout shorter
 than the run abandons it (asynq then retries it on the next delivery — asynq semantics).
 
-### 4.5 Governance guard (optional)
+### 4.5 Governance (not wired on this path)
 
-With governance (a configured rules source), open the circuit / set a rate limit on service
-`asynq:<addr>`: `Client.Enqueue` returns the rejection **without touching Redis**; the
-promoted `asynq.Client` path would bypass the guard entirely (see §5 row 2).
+The enqueue path carries no resilience executor (§2.3 step 3): a governance rule on service
+`asynq:<addr>` — a rate limit, an open circuit, an injected fault — is never consulted, so
+`Client.Enqueue` always reaches Redis. `newClient` still injects the required
+`*governance.Center` (`center`, the governance family's sole injection point), but an asynq
+producer client has no seam to apply it.
 
 ---
 
@@ -292,7 +298,7 @@ promoted `asynq.Client` path would bypass the guard entirely (see §5 row 2).
 |---------|--------------|-----|
 | Container fails: bean `a:server` not found | `server.enabled` not set (worker opt-in) | Set `spring.asynq.instances.<n>.server.enabled=true` or drop the autowire. |
 | Tasks enqueued but never run | Worker not enabled; enqueue to a queue not in `queues`; producer and worker on different `db` | Align config; enqueue with `asynq.Queue("<listed>")`. |
-| Guard/resilience never applies | Calling promoted `*asynq.Client.Enqueue/EnqueueContext` instead of the wrapper | Call the wrapper's `Enqueue` (client.go:71). |
+| No governance on the enqueue path | The asynq producer client has no seam for a resilience executor, so the injected `*governance.Center` cannot be applied (client.go:57-59) | By design: calls are observed only (span/metrics/access log), never throttled; use the wrapper's `Enqueue` (client.go:71) for the observed path. |
 | Health DOWN though enqueue works | `default` queue never created / ACL limits Inspector | Health checks the `default` queue specifically; ensure Redis reachable and permissions. |
 | Tasks lost on deploy | `shutdown-timeout` shorter than in-flight run | Raise it above the longest expected task. |
 | Custom Driver bean never used | The entry did not select it and by-type injection picked another | When several `Driver` beans coexist, select one per instance: `spring.asynq.instances.<name>.driver = <bean-name>` (empty = the single Driver bean by type; naming a missing bean fails startup). |
@@ -311,5 +317,7 @@ Design suspects (kept from the prior edition, plus new findings; the former
 
 - Producer and worker share one Config although only addr/auth/tls are truly common;
   `concurrency`/`queues`/`shutdown-timeout` are worker-only keys at top level.
-- The promoted `*asynq.Client` methods (`EnqueueContext`, etc.) bypass the guard/observation
-  seam — easy to call by accident.
+- The promoted `*asynq.Client` methods (`EnqueueContext`, etc.) bypass the observation
+  seam — easy to call by accident; and the constructor injects the required
+  `*governance.Center` that an asynq producer client has no seam to apply, so the parameter is
+  currently unused on this path.

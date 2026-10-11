@@ -63,7 +63,7 @@ func init() {
 		if !c.Enabled {
 			return nil
 		}
-		log.Infof(context.Background(), tagAppLuohua, "luohua baseline armed")
+		log.Info(context.Background(), tagAppLuohua, "luohua baseline armed")
 		return apply(r, c)
 	})
 }
@@ -119,16 +119,16 @@ func apply(r gs.BeanProvider, c Config) error {
 // contributes to the container.
 
 // governance registers the company resilience driver as a bean named "luohua"
-// (selectable by spring.governance.driver=luohua).
+// (selectable by spring.resilience.driver=luohua).
 func init() {
 	// Contributing the backend as a bean named "luohua" makes it selectable by
-	// spring.governance.driver=luohua: the resilience manager is built over every
-	// bean exported as resilience.Driver, keyed by bean name. Like the bundled
+	// spring.resilience.driver=luohua: the resilience manager injects the
+	// resilience.Driver bean whose name that key selects. Like the bundled
 	// "default" (and sentinel's blank-import contribution) this is an init-time
 	// availability registration, not a config-gated activation — the driver only
 	// governs when the process actually selects it.
-	gs.Provide(func(c resilience.Counters) *luohuaResilienceDriver {
-		return &luohuaResilienceDriver{counters: c}
+	gs.Provide(func(c resilience.ClusterLimiter) *luohuaResilienceDriver {
+		return &luohuaResilienceDriver{limiter: c}
 	}, gs.TagArg("?")).Name(LuohuaResilienceDriverName).
 		Export(gs.As[resilience.Driver]()).
 		Caller(1)
@@ -184,15 +184,12 @@ func init() {
 	})
 }
 
-// loadbalance registers the company balancer as a named Factory bean.
+// loadbalance registers the company balancer with the strategy registry.
 func init() {
-	// Contributing the company Balancer as a NAMED Factory bean is the whole
-	// extension — no change to cloud/loadbalance. The bean name IS the strategy
-	// name a selection rule cites, and the Export is what makes the bean visible
-	// to the directory the manager is built over.
-	gs.Provide(func() loadbalance.Factory { return luohuaFactory{} }).
-		Name(luohuaStrategy).
-		Export(gs.As[loadbalance.Factory]()).Caller(1)
+	// Registering from init is the whole extension — no change to
+	// cloud/loadbalance. The registered name IS the strategy name a selection
+	// rule cites, and linking this package is what puts it there.
+	loadbalance.Register(luohuaStrategy, luohuaFactory)
 }
 
 // lock registers the locker default (step-aside via OnMissingBean).

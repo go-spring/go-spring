@@ -24,9 +24,9 @@
 package StarterCassandra
 
 import (
-	"go-spring.org/cloud/observability"
 	"go-spring.org/stdlib/strutil"
 
+	"go-spring.org/cloud/chain"
 	"go-spring.org/log"
 	"go.opentelemetry.io/otel/attribute"
 )
@@ -52,8 +52,8 @@ var accessTag = log.RegisterAppTag("cassandra", "access")
 // Detail reaches the span and the log — where the statement is exactly what makes
 // a line worth reading — and never a label. A statement-less operation carries no
 // detail at all, which is also what levelled its success log at Info.
-func operation(op, stmt string) observability.Operation {
-	o := observability.Operation{
+func operation(op, stmt string) chain.Operation {
+	o := chain.Operation{
 		Name:   op,
 		Metric: "db.client",
 		Attrs: []attribute.KeyValue{

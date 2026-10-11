@@ -29,8 +29,7 @@
 package StarterMail
 
 import (
-	"go-spring.org/cloud/observability"
-
+	"go-spring.org/cloud/chain"
 	"go-spring.org/log"
 	"go.opentelemetry.io/otel/attribute"
 )
@@ -54,16 +53,15 @@ var accessTag = log.RegisterAppTag("mail", "access")
 // The operation is declared non-idempotent: a resend is a second email, not a
 // second attempt, so the executor chain must not retry it however a governance
 // rule is configured.
-func operation(msgs []*Message) observability.Operation {
-	o := observability.Operation{
+func operation(msgs []*Message) chain.Operation {
+	o := chain.Operation{
 		Name:   "mail.send",
 		Metric: "email.client",
 		Attrs: []attribute.KeyValue{
 			attribute.String("email.system", emailSystem),
 			attribute.String("email.operation", "send"),
 		},
-		LogTag:        accessTag,
-		NonIdempotent: true,
+		LogTag: accessTag,
 	}
 	if d := sendDetail(msgs); len(d) > 0 {
 		o.Detail = d

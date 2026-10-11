@@ -185,13 +185,12 @@ import starter-pulsar
 gs.Run()
   ├─ ctor newClient [starter.go:89]:
   │    1. optional Driver bean — none → bundled DefaultDriver              [starter.go:92-95]
-  │    2. d.CreateClient(c, cloud.ClientParams{Resilience: mgr, Fault: inj}):
+  │    2. d.CreateClient(ctx, c, center):
   │       ClientOptions, auth (mTLS>token-file>token), TLS, native
   │       Prometheus registry + :port /metrics server, log bridge,
-  │       pulsar.NewClient, then attachGuard — params.ExecutorFor("pulsar",
+  │       pulsar.NewClient, then attachGuard — center.ExecutorFor("pulsar",
   │       "pulsar:<url>") indexed by client, so the client is COMPLETE when
-  │       returned; mgr/inj are the injected *resilience.Manager /
-  │       *fault.Injector                                  [driver.go:76-115, command.go:225]
+  │       returned; center is the injected *governance.Center   [driver.go:76-115, command.go:225]
   │    3. then probe (Ping): cl.TopicPartitions(HealthCheckTopic) — a lookup
   │       that exercises address+auth+TLS without producing; failure →
   │       closeResilience + cl.Close + metrics shutdown + boot error     [starter.go:108-116]
@@ -201,7 +200,7 @@ gs.Run()
 ```
 
 **Assembly extension point**: client assembly is owned by a `Driver` (interface,
-`driver.go:62-72`): `CreateClient(ctx, c Config, params cloud.ClientParams) (pulsar.Client, error)`.
+`driver.go:62-72`): `CreateClient(ctx, c Config, center *governance.Center) (pulsar.Client, error)`.
 The driver returns the client COMPLETE — it applies the governance executor itself (via
 `attachGuard`) while building, so nothing patches the client afterwards. A company/umbrella starter
 may provide its own `Driver` as an **optional container bean** (a
@@ -224,12 +223,12 @@ resilience layer emits:
 
 ```
 GuardedSend(ctx, cl, producer, msg)                       [command.go]
-  ├─ observability.WithOperation(ctx, operation("publish", producer.Topic()))
+  ├─ chain.WithOperation(ctx, operation("publish", producer.Topic()))
   │     — declares the direction (span name), messaging.system/operation labels
   │       and the topic as Detail (never a label)
   └─ guard: clientGuards.Load(cl)                         [command.go]
        ├─ not found (driver skipped attachGuard) → producer.Send runs inline
-       └─ found → exec.Execute(ctx, injectW3C + send)      — fault-injector outermost
+       └─ found → exec.Execute(ctx, chain.Call{}, injectW3C + send)  — fault-injector outermost
                   (under governance), resilience observer inside it; the observer
                   emits span + messaging.client.* metrics + access log from the
                   declaration; rejection returns a resilience sentinel and the
@@ -241,13 +240,13 @@ The consumer direction declares the same way inside the driver's receive loop
 [messaging.go].
 
 The executor attached by `attachGuard` [command.go] comes from
-`params.ExecutorFor("pulsar", service)` (`service` = `pulsar:<url>`), where `params` is the
-`cloud.ClientParams{Resilience: mgr, Fault: inj}` the ctor hands the driver — `mgr` being the
-injected `*resilience.Manager`: with a manager it returns the fully assembled executor (core
+`center.ExecutorFor("pulsar", service)` (`service` = `pulsar:<url>`), where `center` is the
+injected `*governance.Center` the ctor hands the driver — carrying the injected
+`*resilience.Manager` and `*fault.Injector`: with a manager it returns the fully assembled executor (core
 breaker/limiter/retry wrapped by the resilience observer — outcome counters + access log) wrapped
 outermost by fault injection from the injected `*fault.Injector` (the injected error flows through
-the inner retry loop, so the breaker counts it); with the zero bundle it degrades to an
-observed-only, loudly-unmanaged executor.
+the inner retry loop, so the breaker counts it). The manager is required — the container
+always supplies it; there is no unmanaged/observe-only fallback.
 
 **NOT guarded** (each deliberate, per source comments):
 - `producer.SendAsync` — intentionally untouched; the async path has no synchronous outcome
@@ -364,7 +363,7 @@ Publish `Key="user-42"`, `Headers={"h1":"v1"}` per §1; in the handler log
 # conf/governance.yaml
 spring:
   governance:
-    enabled: true
+    driver: default
     resilience:
       breaker:
         enabled: true

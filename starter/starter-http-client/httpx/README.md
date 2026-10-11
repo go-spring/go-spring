@@ -15,8 +15,9 @@ sites are produced by `gs-http-gen`; a generated client only holds an
   fault + observe (outcome-classified metrics, access log gated by
   `Observability`). With no OTel SDK registered these are no-ops.
 - Discovery + load balancing: when a `ServiceName` is set, wires a discovery
-  `Resolver` and a `loadbalance.Pool` (round-robin, least-conn, consistent-hash,
-  weighted, zone-aware) with optional outlier suspension.
+  `Resolver` and a `loadbalance.Chain` (round-robin base; least-conn,
+  consistent-hash, weighted, zone-aware by rule) with optional outlier
+  suspension. A governance rule that moves the selection rebuilds the chain.
 - Direct addressing: with only `Addr`, rewrites every request to that host — the
   generated client's `Target` need not be set.
 - Governance by default: when no explicit executor is supplied, one is taken

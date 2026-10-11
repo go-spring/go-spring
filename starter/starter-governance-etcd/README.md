@@ -51,7 +51,7 @@ Add the two bootstrap keys to your
 [configuration file](example/conf/app.properties):
 
 ```properties
-spring.governance.source.etcd.endpoint=127.0.0.1:2379
+spring.governance.source.etcd.endpoints=127.0.0.1:2379
 spring.governance.source.etcd.key=/app/governance.yaml
 ```
 
@@ -65,10 +65,9 @@ The key holds governance's rules, using the `spring.governance.*` namespace:
 ```yaml
 spring:
   governance:
-    enabled: true
+    driver: default
     client:
       default:
-        enabled: true
         attempt-timeout: 100ms
 ```
 
@@ -103,7 +102,8 @@ All keys live under `spring.governance.source.etcd` (exact match):
   actually changed, pushed to the center.
 * **Last-good on bad edits.** A value that fails to parse keeps the previous
   snapshot and is logged, never pushed; governance is turned off with
-  `spring.governance.enabled=false`, not with a broken or emptied document.
+  a document that configures nothing (still carrying one `spring.governance.*`
+  key), not with a broken or emptied document.
 * **No-change dedupe.** A byte-identical re-delivery, or a re-parse that yields
   an equal config, pushes nothing — a touch does not churn executors.
 * **Owned client.** The source builds and owns its etcd client, and closes it

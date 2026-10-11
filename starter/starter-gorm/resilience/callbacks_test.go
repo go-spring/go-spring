@@ -43,13 +43,13 @@ func TestRunGuardRecordNotFoundNeverTripsBreaker(t *testing.T) {
 	defer func() { _ = exec.Close() }()
 
 	for range 10 {
-		err := runGuard(context.Background(), exec, "gorm:test", func() error {
+		err := runGuard(context.Background(), exec, "gorm:test", chain.Operation{}, func() error {
 			return gorm.ErrRecordNotFound
 		})
 		assert.Error(t, err).Is(gorm.ErrRecordNotFound)
 	}
 	// A subsequent real op still runs (breaker never opened).
-	err := runGuard(context.Background(), exec, "gorm:test", func() error { return nil })
+	err := runGuard(context.Background(), exec, "gorm:test", chain.Operation{}, func() error { return nil })
 	assert.Error(t, err).Nil()
 }
 
@@ -60,10 +60,10 @@ func TestRunGuardRealErrorsTripBreaker(t *testing.T) {
 	defer func() { _ = exec.Close() }()
 
 	boom := errors.New("connection reset")
-	assert.Error(t, runGuard(context.Background(), exec, "gorm:test", func() error { return boom })).Is(boom)
-	assert.Error(t, runGuard(context.Background(), exec, "gorm:test", func() error { return boom })).Is(boom)
+	assert.Error(t, runGuard(context.Background(), exec, "gorm:test", chain.Operation{}, func() error { return boom })).Is(boom)
+	assert.Error(t, runGuard(context.Background(), exec, "gorm:test", chain.Operation{}, func() error { return boom })).Is(boom)
 	// Breaker now open: the next call is short-circuited before the stub runs.
-	assert.Error(t, runGuard(context.Background(), exec, "gorm:test", func() error { return nil })).Is(chain.ErrCircuitOpen)
+	assert.Error(t, runGuard(context.Background(), exec, "gorm:test", chain.Operation{}, func() error { return nil })).Is(chain.ErrCircuitOpen)
 }
 
 // TestRunGuardRateLimitRejects confirms the flow-control path: once the burst
@@ -75,9 +75,9 @@ func TestRunGuardRateLimitRejects(t *testing.T) {
 
 	var ran int
 	stub := func() error { ran++; return nil }
-	assert.Error(t, runGuard(context.Background(), exec, "gorm:test", stub)).Nil()
-	assert.Error(t, runGuard(context.Background(), exec, "gorm:test", stub)).Nil()
-	err := runGuard(context.Background(), exec, "gorm:test", stub)
+	assert.Error(t, runGuard(context.Background(), exec, "gorm:test", chain.Operation{}, stub)).Nil()
+	assert.Error(t, runGuard(context.Background(), exec, "gorm:test", chain.Operation{}, stub)).Nil()
+	err := runGuard(context.Background(), exec, "gorm:test", chain.Operation{}, stub)
 	assert.Error(t, err).Is(chain.ErrRateLimited)
 	assert.That(t, ran).Equal(2) // the rejected call never reached the stub
 }

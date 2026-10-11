@@ -24,11 +24,25 @@ import (
 	"go-spring.org/stdlib/testing/assert"
 	"time"
 
-	"go-spring.org/cloud"
 	"go-spring.org/cloud/actuator/health"
+	"go-spring.org/cloud/fault"
+	"go-spring.org/cloud/governance"
+	"go-spring.org/cloud/resilience"
 	"go-spring.org/spring/gs"
 	"go-spring.org/starter-gorm"
 )
+
+// testCenter is the governance center Open requires to assemble a DB: a
+// resilience manager with no rules — enough for the pool-sizing lookup, with no
+// governance document to serve.
+func testCenter(t *testing.T) *governance.Center {
+	t.Helper()
+	ctr, err := governance.NewProcessCenter(resilience.NewManager(nil), fault.NewInjector(fault.Configs{}, nil))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return ctr
+}
 
 // No MySQL server is reachable from unit tests, so these tests pin the driver
 // assembly: DSN construction, the build validation/TLS paths, fail-fast open
@@ -72,7 +86,7 @@ func TestDSN(t *testing.T) {
 
 func TestBuildValidation(t *testing.T) {
 	// Neither addr nor service-name: must be rejected before anything registers.
-	if _, err := build(context.Background(), Config{User: "u", Password: "p", DB: "test"}, cloud.ClientParams{}); err == nil {
+	if _, err := build(context.Background(), Config{User: "u", Password: "p", DB: "test"}, nil); err == nil {
 		t.Fatal("build must require addr or service-name")
 	}
 
@@ -80,7 +94,7 @@ func TestBuildValidation(t *testing.T) {
 	c := Config{User: "u", Password: "p", Addr: "127.0.0.1:3306", DB: "test"}
 	c.TLS.Enabled = true
 	c.TLS.CAFile = "/nonexistent/ca.pem"
-	if _, err := build(context.Background(), c, cloud.ClientParams{}); err == nil {
+	if _, err := build(context.Background(), c, nil); err == nil {
 		t.Fatal("build must fail on an unreadable CA file")
 	}
 }
@@ -89,7 +103,7 @@ func TestBuildPlainSpec(t *testing.T) {
 	c := Config{User: "u", Password: "p", Addr: "127.0.0.1:3306", DB: "test"}
 	c.PingTimeout = 500 * time.Millisecond
 
-	spec, err := build(context.Background(), c, cloud.ClientParams{})
+	spec, err := build(context.Background(), c, nil)
 	assert.Error(t, err).Nil("build")
 	if spec.Dialector == nil {
 		t.Fatal("plain-addr build must return a dialector")
@@ -100,7 +114,7 @@ func TestBuildPlainSpec(t *testing.T) {
 
 	// Port 1 on loopback is closed: the open must fail fast with a connection
 	// error from the shared open path, returning a nil client.
-	client, err := gormcore.Open(spec.Dialector, spec.Pool, gormcore.Options{Engine: "mysql", Service: spec.Service})
+	client, err := gormcore.Open(spec.Dialector, spec.Pool, gormcore.Options{Engine: "mysql", Service: spec.Service, Center: testCenter(t)})
 	if err == nil {
 		_ = client.Destroy()
 		t.Fatal("expected a connection error for a closed port")

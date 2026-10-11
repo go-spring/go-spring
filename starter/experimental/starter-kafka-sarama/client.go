@@ -25,7 +25,6 @@ package StarterKafkaSarama
 
 import (
 	"github.com/IBM/sarama"
-	"go-spring.org/cloud"
 	"go-spring.org/cloud/governance"
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
@@ -51,12 +50,11 @@ import (
 // failed probe releases what was just assembled.
 //
 // center is the governance center the container injects — the family's sole
-// injection point; the ctor reads the resilience and fault authorities from it
-// and bundles them into the [cloud.ClientParams] it hands the driver, which
-// attaches the executor from it — so the client is assembled complete in one
-// step, with the zero bundle degrading to an observed-only, loudly-unmanaged
-// executor. A standalone, non-gs caller passes nil, which is exactly "governance
-// off".
+// injection point; the ctor hands it to the driver, which attaches the executor
+// from it — so the client is assembled complete in one
+// step, with the resilience manager required: the container supplies it via the
+// governance center, so a bundle without one fails at construction (the centre
+// is never nil in a started app).
 func newClient(ctx *gs.ContextProvider, name string, c Config, d Driver, center *governance.Center) (sarama.Client, error) {
 	// The client's identity rides on a context derived here: every line below
 	// carries it without repeating it. The provider's own context is left
@@ -64,16 +62,15 @@ func newClient(ctx *gs.ContextProvider, name string, c Config, d Driver, center 
 	// constructor's.
 	cctx := log.WithFields(ctx.Context, log.String("brokers", c.Brokers))
 
-	log.Debugf(cctx, log.TagAppDef, "creating kafka sarama client")
+	log.Debug(cctx, log.TagAppDef, "creating kafka sarama client", nil)
 
 	// No company Driver bean → fall back to the bundled default assembly.
 	if d == nil {
 		d = DefaultDriver{}
 	}
-	cl, err := d.CreateClient(ctx.Context, c,
-		cloud.ClientParams{Resilience: center.Resilience(), Fault: center.Fault()})
+	cl, err := d.CreateClient(ctx.Context, c, center)
 	if err != nil {
-		log.Errorf(cctx, log.TagAppDef, err, "kafka sarama: create client failed")
+		log.Error(cctx, log.TagAppDef, err, "kafka sarama: create client failed")
 		return nil, errutil.Explain(err, "failed to create kafka client: %s", c.Brokers)
 	}
 	// The Driver returned the client complete — governance was attached while it
@@ -81,14 +78,14 @@ func newClient(ctx *gs.ContextProvider, name string, c Config, d Driver, center 
 	// enabled); a failure releases what was assembled.
 	if c.Ping {
 		if len(cl.Brokers()) == 0 {
-			closeResilience(cl)
+			forgetObserver(cl)
 			cl.Close()
 			err := errutil.Explain(nil, "kafka client has no brokers after metadata fetch: %s", c.Brokers)
-			log.Errorf(cctx, log.TagAppDef, err, "kafka sarama: no brokers found")
+			log.Error(cctx, log.TagAppDef, err, "kafka sarama: no brokers found")
 			return nil, err
 		}
 	}
-	log.Infof(cctx, log.TagAppDef, "create kafka sarama client success")
+	log.Info(cctx, log.TagAppDef, "create kafka sarama client success")
 	return cl, nil
 }
 
@@ -97,6 +94,6 @@ func newClient(ctx *gs.ContextProvider, name string, c Config, d Driver, center 
 // their own lifecycle. When a resilience executor is attached its Close
 // releases any background resources of a production driver.
 func destroyClient(cl sarama.Client) error {
-	closeResilience(cl)
+	forgetObserver(cl)
 	return cl.Close()
 }

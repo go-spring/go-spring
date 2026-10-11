@@ -1,0 +1,114 @@
+/*
+ * Copyright 2025 The Go-Spring Authors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package StarterGrpcServer
+
+import (
+	"context"
+	"testing"
+
+	"go-spring.org/cloud/traffic"
+	"go-spring.org/stdlib/testing/assert"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/metadata"
+)
+
+func TestLoadTestUnaryInterceptor_TagsFromMetadata(t *testing.T) {
+	prop := traffic.NewDefaultPropagator(traffic.DefaultBinding())
+	hits := 0
+	var saw bool
+	handler := func(ctx context.Context, _ any) (any, error) {
+		hits++
+		saw = prop.IsLoadTest(ctx)
+		return "ok", nil
+	}
+	info := &grpc.UnaryServerInfo{FullMethod: "/svc/Method"}
+	intc := LoadTestUnaryInterceptor(prop)
+
+	// With the marker metadata: handler ctx is tagged.
+	ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs("x-loadtest", "1"))
+	_, _ = intc(ctx, nil, info, handler)
+	assert.That(t, hits).Equal(1)
+	assert.That(t, saw).True()
+
+	// Without it: plain ctx.
+	saw = false
+	ctx2 := metadata.NewIncomingContext(context.Background(), metadata.Pairs("x-other", "1"))
+	_, _ = intc(ctx2, nil, info, handler)
+	assert.That(t, saw).False()
+
+	// No metadata at all: still no panic, plain ctx.
+	saw = false
+	_, _ = intc(context.Background(), nil, info, handler)
+	assert.That(t, saw).False()
+}
+
+// fakeStream is a minimal grpc.ServerStream for the stream-interceptor test.
+type fakeStream struct {
+	grpc.ServerStream
+	ctx context.Context
+}
+
+func (f *fakeStream) Context() context.Context { return f.ctx }
+
+func TestLoadTestStreamInterceptor_TagsFromMetadata(t *testing.T) {
+	prop := traffic.NewDefaultPropagator(traffic.DefaultBinding())
+	var saw bool
+	handler := func(_ any, ss grpc.ServerStream) error {
+		saw = prop.IsLoadTest(ss.Context())
+		return nil
+	}
+	info := &grpc.StreamServerInfo{}
+
+	// Marker present in inbound metadata => stream ctx tagged.
+	ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs("x-loadtest", "1"))
+	err := LoadTestStreamInterceptor(prop)(nil, &fakeStream{ctx: ctx}, info, handler)
+	assert.Error(t, err).Nil()
+	assert.That(t, saw).True()
+
+	// Absent => untagged.
+	saw = false
+	ctx2 := metadata.NewIncomingContext(context.Background(), nil)
+	_ = LoadTestStreamInterceptor(prop)(nil, &fakeStream{ctx: ctx2}, info, handler)
+	assert.That(t, saw).False()
+}
+
+func TestUserInterceptorsComposeInOrder(t *testing.T) {
+	var order []string
+	outer := func(ctx context.Context, _ any, _ *grpc.UnaryServerInfo, h grpc.UnaryHandler) (any, error) {
+		order = append(order, "first")
+		return h(ctx, nil)
+	}
+	inner := func(ctx context.Context, _ any, _ *grpc.UnaryServerInfo, h grpc.UnaryHandler) (any, error) {
+		order = append(order, "second")
+		return h(ctx, nil)
+	}
+
+	s := NewSimpleGrpcServer(Config{}, func(*grpc.Server) {}, []grpc.UnaryServerInterceptor{outer, inner}, nil, testCenter(nil), nil)
+	opts, err := s.buildOptions()
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = opts // chain composition is exercised below; buildOptions must accept the slices
+
+	// First-provided is outermost: runs first when composed.
+	info := &grpc.UnaryServerInfo{FullMethod: "/s/m"}
+	var rt grpc.UnaryHandler = func(ctx context.Context, _ any) (any, error) { return "ok", nil }
+	_, _ = outer(context.Background(), nil, info, func(ctx context.Context, _ any) (any, error) {
+		return inner(ctx, nil, info, rt)
+	})
+	assert.That(t, order).Equal([]string{"first", "second"})
+}

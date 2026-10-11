@@ -72,10 +72,10 @@ func newSentinelExecutor(service string, p resilience.ClientPolicy) (*sentinelEx
 }
 
 // ensureRules loads this executor's flow, circuit-breaker and isolation rules once,
-// translating the neutral Policy knobs into sentinel's own rule shapes. The
-// breaker rule is selected by [resilience.ClientPolicy.BreakerStrategy] so the driver
-// matches the builtin's semantics, and both strategies set ProbeNum=1 for an
-// exactly-one-trial half-open (aligning with the builtin's single-permit gate).
+// translating the neutral Policy knobs into sentinel's own rule shapes through
+// the shared helpers in rules.go (the same translation the inbound engine
+// uses). The breaker rule is selected by [resilience.ClientPolicy.BreakerStrategy]
+// so the driver matches the builtin's semantics.
 func (e *sentinelExecutor) ensureRules() error {
 	service := e.service
 	e.mu.Lock()
@@ -85,20 +85,32 @@ func (e *sentinelExecutor) ensureRules() error {
 	}
 
 	if e.policy.RateLimit > 0 {
-		if _, err := flow.LoadRulesOfResource(service, []*flow.Rule{{
-			Resource:               service,
-			TokenCalculateStrategy: flow.Direct,
-			ControlBehavior:        flow.Reject,
-			Threshold:              e.policy.RateLimit,
-			StatIntervalInMs:       1000,
-		}}); err != nil {
+		rule := flowRule(service, flowKnobs{
+			rateLimit:  e.policy.RateLimit,
+			window:     e.policy.Window,
+			maxWait:    e.policy.RateLimitMaxWait,
+			warmUp:     e.policy.RateLimitWarmUpDuration,
+			coldFactor: e.policy.WarmUpColdFactor,
+		})
+		if _, err := flow.LoadRulesOfResource(service, []*flow.Rule{rule}); err != nil {
 			return errutil.Explain(err, "resilience: load flow rule for %q", service)
 		}
 	}
 
 	if e.policy.BreakerActive() {
-		if err := e.loadBreakerRule(service); err != nil {
-			return err
+		rule := breakerRule(service, breakerKnobs{
+			strategy:       e.policy.ResolvedBreakerStrategy(),
+			errorThreshold: e.policy.ErrorThreshold,
+			rateThreshold:  e.policy.ErrorRateThreshold,
+			slowThreshold:  e.policy.SlowCallDurationThreshold,
+			slowRate:       e.policy.SlowCallRateThreshold,
+			minRequests:    e.policy.MinRequests,
+			window:         e.policy.BreakerWindow,
+			open:           e.policy.OpenDuration,
+			probeN:         e.policy.HalfOpenRequests,
+		})
+		if _, err := circuitbreaker.LoadRulesOfResource(service, []*circuitbreaker.Rule{rule}); err != nil {
+			return errutil.Explain(err, "resilience: load breaker rule for %q", service)
 		}
 		// Route sentinel breaker state changes for this service to the
 		// attached listener (if any), so observe-resilience gets the events.
@@ -112,11 +124,9 @@ func (e *sentinelExecutor) ensureRules() error {
 		// acquired once for the whole Execute (see Execute below) and held across
 		// retries, matching the builtin's bulkhead-scope contract.
 		isoResource := service + isoSuffix
-		if _, err := isolation.LoadRulesOfResource(isoResource, []*isolation.Rule{{
-			Resource:   isoResource,
-			MetricType: isolation.Concurrency,
-			Threshold:  uint32(e.policy.MaxConcurrent),
-		}}); err != nil {
+		if _, err := isolation.LoadRulesOfResource(isoResource, []*isolation.Rule{
+			isolationRule(isoResource, e.policy.MaxConcurrent),
+		}); err != nil {
 			return errutil.Explain(err, "resilience: load isolation rule for %q", isoResource)
 		}
 	}
@@ -125,54 +135,7 @@ func (e *sentinelExecutor) ensureRules() error {
 	return nil
 }
 
-// loadBreakerRule registers a circuit-breaker rule under service, choosing
-// sentinel's strategy from [resilience.ClientPolicy.BreakerStrategy]. Both strategies
-// share the same stat window and a single half-open probe so they align with
-// the builtin driver rather than silently diverging.
-func (e *sentinelExecutor) loadBreakerRule(service string) error {
-	openMs := uint32(e.policy.OpenDuration.Milliseconds())
-	if openMs == 0 {
-		openMs = 5000
-	}
-	winMs := uint32(e.policy.BreakerWindow.Milliseconds())
-	if winMs == 0 {
-		winMs = 1000
-	}
-
-	var rule *circuitbreaker.Rule
-	switch e.policy.ResolvedBreakerStrategy() {
-	case resilience.BreakerErrorRate:
-		minReq := uint64(e.policy.MinRequests)
-		if minReq == 0 {
-			minReq = 1
-		}
-		rule = &circuitbreaker.Rule{
-			Resource:         service,
-			Strategy:         circuitbreaker.ErrorRatio,
-			RetryTimeoutMs:   openMs,
-			MinRequestAmount: minReq,
-			StatIntervalMs:   winMs,
-			Threshold:        e.policy.ErrorRateThreshold,
-			ProbeNum:         1,
-		}
-	default: // BreakerConsecutive
-		rule = &circuitbreaker.Rule{
-			Resource:         service,
-			Strategy:         circuitbreaker.ErrorCount,
-			RetryTimeoutMs:   openMs,
-			MinRequestAmount: 1,
-			StatIntervalMs:   winMs,
-			Threshold:        float64(e.policy.ErrorThreshold),
-			ProbeNum:         1,
-		}
-	}
-	if _, err := circuitbreaker.LoadRulesOfResource(service, []*circuitbreaker.Rule{rule}); err != nil {
-		return errutil.Explain(err, "resilience: load breaker rule for %q", service)
-	}
-	return nil
-}
-
-func (e *sentinelExecutor) Execute(ctx context.Context, fn func(context.Context) error) error {
+func (e *sentinelExecutor) Execute(ctx context.Context, call chain.Operation, fn func(context.Context) error) error {
 	if err := e.ensureRules(); err != nil {
 		return err
 	}
@@ -196,7 +159,18 @@ func (e *sentinelExecutor) Execute(ctx context.Context, fn func(context.Context)
 		defer cancel()
 	}
 
-	attempts := e.policy.MaxRetries + 1
+	// eff is the retry node this call runs under — the policy node when the
+	// governance center pushed a schedule (it wins whole), otherwise the call's own
+	// node — resolved by the SAME merge the builtin engine uses, so the two
+	// engines cannot disagree on retry. The zero node means a single attempt.
+	eff := resilience.EffectiveRetry(e.policy.Retry, call.Retry)
+	attempts := eff.MaxRetries + 1
+	// A non-idempotent call runs once whatever the schedule says — the retry would
+	// repeat a side effect, not an attempt. The builtin engine has always honored
+	// this; the sentinel engine reads the same merged node so it does too now.
+	if attempts > 1 && eff.NonIdempotent {
+		attempts = 1
+	}
 	var err error
 	for i := range attempts {
 		// Per-attempt Entry drives sentinel's flow and circuit-breaking rules.
@@ -217,13 +191,13 @@ func (e *sentinelExecutor) Execute(ctx context.Context, fn func(context.Context)
 		if budgetCtx.Err() != nil {
 			break
 		}
-		if !e.policy.ShouldRetry(err) {
+		if !resilience.ShouldRetry(err) {
 			break
 		}
 		if i == attempts-1 {
 			break
 		}
-		if !timeutil.Sleep(budgetCtx, e.policy.Backoff(i)) {
+		if !timeutil.Sleep(budgetCtx, resilience.Backoff(eff, i)) {
 			break
 		}
 	}

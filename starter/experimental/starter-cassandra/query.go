@@ -17,11 +17,11 @@
 // query.go is the "command seam" concept of this starter: the guarded *Query
 // builder every Client.Query/Client.Bind call returns, hollowed into a
 // per-query chain. gocql exposes no reject-capable middleware (QueryObserver
-// only watches), so the chain is the only seam: the identity layer declares
-// each terminal call's statement, the governance layer runs it under the
-// resilience executor, and the adapter layer executes the builder's current
-// *gocql.Query. A custom layer may wrap the chain head to modify what a
-// statement does — the rewrites are what the identity layer declares.
+// only watches), so the chain is the only seam: the guarded layer builds each
+// terminal call's statement identity and runs it under the resilience executor
+// (the operation is passed explicitly to the executor, not carried on the
+// context), and the adapter layer executes the builder's current *gocql.Query.
+// A custom layer may wrap the chain head to modify what a statement does.
 
 package StarterCassandra
 
@@ -30,7 +30,6 @@ import (
 
 	"github.com/gocql/gocql"
 	"go-spring.org/cloud/chain"
-	"go-spring.org/cloud/observability"
 )
 
 // InnerQuery is the terminal-execution seam a statement's traffic runs
@@ -38,12 +37,11 @@ import (
 // interface is the ONLY way to modify what happens under the Query builder's
 // Exec/Iter/Scan-family methods.
 //
-// The default chain is the identity layer over the governance layer over a raw
-// adapter, and the builder's embedded InnerQuery is where a custom layer goes:
-// implement this interface (embed the head you found to inherit the methods
-// you do not care about), then assign your layer over it. The chain under the
-// layer keeps doing its job — the statements the layer rewrites are what the
-// identity layer declares, and the executor still protects every call.
+// The default chain is the guarded layer over a raw adapter, and the builder's
+// embedded InnerQuery is where a custom layer goes: implement this interface
+// (embed the head you found to inherit the methods you do not care about), then
+// assign your layer over it. The chain under the layer keeps doing its job —
+// the executor still protects every call.
 //
 // Release follows the chain protocol: every layer takes away its OWN
 // resources and passes the flag to the layer under it. A query holds no
@@ -109,22 +107,26 @@ func (r *RawQuery) MapScanCAS(ctx context.Context, m map[string]any) (bool, erro
 	return r.q.Query.WithContext(ctx).MapScanCAS(m)
 }
 
-// GuardQuery is the governance layer: it runs every terminal call under the
-// resilience executor, which applies rate limiting, breaking and bulkheading —
-// and emits the statement's span, metrics and access log from the one point
-// that sees the whole call, retries included. One instance is built per client
-// in [NewClient] and shared by every query's chain; its executor's lifetime is
-// the session's, so the executor is closed by [Client.Close], not here.
+// GuardQuery is the guarded layer: it builds each terminal call's semantic
+// identity — op ("exec" for Exec, "query" for the read family) and stmt, the
+// statement — and runs the call under the resilience executor, which applies
+// rate limiting, breaking and bulkheading — and emits the statement's span,
+// metrics and access log from the one point that sees the whole call, retries
+// included. The identity is built here and passed EXPLICITLY to the executor
+// rather than carried on the context. One instance is built per client in
+// [NewClient] and shared by every query's chain; its executor's lifetime is the
+// session's, so the executor is closed by [Client.Close], not here.
 // [NewGuardQuery] builds it.
 type GuardQuery struct {
 	exec chain.Executor
 	next InnerQuery
+	stmt string
 }
 
-// NewGuardQuery builds the governance layer over next, running every terminal
-// call under exec.
-func NewGuardQuery(next InnerQuery, exec chain.Executor) *GuardQuery {
-	return &GuardQuery{exec: exec, next: next}
+// NewGuardQuery builds the guarded layer over next, supplying stmt as the
+// statement's identity and running every terminal call under exec.
+func NewGuardQuery(next InnerQuery, exec chain.Executor, stmt string) *GuardQuery {
+	return &GuardQuery{exec: exec, next: next, stmt: stmt}
 }
 
 // Release hands releaseRaw to the layer under it — the executor is shared by
@@ -133,12 +135,12 @@ func NewGuardQuery(next InnerQuery, exec chain.Executor) *GuardQuery {
 func (g *GuardQuery) Release(releaseRaw bool) error { return g.next.Release(releaseRaw) }
 
 func (g *GuardQuery) Exec(ctx context.Context) error {
-	return g.exec.Execute(ctx, func(context.Context) error { return g.next.Exec(ctx) })
+	return g.exec.Execute(ctx, operation("exec", g.stmt), func(context.Context) error { return g.next.Exec(ctx) })
 }
 
 func (g *GuardQuery) Iter(ctx context.Context) *gocql.Iter {
 	var it *gocql.Iter
-	_ = g.exec.Execute(ctx, func(context.Context) error {
+	_ = g.exec.Execute(ctx, operation("query", g.stmt), func(context.Context) error {
 		it = g.next.Iter(ctx)
 		return nil
 	})
@@ -146,12 +148,12 @@ func (g *GuardQuery) Iter(ctx context.Context) *gocql.Iter {
 }
 
 func (g *GuardQuery) Scan(ctx context.Context, dest ...any) error {
-	return g.exec.Execute(ctx, func(context.Context) error { return g.next.Scan(ctx, dest...) })
+	return g.exec.Execute(ctx, operation("query", g.stmt), func(context.Context) error { return g.next.Scan(ctx, dest...) })
 }
 
 func (g *GuardQuery) ScanCAS(ctx context.Context, dest ...any) (bool, error) {
 	var applied bool
-	err := g.exec.Execute(ctx, func(context.Context) error {
+	err := g.exec.Execute(ctx, operation("query", g.stmt), func(context.Context) error {
 		var e error
 		applied, e = g.next.ScanCAS(ctx, dest...)
 		return e
@@ -160,61 +162,17 @@ func (g *GuardQuery) ScanCAS(ctx context.Context, dest ...any) (bool, error) {
 }
 
 func (g *GuardQuery) MapScan(ctx context.Context, m map[string]any) error {
-	return g.exec.Execute(ctx, func(context.Context) error { return g.next.MapScan(ctx, m) })
+	return g.exec.Execute(ctx, operation("query", g.stmt), func(context.Context) error { return g.next.MapScan(ctx, m) })
 }
 
 func (g *GuardQuery) MapScanCAS(ctx context.Context, m map[string]any) (bool, error) {
 	var applied bool
-	err := g.exec.Execute(ctx, func(context.Context) error {
+	err := g.exec.Execute(ctx, operation("query", g.stmt), func(context.Context) error {
 		var e error
 		applied, e = g.next.MapScanCAS(ctx, m)
 		return e
 	})
 	return applied, err
-}
-
-// ObsQuery is the identity layer at the head of a query's chain: it names each
-// terminal call — op ("exec" for Exec, "query" for the read family) and the
-// statement, declared as the call's semantic identity — and hands the context
-// down. It emits nothing itself: emission happens where the whole call is
-// seen, which is the governance layer under it. [NewObsQuery] builds it.
-type ObsQuery struct {
-	stmt string
-	next InnerQuery
-}
-
-// NewObsQuery builds the identity layer over next, declaring stmt on every
-// terminal call.
-func NewObsQuery(next InnerQuery, stmt string) *ObsQuery {
-	return &ObsQuery{stmt: stmt, next: next}
-}
-
-// Release hands releaseRaw to the layer under it — this layer holds no
-// resource.
-func (o *ObsQuery) Release(releaseRaw bool) error { return o.next.Release(releaseRaw) }
-
-func (o *ObsQuery) Exec(ctx context.Context) error {
-	return o.next.Exec(observability.WithOperation(ctx, operation("exec", o.stmt)))
-}
-
-func (o *ObsQuery) Iter(ctx context.Context) *gocql.Iter {
-	return o.next.Iter(observability.WithOperation(ctx, operation("query", o.stmt)))
-}
-
-func (o *ObsQuery) Scan(ctx context.Context, dest ...any) error {
-	return o.next.Scan(observability.WithOperation(ctx, operation("query", o.stmt)), dest...)
-}
-
-func (o *ObsQuery) ScanCAS(ctx context.Context, dest ...any) (bool, error) {
-	return o.next.ScanCAS(observability.WithOperation(ctx, operation("query", o.stmt)), dest...)
-}
-
-func (o *ObsQuery) MapScan(ctx context.Context, m map[string]any) error {
-	return o.next.MapScan(observability.WithOperation(ctx, operation("query", o.stmt)), m)
-}
-
-func (o *ObsQuery) MapScanCAS(ctx context.Context, m map[string]any) (bool, error) {
-	return o.next.MapScanCAS(observability.WithOperation(ctx, operation("query", o.stmt)), m)
 }
 
 // Query wraps a *gocql.Query so its execution methods (Exec, Iter, Scan,

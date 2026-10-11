@@ -25,9 +25,9 @@ import (
 
 // randomFactory is the [Factory] behind the [Random] name. The strategy has no
 // parameters: any key in the bag is rejected by [Params.Done].
-type randomFactory struct{}
+func init() { Register(Random, buildRandom) }
 
-func (randomFactory) Build(_ Directory, p *Params) (Balancer, error) {
+func buildRandom(p *Params) (Balancer, error) {
 	if err := p.Done(); err != nil {
 		return nil, err
 	}

@@ -50,7 +50,7 @@ func init() {
 		return func(e *echo.Echo) {
 			e.GET("/echo/:name", func(ctx echo.Context) error {
 				name := ctx.Param("name")
-				log.Infof(ctx.Request().Context(), log.TagAppDef, "handling /echo/%s", name)
+				log.Info(ctx.Request().Context(), log.TagAppDef, "handling /echo/", log.String("name", name))
 				return ctx.JSON(http.StatusOK, map[string]string{"message": "Hello, " + name})
 			})
 		}

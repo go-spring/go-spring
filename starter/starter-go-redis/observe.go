@@ -28,13 +28,12 @@
 package StarterGoRedis
 
 import (
-	"context"
 	"fmt"
 
-	"go-spring.org/cloud/observability"
 	"go-spring.org/stdlib/strutil"
 
 	"github.com/redis/go-redis/v9"
+	"go-spring.org/cloud/chain"
 	"go-spring.org/log"
 	"go.opentelemetry.io/otel/attribute"
 )
@@ -69,9 +68,9 @@ var skipOps = map[string]struct{}{"ping": {}}
 // exactly what makes a line worth reading — and never a label. A command with
 // no argument carries no detail at all, which is also what levelled its
 // success log at Info.
-func operation(cmd redis.Cmder) observability.Operation {
+func operation(cmd redis.Cmder) chain.Operation {
 	op := cmd.FullName()
-	o := observability.Operation{
+	o := chain.Operation{
 		Name:   op,
 		Metric: "db.client",
 		Attrs: []attribute.KeyValue{
@@ -91,8 +90,8 @@ func operation(cmd redis.Cmder) observability.Operation {
 // pipelineOperation is the semantic identity of a pipelined batch: a pipeline
 // is not one command and carries no single argument, so its name is the literal
 // "pipeline" and it declares no Detail — which levels its success log at Info.
-func pipelineOperation() observability.Operation {
-	return observability.Operation{
+func pipelineOperation() chain.Operation {
+	return chain.Operation{
 		Name:   "pipeline",
 		Metric: "db.client",
 		Attrs: []attribute.KeyValue{
@@ -112,38 +111,4 @@ func argOf(cmd redis.Cmder) string {
 		return ""
 	}
 	return strutil.Truncate(fmt.Sprint(args[1]), maxStatement)
-}
-
-// applyDeclaration attaches the declaration hook to client. It is added before
-// the resilience hook (see [NewClient]) so the identity it puts on the ctx is
-// already there when the resilience layer reads it and emits the call's span,
-// metrics and access log.
-func applyDeclaration(client redis.UniversalClient) {
-	client.AddHook(&operationHook{})
-}
-
-// operationHook is the declaration layer of the command hook chain: it puts the
-// command's identity on the context, which the resilience layer inside it reads
-// to emit the span, the metrics and the access log. A skipped op is forwarded
-// untouched, declaring no Operation — the resilience layer then reports it as
-// any other call whose identity is undeclared.
-type operationHook struct{}
-
-var _ redis.Hook = (*operationHook)(nil)
-
-func (h *operationHook) DialHook(next redis.DialHook) redis.DialHook { return next }
-
-func (h *operationHook) ProcessHook(next redis.ProcessHook) redis.ProcessHook {
-	return func(ctx context.Context, cmd redis.Cmder) error {
-		if _, skip := skipOps[cmd.FullName()]; skip {
-			return next(ctx, cmd)
-		}
-		return next(observability.WithOperation(ctx, operation(cmd)), cmd)
-	}
-}
-
-func (h *operationHook) ProcessPipelineHook(next redis.ProcessPipelineHook) redis.ProcessPipelineHook {
-	return func(ctx context.Context, cmds []redis.Cmder) error {
-		return next(observability.WithOperation(ctx, pipelineOperation()), cmds)
-	}
 }

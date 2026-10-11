@@ -30,8 +30,8 @@ import (
 
 	"github.com/neo4j/neo4j-go-driver/v5/neo4j"
 	"github.com/neo4j/neo4j-go-driver/v5/neo4j/auth"
-	"go-spring.org/cloud"
 	"go-spring.org/cloud/discovery"
+	"go-spring.org/cloud/governance"
 	"go-spring.org/cloud/loadbalance"
 	"go-spring.org/cloud/mesh"
 	"go-spring.org/cloud/security"
@@ -49,31 +49,51 @@ import (
 // — not the raw neo4j.DriverWithContext, so a driver takes part in the type the
 // rest of the ecosystem sees and future wrapper capabilities are reachable from
 // it. It returns the client COMPLETE: the wrapper derives the service label from
-// the Config it is handed, so the driver fixes identity here; params carries
-// the container's facilities (see [cloud.ClientParams]), which [NewClient]
-// applies while building. Nothing patches the client afterwards.
+// the Config it is handed, so the driver fixes identity here; center is the
+// container's governance center (carrying the resilience/fault/loadbalance
+// authorities and the discovery directory), which [NewClient] applies while
+// building. Nothing patches the client afterwards.
 //
-// params is one struct rather than a parameter per capability so this interface
+// center is one object rather than a parameter per capability so this interface
 // — which every company driver implements — stays stable as capabilities are
-// added. A driver that has no use for one of its fields simply ignores it.
+// added. A driver that has no use for one of its facilities simply ignores it.
 //
 // At most one Driver bean is expected per process; every client under
 // ${spring.neo4j} is built through it, and per-instance differences are
 // expressed through [Config].
 //
-// params.Discovery is the discovery backend the entry's ${discovery} label
-// resolved to, already looked up by the starter wiring; it is nil when no
-// backend bean exists. It rides on the params struct rather than Config so a
-// custom driver can actually reach it — Config stays a pure bound value.
+// The entry's ${discovery} label rides on the config (c.Discovery, already
+// carrying the family default): the driver resolves the backend it names from
+// center.Discovery() itself, failing construction when an entry routes by
+// service-name and the label names no bean.
 type Driver interface {
-	CreateClient(ctx context.Context, c Config, params cloud.ClientParams) (*Client, error)
+	CreateClient(ctx context.Context, c Config, center *governance.Center) (*Client, error)
 }
 
 // DefaultDriver is the default implementation of the Driver interface.
 type DefaultDriver struct{}
 
 // CreateClient creates a new Neo4j client based on the provided configuration.
-func (DefaultDriver) CreateClient(ctx context.Context, c Config, params cloud.ClientParams) (*Client, error) {
+//
+// When c.ServiceName is set and mesh mode is off, the discovery backend the
+// entry's ${discovery} label names is resolved from center.Discovery() and one
+// endpoint is picked, its address spliced into the URI host (the seed); the
+// same resolver feeds the driver's AddressResolver hook so a routing client can
+// re-find the cluster. An entry routed by service-name that cites no existing
+// backend fails here, at construction.
+func (DefaultDriver) CreateClient(ctx context.Context, c Config, center *governance.Center) (*Client, error) {
+	// Seed the URI host from the discovery backend this entry cites. The label
+	// rides on the config (c.Discovery, already carrying the family default);
+	// resolveURI fails loudly when it names no bean.
+	var backend discovery.Discovery
+	if c.ServiceName != "" && !mesh.Enabled() {
+		backend, _ = center.Discovery().Get(c.Discovery)
+		uri, err := resolveURI(ctx, c, backend)
+		if err != nil {
+			return nil, err
+		}
+		c.URI = uri
+	}
 	auth := neo4j.NoAuth()
 	if c.Username != "" {
 		auth = neo4j.BasicAuth(c.Username, c.Password, c.Realm)
@@ -91,8 +111,8 @@ func (DefaultDriver) CreateClient(ctx context.Context, c Config, params cloud.Cl
 		// again instead of staying broken until the process restarts. The driver
 		// only consults this hook in routing mode (neo4j:// schemes) — a direct
 		// bolt:// client has no routing table to rebuild and is unchanged.
-		if c.ServiceName != "" && params.Discovery != nil && !mesh.Enabled() {
-			if resolve, rerr := discovery.NewResolver(ctx, params.Discovery, c.ServiceName, discovery.WithScheme(c.Scheme)); rerr != nil {
+		if c.ServiceName != "" && backend != nil && !mesh.Enabled() {
+			if resolve, rerr := discovery.NewResolver(ctx, backend, c.ServiceName, discovery.WithScheme(c.Scheme)); rerr != nil {
 				tlsErr = errutil.Explain(rerr, "neo4j: resolve service %s", c.ServiceName)
 			} else if resolve != nil {
 				conf.AddressResolver = liveRouterAddresses(resolve)
@@ -108,7 +128,7 @@ func (DefaultDriver) CreateClient(ctx context.Context, c Config, params cloud.Cl
 	// NewClient is the only way to build a Client: identity and governance are
 	// both applied here (see [Driver]), so the driver returns a client that is
 	// complete.
-	return NewClient(client, c, params), nil
+	return NewClient(client, c, center), nil
 }
 
 // liveRouterAddresses adapts a discovery [discovery.Resolver] into the driver's
@@ -179,12 +199,12 @@ func applyTLS(t security.TLSConfig, conf *neo4j.Config) error {
 	return nil
 }
 
-// resolveURI resolves c.ServiceName through the discovery backend the starter
-// wiring resolved from c.Discovery, picks one live endpoint via the shared
-// loadbalance machinery, and rewrites the URI's host to that address. It must
-// only be called when service discovery is in effect (the caller has already
-// gated on service-name being set and mesh mode being off); it fails loudly
-// when backend is nil (no backend bean cited by the ${discovery} label).
+// resolveURI resolves c.ServiceName through the discovery backend the driver
+// resolved from c.Discovery, picks one live endpoint via the shared loadbalance
+// machinery, and rewrites the URI's host to that address. It must only be
+// called when service discovery is in effect (the caller has already gated on
+// service-name being set and mesh mode being off); it fails loudly when backend
+// is nil (no backend bean cited by the ${discovery} label).
 func resolveURI(ctx context.Context, c Config, backend discovery.Discovery) (string, error) {
 	if backend == nil {
 		if c.Discovery == "" {

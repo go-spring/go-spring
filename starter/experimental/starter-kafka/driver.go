@@ -31,7 +31,7 @@ import (
 	"github.com/twmb/franz-go/pkg/sasl/plain"
 	"github.com/twmb/franz-go/pkg/sasl/scram"
 	"github.com/twmb/franz-go/plugin/kotel"
-	"go-spring.org/cloud"
+	"go-spring.org/cloud/governance"
 	"go-spring.org/log"
 	"go-spring.org/stdlib/errutil"
 )
@@ -43,8 +43,8 @@ import (
 // assembly. A custom driver is a bean, so it may inject the configuration/beans
 // it needs — e.g. company config bound from a properties file at wiring time.
 //
-// CreateClient returns the client COMPLETE. params supplies the container's
-// service-governance capabilities (see [cloud.ClientParams]), which the
+// CreateClient returns the client COMPLETE. center supplies the container's
+// service-governance capabilities (see [governance.Center]), which the
 // driver applies WHILE it builds — by calling [AttachGovernance] — so nothing
 // patches the client afterwards. Attaching is part of the contract, not an
 // optional extra: the guard is indexed by the raw *kgo.Client the driver
@@ -52,15 +52,15 @@ import (
 // produce/consume path. A driver that returns without attaching leaves its
 // client ungoverned.
 //
-// params is one struct rather than a parameter per capability so this interface —
+// center is one object rather than a parameter per capability so this interface —
 // which every company driver implements — stays stable as capabilities are
-// added. A driver that has no use for one of its fields simply ignores it.
+// added. A driver that has no use for one of its authorities simply ignores it.
 //
 // At most one Driver bean is expected per process; every client under
 // ${spring.kafka} is built through it, and per-instance differences are
 // expressed through [Config].
 type Driver interface {
-	CreateClient(ctx context.Context, c Config, params cloud.ClientParams) (*kgo.Client, error)
+	CreateClient(ctx context.Context, c Config, center *governance.Center) (*kgo.Client, error)
 }
 
 // DefaultDriver is the default implementation of the Driver interface.
@@ -75,7 +75,7 @@ type DefaultDriver struct{}
 // The per-message access log is no longer a client hook (the observe hook was
 // removed): the resilience executor emits it from the declared operation (see
 // observe.go and command.go), so the hook set here is kotel's alone.
-func (DefaultDriver) CreateClient(ctx context.Context, c Config, params cloud.ClientParams) (*kgo.Client, error) {
+func (DefaultDriver) CreateClient(ctx context.Context, c Config, center *governance.Center) (*kgo.Client, error) {
 	kt := kotel.NewKotel(
 		kotel.WithTracer(kotel.NewTracer()),
 		kotel.WithMeter(kotel.NewMeter()),
@@ -101,7 +101,7 @@ func (DefaultDriver) CreateClient(ctx context.Context, c Config, params cloud.Cl
 	if c.TLS.Enabled {
 		tc, err := c.TLS.BuildClient()
 		if err != nil {
-			log.Errorf(ctx, log.TagAppDef, err, "kafka: build TLS failed")
+			log.Error(ctx, log.TagAppDef, err, "kafka: build TLS failed")
 			return nil, errutil.Explain(err, "kafka: build TLS")
 		}
 		opts = append(opts, kgo.DialTLSConfig(tc))
@@ -115,11 +115,11 @@ func (DefaultDriver) CreateClient(ctx context.Context, c Config, params cloud.Cl
 	if err != nil {
 		return nil, err
 	}
-	// The driver builds the RAW client; params stays in the interface for the
+	// The driver builds the RAW client; center stays in the interface for the
 	// drivers that need it, but the bundled default ignores it — governance is
 	// applied one step up, by [NewClient] while it wraps the client in its
 	// chain.
-	_ = params // see above
+	_ = center // see above
 	return cl, nil
 }
 
@@ -204,10 +204,10 @@ func (logger) Log(level kgo.LogLevel, msg string, keyvals ...any) {
 	}
 	switch level {
 	case kgo.LogLevelError:
-		log.Errorf(ctx, log.TagAppDef, fmt.Errorf("kafka: %s", line), "kafka: %s", line)
+		log.Error(ctx, log.TagAppDef, fmt.Errorf("kafka: %s", line), "kafka", log.String("line", line))
 	case kgo.LogLevelWarn:
-		log.Warnf(ctx, log.TagAppDef, "kafka: %s", line)
+		log.Warn(ctx, log.TagAppDef, "kafka", log.String("line", line))
 	default:
-		log.Infof(ctx, log.TagAppDef, "kafka: %s", line)
+		log.Info(ctx, log.TagAppDef, "kafka", log.String("line", line))
 	}
 }

@@ -239,8 +239,9 @@ identity.
 
 ## Logging API
 
-Every level comes in two styles: structured and formatted. Note that the field parameter takes
-two different forms:
+Every level takes a required `msg` string followed by fields. The message must be a **constant
+string without formatting verbs** — variable data goes into structured fields, never into the
+message. Note that the field parameter takes two different forms:
 
 - `Trace` / `Debug` take a **lazy builder** `func() []Field` - the closure is not invoked (and
   nothing is allocated) when the level is disabled; ideal for high-frequency debug logs
@@ -248,26 +249,17 @@ two different forms:
   the call
 
 ```go
-log.Debug(ctx, tag, func() []log.Field {
+log.Debug(ctx, tag, "login succeeded", func() []log.Field {
 	return []log.Field{log.String("user_id", "10001")} // skipped when level disabled
 })
-log.Info(ctx, tag, log.String("user_id", "10001"), log.Msg("login succeeded"))
-log.Infof(ctx, tag, "user %s logged in", userID)
+log.Info(ctx, tag, "user logged in", log.String("user_id", "10001"))
 ```
 
-Which style to use:
-
-- **A lone message, no fields** — use the formatted variant (`Tracef` / `Debugf` / `Infof` /
-  `Warnf` / `Errorf` / `Fatalf`). Those exist precisely for this case: wrapping a single message
-  in `log.Msg(...)` is only ceremony.
-- **Any field at all** — use the structured form, with the message as the last field:
-  `log.Info(ctx, tag, log.String("order_id", id), log.Msg("order placed"))`.
-
-A message handed to a formatted variant is a format string, so a literal `%` must be written
-`%%` — or the call must use the structured form. `Error` carries its error as a dedicated argument
-in both styles: `log.Errorf(ctx, tag, err, "...")` and
-`log.Error(ctx, tag, err, log.String("k", v), log.Msg("..."))`. Every other level takes the error
-as the `log.Err(err)` field.
+`Error` carries its error as a dedicated argument:
+`log.Error(ctx, tag, err, "handle order request failed", log.String("k", v))`. Every other level
+takes the error as the `log.Err(err)` field. For the rare case that genuinely needs a formatted
+message (relaying user input, bridging an external framework), use `log.Record` with
+`log.Msgf(...)` — it is the escape hatch for custom situations, not the default.
 
 Common field constructors:
 
@@ -283,13 +275,13 @@ Common field constructors:
 
 A message records a constant event description - the module or the acting subject; every variable
 value (a key, a path, an id, a backoff, a count, a duration) goes into a structured field, never
-spliced into the text. In particular do not interpolate variables into the message with `Msgf`:
-sampling identifies repeated lines by their message text, and an interpolated value makes every
-occurrence look new, defeating it. `Msgf` stays legitimate only where the content is inherently
-dynamic - relaying user input, echoing a peer's raw reply, or bridging an arbitrary value from an
-external framework (an adapter's `Msgf("%v")`). Structured logging is not an excuse to drop the
-human words: prefer `log.Warn(ctx, tag, fields...)` over a `Warnf` prose line, but still write a
-message a human can read.
+spliced into the text: sampling identifies repeated lines by their message text, and an
+interpolated value makes every occurrence look new, defeating it. The API enforces this — the
+`msg` parameter is a plain string, and `Msgf` stays legitimate only where the content is
+inherently dynamic (relaying user input, echoing a peer's raw reply, or bridging an arbitrary
+value from an external framework) via `log.Record`. Structured logging is not an excuse to drop
+the human words: still write `log.Warn(ctx, tag, "load config failed", fields...)` with a message
+a human can read.
 
 Wording follows the event's time-tense, and each tense keeps one shape:
 
@@ -414,16 +406,11 @@ func main() {
 
 	ctx := context.Background()
 
-	// Simple formatted logging
-	log.Infof(ctx, log.TagAppDef, "app started, version: %s", "v1.0.0")
-	log.Errorf(ctx, log.TagBizDef, "failed to handle order request: %v", err)
-
-	// Structured logging
-	log.Info(ctx, log.TagAppDef,
-		log.String("event", "user_login"),
-		log.Int("user_id", 10001),
-		log.Msg("user logged in successfully"),
+	// Structured logging: constant message + fields
+	log.Info(ctx, log.TagAppDef, "app started",
+		log.String("version", "v1.0.0"),
 	)
+	log.Error(ctx, log.TagBizDef, err, "handle order request failed")
 }
 ```
 
@@ -624,8 +611,8 @@ does not bind itself to any config format.
 ### Performance Design
 
 - **Zero-allocation field construction**: the primary API takes a `func() []Field` builder, so
-  level-disabled call sites allocate nothing for fields; `Infof`-style formatted variants are
-  more ergonomic but take the slower path.
+  level-disabled call sites allocate nothing for fields; there are no formatted variants — the
+  message is always a constant string and variable data always goes into fields.
 - **Object pooling**: log events and encoding buffers come from `sync.Pool`; buffers larger
   than 10 KB are discarded instead of returned to the pool (tunable via the
   `GS_LOGGER_BUFFER_CAP` environment variable).

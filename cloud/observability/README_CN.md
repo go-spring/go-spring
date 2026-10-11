@@ -160,13 +160,15 @@ _ = observability.RefreshConf(ctx, func(ctx context.Context) error {
 ## Operation 与 Recorder：客户端 starter 的"声明"接口
 
 客户端不发射信号——它们**声明**，发射端只有一处：`resilience` 的 wrapped
-client executor。context 上承载这份声明及其结果的是两个类型。
+client executor。context 上承载这份声明及其结果的是两个类型：`Operation`
+定义在叶子包 [`chain`](../chain/executor.go) 中、经 `chain.WithOperation`
+声明；`Recorder` 则由本包定义。
 
-`Operation` 说明这次调用是什么。它必须挂在**调用方**的 context 上、位于
+`chain.Operation` 说明这次调用是什么。它必须挂在**调用方**的 context 上、位于
 executor 之外：发射端在 `Execute` 入口读取，写在被包裹函数里的声明没人读。
 
 ```go
-ctx = observability.WithOperation(ctx, observability.Operation{
+ctx = chain.WithOperation(ctx, chain.Operation{
     Name:   "get",                   // span 名
     Metric: "db.client",             // 指标名前缀——为空会 panic
     Attrs:  []attribute.KeyValue{…}, // 有界 → 指标标签 + span + 日志
@@ -178,6 +180,29 @@ ctx = observability.WithOperation(ctx, observability.Operation{
 
 `Attrs` 必须保持有界：缓存 key、SQL 语句、URL 路径、topic 一律放 `Detail`，
 它永远不会变成指标标签。
+
+`chain.Operation` 只负责命名。调用的**身份**——`Target`、`Scenario` 与 `NonIdempotent`——
+单独、显式地作为 [`chain.Executor.Execute`](../chain/executor.go) 的 [`chain.Call`](../chain/executor.go)
+参数传递，**不放 ctx**：
+
+```go
+ctx = chain.WithOperation(ctx, chain.Operation{
+    Name:   "publish",
+    Metric: "messaging.client",
+    …
+})
+exec.Execute(ctx, chain.Call{Target: "orders", Scenario: "tenant-a", NonIdempotent: true}, fn)
+```
+
+这个拆分是刻意的：`chain.Operation` 是观测声明（发射端读，需要指标前缀与 detail），
+`Call` 是治理身份（引擎读，分域键在它上面）。把身份放在签名而非 ctx，让它在每一跳
+都可见。
+
+声明是"传输层能提供 `chain.Executor` 缝"的 client 的路径。对那条缝不友好的组件 ——
+钩子 call-site-only 的消息生产者、服务端、进程内缓存 —— 改为自己发射，走
+`observability.NewOperationObserver`（出站）或 `observability.NewServerObserver`（入站）。
+这两个 observer 产出与 executor 路径完全相同的东西（同样的 span、指标名、label 与访问日志），
+且完全不接治理。
 
 `Recorder` 是尝试级累加器：治理 executor 为每次下游尝试追加一条，发射端在
 重试循环之外把它读走。

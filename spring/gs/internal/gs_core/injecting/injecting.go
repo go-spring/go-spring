@@ -89,8 +89,8 @@ func (c *Injecting) RefreshProperties(ctx context.Context, p flatten.Storage) er
 // Behavior is influenced by properties:
 // - spring.force-autowire-is-nullable: whether missing dependencies are treated as nullable.
 func (c *Injecting) Refresh(roots, beans []*gs_bean.BeanDefinition) (err error) {
-	log.Debug(context.Background(), log.TagAppDef, func() []log.Field {
-		return []log.Field{log.Int("root_beans", len(roots)), log.Int("total_beans", len(beans)), log.Msg("injecting phase: wiring beans")}
+	log.Debug(context.Background(), log.TagAppDef, "injecting phase: wiring beans", func() []log.Field {
+		return []log.Field{log.Int("root_beans", len(roots)), log.Int("total_beans", len(beans))}
 	})
 
 	var forceAutowireIsNullable bool
@@ -109,8 +109,8 @@ func (c *Injecting) Refresh(roots, beans []*gs_bean.BeanDefinition) (err error) 
 			beansByType[t] = append(beansByType[t], b)
 		}
 	}
-	log.Trace(context.Background(), log.TagAppDef, func() []log.Field {
-		return []log.Field{log.Int("by_name", len(beansByName)), log.Int("by_type", len(beansByType)), log.Msg("built bean indexes")}
+	log.Trace(context.Background(), log.TagAppDef, "built bean indexes", func() []log.Field {
+		return []log.Field{log.Int("by_name", len(beansByName)), log.Int("by_type", len(beansByType))}
 	})
 
 	stack := NewStack()
@@ -119,7 +119,7 @@ func (c *Injecting) Refresh(roots, beans []*gs_bean.BeanDefinition) (err error) 
 		// always unwound by then: pushBean/popBean are defer-balanced in
 		// wireBean, so there is no leftover-beans condition to check here.
 		if err != nil {
-			log.Errorf(context.Background(), log.TagAppDef, err, "wire beans failed")
+			log.Error(context.Background(), log.TagAppDef, err, "wire beans failed")
 		}
 	}()
 
@@ -158,12 +158,11 @@ func (c *Injecting) Refresh(roots, beans []*gs_bean.BeanDefinition) (err error) 
 	if c.props.ObjectsCount() == 0 {
 		c.props = nil
 	}
-	log.Debug(context.Background(), log.TagAppDef, func() []log.Field {
+	log.Debug(context.Background(), log.TagAppDef, "injecting phase complete", func() []log.Field {
 		return []log.Field{
 			log.Int("beans_wired", len(stack.beanDepMap)),
 			log.Int("destroyers", len(c.destroyers)),
 			log.Int("lazy_fields", len(stack.lazyFields)),
-			log.Msg("injecting phase complete"),
 		}
 	})
 	return nil
@@ -174,8 +173,8 @@ func (c *Injecting) Refresh(roots, beans []*gs_bean.BeanDefinition) (err error) 
 // ensuring that beans are destroyed after the beans they depend on.
 // Any errors returned from destroy methods are logged but do not stop the shutdown process.
 func (c *Injecting) Close() {
-	log.Debug(context.Background(), log.TagAppDef, func() []log.Field {
-		return []log.Field{log.Int("destroyers", len(c.destroyers)), log.Msg("container closing")}
+	log.Debug(context.Background(), log.TagAppDef, "container closing", func() []log.Field {
+		return []log.Field{log.Int("destroyers", len(c.destroyers))}
 	})
 	for _, f := range c.destroyers {
 		f()
@@ -215,8 +214,8 @@ func (c *Injector) findBeans(beanID gs.BeanID) []*gs_bean.BeanDefinition {
 		}
 		beans = ret
 	}
-	log.Trace(context.Background(), log.TagAppDef, func() []log.Field {
-		return []log.Field{log.Any("bean_id", beanID), log.Int("found", len(beans)), log.Msg("find beans")}
+	log.Trace(context.Background(), log.TagAppDef, "find beans", func() []log.Field {
+		return []log.Field{log.Any("bean_id", beanID), log.Int("found", len(beans))}
 	})
 	return beans
 }
@@ -291,8 +290,8 @@ func (c *Injector) getBean(t reflect.Type, tag WireTag, stack *Stack) (*gs_bean.
 
 	if len(foundBeans) == 0 {
 		if tag.nullable {
-			log.Debug(context.Background(), log.TagAppDef, func() []log.Field {
-				return []log.Field{log.String("tag", tag.String()), log.Any("type", t), log.Msg("bean not found (nullable)")}
+			log.Debug(context.Background(), log.TagAppDef, "bean not found (nullable)", func() []log.Field {
+				return []log.Field{log.String("tag", tag.String()), log.Any("type", t)}
 			})
 			return nil, nil
 		}
@@ -311,8 +310,8 @@ func (c *Injector) getBean(t reflect.Type, tag WireTag, stack *Stack) (*gs_bean.
 		for _, b := range foundBeans {
 			names = append(names, b.String())
 		}
-		log.Debug(context.Background(), log.TagAppDef, func() []log.Field {
-			return []log.Field{log.String("tag", tag.String()), log.Any("type", t), log.Strings("candidates", names), log.Msg("bean ambiguity")}
+		log.Debug(context.Background(), log.TagAppDef, "bean ambiguity", func() []log.Field {
+			return []log.Field{log.String("tag", tag.String()), log.Any("type", t), log.Strings("candidates", names)}
 		})
 		err := errutil.Explain(nil, "found %d beans for tag %q and type %q, [%s]",
 			len(foundBeans), tag, t, strings.Join(names, ", "))
@@ -320,8 +319,8 @@ func (c *Injector) getBean(t reflect.Type, tag WireTag, stack *Stack) (*gs_bean.
 	}
 
 	b := foundBeans[0]
-	log.Debug(context.Background(), log.TagAppDef, func() []log.Field {
-		return []log.Field{log.String("tag", tag.String()), log.Any("type", t), log.String("bean", b.String()), log.Msg("bean matched")}
+	log.Debug(context.Background(), log.TagAppDef, "bean matched", func() []log.Field {
+		return []log.Field{log.String("tag", tag.String()), log.Any("type", t), log.String("bean", b.String())}
 	})
 	if c.state == gs.Refreshing {
 		if err := c.wireBean(b, stack); err != nil {
@@ -468,8 +467,8 @@ func (c *Injector) getBeans(t reflect.Type, tags []WireTag, nullable bool,
 			}
 		}
 	}
-	log.Debug(context.Background(), log.TagAppDef, func() []log.Field {
-		return []log.Field{log.Any("type", t), log.Any("tags", tags), log.Int("found", len(beans)), log.Msg("beans collected")}
+	log.Debug(context.Background(), log.TagAppDef, "beans collected", func() []log.Field {
+		return []log.Field{log.Any("type", t), log.Any("tags", tags), log.Int("found", len(beans))}
 	})
 	return beans, nil
 }
@@ -577,11 +576,11 @@ func (c *Injector) autowire(v reflect.Value, str string, stack *Stack) error {
 // After completion, bean status is set to StatusWired and popped from the stack.
 func (c *Injector) wireBean(b *gs_bean.BeanDefinition, stack *Stack) error {
 
-	log.Debug(context.Background(), log.TagAppDef, func() []log.Field {
-		return []log.Field{log.String("bean", b.String()), log.String("status", b.GetStatus().String()), log.Int("depends_on", len(b.GetDependsOn())), log.Msg("push wire bean")}
+	log.Debug(context.Background(), log.TagAppDef, "push wire bean", func() []log.Field {
+		return []log.Field{log.String("bean", b.String()), log.String("status", b.GetStatus().String()), log.Int("depends_on", len(b.GetDependsOn()))}
 	})
-	defer log.Debug(context.Background(), log.TagAppDef, func() []log.Field {
-		return []log.Field{log.String("bean", b.String()), log.String("status", b.GetStatus().String()), log.Msg("pop wire bean")}
+	defer log.Debug(context.Background(), log.TagAppDef, "pop wire bean", func() []log.Field {
+		return []log.Field{log.String("bean", b.String()), log.String("status", b.GetStatus().String())}
 	})
 
 	// If the bean is already being created (StatusCreating), we have a circular dependency
@@ -670,7 +669,7 @@ func (c *Injector) getBeanValue(b *gs_bean.BeanDefinition, stack *Stack) (reflec
 	out, err := b.Callable().Call(NewArgContext(c, stack))
 	if err != nil {
 		if c.forceAutowireIsNullable {
-			log.Warn(context.Background(), log.TagAppDef, log.String("bean", b.String()), log.Err(err), log.Msg("construct bean failed"))
+			log.Warn(context.Background(), log.TagAppDef, "construct bean failed", log.String("bean", b.String()), log.Err(err))
 			return reflect.Value{}, nil
 		}
 		return reflect.Value{}, gs.WrapInjectErr(b.String(), err, "call constructor failed")
@@ -680,7 +679,7 @@ func (c *Injector) getBeanValue(b *gs_bean.BeanDefinition, stack *Stack) (reflec
 	if o := out[len(out)-1]; typeutil.IsErrorType(o.Type()) {
 		if err, ok := o.Interface().(error); ok && err != nil {
 			if c.forceAutowireIsNullable {
-				log.Warn(context.Background(), log.TagAppDef, log.String("bean", b.String()), log.Err(err), log.Msg("construct bean failed"))
+				log.Warn(context.Background(), log.TagAppDef, "construct bean failed", log.String("bean", b.String()), log.Err(err))
 				return reflect.Value{}, nil
 			}
 			return reflect.Value{}, gs.WrapInjectErr(b.String(), err, "constructor returned error")
@@ -921,7 +920,8 @@ func (s *Stack) getSortedDestroyers() ([]func(), error) {
 			fnValue := reflect.ValueOf(fn)
 			out := fnValue.Call([]reflect.Value{v})
 			if len(out) > 0 && !out[0].IsNil() {
-				log.Errorf(context.Background(), log.TagAppDef, fmt.Errorf("%v", out[0].Interface()), "%v", out[0].Interface())
+				log.Record(context.Background(), log.ErrorLevel, log.TagAppDef, 2,
+					log.Err(fmt.Errorf("%v", out[0].Interface())), log.Msgf("%v", out[0].Interface()))
 			}
 		}
 	}

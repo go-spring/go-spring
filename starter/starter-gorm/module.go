@@ -20,7 +20,7 @@ import (
 	"context"
 	"time"
 
-	"go-spring.org/cloud"
+	"go-spring.org/cloud/governance"
 	"go-spring.org/stdlib/errutil"
 	"gorm.io/gorm"
 )
@@ -46,10 +46,10 @@ type Spec struct {
 // starter sees exactly what it registers.
 //
 // engine is the dialect's db.system / service label (e.g. "mysql",
-// "microsoft.sql_server"); params carries the container's facilities (see
-// [cloud.ClientParams]); ping runs the startup connectivity probe (the entry's
+// "microsoft.sql_server"); center is the container's governance center (see
+// [governance.Center]); ping runs the startup connectivity probe (the entry's
 // ping key), whose window is spec.Pool.PingTimeout (0 = 5s).
-func NewDB(ctx context.Context, engine string, spec Spec, params cloud.ClientParams, ping bool) (*DB, error) {
+func NewDB(ctx context.Context, engine string, spec Spec, center *governance.Center, ping bool) (*DB, error) {
 	// Assembly: open + pool + customizers + observe plugin + governance, all of
 	// it in Open — the dialect Build never sees the governance authorities, so
 	// the wiring bundles them into the Options it hands Open. Only then probe, so
@@ -60,7 +60,7 @@ func NewDB(ctx context.Context, engine string, spec Spec, params cloud.ClientPar
 		Service:        spec.Service,
 		ObserveEnabled: spec.ObserveEnabled,
 		Closers:        spec.Closers,
-		Params:         params,
+		Center:         center,
 	})
 	if err != nil {
 		runClosers(spec.Closers)

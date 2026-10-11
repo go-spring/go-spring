@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-// Package StarterRatelimitRedis contributes a [resilience.Counters] backed by
-// Redis — the store the rate-limit stage of a [chain.Executor] spends — so
+// Package StarterRatelimitRedis contributes a [resilience.ClusterLimiter] backed
+// by Redis — the store the rate-limit stage of a [chain.Executor] spends — so
 // one budget per scope covers every replica instead of each replica counting its
 // own.
 //
@@ -81,15 +81,15 @@ func setup(r gs.BeanProvider, p flatten.Storage) error {
 	if c.Client == "" {
 		return errutil.Explain(nil, "ratelimit-redis: missing required property %q", "spring.ratelimit.redis.client")
 	}
-	log.Debug(context.Background(), log.TagAppDef, func() []log.Field {
-		return []log.Field{log.String("client", c.Client), log.Msg("contributing redis rate-limit counters")}
+	log.Debug(context.Background(), log.TagAppDef, "contributing redis rate-limit counters", func() []log.Field {
+		return []log.Field{log.String("client", c.Client)}
 	})
 	// TagArg injects the *goredis.Client bean by name — the seam that ties the
-	// counters to one Redis instance. The ctor returns the interface type, so gs
-	// indexes the bean under resilience.Counters: no Export is needed, and that
-	// type is what the bundled driver injects.
-	r.Provide(func(client *goredis.Client) (resilience.Counters, error) {
-		return experimental.NewCounters(client)
+	// limiter to one Redis instance. The ctor returns the interface type, so gs
+	// indexes the bean under resilience.ClusterLimiter: no Export is needed, and
+	// that type is what the bundled driver injects.
+	r.Provide(func(client *goredis.Client) (resilience.ClusterLimiter, error) {
+		return experimental.NewClusterLimiter(client)
 	}, gs.TagArg(c.Client)).Caller(1)
 	return nil
 }

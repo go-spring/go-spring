@@ -23,7 +23,6 @@ package StarterPulsar
 
 import (
 	"github.com/apache/pulsar-client-go/pulsar"
-	"go-spring.org/cloud"
 	"go-spring.org/cloud/governance"
 	"go-spring.org/cloud/messaging"
 	"go-spring.org/cloud/traffic"
@@ -79,9 +78,8 @@ func init() {
 // DefaultDriver is used. The driver returns the client COMPLETE — the identity
 // and the resilience executor are applied while it is built — so the starter
 // never patches it afterwards. center is the governance center the container
-// injects — the family's sole injection point; the ctor reads the resilience and
-// fault authorities from it and bundles them into the [cloud.ClientParams] it
-// hands the driver.
+// injects — the family's sole injection point; the ctor hands it to the driver,
+// which applies its authorities while building.
 //
 // Assembly completes before the probe: the client is probed (when Ping is
 // enabled) only after the driver has returned it, so a misconfigured broker
@@ -95,10 +93,9 @@ func newClient(ctx *gs.ContextProvider, name string, c Config, d Driver, center 
 	// constructor's.
 	cctx := log.WithFields(ctx.Context, log.String("url", c.URL))
 
-	log.Debug(cctx, log.TagAppDef, func() []log.Field {
+	log.Debug(cctx, log.TagAppDef, "creating pulsar client", func() []log.Field {
 		return []log.Field{
 			log.Bool("ping", c.Ping),
-			log.Msg("creating pulsar client"),
 		}
 	})
 
@@ -106,8 +103,7 @@ func newClient(ctx *gs.ContextProvider, name string, c Config, d Driver, center 
 	if d == nil {
 		d = DefaultDriver{}
 	}
-	cl, err := d.CreateClient(ctx.Context, c,
-		cloud.ClientParams{Resilience: center.Resilience(), Fault: center.Fault()})
+	cl, err := d.CreateClient(ctx.Context, c, center)
 	if err != nil {
 		return nil, err
 	}
@@ -119,13 +115,13 @@ func newClient(ctx *gs.ContextProvider, name string, c Config, d Driver, center 
 	// failure abandons the client, so release what was just assembled.
 	if c.Ping {
 		if _, err = cl.TopicPartitions(c.HealthCheckTopic); err != nil {
-			log.Error(cctx, log.TagAppDef, err, log.String("topic", c.HealthCheckTopic), log.Msg("pulsar: ping failed"))
-			closeResilience(cl)
+			log.Error(cctx, log.TagAppDef, err, "pulsar: ping failed", log.String("topic", c.HealthCheckTopic))
+			forgetObserver(cl)
 			cl.Close()
 			shutdownMetrics(cl)
 			return nil, errutil.Explain(err, "pulsar broker probe failed on %s (topic=%s)", c.URL, c.HealthCheckTopic)
 		}
 	}
-	log.Infof(cctx, log.TagAppDef, "create pulsar client success")
+	log.Info(cctx, log.TagAppDef, "create pulsar client success")
 	return cl, nil
 }

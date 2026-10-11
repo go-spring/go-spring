@@ -24,13 +24,10 @@ import (
 	"go-spring.org/stdlib/testing/assert"
 )
 
-// mustProp returns the propagator over b, failing the test on an error the
-// constructor never actually returns (the signature keeps the room).
+// mustProp returns the propagator over b.
 func mustProp(t *testing.T, b Binding) Propagator {
 	t.Helper()
-	p, err := NewDefaultPropagator(b)
-	assert.Error(t, err).Nil()
-	return p
+	return NewDefaultPropagator(b)
 }
 
 // tagged reports whether p tags a plain context when the carrier holds value

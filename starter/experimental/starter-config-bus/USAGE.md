@@ -85,7 +85,7 @@ func main() {
         want := "v-" + time.Now().Format("150405")
         _ = os.Setenv("GS_DEMO_MESSAGE", want) // env source → demo.message
         if err := getDemo().Bus.Publish(""); err != nil { // "" = full-fleet refresh
-            log.Errorf(context.Background(), log.TagAppDef, "publish failed: %v", err)
+            log.Error(context.Background(), log.TagAppDef, err, "publish failed")
             os.Exit(1)
         }
         deadline := time.Now().Add(15 * time.Second)

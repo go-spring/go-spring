@@ -89,9 +89,9 @@ func (j *Jobs) Run(ctx context.Context) {
     defer lk.Unlock(ctx)
     select {
     case <-lk.Lost(): // renew proved takeover — abort the job
-        log.Warnf(ctx, log.TagAppDef, "lock lost mid-run, aborting")
+        log.Warn(ctx, log.TagAppDef, "lock lost mid-run, aborting")
     case <-time.After(3 * time.Second):
-        log.Infof(ctx, log.TagAppDef, "job finished")
+        log.Info(ctx, log.TagAppDef, "job finished")
     }
 }
 ```

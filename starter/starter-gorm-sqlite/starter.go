@@ -27,7 +27,6 @@ import (
 	"context"
 
 	gormsqlite "github.com/glebarez/sqlite"
-	"go-spring.org/cloud"
 	"go-spring.org/cloud/actuator/health"
 	"go-spring.org/cloud/governance"
 	"go-spring.org/cloud/resilience"
@@ -54,18 +53,16 @@ func init() {
 			// space, so two dialects may carry an instance of the same name.
 			beanName := "sqlite." + name
 			r.Provide(func(ctx *gs.ContextProvider, discoveryLabel string, center *governance.Center) (*gormcore.DB, error) {
-				// SQLite has no network transport, so the discovery label resolves
-				// to nothing and the dialector dials the configured file. The center
-				// is still the family's sole injection point: it hands out the
-				// resilience/fault/loadbalance authorities, bundled into the one
-				// ClientParams the dialect and NewDB both read.
-				disc, _ := center.Discovery().Get(discoveryLabel)
-				params := cloud.ClientParams{Resilience: center.Resilience(), Fault: center.Fault(), Loadbalance: center.Loadbalance(), Discovery: disc}
-				spec, err := build(ctx.Context, c, params)
+				// SQLite has no network transport, so there is no discovery backend
+				// to resolve and the dialector dials the configured file. The center
+				// is still the family's sole injection point, handed to build and
+				// NewDB alike for the resilience/fault/loadbalance authorities they
+				// read.
+				spec, err := build(ctx.Context, c, center)
 				if err != nil {
 					return nil, err
 				}
-				return gormcore.NewDB(ctx.Context, "sqlite", spec, params, c.Ping)
+				return gormcore.NewDB(ctx.Context, "sqlite", spec, center, c.Ping)
 			},
 				gs.IndexArg(1, gs.TagArg("${spring.gorm.sqlite.instances."+name+".discovery:=${spring.gorm.sqlite.default.discovery:=none}}")),
 			).Name(beanName).Destroy((*gormcore.DB).Destroy).Caller(1)
@@ -86,10 +83,10 @@ func init() {
 // build constructs the driver-specific dialector for a Config. SQLite needs no
 // TLS registration (no transport) and no discovery dialer (the "server" is a
 // file path), so the Spec carries only the dialector and pool settings; the
-// params argument — shared by every dialect's build signature so the wiring can
+// center argument — shared by every dialect's build signature so the wiring can
 // hand them all the same bundle — is ignored, since there is no candidate set to
 // select from.
-func build(ctx context.Context, c Config, _ cloud.ClientParams) (gormcore.Spec, error) {
+func build(ctx context.Context, c Config, _ *governance.Center) (gormcore.Spec, error) {
 	return gormcore.Spec{
 		Dialector:      gormsqlite.Open(c.DSN()),
 		Pool:           c.Pool(),

@@ -22,7 +22,6 @@ import (
 	"strings"
 
 	"github.com/wneessen/go-mail"
-	"go-spring.org/cloud"
 	"go-spring.org/cloud/governance"
 	"go-spring.org/log"
 	"go-spring.org/spring/conf"
@@ -61,23 +60,22 @@ func init() {
 // startup so a misconfiguration surfaces at boot rather than on the first send.
 //
 // center is the governance center the container injects — the family's sole
-// injection point; the ctor reads the resilience and fault authorities from it
-// and bundles them into the [cloud.ClientParams] the chain's governance layer
-// builds its executor from, so the mailer is assembled complete in one step.
-// The zero bundle degrades to an observed-only, loudly-unmanaged executor.
+// injection point; the ctor hands it to the chain's governance layer, which
+// builds its executor from it, so the mailer is assembled complete in one step.
+// The resilience manager is required: the container supplies it via the
+// governance center, so a center without one fails at construction.
 func newMailer(ctx *gs.ContextProvider, name string, c Config, center *governance.Center) (*Mailer, error) {
 	if err := errutil.RequireField("mail", "host", c.Host); err != nil {
 		return nil, err
 	}
 
-	log.Debug(ctx.Context, log.TagAppDef, func() []log.Field {
+	log.Debug(ctx.Context, log.TagAppDef, "creating mailer", func() []log.Field {
 		return []log.Field{
 			log.String("host", c.Host),
 			log.Int("port", c.Port),
 			log.String("auth", c.AuthType),
 			log.String("tls", c.TLS.Mode),
 			log.String("from", c.From),
-			log.Msg("creating mailer"),
 		}
 	})
 
@@ -135,16 +133,15 @@ func newMailer(ctx *gs.ContextProvider, name string, c Config, center *governanc
 		}
 	}
 
-	log.Info(ctx.Context, log.TagAppDef, log.String("host", c.Host), log.Int("port", c.Port), log.Msg("create mailer success"))
+	log.Info(ctx.Context, log.TagAppDef, "create mailer success", log.String("host", c.Host), log.Int("port", c.Port))
 	// The chain owns everything, one statement per layer: identity over
 	// governance over the raw adapter. Governance is applied HERE, while the
 	// mailer is built, so a *Mailer cannot exist half-assembled; a hand-built
-	// mailer passes the zero bundle, whose executor degrades to
-	// resilience.Unmanaged — observed, with a one-time warning that no protection
-	// applies — rather than silently running bare.
-	params := cloud.ClientParams{Resilience: center.Resilience(), Fault: center.Fault()}
+	// mailer must supply a [governance.Center] over a [resilience.Manager], since
+	// the center is required to carry one — [governance.Center.ExecutorFor] panics
+	// otherwise, never a graceful downgrade.
 	raw := NewRawMailer(client, c.From)
-	guard := NewGuardMailer(raw, name, c.Host, params)
+	guard := NewGuardMailer(raw, name, c.Host, center)
 	return &Mailer{Client: client, from: c.From, InnerMailer: NewObsMailer(guard)}, nil
 }
 

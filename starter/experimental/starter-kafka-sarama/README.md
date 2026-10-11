@@ -111,8 +111,8 @@ case msg := <-pc.Messages():
 }
 ```
 
-**Declared signals.** The operation is declared with
-`observability.WithOperation`; the resilience layer then emits, under the
+**Declared signals.** The operation is built at the seam and passed explicitly
+to the observer; the observer then emits, under the
 `messaging.client` prefix:
 
 * `messaging.client.operation.duration` — one record per call (retries and

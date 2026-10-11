@@ -24,11 +24,25 @@ import (
 	"go-spring.org/stdlib/testing/assert"
 	"time"
 
-	"go-spring.org/cloud"
 	"go-spring.org/cloud/actuator/health"
+	"go-spring.org/cloud/fault"
+	"go-spring.org/cloud/governance"
+	"go-spring.org/cloud/resilience"
 	"go-spring.org/spring/gs"
 	"go-spring.org/starter-gorm"
 )
+
+// testCenter is the governance center Open requires to assemble a DB: a
+// resilience manager with no rules — enough for the pool-sizing lookup, with no
+// governance document to serve.
+func testCenter(t *testing.T) *governance.Center {
+	t.Helper()
+	ctr, err := governance.NewProcessCenter(resilience.NewManager(nil), fault.NewInjector(fault.Configs{}, nil))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return ctr
+}
 
 // No ClickHouse server is reachable from unit tests, so these tests pin the
 // driver assembly: the URL-style DSN, the build validation and TLS path, the
@@ -51,7 +65,7 @@ func TestDSN(t *testing.T) {
 
 func TestBuild(t *testing.T) {
 	// Neither addr nor service-name: rejected up front.
-	if _, err := build(context.Background(), Config{}, cloud.ClientParams{}); err == nil {
+	if _, err := build(context.Background(), Config{}, nil); err == nil {
 		t.Fatal("build must require addr or service-name")
 	}
 
@@ -59,7 +73,7 @@ func TestBuild(t *testing.T) {
 	c.PingTimeout = 500 * time.Millisecond
 
 	// Plain path: DSN dialector, pool settings flow through.
-	spec, err := build(context.Background(), c, cloud.ClientParams{})
+	spec, err := build(context.Background(), c, nil)
 	assert.Error(t, err).Nil("build")
 	if spec.Dialector == nil || spec.Dialector.Name() != "clickhouse" {
 		t.Fatalf("plain build must return a clickhouse dialector: %v", spec.Dialector)
@@ -71,15 +85,15 @@ func TestBuild(t *testing.T) {
 	// TLS path: a broken CA must fail the build before any dial.
 	c.TLS.Enabled = true
 	c.TLS.CAFile = "/nonexistent/ca.pem"
-	if _, err := build(context.Background(), c, cloud.ClientParams{}); err == nil {
+	if _, err := build(context.Background(), c, nil); err == nil {
 		t.Fatal("build must fail on an unreadable CA file")
 	}
 	c.TLS.CAFile = ""
 
 	// Closed port: the open must fail fast, returning a nil client.
-	spec, err = build(context.Background(), c, cloud.ClientParams{})
+	spec, err = build(context.Background(), c, nil)
 	assert.Error(t, err).Nil("build")
-	client, err := gormcore.Open(spec.Dialector, spec.Pool, gormcore.Options{Engine: "clickhouse"})
+	client, err := gormcore.Open(spec.Dialector, spec.Pool, gormcore.Options{Engine: "clickhouse", Center: testCenter(t)})
 	if err == nil {
 		_ = client.Destroy()
 		t.Fatal("expected a connection error for a closed port")

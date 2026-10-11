@@ -25,6 +25,7 @@ import (
 
 	"go-spring.org/cloud/discovery"
 	"go-spring.org/cloud/fault"
+	"go-spring.org/cloud/loadbalance"
 	"go-spring.org/cloud/resilience"
 	"go-spring.org/cloud/traffic"
 	"go-spring.org/spring/gs"
@@ -35,7 +36,13 @@ import (
 // DefaultDriver when no Driver bean is provided (nil). Building the transport
 // needs no live server — it only assembles the RoundTripper.
 func TestDefaultDriverFallback(t *testing.T) {
-	rt, _, err := assembleTransport(nil, "x", Config{Addr: "10.0.0.1:8080"}, nil, nil, nil, nil)
+	center, err := governance.NewCenter(
+		resilience.NewManager(nil), loadbalance.NewManager(),
+		fault.NewInjector(fault.Configs{}, nil), discovery.NewManager(nil), governance.NewPushSource(governance.Config{}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	rt, _, err := assembleTransport(nil, "x", Config{Addr: "10.0.0.1:8080"}, nil, nil, center, nil)
 	if err != nil {
 		t.Fatalf("assembleTransport with nil driver failed: %v", err)
 	}
@@ -70,7 +77,13 @@ func (d *recordingDriver) CreateTransport(ctx context.Context, name string, c Co
 // dispatches through, replacing the internal DefaultDriver fallback.
 func TestCustomDriverUsed(t *testing.T) {
 	drv := &recordingDriver{}
-	rt, _, err := assembleTransport(nil, "x", Config{Addr: "10.0.0.1:8080"}, nil, drv, nil, nil)
+	center, err := governance.NewCenter(
+		resilience.NewManager(nil), loadbalance.NewManager(),
+		fault.NewInjector(fault.Configs{}, nil), discovery.NewManager(nil), governance.NewPushSource(governance.Config{}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	rt, _, err := assembleTransport(nil, "x", Config{Addr: "10.0.0.1:8080"}, nil, drv, center, nil)
 	if err != nil {
 		t.Fatalf("assembleTransport failed: %v", err)
 	}

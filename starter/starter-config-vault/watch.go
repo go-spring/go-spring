@@ -80,7 +80,7 @@ func (w *watchCore) Close() {
 
 	wg.Wait()
 	if n > 0 {
-		log.Infof(context.Background(), starterTag, "vault watchers stopped")
+		log.Info(context.Background(), starterTag, "vault watchers stopped")
 	}
 }
 
@@ -124,7 +124,7 @@ func (w *watchCore) registerWatch(cli vaultClient, cs configSource, read readFun
 	// lets the loop's own lines name the secret without interpolating it.
 	ctx = log.WithFields(ctx, sourceFields(cs)...)
 
-	log.Infof(ctx, starterTag, "watching vault secret for changes")
+	log.Info(ctx, starterTag, "watching vault secret for changes")
 
 	goutil.Go(ctx, func(ctx context.Context) {
 		defer wg.Done()
@@ -190,15 +190,14 @@ func watchLoop(ctx context.Context, cli vaultClient, cs configSource,
 		data, err := read(ctx, cli, cs)
 		if err != nil {
 			if failures%failLogEvery == 0 {
-				log.Warn(ctx, starterTag,
-					log.Err(err),
-					log.Msg("vault poll failing, changes are missed until it recovers"))
+				log.Warn(ctx, starterTag, "vault poll failing, changes are missed until it recovers",
+					log.Err(err))
 			}
 			failures++
 			continue
 		}
 		if failures > 0 {
-			log.Infof(ctx, starterTag, "vault poll recovered")
+			log.Info(ctx, starterTag, "vault poll recovered")
 			failures = 0
 		}
 		fp := baseline()
@@ -218,7 +217,7 @@ func watchLoop(ctx context.Context, cli vaultClient, cs configSource,
 			rctx := log.RootFields(append(sourceFields(cs),
 				log.String("trace_id", randutil.Hex(16)),
 				log.String("fingerprint", fpNew[:8]))...)
-			log.Info(rctx, starterTag, log.Msg("vault secret changed, triggering refresh"))
+			log.Info(rctx, starterTag, "vault secret changed, triggering refresh")
 			_ = observability.RefreshConf(rctx, func(ctx context.Context) error {
 				return gs.RefreshProperties(ctx)
 			})

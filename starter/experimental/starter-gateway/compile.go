@@ -99,27 +99,46 @@ type RouteTable struct {
 	// share breaker/limiter state. Rebuilt on each recompile.
 	execs map[string]chain.Executor
 
-	// mgr and lbMgr are the governance authorities the container injected (a
-	// fresh unarmed instance when no center is linked, so the table is
-	// always safe to use). mgr hands out the per-route protection executors;
-	// lbMgr binds each route's pool to its label for strategy + suspension.
-	mgr   *resilience.Manager
+	// ctr and lbMgr are the governance authorities the container injected. ctr is
+	// the center itself — nil when governance is not linked, and nil-safe on the
+	// method the table calls — and it hands out the per-route protection executors
+	// already observed (the center composes the observe layer, so this package no
+	// longer names observability). lbMgr is the authority each route's
+	// endpoint-selection chain registers with for strategy + suspension.
+	ctr   *governance.Center
 	lbMgr *loadbalance.Manager
 
-	// counters is the rate-limit store the rateLimit filter spends. A route's
+	// limiter is the rate-limit store the rateLimit filter spends. A route's
 	// budget is keyed by route id (and the client IP, under key=ip), which is
 	// per-KEY counting rather than per-service — the store's own trade, not an
 	// executor's, so the filter uses it directly. With a shared backend
 	// contributed, every replica draws on the same budgets.
-	counters resilience.Counters
+	limiter resilience.ClusterLimiter
 
-	// selection holds one governance binding per route id, driving that route's
-	// load-balancing pool (strategy + outlier suspension). It is reconciled on
-	// every recompile: a rebuilt route gets a fresh binding (its pool is new),
-	// and a route that disappeared has its binding detached — otherwise the
-	// manager would accumulate subscribers, each pinning a discarded pool, on
-	// every route-table edit.
-	selection map[string]func()
+	// chains caches the endpoint-selection chain per route id, so a recompile
+	// REUSES the chain it built last time rather than replacing it. That is what
+	// keeps the governance registration a one-way affair: registering a chain is
+	// permanent (see loadbalance.Manager.Chain), so a fresh chain per route-table edit
+	// would strand the old registration and pin a discarded chain for the life of
+	// the process.
+	//
+	// A route whose upstream changed (a new target or discovery backend) gets a
+	// new chain, and with it a new registration — its resolver is a different
+	// service, so the old chain cannot be reused; the superseded one is left to
+	// the manager's Close. Route edits are operator actions, not a hot path.
+	//
+	// Governance changes to a route's SELECTION do not come through here: they
+	// move the label, and the manager rebuilds the registered chain in place,
+	// which the cached pointer follows (see loadbalance.Chain).
+	chains map[string]chainEntry
+}
+
+// chainEntry is a cached chain plus the upstream identity it was built for, so a
+// recompile can tell reuse from a changed target. Caller holds [RouteTable.mu].
+type chainEntry struct {
+	chain   *loadbalance.Chain
+	disc    string
+	service string
 }
 
 // newRouteTable builds the table. Config (Cfg) and bean-backed filters (Wrappers)
@@ -142,30 +161,23 @@ type RouteTable struct {
 // to the fallback there is nothing to reject, but it is reported at startup
 // rather than swallowed.
 func newRouteTable(ctx *gs.ContextProvider, o *observer,
-	center *governance.Center, counters resilience.Counters) (*RouteTable, error) {
-	if counters == nil {
-		// No counter store was contributed, so per-route and per-client budgets are
-		// this process's own — the same reach a per-service executor would have.
-		counters = newMemoryCounters()
-	}
-	mgr := center.Resilience()
-	if mgr == nil {
-		mgr = resilience.NewManager(nil)
+	center *governance.Center, limiter resilience.ClusterLimiter) (*RouteTable, error) {
+	if limiter == nil {
+		// No cluster limiter was contributed, so per-route and per-client budgets
+		// are this process's own — the same reach a per-service executor would have.
+		limiter = newMemoryLimiter()
 	}
 	lbMgr := center.Loadbalance()
 	if lbMgr == nil {
-		var err error
-		if lbMgr, err = loadbalance.NewManager(nil); err != nil { // no factory bean contributed
-			return nil, err
-		}
+		lbMgr = loadbalance.NewManager()
 	}
 	return &RouteTable{
-		ctx:      ctx.Context,
-		obs:      o,
-		disc:     center.Discovery(),
-		mgr:      mgr,
-		lbMgr:    lbMgr,
-		counters: counters,
+		ctx:     ctx.Context,
+		obs:     o,
+		disc:    center.Discovery(),
+		ctr:     center,
+		lbMgr:   lbMgr,
+		limiter: limiter,
 	}, nil
 }
 
@@ -183,10 +195,9 @@ func (t *RouteTable) Init() error {
 		ids = append(ids, id)
 	}
 	sort.Strings(ids)
-	log.Warn(t.ctx, log.TagAppDef,
+	log.Warn(t.ctx, log.TagAppDef, "gateway: routes configured but spring.gateway.server.addr is not set, they will not be served",
 		log.Int("routes", len(ids)),
-		log.String("ids", strings.Join(ids, ", ")),
-		log.Msg("gateway: routes configured but spring.gateway.server.addr is not set, they will not be served"))
+		log.String("ids", strings.Join(ids, ", ")))
 	return nil
 }
 
@@ -207,7 +218,7 @@ func (t *RouteTable) current() []*Route {
 			// Keep serving the previous table: a bad hot edit must never take the
 			// gateway down. Surface it loudly via log + metric.
 			t.obs.reloadError(t.ctx)
-			log.Errorf(t.ctx, log.TagAppDef, err, "gateway: route reload failed, keeping previous table")
+			log.Error(t.ctx, log.TagAppDef, err, "gateway: route reload failed, keeping previous table")
 			// Adopt the pointer so we do not retry the same broken map every request.
 			atomic.StoreUintptr(&t.lastPtr, reflect.ValueOf(raw).Pointer())
 		}
@@ -268,53 +279,12 @@ func (t *RouteTable) recompile(raw map[string]RouteRaw) error {
 		routes = append(routes, rt)
 	}
 
-	t.reconcileSelection(routes)
 	t.compiled.Store(&routes)
 	t.execs = execs
 	atomic.StoreUintptr(&t.lastPtr, reflect.ValueOf(raw).Pointer())
 
 	t.mu.Unlock()
 	return nil
-}
-
-// reconcileSelection brings the per-route governance bindings in line with the
-// freshly compiled routes. Caller holds t.mu.
-//
-// A rebuilt route always gets a NEW pool (recompile is what creates pools), so
-// its previous binding is detached and replaced; a route that disappeared from
-// the config has its binding detached outright. Without the detaches the manager
-// would keep one subscriber — and one reference to a discarded pool — per
-// route-table edit, for the life of the process.
-//
-// The label is "gateway:<route-id>", which is also the label the resilience
-// executors use (see buildExecutors) — one rule matches a route's whole
-// governance: protection, strategy and suspension. Binding (rather than
-// subscribing and hand-building a Selection) is what keeps gateway's strategy
-// and suspension in step with the label's resolved rule: the manager owns the
-// policy-to-selection mapping, including the "an unknown strategy keeps the
-// current one" rule.
-func (t *RouteTable) reconcileSelection(routes []*Route) {
-	if t.selection == nil {
-		t.selection = make(map[string]func(), len(routes))
-	}
-	live := make(map[string]struct{}, len(routes))
-	for _, r := range routes {
-		live[r.ID] = struct{}{}
-		if old, ok := t.selection[r.ID]; ok {
-			old()
-			delete(t.selection, r.ID)
-		}
-		if r.Upstream == nil || r.Upstream.pool == nil {
-			continue // direct upstream: no candidate set to select from
-		}
-		t.selection[r.ID] = t.lbMgr.Bind(r.Upstream.pool, "gateway:"+r.ID)
-	}
-	for id, stop := range t.selection {
-		if _, ok := live[id]; !ok {
-			stop()
-			delete(t.selection, id)
-		}
-	}
 }
 
 // buildExecutors turns each named resilience policy into an chain.Executor. Routes
@@ -335,7 +305,9 @@ func (t *RouteTable) buildExecutors() (map[string]chain.Executor, error) {
 		// Always non-nil: a transparent pass-through when governance is off; the
 		// real policy-carrying executor otherwise, observed under the same label
 		// so trips/rejects/retries emit span + counter + histogram + access log.
-		out[name] = t.mgr.ClientExecutorFor(gatewayLabel(name), gatewayLabel(name))
+		// The center composes the observe wrapper (and fault); this package names
+		// neither.
+		out[name] = t.ctr.ExecutorFor(gatewayLabel(name), gatewayLabel(name))
 	}
 	return out, nil
 }
@@ -406,7 +378,7 @@ func (t *RouteTable) buildFilters(spec string) ([]Filter, error) {
 		name, args := tok.name, tok.args
 		switch name {
 		case "rateLimit":
-			f, err := rateLimitFilter(args, t.counters)
+			f, err := rateLimitFilter(args, t.limiter)
 			if err != nil {
 				return nil, err
 			}

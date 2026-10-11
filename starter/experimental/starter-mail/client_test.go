@@ -20,7 +20,9 @@ import (
 	"context"
 	"testing"
 
-	"go-spring.org/cloud"
+	"go-spring.org/cloud/fault"
+	"go-spring.org/cloud/governance"
+	"go-spring.org/cloud/resilience"
 	"go-spring.org/stdlib/testing/assert"
 )
 
@@ -58,11 +60,15 @@ func (b bccLayer) Send(ctx context.Context, msgs ...*Message) error {
 }
 
 // newChainMailer builds a Mailer whose chain bottoms out in tail — identity
-// and governance layers real (executor unmanaged, governance off).
+// and governance layers real (executor from an unarmed manager, governance off).
 func newChainMailer(t *testing.T, tail InnerMailer) *Mailer {
 	t.Helper()
+	ctr, err := governance.NewProcessCenter(resilience.NewManager(nil), fault.NewInjector(fault.Configs{}, nil))
+	if err != nil {
+		t.Fatal(err)
+	}
 	raw := NewRawMailer(nil, "")
-	guard := NewGuardMailer(raw, "hot", "", cloud.ClientParams{})
+	guard := NewGuardMailer(raw, "hot", "", ctr)
 	return &Mailer{InnerMailer: NewObsMailer(&GuardMailer{exec: guard.exec, next: tail})}
 }
 

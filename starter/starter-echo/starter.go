@@ -84,8 +84,8 @@ type SimpleEchoServer struct {
 // center bean (nil when governance is not imported) — the family's sole
 // injection point; its resilience authority supplies the inbound middleware's
 // policy and its fault authority backs the inbound fault
-// middleware, both handed to applyMiddlewares. prop is the application's load-test convention bean (nil means
-// go-spring's default), handed to the inbound LoadTest middleware.
+// middleware, both handed to applyMiddlewares. prop is the load-test convention bean — the application.s when it provides
+// one, go-spring.s default otherwise — handed to the inbound LoadTest middleware.
 func NewSimpleEchoServer(register RouterRegister, outer EngineMiddleware, cfg Config, center *governance.Center, prop traffic.Propagator) (*SimpleEchoServer, error) {
 	e := echo.New()
 	e.HideBanner = true
@@ -124,11 +124,11 @@ func NewSimpleEchoServer(register RouterRegister, outer EngineMiddleware, cfg Co
 			return nil, errutil.Explain(err, "echo: build TLS")
 		}
 	}
-	log.Debug(context.Background(), log.TagAppDef, func() []log.Field {
+	log.Debug(context.Background(), log.TagAppDef, "create echo server success", func() []log.Field {
 		return []log.Field{
 			log.String("addr", addr), log.Bool("tls", tlsEnabled),
 			log.String("read_timeout", cfg.ReadTimeout.String()), log.String("write_timeout", cfg.WriteTimeout.String()),
-			log.String("idle_timeout", cfg.IdleTimeout.String()), log.Msg("create echo server success"),
+			log.String("idle_timeout", cfg.IdleTimeout.String()),
 		}
 	})
 
@@ -160,20 +160,19 @@ func (s *SimpleEchoServer) Run(ctx context.Context, sig gs.ReadySignal) error {
 	// about its own lifecycle carries it without repeating it.
 	ctx = log.WithFields(ctx, log.String("addr", s.svr.Addr))
 
-	log.Info(ctx, log.TagAppDef,
-		log.Bool("tls", s.tls),
-		log.Msg("echo server starting"))
+	log.Info(ctx, log.TagAppDef, "echo server starting",
+		log.Bool("tls", s.tls))
 	if s.tls {
 		err = s.svr.Serve(tls.NewListener(ln, s.tlsConf))
 	} else {
 		err = s.svr.Serve(ln)
 	}
 	if errutil.IsServerClosed(err) {
-		log.Debugf(ctx, log.TagAppDef, "echo server stopped")
+		log.Debug(ctx, log.TagAppDef, "echo server stopped", nil)
 		return nil
 	}
 	if err != nil {
-		log.Errorf(ctx, log.TagAppDef, err, "echo server failed")
+		log.Error(ctx, log.TagAppDef, err, "echo server failed")
 	}
 	return errutil.Explain(err, "failed to serve on %s", s.svr.Addr)
 }
@@ -182,8 +181,7 @@ func (s *SimpleEchoServer) Run(ctx context.Context, sig gs.ReadySignal) error {
 // in-flight requests to complete. The shutdown context is propagated to
 // http.Server.Shutdown.
 func (s *SimpleEchoServer) Stop(ctx context.Context) error {
-	log.Info(ctx, log.TagAppDef,
-		log.String("addr", s.svr.Addr),
-		log.Msg("echo server shutting down"))
+	log.Info(ctx, log.TagAppDef, "echo server shutting down",
+		log.String("addr", s.svr.Addr))
 	return s.svr.Shutdown(ctx)
 }

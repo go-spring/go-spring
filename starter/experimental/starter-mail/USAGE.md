@@ -143,16 +143,16 @@ gs.Run()
   ├─ probe (when ping=true): client.DialWithContext (bounded by timeout) then Close
   │     └─ bad host/port/auth/TLS ⇒ startup ERROR, app refuses to boot (source comment:
   │        "so a misconfiguration surfaces at boot rather than on the first send")
-  ├─ governance applied in the ctor: exec = cloud.ClientParams{...}.ExecutorFor("mail", label)
+  ├─ governance applied in the ctor: exec = center.ExecutorFor("mail", label)
   ├─ bean ready: *Mailer injected wherever `autowire:"<name>"` appears
   ├─ Run / serve: nothing background — no goroutines, no pooled sockets
   └─ SIGTERM: destroy hook closes the resilience executor (the SMTP client owns no live resource)
 ```
 
-A `gs.Module` (not `gs.Group`) is used so the constructor can take the governance beans
-alongside its config. The SMTP client opens a fresh connection per Send and closes it when
-done, so there is no pooled socket to release — the only resource the `Destroy` hook releases
-is the resilience executor.
+A `gs.Module` (not `gs.Group`) is used so the constructor can take the injected
+`*governance.Center` (variable `center`) alongside its config. The SMTP client opens a fresh
+connection per Send and closes it when done, so there is no pooled socket to release — the
+only resource the `Destroy` hook releases is the resilience executor.
 
 ### 2.2 One send, layer by layer
 
@@ -167,11 +167,12 @@ is the resilience executor.
    all messages, and closes it. Partial failure semantics are go-mail's; the starter wraps any
    error with `errutil.Explain(err, "mail: send failed")`.
 3. **Declaration** — `Send` declares the batch's semantic identity
-   (`observability.Operation`: span name `mail.send`, metric prefix `email.client`, the
-   bounded labels `email.system=smtp` / `email.operation=send`, the batch size as `Detail`,
-   and `NonIdempotent: true`) on the context via `observability.WithOperation`, then routes
-   the delivery through the mailer's resilience executor (`resilience.Run`). A send
-   **declares**; it emits nothing itself.
+   (`chain.Operation`: span name `mail.send`, metric prefix `email.client`, the
+   bounded labels `email.system=smtp` / `email.operation=send`, the batch size as `Detail`)
+   on the context via `chain.WithOperation`, and its call identity
+   (`chain.Call{NonIdempotent: true}`) as the argument to `resilience.Run`. A send
+   **declares**; it emits nothing itself. The identity travels in the signature, the
+   naming on the context.
    - The **detail is the recipient count, never the recipients or the subject**: both are
      personal data and a failed send writes its detail at Warn unconditionally, so the
      addresses would be recorded exactly when the send is going wrong. They stay in the

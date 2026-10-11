@@ -37,7 +37,7 @@ import (
 	"time"
 
 	"github.com/neo4j/neo4j-go-driver/v5/neo4j"
-	"go-spring.org/cloud"
+	"go-spring.org/cloud/governance"
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
 	StarterNeo4j "go-spring.org/starter-neo4j"
@@ -64,9 +64,9 @@ type AnotherNeo4jDriver struct {
 	StarterNeo4j.DefaultDriver
 }
 
-func (d AnotherNeo4jDriver) CreateClient(ctx context.Context, c StarterNeo4j.Config, params cloud.ClientParams) (*StarterNeo4j.Client, error) {
-	log.Infof(context.Background(), log.TagAppDef, "AnotherNeo4jDriver::CreateClient")
-	return d.DefaultDriver.CreateClient(ctx, c, params)
+func (d AnotherNeo4jDriver) CreateClient(ctx context.Context, c StarterNeo4j.Config, center *governance.Center) (*StarterNeo4j.Client, error) {
+	log.Info(context.Background(), log.TagAppDef, "AnotherNeo4jDriver::CreateClient")
+	return d.DefaultDriver.CreateClient(ctx, c, center)
 }
 
 type Service struct {
@@ -109,7 +109,7 @@ func runTest(s *Service) {
 
 	// Feature 0: readiness probe — verify connectivity before exercising queries.
 	if err := StarterNeo4j.HealthCheck(ctx, s.Neo4j); err != nil {
-		log.Errorf(ctx, log.TagAppDef, err, "HealthCheck failed")
+		log.Error(ctx, log.TagAppDef, err, "HealthCheck failed")
 		os.Exit(1)
 	}
 
@@ -117,7 +117,7 @@ func runTest(s *Service) {
 	if _, err := s.query(ctx,
 		"MERGE (p:Person {name: $name}) SET p.age = $age RETURN p",
 		map[string]any{"name": "alice", "age": 30}); err != nil {
-		log.Errorf(ctx, log.TagAppDef, err, "MERGE failed")
+		log.Error(ctx, log.TagAppDef, err, "MERGE failed")
 		os.Exit(1)
 	}
 
@@ -126,12 +126,12 @@ func runTest(s *Service) {
 		"MATCH (p:Person {name: $name}) RETURN p.age AS age",
 		map[string]any{"name": "alice"})
 	if err != nil || len(res.Records) == 0 {
-		log.Errorf(ctx, log.TagAppDef, err, "MATCH failed: err=%v records=%d", err, len(res.Records))
+		log.Error(ctx, log.TagAppDef, err, "MATCH failed", log.Any("err", err), log.Int("records", len(res.Records)))
 		os.Exit(1)
 	}
 	age, _ := res.Records[0].Get("age")
 	if age != int64(30) {
-		log.Errorf(ctx, log.TagAppDef, fmt.Errorf("age expected 30, got %v", age), "age expected 30, got %v", age)
+		log.Error(ctx, log.TagAppDef, fmt.Errorf("age expected 30, got %v", age), "age expected 30", log.Any("age", age))
 		os.Exit(1)
 	}
 
@@ -139,19 +139,19 @@ func runTest(s *Service) {
 	if _, err := s.query(ctx,
 		"MERGE (a:Person {name: $a}) MERGE (b:Person {name: $b}) MERGE (a)-[:KNOWS]->(b)",
 		map[string]any{"a": "alice", "b": "bob"}); err != nil {
-		log.Errorf(ctx, log.TagAppDef, err, "relationship MERGE failed")
+		log.Error(ctx, log.TagAppDef, err, "relationship MERGE failed")
 		os.Exit(1)
 	}
 	res, err = s.query(ctx,
 		"MATCH (:Person {name: $a})-[r:KNOWS]->(:Person {name: $b}) RETURN count(r) AS c",
 		map[string]any{"a": "alice", "b": "bob"})
 	if err != nil || len(res.Records) == 0 {
-		log.Errorf(ctx, log.TagAppDef, err, "relationship count failed: err")
+		log.Error(ctx, log.TagAppDef, err, "relationship count failed: err")
 		os.Exit(1)
 	}
 	count, _ := res.Records[0].Get("c")
 	if count != int64(1) {
-		log.Errorf(ctx, log.TagAppDef, fmt.Errorf("relationship count expected 1, got %v", count), "relationship count expected 1, got %v", count)
+		log.Error(ctx, log.TagAppDef, fmt.Errorf("relationship count expected 1, got %v", count), "relationship count expected 1", log.Any("count", count))
 		os.Exit(1)
 	}
 
@@ -159,7 +159,7 @@ func runTest(s *Service) {
 	if _, err := s.query(ctx,
 		"MATCH (p:Person) WHERE p.name IN $names DETACH DELETE p",
 		map[string]any{"names": []any{"alice", "bob"}}); err != nil {
-		log.Errorf(ctx, log.TagAppDef, err, "cleanup failed")
+		log.Error(ctx, log.TagAppDef, err, "cleanup failed")
 		os.Exit(1)
 	}
 
@@ -172,12 +172,12 @@ func runTest(s *Service) {
 	discRes, err := neo4j.ExecuteQuery(ctx, s.DiscNeo4j,
 		"RETURN 1 AS ok", nil, neo4j.EagerResultTransformer)
 	if err != nil || len(discRes.Records) == 0 {
-		log.Errorf(ctx, log.TagAppDef, err, "discovery query failed: err")
+		log.Error(ctx, log.TagAppDef, err, "discovery query failed: err")
 		os.Exit(1)
 	}
 	ok, _ := discRes.Records[0].Get("ok")
 	if ok != int64(1) {
-		log.Errorf(ctx, log.TagAppDef, fmt.Errorf("discovery query expected 1, got %v", ok), "discovery query expected 1, got %v", ok)
+		log.Error(ctx, log.TagAppDef, fmt.Errorf("discovery query expected 1, got %v", ok), "discovery query expected 1", log.Any("ok", ok))
 		os.Exit(1)
 	}
 	fmt.Println("Response from discovered server: ok:", ok)

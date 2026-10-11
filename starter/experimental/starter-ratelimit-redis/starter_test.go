@@ -29,7 +29,8 @@ import (
 	"github.com/alicebob/miniredis/v2"
 	"github.com/redis/go-redis/v9"
 
-	"go-spring.org/cloud"
+	"go-spring.org/cloud/fault"
+	"go-spring.org/cloud/governance"
 	"go-spring.org/cloud/resilience"
 	"go-spring.org/spring/gs"
 	goredis "go-spring.org/starter-go-redis"
@@ -50,11 +51,11 @@ func newMiniRedis(t *testing.T) (*miniredis.Miniredis, redis.UniversalClient) {
 // newStore builds the store the starter contributes, over cli. Two stores over
 // one miniredis (and two clients) stand in for two replicas: each counts
 // nothing locally, both spend the same Redis budget.
-func newStore(t *testing.T, cli redis.UniversalClient) resilience.Counters {
+func newStore(t *testing.T, cli redis.UniversalClient) resilience.ClusterLimiter {
 	t.Helper()
-	c, err := experimental.NewCounters(cli)
+	c, err := experimental.NewClusterLimiter(cli)
 	if err != nil {
-		t.Fatalf("NewCounters: %v", err)
+		t.Fatalf("NewClusterLimiter: %v", err)
 	}
 	return c
 }
@@ -84,7 +85,7 @@ func TestSharedBudgetAcrossReplicas(t *testing.T) {
 		t.Fatalf("interleaved allows = %d, want 5 (shared budget)", allowed)
 	}
 	// Both replicas must now be refused: the bucket lives in Redis, not in either.
-	for name, s := range map[string]resilience.Counters{"a": a, "b": b} {
+	for name, s := range map[string]resilience.ClusterLimiter{"a": a, "b": b} {
 		if err := s.Allow(ctx, "api", p, 1); !errors.Is(err, chain.ErrRateLimited) {
 			t.Fatalf("replica %s after drain: err=%v, want ErrRateLimited", name, err)
 		}
@@ -229,7 +230,7 @@ func TestWiring_MissingClientNameFailsStartup(t *testing.T) {
 }
 
 // TestWiring_ContributesRedisStore proves the contribution contract end to end:
-// with the block configured, the container resolves resilience.Counters to the
+// with the block configured, the container resolves resilience.ClusterLimiter to the
 // Redis store. That bean is what the bundled driver injects, which
 // is how every executor ends up spending the shared budget.
 func TestWiring_ContributesRedisStore(t *testing.T) {
@@ -237,7 +238,11 @@ func TestWiring_ContributesRedisStore(t *testing.T) {
 
 	// The *goredis.Client bean starter-go-redis would publish, built the same
 	// way that starter builds one (identity + observation, no governance).
-	w, err := goredis.NewClient(cli, goredis.Config{}, nil, cloud.ClientParams{})
+	center, err := governance.NewProcessCenter(resilience.NewManager(nil), fault.NewInjector(fault.Configs{}, nil))
+	if err != nil {
+		t.Fatalf("NewProcessCenter: %v", err)
+	}
+	w, err := goredis.NewClient(cli, goredis.Config{}, nil, center)
 	if err != nil {
 		t.Fatalf("goredis.NewClient: %v", err)
 	}
@@ -246,14 +251,14 @@ func TestWiring_ContributesRedisStore(t *testing.T) {
 		app.Property("spring.ratelimit.redis.client", "cache")
 		app.Provide(func() *goredis.Client { return w }).Name("cache")
 	}).RunTest(t, func(ts *struct {
-		Counters resilience.Counters `autowire:"?"`
+		Limiter resilience.ClusterLimiter `autowire:"?"`
 	}) {
-		if ts.Counters == nil {
-			t.Fatal("the configured starter must contribute a resilience.Counters bean")
+		if ts.Limiter == nil {
+			t.Fatal("the configured starter must contribute a resilience.ClusterLimiter bean")
 		}
 		// Only the Redis store can write the bucket key, which is what makes
 		// this an assertion about WHICH store was injected.
-		err := ts.Counters.Allow(context.Background(), "api",
+		err := ts.Limiter.Allow(context.Background(), "api",
 			resilience.RateSpec{RateLimit: 100, Burst: 5}, 1)
 		if err != nil {
 			t.Fatalf("Allow: %v", err)
@@ -271,9 +276,9 @@ func TestWiring_ContributesRedisStore(t *testing.T) {
 // a private store of its own, which still means one budget per service label.
 func TestWiring_NoBlockContributesNoStore(t *testing.T) {
 	gs.Web(false).Configure(func(app gs.App) {}).RunTest(t, func(ts *struct {
-		Counters resilience.Counters `autowire:"?"`
+		Limiter resilience.ClusterLimiter `autowire:"?"`
 	}) {
-		if ts.Counters != nil {
+		if ts.Limiter != nil {
 			t.Fatal("without spring.ratelimit.redis no counter store may be contributed")
 		}
 	})

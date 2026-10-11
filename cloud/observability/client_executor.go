@@ -20,6 +20,7 @@ import (
 	"context"
 
 	"go-spring.org/cloud/chain"
+	"go-spring.org/cloud/resilience"
 	"sync"
 	"time"
 
@@ -55,23 +56,35 @@ func WrapClientExecutor(inner chain.Executor, system, service string) chain.Exec
 		return nil
 	}
 	w := &wrappedClientExecutor{
-		inner:   inner,
-		system:  system,
-		service: service,
-		ins:     executorInstruments(),
+		inner: inner,
+		callEmitter: &callEmitter{
+			system:  system,
+			service: service,
+			ins:     executorInstruments(),
+		},
 	}
 	// If the inner executor emits breaker state transitions, subscribe so each
 	// trip / half-open / recovery emits a counter + log automatically. Drivers
 	// without that capability (no BreakerEventListenerSetter) are silently
 	// skipped — the call-level signals still emit.
-	if setter, ok := inner.(BreakerEventListenerSetter); ok {
+	if setter, ok := inner.(resilience.BreakerEventListenerSetter); ok {
 		setter.SetBreakerEventListener(w)
 	}
 	return w
 }
 
 type wrappedClientExecutor struct {
-	inner   chain.Executor
+	inner chain.Executor
+	*callEmitter
+}
+
+// callEmitter produces the standard client-call signals for ONE client
+// system/service: the call span, the call-level duration, the in-flight gauge,
+// the always-on calls counter and one access-log line. It is shared by
+// [wrappedClientExecutor] — which runs a governance executor around the call —
+// and [OperationObserver], the self-emission path for a client whose transport
+// offers no seam for that executor.
+type callEmitter struct {
 	system  string
 	service string
 
@@ -84,7 +97,7 @@ type wrappedClientExecutor struct {
 // OnBreakerStateChange satisfies [BreakerEventListener]. It is invoked
 // synchronously from inside the breaker's transition (so it must not call back
 // into the executor); it emits a state-change counter and a log line.
-func (w *wrappedClientExecutor) OnBreakerStateChange(service string, from, to BreakerState) {
+func (w *wrappedClientExecutor) OnBreakerStateChange(service string, from, to resilience.BreakerState) {
 	w.ins.clientBreakerChanges.Add(context.Background(), 1, metric.WithAttributes(
 		attribute.String("system", w.system),
 		attribute.String("service", w.service),
@@ -99,15 +112,15 @@ func (w *wrappedClientExecutor) OnBreakerStateChange(service string, from, to Br
 	}
 	// A trip (→open) is a service-level degradation worth flagging at Warn;
 	// recovery and half-open trial are Info.
-	if to == BreakerOpen {
-		log.Warn(context.Background(), resilienceTag, fields...)
+	if to == resilience.BreakerOpen {
+		log.Warn(context.Background(), resilienceTag, "resilience: circuit breaker opened", fields...)
 	} else {
-		log.Info(context.Background(), resilienceTag, fields...)
+		log.Info(context.Background(), resilienceTag, "resilience: circuit breaker state changed", fields...)
 	}
 }
 
 // opInstrumentSet holds the instruments one metric prefix needs. The prefix
-// comes from the operation a client declared (see [Operation]), so
+// comes from the operation a client declared (see [chain.Operation]), so
 // this set cannot be built once per process the way [instrumentSet] is — a
 // process serves any number of client families, each with its own prefix. It is
 // memoized per prefix on first use, which is also what binds it to whichever
@@ -169,35 +182,52 @@ func operationInstruments(prefix string) *opInstrumentSet {
 // emit runs after the loop, so it reads the attempts the loop recorded. The
 // governance layer emits nothing itself; it only writes facts.
 //
-// A call that declared no operation (see [WithOperation]) takes the
+// A call that declared no operation (a zero [chain.Operation]) takes the
 // fallback path below, which reproduces this layer's historical signals verbatim,
 // down to their names — migrating a client to the declared-operation path is what
 // switches its signals over, one client at a time.
-func (w *wrappedClientExecutor) Execute(ctx context.Context, fn func(context.Context) error) error {
+func (w *wrappedClientExecutor) Execute(ctx context.Context, op chain.Operation, fn func(context.Context) error) error {
+	return w.call(ctx, op, func(c context.Context) error { return w.inner.Execute(c, op, fn) }, false)
+}
+
+// call runs one observed call and emits its signals. invoke is the call itself:
+// for [wrappedClientExecutor] it enters the governance executor, for
+// [OperationObserver] it is the client's own work. selfAttempt records one
+// attempt-level sample equal to the call, for a caller that has no separate
+// attempt producer.
+func (e *callEmitter) call(ctx context.Context, op chain.Operation, invoke func(context.Context) error, selfAttempt bool) error {
 	start := time.Now()
-	ctx, rec := WithRecorder(ctx)
-	op, hasOp := OperationFrom(ctx)
+	ctx, rec := resilience.WithRecorder(ctx)
+	// A described call carries a non-empty metric prefix; a caller that declares
+	// no description (the zero Operation) takes the fallback path in emit.
+	hasOp := op.Metric != ""
 
 	var ins *opInstrumentSet
 	if hasOp {
 		ins = operationInstruments(op.Metric)
 	}
 
-	ctx, span := otel.Tracer(componentName).Start(ctx, w.spanName(op, hasOp),
+	ctx, span := otel.Tracer(componentName).Start(ctx, e.spanName(op, hasOp),
 		trace.WithSpanKind(spanKind(op, hasOp)),
-		trace.WithAttributes(w.spanAttrs(op, hasOp)...))
+		trace.WithAttributes(e.spanAttrs(op, hasOp)...))
 	// The in-flight gauge brackets the whole call, retries included, exactly as
 	// the span does.
 	if ins != nil {
-		ins.active.Add(ctx, 1, metric.WithAttributes(w.callLabels(op.Attrs, "", "")...))
+		ins.active.Add(ctx, 1, metric.WithAttributes(e.callLabels(op.Attrs, "", "")...))
 	}
 
-	err := w.inner.Execute(ctx, fn)
+	err := invoke(ctx)
 
 	if ins != nil {
-		ins.active.Add(ctx, -1, metric.WithAttributes(w.callLabels(op.Attrs, "", "")...))
+		ins.active.Add(ctx, -1, metric.WithAttributes(e.callLabels(op.Attrs, "", "")...))
 	}
-	status := ClassifyStatus(err)
+	status := resilience.ClassifyStatus(err)
+	if selfAttempt {
+		// No governance executor ran, so no retry loop recorded attempts: the one
+		// downstream try IS the call. Recording it keeps the attempt-level series
+		// populated rather than silently absent.
+		rec.AddAttempt(time.Since(start), status, err)
+	}
 	span.SetAttributes(attribute.String("status", status))
 	if err != nil {
 		// Both marks, so a span carries the same evidence whichever emitter
@@ -209,14 +239,47 @@ func (w *wrappedClientExecutor) Execute(ctx context.Context, fn func(context.Con
 	}
 	span.End()
 
-	w.emit(ctx, start, status, err, op, hasOp, rec)
+	e.emit(ctx, start, status, err, op, hasOp, rec)
 	return err
+}
+
+// OperationObserver is the self-emission entry for a client whose transport
+// offers no seam for the resilience executor — a poll-driven subscriber, a
+// message producer whose hook is call-site-only — but which still wants the
+// standard client signals. It emits exactly what [WrapClientExecutor] emits (the
+// same span, metric names, labels and access log), and applies NO governance:
+// there is no rate limit, circuit breaker, retry or timeout in this path.
+//
+// A client that has a seam for the executor declares its operation and routes
+// through it instead; this exists so a client that cannot is not left
+// unobserved.
+type OperationObserver struct {
+	*callEmitter
+}
+
+// NewOperationObserver builds the observer for one client system/service. system
+// is the backend name ("kafka", "webhook"); service is the per-instance label
+// (see [resilience.ServiceLabel]).
+func NewOperationObserver(system, service string) *OperationObserver {
+	return &OperationObserver{callEmitter: &callEmitter{
+		system:  system,
+		service: service,
+		ins:     executorInstruments(),
+	}}
+}
+
+// Observe runs fn as one observed call, emitting the call span, the
+// call-level duration, the in-flight gauge and the access log. op is the
+// operation's description (see [chain.Operation]); fn's error is returned
+// unchanged — this is instrumentation, not error policy.
+func (o *OperationObserver) Observe(ctx context.Context, op chain.Operation, fn func(context.Context) error) error {
+	return o.call(ctx, op, fn, true)
 }
 
 // emit produces the call-level signals — span (already ended by the caller),
 // counter, call histogram, attempt histograms and the one access log. It runs
 // after the inner call, so the recorder is complete.
-func (w *wrappedClientExecutor) emit(ctx context.Context, start time.Time, status string, err error, op Operation, hasOp bool, rec *Recorder) {
+func (e *callEmitter) emit(ctx context.Context, start time.Time, status string, err error, op chain.Operation, hasOp bool, rec *resilience.Recorder) {
 	dur := time.Since(start)
 	outcome := classifyOutcome(err)
 
@@ -225,33 +288,33 @@ func (w *wrappedClientExecutor) emit(ctx context.Context, start time.Time, statu
 	// distinguishes — `status` says it failed, `resilience.outcome` says
 	// protection rejected it.
 	calls := []attribute.KeyValue{
-		attribute.String("system", w.system),
-		attribute.String("service", w.service),
+		attribute.String("system", e.system),
+		attribute.String("service", e.service),
 		attribute.String("status", status),
 	}
 	if outcome != "" {
 		calls = append(calls, attribute.String("resilience.outcome", outcome))
 	}
-	w.ins.clientCalls.Add(ctx, 1, metric.WithAttributes(calls...))
+	e.ins.clientCalls.Add(ctx, 1, metric.WithAttributes(calls...))
 
 	tag := resilienceTag
 	fields := []log.Field{
-		log.String("system", w.system),
-		log.String("service", w.service),
+		log.String("system", e.system),
+		log.String("service", e.service),
 	}
 	quietSuccess := successQuiet(hasOp, op)
 	if hasOp {
 		ins := operationInstruments(op.Metric)
 		// Metric labels come from Attrs alone: Detail is deliberately excluded, so
 		// a cache key or message subject can never become a label.
-		ins.duration.Record(ctx, dur.Seconds(), metric.WithAttributes(w.callLabels(op.Attrs, status, outcome)...))
+		ins.duration.Record(ctx, dur.Seconds(), metric.WithAttributes(e.callLabels(op.Attrs, status, outcome)...))
 		// The attempt layer: the downstream's own latency and outcome, per try.
 		// Attempts a rejection returned before running are simply absent — an
 		// empty recorder is the call's own signal that the downstream was never
 		// touched.
 		for _, a := range rec.Attempts() {
 			ins.attempts.Record(ctx, a.Duration.Seconds(),
-				metric.WithAttributes(w.callLabels(op.Attrs, a.Status, classifyOutcome(a.Err))...))
+				metric.WithAttributes(e.callLabels(op.Attrs, a.Status, classifyOutcome(a.Err))...))
 		}
 		if op.LogTag != nil {
 			tag = op.LogTag
@@ -264,14 +327,14 @@ func (w *wrappedClientExecutor) emit(ctx context.Context, start time.Time, statu
 	} else {
 		// Fallback: this layer's historical signals, names and labels unchanged.
 		labels := []attribute.KeyValue{
-			attribute.String("system", w.system),
-			attribute.String("service", w.service),
+			attribute.String("system", e.system),
+			attribute.String("service", e.service),
 			attribute.String("status", status),
 		}
 		if outcome != "" {
 			labels = append(labels, attribute.String("resilience.outcome", outcome))
 		}
-		w.ins.clientDuration.Record(ctx, dur.Seconds(), metric.WithAttributes(labels...))
+		e.ins.clientDuration.Record(ctx, dur.Seconds(), metric.WithAttributes(labels...))
 		fields = append(fields, log.Float("duration_ms", durMs(dur)), log.String("status", status))
 	}
 	if outcome != "" {
@@ -279,41 +342,41 @@ func (w *wrappedClientExecutor) emit(ctx context.Context, start time.Time, statu
 	}
 
 	if err != nil {
-		log.Warn(ctx, tag, append(fields, log.Err(err))...)
+		log.Warn(ctx, tag, "client call failed", append(fields, log.Err(err))...)
 		return
 	}
 	if quietSuccess {
 		// Built lazily: the success record is there for troubleshooting, not
 		// everyday reading.
-		log.Debug(ctx, tag, func() []log.Field { return fields })
+		log.Debug(ctx, tag, "client call succeeded", func() []log.Field { return fields })
 		return
 	}
-	log.Info(ctx, tag, fields...)
+	log.Info(ctx, tag, "client call finished", fields...)
 }
 
 // spanName names the call's span: the operation's own word when the client
 // declared one, the service label otherwise — matching what this layer's spans
 // have always been named in the undeclared case.
-func (w *wrappedClientExecutor) spanName(op Operation, hasOp bool) string {
+func (e *callEmitter) spanName(op chain.Operation, hasOp bool) string {
 	if hasOp && op.Name != "" {
 		return op.Name
 	}
-	return w.service
+	return e.service
 }
 
 // spanAttrs is the operation's attributes plus its detail when declared, and
 // this layer's own system/service labels otherwise. The span carries both: the
 // unbounded detail that must stay out of metric labels is exactly what makes a
 // span useful to read.
-func (w *wrappedClientExecutor) spanAttrs(op Operation, hasOp bool) []attribute.KeyValue {
+func (e *callEmitter) spanAttrs(op chain.Operation, hasOp bool) []attribute.KeyValue {
 	if hasOp {
 		out := make([]attribute.KeyValue, 0, len(op.Attrs)+len(op.Detail))
 		out = append(out, op.Attrs...)
 		return append(out, op.Detail...)
 	}
 	return []attribute.KeyValue{
-		attribute.String("resilience.system", w.system),
-		attribute.String("resilience.service", w.service),
+		attribute.String("resilience.system", e.system),
+		attribute.String("resilience.service", e.service),
 	}
 }
 
@@ -329,10 +392,10 @@ func (w *wrappedClientExecutor) spanAttrs(op Operation, hasOp bool) []attribute.
 //
 // The slice is fresh: attrs comes off the context and is shared, so appending in
 // place could write into a sibling call's array.
-func (w *wrappedClientExecutor) callLabels(attrs []attribute.KeyValue, status, outcome string) []attribute.KeyValue {
+func (e *callEmitter) callLabels(attrs []attribute.KeyValue, status, outcome string) []attribute.KeyValue {
 	out := make([]attribute.KeyValue, 0, len(attrs)+3)
 	out = append(out, attrs...)
-	out = append(out, attribute.String("service", w.service))
+	out = append(out, attribute.String("service", e.service))
 	if outcome != "" {
 		out = append(out, attribute.String("resilience.outcome", outcome))
 	}

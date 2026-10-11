@@ -26,7 +26,7 @@ import (
 	"net/http"
 
 	influxdb2 "github.com/influxdata/influxdb-client-go/v2"
-	"go-spring.org/cloud"
+	"go-spring.org/cloud/governance"
 )
 
 // Driver interface defines how to create an InfluxDB client. It is an OPTIONAL
@@ -40,19 +40,19 @@ import (
 // — not the raw influxdb2.Client, so a driver takes part in the type the rest
 // of the ecosystem sees and future wrapper capabilities are reachable from it.
 // It returns the client COMPLETE: a custom driver builds its raw client however
-// it likes and hands it to [NewClient] together with params, which supplies the
-// container's facilities (see [cloud.ClientParams]) and is applied while the
+// it likes and hands it to [NewClient] together with center, which supplies the
+// container's facilities (see [governance.Center]) and is applied while the
 // client is built. Nothing patches the client afterwards.
 //
-// params is one struct rather than a parameter per capability so this interface
+// center is one object rather than a parameter per capability so this interface
 // — which every company driver implements — stays stable as capabilities are
-// added. A driver that has no use for one of its fields simply ignores it.
+// added. A driver that has no use for one of its authorities simply ignores it.
 //
 // At most one Driver bean is expected per process; every client under
 // ${spring.influxdb} is built through it, and per-instance differences are
 // expressed through [Config].
 type Driver interface {
-	CreateClient(ctx context.Context, c Config, params cloud.ClientParams) (*Client, error)
+	CreateClient(ctx context.Context, c Config, center *governance.Center) (*Client, error)
 }
 
 // DefaultDriver is the default implementation of the Driver interface.
@@ -62,12 +62,12 @@ type DefaultDriver struct{}
 //
 // The HTTP client is injected through Options so requests ride the
 // dynamicTransport — a RoundTripper indirection [NewClient] swaps the
-// declaration+resilience transport into while the client is built (from
-// params' executor). The indirection is handed to [NewClient] so the wrapper
+// resilience transport into while the client is built (from
+// center's executor). The indirection is handed to [NewClient] so the wrapper
 // can reach it.
-func (DefaultDriver) CreateClient(ctx context.Context, c Config, params cloud.ClientParams) (*Client, error) {
+func (DefaultDriver) CreateClient(ctx context.Context, c Config, center *governance.Center) (*Client, error) {
 	dyn := newDynamicTransport()
 	opts := influxdb2.DefaultOptions().SetHTTPClient(&http.Client{Transport: dyn})
 	cl := influxdb2.NewClientWithOptions(c.ServerURL, c.AuthToken, opts)
-	return NewClient(cl, dyn, c, params), nil
+	return NewClient(cl, dyn, c, center), nil
 }

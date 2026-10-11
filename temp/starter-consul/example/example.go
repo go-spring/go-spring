@@ -93,12 +93,12 @@ func runTest(s *Service) {
 
 	// Feature 1: KV put/get.
 	if _, err := s.Consul.KV().Put(&api.KVPair{Key: "key", Value: []byte("value")}, nil); err != nil {
-		log.Errorf(ctx, log.TagAppDef, err, "PUT failed")
+		log.Error(ctx, log.TagAppDef, err, "PUT failed")
 		os.Exit(1)
 	}
 	pair, _, err := s.Consul.KV().Get("key", nil)
 	if err != nil || pair == nil || string(pair.Value) != "value" {
-		log.Errorf(ctx, log.TagAppDef, err, "GET failed: err")
+		log.Error(ctx, log.TagAppDef, err, "GET failed")
 		os.Exit(1)
 	}
 
@@ -112,32 +112,32 @@ func runTest(s *Service) {
 		Name: svcName,
 		Port: 9090,
 	}); err != nil {
-		log.Errorf(ctx, log.TagAppDef, err, "ServiceRegister failed")
+		log.Error(ctx, log.TagAppDef, err, "ServiceRegister failed")
 		os.Exit(1)
 	}
 	services, err := s.Consul.Agent().Services()
 	if err != nil {
-		log.Errorf(ctx, log.TagAppDef, err, "Agent().Services() failed")
+		log.Error(ctx, log.TagAppDef, err, "Agent().Services() failed")
 		os.Exit(1)
 	}
 	registered, ok := services[svcID]
 	if !ok || registered.Service != svcName {
-		log.Errorf(ctx, log.TagAppDef, fmt.Errorf("expected service %q with id %q to be registered", svcName, svcID), "expected service %q with id %q to be registered", svcName, svcID)
+		log.Error(ctx, log.TagAppDef, fmt.Errorf("expected service %q with id %q to be registered", svcName, svcID), "expected service to be registered")
 		os.Exit(1)
 	}
 
 	// Feature 3: Deregister.
 	if err = s.Consul.Agent().ServiceDeregister(svcID); err != nil {
-		log.Errorf(ctx, log.TagAppDef, err, "ServiceDeregister failed")
+		log.Error(ctx, log.TagAppDef, err, "ServiceDeregister failed")
 		os.Exit(1)
 	}
 	services, err = s.Consul.Agent().Services()
 	if err != nil {
-		log.Errorf(ctx, log.TagAppDef, err, "Agent().Services() after deregister failed")
+		log.Error(ctx, log.TagAppDef, err, "Agent().Services() after deregister failed")
 		os.Exit(1)
 	}
 	if _, still := services[svcID]; still {
-		log.Errorf(ctx, log.TagAppDef, fmt.Errorf("service %q should be gone after deregister", svcID), "service %q should be gone after deregister", svcID)
+		log.Error(ctx, log.TagAppDef, fmt.Errorf("service %q should be gone after deregister", svcID), "service should be gone after deregister")
 		os.Exit(1)
 	}
 

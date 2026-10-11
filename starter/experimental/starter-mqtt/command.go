@@ -34,11 +34,10 @@ package StarterMQTT
 import (
 	"context"
 	"go-spring.org/cloud/chain"
+	"go-spring.org/cloud/observability"
 	"sync"
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
-	"go-spring.org/cloud"
-	"go-spring.org/cloud/observability"
 	"go-spring.org/cloud/resilience"
 )
 
@@ -58,19 +57,19 @@ import (
 // identity is this layer's whole job now, and the resilience executor — the one
 // point on the chain that sees a whole call — emits from that declaration.
 
-// clientGuard is the per-client resilience attachment: the executor chain and
-// the stable serviceLabel it executes under, colocated so a guard lookup
-// reads the pair atomically (no torn exec/serviceLabel combination).
-type clientGuard struct {
-	exec         chain.Executor
+// clientObserver is the per-client emission attachment: the observer and the
+// stable serviceLabel it reports under, colocated so a lookup reads the pair
+// atomically (no torn observer/serviceLabel combination).
+type clientObserver struct {
+	obs          *observability.OperationObserver
 	serviceLabel string
 }
 
-// clientGuards indexes the guard by the raw client, so GuardedPublish can resolve
-// it from a bare mqtt.Client and the destructor can Close it. Every client a
-// [Driver] builds appears here; a bare mqtt.Client that never went through a
-// driver is absent and runs inline, unobserved.
-var clientGuards sync.Map // mqtt.Client -> *clientGuard
+// clientGuards indexes the observer by the raw client, so GuardedPublish can
+// resolve it from a bare mqtt.Client. Every client a [Driver] builds appears
+// here; a bare mqtt.Client that never went through a driver is absent and runs
+// inline, unobserved.
+var clientGuards sync.Map // mqtt.Client -> *clientObserver
 
 // AttachGovernance installs the executor the client runs under, indexed by cl so
 // [GuardedPublish] / [GuardedConsume] can resolve it from a bare mqtt.Client and
@@ -80,8 +79,8 @@ var clientGuards sync.Map // mqtt.Client -> *clientGuard
 // so the client is complete when returned and nothing patches it afterwards.
 // paho's mqtt.Client is an interface the starter cannot add fields to, so the
 // executor is held beside the client here rather than on it. The executor is the
-// driver's params.ExecutorFor product — the governed one when the container is
-// present, the observed-only one otherwise, never absent.
+// driver's center-derived product — the governed one, from the resilience
+// manager the container supplies.
 //
 // paho's Publish hands the message to the client's internal outbound queue and
 // returns a Token; the caller then blocks on token.Wait(). Because paho manages
@@ -89,30 +88,29 @@ var clientGuards sync.Map // mqtt.Client -> *clientGuard
 // limiting the publish rate and short-circuiting (circuit breaker) when the
 // broker is unhealthy — and is driven through an opt-in call-site guard
 // ([GuardedPublish]).
-func AttachGovernance(cl mqtt.Client, broker string, params cloud.ClientParams) {
+func AttachObserver(cl mqtt.Client, broker string) {
 	label := resilience.ServiceLabel("mqtt", broker)
-	clientGuards.Store(cl, &clientGuard{exec: params.ExecutorFor("mqtt", label), serviceLabel: label})
+	clientGuards.Store(cl, &clientObserver{
+		obs:          observability.NewOperationObserver("mqtt", label),
+		serviceLabel: label,
+	})
 }
 
-// closeResilience closes and forgets the executor behind cl, if any.
-func closeResilience(cl mqtt.Client) {
-	if v, ok := clientGuards.LoadAndDelete(cl); ok {
-		_ = v.(*clientGuard).exec.Close()
-	}
+// forgetObserver drops the observer behind cl, if any.
+func forgetObserver(cl mqtt.Client) {
+	clientGuards.Delete(cl)
 }
 
-// guard routes call through the executor attached to cl, and otherwise runs it
-// inline. A client built through a [Driver] always carries one (the governed or
-// the observed-only executor), so enabling protection is a zero-code opt-in on
-// the caller side; a bare client that never went through a driver has none and
-// the call runs inline.
-func guard(ctx context.Context, cl mqtt.Client, call func(context.Context) error) error {
+// observe runs call under the observer attached to cl, and otherwise runs it
+// inline. A client built through a [Driver] always carries the observer, so
+// emission is a zero-code opt-in on the caller side; a bare client that never
+// went through a driver has none and the call runs inline, unobserved.
+func observe(ctx context.Context, cl mqtt.Client, op chain.Operation, call func(context.Context) error) error {
 	v, ok := clientGuards.Load(cl)
 	if !ok {
 		return call(ctx)
 	}
-	g := v.(*clientGuard)
-	return g.exec.Execute(ctx, call)
+	return v.(*clientObserver).obs.Observe(ctx, op, call)
 }
 
 // GuardedPublish publishes payload to topic at qos, routed through the
@@ -127,8 +125,7 @@ func guard(ctx context.Context, cl mqtt.Client, call func(context.Context) error
 // The function blocks until paho acknowledges the outbound handoff (immediately
 // at QoS 0, after a PUBACK/PUBCOMP at QoS 1/2).
 func GuardedPublish(ctx context.Context, cl mqtt.Client, topic string, qos byte, retained bool, payload interface{}) error {
-	ctx = observability.WithOperation(ctx, operation(opPublish, topic))
-	return guard(ctx, cl, func(context.Context) error {
+	return observe(ctx, cl, operation(opPublish, topic), func(context.Context) error {
 		token := cl.Publish(topic, qos, retained, payload)
 		token.Wait()
 		return token.Error()
@@ -153,6 +150,5 @@ func GuardedPublish(ctx context.Context, cl mqtt.Client, topic string, qos byte,
 // callback is fire-and-forget, so the returned error is the caller's to log —
 // there is no ack/nack for MQTT 3.1.1.
 func GuardedConsume(ctx context.Context, cl mqtt.Client, msg mqtt.Message, handler func(context.Context) error) error {
-	ctx = observability.WithOperation(ctx, operation(opConsume, msg.Topic()))
-	return guard(ctx, cl, handler)
+	return observe(ctx, cl, operation(opConsume, msg.Topic()), handler)
 }

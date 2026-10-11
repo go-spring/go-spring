@@ -130,8 +130,7 @@ spring.mongodb.instances.disc.server-selection-timeout=10s
 # --- governance: policy for the dial seam (rate-limit makes the dial
 #     protection observable; breaker/retry/timeout also apply) ---------------
 # NOTE: governance RULES go in conf/governance.properties, referenced by spring.governance.source.file.path in app.properties (see cloud/governance's SOURCE_USAGE).
-spring.governance.enabled=true
-spring.governance.driver=default
+spring.resilience.driver=default
 spring.governance.client.default.rate-limit=5
 
 # --- actuator + otel --------------------------------------------------------
@@ -174,15 +173,16 @@ import starter-mongodb
 
 gs.Run()
   ├─ ctor newClient [starter.go:105]: ApplyURI → timeouts/pool/auth → tls.Build
-  │   → build params = cloud.ClientParams{Resilience: mgr, Fault: inj, Loadbalance: lbMgr}
+  │   → read the injected authorities off the *governance.Center (variable center):
+  │     center.Resilience() / center.Fault() / center.Loadbalance() (mgr / inj / lbMgr)
   │   → SetMonitor(command monitor, lazy observer holder) [starter.go:152]
   │   → newPickPool(ctx, c, backend) (loader-backed endpoint picker when service-name set, mesh off) [starter.go:155]
   │   → SetDialer(shared dialerWrapper) [starter.go:185]
-  │   → mongo.Connect → NewClient(raw, cfg, params) (identity + observer + executor) [client.go:113]
+  │   → mongo.Connect → NewClient(raw, cfg) (identity + observer) [client.go:113]
   │       newDBObserver("mongodb") → module-local observer (span + metric + access log);
-  │       serviceLabel = serviceLabel(cfg); exec = params.ExecutorFor("mongodb", serviceLabel),
+  │       serviceLabel = serviceLabel(cfg); exec = center.ExecutorFor("mongodb", serviceLabel),
   │       which is fault.WrapClientExecutor(mgr.ClientExecutorFor("mongodb", service), service, inj)
-  │   → swap dialerWrapper.dial = resilience.NewDialer(base, w.exec) [starter.go:210]
+  │   → swap dialerWrapper.dial = newDialer(base, w.exec) [starter.go:225], [dial.go]
   │   → ping=true only: fail-fast probe HealthCheck(ctx, w) — a Ping bounded by
   │     connect-timeout (10s fallback) [starter.go:220] — a dead server fails the BOOT
   ├─ readiness: mongo:<name> indicator runs HealthCheck (a client.Ping) against the live server
@@ -203,11 +203,15 @@ startners do in one hook chain into two seams:
   holder because it is installed before `Connect`, while `NewClient` builds the observer only
   after `Connect`; the nil guard covers the startup ping path ([command.go:39-45]).
 - **Resilience/fault ride the dial layer**: the client's builder (`newClient`) wraps the dial
-  function with `resilience.NewDialer` — breaker/limiter/bulkhead/timeout/fault apply **per new
+  function with this starter's own `newDialer` ([dial.go]) — breaker/limiter/bulkhead/timeout/fault
+  apply **per new
   connection**, not per command. Already-open pooled connections run at full speed ([client.go:50-57]).
   This is the honest statement of the family asymmetry: there is **no per-request
   instrumentation for resilience here** — a breaker trips on connection failures and caps
-  connection churn; slow-but-successful commands never touch it.
+  connection churn; slow-but-successful commands never touch it. Precisely because those
+  dial-level semantics are the wrong shape for the four policies, this seam was kept out of
+  the base `resilience` package and lives here, serving the one client with nowhere else to
+  put protection.
 
 The dial swap works without rebuilding the client because the ctor hands the driver a shared
 `dialerWrapper` and then mutates its `dial` field to the resilience-wrapped one right after
@@ -219,7 +223,7 @@ its CommandMonitor type is incompatible with v2; the bridge here is module-local
 
 **The design rule.** Observation is at the command layer because the driver has no
 per-command hook; protection is at the dial layer through the resilience executor. This is
-the one client starter that emits locally — the other 19 declare an `observability.Operation`
+the one client starter that emits locally — the other 19 declare an `chain.Operation`
 for the resilience executor to apply — and it does so by driver constraint, not by choice
 (see §6). Its vocabulary, however, is deliberately identical to that unified emitter's:
 bounded labels `db.system` + `db.operation`, unbounded detail `db.statement` (span and log
@@ -279,22 +283,25 @@ There are no observability keys — observation is unconditional (see §3.3).
 ### 3.2 Resilience / fault (spring.governance.*, not under the instance prefix)
 
 Policy keys live in the governance rules document under `spring.governance.*` (cloud/governance's governance center);
-`newClient` bundles the injected `*resilience.Manager` / `*fault.Injector` (`mgr`/`inj`) and
-`*loadbalance.Manager` (`lbMgr`) into a `cloud.ClientParams` and hands it to `NewClient`, whose
-`params.ExecutorFor("mongodb", "mongodb:<service-name|uri>")` resolves
+`newClient` reads the injected `*resilience.Manager` / `*fault.Injector` (`mgr`/`inj`) and
+`*loadbalance.Manager` (`lbMgr`) off the `*governance.Center`, whose
+`center.ExecutorFor("mongodb", "mongodb:<service-name|uri>")` resolves
 `fault.WrapClientExecutor(mgr.ClientExecutorFor("mongodb", "mongodb:<service-name|uri>"), "mongodb:<service-name|uri>", inj)`
-in one call [client.go:113-121]. Relevant keys (see cloud/governance's SOURCE_USAGE
-for the full set): `spring.governance.enabled`, `spring.governance.driver`, `spring.governance.<driver>.rate-limit` /
+in one call [client.go:113-121]. Relevant keys: `spring.resilience.driver` (the backend, a
+static app-config key) and, in the governance document (see cloud/governance's SOURCE_USAGE
+for the full set), `spring.governance.client.default.rate-limit` /
 `error-threshold` / `open-duration` / `max-retries` / `timeout`, and the `spring.governance.client.fault.*`
 injection block (enable/rate/error). ⚠ Remember the seam is the **dial layer**: a breaker
 policy manifests as rejected *connections*; a fault injection fires per dial, not per command.
 
-**Endpoint selection is governed by the same rule, same label.** In discovery mode the pool is
-built with a suspension tracker and bound to `mongodb:<service-name|uri>` via
-`params.Loadbalance.Bind(pool, label)` (the `*loadbalance.Manager` bean injected into `newClient`), so `spring.governance.client.rules[N].balancer` (round_robin / least_conn /
+**Endpoint selection is governed by the same rule, same label.** In discovery mode the chain is
+built with a suspension tracker and registered under `mongodb:<service-name|uri>` as
+`lbMgr.Chain(resolver, label)` is called (the `*loadbalance.Manager` bean injected into
+`newClient`), so `spring.governance.client.rules[N].balancer` (round_robin / least_conn /
 consistent_hash / weighted / zone_aware / random / p2c) and `outlier-threshold` /
-`outlier-suspend-for` apply **in place** — the next dial uses the new strategy, no restart and no
-re-dial of existing connections. Direct (URI-only) instances have no candidate set, so these keys
+`outlier-suspend-for` **rebuild the chain from scratch** — the next dial runs the new strategy on a
+fresh balancer and suspension tracker, no restart and no re-dial of existing connections. Direct
+(URI-only) instances have no candidate set, so these keys
 are inert for them. ⚠ The dialer's only outcome signal is the dial itself, so `outlier-threshold`
 evicts instances that keep refusing *connections*; per-command failures belong to the resilience
 executor above. See `cloud/governance/README.md` §3.1.
@@ -353,8 +360,7 @@ grep _app_mongodb_access app.log | tail -1
 
 ```properties
 # NOTE: governance RULES go in conf/governance.properties, referenced by spring.governance.source.file.path in app.properties (see cloud/governance's SOURCE_USAGE).
-spring.governance.enabled=true
-spring.governance.driver=default
+spring.resilience.driver=default
 spring.governance.client.default.rate-limit=5
 spring.mongodb.instances.a.max-pool-size=100   # room for the burst to force fresh dials
 ```
@@ -369,7 +375,6 @@ the executor hot-reloads without restart (governance center).
 
 ```properties
 # NOTE: governance RULES go in conf/governance.properties, referenced by spring.governance.source.file.path in app.properties (see cloud/governance's SOURCE_USAGE).
-spring.governance.client.fault.enabled=true
 spring.governance.client.fault.rate=0.5
 spring.governance.client.fault.error=generic    # or: timeout / reset
 ```

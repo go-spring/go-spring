@@ -127,8 +127,7 @@ spring.mongodb.instances.disc.server-selection-timeout=10s
 # --- 治理：作用于建连 seam 的策略（rate-limit 让建连保护可观测；
 #     breaker/retry/timeout 同样生效）----------------------------------------
 # NOTE: governance RULES go in conf/governance.properties, referenced by spring.governance.source.file.path in app.properties (see cloud/governance's SOURCE_USAGE).
-spring.governance.enabled=true
-spring.governance.driver=default
+spring.resilience.driver=default
 spring.governance.client.default.rate-limit=5
 
 # --- actuator + otel -------------------------------------------------------
@@ -170,15 +169,16 @@ import starter-mongodb
 
 gs.Run()
   ├─ 构造 newClient [starter.go:105]：ApplyURI → 超时/连接池/认证 → tls.Build
-  │   → 构建 params = cloud.ClientParams{Resilience: mgr, Fault: inj, Loadbalance: lbMgr}
+  │   → 从注入的 *governance.Center（变量 center）读取各授权：
+  │     center.Resilience() / center.Fault() / center.Loadbalance()（mgr / inj / lbMgr）
   │   → SetMonitor(command monitor，惰性 observer holder)[starter.go:152]
   │   → newPickPool(ctx, c, backend)（设置 service-name 且非 mesh 时构建 loader-backed 端点池）[starter.go:155]
   │   → SetDialer(共享 dialerWrapper)[starter.go:185]
-  │   → mongo.Connect → NewClient(raw, cfg, params)（定身份 + observer + executor）[client.go:113]
+  │   → mongo.Connect → NewClient(raw, cfg)（定身份 + observer）[client.go:113]
   │       newDBObserver("mongodb") → 模块内建 observer（span + 指标 + 访问日志）；
-  │       serviceLabel = serviceLabel(cfg)；exec = params.ExecutorFor("mongodb", serviceLabel)，
+  │       serviceLabel = serviceLabel(cfg)；exec = center.ExecutorFor("mongodb", serviceLabel)，
   │       即 fault.WrapClientExecutor(mgr.ClientExecutorFor("mongodb", service), service, inj)
-  │   → 换入 dialerWrapper.dial = resilience.NewDialer(base, w.exec)[starter.go:210]
+  │   → 换入 dialerWrapper.dial = newDialer(base, w.exec)[starter.go:225]、[dial.go]
   │   → 仅 ping=true：fail-fast 探测 HealthCheck(ctx, w)——一次 Ping，由
   │     connect-timeout 约束（兜底 10s）[starter.go:220]——server 挂掉失败的是启动
   ├─ 就绪：mongo:<name> 指示器经 HealthCheck（即 client.Ping）对真实 server 探测
@@ -198,11 +198,12 @@ seam：
   monitor 经 atomic pointer holder 惰性读 observer，因为它在 `Connect` 之前安装，而
   `NewClient` 要到 `Connect` 之后才构建 observer；nil 保护覆盖启动 ping 路径
   （[command.go:39-45]）。
-- **resilience/fault 走建连层**：客户端的构造器（`newClient`）用 `resilience.NewDialer`
-  包裹拨号函数——breaker/limiter/bulkhead/timeout/fault 作用于**每次新连接**，不是每条
-  命令。已建好的池内连接全速运行（[client.go:50-57]）。对家族不对称的诚实表述：这里
-  **没有逐请求的 resilience 埋点**——breaker 因连接失败而跳闸、限制的是建连抖动；慢而
-  成功的命令永远触不到它。
+- **resilience/fault 走建连层**：客户端的构造器（`newClient`）用本 starter 的 `newDialer`
+  （[dial.go]）包裹拨号函数——breaker/limiter/bulkhead/timeout/fault 作用于**每次新连接**，
+  不是每条命令。已建好的池内连接全速运行（[client.go:50-57]）。对家族不对称的诚实表述：
+  这里**没有逐请求的 resilience 埋点**——breaker 因连接失败而跳闸、限制的是建连抖动；慢而
+  成功的命令永远触不到它。正因为这套语义错位，这条 seam 没有进基础包 `resilience`，而是
+  留在这里，只服务这个"无处可放保护"的 client。
 
 拨号替换无需重建客户端：构造期交给驱动的是共享 `dialerWrapper`，`NewClient` 解出
 executor 后由构造器随即改写其 `dial` 字段（[starter.go:184-185, 210]、[client.go:113-121]）。
@@ -212,7 +213,7 @@ executor 后由构造器随即改写其 `dial` 字段（[starter.go:184-185, 210
 
 **设计规则。** 观测落在命令层，因为驱动没有逐命令 hook；保护落在建连层，由 resilience
 executor 承担。这是唯一一个在本地发射信号的 client starter——其余 19 个只声明一个
-`observability.Operation`，交由 resilience executor 落地——而这个选择由驱动约束决定，
+`chain.Operation`，交由 resilience executor 落地——而这个选择由驱动约束决定，
 并非本意为之（见 §6）。但它的词汇刻意与统一发射器完全一致：有界标签
 `db.system` + `db.operation`、无界细节 `db.statement`（只进 span 与日志、绝不进指标标签，
 截断至 512 字节）、以命令命名的 Internal span，以及 `status` / `duration_ms` 访问日志字段
@@ -266,21 +267,23 @@ key——观测无条件开启（见 §3.3）。
 
 ### 3.2 resilience / fault（spring.governance.*，不在实例前缀下）
 
-策略 key 位于顶层 `spring.governance.*`（cloud/governance 治理中心）；`newClient` 把注入的
-`*resilience.Manager` / `*fault.Injector`（`mgr`/`inj`）与 `*loadbalance.Manager`（`lbMgr`）打包成
-`cloud.ClientParams` 交给 `NewClient`，由 `params.ExecutorFor("mongodb", "mongodb:<service-name|uri>")`
+策略 key 位于顶层 `spring.governance.*`（cloud/governance 治理中心）；`newClient` 从
+`*governance.Center` 读取注入的
+`*resilience.Manager` / `*fault.Injector`（`mgr`/`inj`）与 `*loadbalance.Manager`（`lbMgr`），由
+`center.ExecutorFor("mongodb", "mongodb:<service-name|uri>")`
 一次解出 `fault.WrapClientExecutor(mgr.ClientExecutorFor("mongodb", "mongodb:<service-name|uri>"), "mongodb:<service-name|uri>", inj)`
-[client.go:113-121]。相关 key（全集见 cloud/governance 的 SOURCE_USAGE_CN.md）：`spring.governance.enabled`、
-`spring.governance.driver`、`spring.governance.<driver>.rate-limit` / `error-threshold` / `open-duration` /
-`max-retries` / `timeout`，以及 `spring.governance.client.fault.*` 注入块（enable/rate/error）。⚠ 记住
+[client.go:113-121]。相关 key：`spring.resilience.driver`（后端，静态 app 配置）以及治理文档中的
+（全集见 cloud/governance 的 SOURCE_USAGE_CN.md）`spring.governance.client.default.rate-limit` /
+`error-threshold` / `open-duration` /
+`max-retries` / `timeout`，以及 `spring.governance.client.fault.*` 注入块（rate/error）。⚠ 记住
 seam 在**建连层**：breaker 策略表现为拒绝*连接*；故障注入按拨号触发，不按命令。
 
-**端点选择由同一条规则、同一个标签管**。发现模式下池会挂上 suspension tracker 并经
-`params.Loadbalance.Bind(pool, label)`（`*loadbalance.Manager` bean 注入 `newClient`）绑到
-`mongodb:<service-name|uri>`，于是
+**端点选择由同一条规则、同一个标签管**。发现模式下链路会挂上 suspension tracker，并在
+`lbMgr.Chain(resolver, label)` 调用时就注册到
+`mongodb:<service-name|uri>`（`*loadbalance.Manager` bean 注入 `newClient`），于是
 `spring.governance.client.rules[N].balancer`（round_robin / least_conn / consistent_hash / weighted / zone_aware /
-random / p2c）与 `outlier-threshold` / `outlier-suspend-for` **原地生效**——下一次拨号走新策略，
-不用重启，也不会重建已有连接。直连（只配 URI）的实例没有候选集，这些 key 对它无效。
+random / p2c）与 `outlier-threshold` / `outlier-suspend-for` **整条重建**——下一次拨号在全新的
+balancer 与 suspension tracker 上走新策略，不用重启，也不会重建已有连接。直连（只配 URI）的实例没有候选集，这些 key 对它无效。
 ⚠ dialer 能拿到的成败信号只有拨号本身，所以 `outlier-threshold` 摘的是**反复连不上**的实例；
 单条命令的失败归上层 resilience executor 管。详见 `cloud/governance/README.md` §3.1。
 
@@ -333,8 +336,7 @@ grep _app_mongodb_access app.log | tail -1
 
 ```properties
 # NOTE: governance RULES go in conf/governance.properties, referenced by spring.governance.source.file.path in app.properties (see cloud/governance's SOURCE_USAGE).
-spring.governance.enabled=true
-spring.governance.driver=default
+spring.resilience.driver=default
 spring.governance.client.default.rate-limit=5
 spring.mongodb.instances.a.max-pool-size=100   # 给爆发留出强制新建连接的空间
 ```
@@ -348,7 +350,6 @@ executor 热更新，无需重启（治理中心）。
 
 ```properties
 # NOTE: governance RULES go in conf/governance.properties, referenced by spring.governance.source.file.path in app.properties (see cloud/governance's SOURCE_USAGE).
-spring.governance.client.fault.enabled=true
 spring.governance.client.fault.rate=0.5
 spring.governance.client.fault.error=generic    # 或：timeout / reset
 ```

@@ -45,7 +45,6 @@ import (
 
 	"github.com/apache/rocketmq-client-go/v2"
 	"github.com/apache/rocketmq-client-go/v2/primitive"
-	"go-spring.org/cloud/chain"
 	"go-spring.org/cloud/observability"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -228,61 +227,39 @@ func (r *RawProducer) SendSync(ctx context.Context, msg *primitive.Message) (*pr
 	return r.p.SendSync(ctx, msg)
 }
 
-// GuardProducer is the governance layer: it runs every send under the
-// resilience executor (the client's, because producers are caller-created and
-// recreated over a client's lifetime while the executor stays scoped to the
-// client), which is also the single emitter of the send's span, metrics and
-// access log. [NewGuardProducer] builds it.
-type GuardProducer struct {
-	exec chain.Executor
-	next InnerProducer
-}
-
-// NewGuardProducer builds the governance layer over next, running every send
-// under exec.
-func NewGuardProducer(next InnerProducer, exec chain.Executor) *GuardProducer {
-	return &GuardProducer{exec: exec, next: next}
-}
-
-// Release hands releaseRaw to the layer under it — the executor belongs to the
-// client and is closed by the client's Close, not here.
-func (g *GuardProducer) Release(releaseRaw bool) error { return g.next.Release(releaseRaw) }
-
-func (g *GuardProducer) SendSync(ctx context.Context, msg *primitive.Message) (*primitive.SendResult, error) {
-	var res *primitive.SendResult
-	var err error
-	if g.exec == nil {
-		res, err = g.next.SendSync(ctx, msg)
-		return res, err
-	}
-	err = g.exec.Execute(ctx, func(attemptCtx context.Context) error {
-		var serr error
-		res, serr = g.next.SendSync(attemptCtx, msg)
-		return serr
-	})
-	if err != nil {
-		return nil, err
-	}
-	return res, nil
-}
-
-// ObsProducer is the identity layer at the head: it names the send — the
-// publish, with its topic — and hands the context down. It emits nothing
-// itself: emission happens in the governance layer under it. [NewObsProducer]
-// builds it.
+// ObsProducer is the emitting layer at the head: it names each send — the
+// publish, with its topic — runs it, and emits the span, metrics and access log
+// through the client's observer. A rocketmq client has no seam for the
+// resilience executor, so there is no governance layer under it.
+// [NewObsProducer] builds it.
 type ObsProducer struct {
 	next InnerProducer
+	obs  *observability.OperationObserver
 }
 
-// NewObsProducer builds the identity layer over next.
-func NewObsProducer(next InnerProducer) *ObsProducer { return &ObsProducer{next: next} }
+// NewObsProducer builds the emitting layer over next.
+func NewObsProducer(next InnerProducer, obs *observability.OperationObserver) *ObsProducer {
+	return &ObsProducer{next: next, obs: obs}
+}
 
 // Release hands releaseRaw to the layer under it — this layer holds no
 // resource.
 func (o *ObsProducer) Release(releaseRaw bool) error { return o.next.Release(releaseRaw) }
 
 func (o *ObsProducer) SendSync(ctx context.Context, msg *primitive.Message) (*primitive.SendResult, error) {
-	return o.next.SendSync(observability.WithOperation(ctx, operation(opPublish, msg.Topic)), msg)
+	var res *primitive.SendResult
+	if o.obs == nil {
+		return o.next.SendSync(ctx, msg)
+	}
+	err := o.obs.Observe(ctx, operation(opPublish, msg.Topic), func(callCtx context.Context) error {
+		var serr error
+		res, serr = o.next.SendSync(callCtx, msg)
+		return serr
+	})
+	if err != nil {
+		return nil, err
+	}
+	return res, nil
 }
 
 // GuardedSend sends msg synchronously on producer, routed through the

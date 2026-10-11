@@ -18,6 +18,8 @@ package resilience
 
 import (
 	"time"
+
+	"go-spring.org/cloud/chain"
 )
 
 // ClientPolicy is a backend-neutral description of the protection wanted for a set of
@@ -59,6 +61,21 @@ type ClientPolicy struct {
 	// Window is the rolling interval [SlidingWindow] counts over; it defaults to
 	// one second and is ignored by [TokenBucket]. Ignored when RateLimit is 0.
 	Window time.Duration `value:"${window:=0}"`
+
+	// RateLimitWarmUpDuration ramps the rate limit up from a cold start over
+	// this duration, instead of admitting the full RateLimit the instant the
+	// process starts — a freshly restarted fleet must not hit a cold downstream
+	// at full quota. The default driver approximates it with a cold-start token
+	// bucket (capacity grows linearly to full over the duration); sentinel maps
+	// it onto flow-rule WarmUp. It is the neutral counterpart of OpenSergo's
+	// warm-up cold-start. 0 disables warm-up. Ignored when RateLimit is 0.
+	RateLimitWarmUpDuration time.Duration `value:"${rate-limit-warm-up-duration:=0}"`
+
+	// WarmUpColdFactor shapes how conservative the ramp-in is: the admission
+	// curve starts at roughly RateLimit/coldFactor and rises to full RateLimit
+	// by the end of [ClientPolicy.RateLimitWarmUpDuration]. 0 means the backend's
+	// default (3). Ignored when RateLimitWarmUpDuration is 0.
+	WarmUpColdFactor int `value:"${warm-up-cold-factor:=0}"`
 
 	// ErrorThreshold is the failure count that trips the circuit breaker. Under
 	// [BreakerConsecutive] (the default) it counts failures in a row; under
@@ -122,6 +139,18 @@ type ClientPolicy struct {
 	// disables the bulkhead.
 	MaxConcurrent int `value:"${max-concurrent:=0}"`
 
+	// BulkheadQueueDuration is how long a call finding the bulkhead full may
+	// WAIT for a slot before being rejected with [chain.ErrBulkheadFull], turning
+	// momentary oversubscription into bounded queueing instead of immediate
+	// rejection (traffic shaping for concurrency, next to
+	// [ClientPolicy.RateLimitMaxWait] for rate). The wait also ends when the
+	// caller's ctx is done. It is the neutral counterpart of OpenSergo's
+	// maxQueueDurationMs. 0 (the default) keeps the reject-immediately behavior.
+	// The default driver implements the wait; sentinel v1.0.4's isolation rule
+	// has no queueing, so the sentinel driver ignores it (documented). Ignored
+	// when MaxConcurrent is 0.
+	BulkheadQueueDuration time.Duration `value:"${bulkhead-queue-duration:=0}"`
+
 	// MaxConns caps the connections this client keeps to the service. It is the
 	// resource half of isolation, next to MaxConcurrent's concurrency half: the
 	// bulkhead bounds how many calls run at once, this bounds what they may hold
@@ -139,37 +168,19 @@ type ClientPolicy struct {
 	// executor adopts on refresh.
 	MaxConns int `value:"${max-conns:=0}"`
 
-	// MaxRetries is the number of extra attempts after the first failure. 0
-	// means a single attempt with no retry. Retries respect the circuit breaker,
-	// rate limiter and bulkhead, and are paced by the backoff fields below.
-	MaxRetries int `value:"${max-retries:=0}"`
-
-	// RetryBudget caps the number of retry attempts in flight across ALL
-	// services served by one executor at the same time. It is the process-level
-	// guard against retry amplification: without it, MaxRetries is a per-call
-	// promise, and a downstream blip turns every concurrent caller's retry into
-	// extra load precisely when the downstream can least afford it. An over-
-	// budget retry is rejected with [chain.ErrRetryBudgetExceeded] (the first attempt
-	// always runs; only retries take budget). 0 disables the cap.
-	RetryBudget int `value:"${retry-budget:=0}"`
-
-	// InitialInterval is the backoff before the first retry. 0 disables backoff
-	// entirely (retries run back-to-back, the historical behavior). Pair with
-	// [ClientPolicy.Multiplier], [ClientPolicy.MaxInterval] and [ClientPolicy.RandomizationFactor].
-	InitialInterval time.Duration `value:"${initial-interval:=0}"`
-
-	// Multiplier is the exponential growth factor applied to InitialInterval
-	// between successive retries. 0 and 1 both mean a constant interval.
-	Multiplier float64 `value:"${multiplier:=0}"`
-
-	// MaxInterval caps the grown backoff so it does not expand unbounded. 0
-	// means no cap.
-	MaxInterval time.Duration `value:"${max-interval:=0}"`
-
-	// RandomizationFactor is the jitter fraction in [0,1) applied to each
-	// computed interval as interval*(1 ± factor), decorrelating clients that
-	// would otherwise retry in lockstep. 0 means no jitter.
-	RandomizationFactor float64 `value:"${randomization-factor:=0}"`
+	// Retry is the service-level retry declaration a governance center MAY push
+	// for this label. By default a center pushes nothing (the zero node), and the
+	// retry a call runs under is the one the caller declares on
+	// [chain.Operation.Retry] — the caller is the only side that knows whether
+	// repeating the call repeats a side effect. When a center DOES push a node
+	// that declares a schedule, it wins WHOLE over the call's node, because a
+	// pushed value is how an operator hot-fixes a live incident; the
+	// NonIdempotent flag is preserved from both regardless (see
+	// [EffectiveRetry], the one place the two are merged).
+	//
+	// RetryBudget is read from HERE only, at construction time (see
+	// [chain.RetryPolicy.RetryBudget]); a per-call node's budget is ignored.
+	Retry chain.RetryPolicy `value:"${retry:=}"`
 
 	// Timeout bounds each individual attempt via a derived context. 0 means no
 	// per-attempt timeout is imposed by the executor.
@@ -193,19 +204,19 @@ type ClientPolicy struct {
 func (p ClientPolicy) IsZero() bool {
 	return p.RateLimit == 0 && p.Burst == 0 && p.RateLimitMaxWait == 0 &&
 		p.Algorithm == "" && p.Window == 0 &&
+		p.RateLimitWarmUpDuration == 0 && p.WarmUpColdFactor == 0 &&
 		p.ErrorThreshold == 0 && p.OpenDuration == 0 &&
 		p.BreakerStrategy == "" && p.ErrorRateThreshold == 0 &&
 		p.MinRequests == 0 && p.BreakerWindow == 0 &&
 		p.SlowCallDurationThreshold == 0 && p.SlowCallRateThreshold == 0 &&
 		p.HalfOpenRequests == 0 &&
-		p.MaxConcurrent == 0 && p.MaxConns == 0 && p.MaxRetries == 0 && p.RetryBudget == 0 &&
-		p.InitialInterval == 0 && p.Multiplier == 0 &&
-		p.MaxInterval == 0 && p.RandomizationFactor == 0 &&
+		p.MaxConcurrent == 0 && p.BulkheadQueueDuration == 0 &&
+		p.MaxConns == 0 && p.Retry.IsZero() &&
 		p.AttemptTimeout == 0 && p.MaxDuration == 0
 }
 
 // RateSpec returns the rate-limit stage's view of p: the knobs the stage and any
-// [Counters] store behind it read, in that stage's own vocabulary. A caller that
+// [ClusterLimiter] store behind it read, in that stage's own vocabulary. A caller that
 // charges a store directly — a gateway filter, say — builds the spec here rather
 // than off the policy, so the one mapping from policy to store lives with the
 // model.
@@ -216,6 +227,8 @@ func (p ClientPolicy) RateSpec() RateSpec {
 		Algorithm: p.Algorithm,
 		Window:    p.Window,
 		MaxWait:   p.RateLimitMaxWait,
+		WarmUp:    p.RateLimitWarmUpDuration,
+		ColdFactor: p.WarmUpColdFactor,
 	}
 }
 

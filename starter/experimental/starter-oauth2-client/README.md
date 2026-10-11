@@ -164,10 +164,11 @@ type LoginService struct {
   `*oauth2.Config` under `spring.oauth2.authcode`; the separate prefixes keep the two config
   surfaces from bleeding into each other.
 * **Resilience is the outermost transport wrap.** The bearer token is attached first, then the
-  request runs through the `cloud/resilience` executor (retry re-picks the upstream, the breaker
-  keys by logical service name), so every protected attempt is a complete, authenticated
-  request. It is a config-only switch on the same instance, and a transparent pass-through when
-  governance is off.
+  request runs through the executor the constructor reads from the injected `*governance.Center`
+  (`center`) via `center.Resilience().ClientExecutorFor("oauth2", "oauth2:<client-id>")` (retry
+  re-picks the upstream, the breaker keys by logical service name), so every protected attempt is
+  a complete, authenticated request. The center is a required injected bean — "governance off" is
+  a center armed with no rules, whose executor is a transparent pass-through — never an absent bean.
 * **The token exchange sits outside that wrap.** The executor wraps the returned client's
   transport, while the library fetches the token on its own path — a flaky IdP is not retried by
   this client's policy.

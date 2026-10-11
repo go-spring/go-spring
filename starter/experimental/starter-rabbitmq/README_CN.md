@@ -70,13 +70,13 @@ _ = ch.PublishWithContext(ctx, "", "hello", false, false, amqp.Publishing{Body: 
 ## 可观测性
 
 本 starter 只**声明**每一次 publish / consume 的身份；信号本身——span、时长指标
-（调用级与单次尝试级）与每次调用一条访问日志——由 resilience 层**发射**，它是
-executor 链上唯一的发射点。starter 自身不含任何逐调用发射代码。
+（调用级与单次尝试级）与每次调用一条访问日志——由 observer
+（`observability.OperationObserver`）**发射**，它是连接调用路径上唯一的发射点。starter 自身不含任何逐调用发射代码。
 
 声明是自动的。经 `StarterRabbitMQ.GuardedPublish` 路由的发布（以及骑在它上面的
-driver `Publish`）会在执行调用前把 operation 挂到 `ctx` 上，再交给连接级 resilience
-executor 运行；driver 的每次消费同理。executor 打开 `publish` / `consume` span，
-记录 `messaging.client.operation.duration`（整次调用，含重试）与单次尝试级的
+driver `Publish`）会在执行调用前把 operation 挂到 `ctx` 上，再交给连接级 observer
+运行；driver 的每次消费同理。observer 打开 `publish` / `consume` span，
+记录 `messaging.client.operation.duration`（整次调用）与单次尝试级的
 `messaging.client.attempt.duration`，递增 `resilience.client.calls` 计数，并写入访问
 日志——tag 为 `_app_rabbitmq_access`。
 
@@ -88,14 +88,14 @@ W3C 链路上下文注入消息 headers,从而把生产者与消费者跨服务�
 ```go
 import starter "go-spring.org/starter-rabbitmq"
 
-// 声明并受保护：executor 发射 span/指标/日志，并把 W3C 链路上下文注入 pub.Headers。
+// 声明并观测：observer 发射 span/指标/日志，并把 W3C 链路上下文注入 pub.Headers。
 pub := amqp.Publishing{ContentType: "text/plain", Body: []byte("v")}
 err := starter.GuardedPublish(ctx, conn, ch, exchange, routingKey, false, false, pub)
 ```
 
 starter 本地保留的唯一信号**不是**逐调用信号：一个
 `messaging.client.connection.state_changes` 计数器，由 amqp091 连接自身的
-close / blocked / unblocked 通知驱动（见"高级功能"），resilience 层并不感知它。
+close / blocked / unblocked 通知驱动（见"高级功能"），observer 并不感知它。
 
 为什么用调用点辅助函数,而不是包装 channel/publisher:
 

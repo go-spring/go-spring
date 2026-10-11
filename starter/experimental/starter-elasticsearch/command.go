@@ -14,33 +14,26 @@
  * limitations under the License.
  */
 
-// command.go is the "command seam" concept of this starter: the declaration
-// transport — the outer http.RoundTripper that puts each request's semantic
-// identity on the context, for the resilience layer inside it to emit.
+// command.go is the "command seam" concept of this starter: the request-derived
+// operation the resilience round-tripper reads at Execute entry to emit the one
+// call span, the call-level and attempt-level duration metrics and the single
+// access log.
 
 package StarterElasticsearch
 
 import (
 	"net/http"
 
-	"go-spring.org/cloud/observability"
+	"go-spring.org/cloud/chain"
 )
 
-// declareTransport is the declaration layer of the transport chain: it turns the
-// request's method + URL path into an [observability.Operation] and puts it on
-// the request context, where the resilience executor — which reads the operation
-// at Execute entry — picks it up to emit the one call span, the call-level and
-// attempt-level duration metrics and the single access log.
-//
-// It MUST sit OUTSIDE the resilience round-tripper, not be its base: a
-// declaration made inside the executor is read by nobody, because the executor
-// already read the operation before the protected call ran. [Client.installTransport]
-// builds them in that order.
-type declareTransport struct {
-	base http.RoundTripper
-}
-
-func (t *declareTransport) RoundTrip(req *http.Request) (*http.Response, error) {
-	ctx := observability.WithOperation(req.Context(), operation(req.Method, req.URL.Path))
-	return t.base.RoundTrip(req.WithContext(ctx))
+// callFor derives a request's semantic identity — its method + URL path, see
+// [operation] — so the resilience round-tripper can name the call. An
+// http.RoundTripper is handed only the request, so this derivation is the
+// seam's ctx-free way to declare the operation: it is passed to
+// [resilience.NewRoundTripper] as the callFor callback, and every link of the
+// chain reads the operation from the Execute signature rather than from the
+// context. [Client.installTransport] wires it in.
+func callFor(req *http.Request) chain.Operation {
+	return operation(req.Method, req.URL.Path)
 }

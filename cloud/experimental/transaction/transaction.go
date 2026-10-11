@@ -52,15 +52,14 @@ package transaction
 import (
 	"context"
 
-	"go-spring.org/cloud/resilience"
+	"go-spring.org/cloud/chain"
 )
 
 // RetryPolicy describes how an individual [Step] phase (action or compensation)
-// is retried on failure. It reuses [resilience.ClientPolicy] rather than inventing a
-// second knob set, so the same declarative fields (MaxRetries, Timeout, ...)
-// govern both outbound resilience and Saga step retries. The zero value means a
-// single attempt with no retry.
-type RetryPolicy = resilience.ClientPolicy
+// is retried on failure. It is [chain.RetryPolicy] — the same node that governs
+// outbound resilience retry — rather than a second knob set, so one retry
+// vocabulary covers both. The zero value means a single attempt with no retry.
+type RetryPolicy = chain.RetryPolicy
 
 // Step is one compensable unit of a [Saga]. Action is the forward operation;
 // Compensate undoes it if a later step fails.

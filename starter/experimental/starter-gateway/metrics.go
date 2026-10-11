@@ -107,10 +107,10 @@ func logAccess(ctx context.Context, route string, r *http.Request, code int, sta
 		log.Float("duration_ms", float64(dur.Nanoseconds())/1e6),
 	}
 	if code >= 500 {
-		log.Warn(ctx, accessTag, fields...)
+		log.Warn(ctx, accessTag, "gateway request failed", fields...)
 		return
 	}
-	log.Info(ctx, accessTag, fields...)
+	log.Info(ctx, accessTag, "gateway request completed", fields...)
 }
 
 // statusOf maps the response status onto the ecosystem-wide result axis: a 5xx

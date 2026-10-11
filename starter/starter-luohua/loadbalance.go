@@ -36,9 +36,7 @@ const luohuaStrategy = "luohua"
 // luohuaFactory builds the company's zone-affine [loadbalance.Balancer]. Its
 // only parameter is the preferred zone, so a deployment can pin a service to a
 // different zone without a new strategy.
-type luohuaFactory struct{}
-
-func (luohuaFactory) Build(_ loadbalance.Directory, p *loadbalance.Params) (loadbalance.Balancer, error) {
+func luohuaFactory(p *loadbalance.Params) (loadbalance.Balancer, error) {
 	zone := p.String("zone", LuohuaZone)
 	if err := p.Done(); err != nil {
 		return nil, err

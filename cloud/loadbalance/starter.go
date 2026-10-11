@@ -25,15 +25,17 @@ import (
 // constructor parameter is REQUIRED — an absent bean fails startup rather than
 // degrading silently.
 //
-// The strategy directory is a constructor parameter: gs collects every
-// [Factory] bean the container holds (a deployment contributes one with
-// gs.Provide(...).Name("<strategy>").Export(gs.As[Factory]())) and hands the map
-// over at construction, so there is no separate install step and no window in
-// which a manager exists without its strategies. The tag is nullable because
-// contributing none is the common case, and an empty collection is otherwise an
-// injection error.
+// The manager needs no strategy directory: names resolve against the package
+// registry ([Register]), which every strategy file — and every package that
+// registers one, a company's balancer say — has already populated by init. So
+// there is no install step and no window in which a manager exists without its
+// strategies, and no constructor parameter for a deployment to fill in.
+//
+// The bean owns its own teardown: close runs on [Manager.Close], which drops the
+// registrations a one-way subscription can never drop (see
+// [Manager.Chain]). gs
+// destroys beans in reverse construction order, so the chains — built after the
+// manager — are gone by then, which is the order the one-way contract requires.
 func init() {
-	gs.Provide(func(factories map[string]Factory) (*Manager, error) {
-		return NewManager(factories)
-	}, gs.TagArg("?")).Caller(1)
+	gs.Provide(NewManager).Destroy((*Manager).Close).Caller(1)
 }

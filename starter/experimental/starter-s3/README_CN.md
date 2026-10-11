@@ -70,8 +70,8 @@ _, err := s.Client.PutObject(ctx, "bucket", "key",
   默认关闭），第一个对象操作之前就暴露配错的端点与被拒的凭证。
 - **每实例健康指示器** — 同一探针注册为 `s3:<name>`，导入
   `starter-actuator` 后自动并入 `/readiness`。
-- **可观测** — starter 只“声明”每个请求的语义身份（`declareTransport` 把它放到
-  context 上）；同一 HTTP 传输层上的 resilience 层在唯一能看到整次调用（含重试）
+- **可观测** — starter 构造每个请求的语义身份（resilience round-tripper 的 `callFor`
+  解析器）并显式传给 executor；同一 HTTP 传输层上的 resilience 层在唯一能看到整次调用（含重试）
   的位置“发射”信号。一个 OTel client span（属性 `db.system`/`db.operation`/
   `db.statement`）、`db.client.operation.duration` 直方图与 `db.client.attempt.duration`
   直方图（尝试级——下游每次尝试自身耗时，不含退避）、以及访问日志（tag
@@ -79,8 +79,8 @@ _, err := s.Client.PutObject(ctx, "bucket", "key",
   `db.statement`（URL path）是逐调用明细，只进 span 与日志，绝不进标签。
   minio-go 自身不带 OTel 埋点。
 - **韧性** — 限流、熔断、故障注入在客户端 HTTP 传输层经注入的治理 bean
-  在构造期构建的执行器强制执行；手工构建的客户端（无容器治理）降级为仅观测的
-  unmanaged 执行器，并告警一次。
+  在构造期构建的执行器强制执行；resilience manager 必填——容器始终提供，
+  不存在 unmanaged/仅观测的兜底。
 
 ## 高级特性
 

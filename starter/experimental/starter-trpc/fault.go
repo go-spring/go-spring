@@ -32,8 +32,8 @@ import (
 // inj is the governance starter's injector bean, held for the life of the
 // filter: the center hot-swaps its config in place
 // ([fault.Injector.SetConfig]) rather than replacing the bean, so the captured
-// reference always sees the live config. A nil inj makes fault.ApplyServer a
-// transparent pass-through.
+// reference always sees the live config. The bean is always present (an absent
+// bean fails startup) and inert by default.
 func FaultServerFilter(inj *fault.Injector) filter.ServerFilter {
 	return func(ctx context.Context, req interface{}, next filter.ServerHandleFunc) (interface{}, error) {
 		var resp interface{}

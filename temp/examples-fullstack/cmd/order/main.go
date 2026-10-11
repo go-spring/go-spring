@@ -134,7 +134,7 @@ func (a *orderApp) placeOrder(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if a, ok := security.FromContext(ctx); ok {
-		log.Infof(ctx, bizTag, "placing order for subject=%s saga=%s", a.Principal.Subject, sagaID)
+		log.Info(ctx, bizTag, "placing order", log.String("subject", a.Principal.Subject), log.String("saga", sagaID))
 	}
 
 	steps := []transaction.Step{
@@ -164,10 +164,10 @@ func (a *orderApp) placeOrder(w http.ResponseWriter, r *http.Request) {
 	case transaction.StatusCommitted:
 		writeJSON(w, http.StatusOK, `{"status":"committed","saga":"`+sagaID+`"}`)
 	case transaction.StatusCompensated:
-		log.Warnf(ctx, bizTag, "saga %s compensated: %v", sagaID, err)
+		log.Warn(ctx, bizTag, "saga compensated", log.String("saga", sagaID), log.Err(err))
 		writeJSON(w, http.StatusConflict, `{"status":"compensated","saga":"`+sagaID+`"}`)
 	default:
-		log.Errorf(ctx, bizTag, err, "saga %s failed: status=%s err", sagaID, res.Status)
+		log.Error(ctx, bizTag, err, "saga failed", log.String("saga", sagaID), log.String("status", res.Status.String()))
 		writeJSON(w, http.StatusInternalServerError, `{"status":"`+res.Status.String()+`","saga":"`+sagaID+`"}`)
 	}
 }
@@ -230,7 +230,7 @@ func (c *inventoryClient) reserve(ctx context.Context) (string, error) {
 	if token == "" {
 		return "", fmt.Errorf("reserve: no token in response %q", body)
 	}
-	log.Infof(ctx, bizTag, "reserved inventory token=%s", token)
+	log.Info(ctx, bizTag, "reserved inventory", log.String("token", token))
 	return token, nil
 }
 
@@ -247,7 +247,7 @@ func (c *inventoryClient) release(ctx context.Context, token string) error {
 	if _, err := c.call(ctx, "http://inventory/release", []byte(form)); err != nil {
 		return err
 	}
-	log.Infof(ctx, bizTag, "released inventory token=%s", token)
+	log.Info(ctx, bizTag, "released inventory", log.String("token", token))
 	return nil
 }
 

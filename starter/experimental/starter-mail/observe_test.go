@@ -35,15 +35,15 @@ func attrsLine(attrs []attribute.KeyValue) string {
 
 // TestOperationDeclaresFamilyVocabulary proves one send declares the identity the
 // emitter needs: the span name, the family's metric prefix, the bounded email.*
-// labels, this starter's access-log tag — and the non-idempotent marker that
-// stops a configured retry from sending the same mail twice.
+// labels and this starter's access-log tag. The non-idempotent marker that stops
+// a configured retry from sending the same mail twice now rides on the
+// [chain.Operation] passed to [resilience.Run] at the [GuardMailer] call site.
 func TestOperationDeclaresFamilyVocabulary(t *testing.T) {
 	op := operation([]*Message{{To: []string{"alice@example.com"}, Subject: "hi"}})
 	assert.String(t, op.Name).Equal("mail.send")
 	assert.String(t, op.Metric).Equal("email.client")
 	assert.String(t, attrsLine(op.Attrs)).Equal("email.system=smtp,email.operation=send")
 	assert.That(t, op.LogTag == accessTag).True()
-	assert.That(t, op.NonIdempotent).True()
 }
 
 // TestOperationDetailCarriesNoPII is the privacy guard: recipients and subject

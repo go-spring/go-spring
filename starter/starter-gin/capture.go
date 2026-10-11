@@ -384,7 +384,7 @@ func (l *sseAccessLog) Emit(ef eventFacts, body *bufutil.LimitedBuffer) {
 			log.String("span_id", sc.SpanID().String()),
 		)
 	}
-	log.Info(ef.ctx, l.tag, fields...)
+	log.Info(ef.ctx, l.tag, "sse stream completed", fields...)
 }
 
 // --- per-stream collector ---------------------------------------------------

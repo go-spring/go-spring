@@ -24,7 +24,7 @@ import (
 	"context"
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
-	"go-spring.org/cloud"
+	"go-spring.org/cloud/governance"
 	"go-spring.org/log"
 	"go-spring.org/stdlib/errutil"
 )
@@ -40,11 +40,11 @@ import (
 // governance executor are both applied while it is built — see [AttachGovernance],
 // which fixes the executor — and nothing patches the client afterwards.
 //
-// params supplies the container's service-governance capabilities (see
-// cloud.ClientParams); it is one struct rather than a parameter per capability
+// center supplies the container's service-governance capabilities (see
+// [governance.Center]); it is one object rather than a parameter per capability
 // so this interface — which every company driver implements — stays stable as
-// capabilities are added. A driver that has no use for one of its fields simply
-// ignores it.
+// capabilities are added. A driver that has no use for one of its authorities
+// simply ignores it.
 //
 // At most one Driver bean is expected per process; every client under
 // ${spring.mqtt} is built through it, and per-instance differences are expressed
@@ -56,7 +56,7 @@ import (
 // from the starter's side. A custom Driver that omits them therefore reports no
 // connection events at all.
 type Driver interface {
-	CreateClient(ctx context.Context, c Config, params cloud.ClientParams) (mqtt.Client, error)
+	CreateClient(ctx context.Context, c Config, center *governance.Center) (mqtt.Client, error)
 }
 
 // DefaultDriver is the default implementation of the Driver interface.
@@ -68,7 +68,7 @@ type DefaultDriver struct{}
 // will — and installs the governance executor, so the returned client is complete
 // (see [Driver]). The broker connect/ping is the starter's lifecycle concern (see
 // newClient in starter.go).
-func (DefaultDriver) CreateClient(ctx context.Context, c Config, params cloud.ClientParams) (mqtt.Client, error) {
+func (DefaultDriver) CreateClient(ctx context.Context, c Config, center *governance.Center) (mqtt.Client, error) {
 	opts := mqtt.NewClientOptions().
 		AddBroker(c.Broker).
 		SetClientID(c.ClientID).
@@ -83,24 +83,21 @@ func (DefaultDriver) CreateClient(ctx context.Context, c Config, params cloud.Cl
 	// client's health shows up both alongside app logs and on a dashboard.
 	connState := newConnStateCounter()
 	opts.SetOnConnectHandler(func(_ mqtt.Client) {
-		log.Info(ctx, log.TagAppDef, append(connState.record(ctx, connConnected),
-			log.String("broker", c.Broker),
-			log.Msg("mqtt connected"))...)
+		log.Info(ctx, log.TagAppDef, "mqtt connected", append(connState.record(ctx, connConnected),
+			log.String("broker", c.Broker))...)
 	})
 	opts.SetConnectionLostHandler(func(_ mqtt.Client, err error) {
-		log.Warn(ctx, log.TagAppDef, append(connState.record(ctx, connLost),
-			log.Err(err),
-			log.Msg("mqtt connection lost"))...)
+		log.Warn(ctx, log.TagAppDef, "mqtt connection lost", append(connState.record(ctx, connLost),
+			log.Err(err))...)
 	})
 	opts.SetReconnectingHandler(func(_ mqtt.Client, _ *mqtt.ClientOptions) {
-		log.Info(ctx, log.TagAppDef, append(connState.record(ctx, connReconnecting),
-			log.String("broker", c.Broker),
-			log.Msg("mqtt reconnecting"))...)
+		log.Info(ctx, log.TagAppDef, "mqtt reconnecting", append(connState.record(ctx, connReconnecting),
+			log.String("broker", c.Broker))...)
 	})
 
 	tlsCfg, err := c.TLS.BuildClient()
 	if err != nil {
-		log.Errorf(ctx, log.TagAppDef, err, "mqtt: build TLS failed")
+		log.Error(ctx, log.TagAppDef, err, "mqtt: build TLS failed")
 		return nil, errutil.Explain(err, "mqtt: build TLS")
 	}
 	if tlsCfg != nil {
@@ -116,8 +113,9 @@ func (DefaultDriver) CreateClient(ctx context.Context, c Config, params cloud.Cl
 	// client is complete and nothing patches it afterwards. paho's mqtt.Client is
 	// an interface with no room for an executor field, so the executor is held
 	// beside it (see [AttachGovernance]); the broker scopes limiter/breaker
-	// state per broker rather than per topic. A hand-built client passes the zero
-	// Governance, whose executor degrades to observed-only rather than none.
-	AttachGovernance(cl, c.Broker, params)
+	// state per broker rather than per topic. Attaching requires a center that
+	// carries a [resilience.Manager]: resolving the executor panics
+	// without one.
+	AttachObserver(cl, c.Broker)
 	return cl, nil
 }

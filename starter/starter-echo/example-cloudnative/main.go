@@ -141,7 +141,7 @@ func main() {
 			// A rate-limited route: the handler body runs through the resilience
 			// executor, so excess requests are shed with HTTP 429.
 			e.GET("/limited", func(ctx echo.Context) error {
-				err := exec.Execute(ctx.Request().Context(), func(context.Context) error {
+				err := exec.Execute(ctx.Request().Context(), chain.Operation{}, func(context.Context) error {
 					return ctx.String(http.StatusOK, "ok")
 				})
 				if errors.Is(err, chain.ErrRateLimited) {
@@ -205,7 +205,7 @@ func runTest() {
 	// --- 3. Resilience ---------------------------------------------------
 	var admitted, rejected int
 	for range 15 {
-		err := exec.Execute(ctx, func(context.Context) error { return nil })
+		err := exec.Execute(ctx, chain.Operation{}, func(context.Context) error { return nil })
 		switch {
 		case err == nil:
 			admitted++

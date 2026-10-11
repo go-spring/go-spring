@@ -94,21 +94,19 @@ func (s *Server) Run(ctx context.Context, sig gs.ReadySignal) error {
 	// registration fans out into.
 	ctx = log.WithFields(ctx, instanceFields(s.inst)...)
 
-	log.Debug(ctx, starterTag, func() []log.Field {
+	log.Debug(ctx, starterTag, "register the instance into the configured discovery centers", func() []log.Field {
 		return []log.Field{
 			log.Int("centers", len(s.Registries)),
-			log.Msg("register the instance into the configured discovery centers"),
 		}
 	})
 	for _, r := range s.Registries {
 		if err := r.Register(ctx, s.inst); err != nil {
-			log.Errorf(ctx, starterTag, err, "register service failed")
+			log.Error(ctx, starterTag, err, "register service failed")
 			return errutil.Explain(err, "discovery: register %q", s.inst.ServiceName)
 		}
 	}
-	log.Info(ctx, starterTag,
-		log.Int("centers", len(s.Registries)),
-		log.Msg("register instance success"))
+	log.Info(ctx, starterTag, "register instance success",
+		log.Int("centers", len(s.Registries)))
 
 	<-ctx.Done()
 	return nil
@@ -141,9 +139,8 @@ func (s *Server) UpdateWeight(ctx context.Context, weight int) error {
 	ctx = log.WithFields(ctx, instanceFields(s.inst)...)
 	for _, r := range s.Registries {
 		if err := r.UpdateWeight(ctx, s.inst, weight); err != nil {
-			log.Error(ctx, starterTag, err,
-				log.Int("weight", weight),
-				log.Msg("update weight failed"))
+			log.Error(ctx, starterTag, err, "update weight failed",
+				log.Int("weight", weight))
 			return errutil.Explain(err, "discovery: update weight to %d", weight)
 		}
 	}
@@ -154,9 +151,8 @@ func (s *Server) deregister() {
 	ctx := log.RootFields(append(instanceFields(s.inst), log.String("trace_id", randutil.Hex(16)))...)
 	for _, r := range s.Registries {
 		if err := r.Deregister(ctx, s.inst); err != nil {
-			log.Warn(ctx, starterTag,
-				log.Err(err),
-				log.Msg("deregister failed"))
+			log.Warn(ctx, starterTag, "deregister failed",
+				log.Err(err))
 		}
 	}
 }

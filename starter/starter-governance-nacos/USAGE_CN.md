@@ -94,10 +94,9 @@ spring.governance.source.nacos.group=DEFAULT_GROUP
 ```yaml
 spring:
   governance:
-    enabled: true
+    driver: default
     client:
       default:
-        enabled: true
         attempt-timeout: 100ms
         max-retries: 2
 ```
@@ -188,8 +187,9 @@ gs.Run()
 `app-governance.toml`）时无需 `format` 键；无后缀或未知后缀的 dataId 默认为 `properties`。
 
 `governance.Parse` 经相同的 `conf` value-tag 机制以前缀 `govern` 绑定，并拒绝「能解析但不含任何
-`spring.governance.*` 键」的文档（被截断或清空的文档）——关闭治理的正确姿势是 `spring.governance.enabled=false`，
-一个确实存在的键。
+`spring.governance.*` 键」的文档（被截断或清空的文档）——关闭治理的正确姿势是发布一份什么都不配
+的文档（空的 `client`/`server`、零值 `Default`、无规则），但仍要带一个 `spring.governance.*` 键，
+如 `spring.resilience.driver=default`。
 
 ---
 
@@ -273,8 +273,8 @@ docker 或 compose 命令不可用时，`check.sh` 优雅跳过。否则它拉�
 | 启动报错 `nacos server address must be host:port` | `server` 无 `:` 或 host/port 为空 | 使用 `host:port`，单服务端。 |
 | 启动报错 `governance nacos source: get <group>/<dataId> failed` | dataId 缺失、分组/命名空间错误、凭据错误、或服务端宕机 | 在正确的分组/命名空间下创建 dataId；检查鉴权。 |
 | 启动在 `governance.Parse` 内报错 | dataId 里的文档不可解析或不含 `spring.governance.*` 键 | 先发布一份合法文档——播种按设计快速失败。 |
-| 配了治理，`PolicyFor` 却始终为零 | 文档里 `spring.governance.enabled` 为 false（默认） | 设为 `spring.governance.enabled=true`——它是总开关。 |
-| 一次发布没改变策略 | 日志出现 `published an invalid document (keeping last good config)` | 修正文档；「关闭」是 `spring.governance.enabled=false`，不是空文档。 |
+| 配了治理，`PolicyFor` 却始终为零 | 没有规则匹配该 label，或解析出的 `Default` 全零 | 给该 label 配一条匹配规则（或非零 `Default`）——没有总开关。 |
+| 一次发布没改变策略 | 日志出现 `published an invalid document (keeping last good config)` | 修正文档；「关闭」是一份什么都不配、但仍带 `spring.governance.*` 键的合法文档，不是空文档。 |
 | 发布内容完全相同却毫无反应 | 设计如此——逐字节相同的重复投递与 DeepEqual 相等的文档都不推送 | 符合预期。 |
 | 自定义 Source Bean 被静默忽略 | 缺少 `Export(gs.As[governance.Source]())` | 补上 Export——否则该 Bean 对接口注入不可见。 |
 | 规则变更始终不到达 | Nacos 连通性，或推送目标不是被监听的 `(group, dataId)` | 确认发布落在配置的 group/dataId 上。 |

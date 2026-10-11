@@ -24,6 +24,7 @@ import (
 	"strings"
 	"testing"
 
+	"go-spring.org/cloud/chain"
 	"go-spring.org/cloud/observability"
 	gormresilience "go-spring.org/starter-gorm/resilience"
 	"go-spring.org/stdlib/testing/assert"
@@ -34,10 +35,10 @@ import (
 	"gorm.io/gorm/schema"
 )
 
-// The tests below compose the REAL stack: the observe plugin declares the
-// operation on the call's context, then the resilience wrapper — the single
-// emitter — reads it back. What is asserted here is the half this package owns:
-// the declaration reaches the emitter with the identity gorm demands (name,
+// The tests below compose the REAL stack: the observe plugin supplies the
+// operation, then the resilience wrapper — the single emitter — passes it
+// explicitly to the executor. What is asserted here is the half this package
+// owns: the operation reaches the emitter with the identity gorm demands (name,
 // db.system/db.operation, the SQL statement in Detail and the access tag). What
 // the emitter builds from it is covered by resilience's own tests.
 
@@ -90,36 +91,36 @@ type probeUser struct {
 func (probeUser) TableName() string { return "probe_users" }
 
 // captureExecutor is the innermost layer the stack runs on: it records the
-// Operation the declaration layer put on the context, then runs the call. The
-// operation it sees is exactly what the real emitter (wrapped around it) would
-// report.
+// Operation the resilience wrapper passed it, then runs the call. The operation
+// it sees is exactly what the real emitter (wrapped around it) would report.
 type captureExecutor struct {
-	op  observability.Operation
+	op  chain.Operation
 	has bool
 }
 
-func (c *captureExecutor) Execute(ctx context.Context, fn func(context.Context) error) error {
-	c.op, c.has = observability.OperationFrom(ctx)
+func (c *captureExecutor) Execute(ctx context.Context, op chain.Operation, fn func(context.Context) error) error {
+	c.op, c.has = op, true
 	return fn(ctx)
 }
 func (c *captureExecutor) Close() error { return nil }
 
 // newProbeDB opens a gorm.DB with the plugin installed and the real resilience
 // wrapper composed on top, returning the capture executor the wrapper forwards
-// to. The wrapper is the same one gormcore.Open installs from
-// cloud.ClientParams while assembling the client. The DB runs DryRun (with
+// to. The wrapper is the same one gormcore.Open installs from the governance
+// center while assembling the client. The DB runs DryRun (with
 // the default transaction off) so gorm builds every statement without touching
 // the driver.
 func newProbeDB(t *testing.T, system string) (*gorm.DB, *captureExecutor) {
 	t.Helper()
 	db, err := gorm.Open(probeDialector{}, &gorm.Config{DryRun: true, SkipDefaultTransaction: true})
 	assert.Error(t, err).Nil("gorm open")
-	if err := db.Use(NewPlugin(system)); err != nil {
+	plugin := NewPlugin(system)
+	if err := db.Use(plugin); err != nil {
 		t.Fatalf("use plugin: %v", err)
 	}
 	inner := &captureExecutor{}
 	exec := observability.WrapClientExecutor(inner, "gorm", "svc")
-	if err := gormresilience.ApplyCallbacks(db, exec, "svc"); err != nil {
+	if err := gormresilience.ApplyCallbacks(db, exec, "svc", plugin.Operation); err != nil {
 		t.Fatalf("apply callbacks: %v", err)
 	}
 	return db, inner

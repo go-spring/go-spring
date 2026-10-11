@@ -95,7 +95,7 @@ gs.Run()
   ├─ bean 构造:NewSimplePProfServer
   │    ├─ mux:注册 /debug/pprof/{,cmdline,profile,symbol,trace}(pprof.go:68-72)
   │    ├─ 告警检查:!guard.Enabled() && !httpauth.IsLoopback(addr) →
-  │    │   log.Warnf("pprof server listening on %q without authentication; ...")  [pprof.go:74-78]
+  │    │   log.Warn(ctx, log.TagAppDef, "pprof server listening without authentication; ...")  [pprof.go:74-78]
   │    └─ guard:httpauth.Guard token/basic-auth 包装 mux(stdlib/httpauth)
   ├─ Run:gs.Server 集合与主 HTTP server 一起启动
   └─ SIGTERM:随框架的 server 优雅排空

@@ -11,8 +11,12 @@ Hook, GORM plugin, ...).
 ## Features
 
 - `ClientPolicy` fields (OUTBOUND): `RateLimit` / `Burst` / `Algorithm` / `Window` /
-  `RateLimitMaxWait`, `ErrorThreshold` / `OpenDuration`, `MaxConcurrent`,
-  `MaxRetries`, `AttemptTimeout`.
+  `RateLimitMaxWait` / `RateLimitWarmUpDuration` / `WarmUpColdFactor`,
+  `ErrorThreshold` / `OpenDuration` / `BreakerStrategy`
+  (`consecutive` | `error-rate` | `slow-call` | `error-count`) /
+  `ErrorRateThreshold` / slow-call pair / `HalfOpenRequests`, `MaxConcurrent` /
+  `BulkheadQueueDuration`, `Retry` (a `chain.RetryPolicy` node), `AttemptTimeout`,
+  `MaxDuration`.
 - `ServerPolicy` fields (INBOUND): the same limiter / breaker / bulkhead / budget
   knobs, minus the retry family — a handler that already produced side effects
   cannot be replayed, so `ServerPolicy` has no way to express a retry (and no
@@ -22,22 +26,52 @@ Hook, GORM plugin, ...).
   `ErrBulkheadFull`.
 - Bundled `"default"` driver — in-process, zero dependencies. Recommended
   production driver `sentinel` lives in `starter/starter-governance-sentinel`.
-- Two client seams for opt-in adaptation:
-  - `NewRoundTripper` — HTTP client `http.RoundTripper` (widest coverage).
-  - `NewDialer` — connection-level `DialFunc` (matches
-    a dial closure over a round-robin pick pool).
+- One client seam for opt-in adaptation: `NewRoundTripper`, an HTTP client
+  `http.RoundTripper`. (A connection-level `DialFunc` seam was tried and
+  retired to the one starter that needed it — see §2; request-level protection
+  is where the four policies mean what their names say.)
 - Inbound admission runs on the SAME engine, through its own seam:
   `Manager.ServerExecutorFor` yields an `ServerExecutor` built by
   `Driver.NewServerExecutor`, and protocol starters build their middleware on it
-  (429 / 503 on rejection; see starter-gin / starter-grpc admission). The two
-  directions read separate resolvers, so an outbound policy change never
-  retunes inbound admission.
+  (429 / 503 on rejection; see starter-gin / starter-grpc admission). The center
+  pushes each module its own data — for resilience, a default plus a rule list per
+  direction — and the module does the label matching, exactly the shape fault
+  already had. The two directions are separate blocks of that one pushed document,
+  so an outbound policy change never retunes inbound admission.
 - `Fallback(ctx, exec, fn, degrade)` — graceful degradation
   helper that composes with any executor.
 - Rate limiting is a stage of a protected call, not an API of its own: the
   counters are the executor's own budget for its service, or, with a
-  `Counters` store handed in (Redis, in `starter-go-redis`), one budget
+  `ClusterLimiter` store handed in (Redis, in `starter-go-redis`), one budget
   across replicas.
+
+## Alignment: sentinel & OpenSergo
+
+The policy model is the neutral superset both engines translate from, and it
+maps onto [sentinel-golang](https://github.com/alibaba/sentinel-golang) rules
+and the [OpenSergo](https://opensergo.io) fault-tolerance CRDs:
+
+| Policy knob | sentinel rule (v1.0.4) | OpenSergo strategy |
+| --- | --- | --- |
+| `RateLimit` + `Window` | flow `Threshold` (per-interval, normalized) + `StatIntervalInMs` | RateLimitStrategy |
+| `RateLimit` + `RateLimitMaxWait` | flow `Throttling` + `MaxQueueingTimeMs` | ThrottlingStrategy |
+| `RateLimitWarmUpDuration` / `WarmUpColdFactor` | flow `WarmUp` + `WarmUpPeriodSec` / `WarmUpColdFactor` | (warm-up) |
+| `breaker-strategy=error-rate` | circuitbreaker `ErrorRatio` | CircuitBreakerStrategy ErrorRatio |
+| `breaker-strategy=slow-call` (+ slow pair) | circuitbreaker `SlowRequestRatio` + `MaxAllowedRtMs` | CircuitBreakerStrategy SlowRequestRatio |
+| `breaker-strategy=error-count` | circuitbreaker `ErrorCount` (exact) | CircuitBreakerStrategy ErrorCount |
+| `breaker-strategy=consecutive` (default) | `ErrorCount` — **approximation**: sentinel has no consecutive-run breaker; a run resets on any success, sentinel counts over the window. Prefer `error-count` for an exact mapping | — |
+| `HalfOpenRequests` | `ProbeNum` | — |
+| `MaxConcurrent` | isolation `Concurrency` | BulkheadStrategy maxConcurrentCalls |
+| `BulkheadQueueDuration` | — (ignored: sentinel v1.0.4 isolation cannot queue) | BulkheadStrategy maxQueueDurationMs |
+| `Retry` (`MaxRetries` / backoff) | outside sentinel (executor-owned retry loop) | RetryStrategy |
+
+Per-driver legitimate ignores (documented, not faked): `Burst` and `Algorithm`
+have no sentinel flow counterpart; the sliding-window limiter ignores
+`RateLimitMaxWait` (only the token bucket queues); the default driver's warm-up
+is a cold-start approximation (capacity ramp), not sentinel's rate ramp;
+sentinel's system / hotspot / cluster rules are future work (they are inbound-
+or parameter-dimension and have no policy fields yet). OpenSergo's
+`RetryOnSame` (endpoint-level retry hints) belongs to loadbalance, not here.
 
 ## Pluggable backends
 
@@ -47,7 +81,7 @@ directory the center resolves the configured name against. `Driver` has TWO
 methods — `NewClientExecutor(service, Policy)` for outbound and
 `NewServerExecutor(service, ServerPolicy)` for inbound — because the two directions do
 not share a model, and a sentinel-style backend maps them onto different native
-primitives. One object still answers for both, so `spring.governance.driver=sentinel`
+primitives. One object still answers for both, so `spring.resilience.driver=sentinel`
 remains a single key that switches the whole process. The bundled driver answers
 to `"default"` without a bean, via `NewDefaultDriver(nil)`; it builds a
 `defaultExecutor` for outbound and a separate `admissionExecutor` for inbound —
@@ -62,10 +96,10 @@ gs.Provide(func() *sentinelDriver { return &sentinelDriver{} }).
 ```
 
 The `Export` is load-bearing: gs indexes beans by their exact type, so a
-concrete driver without it is invisible to the directory.
+concrete driver without it is invisible to the by-name lookup.
 
 The counter store is a backend too, but an OPTIONAL one — how wide a rate limit
-reaches, nothing more. With no `Counters` bean in the container, each executor
+reaches, nothing more. With no `ClusterLimiter` bean in the container, each executor
 counts in a budget of its own, exactly like its breaker and bulkhead state: an
 executor is built once per service label, so one budget still covers every
 caller of that label. Contribute a store over a shared backend (Redis) and the
@@ -93,26 +127,13 @@ import (
 exec, _ := resilience.NewDefaultDriver(nil).NewClientExecutor("http:orders", resilience.ClientPolicy{
     RateLimit:      100,
     ErrorThreshold: 5,
-    MaxRetries:     2,
     AttemptTimeout: 2 * time.Second,
+    Retry:          chain.RetryPolicy{MaxRetries: 2},
 })
 
 client := &http.Client{
-    Transport: resilience.NewRoundTripper(http.DefaultTransport, exec),
+    Transport: resilience.NewRoundTripper(http.DefaultTransport, exec, nil),
 }
-```
-
-Combine with `cloud/discovery` at the dial layer:
-
-```go
-// dialOf reads a live endpoint and dials it: the closure a discovery
-// Resolver + loadbalance Pool composes into.
-dial := func(ctx context.Context, network, _ string) (net.Conn, error) {
-    ep, err := pool.Pick(loadbalance.PickInfo{})
-    if err != nil { return nil, err }
-    return (&net.Dialer{}).DialContext(ctx, network, ep.Addr)
-}
-dial = resilience.NewDialer(dial, exec)
 ```
 
 A bare budget check is the same call with only the rate-limit stage
@@ -120,7 +141,7 @@ configured — the empty body is the whole work being admitted:
 
 ```go
 exec := mgr.ClientExecutorFor("gateway", "route:orders")
-err := exec.Execute(ctx, func(context.Context) error { return nil })
+err := exec.Execute(ctx, chain.Call{}, func(context.Context) error { return nil })
 if errors.Is(err, resilience.ErrRateLimited) { /* 429 */ }
 ```
 
@@ -137,13 +158,13 @@ sentinel driver from `starter/starter-governance-sentinel`.
 
 ## 1. Responsibilities & Boundaries
 
-- **Does:** define `ClientPolicy`, `ClientExecutor`, `Driver`, `Counters`, `Algorithm`;
-  provide the built-in `default` driver; expose the client adapters
-  (`NewRoundTripper`, `NewDialer`); offer a `Fallback` composition helper.
+- **Does:** define `ClientPolicy`, `ClientExecutor`, `Driver`, `ClusterLimiter`, `Algorithm`;
+  provide the built-in `default` driver; expose the client adapter
+  (`NewRoundTripper`); offer a `Fallback` composition helper.
 - **Refuses:**
   - No universal per-request seam. Every client library exposes a
-    different call-time hook; the package supplies the two most reusable
-    (`http.RoundTripper`, `DialFunc`) and lets each client
+    different call-time hook; the package supplies the most reusable one
+    (`http.RoundTripper`) and lets each client
     adapter wire the executor into whatever hook it has (redis.Hook,
     gorm plugin, ...). §4 has the reasoning.
   - No metrics, no tracing, no logging. Adapters and drivers decide how to
@@ -158,25 +179,32 @@ sentinel driver from `starter/starter-governance-sentinel`.
   builds a concrete backend runtime. The bundled builtin driver reads the
   policy directly; a sentinel driver translates it into sentinel-golang's
   flow/circuit-breaker rules. Adapters depend only on `ClientExecutor`.
-- **The container is the driver directory.** This package holds no registry:
-  a backend is contributed as a bean named after itself, exported as
-  `Driver`, and the manager's constructor collects every such bean into a
-  name-keyed map. `spring.governance.driver` selects one, resolved through
-  that directory — the same "container as directory" shape `discovery`
-  and the client starter `Driver`s use. The bundled builtin answers to
+- **The driver is a named bean, injected at startup.** This package holds no
+  registry: a backend is contributed as a bean named after itself and exported
+  as `Driver`, and the manager injects the one whose name
+  `spring.resilience.driver` selects (defaulting to the bundled `default`). The
+  bundled builtin answers to
   `"default"` without a bean, so nothing has to contribute it.
 - **Neutral rejection errors** (`ErrRateLimited`, `ErrCircuitOpen`,
   `ErrBulkheadFull`) let adapters make protocol-specific decisions (429
   vs 503 in a protocol starter's admission middleware) without importing
   a driver package.
-- **Two client adapter seams cover the practical space:**
+- **One client adapter seam covers the practical space:**
   - `NewRoundTripper` — widest coverage; any `*http.Client` gains
     protection by swapping its `Transport`. Retries clone with the rewound
     body (`Request.GetBody`); 5xx responses count as failures for the
     breaker.
-  - `NewDialer` — coarser but universal at the connection layer; pairs
-    naturally with a dial closure over a round-robin pick pool. Service is fixed
-    because a dialer is already scoped to one service.
+
+  A second, connection-level seam (`NewDialer`) once lived here too, for
+  clients with no per-request hook. It was retired to the one starter that
+  needed it (`starter-mongodb`, whose driver offers only `SetDialer`): the four
+  policies — timeout, retry, breaker, fallback — describe an *operation*, so
+  keying them on a dial makes the breaker miss the failures an operator cares
+  about (slow or erroring requests over a healthy connection), retry re-attempt
+  a handshake instead of the work, and leave fallback with nothing to degrade.
+  It is a degradation for a client with nowhere else to put protection, not a
+  recommended seam — so it belongs at that client, and will return here only if
+  a second client proves the need general.
 
   Inbound **middleware** is not in this package: each protocol starter
   builds its own on the `resilience.Manager.ServerExecutorFor` seam (see
@@ -190,10 +218,10 @@ sentinel driver from `starter/starter-governance-sentinel`.
   `Execute`, so the caller never builds a limiter: it configures the stage
   through `ClientPolicy` and reads the outcome through `ErrRateLimited`. What
   makes a limit local or global is where its counters live — the executor's
-  own budget, or a `Counters` store — not a second API: by default one
+  own budget, or a `ClusterLimiter` store — not a second API: by default one
   executor holds one budget for its service, a shared backend (Redis)
   counts per fleet.
-- **Counters are scoped by the service an executor is bound to.** One
+- **ClusterLimiter are scoped by the service an executor is bound to.** One
   budget covers that service for every caller of it, which is what makes a
   limit protect a downstream rather than one client of it.
 
@@ -225,13 +253,21 @@ sentinel driver from `starter/starter-governance-sentinel`.
   accounting does not guarantee strict single-admission under tight
   concurrency, which is the one residual behavioral difference between
   the two drivers.
-- Retry is paced by explicit backoff fields (`InitialInterval`,
-  `Multiplier`, `MaxInterval`, `RandomizationFactor`) — a zero
-  `InitialInterval` keeps the legacy back-to-back retry. Whether an error
-  is retried is decided by `Policy.ShouldRetry`: a `Retryable`-implementing
-  error wins; otherwise every error retries. A `MaxDuration` caps the whole
-  Execute across retries; the per-attempt `AttemptTimeout` is applied inside
-  that budget.
+- Retry is the one stage that is OPT-IN and declared by the caller, not a
+  framework default: it lives in a `chain.RetryPolicy` node carried on
+  `chain.Operation` (`op.Retry`), and its zero value means "no retry". A
+  governance center MAY also push a node on the policy
+  (`ClientPolicy.Retry`) for the whole service; when it declares a schedule
+  it wins WHOLE over the call's node (a pushed value is how an operator
+  hot-fixes a live incident), while the `NonIdempotent` flag is preserved
+  from BOTH (see `EffectiveRetry`, the single merge point). Retry is paced
+  by the node's backoff fields (`InitialInterval`, `Multiplier`,
+  `MaxInterval`, `RandomizationFactor`) — a zero `InitialInterval` keeps the
+  back-to-back retry; `RetryBudget` is process-level and read only from the
+  policy node. Whether an error is retried is decided by
+  `resilience.ShouldRetry`: a `Retryable`-implementing error wins; otherwise
+  every error retries. A `MaxDuration` caps the whole Execute across retries;
+  the per-attempt `AttemptTimeout` is applied inside that budget.
 - Breaker strategy is selectable: `consecutive` (default, the historical
   consecutive-count) or `error-rate` (trips on failure ratio over
   `BreakerWindow` once `MinRequests` is reached). Both drivers honor the
@@ -276,7 +312,7 @@ sentinel driver from `starter/starter-governance-sentinel`.
   direction isolation is carried by the two policy types plus the manager's two
   registries.
 - **Shared organs, neutral parameters.** The breaker state machine, the
-  rate-limit bucket, `serviceState` and `Counters` exist once each and take
+  rate-limit bucket, `serviceState` and `ClusterLimiter` exist once each and take
   their own vocabulary: `RateSpec` is exported (the store implementation and the
   gateway filter read it), `breakerSpec` stays package-private, and
   `resolveBreakerStrategy` picks the strategy.
@@ -287,13 +323,18 @@ sentinel driver from `starter/starter-governance-sentinel`.
 - **Naming:** the two halves are a `side` (`clientSide` / `serverSide`, fields
   `m.client` / `m.server`); the word `lane` is rejected.
 - **The manager is un-generic:** two concrete types `clientSide` / `serverSide`
-  with `resolve` as the single function field; the registry holds
+  holding only the pushed settings whole (`ClientSettings` / `ServerSettings`); the registry holds
   `*entry{exec, policy}` pointers; `Apply` compares the policy per label —
   changed ⇒ evict, unchanged ⇒ keep (so breaker / rate-limit state survives).
-- **The executor binds one service at construction.** `Execute(ctx, fn)` takes
-  no service: whoever owns protection state knows, at construction, what it
-  protects. Never add a service or any per-call dimension to `Execute` — to
-  partition by key, hand in a `Counters` and put the key in the scope.
+- **The executor binds one service at construction; `call` does not change that.**
+  `Execute(ctx, call, fn)` takes the call's identity (`chain.Call`: target,
+  scenario, idempotency) explicitly, so every link reads it from the signature
+  rather than from the context — but protection STATE stays bound at
+  construction: one breaker, one bulkhead, one budget per executor.
+  `call.Target` / `call.Scenario` are carried for readers (and a future step that
+  keys state on them); they partition nothing yet. Never let `Execute` *select*
+  protection state by an arbitrary per-call key — to partition counters by key,
+  hand in a `ClusterLimiter` and put the key in the scope.
 - **The breaker must be built lazily on the first call** (`snapshot()` /
   `buildState()`), never at executor construction — otherwise
   `SetBreakerEventListener` cannot attach (the `WrapClientExecutor` in
@@ -310,11 +351,11 @@ sentinel driver from `starter/starter-governance-sentinel`.
   interfaces; a policy change evicts the entry and the next call rebuilds it,
   while an unchanged policy keeps the state.
 - **Rate limiting is one stage**, offered as 1+3: layer 1 is the executor's own
-  per-service budget (`rateState`, the default path); layer 3 is the `Counters`
+  per-service budget (`rateState`, the default path); layer 3 is the `ClusterLimiter`
   interface, which serves cross-replica shared stores only (scope = the service
   the executor is bound to). Layer 2 (in-process sharing) is rejected — don't
-  add a memory `Counters` implementation back (`NewMemoryCounters` is deleted);
-  counting by key is the caller's (gateway's) own job; document `Counters` as
+  add a memory `ClusterLimiter` implementation back (`NewMemoryCounters` is deleted);
+  counting by key is the caller's (gateway's) own job; document `ClusterLimiter` as
   cross-replica only.
 - **The breaker records once per logical call; rate-limit counts per attempt.**
 - **`ClientPolicy` / `ServerPolicy` are single defs** carrying all their own
@@ -325,34 +366,30 @@ sentinel driver from `starter/starter-governance-sentinel`.
 - **`Timeout` was renamed `AttemptTimeout`** (matching the key); the
   `RetryPredicate` function field is deleted (never assigned anywhere) — retry
   classification goes only through the `Retryable` interface plus
-  default-retry-all. Policy fields: backoff
-  `InitialInterval` / `Multiplier` / `MaxInterval` / `RandomizationFactor`,
-  whole budget `MaxDuration`, breaker strategy
+  default-retry-all. Retry lives in the `Retry` node (`chain.RetryPolicy`)
+  rather than as flat policy fields. Policy fields: backoff
+  `InitialInterval` / `Multiplier` / `MaxInterval` / `RandomizationFactor`
+  (inside `Retry`), whole budget `MaxDuration`, breaker strategy
   `BreakerStrategy` / `ErrorRateThreshold` / `MinRequests` / `BreakerWindow`;
   all zero = the old behavior. A `Policy` cannot be compared with `== Policy{}`
   — use `IsZero()`. A second split type is allowed only for a hard structural
   reason (today only the loadbalance factory's argument translation, consuming
   `Selection.Params`).
-- **The driver directory lives in the container.** The registry is gone
+- **The driver is a named bean, injected at startup.** The registry is gone
   (`RegisterDriver` / `GetDriver` / `RegisterLimiter` / `GetLimiter` and both
   init-registered `"default"`s are deleted); resilience is a zero-global,
   zero-gs-dependency contract package. A backend is a named bean +
-  `Export(gs.As[resilience.Driver]())`; the container collects them into
-  `map[string]resilience.Driver` and hands them to
-  `resilience.NewManager(drivers)` — no wiring bean, no `BindDrivers` /
-  `SetDrivers`. Name resolution lives inside the `Manager` (`driverName` +
-  `Manager.driverFor(name)`): an empty name falls back to the builtin driver;
-  at startup an unresolvable name **panics and lists the available names**
-  (validated in `(*Center).GoLive`, only when Enabled) — no more silent noop
-  fallback. The builtin driver is `resilience.NewDefaultDriver(counters
-  Counters)`. `spring.governance.driver` stays in the governance document (read
-  via `autowire:"${...}"`, while govern keys come from `Source.Snapshot()` —
-  moving it would split the config system). A `gs.Provide` whose ctor returns a
-  concrete type must `Export` (gs indexes by exact type). The limiter's
-  selection key comes from the gateway route-filter parameter and is not the
-  same source as the driver's document key — do not merge them into one change.
-  `httpx.Config.ResilienceDriver` is the `resilience.Driver` object itself
-  (httpx is container-free).
+  `Export(gs.As[resilience.Driver]())`; the manager injects the one whose name
+  `spring.resilience.driver` selects — `resilience.NewManager(driver)`, wired via
+  `gs.TagArg("${spring.resilience.driver:=default}")`, with a nil driver falling
+  back to the builtin `resilience.NewDefaultDriver(limiter ClusterLimiter)`. The key is
+  a plain `app.properties` property read at wiring, **not** a governance-document
+  key: the backend is fixed for the process's lifetime, because swapping it drops
+  every executor's breaker/limiter state. An unresolvable name leaves the required
+  `Driver` parameter unsatisfied, so startup fails — no silent noop fallback. A
+  `gs.Provide` whose ctor returns a concrete type must `Export` (gs indexes by
+  exact type). `httpx.Config.ResilienceDriver` is the `resilience.Driver` object
+  itself (httpx is container-free).
 - **Backend-only capabilities.** Cluster-wide rate limiting, warm-up,
   per-caller limiting and system-adaptive protection (Sentinel's SystemRule
   family) are Driver-backend features, not core `Policy` fields; a sentinel

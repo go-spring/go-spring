@@ -91,8 +91,7 @@ func newConsumer(drv messaging.Driver) *Consumer {
 
 func (c *Consumer) Init(ctx context.Context) error {
     return c.Sub.Subscribe(ctx, func(ctx context.Context, m *messaging.Message) error {
-        log.Infof(ctx, log.TagAppDef, "order received: %s trace-id-from-header=%v",
-            string(m.Payload), m.Headers["traceparent"])
+        log.Info(ctx, log.TagAppDef, "order received", log.String("payload", string(m.Payload)), log.Any("traceparent", m.Headers["traceparent"]))
         return nil // error return → Recover error path
     })
 }
@@ -146,7 +145,7 @@ spring.governance.source.file.path=conf/governance.yaml
 ```yaml
 spring:
   governance:
-    enabled: true
+    driver: default
     resilience:
       nats:                 # matches the ResourceLabel scheme, see §4.3
         rate-limit: 100
@@ -179,17 +178,18 @@ gs.Run()
   ├─ newConn: Driver bean, selected per entry by ${spring.nats.instances.<name>.driver}
   │     (empty = `spring.nats.default.driver` then by type; set = by bean name — naming a missing bean fails startup);
   │     falls back to bundled DefaultDriver when none is
-  │           present) → CreateClient(ctx, Config, cloud.ClientParams{Resilience: mgr, Fault: inj})
+  │           present) → CreateClient(ctx, Config, center)
   │           (nats.Connect — FAIL-FAST probe; a broker that is down aborts boot)
-  ├─ CreateClient: NewConn(nc, url, params) — fixes identity AND applies governance in one step,
+  ├─ CreateClient: NewConn(nc, url, center) — fixes identity AND applies governance in one step,
   │           so the Conn is complete when the Driver returns it (the `nats:<url>` service label;
-  │           params.ExecutorFor → fault.WrapClientExecutor(mgr.ClientExecutorFor("nats", service), service, inj),
-  │           or resilience.Unmanaged when the bundle is zero)
+  │           center.ExecutorFor → fault.WrapClientExecutor(mgr.ClientExecutorFor("nats", service), service, inj);
+  │           the resilience manager is required — the container always supplies it)
   │           [driver.go:145; client.go:86-93]
   ├─ jetstream.enabled → jetstream.New(nc); failure closes nc and fails boot
   │           [driver.go:149-157]
-  ├─ newConn: bundles mgr/inj (= the injected *resilience.Manager / *fault.Injector beans)
-  │           into the cloud.ClientParams it hands the Driver; nothing patches the Conn afterwards
+  ├─ newConn: receives the injected *governance.Center — the container's sole injection
+  │           point, holding the resilience/fault/loadbalance authorities — and hands it to the
+  │           Driver; nothing patches the Conn afterwards
   │           [driver.go:181-182]
   ├─ if ping: startup connectivity check on the bare client (IsConnected); failure destroys the bean
   │           [driver.go:197-202]
@@ -279,10 +279,10 @@ re-publishing or re-running a handler is a second side effect, not a second atte
 (`resilience.client.duration`, a span named after the service) rather than a `messaging.client.*`
 one — no operation span is named for it.
 
-Wrap order inside `Governance.ExecutorFor` (see `cloud/governance/governance.go`, called by
+Wrap order inside `Center.ExecutorFor` (see `cloud/governance/center.go`, called by
 [NewConn](client.go:86-93)): `mgr.ClientExecutorFor("nats", service)`
-(armed from the injected `*resilience.Manager` bean; a `resilience.Unmanaged` observe-only
-executor when the bundle is zero) → `fault.WrapClientExecutor` (fault injection, outermost). The manager's resolve step
+(armed from the injected `*resilience.Manager` bean — required, so always supplied
+by the container) → `fault.WrapClientExecutor` (fault injection, outermost). The manager's resolve step
 wraps the backing executor with the observe emitter (see `resilience/observe.go`), so the declared
 operation's span/counter/histogram/access-log are produced once, from the one point on the chain
 that sees a whole call. On rejection the guarded call returns a resilience sentinel

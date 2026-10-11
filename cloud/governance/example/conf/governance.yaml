@@ -7,19 +7,16 @@
 # their own source rather than from the app's property storage. The document is
 # split by direction: client.* is what this process wants when it CALLS
 # something (the policy it runs under, plus its own fault fire), server.* is what
-# it wants against the requests it RECEIVES. Flip client.fault.enabled to arm an
-# outbound fire; server.fault.enabled arms an inbound one.
+# it wants against the requests it RECEIVES. A fault side is armed by setting its
+# rate (or latency) — there is no enabled switch, and this document configures no
+# fault, so the example injects nothing. To arm one direction's fire, add:
+#
+#   client:
+#     fault:
+#       rate: 0.5        # inject on 50% of outbound calls
 spring:
   governance:
-    enabled: true
     client:
       default:
         attempt-timeout: 100ms
         max-retries: 2
-      fault:
-        enabled: false
-        rate: 0.5
-    server:
-      fault:
-        enabled: false
-        rate: 0.5

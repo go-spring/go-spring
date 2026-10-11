@@ -95,24 +95,24 @@ func runTest() {
 
 	cli, err := client.NewClient(client.WithClientURL("127.0.0.1:20000"))
 	if err != nil {
-		log.Errorf(ctx, log.TagAppDef, err, "failed to create client")
+		log.Error(ctx, log.TagAppDef, err, "failed to create client")
 		os.Exit(1)
 	}
 
 	svc, err := greet.NewGreetService(cli)
 	if err != nil {
-		log.Errorf(ctx, log.TagAppDef, err, "failed to create greet service")
+		log.Error(ctx, log.TagAppDef, err, "failed to create greet service")
 		os.Exit(1)
 	}
 
 	resp, err := svc.Greet(ctx, &greet.GreetRequest{Name: "Hello, Dubbo-Go!"})
 	if err != nil {
-		log.Errorf(ctx, log.TagAppDef, err, "Error calling Greet")
+		log.Error(ctx, log.TagAppDef, err, "error calling Greet")
 		os.Exit(1)
 	}
 	fmt.Println("Response from server:", resp.Greeting)
 	if resp.Greeting != "Hello, Dubbo-Go!" {
-		log.Errorf(ctx, log.TagAppDef, fmt.Errorf("unexpected greet body: %q", resp.Greeting), "unexpected greet body: %q", resp.Greeting)
+		log.Error(ctx, log.TagAppDef, fmt.Errorf("unexpected greet body: %q", resp.Greeting), "unexpected greet body")
 		os.Exit(1)
 	}
 

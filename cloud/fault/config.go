@@ -32,17 +32,13 @@ import (
 // where a reader must pick one — the config block, and the entry point
 // ([WrapClientExecutor] for outbound, [ApplyServer] for inbound).
 //
-// A zero Config (Enabled false) injects nothing; a side built from it is a
-// transparent no-op.
+// A zero Config injects nothing — no rate, no latency — so a side built from it
+// is a transparent no-op (see [Config.Inert]).
 //
 // The top-level Rate/Latency/Error apply to every service of that ONE direction;
 // per-service overrides go under Rules (matched by the service label a starter
 // passes to the executor/ApplyServer seam).
 type Config struct {
-	// Enabled turns fault injection on. When false no faults are injected even
-	// if Rate/Latency/Error are set.
-	Enabled bool `value:"${enabled:=false}"`
-
 	// Rate is the per-call probability (0..1) of injecting the configured Error.
 	// 0 means never inject; 1 means every call fails. Latency, when set, is
 	// applied to every call regardless of Rate — use it to model a uniformly
@@ -82,11 +78,12 @@ type Config struct {
 
 	// MaxDuration is the safety auto-off: after this much time elapses since the
 	// first affected call, the injector stops applying any fault (latency or
-	// error). It lets an operator enable a fault and walk away — a forgotten
-	// fire self-heals rather than running until the next deploy. 0 (the default)
+	// error). It lets an operator arm a fault and walk away — a forgotten fire
+	// self-heals rather than running until the next deploy. 0 (the default)
 	// means no time bound. Hot-reload note: shortening MaxDuration takes effect
-	// promptly; lengthening it does not un-trip an already-expired fire (re-arm
-	// by toggling Enabled off and back on).
+	// promptly; lengthening it does not un-trip an already-expired fire — the
+	// first-affected stamp is taken once per side and a config push does not
+	// reset it, so re-arming the window takes a process restart.
 	MaxDuration time.Duration `value:"${max-duration:=0}"`
 
 	// MaxAffected is the safety blast-radius cap: once this many calls have
@@ -110,6 +107,29 @@ type Config struct {
 	//	spring.governance.client.fault.rules[0].rate=0.5
 	//	spring.governance.server.fault.rules[0].rate=1   # empty service => catch-all inbound
 	Rules []Rule `value:"${rules:=}"`
+}
+
+// Inert reports whether c can inject nothing at all: no global rate or latency,
+// and no rule carrying one. It is the derived replacement for the former
+// Enabled switch — Rate and Latency are the only knobs that cause an effect
+// (Error needs Rate > 0, LatencyJitter needs Latency > 0, and the safety
+// guardrails only ever STOP an effect), so "no rate and no latency" is exactly
+// "no effect is possible". A zero Config is therefore inert, and a side built
+// from it stays a transparent no-op.
+//
+// It is the hot path's early-out (see [Injector.gate]): O(1) when Rules is
+// empty, which is the common case. Exported so the governance center can report
+// whether a side is armed.
+func (c Config) Inert() bool {
+	if c.Rate > 0 || c.Latency > 0 {
+		return false
+	}
+	for _, r := range c.Rules {
+		if r.Rate > 0 || r.Latency > 0 {
+			return false
+		}
+	}
+	return true
 }
 
 // Rule is one per-service fault rule. See [Config.Rules].

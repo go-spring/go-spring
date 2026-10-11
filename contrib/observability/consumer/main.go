@@ -102,12 +102,12 @@ func runTest(c *Consumer) {
 	want := "Hello, Dubbo-Go!"
 	resp, err := c.Greet(ctx, want)
 	if err != nil {
-		log.Errorf(ctx, log.TagAppDef, err, "error calling Greet")
+		log.Error(ctx, log.TagAppDef, err, "error calling Greet")
 		os.Exit(1)
 	}
 	fmt.Println("Response from discovered provider:", resp)
 	if resp != want {
-		log.Errorf(ctx, log.TagAppDef, fmt.Errorf("unexpected greet body: %q", resp), "unexpected greet body: %q", resp)
+		log.Error(ctx, log.TagAppDef, fmt.Errorf("unexpected greet body: %q", resp), "unexpected greet body")
 		os.Exit(1)
 	}
 
@@ -118,14 +118,14 @@ func runTest(c *Consumer) {
 		name := fmt.Sprintf("Dubbo-Go caller #%d", i)
 		got, err := c.Greet(ctx, name)
 		if err != nil {
-			log.Errorf(ctx, log.TagAppDef, err, "error on greet #%d", i)
+			log.Error(ctx, log.TagAppDef, err, "error on greet", log.Int("i", i))
 			os.Exit(1)
 		}
 		if got != name {
-			log.Errorf(ctx, log.TagAppDef, fmt.Errorf("greet #%d echoed %q, want %q", i, got, name), "greet #%d echoed %q, want %q", i, got, name)
+			log.Error(ctx, log.TagAppDef, fmt.Errorf("greet #%d echoed %q, want %q", i, got, name), "greet echoed mismatch", log.Int("i", i), log.String("got", got), log.String("want", name))
 			os.Exit(1)
 		}
-		log.Infof(ctx, log.TagAppDef, "greet #%d ok: %q", i, got)
+		log.Info(ctx, log.TagAppDef, "greet ok", log.Int("i", i), log.String("body", got))
 	}
 	fmt.Printf("Sent %d greetings (1 canonical + %d batch)\n", greetCalls+1, greetCalls)
 

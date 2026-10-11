@@ -26,7 +26,6 @@ import (
 	"github.com/apache/rocketmq-client-go/v2/primitive"
 	"github.com/apache/rocketmq-client-go/v2/producer"
 	"go-spring.org/cloud/messaging"
-	"go-spring.org/cloud/observability"
 	"go-spring.org/cloud/propagate"
 	"go-spring.org/cloud/traffic"
 	"go-spring.org/log"
@@ -55,14 +54,9 @@ import (
 // producer to consumer across services. All of it is a no-op without
 // starter-otel.
 //
-// prop is the process's load-test convention (nullable — nil falls back to
-// traffic.NewDefaultPropagator), carried on every producer/consumer this driver
-// hands out.
+// prop is the process.s load-test convention (required), carried on every
+// producer/consumer this driver hands out.
 func NewDriver(cl *Client, prop traffic.Propagator) messaging.Driver {
-	if prop == nil {
-		// DefaultBinding is complete, so this cannot fail.
-		prop, _ = traffic.NewDefaultPropagator(traffic.DefaultBinding())
-	}
 	return &driver{cl: cl, prop: prop}
 }
 
@@ -167,12 +161,11 @@ func (s *subscriber) Subscribe(_ context.Context, handler messaging.Handler) err
 			// from the declaration.
 			msgCtx := s.prop.Extract(ctx, propagate.StringMap(ext.GetProperties()))
 			msgCtx = extractTraceContext(msgCtx, ext.GetProperties())
-			msgCtx = observability.WithOperation(msgCtx, operation(opConsume, s.topic))
-			herr := s.cl.execute(msgCtx, func(attemptCtx context.Context) error {
+			herr := s.cl.execute(msgCtx, operation(opConsume, s.topic), func(attemptCtx context.Context) error {
 				return handler(attemptCtx, fromMessageExt(ext))
 			})
 			if herr != nil {
-				log.Error(msgCtx, log.TagAppDef, herr, log.String("topic", ext.Topic), log.Msg("rocketmq driver handler failed"))
+				log.Error(msgCtx, log.TagAppDef, herr, "rocketmq driver handler failed", log.String("topic", ext.Topic))
 				return consumer.ConsumeRetryLater, herr
 			}
 		}

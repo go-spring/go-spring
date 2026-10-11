@@ -218,7 +218,7 @@ gs.Run()
 | `priority` | int | 0 | 匹配顺序:priority 大的先被检查;并列(含全不配)回落到 id 升序——历史默认。随路由一起热更新。 | 重叠路径解析到 priority 更大(其次 id 更小)的路由;配了 priority 后改名 id 不再改变优先级。 |
 | `filters` | string | "" | filter DSL,见 §3.3;按声明顺序由外向内生效。 | 编译期(而非绑定期)报错。 |
 | `upstream.target` | string | — | **事实必填**:`lb://<service>` 或 `http(s)://host[:port]`。缺失/畸形 → `parseError`(compile.go:379-392)。 | 路由编译失败。 |
-| *(已移除)* | — | — | `upstream.balancer` 迁到治理:命中 `gateway:<route-id>` 的规则的 `spring.governance.client.rules[N].balancer`。策略名未知会被忽略(沿用当前策略),不会让 reload 失败。 | 池是 push 时原地换策略,不需要重载路由表。 |
+| *(已移除)* | — | — | `upstream.balancer` 迁到治理:命中 `gateway:<route-id>` 的规则的 `spring.governance.client.rules[N].balancer`。策略名未知会被忽略(沿用当前策略),不会让 reload 失败。 | 链路在 push 时整条重建换策略,不需要重载路由表。 |
 | `upstream.discovery` | string | "" | 覆盖顶层 `discovery` 的每路由后端。 | |
 | *(已移除)* | — | — | `upstream.suspend-threshold` / `upstream.suspend-for` 迁到治理:`spring.governance.client.rules[N].outlier-threshold` / `.outlier-suspend-for`,`outlier-suspend-for` 留空回落 tracker 的 5s 默认。 | 僵尸实例(活着但持续失败)在冷却期内不再收流量,不再周期性产出 502。 |
 | `resilience.policy` | string | "" | 必须指向已存在的 `spring.gateway.resilience.<name>` key。⚠ 耦合:未知名字 → `unknown resilience policy` 编译错误(compile.go:236)。 | 启动失败 / reload 保留旧表。 |

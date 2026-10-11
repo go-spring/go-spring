@@ -133,28 +133,24 @@ func (b *ConfigBus) record(ctx context.Context, outcome string, ev RefreshEvent,
 	switch outcome {
 	case outcomeRefreshed:
 		instruments().refreshDur.Record(ctx, dur.Seconds(), attrs)
-		log.Info(ctx, starterTag, append(eventFields(outcome),
+		log.Info(ctx, starterTag, "config bus: refreshed properties on event", append(eventFields(outcome),
 			log.String("prefix", ev.Prefix),
 			log.String("origin", ev.Origin),
-			log.Float("duration_ms", float64(dur.Nanoseconds())/1e6),
-			log.Msg("config bus: refreshed properties on event"))...)
+			log.Float("duration_ms", float64(dur.Nanoseconds())/1e6))...)
 	case outcomeRefreshError:
 		instruments().refreshDur.Record(ctx, dur.Seconds(), attrs)
-		log.Error(ctx, starterTag, err, append(eventFields(outcome),
-			log.String("prefix", ev.Prefix),
-			log.Msg("config bus: property refresh failed"))...)
+		log.Error(ctx, starterTag, err, "config bus: property refresh failed", append(eventFields(outcome),
+			log.String("prefix", ev.Prefix))...)
 	case outcomeIgnored:
-		log.Debug(ctx, starterTag, func() []log.Field {
+		log.Debug(ctx, starterTag, "config bus: ignoring refresh event outside watched prefixes", func() []log.Field {
 			return append(eventFields(outcome),
 				log.String("prefix", ev.Prefix),
 				log.String("origin", ev.Origin),
-				log.Any("watched", b.prefixes),
-				log.Msg("config bus: ignoring refresh event outside watched prefixes"))
+				log.Any("watched", b.prefixes))
 		})
 	case outcomeMalformed:
-		log.Warn(ctx, starterTag, append(eventFields(outcome),
-			log.Err(err),
-			log.Msg("config bus: ignoring malformed refresh event"))...)
+		log.Warn(ctx, starterTag, "config bus: ignoring malformed refresh event", append(eventFields(outcome),
+			log.Err(err))...)
 	}
 }
 
@@ -171,16 +167,14 @@ func eventFields(outcome string) []log.Field {
 func (b *ConfigBus) recordPublish(ctx context.Context, outcome string, dur time.Duration, err error) {
 	instruments().publishes.Add(ctx, 1, metric.WithAttributes(attribute.String("status", outcome)))
 	if err != nil {
-		log.Error(ctx, starterTag, err, append(eventFields(outcome),
+		log.Error(ctx, starterTag, err, "config bus: publish refresh event failed", append(eventFields(outcome),
 			log.String("subject", b.Config.Subject),
-			log.Float("duration_ms", float64(dur.Nanoseconds())/1e6),
-			log.Msg("config bus: publish refresh event failed"))...)
+			log.Float("duration_ms", float64(dur.Nanoseconds())/1e6))...)
 		return
 	}
-	log.Debug(ctx, starterTag, func() []log.Field {
+	log.Debug(ctx, starterTag, "config bus: published refresh event", func() []log.Field {
 		return append(eventFields(outcome),
 			log.String("subject", b.Config.Subject),
-			log.Float("duration_ms", float64(dur.Nanoseconds())/1e6),
-			log.Msg("config bus: published refresh event"))
+			log.Float("duration_ms", float64(dur.Nanoseconds())/1e6))
 	})
 }

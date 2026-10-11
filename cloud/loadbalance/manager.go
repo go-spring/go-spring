@@ -18,292 +18,218 @@ package loadbalance
 
 import (
 	"context"
-	"maps"
 	"sync"
 
+	"go-spring.org/cloud/discovery"
 	"go-spring.org/log"
 )
 
-// Manager is the centralized endpoint-selection authority: it resolves a
-// resource label to a [Selection] and keeps every bound pool in step with it.
+// Manager is the centralized endpoint-selection authority: it maps a resource
+// label to a [Selection] and keeps every sink that follows that label in step
+// with it.
 //
 // It is the selection counterpart of resilience.Manager, and follows the same
-// split: the governance center owns the config DOCUMENT (rules, matching,
-// source) and hands this Manager a way to resolve a label; the Manager owns what
-// to DO with the result — here, pushing it into the pools and subscribers that
-// asked to follow that label.
+// split: the governance center owns the config DOCUMENT (parsing, the source,
+// duplicate-label rejection) and PUSHES this Manager the two data halves it
+// needs — a [Settings.Default] and a rule list. The Manager owns the matching
+// (exact label, else Default) and what to DO with the result.
+//
+// What it does with the result is what the client asked for. The one case is
+// [Chain] (built through [Manager.Chain]): the endpoint-selection
+// chain a client owns registers itself under its label and the manager REBUILDS
+// it from scratch whenever that label's selection moves, so nothing of the
+// replaced configuration is still choosing traffic (see [Chain]).
 //
 // The Manager is container-free and holds no global: the gs wiring (providing it
-// as a bean, injecting it into the clients that own pools) lives in
+// as a bean, injecting it into the clients that own chains) lives in
 // starter-governance.
 //
 // Safe for concurrent use.
 type Manager struct {
-	// mu guards subs and resolve. It is never taken on the request path — a
-	// Pick reads the pool's own selection, not this table.
+	// mu guards subs and the pushed settings. It is never taken on the
+	// request path — a Pick reads the pool's own selection, not these tables.
 	mu sync.Mutex
 
-	// subs is the per-label subscriber table. A label with no subscriber leaves
-	// no entry.
-	subs map[string][]*subscriber
+	// subs is the per-label table of registered chains. A label with no chain
+	// leaves no entry.
+	subs map[string][]*Chain
 
-	// resolve maps a resource label to its selection. It is nil on an unarmed
-	// manager, in which case every pool keeps the strategy it was built with.
-	resolve func(label string) Selection
-
-	// dir is the strategy directory every bound pool's balancer is built from:
-	// the built-in strategies plus whatever [Factory] beans the container
-	// contributed (see [NewManager]). It is never nil on a manager built by
-	// [NewManager].
-	dir Directory
+	// settings is the document last pushed by [Manager.Apply], held whole — the
+	// Manager stores what it was handed, it does not take it apart. The zero value
+	// is the initial (and pass-through) state: every label resolves the zero
+	// Selection, so every pool keeps the strategy it was built with.
+	settings Settings
 }
 
-// Settings is the selection half of the governance document: everything this
-// package needs to serve the clients that own pools.
+// (The manager keeps no callback indirection: a registered chain IS the sink,
+// and it refreshes itself from what it is handed — see [Chain.refresh].)
+
+// Settings is the selection half of the governance document, PUSHED whole: the
+// center hands over the data, and this package does the matching. It mirrors
+// [fault.Config] — a global default plus a rule list — so the family's three
+// modules take the same shape (see the package doc of cloud/governance).
+//
+// The zero Settings configures nothing: every label resolves the zero Selection,
+// which a chain reads as the base configuration (round-robin, suspension off) and
+// a subscriber reads as "keep what you have". There
+// is no arming flag; an empty document and an absent one look the same, and both
+// are a pass-through.
 type Settings struct {
-	// Enabled false means the center is switched off: every bound pool is put
-	// back under the zero Selection (keep the strategy, disable suspension) and
-	// later changes notify nobody.
-	Enabled bool
+	// Default is the selection every label runs under when no Rule matches it.
+	Default Selection
 
-	// Resolve returns the selection a resource label runs under. It is called
-	// lazily and repeatedly — labels are not known up front — so the Manager
-	// cannot precompute them.
-	Resolve func(label string) Selection
+	// Rules are the per-label overrides: the first Rule whose Service equals the
+	// label wins. An empty Service matches NOTHING (it is not a catch-all — use
+	// Default for that), so a rule list cannot accidentally govern every label.
+	//
+	// Labels are unique across Rules — the center rejects a duplicate document
+	// before it reaches here — because a linear scan would otherwise let list
+	// order decide which entry applies.
+	Rules []Rule
 }
 
-// NewManager returns an unarmed Manager over the built-in strategies extended
-// by factories — the additional [Factory] beans the container contributed,
-// keyed by bean name. That map IS the strategy directory a `balancer` name in a
-// rule is resolved against, and it is taken here rather than through a setter
-// because the directory is fixed for the manager's lifetime: the container
-// hands over everything it has at construction and nothing installs a strategy
-// afterwards.
+// Rule is one per-label selection override. See [Settings.Rules].
+type Rule struct {
+	// Service is the resource label this Rule matches, exact-compare — the same
+	// identity a client starter registers its chain under (see [Manager.Chain]).
+	Service string
+
+	// Selection is what the matched label runs under.
+	Selection Selection
+}
+
+// NewManager returns an unarmed Manager. It resolves strategy names against the
+// package registry (see [Register]), which is process-wide, so a manager needs
+// no strategy directory of its own.
 //
-// A nil or empty factories leaves the manager on the built-in strategies alone,
-// which is what a process that contributes none looks like. An empty name, a
-// nil factory, or a name that shadows a built-in strategy is an error — a
-// deployment must not silently replace round_robin — and no manager is
-// returned, so a rejected contribution cannot strip the process of the
-// strategies it already had.
+// The manager starts with no settings, so every pool keeps the strategy it was
+// built with until the first [Manager.Apply]. Bindings taken before that are
+// remembered and come alive on that Apply.
+func NewManager() *Manager {
+	return &Manager{subs: map[string][]*Chain{}}
+}
+
+// Apply adopts s as the manager's settings and re-evaluates every registered
+// chain's label. It is the single entry point the governance center calls — once
+// at startup with the source's snapshot, then on every push.
 //
-// The manager is unarmed: no resolver yet, so every pool keeps the strategy it
-// was built with until [Manager.Apply] arms it. Bindings taken while it is
-// unarmed are remembered and come alive on that Apply.
-func NewManager(factories map[string]Factory) (*Manager, error) {
-	dir, err := NewDirectory(factories)
-	if err != nil {
-		return nil, err
-	}
-	return &Manager{subs: map[string][]*subscriber{}, dir: dir}, nil
-}
-
-// Build constructs the strategy name from the manager's directory, using params
-// as the strategy's own parameters. It is how an adapter that cannot hold a
-// [Pool] — a gRPC balancer, say — resolves a governed strategy name against the
-// same directory the pools use, so a contributed strategy works in both.
-func (m *Manager) Build(name string, params map[string]string) (Balancer, error) {
-	return m.directory().Build(name, NewParams(params))
-}
-
-// directory returns the strategy directory in force. It is never nil: a manager
-// built by [NewManager] starts with the built-ins, and one built as a bare
-// &Manager{} falls back to them.
-func (m *Manager) directory() Directory {
+// The manager resolves WHAT each label's selection is; the chain owns WHAT TO DO
+// with it: [Chain.refresh] decides whether the selection moved and rebuilds from
+// scratch when it did (see [Chain.refresh]). A chain whose selection is
+// unchanged is handed it and no-ops, so a change localized to another label does
+// not churn unrelated chains.
+//
+// The settings REPLACE the previous ones wholesale rather than merging, so a
+// document that drops a rule disarms that label — there is no separate off
+// switch to remember.
+//
+// Adopting the settings and re-evaluating every chain happen in ONE critical
+// section, the whole of it under the manager lock: a [Chain] registration that
+// lands while Apply is running waits for it and is then seeded from the new
+// settings, so it is never missed and never sees a half-applied document.
+//
+// The rebuild runs while the lock is held, and a rebuild runs a caller-supplied
+// strategy factory (see [Chain.build]). That is safe only because nothing on a
+// chain's build path reaches the manager: a [Chain] holds no manager reference,
+// and a registered [Factory] is expected not to re-enter the manager — the lock
+// is not reentrant, so such a factory would deadlock.
+//
+// ctx carries the push's trace into a refused selection's log line; it is not
+// otherwise consulted (nothing on the rebuild path does I/O).
+func (m *Manager) Apply(ctx context.Context, s Settings) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	if m.dir == nil {
-		m.dir = builtinDirectory()
-	}
-	return m.dir
-}
 
-// Apply adopts s as the manager's settings and re-evaluates every subscribed
-// label, notifying the subscribers whose selection changed. It is the single
-// entry point the governance center calls — once at startup with the source's
-// snapshot, then on every push.
-//
-// A subscriber whose selection is unchanged is not notified, so a change
-// localized to another label does not churn unrelated pools.
-func (m *Manager) Apply(s Settings) {
-	var todo []pending
-
-	m.mu.Lock()
-	if !s.Enabled {
-		m.resolve = nil
-	} else {
-		m.resolve = s.Resolve
-	}
-	for label, list := range m.subs {
+	m.settings = s
+	for label, chains := range m.subs {
 		next := m.selectionForLocked(label)
-		for _, sub := range list {
-			// A subscriber cancelled since this apply began must not be
-			// notified: its owner is already tearing down what it drives.
-			if sub.cancelled {
-				continue
-			}
-			if !selectionEqual(sub.last, next) {
-				sub.last = next
-				todo = append(todo, pending{label: label, apply: sub.apply, s: next})
+		for _, c := range chains {
+			if err := c.refresh(next); err != nil {
+				log.Warn(ctx, log.TagAppDef,
+					"loadbalance: endpoint selection rejected, keeping the resource's current strategy",
+					log.String("label", label),
+					log.Err(err))
 			}
 		}
 	}
-	m.mu.Unlock()
-
-	for _, p := range todo {
-		m.deliver(p)
-	}
 }
 
-// Bind wires pool's endpoint selection to label's managed policy: the current
-// selection is applied immediately and again on every change, in place — no pool
-// rebuild, and the next [Pool.Pick] already sees it.
+// Chain builds and registers a [Chain] under label — the manager-side entry a
+// caller uses to obtain a governed chain: registration, the first generation and
+// every later rebuild all happen in ONE step, so a caller cannot build a chain
+// and forget to register it, or read a stale selection by registering late.
 //
-// Bind is the one place a strategy NAME becomes a strategy: it resolves the
-// name against the manager's [Directory] and hands the pool a built [Balancer],
-// so a pool never holds the factory table. A name that fails to build —
-// unknown, or a params bag the strategy rejects — is IGNORED rather than fatal:
-// the pool degrades to the last good strategy instead of taking the client
-// down, and the error is returned for [Manager.Subscribe] to log (the
-// governance source contract has no error channel). The suspension half is
-// applied unconditionally, so a rule that only retunes thresholds still works.
+// The first generation is built from the selection in force at this moment, not
+// from the zero selection, so a chain created after the document arrived already
+// runs its policy instead of waiting for the next push. An unarmed manager has
+// no selection, which builds the base chain.
 //
-// The returned func detaches the binding. A pool whose lifetime is not the whole
-// process MUST call it, or the Manager keeps a callback pointing at a dead pool.
-// Binding an unarmed manager is safe and is the normal case for a pool built
-// during bean construction: the binding is remembered and armed by the first
-// [Manager.Apply]. A nil pool is ignored.
-func (m *Manager) Bind(pool *Pool, label string) (stop func()) {
-	if pool == nil {
-		return func() {}
-	}
-	return m.Subscribe(label, func(s Selection) error {
-		pool.ApplySuspension(TrackerConfig{Threshold: s.OutlierThreshold, SuspendFor: s.OutlierSuspendFor})
-		if s.Balancer == "" {
-			return nil // keep the pool's current strategy
-		}
-		bal, err := m.directory().Build(s.Balancer, NewParams(s.Params))
-		if err != nil {
-			return err
-		}
-		pool.ApplyBalancer(bal, s)
-		return nil
-	})
-}
-
-// Subscribe wires apply to label's managed selection: it is invoked immediately
-// with the current selection, then again on every change. It is the escape hatch
-// for a caller that resolves its own sink rather than owning a [Pool] — a balancer
-// re-deriving its strategy, a client that maps the selection onto its own knobs.
+// The registration is one-way and permanent: there is no detach. The chain MUST
+// outlive the manager that governs it (which is what a bean-managed client is),
+// because the manager keeps the pointer — a chain that died first would be
+// neither collected nor safe to refresh. Everything is released by
+// [Manager.Close], at the end of the manager's life.
 //
-// apply must be safe for concurrent invocation. A non-nil error it returns — a
-// strategy the sink rejected — is logged here, tagged with the label, because the
-// push channel has no error return.
+// The returned chain is the caller's outward surface: hold it, [Chain.Pick] and
+// [Chain.Complete] through it, and the generations underneath it move with the
+// manager's settings.
 //
-// Subscribing to an UNARMED manager is meaningful, not a no-op: the sink is armed
-// with the zero Selection (which applies as "keep the strategy, disable
-// suspension") and is notified as soon as the manager is armed. That is what makes
-// binding safe during bean construction, which can run BEFORE the center bean's
-// [governance.Center.GoLive] — the moment a pool is built, the manager has no
-// resolver yet, and dropping the subscription here would silently lose the
-// binding for the process lifetime.
-//
-// The returned func detaches the subscription and is idempotent.
-func (m *Manager) Subscribe(label string, apply func(Selection) error) (stop func()) {
+// ctx carries the caller's trace into a refused selection's log line; a chain
+// built where no such context exists (a transport assembled at wiring time) may
+// pass [context.Background].
+func (m *Manager) Chain(ctx context.Context, src discovery.Resolver, label string) *Chain {
+	c := newChain(src, label)
+	// Registering IS the subscription: hand the chain the selection in force for
+	// the label now, and again on every change — a [Chain] rebuilds itself from
+	// what it is handed.
 	m.mu.Lock()
+	defer m.mu.Unlock()
+
 	cur := m.selectionForLocked(label)
-	sub := &subscriber{last: cur, apply: apply}
-	m.subs[label] = append(m.subs[label], sub)
-	m.mu.Unlock()
-
-	m.deliver(pending{label: label, apply: apply, s: cur})
-	return func() { m.unsubscribe(label, sub) }
+	m.subs[label] = append(m.subs[label], c)
+	if err := c.refresh(cur); err != nil {
+		log.Warn(ctx, log.TagAppDef,
+			"loadbalance: endpoint selection rejected, keeping the resource's current strategy",
+			log.String("label", label),
+			log.Err(err))
+	}
+	return c
 }
 
-// SelectionFor returns the selection label currently resolves to, or the zero
-// Selection on an unarmed manager.
-func (m *Manager) SelectionFor(label string) Selection {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	return m.selectionForLocked(label)
-}
-
-// Enabled reports whether the manager is armed.
-func (m *Manager) Enabled() bool {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	return m.resolve != nil
-}
-
-// selectionForLocked resolves label under the manager lock. Callers must hold mu.
+// selectionForLocked resolves label under the manager lock: the first Rule whose
+// Service equals the label, else the Default. Callers must hold mu.
+//
+// The match is plain equality — an empty Service matches nothing, deliberately:
+// a rule list must not be able to govern every label by accident (Default is how
+// a document says "everything else").
 func (m *Manager) selectionForLocked(label string) Selection {
-	if m.resolve == nil {
-		return Selection{}
-	}
-	return m.resolve(label)
-}
-
-// deliver runs one notification, logging a rejection with its label so the
-// operator can see which resource refused which strategy.
-func (m *Manager) deliver(p pending) {
-	if err := p.apply(p.s); err != nil {
-		log.Warn(context.Background(), log.TagAppDef,
-			log.String("label", p.label),
-			log.Err(err),
-			log.Msg("loadbalance: endpoint selection rejected, keeping the resource's current strategy"))
-	}
-}
-
-// unsubscribe detaches sub from label. It marks sub cancelled before removing it,
-// so an apply that already collected it still skips it at delivery time. Removing
-// the last subscriber for a label drops the map entry, so a repeatedly-rebuilt
-// client leaves no residue — not even an empty slice.
-func (m *Manager) unsubscribe(label string, sub *subscriber) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	sub.cancelled = true
-	list := m.subs[label]
-	for i, e := range list {
-		if e == sub {
-			list = append(list[:i:i], list[i+1:]...)
-			break
+	for _, r := range m.settings.Rules {
+		if r.Service == label {
+			return r.Selection
 		}
 	}
-	if len(list) == 0 {
-		delete(m.subs, label)
-		return
-	}
-	m.subs[label] = list
+	return m.settings.Default
 }
 
-// subscriber is one pool's (or client's) interest in the selection for a label.
-// last is the most recent selection delivered, so an apply can skip sinks whose
-// selection is unchanged.
-type subscriber struct {
-	last  Selection
-	apply func(Selection) error
-
-	// cancelled marks a subscriber whose stop func has run. The manager drops it
-	// from subs on cancel, but an Apply already in flight may hold a reference to
-	// it from before the removal — so delivery checks this flag under mu and skips
-	// it, making cancel take effect immediately rather than after the next apply.
-	cancelled bool
-}
-
-// pending is one notification collected under the manager lock and delivered
-// after it is released.
-type pending struct {
-	label string
-	apply func(Selection) error
-	s     Selection
-}
-
-// selectionEqual reports whether two resolved selections are equivalent for the
-// purpose of change detection. [Selection] carries a parameter map and so is not
-// comparable with ==; every field is compared explicitly instead.
-func selectionEqual(a, b Selection) bool {
-	return a.Balancer == b.Balancer &&
-		maps.Equal(a.Params, b.Params) &&
-		a.OutlierThreshold == b.OutlierThreshold &&
-		a.OutlierSuspendFor == b.OutlierSuspendFor
+// Close drops every subscription and the pushed settings. It is the shutdown
+// counterpart to [Manager.Apply], and it is the
+// manager BEAN's destroy method (see the starter), so the container calls it on
+// shutdown — after the chains it governs, since gs tears beans down in reverse
+// construction order.
+//
+// The manager holds no resources of its own — no goroutines, no connections —
+// so this exists for one reason: it is the ONLY way the references it keeps on
+// its sinks are released. Registering (see [Manager.Chain]) is one-way, so
+// nothing else can drop them, and a manager that is
+// going away must stop pinning the sinks it governs.
+//
+// Closing does not stop a [Chain] from serving: a chain's generation stays
+// current and every [Chain.Pick] keeps working. What ends is the rebuild
+// path — a chain outliving a closed manager simply never moves again.
+func (m *Manager) Close() error {
+	m.mu.Lock()
+	m.settings = Settings{}
+	m.subs = map[string][]*Chain{}
+	m.mu.Unlock()
+	return nil
 }

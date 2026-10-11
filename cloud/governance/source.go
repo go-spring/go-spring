@@ -40,10 +40,32 @@ import (
 //     resources don't have to write an empty method.
 //   - A single callback. The center is the only consumer, which keeps the
 //     implementation surface at minimum.
+//
+// The FIRST READ is part of construction, and this is the one thing an
+// implementer must get right. [NewCenter] calls Snapshot() the moment it is
+// built and adopts whatever it returns as the process's
+// starting policy, so by the time the source's constructor RETURNS, Snapshot()
+// must already hold the latest committed document — a remote source performs its
+// first fetch inside its constructor (bounded by a timeout) and fails
+// construction when that fetch fails. That is what makes a misconfigured source
+// — a wrong path, an unreachable console — fail startup instead of leaving the
+// center silently on its empty document: a zero Config returned because nothing
+// was loaded is a bug, not a state.
+//
+// This is why the first read is NOT deferred to a gs Init hook or a goroutine.
+// Init runs AFTER the beans that depend on the source (the center) are
+// constructed, so a source that starts loading there would hand [NewCenter] a
+// zero Config and the process would come up ungoverned until the first push —
+// the fail-loud guarantee traded for a silent gap. A zero Config is legal ONLY
+// as "an empty document that configures nothing" that the source actually read;
+// it never means "not loaded yet".
 type Source interface {
 	// Snapshot returns the current config. It must be safe for concurrent use
-	// and return the latest committed value; before anything is pushed it
-	// returns a zero Config (a disabled center).
+	// and return the latest committed value. It is a pure in-memory read: it
+	// must NOT fetch anything, because [NewCenter] calls it at construction and
+	// a blocking read here would stall startup and race with pushes. A source
+	// always has a committed value by the time its constructor returns (see the
+	// type doc); a zero Config means the loaded document configures nothing.
 	Snapshot() Config
 
 	// Subscribe registers cb, invoked with each new config after it commits,
@@ -64,17 +86,14 @@ type Source interface {
 // forwards pushes to its subscriber. It is the shared core of every push-style
 // adapter — the file, http, etcd and nacos sources in the governance starter
 // family each wrap one behind their own transport — and the building block for
-// console-stream and static-injection integrations: create one, hand it to the
-// center with [Center.SetSource], then Push on every upstream event:
+// console-stream and static-injection integrations: create one, hand it to
+// NewCenter (or export it as a bean and let the container do the same), then
+// Push on every upstream event:
 //
 //	src := governance.NewPushSource(governance.Config{})
-//	ctr.SetSource(src)
+//	ctr := governance.NewCenter(res, lb, inj, disc, src)
 //	// later, on each console event:
 //	src.Push(cfg)
-//
-// The usual route is the bean one instead: export a [Source] and the container
-// hands it straight to the center's constructor; SetSource is the eager path for
-// a caller that holds the center and wants to replace whatever is bound.
 //
 // Safe for concurrent use.
 type PushSource struct {
@@ -83,7 +102,13 @@ type PushSource struct {
 	cb  func(ctx context.Context, cfg Config)
 }
 
-// NewPushSource returns a PushSource holding cfg as its initial snapshot.
+// NewPushSource returns a PushSource holding cfg as its initial snapshot. cfg is
+// a COMMITTED document, not a placeholder: a caller that passes a zero Config is
+// saying "start on an empty document", not "I have nothing yet" — the center
+// adopts it at construction exactly as it adopts any other snapshot (see
+// [Source]). Adapters that wrap one load the real document BEFORE calling this
+// (their first read lives in their own constructor), so what the center reads on
+// bind is always what the source actually vouches for.
 func NewPushSource(cfg Config) *PushSource {
 	return &PushSource{cfg: cfg}
 }

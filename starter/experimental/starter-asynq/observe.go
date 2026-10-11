@@ -24,9 +24,9 @@
 package StarterAsynq
 
 import (
-	"go-spring.org/cloud/observability"
 	"go-spring.org/stdlib/strutil"
 
+	"go-spring.org/cloud/chain"
 	"go-spring.org/log"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -53,8 +53,8 @@ var accessTag = log.RegisterAppTag("asynq", "access")
 // makes a line worth reading — and never a label. An empty task type carries no
 // detail at all, which is also what levelled its success log at Info rather than
 // Debug.
-func operation(op, taskType string) observability.Operation {
-	o := observability.Operation{
+func operation(op, taskType string) chain.Operation {
+	o := chain.Operation{
 		Name:   op,
 		Metric: "messaging.client",
 		Attrs: []attribute.KeyValue{

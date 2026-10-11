@@ -213,8 +213,8 @@ func (t *Tracker) admitLocked(addr string, suspendFor time.Duration) bool {
 	if !s.halfOpen {
 		s.halfOpen = true // cool-down elapsed: admit a trial request
 		log.Info(context.Background(), log.TagAppDef,
-			log.String("address", addr),
-			log.Msg("loadbalance: cool-down elapsed, admitting a half-open trial"))
+			"loadbalance: cool-down elapsed, admitting a half-open trial",
+			log.String("address", addr))
 	}
 	return true
 }
@@ -248,9 +248,8 @@ func (t *Tracker) Record(ctx context.Context, addr string, success bool) {
 		s.halfOpen = false
 		if wasDown {
 			t.ins.suspended.Add(context.Background(), -1)
-			log.Info(ctx, log.TagAppDef,
-				log.String("address", addr),
-				log.Msg("loadbalance: endpoint recovered, back in rotation"))
+			log.Info(ctx, log.TagAppDef, "loadbalance: endpoint recovered, back in rotation",
+				log.String("address", addr))
 		}
 		return
 	}
@@ -261,9 +260,8 @@ func (t *Tracker) Record(ctx context.Context, addr string, success bool) {
 		s.halfOpen = false
 		s.suspendedAt = t.now()
 		t.ins.suspensions.Add(context.Background(), 1)
-		log.Warn(ctx, log.TagAppDef,
-			log.String("address", addr),
-			log.Msg("loadbalance: half-open trial failed, endpoint re-suspended"))
+		log.Warn(ctx, log.TagAppDef, "loadbalance: half-open trial failed, endpoint re-suspended",
+			log.String("address", addr))
 		return
 	}
 	s.failures++
@@ -271,11 +269,10 @@ func (t *Tracker) Record(ctx context.Context, addr string, success bool) {
 		s.suspendedAt = t.now()
 		t.ins.suspensions.Add(context.Background(), 1)
 		t.ins.suspended.Add(context.Background(), 1)
-		log.Warn(ctx, log.TagAppDef,
+		log.Warn(ctx, log.TagAppDef, "loadbalance: endpoint suspended after consecutive failures",
 			log.String("address", addr),
 			log.Int("failures", s.failures),
-			log.Float("suspend_for_ms", float64(cfg.SuspendFor.Nanoseconds())/1e6),
-			log.Msg("loadbalance: endpoint suspended after consecutive failures"))
+			log.Float("suspend_for_ms", float64(cfg.SuspendFor.Nanoseconds())/1e6))
 	}
 }
 

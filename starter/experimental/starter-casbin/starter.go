@@ -103,12 +103,11 @@ func newEnforcer(ctx context.Context, c Config, adapter persist.Adapter, watcher
 		err error
 	)
 
-	log.Debug(ctx, log.TagAppDef, func() []log.Field {
+	log.Debug(ctx, log.TagAppDef, "creating casbin enforcer", func() []log.Field {
 		return []log.Field{
 			log.String("model", c.Model),
 			log.String("adapter", c.Adapter),
 			log.String("watcher", c.Watcher),
-			log.Msg("creating casbin enforcer"),
 		}
 	})
 
@@ -131,7 +130,7 @@ func newEnforcer(ctx context.Context, c Config, adapter persist.Adapter, watcher
 		e, err = casbin.NewEnforcer(c.Model, c.Policy)
 	}
 	if err != nil {
-		log.Errorf(ctx, log.TagAppDef, err, "create casbin enforcer failed")
+		log.Error(ctx, log.TagAppDef, err, "create casbin enforcer failed")
 		return nil, errutil.Explain(err, "failed to create casbin enforcer")
 	}
 	e.EnableAutoSave(c.AutoSave)

@@ -81,11 +81,10 @@ func newTokenSource(ctx *gs.ContextProvider, name string, c Config) (*TokenSourc
 		EndpointParams: c.endpointParams(),
 	}
 
-	log.Debug(ctx.Context, log.TagAppDef, func() []log.Field {
+	log.Debug(ctx.Context, log.TagAppDef, "creating oauth2 token source", func() []log.Field {
 		return []log.Field{
 			log.String("client_id", c.ClientID),
 			log.String("token_url", c.TokenURL),
-			log.Msg("creating oauth2 token source"),
 		}
 	})
 

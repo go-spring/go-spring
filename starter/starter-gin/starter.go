@@ -142,11 +142,11 @@ func NewSimpleGinServer(register RouterRegister, outer EngineMiddleware, cfg Con
 			return nil, errutil.Explain(err, "gin: build TLS")
 		}
 	}
-	log.Debug(context.Background(), log.TagAppDef, func() []log.Field {
+	log.Debug(context.Background(), log.TagAppDef, "create gin server success", func() []log.Field {
 		return []log.Field{
 			log.String("addr", addr), log.Bool("tls", tlsEnabled),
 			log.String("read_timeout", cfg.ReadTimeout.String()), log.String("write_timeout", cfg.WriteTimeout.String()),
-			log.String("idle_timeout", cfg.IdleTimeout.String()), log.Msg("create gin server success"),
+			log.String("idle_timeout", cfg.IdleTimeout.String()),
 		}
 	})
 
@@ -181,9 +181,8 @@ func (s *SimpleGinServer) Run(ctx context.Context, sig gs.ReadySignal) error {
 	// about its own lifecycle carries it without repeating it.
 	ctx = log.WithFields(ctx, log.String("addr", s.svr.Addr))
 
-	log.Info(ctx, log.TagAppDef,
-		log.Bool("tls", s.tls),
-		log.Msg("gin server starting"))
+	log.Info(ctx, log.TagAppDef, "gin server starting",
+		log.Bool("tls", s.tls))
 
 	if s.tls {
 		err = s.svr.Serve(tls.NewListener(ln, s.tlsConf))
@@ -192,12 +191,12 @@ func (s *SimpleGinServer) Run(ctx context.Context, sig gs.ReadySignal) error {
 	}
 
 	if errutil.IsServerClosed(err) {
-		log.Debugf(ctx, log.TagAppDef, "gin server stopped")
+		log.Debug(ctx, log.TagAppDef, "gin server stopped", nil)
 
 		return nil
 	}
 	if err != nil {
-		log.Errorf(ctx, log.TagAppDef, err, "gin server failed")
+		log.Error(ctx, log.TagAppDef, err, "gin server failed")
 	}
 	return errutil.Explain(err, "failed to serve on %s", s.svr.Addr)
 }
@@ -206,8 +205,7 @@ func (s *SimpleGinServer) Run(ctx context.Context, sig gs.ReadySignal) error {
 // in-flight requests to complete. The shutdown context is propagated to
 // http.Server.Shutdown.
 func (s *SimpleGinServer) Stop(ctx context.Context) error {
-	log.Info(ctx, log.TagAppDef,
-		log.String("addr", s.svr.Addr),
-		log.Msg("gin server shutting down"))
+	log.Info(ctx, log.TagAppDef, "gin server shutting down",
+		log.String("addr", s.svr.Addr))
 	return s.svr.Shutdown(ctx)
 }

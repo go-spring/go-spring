@@ -162,12 +162,12 @@ gs.Run()
   │       （d == nil [starter.go:83-85]）；容器中存在多个 Driver bean 时，
   │       实例可按名指定：`spring.influxdb.instances.<name>.driver = <bean 名>`
   │       （留空 = 先回退家族级 `spring.<family>.default.driver`，再按类型注入唯一 Driver bean；指定的 bean 不存在则启动失败）
-  │    2. 构造器把治理 bean 打包成 cloud.ClientParams{Resilience: mgr, Fault: inj}，
-  │       交给 driver.CreateClient [driver.go:67]
-  │    3. driver.CreateClient → NewClient [client.go:102]：由治理包构建 executor
-  │       exec = params.ExecutorFor("influxdb", "influxdb:<server-url>")，再在裸
+  │    2. 构造器把注入的 *governance.Center（变量 center）
+  │       交给 driver.CreateClient(ctx, c, center) [driver.go:67]
+  │    3. driver.CreateClient → NewClient [client.go:102]：由治理中心构建 executor
+  │       exec = center.ExecutorFor("influxdb", "influxdb:<server-url>")，再在裸
   │       client 所乘的 dynamicTransport 上换入链——dyn.Swap(declareTransport{base:
-  │       resilience.NewRoundTripper(http.DefaultTransport, exec)})——因此 driver
+  │       resilience.NewRoundTripper(http.DefaultTransport, exec, nil)})——因此 driver
   │       一返回，声明+治理链即已生效
   │    4. 仅 ping=true：fail-fast 探测 HealthCheck(ctx, w) → /health 必须报告 "pass"，
   │       否则刚装配好的 client 被拆解（executor + 连接）并启动失败 [starter.go:99-102]
@@ -179,8 +179,8 @@ gs.Run()
 **装配扩展点**：client 装配由 `Driver`（接口，`driver.go:52`）负责。公司/伞包 starter 可把
 自己的 `Driver` 作为**可选容器 bean** 提供（`gs.Provide(func() StarterInfluxdb.Driver{...})`，
 因为是 bean，可在装配期注入从配置文件绑定的配置）；`spring.influxdb` 下每个实例都经它构建。
-driver 随配置一并收到 `cloud.ClientParams` 包，返回模块的 `*Client`——它构建裸 client 并
-连同 `params` 一起交给 `NewClient`，由后者在构建期施加治理；不安装 `dynamicTransport`
+driver 随配置一并收到注入的 `*governance.Center`，返回模块的 `*Client`——它构建裸 client 并
+连同 `center` 一起交给 `NewClient`，由后者在构建期施加治理；不安装 `dynamicTransport`
 的自定义 driver 得到的 client 没有 transport 层声明/治理。
 没有该 bean 时 starter 在装配内回退到内置 `DefaultDriver`（`driver.go:67`，`starter.go:83-85`）。
 没有 per-config 的 `driver` key。
@@ -242,7 +242,7 @@ flush 残留批次。
 SDK 在构造期固定 `*http.Client`（`Options.SetHTTPClient`），而声明/治理链要用 driver
 不该依赖的 bean 构建。因此 DefaultDriver 安装一个直通的 `dynamicTransport`
 [driver.go:68-72] 并交给 `NewClient`，而 driver 调用 `NewClient` 时一并传入
-`cloud.ClientParams` 包；`NewClient` 在构建 client 的同时换入真正的链
+`*governance.Center`；`NewClient` 在构建 client 的同时换入真正的链
 [client.go:102-113]——因此构造与治理之间没有空窗：driver 一返回链即已生效。不传入该
 transport 的自定义 driver 得到的 client 没有传输层声明/治理——该 client 的 resilience
 即不可用 [client.go:102-113]；逐调用的 `WritePoints` executor 仍然有效。

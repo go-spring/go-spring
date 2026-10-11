@@ -20,13 +20,14 @@ import (
 	"context"
 	"testing"
 
+	"go-spring.org/cloud/chain"
 	"go-spring.org/cloud/resilience"
 )
 
 // TestGovernanceDriverRegisteredAndFlavored locks the luohua governance
 // capability: importing luohua registers a "luohua" resilience backend (a real,
 // verifiable extension — a distinct luohua executor over the bundled engine),
-// selectable by spring.governance.driver=luohua. This is the observable-flavor rule: an
+// selectable by spring.resilience.driver=luohua. This is the observable-flavor rule: an
 // extension with no verifiable behavior would silently pass through and a
 // mis-wire would go unnoticed.
 func TestGovernanceDriverRegisteredAndFlavored(t *testing.T) {
@@ -45,7 +46,7 @@ func TestGovernanceDriverRegisteredAndFlavored(t *testing.T) {
 	}
 
 	ran := false
-	if err := ex.Execute(context.Background(), func(context.Context) error {
+	if err := ex.Execute(context.Background(), chain.Operation{}, func(context.Context) error {
 		ran = true
 		return nil
 	}); err != nil {

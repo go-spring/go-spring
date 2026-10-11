@@ -20,7 +20,6 @@ import (
 	"context"
 	"go-spring.org/cloud/governance"
 
-	"go-spring.org/cloud"
 	"go-spring.org/cloud/actuator/health"
 	"go-spring.org/log"
 	"go-spring.org/spring/conf"
@@ -75,16 +74,15 @@ func init() {
 // endpoint that is not up yet does not block startup.
 //
 // center is the governance center — the family's sole injection point; the ctor
-// reads the resilience and fault authorities from it and bundles them into the
-// [cloud.ClientParams] it hands the driver, which
+// hands it to the driver, which
 // passes it to [NewClient] — so the client is assembled complete in one step,
-// with the zero bundle degrading to an observed-only, loudly-unmanaged executor.
+// with the resilience manager required: the container supplies it via the
+// governance center, so a center without one fails at construction.
 func newClient(ctx *gs.ContextProvider, c Config, d Driver, center *governance.Center) (*Client, error) {
-	log.Debug(ctx.Context, log.TagAppDef, func() []log.Field {
+	log.Debug(ctx.Context, log.TagAppDef, "creating s3 client", func() []log.Field {
 		return []log.Field{
 			log.String("endpoint", c.Endpoint),
 			log.String("region", c.Region),
-			log.Msg("creating s3 client"),
 		}
 	})
 
@@ -92,8 +90,7 @@ func newClient(ctx *gs.ContextProvider, c Config, d Driver, center *governance.C
 	if d == nil {
 		d = DefaultDriver{}
 	}
-	client, err := d.CreateClient(ctx.Context, c,
-		cloud.ClientParams{Resilience: center.Resilience(), Fault: center.Fault()})
+	client, err := d.CreateClient(ctx.Context, c, center)
 	if err != nil {
 		return nil, err
 	}
@@ -109,12 +106,12 @@ func newClient(ctx *gs.ContextProvider, c Config, d Driver, center *governance.C
 	// block startup.
 	if c.Ping {
 		if err := HealthCheck(ctx.Context, client); err != nil {
-			log.Errorf(ctx.Context, log.TagAppDef, err, "s3: startup probe failed")
+			log.Error(ctx.Context, log.TagAppDef, err, "s3: startup probe failed")
 			_ = client.Destroy()
 			return nil, errutil.Explain(err, "failed to reach s3 endpoint %s", c.Endpoint)
 		}
 	}
-	log.Info(ctx.Context, log.TagAppDef, log.String("endpoint", c.Endpoint), log.Msg("init s3 client success"))
+	log.Info(ctx.Context, log.TagAppDef, "init s3 client success", log.String("endpoint", c.Endpoint))
 	return client, nil
 }
 

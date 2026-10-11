@@ -207,11 +207,10 @@ func (d *zkDiscovery) watchLoop(name string, e *serviceEntry) {
 			// snapshot and retry arming later. Reported so the stale window is
 			// visible rather than only living inside this retry loop.
 			d.obs.Synced(name, err)
-			log.Warn(ctx, starterTag,
+			log.Warn(ctx, starterTag, "discovery-zookeeper: arm watch failed (keeping stale snapshot; retrying)",
 				log.String("status", discovery.StatusOf(err)),
 				log.String("path", path),
-				log.Err(err),
-				log.Msg("discovery-zookeeper: arm watch failed (keeping stale snapshot; retrying)"))
+				log.Err(err))
 			select {
 			case <-d.done:
 				return
@@ -253,11 +252,10 @@ func (d *zkDiscovery) fetchWatches(name string, e *serviceEntry) []<-chan zk.Eve
 	children, _, err := d.conn.Children(path)
 	if err != nil {
 		d.obs.Synced(name, err)
-		log.Warn(ctx, starterTag,
+		log.Warn(ctx, starterTag, "discovery-zookeeper: list failed (keeping stale snapshot)",
 			log.String("status", discovery.StatusOf(err)),
 			log.String("path", path),
-			log.Err(err),
-			log.Msg("discovery-zookeeper: list failed (keeping stale snapshot)"))
+			log.Err(err))
 		return nil
 	}
 	vals := make(map[string][]byte, len(children))
@@ -278,11 +276,10 @@ func (d *zkDiscovery) fetchWatches(name string, e *serviceEntry) []<-chan zk.Eve
 	}
 	if readErr != nil {
 		d.obs.Synced(name, readErr)
-		log.Warn(ctx, starterTag,
+		log.Warn(ctx, starterTag, "discovery-zookeeper: refresh failed (keeping stale snapshot)",
 			log.String("status", discovery.StatusOf(readErr)),
 			log.String("path", path),
-			log.Err(readErr),
-			log.Msg("discovery-zookeeper: refresh failed (keeping stale snapshot)"))
+			log.Err(readErr))
 		// The watches already armed stay live, so the next change re-runs this.
 		return evs
 	}
@@ -327,12 +324,11 @@ func valuesToEndpoints(obs *discovery.Observer, vals map[string][]byte) []discov
 		var v instanceValue
 		if err := json.Unmarshal(data, &v); err != nil {
 			// A malformed payload is one bad discovery.Instance, not a broken snapshot.
-			log.Warn(context.Background(), starterTag,
+			log.Warn(context.Background(), starterTag, "discovery-zookeeper: skip malformed instance payload",
 				log.String("system", obs.System()),
 				log.String("center", obs.Center()),
 				log.String("node", name),
-				log.Err(err),
-				log.Msg("discovery-zookeeper: skip malformed instance payload"))
+				log.Err(err))
 			continue
 		}
 		eps = append(eps, discovery.Endpoint{

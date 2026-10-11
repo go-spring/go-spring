@@ -109,7 +109,7 @@ func runTest(d *Demo) {
 
 	// The initial mounted value is visible at startup.
 	if got := d.Message.Value(); got != "initial" {
-		log.Errorf(ctx, log.TagAppDef, errutil.Explain(nil, "got %q", got), "unexpected initial value")
+		log.Error(ctx, log.TagAppDef, errutil.Explain(nil, "got %q", got), "unexpected initial value")
 		os.Exit(1)
 	}
 	fmt.Println("initial value:", d.Message.Value())
@@ -117,7 +117,7 @@ func runTest(d *Demo) {
 	// Update the ConfigMap the way Kubernetes does (atomic ..data symlink swap).
 	want := "updated-" + time.Now().Format("150405")
 	if err := writeConfigMap("demo.message=" + want + "\n"); err != nil {
-		log.Errorf(ctx, log.TagAppDef, err, "update mount failed")
+		log.Error(ctx, log.TagAppDef, err, "update mount failed")
 		os.Exit(1)
 	}
 
@@ -134,7 +134,7 @@ func runTest(d *Demo) {
 		time.Sleep(200 * time.Millisecond)
 	}
 	err := errutil.Explain(nil, "message=%q want=%q", d.Message.Value(), want)
-	log.Errorf(ctx, log.TagAppDef, err, "hot-reload timeout")
+	log.Error(ctx, log.TagAppDef, err, "hot-reload timeout")
 	os.Exit(1)
 }
 

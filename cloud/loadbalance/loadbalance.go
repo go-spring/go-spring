@@ -30,11 +30,12 @@
 //     [Tracker] (outlier suspension) to a Balancer, so the candidate set stays
 //     fresh as instances come and go and unhealthy instances are suspended.
 //
-// A strategy is named in a selection rule and resolved against a [Directory]:
-// the built-in strategies plus whatever [Factory] beans a deployment
-// contributes. The core fixes only the [Balancer]/[Factory]/[Params] contract,
-// so a new strategy — with parameters of its own — is added entirely outside
-// this package.
+// A strategy names itself in a selection rule and is resolved out of one
+// process-wide registry ([Register]): the built-ins each register from their own
+// file's init, and a deployment adds its own the same way — the package it links
+// registers. The core fixes only the [Balancer]/[Factory]/[Params] contract, so a
+// new strategy — with parameters of its own — is added entirely outside this
+// package.
 //
 // The package has zero third-party dependencies; RPC-framework adapters (gRPC
 // balancer.Builder, kitex loadbalance.Loadbalancer, ...) live in their starters
@@ -44,17 +45,20 @@ package loadbalance
 import (
 	"context"
 	"errors"
+	"maps"
+	"slices"
+	"sync"
 
 	"go-spring.org/cloud/discovery"
+	"go-spring.org/stdlib/errutil"
 )
 
-// Names of the built-in strategies, contributed to the [Directory] by
-// [builtinFactories]. The names appear in service configs and gRPC LB config,
-// so they are stable. New built-in strategies are admitted only after a survey
-// of industry practice and a real consumer; a deployment that wants an
-// implementation variant with equivalent semantics (maglev, rendezvous hashing;
-// peak-ewma beside p2c) contributes it as its own [Factory] bean instead of
-// growing this list.
+// Names of the built-in strategies, each registered by its own file's init. The
+// names appear in service configs and gRPC LB config, so they are stable. New
+// built-in strategies are admitted only after a survey of industry practice and
+// a real consumer; a deployment that wants an implementation variant with
+// equivalent semantics (maglev, rendezvous hashing; peak-ewma beside p2c)
+// registers it under its own name instead of growing this list.
 const (
 	RoundRobin     = "round_robin"
 	LeastConn      = "least_conn"
@@ -118,19 +122,110 @@ type Balancer interface {
 }
 
 // Factory builds a fresh, independent [Balancer] for one target. It is the
-// single extension point of this package: a strategy is made available by
-// contributing a named Factory bean — the bean name IS the strategy name a
-// selection rule cites — so adding a strategy, built-in or third-party, never
-// changes this file again.
+// single extension point of this package: a strategy makes itself available by
+// calling [Register] from its own file's init — the registered name IS the
+// strategy name a selection rule cites — so adding a strategy, built-in or
+// third-party, never changes this file again.
 //
-// dir gives a composing factory (zone_aware's delegate) access to its siblings
-// by name. p carries the strategy's own parameters, flat and interpreted by the
-// strategy alone; a factory ends with [Params.Done], so a parameter aimed at
-// another strategy fails construction instead of being silently dropped.
+// p carries the strategy's own parameters, flat and interpreted by the strategy
+// alone; a factory ends with [Params.Done], so a parameter aimed at another
+// strategy fails construction instead of being silently dropped.
 //
-// A factory holds no per-target state — the directory keeps ONE instance and
-// [Factory.Build] runs per target — so anything stateful belongs on the
-// Balancer it returns, not on the factory.
-type Factory interface {
-	Build(dir Directory, p *Params) (Balancer, error)
+// A factory holds no per-target state — the registry keeps ONE value and calls
+// it per target — so anything stateful belongs on the Balancer it returns, not
+// on the factory. It is a plain function type rather than an interface with a
+// Build method: a strategy has exactly one entry point and no state, so a named
+// type per strategy would buy nothing.
+type Factory func(p *Params) (Balancer, error)
+
+// strategies is the one table of strategies a process has, keyed by the name a
+// selection rule cites. The built-ins and anything a linked package registers
+// share it, which is what lets a composing factory (zone_aware's delegate) or an
+// RPC adapter resolve a name without being handed a directory.
+var (
+	mu         sync.RWMutex
+	strategies = map[string]Factory{}
+)
+
+// Register makes f available under name. It is called from a strategy file's
+// init, so it has no error channel: an empty name, a nil factory, or a name
+// registered twice are programming errors and panic. A duplicate means two
+// packages claim one name — a collision a deployment would otherwise meet only
+// as "my rule silently routed the other way".
+func Register(name string, f Factory) {
+	switch {
+	case name == "":
+		panic(errutil.Explain(nil, "loadbalance: register with empty name"))
+	case f == nil:
+		panic(errutil.Explain(nil, "loadbalance: register nil factory for %s", name))
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if _, ok := strategies[name]; ok {
+		panic(errutil.Explain(nil, "loadbalance: strategy already registered: %s", name))
+	}
+	strategies[name] = f
+}
+
+// New builds the strategy named name. An unknown name, or a params bag the
+// strategy rejects, is an error — callers degrade it to "keep the current
+// strategy" (see [Pool]), so a bad rule never takes a client down. A nil p is
+// the empty bag, so a caller with no parameters need not wrap one.
+func New(name string, p *Params) (Balancer, error) {
+	mu.RLock()
+	f, ok := strategies[name]
+	mu.RUnlock()
+	if !ok {
+		return nil, errutil.Explain(nil, "loadbalance: no strategy registered as %q (registered: %v)", name, Names())
+	}
+	if p == nil {
+		p = NewParams(nil)
+	}
+	return f(p)
+}
+
+// Validate reports whether every strategy named by s could be built, WITHOUT
+// building any of them into a chain: each non-empty [Selection.Balancer] — the
+// default's and every rule's — goes through the same [New] a chain rebuild uses,
+// so an unregistered name and a params bag the strategy rejects are both caught
+// here rather than at the next rebuild.
+//
+// It is the check a caller runs BEFORE adopting s, so the answer cannot drift
+// from what adoption would do: same registry, same resolution path.
+//
+// An empty Balancer is not an error — it names the base strategy. Unlike the
+// per-chain degrade in [Manager.Apply] (which keeps a bad rule's resource on its
+// previous strategy), this is all-or-nothing: it answers "is the whole settings
+// consistent with what this process has registered?".
+//
+// A package-level function rather than a [Manager] method: the registry is
+// process-wide (see [Register]), so there is no per-manager directory to consult.
+// It takes no lock beyond the registry's own, so it is safe for concurrent use.
+func Validate(s Settings) error {
+	if err := validateSelection(s.Default); err != nil {
+		return err
+	}
+	for _, r := range s.Rules {
+		if err := validateSelection(r.Selection); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// validateSelection resolves one selection's strategy, discarding the instance:
+// it exists only to surface the error [New] would report.
+func validateSelection(sel Selection) error {
+	if sel.Balancer == "" {
+		return nil // the base strategy; nothing to resolve
+	}
+	_, err := New(sel.Balancer, NewParams(sel.Params))
+	return err
+}
+
+// Names lists the registered strategy names, sorted.
+func Names() []string {
+	mu.RLock()
+	defer mu.RUnlock()
+	return slices.Sorted(maps.Keys(strategies))
 }

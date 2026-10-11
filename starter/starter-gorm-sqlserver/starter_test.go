@@ -25,12 +25,26 @@ import (
 	"time"
 
 	"github.com/microsoft/go-mssqldb/msdsn"
-	"go-spring.org/cloud"
 	"go-spring.org/cloud/actuator/health"
+	"go-spring.org/cloud/fault"
+	"go-spring.org/cloud/governance"
+	"go-spring.org/cloud/resilience"
 	"go-spring.org/spring/gs"
 	"go-spring.org/starter-gorm"
 	"go-spring.org/stdlib/testing/assert"
 )
+
+// testCenter is the governance center Open requires to assemble a DB: a
+// resilience manager with no rules — enough for the pool-sizing lookup, with no
+// governance document to serve.
+func testCenter(t *testing.T) *governance.Center {
+	t.Helper()
+	ctr, err := governance.NewProcessCenter(resilience.NewManager(nil), fault.NewInjector(fault.Configs{}, nil))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return ctr
+}
 
 // No SQL Server is reachable from unit tests, so these tests pin the driver
 // assembly: the URL-style DSN (including the TLS parameter mapping), the build
@@ -119,13 +133,13 @@ func TestDSNTLSLandsOnTheDriver(t *testing.T) {
 
 func TestBuild(t *testing.T) {
 	// Neither host nor service-name: rejected up front.
-	if _, err := build(context.Background(), Config{User: "sa", Password: "p", DB: "master"}, cloud.ClientParams{}); err == nil {
+	if _, err := build(context.Background(), Config{User: "sa", Password: "p", DB: "master"}, nil); err == nil {
 		t.Fatal("build must require host or service-name")
 	}
 
 	c := Config{User: "sa", Password: "p", Host: "127.0.0.1", Port: "1", DB: "master"}
 	c.PingTimeout = 500 * time.Millisecond
-	spec, err := build(context.Background(), c, cloud.ClientParams{})
+	spec, err := build(context.Background(), c, nil)
 	assert.Error(t, err).Nil("build")
 	if spec.Dialector == nil {
 		t.Fatal("plain-host build must return a dialector")
@@ -136,7 +150,7 @@ func TestBuild(t *testing.T) {
 
 	// Port 1 on loopback is closed: the open must fail fast (dial timeout
 	// bounded by PingTimeout), returning a nil client rather than hanging.
-	client, err := gormcore.Open(spec.Dialector, spec.Pool, gormcore.Options{Engine: "microsoft.sql_server"})
+	client, err := gormcore.Open(spec.Dialector, spec.Pool, gormcore.Options{Engine: "microsoft.sql_server", Center: testCenter(t)})
 	if err == nil {
 		_ = client.Destroy()
 		t.Fatal("expected a connection error for a closed port")

@@ -108,7 +108,7 @@ func runTest() {
 	// this example installed lifts the span's trace_id/span_id off the context.
 	// Emitting a real log line proves the same ids render in the log output.
 	ctx, span := otel.Tracer("example").Start(context.Background(), "demo-request")
-	log.Infof(ctx, tag, "handling demo request")
+	log.Info(ctx, tag, "handling demo request")
 
 	fields := log.FieldsFromContext(ctx)
 	traceID := span.SpanContext().TraceID().String()

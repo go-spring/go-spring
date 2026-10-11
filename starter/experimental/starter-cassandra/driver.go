@@ -25,7 +25,7 @@ import (
 	"crypto/tls"
 
 	"github.com/gocql/gocql"
-	"go-spring.org/cloud"
+	"go-spring.org/cloud/governance"
 	"go-spring.org/stdlib/errutil"
 )
 
@@ -40,19 +40,19 @@ import (
 // — not the raw *gocql.Session, so a driver takes part in the type the rest of
 // the ecosystem sees and future wrapper capabilities are reachable from it. It
 // returns the client COMPLETE: the wrapper derives its service label from the
-// Config it is handed; params carries the container's facilities (see
-// [cloud.ClientParams]), which [NewClient] applies while building. Nothing
+// Config it is handed; center carries the container's facilities (see
+// [governance.Center]), which [NewClient] applies while building. Nothing
 // patches the client afterwards.
 //
-// params is one struct rather than a parameter per capability so this interface
+// center is one object rather than a parameter per capability so this interface
 // — which every company driver implements — stays stable as capabilities are
-// added. A driver that has no use for one of its fields simply ignores it.
+// added. A driver that has no use for one of its authorities simply ignores it.
 //
 // At most one Driver bean is expected per process; every client under
 // ${spring.cassandra} is built through it, and per-instance differences are
 // expressed through [Config].
 type Driver interface {
-	CreateClient(ctx context.Context, c Config, params cloud.ClientParams) (*Client, error)
+	CreateClient(ctx context.Context, c Config, center *governance.Center) (*Client, error)
 }
 
 // DefaultDriver is the default implementation of the Driver interface.
@@ -61,9 +61,9 @@ type DefaultDriver struct{}
 // CreateClient creates a new Cassandra client based on the provided
 // configuration. It owns full session assembly — hosts, PasswordAuthenticator,
 // consistency level, timeouts, TLS — but not the startup probe, which is the
-// starter's lifecycle concern (see newClient in starter.go). params is handed
+// starter's lifecycle concern (see newClient in starter.go). center is handed
 // straight to [NewClient], so the returned client is complete.
-func (DefaultDriver) CreateClient(ctx context.Context, c Config, params cloud.ClientParams) (*Client, error) {
+func (DefaultDriver) CreateClient(ctx context.Context, c Config, center *governance.Center) (*Client, error) {
 	consistency, err := parseConsistency(c.Consistency)
 	if err != nil {
 		return nil, err
@@ -95,7 +95,7 @@ func (DefaultDriver) CreateClient(ctx context.Context, c Config, params cloud.Cl
 	}
 	// NewClient is the only way to build a Client: identity and governance are
 	// both applied here, so the driver returns a client that is complete.
-	return NewClient(session, c, params), nil
+	return NewClient(session, c, center), nil
 }
 
 // parseConsistency maps the config string onto gocql.Consistency.

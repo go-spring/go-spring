@@ -140,7 +140,7 @@ func (e *Election) serveTerm(ctx context.Context, held Lock) {
 	defer cancel()
 
 	e.leader.Store(true)
-	log.Infof(ctx, log.TagAppDef, "election: became leader")
+	log.Info(ctx, log.TagAppDef, "election: became leader")
 
 	var wg sync.WaitGroup
 	if e.cfg.OnStartedLeading != nil {
@@ -164,14 +164,13 @@ func (e *Election) serveTerm(ctx context.Context, held Lock) {
 		e.cfg.OnStoppedLeading()
 	}
 	if lost {
-		log.Warnf(ctx, log.TagAppDef, "election: leadership lost")
+		log.Warn(ctx, log.TagAppDef, "election: leadership lost")
 	} else {
-		log.Infof(ctx, log.TagAppDef, "election: term ended")
+		log.Info(ctx, log.TagAppDef, "election: term ended")
 	}
 	if err := held.Unlock(context.WithoutCancel(ctx)); err != nil {
-		log.Warn(ctx, log.TagAppDef,
-			log.Err(err),
-			log.Msg("election: release failed"))
+		log.Warn(ctx, log.TagAppDef, "election: release failed",
+			log.Err(err))
 	}
 }
 

@@ -118,11 +118,11 @@ func (s *Server) Run(ctx context.Context, sig gs.ReadySignal) error {
 
 	ln, err := net.Listen("tcp", s.cfg.Address)
 	if err != nil {
-		log.Errorf(ctx, log.TagAppDef, err, "listen actuator failed")
+		log.Error(ctx, log.TagAppDef, err, "listen actuator failed")
 		return errutil.Explain(err, "actuator: failed to listen on %s", s.cfg.Address)
 	}
 
-	log.Infof(ctx, log.TagAppDef, "actuator listening")
+	log.Info(ctx, log.TagAppDef, "actuator listening")
 
 	s.svr = &http.Server{
 		Handler:           s.buildHandler(ctx),
@@ -139,10 +139,10 @@ func (s *Server) Run(ctx context.Context, sig gs.ReadySignal) error {
 
 	err = s.svr.Serve(ln)
 	if errutil.IsServerClosed(err) {
-		log.Infof(ctx, log.TagAppDef, "actuator server closed gracefully")
+		log.Info(ctx, log.TagAppDef, "actuator server closed gracefully")
 		return nil
 	}
-	log.Errorf(ctx, log.TagAppDef, err, "serve actuator failed")
+	log.Error(ctx, log.TagAppDef, err, "serve actuator failed")
 	return errutil.Explain(err, "actuator: failed to serve on %s", s.cfg.Address)
 }
 
@@ -178,16 +178,15 @@ func (s *Server) buildHandler(ctx context.Context) http.Handler {
 	}, s.endpoints...)
 	for _, e := range endpoints {
 		mux.Handle(e.Pattern, e.Handler)
-		log.Debug(ctx, log.TagAppDef, func() []log.Field {
-			return []log.Field{log.String("endpoint", e.Pattern), log.Msg("registered endpoint")}
+		log.Debug(ctx, log.TagAppDef, "registered endpoint", func() []log.Field {
+			return []log.Field{log.String("endpoint", e.Pattern)}
 		})
 	}
 
 	guard := security.Guard{Token: s.cfg.Token, Username: s.cfg.Username, Password: s.cfg.Password}
 	if !guard.Enabled() && !netutil.IsLoopback(s.cfg.Address) {
-		log.Warn(ctx, log.TagAppDef,
-			log.String("addr", s.cfg.Address),
-			log.Msg("actuator listening without authentication; set ${spring.actuator.token} or ${spring.actuator.username}/${spring.actuator.password}"))
+		log.Warn(ctx, log.TagAppDef, "actuator listening without authentication; set ${spring.actuator.token} or ${spring.actuator.username}/${spring.actuator.password}",
+			log.String("addr", s.cfg.Address))
 	}
 	return guard.Wrap(mux)
 }
@@ -198,7 +197,7 @@ func (s *Server) Stop(ctx context.Context) error {
 	if s.svr == nil {
 		return nil
 	}
-	log.Infof(ctx, log.TagAppDef, "stopping actuator server")
+	log.Info(ctx, log.TagAppDef, "stopping actuator server")
 	return s.svr.Shutdown(ctx)
 }
 

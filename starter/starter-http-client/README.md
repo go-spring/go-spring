@@ -80,7 +80,7 @@ spring.http-client.instances.discovered.discovery=static
 # spring.governance.* in the governance rules document (cloud/governance;
 # conf/governance.properties referenced by spring.governance.source.file.path). Breaker trips
 # after 2 consecutive failures:
-#   spring.governance.enabled=true
+#   spring.resilience.driver=default
 #   spring.governance.client.default.error-threshold=2
 #   spring.governance.client.default.open-duration=30s
 ```

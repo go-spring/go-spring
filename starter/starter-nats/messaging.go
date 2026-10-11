@@ -42,14 +42,9 @@ import (
 // emitter: the driver is returned bare, not wrapped in messaging.Observe. All
 // tracing is a no-op without starter-otel.
 //
-// prop is the load-test convention the driver carries: publish stamps the
-// marker onto the NATS message header and consume reads it back. A nil
-// propagator falls back to [traffic.NewDefaultPropagator].
+// prop is the load-test convention the driver carries (required): publish
+// stamps the marker onto the NATS message header and consume reads it back.
 func NewDriver(conn *Conn, prop traffic.Propagator) messaging.Driver {
-	if prop == nil {
-		// DefaultBinding is complete, so this cannot fail.
-		prop, _ = traffic.NewDefaultPropagator(traffic.DefaultBinding())
-	}
 	return &driver{conn: conn, prop: prop}
 }
 

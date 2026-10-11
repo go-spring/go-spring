@@ -17,7 +17,6 @@
 package StarterMilvus
 
 import (
-	"go-spring.org/cloud"
 	"go-spring.org/cloud/actuator/health"
 	"go-spring.org/cloud/governance"
 	"go-spring.org/spring/conf"
@@ -65,16 +64,16 @@ func init() {
 // returns.
 //
 // center is the governance center the container injects — the family's sole
-// injection point; the ctor reads the resilience and fault authorities from it
-// and bundles them into the [cloud.ClientParams] it hands [NewClient], so the client is
-// assembled complete in one step, with the zero bundle degrading to an
-// observed-only, loudly-unmanaged executor.
+// injection point; the ctor hands it to [NewClient], so the client is
+// assembled complete in one step, with the resilience manager required: the
+// container supplies it via the governance center, so a center without one
+// fails at construction.
 //
 // cp carries the application context gs injects into a constructor (a bare
 // context.Context is not an injectable bean).
 func newClient(cp *gs.ContextProvider, c Config, center *governance.Center) (*Client, error) {
 	ctx := cp.Context
-	w, err := NewClient(ctx, c, cloud.ClientParams{Resilience: center.Resilience(), Fault: center.Fault()})
+	w, err := NewClient(ctx, c, center)
 	if err != nil {
 		return nil, err
 	}

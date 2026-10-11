@@ -15,27 +15,27 @@
  */
 
 // Package gormobservability is the GORM instrumentation plugin shared by the
-// go-spring gorm starters. It DECLARES what one Create/Query/Update/Delete
+// go-spring gorm starters. It BUILDS what one Create/Query/Update/Delete
 // operation IS — its name, its db.system/db.operation labels, its SQL statement
-// and its access tag — on the call's context via [observability.WithOperation];
-// it emits nothing itself.
+// and its access tag — as a [chain.Operation]; it emits nothing itself.
 //
 //	db.Use(gormobserve.NewPlugin("mysql"))
 //
 // The signals — the call span, the call- and attempt-level duration histograms,
 // the in-flight gauge and the one access log — are emitted by the resilience
 // layer, the one place on the executor chain that sees a whole call (retries
-// included); see cloud/resilience/observe.go. Declaring rather than
-// emitting is what the plugin alone can do: only it knows these calls reach a
-// database through gorm, and only it knows the operation's kind.
+// included); see cloud/resilience/observe.go. The identity now travels as an
+// explicit argument to the executor rather than on the call's context: the
+// resilience callback that wraps each gorm processor asks this plugin for the
+// operation ([Plugin.Operation]) and passes it to resilience.Run. Building
+// rather than emitting is what the plugin alone can do: only it knows these
+// calls reach a database through gorm, and only it knows the operation's kind.
 package gormobservability
 
 import (
-	"context"
-
-	"go-spring.org/cloud/observability"
 	"go-spring.org/stdlib/strutil"
 
+	"go-spring.org/cloud/chain"
 	"go-spring.org/log"
 	"go.opentelemetry.io/otel/attribute"
 	"gorm.io/gorm"
@@ -60,8 +60,8 @@ const maxStatement = 512
 // reaches the span and the log — where the statement is exactly what makes a
 // line worth reading — and never a label. A statement-less operation carries no
 // detail at all, which is also what levels its success log at Info.
-func operation(system, kind, stmt string) observability.Operation {
-	o := observability.Operation{
+func operation(system, kind, stmt string) chain.Operation {
+	o := chain.Operation{
 		Name:   kind,
 		Metric: "db.client",
 		Attrs: []attribute.KeyValue{
@@ -78,38 +78,40 @@ func operation(system, kind, stmt string) observability.Operation {
 	return o
 }
 
-// observePlugin is a gorm Plugin that declares every Create/Query/Update/Delete
-// as an operation. It runs at the gorm:<op> anchor's Before position, which is
-// the last point before the resilience layer (which wraps that same processor)
-// takes over — so the declaration is what the emitter below reads.
+// Plugin is a gorm Plugin that supplies the identity of every
+// Create/Query/Update/Delete operation. It captures the dialect's own
+// per-operation processors in [Plugin.Initialize], before the resilience layer
+// replaces the gorm:<op> anchors — so [Plugin.Operation] can dry-run the real
+// SQL builder to learn the SQL an operation is about to build.
 //
-// Only the four data processors are declared; gorm's noisy internal callbacks
-// (row processing, transaction bookkeeping) are not operations here, so no
-// op-skip list is needed.
-type observePlugin struct {
+// Only the four data processors are supplied; gorm's noisy internal callbacks
+// (row processing, transaction bookkeeping) are not operations here, so
+// [Plugin.Operation] returns the zero Operation for them and the resilience
+// layer reports them as any other undeclared call.
+type Plugin struct {
 	system string
 
 	// orig holds the dialect's own per-operation processor, captured in
-	// [observePlugin.Initialize] before anything replaces it — the resilience
-	// callbacks do, and after that the anchor named gorm:<op> is the wrapper,
-	// not the SQL builder. [observePlugin.statement] dry-runs it to learn the SQL
-	// the operation is about to build.
+	// [Plugin.Initialize] before anything replaces it — the resilience callbacks
+	// do, and after that the anchor named gorm:<op> is the wrapper, not the SQL
+	// builder. [Plugin.Operation] dry-runs it to learn the SQL the operation is
+	// about to build.
 	orig map[string]func(*gorm.DB)
 }
 
-// NewPlugin builds a gorm.Plugin that declares every operation's identity under
-// the given db.system label (e.g. "mysql", "postgresql", "clickhouse",
+// NewPlugin builds a [Plugin] that supplies every operation's identity under the
+// given db.system label (e.g. "mysql", "postgresql", "clickhouse",
 // "microsoft.sql_server"). The signals themselves are emitted by the resilience
-// layer from the declared operation.
-func NewPlugin(system string) gorm.Plugin {
-	return &observePlugin{system: system}
+// layer from the supplied operation.
+func NewPlugin(system string) *Plugin {
+	return &Plugin{system: system}
 }
 
-func (p *observePlugin) Name() string { return "go-spring:observe" }
+func (p *Plugin) Name() string { return "go-spring:observe" }
 
-func (p *observePlugin) Initialize(db *gorm.DB) error {
+func (p *Plugin) Initialize(db *gorm.DB) error {
 	// Capture the dialect's own processors here, before the resilience callbacks
-	// replace the gorm:<op> anchors: the SQL the plugin declares is the one the
+	// replace the gorm:<op> anchors: the SQL the plugin supplies is the one the
 	// real run then reuses, built by exactly this function.
 	p.orig = map[string]func(*gorm.DB){
 		"create": db.Callback().Create().Get("gorm:create"),
@@ -117,61 +119,30 @@ func (p *observePlugin) Initialize(db *gorm.DB) error {
 		"update": db.Callback().Update().Get("gorm:update"),
 		"delete": db.Callback().Delete().Get("gorm:delete"),
 	}
-
-	ops := []struct {
-		kind string
-		reg  func(fn func(*gorm.DB)) error
-	}{
-		{"create", func(fn func(*gorm.DB)) error {
-			return db.Callback().Create().Before("gorm:create").Register("go-spring:observe:declare_create", fn)
-		}},
-		{"query", func(fn func(*gorm.DB)) error {
-			return db.Callback().Query().Before("gorm:query").Register("go-spring:observe:declare_query", fn)
-		}},
-		{"update", func(fn func(*gorm.DB)) error {
-			return db.Callback().Update().Before("gorm:update").Register("go-spring:observe:declare_update", fn)
-		}},
-		{"delete", func(fn func(*gorm.DB)) error {
-			return db.Callback().Delete().Before("gorm:delete").Register("go-spring:observe:declare_delete", fn)
-		}},
-	}
-	for _, op := range ops {
-		kind := op.kind
-		before := func(tx *gorm.DB) { p.declare(tx, kind) }
-		if err := op.reg(before); err != nil {
-			return err
-		}
-	}
 	return nil
 }
 
-// declare puts the operation's identity on the call's context, where the
-// resilience layer wrapping the gorm:<op> processor below reads it back to emit
-// the call's span, metrics and access log.
-func (p *observePlugin) declare(tx *gorm.DB, kind string) {
-	if tx.Statement == nil {
-		return
+// Operation returns the semantic identity of the gorm operation kind is about to
+// run, for the resilience layer to pass explicitly to the executor. It returns
+// the zero [chain.Operation] for a kind this plugin does not supply (gorm:row,
+// gorm:raw), so the resilience layer reports those as any other call whose
+// identity is undeclared.
+//
+// The SQL the operation is about to build is not known yet — gorm builds it
+// inside the very processor the resilience layer wraps — so the plugin dry-runs
+// the dialect's own processor on a session that shares this statement. The build
+// runs, the dry-run stops before touching the driver, and the real run then
+// finds the SQL already built and reuses it — so the statement is built exactly
+// once, by gorm's own code, not by a copy of it. An unknown processor yields no
+// statement, and the operation is built without detail.
+func (p *Plugin) Operation(tx *gorm.DB, kind string) chain.Operation {
+	if tx == nil || tx.Statement == nil {
+		return chain.Operation{}
 	}
-	ctx := tx.Statement.Context
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	tx.Statement.Context = observability.WithOperation(ctx, operation(p.system, kind, p.statement(tx, kind)))
-}
-
-// statement returns the SQL the operation is about to build, without executing
-// it. gorm builds the SQL inside the very processor the resilience layer wraps,
-// so it is not known yet at this point; the plugin dry-runs the dialect's own
-// processor on a session that shares this statement. The build runs, the
-// dry-run stops before touching the driver, and the real run below then finds
-// the SQL already built and reuses it — so the statement is built exactly once,
-// by gorm's own code, not by a copy of it. An unknown processor yields no
-// statement, and the operation is declared without detail.
-func (p *observePlugin) statement(tx *gorm.DB, kind string) string {
 	orig := p.orig[kind]
 	if orig == nil {
-		return ""
+		return chain.Operation{}
 	}
 	orig(tx.Session(&gorm.Session{DryRun: true}))
-	return tx.Statement.SQL.String()
+	return operation(p.system, kind, tx.Statement.SQL.String())
 }

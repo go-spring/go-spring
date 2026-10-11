@@ -120,8 +120,8 @@ type SimpleTrpcServer struct {
 	// imported); its fault authority backs the always-registered "fault"
 	// server filter.
 	center *governance.Center
-	// prop is the application's load-test convention bean (nil-normalized to
-	// go-spring's default); the "loadtest" server filter reads the inbound marker
+	// prop is the load-test convention bean — the application.s when it provides
+	// one, go-spring.s default otherwise — the "loadtest" server filter reads the inbound marker
 	// through it.
 	prop traffic.Propagator
 	svr  *server.Server
@@ -131,21 +131,16 @@ type SimpleTrpcServer struct {
 // NewSimpleTrpcServer creates a SimpleTrpcServer from ${spring.trpc.server}
 // config and the registered ServiceRegister bean. center is the governance
 // center bean, captured here and its fault authority reused by the "fault"
-// server filter (nil when governance is not imported). prop is the application's
-// load-test convention bean, handed to the "loadtest" server filter (nil means
-// go-spring's default).
+// server filter (nil when governance is not imported). prop is the load-test
+// convention bean — the application.s when it provides one, go-spring.s default
+// otherwise — handed to the "loadtest" server filter.
 func NewSimpleTrpcServer(cfg Config, reg ServiceRegister, center *governance.Center, prop traffic.Propagator) *SimpleTrpcServer {
-	if prop == nil {
-		// DefaultBinding is complete, so this cannot fail.
-		prop, _ = traffic.NewDefaultPropagator(traffic.DefaultBinding())
-	}
-	log.Debug(context.Background(), log.TagAppDef, func() []log.Field {
+	log.Debug(context.Background(), log.TagAppDef, "create trpc server success", func() []log.Field {
 		return []log.Field{
 			log.String("addr", cfg.Addr),
 			log.String("service", cfg.ServiceName),
 			log.String("network", cfg.Network),
 			log.String("protocol", cfg.Protocol),
-			log.Msg("create trpc server success"),
 		}
 	})
 	return &SimpleTrpcServer{cfg: cfg, reg: reg, center: center, prop: prop, done: make(chan struct{})}
@@ -212,7 +207,7 @@ func (s *SimpleTrpcServer) Run(ctx context.Context, sig gs.ReadySignal) error {
 
 	<-sig.TriggerAndWait()
 
-	log.Infof(ctx, log.TagAppDef, "trpc server starting")
+	log.Info(ctx, log.TagAppDef, "trpc server starting")
 	errCh := make(chan error, 1)
 	go func() {
 		// Serve binds the listener and blocks until Close/ a signal.
@@ -222,7 +217,7 @@ func (s *SimpleTrpcServer) Run(ctx context.Context, sig gs.ReadySignal) error {
 	select {
 	case err = <-errCh:
 		if err != nil {
-			log.Errorf(ctx, log.TagAppDef, err, "trpc server failed")
+			log.Error(ctx, log.TagAppDef, err, "trpc server failed")
 		}
 		return errutil.Explain(err, "failed to serve on %s", s.cfg.Addr)
 	case <-s.done:
@@ -234,9 +229,8 @@ func (s *SimpleTrpcServer) Run(ctx context.Context, sig gs.ReadySignal) error {
 // signals Run to return so Go-Spring can complete shutdown. tRPC's Close takes
 // no context, so ctx only tags the shutdown log.
 func (s *SimpleTrpcServer) Stop(ctx context.Context) error {
-	log.Info(ctx, log.TagAppDef,
-		log.String("addr", s.cfg.Addr),
-		log.Msg("trpc server shutting down"))
+	log.Info(ctx, log.TagAppDef, "trpc server shutting down",
+		log.String("addr", s.cfg.Addr))
 	if s.svr != nil {
 		_ = s.svr.Close(nil)
 	}

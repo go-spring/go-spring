@@ -64,6 +64,7 @@ func init() {
 	// reads its resilience authority and its ready signal from here.
 	gs.Provide(newDyncPoller,
 		gs.IndexArg(0, gs.TagArg("${spring.dubbo.application}")),
+		gs.IndexArg(1, gs.TagArg("${spring.dubbo.consumer}")),
 	).Init((*dyncPoller).Init).Export(gs.As[gs.Rooter]()).Caller(1)
 }
 

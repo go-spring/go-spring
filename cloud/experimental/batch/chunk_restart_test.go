@@ -21,8 +21,8 @@ import (
 	"sync"
 	"testing"
 
+	"go-spring.org/cloud/chain"
 	"go-spring.org/cloud/experimental/batch"
-	"go-spring.org/cloud/resilience"
 	"go-spring.org/stdlib/errutil"
 	"go-spring.org/stdlib/testing/assert"
 )
@@ -130,7 +130,7 @@ func TestChunkStep_RetryReplaysBufferWithoutRereading(t *testing.T) {
 			return nil
 		}),
 		ChunkSize: 5,
-		Retry:     resilience.ClientPolicy{MaxRetries: 3},
+		Retry:     chain.RetryPolicy{MaxRetries: 3},
 	}
 
 	je, err := (&batch.Job{Name: "replay", Steps: []batch.Step{step}}).Run(ctx, repo, nil)

@@ -51,7 +51,7 @@ type GatewayServer struct {
 }
 
 func newGatewayServer(tbl *RouteTable) *GatewayServer {
-	log.Debugf(context.Background(), log.TagAppDef, "create gateway server success")
+	log.Debug(context.Background(), log.TagAppDef, "create gateway server success", nil)
 	return &GatewayServer{tbl: tbl}
 }
 
@@ -102,9 +102,9 @@ func (s *GatewayServer) Run(ctx context.Context, sig gs.ReadySignal) error {
 	}
 
 	<-sig.TriggerAndWait()
-	log.Infof(ctx, log.TagAppDef, "gateway: serving")
+	log.Info(ctx, log.TagAppDef, "gateway: serving")
 	if err = s.svr.Serve(listener); err != nil && !errutil.IsServerClosed(err) {
-		log.Errorf(ctx, log.TagAppDef, err, "gateway: serve failed")
+		log.Error(ctx, log.TagAppDef, err, "gateway: serve failed")
 		return errutil.Explain(err, "gateway: failed to serve on %s", s.Cfg.Addr)
 	}
 	return nil
@@ -114,8 +114,7 @@ func (s *GatewayServer) Run(ctx context.Context, sig gs.ReadySignal) error {
 // finish; ctx is propagated into http.Server.Shutdown so the drain rides the
 // shutdown context.
 func (s *GatewayServer) Stop(ctx context.Context) error {
-	log.Info(ctx, log.TagAppDef,
-		log.String("addr", s.Cfg.Addr),
-		log.Msg("gateway: shutting down"))
+	log.Info(ctx, log.TagAppDef, "gateway: shutting down",
+		log.String("addr", s.Cfg.Addr))
 	return s.svr.Shutdown(ctx)
 }

@@ -149,8 +149,8 @@ type Service struct {
 `primitive.NsResolver`）。它是可选的容器 bean：`spring.rocketmq.instances.*` 下每个
 客户端都经它构建，仅当没有 `Driver` bean 时才回退到内置 `DefaultDriver`。
 内嵌 `StarterRocketmq.DefaultDriver` 并委托 `CreateClient` 以保留默认装配。
-`CreateClient` 接收容器的 `cloud.ClientParams` bundle（见
-`go-spring.org/cloud`）并原样传递，因此客户端在一步内装配完整——
+`CreateClient` 接收容器注入的 `*governance.Center`（见
+`go-spring.org/cloud/governance`）并原样传递，因此客户端在一步内装配完整——
 身份与 executor 同时就位；照原样委托即可让治理继续生效：
 
 ```go
@@ -165,8 +165,8 @@ type myDriver struct {
 }
 
 func (d myDriver) CreateClient(ctx context.Context, c StarterRocketmq.Config,
-    params cloud.ClientParams) (*StarterRocketmq.Client, error) {
-    return d.DefaultDriver.CreateClient(ctx, c, params)
+    center *governance.Center) (*StarterRocketmq.Client, error) {
+    return d.DefaultDriver.CreateClient(ctx, c, center)
 }
 ```
 

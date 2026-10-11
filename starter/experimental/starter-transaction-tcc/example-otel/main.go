@@ -184,15 +184,15 @@ func runTest(s *OrderService) {
 	// reserved amounts are finalized: available drops, nothing stays frozen.
 	res, err := s.place(ctx, "order-commit", 3, 60)
 	if err != nil || res.Status != tcc.StatusCommitted {
-		log.Errorf(ctx, log.TagAppDef, err, "commit path: status=%s err", res.Status)
+		log.Error(ctx, log.TagAppDef, err, "commit path: status", log.Any("status", res.Status))
 		os.Exit(1)
 	}
 	if a, f := s.stock.snapshot(); a != 7 || f != 0 {
-		log.Errorf(ctx, log.TagAppDef, fmt.Errorf("commit path stock: available=%d frozen=%d, want 7/0", a, f), "commit path stock: available=%d frozen=%d, want 7/0", a, f)
+		log.Error(ctx, log.TagAppDef, fmt.Errorf("commit path stock: available=%d frozen=%d, want 7/0", a, f), "commit path stock: available", log.Int("a", a), log.Int("f", f))
 		os.Exit(1)
 	}
 	if a, f := s.balance.snapshot(); a != 40 || f != 0 {
-		log.Errorf(ctx, log.TagAppDef, fmt.Errorf("commit path balance: available=%d frozen=%d, want 40/0", a, f), "commit path balance: available=%d frozen=%d, want 40/0", a, f)
+		log.Error(ctx, log.TagAppDef, fmt.Errorf("commit path balance: available=%d frozen=%d, want 40/0", a, f), "commit path balance: available", log.Int("a", a), log.Int("f", f))
 		os.Exit(1)
 	}
 	fmt.Println("commit path OK:", res.Status)
@@ -202,15 +202,15 @@ func runTest(s *OrderService) {
 	// stock reservation. Both ledgers must be exactly as they were after path 1.
 	res, err = s.place(ctx, "order-rollback", 2, 999)
 	if err == nil || res.Status != tcc.StatusCancelled {
-		log.Errorf(ctx, log.TagAppDef, err, "rollback path: status=%s err=%v (want Cancelled + error)", res.Status, err)
+		log.Error(ctx, log.TagAppDef, err, "rollback path: status", log.Any("status", res.Status), log.Any("err", err))
 		os.Exit(1)
 	}
 	if a, f := s.stock.snapshot(); a != 7 || f != 0 {
-		log.Errorf(ctx, log.TagAppDef, fmt.Errorf("rollback path stock: available=%d frozen=%d, want 7/0 (reservation released)", a, f), "rollback path stock: available=%d frozen=%d, want 7/0 (reservation released)", a, f)
+		log.Error(ctx, log.TagAppDef, fmt.Errorf("rollback path stock: available=%d frozen=%d, want 7/0 (reservation released)", a, f), "rollback path stock: available", log.Int("a", a), log.Int("f", f))
 		os.Exit(1)
 	}
 	if a, f := s.balance.snapshot(); a != 40 || f != 0 {
-		log.Errorf(ctx, log.TagAppDef, fmt.Errorf("rollback path balance: available=%d frozen=%d, want 40/0", a, f), "rollback path balance: available=%d frozen=%d, want 40/0", a, f)
+		log.Error(ctx, log.TagAppDef, fmt.Errorf("rollback path balance: available=%d frozen=%d, want 40/0", a, f), "rollback path balance: available", log.Int("a", a), log.Int("f", f))
 		os.Exit(1)
 	}
 	fmt.Println("rollback path OK:", res.Status, "-", res.Errors[0].Error())

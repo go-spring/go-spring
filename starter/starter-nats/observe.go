@@ -32,9 +32,9 @@ import (
 	"context"
 	"sync"
 
-	"go-spring.org/cloud/observability"
 	"go-spring.org/stdlib/strutil"
 
+	"go-spring.org/cloud/chain"
 	"go-spring.org/log"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -91,8 +91,8 @@ func spanKind(direction string) trace.SpanKind {
 	return trace.SpanKindProducer
 }
 
-func operation(direction, subject string) observability.Operation {
-	op := observability.Operation{
+func operation(direction, subject string) chain.Operation {
+	op := chain.Operation{
 		Name:   direction,
 		Metric: "messaging.client",
 		Attrs: []attribute.KeyValue{
@@ -105,8 +105,9 @@ func operation(direction, subject string) observability.Operation {
 		SpanKind: spanKind(direction),
 		// Publishing and handling both repeat a side effect when retried — a second
 		// message delivered, or a second run of the handler — so the executor chain must
-		// not retry this operation whatever retry a governance rule asks for.
-		NonIdempotent: true,
+		// not retry this operation whatever retry a governance rule asks for. This is
+		// declared at the Observe call site (see command.go) via the chain.Operation
+		// passed explicitly to the observer.
 	}
 	if subject != "" {
 		op.Detail = []attribute.KeyValue{

@@ -99,7 +99,7 @@ func main() { gs.Run() }
 ```properties
 # The governance rules live in their OWN etcd key, watched by
 # starter-governance-etcd — nothing under spring.governance.* rides app.properties.
-spring.governance.source.etcd.endpoint=127.0.0.1:2379
+spring.governance.source.etcd.endpoints=127.0.0.1:2379
 spring.governance.source.etcd.key=/app/governance.yaml
 ```
 
@@ -108,10 +108,9 @@ spring.governance.source.etcd.key=/app/governance.yaml
 ```yaml
 spring:
   governance:
-    enabled: true
+    driver: default
     client:
       default:
-        enabled: true
         attempt-timeout: 100ms
 ```
 
@@ -121,7 +120,7 @@ spring:
 docker compose up -d
 ETCDCTL_API=3 etcdctl put /app/governance.yaml "$(cat governance.yaml)"   # seed BEFORE the app starts
 go run .
-ETCDCTL_API=3 etcdctl put /app/governance.yaml 'govern: {enabled: true, default: {enabled: true, attempt-timeout: 300ms}}'
+ETCDCTL_API=3 etcdctl put /app/governance.yaml 'govern: {default: {attempt-timeout: 300ms}}'
 # no restart: the source pushes the new document and PolicyFor flips to 300ms
 ```
 
@@ -197,7 +196,9 @@ any config-import bootstrap client — see the boundary note in [README.md](READ
 
 A **DELETE** on the key is not a PUT, so it is ignored and the last good snapshot stays in effect —
 deleting the document is not how governance is turned off. Turning it off is
-`spring.governance.enabled=false`, a key that IS present.
+publishing a document that configures nothing — empty `client`/`server`, a zero
+`Default`, no rules — yet still carries one `spring.governance.*` key, e.g.
+`spring.resilience.driver=default`.
 
 ### 2.4 Log tag
 
@@ -231,7 +232,7 @@ a non-properties document therefore needs an explicit `format`.
 
 The document itself is parsed by `governance.Parse`, which requires **at least one `spring.governance.*` key** — a
 document that parses but carries none (truncated, or emptied) is an error, not "no governance".
-The rules keys (`spring.governance.enabled`, `spring.governance.client.default.*`, `spring.governance.client.rules[n].*`, `spring.governance.client.fault.*`) are
+The rules keys (`spring.governance.client.default.*`, `spring.governance.client.rules[n].*`, `spring.governance.client.fault.*`) are
 documented in [`cloud/governance`'s SOURCE_USAGE](../../cloud/governance/SOURCE_USAGE.md); they are identical across
 backends.
 
@@ -255,7 +256,7 @@ The key must exist before the app starts — the source's construction does an i
 
 ```bash
 go run . &
-etcdctl put /app/governance.yaml 'govern: {enabled: true, default: {enabled: true, attempt-timeout: 300ms}}'
+etcdctl put /app/governance.yaml 'govern: {default: {attempt-timeout: 300ms}}'
 ```
 
 No restart; the injected resilience authority's `PolicyFor("...")` flips to the new timeout on the
@@ -285,7 +286,8 @@ only advances on a successful parse.
 
 `etcdctl del /app/governance.yaml` fires a DELETE event, which the source ignores (only PUT is
 applied). Governance keeps the last good rules, with no log. To disable governance, publish a
-document with `spring.governance.enabled=false`.
+document that configures nothing (empty `client`/`server`, zero `Default`, no rules) yet still
+carries one `spring.governance.*` key, e.g. `spring.resilience.driver=default`.
 
 ### 4.6 Smoke test
 
@@ -303,12 +305,12 @@ compose is unavailable.
 
 | Symptom | Likely cause | Fix |
 |---------|--------------|-----|
-| Governance stays off (`enabled=false`) despite the key changing | no governance center linked → no center bean, the Source is never collected | Link `cloud/governance` (any governance source starter does it). |
+| Governance stays off (no policy takes effect) despite the key changing | no governance center linked → no center bean, the Source is never collected | Link `cloud/governance` (any governance source starter does it). |
 | Startup fails `key <key> is empty` | Required key not present before boot | Seed the key before starting. |
 | Startup fails `get <key> failed` | etcd unreachable, wrong port, or auth required but no `username`/`password` | Check endpoint and credentials. |
 | Startup fails on an empty `endpoint`/`key` | `spring.governance.source.etcd.*` partially configured (`OnProperty` fired on any sub-key) | Provide both required keys, or remove the whole prefix. |
 | Rules don't change after a `put` | (a) value byte-identical or DeepEqual to current; (b) value unparseable / carries no `spring.governance.*` key (Error log, last good kept); (c) another source already bound the single center slot | Check the `_app_governance_etcd` lines; configure exactly one source. |
-| Governance keeps old rules after deleting the key | DELETE is not a PUT and is ignored by design | Re-PUT a document; to disable use `spring.governance.enabled=false`. |
+| Governance keeps old rules after deleting the key | DELETE is not a PUT and is ignored by design | Re-PUT a document; to disable, publish one that configures nothing (still carrying a `spring.governance.*` key). |
 | Parse error on a key with no extension | format inference defaulted to `properties` | Set `spring.governance.source.etcd.format`. |
 
 ---

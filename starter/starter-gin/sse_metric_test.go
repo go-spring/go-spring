@@ -25,7 +25,10 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"go-spring.org/cloud/fault"
 	"go-spring.org/cloud/governance"
+	"go-spring.org/cloud/loadbalance"
+	"go-spring.org/cloud/resilience"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
@@ -419,7 +422,12 @@ func writeSSE(c *gin.Context, n int, flush bool) {
 // testCenter builds the governance center bean the middleware chain takes, so a
 // container-less test still exercises the real injection path.
 func testCenter() *governance.Center {
-	return governance.NewCenter(governance.Config{}, nil, nil, nil, nil, nil)
+	ctr, err := governance.NewCenter(resilience.NewManager(nil),
+		loadbalance.NewManager(), fault.NewInjector(fault.Configs{}, nil), nil, governance.NewPushSource(governance.Config{}))
+	if err != nil {
+		panic(err)
+	}
+	return ctr
 }
 
 func TestSSEHandlerRunsOnce(t *testing.T) {

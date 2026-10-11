@@ -242,7 +242,7 @@ func (c *vaultCtrl) clientFor(ctx context.Context, cs configSource) (vaultClient
 	if cs.namespace != "" {
 		cli.SetNamespace(cs.namespace)
 	}
-	log.Infof(ctx, starterTag, "create vault client success")
+	log.Info(ctx, starterTag, "create vault client success")
 	v := realVault{cli}
 	c.clients[key] = v
 	return v, nil
@@ -254,9 +254,8 @@ func (c *vaultCtrl) clientFor(ctx context.Context, cs configSource) (vaultClient
 func (c *vaultCtrl) Load(ctx context.Context, optional bool, source string) (map[string]string, error) {
 	cs, err := parseSource(source)
 	if err != nil {
-		log.Error(ctx, starterTag, err,
-			log.String("source", redactSource(source)),
-			log.Msg("parse vault source failed"))
+		log.Error(ctx, starterTag, err, "parse vault source failed",
+			log.String("source", redactSource(source)))
 		return nil, err
 	}
 
@@ -271,11 +270,11 @@ func (c *vaultCtrl) Load(ctx context.Context, optional bool, source string) (map
 		log.String("key", cs.key),
 		log.String("path", cs.path))
 
-	log.Debugf(ctx, starterTag, "loading vault config")
+	log.Debug(ctx, starterTag, "loading vault config", nil)
 
 	cli, err := c.clientFor(ctx, cs)
 	if err != nil {
-		log.Errorf(ctx, starterTag, err, "create vault client failed")
+		log.Error(ctx, starterTag, err, "create vault client failed")
 		return nil, err
 	}
 
@@ -290,9 +289,8 @@ func (c *vaultCtrl) loadFromClient(ctx context.Context, cli vaultClient, cs conf
 	data, err := c.readSecret(ctx, cli, cs)
 	if err != nil {
 		if optional {
-			log.Warn(ctx, starterTag,
-				log.Err(err),
-				log.Msg("skip optional config read secret failed"))
+			log.Warn(ctx, starterTag, "skip optional config read secret failed",
+				log.Err(err))
 			return nil, nil
 		}
 		return nil, err
@@ -302,11 +300,11 @@ func (c *vaultCtrl) loadFromClient(ctx context.Context, cli vaultClient, cs conf
 
 	if data == nil {
 		if optional {
-			log.Warnf(ctx, starterTag, "skip optional config secret not found")
+			log.Warn(ctx, starterTag, "skip optional config secret not found")
 			return nil, nil
 		}
 		err := errutil.Explain(nil, "vault secret %s/%s not found", cs.mount, cs.path)
-		log.Errorf(ctx, starterTag, err, "vault secret not found")
+		log.Error(ctx, starterTag, err, "vault secret not found")
 		return nil, err
 	}
 
@@ -314,7 +312,7 @@ func (c *vaultCtrl) loadFromClient(ctx context.Context, cli vaultClient, cs conf
 	if err != nil {
 		return nil, err
 	}
-	log.Infof(ctx, starterTag, "load vault config success")
+	log.Info(ctx, starterTag, "load vault config success")
 	return props, nil
 }
 

@@ -19,12 +19,11 @@ package resilience
 import (
 	"context"
 	"go-spring.org/cloud/chain"
-	"go-spring.org/cloud/observability"
 	"sync"
 )
 
-// clientSide is the manager's outbound half: the resolver the governance center
-// supplies, the registry of executors this process built for its own calls, and
+// clientSide is the manager's outbound half: the settings the governance center
+// pushes, the registry of executors this process built for its own calls, and
 // the subscriber table for callers that follow the policy without owning an
 // executor.
 //
@@ -35,10 +34,11 @@ import (
 // They are two types, not one type used twice, because their models are
 // different types — nothing is expressed in terms of the other.
 type clientSide struct {
-	// resolve maps a label to the policy it runs under, or nil when this side is
-	// unarmed (a disabled center), in which case every label falls to the
-	// pass-through. Replaced wholesale by [Manager.Apply].
-	resolve func(label string) ClientPolicy
+	// settings is the outbound half last pushed by [Manager.Apply], held whole —
+	// the side stores what it was handed, it does not take it apart. Its zero value
+	// is the pass-through: the state before any Apply, and after a
+	// [Manager.Close]. Replaced wholesale, never merged.
+	settings ClientSettings
 
 	// subs is the per-label subscriber table (see [Manager.Subscribe]). A label
 	// with no subscriber leaves no entry, so a repeatedly-rebuilt client leaves no
@@ -74,26 +74,32 @@ type clientEntry struct {
 	policy ClientPolicy
 }
 
-// policyLocked returns the policy label resolves to right now, or the zero policy
-// on an unarmed side. Callers hold the manager lock; the hot path does not come
-// here.
+// policyLocked returns the policy label resolves to right now: the first Rule
+// whose Service equals the label, else the default. Callers hold the manager
+// lock; the hot path does not come here.
+//
+// The match is plain equality — an empty Service matches nothing, deliberately:
+// a rule list must not govern every service by accident (Default is how a
+// document says "everything else").
 func (s *clientSide) policyLocked(label string) ClientPolicy {
-	if s.resolve == nil {
-		return ClientPolicy{}
+	for _, r := range s.settings.Rules {
+		if r.Service == label {
+			return r.ClientPolicy
+		}
 	}
-	return s.resolve(label)
+	return s.settings.Default
 }
 
 // backing returns the executor label runs under, building and registering it on
-// first use. With no resolver it publishes a pass-through, so an unarmed manager
-// costs one atomic load per call.
+// first use. On an unarmed manager it publishes a literal pass-through, so a
+// process without governance costs one atomic load per call.
 //
-// The observe layer is applied by [clientSide.buildLocked], on the still-private
-// executor, before it is registered. That ordering is what lets the bundled driver
-// attach a breaker listener through the construction-time handshake while the
-// breaker does not exist yet, instead of a client trying to reach an executor
-// already behind a wrapper chain.
-func (s *clientSide) backing(m *Manager, label, system string) chain.Executor {
+// This package builds no observe layer: the observer wraps the handle this side
+// hands out, at the composition point (see [Manager.ClientExecutorFor]), and the
+// listener it carries is forwarded here so the still-private executor gets it
+// before it is registered — the construction-time handshake the bundled driver
+// needs, since its breaker does not exist until the executor's first call.
+func (s *clientSide) backing(m *Manager, label, system string, listener BreakerEventListener) chain.Executor {
 	if v, ok := s.entries.Load(label); ok {
 		return v.(*clientEntry).exec
 	}
@@ -102,48 +108,60 @@ func (s *clientSide) backing(m *Manager, label, system string) chain.Executor {
 	if v, ok := s.entries.Load(label); ok { // built while we waited
 		return v.(*clientEntry).exec
 	}
-	return s.buildLocked(m, label, system)
+	return s.buildLocked(m, label, system, listener)
 }
 
-// buildLocked builds, wraps and registers label's executor and returns it. The
+// buildLocked builds and registers label's executor and returns it. The
 // pass-through is what an unarmed side publishes, and what a driver that cannot
-// build one leaves the label on; it is wrapped and registered like any other
-// executor, so a client on an unarmed manager is still traced and measured, and
-// the wrapper is not rebuilt per call. Callers hold [clientSide.buildMu], so the
+// build one leaves the label on; it is registered like any other executor, so a
+// client on an unarmed manager still resolves one executor per label and does
+// not rebuild it per call. Callers hold [clientSide.buildMu], so the
 // registration is the only one for its label.
 //
-// It re-reads the resolver after the driver has built, because an apply may have
+// The listener the handle carries is attached to the executor here, while it is
+// still private, so the breaker the bundled driver builds on its first call is
+// created against it — the construction-time handshake this side owes the
+// observer. It is attached only for the executor this build publishes; an entry
+// that already exists keeps whatever listener registered it first.
+//
+// It re-reads the settings after the driver has built, because an apply may have
 // landed in between: an executor holding a superseded policy would serve its label
 // one generation behind until the next push, and [Manager.Apply]'s sweep cannot
 // see it — that walk ended before this registration existed. Building again is the
 // whole fix, and it is bounded: another round needs another apply.
-func (s *clientSide) buildLocked(m *Manager, label, system string) chain.Executor {
+//
+// TWO comparisons, not one, because they cover different dimensions: a changed
+// policy means this label's executor is stale, while a flipped armed-ness means
+// the decision to ask the driver at all is stale — and that can change while the
+// policy stays zero (a Close, or a first Apply landing during the very first
+// build).
+func (s *clientSide) buildLocked(m *Manager, label, system string, listener BreakerEventListener) chain.Executor {
+	_ = system // the system label is the observer's concern; this engine keys on label alone
 	for {
 		m.mu.Lock()
-		resolve := s.resolve
+		active := m.applied
+		policy := s.policyLocked(label)
 		m.mu.Unlock()
-		policy := ClientPolicy{}
-		if resolve != nil {
-			policy = resolve(label)
-		}
 		e := chain.Executor(noopClientExecutor{})
-		if resolve != nil {
-			if d, err := m.driverFor(m.Driver()); err == nil && d != nil {
-				if built, err := d.NewClientExecutor(label, policy); err == nil && built != nil {
-					e = built
-				}
+		if active {
+			if built, err := m.driver.NewClientExecutor(label, policy); err == nil && built != nil {
+				e = built
 			}
 		}
 		m.mu.Lock()
-		armed := s.resolve != nil
+		activeNow := m.applied
 		current := s.policyLocked(label)
 		m.mu.Unlock()
-		if armed != (resolve != nil) || current != policy {
+		if activeNow != active || current != policy {
 			continue
 		}
-		registered := observability.WrapClientExecutor(e, system, label)
-		s.entries.Store(label, &clientEntry{exec: registered, policy: policy})
-		return registered
+		if listener != nil {
+			if setter, ok := e.(BreakerEventListenerSetter); ok {
+				setter.SetBreakerEventListener(listener)
+			}
+		}
+		s.entries.Store(label, &clientEntry{exec: e, policy: policy})
+		return e
 	}
 }
 
@@ -239,14 +257,7 @@ func (m *Manager) ClientExecutorFor(system, service string) chain.Executor {
 // dropped by [Manager.Apply] — the caller owns it, so a caller that needs one
 // executor per service builds one per service.
 func (m *Manager) NewClientExecutor(service string, p ClientPolicy) (chain.Executor, error) {
-	m.mu.Lock()
-	driver := m.driverName
-	m.mu.Unlock()
-	d, err := m.driverFor(driver)
-	if err != nil {
-		return nil, err
-	}
-	return d.NewClientExecutor(service, p)
+	return m.driver.NewClientExecutor(service, p)
 }
 
 // ClientPolicyFor returns the outbound policy label currently resolves to, or a
@@ -302,14 +313,34 @@ func drainClientCache(c *sync.Map) []chain.Executor {
 // each Execute through the manager's registry. A policy change needs nothing here:
 // Apply drops the registration, and the next Execute builds the executor the new
 // policy asks for.
+//
+// It is also where the observer's handle plugs in: the observe wrapper composed
+// around it (at the center) attaches a breaker listener through
+// [managedClientExecutor.SetBreakerEventListener], and this handle forwards it to
+// the executor its first Execute builds. That indirection is what lets the wrapper
+// reach the breaker while the wrapper sits OUTSIDE this handle — the observer
+// never sees the private executor, only the handle.
 type managedClientExecutor struct {
 	mgr    *Manager
 	system string
 	label  string
+
+	// listener is the breaker-transition listener the observe wrapper attached, or
+	// nil when this handle runs unobserved. It is set before the handle is shared
+	// (the wrapper attaches during composition) and read on the build path, so no
+	// lock guards it.
+	listener BreakerEventListener
 }
 
-func (e *managedClientExecutor) Execute(ctx context.Context, fn func(context.Context) error) error {
-	return e.mgr.client.backing(e.mgr, e.label, e.system).Execute(ctx, fn)
+// SetBreakerEventListener satisfies [BreakerEventListenerSetter] for the observe
+// wrapper composed around this handle: the listener is forwarded to the backing
+// executor when it is built, so the breaker is created against it.
+func (e *managedClientExecutor) SetBreakerEventListener(l BreakerEventListener) {
+	e.listener = l
+}
+
+func (e *managedClientExecutor) Execute(ctx context.Context, call chain.Operation, fn func(context.Context) error) error {
+	return e.mgr.client.backing(e.mgr, e.label, e.system, e.listener).Execute(ctx, call, fn)
 }
 
 func (e *managedClientExecutor) Close() error { return nil }
@@ -320,7 +351,7 @@ func (e *managedClientExecutor) Close() error { return nil }
 // configured.
 type noopClientExecutor struct{}
 
-func (noopClientExecutor) Execute(ctx context.Context, fn func(context.Context) error) error {
+func (noopClientExecutor) Execute(ctx context.Context, call chain.Operation, fn func(context.Context) error) error {
 	return fn(ctx)
 }
 

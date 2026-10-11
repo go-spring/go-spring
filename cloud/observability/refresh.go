@@ -133,11 +133,9 @@ func RefreshConf(ctx context.Context, fn func(ctx context.Context) error) error 
 		log.Float("duration_ms", float64(elapsed.Nanoseconds())/1e6),
 	}
 	if err != nil {
-		summary = append(summary, log.Err(err), log.Msg("property refresh failed"))
-		log.Warn(ctx, configTag, summary...)
+		log.Warn(ctx, configTag, "property refresh failed", append(summary, log.Err(err))...)
 	} else {
-		summary = append(summary, log.Msg("refresh properties success"))
-		log.Info(ctx, configTag, summary...)
+		log.Info(ctx, configTag, "refresh properties success", summary...)
 	}
 	return err
 }

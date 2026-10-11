@@ -71,7 +71,7 @@ func (w *watchCore) Close() {
 
 	wg.Wait()
 	if n > 0 {
-		log.Infof(context.Background(), starterTag, "consul watchers stopped")
+		log.Info(context.Background(), starterTag, "consul watchers stopped")
 	}
 }
 
@@ -102,7 +102,7 @@ func (w *watchCore) registerWatch(cli consulClient, cs configSource, optional bo
 	// lets the loop's own lines name the KV path without interpolating it.
 	ctx = log.WithFields(ctx, sourceFields(cs)...)
 
-	log.Infof(ctx, starterTag, "watching consul kv for changes")
+	log.Info(ctx, starterTag, "watching consul kv for changes")
 
 	goutil.Go(ctx, func(ctx context.Context) {
 		defer wg.Done()
@@ -183,10 +183,9 @@ func watchLoop(ctx context.Context, cli consulClient, cs configSource, optional 
 				return // shutting down
 			}
 			if failures%failLogEvery == 0 {
-				log.Warn(ctx, starterTag,
+				log.Warn(ctx, starterTag, "consul watch failing, changes are missed until it recovers",
 					log.Err(err),
-					log.Int("retry_ms", cs.retryMs),
-					log.Msg("consul watch failing, changes are missed until it recovers"))
+					log.Int("retry_ms", cs.retryMs))
 			}
 			failures++
 			select {
@@ -197,7 +196,7 @@ func watchLoop(ctx context.Context, cli consulClient, cs configSource, optional 
 			continue
 		}
 		if failures > 0 {
-			log.Infof(ctx, starterTag, "consul watch recovered")
+			log.Info(ctx, starterTag, "consul watch recovered")
 			failures = 0
 		}
 		if meta.LastIndex < lastIndex {
@@ -212,7 +211,7 @@ func watchLoop(ctx context.Context, cli consulClient, cs configSource, optional 
 		if meta.LastIndex > lastIndex {
 			lastIndex = meta.LastIndex
 			if pair == nil && !optional {
-				log.Warnf(ctx, starterTag, "consul kv deleted; stale snapshot retained until the key is restored")
+				log.Warn(ctx, starterTag, "consul kv deleted; stale snapshot retained until the key is restored")
 			}
 			// Stamp the trigger with the change's identity (which KV entry, which
 			// consul revision) so the refresh records logged and metered by
@@ -229,7 +228,7 @@ func watchLoop(ctx context.Context, cli consulClient, cs configSource, optional 
 				log.String("trace_id", randutil.Hex(16)),
 				log.Uint("last_index", meta.LastIndex))...)
 
-			log.Info(rctx, starterTag, log.Msg("consul kv changed, triggering refresh"))
+			log.Info(rctx, starterTag, "consul kv changed, triggering refresh")
 
 			_ = observability.RefreshConf(rctx, func(ctx context.Context) error {
 				return gs.RefreshProperties(ctx)

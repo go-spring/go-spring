@@ -19,18 +19,17 @@ package resilience
 import (
 	"context"
 	"go-spring.org/cloud/chain"
-	"go-spring.org/cloud/observability"
 	"sync"
 )
 
-// serverSide is the manager's inbound half: the resolver for inbound policies
-// and the registry of inbound executors. It has no subscriber table — nothing
-// outside this package observes inbound changes.
+// serverSide is the manager's inbound half: the pushed inbound settings and the
+// registry of inbound executors. It has no subscriber table — nothing outside
+// this package observes inbound changes.
 type serverSide struct {
-	// resolve maps a route label to the inbound policy it runs under, or nil
-	// when this side is unarmed (a disabled center, or a center that configures no
-	// inbound), in which case every route falls to the pass-through.
-	resolve func(label string) ServerPolicy
+	// settings is the inbound half last pushed by [Manager.Apply], held whole. Its
+	// zero value is the pass-through — the state before any Apply, after a Close,
+	// and what a document that governs only outbound traffic looks like.
+	settings ServerSettings
 
 	// entries registers every inbound executor this side has built, keyed by the
 	// route label, each with the policy it was built from — the inbound twin of
@@ -47,17 +46,21 @@ type serverEntry struct {
 	policy ServerPolicy
 }
 
-// policyLocked is [clientSide.policyLocked] for the inbound side.
+// policyLocked is [clientSide.policyLocked] for the inbound side: the first Rule
+// whose Service equals the label, else the default. Callers hold the manager
+// lock.
 func (s *serverSide) policyLocked(label string) ServerPolicy {
-	if s.resolve == nil {
-		return ServerPolicy{}
+	for _, r := range s.settings.Rules {
+		if r.Service == label {
+			return r.ServerPolicy
+		}
 	}
-	return s.resolve(label)
+	return s.settings.Default
 }
 
 // backing is [clientSide.backing] for the inbound side: the same lazy build and
 // registration, over the inbound model and the inbound driver method.
-func (s *serverSide) backing(m *Manager, label, system string) chain.Executor {
+func (s *serverSide) backing(m *Manager, label, system string, listener BreakerEventListener) chain.Executor {
 	if v, ok := s.entries.Load(label); ok {
 		return v.(*serverEntry).exec
 	}
@@ -66,40 +69,40 @@ func (s *serverSide) backing(m *Manager, label, system string) chain.Executor {
 	if v, ok := s.entries.Load(label); ok { // built while we waited
 		return v.(*serverEntry).exec
 	}
-	return s.buildLocked(m, label, system)
+	return s.buildLocked(m, label, system, listener)
 }
 
 // buildLocked is [clientSide.buildLocked] for the inbound side, with the same
 // re-read rule and for the same reason: an inbound executor built against a
 // superseded model must not be published, because the sweep that would have
 // dropped it has already run.
-func (s *serverSide) buildLocked(m *Manager, label, system string) chain.Executor {
+func (s *serverSide) buildLocked(m *Manager, label, system string, listener BreakerEventListener) chain.Executor {
+	_ = system // the system label is the observer's concern; this engine keys on label alone
 	for {
 		m.mu.Lock()
-		resolve := s.resolve
+		active := m.applied
+		policy := s.policyLocked(label)
 		m.mu.Unlock()
-		policy := ServerPolicy{}
-		if resolve != nil {
-			policy = resolve(label)
-		}
 		e := chain.Executor(noopServerExecutor{})
-		if resolve != nil {
-			if d, err := m.driverFor(m.Driver()); err == nil && d != nil {
-				if built, err := d.NewServerExecutor(label, policy); err == nil && built != nil {
-					e = built
-				}
+		if active {
+			if built, err := m.driver.NewServerExecutor(label, policy); err == nil && built != nil {
+				e = built
 			}
 		}
 		m.mu.Lock()
-		armed := s.resolve != nil
+		activeNow := m.applied
 		current := s.policyLocked(label)
 		m.mu.Unlock()
-		if armed != (resolve != nil) || current != policy {
+		if activeNow != active || current != policy {
 			continue
 		}
-		registered := observability.WrapServerExecutor(e, system, label)
-		s.entries.Store(label, &serverEntry{exec: registered, policy: policy})
-		return registered
+		if listener != nil {
+			if setter, ok := e.(BreakerEventListenerSetter); ok {
+				setter.SetBreakerEventListener(listener)
+			}
+		}
+		s.entries.Store(label, &serverEntry{exec: e, policy: policy})
+		return e
 	}
 }
 
@@ -129,6 +132,17 @@ func (m *Manager) ServerExecutorFor(system, service string) chain.Executor {
 	return &managedServerExecutor{mgr: m, system: system, label: service}
 }
 
+// ServerPolicyFor returns the inbound policy label currently resolves to, or a
+// zero policy on an unarmed manager. It is the inbound twin of
+// [Manager.ClientPolicyFor]: callers that only need to READ the policy — an
+// adapter mapping it onto its own knobs, a test — use this instead of building an
+// executor they will not use.
+func (m *Manager) ServerPolicyFor(label string) ServerPolicy {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.server.policyLocked(label)
+}
+
 // drainServerCache empties the inbound registry and returns what was in it.
 func drainServerCache(c *sync.Map) []chain.Executor {
 	var out []chain.Executor
@@ -147,10 +161,20 @@ type managedServerExecutor struct {
 	mgr    *Manager
 	system string
 	label  string
+
+	// listener is the observe wrapper's inbound breaker listener, forwarded to the
+	// backing executor when it is built; see [managedClientExecutor.listener].
+	listener BreakerEventListener
 }
 
-func (e *managedServerExecutor) Execute(ctx context.Context, fn func(context.Context) error) error {
-	return e.mgr.server.backing(e.mgr, e.label, e.system).Execute(ctx, fn)
+// SetBreakerEventListener satisfies [BreakerEventListenerSetter] for the observe
+// wrapper composed around this handle.
+func (e *managedServerExecutor) SetBreakerEventListener(l BreakerEventListener) {
+	e.listener = l
+}
+
+func (e *managedServerExecutor) Execute(ctx context.Context, call chain.Operation, fn func(context.Context) error) error {
+	return e.mgr.server.backing(e.mgr, e.label, e.system, e.listener).Execute(ctx, call, fn)
 }
 
 func (e *managedServerExecutor) Close() error { return nil }
@@ -160,7 +184,7 @@ func (e *managedServerExecutor) Close() error { return nil }
 // chain is installed unconditionally.
 type noopServerExecutor struct{}
 
-func (noopServerExecutor) Execute(ctx context.Context, fn func(context.Context) error) error {
+func (noopServerExecutor) Execute(ctx context.Context, call chain.Operation, fn func(context.Context) error) error {
 	return fn(ctx)
 }
 

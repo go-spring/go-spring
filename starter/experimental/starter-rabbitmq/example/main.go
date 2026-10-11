@@ -169,12 +169,12 @@ func runTest(s *Service) {
 		_ = ch.Close()
 	}
 	if err := s.publish(ctx, "value"); err != nil {
-		log.Errorf(ctx, log.TagAppDef, err, "PUBLISH failed")
+		log.Error(ctx, log.TagAppDef, err, "PUBLISH failed")
 		os.Exit(1)
 	}
 	body, err := s.consume()
 	if err != nil || body != "value" {
-		log.Errorf(ctx, log.TagAppDef, err, "CONSUME failed: body=%q err", body)
+		log.Error(ctx, log.TagAppDef, err, "CONSUME failed: body", log.String("body", body))
 		os.Exit(1)
 	}
 
@@ -183,7 +183,7 @@ func runTest(s *Service) {
 	// routing key "info", publish "routed", and read it back.
 	routedBody, err := runDirectExchange(ctx, s)
 	if err != nil || routedBody != "routed" {
-		log.Errorf(ctx, log.TagAppDef, err, "DIRECT EXCHANGE failed: body=%q err", routedBody)
+		log.Error(ctx, log.TagAppDef, err, "DIRECT EXCHANGE failed: body", log.String("routed_body", routedBody))
 		os.Exit(1)
 	}
 
@@ -191,7 +191,7 @@ func runTest(s *Service) {
 	// Set channel prefetch to 1, consume with autoAck=false, then explicitly ack.
 	ackedBody, err := runQosManualAck(ctx, s)
 	if err != nil || ackedBody != "ack-me" {
-		log.Errorf(ctx, log.TagAppDef, err, "QOS/ACK failed: body=%q err", ackedBody)
+		log.Error(ctx, log.TagAppDef, err, "QOS/ACK failed: body", log.String("acked_body", ackedBody))
 		os.Exit(1)
 	}
 

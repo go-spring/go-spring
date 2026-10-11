@@ -257,7 +257,7 @@ func runTest() {
 	// ErrRateLimited while still admitting a non-empty head.
 	var admitted, rejected int
 	for range 15 {
-		err := exec.Execute(ctx, func(context.Context) error { return nil })
+		err := exec.Execute(ctx, chain.Operation{}, func(context.Context) error { return nil })
 		switch {
 		case err == nil:
 			admitted++
@@ -449,7 +449,7 @@ type admissionHandler struct {
 
 func (h *admissionHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	served := false
-	err := h.exec.Execute(r.Context(), func(ctx context.Context) error {
+	err := h.exec.Execute(r.Context(), chain.Operation{}, func(ctx context.Context) error {
 		if served {
 			return nil
 		}

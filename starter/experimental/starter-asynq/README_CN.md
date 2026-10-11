@@ -51,11 +51,14 @@ info, err := s.Client.Enqueue(ctx, asynq.NewTask("example:greet", payload))
 
 ## 核心特性
 
-- **双角色、单实例** — `Client`（总是装配，入队带守卫）与 `Server`（仅
+- **双角色、单实例** — `Client`（总是装配，入队仅观测）与 `Server`（仅
   `server.enabled=true` 时装配；长期运行的 worker 是显式 opt-in）。二者共
   享同一套 Redis 连接配置。
-- **入队守卫** — `Client.Enqueue` 走治理执行器（限流/熔断）；治理
-  未接入（容器里没有 `cloud/governance` 的 bean）时退化为 `Client.EnqueueContext`。
+- **单一注入中心** — 构造函数接收治理家族唯一的注入点——必填的
+  `*governance.Center`（`center` 参数），client 正是从这一个对象上读取其
+  resilience/fault 职权（`center.Resilience()`、`center.Fault()`）。但 asynq 生产者
+  client 没有可挂 resilience executor 的缝,故中心里的职权都不作用于入队路径：
+  `Client.Enqueue` 在 observer 下运行,只发射 span/指标/访问日志,既不限流也不重试。
 - **优雅停机** — 销毁时 `Server` 按 `shutdown-timeout` 排空在飞任务。
 - **健康指示器** — `asynq:<name>` 探针经新建 inspector ping Redis。
 
@@ -72,10 +75,10 @@ spring.asynq.instances.a.queues.default=3
 
 ## 可观测
 
-starter **只声明**每次受守卫入队的身份（`observe.go`）：span 名 `enqueue`、
+starter **只声明**每次被观测入队的身份（`observe.go`）：span 名 `enqueue`、
 `messaging.system`/`messaging.operation` 标签，以及任务类型作 `messaging.destination.name`
-的 span/日志 detail。信号本身由 resilience 层发射——它是 executor 链条上唯一看得见整次调用
-（含重试）的点——所以除 call 级 `messaging.client.operation.duration` 直方图外，每次调用还多一条
+的 span/日志 detail。信号本身由 observer 发射——它是调用路径上唯一看得见整次调用的点——
+所以除 call 级 `messaging.client.operation.duration` 直方图外，每次调用还多一条
 attempt 级的 `messaging.client.attempt.duration` 直方图，外加 `messaging.client.active_requests`
 gauge、`resilience.client.calls` 计数器，以及 tag 为 `_app_asynq_access` 的访问日志。未安装
 `starter-otel` 提供的 provider 时全部为空操作。

@@ -170,9 +170,9 @@ gs.Run()
   │       metadata，坏 broker/坏凭据/TLS 不匹配在启动期失败，而非首次使用时
   │       爆雷 [client.go:53-69 注释, driver.go:71-112]
   │    3. attachExecutor（在 driver 内、client 刚建好时执行）：
-  │       params.ExecutorFor("kafka", "kafka:<brokers>") —— 容器存在时为受治理的
-  │       executor（fault 包裹），容器缺席时为仅观测的 resilience.Unmanaged
-  │       executor（带一次性警告）—— 以 client 为键存入 sync.Map。治理**在构造
+  │       center.ExecutorFor("kafka", "kafka:<brokers>") —— 受治理的
+  │       executor（fault 包裹）；治理中心必填、容器始终提供
+  │       —— 以 client 为键存入 sync.Map。治理**在构造
   │       期施加**，故 driver 返回的 client 已是完整的，没有事后补挂步骤
   │       [driver.go CreateClient, command.go attachExecutor]
   │    4. 再防御性探测（ping=true 时）：len(Brokers())==0 → closeResilience +
@@ -184,8 +184,8 @@ gs.Run()
 **装配扩展点**：client 装配由 `Driver`（接口，`driver.go:44-66`）负责。公司/伞包 starter 可把
 自己的 `Driver` 作为**可选容器 bean** 提供（`gs.Provide(func() StarterKafkaSarama.Driver{...})`，
 因为是 bean，可在装配期注入从配置文件绑定的配置）；`spring.kafka-sarama` 下每个实例都经它
-构建。`CreateClient` 接收容器的 `cloud.ClientParams` 并返回完整的 client —— 它必须像内置
-driver 那样，从 `params` 构建并挂上 executor（见 `attachExecutor`）。没有该 bean 时 starter 在
+构建。`CreateClient` 接收容器的 `*governance.Center`（参数名 `center`）并返回完整的 client ——
+它必须像内置 driver 那样，从 `center` 构建并挂上 executor（见 `attachExecutor`）。没有该 bean 时 starter 在
 装配内回退到内置 `DefaultDriver`（`driver.go:67-112`，`client.go:73-75`）。当容器中存在多个
 Driver bean 时，实例可按名指定：
 `spring.kafka-sarama.instances.<name>.driver = <bean 名>`（留空 = 先回退家族级 `spring.<family>.default.driver`，再按类型注入唯一 Driver bean；指定的
@@ -203,7 +203,7 @@ bean 不存在则启动失败）。
 
 ```
 SendMessage / SendMessages
-  → 声明：observability.WithOperation(ctx, operation("publish", msg.Topic))
+  → 构建 op：operation("publish", msg.Topic)，显式传给 observer
   → fault.WrapClientExecutor（spring.governance.client.fault 启用时注入故障）
     → resilience executor 包装（span + outcome 计数 + call/attempt duration + 访问日志）
       → resilience executor（breaker / rate limit / retry，策略来自治理中心）
@@ -222,8 +222,8 @@ SendMessage / SendMessages
 
 追踪开启时，wrapped producer 上执行 `publish(ctx, "hello", "value")`：
 
-1. `SendMessage` 在 topic `hello` 上声明操作 `publish`（`observability.WithOperation`）
-   并进入 executor —— starter 自身不发射任何东西（observe.go）。属性命名空间：
+1. `SendMessage` 在 topic `hello` 上构建操作 `publish`
+   并显式传给 observer —— starter 自身不发射任何东西（observe.go）。属性命名空间：
    `messaging.system=kafka`、`messaging.operation=publish`、
    `messaging.destination.name=<topic>`。
 2. resilience 层开启发布 span，并在调用级记录 `messaging.client.operation.duration`

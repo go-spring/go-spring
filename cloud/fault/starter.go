@@ -17,6 +17,7 @@
 package fault
 
 import (
+	"go-spring.org/cloud/traffic"
 	"go-spring.org/spring/gs"
 )
 
@@ -24,7 +25,10 @@ import (
 // injects *fault.Injector has already imported this package, and its
 // constructor parameter is REQUIRED — an absent bean fails startup rather than
 // degrading silently. With no rule armed it is a transparent pass-through, so
-// having it always present costs nothing.
+// having it always present costs nothing. The propagator bean is injected by
+// type; cloud/traffic's starter guarantees one exists.
 func init() {
-	gs.Provide(func() *Injector { return NewInjector(Configs{Client: Config{}}, nil) }).Caller(1)
+	gs.Provide(func(prop traffic.Propagator) *Injector {
+		return NewInjector(Configs{Client: Config{}}, prop)
+	}).Caller(1)
 }

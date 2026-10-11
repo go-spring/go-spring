@@ -214,7 +214,7 @@ TracerProvider/MeterProvider（`spring.observability.*` 管理 exporter、采样
 
 ```go
 type Driver interface {
-    CreateClient(ctx context.Context, c Config, params cloud.ClientParams) (*Pool, error)
+    CreateClient(ctx context.Context, c Config, center *governance.Center) (*Pool, error)
 }
 ```
 
@@ -249,9 +249,9 @@ Driver bean；指定的 bean 不存在则启动失败）。
 ```go
 type MyDriver struct{}
 
-func (MyDriver) CreateClient(ctx context.Context, c StarterRedigo.Config, params cloud.ClientParams) (*StarterRedigo.Pool, error) {
-    // 复用标准装配，再按需定制（如 UseCommandInterceptor）；params 在 NewPool 内部应用。
-    return StarterRedigo.NewPool(ctx, c, params)
+func (MyDriver) CreateClient(ctx context.Context, c StarterRedigo.Config, center *governance.Center) (*StarterRedigo.Pool, error) {
+    // 复用标准装配，再按需定制（如 UseCommandInterceptor）；center 在 NewPool 内部应用。
+    return StarterRedigo.NewPool(ctx, c, center)
 }
 ```
 
@@ -333,7 +333,7 @@ spring.redigo.instances.cache.conn-max-lifetime=30s  # 建议调短，平滑切�
 
 工作方式：
 
-- starter 用注入的后端 bean 解析 `redis-cluster` 的存活端点；新鲜度在后端内部，无后台 watch。
+- driver 用注入的 center 解析 `redis-cluster` 的存活端点（`center.Discovery().Get(c.Discovery)`）；新鲜度在后端内部，无后台 watch。
 - 连接池**每次新建连接**时 `Pick()` 一个存活实例拨过去；配合较短的 `conn-max-lifetime`，池内连接会逐步换到更新后的地址，**无需重建池**。
 - loader 无资源、无 `Stop`——`Pool.Close` 只需关 resilience executor + 底层 redis 池，无需停任何 watch（`pool.go:150-152`）。
 - **mesh 模式**（`GS_MESH_MODE=on`）下，发现被整个跳过——sidecar 接管发现+LB，池直接拨配置的 `addr`（服务的稳定 mesh 地址）。

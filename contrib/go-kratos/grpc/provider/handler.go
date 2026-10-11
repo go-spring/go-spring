@@ -53,6 +53,6 @@ func (s *GreeterService) SayHello(ctx context.Context, in *v1.HelloRequest) (*v1
 	// Business log line, emitted through go-spring's log module (configured as a
 	// JSON FileLogger in provider/conf/app.properties). kratos' own framework
 	// logs are bridged into the same pipeline by starter-kratos.
-	log.Infof(ctx, log.TagBizDef, "SayHello name=%s", in.Name)
+	log.Info(ctx, log.TagBizDef, "SayHello", log.String("name", in.Name))
 	return &v1.HelloReply{Message: "Hello " + in.Name}, nil
 }

@@ -21,7 +21,9 @@ import (
 	"testing"
 
 	"github.com/bradfitz/gomemcache/memcache"
-	"go-spring.org/cloud"
+	"go-spring.org/cloud/fault"
+	"go-spring.org/cloud/governance"
+	"go-spring.org/cloud/resilience"
 )
 
 // fakeInner is a scripted tail: it records the keys it was called with and
@@ -114,12 +116,16 @@ func (p prefixLayer) Delete(ctx context.Context, key string) error {
 }
 
 // newChainClient builds a Client whose chain bottoms out in tail — the
-// identity and governance layers are real (executor unmanaged, governance
-// off), the adapter is not.
+// governance-and-observation layer is real (executor from an unarmed manager,
+// governance off), the adapter is not.
 func newChainClient(t *testing.T, tail InnerClient) *Client {
 	t.Helper()
-	c := NewClient(memcache.New("127.0.0.1:0"), "hot", "", cloud.ClientParams{})
-	c.InnerClient = NewObsClient(NewGuardClient(tail, "hot", "", cloud.ClientParams{}))
+	ctr, err := governance.NewProcessCenter(resilience.NewManager(nil), fault.NewInjector(fault.Configs{}, nil))
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := NewClient(memcache.New("127.0.0.1:0"), "hot", "", ctr)
+	c.InnerClient = NewGuardClient(tail, "hot", "", ctr)
 	return c
 }
 

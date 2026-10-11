@@ -20,6 +20,7 @@ import (
 	"testing"
 
 	"go-spring.org/cloud/discovery"
+	"go-spring.org/cloud/fault"
 	"go-spring.org/cloud/governance"
 	"go-spring.org/cloud/loadbalance"
 	"go-spring.org/cloud/resilience"
@@ -36,12 +37,14 @@ func TestNewRoute_ResolvesDiscoveryLabel(t *testing.T) {
 	disc := discovery.NewManager(map[string]discovery.Discovery{
 		"default": discovery.NewStaticDiscovery(discovery.Endpoint{Addr: "10.0.0.1:8080", Healthy: true, Weight: 1}),
 	})
-	lb, e := loadbalance.NewManager(nil) // no factory bean contributed
-	assert.Error(t, e).Nil()
-	center := governance.NewCenter(governance.Config{},
-		resilience.NewManager(nil), lb, nil, disc, nil)
+	lb := loadbalance.NewManager()
+	center, err := governance.NewCenter(
+		resilience.NewManager(nil), lb, fault.NewInjector(fault.Configs{}, nil), disc, governance.NewPushSource(governance.Config{}))
+	if err != nil {
+		t.Fatal(err)
+	}
 
-	_, err := newRoute(nil, "x", Config{ServiceName: "user-svc", Discovery: "nope"}, nil, center, nil)
+	_, err = newRoute(nil, "x", Config{ServiceName: "user-svc", Discovery: "nope"}, nil, center, nil)
 	assert.Error(t, err).Matches("no such backend")
 	assert.String(t, err.Error()).Contains("default") // the registered labels are reported
 

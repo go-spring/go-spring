@@ -148,11 +148,11 @@ gs.Run()
   │    ├─ newClient：可选 Driver bean（无则用内置 DefaultDriver；多个并存时
   │    │      实例可按名指定：`spring.s3.instances.<name>.driver = <bean 名>`，留空 =
   │    │      按类型注入唯一 Driver bean，指定的 bean 不存在则启动失败）
-  │    │      → d.CreateClient(cfg, cloud.ClientParams{Resilience: mgr, Fault: inj})：
+  │    │      → d.CreateClient(cfg, center)：
   │    │        静态凭据 + region + bucket-lookup + minio.Options 里的 dynamicTransport
   │    │      → NewClient 构建 *Client 包装体：定身份、exec =
-  │    │        params.ExecutorFor("s3", "s3:<endpoint>")（mgr/inj 为注入的
-  │    │        *resilience.Manager / *fault.Injector bean），再装入传输层——
+  │    │        center.ExecutorFor("s3", "s3:<endpoint>")（center 为注入的
+  │    │        *governance.Center，内含 *resilience.Manager / *fault.Injector），再装入传输层——
   │    │        声明在最外层，resilience 在其内
   │    ├─ 仅 ping=true：fail-fast 探测 HealthCheck(ctx, client)——一次直连裸 client 的
   │    │      ListBuckets；端点不可达或凭据被拒都会中止启动并释放 client（Destroy）
@@ -168,24 +168,24 @@ minio-go 在构造时把 `http.Transport` 固定进 `minio.Options` 且不提供
 装一个薄的 `dynamicTransport`——原子 RoundTripper 间接层（RWMutex 守护而非
 atomic.Value，因为活动的 tripper 是多种具体类型之一）——并返回建立其上的 `*Client`
 包装体：`NewClient` 换入声明+resilience 栈（其执行器来自构造函数下传的
-`cloud.ClientParams`）。换入之前，请求直通 `http.DefaultTransport`。
+`*governance.Center`）。换入之前，请求直通 `http.DefaultTransport`。
 
 ### 2.3 一次上传的逐层走读
 
 `PutObject(ctx, bucket, key, ...)`：
 
 1. `Client.PutObject` 即裸 `*minio.Client` 的方法（提升而来），后者用 SigV4 静态凭据签名，经配置的
-   transport 发 HTTP 请求——即被换入的声明 transport。
-2. declareTransport（command.go，最外层）：把请求身份声明到 context 上——`db.system=s3`、
+   transport 发 HTTP 请求——即被换入的 resilience transport。
+2. Resilience round-tripper（command.go/client.go）：经 `callFor` 构造请求身份——`db.system=s3`、
    `db.operation=PUT`（有界，成为指标标签）、`db.statement=/bucket/key`（逐调用明细），
-   span 名 `"PUT /bucket/key"`——再向内委派。它必须位于 resilience round-tripper 之外：
-   发射器在 `Execute` 入口读 operation，声明若嵌在执行器之内就会按次运行、无人读取。
-3. Resilience round-tripper（在声明之内）：请求进入构造期由构造函数下传的
-   `cloud.ClientParams`（`*resilience.Manager` / `*fault.Injector` bean）为服务
+   span 名 `"PUT /bucket/key"`——并在 `Execute` 入口**显式**传给 executor，使发射的信号覆盖
+   每次尝试（含重试）；若在执行器之内逐次构造身份则无人读取。
+3. 请求进入构造期由构造函数下传的
+   `*governance.Center`（`*resilience.Manager` / `*fault.Injector` bean）为服务
    `s3:<endpoint>` 构建的 executor——配好
    治理规则源后 retry / rate-limit / circuit-breaker / bulkhead 生效（经治理
-   中心可热切换），否则降级为仅观测的 unmanaged 执行器；`*fault.Injector`（nil 安全）
-   可为演练注入失败。该 executor 是唯一发射点：开启调用 span、记录调用级
+   中心可热切换）；resilience manager 必填、容器始终提供，不存在 unmanaged/仅观测的兜底。
+   `*fault.Injector`（nil 安全）可为演练注入失败。该 executor 是唯一发射点：开启调用 span、记录调用级
    `db.client.operation.duration`、每次重试的尝试级 `db.client.attempt.duration`，并写
    一条访问日志——覆盖整次调用，含重试（minio-go 自身无 OTel 钩子）。
 4. 响应回卷：发射器写出 span 属性、指标与访问日志行，经 `_app_s3_access` tag 按 log 包

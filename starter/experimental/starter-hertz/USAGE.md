@@ -153,11 +153,10 @@ spring.governance.source.file.path=conf/governance.yaml
 ```yaml
 spring:
   governance:
-    enabled: true
+    driver: default
     server:
       fault:
-        enabled: false        # flip to true to "set fire" without restart
-        rate: 0.2
+        # rate: 0.2           # set a rate to "set fire" without restart
         error: timeout
         scope: loadtest       # only traffic marked X-LoadTest is affected
 ```
@@ -332,9 +331,9 @@ curl -i 127.0.0.1:9370/readyz    # actuator readiness (add starter-actuator)
 
 ### 4.4 Fault drill (no restart)
 
-1. Start with `governance.yaml` as in §1 (`fault.enabled: false`).
+1. Start with `governance.yaml` as in §1 (no `fault.rate` set — the fixture injects nothing).
 2. Generate baseline traffic: `curl 127.0.0.1:8003/echo/x` → 200s.
-3. Flip `fault.enabled: true` in the file — the governance source hot-reloads.
+3. Set `fault.rate: 0.2` in the file — the governance source hot-reloads.
 4. Marked traffic burns, normal traffic unaffected:
 
 ```bash

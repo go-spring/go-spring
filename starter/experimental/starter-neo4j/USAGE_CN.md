@@ -79,7 +79,8 @@ func init() {
     gs.Provide(func(s *Service) gs.Runner {
         return func(ctx context.Context) {
             // 经 Query 写 + 读：Query 只声明操作，span + 指标 + 访问日志由
-            // resilience 层发射，外加韧性保护。与 neo4j.ExecuteQuery 同签名。
+            // resilience 层发射，外加韧性保护。它接收 starter 的 *Client
+            // （neo4j.ExecuteQuery 的插桩版，传 Client 使调用恒走该 client 的 executor）。
             _, err := StarterNeo4j.Query(ctx, s.Graph,
                 "MERGE (p:Person {name: $name}) SET p.age = $age RETURN p",
                 map[string]any{"name": "alice", "age": 30},
@@ -135,8 +136,7 @@ spring.actuator.addr=:9370
 
 # --- governance：Query / RunWithResilience 的保护 ----------------------------
 # NOTE: governance RULES go in conf/governance.properties, referenced by spring.governance.source.file.path in app.properties (see cloud/governance's SOURCE_USAGE).
-spring.governance.enabled=true
-spring.governance.driver=default
+spring.resilience.driver=default
 spring.governance.client.default.rate-limit=100
 spring.governance.client.default.max-retries=1
 spring.governance.client.default.attempt-timeout=500ms
@@ -172,21 +172,22 @@ import starter-neo4j
 
 gs.Run()
   ├─ 构造 newClient [starter.go:107]：记录实例创建日志
-  │   ├─ 若设置 service-name 且 mesh 关闭：resolveURI → 选一个端点，
-  │   │  地址拼进 URI host [starter.go:103-110, driver.go:185-213]；同一个 resolver
+  │   ├─ 装配期把 `${...default.discovery}` 回退折叠进 `c.Discovery`；driver 读这一个 label，
+  │   │  若设置 service-name 且 mesh 关闭则自行 resolveURI → 选一个端点，
+  │   │  地址拼进 URI host [driver.go:185-213]；同一个 resolver
   │   │  还喂给 driver 的 AddressResolver，种子主机挂掉后 neo4j:// client 可重新找回集群
   │   ├─ 可选 Driver bean——没有则回退内置 DefaultDriver（d == nil
   │   │  回退 [starter.go:113-115]）；多个并存时实例可按名指定：
   │   │  `spring.neo4j.instances.<name>.driver = <bean 名>`（留空 = 按类型注入唯一
   │   │  Driver bean；指定的 bean 不存在则启动失败）
-  │   ├─ d.CreateClient(ctx, c, backend, params)（auth + 连接池参数 + TLS）返回 *Client
+  │   ├─ d.CreateClient(ctx, c, center)（auth + 连接池参数 + TLS）返回 *Client
   │   │  已完整——身份（session + 服务标签）与治理均已应用
-  │   │  [starter.go:123, driver.go:77]；params = cloud.ClientParams{Resilience: mgr,
-  │   │  Fault: inj}，mgr/inj 为注入的 *resilience.Manager / *fault.Injector bean
+  │   │  [starter.go:123, driver.go:77]；center 为注入的 *governance.Center，
+  │   │  交出 resilience/fault 权威（resilience manager 必填）
   │   ├─ NewClient [client.go:96-103]：service = resilience.ServiceLabel("neo4j",
-  │   │  ServiceName, URI) → params.ExecutorFor("neo4j", service)——bundle 有值时是受治理的
-  │   │  executor（fault.WrapClientExecutor 包住 mgr.ClientExecutorFor），零值 bundle 时
-  │   │  为 resilience.Unmanaged（被观测、仅告警一次）
+  │   │  ServiceName, URI) → center.ExecutorFor("neo4j", service)——受治理的
+  │   │  executor（fault.WrapClientExecutor 包住 center.Resilience().ClientExecutorFor）；center 始终
+  │   │  存在（resilience manager 必填）
   │   └─ 仅 ping=true：fail-fast HealthCheck（直达裸 driver 的 VerifyConnectivity），
   │      受 socket-connect-timeout 或 5s 约束；失败时销毁 client，启动中止
   │      [starter.go:134-145]
@@ -202,8 +203,10 @@ gs.Run()
 **装配扩展点**：client 装配由 `Driver`（接口，`driver.go:66-68`）负责。公司/伞包 starter 可把
 自己的 `Driver` 作为**可选容器 bean** 提供（`gs.Provide(func() StarterNeo4j.Driver{...})`，
 因为是 bean，可在装配期注入从配置文件绑定的配置）；`spring.neo4j` 下每个实例都经它构建。
-`CreateClient(ctx, c, backend, params)` 还会收到该实例 `${discovery}` label 解析出的发现后端
-（无后端 bean 时为 nil）。没有该 bean 时 starter 在装配内回退到内置 `DefaultDriver`
+`CreateClient(ctx, c, center)` 接收注入的 `*governance.Center`；发现后端由 driver 自行从
+`center.Discovery().Get(c.Discovery)` 解析——该条目 `${discovery}` label 挂在 config 上
+（ctor 已把家族默认值折叠进 `c.Discovery`），因此不再传入预解析的后端。没有该 bean 时 starter
+在装配内回退到内置 `DefaultDriver`
 （`driver.go:71`，`starter.go:113-115`）。没有 per-config 的 `driver` key。
 
 服务器不可达、TLS 材料坏——启动即失败，进程不会带着一个死 Neo4j 进入
@@ -217,20 +220,20 @@ gs.Run()
 
 对家族不对称要诚实：**没有透明的按请求插桩**。neo4j-go-driver 走二进制 Bolt 协议、
 无官方 OpenTelemetry 插桩，且 `ExecuteQuery` 是包级泛型函数——不是 driver 的方法——
-因此没有 transport/dialer/hook 可拦截（starter.go:79-84 与 command.go:31-44 注释明确
+因此没有 transport/dialer/hook 可拦截（starter.go:79-84 与 command.go:37-47 注释明确
 称这是 documented gap，非疏漏）。实际存在的：
 
 | 辅助函数 | 增量 | 级别 |
 |--------|--------------|-------|
-| `StarterNeo4j.Query[T]` | `neo4j.ExecuteQuery` 的替换（同签名）：声明操作的语义身份，由 resilience 层发射 span + 时长指标 + 访问日志，外加调用点韧性保护 | 可选，逐调用点 |
-| `StarterNeo4j.RunWithResilience` | 把任意 session/事务代码套进韧性保护；配合 `StartSpan` 后该调用也带上声明的身份 | 可选 |
-| `StarterNeo4j.StartSpan` | 在 ctx 上声明手工操作的语义身份（Cypher 作为 `db.statement`）；它自身不启动任何东西——把操作放进 `RunWithResilience` 运行，信号由 resilience 层发射 | 可选 |
+| `StarterNeo4j.Query[T]` | `neo4j.ExecuteQuery` 的插桩版：同样的查询参数，但接收 starter 的 `*Client`（而非裸驱动），使调用恒走该 client 的 executor——声明操作的语义身份，由 resilience 层发射 span + 时长指标 + 访问日志，外加调用点韧性保护 | 可选，逐调用点 |
+| `StarterNeo4j.RunWithResilience` | 把任意 session/事务代码套进韧性保护；传入由 `Operation` 构造的操作，该调用也带上声明的身份（不声明则传零值 `chain.Operation{}`） | 可选 |
+| `StarterNeo4j.Operation` | 构造手工操作的语义身份（Cypher 作为 `db.statement`）；它不做别的——把操作传给 `RunWithResilience` 运行，信号由 resilience 层发射 | 可选 |
 | 健康指示器 `neo4j:<name>` | 每次 actuator 探测跑 `HealthCheck`（直达裸 driver 的 `VerifyConnectivity`） | 自动（除非实例置 `health=false`） |
 | 由 manager 的执行器（`resilience.WrapClientExecutor`）应用的 observe 层 | 唯一发射点：读 ctx 上声明的操作，发射 span + `db.client.*` 指标 + 访问日志；未声明操作时为 outcome 指标（`resilience.*`） | 用了辅助函数后自动 |
 
 `Query` 的 span/指标/日志**不**由 starter 发射。starter 只声明操作（[observe.go]），
-信号由 resilience 层发射——`NewClient` 从治理 bundle 构建 client 的 executor
-（`params.ExecutorFor`，内部用 `resilience.WrapClientExecutor`），因此发射器是链条上唯一看得见整次调用（含重试）
+信号由 resilience 层发射——`NewClient` 从治理中心构建 client 的 executor
+（`center.ExecutorFor`，内部用 `resilience.WrapClientExecutor`），因此发射器是链条上唯一看得见整次调用（含重试）
 的点。声明没有任何配置开关；信号在 starter-otel 安装的 OTel globals 上为空操作，
 访问日志则恒按 log 包原生级别输出。
 
@@ -247,29 +250,29 @@ gs.Run()
 
 ### 2.3 一次查询的真实走读：`Query(... "MATCH ...")`
 
-1. `Query` 在 ctx 上声明操作的语义身份
-   （`observability.WithOperation(ctx, operation("query", cypher))`，[command.go:65]）
-   ——此处不碰 span、gauge 或日志。
-2. `queryResilience(driver)` 把 driver 断言回 `*Client` [command.go:105-117]。是 wrapper 时
-   executor 在构造期已绑定，调用走
-   `resilience.Run(ctx, exec, fn)`——限流/熔断/重试/bulkhead/超时，作用于服务标签
-   `neo4j:<service-name|uri>` [client.go:100]；且因 executor 已被
-   `resilience.WrapClientExecutor` 包裹，发射器会从 ctx 读出声明的操作。传入**裸**
-   `neo4j.DriverWithContext` 时交给 `resilience.Unmanaged("neo4j", "neo4j")`
-   [command.go:116]：被观测、且仅告警一次，而不是静默无保护。
+1. `Query` 构造操作的语义身份（`operation("query", query)`，[command.go:70]）并把它
+   **显式**传给 executor——此处不碰 span、gauge 或日志。
+2. `Query` 随即把调用交给 `resilience.Run(ctx, client.exec, op, fn)`
+   [command.go:71]。`client.exec` 在构造期已绑定，调用因此走该 client 的
+   executor——限流/熔断/重试/bulkhead/超时，作用于服务标签
+   `neo4j:<service-name|uri>` [client.go:93]；且因 executor 已被
+   `resilience.WrapClientExecutor` 包裹，发射器会报告传给它的操作。
+   `Query` 只接收 starter 的 `*Client`：**裸** `neo4j.DriverWithContext` 不再被接受，
+   因为 client 之外的调用就是其治理之外的调用。
 3. 发射器开启 call span，随后 `neo4j.ExecuteQuery[T]` 执行 Cypher（驱动自身对瞬时错误
    重试至 `max-transaction-retry-time`——驱动语义，见
    [驱动手册](https://neo4j.com/docs/go-manual/current/)）。
 4. 发射器记录 call 级与 attempt 级时长直方图、平衡 gauge、结束 span、按结果发访问日志记录。
 
-直接调 `neo4j.ExecuteQuery`、或未经 `RunWithResilience`/`StartSpan` 驱动
+直接调 `neo4j.ExecuteQuery`、或未经 `RunWithResilience`/`Operation` 驱动
 `NewSession`/`session.Run` 的代码，绕过声明与发射——无观测也无保护。这是缺失
 接缝的既定代价（§6）。
 
 ### 2.4 服务发现寻址 —— 种子 + 路由模式下的自愈
 
-设置 `service-name` 且 mesh 关闭时，`resolveURI` 在 `discovery` 后端上建 Resolver、
-选一个端点、把地址拼进 URI host [driver.go:185-213]。neo4j driver 无 dialer 注入点，
+设置 `service-name` 且 mesh 关闭时，driver 从 `center.Discovery().Get(c.Discovery)` 解析
+该条目 `discovery` label 所指的后端，`resolveURI` 在其上建 Resolver、选一个端点、
+把地址拼进 URI host [driver.go:185-213]。neo4j driver 无 dialer 注入点，
 所以这个地址是**启动种子**——运行期不会按查询重挑。真正继续跟随命名服务的是 driver 自己的
 `AddressResolver` 钩子，由同一个 resolver 驱动 [driver.go:92-96]：路由驱动（`neo4j://` scheme）
 在无法从拨号地址建立路由表时会咨询它——也就是种子主机消失的那一刻。所以路由模式的 client 能
@@ -351,7 +354,7 @@ docker start starter-neo4j       # 下次探测翻回 UP——无需重启
 ```bash
 grep _app_neo4j_access app.log | tail -1
 # db.system=neo4j db.operation=query status success duration_ms=...（仅
-# StarterNeo4j.Query / StartSpan+RunWithResilience；带 Cypher 的成功为 Debug，
+# StarterNeo4j.Query / Operation+RunWithResilience；带 Cypher 的成功为 Debug，
 # 普通成功为 Info，失败为 Warn）——由 resilience 层发射
 curl -s :9090/metrics | grep -E 'db.client.(operation|attempt).duration|db.client.active_requests'
 # call 级 + attempt 级时长直方图 + 在飞 gauge，db.system=neo4j
@@ -365,7 +368,7 @@ curl -s :9090/metrics | grep -E 'db.client.(operation|attempt).duration|db.clien
 
 ```properties
 # NOTE: governance RULES go in conf/governance.properties, referenced by spring.governance.source.file.path in app.properties (see cloud/governance's SOURCE_USAGE).
-spring.governance.enabled=true
+spring.resilience.driver=default
 spring.governance.client.default.rate-limit=5
 ```
 
@@ -374,9 +377,9 @@ go run ./example-cloudnative -manual   # 自校验：15 连发 → 部分放行�
                                        # 部分以 resilience.ErrRateLimited 拒绝
 ```
 
-故障注入（热切换，example-load）：压测进程运行中把 `conf/app.properties` 的
-`spring.governance.client.fault.enabled=true`、`spring.governance.client.fault.rate=0.5`、`spring.governance.client.fault.error=timeout`
-打开——错误分布即时变化，无需重启。
+故障注入（热切换，example-load）：压测进程运行中把 `conf/governance.properties` 的
+`spring.governance.client.fault.rate=0.5`、`spring.governance.client.fault.error=timeout`
+配上——错误分布即时变化，无需重启。
 
 ### 4.4 发现演练
 
@@ -394,8 +397,8 @@ go run ./example-cloudnative -manual   # 自校验：15 连发 → 部分放行�
 |---------|--------------|-----|
 | 启动报 "failed to verify neo4j connectivity" | 服务器不可达 / 凭证错误 / TLS 不匹配 | fail-fast 探测仅在 `ping=true` 时执行（默认关闭）[starter.go:134-145]；修连通性或认证，或去掉 `ping` 把失败推迟到首次查询。 |
 | 启动报 "neo4j: resolve service X" | 设了 `service-name` 但 `discovery` 名下无后端 | 注册后端（example/discovery.go）或去掉 service-name。 |
-| 查询正常但无 span/指标/访问日志 | 代码直调 `neo4j.ExecuteQuery`，绕过接缝 | 换 `StarterNeo4j.Query` / 用 `StartSpan` 声明后放进 `RunWithResilience` 运行（§2.2）；真实导出需 import starter-otel。 |
-| 治理已开却没有保护 | session 代码未走 `Query`/`RunWithResilience`，或传了裸 driver（断言落空） | 走辅助函数；恒传 `*Client` wrapper [command.go:105]。 |
+| 查询正常但无 span/指标/访问日志 | 代码直调 `neo4j.ExecuteQuery`，绕过接缝 | 换 `StarterNeo4j.Query` / 用 `Operation` 声明后放进 `RunWithResilience` 运行（§2.2）；真实导出需 import starter-otel。 |
+| 治理已开却没有保护 | session 代码未走 `Query`/`RunWithResilience`，或传了裸 driver | 走辅助函数；恒传 `*Client` wrapper——接缝只接收 `*Client` [command.go:64]。 |
 | TLS 配置似乎不起作用 | URI scheme 是明文 `bolt://`/`neo4j://` | 把 scheme 换成 `neo4j+s://`/`bolt+s://`；tls.* 只定制加密 scheme 的信任 [driver.go:143-145]。 |
 | 发现端点已变，client 仍拨旧地址 | 一次性解析——driver 无 dialer 钩子 | 重建/重启 client（§2.4）；或前置 mesh/sidecar LB。 |
 
@@ -416,9 +419,8 @@ go run ./example-cloudnative -manual   # 自校验：15 连发 → 部分放行�
   （封死了"重写 NewSession 返回带守卫 session"的路）；`neo4j.ExecuteQuery` 是包级
   泛型函数（Go 禁止带类型参数的方法，也无法在 `*Client` 上覆写）。辅助函数就是可达的
   最深接缝；一旦使用，治理自动生效（无 resilience 开关）。测试见 resilience_test.go。
-- `Query` 通过把 driver 参数断言回 `*Client` 找 executor——类型不同的自定义 driver
-  没有配置可推导标签，因而只跑在"仅观测、且大声告警"的 unmanaged executor 上，而非受治理
-  （command.go:105-117）。
+- `Query` / `RunWithResilience` 只接收 starter 的 `*Client`，因此把裸 `neo4j.DriverWithContext`
+  直接交给 `neo4j.ExecuteQuery`——绕过接缝的最后一条路——既无观测也无保护（command.go）。
 - `tls.enabled` 在这里是死占位 key（scheme 才管加密），候选收敛 tls 形状
   （driver.go:143-145）；一次性发现解析（vs 其它 client starter 的活性重解析）是被
   缺失的 dialer 钩子所迫（§2.4）。

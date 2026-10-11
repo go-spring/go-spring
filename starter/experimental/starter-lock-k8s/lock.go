@@ -53,20 +53,19 @@ type k8sLocker struct {
 // a missing ServiceAccount or bad kubeconfig fails at boot rather than on the
 // first Acquire.
 func newK8sLocker(ctx *gs.ContextProvider, c Config) (*k8sLocker, error) {
-	log.Debug(ctx.Context, log.TagAppDef, func() []log.Field {
+	log.Debug(ctx.Context, log.TagAppDef, "creating k8s locker", func() []log.Field {
 		return []log.Field{
 			log.String("namespace", c.Namespace),
 			log.String("key_prefix", c.KeyPrefix),
-			log.Msg("creating k8s locker"),
 		}
 	})
 
 	client, err := buildClient(c)
 	if err != nil {
-		log.Errorf(ctx.Context, log.TagAppDef, err, "lock-k8s: build client failed")
+		log.Error(ctx.Context, log.TagAppDef, err, "lock-k8s: build client failed")
 		return nil, err
 	}
-	log.Info(ctx.Context, log.TagAppDef, log.String("namespace", c.Namespace), log.Msg("create k8s locker success"))
+	log.Info(ctx.Context, log.TagAppDef, "create k8s locker success", log.String("namespace", c.Namespace))
 	return newK8sLockerWithClient(client, c.Namespace, c.KeyPrefix), nil
 }
 

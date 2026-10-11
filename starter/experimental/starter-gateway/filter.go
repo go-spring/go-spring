@@ -225,12 +225,12 @@ func requestIDFilter(args []string) (Filter, error) {
 // One store covers the whole process, and with a shared backend (a Redis store,
 // say) every gateway replica shares one budget per key with no route-level
 // switch.
-func rateLimitFilter(args []string, counters resilience.Counters) (Filter, error) {
-	if counters == nil {
+func rateLimitFilter(args []string, limiter resilience.ClusterLimiter) (Filter, error) {
+	if limiter == nil {
 		// A hand-built RouteTable (a test, a caller that skipped the wiring) has no
 		// store; normalize here so the filter never dereferences a nil store, the
 		// same way newRouteTable normalizes the injected one.
-		counters = newMemoryCounters()
+		limiter = newMemoryLimiter()
 	}
 	kv, err := parseKV(args)
 	if err != nil {
@@ -267,7 +267,7 @@ func rateLimitFilter(args []string, counters resilience.Counters) (Filter, error
 			if keyMode == "ip" {
 				scope = scope + "|" + clientIP(r)
 			}
-			err := counters.Allow(r.Context(), scope, pol.RateSpec(), 1)
+			err := limiter.Allow(r.Context(), scope, pol.RateSpec(), 1)
 			switch {
 			case err == nil:
 			case errors.Is(err, chain.ErrRateLimited):
@@ -277,7 +277,7 @@ func rateLimitFilter(args []string, counters resilience.Counters) (Filter, error
 				// Fail open on anything else: the executor already logged a
 				// failing counter store (e.g. a Redis blip) and let the call
 				// through, so a broken limiter must not take the gateway down.
-				log.Warn(r.Context(), log.TagAppDef, log.Err(err), log.Msg("gateway: rate limit check failed"))
+				log.Warn(r.Context(), log.TagAppDef, "gateway: rate limit check failed", log.Err(err))
 			}
 			next.ServeHTTP(w, r)
 		})

@@ -21,11 +21,11 @@
 // uses, so every Milvus RPC (collection, index, search, insert, ...) is
 // protected without any opt-in at the call site.
 //
-// The interceptors are also this starter's declaration seam: each one puts the
-// RPC's semantic identity on the caller's context (see observe.go) before the
-// executor runs, so the resilience layer inside the executor — the single
-// emitter — names the span, the db.client.* metrics and the access log from it.
-// It emits nothing itself.
+// The interceptors are also this starter's naming seam: each one builds the
+// RPC's semantic identity (see observe.go) and passes it EXPLICITLY as the
+// operation argument to [chain.Executor.Execute], so the resilience layer inside
+// the executor — the single emitter — names the span, the db.client.* metrics
+// and the access log from it. It emits nothing itself.
 
 package StarterMilvus
 
@@ -34,7 +34,6 @@ import (
 	"go-spring.org/cloud/chain"
 	"sync"
 
-	"go-spring.org/cloud/observability"
 	"google.golang.org/grpc"
 
 	"github.com/milvus-io/milvus-sdk-go/v2/client"
@@ -80,10 +79,10 @@ func guardDialOptions(slot *guardSlot) []grpc.DialOption {
 // exec.Execute, so a rate limiter rejects or an open circuit short-circuits
 // the RPC before it is attempted.
 //
-// The declaration is made on the caller's ctx BEFORE exec.Execute: the emitter
-// reads the operation at Execute entry, so a declaration made inside the
-// executor's fn — per attempt — would be read by nobody. Placed here, one
-// call's signals cover every attempt, retries included.
+// The identity is built here, where the gRPC method is in hand, and passed
+// EXPLICITLY as the operation argument to exec.Execute: the executor reads the
+// operation at Execute entry, so one call's signals cover every attempt,
+// retries included.
 func unaryGuard(slot *guardSlot) grpc.UnaryClientInterceptor {
 	return func(
 		ctx context.Context,
@@ -91,8 +90,7 @@ func unaryGuard(slot *guardSlot) grpc.UnaryClientInterceptor {
 		cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption,
 	) error {
 		if exec := slot.load(); exec != nil {
-			ctx = observability.WithOperation(ctx, operation(method))
-			return exec.Execute(ctx, func(ctx context.Context) error {
+			return exec.Execute(ctx, operation(method), func(ctx context.Context) error {
 				return invoker(ctx, method, req, reply, cc, opts...)
 			})
 		}
@@ -105,8 +103,8 @@ func unaryGuard(slot *guardSlot) grpc.UnaryClientInterceptor {
 // are driven by the caller and not additionally guarded, matching how the
 // other client starters guard the request, not the response body.
 //
-// The declaration rides the caller's ctx before exec.Execute, exactly as in
-// [unaryGuard]: the emitter reads it at Execute entry, so the stream open's
+// The identity is built here and passed explicitly to exec.Execute, exactly as
+// in [unaryGuard]: the executor reads it at Execute entry, so the stream open's
 // signals are named like any other RPC's.
 func streamGuard(slot *guardSlot) grpc.StreamClientInterceptor {
 	return func(
@@ -115,9 +113,8 @@ func streamGuard(slot *guardSlot) grpc.StreamClientInterceptor {
 		method string, streamer grpc.Streamer, opts ...grpc.CallOption,
 	) (grpc.ClientStream, error) {
 		if exec := slot.load(); exec != nil {
-			ctx = observability.WithOperation(ctx, operation(method))
 			var cs grpc.ClientStream
-			err := exec.Execute(ctx, func(ctx context.Context) error {
+			err := exec.Execute(ctx, operation(method), func(ctx context.Context) error {
 				var e error
 				cs, e = streamer(ctx, desc, cc, method, opts...)
 				return e

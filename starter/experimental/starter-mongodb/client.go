@@ -24,10 +24,8 @@ package StarterMongoDB
 
 import (
 	"context"
-	"go-spring.org/cloud/chain"
 	"net"
 
-	"go-spring.org/cloud"
 	"go-spring.org/cloud/resilience"
 	"go.mongodb.org/mongo-driver/v2/mongo"
 )
@@ -65,53 +63,28 @@ type Client struct {
 	// cfg is the connection config, retained for the resilience service label.
 	cfg Config
 
-	// exec is the resilience executor protecting dials, resolved by [NewClient]
-	// and consumed by newClient, which wraps the shared dialer with it. It is
-	// never nil: a client with no governance degrades to an observed-only,
-	// loudly-unmanaged executor rather than a no-op.
-	exec chain.Executor
-	// serviceLabel is the resilience service key ("mongodb:<service-name or
-	// uri>") exec scopes limiter/breaker state by. The same label addresses the
-	// service's endpoint selection in the governance rules document.
+	// serviceLabel is the service key ("mongodb:<service-name or uri>") that
+	// addresses the service's endpoint selection in the governance rules
+	// document.
 	serviceLabel string
-	// stop detaches the discovery pool's endpoint-selection binding; nil when
-	// discovery is not in effect. Set by newClient, which is where the pool
-	// first exists.
-	stop func()
 }
 
-// NewClient builds a complete Client — identity, observe and governance — over a
-// connected raw client, fixing its config. raw must be ready for use (its
-// command monitor already applied) — it is normally the product of newClient's
-// construction.
+// NewClient builds a complete Client — identity and observe — over a connected
+// raw client, fixing its config. raw must be ready for use (its command monitor
+// already applied) — it is normally the product of newClient's construction.
 //
-// params carries the container's facilities (see [cloud.ClientParams]) and is
-// applied HERE, so a Client cannot exist half-assembled: this constructor
-// derives the service label and resolves the executor
-// ([cloud.ClientParams.ExecutorFor]) that scopes the instance's limiter/breaker
-// state. A hand-built client passes the zero [cloud.ClientParams]; its executor
-// then degrades to
-// [resilience.Unmanaged] — observed, with a one-time warning that no protection
-// applies — rather than silently running bare.
-//
-// Because this starter's protection rides the dial layer (the mongo driver v2
-// offers no per-command hook), the executor is not consumed here: newClient
-// wraps the shared dialer's dial function with [Client.exec] right after this
-// returns. There is no Init step — building a Client and initializing it are the
-// same act, done in one place, so the container has no lifecycle hook to
-// register and no way to hand out a half-built client.
-//
-// The manager's ClientExecutorFor resolves its backing executor lazily, on each
-// Execute, so the call order relative to the center's wiring is
-// irrelevant.
-func NewClient(raw *mongo.Client, cfg Config, params cloud.ClientParams) *Client {
-	label := serviceLabel(cfg)
+// A mongodb client has no seam for the resilience executor (the mongo driver v2
+// offers no per-command hook, and a dial seam would key protection on a
+// connection rather than an operation), so this starter is observability-only:
+// the command-layer monitor emits the span, metrics and access log, and nothing
+// throttles, retries or circuit-breaks. There is no Init step — building a
+// Client and initializing it are the same act.
+func NewClient(raw *mongo.Client, cfg Config) *Client {
 	return &Client{
 		Client:       raw,
 		obs:          newDBObserver(),
 		cfg:          cfg,
-		serviceLabel: label,
-		exec:         params.ExecutorFor("mongodb", label),
+		serviceLabel: serviceLabel(cfg),
 	}
 }
 
@@ -128,23 +101,17 @@ func serviceLabel(c Config) string {
 // dialed address is taken as-is so the underlying function (which may itself
 // ignore it in favor of a discovery-picked endpoint) decides the target.
 type dialerWrapper struct {
-	dial func(ctx context.Context, network, address string) (net.Conn, error)
+	dial dialFunc
 }
 
 func (d *dialerWrapper) DialContext(ctx context.Context, network, address string) (net.Conn, error) {
 	return d.dial(ctx, network, address)
 }
 
-// Destroy is the gs destroy method: it detaches the discovery pool's binding,
-// closes the resilience executor and disconnects the underlying client.
-// Discovery runs inside the backend (the loader has no resources), so nothing
-// discovery-related is released besides the binding.
+// Destroy is the gs destroy method: it disconnects the underlying client.
+// Discovery runs inside the backend (the loader has no resources) and the
+// endpoint-selection binding is one-way, released with the loadbalance
+// authority, so there is nothing else to release.
 func (o *Client) Destroy() error {
-	if o.stop != nil {
-		o.stop()
-	}
-	if o.exec != nil {
-		_ = o.exec.Close()
-	}
 	return o.Disconnect(context.Background())
 }

@@ -24,14 +24,14 @@
 // LOCALLY, and it must.
 //
 // This is the one client starter that does not declare an
-// observability.Operation for the resilience executor to apply: MongoDB's
+// chain.Operation for the resilience executor to apply: MongoDB's
 // per-command observation has nowhere else to live. The mongo driver v2
 // exposes no per-command execute hook (only SetDialer, SetMonitor and the
 // server/pool monitors), so the resilience executor is reachable only at DIAL
 // time — and connection pooling makes dials rare, which would make per-command
 // signals vanish. Observation therefore rides the driver's CommandMonitor (a
 // pure observer that cannot return an error), while protection rides the dial
-// seam (resilience.NewDialer, see client.go). See the package docs on
+// seam ([newDialer], see dial.go). See the package docs on
 // [dbObserver] for the status vocabulary this forces.
 
 package StarterMongoDB
@@ -199,10 +199,12 @@ func (s *dbSpan) End(err error) {
 	}
 	switch {
 	case err != nil:
-		log.Warn(s.ctx, accessTag, append(common(), log.Err(err))...)
+		log.Warn(s.ctx, accessTag, "mongo command failed", append(common(), log.Err(err))...)
 	case s.arg != "":
-		log.Debug(s.ctx, accessTag, common)
+		log.Debug(s.ctx, accessTag, "mongo command completed", func() []log.Field {
+			return common()
+		})
 	default:
-		log.Info(s.ctx, accessTag, common()...)
+		log.Info(s.ctx, accessTag, "mongo command completed", common()...)
 	}
 }

@@ -39,9 +39,9 @@ const ParamReplicas = "replicas"
 
 // consistentHashFactory is the [Factory] behind the [ConsistentHash] name. Its
 // only parameter is [ParamReplicas].
-type consistentHashFactory struct{}
+func init() { Register(ConsistentHash, buildConsistentHash) }
 
-func (consistentHashFactory) Build(_ Directory, p *Params) (Balancer, error) {
+func buildConsistentHash(p *Params) (Balancer, error) {
 	replicas, err := p.Int(ParamReplicas, 0)
 	if err != nil {
 		return nil, err

@@ -191,14 +191,16 @@ not error policy.
 
 Clients do not emit — they **declare**, and the emitter is a single place:
 `resilience`'s wrapped client executor. Two primitives riding the context carry
-that declaration and its result.
+that declaration and its result: `Operation`, which is defined in the leaf
+package [`chain`](../chain/executor.go) and declared with `chain.WithOperation`,
+and `Recorder`, which this package defines.
 
-`Operation` says what the call is. Set it on the **caller's** context, outside
-the executor: the emitter reads it at `Execute` entry, so one set inside the
-wrapped function is never seen.
+`chain.Operation` says what the call is. Set it on the **caller's** context,
+outside the executor: the emitter here consumes it at `Execute` entry, so one set
+inside the wrapped function is never seen.
 
 ```go
-ctx = observability.WithOperation(ctx, observability.Operation{
+ctx = chain.WithOperation(ctx, chain.Operation{
     Name:   "get",                   // span name
     Metric: "db.client",             // metric-name prefix; empty panics
     Attrs:  []attribute.KeyValue{…}, // bounded → metric labels + span + log
@@ -210,6 +212,33 @@ ctx = observability.WithOperation(ctx, observability.Operation{
 
 `Attrs` must stay bounded: a cache key, a SQL statement, a URL path or a topic
 belongs in `Detail`, which never becomes a metric label.
+
+`chain.Operation` is naming only. The call's **identity** — `Target`, `Scenario` and
+`NonIdempotent` — travels separately and explicitly as the [`chain.Call`](../chain/executor.go)
+argument to [`chain.Executor.Execute`](../chain/executor.go), not on the context:
+
+```go
+ctx = chain.WithOperation(ctx, chain.Operation{
+    Name:   "publish",
+    Metric: "messaging.client",
+    …
+})
+exec.Execute(ctx, chain.Call{Target: "orders", Scenario: "tenant-a", NonIdempotent: true}, fn)
+```
+
+The split is deliberate: `chain.Operation` is the observability declaration (read by
+the emitter, which needs the metric prefix and detail), while `Call` is the
+governance identity (read by the engine, which keys protection on it). Keeping
+the identity in the signature rather than the context makes it visible at every
+hop.
+
+Declaring is the path for a client whose transport offers a seam for
+`chain.Executor`. A component unfriendly to that seam — a message producer whose
+hook is call-site-only, a server, an in-process cache — emits its own signals
+instead, through `observability.NewOperationObserver` (outbound) or
+`observability.NewServerObserver` (inbound). Those observers produce exactly what
+the executor path produces — the same span, metric names, labels and access log —
+and apply no governance at all.
 
 `Recorder` is the attempt-level accumulator. The governance executor appends one
 entry per downstream attempt; the emitter drains it after the retry loop.

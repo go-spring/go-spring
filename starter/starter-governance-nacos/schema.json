@@ -32,6 +32,11 @@
           "type": "string",
           "default": ""
         },
+        "dial-timeout": {
+          "type": "string",
+          "description": "Client call timeout, e.g. 5s",
+          "default": "5s"
+        },
         "format": {
           "type": "string",
           "description": "Override document format; inferred from dataId extension by default",

@@ -46,7 +46,7 @@ func (d *recordingDriver) NewServerExecutor(service string, a resilience.ServerP
 // recordingServerExecutor is the inbound twin of recordingExecutor.
 type recordingServerExecutor struct{ mark func() }
 
-func (e recordingServerExecutor) Execute(ctx context.Context, fn func(context.Context) error) error {
+func (e recordingServerExecutor) Execute(ctx context.Context, call chain.Operation, fn func(context.Context) error) error {
 	e.mark()
 	return fn(ctx)
 }
@@ -56,7 +56,7 @@ func (recordingServerExecutor) Close() error { return nil }
 // recordingExecutor runs fn and marks its driver used.
 type recordingExecutor struct{ mark func() }
 
-func (e recordingExecutor) Execute(ctx context.Context, fn func(context.Context) error) error {
+func (e recordingExecutor) Execute(ctx context.Context, call chain.Operation, fn func(context.Context) error) error {
 	e.mark()
 	return fn(ctx)
 }
@@ -67,7 +67,6 @@ func (recordingExecutor) Close() error { return nil }
 // fire; the server side is covered by the same shape on the other block.
 func govCfg(timeoutMs int, fc fault.Config) Config {
 	return Config{
-		Enabled: true,
 		Client: ClientConfig{
 			Default: ClientDefaultPolicy{
 				ClientPolicy: resilience.ClientPolicy{AttemptTimeout: time.Duration(timeoutMs) * time.Millisecond},
@@ -88,47 +87,36 @@ type managerProbe struct{}
 // that needs the center live calls it itself, the way the container does through
 // the bean's Init hook.
 func newTestStartup() (*Center, *resilience.Manager, *loadbalance.Manager, *fault.Injector) {
-	return newTestStartupWith(nil, nil, nil)
+	return newTestStartupWith(NewPushSource(Config{}))
 }
 
-// newTestCenterWith is newTestCenter over authorities carrying the given
-// contributed backends and source — the test's stand-in for what the container
-// hands each bean's constructor in production.
-func newTestStartupWith(drivers map[string]resilience.Driver, factories map[string]loadbalance.Factory,
-	src Source) (*Center, *resilience.Manager, *loadbalance.Manager, *fault.Injector) {
-	lb, err := loadbalance.NewManager(factories)
+// newTestStartupWith is newTestStartup over the given source — the test's
+// stand-in for what the container hands the center's constructor in production.
+// The resilience authority runs on the bundled driver: the backend is a startup
+// choice made at wiring, not part of the document a center test drives.
+func newTestStartupWith(src Source) (*Center, *resilience.Manager, *loadbalance.Manager, *fault.Injector) {
+	lb := loadbalance.NewManager()
+	res := resilience.NewManager(nil)
+	inj := fault.NewInjector(fault.Configs{Client: fault.Config{}}, nil)
+	c, err := NewCenter(res, lb, inj, nil, src)
 	if err != nil {
 		panic(err)
 	}
-	res := resilience.NewManager(drivers)
-	inj := fault.NewInjector(fault.Configs{Client: fault.Config{}}, nil)
-	return NewCenter(Config{}, res, lb, inj, nil, src), res, lb, inj
+	return c, res, lb, inj
 }
 
 // TestStarter_SrcBeanArmsCenter drives the normal branch: a Source is present, so
 // the center binds it at construction and GoLive distributes its snapshot into
 // the module authorities — the same sequence gs runs in production.
 func TestStarter_SrcBeanArmsCenter(t *testing.T) {
-	c, res, _, inj := newTestStartupWith(nil, nil,
-		NewPushSource(govCfg(300, fault.Config{Enabled: true, Rate: 0.25})))
-
-	if err := c.GoLive(); err != nil {
-		t.Fatal(err)
-	}
+	_, res, _, inj := newTestStartupWith(
+		NewPushSource(govCfg(300, fault.Config{Rate: 0.25})))
 
 	if p := res.ClientPolicyFor("redis:cache"); p.AttemptTimeout != 300*time.Millisecond {
 		t.Fatalf("src bean policy: want 300ms, got %v", p.AttemptTimeout)
 	}
-	if cf := inj.ClientConfig(); !cf.Enabled || cf.Rate != 0.25 {
+	if cf := inj.ClientConfig(); cf.Rate != 0.25 {
 		t.Fatal("GoLive should push the snapshot's Fault into the injected injector")
-	}
-	ready := false
-	c.OnReady(func() { ready = true })
-	if !ready {
-		t.Fatal("GoLive should mark the center live")
-	}
-	if !c.Live() {
-		t.Fatal("Live() should report the center armed")
 	}
 }
 
@@ -162,45 +150,26 @@ func TestStarter_SourceBeanReachesTheCenter(t *testing.T) {
 	})
 }
 
-// TestStarter_NoSource_StaysDisabled pins the no-source contract: with no Source
-// bean Init still runs GoLive (distributing an empty document and firing
-// OnReady) but every service resolves a transparent pass-through.
-func TestStarter_NoSource_StaysDisabled(t *testing.T) {
-	c, res, lb, inj := newTestStartup()
-
-	if err := c.GoLive(); err != nil {
-		t.Fatal(err)
-	}
+// TestStarter_EmptySource_StaysUnarmed pins the empty-document contract: a
+// source that holds the zero Config still arms the center (Init runs GoLive and
+// the center goes live) but every service resolves a transparent pass-through.
+// The absence of a Source bean is a different failure — the container fails
+// startup on the center's required Source parameter, so there is no nil-source
+// path to pin here.
+func TestStarter_EmptySource_StaysUnarmed(t *testing.T) {
+	_, res, lb, inj := newTestStartup()
 
 	if p := res.ClientPolicyFor("redis:cache"); !p.IsZero() {
-		t.Fatalf("no source: resilience must resolve a zero policy, got %v", p)
+		t.Fatalf("empty source: resilience must resolve a zero policy, got %v", p)
 	}
-	if lb.Enabled() {
-		t.Fatal("no source: selection must stay unarmed")
+	// The manager exposes no read-back — production only ever pushes into sinks —
+	// so ask through one: a chain registers with the selection already in force.
+	lbChain := lb.Chain(context.Background(), func() ([]discovery.Endpoint, error) { return nil, nil }, "redis:cache")
+	if got := lbChain.Selection(); got.Balancer != "" || got.OutlierThreshold != 0 {
+		t.Fatalf("empty source: selection must resolve zero, got %+v", got)
 	}
-	if inj.ClientConfig().Enabled || inj.ServerConfig().Enabled {
-		t.Fatal("no source: fault must stay disabled")
-	}
-	ready := false
-	c.OnReady(func() { ready = true })
-	if !ready {
-		t.Fatal("GoLive should mark the center live even with no source")
-	}
-}
-
-// TestStarter_SetSourceReplacesTheConstructorSource covers source precedence: a
-// SetSource after construction replaces the source the center was built with —
-// last write wins, and the replaced source's callbacks go stale via the handle
-// guard rather than being retracted.
-func TestStarter_SetSourceReplacesTheConstructorSource(t *testing.T) {
-	c, res, _, _ := newTestStartupWith(nil, nil, NewPushSource(govCfg(300, fault.Config{})))
-
-	c.SetSource(NewPushSource(govCfg(200, fault.Config{})))
-	if err := c.GoLive(); err != nil {
-		t.Fatal(err)
-	}
-	if p := res.ClientPolicyFor("x"); p.AttemptTimeout != 200*time.Millisecond {
-		t.Fatalf("SetSource should replace the constructor's source: want 200ms, got %v", p.AttemptTimeout)
+	if !inj.ClientConfig().Inert() || !inj.ServerConfig().Inert() {
+		t.Fatal("empty source: fault must stay inert")
 	}
 }
 
@@ -208,88 +177,39 @@ func TestStarter_SetSourceReplacesTheConstructorSource(t *testing.T) {
 // Init, a source push reaches the module authorities with no further setup step.
 func TestStarter_LatePushDrivesArmedModules(t *testing.T) {
 	src := NewPushSource(govCfg(100, fault.Config{}))
-	c, res, _, inj := newTestStartupWith(nil, nil, src)
-
-	if err := c.GoLive(); err != nil {
-		t.Fatal(err)
-	}
+	_, res, _, inj := newTestStartupWith(src)
 
 	// A live push swaps both the resilience side and the fault side.
-	src.Push(context.Background(), govCfg(400, fault.Config{Enabled: true, Rate: 0.5}))
+	src.Push(context.Background(), govCfg(400, fault.Config{Rate: 0.5}))
 	if p := res.ClientPolicyFor("x"); p.AttemptTimeout != 400*time.Millisecond {
 		t.Fatalf("push should reach the resilience manager: want 400ms, got %v", p.AttemptTimeout)
 	}
-	if cf := inj.ClientConfig(); !cf.Enabled || cf.Rate != 0.5 {
+	if cf := inj.ClientConfig(); cf.Rate != 0.5 {
 		t.Fatalf("push should reach the injector: %+v", cf)
 	}
 }
 
-// TestStarter_DriverDirectorySelectsBackend pins the driver contract: the
-// directory the manager was built over is what spring.governance.driver resolves
-// against, so naming a backend builds through THAT backend — not through the
-// bundled one.
-func TestStarter_DriverDirectorySelectsBackend(t *testing.T) {
-	drv := &recordingDriver{}
-	c, res, _, _ := newTestStartupWith(map[string]resilience.Driver{"custom": drv}, nil,
-		NewPushSource(Config{Enabled: true, Driver: "custom"}))
-
-	if err := c.GoLive(); err != nil {
-		t.Fatal(err)
-	}
-
-	exec, err := res.NewClientExecutor("svc", resilience.ClientPolicy{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := exec.Execute(context.Background(), func(context.Context) error { return nil }); err != nil {
-		t.Fatal(err)
-	}
-	if !drv.used {
-		t.Fatal("spring.governance.driver=custom must build through the directory's custom driver")
-	}
-	if d := res.Driver(); d != "custom" {
-		t.Fatalf("Driver() = %q, want custom", d)
-	}
-}
-
-// TestStarter_UnknownDriverFailsStartup pins the fail-loud contract: an enabled
-// center whose configured driver matches nothing aborts startup rather than
-// silently serving a pass-through, which would look like "resilience is on".
-func TestStarter_UnknownDriverFailsStartup(t *testing.T) {
-	c, _, _, _ := newTestStartupWith(map[string]resilience.Driver{"custom": &recordingDriver{}}, nil,
-		NewPushSource(Config{Enabled: true, Driver: "nope"}))
-
-	err := c.GoLive()
-	if err == nil {
-		t.Fatal("an uninstalled driver name must fail Init")
-	}
-	if !strings.Contains(err.Error(), `no driver named "nope"`) {
-		t.Fatalf("error should name the missing driver, got: %v", err)
-	}
-}
-
-// TestStarter_DriverBeansAreCollectedFromContainer is the regression guard for
-// the directory's container route: a backend contributed as a named bean — the
-// way the sentinel and luohua backends contribute theirs — must reach the
-// manager the center is built over, and a client that injects that manager must
-// through it. The Export is load-bearing (gs indexes beans by exact type), so
-// dropping it here must fail this test.
-func TestStarter_DriverBeansAreCollectedFromContainer(t *testing.T) {
+// TestStarter_DriverBeanSelectedByName is the regression guard for the driver
+// wiring: ${spring.resilience.driver} names the [resilience.Driver] bean the
+// manager is built over — the way the sentinel and luohua backends contribute
+// theirs — so naming a backend builds through THAT backend. The Export is
+// load-bearing (gs indexes beans by exact type), so dropping it would leave the
+// named lookup with nothing to inject and fail startup.
+func TestStarter_DriverBeanSelectedByName(t *testing.T) {
 	drv := &recordingDriver{}
 	var mgr *resilience.Manager
 
 	gs.Web(false).Configure(func(app gs.App) {
+		app.Property(resilience.DriverProperty, "corp")
 		app.Provide(func() Source {
-			return NewPushSource(Config{Enabled: true, Driver: "corp"})
+			return NewPushSource(Config{})
 		})
 		app.Provide(func() *recordingDriver { return drv }).
 			Name("corp").
 			Export(gs.As[resilience.Driver]())
-		// A stand-in for a client starter: it injects the manager bean the
-		// center also drives, which is what makes the directory shared. It is
-		// exported as a Rooter so gs instantiates it despite nothing autowiring
-		// it; capturing at construction is enough, since the assertion only
-		// needs the instance.
+		// A stand-in for a client starter: it injects the manager bean, so gs
+		// instantiates it and this test can capture the instance the container
+		// built with the selected driver.
 		app.Provide(func(m *resilience.Manager) *managerProbe {
 			mgr = m
 			return &managerProbe{}
@@ -299,124 +219,27 @@ func TestStarter_DriverBeansAreCollectedFromContainer(t *testing.T) {
 			t.Fatal("the resilience manager bean was not injected")
 		}
 		exec := mgr.ClientExecutorFor("sys", "res:1")
-		if err := exec.Execute(context.Background(), func(context.Context) error { return nil }); err != nil {
+		if err := exec.Execute(context.Background(), chain.Operation{}, func(context.Context) error { return nil }); err != nil {
 			t.Fatal(err)
 		}
 		if !drv.used {
-			t.Fatal("a driver bean exported as resilience.Driver must reach the center's directory")
+			t.Fatal("spring.resilience.driver=corp must build through the corp driver bean")
 		}
 	})
 }
 
-// TestStarter_DriverBeanWithoutExportIsInvisible pins the other half of the
-// directory contract: gs indexes beans by their exact type, so a backend that
-// forgets Export(gs.As[resilience.Driver]()) never reaches the directory — and a
-// config naming it then fails startup rather than silently falling back to the
-// bundled driver. This is the most likely mistake a new backend module makes.
-//
-// The source here is left disabled so the app still starts and the manager can
-// be exercised directly; the startup failure a real config would trigger is
-// pinned by TestStarter_UnknownDriverFailsStartup.
-func TestStarter_DriverBeanWithoutExportIsInvisible(t *testing.T) {
-	var mgr *resilience.Manager
-
-	gs.Web(false).Configure(func(app gs.App) {
-		app.Provide(func() Source {
-			return NewPushSource(Config{})
-		})
-		// No Export: the concrete *recordingDriver is indexed under its own type.
-		app.Provide(func() *recordingDriver { return &recordingDriver{} }).Name("corp")
-		app.Provide(func(m *resilience.Manager) *managerProbe {
-			mgr = m
-			return &managerProbe{}
-		}).Export(gs.As[gs.Rooter]())
-	}).RunTest(t, func(_ *struct{}) {
-		if mgr == nil {
-			t.Fatal("the resilience manager bean was not injected")
-		}
-		// Naming it is a startup error, exactly as if the bean did not exist:
-		// the manager was built over a directory that never held it.
-		err := mgr.Apply(resilience.Settings{
-			Enabled:             true,
-			Driver:              "corp",
-			ResolveClientPolicy: func(string) resilience.ClientPolicy { return resilience.ClientPolicy{} },
-		})
-		if err == nil {
-			t.Fatal("a driver bean without Export must be invisible to the directory")
-		}
-	})
-}
-
-// TestStarter_BalancerFactoryBeansAreCollectedFromContainer is the load-balancing
-// counterpart of the driver-directory guard: a strategy contributed as a named
-// bean — the way a company contributes its own balancer — must reach the manager
-// the center is built over, and a pool bound to a rule naming it must actually
-// through it. That is the whole "new strategy, with parameters of its own,
-// without touching cloud/loadbalance" promise.
-func TestStarter_BalancerFactoryBeansAreCollectedFromContainer(t *testing.T) {
-	fac := &recordingFactory{}
-	var pool *loadbalance.Pool
-	var mgr *loadbalance.Manager
-
-	gs.Web(false).Configure(func(app gs.App) {
-		app.Provide(func() Source {
-			return NewPushSource(Config{
-				Enabled: true,
-				Client: ClientConfig{
-					Rules: []ClientRule{{
-						Service: "sys",
-						Selection: loadbalance.Selection{
-							Balancer: "corp",
-							Params:   map[string]string{"size": "7"},
-						},
-					}},
-				},
-			})
-		})
-		app.Provide(func() loadbalance.Factory { return fac }).
-			Name("corp").
-			Export(gs.As[loadbalance.Factory]())
-		// A stand-in for a client starter: it injects the manager bean the
-		// center also drives, then binds a pool to the governed label.
-		app.Provide(func(m *loadbalance.Manager) *managerProbe {
-			mgr = m
-			pool = loadbalance.NewPool(func() ([]discovery.Endpoint, error) {
-				return []discovery.Endpoint{{Addr: "10.0.0.1:80", Healthy: true, Weight: 1}}, nil
-			}, loadbalance.NewRoundRobin())
-			m.Bind(pool, "sys")
-			return &managerProbe{}
-		}).Export(gs.As[gs.Rooter]())
-	}).RunTest(t, func(_ *struct{}) {
-		if mgr == nil || pool == nil {
-			t.Fatal("the manager or client beans were not constructed")
-		}
-		if _, err := pool.Pick(loadbalance.PickInfo{}); err != nil {
-			t.Fatal(err)
-		}
-		if !fac.used || fac.size != 7 {
-			t.Fatalf("the pool must have been built through the contributed factory with its params, used=%v size=%d", fac.used, fac.size)
-		}
-		if pool.Selection().Balancer != "corp" {
-			t.Fatalf("the pool's strategy: want corp, got %q", pool.Selection().Balancer)
-		}
-	})
-}
-
-// recordingFactory is a contributed strategy that flags every build, so a test
-// can prove the pool resolved through it — and can see the parameter it read.
-type recordingFactory struct {
-	used bool
-	size int
-}
-
-func (f *recordingFactory) Build(_ loadbalance.Directory, p *loadbalance.Params) (loadbalance.Balancer, error) {
-	size, err := p.Int("size", 1)
-	if err != nil {
-		return nil, err
+// TestStarter_UnknownBalancerFailsStartup pins the fail-loud contract for the
+// selection half: a document naming a strategy this process never registered
+// aborts startup, instead of silently serving chains on the base strategy while
+// the operator believes their rule took effect.
+func TestStarter_UnknownBalancerFailsStartup(t *testing.T) {
+	_, err := NewCenter(resilience.NewManager(nil), loadbalance.NewManager(),
+		fault.NewInjector(fault.Configs{}, nil), nil,
+		NewPushSource(selectionConfig("redis:cache", "no_such_strategy", 0, 0)))
+	if err == nil {
+		t.Fatal("an unregistered strategy name must fail construction")
 	}
-	if err := p.Done(); err != nil {
-		return nil, err
+	if !strings.Contains(err.Error(), "no strategy registered") {
+		t.Fatalf("error should name the missing strategy, got: %v", err)
 	}
-	f.used, f.size = true, size
-	return loadbalance.NewRoundRobin(), nil
 }

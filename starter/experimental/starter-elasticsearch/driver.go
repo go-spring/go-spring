@@ -26,8 +26,8 @@ import (
 
 	"github.com/elastic/elastic-transport-go/v8/elastictransport"
 	"github.com/elastic/go-elasticsearch/v8"
-	"go-spring.org/cloud"
 	"go-spring.org/cloud/discovery"
+	"go-spring.org/cloud/governance"
 	"go-spring.org/cloud/mesh"
 	"go-spring.org/stdlib/errutil"
 )
@@ -45,24 +45,25 @@ import (
 // rest of the ecosystem sees. It returns the client COMPLETE: cfg fixes the
 // addresses/cloud-id/service-name the resilience service label is derived from,
 // the driver hands the wrapper the [dynamicTransport] it installed so the
-// declaration transport can be swapped in, and params supplies the container's
-// facilities (see [cloud.ClientParams]), which [NewClient] applies while
-// building. Nothing patches the client afterwards.
+// declaration transport can be swapped in, and center is the container's
+// governance center (carrying the resilience/fault authorities and the discovery
+// directory), which [NewClient] applies while building. Nothing patches the
+// client afterwards.
 //
-// params is one struct rather than a parameter per capability so this interface
+// center is one object rather than a parameter per capability so this interface
 // — which every company driver implements — stays stable as capabilities are
-// added. A driver that has no use for one of its fields simply ignores it.
+// added. A driver that has no use for one of its facilities simply ignores it.
 //
 // At most one Driver bean is expected per process; every client under
 // ${spring.elasticsearch} is built through it, and per-instance differences
 // are expressed through [Config].
 //
-// params.Discovery is the discovery backend the entry's ${discovery} label
-// resolved to, already looked up by the starter wiring; it is nil when no
-// backend bean exists. It rides on the params struct rather than Config so a
-// custom driver can actually reach it — Config stays a pure bound value.
+// The entry's ${discovery} label rides on the config (c.Discovery, already
+// carrying the family default): the driver resolves the backend it names from
+// center.Discovery() itself, failing construction when an entry routes by
+// service-name and the label names no bean.
 type Driver interface {
-	CreateClient(ctx context.Context, c Config, params cloud.ClientParams) (*Client, error)
+	CreateClient(ctx context.Context, c Config, center *governance.Center) (*Client, error)
 }
 
 // DefaultDriver is the default implementation of the Driver interface.
@@ -82,7 +83,26 @@ type DefaultDriver struct{}
 // transport and returns a wrapper built over it: [NewClient] swaps the
 // declaration+resilience stack in, with the indirection keeping it installable
 // after elasticsearch.NewClient has already captured the transport.
-func (DefaultDriver) CreateClient(ctx context.Context, c Config, params cloud.ClientParams) (*Client, error) {
+//
+// When c.ServiceName is set and mesh mode is off, the discovery backend the
+// entry's ${discovery} label names is resolved from center.Discovery() and its
+// current live endpoint snapshot overrides c.Addresses (the fail-fast probe and
+// seed); the live feed is the connection pool installed below over the same
+// resolver. An entry routed by service-name that cites no existing backend fails
+// here, at construction.
+func (DefaultDriver) CreateClient(ctx context.Context, c Config, center *governance.Center) (*Client, error) {
+	// Seed the node addresses from the discovery backend this entry cites. The
+	// label rides on the config (c.Discovery, already carrying the family
+	// default); resolveAddresses fails loudly when it names no bean.
+	var backend discovery.Discovery
+	if c.ServiceName != "" && !mesh.Enabled() {
+		backend, _ = center.Discovery().Get(c.Discovery)
+		addrs, err := resolveAddresses(ctx, c, backend)
+		if err != nil {
+			return nil, err
+		}
+		c.Addresses = addrs
+	}
 	dyn := newDynamicTransport()
 	cfg := elasticsearch.Config{
 		Addresses:              c.Addresses,
@@ -104,8 +124,8 @@ func (DefaultDriver) CreateClient(ctx context.Context, c Config, params cloud.Cl
 	// boot-time snapshot. Transport node selection is untouched — the live pool
 	// keeps a library-built inner pool and only rebuilds it when the node set
 	// changes. Without discovery the static Addresses stand as configured.
-	if c.ServiceName != "" && params.Discovery != nil && !mesh.Enabled() {
-		resolver, err := discovery.NewResolver(ctx, params.Discovery, c.ServiceName, discovery.WithScheme(c.Scheme))
+	if c.ServiceName != "" && backend != nil && !mesh.Enabled() {
+		resolver, err := discovery.NewResolver(ctx, backend, c.ServiceName, discovery.WithScheme(c.Scheme))
 		if err != nil {
 			return nil, errutil.Explain(err, "elasticsearch: resolve service %s", c.ServiceName)
 		}
@@ -119,11 +139,11 @@ func (DefaultDriver) CreateClient(ctx context.Context, c Config, params cloud.Cl
 	if err != nil {
 		return nil, err
 	}
-	return NewClient(client, dyn, c, params), nil
+	return NewClient(client, dyn, c, center), nil
 }
 
 // resolveAddresses resolves c.ServiceName through the discovery backend the
-// starter wiring resolved from c.Discovery and returns the current live endpoint
+// driver resolved from c.Discovery and returns the current live endpoint
 // snapshot as "scheme://host:port" node addresses. It is a single read: the
 // fail-fast gate and the seed for the live connection pool (see the
 // ConnectionPoolFunc in [DefaultDriver.CreateClient]), which is what keeps the

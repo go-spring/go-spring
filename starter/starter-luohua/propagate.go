@@ -120,7 +120,7 @@ func loadTestPropagator(c PropagateConfig) (traffic.Propagator, error) {
 	}
 	binding := traffic.DefaultBinding()
 	binding.Key = strings.ToLower(c.LoadTestHeader)
-	return traffic.NewDefaultPropagator(binding)
+	return traffic.NewDefaultPropagator(binding), nil
 }
 
 // applyPropagate re-bases the wire vocabulary onto luohua's: it arms the named

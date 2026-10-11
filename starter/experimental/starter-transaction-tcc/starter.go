@@ -117,6 +117,6 @@ func newCoordinator(c Config, store tcc.Store) tcc.Coordinator {
 	if c.Tracing {
 		opts = append(opts, tcc.WithObserver(transaction.TccObserver{}))
 	}
-	log.Info(context.Background(), log.TagAppDef, log.Bool("tracing", c.Tracing), log.Msg("create tcc coordinator success"))
+	log.Info(context.Background(), log.TagAppDef, "create tcc coordinator success", log.Bool("tracing", c.Tracing))
 	return tcc.NewCoordinator(opts...)
 }

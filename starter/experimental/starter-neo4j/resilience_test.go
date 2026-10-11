@@ -26,10 +26,10 @@ import (
 	"go-spring.org/stdlib/testing/assert"
 )
 
-// fakeDriver is a nil-behavior DriverWithContext so queryResilience can be
-// exercised against a *Client wrapper without a live Neo4j server. The guard
-// tests never reach the driver: they drive RunWithResilience with a stubbed
-// fn and assert the executor short-circuits before fn runs.
+// fakeDriver is a nil-behavior DriverWithContext so a *Client wrapper can be
+// exercised without a live Neo4j server. The guard tests never reach the
+// driver: they drive RunWithResilience with a stubbed fn and assert the executor
+// short-circuits before fn runs.
 type fakeDriver struct {
 	neo4j.DriverWithContext
 }
@@ -43,15 +43,11 @@ func newGuardedNeo4jClient(t *testing.T, p resilience.ClientPolicy) *Client {
 	return &Client{DriverWithContext: fakeDriver{}, exec: exec}
 }
 
-// TestRunWithResiliencePassThrough proves the zero-config stance: a Client
-// with no executor attached (governance off) runs fn inline unchanged, and a
-// raw (non-wrapper) driver stays unprotected rather than erroring.
+// TestRunWithResiliencePassThrough proves the zero-config stance: a Client with
+// no executor attached (governance off) runs fn inline unchanged.
 func TestRunWithResiliencePassThrough(t *testing.T) {
 	c := &Client{DriverWithContext: fakeDriver{}}
-	assert.Error(t, RunWithResilience(context.Background(), c, func(context.Context) error { return nil })).Nil()
-
-	raw := fakeDriver{}
-	assert.Error(t, RunWithResilience(context.Background(), raw, func(context.Context) error { return nil })).Nil()
+	assert.Error(t, RunWithResilience(context.Background(), c, chain.Operation{}, func(context.Context) error { return nil })).Nil()
 }
 
 // TestRunWithResilienceRateLimit confirms the flow-control path: once the
@@ -63,7 +59,7 @@ func TestRunWithResilienceRateLimit(t *testing.T) {
 		ran++
 		return nil
 	}
-	assert.Error(t, RunWithResilience(context.Background(), c, fn)).Nil()
-	assert.Error(t, RunWithResilience(context.Background(), c, fn)).Is(chain.ErrRateLimited)
+	assert.Error(t, RunWithResilience(context.Background(), c, chain.Operation{}, fn)).Nil()
+	assert.Error(t, RunWithResilience(context.Background(), c, chain.Operation{}, fn)).Is(chain.ErrRateLimited)
 	assert.That(t, ran).Equal(1) // the rejected call never ran
 }

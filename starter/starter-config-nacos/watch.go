@@ -76,7 +76,7 @@ func (w *watchCore) Close() {
 	// draining.
 	wg.Wait()
 	if n > 0 {
-		log.Infof(context.Background(), starterTag, "nacos listeners stopped")
+		log.Info(context.Background(), starterTag, "nacos listeners stopped")
 	}
 }
 
@@ -152,7 +152,7 @@ func listen(ctx context.Context, cli nacosClient, cs configSource) error {
 			// pair is the whole native identity available.
 			rctx := log.RootFields(append(sourceFields(cs),
 				log.String("trace_id", randutil.Hex(16)))...)
-			log.Info(rctx, starterTag, log.Msg("nacos config changed, triggering refresh"))
+			log.Info(rctx, starterTag, "nacos config changed, triggering refresh")
 			_ = observability.RefreshConf(rctx, func(ctx context.Context) error {
 				return gs.RefreshProperties(ctx)
 			})
@@ -172,10 +172,10 @@ func retryListen(ctx context.Context, cli nacosClient, cs configSource) {
 	failures := 0
 	for {
 		if err := listen(ctx, cli, cs); err == nil {
-			log.Infof(ctx, starterTag, "nacos listen recovered")
+			log.Info(ctx, starterTag, "nacos listen recovered")
 			return
 		} else if failures%failLogEvery == 0 {
-			log.Errorf(ctx, starterTag, err, "nacos listen config failed; it will not hot-reload until the listen succeeds")
+			log.Error(ctx, starterTag, err, "nacos listen config failed; it will not hot-reload until the listen succeeds")
 		}
 		failures++
 		select {

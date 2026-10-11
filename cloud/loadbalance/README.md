@@ -70,7 +70,7 @@ pool := loadbalance.NewPool(resolver, bal)
 ## Balancer: strategies
 
 The strategy decides "which survivor wins". Seven are built in; a governance
-rule names one by name, and any `Factory` bean the container contributed can be
+rule names one by name, and any strategy a linked package registered can be
 named the same way.
 
 | Scenario | Strategy | Why |
@@ -90,14 +90,12 @@ endpoint address, so instances coming and going — or a reordered snapshot —
 never disturbs the state of the survivors.
 
 A custom strategy implements `Balancer` (Pick/Complete, concurrency-safe;
-`Complete` receives the context of the request it settles) and is
-contributed as a named `Factory` bean — the bean name is the strategy name a
-rule cites, and the strategy's own parameters arrive in `Params`:
+`Complete` receives the context of the request it settles) and provides a
+`Factory` — the registered name is the strategy name a rule cites, and the
+strategy's own parameters arrive in `Params`:
 
 ```go
-type myFactory struct{}
-
-func (myFactory) Build(_ loadbalance.Directory, p *loadbalance.Params) (loadbalance.Balancer, error) {
+func myFactory(p *loadbalance.Params) (loadbalance.Balancer, error) {
     window, err := p.Duration("window", time.Second) // the strategy's own parameter
     if err != nil {
         return nil, err
@@ -108,11 +106,13 @@ func (myFactory) Build(_ loadbalance.Directory, p *loadbalance.Params) (loadbala
     return &myBalancer{window: window}, nil
 }
 
-// in a starter's init:
-gs.Provide(func() loadbalance.Factory { return myFactory{} }).
-    Name("my_strategy").
-    Export(gs.As[loadbalance.Factory]()).Caller(1)
+// in the contributing package's init:
+func init() { loadbalance.Register("my_strategy", myFactory) }
 ```
+
+A strategy registers from the init of the package that defines it, into one
+process-wide registry, so linking that package is what puts the strategy in
+place.
 
 The core knows no strategy parameter — `Params` is the flat `balancer-params`
 map of the rule, and the strategy reads the keys it owns and rejects the rest.
@@ -158,36 +158,52 @@ is fully transparent.
 
 ## Managed selection (governance)
 
-A pool's strategy and suspension thresholds can be driven from outside the
+A chain's strategy and suspension thresholds can be driven from outside the
 process, by service label rather than by construction-time argument. The caller
-injects the `*loadbalance.Manager` bean (see [Manager](manager.go)) and hands it
-the pool:
+injects the `*loadbalance.Manager` bean (see [Manager](manager.go)) and builds its
+chain under it:
 
 ```go
 // mgr is the injected *loadbalance.Manager; nil means no governance is present.
-stop := mgr.Bind(pool, "http:user-svc")
-defer stop()
+var chain *loadbalance.Chain
+if mgr != nil {
+	chain = mgr.Chain(resolver, "http:user-svc") // registered: rebuilt on change
+} else {
+	chain = loadbalance.NewChain(resolver, "http:user-svc") // standalone
+}
+ep, err := chain.Pick(loadbalance.PickInfo{})
 ```
 
-- `Bind(pool, label)` applies the label's current `Selection` **immediately** and
-  again on every change, in place — no rebuild, no re-dial, the very next `Pick`
-  sees it. It returns the detach func; a pool that is not process-lifetime MUST
-  call it, or the manager keeps a callback pointing at a dead pool.
-- Binding an **unarmed** manager is safe and is the normal case for a pool built
-  during container wiring: the subscription is remembered and armed by the first
-  `Apply`. With no manager injected at all (a container with no `cloud/governance`
-  bean, or a standalone caller) the pool keeps the strategy it was
-  built with — a transparent pass-through.
-- An empty strategy name leaves the current strategy alone; an **unknown** name
-  is ignored and the last good strategy stays in force. The suspension thresholds
-  are always applied.
+- `mgr.Chain(resolver, label)` registers the chain under the label, so the
+  label's current `Selection` applies to the generation it builds **immediately**,
+  and every later change **rebuilds the chain from scratch** — a new balancer, a
+  new tracker, a new pool, sharing nothing with the generation it replaces. The
+  `Chain` is the ONLY outward surface: a request path calls `chain.Pick` and
+  `chain.Complete` directly; the inner `Pool` is not exposed. The registration is
+  **one-way, and permanent**:
+  there is no detach, so a chain must outlive the manager that governs it (which
+  is what a bean-managed chain is). Everything is released by `Manager.Close`, at
+  the end of the manager's life.
+- Registering with an **unarmed** manager is safe and is the normal case for a
+  chain built during container wiring: the base generation is built and the chain
+  is rebuilt by the first `Apply`. With no manager at all (a container with no
+  `cloud/governance` bean, or a standalone caller) the chain is built once and
+  never rebuilt — a transparent pass-through.
+- A resolved `Selection` is complete, so an empty strategy name means the base
+  strategy (round-robin) — there is no "current strategy" a rebuild could leave
+  alone. An **unknown** name is ignored and the last good generation stays in
+  force. The suspension thresholds always apply.
 - The suspension half only has an effect on a pool whose `Pick` is paired with
   `Complete` — the tracker is always there, but unpaired calls leave it nothing
   to count, so the thresholds are set on nothing.
 
 `Manager.Apply(Settings{...})` is the single entry point the governance center
-calls — once with the source's snapshot, then on every push — and
-`Manager.SelectionFor(label)` reads back what a label currently resolves to.
+calls — once with the source's snapshot, then on every push. The center PUSHES the
+rules and this package does the matching — a `Settings.Default` plus a `Rules` list,
+the first Rule whose `Service` equals the label wins — the same shape `fault` already
+had. There is no read-back: the manager only ever PUSHES into sinks — it rebuilds
+a registered `Chain` (the gRPC client's included: it builds its chain over the
+READY-snapshot source, so refresh reaches it like any other chain).
 
 A rule names the strategy and carries its parameters as a flat sub-map, opaque to
 this package:
@@ -199,21 +215,20 @@ balancer-params:
 outlier-threshold: 5
 ```
 
-`Bind` is where a strategy name becomes a strategy: it resolves the name against
-the manager's `Directory` — the built-in strategies plus any `Factory` beans the
-container contributed — and hands the pool a built `Balancer`, so a pool never
-holds the factory table. `Pool.ApplyBalancer` (strategy) and
-`Pool.ApplySuspension` (thresholds) are the same two halves reached directly, and
-`Pool.Selection()` reads back the policy most recently accepted — useful when you
-drive selection from your own config instead of the manager.
+`Chain.build` is where a strategy name becomes a strategy: it resolves the name
+against the package registry — the built-in strategies plus anything a linked
+package registered — and builds the pool with it, so a pool never holds the
+factory table. `Pool.Selection()` reads back the selection the pool was BUILT
+from, which is useful when you drive selection from your own config instead of
+the manager.
 
 ## Coverage: what is governed, and the re-pick test
 
 Selection is driven **only** through the governance channel — the `balancer`
 name plus the `balancer-params` sub-map's `replicas` / `zone-key` / `delegate`,
-via `Selection.Params` → `Manager.Apply` → `Pool.ApplyBalancer` (hot-swapped in
-place). A starter invents no local static `balancer` key of its own; each
-starter's pool defaults to `loadbalance.NewRoundRobin()` directly (no lookup by
+via `Selection.Params` → `Manager.Apply` → a rebuilt `Chain` generation (hot, but
+from scratch). A starter invents no local static `balancer` key of its own; each
+chain's base generation is round-robin (no lookup by
 name, no error). The `Factory` parameterization is kept, to carry parameters on
 the governance channel.
 
@@ -244,8 +259,8 @@ feed the tracker.
 **`grpc` picks under a process-level label.** Its selection label is the
 process-wide `grpc:client`, so setting `balancer=` on it also retunes every
 builtin `gs_*` balancer; to isolate per service, register a custom name via
-`RegisterBalancer` (custom `Factory` beans are exempt from the process-level
-override by design).
+`RegisterBalancer` (a custom name keeps its own strategy, exempt from the
+process-level override by design).
 
 **Building a pool** takes three parts: `WithTrackerConfig` + a paired
 `Pick` / `Complete` at the connect site + subscribing to the governance-pushed

@@ -64,17 +64,18 @@ err := fault.ApplyServer(ctx, inj, "gin", func() error { return next(ctx) })
 
 ```properties
 # 出站：WrapExecutor 的 per-attempt 闸门（mgr.ClientExecutorFor → fault.WrapClientExecutor）
-spring.governance.client.fault.enabled=true
-spring.governance.client.fault.rate=0.5
+spring.governance.client.fault.rate=0.5             # 设 rate（或 latency）即挂火
 spring.governance.client.fault.error=generic        # "" | "generic" | "timeout" | "reset" | "refused"
 spring.governance.client.fault.latency=50ms         # 可选，对每次调用生效
 spring.governance.client.fault.latency-jitter=20ms   # 可选，每次睡眠 latency ± U[0,20ms]
 
 # 入站：ApplyServer 的入站 handler 闸门（gin / echo / grpc / hertz / trpc / dubbo）
-spring.governance.server.fault.enabled=true
 spring.governance.server.fault.rate=0.2
 spring.governance.server.fault.error=timeout
 ```
+
+一个方向是否挂火，由它有没有 `rate` 或 `latency`（全局或 per-rule）决定；两者都清零即 disarm。
+没有单独的 `enabled` 键——两边都不配的块不会注入任何东西。
 
 读当前生效值用 `Injector.ClientConfig()` / `Injector.ServerConfig()`。
 
@@ -112,8 +113,8 @@ spring.governance.server.fault.error=timeout
 包一层，再委托给 inner executor:
 
 ```
-faultExecutor.Execute(ctx, fn) =>
-    inner.Execute(ctx, func(attempt) {
+faultExecutor.Execute(ctx, call, fn) =>
+    inner.Execute(ctx, call, func(attempt) {
         sleep? -> 被取消? return ctx.Err()
         inject? -> return InjectedError
         return fn(attempt)
@@ -142,9 +143,9 @@ outcome 映射）会把这次调用标记得和真实超时/复位一致。
 label 可供标记挂靠。
 
 **热刷新**。每个方向用 `atomic.Pointer` 持有自己的 `Config`；治理中心在 source 每次 push 时
-调 `SetConfig`，放火可在运行时切换、无需重启。**没有**"启动时必须 enabled 才能包装"的限制：
+调 `SetConfig`，放火可在运行时切换、无需重启。**没有**"启动时必须挂火才能包装"的限制：
 包装与中间件都是结构性的、无条件安装（nil injector 即透明直通），所以
-`enabled=false → true` 的 push 在下一次调用就生效。
+惰性 → 挂火的 push 在下一次调用就生效。
 
 ## 3. 约束
 

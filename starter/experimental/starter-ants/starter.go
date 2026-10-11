@@ -81,7 +81,7 @@ func createPool(ctx context.Context, name string, c Config, d Driver, observers 
 		log.String("name", name),
 		log.Int("size", c.Size))
 
-	log.Debugf(cctx, log.TagAppDef, "creating ants pool")
+	log.Debug(cctx, log.TagAppDef, "creating ants pool", nil)
 
 	// No company Driver bean → fall back to the bundled default assembly.
 	if d == nil {
@@ -89,10 +89,10 @@ func createPool(ctx context.Context, name string, c Config, d Driver, observers 
 	}
 	pool, err := d.CreatePool(c)
 	if err != nil {
-		log.Errorf(cctx, log.TagAppDef, err, "ants: create pool failed")
+		log.Error(cctx, log.TagAppDef, err, "ants: create pool failed")
 		return nil, err
 	}
-	log.Infof(cctx, log.TagAppDef, "init ants pool success")
+	log.Info(cctx, log.TagAppDef, "init ants pool success")
 	// Wrap the pool's Submit to route through the observer chain, snapshotting
 	// the resolved observers once at build time.
 	return &observedPool{

@@ -102,7 +102,7 @@ case msg := <-pc.Messages():
 }
 ```
 
-**声明的信号。** 操作通过 `observability.WithOperation` 声明;resilience 层随后在
+**声明的信号。** 操作在 seam 处构建并显式传给 observer;observer 随后在
 `messaging.client` 前缀下发射:
 
 * `messaging.client.operation.duration` —— 每次调用一条(含重试与退避),标签为

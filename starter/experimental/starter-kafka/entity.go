@@ -26,7 +26,8 @@ package StarterKafka
 import (
 	"context"
 	"github.com/twmb/franz-go/pkg/kgo"
-	"go-spring.org/cloud"
+	"go-spring.org/cloud/chain"
+	"go-spring.org/cloud/observability"
 	"go-spring.org/log"
 )
 
@@ -49,29 +50,28 @@ type Client struct {
 	// chain.
 	Kafka *kgo.Client
 
-	// guard is the chain's governance layer, held for the per-record consume
-	// path (whose per-delivery pipeline cannot ride the chain — see
-	// [Client.execute]). Unaffected by head reorganization.
-	guard *GuardKafka
+	// obs is the client's observer, held for the per-record consume path (whose
+	// per-delivery pipeline cannot ride the chain — see [Client.observe]).
+	// Unaffected by head reorganization. A kafka client has no seam for the
+	// resilience executor, so this is observation only — no governance.
+	obs *observability.OperationObserver
 }
 
-// NewClient builds a complete Client — identity, governance and all — over a
-// raw franz-go client. brokers is the client's identity; it is what the
-// governance label scopes limiter/breaker state by. params carries the
-// container's facilities (see [cloud.ClientParams]); the zero bundle degrades
-// to the observed-only, loudly-unmanaged executor.
-func NewClient(cl *kgo.Client, brokers string, params cloud.ClientParams) *Client {
-	guard := NewGuardKafka(NewRawKafka(cl), params.ExecutorFor("kafka", serviceLabelOf(brokers)))
-	return &Client{Kafka: cl, InnerKafka: NewObsKafka(guard), guard: guard}
+// NewClient builds a complete Client — emitting layer and all — over a raw
+// franz-go client. brokers is the client's identity; it is what the observer's
+// service label scopes its signals by. A kafka client has no seam for the
+// resilience executor, so there is no governance here: the observer emits the
+// produce/consume span, metrics and access log, and nothing throttles or
+// retries.
+func NewClient(cl *kgo.Client, brokers string) *Client {
+	obs := observability.NewOperationObserver("kafka", serviceLabelOf(brokers))
+	return &Client{Kafka: cl, InnerKafka: NewObsKafka(NewRawKafka(cl), obs), obs: obs}
 }
 
-// Close tears the client down: the governance layer's executor goes first,
-// then any buffered produce records are flushed (so in-flight messages are not
-// dropped on shutdown) and the client closes. It is the gs destroy method.
+// Close tears the client down: any buffered produce records are flushed (so
+// in-flight messages are not dropped on shutdown) and the client closes. It is
+// the gs destroy method.
 func (c *Client) Close() error {
-	if c.guard != nil && c.guard.exec != nil {
-		_ = c.guard.exec.Close()
-	}
 	ctx, cancel := context.WithTimeout(context.Background(), pingTimeout)
 	defer cancel()
 	flushErr := c.Kafka.Flush(ctx)
@@ -79,19 +79,18 @@ func (c *Client) Close() error {
 	if flushErr != nil {
 		// A failed flush means buffered produce records were never delivered:
 		// those messages are lost, so shutdown must not swallow the error.
-		log.Errorf(context.Background(), log.TagAppDef, flushErr, "kafka: flush before close failed, buffered messages may be LOST")
+		log.Error(context.Background(), log.TagAppDef, flushErr, "kafka: flush before close failed, buffered messages may be LOST")
 		return flushErr
 	}
 	return nil
 }
 
-// execute routes a per-record consume call through the governance layer's
-// executor, and otherwise runs it inline. The consume pipeline (declare, run
-// under the executor, once per record) is driven by whoever owns the poll
-// loop, so it uses this seam instead of the chain.
-func (c *Client) execute(ctx context.Context, call func(context.Context) error) error {
-	if c.guard == nil || c.guard.exec == nil {
+// observe runs one per-record consume call under the client's observer. The
+// consume pipeline (name, run observed, once per record) is driven by whoever
+// owns the poll loop, so it uses this seam instead of the chain.
+func (c *Client) observe(ctx context.Context, op chain.Operation, call func(context.Context) error) error {
+	if c.obs == nil {
 		return call(ctx)
 	}
-	return runGuarded(ctx, c.guard.exec, call)
+	return c.obs.Observe(ctx, op, call)
 }

@@ -52,7 +52,7 @@ func newFilter(ctx *gs.ContextProvider, name string, c Config) (*Filter, error) 
 	if err != nil {
 		return nil, err
 	}
-	log.Info(ctx.Context, starterTag, log.String("script", c.Script), log.Msg("create lua filter success"))
+	log.Info(ctx.Context, starterTag, "create lua filter success", log.String("script", c.Script))
 	f := &Filter{name: c.Script, script: c.Script}
 	f.proto.Store(proto)
 	f.pool.New = func() any {
@@ -158,7 +158,7 @@ func (f *Filter) install(L *lua.LState, st *reqState) {
 
 	// log(msg) bridges script logging into the go-spring log pipeline.
 	L.SetGlobal("log", L.NewFunction(func(l *lua.LState) int {
-		log.Infof(st.r.Context(), starterTag, "[%s] %s", f.name, l.CheckString(1))
+		log.Info(st.r.Context(), starterTag, "[", log.Any("name", f.name), log.Any("check_string", l.CheckString(1)))
 		return 0
 	}))
 }

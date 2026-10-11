@@ -20,6 +20,7 @@ import (
 	"context"
 
 	"go-spring.org/cloud/chain"
+	"go-spring.org/cloud/resilience"
 	"sync"
 	"time"
 
@@ -45,22 +46,34 @@ func WrapServerExecutor(inner chain.Executor, system, service string) chain.Exec
 		return nil
 	}
 	w := &wrappedServerExecutor{
-		inner:   inner,
-		system:  system,
-		service: service,
-		ins:     executorInstruments(),
+		inner: inner,
+		serverEmitter: &serverEmitter{
+			system:  system,
+			service: service,
+			ins:     executorInstruments(),
+		},
 	}
 	// Construction-time handshake, exactly as in WrapClientExecutor: the breaker does
 	// not exist yet, so the listener is installed on the still-private executor
 	// and is in place for every transition of its life.
-	if setter, ok := inner.(BreakerEventListenerSetter); ok {
+	if setter, ok := inner.(resilience.BreakerEventListenerSetter); ok {
 		setter.SetBreakerEventListener(w)
 	}
 	return w
 }
 
 type wrappedServerExecutor struct {
-	inner   chain.Executor
+	inner chain.Executor
+	*serverEmitter
+}
+
+// serverEmitter produces the standard inbound signals for ONE route:
+// the request span, the request-level duration, the in-flight gauge, the
+// always-on resilience.server.* counter and one access log. It is shared by
+// [wrappedServerExecutor] — which runs a governance executor around the request —
+// and [ServerObserver], the self-emission path for an inbound route whose server
+// has no seam for that executor.
+type serverEmitter struct {
 	system  string
 	service string
 
@@ -72,7 +85,7 @@ type wrappedServerExecutor struct {
 // OnBreakerStateChange satisfies [BreakerEventListener] for the inbound breaker. A
 // trip (→open) is a route-level degradation worth flagging at Warn; recovery and
 // half-open trial are Info — the same levelling the outbound listener uses.
-func (w *wrappedServerExecutor) OnBreakerStateChange(service string, from, to BreakerState) {
+func (w *wrappedServerExecutor) OnBreakerStateChange(service string, from, to resilience.BreakerState) {
 	w.ins.serverBreakerChanges.Add(context.Background(), 1, metric.WithAttributes(
 		attribute.String("system", w.system),
 		attribute.String("service", w.service),
@@ -85,10 +98,10 @@ func (w *wrappedServerExecutor) OnBreakerStateChange(service string, from, to Br
 		log.String("from", from.String()),
 		log.String("to", to.String()),
 	}
-	if to == BreakerOpen {
-		log.Warn(context.Background(), resilienceTag, fields...)
+	if to == resilience.BreakerOpen {
+		log.Warn(context.Background(), resilienceTag, "resilience: circuit breaker opened", fields...)
 	} else {
-		log.Info(context.Background(), resilienceTag, fields...)
+		log.Info(context.Background(), resilienceTag, "resilience: circuit breaker state changed", fields...)
 	}
 }
 
@@ -136,27 +149,36 @@ func serverOperationInstruments(prefix string) *opServerInstrumentSet {
 // Execute wraps the inner call in an internal span, records the duration histogram
 // and the status-classified request counter, and writes the access log: a
 // rejection or error at Warn, a success at Debug.
-func (w *wrappedServerExecutor) Execute(ctx context.Context, fn func(context.Context) error) error {
+func (w *wrappedServerExecutor) Execute(ctx context.Context, op chain.Operation, fn func(context.Context) error) error {
+	return w.call(ctx, op, func(c context.Context) error { return w.inner.Execute(c, op, fn) })
+}
+
+// call runs one observed inbound request and emits its signals. invoke is the
+// request itself: for [wrappedServerExecutor] it enters the governance executor,
+// for [ServerObserver] it is the handler chain.
+func (e *serverEmitter) call(ctx context.Context, op chain.Operation, invoke func(context.Context) error) error {
 	start := time.Now()
-	op, hasOp := OperationFrom(ctx)
+	// A described route carries a non-empty metric prefix; a route that declares
+	// no description (the zero Operation) takes the fallback path below.
+	hasOp := op.Metric != ""
 	// The half of an inbound operation that does not exist yet: the handler records
 	// what only it knows once it has answered — the response status code — and the
 	// emitter reads it back below. A client declares its whole operation up front;
 	// a server cannot, and this is the holder that closes that gap.
 	ctx, resp := WithResponse(ctx)
 
-	ctx, span := otel.Tracer(componentName).Start(ctx, w.serverSpanName(op, hasOp),
+	ctx, span := otel.Tracer(componentName).Start(ctx, e.serverSpanName(op, hasOp),
 		trace.WithSpanKind(trace.SpanKindServer),
-		trace.WithAttributes(w.serverSpanAttrs(op, hasOp)...))
+		trace.WithAttributes(e.serverSpanAttrs(op, hasOp)...))
 
 	var ins *opServerInstrumentSet
 	if hasOp {
 		ins = serverOperationInstruments(op.Metric)
-		ins.active.Add(ctx, 1, metric.WithAttributes(w.serverLabels(op.Attrs, "", nil)...))
+		ins.active.Add(ctx, 1, metric.WithAttributes(e.serverLabels(op.Attrs, "", nil)...))
 	}
 
-	err := w.inner.Execute(ctx, fn)
-	status := ClassifyStatus(err)
+	err := invoke(ctx)
+	status := resilience.ClassifyStatus(err)
 	respAttrs := resp.Attributes()
 
 	// The response half travels the same two channels the declaration's Detail
@@ -177,15 +199,15 @@ func (w *wrappedServerExecutor) Execute(ctx context.Context, fn func(context.Con
 	// resilience.server.* is the inbound layer's own signal and keeps its shape
 	// whether or not the route declared an operation.
 	labels := []attribute.KeyValue{
-		attribute.String("system", w.system),
-		attribute.String("service", w.service),
+		attribute.String("system", e.system),
+		attribute.String("service", e.service),
 		attribute.String("status", status),
 	}
 	if outcome := classifyOutcome(err); outcome != "" {
 		labels = append(labels, attribute.String("resilience.outcome", outcome))
 	}
-	w.ins.serverDuration.Record(ctx, dur.Seconds(), metric.WithAttributes(labels...))
-	w.ins.serverCalls.Add(ctx, 1, metric.WithAttributes(labels...))
+	e.ins.serverDuration.Record(ctx, dur.Seconds(), metric.WithAttributes(labels...))
+	e.ins.serverCalls.Add(ctx, 1, metric.WithAttributes(labels...))
 
 	if ins != nil {
 		// The declared family metrics: the route's own bounded vocabulary, the
@@ -193,15 +215,15 @@ func (w *wrappedServerExecutor) Execute(ctx context.Context, fn func(context.Con
 		// family's — `<prefix>.request.duration` / `<prefix>.active_requests`, not
 		// the client side's `.operation.duration` — because a server's signal is a
 		// request, and those are the names every dashboard already reads.
-		opLabels := w.serverLabels(op.Attrs, status, respAttrs)
+		opLabels := e.serverLabels(op.Attrs, status, respAttrs)
 		ins.duration.Record(ctx, dur.Seconds(), metric.WithAttributes(opLabels...))
-		ins.active.Add(ctx, -1, metric.WithAttributes(w.serverLabels(op.Attrs, "", nil)...))
+		ins.active.Add(ctx, -1, metric.WithAttributes(e.serverLabels(op.Attrs, "", nil)...))
 	}
 
 	tag := resilienceTag
 	fields := []log.Field{
-		log.String("system", w.system),
-		log.String("service", w.service),
+		log.String("system", e.system),
+		log.String("service", e.service),
 	}
 	if hasOp {
 		if op.LogTag != nil {
@@ -213,38 +235,38 @@ func (w *wrappedServerExecutor) Execute(ctx context.Context, fn func(context.Con
 	fields = append(fields, log.String("status", status), log.Float("duration_ms", durMs))
 
 	if err != nil {
-		log.Warn(ctx, tag, append(fields, log.Err(err))...)
+		log.Warn(ctx, tag, "server call failed", append(fields, log.Err(err))...)
 		return err
 	}
 	if successQuiet(hasOp, op) {
-		log.Debug(ctx, tag, func() []log.Field { return fields })
+		log.Debug(ctx, tag, "server call succeeded", func() []log.Field { return fields })
 		return nil
 	}
-	log.Info(ctx, tag, fields...)
+	log.Info(ctx, tag, "server call finished", fields...)
 	return nil
 }
 
 // serverSpanName names an inbound span: the route's own word when it declared
 // one, the route service otherwise — which is what this layer's spans have
 // always been named in the undeclared case.
-func (w *wrappedServerExecutor) serverSpanName(op Operation, hasOp bool) string {
+func (e *serverEmitter) serverSpanName(op chain.Operation, hasOp bool) string {
 	if hasOp && op.Name != "" {
 		return op.Name
 	}
-	return w.service
+	return e.service
 }
 
 // serverSpanAttrs is the route's attributes and detail when it declared an
 // operation, and this layer's own inbound labels otherwise.
-func (w *wrappedServerExecutor) serverSpanAttrs(op Operation, hasOp bool) []attribute.KeyValue {
+func (e *serverEmitter) serverSpanAttrs(op chain.Operation, hasOp bool) []attribute.KeyValue {
 	if hasOp {
 		out := make([]attribute.KeyValue, 0, len(op.Attrs)+len(op.Detail))
 		out = append(out, op.Attrs...)
 		return append(out, op.Detail...)
 	}
 	return []attribute.KeyValue{
-		attribute.String("resilience.system", w.system),
-		attribute.String("resilience.service", w.service),
+		attribute.String("resilience.system", e.system),
+		attribute.String("resilience.service", e.service),
 		attribute.String("resilience.direction", "inbound"),
 	}
 }
@@ -257,7 +279,7 @@ func (w *wrappedServerExecutor) serverSpanAttrs(op Operation, hasOp bool) []attr
 //
 // A fresh slice, for the same reason the client side needs one: attrs comes off
 // the context and is shared.
-func (w *wrappedServerExecutor) serverLabels(attrs []attribute.KeyValue, status string, resp []attribute.KeyValue) []attribute.KeyValue {
+func (e *serverEmitter) serverLabels(attrs []attribute.KeyValue, status string, resp []attribute.KeyValue) []attribute.KeyValue {
 	out := make([]attribute.KeyValue, 0, len(attrs)+len(resp)+1)
 	out = append(out, attrs...)
 	out = append(out, resp...)
@@ -265,6 +287,33 @@ func (w *wrappedServerExecutor) serverLabels(attrs []attribute.KeyValue, status 
 		return out
 	}
 	return append(out, attribute.String("status", status))
+}
+
+// ServerObserver is the self-emission entry for an inbound route whose server has
+// no seam for the resilience executor. It emits exactly what
+// [WrapServerExecutor] emits (the same request span, metric names, labels and
+// access log), and applies NO governance: there is no rate limit, circuit
+// breaker or bulkhead on this path.
+type ServerObserver struct {
+	*serverEmitter
+}
+
+// NewServerObserver builds the inbound observer for one route system/service.
+// system is the server's name ("http-server", "echo"); service is the route label.
+func NewServerObserver(system, service string) *ServerObserver {
+	return &ServerObserver{serverEmitter: &serverEmitter{
+		system:  system,
+		service: service,
+		ins:     executorInstruments(),
+	}}
+}
+
+// Observe runs fn as one observed inbound request, emitting the request span, the
+// request-level duration, the in-flight gauge, the resilience.server.* counter and
+// the access log. The response half is read back from [ResponseFrom]'s recorder,
+// which the handler fills as it answers.
+func (o *ServerObserver) Observe(ctx context.Context, op chain.Operation, fn func(context.Context) error) error {
+	return o.call(ctx, op, fn)
 }
 
 func (w *wrappedServerExecutor) Close() error { return w.inner.Close() }

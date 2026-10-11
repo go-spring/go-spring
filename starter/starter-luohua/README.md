@@ -82,7 +82,7 @@ that has no bespoke backend should ride the official one and pin its policy per
 fleet. Do that in a governance rules document (see cloud/governance's SOURCE_USAGE.md):
 
 ```properties
-spring.governance.driver=default
+spring.resilience.driver=default
 spring.governance.client.rules[0].service=orders
 spring.governance.client.rules[0].attempt-timeout=500ms
 spring.governance.client.rules[0].max-retries=2

@@ -132,8 +132,7 @@ import starter-cassandra
         └─ conf.BindEach(p, "${spring.cassandra.instances}") → 每个 <name> 条目一份 Config
               ├─ Provide(newClient, IndexArg(1, ValueArg(c)),
               │            IndexArg(2, ?Driver),
-              │            IndexArg(3, *resilience.Manager),
-              │            IndexArg(4, *fault.Injector)).Name(<name>)
+              │            IndexArg(3, *governance.Center)).Name(<name>)
               │       .Destroy((*Client).Close)
               └─ Provide 名为 "cassandra:<name>" 的 health.Indicator，
                   按名注入上面的 client（TagArg）[starter.go:58-61]
@@ -144,17 +143,17 @@ gs.Run()
   │     （无则用内置 DefaultDriver；多个并存时实例可按名指定：
   │     `spring.cassandra.instances.<name>.driver = <bean 名>`，留空 = 按类型注入
   │     唯一 Driver bean，指定的 bean 不存在则启动失败）→
-  │     driver.CreateClient(c, cloud.ClientParams{Resilience: mgr, Fault: inj}) 返回 *Client
-  │     （session + 身份 + 治理）：NewClient 设 exec = params.ExecutorFor("cassandra", service)，
-  │     即 fault.WrapClientExecutor(mgr.ClientExecutorFor("cassandra", service), service, inj)，
-  │     mgr/inj 为注入的 *resilience.Manager / *fault.Injector bean —— 构造期 exec 链即就绪
+  │     driver.CreateClient(ctx, c, center) 返回 *Client
+  │     （session + 身份 + 治理）：NewClient 设 exec = center.ExecutorFor("cassandra", service)，
+  │     即 fault.WrapClientExecutor(center.Resilience().ClientExecutorFor("cassandra", service), service, center.Fault())，
+  │     center 为注入的 *governance.Center —— 构造期 exec 链即就绪
   ├─ 仅 ping=true：fail-fast 探活——newClient 调 HealthCheck [starter.go:100]，一条 system.local 查询直达裸 session
   ├─ readiness：indicator 委托 HealthCheck 查询 system.local [health.go:34]
   └─ SIGTERM → Close [client.go]：exec.Close → session.Close
 ```
 
-没有 `Init` 钩子：`NewClient` 在 driver 装配期即固定 client 身份并应用治理包，`newClient`
-返回时 bean 已完整。由于治理在构造期应用、先于探活，因此探活失败会销毁一个已受治理的
+没有 `Init` 钩子：`NewClient` 在 driver 装配期即固定 client 身份并应用治理中心（center）的治理，
+`newClient` 返回时 bean 已完整。由于治理在构造期应用、先于探活，因此探活失败会销毁一个已受治理的
 client（`Close`），不会泄漏执行器。
 
 consistency 值未知、集群不可达都会中止启动——进程绝不会带着一个死掉的
@@ -184,14 +183,13 @@ wrapper [query.go]，其执行方法全部过守卫 + 执行器。`Client.Exec` 
 
 `Client.Exec(ctx, stmt, values...)` / `Client.Query(...).Exec()` [client.go, query.go]：
 
-1. `ObsQuery` 在 ctx 上声明该语句的身份（`observability.WithOperation`，[observe.go]）：
-   span 名 `exec`、`db.system`/`db.operation` 标签、有界的 `db.statement` 明细
-   （截断到 512 字节）。
-2. `exec.Execute(ctx, call)` 向治理执行器申请许可 —— limiter/breaker 作用于
+1. `GuardQuery` 构造该语句的身份（`operation`，[observe.go]）：span 名 `exec`、
+   `db.system`/`db.operation` 标签、有界的 `db.statement` 明细（截断到 512 字节）。
+   该 operation 被**显式**传给 executor，而非挂到 ctx 上。
+2. `GuardQuery` 随后向治理执行器申请许可 —— limiter/breaker 作用于
    service label `cassandra:<hosts[0]>`（按实例，且**只取第一个 host**
-   [client.go]）。拒绝时语句**根本不会执行**。治理关闭时 client 运行在仅观测的、
-   一次性告警的 unmanaged 执行器上：语句仍会执行并被 trace/metric 记录，但不受任何
-   限流/熔断/重试约束。
+   [client.go]）。拒绝时语句**根本不会执行**。resilience manager 必填——容器始终提供，
+   客户端绝不会在没有治理的情况下被组装：不存在 unmanaged/仅观测的兜底。
 3. 裸 session 的 `Query(stmt, values...).WithContext(ctx).Exec()`（经 wrapper 内嵌的
    `*gocql.Query`）执行 —— 完整 gocql 语义（预编译缓存、gocql 配置的重试、实例配置
    的默认一致性级别）。
@@ -218,9 +216,9 @@ resilience 执行器（限流/熔断/重试核心）→ gocql。fault 注入器
 
 ### 2.4 Driver 构造缝
 
-`Driver.CreateClient(ctx, Config, cloud.ClientParams) (*Client, error)` 拥有完整 session
+`Driver.CreateClient(ctx, Config, center *governance.Center) (*Client, error)` 拥有完整 session
 装配 —— hosts、PasswordAuthenticator、一致性级别、超时、CQL 版本、TLS [driver.go:63-95] ——
-并在构建期应用治理包，返回已完整的 `*Client` wrapper（身份与治理均经 `NewClient` 固定
+并在构建期应用 center 的治理，返回已完整的 `*Client` wrapper（身份与治理均经 `NewClient` 固定
 [driver.go:95]）；只有启动探活留在 starter 生命周期里（`newClient`）。session 装配是
 **可选容器 bean**：公司/伞包 starter 可把自己的 `Driver` 作为 bean 提供
 （`gs.Provide(func() StarterCassandra.Driver{...})`，因为是 bean，可在装配期注入从配置

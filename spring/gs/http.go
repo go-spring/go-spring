@@ -94,9 +94,14 @@ func NewSimpleHttpServer(h *HttpServeMux, cfg SimpleHttpServerConfig) *SimpleHtt
 		handler = h.Handler
 	}
 
-	log.Debugf(context.Background(), httpServerTag,
-		"creating HTTP server: addr=%s readTimeout=%s writeTimeout=%s idleTimeout=%s",
-		cfg.Address, cfg.ReadTimeout, cfg.WriteTimeout, cfg.IdleTimeout)
+	log.Debug(context.Background(), httpServerTag, "creating HTTP server", func() []log.Field {
+		return []log.Field{
+			log.String("addr", cfg.Address),
+			log.Any("read_timeout", cfg.ReadTimeout),
+			log.Any("write_timeout", cfg.WriteTimeout),
+			log.Any("idle_timeout", cfg.IdleTimeout),
+		}
+	})
 
 	return &SimpleHttpServer{svr: &http.Server{
 		Addr:              cfg.Address,
@@ -114,20 +119,20 @@ func NewSimpleHttpServer(h *HttpServeMux, cfg SimpleHttpServerConfig) *SimpleHtt
 func (s *SimpleHttpServer) Run(ctx context.Context, sig ReadySignal) error {
 	ln, err := net.Listen("tcp", s.svr.Addr)
 	if err != nil {
-		log.Errorf(ctx, httpServerTag, err, "failed to listen on %s", s.svr.Addr)
+		log.Error(ctx, httpServerTag, err, "failed to listen", log.String("addr", s.svr.Addr))
 		return errutil.Explain(err, "failed to listen on %s", s.svr.Addr)
 	}
 
-	log.Infof(ctx, httpServerTag, "HTTP server listening on %s", s.svr.Addr)
+	log.Info(ctx, httpServerTag, "HTTP server listening", log.String("addr", s.svr.Addr))
 
 	<-sig.TriggerAndWait()
 	err = s.svr.Serve(ln)
 	if errutil.IsServerClosed(err) {
-		log.Infof(ctx, httpServerTag, "HTTP server closed gracefully")
+		log.Info(ctx, httpServerTag, "HTTP server closed gracefully")
 		return nil
 	}
 
-	log.Errorf(ctx, httpServerTag, err, "HTTP server serve error")
+	log.Error(ctx, httpServerTag, err, "HTTP server serve error")
 	return errutil.Explain(err, "failed to serve on %s", s.svr.Addr)
 }
 
@@ -135,6 +140,8 @@ func (s *SimpleHttpServer) Run(ctx context.Context, sig ReadySignal) error {
 // to complete. The context is the app's shutdown context (values-only) and
 // is passed through to http.Server.Shutdown.
 func (s *SimpleHttpServer) Stop(ctx context.Context) error {
-	log.Debugf(ctx, httpServerTag, "stopping HTTP server on %s", s.svr.Addr)
+	log.Debug(ctx, httpServerTag, "stopping HTTP server", func() []log.Field {
+		return []log.Field{log.String("addr", s.svr.Addr)}
+	})
 	return s.svr.Shutdown(ctx)
 }

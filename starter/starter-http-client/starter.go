@@ -163,12 +163,12 @@ func assembleTransport(ctx *gs.ContextProvider, name string, c Config, backend d
 	if ctx != nil {
 		gctx = ctx.Context
 	}
-	log.Debug(gctx, log.TagAppDef, func() []log.Field {
-		return []log.Field{log.String("addr", c.Addr), log.String("service_name", c.ServiceName), log.Msg("assembling http transport")}
+	log.Debug(gctx, log.TagAppDef, "assembling http transport", func() []log.Field {
+		return []log.Field{log.String("addr", c.Addr), log.String("service_name", c.ServiceName)}
 	})
 	rt, closeFn, err = d.CreateTransport(gctx, name, c, backend, center, prop)
 	if err != nil {
-		log.Errorf(gctx, log.TagAppDef, err, "http-client create transport failed")
+		log.Error(gctx, log.TagAppDef, err, "http-client create transport failed")
 		return nil, nil, err
 	}
 	return rt, closeFn, nil
@@ -253,6 +253,6 @@ func newDoRequestHook(d *dispatchTransport) (*doRequestHook, error) {
 		}
 		return resp, nil
 	}
-	log.Info(context.Background(), log.TagAppDef, log.Int("routes", len(d.routes)), log.Msg("init http client success"))
+	log.Info(context.Background(), log.TagAppDef, "init http client success", log.Int("routes", len(d.routes)))
 	return &doRequestHook{}, nil
 }

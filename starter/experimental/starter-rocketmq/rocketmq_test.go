@@ -25,7 +25,6 @@ import (
 
 	"github.com/apache/rocketmq-client-go/v2/primitive"
 	"go-spring.org/cloud/propagate"
-	"go-spring.org/cloud/resilience"
 	"go-spring.org/cloud/traffic"
 	"go-spring.org/stdlib/testing/assert"
 	"go.opentelemetry.io/otel"
@@ -33,40 +32,14 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
-// newClientWithPolicy builds a Client whose executor is wired to a real
-// executor from the default resilience driver. The tests never dial a name
-// server — they drive execute directly with a stubbed call.
-func newClientWithPolicy(t *testing.T, p resilience.ClientPolicy) *Client {
-	d := resilience.NewDefaultDriver(nil)
-	exec, err := d.NewClientExecutor("svc", p)
-	assert.Error(t, err).Nil()
-	return &Client{exec: exec, serviceLabel: "rocketmq:test"}
-}
-
-// TestExecutePassThrough proves the zero-config opt-in: a Client with no
-// executor attached runs the call inline and returns its result unchanged.
+// TestExecutePassThrough proves a Client with no observer attached runs the
+// call inline and returns its result unchanged.
 func TestExecutePassThrough(t *testing.T) {
 	cl := &Client{}
 	boom := errors.New("boom")
 
-	assert.Error(t, cl.execute(context.Background(), func(context.Context) error { return nil })).Nil()
-	assert.Error(t, cl.execute(context.Background(), func(context.Context) error { return boom })).Is(boom)
-}
-
-// TestExecuteRateLimit confirms the flow-control path: once the burst is spent,
-// further calls are rejected without invoking the stub.
-func TestExecuteRateLimit(t *testing.T) {
-	cl := newClientWithPolicy(t, resilience.ClientPolicy{RateLimit: 1, Burst: 2})
-	var ran int
-	stub := func(context.Context) error {
-		ran++
-		return nil
-	}
-
-	assert.Error(t, cl.execute(context.Background(), stub)).Nil()
-	assert.Error(t, cl.execute(context.Background(), stub)).Nil()
-	assert.Error(t, cl.execute(context.Background(), stub)).Is(chain.ErrRateLimited)
-	assert.That(t, ran).Equal(2) // the rejected call never reached the stub
+	assert.Error(t, cl.execute(context.Background(), chain.Operation{}, func(context.Context) error { return nil })).Nil()
+	assert.Error(t, cl.execute(context.Background(), chain.Operation{}, func(context.Context) error { return boom })).Is(boom)
 }
 
 // TestMsgCarrierRoundTrip proves the OTel carrier adapter over user
@@ -108,8 +81,7 @@ func TestFromMessageExt(t *testing.T) {
 	ext.WithKeys([]string{"k1"})
 	ext.WithProperty("from", "example")
 
-	prop, err := traffic.NewDefaultPropagator(traffic.DefaultBinding())
-	assert.Error(t, err).Nil()
+	prop := traffic.NewDefaultPropagator(traffic.DefaultBinding())
 	c := propagate.StringMap{}
 	prop.Inject(prop.WithLoadTest(context.Background()), c)
 	for k, v := range c {
@@ -155,9 +127,8 @@ func (t topicLayer) SendSync(ctx context.Context, msg *primitive.Message) (*prim
 // the guarded producer's chain head rewrites the topic, and the send runs
 // through it — the tail sees the rewritten topic.
 func TestInnerProducerReorganize(t *testing.T) {
-	cl := &Client{}
 	fake := &fakeProducerTail{}
-	head := NewObsProducer(NewGuardProducer(fake, cl.exec))
+	head := NewObsProducer(fake, nil)
 	wrapped := topicLayer{InnerProducer: head, prefix: "tenant."}
 
 	msg := primitive.NewMessage("orders", []byte("x"))

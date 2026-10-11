@@ -75,14 +75,13 @@ func (c *watchCore) Close() {
 
 	for _, w := range watchers {
 		if err := w.Close(); err != nil {
-			log.Warn(context.Background(), starterTag,
-				log.Err(err),
-				log.Msg("closing file watcher failed"))
+			log.Warn(context.Background(), starterTag, "closing file watcher failed",
+				log.Err(err))
 		}
 	}
 
 	if len(watchers) > 0 {
-		log.Infof(context.Background(), starterTag, "file watchers stopped")
+		log.Info(context.Background(), starterTag, "file watchers stopped")
 	}
 }
 
@@ -100,17 +99,15 @@ func (c *watchCore) ensureWatch(ctx context.Context, dir string) {
 	w, err := fsnotify.NewWatcher()
 	if err != nil {
 		c.mu.Unlock()
-		log.Warn(ctx, starterTag,
-			log.String("dir", dir), log.Err(err),
-			log.Msg("create file watcher failed, hot-reload disabled for it (static snapshot kept)"))
+		log.Warn(ctx, starterTag, "create file watcher failed, hot-reload disabled for it (static snapshot kept)",
+			log.String("dir", dir), log.Err(err))
 		return
 	}
 	if err = w.Add(dir); err != nil {
 		_ = w.Close()
 		c.mu.Unlock()
-		log.Warn(ctx, starterTag,
-			log.String("dir", dir), log.Err(err),
-			log.Msg("watch directory failed, hot-reload disabled for it (static snapshot kept)"))
+		log.Warn(ctx, starterTag, "watch directory failed, hot-reload disabled for it (static snapshot kept)",
+			log.String("dir", dir), log.Err(err))
 		return
 	}
 	c.watchers[dir] = w
@@ -145,7 +142,7 @@ func watchLoop(w *fsnotify.Watcher, isCurrent func() bool) {
 					log.String("trace_id", randutil.Hex(16)),
 					log.String("path", e.Name),
 					log.String("op", e.Op.String()))
-				log.Info(ctx, starterTag, log.Msg("watched file changed, triggering refresh"))
+				log.Info(ctx, starterTag, "watched file changed, triggering refresh")
 				_ = observability.RefreshConf(ctx, func(ctx context.Context) error {
 					return gs.RefreshProperties(ctx)
 				})
@@ -153,7 +150,7 @@ func watchLoop(w *fsnotify.Watcher, isCurrent func() bool) {
 			}
 		case err, ok := <-w.Errors:
 			if ok {
-				log.Warn(context.Background(), starterTag, log.Err(err), log.Msg("file watcher error"))
+				log.Warn(context.Background(), starterTag, "file watcher error", log.Err(err))
 				continue
 			}
 		}
@@ -163,7 +160,7 @@ func watchLoop(w *fsnotify.Watcher, isCurrent func() bool) {
 		// died on its own, and a silent exit there would hide it until restart.
 		if isCurrent() {
 			err := errutil.Explain(nil, "file watcher closed unexpectedly")
-			log.Errorf(context.Background(), starterTag, err, "file watcher closed; hot-reload is disabled until restart")
+			log.Error(context.Background(), starterTag, err, "file watcher closed; hot-reload is disabled until restart")
 		}
 		return
 	}

@@ -85,8 +85,7 @@ func main() {
 			fmt.Println("The container will start, show wiring, then exit.")
 			fmt.Println("Press Ctrl+C to stop, or see deploy/ for in-cluster run.")
 		}
-		log.Infof(context.Background(), log.TagAppDef,
-			"no cluster reachable (no KUBECONFIG, not in-cluster); showing wiring only. See deploy/ to run leader election in a cluster.")
+		log.Info(context.Background(), log.TagAppDef, "no cluster reachable (no KUBECONFIG, not in-cluster); showing wiring only. See deploy/ to run leader election in a cluster.")
 		if !*manual {
 			go selfTerminateAfter(500 * time.Millisecond)
 		}
@@ -127,7 +126,7 @@ func main() {
 func (d *ElectionDemo) runElection() {
 	ctx := context.Background()
 	if d.Locker == nil {
-		log.Errorf(ctx, log.TagAppDef, fmt.Errorf("locker was not injected"), "locker was not injected")
+		log.Error(ctx, log.TagAppDef, fmt.Errorf("locker was not injected"), "locker was not injected")
 		_ = syscall.Kill(os.Getpid(), syscall.SIGTERM)
 		return
 	}
@@ -140,7 +139,7 @@ func (d *ElectionDemo) runElection() {
 		RetryInterval:    500 * time.Millisecond,
 	})
 	if err != nil {
-		log.Errorf(ctx, log.TagAppDef, err, "election config")
+		log.Error(ctx, log.TagAppDef, err, "election config")
 		return
 	}
 
@@ -150,9 +149,9 @@ func (d *ElectionDemo) runElection() {
 
 	select {
 	case <-elected:
-		log.Infof(ctx, log.TagAppDef, "became leader over Lease %q (isLeader=%v)", leaderKey, e.IsLeader())
+		log.Info(ctx, log.TagAppDef, "became leader over Lease", log.String("leader_key", leaderKey), log.Any("is_leader", e.IsLeader()))
 	case <-time.After(10 * time.Second):
-		log.Warnf(ctx, log.TagAppDef, "did not win leadership within timeout")
+		log.Warn(ctx, log.TagAppDef, "did not win leadership within timeout")
 	}
 	_ = syscall.Kill(os.Getpid(), syscall.SIGTERM)
 }

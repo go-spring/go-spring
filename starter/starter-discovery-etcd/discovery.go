@@ -170,11 +170,10 @@ func (d *etcdDiscovery) watchLoop(name string, e *serviceEntry) {
 			return
 		}
 		d.obs.Synced(name, err)
-		log.Error(ctx, starterTag, err,
+		log.Error(ctx, starterTag, err, "discovery-etcd: watch ended; re-arming",
 			log.String("status", discovery.StatusOf(err)),
 			log.String("prefix", prefix),
-			log.String("backoff", backoff.String()),
-			log.Msg("discovery-etcd: watch ended; re-arming"))
+			log.String("backoff", backoff.String()))
 		select {
 		case <-d.bgCtx.Done():
 			return
@@ -209,11 +208,10 @@ func (d *etcdDiscovery) drainWatch(name string, e *serviceEntry, prefix string, 
 		cancel()
 		if err != nil {
 			d.obs.Synced(name, err)
-			log.Warn(ctx, starterTag,
+			log.Warn(ctx, starterTag, "discovery-etcd: refresh failed (keeping stale snapshot)",
 				log.String("status", discovery.StatusOf(err)),
 				log.String("prefix", prefix),
-				log.Err(err),
-				log.Msg("discovery-etcd: refresh failed (keeping stale snapshot)"))
+				log.Err(err))
 			continue
 		}
 		e.mu.Lock()
@@ -234,12 +232,11 @@ func kvsToEndpoints(obs *discovery.Observer, kvs []*mvccpb.KeyValue) []discovery
 		var v instanceValue
 		if err := json.Unmarshal(kv.Value, &v); err != nil {
 			// A malformed payload is one bad discovery.Instance, not a broken snapshot.
-			log.Warn(context.Background(), starterTag,
+			log.Warn(context.Background(), starterTag, "discovery-etcd: skip malformed instance payload",
 				log.String("system", obs.System()),
 				log.String("center", obs.Center()),
 				log.String("key", string(kv.Key)),
-				log.Err(err),
-				log.Msg("discovery-etcd: skip malformed instance payload"))
+				log.Err(err))
 			continue
 		}
 		eps = append(eps, discovery.Endpoint{

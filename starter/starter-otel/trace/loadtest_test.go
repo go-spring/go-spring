@@ -31,8 +31,7 @@ import (
 func TestLoadTestProcessorTagsMarkedSpans(t *testing.T) {
 	tp, rec := newTestRecorderProvider()
 
-	prop, err := traffic.NewDefaultPropagator(traffic.DefaultBinding())
-	assert.Error(t, err).Nil()
+	prop := traffic.NewDefaultPropagator(traffic.DefaultBinding())
 	ctx := prop.WithLoadTest(context.Background())
 	_, span := tp.Tracer("test").Start(ctx, "op")
 	span.End()
@@ -69,8 +68,7 @@ func alwaysBound() traffic.Binding {
 // installed [traffic.Propagator] rather than reading the context marker: a
 // process that re-bases the convention gets the answer of its own convention.
 func TestLoadTestProcessorFollowsTheContract(t *testing.T) {
-	prop, err := traffic.NewDefaultPropagator(alwaysBound())
-	assert.Error(t, err).Nil()
+	prop := traffic.NewDefaultPropagator(alwaysBound())
 	SetLoadTestPropagator(prop)
 	defer SetLoadTestPropagator(nil)
 
@@ -101,8 +99,7 @@ func TestNewTracerProviderWiresLoadTest(t *testing.T) {
 	assert.Error(t, err).Nil()
 	defer func() { _ = tp.Shutdown(context.Background()) }()
 
-	prop, err := traffic.NewDefaultPropagator(traffic.DefaultBinding())
-	assert.Error(t, err).Nil()
+	prop := traffic.NewDefaultPropagator(traffic.DefaultBinding())
 	ctx := prop.WithLoadTest(context.Background())
 	_, span := tp.Tracer("test").Start(ctx, "op")
 	span.End()

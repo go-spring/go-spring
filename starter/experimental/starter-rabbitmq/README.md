@@ -68,16 +68,16 @@ The [example](example/main.go) demonstrates three core RabbitMQ patterns:
 
 The starter **declares** the identity of every publish and consume; the signals
 themselves — the span, the duration metrics (call-level and attempt-level) and
-one access log per call — are **emitted** by the resilience layer, the single
-emitter on the executor chain. The starter contains no per-call emission code of
-its own.
+one access log per call — are **emitted** by the observer
+(`observability.OperationObserver`), the single emitter on the connection's call
+path. The starter contains no per-call emission code of its own.
 
 Declaring is automatic. A publish you route through
 `StarterRabbitMQ.GuardedPublish` (and every driver `Publish`, which rides it)
 attaches the operation to the `ctx` before running the call under the
-connection's resilience executor; so does every driver consume. The executor
+connection's observer; so does every driver consume. The observer
 opens the `publish` / `consume` span, records `messaging.client.operation.duration`
-(the whole call, retries included) and the per-attempt
+(the whole call) and the per-attempt
 `messaging.client.attempt.duration`, bumps the `resilience.client.calls` counter,
 and writes the access log — tagged `_app_rabbitmq_access`.
 
@@ -90,7 +90,7 @@ into the message headers, so a trace links producer to consumer across services.
 ```go
 import starter "go-spring.org/starter-rabbitmq"
 
-// Declare and protect: the executor emits the span/metrics/log and injects the
+// Declare and observe: the observer emits the span/metrics/log and injects the
 // W3C trace context into pub.Headers.
 pub := amqp.Publishing{ContentType: "text/plain", Body: []byte("v")}
 err := starter.GuardedPublish(ctx, conn, ch, exchange, routingKey, false, false, pub)
@@ -98,8 +98,8 @@ err := starter.GuardedPublish(ctx, conn, ch, exchange, routingKey, false, false,
 
 The one signal the starter keeps local is **not** a per-call signal: a
 `messaging.client.connection.state_changes` counter, driven by the amqp091
-connection's own close / blocked / unblocked notifications, which the resilience
-layer never sees.
+connection's own close / blocked / unblocked notifications, which the observer
+never sees.
 
 Why a call-site helper instead of a wrapped channel/publisher:
 

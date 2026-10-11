@@ -23,8 +23,9 @@
 //
 // influxdb-client-go ships no OTel instrumentation of its own, but that is no
 // longer this starter's problem: the request identity declared here is read by
-// the resilience layer's emitter (see [declareTransport] for why the declaration
-// must run outside the executor, not inside it).
+// the resilience layer's emitter (see [callFor] for how the identity reaches the
+// executor — through the callback it derives the operation with, not the
+// context).
 
 package StarterInfluxdb
 
@@ -32,9 +33,9 @@ import (
 	"net/http"
 	"strings"
 
-	"go-spring.org/cloud/observability"
 	"go-spring.org/stdlib/strutil"
 
+	"go-spring.org/cloud/chain"
 	"go-spring.org/log"
 	"go.opentelemetry.io/otel/attribute"
 )
@@ -73,8 +74,8 @@ var accessTag = log.RegisterAppTag("influxdb", "access")
 //
 // The span Name keeps the request's full "METHOD /path" form, so a trace reads
 // the endpoint directly even though the metric label cannot carry it.
-func operation(method, path string) observability.Operation {
-	o := observability.Operation{
+func operation(method, path string) chain.Operation {
+	o := chain.Operation{
 		Name:   method + " " + path,
 		Metric: "db.client",
 		Attrs: []attribute.KeyValue{
@@ -91,25 +92,16 @@ func operation(method, path string) observability.Operation {
 	return o
 }
 
-// declareTransport is the declaration layer of the request chain: it puts the
-// request's identity on the context, which the resilience layer INSIDE it reads
-// to emit the span, the metrics and the access log (see [NewClient]
-// for the assembly that guarantees that order).
-//
-// It MUST wrap the resilience round-tripper, not sit beneath it: the emitter
-// reads the Operation at Execute entry, so a declaration made per attempt —
-// inside the executor, on the base transport — would be read by nobody. This
-// transport is therefore the outermost one, and the resilience round-tripper is
-// its base.
-type declareTransport struct {
-	base http.RoundTripper
-}
-
-// RoundTrip stamps the request's Operation onto its context and delegates to the
-// resilience round-tripper below, which reads it back and emits the call.
-func (t *declareTransport) RoundTrip(req *http.Request) (*http.Response, error) {
-	ctx := observability.WithOperation(req.Context(), operation(req.Method, req.URL.Path))
-	return t.base.RoundTrip(req.WithContext(ctx))
+// callFor derives a request's semantic identity — its method + URL path, see
+// [operation] — so the resilience round-tripper can name the call. An
+// http.RoundTripper is handed only the request, so this derivation is the
+// seam's ctx-free way to declare the operation: it is passed to
+// [resilience.NewRoundTripper] as the callFor callback, and the executor reads
+// the operation from the Execute signature rather than from the context. Every
+// link of the chain therefore sees the whole call from Execute entry, attempts
+// included. [NewClient] wires it in.
+func callFor(req *http.Request) chain.Operation {
+	return operation(req.Method, req.URL.Path)
 }
 
 // asyncWriteFields returns the fields an async write failure carries: the same

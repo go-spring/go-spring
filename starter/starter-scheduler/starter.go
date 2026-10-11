@@ -88,7 +88,9 @@ type Server struct {
 // than surfacing on a later fire. Scheduling begins only after the application
 // is ready, so jobs never race application startup.
 func (s *Server) Run(ctx context.Context, sig gs.ReadySignal) error {
-	log.Debug(context.Background(), log.TagAppDef, func() []log.Field { return []log.Field{log.Int("jobs", len(s.Jobs)), log.Msg("scheduler starting")} })
+	log.Debug(context.Background(), log.TagAppDef, "scheduler starting", func() []log.Field {
+		return []log.Field{log.Int("jobs", len(s.Jobs))}
+	})
 
 	s.sched = scheduling.NewScheduler()
 	if err := s.build(); err != nil {
@@ -100,7 +102,7 @@ func (s *Server) Run(ctx context.Context, sig gs.ReadySignal) error {
 	if err := s.sched.Start(ctx); err != nil {
 		return err
 	}
-	log.Info(ctx, log.TagAppDef, log.Int("jobs", len(s.Jobs)), log.Msg("scheduler started"))
+	log.Info(ctx, log.TagAppDef, "scheduler started", log.Int("jobs", len(s.Jobs)))
 
 	<-ctx.Done()
 	return nil
@@ -116,7 +118,7 @@ func (s *Server) Stop(ctx context.Context) error {
 		return nil
 	}
 	if err := s.sched.Stop(ctx); err != nil {
-		log.Warn(ctx, log.TagAppDef, log.Err(err), log.Msg("scheduler drain timed out"))
+		log.Warn(ctx, log.TagAppDef, "scheduler drain timed out", log.Err(err))
 		return err
 	}
 	return nil

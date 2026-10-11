@@ -262,7 +262,7 @@ func (app *App) initLog(p flatten.Storage) error {
 	if !p.Exists(loggingKey) { // no logging
 		return nil
 	}
-	log.Debugf(app.ctx, log.TagAppDef, "initializing logging system from configuration")
+	log.Debug(app.ctx, log.TagAppDef, "initializing logging system from configuration", nil)
 	s := flatten.NewPrefixedStorage(p, loggingKey+".")
 	return log.Refresh(s)
 }
@@ -331,11 +331,11 @@ func (app *App) Start() error {
 					}
 				}()
 				if err := svr.Run(ctx, svrSig); err != nil {
-					log.Errorf(ctx, log.TagAppDef, err, "server serve error")
+					log.Error(ctx, log.TagAppDef, err, "server serve error")
 					svrSig.Intercept()
 					app.ShutDown()
 				} else {
-					log.Infof(ctx, log.TagAppDef, "server closed")
+					log.Info(ctx, log.TagAppDef, "server closed")
 				}
 			}, goutil.InheritCancel)
 		}
@@ -344,10 +344,10 @@ func (app *App) Start() error {
 		sig.Wait()
 		sig.Close()
 		if sig.Intercepted() {
-			log.Infof(app.ctx, log.TagAppDef, "server intercepted")
+			log.Info(app.ctx, log.TagAppDef, "server intercepted")
 			return errutil.Explain(nil, "server intercepted")
 		}
-		log.Infof(app.ctx, log.TagAppDef, "ready to serve requests")
+		log.Info(app.ctx, log.TagAppDef, "ready to serve requests")
 	}
 	return nil
 }
@@ -391,7 +391,7 @@ func (app *App) WaitForShutdown() {
 			var err error
 			err = svr.Stop(stopCtx)
 			if err != nil {
-				log.Errorf(ctx, log.TagAppDef, err, "shutdown server failed")
+				log.Error(ctx, log.TagAppDef, err, "shutdown server failed")
 			}
 		}, goutil.DetachCancel)
 	}
@@ -416,11 +416,11 @@ func (app *App) WaitForShutdown() {
 	// same test binary). CompareAndSwap: a newer app may already have taken
 	// over the facade.
 	currentApp.CompareAndSwap(app, nil)
-	log.Infof(app.ctx, log.TagAppDef, "shutdown complete")
+	log.Info(app.ctx, log.TagAppDef, "shutdown complete")
 }
 
 // ShutDown initiates a graceful shutdown of the application.
 func (app *App) ShutDown() {
-	log.Infof(app.ctx, log.TagAppDef, "shutting down")
+	log.Info(app.ctx, log.TagAppDef, "shutting down")
 	app.cancel()
 }

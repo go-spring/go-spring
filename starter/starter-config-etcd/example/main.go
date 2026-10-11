@@ -100,7 +100,7 @@ func runTest(d *Demo) {
 	// Publish a new value for the imported key via a direct etcd client.
 	want := "hello-" + time.Now().Format("150405")
 	if err := publish(want); err != nil {
-		log.Errorf(ctx, log.TagAppDef, err, "publish config failed")
+		log.Error(ctx, log.TagAppDef, err, "publish config failed")
 		os.Exit(1)
 	}
 
@@ -116,7 +116,7 @@ func runTest(d *Demo) {
 		}
 		time.Sleep(200 * time.Millisecond)
 	}
-	log.Errorf(ctx, log.TagAppDef, errutil.Explain(nil, "message=%q want=%q", d.Message.Value(), want), "hot-reload timeout")
+	log.Error(ctx, log.TagAppDef, errutil.Explain(nil, "message=%q want=%q", d.Message.Value(), want), "hot-reload timeout")
 	os.Exit(1)
 }
 

@@ -29,20 +29,19 @@ import (
 	"go-spring.org/cloud/resilience"
 )
 
-const rulesV1 = `spring.governance.enabled=true
+const rulesV1 = `spring.resilience.driver=default
 spring.governance.client.default.attempt-timeout=100ms
 `
 
-const rulesV2 = `spring.governance.enabled=true
+const rulesV2 = `spring.resilience.driver=default
 spring.governance.client.default.attempt-timeout=300ms
-spring.governance.client.default.max-retries=1
+spring.governance.client.default.retry.max-retries=1
 `
 
 // YAML variants of the same rules, to exercise format-by-extension and the
 // malformed/empty cases (properties syntax almost never hard-fails).
 const rulesV1YAML = `spring:
   governance:
-    enabled: true
     client:
       default:
         attempt-timeout: 100ms
@@ -50,11 +49,11 @@ const rulesV1YAML = `spring:
 
 const rulesV2YAML = `spring:
   governance:
-    enabled: true
     client:
       default:
         attempt-timeout: 300ms
-        max-retries: 1
+        retry:
+          max-retries: 1
 `
 
 // writeRules writes a rules file and returns its path.
@@ -90,7 +89,7 @@ func TestFileSource_InitialSnapshot(t *testing.T) {
 	defer func() { _ = s.Close() }()
 
 	cfg := s.Snapshot()
-	if !cfg.Enabled || cfg.Client.Default.AttemptTimeout != 100*time.Millisecond {
+	if cfg.Client.Default.AttemptTimeout != 100*time.Millisecond {
 		t.Fatalf("initial snapshot wrong: %+v", cfg)
 	}
 }
@@ -125,7 +124,7 @@ func TestFileSource_HotReload(t *testing.T) {
 	awaitCfg(t, s, 300*time.Millisecond)
 	mu.Lock()
 	defer mu.Unlock()
-	if got.Client.Default.MaxRetries != 1 {
+	if got.Client.Default.Retry.MaxRetries != 1 {
 		t.Fatalf("pushed config should carry the new rules: %+v", got.Client.Default)
 	}
 }
@@ -165,8 +164,9 @@ func TestFileSource_BadEditKeepsLastGood(t *testing.T) {
 		t.Fatalf("malformed edit must keep last good snapshot: %+v", cfg.Client.Default)
 	}
 
-	// Empty file: parses "fine" but carries no spring.governance.* keys — a truncating
-	// write, not a legitimate disable (that would be spring.governance.enabled=false).
+	// Empty file: parses "fine" but carries no spring.governance.* keys — a
+	// truncating write, not a legitimate "off" document (that would be one that
+	// configures nothing but still carries a key, e.g. spring.resilience.driver=default).
 	if err = os.WriteFile(path, nil, 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -198,7 +198,7 @@ func TestFileSource_MissingFileFailsFast(t *testing.T) {
 }
 
 // TestFileSource_EndToEndWithCenter wires the source into a governance center
-// built directly over its own module authorities (the same Center.SetSource
+// built directly over its own module authorities (the same constructor-binding
 // contract the starter's bean injection drives) and asserts the fan-out reaches
 // a subscribed label on a live file edit. There is no process-global to reset:
 // the center and its authorities belong to this test alone.
@@ -213,14 +213,13 @@ func TestFileSource_EndToEndWithCenter(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	lb, err := loadbalance.NewManager(nil) // no factory bean contributed
-	if err != nil {
+	lb := loadbalance.NewManager()
+	res := resilience.NewManager(nil)
+	// The source is a constructor argument: its snapshot is adopted at bind, arming res.
+	if _, err := NewCenter(
+		res, lb, fault.NewInjector(fault.Configs{Client: fault.Config{}}, nil), nil, s); err != nil {
 		t.Fatal(err)
 	}
-	res := resilience.NewManager(nil)
-	ctr := NewCenter(Config{},
-		res, lb, fault.NewInjector(fault.Configs{Client: fault.Config{}}, nil), nil, nil)
-	ctr.SetSource(s) // adopts the source's initial snapshot, arming res
 
 	var mu sync.Mutex
 	var got resilience.ClientPolicy

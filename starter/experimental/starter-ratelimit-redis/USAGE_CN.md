@@ -11,7 +11,7 @@
 **激活方式**：任一 `spring.ratelimit.redis.*` 键即武装 starter 的 module，且该配置块唯一的键
 必须设置：`spring.ratelimit.redis.client` 指名的 `*goredis.Client` bean（由 starter-go-redis
 在 `spring.go-redis.instances.<client>` 下提供）所连的 Redis 实例承载计数器。starter 只贡献
-一个 `resilience.Counters` 类型的 bean。容器里没有它时，每个 executor 用自己的一份预算计数，
+一个 `resilience.ClusterLimiter` 类型的 bean。容器里没有它时，每个 executor 用自己的一份预算计数，
 所以贡献本存储就是全部的开关：[cloud/governance](../../../cloud/governance/README.md) 的 driver bean
 会注入它，进程内每个 executor 从此花 Redis 里每个 scope 的同一个预算——而且是跨副本的，这是
 executor 本地预算做不到的。
@@ -119,7 +119,7 @@ spring.governance.source.file.path=conf/governance.yaml
 ```yaml
 spring:
   governance:
-    enabled: true
+    driver: default
     client:
       rules:
         - service: ratelimit-redis:api
@@ -151,15 +151,15 @@ import starter-go-redis + starter-ratelimit-redis
   └─ gs.Module(gs.OnProperty("spring.ratelimit.redis"))
         └─ conf.Bind("${spring.ratelimit.redis}") → Config{Client}
              ├─ Client == "" 时 fail fast（启动报错并点名该属性）
-             └─ Provide func(client *goredis.Client) (resilience.Counters, error)
+             └─ Provide func(client *goredis.Client) (resilience.ClusterLimiter, error)
                   （gs.TagArg(c.Client)；接口返回类型即 bean 类型——
                    不需要 Export）
 
 gs.Run()
-  ├─ 本存储成为容器里唯一的 resilience.Counters bean
+  ├─ 本存储成为容器里唯一的 resilience.ClusterLimiter bean
   ├─ bean 装配：client 指名的 *goredis.Client bean 按名注入；
-  │     NewCounters 包住它的 UniversalClient（client 为 nil 是构造函数错误）
-  ├─ resilience driver bean 注入 resilience.Counters，所以它构建的每个 executor
+  │     NewClusterLimiter 包住它的 UniversalClient（client 为 nil 是构造函数错误）
+  ├─ resilience driver bean 注入 resilience.ClusterLimiter，所以它构建的每个 executor
   │     都花这份存储——存储本身也因此被实例化（driver 需要它）
   └─ SIGTERM 时：无需释放——存储自身不持有状态，redis 客户端的 Close
                  归 starter-go-redis
@@ -167,9 +167,9 @@ gs.Run()
 
 ### 2.2 一次 Execute 调用，逐层
 
-`exec.Execute(ctx, fn)` 配规则 `rate-limit: 2, burst: 5`：
+`exec.Execute(ctx, chain.Operation{}, fn)` 配规则 `rate-limit: 2, burst: 5`：
 
-1. executor 的限流阶段调用 `Counters.Allow(ctx, service, policy, 1)`——executor 对每次尝试都
+1. executor 的限流阶段调用 `ClusterLimiter.Allow(ctx, service, policy, 1)`——executor 对每次尝试都
    计费，scope 即该 executor 构建时绑定的 service。
 2. `RateLimit` 为零直接放行为无限流，**不碰 Redis**。规则丢失意味着完全没有限流：这是治理
    配置的症状，不是存储的症状。
@@ -263,7 +263,7 @@ cd example && ./check.sh    # docker 门控：compose 起 redis，跑自断言�
 | 完全不限流，全是 200 | 该 service 的 policy `rate-limit: 0`，或 Redis 不可达（executor 放行） | 在规则文件里给正数 `rate-limit`；检查 Redis。 |
 | 实际突发与窗口算法对不上 | 规则要求 `algorithm: sliding-window`，而共享存储按令牌桶计数 | 把上限建模成 `rate-limit`/`burst`，或让 sliding window 继续用内存存储。 |
 | 调用堆积而不是被拒绝 | 设了 `rate-limit-max-wait`，但共享存储不排队 | 排队继续留给内存存储，或去掉该参数。 |
-| `spring.governance.enabled=false` 的应用完全没有限流 | 治理中心被关，所有 executor 都是直通 | 打开治理；本 starter 只搬计数器。 |
+| 文档没配限流的应用完全没有限流 | 没有匹配规则（或零值 `Default`）时，所有 executor 都是直通 | 给该 label 配一条带正数 `rate-limit` 的规则；本 starter 只搬计数器。 |
 
 ---
 

@@ -77,7 +77,7 @@ func init() {
     prev := goutil.OnPanic
     goutil.OnPanic = func(ctx context.Context, info goutil.PanicInfo) {
         atomic.AddInt64(&panics, 1)
-        log.Warnf(ctx, log.TagAppDef, "recovered panic: %v", info.Panic)
+        log.Warn(ctx, log.TagAppDef, "recovered panic", log.Any("panic", info.Panic))
         prev(ctx, info)
     }
 }

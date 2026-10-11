@@ -32,7 +32,7 @@ import (
 //
 //   - Retry is meaningless inbound. A handler that already produced side effects
 //     cannot be replayed, so a server must never retry. Today that rule is a
-//     doc-comment convention ("Leave ClientPolicy.MaxRetries at 0") plus a Written()
+//     doc-comment convention ("declare no retry node") plus a Written()
 //     guard; here it has no representation at all, so the executor an inbound
 //     [Driver.NewServerExecutor] builds cannot be given a retry even by accident.
 //   - Endpoint selection is meaningless inbound: there is no endpoint to choose.
@@ -72,6 +72,16 @@ type ServerPolicy struct {
 	// Window is the rolling interval [SlidingWindow] counts over; it defaults to
 	// one second and is ignored by [TokenBucket]. Ignored when RateLimit is 0.
 	Window time.Duration `value:"${window:=0}"`
+
+	// RateLimitWarmUpDuration ramps the inbound rate limit up from a cold start
+	// over this duration, so a freshly restarted server does not admit full
+	// quota onto its cold dependencies in the first instants. See the same-named
+	// [ClientPolicy] field for the semantics. 0 disables warm-up.
+	RateLimitWarmUpDuration time.Duration `value:"${rate-limit-warm-up-duration:=0}"`
+
+	// WarmUpColdFactor shapes how conservative the ramp-in is; 0 means the
+	// backend's default (3). Ignored when RateLimitWarmUpDuration is 0.
+	WarmUpColdFactor int `value:"${warm-up-cold-factor:=0}"`
 
 	// ErrorThreshold is the failure count that trips the inbound circuit breaker.
 	// Under [BreakerConsecutive] (the default) it counts failures in a row; under
@@ -136,6 +146,13 @@ type ServerPolicy struct {
 	// server's goroutines or connections. 0 disables the bulkhead.
 	MaxConcurrent int `value:"${max-concurrent:=0}"`
 
+	// BulkheadQueueDuration is how long a request finding the bulkhead full may
+	// WAIT for a slot before being rejected with [chain.ErrBulkheadFull] — the
+	// inbound counterpart of [ClientPolicy.BulkheadQueueDuration], and the neutral
+	// counterpart of OpenSergo's maxQueueDurationMs. 0 (the default) keeps the
+	// reject-immediately behavior. Ignored when MaxConcurrent is 0.
+	BulkheadQueueDuration time.Duration `value:"${bulkhead-queue-duration:=0}"`
+
 	// AttemptTimeout is the HANDLING budget: it bounds how long one inbound call
 	// may take, via a derived context. Inbound has no attempts to separate, so
 	// this is the whole call's budget. 0 means no budget is imposed by the
@@ -149,25 +166,30 @@ type ServerPolicy struct {
 func (p ServerPolicy) IsZero() bool {
 	return p.RateLimit == 0 && p.Burst == 0 && p.RateLimitMaxWait == 0 &&
 		p.Algorithm == "" && p.Window == 0 &&
+		p.RateLimitWarmUpDuration == 0 && p.WarmUpColdFactor == 0 &&
 		p.ErrorThreshold == 0 && p.OpenDuration == 0 &&
 		p.BreakerStrategy == "" && p.ErrorRateThreshold == 0 &&
 		p.MinRequests == 0 && p.BreakerWindow == 0 &&
 		p.SlowCallDurationThreshold == 0 && p.SlowCallRateThreshold == 0 &&
 		p.HalfOpenRequests == 0 &&
-		p.MaxConcurrent == 0 && p.AttemptTimeout == 0
+		p.MaxConcurrent == 0 && p.BulkheadQueueDuration == 0 &&
+		p.AttemptTimeout == 0
 }
 
 // RateSpec returns the rate-limit stage's view of p, exactly as
-// [ClientPolicy.RateSpec] does for the outbound side: the stage and any [Counters]
-// store read the same vocabulary from either direction, and the two agree on every
+// [ClientPolicy.RateSpec] does for the outbound side: the stage and any
+// [ClusterLimiter] store read the same vocabulary from either direction, and the
+// two agree on every
 // shared knob's meaning.
 func (p ServerPolicy) RateSpec() RateSpec {
 	return RateSpec{
-		RateLimit: p.RateLimit,
-		Burst:     p.Burst,
-		Algorithm: p.Algorithm,
-		Window:    p.Window,
-		MaxWait:   p.RateLimitMaxWait,
+		RateLimit:  p.RateLimit,
+		Burst:      p.Burst,
+		Algorithm:  p.Algorithm,
+		Window:     p.Window,
+		MaxWait:    p.RateLimitMaxWait,
+		WarmUp:     p.RateLimitWarmUpDuration,
+		ColdFactor: p.WarmUpColdFactor,
 	}
 }
 

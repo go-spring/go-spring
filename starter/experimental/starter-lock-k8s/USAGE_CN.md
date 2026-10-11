@@ -86,7 +86,7 @@ func (w *Worker) Init(ctx context.Context) {
         Locker: w.Locker,
         Key:    "demo-leader",
         OnStartedLeading: func(context.Context) {
-            log.Infof(ctx, log.TagAppDef, "elected leader over Lease demo-leader")
+            log.Info(ctx, log.TagAppDef, "elected leader over Lease demo-leader")
         },
         RetryInterval: 500 * time.Millisecond,
     })

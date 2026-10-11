@@ -56,7 +56,7 @@ func TestTrackerSuspendAndRecover(t *testing.T) {
 	tr.Record(context.Background(), "a", false)
 	assert.That(t, tr.Suspended("a")).True()
 	now = now.Add(1100 * time.Millisecond)
-	tr.Allows(eps("a"))   // admit trial -> half-open
+	tr.Allows(eps("a"))                         // admit trial -> half-open
 	tr.Record(context.Background(), "a", false) // trial fails
 	assert.That(t, tr.Suspended("a")).True()
 }

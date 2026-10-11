@@ -19,8 +19,8 @@
 //
 // A client declares its whole operation up front — it knows the destination and
 // the verb before it calls. A server cannot: the response status code is the
-// outcome of the work, so it is unknown when the declaration is read at
-// [WithOperation] time. This file is the holder that closes that gap: the
+// outcome of the work, so it is unknown when the declaration is read at the
+// request's entry. This file is the holder that closes that gap: the
 // emitter installs one, the handler fills it on the way out, the emitter reads
 // it back and attaches what it finds to the span and the access log.
 //

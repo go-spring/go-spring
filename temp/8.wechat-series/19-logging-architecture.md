@@ -14,10 +14,9 @@ Go-Spring 的日志体系借鉴了 Log4j 2 的分层架构，也参考了 Go 标
 var TagBizOrder = log.RegisterBizTag("order", "create")
 
 func CreateOrder(ctx context.Context, orderID int64) {
-	log.Info(ctx, TagBizOrder,
+	log.Info(ctx, TagBizOrder, "订单创建完成",
 		log.Int("order_id", orderID),
 		log.String("status", "created"),
-		log.Msg("订单创建完成"),
 	)
 }
 ```
@@ -164,7 +163,7 @@ Go-Spring 内置了两种 Layout：
 
 Encoder 负责结构化 Field 的具体编码，解决的是“每个字段怎样转换成最终字节”的问题。
 
-前面示例中的 `log.Int`、`log.String` 和 `log.Msg` 都会生成 Field。每个 Field 都会保存字段名、字段类型和字段值。编码时，Field 会根据自身类型调用 Encoder 对应的方法，完成对布尔值、整数、浮点数、字符串、数组和嵌套对象的处理。
+前面示例中的 `log.Int` 和 `log.String` 都会生成 Field。每个 Field 都会保存字段名、字段类型和字段值。编码时，Field 会根据自身类型调用 Encoder 对应的方法，完成对布尔值、整数、浮点数、字符串、数组和嵌套对象的处理。
 
 Go-Spring 内置了两种 Encoder：
 

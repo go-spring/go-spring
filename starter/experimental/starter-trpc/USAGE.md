@@ -128,11 +128,10 @@ spring.governance.source.file.path=conf/governance.yaml
 ```yaml
 spring:
   governance:
-    enabled: true
+    driver: default
     server:
       fault:
-        enabled: false        # flip to true to "set fire" without restart
-        rate: 0.2
+        # rate: 0.2           # set a rate to "set fire" without restart
         error: timeout
         scope: loadtest       # only traffic marked x-loadtest is affected
 ```
@@ -321,15 +320,15 @@ requests are **not drained** — see §6.
 
 ### 4.4 Fault drill (no restart)
 
-1. Start with `governance.yaml` as in §1 (`fault.enabled: false`), `fault` in the filter chain.
+1. Start with `governance.yaml` as in §1 (no `fault.rate` set — inert), `fault` in the filter chain.
 2. Generate baseline traffic → all calls succeed.
-3. Flip `fault.enabled: true` in the file — the governance source hot-reloads; the filter
+3. Set `fault.rate: 0.2` in the file — the governance source hot-reloads; the filter
    captures the injected `*fault.Injector`, whose config the center swaps in place, so no
    restart is needed.
 4. Marked traffic burns (metadata `x-loadtest: 1` on the client call), normal traffic is
    unaffected: ~20% of marked calls get the injected `timeout`.
 5. Watch the fire: `rpc.server.request.duration` buckets shift, spans on faulted calls carry
-   Error status, `rpc.server.request_count` keeps counting. Flip back to extinguish.
+   Error status, `rpc.server.request_count` keeps counting. Clear the rate to extinguish.
 
 ### 4.5 Load-test marking drill
 

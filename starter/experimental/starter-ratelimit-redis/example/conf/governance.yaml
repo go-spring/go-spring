@@ -4,7 +4,6 @@
 # merge), which is why the label carries both knobs.
 spring:
   governance:
-    enabled: true
     client:
       rules:
         - service: ratelimit-redis:api

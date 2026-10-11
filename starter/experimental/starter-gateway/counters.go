@@ -14,23 +14,23 @@
  * limitations under the License.
  */
 
-// counters.go is the gateway's own in-memory [resilience.Counters]. The
+// counters.go is the gateway's own in-memory [resilience.ClusterLimiter]. The
 // rate-limit filter keys budgets by route or route|client-ip — an unbounded
 // key space a process-local store must bound itself (hence the eviction) — and
 // it reaches only this process: a store over a shared backend, contributed as
-// the container's Counters bean, covers every replica instead, and the wiring
+// the container's ClusterLimiter bean, covers every replica instead, and the wiring
 // prefers it when present.
 
 package StarterGateway
 
 import (
 	"context"
-	"go-spring.org/cloud/chain"
 	"sync"
 	"time"
 
+	"go-spring.org/cloud/chain"
+	"go-spring.org/cloud/ratelimit"
 	"go-spring.org/cloud/resilience"
-	"go-spring.org/stdlib/timeutil"
 )
 
 // maxScopes bounds how many keys the store tracks before it starts evicting
@@ -41,15 +41,15 @@ const (
 	idleScope = 10 * time.Minute
 )
 
-// newMemoryCounters returns the process-local store the rate-limit filter
+// newMemoryLimiter returns the process-local store the rate-limit filter
 // falls back to when the wiring provided no shared one.
-func newMemoryCounters() resilience.Counters {
-	return &memoryCounters{scopes: map[string]*scopeState{}}
+func newMemoryLimiter() resilience.ClusterLimiter {
+	return &memoryLimiter{scopes: map[string]*scopeState{}}
 }
 
-// memoryCounters keeps per-key counter state so independent budgets do not
+// memoryLimiter keeps per-key counter state so independent budgets do not
 // interfere. The concrete state type depends on the configured algorithm.
-type memoryCounters struct {
+type memoryLimiter struct {
 	mu     sync.Mutex
 	scopes map[string]*scopeState
 }
@@ -58,23 +58,23 @@ type memoryCounters struct {
 // policy change (a hot-reloaded rate) starts that key's budget over.
 type scopeState struct {
 	spec   resilience.RateSpec
-	bucket *tokenBucket
-	window *slidingWindow
+	bucket *ratelimit.TokenBucket
+	window *ratelimit.SlidingWindow
 	used   time.Time
 }
 
-func (c *memoryCounters) Allow(ctx context.Context, scope string, spec resilience.RateSpec, n int) error {
+func (c *memoryLimiter) Allow(ctx context.Context, scope string, spec resilience.RateSpec, n int) error {
 	if spec.RateLimit <= 0 || n <= 0 { // no budget configured
 		return nil
 	}
 	s := c.state(scope, spec)
 	if s.window != nil {
-		if s.window.allowN(n) {
+		if s.window.AllowN(n) {
 			return nil
 		}
 		return chain.ErrRateLimited
 	}
-	if s.bucket.waitN(ctx, float64(n), spec.MaxWait) {
+	if s.bucket.WaitN(ctx, float64(n), spec.MaxWait) {
 		return nil
 	}
 	return chain.ErrRateLimited
@@ -82,7 +82,7 @@ func (c *memoryCounters) Allow(ctx context.Context, scope string, spec resilienc
 
 // state returns scope's counters, rebuilding them when the rate-limit
 // configuration changed since they were built.
-func (c *memoryCounters) state(scope string, spec resilience.RateSpec) *scopeState {
+func (c *memoryLimiter) state(scope string, spec resilience.RateSpec) *scopeState {
 	now := time.Now()
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -100,7 +100,7 @@ func (c *memoryCounters) state(scope string, spec resilience.RateSpec) *scopeSta
 		if limit < 1 {
 			limit = 1
 		}
-		s.window = &slidingWindow{limit: limit, window: win, curStart: now}
+		s.window = ratelimit.NewSlidingWindow(limit, win)
 	} else {
 		burst := spec.Burst
 		if burst <= 0 {
@@ -110,7 +110,7 @@ func (c *memoryCounters) state(scope string, spec resilience.RateSpec) *scopeSta
 				burst = 1
 			}
 		}
-		s.bucket = newTokenBucket(spec.RateLimit, burst)
+		s.bucket = ratelimit.NewTokenBucket(spec.RateLimit, burst).WithWarmUp(spec.WarmUp, spec.ColdFactor)
 	}
 	c.scopes[scope] = s
 	if len(c.scopes) > maxScopes {
@@ -122,7 +122,7 @@ func (c *memoryCounters) state(scope string, spec resilience.RateSpec) *scopeSta
 // evictLocked drops the keys that have gone idle, and then — if the store is
 // still over its cap, which only an unbounded key space can cause — arbitrary
 // ones until it is under. Re-creating an evicted key starts a fresh bucket.
-func (c *memoryCounters) evictLocked(now time.Time) {
+func (c *memoryLimiter) evictLocked(now time.Time) {
 	for k, s := range c.scopes {
 		if now.Sub(s.used) > idleScope {
 			delete(c.scopes, k)
@@ -136,121 +136,3 @@ func (c *memoryCounters) evictLocked(now time.Time) {
 	}
 }
 
-// tokenBucket is a minimal, dependency-free rate limiter. Tokens refill
-// continuously at rate per second up to burst.
-type tokenBucket struct {
-	mu     sync.Mutex
-	rate   float64
-	burst  float64
-	tokens float64
-	last   time.Time
-}
-
-func newTokenBucket(rate float64, burst int) *tokenBucket {
-	return &tokenBucket{
-		rate:   rate,
-		burst:  float64(burst),
-		tokens: float64(burst),
-		last:   time.Now(),
-	}
-}
-
-// allowN consumes n tokens if at least n are available.
-func (b *tokenBucket) allowN(n float64) bool {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	now := time.Now()
-	b.tokens += now.Sub(b.last).Seconds() * b.rate
-	if b.tokens > b.burst {
-		b.tokens = b.burst
-	}
-	b.last = now
-	if b.tokens < n {
-		return false
-	}
-	b.tokens -= n
-	return true
-}
-
-// waitN consumes n tokens, waiting up to maxWait (and no longer than ctx
-// allows) when the bucket is momentarily empty. It is the queueing form of
-// allowN: maxWait 0 reduces to the immediate allow/reject decision. A false
-// return means no token was obtained (deadline exceeded or ctx done), and no
-// token is consumed in that case.
-func (b *tokenBucket) waitN(ctx context.Context, n float64, maxWait time.Duration) bool {
-	if maxWait <= 0 {
-		return b.allowN(n) // no queueing budget: immediate allow/reject
-	}
-	deadline := time.Now().Add(maxWait)
-	if d, ok := ctx.Deadline(); ok {
-		if deadline.IsZero() || d.Before(deadline) {
-			deadline = d
-		}
-	}
-	for {
-		b.mu.Lock()
-		now := time.Now()
-		b.tokens += now.Sub(b.last).Seconds() * b.rate
-		if b.tokens > b.burst {
-			b.tokens = b.burst
-		}
-		b.last = now
-		if b.tokens >= n {
-			b.tokens -= n
-			b.mu.Unlock()
-			return true
-		}
-		// Tokens missing and how long until n of them refill.
-		need := time.Duration((n - b.tokens) / b.rate * float64(time.Second))
-		b.mu.Unlock()
-		if now.Add(need).After(deadline) {
-			return false
-		}
-		sleep := need
-		if sleep > 10*time.Millisecond {
-			sleep = 10 * time.Millisecond // re-check often; refill is continuous
-		}
-		if !timeutil.Sleep(ctx, sleep) {
-			return false
-		}
-	}
-}
-
-// slidingWindow approximates a rolling-window counter with the standard
-// weighted two-window estimate: it blends the previous window's count by the
-// fraction of it still overlapping the current instant. This bounds events per
-// window without storing a timestamp per event.
-type slidingWindow struct {
-	mu        sync.Mutex
-	limit     float64
-	window    time.Duration
-	curStart  time.Time
-	curCount  float64
-	prevCount float64
-}
-
-func (w *slidingWindow) allowN(n int) bool {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-	now := time.Now()
-	elapsed := now.Sub(w.curStart)
-	if elapsed >= w.window {
-		// Roll forward: an adjacent window becomes prev; a gap of two or more
-		// windows means the old counts have fully aged out.
-		if elapsed >= 2*w.window {
-			w.prevCount = 0
-		} else {
-			w.prevCount = w.curCount
-		}
-		w.curCount = 0
-		w.curStart = now
-		elapsed = 0
-	}
-	weight := float64(w.window-elapsed) / float64(w.window)
-	estimate := w.prevCount*weight + w.curCount
-	if estimate+float64(n) > w.limit {
-		return false
-	}
-	w.curCount += float64(n)
-	return true
-}

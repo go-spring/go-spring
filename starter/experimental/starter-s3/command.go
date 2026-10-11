@@ -14,31 +14,27 @@
  * limitations under the License.
  */
 
-// command.go is the "declaration seam" concept of this starter: the
-// declareTransport round-tripper that puts each S3 request's semantic identity
-// on the context (see observe.go). It emits nothing — the resilience layer
-// inside it reads the declaration to emit the span, the metrics and the access
-// log.
+// command.go is the "identity seam" concept of this starter: the callFor
+// resolver that builds each S3 request's semantic identity (see observe.go).
+// It emits nothing — the resilience round-tripper builds the operation through
+// it and passes it explicitly to the executor, which emits the span, the
+// metrics and the access log.
 
 package StarterS3
 
 import (
 	"net/http"
 
-	"go-spring.org/cloud/observability"
+	"go-spring.org/cloud/chain"
 )
 
-// declareTransport declares the semantic identity of the S3 request on its
-// context and delegates inward. It MUST sit OUTSIDE the resilience
-// round-tripper: the emitter reads the operation at [chain.Executor.Execute]
-// entry, so a declaration made inside the executor — per attempt — would be
-// read by nobody. Placed here, the executor emits one call's signals covering
-// every attempt, retries included.
-type declareTransport struct {
-	next http.RoundTripper
-}
-
-func (t *declareTransport) RoundTrip(req *http.Request) (*http.Response, error) {
-	op := operation(req.Method, req.URL.Path)
-	return t.next.RoundTrip(req.WithContext(observability.WithOperation(req.Context(), op)))
+// callFor resolves the semantic identity of an S3 request. It is handed to
+// resilience.NewRoundTripper as its operation resolver, so the round-tripper
+// builds the operation at [chain.Executor.Execute] entry and passes it
+// explicitly to the executor — the executor emits one call's signals covering
+// every attempt, retries included. Building the operation inside the
+// round-tripper (rather than on the request's context from an outer transport)
+// is what keeps the identity known at the point the executor reads it.
+func callFor(req *http.Request) chain.Operation {
+	return operation(req.Method, req.URL.Path)
 }

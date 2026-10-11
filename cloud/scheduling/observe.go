@@ -162,24 +162,20 @@ func record(ev event) {
 	}
 	switch status {
 	case "panic":
-		log.Error(ctx, accessTag, ev.Err, append(fields,
-			log.Float("duration_ms", ms(ev.Duration)),
-			log.Msg("scheduler: job panicked"))...)
+		log.Error(ctx, accessTag, ev.Err, "scheduler: job panicked", append(fields,
+			log.Float("duration_ms", ms(ev.Duration)))...)
 	case "error":
-		log.Error(ctx, accessTag, ev.Err, append(fields,
-			log.Float("duration_ms", ms(ev.Duration)),
-			log.Msg("scheduler: job failed"))...)
+		log.Error(ctx, accessTag, ev.Err, "scheduler: job failed", append(fields,
+			log.Float("duration_ms", ms(ev.Duration)))...)
 	case "skipped_policy", "skipped_lock":
-		log.Debug(ctx, accessTag, func() []log.Field {
+		log.Debug(ctx, accessTag, "scheduler: job skipped", func() []log.Field {
 			return append(fields,
-				log.String("reason", ev.Reason),
-				log.Msg("scheduler: job skipped"))
+				log.String("reason", ev.Reason))
 		})
 	default:
-		log.Debug(ctx, accessTag, func() []log.Field {
+		log.Debug(ctx, accessTag, "scheduler: job ran", func() []log.Field {
 			return append(fields,
-				log.Float("duration_ms", ms(ev.Duration)),
-				log.Msg("scheduler: job ran"))
+				log.Float("duration_ms", ms(ev.Duration)))
 		})
 	}
 }

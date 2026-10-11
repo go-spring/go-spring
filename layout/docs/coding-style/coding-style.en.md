@@ -108,6 +108,7 @@ Must follow (raised in review):
 - **Place helper definitions nearby**: Small functions used only in one place, and dedicated constants/variables, sit next to their user rather than floating to the top of the file.
 - **On ownership conflicts, favor the type**: When a helper is used both by a type's methods and by other functions, put it in that type's section.
 - **Extract a whole section into a same-named new file when it meets any of**: independently testable, reused in multiple places, or noticeably exceeding one screen.
+- **In starter modules, `starter.go` is the single home of the gs registration**: the `init()` with its `gs.Module`/`gs.Bean` wiring, plus the supporting pieces (config-binding structs, Source/Client implementations), default to living in `starter.go` — don't split parallel per-topic files like `governance.go`; split only when a section grows large enough to stand alone (previous bullet) or for a special reason; extract config-binding structs into `config.go`. Within the file, put `init()` first (right after imports) so readers see the registration entry before the implementation details. Bind constructor config directly through an injected parameter (`func(c xxxConfig) (...)` + `gs.TagArg("${...prefix...}")`) instead of a separate `conf.Bind` step.
 
 Preferences (exceptions allowed):
 
@@ -137,7 +138,7 @@ The project uniformly uses the **dual-semantic error-wrapping pattern** of `stdl
 
 - **Every key action node gets a log line**: state transitions, lifecycle events, and cross-boundary actions all leave a trace — the difference is only the level. The rule is not "too frequent to log" but "frequent means a quieter level".
 - **Arrange by level**: successful high-frequency access records at `Debug` (off by default, opened when investigating); rare normal flow (startup, elected, config refresh) at `Info`; abnormal but self-healing/degraded at `Warn`; failures needing human intervention at `Error`. The level carries the consequence; the fields carry the dimensions.
-- **Structured first**: keys share names and dimensions with the metrics/spans; messages go in `log.Msg`. Pure-dimension access records may omit the message text, but failure event lines carry both `log.Err` and `log.Msg`.
+- **Structured first**: keys share names and dimensions with the metrics/spans; messages go in the `msg` parameter. Pure-dimension access records may omit the message text, but failure event lines carry both the `log.Err` field and the `msg` parameter.
 
 ### 5.2 Which Nodes Must Report Metrics
 
@@ -184,7 +185,7 @@ Dimension discipline: unbounded cardinality (keys, addresses, destination values
 ## 8. Go Idioms
 
 - **Authentic Go**: Adapt Spring concepts without forcing object orientation; keep Go's natural idioms.
-- **Use context correctly**: Request flows must carry `context.Context`; avoid casually using `context.TODO()`/`context.Background()`.
+- **Use context correctly**: Request flows must carry `context.Context`; avoid casually using `context.TODO()`/`context.Background()`. When a genuinely orphan ctx root is needed (e.g. the root of a background stream), prefer starting it with `log.RootFields(...)` in non-test code — it doubles as the marker of a legitimate orphan-ctx start and attaches log fields in the same stroke; leave bare `context.Background()` to tests.
 - **Boundary checks**: Validate input at API boundaries to catch errors early.
 - **Avoid over-abstraction**: Abstract only when truly needed; follow YAGNI and don't pre-plan for an uncertain future.
 - **Minimal dependencies**: Add only necessary external dependencies.

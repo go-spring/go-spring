@@ -25,6 +25,8 @@ import (
 	"github.com/labstack/echo/v4"
 	"go-spring.org/cloud/fault"
 	"go-spring.org/cloud/governance"
+	"go-spring.org/cloud/loadbalance"
+	"go-spring.org/cloud/resilience"
 	"go-spring.org/cloud/traffic"
 	"go-spring.org/spring/conf"
 	"go-spring.org/stdlib/flatten"
@@ -45,9 +47,22 @@ func bindConfig(t *testing.T, props map[string]any) Config {
 }
 
 // testCenter wraps a fault injector in the governance center bean the middleware
-// takes, so a test can arm the fault layer without a container.
+// takes, so a test can arm the fault layer without a container. A nil inj
+// becomes an inert one, mirroring the DI wiring where the fault bean is always
+// present (an absent bean fails startup). An already-armed injector is re-armed
+// after construction, which dispatches the (zero) governance document into it.
 func testCenter(inj *fault.Injector) *governance.Center {
-	return governance.NewCenter(governance.Config{}, nil, nil, inj, nil, nil)
+	if inj == nil {
+		inj = fault.NewInjector(fault.Configs{}, nil)
+	}
+	armed := inj.ServerConfig()
+	ctr, err := governance.NewCenter(resilience.NewManager(nil),
+		loadbalance.NewManager(), inj, nil, governance.NewPushSource(governance.Config{}))
+	if err != nil {
+		panic(err)
+	}
+	inj.SetConfig(fault.Configs{Server: armed})
+	return ctr
 }
 
 // newTestEngine builds a real echo engine with the starter's middleware chain
@@ -57,7 +72,8 @@ func newTestEngine(t *testing.T, props map[string]any) *echo.Echo {
 	t.Helper()
 	e := echo.New()
 	e.HideBanner = true
-	assert.That(t, applyMiddlewares(e, bindConfig(t, props), testCenter(nil), nil)).Nil()
+	assert.That(t, applyMiddlewares(e, bindConfig(t, props), testCenter(nil),
+		traffic.NewDefaultPropagator(traffic.DefaultBinding()))).Nil()
 	return e
 }
 
@@ -120,10 +136,9 @@ func TestConfig_AddrRequiredWithoutDefault(t *testing.T) {
 
 func TestLoadTestMiddleware_TagsContextFromHeader(t *testing.T) {
 	var saw bool
-	prop, err := traffic.NewDefaultPropagator(traffic.DefaultBinding())
-	assert.Error(t, err).Nil()
+	prop := traffic.NewDefaultPropagator(traffic.DefaultBinding())
 	e := echo.New()
-	e.Use(LoadTest(nil))
+	e.Use(LoadTest(prop))
 	e.GET("/x", func(c echo.Context) error {
 		saw = prop.IsLoadTest(c.Request().Context())
 		return c.String(http.StatusOK, "ok")
@@ -147,8 +162,7 @@ func TestLoadTestMiddleware_RebasedHeaderAndTruthyValues(t *testing.T) {
 	// there (not in the middleware config).
 	b := traffic.DefaultBinding()
 	b.Key = "X-Stress"
-	prop, err := traffic.NewDefaultPropagator(b)
-	assert.Error(t, err).Nil()
+	prop := traffic.NewDefaultPropagator(b)
 	e := echo.New()
 	e.Use(LoadTest(prop))
 	e.GET("/x", func(c echo.Context) error {
@@ -379,11 +393,12 @@ func TestBodyLimit_RejectsOversizedBodyWith413(t *testing.T) {
 // The middleware captures the injector when it is built, so the test injects it
 // up front and drives the toggle through SetConfig on the same instance.
 func TestFaultMiddleware_Injects503ThenPassesThrough(t *testing.T) {
-	in := fault.NewInjector(fault.Configs{Server: fault.Config{Enabled: true, Rate: 1, Error: "generic"}}, nil)
+	in := fault.NewInjector(fault.Configs{Server: fault.Config{Rate: 1, Error: "generic"}}, nil)
 
 	e := echo.New()
 	e.HideBanner = true
-	assert.That(t, applyMiddlewares(e, bindConfig(t, map[string]any{}), testCenter(in), nil)).Nil()
+	assert.That(t, applyMiddlewares(e, bindConfig(t, map[string]any{}), testCenter(in),
+		traffic.NewDefaultPropagator(traffic.DefaultBinding()))).Nil()
 	e.GET("/x", func(c echo.Context) error {
 		return c.String(http.StatusOK, "ok")
 	})
@@ -426,7 +441,8 @@ func TestNewSimpleEchoServer_HealthEndpointRegistered(t *testing.T) {
 	svr, err := NewSimpleEchoServer(func(e *echo.Echo) {}, nil, bindConfig(t, map[string]any{
 		"health.enabled": true,
 		"health.path":    "/livez",
-	}), testCenter(nil), nil)
+	}), testCenter(nil),
+		traffic.NewDefaultPropagator(traffic.DefaultBinding()))
 	assert.That(t, err).Nil()
 	e := svr.svr.Handler.(*echo.Echo)
 
@@ -438,7 +454,8 @@ func TestNewSimpleEchoServer_HealthEndpointRegistered(t *testing.T) {
 	// Health disabled by default: the route is absent, and an unrouted request
 	// gets echo's own 404 — buildFault passes handler errors through and only
 	// rewrites INJECTED faults as 503 (mirroring gin's buildFault).
-	svr2, err2 := NewSimpleEchoServer(func(e *echo.Echo) {}, nil, bindConfig(t, map[string]any{}), testCenter(nil), nil)
+	svr2, err2 := NewSimpleEchoServer(func(e *echo.Echo) {}, nil, bindConfig(t, map[string]any{}), testCenter(nil),
+		traffic.NewDefaultPropagator(traffic.DefaultBinding()))
 	assert.That(t, err2).Nil()
 	e2 := svr2.svr.Handler.(*echo.Echo)
 	w2 := httptest.NewRecorder()

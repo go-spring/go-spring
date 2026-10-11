@@ -23,7 +23,6 @@ import (
 
 	"github.com/redis/go-redis/extra/redisotel/v9"
 	"github.com/redis/go-redis/v9"
-	"go-spring.org/cloud"
 	"go-spring.org/cloud/actuator/health"
 	"go-spring.org/cloud/cache"
 	"go-spring.org/log"
@@ -119,13 +118,14 @@ func init() {
 // nothing, and the entry does not use service discovery).
 //
 // center is the governance center the container injects (nil in a standalone,
-// non-gs call) — the family's sole injection point. Its resilience, fault and
-// loadbalance authorities are bundled into a [cloud.ClientParams] and
-// handed to the Driver — not applied to the Driver's product afterwards: the
+// non-gs call) — the family's sole injection point. The Driver reads its
+// resilience, fault and loadbalance authorities from the center — not applied to
+// the Driver's product afterwards: the
 // Driver passes the bundle to [NewClient], which applies the resilience executor
 // and binds the pool the Driver built to the loadbalance authority. The client is therefore
-// assembled complete in one step, with the zero bundle degrading to an
-// observed-only, loudly-unmanaged executor.
+// assembled complete in one step, with the resilience manager required: the
+// container supplies it via the governance center, so a bundle without one
+// fails at construction.
 func newClient(ctx *gs.ContextProvider, c Config, d Driver, discoveryLabel string,
 	center *governance.Center) (*Client, error) {
 	// The client's identity rides on a context derived here: every line below
@@ -136,28 +136,24 @@ func newClient(ctx *gs.ContextProvider, c Config, d Driver, discoveryLabel strin
 		log.String("addr", c.Addr),
 		log.String("mode", c.Mode))
 
-	log.Debugf(cctx, log.TagAppDef, "creating redis client")
+	log.Debug(cctx, log.TagAppDef, "creating redis client", nil)
 
 	if err := validateConfig(ctx.Context, c); err != nil {
 		return nil, err
 	}
 
-	disc, _ := center.Discovery().Get(discoveryLabel)
-
-	// Fail loud when the entry routes through discovery but the cited label
-	// names no backend — the center's discovery directory is the table.
-	if c.ServiceName != "" && disc == nil {
-		if c.Discovery == "" {
-			return nil, errutil.Explain(nil, "redis: instance routes by service-name but sets no discovery backend (set ${spring.go-redis.instances.<name>.discovery} to the name of a discovery backend bean)")
-		}
-		return nil, errutil.Explain(nil, "redis: instance cites discovery backend %q but no such bean exists (register a discovery backend bean under that name)", c.Discovery)
+	// The wiring tag applies the family-default discovery fallback (discoveryLabel);
+	// fold it into the config so the driver reads one label — c.Discovery — and
+	// resolves the backend itself, failing construction if it names no bean. "none"
+	// is the tag's sentinel for "no backend" and is left as an empty c.Discovery.
+	if discoveryLabel != "" && discoveryLabel != "none" {
+		c.Discovery = discoveryLabel
 	}
 	// When service discovery owns the address, a configured addr can never take
 	// effect — say so instead of dropping it silently.
 	if c.ServiceName != "" && c.Addr != "" {
-		log.Warn(cctx, log.TagAppDef,
-			log.String("service_name", c.ServiceName),
-			log.Msg("redis: addr is ignored for an instance with a service-name: the address is resolved via service discovery"))
+		log.Warn(cctx, log.TagAppDef, "redis: addr is ignored for an instance with a service-name: the address is resolved via service discovery",
+			log.String("service_name", c.ServiceName))
 	}
 	// No company Driver bean → fall back to the bundled default assembly.
 	if d == nil {
@@ -166,10 +162,9 @@ func newClient(ctx *gs.ContextProvider, c Config, d Driver, discoveryLabel strin
 	// The Driver returns the client complete — identity, observation and
 	// governance all applied while it was built. There is no Init hook and
 	// nothing runs after this: the bean is finished when the ctor returns.
-	w, err := d.CreateClient(ctx.Context, c,
-		cloud.ClientParams{Resilience: center.Resilience(), Fault: center.Fault(), Loadbalance: center.Loadbalance(), Discovery: disc})
+	w, err := d.CreateClient(ctx.Context, c, center)
 	if err != nil {
-		log.Errorf(cctx, log.TagAppDef, err, "redis: create client failed")
+		log.Error(cctx, log.TagAppDef, err, "redis: create client failed")
 		return nil, errutil.Explain(err, "failed to create redis client")
 	}
 	// Fail fast (opt-in, e.g. ping=true): ping the backend at startup so a
@@ -185,12 +180,12 @@ func newClient(ctx *gs.ContextProvider, c Config, d Driver, discoveryLabel strin
 		err = HealthCheck(pingCtx, w)
 		cancel()
 		if err != nil {
-			log.Errorf(cctx, log.TagAppDef, err, "redis: startup ping failed")
+			log.Error(cctx, log.TagAppDef, err, "redis: startup ping failed")
 			_ = w.Destroy()
 			return nil, errutil.Explain(err, "redis: startup ping failed")
 		}
 	}
-	log.Infof(cctx, log.TagAppDef, "create redis client success")
+	log.Info(cctx, log.TagAppDef, "create redis client success")
 	return w, nil
 }
 
@@ -201,15 +196,14 @@ func newClient(ctx *gs.ContextProvider, c Config, d Driver, discoveryLabel strin
 //
 // center is the governance center the container injects (nil in a standalone,
 // non-gs call) — the family's sole injection point; its resilience and fault
-// authorities are bundled into a [cloud.ClientParams] and
-// handed to the Driver, which builds the per-command executor while assembling
+// authorities are read from the center by the Driver, which builds the per-command executor while assembling
 // the client. Cluster mode self-discovers its nodes, so no endpoint-selection
 // pool exists and the bundle carries no loadbalance authority.
 func newClusterClient(ctx *gs.ContextProvider, c Config, d Driver, center *governance.Center) (*Client, error) {
 	// See newClient: the cluster's node list rides on a context derived here.
 	cctx := log.WithFields(ctx.Context, log.Strings("addrs", c.Addrs))
 
-	log.Debugf(cctx, log.TagAppDef, "creating redis cluster client")
+	log.Debug(cctx, log.TagAppDef, "creating redis cluster client", nil)
 
 	if err := validateConfig(ctx.Context, c); err != nil {
 		return nil, err
@@ -222,13 +216,12 @@ func newClusterClient(ctx *gs.ContextProvider, c Config, d Driver, center *gover
 	cd, ok := d.(ClusterDriver)
 	if !ok {
 		err := errutil.Explain(nil, "redis: the configured Driver does not support cluster mode (implement ClusterDriver)")
-		log.Errorf(cctx, log.TagAppDef, err, "redis: the configured Driver does not support cluster mode (implement ClusterDriver)")
+		log.Error(cctx, log.TagAppDef, err, "redis: the configured Driver does not support cluster mode (implement ClusterDriver)")
 		return nil, err
 	}
-	w, err := cd.CreateClusterClient(ctx.Context, c,
-		cloud.ClientParams{Resilience: center.Resilience(), Fault: center.Fault()})
+	w, err := cd.CreateClusterClient(ctx.Context, c, center)
 	if err != nil {
-		log.Errorf(cctx, log.TagAppDef, err, "redis: create cluster client failed")
+		log.Error(cctx, log.TagAppDef, err, "redis: create cluster client failed")
 		return nil, errutil.Explain(err, "failed to create redis cluster client")
 	}
 	if c.Ping {
@@ -236,12 +229,12 @@ func newClusterClient(ctx *gs.ContextProvider, c Config, d Driver, center *gover
 		err = HealthCheck(pingCtx, w)
 		cancel()
 		if err != nil {
-			log.Errorf(cctx, log.TagAppDef, err, "redis: startup cluster ping failed")
+			log.Error(cctx, log.TagAppDef, err, "redis: startup cluster ping failed")
 			_ = w.Destroy()
 			return nil, errutil.Explain(err, "redis: startup ping failed")
 		}
 	}
-	log.Infof(cctx, log.TagAppDef, "create redis cluster client success")
+	log.Info(cctx, log.TagAppDef, "create redis cluster client success")
 	return w, nil
 }
 
@@ -253,7 +246,7 @@ func validateConfig(ctx context.Context, c Config) error {
 		// A removed key must not fail the bind — that would turn the framework's
 		// own change into a failed deploy — but it must not pass in silence
 		// either: the behaviour it used to switch is gone for every instance.
-		log.Warnf(ctx, log.TagAppDef, "redis: otel.tracing.enabled is removed and ignored — the per-command span is emitted by the resilience layer; remove the key from your configuration")
+		log.Warn(ctx, log.TagAppDef, "redis: otel.tracing.enabled is removed and ignored — the per-command span is emitted by the resilience layer; remove the key from your configuration")
 	}
 	switch c.Mode {
 	case "", "single":
@@ -294,7 +287,7 @@ func validateConfig(ctx context.Context, c Config) error {
 // observable-gauge family, so they stay here, while the per-command span this
 // used to attach is gone — the resilience layer opens the one call span by
 // itself. The signal is gated by its flag, so an instance can opt out. It is
-// called by [NewClient] before the declaration hook is added, so the redisotel
+// called by [NewClient] before the resilience hook is added, so the redisotel
 // hooks stay outermost in the command chain.
 func instrument(client redis.UniversalClient, otel OtelConfig) error {
 	if otel.MetricsEnabled {

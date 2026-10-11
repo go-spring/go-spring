@@ -27,8 +27,8 @@ import (
 	"context"
 
 	amqp "github.com/rabbitmq/amqp091-go"
-	"go-spring.org/cloud/fault"
-	"go-spring.org/cloud/governance"
+	"go-spring.org/cloud/chain"
+	"go-spring.org/cloud/observability"
 )
 
 // Client wraps an AMQP connection. It holds exactly two exported things: the
@@ -52,27 +52,23 @@ type Client struct {
 	// guard is the chain's governance layer, held for the messaging driver's
 	// per-delivery consume path (whose pipeline inverts the chain's
 	// composition — see [Client.execute]). Unaffected by head reorganization.
-	guard *GuardPublisher
+	obs *observability.OperationObserver
 }
 
-// NewClient builds a complete Client — identity, governance and all — over a
-// connected raw connection. serviceLabel is the governance label the executor
-// scopes limiter/breaker state by; center is the governance center the
-// container injects (nil reads unarmed authorities — exactly "governance
-// off", whose executor is a pass-through).
-func NewClient(conn *amqp.Connection, serviceLabel string, center *governance.Center) *Client {
-	exec := fault.WrapClientExecutor(center.Resilience().ClientExecutorFor("rabbitmq", serviceLabel), serviceLabel, center.Fault())
-	guard := &GuardPublisher{exec: exec}
-	return &Client{Conn: conn, InnerPublisher: NewObsPublisher(guard), guard: guard}
+// NewClient builds a complete Client — emitting layer and all — over a
+// connected raw connection. serviceLabel is the observer's service label. A
+// rabbitmq client has no seam for the resilience executor, so there is no
+// governance: the observer emits the span, metrics and access log, and nothing
+// throttles or retries.
+func NewClient(conn *amqp.Connection, serviceLabel string) *Client {
+	obs := observability.NewOperationObserver("rabbitmq", serviceLabel)
+	return &Client{Conn: conn, InnerPublisher: NewObsPublisher(nil, obs), obs: obs}
 }
 
-// Close tears the client down: the governance layer's executor goes first,
-// then the connection closes (which also closes the notifier channels and
-// drains the log-bridging goroutines). It is the gs destroy method.
+// Close tears the client down: the connection closes (which also closes the
+// notifier channels and drains the log-bridging goroutines). It is the gs
+// destroy method.
 func (c *Client) Close() error {
-	if c.guard != nil && c.guard.exec != nil {
-		_ = c.guard.exec.Close()
-	}
 	return c.Conn.Close()
 }
 
@@ -81,9 +77,9 @@ func (c *Client) Close() error {
 // declare, execute) is per-delivery and inverted relative to the chain's
 // outside-in composition — the same reason nats's Consume keeps a hand-written
 // wrapper — so it uses this seam instead of the chain.
-func (c *Client) execute(ctx context.Context, call func(context.Context) error) error {
-	if c.guard == nil || c.guard.exec == nil {
+func (c *Client) execute(ctx context.Context, op chain.Operation, call func(context.Context) error) error {
+	if c.obs == nil {
 		return call(ctx)
 	}
-	return c.guard.exec.Execute(ctx, call)
+	return c.obs.Observe(ctx, op, call)
 }

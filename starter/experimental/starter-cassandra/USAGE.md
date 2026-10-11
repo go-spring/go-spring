@@ -135,8 +135,7 @@ import starter-cassandra
         └─ conf.BindEach(p, "${spring.cassandra.instances}") → one Config per <name> entry
               ├─ Provide(newClient, IndexArg(1, ValueArg(c)),
               │            IndexArg(2, ?Driver),
-              │            IndexArg(3, *resilience.Manager),
-              │            IndexArg(4, *fault.Injector)).Name(<name>)
+              │            IndexArg(3, *governance.Center)).Name(<name>)
               │       .Destroy((*Client).Close)
               └─ Provide health.Indicator named "cassandra:<name>",
                       injecting the client by name (TagArg) [starter.go:58-61]
@@ -147,17 +146,17 @@ gs.Run()
   │     (none → bundled DefaultDriver; several coexist → the entry selects
   │     one by name: spring.cassandra.instances.<name>.driver = <bean-name>, empty =
   │     `spring.cassandra.default.driver`, then the single Driver bean by type, naming a missing bean fails startup)
-  │     → driver.CreateClient(c, cloud.ClientParams{Resilience: mgr, Fault: inj}) returns the *Client
-  │       (session + identity + governance): NewClient sets exec = params.ExecutorFor("cassandra", service),
-  │       which builds fault.WrapClientExecutor(mgr.ClientExecutorFor("cassandra", service), service, inj)
-  │       over the injected *resilience.Manager / *fault.Injector beans — exec chain complete at construction
+  │     → driver.CreateClient(ctx, c, center) returns the *Client
+  │       (session + identity + governance): NewClient sets exec = center.ExecutorFor("cassandra", service),
+  │       which builds fault.WrapClientExecutor(center.Resilience().ClientExecutorFor("cassandra", service), service, center.Fault())
+  │       over the authorities the injected *governance.Center hands out — exec chain complete at construction
   ├─ ping=true only: fail-fast probe — newClient calls HealthCheck [starter.go:100], one system.local scan to the raw session
   ├─ readiness: indicator delegates to HealthCheck, which queries system.local [health.go:34]
   └─ SIGTERM → Close [client.go]: exec.Close → session.Close
 ```
 
 There is no `Init` hook: `NewClient` fixes the client's identity and applies the
-governance bundle as part of driver assembly, so the bean is complete the moment `newClient`
+governance from `center` as part of driver assembly, so the bean is complete the moment `newClient`
 returns. Because governance is applied inside the constructor — before the probe — a probe
 failure tears down an already-governed client (`Close`) rather than leaking the executor.
 
@@ -183,24 +182,23 @@ problems surface on first use instead. The probe is bounded by gocql's own
 gocql exposes no reject-capable middleware (no hook chain like go-redis), so the guard rides
 the query object itself: `Client.Query`/`Client.Bind` mirror the raw session methods and
 return a guarded `*Query` builder [query.go] whose execution methods run through a per-query
-chain — identity layer (`ObsQuery`, declares) over governance layer (`GuardQuery`, executor)
-over raw adapter (`RawQuery`, executes the builder's current statement). `Client.Exec` is a
+chain — guarded layer (`GuardQuery`, builds the identity and runs the executor) over raw
+adapter (`RawQuery`, executes the builder's current statement). `Client.Exec` is a
 thin alias over that builder (kept for callers written against the earlier opt-in helper).
 Every statement execution method — `Exec`, `Iter`, `Scan`, `ScanCAS`, `MapScan`, `MapScanCAS` —
 is guarded+declared with no opt-in at the call site; a custom layer may wrap the builder's
-embedded `InnerQuery` head to rewrite what a statement does (the rewrite is what gets
-declared):
+embedded `InnerQuery` head to change what a statement does:
 
 `Client.Exec(ctx, stmt, values...)` / `Client.Query(...).Exec()` [client.go, query.go]:
 
-1. `ObsQuery` declares the statement's identity on the ctx (`observability.WithOperation`,
-   [observe.go]): span name `exec`, the `db.system`/`db.operation` labels, and the bounded
-   `db.statement` detail (truncated to 512 bytes).
-2. `GuardQuery` asks the governance executor for a permit — limiter/
+1. `GuardQuery` builds the statement's identity (`operation`, [observe.go]): span name `exec`,
+   the `db.system`/`db.operation` labels, and the bounded `db.statement` detail (truncated to
+   512 bytes). The operation is passed **explicitly** to the executor, not carried on the ctx.
+2. `GuardQuery` then asks the governance executor for a permit — limiter/
    breaker scoped to the service label `cassandra:<hosts[0]>` (per instance, keyed on the
    FIRST host only [client.go]). On rejection the statement is **never attempted**.
-   With governance off the client runs on the observed-only, loudly-unmanaged executor: the
-   statement still runs and is traced/measured, but no limiter/breaker/retry applies to it.
+   The resilience manager is required — the container always supplies it, so a client is
+   never assembled without governance: there is no unmanaged/observe-only fallback.
 3. The raw session's `Query(stmt, values...).WithContext(ctx).Exec()` runs (via the wrapper's embedded
    `*gocql.Query`) — full gocql semantics
    (prepared-statement caching, retries per gocql's config, default consistency from the
@@ -231,9 +229,9 @@ rejections both flow through retry/breaker/timeout and are counted and logged.
 
 ### 2.4 Driver seam
 
-`Driver.CreateClient(ctx, Config, cloud.ClientParams) (*Client, error)` owns full session
+`Driver.CreateClient(ctx, Config, center *governance.Center) (*Client, error)` owns full session
 assembly — hosts, PasswordAuthenticator, consistency, timeouts, CQL version, TLS [driver.go:63-95] —
-and applies the governance bundle while building, returning the exported `*Client` wrapper complete
+and applies the governance from `center` while building, returning the exported `*Client` wrapper complete
 (identity and governance both fixed via `NewClient` [driver.go:95]); only the startup probe stays in
 the starter's lifecycle (`newClient`). Session
 assembly is an **optional container bean**: a company or umbrella starter may provide its own

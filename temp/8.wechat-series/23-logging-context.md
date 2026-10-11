@@ -62,9 +62,8 @@ func init() {
 配置完成以后，业务代码仍然按照普通方式记录日志，只传入当前事件自己的字段。
 
 ```go
-log.Info(ctx, TagBizOrder,
+log.Info(ctx, TagBizOrder, "订单创建完成",
 	log.String("order_no", orderNo),
-	log.Msg("订单创建完成"),
 )
 ```
 
@@ -138,10 +137,8 @@ func init() {
 当应用记录日志时，Go-Spring 会自动把当前 Span 的标识补充到 Event：
 
 ```go
-log.Error(ctx, TagBizOrder,
+log.Error(ctx, TagBizOrder, err, "订单创建失败",
 	log.String("order_no", orderNo),
-	log.String("error", err.Error()),
-	log.Msg("订单创建失败"),
 )
 ```
 

@@ -13,8 +13,8 @@
   resilience 时执行器默认包 fault + observe(outcome 分维指标、按
   `Observability` 门控的访问日志)。未注册 OTel SDK 时均为 no-op。
 - 服务发现 + 负载均衡:配置 `ServiceName` 时接 discovery `Resolver` +
-  `loadbalance.Pool`(round-robin / least-conn / consistent-hash / weighted /
-  zone-aware),可选离群剔除。
+  `loadbalance.Chain`(基础 round-robin;least-conn / consistent-hash / weighted /
+  zone-aware 由规则指定),可选离群剔除。治理规则改变选择策略时链路整条重建。
 - 直连模式:只填 `Addr` 即把每次请求重写到该主机,生成客户端的 `Target` 可留空。
 - 默认走治理:未显式给执行器时,直接从集中治理中心按 `Resource`(由
   ServiceName/Addr 推导)取执行器——进程级 `spring.governance.*` 规则 + 热更新生效。

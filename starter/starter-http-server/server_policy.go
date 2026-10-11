@@ -18,13 +18,10 @@ package StarterHTTPServer
 
 import (
 	"context"
-	"errors"
 	"go-spring.org/cloud/chain"
 	"net/http"
 
 	"go-spring.org/cloud/observability"
-	"go-spring.org/cloud/propagate"
-	"go-spring.org/cloud/resilience"
 	"go-spring.org/log"
 	"go.opentelemetry.io/otel/attribute"
 )
@@ -58,41 +55,31 @@ import (
 // Compose it inside Chain, after the security filters that must run even for a
 // rejected request, and outside the handler:
 //
-//	Chain(CORS(corsCfg), ServerPolicy("http-server::9090", center.Resilience()))(mux)
-func ServerPolicy(label string, mgr *resilience.Manager) Middleware {
-	if mgr == nil {
-		mgr = resilience.NewManager(nil)
-	}
-	return serverPolicyWith(mgr.ServerExecutorFor("http-server", label), label)
+//	Chain(CORS(corsCfg), ServerPolicy("http-server::9090"))(mux)
+//
+// The filter emits its own request signals through an [observability.ServerObserver]:
+// an inbound route has no seam for the resilience executor, so there is no
+// governance — no inbound rate limit or circuit breaker — only observation.
+func ServerPolicy(label string) Middleware {
+	return serverPolicyWith(observability.NewServerObserver("http-server", label), label)
 }
 
-// serverPolicyWith builds the filter over an already-resolved executor. It is the
-// seam the tests build on, and keeps the executor lookup out of the filter
+// serverPolicyWith builds the filter over an already-built observer. It is the
+// seam the tests build on, and keeps the observer construction out of the filter
 // itself.
-func serverPolicyWith(exec chain.Executor, label string) Middleware {
+func serverPolicyWith(obs *observability.ServerObserver, label string) Middleware {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			// Declare what this request IS, so the executor's emitter can name the
-			// span, the family metrics and the access log from it. This package
-			// emits nothing itself — the same division the client starters use.
-			ctx := observability.WithOperation(r.Context(), operation(r))
-			// The caller's remaining budget, when it sent one: the handler — and
-			// every outbound call it makes — then runs on the earlier of that and
-			// this server's own handling budget, so a request chain spends one
-			// allowance instead of one per hop.
-			ctx, cancel := resilience.WithBudget(ctx, propagate.Header(r.Header))
-			defer cancel()
-
 			sw := &statusWriter{ResponseWriter: w}
 			var served bool
-			err := exec.Execute(ctx, func(ctx context.Context) error {
+			err := obs.Observe(r.Context(), operation(r), func(ctx context.Context) error {
 				if served {
 					return nil // reentry guard: the handler already ran this request
 				}
 				served = true
-				// Hand the bounded context to the handler: the inbound executor
-				// derived it, so the deadline that bounds this request is the one
-				// the handler and its outbound clients actually run under.
+				// Hand the observed context to the handler: the observer derived it,
+				// so the span the handler and its outbound clients run under is the
+				// one this request produced.
 				next.ServeHTTP(sw, r.WithContext(ctx))
 				// The response half: what only the handler knows once it has
 				// answered. An unwritten response is a 200, which is what net/http
@@ -107,16 +94,11 @@ func serverPolicyWith(exec chain.Executor, label string) Middleware {
 				}
 				return nil
 			})
-			switch {
-			case errors.Is(err, chain.ErrRateLimited), errors.Is(err, chain.ErrBulkheadFull):
-				if !sw.written {
-					http.Error(sw, "too many requests", http.StatusTooManyRequests)
-				}
-			case errors.Is(err, chain.ErrCircuitOpen):
-				if !sw.written {
-					http.Error(sw, "service unavailable", http.StatusServiceUnavailable)
-				}
-			}
+			// No rejection arms: this filter applies no governance, so the only
+			// errors reaching here are the handler's own (a committed 5xx, folded
+			// into the observation as a failure). The status the handler set is
+			// already written to the client.
+			_ = err
 		})
 	}
 }
@@ -187,8 +169,8 @@ var accessTag = log.RegisterAppTag("http_server", "access")
 // only, never a label). What is NOT known up front — the response status code —
 // is recorded by the handler as it answers, through [observability.Response];
 // see the inbound filter below.
-func operation(r *http.Request) observability.Operation {
-	return observability.Operation{
+func operation(r *http.Request) chain.Operation {
+	return chain.Operation{
 		Name:   r.Method + " " + r.URL.Path,
 		Metric: "http.server",
 		Attrs: []attribute.KeyValue{

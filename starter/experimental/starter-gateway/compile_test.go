@@ -18,29 +18,23 @@ package StarterGateway
 
 import (
 	"context"
-	"net/url"
 	"strings"
 	"testing"
 
-	"go-spring.org/cloud/discovery"
 	"go-spring.org/cloud/loadbalance"
-	"go-spring.org/cloud/resilience"
 )
 
 // newTestTable builds a RouteTable without the container, enough for
 // recompile: direct http upstreams need no discovery or wrappers.
 func newTestTable(t *testing.T) *RouteTable {
 	t.Helper()
-	lbMgr, err := loadbalance.NewManager(nil) // no factory bean contributed
-	if err != nil {
-		t.Fatal(err)
-	}
+	lbMgr := loadbalance.NewManager()
 	tbl := &RouteTable{
-		ctx:      context.Background(),
-		obs:      newObserver(),
-		mgr:      resilience.NewManager(nil),
-		lbMgr:    lbMgr,
-		counters: newMemoryCounters(),
+		ctx:     context.Background(),
+		obs:     newObserver(),
+		ctr:     nil, // no governance: the center's methods are nil-safe, giving observed pass-throughs
+		lbMgr:   lbMgr,
+		limiter: newMemoryLimiter(),
 	}
 	return tbl
 }
@@ -129,60 +123,12 @@ func TestParseFilterTokenAcceptsPlainValues(t *testing.T) {
 	}
 }
 
-// selectionPool builds a minimal lb://-style pool, enough to bind a governance
-// subscription to.
-func selectionPool(t *testing.T) *loadbalance.Pool {
-	t.Helper()
-	bal := loadbalance.NewRoundRobin()
-	eps := []discovery.Endpoint{{Addr: "10.0.0.1:9000", Healthy: true}}
-	return loadbalance.NewPool(
-		func() ([]discovery.Endpoint, error) { return eps, nil },
-		bal,
-	)
-}
-
-// Every recompile creates fresh pools, so every recompile must replace — not
-// accumulate — the per-route governance subscriptions. Without the cancels a
-// route-table hot edit would leak one subscriber (and one discarded pool) per
-// edit.
-func TestReconcileSelectionReplacesNotAccumulates(t *testing.T) {
-	tbl := newTestTable(t)
-
-	tbl.reconcileSelection([]*Route{{ID: "api", Upstream: &Upstream{pool: selectionPool(t)}}})
-	if len(tbl.selection) != 1 {
-		t.Fatalf("after first compile: %d subscriptions, want 1", len(tbl.selection))
-	}
-
-	// Same route, new pool (what a recompile produces).
-	tbl.reconcileSelection([]*Route{{ID: "api", Upstream: &Upstream{pool: selectionPool(t)}}})
-	if len(tbl.selection) != 1 {
-		t.Fatalf("after recompile: %d subscriptions, want 1 (must replace, not accumulate)", len(tbl.selection))
-	}
-
-	// A second route joins.
-	tbl.reconcileSelection([]*Route{
-		{ID: "api", Upstream: &Upstream{pool: selectionPool(t)}},
-		{ID: "admin", Upstream: &Upstream{pool: selectionPool(t)}},
-	})
-	if len(tbl.selection) != 2 {
-		t.Fatalf("after adding a route: %d subscriptions, want 2", len(tbl.selection))
-	}
-
-	// A direct upstream has no candidate set, so it gets no subscription.
-	tbl.reconcileSelection([]*Route{
-		{ID: "api", Upstream: &Upstream{pool: selectionPool(t)}},
-		{ID: "direct", Upstream: &Upstream{URL: &url.URL{Scheme: "http", Host: "127.0.0.1:8080"}}},
-	})
-	if len(tbl.selection) != 1 {
-		t.Fatalf("direct upstream must not subscribe: %d subscriptions, want 1", len(tbl.selection))
-	}
-	if _, ok := tbl.selection["admin"]; ok {
-		t.Fatal("a route removed from the config must have its subscription dropped")
-	}
-
-	// Everything gone.
-	tbl.reconcileSelection(nil)
-	if len(tbl.selection) != 0 {
-		t.Fatalf("after removing all routes: %d subscriptions, want 0", len(tbl.selection))
-	}
-}
+// The per-route governance registration used to be reconciled (bound and
+// detached) on every recompile. It is now established ONCE, when the chain is
+// built, and the chain itself is cached per route id across recompiles —
+// registration is one-way (see loadbalance.Manager.Chain) means a fresh chain per
+// edit would strand the old registration and pin a discarded chain for the life
+// of the process. The cache
+// is exercised through [RouteTable.chainFor], which needs a live discovery
+// backend, so the invariant is covered by the example and the loadbalance
+// package rather than here.

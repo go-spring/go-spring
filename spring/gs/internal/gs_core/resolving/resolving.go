@@ -68,8 +68,8 @@ func (c *Resolving) Provide(objOrCtor any, args ...gs.Arg) *gs_bean.BeanDefiniti
 	b := gs_bean.NewBean(objOrCtor, args...)
 	c.beans = append(c.beans, b)
 	b = b.Caller(2)
-	log.Debug(context.Background(), log.TagAppDef, func() []log.Field {
-		return []log.Field{log.String("bean", b.String()), log.Msg("container bean provided")}
+	log.Debug(context.Background(), log.TagAppDef, "container bean provided", func() []log.Field {
+		return []log.Field{log.String("bean", b.String())}
 	})
 	return b
 }
@@ -86,12 +86,11 @@ func (c *Resolving) Refresh(p flatten.Storage) error {
 
 	globalBeans := gs_init.Beans()
 	globalModules := gs_init.Modules()
-	log.Debug(context.Background(), log.TagAppDef, func() []log.Field {
+	log.Debug(context.Background(), log.TagAppDef, "resolving phase: merging container beans, global beans and modules", func() []log.Field {
 		return []log.Field{
 			log.Int("container_beans", len(c.beans)),
 			log.Int("global_beans", len(globalBeans)),
 			log.Int("modules", len(globalModules)),
-			log.Msg("resolving phase: merging container beans, global beans and modules"),
 		}
 	})
 
@@ -101,15 +100,15 @@ func (c *Resolving) Refresh(p flatten.Storage) error {
 	}
 
 	c.state = gs.Refreshing
-	log.Debug(context.Background(), log.TagAppDef, func() []log.Field {
-		return []log.Field{log.Int("beans", len(c.beans)), log.Msg("resolving phase: beans after module application")}
+	log.Debug(context.Background(), log.TagAppDef, "resolving phase: beans after module application", func() []log.Field {
+		return []log.Field{log.Int("beans", len(c.beans))}
 	})
 
 	if err := c.scanConfigurations(); err != nil {
 		return errutil.Explain(err, "scan configurations failed")
 	}
-	log.Debug(context.Background(), log.TagAppDef, func() []log.Field {
-		return []log.Field{log.Int("beans", len(c.beans)), log.Msg("resolving phase: beans after config scanning")}
+	log.Debug(context.Background(), log.TagAppDef, "resolving phase: beans after config scanning", func() []log.Field {
+		return []log.Field{log.Int("beans", len(c.beans))}
 	})
 
 	if err := c.resolveBeans(p); err != nil {
@@ -122,8 +121,8 @@ func (c *Resolving) Refresh(p flatten.Storage) error {
 
 	active := len(c.Beans())
 	c.state = gs.Refreshed
-	log.Debug(context.Background(), log.TagAppDef, func() []log.Field {
-		return []log.Field{log.Int("active_beans", active), log.Msg("resolving phase complete")}
+	log.Debug(context.Background(), log.TagAppDef, "resolving phase complete", func() []log.Field {
+		return []log.Field{log.Int("active_beans", active)}
 	})
 	return nil
 }
@@ -137,8 +136,8 @@ func (c *Resolving) applyModules(p flatten.Storage) error {
 			if ok, err := m.Condition.Matches(ctx); err != nil {
 				return errutil.Explain(err, "failed to apply module at %s", m.FileLine)
 			} else if !ok {
-				log.Debug(context.Background(), log.TagAppDef, func() []log.Field {
-					return []log.Field{log.String("module", m.FileLine), log.Msg("module skipped (condition not met)")}
+				log.Debug(context.Background(), log.TagAppDef, "module skipped (condition not met)", func() []log.Field {
+					return []log.Field{log.String("module", m.FileLine)}
 				})
 				continue
 			}
@@ -146,8 +145,8 @@ func (c *Resolving) applyModules(p flatten.Storage) error {
 		if err := m.ModuleFunc(c, p); err != nil {
 			return errutil.Explain(err, "failed to apply module at %s", m.FileLine)
 		}
-		log.Debug(context.Background(), log.TagAppDef, func() []log.Field {
-			return []log.Field{log.String("module", m.FileLine), log.Msg("module applied")}
+		log.Debug(context.Background(), log.TagAppDef, "module applied", func() []log.Field {
+			return []log.Field{log.String("module", m.FileLine)}
 		})
 	}
 	return nil
@@ -167,8 +166,8 @@ func (c *Resolving) scanConfigurations() error {
 			return errutil.Explain(err, "failed to scan configuration bean %s", b)
 		}
 		c.beans = append(c.beans, beans...)
-		log.Debug(context.Background(), log.TagAppDef, func() []log.Field {
-			return []log.Field{log.String("bean", b.String()), log.Int("children", len(beans)), log.Msg("config bean scanned")}
+		log.Debug(context.Background(), log.TagAppDef, "config bean scanned", func() []log.Field {
+			return []log.Field{log.String("bean", b.String()), log.Int("children", len(beans))}
 		})
 	}
 	return nil
@@ -237,8 +236,8 @@ func (c *Resolving) scanConfiguration(bd *gs_bean.BeanDefinition) ([]*gs_bean.Be
 			file, line, _ := funcutil.FileLine(m.Func.Interface())
 			b.SetFileLine(file, line)
 			children = append(children, b)
-			log.Trace(context.Background(), log.TagAppDef, func() []log.Field {
-				return []log.Field{log.String("method", m.Name), log.String("bean", b.String()), log.Msg("config method registered")}
+			log.Trace(context.Background(), log.TagAppDef, "config method registered", func() []log.Field {
+				return []log.Field{log.String("method", m.Name), log.String("bean", b.String())}
 			})
 			break
 		}
@@ -292,20 +291,20 @@ func (c *ConditionContext) resolveBean(b *gs_bean.BeanDefinition) error {
 		if err != nil {
 			return errutil.Explain(err, "condition matches failed for bean %s", b)
 		}
-		log.Trace(context.Background(), log.TagAppDef, func() []log.Field {
-			return []log.Field{log.String("bean", b.String()), log.Any("condition", cond), log.Bool("matched", ok), log.Msg("condition check")}
+		log.Trace(context.Background(), log.TagAppDef, "condition check", func() []log.Field {
+			return []log.Field{log.String("bean", b.String()), log.Any("condition", cond), log.Bool("matched", ok)}
 		})
 		if !ok {
 			b.SetStatus(gs_bean.StatusDeleted)
-			log.Debug(context.Background(), log.TagAppDef, func() []log.Field {
-				return []log.Field{log.String("bean", b.String()), log.Any("condition", cond), log.Msg("bean resolved (deleted, condition failed)")}
+			log.Debug(context.Background(), log.TagAppDef, "bean resolved (deleted, condition failed)", func() []log.Field {
+				return []log.Field{log.String("bean", b.String()), log.Any("condition", cond)}
 			})
 			return nil
 		}
 	}
 	b.SetStatus(gs_bean.StatusResolved)
-	log.Debug(context.Background(), log.TagAppDef, func() []log.Field {
-		return []log.Field{log.String("bean", b.String()), log.Msg("bean resolved (active)")}
+	log.Debug(context.Background(), log.TagAppDef, "bean resolved (active)", func() []log.Field {
+		return []log.Field{log.String("bean", b.String())}
 	})
 	return nil
 }
@@ -342,8 +341,8 @@ func (c *ConditionContext) Find(beanID gs.BeanID) ([]gs.ConditionBean, error) {
 		}
 		found = append(found, b)
 	}
-	log.Trace(context.Background(), log.TagAppDef, func() []log.Field {
-		return []log.Field{log.Any("bean_id", beanID), log.Int("found", len(found)), log.Msg("find beans")}
+	log.Trace(context.Background(), log.TagAppDef, "find beans", func() []log.Field {
+		return []log.Field{log.Any("bean_id", beanID), log.Int("found", len(found))}
 	})
 	return found, nil
 }
@@ -358,14 +357,14 @@ func (c *Resolving) checkDuplicateBeans() error {
 		for _, t := range append(b.GetExports(), b.GetType()) {
 			beanID := gs.BeanID{Name: b.GetName(), Type: t}
 			if d, ok := beansByID[beanID]; ok {
-				log.Debug(context.Background(), log.TagAppDef, func() []log.Field {
-					return []log.Field{log.String("bean", b.String()), log.String("conflict", d.String()), log.Any("type", t), log.Msg("duplicate bean detected")}
+				log.Debug(context.Background(), log.TagAppDef, "duplicate bean detected", func() []log.Field {
+					return []log.Field{log.String("bean", b.String()), log.String("conflict", d.String()), log.Any("type", t)}
 				})
 				return errutil.Explain(nil, "found duplicate beans %s and %s", b, d)
 			}
 			beansByID[beanID] = b
 		}
 	}
-	log.Debugf(context.Background(), log.TagAppDef, "no duplicate beans detected")
+	log.Debug(context.Background(), log.TagAppDef, "no duplicate beans detected", nil)
 	return nil
 }

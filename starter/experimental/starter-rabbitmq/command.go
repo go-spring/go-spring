@@ -33,7 +33,6 @@ package StarterRabbitMQ
 import (
 	"context"
 	amqp "github.com/rabbitmq/amqp091-go"
-	"go-spring.org/cloud/chain"
 	"go-spring.org/cloud/observability"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/propagation"
@@ -165,46 +164,20 @@ func (r *RawPublisher) Publish(ctx context.Context, ch *amqp.Channel, exchange, 
 	return ch.PublishWithContext(ctx, exchange, key, mandatory, immediate, pub)
 }
 
-// GuardPublisher is the governance layer: it runs every publish under the
-// resilience executor, which applies rate limiting, breaking and fault
-// injection — and emits the publish's span, metrics and access log from the one
-// point that sees the whole call, attempts included. [NewGuardPublisher]
-// builds it.
-type GuardPublisher struct {
-	exec chain.Executor
-	next InnerPublisher
-}
-
-// NewGuardPublisher builds the governance layer over next, running every
-// publish under exec.
-func NewGuardPublisher(next InnerPublisher, exec chain.Executor) *GuardPublisher {
-	return &GuardPublisher{exec: exec, next: next}
-}
-
-// Release hands releaseRaw to the layer under it — the executor is closed by
-// [Client.Close], with the connection it is scoped to.
-func (g *GuardPublisher) Release(releaseRaw bool) error { return g.next.Release(releaseRaw) }
-
-func (g *GuardPublisher) Publish(ctx context.Context, ch *amqp.Channel, exchange, key string, mandatory, immediate bool, pub amqp.Publishing) error {
-	if g.exec == nil {
-		return g.next.Publish(ctx, ch, exchange, key, mandatory, immediate, pub)
-	}
-	return g.exec.Execute(ctx, func(attemptCtx context.Context) error {
-		return g.next.Publish(attemptCtx, ch, exchange, key, mandatory, immediate, pub)
-	})
-}
-
-// ObsPublisher is the identity layer at the head: it names the publish — with
+// ObsPublisher is the emitting layer at the head: it names each publish — with
 // the destination (the exchange, or the queue when the default exchange routes
-// by routing key) — and hands the context down. It emits nothing itself:
-// emission happens in the governance layer under it. [NewObsPublisher] builds
-// it.
+// by routing key) — runs it, and emits the span, metrics and access log through
+// the observer. A rabbitmq client has no seam for the resilience executor, so
+// there is no governance layer under it. [NewObsPublisher] builds it.
 type ObsPublisher struct {
 	next InnerPublisher
+	obs  *observability.OperationObserver
 }
 
-// NewObsPublisher builds the identity layer over next.
-func NewObsPublisher(next InnerPublisher) *ObsPublisher { return &ObsPublisher{next: next} }
+// NewObsPublisher builds the emitting layer over next.
+func NewObsPublisher(next InnerPublisher, obs *observability.OperationObserver) *ObsPublisher {
+	return &ObsPublisher{next: next, obs: obs}
+}
 
 // Release hands releaseRaw to the layer under it — this layer holds no
 // resource.
@@ -216,8 +189,12 @@ func (o *ObsPublisher) Publish(ctx context.Context, ch *amqp.Channel, exchange, 
 		// The default exchange routes by queue name carried in the routing key.
 		dest = key
 	}
-	return o.next.Publish(observability.WithOperation(ctx, operation(opPublish, dest)),
-		ch, exchange, key, mandatory, immediate, pub)
+	if o.obs == nil {
+		return o.next.Publish(ctx, ch, exchange, key, mandatory, immediate, pub)
+	}
+	return o.obs.Observe(ctx, operation(opPublish, dest), func(callCtx context.Context) error {
+		return o.next.Publish(callCtx, ch, exchange, key, mandatory, immediate, pub)
+	})
 }
 
 // GuardedPublish publishes pub to exchange/routingKey on ch, routed through

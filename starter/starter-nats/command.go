@@ -39,10 +39,8 @@ import (
 	"time"
 
 	"github.com/nats-io/nats.go"
-	"go-spring.org/cloud"
 	"go-spring.org/cloud/chain"
 	"go-spring.org/cloud/observability"
-	"go-spring.org/cloud/resilience"
 	"go.opentelemetry.io/otel/propagation"
 )
 
@@ -108,61 +106,39 @@ func (r *RawConn) RequestGuarded(ctx context.Context, subj string, data []byte, 
 	return r.conn.RequestWithContext(ctx, subj, data)
 }
 
-// GuardConn is the governance layer: it runs every publish/request under the
-// resilience executor, which applies rate limiting, breaking and retrying — and
-// emits the call's span, metrics and access log from the one point that sees
-// the whole call, attempts included. [NewGuardConn] builds it, executor
-// included: the executor is the layer's own business end to end — built, used
-// and closed inside it.
-type GuardConn struct {
-	exec chain.Executor
+// ObsConn is the emitting layer at the head: it names each call — the publish
+// or request, with its subject, declared as the call's semantic identity —
+// runs it, and emits the span, metrics and access log through the observer. A
+// nats client has no seam for the resilience executor, so there is no
+// governance layer under it. [NewObsConn] builds it.
+type ObsConn struct {
 	next InnerConn
+	obs  *observability.OperationObserver
 }
 
-// NewGuardConn builds the governance layer over next, constructing its own
-// executor: params carries the container's facilities (see [cloud.ClientParams])
-// and url fixes the governance label its limiter and breaker state scope by.
-func NewGuardConn(next InnerConn, url string, params cloud.ClientParams) *GuardConn {
-	return &GuardConn{exec: params.ExecutorFor("nats", resilience.ServiceLabel("nats", url)), next: next}
+// NewObsConn builds the emitting layer over next.
+func NewObsConn(next InnerConn, obs *observability.OperationObserver) *ObsConn {
+	return &ObsConn{next: next, obs: obs}
 }
 
-// Release hands releaseRaw to the layer under it, and on the FULL teardown
-// takes down the executor — the layer's own resource. The executor drains
-// first: once it is gone the connection is no longer protected, and there is
-// no reason to keep it draining past that point.
-func (g *GuardConn) Release(releaseRaw bool) error {
-	var execErr error
-	if releaseRaw && g.exec != nil {
-		execErr = g.exec.Close()
-	}
-	if err := g.next.Release(releaseRaw); err != nil {
-		return err
-	}
-	return execErr
+// Release hands releaseRaw to the layer under it — this layer holds no
+// resource.
+func (o *ObsConn) Release(releaseRaw bool) error { return o.next.Release(releaseRaw) }
+
+func (o *ObsConn) PublishMsg(msg *nats.Msg) error {
+	return o.PublishMsgContext(context.Background(), msg)
 }
 
-func (g *GuardConn) PublishMsg(msg *nats.Msg) error {
-	return g.PublishMsgContext(context.Background(), msg)
-}
-
-func (g *GuardConn) PublishMsgContext(ctx context.Context, msg *nats.Msg) error {
-	if g.exec == nil {
-		return g.next.PublishMsgContext(ctx, msg)
-	}
-	return g.exec.Execute(ctx, func(attemptCtx context.Context) error {
-		return g.next.PublishMsgContext(attemptCtx, msg)
+func (o *ObsConn) PublishMsgContext(ctx context.Context, msg *nats.Msg) error {
+	return observe(o.obs, ctx, operation(opPublish, msg.Subject), func(callCtx context.Context) error {
+		return o.next.PublishMsgContext(callCtx, msg)
 	})
 }
 
-func (g *GuardConn) RequestGuarded(ctx context.Context, subj string, data []byte, timeout time.Duration) (*nats.Msg, error) {
+func (o *ObsConn) RequestGuarded(ctx context.Context, subj string, data []byte, timeout time.Duration) (*nats.Msg, error) {
 	var reply *nats.Msg
-	var err error
-	if g.exec == nil {
-		reply, err = g.next.RequestGuarded(ctx, subj, data, timeout)
-		return reply, err
-	}
-	err = g.exec.Execute(ctx, func(attemptCtx context.Context) error {
-		msg, rerr := g.next.RequestGuarded(attemptCtx, subj, data, timeout)
+	err := observe(o.obs, ctx, operation(opPublish, subj), func(callCtx context.Context) error {
+		msg, rerr := o.next.RequestGuarded(callCtx, subj, data, timeout)
 		if rerr != nil {
 			return rerr
 		}
@@ -175,31 +151,13 @@ func (g *GuardConn) RequestGuarded(ctx context.Context, subj string, data []byte
 	return reply, nil
 }
 
-// ObsConn is the identity layer at the head: it names each call — the publish
-// or request, with its subject, declared as the call's semantic identity — and
-// hands the context down. It emits nothing itself: emission happens in the
-// governance layer under it. [NewObsConn] builds it.
-type ObsConn struct {
-	next InnerConn
-}
-
-// NewObsConn builds the identity layer over next.
-func NewObsConn(next InnerConn) *ObsConn { return &ObsConn{next: next} }
-
-// Release hands releaseRaw to the layer under it — this layer holds no
-// resource.
-func (o *ObsConn) Release(releaseRaw bool) error { return o.next.Release(releaseRaw) }
-
-func (o *ObsConn) PublishMsg(msg *nats.Msg) error {
-	return o.PublishMsgContext(context.Background(), msg)
-}
-
-func (o *ObsConn) PublishMsgContext(ctx context.Context, msg *nats.Msg) error {
-	return o.next.PublishMsgContext(observability.WithOperation(ctx, operation(opPublish, msg.Subject)), msg)
-}
-
-func (o *ObsConn) RequestGuarded(ctx context.Context, subj string, data []byte, timeout time.Duration) (*nats.Msg, error) {
-	return o.next.RequestGuarded(observability.WithOperation(ctx, operation(opPublish, subj)), subj, data, timeout)
+// observe runs call under obs, or inline when no observer is attached (a
+// standalone, non-container client).
+func observe(obs *observability.OperationObserver, ctx context.Context, op chain.Operation, call func(context.Context) error) error {
+	if obs == nil {
+		return call(ctx)
+	}
+	return obs.Observe(ctx, op, call)
 }
 
 // --- Consume: the hand-written per-delivery wrapper (see the file doc) ---
@@ -250,16 +208,11 @@ func (c *Conn) Consume(ctx context.Context, subject, queue string, handler Conte
 // metrics and access log. The three steps are fused here because they must run
 // in this order INSIDE each delivery (see the file doc).
 func (c *Conn) wrapConsume(subject string, handler ContextHandler) nats.MsgHandler {
-	guard := c.guard
+	obs := c.obs
 	return func(nm *nats.Msg) {
 		ctx := extractW3C(context.Background(), nm)
-		ctx = observability.WithOperation(ctx, operation(opConsume, subject))
-		if guard == nil || guard.exec == nil {
-			_ = handler(ctx, nm)
-			return
-		}
-		_ = guard.exec.Execute(ctx, func(attemptCtx context.Context) error {
-			return handler(attemptCtx, nm)
+		_ = observe(obs, ctx, operation(opConsume, subject), func(callCtx context.Context) error {
+			return handler(callCtx, nm)
 		})
 	}
 }

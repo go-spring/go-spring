@@ -143,9 +143,12 @@ func runTest(s *Service, c *Config) {
 	// --- 3. Resilience ----------------------------------------------------
 	// Queries routed through RunWithResilience are protected by the builtin
 	// "default" executor; a burst over rate-limit is rejected with ErrRateLimited.
+	// The manual call declares its own operation identity up front (see
+	// StarterNeo4j.Operation); RunWithResilience takes that op explicitly.
+	op := StarterNeo4j.Operation("query", "MERGE (p:Person {name: $name}) SET p.age = $age RETURN p")
 	var admitted, rejected int
 	for range 15 {
-		err := StarterNeo4j.RunWithResilience(ctx, s.Neo4j, func(ctx context.Context) error {
+		err := StarterNeo4j.RunWithResilience(ctx, s.Neo4j, op, func(ctx context.Context) error {
 			return queryAge(ctx, s, "MERGE (p:Person {name: $name}) SET p.age = $age RETURN p",
 				map[string]any{"name": "bob", "age": 40})
 		})

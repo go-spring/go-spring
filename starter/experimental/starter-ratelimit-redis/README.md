@@ -1,15 +1,15 @@
 # starter-ratelimit-redis
 
 Redis-backed counters for Go-Spring's rate-limit stage: it contributes a
-[`resilience.Counters`](../../../cloud/resilience/ratelimit.go) store whose token
+[`resilience.ClusterLimiter`](../../../cloud/resilience/ratelimit.go) store whose token
 buckets live in Redis, so every replica of a service spends one budget per scope instead of each
 replica counting its own.
 
 ## What it does
 
-- Contributes exactly one bean of type `resilience.Counters`, over the `*goredis.Client` bean named
+- Contributes exactly one bean of type `resilience.ClusterLimiter`, over the `*goredis.Client` bean named
   by [`spring.ratelimit.redis.client`](#configuration).
-- Nothing to step aside for: with no `resilience.Counters` bean in the container each executor
+- Nothing to step aside for: with no `resilience.ClusterLimiter` bean in the container each executor
   counts in a budget it holds itself (one per service label all the same — the manager
   builds one executor per label). Contributing this one is the whole switch: the resilience driver
   injects it, so every executor it builds spends the shared budget — a limit is made of its
@@ -35,7 +35,7 @@ spring.ratelimit.redis.client=cache
 The block's presence is what turns the starter on; an imported but unconfigured starter contributes
 nothing and each executor keeps counting in a private budget of its own. The rate-limit knobs
 (`rate-limit`, `burst`, `algorithm`, `window`, `rate-limit-max-wait`) are
-[`resilience.ClientPolicy`](../../../cloud/resilience/policy.go)
+[`resilience.ClientPolicy`](../../../cloud/resilience/client_policy.go)
 fields on the governance rule document, not starter configuration.
 
 ## Consuming it
@@ -53,7 +53,7 @@ Application code that builds its own policy goes through the same authority:
 
 ```go
 exec := mgr.ClientExecutorFor("ratelimit-redis", "ratelimit-redis:api")
-err := exec.Execute(ctx, func(context.Context) error { return nil })
+err := exec.Execute(ctx, chain.Operation{}, func(context.Context) error { return nil })
 // errors.Is(err, resilience.ErrRateLimited) → 429
 ```
 
@@ -74,7 +74,7 @@ err := exec.Execute(ctx, func(context.Context) error { return nil })
 
 `go test ./...` covers the shared-budget semantics (two stores over one Redis), scope isolation,
 all-or-nothing batches, the unlimited pass-through, concurrent grants and key TTL using miniredis,
-plus the wiring contract: a configured starter contributes the `resilience.Counters` bean while an
+plus the wiring contract: a configured starter contributes the `resilience.ClusterLimiter` bean while an
 unconfigured one contributes none, and an empty client name fails startup. The [example](example)
 runs a docker-gated smoke test (`example/check.sh`) with
 two "replicas" sharing one budget against a real Redis.
@@ -83,9 +83,9 @@ two "replicas" sharing one budget against a real Redis.
 
 * **It plugs the counters seam, not the driver seam.** `resilience` has two seams:
   `Driver` decides *which engine* runs a policy (an Executor bundling limit + breaker
-  + retry + timeout), while `Counters` decides *where the counters live*. Reaching
+  + retry + timeout), while `ClusterLimiter` decides *where the counters live*. Reaching
   Redis through `Driver` would drag breaker and retry off `default`/`sentinel`, so
-  distributed limiting goes through `Counters` and stays orthogonal to in-process
+  distributed limiting goes through `ClusterLimiter` and stays orthogonal to in-process
   circuit breaking.
 * **The counting logic is not implemented here.** The atomic Lua token bucket lives in
   `starter-go-redis`'s experimental subpackage; this starter only decides where the

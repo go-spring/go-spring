@@ -27,18 +27,21 @@
 // binding, fills in what differs, and hands it to [NewDefaultPropagator] as
 // its own bean.
 //
-// This package holds no package-level state: one process has one propagator
-// bean, components take it (a starter injects it optionally and falls back to
-// [NewDefaultPropagator] over [DefaultBinding]), and business code reads the
-// answer from the same instance rather than from a global. Business code never
-// constructs the marker itself, and how the flag got there (a header, a
-// metadata key, a message property) is out of the reader's concern.
+// This package holds no package-level state beyond the default bean its
+// starter registers: one process has one propagator bean, and a component that
+// injects [Propagator] gets go-spring's [DefaultBinding] unless the
+// application registers its own bean first. A standalone caller outside the
+// container builds one with [NewDefaultPropagator]. Business code reads the
+// answer from the same instance rather than from a global, never constructs
+// the marker itself, and how the flag got there (a header, a metadata key, a
+// message property) is out of the reader's concern.
 //
 // Layering. Everything else in the cloud stack (observe, resilience, fault) may
-// consume the marker; this package consumes nothing from them. Its only
-// dependency outside the standard library is [go-spring.org/cloud/propagate],
-// the generic carrier the protocol seams are written against, so any starter
-// can import it without pulling a heavier graph.
+// consume the marker; this package consumes nothing from them. Outside the
+// standard library it depends on [go-spring.org/cloud/propagate], the generic
+// carrier the protocol seams are written against, and on spring/gs solely for
+// the default bean registration, so any starter can import it without pulling
+// a heavier graph.
 //
 // Consumption is opt-in. Marking a context and propagating the marker costs
 // almost nothing; deciding what to DO with a load-test request (shadow table,
@@ -173,10 +176,9 @@ type DefaultPropagator struct {
 
 // NewDefaultPropagator returns a propagator over binding. Fill the binding
 // completely — a re-based convention is [DefaultBinding] with the fields that
-// differ overwritten. The error is always nil; the return keeps room for a
-// future check without breaking callers.
-func NewDefaultPropagator(binding Binding) (DefaultPropagator, error) {
-	return DefaultPropagator{binding: binding}, nil
+// differ overwritten.
+func NewDefaultPropagator(binding Binding) DefaultPropagator {
+	return DefaultPropagator{binding: binding}
 }
 
 func (p DefaultPropagator) IsLoadTest(ctx context.Context) bool {

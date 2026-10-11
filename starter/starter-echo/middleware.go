@@ -50,10 +50,6 @@ type requestIDCtxKey struct{}
 // propagator's own header name; prop nil means go-spring's default. Without the
 // marker it is a no-op.
 func LoadTest(prop traffic.Propagator) echo.MiddlewareFunc {
-	if prop == nil {
-		// DefaultBinding is complete, so this cannot fail.
-		prop, _ = traffic.NewDefaultPropagator(traffic.DefaultBinding())
-	}
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
 			ctx := prop.Extract(c.Request().Context(), propagate.Header(c.Request().Header))
@@ -137,7 +133,7 @@ func applyMiddlewares(e *echo.Echo, cfg Config, center *governance.Center, prop 
 	// starter's manager bean (nil when governance is not imported); without it
 	// the executor is a transparent pass-through, so installing it costs a call
 	// frame and changes nothing else.
-	e.Use(buildServerPolicy(cfg, center.Resilience()))
+	e.Use(buildServerPolicy(cfg))
 
 	// Fault injection (always installed, innermost so the resulting 503 is still
 	// logged by the access log). inj is the governance starter's injector bean,

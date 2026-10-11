@@ -26,8 +26,7 @@ package StarterMilvus
 import (
 	"strings"
 
-	"go-spring.org/cloud/observability"
-
+	"go-spring.org/cloud/chain"
 	"go-spring.org/log"
 	"go.opentelemetry.io/otel/attribute"
 )
@@ -47,7 +46,7 @@ var accessTag = log.RegisterAppTag("milvus", "access")
 // qualified method path, e.g. "/milvus.proto.milvus.MilvusService/Search".
 //
 // The operation name is the whole method's last segment ("Search") — a bounded
-// word drawn from the SDK's fixed method set, which is what [observability.Operation.Attrs]
+// word drawn from the SDK's fixed method set, which is what [chain.Operation.Attrs]
 // demands: every attr here becomes a metric label, and the method name is the
 // finest bounded dimension the transport can see. The collection name and the
 // search expression are NOT available here (they are caller-supplied arguments,
@@ -61,12 +60,12 @@ var accessTag = log.RegisterAppTag("milvus", "access")
 // declares the path as detail, so a success log stays at Debug — the frequent,
 // uninteresting case — matching the other DB clients, which level their success
 // lines by the presence of per-call detail.
-func operation(method string) observability.Operation {
+func operation(method string) chain.Operation {
 	name := method
 	if i := strings.LastIndex(method, "/"); i >= 0 {
 		name = method[i+1:]
 	}
-	return observability.Operation{
+	return chain.Operation{
 		Name:   name,
 		Metric: "db.client",
 		Attrs: []attribute.KeyValue{

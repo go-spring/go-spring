@@ -36,7 +36,7 @@ import (
 	"syscall"
 	"time"
 
-	"go-spring.org/cloud"
+	"go-spring.org/cloud/governance"
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
 	StarterElasticsearch "go-spring.org/starter-elasticsearch"
@@ -63,9 +63,9 @@ type AnotherESDriver struct {
 	StarterElasticsearch.DefaultDriver
 }
 
-func (d AnotherESDriver) CreateClient(ctx context.Context, c StarterElasticsearch.Config, params cloud.ClientParams) (*StarterElasticsearch.Client, error) {
-	log.Infof(context.Background(), log.TagAppDef, "AnotherESDriver::CreateClient")
-	return d.DefaultDriver.CreateClient(ctx, c, params)
+func (d AnotherESDriver) CreateClient(ctx context.Context, c StarterElasticsearch.Config, center *governance.Center) (*StarterElasticsearch.Client, error) {
+	log.Info(context.Background(), log.TagAppDef, "AnotherESDriver::CreateClient")
+	return d.DefaultDriver.CreateClient(ctx, c, center)
 }
 
 const indexName = "starter-es-example"
@@ -157,7 +157,7 @@ func runTest(s *Service) {
 
 	// Feature 1: readiness probe — verify cluster connectivity.
 	if err := StarterElasticsearch.HealthCheck(ctx, s.ES); err != nil {
-		log.Errorf(ctx, log.TagAppDef, err, "HealthCheck failed")
+		log.Error(ctx, log.TagAppDef, err, "HealthCheck failed")
 		os.Exit(1)
 	}
 
@@ -167,7 +167,7 @@ func runTest(s *Service) {
 		s.ES.Index.WithDocumentID("1"),
 		s.ES.Index.WithRefresh("true"))
 	if err != nil || idxRes.IsError() {
-		log.Errorf(ctx, log.TagAppDef, err, "Index failed: err=%v res=%v", err, idxRes)
+		log.Error(ctx, log.TagAppDef, err, "Index failed", log.Any("err", err), log.Any("idx_res", idxRes))
 		os.Exit(1)
 	}
 	_ = idxRes.Body.Close()
@@ -175,13 +175,13 @@ func runTest(s *Service) {
 	// Feature 3: get the document back by ID.
 	getRes, err := s.ES.Get(indexName, "1")
 	if err != nil || getRes.IsError() {
-		log.Errorf(ctx, log.TagAppDef, err, "Get failed: err=%v res=%v", err, getRes)
+		log.Error(ctx, log.TagAppDef, err, "Get failed", log.Any("err", err), log.Any("get_res", getRes))
 		os.Exit(1)
 	}
 	getBody, _ := io.ReadAll(getRes.Body)
 	_ = getRes.Body.Close()
 	if !strings.Contains(string(getBody), `"found":true`) {
-		log.Errorf(ctx, log.TagAppDef, fmt.Errorf("Get did not find the document: %s", getBody), "Get did not find the document: %s", getBody)
+		log.Error(ctx, log.TagAppDef, fmt.Errorf("Get did not find the document: %s", getBody), "Get did not find the document", log.String("get_body", string(getBody)))
 		os.Exit(1)
 	}
 
@@ -191,13 +191,13 @@ func runTest(s *Service) {
 		s.ES.Search.WithIndex(indexName),
 		s.ES.Search.WithBody(strings.NewReader(query)))
 	if err != nil || searchRes.IsError() {
-		log.Errorf(ctx, log.TagAppDef, err, "Search failed: err=%v res=%v", err, searchRes)
+		log.Error(ctx, log.TagAppDef, err, "Search failed", log.Any("err", err), log.Any("search_res", searchRes))
 		os.Exit(1)
 	}
 	searchBody, _ := io.ReadAll(searchRes.Body)
 	_ = searchRes.Body.Close()
 	if !strings.Contains(string(searchBody), `"title":"hello"`) {
-		log.Errorf(ctx, log.TagAppDef, fmt.Errorf("Search did not return the document: %s", searchBody), "Search did not return the document: %s", searchBody)
+		log.Error(ctx, log.TagAppDef, fmt.Errorf("Search did not return the document: %s", searchBody), "Search did not return the document", log.String("search_body", string(searchBody)))
 		os.Exit(1)
 	}
 
@@ -207,7 +207,7 @@ func runTest(s *Service) {
 	// registered discovery backend (service-name=es-cluster), not from conf's
 	// static addresses, so a successful cluster probe proves discovery is wired.
 	if err := StarterElasticsearch.HealthCheck(ctx, s.DiscES); err != nil {
-		log.Errorf(ctx, log.TagAppDef, err, "discovery HealthCheck failed")
+		log.Error(ctx, log.TagAppDef, err, "discovery HealthCheck failed")
 		os.Exit(1)
 	}
 	fmt.Println("Response from discovered server: cluster reachable")

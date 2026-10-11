@@ -23,7 +23,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"go-spring.org/cloud"
 	"go-spring.org/cloud/actuator/health"
 	"go-spring.org/cloud/loadbalance"
 	"go-spring.org/cloud/resilience"
@@ -97,10 +96,8 @@ func init() {
 // hosts directly, unchanged from before.
 //
 // center is the governance center the container injects (nil in a standalone,
-// non-gs call) — the family's sole injection point. Its resilience, fault and
-// loadbalance authorities are bundled into one [cloud.ClientParams] handed to
-// [NewClient], which resolves the resilience executor from it; the loadbalance
-// authority additionally binds the discovery pick
+// non-gs call) — the family's sole injection point. The resilience executor is
+// read from it; its loadbalance authority additionally binds the discovery pick
 // pool this constructor builds, which is where the pool first exists.
 func newClient(ctx *gs.ContextProvider, c Config, discoveryLabel string,
 	center *governance.Center) (*Client, error) {
@@ -112,18 +109,12 @@ func newClient(ctx *gs.ContextProvider, c Config, discoveryLabel string,
 		log.String("uri", c.URI),
 		log.String("service_name", c.ServiceName))
 
-	log.Debugf(cctx, log.TagAppDef, "creating mongodb client")
+	log.Debug(cctx, log.TagAppDef, "creating mongodb client", nil)
 
 	// Resolve the entry's ${discovery} label against the center's directory. A
 	// label that names nothing (including the "none" sentinel) reads a nil
 	// backend, which the assembly below rejects when service-name routing is on.
 	backend, _ := center.Discovery().Get(discoveryLabel)
-
-	// The container's governance capabilities, bundled so the client is
-	// assembled complete in one step (see [cloud.ClientParams]). All of them may
-	// be nil in a standalone, non-gs call; the bundle then degrades to an
-	// observed-only, loudly-unmanaged executor.
-	params := cloud.ClientParams{Resilience: center.Resilience(), Fault: center.Fault(), Loadbalance: center.Loadbalance(), Discovery: backend}
 
 	opts := options.Client().ApplyURI(c.URI)
 	if c.ConnectTimeout > 0 {
@@ -137,7 +128,7 @@ func newClient(ctx *gs.ContextProvider, c Config, discoveryLabel string,
 	// read at construction too, and wins over the per-instance key so one place
 	// configures both halves.
 	label := resilience.ServiceLabel("mongodb", c.ServiceName, c.URI)
-	if n := params.PolicyFor(label).MaxConns; n > 0 {
+	if n := center.PolicyFor(label).MaxConns; n > 0 {
 		opts.SetMaxPoolSize(uint64(n))
 	} else if c.MaxPoolSize > 0 {
 		opts.SetMaxPoolSize(c.MaxPoolSize)
@@ -156,7 +147,7 @@ func newClient(ctx *gs.ContextProvider, c Config, discoveryLabel string,
 	}
 	tlsCfg, err := c.TLS.BuildClient()
 	if err != nil {
-		log.Errorf(cctx, log.TagAppDef, err, "mongodb: build TLS failed")
+		log.Error(cctx, log.TagAppDef, err, "mongodb: build TLS failed")
 		return nil, errutil.Explain(err, "mongodb: build TLS")
 	}
 	if tlsCfg != nil {
@@ -172,17 +163,17 @@ func newClient(ctx *gs.ContextProvider, c Config, discoveryLabel string,
 	opts.SetMonitor(newCommandMonitor(func() *dbObserver { return obsRef.Load() }))
 
 	var baseDial func(ctx context.Context, network, address string) (net.Conn, error)
-	pool, err := newPickPool(ctx.Context, c, backend)
+	chain, err := newPickChain(ctx.Context, c, backend, center.Loadbalance())
 	if err != nil {
-		log.Errorf(cctx, log.TagAppDef, err, "mongodb: build discovery resolver failed")
+		log.Error(cctx, log.TagAppDef, err, "mongodb: build discovery resolver failed")
 		return nil, err
 	}
-	if pool != nil {
+	if chain != nil {
 		nd := &net.Dialer{Timeout: c.ConnectTimeout}
 		// The discovery dialer ignores the URI address and picks a live
-		// endpoint from the loader-backed pool on each new connection.
+		// endpoint from the chain's CURRENT generation on each new connection.
 		baseDial = func(ctx context.Context, network, _ string) (net.Conn, error) {
-			ep, err := pool.Pick(loadbalance.PickInfo{})
+			ep, err := chain.Pick(loadbalance.PickInfo{})
 			if err != nil {
 				return nil, err
 			}
@@ -190,7 +181,7 @@ func newClient(ctx *gs.ContextProvider, c Config, discoveryLabel string,
 			// The dial outcome is the only signal this picker has; feeding it
 			// makes outlier suspension evict an instance that keeps refusing
 			// connections.
-			pool.Complete(ctx, ep, derr)
+			chain.Complete(ctx, ep, derr)
 			return conn, derr
 		}
 	}
@@ -206,28 +197,19 @@ func newClient(ctx *gs.ContextProvider, c Config, discoveryLabel string,
 
 	raw, err := mongo.Connect(opts)
 	if err != nil {
-		log.Errorf(cctx, log.TagAppDef, err, "mongodb: connect failed")
+		log.Error(cctx, log.TagAppDef, err, "mongodb: connect failed")
 		return nil, errutil.Explain(err, "mongodb: create client")
 	}
 	// NewClient resolves the executor off the governance bundle and stores the
 	// service label; the client's identity, observe and governance all come from
 	// this one call.
-	w := NewClient(raw, c, params)
+	w := NewClient(raw, c)
 	obsRef.Store(w.obs)
-	if pool != nil {
-		// Bind the pool to the service's governance label so one
-		// spring.governance.client.rules[N] rule drives both its balancing
-		// strategy and its protection executor. A nil manager is the standalone
-		// case (no container); an unwrapped one is exactly "governance off",
-		// where Bind is a no-op — so normalizing here keeps the binding free of
-		// a nil branch.
-		w.stop = params.Loadbalance.Bind(pool, serviceLabel(c))
-	}
-	// This starter's protection rides the dial layer (there is no per-command
-	// hook), so the executor is consumed here rather than by a per-call seam:
-	// wrap the shared dialer's dial function with it and swap it in. Done before
-	// the probe, so the client is fully assembled when it is checked.
-	dialer.dial = resilience.NewDialer(dialer.dial, w.exec)
+	// Endpoint selection needs no binding step here: newPickChain registered the
+	// chain under the service's governance label as it built it, so one
+	// spring.governance.client.rules[N] rule drives its balancing strategy from
+	// the first dial. This starter applies no protection (no per-command hook),
+	// so no dial wrapping happens here.
 
 	// Fail fast: verify the server is reachable before handing out the client.
 	// The probe is [HealthCheck], the single liveness implementation (a
@@ -239,12 +221,12 @@ func newClient(ctx *gs.ContextProvider, c Config, discoveryLabel string,
 		pingCtx, cancel := pingContext(ctx.Context, c.ConnectTimeout)
 		defer cancel()
 		if err := HealthCheck(pingCtx, w); err != nil {
-			log.Errorf(cctx, log.TagAppDef, err, "mongodb: ping failed")
+			log.Error(cctx, log.TagAppDef, err, "mongodb: ping failed")
 			_ = w.Destroy()
 			return nil, errutil.Explain(err, "mongodb: ping %s", c.URI)
 		}
 	}
-	log.Infof(cctx, log.TagAppDef, "init mongodb client success")
+	log.Info(cctx, log.TagAppDef, "init mongodb client success")
 	return w, nil
 }
 

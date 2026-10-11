@@ -17,7 +17,6 @@
 package StarterCassandra
 
 import (
-	"go-spring.org/cloud"
 	"go-spring.org/cloud/actuator/health"
 	"go-spring.org/cloud/governance"
 	"go-spring.org/log"
@@ -73,17 +72,16 @@ func init() {
 //
 // center is the governance center — the family's sole injection point. The
 // wiring injects it NULLABLY, so it is nil in a container without governance as
-// well as in a standalone (non-gs) call; the ctor reads the resilience and fault
-// authorities from it and bundles
-// them into the [cloud.ClientParams] it hands the driver, which passes it to
-// [NewClient] — so the client is assembled complete in one step, with the zero
-// bundle degrading to an observed-only, loudly-unmanaged executor.
+// well as in a standalone (non-gs) call; the ctor hands it to the driver, which
+// passes it to
+// [NewClient] — so the client is assembled complete in one step, with the
+// resilience manager required: the container supplies it via the governance
+// center, so a center without one fails at construction.
 func newClient(ctx *gs.ContextProvider, c Config, d Driver, center *governance.Center) (*Client, error) {
-	log.Debug(ctx.Context, log.TagAppDef, func() []log.Field {
+	log.Debug(ctx.Context, log.TagAppDef, "creating cassandra client", func() []log.Field {
 		return []log.Field{
 			log.Strings("hosts", c.Hosts),
 			log.String("keyspace", c.Keyspace),
-			log.Msg("creating cassandra client"),
 		}
 	})
 
@@ -95,7 +93,7 @@ func newClient(ctx *gs.ContextProvider, c Config, d Driver, center *governance.C
 	if d == nil {
 		d = DefaultDriver{}
 	}
-	client, err := d.CreateClient(ctx.Context, c, cloud.ClientParams{Resilience: center.Resilience(), Fault: center.Fault()})
+	client, err := d.CreateClient(ctx.Context, c, center)
 	if err != nil {
 		return nil, err
 	}
@@ -112,11 +110,11 @@ func newClient(ctx *gs.ContextProvider, c Config, d Driver, center *governance.C
 	// cluster that is not up yet must not block startup.
 	if c.Ping {
 		if err := HealthCheck(ctx.Context, client); err != nil {
-			log.Errorf(ctx.Context, log.TagAppDef, err, "cassandra: startup probe failed")
+			log.Error(ctx.Context, log.TagAppDef, err, "cassandra: startup probe failed")
 			_ = client.Close()
 			return nil, errutil.Explain(err, "failed to reach cassandra cluster %v", c.Hosts)
 		}
 	}
-	log.Info(ctx.Context, log.TagAppDef, log.Strings("hosts", c.Hosts), log.Msg("init cassandra client success"))
+	log.Info(ctx.Context, log.TagAppDef, "init cassandra client success", log.Strings("hosts", c.Hosts))
 	return client, nil
 }

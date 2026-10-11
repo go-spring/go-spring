@@ -70,7 +70,7 @@ spring.http-client.instances.discovered.discovery=static
 
 # 韧性与端点选择不在这里配置:策略写在治理规则文档的 spring.governance.* 下(cloud/governance;
 # conf/governance.properties,由 spring.governance.source.file.path 指向)。连续 2 次失败熔断:
-#   spring.governance.enabled=true
+#   spring.resilience.driver=default
 #   spring.governance.client.default.error-threshold=2
 #   spring.governance.client.default.open-duration=30s
 spring.http-client.instances.guarded.addr=127.0.0.1:9473

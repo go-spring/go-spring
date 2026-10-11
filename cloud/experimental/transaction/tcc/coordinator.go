@@ -23,6 +23,7 @@ import (
 	"sync"
 	"time"
 
+	"go-spring.org/cloud/chain"
 	"go-spring.org/cloud/resilience"
 	"go-spring.org/log"
 	"go-spring.org/stdlib/errutil"
@@ -286,17 +287,15 @@ func (c *coordinator) finish(ctx context.Context, t Transaction, res *Result, tr
 		attribute.String("status", res.Status.String()),
 	))
 	if res.Status == StatusCommitted {
-		log.Info(ctx, log.TagAppDef,
+		log.Info(ctx, log.TagAppDef, "transaction: tcc committed",
 			log.String("transaction", t.ID),
 			log.String("status", res.Status.String()),
-			log.Int("participants", len(tried)),
-			log.Msg("transaction: tcc committed"))
+			log.Int("participants", len(tried)))
 	} else {
-		log.Warn(ctx, log.TagAppDef,
+		log.Warn(ctx, log.TagAppDef, "transaction: tcc did not commit",
 			log.String("transaction", t.ID),
 			log.String("status", res.Status.String()),
-			log.Int("participants", len(tried)),
-			log.Msg("transaction: tcc did not commit"))
+			log.Int("participants", len(tried)))
 	}
 	if c.store == nil {
 		return
@@ -368,10 +367,10 @@ func runWithPolicy(ctx context.Context, p RetryPolicy, resource string, fn func(
 	if p.IsZero() {
 		return fn(ctx)
 	}
-	exec, err := resilience.NewDefaultDriver(nil).NewClientExecutor(resource, p)
+	exec, err := resilience.NewDefaultDriver(nil).NewClientExecutor(resource, resilience.ClientPolicy{Retry: p})
 	if err != nil {
 		return err
 	}
 	defer func() { _ = exec.Close() }()
-	return exec.Execute(ctx, fn)
+	return exec.Execute(ctx, chain.Operation{}, fn)
 }

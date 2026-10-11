@@ -109,6 +109,6 @@ func newCoordinator(c Config, store transaction.Store) transaction.Coordinator {
 	if c.Tracing {
 		opts = append(opts, transaction.WithObserver(transaction.SagaObserver{}))
 	}
-	log.Info(context.Background(), log.TagAppDef, log.Bool("tracing", c.Tracing), log.Msg("create saga coordinator success"))
+	log.Info(context.Background(), log.TagAppDef, "create saga coordinator success", log.Bool("tracing", c.Tracing))
 	return transaction.NewCoordinator(opts...)
 }

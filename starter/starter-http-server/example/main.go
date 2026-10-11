@@ -143,7 +143,7 @@ func runTest() {
 		fail("session POST with token: err = %v status = %v, want 200", err, respStatus(resp))
 	}
 
-	log.Infof(context.Background(), log.TagAppDef, "smoke ok: all security gates verified")
+	log.Info(context.Background(), log.TagAppDef, "smoke ok: all security gates verified")
 	os.Exit(0)
 }
 

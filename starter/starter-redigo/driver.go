@@ -19,7 +19,7 @@ package StarterRedigo
 import (
 	"context"
 
-	"go-spring.org/cloud"
+	"go-spring.org/cloud/governance"
 )
 
 // Driver interface defines how to create a Redis client (a connection pool) —
@@ -54,15 +54,16 @@ import (
 //     standard assembly would have done, including any teardown of resources
 //     you built.
 //
-// params carries the container's facilities (see [cloud.ClientParams]);
-// [NewPool] applies them while it builds, so nothing patches the pool
-// afterwards. It is one struct rather than a parameter per capability so this
-// interface — which every company driver implements — stays stable as
-// capabilities are added; a driver that has no use for one of its fields simply
-// ignores it. A hand-built pool (an example, a test) passes the zero
-// ClientParams and degrades to an observed-only, loudly-unmanaged executor.
+// center is the container's governance center — the family's one injection
+// point — carrying resilience, fault, loadbalance and the discovery directory.
+// [NewPool] applies it while it builds, so nothing patches the pool afterwards.
+// It is one object rather than a parameter per capability so this interface —
+// which every company driver implements — stays stable as capabilities are
+// added; a driver that has no use for one of its facilities simply ignores it.
+// A hand-built pool (an example, a test) must supply a center holding a
+// [resilience.Manager]; a nil center is a construction error.
 type Driver interface {
-	CreateClient(ctx context.Context, c Config, params cloud.ClientParams) (*Pool, error)
+	CreateClient(ctx context.Context, c Config, center *governance.Center) (*Pool, error)
 }
 
 // DefaultDriver is the default implementation of the Driver interface.
@@ -71,25 +72,24 @@ type DefaultDriver struct{}
 // CreateClient creates a new Redis pool based on the provided configuration.
 //
 // When c.ServiceName is set (and mesh mode is not enabled), the address is
-// resolved through the discovery backend (params.Discovery) instead of c.Addr: a
-// discovery loader keeps the endpoint set fresh via the backend's watch and the
-// pool dials a live instance (Pick) for each new connection. Combined with
-// c.ConnMaxLifetime, pooled connections recycle onto updated addresses without
-// rebuilding the pool. When c.ServiceName is empty this is a plain Addr dial,
-// unchanged from before.
+// resolved through the discovery backend (center.Discovery().Get(c.Discovery))
+// instead of c.Addr: a discovery loader keeps the endpoint set fresh via the
+// backend's watch and the pool dials a live instance (Pick) for each new
+// connection. Combined with c.ConnMaxLifetime, pooled connections recycle onto
+// updated addresses without rebuilding the pool. When c.ServiceName is empty
+// this is a plain Addr dial, unchanged from before.
 //
-// params.Discovery is the discovery backend the entry's ${discovery} label
-// resolved to, already looked up by the starter wiring; it is nil when the entry
-// cites no label (an unknown label fails at wiring, before the driver is
-// called). It rides on the params struct rather than Config so a custom driver
-// can actually reach it — Config stays a pure bound value.
+// The entry's ${discovery} label rides on the config (c.Discovery, already
+// carrying the family default): the driver resolves it against
+// center.Discovery() itself, failing construction when an entry routes by
+// service-name and the label names no bean.
 //
 // In mesh mode (mesh.Enabled) discovery is skipped entirely: a sidecar owns
 // discovery+LB, so the pool connects straight to the configured static Addr
 // (the service's stable DNS address).
 //
-// params is passed straight through to [NewPool], which applies it during
+// center is passed straight through to [NewPool], which applies it during
 // assembly, so the returned Pool is complete.
-func (DefaultDriver) CreateClient(ctx context.Context, c Config, params cloud.ClientParams) (*Pool, error) {
-	return NewPool(ctx, c, params)
+func (DefaultDriver) CreateClient(ctx context.Context, c Config, center *governance.Center) (*Pool, error) {
+	return NewPool(ctx, c, center)
 }

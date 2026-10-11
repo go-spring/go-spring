@@ -114,23 +114,23 @@ func (s *AppStarter) startApp() error {
 	// Print banner
 	printBanner()
 
-	log.Infof(s.app.Context(), log.TagAppDef, "application starting")
+	log.Info(s.app.Context(), log.TagAppDef, "application starting")
 
 	// Apply user configuration
 	if s.cfg != nil {
 		s.cfg(s.app)
 	}
 
-	log.Debugf(s.app.Context(), log.TagAppDef, "configuration applied, starting app")
+	log.Debug(s.app.Context(), log.TagAppDef, "configuration applied, starting app", nil)
 
 	// Start application
 	if err := s.app.Start(); err != nil {
 		err = errutil.Explain(err, "start app failed")
-		log.Errorf(s.app.Context(), log.TagAppDef, err, "")
+		log.Error(s.app.Context(), log.TagAppDef, err, "start app failed")
 		return err
 	}
 
-	log.Infof(s.app.Context(), log.TagAppDef, "application started successfully")
+	log.Info(s.app.Context(), log.TagAppDef, "application started successfully")
 	return nil
 }
 
@@ -173,7 +173,7 @@ func (s *AppStarter) Run() {
 		sig := <-ch
 		signal.Stop(ch)
 		close(ch)
-		log.Infof(ctx, log.TagAppDef, "Received signal: %v", sig)
+		log.Info(ctx, log.TagAppDef, "received signal", log.Any("sig", sig))
 		s.app.ShutDown()
 	}, goutil.InheritCancel)
 

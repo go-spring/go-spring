@@ -76,10 +76,9 @@ func recoverBranch(ctx context.Context, b at.Branch) error {
 	gb, ok := b.(*gormBranch)
 	if !ok {
 		err := errutil.Explain(nil, "at recovery: branch %s has unsupported type %T", b.ID(), b)
-		log.Error(ctx, log.TagAppDef, err,
+		log.Error(ctx, log.TagAppDef, err, "at recovery: skip non-gorm branch",
 			log.String("branch", b.ID()),
-			log.String("type", fmt.Sprintf("%T", b)),
-			log.Msg("at recovery: skip non-gorm branch"))
+			log.String("type", fmt.Sprintf("%T", b)))
 		return nil
 	}
 	resource, db := gb.resource, gb.db
@@ -91,11 +90,11 @@ func recoverBranch(ctx context.Context, b at.Branch) error {
 	var xids []string
 	if err := db.Model(&undoRow{}).Distinct().Order("xid").
 		Pluck("xid", &xids).Error; err != nil {
-		log.Errorf(ctx, log.TagAppDef, err, "at recovery: scanning undo logs failed (orphaned entries, if any, are left for manual recovery)")
+		log.Error(ctx, log.TagAppDef, err, "at recovery: scanning undo logs failed (orphaned entries, if any, are left for manual recovery)")
 		return err
 	}
 	if len(xids) == 0 {
-		log.Debugf(ctx, log.TagAppDef, "at recovery: no orphaned undo logs")
+		log.Debug(ctx, log.TagAppDef, "at recovery: no orphaned undo logs", nil)
 		return nil
 	}
 
@@ -109,22 +108,19 @@ func recoverBranch(ctx context.Context, b at.Branch) error {
 		}
 	}
 	err := errutil.Explain(nil, "found %d orphaned undo-log entries from a previous run", count)
-	log.Error(ctx, log.TagAppDef, err,
+	log.Error(ctx, log.TagAppDef, err, "at recovery: found orphaned undo-log entries from a previous run; rolling back",
 		log.Int("entries", count),
 		log.String("oldest", oldest.Format(time.RFC3339)),
-		log.Int("transactions", len(xids)),
-		log.Msg("at recovery: found orphaned undo-log entries from a previous run; rolling back"))
+		log.Int("transactions", len(xids)))
 
 	for _, xid := range xids {
 		if err := gb.Rollback(ctx, xid); err != nil {
-			log.Error(ctx, log.TagAppDef, err,
-				log.String("xid", xid),
-				log.Msg("at recovery: rolling back global transaction failed (undo logs kept for manual recovery)"))
+			log.Error(ctx, log.TagAppDef, err, "at recovery: rolling back global transaction failed (undo logs kept for manual recovery)",
+				log.String("xid", xid))
 			continue
 		}
-		log.Info(ctx, log.TagAppDef,
-			log.String("xid", xid),
-			log.Msg("at recovery: global transaction rolled back"))
+		log.Info(ctx, log.TagAppDef, "at recovery: global transaction rolled back",
+			log.String("xid", xid))
 	}
 	return nil
 }

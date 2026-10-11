@@ -50,7 +50,7 @@ func init() {
 		return func(e *gin.Engine) {
 			e.GET("/echo/:name", func(ctx *gin.Context) {
 				name := ctx.Param("name")
-				log.Infof(ctx.Request.Context(), log.TagAppDef, "handling /echo/%s", name)
+				log.Info(ctx.Request.Context(), log.TagAppDef, "handling /echo/", log.String("name", name))
 				ctx.JSON(http.StatusOK, gin.H{"message": "Hello, " + name})
 			})
 		}

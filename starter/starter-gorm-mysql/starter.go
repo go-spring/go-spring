@@ -29,7 +29,6 @@ import (
 	"sync/atomic"
 
 	"github.com/go-sql-driver/mysql"
-	"go-spring.org/cloud"
 	"go-spring.org/cloud/actuator/health"
 	"go-spring.org/cloud/discovery"
 	"go-spring.org/cloud/governance"
@@ -61,19 +60,19 @@ func init() {
 			// space, so two dialects may carry an instance of the same name.
 			beanName := "mysql." + name
 			r.Provide(func(ctx *gs.ContextProvider, discoveryLabel string, center *governance.Center) (*gormcore.DB, error) {
-				// The entry's ${discovery} label is resolved against the center's
-				// discovery directory here, and the label's "none" sentinel makes an
-				// unset key resolve to a nil backend (a static-address entry). The
-				// center is the family's sole injection point: it also hands out the
-				// resilience/fault/loadbalance authorities, bundled into the one
-				// ClientParams the dialect and NewDB both read.
-				disc, _ := center.Discovery().Get(discoveryLabel)
-				params := cloud.ClientParams{Resilience: center.Resilience(), Fault: center.Fault(), Loadbalance: center.Loadbalance(), Discovery: disc}
-				spec, err := build(ctx.Context, c, params)
+				// The wiring tag applies the family-default discovery fallback
+				// (discoveryLabel); fold it into the config so the dialect's build
+				// reads one label — c.Discovery — and resolves the backend itself,
+				// failing construction if it names no bean. "none" is the tag's
+				// sentinel for "no backend".
+				if discoveryLabel != "" && discoveryLabel != "none" {
+					c.Discovery = discoveryLabel
+				}
+				spec, err := build(ctx.Context, c, center)
 				if err != nil {
 					return nil, err
 				}
-				return gormcore.NewDB(ctx.Context, "mysql", spec, params, c.Ping)
+				return gormcore.NewDB(ctx.Context, "mysql", spec, center, c.Ping)
 			},
 				gs.IndexArg(1, gs.TagArg("${spring.gorm.mysql.instances."+name+".discovery:=${spring.gorm.mysql.default.discovery:=none}}")),
 			).Name(beanName).Destroy((*gormcore.DB).Destroy).Caller(1)
@@ -104,13 +103,13 @@ var tlsSeq atomic.Uint64
 // the client. In mesh mode a sidecar owns discovery+LB, so the configured Addr
 // is used as-is. When c.ServiceName is empty this is a plain Addr dial,
 // unchanged from before.
-func build(ctx context.Context, c Config, params cloud.ClientParams) (gormcore.Spec, error) {
+func build(ctx context.Context, c Config, center *governance.Center) (gormcore.Spec, error) {
 	if c.Addr == "" && c.ServiceName == "" {
 		return gormcore.Spec{}, errutil.Explain(nil, "gorm mysql: one of addr or service-name must be set")
 	}
 
-	log.Debug(ctx, log.TagAppDef, func() []log.Field {
-		return []log.Field{log.String("addr", c.Addr), log.String("service_name", c.ServiceName), log.String("db", c.DB), log.Msg("creating gorm mysql client")}
+	log.Debug(ctx, log.TagAppDef, "creating gorm mysql client", func() []log.Field {
+		return []log.Field{log.String("addr", c.Addr), log.String("service_name", c.ServiceName), log.String("db", c.DB)}
 	})
 
 	var (
@@ -125,7 +124,7 @@ func build(ctx context.Context, c Config, params cloud.ClientParams) (gormcore.S
 	// unique name and reference it in the DSN as tls=<name>.
 	tlsCfg, err := c.TLS.BuildClient()
 	if err != nil {
-		log.Errorf(ctx, log.TagAppDef, err, "gorm mysql build TLS failed")
+		log.Error(ctx, log.TagAppDef, err, "gorm mysql build TLS failed")
 		return gormcore.Spec{}, errutil.Explain(err, "gorm-mysql: build TLS")
 	}
 	if tlsCfg != nil {
@@ -140,9 +139,16 @@ func build(ctx context.Context, c Config, params cloud.ClientParams) (gormcore.S
 	dsn := c.DSN()
 
 	service := resilience.ServiceLabel("gorm:mysql", c.ServiceName, c.Addr)
-	conn, err := newDiscoveryConn(ctx, c, params.Discovery, service, params.Loadbalance)
+	var backend discovery.Discovery
+	if c.ServiceName != "" {
+		backend, _ = center.Discovery().Get(c.Discovery)
+		if backend == nil {
+			return gormcore.Spec{}, errutil.Explain(nil, "gorm mysql: instance routes by service-name but cites discovery backend %q, which names no bean", c.Discovery)
+		}
+	}
+	conn, err := newDiscoveryConn(ctx, c, backend, service, center.Loadbalance())
 	if err != nil {
-		log.Errorf(ctx, log.TagAppDef, err, "gorm mysql build discovery dialer failed")
+		log.Error(ctx, log.TagAppDef, err, "gorm mysql build discovery dialer failed")
 		if tlsCloser != nil {
 			tlsCloser()
 		}
@@ -190,7 +196,6 @@ var netSeq atomic.Uint64
 // it registered, so the closer can stop the watch and deregister the dialer.
 type discoveryConn struct {
 	netName string
-	stop    func() // detaches the pool's endpoint-selection binding
 }
 
 // newDiscoveryConn resolves the registered discovery backend for c and registers
@@ -201,7 +206,7 @@ type discoveryConn struct {
 // stopDiscoveryConn. service is the entry's governance label, to which the
 // pool's endpoint selection is bound.
 func newDiscoveryConn(ctx context.Context, c Config, backend discovery.Discovery, service string, lbMgr *loadbalance.Manager) (*discoveryConn, error) {
-	lb, _, stop, err := c.NewPickPool(ctx, backend, service, lbMgr)
+	lb, _, err := c.NewPickPool(ctx, backend, service, lbMgr)
 	if err != nil {
 		return nil, err
 	}
@@ -211,7 +216,8 @@ func newDiscoveryConn(ctx context.Context, c Config, backend discovery.Discovery
 	netName := fmt.Sprintf("gsdisco_%s_%d", c.ServiceName, netSeq.Add(1))
 	nd := &net.Dialer{}
 	// mysql.DialContextFunc is 2-arg: func(ctx, addr string) (net.Conn, error).
-	// The addr is ignored; the dialer picks a live endpoint via the pool.
+	// The addr is ignored; the dialer picks a live endpoint via the chain's
+	// current generation.
 	mysql.RegisterDialContext(netName, func(ctx context.Context, _ string) (net.Conn, error) {
 		ep, perr := lb.Pick(loadbalance.PickInfo{})
 		if perr != nil {
@@ -223,16 +229,17 @@ func newDiscoveryConn(ctx context.Context, c Config, backend discovery.Discovery
 		lb.Complete(ctx, ep, derr)
 		return conn, derr
 	})
-	return &discoveryConn{netName: netName, stop: stop}, nil
+	return &discoveryConn{netName: netName}, nil
 }
 
-// stopDiscoveryConn stops the discovery watch and deregisters the mysql dialer
-// behind conn. It is the close-half of the discovery lifecycle, symmetric with
-// newDiscoveryConn; it is a no-op for a nil conn (a client that never had one).
+// stopDiscoveryConn deregisters the mysql dialer behind conn. It is the
+// close-half of the discovery lifecycle, symmetric with newDiscoveryConn; it is
+// a no-op for a nil conn (a client that never had one). The pool's
+// endpoint-selection binding is one-way — released with the loadbalance
+// authority, not here.
 func stopDiscoveryConn(conn *discoveryConn) {
 	if conn == nil {
 		return
 	}
 	mysql.DeregisterDialContext(conn.netName)
-	conn.stop()
 }

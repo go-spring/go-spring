@@ -92,8 +92,7 @@ func (p *loggingProcessor) Process(ctx context.Context, iprot, oprot thrift.TPro
 	}
 
 	n := atomic.AddInt64(&middlewareCallCount, 1)
-	log.Infof(ctx, log.TagAppDef,
-		"thrift middleware: method=%s seq=%d count=%d", name, seqId, n)
+	log.Info(ctx, log.TagAppDef, "thrift middleware: method", log.String("name", name), log.Int("seq_id", seqId), log.Int("n", n))
 
 	if processor, ok := p.inner.ProcessorMap()[name]; ok {
 		return processor.Process(ctx, seqId, iprot, oprot)
@@ -169,19 +168,19 @@ func runTest() {
 	client := proto.NewEchoServiceClientFactory(transport, protocolFactory)
 
 	if err := transport.Open(); err != nil {
-		log.Errorf(ctx, log.TagAppDef, err, "Error opening transport")
+		log.Error(ctx, log.TagAppDef, err, "Error opening transport")
 		os.Exit(1)
 	}
 
 	// Feature 1: Echo RPC — canonical request/response.
 	resp1, err := client.Echo(ctx, &proto.EchoRequest{Message: "Hello, Thrift!"})
 	if err != nil {
-		log.Errorf(ctx, log.TagAppDef, err, "Error calling Echo (1)")
+		log.Error(ctx, log.TagAppDef, err, "Error calling Echo (1)")
 		os.Exit(1)
 	}
 	fmt.Println("Response from server:", resp1.Message)
 	if resp1.Message != "Hello, Thrift!" {
-		log.Errorf(ctx, log.TagAppDef, fmt.Errorf("unexpected echo body (1): %q", resp1.Message), "unexpected echo body (1): %q", resp1.Message)
+		log.Error(ctx, log.TagAppDef, fmt.Errorf("unexpected echo body (1): %q", resp1.Message), "unexpected echo body (1)", log.Any("message", resp1.Message))
 		os.Exit(1)
 	}
 
@@ -192,18 +191,18 @@ func runTest() {
 	// compact; the client above matches, see runTest doc.)
 	resp2, err := client.Echo(ctx, &proto.EchoRequest{Message: "Middleware works!"})
 	if err != nil {
-		log.Errorf(ctx, log.TagAppDef, err, "Error calling Echo (2)")
+		log.Error(ctx, log.TagAppDef, err, "Error calling Echo (2)")
 		os.Exit(1)
 	}
 	fmt.Println("Response from server:", resp2.Message)
 	if resp2.Message != "Middleware works!" {
-		log.Errorf(ctx, log.TagAppDef, fmt.Errorf("unexpected echo body (2): %q", resp2.Message), "unexpected echo body (2): %q", resp2.Message)
+		log.Error(ctx, log.TagAppDef, fmt.Errorf("unexpected echo body (2): %q", resp2.Message), "unexpected echo body (2)", log.Any("message", resp2.Message))
 		os.Exit(1)
 	}
 
 	// Feature 2: TProcessor middleware/decorator invocation count.
 	if got := atomic.LoadInt64(&middlewareCallCount); got != 2 {
-		log.Errorf(ctx, log.TagAppDef, fmt.Errorf("loggingProcessor middleware fired %d time(s), want 2", got), "loggingProcessor middleware fired %d time(s), want 2", got)
+		log.Error(ctx, log.TagAppDef, fmt.Errorf("loggingProcessor middleware fired %d time(s), want 2", got), "loggingProcessor middleware fired", log.Int("got", got))
 		os.Exit(1)
 	}
 

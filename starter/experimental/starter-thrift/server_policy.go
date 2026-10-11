@@ -19,9 +19,9 @@ package StarterThrift
 import (
 	"context"
 	"go-spring.org/cloud/chain"
+	"go-spring.org/cloud/governance"
 
 	"github.com/apache/thrift/lib/go/thrift"
-	"go-spring.org/cloud/resilience"
 )
 
 // Admit returns the middleware that runs every call through the service's
@@ -36,15 +36,16 @@ import (
 // and logged. With inbound one layer above, a rejection short-circuits before
 // the per-method functions run and would leave no trace at all.
 //
-// The executor is built from the injected [resilience.Manager], so this server
-// gets its policy from the governance document without naming *governance.Center.
-// A nil manager (a standalone call) is normalized to an unarmed one, whose
-// executor is a transparent pass-through, so the middleware runs and never
-// rejects. The executor handle resolves its backing implementation per call and
-// follows the manager's hot-reload, so inbound inbound can be tightened
-// without a restart, the same way every outbound client's policy is tuned.
-func Admit(label string, system string, mgr *resilience.Manager) thrift.ProcessorMiddleware {
-	exec := mgr.ServerExecutorFor(system, label)
+// The executor comes from the injected [governance.Center], which composes the
+// observe wrapper around the governance executor here — this package names
+// neither observability nor a raw resilience manager. A nil center (a standalone
+// call) is normalized inside the center to an unarmed authority, whose executor is
+// a transparent pass-through, so the middleware runs and never rejects. The
+// executor handle resolves its backing implementation per call and follows the
+// manager's hot-reload, so inbound inbound can be tightened without a restart,
+// the same way every outbound client's policy is tuned.
+func Admit(label string, system string, center *governance.Center) thrift.ProcessorMiddleware {
+	exec := center.ServerExecutorFor(system, label)
 	return func(name string, next thrift.TProcessorFunction) thrift.TProcessorFunction {
 		return thrift.WrappedTProcessorFunction{
 			Wrapped: func(ctx context.Context, seqID int32, in, out thrift.TProtocol) (bool, thrift.TException) {
@@ -70,7 +71,7 @@ func admit(ctx context.Context, exec chain.Executor, service, name string, seqID
 		svcErr thrift.TException
 		served bool
 	)
-	err := exec.Execute(ctx, func(ctx context.Context) error {
+	err := exec.Execute(ctx, chain.Operation{}, func(ctx context.Context) error {
 		if served {
 			return nil // reentry guard: the service already ran this call
 		}

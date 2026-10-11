@@ -17,8 +17,8 @@
 package gormcore
 
 import (
-	"go-spring.org/cloud"
 	"go-spring.org/cloud/chain"
+	"go-spring.org/cloud/governance"
 	gormobserve "go-spring.org/starter-gorm/observe"
 	gormresilience "go-spring.org/starter-gorm/resilience"
 	"go-spring.org/stdlib/errutil"
@@ -38,14 +38,14 @@ type Options struct {
 	ObserveEnabled bool     // per-instance kill switch for the gorm observe plugin
 	Closers        []func() // teardown hooks run by Destroy before the pool closes
 
-	// Params carries the container's facilities (see [cloud.ClientParams]); [Open]
+	// Center is the container's governance center (see [governance.Center]); [Open]
 	// applies it while assembling, so the returned DB is complete. It is one
-	// struct rather than a parameter per capability so this bundle — which every
-	// dialect's wiring fills — stays stable as capabilities are added. The zero
-	// value is meaningful: a DB opened without a container (a hand-built one, an
-	// example, a test) degrades to an observed-only, loudly-unmanaged executor
-	// instead of silently running with no protection at all.
-	Params cloud.ClientParams
+	// object rather than a parameter per capability so this field — which every
+	// dialect's wiring fills — stays stable as capabilities are added. The center
+	// must carry a [resilience.Manager] — the container always supplies one — so a
+	// hand-built DB (an example, a test) must supply one too: a nil center is a
+	// construction error, never a graceful downgrade.
+	Center *governance.Center
 }
 
 // DB is the wrapper bean gorm clients are injected as, shared verbatim by every
@@ -60,7 +60,7 @@ type DB struct {
 	serviceLabel   string
 	observeEnabled bool
 	closers        []func()
-	exec           chain.Executor // from Params.ExecutorFor; unmanaged (observe-only) when no container
+	exec           chain.Executor // from Center.ExecutorFor; the center is required to carry a manager
 }
 
 // Open opens gorm with the given dialector, applies the pool settings and runs
@@ -80,7 +80,7 @@ func Open(dialector gorm.Dialector, pool PoolConfig, opt Options) (*DB, error) {
 	// key, so one place configures both halves. A pool is built once and belongs
 	// to the driver, which is why this is read here rather than by the running
 	// executor that every other policy field reaches.
-	if n := opt.Params.PolicyFor(opt.Service).MaxConns; n > 0 {
+	if n := opt.Center.PolicyFor(opt.Service).MaxConns; n > 0 {
 		pool.MaxOpenConns = n
 	}
 	db, err := gorm.Open(dialector, GormConfig(pool))
@@ -108,22 +108,30 @@ func Open(dialector gorm.Dialector, pool PoolConfig, opt Options) (*DB, error) {
 	// dialect's own gorm:<op> processors, which the governance layer then
 	// replaces — install it after and it would capture the wrappers instead of
 	// the SQL builders.
+	// opFor supplies each call's identity to the resilience callbacks below. It
+	// is the observe plugin's builder, wired here so the plugin (which knows the
+	// dialect's SQL and the operation kind) and the executor meet at the wrap
+	// point; nil when observation is off, so every call runs with the zero
+	// Operation.
+	var opFor func(*gorm.DB, string) chain.Operation
 	if o.observeEnabled {
-		if err := o.DB.Use(gormobserve.NewPlugin(o.engine)); err != nil {
+		plugin := gormobserve.NewPlugin(o.engine)
+		if err := o.DB.Use(plugin); err != nil {
 			_ = closeSQL(db)
 			return nil, errutil.Explain(err, "gorm observe")
 		}
+		opFor = plugin.Operation
 	}
 	// Governance is applied in the constructor, not by the wiring, so the DB is
 	// complete the moment Open returns. The executor comes from the one place
-	// that composition lives ([cloud.ClientParams.ExecutorFor]): the governed
-	// executor when the container is present, and the observed-only,
-	// loudly-unmanaged one when it is not (opt.Params is the zero value). The
+	// that composition lives ([governance.Center.ExecutorFor]), which requires
+	// the center to carry a [resilience.Manager] — the container always supplies
+	// it — and panics on a nil center. The
 	// manager resolves the backing executor lazily, on each Execute, so this call
 	// order relative to the center's wiring is irrelevant, and the fault
 	// injector is nil-safe (a transparent pass-through with no injector).
-	o.exec = opt.Params.ExecutorFor(o.engine, o.serviceLabel)
-	if err := gormresilience.ApplyCallbacks(o.DB, o.exec, o.serviceLabel); err != nil {
+	o.exec = opt.Center.ExecutorFor(o.engine, o.serviceLabel)
+	if err := gormresilience.ApplyCallbacks(o.DB, o.exec, o.serviceLabel, opFor); err != nil {
 		_ = closeSQL(db)
 		return nil, errutil.Explain(err, "gorm resilience")
 	}

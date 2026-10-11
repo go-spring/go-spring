@@ -31,14 +31,13 @@ import (
 	"time"
 
 	"go-spring.org/cloud/governance"
-	"go-spring.org/cloud/resilience"
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
 
 	// Blank-import both starters: starter-go-redis publishes the *goredis.Client
 	// bean named by spring.ratelimit.redis.client, and starter-ratelimit-redis
-	// contributes the Redis-backed resilience.Counters store — the one the
-	// resilience driver injects, in place of the private per-executor stores a
+	// contributes the Redis-backed resilience.ClusterLimiter store — the one the
+	// resilience driver injects, in place of the private per-executor budgets a
 	// container with no store bean gets.
 	_ "go-spring.org/starter-go-redis"
 	_ "go-spring.org/starter-ratelimit-redis"
@@ -67,24 +66,24 @@ func init() {
 		// service label, and both draw on the one Redis-backed counter store
 		// this process contributed, so the budget is global.
 		mux := http.NewServeMux()
-		mux.Handle("/a/", serve(executor(center.Resilience())))
-		mux.Handle("/b/", serve(executor(center.Resilience())))
+		mux.Handle("/a/", serve(executor(center)))
+		mux.Handle("/b/", serve(executor(center)))
 		return &gs.HttpServeMux{Handler: mux}
 	})
 }
 
-// executor returns the handle for the shared service label. ClientExecutorFor
-// resolves its backing executor lazily, on each Execute, so the policy is read
-// after the governance center has gone live.
-func executor(mgr *resilience.Manager) chain.Executor {
-	return mgr.ClientExecutorFor("ratelimit-redis", service)
+// executor returns the handle for the shared service label. The center composes
+// the observe layer and resolves the backing executor lazily, on each Execute, so
+// the policy is read after the governance center has gone live.
+func executor(center *governance.Center) chain.Executor {
+	return center.ExecutorFor("ratelimit-redis", service)
 }
 
 // serve runs one protected call per request. The executor's rate-limit stage
 // charges the shared store; an over-budget call comes back as ErrRateLimited.
 func serve(exec chain.Executor) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		err := exec.Execute(r.Context(), func(context.Context) error { return nil })
+		err := exec.Execute(r.Context(), chain.Operation{}, func(context.Context) error { return nil })
 		switch {
 		case err == nil:
 			_, _ = w.Write([]byte("ok"))
@@ -174,7 +173,7 @@ func status(path string) int {
 }
 
 func fail(format string, args ...any) {
-	log.Errorf(context.Background(), log.TagAppDef, fmt.Errorf(format, args...), format, args...)
+	log.Record(context.Background(), log.ErrorLevel, log.TagAppDef, 2, log.Msgf(format, args...))
 	os.Exit(1)
 }
 

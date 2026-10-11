@@ -95,16 +95,16 @@ func (r *resolveRunner) Run(ctx context.Context) error {
 		defer func() { _ = syscall.Kill(os.Getpid(), syscall.SIGTERM) }()
 		d := r.backend
 		if d == nil {
-			log.Errorf(ctx, log.TagAppDef, fmt.Errorf("discovery backend %q not wired", backendName), "discovery backend %q not wired", backendName)
+			log.Error(ctx, log.TagAppDef, fmt.Errorf("discovery backend %q not wired", backendName), "discovery backend", log.String("backend_name", backendName))
 			return
 		}
 		eps, err := d.Resolve(ctx, targetService)
 		if err != nil {
-			log.Warnf(ctx, log.TagAppDef, "resolve %q failed (expected outside a cluster): %v", targetService, err)
+			log.Warn(ctx, log.TagAppDef, "resolve", log.String("target_service", targetService), log.Any("err", err))
 			return
 		}
 		if len(eps) == 0 {
-			log.Warnf(ctx, log.TagAppDef, "service %q resolved to no endpoints", targetService)
+			log.Warn(ctx, log.TagAppDef, "service", log.String("target_service", targetService))
 			return
 		}
 		for _, ep := range eps {

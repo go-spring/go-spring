@@ -117,14 +117,14 @@ func runTest(d *Demo) {
 	const wantPassword = "topsecret"
 	enc, err := aes.Encrypt(wantPassword)
 	if err != nil {
-		log.Errorf(ctx, log.TagAppDef, err, "encrypt failed")
+		log.Error(ctx, log.TagAppDef, err, "encrypt failed")
 		os.Exit(1)
 	}
 	wantMessage := "hello-" + time.Now().Format("150405")
 	doc := fmt.Sprintf("demo.message=%s\ndemo.password=ENC(aes:%s)\n", wantMessage, enc)
 
 	if err := publish(ctx, doc); err != nil {
-		log.Errorf(ctx, log.TagAppDef, err, "publish config failed")
+		log.Error(ctx, log.TagAppDef, err, "publish config failed")
 		os.Exit(1)
 	}
 
@@ -141,7 +141,7 @@ func runTest(d *Demo) {
 		}
 		time.Sleep(200 * time.Millisecond)
 	}
-	log.Errorf(ctx, log.TagAppDef, errutil.Explain(nil, "message=%q (want %q) password=%q (want %q)", d.Message.Value(), wantMessage, d.Password.Value(), wantPassword), "timeout")
+	log.Error(ctx, log.TagAppDef, errutil.Explain(nil, "message=%q (want %q) password=%q (want %q)", d.Message.Value(), wantMessage, d.Password.Value(), wantPassword), "timeout")
 	os.Exit(1)
 }
 

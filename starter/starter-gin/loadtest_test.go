@@ -28,8 +28,7 @@ import (
 
 func TestLoadTestMiddleware_TagsContextFromHeader(t *testing.T) {
 	var saw bool
-	prop, err := traffic.NewDefaultPropagator(traffic.DefaultBinding())
-	assert.Error(t, err).Nil()
+	prop := traffic.NewDefaultPropagator(traffic.DefaultBinding())
 	e := gin.New()
 	e.Use(LoadTest(prop))
 	e.GET("/x", func(c *gin.Context) {
@@ -56,8 +55,7 @@ func TestLoadTestMiddleware_RebasedHeaderAndTruthyValues(t *testing.T) {
 	// there (not in the middleware config).
 	b := traffic.DefaultBinding()
 	b.Key = "X-Stress"
-	prop, err := traffic.NewDefaultPropagator(b)
-	assert.Error(t, err).Nil()
+	prop := traffic.NewDefaultPropagator(b)
 	e := gin.New()
 	e.Use(LoadTest(prop))
 	e.GET("/x", func(c *gin.Context) {

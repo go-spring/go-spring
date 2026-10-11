@@ -584,51 +584,36 @@ check_declare() {
 
 # ── 声明式 server 成员(方向相反,模型相同)────────────────────────────
 #
-# 与 §声明族 同一条判据,只是方向相反:route **声明**这个请求是什么,发射点产信号。
-# 一个成员迁过来之后,它不再自建族仪器 —— 于是也不再被 §自建族 扫到(那族按
-# "建了该族仪器"识人),所以必须在**这里**被查到,否则它就整个处在规则之外了。
+check_declare DB 'db.client' 'db.system db.operation'
+check_declare email 'email.client' 'email.system email.operation'
+
+# ── 只实现可观测:对 executor 不友好的 client ─────────────────────────────
 #
-# 入站比出站多一处:响应码是"活儿干完"才知道的,故额外要求它把响应后半交给
-# observability.Response —— 少了这行,声明活在入口、结果永远缺席。
-check_declare_server() {
-  local fam="$1" comp="$2" prefix="$3" attrs="$4" dir="$5"
-  local src code k
-  src="$TMPDIR_PREP/declsrv_$(printf '%s' "$comp" | tr '/' '_').go"
-  component_src "$dir" "$src"
-  code="$src.code"
-  code_only "$src" > "$code" 2>/dev/null || cp "$src" "$code"
-  CLASSIFIED="$CLASSIFIED $comp"
-
-  grep -q 'observability\.WithOperation(' "$code" \
-    || report "[$fam] $comp: 未声明 operation(缺 observability.WithOperation)"
-  grep -qE "Metric: *\"$prefix\"" "$code" \
-    || report "[$fam] $comp: 声明缺 Metric: \"$prefix\""
-  for k in $attrs; do
-    grep -q "attribute\.String(\"$k\"" "$code" \
-      || report "[$fam] $comp: 声明缺有界属性 $k"
+# 这些 client 的传输层没有可插入 resilience executor 的缝(sarama 无 ctx、nats/pulsar
+# 的钩子 call-site-only、poll loop 归调用方),所以它们不声明给发射点、不接治理;
+# 义务只有可观测 —— 它们各自持一个 observability.OperationObserver,由它发 span/指标/访问日志,
+# 词汇与发射点一致(同样的 metric 名与 label)。
+#
+# 本轮**不**为这一档写判定规则(判据待定),只把它们归入 CLASSIFIED,否则末尾的反向守卫
+# 会报「未归类」。成员靠目录存在性校验,避免登记表漂移成免检牌。
+check_observability_only() {
+  local comp dir n=0
+  for comp in "$@"; do
+    dir=$(find starter -maxdepth 2 -type d -name "$comp" 2>/dev/null | head -1)
+    [ -n "$dir" ] || { report "[仅可观测] $comp: 目录不存在(登记漂移)"; continue; }
+    n=$((n+1))
+    CLASSIFIED="$CLASSIFIED $comp"
   done
-  grep -qE 'LogTag:' "$code" \
-    || report "[$fam] $comp: 声明的 Operation 未带 LogTag"
-  grep -qE 'RegisterAppTag\([^)]*"access"' "$code" \
-    || report "[$fam] $comp: 未注册自己的 access 日志 tag"
-  grep -qE 'exec\.Execute\(' "$code" \
-    || report "[$fam] $comp: 请求未路由进 resilience executor —— 声明不会被任何人读到"
-  grep -qE 'observability\.ResponseFrom\(' "$code" \
-    || report "[$fam] $comp: 未记录响应后半(observability.Response)—— 响应码只有 handler 知道"
-
-  # 负:不得退回自建,与 §声明族 同一口径(按指标名查)
-  grep -qE 'otel\.Tracer\(' "$code" \
-    && report "[$fam] $comp: 自建 span(otel.Tracer)—— span 归发射点"
-  check_self_built_instruments "$fam" "$comp" "$code"
-  echo "[$fam] $comp: 声明式入站(route 声明 + 发射点产信号)"
+  [ "$n" -gt 0 ] || report "[仅可观测] 未扫到任何成员 —— 本段静默失效"
 }
 
-check_declare_server HTTP starter-http-server 'http.server' 'http.request.method' starter/starter-http-server
-check_declare_server HTTP starter-echo 'http.server' 'http.request.method' starter/starter-echo
-
-check_declare DB 'db.client' 'db.system db.operation'
-check_declare 消息 'messaging.client' 'messaging.system messaging.operation' kind
-check_declare email 'email.client' 'email.system email.operation'
+# 对 executor 不友好、只要求实现可观测的成员:消息类 client 与 HTTP server 族。它们自建发射(经
+# observability.OperationObserver),不声明给发射点、不接治理。判据本轮不定,只归类,
+# 否则末尾反向守卫会把它们报成「未归类」。
+check_observability_only \
+  starter-kafka starter-kafka-sarama starter-nats starter-pulsar \
+  starter-rabbitmq starter-rocketmq starter-mqtt starter-asynq starter-webhook \
+  starter-http-server starter-echo starter-gin
 
 # ── 登记缺口:mongodb 在 command 层自建发射 ──────────────────────────────
 #
@@ -665,10 +650,10 @@ check_mongodb_gap() {
     || report "[DB] starter-mongodb: 访问日志/metric 缺 status(分不出成败)"
   grep -qE 'log\.Float\("duration_ms"' "$src.code" \
     || report "[DB] starter-mongodb: 访问日志缺 duration_ms"
-  # 保护在 dial 缝 —— 这是它"自建发射"这一豁免的另一半,少了它就成了纯自建无治理。
-  grep -qE 'resilience\.NewDialer\(' "$src.code" \
-    || report "[DB] starter-mongodb: 未在 dial 缝接保护(resilience.NewDialer)—— 已登记的豁免前提不成立"
-  echo "[DB] 登记缺口 starter-mongodb:command 层自建发射(dial 层保护)"
+  # 保护已撤:mongo driver v2 没有 per-command 钩子,而 dial 缝把四个策略挂在了"连接"而非
+  # "操作"上,所以这个 starter 收敛为**只实现可观测** —— 不再断言 resilience.NewDialer。
+  # (2026-10 起;原 dial 层保护随之删除,见 starter/experimental/starter-mongodb/dial.go)
+  echo "[DB] 登记缺口 starter-mongodb:command 层自建发射(无保护,仅可观测)"
 }
 
 check_mongodb_gap
@@ -677,7 +662,9 @@ check_mongodb_gap
 #
 # 完整性这条原则以前逐组件查("每个组件都要有 span/时长/在途/一行访问日志")。现在它
 # 是**一个**发射点的义务,故在这里查一次 —— 客户端的齐整靠声明(见 §声明族),
-# 发射点靠这段。查的是 cloud/resilience/observe.go:
+# 发射点靠这段。发射点位于 cloud/observability(已从 resilience 迁出:可观测依赖
+# 服务治理,而非反过来),查的是 cloud/observability/client_executor.go 的 call 发射,
+# 仪器名则在同包的 executor.go:
 #   * 调用级 span(otel.Tracer( 开的那个),形状是 SpanKindInternal;
 #   * 两级时长:operation.duration(整次调用,含重试与退避)与 attempt.duration(每次下游尝试);
 #   * 在途 gauge active_requests(整次调用,与 span 同跨度);
@@ -686,7 +673,8 @@ check_mongodb_gap
 #     不带 Detail 的成功 Info;状态与时长字段是 status / duration_ms。
 #   * Detail 不得进 metric label —— 发射时给指标用的只有 Attrs(callLabels(op.Attrs, ...))。
 check_emitter() {
-  local f="cloud/resilience/observe.go"
+  local f="cloud/observability/client_executor.go"
+  local g="cloud/observability/executor.go"
   [ -f "$f" ] || { report "[发射点] $f 不存在 —— 发射点漂移,client 侧信号无处发出"; return; }
 
   grep -qE 'otel\.Tracer\(' "$f" \
@@ -697,7 +685,7 @@ check_emitter() {
     || report "[发射点] 缺尝试级时长 <prefix>.attempt.duration"
   grep -qE 'prefix\+"\.active_requests"' "$f" \
     || report "[发射点] 缺在途 gauge <prefix>.active_requests"
-  grep -qE '"resilience\.client\.calls"' "$f" \
+  grep -qE '"resilience\.client\.calls"' "$f" "$g" \
     || report "[发射点] 缺永远开启的 resilience.client.calls{status}"
   # 每调用一行访问日志,且分级覆盖三档。分开断言:合成一条会让"少了某一档"混过去。
   grep -qE 'log\.Warn\(' "$f" \
@@ -1158,7 +1146,7 @@ check_cloud_join
 # 用纯 otel 谓词同样会漏掉 http-client —— 它自己一行 otel.Tracer( 都没有。
 # 声明迹象(observability.WithOperation() 也算:声明式成员只声明、不自建仪器,
 # 少这一项它们会被漏掉。
-INSTRUMENTED_SIGNAL='otel\.Tracer\(|otel\.Meter\(|GetMeterProvider\(\)\.Meter\(|otelhttp\.|metric\.WithAttributes\(|semconv\.|observability\.WithOperation\(|GetTracerProvider\(\)\.Tracer\('
+INSTRUMENTED_SIGNAL='otel\.Tracer\(|otel\.Meter\(|GetMeterProvider\(\)\.Meter\(|otelhttp\.|metric\.WithAttributes\(|semconv\.|observability\.NewOperationObserver\(|observability\.NewServerObserver\('
 
 unclassified=''
 for name in $(grep -rlE "$INSTRUMENTED_SIGNAL" --include='*.go' starter/ 2>/dev/null \

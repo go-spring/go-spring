@@ -24,7 +24,6 @@ import (
 	"go-spring.org/cloud/governance"
 	"time"
 
-	"go-spring.org/cloud"
 	"go-spring.org/cloud/messaging"
 	"go-spring.org/cloud/traffic"
 	"go-spring.org/log"
@@ -61,9 +60,8 @@ func init() {
 			// so consumers (starter-outbox-gorm, app pub/sub) autowire it like any
 			// client bean. It shares the connection's bean name; beans are keyed by
 			// (name, type), so it stays distinct from the raw *kgo.Client bean. The
-			// traffic.Propagator (index 1) is a NULLABLE injection: the single
-			// propagator bean when the application provides one, nil otherwise (the
-			// driver then falls back to traffic.NewDefaultPropagator).
+			// traffic.Propagator (index 1) resolves to the propagator bean: the
+			// application.s when it provides one, go-spring.s default otherwise.
 			r.Provide(func(cl *Client, prop traffic.Propagator) messaging.Driver {
 				return NewDriver(cl, prop)
 			}, gs.TagArg(name), gs.IndexArg(1, gs.TagArg("?"))).Name(name).Caller(1)
@@ -92,17 +90,15 @@ const pingTimeout = 10 * time.Second
 // before abandoning the client.
 //
 // center is the governance center gs injects — the family's sole injection
-// point; the ctor reads the resilience and fault authorities from it and bundles
-// them into the [cloud.ClientParams] handed to the driver, which applies them
-// while building.
+// point; the ctor hands it to the driver, which applies its authorities while
+// building.
 func newClient(ctx *gs.ContextProvider, name string, c Config, d Driver,
 	center *governance.Center) (*Client, error) {
-	log.Debug(ctx.Context, log.TagAppDef, func() []log.Field {
+	log.Debug(ctx.Context, log.TagAppDef, "creating kafka client", func() []log.Field {
 		return []log.Field{
 			log.String("brokers", c.Brokers),
 			log.String("group", c.Group),
 			log.String("topic", c.Topic),
-			log.Msg("creating kafka client"),
 		}
 	})
 
@@ -110,9 +106,9 @@ func newClient(ctx *gs.ContextProvider, name string, c Config, d Driver,
 	if d == nil {
 		d = DefaultDriver{}
 	}
-	raw, err := d.CreateClient(ctx.Context, c, cloud.ClientParams{Resilience: center.Resilience(), Fault: center.Fault()})
+	raw, err := d.CreateClient(ctx.Context, c, center)
 	if err != nil {
-		log.Errorf(ctx.Context, log.TagAppDef, err, "kafka: create client failed")
+		log.Error(ctx.Context, log.TagAppDef, err, "kafka: create client failed")
 		return nil, errutil.Explain(err, "failed to create kafka client: %s", c.Brokers)
 	}
 
@@ -121,16 +117,16 @@ func newClient(ctx *gs.ContextProvider, name string, c Config, d Driver,
 	// goes straight to the raw client on purpose: it is a connectivity check,
 	// not business traffic, so it must not spend limiter/breaker budget. A
 	// failure abandons the client, chain and all.
-	cl := NewClient(raw, c.Brokers, cloud.ClientParams{Resilience: center.Resilience(), Fault: center.Fault()})
+	cl := NewClient(raw, c.Brokers)
 	if c.Ping {
 		pingCtx, cancel := context.WithTimeout(ctx.Context, pingTimeout)
 		defer cancel()
 		if err = raw.Ping(pingCtx); err != nil {
-			log.Errorf(ctx.Context, log.TagAppDef, err, "kafka: ping failed")
+			log.Error(ctx.Context, log.TagAppDef, err, "kafka: ping failed")
 			_ = cl.Close()
 			return nil, errutil.Explain(err, "failed to ping kafka: %s", c.Brokers)
 		}
 	}
-	log.Info(ctx.Context, log.TagAppDef, log.String("brokers", c.Brokers), log.Msg("create kafka client success"))
+	log.Info(ctx.Context, log.TagAppDef, "create kafka client success", log.String("brokers", c.Brokers))
 	return cl, nil
 }

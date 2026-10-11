@@ -309,7 +309,7 @@ example 的 `discovery` 实例用哑值 `0.0.0.0:0`；`Response from discovered 
 cd example-load && docker compose up -d
 go run . -duration=10s                        # SELECT 1 基线
 # 放火（cloud/governance 热加载）：
-#   spring.governance.client.fault.enabled=true  spring.governance.client.fault.rate=0.5  spring.governance.client.fault.error=generic
+#   spring.governance.client.fault.rate=0.5  spring.governance.client.fault.error=generic
 go run . -duration=10s                        # 错误分布显示 ~50% 注入
 ```
 

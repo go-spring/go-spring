@@ -51,23 +51,49 @@ func countFn(counter *int32, err error) func(context.Context) error {
 	}
 }
 
-// TestInjector_DisabledIsTransparent: Enabled=false => fn runs, no injection.
-func TestInjector_DisabledIsTransparent(t *testing.T) {
-	in := NewInjector(Configs{Client: Config{}}, nil) // Enabled false
+// TestInjector_ZeroConfigIsTransparent: an inert config (no rate, no latency)
+// => fn runs, no injection.
+func TestInjector_ZeroConfigIsTransparent(t *testing.T) {
+	in := NewInjector(Configs{Client: Config{}}, nil) // inert
 	exec := WrapClientExecutor(newExec(t, "svc", resilience.ClientPolicy{}), "svc", in)
 	var calls int32
-	err := exec.Execute(context.Background(), countFn(&calls, nil))
+	err := exec.Execute(context.Background(), chain.Operation{}, countFn(&calls, nil))
 	assert.Error(t, err).Nil()
 	assert.That(t, atomic.LoadInt32(&calls)).Equal(int32(1))
 }
 
-// TestInjector_RateZeroAlwaysSucceeds: Rate 0 with Enabled => never inject.
+// TestConfig_Inert pins the derived replacement for the former Enabled switch:
+// only a rate or a latency (global or per-rule) can make a config able to
+// inject, so everything else leaves it inert.
+func TestConfig_Inert(t *testing.T) {
+	cases := []struct {
+		name string
+		cfg  Config
+		want bool
+	}{
+		{"zero", Config{}, true},
+		{"error only, no rate", Config{Error: "generic"}, true},
+		{"guardrails only", Config{MaxAffected: 3, MaxDuration: time.Second}, true},
+		{"rule with error only", Config{Rules: []Rule{{Service: "svc", Error: "generic"}}}, true},
+		{"global rate", Config{Rate: 0.5}, false},
+		{"global latency", Config{Latency: time.Millisecond}, false},
+		{"rule rate", Config{Rules: []Rule{{Service: "svc", Rate: 1}}}, false},
+		{"rule latency", Config{Rules: []Rule{{Service: "svc", Latency: time.Millisecond}}}, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.That(t, tc.cfg.Inert()).Equal(tc.want)
+		})
+	}
+}
+
+// TestInjector_RateZeroAlwaysSucceeds: Rate 0 => never inject.
 func TestInjector_RateZeroAlwaysSucceeds(t *testing.T) {
-	in := NewInjector(Configs{Client: Config{Enabled: true, Rate: 0, Error: "generic"}}, nil)
+	in := NewInjector(Configs{Client: Config{Rate: 0, Error: "generic"}}, nil)
 	exec := WrapClientExecutor(newExec(t, "svc", resilience.ClientPolicy{}), "svc", in)
 	var calls int32
 	for range 10 {
-		err := exec.Execute(context.Background(), countFn(&calls, nil))
+		err := exec.Execute(context.Background(), chain.Operation{}, countFn(&calls, nil))
 		assert.Error(t, err).Nil()
 	}
 	assert.That(t, atomic.LoadInt32(&calls)).Equal(int32(10))
@@ -77,11 +103,11 @@ func TestInjector_RateZeroAlwaysSucceeds(t *testing.T) {
 // real fn never runs and the executor exhausts its retries (MaxRetries+1
 // attempts) and returns the injected error.
 func TestInjector_RateOneRetriesInjectedError(t *testing.T) {
-	in := NewInjector(Configs{Client: Config{Enabled: true, Rate: 1, Error: "generic"}}, nil)
+	in := NewInjector(Configs{Client: Config{Rate: 1, Error: "generic"}}, nil)
 	// MaxRetries 2 => 3 attempts; no breaker so retry is the only path.
-	exec := WrapClientExecutor(newExec(t, "svc", resilience.ClientPolicy{MaxRetries: 2}), "svc", in)
+	exec := WrapClientExecutor(newExec(t, "svc", resilience.ClientPolicy{Retry: chain.RetryPolicy{MaxRetries: 2}}), "svc", in)
 	var calls int32
-	err := exec.Execute(context.Background(), countFn(&calls, nil))
+	err := exec.Execute(context.Background(), chain.Operation{}, countFn(&calls, nil))
 	assert.Error(t, err).NotNil()
 	assert.That(t, IsInjected(err)).True()
 	assert.That(t, atomic.LoadInt32(&calls)).Equal(int32(0)) // fn never reached
@@ -93,22 +119,22 @@ func TestInjectedError_Retryable(t *testing.T) {
 	var r resilience.Retryable
 	assert.That(t, errors.As(ErrInjected, &r)).True()
 	assert.That(t, r.Retryable()).True()
-	assert.That(t, resilience.ClientPolicy{}.ShouldRetry(ErrInjected)).True()
+	assert.That(t, resilience.ShouldRetry(ErrInjected)).True()
 }
 
 // TestInjector_KindsSurfaceAsFamiliarErrors: the typed kinds wrap a real error
 // so errors.Is matches the underlying sentinel (and the observe outcome mapping
 // classifies the call the same way a real timeout/reset would).
 func TestInjector_KindsSurfaceAsFamiliarErrors(t *testing.T) {
-	in := NewInjector(Configs{Client: Config{Enabled: true, Rate: 1, Error: "timeout"}}, nil)
+	in := NewInjector(Configs{Client: Config{Rate: 1, Error: "timeout"}}, nil)
 	exec := WrapClientExecutor(newExec(t, "svc", resilience.ClientPolicy{}), "svc", in)
-	err := exec.Execute(context.Background(), countFn(new(int32), nil))
+	err := exec.Execute(context.Background(), chain.Operation{}, countFn(new(int32), nil))
 	assert.Error(t, err).NotNil()
 	assert.That(t, errors.Is(err, context.DeadlineExceeded)).True()
 	assert.That(t, IsInjected(err)).True()
 
-	in.SetConfig(Configs{Client: Config{Enabled: true, Rate: 1, Error: "reset"}})
-	err = exec.Execute(context.Background(), countFn(new(int32), nil))
+	in.SetConfig(Configs{Client: Config{Rate: 1, Error: "reset"}})
+	err = exec.Execute(context.Background(), chain.Operation{}, countFn(new(int32), nil))
 	assert.Error(t, err).NotNil()
 	assert.That(t, errors.Is(err, syscall.ECONNRESET)).True()
 }
@@ -117,15 +143,15 @@ func TestInjector_KindsSurfaceAsFamiliarErrors(t *testing.T) {
 // trip it open and subsequent calls are rejected as ErrCircuitOpen without
 // touching fn — the closed loop (fault → breaker → neutral sentinel) holds.
 func TestInjector_BreakerOpensUnderFault(t *testing.T) {
-	in := NewInjector(Configs{Client: Config{Enabled: true, Rate: 1, Error: "generic"}}, nil)
+	in := NewInjector(Configs{Client: Config{Rate: 1, Error: "generic"}}, nil)
 	// ErrorThreshold 1 opens after the first failed attempt; OpenDuration long
 	// enough that the second call sees it still open.
 	exec := WrapClientExecutor(newExec(t, "svc", resilience.ClientPolicy{ErrorThreshold: 1, OpenDuration: time.Second}), "svc", in)
 	var calls int32
-	_ = exec.Execute(context.Background(), countFn(&calls, nil)) // trips the breaker
+	_ = exec.Execute(context.Background(), chain.Operation{}, countFn(&calls, nil)) // trips the breaker
 	firstCalls := atomic.LoadInt32(&calls)
 
-	err := exec.Execute(context.Background(), countFn(&calls, nil))
+	err := exec.Execute(context.Background(), chain.Operation{}, countFn(&calls, nil))
 	assert.Error(t, err).NotNil()
 	assert.That(t, errors.Is(err, chain.ErrCircuitOpen)).True()
 	// fn not called on the rejected attempt (only the first call's attempts ran).
@@ -135,11 +161,11 @@ func TestInjector_BreakerOpensUnderFault(t *testing.T) {
 // TestInjector_LatencySleepsAndCancels: injected latency sleeps, and a cancelled
 // attempt context surfaces the context error instead of retrying forever.
 func TestInjector_LatencySleepsAndCancels(t *testing.T) {
-	in := NewInjector(Configs{Client: Config{Enabled: true, Rate: 0, Latency: 200 * time.Millisecond}}, nil)
+	in := NewInjector(Configs{Client: Config{Rate: 0, Latency: 200 * time.Millisecond}}, nil)
 	exec := WrapClientExecutor(newExec(t, "svc", resilience.ClientPolicy{AttemptTimeout: 50 * time.Millisecond}), "svc", in)
 	var calls int32
 	start := time.Now()
-	err := exec.Execute(context.Background(), countFn(&calls, nil))
+	err := exec.Execute(context.Background(), chain.Operation{}, countFn(&calls, nil))
 	elapsed := time.Since(start)
 	// The 200ms latency exceeds the 50ms per-attempt timeout: the sleep is
 	// cancelled by the attempt deadline and the call fails without fn running.
@@ -153,11 +179,10 @@ func TestInjector_LatencySleepsAndCancels(t *testing.T) {
 // near Latency.
 func TestInjector_LatencyJitterBounds(t *testing.T) {
 	const base, jitter = 100 * time.Millisecond, 80 * time.Millisecond
-	in := NewInjector(Configs{Client: Config{Enabled: true, Latency: base, LatencyJitter: jitter}}, nil)
-	c := in.ClientConfig()
+	in := NewInjector(Configs{Client: Config{Latency: base, LatencyJitter: jitter}}, nil)
 	var sum time.Duration
 	for i := 0; i < 200; i++ {
-		_, sleep, _ := in.client.maybe(c, "svc")
+		_, sleep, _ := in.client.maybe("svc")
 		assert.That(t, sleep >= base-jitter).True()
 		assert.That(t, sleep <= base+jitter).True()
 		sum += sleep
@@ -166,17 +191,18 @@ func TestInjector_LatencyJitterBounds(t *testing.T) {
 	assert.That(t, mid > base-40*time.Millisecond && mid < base+40*time.Millisecond).True()
 }
 
-// TestInjector_HotSwap: toggling Enabled at runtime via SetConfig takes effect
-// on the next operation (the Dync-driven path starters use).
+// TestInjector_HotSwap: pushing a new config at runtime via SetConfig takes
+// effect on the next operation (the Dync-driven path starters use) — here,
+// arming a fire and then disarming it by pushing an inert config.
 func TestInjector_HotSwap(t *testing.T) {
-	in := NewInjector(Configs{Client: Config{Enabled: true, Rate: 1, Error: "generic"}}, nil)
+	in := NewInjector(Configs{Client: Config{Rate: 1, Error: "generic"}}, nil)
 	exec := WrapClientExecutor(newExec(t, "svc", resilience.ClientPolicy{}), "svc", in)
 	var calls int32
-	err := exec.Execute(context.Background(), countFn(&calls, nil))
+	err := exec.Execute(context.Background(), chain.Operation{}, countFn(&calls, nil))
 	assert.That(t, IsInjected(err)).True()
 
-	in.SetConfig(Configs{Client: Config{Enabled: false}}) // turn the fire off
-	err = exec.Execute(context.Background(), countFn(&calls, nil))
+	in.SetConfig(Configs{Client: Config{}}) // push an inert config: fire off
+	err = exec.Execute(context.Background(), chain.Operation{}, countFn(&calls, nil))
 	assert.Error(t, err).Nil()
 	assert.That(t, atomic.LoadInt32(&calls)).Equal(int32(1))
 }
@@ -184,49 +210,48 @@ func TestInjector_HotSwap(t *testing.T) {
 // TestInjector_ScopeGatesLoadTestTraffic verifies the Scope config restricts
 // injection by the load-test marker on the call's context.
 func TestInjector_ScopeGatesLoadTestTraffic(t *testing.T) {
+	prop := traffic.NewDefaultPropagator(traffic.DefaultBinding())
 	// Rate 1 + generic error => every in-scope call is faulted.
 	mk := func(scope string) chain.Executor {
-		in := NewInjector(Configs{Client: Config{Enabled: true, Rate: 1, Error: "generic", Scope: scope}}, nil)
+		in := NewInjector(Configs{Client: Config{Rate: 1, Error: "generic", Scope: scope}}, prop)
 		return WrapClientExecutor(newExec(t, "svc", resilience.ClientPolicy{}), "svc", in)
 	}
 	realCtx := context.Background()
-	prop, err := traffic.NewDefaultPropagator(traffic.DefaultBinding())
-	assert.Error(t, err).Nil()
 	loadCtx := prop.WithLoadTest(context.Background())
 
 	// Scope "" (default): both real and load-test traffic get faulted.
 	all := mk("")
-	assert.That(t, IsInjected(all.Execute(realCtx, countFn(new(int32), nil)))).True()
-	assert.That(t, IsInjected(all.Execute(loadCtx, countFn(new(int32), nil)))).True()
+	assert.That(t, IsInjected(all.Execute(realCtx, chain.Operation{}, countFn(new(int32), nil)))).True()
+	assert.That(t, IsInjected(all.Execute(loadCtx, chain.Operation{}, countFn(new(int32), nil)))).True()
 
 	// Scope "real": real traffic faulted, load-test traffic passes through.
 	real := mk("real")
-	assert.That(t, IsInjected(real.Execute(realCtx, countFn(new(int32), nil)))).True()
+	assert.That(t, IsInjected(real.Execute(realCtx, chain.Operation{}, countFn(new(int32), nil)))).True()
 	var ltCalls int32
-	assert.Error(t, real.Execute(loadCtx, countFn(&ltCalls, nil))).Nil()
+	assert.Error(t, real.Execute(loadCtx, chain.Operation{}, countFn(&ltCalls, nil))).Nil()
 	assert.That(t, atomic.LoadInt32(&ltCalls)).Equal(int32(1)) // fn ran, no fault
 
 	// Scope "loadtest": load-test traffic faulted, real traffic passes through.
 	lt := mk("loadtest")
-	assert.That(t, IsInjected(lt.Execute(loadCtx, countFn(new(int32), nil)))).True()
+	assert.That(t, IsInjected(lt.Execute(loadCtx, chain.Operation{}, countFn(new(int32), nil)))).True()
 	var realCalls int32
-	assert.Error(t, lt.Execute(realCtx, countFn(&realCalls, nil))).Nil()
+	assert.Error(t, lt.Execute(realCtx, chain.Operation{}, countFn(&realCalls, nil))).Nil()
 	assert.That(t, atomic.LoadInt32(&realCalls)).Equal(int32(1))
 }
 
 // TestInjector_MaxAffectedCapsBlastRadius verifies MaxAffected stops injecting
 // after the configured count of affected calls.
 func TestInjector_MaxAffectedCapsBlastRadius(t *testing.T) {
-	in := NewInjector(Configs{Client: Config{Enabled: true, Rate: 1, Error: "generic", MaxAffected: 3}}, nil)
+	in := NewInjector(Configs{Client: Config{Rate: 1, Error: "generic", MaxAffected: 3}}, nil)
 	exec := WrapClientExecutor(newExec(t, "svc", resilience.ClientPolicy{}), "svc", in)
 
 	// First three calls are faulted.
 	for range 3 {
-		assert.That(t, IsInjected(exec.Execute(context.Background(), countFn(new(int32), nil)))).True()
+		assert.That(t, IsInjected(exec.Execute(context.Background(), chain.Operation{}, countFn(new(int32), nil)))).True()
 	}
 	// Fourth onward: guardrail tripped, call passes through untouched.
 	var calls int32
-	err := exec.Execute(context.Background(), countFn(&calls, nil))
+	err := exec.Execute(context.Background(), chain.Operation{}, countFn(&calls, nil))
 	assert.Error(t, err).Nil()
 	assert.That(t, atomic.LoadInt32(&calls)).Equal(int32(1))
 }
@@ -234,15 +259,15 @@ func TestInjector_MaxAffectedCapsBlastRadius(t *testing.T) {
 // TestInjector_MaxDurationAutoOff verifies MaxDuration turns the fire off after
 // the window elapses (a forgotten fault self-heals).
 func TestInjector_MaxDurationAutoOff(t *testing.T) {
-	in := NewInjector(Configs{Client: Config{Enabled: true, Rate: 1, Error: "generic", MaxDuration: 40 * time.Millisecond}}, nil)
+	in := NewInjector(Configs{Client: Config{Rate: 1, Error: "generic", MaxDuration: 40 * time.Millisecond}}, nil)
 	exec := WrapClientExecutor(newExec(t, "svc", resilience.ClientPolicy{}), "svc", in)
 
 	// Within the window: faulted.
-	assert.That(t, IsInjected(exec.Execute(context.Background(), countFn(new(int32), nil)))).True()
+	assert.That(t, IsInjected(exec.Execute(context.Background(), chain.Operation{}, countFn(new(int32), nil)))).True()
 	// After the window: passes through.
 	time.Sleep(60 * time.Millisecond)
 	var calls int32
-	err := exec.Execute(context.Background(), countFn(&calls, nil))
+	err := exec.Execute(context.Background(), chain.Operation{}, countFn(&calls, nil))
 	assert.Error(t, err).Nil()
 	assert.That(t, atomic.LoadInt32(&calls)).Equal(int32(1))
 }
@@ -250,30 +275,25 @@ func TestInjector_MaxDurationAutoOff(t *testing.T) {
 // TestInjector_NoGuardrailsUnchanged confirms the default (no guardrails) keeps
 // the original behavior: every Rate-1 call faults, indefinitely.
 func TestInjector_NoGuardrailsUnchanged(t *testing.T) {
-	in := NewInjector(Configs{Client: Config{Enabled: true, Rate: 1, Error: "generic"}}, nil)
+	in := NewInjector(Configs{Client: Config{Rate: 1, Error: "generic"}}, nil)
 	exec := WrapClientExecutor(newExec(t, "svc", resilience.ClientPolicy{}), "svc", in)
 	for range 10 {
-		assert.That(t, IsInjected(exec.Execute(context.Background(), countFn(new(int32), nil)))).True()
+		assert.That(t, IsInjected(exec.Execute(context.Background(), chain.Operation{}, countFn(new(int32), nil)))).True()
 	}
 }
 
 // TestApply_ServerSideFault verifies the server-side ApplyServer seam: it injects
-// latency+error per the injector's SERVER config, honours Scope vs the load-test
-// marker, and is a transparent pass-through for nil injector.
+// latency+error per the injector's SERVER config and honours Scope vs the
+// load-test marker.
 func TestApply_ServerSideFault(t *testing.T) {
-	// nil injector => fn runs untouched.
-	ran := false
-	assert.Error(t, ApplyServer(context.Background(), nil, "svc", func() error { ran = true; return nil })).Nil()
-	assert.That(t, ran).True()
-
 	// Rate 1 on the server side => injected error returned, fn NOT called. The
 	// client side is armed too, with a different config, to pin that ApplyServer reads
 	// the server half and not the client one.
 	in := NewInjector(Configs{
-		Client: Config{Enabled: true, Rate: 0, Latency: 50 * time.Millisecond},
-		Server: Config{Enabled: true, Rate: 1, Error: "generic"},
+		Client: Config{Rate: 0, Latency: 50 * time.Millisecond},
+		Server: Config{Rate: 1, Error: "generic"},
 	}, nil)
-	ran = false
+	ran := false
 	err := ApplyServer(context.Background(), in, "svc", func() error { ran = true; return nil })
 	assert.That(t, IsInjected(err)).True()
 	assert.That(t, ran).False()
@@ -281,19 +301,18 @@ func TestApply_ServerSideFault(t *testing.T) {
 	// call gets the client side's latency and no error.
 	start := time.Now()
 	assert.Error(t, WrapClientExecutor(newExec(t, "svc", resilience.ClientPolicy{}), "svc", in).
-		Execute(context.Background(), countFn(new(int32), nil))).Nil()
+		Execute(context.Background(), chain.Operation{}, countFn(new(int32), nil))).Nil()
 	assert.That(t, time.Since(start) >= 50*time.Millisecond).True()
 
 	// Scope "loadtest" + plain ctx => fn runs (scope excludes real traffic).
-	in2 := NewInjector(Configs{Server: Config{Enabled: true, Rate: 1, Error: "generic", Scope: "loadtest"}}, nil)
+	prop := traffic.NewDefaultPropagator(traffic.DefaultBinding())
+	in2 := NewInjector(Configs{Server: Config{Rate: 1, Error: "generic", Scope: "loadtest"}}, prop)
 	ran = false
 	assert.Error(t, ApplyServer(context.Background(), in2, "svc", func() error { ran = true; return nil })).Nil()
 	assert.That(t, ran).True()
 
 	// Scope "loadtest" + load-test ctx => injected.
 	ran = false
-	prop, err := traffic.NewDefaultPropagator(traffic.DefaultBinding())
-	assert.Error(t, err).Nil()
 	err = ApplyServer(prop.WithLoadTest(context.Background()), in2, "svc", func() error { ran = true; return nil })
 	assert.That(t, IsInjected(err)).True()
 	assert.That(t, ran).False()
@@ -305,13 +324,13 @@ func TestApply_ServerSideFault(t *testing.T) {
 // radius cannot silence a server fire.
 func TestInjector_DirectionsAreIndependent(t *testing.T) {
 	in := NewInjector(Configs{
-		Client: Config{Enabled: true, Rate: 1, Error: "generic"},
-		Server: Config{Enabled: true, Rate: 1, Error: "reset"},
+		Client: Config{Rate: 1, Error: "generic"},
+		Server: Config{Rate: 1, Error: "reset"},
 	}, nil)
 	exec := WrapClientExecutor(newExec(t, "svc", resilience.ClientPolicy{}), "svc", in)
 
 	// Outbound gets the client's kind; inbound gets the server's.
-	err := exec.Execute(context.Background(), countFn(new(int32), nil))
+	err := exec.Execute(context.Background(), chain.Operation{}, countFn(new(int32), nil))
 	assert.That(t, errors.Is(err, syscall.ECONNRESET)).False()
 	assert.That(t, IsInjected(err)).True()
 
@@ -322,10 +341,10 @@ func TestInjector_DirectionsAreIndependent(t *testing.T) {
 
 	// One side off (a push that disables the client) must not touch the other.
 	in.SetConfig(Configs{
-		Client: Config{Enabled: false},
-		Server: Config{Enabled: true, Rate: 1, Error: "reset"},
+		Client: Config{},
+		Server: Config{Rate: 1, Error: "reset"},
 	})
-	assert.Error(t, exec.Execute(context.Background(), countFn(new(int32), nil))).Nil()
+	assert.Error(t, exec.Execute(context.Background(), chain.Operation{}, countFn(new(int32), nil))).Nil()
 	assert.That(t, IsInjected(ApplyServer(context.Background(), in, "svc", func() error { return nil }))).True()
 }
 
@@ -334,16 +353,16 @@ func TestInjector_DirectionsAreIndependent(t *testing.T) {
 // silence the inbound one, and each self-heals on its own.
 func TestInjector_GuardrailsPerDirection(t *testing.T) {
 	in := NewInjector(Configs{
-		Client: Config{Enabled: true, Rate: 1, Error: "generic", MaxAffected: 2},
-		Server: Config{Enabled: true, Rate: 1, Error: "reset", MaxAffected: 1},
+		Client: Config{Rate: 1, Error: "generic", MaxAffected: 2},
+		Server: Config{Rate: 1, Error: "reset", MaxAffected: 1},
 	}, nil)
 	exec := WrapClientExecutor(newExec(t, "svc", resilience.ClientPolicy{}), "svc", in)
 
 	// Spend the client side's budget (2 of 3 calls are affected).
 	for range 2 {
-		assert.That(t, IsInjected(exec.Execute(context.Background(), countFn(new(int32), nil)))).True()
+		assert.That(t, IsInjected(exec.Execute(context.Background(), chain.Operation{}, countFn(new(int32), nil)))).True()
 	}
-	assert.Error(t, exec.Execute(context.Background(), countFn(new(int32), nil))).Nil()
+	assert.Error(t, exec.Execute(context.Background(), chain.Operation{}, countFn(new(int32), nil))).Nil()
 
 	// The server side is still armed: its own counter never saw those calls.
 	assert.That(t, IsInjected(ApplyServer(context.Background(), in, "svc", func() error { return nil }))).True()
@@ -357,8 +376,7 @@ func TestInjector_GuardrailsPerDirection(t *testing.T) {
 func TestInjector_PerServiceRules(t *testing.T) {
 	// Global rate 0 (no faults) but a rule faults svc-a at rate 1.
 	in := NewInjector(Configs{Client: Config{
-		Enabled: true,
-		Rate:    0,
+		Rate: 0,
 		Rules: []Rule{
 			{Service: "svc-a", Rate: 1, Error: "generic"},
 		},
@@ -370,25 +388,25 @@ func TestInjector_PerServiceRules(t *testing.T) {
 	execB := WrapClientExecutor(newExec(t, "svc-b", resilience.ClientPolicy{}), "svc-b", in)
 
 	// svc-a matches the rule => faulted.
-	assert.That(t, IsInjected(execA.Execute(context.Background(), countFn(new(int32), nil)))).True()
+	assert.That(t, IsInjected(execA.Execute(context.Background(), chain.Operation{}, countFn(new(int32), nil)))).True()
 	// svc-b matches no rule, global rate 0 => passes through.
 	var calls int32
-	assert.Error(t, execB.Execute(context.Background(), countFn(&calls, nil))).Nil()
+	assert.Error(t, execB.Execute(context.Background(), chain.Operation{}, countFn(&calls, nil))).Nil()
 	assert.That(t, atomic.LoadInt32(&calls)).Equal(int32(1))
 
 	// Catch-all rule overrides global for any service. Specific rule still wins
 	// over the catch-all when listed first.
-	in2 := NewInjector(Configs{Client: Config{Enabled: true, Rate: 0, Rules: []Rule{
+	in2 := NewInjector(Configs{Client: Config{Rate: 0, Rules: []Rule{
 		{Service: "svc-a", Rate: 1, Error: "timeout"},
 		{Service: "", Rate: 1, Error: "generic"}, // catch-all
 	}}}, nil)
 	exec2A := WrapClientExecutor(newExec(t, "svc-a", resilience.ClientPolicy{}), "svc-a", in2)
 	exec2C := WrapClientExecutor(newExec(t, "svc-c", resilience.ClientPolicy{}), "svc-c", in2)
-	err := exec2A.Execute(context.Background(), countFn(new(int32), nil))
+	err := exec2A.Execute(context.Background(), chain.Operation{}, countFn(new(int32), nil))
 	assert.That(t, IsInjected(err)).True()
 	assert.That(t, errors.Is(err, context.DeadlineExceeded)).True() // svc-a => timeout kind
 	// svc-c falls through to the catch-all => generic.
-	err = exec2C.Execute(context.Background(), countFn(new(int32), nil))
+	err = exec2C.Execute(context.Background(), chain.Operation{}, countFn(new(int32), nil))
 	assert.That(t, IsInjected(err)).True()
 	assert.That(t, errors.Is(err, context.DeadlineExceeded)).False() // generic, not timeout
 }

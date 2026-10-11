@@ -170,9 +170,8 @@ func (r *etcdRegistry) revokeQuietly(id clientv3.LeaseID, what string) {
 	ctx, cancel := context.WithTimeout(context.Background(), revokeTimeout)
 	defer cancel()
 	if _, err := r.client.Revoke(ctx, id); err != nil {
-		log.Warn(context.Background(), starterTag,
-			log.String("after", what), log.Err(err),
-			log.Msg("discovery-etcd revoke lease failed (it expires with its TTL)"))
+		log.Warn(context.Background(), starterTag, "discovery-etcd revoke lease failed (it expires with its TTL)",
+			log.String("after", what), log.Err(err))
 	}
 }
 
@@ -318,9 +317,8 @@ func (r *etcdRegistry) watchKeepAlive(key string, h *hold, ka <-chan *clientv3.L
 			return
 		}
 		err := errutil.Explain(nil, "etcd keepalive died (unreachable or lease lost), key %s", key)
-		log.Error(ctx, starterTag, err,
-			log.String("key", key),
-			log.Msg("keepalive died (etcd unreachable or lease lost); re-registering with backoff"))
+		log.Error(ctx, starterTag, err, "keepalive died (etcd unreachable or lease lost); re-registering with backoff",
+			log.String("key", key))
 		backoff := r.backoffBase
 		for {
 			if h.stopped() {
@@ -335,16 +333,14 @@ func (r *etcdRegistry) watchKeepAlive(key string, h *hold, ka <-chan *clientv3.L
 				var err error
 				nka, err = r.etcdPublish(actx, h)
 				if err != nil {
-					log.Error(actx, starterTag, err,
+					log.Error(actx, starterTag, err, "re-register failed; retrying",
 						log.String("status", discovery.StatusOf(err)),
 						log.String("key", key),
-						log.String("backoff", backoff.String()),
-						log.Msg("re-register failed; retrying"))
+						log.String("backoff", backoff.String()))
 					return err
 				}
-				log.Info(actx, starterTag,
-					log.String("key", key),
-					log.Msg("re-registered under a new lease"))
+				log.Info(actx, starterTag, "re-registered under a new lease",
+					log.String("key", key))
 				return nil
 			})
 			if err == nil {

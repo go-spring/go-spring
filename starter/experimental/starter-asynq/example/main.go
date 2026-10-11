@@ -100,7 +100,7 @@ func runTest(s *Service) {
 	payload, _ := json.Marshal(map[string]string{"msg": "hello asynq"})
 	info, err := s.Client.Enqueue(ctx, asynq.NewTask(taskType, payload), asynq.Queue("default"))
 	if err != nil {
-		log.Errorf(ctx, log.TagAppDef, err, "ENQUEUE failed")
+		log.Error(ctx, log.TagAppDef, err, "ENQUEUE failed")
 		os.Exit(1)
 	}
 	_ = info
@@ -108,12 +108,12 @@ func runTest(s *Service) {
 	select {
 	case msg := <-completed:
 		if msg != "hello asynq" {
-			log.Errorf(ctx, log.TagAppDef, fmt.Errorf("HANDLER mismatch: %q", msg), "HANDLER mismatch: %q", msg)
+			log.Error(ctx, log.TagAppDef, fmt.Errorf("HANDLER mismatch: %q", msg), "HANDLER mismatch", log.String("msg", msg))
 			os.Exit(1)
 		}
 		fmt.Println("Asynq round trip OK:", msg)
 	case <-time.After(20 * time.Second):
-		log.Errorf(ctx, log.TagAppDef, fmt.Errorf("HANDLER timed out"), "HANDLER timed out")
+		log.Error(ctx, log.TagAppDef, fmt.Errorf("HANDLER timed out"), "HANDLER timed out")
 		os.Exit(1)
 	}
 

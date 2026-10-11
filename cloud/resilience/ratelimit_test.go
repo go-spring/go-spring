@@ -26,14 +26,14 @@ import (
 	"go-spring.org/stdlib/testing/assert"
 )
 
-// testCounters is a minimal store for seam-level tests: it counts units per
+// testClusterLimiter is a minimal store for seam-level tests: it counts units per
 // scope and rejects once a scope's count reaches the spec's burst. It exists
 // only to observe HOW the executor charges a store, not to test algorithms.
-type testCounters struct {
+type testClusterLimiter struct {
 	spent map[string]int
 }
 
-func (c *testCounters) Allow(_ context.Context, scope string, spec resilience.RateSpec, n int) error {
+func (c *testClusterLimiter) Allow(_ context.Context, scope string, spec resilience.RateSpec, n int) error {
 	if c.spent == nil {
 		c.spent = map[string]int{}
 	}
@@ -58,7 +58,7 @@ func TestDefaultDriverCountsPerExecutor(t *testing.T) {
 	e2, err := d.NewClientExecutor("svc", p)
 	assert.That(t, err).Nil()
 	run := func(e chain.Executor) error {
-		return e.Execute(ctx, func(context.Context) error { return nil })
+		return e.Execute(ctx, chain.Operation{}, func(context.Context) error { return nil })
 	}
 	assert.That(t, run(e1)).Nil() // e1 spends its own budget...
 	assert.That(t, run(e2)).Nil() // ...so e2 still has one of its own
@@ -71,7 +71,7 @@ func TestDefaultDriverCountsPerExecutor(t *testing.T) {
 // beyond the process (to every replica) when the store is over a shared
 // backend.
 func TestDefaultDriverSharesSuppliedStore(t *testing.T) {
-	store := &testCounters{}
+	store := &testClusterLimiter{}
 	d := resilience.NewDefaultDriver(store)
 	p := resilience.ClientPolicy{RateLimit: 1, Burst: 1}
 	ctx := context.Background()
@@ -79,8 +79,8 @@ func TestDefaultDriverSharesSuppliedStore(t *testing.T) {
 	assert.That(t, err).Nil()
 	e2, err := d.NewClientExecutor("svc", p)
 	assert.That(t, err).Nil()
-	assert.That(t, e1.Execute(ctx, func(context.Context) error { return nil })).Nil()
-	assert.That(t, errors.Is(e2.Execute(ctx, func(context.Context) error { return nil }), chain.ErrRateLimited)).True()
+	assert.That(t, e1.Execute(ctx, chain.Operation{}, func(context.Context) error { return nil })).Nil()
+	assert.That(t, errors.Is(e2.Execute(ctx, chain.Operation{}, func(context.Context) error { return nil }), chain.ErrRateLimited)).True()
 	// The charge landed under the service name, not some private key.
 	assert.That(t, store.spent["svc"]).Equal(1)
 }

@@ -20,7 +20,7 @@
 
 **排查方向**:对比包与不包 httpx transport 时 breaker 的 success/failure 计数(RoundTripper 的返回值 + 5xx 判定)。
 
-**⚠ 现状待重新确认(2026-10-06)**:当年的 `cloud/resilience/roundtripper.go` **已不存在**,机制演进为 `cloud/resilience/client_adapter_http.go` 的 `NewRoundTripper(base, exec)`(现在 influxdb、gateway 在用)。**这条缺陷是否仍在,只能真跑 `example-load` 才能判定**——本轮整理时未跑。
+**⚠ 现状待重新确认(2026-10-06)**:当年的 `cloud/resilience/roundtripper.go` **已不存在**,机制演进为 `cloud/resilience/client_adapter_http.go` 的 `NewRoundTripper(base, exec, nil)`(现在 influxdb、gateway 在用)。**这条缺陷是否仍在,只能真跑 `example-load` 才能判定**——本轮整理时未跑。
 
 ---
 
@@ -40,7 +40,7 @@
 ### 结构性坑与端口
 
 - gs 内置 `SimpleHttpServer` **默认开启**且 addr 默认 `:9090`,与 starter-otel prometheus exporter 的 `spring.observability.metrics.port=9090` 必然撞端口(`bind: address already in use`)。不需要 HTTP 的 example 加 `spring.http.server.enabled=false`;两者都要就错开 `spring.http.server.addr` 或 `metrics.port`。`metrics.port=0` 把 `/metrics` 交给 starter-actuator 托管,未引 actuator 会打 WARN(2026-09-13)。
-- `spring.governance.driver` 认 conf 文件不认 `app.Property`;治理 `ExecutorFor` 首次调用若早于 GoLive(provider 注册)会落 noop(懒解析),测试要等就绪。
+- 治理 `ExecutorFor` 首次调用若早于 GoLive(provider 注册)会落 noop(懒解析),测试要等就绪。`spring.resilience.driver` 现为静态 gs 属性(启动期经 `gs.TagArg` 按 bean 名注入 Driver),`app.Property` 与 conf 文件均可设置。
 - `starter-goframe` 及 contrib/goframe 系 4 个模块编译失败是上游 `otelmetric v2.10.2` × `contrib/instrumentation/runtime` 的版本冲突(`Version` 由 func 变 const),**已知且明确不修**,全仓 `go build` 直接忽略;2026-08-14 起 12 个 goframe 模块已从 go.work `use` 移除,单独 build 用 `GOWORK=off`(2026-08-13)。
 
 ### 待补跑

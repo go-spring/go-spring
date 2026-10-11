@@ -43,17 +43,12 @@ func serviceLabelOf(brokers string) string {
 	return resilience.ServiceLabel("kafka", brokers)
 }
 
-// runGuarded routes call through the executor via [resilience.Run] — the
-// shared client-operation body — so the nil-executor pass-through and the
-// fault-injection edge (an attempt short-circuited before call ran) are
-// classified in one place. The call's declared identity (see [operation])
-// rides the ctx and is read by the executor, which emits the span, the metrics
-// and the access log.
-func runGuarded(ctx context.Context, exec chain.Executor, call func(context.Context) error) error {
-	_, err := resilience.Run(ctx, exec, func(attemptCtx context.Context) (struct{}, error) {
-		return struct{}{}, call(attemptCtx)
-	})
-	return err
+// runObserved runs call under the client's observer, which emits the produce's
+// span, metrics and access log from the one point that sees the whole call. A
+// kafka client has no seam for the resilience executor, so there is no
+// governance on this path — observation only.
+func runObserved(ctx context.Context, obs *observability.OperationObserver, op chain.Operation, call func(context.Context) error) error {
+	return obs.Observe(ctx, op, call)
 }
 
 // InnerKafka is the seam a client's synchronous produces run through.
@@ -102,63 +97,37 @@ func (r *RawKafka) ProduceSync(ctx context.Context, recs ...*kgo.Record) kgo.Pro
 	return r.cl.ProduceSync(ctx, recs...)
 }
 
-// GuardKafka is the governance layer: it runs every synchronous produce under
-// the resilience executor, which applies rate limiting, breaking and fault
-// injection — and emits the produce's span, metrics and access log from the
-// one point that sees the whole call, attempts included. [NewGuardKafka]
-// builds it, executor included: the executor is the layer's own business end
-// to end — built, used and closed inside it.
-type GuardKafka struct {
-	exec chain.Executor
-	next InnerKafka
-}
-
-// NewGuardKafka builds the governance layer over next, running every produce
-// under exec.
-func NewGuardKafka(next InnerKafka, exec chain.Executor) *GuardKafka {
-	return &GuardKafka{exec: exec, next: next}
-}
-
-// Release hands releaseRaw to the layer under it — the executor is closed by
-// [Client.Close], with the client it is scoped to.
-func (g *GuardKafka) Release(releaseRaw bool) error { return g.next.Release(releaseRaw) }
-
-func (g *GuardKafka) ProduceSync(ctx context.Context, recs ...*kgo.Record) kgo.ProduceResults {
+// ProduceSync runs the produce under the observer and returns its results. A
+// failure — a wire error returned by the tail — is captured so its status is
+// classified; the results themselves are always returned, so a caller's
+// .FirstErr() reads the same error the observer saw.
+func (o *ObsKafka) ProduceSync(ctx context.Context, recs ...*kgo.Record) kgo.ProduceResults {
 	var results kgo.ProduceResults
-	err := runGuarded(ctx, g.exec, func(attemptCtx context.Context) error {
-		results = g.next.ProduceSync(attemptCtx, recs...)
+	_ = runObserved(ctx, o.obs, operation(opPublish, topicOf(recs)), func(callCtx context.Context) error {
+		results = o.next.ProduceSync(callCtx, recs...)
 		return results.FirstErr()
 	})
-	if err != nil {
-		// Rejected before the produce ran: encode the rejection as a per-record
-		// error so the caller's .FirstErr() surfaces it transparently.
-		out := make(kgo.ProduceResults, 0, len(recs))
-		for _, r := range recs {
-			out = append(out, kgo.ProduceResult{Record: r, Err: err})
-		}
-		return out
-	}
 	return results
 }
 
-// ObsKafka is the identity layer at the head: it names the produce — with the
+// ObsKafka is the emitting layer at the head: it names each produce — with the
 // batch's topic (its first record's; an empty batch declares no destination) —
-// and hands the context down. It emits nothing itself: emission happens in the
-// governance layer under it. [NewObsKafka] builds it.
+// runs it, and emits the span, metrics and access log through the client's
+// observer. A kafka client has no seam for the resilience executor, so there is
+// no governance layer under it. [NewObsKafka] builds it.
 type ObsKafka struct {
 	next InnerKafka
+	obs  *observability.OperationObserver
 }
 
-// NewObsKafka builds the identity layer over next.
-func NewObsKafka(next InnerKafka) *ObsKafka { return &ObsKafka{next: next} }
+// NewObsKafka builds the emitting layer over next.
+func NewObsKafka(next InnerKafka, obs *observability.OperationObserver) *ObsKafka {
+	return &ObsKafka{next: next, obs: obs}
+}
 
 // Release hands releaseRaw to the layer under it — this layer holds no
 // resource.
 func (o *ObsKafka) Release(releaseRaw bool) error { return o.next.Release(releaseRaw) }
-
-func (o *ObsKafka) ProduceSync(ctx context.Context, recs ...*kgo.Record) kgo.ProduceResults {
-	return o.next.ProduceSync(observability.WithOperation(ctx, operation(opPublish, topicOf(recs))), recs...)
-}
 
 // GuardedProduceSync produces recs synchronously on the client, routed through
 // its chain. When governance is disabled this behaves exactly like
@@ -172,9 +141,9 @@ func GuardedProduceSync(ctx context.Context, cl *Client, recs ...*kgo.Record) kg
 }
 
 // GuardedConsume runs one consumed record's handler under the client's
-// governance layer, declaring the consume's identity from the record's topic
-// first. It is the consume counterpart of [GuardedProduceSync], for an
-// application that owns its own poll loop.
+// observer, naming the consume from the record's topic first. It is the consume
+// counterpart of [GuardedProduceSync], for an application that owns its own poll
+// loop.
 //
 // The managed subscription ([NewDriver]'s subscriber) runs through this same
 // function, so the two paths cannot drift: a record handled here carries the
@@ -183,10 +152,9 @@ func GuardedProduceSync(ctx context.Context, cl *Client, recs ...*kgo.Record) kg
 //
 // It is not a chain method because its pipeline is per-record and driven by
 // whoever owns the poll loop — franz-go's hooks observe a record, they do not
-// wrap the call — so it uses the client's execute seam instead.
+// wrap the call — so it uses the client's observer seam instead.
 func GuardedConsume(ctx context.Context, cl *Client, rec *kgo.Record, handler func(context.Context) error) error {
-	ctx = observability.WithOperation(ctx, operation(opConsume, rec.Topic))
-	return cl.execute(ctx, handler)
+	return cl.observe(ctx, operation(opConsume, rec.Topic), handler)
 }
 
 // topicOf returns the destination of a produce batch, taken from its first

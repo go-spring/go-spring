@@ -173,7 +173,9 @@ type SimpleDubboServer struct {
 // NewSimpleDubboServer creates a SimpleDubboServer from the shared *Instance's
 // provider configuration.
 func NewSimpleDubboServer(d *Instance) *SimpleDubboServer {
-	log.Debugf(context.Background(), log.TagAppDef, "create dubbo server success")
+	log.Debug(context.Background(), log.TagAppDef, "create dubbo server success", func() []log.Field {
+		return nil
+	})
 	return &SimpleDubboServer{d: d, done: make(chan struct{})}
 }
 
@@ -296,7 +298,7 @@ func (s *SimpleDubboServer) Run(ctx context.Context, sig gs.ReadySignal) error {
 
 	<-sig.TriggerAndWait()
 
-	log.Infof(ctx, log.TagAppDef, "dubbo server starting")
+	log.Info(ctx, log.TagAppDef, "dubbo server starting")
 	errCh := make(chan error, 1)
 	go func() {
 		errCh <- svr.Serve()
@@ -304,7 +306,7 @@ func (s *SimpleDubboServer) Run(ctx context.Context, sig gs.ReadySignal) error {
 
 	select {
 	case err = <-errCh:
-		log.Errorf(ctx, log.TagAppDef, err, "dubbo server failed")
+		log.Error(ctx, log.TagAppDef, err, "dubbo server failed")
 		return errutil.Explain(err, "failed to serve dubbo server")
 	case <-s.done:
 		return nil
@@ -314,7 +316,7 @@ func (s *SimpleDubboServer) Run(ctx context.Context, sig gs.ReadySignal) error {
 // Stop signals Run to return so Go-Spring can complete its shutdown sequence.
 // dubbo-go's shutdown API is not context-aware, so ctx is only used for logging.
 func (s *SimpleDubboServer) Stop(ctx context.Context) error {
-	log.Infof(ctx, log.TagAppDef, "dubbo server shutting down")
+	log.Info(ctx, log.TagAppDef, "dubbo server shutting down")
 	close(s.done)
 	return nil
 }

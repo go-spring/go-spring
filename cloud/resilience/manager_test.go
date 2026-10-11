@@ -20,7 +20,6 @@ import (
 	"context"
 	"errors"
 	"go-spring.org/cloud/chain"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -30,25 +29,48 @@ import (
 // errFail is a plain failure used to drive the breaker in tests.
 var errFail = errors.New("test: fail")
 
-// armed returns a manager armed with a resolver backed by fixedPolicies.
-func armed(t *testing.T, policies map[string]ClientPolicy, driver string) *Manager {
+// armed returns a manager armed with a fixed per-label policy set, over the
+// bundled driver (the driver is fixed at construction now, not part of Settings).
+func armed(t *testing.T, policies map[string]ClientPolicy) *Manager {
 	t.Helper()
 	m := NewManager(nil)
 	if err := m.Apply(Settings{
-		Enabled:             true,
-		Driver:              driver,
-		ResolveClientPolicy: func(label string) ClientPolicy { return policies[label] },
+		Client: ClientSettings{Rules: clientRules(policies)},
 	}); err != nil {
 		t.Fatalf("Apply: %v", err)
 	}
 	return m
 }
 
+// clientRules renders a label -> policy map as the pushed outbound rule list.
+func clientRules(policies map[string]ClientPolicy) []ClientRule {
+	if len(policies) == 0 {
+		return nil
+	}
+	out := make([]ClientRule, 0, len(policies))
+	for label, p := range policies {
+		out = append(out, ClientRule{Service: label, ClientPolicy: p})
+	}
+	return out
+}
+
+// serverRules renders a label -> policy map as the pushed inbound rule list.
+func serverRules(policies map[string]ServerPolicy) []ServerRule {
+	if len(policies) == 0 {
+		return nil
+	}
+	out := make([]ServerRule, 0, len(policies))
+	for label, p := range policies {
+		out = append(out, ServerRule{Service: label, ServerPolicy: p})
+	}
+	return out
+}
+
 // runOnce runs fn through e and reports whether it ran.
 func runOnce(t *testing.T, e chain.Executor) bool {
 	t.Helper()
 	ran := false
-	err := e.Execute(context.Background(), func(context.Context) error {
+	err := e.Execute(context.Background(), chain.Operation{}, func(context.Context) error {
 		ran = true
 		return nil
 	})
@@ -66,43 +88,21 @@ func TestManagerUnarmedIsPassThrough(t *testing.T) {
 	if p := m.ClientPolicyFor("redis:cache"); !p.IsZero() {
 		t.Fatalf("unarmed manager must resolve a zero policy, got %+v", p)
 	}
-	if d := m.Driver(); d != DefaultDriverName {
-		t.Fatalf("Driver() = %q, want %q", d, DefaultDriverName)
-	}
 }
 
-func TestManagerDisabledIsPassThrough(t *testing.T) {
+func TestManagerEmptySettingsIsPassThrough(t *testing.T) {
 	m := NewManager(nil)
-	if err := m.Apply(Settings{
-		Enabled:             false,
-		ResolveClientPolicy: func(string) ClientPolicy { return ClientPolicy{AttemptTimeout: time.Second} },
-	}); err != nil {
+	if err := m.Apply(Settings{}); err != nil {
 		t.Fatalf("Apply: %v", err)
 	}
-	// A disabled settings must not arm the resolver: the policy that the
-	// resolver would have returned must not take effect.
+	// A document that configures nothing leaves every label on the pass-through —
+	// the manager is armed (Enabled reports true), but there is no policy to
+	// apply.
 	if p := m.ClientPolicyFor("redis:cache"); !p.IsZero() {
-		t.Fatalf("disabled manager must resolve a zero policy, got %+v", p)
+		t.Fatalf("an empty document must resolve a zero policy, got %+v", p)
 	}
 	if !runOnce(t, m.ClientExecutorFor("redis", "redis:cache")) {
-		t.Fatal("disabled manager must run fn")
-	}
-}
-
-func TestManagerUnknownDriverFailsApply(t *testing.T) {
-	m := NewManager(map[string]Driver{"sentinel": NewDefaultDriver(nil)})
-	err := m.Apply(Settings{Enabled: true, Driver: "nope", ResolveClientPolicy: func(string) ClientPolicy { return ClientPolicy{} }})
-	if err == nil {
-		t.Fatal("an enabled settings naming an uninstalled driver must fail Apply")
-	}
-	// The error names what IS available, so a typo in the configured backend is
-	// diagnosable from the startup failure alone.
-	if !strings.Contains(err.Error(), `no driver named "nope" (available: [default sentinel])`) {
-		t.Fatalf("unknown-driver error must list the available backends, got: %v", err)
-	}
-	// A disabled settings is never checked: it builds no executor.
-	if err := m.Apply(Settings{Enabled: false, Driver: "nope"}); err != nil {
-		t.Fatalf("disabled Apply must not validate the driver: %v", err)
+		t.Fatal("an empty document must still run fn")
 	}
 }
 
@@ -113,17 +113,17 @@ func TestManagerUnknownDriverFailsApply(t *testing.T) {
 func TestManagerSharesOneExecutorPerLabel(t *testing.T) {
 	m := armed(t, map[string]ClientPolicy{
 		"redis:cache": {ErrorThreshold: 2, OpenDuration: time.Minute},
-	}, "")
+	})
 	a := m.ClientExecutorFor("redis", "redis:cache")
 	b := m.ClientExecutorFor("redis", "redis:cache")
 
 	fail := func(e chain.Executor) {
-		_ = e.Execute(context.Background(), func(context.Context) error { return errFail })
+		_ = e.Execute(context.Background(), chain.Operation{}, func(context.Context) error { return errFail })
 	}
 	fail(a)
 	fail(b) // second failure across BOTH handles trips the shared breaker
 
-	err := a.Execute(context.Background(), func(context.Context) error { return nil })
+	err := a.Execute(context.Background(), chain.Operation{}, func(context.Context) error { return nil })
 	if err != chain.ErrCircuitOpen {
 		t.Fatalf("breaker state must be shared across handles for one label, got %v", err)
 	}
@@ -134,15 +134,19 @@ func TestManagerSharesOneExecutorPerLabel(t *testing.T) {
 func TestManagerSubscribeArmsAndNotifies(t *testing.T) {
 	var mu sync.Mutex
 	policies := map[string]ClientPolicy{"redis:cache": {AttemptTimeout: time.Second}}
-	resolve := func(label string) ClientPolicy {
-		mu.Lock()
-		defer mu.Unlock()
-		return policies[label]
-	}
 	m := NewManager(nil)
-	if err := m.Apply(Settings{Enabled: true, ResolveClientPolicy: resolve}); err != nil {
-		t.Fatalf("Apply: %v", err)
+	// apply pushes the current "document" (the policies map) down, the way the
+	// center does on every source push.
+	apply := func() {
+		t.Helper()
+		mu.Lock()
+		rules := clientRules(policies)
+		mu.Unlock()
+		if err := m.Apply(Settings{Client: ClientSettings{Rules: rules}}); err != nil {
+			t.Fatalf("Apply: %v", err)
+		}
 	}
+	apply()
 
 	var got []ClientPolicy
 	sub := m.Subscribe("redis:cache", func(p ClientPolicy) { got = append(got, p) })
@@ -154,9 +158,7 @@ func TestManagerSubscribeArmsAndNotifies(t *testing.T) {
 	}
 
 	// An apply that leaves this label's policy unchanged must not notify.
-	if err := m.Apply(Settings{Enabled: true, ResolveClientPolicy: resolve}); err != nil {
-		t.Fatalf("Apply: %v", err)
-	}
+	apply()
 	if len(got) != 1 {
 		t.Fatalf("an unchanged policy must not re-notify, got %d calls", len(got))
 	}
@@ -165,9 +167,7 @@ func TestManagerSubscribeArmsAndNotifies(t *testing.T) {
 	mu.Lock()
 	policies["redis:cache"] = ClientPolicy{AttemptTimeout: 2 * time.Second}
 	mu.Unlock()
-	if err := m.Apply(Settings{Enabled: true, ResolveClientPolicy: resolve}); err != nil {
-		t.Fatalf("Apply: %v", err)
-	}
+	apply()
 	if len(got) != 2 || got[1].AttemptTimeout != 2*time.Second {
 		t.Fatalf("a changed policy must notify, got %+v", got)
 	}
@@ -178,9 +178,7 @@ func TestManagerSubscribeArmsAndNotifies(t *testing.T) {
 	mu.Lock()
 	policies["redis:cache"] = ClientPolicy{AttemptTimeout: 3 * time.Second}
 	mu.Unlock()
-	if err := m.Apply(Settings{Enabled: true, ResolveClientPolicy: resolve}); err != nil {
-		t.Fatalf("Apply: %v", err)
-	}
+	apply()
 	if len(got) != 2 {
 		t.Fatalf("a cancelled subscription must not be notified, got %d calls", len(got))
 	}
@@ -201,71 +199,29 @@ func TestSubscription_ZeroIsInert(t *testing.T) {
 	}
 }
 
-// TestManagerApplyRebuildsOnDriverSwitch pins that adopting a different backend
-// drops the memoized executors: they were built by the previous driver and must
-// not outlive it.
-func TestManagerApplyRebuildsOnDriverSwitch(t *testing.T) {
-	var mu sync.Mutex
-	var built []string
-	m := NewManager(map[string]Driver{
-		"a": namedDriver{name: "a", built: &built, mu: &mu},
-		"b": namedDriver{name: "b", built: &built, mu: &mu},
-	})
-	resolve := func(string) ClientPolicy { return ClientPolicy{AttemptTimeout: time.Second} }
-
-	if err := m.Apply(Settings{Enabled: true, Driver: "a", ResolveClientPolicy: resolve}); err != nil {
-		t.Fatalf("Apply: %v", err)
-	}
-	runOnce(t, m.ClientExecutorFor("redis", "redis:cache"))
-	if len(built) != 1 {
-		t.Fatalf("expected one executor build, got %v", built)
-	}
-	if err := m.Apply(Settings{Enabled: true, Driver: "b", ResolveClientPolicy: resolve}); err != nil {
-		t.Fatalf("Apply: %v", err)
-	}
-	if len(built) != 1 {
-		t.Fatalf("applying must not build eagerly, got %v", built)
-	}
-	runOnce(t, m.ClientExecutorFor("redis", "redis:cache"))
-	if len(built) != 2 || built[1] != "b" {
-		t.Fatalf("a driver switch must rebuild via the new backend, got %v", built)
-	}
-}
-
-// namedDriver records the name of every driver asked to build an executor.
 // TestManagerServerLaneIsSeparate pins that the two directions are separate
 // lanes over separate models: ServerExecutorFor builds through Driver.NewServerExecutor
 // (not NewClientExecutor), reads the inbound resolver, and a client-side policy change
 // never touches the inbound model.
 func TestManagerServerLaneIsSeparate(t *testing.T) {
-	m := NewManager(map[string]Driver{"counting": &countingDriver{}})
+	drv := &countingDriver{}
+	m := NewManager(drv)
 
 	var mu sync.Mutex
 	policies := map[string]ClientPolicy{"redis:cache": {AttemptTimeout: time.Second}}
 	serverPolicies := map[string]ServerPolicy{"gin::8080": {RateLimit: 7}}
 	if err := m.Apply(Settings{
-		Enabled: true,
-		Driver:  "counting",
-		ResolveClientPolicy: func(label string) ClientPolicy {
-			mu.Lock()
-			defer mu.Unlock()
-			return policies[label]
-		},
-		ResolveServerPolicy: func(label string) ServerPolicy {
-			mu.Lock()
-			defer mu.Unlock()
-			return serverPolicies[label]
-		},
+		Client: ClientSettings{Rules: clientRules(policies)},
+		Server: ServerSettings{Rules: serverRules(serverPolicies)},
 	}); err != nil {
 		t.Fatalf("Apply: %v", err)
 	}
 
 	runOnce(t, m.ClientExecutorFor("redis", "redis:cache"))
-	if err := m.ServerExecutorFor("gin", "gin::8080").Execute(context.Background(), func(context.Context) error { return nil }); err != nil {
+	if err := m.ServerExecutorFor("gin", "gin::8080").Execute(context.Background(), chain.Operation{}, func(context.Context) error { return nil }); err != nil {
 		t.Fatalf("inbound Execute: %v", err)
 	}
 
-	drv := m.drivers["counting"].(*countingDriver)
 	if got := drv.executors.Load(); got != 1 {
 		t.Fatalf("want one outbound build, got %d", got)
 	}
@@ -281,10 +237,8 @@ func TestManagerServerLaneIsSeparate(t *testing.T) {
 	policies["redis:cache"] = ClientPolicy{AttemptTimeout: 2 * time.Second}
 	mu.Unlock()
 	if err := m.Apply(Settings{
-		Enabled:             true,
-		Driver:              "counting",
-		ResolveClientPolicy: func(label string) ClientPolicy { mu.Lock(); defer mu.Unlock(); return policies[label] },
-		ResolveServerPolicy: func(label string) ServerPolicy { mu.Lock(); defer mu.Unlock(); return serverPolicies[label] },
+		Client: ClientSettings{Rules: clientRules(policies)},
+		Server: ServerSettings{Rules: serverRules(serverPolicies)},
 	}); err != nil {
 		t.Fatalf("second Apply: %v", err)
 	}
@@ -309,26 +263,6 @@ func (d *countingDriver) NewClientExecutor(service string, p ClientPolicy) (chai
 func (d *countingDriver) NewServerExecutor(service string, a ServerPolicy) (chain.Executor, error) {
 	d.serverPolicies.Add(1)
 	d.lastServerPolicy.Store(a)
-	return NewDefaultDriver(nil).NewServerExecutor(service, a)
-}
-
-type namedDriver struct {
-	name  string
-	built *[]string
-	mu    *sync.Mutex
-}
-
-func (d namedDriver) NewClientExecutor(service string, p ClientPolicy) (chain.Executor, error) {
-	d.mu.Lock()
-	*d.built = append(*d.built, d.name)
-	d.mu.Unlock()
-	return NewDefaultDriver(nil).NewClientExecutor(service, p)
-}
-
-func (d namedDriver) NewServerExecutor(service string, a ServerPolicy) (chain.Executor, error) {
-	d.mu.Lock()
-	*d.built = append(*d.built, d.name)
-	d.mu.Unlock()
 	return NewDefaultDriver(nil).NewServerExecutor(service, a)
 }
 
@@ -362,22 +296,25 @@ func (d *policyDriver) snapshot() []string {
 // instead of being churned by an unrelated change.
 func TestManagerApplyEvictsOnlyChangedLabels(t *testing.T) {
 	d := &policyDriver{}
-	m := NewManager(map[string]Driver{"rec": d})
+	m := NewManager(d)
 
 	var mu sync.Mutex
 	policies := map[string]ClientPolicy{
 		"redis:cache": {AttemptTimeout: time.Second},
 		"redis:queue": {AttemptTimeout: time.Second},
 	}
-	resolve := func(label string) ClientPolicy {
+	// apply pushes the current "document" (the policies map) down.
+	apply := func() {
+		t.Helper()
 		mu.Lock()
-		defer mu.Unlock()
-		return policies[label]
+		rules := clientRules(policies)
+		mu.Unlock()
+		if err := m.Apply(Settings{Client: ClientSettings{Rules: rules}}); err != nil {
+			t.Fatalf("Apply: %v", err)
+		}
 	}
 
-	if err := m.Apply(Settings{Enabled: true, Driver: "rec", ResolveClientPolicy: resolve}); err != nil {
-		t.Fatalf("Apply: %v", err)
-	}
+	apply()
 	runOnce(t, m.ClientExecutorFor("redis", "redis:cache"))
 	runOnce(t, m.ClientExecutorFor("redis", "redis:queue"))
 	if got := d.snapshot(); len(got) != 2 {
@@ -388,9 +325,7 @@ func TestManagerApplyEvictsOnlyChangedLabels(t *testing.T) {
 	mu.Lock()
 	policies["redis:cache"] = ClientPolicy{AttemptTimeout: 2 * time.Second}
 	mu.Unlock()
-	if err := m.Apply(Settings{Enabled: true, Driver: "rec", ResolveClientPolicy: resolve}); err != nil {
-		t.Fatalf("second Apply: %v", err)
-	}
+	apply()
 	if got := d.snapshot(); len(got) != 2 {
 		t.Fatalf("a push must not build eagerly, got %v", got)
 	}
@@ -406,5 +341,43 @@ func TestManagerApplyEvictsOnlyChangedLabels(t *testing.T) {
 	got := d.snapshot()
 	if len(got) != 3 || got[2] != "redis:cache@2s" {
 		t.Fatalf("the changed label must be rebuilt under the new policy, got %v", got)
+	}
+}
+
+// TestManagerPolicyMatch pins the matching this package now owns — it used to
+// live in the center's document walk: an exact label match wins, an unmatched
+// label falls to Default, a rule with an empty Service never captures a real
+// label (it is not a catch-all), and the first matching Rule wins. Each
+// direction matches over its own block.
+func TestManagerPolicyMatch(t *testing.T) {
+	m := NewManager(nil)
+	if err := m.Apply(Settings{
+		Client: ClientSettings{
+			Default: ClientPolicy{AttemptTimeout: time.Second},
+			Rules: []ClientRule{
+				{Service: "", ClientPolicy: ClientPolicy{AttemptTimeout: 9 * time.Second}}, // matches no real label
+				{Service: "redis:cache", ClientPolicy: ClientPolicy{AttemptTimeout: 2 * time.Second}},
+				{Service: "redis:cache", ClientPolicy: ClientPolicy{AttemptTimeout: 3 * time.Second}}, // shadowed
+			},
+		},
+		Server: ServerSettings{
+			Default: ServerPolicy{RateLimit: 5},
+			Rules:   []ServerRule{{Service: "gin::8080", ServerPolicy: ServerPolicy{RateLimit: 7}}},
+		},
+	}); err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+
+	if got := m.ClientPolicyFor("redis:cache").AttemptTimeout; got != 2*time.Second {
+		t.Fatalf("an exact match must win: got %v", got)
+	}
+	if got := m.ClientPolicyFor("redis:queue").AttemptTimeout; got != time.Second {
+		t.Fatalf("an unmatched label must fall to Default: got %v", got)
+	}
+	if got := m.ServerPolicyFor("gin::8080").RateLimit; got != 7 {
+		t.Fatalf("an inbound exact match must win: got %v", got)
+	}
+	if got := m.ServerPolicyFor("gin::9090").RateLimit; got != 5 {
+		t.Fatalf("an unmatched route must fall to Default: got %v", got)
 	}
 }

@@ -45,7 +45,7 @@ import _ "go-spring.org/starter-governance-etcd"
 在[配置文件](example/conf/app.properties) 中添加两个引导键：
 
 ```properties
-spring.governance.source.etcd.endpoint=127.0.0.1:2379
+spring.governance.source.etcd.endpoints=127.0.0.1:2379
 spring.governance.source.etcd.key=/app/governance.yaml
 ```
 
@@ -58,10 +58,9 @@ key 中存放治理的规则，使用 `spring.governance.*` 命名空间：
 ```yaml
 spring:
   governance:
-    enabled: true
+    driver: default
     client:
       default:
-        enabled: true
         attempt-timeout: 100ms
 ```
 
@@ -91,7 +90,7 @@ spring:
 * **Watch 推送。** 启动后本源监听这一个 key 并应用每次 PUT：取值经共享的规则解析器
   解析，规则确有变化时才推入中心。
 * **坏编辑保底。** 解析失败的值保留上一份快照并打日志，绝不推送；关闭治理的正确姿势是
-  `spring.governance.enabled=false`，不是坏文档或空文档。
+  发布一份什么都不配（但仍带一个 `spring.governance.*` 键）的文档，不是坏文档或空文档。
 * **无变更去重。** 逐字节相同的重复投递，或重新解析后配置相等，都不会推送——touch
   不会触发 executor 重建。
 * **独占 client。** 本源自建并独占其 etcd client，Bean 销毁时关闭。

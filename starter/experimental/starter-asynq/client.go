@@ -24,11 +24,9 @@ package StarterAsynq
 
 import (
 	"context"
-	"go-spring.org/cloud/chain"
+	"go-spring.org/cloud/observability"
 
 	"github.com/hibiken/asynq"
-	"go-spring.org/cloud"
-	"go-spring.org/cloud/observability"
 	"go-spring.org/cloud/resilience"
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
@@ -45,52 +43,46 @@ type Client struct {
 	// scopes limiter/breaker state by; it is fixed by [NewClient].
 	serviceLabel string
 
-	// exec is the resilience executor protecting the synchronous Enqueue path,
-	// fixed by [NewClient]; a no-op when governance is off.
-	exec chain.Executor
+	// obs is the observer emitting the synchronous Enqueue path's span, metrics
+	// and access log, fixed by [NewClient].
+	obs *observability.OperationObserver
 }
 
-// NewClient builds a complete Client — identity and governance both applied —
-// over the asynq producer built from connOpt. addr is the Redis host:port the
-// instance addresses (the config entry's addr); the governance service label
+// NewClient builds a complete Client — observer attached — over the asynq
+// producer built from connOpt. addr is the Redis host:port the instance
+// addresses (the config entry's addr); the observer's service label
 // ("asynq:<addr>") is derived from it.
 //
-// params carries the container's facilities (see [cloud.ClientParams]), and is
-// applied HERE so a Client cannot exist half-assembled: there is no Init step,
-// no later patching, and nothing the container has to remember to call. A
-// hand-built client passes the zero [cloud.ClientParams]; its executor then
-// degrades to resilience.Unmanaged — observed, with a one-time warning that no
-// protection applies — rather than silently running bare.
-//
-// The manager's ClientExecutorFor resolves its backing executor lazily, on each
-// Execute, so the call order relative to the center's wiring is
-// irrelevant.
-func NewClient(connOpt asynq.RedisConnOpt, addr string, params cloud.ClientParams) *Client {
+// The observer is attached HERE so a Client cannot exist half-assembled. An
+// asynq client has no seam for the resilience executor, so there is no
+// governance: the observer emits the span, metrics and access log, and nothing
+// throttles or retries.
+func NewClient(connOpt asynq.RedisConnOpt, addr string) *Client {
 	o := &Client{
 		Client:       asynq.NewClient(connOpt),
 		serviceLabel: resilience.ServiceLabel("asynq", addr),
 	}
-	o.exec = params.ExecutorFor("asynq", o.serviceLabel)
+	o.obs = observability.NewOperationObserver("asynq", o.serviceLabel)
 	return o
 }
 
-// Destroy closes the producer and the resilience executor.
+// Destroy closes the producer.
 func (o *Client) Destroy() error {
-	if o.exec != nil {
-		_ = o.exec.Close()
-	}
 	return o.Client.Close()
 }
 
-// Enqueue is the guarded, observed enqueue path. It behaves like
-// Client.Enqueue but declares the call's identity on the context and routes it
-// through the resilience executor, which is also where the span, the metrics
-// and the access log are emitted; a rejection (rate-limit / open circuit) never
-// reaches Redis.
+// Enqueue is the observed enqueue path. It behaves like Client.Enqueue but runs
+// under the client's observer, which emits the span, the metrics and the access
+// log from the declared operation.
 func (o *Client) Enqueue(ctx context.Context, task *asynq.Task, opts ...asynq.Option) (*asynq.TaskInfo, error) {
-	ctx = observability.WithOperation(ctx, operation("enqueue", task.Type()))
-	info, err := resilience.Run(ctx, o.exec, func(attemptCtx context.Context) (*asynq.TaskInfo, error) {
-		return o.Client.EnqueueContext(attemptCtx, task, opts...)
+	if o.obs == nil {
+		return o.Client.EnqueueContext(ctx, task, opts...)
+	}
+	var info *asynq.TaskInfo
+	err := o.obs.Observe(ctx, operation("enqueue", task.Type()), func(callCtx context.Context) error {
+		var eerr error
+		info, eerr = o.Client.EnqueueContext(callCtx, task, opts...)
+		return eerr
 	})
 	if err != nil {
 		return nil, err
@@ -157,7 +149,7 @@ func (o *Server) Run(ctx context.Context, sig gs.ReadySignal) error {
 // no context, so ctx is unused here - the drain is bounded by the configured
 // ShutdownTimeout.
 func (o *Server) Stop(ctx context.Context) error {
-	log.Infof(ctx, log.TagAppDef, "asynq worker shutting down")
+	log.Info(ctx, log.TagAppDef, "asynq worker shutting down")
 	o.srv.Shutdown()
 	return nil
 }

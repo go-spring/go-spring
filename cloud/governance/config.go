@@ -48,10 +48,19 @@ import (
 //     is no endpoint to choose) — those are not disabled here, they have no
 //     representation in the model at all.
 //
-// [Config.Enabled] and [Config.Driver] stay at the top because they are the two
-// process-wide decisions: one on/off switch, and one resilience backend. The
-// backend is deliberately NOT per direction, because [Driver] answers for both —
-// one name still switches the whole process.
+// [Config.Driver] stays at the top because it is the one process-wide decision:
+// the resilience backend. It is deliberately NOT per direction, because [Driver]
+// answers for both — one name still switches the whole process.
+//
+// There is no on/off switch. A document that configures nothing — empty
+// [Config.Client] and [Config.Server] blocks, a zero Default, no rules —
+// resolves zero policies for every label, which each module already reads as
+// "no configuration": a pass-through executor, an untouched pool. That IS
+// "governance off", so an empty document is a valid, inert one.
+//
+// The backend (which resilience.Driver builds the executors) is NOT part of this
+// document: it is a static startup choice read from ${spring.resilience.driver},
+// so it lives in the wiring, not in the pushed rules.
 //
 // The direction of a RULE is expressed by which block it lives in, and the rule's
 // service label is what runtime lookups match. The two label sets are disjoint by
@@ -59,21 +68,6 @@ import (
 // outbound one names the dependency, e.g. "redis:cache"), so a starter's label
 // resolves in exactly one block.
 type Config struct {
-	// Enabled gates the whole center — BOTH directions. When false, every module
-	// is disarmed: [Center.clientServiceFor] returns a zero Policy and
-	// [Center.serverPolicyFor] a zero ServerPolicy (transparent pass-throughs)
-	// regardless of Default/Rules, and neither fault side injects. Importing
-	// starter-governance with no configured source is therefore a no-op.
-	Enabled bool `value:"${enabled:=false}"`
-
-	// Driver names the resilience backend all services use ("default" or
-	// "sentinel"). Centralizing the driver means one place switches the backend
-	// for every service, instead of each starter's own ${...driver}. It is one key
-	// for both directions because a [resilience.Driver] implements both: the
-	// backend that builds an outbound executor also builds the inbound inbound
-	// executor, so there is nothing to select twice.
-	Driver string `value:"${driver:=default}"`
-
 	// Client is the outbound half of the document. Bind via spring.governance.client.*.
 	Client ClientConfig `value:"${client:=}"`
 
@@ -87,9 +81,9 @@ type ClientConfig struct {
 	// Default is the outbound policy applied to every service that no Rule
 	// matches. Most deployments set only this and let every service share it;
 	// per-service exceptions go under Rules. It carries only policy knobs — NOT
-	// the on/off switch or the backend name, which are process-wide at the top of
-	// the document ([Config.Enabled], [Config.Driver]) and deliberately NOT
-	// re-bindable per service. Bind via spring.governance.client.default.* (e.g.
+	// the backend name, which is a static startup choice
+	// (${spring.resilience.driver}) and deliberately NOT re-bindable per service. Bind via
+	// spring.governance.client.default.* (e.g.
 	// spring.governance.client.default.attempt-timeout=500ms,
 	// spring.governance.client.default.balancer=least_conn).
 	Default ClientDefaultPolicy `value:"${default:=}"`
@@ -178,7 +172,7 @@ type ClientDefaultPolicy struct {
 // loadbalance.Selection is its endpoint-selection configuration (balancer
 // strategy, outlier suspension). Service is the single label it applies to (exact
 // match); labels are unique across Rules (a duplicate is rejected at dispatch).
-// Like ClientDefaultPolicy it carries no Enabled/Driver: those are process-wide, not
+// Like ClientDefaultPolicy it carries no Driver: that is process-wide, not
 // per-service.
 type ClientRule struct {
 	// Service is the service label this Rule matches, exact-compare — the identity

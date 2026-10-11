@@ -4,7 +4,7 @@
 （`starter.go`、`client.go`、`driver.go`、`config.go`、`health/health.go`）与可运行的
 [example/](example/)（docker 门控冒烟：`example/check.sh`）核实。**asynq 自身语义——
 任务类型、重试、调度、队列、Inspector——见 [asynq 官方文档](https://github.com/hibiken/asynq)**；
-本文只写 go-spring 的增量（装配、治理、观测、健康检查）。
+本文只写 go-spring 的增量（装配、观测、健康检查）。
 
 **激活条件**：任一 `spring.asynq.instances.<name>` 子树（`gs.OnProperty("spring.asynq")` 为前缀匹配，
 starter.go:36）。一个实例恒产出生产者 `*Client`；worker `*Server` 仅当
@@ -94,9 +94,9 @@ func main() {
         time.Sleep(700 * time.Millisecond)
         ctx := context.Background()
         payload, _ := json.Marshal(map[string]string{"msg": "hello asynq"})
-        // 用 wrapper 的 Enqueue——带守护与观测的路径（§2.3）。
+        // 用 wrapper 的 Enqueue——被观测的路径（§2.3）。
         if _, err := svrBean.Interface().(*Service).Client.Enqueue(ctx, asynq.NewTask(taskType, payload), asynq.Queue("default")); err != nil {
-            log.Errorf(ctx, log.TagAppDef, "ENQUEUE failed: %v", err)
+            log.Error(ctx, log.TagAppDef, err, "ENQUEUE failed")
         }
         fmt.Println("Asynq round trip OK:", <-completed)
     }()
@@ -164,8 +164,9 @@ import starter-asynq
 gs.Run()
   ├─ bean 装配：应用 bean 按实例名 autowire *Client / *Server
   ├─ ctor newClient（starter.go）：解析 RedisConnOpt，再由 NewClient 固定服务标签
-  │    （resilience.ServiceLabel("asynq", addr)）并用注入的 manager/injector
-  │    治理包装配——无 Init 钩子
+  │    （resilience.ServiceLabel("asynq", addr)）并挂上 observer；ctor 注入必填的
+  │    *governance.Center（center），但 asynq client 没有 resilience 缝，
+  │    故它不作用于本路径——无 Init 钩子
   ├─ ctor newServer（starter.go）：asynq.NewServer(connOpt, Config{...})
   │    ——无 Init 钩子
   ├─ Rooter Init 阶段：应用 Service.Init 注册 handler（mux 惰性创建，
@@ -173,7 +174,7 @@ gs.Run()
   ├─ Runner 阶段：Server.Run——srv.Start(mux)、sig.TriggerAndWait() → 就绪，
   │    随后阻塞于 <-ctx.Done()
   └─ SIGTERM 时：Server.Stop → srv.Shutdown() 在 shutdown-timeout 内排空在途
-       任务；Destroy 也会调 Stop；Client.Destroy 关闭生产者与 resilience executor
+       任务；Destroy 也会调 Stop；Client.Destroy 关闭生产者（不持有 resilience executor）
 ```
 
 ### 2.2 源码注释中的设计理由
@@ -192,16 +193,18 @@ gs.Run()
 ### 2.3 一次任务逐层走读（投递 → 执行）
 
 1. 应用调用 **wrapper 的** `Client.Enqueue(ctx, task, opts...)`（client.go:77-91）。不要
-   调用内嵌提升的 `*asynq.Client.Enqueue`——只有 wrapper 走守护链。
+   调用内嵌提升的 `*asynq.Client.Enqueue`——只有 wrapper 在 observer 下执行这次调用。
 2. starter **声明**这次调用的身份（`operation("enqueue", task.Type())`，observe.go：
    span 名 `enqueue`、`messaging.system`/`messaging.operation` 标签、任务类型作
    `messaging.destination.name` detail），放到 ctx 上，自身不发射任何信号。
-3. executor 执行：`NewClient` 用注入的 `*resilience.Manager` 构建、并由注入的
-   `*fault.Injector` 包裹的那一个——配好治理规则源时，限流拒绝/熔断开启会在
-   **接触 Redis 之前**中止；未引入则为直通。resilience 层负责**发射**：span、call 级
-   `messaging.client.operation.duration`、attempt 级 `messaging.client.attempt.duration`
-   直方图、`messaging.client.active_requests` gauge、`resilience.client.calls` 计数器
-   与 `_app_asynq_access` 访问日志。
+3. 入队在 **observer** 下执行，而非 executor。`newClient` 注入必填的
+   `*governance.Center`（`center`）——治理家族唯一的注入点，client 正是从这一个对象上
+   读取其 resilience/fault 职权（`center.Resilience()`、`center.Fault()`）——但 asynq 生产者
+   client 没有可挂 resilience executor 的缝（client.go:57-59），故中心里的职权都不作用于本路径：
+   既不限流也不重试，服务 `asynq:<addr>` 上的限流/熔断/故障规则从不被查询。observer 负责
+   **发射**：span、call 级 `messaging.client.operation.duration`、attempt 级
+   `messaging.client.attempt.duration` 直方图、`messaging.client.active_requests` gauge、
+   `resilience.client.calls` 计数器与 `_app_asynq_access` 访问日志。
 4. `Client.EnqueueContext` 把任务写入 Redis（asynq 语义：队列/优先级由 opts 决定）。
 5. worker 的 `ServeMux` 按任务类型匹配注册的 pattern（`:` 作中间件分组分隔符），在
    `concurrency` 个槽位之一上调你的 `HandlerFunc`。
@@ -219,7 +222,7 @@ gs.Run()
 
 | Key | 类型 | 默认值 | 行为 / 联动 | 配错后果 |
 |-----|------|--------|------------|----------|
-| `spring.asynq.instances.<n>.addr` | string | — | Redis `host:port`；同时构成治理服务标签 `asynq:<addr>`。必填（`expr:"$ != ''"`）。 | 缺失 → 绑定期启动报错。 |
+| `spring.asynq.instances.<n>.addr` | string | — | Redis `host:port`；同时构成 observer 的服务标签 `asynq:<addr>`。必填（`expr:"$ != ''"`）。 | 缺失 → 绑定期启动报错。 |
 | `..username` / `..password` | string | 空 | Redis ACL 认证。 | 配错 → 运行期投递/消费失败而非启动期（健康检查能探出）。 |
 | `..db` | int | 0 | Redis 数据库编号。 | 生产者与 worker 的 db 不一致 → 任务投了却没人消费。 |
 | `..tls.*` | 块 | 关 | 共享 security（`enabled`、`cert-file`、`key-file`、`ca-file`、`server-name`、`insecure-skip-verify`）；开启时 DefaultDriver 构建 TLS RedisClientOpt（driver.go:58-77）。 | TLS 配一半 → bean 构建期报错。 |
@@ -272,11 +275,12 @@ grep -c "boom" <log>                     # handler 错误经 asynq 日志浮出
 `shutdown-timeout`（默认 8s）内排空后退出；timeout 短于任务时长则弃置（asynq 会在
 下次投递时重试——asynq 语义）。
 
-### 4.5 治理守护（可选）
+### 4.5 治理（本路径未接入）
 
-配好治理规则源后，对服务 `asynq:<addr>` 开熔断/限流：
-`Client.Enqueue` 直接返回拒绝、**不触 Redis**；提升来的 `asynq.Client` 路径则完全绕过
-守护（见 §5 第 2 行）。
+入队路径不挂 resilience executor（见 §2.3 步骤 3）：服务 `asynq:<addr>` 上的治理规则——
+限流、熔断、注入故障——从不被查询，故 `Client.Enqueue` 总会触达 Redis。`newClient` 仍注入
+必填的 `*governance.Center`（`center`，治理家族唯一的注入点），但 asynq 生产者 client
+没有可挂它的缝。
 
 ---
 
@@ -286,7 +290,7 @@ grep -c "boom" <log>                     # handler 错误经 asynq 日志浮出
 |------|----------|------|
 | 容器报 bean `a:server` 不存在 | 未开 `server.enabled`（worker 选配） | 设 `spring.asynq.instances.<n>.server.enabled=true` 或去掉注入。 |
 | 任务投了没人跑 | worker 未开启；投到 `queues` 之外的队列；生产者与 worker 不同 `db` | 对齐配置；用 `asynq.Queue("<已列出>")` 投递。 |
-| 守护/resilience 从不生效 | 调了提升的 `*asynq.Client.Enqueue/EnqueueContext` 而非 wrapper | 调 wrapper 的 `Enqueue`（client.go:71）。 |
+| 入队路径没有治理 | asynq 生产者 client 没有可挂 resilience executor 的缝，注入的 `*governance.Center` 无法作用（client.go:57-59） | 设计如此：调用只被观测（span/指标/访问日志），从不限流；观测路径请用 wrapper 的 `Enqueue`（client.go:71）。 |
 | 能投递但健康 DOWN | `default` 队列从未创建 / ACL 限制 Inspector | 健康检查固定探 `default` 队列；确认 Redis 可达与权限。 |
 | 发布丢任务 | `shutdown-timeout` 短于在途任务 | 调到高于最长任务时长。 |
 | 自定义 Driver bean 不生效 | 实例没有按名选中它，按类型注入选到了另一个 | 容器中存在多个 `Driver` bean 时，每实例按名指定：`spring.asynq.instances.<name>.driver = <bean 名>`（留空 = 先回退家族级 `spring.<family>.default.driver`，再按类型注入唯一 Driver bean；指定的 bean 不存在则启动失败）。 |
@@ -304,6 +308,7 @@ grep -c "boom" <log>                     # handler 错误经 asynq 日志浮出
 
 - 生产者与 worker 共用一份 Config，真正共用的只有 addr/认证/tls；
   concurrency/queues/shutdown-timeout 是 worker 专属 key 却放顶层。
-- 提升的 `*asynq.Client` 方法（`EnqueueContext` 等）绕过守护/观测 seam——容易误调。
+- 提升的 `*asynq.Client` 方法（`EnqueueContext` 等）绕过观测 seam——容易误调；且 ctor 注入的
+  必填 `*governance.Center` 在 asynq 生产者 client 上没有可作用的缝，本路径暂未使用该参数。
 - 实例级观测 key 只有偏离绑定默认值（brief/512/无 skip）才算"已设置"——这是按差异
   合并的代价，与 starter-s3 相同。

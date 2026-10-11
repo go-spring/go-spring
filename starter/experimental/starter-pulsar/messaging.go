@@ -23,7 +23,6 @@ import (
 
 	"github.com/apache/pulsar-client-go/pulsar"
 	"go-spring.org/cloud/messaging"
-	"go-spring.org/cloud/observability"
 	"go-spring.org/cloud/propagate"
 	"go-spring.org/cloud/traffic"
 	"go-spring.org/log"
@@ -50,14 +49,9 @@ import (
 // producer to consumer across services. All of it is a no-op without
 // starter-otel.
 //
-// prop is the process's load-test convention (nullable — nil falls back to
-// traffic.NewDefaultPropagator), carried on every producer/consumer this driver
-// hands out.
+// prop is the process.s load-test convention (required), carried on every
+// producer/consumer this driver hands out.
 func NewDriver(cl pulsar.Client, prop traffic.Propagator) messaging.Driver {
-	if prop == nil {
-		// DefaultBinding is complete, so this cannot fail.
-		prop, _ = traffic.NewDefaultPropagator(traffic.DefaultBinding())
-	}
 	return &driver{cl: cl, prop: prop}
 }
 
@@ -169,7 +163,7 @@ func (s *subscriber) Subscribe(ctx context.Context, handler messaging.Handler) e
 				if loopCtx.Err() != nil {
 					return // context cancelled by Close
 				}
-				log.Errorf(loopCtx, log.TagAppDef, err, "pulsar driver receive failed")
+				log.Error(loopCtx, log.TagAppDef, err, "pulsar driver receive failed")
 				continue
 			}
 			// Extract the load-test marker the producer put in Properties so the
@@ -179,16 +173,15 @@ func (s *subscriber) Subscribe(ctx context.Context, handler messaging.Handler) e
 			// metrics and access log from the declaration.
 			msgCtx := s.prop.Extract(loopCtx, propagate.StringMap(msg.Properties()))
 			msgCtx = extractTraceContext(msgCtx, msg.Properties())
-			msgCtx = observability.WithOperation(msgCtx, operation(opConsume, s.source))
-			herr := guard(msgCtx, s.cl, func(attemptCtx context.Context) error {
+			herr := observe(msgCtx, s.cl, operation(opConsume, s.source), func(attemptCtx context.Context) error {
 				return handler(attemptCtx, fromPulsarMsg(msg))
 			})
 			if herr != nil {
-				log.Error(msgCtx, log.TagAppDef, herr, log.String("topic", msg.Topic()), log.Msg("pulsar driver handler failed"))
+				log.Error(msgCtx, log.TagAppDef, herr, "pulsar driver handler failed", log.String("topic", msg.Topic()))
 				s.c.Nack(msg)
 			} else if err := s.c.Ack(msg); err != nil {
 				// A failed ack means the broker will redeliver the message.
-				log.Warn(msgCtx, log.TagAppDef, log.String("topic", msg.Topic()), log.Err(err), log.Msg("pulsar: ack failed, message may be redelivered"))
+				log.Warn(msgCtx, log.TagAppDef, "pulsar: ack failed, message may be redelivered", log.String("topic", msg.Topic()), log.Err(err))
 			}
 		}
 	}()

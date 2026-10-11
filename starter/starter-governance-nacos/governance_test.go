@@ -53,6 +53,7 @@ type fakeConfigClient struct {
 	mu       sync.Mutex
 	data     string
 	listens  int
+	closed   bool
 	onChange func(namespace, group, dataId, data string)
 }
 
@@ -72,6 +73,12 @@ func (f *fakeConfigClient) ListenConfig(p vo.ConfigParam) error {
 
 func (f *fakeConfigClient) CancelListenConfig(vo.ConfigParam) error { return nil }
 
+func (f *fakeConfigClient) CloseClient() {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.closed = true
+}
+
 // publish simulates a nacos config push.
 func (f *fakeConfigClient) publish(data string) {
 	f.mu.Lock()
@@ -86,7 +93,7 @@ func (f *fakeConfigClient) publish(data string) {
 func newGovTestSource(t *testing.T, data string) (*NacosSource, *fakeConfigClient) {
 	t.Helper()
 	fake := &fakeConfigClient{data: data}
-	src, err := NewNacosSource(fake, governanceSource{dataID: "governance.yaml", group: "DEFAULT_GROUP", format: "yaml"})
+	src, err := newNacosSource(fake, governanceSource{dataID: "governance.yaml", group: "DEFAULT_GROUP", format: "yaml"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -145,21 +152,26 @@ func TestNacosSource_PushChain(t *testing.T) {
 // initial document fails construction instead of arming a disabled center.
 func TestNacosSource_BadSeedFailsFast(t *testing.T) {
 	fake := &fakeConfigClient{data: "govern: {"}
-	if _, err := NewNacosSource(fake, governanceSource{dataID: "governance.yaml", format: "yaml"}); err == nil {
+	if _, err := newNacosSource(fake, governanceSource{dataID: "governance.yaml", format: "yaml"}); err == nil {
 		t.Fatal("bad initial document should fail construction")
 	}
 }
 
-// TestSourceFormat pins document-format resolution: explicit wins, else the
-// extension, else properties.
-func TestSourceFormat(t *testing.T) {
-	if got := sourceFormat("toml", "rules.yaml"); got != "toml" {
-		t.Fatalf("explicit format should win, got %q", got)
+// TestNacosSource_CloseCancelsListenAndClient pins the destroy path: Close
+// unlistsens and closes the source's own client.
+func TestNacosSource_CloseCancelsListenAndClient(t *testing.T) {
+	fake := &fakeConfigClient{data: govRulesV1}
+	src, err := newNacosSource(fake, governanceSource{dataID: "governance.yaml", group: "DEFAULT_GROUP", format: "yaml"})
+	if err != nil {
+		t.Fatal(err)
 	}
-	if got := sourceFormat("", "rules.yaml"); got != "yaml" {
-		t.Fatalf("extension should be inferred, got %q", got)
+	if err := src.Init(); err != nil {
+		t.Fatal(err)
 	}
-	if got := sourceFormat("", "rules"); got != "properties" {
-		t.Fatalf("missing extension should default to properties, got %q", got)
+	if err := src.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if !fake.closed {
+		t.Fatal("close should close the source's own client")
 	}
 }

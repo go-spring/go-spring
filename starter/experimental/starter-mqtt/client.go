@@ -122,7 +122,7 @@ func (s *subscriber) Subscribe(_ context.Context, handler messaging.Handler) err
 		if ctx == nil {
 			ctx = context.Background()
 		}
-		log.Error(ctx, log.TagAppDef, err, log.String("topic", m.Topic()), log.Msg("mqtt driver handler failed"))
+		log.Error(ctx, log.TagAppDef, err, "mqtt driver handler failed", log.String("topic", m.Topic()))
 	})
 	token.Wait()
 	return token.Error()

@@ -17,7 +17,7 @@
 // Command example demonstrates the governance self-built refresh chain: rules
 // live in their OWN file (conf/governance.yaml) watched by cloud/governance's
 // built-in file source, NOT in app.properties. Edit conf/governance.yaml while the app runs
-// (e.g. change attempt-timeout, flip enabled, add a rule) and watch the
+// (e.g. change attempt-timeout, arm a fault, add a rule) and watch the
 // printed policy change within a second — no restart, and no app-wide
 // property re-bind.
 package main
@@ -31,7 +31,9 @@ import (
 	"syscall"
 	"time"
 
+	"go-spring.org/cloud/fault"
 	"go-spring.org/cloud/governance"
+	"go-spring.org/cloud/loadbalance"
 	"go-spring.org/cloud/resilience"
 	"go-spring.org/spring/gs"
 )
@@ -55,17 +57,17 @@ func (p *printer) Run(ctx context.Context) error {
 		defer tk.Stop()
 		for i := 0; ; i++ {
 			pol := p.center.Resilience().ClientPolicyFor("demo:service")
-			fmt.Printf("policy: enabled=%v timeout=%v retries=%d rate-limit=%v", !pol.IsZero(), pol.AttemptTimeout, pol.MaxRetries, pol.RateLimit)
+			fmt.Printf("policy: enabled=%v timeout=%v retries=%d rate-limit=%v", !pol.IsZero(), pol.AttemptTimeout, pol.Retry.MaxRetries, pol.RateLimit)
 			if in := p.center.Fault(); in != nil {
 				// Both directions' fires are printed: they are independent, so the
 				// example shows one being switched without moving the other.
 				cf, sf := in.ClientConfig(), in.ServerConfig()
-				fmt.Printf(" | fault: client(enabled=%v rate=%v) server(enabled=%v rate=%v)",
-					cf.Enabled, cf.Rate, sf.Enabled, sf.Rate)
+				fmt.Printf(" | fault: client(armed=%v rate=%v) server(armed=%v rate=%v)",
+					!cf.Inert(), cf.Rate, !sf.Inert(), sf.Rate)
 			}
 			fmt.Println()
 			if i == 3 {
-				fmt.Println(">>> edit conf/governance.yaml now: policy AND fault toggle live (e.g. set client.fault.enabled=true)")
+				fmt.Println(">>> edit conf/governance.yaml now: policy AND fault toggle live (e.g. set client.fault.rate=0.5)")
 			}
 			select {
 			case <-ctx.Done():
@@ -87,7 +89,12 @@ func init() {
 	// is exactly "governance off").
 	gs.Provide(func(center *governance.Center) *printer {
 		if center == nil {
-			center = governance.NewCenter(governance.Config{}, resilience.NewManager(nil), nil, nil, nil, nil)
+			c, err := governance.NewCenter(resilience.NewManager(nil),
+				loadbalance.NewManager(), fault.NewInjector(fault.Configs{}, nil), nil, governance.NewPushSource(governance.Config{}))
+			if err != nil {
+				panic(err)
+			}
+			center = c
 		}
 		return &printer{center: center}
 	},

@@ -75,7 +75,7 @@ func NewAppConfig() *AppConfig {
 // The context carries the refresh's cancellation and trace, and is passed
 // through to the configuration providers.
 func (c *AppConfig) Refresh(ctx context.Context) (flatten.Storage, error) {
-	log.Debugf(ctx, log.TagAppDef, "refreshing configuration")
+	log.Debug(ctx, log.TagAppDef, "refreshing configuration", nil)
 
 	if err := loadDotEnv(); err != nil {
 		return nil, errutil.Explain(err, "load .env file failed")
@@ -100,7 +100,9 @@ func (c *AppConfig) Refresh(ctx context.Context) (flatten.Storage, error) {
 	if err != nil {
 		return nil, errutil.Explain(err, "resolve spring.app.config.dir failed")
 	}
-	log.Debugf(ctx, log.TagAppDef, "config directory: %s", confDir)
+	log.Debug(ctx, log.TagAppDef, "config directory", func() []log.Field {
+		return []log.Field{log.String("dir", confDir)}
+	})
 
 	if err = loadFiles(ctx, l, confDir, nil); err != nil {
 		return nil, errutil.Explain(err, "load base config files failed")
@@ -113,12 +115,14 @@ func (c *AppConfig) Refresh(ctx context.Context) (flatten.Storage, error) {
 	}
 	activeProfiles := dedupe(strings.Split(strActiveProfiles, ","))
 	if len(activeProfiles) > 0 {
-		log.Debugf(ctx, log.TagAppDef, "active profiles: %v", activeProfiles)
+		log.Debug(ctx, log.TagAppDef, "active profiles", func() []log.Field {
+			return []log.Field{log.Any("profiles", activeProfiles)}
+		})
 		if err = loadFiles(ctx, l, confDir, activeProfiles); err != nil {
 			return nil, errutil.Explain(err, "load profile config files %v failed", activeProfiles)
 		}
 	}
-	log.Debugf(ctx, log.TagAppDef, "configuration refresh complete")
+	log.Debug(ctx, log.TagAppDef, "configuration refresh complete", nil)
 
 	c.Layered.Store(l)
 	return l, nil
@@ -176,14 +180,18 @@ func loadFiles(ctx context.Context, l *flatten.LayeredStorage, dir string, activ
 		if err != nil {
 			// Don't use `os.IsNotExist`
 			if errors.Is(err, os.ErrNotExist) {
-				log.Tracef(ctx, log.TagAppDef, "config file not found, skipping: %s", filename)
+				log.Trace(ctx, log.TagAppDef, "config file not found, skipping", func() []log.Field {
+					return []log.Field{log.String("file", filename)}
+				})
 				continue
 			}
-			log.Errorf(ctx, log.TagAppDef, err, "load config file %s failed", filename)
+			log.Error(ctx, log.TagAppDef, err, "load config file failed", log.String("file", filename))
 			return errutil.Explain(err, "load config file %s failed", filename)
 		}
 
-		log.Debugf(ctx, log.TagAppDef, "loaded config file: %s", filename)
+		log.Debug(ctx, log.TagAppDef, "loaded config file", func() []log.Field {
+			return []log.Field{log.String("file", filename)}
+		})
 
 		// Add the file to the layered storage
 		if activeProfiles == nil {
@@ -222,7 +230,9 @@ func loadFileImports(ctx context.Context, l *flatten.LayeredStorage, p *flatten.
 		if err != nil {
 			return errutil.Explain(err, "load import file %s failed", str)
 		}
-		log.Debugf(ctx, log.TagAppDef, "loaded imported config file: %s", str)
+		log.Debug(ctx, log.TagAppDef, "loaded imported config file", func() []log.Field {
+			return []log.Field{log.String("file", str)}
+		})
 		if activeProfiles == nil {
 			l.AddStorage(flatten.StorageAppFile, flatten.NewPropertiesStorage(c), str)
 		} else {

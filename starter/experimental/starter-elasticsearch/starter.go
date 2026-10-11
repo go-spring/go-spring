@@ -21,9 +21,7 @@ import (
 	"go-spring.org/cloud/governance"
 
 	"github.com/elastic/go-elasticsearch/v8/esapi"
-	"go-spring.org/cloud"
 	"go-spring.org/cloud/actuator/health"
-	"go-spring.org/cloud/mesh"
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
@@ -80,40 +78,40 @@ func init() {
 // cluster fails fast rather than on first use; the probe is off by default, so a
 // cluster that is not up yet does not block startup.
 //
-// When c.ServiceName is set and mesh mode is off, a by-name loader is built
-// against backend (the discovery backend the entry's ${discovery} label
-// resolved to), its current live endpoint snapshot is turned into
-// "scheme://host:port" node addresses, and those override c.Addresses. This read
-// is the fail-fast probe and the seed; the live feed is the connection pool
-// DefaultDriver installs over the same resolver, so cluster membership keeps
-// following the naming service (see pool.go). In mesh mode the sidecar owns
-// discovery+LB, so the static Addresses (or CloudID) are used unchanged. See
-// Config.ServiceName.
+// When c.ServiceName is set and mesh mode is off, the driver builds a by-name
+// loader against the discovery backend the entry's ${discovery} label names,
+// its current live endpoint snapshot is turned into "scheme://host:port" node
+// addresses, and those override c.Addresses. This read is the fail-fast probe
+// and the seed; the live feed is the connection pool DefaultDriver installs over
+// the same resolver, so cluster membership keeps following the naming service
+// (see pool.go). In mesh mode the sidecar owns discovery+LB, so the static
+// Addresses (or CloudID) are used unchanged. See Config.ServiceName.
+//
+// discoveryLabel is the entry's ${discovery} label (already carrying the family
+// default). It is folded into the config so the driver resolves the backend
+// itself — see the fold below.
 //
 // center is the governance center the container injects (nil in a standalone,
-// non-gs call) — the family's sole injection point; the ctor reads the
-// resilience and fault authorities from it and resolves the entry's ${discovery}
-// label against its directory, bundling them — together with the backend —
-// into the [cloud.ClientParams] it hands the driver, which passes it
-// to [NewClient]: the client is assembled complete in one step, with the zero
-// bundle degrading to an observed-only, loudly-unmanaged executor.
+// non-gs call) — the family's sole injection point; the ctor hands the center
+// straight to the driver, which passes it to [NewClient]: the client is
+// assembled complete in one step, with the resilience manager required: the
+// container supplies it via the governance center, so a center without one fails
+// at construction.
 func newClient(ctx *gs.ContextProvider, c Config, discoveryLabel string, d Driver,
 	center *governance.Center) (*Client, error) {
-	backend, _ := center.Discovery().Get(discoveryLabel)
-	if c.ServiceName != "" && !mesh.Enabled() {
-		addrs, err := resolveAddresses(ctx.Context, c, backend)
-		if err != nil {
-			return nil, err
-		}
-		c.Addresses = addrs
+	// The wiring tag applies the family-default discovery fallback (discoveryLabel);
+	// fold it into the config so the driver reads one label — c.Discovery — and
+	// resolves the backend itself, failing construction if it names no bean. "none"
+	// is the tag's sentinel for "no backend" and is left as an empty c.Discovery.
+	if discoveryLabel != "" && discoveryLabel != "none" {
+		c.Discovery = discoveryLabel
 	}
 
 	// No company Driver bean → fall back to the bundled default assembly.
 	if d == nil {
 		d = DefaultDriver{}
 	}
-	client, err := d.CreateClient(ctx.Context, c,
-		cloud.ClientParams{Resilience: center.Resilience(), Fault: center.Fault(), Discovery: backend})
+	client, err := d.CreateClient(ctx.Context, c, center)
 	if err != nil {
 		return nil, errutil.Explain(err, "failed to create elasticsearch client")
 	}

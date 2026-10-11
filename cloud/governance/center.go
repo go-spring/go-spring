@@ -22,13 +22,15 @@
 // carried so a client has one injection point for everything it needs, not a
 // fourth policy.
 //
-// The division of labour is deliberate. This package owns the DOCUMENT: the
-// rule list, the label matching, the source handling. The module packages own
-// what to DO with a resolved policy: the executor cache, the driver directory,
-// the pool subscriptions, the injector state. A module never imports this
-// package; the center reaches it through a plain function type each module
-// declares for itself ([resilience.Settings.ResolveClientPolicy], [loadbalance.Settings.
-// Resolve]) — which is what keeps the modules usable — and testable — without a
+// The division of labour is deliberate. This package owns the DOCUMENT: the rule
+// list, the source handling, the duplicate-label rejection. The module packages
+// own the label MATCHING and what to DO with a matched policy: the executor
+// cache, the driver directory, the pool subscriptions, the injector state. A
+// module never imports this package — the center PUSHES each one its own data
+// (its own rule type plus a default, see [Center.dispatch]) and the module
+// matches labels itself. Every authority is driven the same way, fault included;
+// the three translators in dispatch are the only place that knows both
+// vocabularies. That is what keeps a module usable — and testable — without a
 // governance center at all.
 //
 // The center is container-free: it imports no IoC concept. The gs wiring (the
@@ -59,15 +61,15 @@ package governance
 
 import (
 	"context"
-	"sync"
 	"sync/atomic"
 
+	"go-spring.org/cloud/chain"
 	"go-spring.org/cloud/discovery"
 	"go-spring.org/cloud/fault"
 	"go-spring.org/cloud/loadbalance"
+	"go-spring.org/cloud/observability"
 	"go-spring.org/cloud/resilience"
 	"go-spring.org/log"
-	"go-spring.org/stdlib/errutil"
 )
 
 // Center is the runtime governance authority. It holds an atomic snapshot of the
@@ -94,56 +96,53 @@ type Center struct {
 	inj  *fault.Injector
 	disc *discovery.Manager
 
-	// live guards [Center.GoLive] against a second run — gs reaches it through
-	// the bean's Init hook and a test may call it directly on top of that — since
-	// re-dispatching would re-notify every subscriber for no reason. It also
-	// gates [Center.OnReady], which queues callbacks until it flips.
-	live atomic.Bool
-
-	// readyMu guards readyCbs, the [Center.OnReady] callback queue. OnReady is a
-	// cold path (startup registration), so a plain mutex is fine; it closes the
-	// race between a late OnReady and markLive: whichever wins, each callback
-	// runs exactly once — either from the queue at GoLive time or immediately.
-	readyMu  sync.Mutex
-	readyCbs []func()
-
-	// srcMu guards src; the handle indirection is what makes source
-	// replacement safe: callbacks from a REPLACED source are dropped by
-	// comparing handle pointers (never interface values, which can panic on
-	// non-comparable dynamic types), because a replaced source cannot always
-	// be unsubscribed — so stale callbacks must no-op instead of retracted.
-	srcMu sync.Mutex
-	src   *sourceHandle // active source; nil until the constructor or SetSource binds one
+	// src is the bound [Source], set once at construction (the container's
+	// contribution) and never replaced — Close reads it on teardown. With no
+	// replacement there is no stale-callback race to guard.
+	src Source
 }
 
-// sourceHandle tokens the active [Source] so callbacks from a REPLACED source
-// can be identified and dropped without comparing interface values (which can
-// panic on non-comparable dynamic types).
-type sourceHandle struct{ src Source }
-
-// NewCenter builds a Center over the module authorities and, when src is
-// non-nil, immediately binds it as the active source: the center is born with
-// the source the container contributed, exactly as the authorities arrive as
-// constructor parameters.
+// NewCenter builds a Center over the module authorities and arms it in the same
+// breath: the source's snapshot is dispatched into the module authorities right
+// here, and a document that cannot serve (a duplicate label, an unusable driver)
+// fails the constructor, which is where the wiring can fail startup.
 //
-// The container ALWAYS passes one — the bean's constructor declares src
-// required, so a process with no Source bean fails startup rather than running
-// with governance silently off. The nil branch exists for a hand-built center
-// (an embedder, a test): it leaves the center with no source at all, where
-// [Center.SetSource] is the only way in and a center with neither stays disabled
-// (every client resolves a transparent pass-through).
+// src is bound for life, exactly as the authorities arrive as constructor
+// parameters, and it is REQUIRED: the container ALWAYS passes one — the bean's
+// constructor declares src required, so a process with no Source bean fails
+// startup rather than running with governance silently off. A hand-built center
+// (an embedder, a test) passes one too: a caller that wants to hand over a single
+// fixed document and never see a push wraps it in a [PushSource], so the initial
+// document always comes from src.Snapshot() — there is no second entry point.
 //
-// The cfg is adopted atomically; callers mutate it only via [Center.adopt]. The
-// authorities are owned by the caller — the wiring starter, or a test — so the
-// same instances can also be registered as beans for clients to inject.
-func NewCenter(cfg Config, res *resilience.Manager, lb *loadbalance.Manager,
-	inj *fault.Injector, disc *discovery.Manager, src Source) *Center {
-	c := &Center{res: res, lb: lb, inj: inj, disc: disc}
-	c.cfg.Store(&cfg)
-	if src != nil {
-		c.bindSource(src)
+// The authorities are owned by the caller — the wiring starter, or a test — so
+// the same instances can also be registered as beans for clients to inject.
+func NewCenter(res *resilience.Manager, lb *loadbalance.Manager,
+	inj *fault.Injector, disc *discovery.Manager, src Source) (*Center, error) {
+	c := &Center{res: res, lb: lb, inj: inj, disc: disc, src: src}
+	src.Subscribe(func(ctx context.Context, cfg Config) {
+		c.adopt(ctx, cfg)
+	})
+	initial := src.Snapshot()
+	if err := c.dispatch(context.Background(), initial); err != nil {
+		return nil, err
 	}
-	return c
+	logApplied(context.Background(), initial)
+	return c, nil
+}
+
+// NewProcessCenter builds a Center for a process that has no governance document
+// — an embedder or a test that wants the resilience and fault authorities behind
+// the one injection point a client already takes, without a rule list to serve.
+// The load-balance authority is a fresh empty manager and the discovery directory
+// is absent; callers that route by service name must join a [Center] built over a
+// real directory instead.
+//
+// It is [NewCenter] over an empty [PushSource]: the authorities are armed against
+// an empty document, so nothing is governed and every label falls through to its
+// default — exactly the behaviour of a process configured with no rules.
+func NewProcessCenter(res *resilience.Manager, inj *fault.Injector) (*Center, error) {
+	return NewCenter(res, loadbalance.NewManager(), inj, nil, NewPushSource(Config{}))
 }
 
 // Resilience returns the resilience authority the center distributes to. The
@@ -152,17 +151,33 @@ func NewCenter(cfg Config, res *resilience.Manager, lb *loadbalance.Manager,
 // instead of wiring each authority bean in separately. The bean is registered
 // by the cloud/governance package itself and always instantiated (it exports as
 // a gs.Rooter), so a successfully started app never holds a nil Center.
+//
+// A nil *Center reads as nil authorities, exactly as a zero construction bundle
+// did before the center was the one injection point: a caller that never routes
+// through an authority (a hand-built client, a test) may pass nil and only the
+// authority it actually reaches for must be present. The composition helpers
+// ([Center.ExecutorFor] / [Center.PolicyFor]) still require a resilience manager
+// and panic without one, since a client is never assembled unprotected.
 func (c *Center) Resilience() *resilience.Manager {
+	if c == nil {
+		return nil
+	}
 	return c.res
 }
 
 // Fault returns the fault-injection authority; see [Center.Resilience].
 func (c *Center) Fault() *fault.Injector {
+	if c == nil {
+		return nil
+	}
 	return c.inj
 }
 
 // Loadbalance returns the endpoint-selection authority; see [Center.Resilience].
 func (c *Center) Loadbalance() *loadbalance.Manager {
+	if c == nil {
+		return nil
+	}
 	return c.lb
 }
 
@@ -171,251 +186,245 @@ func (c *Center) Loadbalance() *loadbalance.Manager {
 // center holds it so a client reaches discovery through the same injection point
 // it reaches everything else.
 func (c *Center) Discovery() *discovery.Manager {
+	if c == nil {
+		return nil
+	}
 	return c.disc
 }
 
-// GoLive completes the center's startup: it distributes the CURRENT snapshot to
-// the module authorities and marks the authority live (firing any [OnReady]
-// callbacks). Idempotent — a second call is a no-op.
+// ExecutorFor returns the executor a client of the given system, labelled
+// service, runs its calls on. It is the ONE place the observe layer and the
+// governance layer are composed — the center names observability, the resilience
+// authority names neither it nor the center, so the two packages stay
+// independent and this composition is all that ties them. It is the composition a
+// client's constructor needs in one call, so no driver repeats it, on the one
+// object a client already injects.
 //
-// An enabled center whose configured driver resolves to nothing is a wiring
-// error, not a runtime one: the name is latched per service at first resolve, so
-// reporting it here — where the wiring can fail startup — beats silently serving
-// a pass-through center. (A disabled center builds no executor, so it is not
-// checked.) On such an error the authority is left NOT live, so [OnReady]
-// callbacks do not fire for a center that cannot serve.
-func (c *Center) GoLive() error {
-	if !c.live.CompareAndSwap(false, true) {
-		return nil
+// The layers are stacked fault(observe(resilience-executor)): the observer wraps
+// the resilience manager's handle (so a rejected or failed call is still traced,
+// measured and logged), and fault injection wraps that. The observe wrapper
+// reaches the breaker through the handle's [resilience.BreakerEventListenerSetter],
+// so breaker transitions still emit.
+//
+// "system" is the client's backend name ("memcached", "redigo", ...), which
+// clients also declare in their operations; it is a parameter rather than state
+// because one center serves every kind of client.
+func (c *Center) ExecutorFor(system, label string) chain.Executor {
+	exec := observability.WrapClientExecutor(c.resilienceOrUnarmed().ClientExecutorFor(system, label), system, label)
+	if c == nil || c.inj == nil {
+		// A nil center is the standalone case a caller normalized away: there is no
+		// governance, so there is no fault layer either — but observation is
+		// unconditional, so the call is still traced and measured.
+		return exec
 	}
-	if err := c.dispatch(*c.cfg.Load()); err != nil {
-		return err
-	}
-	c.markLive()
-	return nil
+	return fault.WrapClientExecutor(exec, label, c.inj)
 }
 
-// markLive fires every callback queued via [Center.OnReady]. The CompareAndSwap
-// in [Center.GoLive] guarantees exactly-once firing; callbacks run outside
-// readyMu so a callback may itself call OnReady (which now fires immediately)
-// without self-deadlocking.
-func (c *Center) markLive() {
-	c.readyMu.Lock()
-	cbs := c.readyCbs
-	c.readyCbs = nil
-	c.readyMu.Unlock()
-	for _, cb := range cbs {
-		cb()
-	}
+// ServerExecutorFor is [Center.ExecutorFor] for the inbound direction: the
+// inbound executor an endpoint of the given system, labelled route, runs its
+// requests under, wrapped for observation. There is no fault layer inbound (fault
+// injection is outbound only), so the stack is observe(resilience-inbound).
+//
+// It exists so an inbound middleware reaches the same one composition point the
+// outbound clients do, instead of wiring the observe wrapper itself; the
+// resilience authority's [resilience.Manager.ServerExecutorFor] returns the bare
+// handle, which this wraps.
+func (c *Center) ServerExecutorFor(system, label string) chain.Executor {
+	return observability.WrapServerExecutor(c.resilienceOrUnarmed().ServerExecutorFor(system, label), system, label)
 }
 
-// Live reports whether the center has completed [Center.GoLive].
-func (c *Center) Live() bool { return c.live.Load() }
+// resilienceOrUnarmed returns the resilience authority, or a fresh unarmed one
+// when the center (or its authority) is absent. It normalizes the standalone case
+// the same way the module accessors do: a transparent pass-through executor keeps
+// the caller's code shape uniform, and the observe wrapper above still applies.
+func (c *Center) resilienceOrUnarmed() *resilience.Manager {
+	if c == nil || c.res == nil {
+		return resilience.NewManager(nil)
+	}
+	return c.res
+}
 
-// OnReady registers cb to fire exactly once when this center goes live. If it is
-// already live, cb fires immediately.
+// PolicyFor returns the policy governing the labelled service.
 //
-// It exists because gs wires Rooters before Runners, so a push-based caller (a
-// dubbo adapter, a Rooter) may initialize before the wiring starter (also a
-// Rooter) has completed GoLive; OnReady guarantees the caller re-runs its work
-// once governance is live, without depending on bean order. The callback belongs
-// to the center rather than the package because "governance is live" is a
-// property of the center that went live, not of the process at large.
-func (c *Center) OnReady(cb func()) {
-	if c.live.Load() {
-		cb()
-		return
-	}
-	c.readyMu.Lock()
-	if c.live.Load() { // went live while we waited on the lock: fire now
-		c.readyMu.Unlock()
-		cb()
-		return
-	}
-	c.readyCbs = append(c.readyCbs, cb)
-	c.readyMu.Unlock()
+// A driver needs it for the one policy field that cannot reach a running
+// executor: [resilience.ClientPolicy.MaxConns] sizes the connection pool, and a
+// pool is built once, when the client is constructed. Everything else the policy
+// carries is adopted by the executor on refresh and needs no lookup here.
+func (c *Center) PolicyFor(label string) resilience.ClientPolicy {
+	return c.res.ClientPolicyFor(label)
 }
 
 // adopt applies one config from whatever source: it fans resilience and
 // selection out via the module authorities AND swaps the fault injector's
 // config. It is the single sink for ALL source pushes, which is what keeps the
 // fault chain source-agnostic — fault.Config always rides inside [Config], so any
-// Source drives it for free. A push is a fleet-wide policy change, so it always
-// leaves an Info line: the sources log only their own failures, not what actually
-// took effect.
+// Source drives it for free.
 //
-// A push that names an unusable driver is not fatal — unlike at startup, the
-// process is already serving, so the push is adopted and the affected services
-// fall back to a pass-through, with the error logged.
+// A push that cannot serve is not fatal — unlike at startup, the process is
+// already serving, so the document is rejected and the last good one keeps
+// serving in EVERY authority, with the error logged. That is the whole of the
+// difference from the constructor: both run the same two-phase [Center.dispatch],
+// but a startup failure aborts the process where a push only logs.
+//
+// The [logApplied] line is printed only on the success path: a rejected document
+// took effect nowhere, so claiming "policy applied" would misreport what the
+// process is running on.
 func (c *Center) adopt(ctx context.Context, cfg Config) {
-	if err := c.dispatch(cfg); err != nil {
-		log.Warn(ctx, log.TagAppDef,
-			log.Err(err),
-			log.Msg("governance: policy applied with an unusable driver; affected services fall back to pass-through"))
+	if err := c.dispatch(ctx, cfg); err != nil {
+		log.Warn(ctx, log.TagAppDef, "governance: document rejected; the last good policy keeps serving",
+			log.Err(err))
+		return
 	}
-	log.Info(ctx, log.TagAppDef,
-		log.Bool("enabled", cfg.Enabled),
-		log.String("driver", cfg.Driver),
-		log.Int("client_rules", len(cfg.Client.Rules)),
-		log.Int("server_rules", len(cfg.Server.Rules)),
-		log.Bool("client_fault", cfg.Client.Fault.Enabled),
-		log.Bool("server_fault", cfg.Server.Fault.Enabled),
-		log.Msg("governance: policy applied"))
+	logApplied(ctx, cfg)
 }
 
-// dispatch stores cfg and hands each module its own slice of the document. A
-// document whose Rules repeat a service label is rejected before the store —
-// the previous snapshot keeps serving — because a duplicate makes which entry
-// wins a matter of list order, an accident the operator cannot see. Otherwise
-// the store happens FIRST, so the resolver closures the modules call observe
-// the new document by the time the modules re-evaluate their subscribers.
-func (c *Center) dispatch(cfg Config) error {
+// logApplied is the one Info line marking a document taking effect: what the
+// process now runs on, whether it arrived at startup or on a push. It is called
+// on the SUCCESS path only, so a rejected document never produces it — the
+// sources log only their own failures, not what actually took effect.
+func logApplied(ctx context.Context, cfg Config) {
+	log.Info(ctx, log.TagAppDef, "governance: policy applied",
+		log.Int("client_rules", len(cfg.Client.Rules)),
+		log.Int("server_rules", len(cfg.Server.Rules)),
+		// Whether a direction's fault fire is armed, derived from the config
+		// (there is no enabled flag to read; see fault.Config.Inert).
+		log.Bool("client_fault", !cfg.Client.Fault.Inert()),
+		log.Bool("server_fault", !cfg.Server.Fault.Inert()))
+}
+
+// Validate reports whether cfg could take effect, WITHOUT disturbing anything:
+// it is [Center.dispatch]'s first phase, exported for a caller that wants to
+// reject a bad document before it reaches the center — a console form checked
+// before it is pushed, a rules file vetted before it is handed to a source.
+//
+// A document fails on any of: a Rule list repeating a service label (a duplicate
+// makes which entry wins a matter of list order, an accident the operator cannot
+// see), or a Selection naming no registered strategy. Every check runs against
+// the authorities this center holds, so the verdict cannot drift from what
+// dispatch would do.
+//
+// It reads only immutable state — the authorities' registries and cfg itself — so
+// it takes no lock and is safe to call concurrently, even while a push is being
+// dispatched.
+func (c *Center) Validate(cfg Config) error {
 	if err := validateClientRules(cfg.Client.Rules); err != nil {
 		return err
 	}
 	if err := validateServerRules(cfg.Server.Rules); err != nil {
 		return err
 	}
+	return loadbalance.Validate(selectionSettings(cfg))
+}
+
+// dispatch applies cfg in two phases, so that a document either takes effect
+// WHOLE or not at all: phase 1 asks [Center.Validate] whether it can serve, and
+// only then does phase 2 store the snapshot and hand each module its own slice.
+// Nothing in phase 2 can fail, so the snapshot and all three authorities always
+// move together — the previous document keeps serving, in every authority, when
+// a push is rejected.
+//
+// Each module receives DATA, not a way to ask: the rules are translated into the
+// module's own types here and pushed whole, after which the module owns the
+// label matching. That is the same shape fault already had, so all three
+// authorities are driven identically — the center owns the document, the modules
+// own what to do with it. The translators below are the only place that knows
+// both vocabularies.
+//
+// ctx is threaded to the module authorities so a rejected push logs under the
+// source's trace context.
+func (c *Center) dispatch(ctx context.Context, cfg Config) error {
+	// Phase 1 — validate. A document that cannot serve is rejected before any
+	// authority is touched.
+	if err := c.Validate(cfg); err != nil {
+		return err
+	}
+
+	// Phase 2 — commit. Nothing here can fail: the document carries policies only
+	// (the backend is a startup choice), so Apply's error is always nil and is
+	// discarded on purpose rather than re-checked.
 	c.cfg.Store(&cfg)
-	err := c.res.Apply(resilience.Settings{
-		Enabled:             cfg.Enabled,
-		Driver:              cfg.Driver,
-		ResolveClientPolicy: c.clientPolicyFor,
-		ResolveServerPolicy: c.serverPolicyFor,
-	})
-	c.lb.Apply(loadbalance.Settings{
-		Enabled: cfg.Enabled,
-		Resolve: c.clientSelectionFor,
-	})
+	c.res.Apply(resilienceSettings(cfg))
+	c.lb.Apply(ctx, selectionSettings(cfg))
 	c.inj.SetConfig(fault.Configs{
 		Client: cfg.Client.Fault,
 		Server: cfg.Server.Fault,
 	})
-	return err
-}
-
-// bindSource makes s the active source: install its handle, subscribe with a
-// stale guard (callbacks from a previously bound source no-op), then adopt s's
-// snapshot. The explicit snapshot adopt matches the [Source] contract that
-// Subscribe delivers changes only — Snapshot seeds the present.
-func (c *Center) bindSource(s Source) {
-	h := &sourceHandle{src: s}
-	c.srcMu.Lock()
-	c.src = h
-	c.srcMu.Unlock()
-	s.Subscribe(func(ctx context.Context, cfg Config) {
-		if !c.isActive(h) {
-			return // replaced source: drop
-		}
-		c.adopt(ctx, cfg)
-	})
-	// The priming adopt is the bind, not a change: it has no change context to
-	// carry, and its line names what it applied on its own.
-	c.adopt(context.Background(), s.Snapshot())
-}
-
-// isActive reports whether h is still the bound source handle.
-func (c *Center) isActive(h *sourceHandle) bool {
-	c.srcMu.Lock()
-	defer c.srcMu.Unlock()
-	return c.src == h
-}
-
-// SetSource binds s as the active source, replacing whatever was bound — the
-// source the constructor took, or an earlier SetSource. s.Snapshot() applies
-// immediately and later pushes drive the center, while the replaced source's
-// callbacks go stale via the handle guard. Binding eagerly (rather than
-// remembering a pending value) is what lets the standalone path — a hand-built
-// center, a test — work with nothing but this call.
-func (c *Center) SetSource(s Source) {
-	if s == nil {
-		panic(errutil.Explain(nil, "governance: SetSource(nil)"))
-	}
-	c.bindSource(s)
-}
-
-// Close closes the active source when it happens to be closeable (the [Source]
-// contract keeps Close optional — see source.go), else it is a no-op: the center
-// itself holds only an atomic snapshot. It is the shutdown counterpart to
-// [Center.GoLive], called by the wiring starter on app teardown.
-func (c *Center) Close() error {
-	c.srcMu.Lock()
-	h := c.src
-	c.srcMu.Unlock()
-	if h != nil {
-		if cl, ok := h.src.(interface{ Close() error }); ok {
-			return cl.Close()
-		}
-	}
 	return nil
 }
 
-// Enabled reports whether the center is switched on. When false, [Center.
-// clientPolicyFor] returns a transparent pass-through policy and every module stays
-// disarmed. It mirrors [resilience.Manager.Enabled], which is what a client
-// normally guards an optional governance path with — this one exists for the
-// wiring and for tests, which hold the center rather than a module authority.
-func (c *Center) Enabled() bool {
-	if cfg := c.cfg.Load(); cfg != nil {
-		return cfg.Enabled
+// resilienceSettings translates the document into the resilience authority's own
+// settings. Both the validity check and the commit build from it, so a document
+// cannot be validated against one shape and applied as another.
+func resilienceSettings(cfg Config) resilience.Settings {
+	return resilience.Settings{
+		Client: resilience.ClientSettings{
+			Default: cfg.Client.Default.ClientPolicy,
+			Rules:   resilienceClientRules(cfg.Client.Rules),
+		},
+		Server: resilience.ServerSettings{
+			Default: cfg.Server.Default,
+			Rules:   resilienceServerRules(cfg.Server.Rules),
+		},
 	}
-	return false
 }
 
-// clientServiceFor resolves label's two OUTBOUND halves together: the first Rule in the
-// client block whose Service equals the label, otherwise the client Default.
-// Resolving them in one place is what guarantees the resilience and loadbalance
-// modules answer to the same label, and it keeps the rule walk to one pass. A
-// disabled center resolves zero halves, which each module already reads as "no
-// configuration" — a pass-through executor, an untouched pool.
-//
-// The read is lock-free (one atomic pointer load), so a push is visible to the
-// next resolve without re-registering anything.
-func (c *Center) clientServiceFor(label string) (resilience.ClientPolicy, loadbalance.Selection) {
-	cfg := c.cfg.Load()
-	if cfg == nil || !cfg.Enabled {
-		return resilience.ClientPolicy{}, loadbalance.Selection{}
+// selectionSettings is [resilienceSettings] for the endpoint-selection authority:
+// the selection half of the outbound rules, which the same source entry carries
+// alongside the protection half.
+func selectionSettings(cfg Config) loadbalance.Settings {
+	return loadbalance.Settings{
+		Default: cfg.Client.Default.Selection,
+		Rules:   selectionRules(cfg.Client.Rules),
 	}
-	for _, r := range cfg.Client.Rules {
-		if r.Service == label {
-			return r.ClientPolicy, r.Selection
-		}
-	}
-	return cfg.Client.Default.ClientPolicy, cfg.Client.Default.Selection
 }
 
-// serverPolicyFor resolves label's inbound inbound model, which the resilience
-// module builds the route's inbound executor from. It is the server-side
-// counterpart of [Center.clientServiceFor] and reads the OTHER block of the document:
-// the client's Policy and the server's ServerPolicy are separate resolutions over
-// separate rules, so a label configured on one side has no bearing on the other.
-//
-// A disabled center resolves a zero ServerPolicy, which the module already reads as
-// "no configuration" — a pass-through executor, so the middleware chain stays
-// installed but never rejects.
-func (c *Center) serverPolicyFor(label string) resilience.ServerPolicy {
-	cfg := c.cfg.Load()
-	if cfg == nil || !cfg.Enabled {
-		return resilience.ServerPolicy{}
+// resilienceClientRules splits the outbound rules into the resilience half: the
+// protection knobs of each [ClientRule]. The same source entry also carries the
+// endpoint-selection half, which selectionRules takes — a governance ClientRule is
+// ONE service's configuration consumed by TWO modules.
+func resilienceClientRules(in []ClientRule) []resilience.ClientRule {
+	if len(in) == 0 {
+		return nil
 	}
-	for _, r := range cfg.Server.Rules {
-		if r.Service == label {
-			return r.ServerPolicy
-		}
+	out := make([]resilience.ClientRule, len(in))
+	for i, r := range in {
+		out[i] = resilience.ClientRule{Service: r.Service, ClientPolicy: r.ClientPolicy}
 	}
-	return cfg.Server.Default
+	return out
 }
 
-// clientPolicyFor resolves label's outbound protection policy, which the resilience
-// module builds its executor from.
-func (c *Center) clientPolicyFor(label string) resilience.ClientPolicy {
-	p, _ := c.clientServiceFor(label)
-	return p
+// resilienceServerRules is [resilienceClientRules] for the inbound block, which
+// carries no selection half.
+func resilienceServerRules(in []ServerRule) []resilience.ServerRule {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make([]resilience.ServerRule, len(in))
+	for i, r := range in {
+		out[i] = resilience.ServerRule{Service: r.Service, ServerPolicy: r.ServerPolicy}
+	}
+	return out
 }
 
-// clientSelectionFor resolves label's endpoint-selection policy, which the loadbalance
-// module drives its pools with.
-func (c *Center) clientSelectionFor(label string) loadbalance.Selection {
-	_, s := c.clientServiceFor(label)
-	return s
+// selectionRules takes the endpoint-selection half of the outbound rules.
+func selectionRules(in []ClientRule) []loadbalance.Rule {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make([]loadbalance.Rule, len(in))
+	for i, r := range in {
+		out[i] = loadbalance.Rule{Service: r.Service, Selection: r.Selection}
+	}
+	return out
+}
+
+// Close closes the bound source when it happens to be closeable (the [Source]
+// contract keeps Close optional — see source.go), else it is a no-op: the center
+// itself holds only an atomic snapshot. It is the shutdown counterpart to the
+// constructor's arming dispatch, called by the wiring starter on app teardown.
+func (c *Center) Close() error {
+	if cl, ok := c.src.(interface{ Close() error }); ok {
+		return cl.Close()
+	}
+	return nil
 }

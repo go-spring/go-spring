@@ -17,6 +17,7 @@
 package governance
 
 import (
+	"context"
 	"testing"
 
 	"go-spring.org/cloud/fault"
@@ -28,43 +29,42 @@ import (
 // push it into the injector), and the two blocks do not bleed into one another.
 // This is the structural anchor of the client/server split.
 func TestConfig_DirectionBlocks(t *testing.T) {
-	// Zero Config: both fault sides disabled, resilience disabled.
+	// Zero Config: both fault sides inert, resilience disabled.
 	var zero Config
-	if zero.Client.Fault.Enabled || zero.Server.Fault.Enabled {
-		t.Fatal("zero Config: both fault sides should be disabled")
+	if !zero.Client.Fault.Inert() || !zero.Server.Fault.Inert() {
+		t.Fatal("zero Config: both fault sides should be inert")
 	}
 	c := newTestCenter(zero)
-	if p := c.clientPolicyFor("x"); p.AttemptTimeout != 0 {
+	if p := c.res.ClientPolicyFor("x"); p.AttemptTimeout != 0 {
 		t.Fatalf("zero config policyFor: want no timeout, got %v", p.AttemptTimeout)
 	}
-	if a := c.serverPolicyFor("x"); !a.IsZero() {
+	if a := c.res.ServerPolicyFor("x"); !a.IsZero() {
 		t.Fatalf("zero config serverPolicyFor: want a zero inbound, got %+v", a)
 	}
 
 	// One fault config per side: each is preserved, and they stay independent.
 	cfg := Config{
-		Enabled: true,
 		Client: ClientConfig{
 			Default: ClientDefaultPolicy{ClientPolicy: resilience.ClientPolicy{AttemptTimeout: dur(100)}},
-			Fault:   fault.Config{Enabled: true, Rate: 0.5, Error: "generic"},
+			Fault:   fault.Config{Rate: 0.5, Error: "generic"},
 		},
 		Server: ServerConfig{
-			Fault: fault.Config{Enabled: true, Rate: 1, Error: "timeout"},
+			Fault: fault.Config{Rate: 1, Error: "timeout"},
 		},
 	}
-	if cf := cfg.Client.Fault; !cf.Enabled || cf.Rate != 0.5 || cf.Error != "generic" {
+	if cf := cfg.Client.Fault; cf.Rate != 0.5 || cf.Error != "generic" {
 		t.Fatalf("ClientConfig.Fault not preserved: %+v", cf)
 	}
-	if sf := cfg.Server.Fault; !sf.Enabled || sf.Rate != 1 || sf.Error != "timeout" {
+	if sf := cfg.Server.Fault; sf.Rate != 1 || sf.Error != "timeout" {
 		t.Fatalf("ServerConfig.Fault not preserved: %+v", sf)
 	}
 	cc := newTestCenter(cfg)
-	if p := cc.clientPolicyFor("redis:cache"); p.AttemptTimeout != dur(100) {
+	if p := cc.res.ClientPolicyFor("redis:cache"); p.AttemptTimeout != dur(100) {
 		t.Fatalf("policyFor with Fault set: want timeout 100ms, got %v", p.AttemptTimeout)
 	}
 	// An outbound-only document leaves inbound at zero: the server side does not
 	// inherit the client's knobs.
-	if a := cc.serverPolicyFor("gin:0.0.0.0:8080"); !a.IsZero() {
+	if a := cc.res.ServerPolicyFor("gin:0.0.0.0:8080"); !a.IsZero() {
 		t.Fatalf("client-only document must leave inbound zero, got %+v", a)
 	}
 }
@@ -74,15 +74,13 @@ func TestConfig_DirectionBlocks(t *testing.T) {
 // snapshot keeps serving — while several empty labels stay harmless.
 func TestDispatch_RejectsDuplicateRules(t *testing.T) {
 	good := Config{
-		Enabled: true,
 		Client: ClientConfig{
 			Rules: []ClientRule{{Service: "redis:cache"}, {Service: "redis:session"}},
 		},
 	}
-	c, _, _, _ := newTestCenterWith(good, nil)
+	c, _, _, _ := newTestCenterWith(good)
 
 	bad := Config{
-		Enabled: true,
 		Client: ClientConfig{
 			Rules: []ClientRule{
 				{Service: "redis:cache", ClientPolicy: resilience.ClientPolicy{AttemptTimeout: dur(50)}},
@@ -90,20 +88,19 @@ func TestDispatch_RejectsDuplicateRules(t *testing.T) {
 			},
 		},
 	}
-	if err := c.dispatch(bad); err == nil {
+	if err := c.dispatch(context.Background(), bad); err == nil {
 		t.Fatal("dispatch must reject a document with duplicate service labels")
 	}
 	// The previous snapshot keeps serving: the good timeout, not either duplicate.
-	if p := c.clientPolicyFor("redis:cache"); p.AttemptTimeout != 0 {
+	if p := c.res.ClientPolicyFor("redis:cache"); p.AttemptTimeout != 0 {
 		t.Fatalf("rejected push must not leak into the serving snapshot: got timeout %v", p.AttemptTimeout)
 	}
 
 	// Empty labels match nothing and are not duplicates of one another.
 	withEmpty := Config{
-		Enabled: true,
-		Client:  ClientConfig{Rules: []ClientRule{{}, {Service: "redis:cache"}}},
+		Client: ClientConfig{Rules: []ClientRule{{}, {Service: "redis:cache"}}},
 	}
-	if err := c.dispatch(withEmpty); err != nil {
+	if err := c.dispatch(context.Background(), withEmpty); err != nil {
 		t.Fatalf("empty service labels must be allowed: %v", err)
 	}
 }

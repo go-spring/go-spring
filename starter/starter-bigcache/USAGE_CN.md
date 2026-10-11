@@ -161,7 +161,7 @@ func runTest(s *Service) {
 	for i := range 4000 {
 		_ = s.Evict.Set(fmt.Sprintf("k-%d", i), big)
 	}
-	log.Infof(ctx, log.TagAppDef, "done")
+	log.Info(ctx, log.TagAppDef, "done")
 }
 ```
 
@@ -248,7 +248,7 @@ bigcache（不像 go-redis 或 gorm）不提供插件或拦截器接缝，所以
 - 原生 `*bigcache.BigCache` 是导出的 `Client` 字段——只读把手，供链构造器使用；重组链条 = 在链头外包一层自定义层，不是绕过链条的暗道。
 
 这些调用下面没有执行器：这里没有任何东西要走出进程，所以没有防护可施加，也没有值得写的访问日志。
-因此本 starter 不接治理 bean、也不要 `cloud.ClientParams`——那会是一个背后空无一物的接缝。
+因此本 starter 不接治理 bean、也不要 `*governance.Center`——那会是一个背后空无一物的接缝。
 
 ### 2.3 一次 `Get("key")` 未命中，逐层走读
 

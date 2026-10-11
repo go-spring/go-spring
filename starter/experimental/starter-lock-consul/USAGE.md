@@ -84,7 +84,7 @@ func (w *Worker) Init(ctx context.Context) {
     e := lock.NewElection(lock.ElectionConfig{
         Locker:    w.Singleton,
         Key:       "singleton-worker",
-        OnStartedLeading: func(context.Context) { log.Infof(ctx, log.TagAppDef, "elected leader") },
+        OnStartedLeading: func(context.Context) { log.Info(ctx, log.TagAppDef, "elected leader") },
     })
     go func() { _ = e.Run(ctx) }()
 }

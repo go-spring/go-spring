@@ -91,9 +91,8 @@ func main() {
 func runTest(d *Demo) {
 	ctx := context.Background()
 	fmt.Println("demo.message =", d.Message.Value())
-	log.Info(ctx, log.TagAppDef,
-		log.String("demo.message", d.Message.Value()),
-		log.Msg("config-k8s example wired"))
+	log.Info(ctx, log.TagAppDef, "config-k8s example wired",
+		log.String("demo.message", d.Message.Value()))
 	_ = syscall.Kill(os.Getpid(), syscall.SIGTERM)
 }
 

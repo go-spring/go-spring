@@ -139,21 +139,21 @@ spring.observability.metrics.port=0        # /metrics 仅经 actuator
 
 # --- 服务治理(运行期故障注入 / 熔断 / 重试)-------------------------------
 # NOTE: governance RULES go in conf/governance.properties, referenced by spring.governance.source.file.path in app.properties (see cloud/governance's SOURCE_USAGE).
-spring.governance.enabled=true
-spring.governance.driver=default
+spring.resilience.driver=default
 spring.governance.client.default.error-threshold=20
 spring.governance.client.default.open-duration=5s
 spring.governance.client.default.max-retries=1
 spring.governance.client.default.attempt-timeout=500ms
 # 端点选择走同一个标签：`gorm:mysql:orders-db` 命中的 spring.governance.client.rules[N].balancer /
-# outlier-threshold / outlier-suspend-for 原地驱动该 entry 的池
+# outlier-threshold / outlier-suspend-for 会整条重建该 entry 的链路
 # （见 cloud/governance/README.md §3.1）。
 ```
 
-每个走发现拨号的方言都给池挂上 suspension tracker，并经 `lbMgr.Bind(pool, label)` 绑到
+每个走发现拨号的方言都给链路挂上 suspension tracker，并在
+`lbMgr.Chain(resolver, label)` 调用时注册到
 该 entry 的服务标签——`*loadbalance.Manager` bean 注入模块构造函数后一路传到方言的 `Build`——
 也就是它保护策略用的同一个标签——于是 `balancer` / `outlier-threshold` /
-`outlier-suspend-for` 原地生效，不用重启、不用重建客户端。dialer 能拿到的成败信号只有拨号本身，
+`outlier-suspend-for` 会**整条重建**（全新的 balancer、tracker 与池），不用重启、不用重建客户端。dialer 能拿到的成败信号只有拨号本身，
 所以 `outlier-threshold` 摘的是**反复连不上**的实例；查询失败归 resilience executor 管。直连
 （只配 `addr`/`host`）的 entry 没有候选集，这些 key 对它无效。
 
@@ -214,27 +214,28 @@ customizer、observe 插件、治理)都会让该实例创建失败并执行方�
 
 ```
 gorm:query processor 链
-  1. go-spring:observe:declare_query  在共用同一 statement 的 session 上"空跑"方言自己的
-                                      gorm:query 主体——SQL 被构造但不执行;随后把操作
-                                      身份(名称、db.system/db.operation、db.statement、
-                                      访问 tag)声明到本次调用的 ctx 上
-  2. gorm:query  ← 已被 resilience wrapper 替换——唯一发射点:
+  gorm:query  ← 已被 resilience wrapper 替换——唯一发射点:
+        op := plugin.Operation(tx, "query")  // observe 在共用同一 statement 的 session 上
+                                             // "空跑"方言自己的 gorm:query 主体——SQL 被构造
+                                             // 但不执行(名称、db.system/db.operation、
+                                             // db.statement、访问 tag)
         resilience.Run(ctx, exec, op)
           ├─ 准入(限流 / 舱壁,若已配置)
           ├─ fault 注入器(spring.governance.client.fault.*——可能短路本次尝试)
           ├─ timeout / breaker / retry 包络
           ├─ 原始 gorm:query 主体:复用已构造的 SQL、执行、应用 gorm 自身
           │  logger(慢查询 warn,见 slow-threshold)
-          └─ 从 ctx 读回声明的操作并发射信号:call span、
+          └─ 依据显式传给 executor 的操作发射信号:call span、
              db.client.operation.duration、attempt 级 db.client.attempt.duration、
              db.client.active_requests,以及那一条访问日志
 ```
 
 设计理由(源码注释核对):
 
-- **插件只声明,resilience 层发射**(observe/plugin.go):observe 插件把
-  `observability.Operation` 放到调用的 ctx 上,仅此而已。信号由包住 `gorm:query` 的
-  resilience wrapper 发射——executor 链条上唯一能看到整次调用(含重试)的位置——
+- **插件构造操作,resilience 层发射**(observe/plugin.go):observe 插件构造
+  `chain.Operation`,仅此而已。包住 `gorm:query` 的 resilience wrapper 向插件索取
+  该操作(`Plugin.Operation`)并显式传给 executor。信号由该 wrapper 发射——
+  executor 链条上唯一能看到整次调用(含重试)的位置——
   因此整个客户端家族只有一个发射点,不存在重复的 span / metric / 日志。
 - **SQL 靠空跑取得,不重复构造**(observe/plugin.go):gorm 在 resilience 层包裹的那个
   `gorm:query` processor 内部才构造语句,声明时点并不知道它。插件在 `Initialize` 时
@@ -249,10 +250,10 @@ gorm:query processor 链
 - **拒绝错误传播**(resilience/callbacks.go:76-83):resilience 拒绝(限流/熔断开/
   舱壁满)或 fault 注入错误会写到 `tx.Error`;真实操作错误保持 gorm 原样。
 - **治理关闭时零开销**:治理 bean 始终存在(本 starter 传递链接 cloud/governance,治理 bean 由各自的拥有包注册),
-  故"关闭"指 manager 未装弹(`spring.governance.enabled=false` / 无规则源),其解析出的
-  executor 是透明直通——回调仍包裹但无任何行为,链路留在原地不产生成本。若以零值
-  governance 打开(手搓客户端、example、测试),则得到 `resilience.Unmanaged`:仅观测,
-  并一次性警告"无保护生效"。
+  故"关闭"指 manager 未装弹(无匹配规则 / 无规则源),其解析出的
+  executor 是透明直通——回调仍包裹但无任何行为,链路留在原地不产生成本。resilience manager
+  必填——手搓的客户端(example、测试)也必须提供一个,因为容器始终提供;不带 manager 打开 DB
+  是装配错误,而不是优雅降级。
 
 ### 2.3 事务
 
@@ -273,7 +274,7 @@ gorm:query processor 链
 | `conn-max-lifetime` | duration | 0 | `>0` → `SetConnMaxLifetime`;0 = 不限。 | 0 且 LB 静默丢弃空闲连接 → 运行中期报 stale connection。 |
 | `conn-max-idle-time` | duration | 0 | `>0` → `SetConnMaxIdleTime`;0 = 不限。 | 主要与上面 lifetime 联动。 |
 | `ping-timeout` | duration | 5s | 启动 ping(`PingContext`)的时限——仅 `ping=true` 时执行。`<=0` 回落 5s。 | 太小 → 冷启动 DB 时启动失败;太大 → DB 宕机时启动缓慢。 |
-| `slow-threshold` | duration | 0 | `>0` 安装 warn 级 gorm 慢查询 logger,输出经 **go-spring.org/log**(`log.Warnf`,TagAppDef)转发——进配置的 appender,而非裸 stdout。0 保持 gorm 默认 logger。⚠ 消息体是 GORM 的单行文本,不是结构化字段。 | 0 → 完全没有慢日志;要结构化字段 → 消息体是纯文本(改用访问日志)。 |
+| `slow-threshold` | duration | 0 | `>0` 安装 warn 级 gorm 慢查询 logger,输出经 **go-spring.org/log**(`log.Warn`,TagAppDef)转发——进配置的 appender,而非裸 stdout。0 保持 gorm 默认 logger。⚠ 消息体是 GORM 的单行文本,不是结构化字段。 | 0 → 完全没有慢日志;要结构化字段 → 消息体是纯文本(改用访问日志)。 |
 | `service-name` | string | — | 切换为服务发现寻址:方言绑定 discovery 拨号器,每条新连接到达存活实例。设置后 `addr` 被忽略(示例故意用 dummy `0.0.0.0:0` 证明)。mesh 模式(`GS_MESH_MODE=on`)下 sidecar 接管发现,`addr` 原样使用。 | 不设且无 `addr` → 方言构建报错("one of addr or service-name must be set")。 |
 | `scheme` | string | — | 把发现收窄到单一传输 scheme(如 `tls`)。⚠ 未设 `service-name` 时为死 key(仅在此时被读取)。 | 设了但无 service-name → 静默忽略。 |
 | `discovery` | string | — | 选择解析 `service-name` 的已注册 discovery 后端。未配置时回退 `${spring.gorm.<dialect>.default.discovery}`。⚠ 未设 `service-name` 时为死 key。 | service-name 已设但两层都未配置或名字无对应 bean → 启动报错；设了但无 service-name → 静默忽略。 |
@@ -346,8 +347,8 @@ health.go:33-35),因此探针失败不会触发 resilience 熔断。
 用 §1 的治理配置加文件 source(见 cloud/governance 的 SOURCE_USAGE_CN.md)或 example-load 布局
 (`starter-gorm-mysql/example-load`):
 
-1. 以 `spring.governance.client.fault.enabled=false` 启动;基线查询全部成功。
-2. 翻转 `spring.governance.client.fault.enabled=true`(配 `rate`、`error`)——治理 source 热加载。
+1. 不配 `spring.governance.client.fault.rate` 启动;基线查询全部成功。
+2. 配上 `spring.governance.client.fault.rate`(以及 `error`)——治理 source 热加载。
 3. 被注入的尝试在 SQL 执行前短路:注入错误落到 `tx.Error`,熔断计数,resilience 层仍
    记录失败操作——可以在访问日志和 `db.client.operation.duration` 的错误 status 桶
    里观察"火情"。

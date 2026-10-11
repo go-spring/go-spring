@@ -149,11 +149,10 @@ spring.governance.source.file.path=conf/governance.yaml
 ```yaml
 spring:
   governance:
-    enabled: true
+    driver: default
     server:
       fault:
-        enabled: false        # 改成 true 即"点火"，无需重启
-        rate: 0.2
+        # rate: 0.2           # 配上 rate 即"点火"，无需重启
         error: timeout
         scope: loadtest       # 只有带 X-LoadTest 标记的流量受影响
 ```
@@ -321,9 +320,9 @@ curl -i 127.0.0.1:9370/readyz    # actuator 就绪（需加 starter-actuator）
 
 ### 4.4 故障演练（免重启）
 
-1. 按 §1 启动（`fault.enabled: false`）。
+1. 按 §1 启动（不设 `fault.rate`，注入为空）。
 2. 打基线流量：`curl 127.0.0.1:8003/echo/x` → 全 200。
-3. 把文件里 `fault.enabled` 改 `true`——治理 source 热更新。
+3. 把文件里 `fault.rate` 配上 `0.2`——治理 source 热更新。
 4. 标记流量着火、正常流量无感：
 
 ```bash
