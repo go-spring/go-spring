@@ -139,7 +139,7 @@ spring.actuator.addr=:9370
 spring.resilience.driver=default
 spring.governance.client.default.rate-limit=100
 spring.governance.client.default.max-retries=1
-spring.governance.client.default.attempt-timeout=500ms
+spring.governance.client.default.timeout=500ms
 ```
 
 **验证**（先启动 Neo4j —— `docker run -d -e NEO4J_AUTH=neo4j/password -p 7687:7687 -p 7474:7474 neo4j:5`，
@@ -186,7 +186,7 @@ gs.Run()
   │   │  交出 resilience/fault 权威（resilience manager 必填）
   │   ├─ NewClient [client.go:96-103]：service = resilience.ServiceLabel("neo4j",
   │   │  ServiceName, URI) → center.ExecutorFor("neo4j", service)——受治理的
-  │   │  executor（fault.WrapClientExecutor 包住 center.Resilience().ClientExecutorFor）；center 始终
+  │   │  executor（fault.ClientManager.WrapClientExecutor 包住 center.ResilienceClient().ClientExecutorFor）；center 始终
   │   │  存在（resilience manager 必填）
   │   └─ 仅 ping=true：fail-fast HealthCheck（直达裸 driver 的 VerifyConnectivity），
   │      受 socket-connect-timeout 或 5s 约束；失败时销毁 client，启动中止
@@ -378,7 +378,7 @@ go run ./example-cloudnative -manual   # 自校验：15 连发 → 部分放行�
 ```
 
 故障注入（热切换，example-load）：压测进程运行中把 `conf/governance.properties` 的
-`spring.governance.client.fault.rate=0.5`、`spring.governance.client.fault.error=timeout`
+`spring.governance.client.fault.rules[0].service=neo4j:<service-name|uri>` 加上 `.rate=0.5`、`.error=timeout`
 配上——错误分布即时变化，无需重启。
 
 ### 4.4 发现演练

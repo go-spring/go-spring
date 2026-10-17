@@ -173,7 +173,7 @@ gs.Run()
   │       exec = center.ExecutorFor("influxdb", "influxdb:<server-url>") from the
   │       governance center, then installs the chain in the dynamicTransport the
   │       raw client rides — dyn.Swap(declareTransport{base:
-  │       resilience.NewRoundTripper(http.DefaultTransport, exec, nil)}) — so the
+  │       resilience.NewRoundTripper(http.DefaultTransport, exec, service, nil)}) — so the
   │       declaration+governance chain is live the moment the driver returns
   │    4. ping=true only: fail-fast probe HealthCheck(ctx, w) → /health must report
   │       "pass", otherwise the just-assembled client is torn down (executor +

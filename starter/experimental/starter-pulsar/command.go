@@ -149,7 +149,7 @@ func StartProducerSpan(ctx context.Context, msg *pulsar.ProducerMessage) (contex
 		trace.WithSpanKind(trace.SpanKindProducer),
 		trace.WithAttributes(
 			attribute.String("messaging.system", pulsarSystem),
-			attribute.String("messaging.operation", opPublish),
+			attribute.String("messaging.operation", "send"),
 		),
 	)
 	injectTraceContext(ctx, msg)
@@ -171,7 +171,7 @@ func StartConsumerSpan(ctx context.Context, msg pulsar.Message) (context.Context
 		trace.WithAttributes(
 			attribute.String("messaging.system", pulsarSystem),
 			attribute.String("messaging.destination.name", msg.Topic()),
-			attribute.String("messaging.operation", "receive"),
+			attribute.String("messaging.operation", "process"),
 		),
 	)
 	return ctx, span
@@ -232,7 +232,7 @@ func observe(ctx context.Context, cl pulsar.Client, op chain.Operation, call fun
 	if !ok {
 		return call(ctx)
 	}
-	return v.(*clientObserver).obs.Observe(ctx, op, call)
+	return v.(*clientObserver).obs.Observe(ctx, op, nil, call)
 }
 
 // GuardedSend sends msg synchronously on producer, routed through the resilience
@@ -256,7 +256,7 @@ func observe(ctx context.Context, cl pulsar.Client, op chain.Operation, call fun
 // path worth protecting; the asynchronous SendAsync is intentionally untouched.
 func GuardedSend(ctx context.Context, cl pulsar.Client, producer pulsar.Producer, msg *pulsar.ProducerMessage) (pulsar.MessageID, error) {
 	var id pulsar.MessageID
-	err := observe(ctx, cl, operation(opPublish, producer.Topic()), func(attemptCtx context.Context) error {
+	err := observe(ctx, cl, operation(opSend, producer.Topic()), func(attemptCtx context.Context) error {
 		injectTraceContext(attemptCtx, msg)
 		var serr error
 		id, serr = producer.Send(attemptCtx, msg)

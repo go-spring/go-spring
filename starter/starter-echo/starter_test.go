@@ -51,17 +51,16 @@ func bindConfig(t *testing.T, props map[string]any) Config {
 // becomes an inert one, mirroring the DI wiring where the fault bean is always
 // present (an absent bean fails startup). An already-armed injector is re-armed
 // after construction, which dispatches the (zero) governance document into it.
-func testCenter(inj *fault.Injector) *governance.Center {
+func testCenter(inj *fault.ServerManager) *governance.Center {
 	if inj == nil {
-		inj = fault.NewInjector(fault.Configs{}, nil)
+		inj = fault.NewServerManager(nil)
 	}
-	armed := inj.ServerConfig()
-	ctr, err := governance.NewCenter(resilience.NewManager(nil),
-		loadbalance.NewManager(), inj, nil, governance.NewPushSource(governance.Config{}))
+	armed := inj.Config()
+	ctr, err := governance.NewCenter(resilience.NewClientManager(resilience.NewDefaultDriver(nil)), loadbalance.NewManager(), fault.NewClientManager(nil), inj, nil, governance.NewPushSource(governance.Config{}))
 	if err != nil {
 		panic(err)
 	}
-	inj.SetConfig(fault.Configs{Server: armed})
+	inj.Refresh(armed)
 	return ctr
 }
 
@@ -391,9 +390,10 @@ func TestBodyLimit_RejectsOversizedBodyWith413(t *testing.T) {
 // fault middleware: with an injected injector at Rate 1 every request fails
 // with 503; hot-toggling the injector off (no restart) restores pass-through.
 // The middleware captures the injector when it is built, so the test injects it
-// up front and drives the toggle through SetConfig on the same instance.
+// up front and drives the toggle through Refresh on the same instance.
 func TestFaultMiddleware_Injects503ThenPassesThrough(t *testing.T) {
-	in := fault.NewInjector(fault.Configs{Server: fault.Config{Rate: 1, Error: "generic"}}, nil)
+	in := fault.NewServerManager(nil)
+	in.Refresh(fault.Config{Rules: []fault.Rule{{Rate: 1, Error: "generic"}}})
 
 	e := echo.New()
 	e.HideBanner = true
@@ -409,7 +409,7 @@ func TestFaultMiddleware_Injects503ThenPassesThrough(t *testing.T) {
 	assert.That(t, w.Body.String()).Equal("service unavailable")
 
 	// Hot-toggle: swap the live config, the next request passes through.
-	in.SetConfig(fault.Configs{})
+	in.Refresh(fault.Config{})
 	w2 := httptest.NewRecorder()
 	e.ServeHTTP(w2, httptest.NewRequest(http.MethodGet, "/x", nil))
 	assert.That(t, w2.Code).Equal(http.StatusOK)

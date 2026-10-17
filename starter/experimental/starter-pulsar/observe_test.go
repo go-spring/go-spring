@@ -17,6 +17,7 @@
 package StarterPulsar
 
 import (
+	"go-spring.org/cloud/chain"
 	"strings"
 	"testing"
 
@@ -37,11 +38,11 @@ func attrsLine(attrs []attribute.KeyValue) string {
 // identity the emitter needs: the direction for the span name, the family's
 // metric prefix, the messaging.* labels and this starter's access-log tag.
 func TestOperationDeclaresFamilyVocabulary(t *testing.T) {
-	op := operation(opPublish, "persistent://public/default/orders")
-	assert.String(t, op.Name).Equal("publish")
-	assert.String(t, op.Metric).Equal("messaging.client")
-	assert.String(t, attrsLine(op.Attrs)).Equal("messaging.system=pulsar,messaging.operation=publish")
-	assert.That(t, op.LogTag == accessTag).True()
+	op := operation(opSend, "persistent://public/default/orders")
+	assert.String(t, op.Request.Action).Equal("send persistent://public/default/orders")
+	assert.String(t, op.Observe.Metric.Name).Equal("messaging.client")
+	assert.String(t, attrsLine(op.Observe.Metric.Attrs)).Equal("messaging.system=pulsar,messaging.operation=send")
+	assert.That(t, op.Observe.Log.Tag == accessTag).True()
 }
 
 // TestOperationTopicStaysOutOfLabels is the cardinality guard: a topic must
@@ -49,23 +50,41 @@ func TestOperationDeclaresFamilyVocabulary(t *testing.T) {
 // without bound. It is asserted on Attrs because Attrs is what labels are built
 // from.
 func TestOperationTopicStaysOutOfLabels(t *testing.T) {
-	op := operation(opConsume, "persistent://public/default/orders")
-	for _, a := range op.Attrs {
+	op := operation(opProcess, "persistent://public/default/orders")
+	for _, a := range op.Observe.Metric.Attrs {
 		assert.That(t, string(a.Key) == "messaging.destination.name").False()
 	}
-	assert.String(t, attrsLine(op.Detail)).Equal("messaging.destination.name=persistent://public/default/orders")
+	assert.String(t, attrsLine(detailAttrs(op))).Equal("messaging.destination.name=persistent://public/default/orders")
 }
 
 // TestOperationWithoutTopicCarriesNoDetail proves a topicless call carries no
 // detail, which is also what levelled its success log at Info rather than Debug
 // — the same rule the emitter applies.
 func TestOperationWithoutTopicCarriesNoDetail(t *testing.T) {
-	assert.Number(t, len(operation(opConsume, "").Detail)).Equal(0)
+	assert.Number(t, len(detailAttrs(operation(opProcess, "")))).Equal(0)
 }
 
 // TestOperationTruncatesTopic proves a long topic is bounded before it reaches
 // the span or the log.
 func TestOperationTruncatesTopic(t *testing.T) {
-	op := operation(opPublish, strings.Repeat("t", maxDestination+50))
-	assert.Number(t, len(op.Detail[0].Value.AsString())).Equal(maxDestination)
+	const maxDetail = 512
+	op := operation(opSend, strings.Repeat("t", maxDetail+50))
+	assert.Number(t, len(detailAttrs(op)[0].Value.AsString())).Equal(maxDetail)
+}
+
+// detailAttrs returns the operation's span attributes that are NOT metric
+// labels — the per-call detail the old Call.Detail field held, reconstructed
+// from the split destination lists.
+func detailAttrs(op chain.Operation) []attribute.KeyValue {
+	labeled := make(map[attribute.Key]bool, len(op.Observe.Metric.Attrs))
+	for _, a := range op.Observe.Metric.Attrs {
+		labeled[a.Key] = true
+	}
+	var out []attribute.KeyValue
+	for _, a := range op.Observe.Span.Attrs {
+		if !labeled[a.Key] {
+			out = append(out, a)
+		}
+	}
+	return out
 }

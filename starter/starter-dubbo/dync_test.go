@@ -42,8 +42,7 @@ func setConsumer(p *dyncPoller, c DubboConsumer) {
 // from another test. There is no process-global authority to reset any more —
 // each test owns its manager.
 func newTestPoller() *dyncPoller {
-	ctr, err := governance.NewCenter(resilience.NewManager(nil),
-		loadbalance.NewManager(), fault.NewInjector(fault.Configs{}, nil), nil, governance.NewPushSource(governance.Config{}))
+	ctr, err := governance.NewCenter(resilience.NewClientManager(resilience.NewDefaultDriver(nil)), loadbalance.NewManager(), fault.NewClientManager(nil), fault.NewServerManager(nil), nil, governance.NewPushSource(governance.Config{}))
 	if err != nil {
 		panic(err)
 	}
@@ -56,8 +55,9 @@ func newTestPoller() *dyncPoller {
 // published override rules, not on the center.
 func armedPoller(cfg governance.Config) *dyncPoller {
 	lb := loadbalance.NewManager()
-	res := resilience.NewManager(nil)
-	ctr, err := governance.NewCenter(res, lb, fault.NewInjector(fault.Configs{Client: fault.Config{}}, nil), nil, governance.NewPushSource(cfg))
+	driver := resilience.NewDefaultDriver(nil)
+	resClient := resilience.NewClientManager(driver)
+	ctr, err := governance.NewCenter(resClient, lb, fault.NewClientManager(nil), fault.NewServerManager(nil), nil, governance.NewPushSource(cfg))
 	if err != nil {
 		panic(err)
 	}
@@ -433,13 +433,13 @@ func TestDyncPoller_GovernOverride(t *testing.T) {
 	p := armedPoller(governance.Config{
 		Client: governance.ClientConfig{
 			Default: governance.ClientDefaultPolicy{
-				ClientPolicy: resilience.ClientPolicy{AttemptTimeout: 2 * time.Second, Retry: chain.RetryPolicy{MaxRetries: 4}},
+				ClientPolicy: resilience.ClientPolicy{Timeout: 2 * time.Second, Retry: chain.RetryPolicy{MaxRetries: 4}},
 			},
 			// Per-reference override: a different timeout for one service. The key
 			// is the full dubbo service label ("dubbo:" + colonSeparatedKey).
 			Rules: []governance.ClientRule{{
 				Service:      "dubbo:greet.GreetService::",
-				ClientPolicy: resilience.ClientPolicy{AttemptTimeout: 500 * time.Millisecond, Retry: chain.RetryPolicy{MaxRetries: 1}},
+				ClientPolicy: resilience.ClientPolicy{Timeout: 500 * time.Millisecond, Retry: chain.RetryPolicy{MaxRetries: 1}},
 			}},
 		},
 	})

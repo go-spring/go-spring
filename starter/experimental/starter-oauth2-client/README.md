@@ -165,7 +165,7 @@ type LoginService struct {
   surfaces from bleeding into each other.
 * **Resilience is the outermost transport wrap.** The bearer token is attached first, then the
   request runs through the executor the constructor reads from the injected `*governance.Center`
-  (`center`) via `center.Resilience().ClientExecutorFor("oauth2", "oauth2:<client-id>")` (retry
+  (`center`) via `center.ResilienceClient().ClientExecutorFor("oauth2", "oauth2:<client-id>")` (retry
   re-picks the upstream, the breaker keys by logical service name), so every protected attempt is
   a complete, authenticated request. The center is a required injected bean — "governance off" is
   a center armed with no rules, whose executor is a transparent pass-through — never an absent bean.

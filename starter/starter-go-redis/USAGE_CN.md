@@ -156,7 +156,7 @@ gs.Run()
        │         → instrument()（redisotel 连接池指标，由 otel.metrics.enabled 门控）
        │         → applyDeclaration（声明身份 hook）——声明属于构造的一部分
        │         → serviceLabel → center.ExecutorFor("redis", service)
-       │              （= fault.WrapClientExecutor(mgr.ClientExecutorFor("redis", service), service, inj)；
+       │              （= inj.WrapClientExecutor(mgr.ClientExecutorFor("redis", service))；
        │               resilience manager 必填——容器始终提供）
        │         → 走服务发现的条目：Driver 建 center.Loadbalance().Chain(resolver, label)
        │              （建链这一步本身就是治理注册）

@@ -44,10 +44,11 @@ type dyncPoller struct {
 	dynCfg  *mapconfig.MapDynamicConfiguration // in-memory config center overrides are pushed into
 	appName string                             // application name, used as the app-level override key
 
-	// ctr is the governance center bean, nil when the governance center is
-	// not imported. It is the poller's sole governance entry: [dyncPoller.mgr]
-	// reads the resilience authority off it, whose Subscribe callbacks re-run
-	// the poll on every governance push.
+	// ctr is the governance center bean, always present — the constructor arg
+	// is injected by type, so a process without the center fails wiring. It is
+	// the poller's sole governance entry: [dyncPoller.mgr] reads the resilience
+	// authority off it, whose Subscribe callbacks re-run the poll on every
+	// governance push.
 	ctr *governance.Center
 
 	// consumer is the entire consumer node under ${spring.dubbo.consumer},
@@ -74,11 +75,11 @@ func newDyncPoller(app DubboApplication, consumer DubboConsumer, ctr *governance
 	}
 }
 
-// mgr returns the resilience authority the center hands out, or nil when no
-// center is linked. A nil (or disabled) manager leaves governance off: no
-// overrides are merged, and the ${spring.dubbo.consumer}-only behavior stands.
-func (p *dyncPoller) mgr() *resilience.Manager {
-	return p.ctr.Resilience()
+// mgr returns the resilience authority the center hands out. It is never nil:
+// the center bean is a constructor dependency, and it arms the authority in its
+// own constructor — so by the time this poller exists, governance is live.
+func (p *dyncPoller) mgr() *resilience.ClientManager {
+	return p.ctr.ResilienceClient()
 }
 
 // Init pushes the current override rules once. Later re-pushes come from the
@@ -103,24 +104,20 @@ func (p *dyncPoller) poll() {
 	// rules. Collected under p.mu (dedup via regged) but subscribed OUTSIDE the
 	// lock: Subscribe arms its callback synchronously, and that callback re-enters
 	// poll - holding p.mu across Subscribe would self-deadlock. The re-entrant poll
-	// is a no-op (changed() finds the same snapshot). When the governance center is
-	// absent (nil manager) or the manager is still unarmed — before the center has
-	// gone live — the whole block is skipped.
-	if p.mgr() != nil && p.mgr().Enabled() {
-		labels := dubboServiceLabels(p.appName, &consumer)
-		var toReg []string
-		p.mu.Lock()
-		for l := range labels {
-			if !p.regged[l] {
-				p.regged[l] = true
-				toReg = append(toReg, l)
-			}
+	// is a no-op (changed() finds the same snapshot).
+	labels := dubboServiceLabels(p.appName, &consumer)
+	var toReg []string
+	p.mu.Lock()
+	for l := range labels {
+		if !p.regged[l] {
+			p.regged[l] = true
+			toReg = append(toReg, l)
 		}
-		p.mu.Unlock()
-		for _, l := range toReg {
-			l := l
-			p.mgr().Subscribe(l, func(resilience.ClientPolicy) { p.poll() })
-		}
+	}
+	p.mu.Unlock()
+	for _, l := range toReg {
+		l := l
+		p.mgr().Subscribe(l, func(resilience.ClientPolicy) { p.poll() })
 	}
 
 	if len(rules) == 0 {
@@ -148,12 +145,6 @@ func (p *dyncPoller) poll() {
 // instead of being merged into a single last-wins rule.
 func (p *dyncPoller) consumerToOverrideRules(c *DubboConsumer) map[string]map[string]string {
 	appName := p.appName
-	// governed is read once: the same "is the manager armed?" answer gates both
-	// the app-level and the per-reference override, and Enabled is a locked read.
-	// Once the center has gone live this is always true, which is harmless —
-	// applyGovernOverride writes only set (>0) values, so a document that
-	// configures nothing leaves dubbo's native values untouched.
-	governed := p.mgr() != nil && p.mgr().Enabled()
 	rules := make(map[string]map[string]string)
 
 	// Consumer-level defaults → application-level override.
@@ -171,9 +162,9 @@ func (p *dyncPoller) consumerToOverrideRules(c *DubboConsumer) map[string]map[st
 	if c.ForceTag {
 		appParams["force.tag"] = "true"
 	}
-	if governed {
-		applyGovernOverride(appParams, p.mgr().ClientPolicyFor(dubboAppLabel(appName)))
-	}
+	// applyGovernOverride writes only set (>0) values, so a document that
+	// configures nothing leaves dubbo's native values untouched.
+	applyGovernOverride(appParams, p.mgr().ClientPolicyFor(dubboAppLabel(appName)))
 	if len(appParams) > 0 {
 		rules[appName] = appParams
 	}
@@ -218,9 +209,7 @@ func (p *dyncPoller) consumerToOverrideRules(c *DubboConsumer) map[string]map[st
 			addIfSet(refParams, prefix+"execute.limit", strconv.Itoa(m.ExecuteLimit))
 			addIfSet(refParams, prefix+"execute.limit.rejected.handler", m.ExecuteLimitRejectedHandler)
 		}
-		if governed {
-			applyGovernOverride(refParams, p.mgr().ClientPolicyFor(dubboRefLabel(key)))
-		}
+		applyGovernOverride(refParams, p.mgr().ClientPolicyFor(dubboRefLabel(key)))
 		if len(refParams) > 0 {
 			rules[key] = refParams
 		}
@@ -289,8 +278,8 @@ func dubboServiceLabels(appName string, c *DubboConsumer) map[string]bool {
 // Policy.Retry.MaxRetries here maps to dubbo cluster retries, not resilience-layer
 // retry - the center documents dubbo's timeout/retry in dubbo's own semantics.
 func applyGovernOverride(params map[string]string, p resilience.ClientPolicy) {
-	if p.AttemptTimeout > 0 {
-		params["timeout"] = strconv.FormatInt(int64(p.AttemptTimeout/time.Millisecond), 10)
+	if p.Timeout > 0 {
+		params["timeout"] = strconv.FormatInt(int64(p.Timeout/time.Millisecond), 10)
 	}
 	if p.Retry.MaxRetries > 0 {
 		params["retries"] = strconv.Itoa(p.Retry.MaxRetries)

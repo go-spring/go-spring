@@ -24,20 +24,13 @@
 package StarterCassandra
 
 import (
-	"go-spring.org/stdlib/strutil"
-
 	"go-spring.org/cloud/chain"
 	"go-spring.org/log"
-	"go.opentelemetry.io/otel/attribute"
 )
 
 // cassandraSystem is the value the family's db.system label carries for this
 // backend — the family's shared vocabulary, not a per-file choice.
 const cassandraSystem = "cassandra"
-
-// maxStatement bounds the statement captured as db.statement. A CQL statement
-// can be long and a span or a log line has no use for all of it.
-const maxStatement = 512
 
 // accessTag is the static log tag for the cassandra access log. It is registered
 // here, at package init, because a tag must exist before the framework's first
@@ -45,27 +38,12 @@ const maxStatement = 512
 var accessTag = log.RegisterAppTag("cassandra", "access")
 
 // operation is the semantic identity of one cassandra statement. op names the
-// operation ("exec", "query"); stmt is the CQL text.
-//
-// The statement rides in Detail rather than Attrs: a CQL statement is drawn from
-// an open set, so as a metric label it would multiply the series without bound.
-// Detail reaches the span and the log — where the statement is exactly what makes
-// a line worth reading — and never a label. A statement-less operation carries no
-// detail at all, which is also what levelled its success log at Info.
+// operation ("exec", "query"); stmt is the CQL text. The family's vocabulary —
+// attribute keys, the bounded/open split that puts the statement in detail, the
+// truncation bound — lives in [wire]; this starter supplies only what only it
+// knows.
 func operation(op, stmt string) chain.Operation {
-	o := chain.Operation{
-		Name:   op,
-		Metric: "db.client",
-		Attrs: []attribute.KeyValue{
-			attribute.String("db.system", cassandraSystem),
-			attribute.String("db.operation", op),
-		},
-		LogTag: accessTag,
-	}
-	if stmt != "" {
-		o.Detail = []attribute.KeyValue{
-			attribute.String("db.statement", strutil.Truncate(stmt, maxStatement)),
-		}
-	}
+	o := chain.DBOp(cassandraSystem, op, stmt)
+	o.Observe.Log.Tag = accessTag
 	return o
 }

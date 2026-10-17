@@ -17,8 +17,9 @@ go run . -concurrency=32 -duration=10s       # or run directly against a Neo4j
 Edit `conf/governance.properties`:
 
 ```properties
-spring.governance.client.fault.rate=0.5
-spring.governance.client.fault.error=generic       # or: timeout / reset
+spring.governance.client.fault.rules[0].service=neo4j:<service-name|uri>
+spring.governance.client.fault.rules[0].rate=0.5
+spring.governance.client.fault.rules[0].error=generic       # or: timeout / reset
 ```
 
 then re-run — the error breakdown's `injected`/`circuit` counts climb and p99

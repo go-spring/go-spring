@@ -161,7 +161,7 @@ type dbSpan struct {
 // a plain success at Info — the same level rule the unified emitter applies.
 //
 // Status vocabulary: `ok` / `error`, the axis every family uses. The unified
-// emitter additionally carries `resilience.outcome` when protection rejected a
+// emitter additionally carries `resilience.error_type` when protection rejected a
 // call, which it can see because its executor is where the rejection happens. A
 // CommandMonitor sees only the driver's own error — it runs after the driver
 // decided the outcome — so it has no outcome to report and correctly reports

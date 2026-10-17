@@ -13,7 +13,9 @@
 #
 #   client:
 #     fault:
-#       rate: 0.5        # inject on 50% of outbound calls
+#       rules:
+#         - service: ""   # empty = catch-all; name one to target a dependency
+#           rate: 0.5     # inject on 50% of matching outbound calls
 spring:
   governance:
     client:

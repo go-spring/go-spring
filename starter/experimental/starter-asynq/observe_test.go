@@ -17,6 +17,7 @@
 package StarterAsynq
 
 import (
+	"go-spring.org/cloud/chain"
 	"strings"
 	"testing"
 
@@ -38,10 +39,10 @@ func attrsLine(attrs []attribute.KeyValue) string {
 // prefix, the messaging.* labels and this starter's access-log tag.
 func TestOperationDeclaresFamilyVocabulary(t *testing.T) {
 	op := operation("enqueue", "probe:task")
-	assert.String(t, op.Name).Equal("enqueue")
-	assert.String(t, op.Metric).Equal("messaging.client")
-	assert.String(t, attrsLine(op.Attrs)).Equal("messaging.system=asynq,messaging.operation=enqueue")
-	assert.That(t, op.LogTag == accessTag).True()
+	assert.String(t, op.Request.Action).Equal("enqueue")
+	assert.String(t, op.Observe.Metric.Name).Equal("messaging.client")
+	assert.String(t, attrsLine(op.Observe.Metric.Attrs)).Equal("messaging.system=asynq,messaging.operation=enqueue")
+	assert.That(t, op.Observe.Log.Tag == accessTag).True()
 }
 
 // TestOperationTaskTypeStaysOutOfLabels is the cardinality guard: a task type
@@ -50,22 +51,40 @@ func TestOperationDeclaresFamilyVocabulary(t *testing.T) {
 // are built from.
 func TestOperationTaskTypeStaysOutOfLabels(t *testing.T) {
 	op := operation("enqueue", "probe:task")
-	for _, a := range op.Attrs {
+	for _, a := range op.Observe.Metric.Attrs {
 		assert.That(t, string(a.Key) == "messaging.destination.name").False()
 	}
-	assert.String(t, attrsLine(op.Detail)).Equal("messaging.destination.name=probe:task")
+	assert.String(t, attrsLine(detailAttrs(op))).Equal("messaging.destination.name=probe:task")
 }
 
 // TestOperationWithoutTaskTypeCarriesNoDetail proves a task type-less enqueue
 // carries no detail, which is also what levelled its success log at Info rather
 // than Debug — the same rule the emitter applies.
 func TestOperationWithoutTaskTypeCarriesNoDetail(t *testing.T) {
-	assert.Number(t, len(operation("enqueue", "").Detail)).Equal(0)
+	assert.Number(t, len(detailAttrs(operation("enqueue", "")))).Equal(0)
 }
 
 // TestOperationTruncatesDestination proves a long task type is bounded before it
 // reaches the span or the log.
 func TestOperationTruncatesDestination(t *testing.T) {
-	op := operation("enqueue", strings.Repeat("t", maxDestination+50))
-	assert.Number(t, len(op.Detail[0].Value.AsString())).Equal(maxDestination)
+	const maxDetail = 512
+	op := operation("enqueue", strings.Repeat("t", maxDetail+50))
+	assert.Number(t, len(detailAttrs(op)[0].Value.AsString())).Equal(maxDetail)
+}
+
+// detailAttrs returns the operation's span attributes that are NOT metric
+// labels — the per-call detail the old Call.Detail field held, reconstructed
+// from the split destination lists.
+func detailAttrs(op chain.Operation) []attribute.KeyValue {
+	labeled := make(map[attribute.Key]bool, len(op.Observe.Metric.Attrs))
+	for _, a := range op.Observe.Metric.Attrs {
+		labeled[a.Key] = true
+	}
+	var out []attribute.KeyValue
+	for _, a := range op.Observe.Span.Attrs {
+		if !labeled[a.Key] {
+			out = append(out, a)
+		}
+	}
+	return out
 }

@@ -32,7 +32,7 @@ const govRulesV1 = `spring:
     enabled: true
     client:
       default:
-        attempt-timeout: 100ms
+        timeout: 100ms
 `
 
 const govRulesV2 = `spring:
@@ -40,7 +40,7 @@ const govRulesV2 = `spring:
     enabled: true
     client:
       default:
-        attempt-timeout: 300ms
+        timeout: 300ms
         max-retries: 1
 `
 
@@ -97,7 +97,7 @@ func TestEtcdSource_PushChain(t *testing.T) {
 	var pushed governance.Config
 	src.Subscribe(func(_ context.Context, cfg governance.Config) { mu.Lock(); pushed = cfg; pushes++; mu.Unlock() })
 
-	if cfg := src.Snapshot(); cfg.Client.Default.AttemptTimeout != 100*time.Millisecond {
+	if cfg := src.Snapshot(); cfg.Client.Default.Timeout != 100*time.Millisecond {
 		t.Fatalf("seed snapshot: %+v", cfg.Client.Default)
 	}
 
@@ -105,7 +105,7 @@ func TestEtcdSource_PushChain(t *testing.T) {
 	fake.put(govRulesV2)
 	time.Sleep(100 * time.Millisecond) // the watch goroutine delivers async
 	mu.Lock()
-	got, n := pushed.Client.Default.AttemptTimeout, pushes
+	got, n := pushed.Client.Default.Timeout, pushes
 	mu.Unlock()
 	if n != 1 || got != 300*time.Millisecond {
 		t.Fatalf("put should push new rules once: n=%d timeout=%v", n, got)
@@ -114,7 +114,7 @@ func TestEtcdSource_PushChain(t *testing.T) {
 	// A bad value keeps the last good snapshot and pushes nothing.
 	fake.put("govern: { broken")
 	time.Sleep(100 * time.Millisecond)
-	if cfg := src.Snapshot(); cfg.Client.Default.AttemptTimeout != 300*time.Millisecond {
+	if cfg := src.Snapshot(); cfg.Client.Default.Timeout != 300*time.Millisecond {
 		t.Fatalf("bad put must keep last good snapshot: %+v", cfg.Client.Default)
 	}
 	mu.Lock()

@@ -46,7 +46,7 @@ func TestGovernanceDriverRegisteredAndFlavored(t *testing.T) {
 	}
 
 	ran := false
-	if err := ex.Execute(context.Background(), chain.Operation{}, func(context.Context) error {
+	if err := ex.Execute(context.Background(), chain.Operation{}, nil, func(context.Context) error {
 		ran = true
 		return nil
 	}); err != nil {

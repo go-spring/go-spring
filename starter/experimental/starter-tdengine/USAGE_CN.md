@@ -156,8 +156,8 @@ gs.Run()
   │     （留空 = 先回退家族级 `spring.<family>.default.driver`，再按类型注入唯一 Driver bean；指定的 bean 不存在则启动失败）
   │     → d.CreateClient(ctx, c, center)：构造器把注入的
   │       *governance.Center（变量 center）交给 driver；它所需的
-  │       *resilience.Manager / *fault.Injector 从治理中心读取
-  │       （经 center.Resilience() / center.Fault()）→
+  │       *resilience.ClientManager / *fault.ClientManager 从治理中心读取
+  │       （经 center.ResilienceClient() / center.FaultClient()）→
   │       ParseDSN → taosws.NewConnector → NewClient
   │     → NewClient [client.go]：建 slot、包 guardedConnector、
   │       开 *sql.DB 池、应用连接池参数——身份 + 守卫一次装好，无 Init 钩子
@@ -283,7 +283,7 @@ detail 的 SQL（截断至 512 字节）。resilience 层是 executor 链条上�
 | 指标 | `db.client.operation.duration`（直方图，s）——每次调用，含重试 | `db.system`、`db.operation`、`status` |
 | 指标 | `db.client.attempt.duration`（直方图，s）——每次下游尝试 | `db.system`、`db.operation`、`status` |
 | 指标 | `db.client.active_requests`（up-down counter） | `db.system`、`db.operation` |
-| 指标 | `resilience.client.calls`（counter） | `system=tdengine`、`service`、`status=ok\|error`（拒绝时另有 `resilience.outcome`） |
+| 指标 | `resilience.client.calls`（counter） | `system=tdengine`、`service`、`status=ok\|error`（拒绝时另有 `resilience.error_type`） |
 | 指标 | `resilience.client.breaker.state_change`（counter） | from/to 属性 |
 | 日志 | tag `_app_tdengine_access` | db.system=tdengine db.operation=… status duration_ms；错误 → Warn，成功且带 SQL → Debug，普通成功 → Info |
 | 日志 | tag `_app_resilience` | 熔断状态跃迁（已声明的访问日志——含失败——走上面的语句 tag） |
@@ -302,7 +302,7 @@ grep _app_tdengine_access app.log | tail -1
 配好治理规则源后，为 service `tdengine:127.0.0.1:6041`（§2.3）配策略——
 例如限流。压测 `ExecContext`；超限语句以 `resilience.ErrRateLimited` 拒绝，
 **不会到达连接**（有单测 [tdengine_test.go:62-76]），体现在
-`resilience.client.calls{resilience.outcome="rate_limited"}` 与 `_app_tdengine_access` tag 下的一条
+`resilience.client.calls{resilience.error_type="rate_limited"}` 与 `_app_tdengine_access` tag 下的一条
 Warn 日志。运行期切换策略——executor 经 governance 中心热加载，无需重启。
 
 ### 4.4 fail-fast 演练

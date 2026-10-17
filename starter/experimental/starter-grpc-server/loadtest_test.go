@@ -97,7 +97,7 @@ func TestUserInterceptorsComposeInOrder(t *testing.T) {
 		return h(ctx, nil)
 	}
 
-	s := NewSimpleGrpcServer(Config{}, func(*grpc.Server) {}, []grpc.UnaryServerInterceptor{outer, inner}, nil, testCenter(nil), nil)
+	s := NewSimpleGrpcServer(Config{}, func(*grpc.Server) {}, []grpc.UnaryServerInterceptor{outer, inner}, nil, testCenter(), nil)
 	opts, err := s.buildOptions()
 	if err != nil {
 		t.Fatal(err)

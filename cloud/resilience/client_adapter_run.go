@@ -78,8 +78,10 @@ func Tolerate(sentinel error) Option {
 }
 
 // Run executes fn under exec for the call described by call. Protection is
-// scoped to the service exec was built for, so the caller names nothing beyond
-// the call's own identity.
+// scoped to the service exec was built for, but call must still STATE that
+// service ([chain.Operation.Service]): layers above exec — the fault layer
+// among them — read the operation, not the executor, and a call that names no
+// service matches only the rules that name none.
 // It is the single "run one client operation through the resilience executor"
 // body that every client adapter (redis.Hook, gorm callback, connection wrapper,
 // http.RoundTripper, ...) otherwise copy-pastes, extracted so the nil-as-success
@@ -112,7 +114,7 @@ func Run[T any](ctx context.Context, exec chain.Executor, call chain.Operation,
 		return fn(ctx)
 	}
 	var callErr error
-	execErr := exec.Execute(ctx, call, func(attemptCtx context.Context) error {
+	execErr := exec.Execute(ctx, call, nil, func(attemptCtx context.Context) error {
 		result, callErr = fn(attemptCtx)
 		if callErr != nil && !nilErr(callErr) {
 			return callErr // a real failure feeds the breaker/retry

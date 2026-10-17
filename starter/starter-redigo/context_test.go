@@ -124,7 +124,7 @@ func TestDoContextSpanCarriesSpanAttributes(t *testing.T) {
 // assertion comes from the resilience wrapper above it.
 type passthroughExecutor struct{}
 
-func (passthroughExecutor) Execute(ctx context.Context, op chain.Operation, fn func(context.Context) error) error {
+func (passthroughExecutor) Execute(ctx context.Context, op chain.Operation, rec *chain.Recorder, fn func(context.Context) error) error {
 	return fn(ctx)
 }
 func (passthroughExecutor) Close() error { return nil }

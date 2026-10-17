@@ -63,7 +63,7 @@ func demoComposedRetry(driver resilience.Driver) {
 	exec, err := driver.NewClientExecutor("sentinel:composed", resilience.ClientPolicy{
 		RateLimit:      100,
 		ErrorThreshold: 10,
-		AttemptTimeout: time.Second,
+		Timeout:        time.Second,
 		Retry:          chain.RetryPolicy{MaxRetries: 3},
 	})
 	if err != nil {
@@ -88,7 +88,7 @@ func demoComposedRetry(driver resilience.Driver) {
 	go func() { _ = srv.Serve(ln) }()
 	defer func() { _ = srv.Close() }()
 
-	client := &http.Client{Transport: resilience.NewRoundTripper(http.DefaultTransport, exec, nil)}
+	client := &http.Client{Transport: resilience.NewRoundTripper(http.DefaultTransport, exec, "sentinel", nil)}
 	resp, err := client.Get("http://" + ln.Addr().String() + "/flaky")
 	if err != nil {
 		fail("composed request: %v", err)

@@ -239,7 +239,9 @@ Rationale (from the `applyMiddlewares` comment, verified):
 5. Metrics increments the in-flight gauge, starts the duration observation
 6. AccessLog arms (fields captured on the way out)
 7. SecureHeaders/CORS/Gzip as enabled (engine enforces `maxBodySize` independently)
-8. fault: `fault.ApplyServer(ctx, inj, "hertz", handler)` (inj = the injected bean) — with `scope: loadtest`
+8. fault: `_, err := srv.Fire(ctx, fault.Target{Service: "hertz", Action: "GET /x"})`
+   (inj = the injected bean; the built-in target carries `METHOD` + `c.FullPath()`, so a rule can
+   fire one route) — with `scope: loadtest`
    and the marker present, ~`rate` of requests get the injected error → 503; others pass
 9. your route runs; the response unwinds through 6→5→4→3: access record logged (severity by
    status), duration/count recorded, in-flight decremented, span ended and marked errored on
@@ -331,9 +333,9 @@ curl -i 127.0.0.1:9370/readyz    # actuator readiness (add starter-actuator)
 
 ### 4.4 Fault drill (no restart)
 
-1. Start with `governance.yaml` as in §1 (no `fault.rate` set — the fixture injects nothing).
+1. Start with `governance.yaml` as in §1 (no `fault.rules[]` set — the fixture injects nothing).
 2. Generate baseline traffic: `curl 127.0.0.1:8003/echo/x` → 200s.
-3. Set `fault.rate: 0.2` in the file — the governance source hot-reloads.
+3. Set `fault.rules[0].rate: 0.2` in the file — the governance source hot-reloads.
 4. Marked traffic burns, normal traffic unaffected:
 
 ```bash

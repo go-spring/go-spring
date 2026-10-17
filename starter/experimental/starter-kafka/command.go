@@ -48,7 +48,7 @@ func serviceLabelOf(brokers string) string {
 // kafka client has no seam for the resilience executor, so there is no
 // governance on this path — observation only.
 func runObserved(ctx context.Context, obs *observability.OperationObserver, op chain.Operation, call func(context.Context) error) error {
-	return obs.Observe(ctx, op, call)
+	return obs.Observe(ctx, op, nil, call)
 }
 
 // InnerKafka is the seam a client's synchronous produces run through.
@@ -103,7 +103,7 @@ func (r *RawKafka) ProduceSync(ctx context.Context, recs ...*kgo.Record) kgo.Pro
 // .FirstErr() reads the same error the observer saw.
 func (o *ObsKafka) ProduceSync(ctx context.Context, recs ...*kgo.Record) kgo.ProduceResults {
 	var results kgo.ProduceResults
-	_ = runObserved(ctx, o.obs, operation(opPublish, topicOf(recs)), func(callCtx context.Context) error {
+	_ = runObserved(ctx, o.obs, operation(opSend, topicOf(recs)), func(callCtx context.Context) error {
 		results = o.next.ProduceSync(callCtx, recs...)
 		return results.FirstErr()
 	})
@@ -154,15 +154,28 @@ func GuardedProduceSync(ctx context.Context, cl *Client, recs ...*kgo.Record) kg
 // whoever owns the poll loop — franz-go's hooks observe a record, they do not
 // wrap the call — so it uses the client's observer seam instead.
 func GuardedConsume(ctx context.Context, cl *Client, rec *kgo.Record, handler func(context.Context) error) error {
-	return cl.observe(ctx, operation(opConsume, rec.Topic), handler)
+	return cl.observe(ctx, operation(opProcess, rec.Topic), handler)
 }
 
-// topicOf returns the destination of a produce batch, taken from its first
-// record — a batch produced through one call targets one topic, and an empty
-// batch declares no destination (no Detail, so a success stays at Info).
+// topicOf returns the destination of a produce batch: its topic when EVERY
+// record in the batch shares one, and "" otherwise.
+//
+// A batch is one operation with one destination or with none. Taking the first
+// record's topic would attribute a mixed batch to whichever topic happened to be
+// first — a claim that reaches the span NAME and the governance rule key, not
+// just a detail field, so a rule aimed at one topic would match a batch that
+// only partially went there. An empty batch and a mixed one both declare no
+// destination; a success line then stays at Info rather than naming a topic that
+// was never the whole story.
 func topicOf(recs []*kgo.Record) string {
 	if len(recs) == 0 {
 		return ""
 	}
-	return recs[0].Topic
+	topic := recs[0].Topic
+	for _, r := range recs[1:] {
+		if r.Topic != topic {
+			return ""
+		}
+	}
+	return topic
 }

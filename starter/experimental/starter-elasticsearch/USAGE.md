@@ -336,7 +336,7 @@ docker start starter-elasticsearch
   histograms plus the in-flight `db.client.active_requests` gauge — attributes
   `db.system=elasticsearch`, `db.operation=<METHOD>` (bounded), `status` = ok/error, none
   of them carrying the URL path. The same layer emits the `resilience.client.calls` counter
-  with `status` ∈ {ok, error}, plus `resilience.outcome` ∈ {rate_limited, circuit_open,
+  with `status` ∈ {ok, error}, plus `resilience.error_type` ∈ {rate_limited, circuit_open,
   bulkhead_full, retry_budget_exceeded, timeout} when protection refused the call.
 - **Spans**: one span per request, opened by the resilience layer (internal kind), named like
   `POST /demo-docs/_search`, with `db.system`/`db.operation` attributes plus `db.statement` =
@@ -361,7 +361,8 @@ spring.resilience.driver=default
 spring.governance.client.default.rate-limit=5          # burst > 5 concurrent → ErrRateLimited rejections
 spring.governance.client.default.error-threshold=20
 spring.governance.client.default.open-duration=5s
-# spring.governance.client.fault.rate=0.5              # set a rate (+ error=timeout) to "set fire"; unset = inert
+# spring.governance.client.fault.rules[0].service=elasticsearch:http://127.0.0.1:9200
+# spring.governance.client.fault.rules[0].rate=0.5      # a rule with a rate (+ error=timeout) sets fire; no such rule = inert
 ```
 
 Run [example-load/](example-load/) (`go run . -concurrency=16 -duration=5s`): the printed

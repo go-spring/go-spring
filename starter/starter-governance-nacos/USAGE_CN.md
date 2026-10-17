@@ -52,7 +52,7 @@ import (
 type poller struct {
     // mgr 是治理 starter 的 resilience manager bean，在此注入，
     // 而不是从进程级 seam 解析。
-    mgr *resilience.Manager
+    mgr *resilience.ClientManager
 }
 
 func (p *poller) Run(ctx context.Context) error {
@@ -64,9 +64,9 @@ func (p *poller) Run(ctx context.Context) error {
 
 // newPoller 在注入的 manager 之上构建 poller。manager 为 nil——没有
 // cloud/governance bean 的容器——时归一化为一个新的未武装实例。
-func newPoller(mgr *resilience.Manager) *poller {
+func newPoller(mgr *resilience.ClientManager) *poller {
     if mgr == nil {
-        mgr = resilience.NewManager()
+        mgr = resilience.NewClientManager()
     }
     return &poller{mgr: mgr}
 }
@@ -97,7 +97,7 @@ spring:
     driver: default
     client:
       default:
-        attempt-timeout: 100ms
+        timeout: 100ms
         max-retries: 2
 ```
 
@@ -109,8 +109,8 @@ curl -fsS -X POST 'http://127.0.0.1:8848/nacos/v1/cs/configs' \
      -d 'dataId=gs-govern-demo.yaml&group=DEFAULT_GROUP&content=<上面的文档>'
 go run . -manual
 # policy: enabled=true timeout=100ms retries=2
-#   ... 向同一 dataId 发布 attempt-timeout: 900ms ...
-# rule push observed: attempt-timeout is now 900ms
+#   ... 向同一 dataId 发布 timeout: 900ms ...
+# rule push observed: timeout is now 900ms
 ```
 
 可运行的 [example/](example) 完成上述全部动作、自断言并以 0 退出；
@@ -230,7 +230,7 @@ gs.Run()
 cd example && ./check.sh        # docker 门控：compose 拉起 Nacos，运行自断言示例
 ```
 
-示例在启动前用 100 ms 的 `attempt-timeout` 播种 dataId（使规则源的初始 `GetConfig` 成功），随后
+示例在启动前用 100 ms 的 `timeout` 播种 dataId（使规则源的初始 `GetConfig` 成功），随后
 发布一份 900 ms 的文档；poller 观察到 `mgr.PolicyFor("demo:service").Timeout == 900ms`
 后以 0 退出。
 

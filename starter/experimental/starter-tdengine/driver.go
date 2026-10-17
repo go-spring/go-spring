@@ -88,7 +88,8 @@ func (DefaultDriver) CreateClient(ctx context.Context, c Config, center *governa
 // clientSlot carries the resilience executor [NewClient] installs. Connections
 // consult it on every statement; until it is set it is transparent (nil exec).
 type clientSlot struct {
-	exec chain.Executor
+	exec    chain.Executor
+	service string // the governance label the executor was built for
 }
 
 // guardedConnector wraps a driver.Connector so every connection it hands out
@@ -165,6 +166,9 @@ func (g guardedConn) QueryContext(ctx context.Context, query string, args []driv
 // otherwise. When no executor is applied, Run runs the call inline, so the
 // operation is ignored — the zero-config pass-through.
 func (g guardedConn) run(ctx context.Context, op chain.Operation, call func(context.Context) error) error {
+	// Name the service on the operation: the fault layer matches its rules on it
+	// and sits outside this executor.
+	op.Service = g.slot.service
 	_, err := resilience.Run(ctx, g.slot.exec, op, func(attemptCtx context.Context) (struct{}, error) {
 		return struct{}{}, call(attemptCtx)
 	})

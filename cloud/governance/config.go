@@ -22,7 +22,12 @@
 package governance
 
 import (
+	"sort"
+	"strings"
+
+	"go-spring.org/cloud/chain"
 	"go-spring.org/cloud/fault"
+	"go-spring.org/cloud/guard"
 	"go-spring.org/cloud/loadbalance"
 	"go-spring.org/cloud/resilience"
 	"go-spring.org/stdlib/errutil"
@@ -41,7 +46,7 @@ import (
 //     timeout, downstream breaker, bulkhead, fallback. Plus endpoint selection
 //     ([loadbalance.Selection]), which is outbound by nature. This is the
 //     protection this process wants when it CALLS something.
-//   - [Config.Server] (inbound) — [resilience.ServerPolicy]: rate limit, concurrency
+//   - [Config.Server] (inbound) — [guard.Policy]: rate limit, concurrency
 //     cap, inbound breaker, handling budget. This is the protection this process
 //     wants against the requests it RECEIVES. No retry (a handler that already
 //     produced side effects cannot be replayed) and no endpoint selection (there
@@ -84,7 +89,7 @@ type ClientConfig struct {
 	// the backend name, which is a static startup choice
 	// (${spring.resilience.driver}) and deliberately NOT re-bindable per service. Bind via
 	// spring.governance.client.default.* (e.g.
-	// spring.governance.client.default.attempt-timeout=500ms,
+	// spring.governance.client.default.timeout=500ms,
 	// spring.governance.client.default.balancer=least_conn).
 	Default ClientDefaultPolicy `value:"${default:=}"`
 
@@ -98,9 +103,9 @@ type ClientConfig struct {
 	// Bind via indexed properties:
 	//
 	//	spring.governance.client.rules[0].service=redigo:cache
-	//	spring.governance.client.rules[0].attempt-timeout=100ms
+	//	spring.governance.client.rules[0].timeout=100ms
 	//	spring.governance.client.rules[1].service=gorm:mysql:orders
-	//	spring.governance.client.rules[1].attempt-timeout=3s
+	//	spring.governance.client.rules[1].timeout=3s
 	//
 	// The service label (with its colons) lives in a value, not a key, so it
 	// is dot-safe and needs no escaping in .properties or YAML — unlike a
@@ -109,7 +114,7 @@ type ClientConfig struct {
 
 	// Fault is this direction's fault-injection config (chaos engineering). The
 	// client side injects INSIDE the resilience executor's retry loop (see
-	// [fault.WrapClientExecutor]), so a fire here exercises this process's own
+	// [fault.ClientManager.WrapClientExecutor]), so a fire here exercises this process's own
 	// protection stack. The server side has its own, independent config under
 	// [ServerConfig.Fault] — one direction's fire never affects the other, which
 	// is what lets an operator burn outbound calls without failing inbound
@@ -120,14 +125,14 @@ type ClientConfig struct {
 // ServerConfig is the inbound half of the governance document: what this process
 // needs in its role as a CALLEE.
 type ServerConfig struct {
-	// Default is the inbound inbound model applied to every route that no Rule
+	// Default is the inbound model applied to every route that no Rule
 	// matches. Bind via spring.governance.server.default.* (e.g.
 	// spring.governance.server.default.rate-limit=1000,
 	// spring.governance.server.default.max-concurrent=32).
-	Default resilience.ServerPolicy `value:"${default:=}"`
+	Default guard.Policy `value:"${default:=}"`
 
-	// Rules are per-route inbound entries, matched by the same exact label the
-	// inbound middleware passes to [resilience.Manager.ServerExecutorFor]. They let one
+	// Rules are per-instance inbound entries, matched by the same exact label an
+	// adapter passes to guard's Identity. They let one
 	// process run several servers (or routes) under different limits — a public
 	// endpoint and an internal one do not share a budget. A matched Rule fully
 	// replaces Default, by the same no-field-wise-merge rule as [ClientConfig].
@@ -140,7 +145,7 @@ type ServerConfig struct {
 	Rules []ServerRule `value:"${rules:=}"`
 
 	// Fault is this direction's fault-injection config. The server side injects
-	// at the inbound seam (see [fault.ApplyServer]), so a fire here tests this
+	// at the inbound seam (see [fault.Server.Fire]), so a fire here tests this
 	// process's error paths, its observe classification and its inbound breaker,
 	// and lets upstream callers' retry/breaker behaviour be verified without
 	// touching a real dependency. Independent of [ClientConfig.Fault], including
@@ -159,7 +164,7 @@ type ServerConfig struct {
 // from the second — and each module declares its own half's type. This is where a
 // deployment composes them, so a service is configured once and both modules
 // answer to the same label. Both halves are embedded, so their fields bind at
-// this struct's own level (spring.governance.client.default.attempt-timeout,
+// this struct's own level (spring.governance.client.default.timeout,
 // spring.governance.client.default.balancer, ...).
 type ClientDefaultPolicy struct {
 	resilience.ClientPolicy
@@ -175,19 +180,36 @@ type ClientDefaultPolicy struct {
 // Like ClientDefaultPolicy it carries no Driver: that is process-wide, not
 // per-service.
 type ClientRule struct {
-	// Service is the service label this Rule matches, exact-compare — the identity
-	// a client starter passes when resolving an outbound executor, e.g.
-	// "redis:cache", "gorm:mysql:primary", "http:user-svc". Label matching is plain
-	// equality, so the label must be spelled exactly as the starter spells it.
-	// Empty matches nothing (use Default instead).
+	// Service is the call's target this Rule applies to, exact-compare — the
+	// label a client starter passes when resolving an outbound executor
+	// ("redis:cache", "gorm:mysql:primary", "http:user-svc"). It must be spelled
+	// exactly. Empty matches nothing (use Default instead).
 	Service string `value:"${service:=}"`
+
+	// Match narrows the rule to calls whose [chain.Request.Metadata] satisfies
+	// it (subset-match: every key it names must equal the call's). Empty matches
+	// every call of the service, so a rule without a Match behaves exactly as one
+	// did before: it governs the whole service. Several rules may share a Service
+	// as long as their Match differs — the first rule in the list whose Service
+	// equals the call's and whose Match it satisfies wins, which is how one
+	// service is governed differently per tenant, region or canary. Bind via
+	// indexed properties, e.g. spring.governance.client.rules[0].match.tenant=acme.
+	Match chain.Selector `value:"${match:=}"`
+
+	// Action narrows the rule to calls whose [chain.Request.Action] it matches — the
+	// interface being invoked ("insert", "GET /users/{id}"). Empty matches every
+	// action, so a rule without an Action governs the whole service. This is what
+	// makes INTERFACE-level governance possible: only rate-limit one endpoint,
+	// only fire one method. See [chain.ActionMatch].
+	Action chain.ActionMatch `value:"${action:=}"`
+
 	resilience.ClientPolicy
 	loadbalance.Selection
 }
 
 // ServerRule is the inbound counterpart of [ClientRule]: one per-entrance
 // inbound entry. It carries no Selection — there is no endpoint to choose
-// inbound — and no retry, because [resilience.ServerPolicy] cannot express one.
+// inbound — and no retry, because [guard.Policy] cannot express one.
 // Labels are unique across the list (a duplicate is rejected at dispatch);
 // an empty label matches nothing (use Default instead).
 //
@@ -203,20 +225,56 @@ type ServerRule struct {
 	// the caller supplies (thrift). It is not the name of a callee. Matching is
 	// plain equality, so it must be spelled exactly as the starter spells it.
 	Service string `value:"${service:=}"`
-	resilience.ServerPolicy
+	guard.Policy
 }
 
-// validateClientRules rejects a client rule list that names the same service label
-// twice. Labels are unique by contract (one Rule per service); a duplicate would
-// silently resolve to whichever entry comes first, so it is a document error, not
-// an ordering hint. Empty labels are skipped: they match nothing (use Default), and
-// several empty ones are harmless.
+// validateClientRules rejects a client rule list that names the same
+// (Service, Match) pair twice. A Service may now appear in several rules as long
+// as their Match differs — that is how one service is governed differently per
+// tenant, region or canary — but two rules that select the SAME calls would
+// silently resolve to whichever comes first, so that is a document error, not an
+// ordering hint. Empty services are skipped: they match nothing (use Default).
 func validateClientRules(rules []ClientRule) error {
-	labels := make([]string, 0, len(rules))
+	seen := make(map[string]struct{}, len(rules))
 	for _, r := range rules {
-		labels = append(labels, r.Service)
+		if r.Service == "" {
+			continue
+		}
+		key := r.Service + "\x00" + canonicalAction(r.Action) + "\x00" + canonicalSelector(r.Match)
+		if _, dup := seen[key]; dup {
+			return errutil.Explain(nil, "governance: duplicate rule for service %q, action %+v and selector %v", r.Service, r.Action, map[string]string(r.Match))
+		}
+		seen[key] = struct{}{}
 	}
-	return validateUniqueServices(labels)
+	return nil
+}
+
+// canonicalAction renders an action matcher as a stable string for the
+// uniqueness check.
+func canonicalAction(a chain.ActionMatch) string {
+	return a.Exact + "\x01" + a.Prefix
+}
+
+// canonicalSelector renders a selector as a stable, order-independent string, so
+// two selectors that name the same keys and values compare equal however their
+// maps were laid out.
+func canonicalSelector(s chain.Selector) string {
+	if len(s) == 0 {
+		return ""
+	}
+	keys := make([]string, 0, len(s))
+	for k := range s {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	var b strings.Builder
+	for _, k := range keys {
+		b.WriteString(k)
+		b.WriteByte('=')
+		b.WriteString(s[k])
+		b.WriteByte('&')
+	}
+	return b.String()
 }
 
 // validateServerRules is [validateClientRules] for the inbound rule list. The

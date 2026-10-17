@@ -31,7 +31,6 @@ import (
 
 	"go-spring.org/cloud/chain"
 	"go-spring.org/log"
-	"go.opentelemetry.io/otel/attribute"
 )
 
 // accessTag is the static log tag for the redigo access log. It is registered
@@ -61,20 +60,15 @@ const maxStatement = 512
 // the series without bound. A command with no arguments carries no detail at
 // all, which is also what levelled its success log at Info.
 func operation(cmd string, args []interface{}) chain.Operation {
-	op := chain.Operation{
-		Name:   cmd,
-		Metric: "db.client",
-		Attrs: []attribute.KeyValue{
-			attribute.String("db.system", redisSystem),
-			attribute.String("db.operation", strings.ToLower(cmd)),
-		},
-		LogTag: accessTag,
-	}
+	stmt := ""
 	if len(args) > 0 {
-		op.Detail = []attribute.KeyValue{
-			attribute.String("db.statement", summarizeCommand(cmd, args)),
-		}
+		stmt = summarizeCommand(cmd, args)
 	}
+	op := chain.DBOp(redisSystem, strings.ToLower(cmd), stmt)
+	// The span is named after the command as written ("GET"), while the
+	// db.operation label carries it lowercased, the family's convention.
+	op.Request.Action = cmd
+	op.Observe.Log.Tag = accessTag
 	return op
 }
 

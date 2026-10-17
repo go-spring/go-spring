@@ -30,11 +30,11 @@ import (
 )
 
 const rulesV1 = `spring.resilience.driver=default
-spring.governance.client.default.attempt-timeout=100ms
+spring.governance.client.default.timeout=100ms
 `
 
 const rulesV2 = `spring.resilience.driver=default
-spring.governance.client.default.attempt-timeout=300ms
+spring.governance.client.default.timeout=300ms
 spring.governance.client.default.retry.max-retries=1
 `
 
@@ -44,14 +44,14 @@ const rulesV1YAML = `spring:
   governance:
     client:
       default:
-        attempt-timeout: 100ms
+        timeout: 100ms
 `
 
 const rulesV2YAML = `spring:
   governance:
     client:
       default:
-        attempt-timeout: 300ms
+        timeout: 300ms
         retry:
           max-retries: 1
 `
@@ -72,13 +72,13 @@ func awaitCfg(t *testing.T, s *FileSource, d time.Duration) {
 	t.Helper()
 	deadline := time.Now().Add(3 * time.Second)
 	for time.Now().Before(deadline) {
-		if cfg := s.Snapshot(); cfg.Client.Default.AttemptTimeout == d {
+		if cfg := s.Snapshot(); cfg.Client.Default.Timeout == d {
 			return
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
 	cfg := s.Snapshot()
-	t.Fatalf("snapshot default timeout: want %v, got %v", d, cfg.Client.Default.AttemptTimeout)
+	t.Fatalf("snapshot default timeout: want %v, got %v", d, cfg.Client.Default.Timeout)
 }
 
 func TestFileSource_InitialSnapshot(t *testing.T) {
@@ -89,7 +89,7 @@ func TestFileSource_InitialSnapshot(t *testing.T) {
 	defer func() { _ = s.Close() }()
 
 	cfg := s.Snapshot()
-	if cfg.Client.Default.AttemptTimeout != 100*time.Millisecond {
+	if cfg.Client.Default.Timeout != 100*time.Millisecond {
 		t.Fatalf("initial snapshot wrong: %+v", cfg)
 	}
 }
@@ -160,7 +160,7 @@ func TestFileSource_BadEditKeepsLastGood(t *testing.T) {
 		t.Fatal(err)
 	}
 	awaitStable()
-	if cfg := s.Snapshot(); cfg.Client.Default.AttemptTimeout != 100*time.Millisecond {
+	if cfg := s.Snapshot(); cfg.Client.Default.Timeout != 100*time.Millisecond {
 		t.Fatalf("malformed edit must keep last good snapshot: %+v", cfg.Client.Default)
 	}
 
@@ -171,7 +171,7 @@ func TestFileSource_BadEditKeepsLastGood(t *testing.T) {
 		t.Fatal(err)
 	}
 	awaitStable()
-	if cfg := s.Snapshot(); cfg.Client.Default.AttemptTimeout != 100*time.Millisecond {
+	if cfg := s.Snapshot(); cfg.Client.Default.Timeout != 100*time.Millisecond {
 		t.Fatalf("empty edit must keep last good snapshot: %+v", cfg.Client.Default)
 	}
 	if pushes != 0 {
@@ -214,20 +214,21 @@ func TestFileSource_EndToEndWithCenter(t *testing.T) {
 	}
 
 	lb := loadbalance.NewManager()
-	res := resilience.NewManager(nil)
-	// The source is a constructor argument: its snapshot is adopted at bind, arming res.
+	driver := resilience.NewDefaultDriver(nil)
+	resClient := resilience.NewClientManager(driver)
+	// The source is a constructor argument: its snapshot is adopted at bind, arming the authorities.
 	if _, err := NewCenter(
-		res, lb, fault.NewInjector(fault.Configs{Client: fault.Config{}}, nil), nil, s); err != nil {
+		resClient, lb, fault.NewClientManager(nil), fault.NewServerManager(nil), nil, s); err != nil {
 		t.Fatal(err)
 	}
 
 	var mu sync.Mutex
 	var got resilience.ClientPolicy
-	res.Subscribe("demo:service", func(p resilience.ClientPolicy) { mu.Lock(); got = p; mu.Unlock() })
+	resClient.Subscribe("demo:service", func(p resilience.ClientPolicy) { mu.Lock(); got = p; mu.Unlock() })
 	mu.Lock()
-	if got.AttemptTimeout != 100*time.Millisecond {
+	if got.Timeout != 100*time.Millisecond {
 		mu.Unlock()
-		t.Fatalf("armed policy: want 100ms, got %v", got.AttemptTimeout)
+		t.Fatalf("armed policy: want 100ms, got %v", got.Timeout)
 	}
 	mu.Unlock()
 
@@ -237,7 +238,7 @@ func TestFileSource_EndToEndWithCenter(t *testing.T) {
 	deadline := time.Now().Add(3 * time.Second)
 	for time.Now().Before(deadline) {
 		mu.Lock()
-		done := got.AttemptTimeout == 300*time.Millisecond
+		done := got.Timeout == 300*time.Millisecond
 		mu.Unlock()
 		if done {
 			return // fan-out delivered

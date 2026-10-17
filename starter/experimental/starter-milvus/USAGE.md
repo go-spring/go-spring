@@ -192,8 +192,8 @@ interceptors (unary + stream-open) appended — additive, not a replacement. The
 interceptors read a per-client slot that `NewClient` creates, applies with
 `center.ExecutorFor("milvus", "milvus:<addr>")`, and keeps private — the slot cannot appear
 in an exported signature, so the constructor owns both the dial and the governing step.
-The executor is built from the `*resilience.Manager` and
-`*fault.Injector` carried by the injected `*governance.Center`
+The executor is built from the `*resilience.ClientManager` and
+`*fault.ClientManager` carried by the injected `*governance.Center`
 (the resilience manager is required — the container always supplies it;
 governance is applied as the client is built, so the fail-fast probe in
 `newClient` runs *after* the slot is applied and on a governance-on boot the probe itself rides the

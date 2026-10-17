@@ -160,7 +160,7 @@ gs.Run()
        │         → instrument() (redisotel pool metrics, gated by otel.metrics.enabled)
        │         → applyDeclaration (identity hook)   — declaration is part of construction
        │         → serviceLabel → center.ExecutorFor("redis", service)
-       │              (= fault.WrapClientExecutor(mgr.ClientExecutorFor("redis", service), service, inj);
+       │              (= inj.WrapClientExecutor(mgr.ClientExecutorFor("redis", service));
        │               the resilience manager is required — the container always supplies it)
        │         → center.Loadbalance().Chain(resolver, label) for a discovery-routed entry
        │              (built by the Driver; the build IS the governance registration)

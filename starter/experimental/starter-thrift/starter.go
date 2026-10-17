@@ -22,7 +22,7 @@ import (
 
 	"github.com/apache/thrift/lib/go/thrift"
 	"go-spring.org/cloud/governance"
-	"go-spring.org/cloud/resilience"
+	"go-spring.org/cloud/label"
 	"go-spring.org/cloud/security"
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
@@ -197,7 +197,7 @@ func (s *SimpleThriftServer) Run(ctx context.Context, sig gs.ReadySignal) error 
 		mws = append(mws, Observe())
 	}
 	mws = append(mws, AccessLog())
-	mws = append(mws, Admit(resilience.ServiceLabel("thrift", s.cfg.Addr), "thrift", s.center))
+	mws = append(mws, Admit(label.ServiceLabel("thrift", s.cfg.Addr), "thrift", s.center))
 	proc := thrift.WrapProcessor(s.proc, mws...)
 	s.svr = thrift.NewTSimpleServer4(proc, transport, transFactory, protoFactory)
 	<-sig.TriggerAndWait()

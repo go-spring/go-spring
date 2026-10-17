@@ -65,7 +65,7 @@ type Client struct {
 
 	// exec is the resilience executor protecting requests, built by [NewClient]
 	// from the [governance.Center] the container supplied; the center is required
-	// to carry a [resilience.Manager] rather than a bare client.
+	// to carry a [resilience.ClientManager] rather than a bare client.
 	exec chain.Executor
 	// serviceLabel is the resilience service key ("s3:<endpoint>") exec scopes
 	// limiter/breaker state by.
@@ -84,7 +84,7 @@ type Client struct {
 // applied HERE so a Client cannot exist half-assembled: there is no Init step,
 // no later patching, and nothing the container has to remember to call. A
 // hand-built client must supply a [governance.Center] over a
-// [resilience.Manager]: [governance.Center.Resilience] is required, so a nil
+// [resilience.ClientManager]: [governance.Center.ResilienceClient] is required, so a nil
 // center is a construction error — never a graceful downgrade.
 //
 // The manager's ClientExecutorFor resolves its backing executor lazily, on each
@@ -119,7 +119,7 @@ func (c *Client) installTransport() {
 	if c.dyn == nil {
 		return
 	}
-	c.dyn.Swap(resilience.NewRoundTripper(http.DefaultTransport, c.exec, callFor))
+	c.dyn.Swap(resilience.NewRoundTripper(http.DefaultTransport, c.exec, c.serviceLabel, callFor))
 }
 
 // Destroy releases the resilience executor. The minio client holds no

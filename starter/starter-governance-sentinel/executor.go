@@ -23,6 +23,7 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"go-spring.org/log"
 	"go-spring.org/stdlib/errutil"
 	"go-spring.org/stdlib/timeutil"
 
@@ -30,7 +31,6 @@ import (
 	"github.com/alibaba/sentinel-golang/core/base"
 	"github.com/alibaba/sentinel-golang/core/circuitbreaker"
 	"github.com/alibaba/sentinel-golang/core/flow"
-	"github.com/alibaba/sentinel-golang/core/isolation"
 
 	"go-spring.org/cloud/resilience"
 )
@@ -41,12 +41,39 @@ import (
 // first call; retry and per-attempt timeout are applied
 // around sentinel's entry check, since sentinel itself models neither.
 type sentinelExecutor struct {
-	policy  resilience.ClientPolicy
 	service string
 
-	mu       sync.Mutex
-	loaded   bool
+	// mu guards the three fields below: the policy sentinel's rules were built
+	// from, the generation that policy came from, and whether those rules are in
+	// the SDK. They move together, so a call never runs against a policy its
+	// rules do not match.
+	mu     sync.Mutex
+	policy resilience.ClientPolicy
+	gen    uint64
+	loaded bool
+
+	// loadedOnce records that sentinel has held rules for this resource at least
+	// once, which is what decides whether a refused load is fatal (nothing is
+	// governing the resource yet) or tolerated (the last good rules stay in
+	// force).
+	loadedOnce bool
+
+	// source is the manager, when there is one: sentinel's way of following the
+	// config. sentinel keys everything by resource name and keeps its statistics
+	// across a rule reload, so a generation change is a RULE SWAP for this driver
+	// rather than a rebuild of materialized state — the boundary that makes it
+	// the one backend that cannot show the "state starts over" contract.
+	source resilience.PolicySource
+
 	listener atomic.Pointer[resilience.BreakerEventListener]
+}
+
+// SetPolicySource installs src, the manager this executor follows the config
+// through (see [resilience.PolicySourceSetter]). It satisfies the
+// construction-time handshake the manager asserts while the executor is still
+// private, and must not be called after the first call.
+func (e *sentinelExecutor) SetPolicySource(src resilience.PolicySource) {
+	e.source = src
 }
 
 // SetBreakerEventListener attaches l and routes sentinel breaker state changes
@@ -56,13 +83,6 @@ func (e *sentinelExecutor) SetBreakerEventListener(l resilience.BreakerEventList
 	ensureRouteListener()
 	e.listener.Store(&l)
 }
-
-// isoSuffix namespaces the bulkhead (isolation) resource name so an Entry that holds
-// the concurrency slot across all retries does not collide with the per-attempt
-// Entry sentinel uses for flow + circuit breaking. sentinel evaluates every rule
-// type registered under a resource on each Entry for that resource, so the two
-// concerns must live under distinct resource names to be acquired independently.
-const isoSuffix = "$bulkhead"
 
 func newSentinelExecutor(service string, p resilience.ClientPolicy) (*sentinelExecutor, error) {
 	if p.RateLimit < 0 {
@@ -119,43 +139,100 @@ func (e *sentinelExecutor) ensureRules() error {
 		}
 	}
 
-	if e.policy.MaxConcurrent > 0 {
-		// The isolation rule lives under the bulkhead-suffixed resource name so it is
-		// acquired once for the whole Execute (see Execute below) and held across
-		// retries, matching the builtin's bulkhead-scope contract.
-		isoResource := service + isoSuffix
-		if _, err := isolation.LoadRulesOfResource(isoResource, []*isolation.Rule{
-			isolationRule(isoResource, e.policy.MaxConcurrent),
-		}); err != nil {
-			return errutil.Explain(err, "resilience: load isolation rule for %q", isoResource)
-		}
-	}
-
 	e.loaded = true
 	return nil
 }
 
-func (e *sentinelExecutor) Execute(ctx context.Context, call chain.Operation, fn func(context.Context) error) error {
-	if err := e.ensureRules(); err != nil {
+// load brings this resource's rules up to date with the policy the manager now
+// resolves, and returns the policy the call runs under. It is the whole of the
+// driver's config-following: the manager pushes nothing (see
+// [resilience.PolicySource]), so the resource notices on its own next call that
+// the generation moved and swaps sentinel's rules.
+//
+// Sentinels's rule loading is live — LoadRulesOfResource replaces the rule set
+// while the resource keeps its statistics — so a generation change costs a rule
+// swap, not a state reset. That is the honest boundary of this backend: the
+// framework cannot reach inside the SDK to rebuild what it materialized, and
+// sentinel would not want it to.
+//
+// A load the backend refuses is consumed rather than retried: the resource keeps
+// the rules it already has, so one bad policy does not cost a rule load per
+// call — and on the FIRST load there are no rules to keep, so the error is
+// returned and the call fails, which is what a caller wants to hear when the
+// resource is not being governed at all.
+func (e *sentinelExecutor) load() (resilience.ClientPolicy, error) {
+	p, gen := e.constructionPolicy(), uint64(0)
+	if e.source != nil {
+		c := e.source.ResolveLabel(e.service)
+		p, gen = c.Label, c.Gen
+	}
+
+	e.mu.Lock()
+	if e.loaded && e.gen == gen {
+		cur := e.policy
+		e.mu.Unlock()
+		return cur, nil
+	}
+	e.policy, e.gen, e.loaded = p, gen, false
+	e.mu.Unlock()
+
+	var err error
+	if p.RateLimit < 0 {
+		err = errutil.Explain(nil, "resilience: negative rate limit %v", p.RateLimit)
+	} else {
+		err = e.ensureRules()
+	}
+	return e.settled(p, err)
+}
+
+// settled records the outcome of one load attempt. A success marks the
+// generation dealt with. A failure does too once the resource has held rules
+// before — the last good ones stay in force and the failure is a warning. It does
+// NOT while the resource has never held any: there is nothing governing it, so
+// the generation stays unconsumed and every call keeps reporting the error until
+// the config is fixed.
+func (e *sentinelExecutor) settled(p resilience.ClientPolicy, err error) (resilience.ClientPolicy, error) {
+	e.mu.Lock()
+	if err == nil {
+		e.loadedOnce = true
+	}
+	if err == nil || e.loadedOnce {
+		e.loaded = true
+	}
+	tolerated := e.loadedOnce
+	e.mu.Unlock()
+
+	if err == nil || !tolerated {
+		return p, err
+	}
+	log.Warn(context.Background(), log.TagAppDef,
+		"resilience: sentinel refused a policy change, keeping the resource's loaded rules",
+		log.String("service", e.service), log.Err(err))
+	return p, nil
+}
+
+// constructionPolicy is the policy the driver was built with, read under mu.
+func (e *sentinelExecutor) constructionPolicy() resilience.ClientPolicy {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return e.policy
+}
+
+func (e *sentinelExecutor) Execute(ctx context.Context, call chain.Operation, rec *chain.Recorder, fn func(context.Context) error) error {
+	// The policy this call runs under, brought up to date first: sentinel holds
+	// the rules, so following the config means swapping them when the generation
+	// moves — see [sentinelExecutor.load].
+	policy, err := e.load()
+	if err != nil {
 		return err
 	}
 
-	// Bulkhead: one Entry under the suffixed resource, held for the whole
-	// Execute (retries included) via defer. This restores the bulkhead-scope
-	// invariant the builtin upholds.
-	if e.policy.MaxConcurrent > 0 {
-		isoEntry, blockErr := sentinel.Entry(e.service+isoSuffix, sentinel.WithTrafficType(base.Outbound))
-		if blockErr != nil {
-			return mapBlockError(blockErr)
-		}
-		defer isoEntry.Exit()
-	}
-
-	// MaxDuration caps the whole call across retries, mirroring the builtin.
-	budgetCtx := ctx
-	if e.policy.MaxDuration > 0 {
+	// Timeout bounds the whole call — every round and the backoff between them —
+	// as one deadline, mirroring the builtin.
+	callCtx := ctx
+	if policy.Timeout > 0 {
 		var cancel context.CancelFunc
-		budgetCtx, cancel = context.WithTimeout(ctx, e.policy.MaxDuration)
+		callCtx, cancel = context.WithTimeout(ctx, policy.Timeout)
 		defer cancel()
 	}
 
@@ -163,7 +240,7 @@ func (e *sentinelExecutor) Execute(ctx context.Context, call chain.Operation, fn
 	// governance center pushed a schedule (it wins whole), otherwise the call's own
 	// node — resolved by the SAME merge the builtin engine uses, so the two
 	// engines cannot disagree on retry. The zero node means a single attempt.
-	eff := resilience.EffectiveRetry(e.policy.Retry, call.Retry)
+	eff := resilience.EffectiveRetry(policy.Retry, call.Retry)
 	attempts := eff.MaxRetries + 1
 	// A non-idempotent call runs once whatever the schedule says — the retry would
 	// repeat a side effect, not an attempt. The builtin engine has always honored
@@ -171,7 +248,6 @@ func (e *sentinelExecutor) Execute(ctx context.Context, call chain.Operation, fn
 	if attempts > 1 && eff.NonIdempotent {
 		attempts = 1
 	}
-	var err error
 	for i := range attempts {
 		// Per-attempt Entry drives sentinel's flow and circuit-breaking rules.
 		entry, blockErr := sentinel.Entry(e.service, sentinel.WithTrafficType(base.Outbound))
@@ -179,7 +255,7 @@ func (e *sentinelExecutor) Execute(ctx context.Context, call chain.Operation, fn
 			return mapBlockError(blockErr)
 		}
 
-		err = e.runOnce(budgetCtx, fn)
+		err = fn(callCtx)
 		if err != nil {
 			sentinel.TraceError(entry, err)
 		}
@@ -188,7 +264,7 @@ func (e *sentinelExecutor) Execute(ctx context.Context, call chain.Operation, fn
 		if err == nil {
 			return nil
 		}
-		if budgetCtx.Err() != nil {
+		if callCtx.Err() != nil {
 			break
 		}
 		if !resilience.ShouldRetry(err) {
@@ -197,22 +273,11 @@ func (e *sentinelExecutor) Execute(ctx context.Context, call chain.Operation, fn
 		if i == attempts-1 {
 			break
 		}
-		if !timeutil.Sleep(budgetCtx, resilience.Backoff(eff, i)) {
+		if !timeutil.Sleep(callCtx, resilience.Backoff(eff, i)) {
 			break
 		}
 	}
 	return err
-}
-
-// runOnce applies the per-attempt timeout, if any, around fn. The ctx it
-// receives is already bounded by the Execute-level MaxDuration budget.
-func (e *sentinelExecutor) runOnce(ctx context.Context, fn func(context.Context) error) error {
-	if e.policy.AttemptTimeout <= 0 {
-		return fn(ctx)
-	}
-	attemptCtx, cancel := context.WithTimeout(ctx, e.policy.AttemptTimeout)
-	defer cancel()
-	return fn(attemptCtx)
 }
 
 func (e *sentinelExecutor) Close() error { return nil }

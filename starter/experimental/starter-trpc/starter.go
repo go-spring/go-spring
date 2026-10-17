@@ -21,6 +21,7 @@ import (
 	"math"
 
 	"go-spring.org/cloud/governance"
+	"go-spring.org/cloud/label"
 	"go-spring.org/cloud/traffic"
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
@@ -163,6 +164,17 @@ func (s *SimpleTrpcServer) Run(ctx context.Context, sig gs.ReadySignal) error {
 		return errutil.Explain(nil, "failed to parse port from addr %s: exceeds 65535", s.cfg.Addr)
 	}
 
+	// Inbound governance is the first server filter: it admits (rate limit /
+	// bulkhead / breaker), injects faults and settles the outcome before any
+	// later filter or handler runs. A nil center is the standalone case, so the
+	// filter is simply not installed.
+	var filters []string
+	if s.center != nil {
+		in := s.center.InboundFor("trpc", label.ServiceLabel("trpc", s.cfg.Addr))
+		filter.Register("governance", GuardServerFilter(in), nil)
+		filters = append(filters, "governance")
+	}
+
 	// Build the tRPC config in code instead of loading trpc_go.yaml, so the
 	// whole service is configured through Go-Spring properties. NewServerWithConfig
 	// repairs defaults and builds the service; plugin setup is intentionally left
@@ -175,6 +187,7 @@ func (s *SimpleTrpcServer) Run(ctx context.Context, sig gs.ReadySignal) error {
 			Port:     uint16(port),
 			Network:  s.cfg.Network,
 			Protocol: s.cfg.Protocol,
+			Filter:   filters,
 		},
 	}
 	s.svr = trpc.NewServerWithConfig(cfg)
@@ -193,15 +206,6 @@ func (s *SimpleTrpcServer) Run(ctx context.Context, sig gs.ReadySignal) error {
 	if s.cfg.LoadTest.Enabled {
 		filter.Register("loadtest", LoadTestServerFilter(s.prop), nil)
 	}
-	// Register the inbound fault-injection filter ("fault"). Add "fault" to a
-	// service's filter chain to activate it; it injects latency/errors into
-	// inbound RPCs per the injected [fault.Injector] bean (nil-safe pass-through
-	// when governance is not imported) — the server-side counterpart to the client
-	// starters' fault.WrapClientExecutor. Always registered; the filter captures the
-	// injector once, and the center swaps its config in place, so fault can be
-	// hot-toggled at runtime without a restart.
-	filter.Register("fault", FaultServerFilter(s.center.Fault()), nil)
-
 	// Bind the concrete service handler; the adapter itself stays service-agnostic.
 	s.reg(s.svr)
 

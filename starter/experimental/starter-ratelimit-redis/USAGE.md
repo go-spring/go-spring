@@ -76,7 +76,7 @@ import (
 const service = "ratelimit-redis:api"
 
 func init() {
-    gs.Provide(func(mgr *resilience.Manager) *gs.HttpServeMux {
+    gs.Provide(func(mgr *resilience.ClientManager) *gs.HttpServeMux {
         mux := http.NewServeMux()
         // Two handlers model two replicas: no shared in-process state. Both
         // spend the one Redis-backed counter store this process contributed.
@@ -194,7 +194,7 @@ gs.Run()
   script cheaply — use a token bucket when the counters are shared.
 - It does not queue: `rate-limit-max-wait` is ignored and an over-limit unit is rejected immediately.
   Waiting for a token would mean polling Redis; keep queueing for the in-memory store.
-- It keeps no metrics of its own — a rate-limited call shows up as `resilience.outcome=rate_limited` on the
+- It keeps no metrics of its own — a rate-limited call shows up as `resilience.error_type=rate_limited` on the
   executor's observe layer.
 - It does not adjudicate: rejecting over-limit calls and choosing open-vs-closed on a counter error
   are the executor's decisions.

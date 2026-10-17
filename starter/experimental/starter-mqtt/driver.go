@@ -114,7 +114,7 @@ func (DefaultDriver) CreateClient(ctx context.Context, c Config, center *governa
 	// an interface with no room for an executor field, so the executor is held
 	// beside it (see [AttachGovernance]); the broker scopes limiter/breaker
 	// state per broker rather than per topic. Attaching requires a center that
-	// carries a [resilience.Manager]: resolving the executor panics
+	// carries a [resilience.ClientManager]: resolving the executor panics
 	// without one.
 	AttachObserver(cl, c.Broker)
 	return cl, nil

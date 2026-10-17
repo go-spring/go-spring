@@ -238,7 +238,7 @@ func TestWiring_ContributesRedisStore(t *testing.T) {
 
 	// The *goredis.Client bean starter-go-redis would publish, built the same
 	// way that starter builds one (identity + observation, no governance).
-	center, err := governance.NewProcessCenter(resilience.NewManager(nil), fault.NewInjector(fault.Configs{}, nil))
+	center, err := governance.NewProcessCenter(resilience.NewClientManager(resilience.NewDefaultDriver(nil)), fault.NewClientManager(nil), fault.NewServerManager(nil))
 	if err != nil {
 		t.Fatalf("NewProcessCenter: %v", err)
 	}

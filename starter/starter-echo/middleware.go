@@ -18,14 +18,12 @@ package StarterEcho
 
 import (
 	"context"
-	"errors"
 	"go-spring.org/cloud/governance"
 	"net/http"
 	"strconv"
 
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
-	"go-spring.org/cloud/fault"
 	"go-spring.org/cloud/propagate"
 	"go-spring.org/cloud/traffic"
 	"go-spring.org/log"
@@ -133,45 +131,11 @@ func applyMiddlewares(e *echo.Echo, cfg Config, center *governance.Center, prop 
 	// starter's manager bean (nil when governance is not imported); without it
 	// the executor is a transparent pass-through, so installing it costs a call
 	// frame and changes nothing else.
-	e.Use(buildServerPolicy(cfg))
+	e.Use(buildServerPolicy(cfg, center))
 
-	// Fault injection (always installed, innermost so the resulting 503 is still
-	// logged by the access log). inj is the governance starter's injector bean,
-	// captured once here and reused for every request (nil-safe: a transparent
-	// pass-through when governance is not imported); the center hot-swaps the
-	// injector's config in place, so an operator can "set fire" to the running
-	// server and hot-toggle it at runtime without a restart.
-	e.Use(buildFault(center.Fault()))
+	// Fault injection is part of the inbound guard now: it runs innermost, after
+	// the rate-limit / bulkhead / breaker gate.
 	return nil
-}
-
-// buildFault builds the inbound fault-injection middleware. It gates the handler
-// call with [fault.ApplyServer] so a configured fraction of inbound requests fail or
-// slow down — the server-side counterpart to the client starters'
-// fault.WrapClientExecutor. inj is the governance starter's injector bean, held for
-// the life of the middleware: the center swaps its config in place
-// ([fault.Injector.SetConfig]) rather than replacing the bean, so the captured
-// reference always sees the live config. When it is nil, Apply is a transparent
-// pass-through.
-func buildFault(inj *fault.Injector) echo.MiddlewareFunc {
-	return func(next echo.HandlerFunc) echo.HandlerFunc {
-		return func(c echo.Context) error {
-			err := fault.ApplyServer(c.Request().Context(), inj, "echo", func() error {
-				return next(c)
-			})
-			// Only an INJECTED fault (or a latency cancelled by the request
-			// deadline) surfaces as 503 — the server is "unavailable" for this
-			// request. A handler's own error (echo.ErrNotFound, an HTTPError
-			// from the chain, ...) must pass through so Echo's
-			// HTTPErrorHandler renders it, exactly as gin's buildFault lets
-			// handler errors reach the engine.
-			var inj *fault.InjectedError
-			if err != nil && !c.Response().Committed && errors.As(err, &inj) {
-				return c.String(http.StatusServiceUnavailable, "service unavailable")
-			}
-			return err
-		}
-	}
 }
 
 // propagateRequestID copies the id set by middleware.RequestID onto the request

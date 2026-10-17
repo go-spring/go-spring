@@ -64,11 +64,11 @@ spring:
     driver: default
     client:
       default:
-        attempt-timeout: 100ms
+        timeout: 100ms
     client:
       rules:
         - services: demo:service
-          attempt-timeout: 50ms
+          timeout: 50ms
 ```
 
 每个已发布版本都会被重新解析并推送进治理中心。规则词表（`spring.governance.client.default.*`、

@@ -93,7 +93,7 @@ func (p *publisher) Publish(ctx context.Context, msg *messaging.Message) error {
 		p.prop.Inject(ctx, propagate.Header(nm.Header))
 	}
 	// Route through the Conn's publish seam: PublishMsgContext declares the
-	// publish's identity (operation(opPublish, subject)), injects the W3C trace
+	// send's identity (operation(opSend, subject)), injects the W3C trace
 	// context from the executor's attempt ctx into nm.Header (so the consumer
 	// continues the trace), and the connection's resilience executor — the single
 	// emitter — opens the span, records the durations and writes the access log.
@@ -121,8 +121,8 @@ func (s *subscriber) Subscribe(ctx context.Context, handler messaging.Handler) e
 	// it returns flows into the executor's outcome.
 	handler = messaging.Recover(handler)
 	// Route through the Conn's consume seam: Consume extracts the upstream W3C
-	// trace from the envelope headers into a fresh ctx, declares the consume's
-	// identity (operation(opConsume, subject)), and runs the handler under the
+	// trace from the envelope headers into a fresh ctx, declares the process's
+	// identity (operation(opProcess, subject)), and runs the handler under the
 	// connection's resilience executor — the single emitter that opens the span,
 	// records the durations and writes the access log. The inner handler
 	// re-enters the load-test marker the producer stamped into the NATS header.

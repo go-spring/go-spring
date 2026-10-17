@@ -59,7 +59,7 @@ import (
 type printer struct {
     // mgr 是治理 starter 的 resilience manager bean，在此注入，
     // 而不是从进程级 seam 解析。
-    mgr *resilience.Manager
+    mgr *resilience.ClientManager
 }
 
 func (p *printer) Run(ctx context.Context) error {
@@ -80,9 +80,9 @@ func (p *printer) Run(ctx context.Context) error {
 
 // newPrinter 在注入的 manager 之上构建 printer。manager 为 nil——没有
 // cloud/governance bean 的容器——时归一化为一个新的未武装实例。
-func newPrinter(mgr *resilience.Manager) *printer {
+func newPrinter(mgr *resilience.ClientManager) *printer {
     if mgr == nil {
-        mgr = resilience.NewManager()
+        mgr = resilience.NewClientManager()
     }
     return &printer{mgr: mgr}
 }
@@ -109,7 +109,7 @@ spring:
     driver: default
     client:
       default:
-        attempt-timeout: 100ms
+        timeout: 100ms
 ```
 
 **验证**（本地 etcd，可用 `example/docker-compose.yml`）：
@@ -118,7 +118,7 @@ spring:
 docker compose up -d
 ETCDCTL_API=3 etcdctl put /app/governance.yaml "$(cat governance.yaml)"   # 启动前先播种
 go run .
-ETCDCTL_API=3 etcdctl put /app/governance.yaml 'govern: {default: {attempt-timeout: 300ms}}'
+ETCDCTL_API=3 etcdctl put /app/governance.yaml 'govern: {default: {timeout: 300ms}}'
 # 无需重启：源推送新文档，PolicyFor 翻到 300ms
 ```
 
@@ -246,7 +246,7 @@ key 必须在应用启动前存在——源的构造期会执行一次初始 `Ge
 
 ```bash
 go run . &
-etcdctl put /app/governance.yaml 'govern: {default: {attempt-timeout: 300ms}}'
+etcdctl put /app/governance.yaml 'govern: {default: {timeout: 300ms}}'
 ```
 
 无需重启；注入的 resilience 权威的 `PolicyFor("...")` 下次调用即翻到新超时。

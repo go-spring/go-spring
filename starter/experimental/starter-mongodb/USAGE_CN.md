@@ -170,14 +170,14 @@ import starter-mongodb
 gs.Run()
   ├─ 构造 newClient [starter.go:105]：ApplyURI → 超时/连接池/认证 → tls.Build
   │   → 从注入的 *governance.Center（变量 center）读取各授权：
-  │     center.Resilience() / center.Fault() / center.Loadbalance()（mgr / inj / lbMgr）
+  │     center.ResilienceClient() / center.FaultClient() / center.Loadbalance()（mgr / inj / lbMgr）
   │   → SetMonitor(command monitor，惰性 observer holder)[starter.go:152]
   │   → newPickPool(ctx, c, backend)（设置 service-name 且非 mesh 时构建 loader-backed 端点池）[starter.go:155]
   │   → SetDialer(共享 dialerWrapper)[starter.go:185]
   │   → mongo.Connect → NewClient(raw, cfg)（定身份 + observer）[client.go:113]
   │       newDBObserver("mongodb") → 模块内建 observer（span + 指标 + 访问日志）；
   │       serviceLabel = serviceLabel(cfg)；exec = center.ExecutorFor("mongodb", serviceLabel)，
-  │       即 fault.WrapClientExecutor(mgr.ClientExecutorFor("mongodb", service), service, inj)
+  │       即 inj.WrapClientExecutor(mgr.ClientExecutorFor("mongodb", service))
   │   → 换入 dialerWrapper.dial = newDialer(base, w.exec)[starter.go:225]、[dial.go]
   │   → 仅 ping=true：fail-fast 探测 HealthCheck(ctx, w)——一次 Ping，由
   │     connect-timeout 约束（兜底 10s）[starter.go:220]——server 挂掉失败的是启动
@@ -218,7 +218,7 @@ executor 承担。这是唯一一个在本地发射信号的 client starter—�
 `db.system` + `db.operation`、无界细节 `db.statement`（只进 span 与日志、绝不进指标标签，
 截断至 512 字节）、以命令命名的 Internal span，以及 `status` / `duration_ms` 访问日志字段
 与同样的分级规则（失败 Warn / 带细节的成功 Debug / 无细节的成功 Info）。状态词集就是生态
-通用的 `ok` / `error`，与别处一致。唯一差别是没有 `resilience.outcome`：command monitor
+通用的 `ok` / `error`，与别处一致。唯一差别是没有 `resilience.error_type`：command monitor
 只能看到驱动自身返回的 error，无从得知保护拒绝了这次调用（`rate_limited`、
 `circuit_open`、`bulkhead_full`、`timeout`），所以这里**不报** outcome，而不是报一个空值。
 
@@ -255,7 +255,7 @@ key——观测无条件开启（见 §3.3）。
 | `auth-mechanism` | string | — | 如 `SCRAM-SHA-256`；空 = 驱动自动协商。⚠ 仅随 `username`。 | 不支持的机制 → 首次使用时（`ping=true` 时为启动 ping）报错。 |
 | `connect-timeout` | duration | `10s` | 传给驱动，且限定启动 ping（`ping=true` 时；0 → 兜底 10s，[starter.go:224-229]）。 | 过小 → 慢网络下启动 ping 假超时。 |
 | `server-selection-timeout` | duration | `0` | 0 = 驱动默认（30s）。驱动等待合适 server 的时长。 | 过小 + 发现延迟 → "server selection timeout"。 |
-| `max-pool-size` | uint64 | `100` | 每 server 最大连接数。0 本意为用默认——但 starter 未设时显式传 100。治理规则里的 `max-conns` 覆盖它。 | 过小 → 操作排队等池位。 |
+| `max-pool-size` | uint64 | `100` | 每 server 最大连接数。0 本意为用默认——但 starter 未设时显式传 100。 | 过小 → 操作排队等池位。 |
 | `min-pool-size` | uint64 | `0` | 最小池内连接（恒应用，含 0）。 | — |
 | `max-conn-idle-time` | duration | `0` | 0 = 不限；如 `5m` 清理空闲连接。⚠ 配 `service-name` 时有限值可在不重启的情况下把连接逐步迁到新端点。 | `0` + 发现 → 连接在被踢掉的端点上滞留到断开。 |
 | `service-name` | string | — | 经已注册的发现后端解析地址；每次建连由 loader-backed（`Pool.Pick`）拨号替代 URI host [starter.go:150-167]。⚠ **绕过 MongoDB 自身拓扑发现**（副本集/mongos）——驱动拨命名服务给出的地址；需在 URI 配合 `directConnection=true`（[config.go:80-84]）。mesh 模式下忽略（sidecar 负责发现+LB）。 | 副本集 URI 不加 `directConnection=true` → "no such host"/拓扑报错；占位 URI 只有在 loader/pool 真被咨询时才能证明发现生效。 |
@@ -269,9 +269,9 @@ key——观测无条件开启（见 §3.3）。
 
 策略 key 位于顶层 `spring.governance.*`（cloud/governance 治理中心）；`newClient` 从
 `*governance.Center` 读取注入的
-`*resilience.Manager` / `*fault.Injector`（`mgr`/`inj`）与 `*loadbalance.Manager`（`lbMgr`），由
+`*resilience.ClientManager` / `*fault.ClientManager`（`mgr`/`inj`）与 `*loadbalance.Manager`（`lbMgr`），由
 `center.ExecutorFor("mongodb", "mongodb:<service-name|uri>")`
-一次解出 `fault.WrapClientExecutor(mgr.ClientExecutorFor("mongodb", "mongodb:<service-name|uri>"), "mongodb:<service-name|uri>", inj)`
+一次解出 `inj.WrapClientExecutor(mgr.ClientExecutorFor("mongodb", "mongodb:<service-name|uri>"))`
 [client.go:113-121]。相关 key：`spring.resilience.driver`（后端，静态 app 配置）以及治理文档中的
 （全集见 cloud/governance 的 SOURCE_USAGE_CN.md）`spring.governance.client.default.rate-limit` /
 `error-threshold` / `open-duration` /

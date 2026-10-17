@@ -24,53 +24,25 @@
 package StarterAsynq
 
 import (
-	"go-spring.org/stdlib/strutil"
-
 	"go-spring.org/cloud/chain"
 	"go-spring.org/log"
-	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/trace"
 )
 
 // asynqSystem is the value the family's messaging.system label carries for this
 // backend — the family's shared vocabulary, not a per-file choice.
 const asynqSystem = "asynq"
 
-// maxDestination bounds the task type captured as messaging.destination.name. A
-// task type can be long and a span or a log line has no use for all of it.
-const maxDestination = 512
-
 // accessTag is the static log tag for the Asynq access log. It is registered
 // here, at package init, because a tag must exist before the framework's first
 // property refresh — see [log.RegisterTag].
 var accessTag = log.RegisterAppTag("asynq", "access")
 
-// operation is the semantic identity of one enqueue call.
-//
-// The task type rides in Detail rather than Attrs: task types are drawn from an
-// open set, so as a metric label one would multiply the series without bound.
-// Detail reaches the span and the log — where the destination is exactly what
-// makes a line worth reading — and never a label. An empty task type carries no
-// detail at all, which is also what levelled its success log at Info rather than
-// Debug.
+// operation is the semantic identity of one enqueue call. An enqueue is a
+// publish — the task is handed to a broker for a worker to consume later — so
+// the messaging family's vocabulary in [wire] describes it; this starter
+// supplies only the system and the task type.
 func operation(op, taskType string) chain.Operation {
-	o := chain.Operation{
-		Name:   op,
-		Metric: "messaging.client",
-		Attrs: []attribute.KeyValue{
-			attribute.String("messaging.system", asynqSystem),
-			attribute.String("messaging.operation", op),
-		},
-		LogTag: accessTag,
-		// An enqueue is the producer edge of the trace: the task is handed to a
-		// broker for a worker to consume later, and the edge is what keeps that
-		// visible once the emitter opens the span.
-		SpanKind: trace.SpanKindProducer,
-	}
-	if taskType != "" {
-		o.Detail = []attribute.KeyValue{
-			attribute.String("messaging.destination.name", strutil.Truncate(taskType, maxDestination)),
-		}
-	}
+	o := chain.MessagingOp(chain.KindPublish, asynqSystem, op, taskType)
+	o.Observe.Log.Tag = accessTag
 	return o
 }

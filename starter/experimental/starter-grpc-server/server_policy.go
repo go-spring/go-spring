@@ -19,9 +19,11 @@ package StarterGrpcServer
 import (
 	"context"
 	"errors"
-	"go-spring.org/cloud/chain"
 
-	"go-spring.org/cloud/resilience"
+	"go-spring.org/cloud/governance"
+	"go-spring.org/cloud/guard"
+	"go-spring.org/cloud/label"
+	"go-spring.org/cloud/observability"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -30,11 +32,12 @@ import (
 // resilienceInterceptors are the unary/stream wrappers built from the server's
 // resilience policy, if any.
 type resilienceInterceptors struct {
-	unary grpc.UnaryServerInterceptor
+	unary  grpc.UnaryServerInterceptor
+	stream grpc.StreamServerInterceptor
 }
 
 // buildResilienceInterceptors constructs an inbound-inbound executor from the
-// injected [resilience.Manager] and returns the unary interceptor that runs each
+// injected [guard.Manager] and returns the unary interceptor that runs each
 // RPC through it. The manager is the governance starter's bean, so this server
 // gets its rate-limit / bulkhead / breaker limits from the governance document's
 // SERVER block (spring.governance.server.*)
@@ -52,13 +55,14 @@ type resilienceInterceptors struct {
 // retry for inbound (a handler that has already produced side effects cannot be
 // replayed) — leave MaxRetries at 0: inbound serving is not idempotent.
 func (s *SimpleGrpcServer) buildResilienceInterceptors() (resilienceInterceptors, bool) {
-	service := resilience.ServiceLabel("grpc", s.cfg.Addr)
-	// The center composes the observe wrapper (and normalizes a nil center to an
-	// unarmed authority), so this package names neither observability nor the
-	// manager's raw handle.
-	exec := s.center.ServerExecutorFor("grpc", service)
+	service := label.ServiceLabel("grpc", s.cfg.Addr)
+	// The center composes the observe object with the guard (and normalizes a nil
+	// center to an unarmed authority), so this package names neither observability
+	// nor the manager's raw handle.
+	in := s.center.InboundFor("grpc", service)
 	return resilienceInterceptors{
-		unary: resilienceUnaryInterceptor(exec, service),
+		unary:  resilienceUnaryInterceptor(in, service),
+		stream: resilienceStreamInterceptor(in),
 	}, true
 }
 
@@ -72,10 +76,11 @@ func (s *SimpleGrpcServer) buildResilienceInterceptors() (resilienceInterceptors
 // rate/bulkhead rejections are ResourceExhausted, an open circuit is
 // Unavailable. Without the mapping they cross the wire as codes.Unknown,
 // which no consumer can act on.
-func resilienceUnaryInterceptor(exec chain.Executor, service string) grpc.UnaryServerInterceptor {
+func resilienceUnaryInterceptor(in *governance.Inbound, service string) grpc.UnaryServerInterceptor {
 	return func(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
 		var resp any
-		err := exec.Execute(ctx, chain.Operation{}, func(ctx context.Context) error {
+		op := observability.ServerOperation{Action: info.FullMethod}
+		err := in.Run(ctx, op, func(ctx context.Context) error {
 			var e error
 			resp, e = handler(ctx, req)
 			return e
@@ -84,18 +89,44 @@ func resilienceUnaryInterceptor(exec chain.Executor, service string) grpc.UnaryS
 	}
 }
 
-// mapServerPolicyError translates resilience inbound rejections into semantic
-// gRPC status errors; every other error (handler failure, injected fault, ...)
-// passes through untouched.
+// resilienceStreamInterceptor runs a whole stream under the same inbound guard
+// as a unary call: admission happens once when the stream opens, the handler
+// runs with the derived context, and settlement happens when the handler
+// returns. Fault injection therefore lives inside the guard for streams too.
+func resilienceStreamInterceptor(in *governance.Inbound) grpc.StreamServerInterceptor {
+	return func(srv any, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
+		op := observability.ServerOperation{Action: info.FullMethod}
+		return in.Run(ss.Context(), op, func(ctx context.Context) error {
+			return handler(srv, &contextServerStream{ServerStream: ss, ctx: ctx})
+		})
+	}
+}
+
+// contextServerStream hands the handler the context derived by the inbound
+// guard (span, handling budget).
+type contextServerStream struct {
+	grpc.ServerStream
+	ctx context.Context
+}
+
+func (s *contextServerStream) Context() context.Context { return s.ctx }
+
+// mapServerPolicyError translates an inbound refusal into a semantic gRPC status
+// error; every other error (handler failure, injected fault, an infrastructure
+// failure) passes through untouched.
 func mapServerPolicyError(err error) error {
 	if err == nil {
 		return nil
 	}
-	switch {
-	case errors.Is(err, chain.ErrRateLimited), errors.Is(err, chain.ErrBulkheadFull):
-		return status.Error(codes.ResourceExhausted, err.Error())
-	case errors.Is(err, chain.ErrCircuitOpen):
-		return status.Error(codes.Unavailable, err.Error())
+	var ref *governance.Refusal
+	if !errors.As(err, &ref) {
+		return err
+	}
+	switch ref.Verdict() {
+	case guard.VerdictRateLimited, guard.VerdictBulkheadFull:
+		return status.Error(codes.ResourceExhausted, ref.Error())
+	case guard.VerdictCircuitOpen, guard.VerdictDegraded:
+		return status.Error(codes.Unavailable, ref.Error())
 	default:
 		return err
 	}

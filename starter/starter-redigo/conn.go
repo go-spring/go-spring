@@ -71,8 +71,8 @@ type CommandInterceptor func(next CommandHandler) CommandHandler
 // analog of gorm.ErrRecordNotFound; protection rejections (rate-limited /
 // circuit-open / bulkhead-full) surface to the caller verbatim.
 //
-// Do and DoWithTimeout carry no context, so their spans are roots and an
-// attempt-timeout cannot interrupt them — prefer DoContext when either matters.
+// Do and DoWithTimeout carry no context, so their spans are roots and the rule's
+// timeout cannot interrupt them — prefer DoContext when either matters.
 // Send / Flush / Receive (pipelining) are left to the embedded Conn
 // uninstrumented; correlating queued Sends with their Receives needs deeper,
 // out-of-scope instrumentation.
@@ -104,7 +104,7 @@ func NewConn(raw redis.Conn, layers ...CommandInterceptor) *Conn {
 	return &Conn{Conn: raw, wrap: wrap}
 }
 
-// Do is the common, context-less path: its span is a root and an attempt-timeout
+// Do is the common, context-less path: its span is a root and the rule's timeout
 // cannot interrupt it. It is mandatory (part of the redis.Conn interface) and the
 // fallback for the optional DoContext / DoWithTimeout when the inner conn lacks them.
 func (c *Conn) Do(cmd string, args ...interface{}) (interface{}, error) {
@@ -115,7 +115,7 @@ func (c *Conn) Do(cmd string, args ...interface{}) (interface{}, error) {
 }
 
 // DoContext instruments the context-aware path; its span links to the caller and
-// an attempt-timeout can interrupt it. Falls back to Do when the inner conn has
+// the rule's timeout can interrupt it. Falls back to Do when the inner conn has
 // no DoContext.
 func (c *Conn) DoContext(ctx context.Context, cmd string, args ...interface{}) (interface{}, error) {
 	type ctxDoer interface {
@@ -180,7 +180,12 @@ func (c *Conn) run(ctx context.Context, cmd string, args []interface{},
 func resilienceInterceptor(exec chain.Executor, service string) CommandInterceptor {
 	return func(next CommandHandler) CommandHandler {
 		return func(ctx context.Context, cmd string, args []interface{}) (interface{}, error) {
-			return resilience.Run(ctx, exec, opFor(cmd, args),
+			// Name the service on the operation: the fault layer matches its rules
+			// on it, and it sits outside this executor so it cannot borrow the
+			// label from here.
+			op := opFor(cmd, args)
+			op.Service = service
+			return resilience.Run(ctx, exec, op,
 				func(attemptCtx context.Context) (interface{}, error) {
 					return next(attemptCtx, cmd, args)
 				}, resilience.Tolerate(redis.ErrNil))

@@ -100,7 +100,7 @@ metric 没有这样的窗口。它是一次测量而不是一个过程，所以�
   `duration_ms`（同词根 + `_ms`）。`scheduling.lag` 是队列积压不是操作耗时，不算违反。发现
   `cost` / `latency` / `elapsed` / `outcome` 等偏离视为待整改信号。（2026-09-22）
 - **duration 直方图桶界只有一份定义**：未导出的 `durationBuckets` + 导出的 `DurationBuckets()`（返回
-  clone），都在 `cloud/observability/buckets.go`。调用点写
+  clone），都在 `cloud/observability/otel.go`。调用点写
   `metric.WithExplicitBucketBoundaries(observability.DurationBuckets()...)`。某域要特化就**本地定义**
   （如 `cloud/scheduling` 的 `lagBuckets`），别改回导出 var（元素可被就地改写）。（2026-09-30）
 - **instrument 默认在 wiring/构造期创建，不可包级 `init`**——OTel global meter 只委托第一个 provider，
@@ -204,17 +204,17 @@ exec.Execute(ctx, chain.Call{Target: "orders", Scenario: "tenant-a", NonIdempote
 这两个 observer 产出与 executor 路径完全相同的东西（同样的 span、指标名、label 与访问日志），
 且完全不接治理。
 
-`Recorder` 是尝试级累加器：治理 executor 为每次下游尝试追加一条，发射端在
-重试循环之外把它读走。
+`Recorder` 是**逐轮**累加器：治理 executor 每跑一轮就追加一条 `chain.Round`，
+发射端在重试循环之外把它们读走。
 
 ```go
-rec := observability.RecorderFrom(ctx)   // nil 安全——没有 recorder 也正常
-rec.AddAttempt(d, status, err)
+rec := &chain.Recorder{}          // 传 nil 也行——含义是"什么都不记"
+exec.Execute(ctx, op, rec, fn)    // 重试循环边跑边填 rec
+rec.Rounds()                      // 只能在 Execute 返回之后读
 ```
 
-`WithRecorder` 刻意**不幂等**：链上最近的一个胜出，嵌套的两层 executor 各写
-各的。在循环入口读一次并持有指针——每次写入都重新查会把手外层调用的记录
-交给内层 executor。
+recorder 走的是**显式入参**,不走 context:`Execute` 收它,传 nil 就是"什么都不记"。
+这正是嵌套不会串味的原因——内层调用自建一个再往下传,内层 executor 永远写不进外层的记录。
 
 ## 调用 tracer
 

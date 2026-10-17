@@ -230,7 +230,8 @@ LoadTest → Recovery → RequestID(+propagate) → Tracing → Metrics → Acce
 5. Metrics 加 in-flight 量表、起耗时观测
 6. AccessLog 布防（字段在出口捕获）
 7. SecureHeaders/CORS/Gzip 按配置（引擎独立执行 `maxBodySize`）
-8. fault：`fault.ApplyServer(ctx, inj, "hertz", handler)`（inj = 注入的 bean）——`scope: loadtest`
+8. fault：`_, err := srv.Fire(ctx, fault.Target{Service: "hertz", Action: "GET /x"})`
+   （inj = 注入的 bean；内置 target 会带上 `METHOD` + `c.FullPath()`，规则可以只给单个路由放火）——`scope: loadtest`
    且有标记时，约 `rate` 比例的请求拿到注入错误 → 503；其余放行
 9. 你的路由执行；响应按 6→5→4→3 解栈：访问记录落盘（按状态定级）、耗时/计数入库、
    in-flight 减一、span 结束（5xx 标 Error）、id 头写回。
@@ -320,9 +321,9 @@ curl -i 127.0.0.1:9370/readyz    # actuator 就绪（需加 starter-actuator）
 
 ### 4.4 故障演练（免重启）
 
-1. 按 §1 启动（不设 `fault.rate`，注入为空）。
+1. 按 §1 启动（不设 `fault.rules[]`，注入为空）。
 2. 打基线流量：`curl 127.0.0.1:8003/echo/x` → 全 200。
-3. 把文件里 `fault.rate` 配上 `0.2`——治理 source 热更新。
+3. 把文件里 `fault.rules[0].rate` 配上 `0.2`——治理 source 热更新。
 4. 标记流量着火、正常流量无感：
 
 ```bash

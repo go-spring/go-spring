@@ -21,21 +21,20 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"go-spring.org/cloud/observability"
+	"go-spring.org/cloud/governance"
+	"go-spring.org/cloud/guard"
 )
 
-// testObserver is a real server observer over the process-wide no-op providers:
-// the filter's own emission runs, and nothing else is needed to drive it.
-func testObserver() *observability.ServerObserver {
-	return observability.NewServerObserver("http-server", "http-server::9090")
-}
-
 // serveServerPolicy drives one request through the inbound filter and reports the
-// response plus how often the handler ran.
+// response plus how often the handler ran. The inbound authority is armed with
+// the empty document, so governance never rejects — the tests are about the
+// filter's pass-through behavior over the process-wide no-op providers.
 func serveServerPolicy(t *testing.T, handler http.HandlerFunc) (*httptest.ResponseRecorder, int) {
 	t.Helper()
 	handlerRuns := 0
-	mw := serverPolicyWith(testObserver(), "http-server::9090")
+	mgr := guard.NewManager()
+	in := governance.InboundOver("http-server", "http-server::9090", mgr)
+	mw := serverPolicyWith(in)
 	h := mw(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		handlerRuns++
 		handler(w, r)

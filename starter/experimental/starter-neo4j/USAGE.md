@@ -140,7 +140,7 @@ spring.actuator.addr=:9370
 spring.resilience.driver=default
 spring.governance.client.default.rate-limit=100
 spring.governance.client.default.max-retries=1
-spring.governance.client.default.attempt-timeout=500ms
+spring.governance.client.default.timeout=500ms
 ```
 
 **Verify** (start Neo4j first — `docker run -d -e NEO4J_AUTH=neo4j/password -p 7687:7687 -p 7474:7474 neo4j:5`,
@@ -188,7 +188,7 @@ gs.Run()
   │   │  handing out the resilience/fault authorities (the resilience manager is required)
   │   ├─ NewClient [client.go:96-103]: service = resilience.ServiceLabel("neo4j",
   │   │  ServiceName, URI) → center.ExecutorFor("neo4j", service) — the governed executor
-  │   │  (fault.WrapClientExecutor over center.Resilience().ClientExecutorFor); the center is always
+  │   │  (fault.ClientManager.WrapClientExecutor over center.ResilienceClient().ClientExecutorFor); the center is always
   │   │  present (the resilience manager is required)
   │   └─ ping=true only: fail-fast HealthCheck (VerifyConnectivity on the raw driver),
   │      bounded by socket-connect-timeout or 5s; on failure the client is destroyed
@@ -395,9 +395,9 @@ go run ./example-cloudnative -manual   # self-asserts: burst of 15 → some admi
                                        # some rejected with resilience.ErrRateLimited
 ```
 
-Fault injection (hot-reload, example-load): set `spring.governance.client.fault.rate=0.5` and
-`spring.governance.client.fault.error=timeout` in `conf/governance.properties` while the load
-binary runs — the error breakdown moves without restart.
+Fault injection (hot-reload, example-load): add a rule in `conf/governance.properties` while the
+load binary runs — e.g. `spring.governance.client.fault.rules[0].service=neo4j:<service-name|uri>`
+with `.rate=0.5` and `.error=timeout` — the error breakdown moves without restart.
 
 ### 4.4 Discovery drill
 

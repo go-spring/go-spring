@@ -126,7 +126,7 @@ are per-service policy and live in the governance rules document (see
 cloud/governance's SOURCE_USAGE). The governance service label is `http:<service-name>`
 whenever `service-name` is set (either addressing mode), `http:<addr>` only when
 no service-name exists. Per-request timeout comes from
-`spring.governance.client.default.attempt-timeout`; the load-balancing strategy and outlier
+`spring.governance.client.default.timeout`; the load-balancing strategy and outlier
 suspension come from `balancer` / `outlier-threshold` / `outlier-suspend-for` on
 the rule matching that label.
 

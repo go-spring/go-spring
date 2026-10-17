@@ -75,7 +75,7 @@ import (
 const service = "ratelimit-redis:api"
 
 func init() {
-    gs.Provide(func(mgr *resilience.Manager) *gs.HttpServeMux {
+    gs.Provide(func(mgr *resilience.ClientManager) *gs.HttpServeMux {
         mux := http.NewServeMux()
         // 两个 handler 模拟两个副本：不共享任何进程内状态。两者都花本进程
         // 贡献的同一个 Redis 计数器存储。
@@ -189,7 +189,7 @@ gs.Run()
   来自那条原子脚本，而窗口无法廉价地套进一条脚本——计数器共享时请用令牌桶。
 - 不排队：`rate-limit-max-wait` 被忽略，超限的单位立即被拒绝。等一个令牌意味着轮询 Redis；
   排队留给内存存储。
-- 自身不记指标——被限流的调用体现在 executor 观测层的 `resilience.outcome=rate_limited` 上。
+- 自身不记指标——被限流的调用体现在 executor 观测层的 `resilience.error_type=rate_limited` 上。
 - 不裁决：拒绝超限调用、计数器出错时放行还是拒绝，都是 executor 的决定。
 
 ---

@@ -242,9 +242,9 @@ The consumer direction declares the same way inside the driver's receive loop
 The executor attached by `attachGuard` [command.go] comes from
 `center.ExecutorFor("pulsar", service)` (`service` = `pulsar:<url>`), where `center` is the
 injected `*governance.Center` the ctor hands the driver — carrying the injected
-`*resilience.Manager` and `*fault.Injector`: with a manager it returns the fully assembled executor (core
+`*resilience.ClientManager` and `*fault.ClientManager`: with a manager it returns the fully assembled executor (core
 breaker/limiter/retry wrapped by the resilience observer — outcome counters + access log) wrapped
-outermost by fault injection from the injected `*fault.Injector` (the injected error flows through
+outermost by fault injection from the injected `*fault.ClientManager` (the injected error flows through
 the inner retry loop, so the breaker counts it). The manager is required — the container
 always supplies it; there is no unmanaged/observe-only fallback.
 

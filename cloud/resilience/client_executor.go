@@ -22,7 +22,7 @@
 // offers — rate limiting, circuit breaking, isolation, retry, timeout — is
 // implemented here, in one place.
 //
-// The breaker and rate-limit organs are shared with the inbound engine
+// The breaker and rate-limit organs belong to this outbound engine
 // (server_executor.go); the breaker lives in this file beside its
 // primary builder, and Go's package scope makes the file location immaterial to
 // the server. The rate limiter keeps its own file (ratelimit.go) because its
@@ -48,65 +48,167 @@ import (
 var warnedNonIdempotent sync.Map
 
 // defaultExecutor protects ONE service — the one it was built for — so that a
-// misbehaving downstream does not trip protection for any other. Being bound to
-// its service is what makes every stage's state single: one breaker, one
-// bulkhead, one retry budget, one rate bucket (or, when the driver was handed a
-// store, that store's budget for this service — which is what carries a limit
-// past the process when the store is over a shared backend).
+// misbehaving downstream does not trip protection for any other.
+//
+// # A stable shell over one replaceable generation
+//
+// The executor is the object the client holds for life, so it is never rebuilt.
+// What it MATERIALIZES is: the per-key breaker, bulkhead and rate budget, plus the
+// retry budget, are rebuilt wholesale whenever the config generation behind its
+// label moves. [defaultExecutor.snapshot] compares the generation its current
+// [execState] was built from against the one its source resolves and replaces the
+// lot when they differ — nothing about a generation survives into the next. That
+// is the deliberate contract (see policy_source.go), and it is what lets a config
+// change be a plain construction instead of a per-organ merge of "what can be
+// kept".
+//
+// A call already in flight when the swap happens keeps the execState it loaded:
+// its outcome lands on organs nobody will consult again, which costs one lost
+// sample and nothing else.
+//
+// # State is per key
+//
+// Protective state is partitioned by the identity key the source resolves (see
+// [CallPolicy.Key]): a matched rule's identity, or the service name under the
+// default policy. A call governed by one rule gets its own breaker and bulkhead,
+// so a downstream that misbehaves for one traffic class cannot trip another's
+// protection. Metadata selects a rule but never becomes a key — a key must stay
+// bounded by the config. The retry budget is the one organ that is NOT per key:
+// it is a per-label guard by design.
 type defaultExecutor struct {
 	service string
-	policy  ClientPolicy
+
+	// fixed is the construction-time policy. It governs every call of an executor
+	// built outside a manager — one whose driver does not implement
+	// [PolicySourceSetter] — and is otherwise only the pre-first-call value.
+	fixed ClientPolicy
 
 	// limiter is nil in the ordinary case, and then the rate-limit stage counts
 	// in rate; non-nil means every call charges that store instead, under this
 	// executor's service as the scope.
 	limiter ClusterLimiter
 
-	// mu guards state, rate and built, which the first call establishes as a set.
-	mu       sync.Mutex
-	built    bool
-	state    serviceState
-	rate     rateState
-	listener BreakerEventListener
+	// mu guards cur and the maps inside it: a generation is (re)built and a key's
+	// state is first created under it. It is held only while something is being
+	// built, and the source is never called under it.
+	mu  sync.Mutex
+	cur *execState
 
-	// retrySem caps in-flight RETRY attempts across the executor (the
-	// retry-budget stage); nil when RetryBudget is 0.
+	// source is the manager, when there is one. It is installed before the
+	// executor is shared ([PolicySourceSetter]) and read on every call; nil means
+	// the construction-time policy governs for ever. It must NOT call back into
+	// this executor.
+	source PolicySource
+
+	listener BreakerEventListener
+}
+
+// execState is one generation of the executor's materialized protection: every
+// organ whose knobs come from the config, built together and replaced together.
+// The maps fill lazily — a key's state appears when a call first resolves to it —
+// but the generation is fixed: state built here never migrates to another
+// generation, and another generation's state never leaks in.
+type execState struct {
+	gen      uint64
+	states   map[string]serviceState
+	rates    map[string]rateState
 	retrySem chan struct{}
 }
 
-// newClientExecutor builds the executor for service. Only the policy and the
-// retry budget are established here; the state that a call runs on (breaker,
-// bulkhead, rate budget) is built on first use by [defaultExecutor.snapshot],
-// because it must see the breaker listener — and [WrapClientExecutor] attaches that
-// after this returns.
+// newClientExecutor builds the executor for service. Nothing is materialized
+// here — not even the retry budget, which now belongs to the first generation:
+// the organs are built on first use by [defaultExecutor.snapshot], because they
+// must see the breaker listener, and [WrapClientExecutor] attaches that after this
+// returns.
 func newClientExecutor(service string, p ClientPolicy, limiter ClusterLimiter) *defaultExecutor {
-	e := &defaultExecutor{service: service, policy: p, limiter: limiter}
-	// RetryBudget is process-level state, sized once here from the POLICY node; a
-	// per-call node's budget is deliberately ignored (an unshared budget would not
-	// be a process-wide cap).
-	if p.Retry.RetryBudget > 0 {
-		e.retrySem = make(chan struct{}, p.Retry.RetryBudget)
-	}
-	return e
+	return &defaultExecutor{service: service, fixed: p, limiter: limiter}
 }
 
-// snapshot returns the state, rate budget and policy a call should run on,
-// building the state on first use. Deferring the build to the first call is
-// load-bearing: [WrapClientExecutor] attaches the breaker listener while the
-// executor is still private (see [BreakerEventListenerSetter]), so the breaker
-// must be created against a listener that is already in place.
+// callPolicy asks the source what this call runs under. Without a source both the
+// policy and the key are the executor's own (construction-time policy, service
+// key) — the behavior every caller had before rules could match on metadata, and
+// the only behavior available to a driver outside the manager's reach.
+func (e *defaultExecutor) callPolicy(op chain.Operation) CallPolicy {
+	if e.source == nil {
+		key := op.Service
+		if key == "" {
+			key = e.service
+		}
+		return CallPolicy{Policy: e.fixed, Key: key, Label: e.fixed}
+	}
+	// The executor knows the service it was built for; a call that names none must
+	// still resolve against that service's rules, so fill it in before resolving —
+	// otherwise the source sees an empty service and every undeclared call would
+	// fall to Default.
+	//
+	// This is a fallback for old/direct callers, NOT a substitute for stating the
+	// service: op is a local COPY (the declaration travels by value), so the fill
+	// is invisible to every layer above this executor — the fault layer among them
+	// — and a client that leaves it blank will not match their service-scoped
+	// rules. Clients are expected to name the service on the operation they build.
+	if op.Service == "" {
+		op.Service = e.service
+	}
+	// Resolve OUTSIDE the lock: the source reads the manager's published snapshot
+	// lock-free, and calling it while holding e.mu would nest a call-path lock
+	// inside one the manager's build path takes.
+	c := e.source.Resolve(op)
+	if c.Key == "" {
+		c.Key = op.Service
+	}
+	return c
+}
+
+// snapshot returns the state, rate budget, policy and retry budget a call runs
+// on, materializing them on first use of the key. Deferring the build to the
+// first call is load-bearing: [WrapClientExecutor] attaches the breaker listener
+// while the executor is still private (see [BreakerEventListenerSetter]), so the
+// breaker must be created against a listener that is already in place.
 //
-// The three are returned together, under one lock, so a call never sees a
-// half-built set.
-func (e *defaultExecutor) snapshot() (serviceState, rateState, ClientPolicy) {
+// The four are returned together, under one lock, so a call never sees a
+// half-built set — and so the retry budget is read under the same lock that
+// publishes it, rather than off a field a rebuild could be writing.
+func (e *defaultExecutor) snapshot(op chain.Operation) (serviceState, rateState, ClientPolicy, chan struct{}) {
+	c := e.callPolicy(op)
+
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	if !e.built {
-		e.state = e.buildState()
-		e.rate = newRateState(e.policy.RateSpec())
-		e.built = true
+	st := e.cur
+	if st == nil || st.gen != c.Gen {
+		// A new generation: everything the previous one materialized is dropped,
+		// its organs included. See the type doc for why nothing is carried over.
+		st = &execState{
+			gen:    c.Gen,
+			states: map[string]serviceState{},
+			rates:  map[string]rateState{},
+		}
+		// RetryBudget is process-level state read from the LABEL-level policy — a
+		// per-call node's budget is deliberately ignored, since an unshared budget
+		// would not be a process-wide cap.
+		if c.Label.Retry.RetryBudget > 0 {
+			st.retrySem = make(chan struct{}, c.Label.Retry.RetryBudget)
+		}
+		e.cur = st
 	}
-	return e.state, e.rate, e.policy
+	s, ok := st.states[c.Key]
+	if !ok {
+		s = e.buildState(c.Key, c.Policy)
+		st.states[c.Key] = s
+		st.rates[c.Key] = newRateState(c.Policy.RateSpec())
+	}
+	return s, st.rates[c.Key], c.Policy, st.retrySem
+}
+
+// SetPolicySource installs src, the manager this executor asks for the policy of
+// each call (see [PolicySourceSetter]). It is the seam that lets governance rules
+// match on a call's metadata AND lets the executor follow the config generation:
+// with a source installed, a call whose metadata satisfies a rule runs under that
+// rule's policy and state, while a call no rule matches resolves to the default
+// under the service key — the same protection it had before. It must be set
+// before the executor is shared, and the source must not call back into the
+// executor.
+func (e *defaultExecutor) SetPolicySource(src PolicySource) {
+	e.source = src
 }
 
 // buildState builds the stages whose state belongs to this executor alone,
@@ -114,22 +216,15 @@ func (e *defaultExecutor) snapshot() (serviceState, rateState, ClientPolicy) {
 // stage in the stage's own vocabulary (see [breakerSpec], [RateSpec]), so the
 // organs are shared with the inbound engine without either policy being
 // privileged.
-func (e *defaultExecutor) buildState() serviceState {
+func (e *defaultExecutor) buildState(key string, p ClientPolicy) serviceState {
 	state := serviceState{}
-	spec := e.policy.breakerSpec()
+	spec := p.breakerSpec()
 	if spec.active() {
-		open := e.policy.OpenDuration
+		open := p.OpenDuration
 		if open <= 0 {
 			open = 5 * time.Second
 		}
-		state.breaker = newCircuitBreaker(spec, open, e.service, e.listener)
-	}
-	if e.policy.MaxConcurrent > 0 {
-		// A buffered channel is a counting semaphore. With no queue duration it
-		// is used non-blocking: a full buffer means the bulkhead is at capacity,
-		// so excess calls are rejected rather than queued.
-		state.sem = make(chan struct{}, e.policy.MaxConcurrent)
-		state.queueFor = e.policy.BulkheadQueueDuration
+		state.breaker = newCircuitBreaker(spec, open, key, e.listener)
 	}
 	return state
 }
@@ -141,7 +236,7 @@ func (e *defaultExecutor) buildState() serviceState {
 // It must be called before the executor is shared — that is, before its first
 // [defaultExecutor.Execute], which is when the breaker is built. [WrapClientExecutor]
 // attaches the listener while the executor is still being constructed inside
-// [Manager.build], so the executor never escapes unobserved.
+// [ClientManager.buildLocked], so the executor never escapes unobserved.
 func (e *defaultExecutor) SetBreakerEventListener(l BreakerEventListener) {
 	e.listener = l
 }
@@ -186,47 +281,67 @@ func (s serviceState) acquireBulkhead(ctx context.Context) bool {
 
 func (s serviceState) releaseBulkhead() { <-s.sem }
 
-// retryBudgetRelease returns a held retry-budget slot (no-op for -1/nil).
-func (e *defaultExecutor) retryBudgetRelease(held int) {
-	if e.retrySem == nil || held < 0 {
+// releaseRetryBudget returns a held retry-budget slot to the channel it was
+// taken from (no-op for nil/-1). Releasing into the CAPTURED channel — not
+// whichever budget the executor is on now — is what makes a generation swap
+// safe mid-flight: a call that took a slot from the old generation's budget
+// returns it there, and the swap stays race-free exactly like the bulkhead's.
+func releaseRetryBudget(sem chan struct{}, held int) {
+	if sem == nil || held < 0 {
 		return
 	}
-	<-e.retrySem
+	<-sem
 }
 
-func (e *defaultExecutor) Execute(ctx context.Context, call chain.Operation, fn func(context.Context) error) error {
-	s, rate, policy := e.snapshot()
+// refusedRound records a gate's verdict as the call's round. A refusal IS a
+// decision the chain made — "we never sent it, and here is why" — so it is
+// recorded like any other round, with no peer (the downstream was never touched,
+// and with it no writer — the gate refused before the round's fn ran), the gate's
+// own word in ErrorType and a zero Duration (no downstream time was spent). Its
+// Start is the instant the gate decided, which is what keeps the gap-derivation
+// of the retry cost honest even across a refusal.
+//
+// Recording it here, where the decision is made, is what makes refused volume
+// visible in the attempt-level series instead of silently missing; it is also
+// why the loop TERMINATES on a refusal rather than retrying it — a retry of a
+// rate-limited or bulkhead-full call is exactly the load amplification the gate
+// exists to prevent. A nil recorder is a no-op.
+func refusedRound(rec *chain.Recorder, err error) {
+	rec.AddRound(chain.Round{
+		Start:     time.Now(),
+		Status:    chain.ClassifyStatus(err),
+		ErrorType: chain.ClassifyErrorType(err),
+		Err:       err,
+	})
+}
 
-	// The bulkhead bounds concurrent in-flight calls to the service; one slot
-	// is held for the whole Execute (retries included) and released when done.
-	if s.sem != nil {
-		if !s.acquireBulkhead(ctx) {
-			return chain.ErrBulkheadFull
-		}
-		defer s.releaseBulkhead()
+func (e *defaultExecutor) Execute(ctx context.Context, op chain.Operation, rec *chain.Recorder, fn func(context.Context) error) error {
+	s, rate, policy, retrySem := e.snapshot(op)
+
+	// Record the policy this call ran under — the rule that was matched and the
+	// effective knobs it resolved to, after a hot-fix override, not the compiled
+	// defaults — so "what governed this call" is answerable from the call's own
+	// record. A nil recorder means the caller wants no record.
+	if rec != nil {
+		rec.Timeout = policy.Timeout
 	}
 
-	// MaxDuration caps the whole call across retries. It only tightens the
-	// caller's own context; per-attempt Timeout is applied inside runOnce
-	// against budgetCtx, so the effective per-attempt bound is min(Timeout,
-	// remaining MaxDuration).
-	budgetCtx := ctx
-	if policy.MaxDuration > 0 {
+	// Timeout bounds the whole call — every round and the backoff between them —
+	// as ONE deadline applied here and inherited by everything below. It only
+	// tightens the caller's own context; there is no separate per-round bound, so
+	// the rounds share this budget rather than each getting their own.
+	callCtx := ctx
+	if policy.Timeout > 0 {
 		var cancel context.CancelFunc
-		budgetCtx, cancel = context.WithTimeout(ctx, policy.MaxDuration)
+		callCtx, cancel = context.WithTimeout(ctx, policy.Timeout)
 		defer cancel()
 	}
-
-	// rec is the per-call accumulator the outer emitter reads. It is nil when no
-	// governance layer installed one (a bare executor used directly); every write
-	// below is nil-safe, so the loop records unconditionally.
-	rec := RecorderFrom(budgetCtx)
 
 	// eff is the retry node this call runs under: the policy's node when the
 	// governance center pushed a schedule (it wins whole — a pushed value is how
 	// an operator hot-fixes a live incident), otherwise the call's own node. When
 	// neither declares one there is no retry and the call runs exactly once.
-	eff := EffectiveRetry(policy.Retry, call.Retry)
+	eff := EffectiveRetry(policy.Retry, op.Retry)
 	attempts := eff.MaxRetries + 1
 	// A non-idempotent call is run once whatever the schedule says: its retry
 	// would repeat the side effect — a second email, a second published message —
@@ -249,16 +364,18 @@ func (e *defaultExecutor) Execute(ctx context.Context, call chain.Operation, fn 
 	var attemptDur time.Duration // duration of the last run attempt, for slow-call counting
 	ran := false                 // whether at least one attempt actually invoked fn this call
 	budgetHeld := -1             // attempt index currently holding a retry-budget slot
+	var budgetSem chan struct{}  // the channel that slot was taken from
 	for i := range attempts {
 		// The retry budget gates attempts after the first: when the executor-
 		// wide in-flight retry cap is exhausted, this call stops with
 		// [chain.ErrRetryBudgetExceeded] instead of piling one more retry onto a
 		// downstream that is already being retried by everyone.
-		if e.retrySem != nil && i > 0 {
+		if sem := retrySem; sem != nil && i > 0 {
 			select {
-			case e.retrySem <- struct{}{}:
-				budgetHeld = i
+			case sem <- struct{}{}:
+				budgetSem, budgetHeld = sem, i
 			default:
+				refusedRound(rec, chain.ErrRetryBudgetExceeded)
 				return chain.ErrRetryBudgetExceeded
 			}
 		}
@@ -270,12 +387,13 @@ func (e *defaultExecutor) Execute(ctx context.Context, call chain.Operation, fn 
 		// bucket of its own, charging this executor's service. A store failure is
 		// not a budget decision: the call proceeds rather than turning an
 		// unreachable counter backend into an outage.
-		if lerr := allowRate(budgetCtx, rate, policy.RateSpec(), e.service, e.limiter); lerr != nil {
+		if lerr := allowRate(callCtx, rate, policy.RateSpec(), e.service, e.limiter); lerr != nil {
 			if !errors.Is(lerr, chain.ErrRateLimited) {
-				log.Warn(budgetCtx, log.TagAppDef, "resilience: rate-limit counters unavailable, allowing call",
+				log.Warn(callCtx, log.TagAppDef, "resilience: rate-limit counters unavailable, allowing call",
 					log.Err(lerr))
 			} else {
-				e.retryBudgetRelease(budgetHeld)
+				refusedRound(rec, chain.ErrRateLimited)
+				releaseRetryBudget(budgetSem, budgetHeld)
 				return chain.ErrRateLimited
 			}
 		}
@@ -289,12 +407,13 @@ func (e *defaultExecutor) Execute(ctx context.Context, call chain.Operation, fn 
 			if ran {
 				s.breaker.record(err == nil, attemptDur)
 			}
-			e.retryBudgetRelease(budgetHeld)
+			refusedRound(rec, chain.ErrCircuitOpen)
+			releaseRetryBudget(budgetSem, budgetHeld)
 			return chain.ErrCircuitOpen
 		}
 
 		start := time.Now()
-		err = e.runOnce(budgetCtx, fn)
+		err = fn(callCtx)
 		attemptDur = time.Since(start)
 		ran = true
 		// The attempt's own cost and outcome, recorded where only this loop can
@@ -302,14 +421,20 @@ func (e *defaultExecutor) Execute(ctx context.Context, call chain.Operation, fn 
 		// are this package's (the sentinels above), and an emitter that had to
 		// classify would have to depend on this package — the reverse of the
 		// import direction. The raw error rides along for the failure log.
-		rec.AddAttempt(attemptDur, ClassifyStatus(err), err)
+		rec.AddRound(chain.Round{
+			Start:     start,
+			Duration:  attemptDur,
+			Status:    chain.ClassifyStatus(err),
+			ErrorType: chain.ClassifyErrorType(err),
+			Err:       err,
+		})
 		if err == nil {
 			break
 		}
-		// A cancelled/Expired budget (caller cancel or MaxDuration) ends the
-		// loop before the predicate is consulted: there is no budget left for
-		// another attempt regardless of why the last one failed.
-		if budgetCtx.Err() != nil {
+		// A cancelled/expired deadline (caller cancel or [ClientPolicy.Timeout])
+		// ends the loop before the predicate is consulted: there is no budget left
+		// for another attempt regardless of why the last one failed.
+		if callCtx.Err() != nil {
 			break
 		}
 		if !ShouldRetry(err) {
@@ -319,17 +444,17 @@ func (e *defaultExecutor) Execute(ctx context.Context, call chain.Operation, fn 
 			break // last attempt — no backoff sleep after it
 		}
 		backoff := Backoff(eff, i)
-		if !timeutil.Sleep(budgetCtx, backoff) {
+		if !timeutil.Sleep(callCtx, backoff) {
 			break // backoff interrupted by ctx cancellation
 		}
-		// Time spent sleeping between attempts is the retry policy's own cost:
-		// the downstream never saw it, and it is the one thing a caller-visible
-		// duration cannot decompose without this record.
-		rec.AddBackoff(backoff)
-		e.retryBudgetRelease(budgetHeld)
+		// The sleep is not recorded as a field of its own: the next round's
+		// [chain.Round.Start] is an absolute instant, so this gap is exactly
+		// Start[i+1] - (Start[i] + Duration[i]) — the retry policy's own cost,
+		// derived by the reader instead of stored twice.
+		releaseRetryBudget(budgetSem, budgetHeld)
 		budgetHeld = -1 // the slot covers the attempt, not the backoff sleep
 	}
-	e.retryBudgetRelease(budgetHeld)
+	releaseRetryBudget(budgetSem, budgetHeld)
 	// The breaker measures the outcome of one protected call, not each retry
 	// attempt. Recording once per logical Execute — rather than once per
 	// attempt inside the loop — stops a retrying client from amplifying a
@@ -342,17 +467,6 @@ func (e *defaultExecutor) Execute(ctx context.Context, call chain.Operation, fn 
 		s.breaker.record(err == nil, attemptDur)
 	}
 	return err
-}
-
-// runOnce applies the per-attempt timeout, if any, around fn. The ctx it
-// receives is already bounded by the Execute-level MaxDuration budget.
-func (e *defaultExecutor) runOnce(ctx context.Context, fn func(context.Context) error) error {
-	if e.policy.AttemptTimeout <= 0 {
-		return fn(ctx)
-	}
-	attemptCtx, cancel := context.WithTimeout(ctx, e.policy.AttemptTimeout)
-	defer cancel()
-	return fn(attemptCtx)
 }
 
 func (e *defaultExecutor) Close() error { return nil }
@@ -621,6 +735,44 @@ func (c *circuitBreaker) usesWindow() bool {
 	return c.strategy != BreakerConsecutive
 }
 
+// refresh re-aims the breaker at spec/open in place: thresholds, window length,
+// slow-call pair and half-open trial count are updated on the live organ while
+// its counters and its open/half-open state survive — a policy push does not
+// reset a circuit that is already tripped. The one discontinuity is a STRATEGY
+// switch (consecutive ↔ window-based): the two counting models cannot translate
+// each other's counters, so they reset.
+func (c *circuitBreaker) refresh(spec breakerSpec, open time.Duration) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	strategySwitch := c.strategy != spec.strategy
+	c.strategy = spec.strategy
+	c.openFor = open
+	c.threshold = spec.threshold
+	c.rateThreshold = spec.rateThreshold
+	c.minRequests = spec.minRequests
+	c.slowThreshold, c.slowRate = 0, 0
+	if spec.slowThreshold > 0 && spec.slowRate > 0 {
+		c.slowThreshold = spec.slowThreshold
+		c.slowRate = spec.slowRate
+	}
+	c.halfOpenN = spec.halfOpenN
+	if c.usesWindow() {
+		if c.minRequests <= 0 {
+			c.minRequests = 1
+		}
+		if spec.window > 0 {
+			c.win = spec.window
+		} else if c.win <= 0 {
+			c.win = time.Second
+		}
+		c.curStart = time.Now()
+	}
+	if strategySwitch {
+		c.failures, c.total, c.fails, c.slows = 0, 0, 0, 0
+		c.prevTotal, c.prevFails, c.prevSlows = 0, 0, 0
+	}
+}
+
 // allow reports whether a request may proceed given the current breaker state.
 func (c *circuitBreaker) allow() bool {
 	c.mu.Lock()
@@ -793,13 +945,20 @@ func (c *circuitBreaker) notifyLocked(from, to BreakerState) {
 // degrade's own error (or nil) becomes the final result. When exec is nil the
 // call is a transparent pass-through: fn runs once and its error, if any, still
 // reaches degrade, so wiring stays a no-op until a policy is configured.
-func Fallback(ctx context.Context, exec chain.Executor, call chain.Operation,
+//
+// The record it hands down describes the CALL that failed — every round, and the
+// rejection that triggered the degrade among them. Degradation itself leaves no
+// mark on it: a degraded call is a call whose rounds failed and whose caller was
+// served something else, and the rounds are the evidence of that. A caller that
+// needs to tell degrade's result from a real one has degrade's error, which is
+// what this returns.
+func Fallback(ctx context.Context, exec chain.Executor, call chain.Operation, rec *chain.Recorder,
 	fn func(context.Context) error, degrade func(context.Context, error) error) error {
 	var err error
 	if exec == nil {
 		err = fn(ctx)
 	} else {
-		err = exec.Execute(ctx, call, fn)
+		err = exec.Execute(ctx, call, rec, fn)
 	}
 	if err == nil {
 		return nil

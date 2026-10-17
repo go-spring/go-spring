@@ -47,22 +47,39 @@ Verified dependency facts (do not violate):
   core**: `gs` (IoC container, lifecycle) and `conf` (layered configuration
   engine). No third-party business package, no capability families.
 - `cloud/` (module `go-spring.org/cloud`) is the **ecosystem abstraction
-  library**: governance (resilience/fault/traffic), discovery, loadbalance,
+  library**: governance (resilience/guard/fault/traffic), discovery, loadbalance,
   cache, repository, migration, i18n, validation, event/scheduling/batch,
   lock, messaging, transaction, actuator, ... The **capability abstractions are
   container-free** — their types, drivers and seams work with or without a
   container — but the packages that own a default bean register it, so `spring`
   appears in four of them:
 
-  - `cloud/resilience` registers `*resilience.Manager` (and the bundled driver),
+  - `cloud/resilience` registers `*resilience.ClientManager` (and the bundled driver),
     `cloud/loadbalance` registers `*loadbalance.Manager`, `cloud/fault` registers
-    `*fault.Injector`. The rule is **the package that owns the type registers its
+    `*fault.ClientManager` and `*fault.ServerManager`. The rule is **the package that owns the type registers its
     default**: a client that injects one has already imported that package for
     the type, so there is no separate "governance import" to forget.
   - `cloud/governance` registers the center over those authorities and the one
     bean that wires it into gs, and its `rules.go` binds a rules document through
     `spring/conf`'s value-tag machinery (the document format is the framework's,
     and a per-backend parser would let the backends drift apart).
+  - **Client and server are separate authorities, and they no longer share a
+    shape.** Outbound calls run through `chain.Executor`: one around-function,
+    N retry attempts, an `Operation` declaration and a `Recorder` write-back.
+    Inbound requests run through `cloud/guard`: one instance-bound `Guard` with
+    its own long-lived state, one judgment (`Admit`) and one completion
+    (`Done`), no retry and no `chain` types. `governance.Center` owns the
+    inbound `guard.Manager` and pushes it the server half of the document;
+    adapters get one `Guard` per server instance from `InboundFor`.
+  - The inbound half of `cloud/resilience` has been removed. `resilience.Driver`
+    is outbound-only (`NewClientExecutor`), and the `Driver`-based backends
+    (`starter-governance-sentinel`, `starter-luohua`) contribute outbound
+    behavior only; their inbound implementations were retired because the
+    framework's inbound policy fields are fully covered by guard's bundled
+    engine. The only remaining combined type is the composition root
+    `governance.Center`; `security.TLSConfig` (a config value with two build
+    methods) is a non-authority. Adding a new combined manager elsewhere is a
+    regression.
 
   Everything else in `cloud/` stays gs-free, and gs wiring for any other family
   still belongs in a starter (e.g. `starter-cache`).
@@ -194,7 +211,7 @@ fixed feature set and hope it fits. So in the framework layers — `stdlib/`,
   consume their own registries/interfaces. If a built-in can't be expressed
   through the public seam, the seam is wrong, not the built-in.
 - **An extension is a layer, not a table entry.** Prefer the onion: wrap the
-  thing you extend (`WrapClientExecutor(inner, ...)`, `Observe(inner Driver, ...)`,
+  thing you extend (`Manager.WrapClientExecutor(inner)`, `Observe(inner Driver, ...)`,
   a middleware chain) instead of registering a name in a global map, and instead
   of every call site writing into one package-level state object. Layers compose
   by nesting — retry → circuit breaker → bulkhead → observe — each knowing only
@@ -277,7 +294,7 @@ collection point answers a real need — legitimate.
 
 §5 states the onion as the framework's extensibility contract. The families that
 embody it: `cloud/lock.Observe`, `observability.WrapClientExecutor` /
-`WrapServerExecutor`, `fault.WrapClientExecutor`.
+`WrapServerExecutor`, `fault.ClientManager.WrapClientExecutor`.
 
 - **Killed by this principle (do not revive):** the `actuator/endpoint` `serving`
   global signal (`MarkServing()` / `IsServing()`) was deleted wholesale; do not
@@ -509,7 +526,7 @@ Cross-module decisions already made, recorded here so they are not re-litigated;
 the mechanism detail lives in the owning module's doc.
 
 - **MQ binder paths go through the same guard/executor seam as the direct API**
-  (`Manager.ClientExecutorFor`); governance applies by target resource, not by
+  (`ClientManager.ClientExecutorFor`); governance applies by target resource, not by
   call path; the per-instance switch is on by default and can be turned off
   (2026-08-28).
 - **Registration self-healing:** after an etcd lease keepalive death / zk session

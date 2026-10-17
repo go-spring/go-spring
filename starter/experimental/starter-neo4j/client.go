@@ -60,7 +60,7 @@ type Client struct {
 
 	// exec is the resilience executor protecting queries, fixed by [NewClient]
 	// from the governance center it is handed. The center is required to carry a
-	// [resilience.Manager] — [governance.Center.ExecutorFor] panics without one —
+	// [resilience.ClientManager] — [governance.Center.ExecutorFor] panics without one —
 	// rather than silently running bare. A zero Client built
 	// by hand (a test) leaves it nil, and [Query] / [RunWithResilience] then run
 	// their call inline.
@@ -82,7 +82,7 @@ type Client struct {
 // center carries the container's facilities (see [governance.Center]), applied
 // HERE so a Client cannot exist half-assembled: there is no later patching and
 // nothing the wiring has to remember to call. A hand-built client must supply a
-// center holding a [resilience.Manager]: [governance.Center.ExecutorFor] is
+// center holding a [resilience.ClientManager]: [governance.Center.ExecutorFor] is
 // required, so a nil center is a construction error —
 // [governance.Center.ExecutorFor] panics — never a graceful downgrade. The manager's ClientExecutorFor resolves its backing
 // executor lazily, on each Execute, so the call order relative to

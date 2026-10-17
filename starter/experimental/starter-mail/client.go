@@ -226,8 +226,9 @@ func (r *RawMailer) build(msg *Message) (*mail.Msg, error) {
 // executor is the layer's own business end to end — built, used and closed
 // inside it.
 type GuardMailer struct {
-	exec chain.Executor
-	next InnerMailer
+	exec    chain.Executor
+	service string // the governance label this layer guards, stamped onto each call
+	next    InnerMailer
 }
 
 // NewGuardMailer builds the governance layer over next, constructing its own
@@ -236,7 +237,7 @@ type GuardMailer struct {
 // scope by.
 func NewGuardMailer(next InnerMailer, instanceName, host string, center *governance.Center) *GuardMailer {
 	label := resilience.ServiceLabel("mail", instanceName, host)
-	return &GuardMailer{exec: center.ExecutorFor("mail", label), next: next}
+	return &GuardMailer{exec: center.ExecutorFor("mail", label), service: label, next: next}
 }
 
 // Release hands releaseRaw to the layer under it, and on the FULL teardown
@@ -256,6 +257,9 @@ func (g *GuardMailer) Release(releaseRaw bool) error {
 // signature.
 func (g *GuardMailer) Send(ctx context.Context, msgs ...*Message) error {
 	op := operation(msgs)
+	// Name the service on the operation: the fault layer matches its rules on it
+	// and sits outside this executor.
+	op.Service = g.service
 	op.Retry = chain.RetryPolicy{NonIdempotent: true}
 	_, err := resilience.Run(ctx, g.exec, op, func(attemptCtx context.Context) (struct{}, error) {
 		return struct{}{}, g.next.Send(attemptCtx, msgs...)

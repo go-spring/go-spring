@@ -62,7 +62,7 @@ type Client struct {
 
 	// exec is the resilience executor protecting writes, applied by [NewClient]
 	// from the governance center, which is required to carry a
-	// [resilience.Manager]: [governance.Center.ExecutorFor] panics without one.
+	// [resilience.ClientManager]: [governance.Center.ExecutorFor] panics without one.
 	exec chain.Executor
 	// serviceLabel is the resilience service key ("influxdb:<url>") exec scopes
 	// limiter/breaker state by.
@@ -84,7 +84,7 @@ type Client struct {
 // applied HERE so a Client cannot exist half-assembled: there is no Init step,
 // no later patching, and nothing the container has to remember to call. A
 // hand-built client must supply a [governance.Center] over a
-// [resilience.Manager]: [governance.Center.Resilience] is required, so a nil
+// [resilience.ClientManager]: [governance.Center.ResilienceClient] is required, so a nil
 // center is a construction error — [governance.Center.ExecutorFor] panics —
 // never a graceful downgrade to an unprotected client.
 //
@@ -107,7 +107,7 @@ func NewClient(raw influxdb2.Client, transport http.RoundTripper, cfg Config, ce
 	// executor on its own write helpers but not on the raw transport.
 	if t, ok := transport.(*dynamicTransport); ok {
 		o.dyn = t
-		o.dyn.Swap(resilience.NewRoundTripper(http.DefaultTransport, o.exec, callFor))
+		o.dyn.Swap(resilience.NewRoundTripper(http.DefaultTransport, o.exec, o.serviceLabel, callFor))
 	}
 	return o
 }
@@ -133,7 +133,7 @@ func (o *Client) WritePoints(ctx context.Context, points ...*write.Point) error 
 		return errMissingOrgBucket()
 	}
 	w := o.WriteAPIBlocking(o.cfg.Org, o.cfg.Bucket)
-	return o.exec.Execute(ctx, chain.Operation{}, func(ctx context.Context) error {
+	return o.exec.Execute(ctx, chain.Operation{Service: o.serviceLabel}, nil, func(ctx context.Context) error {
 		return w.WritePoint(ctx, points...)
 	})
 }

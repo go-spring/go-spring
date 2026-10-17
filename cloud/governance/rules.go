@@ -51,7 +51,7 @@ import (
 // emptied document would otherwise silently disarm the whole center. To turn
 // governance off, publish a document that configures nothing — empty Client and
 // Server blocks, no rules and a zero Default — but it must still carry at least
-// one spring.governance.* key, e.g. `spring.governance.client.default.attempt-timeout=1s`.
+// one spring.governance.* key, e.g. `spring.governance.client.default.timeout=1s`.
 func Parse(name string, data []byte, format string) (Config, error) {
 	if format == "" {
 		format = formatOf(name)

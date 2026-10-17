@@ -21,38 +21,11 @@ import (
 	"strings"
 	"testing"
 
-	"go-spring.org/cloud/chain"
+	"go-spring.org/cloud/governance"
+	"go-spring.org/cloud/guard"
 
 	"github.com/apache/thrift/lib/go/thrift"
 )
-
-// stubServerExecutor is an chain.Executor whose outcome the test dictates. reject
-// simulates a pre-call rejection; attempts > 1 simulates a policy with retries;
-// fnErr records what the wrapper fed back as the call's outcome.
-type stubServerExecutor struct {
-	reject   error
-	attempts int
-	runs     int
-	fnErr    error
-}
-
-func (s *stubServerExecutor) Execute(ctx context.Context, call chain.Operation, fn func(context.Context) error) error {
-	if s.reject != nil {
-		return s.reject
-	}
-	var err error
-	for range max(s.attempts, 1) {
-		s.runs++
-		err = fn(ctx)
-		s.fnErr = err
-		if err == nil {
-			return nil
-		}
-	}
-	return err
-}
-
-func (s *stubServerExecutor) Close() error { return nil }
 
 // countingFunc is a service implementation: it records how often it ran and can
 // fail on demand. The middleware seam makes the service a TProcessorFunction,
@@ -70,83 +43,76 @@ func (f *countingFunc) Process(ctx context.Context, seqID int32, in, out thrift.
 	return true, nil
 }
 
-// admitWith drives admit for one call, as the Admit middleware would.
-func admitWith(exec chain.Executor, svc thrift.TProcessorFunction) (bool, thrift.TException) {
-	return admit(context.Background(), exec, "thrift:test", "Ping", 1, nil, nil, svc)
+// inboundFor builds the inbound governance object for the thrift test label over
+// a guard manager armed with p.
+func inboundFor(p guard.Policy) *governance.Inbound {
+	mgr := guard.NewManager()
+	_ = mgr.Apply(guard.Settings{Default: p})
+	return governance.InboundOver("thrift", "thrift:test", mgr)
 }
 
 func TestServerPolicy_PassThroughRunsServiceOnce(t *testing.T) {
 	svc := &countingFunc{}
-	exec := &stubServerExecutor{}
-	ok, ex := admitWith(exec, svc)
+	in := inboundFor(guard.Policy{})
+	ok, ex := admit(context.Background(), in, "thrift:test", "Ping", 1, nil, nil, svc)
 	if !ok || ex != nil {
 		t.Fatalf("pass-through should succeed: ok=%v err=%v", ok, ex)
 	}
-	if svc.runs != 1 || exec.runs != 1 {
-		t.Fatalf("service/executor runs: got %d/%d, want 1/1", svc.runs, exec.runs)
+	if svc.runs != 1 {
+		t.Fatalf("service runs: got %d, want 1", svc.runs)
 	}
 }
 
 // A rejection must not reach the service, and must surface as a thrift
 // application exception (thrift has no status-code channel).
 func TestServerPolicy_RejectionNeverReachesService(t *testing.T) {
-	for name, reject := range map[string]error{
-		"rate limited":  chain.ErrRateLimited,
-		"bulkhead full": chain.ErrBulkheadFull,
-		"circuit open":  chain.ErrCircuitOpen,
-	} {
-		t.Run(name, func(t *testing.T) {
-			svc := &countingFunc{}
-			ok, ex := admitWith(&stubServerExecutor{reject: reject}, svc)
-			if ok {
-				t.Fatal("a rejected call must not report success")
-			}
-			appErr, isApp := ex.(thrift.TApplicationException)
-			if !isApp {
-				t.Fatalf("rejection should be a thrift application exception, got %T (%v)", ex, ex)
-			}
-			// TExceptionType() reports the exception KIND (application vs protocol);
-			// TypeId() is the application error code.
-			if appErr.TypeId() != thrift.INTERNAL_ERROR {
-				t.Fatalf("rejection should carry INTERNAL_ERROR, got id %d", appErr.TypeId())
-			}
-			if !strings.Contains(ex.Error(), reject.Error()) {
-				t.Fatalf("the message should name the reason, got %q", ex.Error())
-			}
-			if svc.runs != 0 {
-				t.Fatalf("a rejected call must not reach the service, ran %d times", svc.runs)
-			}
-		})
+	in := inboundFor(guard.Policy{RateLimit: 1, Burst: 1})
+
+	// Consume the only token, so the request under test is the refused one.
+	ok, ex := admit(context.Background(), in, "thrift:test", "Ping", 1, nil, nil, &countingFunc{})
+	if !ok || ex != nil {
+		t.Fatalf("the first call should be admitted: ok=%v err=%v", ok, ex)
+	}
+
+	svc := &countingFunc{}
+	ok, ex = admit(context.Background(), in, "thrift:test", "Ping", 1, nil, nil, svc)
+	if ok {
+		t.Fatal("a rejected call must not report success")
+	}
+	appErr, isApp := ex.(thrift.TApplicationException)
+	if !isApp {
+		t.Fatalf("rejection should be a thrift application exception, got %T (%v)", ex, ex)
+	}
+	if appErr.TypeId() != thrift.INTERNAL_ERROR {
+		t.Fatalf("rejection should carry INTERNAL_ERROR, got id %d", appErr.TypeId())
+	}
+	if !strings.Contains(ex.Error(), "rate limited") {
+		t.Fatalf("the message should name the reason, got %q", ex.Error())
+	}
+	if svc.runs != 0 {
+		t.Fatalf("a rejected call must not reach the service, ran %d times", svc.runs)
 	}
 }
 
-// A service exception must reach the caller unchanged AND be reported to the
-// executor, or the breaker would never see server-side errors.
+// A service exception must reach the caller unchanged.
 func TestServerPolicy_ServiceExceptionPassesThrough(t *testing.T) {
 	want := thrift.NewTApplicationException(thrift.UNKNOWN_METHOD, "no such method")
 	svc := &countingFunc{err: want}
-	exec := &stubServerExecutor{}
-	ok, ex := admitWith(exec, svc)
+	in := inboundFor(guard.Policy{})
+	ok, ex := admit(context.Background(), in, "thrift:test", "Ping", 1, nil, nil, svc)
 	if ok || ex != want {
 		t.Fatalf("service exception must pass through unchanged: ok=%v err=%v", ok, ex)
 	}
-	if exec.fnErr == nil {
-		t.Fatal("a service exception must be fed back to the executor as a failure")
-	}
 }
 
-// Inbound serving is not idempotent: a retrying policy must not replay the
-// service implementation. The retry sees no error (the guard returns nil) and
-// the service still runs exactly once.
+// Inbound serving is not idempotent: the service implementation runs exactly
+// once.
 func TestServerPolicy_DoesNotReplayService(t *testing.T) {
 	svc := &countingFunc{err: thrift.NewTApplicationException(thrift.INTERNAL_ERROR, "boom")}
-	exec := &stubServerExecutor{attempts: 3}
-	_, ex := admitWith(exec, svc)
+	in := inboundFor(guard.Policy{})
+	_, ex := admit(context.Background(), in, "thrift:test", "Ping", 1, nil, nil, svc)
 	if svc.runs != 1 {
-		t.Fatalf("service must run exactly once despite retries, ran %d", svc.runs)
-	}
-	if exec.runs != 2 {
-		t.Fatalf("guard should stop the retry loop at the second call: got %d, want 2", exec.runs)
+		t.Fatalf("service must run exactly once, ran %d", svc.runs)
 	}
 	if ex == nil {
 		t.Fatal("the service exception must still surface")

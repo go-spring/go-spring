@@ -24,20 +24,13 @@
 package StarterElasticsearch
 
 import (
-	"go-spring.org/stdlib/strutil"
-
 	"go-spring.org/cloud/chain"
 	"go-spring.org/log"
-	"go.opentelemetry.io/otel/attribute"
 )
 
 // elasticsearchSystem is the value the family's db.system label carries for this
 // backend — the family's shared vocabulary, not a per-file choice.
 const elasticsearchSystem = "elasticsearch"
-
-// maxArg bounds the URL path captured as db.statement. A path carries the index
-// name and can be long; a span or a log line has no use for all of it.
-const maxArg = 512
 
 // accessTag is the static log tag for the elasticsearch access log. It is
 // registered here, at package init, because a tag must exist before the
@@ -45,28 +38,12 @@ const maxArg = 512
 var accessTag = log.RegisterAppTag("elasticsearch", "access")
 
 // operation is the semantic identity of one Elasticsearch request, seen at the
-// HTTP transport as its method and URL path.
-//
-// The path rides in Detail rather than Attrs: it carries the index name, drawn
-// from an open set, so as a metric label it would multiply the series without
-// bound. Detail reaches the span and the log — where a path is exactly what
-// makes a line worth reading — and never a label. What is bounded is the HTTP
-// method, which rides in db.operation as the classifiable part; the full
-// "METHOD /path" names the span, which is not a label either.
+// HTTP transport as its method and URL path. The bounded operation word is the
+// HTTP method; the open-set path rides in detail while the full "METHOD /path"
+// names the span. The family's vocabulary lives in [wire].
 func operation(method, path string) chain.Operation {
-	op := chain.Operation{
-		Name:   method + " " + path,
-		Metric: "db.client",
-		Attrs: []attribute.KeyValue{
-			attribute.String("db.system", elasticsearchSystem),
-			attribute.String("db.operation", method),
-		},
-		LogTag: accessTag,
-	}
-	if path != "" {
-		op.Detail = []attribute.KeyValue{
-			attribute.String("db.statement", strutil.Truncate(path, maxArg)),
-		}
-	}
+	op := chain.DBOp(elasticsearchSystem, method, path)
+	op.Request.Action = method + " " + path
+	op.Observe.Log.Tag = accessTag
 	return op
 }

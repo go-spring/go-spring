@@ -81,5 +81,5 @@ func (c *Client) execute(ctx context.Context, op chain.Operation, call func(cont
 	if c.obs == nil {
 		return call(ctx)
 	}
-	return c.obs.Observe(ctx, op, call)
+	return c.obs.Observe(ctx, op, nil, call)
 }

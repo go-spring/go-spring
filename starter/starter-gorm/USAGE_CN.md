@@ -143,7 +143,7 @@ spring.resilience.driver=default
 spring.governance.client.default.error-threshold=20
 spring.governance.client.default.open-duration=5s
 spring.governance.client.default.max-retries=1
-spring.governance.client.default.attempt-timeout=500ms
+spring.governance.client.default.timeout=500ms
 # 端点选择走同一个标签：`gorm:mysql:orders-db` 命中的 spring.governance.client.rules[N].balancer /
 # outlier-threshold / outlier-suspend-for 会整条重建该 entry 的链路
 # （见 cloud/governance/README.md §3.1）。
@@ -269,7 +269,7 @@ gorm:query processor 链
 
 | Key | 类型 | 默认值 | 行为 / 联动 | 配错后果 |
 |-----|------|--------|------------|----------|
-| `max-open-conns` | int | 0 | `>0` → `sql.DB.SetMaxOpenConns`;0 = database/sql 不限。治理规则里的 `max-conns` 覆盖它。 | 并发下太小 → `WaitCount` 增长、查询排队(经 `gormcore.Stats` 可见)。 |
+| `max-open-conns` | int | 0 | `>0` → `sql.DB.SetMaxOpenConns`;0 = database/sql 不限。 | 并发下太小 → `WaitCount` 增长、查询排队(经 `gormcore.Stats` 可见)。 |
 | `max-idle-conns` | int | 0 | `>0` → `SetMaxIdleConns`;0 = database/sql 默认(2)。 | 高 QPS 下 0 → 反复重连抖动;> max-open 会被 database/sql 收敛。 |
 | `conn-max-lifetime` | duration | 0 | `>0` → `SetConnMaxLifetime`;0 = 不限。 | 0 且 LB 静默丢弃空闲连接 → 运行中期报 stale connection。 |
 | `conn-max-idle-time` | duration | 0 | `>0` → `SetConnMaxIdleTime`;0 = 不限。 | 主要与上面 lifetime 联动。 |

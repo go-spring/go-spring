@@ -148,7 +148,7 @@ gs.Run()
   │     `spring.cassandra.default.driver`, then the single Driver bean by type, naming a missing bean fails startup)
   │     → driver.CreateClient(ctx, c, center) returns the *Client
   │       (session + identity + governance): NewClient sets exec = center.ExecutorFor("cassandra", service),
-  │       which builds fault.WrapClientExecutor(center.Resilience().ClientExecutorFor("cassandra", service), service, center.Fault())
+  │       which builds center.FaultClient().WrapClientExecutor(center.ResilienceClient().ClientExecutorFor("cassandra", service))
   │       over the authorities the injected *governance.Center hands out — exec chain complete at construction
   ├─ ping=true only: fail-fast probe — newClient calls HealthCheck [starter.go:100], one system.local scan to the raw session
   ├─ readiness: indicator delegates to HealthCheck, which queries system.local [health.go:34]
@@ -220,7 +220,7 @@ wrapper's own `WithContext`/`Bind` to stay guarded. Consequence: reads and write
 breaker/limiter/metrics/access-log as long as they start from `Client.Query`/`Client.Bind`/
 `Client.Exec`.
 
-Layer order on `Exec` (outside-in): fault injector (`fault.WrapClientExecutor` over the executor the
+Layer order on `Exec` (outside-in): fault injector (`fault.ClientManager.WrapClientExecutor` over the executor the
 injected manager resolves) → resilience emitter (`resilience.WrapClientExecutor`: the statement's
 span, the call/attempt histograms, the in-flight gauge, the outcome counters and the access log —
 it reads the operation the guard declared) → resilience executor (limiter/breaker/retry core) →

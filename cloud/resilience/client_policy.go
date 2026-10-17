@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"go-spring.org/cloud/chain"
+	"go-spring.org/cloud/label"
 )
 
 // ClientPolicy is a backend-neutral description of the protection wanted for a set of
@@ -132,42 +133,6 @@ type ClientPolicy struct {
 	// no breaker strategy is active.
 	HalfOpenRequests int `value:"${half-open-requests:=0}"`
 
-	// MaxConcurrent caps the number of operations allowed to run against a
-	// service at the same time (the bulkhead / isolation stage). Excess calls
-	// are rejected with [chain.ErrBulkheadFull] rather than queued, so a slow
-	// downstream cannot exhaust the caller's goroutines or connections. 0
-	// disables the bulkhead.
-	MaxConcurrent int `value:"${max-concurrent:=0}"`
-
-	// BulkheadQueueDuration is how long a call finding the bulkhead full may
-	// WAIT for a slot before being rejected with [chain.ErrBulkheadFull], turning
-	// momentary oversubscription into bounded queueing instead of immediate
-	// rejection (traffic shaping for concurrency, next to
-	// [ClientPolicy.RateLimitMaxWait] for rate). The wait also ends when the
-	// caller's ctx is done. It is the neutral counterpart of OpenSergo's
-	// maxQueueDurationMs. 0 (the default) keeps the reject-immediately behavior.
-	// The default driver implements the wait; sentinel v1.0.4's isolation rule
-	// has no queueing, so the sentinel driver ignores it (documented). Ignored
-	// when MaxConcurrent is 0.
-	BulkheadQueueDuration time.Duration `value:"${bulkhead-queue-duration:=0}"`
-
-	// MaxConns caps the connections this client keeps to the service. It is the
-	// resource half of isolation, next to MaxConcurrent's concurrency half: the
-	// bulkhead bounds how many calls run at once, this bounds what they may hold
-	// while they run — and without it the pool size is a per-SDK setting, which
-	// is why it lives here instead.
-	//
-	// What "a connection" means is the backend's to say, and each maps this to
-	// its own knob: an OPEN connection for a database (gorm's SetMaxOpenConns,
-	// MongoDB's MaxPoolSize), a kept IDLE one for a client that dials per use
-	// (gomemcache's MaxIdleConns). 0 leaves the backend's default alone.
-	//
-	// It is read when the client is CONSTRUCTED, not per call: a pool is built
-	// once, so changing this rule reaches the next client built, not the pool
-	// already in flight — unlike every other field here, which the running
-	// executor adopts on refresh.
-	MaxConns int `value:"${max-conns:=0}"`
-
 	// Retry is the service-level retry declaration a governance center MAY push
 	// for this label. By default a center pushes nothing (the zero node), and the
 	// retry a call runs under is the one the caller declares on
@@ -182,15 +147,19 @@ type ClientPolicy struct {
 	// [chain.RetryPolicy.RetryBudget]); a per-call node's budget is ignored.
 	Retry chain.RetryPolicy `value:"${retry:=}"`
 
-	// Timeout bounds each individual attempt via a derived context. 0 means no
-	// per-attempt timeout is imposed by the executor.
-	AttemptTimeout time.Duration `value:"${attempt-timeout:=0}"`
-
-	// MaxDuration caps the wall time of the whole [chain.Executor.Execute] across all
-	// the retries. When both [ClientPolicy.Timeout] and MaxDuration are set, the effective
-	// per-attempt budget is the smaller of Timeout and the remaining MaxDuration.
-	// 0 means no total cap (beyond the caller's own context deadline).
-	MaxDuration time.Duration `value:"${max-duration:=0}"`
+	// Timeout bounds the WALL TIME of the whole [chain.Executor.Execute] — retries
+	// and backoff included — as one context deadline applied at the entry and
+	// covering every stage beneath it.
+	//
+	// It is deliberately ONE bound rather than a per-attempt one plus a total: a
+	// single deadline is what an operator reasons about ("this call must not
+	// exceed N"), and it is what the governance layers of every mainstream stack
+	// express. Its consequence is that rounds share the budget — a first attempt
+	// that spends it all leaves nothing for the retries — which is the same
+	// contract Istio's route timeout and gRPC's deadline carry.
+	//
+	// 0 means no bound of its own, beyond whatever the caller's context carries.
+	Timeout time.Duration `value:"${timeout:=0}"`
 }
 
 // IsZero reports whether p configures no protection — every stage disabled, so
@@ -210,9 +179,8 @@ func (p ClientPolicy) IsZero() bool {
 		p.MinRequests == 0 && p.BreakerWindow == 0 &&
 		p.SlowCallDurationThreshold == 0 && p.SlowCallRateThreshold == 0 &&
 		p.HalfOpenRequests == 0 &&
-		p.MaxConcurrent == 0 && p.BulkheadQueueDuration == 0 &&
-		p.MaxConns == 0 && p.Retry.IsZero() &&
-		p.AttemptTimeout == 0 && p.MaxDuration == 0
+		p.Retry.IsZero() &&
+		p.Timeout == 0
 }
 
 // RateSpec returns the rate-limit stage's view of p: the knobs the stage and any
@@ -222,12 +190,12 @@ func (p ClientPolicy) IsZero() bool {
 // model.
 func (p ClientPolicy) RateSpec() RateSpec {
 	return RateSpec{
-		RateLimit: p.RateLimit,
-		Burst:     p.Burst,
-		Algorithm: p.Algorithm,
-		Window:    p.Window,
-		MaxWait:   p.RateLimitMaxWait,
-		WarmUp:    p.RateLimitWarmUpDuration,
+		RateLimit:  p.RateLimit,
+		Burst:      p.Burst,
+		Algorithm:  p.Algorithm,
+		Window:     p.Window,
+		MaxWait:    p.RateLimitMaxWait,
+		WarmUp:     p.RateLimitWarmUpDuration,
 		ColdFactor: p.WarmUpColdFactor,
 	}
 }
@@ -273,19 +241,9 @@ type Retryable interface {
 }
 
 // ServiceLabel joins prefix with the first non-empty name in names, falling
-// back to prefix alone when none is set. Client starters call it to standardize
-// the resilience service key the rate-limit counters and the breaker state are
-// scoped by:
-//
-//	resilience.ServiceLabel("redis", c.ServiceName, c.MasterName, c.Addr)
-//
-// The client-specific fallback chain (only the client knows its own address
-// fields) stays in the client; this helper just standardizes the join.
+// back to prefix alone when none is set. It forwards to the neutral
+// [go-spring.org/cloud/label] package and is kept here for callers written
+// against the old location.
 func ServiceLabel(prefix string, names ...string) string {
-	for _, n := range names {
-		if n != "" {
-			return prefix + ":" + n
-		}
-	}
-	return prefix
+	return label.ServiceLabel(prefix, names...)
 }

@@ -28,9 +28,6 @@ import (
 func TestPolicyIsZeroCoversNewKnobs(t *testing.T) {
 	assert.That(t, (ClientPolicy{RateLimitWarmUpDuration: time.Second}).IsZero()).False()
 	assert.That(t, (ClientPolicy{WarmUpColdFactor: 3}).IsZero()).False()
-	assert.That(t, (ClientPolicy{BulkheadQueueDuration: time.Second}).IsZero()).False()
 	assert.That(t, (ClientPolicy{BreakerStrategy: BreakerSlowCall}).IsZero()).False()
 	assert.That(t, (ClientPolicy{BreakerStrategy: BreakerErrorCount}).IsZero()).False()
-	assert.That(t, (ServerPolicy{RateLimitWarmUpDuration: time.Second}).IsZero()).False()
-	assert.That(t, (ServerPolicy{BulkheadQueueDuration: time.Second}).IsZero()).False()
 }

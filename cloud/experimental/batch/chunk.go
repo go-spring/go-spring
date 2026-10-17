@@ -171,7 +171,7 @@ func (s *ChunkStep[I, O]) Run(ctx context.Context, rc *StepContext) error {
 		}
 
 		if exec != nil {
-			err = exec.Execute(ctx, chain.Operation{}, writeChunk)
+			err = exec.Execute(ctx, chain.Operation{Service: s.Name}, nil, writeChunk)
 		} else {
 			err = writeChunk(ctx)
 		}

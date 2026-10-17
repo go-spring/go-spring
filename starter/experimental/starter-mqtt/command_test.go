@@ -50,14 +50,14 @@ func TestGuardedPublishRunsInline(t *testing.T) {
 // name, the family metric prefix and the access tag. The observer emits from
 // this operation, so this is the contract.
 func TestOperationVocabulary(t *testing.T) {
-	pub := operation(opPublish, "sensors/temp")
-	assert.That(t, pub.Name).Equal("publish")
-	assert.That(t, pub.Metric).Equal("messaging.client")
-	assert.That(t, pub.LogTag).Equal(accessTag)
+	pub := operation(opSend, "sensors/temp")
+	assert.That(t, pub.Request.Action).Equal("send sensors/temp")
+	assert.That(t, pub.Observe.Metric.Name).Equal("messaging.client")
+	assert.That(t, pub.Observe.Log.Tag).Equal(accessTag)
 
-	con := operation(opConsume, "sensors/temp")
-	assert.That(t, con.Name).Equal("consume")
-	assert.That(t, con.Metric).Equal("messaging.client")
+	con := operation(opProcess, "sensors/temp")
+	assert.That(t, con.Request.Action).Equal("process sensors/temp")
+	assert.That(t, con.Observe.Metric.Name).Equal("messaging.client")
 }
 
 // fakeMessage is a minimal mqtt.Message carrying only the topic.

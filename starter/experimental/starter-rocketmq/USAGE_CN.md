@@ -181,7 +181,7 @@ gs.Run()
   │       （进程级全局，sync.Once 仅一次）并委托 NewClient——
   │       NewClient 在同一步固定身份（name server 列表 + Config）并挂载治理 executor：
   │       center.ExecutorFor("rocketmq", service)，其来源为注入的 *governance.Center
-  │       （内含 *resilience.Manager / *fault.Injector）           [driver.go, client.go]
+  │       （内含 *resilience.ClientManager / *fault.ClientManager）           [driver.go, client.go]
   │    3. Ping 探测（可选）：TCP dial，首个可达地址即通过，每地址 3s 预算；
   │       在装配完成之后跑，失败 → 启动失败（Client 已关闭）
   ├─ 应用按 `autowire:"<name>"` 注入 *Client
@@ -214,8 +214,8 @@ GuardedSend(ctx, cl, producer, msg)                       [command.go]
   └─ cl.execute                                            [client.go]
        ├─ executor 为直通（governance 关闭）或不存在（裸 Client）
        │     → producer.SendSync 直通，与裸调用一致
-       └─ exec.Execute(ctx, chain.Call{}, injectTraceContext + send)  — fault.Injector 在最外
-                  （fault.WrapClientExecutor），resilience 观察器在其内；观察器依据
+       └─ exec.Execute(ctx, chain.Call{}, injectTraceContext + send)  — fault.ClientManager 在最外
+                  （fault.ClientManager.WrapClientExecutor），resilience 观察器在其内；观察器依据
                   声明发射 span + messaging.client.* 指标 + 访问日志；拒绝时返回
                   resilience 哨兵，发送不落到线上
 ```
@@ -225,10 +225,10 @@ consume 方向在 driver 的接收回调里以同样方式声明（`operation("c
 
 `center.ExecutorFor("rocketmq", service)` 内的包裹顺序 [cloud/governance/center.go]，
 由 `NewClient` 调用：`mgr.ClientExecutorFor("rocketmq", service)`——mgr 为注入的
-`*resilience.Manager`——返回已完整组装的 executor（核心 breaker/limiter/retry 被 resilience
-观察器包住——outcome 计数器 + 访问日志）→ 最外层再由 `fault.WrapClientExecutor(..., inj)`
-包裹（来自注入的 `*fault.Injector` 的运行时故障注入；注入的错误会穿过内层重试循环，因此
-breaker 会计入它）。`*resilience.Manager` 必填——容器始终提供；
+`*resilience.ClientManager`——返回已完整组装的 executor（核心 breaker/limiter/retry 被 resilience
+观察器包住——outcome 计数器 + 访问日志）→ 最外层再由 `inj.WrapClientExecutor(...)`
+包裹（来自注入的 `*fault.ClientManager` 的运行时故障注入；注入的错误会穿过内层重试循环，因此
+breaker 会计入它）。`*resilience.ClientManager` 必填——容器始终提供；
 不存在 unmanaged/仅观测的兜底。
 
 - driver 的 `Publish`（经 `GuardedSend`）与 consume 路径共用这唯一接缝。**未守护**：直接在
@@ -337,7 +337,7 @@ TCP 可达但 ACL 错误照样能启动。
 name-servers——须与 governance 规则一致）：
 
 - 压 `GuardedSend`——或 driver 的 `Publish`（它同样经 `GuardedSend` 接缝）→ 拒绝返回
-  `resilience.ErrRateLimited`，发送未被调用，出现 `resilience.outcome=rate_limited` 的
+  `resilience.ErrRateLimited`，发送未被调用，出现 `resilience.error_type=rate_limited` 的
   `resilience.client.calls` 记录，以及每次调用一条访问日志（`_app_rocketmq_access`，
   回退路径为 `_app_resilience`）[cloud/resilience/observe.go]。
 - 直接在 producer 上调用裸 `SendSync` 则未守护（§2.2）：它是应用自己的路径、外面没有

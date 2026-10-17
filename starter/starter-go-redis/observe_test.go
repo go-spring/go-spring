@@ -18,6 +18,7 @@ package StarterGoRedis
 
 import (
 	"context"
+	"go-spring.org/cloud/chain"
 	"strings"
 	"testing"
 
@@ -45,10 +46,10 @@ func pipeCmd(name string, args ...interface{}) redis.Cmder {
 // family's metric prefix, the db.* labels and this starter's access-log tag.
 func TestOperationDeclaresFamilyVocabulary(t *testing.T) {
 	op := operation(pipeCmd("get", "user:42"))
-	assert.String(t, op.Name).Equal("get")
-	assert.String(t, op.Metric).Equal("db.client")
-	assert.String(t, attrsLine(op.Attrs)).Equal("db.system=redis,db.operation=get")
-	assert.That(t, op.LogTag == accessTag).True()
+	assert.String(t, op.Request.Action).Equal("get")
+	assert.String(t, op.Observe.Metric.Name).Equal("db.client")
+	assert.String(t, attrsLine(op.Observe.Metric.Attrs)).Equal("db.system=redis,db.operation=get")
+	assert.That(t, op.Observe.Log.Tag == accessTag).True()
 }
 
 // TestOperationKeyStaysOutOfLabels is the cardinality guard: a key must reach
@@ -56,33 +57,33 @@ func TestOperationDeclaresFamilyVocabulary(t *testing.T) {
 // bound. It is asserted on Attrs because Attrs is what labels are built from.
 func TestOperationKeyStaysOutOfLabels(t *testing.T) {
 	op := operation(pipeCmd("get", "user:42"))
-	for _, a := range op.Attrs {
+	for _, a := range op.Observe.Metric.Attrs {
 		assert.That(t, string(a.Key) == "db.statement").False()
 	}
-	assert.String(t, attrsLine(op.Detail)).Equal("db.statement=user:42")
+	assert.String(t, attrsLine(detailAttrs(op))).Equal("db.statement=user:42")
 }
 
 // TestOperationWithoutArgCarriesNoDetail proves an argument-less command (PING)
 // carries no detail, which is also what levelled its success log at Info rather
 // than Debug — the same rule the emitter applies.
 func TestOperationWithoutArgCarriesNoDetail(t *testing.T) {
-	assert.Number(t, len(operation(pipeCmd("ping")).Detail)).Equal(0)
+	assert.Number(t, len(detailAttrs(operation(pipeCmd("ping"))))).Equal(0)
 }
 
 // TestOperationTruncatesStatement proves a long key is bounded before it reaches
 // the span or the log.
 func TestOperationTruncatesStatement(t *testing.T) {
-	op := operation(pipeCmd("get", strings.Repeat("k", maxStatement+50)))
-	assert.Number(t, len(op.Detail[0].Value.AsString())).Equal(maxStatement)
+	op := operation(pipeCmd("get", strings.Repeat("k", 512+50)))
+	assert.Number(t, len(detailAttrs(op)[0].Value.AsString())).Equal(512)
 }
 
 // TestPipelineOperationDeclaresBatch proves a pipeline declares the batch
 // identity ("pipeline") with no per-command detail.
 func TestPipelineOperationDeclaresBatch(t *testing.T) {
 	op := pipelineOperation()
-	assert.String(t, op.Name).Equal("pipeline")
-	assert.String(t, attrsLine(op.Attrs)).Equal("db.system=redis,db.operation=pipeline")
-	assert.Number(t, len(op.Detail)).Equal(0)
+	assert.String(t, op.Request.Action).Equal("pipeline")
+	assert.String(t, attrsLine(op.Observe.Metric.Attrs)).Equal("db.system=redis,db.operation=pipeline")
+	assert.Number(t, len(detailAttrs(op))).Equal(0)
 }
 
 // TestSkipOpsDeclareNoIdentity proves the health-check PING is a skip op, so it
@@ -90,4 +91,21 @@ func TestPipelineOperationDeclaresBatch(t *testing.T) {
 func TestSkipOpsDeclareNoIdentity(t *testing.T) {
 	_, skip := skipOps[pipeCmd("ping").FullName()]
 	assert.That(t, skip).True()
+}
+
+// detailAttrs returns the operation's span attributes that are NOT metric
+// labels — the per-call detail the old Call.Detail field held, reconstructed
+// from the split destination lists.
+func detailAttrs(op chain.Operation) []attribute.KeyValue {
+	labeled := make(map[attribute.Key]bool, len(op.Observe.Metric.Attrs))
+	for _, a := range op.Observe.Metric.Attrs {
+		labeled[a.Key] = true
+	}
+	var out []attribute.KeyValue
+	for _, a := range op.Observe.Span.Attrs {
+		if !labeled[a.Key] {
+			out = append(out, a)
+		}
+	}
+	return out
 }

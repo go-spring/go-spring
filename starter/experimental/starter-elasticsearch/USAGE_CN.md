@@ -329,7 +329,7 @@ docker start starter-elasticsearch
   以及 in-flight `db.client.active_requests` gauge——属性 `db.system=elasticsearch`、
   `db.operation=<METHOD>`（有界）、`status` = ok/error，均不含 URL 路径。同一层还发
   `resilience.client.calls` 计数器，带 `status` ∈ {ok, error}，以及保护拒绝该调用时的
-  `resilience.outcome` ∈ {rate_limited, circuit_open, bulkhead_full, retry_budget_exceeded,
+  `resilience.error_type` ∈ {rate_limited, circuit_open, bulkhead_full, retry_budget_exceeded,
   timeout}。
 - **span**：每请求一个 span，由 resilience 层打开（internal 类型），形如
   `POST /demo-docs/_search`，带 `db.system`/`db.operation` 属性及 `db.statement` = URL 路径。
@@ -353,7 +353,8 @@ spring.resilience.driver=default
 spring.governance.client.default.rate-limit=5          # 并发 > 5 → ErrRateLimited 拒绝
 spring.governance.client.default.error-threshold=20
 spring.governance.client.default.open-duration=5s
-# spring.governance.client.fault.rate=0.5              # 配上 rate(+ error=timeout)即"放火";不配即惰性
+# spring.governance.client.fault.rules[0].service=elasticsearch:http://127.0.0.1:9200
+# spring.governance.client.fault.rules[0].rate=0.5      # 规则里配上 rate(+ error=timeout)即"放火";没有这样的规则即惰性
 ```
 
 运行 [example-load/](example-load/)（`go run . -concurrency=16 -duration=5s`）：打印的

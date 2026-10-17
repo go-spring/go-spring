@@ -24,12 +24,8 @@
 package StarterRocketmq
 
 import (
-	"go-spring.org/stdlib/strutil"
-
 	"go-spring.org/cloud/chain"
 	"go-spring.org/log"
-	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/trace"
 )
 
 // accessTag is the static log tag for the rocketmq access log. It is registered
@@ -41,55 +37,34 @@ var accessTag = log.RegisterAppTag("rocketmq", "access")
 // this backend — the family's shared vocabulary, not a per-file choice.
 const rocketmqSystem = "rocketmq"
 
-// maxDestination bounds the topic captured as messaging.destination.name. A
-// topic can be long and a span or a log line has no use for all of it.
-const maxDestination = 512
-
-// Operation names, shared by the span name and the messaging.operation label so
-// the two can never disagree.
-const (
-	opPublish = "publish"
-	opConsume = "consume"
-)
-
-// operation is the semantic identity of one RocketMQ operation, named by its
-// direction (publish / consume) and addressed by its topic.
-//
-// The direction and the system ride in Attrs — both bounded, so both may label a
-// metric. The topic rides in Detail instead: topics are drawn from an open set,
-// so as a metric label one would multiply the series without bound. Detail
-// reaches the span and the log — where a topic is exactly what makes a line
-// worth reading — and never a label. A topicless call carries no detail at all,
-// which is also what levelled its success log at Info.
-// spanKind maps the operation's direction onto the trace edge it adds: a publish
-// is the producer side of the link, a consume the consumer side.
-func spanKind(direction string) trace.SpanKind {
-	if direction == opConsume {
-		return trace.SpanKindConsumer
-	}
-	return trace.SpanKindProducer
+// opWord is one messaging operation this starter reports: the OTel operation
+// word — carried by `messaging.operation`, the span name and the access log —
+// paired with the interaction shape it projects onto, which picks the trace
+// edge. Stating the two together keeps them from drifting, and makes a
+// misspelled word a COMPILE error instead of a wrong metric label: the shape is
+// the one that word means, not a fallback for words nobody recognized.
+type opWord struct {
+	word  string
+	shape chain.Kind
 }
 
-func operation(direction, topic string) chain.Operation {
-	op := chain.Operation{
-		Name:   direction,
-		Metric: "messaging.client",
-		Attrs: []attribute.KeyValue{
-			attribute.String("messaging.system", rocketmqSystem),
-			attribute.String("messaging.operation", direction),
-		},
-		LogTag: accessTag,
-		// A publish is the producer edge of the trace and a consume its consumer edge;
-		// declaring the kind is what keeps that topology once the emitter opens the span.
-		SpanKind: spanKind(direction),
-		// Publishing and handling both repeat a side effect when retried — a second
-		// message delivered, or a second run of the handler — so the executor chain must
-		// not retry this operation whatever retry a governance rule asks for.
-	}
-	if topic != "" {
-		op.Detail = []attribute.KeyValue{
-			attribute.String("messaging.destination.name", strutil.Truncate(topic, maxDestination)),
-		}
-	}
+var (
+	// opSend is a one-way hand-off to the broker: the producer edge.
+	opSend = opWord{word: "send", shape: chain.KindPublish}
+	// opProcess is the handling of one delivered message: the consumer edge.
+	opProcess = opWord{word: "process", shape: chain.KindConsume}
+)
+
+// operation is the semantic identity of one RocketMQ operation: the operation
+// word it reports and the destination it addresses.
+//
+// The vocabulary — the family's attribute keys, the bounded/open split that puts
+// the destination in detail and the system in a label, and the trace edge each
+// word adds — is the messaging family's, not this file's; it lives in
+// [cloud/chain]. This starter supplies only what only it knows: that the calls
+// reach a RocketMQ broker, and their word and destination.
+func operation(word opWord, topic string) chain.Operation {
+	op := chain.MessagingOp(word.shape, rocketmqSystem, word.word, topic)
+	op.Observe.Log.Tag = accessTag
 	return op
 }

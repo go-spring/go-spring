@@ -70,6 +70,7 @@ func Query[T any](
 	settings ...neo4j.ExecuteQueryConfigurationOption,
 ) (T, error) {
 	op := operation("query", query)
+	op.Service = client.serviceLabel
 	return resilience.Run(ctx, client.exec, op,
 		func(ctx context.Context) (T, error) {
 			return neo4j.ExecuteQuery(ctx, client, query, parameters, newResultTransformer, settings...)
@@ -90,7 +91,8 @@ func Query[T any](
 // and the layer falls back to its generic resilience.* signals.
 func RunWithResilience(ctx context.Context, client *Client, op chain.Operation, fn func(context.Context) error) error {
 	if exec := client.exec; exec != nil {
-		return exec.Execute(ctx, op, fn)
+		op.Service = client.serviceLabel
+		return exec.Execute(ctx, op, nil, fn)
 	}
 	return fn(ctx)
 }

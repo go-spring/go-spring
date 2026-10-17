@@ -161,7 +161,7 @@ func (s *subscriber) Subscribe(_ context.Context, handler messaging.Handler) err
 			// from the declaration.
 			msgCtx := s.prop.Extract(ctx, propagate.StringMap(ext.GetProperties()))
 			msgCtx = extractTraceContext(msgCtx, ext.GetProperties())
-			herr := s.cl.execute(msgCtx, operation(opConsume, s.topic), func(attemptCtx context.Context) error {
+			herr := s.cl.execute(msgCtx, operation(opProcess, s.topic), func(attemptCtx context.Context) error {
 				return handler(attemptCtx, fromMessageExt(ext))
 			})
 			if herr != nil {

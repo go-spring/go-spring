@@ -192,7 +192,7 @@ func (o *ObsPublisher) Publish(ctx context.Context, ch *amqp.Channel, exchange, 
 	if o.obs == nil {
 		return o.next.Publish(ctx, ch, exchange, key, mandatory, immediate, pub)
 	}
-	return o.obs.Observe(ctx, operation(opPublish, dest), func(callCtx context.Context) error {
+	return o.obs.Observe(ctx, operation(opSend, dest), nil, func(callCtx context.Context) error {
 		return o.next.Publish(callCtx, ch, exchange, key, mandatory, immediate, pub)
 	})
 }

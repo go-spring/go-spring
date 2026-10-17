@@ -404,7 +404,7 @@ land, the reference's `version`/`group` must match what the provider exported.
 ### 4.4 Governance merge path (dynamic timeout from the center)
 
 Optional; active only when a governance rules source is configured and its rules document carries
-policy for the labels below. The poller injects the `*resilience.Manager` and the
+policy for the labels below. The poller injects the `*resilience.ClientManager` and the
 `*governance.Center` as nullable constructor params (starter.go:59) and
 subscribes to governance policies under two service labels (dync.go:252-253):
 

@@ -33,11 +33,8 @@
 package gormobservability
 
 import (
-	"go-spring.org/stdlib/strutil"
-
 	"go-spring.org/cloud/chain"
 	"go-spring.org/log"
-	"go.opentelemetry.io/otel/attribute"
 	"gorm.io/gorm"
 )
 
@@ -47,34 +44,14 @@ import (
 // [log.RegisterTag].
 var accessTag = log.RegisterAppTag("gorm", "access")
 
-// maxStatement bounds the SQL captured as db.statement. A statement can be long
-// and a span or a log line has no use for all of it.
-const maxStatement = 512
-
 // operation is the semantic identity of one gorm operation. kind names the
 // operation ("create"/"query"/"update"/"delete"); stmt is the SQL gorm built
-// for it, empty when the operation produced none.
-//
-// The statement rides in Detail rather than Attrs: SQL is drawn from an open
-// set, so as a metric label it would multiply the series without bound. Detail
-// reaches the span and the log — where the statement is exactly what makes a
-// line worth reading — and never a label. A statement-less operation carries no
-// detail at all, which is also what levels its success log at Info.
+// for it, empty when the operation produced none. The family's vocabulary —
+// attribute keys, the bounded/open split that puts the SQL in detail, the
+// truncation bound — lives in [wire].
 func operation(system, kind, stmt string) chain.Operation {
-	o := chain.Operation{
-		Name:   kind,
-		Metric: "db.client",
-		Attrs: []attribute.KeyValue{
-			attribute.String("db.system", system),
-			attribute.String("db.operation", kind),
-		},
-		LogTag: accessTag,
-	}
-	if stmt != "" {
-		o.Detail = []attribute.KeyValue{
-			attribute.String("db.statement", strutil.Truncate(stmt, maxStatement)),
-		}
-	}
+	o := chain.DBOp(system, kind, stmt)
+	o.Observe.Log.Tag = accessTag
 	return o
 }
 

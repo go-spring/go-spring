@@ -167,7 +167,7 @@ gs.Run()
   │    3. driver.CreateClient → NewClient [client.go:102]：由治理中心构建 executor
   │       exec = center.ExecutorFor("influxdb", "influxdb:<server-url>")，再在裸
   │       client 所乘的 dynamicTransport 上换入链——dyn.Swap(declareTransport{base:
-  │       resilience.NewRoundTripper(http.DefaultTransport, exec, nil)})——因此 driver
+  │       resilience.NewRoundTripper(http.DefaultTransport, exec, service, nil)})——因此 driver
   │       一返回，声明+治理链即已生效
   │    4. 仅 ping=true：fail-fast 探测 HealthCheck(ctx, w) → /health 必须报告 "pass"，
   │       否则刚装配好的 client 被拆解（executor + 连接）并启动失败 [starter.go:99-102]

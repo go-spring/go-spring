@@ -22,7 +22,6 @@ import (
 	"testing"
 
 	"go-spring.org/cloud/chain"
-	"go-spring.org/cloud/resilience"
 
 	"go-spring.org/stdlib/errutil"
 	"go-spring.org/stdlib/testing/assert"
@@ -32,7 +31,7 @@ import (
 // status classification without wiring a real driver.
 type fakeExecutor struct{ err error }
 
-func (f fakeExecutor) Execute(ctx context.Context, call chain.Operation, fn func(context.Context) error) error {
+func (f fakeExecutor) Execute(ctx context.Context, op chain.Operation, rec *chain.Recorder, fn func(context.Context) error) error {
 	return f.err
 }
 func (fakeExecutor) Close() error { return nil }
@@ -44,7 +43,7 @@ func TestWrapClientExecutor_NilInnerReturnsNil(t *testing.T) {
 // TestClassifyStatusAndOutcome proves the two keys answer two different
 // questions, which is why they are separate: `status` is the ecosystem-wide axis
 // (`ok`/`error`, the same words an inbound request uses), and
-// `resilience.outcome` is what protection decided about the call — empty unless
+// `resilience.error_type` is what protection decided about the call — empty unless
 // it refused one or the call ran out of budget.
 func TestClassifyStatusAndOutcome(t *testing.T) {
 	cases := []struct {
@@ -64,8 +63,8 @@ func TestClassifyStatusAndOutcome(t *testing.T) {
 		{errors.Join(chain.ErrCircuitOpen, errutil.Explain(nil, "detail")), "error", "circuit_open"},
 	}
 	for _, c := range cases {
-		assert.That(t, resilience.ClassifyStatus(c.err)).Equal(c.status)
-		assert.That(t, classifyOutcome(c.err)).Equal(c.outcome)
+		assert.That(t, chain.ClassifyStatus(c.err)).Equal(c.status)
+		assert.That(t, chain.ClassifyErrorType(c.err)).Equal(c.outcome)
 	}
 }
 
@@ -83,7 +82,7 @@ func TestWrapClientExecutor_PassesErrorThrough(t *testing.T) {
 		errutil.Explain(nil, "downstream"),
 	} {
 		exec := WrapClientExecutor(fakeExecutor{err: err}, "redis", "svc")
-		got := exec.Execute(context.Background(), chain.Operation{}, func(ctx context.Context) error { return nil })
+		got := exec.Execute(context.Background(), chain.Operation{}, nil, func(ctx context.Context) error { return nil })
 		assert.That(t, errors.Is(got, err)).True()
 	}
 	_ = chain.ErrBulkheadFull // keep import even if slice above changes

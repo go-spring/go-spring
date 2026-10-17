@@ -63,7 +63,7 @@ func (b bccLayer) Send(ctx context.Context, msgs ...*Message) error {
 // and governance layers real (executor from an unarmed manager, governance off).
 func newChainMailer(t *testing.T, tail InnerMailer) *Mailer {
 	t.Helper()
-	ctr, err := governance.NewProcessCenter(resilience.NewManager(nil), fault.NewInjector(fault.Configs{}, nil))
+	ctr, err := governance.NewProcessCenter(resilience.NewClientManager(resilience.NewDefaultDriver(nil)), fault.NewClientManager(nil), fault.NewServerManager(nil))
 	if err != nil {
 		t.Fatal(err)
 	}

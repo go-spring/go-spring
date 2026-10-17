@@ -146,21 +146,23 @@ ep, _ := pool.Pick(loadbalance.PickInfo{Zone: "us-east-1a,us-east-1"})
 // mgr 是注入进来的 *loadbalance.Manager;nil 表示进程里没有治理
 var chain *loadbalance.Chain
 if mgr != nil {
-	chain = mgr.Chain(resolver, "http:user-svc") // 注册:变更即整代重建
+	chain = mgr.Chain(resolver, "http:user-svc") // 跟随该 label 的 Selection
 } else {
 	chain = loadbalance.NewChain(resolver, "http:user-svc") // standalone
 }
 ep, err := chain.Pick(loadbalance.PickInfo{})
 ```
 
-- `mgr.Chain(resolver, label)` 把链注册到该标签下,于是标签当前的 `Selection` **立刻**
-  作用在它建出的这一代上，之后每次变更都**整条重建**——全新的 balancer、tracker、池，
-  与它替换掉的那一代毫无共享。`Chain` 是唯一对外出口：请求路径直接 `chain.Pick` /
+- `mgr.Chain(resolver, label)` 在该标签下把链建出来,于是标签当前的 `Selection` **立刻**
+  作用在它建出的这一代上，之后的变更**整条重建**——全新的 balancer、tracker、池，
+  与它替换掉的那一代毫无共享。重建是**拉**出来的、不是推过去的：链持有一个
+  `SelectionSource`（就是 manager），每次请求读一次本 label 的代际，动了就重建。
+  `Chain` 是唯一对外出口：请求路径直接 `chain.Pick` /
   `chain.Complete`，内层 `Pool` 不对外暴露。注册是**单向且永久**的：
   没有解绑，所以链必须比管它的 Manager 活得久（bean 管理的链本就如此）。全部引用由
   `Manager.Close` 在 Manager 生命结束时统一释放。
-- 给**尚未武装**的 Manager 注册是安全的，而且是容器接线期建链的常态：先建出基础代，
-  等第一次 `Apply` 时重建。完全没有 Manager 时（容器里没有 `cloud/governance`
+- 在**尚未武装**的 Manager 下建链是安全的，而且是容器接线期建链的常态：先建出基础代，
+  文档到达后它会在下一次请求时换过去。完全没有 Manager 时（容器里没有 `cloud/governance`
   的 bean,或独立调用方）链只建一次、永不重建——透明旁路。
 - 解析出来的 `Selection` 是完整的，所以策略名留空 = 基础策略（round_robin）——重建没有
   "当前策略"可以继承。策略名写错 = **被忽略**，沿用上一代可用配置。摘除阈值
@@ -170,8 +172,10 @@ ep, err := chain.Pick(loadbalance.PickInfo{})
 
 `Manager.Apply(Settings{...})` 是治理中心唯一的入口——启动时用来源快照调一次，之后每次
 推送再调。中心只**推**规则、匹配由本包做——`Settings.Default` 加一份 `Rules` 列表，首条
-`Service` 等于 label 的 Rule 胜出，和 `fault` 早就是同一副形态。**没有读回**：manager 只会把结果
-**推**给 sink——重建注册过的 `Chain`（gRPC 客户端也在内：它的链建在 READY 快照源上，刷新像其他链一样到达）。
+`Service` 等于 label 的 Rule 胜出，和 `fault` 早就是同一副形态。Apply 到此为止：它把文档作为新的一代
+发布出去，一条链都不碰。每条链在请求路径上读本 label 的代际（`Manager.ResolveSelection`），
+动了才自己重建——所以内容未变的重复推送对链是零成本，代际按内容派生，重复 Apply 同一份文档不算变更。
+两次请求之间落下的多次推送会被**合并**：链直接跳到当前生效的那一代，不会逐代走一遍。
 
 规则给出策略名，并把策略自己的参数放进一个对本包不透明的扁平子映射：
 

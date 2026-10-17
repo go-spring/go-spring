@@ -24,10 +24,9 @@ import (
 	"testing"
 	"time"
 
-	"go-spring.org/cloud/chain"
-
 	"go-spring.org/cloud/fault"
 	"go-spring.org/cloud/governance"
+	"go-spring.org/cloud/guard"
 	"go-spring.org/cloud/loadbalance"
 	"go-spring.org/cloud/resilience"
 	"go-spring.org/stdlib/testing/assert"
@@ -40,63 +39,27 @@ import (
 	"google.golang.org/grpc/test/bufconn"
 )
 
-// fakeServerExec is a chain.Executor stub that admits the first
-// "allowed" calls and rejects everything beyond with ErrRateLimited — the
-// inbound-control behavior a rate-limit inbound model produces.
-type fakeServerExec struct {
-	calls   atomic.Int32
-	allowed int32
-}
-
-func (f *fakeServerExec) Execute(ctx context.Context, call chain.Operation, fn func(context.Context) error) error {
-	if f.calls.Add(1) > f.allowed {
-		return chain.ErrRateLimited
-	}
-	return fn(ctx)
-}
-func (f *fakeServerExec) Close() error { return nil }
-
-// fakeServerDriver is a resilience.Driver that hands out the fake executor
-// for every inbound model, so a Manager armed with it resolves each label to
-// the same inbound behavior — the test-local stand-in for a governance
-// document's server block.
-type fakeServerDriver struct{ exec chain.Executor }
-
-func (d fakeServerDriver) NewClientExecutor(service string, p resilience.ClientPolicy) (chain.Executor, error) {
-	return resilience.NewDefaultDriver(nil).NewClientExecutor(service, p)
-}
-
-func (d fakeServerDriver) NewServerExecutor(service string, a resilience.ServerPolicy) (chain.Executor, error) {
-	return d.exec, nil
-}
-
-// armedManager returns a Manager armed with the fake executor: the inbound
-// resolver hands every label the zero model, which the fake driver turns into the
-// fake executor, so a label the manager resolves runs through it. Without a
-// resolver the manager stays pass-through (see Manager.build).
-func armedManager(t *testing.T, exec chain.Executor) *resilience.Manager {
-	t.Helper()
-	mgr := resilience.NewManager(fakeServerDriver{exec: exec})
-	assert.That(t, mgr.Apply(resilience.Settings{
-		Server: resilience.ServerSettings{Default: resilience.ServerPolicy{}},
-	})).Nil()
-	return mgr
-}
-
-// testCenter bundles an authority into the governance center the server takes.
-// A nil mgr becomes a real unarmed one (construction dispatches into every
+// testCenter builds the governance center the server takes. The resilience
+// authorities are real unarmed managers (construction dispatches into every
 // authority), and the injector is a real inert one, mirroring the DI wiring
 // where every bean is always present (an absent bean fails startup).
-func testCenter(mgr *resilience.Manager) *governance.Center {
-	if mgr == nil {
-		mgr = resilience.NewManager(nil)
-	}
-	ctr, err := governance.NewCenter(mgr, loadbalance.NewManager(),
-		fault.NewInjector(fault.Configs{}, nil), nil, governance.NewPushSource(governance.Config{}))
+func testCenter() *governance.Center {
+	driver := resilience.NewDefaultDriver(nil)
+	resClient := resilience.NewClientManager(driver)
+	ctr, err := governance.NewCenter(resClient, loadbalance.NewManager(),
+		fault.NewClientManager(nil), fault.NewServerManager(nil), nil, governance.NewPushSource(governance.Config{}))
 	if err != nil {
 		panic(err)
 	}
 	return ctr
+}
+
+// armRateLimit pushes a one-request rate budget into the center's guard authority.
+func armRateLimit(t *testing.T, ctr *governance.Center) {
+	t.Helper()
+	assert.That(t, ctr.GuardServer().Apply(guard.Settings{
+		Default: guard.Policy{RateLimit: 1, Burst: 1},
+	})).Nil()
 }
 
 func uniqueTestAddr(prefix string) string {
@@ -111,8 +74,9 @@ var addrSerial atomic.Int64
 // admitted call reaches the handler and returns its response; the rejected call
 // surfaces the executor's error and the handler never runs.
 func TestResilienceUnaryInterceptor_Unit(t *testing.T) {
-	exec := &fakeServerExec{allowed: 1}
-	ic := resilienceUnaryInterceptor(exec, "grpc:test")
+	ctr := testCenter()
+	armRateLimit(t, ctr)
+	ic := resilienceUnaryInterceptor(ctr.InboundFor("grpc", "grpc:test"), "grpc:test")
 	info := &grpc.UnaryServerInfo{FullMethod: "/demo.Service/Echo"}
 
 	hits := 0
@@ -142,15 +106,12 @@ func TestResilienceUnaryInterceptor_Unit(t *testing.T) {
 // branching on status code can recognise throttling.
 func TestServerPolicy_EndToEndOverBufconn(t *testing.T) {
 	addr := uniqueTestAddr("inbound-e2e")
-	exec := &fakeServerExec{allowed: 1}
-	mgr := resilience.NewManager(fakeServerDriver{exec: exec})
 
-	s := NewSimpleGrpcServer(Config{Addr: addr}, func(*grpc.Server) {}, nil, nil, testCenter(mgr), nil)
-	// Arm AFTER testCenter: constructing the center dispatches the (zero)
-	// governance document into the manager, which resets any earlier policy.
-	assert.That(t, mgr.Apply(resilience.Settings{
-		Server: resilience.ServerSettings{Default: resilience.ServerPolicy{}},
-	})).Nil()
+	ctr := testCenter()
+	s := NewSimpleGrpcServer(Config{Addr: addr}, func(*grpc.Server) {}, nil, nil, ctr, nil)
+	// Arm AFTER constructing the server: the server captures its Inbound at
+	// wiring time, and the guard follows the manager's later pushes.
+	armRateLimit(t, ctr)
 	opts, err := s.buildOptions()
 	assert.That(t, err).Nil()
 
@@ -183,7 +144,6 @@ func TestServerPolicy_EndToEndOverBufconn(t *testing.T) {
 	_, err = cl.Check(ctx, &healthpb.HealthCheckRequest{})
 	assert.That(t, err != nil).True()
 	assert.String(t, status.Convert(err).Message()).Contains("rate limited")
-	assert.That(t, exec.calls.Load()).Equal(int32(2))
 	assert.That(t, status.Code(err)).Equal(codes.ResourceExhausted)
 }
 
@@ -192,7 +152,7 @@ func TestServerPolicy_EndToEndOverBufconn(t *testing.T) {
 // no-op, so every RPC runs the handler untouched.
 func TestServerPolicy_UnarmedManagerIsTransparent(t *testing.T) {
 	addr := uniqueTestAddr("inbound-unarmed")
-	s := NewSimpleGrpcServer(Config{Addr: addr}, func(*grpc.Server) {}, nil, nil, testCenter(nil), nil)
+	s := NewSimpleGrpcServer(Config{Addr: addr}, func(*grpc.Server) {}, nil, nil, testCenter(), nil)
 	ri, ok := s.buildResilienceInterceptors()
 	assert.That(t, ok).True()
 

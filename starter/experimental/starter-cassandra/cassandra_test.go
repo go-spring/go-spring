@@ -35,7 +35,7 @@ import (
 // assembled with.
 func newTestCenter(t *testing.T) *governance.Center {
 	t.Helper()
-	ctr, err := governance.NewProcessCenter(resilience.NewManager(nil), fault.NewInjector(fault.Configs{}, nil))
+	ctr, err := governance.NewProcessCenter(resilience.NewClientManager(resilience.NewDefaultDriver(nil)), fault.NewClientManager(nil), fault.NewServerManager(nil))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -93,7 +93,7 @@ func (f *fakeTail) Release(bool) error { return nil }
 // opName reads the db.operation attribute of an operation the guarded layer
 // passed explicitly to the executor.
 func opName(op chain.Operation) string {
-	for _, kv := range op.Attrs {
+	for _, kv := range op.Observe.Metric.Attrs {
 		if string(kv.Key) == "db.operation" {
 			return kv.Value.AsString()
 		}
@@ -109,9 +109,9 @@ type captureExec struct {
 	ops  []string
 }
 
-func (c *captureExec) Execute(ctx context.Context, op chain.Operation, fn func(context.Context) error) error {
+func (c *captureExec) Execute(ctx context.Context, op chain.Operation, rec *chain.Recorder, fn func(context.Context) error) error {
 	c.ops = append(c.ops, opName(op))
-	return c.next.Execute(ctx, op, fn)
+	return c.next.Execute(ctx, op, rec, fn)
 }
 func (c *captureExec) Close() error { return c.next.Close() }
 
@@ -132,7 +132,7 @@ func TestGuardPassThrough(t *testing.T) {
 	c := NewClient(nil, Config{Hosts: []string{"127.0.0.1"}}, newTestCenter(t))
 	tail := &fakeTail{}
 	cap := &captureExec{next: c.exec}
-	head := NewGuardQuery(tail, cap, "SELECT 1")
+	head := NewGuardQuery(tail, cap, "cassandra:test", "SELECT 1")
 
 	boom := errors.New("boom")
 	assert.Error(t, head.Exec(context.Background())).Nil()
@@ -147,7 +147,7 @@ func TestGuardPassThrough(t *testing.T) {
 func TestGuardRateLimit(t *testing.T) {
 	cap := &captureExec{next: newGuardedExec(t, resilience.ClientPolicy{RateLimit: 1, Burst: 1})}
 	tail := &fakeTail{}
-	head := NewGuardQuery(tail, cap, "INSERT INTO t VALUES(?)")
+	head := NewGuardQuery(tail, cap, "cassandra:test", "INSERT INTO t VALUES(?)")
 
 	assert.Error(t, head.Exec(context.Background())).Nil()
 	assert.Error(t, head.Exec(context.Background())).Is(chain.ErrRateLimited)
@@ -171,7 +171,7 @@ func TestInnerQueryReorganize(t *testing.T) {
 	c := NewClient(nil, Config{Hosts: []string{"127.0.0.1"}}, newTestCenter(t))
 	tail := &fakeTail{}
 	cap := &captureExec{next: c.exec}
-	head := NewGuardQuery(tail, cap, "SELECT original")
+	head := NewGuardQuery(tail, cap, "cassandra:test", "SELECT original")
 
 	wrapped := passthroughLayer{InnerQuery: head}
 	assert.Error(t, wrapped.Exec(context.Background())).Nil()

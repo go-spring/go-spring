@@ -205,7 +205,7 @@ gs.Run()
    task type as `messaging.destination.name` detail) and puts it on the ctx. It emits nothing.
 3. The enqueue runs under the **observer**, not an executor. `newClient` injects the required
    `*governance.Center` (`center`) — the governance family's sole injection point, the one object
-   a client reads its resilience/fault authorities from (`center.Resilience()`, `center.Fault()`) —
+   a client reads its resilience/fault authorities from (`center.ResilienceClient()`, `center.FaultClient()`) —
    but an asynq producer client exposes no seam for a resilience executor (client.go:57-59), so no
    authority from the center governs this path: nothing throttles or retries, and a rate-limit /
    open-circuit / fault rule on `asynq:<addr>` is never consulted.

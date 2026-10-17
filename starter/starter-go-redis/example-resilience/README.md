@@ -8,7 +8,7 @@ before reaching Redis.
 ## Features
 
 - **Backend-neutral config**: the same `${resilience.*}` keys drive every client
-  starter (rate-limit, burst, error-threshold, max-concurrent, ...).
+  starter (rate-limit, burst, error-threshold, timeout, ...).
 - **Hot-reloadable**: the wrapper field-injects `Resilience` via `gs.Dync`, so
   a refresh swaps the executor live.
 - **Driver pluggability**: `driver=default` (builtin, zero-dep) or `sentinel`.

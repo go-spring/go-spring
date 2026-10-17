@@ -233,9 +233,9 @@ GuardedSend(ctx, cl, producer, msg)                       [command.go]
 
 `attachGuard` 挂上的 executor 来自 `center.ExecutorFor("pulsar", service)`（`service` =
 `pulsar:<url>`）[command.go]，其中 `center` 是 ctor 交给 driver 的注入
-`*governance.Center`（携带注入的 `*resilience.Manager` 与 `*fault.Injector`）：
+`*governance.Center`（携带注入的 `*resilience.ClientManager` 与 `*fault.ClientManager`）：
 有 manager 时返回已完整组装的 executor（核心熔断/限流/重试外包 resilience observer——outcome
-计数 + 访问日志），最外层再由注入的 `*fault.Injector` 做运行期故障注入（注入的错误穿过内层
+计数 + 访问日志），最外层再由注入的 `*fault.ClientManager` 做运行期故障注入（注入的错误穿过内层
 重试循环，熔断器照常计数）。manager 必填——容器始终提供；不存在 unmanaged/仅观测的兜底。
 
 **未保护面**（均有源码注释说明是有意的）：

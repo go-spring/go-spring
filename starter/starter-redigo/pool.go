@@ -60,7 +60,7 @@ type Pool struct {
 // It is applied HERE, while the pool is built, so a Pool cannot exist
 // half-assembled: there is no separate apply step and nothing the container has
 // to remember to call. A stand-alone caller must supply a center holding a
-// [resilience.Manager]: [governance.Center.ExecutorFor] is required, so a nil
+// [resilience.ClientManager]: [governance.Center.ExecutorFor] is required, so a nil
 // center is a construction error rather than running bare.
 func NewPool(ctx context.Context, c Config, center *governance.Center) (*Pool, error) {
 	tlsConfig, err := c.TLS.BuildClient()
@@ -111,7 +111,7 @@ func NewPool(ctx context.Context, c Config, center *governance.Center) (*Pool, e
 	// retry/breaker loop (and so are observed), and the resilience layer emits the
 	// span + counter + histogram + access log for the whole call, retries included.
 	// A nil Fault degrades to the unwrapped executor (governance.Center.ExecutorFor
-	// guards it); the center is required to carry a [resilience.Manager], and
+	// guards it); the center is required to carry a [resilience.ClientManager], and
 	// governance.Center.ExecutorFor panics without one. Resolution is deferred
 	// to call time, so the order relative to the center's wiring is
 	// irrelevant; rate / error / latency hot-toggle and the bound protection policy

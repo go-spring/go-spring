@@ -19,16 +19,16 @@ package loadbalance
 import (
 	"context"
 	"sync"
+	"sync/atomic"
 
 	"go-spring.org/cloud/discovery"
-	"go-spring.org/log"
 )
 
 // Manager is the centralized endpoint-selection authority: it maps a resource
 // label to a [Selection] and keeps every sink that follows that label in step
 // with it.
 //
-// It is the selection counterpart of resilience.Manager, and follows the same
+// It is the selection counterpart of resilience.ClientManager, and follows the same
 // split: the governance center owns the config DOCUMENT (parsing, the source,
 // duplicate-label rejection) and PUSHES this Manager the two data halves it
 // needs — a [Settings.Default] and a rule list. The Manager owns the matching
@@ -59,10 +59,17 @@ type Manager struct {
 	// is the initial (and pass-through) state: every label resolves the zero
 	// Selection, so every pool keeps the strategy it was built with.
 	settings Settings
+
+	// snap is the settings as the CHAINS see them: one generation, published
+	// whole, read lock-free by every [SelectionSource.ResolveSelection] on the
+	// request path. A chain must not take mu to resolve — it resolves outside its
+	// own lock, and taking the manager's there would invert the lock order
+	// against the manager's build path.
+	snap atomic.Pointer[selectionSnapshot]
 }
 
-// (The manager keeps no callback indirection: a registered chain IS the sink,
-// and it refreshes itself from what it is handed — see [Chain.refresh].)
+// (The manager pushes nothing: a registered chain IS its own sink, and it reads
+// the published generation on each request — see [Chain.sync].)
 
 // Settings is the selection half of the governance document, PUSHED whole: the
 // center hands over the data, and this package does the matching. It mirrors
@@ -106,58 +113,59 @@ type Rule struct {
 // built with until the first [Manager.Apply]. Bindings taken before that are
 // remembered and come alive on that Apply.
 func NewManager() *Manager {
-	return &Manager{subs: map[string][]*Chain{}}
+	m := &Manager{subs: map[string][]*Chain{}}
+	// Publish the zero document from the start rather than leaving the snapshot
+	// absent: an unarmed manager's generation for a label is then the SAME number
+	// an armed one with a zero document produces, so a chain does not rebuild
+	// merely because a document arrived.
+	m.snap.Store(newSelectionSnapshot(Settings{}))
+	return m
 }
 
-// Apply adopts s as the manager's settings and re-evaluates every registered
-// chain's label. It is the single entry point the governance center calls — once
-// at startup with the source's snapshot, then on every push.
+// Apply adopts s as the manager's settings and publishes them as the generation
+// the chains will follow. It is the single entry point the governance center
+// calls — once at startup with the source's snapshot, then on every push.
 //
-// The manager resolves WHAT each label's selection is; the chain owns WHAT TO DO
-// with it: [Chain.refresh] decides whether the selection moved and rebuilds from
-// scratch when it did (see [Chain.refresh]). A chain whose selection is
-// unchanged is handed it and no-ops, so a change localized to another label does
-// not churn unrelated chains.
+// Publishing is the whole of it: Apply does not walk the registered chains and
+// does not rebuild anything. The manager answers what a label's selection IS and
+// which generation that is ([SelectionSource]); each [Chain] notices on its own
+// next request that its pool was built from a different generation and rebuilds
+// then. A push that does not move a label leaves that label's chain — and its
+// in-flight counts, its hash ring and its observed failures — untouched, because
+// the generation is derived from CONTENT (see [labelGen]) rather than from the
+// fact that Apply ran.
 //
 // The settings REPLACE the previous ones wholesale rather than merging, so a
 // document that drops a rule disarms that label — there is no separate off
 // switch to remember.
 //
-// Adopting the settings and re-evaluating every chain happen in ONE critical
-// section, the whole of it under the manager lock: a [Chain] registration that
-// lands while Apply is running waits for it and is then seeded from the new
-// settings, so it is never missed and never sees a half-applied document.
-//
-// The rebuild runs while the lock is held, and a rebuild runs a caller-supplied
-// strategy factory (see [Chain.build]). That is safe only because nothing on a
-// chain's build path reaches the manager: a [Chain] holds no manager reference,
-// and a registered [Factory] is expected not to re-enter the manager — the lock
-// is not reentrant, so such a factory would deadlock.
-//
-// ctx carries the push's trace into a refused selection's log line; it is not
-// otherwise consulted (nothing on the rebuild path does I/O).
+// ctx is not consulted: nothing on this path does I/O or runs caller code any
+// more. It is kept for the caller's convenience and for the shape the three
+// governance layers share.
 func (m *Manager) Apply(ctx context.Context, s Settings) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
+	_ = ctx
+	snap := newSelectionSnapshot(s)
 
+	m.mu.Lock()
 	m.settings = s
-	for label, chains := range m.subs {
-		next := m.selectionForLocked(label)
-		for _, c := range chains {
-			if err := c.refresh(next); err != nil {
-				log.Warn(ctx, log.TagAppDef,
-					"loadbalance: endpoint selection rejected, keeping the resource's current strategy",
-					log.String("label", label),
-					log.Err(err))
-			}
-		}
-	}
+	m.snap.Store(snap)
+	m.mu.Unlock()
+}
+
+// ResolveSelection is [SelectionSource] for this manager: what label resolves to
+// right now, and the generation that answer belongs to. It takes no lock — a
+// request path reaches it on every Pick — and it never fails: an unarmed (or
+// closed) manager resolves the zero selection, which a chain reads as the base
+// configuration.
+func (m *Manager) ResolveSelection(label string) (Selection, uint64) {
+	r := m.snap.Load().resolve(label)
+	return r.sel, r.gen
 }
 
 // Chain builds and registers a [Chain] under label — the manager-side entry a
-// caller uses to obtain a governed chain: registration, the first generation and
-// every later rebuild all happen in ONE step, so a caller cannot build a chain
-// and forget to register it, or read a stale selection by registering late.
+// caller uses to obtain a governed chain: registration and the first generation
+// happen in ONE step, so a caller cannot build a chain and forget to register it,
+// or start from a stale selection.
 //
 // The first generation is built from the selection in force at this moment, not
 // from the zero selection, so a chain created after the document arrived already
@@ -167,32 +175,26 @@ func (m *Manager) Apply(ctx context.Context, s Settings) {
 // The registration is one-way and permanent: there is no detach. The chain MUST
 // outlive the manager that governs it (which is what a bean-managed client is),
 // because the manager keeps the pointer — a chain that died first would be
-// neither collected nor safe to refresh. Everything is released by
-// [Manager.Close], at the end of the manager's life.
+// neither collected nor safe to keep. Everything is released by [Manager.Close],
+// at the end of the manager's life.
 //
 // The returned chain is the caller's outward surface: hold it, [Chain.Pick] and
-// [Chain.Complete] through it, and the generations underneath it move with the
-// manager's settings.
+// [Chain.Complete] through it, and the generations underneath it follow the
+// manager's settings — the manager itself never touches it again.
 //
 // ctx carries the caller's trace into a refused selection's log line; a chain
 // built where no such context exists (a transport assembled at wiring time) may
 // pass [context.Background].
 func (m *Manager) Chain(ctx context.Context, src discovery.Resolver, label string) *Chain {
-	c := newChain(src, label)
-	// Registering IS the subscription: hand the chain the selection in force for
-	// the label now, and again on every change — a [Chain] rebuilds itself from
-	// what it is handed.
 	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	cur := m.selectionForLocked(label)
+	c := newChain(src, label, m)
 	m.subs[label] = append(m.subs[label], c)
-	if err := c.refresh(cur); err != nil {
-		log.Warn(ctx, log.TagAppDef,
-			"loadbalance: endpoint selection rejected, keeping the resource's current strategy",
-			log.String("label", label),
-			log.Err(err))
-	}
+	// Arm it now, from the selection in force, so a chain created after the
+	// document arrived already runs its policy. Done under the manager lock so a
+	// chain cannot be published between reading the settings and building from
+	// them.
+	c.sync(ctx)
+	m.mu.Unlock()
 	return c
 }
 
@@ -229,6 +231,7 @@ func (m *Manager) selectionForLocked(label string) Selection {
 func (m *Manager) Close() error {
 	m.mu.Lock()
 	m.settings = Settings{}
+	m.snap.Store(newSelectionSnapshot(Settings{}))
 	m.subs = map[string][]*Chain{}
 	m.mu.Unlock()
 	return nil

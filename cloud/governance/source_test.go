@@ -29,22 +29,22 @@ import (
 // pushes fan out to the module authorities — the same fan-out any source drives.
 func TestSource_PushSourceDrivesCenter(t *testing.T) {
 	src := NewPushSource(timeoutConfig(100))
-	res, lb, inj := newAuthorities()
-	if _, err := NewCenter(res, lb, inj, nil, src); err != nil {
+	resClient, lb, fc, fs := newAuthorities()
+	if _, err := NewCenter(resClient, lb, fc, fs, nil, src); err != nil {
 		t.Fatal(err)
 	}
-	if p := res.ClientPolicyFor("redis:cache"); p.AttemptTimeout != dur(100) {
-		t.Fatalf("snapshot policy: want 100ms, got %v", p.AttemptTimeout)
+	if p := resClient.ClientPolicyFor("redis:cache"); p.Timeout != dur(100) {
+		t.Fatalf("snapshot policy: want 100ms, got %v", p.Timeout)
 	}
 
 	var got resilience.ClientPolicy
-	res.Subscribe("redis:cache", func(p resilience.ClientPolicy) { got = p })
+	resClient.Subscribe("redis:cache", func(p resilience.ClientPolicy) { got = p })
 	src.Push(context.Background(), timeoutConfig(200))
-	if got.AttemptTimeout != dur(200) {
-		t.Fatalf("push should fan out: want 200ms, got %v", got.AttemptTimeout)
+	if got.Timeout != dur(200) {
+		t.Fatalf("push should fan out: want 200ms, got %v", got.Timeout)
 	}
-	if p := res.ClientPolicyFor("redis:cache"); p.AttemptTimeout != dur(200) {
-		t.Fatalf("post-push policy: want 200ms, got %v", p.AttemptTimeout)
+	if p := resClient.ClientPolicyFor("redis:cache"); p.Timeout != dur(200) {
+		t.Fatalf("post-push policy: want 200ms, got %v", p.Timeout)
 	}
 }
 
@@ -66,9 +66,9 @@ func TestPushSource_Concurrent(t *testing.T) {
 // a source implementing Close is closed; one without Close is left alone.
 func TestDestroy_ClosesCloseableSource(t *testing.T) {
 	// With a closeable source.
-	res, lb, inj := newAuthorities()
+	resClient, lb, fc, fs := newAuthorities()
 	src := newCloseableSource(Config{})
-	c, err := NewCenter(res, lb, inj, nil, src)
+	c, err := NewCenter(resClient, lb, fc, fs, nil, src)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -80,8 +80,8 @@ func TestDestroy_ClosesCloseableSource(t *testing.T) {
 	}
 
 	// With a plain PushSource (no Close method): Destroy is a no-op.
-	res2, lb2, inj2 := newAuthorities()
-	c2, err := NewCenter(res2, lb2, inj2, nil, NewPushSource(Config{}))
+	resClient2, lb2, fc2, fs2 := newAuthorities()
+	c2, err := NewCenter(resClient2, lb2, fc2, fs2, nil, NewPushSource(Config{}))
 	if err != nil {
 		t.Fatal(err)
 	}

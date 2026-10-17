@@ -17,182 +17,344 @@
 package resilience
 
 import (
-	"context"
-	"go-spring.org/cloud/chain"
+	"fmt"
 	"sync"
+	"sync/atomic"
+
+	"go-spring.org/cloud/chain"
 )
 
-// clientSide is the manager's outbound half: the settings the governance center
-// pushes, the registry of executors this process built for its own calls, and
-// the subscriber table for callers that follow the policy without owning an
-// executor.
+// ClientManager is the OUTBOUND resilience authority: it owns the backend every
+// client executor is built with, the registry of executors built for it, and the
+// subscription fan-out. It is the module-level counterpart of the governance
+// center — the center owns the config DOCUMENT (rules, matching, source), the
+// manager owns what to DO with the resulting policies.
 //
-// serverSide (server_manager.go) is the inbound half, and the two share NO state:
-// a label resolved here as an outbound executor and the same string resolved as
-// inbound inbound are different protection objects running different policies,
-// built by different driver methods and wrapped by different observe layers.
-// They are two types, not one type used twice, because their models are
-// different types — nothing is expressed in terms of the other.
-type clientSide struct {
-	// settings is the outbound half last pushed by [Manager.Apply], held whole —
-	// the side stores what it was handed, it does not take it apart. Its zero value
-	// is the pass-through: the state before any Apply, and after a
-	// [Manager.Close]. Replaced wholesale, never merged.
+// It is deliberately a different type from [ServerManager]. The two directions
+// share the neutral Settings vocabulary and the [Driver] contract, but not their
+// authority: a client starter can only reach the outbound object, and the two
+// registries, settings and build paths are disjoint.
+//
+// Safe for concurrent use.
+type ClientManager struct {
+	// mu guards the pushed settings and the subscriber table. The hot path — a
+	// protected call — does not take it: an armed manager is read lock-free
+	// through the atomic snapshot.
+	mu sync.Mutex
+
+	// applied reports whether a ClientSettings has been adopted and not since
+	// closed. It is the build decision in buildLocked: an unarmed manager
+	// publishes a literal no-op executor rather than asking the driver for one.
+	applied bool
+
+	// driver is the backend every executor this manager hands out is built with,
+	// fixed at construction. It is never nil.
+	driver Driver
+
+	// settings is the outbound half last pushed by [ClientManager.Apply], held
+	// whole — the manager stores what it was handed, it does not take it apart.
+	// Its zero value is the pass-through: the state before any Apply, and after
+	// Close. Replaced wholesale, never merged. Guarded by mu.
 	settings ClientSettings
 
-	// subs is the per-label subscriber table (see [Manager.Subscribe]). A label
-	// with no subscriber leaves no entry, so a repeatedly-rebuilt client leaves no
-	// residue. Guarded by [Manager.mu].
+	// snap is the outbound settings as the executors SEE them: one generation,
+	// published whole, read lock-free by every [PolicySource.Resolve] on the call
+	// path. An executor must not take mu to resolve — it resolves outside its own
+	// lock, and taking the manager's there would invert the lock order against
+	// the manager's build path. It is a heap object replaced wholesale on each
+	// Apply, exactly like settings.
+	snap atomic.Pointer[clientSnapshot]
+
+	// subs is the outbound per-label subscriber table (see
+	// [ClientManager.Subscribe]). A label with no subscriber leaves no entry, so
+	// a repeatedly-rebuilt client leaves no residue. Guarded by mu.
 	subs map[string][]*subscriber
 
-	// entries registers every executor this side has built, keyed by label, each
-	// with the policy it was built from. It is a sync.Map so the hot path stays
-	// lock-free: a protected call loads its label's executor and is done.
+	// entries registers every outbound executor this process has built, keyed by
+	// label. It is a sync.Map so the hot path stays lock-free: a protected call
+	// loads its label's executor and is done.
 	//
-	// This registry is where a policy change lands. [Manager.Apply] walks it and
-	// drops every entry whose policy is no longer what its label resolves to, so
-	// that label's next call builds a fresh executor under the new policy — while
-	// an entry that survives keeps its executor, and with it its breaker and
-	// rate-limit state, so a push touching one label does not reset another.
+	// The registry is an IDENTITY table, not a change-propagation path: it
+	// guarantees one executor per label, and Close drains it. A policy push does
+	// not touch it — the executors follow the config themselves, through the
+	// [PolicySource] they hold.
 	entries sync.Map // label -> *clientEntry
 
-	// buildMu serializes the build path, so a label is built exactly once even
-	// when several goroutines first use it at the same moment. Taking it only on
-	// a miss leaves the hot path lock-free. Lock order is buildMu → [Manager.mu]:
-	// nothing acquires them the other way round (a manager-level operation never
-	// enters the build path).
+	// buildMu serializes the outbound build path, so a label is built exactly
+	// once even when several goroutines first use it at the same moment. Taking
+	// it only on a miss leaves the hot path lock-free. Lock order is
+	// buildMu → mu: nothing acquires them the other way round (a manager-level
+	// operation never enters the build path).
 	buildMu sync.Mutex
 }
 
-// clientEntry is one label's outbound registration: the executor built for it —
-// already instrumented — and the policy it was built from, which is how
-// [Manager.Apply] tells which registrations a push invalidates. Entries are held
-// by POINTER: a policy is a wide struct, and the hot path must not copy one on
-// every call just to reach the executor inside.
-type clientEntry struct {
-	exec   chain.Executor
-	policy ClientPolicy
+// NewClientManager returns an unarmed outbound manager that builds every
+// executor with driver. driver is the backend chosen at startup — the starter
+// injects the [Driver] bean the container selected from
+// ${spring.resilience.driver} — and it is held for the manager's lifetime: a
+// backend swap resets every breaker, limiter and bulkhead, so it is a
+// deploy-time decision, not a pushed one.
+//
+// driver MUST be non-nil: it is the process's backend, not an optional feature,
+// so a caller without a backend of its own passes [NewDefaultDriver] explicitly
+// rather than silently here. A nil driver panics — an invalid construction is
+// refused, never wrapped.
+//
+// The manager is unarmed: it holds no registrations and no settings, so every
+// [ClientManager.ClientExecutorFor] yields a transparent pass-through until
+// [ClientManager.Apply] arms it.
+func NewClientManager(driver Driver) *ClientManager {
+	if driver == nil {
+		panic("resilience: NewClientManager requires a non-nil Driver; pass NewDefaultDriver(nil) for the bundled backend")
+	}
+	m := &ClientManager{driver: driver, subs: map[string][]*subscriber{}}
+	// Publish the zero document from the start rather than leaving the snapshot
+	// absent: a label's generation on an unarmed manager is then the same number
+	// an armed one with an empty document produces, so nothing depends on whether
+	// a document has arrived yet.
+	m.snap.Store(newClientSnapshot(ClientSettings{}))
+	return m
 }
 
-// policyLocked returns the policy label resolves to right now: the first Rule
-// whose Service equals the label, else the default. Callers hold the manager
-// lock; the hot path does not come here.
+// Apply adopts s as the outbound settings, publishes them as the generation the
+// executors will follow, and notifies the subscribers whose policy changed. It
+// is the single entry point the governance center calls — once at startup with
+// the source's snapshot, then on every push.
+//
+// Publishing is the whole of it. No registration is dropped, no executor is
+// reached into, and no lock the call path takes is held: the executors follow
+// the new generation on their own next call, each rebuilding the state of the
+// labels whose rule set actually moved. A push that changes nothing for a label
+// leaves that label's breaker counting, because the generation is derived from
+// content (see [clientLabelGen]) rather than from the fact that Apply ran.
+//
+// The executors are not closed here — [ClientManager.Close] is what closes.
+//
+// Apply always succeeds: the document's only rejectable field was the backend,
+// which now lives at startup, so there is nothing left to validate here. The
+// error return is kept for the caller's convenience (the center treats Apply as
+// infallible) and is always nil.
+func (m *ClientManager) Apply(s ClientSettings) error {
+	snap := newClientSnapshot(s)
+
+	m.mu.Lock()
+	m.settings = s
+	m.applied = true
+	// Publish the new generation for the executors: a fresh heap object swapped
+	// in one store, so an executor resolving a call never races a push and never
+	// takes mu. An executor that reads the old generation for one more call is
+	// correct by construction, because everything it builds from one snapshot
+	// stays consistent with it.
+	m.snap.Store(snap)
+	todo := m.collectSubsLocked()
+	m.mu.Unlock()
+
+	for _, p := range todo {
+		p.cb(p.policy)
+	}
+	return nil
+}
+
+// Close releases every registered outbound executor. The manager itself holds
+// only in-memory state, so this is the shutdown counterpart to
+// [ClientManager.Apply]: it lets a production driver stop background resources
+// (metric pumps) instead of leaking them with the process.
+//
+// It is the manager BEAN's destroy method (see the starter), so the container
+// calls it on shutdown — after the clients that hold those executors, since gs
+// tears beans down in reverse construction order.
+//
+// It also publishes the zero document, so a call that slips in after Close
+// resolves the pass-through rather than the last generation: "closed" and
+// "unarmed" answer the same thing, which is what keeps [ClientManager.Resolve]
+// honest about the manager no longer being armed.
+func (m *ClientManager) Close() error {
+	m.mu.Lock()
+	m.applied = false
+	m.settings = ClientSettings{}
+	m.snap.Store(newClientSnapshot(ClientSettings{}))
+	m.subs = map[string][]*subscriber{}
+	execs := drainClientCache(&m.entries)
+	m.mu.Unlock()
+
+	for _, e := range execs {
+		_ = e.Close()
+	}
+	return nil
+}
+
+// ClientExecutorFor returns the executor the given system's service should run
+// under, building it NOW — the caller receives the backing executor itself, not
+// a lazy handle. It is the call clients use instead of reaching for a governance
+// center: pass the owning system (e.g. "redis", "gorm") and the service label,
+// wrap the result with fault as desired, and install it in the command/query
+// path.
+//
+// Eager is correct because the caller comes AFTER the config in every wired
+// path: the governance center arms this manager in its own constructor, and a
+// client bean is its downstream — so by the time a client asks for its executor,
+// the manager is armed. A standalone caller must honor the same order: arm first
+// ([ClientManager.Apply]), then ask. Asking on an unarmed manager, or with a
+// driver that cannot build, PANICS — governance silently off is the one outcome
+// this package refuses to produce.
+//
+// Hot reload needs no indirection: the object the caller holds is the shell, and
+// it is never replaced — [ClientManager.Apply] publishes a new generation and the
+// executor picks it up on its next call. One label still maps to exactly ONE
+// executor: a second caller for the same label receives the first's executor.
+//
+// The observe layer attaches its breaker listener AFTER this returns (via
+// [BreakerEventListenerSetter]) — sound because the organs an executor builds
+// from its policy are lazy, created on the first Execute, after composition is
+// complete.
+func (m *ClientManager) ClientExecutorFor(system, service string) chain.Executor {
+	_ = system // the system label is the observer's concern; this engine keys on label alone
+	if v, ok := m.entries.Load(service); ok {
+		return v.(*clientEntry).exec
+	}
+	m.buildMu.Lock()
+	defer m.buildMu.Unlock()
+	if v, ok := m.entries.Load(service); ok { // built while we waited
+		return v.(*clientEntry).exec
+	}
+	return m.buildLocked(service)
+}
+
+// ClientPolicyFor returns the outbound policy label currently resolves to, or a
+// zero policy on an unarmed manager. Callers that only need to READ the policy —
+// an adapter mapping it onto its own knobs — use this instead of building an
+// executor they will not use.
+func (m *ClientManager) ClientPolicyFor(label string) ClientPolicy {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.policyLocked(label)
+}
+
+// Subscribe registers cb for OUTBOUND policy changes of label and arms it
+// immediately with the current resolved policy. cb is then invoked whenever
+// [ClientManager.Apply] produces a different policy for that label. Callers that
+// own their protected object rather than a [chain.Executor] — a gateway
+// rebuilding a route table, a balancer re-deriving its strategy — use this to
+// follow the config without an executor.
+//
+// cb is always called outside the manager's lock, so a callback that itself
+// calls into the manager cannot self-deadlock; it MUST be safe for concurrent
+// invocation, since an Apply may fire concurrently with the immediate call.
+//
+// The returned [Subscription] carries the policy cb was armed with and detaches
+// the registration on [Subscription.Cancel]. A caller whose object is not
+// process-lifetime MUST cancel, or the manager keeps a reference to the
+// discarded object forever.
+//
+// Inbound has no counterpart: an inbound engine follows the config through its
+// own registration, and nothing outside this package observes inbound changes.
+func (m *ClientManager) Subscribe(label string, cb func(ClientPolicy)) Subscription {
+	m.mu.Lock()
+	// Arm the subscriber with the label's current policy under the lock, so the
+	// immediate cb below and any Apply racing it agree on the first delivery.
+	sub := &subscriber{last: m.policyLocked(label), cb: cb}
+	m.subs[label] = append(m.subs[label], sub)
+	m.mu.Unlock()
+	cb(sub.last)
+	return Subscription{ClientPolicy: sub.last, cancel: func() { m.unsubscribe(label, sub) }}
+}
+
+// policyLocked returns the outbound policy label resolves to right now: the
+// first Rule whose Service equals the label, else the default. Callers hold the
+// manager lock; the hot path does not come here.
 //
 // The match is plain equality — an empty Service matches nothing, deliberately:
 // a rule list must not govern every service by accident (Default is how a
 // document says "everything else").
-func (s *clientSide) policyLocked(label string) ClientPolicy {
-	for _, r := range s.settings.Rules {
+func (m *ClientManager) policyLocked(label string) ClientPolicy {
+	for _, r := range m.settings.Rules {
 		if r.Service == label {
 			return r.ClientPolicy
 		}
 	}
-	return s.settings.Default
+	return m.settings.Default
 }
 
-// backing returns the executor label runs under, building and registering it on
-// first use. On an unarmed manager it publishes a literal pass-through, so a
-// process without governance costs one atomic load per call.
+// Resolve answers an outbound executor's question — what does THIS call run
+// under, and which generation is that from? — WITHOUT taking mu. It is the
+// lock-free read path of the whole layer: the twin of
+// [ClientManager.policyLocked] (which is per label, and runs under the lock for
+// the manager's own callers), reached on every protected call through the
+// [PolicySource] each executor holds.
 //
-// This package builds no observe layer: the observer wraps the handle this side
-// hands out, at the composition point (see [Manager.ClientExecutorFor]), and the
-// listener it carries is forwarded here so the still-private executor gets it
-// before it is registered — the construction-time handshake the bundled driver
-// needs, since its breaker does not exist until the executor's first call.
-func (s *clientSide) backing(m *Manager, label, system string, listener BreakerEventListener) chain.Executor {
-	if v, ok := s.entries.Load(label); ok {
-		return v.(*clientEntry).exec
+// It matches the first rule whose Service equals the call's and whose Action and
+// Match the call satisfies, falling back to the default under the service key
+// when none does. An unarmed (or closed) manager resolves the zero policy — the
+// transparent pass-through — so the answer never depends on a nil check at the
+// call site.
+func (m *ClientManager) Resolve(op chain.Operation) CallPolicy {
+	s := m.snap.Load()
+	if s == nil {
+		return CallPolicy{Key: op.Service}
 	}
-	s.buildMu.Lock()
-	defer s.buildMu.Unlock()
-	if v, ok := s.entries.Load(label); ok { // built while we waited
-		return v.(*clientEntry).exec
-	}
-	return s.buildLocked(m, label, system, listener)
+	return s.resolve(op)
 }
 
-// buildLocked builds and registers label's executor and returns it. The
-// pass-through is what an unarmed side publishes, and what a driver that cannot
-// build one leaves the label on; it is registered like any other executor, so a
-// client on an unarmed manager still resolves one executor per label and does
-// not rebuild it per call. Callers hold [clientSide.buildMu], so the
-// registration is the only one for its label.
+// ResolveLabel is [PolicySource] for a backend that keys its own state by
+// resource name: the label-level policy and its generation, with no rule
+// matching. Lock-free, like [ClientManager.Resolve].
+func (m *ClientManager) ResolveLabel(label string) CallPolicy {
+	s := m.snap.Load()
+	if s == nil {
+		return CallPolicy{Key: label}
+	}
+	return s.resolveLabel(label)
+}
+
+// buildLocked builds and registers label's executor and returns it. Callers
+// hold [ClientManager.buildMu], so the registration is the only one for its
+// label.
 //
-// The listener the handle carries is attached to the executor here, while it is
-// still private, so the breaker the bundled driver builds on its first call is
-// created against it — the construction-time handshake this side owes the
-// observer. It is attached only for the executor this build publishes; an entry
-// that already exists keeps whatever listener registered it first.
+// Both failure modes PANIC rather than degrade: asking an unarmed manager is a
+// construction-order bug (the center arms the manager before any client asks),
+// and a driver that cannot build is a startup defect — a silent pass-through
+// would mean governance is off without anyone knowing. Fail fast, fail loud.
 //
-// It re-reads the settings after the driver has built, because an apply may have
-// landed in between: an executor holding a superseded policy would serve its label
-// one generation behind until the next push, and [Manager.Apply]'s sweep cannot
-// see it — that walk ended before this registration existed. Building again is the
-// whole fix, and it is bounded: another round needs another apply.
+// The policy it reads here is the executor's CONSTRUCTION-TIME policy: what a
+// driver that does not implement [PolicySourceSetter] runs every call under for
+// ever, and what a driver that does implement it uses only as the pre-first-call
+// value, since the first call resolves the live one.
 //
-// TWO comparisons, not one, because they cover different dimensions: a changed
-// policy means this label's executor is stale, while a flipped armed-ness means
-// the decision to ask the driver at all is stale — and that can change while the
-// policy stays zero (a Close, or a first Apply landing during the very first
-// build).
-func (s *clientSide) buildLocked(m *Manager, label, system string, listener BreakerEventListener) chain.Executor {
-	_ = system // the system label is the observer's concern; this engine keys on label alone
-	for {
-		m.mu.Lock()
-		active := m.applied
-		policy := s.policyLocked(label)
+// There is no re-read loop after the build: a push landing in between is no
+// longer a hazard, because the executor does not capture a policy at build time
+// — it resolves one per call.
+func (m *ClientManager) buildLocked(label string) chain.Executor {
+	m.mu.Lock()
+	if !m.applied {
 		m.mu.Unlock()
-		e := chain.Executor(noopClientExecutor{})
-		if active {
-			if built, err := m.driver.NewClientExecutor(label, policy); err == nil && built != nil {
-				e = built
-			}
-		}
-		m.mu.Lock()
-		activeNow := m.applied
-		current := s.policyLocked(label)
-		m.mu.Unlock()
-		if activeNow != active || current != policy {
-			continue
-		}
-		if listener != nil {
-			if setter, ok := e.(BreakerEventListenerSetter); ok {
-				setter.SetBreakerEventListener(listener)
-			}
-		}
-		s.entries.Store(label, &clientEntry{exec: e, policy: policy})
-		return e
+		panic("resilience: asking an unarmed manager for an executor — Apply settings first")
 	}
+	policy := m.policyLocked(label)
+	m.mu.Unlock()
+
+	e, err := m.driver.NewClientExecutor(label, policy)
+	if err != nil || e == nil {
+		panic(fmt.Sprintf("resilience: driver %T failed to build executor for %q: %v", m.driver, label, err))
+	}
+	// Install the policy source while the executor is still private — the same
+	// construction-time handshake, at the same moment, as the breaker listener
+	// the observe layer attaches. Drivers without the capability (an external
+	// backend) are skipped: their executors keep the construction-time policy,
+	// key on the label alone, and do not follow the config.
+	if setter, ok := e.(PolicySourceSetter); ok {
+		setter.SetPolicySource(m)
+	}
+	m.entries.Store(label, &clientEntry{exec: e})
+	return e
 }
 
-// evictChangedLocked drops every registration whose label no longer resolves to
-// the policy it was built under. Callers hold the manager lock. The executors
-// dropped here are not closed: [Manager.Close] is what closes, the same treatment
-// [Manager.Apply] gives them when the backend itself changes.
-func (s *clientSide) evictChangedLocked() {
-	s.entries.Range(func(key, value any) bool {
-		if v := value.(*clientEntry); v.policy != s.policyLocked(key.(string)) {
-			s.entries.Delete(key)
-		}
-		return true
-	})
-}
-
-// addSubLocked registers cb for label and arms it with the label's current policy.
-// Callers must hold the manager lock.
-func (s *clientSide) addSubLocked(label string, cb func(ClientPolicy)) *subscriber {
-	sub := &subscriber{last: s.policyLocked(label), cb: cb}
-	s.subs[label] = append(s.subs[label], sub)
-	return sub
-}
-
-// collectLocked gathers the subscribers whose policy for their label changed,
-// updating each one's last-delivered policy. Callers hold the manager lock
-// and MUST deliver the returned notifications after unlocking.
-func (s *clientSide) collectLocked() []pending {
+// collectSubsLocked gathers the subscribers whose policy for their label
+// changed, updating each one's last-delivered policy. Callers hold the manager
+// lock and MUST deliver the returned notifications after unlocking.
+func (m *ClientManager) collectSubsLocked() []pending {
 	var todo []pending
-	for label, list := range s.subs {
-		next := s.policyLocked(label)
+	for label, list := range m.subs {
+		next := m.policyLocked(label)
 		for _, sub := range list {
 			// A subscriber cancelled since this apply began must not be notified:
 			// its owner is already tearing down what cb drives.
@@ -208,15 +370,16 @@ func (s *clientSide) collectLocked() []pending {
 	return todo
 }
 
-// unsubscribe detaches sub from label. It marks sub cancelled before removing it,
-// so an apply that already collected sub into its pending list still skips it at
-// delivery time. Removing the last subscriber for a label drops the map entry, so
-// a repeatedly-rebuilt client leaves no residue — not even an empty slice.
-func (s *clientSide) unsubscribe(m *Manager, label string, sub *subscriber) {
+// unsubscribe detaches sub from label. It marks sub cancelled before removing
+// it, so an apply that already collected sub into its pending list still skips
+// it at delivery time. Removing the last subscriber for a label drops the map
+// entry, so a repeatedly-rebuilt client leaves no residue — not even an empty
+// slice.
+func (m *ClientManager) unsubscribe(label string, sub *subscriber) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	sub.cancelled = true
-	list := s.subs[label]
+	list := m.subs[label]
 	for i, e := range list {
 		if e == sub {
 			list = append(list[:i:i], list[i+1:]...)
@@ -224,183 +387,8 @@ func (s *clientSide) unsubscribe(m *Manager, label string, sub *subscriber) {
 		}
 	}
 	if len(list) == 0 {
-		delete(s.subs, label)
+		delete(m.subs, label)
 		return
 	}
-	s.subs[label] = list
-}
-
-// ClientExecutorFor returns the executor the given system's service should run under.
-// It is the call clients use instead of reaching for a governance center: pass
-// the owning system (e.g. "redis", "gorm") and the service label, wrap the
-// result with fault as desired, and install it in the command/query path.
-//
-// The returned executor resolves its backing implementation LAZILY, on each
-// Execute, through the manager's per-label registry. That indirection is
-// load-bearing, not an optimization: a client bean is constructed before the
-// container has adopted the config (gs builds every bean, then runs the Init
-// hooks), so an eager build would latch the unarmed pass-through permanently.
-// Resolving at call time — after the whole container has wired — makes the client
-// setup order irrelevant.
-//
-// Hot-reload is handled here, not by the caller: [Manager.Apply] drops the
-// registration this handle resolves through, so the next call builds the executor
-// the new policy asks for.
-func (m *Manager) ClientExecutorFor(system, service string) chain.Executor {
-	return &managedClientExecutor{mgr: m, system: system, label: service}
-}
-
-// NewClientExecutor builds an executor from an explicit policy, bypassing label
-// resolution. It is the escape hatch for a caller that has a policy in hand but
-// no service label to resolve one from; service is what the executor will be bound
-// to (see [chain.Executor]). The returned executor is not registered and not
-// dropped by [Manager.Apply] — the caller owns it, so a caller that needs one
-// executor per service builds one per service.
-func (m *Manager) NewClientExecutor(service string, p ClientPolicy) (chain.Executor, error) {
-	return m.driver.NewClientExecutor(service, p)
-}
-
-// ClientPolicyFor returns the outbound policy label currently resolves to, or a
-// zero policy on an unarmed manager. Callers that only need to READ the policy —
-// an adapter mapping it onto its own knobs — use this instead of building an
-// executor they will not use.
-func (m *Manager) ClientPolicyFor(label string) ClientPolicy {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	return m.client.policyLocked(label)
-}
-
-// Subscribe registers cb for OUTBOUND policy changes of label and arms it
-// immediately with the current resolved policy. cb is then invoked whenever
-// [Manager.Apply] produces a different policy for that label. Callers that own
-// their protected object rather than an [chain.Executor] — a gateway rebuilding a
-// route table, a balancer re-deriving its strategy — use this to follow the
-// config without an executor.
-//
-// cb is always called outside the manager's lock, so a callback that itself calls
-// into the Manager cannot self-deadlock; it MUST be safe for concurrent
-// invocation, since an Apply may fire concurrently with the immediate call.
-//
-// The returned [Subscription] carries the policy cb was armed with and detaches
-// the registration on [Subscription.Cancel]. A caller whose object is not
-// process-lifetime MUST cancel, or the Manager keeps a reference to the discarded
-// object forever.
-//
-// Inbound inbound has no counterpart: an inbound executor follows the config
-// through its own registration, and nothing outside this package observes
-// inbound changes.
-func (m *Manager) Subscribe(label string, cb func(ClientPolicy)) Subscription {
-	m.mu.Lock()
-	sub := m.client.addSubLocked(label, cb)
-	m.mu.Unlock()
-	cb(sub.last)
-	return Subscription{ClientPolicy: sub.last, cancel: func() { m.client.unsubscribe(m, label, sub) }}
-}
-
-// drainClientCache empties the outbound registry and returns what was in it.
-func drainClientCache(c *sync.Map) []chain.Executor {
-	var out []chain.Executor
-	c.Range(func(key, value any) bool {
-		out = append(out, value.(*clientEntry).exec)
-		c.Delete(key)
-		return true
-	})
-	return out
-}
-
-// managedClientExecutor is the stable, lazily-delegating executor [Manager.ClientExecutorFor]
-// returns. It holds the manager and the label; the backing executor is resolved on
-// each Execute through the manager's registry. A policy change needs nothing here:
-// Apply drops the registration, and the next Execute builds the executor the new
-// policy asks for.
-//
-// It is also where the observer's handle plugs in: the observe wrapper composed
-// around it (at the center) attaches a breaker listener through
-// [managedClientExecutor.SetBreakerEventListener], and this handle forwards it to
-// the executor its first Execute builds. That indirection is what lets the wrapper
-// reach the breaker while the wrapper sits OUTSIDE this handle — the observer
-// never sees the private executor, only the handle.
-type managedClientExecutor struct {
-	mgr    *Manager
-	system string
-	label  string
-
-	// listener is the breaker-transition listener the observe wrapper attached, or
-	// nil when this handle runs unobserved. It is set before the handle is shared
-	// (the wrapper attaches during composition) and read on the build path, so no
-	// lock guards it.
-	listener BreakerEventListener
-}
-
-// SetBreakerEventListener satisfies [BreakerEventListenerSetter] for the observe
-// wrapper composed around this handle: the listener is forwarded to the backing
-// executor when it is built, so the breaker is created against it.
-func (e *managedClientExecutor) SetBreakerEventListener(l BreakerEventListener) {
-	e.listener = l
-}
-
-func (e *managedClientExecutor) Execute(ctx context.Context, call chain.Operation, fn func(context.Context) error) error {
-	return e.mgr.client.backing(e.mgr, e.label, e.system, e.listener).Execute(ctx, call, fn)
-}
-
-func (e *managedClientExecutor) Close() error { return nil }
-
-// noopClientExecutor runs fn once with no protection — the executor a label resolves to
-// on a manager that is unarmed or whose driver could not build one. It is the
-// zero-cost fallback that keeps client code uniform whether or not resilience is
-// configured.
-type noopClientExecutor struct{}
-
-func (noopClientExecutor) Execute(ctx context.Context, call chain.Operation, fn func(context.Context) error) error {
-	return fn(ctx)
-}
-
-func (noopClientExecutor) Close() error { return nil }
-
-// subscriber is one caller's interest in the policy for a label. last is the most
-// recent policy delivered to cb, so an apply can skip callbacks whose policy is
-// unchanged and avoid re-delivering the same value.
-type subscriber struct {
-	last ClientPolicy
-	cb   func(ClientPolicy)
-
-	// cancelled marks a subscriber whose [Subscription.Cancel] has run. The
-	// manager drops it from subs on cancel, but an Apply already in flight may
-	// hold a reference to it from before the removal — so delivery checks this
-	// flag under mu and skips it, making cancel take effect immediately rather
-	// than after the next apply.
-	cancelled bool
-}
-
-// pending is one notification collected under the manager lock and delivered
-// after it is released.
-type pending struct {
-	cb     func(ClientPolicy)
-	policy ClientPolicy
-}
-
-// Subscription is a live registration created by [Manager.Subscribe]. It carries
-// the policy the callback was armed with and the ability to detach it again,
-// which matters for callers whose protected objects are not process-lifetime: a
-// gateway rebuilding its route table, or any client re-created on a config change.
-// Without Cancel, every rebuild would leave a subscriber (and a reference to the
-// discarded object) behind in the manager forever.
-//
-// The zero value is inert: ClientPolicy is a zero pass-through policy and Cancel is a
-// no-op, so a Subscription is always safe to hold and always safe to cancel —
-// including more than once.
-type Subscription struct {
-	// ClientPolicy is the policy the callback was armed with at registration time.
-	ClientPolicy ClientPolicy
-
-	cancel func()
-}
-
-// Cancel detaches the subscription. It is idempotent and safe to call
-// concurrently with an apply: once it returns, the callback is no longer invoked.
-// Cancelling the zero Subscription is a no-op.
-func (s Subscription) Cancel() {
-	if s.cancel != nil {
-		s.cancel()
-	}
+	m.subs[label] = list
 }

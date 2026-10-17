@@ -182,7 +182,7 @@ gs.Run()
   │       NewClient, which fixes the identity (name servers + Config) AND attaches
   │       the governance executor in the same step — center.ExecutorFor("rocketmq",
   │       service) over the injected *governance.Center (which bundles the
-  │       *resilience.Manager / *fault.Injector beans)        [driver.go, client.go]
+  │       *resilience.ClientManager / *fault.ClientManager beans)        [driver.go, client.go]
   │    3. Ping probe (opt-in): TCP dial, first reachable addr wins, 3s budget
   │       per address; runs AFTER assembly, failure → boot error (Client closed)
   ├─ app injects *Client wherever `autowire:"<name>"` appears
@@ -218,8 +218,8 @@ GuardedSend(ctx, cl, producer, msg)                       [command.go]
   └─ cl.execute                                            [client.go]
        ├─ executor is a pass-through (governance off) or absent (bare Client)
        │     → producer.SendSync runs inline, identical to raw
-       └─ exec.Execute(ctx, chain.Call{}, injectTraceContext + send)  — fault.Injector outermost
-                  (fault.WrapClientExecutor), resilience observer inside it; the
+       └─ exec.Execute(ctx, chain.Call{}, injectTraceContext + send)  — fault.ClientManager outermost
+                  (fault.ClientManager.WrapClientExecutor), resilience observer inside it; the
                   observer emits span + messaging.client.* metrics + access log
                   from the declaration; rejection returns a resilience sentinel
                   and the send never reaches the wire
@@ -231,10 +231,10 @@ The consumer direction declares the same way inside the driver's receive callbac
 
 Wrap order inside `center.ExecutorFor("rocketmq", service)` [cloud/governance/center.go], called
 from `NewClient`: `mgr.ClientExecutorFor("rocketmq", service)` — mgr being the injected
-`*resilience.Manager` — returns the fully assembled executor (core breaker/limiter/retry wrapped by
+`*resilience.ClientManager` — returns the fully assembled executor (core breaker/limiter/retry wrapped by
 the resilience observer — outcome counters + access log) → wrapped outermost by
-`fault.WrapClientExecutor(..., inj)` (runtime fault injection from the injected `*fault.Injector`;
-the injected error flows through the inner retry loop, so the breaker counts it). The `*resilience.Manager`
+`inj.WrapClientExecutor(...)` (runtime fault injection from the injected `*fault.ClientManager`;
+the injected error flows through the inner retry loop, so the breaker counts it). The `*resilience.ClientManager`
 is required — the container always supplies it; there is no unmanaged/observe-only fallback.
 
 - Both the driver's `Publish` (via `GuardedSend`) and its consume path share this one seam. **NOT
@@ -355,7 +355,7 @@ comma-joined name-servers — check it matches your governance rules):
 
 - Hammer `GuardedSend` — or the driver's `Publish`, which routes through the same `GuardedSend`
   seam — → rejections return `resilience.ErrRateLimited`, the send is never invoked, and
-  `resilience.client.calls` records appear with `resilience.outcome=rate_limited`, alongside one access log
+  `resilience.client.calls` records appear with `resilience.error_type=rate_limited`, alongside one access log
   per call (`_app_rocketmq_access`, or `_app_resilience` on the fallback path)
   [cloud/resilience/observe.go].
 - Raw `SendSync` called directly on a producer is unguarded (§2.2): it is the app's own path and

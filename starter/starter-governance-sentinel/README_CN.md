@@ -47,7 +47,7 @@ spring.resilience.driver=default
 spring.resilience.driver=sentinel
 spring.governance.client.default.max-retries=3
 spring.governance.client.default.error-threshold=10
-spring.governance.client.default.attempt-timeout=1s
+spring.governance.client.default.timeout=1s
 ```
 
 ### 3. 或直接使用
@@ -64,7 +64,7 @@ exec, _ := starter_governance_sentinel.NewSentinelDriver().NewExecutor("sentinel
 })
 
 // 客户端传输
-client := &http.Client{Transport: resilience.NewRoundTripper(http.DefaultTransport, exec, nil)}
+client := &http.Client{Transport: resilience.NewRoundTripper(http.DefaultTransport, exec, service, nil)}
 ```
 
 见 [`example/`](example) 的自包含冒烟——端到端验证限流 +
@@ -86,13 +86,11 @@ client := &http.Client{Transport: resilience.NewRoundTripper(http.DefaultTranspo
 | `breaker-strategy=consecutive`（默认） | breaker `ErrorCount` —— **近似**：sentinel 没有连续失败熔断，要精确映射请写 `error-count` | `ErrCircuitOpen` |
 | `HalfOpenRequests` | `ProbeNum`（半开放行试探数） | — |
 | `OpenDuration` | `RetryTimeoutMs` | — |
-| `MaxConcurrent` | isolation `Concurrency` | `ErrBulkheadFull` |
 | `MaxRetries` | 重试循环（sentinel 之外） | 最后一次尝试的 error |
-| `AttemptTimeout` / `MaxDuration` | ctx 截止（sentinel 之外） | `context.DeadlineExceeded` |
+| `Timeout` | ctx 截止（sentinel 之外） | `context.DeadlineExceeded` |
 
 **合法忽略**（sentinel v1.0.4 无对应，文档注明而非伪造）：`Burst`、
-`Algorithm`（flow 无滑动窗口/突发旋钮）、`BulkheadQueueDuration`（isolation
-不排队，default driver 实现该等待）。
+`Algorithm`（flow 无滑动窗口/突发旋钮）。
 
 sentinel 的 system / hotspot / 集群流控属 future work：它们是入站专用或参数
 维度的原语，还没有 policy 字段能承载；字段有了会落进 server executor。

@@ -54,7 +54,7 @@ const rulesV1 = `spring:
     client:
       default:
         enabled: true
-        attempt-timeout: 100ms
+        timeout: 100ms
         max-retries: 2
 `
 
@@ -64,7 +64,7 @@ const rulesV2 = `spring:
     client:
       default:
         enabled: true
-        attempt-timeout: 900ms
+        timeout: 900ms
         max-retries: 2
 `
 
@@ -113,9 +113,9 @@ func main() {
 			tk := time.NewTicker(time.Second)
 			defer tk.Stop()
 			for range tk.C {
-				pol := demo.Center.Resilience().ClientPolicyFor("demo:service")
+				pol := demo.Center.ResilienceClient().ClientPolicyFor("demo:service")
 				fmt.Printf("policy: enabled=%v timeout=%v retries=%d\n",
-					!pol.IsZero(), pol.AttemptTimeout, pol.Retry.MaxRetries)
+					!pol.IsZero(), pol.Timeout, pol.Retry.MaxRetries)
 			}
 		}()
 	}
@@ -130,13 +130,13 @@ func runTest(d *demo) {
 	center := d.Center
 
 	// Cold load: the seeded document is already in effect.
-	pol := center.Resilience().ClientPolicyFor("demo:service")
-	if pol.AttemptTimeout != 100*time.Millisecond {
-		err := errutil.Explain(nil, "cold-load mismatch: timeout=%v, want 100ms", pol.AttemptTimeout)
+	pol := center.ResilienceClient().ClientPolicyFor("demo:service")
+	if pol.Timeout != 100*time.Millisecond {
+		err := errutil.Explain(nil, "cold-load mismatch: timeout=%v, want 100ms", pol.Timeout)
 		log.Error(ctx, log.TagAppDef, err, "cold-load mismatch")
 		os.Exit(1)
 	}
-	fmt.Println("cold-load OK: attempt-timeout is", pol.AttemptTimeout)
+	fmt.Println("cold-load OK: timeout is", pol.Timeout)
 
 	// Hot push: publish v2, then poll until the center applies it.
 	if err := publish(rulesV2); err != nil {
@@ -147,15 +147,15 @@ func runTest(d *demo) {
 	tk := time.NewTicker(200 * time.Millisecond)
 	defer tk.Stop()
 	for range tk.C {
-		pol = center.Resilience().ClientPolicyFor("demo:service")
-		fmt.Printf("policy: enabled=%v timeout=%v retries=%d\n", !pol.IsZero(), pol.AttemptTimeout, pol.Retry.MaxRetries)
-		if pol.AttemptTimeout == 900*time.Millisecond {
-			fmt.Println("rule push observed: attempt-timeout is now", pol.AttemptTimeout)
+		pol = center.ResilienceClient().ClientPolicyFor("demo:service")
+		fmt.Printf("policy: enabled=%v timeout=%v retries=%d\n", !pol.IsZero(), pol.Timeout, pol.Retry.MaxRetries)
+		if pol.Timeout == 900*time.Millisecond {
+			fmt.Println("rule push observed: timeout is now", pol.Timeout)
 			_ = syscall.Kill(os.Getpid(), syscall.SIGTERM)
 			return
 		}
 		if time.Now().After(deadline) {
-			err := errutil.Explain(nil, "rule push timeout: timeout=%v", pol.AttemptTimeout)
+			err := errutil.Explain(nil, "rule push timeout: timeout=%v", pol.Timeout)
 			log.Error(ctx, log.TagAppDef, err, "rule push timeout")
 			os.Exit(1)
 		}

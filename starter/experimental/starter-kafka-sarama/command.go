@@ -174,7 +174,7 @@ func observe(obs *observability.OperationObserver, ctx context.Context, op chain
 	if obs == nil {
 		return call(ctx)
 	}
-	return obs.Observe(ctx, op, call)
+	return obs.Observe(ctx, op, nil, call)
 }
 
 // clientObserver is the per-client emission attachment: the observer and the
@@ -228,7 +228,7 @@ func observerFor(client sarama.Client) *observability.OperationObserver {
 // WrapSyncProducer returns a sarama.SyncProducer that declares the publish's
 // identity and routes SendMessage / SendMessages through the resilience executor
 // attached to cl when governance is enabled. The executor is the single emitter:
-// it opens the span (named "publish", with the topic as messaging.destination.name
+// it opens the span (named "send", with the topic as messaging.destination.name
 // on the span and in the log), records messaging.client.operation.duration and
 // messaging.client.attempt.duration, and writes the one access log — declaring
 // the identity is all this wrapper does.
@@ -249,8 +249,8 @@ func observerFor(client sarama.Client) *observability.OperationObserver {
 // delegate directly, as does TxnStatus/IsTransactional. SendMessage takes no
 // context.Context (sarama's API is context-free), so the call is declared from
 // the message alone and starts from context.Background() — the call's span is
-// therefore a NEW ROOT, and a per-call deadline is expressed via
-// AttemptTimeout/MaxDuration in [resilience.Config] when a bound matters.
+// therefore a NEW ROOT, and a per-call deadline is expressed via the rule's
+// `timeout` when a bound matters.
 func WrapSyncProducer(cl sarama.Client, p sarama.SyncProducer, prop traffic.Propagator) sarama.SyncProducer {
 	if p == nil {
 		return p
@@ -272,7 +272,7 @@ type guardedSyncProducer struct {
 var _ sarama.SyncProducer = (*guardedSyncProducer)(nil)
 
 func (g *guardedSyncProducer) SendMessage(msg *sarama.ProducerMessage) (partition int32, offset int64, err error) {
-	err = observe(g.obs, context.Background(), operation(opPublish, msg.Topic), func(attemptCtx context.Context) error {
+	err = observe(g.obs, context.Background(), operation(opSend, msg.Topic), func(attemptCtx context.Context) error {
 		injectProducer(attemptCtx, msg, g.prop)
 		var perr error
 		partition, offset, perr = g.p.SendMessage(msg)
@@ -284,21 +284,37 @@ func (g *guardedSyncProducer) SendMessage(msg *sarama.ProducerMessage) (partitio
 	return partition, offset, nil
 }
 
-// SendMessages declares one publish for the batch (addressed by the first
-// message's topic) and routes it through the executor, injecting the trace
-// context into every message. sarama's batch call is a single call from this
-// caller's point of view, so it is one operation.
+// SendMessages declares one publish for the batch and routes it through the
+// executor, injecting the trace context into every message. sarama's batch call
+// is a single call from this caller's point of view, so it is one operation.
+//
+// The batch is addressed by its topic only when EVERY message shares one: a
+// mixed batch declares none, because the destination now reaches the span NAME
+// and the governance rule key, and naming such a batch after its first message
+// would attribute it to a topic only part of it went to.
 func (g *guardedSyncProducer) SendMessages(msgs []*sarama.ProducerMessage) error {
-	topic := ""
-	if len(msgs) > 0 {
-		topic = msgs[0].Topic
-	}
-	return observe(g.obs, context.Background(), operation(opPublish, topic), func(attemptCtx context.Context) error {
+	topic := sharedTopic(msgs)
+	return observe(g.obs, context.Background(), operation(opSend, topic), func(attemptCtx context.Context) error {
 		for _, m := range msgs {
 			injectProducer(attemptCtx, m, g.prop)
 		}
 		return g.p.SendMessages(msgs)
 	})
+}
+
+// sharedTopic returns the topic every message in the batch was sent to, and ""
+// when the batch is empty or spans more than one. See [guardedSyncProducer.SendMessages].
+func sharedTopic(msgs []*sarama.ProducerMessage) string {
+	if len(msgs) == 0 {
+		return ""
+	}
+	topic := msgs[0].Topic
+	for _, m := range msgs[1:] {
+		if m.Topic != topic {
+			return ""
+		}
+	}
+	return topic
 }
 
 func (g *guardedSyncProducer) Close() error                            { return g.p.Close() }
@@ -317,7 +333,7 @@ func (g *guardedSyncProducer) AddMessageToTxn(msg *sarama.ConsumerMessage, gid s
 // Consume runs handle for one consumed message under the resilience executor
 // attached to cl: it extracts the upstream W3C trace context and the load-test
 // marker from msg into ctx, declares the consume's identity, and runs handle
-// under the executor — which emits the span (named "consume", the topic as
+// under the executor — which emits the span (named "process", the topic as
 // messaging.destination.name), the messaging.client.operation.duration /
 // messaging.client.attempt.duration metrics and the one access log. Offset
 // commits are entirely the caller's / consumer group's concern; this never
@@ -339,5 +355,5 @@ func (g *guardedSyncProducer) AddMessageToTxn(msg *sarama.ConsumerMessage, gid s
 // with the extracted context. prop is the process.s load-test convention (required).
 func Consume(ctx context.Context, cl sarama.Client, msg *sarama.ConsumerMessage, prop traffic.Propagator, handle func(context.Context) error) error {
 	ctx = extractConsumer(ctx, msg, prop)
-	return observe(observerFor(cl), ctx, operation(opConsume, msg.Topic), handle)
+	return observe(observerFor(cl), ctx, operation(opProcess, msg.Topic), handle)
 }

@@ -36,7 +36,6 @@ import (
 	"go-spring.org/cloud/chain"
 	"go-spring.org/log"
 	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/trace"
 )
 
 // webhookSystem is the value the messaging.system label carries — the
@@ -64,23 +63,43 @@ var accessTag = log.RegisterAppTag("webhook", "access")
 // which is also what levels its success log at Info.
 func operation(channel, endpoint string) chain.Operation {
 	o := chain.Operation{
-		Name:   "webhook.send",
-		Metric: "messaging.client",
-		Attrs: []attribute.KeyValue{
-			attribute.String("messaging.system", webhookSystem),
-			attribute.String("messaging.operation", "send"),
-			attribute.String("webhook.channel", channel),
+		Request: chain.Request{
+			// A delivery is a producer publish: the webhook endpoint is downstream
+			// of us, and the direction is what keeps that edge visible once the
+			// emitter opens the span.
+			Kind:   chain.KindPublish,
+			System: webhookSystem,
+			Action: "webhook.send",
 		},
-		LogTag: accessTag,
-		// A delivery is the producer edge of the trace: the webhook endpoint is
-		// downstream of us, and the edge is what keeps that visible once the
-		// emitter opens the span.
-		SpanKind: trace.SpanKindProducer,
+		Observe: chain.Observe{
+			Metric: chain.Metric{
+				Name: "messaging.client",
+				Attrs: []attribute.KeyValue{
+					attribute.String("messaging.system", webhookSystem),
+					attribute.String("messaging.operation", "send"),
+					attribute.String("webhook.channel", channel),
+				},
+			},
+			Span: chain.Span{Attrs: []attribute.KeyValue{
+				attribute.String("messaging.system", webhookSystem),
+				attribute.String("messaging.operation", "send"),
+				attribute.String("webhook.channel", channel),
+			}},
+			Log: chain.Log{
+				Tag: accessTag,
+				Fields: []log.Field{
+					log.String("messaging.system", webhookSystem),
+					log.String("messaging.operation", "send"),
+					log.String("webhook.channel", channel),
+				},
+			},
+		},
 	}
 	if host := hostOf(endpoint); host != "" {
-		o.Detail = []attribute.KeyValue{
-			attribute.String("webhook.destination.host", strutil.Truncate(host, maxDetail)),
-		}
+		dest := strutil.Truncate(host, maxDetail)
+		o.Observe.Span.Attrs = append(o.Observe.Span.Attrs, attribute.String("webhook.destination.host", dest))
+		o.Observe.Log.Fields = append(o.Observe.Log.Fields, log.String("webhook.destination.host", dest))
+		o.Observe.Log.QuietSuccess = true
 	}
 	return o
 }

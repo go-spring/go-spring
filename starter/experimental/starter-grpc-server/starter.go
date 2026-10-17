@@ -237,15 +237,10 @@ func (s *SimpleGrpcServer) buildOptions() ([]grpc.ServerOption, error) {
 	}
 	if ropts, ok := s.buildResilienceInterceptors(); ok {
 		unary = append(unary, ropts.unary)
+		stream = append(stream, ropts.stream)
 	}
-	// Fault injection (always installed), innermost so an injected error flows
-	// back through tracing/metrics/resilience and is observed. The interceptors
-	// capture the injected injector bean once (nil-safe: a transparent
-	// pass-through when governance is not imported), so fault can be hot-toggled
-	// at runtime without a restart — the center swaps the injector's config in
-	// place.
-	unary = append(unary, FaultUnaryInterceptor(s.center.Fault()))
-	stream = append(stream, FaultStreamInterceptor(s.center.Fault()))
+	// Fault injection is part of the inbound guard now, for unary and stream
+	// alike (innermost, after the breaker gate).
 	// Recovery (always installed), innermost so a converted panic flows back
 	// through tracing/metrics/resilience as a codes.Internal error and is
 	// observed — grpc-go recovers handler panics nowhere by itself.

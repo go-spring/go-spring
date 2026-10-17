@@ -79,7 +79,7 @@ func (o *Client) Enqueue(ctx context.Context, task *asynq.Task, opts ...asynq.Op
 		return o.Client.EnqueueContext(ctx, task, opts...)
 	}
 	var info *asynq.TaskInfo
-	err := o.obs.Observe(ctx, operation("enqueue", task.Type()), func(callCtx context.Context) error {
+	err := o.obs.Observe(ctx, operation("enqueue", task.Type()), nil, func(callCtx context.Context) error {
 		var eerr error
 		info, eerr = o.Client.EnqueueContext(callCtx, task, opts...)
 		return eerr

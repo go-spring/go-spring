@@ -110,7 +110,7 @@ func observe(ctx context.Context, cl mqtt.Client, op chain.Operation, call func(
 	if !ok {
 		return call(ctx)
 	}
-	return v.(*clientObserver).obs.Observe(ctx, op, call)
+	return v.(*clientObserver).obs.Observe(ctx, op, nil, call)
 }
 
 // GuardedPublish publishes payload to topic at qos, routed through the
@@ -125,7 +125,7 @@ func observe(ctx context.Context, cl mqtt.Client, op chain.Operation, call func(
 // The function blocks until paho acknowledges the outbound handoff (immediately
 // at QoS 0, after a PUBACK/PUBCOMP at QoS 1/2).
 func GuardedPublish(ctx context.Context, cl mqtt.Client, topic string, qos byte, retained bool, payload interface{}) error {
-	return observe(ctx, cl, operation(opPublish, topic), func(context.Context) error {
+	return observe(ctx, cl, operation(opSend, topic), func(context.Context) error {
 		token := cl.Publish(topic, qos, retained, payload)
 		token.Wait()
 		return token.Error()
@@ -150,5 +150,5 @@ func GuardedPublish(ctx context.Context, cl mqtt.Client, topic string, qos byte,
 // callback is fire-and-forget, so the returned error is the caller's to log —
 // there is no ack/nack for MQTT 3.1.1.
 func GuardedConsume(ctx context.Context, cl mqtt.Client, msg mqtt.Message, handler func(context.Context) error) error {
-	return observe(ctx, cl, operation(opConsume, msg.Topic()), handler)
+	return observe(ctx, cl, operation(opProcess, msg.Topic()), handler)
 }

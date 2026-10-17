@@ -77,7 +77,7 @@ type Client struct {
 
 	// exec is the resilience executor protecting requests, set by [NewClient] from
 	// the governance center it is handed. The center is required to carry a
-	// [resilience.Manager]: [governance.Center.ExecutorFor] panics on a center
+	// [resilience.ClientManager]: [governance.Center.ExecutorFor] panics on a center
 	// without one rather than leaving the round-tripper unprotected.
 	exec chain.Executor
 	// serviceLabel is the resilience service key ("elasticsearch:<...>") exec
@@ -95,7 +95,7 @@ type Client struct {
 // center carries the container's facilities (see [governance.Center]), and is
 // applied HERE so a Client cannot exist half-assembled: there is no Init step,
 // no later patching, and nothing the container has to remember to call. A
-// hand-built client must supply a center holding a [resilience.Manager]:
+// hand-built client must supply a center holding a [resilience.ClientManager]:
 // [governance.Center.ExecutorFor] is required, so a nil center
 // is a construction error — [governance.Center.ExecutorFor] panics — never a
 // graceful downgrade to an unprotected client.
@@ -135,7 +135,7 @@ func (c *Client) installTransport() {
 	if c.dyn == nil {
 		return
 	}
-	rt := resilience.NewRoundTripper(http.DefaultTransport, c.exec, callFor)
+	rt := resilience.NewRoundTripper(http.DefaultTransport, c.exec, c.serviceLabel, callFor)
 	c.dyn.Swap(rt)
 }
 

@@ -29,29 +29,30 @@ import (
 
 const faultFilterKey = "fault"
 
-// injector is the governance starter's fault injector, installed once at wiring
-// time by newInjectorHook. It is a package handle rather than an injected field
-// because dubbo — not this starter — constructs filter instances through its own
-// registry, so there is no bean whose constructor could receive the injector.
-// No ordering constraint applies: the handle holds the injector BEAN, and the
-// injector swaps its config in place ([fault.Injector.SetConfig]), so whatever
-// the center pushes later is visible to the filter without re-installing.
+// faultServer is the inbound shell the filter fires through, created once at
+// wiring time by newInjectorHook. It is a package handle rather than an injected
+// field because dubbo — not this starter — constructs filter instances through
+// its own registry, so there is no bean whose constructor could receive it.
+// No ordering constraint applies: the shell holds its own kernel pointer, and
+// the authority swaps that kernel in place ([fault.ServerManager.Refresh]), so
+// whatever the center pushes later is visible to the filter without
+// re-installing.
 //
-// nil (the governance center not imported) means fault injection is off: the filter
-// passes the call through untouched.
-var injector atomic.Pointer[fault.Injector]
+// nil (the governance center not imported) means fault injection is off: the
+// filter passes the call through untouched.
+var faultServer atomic.Pointer[fault.Server]
 
-// injectorHook is the marker bean whose construction installs the injector.
+// injectorHook is the marker bean whose construction installs the shell.
 type injectorHook struct{}
 
-// newInjectorHook installs the center's fault authority as the injector the
-// fault filter reads. center is nil when none is linked, which leaves fault
+// newInjectorHook installs the center's inbound fault authority's shell, which
+// the fault filter reads. center is nil when none is linked, which leaves fault
 // injection off and the filter transparent; installing unconditionally (rather
 // than skipping a nil) keeps the handle from surviving a container that did have
 // one — a test-process concern, but the same "last wiring wins" rule in both
 // cases.
 func newInjectorHook(center *governance.Center) (*injectorHook, error) {
-	injector.Store(center.Fault())
+	faultServer.Store(center.FaultServer().NewServer())
 	return &injectorHook{}, nil
 }
 
@@ -59,25 +60,33 @@ type dubboFaultFilter struct{}
 
 func newFaultFilter() filter.Filter { return &dubboFaultFilter{} }
 
-// Invoke gates the service call with [fault.ApplyServer] when an injector is
+// Invoke gates the service call with [fault.Server.Fire] when an injector is
 // installed. The injector is read per call so fault can be hot-toggled at
 // runtime without a restart (the handle itself never changes after wiring); nil
 // means no fault is configured and the call passes through untouched.
+//
+// The call is named for the rules as the entrance ("dubbo") plus the method
+// being invoked, so a rule can target one method instead of the whole provider.
 func (f *dubboFaultFilter) Invoke(ctx context.Context, invoker base.Invoker, inv base.Invocation) result.Result {
-	inj := injector.Load()
-	if inj == nil {
+	srv := faultServer.Load()
+	if srv == nil {
 		return invoker.Invoke(ctx, inv)
 	}
-	var res result.Result
-	_ = fault.ApplyServer(ctx, inj, "dubbo", func() error {
-		res = invoker.Invoke(ctx, inv)
-		return nil
-	})
-	if res != nil {
-		return res
+	if _, err := srv.Fire(ctx, faultTarget(inv)); err != nil {
+		// The call never reached the invoker: surface the injected failure (or
+		// the cancelled-latency context error) itself, so its kind survives into
+		// the result rather than collapsing to a generic one.
+		return &result.RPCResult{Err: err}
 	}
-	// Apply injected an error before invoker ran; surface a failing result.
-	return &result.RPCResult{Err: fault.ErrInjected}
+	return invoker.Invoke(ctx, inv)
+}
+
+// faultTarget names the inbound call for the fault rules: the entrance
+// ("dubbo") plus the method the invocation names — the finest unit a rule can
+// target. The method is the ACTION, not the service, so one rule can cover the
+// whole provider and another a single method of it.
+func faultTarget(inv base.Invocation) fault.Target {
+	return fault.Target{Service: "dubbo", Action: inv.MethodName()}
 }
 
 // OnResponse is a pass-through.

@@ -204,7 +204,7 @@ Rationale (from the source comments, verified):
 - **discovery/LB sits below resilience**: "a retry re-picks a fresh endpoint and the breaker keys
   on the logical service name" (httpx.go:32-34). The breaker therefore counts logical calls, and a
   retry lands on a different instance after an instance-level failure.
-- **resilience wraps the balanced transport**: `resilience.NewRoundTripper(base, exec, nil)`
+- **resilience wraps the balanced transport**: `resilience.NewRoundTripper(base, exec, service, nil)`
   — the service label is `resilience.ServiceLabel("http", ServiceName, Addr)` (httpx.go:342-347),
   the same label the policy is resolved under, so limiter/breaker state and the driver's rule names
   agree with the governance rule that armed them. One label per client: the host rewrite to a picked
@@ -237,14 +237,15 @@ Rationale (from the source comments, verified):
    what keeps the declared Target as the key, and it also keeps every hop of a redirect on the
    route the call started on.
 3. trafficTransport injects the load-test marker header iff the propagator's `IsLoadTest(ctx)`.
-4. The executor runs the round-trip as one protected call: rate limit → breaker gate →
-   per-attempt timeout (`attempt-timeout`) → retry loop with backoff, all under `MaxDuration`;
+4. The executor runs the round-trip as one protected call: one `timeout` deadline over the
+   WHOLE call, then rate limit → breaker gate → retry loop with backoff beneath it — the
+   rounds share that one budget;
    the breaker records ONE outcome for the whole call (§2.2).
 5. balancedTransport `chain.Pick()` selects a live endpoint (round_robin etc.), clones the request
    and rewrites `URL.Host`/`Host` to the instance address, reports the outcome back to
    the chain so least-conn accounting and outlier suspension see every call (httpx.go:351-371).
 6. otelhttp transport opens the client span, injects `traceparent`, dials.
-7. The response unwinds: span ends (with `resilience.outcome` if the executor wrapped it),
+7. The response unwinds: span ends (with `resilience.error_type` if the executor wrapped it),
    `resilience.client.calls{outcome=...}` counted, access log emitted per `observability.level`.
 8. In direct mode step 5 is `fixedHostTransport` pinning every request to `addr` — same spot in
    the chain, so resilience and call sites behave identically in both modes (httpx.go:264-277).
@@ -309,8 +310,8 @@ breakers.
 **Not here** (no keys under `spring.http-client.*`): timeouts, retries, breaker, rate limit, fault.
 All policy is process-wide under `spring.governance.*` (see cloud/governance's SOURCE_USAGE) —
 `spring.governance.client.default.<policy-field>` (rate-limit / burst / error-threshold /
-open-duration / breaker-strategy / error-rate-threshold / min-requests / max-concurrent /
-max-retries / initial-interval / multiplier / max-interval / attempt-timeout / max-duration) and
+open-duration / breaker-strategy / error-rate-threshold / min-requests /
+max-retries / initial-interval / multiplier / max-interval / timeout) and
 `spring.governance.client.fault.*` for fault injection. Per-target policy = one `spring.governance.client.rules[n]` entry scoped to the
 service label above. See cloud/governance's SOURCE_USAGE for that surface.
 
@@ -385,14 +386,14 @@ whole stack, not just the injector.
 - Metrics (starter-otel's prometheus exporter, e.g. example-otel `:9090/metrics`):
   `resilience.client.calls` counter with attributes `resilience.system="http"`,
   `resilience.service="http:greet-svc"`, `status` ∈ {ok, error}, plus
-  `resilience.outcome` ∈ {rate_limited, circuit_open, bulkhead_full, timeout} when
+  `resilience.error_type` ∈ {rate_limited, circuit_open, bulkhead_full, timeout} when
   protection refused the call;
   `resilience.client.breaker.state_change` with from/to.
 - Access log: gated by `observability.level` (default brief = on), tag `_app_http_resilience`
   (`log.RegisterAppTag("http", "resilience")`).
 - Traces: client span per request from httpx's built-in otelhttp layer (`GET /greet`-style naming per
   [otelhttp semantics](https://pkg.go.dev/go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp))
-  plus an internal executor span carrying `resilience.outcome`. With no OTel provider installed
+  plus an internal executor span carrying `resilience.error_type`. With no OTel provider installed
   both are silent no-ops. example-otel ships a docker-compose Jaeger at :4317 to eyeball them.
 
 ---

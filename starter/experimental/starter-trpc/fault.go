@@ -20,6 +20,7 @@ import (
 	"context"
 
 	"go-spring.org/cloud/fault"
+	"trpc.group/trpc-go/trpc-go"
 	"trpc.group/trpc-go/trpc-go/filter"
 )
 
@@ -27,21 +28,30 @@ import (
 // into inbound RPCs per the injector's rules. The starter registers it under
 // the name "fault"; add "fault" to a service's filter chain to activate it. It
 // is the tRPC server-side counterpart to the client starters'
-// fault.WrapClientExecutor, letting an operator "set fire" to a running server.
+// fault.ClientManager.WrapClientExecutor, letting an operator "set fire" to a running server.
 //
 // inj is the governance starter's injector bean, held for the life of the
 // filter: the center hot-swaps its config in place
-// ([fault.Injector.SetConfig]) rather than replacing the bean, so the captured
+// ([fault.ServerManager.Refresh]) rather than replacing the bean, so the captured
 // reference always sees the live config. The bean is always present (an absent
 // bean fails startup) and inert by default.
-func FaultServerFilter(inj *fault.Injector) filter.ServerFilter {
+//
+// The request is named by [faultTarget]: the entrance ("trpc") plus the callee
+// method, so an inbound rule can target one method instead of the whole server.
+func FaultServerFilter(inj *fault.ServerManager) filter.ServerFilter {
+	srv := inj.NewServer()
 	return func(ctx context.Context, req interface{}, next filter.ServerHandleFunc) (interface{}, error) {
-		var resp interface{}
-		err := fault.ApplyServer(ctx, inj, "trpc", func() error {
-			var e error
-			resp, e = next(ctx, req)
-			return e
-		})
-		return resp, err
+		if _, err := srv.Fire(ctx, faultTarget(ctx)); err != nil {
+			return nil, err
+		}
+		return next(ctx, req)
 	}
+}
+
+// faultTarget names the inbound RPC for the fault rules: the entrance ("trpc")
+// plus the callee method tRPC resolved for this request — the finest unit a
+// rule can target. The method is the ACTION, not the service, so one rule can
+// cover the whole server and another a single method of it.
+func faultTarget(ctx context.Context) fault.Target {
+	return fault.Target{Service: "trpc", Action: trpc.Message(ctx).CalleeMethod()}
 }

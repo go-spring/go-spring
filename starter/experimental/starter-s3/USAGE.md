@@ -157,8 +157,8 @@ gs.Run()
   │    │        static creds + region + bucket-lookup + a dynamicTransport inside minio.Options
   │    │      → NewClient builds the *Client wrapper: identity, exec =
   │    │        center.ExecutorFor("s3", "s3:<endpoint>") (center is the injected
-  │    │        *governance.Center, holding the *resilience.Manager /
-  │    │        *fault.Injector beans), then installs the transport —
+  │    │        *governance.Center, holding the *resilience.ClientManager /
+  │    │        *fault.ClientManager beans), then installs the transport —
   │    │        declaration outermost, resilience inside
   │    ├─ ping=true only: fail-fast probe HealthCheck(ctx, client) — one ListBuckets
   │    │      straight to the raw client; an unreachable endpoint or rejected credentials
@@ -194,11 +194,11 @@ straight through to `http.DefaultTransport`.
    read by nobody.
 3. The request enters the executor built at
    construction for service `s3:<endpoint>` from the `*governance.Center` the ctor passed
-   down (`*resilience.Manager` / `*fault.Injector` beans) — retry / rate-limit /
+   down (`*resilience.ClientManager` / `*fault.ClientManager` beans) — retry / rate-limit /
    circuit-breaker / bulkhead when a governance rules source applies them (hot-reloadable through
    the governance center); the resilience manager is required and always supplied by the
    container, so there is no unmanaged/observe-only fallback. The
-   `*fault.Injector` (nil-safe) may inject failures for drills. This executor is the SINGLE
+   `*fault.ClientManager` (nil-safe) may inject failures for drills. This executor is the SINGLE
    emitter: it opens the call span, records the call-level `db.client.operation.duration`,
    the attempt-level `db.client.attempt.duration` per retry, and writes one access log —
    covering the whole call, retries included (minio-go ships no OTel hooks of its own).
@@ -277,7 +277,8 @@ path (per-call, span + log only).
 ### 4.5 Fault/resilience drill (needs governance: a configured rules source)
 
 Applies per endpoint service label `s3:127.0.0.1:9000`: a governance rule with
-`fault.rate` against that service makes a fraction of uploads fail through the executor —
+`fault.rules[]` whose `service` names that label (and a `rate`) makes a fraction of
+uploads fail through the executor —
 observable as outcome-tagged spans/counters from the resilience layer. Flip the rule
 file to withdraw (hot-reload through the governance source). ⚠ note the retry policy retries
 per round-trip, not per stream: uploads with large bodies may re-send the body.

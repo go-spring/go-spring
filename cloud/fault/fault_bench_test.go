@@ -38,7 +38,7 @@ func BenchmarkExecutor_Baseline(b *testing.B) {
 	ctx := context.Background()
 	b.ResetTimer()
 	for b.Loop() {
-		_ = exec.Execute(ctx, chain.Operation{}, noopFn)
+		_ = exec.Execute(ctx, chain.Operation{}, nil, noopFn)
 	}
 }
 
@@ -49,11 +49,11 @@ func BenchmarkFaultExecutor_Inert(b *testing.B) {
 	d := resilience.NewDefaultDriver(nil)
 	raw, _ := d.NewClientExecutor("svc", resilience.ClientPolicy{})
 	defer func() { _ = raw.Close() }()
-	exec := WrapClientExecutor(raw, "svc", NewInjector(Configs{Client: Config{}}, nil)) // inert
+	exec := newFixture(configs{Client: Config{}}, nil).client.WrapClientExecutor(raw) // inert
 	ctx := context.Background()
 	b.ResetTimer()
 	for b.Loop() {
-		_ = exec.Execute(ctx, chain.Operation{}, noopFn)
+		_ = exec.Execute(ctx, chain.Operation{}, nil, noopFn)
 	}
 }
 
@@ -63,10 +63,10 @@ func BenchmarkFaultExecutor_Injecting(b *testing.B) {
 	d := resilience.NewDefaultDriver(nil)
 	raw, _ := d.NewClientExecutor("svc", resilience.ClientPolicy{})
 	defer func() { _ = raw.Close() }()
-	exec := WrapClientExecutor(raw, "svc", NewInjector(Configs{Client: Config{Rate: 1, Error: "generic"}}, nil))
+	exec := newFixture(configs{Client: Config{Rules: []Rule{{Rate: 1, Error: "generic"}}}}, nil).client.WrapClientExecutor(raw)
 	ctx := context.Background()
 	b.ResetTimer()
 	for b.Loop() {
-		_ = exec.Execute(ctx, chain.Operation{}, noopFn)
+		_ = exec.Execute(ctx, chain.Operation{}, nil, noopFn)
 	}
 }

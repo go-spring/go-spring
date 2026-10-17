@@ -32,9 +32,9 @@ import (
 
 // testCenter builds a governance center over res and lb with an unarmed fault
 // injector and an empty document: everything a driver reads, with no wiring.
-func testCenter(t *testing.T, res *resilience.Manager, lb *loadbalance.Manager) *governance.Center {
+func testCenter(t *testing.T, resClient *resilience.ClientManager, lb *loadbalance.Manager) *governance.Center {
 	t.Helper()
-	ctr, err := governance.NewCenter(res, lb, fault.NewInjector(fault.Configs{}, nil), nil,
+	ctr, err := governance.NewCenter(resClient, lb, fault.NewClientManager(nil), fault.NewServerManager(nil), nil,
 		governance.NewPushSource(governance.Config{}))
 	if err != nil {
 		t.Fatal(err)
@@ -80,7 +80,7 @@ func TestDriverChainIsGovernedFromConstruction(t *testing.T) {
 	mgr := loadbalance.NewManager()
 	cfg := Config{Addr: "10.0.0.1:6379"}
 	w, err := drv.CreateClient(context.Background(), cfg,
-		testCenter(t, resilience.NewManager(nil), mgr))
+		testCenter(t, resilience.NewClientManager(resilience.NewDefaultDriver(nil)), mgr))
 	assert.Error(t, err).Nil()
 
 	// The rule gives this service a strategy the chain was not built with, and
@@ -110,7 +110,7 @@ func TestDriverChainIsGovernedFromConstruction(t *testing.T) {
 func TestDriverChainNilIsFine(t *testing.T) {
 	lb := loadbalance.NewManager()
 	w, err := NewClient(redis.NewClient(&redis.Options{Addr: "127.0.0.1:0"}), Config{Addr: "10.0.0.1:6379"}, nil,
-		testCenter(t, resilience.NewManager(nil), lb))
+		testCenter(t, resilience.NewClientManager(resilience.NewDefaultDriver(nil)), lb))
 	assert.Error(t, err).Nil()
 	assert.That(t, w.lbChain).Nil()
 }

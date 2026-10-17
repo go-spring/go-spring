@@ -2,9 +2,14 @@
 
 [English](README.md) | [中文](README_CN.md)
 
-`resilience` 是框架无关的客户端容错抽象：限流、熔断、bulkhead 隔离、
-重试、每次尝试超时、降级。客户端 starter 把单一 `ClientExecutor` seam 插入自家请求
+`resilience` 是框架无关的**客户端**容错抽象：限流、熔断、bulkhead 隔离、
+重试、每次尝试超时、降级。客户端 starter 把单一 `chain.Executor` seam 插入自家请求
 钩子（HTTP RoundTripper / Redis Hook / GORM plugin ...）。
+
+它是**纯出站**的。入站请求走 [`cloud/guard`](../guard/)：每实例一个 `Guard`、
+两阶段 `Admit` + `Done`、自己的策略词汇和默认引擎。旧的入站半边
+（`ServerManager` / `ServerEngine` / `ServerPolicy` / `Driver.NewServerExecutor`）
+已经删除，`Driver` 现在只答出站。
 
 ## 特性
 
@@ -13,18 +18,14 @@
   `ErrorThreshold` / `OpenDuration` / `BreakerStrategy`
   （`consecutive` | `error-rate` | `slow-call` | `error-count`）/
   `ErrorRateThreshold` / 慢调用阈值对 / `HalfOpenRequests`、
-  `MaxConcurrent` / `BulkheadQueueDuration`、`Retry`（`chain.RetryPolicy` 节点）、
-  `AttemptTimeout`、`MaxDuration`。
-- `ServerPolicy` 字段（入站）：同样的限流 / 熔断 / 舱壁 / 预算旋钮，**减去 retry 族**——
-  handler 已产生副作用，不能重放，所以 `ServerPolicy` 里根本写不出重试（也没有端点
-  选择：入站没有端点可选）。两个模型而不是"一个模型加死字段"，约束因此是结构性的。
+  `Retry`（`chain.RetryPolicy` 节点）、`Timeout`。
 - 中立拒绝错误：`ErrRateLimited`、`ErrCircuitOpen`、`ErrBulkheadFull`。
 - 内置 `"default"` 驱动 —— 进程内、零依赖。推荐的生产驱动 `sentinel` 在
   `starter/starter-governance-sentinel`。
 - 一个客户端适配 seam：`NewRoundTripper` —— HTTP client `http.RoundTripper`。
   （曾经还有一个连接级 `DialFunc` seam，已退回唯一需要它的 starter —— 见 §2；
   请求层才是那四个策略名下名副其实的地方。）
-- 入站 admission 跑在**同一个引擎**上，但走自己的 seam:`Manager.ServerExecutorFor`
+- 入站 admission 跑在**同一个引擎**上，但走自己的 seam:`ServerManager.ServerGuardFor`
   产出由 `Driver.NewServerExecutor` 构造的 `ServerExecutor`，各协议 starter 在它之上
   自建中间件（拒绝时 429 / 503；见 starter-gin / starter-grpc 的 admission）。
   中心把每个模块自己的数据推给它（对 resilience 是每方向一份 default 加规则列表），匹配由
@@ -105,12 +106,12 @@ import (
 exec, _ := resilience.NewDefaultDriver(nil).NewClientExecutor("http:orders", resilience.ClientPolicy{
     RateLimit:      100,
     ErrorThreshold: 5,
-    AttemptTimeout: 2 * time.Second,
+    Timeout: 2 * time.Second,
     Retry:          chain.RetryPolicy{MaxRetries: 2},
 })
 
 client := &http.Client{
-    Transport: resilience.NewRoundTripper(http.DefaultTransport, exec, nil),
+    Transport: resilience.NewRoundTripper(http.DefaultTransport, exec, service, nil),
 }
 ```
 
@@ -175,7 +176,7 @@ sentinel 驱动。
   seam —— 所以待在它那个 client 那里；只有第二个 client 证明这需求是普遍的，它才
   会回到本包。
 
-  入站 admission 走自己的 seam：各协议 starter 用 `resilience.Manager.ServerExecutorFor`
+  入站 admission 走自己的 seam：各协议 starter 用 `resilience.ServerManager.ServerGuardFor`
   自建中间件（见 starter-gin / starter-grpc 的 admission），把中立拒绝映射为
   429 / 503，并保证每个请求恰好服务一次。
 - **`Fallback` 是助手，不进接口。** 给 `Executor.Execute` 加 `degrade` 参数会
@@ -227,7 +228,7 @@ sentinel 驱动。
 ## 5. 引擎结构、接缝与治理接线
 
 - **两个引擎、一份契约。** 出站与入站是完全隔离的两套引擎——`defaultExecutor`
-  （出站，带重试）与 `serverExecutor`（入站，无重试，`AttemptTimeout` 是整通预算）；
+  （出站，带重试）与 `serverExecutor`（入站，无重试，`Timeout` 是整通预算）；
   两者不 embed、不投影，`ServerPolicy.AsPolicy() ClientPolicy` 已删除。两个接口
   （`ClientExecutor` / `ServerExecutor`）已合并为单一 `Executor`，**定义在叶子包
   `cloud/chain`**（`chain.Executor`），resilience 侧不另设别名；方向隔离由
@@ -240,9 +241,10 @@ sentinel 驱动。
   resilience 侧全用别名保兼容。
 - **命名：** 两个半边叫 `side`（`clientSide` / `serverSide`，字段 `m.client` /
   `m.server`）；`lane` 一词已否决。
-- **manager 去泛型：** `clientSide` / `serverSide` 两个具体类型，唯一状态是被推入的
-  settings（`ClientSettings` / `ServerSettings`，整块持有）；注册表存 `*entry{exec, policy}` 指针；`Apply` 逐 label 比 policy，
-  变了淘汰、没变保留（保住 breaker/限流状态）。
+- **manager 去泛型：** `clientSide` / `serverSide` 两个具体类型，各自持有一份已发布的
+  settings 快照（`ClientSettings` / `ServerSettings`），以及由它记忆化的每 label 代际；
+  注册表只存 `*entry{exec}` 指针，纯粹是身份表 —— `Apply` 从不遍历它。决定一个 label 要不要
+  重建的，是每个 executor 在调用点上自己比对的、按**内容**派生的代际。
 - **executor 构造期绑定一个 service；`call` 不改变这一点。** `Execute(ctx, call, fn)`
   显式接收调用的身份（`chain.Call`：target / scenario / 幂等），于是每一层从签名读到、
   无须走 ctx——但保护**状态**仍绑定在构造期：一个 executor 一个 breaker、一个 bulkhead、
@@ -250,16 +252,29 @@ sentinel 驱动。
   它们现在不划分任何东西。绝不要让 `Execute` 按任意 per-call key **选择**保护状态；要按 key
   分区计数器，就递一个 `ClusterLimiter` 并在 scope 里放 key。
 - **breaker 必须首次调用时惰性构建**（`snapshot()` / `buildState()`），不能在构造
-  executor 时建——否则 `SetBreakerEventListener` 接不上（`Manager.ClientExecutorFor`
+  executor 时建——否则 `SetBreakerEventListener` 接不上（`ClientManager.ClientExecutorFor`
   里的 `WrapClientExecutor` 是手递手装上的）。
 - **托管路径一个 label 一个 executor。** client 一律走
-  `Manager.ClientExecutorFor`，不自己 `Subscribe` + `NewExecutor`。别给某个 client
+  `ClientManager.ClientExecutorFor`，不自己 `Subscribe` + `NewExecutor`。别给某个 client
   加「需要看见 resolved policy」的能力（那会逼它绕开 manager），要改就在 govern rule
   层改。httpx 曾是唯一绕开 manager 的 client（自带 `min-requests=5` 下限），该下限
   已删、改走 `ClientExecutorFor("http", service)`；`Policy.MinRequests` 的零值下限
   `<=0 → 1` 保持原样。
-- **热更换成「淘汰 + 重建」。** `Refresh` 已从两个 executor 接口删除；policy 变了
-  淘汰、下次调用重建，没变则保留状态。
+- **executor 是稳定的壳，它物化的状态是一代可替换的内核。** 刷新协议已不存在。
+  `ClientManager.Apply` 发布一份快照就结束；每个 executor 持有一个 `PolicySource`（就是
+  manager），在调用点上问「这次调用跑在什么策略下、属于哪一代」
+  （`PolicySource.Resolve`）。遇到自己还没物化过的那一代，它就把这一代拥有的东西整份
+  重建——breaker、bulkhead、rate 预算、retry 预算一起。没有任何东西被原地重调，所以也
+  不存在「哪个器官保留什么」的规则可写错：**配置变更 = 该 label 的状态重来。**
+  `loadbalance.Chain` 是同一形状（`SelectionSource` + 更换 `*Pool`），也是这次对齐的模板。
+  两个要讲清的后果。**出站仍然不能走「淘汰 + 重建」——淘汰的是 EXECUTOR**：client 把构造
+  时拿到的 executor 缓存终身（`go-redis`、`gorm`、`memcached`、`redigo`、`httpx` 都是）。
+  移动的是 executor 后面的状态，永远不是那个对象本身。**换代瞬间在途的调用**会用自己
+  加载的那一代结算，代价只是丢一个样本。
+  代际按该 label 所依赖规则集的**内容**派生，不是推送计数，所以内容未变的重复推送不会
+  重置一个活着的熔断器。
+  状态在框架够不到的地方的后端保留自己的边界：sentinel 的规则在 SDK 里、按 resource
+  name 存，对它来说换代是一次**换规则**，SDK 的统计得以保留。
 - **限流是 executor 的一个 stage**，只提供 1+3：第 1 层 executor 自带 per-service
   预算（`rateState`，默认路径），第 3 层 `ClusterLimiter` 接口只服务跨副本共享存储
   （scope = executor 绑定的 service 名）。第 2 层（进程内共享）已否决——不要往 cloud
@@ -269,13 +284,13 @@ sentinel 驱动。
 - **`ClientPolicy` / `ServerPolicy` 各自单定义**、自带全部 value tag；governance 的
   `ClientRule` / `ClientDefaultPolicy` / `ServerRule` 直接嵌它们，不造绑定孪生或
   翻译层。新增治理可绑旋钮直接加在 Policy 上（带 tag）；不把函数字段塞进 Policy。
-- **`Timeout` 已更名 `AttemptTimeout`**（与键名一致）；`RetryPredicate` 函数字段已删
+- **`Timeout` 已更名 `Timeout`**（与键名一致）；`RetryPredicate` 函数字段已删
   （全仓零赋值），重试分类只走 `Retryable` 接口 + 默认全重试。重试已收进 `Retry`
   节点（`chain.RetryPolicy`），不再是 Policy 上的平铺字段：**默认关闭、由调用方在
   `chain.Operation.Retry` 上显式声明**，治理中心下发的 `ClientPolicy.Retry` 声明了调度
   时整体优先（`NonIdempotent` 两来源 OR 保留）。节点字段：退避
-  `InitialInterval` / `Multiplier` / `MaxInterval` / `RandomizationFactor`、总预算
-  `MaxDuration`、breaker 策略 `BreakerStrategy` / `ErrorRateThreshold` /
+  `InitialInterval` / `Multiplier` / `MaxInterval` / `RandomizationFactor`、整通
+  `Timeout`、breaker 策略 `BreakerStrategy` / `ErrorRateThreshold` /
   `MinRequests` / `BreakerWindow`；全部零值 = 旧行为。Policy 不能 `== Policy{}`
   比较，用 `IsZero()`。拆两份仅在有硬结构理由时允许（当前仅剩 loadbalance 工厂入参
   `Config` 一处内部翻译，消费 `Selection.Params`）。
@@ -283,10 +298,10 @@ sentinel 驱动。
   `RegisterLimiter` / `GetLimiter` 全删，两个 init 注册的 `"default"` 也删）；
   resilience 是零全局、零 gs 依赖的纯契约包。后端 = 命名 bean +
   `Export(gs.As[resilience.Driver]())`；容器把这些 bean 收集成
-  `map[string]resilience.Driver` 直接交给构造器 `resilience.NewManager(drivers)`
-  ——没有 wiring bean，也没有 `BindDrivers` / `SetDrivers`。按名解析收在 `Manager`
-  内部（字段 `driverName` + `Manager.driverFor(name)`）：空名回落内置驱动；启动时
-  校验，选不到就 panic 并列出可用名（在启动期 `(*Center).GoLive` → `Manager.Apply` 里无条件校验），不再
+  `map[string]resilience.Driver` 直接交给构造器 `resilience.NewClientManager(drivers)`
+  ——没有 wiring bean，也没有 `BindDrivers` / `SetDrivers`。按名解析收在 `ClientManager`
+  内部（字段 `driverName` + `ClientManager.driverFor(name)`）：空名回落内置驱动；启动时
+  校验，选不到就 panic 并列出可用名（在启动期 `(*Center).GoLive` → `ClientManager.Apply` 里无条件校验），不再
   是静默回落 noop。内置驱动 = `resilience.NewDefaultDriver(limiter ClusterLimiter)`。
   `spring.resilience.driver` 留在治理文档（`autowire:"${...}"` 读 gs properties，
   而治理键来自 `Source.Snapshot()`，搬走会劈裂配置系统）。`gs.Provide` 的 ctor 返回
@@ -300,7 +315,7 @@ sentinel 驱动。
 - **可观测桥接。** 出站/入站执行器包装落在 **`cloud/observability`**
   （`WrapClientExecutor(inner, system, service)` / `WrapServerExecutor(inner,
   system, service)`，返回 `chain.Executor`）；出站放火在
-  `cloud/fault.WrapClientExecutor(inner, service, in)`；拒绝哨兵在 `cloud/chain`。
+  `cloud/fault.ClientManager.WrapClientExecutor(inner, in)`；拒绝哨兵在 `cloud/chain`。
   独立的 `observe-resilience` 模块已删。gRPC 上的入站包装必须用
   `grpc.ChainUnaryInterceptor` / `ChainStreamInterceptor`——`grpc.UnaryInterceptor`
   是 setter 非追加，后者会覆盖前者。

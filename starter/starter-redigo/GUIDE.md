@@ -171,14 +171,12 @@ resilience.driver=default     # 后端驱动，default 或 sentinel
 | `resilience.error-rate-threshold` | error-rate 策略下的失败率阈值 (0,1]。 |
 | `resilience.min-requests` | error-rate 策略下窗口内最少样本数。 |
 | `resilience.breaker-window` | error-rate 策略的滚动窗口（默认 1s）。 |
-| `resilience.max-concurrent` | 舱隔离：单资源最大并发，超了返回 `ErrBulkheadFull`。 |
 | `resilience.max-retries` | 重试：首次失败后额外重试次数。 |
 | `resilience.initial-interval` | 退避：首次重试前等待（0=不退避）。 |
 | `resilience.multiplier` | 退避增长因子（0/1=固定间隔）。 |
 | `resilience.max-interval` | 退避上限。 |
 | `resilience.randomization-factor` | 抖动比例 [0,1)。 |
-| `resilience.attempt-timeout` | 单次尝试超时。 |
-| `resilience.max-duration` | 整次调用（含所有重试）的总超时。 |
+| `resilience.timeout` | 整通调用的墙钟上限（含所有重试与退避）；重试各轮共用它。 |
 
 ### 几个要记住的语义
 
@@ -186,7 +184,7 @@ resilience.driver=default     # 后端驱动，default 或 sentinel
 - **`redis.ErrNil`（缓存未命中）算成功**，不会触发熔断/重试——和 gorm 的 `ErrRecordNotFound` 同理。
 - **被拒（限流/熔断打开/舱满）原样上抛**：你会拿到 `ErrRateLimited` / `ErrCircuitOpen` / `ErrBulkheadFull`。
 - **资源粒度**：限流器/熔断器按 Redis 实例隔离（不是按命令），key 优先取 `service-name`，回退到 `addr`。
-- **attempt-timeout 只对 `DoContext` 生效**：redigo 的 `Do`/`DoWithTimeout` 不接受 context，执行器的 attempt-timeout 打不断它们。需要超时保护时优先用 `redis.DoContext(conn, ctx, ...)`。
+- **timeout 只对 `DoContext` 生效**：redigo 的 `Do`/`DoWithTimeout` 不接受 context，执行器的 timeout 打不断它们。需要超时保护时优先用 `redis.DoContext(conn, ctx, ...)`。
 
   ```go
   reply, err := redis.DoContext(conn, ctx, "GET", "key")

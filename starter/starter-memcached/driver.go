@@ -27,7 +27,6 @@ import (
 	"github.com/bradfitz/gomemcache/memcache"
 	"go-spring.org/cloud/discovery"
 	"go-spring.org/cloud/governance"
-	"go-spring.org/cloud/resilience"
 	"go-spring.org/stdlib/errutil"
 )
 
@@ -129,14 +128,6 @@ func (DefaultDriver) CreateClient(ctx context.Context, name string, c Config, ce
 	}
 	if c.MaxIdleConns > 0 {
 		client.MaxIdleConns = c.MaxIdleConns
-	}
-	// The governance rule may size the pool too — the resource half of isolation,
-	// next to the bulkhead's concurrency half — and it wins over the per-instance
-	// key, so one place configures both halves. gomemcache caps IDLE connections
-	// and dials on demand, so this rule's MaxConns is that cap here, not a limit
-	// on open connections.
-	if n := center.PolicyFor(resilience.ServiceLabel("memcached", c.ServiceName, name)).MaxConns; n > 0 {
-		client.MaxIdleConns = n
 	}
 	// NewClient is the only way to build a Client: identity and governance are
 	// both applied here, so the driver returns a client that is complete.

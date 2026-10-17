@@ -43,22 +43,27 @@ import (
 // it on every RPC; before that it is transparent (nil exec) — the same shape as
 // starter-tdengine's clientSlot.
 type guardSlot struct {
-	mu   sync.RWMutex
-	exec chain.Executor
+	mu      sync.RWMutex
+	exec    chain.Executor
+	service string // the governance label the executor was built for
 }
 
-// apply installs the executor the interceptors route through.
-func (s *guardSlot) apply(exec chain.Executor) {
+// apply installs the executor the interceptors route through, with the service
+// label it was built for (each call states it on its operation so a layer
+// outside the executor — the fault layer — matches the same service).
+func (s *guardSlot) apply(exec chain.Executor, service string) {
 	s.mu.Lock()
 	s.exec = exec
+	s.service = service
 	s.mu.Unlock()
 }
 
-// load returns the applied executor, or nil before [NewClient] applies it.
-func (s *guardSlot) load() chain.Executor {
+// load returns the applied executor and its service label, or nil before
+// [NewClient] applies it.
+func (s *guardSlot) load() (chain.Executor, string) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	return s.exec
+	return s.exec, s.service
 }
 
 // guardDialOptions returns the gRPC dial options that route every RPC through
@@ -89,8 +94,10 @@ func unaryGuard(slot *guardSlot) grpc.UnaryClientInterceptor {
 		method string, req, reply any,
 		cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption,
 	) error {
-		if exec := slot.load(); exec != nil {
-			return exec.Execute(ctx, operation(method), func(ctx context.Context) error {
+		if exec, service := slot.load(); exec != nil {
+			op := operation(method)
+			op.Service = service
+			return exec.Execute(ctx, op, nil, func(ctx context.Context) error {
 				return invoker(ctx, method, req, reply, cc, opts...)
 			})
 		}
@@ -112,9 +119,11 @@ func streamGuard(slot *guardSlot) grpc.StreamClientInterceptor {
 		desc *grpc.StreamDesc, cc *grpc.ClientConn,
 		method string, streamer grpc.Streamer, opts ...grpc.CallOption,
 	) (grpc.ClientStream, error) {
-		if exec := slot.load(); exec != nil {
+		if exec, service := slot.load(); exec != nil {
+			op := operation(method)
+			op.Service = service
 			var cs grpc.ClientStream
-			err := exec.Execute(ctx, operation(method), func(ctx context.Context) error {
+			err := exec.Execute(ctx, op, nil, func(ctx context.Context) error {
 				var e error
 				cs, e = streamer(ctx, desc, cc, method, opts...)
 				return e

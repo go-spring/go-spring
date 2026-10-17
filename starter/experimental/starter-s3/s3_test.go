@@ -17,6 +17,7 @@
 package StarterS3
 
 import (
+	"go-spring.org/cloud/chain"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -82,12 +83,12 @@ func TestDynamicTransportSwap(t *testing.T) {
 func TestCallForDeclaresOperation(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPut, "http://127.0.0.1:9000/bucket/key", nil)
 	got := callFor(req)
-	assert.That(t, got.Name).Equal("PUT /bucket/key")
-	assert.That(t, got.Metric).Equal("db.client")
-	assert.That(t, got.LogTag).Equal(accessTag)
-	assert.That(t, attrString(got.Attrs, "db.operation")).Equal("PUT")
-	assert.That(t, attrString(got.Attrs, "db.system")).Equal("s3")
-	assert.That(t, attrString(got.Detail, "db.statement")).Equal("/bucket/key")
+	assert.That(t, got.Request.Action).Equal("PUT /bucket/key")
+	assert.That(t, got.Observe.Metric.Name).Equal("db.client")
+	assert.That(t, got.Observe.Log.Tag).Equal(accessTag)
+	assert.That(t, attrString(got.Observe.Metric.Attrs, "db.operation")).Equal("PUT")
+	assert.That(t, attrString(got.Observe.Metric.Attrs, "db.system")).Equal("s3")
+	assert.That(t, attrString(detailAttrs(got), "db.statement")).Equal("/bucket/key")
 }
 
 // attrString returns the string value of key in attrs, or "" when absent.
@@ -104,3 +105,20 @@ func attrString(attrs []attribute.KeyValue, key string) string {
 type roundTripFunc func(*http.Request) (*http.Response, error)
 
 func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
+
+// detailAttrs returns the operation's span attributes that are NOT metric
+// labels — the per-call detail the old Call.Detail field held, reconstructed
+// from the split destination lists.
+func detailAttrs(op chain.Operation) []attribute.KeyValue {
+	labeled := make(map[attribute.Key]bool, len(op.Observe.Metric.Attrs))
+	for _, a := range op.Observe.Metric.Attrs {
+		labeled[a.Key] = true
+	}
+	var out []attribute.KeyValue
+	for _, a := range op.Observe.Span.Attrs {
+		if !labeled[a.Key] {
+			out = append(out, a)
+		}
+	}
+	return out
+}

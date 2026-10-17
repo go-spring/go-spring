@@ -233,10 +233,12 @@ Database, cache, and message-queue clients (`go-redis`, `gorm-*`, `mongodb`,
   `ClusterDriver`) so existing custom drivers keep compiling.
 - **A client starter whose component reaches out gets governance from its own imports.** No
   governance import is needed: each authority is registered by the package that
-  **owns it** — `cloud/resilience` registers `*resilience.Manager`,
-  `cloud/loadbalance` `*loadbalance.Manager`, `cloud/fault` `*fault.Injector` — and
-  a client that injects one has necessarily imported that package for the type.
-  So the three beans are always in the container; the client injects them as
+  **owns it** — `cloud/resilience` registers `*resilience.ClientManager` and
+  `*resilience.ServerManager`, `cloud/loadbalance` `*loadbalance.Manager`,
+  `cloud/fault` `*fault.ClientManager` and `*fault.ServerManager` — and
+  a starter that injects one has necessarily imported that package for the type.
+  So every direction's authorities are always in the container; a client injects
+  the three it uses (resilience client, loadbalance, fault client) as
   REQUIRED (`gs.IndexArg(N, gs.TagArg(""))`), never as nullable (`"?"`). The beans
   are part of the client's contract — it is governable, observable and routable by
   construction — and with the rules document configuring nothing they behave
@@ -253,7 +255,7 @@ Database, cache, and message-queue clients (`go-redis`, `gorm-*`, `mongodb`,
   The constructor wires them **at construction time**, as part of what the client
   *is* rather than as a step someone must remember: it takes the injected
   `*governance.Center` and pins `exec = center.ExecutorFor(system, label)` before
-  returning. `ExecutorFor` reads a non-nil `center.Resilience()` and panics on a
+  returning. `ExecutorFor` reads a non-nil `center.ResilienceClient()` and panics on a
   nil manager, so a client assembled outside the container without a resilience
   manager is an assembly error rather than a silent hole: the container always
   supplies the center, and there is no unmanaged/observe-only fallback.
@@ -393,11 +395,11 @@ Database, cache, and message-queue clients (`go-redis`, `gorm-*`, `mongodb`,
 - **`Config` is what the user writes; `Center` is what the container
   provides.** One declares, the other injects — never put a container bean into
   a `Config` field. `*governance.Center` is the one object the container hands
-  over: it expands to `Resilience() *resilience.Manager` / `Fault()
-  *fault.Injector` / `Loadbalance() *loadbalance.Manager` / `Discovery()
+  over: it expands to `ResilienceClient() *resilience.ClientManager` / `ResilienceServer() *resilience.ServerManager` / `FaultClient()
+  *fault.ClientManager` / `FaultServer() *fault.ServerManager` / `Loadbalance() *loadbalance.Manager` / `Discovery()
   *discovery.Manager` (the directory a driver resolves its backend label against,
   via `Get`), plus `ExecutorFor(system,
-  label) chain.Executor` and `PolicyFor(label) ClientPolicy`. **`Resilience()` is
+  label) chain.Executor` and `PolicyFor(label) ClientPolicy`. **`ResilienceClient()` is
   required**: `ExecutorFor` panics on a nil manager, so a hand-built client (an
   example, a test) must supply one — the container always does, and there is no
   unmanaged/observe-only fallback.
@@ -434,7 +436,7 @@ Database, cache, and message-queue clients (`go-redis`, `gorm-*`, `mongodb`,
 - **A client that needs governance injects the required `*governance.Center`.**
   Import `go-spring.org/cloud/governance` (or blank-import any governance source
   starter), then take an **injected, required** `*governance.Center` (by type, no
-  `"?"` / `IndexArg`) and expand it via `center.Resilience()` / `Fault()` /
+  `"?"` / `IndexArg`) and expand it via `center.ResilienceClient()` / `FaultClient()` / `FaultServer()` /
   `Loadbalance()` / `Discovery()`. Turning governance off is publishing a document
   that configures nothing (still carrying one `spring.governance.*` key), not an
   absent bean; writing it nullable turns
@@ -771,7 +773,7 @@ baseline (its identity, wire vocabulary, error catalog, standard drivers).
   operation's `Name`, its `Metric` prefix (`db.client`, `messaging.client`), its
   bounded `Attrs`, its unbounded `Detail` and its `LogTag` — and routes the call
   through the resilience executor. The observe layer
-  (`cloud/observability/client_executor.go`, in `wrappedClientExecutor.Execute`,
+  (`cloud/observability/client.go`, in `wrappedClientExecutor.Execute`,
   composed around the executor by the governance center)
   emits from that declaration: the call span, `<prefix>.operation.duration`
   (call level, retries and backoff included), `<prefix>.attempt.duration`
@@ -839,7 +841,7 @@ baseline (its identity, wire vocabulary, error catalog, standard drivers).
     under one key — worse than two names. The same split applies to HTTP: the
     shared axis is `status`, the detail is `http.response.status_code`.
     The client emitter follows the same rule: `status` is `ok`/`error` like
-    everywhere else, and **`resilience.outcome`** carries what the protection
+    everywhere else, and **`resilience.error_type`** carries what the protection
     stages did to the call (`rate_limited`, `circuit_open`, `bulkhead_full`,
     `retry_budget_exceeded`, `timeout`) — absent when they did nothing. Putting
     those words in `status` would have made the one key two vocabularies, which
@@ -913,7 +915,7 @@ baseline (its identity, wire vocabulary, error catalog, standard drivers).
     deliberately accepted.
     `starter-oauth2-client` logs every business call through the
     same resilience layer as `starter-http-client` (it reaches that layer via the injected
-    `resilience.Manager` instead of composing the wrapper itself), but the
+    `resilience.ClientManager` instead of composing the wrapper itself), but the
     token-endpoint exchange inside the oauth2 library bypasses that round tripper,
     so it is traced and not logged;
     kitex's and kratos's duration metrics carry no `status` dimension because the

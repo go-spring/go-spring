@@ -289,7 +289,7 @@ func (t *RouteTable) recompile(raw map[string]RouteRaw) error {
 
 // buildExecutors turns each named resilience policy into an chain.Executor. Routes
 // reference these by name so they share breaker state. Each executor comes from
-// the INJECTED [resilience.Manager] under "gateway:<name>", so gateway's
+// the INJECTED [resilience.ClientManager] under "gateway:<name>", so gateway's
 // per-route protection is governed centrally and hot-reloaded in place: the
 // manager owns the label's policy, the driver and the refresh subscription, and
 // when governance is off the returned executor is a transparent pass-through.

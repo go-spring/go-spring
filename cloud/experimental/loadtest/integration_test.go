@@ -45,14 +45,14 @@ func TestIntegration_LoadFaultBreaker(t *testing.T) {
 	t.Cleanup(func() { _ = exec.Close() })
 
 	// Fault wraps the executor: every call returns an injected error.
-	fexec := fault.WrapClientExecutor(exec, "svc", fault.NewInjector(fault.Configs{
-		Client: fault.Config{Rate: 1, Error: "generic"},
-	}, nil))
+	inj := fault.NewClientManager(nil)
+	inj.Refresh(fault.Config{Rules: []fault.Rule{{Rate: 1, Error: "generic"}}})
+	fexec := inj.WrapClientExecutor(exec)
 
 	// The op routes through the faulted executor; its inner fn would succeed,
 	// so any failure is fault/resilience, not the op itself.
 	op := func(ctx context.Context) error {
-		return fexec.Execute(ctx, chain.Operation{}, func(context.Context) error { return nil })
+		return fexec.Execute(ctx, chain.Operation{Service: "svc"}, nil, func(context.Context) error { return nil })
 	}
 
 	r := New().
@@ -88,11 +88,12 @@ func TestIntegration_ScopeRealTrafficSkipsFault(t *testing.T) {
 	assert.Error(t, err).Nil()
 	t.Cleanup(func() { _ = exec.Close() })
 
-	fexec := fault.WrapClientExecutor(exec, "svc", fault.NewInjector(fault.Configs{
-		Client: fault.Config{Rate: 1, Error: "generic", Scope: "real"}, // skip load-test traffic
-	}, traffic.NewDefaultPropagator(traffic.DefaultBinding())))
+	inj := fault.NewClientManager(traffic.NewDefaultPropagator(traffic.DefaultBinding()))
+	// Scope "real": skip load-test traffic.
+	inj.Refresh(fault.Config{Rules: []fault.Rule{{Rate: 1, Error: "generic", Scope: "real"}}})
+	fexec := inj.WrapClientExecutor(exec)
 	op := func(ctx context.Context) error {
-		return fexec.Execute(ctx, chain.Operation{}, func(context.Context) error { return nil })
+		return fexec.Execute(ctx, chain.Operation{Service: "svc"}, nil, func(context.Context) error { return nil })
 	}
 
 	r := New().Driver(ClosedLoop{Concurrency: 4}).Duration(150*time.Millisecond).

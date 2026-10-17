@@ -195,7 +195,7 @@ starter **不装固定链**。它把命名 filter 注册进 tRPC 全局 filter �
 | `loadtest` | `loadtest.enabled`（默认 true） | 读入站 server metadata 的 `x-loadtest` 键；肯定值则经 `prop.Extract(ctx, <metadata carrier>)` 打标，下游所有层（及你的 handler，用 propagator 的 `IsLoadTest(ctx)`）都能分支。无标记时 no-op。放**最前**，让标记先于 tracing/metrics/handler 落 ctx。 |
 | `tracing` | `observer.tracing.enabled`（默认 true） | 起名为 `{calleeService}/{method}` 的 OTel server span，属性 `rpc.system=trpc`、`rpc.service`、`rpc.method`；出错置 span 状态 + RecordError。挂在 OTel 全局上——无 starter-otel 时 no-op。 |
 | `metrics` | `observer.metrics.enabled`（默认 true） | `rpc.server.request_count` 计数器、`rpc.server.request.duration` 直方图（秒，显式桶 5ms..10s）、`rpc.server.active_requests` UpDownCounter，均带 `rpc.method` 属性。挂在 OTel 全局上。 |
-| `fault` | 恒注册 | `fault.ApplyServer(ctx, inj, "trpc", next)` —— `inj` 是注入的 `*fault.Injector` bean；按治理规则注入延迟/错误；未配置时透明直通。 |
+| `fault` | 恒注册 | `_, err := srv.Fire(ctx, fault.Target{Service: "trpc", Action: calleeMethod})` —— `inj` 是注入的 `*fault.ServerManager` bean；callee 方法是 ACTION，规则可以只给单个方法放火；按治理规则注入延迟/错误；未配置时透明直通。 |
 
 推荐链（starter 注释的处方）：`loadtest` 最前，随后 `tracing`、`metrics`、`fault`，
 最后 handler —— 与 HTTP 系 starter 同理：标记须先落 ctx 才能被分支；fault 贴着 handler，
@@ -208,7 +208,7 @@ starter **不装固定链**。它把命名 filter 注册进 tRPC 全局 filter �
 1. `loadtest` 读 `ServerMetaData()["x-loadtest"]` → ctx 打标，使 propagator 的 `IsLoadTest()==true`
 2. `tracing` 起 server span `trpc.demo.greet.GreetService/Greet`
 3. `metrics`：active_requests +1，时长观测开始
-4. `fault`：`fault.ApplyServer` 咨询治理 injector；scope=loadtest 且有标记时，约 `rate` 比例
+4. `fault`：`Injector.Server.Fire` 咨询治理 injector；scope=loadtest 且有标记时，约 `rate` 比例
    的调用被注入延迟/错误，其余直通
 5. handler 执行；应答按 3→2 展开回收：计数器/直方图带 `rpc.method` 记录，
    span 结束（失败则 Error 状态 + 记录错误）
@@ -311,10 +311,10 @@ kill -TERM %1                   # 日志："trpc server shutting down ..." 后�
 
 ### 4.4 故障演练（免重启）
 
-1. 按 §1 的 `governance.yaml` 启动（不设 `fault.rate`，注入为空），filter 链里有 `fault`。
+1. 按 §1 的 `governance.yaml` 启动（不设 `fault.rules[]`，注入为空），filter 链里有 `fault`。
 2. 打基线流量 → 全部成功。
-3. 把文件里 `fault.rate` 配上 `0.2` —— 治理 source 热加载；filter 持有注入的
-   `*fault.Injector`，其配置由治理中心就地替换，无需重启。
+3. 把文件里 `fault.rules[0].rate` 配上 `0.2` —— 治理 source 热加载；filter 持有注入的
+   `*fault.ServerManager`，其配置由治理中心就地替换，无需重启。
 4. 带标流量着火（客户端调用 metadata 带 `x-loadtest: 1`），正常流量不受影响：约 20% 的
    带标调用被注入 `timeout`。
 5. 观测着火：`rpc.server.request.duration` 桶位移动、被注入调用的 span 带 Error 状态、

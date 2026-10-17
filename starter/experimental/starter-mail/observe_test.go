@@ -17,6 +17,7 @@
 package StarterMail
 
 import (
+	"go-spring.org/cloud/chain"
 	"strings"
 	"testing"
 
@@ -40,10 +41,10 @@ func attrsLine(attrs []attribute.KeyValue) string {
 // [chain.Operation] passed to [resilience.Run] at the [GuardMailer] call site.
 func TestOperationDeclaresFamilyVocabulary(t *testing.T) {
 	op := operation([]*Message{{To: []string{"alice@example.com"}, Subject: "hi"}})
-	assert.String(t, op.Name).Equal("mail.send")
-	assert.String(t, op.Metric).Equal("email.client")
-	assert.String(t, attrsLine(op.Attrs)).Equal("email.system=smtp,email.operation=send")
-	assert.That(t, op.LogTag == accessTag).True()
+	assert.String(t, op.Request.Action).Equal("mail.send")
+	assert.String(t, op.Observe.Metric.Name).Equal("email.client")
+	assert.String(t, attrsLine(op.Observe.Metric.Attrs)).Equal("email.system=smtp,email.operation=send")
+	assert.That(t, op.Observe.Log.Tag == accessTag).True()
 }
 
 // TestOperationDetailCarriesNoPII is the privacy guard: recipients and subject
@@ -56,7 +57,7 @@ func TestOperationDetailCarriesNoPII(t *testing.T) {
 		Cc:      []string{"carol@example.com"},
 		Subject: "daily report",
 	}})
-	rendered := op.Name + "," + attrsLine(op.Attrs) + "," + attrsLine(op.Detail)
+	rendered := op.Request.Action + "," + attrsLine(op.Observe.Metric.Attrs) + "," + attrsLine(detailAttrs(op))
 	for _, pii := range []string{"alice@example.com", "bob@example.com", "carol@example.com", "daily report"} {
 		assert.That(t, strings.Contains(rendered, pii)).False()
 	}
@@ -69,5 +70,22 @@ func TestOperationCountsEveryRecipient(t *testing.T) {
 		{To: []string{"alice@example.com"}, Cc: []string{"carol@example.com"}},
 		{To: []string{"bob@example.com"}},
 	})
-	assert.String(t, attrsLine(op.Detail)).Equal("email.recipients.count=3")
+	assert.String(t, attrsLine(detailAttrs(op))).Equal("email.recipients.count=3")
+}
+
+// detailAttrs returns the operation's span attributes that are NOT metric
+// labels — the per-call detail the old Call.Detail field held, reconstructed
+// from the split destination lists.
+func detailAttrs(op chain.Operation) []attribute.KeyValue {
+	labeled := make(map[attribute.Key]bool, len(op.Observe.Metric.Attrs))
+	for _, a := range op.Observe.Metric.Attrs {
+		labeled[a.Key] = true
+	}
+	var out []attribute.KeyValue
+	for _, a := range op.Observe.Span.Attrs {
+		if !labeled[a.Key] {
+			out = append(out, a)
+		}
+	}
+	return out
 }

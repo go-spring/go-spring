@@ -221,5 +221,5 @@ func (cl *Client) execute(ctx context.Context, op chain.Operation, call func(con
 	if cl.obs == nil {
 		return call(ctx)
 	}
-	return cl.obs.Observe(ctx, op, call)
+	return cl.obs.Observe(ctx, op, nil, call)
 }

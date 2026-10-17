@@ -164,8 +164,11 @@ func TestChainSwapIsLive(t *testing.T) {
 }
 
 // TestChainConcurrentPickAndRebuild is the race guard for the atomic swap: picks
-// run while pushes rebuild the chain underneath them. The first failure is
-// reported after the goroutines stop, since assertions do not run from them.
+// run while pushes move the chain underneath them. An exact rebuild count is NOT
+// asserted, and deliberately so: a chain follows the config on the request path,
+// so a generation no request ever observes is coalesced away — the chain moves
+// straight to the newest one. What must hold is that traffic never breaks and
+// that the chain ends on the last selection applied.
 func TestChainConcurrentPickAndRebuild(t *testing.T) {
 	m := newManager(t)
 	c := m.Chain(context.Background(), staticSource(eps("a", "b")...), "demo:service")
@@ -205,7 +208,29 @@ func TestChainConcurrentPickAndRebuild(t *testing.T) {
 	for err := range errs {
 		assert.Error(t, err).Nil()
 	}
-	assert.Number(t, c.Generation()).Equal(uint64(51))
+	assert.That(t, c.Generation() >= 2).True() // at least one rebuild happened
+	assert.Number(t, c.Selection().OutlierThreshold).Equal(49)
+}
+
+// TestChainCoalescesUnobservedGenerations pins the property the pull design makes
+// explicit: pushes landing between requests cost ONE rebuild, not one each — the
+// chain moves straight to the generation in force, and the ones it never ran
+// under are never built.
+func TestChainCoalescesUnobservedGenerations(t *testing.T) {
+	m := newManager(t)
+	c := m.Chain(context.Background(), staticSource(eps("a")...), "demo:service")
+	assert.Number(t, c.Generation()).Equal(uint64(1))
+
+	for i := range 5 {
+		m.Apply(context.Background(), Settings{Default: Selection{
+			Balancer:          LeastConn,
+			OutlierThreshold:  i,
+			OutlierSuspendFor: time.Minute,
+		}})
+	}
+
+	assert.Number(t, c.Generation()).Equal(uint64(2)) // five pushes, one rebuild
+	assert.Number(t, c.Selection().OutlierThreshold).Equal(4)
 }
 
 // TestChainServesRealTrafficAcrossARebuild is the end-to-end proof that the

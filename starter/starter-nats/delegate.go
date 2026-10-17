@@ -76,7 +76,7 @@ func (c *Conn) NewInbox() string { return c.Conn.NewInbox() }
 func (c *Conn) NewRespInbox() string { return c.Conn.NewRespInbox() }
 
 // Subscribe subscribes to subj with an async message handler. The instrumented
-// subscribe path is [Conn.Consume] (command.go), which declares the consume's
+// subscribe path is [Conn.Consume] (command.go), which declares the process's
 // operation for the executor to emit.
 func (c *Conn) Subscribe(subj string, cb nats.MsgHandler) (*nats.Subscription, error) {
 	return c.Conn.Subscribe(subj, cb)

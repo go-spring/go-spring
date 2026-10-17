@@ -198,7 +198,7 @@ paho.mqtt.golang 没有 reject-capable 中间件，所以不存在透明 client 
 CreateClient [driver.go:115-123]（装配 seam）：
   exec = center.ExecutorFor("mqtt", "mqtt:<broker>")   // 注入的 *governance.Center
   attachGuard(cl, exec, label) —— 以 mqtt.Client 值为键存入 sync.Map  [command.go:98-100]
-  （center.ExecutorFor = fault.WrapClientExecutor(mgr.ClientExecutorFor("mqtt", label), label, inj)；
+  （center.ExecutorFor = inj.WrapClientExecutor(mgr.ClientExecutorFor("mqtt", label))；
    resilience manager 必填——容器始终提供）
 
 GuardedPublish [command.go:134-141]：
@@ -226,7 +226,7 @@ GuardedPublish [command.go:134-141]：
 
 manager 是必需的 —— 这个 starter 传递链接 cloud/governance，"关治理"是发布一份什么都不配、
 但仍带一个 `spring.governance.*` 键的文档，而不是 bean 缺失；独立（非 gs）调用者也必须提供一个
-——`center.ExecutorFor` 对 nil `center.Resilience()` 直接 panic，所以不带 manager 组装的 client 是装配
+——`center.ExecutorFor` 对 nil `center.ResilienceClient()` 直接 panic，所以不带 manager 组装的 client 是装配
 错误，而不是静默 no-op [starter.go:87-88, driver.go:115-123]。
 
 ### 2.3 一次发布与一次消费的逐层走读
@@ -345,7 +345,7 @@ starter 只**声明**；由 resilience 层**发射**。以下信号全部由 res
 - 访问日志：tag `_app_mqtt_access`（observe.go 注册 `app.mqtt.access`，作为
   `Operation.LogTag` 随声明携带）。每次受保护调用一条记录：`messaging.system=mqtt`、
   `messaging.operation=publish|consume`、`messaging.destination.name=<topic>`、
-  `status=<ok|error>`、保护拒绝时的 `resilience.outcome=<rate_limited|...>`、`duration_ms=...`；失败打
+  `status=<ok|error>`、保护拒绝时的 `resilience.error_type=<rate_limited|...>`、`duration_ms=...`；失败打
   Warn 并带 `error` 字段，带 topic（Detail）的成功打 Debug，无 topic 的成功打 Info。
 - 指标，全部在 `messaging.client.*` 下：调用级 `operation.duration` 直方图、尝试级
   `attempt.duration` 直方图、`active_requests` 在途 gauge（标签 `messaging.system=mqtt`、

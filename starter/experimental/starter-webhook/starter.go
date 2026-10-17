@@ -140,7 +140,7 @@ func (n *Notifier) Send(ctx context.Context, notification *Notification) error {
 	// The delivery's span, duration metrics and access log are emitted here, by
 	// this starter's own observer — a webhook has no seam for the resilience
 	// executor, so there is no governance on this path.
-	return n.obs.Observe(ctx, operation(n.cfg.Channel, endpoint), func(callCtx context.Context) error {
+	return n.obs.Observe(ctx, operation(n.cfg.Channel, endpoint), nil, func(callCtx context.Context) error {
 		return n.post(callCtx, endpoint, body)
 	})
 }

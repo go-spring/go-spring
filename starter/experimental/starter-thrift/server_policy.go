@@ -18,8 +18,9 @@ package StarterThrift
 
 import (
 	"context"
-	"go-spring.org/cloud/chain"
+
 	"go-spring.org/cloud/governance"
+	"go-spring.org/cloud/observability"
 
 	"github.com/apache/thrift/lib/go/thrift"
 )
@@ -36,42 +37,42 @@ import (
 // and logged. With inbound one layer above, a rejection short-circuits before
 // the per-method functions run and would leave no trace at all.
 //
-// The executor comes from the injected [governance.Center], which composes the
-// observe wrapper around the governance executor here — this package names
+// The inbound governance object comes from the injected [governance.Center],
+// which composes the observe object with the guard here — this package names
 // neither observability nor a raw resilience manager. A nil center (a standalone
-// call) is normalized inside the center to an unarmed authority, whose executor is
-// a transparent pass-through, so the middleware runs and never rejects. The
-// executor handle resolves its backing implementation per call and follows the
-// manager's hot-reload, so inbound inbound can be tightened without a restart,
-// the same way every outbound client's policy is tuned.
+// call) is normalized inside the center to an unarmed authority, whose guard is a
+// transparent pass-through, so the middleware runs and never rejects. The object
+// resolves its backing engine per call and follows the manager's hot-reload, so
+// inbound governance can be tightened without a restart, the same way every
+// outbound client's policy is tuned.
 func Admit(label string, system string, center *governance.Center) thrift.ProcessorMiddleware {
-	exec := center.ServerExecutorFor(system, label)
+	ib := center.InboundFor(system, label)
 	return func(name string, next thrift.TProcessorFunction) thrift.TProcessorFunction {
 		return thrift.WrappedTProcessorFunction{
 			Wrapped: func(ctx context.Context, seqID int32, in, out thrift.TProtocol) (bool, thrift.TException) {
-				return admit(ctx, exec, label, name, seqID, in, out, next)
+				return admit(ctx, ib, label, name, seqID, in, out, next)
 			},
 		}
 	}
 }
 
-// admit runs one call through the executor. A rejection (rate limit, bulkhead
-// full, open circuit) is surfaced as a TApplicationException with INTERNAL_ERROR
-// — thrift has no status code channel, so the caller sees a failed call and the
-// message names the reason. A service exception counts as a failure for the
-// breaker, which is what lets the breaker trip on server-side errors.
+// admit runs one call through the inbound governance object. A refusal (rate
+// limit, bulkhead full, open circuit) is surfaced as a TApplicationException with
+// INTERNAL_ERROR — thrift has no status code channel, so the caller sees a failed
+// call and the message names the reason. A service exception counts as a failure
+// for the breaker, which is what lets the breaker trip on server-side errors.
 //
-// Inbound inbound must NOT retry — a handler that has already produced side
-// effects cannot be replayed, and [resilience.ServerPolicy] has no retry field to
-// express one with. The served guard makes a stray retry harmless regardless:
-// the service implementation still runs exactly once.
-func admit(ctx context.Context, exec chain.Executor, service, name string, seqID int32, in, out thrift.TProtocol, next thrift.TProcessorFunction) (bool, thrift.TException) {
+// Inbound must NOT retry — a handler that has already produced side effects
+// cannot be replayed, and [guard.Policy] has no retry field to express
+// one with. The served guard makes a stray retry harmless regardless: the service
+// implementation still runs exactly once.
+func admit(ctx context.Context, ib *governance.Inbound, service, name string, seqID int32, in, out thrift.TProtocol, next thrift.TProcessorFunction) (bool, thrift.TException) {
 	var (
 		ok     bool
 		svcErr thrift.TException
 		served bool
 	)
-	err := exec.Execute(ctx, chain.Operation{}, func(ctx context.Context) error {
+	err := ib.Run(ctx, observability.ServerOperation{}, func(ctx context.Context) error {
 		if served {
 			return nil // reentry guard: the service already ran this call
 		}
@@ -87,7 +88,7 @@ func admit(ctx context.Context, exec chain.Executor, service, name string, seqID
 		return ok, svcErr
 	}
 	if err != nil {
-		return false, thrift.NewTApplicationException(thrift.INTERNAL_ERROR, "rejected by inbound inbound: "+err.Error())
+		return false, thrift.NewTApplicationException(thrift.INTERNAL_ERROR, "rejected by inbound governance: "+err.Error())
 	}
 	return ok, nil
 }

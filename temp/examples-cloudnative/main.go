@@ -52,9 +52,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"go-spring.org/cloud/actuator/health"
-	"go-spring.org/cloud/chain"
 	"go-spring.org/cloud/discovery"
-	"go-spring.org/cloud/resilience"
+	"go-spring.org/cloud/guard"
 	"go-spring.org/spring/gs"
 
 	_ "go-spring.org/starter-actuator"    // registers the actuator Server bean (gated on spring.actuator.addr)
@@ -101,9 +100,9 @@ var dep = &health.Indicator{
 	},
 }
 
-// exec is the resilience executor built from the builtin "default" driver. It
-// is shared by the /limited route and by the arbitrary-function demo.
-var exec chain.Executor
+// inboundGuard is the inbound governance object for this server instance. It is
+// shared by the /limited route and by the arbitrary-function demo.
+var inboundGuard guard.Guard
 
 // ----------------------------------------------------------------------------
 // Bean wiring
@@ -157,14 +156,15 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Build the resilience executor from the bundled "default" driver — the same
-	// backend the governance center falls back to when govern.driver is unset, and
-	// the only one cloud/resilience ships with (no external dependency).
+	// Build the inbound governance object for this server instance. The manager
+	// is armed with a default carrying the rate limit; the guard it hands out
+	// enforces it with its own per-instance state.
 	var err error
-	exec, err = resilience.NewDefaultDriver(nil).NewServerExecutor("example:cloudnative", resilience.ServerPolicy{RateLimit: 3})
-	if err != nil {
-		fail("resilience executor: %v", err)
+	mgr := guard.NewManager()
+	if err = mgr.Apply(guard.Settings{Default: guard.Policy{RateLimit: 3}}); err != nil {
+		fail("guard apply: %v", err)
 	}
+	inboundGuard = mgr.GuardFor(guard.Identity{System: "example", Service: "example:cloudnative"})
 
 	// Wire the gin routes. The RouterRegister receives the Config bean through
 	// the container, so the /greeting handler reads the live Dync value.
@@ -186,7 +186,7 @@ func main() {
 				next: http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 					_, _ = w.Write([]byte("ok"))
 				}),
-				exec: exec,
+				guard: inboundGuard,
 			}
 			e.GET("/limited", gin.WrapH(limited))
 		}
@@ -257,14 +257,15 @@ func runTest() {
 	// ErrRateLimited while still admitting a non-empty head.
 	var admitted, rejected int
 	for range 15 {
-		err := exec.Execute(ctx, chain.Operation{}, func(context.Context) error { return nil })
+		r, done := inboundGuard.Admit(ctx, guard.Request{})
 		switch {
-		case err == nil:
+		case r.Admitted():
 			admitted++
-		case errors.Is(err, chain.ErrRateLimited):
+			done(guard.OutcomeSuccess, nil)
+		case errors.Is(r.Err(), guard.ErrRateLimited):
 			rejected++
 		default:
-			fail("execute: %v", err)
+			fail("admit: %v", r.Err())
 		}
 	}
 	if admitted == 0 || rejected == 0 {
@@ -435,34 +436,28 @@ func init() {
 }
 
 // admissionHandler is the application's own server-side admission wrapper: each
-// request flows through a chain.Executor so rate limiting / bulkhead /
-// breaker shed overload with HTTP 429/503 before the business handler runs.
-// Inbound serving is not retried (the Executor's policy carries MaxRetries=0),
-// since handlers are not idempotent. Server-side resilience is the application's
-// job — the resilience library is client-side — so this seam lives here, not in
-// the library. It is a minimal, static-policy shedder; for adaptive load shedding
-// (AIMD, feedback-based) wire a dedicated limiter here instead.
+// request flows through a guard.Guard so rate limiting / bulkhead / breaker shed
+// overload with HTTP 429/503 before the business handler runs. Inbound serving
+// is not retried (guard.Policy carries no retry), since handlers are not
+// idempotent.
 type admissionHandler struct {
-	next http.Handler
-	exec chain.Executor
+	next  http.Handler
+	guard guard.Guard
 }
 
 func (h *admissionHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	served := false
-	err := h.exec.Execute(r.Context(), chain.Operation{}, func(ctx context.Context) error {
-		if served {
-			return nil
-		}
-		served = true
-		h.next.ServeHTTP(w, r.WithContext(ctx))
-		return nil
+	result, done := h.guard.Admit(r.Context(), guard.Request{
+		Action: r.Method + " " + r.URL.Path,
 	})
-	if err != nil && !served {
-		switch {
-		case errors.Is(err, chain.ErrCircuitOpen):
+	if !result.Admitted() {
+		switch result.Verdict() {
+		case guard.VerdictCircuitOpen, guard.VerdictDegraded, guard.VerdictFaultInjected:
 			http.Error(w, "service unavailable", http.StatusServiceUnavailable)
-		default: // ErrRateLimited, ErrBulkheadFull
+		default:
 			http.Error(w, "too many requests", http.StatusTooManyRequests)
 		}
+		return
 	}
+	h.next.ServeHTTP(w, r)
+	done(guard.OutcomeSuccess, nil)
 }

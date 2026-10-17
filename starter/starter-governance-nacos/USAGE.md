@@ -54,7 +54,7 @@ import (
 type poller struct {
     // mgr is the governance starter's resilience manager bean, injected here
     // rather than resolved from a process-wide seam.
-    mgr *resilience.Manager
+    mgr *resilience.ClientManager
 }
 
 func (p *poller) Run(ctx context.Context) error {
@@ -66,9 +66,9 @@ func (p *poller) Run(ctx context.Context) error {
 
 // newPoller builds the poller over the injected manager. A nil manager — a
 // container without cloud/governance's bean — is normalized to a fresh unarmed one.
-func newPoller(mgr *resilience.Manager) *poller {
+func newPoller(mgr *resilience.ClientManager) *poller {
     if mgr == nil {
-        mgr = resilience.NewManager()
+        mgr = resilience.NewClientManager()
     }
     return &poller{mgr: mgr}
 }
@@ -100,7 +100,7 @@ spring:
     driver: default
     client:
       default:
-        attempt-timeout: 100ms
+        timeout: 100ms
         max-retries: 2
 ```
 
@@ -112,8 +112,8 @@ curl -fsS -X POST 'http://127.0.0.1:8848/nacos/v1/cs/configs' \
      -d 'dataId=gs-govern-demo.yaml&group=DEFAULT_GROUP&content=<the document above>'
 go run . -manual
 # policy: enabled=true timeout=100ms retries=2
-#   ... publish attempt-timeout: 900ms to the same dataId ...
-# rule push observed: attempt-timeout is now 900ms
+#   ... publish timeout: 900ms to the same dataId ...
+# rule push observed: timeout is now 900ms
 ```
 
 The runnable [example/](example) does all of this, self-asserts, and exits 0;
@@ -246,7 +246,7 @@ Nacos dataId (and vice versa, and as an etcd value with
 cd example && ./check.sh        # docker-gated: compose up Nacos, run self-asserting example
 ```
 
-The example seeds the dataId with a 100 ms `attempt-timeout` before startup (so the source's
+The example seeds the dataId with a 100 ms `timeout` before startup (so the source's
 initial `GetConfig` succeeds), then publishes a 900 ms document; the poller observes
 `mgr.PolicyFor("demo:service").Timeout == 900ms` and exits 0.
 

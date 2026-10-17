@@ -39,8 +39,8 @@ func TestNewPoolChainRebuildsFromScratch(t *testing.T) {
 	disc := discovery.NewManager(map[string]discovery.Discovery{
 		"static": discovery.NewStaticDiscovery(discovery.Endpoint{Addr: "127.0.0.1:6379", Healthy: true, Weight: 1}),
 	})
-	ctr, err := governance.NewCenter(resilience.NewManager(nil), mgr,
-		fault.NewInjector(fault.Configs{}, nil), disc, governance.NewPushSource(governance.Config{}))
+	ctr, err := governance.NewCenter(resilience.NewClientManager(resilience.NewDefaultDriver(nil)), mgr,
+		fault.NewClientManager(nil), fault.NewServerManager(nil), disc, governance.NewPushSource(governance.Config{}))
 	assert.Error(t, err).Nil()
 
 	c := Config{Addressing: discovery.Addressing{ServiceName: "cache", Discovery: "static"}}
@@ -79,7 +79,7 @@ func TestNewPoolChainRebuildsFromScratch(t *testing.T) {
 // candidate set to choose from: the pool dials the configured Addr directly and
 // carries no chain.
 func TestNewPoolWithoutDiscoveryHasNoChain(t *testing.T) {
-	ctr, err := governance.NewProcessCenter(resilience.NewManager(nil), fault.NewInjector(fault.Configs{}, nil))
+	ctr, err := governance.NewProcessCenter(resilience.NewClientManager(resilience.NewDefaultDriver(nil)), fault.NewClientManager(nil), fault.NewServerManager(nil))
 	assert.Error(t, err).Nil()
 	p, err := NewPool(context.Background(), Config{Addr: "127.0.0.1:6379"}, ctr)
 	assert.Error(t, err).Nil()

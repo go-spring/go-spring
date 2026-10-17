@@ -22,9 +22,12 @@ import (
 
 // The manager and the bundled driver are registered here, by the package that
 // owns them, so linking this package is what puts them in the container: a
-// client that injects *resilience.Manager has already imported it, and its
-// constructor parameter is REQUIRED (`gs.IndexArg(n, gs.TagArg(""))`) — the bean
-// being absent would fail startup, not degrade silently.
+// starter that injects *resilience.ClientManager has already imported it, and
+// its constructor parameter is REQUIRED (`gs.IndexArg(n, gs.TagArg(""))`) — the
+// bean being absent would fail startup, not degrade silently.
+//
+// This is the OUTBOUND authority only. Inbound requests run through
+// go-spring.org/cloud/guard, whose manager is owned by the governance center.
 //
 // The manager is self-sufficient: ClientExecutorFor hands out a lazily bound
 // executor that reads the manager's current policy, so it works with no center
@@ -44,15 +47,15 @@ func init() {
 	// contributed fails wiring — the tag cannot resolve the bean — so an unusable
 	// selection fails startup rather than silently falling back.
 	//
-	// The bean owns its own teardown: close runs on [Manager.Close], which
-	// releases the registered executors so a driver can stop its background
-	// resources (metric pumps) rather than leak them with the process. gs destroys
-	// beans in reverse construction order, so the clients holding those executors
-	// are gone by then.
-	gs.Provide(func(d Driver) *Manager {
-		return NewManager(d)
+	// Each bean owns its own teardown: close runs on the corresponding Close,
+	// which releases that direction's registered objects so a driver can stop its
+	// background resources (metric pumps) rather than leak them with the process.
+	// gs destroys beans in reverse construction order, so the clients and servers
+	// holding those objects are gone by then.
+	gs.Provide(func(d Driver) *ClientManager {
+		return NewClientManager(d)
 	}, gs.TagArg("${"+DriverProperty+":="+DefaultDriverName+"}")).
-		Destroy((*Manager).Close).Caller(1)
+		Destroy((*ClientManager).Close).Caller(1)
 
 	// The bundled engine, contributed as the [Driver] bean NAMED
 	// [DefaultDriverName] — the driver the tag above resolves when

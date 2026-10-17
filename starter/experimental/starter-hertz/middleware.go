@@ -18,18 +18,21 @@ package StarterHertz
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 	"time"
 
 	"github.com/cloudwego/hertz/pkg/app"
 	"github.com/cloudwego/hertz/pkg/app/server"
-	"github.com/cloudwego/hertz/pkg/protocol/consts"
 	"github.com/hertz-contrib/cors"
 	"github.com/hertz-contrib/gzip"
 	"github.com/hertz-contrib/requestid"
-	"go-spring.org/cloud/fault"
 	"go-spring.org/cloud/governance"
+	"go-spring.org/cloud/guard"
+	"go-spring.org/cloud/label"
+	"go-spring.org/cloud/observability"
 	"go-spring.org/cloud/propagate"
 	"go-spring.org/cloud/traffic"
 	"go-spring.org/log"
@@ -116,34 +119,78 @@ func applyMiddlewares(h *server.Hertz, cfg Config, center *governance.Center, pr
 	if mw.Gzip.Enabled {
 		h.Use(gzip.Gzip(mw.Gzip.Level))
 	}
-	// Fault injection (always installed, innermost so the resulting 503 is still
-	// logged). The injector is read off the governance center (nil-safe: a
-	// transparent pass-through when fault is off / no center bean), letting an
-	// operator "set fire" to the running server and hot-toggle it at runtime
-	// without a restart.
-	h.Use(buildFault(center.Fault()))
+	// Inbound governance (rate limit / bulkhead / breaker / fault) is innermost,
+	// so the resulting 429/503 is still logged by AccessLog and an injected
+	// failure is folded back into the breaker. A nil center is the standalone
+	// case: governance is not imported, so nothing is installed.
+	if center != nil {
+		in := center.InboundFor("hertz", label.ServiceLabel("hertz", cfg.Addr))
+		h.Use(buildServerPolicy(in))
+	}
 	return nil
 }
 
-// buildFault builds the inbound fault-injection middleware. It gates the handler
-// call with [fault.ApplyServer] so a configured fraction of inbound requests fail or
-// slow down — the server-side counterpart to the client starters'
-// fault.WrapClientExecutor. The injector is captured once, from the bean the server
-// constructor was given; when it is nil Apply is a transparent pass-through.
-// Capturing it rather than re-resolving per request is what lets a config swap
-// on the injector bean take effect in place.
-func buildFault(inj *fault.Injector) app.HandlerFunc {
+// buildServerPolicy builds the inbound governance middleware. It drives the
+// guard's Admit/Done pair and maps a refusal to 429 (rate limit / bulkhead) or
+// 503 (circuit open / degraded / injected fault).
+func buildServerPolicy(in *governance.Inbound) app.HandlerFunc {
 	return func(ctx context.Context, c *app.RequestContext) {
-		err := fault.ApplyServer(ctx, inj, "hertz", func() error {
+		op := observability.ServerOperation{Action: actionName(c)}
+		err := in.Run(ctx, op, func(ctx context.Context) error {
 			c.Next(ctx)
+			if c.Response.StatusCode() >= 500 {
+				return errHTTP5xx{code: c.Response.StatusCode()}
+			}
 			return nil
 		})
-		if err != nil && !c.Response.IsBodyStream() && c.Response.StatusCode() == 0 {
-			c.AbortWithStatus(consts.StatusServiceUnavailable)
+		if err != nil {
+			var ref *governance.Refusal
+			if errors.As(err, &ref) && !c.Response.IsBodyStream() && c.Response.StatusCode() == 0 {
+				c.AbortWithStatus(httpStatusFor(ref.Verdict()))
+			}
 		}
 	}
 }
 
+// httpStatusFor maps an inbound refusal to the HTTP status a client can act on:
+// rate/bulkhead rejections are 429, an open circuit, a degraded response or an
+// injected fault is 503.
+func httpStatusFor(kind guard.Verdict) int {
+	if kind == guard.VerdictCircuitOpen || kind == guard.VerdictDegraded || kind == guard.VerdictFaultInjected {
+		return http.StatusServiceUnavailable
+	}
+	return http.StatusTooManyRequests
+}
+
+// errHTTP5xx is the failure signal a handler-emitted 5xx feeds back into the
+// breaker.
+type errHTTP5xx struct{ code int }
+
+func (e errHTTP5xx) Error() string { return fmt.Sprintf("http: server returned %d", e.code) }
+
+// actionName names the inbound request for guard and the fault rules: the
+// entrance ("hertz") plus the interface being invoked, in the "METHOD /path"
+// form an interface-precise rule needs. The route TEMPLATE is preferred over the
+// concrete URL, so a rule names the endpoint rather than one instance of it.
+func actionName(c *app.RequestContext) string {
+	action := string(c.Method())
+	if route := c.FullPath(); route != "" {
+		action += " " + route
+	} else {
+		action += " " + string(c.Path())
+	}
+	return action
+}
+
+// buildFault builds the inbound fault-injection middleware. It gates the handler
+// call with [fault.Server.Fire] so a configured fraction of inbound requests fail or
+// slow down — the server-side counterpart to the client starters'
+// fault.ClientManager.WrapClientExecutor. The injector is captured once, from the bean the server
+// constructor was given; when it is nil Apply is a transparent pass-through.
+// Capturing it rather than re-resolving per request is what lets a config swap
+// on the injector bean take effect in place. The request is named by
+// [faultTarget], so an inbound rule can target one route instead of the whole
+// entrance.
 // accessLogSkipSet builds the set of paths the access log should not record. It
 // merges the operator-configured skip list with the health endpoint path, so
 // liveness/readiness probes never flood the log.

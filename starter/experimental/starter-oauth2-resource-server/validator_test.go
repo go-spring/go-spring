@@ -264,7 +264,7 @@ func TestDiscoveryFailure(t *testing.T) {
 }
 
 func TestKeySourceErrors(t *testing.T) {
-	if _, err := newValidator(Config{ScopeClaim: "scope", RolesClaim: "roles"}); err == nil {
+	if _, err := newValidator(Config{Rules: []Rule{{ScopeClaim: "scope", RolesClaim: "roles"}}}); err == nil {
 		t.Fatal("no key source accepted")
 	}
 	if _, err := newValidator(Config{IssuerURI: "https://x", Secret: "s", ScopeClaim: "scope", RolesClaim: "roles"}); err == nil {

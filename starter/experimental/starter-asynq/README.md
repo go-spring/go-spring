@@ -57,7 +57,7 @@ info, err := s.Client.Enqueue(ctx, asynq.NewTask("example:greet", payload))
 - **One injected center** — the constructor takes the governance family's sole
   injection point, the required `*governance.Center` (the `center` parameter),
   the one object a client reads its resilience/fault authorities from
-  (`center.Resilience()`, `center.Fault()`). An asynq producer client exposes no
+  (`center.ResilienceClient()`, `center.FaultClient()`). An asynq producer client exposes no
   seam for a resilience executor, so nothing from the center governs the enqueue
   path: `Client.Enqueue` runs under the observer, which emits the span, the
   metrics and the access log, and nothing throttles or retries.

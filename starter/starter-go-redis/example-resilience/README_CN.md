@@ -4,7 +4,7 @@
 
 ## 特性
 
-- **后端无关配置**:同一个 `${resilience.*}` 键驱动所有客户端 starter(rate-limit、burst、error-threshold、max-concurrent……)。
+- **后端无关配置**:同一个 `${resilience.*}` 键驱动所有客户端 starter(rate-limit、burst、error-threshold、timeout……)。
 - **热更新**:包装类通过 `gs.Dync` 字段注入 `Resilience`,刷新即可在线替换 executor。
 - **驱动可插拔**:`driver=default`(内置,零依赖)或 `sentinel`。
 - **可观测**:executor 被 `observe/resilience` 包裹,熔断与拒绝会产出 span + 计数器 + 直方图。

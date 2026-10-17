@@ -18,6 +18,8 @@ package StarterMQTT
 
 import (
 	"context"
+	"go-spring.org/cloud/chain"
+	"go.opentelemetry.io/otel/attribute"
 	"strings"
 	"testing"
 
@@ -43,33 +45,50 @@ func TestConnStateRecordCarriesTheMetricKeys(t *testing.T) {
 // metric labels, so they must carry only the family vocabulary; the topic rides
 // in Detail (span + log only), and the access tag rides along.
 func TestOperationDeclaresBoundedAttrsAndTopicDetail(t *testing.T) {
-	op := operation(opPublish, "sensors/temp")
+	op := operation(opSend, "sensors/temp")
 
-	assert.That(t, op.Name).Equal("publish")
-	assert.That(t, op.Metric).Equal("messaging.client")
-	assert.That(t, op.LogTag).Equal(accessTag)
+	assert.That(t, op.Request.Action).Equal("send sensors/temp")
+	assert.That(t, op.Observe.Metric.Name).Equal("messaging.client")
+	assert.That(t, op.Observe.Log.Tag).Equal(accessTag)
 
-	keys := make([]string, 0, len(op.Attrs))
-	for _, a := range op.Attrs {
+	keys := make([]string, 0, len(op.Observe.Metric.Attrs))
+	for _, a := range op.Observe.Metric.Attrs {
 		keys = append(keys, string(a.Key))
 	}
 	assert.That(t, keys).Equal([]string{"messaging.system", "messaging.operation"})
 
-	assert.That(t, len(op.Detail)).Equal(1)
-	assert.That(t, string(op.Detail[0].Key)).Equal("messaging.destination.name")
-	assert.That(t, op.Detail[0].Value.AsString()).Equal("sensors/temp")
+	assert.That(t, len(detailAttrs(op))).Equal(1)
+	assert.That(t, string(detailAttrs(op)[0].Key)).Equal("messaging.destination.name")
+	assert.That(t, detailAttrs(op)[0].Value.AsString()).Equal("sensors/temp")
 }
 
 // A topicless call carries no detail at all, which is also what levelled its
 // success log at Info rather than Debug.
 func TestOperationOmitsDetailWithoutTopic(t *testing.T) {
-	op := operation(opConsume, "")
-	assert.That(t, len(op.Detail)).Equal(0)
+	op := operation(opProcess, "")
+	assert.That(t, len(detailAttrs(op))).Equal(0)
 }
 
 // The topic in Detail is bounded — a topic can be arbitrarily long and a span or
 // a log line has no use for all of it.
 func TestOperationTruncatesTopic(t *testing.T) {
-	op := operation(opPublish, strings.Repeat("a", maxTopic+64))
-	assert.That(t, len(op.Detail[0].Value.AsString())).Equal(maxTopic)
+	op := operation(opSend, strings.Repeat("a", 512+64))
+	assert.That(t, len(detailAttrs(op)[0].Value.AsString())).Equal(512)
+}
+
+// detailAttrs returns the operation's span attributes that are NOT metric
+// labels — the per-call detail the old Call.Detail field held, reconstructed
+// from the split destination lists.
+func detailAttrs(op chain.Operation) []attribute.KeyValue {
+	labeled := make(map[attribute.Key]bool, len(op.Observe.Metric.Attrs))
+	for _, a := range op.Observe.Metric.Attrs {
+		labeled[a.Key] = true
+	}
+	var out []attribute.KeyValue
+	for _, a := range op.Observe.Span.Attrs {
+		if !labeled[a.Key] {
+			out = append(out, a)
+		}
+	}
+	return out
 }

@@ -213,7 +213,7 @@ discovery+LB, `driver.go:76-78` comment).
    limiter/breaker scoped to service `memcached:<service-name or instance-name>` (`client.go`);
    `memcache.ErrCacheMiss` counts as success so misses never trip the breaker
    (resilience.Tolerate); the executor is applied by `Client.applyGovernance` —
-   `fault.WrapClientExecutor(mgr.ClientExecutorFor("memcached", service), service, inj)`, where
+   `inj.WrapClientExecutor(mgr.ClientExecutorFor("memcached", service))`, where
    `mgr`/`inj` are the beans the container injects into `newClient` and the ctor passes on, with
    the observe layer applied inside resolve. When no governance is applied it is a transparent
    no-op.
@@ -251,7 +251,7 @@ the output belongs to the example app, not the starter).
 | `scheme` | string | empty | Narrows discovery to endpoints of one transport scheme; only consulted with `service-name` (config.go:45). | Over-filtering → "no endpoints" boot error |
 | `discovery` | string | — | Which registered `discovery.Discovery` resolves `service-name` (config.go:50). The wiring resolves this label to a bean and passes it to the driver as the `backend` argument of `CreateClient`. Falls back to `${spring.memcached.default.discovery}` when unset. | Both unset or an unregistered name while service-name is set → boot error. |
 | `timeout` | duration | 0 | Socket read/write timeout per request; 0 = gomemcache default 100ms (config.go:54). | Too low → spurious timeouts under load |
-| `max-idle-conns` | int | 0 | Idle connections kept per server; 0 = driver default 2 (config.go:58). A governance rule setting `max-conns` overrides it (gomemcache has no open-connection cap, so the rule sizes this idle cap). | Too low → reconnect churn |
+| `max-idle-conns` | int | 0 | Idle connections kept per server; 0 = driver default 2 (config.go:58). | Too low → reconnect churn |
 | `ping` | bool | false | Opt-in startup probe: `HealthCheck` pings every configured server once and fails the boot on an unreachable one; off by default so a server that is not up yet only surfaces on first use. | Expecting fail-fast without setting it → boot "succeeds", first request fails. |
 | `health` | bool | true | Contributes the `memcache:<name>` health.Indicator for the instance. | false → no indicator bean; readiness of that memcached is no longer reported. |
 

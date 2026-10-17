@@ -56,11 +56,16 @@ type Client struct {
 
 	// exec is the resilience executor protecting every statement, set by
 	// [NewClient] from the governance center, which is required to carry a
-	// [resilience.Manager] — a client is never assembled without one. Held for
+	// [resilience.ClientManager] — a client is never assembled without one. Held for
 	// teardown only: the chains are per-query, so there is no session-level
 	// chain head whose Release could close it — [Client.Close] is that release
 	// point.
 	exec chain.Executor
+
+	// serviceLabel is the governance label the executor was built for; each
+	// query's operation states it, so a layer outside the executor (the fault
+	// layer) matches the same service.
+	serviceLabel string
 }
 
 // NewClient builds a complete Client — identity, governance and all — over a
@@ -72,7 +77,7 @@ type Client struct {
 // applied HERE so a Client cannot exist half-assembled: there is no Init step,
 // no later patching, and nothing the container has to remember to call. A
 // hand-built client must supply a [governance.Center] over a
-// [resilience.Manager]: [governance.Center.Resilience] is required, so a nil
+// [resilience.ClientManager]: [governance.Center.ResilienceClient] is required, so a nil
 // center is a construction error — [governance.Center.ExecutorFor] panics —
 // never a graceful downgrade to an unprotected client.
 //
@@ -89,8 +94,9 @@ func NewClient(session *gocql.Session, cfg Config, center *governance.Center) *C
 	}
 	serviceLabel := resilience.ServiceLabel("cassandra", host)
 	return &Client{
-		Session: session,
-		exec:    center.ExecutorFor("cassandra", serviceLabel),
+		Session:      session,
+		exec:         center.ExecutorFor("cassandra", serviceLabel),
+		serviceLabel: serviceLabel,
 	}
 }
 
@@ -128,7 +134,7 @@ func (o *Client) Bind(stmt string, b func(q *gocql.QueryInfo) ([]any, error)) *Q
 // chain assembles one query's chain: the guarded layer (identity + governance)
 // over the query's own raw adapter.
 func (o *Client) chain(q *Query) InnerQuery {
-	return NewGuardQuery(NewRawQuery(q), o.exec, q.stmt)
+	return NewGuardQuery(NewRawQuery(q), o.exec, o.serviceLabel, q.stmt)
 }
 
 // Exec executes a statement synchronously through the guarded path. It is a

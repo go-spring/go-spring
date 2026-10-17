@@ -99,7 +99,7 @@ spring.oauth2.authcode.instances.login.scopes=openid,profile
 spring.resilience.driver=default
 spring.governance.client.default.max-retries=3
 spring.governance.client.default.error-threshold=10
-spring.governance.client.default.attempt-timeout=2s
+spring.governance.client.default.timeout=2s
 
 # --- observability(starter-otel,可选)--------------------------------------
 spring.observability.service-name=demo
@@ -187,7 +187,7 @@ governance 开启时的 `s.Client.Get("https://api.example.com/service")`:
 4. access token 入缓存;出站请求在 base transport 运行*之前*带上
    `Authorization: Bearer <token>` 头。
 5. `resilience.NewRoundTripper` 经构造函数从注入的 `*governance.Center`（`center`）上读取的
-   executor 执行请求——`center.Resilience().ClientExecutorFor("oauth2", "oauth2:<client-id>")`——
+   executor 执行请求——`center.ResilienceClient().ClientExecutorFor("oauth2", "oauth2:<client-id>")`——
    retry/熔断/限流策略来自治理文档。center 是治理家族唯一的注入点（gs 应用里必填）；未武装的
    center（或独立调用时的 nil center）读到的是 nil resilience manager，其 executor 为透明直通，
    故"治理关闭"是"配置了一份什么都没设的文档"，绝非 bean 缺失。该 executor 已自带 observe 层,
@@ -210,7 +210,7 @@ governance 开启时的 `s.Client.Get("https://api.example.com/service")`:
 | `scopes` | []string | — | 随 token 申请的逗号列表。 | 被 IdP 拒绝的 scope → 首次请求时报错,不在启动期。 |
 | `endpoint-params.<k>` | map[string]string | — | token 请求的额外 body 参数(Auth0 `audience`、Azure `service`);一个子 key 一个参数。 | 参数错 → 请求期 token 端点报错。 |
 | `auth-style` | string | `auto` | `auto` \| `header` \| `params`——凭据的发送方式;`auto` 由 x/oauth2 探测一次并缓存。 | IdP 要求 Basic 而配了 `params` → 每次取 token 401。 |
-| `timeout` | duration | 0 | 应用两处:otel base client(约束取 token)*和*返回的 `*http.Client`(约束每个下游请求)。0 = 无超时。⚠ 值大 + governance `attempt-timeout`:先到的是 per-attempt 上限。 | 0 → token 端点或下游挂死则永久挂起。 |
+| `timeout` | duration | 0 | 应用两处:otel base client(约束取 token)*和*返回的 `*http.Client`(约束每个下游请求)。0 = 无超时。⚠ 客户端级 `timeout` 按每个下游请求生效,治理侧 `timeout` 罩住整通受治理调用——两者谁小谁先到。 | 0 → token 端点或下游挂死则永久挂起。 |
 
 ### 3.2 `spring.oauth2.authcode.instances.<name>.*`——6 个 key
 

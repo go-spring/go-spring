@@ -34,10 +34,6 @@ func (d closingDriver) NewClientExecutor(string, ClientPolicy) (chain.Executor, 
 	return closingExecutor{closed: d.closed}, nil
 }
 
-func (d closingDriver) NewServerExecutor(string, ServerPolicy) (chain.Executor, error) {
-	return closingExecutor{closed: d.closed}, nil
-}
-
 // managerProbe exists only to make gs instantiate the manager bean and hand it
 // to the test.
 type managerProbe struct{}
@@ -45,7 +41,7 @@ type managerProbe struct{}
 // closingExecutor is a do-nothing executor that reports every Close.
 type closingExecutor struct{ closed *atomic.Int32 }
 
-func (e closingExecutor) Execute(ctx context.Context, call chain.Operation, fn func(context.Context) error) error {
+func (e closingExecutor) Execute(ctx context.Context, call chain.Operation, rec *chain.Recorder, fn func(context.Context) error) error {
 	return fn(ctx)
 }
 
@@ -55,15 +51,15 @@ func (e closingExecutor) Close() error {
 }
 
 // TestStarter_ManagerBeanClosesOnShutdown pins the manager bean's destroy hook:
-// it is the ONLY caller of [Manager.Close], and Close is the only thing that
-// releases the executors the manager registered — and, with them, whatever
+// it is the ONLY caller of [ClientManager.Close], and Close is the only thing
+// that releases the executors the manager registered — and, with them, whatever
 // background resources their driver holds (metric pumps, in a production
 // engine). Without the hook, Close is unreachable and those executors outlive
 // the container.
 func TestStarter_ManagerBeanClosesOnShutdown(t *testing.T) {
 	var closed atomic.Int32
 
-	var m *Manager
+	var m *ClientManager
 
 	gs.Web(false).Configure(func(app gs.App) {
 		// Select the closing driver at startup, the way a deployment selects a
@@ -74,19 +70,17 @@ func TestStarter_ManagerBeanClosesOnShutdown(t *testing.T) {
 		// A stand-in for a client starter: it injects the manager bean so gs
 		// instantiates it, and captures it for the test. Exported as a Rooter
 		// because nothing autowires it.
-		app.Provide(func(mgr *Manager) *managerProbe {
+		app.Provide(func(mgr *ClientManager) *managerProbe {
 			m = mgr
 			return &managerProbe{}
 		}).Export(gs.As[gs.Rooter]())
 	}).RunTest(t, func(_ *struct{}) {
-		if err := m.Apply(Settings{
-			Client: ClientSettings{Default: ClientPolicy{AttemptTimeout: time.Second}},
-		}); err != nil {
+		if err := m.Apply(ClientSettings{Default: ClientPolicy{Timeout: time.Second}}); err != nil {
 			t.Fatalf("Apply: %v", err)
 		}
 		// Build one executor, so there is something for Close to release.
 		exec := m.ClientExecutorFor("sys", "res:1")
-		if err := exec.Execute(context.Background(), chain.Operation{}, func(context.Context) error { return nil }); err != nil {
+		if err := exec.Execute(context.Background(), chain.Operation{}, nil, func(context.Context) error { return nil }); err != nil {
 			t.Fatalf("Execute: %v", err)
 		}
 		if got := closed.Load(); got != 0 {

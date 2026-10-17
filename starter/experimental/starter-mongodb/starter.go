@@ -25,7 +25,6 @@ import (
 
 	"go-spring.org/cloud/actuator/health"
 	"go-spring.org/cloud/loadbalance"
-	"go-spring.org/cloud/resilience"
 	"go-spring.org/log"
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/gs"
@@ -123,14 +122,7 @@ func newClient(ctx *gs.ContextProvider, c Config, discoveryLabel string,
 	if c.ServerSelectionTimeout > 0 {
 		opts.SetServerSelectionTimeout(c.ServerSelectionTimeout)
 	}
-	// The pool is sized once, here, so the governance rule's MaxConns — the
-	// resource half of isolation, next to the bulkhead's concurrency half — is
-	// read at construction too, and wins over the per-instance key so one place
-	// configures both halves.
-	label := resilience.ServiceLabel("mongodb", c.ServiceName, c.URI)
-	if n := center.PolicyFor(label).MaxConns; n > 0 {
-		opts.SetMaxPoolSize(uint64(n))
-	} else if c.MaxPoolSize > 0 {
+	if c.MaxPoolSize > 0 {
 		opts.SetMaxPoolSize(c.MaxPoolSize)
 	}
 	opts.SetMinPoolSize(c.MinPoolSize)

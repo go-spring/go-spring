@@ -81,33 +81,24 @@ const DefaultDriverName = "default"
 // and limiter state, a deploy-time act rather than a runtime one.
 const DriverProperty = "spring.resilience.driver"
 
-// Driver builds an [chain.Executor] from a [ClientPolicy] for OUTBOUND calls and an
-// [chain.Executor] from a [ServerPolicy] for INBOUND requests. Backends implement
-// it and are contributed to the container as a bean named after the backend (e.g.
-// "sentinel"), exported as a [Driver] so name-keyed directory injection finds
-// them: the container is the driver directory, and the resilience manager is
-// built over the map of them the center resolves the configured name in.
-// This package holds no registry of its own, so selecting a backend by name is
-// the caller's job.
+// Driver builds a [chain.Executor] from a [ClientPolicy] for OUTBOUND calls.
+// Backends implement it and are contributed to the container as a bean named
+// after the backend (e.g. "sentinel"), exported as a [Driver] so name-keyed
+// directory injection finds them: the container is the driver directory, and
+// the resilience manager is built over the map of them the center resolves the
+// configured name in. This package holds no registry of its own, so selecting a
+// backend by name is the caller's job.
 //
-// TWO methods rather than one direction-agnostic one, because the two directions
-// do not share a model: a backend maps [ClientPolicy] onto its outbound primitives and
-// [ServerPolicy] onto its inbound ones, and a sentinel-style backend's inbound
-// primitives (a system-load rule, a hotspot rule) have no outbound expression at
-// all. One object still answers for BOTH directions, so `driver=sentinel` remains
-// one key that switches the whole process — nothing is selected twice.
+// It is CLIENT-ONLY. Inbound requests are not a [chain.Executor] and do not use
+// this seam: they run through [go-spring.org/cloud/guard], whose per-instance
+// engine is fixed. A backend that once supplied an inbound engine
+// (sentinel-golang) now contributes only its outbound executor; guard's bundled
+// engine covers the inbound policy fields the framework exposes.
 type Driver interface {
 	// NewClientExecutor builds the executor protecting service under p. The service is
 	// part of the request, not of the call: the executor it returns is bound to
 	// it for life (see [chain.Executor]).
 	NewClientExecutor(service string, p ClientPolicy) (chain.Executor, error)
-
-	// NewServerExecutor builds the inbound executor protecting the inbound route
-	// service under p. The service is the route label an inbound middleware passes
-	// (e.g. "gin:0.0.0.0:8080"), bound for life like [Driver.NewClientExecutor]'s. A
-	// backend with no inbound story of its own returns an executor built from
-	// p.AsPolicy()'s projection — see the bundled driver.
-	NewServerExecutor(service string, p ServerPolicy) (chain.Executor, error)
 }
 
 // NewDefaultDriver returns the bundled driver: a self-contained [chain.Executor]
@@ -141,10 +132,4 @@ type defaultDriver struct {
 func (d defaultDriver) NewClientExecutor(service string, p ClientPolicy) (chain.Executor, error) {
 	e := newClientExecutor(service, p, d.limiter)
 	return e, nil
-}
-
-// NewServerExecutor builds the inbound engine (server_executor.go) for one
-// inbound route and hands it to the caller.
-func (d defaultDriver) NewServerExecutor(service string, p ServerPolicy) (chain.Executor, error) {
-	return newServerExecutor(service, p, d.limiter), nil
 }

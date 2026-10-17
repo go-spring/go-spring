@@ -55,16 +55,35 @@ var accessTag = log.RegisterAppTag("mail", "access")
 // rule is configured.
 func operation(msgs []*Message) chain.Operation {
 	o := chain.Operation{
-		Name:   "mail.send",
-		Metric: "email.client",
-		Attrs: []attribute.KeyValue{
-			attribute.String("email.system", emailSystem),
-			attribute.String("email.operation", "send"),
+		Request: chain.Request{
+			System: emailSystem,
+			Action: "mail.send",
 		},
-		LogTag: accessTag,
+		Observe: chain.Observe{
+			Metric: chain.Metric{
+				Name: "email.client",
+				Attrs: []attribute.KeyValue{
+					attribute.String("email.system", emailSystem),
+					attribute.String("email.operation", "send"),
+				},
+			},
+			Span: chain.Span{Attrs: []attribute.KeyValue{
+				attribute.String("email.system", emailSystem),
+				attribute.String("email.operation", "send"),
+			}},
+			Log: chain.Log{
+				Tag: accessTag,
+				Fields: []log.Field{
+					log.String("email.system", emailSystem),
+					log.String("email.operation", "send"),
+				},
+			},
+		},
 	}
-	if d := sendDetail(msgs); len(d) > 0 {
-		o.Detail = d
+	if n := recipientCount(msgs); n > 0 {
+		o.Observe.Span.Attrs = append(o.Observe.Span.Attrs, attribute.Int("email.recipients.count", n))
+		o.Observe.Log.Fields = append(o.Observe.Log.Fields, log.Int("email.recipients.count", n))
+		o.Observe.Log.QuietSuccess = true
 	}
 	return o
 }
@@ -78,18 +97,10 @@ func operation(msgs []*Message) chain.Operation {
 // label. The addresses stay in the caller's own records, where the data's owner
 // put them. Bcc is not counted separately — the confidential list is not this
 // layer's to see.
-func sendDetail(msgs []*Message) []attribute.KeyValue {
-	if len(msgs) == 0 {
-		return nil
-	}
+func recipientCount(msgs []*Message) int {
 	recipients := 0
 	for _, m := range msgs {
 		recipients += len(m.To) + len(m.Cc)
 	}
-	if recipients == 0 {
-		return nil
-	}
-	return []attribute.KeyValue{
-		attribute.Int("email.recipients.count", recipients),
-	}
+	return recipients
 }

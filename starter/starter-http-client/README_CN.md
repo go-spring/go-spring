@@ -111,7 +111,7 @@ _, resp, err := client.Greet(ctx, &proto.GreetReq{Name: "Grace"})
 
 韧性、故障注入与端点选择在这里**没有配置 key**:它们是按服务的策略,写在治理规则文档里(见
 cloud/governance 的 SOURCE_USAGE_CN.md)。治理服务标签在发现模式下为 `http:<service-name>`,直连模式下为
-`http:<addr>`。单次请求超时来自 `spring.governance.client.default.attempt-timeout`;负载均衡策略与端点剔除来自
+`http:<addr>`。单次请求超时来自 `spring.governance.client.default.timeout`;负载均衡策略与端点剔除来自
 命中该标签的规则上的 `balancer` / `outlier-threshold` / `outlier-suspend-for`。
 
 本 starter 在装配期即快速失败:`addr` 与 `service-name` 至少设置其一;仅按

@@ -204,7 +204,7 @@ bean 不存在则启动失败）。
 ```
 SendMessage / SendMessages
   → 构建 op：operation("publish", msg.Topic)，显式传给 observer
-  → fault.WrapClientExecutor（spring.governance.client.fault 启用时注入故障）
+  → fault.ClientManager.WrapClientExecutor（spring.governance.client.fault 启用时注入故障）
     → resilience executor 包装（span + outcome 计数 + call/attempt duration + 访问日志）
       → resilience executor（breaker / rate limit / retry，策略来自治理中心）
         → 注入 W3C 链路上下文 + 压测标记到 msg.Headers
@@ -217,7 +217,7 @@ SendMessage / SendMessages
 `sarama.AsyncProducer`（无包装器），以及任何忘记包裹的 producer。`SendMessage` 不收
 `context.Context`（sarama API 无 ctx），声明只能从消息本身构建，起点是
 `context.Background()` —— 发布 span 是一个新的根；逐调用时限要用 resilience 的
-`AttemptTimeout`/`MaxDuration`。消费侧由 `Consume` 单独声明（§2.4）。
+`timeout`。消费侧由 `Consume` 单独声明（§2.4）。
 ### 2.3 一次发布，逐层走读
 
 追踪开启时，wrapped producer 上执行 `publish(ctx, "hello", "value")`：
@@ -397,7 +397,7 @@ grep 'resilience' app.log | grep 'kafka|127.0.0.1:9092'
   完成，"driver 的 Key 映射丢字段"这一类问题在本 starter 结构性不存在
   （根本没有映射层可丢 Key）。
 - `WrapSyncProducer`/`SendMessage` 从消息推导声明且起点是 `context.Background()` ——
-  发布 span 是新根；逐调用时限只能靠 resilience `AttemptTimeout`/`MaxDuration`。
+  发布 span 是新根；逐调用时限只能靠 resilience `timeout`。
 - 无消费组/订阅接缝 → 消费侧是调用方逐消息手工调用的 `Consume`，没有谁替你声明订阅。
 - `Return.Successes`/`OffsetOldest` 静默覆盖 sarama 默认且无配置 key [driver.go:72-73]。
 - 治理服务标签用原始 `brokers` 字符串 —— 同一集群写法不同即不同熔断域 [command.go:221]。

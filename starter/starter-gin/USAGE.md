@@ -215,8 +215,9 @@ Rationale (from the source comments in `ApplyMiddlewares`, middleware.go:89-174)
    gauge +1 (opt-in), request body tee'd into a bounded buffer (payload capture)
 4. admission: `exec.Execute` around the handler — over limit → 429, breaker open → 503;
    handler 5xx feeds the breaker as a failure
-5. fault: `fault.ApplyServer(ctx, inj, "gin", handler)` — `inj` is the injected `*fault.Injector`
-   bean; marked traffic at `rate` gets
+5. fault: `_, err := srv.Fire(ctx, fault.Target{Service: "gin", Action: "GET /x"})`
+   — `inj` is the injected `*fault.ServerManager` bean, and the built-in target names the route
+   (`METHOD` + `c.FullPath()`), so a rule can fire one endpoint; marked traffic at `rate` gets
    the injected error → 503
 6. SecureHeaders/CORS/Gzip as enabled; ResponseCapture wraps the writer
 7. health route / your route runs; unwind: SSE trailing events finalized, then Observe's defer
@@ -313,12 +314,12 @@ curl -i :8001/healthz    # starter-served liveness, independent of app routes
 2. Burst: `for i in $(seq 1 20); do curl -s -o/dev/null -w '%{http_code}\n' :8001/echo/x; done`
    → both 200s and 429s (the smoke asserts exactly that). Breaker open → 503
    (`admission.go:79-82`).
-3. Tighten at runtime: governance hot-reloads (`Manager.ServerExecutorFor` seam) — raise/lower
+3. Tighten at runtime: governance hot-reloads (`ServerManager.ServerGuardFor` seam) — raise/lower
    `rate-limit` without restart and re-burst.
 
 ### 4.5 Fault drill (no restart)
 
-Governance fault keys are hot-toggled (middleware is always installed; `fault.ApplyServer` is a
+Governance fault keys are hot-toggled (middleware is always installed; `Injector.Server.Fire` is a
 pass-through when no injector is registered):
 
 ```bash

@@ -192,7 +192,7 @@ optional etcd registry, optional compatible-unary middleware — layered on last
 (or via suites you attach in your codegen). Consequences vs the sibling RPC starters:
 
 - no loadtest identification filter (no propagator `IsLoadTest` tagging on this hop)
-- no fault-injection filter (no `*fault.Injector` bean wiring; governance cannot "set fire" here)
+- no fault-injection filter (no `*fault.ClientManager` bean wiring; governance cannot "set fire" here)
 - no resilience admission (rate-limit/breaker)
 
 ### 2.3 One call, layer by layer

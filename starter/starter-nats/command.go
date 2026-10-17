@@ -17,7 +17,7 @@
 // command.go is the "command seam" concept of this starter: the InnerConn
 // chain wraps publishes and requests, and the hand-written consume wrapper.
 //
-//	chain    — ObsConn declares the publish's identity, GuardConn runs it under
+//	chain    — ObsConn declares the send's identity, GuardConn runs it under
 //	            the resilience executor (the single emitter: span, metrics,
 //	            access log), RawConn injects the W3C trace context and makes the
 //	            wire call.
@@ -130,14 +130,14 @@ func (o *ObsConn) PublishMsg(msg *nats.Msg) error {
 }
 
 func (o *ObsConn) PublishMsgContext(ctx context.Context, msg *nats.Msg) error {
-	return observe(o.obs, ctx, operation(opPublish, msg.Subject), func(callCtx context.Context) error {
+	return observe(o.obs, ctx, operation(opSend, msg.Subject), func(callCtx context.Context) error {
 		return o.next.PublishMsgContext(callCtx, msg)
 	})
 }
 
 func (o *ObsConn) RequestGuarded(ctx context.Context, subj string, data []byte, timeout time.Duration) (*nats.Msg, error) {
 	var reply *nats.Msg
-	err := observe(o.obs, ctx, operation(opPublish, subj), func(callCtx context.Context) error {
+	err := observe(o.obs, ctx, operation(opSend, subj), func(callCtx context.Context) error {
 		msg, rerr := o.next.RequestGuarded(callCtx, subj, data, timeout)
 		if rerr != nil {
 			return rerr
@@ -157,7 +157,7 @@ func observe(obs *observability.OperationObserver, ctx context.Context, op chain
 	if obs == nil {
 		return call(ctx)
 	}
-	return obs.Observe(ctx, op, call)
+	return obs.Observe(ctx, op, nil, call)
 }
 
 // --- Consume: the hand-written per-delivery wrapper (see the file doc) ---
@@ -203,7 +203,7 @@ func (c *Conn) Consume(ctx context.Context, subject, queue string, handler Conte
 }
 
 // wrapConsume adapts a ContextHandler to the ctx-less nats.MsgHandler: it
-// extracts the upstream trace into a fresh ctx, declares the consume's
+// extracts the upstream trace into a fresh ctx, declares the process's
 // identity, and runs the handler under the executor — which emits the span,
 // metrics and access log. The three steps are fused here because they must run
 // in this order INSIDE each delivery (see the file doc).
@@ -211,7 +211,7 @@ func (c *Conn) wrapConsume(subject string, handler ContextHandler) nats.MsgHandl
 	obs := c.obs
 	return func(nm *nats.Msg) {
 		ctx := extractW3C(context.Background(), nm)
-		_ = observe(obs, ctx, operation(opConsume, subject), func(callCtx context.Context) error {
+		_ = observe(obs, ctx, operation(opProcess, subject), func(callCtx context.Context) error {
 			return handler(callCtx, nm)
 		})
 	}

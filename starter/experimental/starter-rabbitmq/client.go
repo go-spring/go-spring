@@ -168,7 +168,7 @@ func (s *subscriber) Subscribe(_ context.Context, handler messaging.Handler) err
 			// The handler runs under the connection's observer, which emits the
 			// consume span, durations and access log; without an observer it runs
 			// inline.
-			herr := s.cl.execute(msgCtx, operation(opConsume, s.queue), func(attemptCtx context.Context) error {
+			herr := s.cl.execute(msgCtx, operation(opProcess, s.queue), func(attemptCtx context.Context) error {
 				return handler(attemptCtx, fromDelivery(&d))
 			})
 			if herr != nil {

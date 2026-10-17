@@ -174,14 +174,14 @@ import starter-mongodb
 gs.Run()
   ├─ ctor newClient [starter.go:105]: ApplyURI → timeouts/pool/auth → tls.Build
   │   → read the injected authorities off the *governance.Center (variable center):
-  │     center.Resilience() / center.Fault() / center.Loadbalance() (mgr / inj / lbMgr)
+  │     center.ResilienceClient() / center.FaultClient() / center.Loadbalance() (mgr / inj / lbMgr)
   │   → SetMonitor(command monitor, lazy observer holder) [starter.go:152]
   │   → newPickPool(ctx, c, backend) (loader-backed endpoint picker when service-name set, mesh off) [starter.go:155]
   │   → SetDialer(shared dialerWrapper) [starter.go:185]
   │   → mongo.Connect → NewClient(raw, cfg) (identity + observer) [client.go:113]
   │       newDBObserver("mongodb") → module-local observer (span + metric + access log);
   │       serviceLabel = serviceLabel(cfg); exec = center.ExecutorFor("mongodb", serviceLabel),
-  │       which is fault.WrapClientExecutor(mgr.ClientExecutorFor("mongodb", service), service, inj)
+  │       which is inj.WrapClientExecutor(mgr.ClientExecutorFor("mongodb", service))
   │   → swap dialerWrapper.dial = newDialer(base, w.exec) [starter.go:225], [dial.go]
   │   → ping=true only: fail-fast probe HealthCheck(ctx, w) — a Ping bounded by
   │     connect-timeout (10s fallback) [starter.go:220] — a dead server fails the BOOT
@@ -231,7 +231,7 @@ only, never a metric label, truncated at 512 bytes), an internal span named afte
 command, and the `status` / `duration_ms` access-log fields with the same level rule
 (failure Warn / success-with-detail Debug / success-without-detail Info). The status word set
 is the ecosystem-wide `ok` / `error`, as everywhere. The one divergence is the absent
-`resilience.outcome`: a CommandMonitor sees only the driver's own error and cannot know that
+`resilience.error_type`: a CommandMonitor sees only the driver's own error and cannot know that
 protection refused the call (`rate_limited`, `circuit_open`, `bulkhead_full`, `timeout`), so
 this emitter reports no outcome rather than an empty one.
 
@@ -270,7 +270,7 @@ There are no observability keys — observation is unconditional (see §3.3).
 | `auth-mechanism` | string | — | e.g. `SCRAM-SHA-256`; empty = driver negotiates. ⚠ Only with `username`. | Unsupported mechanism → error on first use (or at the boot ping when `ping=true`). |
 | `connect-timeout` | duration | `10s` | Passed to the driver AND bounds the startup ping when `ping=true` (0 → 10s fallback, [starter.go:224-229]). | Too small → boot ping spuriously times out on slow networks. |
 | `server-selection-timeout` | duration | `0` | 0 = driver default (30s). How long the driver waits for a suitable server. | Too small + discovery latency → "server selection timeout". |
-| `max-pool-size` | uint64 | `100` | Max connections per server. 0 would mean "use default" — but the starter passes 100 explicitly when unset. A governance rule setting `max-conns` overrides it. | Too small → ops queue waiting for a pool slot. |
+| `max-pool-size` | uint64 | `100` | Max connections per server. 0 would mean "use default" — but the starter passes 100 explicitly when unset. | Too small → ops queue waiting for a pool slot. |
 | `min-pool-size` | uint64 | `0` | Min pooled connections (always applied, even 0). | — |
 | `max-conn-idle-time` | duration | `0` | 0 = no limit; e.g. `5m` prunes idle conns. ⚠ With `service-name`, a finite value recycles connections onto updated endpoints without a restart. | `0` + discovery → conns linger on a removed endpoint until they break. |
 | `service-name` | string | — | Resolve addressing via the registered discovery backend; a loader-backed (Pool-`Pick`) dialer replaces the URI hosts per connection [starter.go:150-167]. ⚠ **Bypasses MongoDB's own topology discovery** (replica set / mongos) — the driver dials whatever the naming service hands out; pair with `directConnection=true` in the URI ([config.go:80-84]). Ignored in mesh mode (sidecar owns discovery+LB). | Without `directConnection=true` on a replica-set URI → "no such host"/topology errors; the dummy-URI trick only proves discovery when the loader/pool is actually consulted. |
@@ -283,10 +283,10 @@ There are no observability keys — observation is unconditional (see §3.3).
 ### 3.2 Resilience / fault (spring.governance.*, not under the instance prefix)
 
 Policy keys live in the governance rules document under `spring.governance.*` (cloud/governance's governance center);
-`newClient` reads the injected `*resilience.Manager` / `*fault.Injector` (`mgr`/`inj`) and
+`newClient` reads the injected `*resilience.ClientManager` / `*fault.ClientManager` (`mgr`/`inj`) and
 `*loadbalance.Manager` (`lbMgr`) off the `*governance.Center`, whose
 `center.ExecutorFor("mongodb", "mongodb:<service-name|uri>")` resolves
-`fault.WrapClientExecutor(mgr.ClientExecutorFor("mongodb", "mongodb:<service-name|uri>"), "mongodb:<service-name|uri>", inj)`
+`inj.WrapClientExecutor(mgr.ClientExecutorFor("mongodb", "mongodb:<service-name|uri>"))`
 in one call [client.go:113-121]. Relevant keys: `spring.resilience.driver` (the backend, a
 static app-config key) and, in the governance document (see cloud/governance's SOURCE_USAGE
 for the full set), `spring.governance.client.default.rate-limit` /

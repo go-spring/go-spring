@@ -98,7 +98,7 @@ type captureExecutor struct {
 	has bool
 }
 
-func (c *captureExecutor) Execute(ctx context.Context, op chain.Operation, fn func(context.Context) error) error {
+func (c *captureExecutor) Execute(ctx context.Context, op chain.Operation, rec *chain.Recorder, fn func(context.Context) error) error {
 	c.op, c.has = op, true
 	return fn(ctx)
 }
@@ -149,19 +149,19 @@ func TestQueryDeclarationReachesEmitter(t *testing.T) {
 
 	assert.That(t, inner.has).Equal(true)
 	op := inner.op
-	assert.That(t, op.Name).Equal("query")
-	assert.That(t, op.Metric).Equal("db.client")
+	assert.That(t, op.Request.Action).Equal("query")
+	assert.That(t, op.Observe.Metric.Name).Equal("db.client")
 	// The access log keeps the tag it had before the move to a single emitter.
-	assert.That(t, op.LogTag).Same(accessTag)
+	assert.That(t, op.Observe.Log.Tag).Same(accessTag)
 
-	attrs := attrsMap(op.Attrs)
+	attrs := attrsMap(op.Observe.Metric.Attrs)
 	assert.That(t, attrs["db.system"]).Equal("mysql")
 	assert.That(t, attrs["db.operation"]).Equal("query")
 
 	// The statement is per-call detail: it must be present (what the SQL builder
 	// produced) and must ride Detail, never Attrs — the whole point of the split,
 	// since an unbounded statement as a metric label would explode the series.
-	detail := attrsMap(op.Detail)
+	detail := attrsMap(detailAttrs(op))
 	assert.That(t, detail["db.statement"]).Equal("SELECT * FROM `probe_users` WHERE name = ?")
 	assert.That(t, attrs["db.statement"]).Equal("")
 }
@@ -176,30 +176,47 @@ func TestCreateDeclarationReachesEmitter(t *testing.T) {
 	assert.Error(t, tx.Error).Nil("create")
 
 	assert.That(t, inner.has).Equal(true)
-	assert.That(t, inner.op.Name).Equal("create")
-	assert.That(t, attrsMap(inner.op.Attrs)["db.system"]).Equal("postgresql")
-	if len(inner.op.Detail) == 0 {
+	assert.That(t, inner.op.Request.Action).Equal("create")
+	assert.That(t, attrsMap(inner.op.Observe.Metric.Attrs)["db.system"]).Equal("postgresql")
+	if len(detailAttrs(inner.op)) == 0 {
 		t.Fatal("expected the built INSERT to be declared as Detail")
 	}
-	if got := attrsMap(inner.op.Detail)["db.statement"]; !strings.Contains(got, "INSERT INTO `probe_users`") {
+	if got := attrsMap(detailAttrs(inner.op))["db.statement"]; !strings.Contains(got, "INSERT INTO `probe_users`") {
 		t.Fatalf("expected the built INSERT, got %q", got)
 	}
 }
 
-// TestStatementTruncation pins maxStatement: a runaway statement cannot flood
+// TestStatementTruncation pins the truncation bound: a runaway statement cannot flood
 // the span or the log.
 func TestStatementTruncation(t *testing.T) {
 	db, inner := newProbeDB(t, "mysql")
 
-	long := probeUser{Name: strings.Repeat("x", maxStatement*2)}
+	long := probeUser{Name: strings.Repeat("x", 512*2)}
 	tx := db.Create(&long)
 	assert.Error(t, tx.Error).Nil("create")
 
 	assert.That(t, inner.has).Equal(true)
-	if len(inner.op.Detail) == 0 {
+	if len(detailAttrs(inner.op)) == 0 {
 		t.Fatal("expected Detail")
 	}
-	if got := inner.op.Detail[0].Value.Emit(); len(got) > maxStatement {
+	if got := detailAttrs(inner.op)[0].Value.Emit(); len(got) > 512 {
 		t.Fatalf("statement not truncated: %d bytes", len(got))
 	}
+}
+
+// detailAttrs returns the operation's span attributes that are NOT metric
+// labels — the per-call detail the old Call.Detail field held, reconstructed
+// from the split destination lists.
+func detailAttrs(op chain.Operation) []attribute.KeyValue {
+	labeled := make(map[attribute.Key]bool, len(op.Observe.Metric.Attrs))
+	for _, a := range op.Observe.Metric.Attrs {
+		labeled[a.Key] = true
+	}
+	var out []attribute.KeyValue
+	for _, a := range op.Observe.Span.Attrs {
+		if !labeled[a.Key] {
+			out = append(out, a)
+		}
+	}
+	return out
 }

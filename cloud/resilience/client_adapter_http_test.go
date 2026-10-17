@@ -29,7 +29,7 @@ import (
 
 func TestRoundTripperNilExecIsPassThrough(t *testing.T) {
 	base := http.DefaultTransport
-	assert.That(t, NewRoundTripper(base, nil, nil) == base).True()
+	assert.That(t, NewRoundTripper(base, nil, "", nil) == base).True()
 }
 
 func TestRoundTripperRetriesOn5xx(t *testing.T) {
@@ -44,7 +44,7 @@ func TestRoundTripperRetriesOn5xx(t *testing.T) {
 	defer srv.Close()
 
 	e := newBuiltin(t, ClientPolicy{Retry: chain.RetryPolicy{MaxRetries: 3}})
-	client := &http.Client{Transport: NewRoundTripper(http.DefaultTransport, e, nil)}
+	client := &http.Client{Transport: NewRoundTripper(http.DefaultTransport, e, "svc", nil)}
 
 	resp, err := client.Get(srv.URL)
 	assert.Error(t, err).Nil()
@@ -60,7 +60,7 @@ func TestRoundTripperCircuitOpenIsError(t *testing.T) {
 	defer srv.Close()
 
 	e := newBuiltin(t, ClientPolicy{ErrorThreshold: 1, OpenDuration: time.Minute})
-	client := &http.Client{Transport: NewRoundTripper(http.DefaultTransport, e, nil)}
+	client := &http.Client{Transport: NewRoundTripper(http.DefaultTransport, e, "svc", nil)}
 
 	_, err := client.Get(srv.URL) // trips the breaker
 	assert.Error(t, err).NotNil()

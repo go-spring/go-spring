@@ -212,7 +212,7 @@ gs.Run()
 
 即：publish 只被声明与观测，从不被守卫。`newClient` [starter.go:87] 仍注入必填的
 `*governance.Center`（`center`）——治理家族唯一的注入点，client 正是从这一个对象上读取其
-resilience/fault 职权（`center.Resilience()`、`center.Fault()`）——但 rabbitmq client 没有
+resilience/fault 职权（`center.ResilienceClient()`、`center.FaultClient()`）——但 rabbitmq client 没有
 可挂 resilience executor 的缝 [entity.go:58-62]，故中心里的职权都不作用于任何 publish 或
 consume：既不限流、不熔断、不重试，也不注入故障。`center` 是必填的（成功启动的应用里绝不为
 nil），但这里的"治理关闭"就是"没有接治理"，绝非 bean 缺失；本路径上没有可拨动的规则开关。

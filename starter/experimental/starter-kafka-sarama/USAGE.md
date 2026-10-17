@@ -216,7 +216,7 @@ surface:
 ```
 SendMessage / SendMessages
   → build op: operation("publish", msg.Topic), passed explicitly to the observer
-  → fault.WrapClientExecutor (injected faults when spring.governance.client.fault enabled)
+  → fault.ClientManager.WrapClientExecutor (injected faults when spring.governance.client.fault enabled)
     → resilience executor wrapper (span + outcome counter + call/attempt duration + access log)
       → resilience executor (breaker / rate limit / retry, policy from governance center)
         → inject W3C trace context + load-test marker into msg.Headers
@@ -230,7 +230,7 @@ Also not declared: `sarama.AsyncProducer` (no wrapper exists), and any producer 
 wrap. `SendMessage` takes no `context.Context` (sarama's API is context-free), so the
 declaration is built from the message alone and starts from `context.Background()` — the
 publish span is a NEW ROOT, and a per-call deadline is expressed via resilience
-`AttemptTimeout`/`MaxDuration`. Consumption is declared separately through `Consume` (§2.4).
+`timeout`. Consumption is declared separately through `Consume` (§2.4).
 ### 2.3 One publish, layer by layer
 
 `publish(ctx, "hello", "value")` on a wrapped producer with tracing live:
@@ -418,7 +418,7 @@ Design suspects (audit ledger; none fixed since the last pass):
   absent (there is no mapping layer to drop a Key).
 - `WrapSyncProducer`/`SendMessage` declare from the message and start at
   `context.Background()` — the publish span is a new root; per-call deadlines only via
-  resilience `AttemptTimeout`/`MaxDuration`.
+  resilience `timeout`.
 - No consumer-group/subscribe seam → the consume side is a per-message `Consume` call the
   caller wires by hand; nothing declares a subscription for you.
 - `Return.Successes`/`OffsetOldest` silently override sarama defaults with no config keys

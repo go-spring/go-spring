@@ -199,7 +199,7 @@ gs.Run()
    `messaging.destination.name` detail），放到 ctx 上，自身不发射任何信号。
 3. 入队在 **observer** 下执行，而非 executor。`newClient` 注入必填的
    `*governance.Center`（`center`）——治理家族唯一的注入点，client 正是从这一个对象上
-   读取其 resilience/fault 职权（`center.Resilience()`、`center.Fault()`）——但 asynq 生产者
+   读取其 resilience/fault 职权（`center.ResilienceClient()`、`center.FaultClient()`）——但 asynq 生产者
    client 没有可挂 resilience executor 的缝（client.go:57-59），故中心里的职权都不作用于本路径：
    既不限流也不重试，服务 `asynq:<addr>` 上的限流/熔断/故障规则从不被查询。observer 负责
    **发射**：span、call 级 `messaging.client.operation.duration`、attempt 级

@@ -85,13 +85,18 @@ func init() {
 	// Exported as a gs.Rooter so gs instantiates the center even when no client
 	// injects one: without a collected-type export an unreachable bean is never
 	// constructed, and none of the startup would run.
-	gs.Provide(func(res *resilience.Manager, lb *loadbalance.Manager, inj *fault.Injector,
-		disc *discovery.Manager, src Source) (*Center, error) {
+	gs.Provide(func(resClient *resilience.ClientManager,
+		lb *loadbalance.Manager, injClient *fault.ClientManager, injServer *fault.ServerManager,
+		disc *discovery.Manager, limiter resilience.ClusterLimiter, src Source) (*Center, error) {
 		if src == nil { // nullable wiring only; see above
 			src = NewPushSource(Config{})
 		}
-		return NewCenter(res, lb, inj, disc, src)
-	}).
+		var opts []CenterOption
+		if limiter != nil {
+			opts = append(opts, WithClusterLimiter(guardLimiter{inner: limiter}))
+		}
+		return NewCenter(resClient, lb, injClient, injServer, disc, src, opts...)
+	}, gs.IndexArg(5, gs.TagArg("?"))).
 		Destroy((*Center).Close).
 		Export(gs.As[gs.Rooter]()).Caller(1)
 

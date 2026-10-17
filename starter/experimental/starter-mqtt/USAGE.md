@@ -196,7 +196,7 @@ guards** [command.go:17-29]:
 CreateClient [driver.go:115-123] (the assembly seam):
   exec = center.ExecutorFor("mqtt", "mqtt:<broker>")   // injected *governance.Center
   attachGuard(cl, exec, label) — stored in sync.Map keyed by the mqtt.Client value  [command.go:98-100]
-  (center.ExecutorFor = fault.WrapClientExecutor(mgr.ClientExecutorFor("mqtt", label), label, inj);
+  (center.ExecutorFor = inj.WrapClientExecutor(mgr.ClientExecutorFor("mqtt", label));
    the resilience manager is required — the container always supplies it)
 
 GuardedPublish [command.go:134-141]:
@@ -229,7 +229,7 @@ topic [driver.go:121].
 The manager is required — this starter imports the package that registers it, so "governance off"
 is a rules document that configures nothing (still carrying one `spring.governance.*` key), never
 an absent bean; a standalone, non-gs caller must supply one too
-— `center.ExecutorFor` panics on a nil `center.Resilience()`, so a client assembled without it is a wiring
+— `center.ExecutorFor` panics on a nil `center.ResilienceClient()`, so a client assembled without it is a wiring
 error, not a silent no-op
 [starter.go:87-88, driver.go:115-123].
 
@@ -356,7 +356,7 @@ resilience executor from the declared operation — not by the starter.
 - Access log: tag `_app_mqtt_access` (observe.go registers `app.mqtt.access`, carried on the
   declaration as `Operation.LogTag`). One record per guarded call: `messaging.system=mqtt`,
   `messaging.operation=publish|consume`, `messaging.destination.name=<topic>`,
-  `status=<ok|error>`, `resilience.outcome=<rate_limited|...>` when protection refused the call, `duration_ms=...`; a failure at
+  `status=<ok|error>`, `resilience.error_type=<rate_limited|...>` when protection refused the call, `duration_ms=...`; a failure at
   Warn with an `error` field, a success carrying a topic (Detail) at Debug, a topicless
   success at Info.
 - Metrics, all under `messaging.client.*`: the call-level `operation.duration` histogram,

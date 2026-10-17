@@ -77,7 +77,7 @@ DeleteAPI, Setup, ...) is promoted unchanged.
   `db.client.active_requests` gauge, and writes one access-log line via the
   `_app_influxdb_access` tag at the log package's native levels.
 - **Resilience** — blocking writes route through the executor built from the
-  injected `*resilience.Manager`; with no governance center linked that
+  injected `*resilience.ClientManager`; with no governance center linked that
   executor is a pass-through and the write path emits nothing (the starter owns
   no emitter).
 

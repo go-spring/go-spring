@@ -51,7 +51,7 @@ type Client struct {
 	slot *clientSlot
 	// exec is the resilience executor, applied by [NewClient] from the
 	// [governance.Center] the container supplies; the center is required to
-	// carry a [resilience.Manager], so statements are always observed.
+	// carry a [resilience.ClientManager], so statements are always observed.
 	exec chain.Executor
 	// serviceLabel is the resilience service key ("tdengine:<dsn addr>") exec
 	// scopes limiter/breaker state by.
@@ -71,7 +71,7 @@ type Client struct {
 // resolves the executor once — [governance.Center.ExecutorFor] — and installs
 // it on the slot every pooled connection consults. A hand-built client must
 // supply a [governance.Center] over a
-// [resilience.Manager]: [governance.Center.Resilience] is required,
+// [resilience.ClientManager]: [governance.Center.ResilienceClient] is required,
 // so a nil center is a construction error — never a graceful
 // downgrade. The manager resolves its backing
 // executor lazily, so the call order relative to the center's wiring is
@@ -84,6 +84,7 @@ func NewClient(connector driver.Connector, c Config, center *governance.Center) 
 	db.SetConnMaxLifetime(c.ConnMaxLifetime)
 	cl := &Client{DB: db, slot: slot}
 	cl.serviceLabel = serviceLabel(c)
+	slot.service = cl.serviceLabel
 	cl.exec = center.ExecutorFor("tdengine", cl.serviceLabel)
 	slot.exec = cl.exec
 	return cl

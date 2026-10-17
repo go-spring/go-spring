@@ -103,7 +103,7 @@ spring.oauth2.authcode.instances.login.scopes=openid,profile
 spring.resilience.driver=default
 spring.governance.client.default.max-retries=3
 spring.governance.client.default.error-threshold=10
-spring.governance.client.default.attempt-timeout=2s
+spring.governance.client.default.timeout=2s
 
 # --- observability (starter-otel, optional) ----------------------------------
 spring.observability.service-name=demo
@@ -197,7 +197,7 @@ resilience. You call `AuthCodeURL(state)` and `Exchange(ctx, code)` yourself; th
    outbound request *before* the base transport runs.
 5. `resilience.NewRoundTripper` executes the request through the executor the constructor
    reads from the injected `*governance.Center` (`center`) via
-   `center.Resilience().ClientExecutorFor("oauth2", "oauth2:<client-id>")` — retry / circuit
+   `center.ResilienceClient().ClientExecutorFor("oauth2", "oauth2:<client-id>")` — retry / circuit
    breaker / rate limit policy from the governance document. The center is the governance
    family's sole injection point (a required bean in a gs app); an unarmed center — or a nil one
    on a standalone call — reads a nil resilience manager whose executor is a transparent
@@ -222,7 +222,7 @@ resilience. You call `AuthCodeURL(state)` and `Exchange(ctx, code)` yourself; th
 | `scopes` | []string | — | Comma list requested with the token. | Scope rejected by the IdP → token fetch error at first request, not at boot. |
 | `endpoint-params.<k>` | map[string]string | — | Extra body params on the token request (Auth0 `audience`, Azure `service`). One sub-key per param. | Wrong param → token-endpoint error at request time. |
 | `auth-style` | string | `auto` | `auto` \| `header` \| `params` — how credentials are sent . `auto` lets x/oauth2 probe once and cache. | IdP requiring Basic with `params` set → 401 on every token fetch. |
-| `timeout` | duration | 0 | Applied twice: to the otel base client (bounds the token fetch) *and* to the returned `*http.Client` (bounds each downstream request). 0 = no timeout. ⚠ large value + governance `attempt-timeout`: the per-attempt bound bites first. | 0 → a hung token endpoint or downstream hangs forever. |
+| `timeout` | duration | 0 | Applied twice: to the otel base client (bounds the token fetch) *and* to the returned `*http.Client` (bounds each downstream request). 0 = no timeout. ⚠ The client-level `timeout` applies per downstream request, while the governance `timeout` bounds the whole governed call — whichever is smaller bites first. | 0 → a hung token endpoint or downstream hangs forever. |
 
 ### 3.2 `spring.oauth2.authcode.instances.<name>.*` — 6 keys
 

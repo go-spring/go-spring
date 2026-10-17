@@ -57,7 +57,7 @@ spring.resilience.driver=sentinel
 # governance document: policy (hot-reloadable)
 spring.governance.client.default.max-retries=3
 spring.governance.client.default.error-threshold=10
-spring.governance.client.default.attempt-timeout=1s
+spring.governance.client.default.timeout=1s
 ```
 
 ### 3. Or drive it directly
@@ -74,7 +74,7 @@ exec, _ := starter_governance_sentinel.NewSentinelDriver().NewExecutor("sentinel
 })
 
 // client-side transport
-client := &http.Client{Transport: resilience.NewRoundTripper(http.DefaultTransport, exec, nil)}
+client := &http.Client{Transport: resilience.NewRoundTripper(http.DefaultTransport, exec, service, nil)}
 ```
 
 See [`example/`](example) for a self-contained smoke that asserts the composed
@@ -97,14 +97,11 @@ drift) onto sentinel rules per service, loaded lazily on the first entry:
 | `breaker-strategy=consecutive` (default) | breaker `ErrorCount` — **approximation**: sentinel has no consecutive-run breaker; write `error-count` for an exact mapping | `ErrCircuitOpen` |
 | `HalfOpenRequests` | `ProbeNum` | — |
 | `OpenDuration` | `RetryTimeoutMs` | — |
-| `MaxConcurrent` | isolation `Concurrency` | `ErrBulkheadFull` |
 | `MaxRetries` | retry loop (outside sentinel) | last attempt's error |
-| `AttemptTimeout` / `MaxDuration` | ctx deadline (outside sentinel) | `context.DeadlineExceeded` |
+| `Timeout` | ctx deadline (outside sentinel) | `context.DeadlineExceeded` |
 
 **Legitimate ignores** (sentinel v1.0.4 has no counterpart; documented, never
-faked): `Burst`, `Algorithm` (no sliding-window/burst knobs on flow), and
-`BulkheadQueueDuration` (isolation cannot queue — the default driver does
-implement the wait).
+faked): `Burst` and `Algorithm` (no sliding-window/burst knobs on flow).
 
 Sentinel's system / hotspot / cluster rules are future work: they are inbound-
 or parameter-dimension primitives with no policy fields to arrive through yet;
@@ -125,6 +122,20 @@ breaking; stick with `default` if you don't need it.
 * **Rules install lazily, keyed by service name.** Sentinel keys everything by
   service, so a service's policy → rule translation happens on its first
   `Entry`, guarded by a mutex; a service that is never called never gets rules.
+* **A config change is a RULE SWAP here, not a state reset.** Sentinel keeps its
+  rules and its statistics inside the SDK, keyed by resource name, where the
+  framework cannot reach to rebuild anything — so this is the one backend whose
+  generation change does not start the protection state over. The executor pulls
+  the label's generation like every other engine and reloads the resource's rules
+  when it moves; `LoadRulesOfResource` replaces the rules while the resource
+  keeps its counters, windows and half-open state. A policy sentinel refuses is
+  consumed: the resource keeps the rules it already has and the refusal is
+  logged, rather than failing every call or taking the process down.
+* **Per-call rule matching is not available.** Sentinel partitions by resource
+  name (the service label), so a governance rule that matches on a call's
+  metadata cannot be honored by this driver — the label's own policy governs
+  every call to it. `default` honors it; sentinel's executor reads
+  `PolicySource.ResolveLabel` rather than `Resolve` for exactly this reason.
 * **Sentinel is pinned to v1.0.4.** Later minors reshuffled the flow /
   circuit-breaker rule struct fields; the pin keeps an upstream regression
   surfacing here rather than at every adapter.

@@ -71,7 +71,7 @@ type Client struct {
 // applied HERE so a Client cannot exist half-assembled: there is no Init step,
 // no later patching, and nothing the container has to remember to call. A
 // hand-built client must supply a [governance.Center] over a
-// [resilience.Manager]: [governance.Center.Resilience] is required, so a nil
+// [resilience.ClientManager]: [governance.Center.ResilienceClient] is required, so a nil
 // center is a construction error — [governance.Center.ExecutorFor] panics —
 // never a graceful downgrade to an unprotected client.
 //
@@ -95,7 +95,7 @@ func NewClient(ctx context.Context, cfg Config, center *governance.Center) (*Cli
 	o := &Client{Client: raw, cfg: cfg}
 	o.serviceLabel = resilience.ServiceLabel("milvus", cfg.Addr)
 	o.exec = center.ExecutorFor("milvus", o.serviceLabel)
-	slot.apply(o.exec)
+	slot.apply(o.exec, o.serviceLabel)
 	return o, nil
 }
 

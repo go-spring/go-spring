@@ -52,7 +52,7 @@ func TestBuiltinPassThrough(t *testing.T) {
 	// A zero policy protects nothing: fn runs once and its result flows back.
 	e := newBuiltin(t, ClientPolicy{})
 	var calls int
-	err := e.Execute(context.Background(), chain.Operation{}, func(context.Context) error {
+	err := e.Execute(context.Background(), chain.Operation{}, nil, func(context.Context) error {
 		calls++
 		return nil
 	})
@@ -60,9 +60,11 @@ func TestBuiltinPassThrough(t *testing.T) {
 	assert.That(t, calls).Equal(1)
 }
 
-func TestExecutePerAttemptTimeout(t *testing.T) {
-	e := newBuiltin(t, ClientPolicy{AttemptTimeout: 20 * time.Millisecond})
-	err := e.Execute(context.Background(), chain.Operation{}, func(ctx context.Context) error {
+// TestExecuteTimeout pins the one bound: a call given a Timeout is cut off by it,
+// as a deadline its fn observes rather than an error the executor invents.
+func TestExecuteTimeout(t *testing.T) {
+	e := newBuiltin(t, ClientPolicy{Timeout: 20 * time.Millisecond})
+	err := e.Execute(context.Background(), chain.Operation{}, nil, func(ctx context.Context) error {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
@@ -77,7 +79,7 @@ func TestRateLimit(t *testing.T) {
 	// Burst of 2, no refill within the test window: 3rd call is rejected.
 	e := newBuiltin(t, ClientPolicy{RateLimit: 1, Burst: 2})
 	run := func() error {
-		return e.Execute(context.Background(), chain.Operation{}, func(context.Context) error { return nil })
+		return e.Execute(context.Background(), chain.Operation{}, nil, func(context.Context) error { return nil })
 	}
 	assert.Error(t, run()).Nil()
 	assert.Error(t, run()).Nil()
@@ -90,14 +92,14 @@ func TestRateLimitQueueing(t *testing.T) {
 	// maxWait=0 would reject — instead waits for the next token and succeeds.
 	e := newBuiltin(t, ClientPolicy{RateLimit: 20, Burst: 1, RateLimitMaxWait: 200 * time.Millisecond})
 	run := func() error {
-		return e.Execute(context.Background(), chain.Operation{}, func(context.Context) error { return nil })
+		return e.Execute(context.Background(), chain.Operation{}, nil, func(context.Context) error { return nil })
 	}
 	assert.Error(t, run()).Nil()
 	assert.Error(t, run()).Nil()
 	// And with no wait budget the same shape rejects.
 	e2 := newBuiltin(t, ClientPolicy{RateLimit: 20, Burst: 1})
-	assert.Error(t, e2.Execute(context.Background(), chain.Operation{}, func(context.Context) error { return nil })).Nil()
-	assert.Error(t, e2.Execute(context.Background(), chain.Operation{}, func(context.Context) error { return nil })).Is(chain.ErrRateLimited)
+	assert.Error(t, e2.Execute(context.Background(), chain.Operation{}, nil, func(context.Context) error { return nil })).Nil()
+	assert.Error(t, e2.Execute(context.Background(), chain.Operation{}, nil, func(context.Context) error { return nil })).Is(chain.ErrRateLimited)
 }
 
 // TestWarmUpColdStart pins the warm-up knob on the default driver's token
@@ -116,103 +118,15 @@ func TestWarmUpColdStart(t *testing.T) {
 	// The first call spends the single cold token; the second, immediately
 	// after, must be rejected — without warm-up the full burst of 10 would be
 	// available.
-	assert.Error(t, e.Execute(context.Background(), chain.Operation{}, func(context.Context) error { return nil })).Nil()
-	err := e.Execute(context.Background(), chain.Operation{}, func(context.Context) error { return nil })
+	assert.Error(t, e.Execute(context.Background(), chain.Operation{}, nil, func(context.Context) error { return nil })).Nil()
+	err := e.Execute(context.Background(), chain.Operation{}, nil, func(context.Context) error { return nil })
 	assert.Error(t, err).Is(chain.ErrRateLimited)
-}
-
-func TestBulkheadRejectsWhenFull(t *testing.T) {
-	// MaxConcurrent 1: while one call is parked inside fn, a second is rejected
-	// with chain.ErrBulkheadFull rather than queued.
-	e := newBuiltin(t, ClientPolicy{MaxConcurrent: 1})
-
-	release := make(chan struct{})
-	entered := make(chan struct{})
-	var wg sync.WaitGroup
-	wg.Go(func() {
-		_ = e.Execute(context.Background(), chain.Operation{}, func(context.Context) error {
-			close(entered)
-			<-release
-			return nil
-		})
-	})
-
-	<-entered // first call now holds the only slot
-	err := e.Execute(context.Background(), chain.Operation{}, func(context.Context) error { return nil })
-	assert.Error(t, err).Is(chain.ErrBulkheadFull)
-
-	close(release)
-	wg.Wait()
-
-	// Slot freed: a subsequent call succeeds again.
-	assert.Error(t, e.Execute(context.Background(), chain.Operation{}, func(context.Context) error { return nil })).Nil()
-}
-
-// TestBulkheadQueueDuration pins the bulkhead's queueing knob: a call finding
-// the bulkhead full WAITS up to BulkheadQueueDuration for a slot (and is
-// admitted when one frees in time) instead of being rejected on the spot, while
-// a wait that outlasts the queue budget still ends in ErrBulkheadFull.
-func TestBulkheadQueueDuration(t *testing.T) {
-	e := newBuiltin(t, ClientPolicy{MaxConcurrent: 1, BulkheadQueueDuration: 300 * time.Millisecond})
-
-	release := make(chan struct{})
-	entered := make(chan struct{})
-	var wg sync.WaitGroup
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		_ = e.Execute(context.Background(), chain.Operation{}, func(context.Context) error {
-			close(entered)
-			<-release
-			return nil
-		})
-	}()
-
-	<-entered // the only slot is held
-	go func() {
-		time.Sleep(100 * time.Millisecond) // free the slot before the queue budget ends
-		close(release)
-	}()
-	start := time.Now()
-	// Admitted after a bounded wait: the error is fn's, not ErrBulkheadFull.
-	err := e.Execute(context.Background(), chain.Operation{}, func(context.Context) error { return nil })
-	assert.Error(t, err).Nil()
-	assert.That(t, time.Since(start) >= 100*time.Millisecond).True()
-	wg.Wait()
-}
-
-// TestBulkheadQueueDurationTimesOut pins the other half: when no slot frees
-// within the queue budget the call is rejected with ErrBulkheadFull (not left
-// waiting forever), and the wait respected the caller's ctx as well.
-func TestBulkheadQueueDurationTimesOut(t *testing.T) {
-	e := newBuiltin(t, ClientPolicy{MaxConcurrent: 1, BulkheadQueueDuration: 50 * time.Millisecond})
-
-	release := make(chan struct{})
-	entered := make(chan struct{})
-	var wg sync.WaitGroup
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		_ = e.Execute(context.Background(), chain.Operation{}, func(context.Context) error {
-			close(entered)
-			<-release
-			return nil
-		})
-	}()
-
-	<-entered
-	start := time.Now()
-	err := e.Execute(context.Background(), chain.Operation{}, func(context.Context) error { return nil })
-	assert.Error(t, err).Is(chain.ErrBulkheadFull)
-	assert.That(t, time.Since(start) >= 50*time.Millisecond).True()
-	close(release)
-	wg.Wait()
 }
 
 func TestRetrySucceedsAfterTransientFailure(t *testing.T) {
 	e := newBuiltin(t, ClientPolicy{Retry: chain.RetryPolicy{MaxRetries: 2}})
 	var attempts int
-	err := e.Execute(context.Background(), chain.Operation{}, func(context.Context) error {
+	err := e.Execute(context.Background(), chain.Operation{}, nil, func(context.Context) error {
 		attempts++
 		if attempts < 3 {
 			return errutil.Explain(nil, "transient")
@@ -235,7 +149,7 @@ func TestRetryBackoffSleeps(t *testing.T) {
 	var attempts int
 	var firstSaw, secondSaw time.Duration
 	start := time.Now()
-	err := e.Execute(context.Background(), chain.Operation{}, func(context.Context) error {
+	err := e.Execute(context.Background(), chain.Operation{}, nil, func(context.Context) error {
 		attempts++
 		if attempts == 1 {
 			firstSaw = time.Since(start)
@@ -253,18 +167,19 @@ func TestRetryBackoffSleeps(t *testing.T) {
 	assert.That(t, secondSaw-firstSaw >= 35*time.Millisecond).True()
 }
 
-func TestRetryRespectsMaxDuration(t *testing.T) {
-	// MaxDuration caps the whole call: even with many retries permitted, the
-	// loop stops once the budget is exhausted.
+func TestRetryRespectsTimeout(t *testing.T) {
+	// Timeout caps the whole call: even with many retries permitted, the loop
+	// stops once the deadline is reached — the rounds share one budget, so a late
+	// retry gets whatever is left.
 	e := newBuiltin(t, ClientPolicy{
 		Retry: chain.RetryPolicy{
 			MaxRetries:      20,
 			InitialInterval: 20 * time.Millisecond,
 		},
-		MaxDuration: 60 * time.Millisecond,
+		Timeout: 60 * time.Millisecond,
 	})
 	var attempts int
-	_ = e.Execute(context.Background(), chain.Operation{}, func(context.Context) error {
+	_ = e.Execute(context.Background(), chain.Operation{}, nil, func(context.Context) error {
 		attempts++
 		return errutil.Explain(nil, "always fails")
 	})
@@ -278,7 +193,7 @@ func TestRetryableFalseStopsRetry(t *testing.T) {
 	// though MaxRetries would allow more attempts.
 	e := newBuiltin(t, ClientPolicy{Retry: chain.RetryPolicy{MaxRetries: 3}})
 	var attempts int
-	err := e.Execute(context.Background(), chain.Operation{}, func(context.Context) error {
+	err := e.Execute(context.Background(), chain.Operation{}, nil, func(context.Context) error {
 		attempts++
 		return nonRetryableErr{}
 	})
@@ -297,7 +212,7 @@ func (nonRetryableErr) Retryable() bool { return false }
 func TestRetryDefaultsToSingleAttempt(t *testing.T) {
 	e := newBuiltin(t, ClientPolicy{})
 	var attempts int
-	err := e.Execute(context.Background(), chain.Operation{}, func(context.Context) error {
+	err := e.Execute(context.Background(), chain.Operation{}, nil, func(context.Context) error {
 		attempts++
 		return errutil.Explain(nil, "boom")
 	})
@@ -312,7 +227,7 @@ func TestCallDeclaredRetryDrivesTheLoop(t *testing.T) {
 	e := newBuiltin(t, ClientPolicy{})
 	var attempts int
 	op := chain.Operation{Retry: chain.RetryPolicy{MaxRetries: 2}}
-	err := e.Execute(context.Background(), op, func(context.Context) error {
+	err := e.Execute(context.Background(), op, nil, func(context.Context) error {
 		attempts++
 		if attempts < 3 {
 			return errutil.Explain(nil, "transient")
@@ -331,7 +246,7 @@ func TestPolicyRetryOverridesCallRetry(t *testing.T) {
 	e := newBuiltin(t, ClientPolicy{Retry: chain.RetryPolicy{MaxRetries: 1}})
 	var attempts int
 	op := chain.Operation{Retry: chain.RetryPolicy{MaxRetries: 3}}
-	err := e.Execute(context.Background(), op, func(context.Context) error {
+	err := e.Execute(context.Background(), op, nil, func(context.Context) error {
 		attempts++
 		return errutil.Explain(nil, "boom")
 	})
@@ -349,7 +264,7 @@ func TestNonIdempotentSurvivesPolicyOverride(t *testing.T) {
 	e := newBuiltin(t, ClientPolicy{Retry: chain.RetryPolicy{MaxRetries: 2}})
 	var attempts int
 	op := chain.Operation{Retry: chain.RetryPolicy{NonIdempotent: true}}
-	err := e.Execute(context.Background(), op, func(context.Context) error {
+	err := e.Execute(context.Background(), op, nil, func(context.Context) error {
 		attempts++
 		return errutil.Explain(nil, "boom")
 	})
@@ -365,7 +280,7 @@ func TestPolicyBudgetAloneDoesNotOverrideCallSchedule(t *testing.T) {
 	e := newBuiltin(t, ClientPolicy{Retry: chain.RetryPolicy{RetryBudget: 8}})
 	var attempts int
 	op := chain.Operation{Retry: chain.RetryPolicy{MaxRetries: 2}}
-	err := e.Execute(context.Background(), op, func(context.Context) error {
+	err := e.Execute(context.Background(), op, nil, func(context.Context) error {
 		attempts++
 		if attempts < 3 {
 			return errutil.Explain(nil, "transient")
@@ -387,7 +302,7 @@ func TestRetryBudget(t *testing.T) {
 	aDone := make(chan error, 1)
 	go func() {
 		calls := 0
-		aDone <- e.Execute(context.Background(), chain.Operation{}, func(context.Context) error {
+		aDone <- e.Execute(context.Background(), chain.Operation{}, nil, func(context.Context) error {
 			calls++
 			if calls == 2 { // the retry attempt: hold the budget slot
 				close(inRetry)
@@ -400,7 +315,7 @@ func TestRetryBudget(t *testing.T) {
 
 	// B's first attempt runs fine; its retry finds the budget spent.
 	bCalls := 0
-	err := e.Execute(context.Background(), chain.Operation{}, func(context.Context) error {
+	err := e.Execute(context.Background(), chain.Operation{}, nil, func(context.Context) error {
 		bCalls++
 		return errutil.Explain(nil, "boom")
 	})
@@ -413,11 +328,77 @@ func TestRetryBudget(t *testing.T) {
 	}
 }
 
+// testSource is a [PolicySource] a test drives directly, so the executor's
+// generation handling can be exercised without standing up a manager: the policy
+// a label resolves and the generation it belongs to are both settable.
+type testSource struct {
+	mu  sync.Mutex
+	p   ClientPolicy
+	gen uint64
+}
+
+func (s *testSource) set(p ClientPolicy, gen uint64) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.p, s.gen = p, gen
+}
+
+func (s *testSource) resolve(key string) CallPolicy {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return CallPolicy{Policy: s.p, Key: key, Label: s.p, Gen: s.gen}
+}
+
+func (s *testSource) Resolve(op chain.Operation) CallPolicy { return s.resolve(op.Service) }
+
+func (s *testSource) ResolveLabel(label string) CallPolicy { return s.resolve(label) }
+
+// stubSource is a [PolicySource] built from one function, for tests that only
+// need the call-level resolution.
+type stubSource func(chain.Operation) CallPolicy
+
+func (f stubSource) Resolve(op chain.Operation) CallPolicy { return f(op) }
+
+func (f stubSource) ResolveLabel(label string) CallPolicy { return f(chain.Operation{Service: label}) }
+
+// TestGenerationChangeRebuildsState pins the contract the pull design buys: the
+// executor's materialized state belongs to ONE generation, and moving to the next
+// one rebuilds it — a tripped breaker is CLOSED again, because the state of a
+// superseded generation is not carried over. It also pins the other half, which
+// is what makes that safe: while the generation does NOT move, the state is
+// reused, so a config push that changes nothing costs nothing.
+func TestGenerationChangeRebuildsState(t *testing.T) {
+	e := newBuiltin(t, ClientPolicy{})
+	src := &testSource{}
+	e.(PolicySourceSetter).SetPolicySource(src)
+	src.set(ClientPolicy{ErrorThreshold: 2, OpenDuration: time.Hour}, 1)
+
+	boom := errutil.Explain(nil, "boom")
+	fail := func() error {
+		return e.Execute(context.Background(), chain.Operation{}, nil, func(context.Context) error { return boom })
+	}
+
+	// Trip the breaker open under generation 1.
+	assert.Error(t, fail()).Is(boom)
+	assert.Error(t, fail()).Is(boom)
+	assert.Error(t, fail()).Is(chain.ErrCircuitOpen)
+
+	// Same generation, same policy: the state is reused and the circuit stays
+	// open, so an unrelated push costs this label nothing.
+	src.set(ClientPolicy{ErrorThreshold: 2, OpenDuration: time.Hour}, 1)
+	assert.Error(t, fail()).Is(chain.ErrCircuitOpen)
+
+	// New generation: the state is rebuilt, so the breaker starts over CLOSED and
+	// the call reaches the downstream again.
+	src.set(ClientPolicy{ErrorThreshold: 2, OpenDuration: time.Hour}, 2)
+	assert.Error(t, fail()).Is(boom)
+}
+
 func TestCircuitBreakerOpensAndRecovers(t *testing.T) {
 	e := newBuiltin(t, ClientPolicy{ErrorThreshold: 2, OpenDuration: 50 * time.Millisecond})
 	boom := errutil.Explain(nil, "boom")
 	fail := func() error {
-		return e.Execute(context.Background(), chain.Operation{}, func(context.Context) error { return boom })
+		return e.Execute(context.Background(), chain.Operation{}, nil, func(context.Context) error { return boom })
 	}
 
 	// Two consecutive failures trip the breaker open.
@@ -429,8 +410,8 @@ func TestCircuitBreakerOpensAndRecovers(t *testing.T) {
 
 	// After the cool-down a trial request is admitted; a success closes it.
 	time.Sleep(60 * time.Millisecond)
-	assert.Error(t, e.Execute(context.Background(), chain.Operation{}, func(context.Context) error { return nil })).Nil()
-	assert.Error(t, e.Execute(context.Background(), chain.Operation{}, func(context.Context) error { return nil })).Nil()
+	assert.Error(t, e.Execute(context.Background(), chain.Operation{}, nil, func(context.Context) error { return nil })).Nil()
+	assert.Error(t, e.Execute(context.Background(), chain.Operation{}, nil, func(context.Context) error { return nil })).Nil()
 }
 
 func TestHalfOpenAdmitsSingleTrialConcurrent(t *testing.T) {
@@ -440,7 +421,7 @@ func TestHalfOpenAdmitsSingleTrialConcurrent(t *testing.T) {
 	e := newBuiltin(t, ClientPolicy{ErrorThreshold: 1, OpenDuration: 30 * time.Millisecond})
 
 	// Trip the breaker.
-	_ = e.Execute(context.Background(), chain.Operation{}, func(context.Context) error {
+	_ = e.Execute(context.Background(), chain.Operation{}, nil, func(context.Context) error {
 		return errutil.Explain(nil, "boom")
 	})
 	time.Sleep(40 * time.Millisecond) // cool-down elapses -> half-open
@@ -451,7 +432,7 @@ func TestHalfOpenAdmitsSingleTrialConcurrent(t *testing.T) {
 	var ran, rejected int32
 	for range 2 {
 		wg.Go(func() {
-			err := e.Execute(context.Background(), chain.Operation{}, func(context.Context) error {
+			err := e.Execute(context.Background(), chain.Operation{}, nil, func(context.Context) error {
 				atomic.AddInt32(&ran, 1)
 				// Hold long enough that the sibling surely evaluates allow() too.
 				time.Sleep(20 * time.Millisecond)
@@ -481,7 +462,7 @@ func TestErrorRateBreakerTripsOnRatio(t *testing.T) {
 	})
 	// Interleave fail/success: 4 fails out of 8 => 50% ratio.
 	for i := range 8 {
-		err := e.Execute(context.Background(), chain.Operation{}, func(context.Context) error {
+		err := e.Execute(context.Background(), chain.Operation{}, nil, func(context.Context) error {
 			if i%2 == 0 {
 				return errutil.Explain(nil, "fail")
 			}
@@ -508,7 +489,7 @@ func TestBreakerRecordsOncePerCallNotPerAttempt(t *testing.T) {
 		Retry:          chain.RetryPolicy{MaxRetries: 2},
 	})
 	fail := func() error {
-		return e.Execute(context.Background(), chain.Operation{}, func(context.Context) error {
+		return e.Execute(context.Background(), chain.Operation{}, nil, func(context.Context) error {
 			return errutil.Explain(nil, "boom")
 		})
 	}
@@ -547,7 +528,7 @@ func TestSlowCallBreaker(t *testing.T) {
 		OpenDuration:              50 * time.Millisecond,
 	})
 	slow := func() error {
-		return e.Execute(context.Background(), chain.Operation{}, func(context.Context) error {
+		return e.Execute(context.Background(), chain.Operation{}, nil, func(context.Context) error {
 			time.Sleep(25 * time.Millisecond) // >= threshold: a slow success
 			return nil
 		})
@@ -555,7 +536,7 @@ func TestSlowCallBreaker(t *testing.T) {
 	assert.Error(t, slow()).Nil()
 	assert.Error(t, slow()).Nil()
 	// 2/2 slow >= 0.5: the breaker must now be open.
-	err := e.Execute(context.Background(), chain.Operation{}, func(context.Context) error { return nil })
+	err := e.Execute(context.Background(), chain.Operation{}, nil, func(context.Context) error { return nil })
 	assert.Error(t, err).Is(chain.ErrCircuitOpen)
 }
 
@@ -568,7 +549,7 @@ func TestHalfOpenMultipleTrials(t *testing.T) {
 		HalfOpenRequests: 3,
 	})
 	fail := func() error {
-		return e.Execute(context.Background(), chain.Operation{}, func(context.Context) error {
+		return e.Execute(context.Background(), chain.Operation{}, nil, func(context.Context) error {
 			return errutil.Explain(nil, "boom")
 		})
 	}
@@ -578,7 +559,7 @@ func TestHalfOpenMultipleTrials(t *testing.T) {
 	time.Sleep(40 * time.Millisecond) // cool-down elapses
 	// First trial succeeds but is only 1 of 3: the breaker stays half-open
 	// (permit available), not closed.
-	err := e.Execute(context.Background(), chain.Operation{}, func(context.Context) error { return nil })
+	err := e.Execute(context.Background(), chain.Operation{}, nil, func(context.Context) error { return nil })
 	assert.Error(t, err).Nil()
 	// Second trial fails: re-open immediately.
 	time.Sleep(40 * time.Millisecond)
@@ -586,10 +567,10 @@ func TestHalfOpenMultipleTrials(t *testing.T) {
 	time.Sleep(40 * time.Millisecond)
 	// After re-open and cool-down, three consecutive successes close it.
 	for range 3 {
-		err = e.Execute(context.Background(), chain.Operation{}, func(context.Context) error { return nil })
+		err = e.Execute(context.Background(), chain.Operation{}, nil, func(context.Context) error { return nil })
 	}
 	assert.Error(t, err).Nil()
-	assert.Error(t, e.Execute(context.Background(), chain.Operation{}, func(context.Context) error { return nil })).Nil()
+	assert.Error(t, e.Execute(context.Background(), chain.Operation{}, nil, func(context.Context) error { return nil })).Nil()
 }
 
 // TestSlowCallStrategyBreaker pins the EXPLICIT slow-call strategy: only the
@@ -608,21 +589,21 @@ func TestSlowCallStrategyBreaker(t *testing.T) {
 	})
 	// Fast failures only: a slow-call breaker must not trip on them.
 	for range 5 {
-		_ = e.Execute(context.Background(), chain.Operation{}, func(context.Context) error {
+		_ = e.Execute(context.Background(), chain.Operation{}, nil, func(context.Context) error {
 			return errutil.Explain(nil, "fast failure")
 		})
 	}
-	err := e.Execute(context.Background(), chain.Operation{}, func(context.Context) error { return nil })
+	err := e.Execute(context.Background(), chain.Operation{}, nil, func(context.Context) error { return nil })
 	assert.Error(t, err).Nil() // still closed: failures are not slowness
 
 	// Slow successes only: 2/2 slow >= 0.5 trips it.
 	for range 2 {
-		_ = e.Execute(context.Background(), chain.Operation{}, func(context.Context) error {
+		_ = e.Execute(context.Background(), chain.Operation{}, nil, func(context.Context) error {
 			time.Sleep(25 * time.Millisecond)
 			return nil
 		})
 	}
-	err = e.Execute(context.Background(), chain.Operation{}, func(context.Context) error { return nil })
+	err = e.Execute(context.Background(), chain.Operation{}, nil, func(context.Context) error { return nil })
 	assert.Error(t, err).Is(chain.ErrCircuitOpen)
 }
 
@@ -639,12 +620,12 @@ func TestErrorCountStrategyBreaker(t *testing.T) {
 		OpenDuration:    time.Minute,
 	})
 	// fail, ok, fail, ok: never 3 in a row, but 3 failures in the window.
-	_ = e.Execute(context.Background(), chain.Operation{}, func(context.Context) error { return errutil.Explain(nil, "boom") })
-	_ = e.Execute(context.Background(), chain.Operation{}, func(context.Context) error { return nil })
-	_ = e.Execute(context.Background(), chain.Operation{}, func(context.Context) error { return errutil.Explain(nil, "boom") })
-	_ = e.Execute(context.Background(), chain.Operation{}, func(context.Context) error { return nil })
-	_ = e.Execute(context.Background(), chain.Operation{}, func(context.Context) error { return errutil.Explain(nil, "boom") }) // 3rd failure trips
-	err := e.Execute(context.Background(), chain.Operation{}, func(context.Context) error { return nil })
+	_ = e.Execute(context.Background(), chain.Operation{}, nil, func(context.Context) error { return errutil.Explain(nil, "boom") })
+	_ = e.Execute(context.Background(), chain.Operation{}, nil, func(context.Context) error { return nil })
+	_ = e.Execute(context.Background(), chain.Operation{}, nil, func(context.Context) error { return errutil.Explain(nil, "boom") })
+	_ = e.Execute(context.Background(), chain.Operation{}, nil, func(context.Context) error { return nil })
+	_ = e.Execute(context.Background(), chain.Operation{}, nil, func(context.Context) error { return errutil.Explain(nil, "boom") }) // 3rd failure trips
+	err := e.Execute(context.Background(), chain.Operation{}, nil, func(context.Context) error { return nil })
 	assert.Error(t, err).Is(chain.ErrCircuitOpen)
 }
 
@@ -655,20 +636,29 @@ func TestFallbackDegradesOnRejection(t *testing.T) {
 	boom := errutil.Explain(nil, "boom")
 
 	// Trip the breaker.
-	assert.Error(t, e.Execute(context.Background(), chain.Operation{}, func(context.Context) error { return boom })).Is(boom)
+	assert.Error(t, e.Execute(context.Background(), chain.Operation{}, nil, func(context.Context) error { return boom })).Is(boom)
 
 	var seen error
-	err := Fallback(context.Background(), e, chain.Operation{},
+	op := chain.Operation{}
+	rec := &chain.Recorder{}
+	err := Fallback(context.Background(), e, op, rec,
 		func(context.Context) error { return errutil.Explain(nil, "should not run") },
 		func(_ context.Context, cause error) error { seen = cause; return nil })
 	assert.Error(t, err).Nil()
 	assert.Error(t, seen).Is(chain.ErrCircuitOpen)
+	// The record carries the rejection that triggered the degrade: it is how a
+	// degraded result is told from a real one — the call's rounds say it failed,
+	// and this one says why.
+	last, ok := rec.LastRound()
+	assert.That(t, ok).True("the refusal was recorded as a round")
+	assert.String(t, last.ErrorType).Equal("circuit_open")
+	assert.Error(t, last.Err).Is(chain.ErrCircuitOpen)
 }
 
 func TestFallbackNilExecStillDegrades(t *testing.T) {
 	// With no executor the call runs directly, and a failure still reaches degrade.
 	boom := errutil.Explain(nil, "boom")
-	err := Fallback(context.Background(), nil, chain.Operation{},
+	err := Fallback(context.Background(), nil, chain.Operation{}, nil,
 		func(context.Context) error { return boom },
 		func(_ context.Context, cause error) error {
 			if errors.Is(cause, boom) {
@@ -709,20 +699,20 @@ func TestBreakerEvents(t *testing.T) {
 	boom := errutil.Explain(nil, "boom")
 	ctx := context.Background()
 	// Two consecutive failures trip the breaker (closed → open).
-	_ = exec.Execute(ctx, chain.Operation{}, func(context.Context) error { return boom })
-	_ = exec.Execute(ctx, chain.Operation{}, func(context.Context) error { return boom })
+	_ = exec.Execute(ctx, chain.Operation{}, nil, func(context.Context) error { return boom })
+	_ = exec.Execute(ctx, chain.Operation{}, nil, func(context.Context) error { return boom })
 	assert.That(t, len(rec.events)).Equal(1)
 	assert.That(t, rec.events[0].from).Equal(BreakerClosed)
 	assert.That(t, rec.events[0].to).Equal(BreakerOpen)
 
 	// The breaker is open: this call is rejected before fn runs, no transition.
-	_ = exec.Execute(ctx, chain.Operation{}, func(context.Context) error { return nil })
+	_ = exec.Execute(ctx, chain.Operation{}, nil, func(context.Context) error { return nil })
 	assert.That(t, len(rec.events)).Equal(1)
 
 	// Wait out the cool-down so the next call is admitted as a half-open trial.
 	time.Sleep(20 * time.Millisecond)
 	// Trial succeeds: open → half-open (probe admitted), then half-open → closed.
-	_ = exec.Execute(ctx, chain.Operation{}, func(context.Context) error { return nil })
+	_ = exec.Execute(ctx, chain.Operation{}, nil, func(context.Context) error { return nil })
 	assert.That(t, len(rec.events)).Equal(3)
 	assert.That(t, rec.events[1].from).Equal(BreakerOpen)
 	assert.That(t, rec.events[1].to).Equal(BreakerHalfOpen)
@@ -738,7 +728,7 @@ func TestBreakerEventsNoListener(t *testing.T) {
 	assert.Error(t, err).Nil()
 	defer func() { _ = exec.Close() }()
 
-	err = exec.Execute(context.Background(), chain.Operation{}, func(context.Context) error { return errutil.Explain(nil, "boom") })
+	err = exec.Execute(context.Background(), chain.Operation{}, nil, func(context.Context) error { return errutil.Explain(nil, "boom") })
 	assert.Error(t, err).NotNil() // tripped, no panic
 }
 
@@ -755,34 +745,34 @@ func TestExecutorRebuildStartsClean(t *testing.T) {
 
 	ctx := context.Background()
 	boom := errutil.Explain(nil, "boom")
-	_ = tight.Execute(ctx, chain.Operation{}, func(context.Context) error { return boom }) // trips (threshold 1)
-	assert.Error(t, tight.Execute(ctx, chain.Operation{}, func(context.Context) error { return nil })).Is(chain.ErrCircuitOpen)
+	_ = tight.Execute(ctx, chain.Operation{}, nil, func(context.Context) error { return boom }) // trips (threshold 1)
+	assert.Error(t, tight.Execute(ctx, chain.Operation{}, nil, func(context.Context) error { return nil })).Is(chain.ErrCircuitOpen)
 
 	// The same service under a looser policy: a newly built executor, so its
 	// breaker starts closed and the call runs.
 	loose, err := d.NewClientExecutor("svc", ClientPolicy{ErrorThreshold: 100, OpenDuration: time.Hour})
 	assert.Error(t, err).Nil()
 	defer func() { _ = loose.Close() }()
-	assert.Error(t, loose.Execute(ctx, chain.Operation{}, func(context.Context) error { return nil })).Nil()
+	assert.Error(t, loose.Execute(ctx, chain.Operation{}, nil, func(context.Context) error { return nil })).Nil()
 
 	// A negative rate limit is not special-cased at construction: it builds, and
 	// the rate-limit stage treats it as no limit at all (RateLimit <= 0 is off).
 	neg, err := d.NewClientExecutor("svc", ClientPolicy{RateLimit: -1})
 	assert.Error(t, err).Nil()
 	defer func() { _ = neg.Close() }()
-	assert.Error(t, neg.Execute(ctx, chain.Operation{}, func(context.Context) error { return nil })).Nil()
+	assert.Error(t, neg.Execute(ctx, chain.Operation{}, nil, func(context.Context) error { return nil })).Nil()
 }
 
 // TestGovernanceLoopRecordsAttempts proves the retry loop writes each attempt —
 // its outcome and its own cost — and the sleep between attempts into the
-// context-carried recorder, which is the only source the outer emitter has.
+// caller-supplied recorder, which is the only source the outer emitter has.
 func TestGovernanceLoopRecordsAttempts(t *testing.T) {
 	e := newBuiltin(t, ClientPolicy{Retry: chain.RetryPolicy{MaxRetries: 2, InitialInterval: 5 * time.Millisecond}})
 	boom := errutil.Explain(nil, "transient")
 
-	ctx, rec := WithRecorder(context.Background())
+	rec := &chain.Recorder{}
 	var calls int
-	err := e.Execute(ctx, chain.Operation{}, func(context.Context) error {
+	err := e.Execute(context.Background(), chain.Operation{}, rec, func(context.Context) error {
 		calls++
 		if calls < 3 {
 			return boom
@@ -791,7 +781,7 @@ func TestGovernanceLoopRecordsAttempts(t *testing.T) {
 	})
 	assert.Error(t, err).Nil()
 
-	got := rec.Attempts()
+	got := rec.Rounds()
 	assert.Number(t, len(got)).Equal(3)
 	assert.Error(t, got[0].Err).Is(boom)
 	assert.Error(t, got[1].Err).Is(boom)
@@ -802,58 +792,69 @@ func TestGovernanceLoopRecordsAttempts(t *testing.T) {
 	assert.String(t, got[1].Status).Equal("error")
 	assert.String(t, got[2].Status).Equal("ok")
 	// Two gaps between three attempts, each the (Multiplier==0 -> 1) fixed
-	// interval. The recorder holds the intended sleep, so the assertion is exact
-	// rather than timing-dependent.
-	assert.Number(t, rec.Backoff()).Equal(10 * time.Millisecond)
+	// interval. The record holds each attempt's own start and duration, so the
+	// sleep between attempts is the observed gap between one attempt's end and
+	// the next attempt's start.
+	gap1 := got[1].Start.Sub(got[0].Start.Add(got[0].Duration))
+	gap2 := got[2].Start.Sub(got[1].Start.Add(got[1].Duration))
+	assert.That(t, gap1 >= 4*time.Millisecond).True()
+	assert.That(t, gap2 >= 4*time.Millisecond).True()
 }
 
-// TestRejectionRecordsNoAttempt proves a call a protection stage rejects before
-// any attempt runs leaves the recorder empty rather than inventing an attempt —
-// the emitter reads that emptiness as "rejected, downstream untouched".
-func TestRejectionRecordsNoAttempt(t *testing.T) {
+// TestRejectionRecordsOneGateRound proves a refusal is itself a ROUND: a call a
+// protection stage rejects before any attempt runs records the gate's verdict —
+// no peer (nothing was sent), zero duration (no downstream time) and the gate's
+// own word in Outcome — so "rejected" is distinguishable from "ran and failed"
+// on the call's own record instead of being inferred from an empty one.
+func TestRejectionRecordsOneGateRound(t *testing.T) {
 	e := newBuiltin(t, ClientPolicy{RateLimit: 1, Burst: 1})
-	ctx, rec := WithRecorder(context.Background())
 
 	// First call spends the burst; the second is rejected before running fn.
-	assert.Error(t, e.Execute(ctx, chain.Operation{}, func(context.Context) error { return nil })).Nil()
-	assert.Error(t, e.Execute(ctx, chain.Operation{}, func(context.Context) error { return nil })).Is(chain.ErrRateLimited)
+	rec := &chain.Recorder{}
+	assert.Error(t, e.Execute(context.Background(), chain.Operation{}, rec, func(context.Context) error { return nil })).Nil()
+	rec2 := &chain.Recorder{}
+	assert.Error(t, e.Execute(context.Background(), chain.Operation{}, rec2, func(context.Context) error { return nil })).Is(chain.ErrRateLimited)
 
-	// The recorder is per call: the rejection ran on a fresh one.
-	_, rec2 := WithRecorder(context.Background())
-	assert.Number(t, len(rec.Attempts())).Equal(1)
-	assert.Number(t, len(rec2.Attempts())).Equal(0)
+	// The recorder is per call: the rejection landed on its own.
+	assert.Number(t, len(rec.Rounds())).Equal(1)
+	assert.Number(t, len(rec2.Rounds())).Equal(1)
+
+	rejected := rec2.Rounds()[0]
+	assert.String(t, rejected.ErrorType).Equal("rate_limited")
+	assert.String(t, rejected.Status).Equal("error")
+	assert.Error(t, rejected.Err).Is(chain.ErrRateLimited)
+	assert.That(t, rejected.Duration).Equal(time.Duration(0))
 }
 
-// TestNestedCallDoesNotHijackOuterRecorder pins the load-bearing detail: the
-// outer loop holds the Recorder it looked up at entry, so a protected call
-// nested inside its fn installs and writes its own without stealing the outer
-// call's records. Were the lookup per-write instead of once-at-entry, the inner
-// Recorder would take the outer's attempt.
+// TestNestedCallDoesNotHijackOuterRecorder pins the load-bearing detail: each
+// call carries its own recorder, so a protected call nested inside its fn writes
+// its own record without stealing the outer call's. Were the record shared rather
+// than per-call, the inner call would take the outer's attempt.
 func TestNestedCallDoesNotHijackOuterRecorder(t *testing.T) {
 	outer := newBuiltin(t, ClientPolicy{})
 	inner := newBuiltin(t, ClientPolicy{})
 
-	ctx, outerRec := WithRecorder(context.Background())
-	err := outer.Execute(ctx, chain.Operation{}, func(innerCtx context.Context) error {
-		innerCtx, innerRec := WithRecorder(innerCtx)
-		assert.Error(t, inner.Execute(innerCtx, chain.Operation{}, func(context.Context) error { return nil })).Nil()
-		assert.Number(t, len(innerRec.Attempts())).Equal(1)
-		assert.String(t, innerRec.Attempts()[0].Status).Equal("ok")
+	outerRec := &chain.Recorder{}
+	err := outer.Execute(context.Background(), chain.Operation{}, outerRec, func(innerCtx context.Context) error {
+		innerRec := &chain.Recorder{}
+		assert.Error(t, inner.Execute(innerCtx, chain.Operation{}, innerRec, func(context.Context) error { return nil })).Nil()
+		assert.Number(t, len(innerRec.Rounds())).Equal(1)
+		assert.String(t, innerRec.Rounds()[0].Status).Equal("ok")
 		return errutil.Explain(nil, "outer fails")
 	})
 
 	assert.Error(t, err).NotNil()
-	assert.Number(t, len(outerRec.Attempts())).Equal(1)
-	assert.Error(t, outerRec.Attempts()[0].Err).NotNil()
+	assert.Number(t, len(outerRec.Rounds())).Equal(1)
+	assert.Error(t, outerRec.Rounds()[0].Err).NotNil()
 }
 
-// TestExecuteWithoutRecorderIsSafe proves an executor used with a bare context —
-// no governance layer installing a recorder — runs unchanged: recording is
+// TestExecuteWithoutRecorderIsSafe proves an executor used with a nil recorder —
+// a caller that declined to keep a record — runs unchanged: recording is
 // additive and never required.
 func TestExecuteWithoutRecorderIsSafe(t *testing.T) {
 	e := newBuiltin(t, ClientPolicy{Retry: chain.RetryPolicy{MaxRetries: 1, InitialInterval: time.Millisecond}})
 	var calls int
-	err := e.Execute(context.Background(), chain.Operation{}, func(context.Context) error {
+	err := e.Execute(context.Background(), chain.Operation{}, nil, func(context.Context) error {
 		calls++
 		return errutil.Explain(nil, "transient")
 	})
@@ -864,3 +865,39 @@ func TestExecuteWithoutRecorderIsSafe(t *testing.T) {
 // The emitter-facing tests (declared span kind, two-grain metrics, undeclared
 // fallback, rejected-still-emits) live in emitter_test.go — the external test
 // package, since the wrapper they drive imports this package.
+
+// TestPartitionsStateByMatchedRule proves protection state is partitioned by the
+// RULE a call's metadata selects, not by the metadata itself: calls matching the
+// same rule share one rate budget, and a rule that gives one service a different
+// policy gets its own — so one tenant's load cannot exhaust another's budget. It
+// also proves the policy resolver — the seam governance uses to match a rule on
+// a call's Metadata — selects both the policy and the state key.
+func TestPartitionsStateByMatchedRule(t *testing.T) {
+	d := NewDefaultDriver(nil)
+	e, err := d.NewClientExecutor("svc", ClientPolicy{})
+	assert.Error(t, err).Nil()
+	defer func() { _ = e.Close() }()
+
+	// A call whose metadata says tenant=limited runs under a one-token rate
+	// limit, keyed by the rule it matched; every other call takes the zero
+	// (pass-through) policy under the service key.
+	e.(PolicySourceSetter).SetPolicySource(stubSource(func(op chain.Operation) CallPolicy {
+		if op.Request.Metadata["tenant"] == "limited" {
+			return CallPolicy{Policy: ClientPolicy{RateLimit: 1, Burst: 1}, Key: "svc#0"}
+		}
+		return CallPolicy{Policy: ClientPolicy{}, Key: op.Service}
+	}))
+
+	limited := chain.Operation{Request: chain.Request{Metadata: map[string]string{"tenant": "limited"}}}
+	other := chain.Operation{Request: chain.Request{Metadata: map[string]string{"tenant": "other"}}}
+	noop := func(context.Context) error { return nil }
+
+	// The limited rule's key spends its one token; the next call is rejected.
+	assert.Error(t, e.Execute(context.Background(), limited, nil, noop)).Nil()
+	assert.Error(t, e.Execute(context.Background(), limited, nil, noop)).Is(chain.ErrRateLimited)
+
+	// A different rule (the default, another key) has its OWN budget.
+	for range 3 {
+		assert.Error(t, e.Execute(context.Background(), other, nil, noop)).Nil()
+	}
+}

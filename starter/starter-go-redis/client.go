@@ -56,7 +56,7 @@ type Client struct {
 
 	// exec is the resilience executor protecting every command, set by [NewClient]
 	// from the container's governance center. The center must hold a
-	// [resilience.Manager]: [governance.Center.ExecutorFor] panics without one.
+	// [resilience.ClientManager]: [governance.Center.ExecutorFor] panics without one.
 	exec chain.Executor
 	// serviceLabel is the resilience service key ("redis:<...>") exec scopes
 	// limiter/breaker state by. Fixed by [NewClient].
@@ -82,7 +82,7 @@ type Client struct {
 // applied HERE, so a Client cannot exist half-assembled: [Client.exec] is set in
 // the constructor and there is no Init step and nothing the container has to
 // remember to call later. A hand-built client must supply a center holding a
-// [resilience.Manager]: [governance.Center.ExecutorFor] is required, so a nil
+// [resilience.ClientManager]: [governance.Center.ExecutorFor] is required, so a nil
 // center is a construction error — never a graceful downgrade to an unprotected
 // client.
 //
@@ -220,6 +220,9 @@ func (h *resilienceHook) guard(ctx context.Context, op chain.Operation, cmd redi
 // resilience rejection or an injected fault — where go-redis had no chance to
 // record anything. callErr is tracked for that distinction.
 func (h *resilienceHook) run(ctx context.Context, op chain.Operation, setErr func(error), call func(context.Context) error) error {
+	// Name the service on the operation: the fault layer matches its rules on it,
+	// and it sits outside this executor so it cannot borrow the label from here.
+	op.Service = h.serviceLabel
 	var callErr error
 	_, err := resilience.Run(ctx, h.exec, op,
 		func(actx context.Context) (struct{}, error) {

@@ -110,7 +110,7 @@ func StartProducerSpan(ctx context.Context, msg *primitive.Message) (context.Con
 		trace.WithAttributes(
 			attribute.String("messaging.system", "rocketmq"),
 			attribute.String("messaging.destination.name", msg.Topic),
-			attribute.String("messaging.operation", "publish"),
+			attribute.String("messaging.operation", "send"),
 		),
 	)
 	otel.GetTextMapPropagator().Inject(ctx, msgCarrier{msg})
@@ -132,7 +132,7 @@ func StartConsumerSpan(ctx context.Context, ext *primitive.MessageExt) (context.
 		trace.WithAttributes(
 			attribute.String("messaging.system", "rocketmq"),
 			attribute.String("messaging.destination.name", ext.Topic),
-			attribute.String("messaging.operation", "receive"),
+			attribute.String("messaging.operation", "process"),
 		),
 	)
 	return ctx, span
@@ -251,7 +251,7 @@ func (o *ObsProducer) SendSync(ctx context.Context, msg *primitive.Message) (*pr
 	if o.obs == nil {
 		return o.next.SendSync(ctx, msg)
 	}
-	err := o.obs.Observe(ctx, operation(opPublish, msg.Topic), func(callCtx context.Context) error {
+	err := o.obs.Observe(ctx, operation(opSend, msg.Topic), nil, func(callCtx context.Context) error {
 		var serr error
 		res, serr = o.next.SendSync(callCtx, msg)
 		return serr

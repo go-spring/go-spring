@@ -18,6 +18,7 @@ package luohua
 
 import (
 	"context"
+
 	"go-spring.org/cloud/chain"
 
 	"go-spring.org/cloud/resilience"
@@ -63,7 +64,12 @@ type luohuaExecutor struct {
 	service string
 }
 
-func (e *luohuaExecutor) Execute(ctx context.Context, op chain.Operation, fn func(context.Context) error) error {
+func (e *luohuaExecutor) Execute(ctx context.Context, op chain.Operation, rec *chain.Recorder, fn func(context.Context) error) error {
+	// Name the service this executor guards; a layer below (or a direct user that
+	// left it blank) then has the call's identity without having to know it.
+	if op.Service == "" {
+		op.Service = e.service
+	}
 	// luohua verification flavor: a per-call trace tagged luohua/governance, so
 	// a process where spring.resilience.driver=luohua is in effect is observable in logs.
 	// This is the company hook point — a real luohua company would hang its own
@@ -71,7 +77,7 @@ func (e *luohuaExecutor) Execute(ctx context.Context, op chain.Operation, fn fun
 	log.Debug(ctx, log.TagAppDef, "luohua/governance", func() []log.Field {
 		return []log.Field{log.String("service", e.service)}
 	})
-	return e.inner.Execute(ctx, op, fn)
+	return e.inner.Execute(ctx, op, rec, fn)
 }
 
 // SetBreakerEventListener forwards to the inner executor so the breakers of the
@@ -85,40 +91,16 @@ func (e *luohuaExecutor) SetBreakerEventListener(l resilience.BreakerEventListen
 	}
 }
 
+// SetPolicySource forwards the manager to the inner executor, so the luohua
+// marker does not stand between the manager and the executor that follows its
+// config. Forwarding it is not optional: an inner executor that never receives
+// its source keeps the construction-time policy for every call, which means
+// per-rule matching and hot reload are silently off for
+// spring.resilience.driver=luohua — the marker would be the only reason.
+func (e *luohuaExecutor) SetPolicySource(src resilience.PolicySource) {
+	if s, ok := e.inner.(resilience.PolicySourceSetter); ok {
+		s.SetPolicySource(src)
+	}
+}
+
 func (e *luohuaExecutor) Close() error { return e.inner.Close() }
-
-// NewServerExecutor is the inbound counterpart of [luohuaResilienceDriver.NewClientExecutor]:
-// it builds the bundled driver's inbound executor and wraps it with the same
-// luohua marker, so spring.resilience.driver=luohua flavors inbound governance too — a fleet
-// whose only outbound calls were marked would leave the inbound half of its
-// governance unobservable.
-func (d luohuaResilienceDriver) NewServerExecutor(service string, p resilience.ServerPolicy) (chain.Executor, error) {
-	inner, err := resilience.NewDefaultDriver(d.limiter).NewServerExecutor(service, p)
-	if err != nil {
-		return nil, err
-	}
-	return &luohuaServerExecutor{inner: inner, service: service}, nil
-}
-
-// luohuaServerExecutor is the inbound twin of [luohuaExecutor]: the same
-// marker, the same delegating contract, refreshed with the inbound model it was
-// built from.
-type luohuaServerExecutor struct {
-	inner   chain.Executor
-	service string
-}
-
-func (e *luohuaServerExecutor) Execute(ctx context.Context, op chain.Operation, fn func(context.Context) error) error {
-	log.Debug(ctx, log.TagAppDef, "luohua/governance inbound", func() []log.Field {
-		return []log.Field{log.String("service", e.service)}
-	})
-	return e.inner.Execute(ctx, op, fn)
-}
-
-func (e *luohuaServerExecutor) SetBreakerEventListener(l resilience.BreakerEventListener) {
-	if s, ok := e.inner.(resilience.BreakerEventListenerSetter); ok {
-		s.SetBreakerEventListener(l)
-	}
-}
-
-func (e *luohuaServerExecutor) Close() error { return e.inner.Close() }

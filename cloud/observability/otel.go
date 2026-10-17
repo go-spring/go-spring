@@ -40,8 +40,10 @@ package observability
 
 import (
 	"context"
+	"slices"
 
 	"go.opentelemetry.io/otel/attribute"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/trace"
 )
 
@@ -132,3 +134,63 @@ func SetSpanAttributes(ctx context.Context, attrs ...attribute.KeyValue) {
 	}
 	trace.SpanFromContext(ctx).SetAttributes(attrs...)
 }
+
+// spanAttrsProcessor applies the attributes a context carries (see
+// [WithSpanAttributes]) to every span started with it.
+//
+// It is what makes those attributes need no cooperation from instrumentation
+// points. The OTel SDK calls OnStart with the context the caller passed to
+// tracer.Start -- "Use original context", sdk/trace/tracer.go -- so one
+// processor installed on the provider covers every span in the process,
+// including the ones the framework starts internally.
+//
+// The writer half of this contract needs no OTel SDK — see [WithSpanAttributes].
+// The reader does, and it lives in the same file because the two are halves of
+// one contract; the cost of that choice is that importing the package links the
+// SDK even for a caller that only ever writes.
+type spanAttrsProcessor struct{}
+
+// OnStart implements sdktrace.SpanProcessor.
+func (spanAttrsProcessor) OnStart(parent context.Context, s sdktrace.ReadWriteSpan) {
+	if attrs := SpanAttributes(parent); len(attrs) > 0 {
+		s.SetAttributes(attrs...)
+	}
+}
+
+// OnEnd implements sdktrace.SpanProcessor.
+func (spanAttrsProcessor) OnEnd(sdktrace.ReadOnlySpan) {}
+
+// Shutdown implements sdktrace.SpanProcessor. It holds no resources, so there is
+// nothing to release.
+func (spanAttrsProcessor) Shutdown(context.Context) error { return nil }
+
+// ForceFlush implements sdktrace.SpanProcessor. It holds no resources, so there
+// is nothing to flush.
+func (spanAttrsProcessor) ForceFlush(context.Context) error { return nil }
+
+// SpanAttributesProcessor returns the [sdktrace.SpanProcessor] that applies the
+// attributes a context carries (see [WithSpanAttributes]) to every span started
+// with it.
+//
+// starter-otel's NewTracerProvider registers one automatically, so an
+// application that lets it build the TracerProvider needs to do nothing. It is
+// exported for the other case: an application that builds its own
+// TracerProvider must register this processor itself, or the carrier has no
+// reader and is inert.
+func SpanAttributesProcessor() sdktrace.SpanProcessor { return spanAttrsProcessor{} }
+
+// DurationBuckets returns the duration-histogram boundaries, in seconds, that
+// every component builds its duration histograms from: the OTel HTTP semconv
+// recommended set. One definition rather than a literal per package: a boundary
+// is what makes two histograms comparable, and a drifted boundary is silent — the
+// metric still reports, it just can no longer be bucketed against its siblings.
+//
+// It returns a fresh copy on every call. A component whose durations live on a
+// different scale (cloud/scheduling's wake-up lag is the one such case today)
+// takes the copy, edits it, and keeps it local; it cannot retune every other
+// component's histograms by writing through this name.
+func DurationBuckets() []float64 { return slices.Clone(durationBuckets[:]) }
+
+// durationBuckets is the single definition [DurationBuckets] hands out. An
+// array, not a slice literal, so passing it whole copies rather than aliases.
+var durationBuckets = [14]float64{0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.25, 0.5, 0.75, 1, 2.5, 5, 7.5, 10}

@@ -214,7 +214,7 @@ Init, before traffic.
    `db.system`/`db.operation`, and a summarized argument `GET key` as `db.statement` (command +
    first arg only — values are never logged; bounded to 512 bytes [observe.go]). The key rides
    as span/log detail, never as a metric label, because keys are unbounded. ctx is the CALLER's
-   context, so the span links to the request trace and an attempt-timeout can interrupt the call.
+   context, so the span links to the request trace and an timeout can interrupt the call.
 3. resilience layer asks the executor (service label `redigo:<addr-or-service-name>`,
    per pool [pool.go:190]) for a permit; on retry-able failures it re-drives the inner call.
 4. The inner `Do` writes/reads Redis; a hit returns the bulk string.
@@ -224,7 +224,7 @@ Init, before traffic.
    `db.client.attempt.duration` (per try) record, and the access-log line (tag
    `_app_redigo_access`) emits with duration/status.
 
-`Do` / `DoWithTimeout` carry no context: their spans are roots and an attempt-timeout cannot
+`Do` / `DoWithTimeout` carry no context: their spans are roots and an timeout cannot
 interrupt them — prefer `DoContext` when either matters [conn.go:74-79]. `Send`/`Flush`/`Receive`
 (pipelining) are left uninstrumented by design.
 

@@ -35,36 +35,38 @@ func TestConfig_DirectionBlocks(t *testing.T) {
 		t.Fatal("zero Config: both fault sides should be inert")
 	}
 	c := newTestCenter(zero)
-	if p := c.res.ClientPolicyFor("x"); p.AttemptTimeout != 0 {
-		t.Fatalf("zero config policyFor: want no timeout, got %v", p.AttemptTimeout)
+	if p := c.resClient.ClientPolicyFor("x"); p.Timeout != 0 {
+		t.Fatalf("zero config policyFor: want no timeout, got %v", p.Timeout)
 	}
-	if a := c.res.ServerPolicyFor("x"); !a.IsZero() {
+	if a := c.GuardServer().PolicyFor("x"); !a.IsZero() {
 		t.Fatalf("zero config serverPolicyFor: want a zero inbound, got %+v", a)
 	}
 
 	// One fault config per side: each is preserved, and they stay independent.
 	cfg := Config{
 		Client: ClientConfig{
-			Default: ClientDefaultPolicy{ClientPolicy: resilience.ClientPolicy{AttemptTimeout: dur(100)}},
-			Fault:   fault.Config{Rate: 0.5, Error: "generic"},
+			Default: ClientDefaultPolicy{ClientPolicy: resilience.ClientPolicy{Timeout: dur(100)}},
+			Fault:   fault.Config{Rules: []fault.Rule{{Rate: 0.5, Error: "generic"}}},
 		},
 		Server: ServerConfig{
-			Fault: fault.Config{Rate: 1, Error: "timeout"},
+			Fault: fault.Config{Rules: []fault.Rule{{Rate: 1, Error: "timeout"}}},
 		},
 	}
-	if cf := cfg.Client.Fault; cf.Rate != 0.5 || cf.Error != "generic" {
+	if cf := cfg.Client.Fault; len(cf.Rules) != 1 ||
+		cf.Rules[0].Rate != 0.5 || cf.Rules[0].Error != "generic" {
 		t.Fatalf("ClientConfig.Fault not preserved: %+v", cf)
 	}
-	if sf := cfg.Server.Fault; sf.Rate != 1 || sf.Error != "timeout" {
+	if sf := cfg.Server.Fault; len(sf.Rules) != 1 ||
+		sf.Rules[0].Rate != 1 || sf.Rules[0].Error != "timeout" {
 		t.Fatalf("ServerConfig.Fault not preserved: %+v", sf)
 	}
 	cc := newTestCenter(cfg)
-	if p := cc.res.ClientPolicyFor("redis:cache"); p.AttemptTimeout != dur(100) {
-		t.Fatalf("policyFor with Fault set: want timeout 100ms, got %v", p.AttemptTimeout)
+	if p := cc.resClient.ClientPolicyFor("redis:cache"); p.Timeout != dur(100) {
+		t.Fatalf("policyFor with Fault set: want timeout 100ms, got %v", p.Timeout)
 	}
 	// An outbound-only document leaves inbound at zero: the server side does not
 	// inherit the client's knobs.
-	if a := cc.res.ServerPolicyFor("gin:0.0.0.0:8080"); !a.IsZero() {
+	if a := cc.GuardServer().PolicyFor("gin:0.0.0.0:8080"); !a.IsZero() {
 		t.Fatalf("client-only document must leave inbound zero, got %+v", a)
 	}
 }
@@ -78,13 +80,13 @@ func TestDispatch_RejectsDuplicateRules(t *testing.T) {
 			Rules: []ClientRule{{Service: "redis:cache"}, {Service: "redis:session"}},
 		},
 	}
-	c, _, _, _ := newTestCenterWith(good)
+	c, _, _, _, _ := newTestCenterWith(good)
 
 	bad := Config{
 		Client: ClientConfig{
 			Rules: []ClientRule{
-				{Service: "redis:cache", ClientPolicy: resilience.ClientPolicy{AttemptTimeout: dur(50)}},
-				{Service: "redis:cache", ClientPolicy: resilience.ClientPolicy{AttemptTimeout: dur(999)}},
+				{Service: "redis:cache", ClientPolicy: resilience.ClientPolicy{Timeout: dur(50)}},
+				{Service: "redis:cache", ClientPolicy: resilience.ClientPolicy{Timeout: dur(999)}},
 			},
 		},
 	}
@@ -92,8 +94,8 @@ func TestDispatch_RejectsDuplicateRules(t *testing.T) {
 		t.Fatal("dispatch must reject a document with duplicate service labels")
 	}
 	// The previous snapshot keeps serving: the good timeout, not either duplicate.
-	if p := c.res.ClientPolicyFor("redis:cache"); p.AttemptTimeout != 0 {
-		t.Fatalf("rejected push must not leak into the serving snapshot: got timeout %v", p.AttemptTimeout)
+	if p := c.resClient.ClientPolicyFor("redis:cache"); p.Timeout != 0 {
+		t.Fatalf("rejected push must not leak into the serving snapshot: got timeout %v", p.Timeout)
 	}
 
 	// Empty labels match nothing and are not duplicates of one another.

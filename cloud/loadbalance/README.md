@@ -167,28 +167,30 @@ chain under it:
 // mgr is the injected *loadbalance.Manager; nil means no governance is present.
 var chain *loadbalance.Chain
 if mgr != nil {
-	chain = mgr.Chain(resolver, "http:user-svc") // registered: rebuilt on change
+	chain = mgr.Chain(resolver, "http:user-svc") // follows the label's selection
 } else {
 	chain = loadbalance.NewChain(resolver, "http:user-svc") // standalone
 }
 ep, err := chain.Pick(loadbalance.PickInfo{})
 ```
 
-- `mgr.Chain(resolver, label)` registers the chain under the label, so the
+- `mgr.Chain(resolver, label)` builds the chain under the label, so the
   label's current `Selection` applies to the generation it builds **immediately**,
-  and every later change **rebuilds the chain from scratch** — a new balancer, a
-  new tracker, a new pool, sharing nothing with the generation it replaces. The
-  `Chain` is the ONLY outward surface: a request path calls `chain.Pick` and
-  `chain.Complete` directly; the inner `Pool` is not exposed. The registration is
-  **one-way, and permanent**:
+  and a later change **rebuilds the chain from scratch** — a new balancer, a new
+  tracker, a new pool, sharing nothing with the generation it replaces. The
+  rebuild is PULLED, not pushed: the chain holds a `SelectionSource` (the
+  manager) and reads its label's generation on every request, rebuilding when it
+  moves. The `Chain` is the ONLY outward surface: a request path calls
+  `chain.Pick` and `chain.Complete` directly; the inner `Pool` is not exposed. The
+  registration is **one-way, and permanent**:
   there is no detach, so a chain must outlive the manager that governs it (which
   is what a bean-managed chain is). Everything is released by `Manager.Close`, at
   the end of the manager's life.
-- Registering with an **unarmed** manager is safe and is the normal case for a
-  chain built during container wiring: the base generation is built and the chain
-  is rebuilt by the first `Apply`. With no manager at all (a container with no
-  `cloud/governance` bean, or a standalone caller) the chain is built once and
-  never rebuilt — a transparent pass-through.
+- Building under an **unarmed** manager is safe and is the normal case for a
+  chain built during container wiring: the base generation is built, and the chain
+  moves to the document's generation on its first request after it arrives. With
+  no manager at all (a container with no `cloud/governance` bean, or a standalone
+  caller) the chain is built once and never rebuilt — a transparent pass-through.
 - A resolved `Selection` is complete, so an empty strategy name means the base
   strategy (round-robin) — there is no "current strategy" a rebuild could leave
   alone. An **unknown** name is ignored and the last good generation stays in
@@ -201,9 +203,13 @@ ep, err := chain.Pick(loadbalance.PickInfo{})
 calls — once with the source's snapshot, then on every push. The center PUSHES the
 rules and this package does the matching — a `Settings.Default` plus a `Rules` list,
 the first Rule whose `Service` equals the label wins — the same shape `fault` already
-had. There is no read-back: the manager only ever PUSHES into sinks — it rebuilds
-a registered `Chain` (the gRPC client's included: it builds its chain over the
-READY-snapshot source, so refresh reaches it like any other chain).
+had. Apply then STOPS: it publishes the document as a new generation and does not
+touch a single chain. Each chain reads its label's generation on the request path
+(`Manager.ResolveSelection`) and rebuilds itself when it moves, so a push that
+changes nothing for a label costs its chains nothing — the generation is derived
+from content, so re-applying an identical document is not a change. Pushes that
+land between requests are coalesced: the chain moves straight to the generation in
+force, not through every one it missed.
 
 A rule names the strategy and carries its parameters as a flat sub-map, opaque to
 this package:

@@ -62,7 +62,7 @@ func main() {
 exec, _ := driver.NewExecutor("sentinel:test", resilience.ClientPolicy{
     RateLimit: 100, ErrorThreshold: 10, MaxRetries: 3, Timeout: time.Second,
 })
-client := &http.Client{Transport: resilience.NewRoundTripper(http.DefaultTransport, exec, nil)}
+client := &http.Client{Transport: resilience.NewRoundTripper(http.DefaultTransport, exec, service, nil)}
 resp, _ := client.Get("http://127.0.0.1:PORT/flaky") // 200；服务端恰好命中 3 次
 ```
 
@@ -74,7 +74,7 @@ cd starter/starter-governance-sentinel/example && ./check.sh
 ```
 
 生产上更常见的是声明式路径：在治理文档里设一次 `spring.resilience.driver=sentinel`，此后
-每个客户端都经这个后端解析 —— 客户端根本不选驱动：它们注入 `*resilience.Manager` bean
+每个客户端都经这个后端解析 —— 客户端根本不选驱动：它们注入 `*resilience.ClientManager` bean
 并调用 `mgr.ClientExecutorFor(system, label)`（见 §2.2）。不设 `spring.resilience.driver` 时一切
 停留在零依赖的 `default` 驱动。
 
@@ -102,12 +102,12 @@ import starter-governance-sentinel
   （RateLimit>0）、circuit-breaker（BreakerActive()）、isolation（MaxConcurrent>0，
   挂在带后缀的名字下，见 §2.3）—— 然后标记已加载。
 
-### 2.2 ExecutorFor / ServerExecutorFor seam（governance 中心集成）
+### 2.2 ClientExecutorFor / ServerGuardFor seam（governance 中心集成）
 
-`resilience.Manager.ClientExecutorFor(system, service)`（抽象层 `manager.go`，不在本 starter）
-是客户端唯一要调的调用 —— 调在它们注入的 `*resilience.Manager` bean 上：
+`resilience.ClientManager.ClientExecutorFor(system, service)`（抽象层 `manager.go`，不在本 starter）
+是客户端唯一要调的调用 —— 调在它们注入的 `*resilience.ClientManager` bean 上：
 
-`resilience.Manager.ServerExecutorFor(system, service)` 是它的入站孪生，协议 starter 的准入
+`resilience.ServerManager.ServerGuardFor(system, service)` 是它的入站孪生，协议 starter 的准入
 中间件用它：同一个 label 在另一条 lane 上解析，构造走 `Driver.NewServerExecutor` 而非
 `Driver.NewClientExecutor`，所以 `spring.resilience.driver=sentinel` 一个键覆盖两个方向，而两份配置互不
 影响。
@@ -131,7 +131,7 @@ import starter-governance-sentinel
    名下 Entry 一次，经 defer 在**整个 Execute（含重试）**期间持有并发槽。加后缀的
    原因：sentinel 会对一个服务名下的每类已注册规则做判定 —— 并发槽与每次尝试的
    entry 必须挂在不同服务名下才能独立获取（源码注释）。
-3. **MaxDuration 预算**：若设置，用 `context.WithTimeout` 包住后续全部。
+3. **Timeout**：若设置，用一个 `context.WithTimeout` 包住后续全部。
 4. 每次尝试（最多 `MaxRetries+1` 次）：
    - `sentinel.Entry(service, Outbound)` —— 驱动 flow + circuit-breaking。block
      错误立即经 `mapBlockError`（§2.5）返回；block 不重试。
@@ -190,8 +190,7 @@ policy 并**清空 loaded 集合**。sentinel 的 `LoadRulesOfResource` 会替�
 ## 3. 逐 key 行为参考
 
 **本模块自有前缀下没有 key。** `grep -rhoE 'value:"[^"]+"' starter-governance-sentinel` 无命中。
-`ClientPolicy` 各字段（`rate-limit`、`error-threshold`、`open-duration`、`max-concurrent`、
-`max-retries`、`timeout` 等）写在**治理文档**里 —— 全进程用 `spring.governance.client.default.*`，某个服务
+`ClientPolicy` 各字段（`rate-limit`、`error-threshold`、`open-duration`、`max-retries`、`timeout` 等）写在**治理文档**里 —— 全进程用 `spring.governance.client.default.*`，某个服务
 单独配用 `spring.governance.client.rules[N].*` —— 经 `ExecutorFor` + `Refresh` 到达本驱动。字段含义见
 [cloud/resilience](../../cloud/resilience)，键的排布见
 [`cloud/governance/README.md`](../../cloud/governance/README.md)。
@@ -253,8 +252,8 @@ source 推送变更）：下次 Execute 重载规则、限流消失。注意 ref
 | 熔断器从不打开 | 未达 `MinRequestAmount`，或 `ErrorThreshold`/窗口配比不当 | 对照 §2.6 默认值表（MinRequests → 1、窗口 → 1000ms）。 |
 | 配置推送后熔断状态像是被重置 | `Refresh` 清空规则；sentinel 替换规则并重置统计窗口 | 刻意的惰性重载语义（§2.4）。 |
 | sentinel 控制台/指标里服务数翻倍 | bulkhead 挂在 `service$bulkhead` 名下 | 驱动内部命名（嫌疑 #2）—— 按后缀过滤。 |
-| 设了 `MaxRetries` 却不重试 | `ShouldRetry(err)` 为 false，或 `MaxDuration` 预算在下次尝试前耗尽 | 检查 policy 的重试谓词与预算。 |
-| 导入了 sentinel 但一切像 no-op | 走 `Manager.ClientExecutorFor` 但未注入 manager（治理未接入 / governance 关闭） | 预期的零成本兜底 —— 配置 governance 或直接用驱动。 |
+| 设了 `MaxRetries` 却不重试 | `ShouldRetry(err)` 为 false，或 `Timeout` 在下次尝试前耗尽 | 检查 policy 的重试谓词与预算。 |
+| 导入了 sentinel 但一切像 no-op | 走 `ClientManager.ClientExecutorFor` 但未注入 manager（治理未接入 / governance 关闭） | 预期的零成本兜底 —— 配置 governance 或直接用驱动。 |
 
 ---
 

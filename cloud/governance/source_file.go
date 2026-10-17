@@ -36,7 +36,7 @@ import (
 // governance only, never re-binds the whole app.
 //
 // The file uses the SAME keys an app.properties entry would
-// (spring.governance.client.default.attempt-timeout, spring.governance.client.rules[0].resources, ...), parsed by
+// (spring.governance.client.default.timeout, spring.governance.client.rules[0].resources, ...), parsed by
 // extension through the shared conf reader registry (json/properties/yaml/
 // toml), so a rules file is literally a snippet of app.config carved out.
 //

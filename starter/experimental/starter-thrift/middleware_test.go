@@ -212,7 +212,7 @@ func TestBinaryProtocolNoPropagation(t *testing.T) {
 }
 
 // rejecting denies every call without reaching the service — the shape of an
-// inbound inbound rejection.
+// inbound rejection.
 var rejecting thrift.ProcessorMiddleware = func(name string, next thrift.TProcessorFunction) thrift.TProcessorFunction {
 	return thrift.WrappedTProcessorFunction{
 		Wrapped: func(ctx context.Context, seqID int32, in, out thrift.TProtocol) (bool, thrift.TException) {

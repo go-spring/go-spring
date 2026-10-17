@@ -32,40 +32,11 @@ import (
 // *governance.Center rather than a bundle of authorities.
 func testCenter(t *testing.T) *governance.Center {
 	t.Helper()
-	center, err := governance.NewProcessCenter(resilience.NewManager(nil), fault.NewInjector(fault.Configs{}, nil))
+	center, err := governance.NewProcessCenter(resilience.NewClientManager(resilience.NewDefaultDriver(nil)), fault.NewClientManager(nil), fault.NewServerManager(nil))
 	if err != nil {
 		t.Fatalf("new process center: %v", err)
 	}
 	return center
-}
-
-// TestOpenSizesThePoolFromTheGovernanceRule proves the RESOURCE half of isolation
-// reaches the pool from the rule document rather than from a per-instance key:
-// the rule's max-conns wins, so the bulkhead's concurrency cap and the pool's
-// connection cap are configured in one place.
-//
-// It is the one policy field a running executor cannot adopt — a pool is built
-// once — which is why Open reads it here.
-func TestOpenSizesThePoolFromTheGovernanceRule(t *testing.T) {
-	center := testCenter(t)
-	// Arm the rule on the manager the center exposes. It must be applied AFTER
-	// the center is built: NewProcessCenter dispatches its own (empty) document on
-	// construction, which would otherwise wipe a rule set on the manager first.
-	assert.Error(t, center.Resilience().Apply(resilience.Settings{
-		Client: resilience.ClientSettings{Default: resilience.ClientPolicy{MaxConns: 7}},
-	})).Nil()
-
-	db, err := Open(fakeDialector{}, PoolConfig{PingTimeout: time.Second}, Options{
-		Engine:  "sqlite",
-		Service: "gorm:sqlite:test",
-		Center:  center,
-	})
-	assert.Error(t, err).Nil("open")
-	defer func() { _ = db.Destroy() }()
-
-	sqlDB, err := db.DB.DB()
-	assert.Error(t, err).Nil("raw pool")
-	assert.Number(t, sqlDB.Stats().MaxOpenConnections).Equal(7)
 }
 
 // TestOpenLeavesThePoolAloneWithoutARule proves the rule is an override and not

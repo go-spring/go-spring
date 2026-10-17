@@ -15,14 +15,12 @@
  */
 
 // rules.go holds the one translation from the neutral resilience knobs onto
-// sentinel-golang's rule shapes. Both engines (executor.go outbound,
-// server_executor.go inbound) map through these helpers so the two directions
-// cannot drift: a knob means the same sentinel field whichever side expressed
-// it.
+// sentinel-golang's rule shapes. It is OUTBOUND only: inbound requests run
+// through go-spring.org/cloud/guard, which has its own bundled engine.
 //
 // Knobs a driver may legitimately NOT map are not faked here — the tables in
-// the READMEs name them (Burst and Algorithm on flow; BulkheadQueueDuration on
-// isolation; sentinel v1.0.4 has no counterpart for any of them).
+// the READMEs name them (Burst and Algorithm on flow; sentinel v1.0.4 has no
+// counterpart for either).
 
 package StarterGovernanceSentinel
 
@@ -31,7 +29,6 @@ import (
 
 	"github.com/alibaba/sentinel-golang/core/circuitbreaker"
 	"github.com/alibaba/sentinel-golang/core/flow"
-	"github.com/alibaba/sentinel-golang/core/isolation"
 
 	"go-spring.org/cloud/resilience"
 )
@@ -147,15 +144,4 @@ func breakerRule(service string, k breakerKnobs) *circuitbreaker.Rule {
 		rule.Threshold = float64(k.errorThreshold)
 	}
 	return rule
-}
-
-// isolationRule translates the bulkhead knob into one sentinel isolation rule.
-// BulkheadQueueDuration has no sentinel v1.0.4 counterpart (isolation rejects,
-// it does not queue) and is deliberately not represented.
-func isolationRule(resource string, maxConcurrent int) *isolation.Rule {
-	return &isolation.Rule{
-		Resource:   resource,
-		MetricType: isolation.Concurrency,
-		Threshold:  uint32(maxConcurrent),
-	}
 }

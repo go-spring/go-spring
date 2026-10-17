@@ -330,5 +330,5 @@ func runWithPolicy(ctx context.Context, p RetryPolicy, resource string, fn func(
 		return err
 	}
 	defer func() { _ = exec.Close() }()
-	return exec.Execute(ctx, chain.Operation{}, fn)
+	return exec.Execute(ctx, chain.Operation{Service: resource}, nil, fn)
 }

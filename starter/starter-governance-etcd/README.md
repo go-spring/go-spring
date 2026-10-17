@@ -68,7 +68,7 @@ spring:
     driver: default
     client:
       default:
-        attempt-timeout: 100ms
+        timeout: 100ms
 ```
 
 ### 4. Run

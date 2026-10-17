@@ -67,7 +67,7 @@ func main() {
 exec, _ := driver.NewExecutor("sentinel:test", resilience.ClientPolicy{
     RateLimit: 100, ErrorThreshold: 10, MaxRetries: 3, Timeout: time.Second,
 })
-client := &http.Client{Transport: resilience.NewRoundTripper(http.DefaultTransport, exec, nil)}
+client := &http.Client{Transport: resilience.NewRoundTripper(http.DefaultTransport, exec, service, nil)}
 resp, _ := client.Get("http://127.0.0.1:PORT/flaky") // 200; server hit exactly 3 times
 ```
 
@@ -80,7 +80,7 @@ cd starter/starter-governance-sentinel/example && ./check.sh
 
 The more common production path is declarative: set `spring.resilience.driver=sentinel` once in
 the app config and every client resolves through this backend — clients do not pick a
-driver at all: they inject the `*resilience.Manager` bean and call
+driver at all: they inject the `*resilience.ClientManager` bean and call
 `mgr.ClientExecutorFor(system, label)` (see §2.2). It is a static startup key, not part
 of the governance document (the backend is fixed for the process's lifetime). With it
 unset everything stays on the zero-dependency `default` driver.
@@ -111,11 +111,11 @@ import starter-governance-sentinel
   three rule types — flow (RateLimit>0), circuit-breaker (BreakerActive()), isolation
   (MaxConcurrent>0, under the suffixed name, see §2.3) — then marks the service loaded.
 
-### 2.2 The ExecutorFor / ServerExecutorFor seams (governance center integration)
+### 2.2 The ClientExecutorFor / ServerGuardFor seams (governance center integration)
 
-`resilience.Manager.ClientExecutorFor(system, service)` (`manager.go` in the abstraction, NOT this
-starter) is the single call OUTBOUND clients use — on the `*resilience.Manager` bean they
-inject. `resilience.Manager.ServerExecutorFor(system, service)` is its inbound twin, used by protocol
+`resilience.ClientManager.ClientExecutorFor(system, service)` (`manager.go` in the abstraction, NOT this
+starter) is the single call OUTBOUND clients use — on the `*resilience.ClientManager` bean they
+inject. `resilience.ServerManager.ServerGuardFor(system, service)` is its inbound twin, used by protocol
 starters' admission middleware; it resolves the same label in a separate lane and builds through
 `Driver.NewServerExecutor` instead of `Driver.NewClientExecutor`, so `spring.resilience.driver=sentinel` covers both
 directions with one key while the two configs stay independent:
@@ -144,7 +144,7 @@ directions with one key while the two configs stay independent:
    because sentinel evaluates every rule type registered under a resource name on each
    Entry — the concurrency slot and the per-attempt entry must live under distinct names
    to be acquired independently (source comment).
-3. **MaxDuration budget**: if set, a `context.WithTimeout` wraps everything below.
+3. **Timeout**: if set, one `context.WithTimeout` wraps everything below.
 4. Per attempt (up to `MaxRetries+1`):
    - `sentinel.Entry(service, Outbound)` — drives flow + circuit-breaking. A block error
      exits immediately through `mapBlockError` (§2.5); no retry on blocks.
@@ -206,7 +206,7 @@ executor (`Execute`/`runOnce`).
 
 **No keys under this module's own prefix.** `grep -rhoE 'value:"[^"]+"' starter-governance-sentinel`
 yields nothing. The `ClientPolicy` knobs (`rate-limit`, `error-threshold`, `open-duration`,
-`max-concurrent`, `max-retries`, `timeout`, ...) are set in the **governance document** —
+`max-retries`, `timeout`, ...) are set in the **governance document** —
 `spring.governance.client.default.*` for the whole process, `spring.governance.client.rules[N].*` for a specific service — and
 reach this driver through `ExecutorFor` + `Refresh`. Field meanings:
 [cloud/resilience](../../cloud/resilience); key layout:
@@ -271,8 +271,8 @@ drills above — the seam observe-resilience's WrapExecutor consumes.
 | Breaker never opens | `MinRequestAmount` not yet reached, or `ErrorThreshold`/window mis-sized | Check the defaults table §2.6 (`MinRequests` → 1, window → 1000ms). |
 | Breaker state looks reset after a config push | `Refresh` clears rules; sentinel replaces them and resets the stat window | Intended lazy-reload semantic (§2.4). |
 | Doubled resources in the sentinel console/metrics | bulkhead lives under `<label>$bulkhead` | Driver-internal naming (suspect #2) — filter by suffix. |
-| No retry despite `MaxRetries` set | `ShouldRetry(err)` false, or `MaxDuration` budget exhausted before next attempt | Check the policy's retry predicate and budget. |
-| Everything no-op despite sentinel imported | running via `Manager.ClientExecutorFor` with no injected manager (governance not wired / governance disabled) | Expected zero-cost fallback — configure governance or use the driver directly. |
+| No retry despite `MaxRetries` set | `ShouldRetry(err)` false, or the `Timeout` exhausted before the next attempt | Check the policy's retry predicate and budget. |
+| Everything no-op despite sentinel imported | running via `ClientManager.ClientExecutorFor` with no injected manager (governance not wired / governance disabled) | Expected zero-cost fallback — configure governance or use the driver directly. |
 
 ---
 

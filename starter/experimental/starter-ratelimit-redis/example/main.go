@@ -83,7 +83,7 @@ func executor(center *governance.Center) chain.Executor {
 // charges the shared store; an over-budget call comes back as ErrRateLimited.
 func serve(exec chain.Executor) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		err := exec.Execute(r.Context(), chain.Operation{}, func(context.Context) error { return nil })
+		err := exec.Execute(r.Context(), chain.Operation{}, nil, func(context.Context) error { return nil })
 		switch {
 		case err == nil:
 			_, _ = w.Write([]byte("ok"))

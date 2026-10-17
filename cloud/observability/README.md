@@ -116,7 +116,7 @@ Conventions that keep the vocabulary joinable:
   signal to fix. (2026-09-22)
 - **The duration histogram bucket boundaries have exactly one definition**: the
   unexported `durationBuckets` plus the exported `DurationBuckets()` (which
-  returns a clone), both in `cloud/observability/buckets.go`. A call site writes
+  returns a clone), both in `cloud/observability/otel.go`. A call site writes
   `metric.WithExplicitBucketBoundaries(observability.DurationBuckets()...)`. A
   domain that needs its own bounds defines them **locally** (`cloud/scheduling`'s
   `lagBuckets`), never by exporting the variable - its elements would then be
@@ -240,18 +240,19 @@ instead, through `observability.NewOperationObserver` (outbound) or
 the executor path produces — the same span, metric names, labels and access log —
 and apply no governance at all.
 
-`Recorder` is the attempt-level accumulator. The governance executor appends one
-entry per downstream attempt; the emitter drains it after the retry loop.
+`Recorder` is the per-call accumulator of rounds. The governance executor appends
+one `chain.Round` per round it runs; the emitter reads them after the retry loop.
 
 ```go
-rec := observability.RecorderFrom(ctx)   // nil-safe — no recorder is fine
-rec.AddAttempt(d, status, err)
+rec := &chain.Recorder{}          // nil is fine too — it means "record nothing"
+exec.Execute(ctx, op, rec, fn)    // the retry loop fills rec as it runs
+rec.Rounds()                      // read only once Execute has returned
 ```
 
-`WithRecorder` is deliberately **not idempotent**: the most recent recorder on
-the chain wins, so two nested executors each keep their own. Read it once at the
-loop entry and keep the pointer — a per-write lookup would hand an inner
-executor the outer call's records.
+The recorder travels as an explicit ARGUMENT, not through the context: `Execute`
+takes it, and a nil argument means "record nothing". That is what keeps nesting
+unambiguous — a nested call builds its own recorder and passes that one down, so
+an inner executor never writes into the outer call's record.
 
 ## Calling the tracer
 

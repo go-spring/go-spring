@@ -79,32 +79,9 @@ func TestEquivRateLimit(t *testing.T) {
 		script: func(e chain.Executor) []error {
 			var out []error
 			for range 3 {
-				out = append(out, e.Execute(context.Background(), chain.Operation{}, func(context.Context) error { return nil }))
+				out = append(out, e.Execute(context.Background(), chain.Operation{}, nil, func(context.Context) error { return nil }))
 			}
 			return out
-		},
-	})
-}
-
-func TestEquivBulkhead(t *testing.T) {
-	runEquiv(t, equivCase{
-		name:   "bulkhead",
-		policy: resilience.ClientPolicy{MaxConcurrent: 1},
-		script: func(e chain.Executor) []error {
-			release := make(chan struct{})
-			entered := make(chan struct{})
-			go func() {
-				_ = e.Execute(context.Background(), chain.Operation{}, func(context.Context) error {
-					close(entered)
-					<-release
-					return nil
-				})
-			}()
-			<-entered
-			err := e.Execute(context.Background(), chain.Operation{}, func(context.Context) error { return nil })
-			close(release)
-			<-time.After(20 * time.Millisecond) // let the holder release before the return
-			return []error{err}
 		},
 	})
 }
@@ -116,11 +93,11 @@ func TestEquivConsecutiveBreaker(t *testing.T) {
 		script: func(e chain.Executor) []error {
 			var out []error
 			// Trip: one failure.
-			out = append(out, e.Execute(context.Background(), chain.Operation{}, func(context.Context) error {
+			out = append(out, e.Execute(context.Background(), chain.Operation{}, nil, func(context.Context) error {
 				return errors.New("boom")
 			}))
 			// Open: the next call is short-circuited.
-			out = append(out, e.Execute(context.Background(), chain.Operation{}, func(context.Context) error { return nil }))
+			out = append(out, e.Execute(context.Background(), chain.Operation{}, nil, func(context.Context) error { return nil }))
 			return out
 		},
 	})

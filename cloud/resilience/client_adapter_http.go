@@ -53,11 +53,13 @@ func (e *httpStatusError) Retryable() bool { return e.retryable }
 // until a policy is configured — the same zero-config opt-in contract as the
 // otelhttp transport.
 //
-// exec carries the service it protects (see [chain.Executor]), which is why this seam
-// takes no label: the transport is already scoped to one client's upstream, and
-// the executor knows which service that is. A caller that needs different
-// protection for different upstreams builds one transport — and one executor —
-// per upstream.
+// exec carries the service it protects (see [chain.Executor]); service is that
+// same label, stated on every operation the transport runs. The adapter supplies
+// it because an http.RoundTripper is handed only the request — a layer outside
+// the executor (the fault layer) matches on the operation's service and cannot
+// borrow it from the executor. A caller that needs different protection for
+// different upstreams builds one transport, one executor and one label per
+// upstream.
 //
 // A 5xx response counts as a failure for the breaker and is eligible for retry
 // (only when the request body can be rewound, i.e. Request.GetBody is set, as
@@ -70,7 +72,7 @@ func (e *httpStatusError) Retryable() bool { return e.retryable }
 // http.RoundTripper is handed only the request, so this derivation is the seam's
 // ctx-free way to name a call; a nil callFor falls back to a Call derived from
 // the request (its host).
-func NewRoundTripper(base http.RoundTripper, exec chain.Executor,
+func NewRoundTripper(base http.RoundTripper, exec chain.Executor, service string,
 	callFor func(*http.Request) chain.Operation) http.RoundTripper {
 	if exec == nil {
 		return base
@@ -78,32 +80,35 @@ func NewRoundTripper(base http.RoundTripper, exec chain.Executor,
 	if base == nil {
 		base = http.DefaultTransport
 	}
-	return &roundTripper{base: base, exec: exec, callFor: callFor}
+	return &roundTripper{base: base, exec: exec, service: service, callFor: callFor}
 }
 
 type roundTripper struct {
 	base    http.RoundTripper
 	exec    chain.Executor
+	service string // the label exec was built for, stamped onto each operation
 	callFor func(*http.Request) chain.Operation
 }
 
 // call resolves the [chain.Operation] for a request: the adapter's callFor when it
-// supplied one, else a minimal Call derived from the request. An http.RoundTripper
-// is handed only the request, so a request-derived default is the seam's only
-// ctx-free option; an adapter that knows the logical operation supplies callFor.
+// supplied one, else a zero Operation — and always with the service label this
+// transport protects, so the call is identifiable even when the adapter declares
+// no operation of its own. An adapter that wants more of the call named (an
+// action, a scenario) supplies callFor.
 func (rt *roundTripper) call(req *http.Request) chain.Operation {
+	var op chain.Operation
 	if rt.callFor != nil {
-		return rt.callFor(req)
+		op = rt.callFor(req)
 	}
-	if req.URL != nil {
-		return chain.Operation{Target: req.URL.Host}
+	if op.Service == "" {
+		op.Service = rt.service
 	}
-	return chain.Operation{}
+	return op
 }
 
 func (rt *roundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 	var resp *http.Response
-	err := rt.exec.Execute(req.Context(), rt.call(req), func(ctx context.Context) error {
+	err := rt.exec.Execute(req.Context(), rt.call(req), nil, func(ctx context.Context) error {
 		// A shallow copy carrying the attempt's context: the transport must run
 		// under the deadline exec derived for this attempt, and a retry derives a
 		// fresh one. Nothing here mutates the headers, so they need no copy of

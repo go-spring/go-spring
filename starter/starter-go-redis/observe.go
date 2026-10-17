@@ -35,7 +35,6 @@ import (
 	"github.com/redis/go-redis/v9"
 	"go-spring.org/cloud/chain"
 	"go-spring.org/log"
-	"go.opentelemetry.io/otel/attribute"
 )
 
 // redisSystem is the value the family's db.system label carries for this
@@ -69,37 +68,20 @@ var skipOps = map[string]struct{}{"ping": {}}
 // no argument carries no detail at all, which is also what levelled its
 // success log at Info.
 func operation(cmd redis.Cmder) chain.Operation {
-	op := cmd.FullName()
-	o := chain.Operation{
-		Name:   op,
-		Metric: "db.client",
-		Attrs: []attribute.KeyValue{
-			attribute.String("db.system", redisSystem),
-			attribute.String("db.operation", op),
-		},
-		LogTag: accessTag,
-	}
-	if arg := argOf(cmd); arg != "" {
-		o.Detail = []attribute.KeyValue{
-			attribute.String("db.statement", arg),
-		}
-	}
+	// The command's full name (cmd.FullName(), e.g. "get") names the span and
+	// carries the family's db.operation label; its argument rides in detail.
+	o := chain.DBOp(redisSystem, cmd.FullName(), argOf(cmd))
+	o.Observe.Log.Tag = accessTag
 	return o
 }
 
 // pipelineOperation is the semantic identity of a pipelined batch: a pipeline
 // is not one command and carries no single argument, so its name is the literal
-// "pipeline" and it declares no Detail — which levels its success log at Info.
+// "pipeline" and it declares no detail — which levels its success log at Info.
 func pipelineOperation() chain.Operation {
-	return chain.Operation{
-		Name:   "pipeline",
-		Metric: "db.client",
-		Attrs: []attribute.KeyValue{
-			attribute.String("db.system", redisSystem),
-			attribute.String("db.operation", "pipeline"),
-		},
-		LogTag: accessTag,
-	}
+	o := chain.DBOp(redisSystem, "pipeline", "")
+	o.Observe.Log.Tag = accessTag
+	return o
 }
 
 // argOf picks the command's first argument — the key for every keyed Redis

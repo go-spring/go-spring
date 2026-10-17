@@ -249,7 +249,7 @@ franz-go 的异步 `Produce` 立即返回，因此只有同步路径可包 [comm
 - 发布的身份在进入 executor **之前**就按首条 record 的 topic 声明，故其 span 名为 `publish`，
   metric/访问日志带上 topic（进 Detail，绝不进 metric label）[command.go]。
 - governance 开启时，调用经过已组装好的 executor
-  `fault.WrapClientExecutor(mgr.ClientExecutorFor("kafka", service), service, inj)` [command.go:86]：运行时
+  `inj.WrapClientExecutor(mgr.ClientExecutorFor("kafka", service))` [command.go:86]：运行时
   故障注入与 resilience 结果 metric 包住 produce，服务标签 `kafka:<brokers>`
   （`resilience.ServiceLabel("kafka", c.Brokers)` [starter.go:83]，格式 `prefix:name`
   [resilience/client_policy.go:216-230]）。

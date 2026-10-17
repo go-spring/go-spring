@@ -42,7 +42,7 @@ type Options struct {
 	// applies it while assembling, so the returned DB is complete. It is one
 	// object rather than a parameter per capability so this field — which every
 	// dialect's wiring fills — stays stable as capabilities are added. The center
-	// must carry a [resilience.Manager] — the container always supplies one — so a
+	// must carry a [resilience.ClientManager] — the container always supplies one — so a
 	// hand-built DB (an example, a test) must supply one too: a nil center is a
 	// construction error, never a graceful downgrade.
 	Center *governance.Center
@@ -75,14 +75,6 @@ type DB struct {
 // run by the wiring (the package [Ping]), after Open returns, so the client is
 // complete before it is probed.
 func Open(dialector gorm.Dialector, pool PoolConfig, opt Options) (*DB, error) {
-	// The governance rule may size the pool too — the resource half of isolation,
-	// next to the bulkhead's concurrency half — and it wins over the per-instance
-	// key, so one place configures both halves. A pool is built once and belongs
-	// to the driver, which is why this is read here rather than by the running
-	// executor that every other policy field reaches.
-	if n := opt.Center.PolicyFor(opt.Service).MaxConns; n > 0 {
-		pool.MaxOpenConns = n
-	}
 	db, err := gorm.Open(dialector, GormConfig(pool))
 	if err != nil {
 		return nil, errutil.Explain(err, "gorm open")
@@ -125,7 +117,7 @@ func Open(dialector gorm.Dialector, pool PoolConfig, opt Options) (*DB, error) {
 	// Governance is applied in the constructor, not by the wiring, so the DB is
 	// complete the moment Open returns. The executor comes from the one place
 	// that composition lives ([governance.Center.ExecutorFor]), which requires
-	// the center to carry a [resilience.Manager] — the container always supplies
+	// the center to carry a [resilience.ClientManager] — the container always supplies
 	// it — and panics on a nil center. The
 	// manager resolves the backing executor lazily, on each Execute, so this call
 	// order relative to the center's wiring is irrelevant, and the fault

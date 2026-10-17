@@ -390,7 +390,7 @@ reference 的 `version`/`group` 必须与 provider 导出的一致。
 ### 4.4 治理合入通道（中心的动态超时）
 
 可选；仅当配好治理规则源且文档为下面的 label 配了策略时激活。poller 以可空构造函数
-参数注入 `*resilience.Manager` 与 `*governance.Center`（starter.go:59），并订阅两类治理
+参数注入 `*resilience.ClientManager` 与 `*governance.Center`（starter.go:59），并订阅两类治理
 服务 label（dync.go:252-253）：
 
 - `dubbo:<application.name>` —— consumer 级默认

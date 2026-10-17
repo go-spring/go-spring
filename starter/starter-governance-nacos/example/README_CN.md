@@ -36,7 +36,7 @@ curl -fsS -X POST 'http://127.0.0.1:8848/nacos/v1/cs/configs' \
     client:
       default:
         enabled: true
-        attempt-timeout: 900ms
+        timeout: 900ms
         max-retries: 2'
 # 打印: policy: enabled=true timeout=900ms retries=2
 ```

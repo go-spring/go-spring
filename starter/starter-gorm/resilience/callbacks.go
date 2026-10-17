@@ -85,6 +85,9 @@ func ApplyCallbacks(db *gorm.DB, exec chain.Executor, service string, opFor func
 			if opFor != nil {
 				op = opFor(tx, kind)
 			}
+			// The service is this executor's label; the operation states it so a
+			// layer outside the executor (the fault layer) can match on it too.
+			op.Service = service
 			err := runGuard(tx.Statement.Context, exec, service, op, func() error {
 				fn(tx)
 				return tx.Error

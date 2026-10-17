@@ -162,8 +162,8 @@ gs.Run()
   │     spring.tdengine.instances.<name>.driver = <bean-name> (empty = the single Driver
   │     bean by type; naming a missing bean fails startup)
   │     → d.CreateClient(ctx, c, center): the ctor hands the driver the injected
-  │       *governance.Center (variable center); the *resilience.Manager / *fault.Injector
-  │       it needs are read from the center (via center.Resilience() / center.Fault()) →
+  │       *governance.Center (variable center); the *resilience.ClientManager / *fault.ClientManager
+  │       it needs are read from the center (via center.ResilienceClient() / center.FaultClient()) →
   │       ParseDSN → taosws.NewConnector → NewClient
   │     → NewClient [client.go]: builds the slot, wraps the connector
   │       (guardedConnector), opens the *sql.DB pool, applies pool settings —
@@ -298,7 +298,7 @@ point on the executor chain that sees a whole call, emits every signal from that
 | Metric | `db.client.operation.duration` (histogram, s) — per call, retries included | `db.system`, `db.operation`, `status` |
 | Metric | `db.client.attempt.duration` (histogram, s) — per downstream attempt | `db.system`, `db.operation`, `status` |
 | Metric | `db.client.active_requests` (up-down counter) | `db.system`, `db.operation` |
-| Metric | `resilience.client.calls` (counter) | `system=tdengine`, `service`, `status=ok\|error` (plus `resilience.outcome` when protection refused the call) |
+| Metric | `resilience.client.calls` (counter) | `system=tdengine`, `service`, `status=ok\|error` (plus `resilience.error_type` when protection refused the call) |
 | Metric | `resilience.client.breaker.state_change` (counter) | from/to attrs |
 | Log | tag `_app_tdengine_access` | db.system=tdengine db.operation=… status duration_ms; error → Warn, success with the SQL → Debug, plain success → Info |
 | Log | tag `_app_resilience` | breaker state transitions (the declared access log uses the statement tag above, failures included) |
@@ -317,7 +317,7 @@ grep _app_tdengine_access app.log | tail -1
 With a configured governance rules source, define a policy for service `tdengine:127.0.0.1:6041`
 (§2.3) — e.g. a rate limit. Hammer `ExecContext`; over-limit statements are rejected with
 `resilience.ErrRateLimited` **without reaching the connection** (unit-tested
-[tdengine_test.go:62-76]), surface in `resilience.client.calls{resilience.outcome="rate_limited"}` and in a
+[tdengine_test.go:62-76]), surface in `resilience.client.calls{resilience.error_type="rate_limited"}` and in a
 Warn line under the `_app_tdengine_access` tag. Flip the policy at runtime — the executor
 hot-reloads via the governance center without restart.
 

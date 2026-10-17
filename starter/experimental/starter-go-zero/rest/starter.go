@@ -130,7 +130,7 @@ func (s *RestServer) Run(ctx context.Context, sig gs.ReadySignal) error {
 				ServiceName: s.cfg.Name,
 				Level:       s.cfg.Log.Level,
 			},
-			Telemetry: trace.Config{
+			Observe: trace.Config{
 				Name:     s.cfg.Name,
 				Endpoint: s.cfg.Tracing.Endpoint,
 				Sampler:  s.cfg.Tracing.Sampler,

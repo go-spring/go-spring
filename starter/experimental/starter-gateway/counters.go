@@ -135,4 +135,3 @@ func (c *memoryLimiter) evictLocked(now time.Time) {
 		delete(c.scopes, k)
 	}
 }
-

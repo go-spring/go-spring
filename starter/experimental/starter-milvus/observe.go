@@ -46,35 +46,20 @@ var accessTag = log.RegisterAppTag("milvus", "access")
 // qualified method path, e.g. "/milvus.proto.milvus.MilvusService/Search".
 //
 // The operation name is the whole method's last segment ("Search") — a bounded
-// word drawn from the SDK's fixed method set, which is what [chain.Operation.Attrs]
-// demands: every attr here becomes a metric label, and the method name is the
-// finest bounded dimension the transport can see. The collection name and the
-// search expression are NOT available here (they are caller-supplied arguments,
-// consumed inside the SDK, never reaching an interceptor) — so nothing
-// unbounded is ever put at risk of becoming a label.
-//
-// The full method path rides in Detail rather than Attrs: it is redundant with
-// the operation name for the label's purpose, yet exactly what makes a span or
-// a log line unambiguous to read. Detail reaches the span and the log and never
-// a label. A path-less method (the whole string, when it carries no "/") still
-// declares the path as detail, so a success log stays at Debug — the frequent,
-// uninteresting case — matching the other DB clients, which level their success
-// lines by the presence of per-call detail.
+// word drawn from the SDK's fixed method set. The collection name and the search
+// expression are NOT available here (caller-supplied arguments, consumed inside
+// the SDK), so nothing unbounded is ever put at risk of becoming a label. The
+// full method path rides in detail under the family's own key, reaching the span
+// and the log but never a label. The family's vocabulary lives in [wire].
 func operation(method string) chain.Operation {
 	name := method
 	if i := strings.LastIndex(method, "/"); i >= 0 {
 		name = method[i+1:]
 	}
-	return chain.Operation{
-		Name:   name,
-		Metric: "db.client",
-		Attrs: []attribute.KeyValue{
-			attribute.String("db.system", milvusSystem),
-			attribute.String("db.operation", name),
-		},
-		Detail: []attribute.KeyValue{
-			attribute.String("db.method", method),
-		},
-		LogTag: accessTag,
-	}
+	o := chain.DBOp(milvusSystem, name, "")
+	o.Observe.Span.Attrs = append(o.Observe.Span.Attrs, attribute.String("db.method", method))
+	o.Observe.Log.Fields = append(o.Observe.Log.Fields, log.String("db.method", method))
+	o.Observe.Log.QuietSuccess = true
+	o.Observe.Log.Tag = accessTag
+	return o
 }

@@ -194,7 +194,7 @@ gs.Run()
 - **discovery/LB 在 resilience 之下**:"a retry re-picks a fresh endpoint and the breaker
   keys on the logical service name"(httpx.go:32-34)。熔断按逻辑调用计数,重试在实例级
   失败后会换实例。
-- **resilience 包住 balanced transport**:`resilience.NewRoundTripper(base, exec, nil)`
+- **resilience 包住 balanced transport**:`resilience.NewRoundTripper(base, exec, service, nil)`
   ——service 标签是 `resilience.ServiceLabel("http", ServiceName, Addr)`(httpx.go:342-347),
   与策略解析用的是同一个标签,所以限流/熔断状态和 driver 的规则名同武装它的 governance 规则一致。
   每个 client 一个标签:改写 host 换实例发生在更下一层(httpx.go:307-318),不会泄进标签。
@@ -223,14 +223,14 @@ gs.Run()
    RoundTripper 里,是因为 net/http 只把 `*http.Request` 交给 transport——在这一层路由才能让
    声明的 Target 直接当键,同时也让重定向的每一跳都留在调用起始的那条路由上。
 3. trafficTransport 当且仅当 propagator 的 `IsLoadTest(ctx)` 时注入压测标记 header。
-4. executor 把整个 round-trip 作为一次受保护调用执行:限流 → 熔断闸门 → 每次尝试
-   超时(`attempt-timeout`)→ 带退避的重试循环,整体受 `MaxDuration` 约束;熔断对
-   整个调用只记录**一次**结果(§2.2)。
+4. executor 把整个 round-trip 作为一次受保护调用执行:一个 `timeout` 期限罩住**整通**调用,
+   其下是 限流 → 熔断闸门 → 带退避的重试循环——各轮共用这一个预算;
+   熔断对整个调用只记录**一次**结果(§2.2)。
 5. balancedTransport `chain.Pick()` 选一个存活实例(round_robin 等),克隆请求并把
    `URL.Host`/`Host` 改写为实例地址,把结果回报给链——least-conn 统计与
    outlier suspension 因此能看到每次调用(httpx.go:351-371)。
 6. otelhttp transport 打开 client span、注入 `traceparent`、建连。
-7. 响应回卷:span 结束(executor 包过则带 `resilience.outcome`)、计数
+7. 响应回卷:span 结束(executor 包过则带 `resilience.error_type`)、计数
    `resilience.client.calls{outcome=...}`、按 `observability.level` 出访问日志。
 8. 直连模式下第 5 步换成 `fixedHostTransport` 把每个请求钉到 `addr`——链上同一位置,
    两种寻址模式下 resilience 与调用侧行为完全一致(httpx.go:264-277)。
@@ -290,8 +290,8 @@ service-name 即可;只有彻底删掉 service-name 才会换 key。
 **不在这里**(`spring.http-client.*` 下没有):超时、重试、熔断、限流、故障注入。所有
 策略是进程级 `spring.governance.*`(见 cloud/governance 的 SOURCE_USAGE_CN.md)——
 `spring.governance.client.default.<策略字段>`(rate-limit / burst / error-threshold / open-duration /
-breaker-strategy / error-rate-threshold / min-requests / max-concurrent / max-retries /
-initial-interval / multiplier / max-interval / attempt-timeout / max-duration),故障注入在
+breaker-strategy / error-rate-threshold / min-requests / max-retries /
+initial-interval / multiplier / max-interval / timeout),故障注入在
 `spring.governance.client.fault.*`。按 target 定策略 = 一条 `spring.governance.client.rules[n]`,service 指向上面的 label。
 该配置面详见 cloud/governance 的 SOURCE_USAGE_CN.md。
 
@@ -361,13 +361,13 @@ spring.governance.client.fault.error=timeout    # 或 generic / reset
 - 指标(starter-otel 的 prometheus exporter,如 example-otel 的 `:9090/metrics`):
   `resilience.client.calls` 计数器,属性 `resilience.system="http"`、
   `resilience.service="http:greet-svc"`、`status` ∈ {ok, error},以及保护拒绝该调用时的
-  `resilience.outcome` ∈ {rate_limited, circuit_open, bulkhead_full, timeout};
+  `resilience.error_type` ∈ {rate_limited, circuit_open, bulkhead_full, timeout};
   `resilience.client.breaker.state_change` 带 from/to。
 - 访问日志:由 `observability.level` 门控(默认 brief = 开),tag
   `_app_http_resilience`(`log.RegisterAppTag("http", "resilience")`)。
 - trace:httpx 内置的 otelhttp 层每请求一个 client span(命名遵循
   [otelhttp 语义](https://pkg.go.dev/go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp)),
-  外加一个带 `resilience.outcome` 的内部 executor span。未装 OTel provider 时均为静默
+  外加一个带 `resilience.error_type` 的内部 executor span。未装 OTel provider 时均为静默
   no-op。example-otel 自带 docker-compose Jaeger(:4317)可直接查看。
 
 ---

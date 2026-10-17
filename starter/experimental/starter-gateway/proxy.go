@@ -139,7 +139,7 @@ func (t *RouteTable) newProxyHandler(routeID string, up *Upstream, exec chain.Ex
 	}
 
 	base := http.DefaultTransport.(*http.Transport).Clone()
-	transport := resilience.NewRoundTripper(base, exec, nil)
+	transport := resilience.NewRoundTripper(base, exec, service, nil)
 
 	rp := &httputil.ReverseProxy{
 		Transport: transport,

@@ -61,7 +61,7 @@ import (
 type printer struct {
     // mgr is the governance starter's resilience manager bean, injected here
     // rather than resolved from a process-wide seam.
-    mgr *resilience.Manager
+    mgr *resilience.ClientManager
 }
 
 func (p *printer) Run(ctx context.Context) error {
@@ -82,9 +82,9 @@ func (p *printer) Run(ctx context.Context) error {
 
 // newPrinter builds the printer over the injected manager. A nil manager — a
 // container without cloud/governance's bean — is normalized to a fresh unarmed one.
-func newPrinter(mgr *resilience.Manager) *printer {
+func newPrinter(mgr *resilience.ClientManager) *printer {
     if mgr == nil {
-        mgr = resilience.NewManager()
+        mgr = resilience.NewClientManager()
     }
     return &printer{mgr: mgr}
 }
@@ -111,7 +111,7 @@ spring:
     driver: default
     client:
       default:
-        attempt-timeout: 100ms
+        timeout: 100ms
 ```
 
 **Verify** (with a local etcd, e.g. `example/docker-compose.yml`):
@@ -120,7 +120,7 @@ spring:
 docker compose up -d
 ETCDCTL_API=3 etcdctl put /app/governance.yaml "$(cat governance.yaml)"   # seed BEFORE the app starts
 go run .
-ETCDCTL_API=3 etcdctl put /app/governance.yaml 'govern: {default: {attempt-timeout: 300ms}}'
+ETCDCTL_API=3 etcdctl put /app/governance.yaml 'govern: {default: {timeout: 300ms}}'
 # no restart: the source pushes the new document and PolicyFor flips to 300ms
 ```
 
@@ -256,7 +256,7 @@ The key must exist before the app starts — the source's construction does an i
 
 ```bash
 go run . &
-etcdctl put /app/governance.yaml 'govern: {default: {attempt-timeout: 300ms}}'
+etcdctl put /app/governance.yaml 'govern: {default: {timeout: 300ms}}'
 ```
 
 No restart; the injected resilience authority's `PolicyFor("...")` flips to the new timeout on the

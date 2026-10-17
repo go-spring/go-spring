@@ -22,19 +22,20 @@ import (
 	"testing"
 
 	"github.com/labstack/echo/v4"
-	"go-spring.org/cloud/observability"
 )
 
 // serveServerPolicy drives one GET through an echo engine carrying only the
 // inbound middleware, and reports the response plus how often the handler
 // itself ran. The middleware runs with observation on, over a real server
-// observer (the process-wide providers are no-ops here).
+// observer (the process-wide providers are no-ops here). The center is built
+// over an authority armed with the empty document, so governance never rejects
+// and the tests are about the middleware's pass-through behavior.
 func serveServerPolicy(t *testing.T, handler echo.HandlerFunc) (*httptest.ResponseRecorder, int) {
 	t.Helper()
 	e := echo.New()
 	handlerRuns := 0
-	obs := observability.NewServerObserver("echo", "echo:test")
-	e.Use(resilienceServerPolicy(obs, "echo:test", true))
+	in := testCenter(nil).InboundFor("echo", "echo:test")
+	e.Use(resilienceServerPolicy(in, "echo:test", true))
 	e.GET("/x", func(c echo.Context) error {
 		handlerRuns++
 		return handler(c)

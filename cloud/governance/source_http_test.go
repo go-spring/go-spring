@@ -34,7 +34,7 @@ func TestParseGovernanceDoc(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.Client.Default.AttemptTimeout != 100*time.Millisecond {
+	if cfg.Client.Default.Timeout != 100*time.Millisecond {
 		t.Fatalf("properties parse: %+v", cfg)
 	}
 
@@ -43,7 +43,7 @@ func TestParseGovernanceDoc(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.Client.Default.AttemptTimeout != 100*time.Millisecond {
+	if cfg.Client.Default.Timeout != 100*time.Millisecond {
 		t.Fatalf("yaml parse: %+v", cfg.Client.Default)
 	}
 
@@ -52,7 +52,7 @@ func TestParseGovernanceDoc(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.Client.Default.AttemptTimeout != 100*time.Millisecond {
+	if cfg.Client.Default.Timeout != 100*time.Millisecond {
 		t.Fatal("explicit-format parse should bind the policy")
 	}
 
@@ -81,9 +81,9 @@ func TestParseGovernanceDoc(t *testing.T) {
 func TestParse_LegacyKeysArmNothing(t *testing.T) {
 	cfg, err := Parse("governance.properties", []byte(`spring.governance.enabled=true
 spring.resilience.driver=default
-spring.governance.default.attempt-timeout=100ms
+spring.governance.default.timeout=100ms
 spring.governance.rules[0].service=redis:cache
-spring.governance.rules[0].attempt-timeout=50ms
+spring.governance.rules[0].timeout=50ms
 spring.governance.fault.enabled=true
 spring.governance.fault.rate=1
 `), "")
@@ -134,7 +134,7 @@ func TestHTTPSource_PollAndPush(t *testing.T) {
 	var pushed Config
 	s.Subscribe(func(_ context.Context, cfg Config) { mu.Lock(); pushed = cfg; pushes++; mu.Unlock() })
 
-	if cfg := s.Snapshot(); cfg.Client.Default.AttemptTimeout != 100*time.Millisecond {
+	if cfg := s.Snapshot(); cfg.Client.Default.Timeout != 100*time.Millisecond {
 		t.Fatalf("initial snapshot: %+v", cfg.Client.Default)
 	}
 
@@ -145,7 +145,7 @@ func TestHTTPSource_PollAndPush(t *testing.T) {
 	deadline := time.Now().Add(3 * time.Second)
 	for time.Now().Before(deadline) {
 		mu.Lock()
-		done := pushed.Client.Default.AttemptTimeout == 300*time.Millisecond
+		done := pushed.Client.Default.Timeout == 300*time.Millisecond
 		mu.Unlock()
 		if done {
 			break
@@ -153,7 +153,7 @@ func TestHTTPSource_PollAndPush(t *testing.T) {
 		time.Sleep(10 * time.Millisecond)
 	}
 	mu.Lock()
-	got := pushed.Client.Default.AttemptTimeout
+	got := pushed.Client.Default.Timeout
 	mu.Unlock()
 	if got != 300*time.Millisecond {
 		t.Fatalf("poll should converge on the new document: %v", got)
@@ -167,7 +167,7 @@ func TestHTTPSource_PollAndPush(t *testing.T) {
 	body = ""
 	muBody.Unlock()
 	time.Sleep(300 * time.Millisecond)
-	if cfg := s.Snapshot(); cfg.Client.Default.AttemptTimeout != 300*time.Millisecond {
+	if cfg := s.Snapshot(); cfg.Client.Default.Timeout != 300*time.Millisecond {
 		t.Fatalf("broken console must keep last good snapshot: %+v", cfg.Client.Default)
 	}
 	mu.Lock()

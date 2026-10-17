@@ -37,8 +37,8 @@ import (
 // needs no live server — it only assembles the RoundTripper.
 func TestDefaultDriverFallback(t *testing.T) {
 	center, err := governance.NewCenter(
-		resilience.NewManager(nil), loadbalance.NewManager(),
-		fault.NewInjector(fault.Configs{}, nil), discovery.NewManager(nil), governance.NewPushSource(governance.Config{}))
+		resilience.NewClientManager(resilience.NewDefaultDriver(nil)), loadbalance.NewManager(),
+		fault.NewClientManager(nil), fault.NewServerManager(nil), discovery.NewManager(nil), governance.NewPushSource(governance.Config{}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -78,8 +78,8 @@ func (d *recordingDriver) CreateTransport(ctx context.Context, name string, c Co
 func TestCustomDriverUsed(t *testing.T) {
 	drv := &recordingDriver{}
 	center, err := governance.NewCenter(
-		resilience.NewManager(nil), loadbalance.NewManager(),
-		fault.NewInjector(fault.Configs{}, nil), discovery.NewManager(nil), governance.NewPushSource(governance.Config{}))
+		resilience.NewClientManager(resilience.NewDefaultDriver(nil)), loadbalance.NewManager(),
+		fault.NewClientManager(nil), fault.NewServerManager(nil), discovery.NewManager(nil), governance.NewPushSource(governance.Config{}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -135,7 +135,7 @@ func TestCustomDriverReceivesResolvedBackend(t *testing.T) {
 //
 // The test does NOT register those beans itself. Importing this starter blank-
 // imports the governance center, which registers them — so a container already
-// holds one *resilience.Manager / *fault.Injector, and providing another would
+// holds one *resilience.ClientManager / *fault.ClientManager, and providing another would
 // be a duplicate. The assertion is therefore identity with what another
 // injection resolves, which is the same claim.
 func TestCustomDriverReceivesGovernanceBeans(t *testing.T) {
@@ -144,22 +144,22 @@ func TestCustomDriverReceivesGovernanceBeans(t *testing.T) {
 		app.Property("spring.http-client.instances.demo.addr", "10.0.0.1:8080")
 		app.Provide(func() Driver { return &drv })
 	}).RunTest(t, func(ts *struct {
-		DT  *dispatchTransport  `autowire:""`
-		Mgr *resilience.Manager `autowire:""`
-		Inj *fault.Injector     `autowire:""`
+		DT  *dispatchTransport        `autowire:""`
+		Mgr *resilience.ClientManager `autowire:""`
+		Inj *fault.ClientManager      `autowire:""`
 	}) {
 		if ts.DT == nil {
 			t.Fatal("expected a wired dispatch transport")
 		}
-		got := drv.center.Resilience()
+		got := drv.center.ResilienceClient()
 		if got == nil || ts.Mgr == nil {
 			t.Fatalf("expected a resilience authority in both places, got drv=%p injected=%p", got, ts.Mgr)
 		}
 		if got != ts.Mgr {
 			t.Fatalf("the driver must receive the container's resilience authority, got %p want %p", got, ts.Mgr)
 		}
-		if drv.center.Fault() == nil || drv.center.Fault() != ts.Inj {
-			t.Fatalf("the driver must receive the container's fault injector, got %p want %p", drv.center.Fault(), ts.Inj)
+		if drv.center.FaultClient() == nil || drv.center.FaultClient() != ts.Inj {
+			t.Fatalf("the driver must receive the container's fault injector, got %p want %p", drv.center.FaultClient(), ts.Inj)
 		}
 	})
 }

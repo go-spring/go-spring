@@ -173,7 +173,7 @@ func (s *subscriber) Subscribe(ctx context.Context, handler messaging.Handler) e
 			// metrics and access log from the declaration.
 			msgCtx := s.prop.Extract(loopCtx, propagate.StringMap(msg.Properties()))
 			msgCtx = extractTraceContext(msgCtx, msg.Properties())
-			herr := observe(msgCtx, s.cl, operation(opConsume, s.source), func(attemptCtx context.Context) error {
+			herr := observe(msgCtx, s.cl, operation(opProcess, s.source), func(attemptCtx context.Context) error {
 				return handler(attemptCtx, fromPulsarMsg(msg))
 			})
 			if herr != nil {

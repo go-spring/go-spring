@@ -23,47 +23,26 @@
 package StarterMemcached
 
 import (
-	"go-spring.org/stdlib/strutil"
-
 	"go-spring.org/cloud/chain"
 	"go-spring.org/log"
-	"go.opentelemetry.io/otel/attribute"
 )
 
 // memcachedSystem is the value the family's db.system label carries for this
 // backend — the family's shared vocabulary, not a per-file choice.
 const memcachedSystem = "memcached"
 
-// maxStatement bounds the key captured as db.statement. A key can be long and a
-// span or a log line has no use for all of it.
-const maxStatement = 512
-
 // accessTag is the static log tag for the memcached access log. It is registered
 // here, at package init, because a tag must exist before the framework's first
 // property refresh — see [log.RegisterTag].
 var accessTag = log.RegisterAppTag("memcached", "access")
 
-// operation is the semantic identity of one memcached command.
-//
-// The key rides in Detail rather than Attrs: cache keys are drawn from an open
-// set, so as a metric label one would multiply the series without bound. Detail
-// reaches the span and the log — where a key is exactly what makes a line worth
-// reading — and never a label. An empty key (Ping, FlushAll) carries no detail
-// at all, which is also what levelled its success log at Info.
+// operation is the semantic identity of one memcached command. The bounded
+// operation word names the command; the open-set key rides in detail, reaching
+// the span and the log but never a label. An empty key (Ping, FlushAll) carries
+// no detail, which levels its success log at Info. The family's vocabulary lives
+// in [wire].
 func operation(op, key string) chain.Operation {
-	o := chain.Operation{
-		Name:   op,
-		Metric: "db.client",
-		Attrs: []attribute.KeyValue{
-			attribute.String("db.system", memcachedSystem),
-			attribute.String("db.operation", op),
-		},
-		LogTag: accessTag,
-	}
-	if key != "" {
-		o.Detail = []attribute.KeyValue{
-			attribute.String("db.statement", strutil.Truncate(key, maxStatement)),
-		}
-	}
+	o := chain.DBOp(memcachedSystem, op, key)
+	o.Observe.Log.Tag = accessTag
 	return o
 }

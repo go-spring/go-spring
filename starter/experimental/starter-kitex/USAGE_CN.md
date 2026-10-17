@@ -186,7 +186,7 @@ conf/app.properties 就能点亮 metrics 与 tracing"）。它**不自建中间�
 在你的 `ServiceRegister` 里组合（或经 codegen 挂 suite）。与兄弟 RPC starter 相比的后果：
 
 - 无 loadtest 识别 filter（本跳不会打 propagator 的 `IsLoadTest` 标）
-- 无 fault 注入 filter（未接 `*fault.Injector` bean；治理中心在此处"放不了火"）
+- 无 fault 注入 filter（未接 `*fault.ClientManager` bean；治理中心在此处"放不了火"）
 - 无 resilience 准入（限流/熔断）
 
 ### 2.3 一次调用逐层走读

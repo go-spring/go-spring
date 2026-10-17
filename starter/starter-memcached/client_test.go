@@ -120,7 +120,7 @@ func (p prefixLayer) Delete(ctx context.Context, key string) error {
 // governance off), the adapter is not.
 func newChainClient(t *testing.T, tail InnerClient) *Client {
 	t.Helper()
-	ctr, err := governance.NewProcessCenter(resilience.NewManager(nil), fault.NewInjector(fault.Configs{}, nil))
+	ctr, err := governance.NewProcessCenter(resilience.NewClientManager(resilience.NewDefaultDriver(nil)), fault.NewClientManager(nil), fault.NewServerManager(nil))
 	if err != nil {
 		t.Fatal(err)
 	}

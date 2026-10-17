@@ -67,14 +67,14 @@ Cache *cache.Cache `autowire:"luohua"`
 
 ## 治理
 
-luohua 刻意**不造自己的治理引擎** —— 出站调用已走治理 starter 注册的 `resilience.Manager` /
-`fault.Injector` bean、挂在单一治理权威下;没有自研后端的公司应骑官方引擎、按舰队钉默认策略。
+luohua 刻意**不造自己的治理引擎** —— 出站调用已走治理 starter 注册的 `resilience.ClientManager` /
+`fault.ClientManager` bean、挂在单一治理权威下;没有自研后端的公司应骑官方引擎、按舰队钉默认策略。
 写在治理规则文档里即可(见 cloud/governance 的 SOURCE_USAGE_CN.md):
 
 ```properties
 spring.resilience.driver=default
 spring.governance.client.rules[0].service=orders
-spring.governance.client.rules[0].attempt-timeout=500ms
+spring.governance.client.rules[0].timeout=500ms
 spring.governance.client.rules[0].max-retries=2
 ```
 

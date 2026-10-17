@@ -17,90 +17,94 @@
 package StarterHTTPServer
 
 import (
-	"context"
-	"go-spring.org/cloud/chain"
+	"errors"
 	"net/http"
 
+	"go-spring.org/cloud/governance"
+	"go-spring.org/cloud/guard"
 	"go-spring.org/cloud/observability"
 	"go-spring.org/log"
 	"go.opentelemetry.io/otel/attribute"
 )
 
-// ServerPolicy returns the inbound inbound filter: every request runs through
-// the governance executor for label, so the configured rate-limit / bulkhead /
-// breaker policy is enforced before the wrapped handler. It is the stdlib
-// member of the same family as gin's and echo's inbound middleware, which
-// their starters install automatically — here you compose it yourself, because
-// this package provides filters rather than owning a server.
+// ServerPolicy returns the inbound governance filter: every request runs through
+// the route's inbound governance object, so the configured rate-limit / bulkhead /
+// breaker policy is enforced before the wrapped handler. It is the stdlib member
+// of the same family as gin's and echo's inbound middleware — here you compose it
+// yourself, because this package provides filters rather than owning a server.
 //
 // label is the governance service label this server is addressed as, e.g.
 // "http-server::9090" (see cloud/governance/README.md 设计说明 §6). Build it with
 // resilience.ServiceLabel(system, addr) if you want the conventional shape;
-// governance rules match it with spring.governance.client.rules[N].service=<label>.
+// governance rules match it with spring.governance.server.rules[N].service=<label>.
 //
-// mgr is the resilience authority the filter's executor is resolved from. This
-// package provides filters rather than owning a server, so it has no bean to
+// mgr is the resilience authority the filter's inbound object is resolved from.
+// This package provides filters rather than owning a server, so it has no bean to
 // inject into: whoever composes the chain takes the governance center bean
-// (*governance.Center) on their own bean and passes center.Resilience() here. A
+// (*governance.Center) on their own bean and passes center.ResilienceServer() here. A
 // nil manager is the standalone case — the filter then runs under an unarmed
-// manager, i.e. a transparent pass-through that never rejects.
+// authority, a transparent pass-through that never rejects.
 //
-// Rejections map to 429 (rate limit, bulkhead full) and 503 (circuit open); a
-// handler-committed 5xx is fed back to the executor so the breaker sees
-// server-side errors. Inbound inbound never retries — a handler that already
-// produced side effects cannot be replayed, and [resilience.ServerPolicy] has no
-// retry field to express one with; a reentry guard makes a stray retry harmless
-// regardless.
+// Refusals map to 429 (rate limit, bulkhead full) and 503 (circuit open); a
+// handler-committed 5xx is fed back to the breaker. Inbound never retries — a
+// handler that already produced side effects cannot be replayed, and
+// [guard.Policy] has no retry field to express one with.
 //
 // Compose it inside Chain, after the security filters that must run even for a
 // rejected request, and outside the handler:
 //
-//	Chain(CORS(corsCfg), ServerPolicy("http-server::9090"))(mux)
-//
-// The filter emits its own request signals through an [observability.ServerObserver]:
-// an inbound route has no seam for the resilience executor, so there is no
-// governance — no inbound rate limit or circuit breaker — only observation.
-func ServerPolicy(label string) Middleware {
-	return serverPolicyWith(observability.NewServerObserver("http-server", label), label)
+//	Chain(CORS(corsCfg), ServerPolicy("http-server::9090", center.ResilienceServer()))(mux)
+func ServerPolicy(label string, mgr *guard.Manager) Middleware {
+	return serverPolicyWith(governance.InboundOver("http-server", label, mgr))
 }
 
-// serverPolicyWith builds the filter over an already-built observer. It is the
-// seam the tests build on, and keeps the observer construction out of the filter
-// itself.
-func serverPolicyWith(obs *observability.ServerObserver, label string) Middleware {
+// serverPolicyWith builds the filter over an already-built inbound object. It is
+// the seam the tests build on, and keeps the object construction out of the filter
+// itself. The split form is used so the handler's response half can be recorded.
+func serverPolicyWith(in *governance.Inbound) Middleware {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			sw := &statusWriter{ResponseWriter: w}
-			var served bool
-			err := obs.Observe(r.Context(), operation(r), func(ctx context.Context) error {
-				if served {
-					return nil // reentry guard: the handler already ran this request
+
+			h, err := in.Before(r.Context(), operation(r))
+			if err != nil {
+				var ref *governance.Refusal
+				if errors.As(err, &ref) && !sw.written {
+					http.Error(w, ref.Error(), httpStatusFor(ref.Verdict()))
 				}
-				served = true
-				// Hand the observed context to the handler: the observer derived it,
-				// so the span the handler and its outbound clients run under is the
-				// one this request produced.
-				next.ServeHTTP(sw, r.WithContext(ctx))
-				// The response half: what only the handler knows once it has
-				// answered. An unwritten response is a 200, which is what net/http
-				// sends on its behalf.
-				code := sw.status
-				if !sw.written {
-					code = http.StatusOK
-				}
-				observability.ResponseFrom(ctx).Add(attribute.Int("http.response.status_code", code))
-				if sw.written && sw.status >= 500 {
-					return errHTTP5xx{code: sw.status}
-				}
-				return nil
-			})
-			// No rejection arms: this filter applies no governance, so the only
-			// errors reaching here are the handler's own (a committed 5xx, folded
-			// into the observation as a failure). The status the handler set is
-			// already written to the client.
-			_ = err
+				return
+			}
+
+			// Hand the observed context to the handler: the object derived it, so
+			// the span the handler and its outbound clients run under is the one
+			// this request produced.
+			next.ServeHTTP(sw, r.WithContext(h.Context()))
+
+			// The response half: what only the handler knows once it has answered.
+			// An unwritten response is a 200, which is what net/http sends on its
+			// behalf.
+			code := sw.status
+			if !sw.written {
+				code = http.StatusOK
+			}
+			h.Observation().Response().Add(attribute.Int("http.response.status_code", code))
+
+			var runErr error
+			if sw.written && sw.status >= 500 {
+				runErr = errHTTP5xx{code: sw.status}
+			}
+			in.After(h, runErr)
 		})
 	}
+}
+
+// httpStatusFor maps an inbound refusal to the HTTP status a client can act on:
+// rate/bulkhead rejections are 429, an open circuit or an injected fault is 503.
+func httpStatusFor(kind guard.Verdict) int {
+	if kind == guard.VerdictCircuitOpen || kind == guard.VerdictFaultInjected || kind == guard.VerdictDegraded {
+		return http.StatusServiceUnavailable
+	}
+	return http.StatusTooManyRequests
 }
 
 // errHTTP5xx is the failure signal a handler-committed 5xx feeds back into the
@@ -169,16 +173,28 @@ var accessTag = log.RegisterAppTag("http_server", "access")
 // only, never a label). What is NOT known up front — the response status code —
 // is recorded by the handler as it answers, through [observability.Response];
 // see the inbound filter below.
-func operation(r *http.Request) chain.Operation {
-	return chain.Operation{
-		Name:   r.Method + " " + r.URL.Path,
-		Metric: "http.server",
-		Attrs: []attribute.KeyValue{
-			attribute.String("http.request.method", r.Method),
+func operation(r *http.Request) observability.ServerOperation {
+	return observability.ServerOperation{
+		Action: r.Method + " " + r.URL.Path,
+		Observe: observability.ServerObserve{
+			Metric: observability.ServerMetric{
+				Name: "http.server",
+				Attrs: []attribute.KeyValue{
+					attribute.String("http.request.method", r.Method),
+				},
+			},
+			Span: observability.ServerSpan{Attrs: []attribute.KeyValue{
+				attribute.String("http.request.method", r.Method),
+				attribute.String("url.path", r.URL.Path),
+			}},
+			Log: observability.ServerLog{
+				Tag:          accessTag,
+				QuietSuccess: true,
+				Fields: []log.Field{
+					log.String("http.request.method", r.Method),
+					log.String("url.path", r.URL.Path),
+				},
+			},
 		},
-		Detail: []attribute.KeyValue{
-			attribute.String("url.path", r.URL.Path),
-		},
-		LogTag: accessTag,
 	}
 }

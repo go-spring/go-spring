@@ -35,8 +35,7 @@ import (
 // testCenter bundles unarmed authorities into the governance center the client
 // takes, so a container-less test still exercises the real injection path.
 func testCenter() *governance.Center {
-	ctr, err := governance.NewCenter(resilience.NewManager(nil),
-		loadbalance.NewManager(), fault.NewInjector(fault.Configs{}, nil), nil, governance.NewPushSource(governance.Config{}))
+	ctr, err := governance.NewCenter(resilience.NewClientManager(resilience.NewDefaultDriver(nil)), loadbalance.NewManager(), fault.NewClientManager(nil), fault.NewServerManager(nil), nil, governance.NewPushSource(governance.Config{}))
 	if err != nil {
 		panic(err)
 	}

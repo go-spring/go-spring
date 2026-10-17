@@ -151,7 +151,7 @@ spring.resilience.driver=default
 spring.governance.client.default.error-threshold=20
 spring.governance.client.default.open-duration=5s
 spring.governance.client.default.max-retries=1
-spring.governance.client.default.attempt-timeout=500ms
+spring.governance.client.default.timeout=500ms
 # Endpoint selection rides the same label: spring.governance.client.rules[N].balancer /
 # outlier-threshold / outlier-suspend-for for "gorm:mysql:orders-db" rebuild the
 # entry's chain from scratch (see cloud/governance/README.md §3.1).
@@ -297,7 +297,7 @@ the same level as the dialect's own fields). Reconciled against
 
 | Key | Type | Default | Behavior / interactions | Misconfiguration consequence |
 |-----|------|---------|-------------------------|------------------------------|
-| `max-open-conns` | int | 0 | `>0` → `sql.DB.SetMaxOpenConns`; 0 = database/sql unlimited. A governance rule setting `max-conns` overrides it. | Too low under concurrency → `WaitCount` grows, queries queue (visible via `gormcore.Stats`). |
+| `max-open-conns` | int | 0 | `>0` → `sql.DB.SetMaxOpenConns`; 0 = database/sql unlimited. | Too low under concurrency → `WaitCount` grows, queries queue (visible via `gormcore.Stats`). |
 | `max-idle-conns` | int | 0 | `>0` → `SetMaxIdleConns`; 0 = database/sql default (2). | 0 with high QPS → constant reconnect churn; > max-open is clamped by database/sql. |
 | `conn-max-lifetime` | duration | 0 | `>0` → `SetConnMaxLifetime`; 0 = unlimited. | 0 against a LB that silently drops idle conns → stale-connection errors mid-run. |
 | `conn-max-idle-time` | duration | 0 | `>0` → `SetConnMaxIdleTime`; 0 = unlimited. | Mostly interacts with lifetime above. |

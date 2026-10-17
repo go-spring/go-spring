@@ -206,7 +206,7 @@ bean Init 里注册。
 2. 声明层把命令的语义身份挂到 ctx：span 名为 `GET`，标签 `db.system`/`db.operation`，参数摘要
    `GET key` 作为 `db.statement`（只记命令+首个参数——值永不入日志；截断到 512 字节 [observe.go]）。
    key 只走 span/日志、永不进指标标签，因为它无界。ctx 是**调用方**的 context，span 因此挂到请求
-   trace 上，attempt-timeout 也能打断调用。
+   trace 上，timeout 也能打断调用。
 3. resilience 层向 executor（service 标签 `redigo:<地址或服务名>`，按池
    [pool.go:190]）申请许可；可重试失败会重新驱动内层调用。
 4. 内层 `Do` 读写 Redis；命中返回 bulk string。
@@ -215,7 +215,7 @@ bean Init 里注册。
 6. resilience 层发射：span 结束，`db.client.operation.duration`（整次调用）与 `db.client.attempt.duration`
    （每次尝试）记录，访问日志（tag `_app_redigo_access`）带时延/状态输出。
 
-`Do` / `DoWithTimeout` 不带 context：它们的 span 是根 span，attempt-timeout 打不断——
+`Do` / `DoWithTimeout` 不带 context：它们的 span 是根 span，timeout 打不断——
 两者任一要紧就用 `DoContext` [conn.go:74-79]。`Send`/`Flush`/`Receive`（pipeline）刻意不做
 插桩。
 

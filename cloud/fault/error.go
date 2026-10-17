@@ -14,20 +14,6 @@
  * limitations under the License.
  */
 
-// Package fault is the in-process fault-injection companion to
-// go-spring.org/cloud/resilience. It wraps a [chain.Executor] so a
-// configurable fraction of operations are made to fail or slow down on demand
-// — "setting fire" to a running client — to verify that retry, circuit-breaker,
-// per-attempt timeout and Fallback actually engage, and that the observe kit
-// records the resulting outcomes.
-//
-// The injection happens INSIDE the resilience executor's retry loop (the
-// wrapped operation fn returns the injected error, then the real executor
-// retries/breaks around it), so a fault exercises the protection stack rather
-// than bypassing it. See [WrapClientExecutor].
-//
-// fault stays stdlib-only and depends only on [resilience]; the gs runtime
-// binding (hot-reload via the governance source) lives in starter-governance.
 package fault
 
 import (
@@ -37,17 +23,10 @@ import (
 	"syscall"
 )
 
-// ErrInjected is a convenience sentinel for a generic injected failure. The
-// typed kinds ("timeout", "reset") return distinct *InjectedError values that
-// wrap a real error; detect them all with errors.As against *InjectedError.
-var ErrInjected = &InjectedError{Kind: "generic"}
-
-// IsInjected reports whether err is a fault-injected failure of any kind. It is
-// a shorthand for the errors.As call documented on [InjectedError].
-func IsInjected(err error) bool {
-	var ie *InjectedError
-	return errors.As(err, &ie)
-}
+// error.go is the OUTCOME vocabulary: the one error shape every injected failure
+// returns, and the two ways to detect it. Nothing here decides anything — the
+// sequence that builds these errors is manager.go, and the adapters that turn one
+// into their protocol's failure are executor.go and [Server.Fire].
 
 // InjectedError is the error shape every fault-injected failure returns. It
 // implements [resilience.Retryable] (Retryable reports true) so the resilience
@@ -93,6 +72,18 @@ func (e *InjectedError) Unwrap() error { return e.Inner }
 func (e *InjectedError) Is(target error) bool {
 	_, ok := target.(*InjectedError)
 	return ok
+}
+
+// ErrInjected is a convenience sentinel for a generic injected failure. The
+// typed kinds ("timeout", "reset") return distinct *InjectedError values that
+// wrap a real error; detect them all with errors.As against *InjectedError.
+var ErrInjected = &InjectedError{Kind: "generic"}
+
+// IsInjected reports whether err is a fault-injected failure of any kind. It is
+// a shorthand for the errors.As call documented on [InjectedError].
+func IsInjected(err error) bool {
+	var ie *InjectedError
+	return errors.As(err, &ie)
 }
 
 // newInjectedError builds the error returned to the executor for a configured

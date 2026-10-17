@@ -18,21 +18,21 @@ package loadbalance
 
 import (
 	"context"
-	"maps"
 	"sync"
 	"sync/atomic"
 
 	"go-spring.org/cloud/discovery"
+	"go-spring.org/log"
 )
 
 // Chain is the OUTER layer of client-side load balancing: the egress a request
-// path talks to, and the receiver of dynamic governance refreshes. It owns a
-// whole endpoint-selection chain — the [Balancer], its [Tracker] and the inner
-// [Pool] that binds them to a discovery source — as an immutable generation,
-// REBUILT FROM SCRATCH whenever the governance selection resolved for its label
-// changes. Callers hold the chain, not the pool: [Chain.Pick], [Chain.Complete],
-// [Chain.Tracker] and [Chain.Selection] are the outward surface, each delegating
-// to the generation in force.
+// path talks to, and the object that follows the governance selection for its
+// label. It owns a whole endpoint-selection chain — the [Balancer], its
+// [Tracker] and the inner [Pool] that binds them to a discovery source — as an
+// immutable generation, REBUILT FROM SCRATCH whenever the selection its label
+// resolves to moves to a new generation. Callers hold the chain, not the pool:
+// [Chain.Pick], [Chain.Complete], [Chain.Tracker] and [Chain.Selection] are the
+// outward surface, each delegating to the generation in force.
 //
 // A changed selection means a new balancer, a new tracker and a new pool,
 // sharing nothing with the generation it replaces. After a config change nothing
@@ -42,19 +42,24 @@ import (
 // which is exactly what a Chain is built to avoid: a change must not leave any
 // of the configuration it replaced still deciding traffic.
 //
-// The chain owns its own refresh: [Manager.Apply] resolves what the chain's
-// label's selection IS and hands it over, and [Chain.refresh] decides whether it
-// moved — a push that does not change this label's selection costs the chain
-// nothing.
+// # The chain pulls; the manager does not push
 //
-// The label IS the key: a chain registers itself as a subscriber of its label
-// (see [Manager.Chain]), so one label may legitimately back several chains
-// (two clients sharing a service name, a rebuilt one) — each subscribes
-// independently, and a label whose selection moves rebuilds every chain under it.
+// [Manager.Apply] publishes a generation and stops there. The chain holds a
+// [SelectionSource] — the manager — and asks it on every request what its label
+// resolves to; when the generation it hears is not the one its pool was built
+// from, it rebuilds. So the chain is the STABLE SHELL and the [Pool] is the
+// replaceable state behind it, exactly as the resilience executor is a stable
+// shell over a replaceable [execState]: a request path talks to the shell and
+// never to the pool underneath.
+//
+// The label IS the key: several chains may share a label (two clients on one
+// service name, a rebuilt one), and each follows the label's generation
+// independently.
 //
 // A Chain is safe for concurrent use. A request path reads the generation in
-// force on every call; a rebuild swaps it atomically, so a rebuild never blocks
-// a Pick and a Pick never sees a half-built generation.
+// force on every call; a rebuild swaps it atomically, so a Pick never sees a
+// half-built generation. Only the first request after a config change pays for
+// the rebuild — every other one finds the generation already current.
 type Chain struct {
 	// src is the chain's endpoint source, fixed for the chain's whole life: a
 	// rebuild re-reads the same source, it does not re-resolve it. A chain whose
@@ -63,27 +68,41 @@ type Chain struct {
 	// what its upstream points at.
 	src discovery.Resolver
 
-	// label is the governance label this chain subscribes to, and never changes.
+	// label is the governance label this chain follows, and never changes.
 	label string
+
+	// source is the manager, and the chain's answer to "has my label's selection
+	// moved?". Fixed at construction — the chain is built by the manager it
+	// follows.
+	source SelectionSource
 
 	// cur is the generation in force: the pool a request pays attention to. It is
 	// read on every request and replaced by a rebuild, so it is an atomic pointer
 	// — neither side ever blocks on the other.
 	cur atomic.Pointer[Pool]
 
-	// mu serializes rebuilds so two pushes cannot interleave a build and leak a
-	// generation. It guards nothing on the request path. It also guards last,
-	// the selection the current generation was built from.
-	mu   sync.Mutex
-	gen  uint64
-	last Selection
+	// wantGen is the source generation this chain has moved to, and it is the
+	// whole of the request path's cost: a request reads it, compares, and goes on
+	// its way. It is set as soon as a generation is owed — INCLUDING when the
+	// build then fails, so a bad rule costs one attempt, not one per request until
+	// the selection changes. It is a pointer so that "no generation moved to yet"
+	// is distinguishable from generation zero, which is a real value.
+	wantGen atomic.Pointer[uint64]
+
+	// gen counts the rebuilds performed. It is an inspection value (see
+	// [Chain.Generation]), never consulted by the request path.
+	gen atomic.Uint64
+
+	// buildMu serializes builds. It is taken only when a generation is owed —
+	// never on the fast path, where wantGen already matches.
+	buildMu sync.Mutex
 }
 
 // newChain assembles an unarmed chain: fields set, no generation built. Building
 // the first generation is [Manager.Chain]'s job — it resolves the label's
 // current selection and builds the generation that selection resolves to.
-func newChain(src discovery.Resolver, label string) *Chain {
-	return &Chain{src: src, label: label}
+func newChain(src discovery.Resolver, label string, source SelectionSource) *Chain {
+	return &Chain{src: src, label: label, source: source}
 }
 
 // Pick selects one live, healthy, non-suspended endpoint from the generation in
@@ -91,27 +110,27 @@ func newChain(src discovery.Resolver, label string) *Chain {
 // never to the pool underneath. See [Pool.Pick] for the filtering and fallback
 // semantics.
 //
-// Pick reads the current generation once. A rebuild between a Pick and its
-// [Chain.Complete] settles the request against the new generation — harmless,
-// because a rebuild already discards the previous generation's least-conn and
-// suspension state wholesale.
+// Pick moves the chain to its label's current generation first, and then reads
+// it once. A rebuild between a Pick and its [Chain.Complete] settles the request
+// against the new generation — harmless, because a rebuild already discards the
+// previous generation's least-conn and suspension state wholesale.
 func (c *Chain) Pick(info PickInfo) (discovery.Endpoint, error) {
-	return c.cur.Load().Pick(info)
+	return c.current().Pick(info)
 }
 
 // Complete settles the request that Pick issued to ep. Invoke it exactly once
 // per picked endpoint, after the request ends. See [Pool.Complete].
 func (c *Chain) Complete(ctx context.Context, ep discovery.Endpoint, err error) {
-	c.cur.Load().Complete(ctx, ep, err)
+	c.current().Complete(ctx, ep, err)
 }
 
 // Tracker returns the suspension tracker of the generation in force. It is an
 // inspection and test helper.
-func (c *Chain) Tracker() *Tracker { return c.cur.Load().Tracker() }
+func (c *Chain) Tracker() *Tracker { return c.current().Tracker() }
 
 // Selection returns the selection the generation in force was built from. It is
 // an inspection and test helper. See [Pool.Selection].
-func (c *Chain) Selection() Selection { return c.cur.Load().Selection() }
+func (c *Chain) Selection() Selection { return c.current().Selection() }
 
 // Label returns the governance label the chain follows. It is an inspection
 // helper.
@@ -119,45 +138,73 @@ func (c *Chain) Label() string { return c.label }
 
 // Generation returns how many generations the chain has built, the first being
 // 1. Each rebuild makes it grow by one, so a test can tell a real rebuild from a
-// push that did not move this chain. It is an inspection and test helper.
+// push that did not move this chain. It is an inspection and test helper, and
+// like the other ones it moves the chain first — a chain follows the config on
+// the request path, so a rebuild is only ever observed after something asks for
+// the generation in force.
+//
+// Generations that a push moves past before any request arrives are COALESCED:
+// the chain moves straight to the current one, so the count says how many times
+// the chain rebuilt, not how many times the config changed.
 func (c *Chain) Generation() uint64 {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	return c.gen
+	c.sync(context.Background())
+	return c.gen.Load()
 }
 
-// refresh moves the chain to s: a no-op when s is the selection the current
-// generation was already built from (a push that does not move this label costs
-// the chain nothing), and otherwise a rebuild from scratch. The chain — not the
-// manager — owns this decision, which IS the refresh process: the manager only
-// resolves what a label's selection is and hands it over (see [Manager.Apply]).
+// current returns the generation in force, having first moved the chain onto
+// whatever its label resolves to now. The move is a no-op — an atomic load and an
+// integer comparison — on every request but the first after a config change.
+func (c *Chain) current() *Pool {
+	c.sync(context.Background())
+	return c.cur.Load()
+}
+
+// sync brings the chain to the generation its label now resolves to. It is the
+// whole of the chain's refresh process, and the chain owns it: the manager only
+// answers what a label's selection IS and which generation that is (see
+// [SelectionSource]).
 //
-// A strategy the selection names that fails to build is an error and the current
+// A strategy the selection names that fails to build is not fatal: the current
 // generation stays in force, so a bad rule degrades a chain to its last good
 // configuration instead of taking its client down — the rule the governance
-// source's contract forces, since it has no error channel. A refused selection
-// is still CONSUMED: last moves to it, so it is not retried until it changes.
-func (c *Chain) refresh(s Selection) error {
-	c.mu.Lock()
-	if c.gen > 0 && selectionEqual(c.last, s) {
-		c.mu.Unlock()
-		return nil
-	}
-	c.last = s // consumed even on a refused build: no retry until it changes
-	c.mu.Unlock()
+// source's contract forces, since it has no error channel. The generation is
+// CONSUMED even then, so the failure costs one build, not one per request.
+func (c *Chain) sync(ctx context.Context) {
+	sel, gen := c.source.ResolveSelection(c.label)
 
-	// Assemble outside the lock: building runs a strategy factory, which is
-	// caller-supplied code, and a request path must not wait on it to read the
-	// current generation.
-	p, err := c.build(s)
-	if err != nil {
-		return err
+	// The fast path, and the whole of a request's cost once the chain is current:
+	// one atomic compare.
+	if w := c.wantGen.Load(); w != nil && *w == gen {
+		return
 	}
-	c.mu.Lock()
-	c.gen++
-	c.cur.Store(p)
-	c.mu.Unlock()
-	return nil
+
+	// A build is owed. It runs without blocking the request path's way: only the
+	// goroutine that wins buildMu builds, and the others return to the generation
+	// in force rather than waiting on a strategy factory they did not ask for.
+	c.buildMu.Lock()
+	defer c.buildMu.Unlock()
+	if w := c.wantGen.Load(); w != nil && *w == gen {
+		return // another request moved the chain while this one waited
+	}
+	// Consume the generation BEFORE building, so a refused build is not retried on
+	// every request.
+	c.wantGen.Store(&gen)
+
+	p, err := c.build(sel)
+	if err != nil {
+		log.Warn(ctx, log.TagAppDef,
+			"loadbalance: endpoint selection rejected, keeping the resource's current strategy",
+			log.String("label", c.label),
+			log.Err(err))
+		return
+	}
+	// Store only if the generation this pool was built for is still the one
+	// wanted: a config change that landed while the build ran has already
+	// consumed a newer generation, and this pool is its predecessor.
+	if w := c.wantGen.Load(); w != nil && *w == gen {
+		c.cur.Store(p)
+		c.gen.Add(1)
+	}
 }
 
 // build assembles one INNER-LAYER generation from s: the strategy the selection
@@ -188,14 +235,4 @@ func (c *Chain) build(s Selection) (*Pool, error) {
 	// generation reads back what it was built from (see [Pool.Selection]).
 	p.recordSelection(s)
 	return p, nil
-}
-
-// selectionEqual reports whether two resolved selections are equivalent for the
-// purpose of refresh change detection. [Selection] carries a parameter map and
-// so is not comparable with ==; every field is compared explicitly instead.
-func selectionEqual(a, b Selection) bool {
-	return a.Balancer == b.Balancer &&
-		maps.Equal(a.Params, b.Params) &&
-		a.OutlierThreshold == b.OutlierThreshold &&
-		a.OutlierSuspendFor == b.OutlierSuspendFor
 }

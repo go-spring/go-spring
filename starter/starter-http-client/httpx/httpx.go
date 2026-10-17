@@ -33,8 +33,8 @@
 //     breaking and retry protect every call; because it sits outside the
 //     balancer, a retry re-picks a fresh endpoint and the breaker keys on the
 //     logical service name. When no explicit executor is supplied, it comes from
-//     the injected [resilience.Manager] under Service — the same
-//     [resilience.Manager.ClientExecutorFor] path every other client starter uses;
+//     the injected [resilience.ClientManager] under Service — the same
+//     [resilience.ClientManager.ClientExecutorFor] path every other client starter uses;
 //   - TLS — the certificate surface for https targets is built into the base
 //     transport;
 //
@@ -45,19 +45,18 @@
 // (gated by Observability). With no
 // OTel SDK registered these are no-ops, so the transport stays usable bare. The
 // package never imports a concrete starter; the governance authority reaches it
-// as the beans [NewTransport] takes — a [resilience.Manager], a [fault.Injector]
+// as the beans [NewTransport] takes — a [resilience.ClientManager], a [fault.ClientManager]
 // and a [loadbalance.Manager] for the selection half — never through a
 // package-level seam.
 package httpx
 
 import (
 	"context"
-	"go-spring.org/cloud/chain"
 	"go-spring.org/cloud/governance"
 	"net/http"
 
+	"go-spring.org/cloud/chain"
 	"go-spring.org/cloud/discovery"
-	"go-spring.org/cloud/fault"
 	"go-spring.org/cloud/loadbalance"
 	"go-spring.org/cloud/observability"
 	"go-spring.org/cloud/propagate"
@@ -114,7 +113,7 @@ type Config struct {
 	// caller resolves it from the container (the ${spring.resilience.driver} bean)
 	// and passes the driver itself, since this
 	// package is container-free. When neither chain.Executor nor ResilienceDriver is
-	// set, the executor is resolved from the injected [resilience.Manager] under
+	// set, the executor is resolved from the injected [resilience.ClientManager] under
 	// Service; with governance off the armed policy is zero and the executor is
 	// a transparent pass-through.
 	ResilienceDriver resilience.Driver
@@ -158,7 +157,7 @@ type Config struct {
 
 // NewTransport assembles the http.RoundTripper for cfg and returns it together
 // with a close function that releases what the transport owns — an executor it
-// built itself, the discovery watch. An executor taken from [resilience.Manager]
+// built itself, the discovery watch. An executor taken from [resilience.ClientManager]
 // is not released here: the manager owns it for the process lifetime. It fails
 // fast when ServiceName is set but the discovery backend or load-balancing
 // strategy cannot be resolved, so misconfiguration surfaces at wiring time
@@ -234,7 +233,7 @@ func NewTransport(cfg Config, center *governance.Center, prop traffic.Propagator
 	// breaker state and driver rule names agree with the governance rule that armed
 	// them. Three executor sources, first match wins: a pre-built chain.Executor, an
 	// explicit ResilienceDriver+Policy, or — the default, and the same path every
-	// other client starter takes — the injected [resilience.Manager] under
+	// other client starter takes — the injected [resilience.ClientManager] under
 	// Service. The manager owns that executor: it is built once per label, shared
 	// by every user of the label, refreshes itself on a policy change, and
 	// already carries the observe layer; with governance off the armed policy is
@@ -250,7 +249,7 @@ func NewTransport(cfg Config, center *governance.Center, prop traffic.Propagator
 			return nil, nil, err
 		}
 	default:
-		exec = center.Resilience().ClientExecutorFor("http", cfg.service())
+		exec = center.ResilienceClient().ClientExecutorFor("http", cfg.service())
 		managerOwned = true
 		// The chain's endpoint-selection half follows the governance rule through
 		// the registration its construction performed — the protection policy
@@ -273,16 +272,16 @@ func NewTransport(cfg Config, center *governance.Center, prop traffic.Propagator
 	if wrap == nil {
 		if managerOwned {
 			wrap = func(e chain.Executor) chain.Executor {
-				return fault.WrapClientExecutor(e, cfg.service(), center.Fault())
+				return center.FaultClient().WrapClientExecutor(e)
 			}
 		} else {
 			wrap = func(e chain.Executor) chain.Executor {
-				return fault.WrapClientExecutor(observability.WrapClientExecutor(e, "http", cfg.service()), cfg.service(), center.Fault())
+				return center.FaultClient().WrapClientExecutor(observability.WrapClientExecutor(e, "http", cfg.service()))
 			}
 		}
 	}
 	exec = wrap(exec)
-	base = resilience.NewRoundTripper(base, exec, nil)
+	base = resilience.NewRoundTripper(base, exec, cfg.service(), callFor)
 	// The manager owns its executor for the process lifetime, so closing it with
 	// one transport would be wrong; only an httpx-built one is released here.
 	if !managerOwned {
@@ -313,6 +312,21 @@ func NewTransport(cfg Config, center *governance.Center, prop traffic.Propagator
 type trafficTransport struct {
 	base http.RoundTripper
 	prop traffic.Propagator
+}
+
+// callFor declares each outbound HTTP call so the client stack names it: the
+// system ("http") and the action ("METHOD path") a governance or fault rule
+// matches on. Without it the call is undeclared — the emitter falls back to its
+// generic signals — and, more to the point, no rule could target one endpoint of
+// this client. The path is the concrete request path (a client has no route
+// template); a rule that must cover a family of paths uses [chain.ActionMatch]
+// with a Prefix.
+func callFor(req *http.Request) chain.Operation {
+	path := ""
+	if req.URL != nil {
+		path = req.URL.Path
+	}
+	return chain.HTTPOp(req.Method, path)
 }
 
 func (t *trafficTransport) RoundTrip(req *http.Request) (*http.Response, error) {

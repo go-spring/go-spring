@@ -77,13 +77,3 @@ func NewSentinelDriver() resilience.Driver { return sentinelDriver{} }
 func (sentinelDriver) NewClientExecutor(service string, p resilience.ClientPolicy) (chain.Executor, error) {
 	return newSentinelExecutor(service, p)
 }
-
-// NewServerExecutor builds the inbound inbound engine
-// (server_executor.go), which maps the inbound model onto sentinel's flow,
-// circuit-breaker and isolation rules for one route. Sentinel's genuinely
-// inbound-only primitives (system rules, hotspot rules) have no
-// [resilience.ServerPolicy] field to arrive through yet; when they do, they land
-// there.
-func (sentinelDriver) NewServerExecutor(service string, p resilience.ServerPolicy) (chain.Executor, error) {
-	return newSentinelServerExecutor(service, p)
-}

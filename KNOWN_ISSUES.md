@@ -20,7 +20,7 @@
 
 **排查方向**:对比包与不包 httpx transport 时 breaker 的 success/failure 计数(RoundTripper 的返回值 + 5xx 判定)。
 
-**⚠ 现状待重新确认(2026-10-06)**:当年的 `cloud/resilience/roundtripper.go` **已不存在**,机制演进为 `cloud/resilience/client_adapter_http.go` 的 `NewRoundTripper(base, exec, nil)`(现在 influxdb、gateway 在用)。**这条缺陷是否仍在,只能真跑 `example-load` 才能判定**——本轮整理时未跑。
+**⚠ 现状待重新确认(2026-10-06)**:当年的 `cloud/resilience/roundtripper.go` **已不存在**,机制演进为 `cloud/resilience/client_adapter_http.go` 的 `NewRoundTripper(base, exec, service, nil)`(现在 influxdb、gateway 在用)。**这条缺陷是否仍在,只能真跑 `example-load` 才能判定**——本轮整理时未跑。
 
 ---
 

@@ -41,10 +41,10 @@ func attrsLine(attrs []attribute.KeyValue) string {
 // prefix, the db.* labels and this starter's access-log tag.
 func TestOperationDeclaresFamilyVocabulary(t *testing.T) {
 	op := operation("/milvus.proto.milvus.MilvusService/Search")
-	assert.String(t, op.Name).Equal("Search")
-	assert.String(t, op.Metric).Equal("db.client")
-	assert.String(t, attrsLine(op.Attrs)).Equal("db.system=milvus,db.operation=Search")
-	assert.That(t, op.LogTag == accessTag).True()
+	assert.String(t, op.Request.Action).Equal("Search")
+	assert.String(t, op.Observe.Metric.Name).Equal("db.client")
+	assert.String(t, attrsLine(op.Observe.Metric.Attrs)).Equal("db.system=milvus,db.operation=Search")
+	assert.That(t, op.Observe.Log.Tag == accessTag).True()
 }
 
 // TestOperationMethodStaysOutOfLabels is the cardinality guard: the full method
@@ -52,26 +52,26 @@ func TestOperationDeclaresFamilyVocabulary(t *testing.T) {
 // on Attrs because Attrs is what labels are built from.
 func TestOperationMethodStaysOutOfLabels(t *testing.T) {
 	op := operation("/milvus.proto.milvus.MilvusService/Search")
-	for _, a := range op.Attrs {
+	for _, a := range op.Observe.Metric.Attrs {
 		assert.That(t, string(a.Key) == "db.method").False()
 	}
-	assert.String(t, attrsLine(op.Detail)).Equal("db.method=/milvus.proto.milvus.MilvusService/Search")
+	assert.String(t, attrsLine(detailAttrs(op))).Equal("db.method=/milvus.proto.milvus.MilvusService/Search")
 }
 
 // TestOperationTakesBoundedMethodName proves the operation name is only the
 // bounded last segment — the finest dimension the gRPC interceptor can see.
 func TestOperationTakesBoundedMethodName(t *testing.T) {
 	op := operation("/milvus.proto.milvus.MilvusService/CreateCollection")
-	assert.String(t, op.Name).Equal("CreateCollection")
-	assert.That(t, strings.Contains(attrsLine(op.Attrs), "db.operation=CreateCollection")).True()
+	assert.String(t, op.Request.Action).Equal("CreateCollection")
+	assert.That(t, strings.Contains(attrsLine(op.Observe.Metric.Attrs), "db.operation=CreateCollection")).True()
 }
 
 // TestOperationWithoutSlashKeepsWholeWord proves a bare method string (no path
 // separator) still declares a name and a detail rather than an empty one.
 func TestOperationWithoutSlashKeepsWholeWord(t *testing.T) {
 	op := operation("Flush")
-	assert.String(t, op.Name).Equal("Flush")
-	assert.String(t, attrsLine(op.Detail)).Equal("db.method=Flush")
+	assert.String(t, op.Request.Action).Equal("Flush")
+	assert.String(t, attrsLine(detailAttrs(op))).Equal("db.method=Flush")
 }
 
 // captureExecutor is a chain.Executor that records the operation it is handed
@@ -85,7 +85,7 @@ type observation struct {
 	ok bool
 }
 
-func (e *captureExecutor) Execute(ctx context.Context, op chain.Operation, fn func(context.Context) error) error {
+func (e *captureExecutor) Execute(ctx context.Context, op chain.Operation, rec *chain.Recorder, fn func(context.Context) error) error {
 	e.seen.op, e.seen.ok = op, true
 	return fn(ctx)
 }
@@ -98,7 +98,7 @@ func (e *captureExecutor) Close() error { return nil }
 func TestUnaryGuardDeclaresOperationBeforeExecuting(t *testing.T) {
 	exec := &captureExecutor{}
 	slot := &guardSlot{}
-	slot.apply(exec)
+	slot.apply(exec, "milvus:test")
 
 	var ran int
 	invoker := func(context.Context, string, any, any, *grpc.ClientConn, ...grpc.CallOption) error {
@@ -109,8 +109,8 @@ func TestUnaryGuardDeclaresOperationBeforeExecuting(t *testing.T) {
 	assert.Error(t, err).Nil()
 	assert.That(t, ran).Equal(1)
 	assert.That(t, exec.seen.ok).True()
-	assert.String(t, exec.seen.op.Metric).Equal("db.client")
-	assert.String(t, exec.seen.op.Name).Equal("Insert")
+	assert.String(t, exec.seen.op.Observe.Metric.Name).Equal("db.client")
+	assert.String(t, exec.seen.op.Request.Action).Equal("Insert")
 }
 
 // TestStreamGuardDeclaresOperationBeforeExecuting does the same for the stream
@@ -118,7 +118,7 @@ func TestUnaryGuardDeclaresOperationBeforeExecuting(t *testing.T) {
 func TestStreamGuardDeclaresOperationBeforeExecuting(t *testing.T) {
 	exec := &captureExecutor{}
 	slot := &guardSlot{}
-	slot.apply(exec)
+	slot.apply(exec, "milvus:test")
 
 	streamer := func(context.Context, *grpc.StreamDesc, *grpc.ClientConn, string, ...grpc.CallOption) (grpc.ClientStream, error) {
 		return nil, nil
@@ -126,5 +126,22 @@ func TestStreamGuardDeclaresOperationBeforeExecuting(t *testing.T) {
 	_, err := streamGuard(slot)(context.Background(), &grpc.StreamDesc{}, nil, "/milvus.proto.milvus.MilvusService/Search", streamer)
 	assert.Error(t, err).Nil()
 	assert.That(t, exec.seen.ok).True()
-	assert.String(t, exec.seen.op.Name).Equal("Search")
+	assert.String(t, exec.seen.op.Request.Action).Equal("Search")
+}
+
+// detailAttrs returns the operation's span attributes that are NOT metric
+// labels — the per-call detail the old Call.Detail field held, reconstructed
+// from the split destination lists.
+func detailAttrs(op chain.Operation) []attribute.KeyValue {
+	labeled := make(map[attribute.Key]bool, len(op.Observe.Metric.Attrs))
+	for _, a := range op.Observe.Metric.Attrs {
+		labeled[a.Key] = true
+	}
+	var out []attribute.KeyValue
+	for _, a := range op.Observe.Span.Attrs {
+		if !labeled[a.Key] {
+			out = append(out, a)
+		}
+	}
+	return out
 }

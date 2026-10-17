@@ -31,7 +31,7 @@ import (
 // claim: with an inert injector config the always-installed interceptor is a
 // pass-through.
 func TestFaultUnaryInterceptor_InertPassthrough(t *testing.T) {
-	ic := FaultUnaryInterceptor(fault.NewInjector(fault.Configs{}, nil))
+	ic := FaultUnaryInterceptor(fault.NewServerManager(nil))
 	info := &grpc.UnaryServerInfo{FullMethod: "/demo.Service/Echo"}
 	resp, err := ic(context.Background(), nil, info,
 		func(context.Context, any) (any, error) { return "ok", nil })
@@ -41,11 +41,12 @@ func TestFaultUnaryInterceptor_InertPassthrough(t *testing.T) {
 
 // TestFaultUnaryInterceptor_InjectsErrorAtRate1 covers the "set fire" path:
 // with an injected injector at Rate 1 every call returns the injected error and
-// the handler never runs; hot-toggling the injector off (SetConfig on the live
+// the handler never runs; hot-toggling the injector off (Refresh on the live
 // injector, no restart) restores pass-through on the next call because the
 // interceptor captured the injector and observes its config in place.
 func TestFaultUnaryInterceptor_InjectsErrorAtRate1(t *testing.T) {
-	in := fault.NewInjector(fault.Configs{Server: fault.Config{Rate: 1, Error: "generic"}}, nil)
+	in := fault.NewServerManager(nil)
+	in.Refresh(fault.Config{Rules: []fault.Rule{{Rate: 1, Error: "generic"}}})
 
 	ic := FaultUnaryInterceptor(in)
 	info := &grpc.UnaryServerInfo{FullMethod: "/demo.Service/Echo"}
@@ -57,7 +58,7 @@ func TestFaultUnaryInterceptor_InjectsErrorAtRate1(t *testing.T) {
 	assert.That(t, hits).Equal(0)
 
 	// Hot-toggle off: the same interceptor passes the next call through.
-	in.SetConfig(fault.Configs{})
+	in.Refresh(fault.Config{})
 	resp, err := ic(context.Background(), nil, info,
 		func(context.Context, any) (any, error) { hits++; return "ok", nil })
 	assert.That(t, err).Nil()
@@ -68,7 +69,8 @@ func TestFaultUnaryInterceptor_InjectsErrorAtRate1(t *testing.T) {
 // TestFaultUnaryInterceptor_InjectsLatency verifies the latency knob: the
 // injected sleep happens before the handler, and the call still succeeds.
 func TestFaultUnaryInterceptor_InjectsLatency(t *testing.T) {
-	in := fault.NewInjector(fault.Configs{Server: fault.Config{Latency: 50 * time.Millisecond}}, nil)
+	in := fault.NewServerManager(nil)
+	in.Refresh(fault.Config{Rules: []fault.Rule{{Latency: 50 * time.Millisecond}}})
 
 	ic := FaultUnaryInterceptor(in)
 	info := &grpc.UnaryServerInfo{FullMethod: "/demo.Service/Echo"}
@@ -84,7 +86,8 @@ func TestFaultUnaryInterceptor_InjectsLatency(t *testing.T) {
 // injected error aborts the stream handler, and disabling the injector
 // restores the pass-through.
 func TestFaultStreamInterceptor_InjectThenDisable(t *testing.T) {
-	in := fault.NewInjector(fault.Configs{Server: fault.Config{Rate: 1, Error: "generic"}}, nil)
+	in := fault.NewServerManager(nil)
+	in.Refresh(fault.Config{Rules: []fault.Rule{{Rate: 1, Error: "generic"}}})
 
 	ic := FaultStreamInterceptor(in)
 	info := &grpc.StreamServerInfo{FullMethod: "/demo.Service/Chat"}
@@ -95,7 +98,7 @@ func TestFaultStreamInterceptor_InjectThenDisable(t *testing.T) {
 	assert.That(t, errors.Is(err, fault.ErrInjected)).True()
 	assert.That(t, hits).Equal(0)
 
-	in.SetConfig(fault.Configs{})
+	in.Refresh(fault.Config{})
 	err = ic(nil, stubServerStream{}, info,
 		func(any, grpc.ServerStream) error { hits++; return nil })
 	assert.That(t, err).Nil()

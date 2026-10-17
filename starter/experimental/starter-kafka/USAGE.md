@@ -263,7 +263,7 @@ franz-go's async `Produce` returns immediately, so only the synchronous path can
   executor, so its span is named `publish` and its metrics/access log carry the topic (in Detail,
   never a metric label) [command.go].
 - With a rule matching, the call passes through the assembled executor
-  `fault.WrapClientExecutor(mgr.ClientExecutorFor("kafka", service), service, inj)` [command.go:86] — runtime
+  `inj.WrapClientExecutor(mgr.ClientExecutorFor("kafka", service))` [command.go:86] — runtime
   fault injection and resilience outcome metrics around the produce; service label
   `kafka:<brokers>` (format `prefix:name`, [resilience/client_policy.go:216-230]).
 - On rejection (rate-limit / open breaker) the produce is **never invoked**; the rejection error

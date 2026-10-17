@@ -39,7 +39,7 @@ func TestNewRoute_ResolvesDiscoveryLabel(t *testing.T) {
 	})
 	lb := loadbalance.NewManager()
 	center, err := governance.NewCenter(
-		resilience.NewManager(nil), lb, fault.NewInjector(fault.Configs{}, nil), disc, governance.NewPushSource(governance.Config{}))
+		resilience.NewClientManager(resilience.NewDefaultDriver(nil)), lb, fault.NewClientManager(nil), fault.NewServerManager(nil), disc, governance.NewPushSource(governance.Config{}))
 	if err != nil {
 		t.Fatal(err)
 	}

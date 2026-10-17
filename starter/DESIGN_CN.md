@@ -166,11 +166,11 @@ Web(`gin`、`echo`、`hertz`……)与 RPC(`grpc`、`kitex`、`thrift`、`dubbo`
   在启动期失败。这也是注入服务发现的接缝(由 driver 构建 dialer)。可选能力放到
   **独立**接口上(如 go-redis 的 `ClusterDriver`),让已有的自定义 driver 保持可编译。
 - **要对外访问的 client starter 靠自己的 import 拿到治理能力。** 不需要任何治理 import:每个 authority
-  由**管它的那个包**注册 —— `cloud/resilience` 注册 `*resilience.Manager`、`cloud/loadbalance`
-  注册 `*loadbalance.Manager`、`cloud/fault` 注册 `*fault.Injector` —— 而注入其中一个的 client
-  必然已经为了类型 import 了那个包。于是 `*resilience.Manager` /
-  `*loadbalance.Manager` / `*fault.Injector` 必然在容器里;注入写成**必填**
-  (`gs.IndexArg(N, gs.TagArg(""))`),不写可空(`"?"`)。这三个 bean 本就是 client
+  由**管它的那个包**注册 —— `cloud/resilience` 分别注册 `*resilience.ClientManager` / `*resilience.ServerManager`、`cloud/loadbalance`
+  注册 `*loadbalance.Manager`、`cloud/fault` 分别注册 `*fault.ClientManager` / `*fault.ServerManager` —— 而注入其中一个的 client
+  必然已经为了类型 import 了那个包。于是 `*resilience.ClientManager` /
+  `*loadbalance.Manager` / `*fault.ClientManager`（或 `*fault.ServerManager`）必然在容器里;注入写成**必填**
+  (`gs.IndexArg(N, gs.TagArg(""))`),不写可空(`"?"`)。这些 direction authority 本就是 client
   契约的一部分(它天生可治理、可观测、可路由),而在规则文档什么都不配时它们行为如常,所以
   集成它不改变任何默认行为。关掉治理是发布一份什么都不配的文档
   (空的 `client`/`server`、零值 `Default`、无规则),**不是"bean 不存在"** —— 也不是"没有源":中心的 Source
@@ -181,7 +181,7 @@ Web(`gin`、`echo`、`hertz`……)与 RPC(`grpc`、`kitex`、`thrift`、`dubbo`
   不是本规则的例外。)
   构造函数在**构造期**把它们接上,那是 client **是什么**的一部分,而不是"造完要记得补的一步"
   —— 它接住注入的 `*governance.Center`,并在返回前
-  `exec = center.ExecutorFor(system, label)`。`ExecutorFor` 读取 `center.Resilience()`,
+  `exec = center.ExecutorFor(system, label)`。`ExecutorFor` 读取 `center.ResilienceClient()`,
   为空即 panic —— 容器之外不带 resilience manager 自己调构造函数是装配错误,而不是静默
   降级:容器始终提供 center,不存在 unmanaged/仅观测的兜底路径。
 - **没有东西可保护的组件,自己发信号。** 上一条针对的是访问外部服务的 client;依赖就在本进程内的
@@ -277,10 +277,10 @@ Web(`gin`、`echo`、`hertz`……)与 RPC(`grpc`、`kitex`、`thrift`、`dubbo`
   `CreateClient(ctx, name string, c Config)`,属未收尾的滞后,不是第二种形状。
 - **`Config` 是用户在 properties 里写的,`Center` 是容器提供的。** 一个声明、一个注入——别把容器
   bean 塞进 `Config` 字段。`*governance.Center` 是容器提供的那一个对象:它展开为
-  `Resilience() *resilience.Manager` /
-  `Fault() *fault.Injector` / `Loadbalance() *loadbalance.Manager` / `Discovery()
+  `ResilienceClient() *resilience.ClientManager` / `ResilienceServer() *resilience.ServerManager` /
+  `FaultClient() *fault.ClientManager` / `FaultServer() *fault.ServerManager` / `Loadbalance() *loadbalance.Manager` / `Discovery()
   *discovery.Manager`(driver 用 `Get` 按 label 解析后端的目录),外加
-  `ExecutorFor(system, label) chain.Executor` 与 `PolicyFor(label) ClientPolicy`。**`Resilience()` 必填**:
+  `ExecutorFor(system, label) chain.Executor` 与 `PolicyFor(label) ClientPolicy`。**`ResilienceClient()` 必填**:
   `ExecutorFor` 对 nil manager 直接 panic,所以手搓的 client(example、测试)也必须提供一个——
   容器始终提供,不存在 unmanaged/仅观测的兜底路径。
 - **构造是一期、在构造函数里完成——没有 `Init` 钩子。** `NewClient(raw, instanceName, serviceName,
@@ -301,7 +301,7 @@ Web(`gin`、`echo`、`hertz`……)与 RPC(`grpc`、`kitex`、`thrift`、`dubbo`
   但找不到则启动失败。不加 `Config` 字段;http-client 也走 per-entry。
 - **需要治理的 client 注入**必填**的 `*governance.Center`。** import `go-spring.org/cloud/governance`
   (或 blank-import 任一 governance 源 starter),按类型注入**必填**的 `*governance.Center`(不写 `"?"` /
-  `IndexArg`),再由 `center.Resilience()` / `Fault()` / `Loadbalance()` / `Discovery()` 展开。关治理是
+  `IndexArg`),再由 `center.ResilienceClient()` / `FaultClient()` / `FaultServer()` / `Loadbalance()` / `Discovery()` 展开。关治理是
   发布一份什么都不配的文档(仍带一个 `spring.governance.*` 键),不是 bean 不存在;写可空会把「忘 import」变成静默降级。`?` 只保留给
   两类:**0..N 集合**(`[]*health.Indicator`、`Registries`、`Jobs`、`map[string]discovery.Discovery` 等,
   `?` = 空集合合法,否则报 `no beans collected`)与 **0..1 有默认值**(`traffic.Propagator`、
@@ -527,7 +527,7 @@ WebSocket(`websocket`、`websocket-coder`)、中间件(`lua-filter`)、鉴权
   client starter 声明 `chain.WithOperation(ctx, chain.Operation{...})` ——
   操作的 `Name`、`Metric` 前缀（`db.client`、`messaging.client`）、有界的 `Attrs`、
   无界的 `Detail` 与 `LogTag` —— 再把调用路由进 resilience executor。观测层
-  （`cloud/observability/client_executor.go` 的 `wrappedClientExecutor.Execute`,
+  （`cloud/observability/client.go` 的 `wrappedClientExecutor.Execute`,
   由治理中心组装在 executor 外面）就按这份
   声明发射:调用 span、`<prefix>.operation.duration`（调用级,含重试与退避）、
   `<prefix>.attempt.duration`（尝试级,下游自己那次花了多久）、
@@ -572,7 +572,7 @@ WebSocket(`websocket`、`websocket-coder`)、中间件(`lua-filter`)、鉴权
     比不同名更糟。HTTP 同此一刀:共用的轴是 `status`,细节是
     `http.response.status_code`。
     客户端发射点同此一刀:`status` 与别处一样是 `ok`/`error`,而
-    **`resilience.outcome`** 承载保护各阶段对这次调用做了什么
+    **`resilience.error_type`** 承载保护各阶段对这次调用做了什么
     （`rate_limited`、`circuit_open`、`bulkhead_full`、`retry_budget_exceeded`、
     `timeout`）—— 什么都没做时它**不出现**。把这些词放进 `status`,就是让一个键有两套
     词表,正是这一档要防的失败。
@@ -619,7 +619,7 @@ WebSocket(`websocket`、`websocket-coder`)、中间件(`lua-filter`)、鉴权
     `db.operation` label、只进 span 与日志的语句 detail、同样的指标名、自己的 access tag ——
     保护也保持在 dial 层。这是驱动的约束,是有意接受的。
     `starter-oauth2-client` 的业务调用经 resilience 层打每调用日志（与
-    `starter-http-client` 同源:它走注入的 `resilience.Manager` 而非自己
+    `starter-http-client` 同源:它走注入的 `resilience.ClientManager` 而非自己
     组装包装层）;但 oauth2
     库内部的 token 端点换取不经过那个 RoundTripper,故它只有 span、没有日志。
     kitex 与 kratos 的时长指标没有 `status` 维度,因为指标由库发出;

@@ -45,7 +45,7 @@ func newGuardedSlot(t *testing.T, p resilience.ClientPolicy) *guardSlot {
 	exec, err := d.NewClientExecutor("svc", p)
 	assert.Error(t, err).Nil()
 	s := &guardSlot{}
-	s.apply(exec)
+	s.apply(exec, "milvus:test")
 	return s
 }
 

@@ -17,15 +17,16 @@ container required. Container wiring for each family lives in the
 | [actuator](actuator/) | Management endpoints: probe paths ([endpoint](actuator/endpoint/)), component health checks ([health](actuator/health/)), Kubernetes Pod metadata ([podinfo](actuator/podinfo/)). |
 | [cache](cache/) | A cache API declared once (`spring.cache`) and backed by go-redis / redigo / bigcache / memcached via starters. |
 | [discovery](discovery/) | "Which live `host:port` addresses serve this logical name right now?" — the read side of a naming service, adapted once per backend. |
-| [fault](fault/) | In-process fault injection: wraps a [resilience](resilience/) `ClientExecutor` seam to make a call fail, slow down, or return an error on demand. |
-| [governance](governance/) | Runtime service governance: a centralized, hot-reloadable policy center fanning out to [resilience](resilience/) (circuit breaking / rate limiting / retry) and [fault](fault/) (fault injection). |
+| [fault](fault/) | In-process fault injection: a client-side executor wrapper and a server-side stage (`guard.Fault`) that make a call/request fail, slow down, or return an error on demand. |
+| [governance](governance/) | Runtime service governance: a centralized, hot-reloadable policy center fanning out to [resilience](resilience/) (outbound), [guard](guard/) (inbound), and [fault](fault/) (fault injection). |
+| [guard](guard/) | Server-side inbound governance behind one `Guard` object: per-instance rate limiting, bulkhead, circuit breaking and fault injection, with one request judgment plus one completion. |
 | [loadbalance](loadbalance/) | "Given the live instance set, which one gets this request?" — client-side balancing with failure-based suspension. |
 | [lock](lock/) | "May this replica run this exclusive work right now?" — distributed locking and leader election behind one contract. |
 | [mesh](mesh/) | "Am I behind a service-mesh sidecar?" — when yes, the app's own discovery/load-balancing steps aside. |
 | [messaging](messaging/) | Publish/consume `Message` envelopes through one `Publisher`/`Subscriber` pair; switching brokers is a wiring change. |
 | [observability](observability/) | Per-request attributes carried on the context, so spans started on your behalf carry them too; the client-side `Operation` / `Recorder` declarations the `resilience` emitter reads; plus `RefreshConf`, the shared funnel for property-refresh triggers. |
 | [propagate](propagate/) | Moves a domain marker — the load-test flag, say — across protocol boundaries: one small `Carrier` seam over HTTP headers, gRPC metadata, Kafka record headers, dubbo attachments. |
-| [resilience](resilience/) | Client-side fault tolerance behind one `ClientExecutor` seam: circuit breaking, rate limiting, retry, backoff, with a pluggable `Driver`. |
+| [resilience](resilience/) | Client-side fault tolerance behind one `chain.Executor` seam: circuit breaking, rate limiting, retry, backoff, with a pluggable `Driver`. Outbound-only; inbound is [guard](guard/). |
 | [scheduling](scheduling/) | Periodic and cron-scheduled background jobs: triggers (`FixedRate`, `FixedDelay`, `After`, `ParseCron`, `DailyWindow`), concurrency policies, distributed-lock de-duplication. |
 | [security](security/) | Framework-agnostic authentication and authorization — identity model plus per-family middleware shells. |
 | [traffic](traffic/) | "Is the request in flight load-test traffic?" — one process-wide marker carried across protocol hops via [propagate](propagate/). |

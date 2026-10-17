@@ -18,6 +18,8 @@ package StarterRabbitMQ
 
 import (
 	"context"
+	"go-spring.org/cloud/chain"
+	"go.opentelemetry.io/otel/attribute"
 	"strings"
 	"testing"
 
@@ -44,35 +46,52 @@ func TestConnStateRecordCarriesTheMetricKeys(t *testing.T) {
 // other way around. A destination in Attrs would become a metric label and
 // multiply the series without bound — the rule this pins.
 func TestOperationDeclaresBoundedAttrsAndUnboundedDetail(t *testing.T) {
-	op := operation(opPublish, "orders.created")
+	op := operation(opSend, "orders.created")
 
-	assert.That(t, op.Name).Equal("publish")
-	assert.That(t, op.Metric).Equal("messaging.client")
-	if op.LogTag == nil {
+	assert.That(t, op.Request.Action).Equal("send orders.created")
+	assert.That(t, op.Observe.Metric.Name).Equal("messaging.client")
+	if op.Observe.Log.Tag == nil {
 		t.Fatal("a declared operation must carry the module's access tag")
 	}
-	keys := make([]string, 0, len(op.Attrs))
-	for _, a := range op.Attrs {
+	keys := make([]string, 0, len(op.Observe.Metric.Attrs))
+	for _, a := range op.Observe.Metric.Attrs {
 		keys = append(keys, string(a.Key))
 	}
 	assert.That(t, keys).Equal([]string{"messaging.system", "messaging.operation"})
-	if len(op.Detail) != 1 || string(op.Detail[0].Key) != "messaging.destination.name" {
-		t.Fatalf("destination must ride in Detail, got %v", op.Detail)
+	if len(detailAttrs(op)) != 1 || string(detailAttrs(op)[0].Key) != "messaging.destination.name" {
+		t.Fatalf("destination must ride in Detail, got %v", detailAttrs(op))
 	}
 }
 
 // A destinationless call carries no Detail at all — which is what levelled its
 // success log at Info rather than Debug.
 func TestOperationWithoutDestinationHasNoDetail(t *testing.T) {
-	if op := operation(opConsume, ""); len(op.Detail) != 0 {
-		t.Fatalf("a destinationless operation must carry no detail, got %v", op.Detail)
+	if op := operation(opProcess, ""); len(detailAttrs(op)) != 0 {
+		t.Fatalf("a destinationless operation must carry no detail, got %v", detailAttrs(op))
 	}
 }
 
 // The destination is bounded at the same limit the access log applied.
 func TestOperationTruncatesDestination(t *testing.T) {
-	op := operation(opPublish, strings.Repeat("q", maxDestination+100))
-	if got := len(op.Detail[0].Value.AsString()); got != maxDestination {
-		t.Fatalf("destination must be truncated to %d, got %d", maxDestination, got)
+	op := operation(opSend, strings.Repeat("q", 512+100))
+	if got := len(detailAttrs(op)[0].Value.AsString()); got != 512 {
+		t.Fatalf("destination must be truncated to %d, got %d", 512, got)
 	}
+}
+
+// detailAttrs returns the operation's span attributes that are NOT metric
+// labels — the per-call detail the old Call.Detail field held, reconstructed
+// from the split destination lists.
+func detailAttrs(op chain.Operation) []attribute.KeyValue {
+	labeled := make(map[attribute.Key]bool, len(op.Observe.Metric.Attrs))
+	for _, a := range op.Observe.Metric.Attrs {
+		labeled[a.Key] = true
+	}
+	var out []attribute.KeyValue
+	for _, a := range op.Observe.Span.Attrs {
+		if !labeled[a.Key] {
+			out = append(out, a)
+		}
+	}
+	return out
 }

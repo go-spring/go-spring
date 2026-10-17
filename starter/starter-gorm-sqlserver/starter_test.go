@@ -39,7 +39,7 @@ import (
 // governance document to serve.
 func testCenter(t *testing.T) *governance.Center {
 	t.Helper()
-	ctr, err := governance.NewProcessCenter(resilience.NewManager(nil), fault.NewInjector(fault.Configs{}, nil))
+	ctr, err := governance.NewProcessCenter(resilience.NewClientManager(resilience.NewDefaultDriver(nil)), fault.NewClientManager(nil), fault.NewServerManager(nil))
 	if err != nil {
 		t.Fatal(err)
 	}

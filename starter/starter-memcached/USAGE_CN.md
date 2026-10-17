@@ -196,7 +196,7 @@ mesh 模式下完全跳过 discovery，`servers` 原样使用（sidecar 负责�
 2. `run` 经 `resilience.Run` 在 resilience executor 下执行操作：
    limiter/breaker 以服务 `memcached:<service-name 或实例名>` 隔离（`client.go`）；
    `memcache.ErrCacheMiss` 计为成功，miss 不会触发熔断（`resilience.Tolerate`）；executor 由
-   `Client.applyGovernance` 应用 —— `fault.WrapClientExecutor(mgr.ClientExecutorFor("memcached", service), service, inj)`，
+   `Client.applyGovernance` 应用 —— `inj.WrapClientExecutor(mgr.ClientExecutorFor("memcached", service))`，
    其中 `mgr`/`inj` 是容器注入 `newClient`、再由构造函数转交的 bean，
    observe 层在 resolve 内应用。未应用治理时为透明 no-op。
 3. 裸 client 执行实际写入；span 以错误收尾。
@@ -230,7 +230,7 @@ starter）。
 | `scheme` | string | 空 | 把 discovery 收窄到单一传输 scheme 的端点；仅在设 `service-name` 时生效（config.go:45） | 过滤过度 → "no endpoints" 启动错误 |
 | `discovery` | string | — | 用哪个已注册的 `discovery.Discovery` 解析 `service-name`（config.go:50）。wiring 把该 label 解析成 bean，并以 `backend` 参数传给 driver 的 `CreateClient`。未配置时回退 `${spring.memcached.default.discovery}`。 | service-name 已设但两层都未配置或名字无对应 bean → 启动报错。 |
 | `timeout` | duration | 0 | 每请求 socket 读/写超时；0 = gomemcache 默认 100ms（config.go:54） | 过低 → 高压下伪超时 |
-| `max-idle-conns` | int | 0 | 每 server 保留的空闲连接数；0 = driver 默认 2（config.go:58）。治理规则里的 `max-conns` 覆盖它（gomemcache 没有"打开连接上限"，规则 sizing 的就是这个空闲上限）。 | 过低 → 重连抖动 |
+| `max-idle-conns` | int | 0 | 每 server 保留的空闲连接数；0 = driver 默认 2（config.go:58）。 | 过低 → 重连抖动 |
 | `ping` | bool | false | 可选启动探测：`HealthCheck` 对每个已配置 server 单次 ping，不可达则启动失败；默认关，未就绪的 server 到首次使用才暴露。 | 期待 fail-fast 却没开 → 启动"成功"，首个请求失败。 |
 | `health` | bool | true | 为实例注册 `memcache:<name>` 健康指示器。 | false → 无指示器 bean，不再上报该 memcached 的就绪。 |
 
