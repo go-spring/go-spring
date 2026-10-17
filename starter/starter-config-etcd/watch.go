@@ -21,7 +21,7 @@ import (
 	"sync"
 	"time"
 
-	"go-spring.org/cloud/observability"
+	"go-spring.org/cloud/observability/conf"
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
@@ -157,7 +157,7 @@ func watchLoop(wctx context.Context, cli etcdClient, cs configSource, optional b
 
 	// fire stamps the trigger with the change's identity (which key, which
 	// etcd revision) so the refresh records logged and metered by
-	// observability.RefreshConf carry what this round is about. A generation
+	// conf.Refresh carry what this round is about. A generation
 	// canceled before the trigger means the application is shutting down; drop
 	// the change instead of stalling Close's join with a pointless refresh.
 	fire := func(rev int64) {
@@ -169,7 +169,7 @@ func watchLoop(wctx context.Context, cli etcdClient, cs configSource, optional b
 			log.Int("mod_revision", rev))...)
 		log.Info(ctx, starterTag, "etcd key changed, triggering refresh")
 
-		_ = observability.RefreshConf(ctx, func(ctx context.Context) error {
+		_ = conf.Refresh(ctx, func(ctx context.Context) error {
 			return gs.RefreshProperties(ctx)
 		})
 	}

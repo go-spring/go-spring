@@ -18,14 +18,15 @@ package StarterEcho
 
 import (
 	"context"
-	"go-spring.org/cloud/governance"
 	"net/http"
 	"strconv"
+
+	"go-spring.org/cloud/runtime"
 
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 	"go-spring.org/cloud/propagate"
-	"go-spring.org/cloud/traffic"
+	"go-spring.org/cloud/runtime/dataplane/traffic"
 	"go-spring.org/log"
 )
 
@@ -43,7 +44,7 @@ type requestIDCtxKey struct{}
 // X-LoadTest) it tags the request context, so the handler chain and every
 // outbound client the handlers drive can recognise synthetic load through the
 // propagator's IsLoadTest. It is the inbound companion to
-// cloud/traffic's outbound injection: together they let a load-test
+// cloud/runtime/dataplane/traffic's outbound injection: together they let a load-test
 // flag ride an HTTP hop end to end. An empty header falls back to the
 // propagator's own header name; prop nil means go-spring's default. Without the
 // marker it is a no-op.
@@ -85,7 +86,7 @@ func RequestIDFromContext(ctx context.Context) string {
 // both; AccessLog wraps the policy middlewares so short-circuit responses (413,
 // 204, 403) are still logged. BodyLimit sits inside the chain so an over-limit
 // 413 is logged and recovered like any other response.
-func applyMiddlewares(e *echo.Echo, cfg Config, center *governance.Center, prop traffic.Propagator) error {
+func applyMiddlewares(e *echo.Echo, cfg Config, center *runtime.Runtime, prop traffic.Propagator) error {
 	mw := cfg.Middleware
 
 	// LoadTest identification is outermost of all so the marker is on the

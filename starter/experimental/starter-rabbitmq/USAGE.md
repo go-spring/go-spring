@@ -212,7 +212,7 @@ your call (ch.PublishWithContext)                        ← innermost
 ```
 
 So a publish is declared and observed, never guarded. `newClient` [starter.go:87] still injects
-the required `*governance.Center` (`center`) — the governance family's sole injection point, the
+the required `*runtime.Runtime` (`center`) — the governance family's sole injection point, the
 one object a client reads its resilience/fault authorities from (`center.ResilienceClient()`,
 `center.FaultClient()`) — but a rabbitmq client exposes no seam for a resilience executor
 [entity.go:58-62], so no authority from the center governs any publish or consume: nothing is

@@ -28,7 +28,7 @@ import (
 
 	"github.com/IBM/sarama"
 	"go-spring.org/cloud/messaging"
-	"go-spring.org/cloud/traffic"
+	"go-spring.org/cloud/runtime/dataplane/traffic"
 	"go-spring.org/log"
 	"go-spring.org/stdlib/errutil"
 )

@@ -18,13 +18,14 @@ package StarterMongoDB
 
 import (
 	"context"
-	"go-spring.org/cloud/governance"
 	"net"
 	"sync/atomic"
 	"time"
 
+	"go-spring.org/cloud/runtime"
+
 	"go-spring.org/cloud/actuator/health"
-	"go-spring.org/cloud/loadbalance"
+	"go-spring.org/cloud/runtime/dataplane/loadbalance"
 	"go-spring.org/log"
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/gs"
@@ -51,12 +52,12 @@ func init() {
 			// newClient builds them and Destroy tears them down, so there is no
 			// Init hook. The entry's ${discovery} label is bound here as a value
 			// (family default "none", meaning "no backend") and resolved against
-			// the center's discovery directory. The governance center is the
+			// the center's discovery directory. The runtime is the
 			// family's sole injection point (see the per-arg note below).
 			r.Provide(newClient,
 				gs.IndexArg(1, gs.ValueArg(c)),
 				gs.IndexArg(2, gs.TagArg("${spring.mongodb.instances."+name+".discovery:=${spring.mongodb.default.discovery:=none}}")),
-				// The governance center is the family's sole injection point: it hands
+				// The runtime is the family's sole injection point: it hands
 				// out the resilience/fault/loadbalance authorities.
 			).Name(name).Destroy((*Client).Destroy).Caller(1)
 
@@ -94,12 +95,12 @@ func init() {
 // hosts are dialed directly. When c.ServiceName is empty this dials the URI
 // hosts directly, unchanged from before.
 //
-// center is the governance center the container injects (nil in a standalone,
+// center is the runtime the container injects (nil in a standalone,
 // non-gs call) — the family's sole injection point. The resilience executor is
 // read from it; its loadbalance authority additionally binds the discovery pick
 // pool this constructor builds, which is where the pool first exists.
 func newClient(ctx *gs.ContextProvider, c Config, discoveryLabel string,
-	center *governance.Center) (*Client, error) {
+	center *runtime.Runtime) (*Client, error) {
 	// The client's identity rides on a context derived here: every line below
 	// carries it without repeating it. The provider's own context is left
 	// alone — that one is the shared application context, not this

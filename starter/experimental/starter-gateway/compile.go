@@ -18,7 +18,6 @@ package StarterGateway
 
 import (
 	"context"
-	"go-spring.org/cloud/chain"
 	"net/http"
 	"net/url"
 	"reflect"
@@ -27,10 +26,11 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"go-spring.org/cloud/discovery"
-	"go-spring.org/cloud/governance"
-	"go-spring.org/cloud/loadbalance"
-	"go-spring.org/cloud/governance/resilience"
+	"go-spring.org/cloud/runtime"
+	"go-spring.org/cloud/runtime/dataplane/chain"
+	"go-spring.org/cloud/runtime/dataplane/discovery"
+	"go-spring.org/cloud/runtime/dataplane/loadbalance"
+	"go-spring.org/cloud/runtime/dataplane/resilience"
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
@@ -89,7 +89,7 @@ type RouteTable struct {
 	lastPtr   uintptr    // identity of the last-compiled routes map
 	discovery string     // default backend label (spring.gateway.discovery)
 
-	// disc is the process's discovery directory, read off the governance center
+	// disc is the process's discovery directory, read off the runtime
 	// once by newRouteTable. lb:// upstreams resolve their ${discovery} label
 	// (or the gateway default above) against it at compile time; it never
 	// changes across hot reloads.
@@ -105,7 +105,7 @@ type RouteTable struct {
 	// already observed (the center composes the observe layer, so this package no
 	// longer names observability). lbMgr is the authority each route's
 	// endpoint-selection chain registers with for strategy + suspension.
-	ctr   *governance.Center
+	ctr   *runtime.Runtime
 	lbMgr *loadbalance.Manager
 
 	// limiter is the rate-limit store the rateLimit filter spends. A route's
@@ -150,7 +150,7 @@ type chainEntry struct {
 // whose lookups miss, and any lb:// upstream then fails to compile with the
 // label it could not resolve).
 //
-// center is the governance center bean — the sole injection point, which also
+// center is the runtime bean — the sole injection point, which also
 // carries the discovery directory; it is nil when governance is not imported
 // (gs autowires a missing bean as nil) and its authorities are normalized here
 // to fresh unarmed ones — a nil *Manager panics on its first method call, so
@@ -161,7 +161,7 @@ type chainEntry struct {
 // to the fallback there is nothing to reject, but it is reported at startup
 // rather than swallowed.
 func newRouteTable(ctx *gs.ContextProvider, o *observer,
-	center *governance.Center, limiter resilience.ClusterLimiter) (*RouteTable, error) {
+	center *runtime.Runtime, limiter resilience.ClusterLimiter) (*RouteTable, error) {
 	if limiter == nil {
 		// No cluster limiter was contributed, so per-route and per-client budgets
 		// are this process's own — the same reach a per-service executor would have.

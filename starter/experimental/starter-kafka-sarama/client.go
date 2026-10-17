@@ -25,7 +25,7 @@ package StarterKafkaSarama
 
 import (
 	"github.com/IBM/sarama"
-	"go-spring.org/cloud/governance"
+	"go-spring.org/cloud/runtime"
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
@@ -49,13 +49,13 @@ import (
 // against sarama changes which might otherwise swallow a fully empty cluster. A
 // failed probe releases what was just assembled.
 //
-// center is the governance center the container injects — the family's sole
+// center is the runtime the container injects — the family's sole
 // injection point; the ctor hands it to the driver, which attaches the executor
 // from it — so the client is assembled complete in one
 // step, with the resilience manager required: the container supplies it via the
-// governance center, so a bundle without one fails at construction (the centre
+// runtime, so a bundle without one fails at construction (the centre
 // is never nil in a started app).
-func newClient(ctx *gs.ContextProvider, name string, c Config, d Driver, center *governance.Center) (sarama.Client, error) {
+func newClient(ctx *gs.ContextProvider, name string, c Config, d Driver, center *runtime.Runtime) (sarama.Client, error) {
 	// The client's identity rides on a context derived here: every line below
 	// carries it without repeating it. The provider's own context is left
 	// alone — that one is the shared application context, not this

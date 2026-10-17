@@ -19,8 +19,8 @@ package StarterThrift
 import (
 	"context"
 
-	"go-spring.org/cloud/governance"
-	"go-spring.org/cloud/observability"
+	"go-spring.org/cloud/runtime"
+	"go-spring.org/cloud/runtime/dataplane/observability"
 
 	"github.com/apache/thrift/lib/go/thrift"
 )
@@ -37,7 +37,7 @@ import (
 // and logged. With inbound one layer above, a rejection short-circuits before
 // the per-method functions run and would leave no trace at all.
 //
-// The inbound governance object comes from the injected [governance.Center],
+// The inbound governance object comes from the injected [runtime.Runtime],
 // which composes the observe object with the guard here — this package names
 // neither observability nor a raw resilience manager. A nil center (a standalone
 // call) is normalized inside the center to an unarmed authority, whose guard is a
@@ -45,7 +45,7 @@ import (
 // resolves its backing engine per call and follows the manager's hot-reload, so
 // inbound governance can be tightened without a restart, the same way every
 // outbound client's policy is tuned.
-func Admit(label string, system string, center *governance.Center) thrift.ProcessorMiddleware {
+func Admit(label string, system string, center *runtime.Runtime) thrift.ProcessorMiddleware {
 	ib := center.InboundFor(system, label)
 	return func(name string, next thrift.TProcessorFunction) thrift.TProcessorFunction {
 		return thrift.WrappedTProcessorFunction{
@@ -66,7 +66,7 @@ func Admit(label string, system string, center *governance.Center) thrift.Proces
 // cannot be replayed, and [guard.Policy] has no retry field to express
 // one with. The served guard makes a stray retry harmless regardless: the service
 // implementation still runs exactly once.
-func admit(ctx context.Context, ib *governance.Inbound, service, name string, seqID int32, in, out thrift.TProtocol, next thrift.TProcessorFunction) (bool, thrift.TException) {
+func admit(ctx context.Context, ib *runtime.Inbound, service, name string, seqID int32, in, out thrift.TProtocol, next thrift.TProcessorFunction) (bool, thrift.TException) {
 	var (
 		ok     bool
 		svcErr thrift.TException

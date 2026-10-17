@@ -18,7 +18,7 @@ package StarterMilvus
 
 import (
 	"go-spring.org/cloud/actuator/health"
-	"go-spring.org/cloud/governance"
+	"go-spring.org/cloud/runtime"
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
@@ -39,7 +39,7 @@ func init() {
 		return conf.BindEach(p, "${spring.milvus.instances}", func(name string, c Config) error {
 			r.Provide(newClient,
 				gs.IndexArg(1, gs.ValueArg(c)),
-				// The governance center is the family's sole injection point: it hands
+				// The runtime is the family's sole injection point: it hands
 				// out the resilience/fault/loadbalance authorities.
 			).Name(name).Destroy((*Client).Destroy).Caller(1)
 
@@ -63,15 +63,15 @@ func init() {
 // block startup. There is no Init hook: the client is complete when this ctor
 // returns.
 //
-// center is the governance center the container injects — the family's sole
+// center is the runtime the container injects — the family's sole
 // injection point; the ctor hands it to [NewClient], so the client is
 // assembled complete in one step, with the resilience manager required: the
-// container supplies it via the governance center, so a center without one
+// container supplies it via the runtime, so a center without one
 // fails at construction.
 //
 // cp carries the application context gs injects into a constructor (a bare
 // context.Context is not an injectable bean).
-func newClient(cp *gs.ContextProvider, c Config, center *governance.Center) (*Client, error) {
+func newClient(cp *gs.ContextProvider, c Config, center *runtime.Runtime) (*Client, error) {
 	ctx := cp.Context
 	w, err := NewClient(ctx, c, center)
 	if err != nil {

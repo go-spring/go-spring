@@ -25,8 +25,8 @@ import (
 	"context"
 
 	"github.com/bradfitz/gomemcache/memcache"
-	"go-spring.org/cloud/discovery"
-	"go-spring.org/cloud/governance"
+	"go-spring.org/cloud/runtime"
+	"go-spring.org/cloud/runtime/dataplane/discovery"
 	"go-spring.org/stdlib/errutil"
 )
 
@@ -43,7 +43,7 @@ import (
 // returns the client COMPLETE: name is the config entry's key
 // (spring.memcached.instances.<name>) and c.ServiceName its discovery name, so
 // the driver sets both on the wrapper it builds; center is the container's
-// governance center — carrying the resilience/fault/loadbalance authorities and
+// runtime — carrying the resilience/fault/loadbalance authorities and
 // the discovery directory — and [NewClient] applies it while building. The
 // only thing that may touch the client afterwards is post-processing that
 // reorganizes the embedded InnerClient — its operation chain — before the
@@ -61,7 +61,7 @@ import (
 // ${spring.memcached} is built through it, and per-instance differences are
 // expressed through [Config].
 type Driver interface {
-	CreateClient(ctx context.Context, name string, c Config, center *governance.Center) (*Client, error)
+	CreateClient(ctx context.Context, name string, c Config, center *runtime.Runtime) (*Client, error)
 }
 
 // DefaultDriver is the default implementation of the Driver interface.
@@ -88,7 +88,7 @@ type DefaultDriver struct{}
 // In mesh mode (mesh.Enabled) discovery is skipped entirely: a sidecar owns
 // discovery+LB, so the client connects straight to the configured static
 // Servers list (the service's stable DNS address).
-func (DefaultDriver) CreateClient(ctx context.Context, name string, c Config, center *governance.Center) (*Client, error) {
+func (DefaultDriver) CreateClient(ctx context.Context, name string, c Config, center *runtime.Runtime) (*Client, error) {
 	servers := c.Servers
 	// Resolve the discovery backend this entry cites. The label rides on the
 	// config (c.Discovery, already carrying the family default); an entry routed

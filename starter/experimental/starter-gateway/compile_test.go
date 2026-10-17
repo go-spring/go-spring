@@ -21,7 +21,7 @@ import (
 	"strings"
 	"testing"
 
-	"go-spring.org/cloud/loadbalance"
+	"go-spring.org/cloud/runtime/dataplane/loadbalance"
 )
 
 // newTestTable builds a RouteTable without the container, enough for

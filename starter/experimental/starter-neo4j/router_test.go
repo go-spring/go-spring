@@ -22,7 +22,7 @@ import (
 	"testing"
 
 	"github.com/neo4j/neo4j-go-driver/v5/neo4j"
-	"go-spring.org/cloud/discovery"
+	"go-spring.org/cloud/runtime/dataplane/discovery"
 	"go-spring.org/stdlib/testing/assert"
 )
 

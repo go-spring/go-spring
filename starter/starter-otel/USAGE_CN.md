@@ -270,10 +270,10 @@ SIGTERM 后,待所有 server 停止、IoC 容器关闭,`runStoppers` 逐个调�
 **每请求**维度则挂到 context 上:
 
 ```go
-ctx = observability.WithSpanAttributes(ctx, attribute.String("tenant", t))
+ctx = attrs.WithSpanAttributes(ctx, attribute.String("tenant", t))
 ```
 
-载体本身在 `cloud/observability`,不在这里:往 context 上放东西是**契约**,写方(业务代码、
+载体本身在 `cloud/runtime/dataplane/observability`,不在这里:往 context 上放东西是**契约**,写方(业务代码、
 公司中间件库)不该为了这个去依赖 OTel SDK。本 starter 只持有**读方**,那才需要 SDK。
 
 到这里就结束了,span 侧无需再做任何事。这些属性会到达用该 context 启动的每一个 span——
@@ -288,7 +288,7 @@ span,任何插桩点都无需配合**。
 
 go-spring 自己也用这套机制加了一个属性:被标记为压测流量的请求,其每个 span 都带
 `load_test=true`,于是压测运行可以从生产看板与告警里筛出去,而不是混在里面。
-这是对 `traffic` 契约的**读取**(见 `cloud/traffic`),不是对它采取行动——
+这是对 `traffic` 契约的**读取**(见 `cloud/runtime/dataplane/traffic`),不是对它采取行动——
 压测请求"该做什么"仍然由应用决定。
 
 **metric 不在覆盖范围内。** metric SDK 没有"记录时的钩子",所以内置 metric 标签按设计保持封闭;

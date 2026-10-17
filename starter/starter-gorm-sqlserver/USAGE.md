@@ -102,7 +102,7 @@ against (in a real deployment this is your company's adapter):
 ```go
 package main
 
-import "go-spring.org/cloud/discovery"
+import "go-spring.org/cloud/runtime/dataplane/discovery"
 
 func init() {
     gs.Provide(func() (discovery.Discovery, error) {
@@ -305,7 +305,7 @@ instance (per-dial `Pick()`).
 ```bash
 cd example-load && docker compose up -d
 go run . -duration=10s                       # baseline SELECT 1 throughput
-# set fire — edit conf/governance.properties (hot-reload via cloud/governance's file source):
+# set fire — edit conf/governance.properties (hot-reload via cloud/runtime/controlplane/governance's file source):
 #   spring.governance.client.fault.rate=0.5  spring.governance.client.fault.error=generic
 go run . -duration=10s                       # error breakdown shows ~50% injected
 ```

@@ -139,7 +139,7 @@ Notes verified in source:
 ```
 etcd PUT on a watched key
   → clientv3.Watch channel delivers a WatchResponse with events
-  → watcher goroutine: len(wr.Events) > 0 → observability.RefreshConf(ctx, fn)
+  → watcher goroutine: len(wr.Events) > 0 → conf.Refresh(ctx, fn)
   → gs.RefreshProperties(ctx) → App.RefreshProperties(ctx):
        re-run the WHOLE property load (all files + all imports) → merge
        → propagate to the container → gs.Dync[T] fields update atomically

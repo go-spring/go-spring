@@ -54,17 +54,18 @@ import (
 	"context"
 	"net/http"
 
-	"go-spring.org/cloud/governance"
-	"go-spring.org/cloud/governance/label"
+	"go-spring.org/cloud/runtime"
 
-	"go-spring.org/cloud/chain"
-	"go-spring.org/cloud/discovery"
-	"go-spring.org/cloud/governance/resilience"
-	"go-spring.org/cloud/loadbalance"
-	"go-spring.org/cloud/observability"
+	"go-spring.org/cloud/runtime/dataplane/label"
+
 	"go-spring.org/cloud/propagate"
+	"go-spring.org/cloud/runtime/dataplane/chain"
+	"go-spring.org/cloud/runtime/dataplane/discovery"
+	"go-spring.org/cloud/runtime/dataplane/loadbalance"
+	"go-spring.org/cloud/runtime/dataplane/observability"
+	"go-spring.org/cloud/runtime/dataplane/resilience"
+	"go-spring.org/cloud/runtime/dataplane/traffic"
 	"go-spring.org/cloud/security"
-	"go-spring.org/cloud/traffic"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 )
 
@@ -165,13 +166,13 @@ type Config struct {
 // strategy cannot be resolved, so misconfiguration surfaces at wiring time
 // rather than on the first request.
 //
-// center is the governance center bean the caller received from the container;
+// center is the runtime bean the caller received from the container;
 // it must not be nil — the wiring fails fast when no center bean exists, and a
-// standalone caller assembles one with governance.NewCenter first.
+// standalone caller assembles one with runtime.New first.
 // prop is the load-test convention bean — the application's when it provides
 // one, go-spring's default otherwise — which stamps the marker onto every
 // outbound request.
-func NewTransport(cfg Config, center *governance.Center, prop traffic.Propagator) (rt http.RoundTripper, close func() error, err error) {
+func NewTransport(cfg Config, center *runtime.Runtime, prop traffic.Propagator) (rt http.RoundTripper, close func() error, err error) {
 
 	// Base dialer: an explicit Base wins; otherwise DefaultTransport, cloned with
 	// the configured TLS surface when enabled (nil BuildClient keeps system
@@ -310,7 +311,7 @@ func NewTransport(cfg Config, center *governance.Center, prop traffic.Propagator
 
 // trafficTransport injects the load-test marker header onto each request when
 // the request's context is a load-test context, then delegates to base. It is
-// the outbound seam for [go-spring.org/cloud/traffic] on the HTTP client path.
+// the outbound seam for [go-spring.org/cloud/runtime/dataplane/traffic] on the HTTP client path.
 type trafficTransport struct {
 	base http.RoundTripper
 	prop traffic.Propagator

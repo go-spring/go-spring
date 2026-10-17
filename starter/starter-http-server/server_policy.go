@@ -20,9 +20,9 @@ import (
 	"errors"
 	"net/http"
 
-	"go-spring.org/cloud/governance"
-	"go-spring.org/cloud/governance/guard"
-	"go-spring.org/cloud/observability"
+	"go-spring.org/cloud/runtime"
+	"go-spring.org/cloud/runtime/dataplane/guard"
+	"go-spring.org/cloud/runtime/dataplane/observability"
 	"go-spring.org/log"
 	"go.opentelemetry.io/otel/attribute"
 )
@@ -34,41 +34,42 @@ import (
 // yourself, because this package provides filters rather than owning a server.
 //
 // label is the governance service label this server is addressed as, e.g.
-// "http-server::9090" (see cloud/governance/README.md 设计说明 §6). Build it with
+// "http-server::9090" (see cloud/runtime/controlplane/governance/README.md 设计说明 §6). Build it with
 // label.ServiceLabel(system, addr) if you want the conventional shape;
 // governance rules match it with spring.governance.server.rules[N].service=<label>.
 //
-// mgr is the resilience authority the filter's inbound object is resolved from.
-// This package provides filters rather than owning a server, so it has no bean to
-// inject into: whoever composes the chain takes the governance center bean
-// (*governance.Center) on their own bean and passes center.ResilienceServer() here. A
-// nil manager is the standalone case — the filter then runs under an unarmed
-// authority, a transparent pass-through that never rejects.
+// rt is the process runtime — the family's sole injection point. This package
+// provides filters rather than owning a server, so it has no bean to inject
+// into: whoever composes the chain takes the runtime bean on their own bean and
+// passes it here. Admission, breaker accounting and inbound fault injection all
+// come from that one object. A nil runtime is the standalone case — the filter
+// then runs under an unarmed authority, a transparent pass-through that never
+// rejects.
 //
-// Refusals map to 429 (rate limit, bulkhead full) and 503 (circuit open); a
-// handler-committed 5xx is fed back to the breaker. Inbound never retries — a
-// handler that already produced side effects cannot be replayed, and
-// [guard.Policy] has no retry field to express one with.
+// Refusals map to 429 (rate limit, bulkhead full) and 503 (circuit open,
+// degraded, injected fault); a handler-committed 5xx is fed back to the breaker.
+// Inbound never retries — a handler that already produced side effects cannot be
+// replayed, and [guard.Policy] has no retry field to express one with.
 //
 // Compose it inside Chain, after the security filters that must run even for a
 // rejected request, and outside the handler:
 //
-//	Chain(CORS(corsCfg), ServerPolicy("http-server::9090", center.ResilienceServer()))(mux)
-func ServerPolicy(label string, mgr *guard.Manager) Middleware {
-	return serverPolicyWith(governance.InboundOver("http-server", label, mgr))
+//	Chain(CORS(corsCfg), ServerPolicy("http-server::9090", rt))(mux)
+func ServerPolicy(label string, rt *runtime.Runtime) Middleware {
+	return serverPolicyWith(rt.InboundFor("http-server", label))
 }
 
 // serverPolicyWith builds the filter over an already-built inbound object. It is
 // the seam the tests build on, and keeps the object construction out of the filter
 // itself. The split form is used so the handler's response half can be recorded.
-func serverPolicyWith(in *governance.Inbound) Middleware {
+func serverPolicyWith(in *runtime.Inbound) Middleware {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			sw := &statusWriter{ResponseWriter: w}
 
 			h, err := in.Before(r.Context(), operation(r))
 			if err != nil {
-				var ref *governance.Refusal
+				var ref *runtime.Refusal
 				if errors.As(err, &ref) && !sw.written {
 					http.Error(w, ref.Error(), httpStatusFor(ref.Verdict()))
 				}

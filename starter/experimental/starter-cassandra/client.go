@@ -27,11 +27,11 @@ package StarterCassandra
 import (
 	"context"
 
-	"go-spring.org/cloud/chain"
-	"go-spring.org/cloud/governance/label"
+	"go-spring.org/cloud/runtime/dataplane/chain"
+	"go-spring.org/cloud/runtime/dataplane/label"
 
 	"github.com/gocql/gocql"
-	"go-spring.org/cloud/governance"
+	"go-spring.org/cloud/runtime"
 )
 
 // Client is the wrapper bean Cassandra sessions are injected as. It holds the
@@ -56,7 +56,7 @@ type Client struct {
 	Session *gocql.Session
 
 	// exec is the resilience executor protecting every statement, set by
-	// [NewClient] from the governance center, which is required to carry a
+	// [NewClient] from the runtime, which is required to carry a
 	// [resilience.ClientManager] — a client is never assembled without one. Held for
 	// teardown only: the chains are per-query, so there is no session-level
 	// chain head whose Release could close it — [Client.Close] is that release
@@ -74,18 +74,18 @@ type Client struct {
 // Driver's product. The wrapper derives its service label from the connection
 // config.
 //
-// center carries the container's facilities (see [governance.Center]), and is
+// center carries the container's facilities (see [runtime.Runtime]), and is
 // applied HERE so a Client cannot exist half-assembled: there is no Init step,
 // no later patching, and nothing the container has to remember to call. A
-// hand-built client must supply a [governance.Center] over a
-// [resilience.ClientManager]: [governance.Center.ResilienceClient] is required, so a nil
-// center is a construction error — [governance.Center.ExecutorFor] panics —
+// hand-built client must supply a [runtime.Runtime] over a
+// [resilience.ClientManager]: [runtime.Runtime.ResilienceClient] is required, so a nil
+// center is a construction error — [runtime.Runtime.ExecutorFor] panics —
 // never a graceful downgrade to an unprotected client.
 //
 // The manager's ClientExecutorFor resolves its backing executor lazily, on each
 // Execute, so the call order relative to the center's wiring is
 // irrelevant.
-func NewClient(session *gocql.Session, cfg Config, center *governance.Center) *Client {
+func NewClient(session *gocql.Session, cfg Config, center *runtime.Runtime) *Client {
 	// The service label prefers the first contact point. Guard the index so a
 	// malformed Config (empty hosts, which the value:"${hosts}" expr is meant to
 	// reject) degrades to the bare prefix instead of panicking in the ctor.

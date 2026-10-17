@@ -18,10 +18,10 @@ package StarterRabbitMQ
 
 import (
 	amqp "github.com/rabbitmq/amqp091-go"
-	"go-spring.org/cloud/governance"
-	"go-spring.org/cloud/governance/label"
 	"go-spring.org/cloud/messaging"
-	"go-spring.org/cloud/traffic"
+	"go-spring.org/cloud/runtime"
+	"go-spring.org/cloud/runtime/dataplane/label"
+	"go-spring.org/cloud/runtime/dataplane/traffic"
 	"go-spring.org/log"
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/gs"
@@ -49,7 +49,7 @@ func init() {
 				gs.IndexArg(1, gs.ValueArg(name)),
 				gs.IndexArg(2, gs.ValueArg(c)),
 				gs.IndexArg(3, gs.TagArg("${spring.rabbitmq.instances."+name+".driver:=${spring.rabbitmq.default.driver:=?}}")),
-				// The governance center is the family's sole injection point.
+				// The runtime is the family's sole injection point.
 			).Name(name).Destroy((*Client).Close).Caller(1)
 
 			// Export the broker-neutral messaging.Driver over this connection as a
@@ -80,11 +80,11 @@ func init() {
 // probe channel opened and closed to confirm the AMQP layer is usable. A failed
 // probe releases what was just assembled.
 //
-// center is the governance center bean — the family's sole injection point. It
+// center is the runtime bean — the family's sole injection point. It
 // is required when linked: "governance off" is a document that configures
 // nothing, never an absent bean; a standalone, non-gs caller passes nil, which
 // reads unarmed authorities — exactly "governance off".
-func newClient(ctx *gs.ContextProvider, name string, c Config, d Driver, center *governance.Center) (*Client, error) {
+func newClient(ctx *gs.ContextProvider, name string, c Config, d Driver, center *runtime.Runtime) (*Client, error) {
 	// The connection's identity rides on a context derived here: every line
 	// below carries it without repeating it. The provider's own context is left
 	// alone — that one is the shared application context, not this

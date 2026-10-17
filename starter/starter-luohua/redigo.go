@@ -19,7 +19,7 @@ package luohua
 import (
 	"context"
 
-	"go-spring.org/cloud/governance"
+	"go-spring.org/cloud/runtime"
 	"go-spring.org/log"
 	StarterRedigo "go-spring.org/starter-redigo"
 )
@@ -43,10 +43,10 @@ type RedisDriver struct {
 }
 
 // CreateClient builds one redis pool per the luohua assembly contract. center
-// is the container's governance center (carrying the resilience/fault/
+// is the container's runtime (carrying the resilience/fault/
 // loadbalance authorities and the discovery directory), handed down by
 // starter-redigo; it is forwarded verbatim to the standard assembly.
-func (d RedisDriver) CreateClient(ctx context.Context, c StarterRedigo.Config, center *governance.Center) (*StarterRedigo.Pool, error) {
+func (d RedisDriver) CreateClient(ctx context.Context, c StarterRedigo.Config, center *runtime.Runtime) (*StarterRedigo.Pool, error) {
 	p, err := StarterRedigo.NewPool(ctx, c, center)
 	if err != nil {
 		return nil, err

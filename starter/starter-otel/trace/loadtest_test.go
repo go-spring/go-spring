@@ -20,7 +20,7 @@ import (
 	"context"
 	"testing"
 
-	"go-spring.org/cloud/traffic"
+	"go-spring.org/cloud/runtime/dataplane/traffic"
 	"go-spring.org/stdlib/testing/assert"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 )

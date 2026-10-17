@@ -21,9 +21,9 @@ import (
 	"net"
 
 	"github.com/redis/go-redis/v9"
-	"go-spring.org/cloud/discovery"
-	"go-spring.org/cloud/governance"
-	"go-spring.org/cloud/loadbalance"
+	"go-spring.org/cloud/runtime"
+	"go-spring.org/cloud/runtime/dataplane/discovery"
+	"go-spring.org/cloud/runtime/dataplane/loadbalance"
 	"go-spring.org/stdlib/errutil"
 )
 
@@ -49,7 +49,7 @@ import (
 // declaration layers, and applies the governance executor. Nothing reaches into
 // the client afterwards.
 //
-// center is the container's governance center — the family's one injection
+// center is the container's runtime — the family's one injection
 // point — carrying resilience, fault, loadbalance and the discovery directory.
 // A discovery-routed driver resolves the backend its entry's ${discovery} label
 // names from center.Discovery() and builds its [loadbalance.Chain] over the
@@ -65,7 +65,7 @@ import (
 // center.Discovery() itself, failing construction when an entry routes by
 // service-name and the label names no bean.
 type Driver interface {
-	CreateClient(ctx context.Context, c Config, center *governance.Center) (*Client, error)
+	CreateClient(ctx context.Context, c Config, center *runtime.Runtime) (*Client, error)
 }
 
 // ClusterDriver is an optional interface a Driver may also implement to support
@@ -78,7 +78,7 @@ type Driver interface {
 // so the pool argument to [NewClient] is nil on this path, and only the center's
 // resilience + fault capabilities apply.
 type ClusterDriver interface {
-	CreateClusterClient(ctx context.Context, c Config, center *governance.Center) (*Client, error)
+	CreateClusterClient(ctx context.Context, c Config, center *runtime.Runtime) (*Client, error)
 }
 
 // DefaultDriver is the default implementation of the Driver interface. It also
@@ -106,7 +106,7 @@ var (
 // A pick pool is built only for a discovery-routed single-mode entry; it is
 // handed to [NewClient], which binds it through the center. See the [Driver]
 // interface for the contract.
-func (DefaultDriver) CreateClient(ctx context.Context, c Config, center *governance.Center) (*Client, error) {
+func (DefaultDriver) CreateClient(ctx context.Context, c Config, center *runtime.Runtime) (*Client, error) {
 	tlsConfig, err := c.TLS.BuildClient()
 	if err != nil {
 		return nil, errutil.Explain(err, "redis: build TLS")
@@ -196,7 +196,7 @@ func (DefaultDriver) CreateClient(ctx context.Context, c Config, center *governa
 // returns the starter's wrapped [Client]. Cluster mode self-discovers its nodes,
 // so c.ServiceName / the discovery resolver is not used and no pick pool is
 // built; only the center's resilience + fault capabilities apply.
-func (DefaultDriver) CreateClusterClient(ctx context.Context, c Config, center *governance.Center) (*Client, error) {
+func (DefaultDriver) CreateClusterClient(ctx context.Context, c Config, center *runtime.Runtime) (*Client, error) {
 	tlsConfig, err := c.TLS.BuildClient()
 	if err != nil {
 		return nil, errutil.Explain(err, "redis: build TLS")

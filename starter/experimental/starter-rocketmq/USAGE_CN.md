@@ -180,7 +180,7 @@ gs.Run()
   │       DefaultDriver：安装 rlog→go-spring 日志桥接
   │       （进程级全局，sync.Once 仅一次）并委托 NewClient——
   │       NewClient 在同一步固定身份（name server 列表 + Config）并挂载治理 executor：
-  │       center.ExecutorFor("rocketmq", service)，其来源为注入的 *governance.Center
+  │       center.ExecutorFor("rocketmq", service)，其来源为注入的 *runtime.Runtime
   │       （内含 *resilience.ClientManager / *fault.ClientManager）           [driver.go, client.go]
   │    3. Ping 探测（可选）：TCP dial，首个可达地址即通过，每地址 3s 预算；
   │       在装配完成之后跑，失败 → 启动失败（Client 已关闭）
@@ -223,7 +223,7 @@ GuardedSend(ctx, cl, producer, msg)                       [command.go]
 consume 方向在 driver 的接收回调里以同样方式声明（`operation("consume", topic)`），
 再在 `cl.execute` 下运行 handler [messaging.go]。
 
-`center.ExecutorFor("rocketmq", service)` 内的包裹顺序 [cloud/governance/center.go]，
+`center.ExecutorFor("rocketmq", service)` 内的包裹顺序 [cloud/runtime/controlplane/governance/center.go]，
 由 `NewClient` 调用：`mgr.ClientExecutorFor("rocketmq", service)`——mgr 为注入的
 `*resilience.ClientManager`——返回已完整组装的 executor（核心 breaker/limiter/retry 被 resilience
 观察器包住——outcome 计数器 + 访问日志）→ 最外层再由 `inj.WrapClientExecutor(...)`
@@ -339,7 +339,7 @@ name-servers——须与 governance 规则一致）：
 - 压 `GuardedSend`——或 driver 的 `Publish`（它同样经 `GuardedSend` 接缝）→ 拒绝返回
   `resilience.ErrRateLimited`，发送未被调用，出现 `resilience.error_type=rate_limited` 的
   `resilience.client.calls` 记录，以及每次调用一条访问日志（`_app_rocketmq_access`，
-  回退路径为 `_app_resilience`）[cloud/governance/resilience/observe.go]。
+  回退路径为 `_app_resilience`）[cloud/runtime/dataplane/resilience/observe.go]。
 - 直接在 producer 上调用裸 `SendSync` 则未守护（§2.2）：它是应用自己的路径、外面没有
   executor。这个对比正是 §2.2 的边界。
 

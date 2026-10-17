@@ -32,9 +32,9 @@ package gormresilience
 
 import (
 	"context"
-	"go-spring.org/cloud/chain"
+	"go-spring.org/cloud/runtime/dataplane/chain"
 
-	"go-spring.org/cloud/governance/resilience"
+	"go-spring.org/cloud/runtime/dataplane/resilience"
 	"gorm.io/gorm"
 )
 

@@ -153,7 +153,7 @@ import starter-go-redis
 gs.Run()
   └─ ctor newClient [starter.go:129] — assembles the client COMPLETELY, then probes:
        ├─ validateConfig → driver lookup → driver.CreateClient(ctx, c, center)
-       │    (the container injects one *governance.Center — the family's sole
+       │    (the container injects one *runtime.Runtime — the family's sole
        │     injection point; c.Discovery already carries the family-default
        │     discovery label, which the Driver resolves itself)
        │    └─ DefaultDriver builds the raw client, hands it (with center) to NewClient [client.go:106]
@@ -242,7 +242,7 @@ the chain from scratch** — the next dial runs the new strategy on a fresh bala
 dialer feeds `Complete` with the dial
 outcome, so `outlier-threshold` evicts instances that keep refusing *connections*. Sentinel and
 cluster clients self-discover and have no chain, so these keys do not reach them. See
-`cloud/governance/README.md` §3.1.
+`cloud/runtime/controlplane/governance/README.md` §3.1.
 
 ---
 

@@ -19,7 +19,7 @@ package StarterMemcached
 import (
 	"go-spring.org/cloud/actuator/health"
 	"go-spring.org/cloud/cache"
-	"go-spring.org/cloud/governance"
+	"go-spring.org/cloud/runtime"
 	"go-spring.org/log"
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/gs"
@@ -56,7 +56,7 @@ func init() {
 				gs.IndexArg(2, gs.ValueArg(c)),
 				gs.IndexArg(3, gs.TagArg("${spring.memcached.instances."+name+".driver:=${spring.memcached.default.driver:=?}}")),
 				gs.IndexArg(4, gs.TagArg("${spring.memcached.instances."+name+".discovery:=${spring.memcached.default.discovery:=none}}")),
-				// The governance center is the family's sole injection point: it hands
+				// The runtime is the family's sole injection point: it hands
 				// out the resilience/fault/loadbalance authorities.
 			).Name(name).Destroy((*Client).Close).Caller(1)
 			// Contribute a health indicator for this instance unless the user
@@ -84,14 +84,14 @@ func init() {
 // family default). It is folded into the config so the driver resolves the
 // backend itself — see the fold below.
 //
-// center is the governance center the container injects (nil in a standalone,
+// center is the runtime the container injects (nil in a standalone,
 // non-gs call) — the family's sole injection point; the ctor hands the center
 // straight to the driver, which passes it to [NewClient]: the client is
 // assembled complete in one step, with the resilience manager required: the
-// container supplies it via the governance center, so a center without one
+// container supplies it via the runtime, so a center without one
 // fails at construction.
 func newClient(ctx *gs.ContextProvider, name string, c Config, d Driver, discoveryLabel string,
-	center *governance.Center) (*Client, error) {
+	center *runtime.Runtime) (*Client, error) {
 	// The client's identity rides on a context derived here: every line below
 	// carries it without repeating it. The provider's own context is left
 	// alone — that one is the shared application context, not this

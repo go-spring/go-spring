@@ -19,7 +19,7 @@ package StarterDiscoveryK8s
 import (
 	"context"
 
-	"go-spring.org/cloud/discovery"
+	"go-spring.org/cloud/runtime/dataplane/discovery"
 	"go-spring.org/log"
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/gs"

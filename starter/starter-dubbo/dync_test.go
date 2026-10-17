@@ -21,11 +21,12 @@ import (
 	"time"
 
 	"dubbo.apache.org/dubbo-go/v3/config_center"
-	"go-spring.org/cloud/chain"
-	"go-spring.org/cloud/governance/fault"
-	"go-spring.org/cloud/governance"
-	"go-spring.org/cloud/loadbalance"
-	"go-spring.org/cloud/governance/resilience"
+	"go-spring.org/cloud/runtime"
+	"go-spring.org/cloud/runtime/controlplane/governance"
+	"go-spring.org/cloud/runtime/dataplane/chain"
+	"go-spring.org/cloud/runtime/dataplane/fault"
+	"go-spring.org/cloud/runtime/dataplane/loadbalance"
+	"go-spring.org/cloud/runtime/dataplane/resilience"
 	mapconfig "go-spring.org/starter-dubbo/internal/mapconfig"
 )
 
@@ -42,7 +43,7 @@ func setConsumer(p *dyncPoller, c DubboConsumer) {
 // from another test. There is no process-global authority to reset any more —
 // each test owns its manager.
 func newTestPoller() *dyncPoller {
-	ctr, err := governance.NewCenter(resilience.NewClientManager(resilience.NewDefaultDriver(nil)), loadbalance.NewManager(), fault.NewClientManager(nil), fault.NewServerManager(nil), nil, governance.NewPushSource(governance.Config{}))
+	ctr, err := runtime.New(resilience.NewClientManager(resilience.NewDefaultDriver(nil)), loadbalance.NewManager(), fault.NewClientManager(nil), fault.NewServerManager(nil), nil, governance.NewPushSource(governance.Config{}))
 	if err != nil {
 		panic(err)
 	}
@@ -57,7 +58,7 @@ func armedPoller(cfg governance.Config) *dyncPoller {
 	lb := loadbalance.NewManager()
 	driver := resilience.NewDefaultDriver(nil)
 	resClient := resilience.NewClientManager(driver)
-	ctr, err := governance.NewCenter(resClient, lb, fault.NewClientManager(nil), fault.NewServerManager(nil), nil, governance.NewPushSource(cfg))
+	ctr, err := runtime.New(resClient, lb, fault.NewClientManager(nil), fault.NewServerManager(nil), nil, governance.NewPushSource(cfg))
 	if err != nil {
 		panic(err)
 	}

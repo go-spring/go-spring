@@ -136,7 +136,7 @@ attached to the client (rate limit, circuit breaking, fault injection):
 res, err := StarterRocketmq.GuardedSend(ctx, s.Client, p, msg)
 ```
 
-When governance is not wired in (no `cloud/governance` bean in the container)
+When governance is not wired in (no `cloud/runtime/controlplane/governance` bean in the container)
 this behaves exactly like `p.SendSync(ctx, msg)`.
 
 The [Messaging Driver](#messaging-driver) publish and consume paths route
@@ -165,7 +165,7 @@ client under `spring.rocketmq.instances.*` is built through it, and the starter 
 back to its bundled `DefaultDriver` only when no `Driver` bean is present.
 Embed `StarterRocketmq.DefaultDriver` and delegate `CreateClient` so the
 default assembly is preserved. `CreateClient` takes the container's injected
-`*governance.Center` (see `go-spring.org/cloud/governance`) and passes
+`*runtime.Runtime` (see `go-spring.org/cloud/runtime/controlplane/governance`) and passes
 it through, so the client is assembled complete — identity and executor — in one
 step; delegate it as-is and governance keeps applying:
 
@@ -181,7 +181,7 @@ type myDriver struct {
 }
 
 func (d myDriver) CreateClient(ctx context.Context, c StarterRocketmq.Config,
-    center *governance.Center) (*StarterRocketmq.Client, error) {
+    center *runtime.Runtime) (*StarterRocketmq.Client, error) {
     return d.DefaultDriver.CreateClient(ctx, c, center)
 }
 ```

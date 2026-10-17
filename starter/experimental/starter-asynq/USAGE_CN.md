@@ -165,7 +165,7 @@ gs.Run()
   ├─ bean 装配：应用 bean 按实例名 autowire *Client / *Server
   ├─ ctor newClient（starter.go）：解析 RedisConnOpt，再由 NewClient 固定服务标签
   │    （label.ServiceLabel("asynq", addr)）并挂上 observer；ctor 注入必填的
-  │    *governance.Center（center），但 asynq client 没有 resilience 缝，
+  │    *runtime.Runtime（center），但 asynq client 没有 resilience 缝，
   │    故它不作用于本路径——无 Init 钩子
   ├─ ctor newServer（starter.go）：asynq.NewServer(connOpt, Config{...})
   │    ——无 Init 钩子
@@ -198,7 +198,7 @@ gs.Run()
    span 名 `enqueue`、`messaging.system`/`messaging.operation` 标签、任务类型作
    `messaging.destination.name` detail），放到 ctx 上，自身不发射任何信号。
 3. 入队在 **observer** 下执行，而非 executor。`newClient` 注入必填的
-   `*governance.Center`（`center`）——治理家族唯一的注入点，client 正是从这一个对象上
+   `*runtime.Runtime`（`center`）——治理家族唯一的注入点，client 正是从这一个对象上
    读取其 resilience/fault 职权（`center.ResilienceClient()`、`center.FaultClient()`）——但 asynq 生产者
    client 没有可挂 resilience executor 的缝（client.go:57-59），故中心里的职权都不作用于本路径：
    既不限流也不重试，服务 `asynq:<addr>` 上的限流/熔断/故障规则从不被查询。observer 负责
@@ -279,7 +279,7 @@ grep -c "boom" <log>                     # handler 错误经 asynq 日志浮出
 
 入队路径不挂 resilience executor（见 §2.3 步骤 3）：服务 `asynq:<addr>` 上的治理规则——
 限流、熔断、注入故障——从不被查询，故 `Client.Enqueue` 总会触达 Redis。`newClient` 仍注入
-必填的 `*governance.Center`（`center`，治理家族唯一的注入点），但 asynq 生产者 client
+必填的 `*runtime.Runtime`（`center`，治理家族唯一的注入点），但 asynq 生产者 client
 没有可挂它的缝。
 
 ---
@@ -290,7 +290,7 @@ grep -c "boom" <log>                     # handler 错误经 asynq 日志浮出
 |------|----------|------|
 | 容器报 bean `a:server` 不存在 | 未开 `server.enabled`（worker 选配） | 设 `spring.asynq.instances.<n>.server.enabled=true` 或去掉注入。 |
 | 任务投了没人跑 | worker 未开启；投到 `queues` 之外的队列；生产者与 worker 不同 `db` | 对齐配置；用 `asynq.Queue("<已列出>")` 投递。 |
-| 入队路径没有治理 | asynq 生产者 client 没有可挂 resilience executor 的缝，注入的 `*governance.Center` 无法作用（client.go:57-59） | 设计如此：调用只被观测（span/指标/访问日志），从不限流；观测路径请用 wrapper 的 `Enqueue`（client.go:71）。 |
+| 入队路径没有治理 | asynq 生产者 client 没有可挂 resilience executor 的缝，注入的 `*runtime.Runtime` 无法作用（client.go:57-59） | 设计如此：调用只被观测（span/指标/访问日志），从不限流；观测路径请用 wrapper 的 `Enqueue`（client.go:71）。 |
 | 能投递但健康 DOWN | `default` 队列从未创建 / ACL 限制 Inspector | 健康检查固定探 `default` 队列；确认 Redis 可达与权限。 |
 | 发布丢任务 | `shutdown-timeout` 短于在途任务 | 调到高于最长任务时长。 |
 | 自定义 Driver bean 不生效 | 实例没有按名选中它，按类型注入选到了另一个 | 容器中存在多个 `Driver` bean 时，每实例按名指定：`spring.asynq.instances.<name>.driver = <bean 名>`（留空 = 先回退家族级 `spring.<family>.default.driver`，再按类型注入唯一 Driver bean；指定的 bean 不存在则启动失败）。 |
@@ -309,6 +309,6 @@ grep -c "boom" <log>                     # handler 错误经 asynq 日志浮出
 - 生产者与 worker 共用一份 Config，真正共用的只有 addr/认证/tls；
   concurrency/queues/shutdown-timeout 是 worker 专属 key 却放顶层。
 - 提升的 `*asynq.Client` 方法（`EnqueueContext` 等）绕过观测 seam——容易误调；且 ctor 注入的
-  必填 `*governance.Center` 在 asynq 生产者 client 上没有可作用的缝，本路径暂未使用该参数。
+  必填 `*runtime.Runtime` 在 asynq 生产者 client 上没有可作用的缝，本路径暂未使用该参数。
 - 实例级观测 key 只有偏离绑定默认值（brief/512/无 skip）才算"已设置"——这是按差异
   合并的代价，与 starter-s3 相同。

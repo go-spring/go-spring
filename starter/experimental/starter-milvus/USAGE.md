@@ -162,7 +162,7 @@ gs.Run()
   │   interceptors installed (inert until governance is applied)
   ├─ ...then fixes identity and applies governance:
   │   service = ServiceLabel("milvus", addr) →
-  │   center.ExecutorFor("milvus", service) — the injected *governance.Center the ctor
+  │   center.ExecutorFor("milvus", service) — the injected *runtime.Runtime the ctor
   │   hands in → (fault-wrapped mgr.ClientExecutorFor) → slot.apply — the
   │   interceptors guard every RPC from here on; the resilience manager is required, so the center is always present
   ├─ ping=true only: fail-fast probe HealthCheck (ListCollections once), error → Destroy()+boot fails
@@ -193,7 +193,7 @@ interceptors read a per-client slot that `NewClient` creates, applies with
 `center.ExecutorFor("milvus", "milvus:<addr>")`, and keeps private — the slot cannot appear
 in an exported signature, so the constructor owns both the dial and the governing step.
 The executor is built from the `*resilience.ClientManager` and
-`*fault.ClientManager` carried by the injected `*governance.Center`
+`*fault.ClientManager` carried by the injected `*runtime.Runtime`
 (the resilience manager is required — the container always supplies it;
 governance is applied as the client is built, so the fail-fast probe in
 `newClient` runs *after* the slot is applied and on a governance-on boot the probe itself rides the
@@ -259,7 +259,7 @@ curl -s :9370/metrics | grep -i milvus   # nothing from this starter with govern
 grep _app_ app.log | grep -i milvus      # the access log; empty with governance off
 ```
 
-With governance off (no `cloud/governance` beans in the container / no `spring.governance.*` rules) expect empty output for
+With governance off (no `cloud/runtime/controlplane/governance` beans in the container / no `spring.governance.*` rules) expect empty output for
 both: the guard executor is a no-op and the only signal this starter emits is the health
 component. Turn governance on and the declared-identity signals appear — the `db.client.operation.duration`
 and `db.client.attempt.duration` histograms plus the `_app_milvus_access` access log — alongside

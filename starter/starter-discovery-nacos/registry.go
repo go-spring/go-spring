@@ -21,7 +21,8 @@ import (
 
 	"github.com/nacos-group/nacos-sdk-go/v2/clients/naming_client"
 	"github.com/nacos-group/nacos-sdk-go/v2/vo"
-	"go-spring.org/cloud/discovery"
+	"go-spring.org/cloud/runtime/controlplane/registration"
+	"go-spring.org/cloud/runtime/dataplane/discovery"
 	"go-spring.org/stdlib/errutil"
 	"go-spring.org/stdlib/netutil"
 )
@@ -41,13 +42,13 @@ type nacosRegistry struct {
 
 	// obs is the block's observability layer; it carries the identity (system,
 	// center) every reported attempt and log line is labelled with.
-	obs *discovery.Observer
+	obs *registration.Observer
 }
 
 // newNacosRegistry returns a registry writing through client (the shared
 // center client; the server was already probed when client was built) with
 // c's group/cluster. It does NOT close client — the owner (nacosCenter) does.
-func newNacosRegistry(c NacosConfig, client naming_client.INamingClient, obs *discovery.Observer) (*nacosRegistry, error) {
+func newNacosRegistry(c NacosConfig, client naming_client.INamingClient, obs *registration.Observer) (*nacosRegistry, error) {
 	if client == nil {
 		return nil, errutil.Explain(nil, "discovery-nacos: nil naming client")
 	}
@@ -68,7 +69,7 @@ func normalizeWeight(w int) int {
 // Register publishes reg as an ephemeral Nacos instance. The SDK then keeps it
 // alive with its own heartbeat until Deregister. Registering the same ip:port
 // again refreshes the entry.
-func (r *nacosRegistry) Register(ctx context.Context, reg discovery.Instance) error {
+func (r *nacosRegistry) Register(ctx context.Context, reg registration.Instance) error {
 	host, port, err := netutil.SplitHostPort(reg.Addr)
 	if err != nil {
 		return errutil.Explain(err, "discovery-nacos: register %q", reg.ServiceName)
@@ -76,7 +77,7 @@ func (r *nacosRegistry) Register(ctx context.Context, reg discovery.Instance) er
 	// Nacos treats weight 0 as "receive no traffic", so an explicit 0 is the
 	// drain signal and passes through untouched.
 	weight := float64(normalizeWeight(reg.Weight))
-	return r.obs.RegisterAttempt(ctx, reg.ServiceName, discovery.ReasonInitial, func(context.Context) error {
+	return r.obs.RegisterAttempt(ctx, reg.ServiceName, registration.ReasonInitial, func(context.Context) error {
 		ok, err := r.client.RegisterInstance(vo.RegisterInstanceParam{
 			Ip:          host,
 			Port:        port,
@@ -103,7 +104,7 @@ func (r *nacosRegistry) Register(ctx context.Context, reg discovery.Instance) er
 
 // Deregister removes the instance. It is idempotent: deregistering an instance
 // that is not registered is a no-op on the Nacos side.
-func (r *nacosRegistry) Deregister(ctx context.Context, reg discovery.Instance) error {
+func (r *nacosRegistry) Deregister(ctx context.Context, reg registration.Instance) error {
 	host, port, err := netutil.SplitHostPort(reg.Addr)
 	if err != nil {
 		return errutil.Explain(err, "discovery-nacos: deregister %q", reg.ServiceName)
@@ -136,7 +137,7 @@ func (r *nacosRegistry) Deregister(ctx context.Context, reg discovery.Instance) 
 // running and discovery subscribers (the Nacos push channel) receive the new
 // weight without any re-registration. Mirrors the etcd backend's
 // UpdateWeight so both starters offer the same optional hot-reload API.
-func (r *nacosRegistry) UpdateWeight(ctx context.Context, reg discovery.Instance, weight int) error {
+func (r *nacosRegistry) UpdateWeight(ctx context.Context, reg registration.Instance, weight int) error {
 	host, port, err := netutil.SplitHostPort(reg.Addr)
 	if err != nil {
 		return errutil.Explain(err, "discovery-nacos: update weight %q", reg.ServiceName)
@@ -170,7 +171,7 @@ func (r *nacosRegistry) UpdateWeight(ctx context.Context, reg discovery.Instance
 // scheme) into the metadata map handed to Nacos: the SDK has no dedicated
 // fields for them, and the discovery read side restores them from these
 // reserved keys.
-func instanceMetadata(reg discovery.Instance) map[string]string {
+func instanceMetadata(reg registration.Instance) map[string]string {
 	if reg.Version == "" && reg.Zone == "" && reg.Scheme == "" {
 		return reg.Metadata
 	}

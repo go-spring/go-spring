@@ -19,23 +19,24 @@ package StarterCassandra
 import (
 	"context"
 	"errors"
-	"go-spring.org/cloud/chain"
 	"testing"
 
+	"go-spring.org/cloud/runtime/dataplane/chain"
+
 	"github.com/gocql/gocql"
-	"go-spring.org/cloud/governance/fault"
-	"go-spring.org/cloud/governance"
-	"go-spring.org/cloud/observability"
-	"go-spring.org/cloud/governance/resilience"
+	"go-spring.org/cloud/runtime"
+	"go-spring.org/cloud/runtime/dataplane/fault"
+	"go-spring.org/cloud/runtime/dataplane/observability"
+	"go-spring.org/cloud/runtime/dataplane/resilience"
 	"go-spring.org/stdlib/testing/assert"
 )
 
-// newTestCenter builds a governance center over an unarmed resilience manager
+// newTestCenter builds a runtime over an unarmed resilience manager
 // and an empty fault injector — the container-supplied facilities a Client is
 // assembled with.
-func newTestCenter(t *testing.T) *governance.Center {
+func newTestCenter(t *testing.T) *runtime.Runtime {
 	t.Helper()
-	ctr, err := governance.NewProcessCenter(resilience.NewClientManager(resilience.NewDefaultDriver(nil)), fault.NewClientManager(nil), fault.NewServerManager(nil))
+	ctr, err := runtime.NewProcess(resilience.NewClientManager(resilience.NewDefaultDriver(nil)), fault.NewClientManager(nil), fault.NewServerManager(nil))
 	if err != nil {
 		t.Fatal(err)
 	}

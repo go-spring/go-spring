@@ -22,7 +22,7 @@ import (
 	"testing"
 	"time"
 
-	"go-spring.org/cloud/governance"
+	"go-spring.org/cloud/runtime/controlplane/governance"
 	"go.etcd.io/etcd/api/v3/mvccpb"
 	clientv3 "go.etcd.io/etcd/client/v3"
 )

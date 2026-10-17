@@ -187,7 +187,7 @@ gs.Run()
   │       Prometheus registry + :port /metrics server、日志桥、
   │       pulsar.NewClient，随后 attachGuard —— center.ExecutorFor("pulsar",
   │       "pulsar:<url>") 按 client 索引，客户端在此刻已完整；center 即注入的
-  │       *governance.Center                       [driver.go:76-115, command.go:225]
+  │       *runtime.Runtime                       [driver.go:76-115, command.go:225]
   │    3. 再探测（Ping）：cl.TopicPartitions(HealthCheckTopic) —— 一次
   │       覆盖地址+认证+TLS 的 lookup（不产生消息）；失败 →
   │       closeResilience + cl.Close + metrics 下线 + 启动报错            [starter.go:108-116]
@@ -197,7 +197,7 @@ gs.Run()
 ```
 
 **装配扩展点**：client 装配由 `Driver`（接口，`driver.go:62-72`）负责：
-`CreateClient(ctx, c Config, center *governance.Center) (pulsar.Client, error)`。driver 返回的
+`CreateClient(ctx, c Config, center *runtime.Runtime) (pulsar.Client, error)`。driver 返回的
 client 已完整——它在构建时就自行挂上治理 executor（`attachGuard`），此后没有任何补丁步骤。
 公司/伞包 starter 可把自己的 `Driver` 作为**可选容器 bean** 提供
 （`gs.Provide(func() StarterPulsar.Driver{...})`，因为是 bean，可在装配期注入从配置文件绑定的
@@ -233,7 +233,7 @@ GuardedSend(ctx, cl, producer, msg)                       [command.go]
 
 `attachGuard` 挂上的 executor 来自 `center.ExecutorFor("pulsar", service)`（`service` =
 `pulsar:<url>`）[command.go]，其中 `center` 是 ctor 交给 driver 的注入
-`*governance.Center`（携带注入的 `*resilience.ClientManager` 与 `*fault.ClientManager`）：
+`*runtime.Runtime`（携带注入的 `*resilience.ClientManager` 与 `*fault.ClientManager`）：
 有 manager 时返回已完整组装的 executor（核心熔断/限流/重试外包 resilience observer——outcome
 计数 + 访问日志），最外层再由注入的 `*fault.ClientManager` 做运行期故障注入（注入的错误穿过内层
 重试循环，熔断器照常计数）。manager 必填——容器始终提供；不存在 unmanaged/仅观测的兜底。

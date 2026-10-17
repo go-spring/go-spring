@@ -343,4 +343,4 @@ Suspects (carried over + new, for the audit ledger):
   then fails, and the "last good snapshot" behavior is emergent rather than designed.
 - No health indicator for "watch alive" — if the informer silently loses its watch, the
   loaded snapshot keeps serving and the failure is invisible from outside. (Logs carry tag
-  `_app_config_k8s`, and refreshes are logged and metered by `observability.RefreshConf`.)
+  `_app_config_k8s`, and refreshes are logged and metered by `conf.Refresh`.)

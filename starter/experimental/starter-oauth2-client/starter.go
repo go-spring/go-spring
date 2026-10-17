@@ -20,10 +20,10 @@ import (
 	"io"
 	"net/http"
 
-	"go-spring.org/cloud/governance"
-	"go-spring.org/cloud/governance/label"
+	"go-spring.org/cloud/runtime"
+	"go-spring.org/cloud/runtime/dataplane/label"
 
-	"go-spring.org/cloud/governance/resilience"
+	"go-spring.org/cloud/runtime/dataplane/resilience"
 	"go-spring.org/log"
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/gs"
@@ -51,7 +51,7 @@ func init() {
 			r.Provide(newClient,
 				gs.IndexArg(1, gs.ValueArg(name)),
 				gs.IndexArg(2, gs.ValueArg(c)),
-				// The governance center is the family's sole injection point.
+				// The runtime is the family's sole injection point.
 			).Name(name).Destroy(destroyClient).Caller(1)
 			return nil
 		})
@@ -88,10 +88,10 @@ func init() {
 // governance is off — so the bearer token is already attached before the
 // resilience layer runs and each protected attempt is a complete request.
 //
-// center is the governance center bean gs injects (nil in a standalone call);
+// center is the runtime bean gs injects (nil in a standalone call);
 // a nil center reads a nil resilience manager, whose executor is a transparent
 // pass-through, so governance off and standalone callers behave identically.
-func newClient(ctx *gs.ContextProvider, name string, c Config, center *governance.Center) (*http.Client, error) {
+func newClient(ctx *gs.ContextProvider, name string, c Config, center *runtime.Runtime) (*http.Client, error) {
 
 	cfg := &clientcredentials.Config{
 		ClientID:       c.ClientID,
@@ -117,7 +117,7 @@ func newClient(ctx *gs.ContextProvider, name string, c Config, center *governanc
 
 	// Build the resilience executor from the injected manager, so this client gets
 	// its rate-limit/breaker/retry policy from the governance document without
-	// naming *governance.Center. An unarmed manager yields a transparent
+	// naming *runtime.Runtime. An unarmed manager yields a transparent
 	// pass-through executor, so this call is always safe. The executor handle
 	// resolves its backing implementation per call, so the order of this setup
 	// relative to the container's wiring is irrelevant.

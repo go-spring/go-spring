@@ -6,8 +6,8 @@
 
 **模型**:配置是**命名块**——每个 `spring.discovery.consul.<name>.*` 块描述一个 Consul
 agent,成为名为 `consul.<name>` 的后端 bean(`starter.go`)。该 bean 同时实现命名体系的
-两半:`discovery.Registry`(写侧——由传递依赖自动引入的
-[cloud/discovery](../../cloud/discovery) 核心之 `discoveryServer` 收集,跨后端注册进
+两半:`registration.Registry`(写侧——由传递依赖自动引入的
+[cloud/runtime/controlplane/registration](../../cloud/runtime/controlplane/registration) 核心之 `discoveryServer` 收集,跨后端注册进
 **每一个**已配置中心)与 `discovery.Discovery`(读侧——消费方按 bean 名引用,如
 `discovery=consul.main`;bean 惰性)。读写共享该块的客户端,永不分裂。没有默认/无名块。
 注册仅在设置 `spring.discovery.service-name` 后激活——纯消费方应用只配连接块、不注册任何
@@ -54,7 +54,7 @@ blank-import + `gs.Run()`。注册器用 TTL 心跳保活;`PreStop` 反注册。
 
 ### 发现 —— 按块 bean 名引用(零配置)
 
-发现**无需任何自有配置**:每个块的后端 bean 本身就是 `cloud/discovery.Discovery`,名为
+发现**无需任何自有配置**:每个块的后端 bean 本身就是 `cloud/runtime/dataplane/discovery.Discovery`,名为
 `consul.<name>`(`starter.go`),client 按 bean 名引用(`discovery=consul.main`)。
 该 bean 惰性——纯 provider 从不解析、从不付费;纯消费方只配连接块(不设
 `service-name`/`addr`),不注册任何实例。多 agent 发现就是多个块:引用哪个块就从哪个
@@ -68,8 +68,8 @@ query(index 长轮询)保鲜,后续 Resolve 读缓存;`Meta["scheme"]` → `Endp
 
 - 每块一个后端 bean `consul.<name>`(共享该块 `*api.Client`;Consul 客户端无需关闭,
   Destroy 只停 discovery 半边的后台查询)。
-- `discoveryServer` 来自 [cloud/discovery](../../cloud/discovery) 核心(传递依赖),
-  `Registries []discovery.Registry` 切片收集所有后端的 registry。
+- `discoveryServer` 来自 [cloud/runtime/controlplane/registration](../../cloud/runtime/controlplane/registration) 核心(传递依赖),
+  `Registries []registration.Registry` 切片收集所有后端的 registry。
 - `UpdateWeight(ctx, w)` 以 `Weights.Passing = w` 逐中心 upsert(0 = 摘流透传;未注册时报错)。
 - 运行期日志带专属 tag `_app_discovery_consul`（`log.RegisterAppTag("discovery_consul", "")`），
   经 `logger.<name>.tag=_app_discovery_consul` 单独调级（与 discovery-etcd/nacos 一致）。

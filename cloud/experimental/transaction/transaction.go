@@ -52,7 +52,7 @@ package transaction
 import (
 	"context"
 
-	"go-spring.org/cloud/chain"
+	"go-spring.org/cloud/runtime/dataplane/chain"
 )
 
 // RetryPolicy describes how an individual [Step] phase (action or compensation)

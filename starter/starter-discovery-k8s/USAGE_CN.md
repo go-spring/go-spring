@@ -150,8 +150,8 @@ DNS，集群外解析会以 lookup 错误失败（example 把它当警告处理�
    （`endpointslice.go:251-262`，接在 bean 析构上）。
 
 下游，客户端 starter 从后端构建 `discovery.Resolver`
-（`discovery.NewResolver(ctx, backend, serviceName, opts...)`，`cloud/discovery/discovery.go:227`）——
-一个普通的 `func() ([]Endpoint, error)`（`cloud/discovery/discovery.go:209`），由 loadbalance
+（`discovery.NewResolver(ctx, backend, serviceName, opts...)`，`cloud/runtime/dataplane/discovery/discovery.go:227`）——
+一个普通的 `func() ([]Endpoint, error)`（`cloud/runtime/dataplane/discovery/discovery.go:209`），由 loadbalance
 `Pool` 每次 pick 时调用。这就是把端点“推”进客户端连接池的那条路。
 
 ### 2.2 新鲜度 —— dns 模式
@@ -169,11 +169,11 @@ Kubernetes 没有 `UpdateWeight`；摘流是平台的事，走的是同一份快
 - **缩容 / Pod 删除** → EndpointSlice 缩小 → informer delete 事件 → 重算 → 地址从快照中消失 →
   客户端池不再挑到它。
 - **就绪度翻假**（探针失败）→ 端点仍在 slice 里，但 `Conditions.Ready` 变假 → `Healthy=false` →
-  在 pick 时被 `discovery.Allows` 排除（`endpointslice.go:276`，`cloud/discovery/discovery.go:65-77`）。
+  在 pick 时被 `discovery.Allows` 排除（`endpointslice.go:276`，`cloud/runtime/dataplane/discovery/discovery.go:65-77`）。
   dns 模式则是记录直接消失（headless DNS 只发布就绪地址，`dns.go:82-89`），滞后一个
   `refresh-interval`。
 - Weight 语义：只有 SRV 记录带 weight（`dns.go:140`）；那里的 `Weight == 0` 受池的软摘流过滤影响
-  （`cloud/loadbalance/pool.go:93-134`）。
+  （`cloud/runtime/dataplane/loadbalance/pool.go:93-134`）。
 
 ---
 
@@ -226,7 +226,7 @@ get/list/watch）。客户端的 `discovery:` 字段要填**完整 bean 名**—
 
 运行期日志都带 tag `_app_discovery_k8s`（`log.RegisterAppTag("discovery_k8s", "")`，`starter.go:34`），
 经 `logger.<name>.tag=_app_discovery_k8s` 单独调级。本 starter 的读侧只产出指标、不产出 span
-（`discovery.sync_total` / `discovery.cache.age_seconds`，定义在 `cloud/discovery/observe.go`）；
+（`discovery.sync_total` / `discovery.cache.age_seconds`，定义在 `cloud/runtime/dataplane/discovery/observe.go`）；
 客户端通过自己的池观测。
 
 ---

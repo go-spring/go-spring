@@ -157,7 +157,7 @@ gs.Run()
   │    │        static creds + region + bucket-lookup + a dynamicTransport inside minio.Options
   │    │      → NewClient builds the *Client wrapper: identity, exec =
   │    │        center.ExecutorFor("s3", "s3:<endpoint>") (center is the injected
-  │    │        *governance.Center, holding the *resilience.ClientManager /
+  │    │        *runtime.Runtime, holding the *resilience.ClientManager /
   │    │        *fault.ClientManager beans), then installs the transport —
   │    │        declaration outermost, resilience inside
   │    ├─ ping=true only: fail-fast probe HealthCheck(ctx, client) — one ListBuckets
@@ -176,7 +176,7 @@ setter, while the real transport (declaration + resilience) is assembled by the 
 RoundTripper indirection (RWMutex-guarded, not atomic.Value, because the active tripper is
 one of several concrete types) — and returns the `*Client` wrapper built over it:
 `NewClient` swaps the declaration+resilience stack in (its executor comes from the
-`*governance.Center` the ctor passes down). Until the swap happens, requests pass
+`*runtime.Runtime` the ctor passes down). Until the swap happens, requests pass
 straight through to `http.DefaultTransport`.
 
 ### 2.3 One upload, layer by layer
@@ -193,7 +193,7 @@ straight through to `http.DefaultTransport`.
    attempt (retries included); a declaration made per attempt inside the executor would be
    read by nobody.
 3. The request enters the executor built at
-   construction for service `s3:<endpoint>` from the `*governance.Center` the ctor passed
+   construction for service `s3:<endpoint>` from the `*runtime.Runtime` the ctor passed
    down (`*resilience.ClientManager` / `*fault.ClientManager` beans) — retry / rate-limit /
    circuit-breaker / bulkhead when a governance rules source applies them (hot-reloadable through
    the governance center); the resilience manager is required and always supplied by the

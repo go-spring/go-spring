@@ -21,7 +21,7 @@ import (
 	"testing"
 
 	"github.com/hibiken/asynq"
-	"go-spring.org/cloud/observability"
+	"go-spring.org/cloud/observability/attrs"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/testing/assert"
 	"go.opentelemetry.io/otel"
@@ -30,7 +30,7 @@ import (
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 )
 
-// The reader is the real one now that it lives in cloud/observability: this
+// The reader is the real one now that it lives in cloud/runtime/dataplane/observability: this
 // module still has no starter-otel dependency, but it no longer has to mirror
 // the processor to get one. What this test locks is the half that lives here —
 // the enqueue span is started from the ctx the caller passed to Enqueue, so
@@ -49,7 +49,7 @@ func attrsOf(s sdktrace.ReadOnlySpan) map[string]string {
 }
 
 // TestEnqueueSpanCarriesSpanAttributes locks the "reachable without holding
-// the span" shape documented in cloud/observability/README.md: Enqueue declares
+// the span" shape documented in cloud/runtime/dataplane/observability/README.md: Enqueue declares
 // the operation's identity on the ctx, and the resilience layer — the executor
 // underneath — opens the span from that same ctx, so annotating the ctx is the
 // only way in for a caller. The enqueue itself is pointed at a closed port — the
@@ -57,7 +57,7 @@ func attrsOf(s sdktrace.ReadOnlySpan) map[string]string {
 func TestEnqueueSpanCarriesSpanAttributes(t *testing.T) {
 	sr := tracetest.NewSpanRecorder()
 	tp := sdktrace.NewTracerProvider(
-		sdktrace.WithSpanProcessor(observability.SpanAttributesProcessor()),
+		sdktrace.WithSpanProcessor(attrs.SpanAttributesProcessor()),
 		sdktrace.WithSpanProcessor(sr),
 	)
 	prev := otel.GetTracerProvider()
@@ -72,7 +72,7 @@ func TestEnqueueSpanCarriesSpanAttributes(t *testing.T) {
 	assert.Error(t, err).Nil()
 	defer func() { _ = c.Client.Close() }()
 
-	ctx := observability.WithSpanAttributes(context.Background(),
+	ctx := attrs.WithSpanAttributes(context.Background(),
 		attribute.String("tenant", "acme"))
 	_, _ = c.Enqueue(ctx, asynq.NewTask("probe:task", nil))
 

@@ -21,8 +21,8 @@
 //
 // The interceptor sits innermost (right before the handler), so the converted
 // error unwinds back through tracing/metrics/resilience and is fully
-// observed — the same placement rationale FaultUnaryInterceptor documents for
-// injected errors.
+// observed — the same placement rationale the inbound guard's fault stage
+// follows for injected errors.
 
 package StarterGrpcServer
 

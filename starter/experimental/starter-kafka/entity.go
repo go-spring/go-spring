@@ -26,8 +26,8 @@ package StarterKafka
 import (
 	"context"
 	"github.com/twmb/franz-go/pkg/kgo"
-	"go-spring.org/cloud/chain"
-	"go-spring.org/cloud/observability"
+	"go-spring.org/cloud/runtime/dataplane/chain"
+	"go-spring.org/cloud/runtime/dataplane/observability"
 	"go-spring.org/log"
 )
 

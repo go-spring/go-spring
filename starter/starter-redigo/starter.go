@@ -26,7 +26,7 @@ package StarterRedigo
 import (
 	"go-spring.org/cloud/actuator/health"
 	"go-spring.org/cloud/cache"
-	"go-spring.org/cloud/governance"
+	"go-spring.org/cloud/runtime"
 	"go-spring.org/log"
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/gs"
@@ -61,7 +61,7 @@ func init() {
 				gs.IndexArg(1, gs.ValueArg(c)),
 				gs.IndexArg(2, gs.TagArg("${spring.redigo.instances."+name+".driver:=${spring.redigo.default.driver:=?}}")),
 				gs.IndexArg(3, gs.TagArg("${spring.redigo.instances."+name+".discovery:=${spring.redigo.default.discovery:=none}}")),
-				// The governance center is the family's sole injection point: it
+				// The runtime is the family's sole injection point: it
 				// hands out the resilience/fault/loadbalance authorities.
 			).Name(name).Destroy(destroyPool)
 
@@ -98,13 +98,13 @@ func init() {
 // family default). It is folded into the config so the driver resolves the
 // backend itself — see the fold below.
 //
-// center is the governance center bean — the family's sole spokesperson: the
+// center is the runtime bean — the family's sole spokesperson: the
 // resilience/fault/loadbalance authorities and the discovery directory are read
 // from it rather than injected one by one — the ctor hands the center straight
 // to the driver, which applies it in the constructor. The resilience manager is
-// required — the container supplies it via the governance center — so a center
+// required — the container supplies it via the runtime — so a center
 // without one fails at construction rather than degrading.
-func createPool(ctx *gs.ContextProvider, c Config, d Driver, discoveryLabel string, center *governance.Center) (*Pool, error) {
+func createPool(ctx *gs.ContextProvider, c Config, d Driver, discoveryLabel string, center *runtime.Runtime) (*Pool, error) {
 	// The pool's identity rides on a context derived here: every line below
 	// carries it without repeating it. The provider's own context is left
 	// alone — that one is the shared application context, not this
@@ -139,7 +139,7 @@ func createPool(ctx *gs.ContextProvider, c Config, d Driver, discoveryLabel stri
 	// d owns pool assembly. It returns the wrapped Pool (NOT the raw
 	// *redis.Pool): it may customize the wrapper itself, and downstream
 	// consumers uniformly deal in the project's type. Governance rides the
-	// governance center into the driver, so the pool is assembled complete — a
+	// runtime into the driver, so the pool is assembled complete — a
 	// custom Driver's pool is governed too, without the Driver having to know
 	// where the beans came from.
 	w, err := d.CreateClient(ctx.Context, c, center)

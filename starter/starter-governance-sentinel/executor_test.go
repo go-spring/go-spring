@@ -25,12 +25,12 @@ import (
 	"testing"
 	"time"
 
-	"go-spring.org/cloud/chain"
+	"go-spring.org/cloud/runtime/dataplane/chain"
 
 	"github.com/alibaba/sentinel-golang/core/circuitbreaker"
 	"github.com/alibaba/sentinel-golang/core/flow"
 
-	"go-spring.org/cloud/governance/resilience"
+	"go-spring.org/cloud/runtime/dataplane/resilience"
 	"go-spring.org/stdlib/testing/assert"
 )
 

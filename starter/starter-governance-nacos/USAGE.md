@@ -2,15 +2,15 @@
 
 Detailed usage reference. Overview: [README.md](README.md). Every behavior claim below is verified
 against the starter source (`starter.go`, `governance.go`, `governance_test.go`), the shared parse glue
-[cloud/governance/rules.go](../../cloud/governance/rules.go), the core contract
-[cloud/governance](../../cloud/governance) (`source.go`), and the self-asserting
+[cloud/runtime/controlplane/governance/rules.go](../../cloud/runtime/controlplane/governance/rules.go), the core contract
+[cloud/runtime/controlplane/governance](../../cloud/runtime/controlplane/governance) (`source.go`), and the self-asserting
 [example/](example) (`example/main.go`, `example/check.sh`). Nacos's own semantics (dataId,
 group, namespace, `ListenConfig`) are [Nacos docs](https://nacos.io/docs/latest/manual/admin/config/)
 — everything below is go-spring's increment.
 
 **What this starter is**: the Nacos adapter of the governance rule-source family. It is a
 `governance.Source` implementation; presenting the governance center itself is
-[cloud/governance](../../cloud/governance)'s job. Blank-importing this package is inert until a
+[cloud/runtime/controlplane/governance](../../cloud/runtime/controlplane/governance)'s job. Blank-importing this package is inert until a
 `spring.governance.source.nacos.*` key is present.
 
 ---
@@ -43,7 +43,7 @@ require (
 package main
 
 import (
-    "go-spring.org/cloud/governance/resilience"
+    "go-spring.org/cloud/runtime/dataplane/resilience"
     "go-spring.org/spring/gs"
 
     _ "go-spring.org/starter-governance-nacos"
@@ -65,7 +65,7 @@ func (p *poller) Run(ctx context.Context) error {
 }
 
 // newPoller builds the poller over the injected manager. A nil manager — a
-// container without cloud/governance's bean — is normalized to a fresh unarmed one.
+// container without cloud/runtime/controlplane/governance's bean — is normalized to a fresh unarmed one.
 func newPoller(mgr *resilience.ClientManager) *poller {
     if mgr == nil {
         mgr = resilience.NewClientManager()
@@ -125,8 +125,8 @@ The runnable [example/](example) does all of this, self-asserts, and exits 0;
 
 ### 2.1 The Source contract — what the center depends on
 
-`cloud/governance` is container-free: its center depends only on the two-method `Source` interface
-(`cloud/governance/source.go`):
+`cloud/runtime/controlplane/governance` is container-free: its center depends only on the two-method `Source` interface
+(`cloud/runtime/controlplane/governance/source.go`):
 
 ```go
 type Source interface {
@@ -162,7 +162,7 @@ blank-import starter-governance-nacos
             .Export(gs.As[governance.Source]())
 
 gs.Run()
-  ├─ bean wiring: the exported Source bean is injected into cloud/governance's wiring
+  ├─ bean wiring: the exported Source bean is injected into cloud/runtime/controlplane/governance's wiring
   ├─ source bean Init: ListenConfig installs the OnChange listener
   ├─ your Runners run (governance already armed — Rooter precedes Runner)
   └─ on SIGTERM: source bean Destroy → Close: CancelListenConfig + CloseClient
@@ -226,11 +226,11 @@ starter surface.
 
 ⚠ `spring.governance.source.*` is the bootstrap surface only. The rules document itself never rides
 `app.properties` — it lives in its own dataId, and its keys are the `spring.governance.*` vocabulary
-documented in [cloud/governance's SOURCE_USAGE](../../cloud/governance/SOURCE_USAGE.md).
+documented in [cloud/runtime/controlplane/governance's SOURCE_USAGE](../../cloud/runtime/controlplane/governance/SOURCE_USAGE.md).
 
 ### 3.1 Byte-portability of the document
 
-The document is parsed by the same `governance.Parse` used by cloud/governance's built-in file and http
+The document is parsed by the same `governance.Parse` used by cloud/runtime/controlplane/governance's built-in file and http
 sources: it is flattened, required to carry at least one `spring.governance.*` key, then bound into
 `governance.Config`. Consequently a document that works as a local rules file works unchanged as a
 Nacos dataId (and vice versa, and as an etcd value with
@@ -316,7 +316,7 @@ Design notes (for the audit ledger):
   `optional:` mode, so a misconfigured dataId cannot arm a disabled center silently. The trade-off
   is that the dataId must exist before the app starts — acceptable for a rule document whose
   absence would otherwise be invisible.
-- The parse glue (`governance.Parse`) lives in `cloud/governance` itself: the rule document is the
+- The parse glue (`governance.Parse`) lives in `cloud/runtime/controlplane/governance` itself: the rule document is the
   framework's own format, so the parser belongs with the model it produces and every backend shares
   one implementation. It is the one place in `cloud/` that imports `spring/conf` — accepted because
   the alternative (a per-backend parser, or a parser parked in one starter that its siblings reach

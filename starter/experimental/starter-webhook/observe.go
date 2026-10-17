@@ -33,7 +33,7 @@ import (
 
 	"go-spring.org/stdlib/strutil"
 
-	"go-spring.org/cloud/chain"
+	"go-spring.org/cloud/runtime/dataplane/chain"
 	"go-spring.org/log"
 	"go.opentelemetry.io/otel/attribute"
 )

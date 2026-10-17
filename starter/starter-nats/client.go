@@ -26,8 +26,8 @@ package StarterNats
 import (
 	"github.com/nats-io/nats.go"
 	"github.com/nats-io/nats.go/jetstream"
-	"go-spring.org/cloud/governance/label"
-	"go-spring.org/cloud/observability"
+	"go-spring.org/cloud/runtime/dataplane/label"
+	"go-spring.org/cloud/runtime/dataplane/observability"
 )
 
 // Conn wraps a NATS connection together with an optional JetStream context. It

@@ -20,7 +20,7 @@ import (
 	"context"
 	"sync"
 
-	"go-spring.org/cloud/observability"
+	obsattrs "go-spring.org/cloud/observability/attrs"
 	"go-spring.org/log"
 	"go.opentelemetry.io/otel/attribute"
 )
@@ -77,7 +77,7 @@ func annotate(ctx context.Context) context.Context {
 	if len(fields) == 0 {
 		return ctx
 	}
-	return observability.WithSpanAttributes(log.WithFields(ctx, fields...), attrs...)
+	return obsattrs.WithSpanAttributes(log.WithFields(ctx, fields...), attrs...)
 }
 
 // applyObservability records which business context fields luohua surfaces on

@@ -23,11 +23,12 @@ import (
 	"testing"
 
 	"github.com/labstack/echo/v4"
-	"go-spring.org/cloud/governance/fault"
-	"go-spring.org/cloud/governance"
-	"go-spring.org/cloud/loadbalance"
-	"go-spring.org/cloud/governance/resilience"
-	"go-spring.org/cloud/traffic"
+	"go-spring.org/cloud/runtime"
+	"go-spring.org/cloud/runtime/controlplane/governance"
+	"go-spring.org/cloud/runtime/dataplane/fault"
+	"go-spring.org/cloud/runtime/dataplane/loadbalance"
+	"go-spring.org/cloud/runtime/dataplane/resilience"
+	"go-spring.org/cloud/runtime/dataplane/traffic"
 	"go-spring.org/spring/conf"
 	"go-spring.org/stdlib/flatten"
 	"go-spring.org/stdlib/testing/assert"
@@ -46,17 +47,17 @@ func bindConfig(t *testing.T, props map[string]any) Config {
 	return c
 }
 
-// testCenter wraps a fault injector in the governance center bean the middleware
+// testCenter wraps a fault injector in the runtime bean the middleware
 // takes, so a test can arm the fault layer without a container. A nil inj
 // becomes an inert one, mirroring the DI wiring where the fault bean is always
 // present (an absent bean fails startup). An already-armed injector is re-armed
 // after construction, which dispatches the (zero) governance document into it.
-func testCenter(inj *fault.ServerManager) *governance.Center {
+func testCenter(inj *fault.ServerManager) *runtime.Runtime {
 	if inj == nil {
 		inj = fault.NewServerManager(nil)
 	}
 	armed := inj.Config()
-	ctr, err := governance.NewCenter(resilience.NewClientManager(resilience.NewDefaultDriver(nil)), loadbalance.NewManager(), fault.NewClientManager(nil), inj, nil, governance.NewPushSource(governance.Config{}))
+	ctr, err := runtime.New(resilience.NewClientManager(resilience.NewDefaultDriver(nil)), loadbalance.NewManager(), fault.NewClientManager(nil), inj, nil, governance.NewPushSource(governance.Config{}))
 	if err != nil {
 		panic(err)
 	}
@@ -452,8 +453,8 @@ func TestNewSimpleEchoServer_HealthEndpointRegistered(t *testing.T) {
 	assert.That(t, w.Body.String()).Equal("ok")
 
 	// Health disabled by default: the route is absent, and an unrouted request
-	// gets echo's own 404 — buildFault passes handler errors through and only
-	// rewrites INJECTED faults as 503 (mirroring gin's buildFault).
+	// gets echo's own 404 — the inbound guard passes handler errors through and
+	// only rewrites INJECTED faults as 503 (mirroring gin's inbound middleware).
 	svr2, err2 := NewSimpleEchoServer(func(e *echo.Echo) {}, nil, bindConfig(t, map[string]any{}), testCenter(nil),
 		traffic.NewDefaultPropagator(traffic.DefaultBinding()))
 	assert.That(t, err2).Nil()

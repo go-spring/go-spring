@@ -18,10 +18,10 @@ package StarterAsynq
 
 import (
 	"context"
-	"go-spring.org/cloud/governance"
 
 	"github.com/hibiken/asynq"
 	"go-spring.org/cloud/actuator/health"
+	"go-spring.org/cloud/runtime"
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/flatten"
@@ -48,7 +48,7 @@ func init() {
 			r.Provide(newClient,
 				gs.IndexArg(1, gs.ValueArg(c)),
 				gs.IndexArg(2, gs.TagArg("${spring.asynq.instances."+name+".driver:=${spring.asynq.default.driver:=?}}")),
-				// The governance center is the family's sole injection point: it hands
+				// The runtime is the family's sole injection point: it hands
 				// out the resilience/fault/loadbalance authorities.
 			).Name(name).Destroy((*Client).Destroy).Caller(1)
 
@@ -88,10 +88,10 @@ func init() {
 //
 // mgr is required (blank-imported governance); a standalone, non-gs caller
 // passes a fresh manager, which is exactly "governance off". The resilience
-// manager is required — the container supplies it via the governance center —
+// manager is required — the container supplies it via the runtime —
 // so a bundle carrying none is a construction error, never a graceful
 // downgrade.
-func newClient(ctx *gs.ContextProvider, c Config, d Driver, center *governance.Center) (*Client, error) {
+func newClient(ctx *gs.ContextProvider, c Config, d Driver, center *runtime.Runtime) (*Client, error) {
 	// No company Driver bean → fall back to the bundled default assembly.
 	if d == nil {
 		d = DefaultDriver{}

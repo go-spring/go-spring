@@ -17,7 +17,7 @@
 // Package StarterGovernanceNacos adapts Nacos as a governance rule source: it
 // listens on one Nacos dataId holding the governance rule document and pushes
 // every published version into the governance center through the
-// [go-spring.org/cloud/governance.Source] contract.
+// [go-spring.org/cloud/runtime/controlplane/governance.Source] contract.
 //
 // It is the Nacos member of the governance-source adapter family — the
 // Sentinel-datasource shape. The rule document is governance's own, not an
@@ -45,7 +45,7 @@ import (
 	"github.com/nacos-group/nacos-sdk-go/v2/clients/config_client"
 	"github.com/nacos-group/nacos-sdk-go/v2/common/constant"
 	"github.com/nacos-group/nacos-sdk-go/v2/vo"
-	"go-spring.org/cloud/governance"
+	"go-spring.org/cloud/runtime/controlplane/governance"
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"

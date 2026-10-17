@@ -154,7 +154,7 @@ gs.Run()
   └─ 稳态：每个 watchLoop 周期执行
        ├─ readSecret；出错 → continue（首次 WARN，之后 debug，恢复 info）
        ├─ fingerprint(json.Marshal(data)) 对比上次加载指纹
-       └─ 有变化 → observability.RefreshConf → gs.RefreshProperties(ctx)
+       └─ 有变化 → conf.Refresh → gs.RefreshProperties(ctx)
             └─ 重跑整个属性加载：import 重新解析、Load 重读 secret、
                层重建，gs.Dync[T] 字段换值
 ```

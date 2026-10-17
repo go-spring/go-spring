@@ -21,7 +21,6 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"go-spring.org/cloud/chain"
 	"io"
 	"net/http"
 	"os"
@@ -30,7 +29,9 @@ import (
 	"syscall"
 	"time"
 
-	"go-spring.org/cloud/governance"
+	rt "go-spring.org/cloud/runtime"
+	"go-spring.org/cloud/runtime/dataplane/chain"
+
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
 
@@ -60,7 +61,7 @@ const service = "ratelimit-redis:api"
 var manual = flag.Bool("manual", false, "run in manual verification mode (server stays up)")
 
 func init() {
-	gs.Provide(func(center *governance.Center) *gs.HttpServeMux {
+	gs.Provide(func(center *rt.Runtime) *gs.HttpServeMux {
 		// Handlers A and B model two replicas of a service: they share NO
 		// in-process state. Each gets its own executor handle for the same
 		// service label, and both draw on the one Redis-backed counter store
@@ -74,8 +75,8 @@ func init() {
 
 // executor returns the handle for the shared service label. The center composes
 // the observe layer and resolves the backing executor lazily, on each Execute, so
-// the policy is read after the governance center has gone live.
-func executor(center *governance.Center) chain.Executor {
+// the policy is read after the runtime has gone live.
+func executor(center *rt.Runtime) chain.Executor {
 	return center.ExecutorFor("ratelimit-redis", service)
 }
 

@@ -18,11 +18,11 @@ package StarterRedigo
 
 import (
 	"context"
-	"go-spring.org/cloud/chain"
+	"go-spring.org/cloud/runtime/dataplane/chain"
 	"time"
 
 	"github.com/gomodule/redigo/redis"
-	"go-spring.org/cloud/governance/resilience"
+	"go-spring.org/cloud/runtime/dataplane/resilience"
 )
 
 // CommandHandler runs one Redis command. It is the pipeline's core signature:

@@ -37,7 +37,7 @@ import (
 	"syscall"
 	"time"
 
-	"go-spring.org/cloud/discovery"
+	"go-spring.org/cloud/runtime/dataplane/discovery"
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
 

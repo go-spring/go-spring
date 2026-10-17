@@ -27,7 +27,7 @@ import (
 // TestResilienceNameRegistry verifies that spring.gateway.resilience.<name>
 // acts as a pure name registry: the names bind, and legacy per-name sub-keys
 // (kept only so old config files do not break) neither fail binding nor feed
-// any policy — policy values come from the governance center.
+// any policy — policy values come from the runtime.
 func TestResilienceNameRegistry(t *testing.T) {
 	p := flatten.NewPropertiesStorage(flatten.MapProperties(map[string]any{
 		"server.addr":                  ":0",

@@ -30,10 +30,10 @@ import (
 
 	"github.com/neo4j/neo4j-go-driver/v5/neo4j"
 	"github.com/neo4j/neo4j-go-driver/v5/neo4j/auth"
-	"go-spring.org/cloud/discovery"
-	"go-spring.org/cloud/governance"
-	"go-spring.org/cloud/loadbalance"
 	"go-spring.org/cloud/mesh"
+	"go-spring.org/cloud/runtime"
+	"go-spring.org/cloud/runtime/dataplane/discovery"
+	"go-spring.org/cloud/runtime/dataplane/loadbalance"
 	"go-spring.org/cloud/security"
 	"go-spring.org/stdlib/errutil"
 )
@@ -50,7 +50,7 @@ import (
 // rest of the ecosystem sees and future wrapper capabilities are reachable from
 // it. It returns the client COMPLETE: the wrapper derives the service label from
 // the Config it is handed, so the driver fixes identity here; center is the
-// container's governance center (carrying the resilience/fault/loadbalance
+// container's runtime (carrying the resilience/fault/loadbalance
 // authorities and the discovery directory), which [NewClient] applies while
 // building. Nothing patches the client afterwards.
 //
@@ -67,7 +67,7 @@ import (
 // center.Discovery() itself, failing construction when an entry routes by
 // service-name and the label names no bean.
 type Driver interface {
-	CreateClient(ctx context.Context, c Config, center *governance.Center) (*Client, error)
+	CreateClient(ctx context.Context, c Config, center *runtime.Runtime) (*Client, error)
 }
 
 // DefaultDriver is the default implementation of the Driver interface.
@@ -81,7 +81,7 @@ type DefaultDriver struct{}
 // same resolver feeds the driver's AddressResolver hook so a routing client can
 // re-find the cluster. An entry routed by service-name that cites no existing
 // backend fails here, at construction.
-func (DefaultDriver) CreateClient(ctx context.Context, c Config, center *governance.Center) (*Client, error) {
+func (DefaultDriver) CreateClient(ctx context.Context, c Config, center *runtime.Runtime) (*Client, error) {
 	// Seed the URI host from the discovery backend this entry cites. The label
 	// rides on the config (c.Discovery, already carrying the family default);
 	// resolveURI fails loudly when it names no bean.

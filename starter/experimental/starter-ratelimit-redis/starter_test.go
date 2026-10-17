@@ -26,10 +26,9 @@ import (
 
 	"github.com/alicebob/miniredis/v2"
 	"github.com/redis/go-redis/v9"
-
-	"go-spring.org/cloud/governance/fault"
-	"go-spring.org/cloud/governance"
-	"go-spring.org/cloud/governance/resilience"
+	"go-spring.org/cloud/runtime"
+	"go-spring.org/cloud/runtime/dataplane/fault"
+	"go-spring.org/cloud/runtime/dataplane/resilience"
 	"go-spring.org/spring/gs"
 	goredis "go-spring.org/starter-go-redis"
 	experimental "go-spring.org/starter-go-redis/experimental"
@@ -235,9 +234,9 @@ func TestWiring_ContributesRedisStore(t *testing.T) {
 
 	// The *goredis.Client bean starter-go-redis would publish, built the same
 	// way that starter builds one (identity + observation, no governance).
-	center, err := governance.NewProcessCenter(resilience.NewClientManager(resilience.NewDefaultDriver(nil)), fault.NewClientManager(nil), fault.NewServerManager(nil))
+	center, err := runtime.NewProcess(resilience.NewClientManager(resilience.NewDefaultDriver(nil)), fault.NewClientManager(nil), fault.NewServerManager(nil))
 	if err != nil {
-		t.Fatalf("NewProcessCenter: %v", err)
+		t.Fatalf("runtime.NewProcess: %v", err)
 	}
 	w, err := goredis.NewClient(cli, goredis.Config{}, nil, center)
 	if err != nil {

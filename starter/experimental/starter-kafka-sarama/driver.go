@@ -26,7 +26,7 @@ import (
 	"strings"
 
 	"github.com/IBM/sarama"
-	"go-spring.org/cloud/governance"
+	"go-spring.org/cloud/runtime"
 	"go-spring.org/log"
 	"go-spring.org/stdlib/errutil"
 )
@@ -42,7 +42,7 @@ import (
 // CreateClient returns the client COMPLETE. Kafka-sarama exposes the raw
 // sarama.Client as its bean (no wrapper type), so the driver both builds it and
 // attaches its governance: center supplies the container's service-governance
-// capabilities (see [governance.Center]), and the driver indexes the
+// capabilities (see [runtime.Runtime]), and the driver indexes the
 // executor it yields, keyed by the returned client, so the WrapSyncProducer /
 // Consume seams can resolve it later. Nothing patches the client afterwards — a
 // custom driver is expected to attach the executor from the center it is handed the
@@ -56,7 +56,7 @@ import (
 // ${spring.kafka-sarama} is built through it, and per-instance differences are
 // expressed through [Config].
 type Driver interface {
-	CreateClient(ctx context.Context, c Config, center *governance.Center) (sarama.Client, error)
+	CreateClient(ctx context.Context, c Config, center *runtime.Runtime) (sarama.Client, error)
 }
 
 // DefaultDriver is the default implementation of the Driver interface.
@@ -68,7 +68,7 @@ type DefaultDriver struct{}
 // attaches its resilience executor from center (see AttachGovernance), so the driver
 // returns a client that is complete. The startup broker-validation is the
 // starter's lifecycle concern and runs afterwards (see newClient in client.go).
-func (DefaultDriver) CreateClient(ctx context.Context, c Config, center *governance.Center) (sarama.Client, error) {
+func (DefaultDriver) CreateClient(ctx context.Context, c Config, center *runtime.Runtime) (sarama.Client, error) {
 	cfg := sarama.NewConfig()
 	if c.Version != "" {
 		v, err := sarama.ParseKafkaVersion(c.Version)

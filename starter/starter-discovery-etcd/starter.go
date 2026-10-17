@@ -17,7 +17,7 @@
 // Package StarterDiscoveryEtcd adapts etcd as a service registry. Each
 // ${spring.discovery.etcd.<name>} block becomes ONE backend bean named
 // "etcd.<name>" serving both sides of the naming idiom: the write side (a
-// discovery.Registry collected by the discovery registration core, which registers
+// registration.Registry collected by the discovery registration core, which registers
 // this instance once the app is ready and deregisters it on shutdown) and the
 // read side (a discovery.Discovery consumers cite by the bean's name). Blank-
 // import the package and configure one block per etcd cluster:
@@ -39,7 +39,7 @@
 // expires and etcd deletes the key - self-healing without a reaper.
 //
 // The registration core - the single discoveryServer bean that publishes into
-// every configured center (across backends) - lives in cloud/discovery, which
+// every configured center (across backends) - lives in cloud/runtime/dataplane/discovery, which
 // this package imports anyway, so it exists exactly once per process.
 package StarterDiscoveryEtcd
 
@@ -47,7 +47,8 @@ import (
 	"context"
 
 	"go-spring.org/cloud/actuator/health"
-	"go-spring.org/cloud/discovery"
+	"go-spring.org/cloud/runtime/controlplane/registration"
+	"go-spring.org/cloud/runtime/dataplane/discovery"
 	"go-spring.org/log"
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/gs"
@@ -60,7 +61,7 @@ func init() {
 	// One NAMED bean per block under ${spring.discovery.etcd.<name>}: the bean
 	// name "etcd.<name>" is the label a client starter cites to pick this
 	// backend for discovery, and the discovery registration core collects the same
-	// bean (as a discovery.Registry) into the single publication lifecycle.
+	// bean (as a registration.Registry) into the single publication lifecycle.
 	// Blocks across backends never collide (the name carries the backend
 	// type); a duplicate name within one backend fails loudly in the
 	// container.
@@ -72,7 +73,7 @@ func init() {
 			r.Provide(newEtcdBackend,
 				gs.IndexArg(0, gs.ValueArg(c)),
 			).Name("etcd."+name).
-				Export(gs.As[discovery.Discovery](), gs.As[discovery.Registry]()).
+				Export(gs.As[discovery.Discovery](), gs.As[registration.Registry]()).
 				Destroy((*etcdBackend).Close).Caller(1)
 
 			// Contribute a health indicator for this cluster unless the user
@@ -102,7 +103,7 @@ const obsSystem = "etcd"
 // construction, closed by the bean destructor) and serves both halves of the
 // naming idiom through it:
 //
-//   - discovery.Registry — the write side. The discovery registration core collects
+//   - registration.Registry — the write side. The discovery registration core collects
 //     every backend's registry (across all backends) and drives them through
 //     one publication lifecycle.
 //   - discovery.Discovery — the read side. Consumers cite this bean by its
@@ -114,9 +115,11 @@ type etcdBackend struct {
 	reg  *etcdRegistry
 	disc *etcdDiscovery
 
-	// obs is this block's observability layer: one observer per configured
-	// block, closed by the bean destructor below.
-	obs *discovery.Observer
+	// obs and regObs are this block's two observability layers: the read-side
+	// sync observer (data plane) and the registration observer (control plane).
+	// They are independent by design and both are closed by the bean destructor.
+	obs    *discovery.Observer
+	regObs *registration.Observer
 
 	// bgCancel ends the discovery half's background watches. It is the signal
 	// that separates "the backend is closing" from "a watch failed": the watch
@@ -172,7 +175,12 @@ func newEtcdBackend(c EtcdConfig, name string) (*etcdBackend, error) {
 		_ = cli.Close()
 		return nil, err
 	}
-	reg, err := newEtcdRegistry(c, kv, obs)
+	regObs, err := registration.NewObserver(obsSystem, name)
+	if err != nil {
+		_ = cli.Close()
+		return nil, err
+	}
+	reg, err := newEtcdRegistry(c, kv, regObs)
 	if err != nil {
 		_ = cli.Close()
 		return nil, err
@@ -182,6 +190,7 @@ func newEtcdBackend(c EtcdConfig, name string) (*etcdBackend, error) {
 		reg:       reg,
 		disc:      &etcdDiscovery{client: kv, keyPrefix: c.KeyPrefix, bgCtx: bgCtx, entries: map[string]*serviceEntry{}, obs: obs},
 		obs:       obs,
+		regObs:    regObs,
 		bgCancel:  bgCancel,
 		cli:       cli,
 		endpoints: c.Endpoints,
@@ -209,6 +218,7 @@ func (b *etcdBackend) Close() error {
 	// Drop this block's gauge callbacks with it: the block is the unit that owns
 	// them, so nothing of it may keep reporting after it is gone.
 	_ = b.obs.Close()
+	_ = b.regObs.Close()
 	// Explain(nil, ...) BUILDS an error rather than passing one through, so it
 	// must only be reached with a real cause: wrapping unconditionally here
 	// reported a failure on every clean shutdown.
@@ -220,17 +230,17 @@ func (b *etcdBackend) Close() error {
 
 // Register publishes inst into this cluster (the lease + keep-alive protocol,
 // registry.go).
-func (b *etcdBackend) Register(ctx context.Context, inst discovery.Instance) error {
+func (b *etcdBackend) Register(ctx context.Context, inst registration.Instance) error {
 	return b.reg.Register(ctx, inst)
 }
 
 // Deregister removes inst from this cluster. Idempotent.
-func (b *etcdBackend) Deregister(ctx context.Context, inst discovery.Instance) error {
+func (b *etcdBackend) Deregister(ctx context.Context, inst registration.Instance) error {
 	return b.reg.Deregister(ctx, inst)
 }
 
 // UpdateWeight re-advertises inst with a new weight on its existing lease.
-func (b *etcdBackend) UpdateWeight(ctx context.Context, inst discovery.Instance, weight int) error {
+func (b *etcdBackend) UpdateWeight(ctx context.Context, inst registration.Instance, weight int) error {
 	return b.reg.UpdateWeight(ctx, inst, weight)
 }
 

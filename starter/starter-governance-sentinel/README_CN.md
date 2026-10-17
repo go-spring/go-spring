@@ -3,7 +3,7 @@
 [English](README.md) | [中文](README_CN.md)
 
 `starter-governance-sentinel` 把 [alibaba/sentinel-golang][sentinel] 注册为
-[`cloud/governance/resilience`](../../cloud/governance/resilience) 韧性框架的生产 driver。
+[`cloud/runtime/dataplane/resilience`](../../cloud/runtime/dataplane/resilience) 韧性框架的生产 driver。
 空导入它,并在治理文档里
 写 `spring.resilience.driver=sentinel` —— 此后每个经治理中心解析 executor 的客户端,都在
 同一份中立 `ClientPolicy` 之上获得自适应限流、熔断与并发隔离,无需按客户端配 key,
@@ -11,7 +11,7 @@
 
 它属于 *global / infrastructure*(全局 / 基础设施)形态(见
 [starter/DESIGN.md](../DESIGN.md) §2.4):只贡献一个 bean —— 名为 `sentinel`
-的 `resilience.Driver`,由 [`cloud/governance/resilience`](../../cloud/governance/resilience) 收进 driver
+的 `resilience.Driver`,由 [`cloud/runtime/dataplane/resilience`](../../cloud/runtime/dataplane/resilience) 收进 driver
 目录 —— 也不开监听端口。`sentinel.InitDefault` 在 import 时就执行,故环境异常
 在启动时立刻炸出,而不是等到第一次调用时才暴露。
 
@@ -40,7 +40,7 @@ import _ "go-spring.org/starter-governance-sentinel"
 driver 是**全进程选一次**,不按客户端选:治理文档用 `spring.resilience.driver` 指定,每个经
 治理中心解析 executor 的客户端都会拿到它。`spring.governance.*` 键写在治理文档里 —— 那是
 它自己的一套系统,不是 `app.properties`(见
-[`cloud/governance/README.md`](../../cloud/governance/README.md)):
+[`cloud/runtime/controlplane/governance/README.md`](../../cloud/runtime/controlplane/governance/README.md)):
 
 ```properties
 spring.resilience.driver=default
@@ -53,7 +53,7 @@ spring.governance.client.default.timeout=1s
 ### 3. 或直接使用
 
 ```go
-import "go-spring.org/cloud/governance/resilience"
+import "go-spring.org/cloud/runtime/dataplane/resilience"
 
 exec, _ := starter_governance_sentinel.NewSentinelDriver().NewExecutor("sentinel:test", resilience.ClientPolicy{
     RateLimit:      100,
@@ -97,7 +97,7 @@ sentinel 的 system / hotspot / 集群流控属 future work：它们是入站专
 
 ## Default driver
 
-`cloud/governance/resilience` 内置零依赖的 `default` driver,供测试与轻量场景。要在
+`cloud/runtime/dataplane/resilience` 内置零依赖的 `default` driver,供测试与轻量场景。要在
 生产链路上得到实打实的限流与熔断,请导入本 starter;若无需即可继续使用
 `default`。
 

@@ -17,7 +17,7 @@
 // Package StarterDiscoveryConsul adapts Consul as a service registry. Each
 // ${spring.discovery.consul.<name>} block becomes ONE backend bean named
 // "consul.<name>" serving both sides of the naming idiom: the write side (a
-// discovery.Registry collected by the discovery registration core, which registers
+// registration.Registry collected by the discovery registration core, which registers
 // this instance once the app is ready and deregisters it on shutdown) and the
 // read side (a discovery.Discovery consumers cite by the bean's name).
 // Blank-import the package and configure one block per Consul agent:
@@ -35,7 +35,7 @@
 // this starter publishes a plain instance (any transport) to Consul.
 //
 // The registration core - the single discoveryServer bean that publishes into
-// every configured center (across backends) - lives in cloud/discovery, which
+// every configured center (across backends) - lives in cloud/runtime/dataplane/discovery, which
 // this package imports anyway, so it exists exactly once per process.
 package StarterDiscoveryConsul
 
@@ -45,7 +45,8 @@ import (
 
 	"github.com/hashicorp/consul/api"
 	"go-spring.org/cloud/actuator/health"
-	"go-spring.org/cloud/discovery"
+	"go-spring.org/cloud/runtime/controlplane/registration"
+	"go-spring.org/cloud/runtime/dataplane/discovery"
 	"go-spring.org/log"
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/gs"
@@ -57,7 +58,7 @@ func init() {
 	// One NAMED bean per block under ${spring.discovery.consul.<name>}: the
 	// bean name "consul.<name>" is the label a client starter cites to pick
 	// this backend for discovery, and the discovery registration core collects the
-	// same bean (as a discovery.Registry) into the single publication
+	// same bean (as a registration.Registry) into the single publication
 	// lifecycle. Blocks across backends never collide (the name carries the
 	// backend type); a duplicate name within one backend fails loudly in the
 	// container.
@@ -70,7 +71,7 @@ func init() {
 				gs.IndexArg(0, gs.ValueArg(c)),
 				gs.IndexArg(1, gs.ValueArg(name)),
 			).Name("consul."+name).
-				Export(gs.As[discovery.Discovery](), gs.As[discovery.Registry]()).
+				Export(gs.As[discovery.Discovery](), gs.As[registration.Registry]()).
 				Destroy((*consulBackend).Close).Caller(1)
 
 			// Contribute a health indicator for this agent unless the user
@@ -97,7 +98,7 @@ var starterTag = log.RegisterAppTag("discovery_consul", "")
 // ${spring.discovery.consul.<name>} block made a bean. It owns the single
 // Consul api client for that agent (probed at construction) and serves both
 // halves of the naming idiom through it: the write side (a
-// discovery.Registry collected by the discovery registration core) and the read
+// registration.Registry collected by the discovery registration core) and the read
 // side (a discovery.Discovery consumers cite by the bean's name
 // "consul.<name>"; lazy, so an app that never cites it pays nothing for the
 // read half). Both sides resolve the same agent, so read and write can never
@@ -110,9 +111,11 @@ type consulBackend struct {
 	reg  *consulRegistry
 	disc *consulDiscovery
 
-	// obs is this block's observability layer: one observer per configured
-	// block, closed by the bean destructor below.
-	obs *discovery.Observer
+	// obs and regObs are this block's two observability layers: the read-side
+	// sync observer (data plane) and the registration observer (control plane).
+	// They are independent by design and both are closed by the bean destructor.
+	obs    *discovery.Observer
+	regObs *registration.Observer
 }
 
 // newConsulBackend builds the client and, when Ping is set, probes the agent.
@@ -138,7 +141,11 @@ func newConsulBackend(c ConsulConfig, name string) (*consulBackend, error) {
 	if err != nil {
 		return nil, err
 	}
-	reg, err := newConsulRegistry(c, client, obs)
+	regObs, err := registration.NewObserver(obsSystem, name)
+	if err != nil {
+		return nil, err
+	}
+	reg, err := newConsulRegistry(c, client, regObs)
 	if err != nil {
 		return nil, err
 	}
@@ -146,7 +153,7 @@ func newConsulBackend(c ConsulConfig, name string) (*consulBackend, error) {
 	log.Debug(context.Background(), starterTag, "consul backend ready", func() []log.Field {
 		return []log.Field{log.String("address", c.Address)}
 	})
-	return &consulBackend{reg: reg, disc: disc, obs: obs}, nil
+	return &consulBackend{reg: reg, disc: disc, obs: obs, regObs: regObs}, nil
 }
 
 // Close stops the discovery half's background blocking queries. It is the
@@ -159,22 +166,23 @@ func (b *consulBackend) Close() error {
 	// Drop this block's gauge callbacks with it: the block owns them, so nothing
 	// of it may keep reporting after it is gone.
 	_ = b.obs.Close()
+	_ = b.regObs.Close()
 	return nil
 }
 
 // Register publishes inst into this agent (the TTL-check heartbeat protocol,
 // registry.go).
-func (b *consulBackend) Register(ctx context.Context, inst discovery.Instance) error {
+func (b *consulBackend) Register(ctx context.Context, inst registration.Instance) error {
 	return b.reg.Register(ctx, inst)
 }
 
 // Deregister removes inst from this agent. Idempotent.
-func (b *consulBackend) Deregister(ctx context.Context, inst discovery.Instance) error {
+func (b *consulBackend) Deregister(ctx context.Context, inst registration.Instance) error {
 	return b.reg.Deregister(ctx, inst)
 }
 
 // UpdateWeight re-advertises inst with a new weight.
-func (b *consulBackend) UpdateWeight(ctx context.Context, inst discovery.Instance, weight int) error {
+func (b *consulBackend) UpdateWeight(ctx context.Context, inst registration.Instance, weight int) error {
 	return b.reg.UpdateWeight(ctx, inst, weight)
 }
 

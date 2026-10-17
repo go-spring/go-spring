@@ -22,19 +22,20 @@ import (
 	"time"
 
 	"github.com/redis/go-redis/v9"
-	"go-spring.org/cloud/discovery"
-	"go-spring.org/cloud/governance/fault"
-	"go-spring.org/cloud/governance"
-	"go-spring.org/cloud/loadbalance"
-	"go-spring.org/cloud/governance/resilience"
+	"go-spring.org/cloud/runtime"
+	"go-spring.org/cloud/runtime/controlplane/governance"
+	"go-spring.org/cloud/runtime/dataplane/discovery"
+	"go-spring.org/cloud/runtime/dataplane/fault"
+	"go-spring.org/cloud/runtime/dataplane/loadbalance"
+	"go-spring.org/cloud/runtime/dataplane/resilience"
 	"go-spring.org/stdlib/testing/assert"
 )
 
-// testCenter builds a governance center over res and lb with an unarmed fault
+// testCenter builds a runtime over res and lb with an unarmed fault
 // injector and an empty document: everything a driver reads, with no wiring.
-func testCenter(t *testing.T, resClient *resilience.ClientManager, lb *loadbalance.Manager) *governance.Center {
+func testCenter(t *testing.T, resClient *resilience.ClientManager, lb *loadbalance.Manager) *runtime.Runtime {
 	t.Helper()
-	ctr, err := governance.NewCenter(resClient, lb, fault.NewClientManager(nil), fault.NewServerManager(nil), nil,
+	ctr, err := runtime.New(resClient, lb, fault.NewClientManager(nil), fault.NewServerManager(nil), nil,
 		governance.NewPushSource(governance.Config{}))
 	if err != nil {
 		t.Fatal(err)
@@ -55,7 +56,7 @@ type poolDriver struct {
 	returned *loadbalance.Chain
 }
 
-func (d *poolDriver) CreateClient(ctx context.Context, c Config, center *governance.Center) (*Client, error) {
+func (d *poolDriver) CreateClient(ctx context.Context, c Config, center *runtime.Runtime) (*Client, error) {
 	src := func() ([]discovery.Endpoint, error) { return d.endpoints, nil }
 	d.returned = center.Loadbalance().Chain(ctx, src, serviceLabel(c))
 	// A real *redis.Client is not needed: this driver builds no dialer.

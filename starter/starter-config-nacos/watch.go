@@ -22,7 +22,7 @@ import (
 	"time"
 
 	"github.com/nacos-group/nacos-sdk-go/v2/vo"
-	"go-spring.org/cloud/observability"
+	"go-spring.org/cloud/observability/conf"
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/goutil"
@@ -153,7 +153,7 @@ func listen(ctx context.Context, cli nacosClient, cs configSource) error {
 			rctx := log.RootFields(append(sourceFields(cs),
 				log.String("trace_id", randutil.Hex(16)))...)
 			log.Info(rctx, starterTag, "nacos config changed, triggering refresh")
-			_ = observability.RefreshConf(rctx, func(ctx context.Context) error {
+			_ = conf.Refresh(rctx, func(ctx context.Context) error {
 				return gs.RefreshProperties(ctx)
 			})
 		},

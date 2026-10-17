@@ -5,7 +5,7 @@
 `starter-discovery-nacos` adapts Nacos as a service registry: each configured
 Nacos server becomes ONE backend bean that serves both halves of the naming
 idiom — the write side (registering the **current instance** into Nacos) and
-the read side (a `cloud/discovery` backend for resolving other instances). It
+the read side (a `cloud/runtime/dataplane/discovery` backend for resolving other instances). It
 is the Go-Spring equivalent of Spring Cloud Alibaba's `nacos-discovery`, and
 the registry counterpart to [starter-config-nacos](../starter-config-nacos)'s
 config role (the two are separate starters with separate config prefixes).
@@ -26,7 +26,7 @@ scope (see [starter/DESIGN §3](../DESIGN.md)).
 Configuration is **named blocks**: one `spring.discovery.nacos.<name>.*` block
 per Nacos server. There is no default or unnamed block — the name is part of
 the address. Each block becomes ONE backend bean named `nacos.<name>`
-implementing BOTH `discovery.Registry` (write) and `discovery.Discovery`
+implementing BOTH `registration.Registry` (write) and `discovery.Discovery`
 (read), sharing the block's client and namespace/group/cluster:
 
 ```properties
@@ -41,7 +41,7 @@ freely in one app.
 ## Registration Is Owned by starter-discovery
 
 Importing this starter imports the registration core
-([cloud/discovery](../../cloud/discovery)) transitively: a single `discoveryServer`
+([cloud/runtime/dataplane/discovery](../../cloud/runtime/dataplane/discovery)) transitively: a single `discoveryServer`
 `gs.Server` collects ALL registry beans — across ALL backends — and registers
 the instance into EVERY configured center once the app is ready, deregisters
 from all of them as shutdown begins (via `PreStop`), and broadcasts
@@ -133,7 +133,7 @@ backends is a blank-import swap, not a config migration):
 - Each block's backend bean is constructed eagerly: it builds the naming
   client and, when `ping=true`, probes the server (a service listing), so a
   misconfigured or unreachable Nacos fails startup once per block.
-- The `discoveryServer` from the cloud/discovery core collects every backend's
+- The `discoveryServer` from the cloud/runtime/controlplane/registration core collects every backend's
   registry, waits for readiness, then `Register`s the instance as
   **ephemeral** into each center. The Nacos SDK keeps it alive with its own
   background heartbeat, and Nacos drops it automatically if the process dies

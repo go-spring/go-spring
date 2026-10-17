@@ -26,10 +26,10 @@ import (
 	"context"
 
 	"github.com/wneessen/go-mail"
-	"go-spring.org/cloud/chain"
-	"go-spring.org/cloud/governance"
-	"go-spring.org/cloud/governance/label"
-	"go-spring.org/cloud/governance/resilience"
+	"go-spring.org/cloud/runtime"
+	"go-spring.org/cloud/runtime/dataplane/chain"
+	"go-spring.org/cloud/runtime/dataplane/label"
+	"go-spring.org/cloud/runtime/dataplane/resilience"
 	"go-spring.org/stdlib/errutil"
 )
 
@@ -233,10 +233,10 @@ type GuardMailer struct {
 }
 
 // NewGuardMailer builds the governance layer over next, constructing its own
-// executor: center carries the container's facilities (see [governance.Center])
+// executor: center carries the container's facilities (see [runtime.Runtime])
 // and instanceName/host fix the governance label its limiter and breaker state
 // scope by.
-func NewGuardMailer(next InnerMailer, instanceName, host string, center *governance.Center) *GuardMailer {
+func NewGuardMailer(next InnerMailer, instanceName, host string, center *runtime.Runtime) *GuardMailer {
 	label := label.ServiceLabel("mail", instanceName, host)
 	return &GuardMailer{exec: center.ExecutorFor("mail", label), service: label, next: next}
 }

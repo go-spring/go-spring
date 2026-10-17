@@ -3,8 +3,8 @@
 Detailed usage reference. Overview: [README.md](README.md). All behavior claims are verified against
 the starter source (`starter.go`, `registry.go`, `discovery.go`, `config.go`,
 `starter_test.go`, `registry_test.go`, `discovery_test.go`), the registration core (`../starter-discovery/starter.go`,
-`../starter-discovery/config.go`), the `cloud/discovery` seam (`cloud/discovery/registry.go`,
-`cloud/loadbalance/pool.go`) and the runnable [example/](example/) (`example/check.sh` runs unit
+`../starter-discovery/config.go`), the `cloud/runtime/dataplane/discovery` seam (`cloud/runtime/dataplane/discovery/registry.go`,
+`cloud/runtime/dataplane/loadbalance/pool.go`) and the runnable [example/](example/) (`example/check.sh` runs unit
 tests + a docker-compose ZooKeeper end-to-end boot). **ZooKeeper's own semantics (sessions,
 ephemeral znodes, watchers, digest auth) are
 [ZooKeeper documentation](https://zookeeper.apache.org/doc/current/zookeeperProgrammers.html)** —
@@ -12,7 +12,7 @@ everything below is go-spring's increment.
 
 **Activation**: each `spring.discovery.zookeeper.<name>` block is one discovery center — one shared
 session, one lifecycle (a startup probe only when `ping=true`; `starter.go`). The bean named `zookeeper.<name>` exports
-BOTH `discovery.Registry` (collected by the cloud/discovery core when
+BOTH `registration.Registry` (collected by the cloud/runtime/controlplane/registration core when
 `spring.discovery.service-name` is set — a pure consumer app registers nothing) and
 `discovery.Discovery` (cited by bean name, so a pure provider never pays for the read half). This
 starter serves **both sides**: it advertises this instance to ZooKeeper as an ephemeral znode AND
@@ -134,7 +134,7 @@ docker exec -it starter-discovery-zookeeper zkCli.sh
 ```
 blank-import starter-discovery-zookeeper
   ├─ per block ${spring.discovery.zookeeper.<name>}: Provide(newZkBackend)
-  │    Name("zookeeper."+name).Export(As[discovery.Discovery], As[discovery.Registry])
+  │    Name("zookeeper."+name).Export(As[discovery.Discovery], As[registration.Registry])
   │    condition: gs.OnProperty("spring.discovery.zookeeper")           [starter.go]
   └─ import starter-discovery (core, exactly once per process)
        └─ gs.Provide(NewServer).Name("discoveryServer").Export(gs.As[gs.Server]())
@@ -144,7 +144,7 @@ gs.Run()
   ├─ newZkBackend per block: zk.Connect(servers, session-timeout) + digest AddAuth
   │    when set; ping=true → fail-fast probe Exists("/") — blocks until the
   │    session connects, so an unreachable ensemble fails STARTUP, not the first Register   [starter.go]
-  ├─ discoveryServer collects every backend's Registry via []discovery.Registry
+  ├─ discoveryServer collects every backend's Registry via []registration.Registry
   │    slice injection (across ALL backends — zookeeper, nacos, ...)
   ├─ Run: validate service-name/addr AND ≥1 registry BEFORE readiness
   ├─ wait <-sig.TriggerAndWait() — the ready-gate: registration only after
@@ -305,7 +305,7 @@ shared registration lifecycle lines. Observability: registration and discovery e
 Suspect ledger (kept from the previous edition, plus new findings):
 
 1. ~~`spring.discovery.*` instance keys bound in this one starter~~ RESOLVED 2026-09: the
-   `${spring.discovery}` identity block now lives in the shared cloud/discovery core
+   `${spring.discovery}` identity block now lives in the shared cloud/runtime/controlplane/registration core
    (`RegistrationConfig`), so every backend starter binds it exactly once.
 2. No re-registration after session loss: the zk library reconnects transparently, but once the
    session has expired the ephemeral node is gone and the running process never notices — the
@@ -313,8 +313,8 @@ Suspect ledger (kept from the previous edition, plus new findings):
    re-register loop is the candidate fix.
 3. ~~No shipped consumer side~~ RESOLVED: `discovery.go` ships the backend — since the
    2026-09 multi-discovery named-block redesign it IS the block's bean (`zookeeper.<name>`),
-   implementing both `discovery.Registry` and `discovery.Discovery`; registration moved into
-   the shared cloud/discovery core.
+   implementing both `registration.Registry` and `discovery.Discovery`; registration moved into
+   the shared cloud/runtime/controlplane/registration core.
 4. `addr` is not validated for `host:port` shape at write time (consul validates a numeric port);
    a malformed value is stored verbatim and only fails on the consumer dial.
 5. Startup validation happens in Run, not bind time — an empty `service-name` fails only after

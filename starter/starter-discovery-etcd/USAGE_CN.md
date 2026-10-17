@@ -8,13 +8,13 @@
 
 **模型**:配置是**命名块**——每个 `spring.discovery.etcd.<name>.*` 块描述一个 etcd 集群,
 成为名为 `etcd.<name>` 的后端 bean(`starter.go`)。该 bean 同时实现命名体系的两半:
-`discovery.Registry`(写侧——由传递依赖自动引入的 [cloud/discovery](../../cloud/discovery)
+`registration.Registry`(写侧——由传递依赖自动引入的 [cloud/runtime/dataplane/discovery](../../cloud/runtime/dataplane/discovery)
 核心之 `discoveryServer` 收集,跨后端注册进**每一个**已配置中心)与 `discovery.Discovery`
 (读侧——消费方按 bean 名引用,如 `discovery=etcd.main`;bean 惰性,纯 provider 从不为读侧
 付费)。读写共享该块的客户端与键前缀,永不分裂。没有默认/无名块。注册仅在设置
 `spring.discovery.service-name` 后激活——纯消费方应用只配连接块、不注册任何实例。
 多中心(双注册、跨后端混搭)就是多配几个块:两个块 + service-name,每个中心都拿到实例。
-它不开端口——导出的 `gs.Server`(在 cloud/discovery 核心)只为把注册接进应用生命周期。
+它不开端口——导出的 `gs.Server`(在 cloud/runtime/controlplane/registration 核心)只为把注册接进应用生命周期。
 
 ---
 
@@ -72,19 +72,19 @@ package main
 import (
     "context"
 
-    "go-spring.org/cloud/discovery"
+    "go-spring.org/cloud/runtime/dataplane/discovery"
     "go-spring.org/spring/gs"
 )
 
 func init() {
     // 注册器 bean 名为 "discoveryServer",导出为 gs.Server。
     // 需要运行期摘流/恢复时注入它;否则可省略本文件。
-    gs.Provide(func(s *discovery.Server) *Drainer {
+    gs.Provide(func(s *registration.Server) *Drainer {
         return &Drainer{srv: s}
     })
 }
 
-type Drainer struct{ srv *discovery.Server }
+type Drainer struct{ srv *registration.Server }
 
 // Drain 不停进程就把实例摘出负载均衡:在每个中心的同一个 lease 上改写存储权重
 // (不重注册、key 不消失)。
@@ -98,7 +98,7 @@ func (d *Drainer) Restore(ctx context.Context) error { return d.srv.UpdateWeight
 spring.app.name=discovery-etcd-example
 
 # 每个命名块一个 etcd 集群;每块成为后端 bean "etcd.<name>",
-# 同时服务注册(经 cloud/discovery 核心)与发现。
+# 同时服务注册(经 cloud/runtime/controlplane/registration 核心)与发现。
 spring.discovery.etcd.main.endpoints=127.0.0.1:2379
 spring.discovery.etcd.main.ttl=10s
 spring.discovery.etcd.main.key-prefix=/services/
@@ -135,11 +135,11 @@ etcdctl get /services/orders/ --prefix
 import starter-discovery-etcd（传递引入 starter-discovery）
   ├─ 每个 ${spring.discovery.etcd.<name>} 块: gs.Provide(newEtcdBackend).Name("etcd.<name>")
   │      Module 条件: OnProperty("spring.discovery.etcd")            [starter.go]
-  │      Export(As[discovery.Discovery], As[discovery.Registry]) + Destroy(Close)
+  │      Export(As[discovery.Discovery], As[registration.Registry]) + Destroy(Close)
   │
-  ├─ cloud/discovery 核心: gs.Provide(NewServer).Name("discoveryServer")
+  ├─ cloud/runtime/controlplane/registration 核心: gs.Provide(NewServer).Name("discoveryServer")
   │      条件: OnProperty("spring.discovery.service-name")   [starter-discovery/starter.go]
-  │      Registries []discovery.Registry——容器以切片注入收集每个后端 bean 的
+  │      Registries []registration.Registry——容器以切片注入收集每个后端 bean 的
   │      registry(etcd、zookeeper……混搭)
   │
 gs.Run()
@@ -192,7 +192,7 @@ gs.Run()
 
 下游,loadbalance `Pool` 消费这些快照并在每次 Pick 做 **weight-0 过滤**:
 `excludeDrained` 丢弃 `Weight == 0` 端点,全部摘流时回退全集,防未归一化
-快照把池打黑洞(cloud/loadbalance/pool.go:97-99,122-135)。
+快照把池打黑洞(cloud/runtime/dataplane/loadbalance/pool.go:97-99,122-135)。
 
 ### 2.4 DRAIN 链路 —— UpdateWeight(0)
 
@@ -264,7 +264,7 @@ zookeeper 块同进程)同理——registry 收集与后端无关。
 ### 3.3 发现 —— 按块 bean 名引用(零配置)
 
 不再存在 discovery 配置路径。每个块的后端 bean 本身就是一个
-`cloud/discovery.Discovery`,名为 `etcd.<name>`,共享该块客户端(`starter.go`)。
+`cloud/runtime/dataplane/discovery.Discovery`,名为 `etcd.<name>`,共享该块客户端(`starter.go`)。
 client starter 按 bean 名引用(`spring.http-client.instances.<n>.discovery=etcd.main`)。
 该 bean 惰性——纯 provider 从不解析、从不为读侧付费。纯消费方只配连接块(不设
 `service-name`/`addr`),不注册任何实例。多集群发现就是多个块:引用哪个块的集群就

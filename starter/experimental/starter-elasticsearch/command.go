@@ -24,7 +24,7 @@ package StarterElasticsearch
 import (
 	"net/http"
 
-	"go-spring.org/cloud/chain"
+	"go-spring.org/cloud/runtime/dataplane/chain"
 )
 
 // callFor derives a request's semantic identity — its method + URL path, see

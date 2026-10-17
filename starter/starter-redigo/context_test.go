@@ -21,8 +21,9 @@ import (
 	"testing"
 
 	"github.com/gomodule/redigo/redis"
-	"go-spring.org/cloud/chain"
-	"go-spring.org/cloud/observability"
+	"go-spring.org/cloud/observability/attrs"
+	"go-spring.org/cloud/runtime/dataplane/chain"
+	"go-spring.org/cloud/runtime/dataplane/observability"
 	"go-spring.org/stdlib/testing/assert"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -30,7 +31,7 @@ import (
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 )
 
-// The reader is the real one now that it lives in cloud/observability: this
+// The reader is the real one now that it lives in cloud/runtime/dataplane/observability: this
 // module still has no starter-otel dependency, but it no longer has to mirror
 // the processor to get one. What this test locks is the half that lives here —
 // a span started by this package on the caller's behalf is started from the
@@ -70,14 +71,14 @@ func attrsOf(s sdktrace.ReadOnlySpan) map[string]string {
 }
 
 // TestDoContextSpanCarriesSpanAttributes locks the "reachable without
-// holding the span" shape documented in cloud/observability/README.md: the
+// holding the span" shape documented in cloud/runtime/dataplane/observability/README.md: the
 // command's span is created inside the interceptor chain, so a user layer -
 // which is outermost - can only annotate the ctx it forwards. Both the
 // caller's annotation and the layer's must end up on that span.
 func TestDoContextSpanCarriesSpanAttributes(t *testing.T) {
 	sr := tracetest.NewSpanRecorder()
 	tp := sdktrace.NewTracerProvider(
-		sdktrace.WithSpanProcessor(observability.SpanAttributesProcessor()),
+		sdktrace.WithSpanProcessor(attrs.SpanAttributesProcessor()),
 		sdktrace.WithSpanProcessor(sr),
 	)
 	prev := otel.GetTracerProvider()
@@ -93,7 +94,7 @@ func TestDoContextSpanCarriesSpanAttributes(t *testing.T) {
 	// forwards, exactly as the README's recipe says.
 	user := CommandInterceptor(func(next CommandHandler) CommandHandler {
 		return func(ctx context.Context, cmd string, args []interface{}) (interface{}, error) {
-			ctx = observability.WithSpanAttributes(ctx, attribute.String("tenant", "acme"))
+			ctx = attrs.WithSpanAttributes(ctx, attribute.String("tenant", "acme"))
 			return next(ctx, cmd, args)
 		}
 	})
@@ -102,7 +103,7 @@ func TestDoContextSpanCarriesSpanAttributes(t *testing.T) {
 	exec := observability.WrapClientExecutor(passthroughExecutor{}, "redigo", "svc")
 	c := NewConn(inner, user, resilienceInterceptor(exec, "svc"))
 
-	ctx := observability.WithSpanAttributes(context.Background(),
+	ctx := attrs.WithSpanAttributes(context.Background(),
 		attribute.String("deployment", "canary"))
 	if _, err := c.DoContext(ctx, "GET", "k"); err != nil {
 		t.Fatalf("DoContext: %v", err)

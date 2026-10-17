@@ -23,7 +23,7 @@ import (
 	"time"
 
 	"go-spring.org/cloud/actuator/health"
-	"go-spring.org/cloud/discovery"
+	"go-spring.org/cloud/runtime/controlplane/registration"
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/testing/assert"
@@ -170,7 +170,7 @@ func waitFor(t *testing.T, cond func() bool, msg string) {
 
 // TestRegisterMultiInstanceLive pins the BindEach assembly through a real gs
 // container against a live etcd: two blocks become two backend beans, each
-// contributing one discovery.Registry (what the discovery registration core
+// contributing one registration.Registry (what the discovery registration core
 // collects) and one health.Indicator whose probe answers for its own cluster.
 // Skips when no live etcd is reachable — the consul starter carries the
 // no-docker version of the same assembly contract.
@@ -184,8 +184,8 @@ func TestRegisterMultiInstanceLive(t *testing.T) {
 		app.Property("spring.discovery.etcd.one.endpoints", addr)
 		app.Property("spring.discovery.etcd.two.endpoints", addr)
 	}).RunTest(t, func(s *struct {
-		Regs []discovery.Registry `autowire:""`
-		Inds []*health.Indicator  `autowire:""`
+		Regs []registration.Registry `autowire:""`
+		Inds []*health.Indicator     `autowire:""`
 	}) {
 		if len(s.Regs) != 2 {
 			t.Fatalf("want 2 registry beans (one per block), got %d", len(s.Regs))
@@ -209,8 +209,8 @@ func TestRegisterMultiInstanceLive(t *testing.T) {
 // register.
 func TestRegisterNotTriggered(t *testing.T) {
 	gs.Web(false).RunTest(t, func(s *struct {
-		Regs []discovery.Registry `autowire:""`
-		Inds []*health.Indicator  `autowire:""`
+		Regs []registration.Registry `autowire:""`
+		Inds []*health.Indicator     `autowire:""`
 	}) {
 		if len(s.Regs) != 0 {
 			t.Fatalf("no registry beans should register without config, got %d", len(s.Regs))

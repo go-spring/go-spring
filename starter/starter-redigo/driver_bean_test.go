@@ -20,8 +20,8 @@ import (
 	"context"
 	"testing"
 
-	"go-spring.org/cloud/discovery"
-	"go-spring.org/cloud/governance"
+	"go-spring.org/cloud/runtime"
+	"go-spring.org/cloud/runtime/dataplane/discovery"
 	"go-spring.org/spring/gs"
 )
 
@@ -32,7 +32,7 @@ type recordingDriver struct {
 	called bool
 }
 
-func (d *recordingDriver) CreateClient(ctx context.Context, c Config, center *governance.Center) (*Pool, error) {
+func (d *recordingDriver) CreateClient(ctx context.Context, c Config, center *runtime.Runtime) (*Pool, error) {
 	d.called = true
 	return NewPool(ctx, c, center)
 }
@@ -106,7 +106,7 @@ type captureDriver struct {
 	got discovery.Discovery
 }
 
-func (d *captureDriver) CreateClient(ctx context.Context, c Config, center *governance.Center) (*Pool, error) {
+func (d *captureDriver) CreateClient(ctx context.Context, c Config, center *runtime.Runtime) (*Pool, error) {
 	d.got, _ = center.Discovery().Get(c.Discovery)
 	return NewPool(ctx, c, center)
 }

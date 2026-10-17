@@ -16,7 +16,7 @@
 
 // rules.go holds the one translation from the neutral resilience knobs onto
 // sentinel-golang's rule shapes. It is OUTBOUND only: inbound requests run
-// through go-spring.org/cloud/governance/guard, which has its own bundled engine.
+// through go-spring.org/cloud/runtime/dataplane/guard, which has its own bundled engine.
 //
 // Knobs a driver may legitimately NOT map are not faked here — the tables in
 // the READMEs name them (Burst and Algorithm on flow; sentinel v1.0.4 has no
@@ -30,7 +30,7 @@ import (
 	"github.com/alibaba/sentinel-golang/core/circuitbreaker"
 	"github.com/alibaba/sentinel-golang/core/flow"
 
-	"go-spring.org/cloud/governance/resilience"
+	"go-spring.org/cloud/runtime/dataplane/resilience"
 )
 
 // flowKnobs is the direction-neutral view of the rate-limit stage a policy

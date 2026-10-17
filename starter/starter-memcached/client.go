@@ -34,10 +34,10 @@ import (
 	"fmt"
 
 	"github.com/bradfitz/gomemcache/memcache"
-	"go-spring.org/cloud/chain"
-	"go-spring.org/cloud/governance"
-	"go-spring.org/cloud/governance/label"
-	"go-spring.org/cloud/governance/resilience"
+	"go-spring.org/cloud/runtime"
+	"go-spring.org/cloud/runtime/dataplane/chain"
+	"go-spring.org/cloud/runtime/dataplane/label"
+	"go-spring.org/cloud/runtime/dataplane/resilience"
 )
 
 // Client wraps a memcache client so every operation carries its semantic
@@ -82,17 +82,17 @@ type Client struct {
 // entry's key and serviceName its discovery name; both may be empty when the
 // entry addresses a fixed server list.
 //
-// center carries the container's facilities (see [governance.Center]), and is
+// center carries the container's facilities (see [runtime.Runtime]), and is
 // applied HERE so a Client cannot exist half-assembled: there is no Init step,
 // no later patching, and nothing the container has to remember to call. A
 // hand-built client must supply a center holding a [resilience.ClientManager]:
-// [governance.Center.ExecutorFor] is required, so a nil center is a
+// [runtime.Runtime.ExecutorFor] is required, so a nil center is a
 // construction error — never a graceful downgrade.
 //
 // The manager's ClientExecutorFor resolves its backing executor lazily, on each
 // Execute, so the call order relative to the center's wiring is
 // irrelevant.
-func NewClient(client *memcache.Client, instanceName, serviceName string, center *governance.Center) *Client {
+func NewClient(client *memcache.Client, instanceName, serviceName string, center *runtime.Runtime) *Client {
 	raw := NewRawClient(client)
 	guard := NewGuardClient(raw, instanceName, serviceName, center)
 	return &Client{Client: client, InnerClient: guard}
@@ -258,11 +258,11 @@ type GuardClient struct {
 
 // NewGuardClient builds the governance layer over next, constructing its own
 // executor along the way: center carries the container's facilities (see
-// [governance.Center]) and instanceName/serviceName fix the governance label
+// [runtime.Runtime]) and instanceName/serviceName fix the governance label
 // ("memcached:<service-name or instance-name>") its limiter and breaker state
 // scope by. The executor is the layer's own business end to end — built here,
 // used here, closed at the layer's Release — and never leaves it.
-func NewGuardClient(next InnerClient, instanceName, serviceName string, center *governance.Center) *GuardClient {
+func NewGuardClient(next InnerClient, instanceName, serviceName string, center *runtime.Runtime) *GuardClient {
 	label := label.ServiceLabel("memcached", serviceName, instanceName)
 	return &GuardClient{exec: center.ExecutorFor("memcached", label), service: label, next: next}
 }

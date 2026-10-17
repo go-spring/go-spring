@@ -28,11 +28,11 @@ import (
 	"context"
 
 	"github.com/redis/go-redis/v9"
-	"go-spring.org/cloud/chain"
-	"go-spring.org/cloud/governance"
-	"go-spring.org/cloud/governance/label"
-	"go-spring.org/cloud/governance/resilience"
-	"go-spring.org/cloud/loadbalance"
+	"go-spring.org/cloud/runtime"
+	"go-spring.org/cloud/runtime/dataplane/chain"
+	"go-spring.org/cloud/runtime/dataplane/label"
+	"go-spring.org/cloud/runtime/dataplane/loadbalance"
+	"go-spring.org/cloud/runtime/dataplane/resilience"
 )
 
 // Client is the wrapper bean go-redis clients are injected as. It EMBEDS the
@@ -56,8 +56,8 @@ type Client struct {
 	cfg Config
 
 	// exec is the resilience executor protecting every command, set by [NewClient]
-	// from the container's governance center. The center must hold a
-	// [resilience.ClientManager]: [governance.Center.ExecutorFor] panics without one.
+	// from the container's runtime. The center must hold a
+	// [resilience.ClientManager]: [runtime.Runtime.ExecutorFor] panics without one.
 	exec chain.Executor
 	// serviceLabel is the resilience service key ("redis:<...>") exec scopes
 	// limiter/breaker state by. Fixed by [NewClient].
@@ -79,11 +79,11 @@ type Client struct {
 // fields the service label is derived from; lbChain is the endpoint-selection
 // chain the Driver built for a discovery-routed entry, or nil when it built none.
 //
-// center carries the container's facilities (see [governance.Center]) and is
+// center carries the container's facilities (see [runtime.Runtime]) and is
 // applied HERE, so a Client cannot exist half-assembled: [Client.exec] is set in
 // the constructor and there is no Init step and nothing the container has to
 // remember to call later. A hand-built client must supply a center holding a
-// [resilience.ClientManager]: [governance.Center.ExecutorFor] is required, so a nil
+// [resilience.ClientManager]: [runtime.Runtime.ExecutorFor] is required, so a nil
 // center is a construction error — never a graceful downgrade to an unprotected
 // client.
 //
@@ -104,7 +104,7 @@ type Client struct {
 // The manager's ClientExecutorFor resolves its backing executor lazily, on each
 // Execute, so the call order relative to the center's wiring is
 // irrelevant.
-func NewClient(client redis.UniversalClient, cfg Config, lbChain *loadbalance.Chain, center *governance.Center) (*Client, error) {
+func NewClient(client redis.UniversalClient, cfg Config, lbChain *loadbalance.Chain, center *runtime.Runtime) (*Client, error) {
 	c := &Client{UniversalClient: client, cfg: cfg, lbChain: lbChain}
 	// Install the redisotel pool metrics before any command runs, so they belong
 	// to construction, not to a later assembly step.
@@ -119,7 +119,7 @@ func NewClient(client redis.UniversalClient, cfg Config, lbChain *loadbalance.Ch
 	// built (see loadbalance.Manager.Chain), which is safe before the manager is armed
 	// (the chain is rebuilt once the center goes live). There is therefore no
 	// binding step here. Never reaching here is impossible: the resilience manager
-	// is required — the container supplies it via the governance center — so a
+	// is required — the container supplies it via the runtime — so a
 	// bundle without one is a construction error rather than a bare client.
 	c.serviceLabel = serviceLabel(c.cfg)
 	c.exec = center.ExecutorFor("redis", c.serviceLabel)

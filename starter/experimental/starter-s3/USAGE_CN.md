@@ -152,7 +152,7 @@ gs.Run()
   │    │        静态凭据 + region + bucket-lookup + minio.Options 里的 dynamicTransport
   │    │      → NewClient 构建 *Client 包装体：定身份、exec =
   │    │        center.ExecutorFor("s3", "s3:<endpoint>")（center 为注入的
-  │    │        *governance.Center，内含 *resilience.ClientManager / *fault.ClientManager），再装入传输层——
+  │    │        *runtime.Runtime，内含 *resilience.ClientManager / *fault.ClientManager），再装入传输层——
   │    │        声明在最外层，resilience 在其内
   │    ├─ 仅 ping=true：fail-fast 探测 HealthCheck(ctx, client)——一次直连裸 client 的
   │    │      ListBuckets；端点不可达或凭据被拒都会中止启动并释放 client（Destroy）
@@ -168,7 +168,7 @@ minio-go 在构造时把 `http.Transport` 固定进 `minio.Options` 且不提供
 装一个薄的 `dynamicTransport`——原子 RoundTripper 间接层（RWMutex 守护而非
 atomic.Value，因为活动的 tripper 是多种具体类型之一）——并返回建立其上的 `*Client`
 包装体：`NewClient` 换入声明+resilience 栈（其执行器来自构造函数下传的
-`*governance.Center`）。换入之前，请求直通 `http.DefaultTransport`。
+`*runtime.Runtime`）。换入之前，请求直通 `http.DefaultTransport`。
 
 ### 2.3 一次上传的逐层走读
 
@@ -181,7 +181,7 @@ atomic.Value，因为活动的 tripper 是多种具体类型之一）——并�
    span 名 `"PUT /bucket/key"`——并在 `Execute` 入口**显式**传给 executor，使发射的信号覆盖
    每次尝试（含重试）；若在执行器之内逐次构造身份则无人读取。
 3. 请求进入构造期由构造函数下传的
-   `*governance.Center`（`*resilience.ClientManager` / `*fault.ClientManager` bean）为服务
+   `*runtime.Runtime`（`*resilience.ClientManager` / `*fault.ClientManager` bean）为服务
    `s3:<endpoint>` 构建的 executor——配好
    治理规则源后 retry / rate-limit / circuit-breaker / bulkhead 生效（经治理
    中心可热切换）；resilience manager 必填、容器始终提供，不存在 unmanaged/仅观测的兜底。

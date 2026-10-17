@@ -17,7 +17,7 @@
 // Package StarterGovernanceEtcd adapts etcd as a governance rule source: it
 // watches one etcd key holding the governance rule document and pushes every
 // changed version into the governance center through the
-// [go-spring.org/cloud/governance.Source] contract.
+// [go-spring.org/cloud/runtime/controlplane/governance.Source] contract.
 //
 // It is the etcd member of the governance-source adapter family — the
 // Sentinel-datasource shape. The rule document is governance's own, not an
@@ -41,7 +41,7 @@ import (
 	"reflect"
 	"time"
 
-	"go-spring.org/cloud/governance"
+	"go-spring.org/cloud/runtime/controlplane/governance"
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"

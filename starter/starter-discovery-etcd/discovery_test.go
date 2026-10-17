@@ -23,7 +23,8 @@ import (
 	"testing"
 	"time"
 
-	"go-spring.org/cloud/discovery"
+	"go-spring.org/cloud/runtime/controlplane/registration"
+	"go-spring.org/cloud/runtime/dataplane/discovery"
 	"go-spring.org/stdlib/testing/assert"
 	"go.etcd.io/etcd/api/v3/mvccpb"
 	clientv3 "go.etcd.io/etcd/client/v3"
@@ -286,4 +287,14 @@ func TestDiscoveryReportsSuccessfulSeedSyncLive(t *testing.T) {
 	assert.Number(t, floatGaugeValue(t, "discovery.cache.age_seconds", map[string]string{
 		"system": obsSystem, "service": "orders",
 	})).LessThan(1.0, "a just-confirmed snapshot must read as fresh")
+}
+
+// newTestRegObserver is the write-side counterpart: registration owns its own
+// observer so the two planes stay independent in tests too.
+func newTestRegObserver() *registration.Observer {
+	o, err := registration.NewObserver(obsSystem, "test")
+	if err != nil {
+		panic(err)
+	}
+	return o
 }

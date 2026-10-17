@@ -17,7 +17,7 @@
 // observe.go is this starter's own mongodb instrumentation: a per-operation
 // span, the db.client.* duration/in-flight metrics, and an access log riding
 // the log package's native levels. It emits the same shape and vocabulary as
-// the framework's unified emitter (cloud/governance/resilience/observe.go) —
+// the framework's unified emitter (cloud/runtime/dataplane/resilience/observe.go) —
 // bounded labels db.system + db.operation, unbounded detail (db.statement)
 // reaching only the span and the log, an internal span named after the
 // command, and the status/duration_ms access-log fields — but it emits
@@ -41,7 +41,7 @@ import (
 	"sync"
 	"time"
 
-	"go-spring.org/cloud/observability"
+	"go-spring.org/cloud/observability/attrs"
 	"go-spring.org/stdlib/strutil"
 
 	"go-spring.org/log"
@@ -97,7 +97,7 @@ func buildInstruments() *instrumentSet {
 	duration, _ := m.Float64Histogram("db.client.operation.duration",
 		metric.WithDescription("Duration of "+mongodbSystem+" client operations"),
 		metric.WithUnit("s"),
-		metric.WithExplicitBucketBoundaries(observability.DurationBuckets()...))
+		metric.WithExplicitBucketBoundaries(attrs.DurationBuckets()...))
 	active, _ := m.Int64UpDownCounter("db.client.active_requests",
 		metric.WithDescription("Number of in-flight "+mongodbSystem+" client operations"),
 		metric.WithUnit("{request}"))

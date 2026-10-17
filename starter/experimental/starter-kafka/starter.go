@@ -21,11 +21,12 @@ package StarterKafka
 
 import (
 	"context"
-	"go-spring.org/cloud/governance"
 	"time"
 
+	"go-spring.org/cloud/runtime"
+
 	"go-spring.org/cloud/messaging"
-	"go-spring.org/cloud/traffic"
+	"go-spring.org/cloud/runtime/dataplane/traffic"
 	"go-spring.org/log"
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/gs"
@@ -52,7 +53,7 @@ func init() {
 				gs.IndexArg(1, gs.ValueArg(name)),
 				gs.IndexArg(2, gs.ValueArg(c)),
 				gs.IndexArg(3, gs.TagArg("${spring.kafka.instances."+name+".driver:=${spring.kafka.default.driver:=?}}")),
-				// The governance center is the family's sole injection point: it hands
+				// The runtime is the family's sole injection point: it hands
 				// out the resilience/fault/loadbalance authorities.
 			).Name(name).Destroy((*Client).Close).Caller(1)
 
@@ -89,11 +90,11 @@ const pingTimeout = 10 * time.Second
 // produce/consume. A failed ping releases the executor the driver attached
 // before abandoning the client.
 //
-// center is the governance center gs injects — the family's sole injection
+// center is the runtime gs injects — the family's sole injection
 // point; the ctor hands it to the driver, which applies its authorities while
 // building.
 func newClient(ctx *gs.ContextProvider, name string, c Config, d Driver,
-	center *governance.Center) (*Client, error) {
+	center *runtime.Runtime) (*Client, error) {
 	log.Debug(ctx.Context, log.TagAppDef, "creating kafka client", func() []log.Field {
 		return []log.Field{
 			log.String("brokers", c.Brokers),

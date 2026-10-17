@@ -17,10 +17,10 @@
 package StarterGrpcClient
 
 import (
-	"go-spring.org/cloud/discovery"
-	"go-spring.org/cloud/governance"
-	"go-spring.org/cloud/governance/label"
-	"go-spring.org/cloud/loadbalance"
+	"go-spring.org/cloud/runtime"
+	"go-spring.org/cloud/runtime/dataplane/discovery"
+	"go-spring.org/cloud/runtime/dataplane/label"
+	"go-spring.org/cloud/runtime/dataplane/loadbalance"
 	"google.golang.org/grpc"
 )
 
@@ -36,7 +36,7 @@ import (
 // creates its connection's selection, subscribes it to the service's governance
 // label, and hands it to the resolver it registers for that connection alone.
 //
-// The two authorities are read off the governance center — the family's single
+// The two authorities are read off the runtime — the family's single
 // injection point — so a client reaches discovery and endpoint selection
 // exactly like every other client starter does.
 type Client struct {
@@ -45,9 +45,9 @@ type Client struct {
 }
 
 // NewClient builds the dialer over the center's authorities. The center bean is
-// provided by cloud/governance, which this package imports, so it is always
+// provided by cloud/runtime/controlplane/governance, which this package imports, so it is always
 // present when the module is linked.
-func NewClient(center *governance.Center) (*Client, error) {
+func NewClient(center *runtime.Runtime) (*Client, error) {
 	return NewClientFrom(center.Discovery(), center.Loadbalance()), nil
 }
 

@@ -26,20 +26,20 @@ import (
 
 	"github.com/microsoft/go-mssqldb/msdsn"
 	"go-spring.org/cloud/actuator/health"
-	"go-spring.org/cloud/governance/fault"
-	"go-spring.org/cloud/governance"
-	"go-spring.org/cloud/governance/resilience"
+	"go-spring.org/cloud/runtime"
+	"go-spring.org/cloud/runtime/dataplane/fault"
+	"go-spring.org/cloud/runtime/dataplane/resilience"
 	"go-spring.org/spring/gs"
-	"go-spring.org/starter-gorm"
+	gormcore "go-spring.org/starter-gorm"
 	"go-spring.org/stdlib/testing/assert"
 )
 
-// testCenter is the governance center Open requires to assemble a DB: a
+// testCenter is the runtime Open requires to assemble a DB: a
 // resilience manager with no rules — enough for the pool-sizing lookup, with no
 // governance document to serve.
-func testCenter(t *testing.T) *governance.Center {
+func testCenter(t *testing.T) *runtime.Runtime {
 	t.Helper()
-	ctr, err := governance.NewProcessCenter(resilience.NewClientManager(resilience.NewDefaultDriver(nil)), fault.NewClientManager(nil), fault.NewServerManager(nil))
+	ctr, err := runtime.NewProcess(resilience.NewClientManager(resilience.NewDefaultDriver(nil)), fault.NewClientManager(nil), fault.NewServerManager(nil))
 	if err != nil {
 		t.Fatal(err)
 	}

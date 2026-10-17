@@ -14,7 +14,7 @@ observability.
 starter.go:60). Each entry becomes one route bean — named after the entry, holding its target
 (addr or service-name) and its assembled transport — and the route table collects them.
 Resilience/fault policy is NOT configured here — it is process-wide
-under `spring.governance.*` (see cloud/governance's SOURCE_USAGE).
+under `spring.governance.*` (see cloud/runtime/controlplane/governance's SOURCE_USAGE).
 
 ---
 
@@ -69,7 +69,7 @@ import (
     "fmt"
     "net/http"
 
-    "go-spring.org/cloud/discovery"
+    "go-spring.org/cloud/runtime/dataplane/discovery"
 )
 
 const (
@@ -132,7 +132,7 @@ spring.http-client.instances.discovered.discovery=static
 # The bundled DefaultDriver trips the breaker after two consecutive failures and
 # keeps it open 30s.
 spring.http-client.instances.guarded.addr=127.0.0.1:9473
-# NOTE: governance RULES go in conf/governance.properties, referenced by spring.governance.source.file.path in app.properties (see cloud/governance's SOURCE_USAGE).
+# NOTE: governance RULES go in conf/governance.properties, referenced by spring.governance.source.file.path in app.properties (see cloud/runtime/controlplane/governance's SOURCE_USAGE).
 spring.resilience.driver=default
 spring.governance.client.default.error-threshold=2
 spring.governance.client.default.open-duration=30s
@@ -308,12 +308,12 @@ keys per host:port — same backend reached through two different `addr` spellin
 breakers.
 
 **Not here** (no keys under `spring.http-client.*`): timeouts, retries, breaker, rate limit, fault.
-All policy is process-wide under `spring.governance.*` (see cloud/governance's SOURCE_USAGE) —
+All policy is process-wide under `spring.governance.*` (see cloud/runtime/controlplane/governance's SOURCE_USAGE) —
 `spring.governance.client.default.<policy-field>` (rate-limit / burst / error-threshold /
 open-duration / breaker-strategy / error-rate-threshold / min-requests /
 max-retries / initial-interval / multiplier / max-interval / timeout) and
 `spring.governance.client.fault.*` for fault injection. Per-target policy = one `spring.governance.client.rules[n]` entry scoped to the
-service label above. See cloud/governance's SOURCE_USAGE for that surface.
+service label above. See cloud/runtime/controlplane/governance's SOURCE_USAGE for that surface.
 
 `min-requests`: an error-rate breaker's minimum sample size is read straight from the governance rule
 and applied by resilience; unset means resilience's own zero-value floor of 1, so a single failure
@@ -364,7 +364,7 @@ The `guarded` route targets the always-500 backend on :9473 with
    change from a network/500 error to `circuit open`, wait out `open-duration` (30s) with the
    backend restored — the half-open trial succeeds and the breaker closes.
 3. Observe the trip: `resilience.client.breaker.state_change{from=...,to=...}` counter increments and a
-   state-change log line is emitted (cloud/governance/resilience/observe.go:98-110).
+   state-change log line is emitted (cloud/runtime/dataplane/resilience/observe.go:98-110).
 
 ### 4.4 Fault injection (no restart)
 
@@ -372,7 +372,7 @@ Fault rides the same governance source; `spring.governance.client.fault.*` hot-r
 conf comments). Flip in the config file:
 
 ```properties
-# NOTE: governance RULES go in conf/governance.properties, referenced by spring.governance.source.file.path in app.properties (see cloud/governance's SOURCE_USAGE).
+# NOTE: governance RULES go in conf/governance.properties, referenced by spring.governance.source.file.path in app.properties (see cloud/runtime/controlplane/governance's SOURCE_USAGE).
 spring.governance.client.fault.rate=0.5
 spring.governance.client.fault.error=timeout    # or generic / reset
 ```

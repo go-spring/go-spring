@@ -4,15 +4,15 @@
 
 详尽使用参考。概览见 [README_CN.md](README_CN.md)。下文所有行为声明均对照 starter 源码
 （`starter.go`、`config.go`）、`starter-go-redis/experimental/ratelimit.go` 的计数器实现、
-把存储送到 driver bean 的 [governance 装配](../../cloud/governance/starter.go) 以及
+把存储送到 driver bean 的 [governance 装配](../../cloud/runtime/controlplane/governance/starter.go) 以及
 自校验的 [example/](example)（`example/check.sh`）核实。限流语义本身记在
-`cloud/governance/resilience`——本文只写本 starter 的增量。
+`cloud/runtime/dataplane/resilience`——本文只写本 starter 的增量。
 
 **激活方式**：任一 `spring.ratelimit.redis.*` 键即武装 starter 的 module，且该配置块唯一的键
 必须设置：`spring.ratelimit.redis.client` 指名的 `*goredis.Client` bean（由 starter-go-redis
 在 `spring.go-redis.instances.<client>` 下提供）所连的 Redis 实例承载计数器。starter 只贡献
 一个 `resilience.ClusterLimiter` 类型的 bean。容器里没有它时，每个 executor 用自己的一份预算计数，
-所以贡献本存储就是全部的开关：[cloud/governance](../../../cloud/governance/README.md) 的 driver bean
+所以贡献本存储就是全部的开关：[cloud/runtime/controlplane/governance](../../../cloud/runtime/controlplane/governance/README.md) 的 driver bean
 会注入它，进程内每个 executor 从此花 Redis 里每个 scope 的同一个预算——而且是跨副本的，这是
 executor 本地预算做不到的。
 
@@ -66,7 +66,7 @@ import (
     "errors"
     "net/http"
 
-    "go-spring.org/cloud/governance/resilience"
+    "go-spring.org/cloud/runtime/dataplane/resilience"
     "go-spring.org/spring/gs"
 )
 

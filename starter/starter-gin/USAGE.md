@@ -131,7 +131,7 @@ spring.observability.metrics.path=/metrics
 
 # --- governance (inbound admission + fault drills) ----------------------------
 # Same keys example-resilience uses: 5 QPS limit → burst shed with 429.
-# NOTE: governance RULES go in conf/governance.properties, referenced by spring.governance.source.file.path in app.properties (see cloud/governance's SOURCE_USAGE).
+# NOTE: governance RULES go in conf/governance.properties, referenced by spring.governance.source.file.path in app.properties (see cloud/runtime/controlplane/governance's SOURCE_USAGE).
 spring.resilience.driver=default
 spring.governance.server.default.rate-limit=5    # INBOUND admission: 5 QPS on every route
 ```
@@ -310,7 +310,7 @@ curl -i :8001/healthz    # starter-served liveness, independent of app routes
 ### 4.4 Admission drill (no restart — mirrors example-resilience/check.sh)
 
 1. Start §1's project with `spring.governance.server.default.rate-limit=5` (inbound admission
-   reads the `server` block — see cloud/governance README §4).
+   reads the `server` block — see cloud/runtime/controlplane/governance README §4).
 2. Burst: `for i in $(seq 1 20); do curl -s -o/dev/null -w '%{http_code}\n' :8001/echo/x; done`
    → both 200s and 429s (the smoke asserts exactly that). Breaker open → 503
    (`admission.go:79-82`).

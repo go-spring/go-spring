@@ -21,7 +21,7 @@ import (
 	"sync"
 	"time"
 
-	"go-spring.org/cloud/observability"
+	"go-spring.org/cloud/observability/attrs"
 	"go-spring.org/log"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -97,7 +97,7 @@ func buildInstruments() *instrumentSet {
 	in.refreshDur, _ = m.Float64Histogram("config.bus.refresh.duration",
 		metric.WithDescription("Duration of the property refresh triggered by a broadcast"),
 		metric.WithUnit("s"),
-		metric.WithExplicitBucketBoundaries(observability.DurationBuckets()...))
+		metric.WithExplicitBucketBoundaries(attrs.DurationBuckets()...))
 	in.publishes, _ = m.Int64Counter("config.bus.publishes",
 		metric.WithDescription("Configuration refresh broadcasts published, by outcome"),
 		metric.WithUnit("{event}"))

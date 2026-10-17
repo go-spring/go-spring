@@ -26,9 +26,9 @@ import (
 
 	"github.com/elastic/elastic-transport-go/v8/elastictransport"
 	"github.com/elastic/go-elasticsearch/v8"
-	"go-spring.org/cloud/discovery"
-	"go-spring.org/cloud/governance"
 	"go-spring.org/cloud/mesh"
+	"go-spring.org/cloud/runtime"
+	"go-spring.org/cloud/runtime/dataplane/discovery"
 	"go-spring.org/stdlib/errutil"
 )
 
@@ -46,7 +46,7 @@ import (
 // addresses/cloud-id/service-name the resilience service label is derived from,
 // the driver hands the wrapper the [dynamicTransport] it installed so the
 // declaration transport can be swapped in, and center is the container's
-// governance center (carrying the resilience/fault authorities and the discovery
+// runtime (carrying the resilience/fault authorities and the discovery
 // directory), which [NewClient] applies while building. Nothing patches the
 // client afterwards.
 //
@@ -63,7 +63,7 @@ import (
 // center.Discovery() itself, failing construction when an entry routes by
 // service-name and the label names no bean.
 type Driver interface {
-	CreateClient(ctx context.Context, c Config, center *governance.Center) (*Client, error)
+	CreateClient(ctx context.Context, c Config, center *runtime.Runtime) (*Client, error)
 }
 
 // DefaultDriver is the default implementation of the Driver interface.
@@ -90,7 +90,7 @@ type DefaultDriver struct{}
 // seed); the live feed is the connection pool installed below over the same
 // resolver. An entry routed by service-name that cites no existing backend fails
 // here, at construction.
-func (DefaultDriver) CreateClient(ctx context.Context, c Config, center *governance.Center) (*Client, error) {
+func (DefaultDriver) CreateClient(ctx context.Context, c Config, center *runtime.Runtime) (*Client, error) {
 	// Seed the node addresses from the discovery backend this entry cites. The
 	// label rides on the config (c.Discovery, already carrying the family
 	// default); resolveAddresses fails loudly when it names no bean.

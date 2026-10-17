@@ -166,9 +166,11 @@ Web(`gin`、`echo`、`hertz`……)与 RPC(`grpc`、`kitex`、`thrift`、`dubbo`
   在启动期失败。这也是注入服务发现的接缝(由 driver 构建 dialer)。可选能力放到
   **独立**接口上(如 go-redis 的 `ClusterDriver`),让已有的自定义 driver 保持可编译。
 - **要对外访问的 client starter 靠自己的 import 拿到治理能力。** 不需要任何治理 import:每个 authority
-  由**管它的那个包**注册 —— `cloud/governance/resilience` 分别注册 `*resilience.ClientManager` / `*resilience.ServerManager`、`cloud/loadbalance`
-  注册 `*loadbalance.Manager`、`cloud/governance/fault` 分别注册 `*fault.ClientManager` / `*fault.ServerManager` —— 而注入其中一个的 client
-  必然已经为了类型 import 了那个包。于是 `*resilience.ClientManager` /
+  由**管它的那个包**注册 —— `cloud/runtime/dataplane/resilience` 注册 `*resilience.ClientManager`、
+  `cloud/runtime/dataplane/loadbalance` 注册 `*loadbalance.Manager`、`cloud/runtime/dataplane/fault` 注册
+  `*fault.ClientManager` / `*fault.ServerManager`、`cloud/runtime/dataplane/discovery` 注册
+  `*discovery.Manager` —— 而注入其中一个的 client 必然已经为了类型 import 了那个包。
+  根包把它们组装成唯一的 `*runtime.Runtime` bean(入站 `*guard.Manager` 由它自己创建)。于是 `*resilience.ClientManager` /
   `*loadbalance.Manager` / `*fault.ClientManager`（或 `*fault.ServerManager`）必然在容器里;注入写成**必填**
   (`gs.IndexArg(N, gs.TagArg(""))`),不写可空(`"?"`)。这些 direction authority 本就是 client
   契约的一部分(它天生可治理、可观测、可路由),而在规则文档什么都不配时它们行为如常,所以
@@ -180,14 +182,14 @@ Web(`gin`、`echo`、`hertz`……)与 RPC(`grpc`、`kitex`、`thrift`、`dubbo`
   `spring.force-autowire-is-nullable` 把一切注入强制 nullable —— 那是 gs 的行为,
   不是本规则的例外。)
   构造函数在**构造期**把它们接上,那是 client **是什么**的一部分,而不是"造完要记得补的一步"
-  —— 它接住注入的 `*governance.Center`,并在返回前
-  `exec = center.ExecutorFor(system, label)`。`ExecutorFor` 读取 `center.ResilienceClient()`,
+  —— 它接住注入的 `*runtime.Runtime`,并在返回前
+  `exec = rt.ExecutorFor(system, label)`。`ExecutorFor` 读取 `rt.ResilienceClient()`,
   为空即 panic —— 容器之外不带 resilience manager 自己调构造函数是装配错误,而不是静默
-  降级:容器始终提供 center,不存在 unmanaged/仅观测的兜底路径。
+  降级:容器始终提供 runtime,不存在 unmanaged/仅观测的兜底路径。
 - **没有东西可保护的组件,自己发信号。** 上一条针对的是访问外部服务的 client;依赖就在本进程内的
   组件是例外,目前只有 `starter-bigcache` 一个成员。那里限流、熔断、重试都无从作用——而且一次
   瞬时的本地失败(条目超限)把熔断打开后,反而会拒掉本来能命中的调用,因为"共享下游挂了"这个前提
-  不成立。所以它不注入任何治理 bean,`Driver.CreateClient` 不收 `*governance.Center`,**也不走
+  不成立。所以它不注入任何治理 bean,`Driver.CreateClient` 不收 `*runtime.Runtime`,**也不走
   执行器链**:自己开操作的 span、自己记 `bigcache.operation.total` / `.duration`,不写访问日志——
   缓存调用频率高,而且它调的不是进程外的任何东西。它的 span 仍然骑着 span 属性载体,所以上层贡献
   的属性两边都不用配合就能落上去。这是下一条"唯一发射端"规则的唯一例外;
@@ -213,14 +215,14 @@ Web(`gin`、`echo`、`hertz`……)与 RPC(`grpc`、`kitex`、`thrift`、`dubbo`
     suspension `Tracker`、在建连处把 `Pick` 与 `Complete` 配对、再用
     `lbMgr.Chain(resolver, entry label)`(带注入的 `*loadbalance.Manager`)——于是该 entry 的
     治理规则会为 `balancer` / `outlier-threshold` / `outlier-suspend-for` 整条重建链路,走的是
-    `loadbalance` manager,不需要 import `cloud/governance`。
+    `loadbalance` manager,不需要 import `cloud/runtime/controlplane/governance`。
   - `client.go` —— 组装好的 client 及其 resilience 那一侧:构造函数钉在它上面的 executor、
     把每次调用路由进该 executor、`Close` Destroy 钩子,以及任何 per-client 保护缝
     (如 mongodb starter 自带的 dial 层 seam——它留在该 starter 而不进基础包,
     因为那套语义不吻合其他任何 client)。
   - `observe.go` —— 交给框架唯一发射点的 operation 声明(本 starter 的 `Metric`
     前缀、有界属性、无界 detail、access `LogTag`);发射点本身在
-    `cloud/governance/resilience`(见 §3)。
+    `cloud/runtime/dataplane/resilience`(见 §3)。
   - `health.go` —— health indicator 构造函数,放在 starter 根包里(单函数子包不值那个
     import 代价)。组件没有可探测项时不建此文件(bigcache,见 §3)。
   这一划分与生态内既有 client starter(go-redis、gorm-*、mongodb、elasticsearch、
@@ -272,12 +274,12 @@ Web(`gin`、`echo`、`hertz`……)与 RPC(`grpc`、`kitex`、`thrift`、`dubbo`
 - **无状态 client 既不注册 health indicator 也不注册 destroy 钩子。** 不持有连接的 client 没有可
   探测项，也没有可关闭的东西。
 - **driver 的契约是一个签名。** `CreateClient(ctx context.Context, c Config, center
-  *governance.Center) (T, error)`,`T` 是**模块导出的客户端类型**——有包装体返回包装体,没有则返回裸类型。
+  *runtime.Runtime) (T, error)`,`T` 是**模块导出的客户端类型**——有包装体返回包装体,没有则返回裸类型。
   driver 只做构建,不做注册,返回**身份完整**的类型,绝不返回残缺体。少数老 starter 仍是较短的
   `CreateClient(ctx, name string, c Config)`,属未收尾的滞后,不是第二种形状。
 - **`Config` 是用户在 properties 里写的,`Center` 是容器提供的。** 一个声明、一个注入——别把容器
-  bean 塞进 `Config` 字段。`*governance.Center` 是容器提供的那一个对象:它展开为
-  `ResilienceClient() *resilience.ClientManager` / `ResilienceServer() *resilience.ServerManager` /
+  bean 塞进 `Config` 字段。`*runtime.Runtime` 是容器提供的那一个对象:它展开为
+  `ResilienceClient() *resilience.ClientManager` / `GuardServer() *guard.Manager` /
   `FaultClient() *fault.ClientManager` / `FaultServer() *fault.ServerManager` / `Loadbalance() *loadbalance.Manager` / `Discovery()
   *discovery.Manager`(driver 用 `Get` 按 label 解析后端的目录),外加
   `ExecutorFor(system, label) chain.Executor` 与 `PolicyFor(label) ClientPolicy`。**`ResilienceClient()` 必填**:
@@ -299,9 +301,9 @@ Web(`gin`、`echo`、`hertz`……)与 RPC(`grpc`、`kitex`、`thrift`、`dubbo`
   `gs.TagArg("${spring.<prefix>.instances." + name + ".driver:=${spring.<prefix>.default.driver:=?}}")`
   ——先看本实例键,再回退家族 `default.driver`,最后 `?`(按类型注入唯一的 driver bean)。配了 bean 名
   但找不到则启动失败。不加 `Config` 字段;http-client 也走 per-entry。
-- **需要治理的 client 注入**必填**的 `*governance.Center`。** import `go-spring.org/cloud/governance`
-  (或 blank-import 任一 governance 源 starter),按类型注入**必填**的 `*governance.Center`(不写 `"?"` /
-  `IndexArg`),再由 `center.ResilienceClient()` / `FaultClient()` / `FaultServer()` / `Loadbalance()` / `Discovery()` 展开。关治理是
+- **需要治理的 client 注入**必填**的 `*runtime.Runtime`。** import `go-spring.org/cloud/runtime`
+  (或 blank-import 任一 governance 源 starter),按类型注入**必填**的 `*runtime.Runtime`(不写 `"?"` /
+  `IndexArg`),再由 `rt.ResilienceClient()` / `FaultClient()` / `FaultServer()` / `Loadbalance()` / `Discovery()` 展开。关治理是
   发布一份什么都不配的文档(仍带一个 `spring.governance.*` 键),不是 bean 不存在;写可空会把「忘 import」变成静默降级。`?` 只保留给
   两类:**0..N 集合**(`[]*health.Indicator`、`Registries`、`Jobs`、`map[string]discovery.Discovery` 等,
   `?` = 空集合合法,否则报 `no beans collected`)与 **0..1 有默认值**(`traffic.Propagator`、
@@ -350,7 +352,7 @@ WebSocket(`websocket`、`websocket-coder`)、中间件(`lua-filter`)、鉴权
 - **`starter-governance-sentinel`** 只贡献一个进程级 bean —— 名为 `sentinel` 的
   `resilience.Driver` —— resilience manager 在 `spring.resilience.driver=sentinel` 时注入它,
   一次选定全部 executor——**含入站准入**，因为同一个
-  `Driver` 同时应答两个方向。无端口、无自有 key;file/http 规则源由 `cloud/governance`
+  `Driver` 同时应答两个方向。无端口、无自有 key;file/http 规则源由 `cloud/runtime/controlplane/governance`
   内置注册,nacos/etcd 两个远端源各自成 starter(`starter-governance-nacos` / `starter-governance-etcd`)。
 - **全局 starter 在 `gs.Module` 装配期安装自己的全局设施，并通过 `gs.RegisterStopper` 拆除。**
   装配在任何 bean 构造函数之前运行；stopper 在所有 server 停止、容器关闭之后运行。
@@ -365,7 +367,7 @@ WebSocket(`websocket`、`websocket-coder`)、中间件(`lua-filter`)、鉴权
 - **按角色拆,不按后端拆。** Nacos、Consul、etcd 都是**双能力**后端 —— 既做配置也做
   服务发现。这两者在 Go-Spring 里是不同的接入点,因此落在不同 starter:**config**
   角色是配置 Provider 类 starter(本形态);**discovery** 角色走 client 侧
-  (`cloud/discovery`,§3)或框架原生(`contrib/discovery/`,§3)。配置 Provider 类
+  (`cloud/runtime/dataplane/discovery`,§3)或框架原生(`contrib/discovery/`,§3)。配置 Provider 类
   starter 只做 config 角色,别的都不做。命名对标 Spring Cloud Alibaba
   (`nacos-config` vs `nacos-discovery`)。
 - **它注册的是 provider,不是 bean。** 接缝是 `init()` 里的
@@ -446,8 +448,8 @@ WebSocket(`websocket`、`websocket-coder`)、中间件(`lua-filter`)、鉴权
   (`enabled` + cert/key/CA),默认关闭。
 - **现阶段容忍重复优先于过早抽象。** 公共能力(health、TLS、fail-fast)刻意在每个模块
   各写一份,而不抽到公共包。后续可能有统一收敛的一轮重构;在那之前不要建跨 starter 的
-  helper 包。判据是 helper 的**性质**,不是谁在用它:`cloud/governance.Parse`(规则文档
-  解析器)被 file/http/etcd/nacos 四个源共享,放进了它产出模型所在的 `cloud/governance`
+  helper 包。判据是 helper 的**性质**,不是谁在用它:`cloud/runtime/controlplane/governance.Parse`(规则文档
+  解析器)被 file/http/etcd/nacos 四个源共享,放进了它产出模型所在的 `cloud/runtime/controlplane/governance`
   —— 这是 `cloud/` 唯一一处 `spring` 依赖,可以接受,因为文档格式本就是框架自己的。
 - **优先用框架自带的注册与发现;没有的才考虑统一。** 默认使用每个框架**自己**的
   注册与发现机制,而不是在其之上硬套一层 Go-Spring 抽象。只有对**本身没有原生机制**
@@ -464,7 +466,7 @@ WebSocket(`websocket`、`websocket-coder`)、中间件(`lua-filter`)、鉴权
     Apache Thrift(`starter-thrift`)、纯 HTTP web(gin/echo/hertz)。只有这些才值得
     做 Go-Spring 注册 seam,且要等具体需求落地。
 - **client 侧发现已统一,provider 注册不统一。** client 类 starter 可通过
-  `cloud/discovery`(由 driver 的 dialer 钩子构建 `Loader`)把 `ServiceName`
+  `cloud/runtime/dataplane/discovery`(由 driver 的 dialer 钩子构建 `Loader`)把 `ServiceName`
   解析成实时端点,这对各基础设施客户端是通用的。RPC 的 **provider** 注册按上述原则
   保持框架原生。`ServiceName` 为空时 client 按地址直连,行为不变。各框架原生注册进
   consul/etcd/nacos/zookeeper/polaris 的示例见 `contrib/discovery/`。
@@ -481,7 +483,7 @@ WebSocket(`websocket`、`websocket-coder`)、中间件(`lua-filter`)、鉴权
 - **实例级注册按 starter 各自提供;RPC 框架 provider 注册仍不统一。** 别把两种
   "注册"混为一谈。(1)把**本进程**注册进外部注册中心
   (Nacos/Consul/Eureka/ZooKeeper)-- 即 Spring Cloud `@EnableDiscoveryClient` 的方向
-  -- 是与传输无关的通用能力。它的发布生命周期住在 `cloud/discovery`:`Server` 是
+  -- 是与传输无关的通用能力。它的发布生命周期住在 `cloud/runtime/dataplane/discovery`:`Server` 是
   唯一那个导出 `gs.Server`、统摄所有已配置中心的东西;每个
   `starter-discovery-<backend>`(etcd/nacos/consul/zookeeper)贡献一个 `Registry`
   -- 与它自己那个中心对话的协议适配器。换后端就是换 starter。
@@ -527,7 +529,7 @@ WebSocket(`websocket`、`websocket-coder`)、中间件(`lua-filter`)、鉴权
   client starter 声明 `chain.WithOperation(ctx, chain.Operation{...})` ——
   操作的 `Name`、`Metric` 前缀（`db.client`、`messaging.client`）、有界的 `Attrs`、
   无界的 `Detail` 与 `LogTag` —— 再把调用路由进 resilience executor。观测层
-  （`cloud/observability/client.go` 的 `wrappedClientExecutor.Execute`,
+  （`cloud/runtime/dataplane/observability/client.go` 的 `wrappedClientExecutor.Execute`,
   由治理中心组装在 executor 外面）就按这份
   声明发射:调用 span、`<prefix>.operation.duration`（调用级,含重试与退避）、
   `<prefix>.attempt.duration`（尝试级,下游自己那次花了多久）、
@@ -538,9 +540,9 @@ WebSocket(`websocket`、`websocket-coder`)、中间件(`lua-filter`)、鉴权
   - **关掉治理不等于关掉观测。** center 对**透传 handle 也套**观测层,所以
     一份惰性文档(什么都不配)保留全部 span、指标与访问日志,只丢掉保护。
   - **依赖方向是 observability → resilience,绝不反过来。** 发射点落在
-    `cloud/observability`;breaker 状态词表（`BreakerState` / `BreakerEventListener`）与
-    per-call `Recorder` 落在 `cloud/governance/resilience`,由观测层 import —— 治理从不认识观测。
-    两者只在**一处**组装:治理中心（`Center.ExecutorFor` / `Center.ServerExecutorFor`）,
+    `cloud/runtime/dataplane/observability`;breaker 状态词表（`BreakerState` / `BreakerEventListener`）与
+    per-call `Recorder` 落在 `cloud/runtime/dataplane/resilience`,由观测层 import —— 治理从不认识观测。
+    两者只在**一处**组装:运行时组合根（`Runtime.ExecutorFor` / `Runtime.InboundFor`）,
     它叠出 `fault(observe(resilience))`,并通过 handle 的 listener 契约够到 breaker。
   - **`Attrs` 必须有界**:这里的每个属性都会同时变成 metric label、span 属性和日志字段,
     无界的值（缓存键、主题名）会把序列撑爆。**`Detail` 可以无界** —— 键、语句、URL 路径、
@@ -625,7 +627,7 @@ WebSocket(`websocket`、`websocket-coder`)、中间件(`lua-filter`)、鉴权
     kitex 与 kratos 的时长指标没有 `status` 维度,因为指标由库发出;
     `cloud/experimental/transaction` 只有 span
     （它的 `Observer` 是整条替换型缝,§1.5 已裁决保持现状,故框架不为它规定另外两种信号）;
-    属性刷新漏斗（`observability.RefreshConf`）是唯一既出指标又记录刷新结果日志的地方 ——
+    属性刷新漏斗（`conf.Refresh`）是唯一既出指标又记录刷新结果日志的地方 ——
     调用方只记自己的后端事件,「集群是否刷新成功」这条日志归漏斗
     （日志该由知道主题的那个模块来打）。
   - *连接状态* —— `messaging.client.connection.state_changes` 只在**客户端库提供连接状态回调**
@@ -639,8 +641,8 @@ WebSocket(`websocket`、`websocket-coder`)、中间件(`lua-filter`)、鉴权
   块自己持有的一层封装,所以那些 gauge 背后的状态与块同寿:同进程内两个块不会互相污染,
   测试之间也没有全局的东西要重置。要报在「首次发布」与「自愈路径」**共同经过**的漏斗上
   （etcd `publish`、zookeeper `createNode`、consul `upsert`）,而不是包在
-  `discovery.Registry` 接口外面:自愈路径根本不经过那个接口,而它恰恰是「实例还在服务、
-  却已不再可被发现」的那条路径。指标与 span 的定义只在 `cloud/discovery/observe.go` 里
+  `registration.Registry` 接口外面:自愈路径根本不经过那个接口,而它恰恰是「实例还在服务、
+  却已不再可被发现」的那条路径。指标与 span 的定义只在 `cloud/runtime/dataplane/discovery/observe.go` 里
   有一份 —— 后端自己从不命名 instrument。本家族的**只做发现**后端
   （`starter-discovery-k8s`,集群内平台已替你把 Pod 注册好）没有这样的漏斗可报:它建同一个
   observer、在成功与失败两侧上报 `Synced`,三个注册操作一个都不产出;该例外登记在
@@ -683,7 +685,7 @@ WebSocket(`websocket`、`websocket-coder`)、中间件(`lua-filter`)、鉴权
   派生出的治理标签(`label.ServiceLabel(...)` 的结果)→ `serviceLabel`。`serviceName` 保持不动——
   它镜像配置键 `service-name`,属配置字段命名,不进这套词汇。单复数对撞要拆:`Manager.driver`(被选中的
   后端)→ `driverName`,与 `drivers`(后端目录 map)分开。名字与实际用途不符要改(如 `memcached/liveServers.key`
-  存的是地址快照签名 → `snapshotKey`)。明确不改:`cloud/governance/resilience|fault` 内部的 `service`、
+  存的是地址快照签名 → `snapshotKey`)。明确不改:`cloud/runtime/dataplane/resilience|fault` 内部的 `service`、
   `starter-governance-sentinel`、`starter-luohua`——那里 `service` 是 `NewClientExecutor(service string, ...)`
   契约本身的形参名。不要靠注释解释光杆名。
 - **`func init()` 必须紧跟 import 块、排在 starter 文件顶部**,前面不允许有 type/var/const/func 声明。
@@ -726,7 +728,7 @@ WebSocket(`websocket`、`websocket-coder`)、中间件(`lua-filter`)、鉴权
    同一个** `label.ServiceLabel`,带注入的 `*loadbalance.Manager` 调
    `lbMgr.Chain(resolver, <entry label>)`。这才是 `balancer` / `outlier-threshold` /
    `outlier-suspend-for` 可经治理规则配置而不是写死的原因——自己不加 `balancer` 配置键,
-   也不 import `cloud/governance`。不能重挑的 client
+   也不 import `cloud/runtime/controlplane/governance`。不能重挑的 client
    (一次性解析、或库自持选择器)刻意不接,要在它的 USAGE 里写明。
 5. Server? → 自持端口、提前监听/就绪后 serve、优雅 `Stop`、应用提供注册 bean、
    默认开启开关。

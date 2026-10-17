@@ -42,7 +42,7 @@ import (
 	_ "go-spring.org/starter-otel"
 )
 
-// discoveryName is the cloud/discovery key the gateway's
+// discoveryName is the cloud/runtime/dataplane/discovery key the gateway's
 // spring.gateway.routes.orders.upstream.discovery references.
 const discoveryName = "consul"
 

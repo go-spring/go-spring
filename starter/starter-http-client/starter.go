@@ -25,12 +25,13 @@ package StarterHTTPClient
 
 import (
 	"context"
-	"go-spring.org/cloud/governance"
 	"io"
 	"net/http"
 
-	"go-spring.org/cloud/discovery"
-	"go-spring.org/cloud/traffic"
+	"go-spring.org/cloud/runtime"
+
+	"go-spring.org/cloud/runtime/dataplane/discovery"
+	"go-spring.org/cloud/runtime/dataplane/traffic"
 	"go-spring.org/log"
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/gs"
@@ -73,7 +74,7 @@ func init() {
 				gs.IndexArg(1, gs.ValueArg(name)),
 				gs.IndexArg(2, gs.ValueArg(c)),
 				gs.IndexArg(3, gs.TagArg("${spring.http-client.instances."+name+".driver:=${spring.http-client.default.driver:=?}}")),
-				// The governance center is the family's sole injection point: it hands
+				// The runtime is the family's sole injection point: it hands
 				// out the resilience/fault/loadbalance authorities and the discovery
 				// directory the entry's ${discovery} label resolves against.
 				gs.IndexArg(5, gs.TagArg("?")), // nullable traffic.Propagator bean
@@ -98,12 +99,12 @@ func init() {
 // label against the discovery directory the center carries, so different entries
 // may cite different registries.
 //
-// center is the governance center bean — the family's sole injection point, which
+// center is the runtime bean — the family's sole injection point, which
 // also carries the discovery directory and the resilience/fault/loadbalance
 // authorities (all nil-safe). It is threaded to the driver, which hands it to the
 // transport assembler. Neither the entry's own config nor its service label
 // carries the authorities: they are beans, not bound values.
-func newRoute(ctx *gs.ContextProvider, name string, c Config, d Driver, center *governance.Center, prop traffic.Propagator) (*route, error) {
+func newRoute(ctx *gs.ContextProvider, name string, c Config, d Driver, center *runtime.Runtime, prop traffic.Propagator) (*route, error) {
 	var backend discovery.Discovery
 	if c.Discovery != "" {
 		b, ok := center.Discovery().Get(c.Discovery)
@@ -147,8 +148,8 @@ func newDispatchTransport(routes []*route) (*dispatchTransport, error) {
 // Driver bean (the bundled DefaultDriver when none is provided). backend is the
 // entry's already-resolved discovery backend (nil when it cites none). closeFn
 // (when non-nil) releases the discovery watch and resilience executor behind it.
-// center is the governance center, forwarded to the driver unchanged.
-func assembleTransport(ctx *gs.ContextProvider, name string, c Config, backend discovery.Discovery, d Driver, center *governance.Center, prop traffic.Propagator) (rt http.RoundTripper, closeFn func() error, err error) {
+// center is the runtime, forwarded to the driver unchanged.
+func assembleTransport(ctx *gs.ContextProvider, name string, c Config, backend discovery.Discovery, d Driver, center *runtime.Runtime, prop traffic.Propagator) (rt http.RoundTripper, closeFn func() error, err error) {
 	if err = c.validate(); err != nil {
 		return nil, nil, err
 	}

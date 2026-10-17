@@ -24,7 +24,7 @@ import (
 	"sync"
 	"time"
 
-	"go-spring.org/cloud/observability"
+	"go-spring.org/cloud/observability/conf"
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/goutil"
@@ -204,7 +204,7 @@ func watchLoop(ctx context.Context, cli vaultClient, cs configSource,
 		if fpNew := fingerprint(data); fpNew != fp {
 			// Stamp the trigger with the change's identity (which secret, new
 			// content fingerprint) so the refresh records logged and metered by
-			// observability.RefreshConf carry what this round is about. Vault
+			// conf.Refresh carry what this round is about. Vault
 			// hands the poller no version metadata, so the fingerprint is
 			// exactly the value that differs from the loaded baseline this round
 			// is refreshing to.
@@ -218,7 +218,7 @@ func watchLoop(ctx context.Context, cli vaultClient, cs configSource,
 				log.String("trace_id", randutil.Hex(16)),
 				log.String("fingerprint", fpNew[:8]))...)
 			log.Info(rctx, starterTag, "vault secret changed, triggering refresh")
-			_ = observability.RefreshConf(rctx, func(ctx context.Context) error {
+			_ = conf.Refresh(rctx, func(ctx context.Context) error {
 				return gs.RefreshProperties(ctx)
 			})
 		}

@@ -21,7 +21,7 @@ import (
 	"errors"
 	"testing"
 
-	"go-spring.org/cloud/observability"
+	"go-spring.org/cloud/observability/attrs"
 	"go-spring.org/stdlib/testing/assert"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -194,7 +194,7 @@ func TestObservabilityDuration(t *testing.T) {
 // carrierOf flattens what the framework's span-attribute carrier held on ctx.
 func carrierOf(ctx context.Context) map[string]string {
 	out := map[string]string{}
-	for _, kv := range observability.SpanAttributes(ctx) {
+	for _, kv := range attrs.SpanAttributes(ctx) {
 		out[string(kv.Key)] = kv.Value.AsString()
 	}
 	return out
@@ -222,5 +222,5 @@ func TestContributesToTheCallSpan(t *testing.T) {
 
 	assert.String(t, carried["cache.operation"]).Equal("get")
 	assert.String(t, carried["cache.key"]).Equal("user:42")
-	assert.That(t, len(observability.SpanAttributes(ctx))).Equal(0)
+	assert.That(t, len(attrs.SpanAttributes(ctx))).Equal(0)
 }

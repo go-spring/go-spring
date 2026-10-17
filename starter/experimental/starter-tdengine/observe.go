@@ -24,7 +24,7 @@
 package StarterTdengine
 
 import (
-	"go-spring.org/cloud/chain"
+	"go-spring.org/cloud/runtime/dataplane/chain"
 	"go-spring.org/log"
 )
 

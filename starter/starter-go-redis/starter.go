@@ -18,8 +18,9 @@ package StarterGoRedis
 
 import (
 	"context"
-	"go-spring.org/cloud/governance"
 	"time"
+
+	"go-spring.org/cloud/runtime"
 
 	"github.com/redis/go-redis/extra/redisotel/v9"
 	"github.com/redis/go-redis/v9"
@@ -65,7 +66,7 @@ func init() {
 					gs.IndexArg(1, gs.ValueArg(c)),
 					gs.IndexArg(2, gs.TagArg("${spring.go-redis.instances."+name+".driver:=${spring.go-redis.default.driver:=?}}")),
 					gs.IndexArg(3, gs.TagArg("${spring.go-redis.instances."+name+".discovery:=${spring.go-redis.default.discovery:=none}}")),
-					// The governance center is the family's sole injection point: it hands
+					// The runtime is the family's sole injection point: it hands
 					// out the resilience/fault/loadbalance authorities.
 				).Name(name).Destroy((*Client).Destroy).Caller(1)
 				// Contribute a health indicator for this instance unless the
@@ -81,7 +82,7 @@ func init() {
 				r.Provide(newClusterClient,
 					gs.IndexArg(1, gs.ValueArg(c)),
 					gs.IndexArg(2, gs.TagArg("${spring.go-redis.instances."+name+".driver:=${spring.go-redis.default.driver:=?}}")),
-					// The governance center is the family's sole injection point: it hands
+					// The runtime is the family's sole injection point: it hands
 					// out the resilience/fault/loadbalance authorities.
 				).Name(name).Destroy((*Client).Destroy).Caller(1)
 				if c.Health {
@@ -117,17 +118,17 @@ func init() {
 // discovery directory (nil when the key is unset, sentinel "none", or names
 // nothing, and the entry does not use service discovery).
 //
-// center is the governance center the container injects (nil in a standalone,
+// center is the runtime the container injects (nil in a standalone,
 // non-gs call) — the family's sole injection point. The Driver reads its
 // resilience, fault and loadbalance authorities from the center — not applied to
 // the Driver's product afterwards: the
 // Driver passes the bundle to [NewClient], which applies the resilience executor
 // and binds the pool the Driver built to the loadbalance authority. The client is therefore
 // assembled complete in one step, with the resilience manager required: the
-// container supplies it via the governance center, so a bundle without one
+// container supplies it via the runtime, so a bundle without one
 // fails at construction.
 func newClient(ctx *gs.ContextProvider, c Config, d Driver, discoveryLabel string,
-	center *governance.Center) (*Client, error) {
+	center *runtime.Runtime) (*Client, error) {
 	// The client's identity rides on a context derived here: every line below
 	// carries it without repeating it. The provider's own context is left
 	// alone — that one is the shared application context, not this
@@ -194,12 +195,12 @@ func newClient(ctx *gs.ContextProvider, c Config, d Driver, discoveryLabel strin
 // per-node via ClusterClient.OnNewNode, so the pool metrics cover every node
 // discovered.
 //
-// center is the governance center the container injects (nil in a standalone,
+// center is the runtime the container injects (nil in a standalone,
 // non-gs call) — the family's sole injection point; its resilience and fault
 // authorities are read from the center by the Driver, which builds the per-command executor while assembling
 // the client. Cluster mode self-discovers its nodes, so no endpoint-selection
 // pool exists and the bundle carries no loadbalance authority.
-func newClusterClient(ctx *gs.ContextProvider, c Config, d Driver, center *governance.Center) (*Client, error) {
+func newClusterClient(ctx *gs.ContextProvider, c Config, d Driver, center *runtime.Runtime) (*Client, error) {
 	// See newClient: the cluster's node list rides on a context derived here.
 	cctx := log.WithFields(ctx.Context, log.Strings("addrs", c.Addrs))
 

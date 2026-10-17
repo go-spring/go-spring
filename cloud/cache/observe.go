@@ -22,7 +22,7 @@ import (
 	"sync"
 	"time"
 
-	"go-spring.org/cloud/observability"
+	"go-spring.org/cloud/observability/attrs"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
@@ -111,7 +111,7 @@ func buildInstruments() *instrumentSet {
 	in.duration, _ = m.Float64Histogram("cache.operation.duration",
 		metric.WithDescription("Duration of cache operations, by operation and status"),
 		metric.WithUnit("s"),
-		metric.WithExplicitBucketBoundaries(observability.DurationBuckets()...))
+		metric.WithExplicitBucketBoundaries(attrs.DurationBuckets()...))
 	return in
 }
 
@@ -162,7 +162,7 @@ func (o observedCache) Delete(ctx context.Context, key string) error {
 //
 // fn's error is the outcome that gets reported, and it is returned unchanged.
 func (o observedCache) observe(ctx context.Context, op, key string, fn func(ctx context.Context) error) error {
-	ctx = observability.WithSpanAttributes(ctx,
+	ctx = attrs.WithSpanAttributes(ctx,
 		attribute.String("cache.operation", op),
 		attribute.String("cache.key", key))
 

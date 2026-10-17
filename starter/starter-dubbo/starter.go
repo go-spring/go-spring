@@ -60,7 +60,7 @@ func init() {
 
 // The dynamic-configuration poller (see dync.go).
 func init() {
-	// The governance center is the family's sole injection point: the poller
+	// The runtime is the family's sole injection point: the poller
 	// reads its resilience authority and its ready signal from here.
 	gs.Provide(newDyncPoller,
 		gs.IndexArg(0, gs.TagArg("${spring.dubbo.application}")),
@@ -92,7 +92,7 @@ func init() {
 	// instead.
 	extension.SetFilter(faultFilterKey, newFaultFilter)
 
-	// The governance center is the family's sole injection point: the hook
+	// The runtime is the family's sole injection point: the hook
 	// installs its fault authority into the package handle the filter reads.
 	gs.Provide(newInjectorHook).Export(gs.As[gs.Rooter]()).Caller(1)
 }

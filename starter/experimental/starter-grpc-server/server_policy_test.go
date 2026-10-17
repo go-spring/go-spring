@@ -24,11 +24,13 @@ import (
 	"testing"
 	"time"
 
-	"go-spring.org/cloud/governance/fault"
-	"go-spring.org/cloud/governance"
-	"go-spring.org/cloud/governance/guard"
-	"go-spring.org/cloud/loadbalance"
-	"go-spring.org/cloud/governance/resilience"
+	"go-spring.org/cloud/runtime"
+
+	"go-spring.org/cloud/runtime/controlplane/governance"
+	"go-spring.org/cloud/runtime/dataplane/fault"
+	"go-spring.org/cloud/runtime/dataplane/guard"
+	"go-spring.org/cloud/runtime/dataplane/loadbalance"
+	"go-spring.org/cloud/runtime/dataplane/resilience"
 	"go-spring.org/stdlib/testing/assert"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -39,14 +41,14 @@ import (
 	"google.golang.org/grpc/test/bufconn"
 )
 
-// testCenter builds the governance center the server takes. The resilience
+// testCenter builds the runtime the server takes. The resilience
 // authorities are real unarmed managers (construction dispatches into every
 // authority), and the injector is a real inert one, mirroring the DI wiring
 // where every bean is always present (an absent bean fails startup).
-func testCenter() *governance.Center {
+func testCenter() *runtime.Runtime {
 	driver := resilience.NewDefaultDriver(nil)
 	resClient := resilience.NewClientManager(driver)
-	ctr, err := governance.NewCenter(resClient, loadbalance.NewManager(),
+	ctr, err := runtime.New(resClient, loadbalance.NewManager(),
 		fault.NewClientManager(nil), fault.NewServerManager(nil), nil, governance.NewPushSource(governance.Config{}))
 	if err != nil {
 		panic(err)
@@ -55,7 +57,7 @@ func testCenter() *governance.Center {
 }
 
 // armRateLimit pushes a one-request rate budget into the center's guard authority.
-func armRateLimit(t *testing.T, ctr *governance.Center) {
+func armRateLimit(t *testing.T, ctr *runtime.Runtime) {
 	t.Helper()
 	assert.That(t, ctr.GuardServer().Apply(guard.Settings{
 		Default: guard.Policy{RateLimit: 1, Burst: 1},

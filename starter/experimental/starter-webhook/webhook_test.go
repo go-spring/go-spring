@@ -28,7 +28,7 @@ import (
 
 	"go-spring.org/stdlib/testing/assert"
 
-	"go-spring.org/cloud/observability"
+	"go-spring.org/cloud/runtime/dataplane/observability"
 )
 
 // TestBuildPayloadChannels pins each channel's payload shape: the receiver

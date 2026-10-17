@@ -36,7 +36,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"go-spring.org/cloud/chain"
+	"go-spring.org/cloud/runtime/dataplane/chain"
 	"io"
 	"net/http"
 	"os"
@@ -46,7 +46,7 @@ import (
 	"time"
 
 	"github.com/bradfitz/gomemcache/memcache"
-	"go-spring.org/cloud/discovery"
+	"go-spring.org/cloud/runtime/dataplane/discovery"
 	"go-spring.org/spring/gs"
 
 	_ "go-spring.org/starter-actuator"    // aggregates the memcached health.Indicator

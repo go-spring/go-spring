@@ -21,7 +21,7 @@ import (
 	"strings"
 	"sync"
 
-	"go-spring.org/cloud/observability"
+	"go-spring.org/cloud/observability/attrs"
 	"go-spring.org/stdlib/errutil"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/propagation"
@@ -80,11 +80,11 @@ func NewTracerProvider(cfg TraceConfig, res *resource.Resource) (*sdktrace.Trace
 	return sdktrace.NewTracerProvider(
 		sdktrace.WithBatcher(exp),
 		// Applies the attributes a context carries (see
-		// observability.WithSpanAttributes) to every span in the process,
+		// attrs.WithSpanAttributes) to every span in the process,
 		// including the ones instrumentation starts inside the framework.
 		// Registered alongside the batcher: the SDK keeps a list of processors,
 		// and this one holds no resources.
-		sdktrace.WithSpanProcessor(observability.SpanAttributesProcessor()),
+		sdktrace.WithSpanProcessor(attrs.SpanAttributesProcessor()),
 		// Tags every span of a load-test request, so synthetic traffic is
 		// separable from production traffic in traces and metrics. Reads the
 		// traffic contract; the marker package itself stays passive.

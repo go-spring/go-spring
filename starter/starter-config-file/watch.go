@@ -37,11 +37,11 @@ import (
 	"context"
 	"sync"
 
+	"go-spring.org/cloud/observability/conf"
 	"go-spring.org/stdlib/errutil"
 	"go-spring.org/stdlib/randutil"
 
 	"github.com/fsnotify/fsnotify"
-	"go-spring.org/cloud/observability"
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
 )
@@ -134,7 +134,7 @@ func watchLoop(w *fsnotify.Watcher, isCurrent func() bool) {
 		case e, ok := <-w.Events:
 			if ok {
 				// Stamp the trigger with the change's identity (which path changed)
-				// so the refresh records logged and metered by observability.RefreshConf
+				// so the refresh records logged and metered by conf.Refresh
 				// carry what this round is about. fsnotify hands over no revision, so
 				// the event name is all the identity available; a Kubernetes ConfigMap
 				// update surfaces here as the "..data" symlink.
@@ -143,7 +143,7 @@ func watchLoop(w *fsnotify.Watcher, isCurrent func() bool) {
 					log.String("path", e.Name),
 					log.String("op", e.Op.String()))
 				log.Info(ctx, starterTag, "watched file changed, triggering refresh")
-				_ = observability.RefreshConf(ctx, func(ctx context.Context) error {
+				_ = conf.Refresh(ctx, func(ctx context.Context) error {
 					return gs.RefreshProperties(ctx)
 				})
 				continue

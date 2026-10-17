@@ -23,8 +23,8 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	"go-spring.org/cloud/governance"
-	"go-spring.org/cloud/traffic"
+	"go-spring.org/cloud/runtime"
+	"go-spring.org/cloud/runtime/dataplane/traffic"
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
@@ -37,7 +37,7 @@ func init() {
 		NewSimpleGinServer,
 		gs.IndexArg(1, gs.TagArg("?")),
 		gs.IndexArg(2, gs.TagArg("${spring.gin.server}")),
-		// The governance center is the family's sole injection point: it hands
+		// The runtime is the family's sole injection point: it hands
 		// out the resilience/fault/loadbalance authorities.
 		gs.IndexArg(4, gs.TagArg("?")), // nullable traffic.Propagator bean
 	).Export(gs.As[gs.Server]()).
@@ -96,14 +96,14 @@ type SimpleGinServer struct {
 // outer is the application-supplied EngineMiddleware hook (nullable - nil when
 // none is provided); it runs before the built-in set so app middleware sits on
 // the outside of the chain. cfg is bound from ${spring.gin.server}. center is
-// the governance center bean (nullable - nil when governance is not imported),
+// the runtime bean (nullable - nil when governance is not imported),
 // whose resilience authority supplies the inbound middleware's
 // rate-limit / bulkhead / breaker policy and whose fault authority backs the
 // inbound fault middleware; both are handed to ApplyMiddlewares. prop is the
 // application's load-test convention bean (nullable - nil when none is
 // provided), which the inbound LoadTest middleware tags the request context
 // with.
-func NewSimpleGinServer(register RouterRegister, outer EngineMiddleware, cfg Config, center *governance.Center, prop traffic.Propagator) (*SimpleGinServer, error) {
+func NewSimpleGinServer(register RouterRegister, outer EngineMiddleware, cfg Config, center *runtime.Runtime, prop traffic.Propagator) (*SimpleGinServer, error) {
 	e := gin.New()
 
 	// Run the application-supplied outer hook first, so it wraps the built-in

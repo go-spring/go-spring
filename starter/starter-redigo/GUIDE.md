@@ -212,7 +212,7 @@ TracerProvider/MeterProvider（`spring.observability.*` 管理 exporter、采样
 
 ```go
 type Driver interface {
-    CreateClient(ctx context.Context, c Config, center *governance.Center) (*Pool, error)
+    CreateClient(ctx context.Context, c Config, center *runtime.Runtime) (*Pool, error)
 }
 ```
 
@@ -247,7 +247,7 @@ Driver bean；指定的 bean 不存在则启动失败）。
 ```go
 type MyDriver struct{}
 
-func (MyDriver) CreateClient(ctx context.Context, c StarterRedigo.Config, center *governance.Center) (*StarterRedigo.Pool, error) {
+func (MyDriver) CreateClient(ctx context.Context, c StarterRedigo.Config, center *runtime.Runtime) (*StarterRedigo.Pool, error) {
     // 复用标准装配，再按需定制（如 UseCommandInterceptor）；center 在 NewPool 内部应用。
     return StarterRedigo.NewPool(ctx, c, center)
 }

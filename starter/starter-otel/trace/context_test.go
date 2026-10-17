@@ -22,7 +22,7 @@ import (
 	"sync"
 	"testing"
 
-	"go-spring.org/cloud/observability"
+	"go-spring.org/cloud/observability/attrs"
 	"go-spring.org/stdlib/testing/assert"
 	"go.opentelemetry.io/otel/attribute"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
@@ -37,7 +37,7 @@ import (
 func newTestRecorderProvider() (*sdktrace.TracerProvider, *tracetest.SpanRecorder) {
 	rec := tracetest.NewSpanRecorder()
 	tp := sdktrace.NewTracerProvider(
-		sdktrace.WithSpanProcessor(observability.SpanAttributesProcessor()),
+		sdktrace.WithSpanProcessor(attrs.SpanAttributesProcessor()),
 		sdktrace.WithSpanProcessor(LoadTestProcessor()),
 		sdktrace.WithSpanProcessor(rec),
 	)
@@ -64,7 +64,7 @@ func attrsToString(attrs []attribute.KeyValue) string {
 func TestSpanAttributesReachSpansStartedBelow(t *testing.T) {
 	tp, rec := newTestRecorderProvider()
 
-	ctx := observability.WithSpanAttributes(context.Background(), attribute.String("tenant", "t1"))
+	ctx := attrs.WithSpanAttributes(context.Background(), attribute.String("tenant", "t1"))
 	_, span := tp.Tracer("test").Start(ctx, "framework-op")
 	span.End()
 
@@ -79,7 +79,7 @@ func TestSpanAttributesReachSpansStartedBelow(t *testing.T) {
 func TestSpanAttributesReachChildSpans(t *testing.T) {
 	tp, rec := newTestRecorderProvider()
 
-	ctx := observability.WithSpanAttributes(context.Background(), attribute.String("tenant", "t1"))
+	ctx := attrs.WithSpanAttributes(context.Background(), attribute.String("tenant", "t1"))
 	parentCtx, parent := tp.Tracer("test").Start(ctx, "parent")
 	_, child := tp.Tracer("test").Start(parentCtx, "child")
 	child.End()
@@ -110,7 +110,7 @@ func TestSpansWithoutCarrierAreUntouched(t *testing.T) {
 func TestSpanAttributesKeepStaticOnes(t *testing.T) {
 	tp, rec := newTestRecorderProvider()
 
-	ctx := observability.WithSpanAttributes(context.Background(), attribute.String("tenant", "t1"))
+	ctx := attrs.WithSpanAttributes(context.Background(), attribute.String("tenant", "t1"))
 	_, span := tp.Tracer("test").Start(ctx, "op",
 		oteltrace.WithAttributes(attribute.String("db.system", "redis")))
 	span.End()
@@ -124,7 +124,7 @@ func TestSpanAttributesKeepStaticOnes(t *testing.T) {
 func TestSpanAttributesLaterWins(t *testing.T) {
 	tp, rec := newTestRecorderProvider()
 
-	ctx := observability.WithSpanAttributes(context.Background(), attribute.String("k", "carried"))
+	ctx := attrs.WithSpanAttributes(context.Background(), attribute.String("k", "carried"))
 	_, span := tp.Tracer("test").Start(ctx, "op",
 		oteltrace.WithAttributes(attribute.String("k", "static")))
 	span.End()
@@ -173,7 +173,7 @@ func TestNewTracerProviderWiresSpanAttributes(t *testing.T) {
 	assert.Error(t, err).Nil()
 	defer func() { _ = tp.Shutdown(context.Background()) }()
 
-	ctx := observability.WithSpanAttributes(context.Background(), attribute.String("tenant", "t1"))
+	ctx := attrs.WithSpanAttributes(context.Background(), attribute.String("tenant", "t1"))
 	_, span := tp.Tracer("test").Start(ctx, "op")
 	span.End()
 	assert.Error(t, tp.ForceFlush(context.Background())).Nil()

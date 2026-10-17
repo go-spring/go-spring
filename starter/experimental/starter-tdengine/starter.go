@@ -18,9 +18,10 @@ package StarterTdengine
 
 import (
 	"context"
-	"go-spring.org/cloud/governance"
 	"strings"
 	"time"
+
+	"go-spring.org/cloud/runtime"
 
 	"go-spring.org/cloud/actuator/health"
 	"go-spring.org/log"
@@ -53,7 +54,7 @@ func init() {
 			r.Provide(newClient,
 				gs.IndexArg(1, gs.ValueArg(c)),
 				gs.IndexArg(2, gs.TagArg("${spring.tdengine.instances."+name+".driver:=${spring.tdengine.default.driver:=?}}")),
-				// The governance center is the family's sole injection point: it hands
+				// The runtime is the family's sole injection point: it hands
 				// out the resilience/fault/loadbalance authorities.
 			).Name(name).Destroy((*Client).Destroy).Caller(1)
 			// Contribute a health indicator for this instance, injecting the
@@ -76,11 +77,11 @@ func init() {
 // first use; the probe is off by default, so a server that is not up yet does
 // not block startup. A failed probe abandons the client.
 //
-// center is the governance center the container injects — the family's sole
+// center is the runtime the container injects — the family's sole
 // injection point; the ctor hands it to the driver, which passes it to
 // [NewClient]. The resilience manager is required — the container supplies it
-// via the governance center — so a center without one fails at construction.
-func newClient(ctx *gs.ContextProvider, c Config, d Driver, center *governance.Center) (*Client, error) {
+// via the runtime — so a center without one fails at construction.
+func newClient(ctx *gs.ContextProvider, c Config, d Driver, center *runtime.Runtime) (*Client, error) {
 	log.Debug(ctx.Context, log.TagAppDef, "creating tdengine client", func() []log.Field {
 		return []log.Field{
 			log.String("dsn_addr", dsnAddr(c.DSN)),

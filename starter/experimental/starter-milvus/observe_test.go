@@ -21,7 +21,7 @@ import (
 	"strings"
 	"testing"
 
-	"go-spring.org/cloud/chain"
+	"go-spring.org/cloud/runtime/dataplane/chain"
 	"go-spring.org/stdlib/testing/assert"
 	"go.opentelemetry.io/otel/attribute"
 	"google.golang.org/grpc"

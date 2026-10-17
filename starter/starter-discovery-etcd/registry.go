@@ -22,7 +22,7 @@ import (
 	"sync"
 	"time"
 
-	"go-spring.org/cloud/discovery"
+	"go-spring.org/cloud/runtime/controlplane/registration"
 	"go-spring.org/log"
 	"go-spring.org/stdlib/errutil"
 	clientv3 "go.etcd.io/etcd/client/v3"
@@ -60,7 +60,7 @@ type etcdRegistry struct {
 
 	// obs is the backend block's observability layer; it carries the identity
 	// (system, center) every reported attempt and log line is labelled with.
-	obs *discovery.Observer
+	obs *registration.Observer
 
 	// backoffBase/backoffCap pace the re-register retry loop after a keep-alive
 	// loss: 1s doubling up to 1min. Fields (not constants) so tests shrink them.
@@ -78,7 +78,7 @@ type etcdRegistry struct {
 type hold struct {
 	leaseID clientv3.LeaseID
 	cancel  context.CancelFunc
-	reg     discovery.Instance
+	reg     registration.Instance
 
 	// done is closed by stop to end the keep-alive drain and the re-register
 	// retry loop; stopOnce makes stop idempotent (Deregister + re-Register).
@@ -87,7 +87,7 @@ type hold struct {
 }
 
 // newHold builds a hold for reg with its stop signal wired up.
-func newHold(reg discovery.Instance) *hold {
+func newHold(reg registration.Instance) *hold {
 	return &hold{reg: reg, done: make(chan struct{})}
 }
 
@@ -126,7 +126,7 @@ func (r *etcdRegistry) stopHold(h *hold) {
 // newEtcdRegistry returns a registry writing through cli (the shared center
 // client; the cluster was already probed when cli was built) with c's prefix
 // and TTL. It does NOT close cli — the owner (etcdBackend) does.
-func newEtcdRegistry(c EtcdConfig, cli registryKV, obs *discovery.Observer) (*etcdRegistry, error) {
+func newEtcdRegistry(c EtcdConfig, cli registryKV, obs *registration.Observer) (*etcdRegistry, error) {
 	if cli == nil {
 		return nil, errutil.Explain(nil, "discovery-etcd: nil etcd client")
 	}
@@ -143,7 +143,7 @@ func newEtcdRegistry(c EtcdConfig, cli registryKV, obs *discovery.Observer) (*et
 
 // instanceID returns the instance id within the service: the caller-supplied ID,
 // or a stable one derived from the service name and advertised address.
-func instanceID(reg discovery.Instance) string {
+func instanceID(reg registration.Instance) string {
 	if reg.ID != "" {
 		return reg.ID
 	}
@@ -152,7 +152,7 @@ func instanceID(reg discovery.Instance) string {
 
 // keyFor returns the etcd key an instance is written under: prefix + service +
 // "/" + instance id.
-func (r *etcdRegistry) keyFor(reg discovery.Instance) string {
+func (r *etcdRegistry) keyFor(reg registration.Instance) string {
 	return r.keyPrefix + reg.ServiceName + "/" + instanceID(reg)
 }
 
@@ -196,7 +196,7 @@ func normalizeWeight(w int) int {
 // restart, lease lost), re-registers with backoff so the key never silently
 // vanishes. Registering the same instance again refreshes it: the previous
 // lease is revoked first.
-func (r *etcdRegistry) Register(ctx context.Context, reg discovery.Instance) error {
+func (r *etcdRegistry) Register(ctx context.Context, reg registration.Instance) error {
 	if err := errutil.RequireField("discovery-etcd", "addr", reg.Addr); err != nil {
 		return err
 	}
@@ -204,7 +204,7 @@ func (r *etcdRegistry) Register(ctx context.Context, reg discovery.Instance) err
 
 	h := newHold(reg)
 	var ka <-chan *clientv3.LeaseKeepAliveResponse
-	if err := r.obs.RegisterAttempt(ctx, reg.ServiceName, discovery.ReasonInitial, func(ctx context.Context) error {
+	if err := r.obs.RegisterAttempt(ctx, reg.ServiceName, registration.ReasonInitial, func(ctx context.Context) error {
 		var err error
 		ka, err = r.etcdPublish(ctx, h)
 		return err
@@ -306,7 +306,7 @@ func (r *etcdRegistry) watchKeepAlive(key string, h *hold, ka <-chan *clientv3.L
 		log.String("center", r.obs.Center()),
 		log.String("service", h.reg.ServiceName),
 		log.String("operation", "register"),
-		log.String("reason", discovery.ReasonSelfHeal),
+		log.String("reason", registration.ReasonSelfHeal),
 	)
 	for {
 		// Drain renewals; the lease is kept alive as long as we consume them.
@@ -329,12 +329,12 @@ func (r *etcdRegistry) watchKeepAlive(key string, h *hold, ka <-chan *clientv3.L
 			// failure being retried and the span recording it are one event in
 			// the trace, not two unconnected ones.
 			var nka <-chan *clientv3.LeaseKeepAliveResponse
-			err := r.obs.RegisterAttempt(ctx, h.reg.ServiceName, discovery.ReasonSelfHeal, func(actx context.Context) error {
+			err := r.obs.RegisterAttempt(ctx, h.reg.ServiceName, registration.ReasonSelfHeal, func(actx context.Context) error {
 				var err error
 				nka, err = r.etcdPublish(actx, h)
 				if err != nil {
 					log.Error(actx, starterTag, err, "re-register failed; retrying",
-						log.String("status", discovery.StatusOf(err)),
+						log.String("status", registration.StatusOf(err)),
 						log.String("key", key),
 						log.String("backoff", backoff.String()))
 					return err
@@ -364,7 +364,7 @@ func (r *etcdRegistry) watchKeepAlive(key string, h *hold, ka <-chan *clientv3.L
 // no lease is granted, revoked or re-kept-alive, so the instance never
 // disappears from discovery mid-update and watchers simply see a new value
 // for the same key. It fails if reg was never registered through Register.
-func (r *etcdRegistry) UpdateWeight(ctx context.Context, reg discovery.Instance, weight int) error {
+func (r *etcdRegistry) UpdateWeight(ctx context.Context, reg registration.Instance, weight int) error {
 	key := r.keyFor(reg)
 	r.mu.Lock()
 	h, ok := r.holds[key]
@@ -409,7 +409,7 @@ func (r *etcdRegistry) UpdateWeight(ctx context.Context, reg discovery.Instance,
 
 // Deregister stops the keep-alive and revokes the lease, which deletes the key.
 // It is idempotent: deregistering an instance that is not registered is a no-op.
-func (r *etcdRegistry) Deregister(ctx context.Context, reg discovery.Instance) error {
+func (r *etcdRegistry) Deregister(ctx context.Context, reg registration.Instance) error {
 	key := r.keyFor(reg)
 	r.mu.Lock()
 	h, ok := r.holds[key]

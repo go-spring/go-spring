@@ -22,7 +22,7 @@ import (
 	"strings"
 
 	"github.com/wneessen/go-mail"
-	"go-spring.org/cloud/governance"
+	"go-spring.org/cloud/runtime"
 	"go-spring.org/log"
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/gs"
@@ -33,7 +33,7 @@ import (
 func init() {
 	// Register one SMTP mailer bean per entry under "${spring.mail.instances}".
 	// A gs.Module (rather than gs.Group) is used so each
-	// instance's ctor can take the governance center alongside its config — the
+	// instance's ctor can take the runtime alongside its config — the
 	// *Mailer bean owns the resilience executor, which the ctor builds while
 	// assembling the mailer and Destroy tears down — and to attach the file:line of
 	// this registration to the bean for diagnostics. There is no default
@@ -47,7 +47,7 @@ func init() {
 			r.Provide(newMailer,
 				gs.IndexArg(1, gs.ValueArg(name)),
 				gs.IndexArg(2, gs.ValueArg(c)),
-				// The governance center is the family's sole injection point: it hands
+				// The runtime is the family's sole injection point: it hands
 				// out the resilience/fault/loadbalance authorities.
 			).Name(name).Destroy((*Mailer).Close).Caller(1)
 			return nil
@@ -59,12 +59,12 @@ func init() {
 // unknown auth/TLS mode, and (when Ping is enabled) probes the server once at
 // startup so a misconfiguration surfaces at boot rather than on the first send.
 //
-// center is the governance center the container injects — the family's sole
+// center is the runtime the container injects — the family's sole
 // injection point; the ctor hands it to the chain's governance layer, which
 // builds its executor from it, so the mailer is assembled complete in one step.
 // The resilience manager is required: the container supplies it via the
-// governance center, so a center without one fails at construction.
-func newMailer(ctx *gs.ContextProvider, name string, c Config, center *governance.Center) (*Mailer, error) {
+// runtime, so a runtime without one fails at construction.
+func newMailer(ctx *gs.ContextProvider, name string, c Config, center *runtime.Runtime) (*Mailer, error) {
 	if err := errutil.RequireField("mail", "host", c.Host); err != nil {
 		return nil, err
 	}
@@ -137,8 +137,8 @@ func newMailer(ctx *gs.ContextProvider, name string, c Config, center *governanc
 	// The chain owns everything, one statement per layer: identity over
 	// governance over the raw adapter. Governance is applied HERE, while the
 	// mailer is built, so a *Mailer cannot exist half-assembled; a hand-built
-	// mailer must supply a [governance.Center] over a [resilience.ClientManager], since
-	// the center is required to carry one — [governance.Center.ExecutorFor] panics
+	// mailer must supply a [runtime.Runtime] over a [resilience.ClientManager], since
+	// the center is required to carry one — [runtime.Runtime.ExecutorFor] panics
 	// otherwise, never a graceful downgrade.
 	raw := NewRawMailer(client, c.From)
 	guard := NewGuardMailer(raw, name, c.Host, center)

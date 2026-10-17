@@ -301,7 +301,7 @@ label 命中的 `spring.governance.client.rules[N].balancer` /
 suspension tracker 上走新策略。dialer 把拨号
 结果喂给 `Complete`，所以 `outlier-threshold` 摘的是**反复连不上**的实例；单条命令的失败归
 resilience executor 管。直连（只配 `addr`）的池没有候选集，这些 key 对它无效。详见
-`cloud/governance/README.md` §3.1。
+`cloud/runtime/controlplane/governance/README.md` §3.1。
 
 ### 4.4 验证缓存抽象接线
 

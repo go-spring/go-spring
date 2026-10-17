@@ -21,7 +21,7 @@ import (
 	"database/sql"
 	"database/sql/driver"
 	"errors"
-	"go-spring.org/cloud/discovery"
+	"go-spring.org/cloud/runtime/dataplane/discovery"
 	"strings"
 	"testing"
 

@@ -29,7 +29,7 @@ import (
 	"context"
 
 	"github.com/gocql/gocql"
-	"go-spring.org/cloud/chain"
+	"go-spring.org/cloud/runtime/dataplane/chain"
 )
 
 // InnerQuery is the terminal-execution seam a statement's traffic runs

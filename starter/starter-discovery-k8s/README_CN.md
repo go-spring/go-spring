@@ -7,7 +7,7 @@
 现对端，而不必再额外架一套外部注册中心（Nacos/Consul）造成能力重复。
 
 匿名导入本 starter 并声明一个 `spring.discovery.k8s.<name>` 命名块，即可得到一个名为
-`k8s.<name>` 的 `discovery.Discovery` 后端 bean（来自 `cloud/discovery`）——块到
+`k8s.<name>` 的 `discovery.Discovery` 后端 bean（来自 `cloud/runtime/dataplane/discovery`）——块到
 bean 的命名与家族其他注册中心后端（`consul.<name>`、`etcd.<name>`……）一致。任何支持
 服务发现的 client starter——Redis、GORM 等——只需把自己的 `discovery: k8s.<name>`
 字段指向它，就能把 Kubernetes **Service 名**解析成一组存活的 Pod 端点。本 starter

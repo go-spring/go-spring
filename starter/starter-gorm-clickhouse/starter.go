@@ -29,11 +29,11 @@ import (
 
 	ch "github.com/ClickHouse/clickhouse-go/v2"
 	"go-spring.org/cloud/actuator/health"
-	"go-spring.org/cloud/discovery"
-	"go-spring.org/cloud/governance"
-	"go-spring.org/cloud/governance/label"
-	"go-spring.org/cloud/loadbalance"
 	"go-spring.org/cloud/mesh"
+	"go-spring.org/cloud/runtime"
+	"go-spring.org/cloud/runtime/dataplane/discovery"
+	"go-spring.org/cloud/runtime/dataplane/label"
+	"go-spring.org/cloud/runtime/dataplane/loadbalance"
 	"go-spring.org/log"
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/gs"
@@ -60,7 +60,7 @@ func init() {
 			// bean-name space, so two dialects may carry an instance of the same
 			// name.
 			beanName := "clickhouse." + name
-			r.Provide(func(ctx *gs.ContextProvider, discoveryLabel string, center *governance.Center) (*gormcore.DB, error) {
+			r.Provide(func(ctx *gs.ContextProvider, discoveryLabel string, center *runtime.Runtime) (*gormcore.DB, error) {
 				// The wiring tag applies the family-default discovery fallback
 				// (discoveryLabel); fold it into the config so the dialect's build
 				// reads one label — c.Discovery — and resolves the backend itself,
@@ -101,7 +101,7 @@ func init() {
 // client. In mesh mode a sidecar owns discovery+LB, so the configured Addr is
 // used as-is. When c.ServiceName is empty this is a plain DSN dial, unchanged
 // from before.
-func build(ctx context.Context, c Config, center *governance.Center) (gormcore.Spec, error) {
+func build(ctx context.Context, c Config, center *runtime.Runtime) (gormcore.Spec, error) {
 	if c.Addr == "" && c.ServiceName == "" {
 		return gormcore.Spec{}, errutil.Explain(nil, "gorm clickhouse: one of addr or service-name must be set")
 	}

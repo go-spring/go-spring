@@ -28,12 +28,12 @@ import (
 	"net/http"
 	"sync"
 
-	"go-spring.org/cloud/chain"
-	"go-spring.org/cloud/governance/label"
+	"go-spring.org/cloud/runtime/dataplane/chain"
+	"go-spring.org/cloud/runtime/dataplane/label"
 
 	"github.com/minio/minio-go/v7"
-	"go-spring.org/cloud/governance"
-	"go-spring.org/cloud/governance/resilience"
+	"go-spring.org/cloud/runtime"
+	"go-spring.org/cloud/runtime/dataplane/resilience"
 )
 
 // Client is the wrapper bean S3 clients are injected as. It embeds the concrete
@@ -66,7 +66,7 @@ type Client struct {
 	dyn *dynamicTransport
 
 	// exec is the resilience executor protecting requests, built by [NewClient]
-	// from the [governance.Center] the container supplied; the center is required
+	// from the [runtime.Runtime] the container supplied; the center is required
 	// to carry a [resilience.ClientManager] rather than a bare client.
 	exec chain.Executor
 	// serviceLabel is the resilience service key ("s3:<endpoint>") exec scopes
@@ -82,17 +82,17 @@ type Client struct {
 // anything else (typically nil), and the client then runs with no declaration or
 // resilience transport because its HTTP transport is not reachable.
 //
-// center carries the container's facilities (see [governance.Center]), and is
+// center carries the container's facilities (see [runtime.Runtime]), and is
 // applied HERE so a Client cannot exist half-assembled: there is no Init step,
 // no later patching, and nothing the container has to remember to call. A
-// hand-built client must supply a [governance.Center] over a
-// [resilience.ClientManager]: [governance.Center.ResilienceClient] is required, so a nil
+// hand-built client must supply a [runtime.Runtime] over a
+// [resilience.ClientManager]: [runtime.Runtime.ResilienceClient] is required, so a nil
 // center is a construction error — never a graceful downgrade.
 //
 // The manager's ClientExecutorFor resolves its backing executor lazily, on each
 // Execute, so the call order relative to the center's wiring is
 // irrelevant.
-func NewClient(client *minio.Client, transport http.RoundTripper, cfg Config, center *governance.Center) *Client {
+func NewClient(client *minio.Client, transport http.RoundTripper, cfg Config, center *runtime.Runtime) *Client {
 	c := &Client{
 		Client: client,
 		cfg:    cfg,

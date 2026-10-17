@@ -18,9 +18,9 @@ package StarterS3
 
 import (
 	"context"
-	"go-spring.org/cloud/governance"
 
 	"go-spring.org/cloud/actuator/health"
+	"go-spring.org/cloud/runtime"
 	"go-spring.org/log"
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/gs"
@@ -41,7 +41,7 @@ func init() {
 		p = flatten.WithFallback(p, "spring.s3.instances", "spring.s3.default")
 		return conf.BindEach(p, "${spring.s3.instances}", func(name string, c Config) error {
 			// The wrapper bean owns the resilience executor, so the ctor builds it
-			// from the injected governance center and Destroy tears it down. The
+			// from the injected runtime and Destroy tears it down. The
 			// Driver bean is selected by the entry's ${driver}
 			// key: unset → "?" (nullable by-type — injects the single Driver bean
 			// when one is provided, nil otherwise, and the ctor falls back to the
@@ -50,7 +50,7 @@ func init() {
 			r.Provide(newClient,
 				gs.IndexArg(1, gs.ValueArg(c)),
 				gs.IndexArg(2, gs.TagArg("${spring.s3.instances."+name+".driver:=${spring.s3.default.driver:=?}}")),
-				// The governance center is the family's sole injection point: it hands
+				// The runtime is the family's sole injection point: it hands
 				// out the resilience/fault/loadbalance authorities.
 			).Name(name).Destroy((*Client).Destroy).Caller(1)
 			// Contribute a health indicator for this instance, injecting the
@@ -73,12 +73,12 @@ func init() {
 // fails fast rather than on first use; the probe is off by default, so an
 // endpoint that is not up yet does not block startup.
 //
-// center is the governance center — the family's sole injection point; the ctor
+// center is the runtime — the family's sole injection point; the ctor
 // hands it to the driver, which
 // passes it to [NewClient] — so the client is assembled complete in one step,
 // with the resilience manager required: the container supplies it via the
-// governance center, so a center without one fails at construction.
-func newClient(ctx *gs.ContextProvider, c Config, d Driver, center *governance.Center) (*Client, error) {
+// runtime, so a runtime without one fails at construction.
+func newClient(ctx *gs.ContextProvider, c Config, d Driver, center *runtime.Runtime) (*Client, error) {
 	log.Debug(ctx.Context, log.TagAppDef, "creating s3 client", func() []log.Field {
 		return []log.Field{
 			log.String("endpoint", c.Endpoint),

@@ -24,7 +24,8 @@ import (
 	"github.com/nacos-group/nacos-sdk-go/v2/clients/naming_client"
 	"github.com/nacos-group/nacos-sdk-go/v2/model"
 	"github.com/nacos-group/nacos-sdk-go/v2/vo"
-	"go-spring.org/cloud/discovery"
+	"go-spring.org/cloud/runtime/controlplane/registration"
+	"go-spring.org/cloud/runtime/dataplane/discovery"
 )
 
 // newTestObserver builds the observation layer a test's backend block would own.
@@ -173,4 +174,14 @@ func TestNacosDiscovery_ClusterScope(t *testing.T) {
 	if len(fake.clusters) != 0 {
 		t.Fatalf("empty cluster must span all clusters (nil filter), got %v", fake.clusters)
 	}
+}
+
+// newTestRegObserver is the write-side counterpart: registration owns its own
+// observer so the two planes stay independent in tests too.
+func newTestRegObserver() *registration.Observer {
+	o, err := registration.NewObserver(obsSystem, "test")
+	if err != nil {
+		panic(err)
+	}
+	return o
 }

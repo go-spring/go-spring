@@ -38,11 +38,11 @@ import (
 	"context"
 
 	"go-spring.org/cloud/cache"
-	"go-spring.org/cloud/loadbalance"
 	"go-spring.org/cloud/lock"
-	"go-spring.org/cloud/governance/resilience"
+	"go-spring.org/cloud/runtime/dataplane/loadbalance"
+	"go-spring.org/cloud/runtime/dataplane/resilience"
+	"go-spring.org/cloud/runtime/dataplane/traffic"
 	"go-spring.org/cloud/security"
-	"go-spring.org/cloud/traffic"
 	"go-spring.org/log"
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/gs"
@@ -187,7 +187,7 @@ func init() {
 // loadbalance registers the company balancer with the strategy registry.
 func init() {
 	// Registering from init is the whole extension — no change to
-	// cloud/loadbalance. The registered name IS the strategy name a selection
+	// cloud/runtime/dataplane/loadbalance. The registered name IS the strategy name a selection
 	// rule cites, and linking this package is what puts it there.
 	loadbalance.Register(luohuaStrategy, luohuaFactory)
 }

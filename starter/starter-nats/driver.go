@@ -23,10 +23,10 @@ package StarterNats
 
 import (
 	"context"
-	"go-spring.org/cloud/governance"
 
 	"github.com/nats-io/nats.go"
 	"github.com/nats-io/nats.go/jetstream"
+	"go-spring.org/cloud/runtime"
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
@@ -47,7 +47,7 @@ import (
 // [NewConn], which fixes the identity and the governance exec — and nothing
 // patches the connection afterwards.
 //
-// center supplies the container's facilities (see [governance.Center]); it is
+// center supplies the container's facilities (see [runtime.Runtime]); it is
 // one object rather than a parameter per capability so this interface — which
 // every company driver implements — stays stable as capabilities are added. A
 // driver that has no use for one of its authorities simply ignores it.
@@ -56,7 +56,7 @@ import (
 // ${spring.nats} is built through it, and per-instance differences are expressed
 // through [Config].
 type Driver interface {
-	CreateClient(ctx context.Context, c Config, center *governance.Center) (*Conn, error)
+	CreateClient(ctx context.Context, c Config, center *runtime.Runtime) (*Conn, error)
 }
 
 // DefaultDriver is the default implementation of the Driver interface.
@@ -72,7 +72,7 @@ type DefaultDriver struct{}
 // A custom Driver that omits the handlers therefore reports no connection-layer
 // events at all, rather than losing them to a starter-side override: nats.Conn's
 // Set*Handler methods replace a slot, so the two cannot be layered.
-func (DefaultDriver) CreateClient(ctx context.Context, c Config, center *governance.Center) (*Conn, error) {
+func (DefaultDriver) CreateClient(ctx context.Context, c Config, center *runtime.Runtime) (*Conn, error) {
 	// Connection-layer events are counted as well as logged, from this one
 	// place (see connStateCounter for why the pair cannot be split).
 	connState := newConnStateCounter()
@@ -161,13 +161,13 @@ func (DefaultDriver) CreateClient(ctx context.Context, c Config, center *governa
 // reconnect, close) are bridged into go-spring's log by the driver's handlers so
 // they show up alongside app logs.
 //
-// center is the governance center the container injects — the family's sole
+// center is the runtime the container injects — the family's sole
 // injection point; the ctor hands it to the driver, which passes it to
 // [NewConn] — so the connection is assembled complete in one step, with the
 // resilience manager required: the container supplies it via the governance
 // center, so a center without one fails at construction.
 func newConn(ctx *gs.ContextProvider, name string, c Config, d Driver,
-	center *governance.Center) (*Conn, error) {
+	center *runtime.Runtime) (*Conn, error) {
 	// The connection's identity rides on a context derived here: every line
 	// below carries it without repeating it. The provider's own context is left
 	// alone — that one is the shared application context, not this

@@ -18,7 +18,7 @@ package StarterRabbitMQ
 
 import (
 	"context"
-	"go-spring.org/cloud/chain"
+	"go-spring.org/cloud/runtime/dataplane/chain"
 	"go.opentelemetry.io/otel/attribute"
 	"strings"
 	"testing"

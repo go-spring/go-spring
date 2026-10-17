@@ -29,12 +29,12 @@ import (
 	"github.com/hertz-contrib/cors"
 	"github.com/hertz-contrib/gzip"
 	"github.com/hertz-contrib/requestid"
-	"go-spring.org/cloud/governance"
-	"go-spring.org/cloud/governance/guard"
-	"go-spring.org/cloud/governance/label"
-	"go-spring.org/cloud/observability"
 	"go-spring.org/cloud/propagate"
-	"go-spring.org/cloud/traffic"
+	"go-spring.org/cloud/runtime"
+	"go-spring.org/cloud/runtime/dataplane/guard"
+	"go-spring.org/cloud/runtime/dataplane/label"
+	"go-spring.org/cloud/runtime/dataplane/observability"
+	"go-spring.org/cloud/runtime/dataplane/traffic"
 	"go-spring.org/log"
 	"go-spring.org/stdlib/errutil"
 )
@@ -77,7 +77,7 @@ func RequestIDFromContext(ctx context.Context) string {
 // 403) are still logged. Body limiting is handled by the engine option
 // WithMaxRequestBodySize, not a middleware, so an over-limit 413 is likewise
 // logged.
-func applyMiddlewares(h *server.Hertz, cfg Config, center *governance.Center, prop traffic.Propagator) error {
+func applyMiddlewares(h *server.Hertz, cfg Config, center *runtime.Runtime, prop traffic.Propagator) error {
 	mw := cfg.Middleware
 
 	// LoadTest identification is outermost of all so the marker is on the
@@ -133,7 +133,7 @@ func applyMiddlewares(h *server.Hertz, cfg Config, center *governance.Center, pr
 // buildServerPolicy builds the inbound governance middleware. It drives the
 // guard's Admit/Done pair and maps a refusal to 429 (rate limit / bulkhead) or
 // 503 (circuit open / degraded / injected fault).
-func buildServerPolicy(in *governance.Inbound) app.HandlerFunc {
+func buildServerPolicy(in *runtime.Inbound) app.HandlerFunc {
 	return func(ctx context.Context, c *app.RequestContext) {
 		op := observability.ServerOperation{Action: actionName(c)}
 		err := in.Run(ctx, op, func(ctx context.Context) error {
@@ -144,7 +144,7 @@ func buildServerPolicy(in *governance.Inbound) app.HandlerFunc {
 			return nil
 		})
 		if err != nil {
-			var ref *governance.Refusal
+			var ref *runtime.Refusal
 			if errors.As(err, &ref) && !c.Response.IsBodyStream() && c.Response.StatusCode() == 0 {
 				c.AbortWithStatus(httpStatusFor(ref.Verdict()))
 			}
@@ -182,15 +182,6 @@ func actionName(c *app.RequestContext) string {
 	return action
 }
 
-// buildFault builds the inbound fault-injection middleware. It gates the handler
-// call with [fault.Server.Fire] so a configured fraction of inbound requests fail or
-// slow down — the server-side counterpart to the client starters'
-// fault.ClientManager.WrapClientExecutor. The injector is captured once, from the bean the server
-// constructor was given; when it is nil Apply is a transparent pass-through.
-// Capturing it rather than re-resolving per request is what lets a config swap
-// on the injector bean take effect in place. The request is named by
-// [faultTarget], so an inbound rule can target one route instead of the whole
-// entrance.
 // accessLogSkipSet builds the set of paths the access log should not record. It
 // merges the operator-configured skip list with the health endpoint path, so
 // liveness/readiness probes never flood the log.
@@ -209,7 +200,7 @@ func accessLogSkipSet(cfg Config) map[string]struct{} {
 // When the incoming request carries the configured marker header (default
 // X-LoadTest) it tags the request context, so handlers and outbound clients can
 // recognise synthetic load through the propagator's IsLoadTest. It is the
-// inbound companion to cloud/traffic's outbound injection: together
+// inbound companion to cloud/runtime/dataplane/traffic's outbound injection: together
 // they let a load-test flag ride an HTTP hop end to end. An empty header falls
 // back to the propagator.s own header name.
 // Without the marker it is a no-op. Hertz stores headers as []byte; Peek returns

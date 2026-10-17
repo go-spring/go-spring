@@ -23,15 +23,15 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	"go-spring.org/cloud/governance"
-	"go-spring.org/cloud/governance/fault"
-	"go-spring.org/cloud/governance/guard"
-	"go-spring.org/cloud/governance/label"
-	"go-spring.org/cloud/observability"
+	"go-spring.org/cloud/runtime"
+	"go-spring.org/cloud/runtime/dataplane/fault"
+	"go-spring.org/cloud/runtime/dataplane/guard"
+	"go-spring.org/cloud/runtime/dataplane/label"
+	"go-spring.org/cloud/runtime/dataplane/observability"
 )
 
 // buildServerPolicy builds the inbound governance middleware. The inbound
-// governance object comes from the injected [governance.Center], so this server
+// governance object comes from the injected [runtime.Runtime], so this server
 // gets its rate-limit / bulkhead / breaker limits from the governance document's
 // SERVER block (spring.governance.server.*). A nil center — a standalone call, or
 // an app that does not import governance — is normalized inside the center to an
@@ -41,7 +41,7 @@ import (
 // can tighten inbound governance without a restart, independently of every
 // outbound client's policy. The center composes the observe object around the
 // guard, so breaker trips / rejects emit span + counter + histogram + access log.
-func buildServerPolicy(cfg Config, center *governance.Center) (gin.HandlerFunc, error) {
+func buildServerPolicy(cfg Config, center *runtime.Runtime) (gin.HandlerFunc, error) {
 	service := label.ServiceLabel("gin", cfg.Address)
 	return resilienceServerPolicy(center.InboundFor("gin", service)), nil
 }
@@ -57,7 +57,7 @@ func buildServerPolicy(cfg Config, center *governance.Center) (gin.HandlerFunc, 
 // [guard.Policy] has no retry field, so the engine built from the
 // server block has no retry stage at all; a Written() guard also prevents reentry
 // regardless.
-func resilienceServerPolicy(in *governance.Inbound) gin.HandlerFunc {
+func resilienceServerPolicy(in *runtime.Inbound) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var served bool
 		// The object emits the request span, the inbound family metrics and the
@@ -78,7 +78,7 @@ func resilienceServerPolicy(in *governance.Inbound) gin.HandlerFunc {
 			}
 			return nil
 		})
-		var ref *governance.Refusal
+		var ref *runtime.Refusal
 		if errors.As(err, &ref) && !c.Writer.Written() {
 			c.AbortWithStatus(httpStatusFor(ref.Verdict()))
 		}

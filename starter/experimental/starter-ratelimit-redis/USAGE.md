@@ -2,17 +2,17 @@
 
 Detailed usage reference. Overview: [README.md](README.md). Every behavior claim below is verified
 against the starter source (`starter.go`, `config.go`), the counter implementation in
-`starter-go-redis/experimental/ratelimit.go`, the [governance wiring](../../cloud/governance/starter.go)
+`starter-go-redis/experimental/ratelimit.go`, the [governance wiring](../../cloud/runtime/controlplane/governance/starter.go)
 that makes the store reach the driver bean, and the self-asserting [example/](example)
 (`example/check.sh`). Rate-limiting semantics themselves are documented in
-`cloud/governance/resilience` — everything below is this starter's increment.
+`cloud/runtime/dataplane/resilience` — everything below is this starter's increment.
 
 **Activation**: any `spring.ratelimit.redis.*` key arms the starter's module, and the block's one key
 must be set: `spring.ratelimit.redis.client` names the `*goredis.Client` bean (provided by
 starter-go-redis under `spring.go-redis.instances.<client>`) whose Redis instance backs the
 counters. The starter contributes ONE bean of type `resilience.ClusterLimiter`. With none in the container
 each executor counts in a budget of its own, so contributing this one is the whole switch:
-[cloud/governance](../../../cloud/governance/README.md)'s driver bean injects it, and every executor in the
+[cloud/runtime/controlplane/governance](../../../cloud/runtime/controlplane/governance/README.md)'s driver bean injects it, and every executor in the
 process then spends one Redis budget per scope — across replicas, which an executor-local budget
 cannot do.
 
@@ -67,7 +67,7 @@ import (
     "errors"
     "net/http"
 
-    "go-spring.org/cloud/governance/resilience"
+    "go-spring.org/cloud/runtime/dataplane/resilience"
     "go-spring.org/spring/gs"
 )
 

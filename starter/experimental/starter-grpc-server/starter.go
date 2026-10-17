@@ -21,9 +21,9 @@ import (
 	"net"
 	"time"
 
-	"go-spring.org/cloud/governance"
+	"go-spring.org/cloud/runtime"
+	"go-spring.org/cloud/runtime/dataplane/traffic"
 	"go-spring.org/cloud/security"
-	"go-spring.org/cloud/traffic"
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
@@ -40,7 +40,7 @@ func init() {
 		gs.IndexArg(0, gs.TagArg("${spring.grpc.server}")),
 		gs.IndexArg(2, gs.TagArg("?")), // nullable []grpc.UnaryServerInterceptor beans
 		gs.IndexArg(3, gs.TagArg("?")), // nullable []grpc.StreamServerInterceptor beans
-		// The governance center is the family's sole injection point: it hands
+		// The runtime is the family's sole injection point: it hands
 		// out the resilience/fault/loadbalance authorities.
 		gs.IndexArg(5, gs.TagArg("?")), // nullable traffic.Propagator bean
 	).Export(gs.As[gs.Server]()).
@@ -71,7 +71,7 @@ type HealthConfig struct {
 // LoadTest interceptors read the propagator's marker key off the incoming
 // metadata and tag the handler context, so tracing, metrics, resilience and the
 // handler itself can branch on the propagator's IsLoadTest(ctx). It is the gRPC
-// inbound counterpart to cloud/traffic's outbound carrier injection.
+// inbound counterpart to cloud/runtime/dataplane/traffic's outbound carrier injection.
 type LoadTestConfig struct {
 	Enabled bool `value:"${enabled:=true}"`
 }
@@ -123,10 +123,10 @@ type SimpleGrpcServer struct {
 	// []grpc.StreamServerInterceptor) — per-container, no package-level stack.
 	userUnary  []grpc.UnaryServerInterceptor
 	userStream []grpc.StreamServerInterceptor
-	// center is the governance center bean (nil when governance is not
+	// center is the runtime bean (nil when governance is not
 	// imported); its fault authority backs the always-installed fault
 	// interceptors and its resilience authority supplies the inbound policy.
-	center *governance.Center
+	center *runtime.Runtime
 	// prop is the load-test convention bean — the application.s when it provides
 	// one, go-spring.s default otherwise — the LoadTest interceptors read the inbound marker
 	// through it.
@@ -148,7 +148,7 @@ type SimpleGrpcServer struct {
 // otherwise — handed to the LoadTest interceptors.
 func NewSimpleGrpcServer(cfg Config, reg ServiceRegister,
 	userUnary []grpc.UnaryServerInterceptor, userStream []grpc.StreamServerInterceptor,
-	center *governance.Center, prop traffic.Propagator) *SimpleGrpcServer {
+	center *runtime.Runtime, prop traffic.Propagator) *SimpleGrpcServer {
 	log.Debug(context.Background(), log.TagAppDef, "create grpc server success", func() []log.Field {
 		return []log.Field{log.String("addr", cfg.Addr)}
 	})

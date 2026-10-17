@@ -2,7 +2,7 @@ go 1.26.1
 
 use (
 	./cloud
-	./cloud/observability/example-otel
+	./cloud/runtime/dataplane/observability/example-otel
 	./cloud/experimental/session/example
 	./cloud/experimental/loadtest/example
 	./cloud/lock/example
@@ -240,7 +240,7 @@ use (
 	./starter/starter-gorm-sqlserver/example
 	./starter/starter-gorm-sqlserver/example-load
 	./starter/starter-gorm-sqlserver/example-otel
-	./cloud/governance/example
+	./cloud/runtime/controlplane/governance/example
 	./starter/starter-governance-etcd
 	./starter/starter-governance-etcd/example
 	./starter/starter-governance-nacos

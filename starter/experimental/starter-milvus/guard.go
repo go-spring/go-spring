@@ -31,7 +31,7 @@ package StarterMilvus
 
 import (
 	"context"
-	"go-spring.org/cloud/chain"
+	"go-spring.org/cloud/runtime/dataplane/chain"
 	"sync"
 
 	"google.golang.org/grpc"

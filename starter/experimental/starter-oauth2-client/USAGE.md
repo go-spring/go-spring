@@ -60,7 +60,7 @@ import (
 type Service struct {
     // Ready-to-use client: fetches and refreshes the bearer token, attaches it
     // to every request, retries/breaks via the executor read from the injected
-    // *governance.Center (center).
+    // *runtime.Runtime (center).
     Client *http.Client `autowire:"downstream"`
     // Raw token source for non-HTTP call sites (gRPC metadata, WebSocket).
     // NOTE: not resilience-wrapped — see §2.3.
@@ -99,7 +99,7 @@ spring.oauth2.authcode.instances.login.scopes=openid,profile
 
 # --- governance (resilience for the *http.Client transport) ------------------
 # Same service label as the client: oauth2:<client-id>.
-# NOTE: governance RULES go in conf/governance.properties, referenced by spring.governance.source.file.path in app.properties (see cloud/governance's SOURCE_USAGE).
+# NOTE: governance RULES go in conf/governance.properties, referenced by spring.governance.source.file.path in app.properties (see cloud/runtime/controlplane/governance's SOURCE_USAGE).
 spring.resilience.driver=default
 spring.governance.client.default.max-retries=3
 spring.governance.client.default.error-threshold=10
@@ -196,7 +196,7 @@ resilience. You call `AuthCodeURL(state)` and `Exchange(ctx, code)` yourself; th
 4. The access token is cached; the `Authorization: Bearer <token>` header is set on the
    outbound request *before* the base transport runs.
 5. `resilience.NewRoundTripper` executes the request through the executor the constructor
-   reads from the injected `*governance.Center` (`center`) via
+   reads from the injected `*runtime.Runtime` (`center`) via
    `center.ResilienceClient().ClientExecutorFor("oauth2", "oauth2:<client-id>")` — retry / circuit
    breaker / rate limit policy from the governance document. The center is the governance
    family's sole injection point (a required bean in a gs app); an unarmed center — or a nil one

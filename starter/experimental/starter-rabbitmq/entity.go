@@ -27,8 +27,8 @@ import (
 	"context"
 
 	amqp "github.com/rabbitmq/amqp091-go"
-	"go-spring.org/cloud/chain"
-	"go-spring.org/cloud/observability"
+	"go-spring.org/cloud/runtime/dataplane/chain"
+	"go-spring.org/cloud/runtime/dataplane/observability"
 )
 
 // Client wraps an AMQP connection. It holds exactly two exported things: the

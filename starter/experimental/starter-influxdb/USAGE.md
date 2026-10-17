@@ -167,7 +167,7 @@ gs.Run()
   │       several Driver beans coexist, the entry selects one by name:
   │       spring.influxdb.instances.<name>.driver = <bean-name> (empty = the single
   │       Driver bean by type; naming a missing bean fails startup)
-  │    2. the ctor hands the injected *governance.Center (variable center) to
+  │    2. the ctor hands the injected *runtime.Runtime (variable center) to
   │       driver.CreateClient(ctx, c, center) [driver.go:67]
   │    3. driver.CreateClient → NewClient [client.go:102]: builds the executor
   │       exec = center.ExecutorFor("influxdb", "influxdb:<server-url>") from the
@@ -187,7 +187,7 @@ gs.Run()
 `driver.go:52`). A company/umbrella starter may provide its own `Driver` as an **optional
 container bean** (a `gs.Provide(func() StarterInfluxdb.Driver{...})`, so it can inject config
 bound from the properties file at wiring time); every instance under `spring.influxdb` is then
-built through it. The driver receives the injected `*governance.Center` along with the config
+built through it. The driver receives the injected `*runtime.Runtime` along with the config
 and returns the module's `*Client` — it builds the raw client and hands it to `NewClient`
 together with `center`, which applies governance while the client is built; a custom driver that
 installs no `dynamicTransport` gets a client with no transport-level declaration/governance.
@@ -260,7 +260,7 @@ pending batches.
 The SDK fixes the `*http.Client` at construction (`Options.SetHTTPClient`), but the
 declaration/governance chain is built from beans the driver must not depend on. DefaultDriver
 therefore installs a pass-through `dynamicTransport` [driver.go:68-72] and hands it to
-`NewClient`, which the driver calls with the `*governance.Center`; `NewClient` then
+`NewClient`, which the driver calls with the `*runtime.Runtime`; `NewClient` then
 swaps the real chain in while it builds the client [client.go:102-113] — so there is no window
 between construction and governance: the chain is live the moment the driver returns. A custom
 driver that passes no such transport gets a client with no transport-level

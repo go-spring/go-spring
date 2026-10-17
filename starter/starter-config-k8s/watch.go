@@ -26,7 +26,7 @@ import (
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/tools/cache"
 
-	"go-spring.org/cloud/observability"
+	"go-spring.org/cloud/observability/conf"
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
@@ -79,7 +79,7 @@ func objVersion(obj any) string {
 // context of their own, so the log line carries the event's identity in full.
 // The refresh itself runs on the application's own context; its outcome
 // (status, duration, error) is logged and metered centrally by
-// observability.RefreshConf.
+// conf.Refresh.
 func (c *k8sCtrl) trigger(id string, obj any, event string) {
 	ctx := log.RootFields(
 		log.String("trace_id", randutil.Hex(16)),
@@ -91,7 +91,7 @@ func (c *k8sCtrl) trigger(id string, obj any, event string) {
 		c.onTrigger()
 		return
 	}
-	_ = observability.RefreshConf(ctx, func(ctx context.Context) error {
+	_ = conf.Refresh(ctx, func(ctx context.Context) error {
 		return gs.RefreshProperties(ctx)
 	})
 }
@@ -138,7 +138,7 @@ func (c *k8sCtrl) ensureWatch(ctx context.Context, client k8sClient, cs configSo
 	handler := cache.ResourceEventHandlerFuncs{
 		// Stamp each trigger with the change's identity (which object, which
 		// resourceVersion) so the refresh records logged and metered by
-		// observability.RefreshConf carry what this round is about. The
+		// conf.Refresh carry what this round is about. The
 		// resourceVersion doubles as the refresh identifier: it advances on
 		// every write to the object, so two refreshes from the same object are
 		// distinguishable. UpdateFunc stamps the new object's version.

@@ -79,7 +79,7 @@ Luohua deliberately brings **no governance engine of its own** — outbound call
 already funnel through the `resilience.ClientManager` / `fault.ClientManager` beans the
 governance starter registers, under the single governance authority, and a company
 that has no bespoke backend should ride the official one and pin its policy per
-fleet. Do that in a governance rules document (see cloud/governance's SOURCE_USAGE.md):
+fleet. Do that in a governance rules document (see cloud/runtime/controlplane/governance's SOURCE_USAGE.md):
 
 ```properties
 spring.resilience.driver=default

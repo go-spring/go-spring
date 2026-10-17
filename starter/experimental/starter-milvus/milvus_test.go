@@ -18,11 +18,11 @@ package StarterMilvus
 
 import (
 	"context"
-	"go-spring.org/cloud/chain"
+	"go-spring.org/cloud/runtime/dataplane/chain"
 	"testing"
 
 	"github.com/milvus-io/milvus-sdk-go/v2/client"
-	"go-spring.org/cloud/governance/resilience"
+	"go-spring.org/cloud/runtime/dataplane/resilience"
 	"go-spring.org/stdlib/testing/assert"
 	"google.golang.org/grpc"
 )

@@ -17,7 +17,7 @@
 package StarterNeo4j
 
 import (
-	"go-spring.org/cloud/chain"
+	"go-spring.org/cloud/runtime/dataplane/chain"
 	"strings"
 	"testing"
 

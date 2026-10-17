@@ -18,11 +18,12 @@ package StarterHTTPClient
 
 import (
 	"context"
-	"go-spring.org/cloud/governance"
 	"net/http"
 
-	"go-spring.org/cloud/discovery"
-	"go-spring.org/cloud/traffic"
+	"go-spring.org/cloud/runtime"
+
+	"go-spring.org/cloud/runtime/dataplane/discovery"
+	"go-spring.org/cloud/runtime/dataplane/traffic"
 	"go-spring.org/starter-http-client/httpx"
 )
 
@@ -57,7 +58,7 @@ import (
 // passed as an argument rather than carried on Config so a custom driver can
 // actually reach it — Config stays a pure bound value.
 //
-// center is the governance center the container injected into the starter —
+// center is the runtime the container injected into the starter —
 // the family's sole injection point, required (wiring fails fast when no
 // center bean exists).
 // It is handed to the driver rather than read from a package-level seam, so
@@ -65,7 +66,7 @@ import (
 // DefaultDriver forwards it to [httpx.NewTransport] verbatim. prop is the application's load-test convention
 // bean (nil when none is provided), forwarded the same way.
 type Driver interface {
-	CreateTransport(ctx context.Context, name string, c Config, backend discovery.Discovery, center *governance.Center, prop traffic.Propagator) (rt http.RoundTripper, close func() error, err error)
+	CreateTransport(ctx context.Context, name string, c Config, backend discovery.Discovery, center *runtime.Runtime, prop traffic.Propagator) (rt http.RoundTripper, close func() error, err error)
 }
 
 // DefaultDriver is the default implementation of the Driver interface: the
@@ -77,6 +78,6 @@ type DefaultDriver struct{}
 // governance-resolved resilience executor, fault + observe wrap — is owned by
 // starter-http-client/httpx; see [httpx.NewTransport]. mgr, inj and prop are
 // forwarded verbatim: httpx owns how they are used and what a nil means.
-func (DefaultDriver) CreateTransport(ctx context.Context, name string, c Config, backend discovery.Discovery, center *governance.Center, prop traffic.Propagator) (http.RoundTripper, func() error, error) {
+func (DefaultDriver) CreateTransport(ctx context.Context, name string, c Config, backend discovery.Discovery, center *runtime.Runtime, prop traffic.Propagator) (http.RoundTripper, func() error, error) {
 	return httpx.NewTransport(c.toTransportConfig(backend), center, prop)
 }

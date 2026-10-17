@@ -55,7 +55,7 @@ starter,并通过它们的公开缝提供一整家组织的默认 —— 身份�
 把本实例注册进注册中心，和/或把服务名解析成实时端点。每个后端都配置在
 `${spring.discovery.<backend>.<name>}` 命名块下，客户端按 bean 名引用
 （`discovery: consul.main`）。发布生命周期本身——那个统一驱动所有中心的
-`Server`——住在 [`cloud/discovery`](../cloud/discovery/README.md)；这里的
+`Server`——住在 [`cloud/runtime/dataplane/discovery`](../cloud/runtime/dataplane/discovery/README.md)；这里的
 starter 只贡献各自的 `Registry`。
 
 | Starter | 底层库 | 领域 |

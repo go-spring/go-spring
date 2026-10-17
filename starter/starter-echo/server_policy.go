@@ -23,10 +23,10 @@ import (
 	"net/http"
 
 	"github.com/labstack/echo/v4"
-	"go-spring.org/cloud/governance"
-	"go-spring.org/cloud/governance/guard"
-	"go-spring.org/cloud/governance/label"
-	"go-spring.org/cloud/observability"
+	"go-spring.org/cloud/runtime"
+	"go-spring.org/cloud/runtime/dataplane/guard"
+	"go-spring.org/cloud/runtime/dataplane/label"
+	"go-spring.org/cloud/runtime/dataplane/observability"
 	"go-spring.org/log"
 	"go.opentelemetry.io/otel/attribute"
 )
@@ -35,7 +35,7 @@ import (
 // executor is built from the injected [guard.Manager], so this server gets
 // its rate-limit / bulkhead / breaker limits from the governance document's SERVER
 // block (spring.governance.server.*)
-// WITHOUT naming *governance.Center. A nil manager — a standalone call, or an app
+// without the server package owning how that runtime is assembled. A nil runtime — a standalone call, or an app
 // that does not import — is normalized to an unarmed one,
 // whose executor is a transparent pass-through, so the inbound middleware runs
 // but never rejects (next runs once, untouched). The executor handle resolves its
@@ -45,7 +45,7 @@ import (
 //
 // The label is "echo:<address>", the same one the fault middleware's sibling
 // tables use for this server, so one governance rule covers the whole inbound side.
-func buildServerPolicy(cfg Config, center *governance.Center) echo.MiddlewareFunc {
+func buildServerPolicy(cfg Config, center *runtime.Runtime) echo.MiddlewareFunc {
 	service := label.ServiceLabel("echo", cfg.Address)
 	return resilienceServerPolicy(center.InboundFor("echo", service), service, observeEnabled(cfg))
 }
@@ -60,7 +60,7 @@ func buildServerPolicy(cfg Config, center *governance.Center) echo.MiddlewareFun
 // effects cannot be replayed (inbound serving is not idempotent). Leave
 // [guard.Policy] has no retry field at all, so the executor built from the
 // server block has no retry stage; the committed guard also prevents reentry.
-func resilienceServerPolicy(in *governance.Inbound, service string, observe bool) echo.MiddlewareFunc {
+func resilienceServerPolicy(in *runtime.Inbound, service string, observe bool) echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
 			ctx := c.Request().Context()
@@ -69,7 +69,7 @@ func resilienceServerPolicy(in *governance.Inbound, service string, observe bool
 			var handlerErr error
 			// run executes the handler chain. h is the split-form observation when
 			// observe is on (so the response half can be recorded), nil otherwise.
-			run := func(ctx context.Context, h *governance.Hooks) error {
+			run := func(ctx context.Context, h *runtime.Hooks) error {
 				if served {
 					return nil // reentry guard: handler already ran this request
 				}
@@ -108,7 +108,7 @@ func resilienceServerPolicy(in *governance.Inbound, service string, observe bool
 			} else {
 				// Observability off: governance still runs, silently.
 				if gErr := in.GovernedRun(ctx, operation(c), func(ctx context.Context) error { return run(ctx, nil) }); gErr != nil {
-					var ref *governance.Refusal
+					var ref *runtime.Refusal
 					if errors.As(gErr, &ref) {
 						return renderInjectedOrRefusal(c, gErr)
 					}
@@ -130,7 +130,7 @@ func renderRefusal(err error) error {
 	if err == nil {
 		return nil
 	}
-	var ref *governance.Refusal
+	var ref *runtime.Refusal
 	if errors.As(err, &ref) {
 		return echo.NewHTTPError(httpStatusFor(ref.Verdict()), ref.Error())
 	}
@@ -141,7 +141,7 @@ func renderRefusal(err error) error {
 // shape the standalone fault middleware used) and renders any other refusal as
 // an echo HTTP error.
 func renderInjectedOrRefusal(c echo.Context, err error) error {
-	var ref *governance.Refusal
+	var ref *runtime.Refusal
 	if errors.As(err, &ref) && ref.Verdict() == guard.VerdictFaultInjected {
 		return c.String(http.StatusServiceUnavailable, "service unavailable")
 	}

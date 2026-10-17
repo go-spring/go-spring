@@ -52,8 +52,8 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/propagation"
 
-	"go-spring.org/cloud/discovery"
 	"go-spring.org/cloud/experimental/transaction"
+	"go-spring.org/cloud/runtime/dataplane/discovery"
 	"go-spring.org/cloud/security"
 	StarterSecurityJWT "go-spring.org/starter-security-jwt"
 
@@ -67,7 +67,7 @@ import (
 	_ "go-spring.org/starter-transaction-saga"
 )
 
-// discoveryName is the cloud/discovery key under which the Consul
+// discoveryName is the cloud/runtime/dataplane/discovery key under which the Consul
 // resolver is published; the order->inventory Resolver looks it up by this
 // name. It matches the gateway's spring.gateway.routes.orders.upstream.discovery.
 const discoveryName = "consul"

@@ -18,7 +18,7 @@ package StarterCassandra
 
 import (
 	"go-spring.org/cloud/actuator/health"
-	"go-spring.org/cloud/governance"
+	"go-spring.org/cloud/runtime"
 	"go-spring.org/log"
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/gs"
@@ -38,7 +38,7 @@ func init() {
 		// instance inherits unless it sets its own.
 		p = flatten.WithFallback(p, "spring.cassandra.instances", "spring.cassandra.default")
 		return conf.BindEach(p, "${spring.cassandra.instances}", func(name string, c Config) error {
-			// The ctor reads the authorities off the injected governance center and
+			// The ctor reads the authorities off the injected runtime and
 			// hands them to the Driver, which passes them to NewClient — so the client is assembled
 			// complete in one step, and Destroy tears the executor down. The
 			// Driver bean is selected by the entry's ${driver} key: unset → "?" (nullable
@@ -49,7 +49,7 @@ func init() {
 			r.Provide(newClient,
 				gs.IndexArg(1, gs.ValueArg(c)),
 				gs.IndexArg(2, gs.TagArg("${spring.cassandra.instances."+name+".driver:=${spring.cassandra.default.driver:=?}}")),
-				// The governance center is the family's sole injection point: it hands
+				// The runtime is the family's sole injection point: it hands
 				// out the resilience/fault/loadbalance authorities.
 			).Name(name).Destroy((*Client).Close).Caller(1)
 			// Contribute a health indicator for this instance, injecting the
@@ -70,14 +70,14 @@ func init() {
 // configuration, wrapped so every statement declares its identity (see
 // observe.go) and flows through the governance guard.
 //
-// center is the governance center — the family's sole injection point. The
+// center is the runtime — the family's sole injection point. The
 // wiring injects it NULLABLY, so it is nil in a container without governance as
 // well as in a standalone (non-gs) call; the ctor hands it to the driver, which
 // passes it to
 // [NewClient] — so the client is assembled complete in one step, with the
 // resilience manager required: the container supplies it via the governance
 // center, so a center without one fails at construction.
-func newClient(ctx *gs.ContextProvider, c Config, d Driver, center *governance.Center) (*Client, error) {
+func newClient(ctx *gs.ContextProvider, c Config, d Driver, center *runtime.Runtime) (*Client, error) {
 	log.Debug(ctx.Context, log.TagAppDef, "creating cassandra client", func() []log.Field {
 		return []log.Field{
 			log.Strings("hosts", c.Hosts),

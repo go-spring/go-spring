@@ -21,10 +21,11 @@ import (
 	"testing"
 
 	"github.com/hibiken/asynq"
-	"go-spring.org/cloud/governance/fault"
-	"go-spring.org/cloud/governance"
-	"go-spring.org/cloud/loadbalance"
-	"go-spring.org/cloud/governance/resilience"
+	"go-spring.org/cloud/runtime"
+	"go-spring.org/cloud/runtime/controlplane/governance"
+	"go-spring.org/cloud/runtime/dataplane/fault"
+	"go-spring.org/cloud/runtime/dataplane/loadbalance"
+	"go-spring.org/cloud/runtime/dataplane/resilience"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/testing/assert"
 )
@@ -32,10 +33,10 @@ import (
 // TestDefaultDriverPlain builds the plain RedisConnOpt: addr/user/pass/db map
 // through unchanged, and TLS is not enabled.
 
-// testCenter bundles unarmed authorities into the governance center the client
+// testCenter bundles unarmed authorities into the runtime the client
 // takes, so a container-less test still exercises the real injection path.
-func testCenter() *governance.Center {
-	ctr, err := governance.NewCenter(resilience.NewClientManager(resilience.NewDefaultDriver(nil)), loadbalance.NewManager(), fault.NewClientManager(nil), fault.NewServerManager(nil), nil, governance.NewPushSource(governance.Config{}))
+func testCenter() *runtime.Runtime {
+	ctr, err := runtime.New(resilience.NewClientManager(resilience.NewDefaultDriver(nil)), loadbalance.NewManager(), fault.NewClientManager(nil), fault.NewServerManager(nil), nil, governance.NewPushSource(governance.Config{}))
 	if err != nil {
 		panic(err)
 	}

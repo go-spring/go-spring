@@ -280,10 +280,10 @@ Process-level dimensions (env, cluster, tenant, version) belong on the **resourc
 Per-request dimensions go on the **context**:
 
 ```go
-ctx = observability.WithSpanAttributes(ctx, attribute.String("tenant", t))
+ctx = attrs.WithSpanAttributes(ctx, attribute.String("tenant", t))
 ```
 
-The carrier lives in `cloud/observability`, not here: putting something on a context is a contract, and
+The carrier lives in `cloud/runtime/dataplane/observability`, not here: putting something on a context is a contract, and
 a writer — business code, a company middleware library — should not have to depend on the OTel SDK to
 do it. This starter holds only the *reader*, which does need the SDK.
 
@@ -303,7 +303,7 @@ key the later source wins.
 go-spring uses the same mechanism for one attribute of its own: every span of a request tagged as
 synthetic load carries `load_test=true`, so a load-test run can be filtered out of production
 dashboards and alerts instead of blending into them. That is a **read** of the `traffic` contract
-(see `cloud/traffic`), not an action on it — deciding what a load-test request should
+(see `cloud/runtime/dataplane/traffic`), not an action on it — deciding what a load-test request should
 *do* stays the application's business.
 
 **Metrics are not covered.** The metric SDK has no per-record hook, so built-in metric labels stay

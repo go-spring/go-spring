@@ -31,7 +31,7 @@ import (
 	"github.com/apolloconfig/agollo/v4"
 	agconfig "github.com/apolloconfig/agollo/v4/env/config"
 	agstorage "github.com/apolloconfig/agollo/v4/storage"
-	"go-spring.org/cloud/observability"
+	obsconf "go-spring.org/cloud/observability/conf"
 	"go-spring.org/log"
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/conf/reader"
@@ -299,7 +299,7 @@ func (l *apolloListener) OnChange(ev *agstorage.ChangeEvent) {
 		log.String("trace_id", randutil.Hex(16)),
 		log.String("namespace", ev.Namespace))
 	log.Info(ctx, starterTag, "apollo namespace changed, triggering refresh")
-	_ = observability.RefreshConf(ctx, func(ctx context.Context) error {
+	_ = obsconf.Refresh(ctx, func(ctx context.Context) error {
 		return gs.RefreshProperties(ctx)
 	})
 }

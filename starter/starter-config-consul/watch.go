@@ -22,7 +22,7 @@ import (
 	"time"
 
 	"github.com/hashicorp/consul/api"
-	"go-spring.org/cloud/observability"
+	"go-spring.org/cloud/observability/conf"
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
@@ -215,7 +215,7 @@ func watchLoop(ctx context.Context, cli consulClient, cs configSource, optional 
 			}
 			// Stamp the trigger with the change's identity (which KV entry, which
 			// consul revision) so the refresh records logged and metered by
-			// observability.RefreshConf carry what this round is about.
+			// conf.Refresh carry what this round is about.
 			// A generation canceled between the query and this trigger means
 			// the application is shutting down: the change is real, but no
 			// one will consume a refreshed snapshot, and a synchronous
@@ -230,7 +230,7 @@ func watchLoop(ctx context.Context, cli consulClient, cs configSource, optional 
 
 			log.Info(rctx, starterTag, "consul kv changed, triggering refresh")
 
-			_ = observability.RefreshConf(rctx, func(ctx context.Context) error {
+			_ = conf.Refresh(rctx, func(ctx context.Context) error {
 				return gs.RefreshProperties(ctx)
 			})
 		}

@@ -28,7 +28,8 @@ import (
 	"time"
 
 	"github.com/hashicorp/consul/api"
-	"go-spring.org/cloud/discovery"
+	"go-spring.org/cloud/runtime/controlplane/registration"
+	"go-spring.org/cloud/runtime/dataplane/discovery"
 	"go-spring.org/stdlib/testing/assert"
 )
 
@@ -278,4 +279,14 @@ var _ discovery.Discovery = (*consulDiscovery)(nil)
 func TestConsulDiscoveryNoClientPanics(t *testing.T) {
 	d := &consulDiscovery{}
 	_ = d.entry("x")
+}
+
+// newTestRegObserver is the write-side counterpart: registration owns its own
+// observer so the two planes stay independent in tests too.
+func newTestRegObserver() *registration.Observer {
+	o, err := registration.NewObserver(obsSystem, "test")
+	if err != nil {
+		panic(err)
+	}
+	return o
 }

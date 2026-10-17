@@ -14,13 +14,13 @@ bean 承载 ——
 - **Provider 半区**（`spring.discovery.nacos.<name>.*` + `spring.discovery.*`）：应用就绪后把
   本进程注册进每一个已配置的 Nacos 中心。面向 VM / 裸机 / 混合部署；纯 Kubernetes 下平台
   已替你注册 Pod。
-- **Consumer 半区**（自身零配置）：同一个 bean 就是一个 `cloud/discovery` 后端，client
+- **Consumer 半区**（自身零配置）：同一个 bean 就是一个 `cloud/runtime/dataplane/discovery` 后端，client
   starter（gateway 的 `lb://` 路由、`spring.http-client.instances.<n>.discovery` 等）通过引用
   bean 名 `nacos.<name>` 来解析。
 
 **激活方式**：每个 `spring.discovery.nacos.<name>` 块即一个注册中心 —— 一个共享 naming
 client、一套生命周期（仅 `ping=true` 时才有一次启动探活;`starter.go`）。名为 `nacos.<name>` 的 bean 同时导出
-`discovery.Registry`（设置了 `spring.discovery.service-name` 时由 cloud/discovery 核心收集
+`registration.Registry`（设置了 `spring.discovery.service-name` 时由 cloud/runtime/controlplane/registration 核心收集
 —— 纯消费方应用不注册任何实例）与 `discovery.Discovery`（按 bean 名引用，纯提供方不为读
 侧付出任何成本）。
 
@@ -50,7 +50,7 @@ demo/
 require (
     go-spring.org/spring                     v1.3.x
     go-spring.org/starter-discovery-nacos     latest
-    go-spring.org/starter-gateway            latest   // consumer：lb:// 路由走 cloud/discovery
+    go-spring.org/starter-gateway            latest   // consumer：lb:// 路由走 cloud/runtime/dataplane/discovery
     go-spring.org/starter-echo               latest   // provider 的 HTTP 服务面
 )
 ```
@@ -123,7 +123,7 @@ spring.gateway.routes.orders.path=/api/**
 spring.gateway.routes.orders.upstream.target=lb://orders
 # 路由的负载均衡策略不是 gateway 的 key，而是该路由标签上的治理规则：
 # spring.governance.client.rules[N].service=gateway:orders + spring.governance.client.rules[N].balancer=weighted
-# （见 cloud/governance/README.md §3.1）
+# （见 cloud/runtime/controlplane/governance/README.md §3.1）
 ```
 
 **验证**（nacos 来自 `example/docker-compose.yml` —— `docker compose up -d`，然后等
@@ -146,13 +146,13 @@ example 的一次性自验（`go run ./example -manual` 可保持运行）在就
 
 ### 2.1 注册生命周期（provider 半区）
 
-注册由本 starter 传递导入的 **cloud/discovery 核心**（`../starter-discovery`）持有；nacos
+注册由本 starter 传递导入的 **cloud/runtime/controlplane/registration 核心**（`../starter-discovery`）持有；nacos
 starter 只按块贡献 registry bean：
 
 ```
 import starter-discovery-nacos
   ├─ 每个块 ${spring.discovery.nacos.<name>}：Provide(newNacosBackend)
-  │    Name("nacos."+name).Export(As[discovery.Discovery], As[discovery.Registry])
+  │    Name("nacos."+name).Export(As[discovery.Discovery], As[registration.Registry])
   │    条件：gs.OnProperty("spring.discovery.nacos")                   [starter.go]
   └─ import starter-discovery（核心，每进程恰一次）
        └─ gs.Provide(NewServer).Name("discoveryServer").Export(gs.As[gs.Server]())
@@ -161,7 +161,7 @@ gs.Run()
   ├─ conf.BindEach 遍历 spring.discovery.nacos.* → 每块一份 NacosConfig
   ├─ 每块 newNacosBackend：建 nacos naming client；ping=true 时 FAIL-FAST 探活
   │    （GetAllServicesInfo 取 1 行 —— server 不可达/凭证错误直接终止启动）[starter.go]
-  ├─ discoveryServer 经 []discovery.Registry 切片注入收集所有后端的 registry
+  ├─ discoveryServer 经 []registration.Registry 切片注入收集所有后端的 registry
   │    （跨所有后端 —— nacos、zookeeper……）
   ├─ Run：就绪前校验 service-name/addr 非空且 registry ≥ 1 个
   ├─ <-sig.TriggerAndWait()   ← 就绪门：整个应用起来后才注册
@@ -339,5 +339,5 @@ go run ./provider   # 启动中止："discovery-nacos: startup probe failed for 
 2026-08 配置卫生改造已解决：死 key `id` 已删除（Nacos 按 ip:port 识别实例；核心仍在
 `${spring.discovery}` 下为其他后端绑定 `id`，nacos 侧忽略）。2026-09 多中心命名块改造
 已解决：单块形态替换为 `spring.discovery.nacos.<name>.*` —— 每块一个名为 `nacos.<name>`
-的后端 bean 同时承载 registry 与发现后端，注册收进共享的 cloud/discovery 核心（一次发布
+的后端 bean 同时承载 registry 与发现后端，注册收进共享的 cloud/runtime/controlplane/registration 核心（一次发布
 扇出到每个中心），发现改为引用 bean 名而非固定标签。可观测性：注册与发现经 OTel 全局产出指标——未引入 `starter-otel` 时全部 no-op。`register`、`deregister`、`update_weight` 各有一个 client span 与一条 `discovery.operation.duration`（标签 `system`/`operation`/`service`/`status`）；`discovery.registration.attempts_total` 按 `reason` 与 `status` 计数；`discovery.instance.registered` gauge 在发布中为 1、否则为 0——自愈失败会落在这里，而不只是出现在日志里。发现半边把每次后台缓存同步上报到 `discovery.sync_total`，并维持 `discovery.cache.age_seconds`（距上次确认新鲜的秒数），watch 死掉时表现为持续爬升，而不是静默返回陈旧地址。 nacos 无自愈重注册（存活由 SDK 的 ephemeral 心跳维持），`reason` 恒为 `initial`。

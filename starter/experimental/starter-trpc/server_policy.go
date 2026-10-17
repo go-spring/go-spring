@@ -20,9 +20,9 @@ import (
 	"context"
 	"errors"
 
-	"go-spring.org/cloud/governance"
-	"go-spring.org/cloud/governance/guard"
-	"go-spring.org/cloud/observability"
+	"go-spring.org/cloud/runtime"
+	"go-spring.org/cloud/runtime/dataplane/guard"
+	"go-spring.org/cloud/runtime/dataplane/observability"
 	"trpc.group/trpc-go/trpc-go"
 	"trpc.group/trpc-go/trpc-go/errs"
 	"trpc.group/trpc-go/trpc-go/filter"
@@ -32,7 +32,7 @@ import (
 // (rate limit / bulkhead / breaker / fault) before the handler, and one
 // completion after it. It is registered by the starter as "governance" and
 // included in the server's default filter chain.
-func GuardServerFilter(in *governance.Inbound) filter.ServerFilter {
+func GuardServerFilter(in *runtime.Inbound) filter.ServerFilter {
 	return func(ctx context.Context, req interface{}, next filter.ServerHandleFunc) (interface{}, error) {
 		op := observability.ServerOperation{Action: actionName(ctx)}
 		var resp interface{}
@@ -42,7 +42,7 @@ func GuardServerFilter(in *governance.Inbound) filter.ServerFilter {
 			return e
 		})
 		if err != nil {
-			var ref *governance.Refusal
+			var ref *runtime.Refusal
 			if errors.As(err, &ref) {
 				return nil, refusalError(ref)
 			}
@@ -60,7 +60,7 @@ func actionName(ctx context.Context) string {
 
 // refusalError maps a guard refusal onto tRPC's return codes, so callers that
 // branch on code can tell throttling from an arbitrary handler failure.
-func refusalError(ref *governance.Refusal) error {
+func refusalError(ref *runtime.Refusal) error {
 	switch ref.Verdict() {
 	case guard.VerdictRateLimited, guard.VerdictBulkheadFull:
 		return errs.New(errs.RetServerThrottled, ref.Error())

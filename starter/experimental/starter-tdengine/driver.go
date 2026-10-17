@@ -25,11 +25,12 @@ package StarterTdengine
 import (
 	"context"
 	"database/sql/driver"
-	"go-spring.org/cloud/chain"
+
+	"go-spring.org/cloud/runtime/dataplane/chain"
 
 	taosws "github.com/taosdata/driver-go/v3/taosWS"
-	"go-spring.org/cloud/governance"
-	"go-spring.org/cloud/governance/resilience"
+	"go-spring.org/cloud/runtime"
+	"go-spring.org/cloud/runtime/dataplane/resilience"
 	"go-spring.org/stdlib/errutil"
 )
 
@@ -44,7 +45,7 @@ import (
 // CreateClient returns the module's exported [Client] — the wrapper apps inject
 // — not the raw *sql.DB, so a driver takes part in the type the rest of the
 // ecosystem sees. It returns the client COMPLETE: center supplies the
-// container's facilities (see [governance.Center]), which [NewClient] applies
+// container's facilities (see [runtime.Runtime]), which [NewClient] applies
 // while building. Nothing patches the client afterwards.
 //
 // center is one object rather than a parameter per capability so this interface
@@ -55,7 +56,7 @@ import (
 // ${spring.tdengine} is built through it, and per-instance differences are
 // expressed through [Config].
 type Driver interface {
-	CreateClient(ctx context.Context, c Config, center *governance.Center) (*Client, error)
+	CreateClient(ctx context.Context, c Config, center *runtime.Runtime) (*Client, error)
 }
 
 // DefaultDriver is the default implementation of the Driver interface.
@@ -70,7 +71,7 @@ type DefaultDriver struct{}
 // assembled complete — identity and governance both applied — before it is
 // returned. It does not run the startup ping probe, which is the starter's
 // lifecycle concern (newClient in starter.go).
-func (DefaultDriver) CreateClient(ctx context.Context, c Config, center *governance.Center) (*Client, error) {
+func (DefaultDriver) CreateClient(ctx context.Context, c Config, center *runtime.Runtime) (*Client, error) {
 	cfg, err := taosws.ParseDSN(c.DSN)
 	if err != nil {
 		return nil, errutil.Explain(err, "tdengine: invalid dsn")

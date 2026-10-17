@@ -17,7 +17,7 @@
 package StarterMemcached
 
 import (
-	"go-spring.org/cloud/chain"
+	"go-spring.org/cloud/runtime/dataplane/chain"
 	"strings"
 	"testing"
 

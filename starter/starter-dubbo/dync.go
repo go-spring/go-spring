@@ -23,8 +23,8 @@ import (
 	"sync"
 	"time"
 
-	"go-spring.org/cloud/governance"
-	"go-spring.org/cloud/governance/resilience"
+	"go-spring.org/cloud/runtime"
+	"go-spring.org/cloud/runtime/dataplane/resilience"
 	mapconfig "go-spring.org/starter-dubbo/internal/mapconfig"
 )
 
@@ -44,12 +44,12 @@ type dyncPoller struct {
 	dynCfg  *mapconfig.MapDynamicConfiguration // in-memory config center overrides are pushed into
 	appName string                             // application name, used as the app-level override key
 
-	// ctr is the governance center bean, always present — the constructor arg
+	// ctr is the runtime bean, always present — the constructor arg
 	// is injected by type, so a process without the center fails wiring. It is
 	// the poller's sole governance entry: [dyncPoller.mgr] reads the resilience
 	// authority off it, whose Subscribe callbacks re-run the poll on every
 	// governance push.
-	ctr *governance.Center
+	ctr *runtime.Runtime
 
 	// consumer is the entire consumer node under ${spring.dubbo.consumer},
 	// bound once at construction.
@@ -61,10 +61,10 @@ type dyncPoller struct {
 }
 
 // newDyncPoller creates the poller bean. consumer is the statically bound
-// ${spring.dubbo.consumer} node. ctr is the governance center bean; it is nil
+// ${spring.dubbo.consumer} node. ctr is the runtime bean; it is nil
 // when governance is not imported, which leaves the poller pushing the
 // dubbo-native values only.
-func newDyncPoller(app DubboApplication, consumer DubboConsumer, ctr *governance.Center) *dyncPoller {
+func newDyncPoller(app DubboApplication, consumer DubboConsumer, ctr *runtime.Runtime) *dyncPoller {
 	return &dyncPoller{
 		dynCfg:   mapconfig.Singleton(),
 		appName:  app.Name,

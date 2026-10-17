@@ -132,7 +132,7 @@ import starter-cassandra
         └─ conf.BindEach(p, "${spring.cassandra.instances}") → 每个 <name> 条目一份 Config
               ├─ Provide(newClient, IndexArg(1, ValueArg(c)),
               │            IndexArg(2, ?Driver),
-              │            IndexArg(3, *governance.Center)).Name(<name>)
+              │            IndexArg(3, *runtime.Runtime)).Name(<name>)
               │       .Destroy((*Client).Close)
               └─ Provide 名为 "cassandra:<name>" 的 health.Indicator，
                   按名注入上面的 client（TagArg）[starter.go:58-61]
@@ -146,7 +146,7 @@ gs.Run()
   │     driver.CreateClient(ctx, c, center) 返回 *Client
   │     （session + 身份 + 治理）：NewClient 设 exec = center.ExecutorFor("cassandra", service)，
   │     即 center.FaultClient().WrapClientExecutor(center.ResilienceClient().ClientExecutorFor("cassandra", service))，
-  │     center 为注入的 *governance.Center —— 构造期 exec 链即就绪
+  │     center 为注入的 *runtime.Runtime —— 构造期 exec 链即就绪
   ├─ 仅 ping=true：fail-fast 探活——newClient 调 HealthCheck [starter.go:100]，一条 system.local 查询直达裸 session
   ├─ readiness：indicator 委托 HealthCheck 查询 system.local [health.go:34]
   └─ SIGTERM → Close [client.go]：exec.Close → session.Close
@@ -216,7 +216,7 @@ resilience 执行器（限流/熔断/重试核心）→ gocql。fault 注入器
 
 ### 2.4 Driver 构造缝
 
-`Driver.CreateClient(ctx, Config, center *governance.Center) (*Client, error)` 拥有完整 session
+`Driver.CreateClient(ctx, Config, center *runtime.Runtime) (*Client, error)` 拥有完整 session
 装配 —— hosts、PasswordAuthenticator、一致性级别、超时、CQL 版本、TLS [driver.go:63-95] ——
 并在构建期应用 center 的治理，返回已完整的 `*Client` wrapper（身份与治理均经 `NewClient` 固定
 [driver.go:95]）；只有启动探活留在 starter 生命周期里（`newClient`）。session 装配是

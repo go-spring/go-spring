@@ -150,7 +150,7 @@ started (an early refresh is a no-op).
    observed, so a change landing right after that read is still delivered; it triggers the
    refresh when `LastIndex` advances, resets to 0 on index regression (Consul restart / index
    reset), and retries after 2 s on transport errors.
-3. `observability.RefreshConf(ctx, fn)` → `gs.RefreshProperties(ctx)` (`app.go:149-151`) → full
+3. `conf.Refresh(ctx, fn)` → `gs.RefreshProperties(ctx)` (`app.go:149-151`) → full
    `AppConfig.Refresh()` rebuilds the layered storage from scratch (files, env, cmd, imports — so
    the KV entry is *re-fetched* by `Load`) → the container propagates the new snapshot to
    every `gs.Dync[T]` field atomically (`app.go:234-256`). Non-`Dync` bindings never re-run.

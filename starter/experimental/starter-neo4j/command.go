@@ -27,10 +27,10 @@ package StarterNeo4j
 import (
 	"context"
 
-	"go-spring.org/cloud/chain"
+	"go-spring.org/cloud/runtime/dataplane/chain"
 
 	"github.com/neo4j/neo4j-go-driver/v5/neo4j"
-	"go-spring.org/cloud/governance/resilience"
+	"go-spring.org/cloud/runtime/dataplane/resilience"
 )
 
 // Why a kit-backed Query entry (not a transparent driver wrapper):

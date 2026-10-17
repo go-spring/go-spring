@@ -21,7 +21,7 @@ import (
 	"sync"
 	"time"
 
-	"go-spring.org/cloud/observability"
+	"go-spring.org/cloud/observability/attrs"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
@@ -62,7 +62,7 @@ func buildInstruments() *instrumentSet {
 		"rpc.server.request.duration",
 		metric.WithDescription("Duration of RPC requests"),
 		metric.WithUnit("s"),
-		metric.WithExplicitBucketBoundaries(observability.DurationBuckets()...),
+		metric.WithExplicitBucketBoundaries(attrs.DurationBuckets()...),
 	)
 	requestsInFlight, _ := m.Int64UpDownCounter(
 		"rpc.server.active_requests",
@@ -78,7 +78,7 @@ func buildInstruments() *instrumentSet {
 		"rpc.server.stream.duration",
 		metric.WithDescription("Duration of RPC stream requests"),
 		metric.WithUnit("s"),
-		metric.WithExplicitBucketBoundaries(observability.DurationBuckets()...),
+		metric.WithExplicitBucketBoundaries(attrs.DurationBuckets()...),
 	)
 	return &instrumentSet{
 		requestCount:     requestCount,

@@ -187,7 +187,7 @@ gs.Run()
   │           [driver.go:145; client.go:86-93]
   ├─ jetstream.enabled → jetstream.New(nc); failure closes nc and fails boot
   │           [driver.go:149-157]
-  ├─ newConn: receives the injected *governance.Center — the container's sole injection
+  ├─ newConn: receives the injected *runtime.Runtime — the container's sole injection
   │           point, holding the resilience/fault/loadbalance authorities — and hands it to the
   │           Driver; nothing patches the Conn afterwards
   │           [driver.go:181-182]
@@ -279,7 +279,7 @@ re-publishing or re-running a handler is a second side effect, not a second atte
 (`resilience.client.duration`, a span named after the service) rather than a `messaging.client.*`
 one — no operation span is named for it.
 
-Wrap order inside `Center.ExecutorFor` (see `cloud/governance/center.go`, called by
+Wrap order inside `Runtime.ExecutorFor` (see `cloud/runtime/controlplane/governance/center.go`, called by
 [NewConn](client.go:86-93)): `mgr.ClientExecutorFor("nats", service)`
 (armed from the injected `*resilience.ClientManager` bean — required, so always supplied
 by the container) → `fault.ClientManager.WrapClientExecutor` (fault injection, outermost). The manager's resolve step

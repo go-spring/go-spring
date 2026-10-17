@@ -184,7 +184,7 @@ gs.Run()
   │           [driver.go:145; client.go:86-93]
   ├─ jetstream.enabled → jetstream.New(nc)；失败会关闭 nc 并中断启动
   │           [driver.go:149-157]
-  ├─ newConn：接收注入的 *governance.Center——容器唯一注入点，持有
+  ├─ newConn：接收注入的 *runtime.Runtime——容器唯一注入点，持有
   │           resilience/fault/loadbalance 三个 authority——并交给 Driver；此后无任何补装配
   │           [driver.go:181-182]
   ├─ ping 时启动连通性检查（裸 client 的 IsConnected）；失败则销毁该 bean
@@ -266,7 +266,7 @@ handler 是第二个副作用，不是第二次尝试。
 `RequestGuarded` 不声明操作，因此 executor 只发射本层的兜底信号（`resilience.client.duration`、
 以 service 命名的 span），不会产生 `messaging.client.*` 信号——它没有专属的操作 span。
 
-`Center.ExecutorFor` 内部包裹顺序（见 `cloud/governance/center.go`，由
+`Runtime.ExecutorFor` 内部包裹顺序（见 `cloud/runtime/controlplane/governance/center.go`，由
 [NewConn](client.go:86-93) 调用）：`mgr.ClientExecutorFor("nats", service)`（由注入的
 `*resilience.ClientManager` bean 装备——必填，容器始终提供）→
 `fault.ClientManager.WrapClientExecutor`（故障注入，最外层）。manager 的 resolve 步骤会用 observe 发射器包裹后端

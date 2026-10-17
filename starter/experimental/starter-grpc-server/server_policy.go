@@ -20,10 +20,11 @@ import (
 	"context"
 	"errors"
 
-	"go-spring.org/cloud/governance"
-	"go-spring.org/cloud/governance/guard"
-	"go-spring.org/cloud/governance/label"
-	"go-spring.org/cloud/observability"
+	"go-spring.org/cloud/runtime"
+
+	"go-spring.org/cloud/runtime/dataplane/guard"
+	"go-spring.org/cloud/runtime/dataplane/label"
+	"go-spring.org/cloud/runtime/dataplane/observability"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -41,7 +42,7 @@ type resilienceInterceptors struct {
 // RPC through it. The manager is the governance starter's bean, so this server
 // gets its rate-limit / bulkhead / breaker limits from the governance document's
 // SERVER block (spring.governance.server.*)
-// WITHOUT naming *governance.Center. A nil manager — a standalone call, or an app
+// without this package owning how that runtime is assembled. A nil runtime — a standalone call, or an app
 // that does not import — is normalized to an unarmed one,
 // whose executor is a transparent pass-through (fn runs once, untouched). The
 // executor handle resolves its backing implementation per call and follows the
@@ -76,7 +77,7 @@ func (s *SimpleGrpcServer) buildResilienceInterceptors() (resilienceInterceptors
 // rate/bulkhead rejections are ResourceExhausted, an open circuit is
 // Unavailable. Without the mapping they cross the wire as codes.Unknown,
 // which no consumer can act on.
-func resilienceUnaryInterceptor(in *governance.Inbound, service string) grpc.UnaryServerInterceptor {
+func resilienceUnaryInterceptor(in *runtime.Inbound, service string) grpc.UnaryServerInterceptor {
 	return func(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
 		var resp any
 		op := observability.ServerOperation{Action: info.FullMethod}
@@ -93,7 +94,7 @@ func resilienceUnaryInterceptor(in *governance.Inbound, service string) grpc.Una
 // as a unary call: admission happens once when the stream opens, the handler
 // runs with the derived context, and settlement happens when the handler
 // returns. Fault injection therefore lives inside the guard for streams too.
-func resilienceStreamInterceptor(in *governance.Inbound) grpc.StreamServerInterceptor {
+func resilienceStreamInterceptor(in *runtime.Inbound) grpc.StreamServerInterceptor {
 	return func(srv any, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
 		op := observability.ServerOperation{Action: info.FullMethod}
 		return in.Run(ss.Context(), op, func(ctx context.Context) error {
@@ -118,7 +119,7 @@ func mapServerPolicyError(err error) error {
 	if err == nil {
 		return nil
 	}
-	var ref *governance.Refusal
+	var ref *runtime.Refusal
 	if !errors.As(err, &ref) {
 		return err
 	}

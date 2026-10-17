@@ -22,7 +22,7 @@ import (
 	"time"
 
 	"github.com/apache/thrift/lib/go/thrift"
-	"go-spring.org/cloud/observability"
+	"go-spring.org/cloud/observability/attrs"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
@@ -67,7 +67,7 @@ func buildInstruments() *instrumentSet {
 		"rpc.server.request.duration",
 		metric.WithDescription("Duration of Thrift RPC requests"),
 		metric.WithUnit("s"),
-		metric.WithExplicitBucketBoundaries(observability.DurationBuckets()...),
+		metric.WithExplicitBucketBoundaries(attrs.DurationBuckets()...),
 	)
 	requestInflight, _ := m.Int64UpDownCounter(
 		"rpc.server.active_requests",

@@ -181,7 +181,7 @@ gs.Run()
   │       bridge (process-global, exactly once via sync.Once) and delegates to
   │       NewClient, which fixes the identity (name servers + Config) AND attaches
   │       the governance executor in the same step — center.ExecutorFor("rocketmq",
-  │       service) over the injected *governance.Center (which bundles the
+  │       service) over the injected *runtime.Runtime (which bundles the
   │       *resilience.ClientManager / *fault.ClientManager beans)        [driver.go, client.go]
   │    3. Ping probe (opt-in): TCP dial, first reachable addr wins, 3s budget
   │       per address; runs AFTER assembly, failure → boot error (Client closed)
@@ -229,7 +229,7 @@ The consumer direction declares the same way inside the driver's receive callbac
 (`operation("consume", topic)`), then runs the handler under `cl.execute`
 [messaging.go].
 
-Wrap order inside `center.ExecutorFor("rocketmq", service)` [cloud/governance/center.go], called
+Wrap order inside `center.ExecutorFor("rocketmq", service)` [cloud/runtime/controlplane/governance/center.go], called
 from `NewClient`: `mgr.ClientExecutorFor("rocketmq", service)` — mgr being the injected
 `*resilience.ClientManager` — returns the fully assembled executor (core breaker/limiter/retry wrapped by
 the resilience observer — outcome counters + access log) → wrapped outermost by
@@ -357,7 +357,7 @@ comma-joined name-servers — check it matches your governance rules):
   seam — → rejections return `resilience.ErrRateLimited`, the send is never invoked, and
   `resilience.client.calls` records appear with `resilience.error_type=rate_limited`, alongside one access log
   per call (`_app_rocketmq_access`, or `_app_resilience` on the fallback path)
-  [cloud/governance/resilience/observe.go].
+  [cloud/runtime/dataplane/resilience/observe.go].
 - Raw `SendSync` called directly on a producer is unguarded (§2.2): it is the app's own path and
   has no executor around it. That contrast IS the §2.2 boundary.
 

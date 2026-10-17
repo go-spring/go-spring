@@ -25,9 +25,9 @@ import (
 	"github.com/gin-contrib/gzip"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	"go-spring.org/cloud/governance"
 	"go-spring.org/cloud/propagate"
-	"go-spring.org/cloud/traffic"
+	"go-spring.org/cloud/runtime"
+	"go-spring.org/cloud/runtime/dataplane/traffic"
 	"go-spring.org/stdlib/errutil"
 )
 
@@ -89,13 +89,13 @@ func RequestIDFromContext(ctx context.Context) string {
 // from its RouterRegister; the individual constructors (RequestID, Observe, ...)
 // are also exported for finer-grained composition.
 //
-// center is the governance center bean, whose resilience authority supplies the
+// center is the runtime bean, whose resilience authority supplies the
 // inbound middleware's policy; a nil center reads a nil manager, which disables
 // inbound (a transparent pass-through). Its fault authority backs the fault
 // middleware the requests are gated on (nil likewise, which disables injection).
 // prop is the load-test convention bean — the application.s when it provides
 // one, go-spring.s default otherwise.
-func ApplyMiddlewares(e *gin.Engine, cfg Config, center *governance.Center, prop traffic.Propagator) error {
+func ApplyMiddlewares(e *gin.Engine, cfg Config, center *runtime.Runtime, prop traffic.Propagator) error {
 	mw := cfg.Middleware
 
 	// LoadTest identification is outermost of all: it tags the request context
@@ -180,7 +180,7 @@ func ApplyMiddlewares(e *gin.Engine, cfg Config, center *governance.Center, prop
 // When the incoming request carries the propagator's marker header it tags the
 // request context, so the handler chain and every outbound client the handlers
 // drive can recognise synthetic load through prop. It is the inbound companion
-// to cloud/traffic's outbound injection: together they let a
+// to cloud/runtime/dataplane/traffic's outbound injection: together they let a
 // load-test flag ride an HTTP hop end to end.
 //
 // Which header that is belongs to the propagator (a company re-bases it there,

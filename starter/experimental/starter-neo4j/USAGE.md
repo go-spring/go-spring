@@ -136,7 +136,7 @@ spring.observability.metrics.exporter=prometheus
 # --- actuator: readiness folds in neo4j:graph and neo4j:analytics -----------
 spring.actuator.addr=:9370
 # --- governance: guard for Query / RunWithResilience ------------------------
-# NOTE: governance RULES go in conf/governance.properties, referenced by spring.governance.source.file.path in app.properties (see cloud/governance's SOURCE_USAGE).
+# NOTE: governance RULES go in conf/governance.properties, referenced by spring.governance.source.file.path in app.properties (see cloud/runtime/controlplane/governance's SOURCE_USAGE).
 spring.resilience.driver=default
 spring.governance.client.default.rate-limit=100
 spring.governance.client.default.max-retries=1
@@ -184,7 +184,7 @@ gs.Run()
   │   │  then the single Driver bean by type; naming a missing bean fails startup)
   │   ├─ d.CreateClient(ctx, c, center) (auth + pool knobs + TLS) returns the *Client
   │   │  COMPLETE — identity (session + service label) and governance both applied
-  │   │  [starter.go:123, driver.go:77]; center is the injected *governance.Center,
+  │   │  [starter.go:123, driver.go:77]; center is the injected *runtime.Runtime,
   │   │  handing out the resilience/fault authorities (the resilience manager is required)
   │   ├─ NewClient [client.go:96-103]: service = label.ServiceLabel("neo4j",
   │   │  ServiceName, URI) → center.ExecutorFor("neo4j", service) — the governed executor
@@ -206,7 +206,7 @@ already-governed client (`Destroy`) rather than leaking the executor.
 `driver.go:66-68`). A company/umbrella starter may provide its own `Driver` as an **optional
 container bean** (a `gs.Provide(func() StarterNeo4j.Driver{...})`, so it can inject config bound
 from the properties file at wiring time); every instance under `spring.neo4j` is then built
-through it. `CreateClient(ctx, c, center)` receives the injected `*governance.Center`; the driver
+through it. `CreateClient(ctx, c, center)` receives the injected `*runtime.Runtime`; the driver
 resolves the discovery backend itself from `center.Discovery().Get(c.Discovery)` — the entry's
 `${discovery}` label rides on the config (the ctor has folded the family default into `c.Discovery`),
 so no pre-resolved backend is passed. When no such bean exists the
@@ -385,7 +385,7 @@ silence is the un-intercepted path, not a broken pipeline (§2.2).
 ### 4.3 Resilience drill (example-cloudnative / example-load shape)
 
 ```properties
-# NOTE: governance RULES go in conf/governance.properties, referenced by spring.governance.source.file.path in app.properties (see cloud/governance's SOURCE_USAGE).
+# NOTE: governance RULES go in conf/governance.properties, referenced by spring.governance.source.file.path in app.properties (see cloud/runtime/controlplane/governance's SOURCE_USAGE).
 spring.resilience.driver=default
 spring.governance.client.default.rate-limit=5
 ```

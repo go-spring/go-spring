@@ -21,8 +21,8 @@ import (
 	"strings"
 	"testing"
 
-	"go-spring.org/cloud/governance"
-	"go-spring.org/cloud/governance/guard"
+	"go-spring.org/cloud/runtime"
+	"go-spring.org/cloud/runtime/dataplane/guard"
 
 	"github.com/apache/thrift/lib/go/thrift"
 )
@@ -45,10 +45,10 @@ func (f *countingFunc) Process(ctx context.Context, seqID int32, in, out thrift.
 
 // inboundFor builds the inbound governance object for the thrift test label over
 // a guard manager armed with p.
-func inboundFor(p guard.Policy) *governance.Inbound {
+func inboundFor(p guard.Policy) *runtime.Inbound {
 	mgr := guard.NewManager()
 	_ = mgr.Apply(guard.Settings{Default: p})
-	return governance.InboundOver("thrift", "thrift:test", mgr)
+	return runtime.InboundOver("thrift", "thrift:test", mgr)
 }
 
 func TestServerPolicy_PassThroughRunsServiceOnce(t *testing.T) {

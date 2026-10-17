@@ -28,7 +28,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"go-spring.org/cloud/observability"
+	"go-spring.org/cloud/observability/attrs"
 	"go-spring.org/log"
 	"go-spring.org/stdlib/bufutil"
 	"go-spring.org/stdlib/errutil"
@@ -493,7 +493,7 @@ func buildInstruments() *instrumentSet {
 		metric.WithDescription("Duration of HTTP server requests"),
 		metric.WithUnit("s"),
 		// OTel HTTP semconv recommended buckets (seconds).
-		metric.WithExplicitBucketBoundaries(observability.DurationBuckets()...),
+		metric.WithExplicitBucketBoundaries(attrs.DurationBuckets()...),
 	)
 	in.sseCounter, _ = m.Int64Counter(
 		"http.server.sse.events",

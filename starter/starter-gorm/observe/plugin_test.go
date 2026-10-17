@@ -24,8 +24,8 @@ import (
 	"strings"
 	"testing"
 
-	"go-spring.org/cloud/chain"
-	"go-spring.org/cloud/observability"
+	"go-spring.org/cloud/runtime/dataplane/chain"
+	"go-spring.org/cloud/runtime/dataplane/observability"
 	gormresilience "go-spring.org/starter-gorm/resilience"
 	"go-spring.org/stdlib/testing/assert"
 	"go.opentelemetry.io/otel/attribute"

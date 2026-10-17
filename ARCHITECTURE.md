@@ -47,57 +47,75 @@ Verified dependency facts (do not violate):
   core**: `gs` (IoC container, lifecycle) and `conf` (layered configuration
   engine). No third-party business package, no capability families.
 - `cloud/` (module `go-spring.org/cloud`) is the **ecosystem abstraction
-  library**: governance (resilience/guard/fault/traffic), discovery, loadbalance,
-  cache, repository, migration, i18n, validation, event/scheduling/batch,
-  lock, messaging, transaction, actuator, ... The **capability abstractions are
+  library**: the governance runtime (`cloud/runtime`: the control plane plus the
+  data-plane packages for governance, traffic, discovery, loadbalance and
+  observability), cache, repository, migration, i18n, validation,
+  event/scheduling/batch, lock, messaging, transaction, actuator, ... The **capability abstractions are
   container-free** — their types, drivers and seams work with or without a
   container — but the packages that own a default bean register it, so `spring`
   appears in four of them:
 
-  - `cloud/governance/resilience` registers `*resilience.ClientManager` (and the bundled driver),
-    `cloud/loadbalance` registers `*loadbalance.Manager`, `cloud/governance/fault` registers
+  - `cloud/runtime/dataplane/resilience` registers `*resilience.ClientManager` (and the bundled driver),
+    `cloud/runtime/dataplane/loadbalance` registers `*loadbalance.Manager`, `cloud/runtime/dataplane/fault` registers
     `*fault.ClientManager` and `*fault.ServerManager`. The rule is **the package that owns the type registers its
     default**: a client that injects one has already imported that package for
     the type, so there is no separate "governance import" to forget.
-  - `cloud/governance` registers the center over those authorities and the one
-    bean that wires it into gs, and its `rules.go` binds a rules document through
-    `spring/conf`'s value-tag machinery (the document format is the framework's,
-    and a per-backend parser would let the backends drift apart).
+  - `cloud/runtime` (the root package) registers the one `*runtime.Runtime` bean
+    over those authorities and wires it into gs, while
+    `cloud/runtime/controlplane/governance` registers only its source adapters
+    and its `rules.go` binds a rules document through `spring/conf`'s value-tag
+    machinery (the document format is the framework's, and a per-backend parser
+    would let the backends drift apart).
   - **Client and server are separate authorities, and they no longer share a
     shape.** Outbound calls run through `chain.Executor`: one around-function,
     N retry attempts, an `Operation` declaration and a `Recorder` write-back.
-    Inbound requests run through `cloud/governance/guard`: one instance-bound `Guard` with
+    Inbound requests run through `cloud/runtime/dataplane/guard`: one instance-bound `Guard` with
     its own long-lived state, one judgment (`Admit`) and one completion
-    (`Done`), no retry and no `chain` types. `governance.Center` owns the
-    inbound `guard.Manager` and pushes it the server half of the document;
-    adapters get one `Guard` per server instance from `InboundFor`.
-  - The neutral organs behind both are shared: `cloud/governance/breaker`
-    owns the breaker state machine, and `cloud/governance/ratelimit` owns the
+    (`Done`), no retry and no `chain` types. `runtime.Runtime` owns the inbound
+    `guard.Manager`; the control plane pushes it the server half of the
+    document, and adapters get one `Guard` per server instance from
+    `runtime.InboundFor`.
+  - The neutral organs behind both are shared: `cloud/runtime/dataplane/breaker`
+    owns the breaker state machine, and `cloud/runtime/dataplane/ratelimit` owns the
     rate-limit vocabulary, local budget and counting algorithms. Sharing an
     organ does not merge authorities: each direction still maps its own policy
     into the shared spec.
-  - **Layout: families stay flat; a theme directory appears only when a family
-    needs a shared `internal/` package or grows past a handful of siblings.**
-    `cloud/governance/` is the one theme today: it holds the center (the
-    directory's own package), the authorities it coordinates (`guard`,
-    `resilience`, `fault`), the organs they share (`breaker`, `ratelimit`) and
-    the label convention (`label`). Cross-theme vocabulary and capabilities
-    (`chain`, `traffic`) stay top-level, so a neutral package never imports a
-    theme. Within a theme, a child must never import the theme's root package —
-    that is the one way directory nesting can create an import cycle.
+  - **Layout follows the planes, plus a composition root.** `cloud/runtime/`
+    is the governance runtime. Its root package is the composition root
+    (`runtime.Runtime`, belonging to neither plane and the one injection point).
+    `controlplane/` holds the control plane: `governance` acquires and fans out
+    the governance document, `registration` publishes this process's endpoint
+    state. `dataplane/` holds the request-path implementations (`chain`,
+    `traffic`, `discovery` read side, `loadbalance`, `observability`) and the
+    governance organs (`resilience`, `guard`, `fault`, `breaker`, `ratelimit`,
+    `label`). Shared, plane-neutral vocabulary (`propagate`, `mesh`) stays at
+    the `cloud/` top level. The directory split does not change dependency
+    direction: the control plane may import the data plane, but a data-plane
+    package must never import the control-plane root — that is the one way the
+    split can create an import cycle. Plane membership follows the execution
+    system a package serves, not the role of its objects: the data plane is the
+    dependency closure of request execution, so the direction-neutral
+    `breaker`/`ratelimit` organs and the shared `label`/`traffic` vocabulary
+    belong to it. A package moves out only when a consumer outside the request
+    path also needs it — which is why `cloud/observability/attrs` and
+    `cloud/observability/conf` sit outside `runtime/`. Two couplings are
+    accepted rather than fixed: the governance document embeds data-plane policy
+    types (an in-process control plane values type/config unity over schema
+    independence), and `registration.Instance` / `discovery.Endpoint` remain
+    two vocabularies synced by the backend starters.
   - **A service label is a governance convention, not a per-starter helper.**
     Both directions and every protocol adapter spell it with
-    `cloud/governance/label.ServiceLabel`; a starter must never re-implement the
+    `cloud/runtime/dataplane/label.ServiceLabel`; a starter must never re-implement the
     join, because a client rule and an inbound guard match on the same string.
-  - The inbound half of `cloud/governance/resilience` has been removed. `resilience.Driver`
+  - The inbound half of `cloud/runtime/dataplane/resilience` has been removed. `resilience.Driver`
     is outbound-only (`NewClientExecutor`), and the `Driver`-based backends
     (`starter-governance-sentinel`, `starter-luohua`) contribute outbound
     behavior only; their inbound implementations were retired because the
     framework's inbound policy fields are fully covered by guard's bundled
-    engine. The only remaining combined type is the composition root
-    `governance.Center`; `security.TLSConfig` (a config value with two build
-    methods) is a non-authority. Adding a new combined manager elsewhere is a
-    regression.
+    engine. The composition root `runtime.Runtime` is deliberately a holder of
+    both planes' objects, not a combined authority; `security.TLSConfig` (a
+    config value with two build methods) is a non-authority. Adding a new
+    combined manager elsewhere is a regression.
 
   Everything else in `cloud/` stays gs-free, and gs wiring for any other family
   still belongs in a starter (e.g. `starter-cache`).
@@ -170,7 +188,7 @@ Two recurring traps:
   its home is `spring/`, not `stdlib/`), and the moment a third-party import is
   required it cannot live in either foundation layer. The pattern is:
   **abstraction + driver registry in `spring/`, concrete backend in a `starter`**
-  (see `cloud/cache`, `cloud/lock`, `cloud/discovery`).
+  (see `cloud/cache`, `cloud/lock`, `cloud/runtime/dataplane/discovery`).
 
 ## 4. Scope Red Lines (non-goals)
 
@@ -225,7 +243,7 @@ fixed feature set and hope it fits. So in the framework layers — `stdlib/`,
 - **Built-ins ride the same seams they expose.** Go-Spring's own built-in
   implementations must go through the very extension points offered to users,
   never a privileged private path — `cloud/cache`'s Memory backend,
-  `cloud/governance/resilience`'s built-in strategies, and the starter archetypes all
+  `cloud/runtime/dataplane/resilience`'s built-in strategies, and the starter archetypes all
   consume their own registries/interfaces. If a built-in can't be expressed
   through the public seam, the seam is wrong, not the built-in.
 - **An extension is a layer, not a table entry.** Prefer the onion: wrap the

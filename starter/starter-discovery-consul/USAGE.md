@@ -10,14 +10,14 @@ increment.
 
 **Model**: config is NAMED BLOCKS — each `spring.discovery.consul.<name>.*` block describes ONE
 Consul agent and becomes ONE backend bean named `consul.<name>` (`starter.go`). The bean implements
-BOTH sides of the naming idiom: `discovery.Registry` (write — collected by the `discoveryServer`
-from the [cloud/discovery](../../cloud/discovery) core, imported transitively, which registers into
+BOTH sides of the naming idiom: `registration.Registry` (write — collected by the `discoveryServer`
+from the [cloud/runtime/controlplane/registration](../../cloud/runtime/controlplane/registration) core, imported transitively, which registers into
 EVERY configured center across backends) and `discovery.Discovery` (read — consumers cite the bean
 name, e.g. `discovery=consul.main`; the bean is lazy). Read and write share the block's client, so
 they can never diverge. There is no default/unnamed block. Registration activates only when
 `spring.discovery.service-name` is set — a pure consumer app configures only connection blocks and
 registers nothing. Multi-center (dual registration, cross-backend mixes) is just more blocks. It
-opens no port — the exported `gs.Server` (in the cloud/discovery core) exists purely to plug
+opens no port — the exported `gs.Server` (in the cloud/runtime/controlplane/registration core) exists purely to plug
 registration into the app lifecycle.
 
 ---
@@ -73,7 +73,7 @@ func main() { gs.Run() }
 spring.app.name=orders-provider
 
 # One named block per Consul agent; each block becomes the backend bean
-# "consul.<name>" serving both registration (via the cloud/discovery core)
+# "consul.<name>" serving both registration (via the cloud/runtime/controlplane/registration core)
 # and discovery.
 spring.discovery.consul.main.address=127.0.0.1:8500
 spring.discovery.consul.main.ttl=10s                        # heartbeat at half this
@@ -115,14 +115,14 @@ flip the weight via the app's `UpdateWeight` (§2.3) and re-query — `Weights.P
 
 ## 2. Assembly & timing
 
-Timeline (`starter.go`, `registry.go`, and the cloud/discovery core's `starter.go`):
+Timeline (`starter.go`, `registry.go`, and the cloud/runtime/controlplane/registration core's `starter.go`):
 
 1. For each `${spring.discovery.consul.<name>}` block the module (`OnProperty("spring.discovery.consul")`,
    bound via `BindEach`) builds ONE `*api.Client` and, when `ping=true`, probes the agent
    (`Catalog().Services`, 5s timeout) so a bad address fails startup here, once per block. The bean
-   named `consul.<name>` exports BOTH `discovery.Registry` and `discovery.Discovery` (lazy read half) on that client.
-2. The cloud/discovery core provides `gs.Provide(NewServer).Name("discoveryServer")` conditioned
-   on `spring.discovery.service-name`; its `Registries []discovery.Registry` field slice-collects
+   named `consul.<name>` exports BOTH `registration.Registry` and `discovery.Discovery` (lazy read half) on that client.
+2. The cloud/runtime/controlplane/registration core provides `gs.Provide(NewServer).Name("discoveryServer")` conditioned
+   on `spring.discovery.service-name`; its `Registries []registration.Registry` field slice-collects
    EVERY backend's registry (consul, etcd, ... mixed). `Run` validates `service-name`/`addr` and
    ≥1 registry **before** signalling readiness, waits `<-sig.TriggerAndWait()` (the ready-gate:
    registration happens only after every other server is up), then `Agent().ServiceRegister` into
@@ -158,7 +158,7 @@ change. A failed poll keeps the stale snapshot and retries after 5s; an agent in
 (smaller `LastIndex`) drops the held index so the next query answers immediately. Later Resolves
 are in-memory reads. Weight-0 filtering is the consumer pool's: `excludeDrained` drops
 `Weight == 0` endpoints, falling back to the full set only when every endpoint is drained
-(`cloud/loadbalance/pool.go`).
+(`cloud/runtime/dataplane/loadbalance/pool.go`).
 
 ### 2.3 DRAIN path — UpdateWeight(0)
 
@@ -196,7 +196,7 @@ every center.
 | `spring.discovery.weight` | int | `100` | advertised weight; negative normalized to 1 at write time | 0 = drained; drains from startup as well as via `UpdateWeight(0)` |
 | `spring.discovery.metadata.*` | map[string]string | empty | instance attributes (zone, version, ...) passed through to discovery Metadata | — |
 
-Discovery needs **no configuration**: each block's bean IS a `cloud/discovery.Discovery` named
+Discovery needs **no configuration**: each block's bean IS a `cloud/runtime/dataplane/discovery.Discovery` named
 `consul.<name>`; clients cite that bean name (`discovery=consul.main`). The bean is lazy — a
 pure provider never pays for the read half; a pure consumer configures only connection blocks and
 registers nothing. Multi-agent discovery is just multiple blocks — cite whichever agent you want

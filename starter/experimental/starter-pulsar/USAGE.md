@@ -190,7 +190,7 @@ gs.Run()
   │       Prometheus registry + :port /metrics server, log bridge,
   │       pulsar.NewClient, then attachGuard — center.ExecutorFor("pulsar",
   │       "pulsar:<url>") indexed by client, so the client is COMPLETE when
-  │       returned; center is the injected *governance.Center   [driver.go:76-115, command.go:225]
+  │       returned; center is the injected *runtime.Runtime   [driver.go:76-115, command.go:225]
   │    3. then probe (Ping): cl.TopicPartitions(HealthCheckTopic) — a lookup
   │       that exercises address+auth+TLS without producing; failure →
   │       closeResilience + cl.Close + metrics shutdown + boot error     [starter.go:108-116]
@@ -200,7 +200,7 @@ gs.Run()
 ```
 
 **Assembly extension point**: client assembly is owned by a `Driver` (interface,
-`driver.go:62-72`): `CreateClient(ctx, c Config, center *governance.Center) (pulsar.Client, error)`.
+`driver.go:62-72`): `CreateClient(ctx, c Config, center *runtime.Runtime) (pulsar.Client, error)`.
 The driver returns the client COMPLETE — it applies the governance executor itself (via
 `attachGuard`) while building, so nothing patches the client afterwards. A company/umbrella starter
 may provide its own `Driver` as an **optional container bean** (a
@@ -241,7 +241,7 @@ The consumer direction declares the same way inside the driver's receive loop
 
 The executor attached by `attachGuard` [command.go] comes from
 `center.ExecutorFor("pulsar", service)` (`service` = `pulsar:<url>`), where `center` is the
-injected `*governance.Center` the ctor hands the driver — carrying the injected
+injected `*runtime.Runtime` the ctor hands the driver — carrying the injected
 `*resilience.ClientManager` and `*fault.ClientManager`: with a manager it returns the fully assembled executor (core
 breaker/limiter/retry wrapped by the resilience observer — outcome counters + access log) wrapped
 outermost by fault injection from the injected `*fault.ClientManager` (the injected error flows through

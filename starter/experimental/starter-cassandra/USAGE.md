@@ -135,7 +135,7 @@ import starter-cassandra
         └─ conf.BindEach(p, "${spring.cassandra.instances}") → one Config per <name> entry
               ├─ Provide(newClient, IndexArg(1, ValueArg(c)),
               │            IndexArg(2, ?Driver),
-              │            IndexArg(3, *governance.Center)).Name(<name>)
+              │            IndexArg(3, *runtime.Runtime)).Name(<name>)
               │       .Destroy((*Client).Close)
               └─ Provide health.Indicator named "cassandra:<name>",
                       injecting the client by name (TagArg) [starter.go:58-61]
@@ -149,7 +149,7 @@ gs.Run()
   │     → driver.CreateClient(ctx, c, center) returns the *Client
   │       (session + identity + governance): NewClient sets exec = center.ExecutorFor("cassandra", service),
   │       which builds center.FaultClient().WrapClientExecutor(center.ResilienceClient().ClientExecutorFor("cassandra", service))
-  │       over the authorities the injected *governance.Center hands out — exec chain complete at construction
+  │       over the authorities the injected *runtime.Runtime hands out — exec chain complete at construction
   ├─ ping=true only: fail-fast probe — newClient calls HealthCheck [starter.go:100], one system.local scan to the raw session
   ├─ readiness: indicator delegates to HealthCheck, which queries system.local [health.go:34]
   └─ SIGTERM → Close [client.go]: exec.Close → session.Close
@@ -229,7 +229,7 @@ rejections both flow through retry/breaker/timeout and are counted and logged.
 
 ### 2.4 Driver seam
 
-`Driver.CreateClient(ctx, Config, center *governance.Center) (*Client, error)` owns full session
+`Driver.CreateClient(ctx, Config, center *runtime.Runtime) (*Client, error)` owns full session
 assembly — hosts, PasswordAuthenticator, consistency, timeouts, CQL version, TLS [driver.go:63-95] —
 and applies the governance from `center` while building, returning the exported `*Client` wrapper complete
 (identity and governance both fixed via `NewClient` [driver.go:95]); only the startup probe stays in

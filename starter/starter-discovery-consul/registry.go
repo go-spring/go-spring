@@ -27,7 +27,8 @@ import (
 	"time"
 
 	"github.com/hashicorp/consul/api"
-	"go-spring.org/cloud/discovery"
+	"go-spring.org/cloud/runtime/controlplane/registration"
+	"go-spring.org/cloud/runtime/dataplane/discovery"
 	"go-spring.org/log"
 	"go-spring.org/stdlib/errutil"
 )
@@ -40,19 +41,19 @@ type consulRegistry struct {
 	deregisterCriticalAfter time.Duration
 
 	mu         sync.Mutex
-	heartbeats map[string]chan struct{}      // service ID -> heartbeat stop channel
-	regs       map[string]discovery.Instance // service ID -> last registered value
+	heartbeats map[string]chan struct{}         // service ID -> heartbeat stop channel
+	regs       map[string]registration.Instance // service ID -> last registered value
 
 	// obs is the block's observability layer; it carries the identity (system,
 	// center) every reported attempt and log line is labelled with.
-	obs *discovery.Observer
+	obs *registration.Observer
 }
 
 // newConsulRegistry returns a registry writing through client (the shared
 // center client; the agent was already probed when client was built) with c's
 // TTL and auto-deregistration window. It does NOT close client — the owner
 // (consulCenter, or the standalone fallback in starter.go) does.
-func newConsulRegistry(c ConsulConfig, client *api.Client, obs *discovery.Observer) (*consulRegistry, error) {
+func newConsulRegistry(c ConsulConfig, client *api.Client, obs *registration.Observer) (*consulRegistry, error) {
 	if client == nil {
 		return nil, errutil.Explain(nil, "discovery-consul: nil consul client")
 	}
@@ -66,7 +67,7 @@ func newConsulRegistry(c ConsulConfig, client *api.Client, obs *discovery.Observ
 		ttl:                     c.TTL,
 		deregisterCriticalAfter: c.DeregisterCriticalAfter,
 		heartbeats:              map[string]chan struct{}{},
-		regs:                    map[string]discovery.Instance{},
+		regs:                    map[string]registration.Instance{},
 	}, nil
 }
 
@@ -75,7 +76,7 @@ func newConsulRegistry(c ConsulConfig, client *api.Client, obs *discovery.Observ
 // registrationMeta folds the instance's routing dimensions (version, zone,
 // scheme) into the meta map Consul stores: the catalog has no dedicated fields
 // for them, and the discovery read side restores them from these reserved keys.
-func registrationMeta(reg discovery.Instance) map[string]string {
+func registrationMeta(reg registration.Instance) map[string]string {
 	if reg.Version == "" && reg.Zone == "" && reg.Scheme == "" {
 		return reg.Metadata
 	}
@@ -95,7 +96,7 @@ func registrationMeta(reg discovery.Instance) map[string]string {
 	return md
 }
 
-func serviceID(reg discovery.Instance) string {
+func serviceID(reg registration.Instance) string {
 	if reg.ID != "" {
 		return reg.ID
 	}
@@ -116,7 +117,7 @@ func normalizeWeight(w int) int {
 // Register publishes reg with a TTL health check, passes the check immediately
 // so the instance is healthy without waiting a full TTL, then keeps it passing
 // on a background heartbeat until Deregister.
-func (r *consulRegistry) Register(ctx context.Context, reg discovery.Instance) error {
+func (r *consulRegistry) Register(ctx context.Context, reg registration.Instance) error {
 	reg.Weight = normalizeWeight(reg.Weight)
 	if _, _, err := net.SplitHostPort(reg.Addr); err != nil {
 		return errutil.Explain(err, "discovery-consul: addr %q must be host:port", reg.Addr)
@@ -126,7 +127,7 @@ func (r *consulRegistry) Register(ctx context.Context, reg discovery.Instance) e
 	}
 	id := serviceID(reg)
 	checkID := "service:" + id
-	if err := r.obs.RegisterAttempt(ctx, reg.ServiceName, discovery.ReasonInitial, func(context.Context) error {
+	if err := r.obs.RegisterAttempt(ctx, reg.ServiceName, registration.ReasonInitial, func(context.Context) error {
 		return r.upsert(reg)
 	}); err != nil {
 		return errutil.Explain(err, "discovery-consul: register %q", reg.ServiceName)
@@ -140,8 +141,8 @@ func (r *consulRegistry) Register(ctx context.Context, reg discovery.Instance) e
 				log.String("center", r.obs.Center()),
 				log.String("service", reg.ServiceName),
 				log.String("operation", "register"),
-				log.String("reason", discovery.ReasonInitial),
-				log.String("status", discovery.StatusOf(err)),
+				log.String("reason", registration.ReasonInitial),
+				log.String("status", registration.StatusOf(err)),
 				log.Err(err),
 			},
 			log.String("check_id", checkID),
@@ -179,12 +180,12 @@ func (r *consulRegistry) reRegister(ctx context.Context, id string) error {
 	// instance's fields and joins the attempt's own span: the retry being
 	// reported and the span recording it are one event in the trace, not two
 	// unconnected ones.
-	return r.obs.RegisterAttempt(ctx, reg.ServiceName, discovery.ReasonSelfHeal, func(actx context.Context) error {
+	return r.obs.RegisterAttempt(ctx, reg.ServiceName, registration.ReasonSelfHeal, func(actx context.Context) error {
 		err := r.upsert(reg)
 		if err != nil {
 			log.Error(actx, starterTag, err, "consul re-register failed; the heartbeat retries it",
 				log.String("id", id),
-				log.String("status", discovery.StatusOf(err)))
+				log.String("status", registration.StatusOf(err)))
 		}
 		return err
 	})
@@ -194,14 +195,14 @@ func (r *consulRegistry) reRegister(ctx context.Context, id string) error {
 // is the single write step shared by Register, the heartbeat's self-healing
 // re-register, and UpdateWeight, so all three advertise the identical entry
 // apart from the weight.
-func (r *consulRegistry) upsert(reg discovery.Instance) error {
+func (r *consulRegistry) upsert(reg registration.Instance) error {
 	return r.client.Agent().ServiceRegister(r.buildRegistration(reg))
 }
 
 // buildRegistration assembles the full Consul service registration for reg —
 // the TTL check definition included — so Register and UpdateWeight both
 // upsert the identical entry apart from the weight.
-func (r *consulRegistry) buildRegistration(reg discovery.Instance) *api.AgentServiceRegistration {
+func (r *consulRegistry) buildRegistration(reg registration.Instance) *api.AgentServiceRegistration {
 	host, portStr, err := net.SplitHostPort(reg.Addr)
 	if err != nil {
 		host = reg.Addr
@@ -233,7 +234,7 @@ func (r *consulRegistry) buildRegistration(reg discovery.Instance) *api.AgentSer
 // without any re-registration. A weight of 0 drains the instance — Consul
 // routes no traffic to a zero-weight service. It fails if reg was never
 // registered through Register.
-func (r *consulRegistry) UpdateWeight(ctx context.Context, reg discovery.Instance, weight int) error {
+func (r *consulRegistry) UpdateWeight(ctx context.Context, reg registration.Instance, weight int) error {
 	id := serviceID(reg)
 	r.mu.Lock()
 	last, ok := r.regs[id]
@@ -271,7 +272,7 @@ func (r *consulRegistry) heartbeat(id, service string, stop <-chan struct{}) {
 		log.String("center", r.obs.Center()),
 		log.String("service", service),
 		log.String("operation", "register"),
-		log.String("reason", discovery.ReasonSelfHeal),
+		log.String("reason", registration.ReasonSelfHeal),
 	)
 	checkID := "service:" + id
 	interval := r.ttl / 2
@@ -303,7 +304,7 @@ func (r *consulRegistry) heartbeat(id, service string, stop <-chan struct{}) {
 				_ = r.reRegister(ctx, id)
 			} else {
 				log.Warn(ctx, starterTag, "consul TTL heartbeat failed",
-					log.String("status", discovery.StatusOf(err)),
+					log.String("status", registration.StatusOf(err)),
 					log.String("check_id", checkID),
 					log.Int("failures", failures),
 					log.Err(err))
@@ -317,7 +318,7 @@ func (r *consulRegistry) heartbeat(id, service string, stop <-chan struct{}) {
 // Consul to drop the id, and Consul answering 404 for an id it does not hold is
 // that no-op — the discovery core calls Deregister from both PreStop and the
 // Stop fallback, so a repeat call is the normal shutdown path, not a failure.
-func (r *consulRegistry) Deregister(ctx context.Context, reg discovery.Instance) error {
+func (r *consulRegistry) Deregister(ctx context.Context, reg registration.Instance) error {
 	id := serviceID(reg)
 	r.mu.Lock()
 	if stop, ok := r.heartbeats[id]; ok {

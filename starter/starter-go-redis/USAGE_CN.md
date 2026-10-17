@@ -150,7 +150,7 @@ import starter-go-redis
 gs.Run()
   └─ 构造 newClient [starter.go:129]——先完整装配，再探测：
        ├─ validateConfig → 查 driver → driver.CreateClient(ctx, c, center)
-       │    （容器注入唯一的 *governance.Center——全家族唯一的注入点；
+       │    （容器注入唯一的 *runtime.Runtime——全家族唯一的注入点；
        │      c.Discovery 已带上家族级 discovery 回退标签，由 Driver 自行解析）
        │    └─ DefaultDriver 建好裸客户端后连同 center 交给 NewClient [client.go:106]
        │         → instrument()（redisotel 连接池指标，由 otel.metrics.enabled 门控）
@@ -228,7 +228,7 @@ redisotel（连接池指标）→ operationHook（声明身份）→ resilienceH
 `spring.governance.client.rules[N].balancer` / `outlier-threshold` / `outlier-suspend-for` 会**整条重建**——下一次拨号
 在全新的 balancer 与 suspension tracker 上走新策略。dialer 把拨号结果喂给 `Complete`，所以 `outlier-threshold` 摘的是**反复连不上**的实例。
 sentinel 与 cluster 客户端自己发现节点、没有链路，这些 key 到不了它们。详见
-`cloud/governance/README.md` §3.1。
+`cloud/runtime/controlplane/governance/README.md` §3.1。
 
 ---
 

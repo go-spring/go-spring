@@ -55,7 +55,7 @@ info, err := s.Client.Enqueue(ctx, asynq.NewTask("example:greet", payload))
   `server.enabled=true` 时装配；长期运行的 worker 是显式 opt-in）。二者共
   享同一套 Redis 连接配置。
 - **单一注入中心** — 构造函数接收治理家族唯一的注入点——必填的
-  `*governance.Center`（`center` 参数），client 正是从这一个对象上读取其
+  `*runtime.Runtime`（`center` 参数），client 正是从这一个对象上读取其
   resilience/fault 职权（`center.ResilienceClient()`、`center.FaultClient()`）。但 asynq 生产者
   client 没有可挂 resilience executor 的缝,故中心里的职权都不作用于入队路径：
   `Client.Enqueue` 在 observer 下运行,只发射 span/指标/访问日志,既不限流也不重试。

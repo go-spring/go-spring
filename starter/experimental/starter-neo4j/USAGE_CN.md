@@ -135,7 +135,7 @@ spring.observability.metrics.exporter=prometheus
 spring.actuator.addr=:9370
 
 # --- governance：Query / RunWithResilience 的保护 ----------------------------
-# NOTE: governance RULES go in conf/governance.properties, referenced by spring.governance.source.file.path in app.properties (see cloud/governance's SOURCE_USAGE).
+# NOTE: governance RULES go in conf/governance.properties, referenced by spring.governance.source.file.path in app.properties (see cloud/runtime/controlplane/governance's SOURCE_USAGE).
 spring.resilience.driver=default
 spring.governance.client.default.rate-limit=100
 spring.governance.client.default.max-retries=1
@@ -182,7 +182,7 @@ gs.Run()
   │   │  Driver bean；指定的 bean 不存在则启动失败）
   │   ├─ d.CreateClient(ctx, c, center)（auth + 连接池参数 + TLS）返回 *Client
   │   │  已完整——身份（session + 服务标签）与治理均已应用
-  │   │  [starter.go:123, driver.go:77]；center 为注入的 *governance.Center，
+  │   │  [starter.go:123, driver.go:77]；center 为注入的 *runtime.Runtime，
   │   │  交出 resilience/fault 权威（resilience manager 必填）
   │   ├─ NewClient [client.go:96-103]：service = label.ServiceLabel("neo4j",
   │   │  ServiceName, URI) → center.ExecutorFor("neo4j", service)——受治理的
@@ -203,7 +203,7 @@ gs.Run()
 **装配扩展点**：client 装配由 `Driver`（接口，`driver.go:66-68`）负责。公司/伞包 starter 可把
 自己的 `Driver` 作为**可选容器 bean** 提供（`gs.Provide(func() StarterNeo4j.Driver{...})`，
 因为是 bean，可在装配期注入从配置文件绑定的配置）；`spring.neo4j` 下每个实例都经它构建。
-`CreateClient(ctx, c, center)` 接收注入的 `*governance.Center`；发现后端由 driver 自行从
+`CreateClient(ctx, c, center)` 接收注入的 `*runtime.Runtime`；发现后端由 driver 自行从
 `center.Discovery().Get(c.Discovery)` 解析——该条目 `${discovery}` label 挂在 config 上
 （ctor 已把家族默认值折叠进 `c.Discovery`），因此不再传入预解析的后端。没有该 bean 时 starter
 在装配内回退到内置 `DefaultDriver`
@@ -367,7 +367,7 @@ curl -s :9090/metrics | grep -E 'db.client.(operation|attempt).duration|db.clien
 ### 4.3 韧性演练（example-cloudnative / example-load 形态）
 
 ```properties
-# NOTE: governance RULES go in conf/governance.properties, referenced by spring.governance.source.file.path in app.properties (see cloud/governance's SOURCE_USAGE).
+# NOTE: governance RULES go in conf/governance.properties, referenced by spring.governance.source.file.path in app.properties (see cloud/runtime/controlplane/governance's SOURCE_USAGE).
 spring.resilience.driver=default
 spring.governance.client.default.rate-limit=5
 ```

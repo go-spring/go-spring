@@ -2,14 +2,14 @@
 
 详细使用参考。总览见 [README_CN.md](README_CN.md)。以下每条行为断言都对照过 starter
 源码（`starter.go`、`governance.go`、`governance_test.go`）、共享解析胶水
-[cloud/governance/rules.go](../../cloud/governance/rules.go)、核心契约
-[cloud/governance](../../cloud/governance)（`source.go`），以及自断言的
+[cloud/runtime/controlplane/governance/rules.go](../../cloud/runtime/controlplane/governance/rules.go)、核心契约
+[cloud/runtime/controlplane/governance](../../cloud/runtime/controlplane/governance)（`source.go`），以及自断言的
 [example/](example)（`example/main.go`、`example/check.sh`）。Nacos 自身的语义（dataId、
 group、namespace、`ListenConfig`）见 [Nacos 文档](https://nacos.io/docs/latest/manual/admin/config/)——
 以下都是 go-spring 的增量。
 
 **本 starter 是什么**：治理规则源家族的 Nacos 适配器，是一个 `governance.Source` 实现；
-治理中心本身的呈现是 [cloud/governance](../../cloud/governance) 的职责。存在
+治理中心本身的呈现是 [cloud/runtime/controlplane/governance](../../cloud/runtime/controlplane/governance) 的职责。存在
 `spring.governance.source.nacos.*` 配置项之前，空导入本包是惰性的。
 
 ---
@@ -42,7 +42,7 @@ require (
 package main
 
 import (
-    "go-spring.org/cloud/governance/resilience"
+    "go-spring.org/cloud/runtime/dataplane/resilience"
     "go-spring.org/spring/gs"
 
     _ "go-spring.org/starter-governance-nacos"
@@ -63,7 +63,7 @@ func (p *poller) Run(ctx context.Context) error {
 }
 
 // newPoller 在注入的 manager 之上构建 poller。manager 为 nil——没有
-// cloud/governance bean 的容器——时归一化为一个新的未武装实例。
+// cloud/runtime/controlplane/governance bean 的容器——时归一化为一个新的未武装实例。
 func newPoller(mgr *resilience.ClientManager) *poller {
     if mgr == nil {
         mgr = resilience.NewClientManager()
@@ -122,7 +122,7 @@ go run . -manual
 
 ### 2.1 Source 契约——中心真正依赖的东西
 
-`cloud/governance` 与容器无关：其中心只依赖两方法的 `Source` 接口（`cloud/governance/source.go`）：
+`cloud/runtime/controlplane/governance` 与容器无关：其中心只依赖两方法的 `Source` 接口（`cloud/runtime/controlplane/governance/source.go`）：
 
 ```go
 type Source interface {
@@ -156,7 +156,7 @@ type Source interface {
             .Export(gs.As[governance.Source]())
 
 gs.Run()
-  ├─ Bean 装配：导出的 Source Bean 被注入 cloud/governance 的 wiring
+  ├─ Bean 装配：导出的 Source Bean 被注入 cloud/runtime/controlplane/governance 的 wiring
   ├─ 规则源 Bean Init: ListenConfig 安装 OnChange 监听器
   ├─ 你的 Runner 运行（治理已武装——Rooter 先于 Runner）
   └─ SIGTERM 时：规则源 Bean Destroy → Close：CancelListenConfig + CloseClient
@@ -211,11 +211,11 @@ gs.Run()
 这与 `starter-config-nacos` import 串的 `timeout-ms` 不同。
 
 ⚠ `spring.governance.source.*` 只是引导面。规则文档本身永不走 `app.properties`——它住在自己的 dataId 里，
-其键是 `spring.governance.*` 词表，文档见 [cloud/governance 的 SOURCE_USAGE_CN.md](../../cloud/governance/SOURCE_USAGE_CN.md)。
+其键是 `spring.governance.*` 词表，文档见 [cloud/runtime/controlplane/governance 的 SOURCE_USAGE_CN.md](../../cloud/runtime/controlplane/governance/SOURCE_USAGE_CN.md)。
 
 ### 3.1 文档的逐字节可移植性
 
-文档由 cloud/governance 内置的 file 源与 http 源共用的同一个 `governance.Parse` 解析：先扁平化，
+文档由 cloud/runtime/controlplane/governance 内置的 file 源与 http 源共用的同一个 `governance.Parse` 解析：先扁平化，
 要求至少含一个 `spring.governance.*` 键，再绑定进 `governance.Config`。因此一份能作为本地规则文件工作的文档，
 作为 Nacos dataId（反之亦然，以及作为 etcd 值配合
 [starter-governance-etcd](../starter-governance-etcd)）也能原样工作。
@@ -295,7 +295,7 @@ docker 或 compose 命令不可用时，`check.sh` 优雅跳过。否则它拉�
 - 播种快速失败是刻意的：与配置导入角色不同，此接口面没有 `optional:` 模式，因此配置错误的 dataId
   无法静默装一个 disabled 中心。代价是 dataId 必须在应用启动前存在——对于一份缺失即不可见的规则
   文档，这是可接受的。
-- 解析胶水（`governance.Parse`）就放在 `cloud/governance` 里：规则文档是框架自己的格式，解析器
+- 解析胶水（`governance.Parse`）就放在 `cloud/runtime/controlplane/governance` 里：规则文档是框架自己的格式，解析器
   理应和它产出的模型在一起,各后端共享同一个实现。这是 `cloud/` 里唯一 import `spring/conf` 的
   地方——可以接受,因为替代方案(每个后端各写一份解析,或把解析器塞在某个 starter 里让兄弟模块
   反向依赖它)都更差。

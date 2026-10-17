@@ -64,7 +64,7 @@ keeps the demo self-contained (copied from [example/discovery.go](example/discov
 ```go
 package main
 
-import "go-spring.org/cloud/discovery"
+import "go-spring.org/cloud/runtime/dataplane/discovery"
 
 func init() {
     gs.Provide(func() (discovery.Discovery, error) {
@@ -129,7 +129,7 @@ spring.mongodb.instances.disc.server-selection-timeout=10s
 
 # --- governance: policy for the dial seam (rate-limit makes the dial
 #     protection observable; breaker/retry/timeout also apply) ---------------
-# NOTE: governance RULES go in conf/governance.properties, referenced by spring.governance.source.file.path in app.properties (see cloud/governance's SOURCE_USAGE).
+# NOTE: governance RULES go in conf/governance.properties, referenced by spring.governance.source.file.path in app.properties (see cloud/runtime/controlplane/governance's SOURCE_USAGE).
 spring.resilience.driver=default
 spring.governance.client.default.rate-limit=5
 
@@ -173,7 +173,7 @@ import starter-mongodb
 
 gs.Run()
   ├─ ctor newClient [starter.go:105]: ApplyURI → timeouts/pool/auth → tls.Build
-  │   → read the injected authorities off the *governance.Center (variable center):
+  │   → read the injected authorities off the *runtime.Runtime (variable center):
   │     center.ResilienceClient() / center.FaultClient() / center.Loadbalance() (mgr / inj / lbMgr)
   │   → SetMonitor(command monitor, lazy observer holder) [starter.go:152]
   │   → newPickPool(ctx, c, backend) (loader-backed endpoint picker when service-name set, mesh off) [starter.go:155]
@@ -282,13 +282,13 @@ There are no observability keys — observation is unconditional (see §3.3).
 
 ### 3.2 Resilience / fault (spring.governance.*, not under the instance prefix)
 
-Policy keys live in the governance rules document under `spring.governance.*` (cloud/governance's governance center);
+Policy keys live in the governance rules document under `spring.governance.*` (cloud/runtime/controlplane/governance's governance center);
 `newClient` reads the injected `*resilience.ClientManager` / `*fault.ClientManager` (`mgr`/`inj`) and
-`*loadbalance.Manager` (`lbMgr`) off the `*governance.Center`, whose
+`*loadbalance.Manager` (`lbMgr`) off the `*runtime.Runtime`, whose
 `center.ExecutorFor("mongodb", "mongodb:<service-name|uri>")` resolves
 `inj.WrapClientExecutor(mgr.ClientExecutorFor("mongodb", "mongodb:<service-name|uri>"))`
 in one call [client.go:113-121]. Relevant keys: `spring.resilience.driver` (the backend, a
-static app-config key) and, in the governance document (see cloud/governance's SOURCE_USAGE
+static app-config key) and, in the governance document (see cloud/runtime/controlplane/governance's SOURCE_USAGE
 for the full set), `spring.governance.client.default.rate-limit` /
 `error-threshold` / `open-duration` / `max-retries` / `timeout`, and the `spring.governance.client.fault.*`
 injection block (enable/rate/error). ⚠ Remember the seam is the **dial layer**: a breaker
@@ -304,7 +304,7 @@ fresh balancer and suspension tracker, no restart and no re-dial of existing con
 (URI-only) instances have no candidate set, so these keys
 are inert for them. ⚠ The dialer's only outcome signal is the dial itself, so `outlier-threshold`
 evicts instances that keep refusing *connections*; per-command failures belong to the resilience
-executor above. See `cloud/governance/README.md` §3.1.
+executor above. See `cloud/runtime/controlplane/governance/README.md` §3.1.
 
 ### 3.3 Observability
 
@@ -359,7 +359,7 @@ grep _app_mongodb_access app.log | tail -1
 ### 4.3 Dial-layer resilience drill (from example-cloudnative)
 
 ```properties
-# NOTE: governance RULES go in conf/governance.properties, referenced by spring.governance.source.file.path in app.properties (see cloud/governance's SOURCE_USAGE).
+# NOTE: governance RULES go in conf/governance.properties, referenced by spring.governance.source.file.path in app.properties (see cloud/runtime/controlplane/governance's SOURCE_USAGE).
 spring.resilience.driver=default
 spring.governance.client.default.rate-limit=5
 spring.mongodb.instances.a.max-pool-size=100   # room for the burst to force fresh dials
@@ -374,7 +374,7 @@ the executor hot-reloads without restart (governance center).
 ### 4.4 Fault injection + load drill (example-load)
 
 ```properties
-# NOTE: governance RULES go in conf/governance.properties, referenced by spring.governance.source.file.path in app.properties (see cloud/governance's SOURCE_USAGE).
+# NOTE: governance RULES go in conf/governance.properties, referenced by spring.governance.source.file.path in app.properties (see cloud/runtime/controlplane/governance's SOURCE_USAGE).
 spring.governance.client.fault.rate=0.5
 spring.governance.client.fault.error=generic    # or: timeout / reset
 ```

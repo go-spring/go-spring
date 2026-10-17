@@ -19,14 +19,14 @@ package StarterGateway
 import (
 	"context"
 	"fmt"
-	"go-spring.org/cloud/chain"
+	"go-spring.org/cloud/runtime/dataplane/chain"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
 
-	"go-spring.org/cloud/discovery"
-	"go-spring.org/cloud/loadbalance"
-	"go-spring.org/cloud/governance/resilience"
+	"go-spring.org/cloud/runtime/dataplane/discovery"
+	"go-spring.org/cloud/runtime/dataplane/loadbalance"
+	"go-spring.org/cloud/runtime/dataplane/resilience"
 	"go-spring.org/log"
 )
 

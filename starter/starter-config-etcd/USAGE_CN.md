@@ -131,7 +131,7 @@ key 可以喂给任意 bean 的配置。etcd Get 本身发生在第 2 步——�
 ```
 被 watch 的 key 上发生 etcd PUT
   → clientv3.Watch channel 投递带事件的 WatchResponse
-  → watcher goroutine：len(wr.Events) > 0 → observability.RefreshConf(ctx, fn)
+  → watcher goroutine：len(wr.Events) > 0 → conf.Refresh(ctx, fn)
   → gs.RefreshProperties(ctx) → App.RefreshProperties(ctx)：
        重跑整个属性加载（所有文件 + 所有 import）→ 合并
        → 传播到容器 → gs.Dync[T] 字段原子更新

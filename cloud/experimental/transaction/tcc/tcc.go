@@ -79,8 +79,8 @@ package tcc
 import (
 	"context"
 
-	"go-spring.org/cloud/chain"
 	"go-spring.org/cloud/experimental/transaction"
+	"go-spring.org/cloud/runtime/dataplane/chain"
 )
 
 // RetryPolicy governs how a [Participant] phase (try, confirm or cancel) is

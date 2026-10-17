@@ -19,7 +19,7 @@ package StarterRedigo
 import (
 	"context"
 
-	"go-spring.org/cloud/governance"
+	"go-spring.org/cloud/runtime"
 )
 
 // Driver interface defines how to create a Redis client (a connection pool) —
@@ -54,7 +54,7 @@ import (
 //     standard assembly would have done, including any teardown of resources
 //     you built.
 //
-// center is the container's governance center — the family's one injection
+// center is the container's runtime — the family's one injection
 // point — carrying resilience, fault, loadbalance and the discovery directory.
 // [NewPool] applies it while it builds, so nothing patches the pool afterwards.
 // It is one object rather than a parameter per capability so this interface —
@@ -63,7 +63,7 @@ import (
 // A hand-built pool (an example, a test) must supply a center holding a
 // [resilience.ClientManager]; a nil center is a construction error.
 type Driver interface {
-	CreateClient(ctx context.Context, c Config, center *governance.Center) (*Pool, error)
+	CreateClient(ctx context.Context, c Config, center *runtime.Runtime) (*Pool, error)
 }
 
 // DefaultDriver is the default implementation of the Driver interface.
@@ -90,6 +90,6 @@ type DefaultDriver struct{}
 //
 // center is passed straight through to [NewPool], which applies it during
 // assembly, so the returned Pool is complete.
-func (DefaultDriver) CreateClient(ctx context.Context, c Config, center *governance.Center) (*Pool, error) {
+func (DefaultDriver) CreateClient(ctx context.Context, c Config, center *runtime.Runtime) (*Pool, error) {
 	return NewPool(ctx, c, center)
 }

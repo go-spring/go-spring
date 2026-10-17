@@ -15,7 +15,7 @@
  */
 
 // This file is the CONSUMER half of ZooKeeper service discovery: the
-// cloud/discovery Discovery backend serving snapshots of the instances the
+// cloud/runtime/dataplane/discovery Discovery backend serving snapshots of the instances the
 // registry (registry.go) publishes. It is derived from the
 // ${spring.discovery.zookeeper} center (starter.go) under the fixed label
 // "zookeeper" — there is no separate discovery config block. Freshness is
@@ -38,7 +38,7 @@ import (
 	"time"
 
 	"github.com/go-zookeeper/zk"
-	"go-spring.org/cloud/discovery"
+	"go-spring.org/cloud/runtime/dataplane/discovery"
 	"go-spring.org/log"
 	"go-spring.org/stdlib/errutil"
 )
@@ -323,7 +323,7 @@ func valuesToEndpoints(obs *discovery.Observer, vals map[string][]byte) []discov
 	for name, data := range vals {
 		var v instanceValue
 		if err := json.Unmarshal(data, &v); err != nil {
-			// A malformed payload is one bad discovery.Instance, not a broken snapshot.
+			// A malformed payload is one bad registration.Instance, not a broken snapshot.
 			log.Warn(context.Background(), starterTag, "discovery-zookeeper: skip malformed instance payload",
 				log.String("system", obs.System()),
 				log.String("center", obs.Center()),

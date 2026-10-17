@@ -18,8 +18,9 @@ package StarterNeo4j
 
 import (
 	"context"
-	"go-spring.org/cloud/governance"
 	"time"
+
+	"go-spring.org/cloud/runtime"
 
 	"go-spring.org/cloud/actuator/health"
 	"go-spring.org/log"
@@ -41,7 +42,7 @@ func init() {
 		// instance inherits unless it sets its own.
 		p = flatten.WithFallback(p, "spring.neo4j.instances", "spring.neo4j.default")
 		return conf.BindEach(p, "${spring.neo4j.instances}", func(name string, c Config) error {
-			// newClient reads the authorities off the injected governance center
+			// newClient reads the authorities off the injected runtime
 			// and hands the center straight to the driver, which passes it to
 			// [NewClient] — so the client is assembled complete in one step. The
 			// wrapper bean owns the resulting resilience executor and Destroy
@@ -58,7 +59,7 @@ func init() {
 				gs.IndexArg(1, gs.ValueArg(c)),
 				gs.IndexArg(2, gs.TagArg("${spring.neo4j.instances."+name+".discovery:=${spring.neo4j.default.discovery:=none}}")),
 				gs.IndexArg(3, gs.TagArg("${spring.neo4j.instances."+name+".driver:=${spring.neo4j.default.driver:=?}}")),
-				// The governance center is the family's sole injection point: it hands
+				// The runtime is the family's sole injection point: it hands
 				// out the resilience/fault/loadbalance authorities.
 			).Name(name).Destroy((*Client).Destroy).Caller(1)
 			// Contribute a health indicator for this instance, injecting the
@@ -106,12 +107,12 @@ func init() {
 // default). It is folded into the config so the driver resolves the backend
 // itself — see the fold below.
 //
-// center is the governance center — the family's sole injection point. The ctor
+// center is the runtime — the family's sole injection point. The ctor
 // hands the center straight to the driver, which passes it to [NewClient] — so
 // the client is assembled complete in one step, with the resilience manager
-// required: the container supplies it via the governance center, so a center
+// required: the container supplies it via the runtime, so a center
 // without one fails at construction.
-func newClient(ctx *gs.ContextProvider, c Config, discoveryLabel string, d Driver, center *governance.Center) (*Client, error) {
+func newClient(ctx *gs.ContextProvider, c Config, discoveryLabel string, d Driver, center *runtime.Runtime) (*Client, error) {
 	// The client's identity rides on a context derived here: every line below
 	// carries it without repeating it. The provider's own context is left
 	// alone — that one is the shared application context, not this

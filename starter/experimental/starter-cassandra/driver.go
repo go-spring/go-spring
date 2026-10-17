@@ -25,7 +25,7 @@ import (
 	"crypto/tls"
 
 	"github.com/gocql/gocql"
-	"go-spring.org/cloud/governance"
+	"go-spring.org/cloud/runtime"
 	"go-spring.org/stdlib/errutil"
 )
 
@@ -41,7 +41,7 @@ import (
 // the ecosystem sees and future wrapper capabilities are reachable from it. It
 // returns the client COMPLETE: the wrapper derives its service label from the
 // Config it is handed; center carries the container's facilities (see
-// [governance.Center]), which [NewClient] applies while building. Nothing
+// [runtime.Runtime]), which [NewClient] applies while building. Nothing
 // patches the client afterwards.
 //
 // center is one object rather than a parameter per capability so this interface
@@ -52,7 +52,7 @@ import (
 // ${spring.cassandra} is built through it, and per-instance differences are
 // expressed through [Config].
 type Driver interface {
-	CreateClient(ctx context.Context, c Config, center *governance.Center) (*Client, error)
+	CreateClient(ctx context.Context, c Config, center *runtime.Runtime) (*Client, error)
 }
 
 // DefaultDriver is the default implementation of the Driver interface.
@@ -63,7 +63,7 @@ type DefaultDriver struct{}
 // consistency level, timeouts, TLS — but not the startup probe, which is the
 // starter's lifecycle concern (see newClient in starter.go). center is handed
 // straight to [NewClient], so the returned client is complete.
-func (DefaultDriver) CreateClient(ctx context.Context, c Config, center *governance.Center) (*Client, error) {
+func (DefaultDriver) CreateClient(ctx context.Context, c Config, center *runtime.Runtime) (*Client, error) {
 	consistency, err := parseConsistency(c.Consistency)
 	if err != nil {
 		return nil, err

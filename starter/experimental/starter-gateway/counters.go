@@ -28,8 +28,8 @@ import (
 	"sync"
 	"time"
 
-	"go-spring.org/cloud/governance/ratelimit"
-	"go-spring.org/cloud/governance/resilience"
+	"go-spring.org/cloud/runtime/dataplane/ratelimit"
+	"go-spring.org/cloud/runtime/dataplane/resilience"
 )
 
 // maxScopes bounds how many keys the store tracks before it starts evicting

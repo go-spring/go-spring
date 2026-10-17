@@ -19,11 +19,11 @@ package StarterGoRedis
 import (
 	"context"
 	"errors"
-	"go-spring.org/cloud/chain"
+	"go-spring.org/cloud/runtime/dataplane/chain"
 	"testing"
 
 	"github.com/redis/go-redis/v9"
-	"go-spring.org/cloud/governance/resilience"
+	"go-spring.org/cloud/runtime/dataplane/resilience"
 	"go-spring.org/stdlib/testing/assert"
 )
 

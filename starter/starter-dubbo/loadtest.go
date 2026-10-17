@@ -24,7 +24,7 @@ import (
 	"dubbo.apache.org/dubbo-go/v3/protocol/base"
 	"dubbo.apache.org/dubbo-go/v3/protocol/result"
 	"go-spring.org/cloud/propagate"
-	"go-spring.org/cloud/traffic"
+	"go-spring.org/cloud/runtime/dataplane/traffic"
 )
 
 const loadTestFilterKey = "loadtest"
@@ -66,7 +66,7 @@ func newLoadTestFilter() filter.Filter { return &loadTestFilter{} }
 
 // Invoke tags the call context as load-test traffic when the dubbo attachment
 // carried by the invocation has the marker key. It is the dubbo inbound
-// companion to cloud/traffic's outbound carrier injection. The attachment value
+// companion to cloud/runtime/dataplane/traffic's outbound carrier injection. The attachment value
 // decodes as string or []byte depending on the protocol; both are handled.
 func (f *loadTestFilter) Invoke(ctx context.Context, invoker base.Invoker, inv base.Invocation) result.Result {
 	if att := inv.Attachments(); att != nil {

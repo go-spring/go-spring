@@ -23,9 +23,9 @@ package StarterPulsar
 
 import (
 	"github.com/apache/pulsar-client-go/pulsar"
-	"go-spring.org/cloud/governance"
 	"go-spring.org/cloud/messaging"
-	"go-spring.org/cloud/traffic"
+	"go-spring.org/cloud/runtime"
+	"go-spring.org/cloud/runtime/dataplane/traffic"
 	"go-spring.org/log"
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/gs"
@@ -53,7 +53,7 @@ func init() {
 				gs.IndexArg(1, gs.ValueArg(name)),
 				gs.IndexArg(2, gs.ValueArg(c)),
 				gs.IndexArg(3, gs.TagArg("${spring.pulsar.instances."+name+".driver:=${spring.pulsar.default.driver:=?}}")),
-				// The governance center is the family's sole injection point: it hands
+				// The runtime is the family's sole injection point: it hands
 				// out the resilience/fault/loadbalance authorities.
 			).Name(name).Destroy(destroyClient).Caller(1)
 
@@ -77,7 +77,7 @@ func init() {
 // registry, and the governance executor); when no such bean exists the bundled
 // DefaultDriver is used. The driver returns the client COMPLETE — the identity
 // and the resilience executor are applied while it is built — so the starter
-// never patches it afterwards. center is the governance center the container
+// never patches it afterwards. center is the runtime the container
 // injects — the family's sole injection point; the ctor hands it to the driver,
 // which applies its authorities while building.
 //
@@ -86,7 +86,7 @@ func init() {
 // list, bad credentials or TLS mismatch fail fast at startup instead of
 // surfacing on the first produce/consume. A failed probe releases what was just
 // assembled.
-func newClient(ctx *gs.ContextProvider, name string, c Config, d Driver, center *governance.Center) (pulsar.Client, error) {
+func newClient(ctx *gs.ContextProvider, name string, c Config, d Driver, center *runtime.Runtime) (pulsar.Client, error) {
 	// The client's identity rides on a context derived here: every line below
 	// carries it without repeating it. The provider's own context is left
 	// alone — that one is the shared application context, not this

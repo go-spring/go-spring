@@ -60,7 +60,7 @@ import (
     "context"
 
     "github.com/IBM/sarama"
-    "go-spring.org/cloud/traffic"
+    "go-spring.org/cloud/runtime/dataplane/traffic"
     "go-spring.org/spring/gs"
     StarterKafkaSarama "go-spring.org/starter-kafka-sarama"
 )
@@ -184,7 +184,7 @@ gs.Run()
 **装配扩展点**：client 装配由 `Driver`（接口，`driver.go:44-66`）负责。公司/伞包 starter 可把
 自己的 `Driver` 作为**可选容器 bean** 提供（`gs.Provide(func() StarterKafkaSarama.Driver{...})`，
 因为是 bean，可在装配期注入从配置文件绑定的配置）；`spring.kafka-sarama` 下每个实例都经它
-构建。`CreateClient` 接收容器的 `*governance.Center`（参数名 `center`）并返回完整的 client ——
+构建。`CreateClient` 接收容器的 `*runtime.Runtime`（参数名 `center`）并返回完整的 client ——
 它必须像内置 driver 那样，从 `center` 构建并挂上 executor（见 `attachExecutor`）。没有该 bean 时 starter 在
 装配内回退到内置 `DefaultDriver`（`driver.go:67-112`，`client.go:73-75`）。当容器中存在多个
 Driver bean 时，实例可按名指定：

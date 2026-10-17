@@ -26,11 +26,11 @@ package StarterMilvus
 import (
 	"context"
 
-	"go-spring.org/cloud/chain"
-	"go-spring.org/cloud/governance/label"
+	"go-spring.org/cloud/runtime/dataplane/chain"
+	"go-spring.org/cloud/runtime/dataplane/label"
 
 	"github.com/milvus-io/milvus-sdk-go/v2/client"
-	"go-spring.org/cloud/governance"
+	"go-spring.org/cloud/runtime"
 	"go-spring.org/stdlib/errutil"
 )
 
@@ -51,7 +51,7 @@ type Client struct {
 	cfg Config
 
 	// exec is the resilience executor the guard interceptors route through,
-	// set by [NewClient] from the governance center; it is also the single
+	// set by [NewClient] from the runtime; it is also the single
 	// emitter of each RPC's span, metrics and access log.
 	exec chain.Executor
 	// serviceLabel is the resilience service key ("milvus:<addr>") exec scopes
@@ -68,20 +68,20 @@ type Client struct {
 // exported seam taking an unexported *guardSlot could not be called from
 // outside the package, so it would be an exported name in appearance only.
 //
-// center carries the container's facilities (see [governance.Center]), and is
+// center carries the container's facilities (see [runtime.Runtime]), and is
 // applied HERE so a Client cannot exist half-assembled: there is no Init step,
 // no later patching, and nothing the container has to remember to call. A
-// hand-built client must supply a [governance.Center] over a
-// [resilience.ClientManager]: [governance.Center.ResilienceClient] is required, so a nil
-// center is a construction error — [governance.Center.ExecutorFor] panics —
+// hand-built client must supply a [runtime.Runtime] over a
+// [resilience.ClientManager]: [runtime.Runtime.ResilienceClient] is required, so a nil
+// center is a construction error — [runtime.Runtime.ExecutorFor] panics —
 // never a graceful downgrade to an unprotected client.
 //
-// The executor is resolved through [governance.Center.ExecutorFor] and handed
+// The executor is resolved through [runtime.Runtime.ExecutorFor] and handed
 // to the slot before any RPC can flow, so every subsequent call — the caller's
 // startup probe included — already runs under the guard. The manager resolves
 // its backing executor lazily, on each Execute, so the call order relative to
 // the center's wiring is irrelevant.
-func NewClient(ctx context.Context, cfg Config, center *governance.Center) (*Client, error) {
+func NewClient(ctx context.Context, cfg Config, center *runtime.Runtime) (*Client, error) {
 	slot := &guardSlot{}
 	raw, err := client.NewClient(ctx, client.Config{
 		Address:     cfg.Addr,

@@ -31,7 +31,7 @@ import (
 	"github.com/twmb/franz-go/pkg/kgo"
 	"go-spring.org/cloud/messaging"
 	"go-spring.org/cloud/propagate"
-	"go-spring.org/cloud/traffic"
+	"go-spring.org/cloud/runtime/dataplane/traffic"
 	"go-spring.org/log"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/propagation"

@@ -23,8 +23,8 @@ import (
 	"dubbo.apache.org/dubbo-go/v3/filter"
 	"dubbo.apache.org/dubbo-go/v3/protocol/base"
 	"dubbo.apache.org/dubbo-go/v3/protocol/result"
-	"go-spring.org/cloud/governance/fault"
-	"go-spring.org/cloud/governance"
+	"go-spring.org/cloud/runtime"
+	"go-spring.org/cloud/runtime/dataplane/fault"
 )
 
 const faultFilterKey = "fault"
@@ -35,11 +35,16 @@ const faultFilterKey = "fault"
 // its own registry, so there is no bean whose constructor could receive it.
 // No ordering constraint applies: the shell holds its own kernel pointer, and
 // the authority swaps that kernel in place ([fault.ServerManager.Refresh]), so
-// whatever the center pushes later is visible to the filter without
+// whatever the runtime pushes later is visible to the filter without
 // re-installing.
 //
-// nil (the governance center not imported) means fault injection is off: the
-// filter passes the call through untouched.
+// dubbo is the ONE inbound adapter whose fault stage is standalone rather than
+// folded into the guard: it keeps its own URL-param governance model and does
+// not drive a guard.Guard at all. There is therefore no second injection path
+// to double-fire — this shell is the only inbound fault seam dubbo has.
+//
+// nil (the runtime not imported) means fault injection is off: the filter
+// passes the call through untouched.
 var faultServer atomic.Pointer[fault.Server]
 
 // injectorHook is the marker bean whose construction installs the shell.
@@ -51,7 +56,7 @@ type injectorHook struct{}
 // than skipping a nil) keeps the handle from surviving a container that did have
 // one — a test-process concern, but the same "last wiring wins" rule in both
 // cases.
-func newInjectorHook(center *governance.Center) (*injectorHook, error) {
+func newInjectorHook(center *runtime.Runtime) (*injectorHook, error) {
 	faultServer.Store(center.FaultServer().NewServer())
 	return &injectorHook{}, nil
 }

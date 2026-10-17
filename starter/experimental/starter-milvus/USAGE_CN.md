@@ -160,7 +160,7 @@ gs.Run()
   │   治理应用之前为透传）
   ├─ 随后定身份并应用治理：
   │   service = ServiceLabel("milvus", addr) →
-  │   center.ExecutorFor("milvus", service)——构造期传入的注入 `*governance.Center`
+  │   center.ExecutorFor("milvus", service)——构造期传入的注入 `*runtime.Runtime`
   │   携带 `*resilience.ClientManager` / `*fault.ClientManager` →（fault 包裹 mgr.ClientExecutorFor）→
   │   slot.apply——此后每个 RPC 都过守卫；resilience manager 必填，center 始终存在
   ├─ 仅 ping=true：fail-fast 探针 HealthCheck（ListCollections 一次），出错 → Destroy()+启动失败
@@ -186,7 +186,7 @@ dial options，SDK 自己的 `DefaultGrpcOpts`（keepalive、连接退避、2GB 
 回、再追加守卫拦截器（unary + stream 建流）——是叠加不是替换。拦截器读每 client 一个
 slot，该 slot 由 `NewClient` 内部创建、用 `center.ExecutorFor("milvus", "milvus:<addr>")`
 应用并保持私有——它不能出现在导出的签名里（拨号时 dial options 已固定，所以构造器把
-拨号和应用两步一并收进来）——执行器由构造期传入的 `*governance.Center` 携带的
+拨号和应用两步一并收进来）——执行器由构造期传入的 `*runtime.Runtime` 携带的
 `*resilience.ClientManager` 与 `*fault.ClientManager` 构建
 （resilience manager 必填——容器始终提供；治理在客户端构造时即应用，
 所以 `newClient` 的 fail-fast 探针在 slot 应用之后才跑，治理开启时探针本身也过守卫）。
@@ -251,7 +251,7 @@ grep _app_milvus_access app.log              # 治理关闭时访问日志照旧
 curl -s :9370/metrics | grep 'resilience\.'  # 治理关闭时为空：outcome 指标是治理动作的产物
 ```
 
-治理（cloud/governance + `spring.governance.*` 规则）关闭时，限流/熔断/重试/超时都不生效，
+治理（cloud/runtime/controlplane/governance + `spring.governance.*` 规则）关闭时，限流/熔断/重试/超时都不生效，
 但**观测仍在**：发射点在治理 executor 之外，`db.client.operation.duration`、
 `db.client.attempt.duration` 两个直方图与 `_app_milvus_access` 访问日志照旧产出（直方图还需
 `starter-otel` 安装 provider）。真正消失的只有 `resilience.*` outcome 指标。组装 client 必须提供

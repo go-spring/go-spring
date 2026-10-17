@@ -20,19 +20,19 @@ import (
 	"testing"
 	"time"
 
-	"go-spring.org/cloud/governance/fault"
-	"go-spring.org/cloud/governance"
-	"go-spring.org/cloud/governance/resilience"
+	"go-spring.org/cloud/runtime"
+	"go-spring.org/cloud/runtime/dataplane/fault"
+	"go-spring.org/cloud/runtime/dataplane/resilience"
 	"go-spring.org/stdlib/testing/assert"
 )
 
-// testCenter returns a process governance center — an unarmed resilience manager
+// testCenter returns a process runtime — an unarmed resilience manager
 // (observe-only pass-through) plus an injector with no rules (transparent
 // pass-through) — what a hand-built client takes now that Open receives a
-// *governance.Center rather than a bundle of authorities.
-func testCenter(t *testing.T) *governance.Center {
+// *runtime.Runtime rather than a bundle of authorities.
+func testCenter(t *testing.T) *runtime.Runtime {
 	t.Helper()
-	center, err := governance.NewProcessCenter(resilience.NewClientManager(resilience.NewDefaultDriver(nil)), fault.NewClientManager(nil), fault.NewServerManager(nil))
+	center, err := runtime.NewProcess(resilience.NewClientManager(resilience.NewDefaultDriver(nil)), fault.NewClientManager(nil), fault.NewServerManager(nil))
 	if err != nil {
 		t.Fatalf("new process center: %v", err)
 	}

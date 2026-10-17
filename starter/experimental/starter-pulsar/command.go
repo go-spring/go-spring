@@ -48,9 +48,9 @@ import (
 	"sync"
 	"time"
 
-	"go-spring.org/cloud/chain"
-	"go-spring.org/cloud/governance/label"
-	"go-spring.org/cloud/observability"
+	"go-spring.org/cloud/runtime/dataplane/chain"
+	"go-spring.org/cloud/runtime/dataplane/label"
+	"go-spring.org/cloud/runtime/dataplane/observability"
 
 	"github.com/apache/pulsar-client-go/pulsar"
 	"github.com/prometheus/client_golang/prometheus"

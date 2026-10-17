@@ -1,5 +1,10 @@
 # 任务：把 client 与 server 从 manager 到底层模型严格拆开
 
+> **历史记录**：本文记录的是 2026-10-17 的中间态。此后结构又演进为
+> `cloud/runtime.Runtime` 组合根 + `controlplane/registration` 写侧拆分；文中
+> 关于 `governance.Center` 是唯一组合根、`NewProcessCenter`、`resilience.ServerManager`
+> 的描述**已被取代**，以 `cloud/runtime` 的 README 与代码为准。
+>
 > 状态：**Step 1、Step 2、Step 3 均已完成（2026-10-17）**。
 > Step 1 的基线是 `9df1117af`（fault 自注册改动已提交）。
 >
@@ -65,7 +70,7 @@
 - `cloud/fault/executor.go`：`Client` 壳 + `faultExecutor`（per-attempt 注入）。
 - `cloud/fault/server.go`：`Server` 壳（per-request `Fire`）。
 - `cloud/fault/starter.go`：两个独立 bean（`*ClientManager`、`*ServerManager`）。
-- `cloud/governance`：`Center` 持有 `injClient` / `injServer` 两个字段，暴露
+- `cloud/runtime/controlplane/governance`：`Center` 持有 `injClient` / `injServer` 两个字段，暴露
   `FaultClient()` / `FaultServer()`；`NewCenter(res, lb, injClient, injServer, disc, src)`、
   `NewProcessCenter(res, injClient, injServer)`；`dispatch` 各调一次 `Refresh`。**没有**把两者
   聚合进第三个公开类型。
@@ -187,10 +192,10 @@ cd starter/experimental/starter-grpc-server && go test ./...
 ## 9. 关键文件
 
 - `cloud/fault/{core,client_manager,server_manager,executor,server,config,error,starter}.go`
-- `cloud/governance/{center,starter,config}.go`
+- `cloud/runtime/controlplane/governance/{center,starter,config}.go`
 - `starter/starter-{gin,echo,dubbo}/…`、`starter/experimental/starter-{hertz,grpc-server,trpc}/…`
 - `starter/starter-http-client/httpx/httpx.go`
-- 文档：`cloud/fault/README*.md`、`cloud/governance/README.md`、`ARCHITECTURE*.md`
+- 文档：`cloud/fault/README*.md`、`cloud/runtime/controlplane/governance/README.md`、`ARCHITECTURE*.md`
 
 ## 10. Step 2 盘点清单（2026-10-17）
 
@@ -268,7 +273,7 @@ cd starter/experimental/starter-grpc-server && go test ./...
 1. ✅ `resilience`：拆 `ClientManager` / `ServerManager`，两个 bean；先 API 面，再迁 Center 与调用点。
 2. ✅ `governance.Center`：内部字段与 getter 换成两个 resilience 权威；保留单 Center。
 3. ✅ `observability` / 其它层：只记录结论，不改代码。
-4. ✅ 更新 `ARCHITECTURE*`、`cloud/resilience/README*`、`cloud/governance/README*`、TASK 文档与 memory。
+4. ✅ 更新 `ARCHITECTURE*`、`cloud/resilience/README*`、`cloud/runtime/controlplane/governance/README*`、TASK 文档与 memory。
 5. ✅ 验证：`cloud` 全量 + 直接注入 resilience 的 starter（http-server、dubbo、httpx、sentinel、luohua、
    governance-{etcd,nacos}）+ 受 Center 签名影响的全部 starter。
 

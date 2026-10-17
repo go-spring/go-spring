@@ -32,8 +32,8 @@ import (
 	"net/url"
 	"time"
 
-	"go-spring.org/cloud/governance/label"
-	"go-spring.org/cloud/observability"
+	"go-spring.org/cloud/runtime/dataplane/label"
+	"go-spring.org/cloud/runtime/dataplane/observability"
 	"go-spring.org/log"
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/gs"
@@ -44,7 +44,7 @@ import (
 func init() {
 	// Register multiple webhook notifiers as a group, one per entry under
 	// "${spring.webhook.instances}". A gs.Module (rather than gs.Group) is used
-	// because the constructor takes the injected governance center alongside the
+	// because the constructor takes the injected runtime alongside the
 	// config entry — its authorities arm each notifier's executor. Adding
 	// a second endpoint is a pure-config change. There is no default singleton —
 	// select one by name (e.g. autowire:"alert").
@@ -60,7 +60,7 @@ func init() {
 			r.Provide(newNotifier,
 				gs.IndexArg(1, gs.ValueArg(name)),
 				gs.IndexArg(2, gs.ValueArg(c)),
-				// The governance center is the family's sole injection point: it hands
+				// The runtime is the family's sole injection point: it hands
 				// out the resilience/fault/loadbalance authorities.
 			).Name(name).Caller(1)
 			return nil
@@ -91,7 +91,7 @@ type Notifier struct {
 //
 // A webhook delivery is emitted by this starter's own observer rather than
 // routed through the resilience executor (see observe.go) — a delivery has no
-// seam for one — so no governance center is injected here.
+// seam for one — so no runtime is injected here.
 func newNotifier(ctx *gs.ContextProvider, name string, c Config) (*Notifier, error) {
 	if _, _, err := buildPayload(c.Channel, &Notification{}, c.Secret, time.Now()); err != nil {
 		return nil, err

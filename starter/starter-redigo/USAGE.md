@@ -314,7 +314,7 @@ injected `*loadbalance.Manager` bean), so
 suspension tracker. The dialer feeds `Complete` with the dial
 outcome, so `outlier-threshold` evicts instances that keep refusing *connections*; per-command
 failures belong to the resilience executor. Direct (`addr`-only) pools have no candidate set, so
-these keys are inert for them. See `cloud/governance/README.md` §3.1.
+these keys are inert for them. See `cloud/runtime/controlplane/governance/README.md` §3.1.
 
 ### 4.4 Cache abstraction wiring
 

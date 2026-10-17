@@ -24,7 +24,7 @@ import (
 
 	"github.com/nacos-group/nacos-sdk-go/v2/clients/config_client"
 	"github.com/nacos-group/nacos-sdk-go/v2/vo"
-	"go-spring.org/cloud/governance"
+	"go-spring.org/cloud/runtime/controlplane/governance"
 )
 
 const govRulesV1 = `spring:

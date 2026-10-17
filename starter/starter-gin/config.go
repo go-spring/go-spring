@@ -29,7 +29,7 @@ import (
 // resilience binding here: it flows through the neutral resilience.ClientExecutorFor
 // seam (backed by the center when armed), so an incoming request's protection
 // policy is governed alongside every outbound client and hot-reloads without
-// this starter coupling to cloud/governance. Fault injection stays server-local (it
+// this starter coupling to cloud/runtime/controlplane/governance. Fault injection stays server-local (it
 // is chaos tooling, not governance).
 type Config struct {
 	Address      string             `value:"${addr}"`

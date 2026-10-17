@@ -4,7 +4,7 @@
 
 `starter-governance-sentinel` registers [alibaba/sentinel-golang][sentinel] as the
 production driver for the resilience framework defined in
-[`cloud/governance/resilience`](../../cloud/governance/resilience). Blank-import it
+[`cloud/runtime/dataplane/resilience`](../../cloud/runtime/dataplane/resilience). Blank-import it
 and name it in the
 governance document (`spring.resilience.driver=sentinel`) — every client that resolves its
 executor through the governance center then gets adaptive rate limiting,
@@ -13,7 +13,7 @@ with no per-client key and no code change.
 
 It follows the *global / infrastructure* archetype (see
 [starter/DESIGN.md](../DESIGN.md) §2.4): it contributes exactly one bean — the
-`sentinel`-named `resilience.Driver` that [`cloud/governance/resilience`](../../cloud/governance/resilience)
+`sentinel`-named `resilience.Driver` that [`cloud/runtime/dataplane/resilience`](../../cloud/runtime/dataplane/resilience)
 injects when `spring.resilience.driver=sentinel` — and opens no port.
 `sentinel.InitDefault`
 runs at import time so a broken environment fails loudly on boot rather than on
@@ -48,7 +48,7 @@ resolves its executor through the resilience manager runs on it. It is a plain
 `app.properties` key (the backend is fixed for the process's lifetime — switching
 it drops every executor, so it takes a restart), unlike the `spring.governance.*`
 policy keys, which live in the governance document — its own system (see
-[`cloud/governance/README.md`](../../cloud/governance/README.md)):
+[`cloud/runtime/controlplane/governance/README.md`](../../cloud/runtime/controlplane/governance/README.md)):
 
 ```properties
 # app.properties: pick the backend (static)
@@ -63,7 +63,7 @@ spring.governance.client.default.timeout=1s
 ### 3. Or drive it directly
 
 ```go
-import "go-spring.org/cloud/governance/resilience"
+import "go-spring.org/cloud/runtime/dataplane/resilience"
 
 exec, _ := starter_governance_sentinel.NewSentinelDriver().NewExecutor("sentinel:test", resilience.ClientPolicy{
     RateLimit:      100,
@@ -109,7 +109,7 @@ when fields appear, they land in the server executor.
 
 ## Default driver
 
-`cloud/governance/resilience` ships a zero-dependency `default` driver for tests and
+`cloud/runtime/dataplane/resilience` ships a zero-dependency `default` driver for tests and
 lightweight setups. Import this starter for production-grade throttling and
 breaking; stick with `default` if you don't need it.
 

@@ -163,7 +163,7 @@ gs.Run()
   └─ steady state: each watchLoop ticks
        ├─ readSecret; on error → warn once (then debug), keep polling
        ├─ fingerprint(json.Marshal(data)) vs last loaded fingerprint
-       └─ changed → observability.RefreshConf → gs.RefreshProperties(ctx)
+       └─ changed → conf.Refresh → gs.RefreshProperties(ctx)
             └─ re-runs the whole property load: imports re-resolve, Load re-reads the
                secret, layers rebuild, and gs.Dync[T] fields swap their values
 ```

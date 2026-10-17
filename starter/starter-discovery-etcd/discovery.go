@@ -15,7 +15,7 @@
  */
 
 // This file is the CONSUMER half of etcd service discovery: the
-// cloud/discovery Discovery backend serving snapshots of the instances the
+// cloud/runtime/dataplane/discovery Discovery backend serving snapshots of the instances the
 // registry (registry.go) publishes. It is derived from the
 // ${spring.discovery.etcd} center (starter.go) under the fixed label "etcd" —
 // there is no separate discovery config block. Freshness is internal: each
@@ -38,7 +38,7 @@ import (
 	"sync"
 	"time"
 
-	"go-spring.org/cloud/discovery"
+	"go-spring.org/cloud/runtime/dataplane/discovery"
 	"go-spring.org/log"
 	"go-spring.org/stdlib/errutil"
 	"go.etcd.io/etcd/api/v3/mvccpb"
@@ -231,7 +231,7 @@ func kvsToEndpoints(obs *discovery.Observer, kvs []*mvccpb.KeyValue) []discovery
 	for _, kv := range kvs {
 		var v instanceValue
 		if err := json.Unmarshal(kv.Value, &v); err != nil {
-			// A malformed payload is one bad discovery.Instance, not a broken snapshot.
+			// A malformed payload is one bad registration.Instance, not a broken snapshot.
 			log.Warn(context.Background(), starterTag, "discovery-etcd: skip malformed instance payload",
 				log.String("system", obs.System()),
 				log.String("center", obs.Center()),

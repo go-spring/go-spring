@@ -8,7 +8,7 @@ in-cluster, so an application discovers peers through that capability instead of
 standing up a second discovery center (Nacos/Consul).
 
 Blank-importing this starter and declaring a `spring.discovery.k8s.<name>` block
-provides a `discovery.Discovery` backend bean (from `cloud/discovery`) named
+provides a `discovery.Discovery` backend bean (from `cloud/runtime/dataplane/discovery`) named
 `k8s.<name>` — the same block-to-bean naming as the other discovery backends
 (`consul.<name>`, `etcd.<name>`, ...). Any client starter that supports
 discovery — Redis, GORM, ... — resolves a Kubernetes **Service name** to live Pod

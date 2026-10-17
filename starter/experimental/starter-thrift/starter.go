@@ -21,8 +21,8 @@ import (
 	"time"
 
 	"github.com/apache/thrift/lib/go/thrift"
-	"go-spring.org/cloud/governance"
-	"go-spring.org/cloud/governance/label"
+	"go-spring.org/cloud/runtime"
+	"go-spring.org/cloud/runtime/dataplane/label"
 	"go-spring.org/cloud/security"
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
@@ -33,7 +33,7 @@ func init() {
 	gs.Provide(
 		NewSimpleThriftServer,
 		gs.IndexArg(0, gs.TagArg("${spring.thrift.server}")),
-		// The governance center is the family's sole injection point: it hands
+		// The runtime is the family's sole injection point: it hands
 		// out the resilience/fault/loadbalance authorities.
 	).Export(gs.As[gs.Server]()).
 		Condition(gs.And(
@@ -92,15 +92,15 @@ type SimpleThriftServer struct {
 	proc thrift.TProcessor
 	svr  *thrift.TSimpleServer
 
-	// center is the governance center bean gs injects (nil in a standalone
+	// center is the runtime bean gs injects (nil in a standalone
 	// call); its resilience authority backs the inbound middleware Run installs.
-	center *governance.Center
+	center *runtime.Runtime
 }
 
 // NewSimpleThriftServer creates a SimpleThriftServer from ${spring.thrift.server}
-// configuration. center is the injected governance center the inbound
+// configuration. center is the injected runtime the inbound
 // middleware is armed from.
-func NewSimpleThriftServer(cfg Config, proc thrift.TProcessor, center *governance.Center) *SimpleThriftServer {
+func NewSimpleThriftServer(cfg Config, proc thrift.TProcessor, center *runtime.Runtime) *SimpleThriftServer {
 	log.Debug(context.Background(), log.TagAppDef, "create thrift server success", func() []log.Field {
 		return []log.Field{
 			log.String("addr", cfg.Addr),

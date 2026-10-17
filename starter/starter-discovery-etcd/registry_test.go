@@ -25,8 +25,9 @@ import (
 	"testing"
 	"time"
 
-	"go-spring.org/cloud/discovery"
-	"go-spring.org/cloud/loadbalance"
+	"go-spring.org/cloud/runtime/controlplane/registration"
+	"go-spring.org/cloud/runtime/dataplane/discovery"
+	"go-spring.org/cloud/runtime/dataplane/loadbalance"
 	"go-spring.org/stdlib/testing/assert"
 	clientv3 "go.etcd.io/etcd/client/v3"
 	"go.opentelemetry.io/otel/codes"
@@ -34,14 +35,14 @@ import (
 
 func TestInstanceID(t *testing.T) {
 	// An explicit ID is used verbatim.
-	assert.That(t, instanceID(discovery.Instance{ID: "fixed", ServiceName: "orders", Addr: "1.2.3.4:80"})).Equal("fixed")
+	assert.That(t, instanceID(registration.Instance{ID: "fixed", ServiceName: "orders", Addr: "1.2.3.4:80"})).Equal("fixed")
 	// Otherwise it is derived from name and addr so restarts replace the entry.
-	assert.That(t, instanceID(discovery.Instance{ServiceName: "orders", Addr: "1.2.3.4:80"})).Equal("orders-1.2.3.4:80")
+	assert.That(t, instanceID(registration.Instance{ServiceName: "orders", Addr: "1.2.3.4:80"})).Equal("orders-1.2.3.4:80")
 }
 
 func TestKeyFor(t *testing.T) {
 	r := &etcdRegistry{keyPrefix: "/services/"}
-	got := r.keyFor(discovery.Instance{ServiceName: "orders", Addr: "1.2.3.4:80"})
+	got := r.keyFor(registration.Instance{ServiceName: "orders", Addr: "1.2.3.4:80"})
 	assert.That(t, got).Equal("/services/orders/orders-1.2.3.4:80")
 }
 
@@ -69,7 +70,7 @@ func TestNormalizeWeight(t *testing.T) {
 func TestRegisterWritesInstancePayload(t *testing.T) {
 	f := newFakeKV()
 	r := newTestRegistry(f, "/services/")
-	in := discovery.Instance{
+	in := registration.Instance{
 		ServiceName: "orders", ID: "a", Addr: "10.0.0.1:8080",
 		Weight: 7, Version: "v2", Zone: "b", Scheme: "tls",
 	}
@@ -96,7 +97,7 @@ func TestDeregisterIdempotent(t *testing.T) {
 	// not touch the (nil) client, so shutdown can call it unconditionally as an
 	// idempotent fallback after PreStop has already run.
 	r := &etcdRegistry{keyPrefix: "/services/", holds: map[string]*hold{}}
-	reg := discovery.Instance{ServiceName: "orders", Addr: "1.2.3.4:80"}
+	reg := registration.Instance{ServiceName: "orders", Addr: "1.2.3.4:80"}
 	assert.That(t, r.Deregister(context.Background(), reg)).Nil()
 	// A second call is likewise a no-op.
 	assert.That(t, r.Deregister(context.Background(), reg)).Nil()
@@ -106,7 +107,7 @@ func TestDeregisterIdempotent(t *testing.T) {
 // never Register-ed is an explanatory error, not a silent no-op.
 func TestUpdateWeightUnregistered(t *testing.T) {
 	r := &etcdRegistry{keyPrefix: "/services/", holds: map[string]*hold{}}
-	err := r.UpdateWeight(context.Background(), discovery.Instance{ServiceName: "orders", Addr: "1.2.3.4:80"}, 5)
+	err := r.UpdateWeight(context.Background(), registration.Instance{ServiceName: "orders", Addr: "1.2.3.4:80"}, 5)
 	assert.Error(t, err).Matches("unregistered instance")
 }
 
@@ -146,7 +147,7 @@ func TestUpdateWeightHotReloadLive(t *testing.T) {
 	// Both halves go through the production constructor and adapter, so this
 	// live test covers the real wiring rather than a struct literal.
 	kv := etcdClient{cli}
-	reg, err := newEtcdRegistry(EtcdConfig{KeyPrefix: "/services/weight-test/"}, kv, newTestObserver())
+	reg, err := newEtcdRegistry(EtcdConfig{KeyPrefix: "/services/weight-test/"}, kv, newTestRegObserver())
 	assert.Error(t, err).Nil()
 	disc := &etcdDiscovery{
 		obs:    newTestObserver(),
@@ -155,13 +156,13 @@ func TestUpdateWeightHotReloadLive(t *testing.T) {
 	}
 
 	const service = "orders"
-	a := discovery.Instance{ServiceName: service, ID: "a", Addr: "10.0.0.1:8080", Weight: 9}
-	b := discovery.Instance{ServiceName: service, ID: "b", Addr: "10.0.0.2:8080", Weight: 1}
-	for _, in := range []discovery.Instance{a, b} {
+	a := registration.Instance{ServiceName: service, ID: "a", Addr: "10.0.0.1:8080", Weight: 9}
+	b := registration.Instance{ServiceName: service, ID: "b", Addr: "10.0.0.2:8080", Weight: 1}
+	for _, in := range []registration.Instance{a, b} {
 		assert.Error(t, reg.Register(ctx, in)).Nil()
 	}
 	t.Cleanup(func() {
-		for _, in := range []discovery.Instance{a, b} {
+		for _, in := range []registration.Instance{a, b} {
 			_ = reg.Deregister(context.Background(), in)
 		}
 	})
@@ -240,7 +241,7 @@ func TestWatchKeepAliveReRegistersAfterKeepaliveDeath(t *testing.T) {
 	r, f := newHealRegistry()
 	f.grantErrs = []error{errors.New("etcd down"), errors.New("etcd down")}
 
-	h := newHold(discovery.Instance{ServiceName: "orders", Addr: "1.2.3.4:80", Weight: 1})
+	h := newHold(registration.Instance{ServiceName: "orders", Addr: "1.2.3.4:80", Weight: 1})
 	ka1 := make(chan *clientv3.LeaseKeepAliveResponse)
 	done := make(chan struct{})
 	go func() { r.watchKeepAlive("k", h, ka1); close(done) }()
@@ -274,7 +275,7 @@ func TestWatchKeepAliveReRegistersAfterKeepaliveDeath(t *testing.T) {
 func TestWatchKeepAliveExitsOnStopWithoutRePublish(t *testing.T) {
 	r, f := newHealRegistry()
 
-	h := newHold(discovery.Instance{ServiceName: "orders", Addr: "1.2.3.4:80", Weight: 1})
+	h := newHold(registration.Instance{ServiceName: "orders", Addr: "1.2.3.4:80", Weight: 1})
 	ka := make(chan *clientv3.LeaseKeepAliveResponse)
 	done := make(chan struct{})
 	go func() { r.watchKeepAlive("k", h, ka); close(done) }()
@@ -292,7 +293,7 @@ func TestWatchKeepAliveExitsOnStopWithoutRePublish(t *testing.T) {
 // stopHold must be safe against a concurrent publish storing the cancel func,
 // and idempotent when Deregister and a re-Register retire the same hold.
 func TestHoldStopIdempotent(t *testing.T) {
-	h := newHold(discovery.Instance{ServiceName: "orders", Addr: "1.2.3.4:80"})
+	h := newHold(registration.Instance{ServiceName: "orders", Addr: "1.2.3.4:80"})
 	h.stop()
 	h.stop() // must not panic on double close
 	assert.That(t, h.stopped()).True()
@@ -325,12 +326,12 @@ func TestRegisterFailedPublishIsReported(t *testing.T) {
 	f.grantErrs = []error{errors.New("etcd down")}
 	r := newTestRegistry(f, "/services/")
 
-	err := r.Register(context.Background(), discovery.Instance{ServiceName: "orders", Addr: "1.2.3.4:80", Weight: 1})
+	err := r.Register(context.Background(), registration.Instance{ServiceName: "orders", Addr: "1.2.3.4:80", Weight: 1})
 	assert.Error(t, err).NotNil()
 
 	assert.Number(t, sumValue(t, "discovery.registration.attempts_total", map[string]string{
 		"system": obsSystem, "service": "orders",
-		"reason": discovery.ReasonInitial, "status": "failed",
+		"reason": registration.ReasonInitial, "status": "failed",
 	})).Equal(int64(1))
 	assert.Number(t, intGaugeValue(t, "discovery.instance.registered", map[string]string{
 		"system": obsSystem, "service": "orders",
@@ -341,12 +342,12 @@ func TestRegisterFailedPublishIsReported(t *testing.T) {
 func TestRegisterSuccessIsReported(t *testing.T) {
 	ctx := context.Background()
 	r, _ := newHealRegistry()
-	in := discovery.Instance{ServiceName: "orders-ok", Addr: "1.2.3.4:80", Weight: 1}
+	in := registration.Instance{ServiceName: "orders-ok", Addr: "1.2.3.4:80", Weight: 1}
 
 	assert.Error(t, r.Register(ctx, in)).Nil()
 	assert.Number(t, sumValue(t, "discovery.registration.attempts_total", map[string]string{
 		"system": obsSystem, "service": in.ServiceName,
-		"reason": discovery.ReasonInitial, "status": "ok",
+		"reason": registration.ReasonInitial, "status": "ok",
 	})).Equal(int64(1))
 	assert.Number(t, intGaugeValue(t, "discovery.instance.registered", map[string]string{
 		"system": obsSystem, "service": in.ServiceName,
@@ -371,7 +372,7 @@ func TestSelfHealFailureIsReported(t *testing.T) {
 	f.grantDown = true
 	r := newTestRegistry(f, "/services/")
 
-	h := newHold(discovery.Instance{ServiceName: "payments", Addr: "1.2.3.4:80", Weight: 1})
+	h := newHold(registration.Instance{ServiceName: "payments", Addr: "1.2.3.4:80", Weight: 1})
 	ka1 := make(chan *clientv3.LeaseKeepAliveResponse)
 	done := make(chan struct{})
 	go func() { r.watchKeepAlive("k", h, ka1); close(done) }()
@@ -383,7 +384,7 @@ func TestSelfHealFailureIsReported(t *testing.T) {
 	waitFor(t, func() bool {
 		v, ok := trySumValue(t, "discovery.registration.attempts_total", map[string]string{
 			"system": obsSystem, "service": "payments",
-			"reason": discovery.ReasonSelfHeal, "status": "failed",
+			"reason": registration.ReasonSelfHeal, "status": "failed",
 		})
 		return ok && v == 3
 	}, "self-healing failures were never reported")
@@ -400,7 +401,7 @@ func TestSelfHealFailureIsReported(t *testing.T) {
 // edge of the same signal, so an alert on "registered == 0" clears by itself.
 func TestSelfHealSuccessRestoresPublished(t *testing.T) {
 	r, _ := newHealRegistry()
-	h := newHold(discovery.Instance{ServiceName: "payments-back", Addr: "1.2.3.4:80", Weight: 1})
+	h := newHold(registration.Instance{ServiceName: "payments-back", Addr: "1.2.3.4:80", Weight: 1})
 	ka1 := make(chan *clientv3.LeaseKeepAliveResponse)
 	done := make(chan struct{})
 	go func() { r.watchKeepAlive("k", h, ka1); close(done) }()
@@ -409,7 +410,7 @@ func TestSelfHealSuccessRestoresPublished(t *testing.T) {
 	waitFor(t, func() bool {
 		v, ok := trySumValue(t, "discovery.registration.attempts_total", map[string]string{
 			"system": obsSystem, "service": "payments-back",
-			"reason": discovery.ReasonSelfHeal, "status": "ok",
+			"reason": registration.ReasonSelfHeal, "status": "ok",
 		})
 		return ok && v == 1
 	}, "the successful self-heal was never reported")
@@ -434,7 +435,7 @@ func TestRegisterEmitsClientSpan(t *testing.T) {
 	f.grantErrs = []error{errors.New("etcd down")}
 	r := newTestRegistry(f, "/services/")
 
-	err := r.Register(context.Background(), discovery.Instance{ServiceName: "orders-span", Addr: "1.2.3.4:80", Weight: 1})
+	err := r.Register(context.Background(), registration.Instance{ServiceName: "orders-span", Addr: "1.2.3.4:80", Weight: 1})
 	assert.Error(t, err).NotNil()
 
 	for _, s := range testSpans.GetSpans() {
@@ -448,8 +449,8 @@ func TestRegisterEmitsClientSpan(t *testing.T) {
 		if attrs["discovery.system"] != obsSystem || attrs["discovery.service"] != "orders-span" {
 			continue
 		}
-		if attrs["discovery.reason"] != discovery.ReasonInitial {
-			t.Fatalf("an initial publish's span must carry reason=%s, got %q", discovery.ReasonInitial, attrs["discovery.reason"])
+		if attrs["discovery.reason"] != registration.ReasonInitial {
+			t.Fatalf("an initial publish's span must carry reason=%s, got %q", registration.ReasonInitial, attrs["discovery.reason"])
 		}
 		if s.Status.Code == codes.Error {
 			return
@@ -465,7 +466,7 @@ func TestRegisterEmitsClientSpan(t *testing.T) {
 // is how the live weight test ended up with a zero backoff — a retry loop that
 // spins hot instead of pacing.
 func newTestRegistry(client registryKV, keyPrefix string) *etcdRegistry {
-	r, err := newEtcdRegistry(EtcdConfig{KeyPrefix: keyPrefix}, client, newTestObserver())
+	r, err := newEtcdRegistry(EtcdConfig{KeyPrefix: keyPrefix}, client, newTestRegObserver())
 	if err != nil {
 		panic(err)
 	}

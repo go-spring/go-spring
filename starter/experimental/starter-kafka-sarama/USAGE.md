@@ -62,7 +62,7 @@ import (
     "context"
 
     "github.com/IBM/sarama"
-    "go-spring.org/cloud/traffic"
+    "go-spring.org/cloud/runtime/dataplane/traffic"
     "go-spring.org/spring/gs"
     StarterKafkaSarama "go-spring.org/starter-kafka-sarama"
 )
@@ -193,7 +193,7 @@ gs.Run()
 A company/umbrella starter may provide its own `Driver` as an **optional container bean** (a
 `gs.Provide(func() StarterKafkaSarama.Driver{...})`, so it can inject config bound from the
 properties file at wiring time); every instance under `spring.kafka-sarama` is then built through
-it. `CreateClient` receives the container's `*governance.Center` (the parameter `center`) and
+it. `CreateClient` receives the container's `*runtime.Runtime` (the parameter `center`) and
 returns the client complete — it must attach the executor it builds from `center` the same way the
 bundled driver does (see `attachExecutor`). When no such bean exists the starter falls back to the bundled
 `DefaultDriver` (`driver.go:67-112`) inside assembly (`client.go:73-75`). When several Driver beans

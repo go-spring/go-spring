@@ -20,9 +20,9 @@ import (
 	"context"
 	"testing"
 
-	"go-spring.org/cloud/governance/fault"
-	"go-spring.org/cloud/governance"
-	"go-spring.org/cloud/governance/resilience"
+	"go-spring.org/cloud/runtime"
+	"go-spring.org/cloud/runtime/dataplane/fault"
+	"go-spring.org/cloud/runtime/dataplane/resilience"
 	"go-spring.org/stdlib/testing/assert"
 )
 
@@ -63,7 +63,7 @@ func (b bccLayer) Send(ctx context.Context, msgs ...*Message) error {
 // and governance layers real (executor from an unarmed manager, governance off).
 func newChainMailer(t *testing.T, tail InnerMailer) *Mailer {
 	t.Helper()
-	ctr, err := governance.NewProcessCenter(resilience.NewClientManager(resilience.NewDefaultDriver(nil)), fault.NewClientManager(nil), fault.NewServerManager(nil))
+	ctr, err := runtime.NewProcess(resilience.NewClientManager(resilience.NewDefaultDriver(nil)), fault.NewClientManager(nil), fault.NewServerManager(nil))
 	if err != nil {
 		t.Fatal(err)
 	}

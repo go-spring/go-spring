@@ -29,12 +29,12 @@ import (
 	"net/http"
 	"sync"
 
-	"go-spring.org/cloud/chain"
-	"go-spring.org/cloud/governance/label"
+	"go-spring.org/cloud/runtime/dataplane/chain"
+	"go-spring.org/cloud/runtime/dataplane/label"
 
 	"github.com/elastic/go-elasticsearch/v8"
-	"go-spring.org/cloud/governance"
-	"go-spring.org/cloud/governance/resilience"
+	"go-spring.org/cloud/runtime"
+	"go-spring.org/cloud/runtime/dataplane/resilience"
 )
 
 // Client is the wrapper bean Elasticsearch clients are injected as. It embeds
@@ -78,8 +78,8 @@ type Client struct {
 	dyn *dynamicTransport
 
 	// exec is the resilience executor protecting requests, set by [NewClient] from
-	// the governance center it is handed. The center is required to carry a
-	// [resilience.ClientManager]: [governance.Center.ExecutorFor] panics on a center
+	// the runtime it is handed. The center is required to carry a
+	// [resilience.ClientManager]: [runtime.Runtime.ExecutorFor] panics on a center
 	// without one rather than leaving the round-tripper unprotected.
 	exec chain.Executor
 	// serviceLabel is the resilience service key ("elasticsearch:<...>") exec
@@ -94,12 +94,12 @@ type Client struct {
 // resilience transport can be swapped into it; a custom driver that
 // installed no indirection passes anything else (typically nil).
 //
-// center carries the container's facilities (see [governance.Center]), and is
+// center carries the container's facilities (see [runtime.Runtime]), and is
 // applied HERE so a Client cannot exist half-assembled: there is no Init step,
 // no later patching, and nothing the container has to remember to call. A
 // hand-built client must supply a center holding a [resilience.ClientManager]:
-// [governance.Center.ExecutorFor] is required, so a nil center
-// is a construction error — [governance.Center.ExecutorFor] panics — never a
+// [runtime.Runtime.ExecutorFor] is required, so a nil center
+// is a construction error — [runtime.Runtime.ExecutorFor] panics — never a
 // graceful downgrade to an unprotected client.
 //
 // The service label falls back across the address fields via the shared
@@ -107,7 +107,7 @@ type Client struct {
 // Elasticsearch cluster rather than per request. The manager's ClientExecutorFor
 // resolves its backing executor lazily, on each Execute, so the call order
 // relative to the center's wiring is irrelevant.
-func NewClient(client *elasticsearch.Client, transport http.RoundTripper, cfg Config, center *governance.Center) *Client {
+func NewClient(client *elasticsearch.Client, transport http.RoundTripper, cfg Config, center *runtime.Runtime) *Client {
 	c := &Client{
 		Client: client,
 		cfg:    cfg,

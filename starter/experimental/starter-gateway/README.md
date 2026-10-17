@@ -16,8 +16,8 @@ no gateway-specific machinery. A route that fails to compile leaves the previous
 table in place, so a bad edit never takes the gateway down.
 
 Upstreams are either **direct** (`http(s)://host:port`) or **discovery-backed**
-(`lb://<service>`), the latter reusing `cloud/discovery` + `cloud/loadbalance`.
-Forwarding runs through `cloud/governance/resilience` for retry / circuit-breaking / rate
+(`lb://<service>`), the latter reusing `cloud/runtime/dataplane/discovery` + `cloud/runtime/dataplane/loadbalance`.
+Forwarding runs through `cloud/runtime/dataplane/resilience` for retry / circuit-breaking / rate
 limiting. Its own metrics are OTel instruments (`gateway.requests`,
 `gateway.active_requests`, `gateway.route_reload_errors`), so they surface through whatever
 pipeline the application configured — starter-otel's Prometheus exporter serves them on
@@ -98,7 +98,7 @@ Register your own filter with `StarterGateway.RegisterFilter(name, factory)`.
 
 * **Direct**: `upstream.target=http://host:port` forwards straight to that address.
 * **Discovery**: `upstream.target=lb://<service>` resolves live instances through
-  `cloud/discovery` and picks one with `cloud/loadbalance`. Set
+  `cloud/runtime/dataplane/discovery` and picks one with `cloud/runtime/dataplane/loadbalance`. Set
   a load-balancing strategy (`round_robin` default, or `least_conn` /
   `consistent_hash` / `weighted`) plus optional outlier suspension: an upstream
   instance that fails repeatedly is suspended for a cool-down and readmitted via
@@ -159,5 +159,5 @@ The [main.go](example/main.go) program demonstrates and asserts:
 * **The route map's default must be empty.** Write `${routes:=}`, never
   `${routes:={}}` — the bind layer rejects a non-empty map default.
 * **`lb://` rides the shared client-side stack.** Discovery and load balancing
-  come from `cloud/discovery` + `cloud/loadbalance`, so mesh mode degrades them
+  come from `cloud/runtime/dataplane/discovery` + `cloud/runtime/dataplane/loadbalance`, so mesh mode degrades them
   centrally with no gateway-side branching.

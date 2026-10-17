@@ -81,7 +81,7 @@ fmt.Println(string(msg.Value))
 This starter **declares** what each publish and consume is; it does not emit
 anything itself. The signals — the span, the duration metrics, the access log —
 are emitted by the resilience layer (see
-[governance](../../cloud/governance/resilience)), the single point on the
+[governance](../../cloud/runtime/dataplane/resilience)), the single point on the
 executor chain that sees a whole call, retries included. It rides the global
 `TracerProvider` and propagator installed by
 [starter-otel](../../starter-otel); without starter-otel they are no-ops and

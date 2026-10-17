@@ -194,7 +194,7 @@ guards** [command.go:17-29]:
 
 ```
 CreateClient [driver.go:115-123] (the assembly seam):
-  exec = center.ExecutorFor("mqtt", "mqtt:<broker>")   // injected *governance.Center
+  exec = center.ExecutorFor("mqtt", "mqtt:<broker>")   // injected *runtime.Runtime
   attachGuard(cl, exec, label) — stored in sync.Map keyed by the mqtt.Client value  [command.go:98-100]
   (center.ExecutorFor = inj.WrapClientExecutor(mgr.ClientExecutorFor("mqtt", label));
    the resilience manager is required — the container always supplies it)

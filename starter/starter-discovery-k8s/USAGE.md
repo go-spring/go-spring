@@ -152,8 +152,8 @@ There is no public `Watch`: freshness is internal to the backend, which caches o
    (`endpointslice.go:251-262`, wired as the bean destructor).
 
 Downstream, a client starter builds a `discovery.Resolver` from the backend
-(`discovery.NewResolver(ctx, backend, serviceName, opts...)`, `cloud/discovery/discovery.go:227`) — a plain
-`func() ([]Endpoint, error)` (`cloud/discovery/discovery.go:209`) that a loadbalance `Pool` calls per pick.
+(`discovery.NewResolver(ctx, backend, serviceName, opts...)`, `cloud/runtime/dataplane/discovery/discovery.go:227`) — a plain
+`func() ([]Endpoint, error)` (`cloud/runtime/dataplane/discovery/discovery.go:209`) that a loadbalance `Pool` calls per pick.
 That is the "endpoint push" into client connection pools.
 
 ### 2.2 Freshness — dns mode
@@ -173,10 +173,10 @@ Kubernetes has no `UpdateWeight`; draining a Pod is the platform's job and flows
   address disappears from the snapshot → the client pool stops picking it.
 - **Readiness flips false** (probe failure) → the endpoint stays in the slice but `Conditions.Ready`
   becomes false → `Healthy=false` → excluded by `discovery.Allows` at pick time
-  (`endpointslice.go:276`, `cloud/discovery/discovery.go:65-77`). dns mode instead sees the record
+  (`endpointslice.go:276`, `cloud/runtime/dataplane/discovery/discovery.go:65-77`). dns mode instead sees the record
   disappear (headless DNS publishes ready addresses only, `dns.go:82-89`), after a `refresh-interval` lag.
 - Weight semantics: only SRV records carry weight (`dns.go:140`); `Weight == 0` there is subject to the
-  pool's soft-drain filter (`cloud/loadbalance/pool.go:93-134`).
+  pool's soft-drain filter (`cloud/runtime/dataplane/loadbalance/pool.go:93-134`).
 
 ---
 
@@ -230,7 +230,7 @@ Prereq: `kubectl` with a dev cluster; provider applied per §1.
 
 Runtime logs all carry the tag `_app_discovery_k8s` (`log.RegisterAppTag("discovery_k8s", "")`,
 `starter.go:34`); tune verbosity via `logger.<name>.tag=_app_discovery_k8s`. This starter emits a trace-free
-metric-only read side (`discovery.sync_total` / `discovery.cache.age_seconds`, `cloud/discovery/observe.go`);
+metric-only read side (`discovery.sync_total` / `discovery.cache.age_seconds`, `cloud/runtime/dataplane/discovery/observe.go`);
 clients observe through their own pools.
 
 ---

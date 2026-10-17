@@ -11,7 +11,7 @@ go-spring 增量:分派、服务发现/负载均衡、韧性/治理、可观测�
 **激活条件**:只有存在至少一个 `spring.http-client.instances.<name>.*` 配置项时才安装进程级 transport
 (`gs.OnProperty("spring.http-client.instances")`,starter.go:60)。每个配置项成为一个 route bean——
 以条目名命名,持有自己的 target(addr 或 service-name)与装配好的 transport——由路由表
-收集。韧性/故障策略不在这里配置——进程级 `spring.governance.*`(见 cloud/governance 的 SOURCE_USAGE_CN.md)。
+收集。韧性/故障策略不在这里配置——进程级 `spring.governance.*`(见 cloud/runtime/controlplane/governance 的 SOURCE_USAGE_CN.md)。
 
 ---
 
@@ -66,7 +66,7 @@ import (
     "fmt"
     "net/http"
 
-    "go-spring.org/cloud/discovery"
+    "go-spring.org/cloud/runtime/dataplane/discovery"
 )
 
 const (
@@ -125,7 +125,7 @@ spring.http-client.instances.discovered.discovery=static
 # (3) 韧性守卫路由:策略在进程级 spring.governance.* 下。
 # 内置 DefaultDriver 连续失败 2 次后熔断,持续 30s。
 spring.http-client.instances.guarded.addr=127.0.0.1:9473
-# NOTE: governance RULES go in conf/governance.properties, referenced by spring.governance.source.file.path in app.properties (see cloud/governance's SOURCE_USAGE).
+# NOTE: governance RULES go in conf/governance.properties, referenced by spring.governance.source.file.path in app.properties (see cloud/runtime/controlplane/governance's SOURCE_USAGE).
 spring.resilience.driver=default
 spring.governance.client.default.error-threshold=2
 spring.governance.client.default.open-duration=30s
@@ -288,12 +288,12 @@ service-name 即可;只有彻底删掉 service-name 才会换 key。
 另:直连模式下熔断按 host:port 计——同一后端两种 `addr` 写法得到两个熔断器。
 
 **不在这里**(`spring.http-client.*` 下没有):超时、重试、熔断、限流、故障注入。所有
-策略是进程级 `spring.governance.*`(见 cloud/governance 的 SOURCE_USAGE_CN.md)——
+策略是进程级 `spring.governance.*`(见 cloud/runtime/controlplane/governance 的 SOURCE_USAGE_CN.md)——
 `spring.governance.client.default.<策略字段>`(rate-limit / burst / error-threshold / open-duration /
 breaker-strategy / error-rate-threshold / min-requests / max-retries /
 initial-interval / multiplier / max-interval / timeout),故障注入在
 `spring.governance.client.fault.*`。按 target 定策略 = 一条 `spring.governance.client.rules[n]`,service 指向上面的 label。
-该配置面详见 cloud/governance 的 SOURCE_USAGE_CN.md。
+该配置面详见 cloud/runtime/controlplane/governance 的 SOURCE_USAGE_CN.md。
 
 `min-requests`:error-rate 熔断的最小样本数直接取自 governance rule,由 resilience 施加;未配置
 即 resilience 自己的零值下限 1,低流量下单次失败就可能跳闸——下游是低流量时请显式配置。
@@ -340,7 +340,7 @@ endpoint,看打散变化——链路是整条重建的,不用重启;用真实发
 2. 用自己的 binary 做等价手工演练:杀掉后端、循环调用,观察错误从网络/500 错误变为
    `circuit open`;恢复后端后等 `open-duration`(30s)——half-open 试探成功、熔断闭合。
 3. 观察跳变:`resilience.client.breaker.state_change{from=...,to=...}` 计数器递增并输出状态
-   迁移日志(cloud/governance/resilience/observe.go:98-110)。
+   迁移日志(cloud/runtime/dataplane/resilience/observe.go:98-110)。
 
 ### 4.4 故障注入(免重启)
 
@@ -348,7 +348,7 @@ fault 挂在同一治理 source 上;`spring.governance.client.fault.*` 热加载
 在配置文件里翻转:
 
 ```properties
-# NOTE: governance RULES go in conf/governance.properties, referenced by spring.governance.source.file.path in app.properties (see cloud/governance's SOURCE_USAGE).
+# NOTE: governance RULES go in conf/governance.properties, referenced by spring.governance.source.file.path in app.properties (see cloud/runtime/controlplane/governance's SOURCE_USAGE).
 spring.governance.client.fault.rate=0.5
 spring.governance.client.fault.error=timeout    # 或 generic / reset
 ```

@@ -15,7 +15,7 @@
  */
 
 // This file is the CONSUMER half of Consul service discovery: the
-// cloud/discovery Discovery backend serving snapshots of the instances the
+// cloud/runtime/dataplane/discovery Discovery backend serving snapshots of the instances the
 // registry (registry.go) publishes. It is derived from the
 // ${spring.discovery.consul} center (starter.go) under the fixed label "consul"
 // — there is no separate discovery config block. Freshness is internal: each
@@ -36,7 +36,7 @@ import (
 	"time"
 
 	"github.com/hashicorp/consul/api"
-	"go-spring.org/cloud/discovery"
+	"go-spring.org/cloud/runtime/dataplane/discovery"
 	"go-spring.org/log"
 	"go-spring.org/stdlib/errutil"
 )

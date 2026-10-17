@@ -113,7 +113,7 @@ func runTest(s *Service) {
 ```go
 package main
 
-import "go-spring.org/cloud/discovery"
+import "go-spring.org/cloud/runtime/dataplane/discovery"
 
 func init() {
     gs.Provide(func() (discovery.Discovery, error) {
@@ -308,7 +308,7 @@ example 的 `discovery` 实例用哑值 `0.0.0.0:0`；`Response from discovered 
 ```bash
 cd example-load && docker compose up -d
 go run . -duration=10s                        # SELECT 1 基线
-# 放火（cloud/governance 热加载）：
+# 放火（cloud/runtime/controlplane/governance 热加载）：
 #   spring.governance.client.fault.rate=0.5  spring.governance.client.fault.error=generic
 go run . -duration=10s                        # 错误分布显示 ~50% 注入
 ```

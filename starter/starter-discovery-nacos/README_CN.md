@@ -4,7 +4,7 @@
 
 `starter-discovery-nacos` 把 Nacos 适配为服务注册中心：每一个配置的 Nacos 服务端都成为
 一个后端 bean，同时服务命名习语的两半 —— 写侧（把**当前实例**注册进 Nacos）与读侧
-（供解析其他实例的 `cloud/discovery` 后端）。它相当于 Spring Cloud Alibaba
+（供解析其他实例的 `cloud/runtime/dataplane/discovery` 后端）。它相当于 Spring Cloud Alibaba
 `nacos-discovery` 的 Go-Spring 对应物，也是 [starter-config-nacos](../starter-config-nacos)
 配置角色的注册角色对应物（两者是配置前缀各自独立的两个 starter）。
 
@@ -20,7 +20,7 @@ provider 注册仍保持框架原生，不在本 starter 范围内（见
 
 配置是**命名块**：每个 Nacos 服务端一个 `spring.discovery.nacos.<name>.*` 块。没有默认
 块、没有匿名块 —— 名字就是地址的一部分。每个块成为**一个**名为 `nacos.<name>` 的后端
-bean，同时实现 `discovery.Registry`（写）与 `discovery.Discovery`（读），共享该块的
+bean，同时实现 `registration.Registry`（写）与 `discovery.Discovery`（读），共享该块的
 client 与 namespace/group/cluster：
 
 ```properties
@@ -33,7 +33,7 @@ zookeeper……）的块也可以在同一应用里自由混用。
 
 ## 注册归 starter-discovery 所有
 
-导入本 starter 会传递导入注册核心 [cloud/discovery](../../cloud/discovery)：唯一的
+导入本 starter 会传递导入注册核心 [cloud/runtime/dataplane/discovery](../../cloud/runtime/dataplane/discovery)：唯一的
 `discoveryServer`（`gs.Server`）收集**所有**后端的全部 registry bean，在应用就绪后把实例
 注册进**每一个**已配置的中心，停机开始时（经 `PreStop`）从所有中心注销，并广播
 `UpdateWeight`。任一中心注册失败即启动失败，各中心的消费侧视图因此不会分裂。
@@ -117,7 +117,7 @@ spring.http-client.instances.users.discovery=nacos.main
 
 - 每个块的后端 bean 立即构造：构建 naming client，`ping=true` 时探测服务端（列举服务），
   配置错误或不可达的 Nacos 会让启动失败，每块一次。
-- cloud/discovery 核心的 `discoveryServer` 收集每个后端的 registry，等待就绪，然后把实例
+- cloud/runtime/controlplane/registration 核心的 `discoveryServer` 收集每个后端的 registry，等待就绪，然后把实例
   作为**临时实例**注册进每个中心。Nacos SDK 以后台心跳保活；若进程未注销就退出，Nacos
   会自动摘除。
 - 停机时 `PreStop` 在 pre-stop 延迟之前向每个中心注销，让发现体系在在途请求仍被服务时就

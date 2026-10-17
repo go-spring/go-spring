@@ -20,7 +20,8 @@ import (
 	"encoding/json"
 	"testing"
 
-	"go-spring.org/cloud/discovery"
+	"go-spring.org/cloud/runtime/controlplane/registration"
+	"go-spring.org/cloud/runtime/dataplane/discovery"
 	"go-spring.org/stdlib/testing/assert"
 )
 
@@ -125,4 +126,14 @@ func TestDiscoveryCloseStopsWatchersAndIsIdempotent(t *testing.T) {
 	default:
 		t.Fatal("Close must signal the background watchers to stop")
 	}
+}
+
+// newTestRegObserver is the write-side counterpart: registration owns its own
+// observer so the two planes stay independent in tests too.
+func newTestRegObserver() *registration.Observer {
+	o, err := registration.NewObserver(obsSystem, "test")
+	if err != nil {
+		panic(err)
+	}
+	return o
 }

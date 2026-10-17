@@ -28,14 +28,14 @@ import (
 	"net/http"
 	"sync"
 
-	"go-spring.org/cloud/chain"
-	"go-spring.org/cloud/governance/label"
+	"go-spring.org/cloud/runtime/dataplane/chain"
+	"go-spring.org/cloud/runtime/dataplane/label"
 
 	influxdb2 "github.com/influxdata/influxdb-client-go/v2"
 	"github.com/influxdata/influxdb-client-go/v2/api"
 	"github.com/influxdata/influxdb-client-go/v2/api/write"
-	"go-spring.org/cloud/governance"
-	"go-spring.org/cloud/governance/resilience"
+	"go-spring.org/cloud/runtime"
+	"go-spring.org/cloud/runtime/dataplane/resilience"
 	"go-spring.org/log"
 )
 
@@ -63,8 +63,8 @@ type Client struct {
 	dyn *dynamicTransport
 
 	// exec is the resilience executor protecting writes, applied by [NewClient]
-	// from the governance center, which is required to carry a
-	// [resilience.ClientManager]: [governance.Center.ExecutorFor] panics without one.
+	// from the runtime, which is required to carry a
+	// [resilience.ClientManager]: [runtime.Runtime.ExecutorFor] panics without one.
 	exec chain.Executor
 	// serviceLabel is the resilience service key ("influxdb:<url>") exec scopes
 	// limiter/breaker state by.
@@ -82,12 +82,12 @@ type Client struct {
 // transport is not reachable and cannot be replaced), though its own write
 // helpers still go through the executor.
 //
-// center carries the container's facilities (see [governance.Center]) and is
+// center carries the container's facilities (see [runtime.Runtime]) and is
 // applied HERE so a Client cannot exist half-assembled: there is no Init step,
 // no later patching, and nothing the container has to remember to call. A
-// hand-built client must supply a [governance.Center] over a
-// [resilience.ClientManager]: [governance.Center.ResilienceClient] is required, so a nil
-// center is a construction error — [governance.Center.ExecutorFor] panics —
+// hand-built client must supply a [runtime.Runtime] over a
+// [resilience.ClientManager]: [runtime.Runtime.ResilienceClient] is required, so a nil
+// center is a construction error — [runtime.Runtime.ExecutorFor] panics —
 // never a graceful downgrade to an unprotected client.
 //
 // The resilience round-tripper derives each request's operation through
@@ -100,7 +100,7 @@ type Client struct {
 // The manager's ClientExecutorFor resolves its backing executor lazily, on each
 // Execute, so the call order relative to the center's wiring is
 // irrelevant.
-func NewClient(raw influxdb2.Client, transport http.RoundTripper, cfg Config, center *governance.Center) *Client {
+func NewClient(raw influxdb2.Client, transport http.RoundTripper, cfg Config, center *runtime.Runtime) *Client {
 	o := &Client{Client: raw, cfg: cfg}
 	o.serviceLabel = label.ServiceLabel("influxdb", cfg.ServerURL)
 	o.exec = center.ExecutorFor("influxdb", o.serviceLabel)

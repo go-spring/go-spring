@@ -19,8 +19,8 @@ package luohua
 import (
 	"testing"
 
-	"go-spring.org/cloud/discovery"
-	"go-spring.org/cloud/loadbalance"
+	"go-spring.org/cloud/runtime/dataplane/discovery"
+	"go-spring.org/cloud/runtime/dataplane/loadbalance"
 )
 
 // TestLoadBalanceCompanyRegisteredAndZoneAffine locks the luohua loadbalance

@@ -147,5 +147,5 @@ type LoginService struct {
 
 * **只做客户端。** 本 starter 负责获取并刷新 token；校验进入的 token 属于资源服务器（`starter-security-jwt`），因此这层配置表面不会长出校验开关。
 * **两种 grant 不共用 bean。** `client_credentials` 在 `spring.oauth2.client` 下发布 `*http.Client` + `*TokenSource`，而 `authorization_code` 在 `spring.oauth2.authcode` 下发布 `*oauth2.Config`；分前缀让两个配置表面互不污染。
-* **韧性是最外层的 transport 包装。** bearer token 先附加，请求再流过构造函数从注入的 `*governance.Center`（`center`）读取的执行器——`center.ResilienceClient().ClientExecutorFor("oauth2", "oauth2:<client-id>")`（重试可重挑上游，熔断按逻辑服务名聚合），因此每次受保护的尝试都是一次完整、已认证的请求。center 是必填的注入 bean——"治理关闭"指的是一份什么都没配的 center，其执行器为透明直通——绝非 bean 缺失。
+* **韧性是最外层的 transport 包装。** bearer token 先附加，请求再流过构造函数从注入的 `*runtime.Runtime`（`center`）读取的执行器——`center.ResilienceClient().ClientExecutorFor("oauth2", "oauth2:<client-id>")`（重试可重挑上游，熔断按逻辑服务名聚合），因此每次受保护的尝试都是一次完整、已认证的请求。center 是必填的注入 bean——"治理关闭"指的是一份什么都没配的 center，其执行器为透明直通——绝非 bean 缺失。
 * **token 交换不受这层包装覆盖。** 执行器包裹的是返回 client 的 transport，而库用自己的路径获取 token——IdP 抖动不会被本 client 的策略重试。

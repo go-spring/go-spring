@@ -4,8 +4,8 @@
 
 详尽使用参考。概览见 [README_CN.md](README_CN.md)。下文所有行为声明均对照 starter 源码
 （`starter.go`、`governance.go`、`governance_test.go`）、共享解析子包
-[`cloud/governance/rules.go`](../../cloud/governance/rules.go)、
-[`cloud/governance`](../../cloud/governance) 的两方法 `governance.Source` 契约
+[`cloud/runtime/controlplane/governance/rules.go`](../../cloud/runtime/controlplane/governance/rules.go)、
+[`cloud/runtime/controlplane/governance`](../../cloud/runtime/controlplane/governance) 的两方法 `governance.Source` 契约
 （`source.go`、`center.go`）与可运行、自校验的 [example](example)
 （`example/main.go`、`example/check.sh`）核实。etcd 自身客户端语义见
 [etcd 官方文档](https://etcd.io/docs/latest/)——本文只写 go-spring 的增量。
@@ -13,7 +13,7 @@
 **激活方式**：任一 `spring.governance.source.etcd.*` 配置即武装条件模块（`gs.OnProperty` 是**前缀**
 匹配，单个子键就能触发），并注册一个 `governance.Source` Bean。空导入且无该配置则不注册
 任何东西。Bean 本身并不武装治理——
-[`cloud/governance`](../../cloud/governance/README.md) 的中心 Bean 才把它收为构造参数，需一并引入。进程只有一个生效 Source（中心只持一个），因此 file/http/etcd/nacos
+[`cloud/runtime/controlplane/governance`](../../cloud/runtime/controlplane/governance/README.md) 的中心 Bean 才把它收为构造参数，需一并引入。进程只有一个生效 Source（中心只持一个），因此 file/http/etcd/nacos
 只配其中一个。
 
 ---
@@ -50,7 +50,7 @@ import (
     "fmt"
     "time"
 
-    "go-spring.org/cloud/governance/resilience"
+    "go-spring.org/cloud/runtime/dataplane/resilience"
     "go-spring.org/spring/gs"
 
     _ "go-spring.org/starter-governance-etcd"
@@ -79,7 +79,7 @@ func (p *printer) Run(ctx context.Context) error {
 }
 
 // newPrinter 在注入的 manager 之上构建 printer。manager 为 nil——没有
-// cloud/governance bean 的容器——时归一化为一个新的未武装实例。
+// cloud/runtime/controlplane/governance bean 的容器——时归一化为一个新的未武装实例。
 func newPrinter(mgr *resilience.ClientManager) *printer {
     if mgr == nil {
         mgr = resilience.NewClientManager()
@@ -132,7 +132,7 @@ ETCDCTL_API=3 etcdctl put /app/governance.yaml 'govern: {default: {timeout: 300m
 
 ### 2.1 Source 契约——中心真正依赖的东西
 
-`governance.Source`（`cloud/governance/source.go`）是两个方法：
+`governance.Source`（`cloud/runtime/controlplane/governance/source.go`）是两个方法：
 
 ```go
 type Source interface {
@@ -224,7 +224,7 @@ logger.governance_etcd.tag=_app_governance_etcd
 文档本身由 `governance.Parse` 解析，它要求**至少有一个 `spring.governance.*` 键**——能解析但一个 `spring.governance.*`
 键都没有的文档（被截断或被清空）是错误，而非"没有治理"。规则键（`spring.governance.client.default.*`、
 `spring.governance.client.rules[n].*`、`spring.governance.client.fault.*`）见
-[`cloud/governance` 的 SOURCE_USAGE_CN.md](../../cloud/governance/SOURCE_USAGE_CN.md)，各后端完全一致。
+[`cloud/runtime/controlplane/governance` 的 SOURCE_USAGE_CN.md](../../cloud/runtime/controlplane/governance/SOURCE_USAGE_CN.md)，各后端完全一致。
 
 ---
 
@@ -292,7 +292,7 @@ cd example && ./check.sh    # docker 门控：compose 起 etcd，跑自校验 ex
 
 | 症状 | 可能原因 | 处置 |
 |------|----------|------|
-| key 变了但治理仍关（无策略生效） | 未链接治理中心 → 无中心 Bean，Source 从未被收集 | 链接 `cloud/governance`（任一治理源 starter 都会做）。 |
+| key 变了但治理仍关（无策略生效） | 未链接治理中心 → 无中心 Bean，Source 从未被收集 | 链接 `cloud/runtime/controlplane/governance`（任一治理源 starter 都会做）。 |
 | 启动报 `key <key> is empty` | 启动前必填 key 不存在 | 启动前先播种 key。 |
 | 启动报 `get <key> failed` | etcd 不可达 / 端口错 / 需认证却未配 `username`/`password` | 检查端点与凭据。 |
 | 启动报 `endpoint`/`key` 为空 | `spring.governance.source.etcd.*` 只配了一部分（任一子键都会触发 `OnProperty`） | 补齐两个必填键，或删掉整个前缀。 |

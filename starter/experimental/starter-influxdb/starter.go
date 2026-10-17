@@ -18,9 +18,9 @@ package StarterInfluxdb
 
 import (
 	"context"
-	"go-spring.org/cloud/governance"
 
 	"go-spring.org/cloud/actuator/health"
+	"go-spring.org/cloud/runtime"
 	"go-spring.org/log"
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/gs"
@@ -48,7 +48,7 @@ func init() {
 			r.Provide(newClient,
 				gs.IndexArg(1, gs.ValueArg(c)),
 				gs.IndexArg(2, gs.TagArg("${spring.influxdb.instances."+name+".driver:=${spring.influxdb.default.driver:=?}}")),
-				// The governance center is the family's sole injection point: it hands
+				// The runtime is the family's sole injection point: it hands
 				// out the resilience/fault/loadbalance authorities.
 			).Name(name).Destroy((*Client).Destroy).Caller(1)
 			// Contribute a health indicator for this instance, injecting the
@@ -74,13 +74,13 @@ var starterTag = log.RegisterAppTag("influxdb", "")
 // default, so a server that is not up yet does not block startup. There is no
 // Init hook: the client is complete when the driver returns it.
 //
-// center is the governance center the container injects (nil in a standalone,
+// center is the runtime the container injects (nil in a standalone,
 // non-gs call) — the family's sole injection point; the ctor hands it to the
 // driver, which passes it to [NewClient] —
 // so the client is assembled complete in one step, with the resilience manager
-// required: the container supplies it via the governance center, so a center
+// required: the container supplies it via the runtime, so a center
 // without one fails at construction.
-func newClient(ctx *gs.ContextProvider, c Config, d Driver, center *governance.Center) (*Client, error) {
+func newClient(ctx *gs.ContextProvider, c Config, d Driver, center *runtime.Runtime) (*Client, error) {
 	log.Debug(ctx.Context, starterTag, "creating influxdb client", func() []log.Field {
 		return []log.Field{
 			log.String("url", c.ServerURL),

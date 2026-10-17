@@ -22,7 +22,7 @@ import (
 	"sync"
 	"time"
 
-	"go-spring.org/cloud/observability"
+	"go-spring.org/cloud/observability/attrs"
 	"go-spring.org/log"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -59,7 +59,7 @@ const componentName = "go-spring.org/cloud/scheduling"
 // lagBuckets are the wake-up-lag histogram boundaries (seconds). Lag is the
 // delay between a fire's scheduled instant and when its run actually started, so
 // the interesting range is sub-millisecond to seconds — finer than
-// [observability.DurationBuckets], which starts at 5ms.
+// [attrs.DurationBuckets], which starts at 5ms.
 var lagBuckets = []float64{0.0005, 0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5}
 
 // accessTag is the static log tag for the per-fire log lines.
@@ -86,7 +86,7 @@ func buildInstruments() *instrumentSet {
 	duration, _ := m.Float64Histogram("scheduling.run.duration",
 		metric.WithDescription("Duration of a job run"),
 		metric.WithUnit("s"),
-		metric.WithExplicitBucketBoundaries(observability.DurationBuckets()...))
+		metric.WithExplicitBucketBoundaries(attrs.DurationBuckets()...))
 	// A rising lag is the scheduler's own health signal: the schedule is not
 	// drifting (the next fire stays anchored on the planned instant), but runs are
 	// starting later and later, which points at a process that is saturated or

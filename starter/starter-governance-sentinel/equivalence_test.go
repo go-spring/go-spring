@@ -23,8 +23,8 @@ import (
 	"testing"
 	"time"
 
-	"go-spring.org/cloud/chain"
-	"go-spring.org/cloud/governance/resilience"
+	"go-spring.org/cloud/runtime/dataplane/chain"
+	"go-spring.org/cloud/runtime/dataplane/resilience"
 	"go-spring.org/stdlib/testing/assert"
 )
 

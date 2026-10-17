@@ -36,8 +36,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"go-spring.org/cloud/chain"
-	"go-spring.org/cloud/governance/resilience"
+	"go-spring.org/cloud/runtime/dataplane/chain"
+	"go-spring.org/cloud/runtime/dataplane/resilience"
 
 	StarterGovernanceSentinel "go-spring.org/starter-governance-sentinel"
 )

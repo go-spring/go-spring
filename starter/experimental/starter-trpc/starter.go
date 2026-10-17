@@ -20,9 +20,9 @@ import (
 	"context"
 	"math"
 
-	"go-spring.org/cloud/governance"
-	"go-spring.org/cloud/governance/label"
-	"go-spring.org/cloud/traffic"
+	"go-spring.org/cloud/runtime"
+	"go-spring.org/cloud/runtime/dataplane/label"
+	"go-spring.org/cloud/runtime/dataplane/traffic"
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
 	"go-spring.org/starter-trpc/internal/logger"
@@ -117,10 +117,10 @@ type MetricsConfig struct {
 type SimpleTrpcServer struct {
 	cfg Config
 	reg ServiceRegister
-	// center is the governance center bean (nil when governance is not
-	// imported); its fault authority backs the always-registered "fault"
-	// server filter.
-	center *governance.Center
+	// center is the runtime bean (nil when governance is not imported); its
+	// inbound guard — fault included — backs the always-registered
+	// "governance" server filter.
+	center *runtime.Runtime
 	// prop is the load-test convention bean — the application.s when it provides
 	// one, go-spring.s default otherwise — the "loadtest" server filter reads the inbound marker
 	// through it.
@@ -130,12 +130,12 @@ type SimpleTrpcServer struct {
 }
 
 // NewSimpleTrpcServer creates a SimpleTrpcServer from ${spring.trpc.server}
-// config and the registered ServiceRegister bean. center is the governance
-// center bean, captured here and its fault authority reused by the "fault"
-// server filter (nil when governance is not imported). prop is the load-test
+// config and the registered ServiceRegister bean. center is the runtime bean,
+// captured here and its inbound guard reused by the "governance" server filter
+// (nil when governance is not imported). prop is the load-test
 // convention bean — the application.s when it provides one, go-spring.s default
 // otherwise — handed to the "loadtest" server filter.
-func NewSimpleTrpcServer(cfg Config, reg ServiceRegister, center *governance.Center, prop traffic.Propagator) *SimpleTrpcServer {
+func NewSimpleTrpcServer(cfg Config, reg ServiceRegister, center *runtime.Runtime, prop traffic.Propagator) *SimpleTrpcServer {
 	log.Debug(context.Background(), log.TagAppDef, "create trpc server success", func() []log.Field {
 		return []log.Field{
 			log.String("addr", cfg.Addr),

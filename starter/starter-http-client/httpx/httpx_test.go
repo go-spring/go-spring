@@ -19,17 +19,19 @@ package httpx
 import (
 	"context"
 	"errors"
-	"go-spring.org/cloud/chain"
-	"go-spring.org/cloud/governance"
 	"net/http"
 	"sync"
 	"testing"
 
-	"go-spring.org/cloud/discovery"
-	"go-spring.org/cloud/governance/fault"
-	"go-spring.org/cloud/loadbalance"
-	"go-spring.org/cloud/governance/resilience"
-	"go-spring.org/cloud/traffic"
+	"go-spring.org/cloud/runtime"
+	"go-spring.org/cloud/runtime/controlplane/governance"
+	"go-spring.org/cloud/runtime/dataplane/chain"
+
+	"go-spring.org/cloud/runtime/dataplane/discovery"
+	"go-spring.org/cloud/runtime/dataplane/fault"
+	"go-spring.org/cloud/runtime/dataplane/loadbalance"
+	"go-spring.org/cloud/runtime/dataplane/resilience"
+	"go-spring.org/cloud/runtime/dataplane/traffic"
 	"go-spring.org/stdlib/testing/assert"
 )
 
@@ -348,8 +350,8 @@ func TestConfigServiceDerivation(t *testing.T) {
 
 // testCenter bundles the trio of test authorities into the one center bean
 // NewTransport takes.
-func testCenter(mgr *resilience.ClientManager, inj *fault.ClientManager, lb *loadbalance.Manager) *governance.Center {
-	ctr, err := governance.NewCenter(mgr, lb, inj, fault.NewServerManager(nil), nil, governance.NewPushSource(governance.Config{}))
+func testCenter(mgr *resilience.ClientManager, inj *fault.ClientManager, lb *loadbalance.Manager) *runtime.Runtime {
+	ctr, err := runtime.New(mgr, lb, inj, fault.NewServerManager(nil), nil, governance.NewPushSource(governance.Config{}))
 	if err != nil {
 		panic(err)
 	}

@@ -22,9 +22,9 @@ import (
 	"strings"
 	"testing"
 
-	"go-spring.org/cloud/observability"
+	"go-spring.org/cloud/observability/attrs"
 	"go-spring.org/cloud/propagate"
-	"go-spring.org/cloud/traffic"
+	"go-spring.org/cloud/runtime/dataplane/traffic"
 	"go-spring.org/log"
 	"go.opentelemetry.io/otel/propagation"
 )
@@ -47,7 +47,7 @@ func logLine(ctx context.Context) string {
 // carriedAttr reads one span attribute off ctx, as the SpanProcessor in
 // starter-otel would see it.
 func carriedAttr(ctx context.Context, key string) (string, bool) {
-	for _, a := range observability.SpanAttributes(ctx) {
+	for _, a := range attrs.SpanAttributes(ctx) {
 		if string(a.Key) == key {
 			return a.Value.Emit(), true
 		}

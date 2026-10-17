@@ -37,12 +37,12 @@ pick it up with zero wiring. The chain is
 by [`starter-http-client/httpx`](httpx) from three composable stdlib
 abstractions, all behind the single `http.RoundTripper` seam:
 
-* [`discovery`](../../cloud/discovery) — when a `service-name` is set, a
+* [`discovery`](../../cloud/runtime/dataplane/discovery) — when a `service-name` is set, a
   `Resolver` keeps a fresh endpoint snapshot;
-* [`loadbalance`](../../cloud/loadbalance) — a `Pool` picks one live endpoint
+* [`loadbalance`](../../cloud/runtime/dataplane/loadbalance) — a `Pool` picks one live endpoint
   per request (any registered strategy, plus optional outlier suspension) and the
   transport rewrites the request host to it;
-* [`resilience`](../../cloud/governance/resilience) — an optional executor wraps the whole
+* [`resilience`](../../cloud/runtime/dataplane/resilience) — an optional executor wraps the whole
   chain, so rate limiting, circuit breaking and retry protect every call.
   Because it sits *outside* the balancer, a retry re-picks a fresh endpoint and
   the breaker keys on the logical service name.
@@ -77,7 +77,7 @@ spring.http-client.instances.discovered.service-name=greet-svc
 spring.http-client.instances.discovered.discovery=static
 
 # Resilience and endpoint selection are NOT configured here: policy lives under
-# spring.governance.* in the governance rules document (cloud/governance;
+# spring.governance.* in the governance rules document (cloud/runtime/controlplane/governance;
 # conf/governance.properties referenced by spring.governance.source.file.path). Breaker trips
 # after 2 consecutive failures:
 #   spring.resilience.driver=default
@@ -123,7 +123,7 @@ and asserts all four outcomes end to end:
 
 Resilience, fault injection and endpoint selection have **no keys here**: they
 are per-service policy and live in the governance rules document (see
-cloud/governance's SOURCE_USAGE). The governance service label is `http:<service-name>`
+cloud/runtime/controlplane/governance's SOURCE_USAGE). The governance service label is `http:<service-name>`
 whenever `service-name` is set (either addressing mode), `http:<addr>` only when
 no service-name exists. Per-request timeout comes from
 `spring.governance.client.default.timeout`; the load-balancing strategy and outlier

@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "spring.discovery.nacos",
-  "description": "Named blocks: one property per Nacos server, e.g. spring.discovery.nacos.main.server=... The block name is mandatory and becomes part of the backend bean name (nacos.<name>), which consumers cite for discovery (discovery=nacos.main). There is no default/unnamed block. The instance identity under spring.discovery (service-name, addr, weight, metadata) is owned by the cloud/discovery core and shared by every configured center; see the 'instance' definition.",
+  "description": "Named blocks: one property per Nacos server, e.g. spring.discovery.nacos.main.server=... The block name is mandatory and becomes part of the backend bean name (nacos.<name>), which consumers cite for discovery (discovery=nacos.main). There is no default/unnamed block. The instance identity under spring.discovery (service-name, addr, weight, metadata) is owned by the cloud/runtime/dataplane/discovery core and shared by every configured center; see the 'instance' definition.",
   "type": "object",
   "additionalProperties": {
     "$ref": "#/definitions/block"
@@ -55,7 +55,7 @@
     },
     "instance": {
       "type": "object",
-      "description": "Bound under spring.discovery by the cloud/discovery core; shared by every configured center. service-name is the registration intent signal: set means this process registers into all centers, unset means pure consumer.",
+      "description": "Bound under spring.discovery by the cloud/runtime/dataplane/discovery core; shared by every configured center. service-name is the registration intent signal: set means this process registers into all centers, unset means pure consumer.",
       "properties": {
         "spring.discovery.service-name": {
           "type": "string",

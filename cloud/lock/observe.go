@@ -23,7 +23,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"go-spring.org/cloud/observability"
+	"go-spring.org/cloud/observability/attrs"
 	"go-spring.org/log"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -83,7 +83,7 @@ func buildInstruments() *instrumentSet {
 	in.duration, _ = m.Float64Histogram("lock.operation.duration",
 		metric.WithDescription("Duration of lock operations; for acquire this includes the blocking wait and retry time"),
 		metric.WithUnit("s"),
-		metric.WithExplicitBucketBoundaries(observability.DurationBuckets()...))
+		metric.WithExplicitBucketBoundaries(attrs.DurationBuckets()...))
 	in.lost, _ = m.Int64Counter("lock.lost.total",
 		metric.WithDescription("Locks lost while still in use, because the lease expired or renewal failed"))
 	in.held, _ = m.Int64UpDownCounter("lock.held",

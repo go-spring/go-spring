@@ -327,4 +327,4 @@ cd starter/starter-config-k8s && go test -gcflags="all=-N -l" ./...
 - Delete 事件处理是潜在缺口：informer 在删除时触发刷新、随后的 re-import 失败，
   "保留上一份好快照"的行为是涌现的而非设计的。
 - 没有 "watch 存活" 的健康指示——informer 静默失联时已加载快照继续服务，故障从外部
-  不可见。（日志带 tag `_app_config_k8s`，刷新由 `observability.RefreshConf` 统一记录与计量。）
+  不可见。（日志带 tag `_app_config_k8s`，刷新由 `conf.Refresh` 统一记录与计量。）

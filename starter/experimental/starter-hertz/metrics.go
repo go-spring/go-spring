@@ -23,7 +23,7 @@ import (
 	"time"
 
 	"github.com/cloudwego/hertz/pkg/app"
-	"go-spring.org/cloud/observability"
+	"go-spring.org/cloud/observability/attrs"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
@@ -61,7 +61,7 @@ func buildInstruments() *instrumentSet {
 		metric.WithDescription("Duration of HTTP requests"),
 		metric.WithUnit("s"),
 		// OTel HTTP semconv recommended buckets (seconds).
-		metric.WithExplicitBucketBoundaries(observability.DurationBuckets()...),
+		metric.WithExplicitBucketBoundaries(attrs.DurationBuckets()...),
 	)
 	requestsInFlight, _ := m.Int64UpDownCounter(
 		"http.server.active_requests",

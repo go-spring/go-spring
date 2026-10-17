@@ -18,10 +18,10 @@ package StarterElasticsearch
 
 import (
 	"context"
-	"go-spring.org/cloud/governance"
 
 	"github.com/elastic/go-elasticsearch/v8/esapi"
 	"go-spring.org/cloud/actuator/health"
+	"go-spring.org/cloud/runtime"
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
@@ -54,7 +54,7 @@ func init() {
 				gs.IndexArg(1, gs.ValueArg(c)),
 				gs.IndexArg(2, gs.TagArg("${spring.elasticsearch.instances."+name+".discovery:=${spring.elasticsearch.default.discovery:=none}}")),
 				gs.IndexArg(3, gs.TagArg("${spring.elasticsearch.instances."+name+".driver:=${spring.elasticsearch.default.driver:=?}}")),
-				// The governance center is the family's sole injection point: it hands
+				// The runtime is the family's sole injection point: it hands
 				// out the resilience/fault/loadbalance authorities.
 			).Name(name).Destroy((*Client).Destroy).Caller(1)
 			// Contribute a health indicator for this instance, injecting the
@@ -91,14 +91,14 @@ func init() {
 // default). It is folded into the config so the driver resolves the backend
 // itself — see the fold below.
 //
-// center is the governance center the container injects (nil in a standalone,
+// center is the runtime the container injects (nil in a standalone,
 // non-gs call) — the family's sole injection point; the ctor hands the center
 // straight to the driver, which passes it to [NewClient]: the client is
 // assembled complete in one step, with the resilience manager required: the
-// container supplies it via the governance center, so a center without one fails
+// container supplies it via the runtime, so a center without one fails
 // at construction.
 func newClient(ctx *gs.ContextProvider, c Config, discoveryLabel string, d Driver,
-	center *governance.Center) (*Client, error) {
+	center *runtime.Runtime) (*Client, error) {
 	// The wiring tag applies the family-default discovery fallback (discoveryLabel);
 	// fold it into the config so the driver reads one label — c.Discovery — and
 	// resolves the backend itself, failing construction if it names no bean. "none"

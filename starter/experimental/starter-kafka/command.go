@@ -31,11 +31,11 @@ package StarterKafka
 import (
 	"context"
 
-	"go-spring.org/cloud/chain"
-	"go-spring.org/cloud/governance/label"
+	"go-spring.org/cloud/runtime/dataplane/chain"
+	"go-spring.org/cloud/runtime/dataplane/label"
 
 	"github.com/twmb/franz-go/pkg/kgo"
-	"go-spring.org/cloud/observability"
+	"go-spring.org/cloud/runtime/dataplane/observability"
 )
 
 // serviceLabelOf fixes the governance label a broker list scopes

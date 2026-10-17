@@ -56,7 +56,7 @@ deployment points Consul/Nacos/k8s here; see example/discovery.go):
 ```go
 package main
 
-import "go-spring.org/cloud/discovery"
+import "go-spring.org/cloud/runtime/dataplane/discovery"
 
 func init() {
     gs.Provide(func() (discovery.Discovery, error) {
@@ -158,7 +158,7 @@ import starter-elasticsearch
 gs.Run()
   ├─ ctor newClient:
   │    ├─ the ctor folds the family-wide `${spring.elasticsearch.default.discovery}`
-  │    │      fallback into c.Discovery and hands the injected *governance.Center
+  │    │      fallback into c.Discovery and hands the injected *runtime.Runtime
   │    │      (variable center) to the driver
   │    ├─ optional Driver bean (none → bundled DefaultDriver; several coexist →
   │    │      the entry selects one by name: spring.elasticsearch.instances.<name>.driver =
@@ -244,7 +244,7 @@ Rationale (source comments, [command.go] and [client.go]):
    histograms and the access log. The caller sees exactly what plain go-elasticsearch returns —
    including 4xx `res.IsError()` bodies; only transport-level errors (5xx are mapped to a
    breaker-tripping, retryable error by the resilience round-tripper,
-   cloud/governance/resilience/roundtripper.go:99-104).
+   cloud/runtime/dataplane/resilience/roundtripper.go:99-104).
 
 **Pass a context on every call.** It carries the call's cancellation and deadline, and the
 operation span the resilience layer opens inherits it — `HealthCheck` and the health indicator
@@ -356,7 +356,7 @@ grep _app_elasticsearch_access app.log | tail -1
 ### 4.3 Resilience / fault drill (example-load style)
 
 ```properties
-# NOTE: governance RULES go in conf/governance.properties, referenced by spring.governance.source.file.path in app.properties (see cloud/governance's SOURCE_USAGE).
+# NOTE: governance RULES go in conf/governance.properties, referenced by spring.governance.source.file.path in app.properties (see cloud/runtime/controlplane/governance's SOURCE_USAGE).
 spring.resilience.driver=default
 spring.governance.client.default.rate-limit=5          # burst > 5 concurrent → ErrRateLimited rejections
 spring.governance.client.default.error-threshold=20

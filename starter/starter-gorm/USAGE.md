@@ -146,7 +146,7 @@ spring.observability.metrics.exporter=prometheus
 spring.observability.metrics.port=0        # /metrics via actuator only
 
 # --- governance (runtime fault injection / breaker / retry) ------------------
-# NOTE: governance RULES go in conf/governance.properties, referenced by spring.governance.source.file.path in app.properties (see cloud/governance's SOURCE_USAGE).
+# NOTE: governance RULES go in conf/governance.properties, referenced by spring.governance.source.file.path in app.properties (see cloud/runtime/controlplane/governance's SOURCE_USAGE).
 spring.resilience.driver=default
 spring.governance.client.default.error-threshold=20
 spring.governance.client.default.open-duration=5s
@@ -154,7 +154,7 @@ spring.governance.client.default.max-retries=1
 spring.governance.client.default.timeout=500ms
 # Endpoint selection rides the same label: spring.governance.client.rules[N].balancer /
 # outlier-threshold / outlier-suspend-for for "gorm:mysql:orders-db" rebuild the
-# entry's chain from scratch (see cloud/governance/README.md §3.1).
+# entry's chain from scratch (see cloud/runtime/controlplane/governance/README.md §3.1).
 ```
 
 Every dialect that dials through discovery builds its chain with a suspension tracker and registers
@@ -379,7 +379,7 @@ health.go:33-35).
 
 ### 4.4 Fault / resilience drill (no restart)
 
-Using the governance config from §1 plus a file source (see cloud/governance's SOURCE_USAGE)
+Using the governance config from §1 plus a file source (see cloud/runtime/controlplane/governance's SOURCE_USAGE)
 or the example-load layout (`starter-gorm-mysql/example-load`):
 
 1. Start the app with no `spring.governance.client.fault.rate`; baseline queries succeed.

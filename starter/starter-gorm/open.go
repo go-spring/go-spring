@@ -17,8 +17,8 @@
 package gormcore
 
 import (
-	"go-spring.org/cloud/chain"
-	"go-spring.org/cloud/governance"
+	"go-spring.org/cloud/runtime"
+	"go-spring.org/cloud/runtime/dataplane/chain"
 	gormobserve "go-spring.org/starter-gorm/observe"
 	gormresilience "go-spring.org/starter-gorm/resilience"
 	"go-spring.org/stdlib/errutil"
@@ -30,22 +30,22 @@ import (
 // watches, registered TLS configs), and the container's facilities. The first
 // group comes from the dialect's build (via [Spec]); the last is filled by
 // [NewDB], whose caller — a dialect starter's wiring — is the only place the
-// governance center is reachable, since a dialect never depends on
-// cloud/governance.
+// runtime composition root is reachable, since a dialect never depends on
+// cloud/runtime.
 type Options struct {
 	Engine         string   // db.system + service label (e.g. "mysql", "postgresql")
 	Service        string   // precomputed label.ServiceLabel for this instance
 	ObserveEnabled bool     // per-instance kill switch for the gorm observe plugin
 	Closers        []func() // teardown hooks run by Destroy before the pool closes
 
-	// Center is the container's governance center (see [governance.Center]); [Open]
+	// Center is the container's runtime (see [runtime.Runtime]); [Open]
 	// applies it while assembling, so the returned DB is complete. It is one
 	// object rather than a parameter per capability so this field — which every
 	// dialect's wiring fills — stays stable as capabilities are added. The center
 	// must carry a [resilience.ClientManager] — the container always supplies one — so a
 	// hand-built DB (an example, a test) must supply one too: a nil center is a
 	// construction error, never a graceful downgrade.
-	Center *governance.Center
+	Center *runtime.Runtime
 }
 
 // DB is the wrapper bean gorm clients are injected as, shared verbatim by every
@@ -60,7 +60,7 @@ type DB struct {
 	serviceLabel   string
 	observeEnabled bool
 	closers        []func()
-	exec           chain.Executor // from Center.ExecutorFor; the center is required to carry a manager
+	exec           chain.Executor // from runtime.Runtime.ExecutorFor; the center is required to carry a manager
 }
 
 // Open opens gorm with the given dialector, applies the pool settings and runs
@@ -116,7 +116,7 @@ func Open(dialector gorm.Dialector, pool PoolConfig, opt Options) (*DB, error) {
 	}
 	// Governance is applied in the constructor, not by the wiring, so the DB is
 	// complete the moment Open returns. The executor comes from the one place
-	// that composition lives ([governance.Center.ExecutorFor]), which requires
+	// that composition lives ([runtime.Runtime.ExecutorFor]), which requires
 	// the center to carry a [resilience.ClientManager] — the container always supplies
 	// it — and panics on a nil center. The
 	// manager resolves the backing executor lazily, on each Execute, so this call

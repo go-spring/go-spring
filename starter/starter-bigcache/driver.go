@@ -54,7 +54,7 @@ import (
 // inside the assembly went wrong.
 //
 // Unlike the network client starters, this signature carries no
-// `*governance.Center`: that bundles the container's governance authorities
+// `*runtime.Runtime`: that bundles the container's governance authorities
 // (resilience, fault, loadbalance, discovery), and bigcache has no external
 // dependency for any of them to act on — it does not route through the executor
 // chain at all, emitting its own signals instead (see [ObsCache]). Handing a

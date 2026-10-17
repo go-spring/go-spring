@@ -17,7 +17,7 @@
 package StarterGrpcClient
 
 // This file is the client-side load-balancing adapter that plugs the
-// framework-neutral [go-spring.org/cloud/loadbalance] chain into gRPC's own
+// framework-neutral [go-spring.org/cloud/runtime/dataplane/loadbalance] chain into gRPC's own
 // resolver + balancer machinery: a per-connection resolver (scheme
 // "gsdiscovery") that turns a discovery backend into the stream of address
 // snapshots gRPC consumes, and a picker that selects among the READY SubConns
@@ -48,8 +48,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"go-spring.org/cloud/discovery"
-	"go-spring.org/cloud/loadbalance"
+	"go-spring.org/cloud/runtime/dataplane/discovery"
+	"go-spring.org/cloud/runtime/dataplane/loadbalance"
 	"go-spring.org/log"
 	"go-spring.org/stdlib/errutil"
 	"google.golang.org/grpc/attributes"

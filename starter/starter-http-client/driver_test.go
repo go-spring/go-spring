@@ -18,16 +18,18 @@ package StarterHTTPClient
 
 import (
 	"context"
-	"go-spring.org/cloud/governance"
 	"net/http"
 	"reflect"
 	"testing"
 
-	"go-spring.org/cloud/discovery"
-	"go-spring.org/cloud/governance/fault"
-	"go-spring.org/cloud/loadbalance"
-	"go-spring.org/cloud/governance/resilience"
-	"go-spring.org/cloud/traffic"
+	"go-spring.org/cloud/runtime"
+	"go-spring.org/cloud/runtime/controlplane/governance"
+
+	"go-spring.org/cloud/runtime/dataplane/discovery"
+	"go-spring.org/cloud/runtime/dataplane/fault"
+	"go-spring.org/cloud/runtime/dataplane/loadbalance"
+	"go-spring.org/cloud/runtime/dataplane/resilience"
+	"go-spring.org/cloud/runtime/dataplane/traffic"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/httpclt"
 )
@@ -36,7 +38,7 @@ import (
 // DefaultDriver when no Driver bean is provided (nil). Building the transport
 // needs no live server — it only assembles the RoundTripper.
 func TestDefaultDriverFallback(t *testing.T) {
-	center, err := governance.NewCenter(
+	center, err := runtime.New(
 		resilience.NewClientManager(resilience.NewDefaultDriver(nil)), loadbalance.NewManager(),
 		fault.NewClientManager(nil), fault.NewServerManager(nil), discovery.NewManager(nil), governance.NewPushSource(governance.Config{}))
 	if err != nil {
@@ -60,13 +62,13 @@ type recordingDriver struct {
 	// can prove the starter wiring resolves the ${discovery} label and passes it
 	// to a custom driver (rather than keeping it private to DefaultDriver).
 	backend discovery.Discovery
-	// center records the governance center handed to CreateTransport, so a
+	// center records the runtime handed to CreateTransport, so a
 	// test can prove the container's authority reaches a custom driver as an
 	// argument (the bean, not a package-level seam).
-	center *governance.Center
+	center *runtime.Runtime
 }
 
-func (d *recordingDriver) CreateTransport(ctx context.Context, name string, c Config, backend discovery.Discovery, center *governance.Center, prop traffic.Propagator) (http.RoundTripper, func() error, error) {
+func (d *recordingDriver) CreateTransport(ctx context.Context, name string, c Config, backend discovery.Discovery, center *runtime.Runtime, prop traffic.Propagator) (http.RoundTripper, func() error, error) {
 	d.called = true
 	d.backend = backend
 	d.center = center
@@ -77,7 +79,7 @@ func (d *recordingDriver) CreateTransport(ctx context.Context, name string, c Co
 // dispatches through, replacing the internal DefaultDriver fallback.
 func TestCustomDriverUsed(t *testing.T) {
 	drv := &recordingDriver{}
-	center, err := governance.NewCenter(
+	center, err := runtime.New(
 		resilience.NewClientManager(resilience.NewDefaultDriver(nil)), loadbalance.NewManager(),
 		fault.NewClientManager(nil), fault.NewServerManager(nil), discovery.NewManager(nil), governance.NewPushSource(governance.Config{}))
 	if err != nil {
@@ -134,7 +136,7 @@ func TestCustomDriverReceivesResolvedBackend(t *testing.T) {
 // sits between them: the driver sees exactly the instance the container holds.
 //
 // The test does NOT register those beans itself. Importing this starter blank-
-// imports the governance center, which registers them — so a container already
+// imports the runtime, which registers them — so a container already
 // holds one *resilience.ClientManager / *fault.ClientManager, and providing another would
 // be a duplicate. The assertion is therefore identity with what another
 // injection resolves, which is the same claim.

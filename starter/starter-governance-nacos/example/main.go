@@ -34,7 +34,7 @@ import (
 	"syscall"
 	"time"
 
-	"go-spring.org/cloud/governance"
+	rt "go-spring.org/cloud/runtime"
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
@@ -68,10 +68,10 @@ const rulesV2 = `spring:
         max-retries: 2
 `
 
-// demo reads the resolved policy off the field-injected governance center, so
+// demo reads the resolved policy off the field-injected runtime, so
 // a rule push is visible without any client wiring.
 type demo struct {
-	Center *governance.Center `autowire:""`
+	Center *rt.Runtime `autowire:""`
 }
 
 var manual = flag.Bool("manual", false, "run in manual verification mode (server stays up)")
