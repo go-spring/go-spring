@@ -54,8 +54,8 @@ Verified dependency facts (do not violate):
   container — but the packages that own a default bean register it, so `spring`
   appears in four of them:
 
-  - `cloud/resilience` registers `*resilience.ClientManager` (and the bundled driver),
-    `cloud/loadbalance` registers `*loadbalance.Manager`, `cloud/fault` registers
+  - `cloud/governance/resilience` registers `*resilience.ClientManager` (and the bundled driver),
+    `cloud/loadbalance` registers `*loadbalance.Manager`, `cloud/governance/fault` registers
     `*fault.ClientManager` and `*fault.ServerManager`. The rule is **the package that owns the type registers its
     default**: a client that injects one has already imported that package for
     the type, so there is no separate "governance import" to forget.
@@ -66,12 +66,30 @@ Verified dependency facts (do not violate):
   - **Client and server are separate authorities, and they no longer share a
     shape.** Outbound calls run through `chain.Executor`: one around-function,
     N retry attempts, an `Operation` declaration and a `Recorder` write-back.
-    Inbound requests run through `cloud/guard`: one instance-bound `Guard` with
+    Inbound requests run through `cloud/governance/guard`: one instance-bound `Guard` with
     its own long-lived state, one judgment (`Admit`) and one completion
     (`Done`), no retry and no `chain` types. `governance.Center` owns the
     inbound `guard.Manager` and pushes it the server half of the document;
     adapters get one `Guard` per server instance from `InboundFor`.
-  - The inbound half of `cloud/resilience` has been removed. `resilience.Driver`
+  - The neutral organs behind both are shared: `cloud/governance/breaker`
+    owns the breaker state machine, and `cloud/governance/ratelimit` owns the
+    rate-limit vocabulary, local budget and counting algorithms. Sharing an
+    organ does not merge authorities: each direction still maps its own policy
+    into the shared spec.
+  - **Layout: families stay flat; a theme directory appears only when a family
+    needs a shared `internal/` package or grows past a handful of siblings.**
+    `cloud/governance/` is the one theme today: it holds the center (the
+    directory's own package), the authorities it coordinates (`guard`,
+    `resilience`, `fault`), the organs they share (`breaker`, `ratelimit`) and
+    the label convention (`label`). Cross-theme vocabulary and capabilities
+    (`chain`, `traffic`) stay top-level, so a neutral package never imports a
+    theme. Within a theme, a child must never import the theme's root package —
+    that is the one way directory nesting can create an import cycle.
+  - **A service label is a governance convention, not a per-starter helper.**
+    Both directions and every protocol adapter spell it with
+    `cloud/governance/label.ServiceLabel`; a starter must never re-implement the
+    join, because a client rule and an inbound guard match on the same string.
+  - The inbound half of `cloud/governance/resilience` has been removed. `resilience.Driver`
     is outbound-only (`NewClientExecutor`), and the `Driver`-based backends
     (`starter-governance-sentinel`, `starter-luohua`) contribute outbound
     behavior only; their inbound implementations were retired because the
@@ -207,7 +225,7 @@ fixed feature set and hope it fits. So in the framework layers — `stdlib/`,
 - **Built-ins ride the same seams they expose.** Go-Spring's own built-in
   implementations must go through the very extension points offered to users,
   never a privileged private path — `cloud/cache`'s Memory backend,
-  `cloud/resilience`'s built-in strategies, and the starter archetypes all
+  `cloud/governance/resilience`'s built-in strategies, and the starter archetypes all
   consume their own registries/interfaces. If a built-in can't be expressed
   through the public seam, the seam is wrong, not the built-in.
 - **An extension is a layer, not a table entry.** Prefer the onion: wrap the

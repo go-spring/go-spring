@@ -26,11 +26,12 @@ package StarterCassandra
 
 import (
 	"context"
+
 	"go-spring.org/cloud/chain"
+	"go-spring.org/cloud/governance/label"
 
 	"github.com/gocql/gocql"
 	"go-spring.org/cloud/governance"
-	"go-spring.org/cloud/resilience"
 )
 
 // Client is the wrapper bean Cassandra sessions are injected as. It holds the
@@ -92,7 +93,7 @@ func NewClient(session *gocql.Session, cfg Config, center *governance.Center) *C
 	if len(cfg.Hosts) > 0 {
 		host = cfg.Hosts[0]
 	}
-	serviceLabel := resilience.ServiceLabel("cassandra", host)
+	serviceLabel := label.ServiceLabel("cassandra", host)
 	return &Client{
 		Session:      session,
 		exec:         center.ExecutorFor("cassandra", serviceLabel),

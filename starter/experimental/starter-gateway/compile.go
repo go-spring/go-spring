@@ -30,7 +30,7 @@ import (
 	"go-spring.org/cloud/discovery"
 	"go-spring.org/cloud/governance"
 	"go-spring.org/cloud/loadbalance"
-	"go-spring.org/cloud/resilience"
+	"go-spring.org/cloud/governance/resilience"
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"

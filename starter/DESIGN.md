@@ -233,9 +233,9 @@ Database, cache, and message-queue clients (`go-redis`, `gorm-*`, `mongodb`,
   `ClusterDriver`) so existing custom drivers keep compiling.
 - **A client starter whose component reaches out gets governance from its own imports.** No
   governance import is needed: each authority is registered by the package that
-  **owns it** — `cloud/resilience` registers `*resilience.ClientManager` and
+  **owns it** — `cloud/governance/resilience` registers `*resilience.ClientManager` and
   `*resilience.ServerManager`, `cloud/loadbalance` `*loadbalance.Manager`,
-  `cloud/fault` `*fault.ClientManager` and `*fault.ServerManager` — and
+  `cloud/governance/fault` `*fault.ClientManager` and `*fault.ServerManager` — and
   a starter that injects one has necessarily imported that package for the type.
   So every direction's authorities are always in the container; a client injects
   the three it uses (resilience client, loadbalance, fault client) as
@@ -312,7 +312,7 @@ Database, cache, and message-queue clients (`go-redis`, `gorm-*`, `mongodb`,
     package because its semantics fit no other client).
   - `observe.go` — the operation declarations this starter hands the framework's
     single emitter (its `Metric` prefix, its bounded attrs, its unbounded detail,
-    its access `LogTag`); the emitter itself lives in `cloud/resilience` (§3).
+    its access `LogTag`); the emitter itself lives in `cloud/governance/resilience` (§3).
   - `health.go` — the health-indicator constructor, in the starter's root
     package (a single-function subpackage is not worth the import cost). Omitted
     by a starter whose component has nothing to probe (bigcache, §3).
@@ -789,7 +789,7 @@ baseline (its identity, wire vocabulary, error catalog, standard drivers).
   - **The dependency points observability → resilience, never the reverse.**
     The emitter lives in `cloud/observability`; the breaker state vocabulary
     (`BreakerState` / `BreakerEventListener`) and the per-call `Recorder` live
-    in `cloud/resilience`, and the observer imports them — governance never
+    in `cloud/governance/resilience`, and the observer imports them — governance never
     names the observer. The two are composed in exactly one place, the
     governance center (`Center.ExecutorFor` / `Center.ServerExecutorFor`), which
     stacks `fault(observe(resilience))` and reaches the breaker through the
@@ -1003,7 +1003,7 @@ baseline (its identity, wire vocabulary, error catalog, standard drivers).
   especially when a near-synonym sibling sits in the same struct — it must carry a
   semantic direction. The legal vocabulary, uniform across starters: the instance
   name (the `instances` map key) is `instanceName`; the derived governance label
-  (the result of `resilience.ServiceLabel(...)`) is `serviceLabel`. `serviceName`
+  (the result of `label.ServiceLabel(...)`) is `serviceLabel`. `serviceName`
   stays as-is — it mirrors the config key `service-name` and is a config-field name,
   not part of this vocabulary. Split singular/plural collisions: `Manager.driver`
   (the selected backend) becomes `driverName`, distinct from `drivers` (the backend
@@ -1073,7 +1073,7 @@ baseline (its identity, wire vocabulary, error catalog, standard drivers).
    at the dial site (feeding the dial outcome — without it the tracker is blind),
    and `lbMgr.Chain(resolver, <entry label>)` with the injected
    `*loadbalance.Manager` under the
-   *same* `resilience.ServiceLabel` the entry's executor uses. That is what makes
+   *same* `label.ServiceLabel` the entry's executor uses. That is what makes
    `balancer` / `outlier-threshold` / `outlier-suspend-for` configurable through the
    governance rule instead of hardcoded — no `balancer` key of your own, and no import of
    `cloud/governance`. A client that cannot re-pick (one-shot resolution, or a

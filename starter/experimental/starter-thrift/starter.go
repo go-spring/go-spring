@@ -22,7 +22,7 @@ import (
 
 	"github.com/apache/thrift/lib/go/thrift"
 	"go-spring.org/cloud/governance"
-	"go-spring.org/cloud/label"
+	"go-spring.org/cloud/governance/label"
 	"go-spring.org/cloud/security"
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"

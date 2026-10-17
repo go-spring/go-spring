@@ -177,7 +177,7 @@ type MetricsConfig struct {
 // request span, the HTTP family metrics and the access log. It is on by
 // default, and it is the one switch to reach for: everything it controls is
 // emitted by the resilience executor (see [the governance center] and
-// cloud/resilience), which is also why the signals are one set rather than three
+// cloud/governance/resilience), which is also why the signals are one set rather than three
 // independently switchable ones.
 //
 // Turning it off does not silence the server: the inbound middleware stops

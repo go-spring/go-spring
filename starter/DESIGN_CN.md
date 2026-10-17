@@ -166,8 +166,8 @@ Web(`gin`、`echo`、`hertz`……)与 RPC(`grpc`、`kitex`、`thrift`、`dubbo`
   在启动期失败。这也是注入服务发现的接缝(由 driver 构建 dialer)。可选能力放到
   **独立**接口上(如 go-redis 的 `ClusterDriver`),让已有的自定义 driver 保持可编译。
 - **要对外访问的 client starter 靠自己的 import 拿到治理能力。** 不需要任何治理 import:每个 authority
-  由**管它的那个包**注册 —— `cloud/resilience` 分别注册 `*resilience.ClientManager` / `*resilience.ServerManager`、`cloud/loadbalance`
-  注册 `*loadbalance.Manager`、`cloud/fault` 分别注册 `*fault.ClientManager` / `*fault.ServerManager` —— 而注入其中一个的 client
+  由**管它的那个包**注册 —— `cloud/governance/resilience` 分别注册 `*resilience.ClientManager` / `*resilience.ServerManager`、`cloud/loadbalance`
+  注册 `*loadbalance.Manager`、`cloud/governance/fault` 分别注册 `*fault.ClientManager` / `*fault.ServerManager` —— 而注入其中一个的 client
   必然已经为了类型 import 了那个包。于是 `*resilience.ClientManager` /
   `*loadbalance.Manager` / `*fault.ClientManager`（或 `*fault.ServerManager`）必然在容器里;注入写成**必填**
   (`gs.IndexArg(N, gs.TagArg(""))`),不写可空(`"?"`)。这些 direction authority 本就是 client
@@ -220,7 +220,7 @@ Web(`gin`、`echo`、`hertz`……)与 RPC(`grpc`、`kitex`、`thrift`、`dubbo`
     因为那套语义不吻合其他任何 client)。
   - `observe.go` —— 交给框架唯一发射点的 operation 声明(本 starter 的 `Metric`
     前缀、有界属性、无界 detail、access `LogTag`);发射点本身在
-    `cloud/resilience`(见 §3)。
+    `cloud/governance/resilience`(见 §3)。
   - `health.go` —— health indicator 构造函数,放在 starter 根包里(单函数子包不值那个
     import 代价)。组件没有可探测项时不建此文件(bigcache,见 §3)。
   这一划分与生态内既有 client starter(go-redis、gorm-*、mongodb、elasticsearch、
@@ -539,7 +539,7 @@ WebSocket(`websocket`、`websocket-coder`)、中间件(`lua-filter`)、鉴权
     一份惰性文档(什么都不配)保留全部 span、指标与访问日志,只丢掉保护。
   - **依赖方向是 observability → resilience,绝不反过来。** 发射点落在
     `cloud/observability`;breaker 状态词表（`BreakerState` / `BreakerEventListener`）与
-    per-call `Recorder` 落在 `cloud/resilience`,由观测层 import —— 治理从不认识观测。
+    per-call `Recorder` 落在 `cloud/governance/resilience`,由观测层 import —— 治理从不认识观测。
     两者只在**一处**组装:治理中心（`Center.ExecutorFor` / `Center.ServerExecutorFor`）,
     它叠出 `fault(observe(resilience))`,并通过 handle 的 listener 契约够到 breaker。
   - **`Attrs` 必须有界**:这里的每个属性都会同时变成 metric label、span 属性和日志字段,
@@ -680,7 +680,7 @@ WebSocket(`websocket`、`websocket-coder`)、中间件(`lua-filter`)、鉴权
   业务代码无需改动。
 - **结构体字段名不允许是光杆通用词**(`name`、`service`、`key` 这类),尤其当同一 struct 里存在近义兄弟
   字段时——必须自带语义方向。全仓 starter 统一词汇:实例名(instances map 的 key)→ `instanceName`;
-  派生出的治理标签(`resilience.ServiceLabel(...)` 的结果)→ `serviceLabel`。`serviceName` 保持不动——
+  派生出的治理标签(`label.ServiceLabel(...)` 的结果)→ `serviceLabel`。`serviceName` 保持不动——
   它镜像配置键 `service-name`,属配置字段命名,不进这套词汇。单复数对撞要拆:`Manager.driver`(被选中的
   后端)→ `driverName`,与 `drivers`(后端目录 map)分开。名字与实际用途不符要改(如 `memcached/liveServers.key`
   存的是地址快照签名 → `snapshotKey`)。明确不改:`cloud/governance/resilience|fault` 内部的 `service`、
@@ -723,7 +723,7 @@ WebSocket(`websocket`、`websocket-coder`)、中间件(`lua-filter`)、鉴权
    否则第二个实现的同名实例会撞出同一个(名字,类型)键。
    **走发现拨号?** → 建链一律这三件套:挂 `loadbalance.Tracker`、在建连处把 `Pool.Pick`
    与 `Pool.Complete` 配对(把拨号结果喂回去,不喂 tracker 就是瞎的)、再用**与 executor
-   同一个** `resilience.ServiceLabel`,带注入的 `*loadbalance.Manager` 调
+   同一个** `label.ServiceLabel`,带注入的 `*loadbalance.Manager` 调
    `lbMgr.Chain(resolver, <entry label>)`。这才是 `balancer` / `outlier-threshold` /
    `outlier-suspend-for` 可经治理规则配置而不是写死的原因——自己不加 `balancer` 配置键,
    也不 import `cloud/governance`。不能重挑的 client

@@ -21,7 +21,7 @@ import (
 	"math"
 
 	"go-spring.org/cloud/governance"
-	"go-spring.org/cloud/label"
+	"go-spring.org/cloud/governance/label"
 	"go-spring.org/cloud/traffic"
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"

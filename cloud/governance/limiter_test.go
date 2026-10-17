@@ -21,35 +21,34 @@ import (
 	"errors"
 	"testing"
 
-	"go-spring.org/cloud/chain"
-	"go-spring.org/cloud/guard"
+	"go-spring.org/cloud/governance/guard"
+	"go-spring.org/cloud/governance/resilience"
 	"go-spring.org/cloud/observability"
-	"go-spring.org/cloud/resilience"
 )
 
 // fakeStore is a resilience.ClusterLimiter whose verdict the test decides.
 type fakeStore struct {
+	admit bool
 	err   error
 	calls int
 	scope string
 }
 
-func (s *fakeStore) Allow(_ context.Context, scope string, _ resilience.RateSpec, _ int) error {
+func (s *fakeStore) Allow(_ context.Context, scope string, _ resilience.RateSpec, _ int) (bool, error) {
 	s.calls++
 	s.scope = scope
-	return s.err
+	return s.admit, s.err
 }
 
 // TestInboundUsesClusterLimiter pins the whole inbound rate-limit path: the
 // center's CenterOption reaches the guard manager, the guard charges the shared
-// store, and the store's chain sentinel is translated into guard's own so the
-// refusal surfaces as VerdictRateLimited.
+// store, and the shared rate-limit sentinel surfaces as VerdictRateLimited.
 func TestInboundUsesClusterLimiter(t *testing.T) {
-	store := &fakeStore{err: chain.ErrRateLimited}
+	store := &fakeStore{admit: false}
 	resClient, lb, fc, fs := newAuthorities()
 	c, err := NewCenter(resClient, lb, fc, fs, nil,
 		NewPushSource(Config{Server: ServerConfig{Default: guard.Policy{RateLimit: 10}}}),
-		WithClusterLimiter(guardLimiter{inner: store}))
+		WithClusterLimiter(store))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -72,11 +71,11 @@ func TestInboundUsesClusterLimiter(t *testing.T) {
 // TestInboundStoreFailureAllows pins the failure policy: an unreachable counter
 // backend must not turn into an outage.
 func TestInboundStoreFailureAllows(t *testing.T) {
-	store := &fakeStore{err: errors.New("store down")}
+	store := &fakeStore{admit: true, err: errors.New("store down")}
 	resClient, lb, fc, fs := newAuthorities()
 	c, err := NewCenter(resClient, lb, fc, fs, nil,
 		NewPushSource(Config{Server: ServerConfig{Default: guard.Policy{RateLimit: 10}}}),
-		WithClusterLimiter(guardLimiter{inner: store}))
+		WithClusterLimiter(store))
 	if err != nil {
 		t.Fatal(err)
 	}

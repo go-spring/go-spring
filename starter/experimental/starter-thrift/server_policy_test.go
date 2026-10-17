@@ -22,7 +22,7 @@ import (
 	"testing"
 
 	"go-spring.org/cloud/governance"
-	"go-spring.org/cloud/guard"
+	"go-spring.org/cloud/governance/guard"
 
 	"github.com/apache/thrift/lib/go/thrift"
 )

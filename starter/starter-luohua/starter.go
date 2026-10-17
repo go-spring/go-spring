@@ -40,7 +40,7 @@ import (
 	"go-spring.org/cloud/cache"
 	"go-spring.org/cloud/loadbalance"
 	"go-spring.org/cloud/lock"
-	"go-spring.org/cloud/resilience"
+	"go-spring.org/cloud/governance/resilience"
 	"go-spring.org/cloud/security"
 	"go-spring.org/cloud/traffic"
 	"go-spring.org/log"

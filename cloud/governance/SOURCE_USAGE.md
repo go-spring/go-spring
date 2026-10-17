@@ -68,8 +68,8 @@ import (
     "fmt"
     "time"
 
-    "go-spring.org/cloud/fault"
-    "go-spring.org/cloud/resilience"
+    "go-spring.org/cloud/governance/fault"
+    "go-spring.org/cloud/governance/resilience"
     "go-spring.org/spring/gs"
 )   // nothing to blank-import: the file source registers with cloud/governance
 
@@ -214,9 +214,9 @@ nacos (ListenConfig push) in `starter-governance-nacos`, etcd (Watch push) in
 ```
 link cloud/governance        (any client/server starter does it for you)
   ├─ the three authority packages (always linked by any client starter):
-  │      cloud/resilience → *resilience.ClientManager + the bundled driver
+  │      cloud/governance/resilience → *resilience.ClientManager + the bundled driver
   │      cloud/loadbalance → *loadbalance.Manager
-  │      cloud/fault      → *fault.ClientManager
+  │      cloud/governance/fault      → *fault.ClientManager
   ├─ cloud/governance starter.go: gs.Provide(*governance.Center) over those beans,
   │      .Destroy((*Center).Close)
   │      .Export(gs.As[gs.Rooter]())            ← the wall + the fix, see below
@@ -363,7 +363,7 @@ between directions without relearning. Inbound additionally carries `max-concurr
 
 Driver selection is a static startup choice (`spring.resilience.driver`, an app-config key, not a governance-document key) and
 deliberately NOT re-bindable per service. Semantics of each knob (backoff math, breaker states)
-are `cloud/resilience` territory — the starter only binds and fans them out.
+are `cloud/governance/resilience` territory — the starter only binds and fans them out.
 
 ### 3.4 Fault experiments (`spring.governance.client.fault.rules[]` and `spring.governance.server.fault.rules[]`)
 

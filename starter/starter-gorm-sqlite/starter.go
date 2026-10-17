@@ -29,10 +29,10 @@ import (
 	gormsqlite "github.com/glebarez/sqlite"
 	"go-spring.org/cloud/actuator/health"
 	"go-spring.org/cloud/governance"
-	"go-spring.org/cloud/resilience"
+	"go-spring.org/cloud/governance/label"
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/gs"
-	"go-spring.org/starter-gorm"
+	gormcore "go-spring.org/starter-gorm"
 	"go-spring.org/stdlib/flatten"
 )
 
@@ -90,7 +90,7 @@ func build(ctx context.Context, c Config, _ *governance.Center) (gormcore.Spec, 
 	return gormcore.Spec{
 		Dialector:      gormsqlite.Open(c.DSN()),
 		Pool:           c.Pool(),
-		Service:        resilience.ServiceLabel("gorm:sqlite", c.File),
+		Service:        label.ServiceLabel("gorm:sqlite", c.File),
 		ObserveEnabled: c.ObserveEnabled,
 	}, nil
 }

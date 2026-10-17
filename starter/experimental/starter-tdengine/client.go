@@ -26,10 +26,11 @@ package StarterTdengine
 import (
 	"database/sql"
 	"database/sql/driver"
+
 	"go-spring.org/cloud/chain"
+	"go-spring.org/cloud/governance/label"
 
 	"go-spring.org/cloud/governance"
-	"go-spring.org/cloud/resilience"
 )
 
 // Client is the wrapper bean TDengine connections are injected as. It embeds
@@ -105,5 +106,5 @@ func (o *Client) Destroy() error {
 // statement.
 func serviceLabel(c Config) string {
 	addr := dsnAddr(c.DSN)
-	return resilience.ServiceLabel("tdengine", addr)
+	return label.ServiceLabel("tdengine", addr)
 }

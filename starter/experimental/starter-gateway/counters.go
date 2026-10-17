@@ -28,9 +28,8 @@ import (
 	"sync"
 	"time"
 
-	"go-spring.org/cloud/chain"
-	"go-spring.org/cloud/ratelimit"
-	"go-spring.org/cloud/resilience"
+	"go-spring.org/cloud/governance/ratelimit"
+	"go-spring.org/cloud/governance/resilience"
 )
 
 // maxScopes bounds how many keys the store tracks before it starts evicting
@@ -63,21 +62,15 @@ type scopeState struct {
 	used   time.Time
 }
 
-func (c *memoryLimiter) Allow(ctx context.Context, scope string, spec resilience.RateSpec, n int) error {
+func (c *memoryLimiter) Allow(ctx context.Context, scope string, spec resilience.RateSpec, n int) (bool, error) {
 	if spec.RateLimit <= 0 || n <= 0 { // no budget configured
-		return nil
+		return true, nil
 	}
 	s := c.state(scope, spec)
 	if s.window != nil {
-		if s.window.AllowN(n) {
-			return nil
-		}
-		return chain.ErrRateLimited
+		return s.window.AllowN(n), nil
 	}
-	if s.bucket.WaitN(ctx, float64(n), spec.MaxWait) {
-		return nil
-	}
-	return chain.ErrRateLimited
+	return s.bucket.WaitN(ctx, float64(n), spec.MaxWait), nil
 }
 
 // state returns scope's counters, rebuilding them when the rate-limit

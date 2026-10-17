@@ -52,15 +52,17 @@ package httpx
 
 import (
 	"context"
-	"go-spring.org/cloud/governance"
 	"net/http"
+
+	"go-spring.org/cloud/governance"
+	"go-spring.org/cloud/governance/label"
 
 	"go-spring.org/cloud/chain"
 	"go-spring.org/cloud/discovery"
+	"go-spring.org/cloud/governance/resilience"
 	"go-spring.org/cloud/loadbalance"
 	"go-spring.org/cloud/observability"
 	"go-spring.org/cloud/propagate"
-	"go-spring.org/cloud/resilience"
 	"go-spring.org/cloud/security"
 	"go-spring.org/cloud/traffic"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
@@ -101,7 +103,7 @@ type Config struct {
 
 	// Service is the governance service label protecting this client (e.g.
 	// "http:user-svc") — the name a governance rule matches. When empty it is derived
-	// as resilience.ServiceLabel("http", ServiceName, Addr): ServiceName wins
+	// as label.ServiceLabel("http", ServiceName, Addr): ServiceName wins
 	// whenever set, only an entry with no service-name falls back to its address,
 	// so the label stays stable across addressing-mode switches. Set it
 	// explicitly to decouple the label from addressing entirely. Distinct from
@@ -383,7 +385,7 @@ func (c Config) service() string {
 	if c.Service != "" {
 		return c.Service
 	}
-	return resilience.ServiceLabel("http", c.ServiceName, c.Addr)
+	return label.ServiceLabel("http", c.ServiceName, c.Addr)
 }
 
 func closeAll(fns []func() error) error {

@@ -32,7 +32,7 @@ import (
 // It is the PULL seam: a [Manager.Apply] publishes a new generation and does
 // nothing else — no walking of registered chains, no reaching into them. Each
 // chain notices on its own next request. It is the same shape the resilience
-// layer's executables use (see cloud/resilience's PolicySource), which is what
+// layer's executables use (see cloud/governance/resilience's PolicySource), which is what
 // lets the two modules be described the same way: a manager that holds the
 // config, and a stable shell per resource that replaces the state it
 // materialized when the config generation moves.

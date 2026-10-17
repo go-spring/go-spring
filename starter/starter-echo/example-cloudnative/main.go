@@ -53,7 +53,7 @@ import (
 	"go-spring.org/cloud/actuator/health"
 	"go-spring.org/cloud/discovery"
 	"go-spring.org/cloud/loadbalance"
-	"go-spring.org/cloud/resilience"
+	"go-spring.org/cloud/governance/resilience"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
 

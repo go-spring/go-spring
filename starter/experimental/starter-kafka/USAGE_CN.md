@@ -251,7 +251,7 @@ franz-go 的异步 `Produce` 立即返回，因此只有同步路径可包 [comm
 - governance 开启时，调用经过已组装好的 executor
   `inj.WrapClientExecutor(mgr.ClientExecutorFor("kafka", service))` [command.go:86]：运行时
   故障注入与 resilience 结果 metric 包住 produce，服务标签 `kafka:<brokers>`
-  （`resilience.ServiceLabel("kafka", c.Brokers)` [starter.go:83]，格式 `prefix:name`
+  （`label.ServiceLabel("kafka", c.Brokers)` [starter.go:83]，格式 `prefix:name`
   [resilience/client_policy.go:216-230]）。
 - 被拒（限流 / 熔断打开）时 produce **绝不执行**；拒绝错误编码为逐 record 错误，调用方的
   `.FirstErr()` 像真实 produce 失败一样拿到它 [command.go:150-157]。example-cloudnative

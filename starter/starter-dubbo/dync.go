@@ -24,7 +24,7 @@ import (
 	"time"
 
 	"go-spring.org/cloud/governance"
-	"go-spring.org/cloud/resilience"
+	"go-spring.org/cloud/governance/resilience"
 	mapconfig "go-spring.org/starter-dubbo/internal/mapconfig"
 )
 

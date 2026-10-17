@@ -33,12 +33,13 @@ package StarterMQTT
 
 import (
 	"context"
-	"go-spring.org/cloud/chain"
-	"go-spring.org/cloud/observability"
 	"sync"
 
+	"go-spring.org/cloud/chain"
+	"go-spring.org/cloud/governance/label"
+	"go-spring.org/cloud/observability"
+
 	mqtt "github.com/eclipse/paho.mqtt.golang"
-	"go-spring.org/cloud/resilience"
 )
 
 // MQTT protection is driven by these opt-in call-site helpers rather than a
@@ -89,7 +90,7 @@ var clientGuards sync.Map // mqtt.Client -> *clientObserver
 // broker is unhealthy — and is driven through an opt-in call-site guard
 // ([GuardedPublish]).
 func AttachObserver(cl mqtt.Client, broker string) {
-	label := resilience.ServiceLabel("mqtt", broker)
+	label := label.ServiceLabel("mqtt", broker)
 	clientGuards.Store(cl, &clientObserver{
 		obs:          observability.NewOperationObserver("mqtt", label),
 		serviceLabel: label,

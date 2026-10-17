@@ -42,7 +42,7 @@ require (
 package main
 
 import (
-    "go-spring.org/cloud/resilience"
+    "go-spring.org/cloud/governance/resilience"
     "go-spring.org/spring/gs"
 
     _ "go-spring.org/starter-governance-nacos"

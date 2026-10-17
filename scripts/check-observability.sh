@@ -1010,7 +1010,7 @@ check_baseline() {
 #
 # 这些组件自己不建仪器、也不发每调用信号 —— 信号全部来自它们装配的共享层
 # (starter-http-client:metric 与 span 由 httpx 包里的 otelhttp 发出,每调用的日志由
-# cloud/resilience 的发射点发;scheduler 的 span/指标/日志全在 cloud/scheduling)。
+# cloud/governance/resilience 的发射点发;scheduler 的 span/指标/日志全在 cloud/scheduling)。
 # 因此这里能查的**不是**"词汇齐不齐",而是"接线还在不在":每条登记必须能 grep 到全部
 # 接入点,少一处即报错。
 #

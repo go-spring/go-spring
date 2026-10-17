@@ -2,14 +2,19 @@
 
 `cloud/governance` 是 go-spring 的**控制面**。它只做三件事——**[送达契约 `Source`](source.go) + [期望态 schema `Config`](config.go) + [分发 `Center`](center.go)**——外加[一个规则文档解析入口 `Parse`](rules.go),除此之外不含任何策略实现。它持有进程内唯一一份可热更的 `Config` 文档，经 `Source` 接收下发，再一次性 fan-out 给各**域**的 authority。
 
-被它治理的各**域**是 `cloud/` 下的**平级**包，不在本目录内：
+被它治理的各**域**中，`resilience` / `fault` / `guard` 放在本目录内，`loadbalance` / `discovery` 是顶层包：
 
 | 域 | 角色 | 被中心分发到 |
 |------|------|------|
-| [resilience](../resilience/) | **原语** | `*resilience.ClientManager` —— 熔断 / 限流 / 重试 / 退避 / `ClientExecutor` 接缝 |
-| [fault](../fault/) | **混沌面** | `*fault.ClientManager` / `*fault.ServerManager` —— 故障注入，出站借用 `ClientExecutor` 接缝、入站借用中间件 |
+| [resilience](resilience/) | **出站原语** | `*resilience.ClientManager` —— 熔断 / 限流 / 重试 / 退避 / `ClientExecutor` 接缝 |
+| [guard](guard/) | **入站原语** | `*guard.Manager` —— 每实例的 `Guard`，限流 / 隔板 / 熔断 / 放火 |
+| [fault](fault/) | **混沌面** | `*fault.ClientManager` / `*fault.ServerManager` —— 故障注入，出站借用 `ClientExecutor` 接缝、入站借用中间件 |
 | [loadbalance](../loadbalance/) | **选点域** | `*loadbalance.Manager` —— 端点选择策略 |
 | [discovery](../discovery/) | **只持有** | `*discovery.Manager` —— 命名后端目录；**不出现在规则文档里**，中心只持有不裁决 |
+
+目录内另有两个**中立器官**：[breaker](breaker/)（熔断状态机）与 [ratelimit](ratelimit/)（限流词汇、本地预算、`ClusterLimiter` 接缝与计数算法）。它们不接收中心推送，由 `guard` / `resilience` 各自把自己的策略映射进去使用。
+
+[label](label/) 是**服务 label 规约**：两个方向与所有协议适配器都用 `label.ServiceLabel` 拼出同一个 `prefix:name`，治理规则才能按这个字符串同时命中 client executor 与入站 guard。不要在 starter 里重写拼接逻辑。
 
 client 只注入 `*governance.Center` 一个 bean，从它取需要的 authority（`ResilienceClient()` / `FaultClient()` / `FaultServer()` / `Loadbalance()` / `Discovery()`），不调任何包级函数，也从不接触本包。discovery 与前三个不同：它不是策略域——中心不对它分发任何规则，只是把这份目录一并带在身上，让 client 的注入点仍是唯一一个。
 
@@ -81,7 +86,7 @@ resilience（原语）   ← 叶子（只依赖 observability）
 - `cloud/discovery` — 服务注册与解析（**自注册型**期望态，另一套机制），与 `cloud/loadbalance` 配对消费。
 - `cloud/actuator`、`cloud/mesh`、`cloud/security` — 运维/网格/TLS，独立关注点。
 - `cloud/experimental/loadtest` — 测试工具；`cloud/experimental/transaction` — 分布式事务（仍在孵化）。
-- resilience 的插桩在 `cloud/resilience/observe.go` 的 `WrapClientExecutor`，由
+- resilience 的插桩在 `cloud/governance/resilience/observe.go` 的 `WrapClientExecutor`，由
   `Manager.backing` 在 resolve 时应用到尚未发布到缓存的 executor 上，client 不直接调用。
 
 ### cloud/traffic：域外数据面叶子
@@ -123,7 +128,7 @@ scheduling 服务标签**：
 
 治理规则使用 `spring.governance.*` 键命名空间（如 `spring.governance.client.default.*`、`spring.governance.client.rules`），与 Go 包名 `governance` 独立。规则是**独立文档**，经 Source 契约进入中心，不写进 `app.properties`——本地文件用 `spring.governance.source.file.path` 引导（file / http 两个源就内置在本包，见 [SOURCE_USAGE_CN.md](SOURCE_USAGE_CN.md)）。
 
-本包**自己带一层 gs 接线**:[`starter.go`](starter.go) 注册中心 bean——**中心 bean 的构造就是启动**:`NewCenter` 在构造期分发初始文档、文档不可用则构造失败,`Close` 是 Destroy 钩子,并导出为 `gs.Rooter` 保证无人注入时也会被实例化。三个 authority bean **不在这里** —— 它们由**管这个类型的那个包**注册(`cloud/resilience` / `cloud/loadbalance` / `cloud/fault`),所以注入它们的 client 只要 import 了那个包就已经拿到 bean,和治理无关。应用侧:
+本包**自己带一层 gs 接线**:[`starter.go`](starter.go) 注册中心 bean——**中心 bean 的构造就是启动**:`NewCenter` 在构造期分发初始文档、文档不可用则构造失败,`Close` 是 Destroy 钩子,并导出为 `gs.Rooter` 保证无人注入时也会被实例化。三个 authority bean **不在这里** —— 它们由**管这个类型的那个包**注册(`cloud/governance/resilience` / `cloud/loadbalance` / `cloud/governance/fault`),所以注入它们的 client 只要 import 了那个包就已经拿到 bean,和治理无关。应用侧:
 
 ```properties
 # 无需任何 import:file/http 两个源由本包自己注册,配上引导键即武装
@@ -175,7 +180,7 @@ resilience.ClientManager/ServerManager  loadbalance.Manager  fault.ClientManager
 ```
 
 - **中心**：`governance.Center`，持有唯一的活跃 `Source` 与 `Config` 快照。它只做一件事——把配置文档按 label 解析成两半，分发给下面三个 authority。它**不持有**执行器缓存、订阅表、驱动目录。
-- **三个模块 authority**：每个都由**管这个类型的那个包**注册为 bean（`cloud/resilience` / `cloud/loadbalance` / `cloud/fault`），各自持有本领域的运行时状态与 fan-out：`resilience.ClientManager` / `resilience.ServerManager`（各自 label → Executor/Engine 缓存 + 订阅表/路由解析）、`loadbalance.Manager`（label → 池绑定表）、`fault.ClientManager` / `fault.ServerManager`（两个独立注入器）。
+- **三个模块 authority**：每个都由**管这个类型的那个包**注册为 bean（`cloud/governance/resilience` / `cloud/loadbalance` / `cloud/governance/fault`），各自持有本领域的运行时状态与 fan-out：`resilience.ClientManager` / `resilience.ServerManager`（各自 label → Executor/Engine 缓存 + 订阅表/路由解析）、`loadbalance.Manager`（label → 池绑定表）、`fault.ClientManager` / `fault.ServerManager`（两个独立注入器）。
 - **分发**：配置变化时中心重算，**只在变化时**通知各 authority 的订阅者。选择性扇出的比对现在按半进行——保护半边用 `reflect.DeepEqual`（`ClientPolicy` 全标量，DeepEqual 精确），选择半边用 `==`（`Selection` 全字段可比）。
 
 ### 2.1 感知层：Source 契约
@@ -308,7 +313,7 @@ func (s *fault.Server) Fire(ctx, t Target) (Decision, error)                  //
 
 ## 6. 服务标签（label）约定
 
-label 是 `resilience.ClientManager.ClientExecutorFor` / `ClientPolicyFor` 与 `loadbalance.NewChain` 注册用的 key，决定一条策略归属哪个服务。所有 starter 通过 [`resilience.ServiceLabel`](../resilience/client_policy.go) 统一拼接：第一个非空 name 拼到 prefix 后，都没有则只用 prefix。
+label 是 `resilience.ClientManager.ClientExecutorFor` / `ClientPolicyFor` 与 `loadbalance.NewChain` 注册用的 key，决定一条策略归属哪个服务。所有 starter 通过 [`label.ServiceLabel`](resilience/client_policy.go) 统一拼接：第一个非空 name 拼到 prefix 后，都没有则只用 prefix。
 
 | starter | label 格式 | 示例 |
 |---|---|---|
@@ -377,7 +382,7 @@ dubbo 有自己的 URL-param 治理模型（timeout / retries / loadbalance / cl
 
 ## 8. 与 fault 注入的关系
 
-fault（"放火"）已**收进治理中心**，和 resilience 共用同一个 `governance.Config`——也就是同一份规则文档。两个方向各嵌一份 `fault.Config`：`ClientConfig.Fault`（`value:"${fault:=}"`，绑成 `spring.governance.client.fault.*`）与 `ServerConfig.Fault`（绑成 `spring.governance.server.fault.*`）。`cloud/fault` 注册**两个独立 bean**——`*fault.ClientManager` 与 `*fault.ServerManager`（零配置即 inert）——center 同时持有两者，但**不把它们聚合成第三个类型**：每次 source push（`adopt`）在 `resilience.ClientManager.Apply` / `loadbalance.Manager.Apply` 之外，额外调 `injClient.Refresh(client.fault)` 与 `injServer.Refresh(server.fault)` 各推一侧，两侧 starter 也各自只注入本方向的 bean。
+fault（"放火"）已**收进治理中心**，和 resilience 共用同一个 `governance.Config`——也就是同一份规则文档。两个方向各嵌一份 `fault.Config`：`ClientConfig.Fault`（`value:"${fault:=}"`，绑成 `spring.governance.client.fault.*`）与 `ServerConfig.Fault`（绑成 `spring.governance.server.fault.*`）。`cloud/governance/fault` 注册**两个独立 bean**——`*fault.ClientManager` 与 `*fault.ServerManager`（零配置即 inert）——center 同时持有两者，但**不把它们聚合成第三个类型**：每次 source push（`adopt`）在 `resilience.ClientManager.Apply` / `loadbalance.Manager.Apply` 之外，额外调 `injClient.Refresh(client.fault)` 与 `injServer.Refresh(server.fault)` 各推一侧，两侧 starter 也各自只注入本方向的 bean。
 
 **为什么 fault 必须按方向拆**：一个方向的故障注入只应作用于**这一侧**的调用（出站或入站），而方向无法从一条规则本身推出来——同一个 label 只出现在出站不假，但一条空 service 的 catch-all 规则在哪一侧都能写。所以配置分成两个块，两个 manager 各自持有独立状态与创建 API；两边只共用中立内核（规则语法、注入序列、护栏模型）。
 
@@ -386,7 +391,7 @@ fault（"放火"）已**收进治理中心**，和 resilience 共用同一个 `g
 **三个 authority 现在是同一副形态：中心推规则数据，模块自己按 label 匹配。** fault 从一开始就是这样，resilience 与端点选择现在也对齐——`dispatch` 把文档翻成各模块自己的规则类型并整体推给对应 manager，中心不再替谁解析 label。区别只在规则数据长在哪：
 
 - `resilience.ClientPolicy` / `ServerPolicy` **没有**内置的多服务定向能力，redis 和 gorm 是两个独立对象，所以 center 推一份 default 加一份 `Rules`，由 manager 自己做"属于你的那一个"的首条匹配（找不到回落 Default）。
-- [`fault.Config`](../fault/config.go) 的多服务定向写进类型本身：`Rules []Rule` 每条有自己的 `Service / Rate / Latency / Error`，一份 Config 即可描述"redis 打 0.5 错误、gorm 加延迟、其余全量慢调用"。所以 fault 只推一份带 Rules 的 Config，由 injector 在分发时匹配。
+- [`fault.Config`](fault/config.go) 的多服务定向写进类型本身：`Rules []Rule` 每条有自己的 `Service / Rate / Latency / Error`，一份 Config 即可描述"redis 打 0.5 错误、gorm 加延迟、其余全量慢调用"。所以 fault 只推一份带 Rules 的 Config，由 injector 在分发时匹配。
 
 starter 侧注入本方向的 fault bean 接入，零耦合 cloud/governance：
 
@@ -404,8 +409,8 @@ starter 侧注入本方向的 fault bean 接入，零耦合 cloud/governance：
 `cloud/` 下这些包**平级**，不再有伞包中间层（早期「收拢进 `cloud/governance/`」的形态已废弃）：
 
 - `cloud/governance` —— 中心 / 规则文档 / 源适配器（本包）。
-- `cloud/resilience` —— 端点保护原语，**叶子**，不 import 家族其他成员。
-- `cloud/fault` —— 混沌注入。
+- `cloud/governance/resilience` —— 端点保护原语，**叶子**，不 import 家族其他成员。
+- `cloud/governance/fault` —— 混沌注入。
 - `cloud/chain` —— `Executor` 契约，**最底层**（拒绝哨兵也在这一层）。
 - `cloud/observability` —— 插桩与 span 属性载体。
 - `cloud/loadbalance` —— 端点选择，与 discovery 成对。
@@ -443,7 +448,7 @@ starter 侧注入本方向的 fault bean 接入，零耦合 cloud/governance：
 - `governance.ClientRule` / `governance.ServerRule` 与 `fault.Rule` 字段单数，只挂一个 label，键为 `Service`（`${service:=}`）；fault 空 service 仍是 catch-all。（2026-09-28）
 - `Center.dispatch` 的预检查阶段校验重复 label、driver 名、balancer 名，任一不过即**拒绝整个文档**（旧快照继续服务）；无 first-match 语义残留。重复 label 的判据见 `validateClientRules` / `validateServerRules`（`config.go`），只拒非空 label、client 与 server 两块各判各的。
 - Rule 不是 `map[label]`：label 含冒号（`gorm:mysql:orders`），进 YAML/properties key 位会让映射解析错乱；label 退到 `Service` 值里就 dot/colon-safe。
-- label 优先 discovery 的 service-name（治理目标是下游服务身份，配合服务发现），退回实例名；新 starter 一律 `resilience.ServiceLabel(前缀, service-name, ...回退)`。
+- label 优先 discovery 的 service-name（治理目标是下游服务身份，配合服务发现），退回实例名；新 starter 一律 `label.ServiceLabel(前缀, service-name, ...回退)`。
 - `resource` 一词在治理里一律改叫 `service`（文档键 + 运行时缝 + emit 属性键）：`ServiceLabel`、`ClientManager.ClientExecutorFor(system, service)`、`Driver.NewClientExecutor(service, p)`、`fault.evaluate`（未导出）、`resourceState`→`serviceState`、`Center.clientServiceFor`、httpx `Config.Service`、gorm `module.Spec` / `Options.Service`、metric/log/trace 键 `resource`→`service`、span `resilience.service`。`resource` 只留给无关语义（Go 资源 `no resources to release`、sentinel 自己的 resource name、AT 事务 branch、OTel `sdk/resource`、OAuth2 resource server、k8s `resourcelock`），别误改。（2026-09-28）
 
 ### 9.6 什么该收进治理（判据 P1–P4）
@@ -522,7 +527,7 @@ spring.governance.client.default.open-duration=5s     # 熔断持续 5s 后半�
 
 配完这份文件（加上 §1 的 `spring.governance.source.file.path`），项目里的 redis、gorm、mongo、http-client……全部自动套用这套超时/重试/限流/熔断，且**热重载**——file source 盯着这个文件，改完不用重启（远程 source 同样的效果）。
 
-> 规则文件里的键就是 `spring.governance.*` 命名空间。`spring.governance.client.default.*` 下可用字段是 `resilience.ClientPolicy` 的全部旋钮：`timeout` / `retry`(节点：`retry.max-retries` / `retry.initial-interval` / …，**默认关闭**，重试由调用方在 `chain.Operation.Retry` 上逐次声明，中心下发节点则整体覆盖) / `rate-limit` / `burst` / `rate-limit-max-wait` / `algorithm`(token-bucket|sliding-window) / `window` / `error-threshold` / `open-duration` / `breaker-strategy`(consecutive|error-rate) / `error-rate-threshold` / `min-requests` / `breaker-window`，以及端点选择类的 `balancer` / `balancer-params`（策略自己的参数，扁平子映射）/ `outlier-threshold` / `outlier-suspend-for`（见 §3.1）。字段含义见 [cloud/resilience/client_policy.go](../resilience/client_policy.go)。
+> 规则文件里的键就是 `spring.governance.*` 命名空间。`spring.governance.client.default.*` 下可用字段是 `resilience.ClientPolicy` 的全部旋钮：`timeout` / `retry`(节点：`retry.max-retries` / `retry.initial-interval` / …，**默认关闭**，重试由调用方在 `chain.Operation.Retry` 上逐次声明，中心下发节点则整体覆盖) / `rate-limit` / `burst` / `rate-limit-max-wait` / `algorithm`(token-bucket|sliding-window) / `window` / `error-threshold` / `open-duration` / `breaker-strategy`(consecutive|error-rate) / `error-rate-threshold` / `min-requests` / `breaker-window`，以及端点选择类的 `balancer` / `balancer-params`（策略自己的参数，扁平子映射）/ `outlier-threshold` / `outlier-suspend-for`（见 §3.1）。字段含义见 [cloud/governance/resilience/client_policy.go](resilience/client_policy.go)。
 
 ---
 
@@ -598,7 +603,7 @@ spring.governance.client.rules[3].outlier-suspend-for=10s
 
 **覆盖到的客户端**：所有走发现模式的 `loadbalance.Pool` 消费者——`http`（starter-http-client）、
 `gateway`（每条路由）、`gorm` 全部方言、`redigo`、`redis`（go-redis）、`mongodb`。它们用
-**与保护策略相同的服务标签**绑定（`resilience.ServiceLabel`，见 §6 表），所以一条 ClientRule 同时管住
+**与保护策略相同的服务标签**绑定（`label.ServiceLabel`，见 §6 表），所以一条 ClientRule 同时管住
 一条服务的超时/重试/熔断和它的选点策略。
 
 **覆盖不到的客户端，三条理由，都是有意为之**：
@@ -663,7 +668,7 @@ spring.governance.client.rules[0].service=kafka:10.0.0.1:9092
 
 ### 怎么知道某个服务的 label 是什么？
 
-查[设计说明 §6](#6-服务标签label约定)的表。标签由 starter 用 `resilience.ServiceLabel(prefix, names...)` 拼接——取第一个非空的 name。所以 label 的取值取决于你配置里填的是 `service-name` 还是 `addr`：
+查[设计说明 §6](#6-服务标签label约定)的表。标签由 starter 用 `label.ServiceLabel(prefix, names...)` 拼接——取第一个非空的 name。所以 label 的取值取决于你配置里填的是 `service-name` 还是 `addr`：
 
 - 你配了 `spring.redigo.instances.cache.service-name=cache-svc` → label 是 `redigo:cache-svc`
 - 没配 service-name、只有 `spring.redigo.instances.cache.addr=10.0.0.1:6379` → label 是 `redigo:10.0.0.1:6379`

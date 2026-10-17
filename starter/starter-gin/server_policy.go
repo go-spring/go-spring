@@ -23,10 +23,10 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	"go-spring.org/cloud/fault"
 	"go-spring.org/cloud/governance"
-	"go-spring.org/cloud/guard"
-	"go-spring.org/cloud/label"
+	"go-spring.org/cloud/governance/fault"
+	"go-spring.org/cloud/governance/guard"
+	"go-spring.org/cloud/governance/label"
 	"go-spring.org/cloud/observability"
 )
 

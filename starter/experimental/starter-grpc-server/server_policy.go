@@ -21,8 +21,8 @@ import (
 	"errors"
 
 	"go-spring.org/cloud/governance"
-	"go-spring.org/cloud/guard"
-	"go-spring.org/cloud/label"
+	"go-spring.org/cloud/governance/guard"
+	"go-spring.org/cloud/governance/label"
 	"go-spring.org/cloud/observability"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"

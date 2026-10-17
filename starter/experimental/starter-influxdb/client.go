@@ -25,15 +25,17 @@ package StarterInfluxdb
 
 import (
 	"context"
-	"go-spring.org/cloud/chain"
 	"net/http"
 	"sync"
+
+	"go-spring.org/cloud/chain"
+	"go-spring.org/cloud/governance/label"
 
 	influxdb2 "github.com/influxdata/influxdb-client-go/v2"
 	"github.com/influxdata/influxdb-client-go/v2/api"
 	"github.com/influxdata/influxdb-client-go/v2/api/write"
 	"go-spring.org/cloud/governance"
-	"go-spring.org/cloud/resilience"
+	"go-spring.org/cloud/governance/resilience"
 	"go-spring.org/log"
 )
 
@@ -100,7 +102,7 @@ type Client struct {
 // irrelevant.
 func NewClient(raw influxdb2.Client, transport http.RoundTripper, cfg Config, center *governance.Center) *Client {
 	o := &Client{Client: raw, cfg: cfg}
-	o.serviceLabel = resilience.ServiceLabel("influxdb", cfg.ServerURL)
+	o.serviceLabel = label.ServiceLabel("influxdb", cfg.ServerURL)
 	o.exec = center.ExecutorFor("influxdb", o.serviceLabel)
 	// Only the driver's own indirection is swappable; anything else leaves the
 	// resilience transport uninstalled, so the client keeps the

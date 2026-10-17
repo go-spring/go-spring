@@ -17,11 +17,13 @@
 package StarterOAuth2Client
 
 import (
-	"go-spring.org/cloud/governance"
 	"io"
 	"net/http"
 
-	"go-spring.org/cloud/resilience"
+	"go-spring.org/cloud/governance"
+	"go-spring.org/cloud/governance/label"
+
+	"go-spring.org/cloud/governance/resilience"
 	"go-spring.org/log"
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/gs"
@@ -119,7 +121,7 @@ func newClient(ctx *gs.ContextProvider, name string, c Config, center *governanc
 	// pass-through executor, so this call is always safe. The executor handle
 	// resolves its backing implementation per call, so the order of this setup
 	// relative to the container's wiring is irrelevant.
-	service := resilience.ServiceLabel("oauth2", c.ClientID)
+	service := label.ServiceLabel("oauth2", c.ClientID)
 	exec := center.ExecutorFor("oauth2", service)
 	client.Transport = resilience.NewRoundTripper(client.Transport, exec, service, nil)
 	return client, nil

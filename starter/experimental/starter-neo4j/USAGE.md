@@ -186,7 +186,7 @@ gs.Run()
   │   │  COMPLETE — identity (session + service label) and governance both applied
   │   │  [starter.go:123, driver.go:77]; center is the injected *governance.Center,
   │   │  handing out the resilience/fault authorities (the resilience manager is required)
-  │   ├─ NewClient [client.go:96-103]: service = resilience.ServiceLabel("neo4j",
+  │   ├─ NewClient [client.go:96-103]: service = label.ServiceLabel("neo4j",
   │   │  ServiceName, URI) → center.ExecutorFor("neo4j", service) — the governed executor
   │   │  (fault.ClientManager.WrapClientExecutor over center.ResilienceClient().ClientExecutorFor); the center is always
   │   │  present (the resilience manager is required)

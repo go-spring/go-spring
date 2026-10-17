@@ -164,7 +164,7 @@ import starter-asynq
 gs.Run()
   ├─ bean 装配：应用 bean 按实例名 autowire *Client / *Server
   ├─ ctor newClient（starter.go）：解析 RedisConnOpt，再由 NewClient 固定服务标签
-  │    （resilience.ServiceLabel("asynq", addr)）并挂上 observer；ctor 注入必填的
+  │    （label.ServiceLabel("asynq", addr)）并挂上 observer；ctor 注入必填的
   │    *governance.Center（center），但 asynq client 没有 resilience 缝，
   │    故它不作用于本路径——无 Init 钩子
   ├─ ctor newServer（starter.go）：asynq.NewServer(connOpt, Config{...})

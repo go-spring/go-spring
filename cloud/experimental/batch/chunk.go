@@ -20,7 +20,7 @@ import (
 	"context"
 	"go-spring.org/cloud/chain"
 
-	"go-spring.org/cloud/resilience"
+	"go-spring.org/cloud/governance/resilience"
 )
 
 // DefaultChunkSize is used when [ChunkStep.ChunkSize] is not set.

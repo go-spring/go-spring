@@ -19,8 +19,8 @@ package StarterGrpcClient
 import (
 	"go-spring.org/cloud/discovery"
 	"go-spring.org/cloud/governance"
+	"go-spring.org/cloud/governance/label"
 	"go-spring.org/cloud/loadbalance"
-	"go-spring.org/cloud/resilience"
 	"google.golang.org/grpc"
 )
 
@@ -65,14 +65,14 @@ func NewClientFrom(dir *discovery.Manager, lbMgr *loadbalance.Manager) *Client {
 // exactly it — `service: grpc:<service>` — instead of a hand-spelled copy that
 // may drift.
 func GovernLabel(service string) string {
-	return resilience.ServiceLabel("grpc", service)
+	return label.ServiceLabel("grpc", service)
 }
 
 // Dial opens a connection to service.
 //
 // service is the discovery name, resolved through the connection's own discovery
 // backend — the bean named by backend, or "default" when it is empty. The
-// governance label is derived from the service ([resilience.ServiceLabel]), so a
+// governance label is derived from the service ([label.ServiceLabel]), so a
 // rule naming "grpc:<service>" scopes this connection's strategy and outlier
 // suspension, and is REBUILT per push rather than retuned: the connection's
 // [loadbalance.Chain] registers under the label, and the chain's inner

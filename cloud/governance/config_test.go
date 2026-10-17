@@ -20,8 +20,8 @@ import (
 	"context"
 	"testing"
 
-	"go-spring.org/cloud/fault"
-	"go-spring.org/cloud/resilience"
+	"go-spring.org/cloud/governance/fault"
+	"go-spring.org/cloud/governance/resilience"
 )
 
 // TestConfig_DirectionBlocks guards the shape of the document: each direction's

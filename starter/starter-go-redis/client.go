@@ -30,8 +30,9 @@ import (
 	"github.com/redis/go-redis/v9"
 	"go-spring.org/cloud/chain"
 	"go-spring.org/cloud/governance"
+	"go-spring.org/cloud/governance/label"
+	"go-spring.org/cloud/governance/resilience"
 	"go-spring.org/cloud/loadbalance"
-	"go-spring.org/cloud/resilience"
 )
 
 // Client is the wrapper bean go-redis clients are injected as. It EMBEDS the
@@ -145,7 +146,7 @@ func (c *Client) Destroy() error {
 // serviceLabel derives a stable, human-readable resilience service key for a
 // client, so limiter and breaker state is scoped per Redis instance rather than
 // per command. It falls back across the mode-specific address fields via the
-// shared [resilience.ServiceLabel] helper; unlike a memcached entry (whose label
+// shared [label.ServiceLabel] helper; unlike a memcached entry (whose label
 // has no address to fall back on and so needs the instance name), a redis entry
 // always carries an address or a service name, so the fallback chain needs no
 // instances-map key.
@@ -154,7 +155,7 @@ func serviceLabel(c Config) string {
 	if len(c.Addrs) > 0 {
 		first = c.Addrs[0]
 	}
-	return resilience.ServiceLabel("redis", c.ServiceName, c.MasterName, c.Addr, first)
+	return label.ServiceLabel("redis", c.ServiceName, c.MasterName, c.Addr, first)
 }
 
 // resilienceHook is the command seam: the single go-redis [redis.Hook] layer

@@ -42,7 +42,7 @@ abstractions, all behind the single `http.RoundTripper` seam:
 * [`loadbalance`](../../cloud/loadbalance) — a `Pool` picks one live endpoint
   per request (any registered strategy, plus optional outlier suspension) and the
   transport rewrites the request host to it;
-* [`resilience`](../../cloud/resilience) — an optional executor wraps the whole
+* [`resilience`](../../cloud/governance/resilience) — an optional executor wraps the whole
   chain, so rate limiting, circuit breaking and retry protect every call.
   Because it sits *outside* the balancer, a retry re-picks a fresh endpoint and
   the breaker keys on the logical service name.

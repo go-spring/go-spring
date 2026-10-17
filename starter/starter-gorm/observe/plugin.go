@@ -24,7 +24,7 @@
 // The signals — the call span, the call- and attempt-level duration histograms,
 // the in-flight gauge and the one access log — are emitted by the resilience
 // layer, the one place on the executor chain that sees a whole call (retries
-// included); see cloud/resilience/observe.go. The identity now travels as an
+// included); see cloud/governance/resilience/observe.go. The identity now travels as an
 // explicit argument to the executor rather than on the call's context: the
 // resilience callback that wraps each gorm processor asks this plugin for the
 // operation ([Plugin.Operation]) and passes it to resilience.Run. Building

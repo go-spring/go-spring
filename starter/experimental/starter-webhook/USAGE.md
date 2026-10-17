@@ -143,7 +143,7 @@ gs.Run()
   │    ├─ dry-run buildPayload with an empty Notification — validates channel value and
   │    │   (for dingtalk/feishu) that signing works, WITHOUT any network call
   │    ├─ obs := observability.NewOperationObserver("webhook",
-  │    │      resilience.ServiceLabel("webhook", c.Channel, name)) — this starter's own
+  │    │      label.ServiceLabel("webhook", c.Channel, name)) — this starter's own
   │    │      emitter; no governance center is injected (a delivery has no executor seam)
   │    └─ &http.Client{Timeout: c.Timeout} — per-notifier client, no pooling
   ├─ bean ready: *Notifier injected wherever `autowire:"<name>"` appears

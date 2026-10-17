@@ -54,13 +54,14 @@ package StarterKafkaSarama
 
 import (
 	"context"
-	"go-spring.org/cloud/chain"
-	"go-spring.org/cloud/observability"
 	"sync"
+
+	"go-spring.org/cloud/chain"
+	"go-spring.org/cloud/governance/label"
+	"go-spring.org/cloud/observability"
 
 	"github.com/IBM/sarama"
 	"go-spring.org/cloud/propagate"
-	"go-spring.org/cloud/resilience"
 	"go-spring.org/cloud/traffic"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/propagation"
@@ -203,7 +204,7 @@ var clientGuards sync.Map // sarama.Client -> *clientGuard
 // is no governance: the observer emits the span, metrics and access log, and
 // nothing throttles or retries.
 func AttachObserver(client sarama.Client, brokers string) {
-	serviceLabel := resilience.ServiceLabel(kafkaSystem, brokers)
+	serviceLabel := label.ServiceLabel(kafkaSystem, brokers)
 	clientGuards.Store(client, &clientObserver{
 		obs:          observability.NewOperationObserver(kafkaSystem, serviceLabel),
 		serviceLabel: serviceLabel,

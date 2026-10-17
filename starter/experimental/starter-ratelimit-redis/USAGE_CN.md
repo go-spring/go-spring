@@ -6,7 +6,7 @@
 （`starter.go`、`config.go`）、`starter-go-redis/experimental/ratelimit.go` 的计数器实现、
 把存储送到 driver bean 的 [governance 装配](../../cloud/governance/starter.go) 以及
 自校验的 [example/](example)（`example/check.sh`）核实。限流语义本身记在
-`cloud/resilience`——本文只写本 starter 的增量。
+`cloud/governance/resilience`——本文只写本 starter 的增量。
 
 **激活方式**：任一 `spring.ratelimit.redis.*` 键即武装 starter 的 module，且该配置块唯一的键
 必须设置：`spring.ratelimit.redis.client` 指名的 `*goredis.Client` bean（由 starter-go-redis
@@ -66,7 +66,7 @@ import (
     "errors"
     "net/http"
 
-    "go-spring.org/cloud/resilience"
+    "go-spring.org/cloud/governance/resilience"
     "go-spring.org/spring/gs"
 )
 

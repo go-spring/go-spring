@@ -22,7 +22,8 @@ import (
 	"sync"
 	"time"
 
-	"go-spring.org/cloud/guard"
+	"go-spring.org/cloud/governance/breaker"
+	"go-spring.org/cloud/governance/guard"
 
 	"go-spring.org/log"
 	"go.opentelemetry.io/otel"
@@ -75,7 +76,7 @@ func buildServerInstruments() *serverInstrumentSet {
 //
 // It is the inbound counterpart of [WrapClientExecutor], and it replaces BOTH the
 // old executor-wrapping path and the observe-only self-emission path with one
-// object: inbound governance is driven by a peer object (see go-spring.org/cloud/guard)
+// object: inbound governance is driven by a peer object (see go-spring.org/cloud/governance/guard)
 // the middleware composes with this one, so the observer no longer wraps an
 // executor. It offers the same two forms that object does — [ServerObserver.Run]
 // (callback) and [ServerObserver.Begin]/[ServerObserver.End] (split) — so a
@@ -144,11 +145,11 @@ func (o *ServerObserver) End(ob *Observation, err error) {
 	ob.end(err)
 }
 
-// OnBreakerStateChange satisfies [guard.BreakerEventListener] for the route's
+// OnBreakerStateChange satisfies [breaker.EventListener] for the route's
 // inbound breaker. A trip (→open) is a route-level degradation worth flagging at
 // Warn; recovery and half-open trial are Info — the same levelling the outbound
 // listener uses.
-func (o *ServerObserver) OnBreakerStateChange(service string, from, to guard.BreakerState) {
+func (o *ServerObserver) OnBreakerStateChange(service string, from, to breaker.State) {
 	o.ins.breakerChanges.Add(context.Background(), 1, metric.WithAttributes(
 		attribute.String("system", o.system),
 		attribute.String("service", o.service),
@@ -161,7 +162,7 @@ func (o *ServerObserver) OnBreakerStateChange(service string, from, to guard.Bre
 		log.String("from", from.String()),
 		log.String("to", to.String()),
 	}
-	if to == guard.BreakerOpen {
+	if to == breaker.Open {
 		log.Warn(context.Background(), resilienceTag, "resilience: circuit breaker opened", fields...)
 	} else {
 		log.Info(context.Background(), resilienceTag, "resilience: circuit breaker state changed", fields...)

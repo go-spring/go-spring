@@ -34,7 +34,7 @@ import (
 	"context"
 	"go-spring.org/cloud/chain"
 
-	"go-spring.org/cloud/resilience"
+	"go-spring.org/cloud/governance/resilience"
 	"gorm.io/gorm"
 )
 

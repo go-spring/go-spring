@@ -63,8 +63,8 @@ import (
     "fmt"
     "time"
 
-    "go-spring.org/cloud/fault"
-    "go-spring.org/cloud/resilience"
+    "go-spring.org/cloud/governance/fault"
+    "go-spring.org/cloud/governance/resilience"
     "go-spring.org/spring/gs"
 )   // 没有需要空导入的东西：file 源随 cloud/governance 注册
 
@@ -202,9 +202,9 @@ nacos（ListenConfig 推送）在 `starter-governance-nacos`，etcd（Watch 推�
 ```
 链接 cloud/governance         （任何 client/server starter 已经替你链了）
   ├─ 三个 authority 包（任何 client starter 本来就链接了）：
-  │      cloud/resilience → *resilience.ClientManager + 内置 driver
+  │      cloud/governance/resilience → *resilience.ClientManager + 内置 driver
   │      cloud/loadbalance → *loadbalance.Manager
-  │      cloud/fault      → *fault.ClientManager
+  │      cloud/governance/fault      → *fault.ClientManager
   ├─ cloud/governance starter.go: gs.Provide(*governance.Center) 建在那些 bean 上,
   │      .Destroy((*Center).Close)
   │      .Export(gs.As[gs.Rooter]())            ← 见下文，这堵墙 + 这个修复
@@ -333,7 +333,7 @@ starter-dubbo 的 poller）必然排在 center 之后，看到的就是已 live 
 | `timeout` | duration | timeout | 整通调用的墙钟上限，作为**一个** context deadline 在入口罩住全部；重试与退避共用它，不是每轮各得一份。 |
 
 driver 选择是静态启动选择（`spring.resilience.driver`，app 配置键，不在治理文档），刻意**不可**按服务重绑。
-每个旋钮的语义（退避数学、breaker 状态机）属于 `cloud/resilience`——starter 只
+每个旋钮的语义（退避数学、breaker 状态机）属于 `cloud/governance/resilience`——starter 只
 负责绑定与分发。
 
 ### 3.4 fault 实验（`spring.governance.client.fault.rules[]` 与 `spring.governance.server.fault.rules[]`）

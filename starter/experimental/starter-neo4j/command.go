@@ -30,7 +30,7 @@ import (
 	"go-spring.org/cloud/chain"
 
 	"github.com/neo4j/neo4j-go-driver/v5/neo4j"
-	"go-spring.org/cloud/resilience"
+	"go-spring.org/cloud/governance/resilience"
 )
 
 // Why a kit-backed Query entry (not a transparent driver wrapper):

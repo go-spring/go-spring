@@ -44,16 +44,17 @@ package StarterPulsar
 import (
 	"context"
 	"fmt"
-	"go-spring.org/cloud/chain"
-	"go-spring.org/cloud/observability"
 	"net/http"
 	"sync"
 	"time"
 
+	"go-spring.org/cloud/chain"
+	"go-spring.org/cloud/governance/label"
+	"go-spring.org/cloud/observability"
+
 	"github.com/apache/pulsar-client-go/pulsar"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
-	"go-spring.org/cloud/resilience"
 	"go-spring.org/log"
 	"go-spring.org/stdlib/errutil"
 	"go.opentelemetry.io/otel"
@@ -213,7 +214,7 @@ var clientGuards sync.Map // pulsar.Client -> *clientObserver
 // so there is no governance: the observer emits the span, metrics and access
 // log, and nothing throttles or retries.
 func AttachObserver(cl pulsar.Client, url string) {
-	label := resilience.ServiceLabel(pulsarSystem, url)
+	label := label.ServiceLabel(pulsarSystem, url)
 	clientGuards.Store(cl, &clientObserver{
 		obs:          observability.NewOperationObserver(pulsarSystem, label),
 		serviceLabel: label,

@@ -25,13 +25,15 @@
 package StarterS3
 
 import (
-	"go-spring.org/cloud/chain"
 	"net/http"
 	"sync"
 
+	"go-spring.org/cloud/chain"
+	"go-spring.org/cloud/governance/label"
+
 	"github.com/minio/minio-go/v7"
 	"go-spring.org/cloud/governance"
-	"go-spring.org/cloud/resilience"
+	"go-spring.org/cloud/governance/resilience"
 )
 
 // Client is the wrapper bean S3 clients are injected as. It embeds the concrete
@@ -101,7 +103,7 @@ func NewClient(client *minio.Client, transport http.RoundTripper, cfg Config, ce
 	if t, ok := transport.(*dynamicTransport); ok {
 		c.dyn = t
 	}
-	c.serviceLabel = resilience.ServiceLabel("s3", c.cfg.Endpoint)
+	c.serviceLabel = label.ServiceLabel("s3", c.cfg.Endpoint)
 	c.exec = center.ExecutorFor("s3", c.serviceLabel)
 	c.installTransport()
 	return c

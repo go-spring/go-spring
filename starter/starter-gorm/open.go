@@ -34,7 +34,7 @@ import (
 // cloud/governance.
 type Options struct {
 	Engine         string   // db.system + service label (e.g. "mysql", "postgresql")
-	Service        string   // precomputed resilience.ServiceLabel for this instance
+	Service        string   // precomputed label.ServiceLabel for this instance
 	ObserveEnabled bool     // per-instance kill switch for the gorm observe plugin
 	Closers        []func() // teardown hooks run by Destroy before the pool closes
 

@@ -30,17 +30,18 @@ package StarterKafka
 
 import (
 	"context"
+
 	"go-spring.org/cloud/chain"
+	"go-spring.org/cloud/governance/label"
 
 	"github.com/twmb/franz-go/pkg/kgo"
 	"go-spring.org/cloud/observability"
-	"go-spring.org/cloud/resilience"
 )
 
 // serviceLabelOf fixes the governance label a broker list scopes
 // limiter/breaker state by.
 func serviceLabelOf(brokers string) string {
-	return resilience.ServiceLabel("kafka", brokers)
+	return label.ServiceLabel("kafka", brokers)
 }
 
 // runObserved runs call under the client's observer, which emits the produce's

@@ -32,8 +32,8 @@ import (
 	"net/url"
 	"time"
 
+	"go-spring.org/cloud/governance/label"
 	"go-spring.org/cloud/observability"
-	"go-spring.org/cloud/resilience"
 	"go-spring.org/log"
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/gs"
@@ -106,7 +106,7 @@ func newNotifier(ctx *gs.ContextProvider, name string, c Config) (*Notifier, err
 	// A webhook delivery does not route through the resilience executor — its
 	// transport has no seam for one — so it emits its own signals. This is the
 	// single composition point that builds that observer.
-	obs := observability.NewOperationObserver("webhook", resilience.ServiceLabel("webhook", c.Channel, name))
+	obs := observability.NewOperationObserver("webhook", label.ServiceLabel("webhook", c.Channel, name))
 	return &Notifier{
 		cfg:    c,
 		client: &http.Client{Timeout: c.Timeout},

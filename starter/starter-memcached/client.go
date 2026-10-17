@@ -36,7 +36,8 @@ import (
 	"github.com/bradfitz/gomemcache/memcache"
 	"go-spring.org/cloud/chain"
 	"go-spring.org/cloud/governance"
-	"go-spring.org/cloud/resilience"
+	"go-spring.org/cloud/governance/label"
+	"go-spring.org/cloud/governance/resilience"
 )
 
 // Client wraps a memcache client so every operation carries its semantic
@@ -262,7 +263,7 @@ type GuardClient struct {
 // scope by. The executor is the layer's own business end to end — built here,
 // used here, closed at the layer's Release — and never leaves it.
 func NewGuardClient(next InnerClient, instanceName, serviceName string, center *governance.Center) *GuardClient {
-	label := resilience.ServiceLabel("memcached", serviceName, instanceName)
+	label := label.ServiceLabel("memcached", serviceName, instanceName)
 	return &GuardClient{exec: center.ExecutorFor("memcached", label), service: label, next: next}
 }
 

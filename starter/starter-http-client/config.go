@@ -18,7 +18,7 @@ package StarterHTTPClient
 
 import (
 	"go-spring.org/cloud/discovery"
-	"go-spring.org/cloud/resilience"
+	"go-spring.org/cloud/governance/label"
 	"go-spring.org/cloud/security"
 	"go-spring.org/starter-http-client/httpx"
 	"go-spring.org/stdlib/errutil"
@@ -98,7 +98,7 @@ func (c Config) toTransportConfig(backend discovery.Discovery) httpx.Config {
 		// stable across addressing-mode switches.
 		serviceName = ""
 	}
-	service := resilience.ServiceLabel("http", c.ServiceName, c.Addr)
+	service := label.ServiceLabel("http", c.ServiceName, c.Addr)
 	return httpx.Config{
 		ServiceName: serviceName,
 		Addr:        c.Addr,

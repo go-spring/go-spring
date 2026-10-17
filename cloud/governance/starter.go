@@ -18,9 +18,9 @@ package governance
 
 import (
 	"go-spring.org/cloud/discovery"
-	"go-spring.org/cloud/fault"
+	"go-spring.org/cloud/governance/fault"
+	"go-spring.org/cloud/governance/resilience"
 	"go-spring.org/cloud/loadbalance"
-	"go-spring.org/cloud/resilience"
 	"go-spring.org/log"
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/gs"
@@ -31,11 +31,12 @@ import (
 // and with it the whole of the gs wiring between this package and its own
 // service-governance core.
 //
-// The authorities themselves are NOT registered here — each is registered by the
-// package that owns it (cloud/resilience, cloud/loadbalance, cloud/fault), so a
-// client that injects one only has to import it. What is left for this package
-// is what is specific to governance: the center, built over whichever authority
-// beans the container holds, plus the two lifecycle hooks that put it to work.
+// The authorities themselves are NOT registered here — each is registered by
+// the package that owns it (cloud/governance/resilience, cloud/loadbalance,
+// cloud/governance/fault), so a client that injects one only has to import it.
+// What is left for this package is what is specific to governance: the center,
+// built over whichever authority beans the container holds, plus the two
+// lifecycle hooks that put it to work.
 //
 // The authorities are beans for two reasons at once: the center drives them, and
 // every client injects them by concrete type. That is what replaced the neutral
@@ -93,7 +94,7 @@ func init() {
 		}
 		var opts []CenterOption
 		if limiter != nil {
-			opts = append(opts, WithClusterLimiter(guardLimiter{inner: limiter}))
+			opts = append(opts, WithClusterLimiter(limiter))
 		}
 		return NewCenter(resClient, lb, injClient, injServer, disc, src, opts...)
 	}, gs.IndexArg(5, gs.TagArg("?"))).

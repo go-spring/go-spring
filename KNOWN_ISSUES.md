@@ -20,7 +20,7 @@
 
 **排查方向**:对比包与不包 httpx transport 时 breaker 的 success/failure 计数(RoundTripper 的返回值 + 5xx 判定)。
 
-**⚠ 现状待重新确认(2026-10-06)**:当年的 `cloud/resilience/roundtripper.go` **已不存在**,机制演进为 `cloud/resilience/client_adapter_http.go` 的 `NewRoundTripper(base, exec, service, nil)`(现在 influxdb、gateway 在用)。**这条缺陷是否仍在,只能真跑 `example-load` 才能判定**——本轮整理时未跑。
+**⚠ 现状待重新确认(2026-10-06)**:当年的 `cloud/governance/resilience/roundtripper.go` **已不存在**,机制演进为 `cloud/governance/resilience/client_adapter_http.go` 的 `NewRoundTripper(base, exec, service, nil)`(现在 influxdb、gateway 在用)。**这条缺陷是否仍在,只能真跑 `example-load` 才能判定**——本轮整理时未跑。
 
 ---
 
@@ -32,6 +32,25 @@
   - *注(2026-10-06):路径已从 `starter/experimental/starter-scheduler` 变为 `starter/starter-scheduler`;`NewScheduler()` 仍无条件调用,条目仍成立。*
 - **`starter-grpc` 的扩展缝是包级 registry**:`RegisterBalancer` 等走包级注册 + RWMutex(init 期注册、wiring 期读),进程级共享、无法逐 server 组合(对照 redigo 折叠单 wrap / gin 的 bean 形)。experimental 阶段可接受,**转正前宜改 bean 缝**。
   - *注(2026-10-06):原记录写的 `UseUnaryInterceptor` **在代码里不存在**(全仓零命中)。grpc 实际导出的是拦截器构造器(`AccessLogUnaryInterceptor` / `LoadTest...` / `Fault...` / `Recover...` / `Metrics...` / `Tracing...`,各有 Unary/Stream)加 `RegisterBalancer` 这一族。*
+
+- **F-6 出站并发隔离（client-side bulkhead）未实现**（2026-10-17）。`ClientPolicy` 没有
+  `MaxConcurrent` / `BulkheadQueueDuration`，`defaultExecutor` 的 `serviceState` 也不再持有
+  信号量；入站 `guard.Policy` 的 bulkhead 不受影响。此前 executor 里残留了一套无人调用、
+  `sem` 永为 nil 的死代码，已于 2026-10-17 删除。
+  - *为什么暂缓*：收口面不是障碍——受治理出站调用都汇聚到 `chain.Executor.Execute`，且
+    `serviceState` 已按 `CallPolicy.Key` 分桶，天然支持“每下游不同上限”。真正的难点是语义：
+    (a) **重入**：A→B→A 在等待模式下会死锁，Go 没有可重入信号量，默认必须 fail-fast；
+    (b) **槽要跨全部重试持有**，否则重试会放大并发；
+    (c) 与连接池（`MaxConnsPerHost` / `SetMaxOpenConns`）职责重叠，两层队列会让延迟不可解释；
+    (d) Σ 各 key 上限没有全局约束，需要配置校验或可选全局兜底；
+    (e) 没有 per-key in-flight / rejected 指标，上限只能靠猜。
+  - *保留的词汇*：`chain.ErrBulkheadFull` 与 adapter 的映射保留——自带 isolation 规则的后端
+    （如 sentinel 外部规则）仍可能产生它。
+  - *触发条件*：出现「某个慢下游拖垮调用方 goroutine」的真实案例，或明确需要按下游 fail-fast
+    卸载时再做。
+  - *实现时的最小形状*：per-key fail-fast 信号量（默认不排队）→ 从 `guard.Bulkhead` 提取
+    `cloud/bulkhead` 共享 → 顺序 bulkhead → rate → breaker → 跨重试持有 → 补 per-key 指标 →
+    全局安全网按需再加；排队模式必须带 deadline 并在文档声明不可重入。
 
 ---
 

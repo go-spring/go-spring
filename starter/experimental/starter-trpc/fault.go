@@ -19,7 +19,7 @@ package StarterTrpc
 import (
 	"context"
 
-	"go-spring.org/cloud/fault"
+	"go-spring.org/cloud/governance/fault"
 	"trpc.group/trpc-go/trpc-go"
 	"trpc.group/trpc-go/trpc-go/filter"
 )

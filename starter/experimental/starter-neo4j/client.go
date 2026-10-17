@@ -23,11 +23,12 @@ package StarterNeo4j
 
 import (
 	"context"
+
 	"go-spring.org/cloud/chain"
+	"go-spring.org/cloud/governance/label"
 
 	"github.com/neo4j/neo4j-go-driver/v5/neo4j"
 	"go-spring.org/cloud/governance"
-	"go-spring.org/cloud/resilience"
 )
 
 // Client is the wrapper bean Neo4j drivers are injected as. It embeds the raw
@@ -91,7 +92,7 @@ func NewClient(client neo4j.DriverWithContext, cfg Config, center *governance.Ce
 	c := &Client{
 		DriverWithContext: client,
 	}
-	c.serviceLabel = resilience.ServiceLabel("neo4j", cfg.ServiceName, cfg.URI)
+	c.serviceLabel = label.ServiceLabel("neo4j", cfg.ServiceName, cfg.URI)
 	c.exec = center.ExecutorFor("neo4j", c.serviceLabel)
 	return c
 }

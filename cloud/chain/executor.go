@@ -22,14 +22,15 @@
 // why the two travel as one concept rather than as separable layers.
 //
 // The package is a leaf in the sense that matters: it depends on no engine that
-// BUILDS a chain (go-spring.org/cloud/resilience, or a vendor backend), so the
-// many packages that only need to HOLD a chain (a fault injector, a batch
-// runner, a transaction coordinator) depend on the shape without taking on a
-// backend. It does depend on OTel and go-spring.org/log, because the call
-// description ([Operation]) is where a client's declaration and the emitter's
-// vocabulary meet — and [Operation] lives here, beside the [Executor] that
-// carries it. The engines live in go-spring.org/cloud/resilience; this package
-// is the seam they are selected through.
+// BUILDS a chain (go-spring.org/cloud/governance/resilience, or a vendor
+// backend), so the many packages that only need to HOLD a chain (a fault
+// injector, a batch runner, a transaction coordinator) depend on the shape
+// without taking on a backend. It does depend on OTel and go-spring.org/log,
+// because the call description ([Operation]) is where a client's declaration
+// and the emitter's vocabulary meet — and [Operation] lives here, beside the
+// [Executor] that carries it. The engines live in
+// go-spring.org/cloud/governance/resilience; this package is the seam they are
+// selected through.
 package chain
 
 import (
@@ -83,7 +84,9 @@ type Executor interface {
 // words. Wrap or compare them with errors.Is.
 var (
 	// ErrRateLimited is the chain's verdict that the configured rate limit is
-	// exceeded.
+	// exceeded. The rate-limit stage reports admission as a boolean (see
+	// go-spring.org/cloud/governance/ratelimit.ClusterLimiter), so this package owns the
+	// word without depending on the stage's implementation.
 	ErrRateLimited = errors.New("resilience: rate limited")
 
 	// ErrCircuitOpen is the chain's verdict that the circuit breaker for the

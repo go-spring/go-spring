@@ -139,7 +139,7 @@ gs.Run()
   │    ├─ 用空 Notification 干跑一次 buildPayload——校验 channel 取值、
   │    │   （dingtalk/feishu）签名可用性，全程无网络请求
   │    ├─ obs := observability.NewOperationObserver("webhook",
-  │    │      resilience.ServiceLabel("webhook", c.Channel, name)) ——本 starter 自带的
+  │    │      label.ServiceLabel("webhook", c.Channel, name)) ——本 starter 自带的
   │    │      发射器；不注入治理中心（投递没有 executor 接缝）
   │    └─ &http.Client{Timeout: c.Timeout} —— 每 notifier 一个 client，不池化
   ├─ bean 就绪：*Notifier 注入所有 `autowire:"<name>"` 处

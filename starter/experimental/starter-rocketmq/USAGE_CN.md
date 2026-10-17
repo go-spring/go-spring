@@ -339,7 +339,7 @@ name-servers——须与 governance 规则一致）：
 - 压 `GuardedSend`——或 driver 的 `Publish`（它同样经 `GuardedSend` 接缝）→ 拒绝返回
   `resilience.ErrRateLimited`，发送未被调用，出现 `resilience.error_type=rate_limited` 的
   `resilience.client.calls` 记录，以及每次调用一条访问日志（`_app_rocketmq_access`，
-  回退路径为 `_app_resilience`）[cloud/resilience/observe.go]。
+  回退路径为 `_app_resilience`）[cloud/governance/resilience/observe.go]。
 - 直接在 producer 上调用裸 `SendSync` 则未守护（§2.2）：它是应用自己的路径、外面没有
   executor。这个对比正是 §2.2 的边界。
 

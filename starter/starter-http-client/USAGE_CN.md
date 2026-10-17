@@ -195,7 +195,7 @@ gs.Run()
   keys on the logical service name"(httpx.go:32-34)。熔断按逻辑调用计数,重试在实例级
   失败后会换实例。
 - **resilience 包住 balanced transport**:`resilience.NewRoundTripper(base, exec, service, nil)`
-  ——service 标签是 `resilience.ServiceLabel("http", ServiceName, Addr)`(httpx.go:342-347),
+  ——service 标签是 `label.ServiceLabel("http", ServiceName, Addr)`(httpx.go:342-347),
   与策略解析用的是同一个标签,所以限流/熔断状态和 driver 的规则名同武装它的 governance 规则一致。
   每个 client 一个标签:改写 host 换实例发生在更下一层(httpx.go:307-318),不会泄进标签。
 - **traffic 在 resilience 之上**:每次重试尝试都携带标记(header 设在原始请求上,重试
@@ -280,7 +280,7 @@ func init() {
 | `tls.insecure-skip-verify` | bool | false | 跳过对端校验(仅本地测试)。 | 生产打开 = 未认证 TLS。 |
 
 **label 稳定 —— `service-name` 优先**:治理 service label 是
-`resilience.ServiceLabel("http", ServiceName, Addr)` → 只要设置了 `service-name`(发现模式,
+`label.ServiceLabel("http", ServiceName, Addr)` → 只要设置了 `service-name`(发现模式,
 或直连模式下作为纯 label 保留)就是 `http:<service-name>`,只有完全没有 service-name 的
 entry 才回退 `http:<addr>`(httpx.go `Config.service`)。因此按 `http:<service-name>`
 配的 `spring.governance.client.rules[].services` 在直连/发现两种寻址间切换时始终匹配——切换时保留
@@ -340,7 +340,7 @@ endpoint,看打散变化——链路是整条重建的,不用重启;用真实发
 2. 用自己的 binary 做等价手工演练:杀掉后端、循环调用,观察错误从网络/500 错误变为
    `circuit open`;恢复后端后等 `open-duration`(30s)——half-open 试探成功、熔断闭合。
 3. 观察跳变:`resilience.client.breaker.state_change{from=...,to=...}` 计数器递增并输出状态
-   迁移日志(cloud/resilience/observe.go:98-110)。
+   迁移日志(cloud/governance/resilience/observe.go:98-110)。
 
 ### 4.4 故障注入(免重启)
 

@@ -25,9 +25,9 @@ import (
 	"time"
 
 	"go-spring.org/cloud/actuator/health"
-	"go-spring.org/cloud/fault"
+	"go-spring.org/cloud/governance/fault"
 	"go-spring.org/cloud/governance"
-	"go-spring.org/cloud/resilience"
+	"go-spring.org/cloud/governance/resilience"
 	"go-spring.org/spring/gs"
 	"go-spring.org/starter-gorm"
 )

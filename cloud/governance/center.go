@@ -61,18 +61,17 @@ package governance
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"sync/atomic"
 	"time"
 
 	"go-spring.org/cloud/chain"
 	"go-spring.org/cloud/discovery"
-	"go-spring.org/cloud/fault"
-	"go-spring.org/cloud/guard"
+	"go-spring.org/cloud/governance/fault"
+	"go-spring.org/cloud/governance/guard"
+	"go-spring.org/cloud/governance/resilience"
 	"go-spring.org/cloud/loadbalance"
 	"go-spring.org/cloud/observability"
-	"go-spring.org/cloud/resilience"
 	"go-spring.org/log"
 )
 
@@ -631,31 +630,6 @@ func guardSettings(cfg Config) guard.Settings {
 		})
 	}
 	return s
-}
-
-// guardLimiter adapts the process's existing cluster rate-limit store (the one
-// the resilience Driver receives) to the inbound guard's vocabulary, so a
-// Redis-backed limit covers inbound requests as well.
-type guardLimiter struct {
-	inner resilience.ClusterLimiter
-}
-
-func (l guardLimiter) Allow(ctx context.Context, scope string, spec guard.RateSpec, n int) error {
-	err := l.inner.Allow(ctx, scope, resilience.RateSpec{
-		RateLimit:  spec.RateLimit,
-		Burst:      spec.Burst,
-		Algorithm:  resilience.Algorithm(spec.Algorithm),
-		Window:     spec.Window,
-		MaxWait:    spec.MaxWait,
-		WarmUp:     spec.WarmUp,
-		ColdFactor: spec.ColdFactor,
-	}, n)
-	// The resilience store speaks chain's sentinel; guard speaks its own. The
-	// translation belongs here, the one place that knows both vocabularies.
-	if errors.Is(err, chain.ErrRateLimited) {
-		return guard.ErrRateLimited
-	}
-	return err
 }
 
 // selectionSettings is [resilienceSettings] for the endpoint-selection authority:

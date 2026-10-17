@@ -21,7 +21,7 @@ import (
 	"net/http"
 
 	"go-spring.org/cloud/governance"
-	"go-spring.org/cloud/guard"
+	"go-spring.org/cloud/governance/guard"
 	"go-spring.org/cloud/observability"
 	"go-spring.org/log"
 	"go.opentelemetry.io/otel/attribute"
@@ -35,7 +35,7 @@ import (
 //
 // label is the governance service label this server is addressed as, e.g.
 // "http-server::9090" (see cloud/governance/README.md 设计说明 §6). Build it with
-// resilience.ServiceLabel(system, addr) if you want the conventional shape;
+// label.ServiceLabel(system, addr) if you want the conventional shape;
 // governance rules match it with spring.governance.server.rules[N].service=<label>.
 //
 // mgr is the resilience authority the filter's inbound object is resolved from.

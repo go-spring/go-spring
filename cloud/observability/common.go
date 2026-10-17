@@ -33,7 +33,7 @@ var resilienceTag = log.RegisterAppTag("resilience", "")
 // executorScope names the OTel scope this package's spans and instruments
 // register under, shared by the outbound (resilience.client.*) and inbound
 // (resilience.server.*) families alike.
-const executorScope = "go-spring.org/cloud/resilience"
+const executorScope = "go-spring.org/cloud/governance/resilience"
 
 // ResetExecutorInstruments drops the memoized instrument sets so the next use
 // resolves fresh ones. It exists for tests that install their own

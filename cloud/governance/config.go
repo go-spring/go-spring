@@ -26,10 +26,10 @@ import (
 	"strings"
 
 	"go-spring.org/cloud/chain"
-	"go-spring.org/cloud/fault"
-	"go-spring.org/cloud/guard"
+	"go-spring.org/cloud/governance/fault"
+	"go-spring.org/cloud/governance/guard"
+	"go-spring.org/cloud/governance/resilience"
 	"go-spring.org/cloud/loadbalance"
-	"go-spring.org/cloud/resilience"
 	"go-spring.org/stdlib/errutil"
 )
 

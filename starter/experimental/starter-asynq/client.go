@@ -24,10 +24,11 @@ package StarterAsynq
 
 import (
 	"context"
+
+	"go-spring.org/cloud/governance/label"
 	"go-spring.org/cloud/observability"
 
 	"github.com/hibiken/asynq"
-	"go-spring.org/cloud/resilience"
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
 )
@@ -60,7 +61,7 @@ type Client struct {
 func NewClient(connOpt asynq.RedisConnOpt, addr string) *Client {
 	o := &Client{
 		Client:       asynq.NewClient(connOpt),
-		serviceLabel: resilience.ServiceLabel("asynq", addr),
+		serviceLabel: label.ServiceLabel("asynq", addr),
 	}
 	o.obs = observability.NewOperationObserver("asynq", o.serviceLabel)
 	return o

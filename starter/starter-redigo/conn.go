@@ -22,7 +22,7 @@ import (
 	"time"
 
 	"github.com/gomodule/redigo/redis"
-	"go-spring.org/cloud/resilience"
+	"go-spring.org/cloud/governance/resilience"
 )
 
 // CommandHandler runs one Redis command. It is the pipeline's core signature:

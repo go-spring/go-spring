@@ -21,7 +21,7 @@ import (
 	"errors"
 
 	"go-spring.org/cloud/governance"
-	"go-spring.org/cloud/guard"
+	"go-spring.org/cloud/governance/guard"
 	"go-spring.org/cloud/observability"
 	"trpc.group/trpc-go/trpc-go"
 	"trpc.group/trpc-go/trpc-go/errs"

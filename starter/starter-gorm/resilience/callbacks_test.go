@@ -22,7 +22,7 @@ import (
 	"go-spring.org/cloud/chain"
 	"testing"
 
-	"go-spring.org/cloud/resilience"
+	"go-spring.org/cloud/governance/resilience"
 	"go-spring.org/stdlib/testing/assert"
 	"gorm.io/gorm"
 )

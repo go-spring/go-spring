@@ -22,7 +22,7 @@ import (
 	"testing"
 
 	"github.com/milvus-io/milvus-sdk-go/v2/client"
-	"go-spring.org/cloud/resilience"
+	"go-spring.org/cloud/governance/resilience"
 	"go-spring.org/stdlib/testing/assert"
 	"google.golang.org/grpc"
 )

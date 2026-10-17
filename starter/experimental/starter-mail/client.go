@@ -28,7 +28,8 @@ import (
 	"github.com/wneessen/go-mail"
 	"go-spring.org/cloud/chain"
 	"go-spring.org/cloud/governance"
-	"go-spring.org/cloud/resilience"
+	"go-spring.org/cloud/governance/label"
+	"go-spring.org/cloud/governance/resilience"
 	"go-spring.org/stdlib/errutil"
 )
 
@@ -236,7 +237,7 @@ type GuardMailer struct {
 // and instanceName/host fix the governance label its limiter and breaker state
 // scope by.
 func NewGuardMailer(next InnerMailer, instanceName, host string, center *governance.Center) *GuardMailer {
-	label := resilience.ServiceLabel("mail", instanceName, host)
+	label := label.ServiceLabel("mail", instanceName, host)
 	return &GuardMailer{exec: center.ExecutorFor("mail", label), service: label, next: next}
 }
 

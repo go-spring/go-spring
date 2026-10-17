@@ -31,12 +31,12 @@ import (
 	"go-spring.org/cloud/actuator/health"
 	"go-spring.org/cloud/discovery"
 	"go-spring.org/cloud/governance"
+	"go-spring.org/cloud/governance/label"
 	"go-spring.org/cloud/loadbalance"
-	"go-spring.org/cloud/resilience"
 	"go-spring.org/log"
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/gs"
-	"go-spring.org/starter-gorm"
+	gormcore "go-spring.org/starter-gorm"
 	"go-spring.org/stdlib/errutil"
 	"go-spring.org/stdlib/flatten"
 	"gorm.io/driver/postgres"
@@ -118,7 +118,7 @@ func build(ctx context.Context, c Config, center *governance.Center) (gormcore.S
 		return []log.Field{log.String("host", c.Host), log.String("service_name", c.ServiceName), log.String("db", c.DB)}
 	})
 
-	service := resilience.ServiceLabel("gorm:postgresql", c.ServiceName, c.Host)
+	service := label.ServiceLabel("gorm:postgresql", c.ServiceName, c.Host)
 
 	// Resolve the discovery backend the entry cites before building the dialer:
 	// the build reads one label (c.Discovery) and fails construction when it

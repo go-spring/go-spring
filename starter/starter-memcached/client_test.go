@@ -21,9 +21,9 @@ import (
 	"testing"
 
 	"github.com/bradfitz/gomemcache/memcache"
-	"go-spring.org/cloud/fault"
+	"go-spring.org/cloud/governance/fault"
 	"go-spring.org/cloud/governance"
-	"go-spring.org/cloud/resilience"
+	"go-spring.org/cloud/governance/resilience"
 )
 
 // fakeInner is a scripted tail: it records the keys it was called with and

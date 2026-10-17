@@ -19,10 +19,11 @@ package observability
 import (
 	"context"
 
-	"go-spring.org/cloud/chain"
-	"go-spring.org/cloud/resilience"
 	"sync"
 	"time"
+
+	"go-spring.org/cloud/chain"
+	"go-spring.org/cloud/governance/breaker"
 
 	"go-spring.org/log"
 	"go.opentelemetry.io/otel"
@@ -107,7 +108,7 @@ func WrapClientExecutor(inner chain.Executor, system, service string) chain.Exec
 	// trip / half-open / recovery emits a counter + log automatically. Drivers
 	// without that capability (no BreakerEventListenerSetter) are silently
 	// skipped — the call-level signals still emit.
-	if setter, ok := inner.(resilience.BreakerEventListenerSetter); ok {
+	if setter, ok := inner.(breaker.EventListenerSetter); ok {
 		setter.SetBreakerEventListener(w)
 	}
 	return w
@@ -137,7 +138,7 @@ type callEmitter struct {
 // OnBreakerStateChange satisfies [BreakerEventListener]. It is invoked
 // synchronously from inside the breaker's transition (so it must not call back
 // into the executor); it emits a state-change counter and a log line.
-func (w *wrappedClientExecutor) OnBreakerStateChange(service string, from, to resilience.BreakerState) {
+func (w *wrappedClientExecutor) OnBreakerStateChange(service string, from, to breaker.State) {
 	w.ins.breakerChanges.Add(context.Background(), 1, metric.WithAttributes(
 		attribute.String("system", w.system),
 		attribute.String("service", w.service),
@@ -152,7 +153,7 @@ func (w *wrappedClientExecutor) OnBreakerStateChange(service string, from, to re
 	}
 	// A trip (→open) is a service-level degradation worth flagging at Warn;
 	// recovery and half-open trial are Info.
-	if to == resilience.BreakerOpen {
+	if to == breaker.Open {
 		log.Warn(context.Background(), resilienceTag, "resilience: circuit breaker opened", fields...)
 	} else {
 		log.Info(context.Background(), resilienceTag, "resilience: circuit breaker state changed", fields...)
@@ -346,7 +347,7 @@ type OperationObserver struct {
 
 // NewOperationObserver builds the observer for one client system/service. system
 // is the backend name ("kafka", "webhook"); service is the per-instance label
-// (see [resilience.ServiceLabel]).
+// (see [label.ServiceLabel]).
 func NewOperationObserver(system, service string) *OperationObserver {
 	return &OperationObserver{callEmitter: &callEmitter{
 		system:  system,

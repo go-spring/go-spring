@@ -25,11 +25,12 @@ package StarterMilvus
 
 import (
 	"context"
+
 	"go-spring.org/cloud/chain"
+	"go-spring.org/cloud/governance/label"
 
 	"github.com/milvus-io/milvus-sdk-go/v2/client"
 	"go-spring.org/cloud/governance"
-	"go-spring.org/cloud/resilience"
 	"go-spring.org/stdlib/errutil"
 )
 
@@ -93,7 +94,7 @@ func NewClient(ctx context.Context, cfg Config, center *governance.Center) (*Cli
 		return nil, errutil.Explain(err, "milvus: create client")
 	}
 	o := &Client{Client: raw, cfg: cfg}
-	o.serviceLabel = resilience.ServiceLabel("milvus", cfg.Addr)
+	o.serviceLabel = label.ServiceLabel("milvus", cfg.Addr)
 	o.exec = center.ExecutorFor("milvus", o.serviceLabel)
 	slot.apply(o.exec, o.serviceLabel)
 	return o, nil

@@ -18,11 +18,10 @@ package StarterGoRedis
 
 import (
 	"context"
-	"go-spring.org/cloud/chain"
 	"time"
 
 	"github.com/redis/go-redis/v9"
-	"go-spring.org/cloud/resilience"
+	"go-spring.org/cloud/governance/resilience"
 	"go-spring.org/stdlib/errutil"
 )
 
@@ -96,9 +95,9 @@ func NewClusterLimiter(client redis.UniversalClient) (resilience.ClusterLimiter,
 
 // Allow charges n units of scope's budget to Redis. Keys are namespaced under
 // "ratelimit:" so per-scope counters never collide with application data.
-func (c *redisClusterLimiter) Allow(ctx context.Context, scope string, spec resilience.RateSpec, n int) error {
+func (c *redisClusterLimiter) Allow(ctx context.Context, scope string, spec resilience.RateSpec, n int) (bool, error) {
 	if spec.RateLimit <= 0 || n <= 0 { // no budget configured
-		return nil
+		return true, nil
 	}
 	burst := spec.Burst
 	if burst <= 0 {
@@ -111,10 +110,7 @@ func (c *redisClusterLimiter) Allow(ctx context.Context, scope string, spec resi
 		spec.RateLimit, float64(burst), time.Now().UnixMilli(), n,
 	).Int64()
 	if err != nil {
-		return err
+		return false, err
 	}
-	if res != 1 {
-		return chain.ErrRateLimited
-	}
-	return nil
+	return res == 1, nil
 }

@@ -184,7 +184,7 @@ gs.Run()
   │   │  已完整——身份（session + 服务标签）与治理均已应用
   │   │  [starter.go:123, driver.go:77]；center 为注入的 *governance.Center，
   │   │  交出 resilience/fault 权威（resilience manager 必填）
-  │   ├─ NewClient [client.go:96-103]：service = resilience.ServiceLabel("neo4j",
+  │   ├─ NewClient [client.go:96-103]：service = label.ServiceLabel("neo4j",
   │   │  ServiceName, URI) → center.ExecutorFor("neo4j", service)——受治理的
   │   │  executor（fault.ClientManager.WrapClientExecutor 包住 center.ResilienceClient().ClientExecutorFor）；center 始终
   │   │  存在（resilience manager 必填）

@@ -21,7 +21,7 @@ import (
 
 	"github.com/alibaba/sentinel-golang/core/circuitbreaker"
 
-	"go-spring.org/cloud/resilience"
+	"go-spring.org/cloud/governance/resilience"
 )
 
 // breakerRoutes maps a sentinel resource name (a service label) to the resilience BreakerEventListener
@@ -30,7 +30,7 @@ import (
 // single registered routeListener demultiplexes by rule.Resource to the right
 // per-executor listener. Keyed by the label because a sentinelExecutor builds one
 // breaker rule per service (ensureRules), and the label is globally
-// unique within a process (derived from resilience.ServiceLabel).
+// unique within a process (derived from label.ServiceLabel).
 var breakerRoutes sync.Map // service label (string) -> resilience.BreakerEventListener
 
 func registerBreakerRoute(service string, l resilience.BreakerEventListener) {

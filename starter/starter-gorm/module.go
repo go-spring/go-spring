@@ -32,7 +32,7 @@ import (
 type Spec struct {
 	Dialector      gorm.Dialector
 	Pool           PoolConfig
-	Service        string // governance service label (precomputed resilience.ServiceLabel)
+	Service        string // governance service label (precomputed label.ServiceLabel)
 	ObserveEnabled bool
 	Closers        []func()
 }

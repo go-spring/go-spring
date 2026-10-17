@@ -18,8 +18,6 @@ package StarterGateway
 
 import (
 	"context"
-	"errors"
-	"go-spring.org/cloud/chain"
 	"net"
 	"net/http"
 	"strconv"
@@ -27,7 +25,7 @@ import (
 	"sync"
 	"time"
 
-	"go-spring.org/cloud/resilience"
+	"go-spring.org/cloud/governance/resilience"
 	"go-spring.org/log"
 )
 
@@ -267,17 +265,15 @@ func rateLimitFilter(args []string, limiter resilience.ClusterLimiter) (Filter, 
 			if keyMode == "ip" {
 				scope = scope + "|" + clientIP(r)
 			}
-			err := limiter.Allow(r.Context(), scope, pol.RateSpec(), 1)
+			admitted, err := limiter.Allow(r.Context(), scope, pol.RateSpec(), 1)
 			switch {
-			case err == nil:
-			case errors.Is(err, chain.ErrRateLimited):
+			case err != nil:
+				// Fail open: a broken counter store (e.g. a Redis blip) must
+				// not take the gateway down.
+				log.Warn(r.Context(), log.TagAppDef, "gateway: rate limit check failed", log.Err(err))
+			case !admitted:
 				http.Error(w, "429 Too Many Requests", http.StatusTooManyRequests)
 				return
-			default:
-				// Fail open on anything else: the executor already logged a
-				// failing counter store (e.g. a Redis blip) and let the call
-				// through, so a broken limiter must not take the gateway down.
-				log.Warn(r.Context(), log.TagAppDef, "gateway: rate limit check failed", log.Err(err))
 			}
 			next.ServeHTTP(w, r)
 		})

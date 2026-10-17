@@ -25,10 +25,10 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"go-spring.org/cloud/fault"
+	"go-spring.org/cloud/governance/fault"
 	"go-spring.org/cloud/governance"
 	"go-spring.org/cloud/loadbalance"
-	"go-spring.org/cloud/resilience"
+	"go-spring.org/cloud/governance/resilience"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"

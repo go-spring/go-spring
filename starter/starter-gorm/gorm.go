@@ -153,7 +153,7 @@ func (c Common) NewResolver(ctx context.Context, backend discovery.Discovery) (d
 // (nil, nil, ...) when discovery is not in effect; otherwise the chain (and its
 // source resolver, which has no resources to release).
 //
-// service is the entry's governance label ([resilience.ServiceLabel], e.g.
+// service is the entry's governance label ([label.ServiceLabel], e.g.
 // "gorm:mysql:orders-db"). The chain is built with a suspension tracker and
 // registered under that label as it is built, so one
 // spring.governance.client.rules[N] rule that matches the entry's protection

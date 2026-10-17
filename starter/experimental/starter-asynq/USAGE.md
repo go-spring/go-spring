@@ -167,7 +167,7 @@ import starter-asynq
 gs.Run()
   ├─ bean wiring: app beans autowire *Client / *Server by instance name
   ├─ ctor newClient (starter.go): resolves RedisConnOpt, then NewClient fixes
-  │    the service label (resilience.ServiceLabel("asynq", addr)) and attaches
+  │    the service label (label.ServiceLabel("asynq", addr)) and attaches
   │    the observer; the ctor injects the required *governance.Center (center),
   │    but the asynq client has no resilience seam, so nothing from it applies
   │    — no Init hook

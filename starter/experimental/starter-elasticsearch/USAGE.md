@@ -238,13 +238,13 @@ Rationale (source comments, [command.go] and [client.go]):
    `POST` (the bounded part), `db.system` is `elasticsearch` [command.go].
 4. The resilience executor asks for a permit scoped to the service label, e.g.
    `elasticsearch:es-cluster` or `elasticsearch:http://127.0.0.1:9200` (first address;
-   derived via `resilience.ServiceLabel` in `NewClient`) — per cluster, not per request.
+   derived via `label.ServiceLabel` in `NewClient`) — per cluster, not per request.
    The resilience manager is required — the container always supplies it; no unmanaged fallback.
 5. On completion the executor emits the one span, the call-level and attempt-level duration
    histograms and the access log. The caller sees exactly what plain go-elasticsearch returns —
    including 4xx `res.IsError()` bodies; only transport-level errors (5xx are mapped to a
    breaker-tripping, retryable error by the resilience round-tripper,
-   cloud/resilience/roundtripper.go:99-104).
+   cloud/governance/resilience/roundtripper.go:99-104).
 
 **Pass a context on every call.** It carries the call's cancellation and deadline, and the
 operation span the resilience layer opens inherits it — `HealthCheck` and the health indicator

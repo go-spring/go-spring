@@ -26,13 +26,15 @@ package StarterElasticsearch
 
 import (
 	"context"
-	"go-spring.org/cloud/chain"
 	"net/http"
 	"sync"
 
+	"go-spring.org/cloud/chain"
+	"go-spring.org/cloud/governance/label"
+
 	"github.com/elastic/go-elasticsearch/v8"
 	"go-spring.org/cloud/governance"
-	"go-spring.org/cloud/resilience"
+	"go-spring.org/cloud/governance/resilience"
 )
 
 // Client is the wrapper bean Elasticsearch clients are injected as. It embeds
@@ -101,7 +103,7 @@ type Client struct {
 // graceful downgrade to an unprotected client.
 //
 // The service label falls back across the address fields via the shared
-// [resilience.ServiceLabel] helper, so limiter and breaker state is scoped per
+// [label.ServiceLabel] helper, so limiter and breaker state is scoped per
 // Elasticsearch cluster rather than per request. The manager's ClientExecutorFor
 // resolves its backing executor lazily, on each Execute, so the call order
 // relative to the center's wiring is irrelevant.
@@ -119,7 +121,7 @@ func NewClient(client *elasticsearch.Client, transport http.RoundTripper, cfg Co
 	if len(cfg.Addresses) > 0 {
 		first = cfg.Addresses[0]
 	}
-	c.serviceLabel = resilience.ServiceLabel("elasticsearch", cfg.ServiceName, cfg.CloudID, first)
+	c.serviceLabel = label.ServiceLabel("elasticsearch", cfg.ServiceName, cfg.CloudID, first)
 	c.exec = center.ExecutorFor("elasticsearch", c.serviceLabel)
 	c.installTransport()
 	return c

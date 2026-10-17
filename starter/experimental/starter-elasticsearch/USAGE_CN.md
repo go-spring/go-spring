@@ -236,7 +236,7 @@ elasticsearch API（Index/Get/...）
 2. 重试循环（至多 `max-retries`，默认 3）把请求交给 dynamicTransport。
 3. resilience executor 以 service label 为作用域申请许可，例如
    `elasticsearch:es-cluster` 或 `elasticsearch:http://127.0.0.1:9200`（取首个地址，
-   在 `NewClient` 里经 `resilience.ServiceLabel` 派生）——按集群而非按请求。
+   在 `NewClient` 里经 `label.ServiceLabel` 派生）——按集群而非按请求。
    resilience manager 必填——容器始终提供；不存在 unmanaged/仅观测的兜底。
 4. declareTransport（在 executor 之外）把操作放到请求 context 上：span 名与 `db.statement`
    是 `POST /demo-docs/_search`（其 URL 路径），`db.operation` 是 `POST`（有界的那部分），
@@ -244,7 +244,7 @@ elasticsearch API（Index/Get/...）
 5. 完成时 executor 发射唯一的 span、call 级/attempt 级 duration 直方图与访问日志。
    调用方拿到的与裸 go-elasticsearch 完全一致——包括 4xx 的 `res.IsError()` 响应体；
    只有传输层错误进入异常路径（5xx 由 resilience round-tripper 映射为可触发熔断、
-   可重试的错误，cloud/resilience/roundtripper.go:99-104）。
+   可重试的错误，cloud/governance/resilience/roundtripper.go:99-104）。
 
 **每次调用都要传 context。** 它承载这次调用的取消与截止时间，resilience 层打开的操作 span
 也继承它——`HealthCheck` 与健康指示器都显式传 context [starter.go, health.go]；

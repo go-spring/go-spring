@@ -24,8 +24,8 @@ import (
 
 	"github.com/labstack/echo/v4"
 	"go-spring.org/cloud/governance"
-	"go-spring.org/cloud/guard"
-	"go-spring.org/cloud/label"
+	"go-spring.org/cloud/governance/guard"
+	"go-spring.org/cloud/governance/label"
 	"go-spring.org/cloud/observability"
 	"go-spring.org/log"
 	"go.opentelemetry.io/otel/attribute"

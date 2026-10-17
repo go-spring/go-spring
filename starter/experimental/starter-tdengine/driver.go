@@ -29,7 +29,7 @@ import (
 
 	taosws "github.com/taosdata/driver-go/v3/taosWS"
 	"go-spring.org/cloud/governance"
-	"go-spring.org/cloud/resilience"
+	"go-spring.org/cloud/governance/resilience"
 	"go-spring.org/stdlib/errutil"
 )
 

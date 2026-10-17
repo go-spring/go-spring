@@ -5,7 +5,7 @@ against the starter source (`starter.go`, `config.go`), the counter implementati
 `starter-go-redis/experimental/ratelimit.go`, the [governance wiring](../../cloud/governance/starter.go)
 that makes the store reach the driver bean, and the self-asserting [example/](example)
 (`example/check.sh`). Rate-limiting semantics themselves are documented in
-`cloud/resilience` — everything below is this starter's increment.
+`cloud/governance/resilience` — everything below is this starter's increment.
 
 **Activation**: any `spring.ratelimit.redis.*` key arms the starter's module, and the block's one key
 must be set: `spring.ratelimit.redis.client` names the `*goredis.Client` bean (provided by
@@ -67,7 +67,7 @@ import (
     "errors"
     "net/http"
 
-    "go-spring.org/cloud/resilience"
+    "go-spring.org/cloud/governance/resilience"
     "go-spring.org/spring/gs"
 )
 

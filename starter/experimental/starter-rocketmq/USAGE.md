@@ -357,7 +357,7 @@ comma-joined name-servers — check it matches your governance rules):
   seam — → rejections return `resilience.ErrRateLimited`, the send is never invoked, and
   `resilience.client.calls` records appear with `resilience.error_type=rate_limited`, alongside one access log
   per call (`_app_rocketmq_access`, or `_app_resilience` on the fallback path)
-  [cloud/resilience/observe.go].
+  [cloud/governance/resilience/observe.go].
 - Raw `SendSync` called directly on a producer is unguarded (§2.2): it is the app's own path and
   has no executor around it. That contrast IS the §2.2 boundary.
 

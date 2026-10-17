@@ -26,8 +26,8 @@ package StarterNats
 import (
 	"github.com/nats-io/nats.go"
 	"github.com/nats-io/nats.go/jetstream"
+	"go-spring.org/cloud/governance/label"
 	"go-spring.org/cloud/observability"
-	"go-spring.org/cloud/resilience"
 )
 
 // Conn wraps a NATS connection together with an optional JetStream context. It
@@ -73,7 +73,7 @@ type Conn struct {
 // there is no governance: the observer emits the span, metrics and access log,
 // and nothing throttles or retries.
 func NewConn(raw *nats.Conn, url string) *Conn {
-	obs := observability.NewOperationObserver("nats", resilience.ServiceLabel("nats", url))
+	obs := observability.NewOperationObserver("nats", label.ServiceLabel("nats", url))
 	return &Conn{Conn: raw, InnerConn: NewObsConn(NewRawConn(raw), obs), obs: obs}
 }
 

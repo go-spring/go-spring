@@ -26,7 +26,7 @@ import (
 	"context"
 	"net"
 
-	"go-spring.org/cloud/resilience"
+	"go-spring.org/cloud/governance/label"
 	"go.mongodb.org/mongo-driver/v2/mongo"
 )
 
@@ -93,7 +93,7 @@ func NewClient(raw *mongo.Client, cfg Config) *Client {
 // connection. The same label is what a spring.governance.client.rules[N] rule matches to drive
 // this client's endpoint selection (balancer / outlier suspension).
 func serviceLabel(c Config) string {
-	return resilience.ServiceLabel("mongodb", c.ServiceName, c.URI)
+	return label.ServiceLabel("mongodb", c.ServiceName, c.URI)
 }
 
 // dialerWrapper adapts a dial function (plain, discovery-backed, or

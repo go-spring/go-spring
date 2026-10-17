@@ -205,7 +205,7 @@ Rationale (from the source comments, verified):
   on the logical service name" (httpx.go:32-34). The breaker therefore counts logical calls, and a
   retry lands on a different instance after an instance-level failure.
 - **resilience wraps the balanced transport**: `resilience.NewRoundTripper(base, exec, service, nil)`
-  — the service label is `resilience.ServiceLabel("http", ServiceName, Addr)` (httpx.go:342-347),
+  — the service label is `label.ServiceLabel("http", ServiceName, Addr)` (httpx.go:342-347),
   the same label the policy is resolved under, so limiter/breaker state and the driver's rule names
   agree with the governance rule that armed them. One label per client: the host rewrite to a picked
   instance happens one layer further down (httpx.go:307-318) and never leaks into the label.
@@ -298,7 +298,7 @@ Keys under `spring.http-client.instances.<name>.*` (cross-checked with
 | `tls.insecure-skip-verify` | bool | false | Skips peer verification (local testing only). | Enabled in production = unauthenticated TLS. |
 
 **Label stability — `service-name` wins**: the governance service label is
-`resilience.ServiceLabel("http", ServiceName, Addr)` → `http:<service-name>` whenever
+`label.ServiceLabel("http", ServiceName, Addr)` → `http:<service-name>` whenever
 `service-name` is set (discovery mode AND direct mode, where it stays a pure label), falling back
 to `http:<addr>` only for entries with no service-name at all (httpx.go `Config.service`).
 So a `spring.governance.client.rules[].services` entry scoped to `http:<service-name>` keeps matching when the
@@ -364,7 +364,7 @@ The `guarded` route targets the always-500 backend on :9473 with
    change from a network/500 error to `circuit open`, wait out `open-duration` (30s) with the
    backend restored — the half-open trial succeeds and the breaker closes.
 3. Observe the trip: `resilience.client.breaker.state_change{from=...,to=...}` counter increments and a
-   state-change log line is emitted (cloud/resilience/observe.go:98-110).
+   state-change log line is emitted (cloud/governance/resilience/observe.go:98-110).
 
 ### 4.4 Fault injection (no restart)
 

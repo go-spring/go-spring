@@ -2,10 +2,10 @@
 
 详细使用参考。概览见 [README_CN.md](README_CN.md)。所有行为声明均已对照 starter 源码
 （`starter.go`、`executor.go`、`breaker_listener.go`、`executor_test.go`）、抽象层
-[cloud/resilience](../../cloud/resilience)（`driver.go`、
+[cloud/governance/resilience](../../cloud/governance/resilience)（`driver.go`、
 `manager.go`）与自断言的 [example/](example/)（`example/check.sh` —— 无容器、无外部
 依赖）。**resilience 语义（熔断窗口、重试退避、policy 词汇）见
-[cloud/resilience](../../cloud/resilience)；sentinel-golang 行为见
+[cloud/governance/resilience](../../cloud/governance/resilience)；sentinel-golang 行为见
 [官方文档](https://github.com/alibaba/sentinel-golang)** —— 下文只写驱动接线。
 
 **激活方式**：与 [`cloud/governance`](../../cloud/governance) 一起 blank import
@@ -47,7 +47,7 @@ import (
     "sync/atomic"
     "time"
 
-    "go-spring.org/cloud/resilience"
+    "go-spring.org/cloud/governance/resilience"
 
     _ "go-spring.org/starter-governance-sentinel" // 注册 "sentinel" 驱动
 )
@@ -192,7 +192,7 @@ policy 并**清空 loaded 集合**。sentinel 的 `LoadRulesOfResource` 会替�
 **本模块自有前缀下没有 key。** `grep -rhoE 'value:"[^"]+"' starter-governance-sentinel` 无命中。
 `ClientPolicy` 各字段（`rate-limit`、`error-threshold`、`open-duration`、`max-retries`、`timeout` 等）写在**治理文档**里 —— 全进程用 `spring.governance.client.default.*`，某个服务
 单独配用 `spring.governance.client.rules[N].*` —— 经 `ExecutorFor` + `Refresh` 到达本驱动。字段含义见
-[cloud/resilience](../../cloud/resilience)，键的排布见
+[cloud/governance/resilience](../../cloud/governance/resilience)，键的排布见
 [`cloud/governance/README.md`](../../cloud/governance/README.md)。
 
 ---

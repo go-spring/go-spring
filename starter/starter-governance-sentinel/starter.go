@@ -16,7 +16,7 @@
 
 // Package StarterGovernanceSentinel contributes sentinel-golang as the recommended
 // resilience backend for the framework defined in
-// [go-spring.org/cloud/resilience].
+// [go-spring.org/cloud/governance/resilience].
 //
 // Contribution is a blank import:
 //
@@ -38,7 +38,7 @@ import (
 
 	sentinel "github.com/alibaba/sentinel-golang/api"
 
-	"go-spring.org/cloud/resilience"
+	"go-spring.org/cloud/governance/resilience"
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
 )

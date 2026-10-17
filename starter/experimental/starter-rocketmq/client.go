@@ -27,16 +27,17 @@ package StarterRocketmq
 import (
 	"context"
 	"errors"
-	"go-spring.org/cloud/chain"
-	"go-spring.org/cloud/observability"
 	"strings"
 	"sync"
+
+	"go-spring.org/cloud/chain"
+	"go-spring.org/cloud/governance/label"
+	"go-spring.org/cloud/observability"
 
 	"github.com/apache/rocketmq-client-go/v2"
 	"github.com/apache/rocketmq-client-go/v2/consumer"
 	"github.com/apache/rocketmq-client-go/v2/primitive"
 	"github.com/apache/rocketmq-client-go/v2/producer"
-	"go-spring.org/cloud/resilience"
 	"go-spring.org/log"
 )
 
@@ -83,7 +84,7 @@ type Client struct {
 // company Driver may call it too.
 func NewClient(nameServers []string, c Config) *Client {
 	cl := &Client{nameServers: primitive.NamesrvAddr(nameServers), cfg: c}
-	cl.serviceLabel = resilience.ServiceLabel("rocketmq", strings.Join(nameServers, ","))
+	cl.serviceLabel = label.ServiceLabel("rocketmq", strings.Join(nameServers, ","))
 	cl.obs = observability.NewOperationObserver("rocketmq", cl.serviceLabel)
 	return cl
 }

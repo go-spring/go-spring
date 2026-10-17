@@ -24,7 +24,7 @@ import (
 	"time"
 
 	"go-spring.org/cloud/chain"
-	"go-spring.org/cloud/resilience"
+	"go-spring.org/cloud/governance/resilience"
 	"go-spring.org/log"
 	"go-spring.org/stdlib/errutil"
 	"go.opentelemetry.io/otel"

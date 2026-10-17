@@ -19,8 +19,8 @@ package StarterRabbitMQ
 import (
 	amqp "github.com/rabbitmq/amqp091-go"
 	"go-spring.org/cloud/governance"
+	"go-spring.org/cloud/governance/label"
 	"go-spring.org/cloud/messaging"
-	"go-spring.org/cloud/resilience"
 	"go-spring.org/cloud/traffic"
 	"go-spring.org/log"
 	"go-spring.org/spring/conf"
@@ -142,7 +142,7 @@ func newClient(ctx *gs.ContextProvider, name string, c Config, d Driver, center 
 
 	// Assemble fully before probing: wrap the connection in its client — the
 	// emitting layer travels with the client, no registry involved.
-	cl := NewClient(conn, resilience.ServiceLabel("rabbitmq", c.Vhost, c.URL))
+	cl := NewClient(conn, label.ServiceLabel("rabbitmq", c.Vhost, c.URL))
 	// Then confirm the AMQP channel layer is usable, not just the TCP handshake
 	// (when Ping is enabled). The probe goes straight to the raw connection on
 	// purpose: it is a connectivity check, not business traffic, so it must not

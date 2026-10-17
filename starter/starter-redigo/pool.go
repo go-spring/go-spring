@@ -19,14 +19,15 @@ package StarterRedigo
 import (
 	"context"
 	"crypto/tls"
-	"go-spring.org/cloud/chain"
 	"net"
+
+	"go-spring.org/cloud/chain"
+	"go-spring.org/cloud/governance/label"
 
 	"github.com/gomodule/redigo/redis"
 	"go-spring.org/cloud/discovery"
 	"go-spring.org/cloud/governance"
 	"go-spring.org/cloud/loadbalance"
-	"go-spring.org/cloud/resilience"
 	"go-spring.org/stdlib/errutil"
 )
 
@@ -89,9 +90,9 @@ func NewPool(ctx context.Context, c Config, center *governance.Center) (*Pool, e
 	}
 	// The service label scopes limiter/breaker state AND endpoint selection to
 	// this Redis instance (not per command): fall back across the address fields
-	// via the shared [resilience.ServiceLabel] helper. Computed here because the
+	// via the shared [label.ServiceLabel] helper. Computed here because the
 	// chain's registration needs it before the executor is built.
-	serviceLabel := resilience.ServiceLabel("redigo", c.ServiceName, c.Addr)
+	serviceLabel := label.ServiceLabel("redigo", c.ServiceName, c.Addr)
 
 	// Endpoint selection rides the shared loadbalance machinery (round-robin
 	// base, per opened connection). The tracker makes outlier suspension possible
