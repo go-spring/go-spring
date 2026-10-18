@@ -24,15 +24,15 @@ import (
 
 	"github.com/labstack/echo/v4"
 	"go-spring.org/cloud/runtime"
-	"go-spring.org/cloud/runtime/dataplane/guard"
-	"go-spring.org/cloud/runtime/dataplane/label"
-	"go-spring.org/cloud/runtime/dataplane/observability"
+	"go-spring.org/cloud/runtime/dataplane/inbound/admission"
+	observability "go-spring.org/cloud/runtime/dataplane/inbound/observe"
+	"go-spring.org/cloud/runtime/dataplane/kernel/label"
 	"go-spring.org/log"
 	"go.opentelemetry.io/otel/attribute"
 )
 
 // buildServerPolicy builds the inbound middleware. The resilience
-// executor is built from the injected [guard.Manager], so this server gets
+// executor is built from the injected [admission.Manager], so this server gets
 // its rate-limit / bulkhead / breaker limits from the governance document's SERVER
 // block (spring.governance.server.*)
 // without the server package owning how that runtime is assembled. A nil runtime — a standalone call, or an app
@@ -58,7 +58,7 @@ func buildServerPolicy(cfg Config, center *runtime.Runtime) echo.MiddlewareFunc 
 //
 // Inbound inbound must NOT retry — a handler that has already produced side
 // effects cannot be replayed (inbound serving is not idempotent). Leave
-// [guard.Policy] has no retry field at all, so the executor built from the
+// [admission.Policy] has no retry field at all, so the executor built from the
 // server block has no retry stage; the committed guard also prevents reentry.
 func resilienceServerPolicy(in *runtime.Inbound, service string, observe bool) echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
@@ -142,7 +142,7 @@ func renderRefusal(err error) error {
 // an echo HTTP error.
 func renderInjectedOrRefusal(c echo.Context, err error) error {
 	var ref *runtime.Refusal
-	if errors.As(err, &ref) && ref.Verdict() == guard.VerdictFaultInjected {
+	if errors.As(err, &ref) && ref.Verdict() == admission.VerdictFaultInjected {
 		return c.String(http.StatusServiceUnavailable, "service unavailable")
 	}
 	return renderRefusal(err)
@@ -150,8 +150,8 @@ func renderInjectedOrRefusal(c echo.Context, err error) error {
 
 // httpStatusFor maps an inbound refusal to the HTTP status a client can act on:
 // rate/bulkhead rejections are 429, an open circuit or an injected fault is 503.
-func httpStatusFor(kind guard.Verdict) int {
-	if kind == guard.VerdictCircuitOpen || kind == guard.VerdictFaultInjected || kind == guard.VerdictDegraded {
+func httpStatusFor(kind admission.Verdict) int {
+	if kind == admission.VerdictCircuitOpen || kind == admission.VerdictFaultInjected || kind == admission.VerdictDegraded {
 		return http.StatusServiceUnavailable
 	}
 	return http.StatusTooManyRequests

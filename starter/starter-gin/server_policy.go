@@ -24,10 +24,10 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"go-spring.org/cloud/runtime"
-	"go-spring.org/cloud/runtime/dataplane/fault"
-	"go-spring.org/cloud/runtime/dataplane/guard"
-	"go-spring.org/cloud/runtime/dataplane/label"
-	"go-spring.org/cloud/runtime/dataplane/observability"
+	"go-spring.org/cloud/runtime/dataplane/inbound/admission"
+	observability "go-spring.org/cloud/runtime/dataplane/inbound/observe"
+	"go-spring.org/cloud/runtime/dataplane/kernel/fault"
+	"go-spring.org/cloud/runtime/dataplane/kernel/label"
 )
 
 // buildServerPolicy builds the inbound governance middleware. The inbound
@@ -54,7 +54,7 @@ func buildServerPolicy(cfg Config, center *runtime.Runtime) (gin.HandlerFunc, er
 //
 // Inbound cannot retry — a handler that has already produced side effects cannot
 // be replayed (inbound serving is not idempotent). That is structural:
-// [guard.Policy] has no retry field, so the engine built from the
+// [admission.Policy] has no retry field, so the engine built from the
 // server block has no retry stage at all; a Written() guard also prevents reentry
 // regardless.
 func resilienceServerPolicy(in *runtime.Inbound) gin.HandlerFunc {
@@ -87,8 +87,8 @@ func resilienceServerPolicy(in *runtime.Inbound) gin.HandlerFunc {
 
 // httpStatusFor maps an inbound refusal to the HTTP status a client can act on:
 // rate/bulkhead rejections are 429, an open circuit or an injected fault is 503.
-func httpStatusFor(kind guard.Verdict) int {
-	if kind == guard.VerdictCircuitOpen || kind == guard.VerdictFaultInjected || kind == guard.VerdictDegraded {
+func httpStatusFor(kind admission.Verdict) int {
+	if kind == admission.VerdictCircuitOpen || kind == admission.VerdictFaultInjected || kind == admission.VerdictDegraded {
 		return http.StatusServiceUnavailable
 	}
 	return http.StatusTooManyRequests

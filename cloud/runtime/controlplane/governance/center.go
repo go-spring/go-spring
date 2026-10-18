@@ -58,10 +58,11 @@ import (
 	"context"
 	"sync/atomic"
 
-	"go-spring.org/cloud/runtime/dataplane/fault"
-	"go-spring.org/cloud/runtime/dataplane/guard"
-	"go-spring.org/cloud/runtime/dataplane/loadbalance"
-	"go-spring.org/cloud/runtime/dataplane/resilience"
+	"go-spring.org/cloud/runtime/dataplane/inbound/admission"
+	serverfault "go-spring.org/cloud/runtime/dataplane/inbound/fault"
+	"go-spring.org/cloud/runtime/dataplane/kernel/loadbalance"
+	clientfault "go-spring.org/cloud/runtime/dataplane/outbound/fault"
+	"go-spring.org/cloud/runtime/dataplane/outbound/resilience"
 	"go-spring.org/log"
 )
 
@@ -99,15 +100,15 @@ type Center struct {
 	// as fault exposes them: the center pushes only that direction's document. It
 	// deliberately does not pair them into a third type — the client and server
 	// seams are free to evolve apart.
-	resClient   *resilience.ClientManager
-	guardServer *guard.Manager
+	resClient   *resilience.Manager
+	guardServer *admission.Manager
 	lb          *loadbalance.Manager
-	injClient   *fault.ClientManager
-	injServer   *fault.ServerManager
+	injClient   *clientfault.ClientManager
+	injServer   *serverfault.ServerManager
 
 	// src is the bound [Source], set once at construction (the container's
 	// contribution) and never replaced — Close reads it on teardown. With no
-	// replacement there is no stale-callback race to guard.
+	// replacement there is no stale-callback race to admission.
 	src Source
 }
 
@@ -126,8 +127,8 @@ type Center struct {
 //
 // The authorities are owned by the caller — the wiring starter, or a test — so
 // the same instances can also be registered as beans for clients to inject.
-func NewCenter(resClient *resilience.ClientManager, guardServer *guard.Manager,
-	lb *loadbalance.Manager, injClient *fault.ClientManager, injServer *fault.ServerManager,
+func NewCenter(resClient *resilience.Manager, guardServer *admission.Manager,
+	lb *loadbalance.Manager, injClient *clientfault.ClientManager, injServer *serverfault.ServerManager,
 	src Source) (*Center, error) {
 	c := &Center{
 		resClient:   resClient,
@@ -237,7 +238,7 @@ func (c *Center) dispatch(ctx context.Context, cfg Config) error {
 	// discarded on purpose rather than re-checked.
 	c.cfg.Store(&cfg)
 	settings := resilienceSettings(cfg)
-	c.resClient.Apply(settings.Client)
+	c.resClient.Apply(settings)
 	c.guardServer.Apply(guardSettings(cfg))
 	c.lb.Apply(ctx, selectionSettings(cfg))
 	c.injClient.Refresh(cfg.Client.Fault)
@@ -250,20 +251,18 @@ func (c *Center) dispatch(ctx context.Context, cfg Config) error {
 // cannot be validated against one shape and applied as another.
 func resilienceSettings(cfg Config) resilience.Settings {
 	return resilience.Settings{
-		Client: resilience.ClientSettings{
-			Default: cfg.Client.Default.ClientPolicy,
-			Rules:   resilienceClientRules(cfg.Client.Rules),
-		},
+		Default: cfg.Client.Default.Policy,
+		Rules:   resilienceClientRules(cfg.Client.Rules),
 	}
 }
 
 // guardSettings is the document's SERVER half in the guard authority's own
 // settings. The document and the guard policy share one type, so this is a
 // shape-preserving conversion.
-func guardSettings(cfg Config) guard.Settings {
-	s := guard.Settings{Default: cfg.Server.Default}
+func guardSettings(cfg Config) admission.Settings {
+	s := admission.Settings{Default: cfg.Server.Default}
 	for _, r := range cfg.Server.Rules {
-		s.Rules = append(s.Rules, guard.Rule{
+		s.Rules = append(s.Rules, admission.Rule{
 			Service: r.Service,
 			Policy:  r.Policy,
 		})
@@ -285,13 +284,13 @@ func selectionSettings(cfg Config) loadbalance.Settings {
 // protection knobs of each [ClientRule]. The same source entry also carries the
 // endpoint-selection half, which selectionRules takes — a governance ClientRule is
 // ONE service's configuration consumed by TWO modules.
-func resilienceClientRules(in []ClientRule) []resilience.ClientRule {
+func resilienceClientRules(in []ClientRule) []resilience.Rule {
 	if len(in) == 0 {
 		return nil
 	}
-	out := make([]resilience.ClientRule, len(in))
+	out := make([]resilience.Rule, len(in))
 	for i, r := range in {
-		out[i] = resilience.ClientRule{Service: r.Service, Action: r.Action, Match: r.Match, ClientPolicy: r.ClientPolicy}
+		out[i] = resilience.Rule{Service: r.Service, Action: r.Action, Match: r.Match, Policy: r.Policy}
 	}
 	return out
 }

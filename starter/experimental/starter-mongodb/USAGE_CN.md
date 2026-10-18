@@ -63,7 +63,7 @@ func main() { gs.Run() }
 ```go
 package main
 
-import "go-spring.org/cloud/runtime/dataplane/discovery"
+import "go-spring.org/cloud/runtime/dataplane/kernel/discovery"
 
 func init() {
     gs.Provide(func() (discovery.Discovery, error) {
@@ -177,7 +177,7 @@ gs.Run()
   │   → mongo.Connect → NewClient(raw, cfg)（定身份 + observer）[client.go:113]
   │       newDBObserver("mongodb") → 模块内建 observer（span + 指标 + 访问日志）；
   │       serviceLabel = serviceLabel(cfg)；exec = center.ExecutorFor("mongodb", serviceLabel)，
-  │       即 inj.WrapClientExecutor(mgr.ClientExecutorFor("mongodb", service))
+  │       即 inj.WrapClientExecutor(mgr.ExecutorFor("mongodb", service))
   │   → 换入 dialerWrapper.dial = newDialer(base, w.exec)[starter.go:225]、[dial.go]
   │   → 仅 ping=true：fail-fast 探测 HealthCheck(ctx, w)——一次 Ping，由
   │     connect-timeout 约束（兜底 10s）[starter.go:220]——server 挂掉失败的是启动
@@ -269,9 +269,9 @@ key——观测无条件开启（见 §3.3）。
 
 策略 key 位于顶层 `spring.governance.*`（cloud/runtime/controlplane/governance 治理中心）；`newClient` 从
 `*runtime.Runtime` 读取注入的
-`*resilience.ClientManager` / `*fault.ClientManager`（`mgr`/`inj`）与 `*loadbalance.Manager`（`lbMgr`），由
+`*resilience.Manager` / `*clientfault.ClientManager`（`mgr`/`inj`）与 `*loadbalance.Manager`（`lbMgr`），由
 `center.ExecutorFor("mongodb", "mongodb:<service-name|uri>")`
-一次解出 `inj.WrapClientExecutor(mgr.ClientExecutorFor("mongodb", "mongodb:<service-name|uri>"))`
+一次解出 `inj.WrapClientExecutor(mgr.ExecutorFor("mongodb", "mongodb:<service-name|uri>"))`
 [client.go:113-121]。相关 key：`spring.resilience.driver`（后端，静态 app 配置）以及治理文档中的
 （全集见 cloud/runtime/controlplane/governance 的 SOURCE_USAGE_CN.md）`spring.governance.client.default.rate-limit` /
 `error-threshold` / `open-duration` /

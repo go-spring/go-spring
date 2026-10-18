@@ -24,7 +24,8 @@ import (
 	"dubbo.apache.org/dubbo-go/v3/protocol/base"
 	"dubbo.apache.org/dubbo-go/v3/protocol/result"
 	"go-spring.org/cloud/runtime"
-	"go-spring.org/cloud/runtime/dataplane/fault"
+	serverfault "go-spring.org/cloud/runtime/dataplane/inbound/fault"
+	"go-spring.org/cloud/runtime/dataplane/kernel/fault"
 )
 
 const faultFilterKey = "fault"
@@ -34,18 +35,18 @@ const faultFilterKey = "fault"
 // field because dubbo — not this starter — constructs filter instances through
 // its own registry, so there is no bean whose constructor could receive it.
 // No ordering constraint applies: the shell holds its own kernel pointer, and
-// the authority swaps that kernel in place ([fault.ServerManager.Refresh]), so
+// the authority swaps that kernel in place ([serverfault.ServerManager.Refresh]), so
 // whatever the runtime pushes later is visible to the filter without
 // re-installing.
 //
 // dubbo is the ONE inbound adapter whose fault stage is standalone rather than
-// folded into the guard: it keeps its own URL-param governance model and does
-// not drive a guard.Guard at all. There is therefore no second injection path
+// folded into the admission: it keeps its own URL-param governance model and does
+// not drive a admission.Guard at all. There is therefore no second injection path
 // to double-fire — this shell is the only inbound fault seam dubbo has.
 //
 // nil (the runtime not imported) means fault injection is off: the filter
 // passes the call through untouched.
-var faultServer atomic.Pointer[fault.Server]
+var faultServer atomic.Pointer[serverfault.Server]
 
 // injectorHook is the marker bean whose construction installs the shell.
 type injectorHook struct{}
@@ -65,7 +66,7 @@ type dubboFaultFilter struct{}
 
 func newFaultFilter() filter.Filter { return &dubboFaultFilter{} }
 
-// Invoke gates the service call with [fault.Server.Fire] when an injector is
+// Invoke gates the service call with [serverfault.Server.Fire] when an injector is
 // installed. The injector is read per call so fault can be hot-toggled at
 // runtime without a restart (the handle itself never changes after wiring); nil
 // means no fault is configured and the call passes through untouched.

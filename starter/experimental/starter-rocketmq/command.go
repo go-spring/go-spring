@@ -45,7 +45,7 @@ import (
 
 	"github.com/apache/rocketmq-client-go/v2"
 	"github.com/apache/rocketmq-client-go/v2/primitive"
-	"go-spring.org/cloud/runtime/dataplane/observability"
+	observability "go-spring.org/cloud/runtime/dataplane/outbound/observe"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"

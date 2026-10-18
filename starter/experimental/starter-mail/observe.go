@@ -29,7 +29,7 @@
 package StarterMail
 
 import (
-	"go-spring.org/cloud/runtime/dataplane/chain"
+	"go-spring.org/cloud/runtime/dataplane/outbound/chain"
 	"go-spring.org/log"
 	"go.opentelemetry.io/otel/attribute"
 )

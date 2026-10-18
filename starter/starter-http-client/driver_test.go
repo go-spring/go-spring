@@ -25,11 +25,12 @@ import (
 	"go-spring.org/cloud/runtime"
 	"go-spring.org/cloud/runtime/controlplane/governance"
 
-	"go-spring.org/cloud/runtime/dataplane/discovery"
-	"go-spring.org/cloud/runtime/dataplane/fault"
-	"go-spring.org/cloud/runtime/dataplane/loadbalance"
-	"go-spring.org/cloud/runtime/dataplane/resilience"
-	"go-spring.org/cloud/runtime/dataplane/traffic"
+	serverfault "go-spring.org/cloud/runtime/dataplane/inbound/fault"
+	"go-spring.org/cloud/runtime/dataplane/kernel/discovery"
+	"go-spring.org/cloud/runtime/dataplane/kernel/loadbalance"
+	"go-spring.org/cloud/runtime/dataplane/kernel/traffic"
+	clientfault "go-spring.org/cloud/runtime/dataplane/outbound/fault"
+	"go-spring.org/cloud/runtime/dataplane/outbound/resilience"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/httpclt"
 )
@@ -39,8 +40,8 @@ import (
 // needs no live server — it only assembles the RoundTripper.
 func TestDefaultDriverFallback(t *testing.T) {
 	center, err := runtime.New(
-		resilience.NewClientManager(resilience.NewDefaultDriver(nil)), loadbalance.NewManager(),
-		fault.NewClientManager(nil), fault.NewServerManager(nil), discovery.NewManager(nil), governance.NewPushSource(governance.Config{}))
+		resilience.NewManager(resilience.NewDefaultDriver(nil)), loadbalance.NewManager(),
+		clientfault.NewClientManager(nil), serverfault.NewServerManager(nil), discovery.NewManager(nil), governance.NewPushSource(governance.Config{}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -80,8 +81,8 @@ func (d *recordingDriver) CreateTransport(ctx context.Context, name string, c Co
 func TestCustomDriverUsed(t *testing.T) {
 	drv := &recordingDriver{}
 	center, err := runtime.New(
-		resilience.NewClientManager(resilience.NewDefaultDriver(nil)), loadbalance.NewManager(),
-		fault.NewClientManager(nil), fault.NewServerManager(nil), discovery.NewManager(nil), governance.NewPushSource(governance.Config{}))
+		resilience.NewManager(resilience.NewDefaultDriver(nil)), loadbalance.NewManager(),
+		clientfault.NewClientManager(nil), serverfault.NewServerManager(nil), discovery.NewManager(nil), governance.NewPushSource(governance.Config{}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -137,7 +138,7 @@ func TestCustomDriverReceivesResolvedBackend(t *testing.T) {
 //
 // The test does NOT register those beans itself. Importing this starter blank-
 // imports the runtime, which registers them — so a container already
-// holds one *resilience.ClientManager / *fault.ClientManager, and providing another would
+// holds one *resilience.Manager / *clientfault.ClientManager, and providing another would
 // be a duplicate. The assertion is therefore identity with what another
 // injection resolves, which is the same claim.
 func TestCustomDriverReceivesGovernanceBeans(t *testing.T) {
@@ -146,9 +147,9 @@ func TestCustomDriverReceivesGovernanceBeans(t *testing.T) {
 		app.Property("spring.http-client.instances.demo.addr", "10.0.0.1:8080")
 		app.Provide(func() Driver { return &drv })
 	}).RunTest(t, func(ts *struct {
-		DT  *dispatchTransport        `autowire:""`
-		Mgr *resilience.ClientManager `autowire:""`
-		Inj *fault.ClientManager      `autowire:""`
+		DT  *dispatchTransport         `autowire:""`
+		Mgr *resilience.Manager        `autowire:""`
+		Inj *clientfault.ClientManager `autowire:""`
 	}) {
 		if ts.DT == nil {
 			t.Fatal("expected a wired dispatch transport")

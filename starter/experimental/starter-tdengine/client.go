@@ -28,8 +28,8 @@ import (
 	"database/sql/driver"
 
 	"go-spring.org/cloud/runtime"
-	"go-spring.org/cloud/runtime/dataplane/chain"
-	"go-spring.org/cloud/runtime/dataplane/label"
+	"go-spring.org/cloud/runtime/dataplane/kernel/label"
+	"go-spring.org/cloud/runtime/dataplane/outbound/chain"
 )
 
 // Client is the wrapper bean TDengine connections are injected as. It embeds
@@ -51,7 +51,7 @@ type Client struct {
 	slot *clientSlot
 	// exec is the resilience executor, applied by [NewClient] from the
 	// [runtime.Runtime] the container supplies; the center is required to
-	// carry a [resilience.ClientManager], so statements are always observed.
+	// carry a [resilience.Manager], so statements are always observed.
 	exec chain.Executor
 	// serviceLabel is the resilience service key ("tdengine:<dsn addr>") exec
 	// scopes limiter/breaker state by.
@@ -71,7 +71,7 @@ type Client struct {
 // resolves the executor once — [runtime.Runtime.ExecutorFor] — and installs
 // it on the slot every pooled connection consults. A hand-built client must
 // supply a [runtime.Runtime] over a
-// [resilience.ClientManager]: [runtime.Runtime.ResilienceClient] is required,
+// [resilience.Manager]: [runtime.Runtime.ResilienceClient] is required,
 // so a nil center is a construction error — never a graceful
 // downgrade. The manager resolves its backing
 // executor lazily, so the call order relative to the center's wiring is

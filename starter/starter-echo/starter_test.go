@@ -25,10 +25,12 @@ import (
 	"github.com/labstack/echo/v4"
 	"go-spring.org/cloud/runtime"
 	"go-spring.org/cloud/runtime/controlplane/governance"
-	"go-spring.org/cloud/runtime/dataplane/fault"
-	"go-spring.org/cloud/runtime/dataplane/loadbalance"
-	"go-spring.org/cloud/runtime/dataplane/resilience"
-	"go-spring.org/cloud/runtime/dataplane/traffic"
+	serverfault "go-spring.org/cloud/runtime/dataplane/inbound/fault"
+	"go-spring.org/cloud/runtime/dataplane/kernel/fault"
+	"go-spring.org/cloud/runtime/dataplane/kernel/loadbalance"
+	"go-spring.org/cloud/runtime/dataplane/kernel/traffic"
+	clientfault "go-spring.org/cloud/runtime/dataplane/outbound/fault"
+	"go-spring.org/cloud/runtime/dataplane/outbound/resilience"
 	"go-spring.org/spring/conf"
 	"go-spring.org/stdlib/flatten"
 	"go-spring.org/stdlib/testing/assert"
@@ -52,12 +54,12 @@ func bindConfig(t *testing.T, props map[string]any) Config {
 // becomes an inert one, mirroring the DI wiring where the fault bean is always
 // present (an absent bean fails startup). An already-armed injector is re-armed
 // after construction, which dispatches the (zero) governance document into it.
-func testCenter(inj *fault.ServerManager) *runtime.Runtime {
+func testCenter(inj *serverfault.ServerManager) *runtime.Runtime {
 	if inj == nil {
-		inj = fault.NewServerManager(nil)
+		inj = serverfault.NewServerManager(nil)
 	}
 	armed := inj.Config()
-	ctr, err := runtime.New(resilience.NewClientManager(resilience.NewDefaultDriver(nil)), loadbalance.NewManager(), fault.NewClientManager(nil), inj, nil, governance.NewPushSource(governance.Config{}))
+	ctr, err := runtime.New(resilience.NewManager(resilience.NewDefaultDriver(nil)), loadbalance.NewManager(), clientfault.NewClientManager(nil), inj, nil, governance.NewPushSource(governance.Config{}))
 	if err != nil {
 		panic(err)
 	}
@@ -393,7 +395,7 @@ func TestBodyLimit_RejectsOversizedBodyWith413(t *testing.T) {
 // The middleware captures the injector when it is built, so the test injects it
 // up front and drives the toggle through Refresh on the same instance.
 func TestFaultMiddleware_Injects503ThenPassesThrough(t *testing.T) {
-	in := fault.NewServerManager(nil)
+	in := serverfault.NewServerManager(nil)
 	in.Refresh(fault.Config{Rules: []fault.Rule{{Rate: 1, Error: "generic"}}})
 
 	e := echo.New()

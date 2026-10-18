@@ -30,8 +30,8 @@ import (
 
 	"go-spring.org/cloud/runtime"
 
-	"go-spring.org/cloud/runtime/dataplane/discovery"
-	"go-spring.org/cloud/runtime/dataplane/traffic"
+	"go-spring.org/cloud/runtime/dataplane/kernel/discovery"
+	"go-spring.org/cloud/runtime/dataplane/kernel/traffic"
 	"go-spring.org/log"
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/gs"

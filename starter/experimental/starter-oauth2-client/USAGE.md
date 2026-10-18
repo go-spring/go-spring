@@ -197,7 +197,7 @@ resilience. You call `AuthCodeURL(state)` and `Exchange(ctx, code)` yourself; th
    outbound request *before* the base transport runs.
 5. `resilience.NewRoundTripper` executes the request through the executor the constructor
    reads from the injected `*runtime.Runtime` (`center`) via
-   `center.ResilienceClient().ClientExecutorFor("oauth2", "oauth2:<client-id>")` — retry / circuit
+   `center.ResilienceClient().ExecutorFor("oauth2", "oauth2:<client-id>")` — retry / circuit
    breaker / rate limit policy from the governance document. The center is the governance
    family's sole injection point (a required bean in a gs app); an unarmed center — or a nil one
    on a standalone call — reads a nil resilience manager whose executor is a transparent
@@ -285,7 +285,7 @@ req.Header.Set("Authorization", "Bearer "+tok.AccessToken)
 ```
 
 Also observable: with starter-otel + governance, breaker trips on the wrapped client emit
-`oauth2`-labeled spans/metrics (`mgr.ClientExecutorFor("oauth2", service)`); nothing equivalent
+`oauth2`-labeled spans/metrics (`mgr.ExecutorFor("oauth2", service)`); nothing equivalent
 exists for `TokenSource`.
 
 ### 4.5 Governance hot-toggle

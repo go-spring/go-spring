@@ -137,7 +137,7 @@ fixed-rate/cron 任务到了触发点而上一次还在跑：
 
 ## 设计说明
 
-- `cloud/scheduling` 刻意不接服务治理：不接 `ClientExecutorFor` 缝、不给资源标签
+- `cloud/scheduling` 刻意不接服务治理：不接 `ExecutorFor` 缝、不给资源标签
   （治理 README 的 §6 标签表刻意不含它）。限流无意义（频率自控）、重试有害
   （副作用型任务短时双跑）、熔断负收益（打开 = 任务静默不跑）、超时已有本地
   `WithTimeout`、选点不适用；要治理的是任务体内发起的调用（如 http-client 的

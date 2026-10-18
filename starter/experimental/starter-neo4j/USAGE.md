@@ -188,7 +188,7 @@ gs.Run()
   │   │  handing out the resilience/fault authorities (the resilience manager is required)
   │   ├─ NewClient [client.go:96-103]: service = label.ServiceLabel("neo4j",
   │   │  ServiceName, URI) → center.ExecutorFor("neo4j", service) — the governed executor
-  │   │  (fault.ClientManager.WrapClientExecutor over center.ResilienceClient().ClientExecutorFor); the center is always
+  │   │  (clientfault.ClientManager.WrapClientExecutor over center.ResilienceClient().ExecutorFor); the center is always
   │   │  present (the resilience manager is required)
   │   └─ ping=true only: fail-fast HealthCheck (VerifyConnectivity on the raw driver),
   │      bounded by socket-connect-timeout or 5s; on failure the client is destroyed

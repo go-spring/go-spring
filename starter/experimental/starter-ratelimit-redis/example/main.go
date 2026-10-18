@@ -30,14 +30,14 @@ import (
 	"time"
 
 	rt "go-spring.org/cloud/runtime"
-	"go-spring.org/cloud/runtime/dataplane/chain"
+	"go-spring.org/cloud/runtime/dataplane/outbound/chain"
 
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
 
 	// Blank-import both starters: starter-go-redis publishes the *goredis.Client
 	// bean named by spring.ratelimit.redis.client, and starter-ratelimit-redis
-	// contributes the Redis-backed resilience.ClusterLimiter store — the one the
+	// contributes the Redis-backed ratelimit.ClusterLimiter store — the one the
 	// resilience driver injects, in place of the private per-executor budgets a
 	// container with no store bean gets.
 	_ "go-spring.org/starter-go-redis"

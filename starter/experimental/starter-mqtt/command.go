@@ -35,9 +35,9 @@ import (
 	"context"
 	"sync"
 
-	"go-spring.org/cloud/runtime/dataplane/chain"
-	"go-spring.org/cloud/runtime/dataplane/label"
-	"go-spring.org/cloud/runtime/dataplane/observability"
+	"go-spring.org/cloud/runtime/dataplane/kernel/label"
+	"go-spring.org/cloud/runtime/dataplane/outbound/chain"
+	observability "go-spring.org/cloud/runtime/dataplane/outbound/observe"
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 )

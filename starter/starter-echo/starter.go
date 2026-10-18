@@ -25,7 +25,7 @@ import (
 	"go-spring.org/cloud/runtime"
 
 	"github.com/labstack/echo/v4"
-	"go-spring.org/cloud/runtime/dataplane/traffic"
+	"go-spring.org/cloud/runtime/dataplane/kernel/traffic"
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"

@@ -56,7 +56,7 @@ deployment points Consul/Nacos/k8s here; see example/discovery.go):
 ```go
 package main
 
-import "go-spring.org/cloud/runtime/dataplane/discovery"
+import "go-spring.org/cloud/runtime/dataplane/kernel/discovery"
 
 func init() {
     gs.Provide(func() (discovery.Discovery, error) {
@@ -244,7 +244,7 @@ Rationale (source comments, [command.go] and [client.go]):
    histograms and the access log. The caller sees exactly what plain go-elasticsearch returns —
    including 4xx `res.IsError()` bodies; only transport-level errors (5xx are mapped to a
    breaker-tripping, retryable error by the resilience round-tripper,
-   cloud/runtime/dataplane/resilience/roundtripper.go:99-104).
+   cloud/runtime/dataplane/outbound/resilience/roundtripper.go:99-104).
 
 **Pass a context on every call.** It carries the call's cancellation and deadline, and the
 operation span the resilience layer opens inherits it — `HealthCheck` and the health indicator

@@ -16,7 +16,7 @@ scheduling、配置 starter、控制面 registration 使用它们时,不会把�
 
 本目录刻意**不放在** `runtime/dataplane/` 下:受治理调用插桩(它才是数据面,
 而且是最外层)位于 [runtime/dataplane/observability](../runtime/dataplane/observability/),
-出站包装 `chain.Executor`、入站驱动 guard 的 Admit/Done。
+出站包装 `chain.Executor`、入站驱动 admission 的 Admit/Done;两侧的 observe 子包分别在 `outbound/observe` 与 `inbound/observe`。
 
 依赖规则:顶层中立词汇——`propagate`、`mesh`、`observability/attrs`、
 `observability/conf`——可被两个平面和任何能力依赖;平面之间只允许

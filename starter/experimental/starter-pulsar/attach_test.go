@@ -22,7 +22,7 @@ import (
 
 	"github.com/apache/pulsar-client-go/pulsar"
 	"go-spring.org/cloud/messaging"
-	"go-spring.org/cloud/runtime/dataplane/traffic"
+	"go-spring.org/cloud/runtime/dataplane/kernel/traffic"
 )
 
 // fakePulsarClient is a map-key-only stand-in for the client bean.

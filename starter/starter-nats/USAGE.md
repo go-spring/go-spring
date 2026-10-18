@@ -182,7 +182,7 @@ gs.Run()
   │           (nats.Connect — FAIL-FAST probe; a broker that is down aborts boot)
   ├─ CreateClient: NewConn(nc, url, center) — fixes identity AND applies governance in one step,
   │           so the Conn is complete when the Driver returns it (the `nats:<url>` service label;
-  │           center.ExecutorFor → inj.WrapClientExecutor(mgr.ClientExecutorFor("nats", service));
+  │           center.ExecutorFor → inj.WrapClientExecutor(mgr.ExecutorFor("nats", service));
   │           the resilience manager is required — the container always supplies it)
   │           [driver.go:145; client.go:86-93]
   ├─ jetstream.enabled → jetstream.New(nc); failure closes nc and fails boot
@@ -280,9 +280,9 @@ re-publishing or re-running a handler is a second side effect, not a second atte
 one — no operation span is named for it.
 
 Wrap order inside `Runtime.ExecutorFor` (see `cloud/runtime/controlplane/governance/center.go`, called by
-[NewConn](client.go:86-93)): `mgr.ClientExecutorFor("nats", service)`
-(armed from the injected `*resilience.ClientManager` bean — required, so always supplied
-by the container) → `fault.ClientManager.WrapClientExecutor` (fault injection, outermost). The manager's resolve step
+[NewConn](client.go:86-93)): `mgr.ExecutorFor("nats", service)`
+(armed from the injected `*resilience.Manager` bean — required, so always supplied
+by the container) → `clientfault.ClientManager.WrapClientExecutor` (fault injection, outermost). The manager's resolve step
 wraps the backing executor with the observe emitter (see `resilience/observe.go`), so the declared
 operation's span/counter/histogram/access-log are produced once, from the one point on the chain
 that sees a whole call. On rejection the guarded call returns a resilience sentinel

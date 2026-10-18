@@ -17,7 +17,7 @@
 // Package consuldisc is a small, client-side [discovery.Discovery] backed by the
 // Consul catalog. starter-discovery-consul is a *register-side* starter (it
 // advertises this instance into Consul); it does not ship a client-side resolver.
-// The unified cloud/runtime/dataplane/discovery abstraction is exactly the seam meant to close
+// The unified cloud/runtime/dataplane/kernel/discovery abstraction is exactly the seam meant to close
 // that gap, so the reference app supplies its own Consul-backed Discovery here
 // and exposes it as a named discovery.Discovery bean — the gateway's lb://order route
 // and the order service's order->inventory call then resolve through it with no
@@ -36,7 +36,7 @@ import (
 	"time"
 
 	"github.com/hashicorp/consul/api"
-	"go-spring.org/cloud/runtime/dataplane/discovery"
+	"go-spring.org/cloud/runtime/dataplane/kernel/discovery"
 	"go-spring.org/spring/gs"
 )
 

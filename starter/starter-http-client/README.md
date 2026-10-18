@@ -37,12 +37,12 @@ pick it up with zero wiring. The chain is
 by [`starter-http-client/httpx`](httpx) from three composable stdlib
 abstractions, all behind the single `http.RoundTripper` seam:
 
-* [`discovery`](../../cloud/runtime/dataplane/discovery) — when a `service-name` is set, a
+* [`discovery`](../../cloud/runtime/dataplane/kernel/discovery) — when a `service-name` is set, a
   `Resolver` keeps a fresh endpoint snapshot;
-* [`loadbalance`](../../cloud/runtime/dataplane/loadbalance) — a `Pool` picks one live endpoint
+* [`loadbalance`](../../cloud/runtime/dataplane/kernel/loadbalance) — a `Pool` picks one live endpoint
   per request (any registered strategy, plus optional outlier suspension) and the
   transport rewrites the request host to it;
-* [`resilience`](../../cloud/runtime/dataplane/resilience) — an optional executor wraps the whole
+* [`resilience`](../../cloud/runtime/dataplane/outbound/resilience) — an optional executor wraps the whole
   chain, so rate limiting, circuit breaking and retry protect every call.
   Because it sits *outside* the balancer, a retry re-picks a fresh endpoint and
   the breaker keys on the logical service name.

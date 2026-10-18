@@ -216,7 +216,7 @@ Rationale (from the source comments in `ApplyMiddlewares`, middleware.go:89-174)
 4. admission: `exec.Execute` around the handler — over limit → 429, breaker open → 503;
    handler 5xx feeds the breaker as a failure
 5. fault: `_, err := srv.Fire(ctx, fault.Target{Service: "gin", Action: "GET /x"})`
-   — `inj` is the injected `*fault.ServerManager` bean, and the built-in target names the route
+   — `inj` is the injected `*serverfault.ServerManager` bean, and the built-in target names the route
    (`METHOD` + `c.FullPath()`), so a rule can fire one endpoint; marked traffic at `rate` gets
    the injected error → 503
 6. SecureHeaders/CORS/Gzip as enabled; ResponseCapture wraps the writer

@@ -25,7 +25,7 @@ import (
 
 	"github.com/apache/pulsar-client-go/pulsar"
 	"go-spring.org/cloud/messaging"
-	"go-spring.org/cloud/runtime/dataplane/traffic"
+	"go-spring.org/cloud/runtime/dataplane/kernel/traffic"
 	"go-spring.org/stdlib/testing/assert"
 )
 

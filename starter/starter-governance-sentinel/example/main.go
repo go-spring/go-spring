@@ -36,8 +36,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"go-spring.org/cloud/runtime/dataplane/chain"
-	"go-spring.org/cloud/runtime/dataplane/resilience"
+	"go-spring.org/cloud/runtime/dataplane/outbound/chain"
+	"go-spring.org/cloud/runtime/dataplane/outbound/resilience"
 
 	StarterGovernanceSentinel "go-spring.org/starter-governance-sentinel"
 )
@@ -60,7 +60,7 @@ func main() {
 // is recovered transparently within the retry budget while the (generous) limit
 // and breaker stay closed.
 func demoComposedRetry(driver resilience.Driver) {
-	exec, err := driver.NewClientExecutor("sentinel:composed", resilience.ClientPolicy{
+	exec, err := driver.NewExecutor("sentinel:composed", resilience.Policy{
 		RateLimit:      100,
 		ErrorThreshold: 10,
 		Timeout:        time.Second,

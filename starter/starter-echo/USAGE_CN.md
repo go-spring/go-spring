@@ -220,7 +220,7 @@ LoadTest → Recovery → RequestID(+propagate) → Tracing → Metrics → Acce
 6. AccessLog 布防(字段在出口捕获)
 7. SecureHeaders/CORS/Gzip 按配置;BodyLimit 执行 `maxBodySize`
 8. fault:`_, err := srv.Fire(ctx, fault.Target{Service: "echo", Action: "GET /x"})`
-   ——`inj` 是注入的 `*fault.ServerManager` bean，内置的 target 会带上路由（`METHOD` + `c.Path()`），
+   ——`inj` 是注入的 `*serverfault.ServerManager` bean，内置的 target 会带上路由（`METHOD` + `c.Path()`），
    所以规则可以只给单个接口放火；`scope: loadtest` 且有标记时,
    约 `rate` 比例的请求拿到注入错误 → 503;其余放行
 9. 你的路由执行;响应按 6→5→4→3 解栈:访问记录落盘(按状态定级)、

@@ -187,7 +187,7 @@ governance 开启时的 `s.Client.Get("https://api.example.com/service")`:
 4. access token 入缓存;出站请求在 base transport 运行*之前*带上
    `Authorization: Bearer <token>` 头。
 5. `resilience.NewRoundTripper` 经构造函数从注入的 `*runtime.Runtime`（`center`）上读取的
-   executor 执行请求——`center.ResilienceClient().ClientExecutorFor("oauth2", "oauth2:<client-id>")`——
+   executor 执行请求——`center.ResilienceClient().ExecutorFor("oauth2", "oauth2:<client-id>")`——
    retry/熔断/限流策略来自治理文档。center 是治理家族唯一的注入点（gs 应用里必填）；未武装的
    center（或独立调用时的 nil center）读到的是 nil resilience manager，其 executor 为透明直通，
    故"治理关闭"是"配置了一份什么都没设的文档"，绝非 bean 缺失。该 executor 已自带 observe 层,
@@ -272,7 +272,7 @@ req.Header.Set("Authorization", "Bearer "+tok.AccessToken)
 ```
 
 同样可观测:starter-otel + governance 下,被包 client 的熔断动作发出 `oauth2` 标签的
-span/指标(`mgr.ClientExecutorFor("oauth2", service)`);`TokenSource` 没有对等物。
+span/指标(`mgr.ExecutorFor("oauth2", service)`);`TokenSource` 没有对等物。
 
 ### 4.5 governance 热切换
 

@@ -32,8 +32,9 @@ import (
 	"time"
 
 	gsrt "go-spring.org/cloud/runtime"
-	"go-spring.org/cloud/runtime/dataplane/fault"
-	"go-spring.org/cloud/runtime/dataplane/resilience"
+	serverfault "go-spring.org/cloud/runtime/dataplane/inbound/fault"
+	clientfault "go-spring.org/cloud/runtime/dataplane/outbound/fault"
+	"go-spring.org/cloud/runtime/dataplane/outbound/resilience"
 	"go-spring.org/spring/gs"
 )
 
@@ -55,7 +56,7 @@ func (p *printer) Run(ctx context.Context) error {
 		tk := time.NewTicker(time.Second)
 		defer tk.Stop()
 		for i := 0; ; i++ {
-			pol := p.center.ResilienceClient().ClientPolicyFor("demo:service")
+			pol := p.center.ResilienceClient().PolicyFor("demo:service")
 			fmt.Printf("policy: enabled=%v timeout=%v retries=%d rate-limit=%v", !pol.IsZero(), pol.Timeout, pol.Retry.MaxRetries, pol.RateLimit)
 			if fc, fs := p.center.FaultClient(), p.center.FaultServer(); fc != nil && fs != nil {
 				// Both directions' fires are printed: they are independent, so the
@@ -88,8 +89,8 @@ func init() {
 	gs.Provide(func(center *gsrt.Runtime) *printer {
 		if center == nil {
 			driver := resilience.NewDefaultDriver(nil)
-			c, err := gsrt.NewProcess(resilience.NewClientManager(driver),
-				fault.NewClientManager(nil), fault.NewServerManager(nil))
+			c, err := gsrt.NewProcess(resilience.NewManager(driver),
+				clientfault.NewClientManager(nil), serverfault.NewServerManager(nil))
 			if err != nil {
 				panic(err)
 			}

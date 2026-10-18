@@ -54,7 +54,7 @@
 // Two couplings follow, and they are deliberate rather than defects:
 //
 //   - The control-plane document embeds data-plane policy types
-//     ([resilience.ClientPolicy], [guard.Policy], [loadbalance.Selection],
+//     ([resilience.Policy], [guard.Policy], [loadbalance.Selection],
 //     [fault.Config], [chain.Selector]), and [governance.Center] pushes them
 //     into the concrete managers. An in-process control plane has no
 //     independent deployment or document version, so type and configuration

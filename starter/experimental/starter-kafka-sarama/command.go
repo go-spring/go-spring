@@ -56,13 +56,13 @@ import (
 	"context"
 	"sync"
 
-	"go-spring.org/cloud/runtime/dataplane/chain"
-	"go-spring.org/cloud/runtime/dataplane/label"
-	"go-spring.org/cloud/runtime/dataplane/observability"
+	"go-spring.org/cloud/runtime/dataplane/kernel/label"
+	"go-spring.org/cloud/runtime/dataplane/outbound/chain"
+	observability "go-spring.org/cloud/runtime/dataplane/outbound/observe"
 
 	"github.com/IBM/sarama"
 	"go-spring.org/cloud/propagate"
-	"go-spring.org/cloud/runtime/dataplane/traffic"
+	"go-spring.org/cloud/runtime/dataplane/kernel/traffic"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/propagation"
 )

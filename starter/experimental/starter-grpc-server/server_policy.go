@@ -22,9 +22,9 @@ import (
 
 	"go-spring.org/cloud/runtime"
 
-	"go-spring.org/cloud/runtime/dataplane/guard"
-	"go-spring.org/cloud/runtime/dataplane/label"
-	"go-spring.org/cloud/runtime/dataplane/observability"
+	"go-spring.org/cloud/runtime/dataplane/inbound/admission"
+	observability "go-spring.org/cloud/runtime/dataplane/inbound/observe"
+	"go-spring.org/cloud/runtime/dataplane/kernel/label"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -38,7 +38,7 @@ type resilienceInterceptors struct {
 }
 
 // buildResilienceInterceptors constructs an inbound-inbound executor from the
-// injected [guard.Manager] and returns the unary interceptor that runs each
+// injected [admission.Manager] and returns the unary interceptor that runs each
 // RPC through it. The manager is the governance starter's bean, so this server
 // gets its rate-limit / bulkhead / breaker limits from the governance document's
 // SERVER block (spring.governance.server.*)
@@ -124,9 +124,9 @@ func mapServerPolicyError(err error) error {
 		return err
 	}
 	switch ref.Verdict() {
-	case guard.VerdictRateLimited, guard.VerdictBulkheadFull:
+	case admission.VerdictRateLimited, admission.VerdictBulkheadFull:
 		return status.Error(codes.ResourceExhausted, ref.Error())
-	case guard.VerdictCircuitOpen, guard.VerdictDegraded:
+	case admission.VerdictCircuitOpen, admission.VerdictDegraded:
 		return status.Error(codes.Unavailable, ref.Error())
 	default:
 		return err

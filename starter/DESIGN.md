@@ -233,13 +233,13 @@ Database, cache, and message-queue clients (`go-redis`, `gorm-*`, `mongodb`,
   `ClusterDriver`) so existing custom drivers keep compiling.
 - **A client starter whose component reaches out gets governance from its own imports.** No
   governance import is needed: each authority is registered by the package that
-  **owns it** — `cloud/runtime/dataplane/resilience` registers `*resilience.ClientManager`,
-  `cloud/runtime/dataplane/loadbalance` registers `*loadbalance.Manager`,
-  `cloud/runtime/dataplane/fault` registers `*fault.ClientManager` and
-  `*fault.ServerManager`, and `cloud/runtime/dataplane/discovery` registers
+  **owns it** — `cloud/runtime/dataplane/outbound/resilience` registers `*resilience.Manager`,
+  `cloud/runtime/dataplane/kernel/loadbalance` registers `*loadbalance.Manager`,
+  `cloud/runtime/dataplane/{outbound,inbound}/fault` registers `*clientfault.ClientManager` and
+  `*serverfault.ServerManager`, and `cloud/runtime/dataplane/kernel/discovery` registers
   `*discovery.Manager` — and a starter that injects one has necessarily imported
   that package for the type. The runtime root composes them into the one
-  `*runtime.Runtime` bean (it creates the inbound `*guard.Manager` itself).
+  `*runtime.Runtime` bean (it creates the inbound `*admission.Manager` itself).
   So every direction's authorities are always in the container; a client injects
   the three it uses (resilience client, loadbalance, fault client) as
   REQUIRED (`gs.IndexArg(N, gs.TagArg(""))`), never as nullable (`"?"`). The beans
@@ -315,7 +315,7 @@ Database, cache, and message-queue clients (`go-redis`, `gorm-*`, `mongodb`,
     package because its semantics fit no other client).
   - `observe.go` — the operation declarations this starter hands the framework's
     single emitter (its `Metric` prefix, its bounded attrs, its unbounded detail,
-    its access `LogTag`); the emitter itself lives in `cloud/runtime/dataplane/resilience` (§3).
+    its access `LogTag`); the emitter itself lives in `cloud/runtime/dataplane/outbound/resilience` (§3).
   - `health.go` — the health-indicator constructor, in the starter's root
     package (a single-function subpackage is not worth the import cost). Omitted
     by a starter whose component has nothing to probe (bigcache, §3).
@@ -398,11 +398,11 @@ Database, cache, and message-queue clients (`go-redis`, `gorm-*`, `mongodb`,
 - **`Config` is what the user writes; `Center` is what the container
   provides.** One declares, the other injects — never put a container bean into
   a `Config` field. `*runtime.Runtime` is the one object the container hands
-  over: it expands to `ResilienceClient() *resilience.ClientManager` / `GuardServer() *guard.Manager` / `FaultClient()
-  *fault.ClientManager` / `FaultServer() *fault.ServerManager` / `Loadbalance() *loadbalance.Manager` / `Discovery()
+  over: it expands to `ResilienceClient() *resilience.Manager` / `GuardServer() *admission.Manager` / `FaultClient()
+  *clientfault.ClientManager` / `FaultServer() *serverfault.ServerManager` / `Loadbalance() *loadbalance.Manager` / `Discovery()
   *discovery.Manager` (the directory a driver resolves its backend label against,
   via `Get`), plus `ExecutorFor(system,
-  label) chain.Executor` and `PolicyFor(label) ClientPolicy`. **`ResilienceClient()` is
+  label) chain.Executor` and `PolicyFor(label) Policy`. **`ResilienceClient()` is
   required**: `ExecutorFor` panics on a nil manager, so a hand-built client (an
   example, a test) must supply one — the container always does, and there is no
   unmanaged/observe-only fallback.
@@ -447,7 +447,7 @@ Database, cache, and message-queue clients (`go-redis`, `gorm-*`, `mongodb`,
   0..N collections (`[]*health.Indicator`, `Registries`, `Jobs`,
   `map[string]discovery.Discovery`, ... — `?` means an empty collection is legal,
   otherwise it is `no beans collected`) and 0..1 with a meaningful nil
-  (`traffic.Propagator`, `resilience.ClusterLimiter`, gorm's `disc`). `gs.IndexArg`
+  (`traffic.Propagator`, `ratelimit.ClusterLimiter`, gorm's `disc`). `gs.IndexArg`
   always takes two args: to drop nullability write `gs.IndexArg(N, gs.TagArg(""))`
   (`gs.IndexArg(N)` does not compile).
 - **A multi-instance health indicator's `.Name` is globally unique across
@@ -527,7 +527,7 @@ application can load configuration from it at startup and hot-reload at runtime.
   backends — they serve both configuration and service discovery. These two are
   different integration points in Go-Spring, so they live in different starters:
   the **config** role is a config-provider starter (this archetype); the
-  **discovery** role is client-side (`cloud/runtime/dataplane/discovery`, §3) or framework-native
+  **discovery** role is client-side (`cloud/runtime/dataplane/kernel/discovery`, §3) or framework-native
   (`contrib/discovery/`, §3). A config-provider starter does the config role and
   nothing else. The naming mirrors Spring Cloud Alibaba
   (`nacos-config` vs `nacos-discovery`).
@@ -677,7 +677,7 @@ baseline (its identity, wire vocabulary, error catalog, standard drivers).
     seam, and only when a concrete requirement lands.
 - **Client-side discovery is already unified; provider registration is not.**
   Client starters resolve a `ServiceName` to live endpoints through
-  `cloud/runtime/dataplane/discovery` (a `Loader` built via the driver's dialer hook); this
+  `cloud/runtime/dataplane/kernel/discovery` (a `Loader` built via the driver's dialer hook); this
   is generic across infrastructure clients. RPC *provider* registration stays
   framework-native per the principle above. When `ServiceName` is empty the
   client dials the address directly, unchanged. For examples of framework-native
@@ -704,7 +704,7 @@ baseline (its identity, wire vocabulary, error catalog, standard drivers).
   (1) Registering *this process* into an external registry
   (Nacos/Consul/Eureka/ZooKeeper) - the Spring Cloud `@EnableDiscoveryClient`
   direction - is a generic, transport-agnostic capability. Its publication
-  lifecycle lives in `cloud/runtime/dataplane/discovery`: `Server` is the one exported
+  lifecycle lives in `cloud/runtime/dataplane/kernel/discovery`: `Server` is the one exported
   `gs.Server` that drives every configured center, and each
   `starter-discovery-<backend>` (etcd/nacos/consul/zookeeper) contributes a
   `Registry` - the protocol adapter for its own center. Swapping backends means
@@ -776,7 +776,7 @@ baseline (its identity, wire vocabulary, error catalog, standard drivers).
   operation's `Name`, its `Metric` prefix (`db.client`, `messaging.client`), its
   bounded `Attrs`, its unbounded `Detail` and its `LogTag` — and routes the call
   through the resilience executor. The observe layer
-  (`cloud/runtime/dataplane/observability/client.go`, in `wrappedClientExecutor.Execute`,
+  (`cloud/observability/attrs/client.go`, in `wrappedClientExecutor.Execute`,
   composed around the executor by the governance center)
   emits from that declaration: the call span, `<prefix>.operation.duration`
   (call level, retries and backoff included), `<prefix>.attempt.duration`
@@ -790,9 +790,9 @@ baseline (its identity, wire vocabulary, error catalog, standard drivers).
     the pass-through handle too, so an inert document (configuring nothing)
     keeps every span, metric and access log and drops only the protection.
   - **The dependency points observability → resilience, never the reverse.**
-    The emitter lives in `cloud/runtime/dataplane/observability`; the breaker state vocabulary
-    (`BreakerState` / `BreakerEventListener`) and the per-call `Recorder` live
-    in `cloud/runtime/dataplane/resilience`, and the observer imports them — governance never
+    The emitter lives in `cloud/observability/attrs`; the breaker state vocabulary
+    (`breaker.State` / `breaker.EventListener`) and the per-call `Recorder` live
+    in `cloud/runtime/dataplane/outbound/resilience`, and the observer imports them — governance never
     names the observer. The two are composed in exactly one place, the
     runtime composition root (`Runtime.ExecutorFor` / `Runtime.InboundFor`), which
     stacks `fault(observe(resilience))` and reaches the breaker through the
@@ -918,7 +918,7 @@ baseline (its identity, wire vocabulary, error catalog, standard drivers).
     deliberately accepted.
     `starter-oauth2-client` logs every business call through the
     same resilience layer as `starter-http-client` (it reaches that layer via the injected
-    `resilience.ClientManager` instead of composing the wrapper itself), but the
+    `resilience.Manager` instead of composing the wrapper itself), but the
     token-endpoint exchange inside the oauth2 library bypasses that round tripper,
     so it is traced and not logged;
     kitex's and kratos's duration metrics carry no `status` dimension because the
@@ -948,7 +948,7 @@ baseline (its identity, wire vocabulary, error catalog, standard drivers).
   `createNode`, consul `upsert`), not around the `registration.Registry`
   interface: the self-heal path never crosses that interface, and it is the one
   that leaves an instance serving while no longer discoverable. The metric and
-  span definitions live once in `cloud/runtime/dataplane/discovery/observe.go` — backends never
+  span definitions live once in `cloud/runtime/dataplane/kernel/discovery/observe.go` — backends never
   name an instrument themselves.
   A **discovery-only** backend of this family (`starter-discovery-k8s`, where the
   platform registers Pods for you) has no such seam to report at: it builds the
@@ -1013,9 +1013,9 @@ baseline (its identity, wire vocabulary, error catalog, standard drivers).
   directory map). A name that does not match its use is fixed (e.g.
   `memcached/liveServers.key`, which stores an address-snapshot signature, becomes
   `snapshotKey`). Explicitly **not** renamed: the `service` inside
-  `cloud/runtime/dataplane/resilience|fault`, `starter-governance-sentinel`, and
+  `cloud/runtime/dataplane/outbound/resilience|fault`, `starter-governance-sentinel`, and
   `starter-luohua` — there `service` is the parameter name of the
-  `NewClientExecutor(service string, ...)` contract itself. Do not paper over a
+  `NewExecutor(service string, ...)` contract itself. Do not paper over a
   bare name with a comment.
 - **`func init()` sits at the top of a starter file, immediately after the import
   block** — no `type` / `var` / `const` / `func` declarations may precede it. This

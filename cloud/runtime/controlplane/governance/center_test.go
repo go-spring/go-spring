@@ -21,12 +21,14 @@ import (
 	"testing"
 	"time"
 
-	"go-spring.org/cloud/runtime/dataplane/chain"
-	"go-spring.org/cloud/runtime/dataplane/discovery"
-	"go-spring.org/cloud/runtime/dataplane/fault"
-	"go-spring.org/cloud/runtime/dataplane/guard"
-	"go-spring.org/cloud/runtime/dataplane/loadbalance"
-	"go-spring.org/cloud/runtime/dataplane/resilience"
+	"go-spring.org/cloud/runtime/dataplane/inbound/admission"
+	serverfault "go-spring.org/cloud/runtime/dataplane/inbound/fault"
+	"go-spring.org/cloud/runtime/dataplane/kernel/discovery"
+	"go-spring.org/cloud/runtime/dataplane/kernel/fault"
+	"go-spring.org/cloud/runtime/dataplane/kernel/loadbalance"
+	"go-spring.org/cloud/runtime/dataplane/outbound/chain"
+	clientfault "go-spring.org/cloud/runtime/dataplane/outbound/fault"
+	"go-spring.org/cloud/runtime/dataplane/outbound/resilience"
 	"go-spring.org/stdlib/testing/assert"
 )
 
@@ -38,7 +40,7 @@ func dur(d int) time.Duration { return time.Duration(d) * time.Millisecond }
 func timeoutConfig(d int) Config {
 	return Config{
 		Client: ClientConfig{
-			Default: ClientDefaultPolicy{ClientPolicy: resilience.ClientPolicy{Timeout: dur(d)}},
+			Default: ClientDefaultPolicy{Policy: resilience.Policy{Timeout: dur(d)}},
 		},
 	}
 }
@@ -47,19 +49,19 @@ func timeoutConfig(d int) Config {
 // The wiring starter creates them as beans; a test creates them per center so no
 // state leaks between tests. Each runs on the bundled driver — the backend is a
 // startup choice, not part of the document, so a center test never selects one.
-func newAuthorities() (*resilience.ClientManager,
-	*loadbalance.Manager, *fault.ClientManager, *fault.ServerManager) {
+func newAuthorities() (*resilience.Manager,
+	*loadbalance.Manager, *clientfault.ClientManager, *serverfault.ServerManager) {
 	driver := resilience.NewDefaultDriver(nil)
-	return resilience.NewClientManager(driver), loadbalance.NewManager(),
-		fault.NewClientManager(nil), fault.NewServerManager(nil)
+	return resilience.NewManager(driver), loadbalance.NewManager(),
+		clientfault.NewClientManager(nil), serverfault.NewServerManager(nil)
 }
 
 // newTestCenterWith builds a center over fresh module authorities and dispatches
 // cfg into them, exactly as the wiring starter does in production.
-func newTestCenterWith(cfg Config) (*Center, *resilience.ClientManager,
-	*loadbalance.Manager, *fault.ClientManager, *fault.ServerManager) {
+func newTestCenterWith(cfg Config) (*Center, *resilience.Manager,
+	*loadbalance.Manager, *clientfault.ClientManager, *serverfault.ServerManager) {
 	resClient, lb, fc, fs := newAuthorities()
-	c, err := NewCenter(resClient, guard.NewManager(), lb, fc, fs, NewPushSource(cfg))
+	c, err := NewCenter(resClient, admission.NewManager(), lb, fc, fs, NewPushSource(cfg))
 	if err != nil {
 		panic(err)
 	}
@@ -74,11 +76,11 @@ func newTestCenter(cfg Config) *Center {
 
 func TestPolicyFor_Default(t *testing.T) {
 	c := newTestCenter(timeoutConfig(100))
-	if p := c.resClient.ClientPolicyFor("redis:cache"); p.Timeout != dur(100) {
+	if p := c.resClient.PolicyFor("redis:cache"); p.Timeout != dur(100) {
 		t.Fatalf("policyFor default: want timeout 100ms, got %v", p.Timeout)
 	}
 	// Unknown label also falls back to Default.
-	if p := c.resClient.ClientPolicyFor("anything:else"); p.Timeout != dur(100) {
+	if p := c.resClient.PolicyFor("anything:else"); p.Timeout != dur(100) {
 		t.Fatalf("policyFor fallback: want timeout 100ms, got %v", p.Timeout)
 	}
 }
@@ -86,14 +88,14 @@ func TestPolicyFor_Default(t *testing.T) {
 func TestPolicyFor_RuleReplacesDefault(t *testing.T) {
 	c := newTestCenter(Config{
 		Client: ClientConfig{
-			Default: ClientDefaultPolicy{ClientPolicy: resilience.ClientPolicy{Timeout: dur(100), Retry: chain.RetryPolicy{MaxRetries: 1}}},
+			Default: ClientDefaultPolicy{Policy: resilience.Policy{Timeout: dur(100), Retry: chain.RetryPolicy{MaxRetries: 1}}},
 			Rules: []ClientRule{{
-				Service:      "redis:cache",
-				ClientPolicy: resilience.ClientPolicy{Timeout: dur(50)}, // no MaxRetries
+				Service: "redis:cache",
+				Policy:  resilience.Policy{Timeout: dur(50)}, // no MaxRetries
 			}},
 		},
 	})
-	p := c.resClient.ClientPolicyFor("redis:cache")
+	p := c.resClient.PolicyFor("redis:cache")
 	if p.Timeout != dur(50) {
 		t.Fatalf("rule timeout: want 50ms, got %v", p.Timeout)
 	}
@@ -103,7 +105,7 @@ func TestPolicyFor_RuleReplacesDefault(t *testing.T) {
 		t.Fatalf("rule must replace not merge: want MaxRetries 0, got %d", p.Retry.MaxRetries)
 	}
 	// A label no Rule matches still gets Default.
-	if p := c.resClient.ClientPolicyFor("redis:other"); p.Timeout != dur(100) {
+	if p := c.resClient.PolicyFor("redis:other"); p.Timeout != dur(100) {
 		t.Fatalf("unmatched label: want default 100ms, got %v", p.Timeout)
 	}
 }
@@ -112,11 +114,11 @@ func TestPolicyFor_EmptyServiceMatchesNothing(t *testing.T) {
 	// A Rule with an empty Service matches nothing (use Default instead).
 	c := newTestCenter(Config{
 		Client: ClientConfig{
-			Default: ClientDefaultPolicy{ClientPolicy: resilience.ClientPolicy{Timeout: dur(100)}},
-			Rules:   []ClientRule{{ClientPolicy: resilience.ClientPolicy{Timeout: dur(50)}}},
+			Default: ClientDefaultPolicy{Policy: resilience.Policy{Timeout: dur(100)}},
+			Rules:   []ClientRule{{Policy: resilience.Policy{Timeout: dur(50)}}},
 		},
 	})
-	if p := c.resClient.ClientPolicyFor("redis:cache"); p.Timeout != dur(100) {
+	if p := c.resClient.PolicyFor("redis:cache"); p.Timeout != dur(100) {
 		t.Fatalf("empty-Service rule must not match: want default 100ms, got %v", p.Timeout)
 	}
 }
@@ -124,10 +126,10 @@ func TestPolicyFor_EmptyServiceMatchesNothing(t *testing.T) {
 func TestServerPolicyFor_ServerBlock(t *testing.T) {
 	c := newTestCenter(Config{
 		Server: ServerConfig{
-			Default: guard.Policy{Timeout: dur(100)},
+			Default: admission.Policy{Timeout: dur(100)},
 			Rules: []ServerRule{{
 				Service: "gin::8080",
-				Policy:  guard.Policy{RateLimit: 500},
+				Policy:  admission.Policy{RateLimit: 500},
 			}},
 		},
 	})
@@ -140,7 +142,7 @@ func TestServerPolicyFor_ServerBlock(t *testing.T) {
 	}
 	// The two directions are separate resolutions over separate rules: the client
 	// half of the same document holds nothing for these labels.
-	if p := c.resClient.ClientPolicyFor("gin::8080"); !p.IsZero() {
+	if p := c.resClient.PolicyFor("gin::8080"); !p.IsZero() {
 		t.Fatalf("inbound must not leak into the outbound policy: %+v", p)
 	}
 }
@@ -158,14 +160,14 @@ func TestServerPolicyFor_EmptyDocumentIsZero(t *testing.T) {
 func TestDispatch_RejectsDuplicateServerRules(t *testing.T) {
 	c := newTestCenter(Config{
 		Server: ServerConfig{
-			Rules: []ServerRule{{Service: "gin::8080", Policy: guard.Policy{Timeout: dur(50)}}},
+			Rules: []ServerRule{{Service: "gin::8080", Policy: admission.Policy{Timeout: dur(50)}}},
 		},
 	})
 	bad := Config{
 		Server: ServerConfig{
 			Rules: []ServerRule{
-				{Service: "gin::8080", Policy: guard.Policy{RateLimit: 1}},
-				{Service: "gin::8080", Policy: guard.Policy{RateLimit: 999}},
+				{Service: "gin::8080", Policy: admission.Policy{RateLimit: 1}},
+				{Service: "gin::8080", Policy: admission.Policy{RateLimit: 999}},
 			},
 		},
 	}
@@ -181,22 +183,22 @@ func TestPolicyFor_EmptyDocumentIsPassThrough(t *testing.T) {
 	// An empty document resolves zero policies for every label: that is what
 	// "governance off" means now that there is no enabled switch.
 	c := newTestCenter(Config{})
-	if p := c.resClient.ClientPolicyFor("redis:cache"); !p.IsZero() {
+	if p := c.resClient.PolicyFor("redis:cache"); !p.IsZero() {
 		t.Fatalf("an empty document must yield zero policy, got %+v", p)
 	}
 	// A subscription is still registered — a later push must be able to notify
 	// it — but it is armed with a ZERO policy, a transparent pass-through.
-	var got resilience.ClientPolicy
-	s := c.resClient.Subscribe("redis:cache", func(p resilience.ClientPolicy) { got = p })
-	if !got.IsZero() || !s.ClientPolicy.IsZero() {
+	var got resilience.Policy
+	s := c.resClient.Subscribe("redis:cache", func(p resilience.Policy) { got = p })
+	if !got.IsZero() || !s.Policy.IsZero() {
 		t.Fatalf("an empty document must arm with a zero policy, got %+v", got)
 	}
 }
 
 func TestSubscribe_ArmsImmediately(t *testing.T) {
 	c := newTestCenter(timeoutConfig(100))
-	var got resilience.ClientPolicy
-	c.resClient.Subscribe("redis:cache", func(p resilience.ClientPolicy) { got = p })
+	var got resilience.Policy
+	c.resClient.Subscribe("redis:cache", func(p resilience.Policy) { got = p })
 	if got.Timeout != dur(100) {
 		t.Fatalf("Subscribe should arm cb with current policy, got timeout %v", got.Timeout)
 	}
@@ -208,13 +210,13 @@ func TestSubscribe_ArmsImmediately(t *testing.T) {
 func TestAdopt_NotifiesOnlyChangedLabels(t *testing.T) {
 	c := newTestCenter(Config{
 		Client: ClientConfig{
-			Default: ClientDefaultPolicy{ClientPolicy: resilience.ClientPolicy{Timeout: dur(100)}},
+			Default: ClientDefaultPolicy{Policy: resilience.Policy{Timeout: dur(100)}},
 		},
 	})
 
 	var redisN, gormN int
-	c.resClient.Subscribe("redis:cache", func(resilience.ClientPolicy) { redisN++ })
-	c.resClient.Subscribe("gorm:mysql:primary", func(resilience.ClientPolicy) { gormN++ })
+	c.resClient.Subscribe("redis:cache", func(resilience.Policy) { redisN++ })
+	c.resClient.Subscribe("gorm:mysql:primary", func(resilience.Policy) { gormN++ })
 	// Subscribe arms once each.
 	if redisN != 1 || gormN != 1 {
 		t.Fatalf("after subscribe: redis=%d gorm=%d, want 1/1", redisN, gormN)
@@ -223,8 +225,8 @@ func TestAdopt_NotifiesOnlyChangedLabels(t *testing.T) {
 	// Change only redis:cache. gorm must NOT be notified (its policy unchanged).
 	cfg := timeoutConfig(100)
 	cfg.Client.Rules = []ClientRule{{
-		Service:      "redis:cache",
-		ClientPolicy: resilience.ClientPolicy{Timeout: dur(200)},
+		Service: "redis:cache",
+		Policy:  resilience.Policy{Timeout: dur(200)},
 	}}
 	c.adopt(context.Background(), cfg)
 	if redisN != 2 {
@@ -233,7 +235,7 @@ func TestAdopt_NotifiesOnlyChangedLabels(t *testing.T) {
 	if gormN != 1 {
 		t.Fatalf("gorm must NOT be notified when its policy is unchanged: got %d, want 1", gormN)
 	}
-	if p := c.resClient.ClientPolicyFor("redis:cache"); p.Timeout != dur(200) {
+	if p := c.resClient.PolicyFor("redis:cache"); p.Timeout != dur(200) {
 		t.Fatalf("post-adopt redis policy: want 200ms, got %v", p.Timeout)
 	}
 
@@ -247,14 +249,14 @@ func TestAdopt_NotifiesOnlyChangedLabels(t *testing.T) {
 func TestAdopt_DefaultChangeFansOutToAllUnoverridden(t *testing.T) {
 	c := newTestCenter(timeoutConfig(100))
 	var a, b int
-	c.resClient.Subscribe("redis:cache", func(resilience.ClientPolicy) { a++ })
-	c.resClient.Subscribe("gorm:mysql:primary", func(resilience.ClientPolicy) { b++ })
+	c.resClient.Subscribe("redis:cache", func(resilience.Policy) { a++ })
+	c.resClient.Subscribe("gorm:mysql:primary", func(resilience.Policy) { b++ })
 	// Both read Default; changing Default must notify both.
 	c.adopt(context.Background(), timeoutConfig(300))
 	if a != 2 || b != 2 {
 		t.Fatalf("default change should fan out to both: a=%d b=%d, want 2/2", a, b)
 	}
-	if p := c.resClient.ClientPolicyFor("redis:cache"); p.Timeout != dur(300) {
+	if p := c.resClient.PolicyFor("redis:cache"); p.Timeout != dur(300) {
 		t.Fatalf("post default-change: want 300ms, got %v", p.Timeout)
 	}
 }
@@ -274,7 +276,7 @@ func TestSource_AdoptSwapsFaultConfig(t *testing.T) {
 	cfg.Server.Fault = fault.Config{Rules: []fault.Rule{{Rate: 1, Latency: dur(5)}}}
 	c.adopt(context.Background(), cfg)
 
-	if p := c.resClient.ClientPolicyFor("x"); p.Timeout != dur(100) {
+	if p := c.resClient.PolicyFor("x"); p.Timeout != dur(100) {
 		t.Fatalf("adopt resilience side: want 100ms, got %v", p.Timeout)
 	}
 	if cf := fc.Config(); len(cf.Rules) != 1 || cf.Rules[0].Rate != 0.5 {
@@ -293,11 +295,11 @@ func TestSource_AdoptSwapsFaultConfig(t *testing.T) {
 // snapshot arms the authorities in the same breath.
 func TestCenter_ConstructorSourceBinds(t *testing.T) {
 	resClient, lb, fc, fs := newAuthorities()
-	c, err := NewCenter(resClient, guard.NewManager(), lb, fc, fs, NewPushSource(timeoutConfig(300)))
+	c, err := NewCenter(resClient, admission.NewManager(), lb, fc, fs, NewPushSource(timeoutConfig(300)))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if p := c.resClient.ClientPolicyFor("x"); p.Timeout != dur(300) {
+	if p := c.resClient.PolicyFor("x"); p.Timeout != dur(300) {
 		t.Fatalf("the constructor's source must be bound at construction: want 300ms, got %v", p.Timeout)
 	}
 }
@@ -307,7 +309,7 @@ func TestCenter_ConstructorSourceBinds(t *testing.T) {
 // fault injector.
 func TestCenter_ConstructsArmed(t *testing.T) {
 	resClient, lb, fc, fs := newAuthorities()
-	_, err := NewCenter(resClient, guard.NewManager(), lb, fc, fs, NewPushSource(Config{
+	_, err := NewCenter(resClient, admission.NewManager(), lb, fc, fs, NewPushSource(Config{
 		Client: ClientConfig{Fault: fault.Config{Rules: []fault.Rule{{Rate: 0.25}}}},
 	}))
 	if err != nil {
@@ -396,7 +398,7 @@ func TestCenter_Validate(t *testing.T) {
 		Matches("no strategy registered")
 
 	// A pure read: none of the calls above may have armed or configured anything.
-	if p := c.resClient.ClientPolicyFor("redis:cache"); !p.IsZero() {
+	if p := c.resClient.PolicyFor("redis:cache"); !p.IsZero() {
 		t.Fatalf("Validate must not push a resilience policy: %+v", p)
 	}
 	if !c.injClient.Config().Inert() {
@@ -432,7 +434,7 @@ func TestSelection_UnknownBalancerRejectsDocument(t *testing.T) {
 	// the rejected document did not sneak in beside it.
 	assert.That(t, chain.Selection().Balancer).Equal(loadbalance.LeastConn)
 	assert.Number(t, chain.Selection().OutlierThreshold).Equal(5)
-	if p := c.resClient.ClientPolicyFor(label); p.Timeout != dur(100) {
+	if p := c.resClient.PolicyFor(label); p.Timeout != dur(100) {
 		t.Fatalf("a rejected document must not land its other half either: got %v", p.Timeout)
 	}
 }
@@ -461,7 +463,7 @@ func TestSelection_NoRuleIsPassThrough(t *testing.T) {
 func TestCenter_ConstructsArmedSelection(t *testing.T) {
 	const label = "grpc:client"
 	resClient, lb, fc, fs := newAuthorities()
-	if _, err := NewCenter(resClient, guard.NewManager(), lb, fc, fs, NewPushSource(selectionConfig(label, loadbalance.P2C, 4, 2*time.Second))); err != nil {
+	if _, err := NewCenter(resClient, admission.NewManager(), lb, fc, fs, NewPushSource(selectionConfig(label, loadbalance.P2C, 4, 2*time.Second))); err != nil {
 		t.Fatal(err)
 	}
 

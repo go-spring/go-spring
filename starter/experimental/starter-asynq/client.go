@@ -25,8 +25,8 @@ package StarterAsynq
 import (
 	"context"
 
-	"go-spring.org/cloud/runtime/dataplane/label"
-	"go-spring.org/cloud/runtime/dataplane/observability"
+	"go-spring.org/cloud/runtime/dataplane/kernel/label"
+	observability "go-spring.org/cloud/runtime/dataplane/outbound/observe"
 
 	"github.com/hibiken/asynq"
 	"go-spring.org/log"

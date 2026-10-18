@@ -83,7 +83,7 @@ real one talks to Consul/Nacos and pushes fresh snapshots):
 ```go
 package main
 
-import "go-spring.org/cloud/runtime/dataplane/discovery"
+import "go-spring.org/cloud/runtime/dataplane/kernel/discovery"
 
 func init() {
     gs.Provide(func() (discovery.Discovery, error) {
@@ -213,7 +213,7 @@ discovery+LB, `driver.go:76-78` comment).
    limiter/breaker scoped to service `memcached:<service-name or instance-name>` (`client.go`);
    `memcache.ErrCacheMiss` counts as success so misses never trip the breaker
    (resilience.Tolerate); the executor is applied by `Client.applyGovernance` —
-   `inj.WrapClientExecutor(mgr.ClientExecutorFor("memcached", service))`, where
+   `inj.WrapClientExecutor(mgr.ExecutorFor("memcached", service))`, where
    `mgr`/`inj` are the beans the container injects into `newClient` and the ctor passes on, with
    the observe layer applied inside resolve. When no governance is applied it is a transparent
    no-op.

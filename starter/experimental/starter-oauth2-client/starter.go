@@ -21,9 +21,9 @@ import (
 	"net/http"
 
 	"go-spring.org/cloud/runtime"
-	"go-spring.org/cloud/runtime/dataplane/label"
+	"go-spring.org/cloud/runtime/dataplane/kernel/label"
 
-	"go-spring.org/cloud/runtime/dataplane/resilience"
+	"go-spring.org/cloud/runtime/dataplane/outbound/resilience"
 	"go-spring.org/log"
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/gs"
@@ -84,7 +84,7 @@ func init() {
 // exchange and downstream requests are traced via otelContext (no-op without
 // starter-otel). The transport is additionally wrapped so downstream requests
 // flow through the resilience executor (rate limiter, circuit breaker, retry)
-// built from the injected [resilience.ClientManager] — a transparent no-op when
+// built from the injected [resilience.Manager] — a transparent no-op when
 // governance is off — so the bearer token is already attached before the
 // resilience layer runs and each protected attempt is a complete request.
 //

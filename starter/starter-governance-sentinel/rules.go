@@ -16,7 +16,7 @@
 
 // rules.go holds the one translation from the neutral resilience knobs onto
 // sentinel-golang's rule shapes. It is OUTBOUND only: inbound requests run
-// through go-spring.org/cloud/runtime/dataplane/guard, which has its own bundled engine.
+// through go-spring.org/cloud/runtime/dataplane/inbound/admission, which has its own bundled engine.
 //
 // Knobs a driver may legitimately NOT map are not faked here — the tables in
 // the READMEs name them (Burst and Algorithm on flow; sentinel v1.0.4 has no
@@ -30,7 +30,7 @@ import (
 	"github.com/alibaba/sentinel-golang/core/circuitbreaker"
 	"github.com/alibaba/sentinel-golang/core/flow"
 
-	"go-spring.org/cloud/runtime/dataplane/resilience"
+	"go-spring.org/cloud/runtime/dataplane/kernel/breaker"
 )
 
 // flowKnobs is the direction-neutral view of the rate-limit stage a policy
@@ -44,9 +44,9 @@ type flowKnobs struct {
 }
 
 // breakerKnobs is the direction-neutral view of the circuit-breaker stage.
-// strategy arrives already resolved (see [resilience.ClientPolicy.ResolvedBreakerStrategy]).
+// strategy arrives already resolved (see [resilience.Policy.ResolvedBreakerStrategy]).
 type breakerKnobs struct {
-	strategy       resilience.BreakerStrategy
+	strategy       breaker.Strategy
 	errorThreshold int           // consecutive / error-count count
 	rateThreshold  float64       // error-rate ratio
 	slowThreshold  time.Duration // a call at/above this is slow
@@ -103,7 +103,7 @@ func flowRule(service string, k flowKnobs) *flow.Rule {
 // rule for service. sentinel's strategies line up with ours one-to-one except
 // consecutive: sentinel has no consecutive-run breaker (its ErrorCount counts
 // over the stat window), so consecutive maps onto ErrorCount as a documented
-// approximation — an exact windowed mapping is what [resilience.BreakerErrorCount]
+// approximation — an exact windowed mapping is what [breaker.ErrorCount]
 // is for.
 func breakerRule(service string, k breakerKnobs) *circuitbreaker.Rule {
 	openMs := k.open.Milliseconds()
@@ -125,20 +125,20 @@ func breakerRule(service string, k breakerKnobs) *circuitbreaker.Rule {
 		ProbeNum:       probe,
 	}
 	switch k.strategy {
-	case resilience.BreakerErrorRate:
+	case breaker.ErrorRate:
 		rule.Strategy = circuitbreaker.ErrorRatio
 		rule.MinRequestAmount = uint64(max(k.minRequests, 1))
 		rule.Threshold = k.rateThreshold
-	case resilience.BreakerSlowCall:
+	case breaker.SlowCall:
 		rule.Strategy = circuitbreaker.SlowRequestRatio
 		rule.MinRequestAmount = uint64(max(k.minRequests, 1))
 		rule.MaxAllowedRtMs = uint64(k.slowThreshold.Milliseconds())
 		rule.Threshold = k.slowRate
-	case resilience.BreakerErrorCount:
+	case breaker.ErrorCount:
 		rule.Strategy = circuitbreaker.ErrorCount
 		rule.MinRequestAmount = uint64(max(k.minRequests, 1))
 		rule.Threshold = float64(k.errorThreshold)
-	default: // BreakerConsecutive: sentinel approximation, see the doc comment
+	default: // breaker.Consecutive: sentinel approximation, see the doc comment
 		rule.Strategy = circuitbreaker.ErrorCount
 		rule.MinRequestAmount = 1
 		rule.Threshold = float64(k.errorThreshold)

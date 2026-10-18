@@ -18,9 +18,9 @@ package StarterGrpcClient
 
 import (
 	"go-spring.org/cloud/runtime"
-	"go-spring.org/cloud/runtime/dataplane/discovery"
-	"go-spring.org/cloud/runtime/dataplane/label"
-	"go-spring.org/cloud/runtime/dataplane/loadbalance"
+	"go-spring.org/cloud/runtime/dataplane/kernel/discovery"
+	"go-spring.org/cloud/runtime/dataplane/kernel/label"
+	"go-spring.org/cloud/runtime/dataplane/kernel/loadbalance"
 	"google.golang.org/grpc"
 )
 

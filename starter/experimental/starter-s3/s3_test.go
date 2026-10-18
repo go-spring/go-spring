@@ -17,7 +17,7 @@
 package StarterS3
 
 import (
-	"go-spring.org/cloud/runtime/dataplane/chain"
+	"go-spring.org/cloud/runtime/dataplane/outbound/chain"
 	"net/http"
 	"net/http/httptest"
 	"testing"

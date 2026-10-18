@@ -224,7 +224,7 @@ Rationale (from the source comments, verified):
 - **Tracing before Metrics**: the span wraps the metrics observation too, so duration and status
   land on the same trace context.
 - **Resilience before Fault/Recover**: admission control decides before work is attempted;
-  the injected `resilience.ClientManager`'s `ExecutorFor` returns its executor with the observe layer
+  the injected `resilience.Manager`'s `ExecutorFor` returns its executor with the observe layer
   already applied, so trips/rejects emit span + counter + histogram themselves.
 - **Fault innermost-of-policy** (fault.go): "installed innermost so an injected error flows back
   through tracing/metrics/resilience and is observed" — you can observe the fire you set.
@@ -245,7 +245,7 @@ Rationale (from the source comments, verified):
 5. Resilience: `exec.Execute(ctx, chain.Operation{})` — over the rate cap → the handler never
    runs and `mapAdmissionError` maps to `ResourceExhausted`; breaker open → `Unavailable`.
 6. Fault: `_, err := srv.Fire(ctx, fault.Target{Service: "grpc", Action: info.FullMethod})`
-   — `inj` is the injected `*fault.ServerManager` bean, and the method is the ACTION (`service` names
+   — `inj` is the injected `*serverfault.ServerManager` bean, and the method is the ACTION (`service` names
    the entrance), so a rule can fire one method; marked traffic
    fails ~`rate` of the time or gains injected latency; unmarked/scope-off passes through.
 7. Recover arms; the handler runs. A panic is reported via `goutil.ReportPanic` and converted to
@@ -342,7 +342,7 @@ and (on failure) `error` are the line's own payload. A failure is a Warn line.
 
 1. Start with `governance.yaml` (no fault `rate` set — inert).
 2. Baseline traffic → all OK.
-3. Set the fault rule's `rate: 0.2` in the file — the interceptor holds the injected `*fault.ServerManager`
+3. Set the fault rule's `rate: 0.2` in the file — the interceptor holds the injected `*serverfault.ServerManager`
    and the center swaps its config in place, so the change applies on the next RPC without restart.
 4. Rule label is `grpc:{FullMethod}` (e.g. `grpc:/EchoService/Echo`) — you can burn a single
    method. With `scope: loadtest` only metadata-marked traffic burns:

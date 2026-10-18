@@ -61,7 +61,7 @@ import (
 // which every company driver implements — stays stable as capabilities are
 // added; a driver that has no use for one of its facilities simply ignores it.
 // A hand-built pool (an example, a test) must supply a center holding a
-// [resilience.ClientManager]; a nil center is a construction error.
+// [resilience.Manager]; a nil center is a construction error.
 type Driver interface {
 	CreateClient(ctx context.Context, c Config, center *runtime.Runtime) (*Pool, error)
 }

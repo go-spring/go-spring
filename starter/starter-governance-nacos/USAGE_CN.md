@@ -42,7 +42,7 @@ require (
 package main
 
 import (
-    "go-spring.org/cloud/runtime/dataplane/resilience"
+    "go-spring.org/cloud/runtime/dataplane/outbound/resilience"
     "go-spring.org/spring/gs"
 
     _ "go-spring.org/starter-governance-nacos"
@@ -52,7 +52,7 @@ import (
 type poller struct {
     // mgr 是治理 starter 的 resilience manager bean，在此注入，
     // 而不是从进程级 seam 解析。
-    mgr *resilience.ClientManager
+    mgr *resilience.Manager
 }
 
 func (p *poller) Run(ctx context.Context) error {
@@ -64,9 +64,9 @@ func (p *poller) Run(ctx context.Context) error {
 
 // newPoller 在注入的 manager 之上构建 poller。manager 为 nil——没有
 // cloud/runtime/controlplane/governance bean 的容器——时归一化为一个新的未武装实例。
-func newPoller(mgr *resilience.ClientManager) *poller {
+func newPoller(mgr *resilience.Manager) *poller {
     if mgr == nil {
-        mgr = resilience.NewClientManager()
+        mgr = resilience.NewManager()
     }
     return &poller{mgr: mgr}
 }

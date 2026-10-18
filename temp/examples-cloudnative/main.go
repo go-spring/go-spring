@@ -52,8 +52,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"go-spring.org/cloud/actuator/health"
-	"go-spring.org/cloud/runtime/dataplane/discovery"
-	"go-spring.org/cloud/runtime/dataplane/guard"
+	"go-spring.org/cloud/runtime/dataplane/inbound/admission"
+	"go-spring.org/cloud/runtime/dataplane/kernel/discovery"
 	"go-spring.org/spring/gs"
 
 	_ "go-spring.org/starter-actuator"    // registers the actuator Server bean (gated on spring.actuator.addr)
@@ -102,7 +102,7 @@ var dep = &health.Indicator{
 
 // inboundGuard is the inbound governance object for this server instance. It is
 // shared by the /limited route and by the arbitrary-function demo.
-var inboundGuard guard.Guard
+var inboundGuard admission.Guard
 
 // ----------------------------------------------------------------------------
 // Bean wiring
@@ -160,11 +160,11 @@ func main() {
 	// is armed with a default carrying the rate limit; the guard it hands out
 	// enforces it with its own per-instance state.
 	var err error
-	mgr := guard.NewManager()
-	if err = mgr.Apply(guard.Settings{Default: guard.Policy{RateLimit: 3}}); err != nil {
+	mgr := admission.NewManager()
+	if err = mgr.Apply(admission.Settings{Default: admission.Policy{RateLimit: 3}}); err != nil {
 		fail("guard apply: %v", err)
 	}
-	inboundGuard = mgr.GuardFor(guard.Identity{System: "example", Service: "example:cloudnative"})
+	inboundGuard = mgr.GuardFor(admission.Identity{System: "example", Service: "example:cloudnative"})
 
 	// Wire the gin routes. The RouterRegister receives the Config bean through
 	// the container, so the /greeting handler reads the live Dync value.
@@ -257,12 +257,12 @@ func runTest() {
 	// ErrRateLimited while still admitting a non-empty head.
 	var admitted, rejected int
 	for range 15 {
-		r, done := inboundGuard.Admit(ctx, guard.Request{})
+		r, done := inboundGuard.Admit(ctx, admission.Request{})
 		switch {
 		case r.Admitted():
 			admitted++
-			done(guard.OutcomeSuccess, nil)
-		case errors.Is(r.Err(), guard.ErrRateLimited):
+			done(admission.OutcomeSuccess, nil)
+		case errors.Is(r.Err(), admission.ErrRateLimited):
 			rejected++
 		default:
 			fail("admit: %v", r.Err())
@@ -436,22 +436,22 @@ func init() {
 }
 
 // admissionHandler is the application's own server-side admission wrapper: each
-// request flows through a guard.Guard so rate limiting / bulkhead / breaker shed
+// request flows through a admission.Guard so rate limiting / bulkhead / breaker shed
 // overload with HTTP 429/503 before the business handler runs. Inbound serving
-// is not retried (guard.Policy carries no retry), since handlers are not
+// is not retried (admission.Policy carries no retry), since handlers are not
 // idempotent.
 type admissionHandler struct {
 	next  http.Handler
-	guard guard.Guard
+	guard admission.Guard
 }
 
 func (h *admissionHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	result, done := h.guard.Admit(r.Context(), guard.Request{
+	result, done := h.guard.Admit(r.Context(), admission.Request{
 		Action: r.Method + " " + r.URL.Path,
 	})
 	if !result.Admitted() {
 		switch result.Verdict() {
-		case guard.VerdictCircuitOpen, guard.VerdictDegraded, guard.VerdictFaultInjected:
+		case admission.VerdictCircuitOpen, admission.VerdictDegraded, admission.VerdictFaultInjected:
 			http.Error(w, "service unavailable", http.StatusServiceUnavailable)
 		default:
 			http.Error(w, "too many requests", http.StatusTooManyRequests)
@@ -459,5 +459,5 @@ func (h *admissionHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.next.ServeHTTP(w, r)
-	done(guard.OutcomeSuccess, nil)
+	done(admission.OutcomeSuccess, nil)
 }

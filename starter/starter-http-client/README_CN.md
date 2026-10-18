@@ -34,11 +34,11 @@ go get go-spring.org/starter-http-client
 `http.RoundTripper` 由 [`starter-http-client/httpx`](httpx)
 用三个可组合的 stdlib 抽象装配而成,全部收敛在同一个 `http.RoundTripper` 缝隙上:
 
-* [`discovery`](../../cloud/runtime/dataplane/discovery) —— 设置了 `service-name` 时,`Resolver`
+* [`discovery`](../../cloud/runtime/dataplane/kernel/discovery) —— 设置了 `service-name` 时,`Resolver`
   持续维护最新的端点快照;
-* [`loadbalance`](../../cloud/runtime/dataplane/loadbalance) —— `Pool` 为每次请求挑选一个存活端点
+* [`loadbalance`](../../cloud/runtime/dataplane/kernel/loadbalance) —— `Pool` 为每次请求挑选一个存活端点
   (任意已注册策略,并可选离群剔除),传输层随即把请求主机改写为该端点;
-* [`resilience`](../../cloud/runtime/dataplane/resilience) —— 可选的执行器包裹整条链路,使限流、
+* [`resilience`](../../cloud/runtime/dataplane/outbound/resilience) —— 可选的执行器包裹整条链路,使限流、
   熔断与重试保护每一次调用。由于它位于负载均衡器**之外**,重试会重新挑选一个
   新端点,而熔断器则以逻辑服务名为键。
 

@@ -50,7 +50,7 @@ import (
     "fmt"
     "time"
 
-    "go-spring.org/cloud/runtime/dataplane/resilience"
+    "go-spring.org/cloud/runtime/dataplane/outbound/resilience"
     "go-spring.org/spring/gs"
 
     _ "go-spring.org/starter-governance-etcd"
@@ -59,7 +59,7 @@ import (
 type printer struct {
     // mgr 是治理 starter 的 resilience manager bean，在此注入，
     // 而不是从进程级 seam 解析。
-    mgr *resilience.ClientManager
+    mgr *resilience.Manager
 }
 
 func (p *printer) Run(ctx context.Context) error {
@@ -80,9 +80,9 @@ func (p *printer) Run(ctx context.Context) error {
 
 // newPrinter 在注入的 manager 之上构建 printer。manager 为 nil——没有
 // cloud/runtime/controlplane/governance bean 的容器——时归一化为一个新的未武装实例。
-func newPrinter(mgr *resilience.ClientManager) *printer {
+func newPrinter(mgr *resilience.Manager) *printer {
     if mgr == nil {
-        mgr = resilience.NewClientManager()
+        mgr = resilience.NewManager()
     }
     return &printer{mgr: mgr}
 }

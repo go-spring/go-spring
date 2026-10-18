@@ -66,7 +66,7 @@ import (
     "fmt"
     "net/http"
 
-    "go-spring.org/cloud/runtime/dataplane/discovery"
+    "go-spring.org/cloud/runtime/dataplane/kernel/discovery"
 )
 
 const (
@@ -207,7 +207,7 @@ gs.Run()
 - **熔断按逻辑调用计数而非按尝试**(历史 bug 已修):executor 在重试循环结束后对整个
   `Execute` 只记录一次熔断结果,"rather than once per attempt … which would trip the
   circuit far faster than the configured ErrorThreshold … implies (the 'resilience on =>
-  breaker trips instantly' symptom)"(resilience/client_executor.go)。限流器仍按尝试
+  breaker trips instantly' symptom)"(resilience/executor.go)。限流器仍按尝试
   计费——每次尝试都是真实的下游请求。
 
 ### 2.3 一次请求逐层走读
@@ -340,7 +340,7 @@ endpoint,看打散变化——链路是整条重建的,不用重启;用真实发
 2. 用自己的 binary 做等价手工演练:杀掉后端、循环调用,观察错误从网络/500 错误变为
    `circuit open`;恢复后端后等 `open-duration`(30s)——half-open 试探成功、熔断闭合。
 3. 观察跳变:`resilience.client.breaker.state_change{from=...,to=...}` 计数器递增并输出状态
-   迁移日志(cloud/runtime/dataplane/resilience/observe.go:98-110)。
+   迁移日志(cloud/runtime/dataplane/outbound/resilience/observe.go:98-110)。
 
 ### 4.4 故障注入(免重启)
 
@@ -404,7 +404,7 @@ spring.governance.client.fault.error=timeout    # 或 generic / reset
 2. ~~虚构的 `resilience.*` key~~ —— 已修 2026-08-27:README/conf 注释改指 `spring.governance.*`。
 3. ~~死 key `timeout`~~ —— 已修 2026-08-27:已从 Config 与 README 移除。
 4. ~~熔断按尝试计数("开 resilience => 100% 失败/秒开")~~ —— 已修:executor 现在按逻辑
-   Execute 只记录一次熔断结果(resilience/client_executor.go);限流器有意仍按尝试计费。
+   Execute 只记录一次熔断结果(resilience/executor.go);限流器有意仍按尝试计费。
 5. 静默全局接管 `httpclt.DoRequest`;未知 target 在请求期而非装配期失败。
 6. ~~治理 label 随寻址模式静默变化~~ —— 已修 2026-08-28:只要设置 service-name,label 就是
    `http:<service-name>`(允许与 addr 同配作纯 label);完全没有 service-name 才是 `http:<addr>`。

@@ -62,7 +62,7 @@ import (
     "context"
 
     "github.com/IBM/sarama"
-    "go-spring.org/cloud/runtime/dataplane/traffic"
+    "go-spring.org/cloud/runtime/dataplane/kernel/traffic"
     "go-spring.org/spring/gs"
     StarterKafkaSarama "go-spring.org/starter-kafka-sarama"
 )
@@ -216,7 +216,7 @@ surface:
 ```
 SendMessage / SendMessages
   → build op: operation("publish", msg.Topic), passed explicitly to the observer
-  → fault.ClientManager.WrapClientExecutor (injected faults when spring.governance.client.fault enabled)
+  → clientfault.ClientManager.WrapClientExecutor (injected faults when spring.governance.client.fault enabled)
     → resilience executor wrapper (span + outcome counter + call/attempt duration + access log)
       → resilience executor (breaker / rate limit / retry, policy from governance center)
         → inject W3C trace context + load-test marker into msg.Headers

@@ -22,10 +22,11 @@ import (
 	"go-spring.org/cloud/runtime"
 
 	"go-spring.org/cloud/runtime/controlplane/governance"
-	"go-spring.org/cloud/runtime/dataplane/discovery"
-	"go-spring.org/cloud/runtime/dataplane/fault"
-	"go-spring.org/cloud/runtime/dataplane/loadbalance"
-	"go-spring.org/cloud/runtime/dataplane/resilience"
+	serverfault "go-spring.org/cloud/runtime/dataplane/inbound/fault"
+	"go-spring.org/cloud/runtime/dataplane/kernel/discovery"
+	"go-spring.org/cloud/runtime/dataplane/kernel/loadbalance"
+	clientfault "go-spring.org/cloud/runtime/dataplane/outbound/fault"
+	"go-spring.org/cloud/runtime/dataplane/outbound/resilience"
 	"go-spring.org/cloud/security"
 	"go-spring.org/spring/conf"
 	"go-spring.org/stdlib/flatten"
@@ -41,7 +42,7 @@ func TestNewRoute_ResolvesDiscoveryLabel(t *testing.T) {
 	})
 	lb := loadbalance.NewManager()
 	center, err := runtime.New(
-		resilience.NewClientManager(resilience.NewDefaultDriver(nil)), lb, fault.NewClientManager(nil), fault.NewServerManager(nil), disc, governance.NewPushSource(governance.Config{}))
+		resilience.NewManager(resilience.NewDefaultDriver(nil)), lb, clientfault.NewClientManager(nil), serverfault.NewServerManager(nil), disc, governance.NewPushSource(governance.Config{}))
 	if err != nil {
 		t.Fatal(err)
 	}

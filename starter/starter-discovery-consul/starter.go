@@ -35,7 +35,7 @@
 // this starter publishes a plain instance (any transport) to Consul.
 //
 // The registration core - the single discoveryServer bean that publishes into
-// every configured center (across backends) - lives in cloud/runtime/dataplane/discovery, which
+// every configured center (across backends) - lives in cloud/runtime/dataplane/kernel/discovery, which
 // this package imports anyway, so it exists exactly once per process.
 package StarterDiscoveryConsul
 
@@ -46,7 +46,7 @@ import (
 	"github.com/hashicorp/consul/api"
 	"go-spring.org/cloud/actuator/health"
 	"go-spring.org/cloud/runtime/controlplane/registration"
-	"go-spring.org/cloud/runtime/dataplane/discovery"
+	"go-spring.org/cloud/runtime/dataplane/kernel/discovery"
 	"go-spring.org/log"
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/gs"

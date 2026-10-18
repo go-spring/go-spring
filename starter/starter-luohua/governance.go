@@ -19,9 +19,11 @@ package luohua
 import (
 	"context"
 
-	"go-spring.org/cloud/runtime/dataplane/chain"
+	"go-spring.org/cloud/runtime/dataplane/kernel/breaker"
+	"go-spring.org/cloud/runtime/dataplane/kernel/ratelimit"
+	"go-spring.org/cloud/runtime/dataplane/outbound/chain"
 
-	"go-spring.org/cloud/runtime/dataplane/resilience"
+	"go-spring.org/cloud/runtime/dataplane/outbound/resilience"
 	"go-spring.org/log"
 )
 
@@ -44,13 +46,13 @@ type luohuaResilienceDriver struct {
 	// budget across replicas). It is nullable, and nil is the ordinary case: no
 	// backend starter contributed a store, so the bundled engine gives each
 	// executor a private one — one budget per service label all the same.
-	limiter resilience.ClusterLimiter
+	limiter ratelimit.ClusterLimiter
 }
 
-// NewClientExecutor builds a luohua-flavored [chain.Executor] for service on top
+// NewExecutor builds a luohua-flavored [chain.Executor] for service on top
 // of the bundled engine.
-func (d luohuaResilienceDriver) NewClientExecutor(service string, p resilience.ClientPolicy) (chain.Executor, error) {
-	inner, err := resilience.NewDefaultDriver(d.limiter).NewClientExecutor(service, p)
+func (d luohuaResilienceDriver) NewExecutor(service string, p resilience.Policy) (chain.Executor, error) {
+	inner, err := resilience.NewDefaultDriver(d.limiter).NewExecutor(service, p)
 	if err != nil {
 		return nil, err
 	}
@@ -83,10 +85,10 @@ func (e *luohuaExecutor) Execute(ctx context.Context, op chain.Operation, rec *c
 // SetBreakerEventListener forwards to the inner executor so the breakers of the
 // driver beneath luohua still emit state transitions. A wrapper that swallowed
 // this capability would silently disable breaker observability for
-// spring.resilience.driver=luohua, since [resilience.ClientExecutorFor] attaches the observe
+// spring.resilience.driver=luohua, since [resilience.Manager.ExecutorFor] attaches the observe
 // listener through this handshake.
-func (e *luohuaExecutor) SetBreakerEventListener(l resilience.BreakerEventListener) {
-	if s, ok := e.inner.(resilience.BreakerEventListenerSetter); ok {
+func (e *luohuaExecutor) SetBreakerEventListener(l breaker.EventListener) {
+	if s, ok := e.inner.(breaker.EventListenerSetter); ok {
 		s.SetBreakerEventListener(l)
 	}
 }

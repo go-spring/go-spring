@@ -26,11 +26,11 @@ import (
 	"context"
 	"database/sql/driver"
 
-	"go-spring.org/cloud/runtime/dataplane/chain"
+	"go-spring.org/cloud/runtime/dataplane/outbound/chain"
 
 	taosws "github.com/taosdata/driver-go/v3/taosWS"
 	"go-spring.org/cloud/runtime"
-	"go-spring.org/cloud/runtime/dataplane/resilience"
+	"go-spring.org/cloud/runtime/dataplane/outbound/resilience"
 	"go-spring.org/stdlib/errutil"
 )
 

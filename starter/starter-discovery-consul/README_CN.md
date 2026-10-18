@@ -3,7 +3,7 @@
 [English](README.md) | [中文](README_CN.md)
 
 `starter-discovery-consul` 把**当前实例**注册进 Consul 服务注册中心 —— 它是
-Go-Spring 客户端服务发现(`cloud/runtime/dataplane/discovery`)的注册侧对应物 —— **并且**提供消费侧的
+Go-Spring 客户端服务发现(`cloud/runtime/dataplane/kernel/discovery`)的注册侧对应物 —— **并且**提供消费侧的
 Consul discovery 后端,一个 starter 同时覆盖命名两半。相当于 Spring Cloud 的
 `ServiceRegistry` + `DiscoveryClient`,以 Consul TTL 健康检查为底。
 
@@ -106,7 +106,7 @@ spring.discovery.metadata.version=v1
 
 ### 发现(消费侧)
 
-发现**无需任何自有配置**:每个块的 bean 本身就是一个 `cloud/runtime/dataplane/discovery` 后端,bean 名即
+发现**无需任何自有配置**:每个块的 bean 本身就是一个 `cloud/runtime/dataplane/kernel/discovery` 后端,bean 名即
 `consul.<name>`。client starter 按该名字引用:
 
 ```properties

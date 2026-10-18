@@ -21,8 +21,8 @@ import (
 	"errors"
 
 	"go-spring.org/cloud/runtime"
-	"go-spring.org/cloud/runtime/dataplane/guard"
-	"go-spring.org/cloud/runtime/dataplane/observability"
+	"go-spring.org/cloud/runtime/dataplane/inbound/admission"
+	observability "go-spring.org/cloud/runtime/dataplane/inbound/observe"
 	"trpc.group/trpc-go/trpc-go"
 	"trpc.group/trpc-go/trpc-go/errs"
 	"trpc.group/trpc-go/trpc-go/filter"
@@ -62,11 +62,11 @@ func actionName(ctx context.Context) string {
 // branch on code can tell throttling from an arbitrary handler failure.
 func refusalError(ref *runtime.Refusal) error {
 	switch ref.Verdict() {
-	case guard.VerdictRateLimited, guard.VerdictBulkheadFull:
+	case admission.VerdictRateLimited, admission.VerdictBulkheadFull:
 		return errs.New(errs.RetServerThrottled, ref.Error())
-	case guard.VerdictCircuitOpen, guard.VerdictDegraded:
+	case admission.VerdictCircuitOpen, admission.VerdictDegraded:
 		return errs.New(errs.RetServerOverload, ref.Error())
-	case guard.VerdictFaultInjected:
+	case admission.VerdictFaultInjected:
 		return errs.New(errs.RetServerSystemErr, ref.Error())
 	default:
 		return ref

@@ -156,7 +156,7 @@ gs.Run()
   │     （留空 = 先回退家族级 `spring.<family>.default.driver`，再按类型注入唯一 Driver bean；指定的 bean 不存在则启动失败）
   │     → d.CreateClient(ctx, c, center)：构造器把注入的
   │       *runtime.Runtime（变量 center）交给 driver；它所需的
-  │       *resilience.ClientManager / *fault.ClientManager 从治理中心读取
+  │       *resilience.Manager / *clientfault.ClientManager 从治理中心读取
   │       （经 center.ResilienceClient() / center.FaultClient()）→
   │       ParseDSN → taosws.NewConnector → NewClient
   │     → NewClient [client.go]：建 slot、包 guardedConnector、

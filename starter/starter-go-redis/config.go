@@ -19,7 +19,7 @@ package StarterGoRedis
 import (
 	"time"
 
-	"go-spring.org/cloud/runtime/dataplane/discovery"
+	"go-spring.org/cloud/runtime/dataplane/kernel/discovery"
 	"go-spring.org/cloud/security"
 )
 

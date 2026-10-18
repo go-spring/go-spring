@@ -182,7 +182,7 @@ gs.Run()
   │       NewClient, which fixes the identity (name servers + Config) AND attaches
   │       the governance executor in the same step — center.ExecutorFor("rocketmq",
   │       service) over the injected *runtime.Runtime (which bundles the
-  │       *resilience.ClientManager / *fault.ClientManager beans)        [driver.go, client.go]
+  │       *resilience.Manager / *clientfault.ClientManager beans)        [driver.go, client.go]
   │    3. Ping probe (opt-in): TCP dial, first reachable addr wins, 3s budget
   │       per address; runs AFTER assembly, failure → boot error (Client closed)
   ├─ app injects *Client wherever `autowire:"<name>"` appears
@@ -219,7 +219,7 @@ GuardedSend(ctx, cl, producer, msg)                       [command.go]
        ├─ executor is a pass-through (governance off) or absent (bare Client)
        │     → producer.SendSync runs inline, identical to raw
        └─ exec.Execute(ctx, chain.Call{}, injectTraceContext + send)  — fault.ClientManager outermost
-                  (fault.ClientManager.WrapClientExecutor), resilience observer inside it; the
+                  (clientfault.ClientManager.WrapClientExecutor), resilience observer inside it; the
                   observer emits span + messaging.client.* metrics + access log
                   from the declaration; rejection returns a resilience sentinel
                   and the send never reaches the wire
@@ -230,11 +230,11 @@ The consumer direction declares the same way inside the driver's receive callbac
 [messaging.go].
 
 Wrap order inside `center.ExecutorFor("rocketmq", service)` [cloud/runtime/controlplane/governance/center.go], called
-from `NewClient`: `mgr.ClientExecutorFor("rocketmq", service)` — mgr being the injected
-`*resilience.ClientManager` — returns the fully assembled executor (core breaker/limiter/retry wrapped by
+from `NewClient`: `mgr.ExecutorFor("rocketmq", service)` — mgr being the injected
+`*resilience.Manager` — returns the fully assembled executor (core breaker/limiter/retry wrapped by
 the resilience observer — outcome counters + access log) → wrapped outermost by
-`inj.WrapClientExecutor(...)` (runtime fault injection from the injected `*fault.ClientManager`;
-the injected error flows through the inner retry loop, so the breaker counts it). The `*resilience.ClientManager`
+`inj.WrapClientExecutor(...)` (runtime fault injection from the injected `*clientfault.ClientManager`;
+the injected error flows through the inner retry loop, so the breaker counts it). The `*resilience.Manager`
 is required — the container always supplies it; there is no unmanaged/observe-only fallback.
 
 - Both the driver's `Publish` (via `GuardedSend`) and its consume path share this one seam. **NOT
@@ -247,7 +247,7 @@ is required — the container always supplies it; there is no unmanaged/observe-
   convention as the kafka starters. Two config entries pointing at the same name-server cluster
   therefore share one governance service (the `name-servers` segment never reaches the label;
   see §6).
-- With governance off, `mgr.ClientExecutorFor` yields a transparent pass-through and `GuardedSend`
+- With governance off, `mgr.ExecutorFor` yields a transparent pass-through and `GuardedSend`
   behaves exactly like `SendSync` [command.go, client.go] (proved by TestExecutePassThrough
   [rocketmq_test.go:47-53]).
 - Rejections (rate limit / open breaker) return a resilience sentinel error and **never invoke the
@@ -357,7 +357,7 @@ comma-joined name-servers — check it matches your governance rules):
   seam — → rejections return `resilience.ErrRateLimited`, the send is never invoked, and
   `resilience.client.calls` records appear with `resilience.error_type=rate_limited`, alongside one access log
   per call (`_app_rocketmq_access`, or `_app_resilience` on the fallback path)
-  [cloud/runtime/dataplane/resilience/observe.go].
+  [cloud/runtime/dataplane/outbound/resilience/observe.go].
 - Raw `SendSync` called directly on a producer is unguarded (§2.2): it is the app's own path and
   has no executor around it. That contrast IS the §2.2 boundary.
 

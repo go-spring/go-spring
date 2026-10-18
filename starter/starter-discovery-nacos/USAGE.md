@@ -15,7 +15,7 @@ per configured center —
 - **Provider half** (`spring.discovery.nacos.<name>.*` + `spring.discovery.*`): registers this
   process into every configured Nacos center once the app is ready. For VM / bare-metal /
   hybrid deployments; in pure Kubernetes the platform registers Pods for you.
-- **Consumer half** (no config of its own): the same bean is a `cloud/runtime/dataplane/discovery` backend which
+- **Consumer half** (no config of its own): the same bean is a `cloud/runtime/dataplane/kernel/discovery` backend which
   client starters (gateway `lb://` routes, `spring.http-client.instances.<n>.discovery`, etc.)
   resolve through by citing the bean name `nacos.<name>`.
 
@@ -52,7 +52,7 @@ demo/
 require (
     go-spring.org/spring                     v1.3.x
     go-spring.org/starter-discovery-nacos     latest
-    go-spring.org/starter-gateway            latest   // consumer: lb:// routes via cloud/runtime/dataplane/discovery
+    go-spring.org/starter-gateway            latest   // consumer: lb:// routes via cloud/runtime/dataplane/kernel/discovery
     go-spring.org/starter-echo               latest   // the served HTTP surface of the provider
 )
 ```

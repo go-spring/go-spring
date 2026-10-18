@@ -24,7 +24,7 @@ import (
 	"testing"
 	"time"
 
-	"go-spring.org/cloud/runtime/dataplane/discovery"
+	"go-spring.org/cloud/runtime/dataplane/kernel/discovery"
 	"go-spring.org/stdlib/testing/assert"
 )
 

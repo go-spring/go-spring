@@ -4,7 +4,7 @@
 
 `starter-discovery-consul` registers the **current instance** into a Consul
 service registry — the provider-side counterpart to Go-Spring's client-side
-discovery (`cloud/runtime/dataplane/discovery`) — **and** provides the consumer-side Consul
+discovery (`cloud/runtime/dataplane/kernel/discovery`) — **and** provides the consumer-side Consul
 discovery backend, so one starter serves both halves of the naming idiom. It is
 the Go-Spring equivalent of Spring Cloud's `ServiceRegistry` + `DiscoveryClient`,
 backed by Consul TTL health checks.
@@ -28,7 +28,7 @@ becomes ONE backend bean named `consul.<name>` that implements BOTH the write
 side (`registration.Registry`) and the read side (`discovery.Discovery`), sharing
 the block's client. There is no default/unnamed block.
 
-Registration itself is owned by the [cloud/runtime/dataplane/discovery](../../cloud/runtime/dataplane/discovery)
+Registration itself is owned by the [cloud/runtime/dataplane/kernel/discovery](../../cloud/runtime/dataplane/kernel/discovery)
 core (imported transitively): its single `discoveryServer` `gs.Server` collects
 the registry beans of **every** configured center — across backends — and
 registers the instance into all of them once the app is ready, deregisters from
@@ -122,7 +122,7 @@ migration):
 ### Discovering (other instances)
 
 Discovery needs **no configuration of its own**: each block's bean IS a
-`cloud/runtime/dataplane/discovery` backend under the bean name `consul.<name>`. Client starters
+`cloud/runtime/dataplane/kernel/discovery` backend under the bean name `consul.<name>`. Client starters
 cite that name:
 
 ```properties

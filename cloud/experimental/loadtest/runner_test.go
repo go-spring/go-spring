@@ -19,14 +19,14 @@ package loadtest
 import (
 	"context"
 	"errors"
-	"go-spring.org/cloud/runtime/dataplane/chain"
+	"go-spring.org/cloud/runtime/dataplane/outbound/chain"
 	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
 
-	"go-spring.org/cloud/runtime/dataplane/fault"
-	"go-spring.org/cloud/runtime/dataplane/traffic"
+	"go-spring.org/cloud/runtime/dataplane/kernel/fault"
+	"go-spring.org/cloud/runtime/dataplane/kernel/traffic"
 	"go-spring.org/stdlib/errutil"
 	"go-spring.org/stdlib/testing/assert"
 )

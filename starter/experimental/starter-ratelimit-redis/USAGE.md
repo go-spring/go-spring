@@ -5,12 +5,12 @@ against the starter source (`starter.go`, `config.go`), the counter implementati
 `starter-go-redis/experimental/ratelimit.go`, the [governance wiring](../../cloud/runtime/controlplane/governance/starter.go)
 that makes the store reach the driver bean, and the self-asserting [example/](example)
 (`example/check.sh`). Rate-limiting semantics themselves are documented in
-`cloud/runtime/dataplane/resilience` — everything below is this starter's increment.
+`cloud/runtime/dataplane/outbound/resilience` — everything below is this starter's increment.
 
 **Activation**: any `spring.ratelimit.redis.*` key arms the starter's module, and the block's one key
 must be set: `spring.ratelimit.redis.client` names the `*goredis.Client` bean (provided by
 starter-go-redis under `spring.go-redis.instances.<client>`) whose Redis instance backs the
-counters. The starter contributes ONE bean of type `resilience.ClusterLimiter`. With none in the container
+counters. The starter contributes ONE bean of type `ratelimit.ClusterLimiter`. With none in the container
 each executor counts in a budget of its own, so contributing this one is the whole switch:
 [cloud/runtime/controlplane/governance](../../../cloud/runtime/controlplane/governance/README.md)'s driver bean injects it, and every executor in the
 process then spends one Redis budget per scope — across replicas, which an executor-local budget
@@ -57,7 +57,7 @@ func main() { gs.Run() }
 ```
 
 **web.go** — the application's entire limiting surface. The budget is a
-`resilience.ClientPolicy` read from the governance rules, and the call goes through the executor:
+`resilience.Policy` read from the governance rules, and the call goes through the executor:
 
 ```go
 package main
@@ -67,7 +67,7 @@ import (
     "errors"
     "net/http"
 
-    "go-spring.org/cloud/runtime/dataplane/resilience"
+    "go-spring.org/cloud/runtime/dataplane/outbound/resilience"
     "go-spring.org/spring/gs"
 )
 
@@ -76,17 +76,17 @@ import (
 const service = "ratelimit-redis:api"
 
 func init() {
-    gs.Provide(func(mgr *resilience.ClientManager) *gs.HttpServeMux {
+    gs.Provide(func(mgr *resilience.Manager) *gs.HttpServeMux {
         mux := http.NewServeMux()
         // Two handlers model two replicas: no shared in-process state. Both
         // spend the one Redis-backed counter store this process contributed.
-        mux.Handle("/a/", serve(mgr.ClientExecutorFor("ratelimit-redis", service)))
-        mux.Handle("/b/", serve(mgr.ClientExecutorFor("ratelimit-redis", service)))
+        mux.Handle("/a/", serve(mgr.ExecutorFor("ratelimit-redis", service)))
+        mux.Handle("/b/", serve(mgr.ExecutorFor("ratelimit-redis", service)))
         return &gs.HttpServeMux{Handler: mux}
     })
 }
 
-func serve(exec resilience.ClientExecutor) http.HandlerFunc {
+func serve(exec chain.Executor) http.HandlerFunc {
     return func(w http.ResponseWriter, r *http.Request) {
         err := exec.Execute(r.Context(), func(context.Context) error { return nil })
         switch {
@@ -153,15 +153,15 @@ import starter-go-redis + starter-ratelimit-redis
   └─ gs.Module(gs.OnProperty("spring.ratelimit.redis"))
         └─ conf.Bind("${spring.ratelimit.redis}") → Config{Client}
              ├─ fail fast when Client == ""   (boot error naming the property)
-             └─ Provide func(client *goredis.Client) (resilience.ClusterLimiter, error)
+             └─ Provide func(client *goredis.Client) (ratelimit.ClusterLimiter, error)
                   (gs.TagArg(c.Client); the interface return type IS the bean type —
                    no Export is needed)
 
 gs.Run()
-  ├─ this store is now the container's only resilience.ClusterLimiter bean
+  ├─ this store is now the container's only ratelimit.ClusterLimiter bean
   ├─ bean wiring: the *goredis.Client bean named by client is injected by name;
   │     NewClusterLimiter wraps its UniversalClient (a nil client is a ctor error)
-  ├─ the resilience driver bean injects resilience.ClusterLimiter, so every executor
+  ├─ the resilience driver bean injects ratelimit.ClusterLimiter, so every executor
   │     it builds spends this store — and the store itself instantiates because
   │     that driver needs it
   └─ on SIGTERM: nothing to release — the store holds no state of its own and
@@ -211,7 +211,7 @@ what arms the starter; no other key belongs under it.
 | `client` | string | — | **Required.** Name of the `*goredis.Client` bean under `spring.go-redis.instances.<client>`; checked before bean registration and injected with `TagArg(c.Client)` at construction. | Empty → boot fails naming the property; a name with no such bean → bean-wiring failure at boot. |
 
 ⚠ The rate-limit knobs (`rate-limit`, `burst`, `algorithm`, `window`, `rate-limit-max-wait`) are NOT
-starter config: they are `resilience.ClientPolicy` fields on the governance rule document, per service.
+starter config: they are `resilience.Policy` fields on the governance rule document, per service.
 
 ---
 

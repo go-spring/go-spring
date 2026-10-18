@@ -24,7 +24,7 @@ import (
 
 	"go-spring.org/cloud/observability/attrs"
 	"go-spring.org/cloud/propagate"
-	"go-spring.org/cloud/runtime/dataplane/traffic"
+	"go-spring.org/cloud/runtime/dataplane/kernel/traffic"
 	"go-spring.org/log"
 	"go.opentelemetry.io/otel/propagation"
 )

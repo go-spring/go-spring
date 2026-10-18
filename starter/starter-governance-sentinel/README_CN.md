@@ -3,15 +3,15 @@
 [English](README.md) | [中文](README_CN.md)
 
 `starter-governance-sentinel` 把 [alibaba/sentinel-golang][sentinel] 注册为
-[`cloud/runtime/dataplane/resilience`](../../cloud/runtime/dataplane/resilience) 韧性框架的生产 driver。
+[`cloud/runtime/dataplane/outbound/resilience`](../../cloud/runtime/dataplane/outbound/resilience) 韧性框架的生产 driver。
 空导入它,并在治理文档里
 写 `spring.resilience.driver=sentinel` —— 此后每个经治理中心解析 executor 的客户端,都在
-同一份中立 `ClientPolicy` 之上获得自适应限流、熔断与并发隔离,无需按客户端配 key,
+同一份中立 `Policy` 之上获得自适应限流、熔断与并发隔离,无需按客户端配 key,
 也无需改代码。
 
 它属于 *global / infrastructure*(全局 / 基础设施)形态(见
 [starter/DESIGN.md](../DESIGN.md) §2.4):只贡献一个 bean —— 名为 `sentinel`
-的 `resilience.Driver`,由 [`cloud/runtime/dataplane/resilience`](../../cloud/runtime/dataplane/resilience) 收进 driver
+的 `resilience.Driver`,由 [`cloud/runtime/dataplane/outbound/resilience`](../../cloud/runtime/dataplane/outbound/resilience) 收进 driver
 目录 —— 也不开监听端口。`sentinel.InitDefault` 在 import 时就执行,故环境异常
 在启动时立刻炸出,而不是等到第一次调用时才暴露。
 
@@ -53,9 +53,9 @@ spring.governance.client.default.timeout=1s
 ### 3. 或直接使用
 
 ```go
-import "go-spring.org/cloud/runtime/dataplane/resilience"
+import "go-spring.org/cloud/runtime/dataplane/outbound/resilience"
 
-exec, _ := starter_governance_sentinel.NewSentinelDriver().NewExecutor("sentinel:test", resilience.ClientPolicy{
+exec, _ := starter_governance_sentinel.NewSentinelDriver().NewExecutor("sentinel:test", resilience.Policy{
     RateLimit:      100,
     ErrorThreshold: 10,
     OpenDuration:   30 * time.Second,
@@ -72,7 +72,7 @@ client := &http.Client{Transport: resilience.NewRoundTripper(http.DefaultTranspo
 
 ## Policy 映射
 
-中立的 `resilience.ClientPolicy` / `ServerPolicy` 经共享的 rules.go 翻译
+中立的 `resilience.Policy` / `ServerPolicy` 经共享的 rules.go 翻译
 （出站与入站引擎走同一份翻译，不会漂移）后按 service 懒加载到 sentinel 规则：
 
 | 策略旋钮 | Sentinel 规则 | 触发时的中立 error |
@@ -97,7 +97,7 @@ sentinel 的 system / hotspot / 集群流控属 future work：它们是入站专
 
 ## Default driver
 
-`cloud/runtime/dataplane/resilience` 内置零依赖的 `default` driver,供测试与轻量场景。要在
+`cloud/runtime/dataplane/outbound/resilience` 内置零依赖的 `default` driver,供测试与轻量场景。要在
 生产链路上得到实打实的限流与熔断,请导入本 starter;若无需即可继续使用
 `default`。
 

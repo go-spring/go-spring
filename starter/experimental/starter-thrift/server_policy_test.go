@@ -22,7 +22,7 @@ import (
 	"testing"
 
 	"go-spring.org/cloud/runtime"
-	"go-spring.org/cloud/runtime/dataplane/guard"
+	"go-spring.org/cloud/runtime/dataplane/inbound/admission"
 
 	"github.com/apache/thrift/lib/go/thrift"
 )
@@ -45,15 +45,15 @@ func (f *countingFunc) Process(ctx context.Context, seqID int32, in, out thrift.
 
 // inboundFor builds the inbound governance object for the thrift test label over
 // a guard manager armed with p.
-func inboundFor(p guard.Policy) *runtime.Inbound {
-	mgr := guard.NewManager()
-	_ = mgr.Apply(guard.Settings{Default: p})
+func inboundFor(p admission.Policy) *runtime.Inbound {
+	mgr := admission.NewManager()
+	_ = mgr.Apply(admission.Settings{Default: p})
 	return runtime.InboundOver("thrift", "thrift:test", mgr)
 }
 
 func TestServerPolicy_PassThroughRunsServiceOnce(t *testing.T) {
 	svc := &countingFunc{}
-	in := inboundFor(guard.Policy{})
+	in := inboundFor(admission.Policy{})
 	ok, ex := admit(context.Background(), in, "thrift:test", "Ping", 1, nil, nil, svc)
 	if !ok || ex != nil {
 		t.Fatalf("pass-through should succeed: ok=%v err=%v", ok, ex)
@@ -66,7 +66,7 @@ func TestServerPolicy_PassThroughRunsServiceOnce(t *testing.T) {
 // A rejection must not reach the service, and must surface as a thrift
 // application exception (thrift has no status-code channel).
 func TestServerPolicy_RejectionNeverReachesService(t *testing.T) {
-	in := inboundFor(guard.Policy{RateLimit: 1, Burst: 1})
+	in := inboundFor(admission.Policy{RateLimit: 1, Burst: 1})
 
 	// Consume the only token, so the request under test is the refused one.
 	ok, ex := admit(context.Background(), in, "thrift:test", "Ping", 1, nil, nil, &countingFunc{})
@@ -98,7 +98,7 @@ func TestServerPolicy_RejectionNeverReachesService(t *testing.T) {
 func TestServerPolicy_ServiceExceptionPassesThrough(t *testing.T) {
 	want := thrift.NewTApplicationException(thrift.UNKNOWN_METHOD, "no such method")
 	svc := &countingFunc{err: want}
-	in := inboundFor(guard.Policy{})
+	in := inboundFor(admission.Policy{})
 	ok, ex := admit(context.Background(), in, "thrift:test", "Ping", 1, nil, nil, svc)
 	if ok || ex != want {
 		t.Fatalf("service exception must pass through unchanged: ok=%v err=%v", ok, ex)
@@ -109,7 +109,7 @@ func TestServerPolicy_ServiceExceptionPassesThrough(t *testing.T) {
 // once.
 func TestServerPolicy_DoesNotReplayService(t *testing.T) {
 	svc := &countingFunc{err: thrift.NewTApplicationException(thrift.INTERNAL_ERROR, "boom")}
-	in := inboundFor(guard.Policy{})
+	in := inboundFor(admission.Policy{})
 	_, ex := admit(context.Background(), in, "thrift:test", "Ping", 1, nil, nil, svc)
 	if svc.runs != 1 {
 		t.Fatalf("service must run exactly once, ran %d", svc.runs)

@@ -21,7 +21,7 @@ import (
 	"testing"
 
 	"go-spring.org/cloud/runtime"
-	"go-spring.org/cloud/runtime/dataplane/discovery"
+	"go-spring.org/cloud/runtime/dataplane/kernel/discovery"
 	"go-spring.org/spring/gs"
 )
 

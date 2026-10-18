@@ -22,8 +22,9 @@ import (
 
 	"github.com/bradfitz/gomemcache/memcache"
 	"go-spring.org/cloud/runtime"
-	"go-spring.org/cloud/runtime/dataplane/fault"
-	"go-spring.org/cloud/runtime/dataplane/resilience"
+	serverfault "go-spring.org/cloud/runtime/dataplane/inbound/fault"
+	clientfault "go-spring.org/cloud/runtime/dataplane/outbound/fault"
+	"go-spring.org/cloud/runtime/dataplane/outbound/resilience"
 )
 
 // fakeInner is a scripted tail: it records the keys it was called with and
@@ -120,7 +121,7 @@ func (p prefixLayer) Delete(ctx context.Context, key string) error {
 // governance off), the adapter is not.
 func newChainClient(t *testing.T, tail InnerClient) *Client {
 	t.Helper()
-	ctr, err := runtime.NewProcess(resilience.NewClientManager(resilience.NewDefaultDriver(nil)), fault.NewClientManager(nil), fault.NewServerManager(nil))
+	ctr, err := runtime.NewProcess(resilience.NewManager(resilience.NewDefaultDriver(nil)), clientfault.NewClientManager(nil), serverfault.NewServerManager(nil))
 	if err != nil {
 		t.Fatal(err)
 	}

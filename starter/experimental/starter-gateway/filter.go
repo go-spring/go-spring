@@ -25,7 +25,8 @@ import (
 	"sync"
 	"time"
 
-	"go-spring.org/cloud/runtime/dataplane/resilience"
+	"go-spring.org/cloud/runtime/dataplane/kernel/ratelimit"
+	"go-spring.org/cloud/runtime/dataplane/outbound/resilience"
 	"go-spring.org/log"
 )
 
@@ -223,7 +224,7 @@ func requestIDFilter(args []string) (Filter, error) {
 // One store covers the whole process, and with a shared backend (a Redis store,
 // say) every gateway replica shares one budget per key with no route-level
 // switch.
-func rateLimitFilter(args []string, limiter resilience.ClusterLimiter) (Filter, error) {
+func rateLimitFilter(args []string, limiter ratelimit.ClusterLimiter) (Filter, error) {
 	if limiter == nil {
 		// A hand-built RouteTable (a test, a caller that skipped the wiring) has no
 		// store; normalize here so the filter never dereferences a nil store, the
@@ -234,7 +235,7 @@ func rateLimitFilter(args []string, limiter resilience.ClusterLimiter) (Filter, 
 	if err != nil {
 		return nil, err
 	}
-	pol := resilience.ClientPolicy{Algorithm: resilience.Algorithm(kv["algorithm"])}
+	pol := resilience.Policy{Algorithm: ratelimit.Algorithm(kv["algorithm"])}
 	if s := kv["rate"]; s != "" {
 		if pol.RateLimit, err = strconv.ParseFloat(s, 64); err != nil {
 			return nil, &parseError{what: "rateLimit rate", token: s}

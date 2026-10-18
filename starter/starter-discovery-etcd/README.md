@@ -4,7 +4,7 @@
 
 `starter-discovery-etcd` registers the **current instance** into an etcd cluster —
 the provider-side counterpart to Go-Spring's client-side discovery
-(`cloud/runtime/dataplane/discovery`) — **and** provides the consumer-side etcd discovery
+(`cloud/runtime/dataplane/kernel/discovery`) — **and** provides the consumer-side etcd discovery
 backend, so one starter serves both halves of the naming idiom. It is the
 Go-Spring equivalent of Spring Cloud's `ServiceRegistry` + `DiscoveryClient`,
 backed by etcd leases.
@@ -28,7 +28,7 @@ ONE backend bean named `etcd.<name>` that implements BOTH the write side
 (`registration.Registry`) and the read side (`discovery.Discovery`), sharing the
 block's client and key prefix. There is no default/unnamed block.
 
-Registration itself is owned by the [cloud/runtime/dataplane/discovery](../../cloud/runtime/dataplane/discovery)
+Registration itself is owned by the [cloud/runtime/dataplane/kernel/discovery](../../cloud/runtime/dataplane/kernel/discovery)
 core (imported transitively): its single `discoveryServer` `gs.Server` collects
 the discovery beans of **every** configured center — across backends — and
 registers the instance into all of them once the app is ready, deregisters from
@@ -120,7 +120,7 @@ can reconstruct an `Endpoint`.
 ### Discovering (other instances)
 
 Discovery needs **no configuration of its own**: each block's bean IS a
-`cloud/runtime/dataplane/discovery` backend under the bean name `etcd.<name>`. Client starters
+`cloud/runtime/dataplane/kernel/discovery` backend under the bean name `etcd.<name>`. Client starters
 cite that name:
 
 ```properties

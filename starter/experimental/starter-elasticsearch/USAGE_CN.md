@@ -64,7 +64,7 @@ Consul/Nacos/k8s；见 example/discovery.go）：
 ```go
 package main
 
-import "go-spring.org/cloud/runtime/dataplane/discovery"
+import "go-spring.org/cloud/runtime/dataplane/kernel/discovery"
 
 func init() {
     gs.Provide(func() (discovery.Discovery, error) {
@@ -244,7 +244,7 @@ elasticsearch API（Index/Get/...）
 5. 完成时 executor 发射唯一的 span、call 级/attempt 级 duration 直方图与访问日志。
    调用方拿到的与裸 go-elasticsearch 完全一致——包括 4xx 的 `res.IsError()` 响应体；
    只有传输层错误进入异常路径（5xx 由 resilience round-tripper 映射为可触发熔断、
-   可重试的错误，cloud/runtime/dataplane/resilience/roundtripper.go:99-104）。
+   可重试的错误，cloud/runtime/dataplane/outbound/resilience/roundtripper.go:99-104）。
 
 **每次调用都要传 context。** 它承载这次调用的取消与截止时间，resilience 层打开的操作 span
 也继承它——`HealthCheck` 与健康指示器都显式传 context [starter.go, health.go]；

@@ -22,7 +22,7 @@ package StarterRatelimitRedis
 // of its own, it reuses a *goredis.Client bean registered by starter-go-redis.
 //
 // The rate-limit knobs (rate-limit/burst/algorithm/window/rate-limit-max-wait)
-// are NOT here: they are fields of resilience.ClientPolicy, configured per service on
+// are NOT here: they are fields of resilience.Policy, configured per service on
 // the governance rule document, and read by the executor that spends the
 // budget.
 type Config struct {

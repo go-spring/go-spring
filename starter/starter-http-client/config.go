@@ -17,8 +17,8 @@
 package StarterHTTPClient
 
 import (
-	"go-spring.org/cloud/runtime/dataplane/discovery"
-	"go-spring.org/cloud/runtime/dataplane/label"
+	"go-spring.org/cloud/runtime/dataplane/kernel/discovery"
+	"go-spring.org/cloud/runtime/dataplane/kernel/label"
 	"go-spring.org/cloud/security"
 	"go-spring.org/starter-http-client/httpx"
 	"go-spring.org/stdlib/errutil"

@@ -157,8 +157,8 @@ gs.Run()
   │    │        static creds + region + bucket-lookup + a dynamicTransport inside minio.Options
   │    │      → NewClient builds the *Client wrapper: identity, exec =
   │    │        center.ExecutorFor("s3", "s3:<endpoint>") (center is the injected
-  │    │        *runtime.Runtime, holding the *resilience.ClientManager /
-  │    │        *fault.ClientManager beans), then installs the transport —
+  │    │        *runtime.Runtime, holding the *resilience.Manager /
+  │    │        *clientfault.ClientManager beans), then installs the transport —
   │    │        declaration outermost, resilience inside
   │    ├─ ping=true only: fail-fast probe HealthCheck(ctx, client) — one ListBuckets
   │    │      straight to the raw client; an unreachable endpoint or rejected credentials
@@ -194,11 +194,11 @@ straight through to `http.DefaultTransport`.
    read by nobody.
 3. The request enters the executor built at
    construction for service `s3:<endpoint>` from the `*runtime.Runtime` the ctor passed
-   down (`*resilience.ClientManager` / `*fault.ClientManager` beans) — retry / rate-limit /
+   down (`*resilience.Manager` / `*clientfault.ClientManager` beans) — retry / rate-limit /
    circuit-breaker / bulkhead when a governance rules source applies them (hot-reloadable through
    the governance center); the resilience manager is required and always supplied by the
    container, so there is no unmanaged/observe-only fallback. The
-   `*fault.ClientManager` (nil-safe) may inject failures for drills. This executor is the SINGLE
+   `*clientfault.ClientManager` (nil-safe) may inject failures for drills. This executor is the SINGLE
    emitter: it opens the call span, records the call-level `db.client.operation.duration`,
    the attempt-level `db.client.attempt.duration` per retry, and writes one access log —
    covering the whole call, retries included (minio-go ships no OTel hooks of its own).

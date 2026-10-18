@@ -152,5 +152,5 @@ Apache 2.0. See [LICENSE](../../../LICENSE).
 * **A nil `Compensate` is `CompensationFailed`, not a silent skip.** An
   irreversible step is a decision the application must own explicitly.
 * **Retries are the shared resilience `default` driver's job.** `RetryPolicy`
-  is `resilience.ClientPolicy`, so retry behaviour and tuning live in the
+  is `resilience.Policy`, so retry behaviour and tuning live in the
   resilience config rather than in a private retry loop.

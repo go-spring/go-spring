@@ -23,8 +23,8 @@ import (
 	"testing"
 	"time"
 
-	"go-spring.org/cloud/runtime/dataplane/chain"
-	"go-spring.org/cloud/runtime/dataplane/resilience"
+	"go-spring.org/cloud/runtime/dataplane/outbound/chain"
+	"go-spring.org/cloud/runtime/dataplane/outbound/resilience"
 	"go-spring.org/stdlib/testing/assert"
 )
 
@@ -38,7 +38,7 @@ import (
 // outcomes the drivers must agree on, verdict by verdict.
 type equivCase struct {
 	name   string
-	policy resilience.ClientPolicy
+	policy resilience.Policy
 	script func(e chain.Executor) []error
 }
 
@@ -47,9 +47,9 @@ type equivCase struct {
 // sentinel error it carried.
 func runEquiv(t *testing.T, c equivCase) {
 	t.Helper()
-	def, err := resilience.NewDefaultDriver(nil).NewClientExecutor("equiv:"+c.name, c.policy)
+	def, err := resilience.NewDefaultDriver(nil).NewExecutor("equiv:"+c.name, c.policy)
 	assert.Error(t, err).Nil()
-	sen, err := NewSentinelDriver().NewClientExecutor("equiv-sentinel:"+c.name, c.policy)
+	sen, err := NewSentinelDriver().NewExecutor("equiv-sentinel:"+c.name, c.policy)
 	assert.Error(t, err).Nil()
 
 	want := c.script(def)
@@ -75,7 +75,7 @@ func runEquiv(t *testing.T, c equivCase) {
 func TestEquivRateLimit(t *testing.T) {
 	runEquiv(t, equivCase{
 		name:   "ratelimit",
-		policy: resilience.ClientPolicy{RateLimit: 2},
+		policy: resilience.Policy{RateLimit: 2},
 		script: func(e chain.Executor) []error {
 			var out []error
 			for range 3 {
@@ -89,7 +89,7 @@ func TestEquivRateLimit(t *testing.T) {
 func TestEquivConsecutiveBreaker(t *testing.T) {
 	runEquiv(t, equivCase{
 		name:   "breaker",
-		policy: resilience.ClientPolicy{ErrorThreshold: 1, OpenDuration: time.Minute},
+		policy: resilience.Policy{ErrorThreshold: 1, OpenDuration: time.Minute},
 		script: func(e chain.Executor) []error {
 			var out []error
 			// Trip: one failure.

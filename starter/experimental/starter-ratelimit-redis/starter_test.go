@@ -27,8 +27,10 @@ import (
 	"github.com/alicebob/miniredis/v2"
 	"github.com/redis/go-redis/v9"
 	"go-spring.org/cloud/runtime"
-	"go-spring.org/cloud/runtime/dataplane/fault"
-	"go-spring.org/cloud/runtime/dataplane/resilience"
+	serverfault "go-spring.org/cloud/runtime/dataplane/inbound/fault"
+	"go-spring.org/cloud/runtime/dataplane/kernel/ratelimit"
+	clientfault "go-spring.org/cloud/runtime/dataplane/outbound/fault"
+	"go-spring.org/cloud/runtime/dataplane/outbound/resilience"
 	"go-spring.org/spring/gs"
 	goredis "go-spring.org/starter-go-redis"
 	experimental "go-spring.org/starter-go-redis/experimental"
@@ -48,7 +50,7 @@ func newMiniRedis(t *testing.T) (*miniredis.Miniredis, redis.UniversalClient) {
 // newStore builds the store the starter contributes, over cli. Two stores over
 // one miniredis (and two clients) stand in for two replicas: each counts
 // nothing locally, both spend the same Redis budget.
-func newStore(t *testing.T, cli redis.UniversalClient) resilience.ClusterLimiter {
+func newStore(t *testing.T, cli redis.UniversalClient) ratelimit.ClusterLimiter {
 	t.Helper()
 	c, err := experimental.NewClusterLimiter(cli)
 	if err != nil {
@@ -65,7 +67,7 @@ func TestSharedBudgetAcrossReplicas(t *testing.T) {
 	a := newStore(t, cli)
 	b := newStore(t, cli)
 	ctx := context.Background()
-	p := resilience.RateSpec{RateLimit: 0.001, Burst: 5}
+	p := ratelimit.Spec{RateLimit: 0.001, Burst: 5}
 
 	allowed := 0
 	for i := 0; i < 5; i++ {
@@ -82,7 +84,7 @@ func TestSharedBudgetAcrossReplicas(t *testing.T) {
 		t.Fatalf("interleaved allows = %d, want 5 (shared budget)", allowed)
 	}
 	// Both replicas must now be refused: the bucket lives in Redis, not in either.
-	for name, s := range map[string]resilience.ClusterLimiter{"a": a, "b": b} {
+	for name, s := range map[string]ratelimit.ClusterLimiter{"a": a, "b": b} {
 		if admitted, err := s.Allow(ctx, "api", p, 1); err != nil || admitted {
 			t.Fatalf("replica %s after drain: admitted=%v err=%v, want refusal", name, admitted, err)
 		}
@@ -95,7 +97,7 @@ func TestScopeIsolation(t *testing.T) {
 	_, cli := newMiniRedis(t)
 	c := newStore(t, cli)
 	ctx := context.Background()
-	p := resilience.RateSpec{RateLimit: 0.001, Burst: 2}
+	p := ratelimit.Spec{RateLimit: 0.001, Burst: 2}
 
 	for i := 0; i < 2; i++ {
 		if _, err := c.Allow(ctx, "tenant-a", p, 1); err != nil {
@@ -117,7 +119,7 @@ func TestBatchAllowAllOrNothing(t *testing.T) {
 	_, cli := newMiniRedis(t)
 	c := newStore(t, cli)
 	ctx := context.Background()
-	p := resilience.RateSpec{RateLimit: 0.001, Burst: 5}
+	p := ratelimit.Spec{RateLimit: 0.001, Burst: 5}
 
 	if _, err := c.Allow(ctx, "api", p, 3); err != nil {
 		t.Fatalf("Allow(3) on full bucket: %v", err)
@@ -144,7 +146,7 @@ func TestUnlimitedPolicy(t *testing.T) {
 	ctx := context.Background()
 
 	for i := 0; i < 100; i++ {
-		if _, err := c.Allow(ctx, "api", resilience.RateSpec{}, 1); err != nil {
+		if _, err := c.Allow(ctx, "api", ratelimit.Spec{}, 1); err != nil {
 			t.Fatalf("unlimited allow %d: %v", i, err)
 		}
 	}
@@ -159,7 +161,7 @@ func TestConcurrency(t *testing.T) {
 	_, cli := newMiniRedis(t)
 	c := newStore(t, cli)
 	ctx := context.Background()
-	p := resilience.RateSpec{RateLimit: 0.001, Burst: 10}
+	p := ratelimit.Spec{RateLimit: 0.001, Burst: 10}
 
 	var granted atomic.Int64
 	var w sync.WaitGroup
@@ -187,7 +189,7 @@ func TestConcurrency(t *testing.T) {
 func TestKeyTTLPreventsColdKeyPileup(t *testing.T) {
 	srv, cli := newMiniRedis(t)
 	c := newStore(t, cli)
-	if _, err := c.Allow(context.Background(), "api", resilience.RateSpec{RateLimit: 2, Burst: 4}, 1); err != nil {
+	if _, err := c.Allow(context.Background(), "api", ratelimit.Spec{RateLimit: 2, Burst: 4}, 1); err != nil {
 		t.Fatalf("Allow: %v", err)
 	}
 	// ceil(burst/rate)+1 = 3s for the policy above.
@@ -226,7 +228,7 @@ func TestWiring_MissingClientNameFailsStartup(t *testing.T) {
 }
 
 // TestWiring_ContributesRedisStore proves the contribution contract end to end:
-// with the block configured, the container resolves resilience.ClusterLimiter to the
+// with the block configured, the container resolves ratelimit.ClusterLimiter to the
 // Redis store. That bean is what the bundled driver injects, which
 // is how every executor ends up spending the shared budget.
 func TestWiring_ContributesRedisStore(t *testing.T) {
@@ -234,7 +236,7 @@ func TestWiring_ContributesRedisStore(t *testing.T) {
 
 	// The *goredis.Client bean starter-go-redis would publish, built the same
 	// way that starter builds one (identity + observation, no governance).
-	center, err := runtime.NewProcess(resilience.NewClientManager(resilience.NewDefaultDriver(nil)), fault.NewClientManager(nil), fault.NewServerManager(nil))
+	center, err := runtime.NewProcess(resilience.NewManager(resilience.NewDefaultDriver(nil)), clientfault.NewClientManager(nil), serverfault.NewServerManager(nil))
 	if err != nil {
 		t.Fatalf("runtime.NewProcess: %v", err)
 	}
@@ -247,15 +249,15 @@ func TestWiring_ContributesRedisStore(t *testing.T) {
 		app.Property("spring.ratelimit.redis.client", "cache")
 		app.Provide(func() *goredis.Client { return w }).Name("cache")
 	}).RunTest(t, func(ts *struct {
-		Limiter resilience.ClusterLimiter `autowire:"?"`
+		Limiter ratelimit.ClusterLimiter `autowire:"?"`
 	}) {
 		if ts.Limiter == nil {
-			t.Fatal("the configured starter must contribute a resilience.ClusterLimiter bean")
+			t.Fatal("the configured starter must contribute a ratelimit.ClusterLimiter bean")
 		}
 		// Only the Redis store can write the bucket key, which is what makes
 		// this an assertion about WHICH store was injected.
 		_, err := ts.Limiter.Allow(context.Background(), "api",
-			resilience.RateSpec{RateLimit: 100, Burst: 5}, 1)
+			ratelimit.Spec{RateLimit: 100, Burst: 5}, 1)
 		if err != nil {
 			t.Fatalf("Allow: %v", err)
 		}
@@ -272,7 +274,7 @@ func TestWiring_ContributesRedisStore(t *testing.T) {
 // a private store of its own, which still means one budget per service label.
 func TestWiring_NoBlockContributesNoStore(t *testing.T) {
 	gs.Web(false).Configure(func(app gs.App) {}).RunTest(t, func(ts *struct {
-		Limiter resilience.ClusterLimiter `autowire:"?"`
+		Limiter ratelimit.ClusterLimiter `autowire:"?"`
 	}) {
 		if ts.Limiter != nil {
 			t.Fatal("without spring.ratelimit.redis no counter store may be contributed")

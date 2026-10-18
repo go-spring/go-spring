@@ -27,9 +27,9 @@ import (
 
 	"github.com/wneessen/go-mail"
 	"go-spring.org/cloud/runtime"
-	"go-spring.org/cloud/runtime/dataplane/chain"
-	"go-spring.org/cloud/runtime/dataplane/label"
-	"go-spring.org/cloud/runtime/dataplane/resilience"
+	"go-spring.org/cloud/runtime/dataplane/kernel/label"
+	"go-spring.org/cloud/runtime/dataplane/outbound/chain"
+	"go-spring.org/cloud/runtime/dataplane/outbound/resilience"
 	"go-spring.org/stdlib/errutil"
 )
 

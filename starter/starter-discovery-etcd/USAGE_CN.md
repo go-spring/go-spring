@@ -8,7 +8,7 @@
 
 **模型**:配置是**命名块**——每个 `spring.discovery.etcd.<name>.*` 块描述一个 etcd 集群,
 成为名为 `etcd.<name>` 的后端 bean(`starter.go`)。该 bean 同时实现命名体系的两半:
-`registration.Registry`(写侧——由传递依赖自动引入的 [cloud/runtime/dataplane/discovery](../../cloud/runtime/dataplane/discovery)
+`registration.Registry`(写侧——由传递依赖自动引入的 [cloud/runtime/dataplane/kernel/discovery](../../cloud/runtime/dataplane/kernel/discovery)
 核心之 `discoveryServer` 收集,跨后端注册进**每一个**已配置中心)与 `discovery.Discovery`
 (读侧——消费方按 bean 名引用,如 `discovery=etcd.main`;bean 惰性,纯 provider 从不为读侧
 付费)。读写共享该块的客户端与键前缀,永不分裂。没有默认/无名块。注册仅在设置
@@ -72,7 +72,7 @@ package main
 import (
     "context"
 
-    "go-spring.org/cloud/runtime/dataplane/discovery"
+    "go-spring.org/cloud/runtime/dataplane/kernel/discovery"
     "go-spring.org/spring/gs"
 )
 
@@ -192,7 +192,7 @@ gs.Run()
 
 下游,loadbalance `Pool` 消费这些快照并在每次 Pick 做 **weight-0 过滤**:
 `excludeDrained` 丢弃 `Weight == 0` 端点,全部摘流时回退全集,防未归一化
-快照把池打黑洞(cloud/runtime/dataplane/loadbalance/pool.go:97-99,122-135)。
+快照把池打黑洞(cloud/runtime/dataplane/kernel/loadbalance/pool.go:97-99,122-135)。
 
 ### 2.4 DRAIN 链路 —— UpdateWeight(0)
 
@@ -264,7 +264,7 @@ zookeeper 块同进程)同理——registry 收集与后端无关。
 ### 3.3 发现 —— 按块 bean 名引用(零配置)
 
 不再存在 discovery 配置路径。每个块的后端 bean 本身就是一个
-`cloud/runtime/dataplane/discovery.Discovery`,名为 `etcd.<name>`,共享该块客户端(`starter.go`)。
+`cloud/runtime/dataplane/kernel/discovery.Discovery`,名为 `etcd.<name>`,共享该块客户端(`starter.go`)。
 client starter 按 bean 名引用(`spring.http-client.instances.<n>.discovery=etcd.main`)。
 该 bean 惰性——纯 provider 从不解析、从不为读侧付费。纯消费方只配连接块(不设
 `service-name`/`addr`),不注册任何实例。多集群发现就是多个块:引用哪个块的集群就

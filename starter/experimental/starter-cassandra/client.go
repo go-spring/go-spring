@@ -27,8 +27,8 @@ package StarterCassandra
 import (
 	"context"
 
-	"go-spring.org/cloud/runtime/dataplane/chain"
-	"go-spring.org/cloud/runtime/dataplane/label"
+	"go-spring.org/cloud/runtime/dataplane/kernel/label"
+	"go-spring.org/cloud/runtime/dataplane/outbound/chain"
 
 	"github.com/gocql/gocql"
 	"go-spring.org/cloud/runtime"
@@ -57,7 +57,7 @@ type Client struct {
 
 	// exec is the resilience executor protecting every statement, set by
 	// [NewClient] from the runtime, which is required to carry a
-	// [resilience.ClientManager] — a client is never assembled without one. Held for
+	// [resilience.Manager] — a client is never assembled without one. Held for
 	// teardown only: the chains are per-query, so there is no session-level
 	// chain head whose Release could close it — [Client.Close] is that release
 	// point.
@@ -78,11 +78,11 @@ type Client struct {
 // applied HERE so a Client cannot exist half-assembled: there is no Init step,
 // no later patching, and nothing the container has to remember to call. A
 // hand-built client must supply a [runtime.Runtime] over a
-// [resilience.ClientManager]: [runtime.Runtime.ResilienceClient] is required, so a nil
+// [resilience.Manager]: [runtime.Runtime.ResilienceClient] is required, so a nil
 // center is a construction error — [runtime.Runtime.ExecutorFor] panics —
 // never a graceful downgrade to an unprotected client.
 //
-// The manager's ClientExecutorFor resolves its backing executor lazily, on each
+// The manager's ExecutorFor resolves its backing executor lazily, on each
 // Execute, so the call order relative to the center's wiring is
 // irrelevant.
 func NewClient(session *gocql.Session, cfg Config, center *runtime.Runtime) *Client {

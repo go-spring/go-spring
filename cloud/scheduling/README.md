@@ -186,7 +186,7 @@ no run to trace.
 ## Design notes
 
 - `cloud/scheduling` deliberately hooks no service governance: no
-  `ClientExecutorFor` seam and no resource label (the governance README's §6
+  `ExecutorFor` seam and no resource label (the governance README's §6
   label table excludes it on purpose). Rate limiting is meaningless (the
   cadence is self-controlled), retry is harmful (a side-effecting task would
   run twice in a short window), a circuit breaker is a net negative (open =

@@ -39,9 +39,10 @@ import (
 
 	"go-spring.org/cloud/cache"
 	"go-spring.org/cloud/lock"
-	"go-spring.org/cloud/runtime/dataplane/loadbalance"
-	"go-spring.org/cloud/runtime/dataplane/resilience"
-	"go-spring.org/cloud/runtime/dataplane/traffic"
+	"go-spring.org/cloud/runtime/dataplane/kernel/loadbalance"
+	"go-spring.org/cloud/runtime/dataplane/kernel/ratelimit"
+	"go-spring.org/cloud/runtime/dataplane/kernel/traffic"
+	"go-spring.org/cloud/runtime/dataplane/outbound/resilience"
 	"go-spring.org/cloud/security"
 	"go-spring.org/log"
 	"go-spring.org/spring/conf"
@@ -127,7 +128,7 @@ func init() {
 	// "default" (and sentinel's blank-import contribution) this is an init-time
 	// availability registration, not a config-gated activation — the driver only
 	// governs when the process actually selects it.
-	gs.Provide(func(c resilience.ClusterLimiter) *luohuaResilienceDriver {
+	gs.Provide(func(c ratelimit.ClusterLimiter) *luohuaResilienceDriver {
 		return &luohuaResilienceDriver{limiter: c}
 	}, gs.TagArg("?")).Name(LuohuaResilienceDriverName).
 		Export(gs.As[resilience.Driver]()).
@@ -187,7 +188,7 @@ func init() {
 // loadbalance registers the company balancer with the strategy registry.
 func init() {
 	// Registering from init is the whole extension — no change to
-	// cloud/runtime/dataplane/loadbalance. The registered name IS the strategy name a selection
+	// cloud/runtime/dataplane/kernel/loadbalance. The registered name IS the strategy name a selection
 	// rule cites, and linking this package is what puts it there.
 	loadbalance.Register(luohuaStrategy, luohuaFactory)
 }

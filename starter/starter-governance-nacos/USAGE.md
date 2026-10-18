@@ -43,7 +43,7 @@ require (
 package main
 
 import (
-    "go-spring.org/cloud/runtime/dataplane/resilience"
+    "go-spring.org/cloud/runtime/dataplane/outbound/resilience"
     "go-spring.org/spring/gs"
 
     _ "go-spring.org/starter-governance-nacos"
@@ -54,7 +54,7 @@ import (
 type poller struct {
     // mgr is the governance starter's resilience manager bean, injected here
     // rather than resolved from a process-wide seam.
-    mgr *resilience.ClientManager
+    mgr *resilience.Manager
 }
 
 func (p *poller) Run(ctx context.Context) error {
@@ -66,9 +66,9 @@ func (p *poller) Run(ctx context.Context) error {
 
 // newPoller builds the poller over the injected manager. A nil manager — a
 // container without cloud/runtime/controlplane/governance's bean — is normalized to a fresh unarmed one.
-func newPoller(mgr *resilience.ClientManager) *poller {
+func newPoller(mgr *resilience.Manager) *poller {
     if mgr == nil {
-        mgr = resilience.NewClientManager()
+        mgr = resilience.NewManager()
     }
     return &poller{mgr: mgr}
 }

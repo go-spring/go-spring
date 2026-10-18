@@ -29,7 +29,7 @@ import (
 	gormsqlite "github.com/glebarez/sqlite"
 	"go-spring.org/cloud/actuator/health"
 	"go-spring.org/cloud/runtime"
-	"go-spring.org/cloud/runtime/dataplane/label"
+	"go-spring.org/cloud/runtime/dataplane/kernel/label"
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/gs"
 	gormcore "go-spring.org/starter-gorm"

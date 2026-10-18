@@ -18,7 +18,7 @@ package StarterMQTT
 
 import (
 	"context"
-	"go-spring.org/cloud/runtime/dataplane/chain"
+	"go-spring.org/cloud/runtime/dataplane/outbound/chain"
 	"go.opentelemetry.io/otel/attribute"
 	"strings"
 	"testing"

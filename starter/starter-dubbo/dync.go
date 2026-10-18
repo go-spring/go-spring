@@ -24,7 +24,7 @@ import (
 	"time"
 
 	"go-spring.org/cloud/runtime"
-	"go-spring.org/cloud/runtime/dataplane/resilience"
+	"go-spring.org/cloud/runtime/dataplane/outbound/resilience"
 	mapconfig "go-spring.org/starter-dubbo/internal/mapconfig"
 )
 
@@ -78,7 +78,7 @@ func newDyncPoller(app DubboApplication, consumer DubboConsumer, ctr *runtime.Ru
 // mgr returns the resilience authority the center hands out. It is never nil:
 // the center bean is a constructor dependency, and it arms the authority in its
 // own constructor — so by the time this poller exists, governance is live.
-func (p *dyncPoller) mgr() *resilience.ClientManager {
+func (p *dyncPoller) mgr() *resilience.Manager {
 	return p.ctr.ResilienceClient()
 }
 
@@ -117,7 +117,7 @@ func (p *dyncPoller) poll() {
 	p.mu.Unlock()
 	for _, l := range toReg {
 		l := l
-		p.mgr().Subscribe(l, func(resilience.ClientPolicy) { p.poll() })
+		p.mgr().Subscribe(l, func(resilience.Policy) { p.poll() })
 	}
 
 	if len(rules) == 0 {
@@ -164,7 +164,7 @@ func (p *dyncPoller) consumerToOverrideRules(c *DubboConsumer) map[string]map[st
 	}
 	// applyGovernOverride writes only set (>0) values, so a document that
 	// configures nothing leaves dubbo's native values untouched.
-	applyGovernOverride(appParams, p.mgr().ClientPolicyFor(dubboAppLabel(appName)))
+	applyGovernOverride(appParams, p.mgr().PolicyFor(dubboAppLabel(appName)))
 	if len(appParams) > 0 {
 		rules[appName] = appParams
 	}
@@ -209,7 +209,7 @@ func (p *dyncPoller) consumerToOverrideRules(c *DubboConsumer) map[string]map[st
 			addIfSet(refParams, prefix+"execute.limit", strconv.Itoa(m.ExecuteLimit))
 			addIfSet(refParams, prefix+"execute.limit.rejected.handler", m.ExecuteLimitRejectedHandler)
 		}
-		applyGovernOverride(refParams, p.mgr().ClientPolicyFor(dubboRefLabel(key)))
+		applyGovernOverride(refParams, p.mgr().PolicyFor(dubboRefLabel(key)))
 		if len(refParams) > 0 {
 			rules[key] = refParams
 		}
@@ -249,7 +249,7 @@ func colonSeparatedKey(intf, version, group string) string {
 
 // dubboAppLabel / dubboRefLabel are the governance service labels for dubbo's
 // two override levels: the application (consumer defaults) and each reference.
-// They are the keys passed to Manager.ClientPolicyFor and Manager.Subscribe so one
+// They are the keys passed to Manager.PolicyFor and Manager.Subscribe so one
 // governance rules document can tune dubbo's timeout/retry alongside every other
 // client.
 func dubboAppLabel(appName string) string  { return "dubbo:" + appName }
@@ -277,7 +277,7 @@ func dubboServiceLabels(appName string, c *DubboConsumer) map[string]bool {
 // Note: dubbo retries is cluster-failover-level (retries across providers), so
 // Policy.Retry.MaxRetries here maps to dubbo cluster retries, not resilience-layer
 // retry - the center documents dubbo's timeout/retry in dubbo's own semantics.
-func applyGovernOverride(params map[string]string, p resilience.ClientPolicy) {
+func applyGovernOverride(params map[string]string, p resilience.Policy) {
 	if p.Timeout > 0 {
 		params["timeout"] = strconv.FormatInt(int64(p.Timeout/time.Millisecond), 10)
 	}

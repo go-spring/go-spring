@@ -147,6 +147,6 @@ The [main.go](example/main.go) program demonstrates and asserts three core Redis
   see the commented block in [app.properties](example/conf/app.properties).
 * **Distributed cache backend**: `AsCache(client, codec)` adapts the client to `cloud/cache.Cache`, the shared (far)
   level of a multi-level cache. Values are serialized with the codec (nil defaults to JSON).
-* **Distributed rate-limit counters**: `NewClusterLimiter(client)` returns a `resilience.ClusterLimiter` backed by an atomic
+* **Distributed rate-limit counters**: `NewClusterLimiter(client)` returns a `ratelimit.ClusterLimiter` backed by an atomic
   Lua token bucket. Contribute it as a bean and every executor the driver builds spends it, so one budget per scope
   is shared across replicas — with none contributed each executor keeps a private budget of its own.

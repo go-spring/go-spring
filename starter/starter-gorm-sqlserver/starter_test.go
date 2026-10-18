@@ -27,8 +27,9 @@ import (
 	"github.com/microsoft/go-mssqldb/msdsn"
 	"go-spring.org/cloud/actuator/health"
 	"go-spring.org/cloud/runtime"
-	"go-spring.org/cloud/runtime/dataplane/fault"
-	"go-spring.org/cloud/runtime/dataplane/resilience"
+	serverfault "go-spring.org/cloud/runtime/dataplane/inbound/fault"
+	clientfault "go-spring.org/cloud/runtime/dataplane/outbound/fault"
+	"go-spring.org/cloud/runtime/dataplane/outbound/resilience"
 	"go-spring.org/spring/gs"
 	gormcore "go-spring.org/starter-gorm"
 	"go-spring.org/stdlib/testing/assert"
@@ -39,7 +40,7 @@ import (
 // governance document to serve.
 func testCenter(t *testing.T) *runtime.Runtime {
 	t.Helper()
-	ctr, err := runtime.NewProcess(resilience.NewClientManager(resilience.NewDefaultDriver(nil)), fault.NewClientManager(nil), fault.NewServerManager(nil))
+	ctr, err := runtime.NewProcess(resilience.NewManager(resilience.NewDefaultDriver(nil)), clientfault.NewClientManager(nil), serverfault.NewServerManager(nil))
 	if err != nil {
 		t.Fatal(err)
 	}

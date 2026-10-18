@@ -22,11 +22,12 @@ import (
 	"time"
 
 	"go-spring.org/cloud/runtime/controlplane/governance"
-	"go-spring.org/cloud/runtime/dataplane/chain"
-	"go-spring.org/cloud/runtime/dataplane/discovery"
-	"go-spring.org/cloud/runtime/dataplane/fault"
-	"go-spring.org/cloud/runtime/dataplane/loadbalance"
-	"go-spring.org/cloud/runtime/dataplane/resilience"
+	serverfault "go-spring.org/cloud/runtime/dataplane/inbound/fault"
+	"go-spring.org/cloud/runtime/dataplane/kernel/discovery"
+	"go-spring.org/cloud/runtime/dataplane/kernel/loadbalance"
+	"go-spring.org/cloud/runtime/dataplane/outbound/chain"
+	clientfault "go-spring.org/cloud/runtime/dataplane/outbound/fault"
+	"go-spring.org/cloud/runtime/dataplane/outbound/resilience"
 	"go-spring.org/spring/gs"
 )
 
@@ -35,7 +36,7 @@ import (
 // executor exists.
 type recordingDriver struct{ used bool }
 
-func (d *recordingDriver) NewClientExecutor(service string, p resilience.ClientPolicy) (chain.Executor, error) {
+func (d *recordingDriver) NewExecutor(service string, p resilience.Policy) (chain.Executor, error) {
 	return recordingExecutor{mark: func() { d.used = true }}, nil
 }
 
@@ -59,7 +60,7 @@ func testCfg(timeoutMs int) governance.Config {
 	return governance.Config{
 		Client: governance.ClientConfig{
 			Default: governance.ClientDefaultPolicy{
-				ClientPolicy: resilience.ClientPolicy{Timeout: time.Duration(timeoutMs) * time.Millisecond},
+				Policy: resilience.Policy{Timeout: time.Duration(timeoutMs) * time.Millisecond},
 			},
 		},
 	}
@@ -71,7 +72,7 @@ func testCfg(timeoutMs int) governance.Config {
 // is what the module authorities run on before the app serves. Dropping the
 // interface injection here must fail this test.
 func TestStarter_SourceBeanReachesTheRuntime(t *testing.T) {
-	var resClient *resilience.ClientManager
+	var resClient *resilience.Manager
 
 	gs.Web(false).Configure(func(app gs.App) {
 		// Declared with the interface return type, which is what makes the bean
@@ -81,7 +82,7 @@ func TestStarter_SourceBeanReachesTheRuntime(t *testing.T) {
 		})
 		// A stand-in for a client starter: it injects a module authority, which
 		// is the same instance the runtime drives.
-		app.Provide(func(m *resilience.ClientManager) *managerProbe {
+		app.Provide(func(m *resilience.Manager) *managerProbe {
 			resClient = m
 			return &managerProbe{}
 		}).Export(gs.As[gs.Rooter]())
@@ -89,7 +90,7 @@ func TestStarter_SourceBeanReachesTheRuntime(t *testing.T) {
 		if resClient == nil {
 			t.Fatal("the resilience manager bean was not injected")
 		}
-		if p := resClient.ClientPolicyFor("x"); p.Timeout != 250*time.Millisecond {
+		if p := resClient.PolicyFor("x"); p.Timeout != 250*time.Millisecond {
 			t.Fatalf("a bean exported as governance.Source must be the runtime's source: want 250ms, got %v", p.Timeout)
 		}
 	})
@@ -103,7 +104,7 @@ func TestStarter_SourceBeanReachesTheRuntime(t *testing.T) {
 // named lookup with nothing to inject and fail startup.
 func TestStarter_DriverBeanSelectedByName(t *testing.T) {
 	drv := &recordingDriver{}
-	var mgr *resilience.ClientManager
+	var mgr *resilience.Manager
 
 	gs.Web(false).Configure(func(app gs.App) {
 		app.Property(resilience.DriverProperty, "corp")
@@ -116,7 +117,7 @@ func TestStarter_DriverBeanSelectedByName(t *testing.T) {
 		// A stand-in for a client starter: it injects the manager bean, so gs
 		// instantiates it and this test can capture the instance the container
 		// built with the selected driver.
-		app.Provide(func(m *resilience.ClientManager) *managerProbe {
+		app.Provide(func(m *resilience.Manager) *managerProbe {
 			mgr = m
 			return &managerProbe{}
 		}).Export(gs.As[gs.Rooter]())
@@ -124,7 +125,7 @@ func TestStarter_DriverBeanSelectedByName(t *testing.T) {
 		if mgr == nil {
 			t.Fatal("the resilience manager bean was not injected")
 		}
-		exec := mgr.ClientExecutorFor("sys", "res:1")
+		exec := mgr.ExecutorFor("sys", "res:1")
 		if err := exec.Execute(context.Background(), chain.Operation{}, nil, func(context.Context) error { return nil }); err != nil {
 			t.Fatal(err)
 		}
@@ -152,7 +153,7 @@ func TestRuntime_IsTheInjectedBean(t *testing.T) {
 		if rt == nil {
 			t.Fatal("the runtime bean was not injected")
 		}
-		if p := rt.ResilienceClient().ClientPolicyFor("x"); p.Timeout != 120*time.Millisecond {
+		if p := rt.ResilienceClient().PolicyFor("x"); p.Timeout != 120*time.Millisecond {
 			t.Fatalf("the injected runtime must be the armed one: want 120ms, got %v", p.Timeout)
 		}
 		if rt.GuardServer() == nil || rt.FaultClient() == nil || rt.FaultServer() == nil {
@@ -170,8 +171,8 @@ func TestRuntime_HandsOutDiscovery(t *testing.T) {
 	backend := discovery.NewStaticDiscovery(discovery.Endpoint{Addr: "10.0.0.1:2379"})
 	disc := discovery.NewManager(map[string]discovery.Discovery{"etcd.main": backend})
 
-	rt, err := New(resilience.NewClientManager(resilience.NewDefaultDriver(nil)),
-		loadbalance.NewManager(), fault.NewClientManager(nil), fault.NewServerManager(nil),
+	rt, err := New(resilience.NewManager(resilience.NewDefaultDriver(nil)),
+		loadbalance.NewManager(), clientfault.NewClientManager(nil), serverfault.NewServerManager(nil),
 		disc, governance.NewPushSource(governance.Config{}))
 	if err != nil {
 		t.Fatal(err)

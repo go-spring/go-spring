@@ -26,8 +26,8 @@ package StarterMilvus
 import (
 	"context"
 
-	"go-spring.org/cloud/runtime/dataplane/chain"
-	"go-spring.org/cloud/runtime/dataplane/label"
+	"go-spring.org/cloud/runtime/dataplane/kernel/label"
+	"go-spring.org/cloud/runtime/dataplane/outbound/chain"
 
 	"github.com/milvus-io/milvus-sdk-go/v2/client"
 	"go-spring.org/cloud/runtime"
@@ -72,7 +72,7 @@ type Client struct {
 // applied HERE so a Client cannot exist half-assembled: there is no Init step,
 // no later patching, and nothing the container has to remember to call. A
 // hand-built client must supply a [runtime.Runtime] over a
-// [resilience.ClientManager]: [runtime.Runtime.ResilienceClient] is required, so a nil
+// [resilience.Manager]: [runtime.Runtime.ResilienceClient] is required, so a nil
 // center is a construction error — [runtime.Runtime.ExecutorFor] panics —
 // never a graceful downgrade to an unprotected client.
 //

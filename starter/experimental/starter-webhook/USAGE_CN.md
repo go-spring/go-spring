@@ -170,7 +170,7 @@ resilience 服务标签为 `webhook:<name>:<channel>`——按实例**且**按�
    `webhook.channel`，以及目标主机——只有 scheme://host——作为无界 `Detail`），
    再经 `resilience.Run` 把 POST 路由穿过该 notifier 的 resilience executor。
    Send **只声明**，自身不发射任何信号。
-3. **ClientExecutor + 发射（resilience 层）** —— POST 闭包经服务标签下的治理 executor：
+3. **Executor + 发射（resilience 层）** —— POST 闭包经服务标签下的治理 executor：
    配好治理规则源后限流 / 熔断 / retry（若经治理配置）/ fault 注入生效，否则
    退化为只观测、不受治理的执行器（每客户端告警一次：无任何保护生效）。执行器上的
    observe 包裹层是唯一**发射点**：开调用级 span `webhook.send`

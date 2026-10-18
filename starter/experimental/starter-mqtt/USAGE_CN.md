@@ -198,7 +198,7 @@ paho.mqtt.golang 没有 reject-capable 中间件，所以不存在透明 client 
 CreateClient [driver.go:115-123]（装配 seam）：
   exec = center.ExecutorFor("mqtt", "mqtt:<broker>")   // 注入的 *runtime.Runtime
   attachGuard(cl, exec, label) —— 以 mqtt.Client 值为键存入 sync.Map  [command.go:98-100]
-  （center.ExecutorFor = inj.WrapClientExecutor(mgr.ClientExecutorFor("mqtt", label))；
+  （center.ExecutorFor = inj.WrapClientExecutor(mgr.ExecutorFor("mqtt", label))；
    resilience manager 必填——容器始终提供）
 
 GuardedPublish [command.go:134-141]：

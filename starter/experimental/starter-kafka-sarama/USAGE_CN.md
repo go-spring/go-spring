@@ -60,7 +60,7 @@ import (
     "context"
 
     "github.com/IBM/sarama"
-    "go-spring.org/cloud/runtime/dataplane/traffic"
+    "go-spring.org/cloud/runtime/dataplane/kernel/traffic"
     "go-spring.org/spring/gs"
     StarterKafkaSarama "go-spring.org/starter-kafka-sarama"
 )
@@ -204,7 +204,7 @@ bean 不存在则启动失败）。
 ```
 SendMessage / SendMessages
   → 构建 op：operation("publish", msg.Topic)，显式传给 observer
-  → fault.ClientManager.WrapClientExecutor（spring.governance.client.fault 启用时注入故障）
+  → clientfault.ClientManager.WrapClientExecutor（spring.governance.client.fault 启用时注入故障）
     → resilience executor 包装（span + outcome 计数 + call/attempt duration + 访问日志）
       → resilience executor（breaker / rate limit / retry，策略来自治理中心）
         → 注入 W3C 链路上下文 + 压测标记到 msg.Headers

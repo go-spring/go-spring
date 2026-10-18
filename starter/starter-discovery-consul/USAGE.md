@@ -158,7 +158,7 @@ change. A failed poll keeps the stale snapshot and retries after 5s; an agent in
 (smaller `LastIndex`) drops the held index so the next query answers immediately. Later Resolves
 are in-memory reads. Weight-0 filtering is the consumer pool's: `excludeDrained` drops
 `Weight == 0` endpoints, falling back to the full set only when every endpoint is drained
-(`cloud/runtime/dataplane/loadbalance/pool.go`).
+(`cloud/runtime/dataplane/kernel/loadbalance/pool.go`).
 
 ### 2.3 DRAIN path — UpdateWeight(0)
 
@@ -196,7 +196,7 @@ every center.
 | `spring.discovery.weight` | int | `100` | advertised weight; negative normalized to 1 at write time | 0 = drained; drains from startup as well as via `UpdateWeight(0)` |
 | `spring.discovery.metadata.*` | map[string]string | empty | instance attributes (zone, version, ...) passed through to discovery Metadata | — |
 
-Discovery needs **no configuration**: each block's bean IS a `cloud/runtime/dataplane/discovery.Discovery` named
+Discovery needs **no configuration**: each block's bean IS a `cloud/runtime/dataplane/kernel/discovery.Discovery` named
 `consul.<name>`; clients cite that bean name (`discovery=consul.main`). The bean is lazy — a
 pure provider never pays for the read half; a pure consumer configures only connection blocks and
 registers nothing. Multi-agent discovery is just multiple blocks — cite whichever agent you want

@@ -31,10 +31,10 @@ import (
 	"github.com/hertz-contrib/requestid"
 	"go-spring.org/cloud/propagate"
 	"go-spring.org/cloud/runtime"
-	"go-spring.org/cloud/runtime/dataplane/guard"
-	"go-spring.org/cloud/runtime/dataplane/label"
-	"go-spring.org/cloud/runtime/dataplane/observability"
-	"go-spring.org/cloud/runtime/dataplane/traffic"
+	"go-spring.org/cloud/runtime/dataplane/inbound/admission"
+	observability "go-spring.org/cloud/runtime/dataplane/inbound/observe"
+	"go-spring.org/cloud/runtime/dataplane/kernel/label"
+	"go-spring.org/cloud/runtime/dataplane/kernel/traffic"
 	"go-spring.org/log"
 	"go-spring.org/stdlib/errutil"
 )
@@ -131,7 +131,7 @@ func applyMiddlewares(h *server.Hertz, cfg Config, center *runtime.Runtime, prop
 }
 
 // buildServerPolicy builds the inbound governance middleware. It drives the
-// guard's Admit/Done pair and maps a refusal to 429 (rate limit / bulkhead) or
+// admission's Admit/Done pair and maps a refusal to 429 (rate limit / bulkhead) or
 // 503 (circuit open / degraded / injected fault).
 func buildServerPolicy(in *runtime.Inbound) app.HandlerFunc {
 	return func(ctx context.Context, c *app.RequestContext) {
@@ -155,8 +155,8 @@ func buildServerPolicy(in *runtime.Inbound) app.HandlerFunc {
 // httpStatusFor maps an inbound refusal to the HTTP status a client can act on:
 // rate/bulkhead rejections are 429, an open circuit, a degraded response or an
 // injected fault is 503.
-func httpStatusFor(kind guard.Verdict) int {
-	if kind == guard.VerdictCircuitOpen || kind == guard.VerdictDegraded || kind == guard.VerdictFaultInjected {
+func httpStatusFor(kind admission.Verdict) int {
+	if kind == admission.VerdictCircuitOpen || kind == admission.VerdictDegraded || kind == admission.VerdictFaultInjected {
 		return http.StatusServiceUnavailable
 	}
 	return http.StatusTooManyRequests
@@ -168,7 +168,7 @@ type errHTTP5xx struct{ code int }
 
 func (e errHTTP5xx) Error() string { return fmt.Sprintf("http: server returned %d", e.code) }
 
-// actionName names the inbound request for guard and the fault rules: the
+// actionName names the inbound request for admission and the fault rules: the
 // entrance ("hertz") plus the interface being invoked, in the "METHOD /path"
 // form an interface-precise rule needs. The route TEMPLATE is preferred over the
 // concrete URL, so a rule names the endpoint rather than one instance of it.
@@ -200,7 +200,7 @@ func accessLogSkipSet(cfg Config) map[string]struct{} {
 // When the incoming request carries the configured marker header (default
 // X-LoadTest) it tags the request context, so handlers and outbound clients can
 // recognise synthetic load through the propagator's IsLoadTest. It is the
-// inbound companion to cloud/runtime/dataplane/traffic's outbound injection: together
+// inbound companion to cloud/runtime/dataplane/kernel/traffic's outbound injection: together
 // they let a load-test flag ride an HTTP hop end to end. An empty header falls
 // back to the propagator.s own header name.
 // Without the marker it is a no-op. Hertz stores headers as []byte; Peek returns

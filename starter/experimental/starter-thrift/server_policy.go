@@ -20,7 +20,7 @@ import (
 	"context"
 
 	"go-spring.org/cloud/runtime"
-	"go-spring.org/cloud/runtime/dataplane/observability"
+	observability "go-spring.org/cloud/runtime/dataplane/inbound/observe"
 
 	"github.com/apache/thrift/lib/go/thrift"
 )

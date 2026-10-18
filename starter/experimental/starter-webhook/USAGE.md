@@ -176,7 +176,7 @@ so two notifiers on the same URL but different names get independent breaker/lim
    on the context via `chain.WithOperation`, then routes the POST through the
    notifier's resilience executor (`resilience.Run`). A send **declares**; it emits nothing
    itself.
-3. **ClientExecutor + emission (the resilience layer)** — the POST closure runs through the
+3. **Executor + emission (the resilience layer)** — the POST closure runs through the
    governance executor under the service label: rate limit / circuit breaking / retry (if
    configured via governance) / fault injection when a governance rules source is armed; the
    resilience manager is required — the container always supplies it, so a client is never

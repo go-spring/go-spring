@@ -200,7 +200,7 @@ service code / service config. Per-filter behavior:
 | `loadtest` | `loadtest.enabled` (default true) | Reads inbound server metadata key `x-loadtest`; if affirmative, tags ctx via `prop.Extract(ctx, <metadata carrier>)` so every downstream layer (and your handler, via the propagator's `IsLoadTest(ctx)`) can branch. No-op without the marker. Put it **first** so the marker lands before tracing/metrics/handler. |
 | `tracing` | `observer.tracing.enabled` (default true) | Starts an OTel server span named `{calleeService}/{method}` with `rpc.system=trpc`, `rpc.service`, `rpc.method` attributes; errors set span status + RecordError. Rides the OTel globals — no-op without starter-otel. |
 | `metrics` | `observer.metrics.enabled` (default true) | `rpc.server.request_count` counter, `rpc.server.request.duration` histogram (seconds, explicit buckets 5ms..10s), `rpc.server.active_requests` UpDownCounter, all attributed `rpc.method`. Rides the OTel globals. |
-| `fault` | always | `_, err := srv.Fire(ctx, fault.Target{Service: "trpc", Action: calleeMethod})` — `inj` is the injected `*fault.ServerManager` bean; the callee method is the ACTION, so a rule can fire one method; injects latency/errors per governance rules; transparent pass-through when unconfigured. |
+| `fault` | always | `_, err := srv.Fire(ctx, fault.Target{Service: "trpc", Action: calleeMethod})` — `inj` is the injected `*serverfault.ServerManager` bean; the callee method is the ACTION, so a rule can fire one method; injects latency/errors per governance rules; transparent pass-through when unconfigured. |
 
 Recommended chain (what the starter's comments prescribe): `loadtest` first, then `tracing`,
 `metrics`, `fault`, then the handler — same rationale as the HTTP starters: the marker must be
@@ -323,7 +323,7 @@ requests are **not drained** — see §6.
 1. Start with `governance.yaml` as in §1 (no `fault.rules[]` set — inert), `fault` in the filter chain.
 2. Generate baseline traffic → all calls succeed.
 3. Set `fault.rules[0].rate: 0.2` in the file — the governance source hot-reloads; the filter
-   captures the injected `*fault.ServerManager`, whose config the center swaps in place, so no
+   captures the injected `*serverfault.ServerManager`, whose config the center swaps in place, so no
    restart is needed.
 4. Marked traffic burns (metadata `x-loadtest: 1` on the client call), normal traffic is
    unaffected: ~20% of marked calls get the injected `timeout`.

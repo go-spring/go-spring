@@ -25,11 +25,11 @@ import (
 	"sort"
 	"strings"
 
-	"go-spring.org/cloud/runtime/dataplane/chain"
-	"go-spring.org/cloud/runtime/dataplane/fault"
-	"go-spring.org/cloud/runtime/dataplane/guard"
-	"go-spring.org/cloud/runtime/dataplane/loadbalance"
-	"go-spring.org/cloud/runtime/dataplane/resilience"
+	"go-spring.org/cloud/runtime/dataplane/inbound/admission"
+	"go-spring.org/cloud/runtime/dataplane/kernel/fault"
+	"go-spring.org/cloud/runtime/dataplane/kernel/loadbalance"
+	"go-spring.org/cloud/runtime/dataplane/outbound/chain"
+	"go-spring.org/cloud/runtime/dataplane/outbound/resilience"
 	"go-spring.org/stdlib/errutil"
 )
 
@@ -42,11 +42,11 @@ import (
 // The document is laid out by DIRECTION, because one process governs two traffic
 // directions whose models differ:
 //
-//   - [Config.Client] (outbound) — [resilience.ClientPolicy]: retry, per-attempt
+//   - [Config.Client] (outbound) — [resilience.Policy]: retry, per-attempt
 //     timeout, downstream breaker, bulkhead, fallback. Plus endpoint selection
 //     ([loadbalance.Selection]), which is outbound by nature. This is the
 //     protection this process wants when it CALLS something.
-//   - [Config.Server] (inbound) — [guard.Policy]: rate limit, concurrency
+//   - [Config.Server] (inbound) — [admission.Policy]: rate limit, concurrency
 //     cap, inbound breaker, handling budget. This is the protection this process
 //     wants against the requests it RECEIVES. No retry (a handler that already
 //     produced side effects cannot be replayed) and no endpoint selection (there
@@ -98,7 +98,7 @@ type ClientConfig struct {
 	// policy). [Center.clientPolicyFor] returns the Rule whose Service equals the
 	// label; when no Rule matches it returns Default. Each Rule's embedded
 	// halves fully replace Default for the matched service — not a field-wise
-	// merge: a resilience.ClientPolicy field of 0 means "disabled", so a partial
+	// merge: a resilience.Policy field of 0 means "disabled", so a partial
 	// merge could not distinguish "explicitly set to 0" from "left unset".
 	// Bind via indexed properties:
 	//
@@ -114,7 +114,7 @@ type ClientConfig struct {
 
 	// Fault is this direction's fault-injection config (chaos engineering). The
 	// client side injects INSIDE the resilience executor's retry loop (see
-	// [fault.ClientManager.WrapClientExecutor]), so a fire here exercises this process's own
+	// [clientfault.ClientManager.WrapClientExecutor]), so a fire here exercises this process's own
 	// protection stack. The server side has its own, independent config under
 	// [ServerConfig.Fault] — one direction's fire never affects the other, which
 	// is what lets an operator burn outbound calls without failing inbound
@@ -129,7 +129,7 @@ type ServerConfig struct {
 	// matches. Bind via spring.governance.server.default.* (e.g.
 	// spring.governance.server.default.rate-limit=1000,
 	// spring.governance.server.default.max-concurrent=32).
-	Default guard.Policy `value:"${default:=}"`
+	Default admission.Policy `value:"${default:=}"`
 
 	// Rules are per-instance inbound entries, matched by the same exact label an
 	// adapter passes to guard's Identity. They let one
@@ -145,7 +145,7 @@ type ServerConfig struct {
 	Rules []ServerRule `value:"${rules:=}"`
 
 	// Fault is this direction's fault-injection config. The server side injects
-	// at the inbound seam (see [fault.Server.Fire]), so a fire here tests this
+	// at the inbound seam (see [serverfault.Server.Fire]), so a fire here tests this
 	// process's error paths, its observe classification and its inbound breaker,
 	// and lets upstream callers' retry/breaker behaviour be verified without
 	// touching a real dependency. Independent of [ClientConfig.Fault], including
@@ -167,12 +167,12 @@ type ServerConfig struct {
 // this struct's own level (spring.governance.client.default.timeout,
 // spring.governance.client.default.balancer, ...).
 type ClientDefaultPolicy struct {
-	resilience.ClientPolicy
+	resilience.Policy
 	loadbalance.Selection
 }
 
 // Rule is one per-service outbound entry, carrying the same pair as
-// [ClientDefaultPolicy]: the embedded resilience.ClientPolicy is this service's protection
+// [ClientDefaultPolicy]: the embedded resilience.Policy is this service's protection
 // configuration (retry, breaker, bulkhead, timeout), the embedded
 // loadbalance.Selection is its endpoint-selection configuration (balancer
 // strategy, outlier suspension). Service is the single label it applies to (exact
@@ -203,13 +203,13 @@ type ClientRule struct {
 	// only fire one method. See [chain.ActionMatch].
 	Action chain.ActionMatch `value:"${action:=}"`
 
-	resilience.ClientPolicy
+	resilience.Policy
 	loadbalance.Selection
 }
 
 // ServerRule is the inbound counterpart of [ClientRule]: one per-entrance
 // inbound entry. It carries no Selection — there is no endpoint to choose
-// inbound — and no retry, because [guard.Policy] cannot express one.
+// inbound — and no retry, because [admission.Policy] cannot express one.
 // Labels are unique across the list (a duplicate is rejected at dispatch);
 // an empty label matches nothing (use Default instead).
 //
@@ -225,7 +225,7 @@ type ServerRule struct {
 	// the caller supplies (thrift). It is not the name of a callee. Matching is
 	// plain equality, so it must be spelled exactly as the starter spells it.
 	Service string `value:"${service:=}"`
-	guard.Policy
+	admission.Policy
 }
 
 // validateClientRules rejects a client rule list that names the same

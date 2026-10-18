@@ -30,7 +30,7 @@ import (
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 )
 
-// The reader is the real one now that it lives in cloud/runtime/dataplane/observability: this
+// The reader is the real one now that it lives in cloud/observability/attrs: this
 // module still has no starter-otel dependency, but it no longer has to mirror
 // the processor to get one. What this test locks is the half that lives here —
 // the enqueue span is started from the ctx the caller passed to Enqueue, so
@@ -49,7 +49,7 @@ func attrsOf(s sdktrace.ReadOnlySpan) map[string]string {
 }
 
 // TestEnqueueSpanCarriesSpanAttributes locks the "reachable without holding
-// the span" shape documented in cloud/runtime/dataplane/observability/README.md: Enqueue declares
+// the span" shape documented in cloud/observability/attrs/README.md: Enqueue declares
 // the operation's identity on the ctx, and the resilience layer — the executor
 // underneath — opens the span from that same ctx, so annotating the ctx is the
 // only way in for a caller. The enqueue itself is pointed at a closed port — the

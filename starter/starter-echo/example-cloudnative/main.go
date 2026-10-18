@@ -38,7 +38,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"go-spring.org/cloud/runtime/dataplane/chain"
+	"go-spring.org/cloud/runtime/dataplane/outbound/chain"
 	"io"
 	"net/http"
 	"os"
@@ -51,9 +51,9 @@ import (
 
 	"github.com/labstack/echo/v4"
 	"go-spring.org/cloud/actuator/health"
-	"go-spring.org/cloud/runtime/dataplane/discovery"
-	"go-spring.org/cloud/runtime/dataplane/loadbalance"
-	"go-spring.org/cloud/runtime/dataplane/resilience"
+	"go-spring.org/cloud/runtime/dataplane/kernel/discovery"
+	"go-spring.org/cloud/runtime/dataplane/kernel/loadbalance"
+	"go-spring.org/cloud/runtime/dataplane/outbound/resilience"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
 
@@ -121,7 +121,7 @@ func main() {
 	}
 
 	var err error
-	exec, err = resilience.NewDefaultDriver(nil).NewClientExecutor("echo:demo", resilience.ClientPolicy{RateLimit: 3})
+	exec, err = resilience.NewDefaultDriver(nil).NewExecutor("echo:demo", resilience.Policy{RateLimit: 3})
 	if err != nil {
 		fail("resilience executor: %v", err)
 	}

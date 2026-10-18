@@ -21,13 +21,14 @@ import (
 	"errors"
 	"testing"
 
-	"go-spring.org/cloud/runtime/dataplane/chain"
+	"go-spring.org/cloud/runtime/dataplane/outbound/chain"
 
 	"github.com/gocql/gocql"
 	"go-spring.org/cloud/runtime"
-	"go-spring.org/cloud/runtime/dataplane/fault"
-	"go-spring.org/cloud/runtime/dataplane/observability"
-	"go-spring.org/cloud/runtime/dataplane/resilience"
+	serverfault "go-spring.org/cloud/runtime/dataplane/inbound/fault"
+	clientfault "go-spring.org/cloud/runtime/dataplane/outbound/fault"
+	observability "go-spring.org/cloud/runtime/dataplane/outbound/observe"
+	"go-spring.org/cloud/runtime/dataplane/outbound/resilience"
 	"go-spring.org/stdlib/testing/assert"
 )
 
@@ -36,7 +37,7 @@ import (
 // assembled with.
 func newTestCenter(t *testing.T) *runtime.Runtime {
 	t.Helper()
-	ctr, err := runtime.NewProcess(resilience.NewClientManager(resilience.NewDefaultDriver(nil)), fault.NewClientManager(nil), fault.NewServerManager(nil))
+	ctr, err := runtime.NewProcess(resilience.NewManager(resilience.NewDefaultDriver(nil)), clientfault.NewClientManager(nil), serverfault.NewServerManager(nil))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -118,9 +119,9 @@ func (c *captureExec) Close() error { return c.next.Close() }
 
 // newGuardedExec builds an executor from the default resilience driver, wrapped
 // by the resilience observe layer exactly as the container wiring does.
-func newGuardedExec(t *testing.T, p resilience.ClientPolicy) chain.Executor {
+func newGuardedExec(t *testing.T, p resilience.Policy) chain.Executor {
 	d := resilience.NewDefaultDriver(nil)
-	inner, err := d.NewClientExecutor("svc", p)
+	inner, err := d.NewExecutor("svc", p)
 	assert.Error(t, err).Nil()
 	return observability.WrapClientExecutor(inner, "cassandra", "cassandra:test")
 }
@@ -146,7 +147,7 @@ func TestGuardPassThrough(t *testing.T) {
 // TestGuardRateLimit confirms the flow-control path: once the burst is spent,
 // the statement is rejected without reaching the tail.
 func TestGuardRateLimit(t *testing.T) {
-	cap := &captureExec{next: newGuardedExec(t, resilience.ClientPolicy{RateLimit: 1, Burst: 1})}
+	cap := &captureExec{next: newGuardedExec(t, resilience.Policy{RateLimit: 1, Burst: 1})}
 	tail := &fakeTail{}
 	head := NewGuardQuery(tail, cap, "cassandra:test", "INSERT INTO t VALUES(?)")
 

@@ -161,7 +161,7 @@ gs.Run()
   ├─ 随后定身份并应用治理：
   │   service = ServiceLabel("milvus", addr) →
   │   center.ExecutorFor("milvus", service)——构造期传入的注入 `*runtime.Runtime`
-  │   携带 `*resilience.ClientManager` / `*fault.ClientManager` →（fault 包裹 mgr.ClientExecutorFor）→
+  │   携带 `*resilience.Manager` / `*clientfault.ClientManager` →（fault 包裹 mgr.ExecutorFor）→
   │   slot.apply——此后每个 RPC 都过守卫；resilience manager 必填，center 始终存在
   ├─ 仅 ping=true：fail-fast 探针 HealthCheck（ListCollections 一次），出错 → Destroy()+启动失败
   │   [starter.go:89]——地址/凭据错，进程到不了 "serving"
@@ -187,7 +187,7 @@ dial options，SDK 自己的 `DefaultGrpcOpts`（keepalive、连接退避、2GB 
 slot，该 slot 由 `NewClient` 内部创建、用 `center.ExecutorFor("milvus", "milvus:<addr>")`
 应用并保持私有——它不能出现在导出的签名里（拨号时 dial options 已固定，所以构造器把
 拨号和应用两步一并收进来）——执行器由构造期传入的 `*runtime.Runtime` 携带的
-`*resilience.ClientManager` 与 `*fault.ClientManager` 构建
+`*resilience.Manager` 与 `*clientfault.ClientManager` 构建
 （resilience manager 必填——容器始终提供；治理在客户端构造时即应用，
 所以 `newClient` 的 fail-fast 探针在 slot 应用之后才跑，治理开启时探针本身也过守卫）。
 拦截器同时是**声明 seam**：

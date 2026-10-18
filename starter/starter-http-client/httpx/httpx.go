@@ -33,8 +33,8 @@
 //     breaking and retry protect every call; because it sits outside the
 //     balancer, a retry re-picks a fresh endpoint and the breaker keys on the
 //     logical service name. When no explicit executor is supplied, it comes from
-//     the injected [resilience.ClientManager] under Service — the same
-//     [resilience.ClientManager.ClientExecutorFor] path every other client starter uses;
+//     the injected [resilience.Manager] under Service — the same
+//     [resilience.Manager.ExecutorFor] path every other client starter uses;
 //   - TLS — the certificate surface for https targets is built into the base
 //     transport;
 //
@@ -45,7 +45,7 @@
 // (gated by Observability). With no
 // OTel SDK registered these are no-ops, so the transport stays usable bare. The
 // package never imports a concrete starter; the governance authority reaches it
-// as the beans [NewTransport] takes — a [resilience.ClientManager], a [fault.ClientManager]
+// as the beans [NewTransport] takes — a [resilience.Manager], a [fault.ClientManager]
 // and a [loadbalance.Manager] for the selection half — never through a
 // package-level seam.
 package httpx
@@ -56,15 +56,15 @@ import (
 
 	"go-spring.org/cloud/runtime"
 
-	"go-spring.org/cloud/runtime/dataplane/label"
+	"go-spring.org/cloud/runtime/dataplane/kernel/label"
 
 	"go-spring.org/cloud/propagate"
-	"go-spring.org/cloud/runtime/dataplane/chain"
-	"go-spring.org/cloud/runtime/dataplane/discovery"
-	"go-spring.org/cloud/runtime/dataplane/loadbalance"
-	"go-spring.org/cloud/runtime/dataplane/observability"
-	"go-spring.org/cloud/runtime/dataplane/resilience"
-	"go-spring.org/cloud/runtime/dataplane/traffic"
+	"go-spring.org/cloud/runtime/dataplane/kernel/discovery"
+	"go-spring.org/cloud/runtime/dataplane/kernel/loadbalance"
+	"go-spring.org/cloud/runtime/dataplane/kernel/traffic"
+	"go-spring.org/cloud/runtime/dataplane/outbound/chain"
+	observability "go-spring.org/cloud/runtime/dataplane/outbound/observe"
+	"go-spring.org/cloud/runtime/dataplane/outbound/resilience"
 	"go-spring.org/cloud/security"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 )
@@ -116,14 +116,14 @@ type Config struct {
 	// caller resolves it from the container (the ${spring.resilience.driver} bean)
 	// and passes the driver itself, since this
 	// package is container-free. When neither chain.Executor nor ResilienceDriver is
-	// set, the executor is resolved from the injected [resilience.ClientManager] under
+	// set, the executor is resolved from the injected [resilience.Manager] under
 	// Service; with governance off the armed policy is zero and the executor is
 	// a transparent pass-through.
 	ResilienceDriver resilience.Driver
 
 	// ResiliencePolicy is the backend-neutral protection applied when
 	// ResilienceDriver is set.
-	ResiliencePolicy resilience.ClientPolicy
+	ResiliencePolicy resilience.Policy
 
 	// Executor is a pre-built resilience executor to use in place of the
 	// ResilienceDriver+ResiliencePolicy pair. When non-nil it takes precedence:
@@ -160,7 +160,7 @@ type Config struct {
 
 // NewTransport assembles the http.RoundTripper for cfg and returns it together
 // with a close function that releases what the transport owns — an executor it
-// built itself, the discovery watch. An executor taken from [resilience.ClientManager]
+// built itself, the discovery watch. An executor taken from [resilience.Manager]
 // is not released here: the manager owns it for the process lifetime. It fails
 // fast when ServiceName is set but the discovery backend or load-balancing
 // strategy cannot be resolved, so misconfiguration surfaces at wiring time
@@ -236,7 +236,7 @@ func NewTransport(cfg Config, center *runtime.Runtime, prop traffic.Propagator) 
 	// breaker state and driver rule names agree with the governance rule that armed
 	// them. Three executor sources, first match wins: a pre-built chain.Executor, an
 	// explicit ResilienceDriver+Policy, or — the default, and the same path every
-	// other client starter takes — the injected [resilience.ClientManager] under
+	// other client starter takes — the injected [resilience.Manager] under
 	// Service. The manager owns that executor: it is built once per label, shared
 	// by every user of the label, refreshes itself on a policy change, and
 	// already carries the observe layer; with governance off the armed policy is
@@ -247,12 +247,12 @@ func NewTransport(cfg Config, center *runtime.Runtime, prop traffic.Propagator) 
 	case cfg.Executor != nil:
 		exec = cfg.Executor
 	case cfg.ResilienceDriver != nil:
-		if exec, err = cfg.ResilienceDriver.NewClientExecutor(cfg.service(), cfg.ResiliencePolicy); err != nil {
+		if exec, err = cfg.ResilienceDriver.NewExecutor(cfg.service(), cfg.ResiliencePolicy); err != nil {
 			closeAll(closeFns)
 			return nil, nil, err
 		}
 	default:
-		exec = center.ResilienceClient().ClientExecutorFor("http", cfg.service())
+		exec = center.ResilienceClient().ExecutorFor("http", cfg.service())
 		managerOwned = true
 		// The chain's endpoint-selection half follows the governance rule through
 		// the registration its construction performed — the protection policy
@@ -311,7 +311,7 @@ func NewTransport(cfg Config, center *runtime.Runtime, prop traffic.Propagator) 
 
 // trafficTransport injects the load-test marker header onto each request when
 // the request's context is a load-test context, then delegates to base. It is
-// the outbound seam for [go-spring.org/cloud/runtime/dataplane/traffic] on the HTTP client path.
+// the outbound seam for [go-spring.org/cloud/runtime/dataplane/kernel/traffic] on the HTTP client path.
 type trafficTransport struct {
 	base http.RoundTripper
 	prop traffic.Propagator

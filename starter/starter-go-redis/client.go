@@ -29,10 +29,10 @@ import (
 
 	"github.com/redis/go-redis/v9"
 	"go-spring.org/cloud/runtime"
-	"go-spring.org/cloud/runtime/dataplane/chain"
-	"go-spring.org/cloud/runtime/dataplane/label"
-	"go-spring.org/cloud/runtime/dataplane/loadbalance"
-	"go-spring.org/cloud/runtime/dataplane/resilience"
+	"go-spring.org/cloud/runtime/dataplane/kernel/label"
+	"go-spring.org/cloud/runtime/dataplane/kernel/loadbalance"
+	"go-spring.org/cloud/runtime/dataplane/outbound/chain"
+	"go-spring.org/cloud/runtime/dataplane/outbound/resilience"
 )
 
 // Client is the wrapper bean go-redis clients are injected as. It EMBEDS the
@@ -57,7 +57,7 @@ type Client struct {
 
 	// exec is the resilience executor protecting every command, set by [NewClient]
 	// from the container's runtime. The center must hold a
-	// [resilience.ClientManager]: [runtime.Runtime.ExecutorFor] panics without one.
+	// [resilience.Manager]: [runtime.Runtime.ExecutorFor] panics without one.
 	exec chain.Executor
 	// serviceLabel is the resilience service key ("redis:<...>") exec scopes
 	// limiter/breaker state by. Fixed by [NewClient].
@@ -83,7 +83,7 @@ type Client struct {
 // applied HERE, so a Client cannot exist half-assembled: [Client.exec] is set in
 // the constructor and there is no Init step and nothing the container has to
 // remember to call later. A hand-built client must supply a center holding a
-// [resilience.ClientManager]: [runtime.Runtime.ExecutorFor] is required, so a nil
+// [resilience.Manager]: [runtime.Runtime.ExecutorFor] is required, so a nil
 // center is a construction error — never a graceful downgrade to an unprotected
 // client.
 //
@@ -101,7 +101,7 @@ type Client struct {
 // span, the duration metrics and the access log from the point that sees the
 // whole call — so one log line covers the whole retry loop.
 //
-// The manager's ClientExecutorFor resolves its backing executor lazily, on each
+// The manager's ExecutorFor resolves its backing executor lazily, on each
 // Execute, so the call order relative to the center's wiring is
 // irrelevant.
 func NewClient(client redis.UniversalClient, cfg Config, lbChain *loadbalance.Chain, center *runtime.Runtime) (*Client, error) {

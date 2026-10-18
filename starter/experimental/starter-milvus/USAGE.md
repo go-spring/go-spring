@@ -163,7 +163,7 @@ gs.Run()
   ├─ ...then fixes identity and applies governance:
   │   service = ServiceLabel("milvus", addr) →
   │   center.ExecutorFor("milvus", service) — the injected *runtime.Runtime the ctor
-  │   hands in → (fault-wrapped mgr.ClientExecutorFor) → slot.apply — the
+  │   hands in → (fault-wrapped mgr.ExecutorFor) → slot.apply — the
   │   interceptors guard every RPC from here on; the resilience manager is required, so the center is always present
   ├─ ping=true only: fail-fast probe HealthCheck (ListCollections once), error → Destroy()+boot fails
   │   [starter.go:89] — a wrong address or bad credential never reaches "serving"
@@ -192,8 +192,8 @@ interceptors (unary + stream-open) appended — additive, not a replacement. The
 interceptors read a per-client slot that `NewClient` creates, applies with
 `center.ExecutorFor("milvus", "milvus:<addr>")`, and keeps private — the slot cannot appear
 in an exported signature, so the constructor owns both the dial and the governing step.
-The executor is built from the `*resilience.ClientManager` and
-`*fault.ClientManager` carried by the injected `*runtime.Runtime`
+The executor is built from the `*resilience.Manager` and
+`*clientfault.ClientManager` carried by the injected `*runtime.Runtime`
 (the resilience manager is required — the container always supplies it;
 governance is applied as the client is built, so the fail-fast probe in
 `newClient` runs *after* the slot is applied and on a governance-on boot the probe itself rides the

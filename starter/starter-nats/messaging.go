@@ -22,7 +22,7 @@ import (
 	"github.com/nats-io/nats.go"
 	"go-spring.org/cloud/messaging"
 	"go-spring.org/cloud/propagate"
-	"go-spring.org/cloud/runtime/dataplane/traffic"
+	"go-spring.org/cloud/runtime/dataplane/kernel/traffic"
 )
 
 // NewDriver adapts a NATS connection to the broker-neutral messaging.Driver, so

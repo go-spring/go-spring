@@ -24,7 +24,7 @@ import (
 	"sync"
 
 	"github.com/bradfitz/gomemcache/memcache"
-	"go-spring.org/cloud/runtime/dataplane/discovery"
+	"go-spring.org/cloud/runtime/dataplane/kernel/discovery"
 	"go-spring.org/stdlib/errutil"
 )
 

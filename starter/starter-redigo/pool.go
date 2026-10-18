@@ -21,13 +21,13 @@ import (
 	"crypto/tls"
 	"net"
 
-	"go-spring.org/cloud/runtime/dataplane/chain"
-	"go-spring.org/cloud/runtime/dataplane/label"
+	"go-spring.org/cloud/runtime/dataplane/kernel/label"
+	"go-spring.org/cloud/runtime/dataplane/outbound/chain"
 
 	"github.com/gomodule/redigo/redis"
 	"go-spring.org/cloud/runtime"
-	"go-spring.org/cloud/runtime/dataplane/discovery"
-	"go-spring.org/cloud/runtime/dataplane/loadbalance"
+	"go-spring.org/cloud/runtime/dataplane/kernel/discovery"
+	"go-spring.org/cloud/runtime/dataplane/kernel/loadbalance"
 	"go-spring.org/stdlib/errutil"
 )
 
@@ -61,7 +61,7 @@ type Pool struct {
 // It is applied HERE, while the pool is built, so a Pool cannot exist
 // half-assembled: there is no separate apply step and nothing the container has
 // to remember to call. A stand-alone caller must supply a center holding a
-// [resilience.ClientManager]: [runtime.Runtime.ExecutorFor] is required, so a nil
+// [resilience.Manager]: [runtime.Runtime.ExecutorFor] is required, so a nil
 // center is a construction error rather than running bare.
 func NewPool(ctx context.Context, c Config, center *runtime.Runtime) (*Pool, error) {
 	tlsConfig, err := c.TLS.BuildClient()
@@ -112,7 +112,7 @@ func NewPool(ctx context.Context, c Config, center *runtime.Runtime) (*Pool, err
 	// retry/breaker loop (and so are observed), and the resilience layer emits the
 	// span + counter + histogram + access log for the whole call, retries included.
 	// A nil Fault degrades to the unwrapped executor (runtime.Runtime.ExecutorFor
-	// guards it); the center is required to carry a [resilience.ClientManager], and
+	// guards it); the center is required to carry a [resilience.Manager], and
 	// runtime.Runtime.ExecutorFor panics without one. Resolution is deferred
 	// to call time, so the order relative to the center's wiring is
 	// irrelevant; rate / error / latency hot-toggle and the bound protection policy

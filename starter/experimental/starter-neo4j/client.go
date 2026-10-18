@@ -24,8 +24,8 @@ package StarterNeo4j
 import (
 	"context"
 
-	"go-spring.org/cloud/runtime/dataplane/chain"
-	"go-spring.org/cloud/runtime/dataplane/label"
+	"go-spring.org/cloud/runtime/dataplane/kernel/label"
+	"go-spring.org/cloud/runtime/dataplane/outbound/chain"
 
 	"github.com/neo4j/neo4j-go-driver/v5/neo4j"
 	"go-spring.org/cloud/runtime"
@@ -61,7 +61,7 @@ type Client struct {
 
 	// exec is the resilience executor protecting queries, fixed by [NewClient]
 	// from the runtime it is handed. The center is required to carry a
-	// [resilience.ClientManager] — [runtime.Runtime.ExecutorFor] panics without one —
+	// [resilience.Manager] — [runtime.Runtime.ExecutorFor] panics without one —
 	// rather than silently running bare. A zero Client built
 	// by hand (a test) leaves it nil, and [Query] / [RunWithResilience] then run
 	// their call inline.
@@ -83,9 +83,9 @@ type Client struct {
 // center carries the container's facilities (see [runtime.Runtime]), applied
 // HERE so a Client cannot exist half-assembled: there is no later patching and
 // nothing the wiring has to remember to call. A hand-built client must supply a
-// center holding a [resilience.ClientManager]: [runtime.Runtime.ExecutorFor] is
+// center holding a [resilience.Manager]: [runtime.Runtime.ExecutorFor] is
 // required, so a nil center is a construction error —
-// [runtime.Runtime.ExecutorFor] panics — never a graceful downgrade. The manager's ClientExecutorFor resolves its backing
+// [runtime.Runtime.ExecutorFor] panics — never a graceful downgrade. The manager's ExecutorFor resolves its backing
 // executor lazily, on each Execute, so the call order relative to
 // the center's wiring is irrelevant.
 func NewClient(client neo4j.DriverWithContext, cfg Config, center *runtime.Runtime) *Client {

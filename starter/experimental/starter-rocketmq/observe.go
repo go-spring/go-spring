@@ -24,7 +24,7 @@
 package StarterRocketmq
 
 import (
-	"go-spring.org/cloud/runtime/dataplane/chain"
+	"go-spring.org/cloud/runtime/dataplane/outbound/chain"
 	"go-spring.org/log"
 )
 
@@ -61,7 +61,7 @@ var (
 // The vocabulary — the family's attribute keys, the bounded/open split that puts
 // the destination in detail and the system in a label, and the trace edge each
 // word adds — is the messaging family's, not this file's; it lives in
-// [cloud/runtime/dataplane/chain]. This starter supplies only what only it knows: that the calls
+// [cloud/runtime/dataplane/outbound/chain]. This starter supplies only what only it knows: that the calls
 // reach a RocketMQ broker, and their word and destination.
 func operation(word opWord, topic string) chain.Operation {
 	op := chain.MessagingOp(word.shape, rocketmqSystem, word.word, topic)

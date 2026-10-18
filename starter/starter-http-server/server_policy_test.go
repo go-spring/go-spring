@@ -22,7 +22,7 @@ import (
 	"testing"
 
 	"go-spring.org/cloud/runtime"
-	"go-spring.org/cloud/runtime/dataplane/guard"
+	"go-spring.org/cloud/runtime/dataplane/inbound/admission"
 )
 
 // serveServerPolicy drives one request through the inbound filter and reports the
@@ -32,7 +32,7 @@ import (
 func serveServerPolicy(t *testing.T, handler http.HandlerFunc) (*httptest.ResponseRecorder, int) {
 	t.Helper()
 	handlerRuns := 0
-	mgr := guard.NewManager()
+	mgr := admission.NewManager()
 	in := runtime.InboundOver("http-server", "http-server::9090", mgr)
 	mw := serverPolicyWith(in)
 	h := mw(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

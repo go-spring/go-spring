@@ -19,13 +19,13 @@ package StarterRocketmq
 import (
 	"context"
 	"errors"
-	"go-spring.org/cloud/runtime/dataplane/chain"
+	"go-spring.org/cloud/runtime/dataplane/outbound/chain"
 	"strings"
 	"testing"
 
 	"github.com/apache/rocketmq-client-go/v2/primitive"
 	"go-spring.org/cloud/propagate"
-	"go-spring.org/cloud/runtime/dataplane/traffic"
+	"go-spring.org/cloud/runtime/dataplane/kernel/traffic"
 	"go-spring.org/stdlib/testing/assert"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/propagation"

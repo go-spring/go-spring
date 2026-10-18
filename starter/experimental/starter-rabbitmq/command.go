@@ -33,7 +33,7 @@ package StarterRabbitMQ
 import (
 	"context"
 	amqp "github.com/rabbitmq/amqp091-go"
-	"go-spring.org/cloud/runtime/dataplane/observability"
+	observability "go-spring.org/cloud/runtime/dataplane/outbound/observe"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/propagation"
 )

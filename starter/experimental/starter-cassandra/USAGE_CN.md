@@ -145,7 +145,7 @@ gs.Run()
   │     唯一 Driver bean，指定的 bean 不存在则启动失败）→
   │     driver.CreateClient(ctx, c, center) 返回 *Client
   │     （session + 身份 + 治理）：NewClient 设 exec = center.ExecutorFor("cassandra", service)，
-  │     即 center.FaultClient().WrapClientExecutor(center.ResilienceClient().ClientExecutorFor("cassandra", service))，
+  │     即 center.FaultClient().WrapClientExecutor(center.ResilienceClient().ExecutorFor("cassandra", service))，
   │     center 为注入的 *runtime.Runtime —— 构造期 exec 链即就绪
   ├─ 仅 ping=true：fail-fast 探活——newClient 调 HealthCheck [starter.go:100]，一条 system.local 查询直达裸 session
   ├─ readiness：indicator 委托 HealthCheck 查询 system.local [health.go:34]
@@ -207,7 +207,7 @@ wrapper）——请用 wrapper 自带的 `WithContext`/`Bind` 保持防护。后
 `Client.Query`/`Client.Bind`/`Client.Exec` 出发，读写都有 breaker/limiter/metrics/
 access-log。
 
-`Exec` 的分层顺序（由外向内）：fault 注入器（`fault.ClientManager.WrapClientExecutor` 包住注入 manager 解析
+`Exec` 的分层顺序（由外向内）：fault 注入器（`clientfault.ClientManager.WrapClientExecutor` 包住注入 manager 解析
 出的执行器）→ resilience 发射器（`resilience.WrapClientExecutor`：语句的 span、调用级/尝试级
 直方图、in-flight 计数、outcome 计数与 access log —— 它读取声明层放进 ctx 的 operation）→
 resilience 执行器（限流/熔断/重试核心）→ gocql。fault 注入器

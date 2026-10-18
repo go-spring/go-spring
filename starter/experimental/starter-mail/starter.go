@@ -137,7 +137,7 @@ func newMailer(ctx *gs.ContextProvider, name string, c Config, center *runtime.R
 	// The chain owns everything, one statement per layer: identity over
 	// governance over the raw adapter. Governance is applied HERE, while the
 	// mailer is built, so a *Mailer cannot exist half-assembled; a hand-built
-	// mailer must supply a [runtime.Runtime] over a [resilience.ClientManager], since
+	// mailer must supply a [runtime.Runtime] over a [resilience.Manager], since
 	// the center is required to carry one — [runtime.Runtime.ExecutorFor] panics
 	// otherwise, never a graceful downgrade.
 	raw := NewRawMailer(client, c.From)

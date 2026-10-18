@@ -20,8 +20,8 @@ import (
 	"context"
 	"testing"
 
-	"go-spring.org/cloud/runtime/dataplane/fault"
-	"go-spring.org/cloud/runtime/dataplane/resilience"
+	"go-spring.org/cloud/runtime/dataplane/kernel/fault"
+	"go-spring.org/cloud/runtime/dataplane/outbound/resilience"
 )
 
 // TestConfig_DirectionBlocks guards the shape of the document: each direction's
@@ -35,7 +35,7 @@ func TestConfig_DirectionBlocks(t *testing.T) {
 		t.Fatal("zero Config: both fault sides should be inert")
 	}
 	c := newTestCenter(zero)
-	if p := c.resClient.ClientPolicyFor("x"); p.Timeout != 0 {
+	if p := c.resClient.PolicyFor("x"); p.Timeout != 0 {
 		t.Fatalf("zero config policyFor: want no timeout, got %v", p.Timeout)
 	}
 	if a := c.guardServer.PolicyFor("x"); !a.IsZero() {
@@ -45,7 +45,7 @@ func TestConfig_DirectionBlocks(t *testing.T) {
 	// One fault config per side: each is preserved, and they stay independent.
 	cfg := Config{
 		Client: ClientConfig{
-			Default: ClientDefaultPolicy{ClientPolicy: resilience.ClientPolicy{Timeout: dur(100)}},
+			Default: ClientDefaultPolicy{Policy: resilience.Policy{Timeout: dur(100)}},
 			Fault:   fault.Config{Rules: []fault.Rule{{Rate: 0.5, Error: "generic"}}},
 		},
 		Server: ServerConfig{
@@ -61,7 +61,7 @@ func TestConfig_DirectionBlocks(t *testing.T) {
 		t.Fatalf("ServerConfig.Fault not preserved: %+v", sf)
 	}
 	cc := newTestCenter(cfg)
-	if p := cc.resClient.ClientPolicyFor("redis:cache"); p.Timeout != dur(100) {
+	if p := cc.resClient.PolicyFor("redis:cache"); p.Timeout != dur(100) {
 		t.Fatalf("policyFor with Fault set: want timeout 100ms, got %v", p.Timeout)
 	}
 	// An outbound-only document leaves inbound at zero: the server side does not
@@ -85,8 +85,8 @@ func TestDispatch_RejectsDuplicateRules(t *testing.T) {
 	bad := Config{
 		Client: ClientConfig{
 			Rules: []ClientRule{
-				{Service: "redis:cache", ClientPolicy: resilience.ClientPolicy{Timeout: dur(50)}},
-				{Service: "redis:cache", ClientPolicy: resilience.ClientPolicy{Timeout: dur(999)}},
+				{Service: "redis:cache", Policy: resilience.Policy{Timeout: dur(50)}},
+				{Service: "redis:cache", Policy: resilience.Policy{Timeout: dur(999)}},
 			},
 		},
 	}
@@ -94,7 +94,7 @@ func TestDispatch_RejectsDuplicateRules(t *testing.T) {
 		t.Fatal("dispatch must reject a document with duplicate service labels")
 	}
 	// The previous snapshot keeps serving: the good timeout, not either duplicate.
-	if p := c.resClient.ClientPolicyFor("redis:cache"); p.Timeout != 0 {
+	if p := c.resClient.PolicyFor("redis:cache"); p.Timeout != 0 {
 		t.Fatalf("rejected push must not leak into the serving snapshot: got timeout %v", p.Timeout)
 	}
 

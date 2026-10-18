@@ -32,8 +32,8 @@ import (
 	"net/url"
 	"time"
 
-	"go-spring.org/cloud/runtime/dataplane/label"
-	"go-spring.org/cloud/runtime/dataplane/observability"
+	"go-spring.org/cloud/runtime/dataplane/kernel/label"
+	observability "go-spring.org/cloud/runtime/dataplane/outbound/observe"
 	"go-spring.org/log"
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/gs"

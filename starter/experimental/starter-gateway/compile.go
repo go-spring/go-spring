@@ -27,10 +27,10 @@ import (
 	"sync/atomic"
 
 	"go-spring.org/cloud/runtime"
-	"go-spring.org/cloud/runtime/dataplane/chain"
-	"go-spring.org/cloud/runtime/dataplane/discovery"
-	"go-spring.org/cloud/runtime/dataplane/loadbalance"
-	"go-spring.org/cloud/runtime/dataplane/resilience"
+	"go-spring.org/cloud/runtime/dataplane/kernel/discovery"
+	"go-spring.org/cloud/runtime/dataplane/kernel/loadbalance"
+	"go-spring.org/cloud/runtime/dataplane/kernel/ratelimit"
+	"go-spring.org/cloud/runtime/dataplane/outbound/chain"
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
@@ -113,7 +113,7 @@ type RouteTable struct {
 	// per-KEY counting rather than per-service — the store's own trade, not an
 	// executor's, so the filter uses it directly. With a shared backend
 	// contributed, every replica draws on the same budgets.
-	limiter resilience.ClusterLimiter
+	limiter ratelimit.ClusterLimiter
 
 	// chains caches the endpoint-selection chain per route id, so a recompile
 	// REUSES the chain it built last time rather than replacing it. That is what
@@ -161,7 +161,7 @@ type chainEntry struct {
 // to the fallback there is nothing to reject, but it is reported at startup
 // rather than swallowed.
 func newRouteTable(ctx *gs.ContextProvider, o *observer,
-	center *runtime.Runtime, limiter resilience.ClusterLimiter) (*RouteTable, error) {
+	center *runtime.Runtime, limiter ratelimit.ClusterLimiter) (*RouteTable, error) {
 	if limiter == nil {
 		// No cluster limiter was contributed, so per-route and per-client budgets
 		// are this process's own — the same reach a per-service executor would have.
@@ -289,7 +289,7 @@ func (t *RouteTable) recompile(raw map[string]RouteRaw) error {
 
 // buildExecutors turns each named resilience policy into an chain.Executor. Routes
 // reference these by name so they share breaker state. Each executor comes from
-// the INJECTED [resilience.ClientManager] under "gateway:<name>", so gateway's
+// the INJECTED [resilience.Manager] under "gateway:<name>", so gateway's
 // per-route protection is governed centrally and hot-reloaded in place: the
 // manager owns the label's policy, the driver and the refresh subscription, and
 // when governance is off the returned executor is a transparent pass-through.

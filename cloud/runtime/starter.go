@@ -18,10 +18,12 @@ package runtime
 
 import (
 	"go-spring.org/cloud/runtime/controlplane/governance"
-	"go-spring.org/cloud/runtime/dataplane/discovery"
-	"go-spring.org/cloud/runtime/dataplane/fault"
-	"go-spring.org/cloud/runtime/dataplane/loadbalance"
-	"go-spring.org/cloud/runtime/dataplane/resilience"
+	serverfault "go-spring.org/cloud/runtime/dataplane/inbound/fault"
+	"go-spring.org/cloud/runtime/dataplane/kernel/discovery"
+	"go-spring.org/cloud/runtime/dataplane/kernel/loadbalance"
+	"go-spring.org/cloud/runtime/dataplane/kernel/ratelimit"
+	clientfault "go-spring.org/cloud/runtime/dataplane/outbound/fault"
+	"go-spring.org/cloud/runtime/dataplane/outbound/resilience"
 	"go-spring.org/spring/gs"
 )
 
@@ -30,9 +32,9 @@ import (
 // plane and the process.
 //
 // The authorities themselves are NOT registered here — each is registered by
-// the package that owns it (cloud/runtime/dataplane/resilience,
-// cloud/runtime/dataplane/loadbalance, cloud/runtime/dataplane/fault,
-// cloud/runtime/dataplane/discovery), so a client that injects one only has to
+// the package that owns it (cloud/runtime/dataplane/outbound/resilience,
+// cloud/runtime/dataplane/kernel/loadbalance, cloud/runtime/dataplane/outbound/fault,
+// cloud/runtime/dataplane/kernel/discovery), so a client that injects one only has to
 // import it. What is left for this package is the composition: build one
 // [Runtime] over whichever authority beans the container holds, arm the
 // authorities with the initial document, and expose the runtime as the single
@@ -63,9 +65,9 @@ func init() {
 	// Exported as a gs.Rooter so gs instantiates the runtime even when no client
 	// injects one: without a collected-type export an unreachable bean is never
 	// constructed, and none of the startup would run.
-	gs.Provide(func(resClient *resilience.ClientManager,
-		lb *loadbalance.Manager, injClient *fault.ClientManager, injServer *fault.ServerManager,
-		disc *discovery.Manager, limiter resilience.ClusterLimiter, src governance.Source) (*Runtime, error) {
+	gs.Provide(func(resClient *resilience.Manager,
+		lb *loadbalance.Manager, injClient *clientfault.ClientManager, injServer *serverfault.ServerManager,
+		disc *discovery.Manager, limiter ratelimit.ClusterLimiter, src governance.Source) (*Runtime, error) {
 		if src == nil { // nullable wiring only; see above
 			src = governance.NewPushSource(governance.Config{})
 		}

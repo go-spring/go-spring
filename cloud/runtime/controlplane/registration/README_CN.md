@@ -4,7 +4,7 @@
 
 `registration` 是服务发现的**写侧**,属于控制面:它把本进程发布到已配置的
 naming center,并在生命周期节点上维护这份发布。读侧(`Discovery` / `Resolver` /
-本地 endpoint 目录)在 [dataplane/discovery](../../dataplane/discovery/);业务
+本地 endpoint 目录)在 [dataplane/kernel/discovery](../../dataplane/kernel/discovery/);业务
 请求从不经过本包。
 
 ## 为什么在控制面
@@ -33,10 +33,10 @@ type Registry interface {
 
 实例身份(`Instance`,配置前缀 `${spring.discovery}.*`)、naming center 配置
 (`${spring.discovery.<backend>.<name>}.*`)与消费端引用规则的完整说明见
-[discovery README](../../dataplane/discovery/README_CN.md) 的“配置”一节。
+[discovery README](../../dataplane/kernel/discovery/README_CN.md) 的“配置”一节。
 
 ## 可观测性
 
 本包自带 `Observer`(注册操作 span/耗时/计数 + `discovery.instance.registered`
 gauge),与读侧的 sync 观测**独立**:两侧各一个 observer,互不 import,因而
-`dataplane/discovery` 不会反向依赖控制面。
+`dataplane/kernel/discovery` 不会反向依赖控制面。

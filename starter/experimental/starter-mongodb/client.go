@@ -26,7 +26,7 @@ import (
 	"context"
 	"net"
 
-	"go-spring.org/cloud/runtime/dataplane/label"
+	"go-spring.org/cloud/runtime/dataplane/kernel/label"
 	"go.mongodb.org/mongo-driver/v2/mongo"
 )
 

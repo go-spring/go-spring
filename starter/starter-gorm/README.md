@@ -28,7 +28,7 @@ here, shared by all five instead of copy-pasted:
   on the executor chain. The plugin emits nothing, so it rides the OTel globals
   and is near-zero overhead without `starter-otel`;
 - the resilience callbacks — every operation runs under one backend-neutral
-  `resilience.ClientExecutor`, with `gorm.ErrRecordNotFound` counted as success;
+  `chain.Executor`, with `gorm.ErrRecordNotFound` counted as success;
 - the post-open `DBCustomizer` extension seam, and the dialect-qualified bean
   name (`<dialect>.<name>`) each starter applies, so two dialects can carry an
   instance of the same name without colliding.

@@ -75,7 +75,7 @@ package main
 import (
     "context"
 
-    "go-spring.org/cloud/runtime/dataplane/discovery"
+    "go-spring.org/cloud/runtime/dataplane/kernel/discovery"
     "go-spring.org/spring/gs"
 )
 
@@ -202,7 +202,7 @@ TTL removes dead keys "self-healing without a reaper" (`starter.go`).
 Downstream, a loadbalance `Pool` consumes these snapshots and applies **weight-0 filtering** on
 every Pick: `excludeDrained` drops `Weight == 0` endpoints, falling back to the full set when
 every endpoint is drained so an unnormalized snapshot cannot blackhole the pool
-(`cloud/runtime/dataplane/loadbalance/pool.go:97-99,122-135`).
+(`cloud/runtime/dataplane/kernel/loadbalance/pool.go:97-99,122-135`).
 
 ### 2.4 DRAIN path — UpdateWeight(0)
 
@@ -278,7 +278,7 @@ collection is backend-agnostic.
 ### 3.3 Discovery — cite the block's bean name (no config)
 
 There is no discovery configuration path. Every block's backend bean IS a
-`cloud/runtime/dataplane/discovery.Discovery` named `etcd.<name>` on the block's shared client (`starter.go`).
+`cloud/runtime/dataplane/kernel/discovery.Discovery` named `etcd.<name>` on the block's shared client (`starter.go`).
 Client starters cite that bean name (`spring.http-client.instances.<n>.discovery=etcd.main`).
 The bean is lazy — a pure provider never resolves, never pays for the read half. A pure consumer
 configures only connection blocks (no `service-name`/`addr`) and registers nothing.

@@ -18,7 +18,7 @@ package gormcore
 
 import (
 	"go-spring.org/cloud/runtime"
-	"go-spring.org/cloud/runtime/dataplane/chain"
+	"go-spring.org/cloud/runtime/dataplane/outbound/chain"
 	gormobserve "go-spring.org/starter-gorm/observe"
 	gormresilience "go-spring.org/starter-gorm/resilience"
 	"go-spring.org/stdlib/errutil"
@@ -42,7 +42,7 @@ type Options struct {
 	// applies it while assembling, so the returned DB is complete. It is one
 	// object rather than a parameter per capability so this field — which every
 	// dialect's wiring fills — stays stable as capabilities are added. The center
-	// must carry a [resilience.ClientManager] — the container always supplies one — so a
+	// must carry a [resilience.Manager] — the container always supplies one — so a
 	// hand-built DB (an example, a test) must supply one too: a nil center is a
 	// construction error, never a graceful downgrade.
 	Center *runtime.Runtime
@@ -117,7 +117,7 @@ func Open(dialector gorm.Dialector, pool PoolConfig, opt Options) (*DB, error) {
 	// Governance is applied in the constructor, not by the wiring, so the DB is
 	// complete the moment Open returns. The executor comes from the one place
 	// that composition lives ([runtime.Runtime.ExecutorFor]), which requires
-	// the center to carry a [resilience.ClientManager] — the container always supplies
+	// the center to carry a [resilience.Manager] — the container always supplies
 	// it — and panics on a nil center. The
 	// manager resolves the backing executor lazily, on each Execute, so this call
 	// order relative to the center's wiring is irrelevant, and the fault

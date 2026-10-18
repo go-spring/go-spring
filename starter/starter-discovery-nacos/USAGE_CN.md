@@ -14,7 +14,7 @@ bean 承载 ——
 - **Provider 半区**（`spring.discovery.nacos.<name>.*` + `spring.discovery.*`）：应用就绪后把
   本进程注册进每一个已配置的 Nacos 中心。面向 VM / 裸机 / 混合部署；纯 Kubernetes 下平台
   已替你注册 Pod。
-- **Consumer 半区**（自身零配置）：同一个 bean 就是一个 `cloud/runtime/dataplane/discovery` 后端，client
+- **Consumer 半区**（自身零配置）：同一个 bean 就是一个 `cloud/runtime/dataplane/kernel/discovery` 后端，client
   starter（gateway 的 `lb://` 路由、`spring.http-client.instances.<n>.discovery` 等）通过引用
   bean 名 `nacos.<name>` 来解析。
 
@@ -50,7 +50,7 @@ demo/
 require (
     go-spring.org/spring                     v1.3.x
     go-spring.org/starter-discovery-nacos     latest
-    go-spring.org/starter-gateway            latest   // consumer：lb:// 路由走 cloud/runtime/dataplane/discovery
+    go-spring.org/starter-gateway            latest   // consumer：lb:// 路由走 cloud/runtime/dataplane/kernel/discovery
     go-spring.org/starter-echo               latest   // provider 的 HTTP 服务面
 )
 ```

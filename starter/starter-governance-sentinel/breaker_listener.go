@@ -21,19 +21,19 @@ import (
 
 	"github.com/alibaba/sentinel-golang/core/circuitbreaker"
 
-	"go-spring.org/cloud/runtime/dataplane/resilience"
+	"go-spring.org/cloud/runtime/dataplane/kernel/breaker"
 )
 
-// breakerRoutes maps a sentinel resource name (a service label) to the resilience BreakerEventListener
+// breakerRoutes maps a sentinel resource name (a service label) to the breaker.EventListener
 // that wants its state transitions. sentinel-golang's StateChangeListener is a
 // process-wide singleton (circuitbreaker.stateChangeListeners), not per-rule, so a
 // single registered routeListener demultiplexes by rule.Resource to the right
 // per-executor listener. Keyed by the label because a sentinelExecutor builds one
 // breaker rule per service (ensureRules), and the label is globally
 // unique within a process (derived from label.ServiceLabel).
-var breakerRoutes sync.Map // service label (string) -> resilience.BreakerEventListener
+var breakerRoutes sync.Map // service label (string) -> breaker.EventListener
 
-func registerBreakerRoute(service string, l resilience.BreakerEventListener) {
+func registerBreakerRoute(service string, l breaker.EventListener) {
 	if l == nil {
 		return
 	}
@@ -58,26 +58,26 @@ func (routeListener) OnTransformToHalfOpen(prev circuitbreaker.State, rule circu
 }
 
 // forwardBreaker looks up the listener for a service label and translates the
-// sentinel transition into a resilience.BreakerState change. A label with no route
+// sentinel transition into a breaker.State change. A label with no route
 // (e.g. a breaker rule loaded outside go-spring) is silently ignored.
 func forwardBreaker(service string, from, to circuitbreaker.State) {
 	v, ok := breakerRoutes.Load(service)
 	if !ok {
 		return
 	}
-	v.(resilience.BreakerEventListener).OnBreakerStateChange(service, toBreakerState(from), toBreakerState(to))
+	v.(breaker.EventListener).OnBreakerStateChange(service, toBreakerState(from), toBreakerState(to))
 }
 
 // toBreakerState maps sentinel-golang's circuitbreaker.State onto the
-// resilience.BreakerState enum (same three states, different package).
-func toBreakerState(s circuitbreaker.State) resilience.BreakerState {
+// breaker.State enum (same three states, different package).
+func toBreakerState(s circuitbreaker.State) breaker.State {
 	switch s {
 	case circuitbreaker.Open:
-		return resilience.BreakerOpen
+		return breaker.Open
 	case circuitbreaker.HalfOpen:
-		return resilience.BreakerHalfOpen
+		return breaker.HalfOpen
 	default:
-		return resilience.BreakerClosed
+		return breaker.Closed
 	}
 }
 

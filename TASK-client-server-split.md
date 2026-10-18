@@ -107,8 +107,8 @@ func (m *ServerManager) Config() Config
 
 - `Client` 是 `chain.Executor` 的壳：per-attempt `Fire`、写 `chain.Recorder`。
 - `Server` 是中间件的壳：per-request `Fire`、返回 `Decision/error`，不碰 chain。
-- 两个 manager 各自注册 bean。client starter 只注入 `*fault.ClientManager`；server starter
-  只注入 `*fault.ServerManager`。
+- 两个 manager 各自注册 bean。client starter 只注入 `*clientfault.ClientManager`；server starter
+  只注入 `*serverfault.ServerManager`。
 - 治理中心持有两个：`Center.FaultClient()` / `Center.FaultServer()`，分别 `Refresh`。
 
 ### 推广到其它层
@@ -132,7 +132,7 @@ API + 宿主绑定”。
 1. 把共享内核从 `Manager` 上摘出来（→ `core.go`），定义 `ClientManager` / `ServerManager`。
 2. 改为两个 bean；`governance.Center` 持有两者，提供 `FaultClient()` / `FaultServer()`。
 3. client 侧：`center.ExecutorFor` 改用 `FaultClient().WrapClientExecutor(...)`；httpx 同步。
-4. server 侧：6 个适配器改注入 `*fault.ServerManager` 并 `NewServer()`。
+4. server 侧：6 个适配器改注入 `*serverfault.ServerManager` 并 `NewServer()`。
 5. 更新测试、README/DESIGN、memory。
 6. 验证：`cloud` 全量 + 受影响 starter。
 
@@ -303,15 +303,15 @@ cd starter/experimental/starter-grpc-server && go test ./...
 ## 11. guard 迁移后的最终状态（2026-10-17）
 
 Step 1-3 描述的是“同一 `resilience` 包内拆 ClientManager / ServerManager”的中间态。
-此后 server 侧被整体迁到新包 `cloud/guard`，最终结构是：
+此后 server 侧被整体迁到新包 `cloud/runtime/dataplane/inbound/admission`，最终结构是：
 
 - **client / 出站**：`chain.Executor` + `resilience`（`ClientManager`、`Driver.NewClientExecutor`）。
-- **server / 入站**：`guard.Guard`（每实例 state、`Admit` + `Done`、无 retry、不 import `chain`）。
+- **server / 入站**：`admission.Guard`（每实例 state、`Admit` + `Done`、无 retry、不 import `chain`）。
 - `resilience` 的 server 半边已删除；`Driver` 只答出站；sentinel / luohua 只保留出站实现。
-- `governance.Center` 同时持有 `resilience.ClientManager` 与 `guard.Manager`，是唯一组合根。
-- `Config.Server` / `ServerRule` 直接使用 `guard.Policy`。
+- `governance.Center` 同时持有 `resilience.ClientManager` 与 `admission.Manager`，是唯一组合根。
+- `Config.Server` / `ServerRule` 直接使用 `admission.Policy`。
 - `ServiceLabel` 下沉到中立叶子包 `cloud/label`；server adapter 不再 import `resilience`。
-- server 观测使用 `observability.ServerOperation` / `guard.BreakerState`，不再借用 client 的
+- server 观测使用 `observability.ServerOperation` / `admission.BreakerState`，不再借用 client 的
   `chain.Operation` / `resilience.BreakerState`。
 
 严格隔离检查的最终例外只剩：

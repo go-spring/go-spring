@@ -24,10 +24,11 @@ import (
 	"testing"
 	"time"
 
-	"go-spring.org/cloud/runtime/dataplane/fault"
-	"go-spring.org/cloud/runtime/dataplane/guard"
-	"go-spring.org/cloud/runtime/dataplane/loadbalance"
-	"go-spring.org/cloud/runtime/dataplane/resilience"
+	"go-spring.org/cloud/runtime/dataplane/inbound/admission"
+	serverfault "go-spring.org/cloud/runtime/dataplane/inbound/fault"
+	"go-spring.org/cloud/runtime/dataplane/kernel/loadbalance"
+	clientfault "go-spring.org/cloud/runtime/dataplane/outbound/fault"
+	"go-spring.org/cloud/runtime/dataplane/outbound/resilience"
 )
 
 const rulesV1 = `spring.resilience.driver=default
@@ -216,16 +217,16 @@ func TestFileSource_EndToEndWithCenter(t *testing.T) {
 
 	lb := loadbalance.NewManager()
 	driver := resilience.NewDefaultDriver(nil)
-	resClient := resilience.NewClientManager(driver)
+	resClient := resilience.NewManager(driver)
 	// The source is a constructor argument: its snapshot is adopted at bind, arming the authorities.
 	if _, err := NewCenter(
-		resClient, guard.NewManager(), lb, fault.NewClientManager(nil), fault.NewServerManager(nil), s); err != nil {
+		resClient, admission.NewManager(), lb, clientfault.NewClientManager(nil), serverfault.NewServerManager(nil), s); err != nil {
 		t.Fatal(err)
 	}
 
 	var mu sync.Mutex
-	var got resilience.ClientPolicy
-	resClient.Subscribe("demo:service", func(p resilience.ClientPolicy) { mu.Lock(); got = p; mu.Unlock() })
+	var got resilience.Policy
+	resClient.Subscribe("demo:service", func(p resilience.Policy) { mu.Lock(); got = p; mu.Unlock() })
 	mu.Lock()
 	if got.Timeout != 100*time.Millisecond {
 		mu.Unlock()

@@ -20,10 +20,10 @@ import (
 	"context"
 	"database/sql/driver"
 	"errors"
-	"go-spring.org/cloud/runtime/dataplane/chain"
+	"go-spring.org/cloud/runtime/dataplane/outbound/chain"
 	"testing"
 
-	"go-spring.org/cloud/runtime/dataplane/resilience"
+	"go-spring.org/cloud/runtime/dataplane/outbound/resilience"
 	"go-spring.org/stdlib/testing/assert"
 )
 
@@ -62,7 +62,7 @@ func TestGuardedConnPassThrough(t *testing.T) {
 // spent, the statement is rejected without reaching the connection.
 func TestGuardedConnRateLimit(t *testing.T) {
 	d := resilience.NewDefaultDriver(nil)
-	exec, err := d.NewClientExecutor("svc", resilience.ClientPolicy{RateLimit: 1, Burst: 1})
+	exec, err := d.NewExecutor("svc", resilience.Policy{RateLimit: 1, Burst: 1})
 	assert.Error(t, err).Nil()
 
 	sc := &stubConn{}

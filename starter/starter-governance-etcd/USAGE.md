@@ -52,7 +52,7 @@ import (
     "fmt"
     "time"
 
-    "go-spring.org/cloud/runtime/dataplane/resilience"
+    "go-spring.org/cloud/runtime/dataplane/outbound/resilience"
     "go-spring.org/spring/gs"
 
     _ "go-spring.org/starter-governance-etcd"
@@ -61,7 +61,7 @@ import (
 type printer struct {
     // mgr is the governance starter's resilience manager bean, injected here
     // rather than resolved from a process-wide seam.
-    mgr *resilience.ClientManager
+    mgr *resilience.Manager
 }
 
 func (p *printer) Run(ctx context.Context) error {
@@ -82,9 +82,9 @@ func (p *printer) Run(ctx context.Context) error {
 
 // newPrinter builds the printer over the injected manager. A nil manager — a
 // container without cloud/runtime/controlplane/governance's bean — is normalized to a fresh unarmed one.
-func newPrinter(mgr *resilience.ClientManager) *printer {
+func newPrinter(mgr *resilience.Manager) *printer {
     if mgr == nil {
-        mgr = resilience.NewClientManager()
+        mgr = resilience.NewManager()
     }
     return &printer{mgr: mgr}
 }

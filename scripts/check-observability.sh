@@ -1023,7 +1023,7 @@ check_baseline() {
 # 新增一个都必须写清:信号来自哪个共享层、本组件为什么不自己发。这条登记比族规弱
 # (它证明不了成不成立,只能证明接线没被拆),登记表不是免检牌。
 DELEGATES="
-  starter-http-client:otelhttp.NewTransport|ClientExecutorFor\(
+  starter-http-client:otelhttp.NewTransport|ExecutorFor\(
   starter-oauth2-client:otelhttp.NewTransport|resilience.NewRoundTripper\(
   starter-lock-consul:lock.Observe\(inner,[[:space:]]*\"consul\"
   starter-lock-etcd:lock.Observe\(inner,[[:space:]]*\"etcd\"
@@ -1035,7 +1035,7 @@ DELEGATES="
   starter-transaction-tcc:\.WithObserver\(transaction\.TccObserver\{\}\)
 "
 # starter-http-client / starter-oauth2-client 的每调用日志**来自 resilience 发射点**:
-# http-client 经 httpx 用注入的 Manager 的 ClientExecutorFor 拿执行器(包裹与观测都在
+# http-client 经 httpx 用注入的 Manager 的 ExecutorFor 拿执行器(包裹与观测都在
 # Manager 内完成);oauth2-client 则用 resilience.NewRoundTripper 把执行器装到自己的
 # http.Client 上。两者都在装配处把执行器接上,拆掉这条接线,日志与指标会一起消失。
 #

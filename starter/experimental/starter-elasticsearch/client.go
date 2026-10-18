@@ -29,12 +29,12 @@ import (
 	"net/http"
 	"sync"
 
-	"go-spring.org/cloud/runtime/dataplane/chain"
-	"go-spring.org/cloud/runtime/dataplane/label"
+	"go-spring.org/cloud/runtime/dataplane/kernel/label"
+	"go-spring.org/cloud/runtime/dataplane/outbound/chain"
 
 	"github.com/elastic/go-elasticsearch/v8"
 	"go-spring.org/cloud/runtime"
-	"go-spring.org/cloud/runtime/dataplane/resilience"
+	"go-spring.org/cloud/runtime/dataplane/outbound/resilience"
 )
 
 // Client is the wrapper bean Elasticsearch clients are injected as. It embeds
@@ -79,7 +79,7 @@ type Client struct {
 
 	// exec is the resilience executor protecting requests, set by [NewClient] from
 	// the runtime it is handed. The center is required to carry a
-	// [resilience.ClientManager]: [runtime.Runtime.ExecutorFor] panics on a center
+	// [resilience.Manager]: [runtime.Runtime.ExecutorFor] panics on a center
 	// without one rather than leaving the round-tripper unprotected.
 	exec chain.Executor
 	// serviceLabel is the resilience service key ("elasticsearch:<...>") exec
@@ -97,14 +97,14 @@ type Client struct {
 // center carries the container's facilities (see [runtime.Runtime]), and is
 // applied HERE so a Client cannot exist half-assembled: there is no Init step,
 // no later patching, and nothing the container has to remember to call. A
-// hand-built client must supply a center holding a [resilience.ClientManager]:
+// hand-built client must supply a center holding a [resilience.Manager]:
 // [runtime.Runtime.ExecutorFor] is required, so a nil center
 // is a construction error — [runtime.Runtime.ExecutorFor] panics — never a
 // graceful downgrade to an unprotected client.
 //
 // The service label falls back across the address fields via the shared
 // [label.ServiceLabel] helper, so limiter and breaker state is scoped per
-// Elasticsearch cluster rather than per request. The manager's ClientExecutorFor
+// Elasticsearch cluster rather than per request. The manager's ExecutorFor
 // resolves its backing executor lazily, on each Execute, so the call order
 // relative to the center's wiring is irrelevant.
 func NewClient(client *elasticsearch.Client, transport http.RoundTripper, cfg Config, center *runtime.Runtime) *Client {

@@ -9,7 +9,7 @@ Detailed usage reference. Overview: [README.md](README.md). All behavior claims 
 the source (`cloud/runtime/controlplane/governance`: `starter.go`, `source_file.go`, `source_http.go`,
 `starter_test.go`, `source_file_test.go`, `source_http_test.go`), the core package it wires
 (`center.go`, `source.go`, `fault/config.go`,
-`resilience/client_policy.go`, `resilience/manager.go`, `loadbalance/manager.go`), and the runnable
+`resilience/policy.go`, `resilience/manager.go`, `loadbalance/manager.go`), and the runnable
 [example/](example/) (`example/main.go` prints the
 resolved policy + fault config every second, prompts you to edit the rules file live, and
 self-terminates after 6s unless `-manual`).
@@ -68,8 +68,8 @@ import (
     "fmt"
     "time"
 
-    "go-spring.org/cloud/runtime/dataplane/fault"
-    "go-spring.org/cloud/runtime/dataplane/resilience"
+    "go-spring.org/cloud/runtime/dataplane/kernel/fault"
+    "go-spring.org/cloud/runtime/dataplane/outbound/resilience"
     "go-spring.org/spring/gs"
 )   // nothing to blank-import: the file source registers with cloud/runtime/controlplane/governance
 
@@ -78,17 +78,17 @@ import (
 // Both authorities are nullable beans: a container that never links cloud/runtime/controlplane/governance
 // leaves them nil, and the printer then reports the pass-through state.
 type printer struct {
-    Res *resilience.ClientManager `autowire:"?"`
-    Inj *fault.ClientManager     `autowire:"?"`
+    Res *resilience.Manager `autowire:"?"`
+    Inj *clientfault.ClientManager     `autowire:"?"`
 }
 
 func (p *printer) Run(ctx context.Context) error {
     tk := time.NewTicker(time.Second)
     defer tk.Stop()
     for i := 0; ; i++ {
-        var pol resilience.ClientPolicy
+        var pol resilience.Policy
         if p.Res != nil {
-            pol = p.Res.ClientPolicyFor("demo:service")
+            pol = p.Res.PolicyFor("demo:service")
         }
         fmt.Printf("policy: enabled=%v timeout=%v retries=%d rate-limit=%v",
             !pol.IsZero(), pol.Timeout, pol.MaxRetries, pol.RateLimit)
@@ -168,7 +168,7 @@ console), or a nacos/etcd source key from their own modules. Exactly one source 
 process, and there is no longer an app.properties path: rules always come through a Source.
 
 **Variant — combining with a server starter**: any client starter that injects a module authority
-(the `*resilience.ClientManager` / `*fault.ClientManager` beans this starter registers) picks the policy up
+(the `*resilience.Manager` / `*clientfault.ClientManager` beans this starter registers) picks the policy up
 automatically — no application code changes. See starter-echo's USAGE §4.4 for a worked fault drill
 through an HTTP server with `scope: loadtest`.
 
@@ -214,9 +214,9 @@ nacos (ListenConfig push) in `starter-governance-nacos`, etcd (Watch push) in
 ```
 link cloud/runtime/controlplane/governance        (any client/server starter does it for you)
   ├─ the three authority packages (always linked by any client starter):
-  │      cloud/runtime/dataplane/resilience → *resilience.ClientManager + the bundled driver
-  │      cloud/runtime/dataplane/loadbalance → *loadbalance.Manager
-  │      cloud/runtime/dataplane/fault      → *fault.ClientManager
+  │      cloud/runtime/dataplane/outbound/resilience → *resilience.Manager + the bundled driver
+  │      cloud/runtime/dataplane/kernel/loadbalance → *loadbalance.Manager
+  │      cloud/runtime/dataplane/kernel/fault      → *clientfault.ClientManager
   ├─ cloud/runtime/controlplane/governance starter.go: gs.Provide(*runtime.Runtime) over those beans,
   │      .Destroy((*Center).Close)
   │      .Export(gs.As[gs.Rooter]())            ← the wall + the fix, see below
@@ -228,7 +228,7 @@ link cloud/runtime/controlplane/governance        (any client/server starter doe
 gs.Run()
   ├─ config bind: source config from ${spring.governance.source.file|http.*} (expr-validated)
   ├─ bean wiring: everything is a constructor argument
-  │      resilience.ClientManager  ← every bean exported as resilience.Driver
+  │      resilience.Manager  ← every bean exported as resilience.Driver
   │      loadbalance.Manager ← built with no arguments; resolves strategies out of the
   │                             package registry (loadbalance.Register)
   │      source bean: construct, then Init: Start() — fsnotify / poll loop begins
@@ -238,7 +238,7 @@ gs.Run()
   │             + adopt Snapshot()
   ├─ center bean construction:
   │      NewCenter dispatches the initial document into the three module
-  │        authorities — resilience.ClientManager.Apply, loadbalance.Manager.Apply,
+  │        authorities — resilience.Manager.Apply, loadbalance.Manager.Apply,
   │        fault.ClientManager.Refresh + fault.ServerManager.Refresh — and fails on a document that cannot serve
   ├─ your Runners run (policy already armed — Rooter precedes Runner)
   └─ on SIGTERM: center bean Destroy hook → center.Close()
@@ -256,7 +256,7 @@ Two design points worth knowing (both from source comments, verified):
   `Export(gs.As[governance.Source]())` it — a missing Export makes startup fail on the center's required Source parameter.
 - **The Center IS a bean.** `cloud/runtime/controlplane/governance` publishes no package-level facade and holds no
   global; its own `starter.go` registers the `*runtime.Runtime` over the same
-  `*resilience.ClientManager` / `*loadbalance.Manager` / `*fault.ClientManager` beans it exports to clients,
+  `*resilience.Manager` / `*loadbalance.Manager` / `*clientfault.ClientManager` beans it exports to clients,
   so the wiring drives exactly the authorities a client injects. There is no process-level
   singleton to reach behind the container.
 
@@ -281,17 +281,17 @@ after it, so it already sees a live center.
 4. The center's subscribed callback adopts the config (`adopt` → `dispatch`), in TWO phases: first
    `Center.Validate` checks the document (duplicate labels, every balancer name)
    without touching anything, and only if it passes does the commit store the atomic snapshot and
-   PUSH each module its own slice — `resilience.ClientManager.Apply` (a default plus the
+   PUSH each module its own slice — `resilience.Manager.Apply` (a default plus the
    client/server rule lists) and `loadbalance.Manager.Apply` (a default plus the selection rules),
    translated from the document inside `dispatch` — then hot-swap fault in place via
    `injClient.Refresh` + `injServer.Refresh` (`center.go`). Nothing in the commit can fail,
    so a rejected document leaves the snapshot and all three authorities on the last good one. Each
    manager does its own label matching and notifies only subscribers whose policy actually changed.
 5. Authority effect: client starters never import governance — they inject the module authority
-   they need (`*resilience.ClientManager`, `*loadbalance.Manager`, `*fault.ClientManager`) and ask it for an
+   they need (`*resilience.Manager`, `*loadbalance.Manager`, `*clientfault.ClientManager`) and ask it for an
    executor, a binding or an injector; a nil authority (a container that never linked
    cloud/runtime/controlplane/governance) means unarmed, i.e. a transparent pass-through. The backing executor is resolved
-   lazily, at call time (see `ClientExecutorFor`); a center push evicts it and the next call rebuilds
+   lazily, at call time (see `ExecutorFor`); a center push evicts it and the next call rebuilds
    it under the new policy, while the fault injector's config is swapped in place, so
    arming a fault (setting its `rate`) takes effect on the very next call with no restart.
 
@@ -328,7 +328,7 @@ app.properties.
 | Key | Type | Default | Behavior | Misconfiguration consequence |
 |-----|------|---------|----------|------------------------------|
 | `spring.resilience.driver` | string | "default" | Resilience backend for ALL services. It is a STATIC app-config key, **not** a document key: it names the contributed driver bean to inject (e.g. "sentinel"), or "default" for the bundled one. | Unknown driver → the named `Driver` bean cannot be injected, so startup fails (a typo must not silently disable protection). |
-| `spring.governance.client.default.*` | resilience.ClientPolicy | all off | Baseline policy for every service no ClientRule matches. | — |
+| `spring.governance.client.default.*` | resilience.Policy | all off | Baseline policy for every service no ClientRule matches. | — |
 | `spring.governance.client.rules[n].*` | []ClientRule | empty | The ClientRule whose Service equals the label wins (labels are unique — a duplicate is rejected). ⚠ A matched ClientRule **fully replaces** Default — no field-wise merge: a zero policy field means "disabled", so a partial merge could not distinguish "explicitly 0" from "unset" (`cloud/runtime/controlplane/governance/center.go:364`). List specific rules first. | ClientRule setting only `timeout` silently turns OFF the default's retries for that service. |
 | `spring.governance.client.fault.*` | fault.Config | all off | OUTBOUND fault injection — the fire that tests this process's own retry/breaker/timeout, see §3.4. | — |
 | `spring.governance.server.default.*` | resilience.ServerPolicy | all off | Baseline INBOUND admission for every route no ClientRule matches: rate limit, concurrency cap, inbound breaker, handling budget. | — |
@@ -363,7 +363,7 @@ between directions without relearning. Inbound additionally carries `max-concurr
 
 Driver selection is a static startup choice (`spring.resilience.driver`, an app-config key, not a governance-document key) and
 deliberately NOT re-bindable per service. Semantics of each knob (backoff math, breaker states)
-are `cloud/runtime/dataplane/resilience` territory — the starter only binds and fans them out.
+are `cloud/runtime/dataplane/outbound/resilience` territory — the starter only binds and fans them out.
 
 ### 3.4 Fault experiments (`spring.governance.client.fault.rules[]` and `spring.governance.server.fault.rules[]`)
 
@@ -429,18 +429,18 @@ process receives.
 ### 4.3 Probing the authorities from your own code
 
 ```go
-// mgr, lbMgr, inj and ctr are the injected beans (*resilience.ClientManager,
-// *loadbalance.Manager, *fault.ClientManager, *runtime.Runtime); each is nullable.
+// mgr, lbMgr, inj and ctr are the injected beans (*resilience.Manager,
+// *loadbalance.Manager, *clientfault.ClientManager, *runtime.Runtime); each is nullable.
 if mgr.Enabled() { ... }                           // armed? (false before live)
 p := mgr.PolicyFor("redis:cache")                  // zero Policy = pass-through
-sub := mgr.Subscribe("redis:cache", func(p resilience.ClientPolicy) { /* re-arm client */ })
+sub := mgr.Subscribe("redis:cache", func(p resilience.Policy) { /* re-arm client */ })
 defer sub.Cancel()                                 // MUST cancel if the client is not process-lifetime
 lbMgr.Chain(resolver, "redis:cache")  // build a chain registered under the label
 c := inj.ClientConfig()                            // read the live outbound fault config
 s := inj.ServerConfig()                            // and the inbound one
 ```
 
-`mgr.ClientExecutorFor(system, label)` is the call a client makes on the request path; the read-only
+`mgr.ExecutorFor(system, label)` is the call a client makes on the request path; the read-only
 helpers above serve a caller that only needs to observe or re-arm something it owns.
 
 ### 4.4 Building a center by hand (tests)
@@ -449,14 +449,14 @@ There is no package singleton to arm: a test builds its own center over its own 
 
 ```go
 driver := resilience.NewDefaultDriver(nil)
-resClient, resServer := resilience.NewClientManager(driver), resilience.NewServerManager(driver)
+resClient, resServer := resilience.NewManager(driver), resilience.NewServerManager(driver)
 lb, fc, fs := loadbalance.NewManager(), fault.NewClientManager(nil), fault.NewServerManager(nil)
 cfg := governance.Config{}
 cfg.Client.Default.Timeout = 100 * time.Millisecond
 ctr, err := governance.NewCenter(resClient, resServer, lb, fc, fs, disc, governance.NewPushSource(cfg))
 if err != nil { t.Fatal(err) }
 defer ctr.Close()
-// assert through resClient.ClientPolicyFor(...) / resClient.ClientExecutorFor(...)
+// assert through resClient.PolicyFor(...) / resClient.ExecutorFor(...)
 ```
 
 ⚠ `gs.RunTest` does NOT wire this center for you: gs clones global bean definitions for test

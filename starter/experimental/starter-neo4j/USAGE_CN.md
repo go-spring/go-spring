@@ -186,7 +186,7 @@ gs.Run()
   │   │  交出 resilience/fault 权威（resilience manager 必填）
   │   ├─ NewClient [client.go:96-103]：service = label.ServiceLabel("neo4j",
   │   │  ServiceName, URI) → center.ExecutorFor("neo4j", service)——受治理的
-  │   │  executor（fault.ClientManager.WrapClientExecutor 包住 center.ResilienceClient().ClientExecutorFor）；center 始终
+  │   │  executor（clientfault.ClientManager.WrapClientExecutor 包住 center.ResilienceClient().ExecutorFor）；center 始终
   │   │  存在（resilience manager 必填）
   │   └─ 仅 ping=true：fail-fast HealthCheck（直达裸 driver 的 VerifyConnectivity），
   │      受 socket-connect-timeout 或 5s 约束；失败时销毁 client，启动中止

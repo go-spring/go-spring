@@ -32,7 +32,7 @@ import (
 	"context"
 	"sync"
 
-	"go-spring.org/cloud/runtime/dataplane/chain"
+	"go-spring.org/cloud/runtime/dataplane/outbound/chain"
 	"go-spring.org/log"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -83,7 +83,7 @@ const (
 // The vocabulary — the family's attribute keys, the bounded/open split that puts
 // the destination in detail and the system in a label, and the trace edge each
 // word adds — is the messaging family's, not this file's; it lives in
-// [cloud/runtime/dataplane/chain]. This starter supplies only what only it knows: that the calls
+// [cloud/runtime/dataplane/outbound/chain]. This starter supplies only what only it knows: that the calls
 // reach a NATS broker, and their word and destination.
 func operation(word opWord, subject string) chain.Operation {
 	op := chain.MessagingOp(word.shape, natsSystem, word.word, subject)

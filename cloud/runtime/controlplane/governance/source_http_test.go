@@ -92,7 +92,7 @@ spring.governance.fault.rate=1
 	}
 	// The document binds only the keys that survived; the driver key is no longer
 	// part of the document (it is a startup property now), so it binds nothing.
-	if !cfg.Client.Default.ClientPolicy.IsZero() || len(cfg.Client.Rules) != 0 {
+	if !cfg.Client.Default.Policy.IsZero() || len(cfg.Client.Rules) != 0 {
 		t.Fatalf("legacy spring.governance.default/rules must arm no outbound policy: %+v", cfg.Client)
 	}
 	if !cfg.Server.Default.IsZero() || len(cfg.Server.Rules) != 0 {

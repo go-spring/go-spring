@@ -54,7 +54,7 @@ blank-import + `gs.Run()`。注册器用 TTL 心跳保活;`PreStop` 反注册。
 
 ### 发现 —— 按块 bean 名引用(零配置)
 
-发现**无需任何自有配置**:每个块的后端 bean 本身就是 `cloud/runtime/dataplane/discovery.Discovery`,名为
+发现**无需任何自有配置**:每个块的后端 bean 本身就是 `cloud/runtime/dataplane/kernel/discovery.Discovery`,名为
 `consul.<name>`(`starter.go`),client 按 bean 名引用(`discovery=consul.main`)。
 该 bean 惰性——纯 provider 从不解析、从不付费;纯消费方只配连接块(不设
 `service-name`/`addr`),不注册任何实例。多 agent 发现就是多个块:引用哪个块就从哪个

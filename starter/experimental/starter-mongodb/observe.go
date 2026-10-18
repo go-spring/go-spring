@@ -17,7 +17,7 @@
 // observe.go is this starter's own mongodb instrumentation: a per-operation
 // span, the db.client.* duration/in-flight metrics, and an access log riding
 // the log package's native levels. It emits the same shape and vocabulary as
-// the framework's unified emitter (cloud/runtime/dataplane/resilience/observe.go) —
+// the framework's unified emitter (cloud/runtime/dataplane/outbound/resilience/observe.go) —
 // bounded labels db.system + db.operation, unbounded detail (db.statement)
 // reaching only the span and the log, an internal span named after the
 // command, and the status/duration_ms access-log fields — but it emits

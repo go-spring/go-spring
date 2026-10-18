@@ -152,7 +152,7 @@ gs.Run()
   │    │        静态凭据 + region + bucket-lookup + minio.Options 里的 dynamicTransport
   │    │      → NewClient 构建 *Client 包装体：定身份、exec =
   │    │        center.ExecutorFor("s3", "s3:<endpoint>")（center 为注入的
-  │    │        *runtime.Runtime，内含 *resilience.ClientManager / *fault.ClientManager），再装入传输层——
+  │    │        *runtime.Runtime，内含 *resilience.Manager / *clientfault.ClientManager），再装入传输层——
   │    │        声明在最外层，resilience 在其内
   │    ├─ 仅 ping=true：fail-fast 探测 HealthCheck(ctx, client)——一次直连裸 client 的
   │    │      ListBuckets；端点不可达或凭据被拒都会中止启动并释放 client（Destroy）
@@ -181,11 +181,11 @@ atomic.Value，因为活动的 tripper 是多种具体类型之一）——并�
    span 名 `"PUT /bucket/key"`——并在 `Execute` 入口**显式**传给 executor，使发射的信号覆盖
    每次尝试（含重试）；若在执行器之内逐次构造身份则无人读取。
 3. 请求进入构造期由构造函数下传的
-   `*runtime.Runtime`（`*resilience.ClientManager` / `*fault.ClientManager` bean）为服务
+   `*runtime.Runtime`（`*resilience.Manager` / `*clientfault.ClientManager` bean）为服务
    `s3:<endpoint>` 构建的 executor——配好
    治理规则源后 retry / rate-limit / circuit-breaker / bulkhead 生效（经治理
    中心可热切换）；resilience manager 必填、容器始终提供，不存在 unmanaged/仅观测的兜底。
-   `*fault.ClientManager`（nil 安全）可为演练注入失败。该 executor 是唯一发射点：开启调用 span、记录调用级
+   `*clientfault.ClientManager`（nil 安全）可为演练注入失败。该 executor 是唯一发射点：开启调用 span、记录调用级
    `db.client.operation.duration`、每次重试的尝试级 `db.client.attempt.duration`，并写
    一条访问日志——覆盖整次调用，含重试（minio-go 自身无 OTel 钩子）。
 4. 响应回卷：发射器写出 span 属性、指标与访问日志行，经 `_app_s3_access` tag 按 log 包

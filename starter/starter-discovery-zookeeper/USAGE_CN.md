@@ -3,8 +3,8 @@
 详细使用文档。概览见 [README](README_CN.md)。所有行为声明均已对照 starter 源码（`starter.go`、
 `registry.go`、`discovery.go`、`config.go`、`starter_test.go`、`registry_test.go`、
 `discovery_test.go`）、
-注册核心（`../starter-discovery/starter.go`、`../starter-discovery/config.go`）、`cloud/runtime/dataplane/discovery`
-接缝（`cloud/runtime/dataplane/discovery/registry.go`、`cloud/runtime/dataplane/loadbalance/pool.go`）与可运行的 [example/](example/)
+注册核心（`../starter-discovery/starter.go`、`../starter-discovery/config.go`）、`cloud/runtime/dataplane/kernel/discovery`
+接缝（`cloud/runtime/dataplane/kernel/discovery/registry.go`、`cloud/runtime/dataplane/kernel/loadbalance/pool.go`）与可运行的 [example/](example/)
 （`example/check.sh` 跑单测 + docker-compose ZooKeeper 端到端启动）核实。**ZooKeeper 自身语义
 （会话、临时 znode、watcher、digest 认证）见
 [ZooKeeper 文档](https://zookeeper.apache.org/doc/current/zookeeperProgrammers.html)**——

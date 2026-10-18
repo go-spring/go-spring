@@ -153,9 +153,9 @@ gs.Run()
    → 整次重编译中止。
 2. **Upstream 解析**(`parseUpstream`,compile.go:377)——`lb://svc` 变成 discovery 支撑的
    `Upstream`;其余必须能解析为 `http(s)://host`,否则报错。
-3. **ClientExecutor 解析**(compile.go:232)——非空 `resilience.policy` 必须指向
-   `spring.gateway.resilience` 下的某个 key;未知名字报错。ClientExecutor 来自注入的
-   `*resilience.ClientManager`:`mgr.ClientExecutorFor("gateway:<name>", "gateway:<name>")`——策略值全部归治理中心
+3. **Executor 解析**(compile.go:232)——非空 `resilience.policy` 必须指向
+   `spring.gateway.resilience` 下的某个 key;未知名字报错。Executor 来自注入的
+   `*resilience.Manager`:`mgr.ExecutorFor("gateway:<name>", "gateway:<name>")`——策略值全部归治理中心
    所有并可热更;治理未开时得到透明的 no-op executor。
 4. **代理 handler**(`newProxyHandler`,proxy.go:159)——见 §2.3。
 5. **Filter DSL 解析**(`buildFilters` → `splitFilters`,compile.go:268-373)——只在括号

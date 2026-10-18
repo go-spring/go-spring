@@ -30,8 +30,8 @@ import (
 	"strings"
 	"time"
 
-	"go-spring.org/cloud/runtime/dataplane/discovery"
-	"go-spring.org/cloud/runtime/dataplane/loadbalance"
+	"go-spring.org/cloud/runtime/dataplane/kernel/discovery"
+	"go-spring.org/cloud/runtime/dataplane/kernel/loadbalance"
 	"go-spring.org/log"
 	"go-spring.org/stdlib/errutil"
 	"gorm.io/gorm"

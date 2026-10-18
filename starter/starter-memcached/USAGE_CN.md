@@ -81,7 +81,7 @@ Consul/Nacos 并推送新快照）：
 ```go
 package main
 
-import "go-spring.org/cloud/runtime/dataplane/discovery"
+import "go-spring.org/cloud/runtime/dataplane/kernel/discovery"
 
 func init() {
     gs.Provide(func() (discovery.Discovery, error) {
@@ -196,7 +196,7 @@ mesh 模式下完全跳过 discovery，`servers` 原样使用（sidecar 负责�
 2. `run` 经 `resilience.Run` 在 resilience executor 下执行操作：
    limiter/breaker 以服务 `memcached:<service-name 或实例名>` 隔离（`client.go`）；
    `memcache.ErrCacheMiss` 计为成功，miss 不会触发熔断（`resilience.Tolerate`）；executor 由
-   `Client.applyGovernance` 应用 —— `inj.WrapClientExecutor(mgr.ClientExecutorFor("memcached", service))`，
+   `Client.applyGovernance` 应用 —— `inj.WrapClientExecutor(mgr.ExecutorFor("memcached", service))`，
    其中 `mgr`/`inj` 是容器注入 `newClient`、再由构造函数转交的 bean，
    observe 层在 resolve 内应用。未应用治理时为透明 no-op。
 3. 裸 client 执行实际写入；span 以错误收尾。

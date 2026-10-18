@@ -179,7 +179,7 @@ gs.Run()
   │           （nats.Connect —— 快速失败探针；broker 不可用则中断启动）
   ├─ CreateClient：NewConn(nc, url, center)——一步同时定身份与应用治理，
   │           Driver 返回时 Conn 即完整（`nats:<url>` service label；
-  │           center.ExecutorFor → inj.WrapClientExecutor(mgr.ClientExecutorFor("nats", service))；
+  │           center.ExecutorFor → inj.WrapClientExecutor(mgr.ExecutorFor("nats", service))；
   │           resilience manager 必填——容器始终提供）
   │           [driver.go:145; client.go:86-93]
   ├─ jetstream.enabled → jetstream.New(nc)；失败会关闭 nc 并中断启动
@@ -267,9 +267,9 @@ handler 是第二个副作用，不是第二次尝试。
 以 service 命名的 span），不会产生 `messaging.client.*` 信号——它没有专属的操作 span。
 
 `Runtime.ExecutorFor` 内部包裹顺序（见 `cloud/runtime/controlplane/governance/center.go`，由
-[NewConn](client.go:86-93) 调用）：`mgr.ClientExecutorFor("nats", service)`（由注入的
-`*resilience.ClientManager` bean 装备——必填，容器始终提供）→
-`fault.ClientManager.WrapClientExecutor`（故障注入，最外层）。manager 的 resolve 步骤会用 observe 发射器包裹后端
+[NewConn](client.go:86-93) 调用）：`mgr.ExecutorFor("nats", service)`（由注入的
+`*resilience.Manager` bean 装备——必填，容器始终提供）→
+`clientfault.ClientManager.WrapClientExecutor`（故障注入，最外层）。manager 的 resolve 步骤会用 observe 发射器包裹后端
 executor（见 `resilience/observe.go`），因此声明的操作其 span/counter/histogram/access-log 只在链上
 唯一能看到完整一次调用的那点产生一次。拒绝时 guarded 调用返回
 resilience 哨兵错误（`ErrRateLimited` / `ErrCircuitOpen`），底层发布/请求不会被调用

@@ -24,10 +24,11 @@ import (
 	"go-spring.org/cloud/runtime"
 
 	"go-spring.org/cloud/runtime/controlplane/governance"
-	"go-spring.org/cloud/runtime/dataplane/discovery"
-	"go-spring.org/cloud/runtime/dataplane/fault"
-	"go-spring.org/cloud/runtime/dataplane/loadbalance"
-	"go-spring.org/cloud/runtime/dataplane/resilience"
+	serverfault "go-spring.org/cloud/runtime/dataplane/inbound/fault"
+	"go-spring.org/cloud/runtime/dataplane/kernel/discovery"
+	"go-spring.org/cloud/runtime/dataplane/kernel/loadbalance"
+	clientfault "go-spring.org/cloud/runtime/dataplane/outbound/fault"
+	"go-spring.org/cloud/runtime/dataplane/outbound/resilience"
 	"go-spring.org/stdlib/testing/assert"
 )
 
@@ -41,8 +42,8 @@ func TestNewPoolChainRebuildsFromScratch(t *testing.T) {
 	disc := discovery.NewManager(map[string]discovery.Discovery{
 		"static": discovery.NewStaticDiscovery(discovery.Endpoint{Addr: "127.0.0.1:6379", Healthy: true, Weight: 1}),
 	})
-	ctr, err := runtime.New(resilience.NewClientManager(resilience.NewDefaultDriver(nil)), mgr,
-		fault.NewClientManager(nil), fault.NewServerManager(nil), disc, governance.NewPushSource(governance.Config{}))
+	ctr, err := runtime.New(resilience.NewManager(resilience.NewDefaultDriver(nil)), mgr,
+		clientfault.NewClientManager(nil), serverfault.NewServerManager(nil), disc, governance.NewPushSource(governance.Config{}))
 	assert.Error(t, err).Nil()
 
 	c := Config{Addressing: discovery.Addressing{ServiceName: "cache", Discovery: "static"}}
@@ -81,7 +82,7 @@ func TestNewPoolChainRebuildsFromScratch(t *testing.T) {
 // candidate set to choose from: the pool dials the configured Addr directly and
 // carries no chain.
 func TestNewPoolWithoutDiscoveryHasNoChain(t *testing.T) {
-	ctr, err := runtime.NewProcess(resilience.NewClientManager(resilience.NewDefaultDriver(nil)), fault.NewClientManager(nil), fault.NewServerManager(nil))
+	ctr, err := runtime.NewProcess(resilience.NewManager(resilience.NewDefaultDriver(nil)), clientfault.NewClientManager(nil), serverfault.NewServerManager(nil))
 	assert.Error(t, err).Nil()
 	p, err := NewPool(context.Background(), Config{Addr: "127.0.0.1:6379"}, ctr)
 	assert.Error(t, err).Nil()

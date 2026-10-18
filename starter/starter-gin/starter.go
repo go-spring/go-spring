@@ -24,7 +24,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"go-spring.org/cloud/runtime"
-	"go-spring.org/cloud/runtime/dataplane/traffic"
+	"go-spring.org/cloud/runtime/dataplane/kernel/traffic"
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"

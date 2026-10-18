@@ -24,18 +24,19 @@ import (
 	"github.com/redis/go-redis/v9"
 	"go-spring.org/cloud/runtime"
 	"go-spring.org/cloud/runtime/controlplane/governance"
-	"go-spring.org/cloud/runtime/dataplane/discovery"
-	"go-spring.org/cloud/runtime/dataplane/fault"
-	"go-spring.org/cloud/runtime/dataplane/loadbalance"
-	"go-spring.org/cloud/runtime/dataplane/resilience"
+	serverfault "go-spring.org/cloud/runtime/dataplane/inbound/fault"
+	"go-spring.org/cloud/runtime/dataplane/kernel/discovery"
+	"go-spring.org/cloud/runtime/dataplane/kernel/loadbalance"
+	clientfault "go-spring.org/cloud/runtime/dataplane/outbound/fault"
+	"go-spring.org/cloud/runtime/dataplane/outbound/resilience"
 	"go-spring.org/stdlib/testing/assert"
 )
 
 // testCenter builds a runtime over res and lb with an unarmed fault
 // injector and an empty document: everything a driver reads, with no wiring.
-func testCenter(t *testing.T, resClient *resilience.ClientManager, lb *loadbalance.Manager) *runtime.Runtime {
+func testCenter(t *testing.T, resClient *resilience.Manager, lb *loadbalance.Manager) *runtime.Runtime {
 	t.Helper()
-	ctr, err := runtime.New(resClient, lb, fault.NewClientManager(nil), fault.NewServerManager(nil), nil,
+	ctr, err := runtime.New(resClient, lb, clientfault.NewClientManager(nil), serverfault.NewServerManager(nil), nil,
 		governance.NewPushSource(governance.Config{}))
 	if err != nil {
 		t.Fatal(err)
@@ -81,7 +82,7 @@ func TestDriverChainIsGovernedFromConstruction(t *testing.T) {
 	mgr := loadbalance.NewManager()
 	cfg := Config{Addr: "10.0.0.1:6379"}
 	w, err := drv.CreateClient(context.Background(), cfg,
-		testCenter(t, resilience.NewClientManager(resilience.NewDefaultDriver(nil)), mgr))
+		testCenter(t, resilience.NewManager(resilience.NewDefaultDriver(nil)), mgr))
 	assert.Error(t, err).Nil()
 
 	// The rule gives this service a strategy the chain was not built with, and
@@ -111,7 +112,7 @@ func TestDriverChainIsGovernedFromConstruction(t *testing.T) {
 func TestDriverChainNilIsFine(t *testing.T) {
 	lb := loadbalance.NewManager()
 	w, err := NewClient(redis.NewClient(&redis.Options{Addr: "127.0.0.1:0"}), Config{Addr: "10.0.0.1:6379"}, nil,
-		testCenter(t, resilience.NewClientManager(resilience.NewDefaultDriver(nil)), lb))
+		testCenter(t, resilience.NewManager(resilience.NewDefaultDriver(nil)), lb))
 	assert.Error(t, err).Nil()
 	assert.That(t, w.lbChain).Nil()
 }

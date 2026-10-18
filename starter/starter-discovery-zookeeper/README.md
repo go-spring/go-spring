@@ -5,7 +5,7 @@
 `starter-discovery-zookeeper` adapts ZooKeeper as a service registry: each configured
 ensemble becomes ONE backend bean that serves both halves of the naming idiom — the write
 side (registering the **current instance** as an ephemeral znode) and the read side (a
-`cloud/runtime/dataplane/discovery` backend for resolving other instances). It is the Go-Spring equivalent of
+`cloud/runtime/dataplane/kernel/discovery` backend for resolving other instances). It is the Go-Spring equivalent of
 Spring Cloud's `ServiceRegistry` + `DiscoveryClient`, backed by ephemeral znodes.
 
 Use it for **VM / bare-metal / hybrid** deployments where the platform does not register
@@ -37,7 +37,7 @@ Two blocks = one registration fanned out to two ensembles; blocks across backend
 ## Registration Is Owned by starter-discovery
 
 Importing this starter imports the registration core
-([cloud/runtime/dataplane/discovery](../../cloud/runtime/dataplane/discovery)) transitively: a single `discoveryServer` `gs.Server`
+([cloud/runtime/dataplane/kernel/discovery](../../cloud/runtime/dataplane/kernel/discovery)) transitively: a single `discoveryServer` `gs.Server`
 collects ALL discovery beans — across ALL backends — and registers the instance into EVERY
 configured center once the app is ready, deregisters from all of them as shutdown begins
 (via `PreStop`), and broadcasts `UpdateWeight`. Any registration failure fails startup, so

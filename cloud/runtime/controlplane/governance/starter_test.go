@@ -22,11 +22,13 @@ import (
 	"testing"
 	"time"
 
-	"go-spring.org/cloud/runtime/dataplane/discovery"
-	"go-spring.org/cloud/runtime/dataplane/fault"
-	"go-spring.org/cloud/runtime/dataplane/guard"
-	"go-spring.org/cloud/runtime/dataplane/loadbalance"
-	"go-spring.org/cloud/runtime/dataplane/resilience"
+	"go-spring.org/cloud/runtime/dataplane/inbound/admission"
+	serverfault "go-spring.org/cloud/runtime/dataplane/inbound/fault"
+	"go-spring.org/cloud/runtime/dataplane/kernel/discovery"
+	"go-spring.org/cloud/runtime/dataplane/kernel/fault"
+	"go-spring.org/cloud/runtime/dataplane/kernel/loadbalance"
+	clientfault "go-spring.org/cloud/runtime/dataplane/outbound/fault"
+	"go-spring.org/cloud/runtime/dataplane/outbound/resilience"
 )
 
 // govCfg builds a document with an outbound timeout and a CLIENT-side fault
@@ -35,7 +37,7 @@ func govCfg(timeoutMs int, fc fault.Config) Config {
 	return Config{
 		Client: ClientConfig{
 			Default: ClientDefaultPolicy{
-				ClientPolicy: resilience.ClientPolicy{Timeout: time.Duration(timeoutMs) * time.Millisecond},
+				Policy: resilience.Policy{Timeout: time.Duration(timeoutMs) * time.Millisecond},
 			},
 			Fault: fc,
 		},
@@ -47,8 +49,8 @@ func govCfg(timeoutMs int, fc fault.Config) Config {
 // the center and the callers that inject them. GoLive is NOT called — a caller
 // that needs the center live calls it itself, the way the container does through
 // the bean's Init hook.
-func newTestStartup() (*Center, *resilience.ClientManager,
-	*loadbalance.Manager, *fault.ClientManager, *fault.ServerManager) {
+func newTestStartup() (*Center, *resilience.Manager,
+	*loadbalance.Manager, *clientfault.ClientManager, *serverfault.ServerManager) {
 	return newTestStartupWith(NewPushSource(Config{}))
 }
 
@@ -56,13 +58,13 @@ func newTestStartup() (*Center, *resilience.ClientManager,
 // stand-in for what the container hands the center's constructor in production.
 // The resilience authority runs on the bundled driver: the backend is a startup
 // choice made at wiring, not part of the document a center test drives.
-func newTestStartupWith(src Source) (*Center, *resilience.ClientManager,
-	*loadbalance.Manager, *fault.ClientManager, *fault.ServerManager) {
+func newTestStartupWith(src Source) (*Center, *resilience.Manager,
+	*loadbalance.Manager, *clientfault.ClientManager, *serverfault.ServerManager) {
 	lb := loadbalance.NewManager()
 	driver := resilience.NewDefaultDriver(nil)
-	resClient := resilience.NewClientManager(driver)
-	fc, fs := fault.NewClientManager(nil), fault.NewServerManager(nil)
-	c, err := NewCenter(resClient, guard.NewManager(), lb, fc, fs, src)
+	resClient := resilience.NewManager(driver)
+	fc, fs := clientfault.NewClientManager(nil), serverfault.NewServerManager(nil)
+	c, err := NewCenter(resClient, admission.NewManager(), lb, fc, fs, src)
 	if err != nil {
 		panic(err)
 	}
@@ -76,7 +78,7 @@ func TestStarter_SrcBeanArmsCenter(t *testing.T) {
 	_, resClient, _, fc, _ := newTestStartupWith(
 		NewPushSource(govCfg(300, fault.Config{Rules: []fault.Rule{{Rate: 0.25}}})))
 
-	if p := resClient.ClientPolicyFor("redis:cache"); p.Timeout != 300*time.Millisecond {
+	if p := resClient.PolicyFor("redis:cache"); p.Timeout != 300*time.Millisecond {
 		t.Fatalf("src bean policy: want 300ms, got %v", p.Timeout)
 	}
 	if cf := fc.Config(); len(cf.Rules) != 1 || cf.Rules[0].Rate != 0.25 {
@@ -93,7 +95,7 @@ func TestStarter_SrcBeanArmsCenter(t *testing.T) {
 func TestStarter_EmptySource_StaysUnarmed(t *testing.T) {
 	_, resClient, lb, fc, fs := newTestStartup()
 
-	if p := resClient.ClientPolicyFor("redis:cache"); !p.IsZero() {
+	if p := resClient.PolicyFor("redis:cache"); !p.IsZero() {
 		t.Fatalf("empty source: resilience must resolve a zero policy, got %v", p)
 	}
 	// The manager exposes no read-back — production only ever pushes into sinks —
@@ -115,7 +117,7 @@ func TestStarter_LatePushDrivesArmedModules(t *testing.T) {
 
 	// A live push swaps both the resilience side and the fault side.
 	src.Push(context.Background(), govCfg(400, fault.Config{Rules: []fault.Rule{{Rate: 0.5}}}))
-	if p := resClient.ClientPolicyFor("x"); p.Timeout != 400*time.Millisecond {
+	if p := resClient.PolicyFor("x"); p.Timeout != 400*time.Millisecond {
 		t.Fatalf("push should reach the resilience manager: want 400ms, got %v", p.Timeout)
 	}
 	if cf := fc.Config(); len(cf.Rules) != 1 || cf.Rules[0].Rate != 0.5 {
@@ -129,8 +131,8 @@ func TestStarter_LatePushDrivesArmedModules(t *testing.T) {
 // the operator believes their rule took effect.
 func TestStarter_UnknownBalancerFailsStartup(t *testing.T) {
 	driver := resilience.NewDefaultDriver(nil)
-	_, err := NewCenter(resilience.NewClientManager(driver), guard.NewManager(), loadbalance.NewManager(),
-		fault.NewClientManager(nil), fault.NewServerManager(nil),
+	_, err := NewCenter(resilience.NewManager(driver), admission.NewManager(), loadbalance.NewManager(),
+		clientfault.NewClientManager(nil), serverfault.NewServerManager(nil),
 		NewPushSource(selectionConfig("redis:cache", "no_such_strategy", 0, 0)))
 	if err == nil {
 		t.Fatal("an unregistered strategy name must fail construction")

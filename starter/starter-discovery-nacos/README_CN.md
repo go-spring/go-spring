@@ -4,7 +4,7 @@
 
 `starter-discovery-nacos` 把 Nacos 适配为服务注册中心：每一个配置的 Nacos 服务端都成为
 一个后端 bean，同时服务命名习语的两半 —— 写侧（把**当前实例**注册进 Nacos）与读侧
-（供解析其他实例的 `cloud/runtime/dataplane/discovery` 后端）。它相当于 Spring Cloud Alibaba
+（供解析其他实例的 `cloud/runtime/dataplane/kernel/discovery` 后端）。它相当于 Spring Cloud Alibaba
 `nacos-discovery` 的 Go-Spring 对应物，也是 [starter-config-nacos](../starter-config-nacos)
 配置角色的注册角色对应物（两者是配置前缀各自独立的两个 starter）。
 
@@ -33,7 +33,7 @@ zookeeper……）的块也可以在同一应用里自由混用。
 
 ## 注册归 starter-discovery 所有
 
-导入本 starter 会传递导入注册核心 [cloud/runtime/dataplane/discovery](../../cloud/runtime/dataplane/discovery)：唯一的
+导入本 starter 会传递导入注册核心 [cloud/runtime/dataplane/kernel/discovery](../../cloud/runtime/dataplane/kernel/discovery)：唯一的
 `discoveryServer`（`gs.Server`）收集**所有**后端的全部 registry bean，在应用就绪后把实例
 注册进**每一个**已配置的中心，停机开始时（经 `PreStop`）从所有中心注销，并广播
 `UpdateWeight`。任一中心注册失败即启动失败，各中心的消费侧视图因此不会分裂。

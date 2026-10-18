@@ -21,11 +21,11 @@ import (
 	"errors"
 	"testing"
 
-	"go-spring.org/cloud/runtime/dataplane/guard"
-	"go-spring.org/cloud/runtime/dataplane/resilience"
+	"go-spring.org/cloud/runtime/dataplane/inbound/admission"
+	"go-spring.org/cloud/runtime/dataplane/kernel/ratelimit"
 )
 
-// fakeStore is a resilience.ClusterLimiter whose verdict the test decides.
+// fakeStore is a ratelimit.ClusterLimiter whose verdict the test decides.
 type fakeStore struct {
 	admit bool
 	err   error
@@ -33,7 +33,7 @@ type fakeStore struct {
 	scope string
 }
 
-func (s *fakeStore) Allow(_ context.Context, scope string, _ resilience.RateSpec, _ int) (bool, error) {
+func (s *fakeStore) Allow(_ context.Context, scope string, _ ratelimit.Spec, _ int) (bool, error) {
 	s.calls++
 	s.scope = scope
 	return s.admit, s.err
@@ -45,19 +45,19 @@ func (s *fakeStore) Allow(_ context.Context, scope string, _ resilience.RateSpec
 func TestInboundUsesClusterLimiter(t *testing.T) {
 	store := &fakeStore{admit: false}
 	resClient, lb, fc, fs := newAuthorities()
-	c, err := NewCenter(resClient, guard.NewManager(guard.WithClusterLimiter(store)), lb, fc, fs, NewPushSource(Config{Server: ServerConfig{Default: guard.Policy{RateLimit: 10}}}))
+	c, err := NewCenter(resClient, admission.NewManager(admission.WithClusterLimiter(store)), lb, fc, fs, NewPushSource(Config{Server: ServerConfig{Default: admission.Policy{RateLimit: 10}}}))
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	g := c.guardServer.GuardFor(guard.Identity{System: "gin", Service: "gin:test"})
-	r, done := g.Admit(context.Background(), guard.Request{})
-	defer done(guard.OutcomeSuccess, nil)
+	g := c.guardServer.GuardFor(admission.Identity{System: "gin", Service: "gin:test"})
+	r, done := g.Admit(context.Background(), admission.Request{})
+	defer done(admission.OutcomeSuccess, nil)
 
 	if r.Admitted() {
 		t.Fatal("want the inbound rate limit to refuse the request")
 	}
-	if r.Verdict() != guard.VerdictRateLimited {
+	if r.Verdict() != admission.VerdictRateLimited {
 		t.Fatalf("want rate limited, got %v", r.Verdict())
 	}
 	if store.calls != 1 || store.scope != "gin:test" {
@@ -70,14 +70,14 @@ func TestInboundUsesClusterLimiter(t *testing.T) {
 func TestInboundStoreFailureAllows(t *testing.T) {
 	store := &fakeStore{admit: true, err: errors.New("store down")}
 	resClient, lb, fc, fs := newAuthorities()
-	c, err := NewCenter(resClient, guard.NewManager(guard.WithClusterLimiter(store)), lb, fc, fs, NewPushSource(Config{Server: ServerConfig{Default: guard.Policy{RateLimit: 10}}}))
+	c, err := NewCenter(resClient, admission.NewManager(admission.WithClusterLimiter(store)), lb, fc, fs, NewPushSource(Config{Server: ServerConfig{Default: admission.Policy{RateLimit: 10}}}))
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	g := c.guardServer.GuardFor(guard.Identity{System: "gin", Service: "gin:test"})
-	r, done := g.Admit(context.Background(), guard.Request{})
-	defer done(guard.OutcomeSuccess, nil)
+	g := c.guardServer.GuardFor(admission.Identity{System: "gin", Service: "gin:test"})
+	r, done := g.Admit(context.Background(), admission.Request{})
+	defer done(admission.OutcomeSuccess, nil)
 	if !r.Admitted() {
 		t.Fatalf("store failure must allow the request: %v", r.Err())
 	}

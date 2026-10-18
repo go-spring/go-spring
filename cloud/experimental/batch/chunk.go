@@ -18,9 +18,9 @@ package batch
 
 import (
 	"context"
-	"go-spring.org/cloud/runtime/dataplane/chain"
+	"go-spring.org/cloud/runtime/dataplane/outbound/chain"
 
-	"go-spring.org/cloud/runtime/dataplane/resilience"
+	"go-spring.org/cloud/runtime/dataplane/outbound/resilience"
 )
 
 // DefaultChunkSize is used when [ChunkStep.ChunkSize] is not set.
@@ -78,7 +78,7 @@ func (s *ChunkStep[I, O]) executor() (chain.Executor, error) {
 	if s.Retry.IsZero() {
 		return nil, nil
 	}
-	return resilience.NewDefaultDriver(nil).NewClientExecutor(s.Name, resilience.ClientPolicy{Retry: s.Retry})
+	return resilience.NewDefaultDriver(nil).NewExecutor(s.Name, resilience.Policy{Retry: s.Retry})
 }
 
 // Run implements [Step]. It resumes from rc.StepExecution, drives the chunk

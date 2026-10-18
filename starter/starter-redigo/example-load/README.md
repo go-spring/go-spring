@@ -6,7 +6,7 @@ against a real Redis for a fixed duration, and prints throughput, latency
 percentiles, and an error breakdown that distinguishes
 `circuit-open / rate-limited / bulkhead / injected / other`.
 
-It is the load-test companion to `cloud/runtime/dataplane/fault`: setting a
+It is the load-test companion to `cloud/runtime/dataplane/kernel/fault`: setting a
 `spring.governance.client.fault.rate` in `conf/governance.properties` makes the
 closed loop — fault → resilience → observe — visible in the numbers.
 

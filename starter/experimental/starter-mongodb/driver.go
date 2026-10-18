@@ -26,8 +26,8 @@ import (
 	"context"
 
 	"go-spring.org/cloud/mesh"
-	"go-spring.org/cloud/runtime/dataplane/discovery"
-	"go-spring.org/cloud/runtime/dataplane/loadbalance"
+	"go-spring.org/cloud/runtime/dataplane/kernel/discovery"
+	"go-spring.org/cloud/runtime/dataplane/kernel/loadbalance"
 	"go-spring.org/stdlib/errutil"
 )
 

@@ -232,7 +232,7 @@ Rationale (from the source comments, verified):
 6. AccessLog arms (fields captured on the way out)
 7. SecureHeaders/CORS/Gzip as enabled; BodyLimit enforces `maxBodySize`
 8. fault: `_, err := srv.Fire(ctx, fault.Target{Service: "echo", Action: "GET /x"})`
-   — `inj` is the injected `*fault.ServerManager` bean, and the built-in target names the route
+   — `inj` is the injected `*serverfault.ServerManager` bean, and the built-in target names the route
    (`METHOD` + `c.Path()`), so a rule can fire one endpoint; with `scope: loadtest` and the
    marker present, ~`rate` of requests get the injected error → 503; others pass through
 9. your route runs; the response unwinds through 6→5→4→3: access record logged (severity by

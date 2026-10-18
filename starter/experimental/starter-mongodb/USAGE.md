@@ -64,7 +64,7 @@ keeps the demo self-contained (copied from [example/discovery.go](example/discov
 ```go
 package main
 
-import "go-spring.org/cloud/runtime/dataplane/discovery"
+import "go-spring.org/cloud/runtime/dataplane/kernel/discovery"
 
 func init() {
     gs.Provide(func() (discovery.Discovery, error) {
@@ -181,7 +181,7 @@ gs.Run()
   │   → mongo.Connect → NewClient(raw, cfg) (identity + observer) [client.go:113]
   │       newDBObserver("mongodb") → module-local observer (span + metric + access log);
   │       serviceLabel = serviceLabel(cfg); exec = center.ExecutorFor("mongodb", serviceLabel),
-  │       which is inj.WrapClientExecutor(mgr.ClientExecutorFor("mongodb", service))
+  │       which is inj.WrapClientExecutor(mgr.ExecutorFor("mongodb", service))
   │   → swap dialerWrapper.dial = newDialer(base, w.exec) [starter.go:225], [dial.go]
   │   → ping=true only: fail-fast probe HealthCheck(ctx, w) — a Ping bounded by
   │     connect-timeout (10s fallback) [starter.go:220] — a dead server fails the BOOT
@@ -283,10 +283,10 @@ There are no observability keys — observation is unconditional (see §3.3).
 ### 3.2 Resilience / fault (spring.governance.*, not under the instance prefix)
 
 Policy keys live in the governance rules document under `spring.governance.*` (cloud/runtime/controlplane/governance's governance center);
-`newClient` reads the injected `*resilience.ClientManager` / `*fault.ClientManager` (`mgr`/`inj`) and
+`newClient` reads the injected `*resilience.Manager` / `*clientfault.ClientManager` (`mgr`/`inj`) and
 `*loadbalance.Manager` (`lbMgr`) off the `*runtime.Runtime`, whose
 `center.ExecutorFor("mongodb", "mongodb:<service-name|uri>")` resolves
-`inj.WrapClientExecutor(mgr.ClientExecutorFor("mongodb", "mongodb:<service-name|uri>"))`
+`inj.WrapClientExecutor(mgr.ExecutorFor("mongodb", "mongodb:<service-name|uri>"))`
 in one call [client.go:113-121]. Relevant keys: `spring.resilience.driver` (the backend, a
 static app-config key) and, in the governance document (see cloud/runtime/controlplane/governance's SOURCE_USAGE
 for the full set), `spring.governance.client.default.rate-limit` /

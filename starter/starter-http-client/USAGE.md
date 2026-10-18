@@ -69,7 +69,7 @@ import (
     "fmt"
     "net/http"
 
-    "go-spring.org/cloud/runtime/dataplane/discovery"
+    "go-spring.org/cloud/runtime/dataplane/kernel/discovery"
 )
 
 const (
@@ -219,7 +219,7 @@ Rationale (from the source comments, verified):
 - **Breaker counting is per logical call, not per attempt** (the historically fixed bug): the
   executor records the breaker outcome once per `Execute`, after the retry loop, "rather than once
   per attempt … which would trip the circuit far faster than the configured ErrorThreshold …
-  implies (the 'resilience on => breaker trips instantly' symptom)" (resilience/client_executor.go).
+  implies (the 'resilience on => breaker trips instantly' symptom)" (resilience/executor.go).
   The rate limiter still charges per attempt — each attempt is a real downstream request.
 
 ### 2.3 One request, layer by layer
@@ -364,7 +364,7 @@ The `guarded` route targets the always-500 backend on :9473 with
    change from a network/500 error to `circuit open`, wait out `open-duration` (30s) with the
    backend restored — the half-open trial succeeds and the breaker closes.
 3. Observe the trip: `resilience.client.breaker.state_change{from=...,to=...}` counter increments and a
-   state-change log line is emitted (cloud/runtime/dataplane/resilience/observe.go:98-110).
+   state-change log line is emitted (cloud/runtime/dataplane/outbound/resilience/observe.go:98-110).
 
 ### 4.4 Fault injection (no restart)
 
@@ -432,7 +432,7 @@ Design suspects (for the audit ledger):
 3. ~~Dead `timeout` key~~ — FIXED 2026-08-27: removed from Config and README.
 4. ~~Breaker per-attempt counting ("resilience on => 100% fail / trips instantly")~~ — FIXED:
    the executor now records the breaker outcome once per logical Execute
-   (resilience/client_executor.go); the rate limiter intentionally still charges per attempt.
+   (resilience/executor.go); the rate limiter intentionally still charges per attempt.
 5. Silent global takeover of `httpclt.DoRequest`; unknown targets fail at request time, not
    wiring time.
 6. ~~Governance label silently changes with addressing mode~~ — FIXED 2026-08-28: the label is

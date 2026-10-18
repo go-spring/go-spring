@@ -20,7 +20,7 @@
 
 单向：控制面可以 import 数据面（它把各域 policy 类型聚合进 `Config`），组合根可以 import 两者，但数据面绝不能 import 控制面根包。控制面把整份期望态文档一次性送达；数据面在每次调用时读取当前代际，并在文档变化时整体重建每服务状态。
 
-有两处耦合是刻意保留的,不是缺陷:控制面 `Config` 直接嵌入数据面策略类型（`resilience.ClientPolicy`、`guard.Policy`、`loadbalance.Selection`、`fault.Config`）,因为进程内控制面没有独立部署与 schema,类型/配置统一比 schema 独立更有价值;写侧 `registration.Instance` 与读侧 `discovery.Endpoint` 保持两套词汇,由后端 starter 负责同步。两者都不打算统一。
+有两处耦合是刻意保留的,不是缺陷:控制面 `Config` 直接嵌入数据面策略类型（`resilience.Policy`、`guard.Policy`、`loadbalance.Selection`、`fault.Config`）,因为进程内控制面没有独立部署与 schema,类型/配置统一比 schema 独立更有价值;写侧 `registration.Instance` 与读侧 `discovery.Endpoint` 保持两套词汇,由后端 starter 负责同步。两者都不打算统一。
 
 跨平面的中立词汇留在 `cloud/` 顶层：[propagate](../propagate/)（跨协议载体）、[mesh](../mesh/)（sidecar 开关），以及 [observability/attrs](../observability/attrs/) / [observability/conf](../observability/conf/)（遥测词汇与配置刷新插桩）。两个平面与所有能力都可以依赖它们，但没有谁拥有它们。其余能力 SDK——[cache](../cache/)、[lock](../lock/)、[messaging](../messaging/)、[scheduling](../scheduling/)、[security](../security/)——仍是顶层兄弟包；它们可以依赖这些中立包，但 runtime 永不依赖这些 SDK。
 

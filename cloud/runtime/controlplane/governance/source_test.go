@@ -20,8 +20,8 @@ import (
 	"context"
 	"testing"
 
-	"go-spring.org/cloud/runtime/dataplane/guard"
-	"go-spring.org/cloud/runtime/dataplane/resilience"
+	"go-spring.org/cloud/runtime/dataplane/inbound/admission"
+	"go-spring.org/cloud/runtime/dataplane/outbound/resilience"
 	"go-spring.org/log"
 )
 
@@ -31,20 +31,20 @@ import (
 func TestSource_PushSourceDrivesCenter(t *testing.T) {
 	src := NewPushSource(timeoutConfig(100))
 	resClient, lb, fc, fs := newAuthorities()
-	if _, err := NewCenter(resClient, guard.NewManager(), lb, fc, fs, src); err != nil {
+	if _, err := NewCenter(resClient, admission.NewManager(), lb, fc, fs, src); err != nil {
 		t.Fatal(err)
 	}
-	if p := resClient.ClientPolicyFor("redis:cache"); p.Timeout != dur(100) {
+	if p := resClient.PolicyFor("redis:cache"); p.Timeout != dur(100) {
 		t.Fatalf("snapshot policy: want 100ms, got %v", p.Timeout)
 	}
 
-	var got resilience.ClientPolicy
-	resClient.Subscribe("redis:cache", func(p resilience.ClientPolicy) { got = p })
+	var got resilience.Policy
+	resClient.Subscribe("redis:cache", func(p resilience.Policy) { got = p })
 	src.Push(context.Background(), timeoutConfig(200))
 	if got.Timeout != dur(200) {
 		t.Fatalf("push should fan out: want 200ms, got %v", got.Timeout)
 	}
-	if p := resClient.ClientPolicyFor("redis:cache"); p.Timeout != dur(200) {
+	if p := resClient.PolicyFor("redis:cache"); p.Timeout != dur(200) {
 		t.Fatalf("post-push policy: want 200ms, got %v", p.Timeout)
 	}
 }
@@ -69,7 +69,7 @@ func TestDestroy_ClosesCloseableSource(t *testing.T) {
 	// With a closeable source.
 	resClient, lb, fc, fs := newAuthorities()
 	src := newCloseableSource(Config{})
-	c, err := NewCenter(resClient, guard.NewManager(), lb, fc, fs, src)
+	c, err := NewCenter(resClient, admission.NewManager(), lb, fc, fs, src)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -82,7 +82,7 @@ func TestDestroy_ClosesCloseableSource(t *testing.T) {
 
 	// With a plain PushSource (no Close method): Destroy is a no-op.
 	resClient2, lb2, fc2, fs2 := newAuthorities()
-	c2, err := NewCenter(resClient2, guard.NewManager(), lb2, fc2, fs2, NewPushSource(Config{}))
+	c2, err := NewCenter(resClient2, admission.NewManager(), lb2, fc2, fs2, NewPushSource(Config{}))
 	if err != nil {
 		t.Fatal(err)
 	}

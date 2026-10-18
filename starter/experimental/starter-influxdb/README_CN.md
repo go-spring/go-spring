@@ -69,7 +69,7 @@ Setup……）被原样提升可用。
   开启一个 client span，记录调用级 `db.client.operation.duration` 直方图、尝试级
   `db.client.attempt.duration` 直方图与 `db.client.active_requests` 计量，并写一行
   `_app_influxdb_access` tag 的访问日志（走 log 包原生分级）。
-- **韧性** — 阻塞写路径走由注入的 `*resilience.ClientManager` 构建的 executor；
+- **韧性** — 阻塞写路径走由注入的 `*resilience.Manager` 构建的 executor；
   未接入（容器里没有 `cloud/runtime/controlplane/governance` 的 bean）时该 executor 为直通，写入路径不发射任何信号
   （starter 自身不持有发射点）。
 

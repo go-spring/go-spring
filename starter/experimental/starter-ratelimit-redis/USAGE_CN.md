@@ -6,12 +6,12 @@
 （`starter.go`、`config.go`）、`starter-go-redis/experimental/ratelimit.go` 的计数器实现、
 把存储送到 driver bean 的 [governance 装配](../../cloud/runtime/controlplane/governance/starter.go) 以及
 自校验的 [example/](example)（`example/check.sh`）核实。限流语义本身记在
-`cloud/runtime/dataplane/resilience`——本文只写本 starter 的增量。
+`cloud/runtime/dataplane/outbound/resilience`——本文只写本 starter 的增量。
 
 **激活方式**：任一 `spring.ratelimit.redis.*` 键即武装 starter 的 module，且该配置块唯一的键
 必须设置：`spring.ratelimit.redis.client` 指名的 `*goredis.Client` bean（由 starter-go-redis
 在 `spring.go-redis.instances.<client>` 下提供）所连的 Redis 实例承载计数器。starter 只贡献
-一个 `resilience.ClusterLimiter` 类型的 bean。容器里没有它时，每个 executor 用自己的一份预算计数，
+一个 `ratelimit.ClusterLimiter` 类型的 bean。容器里没有它时，每个 executor 用自己的一份预算计数，
 所以贡献本存储就是全部的开关：[cloud/runtime/controlplane/governance](../../../cloud/runtime/controlplane/governance/README.md) 的 driver bean
 会注入它，进程内每个 executor 从此花 Redis 里每个 scope 的同一个预算——而且是跨副本的，这是
 executor 本地预算做不到的。
@@ -56,7 +56,7 @@ import (
 func main() { gs.Run() }
 ```
 
-**web.go** —— 应用的全部限流面。预算来自治理规则里的 `resilience.ClientPolicy`，调用走 executor：
+**web.go** —— 应用的全部限流面。预算来自治理规则里的 `resilience.Policy`，调用走 executor：
 
 ```go
 package main
@@ -66,7 +66,7 @@ import (
     "errors"
     "net/http"
 
-    "go-spring.org/cloud/runtime/dataplane/resilience"
+    "go-spring.org/cloud/runtime/dataplane/outbound/resilience"
     "go-spring.org/spring/gs"
 )
 
@@ -75,17 +75,17 @@ import (
 const service = "ratelimit-redis:api"
 
 func init() {
-    gs.Provide(func(mgr *resilience.ClientManager) *gs.HttpServeMux {
+    gs.Provide(func(mgr *resilience.Manager) *gs.HttpServeMux {
         mux := http.NewServeMux()
         // 两个 handler 模拟两个副本：不共享任何进程内状态。两者都花本进程
         // 贡献的同一个 Redis 计数器存储。
-        mux.Handle("/a/", serve(mgr.ClientExecutorFor("ratelimit-redis", service)))
-        mux.Handle("/b/", serve(mgr.ClientExecutorFor("ratelimit-redis", service)))
+        mux.Handle("/a/", serve(mgr.ExecutorFor("ratelimit-redis", service)))
+        mux.Handle("/b/", serve(mgr.ExecutorFor("ratelimit-redis", service)))
         return &gs.HttpServeMux{Handler: mux}
     })
 }
 
-func serve(exec resilience.ClientExecutor) http.HandlerFunc {
+func serve(exec chain.Executor) http.HandlerFunc {
     return func(w http.ResponseWriter, r *http.Request) {
         err := exec.Execute(r.Context(), func(context.Context) error { return nil })
         switch {
@@ -151,15 +151,15 @@ import starter-go-redis + starter-ratelimit-redis
   └─ gs.Module(gs.OnProperty("spring.ratelimit.redis"))
         └─ conf.Bind("${spring.ratelimit.redis}") → Config{Client}
              ├─ Client == "" 时 fail fast（启动报错并点名该属性）
-             └─ Provide func(client *goredis.Client) (resilience.ClusterLimiter, error)
+             └─ Provide func(client *goredis.Client) (ratelimit.ClusterLimiter, error)
                   （gs.TagArg(c.Client)；接口返回类型即 bean 类型——
                    不需要 Export）
 
 gs.Run()
-  ├─ 本存储成为容器里唯一的 resilience.ClusterLimiter bean
+  ├─ 本存储成为容器里唯一的 ratelimit.ClusterLimiter bean
   ├─ bean 装配：client 指名的 *goredis.Client bean 按名注入；
   │     NewClusterLimiter 包住它的 UniversalClient（client 为 nil 是构造函数错误）
-  ├─ resilience driver bean 注入 resilience.ClusterLimiter，所以它构建的每个 executor
+  ├─ resilience driver bean 注入 ratelimit.ClusterLimiter，所以它构建的每个 executor
   │     都花这份存储——存储本身也因此被实例化（driver 需要它）
   └─ SIGTERM 时：无需释放——存储自身不持有状态，redis 客户端的 Close
                  归 starter-go-redis
@@ -204,7 +204,7 @@ gs.Run()
 | `client` | string | — | **必填。** `spring.go-redis.instances.<client>` 下 `*goredis.Client` bean 的名字；注册 bean 前先校验，构造时以 `TagArg(c.Client)` 注入。 | 为空 → 启动失败并点名该属性；名字没有对应 bean → 启动期 bean 装配失败。 |
 
 ⚠ 限流参数（`rate-limit`、`burst`、`algorithm`、`window`、`rate-limit-max-wait`）**不是**
-starter 配置：它们是治理规则文档上按 service 生效的 `resilience.ClientPolicy` 字段。
+starter 配置：它们是治理规则文档上按 service 生效的 `resilience.Policy` 字段。
 
 ---
 

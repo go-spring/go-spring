@@ -138,4 +138,4 @@ Apache 2.0。见 [LICENSE](../../../LICENSE)。
 * **`Compensate` 为 nil 即 `CompensationFailed`，而非静默跳过。** 不可逆 Step 是应用
   必须显式自担的决策。
 * **重试归共享 resilience `default` driver。** `RetryPolicy` 即
-  `resilience.ClientPolicy`，重试行为与调优在 resilience 配置里，而非私有重试循环。
+  `resilience.Policy`，重试行为与调优在 resilience 配置里，而非私有重试循环。

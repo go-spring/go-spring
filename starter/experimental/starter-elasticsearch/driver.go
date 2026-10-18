@@ -28,7 +28,7 @@ import (
 	"github.com/elastic/go-elasticsearch/v8"
 	"go-spring.org/cloud/mesh"
 	"go-spring.org/cloud/runtime"
-	"go-spring.org/cloud/runtime/dataplane/discovery"
+	"go-spring.org/cloud/runtime/dataplane/kernel/discovery"
 	"go-spring.org/stdlib/errutil"
 )
 

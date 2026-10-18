@@ -23,7 +23,7 @@ package StarterKafkaSarama
 import (
 	"github.com/IBM/sarama"
 	"go-spring.org/cloud/messaging"
-	"go-spring.org/cloud/runtime/dataplane/traffic"
+	"go-spring.org/cloud/runtime/dataplane/kernel/traffic"
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/flatten"

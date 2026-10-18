@@ -8,7 +8,7 @@
 （`cloud/runtime/controlplane/governance`：`starter.go`、`source_file.go`、`source_http.go`、
 `starter_test.go`、`source_file_test.go`、`source_http_test.go`）、它接线的核心包
 （`center.go`、`source.go`、`fault/config.go`、
-`resilience/client_policy.go`、`resilience/manager.go`、`loadbalance/manager.go`）以及可运行的
+`resilience/policy.go`、`resilience/manager.go`、`loadbalance/manager.go`）以及可运行的
 [example/](example/)（`example/main.go` 每秒打印
 解析出的 policy 与 fault 配置，提示你在线编辑规则文件，6 秒后自动退出，`-manual` 可保持运行）。
 
@@ -63,8 +63,8 @@ import (
     "fmt"
     "time"
 
-    "go-spring.org/cloud/runtime/dataplane/fault"
-    "go-spring.org/cloud/runtime/dataplane/resilience"
+    "go-spring.org/cloud/runtime/dataplane/kernel/fault"
+    "go-spring.org/cloud/runtime/dataplane/outbound/resilience"
     "go-spring.org/spring/gs"
 )   // 没有需要空导入的东西：file 源随 cloud/runtime/controlplane/governance 注册
 
@@ -72,17 +72,17 @@ import (
 // resilience 与 fault 走同一个 source。两个权威都是可空 bean：从没链接过
 // cloud/runtime/controlplane/governance 的容器注入到 nil，printer 随即报告透传状态。
 type printer struct {
-    Res *resilience.ClientManager `autowire:"?"`
-    Inj *fault.ClientManager     `autowire:"?"`
+    Res *resilience.Manager `autowire:"?"`
+    Inj *clientfault.ClientManager     `autowire:"?"`
 }
 
 func (p *printer) Run(ctx context.Context) error {
     tk := time.NewTicker(time.Second)
     defer tk.Stop()
     for i := 0; ; i++ {
-        var pol resilience.ClientPolicy
+        var pol resilience.Policy
         if p.Res != nil {
-            pol = p.Res.ClientPolicyFor("demo:service")
+            pol = p.Res.PolicyFor("demo:service")
         }
         fmt.Printf("policy: enabled=%v timeout=%v retries=%d rate-limit=%v",
             !pol.IsZero(), pol.Timeout, pol.MaxRetries, pol.RateLimit)
@@ -162,7 +162,7 @@ go run . -manual
 app.properties 内嵌规则的路径——规则一律经 Source 进入。
 
 **变体 —— 与 server starter 组合**：任何注入了模块权威（本 starter 注册的
-`*resilience.ClientManager` / `*fault.ClientManager` bean）的 client starter 都自动获得 policy，应用代码
+`*resilience.Manager` / `*clientfault.ClientManager` bean）的 client starter 都自动获得 policy，应用代码
 零改动。HTTP server 侧 `scope: loadtest` 的完整放火演练见 starter-echo 的 USAGE §4.4。
 
 ---
@@ -202,9 +202,9 @@ nacos（ListenConfig 推送）在 `starter-governance-nacos`，etcd（Watch 推�
 ```
 链接 cloud/runtime/controlplane/governance         （任何 client/server starter 已经替你链了）
   ├─ 三个 authority 包（任何 client starter 本来就链接了）：
-  │      cloud/runtime/dataplane/resilience → *resilience.ClientManager + 内置 driver
-  │      cloud/runtime/dataplane/loadbalance → *loadbalance.Manager
-  │      cloud/runtime/dataplane/fault      → *fault.ClientManager
+  │      cloud/runtime/dataplane/outbound/resilience → *resilience.Manager + 内置 driver
+  │      cloud/runtime/dataplane/kernel/loadbalance → *loadbalance.Manager
+  │      cloud/runtime/dataplane/kernel/fault      → *clientfault.ClientManager
   ├─ cloud/runtime/controlplane/governance starter.go: gs.Provide(*runtime.Runtime) 建在那些 bean 上,
   │      .Destroy((*Center).Close)
   │      .Export(gs.As[gs.Rooter]())            ← 见下文，这堵墙 + 这个修复
@@ -216,7 +216,7 @@ nacos（ListenConfig 推送）在 `starter-governance-nacos`，etcd（Watch 推�
 gs.Run()
   ├─ config bind: 源配置来自 ${spring.governance.source.file|http.*}（expr 校验）
   ├─ bean wiring: 一切都是构造参数
-  │      resilience.ClientManager  ← 每个导出为 resilience.Driver 的 bean
+  │      resilience.Manager  ← 每个导出为 resilience.Driver 的 bean
   │      loadbalance.Manager ← 无构造参数；策略从包级注册表（loadbalance.Register）解析
   │      source bean：先构造，再 Init: Start() —— fsnotify 监听 / 轮询循环开始
   │      Center ← 上面两个 manager、fault.ClientManager、discovery.Manager，以及 source
@@ -224,7 +224,7 @@ gs.Run()
   │        └─ NewCenter 绑定 source：订阅（按 handle 指针做过期保护）+ 采纳 Snapshot()
   ├─ center bean 构造:
   │      NewCenter 把初始文档分发给三个模块权威 ——
-  │        resilience.ClientManager.Apply、loadbalance.Manager.Apply、fault.ClientManager.Refresh / fault.ServerManager.Refresh
+  │        resilience.Manager.Apply、loadbalance.Manager.Apply、fault.ClientManager.Refresh / fault.ServerManager.Refresh
   │        —— 文档不可用时构造失败
   ├─ 你的 Runner 运行（policy 已 arm —— Rooter 先于 Runner）
   └─ SIGTERM: center Bean Destroy 钩子 → center.Close()
@@ -239,8 +239,8 @@ gs.Run()
   （`cloud/runtime/controlplane/governance/starter.go`）。同理，你自己的自定义 Source bean 若不 `Export(gs.As[governance.Source]())`
   就对接口注入不可见——少了 Export 会让治理静默 disabled。
 - **Center 本身就是 bean。** `cloud/runtime/controlplane/governance` 不暴露包级门面、也不持全局；它自己的 `starter.go`
-  把 `*runtime.Runtime` 建在同它导出给客户的 `*resilience.ClientManager` / `*loadbalance.Manager` /
-  `*fault.ClientManager` bean 之上 —— 接线驱动的正是客户注入的那几个权威。容器背后没有进程级单例可摸。
+  把 `*runtime.Runtime` 建在同它导出给客户的 `*resilience.Manager` / `*loadbalance.Manager` /
+  `*clientfault.ClientManager` bean 之上 —— 接线驱动的正是客户注入的那几个权威。容器背后没有进程级单例可摸。
 
 ### 2.3 Rooter 与 Runner 的顺序
 
@@ -260,14 +260,14 @@ starter-dubbo 的 poller）必然排在 center 之后，看到的就是已 live 
 3. 配置未变（DeepEqual）不推送——touch 不会搅动 executor。
 4. 中心订阅回调采纳配置（`adopt` → `dispatch`），分**两阶段**：先 `Center.Validate` 校验文档
    （重复 label、driver 名、每个 balancer 名）而**不碰任何状态**，通过后才提交——存原子快照，把每个
-   模块自己的那一片 PUSH 出去——`resilience.ClientManager.Apply`（default + 出站/入站规则列表）与
+   模块自己的那一片 PUSH 出去——`resilience.Manager.Apply`（default + 出站/入站规则列表）与
    `loadbalance.Manager.Apply`（default + 选择规则），由 `dispatch` 从文档翻译而来——再经
    `injClient.Refresh` + `injServer.Refresh` 原地热换 fault（`center.go`）。提交阶段不可能失败，所以被拒的文档会让快照与三个权威
    全部停在上一份好文档上。各 manager 自己做 label 匹配，只通知 policy 真变了的订阅者。
 5. 权威生效：client starter 从不 import governance——它们注入自己需要的模块权威
-   （`*resilience.ClientManager`、`*loadbalance.Manager`、`*fault.ClientManager`），再向它要 executor、
+   （`*resilience.Manager`、`*loadbalance.Manager`、`*clientfault.ClientManager`），再向它要 executor、
    binding 或 injector；权威为 nil（从没链接过 cloud/runtime/controlplane/governance 的容器）即未武装，也就是透明透传。
-   后备 executor 在调用期惰性解析（见 `ClientExecutorFor`）；中心一次 push 会淘汰它、下次调用按新
+   后备 executor 在调用期惰性解析（见 `ExecutorFor`）；中心一次 push 会淘汰它、下次调用按新
    policy 重建，而 fault injector 的配置原地热换，所以给 fault 配好 `rate` 后下一次调用即生效，无需重启。
 
 ---
@@ -301,7 +301,7 @@ starter-dubbo 的 poller）必然排在 center 之后，看到的就是已 live 
 | Key | 类型 | 默认 | 行为 | 配错后果 |
 |-----|------|------|------|----------|
 | `spring.resilience.driver` | string | "default" | 所有服务共用的 resilience 后端。**静态 app 配置键，不是文档键**：按名注入已贡献的 driver bean（如 "sentinel"），或内置的 "default"。 | 未知 driver → 注入不到该 `Driver` bean，启动失败（拼错不能静默关掉保护）。 |
-| `spring.governance.client.default.*` | resilience.ClientPolicy | 全 off | 没有规则匹配的服务的基础 policy。 | — |
+| `spring.governance.client.default.*` | resilience.Policy | 全 off | 没有规则匹配的服务的基础 policy。 | — |
 | `spring.governance.client.rules[n].*` | []ClientRule | 空 | Resources 含该 label 的第一条 ClientRule 胜出。⚠ 命中的 ClientRule **整体替换** Default——不做字段级合并：零值 policy 字段意为"禁用"，部分合并无法区分"显式 0"与"未设"（`cloud/runtime/controlplane/governance/center.go:364`）。具体规则放前面。 | 只设 `timeout` 的规则会静默关掉该服务的默认 retries。 |
 | `spring.governance.client.fault.*` | fault.Config | 全 off | **出站**故障注入——烧的是本进程自己的 retry/breaker/timeout，见 §3.4。 | — |
 | `spring.governance.server.default.*` | resilience.ServerPolicy | 全 off | 没有规则匹配的路由的基础**入站**准入：限流、并发上限、入站熔断、处理预算。 | — |
@@ -333,7 +333,7 @@ starter-dubbo 的 poller）必然排在 center 之后，看到的就是已 live 
 | `timeout` | duration | timeout | 整通调用的墙钟上限，作为**一个** context deadline 在入口罩住全部；重试与退避共用它，不是每轮各得一份。 |
 
 driver 选择是静态启动选择（`spring.resilience.driver`，app 配置键，不在治理文档），刻意**不可**按服务重绑。
-每个旋钮的语义（退避数学、breaker 状态机）属于 `cloud/runtime/dataplane/resilience`——starter 只
+每个旋钮的语义（退避数学、breaker 状态机）属于 `cloud/runtime/dataplane/outbound/resilience`——starter 只
 负责绑定与分发。
 
 ### 3.4 fault 实验（`spring.governance.client.fault.rules[]` 与 `spring.governance.server.fault.rules[]`）
@@ -394,18 +394,18 @@ printf '' > conf/governance.yaml                              # 空：无 spring
 ### 4.3 在自己的代码里探查权威
 
 ```go
-// mgr、lbMgr、inj、ctr 是注入的 bean（*resilience.ClientManager、*loadbalance.Manager、
-// *fault.ClientManager、*runtime.Runtime），各自可空。
+// mgr、lbMgr、inj、ctr 是注入的 bean（*resilience.Manager、*loadbalance.Manager、
+// *clientfault.ClientManager、*runtime.Runtime），各自可空。
 if mgr.Enabled() { ... }                           // 是否 arm？（live 前为 false）
 p := mgr.PolicyFor("redis:cache")                  // 零 Policy = 透传
-sub := mgr.Subscribe("redis:cache", func(p resilience.ClientPolicy) { /* 重 arm 客户端 */ })
+sub := mgr.Subscribe("redis:cache", func(p resilience.Policy) { /* 重 arm 客户端 */ })
 defer sub.Cancel()                                 // 客户端非进程级时**必须** Cancel
 lbMgr.Chain(resolver, "redis:cache")  // 建链并注册到该 label
 c := inj.ClientConfig()                            // 读出站实时 fault 配置
 s := inj.ServerConfig()                            // 再读入站那份
 ```
 
-请求路径上客户端调的是 `mgr.ClientExecutorFor(system, label)`；上面这些只读/重绑助手服务于
+请求路径上客户端调的是 `mgr.ExecutorFor(system, label)`；上面这些只读/重绑助手服务于
 「自己持有被保护对象、只需观察或重 arm」的调用方。
 
 ### 4.4 手工构建 center（测试）
@@ -414,14 +414,14 @@ s := inj.ServerConfig()                            // 再读入站那份
 
 ```go
 driver := resilience.NewDefaultDriver(nil)
-resClient, resServer := resilience.NewClientManager(driver), resilience.NewServerManager(driver)
+resClient, resServer := resilience.NewManager(driver), resilience.NewServerManager(driver)
 lb, fc, fs := loadbalance.NewManager(), fault.NewClientManager(nil), fault.NewServerManager(nil)
 cfg := governance.Config{}
 cfg.Client.Default.Timeout = 100 * time.Millisecond
 ctr, err := governance.NewCenter(resClient, resServer, lb, fc, fs, disc, governance.NewPushSource(cfg))
 if err != nil { t.Fatal(err) }
 defer ctr.Close()
-// 经 resClient.ClientPolicyFor(...) / resClient.ClientExecutorFor(...) 断言
+// 经 resClient.PolicyFor(...) / resClient.ExecutorFor(...) 断言
 ```
 
 ⚠ `gs.RunTest` **不会**替你接这个 center：gs 为测试隔离克隆全局 bean 定义，测试应用装配的是

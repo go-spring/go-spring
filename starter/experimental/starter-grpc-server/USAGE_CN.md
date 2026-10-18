@@ -232,7 +232,7 @@ Stream 链相同，但没有 Resilience（准入只覆盖 unary）。
   为 no-op。
 - **Tracing 在 Metrics 之前**：span 同时包住 metrics 观测，时长与状态落在同一 trace 上下文。
 - **Resilience 在 Fault/Recover 之前**：准入控制在做事之前裁决；注入的
-  `resilience.ClientManager` 的 `ExecutorFor` 返回的 executor 已自带 observe 层，熔断/拒绝自身
+  `resilience.Manager` 的 `ExecutorFor` 返回的 executor 已自带 observe 层，熔断/拒绝自身
   会打 span + counter + histogram。
 - **Fault 位于策略最内层**（fault.go）："安装在最内层，让注入的错误回穿 tracing/metrics/
   resilience 被观测到"——你放的火自己看得见。
@@ -252,7 +252,7 @@ Stream 链相同，但没有 Resilience（准入只覆盖 unary）。
 5. Resilience：`exec.Execute(ctx, chain.Operation{})`——超限则 handler 不执行，
    `mapAdmissionError` 映射为 `ResourceExhausted`；熔断开启 → `Unavailable`。
 6. Fault：`_, err := srv.Fire(ctx, fault.Target{Service: "grpc", Action: info.FullMethod})`
-   ——`inj` 是注入的 `*fault.ServerManager` bean；方法名是 ACTION（`service` 表示入口），所以规则可以
+   ——`inj` 是注入的 `*serverfault.ServerManager` bean；方法名是 ACTION（`service` 表示入口），所以规则可以
    只给单个方法放火；被标记
    流量按 ~`rate` 概率失败或增加注入延迟；未标记/scope 关闭则直通。
 7. Recover 布防；handler 执行。panic 经 `goutil.ReportPanic` 上报并转换为
@@ -345,7 +345,7 @@ example-otel 端到端验证走 Jaeger API
 
 1. 以 `governance.yaml` 启动（不设 fault `rate`，注入为空）。
 2. 打基线流量 → 全部正常。
-3. 把 fault 规则的 `rate` 配成 `0.2`——拦截器持有注入的 `*fault.ServerManager`，治理中心就地替换
+3. 把 fault 规则的 `rate` 配成 `0.2`——拦截器持有注入的 `*serverfault.ServerManager`，治理中心就地替换
    其配置，改动在下一个 RPC 生效，无需重启。
 4. 规则 label 是 `grpc:{FullMethod}`（如 `grpc:/EchoService/Echo`）——可以只烧一个方法。
    `scope: loadtest` 时只烧带标记的流量：

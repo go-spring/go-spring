@@ -21,10 +21,11 @@ import (
 	"testing"
 	"time"
 
-	"go-spring.org/cloud/runtime/dataplane/chain"
-	"go-spring.org/cloud/runtime/dataplane/fault"
-	"go-spring.org/cloud/runtime/dataplane/resilience"
-	"go-spring.org/cloud/runtime/dataplane/traffic"
+	"go-spring.org/cloud/runtime/dataplane/kernel/fault"
+	"go-spring.org/cloud/runtime/dataplane/kernel/traffic"
+	"go-spring.org/cloud/runtime/dataplane/outbound/chain"
+	clientfault "go-spring.org/cloud/runtime/dataplane/outbound/fault"
+	"go-spring.org/cloud/runtime/dataplane/outbound/resilience"
 	"go-spring.org/stdlib/errutil"
 	"go-spring.org/stdlib/testing/assert"
 )
@@ -40,12 +41,12 @@ import (
 // 压测制造压力, 断言熔断真的开。
 func TestIntegration_LoadFaultBreaker(t *testing.T) {
 	d := resilience.NewDefaultDriver(nil)
-	exec, err := d.NewClientExecutor("svc", resilience.ClientPolicy{ErrorThreshold: 3, OpenDuration: time.Minute})
+	exec, err := d.NewExecutor("svc", resilience.Policy{ErrorThreshold: 3, OpenDuration: time.Minute})
 	assert.Error(t, err).Nil()
 	t.Cleanup(func() { _ = exec.Close() })
 
 	// Fault wraps the executor: every call returns an injected error.
-	inj := fault.NewClientManager(nil)
+	inj := clientfault.NewClientManager(nil)
 	inj.Refresh(fault.Config{Rules: []fault.Rule{{Rate: 1, Error: "generic"}}})
 	fexec := inj.WrapClientExecutor(exec)
 
@@ -84,11 +85,11 @@ func TestIntegration_LoadFaultBreaker(t *testing.T) {
 // harness tags) is NOT faulted, so the breaker never opens.
 func TestIntegration_ScopeRealTrafficSkipsFault(t *testing.T) {
 	d := resilience.NewDefaultDriver(nil)
-	exec, err := d.NewClientExecutor("svc", resilience.ClientPolicy{ErrorThreshold: 1, OpenDuration: time.Minute})
+	exec, err := d.NewExecutor("svc", resilience.Policy{ErrorThreshold: 1, OpenDuration: time.Minute})
 	assert.Error(t, err).Nil()
 	t.Cleanup(func() { _ = exec.Close() })
 
-	inj := fault.NewClientManager(traffic.NewDefaultPropagator(traffic.DefaultBinding()))
+	inj := clientfault.NewClientManager(traffic.NewDefaultPropagator(traffic.DefaultBinding()))
 	// Scope "real": skip load-test traffic.
 	inj.Refresh(fault.Config{Rules: []fault.Rule{{Rate: 1, Error: "generic", Scope: "real"}}})
 	fexec := inj.WrapClientExecutor(exec)

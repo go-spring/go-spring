@@ -25,7 +25,7 @@ package StarterS3
 import (
 	"net/http"
 
-	"go-spring.org/cloud/runtime/dataplane/chain"
+	"go-spring.org/cloud/runtime/dataplane/outbound/chain"
 )
 
 // callFor resolves the semantic identity of an S3 request. It is handed to

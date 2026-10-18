@@ -14,7 +14,7 @@
 让网关宕机。
 
 上游分为**直连**（`http(s)://host:port`）与**服务发现**（`lb://<service>`）两类，后者复用
-`cloud/runtime/dataplane/discovery` + `cloud/runtime/dataplane/loadbalance`。转发经由 `cloud/runtime/dataplane/resilience` 完成重试／熔断／
+`cloud/runtime/dataplane/kernel/discovery` + `cloud/runtime/dataplane/kernel/loadbalance`。转发经由 `cloud/runtime/dataplane/outbound/resilience` 完成重试／熔断／
 限流。网关自身的指标是 OTel instrument（`gateway.requests`、`gateway.active_requests`、
 `gateway.route_reload_errors`），因此走应用配置的那条管道 —— starter-otel 的 Prometheus
 exporter 会把它们和其他组件一起暴露在 actuator 的 `/metrics` 上。
@@ -90,8 +90,8 @@ spring.gateway.routes.api.upstream.target=http://127.0.0.1:19000
 ## 上游与负载均衡
 
 * **直连**：`upstream.target=http://host:port` 直接转发到该地址。
-* **服务发现**：`upstream.target=lb://<service>` 经 `cloud/runtime/dataplane/discovery` 解析活跃实例，
-  由 `cloud/runtime/dataplane/loadbalance` 选择其一。可用 `upstream.discovery`（后端名）指定该路由的发现后端，
+* **服务发现**：`upstream.target=lb://<service>` 经 `cloud/runtime/dataplane/kernel/discovery` 解析活跃实例，
+  由 `cloud/runtime/dataplane/kernel/loadbalance` 选择其一。可用 `upstream.discovery`（后端名）指定该路由的发现后端，
   或用 `spring.gateway.discovery` 设置网关级默认。
 * **策略与停牌在治理规则里**：负载均衡策略（`balancer`）与离群停牌
   （`outlier-threshold` / `outlier-suspend-for`）不是 route 的 key，而是命中
@@ -100,7 +100,7 @@ spring.gateway.routes.api.upstream.target=http://127.0.0.1:19000
 
 ## 韧性（Resilience）
 
-`spring.gateway.resilience.<name>` 下的命名策略与 `resilience.ClientPolicy` 一一对应（限流速率、
+`spring.gateway.resilience.<name>` 下的命名策略与 `resilience.Policy` 一一对应（限流速率、
 突发、错误阈值、熔断打开时长、最大并发、重试次数、超时）。路由通过
 `resilience.policy=<name>` 引用；引用同一策略的路由共享熔断／限流状态。
 
@@ -140,5 +140,5 @@ spring.gateway.routes.api.upstream.target=http://127.0.0.1:19000
   稍晚一点。
 * **路由 map 的默认值必须为空。** 写 `${routes:=}`，**不要**写 `${routes:={}}`
   ——bind 层会拒绝非空 map 默认值。
-* **`lb://` 复用共享的客户端栈。** 服务发现与负载均衡来自 `cloud/runtime/dataplane/discovery` +
-  `cloud/runtime/dataplane/loadbalance`，因此 mesh 模式在其中集中退化，网关侧无需分支。
+* **`lb://` 复用共享的客户端栈。** 服务发现与负载均衡来自 `cloud/runtime/dataplane/kernel/discovery` +
+  `cloud/runtime/dataplane/kernel/loadbalance`，因此 mesh 模式在其中集中退化，网关侧无需分支。

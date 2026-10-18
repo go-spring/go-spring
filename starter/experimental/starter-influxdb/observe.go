@@ -33,7 +33,7 @@ import (
 	"net/http"
 	"strings"
 
-	"go-spring.org/cloud/runtime/dataplane/chain"
+	"go-spring.org/cloud/runtime/dataplane/outbound/chain"
 	"go-spring.org/log"
 )
 

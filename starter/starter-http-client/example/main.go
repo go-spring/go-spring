@@ -41,7 +41,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"go-spring.org/cloud/runtime/dataplane/chain"
+	"go-spring.org/cloud/runtime/dataplane/outbound/chain"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -50,7 +50,7 @@ import (
 	"syscall"
 	"time"
 
-	"go-spring.org/cloud/runtime/dataplane/discovery"
+	"go-spring.org/cloud/runtime/dataplane/kernel/discovery"
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
 	"go.opentelemetry.io/otel"

@@ -25,7 +25,7 @@ import (
 // imports this package transitively, and the bean exists exactly once per
 // process by Go's package-init semantics — no coordination between backends is
 // needed. The read-side directory is registered by
-// cloud/runtime/dataplane/discovery.
+// cloud/runtime/dataplane/kernel/discovery.
 func init() {
 	// Activated only when the registration intent signal is set: a
 	// ${spring.discovery.service-name} means this process publishes itself.

@@ -22,8 +22,8 @@ import (
 
 	"github.com/gomodule/redigo/redis"
 	"go-spring.org/cloud/observability/attrs"
-	"go-spring.org/cloud/runtime/dataplane/chain"
-	"go-spring.org/cloud/runtime/dataplane/observability"
+	"go-spring.org/cloud/runtime/dataplane/outbound/chain"
+	observability "go-spring.org/cloud/runtime/dataplane/outbound/observe"
 	"go-spring.org/stdlib/testing/assert"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -31,7 +31,7 @@ import (
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 )
 
-// The reader is the real one now that it lives in cloud/runtime/dataplane/observability: this
+// The reader is the real one now that it lives in cloud/observability/attrs: this
 // module still has no starter-otel dependency, but it no longer has to mirror
 // the processor to get one. What this test locks is the half that lives here —
 // a span started by this package on the caller's behalf is started from the
@@ -71,7 +71,7 @@ func attrsOf(s sdktrace.ReadOnlySpan) map[string]string {
 }
 
 // TestDoContextSpanCarriesSpanAttributes locks the "reachable without
-// holding the span" shape documented in cloud/runtime/dataplane/observability/README.md: the
+// holding the span" shape documented in cloud/observability/attrs/README.md: the
 // command's span is created inside the interceptor chain, so a user layer -
 // which is outermost - can only annotate the ctx it forwards. Both the
 // caller's annotation and the layer's must end up on that span.

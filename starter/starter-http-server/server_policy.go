@@ -21,8 +21,8 @@ import (
 	"net/http"
 
 	"go-spring.org/cloud/runtime"
-	"go-spring.org/cloud/runtime/dataplane/guard"
-	"go-spring.org/cloud/runtime/dataplane/observability"
+	"go-spring.org/cloud/runtime/dataplane/inbound/admission"
+	observability "go-spring.org/cloud/runtime/dataplane/inbound/observe"
 	"go-spring.org/log"
 	"go.opentelemetry.io/otel/attribute"
 )
@@ -49,7 +49,7 @@ import (
 // Refusals map to 429 (rate limit, bulkhead full) and 503 (circuit open,
 // degraded, injected fault); a handler-committed 5xx is fed back to the breaker.
 // Inbound never retries — a handler that already produced side effects cannot be
-// replayed, and [guard.Policy] has no retry field to express one with.
+// replayed, and [admission.Policy] has no retry field to express one with.
 //
 // Compose it inside Chain, after the security filters that must run even for a
 // rejected request, and outside the handler:
@@ -101,8 +101,8 @@ func serverPolicyWith(in *runtime.Inbound) Middleware {
 
 // httpStatusFor maps an inbound refusal to the HTTP status a client can act on:
 // rate/bulkhead rejections are 429, an open circuit or an injected fault is 503.
-func httpStatusFor(kind guard.Verdict) int {
-	if kind == guard.VerdictCircuitOpen || kind == guard.VerdictFaultInjected || kind == guard.VerdictDegraded {
+func httpStatusFor(kind admission.Verdict) int {
+	if kind == admission.VerdictCircuitOpen || kind == admission.VerdictFaultInjected || kind == admission.VerdictDegraded {
 		return http.StatusServiceUnavailable
 	}
 	return http.StatusTooManyRequests

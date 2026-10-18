@@ -15,7 +15,7 @@
  */
 
 // This file is the CONSUMER half of Nacos service discovery: the
-// cloud/runtime/dataplane/discovery Discovery backend serving snapshots of instances from Nacos
+// cloud/runtime/dataplane/kernel/discovery Discovery backend serving snapshots of instances from Nacos
 // naming. It is derived from the ${spring.discovery.nacos} center (starter.go)
 // under the fixed label "nacos" — there is no separate discovery config block;
 // read and write share the center's namespace/group/cluster, so they can never
@@ -34,7 +34,7 @@ import (
 	"github.com/nacos-group/nacos-sdk-go/v2/clients/naming_client"
 	"github.com/nacos-group/nacos-sdk-go/v2/model"
 	"github.com/nacos-group/nacos-sdk-go/v2/vo"
-	"go-spring.org/cloud/runtime/dataplane/discovery"
+	"go-spring.org/cloud/runtime/dataplane/kernel/discovery"
 	"go-spring.org/log"
 	"go-spring.org/stdlib/errutil"
 )

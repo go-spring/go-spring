@@ -25,13 +25,14 @@ import (
 
 	"go-spring.org/cloud/runtime"
 	"go-spring.org/cloud/runtime/controlplane/governance"
-	"go-spring.org/cloud/runtime/dataplane/chain"
+	"go-spring.org/cloud/runtime/dataplane/outbound/chain"
 
-	"go-spring.org/cloud/runtime/dataplane/discovery"
-	"go-spring.org/cloud/runtime/dataplane/fault"
-	"go-spring.org/cloud/runtime/dataplane/loadbalance"
-	"go-spring.org/cloud/runtime/dataplane/resilience"
-	"go-spring.org/cloud/runtime/dataplane/traffic"
+	serverfault "go-spring.org/cloud/runtime/dataplane/inbound/fault"
+	"go-spring.org/cloud/runtime/dataplane/kernel/discovery"
+	"go-spring.org/cloud/runtime/dataplane/kernel/loadbalance"
+	"go-spring.org/cloud/runtime/dataplane/kernel/traffic"
+	clientfault "go-spring.org/cloud/runtime/dataplane/outbound/fault"
+	"go-spring.org/cloud/runtime/dataplane/outbound/resilience"
 	"go-spring.org/stdlib/testing/assert"
 )
 
@@ -40,8 +41,8 @@ import (
 // container always provides them. A test that calls the constructor directly
 // passes the same unarmed ones the container would.
 var (
-	testMgr   = resilience.NewClientManager(resilience.NewDefaultDriver(nil))
-	testInj   = fault.NewClientManager(nil)
+	testMgr   = resilience.NewManager(resilience.NewDefaultDriver(nil))
+	testInj   = clientfault.NewClientManager(nil)
 	testLbMgr = mustLbManager()
 )
 
@@ -186,7 +187,7 @@ func TestNewTransport_ResilienceBreakerFastFails(t *testing.T) {
 	rec := &recordRT{status: http.StatusInternalServerError}
 	rt, closeFn, err := NewTransport(Config{
 		ResilienceDriver: resilience.NewDefaultDriver(nil),
-		ResiliencePolicy: resilience.ClientPolicy{ErrorThreshold: 2},
+		ResiliencePolicy: resilience.Policy{ErrorThreshold: 2},
 		Base:             rec,
 	}, testCenter(testMgr, testInj, testLbMgr), testProp())
 	assert.That(t, err).Nil()
@@ -281,13 +282,13 @@ func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) { re
 func TestNewTransport_WrapExecReplacesDefault(t *testing.T) {
 	rec := &recordRT{}
 	called := false
-	mgr := resilience.NewClientManager(resilience.NewDefaultDriver(nil))
-	if err := mgr.Apply(resilience.ClientSettings{}); err != nil { // arm before asking
+	mgr := resilience.NewManager(resilience.NewDefaultDriver(nil))
+	if err := mgr.Apply(resilience.Settings{}); err != nil { // arm before asking
 		t.Fatalf("Apply: %v", err)
 	}
 	rt, closeFn, err := NewTransport(Config{
 		Base:     rec,
-		Executor: mgr.ClientExecutorFor("test", "test-service"),
+		Executor: mgr.ExecutorFor("test", "test-service"),
 		WrapExec: func(e chain.Executor) chain.Executor {
 			called = true
 			return e
@@ -304,11 +305,11 @@ func TestNewTransport_WrapExecReplacesDefault(t *testing.T) {
 }
 
 // TestNewTransport_ResilienceFollowsManager proves the default executor comes
-// from the injected manager — the same [resilience.ClientManager.ClientExecutorFor] path
+// from the injected manager — the same [resilience.Manager.ExecutorFor] path
 // every other client starter takes — so arming that manager hot-swaps the policy
 // behind a transport that was already built, with no transport rebuild.
 func TestNewTransport_ResilienceFollowsManager(t *testing.T) {
-	mgr := resilience.NewClientManager(resilience.NewDefaultDriver(nil))
+	mgr := resilience.NewManager(resilience.NewDefaultDriver(nil))
 	rec := &recordRT{status: http.StatusInternalServerError}
 	rt, closeFn, err := NewTransport(Config{Addr: "svc:80", Base: rec}, testCenter(mgr, testInj, testLbMgr), testProp())
 	assert.That(t, err).Nil()
@@ -325,7 +326,7 @@ func TestNewTransport_ResilienceFollowsManager(t *testing.T) {
 
 	// Arm the manager with an error-threshold breaker for the label and push it,
 	// exactly as the center does on a config change.
-	mgr.Apply(resilience.ClientSettings{Default: resilience.ClientPolicy{ErrorThreshold: 2}})
+	mgr.Apply(resilience.Settings{Default: resilience.Policy{ErrorThreshold: 2}})
 
 	// Two consecutive 5xx now trip the breaker; the third call is rejected
 	// before it reaches the base transport — no rebuild in between.
@@ -350,8 +351,8 @@ func TestConfigServiceDerivation(t *testing.T) {
 
 // testCenter bundles the trio of test authorities into the one center bean
 // NewTransport takes.
-func testCenter(mgr *resilience.ClientManager, inj *fault.ClientManager, lb *loadbalance.Manager) *runtime.Runtime {
-	ctr, err := runtime.New(mgr, lb, inj, fault.NewServerManager(nil), nil, governance.NewPushSource(governance.Config{}))
+func testCenter(mgr *resilience.Manager, inj *clientfault.ClientManager, lb *loadbalance.Manager) *runtime.Runtime {
+	ctr, err := runtime.New(mgr, lb, inj, serverfault.NewServerManager(nil), nil, governance.NewPushSource(governance.Config{}))
 	if err != nil {
 		panic(err)
 	}

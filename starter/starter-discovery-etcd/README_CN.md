@@ -3,7 +3,7 @@
 [English](README.md) | [中文](README_CN.md)
 
 `starter-discovery-etcd` 把**当前实例**注册进 etcd 集群 —— 它是 Go-Spring 客户端服务
-发现(`cloud/runtime/dataplane/discovery`)的注册侧对应物 —— **并**提供消费侧的 etcd discovery 后端,
+发现(`cloud/runtime/dataplane/kernel/discovery`)的注册侧对应物 —— **并**提供消费侧的 etcd discovery 后端,
 一个 starter 覆盖命名体系的两半,相当于 Spring Cloud `ServiceRegistry` +
 `DiscoveryClient`,以 etcd 租约(lease)为底座。
 
@@ -104,7 +104,7 @@ spring.discovery.metadata.version=v1
 
 ### 发现(消费侧)
 
-发现**无需任何自有配置**:每个块的 bean 本身就是一个 `cloud/runtime/dataplane/discovery` 后端,bean 名即
+发现**无需任何自有配置**:每个块的 bean 本身就是一个 `cloud/runtime/dataplane/kernel/discovery` 后端,bean 名即
 `etcd.<name>`。client starter 按该名字引用:
 
 ```properties

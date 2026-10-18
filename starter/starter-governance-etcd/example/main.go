@@ -109,7 +109,7 @@ func main() {
 			tk := time.NewTicker(time.Second)
 			defer tk.Stop()
 			for range tk.C {
-				pol := demo.Center.ResilienceClient().ClientPolicyFor("demo:service")
+				pol := demo.Center.ResilienceClient().PolicyFor("demo:service")
 				fmt.Printf("policy: enabled=%v timeout=%v retries=%d\n",
 					!pol.IsZero(), pol.Timeout, pol.Retry.MaxRetries)
 			}
@@ -126,7 +126,7 @@ func runTest(d *demo) {
 	center := d.Center
 
 	// Cold load: the seeded document is already in effect.
-	pol := center.ResilienceClient().ClientPolicyFor("demo:service")
+	pol := center.ResilienceClient().PolicyFor("demo:service")
 	if pol.Timeout != 100*time.Millisecond {
 		err := errutil.Explain(nil, "cold-load mismatch: timeout=%v, want 100ms", pol.Timeout)
 		log.Error(ctx, log.TagAppDef, err, "cold-load mismatch")
@@ -143,7 +143,7 @@ func runTest(d *demo) {
 	tk := time.NewTicker(200 * time.Millisecond)
 	defer tk.Stop()
 	for range tk.C {
-		pol = center.ResilienceClient().ClientPolicyFor("demo:service")
+		pol = center.ResilienceClient().PolicyFor("demo:service")
 		fmt.Printf("policy: enabled=%v timeout=%v retries=%d\n", !pol.IsZero(), pol.Timeout, pol.Retry.MaxRetries)
 		if pol.Timeout == 900*time.Millisecond {
 			fmt.Println("rule push observed: timeout is now", pol.Timeout)

@@ -30,7 +30,7 @@
 // instrumentation, not span vocabulary, and it builds on this package's
 // duration buckets.
 //
-// The governed-call layer itself (`cloud/runtime/dataplane/observability`)
+// The governed-call layer itself (`cloud/observability/attrs`)
 // builds on this package: it wraps [chain.Executor] and drives the guard's
 // Admit/Done pair, and it is the only half that knows about policy.
 //

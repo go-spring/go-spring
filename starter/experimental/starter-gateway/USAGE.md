@@ -156,9 +156,9 @@ id-sorted order):
    error → whole recompile aborted.
 2. **Upstream parse** (`parseUpstream`, compile.go:377) — `lb://svc` becomes a discovery-backed
    `Upstream`; anything else must parse as `http(s)://host` or it errors.
-3. **ClientExecutor resolve** (compile.go:232) — a non-empty `resilience.policy` must name a key of
+3. **Executor resolve** (compile.go:232) — a non-empty `resilience.policy` must name a key of
    `spring.gateway.resilience`; unknown name errors. Executors come from the injected
-   `*resilience.ClientManager`: `mgr.ClientExecutorFor("gateway:<name>", "gateway:<name>")` — the governance center owns all
+   `*resilience.Manager`: `mgr.ExecutorFor("gateway:<name>", "gateway:<name>")` — the governance center owns all
    policy values and hot-reloads them in place; governance off yields a transparent no-op.
 4. **Proxy handler** (`newProxyHandler`, proxy.go:159) — see §2.3.
 5. **Filter DSL parse** (`buildFilters` → `splitFilters`, compile.go:268-373) — tokens split on

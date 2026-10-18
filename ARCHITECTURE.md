@@ -55,9 +55,9 @@ Verified dependency facts (do not violate):
   container — but the packages that own a default bean register it, so `spring`
   appears in four of them:
 
-  - `cloud/runtime/dataplane/resilience` registers `*resilience.ClientManager` (and the bundled driver),
-    `cloud/runtime/dataplane/loadbalance` registers `*loadbalance.Manager`, `cloud/runtime/dataplane/fault` registers
-    `*fault.ClientManager` and `*fault.ServerManager`. The rule is **the package that owns the type registers its
+  - `cloud/runtime/dataplane/outbound/resilience` registers `*resilience.Manager` (and the bundled driver),
+    `cloud/runtime/dataplane/kernel/loadbalance` registers `*loadbalance.Manager`, `cloud/runtime/dataplane/{outbound,inbound}/fault` registers
+    `*clientfault.ClientManager` and `*serverfault.ServerManager`. The rule is **the package that owns the type registers its
     default**: a client that injects one has already imported that package for
     the type, so there is no separate "governance import" to forget.
   - `cloud/runtime` (the root package) registers the one `*runtime.Runtime` bean
@@ -69,14 +69,14 @@ Verified dependency facts (do not violate):
   - **Client and server are separate authorities, and they no longer share a
     shape.** Outbound calls run through `chain.Executor`: one around-function,
     N retry attempts, an `Operation` declaration and a `Recorder` write-back.
-    Inbound requests run through `cloud/runtime/dataplane/guard`: one instance-bound `Guard` with
+    Inbound requests run through `cloud/runtime/dataplane/inbound/admission`: one instance-bound `Guard` with
     its own long-lived state, one judgment (`Admit`) and one completion
     (`Done`), no retry and no `chain` types. `runtime.Runtime` owns the inbound
-    `guard.Manager`; the control plane pushes it the server half of the
+    `admission.Manager`; the control plane pushes it the server half of the
     document, and adapters get one `Guard` per server instance from
     `runtime.InboundFor`.
-  - The neutral organs behind both are shared: `cloud/runtime/dataplane/breaker`
-    owns the breaker state machine, and `cloud/runtime/dataplane/ratelimit` owns the
+  - The neutral organs behind both are shared: `cloud/runtime/dataplane/kernel/breaker`
+    owns the breaker state machine, and `cloud/runtime/dataplane/kernel/ratelimit` owns the
     rate-limit vocabulary, local budget and counting algorithms. Sharing an
     organ does not merge authorities: each direction still maps its own policy
     into the shared spec.
@@ -85,10 +85,11 @@ Verified dependency facts (do not violate):
     (`runtime.Runtime`, belonging to neither plane and the one injection point).
     `controlplane/` holds the control plane: `governance` acquires and fans out
     the governance document, `registration` publishes this process's endpoint
-    state. `dataplane/` holds the request-path implementations (`chain`,
-    `traffic`, `discovery` read side, `loadbalance`, `observability`) and the
-    governance organs (`resilience`, `guard`, `fault`, `breaker`, `ratelimit`,
-    `label`). Shared, plane-neutral vocabulary (`propagate`, `mesh`) stays at
+    state. `dataplane/` has two layers: the direction trees `outbound/` and
+    `inbound/` (each direction's contract, execution, authority and composition)
+    and `kernel/` (direction-neutral mechanisms and concepts: `breaker`,
+    `bulkhead`, `ratelimit`, `fault`, `traffic`, `label`, `discovery`,
+    `loadbalance`). Shared, plane-neutral vocabulary (`propagate`, `mesh`) stays at
     the `cloud/` top level. The directory split does not change dependency
     direction: the control plane may import the data plane, but a data-plane
     package must never import the control-plane root — that is the one way the
@@ -105,13 +106,13 @@ Verified dependency facts (do not violate):
     two vocabularies synced by the backend starters.
   - **A service label is a governance convention, not a per-starter helper.**
     Both directions and every protocol adapter spell it with
-    `cloud/runtime/dataplane/label.ServiceLabel`; a starter must never re-implement the
-    join, because a client rule and an inbound guard match on the same string.
-  - The inbound half of `cloud/runtime/dataplane/resilience` has been removed. `resilience.Driver`
-    is outbound-only (`NewClientExecutor`), and the `Driver`-based backends
+    `cloud/runtime/dataplane/kernel/label.ServiceLabel`; a starter must never re-implement the
+    join, because a client rule and an inbound admission match on the same string.
+  - The inbound half of `cloud/runtime/dataplane/outbound/resilience` has been removed. `resilience.Driver`
+    is outbound-only (`NewExecutor`), and the `Driver`-based backends
     (`starter-governance-sentinel`, `starter-luohua`) contribute outbound
     behavior only; their inbound implementations were retired because the
-    framework's inbound policy fields are fully covered by guard's bundled
+    framework's inbound policy fields are fully covered by admission's bundled
     engine. The composition root `runtime.Runtime` is deliberately a holder of
     both planes' objects, not a combined authority; `security.TLSConfig` (a
     config value with two build methods) is a non-authority. Adding a new
@@ -188,7 +189,7 @@ Two recurring traps:
   its home is `spring/`, not `stdlib/`), and the moment a third-party import is
   required it cannot live in either foundation layer. The pattern is:
   **abstraction + driver registry in `spring/`, concrete backend in a `starter`**
-  (see `cloud/cache`, `cloud/lock`, `cloud/runtime/dataplane/discovery`).
+  (see `cloud/cache`, `cloud/lock`, `cloud/runtime/dataplane/kernel/discovery`).
 
 ## 4. Scope Red Lines (non-goals)
 
@@ -243,7 +244,7 @@ fixed feature set and hope it fits. So in the framework layers — `stdlib/`,
 - **Built-ins ride the same seams they expose.** Go-Spring's own built-in
   implementations must go through the very extension points offered to users,
   never a privileged private path — `cloud/cache`'s Memory backend,
-  `cloud/runtime/dataplane/resilience`'s built-in strategies, and the starter archetypes all
+  `cloud/runtime/dataplane/outbound/resilience`'s built-in strategies, and the starter archetypes all
   consume their own registries/interfaces. If a built-in can't be expressed
   through the public seam, the seam is wrong, not the built-in.
 - **An extension is a layer, not a table entry.** Prefer the onion: wrap the
@@ -329,8 +330,8 @@ collection point answers a real need — legitimate.
 ### 6.2 The onion, applied
 
 §5 states the onion as the framework's extensibility contract. The families that
-embody it: `cloud/lock.Observe`, `observability.WrapClientExecutor` /
-`WrapServerExecutor`, `fault.ClientManager.WrapClientExecutor`.
+embody it: `cloud/lock.Observe`, `outbound/observe.WrapClientExecutor` /
+`WrapServerExecutor`, `clientfault.ClientManager.WrapClientExecutor`.
 
 - **Killed by this principle (do not revive):** the `actuator/endpoint` `serving`
   global signal (`MarkServing()` / `IsServing()`) was deleted wholesale; do not
@@ -561,8 +562,8 @@ Every component in the ecosystem must meet a stability baseline of five:
 Cross-module decisions already made, recorded here so they are not re-litigated;
 the mechanism detail lives in the owning module's doc.
 
-- **MQ binder paths go through the same guard/executor seam as the direct API**
-  (`ClientManager.ClientExecutorFor`); governance applies by target resource, not by
+- **MQ binder paths go through the same admission/executor seam as the direct API**
+  (`Manager.ExecutorFor`); governance applies by target resource, not by
   call path; the per-instance switch is on by default and can be turned off
   (2026-08-28).
 - **Registration self-healing:** after an etcd lease keepalive death / zk session
@@ -581,7 +582,7 @@ the mechanism detail lives in the owning module's doc.
   protocol starter (2026-08-28).
 - **Admin-plane auth = a shared guard** (`cloud/security.Guard`, no JWT); the
   admin-ui activation semantic = configuring `addr` activates it.
-- The "governance is call-path-independent" extension: the guard covers the
+- The "governance is call-path-independent" extension: the admission authority covers the
   unified "transparent protection per request" posture.
 
 ## 7. Related Documents

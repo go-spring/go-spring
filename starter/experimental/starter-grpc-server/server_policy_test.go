@@ -27,10 +27,11 @@ import (
 	"go-spring.org/cloud/runtime"
 
 	"go-spring.org/cloud/runtime/controlplane/governance"
-	"go-spring.org/cloud/runtime/dataplane/fault"
-	"go-spring.org/cloud/runtime/dataplane/guard"
-	"go-spring.org/cloud/runtime/dataplane/loadbalance"
-	"go-spring.org/cloud/runtime/dataplane/resilience"
+	"go-spring.org/cloud/runtime/dataplane/inbound/admission"
+	serverfault "go-spring.org/cloud/runtime/dataplane/inbound/fault"
+	"go-spring.org/cloud/runtime/dataplane/kernel/loadbalance"
+	clientfault "go-spring.org/cloud/runtime/dataplane/outbound/fault"
+	"go-spring.org/cloud/runtime/dataplane/outbound/resilience"
 	"go-spring.org/stdlib/testing/assert"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -47,9 +48,9 @@ import (
 // where every bean is always present (an absent bean fails startup).
 func testCenter() *runtime.Runtime {
 	driver := resilience.NewDefaultDriver(nil)
-	resClient := resilience.NewClientManager(driver)
+	resClient := resilience.NewManager(driver)
 	ctr, err := runtime.New(resClient, loadbalance.NewManager(),
-		fault.NewClientManager(nil), fault.NewServerManager(nil), nil, governance.NewPushSource(governance.Config{}))
+		clientfault.NewClientManager(nil), serverfault.NewServerManager(nil), nil, governance.NewPushSource(governance.Config{}))
 	if err != nil {
 		panic(err)
 	}
@@ -59,8 +60,8 @@ func testCenter() *runtime.Runtime {
 // armRateLimit pushes a one-request rate budget into the center's guard authority.
 func armRateLimit(t *testing.T, ctr *runtime.Runtime) {
 	t.Helper()
-	assert.That(t, ctr.GuardServer().Apply(guard.Settings{
-		Default: guard.Policy{RateLimit: 1, Burst: 1},
+	assert.That(t, ctr.GuardServer().Apply(admission.Settings{
+		Default: admission.Policy{RateLimit: 1, Burst: 1},
 	})).Nil()
 }
 

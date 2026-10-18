@@ -21,23 +21,24 @@ import (
 	"errors"
 	"testing"
 
-	"go-spring.org/cloud/runtime/dataplane/fault"
-	"go-spring.org/cloud/runtime/dataplane/guard"
-	"go-spring.org/cloud/runtime/dataplane/observability"
+	"go-spring.org/cloud/runtime/dataplane/inbound/admission"
+	serverfault "go-spring.org/cloud/runtime/dataplane/inbound/fault"
+	"go-spring.org/cloud/runtime/dataplane/inbound/observe"
+	"go-spring.org/cloud/runtime/dataplane/kernel/fault"
 )
 
 // TestInboundOver_InjectsFaultThroughGuard pins the single inbound seam: the
 // fault authority is folded into the guard as its innermost stage, so a server
 // adapter needs one Inbound and cannot double-fire.
 func TestInboundOver_InjectsFaultThroughGuard(t *testing.T) {
-	inj := fault.NewServerManager(nil)
+	inj := serverfault.NewServerManager(nil)
 	inj.Refresh(fault.Config{Rules: []fault.Rule{{Rate: 1, Error: "generic"}}})
-	gm := guard.NewManager()
+	gm := admission.NewManager()
 	defer gm.Close()
 
 	in := InboundOver("gin", "gin:test", gm, inj)
 	ran := false
-	err := in.Run(context.Background(), observability.ServerOperation{Action: "GET /x"},
+	err := in.Run(context.Background(), observe.ServerOperation{Action: "GET /x"},
 		func(context.Context) error {
 			ran = true
 			return nil
@@ -47,7 +48,7 @@ func TestInboundOver_InjectsFaultThroughGuard(t *testing.T) {
 	if !errors.As(err, &ref) {
 		t.Fatalf("want an injected refusal, got %v", err)
 	}
-	if ref.Verdict() != guard.VerdictFaultInjected {
+	if ref.Verdict() != admission.VerdictFaultInjected {
 		t.Fatalf("want fault injected, got %v", ref.Verdict())
 	}
 	if ran {
@@ -59,12 +60,12 @@ func TestInboundOver_InjectsFaultThroughGuard(t *testing.T) {
 // authority leaves a plain, admitting inbound: fault is optional, not a second
 // always-on path.
 func TestInboundOver_NoInjectorIsGovernanceOnly(t *testing.T) {
-	gm := guard.NewManager()
+	gm := admission.NewManager()
 	defer gm.Close()
 
 	ran := false
 	err := InboundOver("gin", "gin:test", gm).Run(context.Background(),
-		observability.ServerOperation{Action: "GET /x"}, func(context.Context) error {
+		observe.ServerOperation{Action: "GET /x"}, func(context.Context) error {
 			ran = true
 			return nil
 		})

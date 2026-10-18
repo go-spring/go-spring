@@ -19,7 +19,8 @@ package StarterGovernanceSentinel
 import (
 	"context"
 	"fmt"
-	"go-spring.org/cloud/runtime/dataplane/chain"
+	"go-spring.org/cloud/runtime/dataplane/kernel/breaker"
+	"go-spring.org/cloud/runtime/dataplane/outbound/chain"
 	"sync"
 	"sync/atomic"
 
@@ -32,10 +33,10 @@ import (
 	"github.com/alibaba/sentinel-golang/core/circuitbreaker"
 	"github.com/alibaba/sentinel-golang/core/flow"
 
-	"go-spring.org/cloud/runtime/dataplane/resilience"
+	"go-spring.org/cloud/runtime/dataplane/outbound/resilience"
 )
 
-// sentinelExecutor maps a backend-neutral resilience.ClientPolicy onto sentinel-golang
+// sentinelExecutor maps a backend-neutral resilience.Policy onto sentinel-golang
 // rules. sentinel keys everything by resource name, and this executor IS one
 // resource — the service it was built for, whose rules are loaded lazily on the
 // first call; retry and per-attempt timeout are applied
@@ -48,7 +49,7 @@ type sentinelExecutor struct {
 	// the SDK. They move together, so a call never runs against a policy its
 	// rules do not match.
 	mu     sync.Mutex
-	policy resilience.ClientPolicy
+	policy resilience.Policy
 	gen    uint64
 	loaded bool
 
@@ -65,7 +66,7 @@ type sentinelExecutor struct {
 	// the one backend that cannot show the "state starts over" contract.
 	source resilience.PolicySource
 
-	listener atomic.Pointer[resilience.BreakerEventListener]
+	listener atomic.Pointer[breaker.EventListener]
 }
 
 // SetPolicySource installs src, the manager this executor follows the config
@@ -78,13 +79,13 @@ func (e *sentinelExecutor) SetPolicySource(src resilience.PolicySource) {
 
 // SetBreakerEventListener attaches l and routes sentinel breaker state changes
 // for the resource this executor serves (via ensureRules) to it. Satisfies
-// [resilience.BreakerEventListenerSetter]; observe-resilience uses it.
-func (e *sentinelExecutor) SetBreakerEventListener(l resilience.BreakerEventListener) {
+// [breaker.EventListenerSetter]; observe-resilience uses it.
+func (e *sentinelExecutor) SetBreakerEventListener(l breaker.EventListener) {
 	ensureRouteListener()
 	e.listener.Store(&l)
 }
 
-func newSentinelExecutor(service string, p resilience.ClientPolicy) (*sentinelExecutor, error) {
+func newSentinelExecutor(service string, p resilience.Policy) (*sentinelExecutor, error) {
 	if p.RateLimit < 0 {
 		return nil, errutil.Explain(nil, "resilience: negative rate limit %v", p.RateLimit)
 	}
@@ -94,7 +95,7 @@ func newSentinelExecutor(service string, p resilience.ClientPolicy) (*sentinelEx
 // ensureRules loads this executor's flow, circuit-breaker and isolation rules once,
 // translating the neutral Policy knobs into sentinel's own rule shapes through
 // the shared helpers in rules.go (the same translation the inbound engine
-// uses). The breaker rule is selected by [resilience.ClientPolicy.BreakerStrategy]
+// uses). The breaker rule is selected by [resilience.Policy.BreakerStrategy]
 // so the driver matches the builtin's semantics.
 func (e *sentinelExecutor) ensureRules() error {
 	service := e.service
@@ -160,7 +161,7 @@ func (e *sentinelExecutor) ensureRules() error {
 // call — and on the FIRST load there are no rules to keep, so the error is
 // returned and the call fails, which is what a caller wants to hear when the
 // resource is not being governed at all.
-func (e *sentinelExecutor) load() (resilience.ClientPolicy, error) {
+func (e *sentinelExecutor) load() (resilience.Policy, error) {
 	p, gen := e.constructionPolicy(), uint64(0)
 	if e.source != nil {
 		c := e.source.ResolveLabel(e.service)
@@ -191,7 +192,7 @@ func (e *sentinelExecutor) load() (resilience.ClientPolicy, error) {
 // NOT while the resource has never held any: there is nothing governing it, so
 // the generation stays unconsumed and every call keeps reporting the error until
 // the config is fixed.
-func (e *sentinelExecutor) settled(p resilience.ClientPolicy, err error) (resilience.ClientPolicy, error) {
+func (e *sentinelExecutor) settled(p resilience.Policy, err error) (resilience.Policy, error) {
 	e.mu.Lock()
 	if err == nil {
 		e.loadedOnce = true
@@ -212,7 +213,7 @@ func (e *sentinelExecutor) settled(p resilience.ClientPolicy, err error) (resili
 }
 
 // constructionPolicy is the policy the driver was built with, read under mu.
-func (e *sentinelExecutor) constructionPolicy() resilience.ClientPolicy {
+func (e *sentinelExecutor) constructionPolicy() resilience.Policy {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	return e.policy
@@ -284,7 +285,7 @@ func (e *sentinelExecutor) Close() error { return nil }
 
 // mapBlockError translates sentinel's block reason into the framework's neutral
 // sentinel errors so callers depend only on
-// go-spring.org/cloud/runtime/dataplane/resilience.
+// go-spring.org/cloud/runtime/dataplane/outbound/resilience.
 func mapBlockError(b *base.BlockError) error {
 	switch b.BlockType() {
 	case base.BlockTypeCircuitBreaking:

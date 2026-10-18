@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-// counters.go is the gateway's own in-memory [resilience.ClusterLimiter]. The
+// counters.go is the gateway's own in-memory [ratelimit.ClusterLimiter]. The
 // rate-limit filter keys budgets by route or route|client-ip — an unbounded
 // key space a process-local store must bound itself (hence the eviction) — and
 // it reaches only this process: a store over a shared backend, contributed as
@@ -28,8 +28,7 @@ import (
 	"sync"
 	"time"
 
-	"go-spring.org/cloud/runtime/dataplane/ratelimit"
-	"go-spring.org/cloud/runtime/dataplane/resilience"
+	"go-spring.org/cloud/runtime/dataplane/kernel/ratelimit"
 )
 
 // maxScopes bounds how many keys the store tracks before it starts evicting
@@ -42,7 +41,7 @@ const (
 
 // newMemoryLimiter returns the process-local store the rate-limit filter
 // falls back to when the wiring provided no shared one.
-func newMemoryLimiter() resilience.ClusterLimiter {
+func newMemoryLimiter() ratelimit.ClusterLimiter {
 	return &memoryLimiter{scopes: map[string]*scopeState{}}
 }
 
@@ -56,13 +55,13 @@ type memoryLimiter struct {
 // scopeState is one key's counters plus the config they were built for, so a
 // policy change (a hot-reloaded rate) starts that key's budget over.
 type scopeState struct {
-	spec   resilience.RateSpec
+	spec   ratelimit.Spec
 	bucket *ratelimit.TokenBucket
 	window *ratelimit.SlidingWindow
 	used   time.Time
 }
 
-func (c *memoryLimiter) Allow(ctx context.Context, scope string, spec resilience.RateSpec, n int) (bool, error) {
+func (c *memoryLimiter) Allow(ctx context.Context, scope string, spec ratelimit.Spec, n int) (bool, error) {
 	if spec.RateLimit <= 0 || n <= 0 { // no budget configured
 		return true, nil
 	}
@@ -75,7 +74,7 @@ func (c *memoryLimiter) Allow(ctx context.Context, scope string, spec resilience
 
 // state returns scope's counters, rebuilding them when the rate-limit
 // configuration changed since they were built.
-func (c *memoryLimiter) state(scope string, spec resilience.RateSpec) *scopeState {
+func (c *memoryLimiter) state(scope string, spec ratelimit.Spec) *scopeState {
 	now := time.Now()
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -84,7 +83,7 @@ func (c *memoryLimiter) state(scope string, spec resilience.RateSpec) *scopeStat
 		return s
 	}
 	s := &scopeState{spec: spec, used: now}
-	if spec.Algorithm == resilience.SlidingWindow {
+	if spec.Algorithm == ratelimit.AlgorithmSlidingWindow {
 		win := spec.Window
 		if win <= 0 {
 			win = time.Second

@@ -21,7 +21,7 @@ import (
 	"testing"
 
 	"github.com/twmb/franz-go/pkg/kgo"
-	"go-spring.org/cloud/runtime/dataplane/observability"
+	observability "go-spring.org/cloud/runtime/dataplane/outbound/observe"
 )
 
 // fakeTail is a scripted InnerKafka tail: it counts the produces that reached

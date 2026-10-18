@@ -35,9 +35,9 @@ import (
 
 	"github.com/bradfitz/gomemcache/memcache"
 	"go-spring.org/cloud/runtime"
-	"go-spring.org/cloud/runtime/dataplane/chain"
-	"go-spring.org/cloud/runtime/dataplane/label"
-	"go-spring.org/cloud/runtime/dataplane/resilience"
+	"go-spring.org/cloud/runtime/dataplane/kernel/label"
+	"go-spring.org/cloud/runtime/dataplane/outbound/chain"
+	"go-spring.org/cloud/runtime/dataplane/outbound/resilience"
 )
 
 // Client wraps a memcache client so every operation carries its semantic
@@ -85,11 +85,11 @@ type Client struct {
 // center carries the container's facilities (see [runtime.Runtime]), and is
 // applied HERE so a Client cannot exist half-assembled: there is no Init step,
 // no later patching, and nothing the container has to remember to call. A
-// hand-built client must supply a center holding a [resilience.ClientManager]:
+// hand-built client must supply a center holding a [resilience.Manager]:
 // [runtime.Runtime.ExecutorFor] is required, so a nil center is a
 // construction error — never a graceful downgrade.
 //
-// The manager's ClientExecutorFor resolves its backing executor lazily, on each
+// The manager's ExecutorFor resolves its backing executor lazily, on each
 // Execute, so the call order relative to the center's wiring is
 // irrelevant.
 func NewClient(client *memcache.Client, instanceName, serviceName string, center *runtime.Runtime) *Client {

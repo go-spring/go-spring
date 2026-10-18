@@ -18,26 +18,28 @@ package runtime
 
 import (
 	"go-spring.org/cloud/runtime/controlplane/governance"
-	"go-spring.org/cloud/runtime/dataplane/chain"
-	"go-spring.org/cloud/runtime/dataplane/discovery"
-	"go-spring.org/cloud/runtime/dataplane/fault"
-	"go-spring.org/cloud/runtime/dataplane/guard"
-	"go-spring.org/cloud/runtime/dataplane/loadbalance"
-	"go-spring.org/cloud/runtime/dataplane/observability"
-	"go-spring.org/cloud/runtime/dataplane/resilience"
+	"go-spring.org/cloud/runtime/dataplane/inbound/admission"
+	serverfault "go-spring.org/cloud/runtime/dataplane/inbound/fault"
+	"go-spring.org/cloud/runtime/dataplane/kernel/discovery"
+	"go-spring.org/cloud/runtime/dataplane/kernel/loadbalance"
+	"go-spring.org/cloud/runtime/dataplane/kernel/ratelimit"
+	"go-spring.org/cloud/runtime/dataplane/outbound/chain"
+	clientfault "go-spring.org/cloud/runtime/dataplane/outbound/fault"
+	"go-spring.org/cloud/runtime/dataplane/outbound/observe"
+	"go-spring.org/cloud/runtime/dataplane/outbound/resilience"
 )
 
 // Option customizes the authorities a [Runtime] composes.
 type Option func(*options)
 
 type options struct {
-	limiter guard.ClusterLimiter
+	limiter ratelimit.ClusterLimiter
 }
 
-// WithClusterLimiter makes the inbound guard charge a shared rate-limit store
+// WithClusterLimiter makes the inbound admission charge a shared rate-limit store
 // instead of its per-instance budget. It is the inbound counterpart of the
 // limiter the resilience Driver receives.
-func WithClusterLimiter(l guard.ClusterLimiter) Option {
+func WithClusterLimiter(l ratelimit.ClusterLimiter) Option {
 	return func(o *options) { o.limiter = l }
 }
 
@@ -45,7 +47,7 @@ func WithClusterLimiter(l guard.ClusterLimiter) Option {
 // or server starter injects to reach any authority it needs.
 //
 // It owns the control plane ([governance.Center]) and every data-plane
-// authority: the outbound resilience manager, the inbound guard manager, the
+// authority: the outbound resilience manager, the inbound admission manager, the
 // endpoint-selection manager, fault injection in both directions, and the
 // in-process discovery directory. The control plane pushes documents to the same
 // instances this object hands out, which is what routes a config push to the
@@ -55,11 +57,11 @@ func WithClusterLimiter(l guard.ClusterLimiter) Option {
 type Runtime struct {
 	control *governance.Center
 
-	resClient   *resilience.ClientManager
-	guardServer *guard.Manager
+	resClient   *resilience.Manager
+	guardServer *admission.Manager
 	lb          *loadbalance.Manager
-	injClient   *fault.ClientManager
-	injServer   *fault.ServerManager
+	injClient   *clientfault.ClientManager
+	injServer   *serverfault.ServerManager
 	disc        *discovery.Manager
 }
 
@@ -72,18 +74,18 @@ type Runtime struct {
 // [governance.PushSource] wrapping the fixed document it wants. The caller owns
 // every authority it passes (the container's beans, or a test's fixtures); the
 // same instances are what [Runtime] hands back out.
-func New(resClient *resilience.ClientManager,
-	lb *loadbalance.Manager, injClient *fault.ClientManager, injServer *fault.ServerManager,
+func New(resClient *resilience.Manager,
+	lb *loadbalance.Manager, injClient *clientfault.ClientManager, injServer *serverfault.ServerManager,
 	disc *discovery.Manager, src governance.Source, opts ...Option) (*Runtime, error) {
 	o := options{}
 	for _, f := range opts {
 		f(&o)
 	}
-	var guardOpts []guard.Option
+	var guardOpts []admission.Option
 	if o.limiter != nil {
-		guardOpts = append(guardOpts, guard.WithClusterLimiter(o.limiter))
+		guardOpts = append(guardOpts, admission.WithClusterLimiter(o.limiter))
 	}
-	gm := guard.NewManager(guardOpts...)
+	gm := admission.NewManager(guardOpts...)
 	control, err := governance.NewCenter(resClient, gm, lb, injClient, injServer, src)
 	if err != nil {
 		_ = gm.Close()
@@ -111,8 +113,8 @@ func New(resClient *resilience.ClientManager,
 // against an empty document, so nothing is governed and every label falls
 // through to its default — exactly the behaviour of a process configured with no
 // rules.
-func NewProcess(resClient *resilience.ClientManager,
-	injClient *fault.ClientManager, injServer *fault.ServerManager, opts ...Option) (*Runtime, error) {
+func NewProcess(resClient *resilience.Manager,
+	injClient *clientfault.ClientManager, injServer *serverfault.ServerManager, opts ...Option) (*Runtime, error) {
 	return New(resClient, loadbalance.NewManager(), injClient, injServer, nil,
 		governance.NewPushSource(governance.Config{}), opts...)
 }
@@ -138,18 +140,18 @@ func (r *Runtime) Center() *governance.Center {
 // authority it actually reaches for must be present. The composition helpers
 // ([Runtime.ExecutorFor] / [Runtime.PolicyFor]) still require a resilience
 // manager and panic without one, since a client is never assembled unprotected.
-func (r *Runtime) ResilienceClient() *resilience.ClientManager {
+func (r *Runtime) ResilienceClient() *resilience.Manager {
 	if r == nil {
 		return nil
 	}
 	return r.resClient
 }
 
-// GuardServer returns the INBOUND guard authority — the manager that creates one
-// [guard.Guard] per server instance and pushes each the server policy. It is the
+// GuardServer returns the INBOUND admission authority — the manager that creates one
+// [admission.Guard] per server instance and pushes each the server policy. It is the
 // object a server adapter (or a filter library with no bean to inject into)
 // passes to [InboundOver].
-func (r *Runtime) GuardServer() *guard.Manager {
+func (r *Runtime) GuardServer() *admission.Manager {
 	if r == nil {
 		return nil
 	}
@@ -159,7 +161,7 @@ func (r *Runtime) GuardServer() *guard.Manager {
 // FaultClient returns the OUTBOUND fault authority; see [Runtime.ResilienceClient].
 // It is the object client starters wrap their executors with. A server starter
 // has no use for it, and vice versa.
-func (r *Runtime) FaultClient() *fault.ClientManager {
+func (r *Runtime) FaultClient() *clientfault.ClientManager {
 	if r == nil {
 		return nil
 	}
@@ -168,7 +170,7 @@ func (r *Runtime) FaultClient() *fault.ClientManager {
 
 // FaultServer returns the INBOUND fault authority; see [Runtime.ResilienceClient].
 // It is the object server adapters create their shell from.
-func (r *Runtime) FaultServer() *fault.ServerManager {
+func (r *Runtime) FaultServer() *serverfault.ServerManager {
 	if r == nil {
 		return nil
 	}
@@ -206,14 +208,14 @@ func (r *Runtime) Discovery() *discovery.Manager {
 // The layers are stacked fault(observe(resilience-executor)): the observer wraps
 // the resilience manager's handle (so a rejected or failed call is still traced,
 // measured and logged), and fault injection wraps that. The observe wrapper
-// reaches the breaker through the handle's [resilience.BreakerEventListenerSetter],
+// reaches the breaker through the handle's [breaker.EventListenerSetter],
 // so breaker transitions still emit.
 //
 // "system" is the client's backend name ("memcached", "redigo", ...), which
 // clients also declare in their operations; it is a parameter rather than state
 // because one runtime serves every kind of client.
 func (r *Runtime) ExecutorFor(system, label string) chain.Executor {
-	exec := observability.WrapClientExecutor(r.resClient.ClientExecutorFor(system, label), system, label)
+	exec := observe.WrapClientExecutor(r.resClient.ExecutorFor(system, label), system, label)
 	if r.injClient == nil {
 		// A nil runtime is the standalone case a caller normalized away: there is
 		// no governance, so there is no fault layer either — but observation is
@@ -232,12 +234,12 @@ func (r *Runtime) ExecutorFor(system, label string) chain.Executor {
 //
 // No field is construction-bound today, so nothing calls this yet: it is the
 // seam such a knob plugs into when one exists.
-func (r *Runtime) PolicyFor(label string) resilience.ClientPolicy {
-	return r.resClient.ClientPolicyFor(label)
+func (r *Runtime) PolicyFor(label string) resilience.Policy {
+	return r.resClient.PolicyFor(label)
 }
 
 // Close releases the authorities this runtime owns in the order that keeps the
-// request path silent first: the inbound guard is closed (its breakers and
+// request path silent first: the inbound admission is closed (its breakers and
 // admission state), then the control plane closes its bound source. The other
 // authorities are beans with their own Destroy hooks, so they are not closed
 // here.

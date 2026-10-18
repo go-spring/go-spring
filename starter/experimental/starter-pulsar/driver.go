@@ -121,7 +121,7 @@ func (DefaultDriver) CreateClient(ctx context.Context, c Config, center *runtime
 	}
 	// The client is complete the moment it is returned: fix its identity (the
 	// service label) and attach the governance executor here, so nothing patches
-	// it afterwards. The center is required to carry a [resilience.ClientManager];
+	// it afterwards. The center is required to carry a [resilience.Manager];
 	// resolving the executor panics without one.
 	AttachObserver(cl, c.URL)
 	return cl, nil

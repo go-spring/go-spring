@@ -20,7 +20,7 @@
 package StarterElasticsearch
 
 import (
-	"go-spring.org/cloud/runtime/dataplane/discovery"
+	"go-spring.org/cloud/runtime/dataplane/kernel/discovery"
 )
 
 // Config defines Elasticsearch client connection configuration.
