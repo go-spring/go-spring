@@ -67,7 +67,7 @@ type Config struct {
 	Enabled bool `value:"${enabled:=true}"`
 
 	// Addr is the host:port the service listens on, split into tRPC's IP/Port.
-	Addr string `value:"${addr}"`
+	Addr string `value:"${addr}" expr:"$ != ''"`
 	// ServiceName is the fully-qualified tRPC service name (trpc.app.server.service).
 	// It must match the callee name baked into the generated client stub.
 	ServiceName string `value:"${service.name:=trpc.helloworld.greet.GreetService}"`
@@ -165,12 +165,15 @@ func (s *SimpleTrpcServer) Run(ctx context.Context, sig gs.ReadySignal) error {
 	}
 
 	// Inbound governance is the first server filter: it admits (rate limit /
-	// bulkhead / breaker), injects faults and settles the outcome before any
+	// bulkhead), injects faults and settles the outcome before any
 	// later filter or handler runs. A nil center is the standalone case, so the
 	// filter is simply not installed.
 	var filters []string
 	if s.center != nil {
-		in := s.center.InboundFor("trpc", label.ServiceLabel("trpc", s.cfg.Addr))
+		in, err := s.center.InboundFor("trpc", label.ServiceLabel("trpc", s.cfg.Addr))
+		if err != nil {
+			return err
+		}
 		filter.Register("governance", GuardServerFilter(in), nil)
 		filters = append(filters, "governance")
 	}

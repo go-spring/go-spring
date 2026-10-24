@@ -27,6 +27,7 @@ import (
 	"go-spring.org/cloud/runtime/dataplane/outbound/chain"
 
 	serverfault "go-spring.org/cloud/runtime/dataplane/inbound/fault"
+	kfault "go-spring.org/cloud/runtime/dataplane/kernel/fault"
 	"go-spring.org/cloud/runtime/dataplane/kernel/traffic"
 	"go-spring.org/cloud/runtime/dataplane/outbound/resilience"
 	"go-spring.org/stdlib/testing/assert"
@@ -34,10 +35,10 @@ import (
 
 // configs is the test-side convenience for setting both directions at once. The
 // production API arms each direction with its own manager's Refresh; the zero
-// Config is inert, so a test names only the side it means to arm.
+// kfault.Config is inert, so a test names only the side it means to arm.
 type configs struct {
-	Client Config
-	Server Config
+	Client kfault.Config
+	Server kfault.Config
 }
 
 // fixture holds the two independent authorities side by side, so a test that
@@ -84,7 +85,7 @@ func countFn(counter *int32, err error) func(context.Context) error {
 // TestManager_ZeroConfigIsTransparent: an inert config (no rate, no latency)
 // => fn runs, no injection.
 func TestManager_ZeroConfigIsTransparent(t *testing.T) {
-	in := newFixture(configs{Client: Config{}}, nil) // inert
+	in := newFixture(configs{Client: kfault.Config{}}, nil) // inert
 	exec := in.client.WrapClientExecutor(newExec(t, "svc", resilience.Policy{}))
 	var calls int32
 	err := exec.Execute(context.Background(), chain.Operation{}, nil, countFn(&calls, nil))
@@ -98,17 +99,17 @@ func TestManager_ZeroConfigIsTransparent(t *testing.T) {
 func TestConfig_Inert(t *testing.T) {
 	cases := []struct {
 		name string
-		cfg  Config
+		cfg  kfault.Config
 		want bool
 	}{
-		{"empty", Config{}, true},
-		{"error only, no rate", Config{Rules: []Rule{{Error: "generic"}}}, true},
-		{"guardrails only", Config{Rules: []Rule{{MaxAffected: 3, MaxDuration: time.Second}}}, true},
-		{"rule with error only", Config{Rules: []Rule{{Service: "svc", Error: "generic"}}}, true},
-		{"rate", Config{Rules: []Rule{{Rate: 0.5}}}, false},
-		{"latency", Config{Rules: []Rule{{Latency: time.Millisecond}}}, false},
-		{"service rule rate", Config{Rules: []Rule{{Service: "svc", Rate: 1}}}, false},
-		{"service rule latency", Config{Rules: []Rule{{Service: "svc", Latency: time.Millisecond}}}, false},
+		{"empty", kfault.Config{}, true},
+		{"error only, no rate", kfault.Config{Rules: []kfault.Rule{{Error: "generic"}}}, true},
+		{"guardrails only", kfault.Config{Rules: []kfault.Rule{{MaxAffected: 3, MaxDuration: time.Second}}}, true},
+		{"rule with error only", kfault.Config{Rules: []kfault.Rule{{Service: "svc", Error: "generic"}}}, true},
+		{"rate", kfault.Config{Rules: []kfault.Rule{{Rate: 0.5}}}, false},
+		{"latency", kfault.Config{Rules: []kfault.Rule{{Latency: time.Millisecond}}}, false},
+		{"service rule rate", kfault.Config{Rules: []kfault.Rule{{Service: "svc", Rate: 1}}}, false},
+		{"service rule latency", kfault.Config{Rules: []kfault.Rule{{Service: "svc", Latency: time.Millisecond}}}, false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -123,17 +124,17 @@ func TestConfig_Inert(t *testing.T) {
 // rules-only there is no "top-level knobs" fallback: no match means no fire.
 func TestManager_RuleAttribution(t *testing.T) {
 	// A matched rule: named by service + index.
-	in := newFixture(configs{Client: Config{Rules: []Rule{
+	in := newFixture(configs{Client: kfault.Config{Rules: []kfault.Rule{
 		{Service: "svc", Rate: 1, Error: "generic"},
 	}}}, nil)
-	f := decidedAt(t, in, Target{Service: "svc"})
+	f := decidedAt(t, in, kfault.Target{Service: "svc"})
 	assert.That(t, f.Rule).Equal("svc[0]")
 
 	// No rule matches: nothing fires, and the decision names nothing.
-	in2 := newFixture(configs{Client: Config{Rules: []Rule{
+	in2 := newFixture(configs{Client: kfault.Config{Rules: []kfault.Rule{
 		{Service: "other", Rate: 1, Error: "generic"},
 	}}}, nil)
-	f2 := decidedAt(t, in2, Target{Service: "svc"})
+	f2 := decidedAt(t, in2, kfault.Target{Service: "svc"})
 	assert.That(t, f2.Fired()).False()
 	assert.String(t, f2.Rule).Equal("")
 }
@@ -141,7 +142,7 @@ func TestManager_RuleAttribution(t *testing.T) {
 // decidedAt runs one gated call and returns what the injector decided about it.
 // No round is needed: the decision is the return value now, which is the point
 // of it being one.
-func decidedAt(t *testing.T, in *fixture, tgt Target) Decision {
+func decidedAt(t *testing.T, in *fixture, tgt kfault.Target) kfault.Decision {
 	t.Helper()
 	d, _ := in.client.NewClient().Fire(context.Background(), tgt)
 	return d
@@ -149,7 +150,7 @@ func decidedAt(t *testing.T, in *fixture, tgt Target) Decision {
 
 // TestManager_RateZeroAlwaysSucceeds: Rate 0 => never inject.
 func TestManager_RateZeroAlwaysSucceeds(t *testing.T) {
-	in := newFixture(configs{Client: Config{Rules: []Rule{{Rate: 0, Error: "generic"}}}}, nil)
+	in := newFixture(configs{Client: kfault.Config{Rules: []kfault.Rule{{Rate: 0, Error: "generic"}}}}, nil)
 	exec := in.client.WrapClientExecutor(newExec(t, "svc", resilience.Policy{}))
 	var calls int32
 	for range 10 {
@@ -163,13 +164,13 @@ func TestManager_RateZeroAlwaysSucceeds(t *testing.T) {
 // real fn never runs and the executor exhausts its retries (MaxRetries+1
 // attempts) and returns the injected error.
 func TestManager_RateOneRetriesInjectedError(t *testing.T) {
-	in := newFixture(configs{Client: Config{Rules: []Rule{{Rate: 1, Error: "generic"}}}}, nil)
+	in := newFixture(configs{Client: kfault.Config{Rules: []kfault.Rule{{Rate: 1, Error: "generic"}}}}, nil)
 	// MaxRetries 2 => 3 attempts; no breaker so retry is the only path.
 	exec := in.client.WrapClientExecutor(newExec(t, "svc", resilience.Policy{Retry: chain.RetryPolicy{MaxRetries: 2}}))
 	var calls int32
 	err := exec.Execute(context.Background(), chain.Operation{}, nil, countFn(&calls, nil))
 	assert.Error(t, err).NotNil()
-	assert.That(t, IsInjected(err)).True()
+	assert.That(t, kfault.IsInjected(err)).True()
 	assert.That(t, atomic.LoadInt32(&calls)).Equal(int32(0)) // fn never reached
 }
 
@@ -177,23 +178,23 @@ func TestManager_RateOneRetriesInjectedError(t *testing.T) {
 // treats injected faults as retryable.
 func TestInjectedError_Retryable(t *testing.T) {
 	var r resilience.Retryable
-	assert.That(t, errors.As(ErrInjected, &r)).True()
+	assert.That(t, errors.As(kfault.ErrInjected, &r)).True()
 	assert.That(t, r.Retryable()).True()
-	assert.That(t, resilience.ShouldRetry(ErrInjected)).True()
+	assert.That(t, resilience.ShouldRetry(kfault.ErrInjected)).True()
 }
 
 // TestManager_KindsSurfaceAsFamiliarErrors: the typed kinds wrap a real error
 // so errors.Is matches the underlying sentinel (and the observe outcome mapping
 // classifies the call the same way a real timeout/reset would).
 func TestManager_KindsSurfaceAsFamiliarErrors(t *testing.T) {
-	in := newFixture(configs{Client: Config{Rules: []Rule{{Rate: 1, Error: "timeout"}}}}, nil)
+	in := newFixture(configs{Client: kfault.Config{Rules: []kfault.Rule{{Rate: 1, Error: "timeout"}}}}, nil)
 	exec := in.client.WrapClientExecutor(newExec(t, "svc", resilience.Policy{}))
 	err := exec.Execute(context.Background(), chain.Operation{}, nil, countFn(new(int32), nil))
 	assert.Error(t, err).NotNil()
 	assert.That(t, errors.Is(err, context.DeadlineExceeded)).True()
-	assert.That(t, IsInjected(err)).True()
+	assert.That(t, kfault.IsInjected(err)).True()
 
-	in.refresh(configs{Client: Config{Rules: []Rule{{Rate: 1, Error: "reset"}}}})
+	in.refresh(configs{Client: kfault.Config{Rules: []kfault.Rule{{Rate: 1, Error: "reset"}}}})
 	err = exec.Execute(context.Background(), chain.Operation{}, nil, countFn(new(int32), nil))
 	assert.Error(t, err).NotNil()
 	assert.That(t, errors.Is(err, syscall.ECONNRESET)).True()
@@ -203,7 +204,7 @@ func TestManager_KindsSurfaceAsFamiliarErrors(t *testing.T) {
 // trip it open and subsequent calls are rejected as ErrCircuitOpen without
 // touching fn — the closed loop (fault → breaker → neutral sentinel) holds.
 func TestManager_BreakerOpensUnderFault(t *testing.T) {
-	in := newFixture(configs{Client: Config{Rules: []Rule{{Rate: 1, Error: "generic"}}}}, nil)
+	in := newFixture(configs{Client: kfault.Config{Rules: []kfault.Rule{{Rate: 1, Error: "generic"}}}}, nil)
 	// ErrorThreshold 1 opens after the first failed attempt; OpenDuration long
 	// enough that the second call sees it still open.
 	exec := in.client.WrapClientExecutor(newExec(t, "svc", resilience.Policy{ErrorThreshold: 1, OpenDuration: time.Second}))
@@ -221,7 +222,7 @@ func TestManager_BreakerOpensUnderFault(t *testing.T) {
 // TestManager_LatencySleepsAndCancels: injected latency sleeps, and a cancelled
 // attempt context surfaces the context error instead of retrying forever.
 func TestManager_LatencySleepsAndCancels(t *testing.T) {
-	in := newFixture(configs{Client: Config{Rules: []Rule{{Rate: 0, Latency: 200 * time.Millisecond}}}}, nil)
+	in := newFixture(configs{Client: kfault.Config{Rules: []kfault.Rule{{Rate: 0, Latency: 200 * time.Millisecond}}}}, nil)
 	exec := in.client.WrapClientExecutor(newExec(t, "svc", resilience.Policy{Timeout: 50 * time.Millisecond}))
 	var calls int32
 	start := time.Now()
@@ -238,13 +239,13 @@ func TestManager_LatencySleepsAndCancels(t *testing.T) {
 // effect on the next operation (the Dync-driven path starters use) — here,
 // arming a fire and then disarming it by pushing an inert config.
 func TestManager_HotSwap(t *testing.T) {
-	in := newFixture(configs{Client: Config{Rules: []Rule{{Rate: 1, Error: "generic"}}}}, nil)
+	in := newFixture(configs{Client: kfault.Config{Rules: []kfault.Rule{{Rate: 1, Error: "generic"}}}}, nil)
 	exec := in.client.WrapClientExecutor(newExec(t, "svc", resilience.Policy{}))
 	var calls int32
 	err := exec.Execute(context.Background(), chain.Operation{}, nil, countFn(&calls, nil))
-	assert.That(t, IsInjected(err)).True()
+	assert.That(t, kfault.IsInjected(err)).True()
 
-	in.refresh(configs{Client: Config{}}) // push an inert config: fire off
+	in.refresh(configs{Client: kfault.Config{}}) // push an inert config: fire off
 	err = exec.Execute(context.Background(), chain.Operation{}, nil, countFn(&calls, nil))
 	assert.Error(t, err).Nil()
 	assert.That(t, atomic.LoadInt32(&calls)).Equal(int32(1))
@@ -255,7 +256,7 @@ func TestManager_HotSwap(t *testing.T) {
 // asking the manager on the call path. The manager PUSHES the new kernel into
 // every registered shell; the shell reads its own pointer.
 func TestRefreshPushesIntoExistingShell(t *testing.T) {
-	in := newFixture(configs{Client: Config{}}, nil) // unarmed
+	in := newFixture(configs{Client: kfault.Config{}}, nil) // unarmed
 	exec := in.client.WrapClientExecutor(newExec(t, "svc", resilience.Policy{}))
 	var calls int32
 	err := exec.Execute(context.Background(), chain.Operation{Service: "svc"}, nil, countFn(&calls, nil))
@@ -263,9 +264,9 @@ func TestRefreshPushesIntoExistingShell(t *testing.T) {
 	assert.That(t, atomic.LoadInt32(&calls)).Equal(int32(1))
 
 	// Arm AFTER the shell exists.
-	in.client.Refresh(Config{Rules: []Rule{{Service: "svc", Rate: 1, Error: "generic"}}})
+	in.client.Refresh(kfault.Config{Rules: []kfault.Rule{{Service: "svc", Rate: 1, Error: "generic"}}})
 	err = exec.Execute(context.Background(), chain.Operation{Service: "svc"}, nil, countFn(&calls, nil))
-	assert.That(t, IsInjected(err)).True()
+	assert.That(t, kfault.IsInjected(err)).True()
 	assert.That(t, atomic.LoadInt32(&calls)).Equal(int32(1)) // fn never ran
 }
 
@@ -274,12 +275,12 @@ func TestRefreshPushesIntoExistingShell(t *testing.T) {
 func TestRefreshPushesIntoServerShell(t *testing.T) {
 	in := newFixture(configs{}, nil)
 	srv := in.server.NewServer()
-	_, err := srv.Fire(context.Background(), Target{Service: "svc"})
+	_, err := srv.Fire(context.Background(), kfault.Target{Service: "svc"})
 	assert.Error(t, err).Nil()
 
-	in.server.Refresh(Config{Rules: []Rule{{Service: "svc", Rate: 1, Error: "timeout"}}})
-	_, err = srv.Fire(context.Background(), Target{Service: "svc"})
-	assert.That(t, IsInjected(err)).True()
+	in.server.Refresh(kfault.Config{Rules: []kfault.Rule{{Service: "svc", Rate: 1, Error: "timeout"}}})
+	_, err = srv.Fire(context.Background(), kfault.Target{Service: "svc"})
+	assert.That(t, kfault.IsInjected(err)).True()
 }
 
 // TestManager_ScopeGatesLoadTestTraffic verifies the Scope config restricts
@@ -288,7 +289,7 @@ func TestManager_ScopeGatesLoadTestTraffic(t *testing.T) {
 	prop := traffic.NewDefaultPropagator(traffic.DefaultBinding())
 	// Rate 1 + generic error => every in-scope call is faulted.
 	mk := func(scope string) chain.Executor {
-		in := newFixture(configs{Client: Config{Rules: []Rule{{Rate: 1, Error: "generic", Scope: scope}}}}, prop)
+		in := newFixture(configs{Client: kfault.Config{Rules: []kfault.Rule{{Rate: 1, Error: "generic", Scope: scope}}}}, prop)
 		return in.client.WrapClientExecutor(newExec(t, "svc", resilience.Policy{}))
 	}
 	realCtx := context.Background()
@@ -296,19 +297,19 @@ func TestManager_ScopeGatesLoadTestTraffic(t *testing.T) {
 
 	// Scope "" (default): both real and load-test traffic get faulted.
 	all := mk("")
-	assert.That(t, IsInjected(all.Execute(realCtx, chain.Operation{}, nil, countFn(new(int32), nil)))).True()
-	assert.That(t, IsInjected(all.Execute(loadCtx, chain.Operation{}, nil, countFn(new(int32), nil)))).True()
+	assert.That(t, kfault.IsInjected(all.Execute(realCtx, chain.Operation{}, nil, countFn(new(int32), nil)))).True()
+	assert.That(t, kfault.IsInjected(all.Execute(loadCtx, chain.Operation{}, nil, countFn(new(int32), nil)))).True()
 
 	// Scope "real": real traffic faulted, load-test traffic passes through.
 	real := mk("real")
-	assert.That(t, IsInjected(real.Execute(realCtx, chain.Operation{}, nil, countFn(new(int32), nil)))).True()
+	assert.That(t, kfault.IsInjected(real.Execute(realCtx, chain.Operation{}, nil, countFn(new(int32), nil)))).True()
 	var ltCalls int32
 	assert.Error(t, real.Execute(loadCtx, chain.Operation{}, nil, countFn(&ltCalls, nil))).Nil()
 	assert.That(t, atomic.LoadInt32(&ltCalls)).Equal(int32(1)) // fn ran, no fault
 
 	// Scope "loadtest": load-test traffic faulted, real traffic passes through.
 	lt := mk("loadtest")
-	assert.That(t, IsInjected(lt.Execute(loadCtx, chain.Operation{}, nil, countFn(new(int32), nil)))).True()
+	assert.That(t, kfault.IsInjected(lt.Execute(loadCtx, chain.Operation{}, nil, countFn(new(int32), nil)))).True()
 	var realCalls int32
 	assert.Error(t, lt.Execute(realCtx, chain.Operation{}, nil, countFn(&realCalls, nil))).Nil()
 	assert.That(t, atomic.LoadInt32(&realCalls)).Equal(int32(1))
@@ -317,12 +318,12 @@ func TestManager_ScopeGatesLoadTestTraffic(t *testing.T) {
 // TestManager_MaxAffectedCapsBlastRadius verifies MaxAffected stops injecting
 // after the configured count of affected calls.
 func TestManager_MaxAffectedCapsBlastRadius(t *testing.T) {
-	in := newFixture(configs{Client: Config{Rules: []Rule{{Rate: 1, Error: "generic", MaxAffected: 3}}}}, nil)
+	in := newFixture(configs{Client: kfault.Config{Rules: []kfault.Rule{{Rate: 1, Error: "generic", MaxAffected: 3}}}}, nil)
 	exec := in.client.WrapClientExecutor(newExec(t, "svc", resilience.Policy{}))
 
 	// First three calls are faulted.
 	for range 3 {
-		assert.That(t, IsInjected(exec.Execute(context.Background(), chain.Operation{}, nil, countFn(new(int32), nil)))).True()
+		assert.That(t, kfault.IsInjected(exec.Execute(context.Background(), chain.Operation{}, nil, countFn(new(int32), nil)))).True()
 	}
 	// Fourth onward: guardrail tripped, call passes through untouched.
 	var calls int32
@@ -334,11 +335,11 @@ func TestManager_MaxAffectedCapsBlastRadius(t *testing.T) {
 // TestManager_MaxDurationAutoOff verifies MaxDuration turns the fire off after
 // the window elapses (a forgotten fault self-heals).
 func TestManager_MaxDurationAutoOff(t *testing.T) {
-	in := newFixture(configs{Client: Config{Rules: []Rule{{Rate: 1, Error: "generic", MaxDuration: 40 * time.Millisecond}}}}, nil)
+	in := newFixture(configs{Client: kfault.Config{Rules: []kfault.Rule{{Rate: 1, Error: "generic", MaxDuration: 40 * time.Millisecond}}}}, nil)
 	exec := in.client.WrapClientExecutor(newExec(t, "svc", resilience.Policy{}))
 
 	// Within the window: faulted.
-	assert.That(t, IsInjected(exec.Execute(context.Background(), chain.Operation{}, nil, countFn(new(int32), nil)))).True()
+	assert.That(t, kfault.IsInjected(exec.Execute(context.Background(), chain.Operation{}, nil, countFn(new(int32), nil)))).True()
 	// After the window: passes through.
 	time.Sleep(60 * time.Millisecond)
 	var calls int32
@@ -350,10 +351,10 @@ func TestManager_MaxDurationAutoOff(t *testing.T) {
 // TestManager_NoGuardrailsUnchanged confirms the default (no guardrails) keeps
 // the original behavior: every Rate-1 call faults, indefinitely.
 func TestManager_NoGuardrailsUnchanged(t *testing.T) {
-	in := newFixture(configs{Client: Config{Rules: []Rule{{Rate: 1, Error: "generic"}}}}, nil)
+	in := newFixture(configs{Client: kfault.Config{Rules: []kfault.Rule{{Rate: 1, Error: "generic"}}}}, nil)
 	exec := in.client.WrapClientExecutor(newExec(t, "svc", resilience.Policy{}))
 	for range 10 {
-		assert.That(t, IsInjected(exec.Execute(context.Background(), chain.Operation{}, nil, countFn(new(int32), nil)))).True()
+		assert.That(t, kfault.IsInjected(exec.Execute(context.Background(), chain.Operation{}, nil, countFn(new(int32), nil)))).True()
 	}
 }
 
@@ -366,11 +367,11 @@ func TestFireServer_ServerSideFault(t *testing.T) {
 	// different config, to pin that Fire reads the server half and not the
 	// client one.
 	in := newFixture(configs{
-		Client: Config{Rules: []Rule{{Rate: 0, Latency: 50 * time.Millisecond}}},
-		Server: Config{Rules: []Rule{{Rate: 1, Error: "generic"}}},
+		Client: kfault.Config{Rules: []kfault.Rule{{Rate: 0, Latency: 50 * time.Millisecond}}},
+		Server: kfault.Config{Rules: []kfault.Rule{{Rate: 1, Error: "generic"}}},
 	}, nil)
-	d, err := in.server.NewServer().Fire(context.Background(), Target{Service: "svc"})
-	assert.That(t, IsInjected(err)).True()
+	d, err := in.server.NewServer().Fire(context.Background(), kfault.Target{Service: "svc"})
+	assert.That(t, kfault.IsInjected(err)).True()
 	assert.That(t, d.Inject).True()
 	assert.That(t, d.Kind).Equal("generic")
 	// The client config on the same injector does not reach inbound: an outbound
@@ -383,13 +384,13 @@ func TestFireServer_ServerSideFault(t *testing.T) {
 	// Scope "loadtest" + plain ctx => nothing fires (scope excludes real
 	// traffic), so the caller proceeds.
 	prop := traffic.NewDefaultPropagator(traffic.DefaultBinding())
-	in2 := newFixture(configs{Server: Config{Rules: []Rule{{Rate: 1, Error: "generic", Scope: "loadtest"}}}}, prop)
-	_, err = in2.server.NewServer().Fire(context.Background(), Target{Service: "svc"})
+	in2 := newFixture(configs{Server: kfault.Config{Rules: []kfault.Rule{{Rate: 1, Error: "generic", Scope: "loadtest"}}}}, prop)
+	_, err = in2.server.NewServer().Fire(context.Background(), kfault.Target{Service: "svc"})
 	assert.Error(t, err).Nil()
 
 	// Scope "loadtest" + load-test ctx => injected.
-	_, err = in2.server.NewServer().Fire(prop.WithLoadTest(context.Background()), Target{Service: "svc"})
-	assert.That(t, IsInjected(err)).True()
+	_, err = in2.server.NewServer().Fire(prop.WithLoadTest(context.Background()), kfault.Target{Service: "svc"})
+	assert.That(t, kfault.IsInjected(err)).True()
 }
 
 // TestManager_DirectionsAreIndependent pins the core of the direction split: a
@@ -398,27 +399,27 @@ func TestFireServer_ServerSideFault(t *testing.T) {
 // radius cannot silence a server fire.
 func TestManager_DirectionsAreIndependent(t *testing.T) {
 	in := newFixture(configs{
-		Client: Config{Rules: []Rule{{Rate: 1, Error: "generic"}}},
-		Server: Config{Rules: []Rule{{Rate: 1, Error: "reset"}}},
+		Client: kfault.Config{Rules: []kfault.Rule{{Rate: 1, Error: "generic"}}},
+		Server: kfault.Config{Rules: []kfault.Rule{{Rate: 1, Error: "reset"}}},
 	}, nil)
 	exec := in.client.WrapClientExecutor(newExec(t, "svc", resilience.Policy{}))
 
 	// Outbound gets the client's kind; inbound gets the server's.
 	err := exec.Execute(context.Background(), chain.Operation{}, nil, countFn(new(int32), nil))
 	assert.That(t, errors.Is(err, syscall.ECONNRESET)).False()
-	assert.That(t, IsInjected(err)).True()
+	assert.That(t, kfault.IsInjected(err)).True()
 
-	_, srvErr := in.server.NewServer().Fire(context.Background(), Target{Service: "svc"})
+	_, srvErr := in.server.NewServer().Fire(context.Background(), kfault.Target{Service: "svc"})
 	assert.That(t, errors.Is(srvErr, syscall.ECONNRESET)).True()
 
 	// One side off (a push that disables the client) must not touch the other.
 	in.refresh(configs{
-		Client: Config{},
-		Server: Config{Rules: []Rule{{Rate: 1, Error: "reset"}}},
+		Client: kfault.Config{},
+		Server: kfault.Config{Rules: []kfault.Rule{{Rate: 1, Error: "reset"}}},
 	})
 	assert.Error(t, exec.Execute(context.Background(), chain.Operation{}, nil, countFn(new(int32), nil))).Nil()
-	_, srvErr = in.server.NewServer().Fire(context.Background(), Target{Service: "svc"})
-	assert.That(t, IsInjected(srvErr)).True()
+	_, srvErr = in.server.NewServer().Fire(context.Background(), kfault.Target{Service: "svc"})
+	assert.That(t, kfault.IsInjected(srvErr)).True()
 }
 
 // TestManager_GuardrailsPerDirection pins that the safety guardrails are counted
@@ -426,22 +427,22 @@ func TestManager_DirectionsAreIndependent(t *testing.T) {
 // silence the inbound one, and each self-heals on its own.
 func TestManager_GuardrailsPerDirection(t *testing.T) {
 	in := newFixture(configs{
-		Client: Config{Rules: []Rule{{Rate: 1, Error: "generic", MaxAffected: 2}}},
-		Server: Config{Rules: []Rule{{Rate: 1, Error: "reset", MaxAffected: 1}}},
+		Client: kfault.Config{Rules: []kfault.Rule{{Rate: 1, Error: "generic", MaxAffected: 2}}},
+		Server: kfault.Config{Rules: []kfault.Rule{{Rate: 1, Error: "reset", MaxAffected: 1}}},
 	}, nil)
 	exec := in.client.WrapClientExecutor(newExec(t, "svc", resilience.Policy{}))
 
 	// Spend the client side's budget (2 of 3 calls are affected).
 	for range 2 {
-		assert.That(t, IsInjected(exec.Execute(context.Background(), chain.Operation{}, nil, countFn(new(int32), nil)))).True()
+		assert.That(t, kfault.IsInjected(exec.Execute(context.Background(), chain.Operation{}, nil, countFn(new(int32), nil)))).True()
 	}
 	assert.Error(t, exec.Execute(context.Background(), chain.Operation{}, nil, countFn(new(int32), nil))).Nil()
 
 	// The server side is still armed: its own counter never saw those calls.
-	_, srvErr := in.server.NewServer().Fire(context.Background(), Target{Service: "svc"})
-	assert.That(t, IsInjected(srvErr)).True()
+	_, srvErr := in.server.NewServer().Fire(context.Background(), kfault.Target{Service: "svc"})
+	assert.That(t, kfault.IsInjected(srvErr)).True()
 	// ...and it self-heals after its own single affected call.
-	_, srvErr = in.server.NewServer().Fire(context.Background(), Target{Service: "svc"})
+	_, srvErr = in.server.NewServer().Fire(context.Background(), kfault.Target{Service: "svc"})
 	assert.Error(t, srvErr).Nil()
 }
 
@@ -450,7 +451,7 @@ func TestManager_GuardrailsPerDirection(t *testing.T) {
 // an empty service is a catch-all.
 func TestManager_PerServiceRules(t *testing.T) {
 	// Only svc-a is armed.
-	in := newFixture(configs{Client: Config{Rules: []Rule{
+	in := newFixture(configs{Client: kfault.Config{Rules: []kfault.Rule{
 		{Service: "svc-a", Rate: 1, Error: "generic"},
 	}}}, nil)
 	// One executor per service: an executor is bound to one service now, so each
@@ -460,7 +461,7 @@ func TestManager_PerServiceRules(t *testing.T) {
 	execB := in.client.WrapClientExecutor(newExec(t, "svc-b", resilience.Policy{}))
 
 	// svc-a matches the rule => faulted.
-	assert.That(t, IsInjected(execA.Execute(context.Background(), chain.Operation{Service: "svc-a"}, nil, countFn(new(int32), nil)))).True()
+	assert.That(t, kfault.IsInjected(execA.Execute(context.Background(), chain.Operation{Service: "svc-a"}, nil, countFn(new(int32), nil)))).True()
 	// svc-b matches no rule, global rate 0 => passes through.
 	var calls int32
 	assert.Error(t, execB.Execute(context.Background(), chain.Operation{Service: "svc-b"}, nil, countFn(&calls, nil))).Nil()
@@ -468,18 +469,18 @@ func TestManager_PerServiceRules(t *testing.T) {
 
 	// Catch-all rule overrides global for any service. Specific rule still wins
 	// over the catch-all when listed first.
-	in2 := newFixture(configs{Client: Config{Rules: []Rule{
+	in2 := newFixture(configs{Client: kfault.Config{Rules: []kfault.Rule{
 		{Service: "svc-a", Rate: 1, Error: "timeout"},
 		{Service: "", Rate: 1, Error: "generic"}, // catch-all
 	}}}, nil)
 	exec2A := in2.client.WrapClientExecutor(newExec(t, "svc-a", resilience.Policy{}))
 	exec2C := in2.client.WrapClientExecutor(newExec(t, "svc-c", resilience.Policy{}))
 	err := exec2A.Execute(context.Background(), chain.Operation{Service: "svc-a"}, nil, countFn(new(int32), nil))
-	assert.That(t, IsInjected(err)).True()
+	assert.That(t, kfault.IsInjected(err)).True()
 	assert.That(t, errors.Is(err, context.DeadlineExceeded)).True() // svc-a => timeout kind
 	// svc-c falls through to the catch-all => generic.
 	err = exec2C.Execute(context.Background(), chain.Operation{Service: "svc-c"}, nil, countFn(new(int32), nil))
-	assert.That(t, IsInjected(err)).True()
+	assert.That(t, kfault.IsInjected(err)).True()
 	assert.That(t, errors.Is(err, context.DeadlineExceeded)).False() // generic, not timeout
 }
 
@@ -489,7 +490,7 @@ func TestManager_PerServiceRules(t *testing.T) {
 // tag that closes the "injected fault is indistinguishable from a real failure"
 // gap.
 func TestInjectedFaultIsTaggedOnFacts(t *testing.T) {
-	in := newFixture(configs{Client: Config{Rules: []Rule{{Rate: 1, Error: "timeout"}}}}, nil)
+	in := newFixture(configs{Client: kfault.Config{Rules: []kfault.Rule{{Rate: 1, Error: "timeout"}}}}, nil)
 	exec := in.client.WrapClientExecutor(newExec(t, "svc", resilience.Policy{}))
 	op := chain.Operation{Service: "svc"}
 	rec := &chain.Recorder{}
@@ -512,7 +513,7 @@ func TestInjectedFaultIsTaggedOnFacts(t *testing.T) {
 // call SUCCEEDS with a fire on its record. A write made after Execute from the
 // final decision alone would find "not fired" and record nothing.
 func TestFireOnAnEarlierAttemptSurvives(t *testing.T) {
-	in := newFixture(configs{Client: Config{Rules: []Rule{{Rate: 1, Error: "generic", MaxAffected: 1}}}}, nil)
+	in := newFixture(configs{Client: kfault.Config{Rules: []kfault.Rule{{Rate: 1, Error: "generic", MaxAffected: 1}}}}, nil)
 	exec := in.client.WrapClientExecutor(newExec(t, "svc", resilience.Policy{
 		Retry: chain.RetryPolicy{MaxRetries: 1},
 	}))
@@ -531,7 +532,7 @@ func TestFireOnAnEarlierAttemptSurvives(t *testing.T) {
 // dimension fires only for calls that carry it — a rule can target one tenant or
 // region of a service, not just the whole service.
 func TestFaultRuleMatchesMetadata(t *testing.T) {
-	in := newFixture(configs{Client: Config{Rules: []Rule{{
+	in := newFixture(configs{Client: kfault.Config{Rules: []kfault.Rule{{
 		Service:       "svc",
 		MetadataMatch: map[string]string{"tenant": "acme"},
 		Rate:          1,
@@ -555,9 +556,9 @@ func TestFaultRuleMatchesMetadata(t *testing.T) {
 // only for calls of that interface — one endpoint can be set on fire without
 // touching another.
 func TestFaultRuleMatchesAction(t *testing.T) {
-	in := newFixture(configs{Client: Config{Rules: []Rule{{
+	in := newFixture(configs{Client: kfault.Config{Rules: []kfault.Rule{{
 		Service:     "svc",
-		ActionMatch: ActionMatcher{Exact: "insert"},
+		ActionMatch: kfault.ActionMatcher{Exact: "insert"},
 		Rate:        1,
 	}}}}, nil)
 	exec := in.client.WrapClientExecutor(newExec(t, "svc", resilience.Policy{}))
@@ -580,25 +581,25 @@ func TestFaultRuleMatchesAction(t *testing.T) {
 // inbound rule can name ONE interface of the server and one slice of its
 // traffic, instead of only being able to fire the whole entrance.
 func TestFireServer_RuleMatchesActionAndMetadata(t *testing.T) {
-	in := newFixture(configs{Server: Config{Rules: []Rule{{
+	in := newFixture(configs{Server: kfault.Config{Rules: []kfault.Rule{{
 		Service:       "gin",
-		ActionMatch:   ActionMatcher{Prefix: "GET /users"},
+		ActionMatch:   kfault.ActionMatcher{Prefix: "GET /users"},
 		MetadataMatch: map[string]string{"tenant": "acme"},
 		Rate:          1,
 	}}}}, nil)
 
-	fires := func(tgt Target) bool {
+	fires := func(tgt kfault.Target) bool {
 		_, err := in.server.NewServer().Fire(context.Background(), tgt)
-		return IsInjected(err)
+		return kfault.IsInjected(err)
 	}
 
 	// The named route of the named tenant fires.
-	assert.That(t, fires(Target{Service: "gin", Action: "GET /users/{id}",
+	assert.That(t, fires(kfault.Target{Service: "gin", Action: "GET /users/{id}",
 		Metadata: map[string]string{"tenant": "acme"}})).True()
 	// Another route of the same server: the interface filter holds it back.
-	assert.That(t, fires(Target{Service: "gin", Action: "POST /orders",
+	assert.That(t, fires(kfault.Target{Service: "gin", Action: "POST /orders",
 		Metadata: map[string]string{"tenant": "acme"}})).False()
 	// The same route of another tenant: the metadata filter holds it back.
-	assert.That(t, fires(Target{Service: "gin", Action: "GET /users/{id}",
+	assert.That(t, fires(kfault.Target{Service: "gin", Action: "GET /users/{id}",
 		Metadata: map[string]string{"tenant": "other"}})).False()
 }

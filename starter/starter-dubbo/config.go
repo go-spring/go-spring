@@ -63,7 +63,7 @@ type DubboApplication struct {
 	Owner        string `value:"${owner:=dubbo-go}"`
 	Environment  string `value:"${environment:=}"`
 	// MetadataType is "local" or "remote"; default "local".
-	MetadataType string `value:"${metadata-type:=local}"`
+	MetadataType string `value:"${metadata-type:=local}" expr:"$ in ['local', 'remote']"`
 }
 
 // --- registry ---
@@ -80,7 +80,7 @@ type DubboRegistry struct {
 	TTL       string `value:"${ttl:=10s}"`
 	// Address is required: a configured registry entry with no address has no
 	// alternative source. Format: {protocol}://address
-	Address    string            `value:"${address}"`
+	Address    string            `value:"${address}" expr:"$ != ''"`
 	Username   string            `value:"${username:=}"`
 	Password   string            `value:"${password:=}"`
 	Simplified bool              `value:"${simplified:=false}"`
@@ -127,11 +127,11 @@ type DubboProvider struct {
 	Group         string `value:"${group:=}"`
 	Version       string `value:"${version:=}"`
 	Cluster       string `value:"${cluster:=}"`
-	LoadBalance   string `value:"${loadbalance:=}"`
-	Serialization string `value:"${serialization:=}"`
+	LoadBalance   string `value:"${loadbalance:=}" expr:"$ == '' || $ in ['random', 'roundrobin', 'consistenthashing', 'leastactive', 'xdsringhash', 'p2c']"`
+	Serialization string `value:"${serialization:=}" expr:"$ == '' || $ in ['protobuf', 'hessian2', 'msgpack', 'jsonMapStruct']"`
 	// Retries: -1 (default) = unset, keep dubbo-go's own default; 0 = no retry
 	// attempts; >0 = that many retries. Same semantics at every level.
-	Retries                     int               `value:"${retries:=-1}"`
+	Retries                     int               `value:"${retries:=-1}" expr:"$ >= -1"`
 	Token                       string            `value:"${token:=}"`
 	AccessLog                   string            `value:"${accesslog:=}"`
 	Auth                        string            `value:"${auth:=}"`
@@ -142,7 +142,7 @@ type DubboProvider struct {
 	Params                      map[string]string `value:"${params:=}"`
 	TpsLimiter                  string            `value:"${tps-limiter:=}"`
 	TpsLimitRate                int               `value:"${tps-limit-rate:=0}"`
-	TpsLimitStrategy            string            `value:"${tps-limit-strategy:=}"`
+	TpsLimitStrategy            string            `value:"${tps.limit.strategy:=}" expr:"$ == '' || $ in ['threadSafeFixedWindow', 'slidingWindow', 'fixedWindow', 'default']"`
 	TpsLimitRejectedHandler     string            `value:"${tps-limit-rejected-handler:=}"`
 	ExecuteLimit                string            `value:"${execute-limit:=}"`
 	ExecuteLimitRejectedHandler string            `value:"${execute-limit-rejected-handler:=}"`
@@ -160,14 +160,14 @@ type DubboService struct {
 	Cluster string `value:"${cluster:=failover}"`
 	// LoadBalance is one of: random, roundrobin, consistenthashing,
 	// leastactive, xdsringhash, p2c; default "random".
-	LoadBalance string `value:"${loadbalance:=random}"`
+	LoadBalance string `value:"${loadbalance:=random}" expr:"$ in ['random', 'roundrobin', 'consistenthashing', 'leastactive', 'xdsringhash', 'p2c']"`
 	// Retries: -1 (default) = unset, keep dubbo-go's own default; 0 = no retry
 	// attempts; >0 = that many retries. Same semantics at every level.
-	Retries int    `value:"${retries:=-1}"`
+	Retries int    `value:"${retries:=-1}" expr:"$ >= -1"`
 	Group   string `value:"${group:=}"`
 	Version string `value:"${version:=}"`
 	// Serialization is one of: protobuf, hessian2, msgpack, jsonMapStruct.
-	Serialization string                 `value:"${serialization:=}"`
+	Serialization string                 `value:"${serialization:=}" expr:"$ == '' || $ in ['protobuf', 'hessian2', 'msgpack', 'jsonMapStruct']"`
 	Methods       map[string]DubboMethod `value:"${methods:=}"`
 	Warmup        string                 `value:"${warmup:=}"` // duration string, e.g. "10m"
 	Params        map[string]string      `value:"${params:=}"`
@@ -177,7 +177,7 @@ type DubboService struct {
 	TpsLimitRate  int                    `value:"${tps.limit.rate:=0}"`
 	// TpsLimitStrategy is one of: threadSafeFixedWindow, slidingWindow,
 	// fixedWindow, default.
-	TpsLimitStrategy            string `value:"${tps.limit.strategy:=}"`
+	TpsLimitStrategy            string `value:"${tps.limit.strategy:=}" expr:"$ == '' || $ in ['threadSafeFixedWindow', 'slidingWindow', 'fixedWindow', 'default']"`
 	TpsLimitRejectedHandler     string `value:"${tps.limit.rejected.handler:=}"`
 	ExecuteLimit                string `value:"${execute.limit:=}"`
 	ExecuteLimitRejectedHandler string `value:"${execute.limit.rejected.handler:=}"`
@@ -204,13 +204,13 @@ type DubboConsumer struct {
 
 	// Consumer-level defaults (client.ClientOption).
 	Cluster     string `value:"${cluster:=}"`
-	LoadBalance string `value:"${loadbalance:=}"`
+	LoadBalance string `value:"${loadbalance:=}" expr:"$ == '' || $ in ['random', 'roundrobin', 'consistenthashing', 'leastactive', 'xdsringhash', 'p2c']"`
 	// Retries: -1 (default) = unset, keep dubbo-go's own default; 0 = no retry
 	// attempts; >0 = that many retries. Same semantics at every level.
-	Retries       int    `value:"${retries:=-1}"`
+	Retries       int    `value:"${retries:=-1}" expr:"$ >= -1"`
 	Group         string `value:"${group:=}"`
 	Version       string `value:"${version:=}"`
-	Serialization string `value:"${serialization:=}"`
+	Serialization string `value:"${serialization:=}" expr:"$ == '' || $ in ['protobuf', 'hessian2', 'msgpack', 'jsonMapStruct']"`
 	Sticky        bool   `value:"${sticky:=false}"`
 	ForceTag      bool   `value:"${force.tag:=false}"`
 }
@@ -233,13 +233,13 @@ type DubboReference struct {
 	Cluster string `value:"${cluster:=failover}"`
 	// LoadBalance is one of: random, roundrobin, consistenthashing,
 	// leastactive, xdsringhash, p2c; default "random".
-	LoadBalance string `value:"${loadbalance:=random}"`
+	LoadBalance string `value:"${loadbalance:=random}" expr:"$ in ['random', 'roundrobin', 'consistenthashing', 'leastactive', 'xdsringhash', 'p2c']"`
 	// Retries: -1 (default) = unset, keep dubbo-go's own default; 0 = no retry
 	// attempts; >0 = that many retries. Same semantics at every level.
-	Retries       int                    `value:"${retries:=-1}"`
+	Retries       int                    `value:"${retries:=-1}" expr:"$ >= -1"`
 	Group         string                 `value:"${group:=}"`
 	Version       string                 `value:"${version:=}"`
-	Serialization string                 `value:"${serialization:=}"`
+	Serialization string                 `value:"${serialization:=}" expr:"$ == '' || $ in ['protobuf', 'hessian2', 'msgpack', 'jsonMapStruct']"`
 	Methods       map[string]DubboMethod `value:"${methods:=}"`
 	Async         bool                   `value:"${async:=false}"`
 	Params        map[string]string      `value:"${params:=}"`
@@ -259,16 +259,16 @@ type DubboMethod struct {
 	Name string `value:"${name:=}"`
 	// Retries: -1 (default) = unset, keep dubbo-go's own default; 0 = no retry
 	// attempts; >0 = that many retries. Same semantics at every level.
-	Retries int `value:"${retries:=-1}"`
+	Retries int `value:"${retries:=-1}" expr:"$ >= -1"`
 	// LoadBalance is one of: random, roundrobin, consistenthashing,
 	// leastactive, xdsringhash, p2c; default "random".
-	LoadBalance      string `value:"${loadbalance:=random}"`
+	LoadBalance      string `value:"${loadbalance:=random}" expr:"$ in ['random', 'roundrobin', 'consistenthashing', 'leastactive', 'xdsringhash', 'p2c']"`
 	Weight           int64  `value:"${weight:=100}"`
 	TpsLimitInterval int    `value:"${tps.limit.interval:=}"`
 	TpsLimitRate     int    `value:"${tps.limit.rate:=}"`
 	// TpsLimitStrategy is one of: threadSafeFixedWindow, slidingWindow,
 	// fixedWindow, default.
-	TpsLimitStrategy            string `value:"${tps.limit.strategy:=}"`
+	TpsLimitStrategy            string `value:"${tps.limit.strategy:=}" expr:"$ == '' || $ in ['threadSafeFixedWindow', 'slidingWindow', 'fixedWindow', 'default']"`
 	ExecuteLimit                int    `value:"${execute.limit:=}"`
 	ExecuteLimitRejectedHandler string `value:"${execute.limit.rejected.handler:=}"`
 	Sticky                      bool   `value:"${sticky:=false}"`
@@ -294,7 +294,7 @@ type DubboTracing struct {
 	Endpoint   string  `value:"${endpoint:=}"`
 	Propagator string  `value:"${propagator:=w3c}"`
 	Mode       string  `value:"${mode:=}"` // always|never|ratio; empty keeps dubbo-go default
-	Ratio      float64 `value:"${ratio:=1.0}"`
+	Ratio      float64 `value:"${ratio:=1.0}" expr:"$ >= 0 && $ <= 1"`
 	Insecure   bool    `value:"${insecure:=false}"`
 }
 

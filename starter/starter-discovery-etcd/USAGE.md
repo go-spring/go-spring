@@ -192,8 +192,8 @@ TTL removes dead keys "self-healing without a reaper" (`starter.go`).
    (`clientv3.Watch(bgCtx, prefix, WithPrefix())`).
 2. Every etcd event on the watch channel triggers a **fresh full snapshot** (not a delta) stored
    into the cache; a failed refresh keeps the stale one — stale addresses are safer than none.
-3. Later Resolve calls are in-memory reads over the cached (unfiltered) set, narrowed by scheme
-   via `FilterByScheme` per call.
+3. Later Resolve calls are in-memory reads over the cached (unfiltered) set, narrowed by the
+   query (scheme and metadata selector) via `Narrow` per call.
 4. Each KV is decoded from the registry's JSON; `Healthy` is always true — **key existence IS the
    health signal** (lease expiry deletes the key) (header comment lines 29-32). A malformed
    payload is skipped with a Warn, not a broken snapshot.

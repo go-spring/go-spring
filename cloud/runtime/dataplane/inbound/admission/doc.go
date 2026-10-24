@@ -30,9 +30,9 @@
 // A Guard is created at wiring time and captured by the server's middleware.
 // It is bound to the server instance it protects (see [Identity]) and owns the
 // cross-request state of that instance — the rate-limit budget, the bulkhead
-// count, the circuit breaker and the config generation it materializes. Two
-// server instances never share this state, even when they carry the same
-// label: a breaker belongs to a resource, and each instance is its own.
+// count and the config generation it materializes. Two server instances never
+// share this state, even when they carry the same label: a rate budget and a
+// slot pool belong to a resource, and each instance is its own.
 //
 // The Guard is the STABLE shell. Its state is replaced whole when the
 // governance authority pushes a new generation; the call path only reads the
@@ -42,25 +42,22 @@
 // # One judgment, one completion
 //
 // [Guard.Admit] runs the stages that must happen before the handler — rate
-// limit, bulkhead acquisition, circuit-breaker gate and fault injection — and
-// returns this request's [Result] plus the completion function for it. The
-// caller (the protocol adapter) decides what to do with the result and runs
-// the handler itself; the package never takes the handler as a callback.
+// limit, bulkhead acquisition and fault injection — and returns this request's
+// [Result] plus the completion function for it. The caller (the protocol
+// adapter) decides what to do with the result and runs the handler itself; the
+// package never takes the handler as a callback.
 //
-// The completion function exists because two stages cannot be finished at
-// admission: a bulkhead slot must be returned and a breaker's failure window
-// must learn the outcome. It follows the Go convention of returning a cleanup
-// function — call it, usually with defer — and is a no-op for a configuration
-// that enables neither stage. It is idempotent, and a request context with a
-// deadline arms a fallback settlement so a missed call cannot leak a slot.
+// The completion function exists because the bulkhead slot cannot be returned
+// at admission. It follows the Go convention of returning a cleanup function —
+// call it, usually with defer — and is a no-op for a configuration without a
+// bulkhead. It is idempotent, and a request context with a deadline arms a
+// fallback release so a missed call cannot leak a slot.
 //
 // # What the caller owns
 //
 // Everything protocol-specific: mapping a [Verdict] onto an HTTP status,
-// gRPC code or RPC result; deciding what a degraded response looks like;
-// opening the span and writing the access log. Observability is therefore NOT
-// part of this package, and a server that wants none of it simply ignores the
-// result. The neutral facts a caller needs for those jobs are on the
-// [Result], and the outcome it reports back is a protocol-level
-// classification, not a Go error.
+// gRPC code or RPC result; opening the span and writing the access log.
+// Observability is therefore NOT part of this package, and a server that wants
+// none of it simply ignores the result. The neutral facts a caller needs for
+// those jobs are on the [Result].
 package admission

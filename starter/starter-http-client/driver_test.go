@@ -18,6 +18,7 @@ package StarterHTTPClient
 
 import (
 	"context"
+	"go-spring.org/cloud/runtime/dataplane/inbound/admission"
 	"net/http"
 	"reflect"
 	"testing"
@@ -41,7 +42,7 @@ import (
 func TestDefaultDriverFallback(t *testing.T) {
 	center, err := runtime.New(
 		resilience.NewManager(resilience.NewDefaultDriver(nil)), loadbalance.NewManager(),
-		clientfault.NewClientManager(nil), serverfault.NewServerManager(nil), discovery.NewManager(nil), governance.NewPushSource(governance.Config{}))
+		clientfault.NewClientManager(nil), serverfault.NewServerManager(nil), discovery.NewManager(nil), governance.NewPushSource(governance.Config{Server: governance.ServerConfig{Default: admission.DefaultPolicy()}}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -82,7 +83,7 @@ func TestCustomDriverUsed(t *testing.T) {
 	drv := &recordingDriver{}
 	center, err := runtime.New(
 		resilience.NewManager(resilience.NewDefaultDriver(nil)), loadbalance.NewManager(),
-		clientfault.NewClientManager(nil), serverfault.NewServerManager(nil), discovery.NewManager(nil), governance.NewPushSource(governance.Config{}))
+		clientfault.NewClientManager(nil), serverfault.NewServerManager(nil), discovery.NewManager(nil), governance.NewPushSource(governance.Config{Server: governance.ServerConfig{Default: admission.DefaultPolicy()}}))
 	if err != nil {
 		t.Fatal(err)
 	}

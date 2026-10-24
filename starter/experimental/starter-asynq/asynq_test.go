@@ -18,6 +18,7 @@ package StarterAsynq
 
 import (
 	"context"
+	"go-spring.org/cloud/runtime/dataplane/inbound/admission"
 	"testing"
 
 	"github.com/hibiken/asynq"
@@ -37,7 +38,7 @@ import (
 // testCenter bundles unarmed authorities into the runtime the client
 // takes, so a container-less test still exercises the real injection path.
 func testCenter() *runtime.Runtime {
-	ctr, err := runtime.New(resilience.NewManager(resilience.NewDefaultDriver(nil)), loadbalance.NewManager(), clientfault.NewClientManager(nil), serverfault.NewServerManager(nil), nil, governance.NewPushSource(governance.Config{}))
+	ctr, err := runtime.New(resilience.NewManager(resilience.NewDefaultDriver(nil)), loadbalance.NewManager(), clientfault.NewClientManager(nil), serverfault.NewServerManager(nil), nil, governance.NewPushSource(governance.Config{Server: governance.ServerConfig{Default: admission.DefaultPolicy()}}))
 	if err != nil {
 		panic(err)
 	}

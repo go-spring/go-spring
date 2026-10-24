@@ -175,7 +175,7 @@ func (DefaultDriver) CreateClient(ctx context.Context, c Config, center *runtime
 		lbChain := center.Loadbalance().Chain(ctx, resolver, serviceLabel(c))
 		opts.Addr = c.ServiceName
 		opts.Dialer = func(ctx context.Context, network, _ string) (net.Conn, error) {
-			ep, err := lbChain.Pick(loadbalance.PickInfo{})
+			ep, err := lbChain.Pick(ctx, loadbalance.PickInfo{})
 			if err != nil {
 				return nil, err
 			}

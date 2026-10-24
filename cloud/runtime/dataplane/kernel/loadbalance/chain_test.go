@@ -77,7 +77,7 @@ func TestChainRebuildDropsObservedFailures(t *testing.T) {
 	assert.That(t, c.Tracker().Suspended("a")).False()
 
 	// The endpoint is genuinely back: the new generation picks from the full set.
-	ep, err := c.Pick(PickInfo{})
+	ep, err := c.Pick(context.Background(), PickInfo{})
 	assert.Error(t, err).Nil()
 	assert.That(t, ep.Addr == "a" || ep.Addr == "b").True()
 }
@@ -118,7 +118,7 @@ func TestChainUnknownStrategyKeepsLastGood(t *testing.T) {
 	m.Apply(context.Background(), Settings{Default: Selection{Balancer: "no_such_strategy"}})
 
 	assert.Number(t, c.Generation()).Equal(uint64(2)) // the refused rebuild built nothing
-	ep, err := c.Pick(PickInfo{})
+	ep, err := c.Pick(context.Background(), PickInfo{})
 	assert.Error(t, err).Nil()
 	assert.That(t, ep.Addr).Equal("a")
 }
@@ -138,10 +138,10 @@ func TestChainPerChainNotPerLabel(t *testing.T) {
 	assert.Number(t, c1.Generation()).Equal(uint64(2))
 	assert.Number(t, c2.Generation()).Equal(uint64(2))
 
-	ep1, err := c1.Pick(PickInfo{})
+	ep1, err := c1.Pick(context.Background(), PickInfo{})
 	assert.Error(t, err).Nil()
 	assert.That(t, ep1.Addr).Equal("a")
-	ep2, err := c2.Pick(PickInfo{})
+	ep2, err := c2.Pick(context.Background(), PickInfo{})
 	assert.Error(t, err).Nil()
 	assert.That(t, ep2.Addr).Equal("b")
 }
@@ -156,7 +156,7 @@ func TestChainSwapIsLive(t *testing.T) {
 	m.Apply(context.Background(), Settings{Default: Selection{Balancer: LeastConn}})
 	assert.Number(t, c.Generation()).Equal(uint64(2))
 
-	ep, err := c.Pick(PickInfo{})
+	ep, err := c.Pick(context.Background(), PickInfo{})
 	assert.Error(t, err).Nil()
 	c.Complete(context.Background(), ep, nil)
 
@@ -184,7 +184,7 @@ func TestChainConcurrentPickAndRebuild(t *testing.T) {
 					return
 				default:
 				}
-				ep, err := c.Pick(PickInfo{})
+				ep, err := c.Pick(context.Background(), PickInfo{})
 				if err != nil {
 					errs <- err
 					return
@@ -256,7 +256,7 @@ func TestChainServesRealTrafficAcrossARebuild(t *testing.T) {
 	// The gateway handler, wired exactly as the chain's egress documents: pick
 	// through the chain, forward to the picked address, complete through the chain.
 	gw := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		ep, err := c.Pick(PickInfo{})
+		ep, err := c.Pick(context.Background(), PickInfo{})
 		if err != nil {
 			c.Complete(r.Context(), ep, err)
 			http.Error(w, "503 Service Unavailable", http.StatusServiceUnavailable)

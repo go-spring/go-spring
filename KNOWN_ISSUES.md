@@ -48,7 +48,7 @@
     （如 sentinel 外部规则）仍可能产生它。
   - *触发条件*：出现「某个慢下游拖垮调用方 goroutine」的真实案例，或明确需要按下游 fail-fast
     卸载时再做。
-  - *实现时的最小形状*：per-key fail-fast 信号量（默认不排队）→ 从 `admission.Bulkhead` 提取
+  - *实现时的最小形状*：per-key fail-fast 信号量（默认不排队）→ 复用 `kernel/bulkhead`
     `cloud/bulkhead` 共享 → 顺序 bulkhead → rate → breaker → 跨重试持有 → 补 per-key 指标 →
     全局安全网按需再加；排队模式必须带 deadline 并在文档声明不可重入。
 

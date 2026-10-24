@@ -155,9 +155,6 @@ func (t *Tracker) SetConfig(cfg TrackerConfig) {
 // Config returns the suspension config currently in force (with the SuspendFor
 // default applied). It is primarily an inspection and test helper.
 func (t *Tracker) Config() TrackerConfig {
-	if t == nil {
-		return TrackerConfig{}
-	}
 	return *t.cfg.Load()
 }
 
@@ -180,9 +177,6 @@ func (t *Tracker) Allows(eps []discovery.Endpoint) []discovery.Endpoint {
 // Admissible is [Allows] without the fallback: when every endpoint is
 // suspended it returns an empty slice, leaving that decision to the caller.
 func (t *Tracker) Admissible(eps []discovery.Endpoint) []discovery.Endpoint {
-	if t == nil {
-		return eps
-	}
 	cfg := *t.cfg.Load()
 	if cfg.Threshold <= 0 || len(eps) == 0 {
 		return eps
@@ -226,9 +220,6 @@ func (t *Tracker) admitLocked(addr string, suspendFor time.Duration) bool {
 // success=false counts toward suspension (or re-suspends a failed half-open
 // trial). It is a no-op when the tracker is disabled.
 func (t *Tracker) Record(ctx context.Context, addr string, success bool) {
-	if t == nil {
-		return
-	}
 	cfg := *t.cfg.Load()
 	if cfg.Threshold <= 0 {
 		return
@@ -279,9 +270,6 @@ func (t *Tracker) Record(ctx context.Context, addr string, success bool) {
 // Suspended reports whether addr is currently suspended and still cooling down. It
 // is primarily a test/inspection helper; routing decisions go through Allows.
 func (t *Tracker) Suspended(addr string) bool {
-	if t == nil {
-		return false
-	}
 	cfg := *t.cfg.Load()
 	if cfg.Threshold <= 0 {
 		return false

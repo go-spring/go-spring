@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"go-spring.org/cloud/security"
+	"go-spring.org/stdlib/errutil"
 )
 
 // Config defines Kafka client configuration.
@@ -74,17 +75,27 @@ type SASLConfig struct {
 	Password string `value:"${password:=}"`
 }
 
+// Validate rejects a half-configured SASL block: enabling SASL without both
+// credentials would reach the broker and fail there, far from the document that
+// caused it. The rule spans two fields, so an expr tag cannot express it.
+func (c SASLConfig) Validate() error {
+	if c.Enabled && (c.Username == "" || c.Password == "") {
+		return errutil.Explain(nil, "kafka: sasl username and password are required when sasl is enabled")
+	}
+	return nil
+}
+
 // ProducerConfig tunes the producer. Zero values leave franz-go's own
 // defaults in place.
 type ProducerConfig struct {
 	// Compression is the batch compression codec: "none", "gzip", "snappy",
 	// "lz4" or "zstd", default is empty (franz-go default: none).
-	Compression string `value:"${compression:=}"`
+	Compression string `value:"${compression:=}" expr:"$ == '' || lower($) in ['none', 'gzip', 'snappy', 'lz4', 'zstd']"`
 
 	// RequiredAcks is the ack policy: "all" (all in-sync replicas), "leader"
 	// (leader only) or "none". Default is "all". Anything other than "all"
 	// disables idempotent writes as required by the protocol.
-	RequiredAcks string `value:"${required-acks:=all}"`
+	RequiredAcks string `value:"${required-acks:=all}" expr:"lower($) in ['all', 'leader', 'none']"`
 
 	// MaxBatchBytes caps the size of a produce batch in bytes,
 	// 0 keeps the franz-go default.

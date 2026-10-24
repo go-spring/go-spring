@@ -18,6 +18,7 @@ package governance
 
 import (
 	"context"
+	"go-spring.org/cloud/runtime/dataplane/inbound/admission"
 	"testing"
 
 	"go-spring.org/cloud/runtime/dataplane/kernel/fault"
@@ -38,8 +39,8 @@ func TestConfig_DirectionBlocks(t *testing.T) {
 	if p := c.resClient.PolicyFor("x"); p.Timeout != 0 {
 		t.Fatalf("zero config policyFor: want no timeout, got %v", p.Timeout)
 	}
-	if a := c.guardServer.PolicyFor("x"); !a.IsZero() {
-		t.Fatalf("zero config serverPolicyFor: want a zero inbound, got %+v", a)
+	if a := c.guardServer.PolicyFor("x"); a != admission.DefaultPolicy() {
+		t.Fatalf("zero config serverPolicyFor: want the tag-default inbound, got %+v", a)
 	}
 
 	// One fault config per side: each is preserved, and they stay independent.
@@ -64,10 +65,10 @@ func TestConfig_DirectionBlocks(t *testing.T) {
 	if p := cc.resClient.PolicyFor("redis:cache"); p.Timeout != dur(100) {
 		t.Fatalf("policyFor with Fault set: want timeout 100ms, got %v", p.Timeout)
 	}
-	// An outbound-only document leaves inbound at zero: the server side does not
-	// inherit the client's knobs.
-	if a := cc.guardServer.PolicyFor("gin:0.0.0.0:8080"); !a.IsZero() {
-		t.Fatalf("client-only document must leave inbound zero, got %+v", a)
+	// An outbound-only document leaves inbound at its tag defaults: the server
+	// side does not inherit the client's knobs.
+	if a := cc.guardServer.PolicyFor("gin:0.0.0.0:8080"); a != admission.DefaultPolicy() {
+		t.Fatalf("client-only document must leave inbound at its defaults, got %+v", a)
 	}
 }
 
@@ -99,9 +100,9 @@ func TestDispatch_RejectsDuplicateRules(t *testing.T) {
 	}
 
 	// Empty labels match nothing and are not duplicates of one another.
-	withEmpty := Config{
+	withEmpty := withInboundDefaults(Config{
 		Client: ClientConfig{Rules: []ClientRule{{}, {Service: "redis:cache"}}},
-	}
+	})
 	if err := c.dispatch(context.Background(), withEmpty); err != nil {
 		t.Fatalf("empty service labels must be allowed: %v", err)
 	}

@@ -58,7 +58,7 @@ func counts(t *testing.T, b Balancer, set []discovery.Endpoint, info PickInfo, n
 
 // staticSource is a fixed endpoint source for pool tests.
 func staticSource(eps ...discovery.Endpoint) discovery.Resolver {
-	return func() ([]discovery.Endpoint, error) { return eps, nil }
+	return func(context.Context) ([]discovery.Endpoint, error) { return eps, nil }
 }
 
 // newManager builds a manager over the built-in strategies alone, which is the

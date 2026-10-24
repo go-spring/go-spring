@@ -73,7 +73,8 @@ type Runtime struct {
 // src is required and bound for life; a hand-built runtime passes a
 // [governance.PushSource] wrapping the fixed document it wants. The caller owns
 // every authority it passes (the container's beans, or a test's fixtures); the
-// same instances are what [Runtime] hands back out.
+// same instances are what [Runtime] hands back out. A nil discovery directory is
+// normalized to an empty one, so [Runtime.Discovery] is never nil.
 func New(resClient *resilience.Manager,
 	lb *loadbalance.Manager, injClient *clientfault.ClientManager, injServer *serverfault.ServerManager,
 	disc *discovery.Manager, src governance.Source, opts ...Option) (*Runtime, error) {
@@ -86,6 +87,9 @@ func New(resClient *resilience.Manager,
 		guardOpts = append(guardOpts, admission.WithClusterLimiter(o.limiter))
 	}
 	gm := admission.NewManager(guardOpts...)
+	if disc == nil {
+		disc = discovery.NewManager(nil)
+	}
 	control, err := governance.NewCenter(resClient, gm, lb, injClient, injServer, src)
 	if err != nil {
 		_ = gm.Close()
@@ -106,7 +110,7 @@ func New(resClient *resilience.Manager,
 // an embedder or a test that wants the resilience and fault authorities behind
 // the one injection point a client already takes, without a rule list to serve.
 // The load-balance authority is a fresh empty manager and the discovery
-// directory is absent; callers that route by service name must join a [Runtime]
+// directory is empty; callers that route by service name must join a [Runtime]
 // built over a real directory instead.
 //
 // It is [New] over an empty [governance.PushSource]: the authorities are armed
@@ -123,9 +127,6 @@ func NewProcess(resClient *resilience.Manager,
 // control-plane operations only ([governance.Center.Validate]); request-path
 // code reaches the data-plane authorities through the methods below.
 func (r *Runtime) Center() *governance.Center {
-	if r == nil {
-		return nil
-	}
 	return r.control
 }
 
@@ -134,16 +135,11 @@ func (r *Runtime) Center() *governance.Center {
 // reads whichever authority it needs from here, instead of wiring each authority
 // bean in separately.
 //
-// A nil *Runtime reads as nil authorities, exactly as a zero construction bundle
-// did before the runtime was the one injection point: a caller that never routes
-// through an authority (a hand-built client, a test) may pass nil and only the
-// authority it actually reaches for must be present. The composition helpers
-// ([Runtime.ExecutorFor] / [Runtime.PolicyFor]) still require a resilience
-// manager and panic without one, since a client is never assembled unprotected.
+// Optional authorities (a fault injector, for example) may be nil; a caller
+// checks the one it actually reaches for. The Runtime itself is never nil: it
+// exists from startup, and [Runtime.ExecutorFor] / [Runtime.PolicyFor] require
+// the resilience manager.
 func (r *Runtime) ResilienceClient() *resilience.Manager {
-	if r == nil {
-		return nil
-	}
 	return r.resClient
 }
 
@@ -152,9 +148,6 @@ func (r *Runtime) ResilienceClient() *resilience.Manager {
 // object a server adapter (or a filter library with no bean to inject into)
 // passes to [InboundOver].
 func (r *Runtime) GuardServer() *admission.Manager {
-	if r == nil {
-		return nil
-	}
 	return r.guardServer
 }
 
@@ -162,27 +155,18 @@ func (r *Runtime) GuardServer() *admission.Manager {
 // It is the object client starters wrap their executors with. A server starter
 // has no use for it, and vice versa.
 func (r *Runtime) FaultClient() *clientfault.ClientManager {
-	if r == nil {
-		return nil
-	}
 	return r.injClient
 }
 
 // FaultServer returns the INBOUND fault authority; see [Runtime.ResilienceClient].
 // It is the object server adapters create their shell from.
 func (r *Runtime) FaultServer() *serverfault.ServerManager {
-	if r == nil {
-		return nil
-	}
 	return r.injServer
 }
 
 // Loadbalance returns the endpoint-selection authority; see
 // [Runtime.ResilienceClient].
 func (r *Runtime) Loadbalance() *loadbalance.Manager {
-	if r == nil {
-		return nil
-	}
 	return r.lb
 }
 
@@ -191,9 +175,6 @@ func (r *Runtime) Loadbalance() *loadbalance.Manager {
 // the runtime holds it so a client reaches discovery through the same injection
 // point it reaches everything else.
 func (r *Runtime) Discovery() *discovery.Manager {
-	if r == nil {
-		return nil
-	}
 	return r.disc
 }
 
@@ -207,9 +188,9 @@ func (r *Runtime) Discovery() *discovery.Manager {
 //
 // The layers are stacked fault(observe(resilience-executor)): the observer wraps
 // the resilience manager's handle (so a rejected or failed call is still traced,
-// measured and logged), and fault injection wraps that. The observe wrapper
-// reaches the breaker through the handle's [breaker.EventListenerSetter],
-// so breaker transitions still emit.
+// measured and logged), and fault injection wraps that. The two planes stay
+// separate: the observer records the request, while the resilience executor
+// publishes its own breaker and budget state from its own package.
 //
 // "system" is the client's backend name ("memcached", "redigo", ...), which
 // clients also declare in their operations; it is a parameter rather than state
@@ -217,9 +198,8 @@ func (r *Runtime) Discovery() *discovery.Manager {
 func (r *Runtime) ExecutorFor(system, label string) chain.Executor {
 	exec := observe.WrapClientExecutor(r.resClient.ExecutorFor(system, label), system, label)
 	if r.injClient == nil {
-		// A nil runtime is the standalone case a caller normalized away: there is
-		// no governance, so there is no fault layer either — but observation is
-		// unconditional, so the call is still traced and measured.
+		// No fault injector is configured: the call is still traced and measured,
+		// it just has nothing injected into it.
 		return exec
 	}
 	return r.injClient.WrapClientExecutor(exec)
@@ -244,14 +224,6 @@ func (r *Runtime) PolicyFor(label string) resilience.Policy {
 // authorities are beans with their own Destroy hooks, so they are not closed
 // here.
 func (r *Runtime) Close() error {
-	if r == nil {
-		return nil
-	}
-	if r.guardServer != nil {
-		_ = r.guardServer.Close()
-	}
-	if r.control != nil {
-		return r.control.Close()
-	}
-	return nil
+	_ = r.guardServer.Close()
+	return r.control.Close()
 }

@@ -367,7 +367,7 @@ Design suspects (for the audit ledger):
 2. Filters registered globally by name may not run unless referenced by the generated service
    config — activation semantics are implicit.
 3. `addr` must be `host:port`; the bare `:port` form common in the HTTP starters fails.
-4. No graceful drain on stop (`svr.Close(nil)`); no resilience admission (rate-limit/breaker),
+4. No graceful drain on stop (`svr.Close(nil)`); no resilience admission (rate-limit/bulkhead),
    unlike starter-grpc.
 5. ~~Dead keys: `example-otel/conf`'s `spring.trpc.server.interceptor.*` prefix~~ — FIXED:
    the config now uses the live `spring.trpc.server.observer.*` keys (§3.3).

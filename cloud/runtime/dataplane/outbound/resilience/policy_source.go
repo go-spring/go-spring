@@ -42,6 +42,7 @@ import (
 	"strconv"
 	"sync"
 
+	"go-spring.org/cloud/runtime/dataplane/kernel/matcher"
 	"go-spring.org/cloud/runtime/dataplane/outbound/chain"
 )
 
@@ -89,10 +90,9 @@ type PolicySource interface {
 }
 
 // PolicySourceSetter is the construction-time handshake through which an
-// outbound executor receives its [PolicySource]. It is the pull-side
-// counterpart of [breaker.EventListenerSetter], and it is asserted exactly the
-// same way — on the executor the manager itself built, while that executor is
-// still private, so no decorator stacked on top of it ever sees the protocol.
+// outbound executor receives its [PolicySource]. It is asserted on the executor
+// the manager itself built, while that executor is still private, so no
+// decorator stacked on top of it ever sees the protocol.
 //
 // A driver whose executor does not implement it keeps the construction-time
 // policy for every call: governance still protects, but per-rule matching and
@@ -147,7 +147,7 @@ func (s *snapshot) resolve(op chain.Operation) CallPolicy {
 			if !hasRule {
 				label, hasRule = r.Policy, true
 			}
-			if r.Action.Matches(op.Request.Action) && r.Match.Matches(op) {
+			if r.Action.Matches(op.Request.Action) && r.Match.Matches(op.Request.Metadata) {
 				return CallPolicy{
 					Policy: r.Policy,
 					Key:    ruleKey(r.Service, i),
@@ -222,7 +222,7 @@ func fingerprint(h hash.Hash64, s string) {
 // fingerprintSelector writes a match selector in key order — a Go map iterates
 // nondeterministically, and a generation that changed on every process start
 // would rebuild every breaker for no reason.
-func fingerprintSelector(h hash.Hash64, sel chain.Selector) {
+func fingerprintSelector(h hash.Hash64, sel matcher.ExactMap) {
 	if len(sel) == 0 {
 		h.Write([]byte{0})
 		return

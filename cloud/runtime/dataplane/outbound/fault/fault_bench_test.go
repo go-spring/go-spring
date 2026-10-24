@@ -20,6 +20,7 @@ import (
 	"context"
 	"testing"
 
+	kfault "go-spring.org/cloud/runtime/dataplane/kernel/fault"
 	"go-spring.org/cloud/runtime/dataplane/outbound/chain"
 	"go-spring.org/cloud/runtime/dataplane/outbound/resilience"
 )
@@ -49,7 +50,7 @@ func BenchmarkFaultExecutor_Inert(b *testing.B) {
 	d := resilience.NewDefaultDriver(nil)
 	raw, _ := d.NewExecutor("svc", resilience.Policy{})
 	defer func() { _ = raw.Close() }()
-	exec := newFixture(configs{Client: Config{}}, nil).client.WrapClientExecutor(raw) // inert
+	exec := newFixture(configs{Client: kfault.Config{}}, nil).client.WrapClientExecutor(raw) // inert
 	ctx := context.Background()
 	b.ResetTimer()
 	for b.Loop() {
@@ -63,7 +64,7 @@ func BenchmarkFaultExecutor_Injecting(b *testing.B) {
 	d := resilience.NewDefaultDriver(nil)
 	raw, _ := d.NewExecutor("svc", resilience.Policy{})
 	defer func() { _ = raw.Close() }()
-	exec := newFixture(configs{Client: Config{Rules: []Rule{{Rate: 1, Error: "generic"}}}}, nil).client.WrapClientExecutor(raw)
+	exec := newFixture(configs{Client: kfault.Config{Rules: []kfault.Rule{{Rate: 1, Error: "generic"}}}}, nil).client.WrapClientExecutor(raw)
 	ctx := context.Background()
 	b.ResetTimer()
 	for b.Loop() {

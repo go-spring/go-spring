@@ -55,6 +55,7 @@ package resilience
 import (
 	"strconv"
 
+	"go-spring.org/cloud/runtime/dataplane/kernel/matcher"
 	"go-spring.org/cloud/runtime/dataplane/outbound/chain"
 )
 
@@ -90,7 +91,7 @@ type Rule struct {
 
 	// Match narrows the rule to calls whose metadata satisfies it (subset-match).
 	// Empty matches every call of the service.
-	Match chain.Selector
+	Match matcher.ExactMap
 
 	// Action narrows the rule to calls whose Request.Action it matches (the
 	// interface being invoked). Empty matches every action. Two rules may share a

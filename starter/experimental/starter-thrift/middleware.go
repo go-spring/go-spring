@@ -108,7 +108,9 @@ type observer struct{}
 // Install it OUTERMOST, so a call the inbound middleware rejects is still
 // traced and counted:
 //
-//	proc = thrift.WrapProcessor(proc, Observe(), AccessLog(), Admit(label, system, mgr))
+//	admit, err := Admit(label, system, mgr)
+//	if err != nil { return err }
+//	proc = thrift.WrapProcessor(proc, Observe(), AccessLog(), admit)
 func Observe() thrift.ProcessorMiddleware {
 	return (&observer{}).observe
 }

@@ -193,9 +193,10 @@ func logApplied(ctx context.Context, cfg Config) {
 //
 // A document fails on any of: a Rule list repeating a service label (a duplicate
 // makes which entry wins a matter of list order, an accident the operator cannot
-// see), or a Selection naming no registered strategy. Every check runs against
-// the authorities this center holds, so the verdict cannot drift from what
-// dispatch would do.
+// see), a server policy that cannot be built (a negative max-concurrent), or a
+// Selection naming no registered strategy. Every check runs against the
+// authorities this center holds, so the verdict cannot drift from what dispatch
+// would do.
 //
 // It reads only immutable state — the authorities' registries and cfg itself — so
 // it takes no lock and is safe to call concurrently, even while a push is being
@@ -207,15 +208,22 @@ func (c *Center) Validate(cfg Config) error {
 	if err := validateServerRules(cfg.Server.Rules); err != nil {
 		return err
 	}
+	if err := admission.ValidateSettings(guardSettings(cfg)); err != nil {
+		return err
+	}
+	if err := resilience.ValidateSettings(resilienceSettings(cfg)); err != nil {
+		return err
+	}
 	return loadbalance.Validate(selectionSettings(cfg))
 }
 
 // dispatch applies cfg in two phases, so that a document either takes effect
 // WHOLE or not at all: phase 1 asks [Center.Validate] whether it can serve, and
-// only then does phase 2 store the snapshot and hand each module its own slice.
-// Nothing in phase 2 can fail, so the snapshot and all three authorities always
-// move together — the previous document keeps serving, in every authority, when
-// a push is rejected.
+// phase 2 hands the inbound authority its slice first — it is the one that can
+// still reject a policy it cannot build, and it rejects before the snapshot or
+// any other authority moves. Nothing after it can fail, so the snapshot and all
+// three authorities always move together — the previous document keeps serving,
+// in every authority, when a push is rejected.
 //
 // Each module receives DATA, not a way to ask: the rules are translated into the
 // module's own types here and pushed whole, after which the module owns the
@@ -233,13 +241,17 @@ func (c *Center) dispatch(ctx context.Context, cfg Config) error {
 		return err
 	}
 
-	// Phase 2 — commit. Nothing here can fail: the document carries policies only
-	// (the backend is a startup choice), so Apply's error is always nil and is
-	// discarded on purpose rather than re-checked.
+	// Phase 2 — commit. Both policy authorities re-check the document and can
+	// still reject it (an unknown breaker strategy, a threshold the strategy does
+	// not read, ...); they run before the snapshot or the other authorities
+	// move, so a rejected document leaves the previous one serving everywhere.
+	if err := c.guardServer.Apply(guardSettings(cfg)); err != nil {
+		return err
+	}
+	if err := c.resClient.Apply(resilienceSettings(cfg)); err != nil {
+		return err
+	}
 	c.cfg.Store(&cfg)
-	settings := resilienceSettings(cfg)
-	c.resClient.Apply(settings)
-	c.guardServer.Apply(guardSettings(cfg))
 	c.lb.Apply(ctx, selectionSettings(cfg))
 	c.injClient.Refresh(cfg.Client.Fault)
 	c.injServer.Refresh(cfg.Server.Fault)

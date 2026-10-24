@@ -144,14 +144,14 @@ DNS，集群外解析会以 lookup 错误失败（example 把它当警告处理�
 5. 每次 add/update/delete 都从 lister 缓存重算：slices → `slicesToEndpoints`（端口由 `pickPort`
    决定，`Healthy = Conditions.Ready == nil || *Ready`，`zone` 进 Metadata）→ 按地址排序
    （`endpointslice.go:228-238, 266-291`）。
-6. 之后的 `Resolve` 读缓存集合，并按本次调用的 scheme 过滤（`discovery.FilterByScheme`）；因此
+6. 之后的 `Resolve` 读缓存集合，并按本次调用收窄（`discovery.Narrow`）；因此
    `e.eps` 存的是**未过滤**的全集（`endpointslice.go:66-71`）。
 7. `Close` 停掉所有已跟踪的 watch——为「消费者忘了放手」兜底的关闭保险
    （`endpointslice.go:251-262`，接在 bean 析构上）。
 
 下游，客户端 starter 从后端构建 `discovery.Resolver`
-（`discovery.NewResolver(ctx, backend, serviceName, opts...)`，`cloud/runtime/dataplane/kernel/discovery/discovery.go:227`）——
-一个普通的 `func() ([]Endpoint, error)`（`cloud/runtime/dataplane/kernel/discovery/discovery.go:209`），由 loadbalance
+（`discovery.NewResolver(ctx, backend, serviceName, opts...)`，`cloud/runtime/dataplane/kernel/discovery/discovery.go:263`）——
+一个普通的 `func(ctx context.Context) ([]Endpoint, error)`（`cloud/runtime/dataplane/kernel/discovery/discovery.go:243`），由 loadbalance
 `Pool` 每次 pick 时调用。这就是把端点“推”进客户端连接池的那条路。
 
 ### 2.2 新鲜度 —— dns 模式

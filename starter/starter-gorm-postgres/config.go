@@ -31,14 +31,14 @@ import (
 type Config struct {
 	gormcore.Common
 
-	Host           string        `value:"${host:=}"`           // Database host (required unless ServiceName is set)
-	Port           string        `value:"${port:=5432}"`       // Database port
-	User           string        `value:"${user}"`             // Database username
-	Password       string        `value:"${password}"`         // Database password
-	DB             string        `value:"${db}"`               // Database name
-	SSLMode        string        `value:"${sslmode:=disable}"` // SSL mode, e.g., disable, require, verify-full
-	TimeZone       string        `value:"${timezone:=}"`       // Timezone, e.g., Asia/Shanghai
-	ConnectTimeout time.Duration `value:"${connectTimeout:=}"` // Connection timeout
+	Host           string        `value:"${host:=}"`              // Database host (required unless ServiceName is set)
+	Port           string        `value:"${port:=5432}"`          // Database port
+	User           string        `value:"${user}" expr:"$ != ''"` // Database username
+	Password       string        `value:"${password}"`            // Database password
+	DB             string        `value:"${db}" expr:"$ != ''"`   // Database name
+	SSLMode        string        `value:"${sslmode:=disable}"`    // SSL mode, e.g., disable, require, verify-full
+	TimeZone       string        `value:"${timezone:=}"`          // Timezone, e.g., Asia/Shanghai
+	ConnectTimeout time.Duration `value:"${connectTimeout:=}"`    // Connection timeout
 
 	// SSL certificate material. PostgreSQL negotiates TLS through SSLMode; these
 	// paths supply the CA / client certificate / key when a verifying mode or

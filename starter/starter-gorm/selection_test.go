@@ -74,7 +74,7 @@ func TestNewPickPoolRebuildsOnChange(t *testing.T) {
 	assert.Number(t, chain.Generation()).Equal(uint64(1))
 	assert.That(t, chain.Selection().Balancer).Equal(loadbalance.LeastConn)
 	assert.Number(t, chain.Tracker().Config().Threshold).Equal(3)
-	ep, perr := chain.Pick(loadbalance.PickInfo{})
+	ep, perr := chain.Pick(context.Background(), loadbalance.PickInfo{})
 	assert.Error(t, perr).Nil()
 	assert.That(t, ep.Addr).Equal("127.0.0.1:3306")
 
@@ -114,7 +114,7 @@ func TestNewPickPoolAnUnarmedManagerIsPassThrough(t *testing.T) {
 	// recorded and the tracker left at the zero config.
 	assert.That(t, chain.Selection()).Equal(loadbalance.Selection{})
 	assert.Number(t, chain.Tracker().Config().Threshold).Equal(0)
-	ep, perr := chain.Pick(loadbalance.PickInfo{})
+	ep, perr := chain.Pick(context.Background(), loadbalance.PickInfo{})
 	assert.Error(t, perr).Nil()
 	assert.That(t, ep.Addr).Equal("127.0.0.1:3306")
 }

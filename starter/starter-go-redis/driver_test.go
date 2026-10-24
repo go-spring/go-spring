@@ -18,6 +18,7 @@ package StarterGoRedis
 
 import (
 	"context"
+	"go-spring.org/cloud/runtime/dataplane/inbound/admission"
 	"testing"
 	"time"
 
@@ -37,7 +38,7 @@ import (
 func testCenter(t *testing.T, resClient *resilience.Manager, lb *loadbalance.Manager) *runtime.Runtime {
 	t.Helper()
 	ctr, err := runtime.New(resClient, lb, clientfault.NewClientManager(nil), serverfault.NewServerManager(nil), nil,
-		governance.NewPushSource(governance.Config{}))
+		governance.NewPushSource(governance.Config{Server: governance.ServerConfig{Default: admission.DefaultPolicy()}}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -58,7 +59,7 @@ type poolDriver struct {
 }
 
 func (d *poolDriver) CreateClient(ctx context.Context, c Config, center *runtime.Runtime) (*Client, error) {
-	src := func() ([]discovery.Endpoint, error) { return d.endpoints, nil }
+	src := func(context.Context) ([]discovery.Endpoint, error) { return d.endpoints, nil }
 	d.returned = center.Loadbalance().Chain(ctx, src, serviceLabel(c))
 	// A real *redis.Client is not needed: this driver builds no dialer.
 	return NewClient(redis.NewClient(&redis.Options{Addr: "127.0.0.1:0"}), c, d.returned, center)

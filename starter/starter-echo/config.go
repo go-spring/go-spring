@@ -36,7 +36,7 @@ type Config struct {
 	// the switch opts OUT, the addr key below opts IN.
 	Enabled bool `value:"${enabled:=true}"`
 
-	Address      string             `value:"${addr}"`
+	Address      string             `value:"${addr}" expr:"$ != ''"`
 	ReadTimeout  time.Duration      `value:"${readTimeout:=5s}"`
 	WriteTimeout time.Duration      `value:"${writeTimeout:=5s}"`
 	IdleTimeout  time.Duration      `value:"${idleTimeout:=60s}"`

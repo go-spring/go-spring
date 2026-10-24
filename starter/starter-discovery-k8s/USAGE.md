@@ -146,14 +146,14 @@ There is no public `Watch`: freshness is internal to the backend, which caches o
 5. Each add/update/delete recomputes from the lister cache: slices → `slicesToEndpoints` (port per
    `pickPort`, `Healthy = Conditions.Ready == nil || *Ready`, `zone` into Metadata) → sort by address
    (`endpointslice.go:228-238, 266-291`).
-6. `Resolve` later reads the cached set and applies the per-call scheme filter
-   (`discovery.FilterByScheme`), so `e.eps` holds the FULL unfiltered set (`endpointslice.go:66-71`).
+6. `Resolve` later reads the cached set and applies the per-call narrowing
+   (`discovery.Narrow`), so `e.eps` holds the FULL unfiltered set (`endpointslice.go:66-71`).
 7. `Close` stops every tracked watch — a shutdown safety net for a consumer that never let go
    (`endpointslice.go:251-262`, wired as the bean destructor).
 
 Downstream, a client starter builds a `discovery.Resolver` from the backend
-(`discovery.NewResolver(ctx, backend, serviceName, opts...)`, `cloud/runtime/dataplane/kernel/discovery/discovery.go:227`) — a plain
-`func() ([]Endpoint, error)` (`cloud/runtime/dataplane/kernel/discovery/discovery.go:209`) that a loadbalance `Pool` calls per pick.
+(`discovery.NewResolver(ctx, backend, serviceName, opts...)`, `cloud/runtime/dataplane/kernel/discovery/discovery.go:263`) — a plain
+`func(ctx context.Context) ([]Endpoint, error)` (`cloud/runtime/dataplane/kernel/discovery/discovery.go:243`) that a loadbalance `Pool` calls per pick.
 That is the "endpoint push" into client connection pools.
 
 ### 2.2 Freshness — dns mode

@@ -169,7 +169,7 @@ type httpSourceConfig struct {
 	URL string `value:"${url}" expr:"$ != ''"`
 
 	// Interval is the poll period (default 5s).
-	Interval time.Duration `value:"${interval:=5s}"`
+	Interval time.Duration `value:"${interval:=5s}" expr:"int($) > 0"`
 
 	// Format overrides document-format detection ("yaml", "json",
 	// "properties", "toml"); by default it is inferred from the URL path.

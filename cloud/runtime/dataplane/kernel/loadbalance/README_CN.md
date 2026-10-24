@@ -37,7 +37,7 @@ pool := loadbalance.NewPool(resolver, bal, loadbalance.WithTrackerConfig(loadbal
 }))
 
 for {
-    ep, err := pool.Pick(loadbalance.PickInfo{})
+    ep, err := pool.Pick(ctx, loadbalance.PickInfo{})
     if err != nil { return err }
     err = call(ep.Addr)     // 你的 RPC / HTTP 调用
     pool.Complete(ctx, ep, err)  // 必须配对：销账 + 喂摘除器
@@ -53,7 +53,7 @@ for {
 pool := loadbalance.NewPool(resolver, bal)
 ```
 
-- **端点来源**就是一个 `discovery.Resolver`——`func() ([]discovery.Endpoint, error)`。
+- **端点来源**就是一个 `discovery.Resolver`——`func(ctx context.Context) ([]discovery.Endpoint, error)`。
   新鲜度全在 discovery 后端内部，每次 `Pick` 都重读最新快照。
 - 每次 `Pick` 依次过滤：**discovery 资格**（禁用/不健康的实例）→ **摘除**
   （`Tracker` 冷却中的实例）→ **零权重摘流**（权重为 0 的实例），幸存者交给
@@ -115,10 +115,10 @@ func init() { loadbalance.Register("my_strategy", myFactory) }
 
 ```go
 // 按 hash key 亲和（consistent_hash 消费）
-ep, _ := pool.Pick(loadbalance.PickInfo{HashKey: userID})
+ep, _ := pool.Pick(ctx, loadbalance.PickInfo{HashKey: userID})
 
 // 按 zone 就近（zone_aware 消费）；接受有序回退列表，逐级下探，全空才溢出
-ep, _ := pool.Pick(loadbalance.PickInfo{Zone: "us-east-1a,us-east-1"})
+ep, _ := pool.Pick(ctx, loadbalance.PickInfo{Zone: "us-east-1a,us-east-1"})
 ```
 
 ## Tracker：离群摘除
@@ -150,7 +150,7 @@ if mgr != nil {
 } else {
 	chain = loadbalance.NewChain(resolver, "http:user-svc") // standalone
 }
-ep, err := chain.Pick(loadbalance.PickInfo{})
+ep, err := chain.Pick(ctx, loadbalance.PickInfo{})
 ```
 
 - `mgr.Chain(resolver, label)` 在该标签下把链建出来,于是标签当前的 `Selection` **立刻**
@@ -184,7 +184,16 @@ balancer: consistent_hash
 balancer-params:
   replicas: 200
 outlier-threshold: 5
+selector:                 # 候选集收窄，发生在策略挑点之前
+  - key: version
+    kind: prefix
+    value: v2.
 ```
+
+selector 是端点收窄**动态的一半**：它在池看到候选集之前用 `discovery.Narrow` 过滤
+resolver 的输出，所以能和 resolver 已有的静态收窄叠加（两者都必须成立）；一次推送
+和任何选择变更一样，推动该 label 的代际。这里**不兜底**——selector 匹配不到任何
+端点时直接 `ErrNoAvailable`，因为隐式兜底会把一条灰度规则悄悄放宽到全量实例。
 
 `Chain.build` 是"策略名变成策略"的唯一位置：它拿名字去包注册表——内置策略
 加上链接进来的包注册的策略——构造出池，所以池永远不持有

@@ -390,7 +390,7 @@ Design suspects (for the audit ledger):
 4. Fixed: the server now uses `security.TLSConfig.BuildServer()` (was `Build()`, client semantics) —
    `ca-file` enables mTLS (`RequireAndVerifyClientCert`), matching starter-grpc;
    `server-name`/`insecure-skip-verify` remain client-side keys with no server effect.
-5. No resilience admission (rate limit/breaker) on the inbound path — asymmetric with
+5. No resilience admission (rate limit/bulkhead) on the inbound path — asymmetric with
    starter-gin; fault injection is wired, protection is not.
 6. Neither `requestId` nor `loadtest` exposes a header name: the marker header belongs to the
    propagator bean, the request id to hertz-contrib's default.

@@ -304,33 +304,48 @@ starter-dubbo 的 poller）必然排在 center 之后，看到的就是已 live 
 | `spring.governance.client.default.*` | resilience.Policy | 全 off | 没有规则匹配的服务的基础 policy。 | — |
 | `spring.governance.client.rules[n].*` | []ClientRule | 空 | Resources 含该 label 的第一条 ClientRule 胜出。⚠ 命中的 ClientRule **整体替换** Default——不做字段级合并：零值 policy 字段意为"禁用"，部分合并无法区分"显式 0"与"未设"（`cloud/runtime/controlplane/governance/center.go:364`）。具体规则放前面。 | 只设 `timeout` 的规则会静默关掉该服务的默认 retries。 |
 | `spring.governance.client.fault.*` | fault.Config | 全 off | **出站**故障注入——烧的是本进程自己的 retry/breaker/timeout，见 §3.4。 | — |
-| `spring.governance.server.default.*` | resilience.ServerPolicy | 全 off | 没有规则匹配的路由的基础**入站**准入：限流、并发上限、入站熔断、处理预算。 | — |
+| `spring.governance.server.default.*` | admission.Policy | 全 off | 没有 ServerRule 匹配的路由的基础**入站**准入：限流、并发上限、处理预算。没有熔断器。 | — |
 | `spring.governance.server.rules[n].*` | []ServerRule | 空 | 按**入站 label** 逐路由覆盖（如 `gin::8080`、`grpc:/pkg.Svc/Method`），整体替换语义与出站规则一致。 | — |
-| `spring.governance.server.fault.*` | fault.Config | 全 off | **入站**故障注入——烧的是本服务的错误路径、observe 归类与入站熔断，见 §3.4。 | — |
+| `spring.governance.server.fault.*` | fault.Config | 全 off | **入站**故障注入——烧的是本服务的错误路径与 observe 归类，见 §3.4. | — |
 
 服务 label 在 **value** 里、绝不在 key 里（`config.go`）：`redis:cache`、
 `gorm:mysql:primary`、`gin:api`、`dubbo:com.example.Foo:1.0.0`——冒号和点都不用转义。
 
 ### 3.3 policy 旋钮（16 个，可用于 `spring.governance.client.default.*` 与每个 `spring.governance.client.rules[n].*`，默认全 0/off）
 
-入站模型（`resilience.ServerPolicy`，配在 `spring.governance.server.*`）接受**同样的旋钮，但去掉 retry 族**
-（`retry.max-retries` / `retry.retry-budget` / `retry.initial-interval` / `retry.multiplier` /
-`retry.max-interval` / `retry.randomization-factor`）：handler 已产生副作用、不能重放，所以入站写不出重试。
-`timeout` 在两边的含义完全一样——整通调用的墙钟上限——入站只是"只有一层要罩"的那种情况。
-其余旋钮名称与含义完全一致，值可以在两个方向之间直接搬。入站另有 `max-concurrent` /
-`bulkhead-queue-duration` —— 并发上限，出站客户端不带。
+入站模型是 `admission.Policy`，配在 `spring.governance.server.*`。它刻意比客户端模型小：
+没有重试（handler 已产生副作用、不能重放）、没有端点选择，也**没有熔断器**——
+实例级“全拒”没有安全的爆炸半径（见出站的[熔断规则](../../dataplane/outbound/resilience/README_CN.md#熔断规则)）。它的旋钮是：
+
+| Key | 类型 | 说明 |
+|-----|------|------|
+| `rate-limit` / `burst` / `rate-limit-max-wait` | float / int / duration | ops/sec 上限；burst 未设时默认取 rate-limit 的小倍数；max-wait 让超限请求排队等待而非立即拒绝（0 = 立即拒绝）。 |
+| `algorithm` / `window` | 枚举 / duration | 计数算法（空 = `token-bucket`，或 `sliding-window`）及其滚动窗口。 |
+| `rate-limit-warm-up-duration` / `warm-up-cold-factor` | duration / int | 冷启动 ramp-in；0 关闭。 |
+| `max-concurrent` / `bulkhead-queue-duration` | int / duration | 并发上限（bulkhead），以及满时排队等待槽位的最长时间；并发 0 关闭该层，排队 0 表示立即拒绝。 |
+| `timeout` | duration | adapter 施加到 handler context 上的处理预算。 |
+
+**迁移（2026-10-24）**：入站熔断键（`error-threshold`、`open-duration`、
+`breaker-strategy`、`error-rate-threshold`、`min-requests`、`breaker-window`、
+`slow-call-*`、`half-open-*`、`degrade-on-open`）在 `admission.Policy` 里已没有对应字段，
+不再绑定。请从推送文档中删除；其余键继续生效。出站熔断不变，仍在
+`spring.governance.client.*` 下配置。
 
 | Key | 类型 | 分组 | 说明 |
 |-----|------|------|------|
 | `rate-limit` / `burst` / `rate-limit-max-wait` | float / int / duration | ratelimit | ops/sec 上限；burst 未设时默认取 rate-limit 的小倍数；max-wait 让超限调用排队等待而非立即拒绝（0 = 立即拒绝）。 |
-| `error-threshold` / `open-duration` | int / duration | breaker | 连续错误跳闸。 |
-| `breaker-strategy` | 枚举 | breaker | `consecutive` \| `error-rate`。 |
-| `error-rate-threshold` / `min-requests` / `breaker-window` | float / int / duration | breaker | error-rate 策略输入。 |
-| `slow-call-duration-threshold` / `slow-call-rate-threshold` | duration / float | breaker | 慢调用熔断：耗时达到阈值的成功也计入比率窗口分子。 |
+| `breaker-disabled` | bool | breaker | 保留熔断旋钮但显式关闭保护（kill switch）。关闭时旋钮被忽略、不做校验。 |
+| `error-threshold` / `open-duration` | int / duration | breaker | 连续失败/窗口内失败数的跳闸阈值与冷却时长。`error-threshold` 默认 5，`open-duration` 默认 5s。 |
+| `breaker-strategy` | 枚举 | breaker | `consecutive`（未设时默认）\| `error-rate` \| `slow-call` \| `error-count`。设置 error-rate/slow-call 旋钮、或只设置通用旋钮时必须显式选择。 |
+| `error-rate-threshold` / `min-requests` / `breaker-window` | float / int / duration | breaker | error-rate 的跳闸比例与窗口。默认 0.5（50%）、5 个样本、1s（Sentinel）。 |
+| `slow-call-duration-threshold` / `slow-call-rate-threshold` | duration / float | breaker | slow-call 必须成对配置；在 error-rate 下它是与（默认的）失败率并行的 OR 臂。 |
 | `half-open-requests` | int | breaker | 半开态放行的试探请求数（0/1 = 单次；全部成功才闭合）。 |
+| `half-open-timeout` | duration | breaker | 半开轮次等待试探结果的最长时间；0（默认）无限等待，低流量下持续试探；正数表示轮次超时后重新打开熔断。 |
 | `retry.max-retries` / `retry.initial-interval` / `retry.multiplier` / `retry.max-interval` / `retry.randomization-factor` | … | retry | 重试节点 —— **默认关闭**；重试由调用方逐次声明，中心可在此下发节点。 |
 | `retry.retry-budget` | int | retry | 单个 executor 内在途重试总量上限；超预算的重试得到 `resilience: retry budget exceeded`。 |
 | `timeout` | duration | timeout | 整通调用的墙钟上限，作为**一个** context deadline 在入口罩住全部；重试与退避共用它，不是每轮各得一份。 |
+
+**熔断开关语义**：只要配置了任意一个熔断旋钮，熔断就是开启的；`breaker-disabled=true` 是保留旋钮、显式关闭保护的方式。选中策略但没写跳闸条件时会套用该策略的主流默认值；非法或含糊的配置在文档校验时被拒绝，绝不会静默退化成不熔断。
 
 driver 选择是静态启动选择（`spring.resilience.driver`，app 配置键，不在治理文档），刻意**不可**按服务重绑。
 每个旋钮的语义（退避数学、breaker 状态机）属于 `cloud/runtime/dataplane/outbound/resilience`——starter 只

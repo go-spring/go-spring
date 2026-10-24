@@ -140,7 +140,7 @@ func (d *zkDiscovery) Resolve(ctx context.Context, name string, opts ...discover
 		d.obs.Synced(name, nil)
 		go d.watchLoop(name, e)
 	}
-	eps := discovery.FilterByScheme(append([]discovery.Endpoint(nil), e.eps...), discovery.NewQuery("", opts...).Scheme)
+	eps := discovery.Snapshot(e.eps, discovery.NewQuery(name, opts...))
 	return eps, nil
 }
 

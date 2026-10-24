@@ -87,8 +87,8 @@ func TestKvsToEndpointsSchemeFilter(t *testing.T) {
 		mustKV(t, "/services/s/a", instanceValue{Addr: "10.0.0.1:80", Scheme: "tls"}),
 		mustKV(t, "/services/s/b", instanceValue{Addr: "10.0.0.2:80"}),
 	}
-	// FilterByScheme narrows to the tls instance only.
-	eps := discovery.FilterByScheme(kvsToEndpoints(newTestObserver(), kvs), "tls")
+	// Narrow narrows to the tls instance only.
+	eps := discovery.Narrow(kvsToEndpoints(newTestObserver(), kvs), discovery.NewQuery("s", discovery.WithScheme("tls")))
 	assert.That(t, len(eps)).Equal(1)
 	assert.That(t, eps[0].Addr).Equal("10.0.0.1:80")
 }

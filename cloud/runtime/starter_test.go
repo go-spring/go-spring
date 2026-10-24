@@ -31,6 +31,11 @@ import (
 	"go-spring.org/spring/gs"
 )
 
+// pushSource is governance.NewPushSource for a Config built in code.
+func pushSource(cfg governance.Config) *governance.PushSource {
+	return governance.NewPushSource(cfg)
+}
+
 // recordingDriver is a backend that flags every executor it builds, so a test
 // can prove WHICH driver the runtime selected rather than merely that some
 // executor exists.
@@ -78,7 +83,7 @@ func TestStarter_SourceBeanReachesTheRuntime(t *testing.T) {
 		// Declared with the interface return type, which is what makes the bean
 		// visible to the runtime's Source parameter.
 		app.Provide(func() governance.Source {
-			return governance.NewPushSource(testCfg(250))
+			return pushSource(testCfg(250))
 		})
 		// A stand-in for a client starter: it injects a module authority, which
 		// is the same instance the runtime drives.
@@ -109,7 +114,7 @@ func TestStarter_DriverBeanSelectedByName(t *testing.T) {
 	gs.Web(false).Configure(func(app gs.App) {
 		app.Property(resilience.DriverProperty, "corp")
 		app.Provide(func() governance.Source {
-			return governance.NewPushSource(governance.Config{})
+			return pushSource(governance.Config{})
 		})
 		app.Provide(func() *recordingDriver { return drv }).
 			Name("corp").
@@ -143,7 +148,7 @@ func TestRuntime_IsTheInjectedBean(t *testing.T) {
 
 	gs.Web(false).Configure(func(app gs.App) {
 		app.Provide(func() governance.Source {
-			return governance.NewPushSource(testCfg(120))
+			return pushSource(testCfg(120))
 		})
 		app.Provide(func(r *Runtime) *managerProbe {
 			rt = r
@@ -173,7 +178,7 @@ func TestRuntime_HandsOutDiscovery(t *testing.T) {
 
 	rt, err := New(resilience.NewManager(resilience.NewDefaultDriver(nil)),
 		loadbalance.NewManager(), clientfault.NewClientManager(nil), serverfault.NewServerManager(nil),
-		disc, governance.NewPushSource(governance.Config{}))
+		disc, pushSource(governance.Config{}))
 	if err != nil {
 		t.Fatal(err)
 	}

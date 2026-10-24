@@ -15,7 +15,7 @@ container required. Container wiring for each family lives in the
 | Package | What it answers |
 | --- | --- |
 | [actuator](actuator/) | Management endpoints: probe paths ([endpoint](actuator/endpoint/)), component health checks ([health](actuator/health/)), Kubernetes Pod metadata ([podinfo](actuator/podinfo/)). |
-| [breaker](runtime/dataplane/kernel/breaker/) | The direction-neutral circuit-breaker state machine shared by [resilience](runtime/dataplane/outbound/resilience/) (outbound) and [admission](runtime/dataplane/inbound/admission/) (inbound). |
+| [circuitbreaker](runtime/dataplane/kernel/circuitbreaker/) | The direction-neutral circuit-breaker state machine shared by [resilience](runtime/dataplane/outbound/resilience/) (outbound) and [admission](runtime/dataplane/inbound/admission/) (inbound). |
 | [cache](cache/) | A cache API declared once (`spring.cache`) and backed by go-redis / redigo / bigcache / memcached via starters. |
 | [chain](runtime/dataplane/outbound/chain/) | The governed-call vocabulary every layer shares: `Executor`, `Operation`, `Recorder` and the rejection sentinels. |
 | [discovery](runtime/dataplane/kernel/discovery/) | "Which live `host:port` addresses serve this logical name right now?" — the **read side** of a naming service (resolver + local endpoint directory, data plane). The write side is [registration](runtime/controlplane/registration/). |

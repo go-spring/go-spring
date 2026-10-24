@@ -29,7 +29,7 @@ import (
 	"testing"
 	"time"
 
-	"go-spring.org/cloud/runtime/dataplane/kernel/breaker"
+	"go-spring.org/cloud/runtime/dataplane/kernel/circuitbreaker"
 	"go-spring.org/cloud/runtime/dataplane/outbound/chain"
 	"go-spring.org/stdlib/errutil"
 	"go-spring.org/stdlib/testing/assert"
@@ -415,13 +415,68 @@ func TestCircuitBreakerOpensAndRecovers(t *testing.T) {
 	assert.Error(t, e.Execute(context.Background(), chain.Operation{}, nil, func(context.Context) error { return nil })).Nil()
 }
 
+// A caller that walks away says nothing about the unit: cancelling must not
+// feed the breaker. Our own policy budget expiring is different — that IS
+// evidence the unit did not serve within the budget.
+func TestCallerCancelIsIgnored(t *testing.T) {
+	e := newBuiltin(t, Policy{ErrorThreshold: 1, OpenDuration: time.Hour})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	err := e.Execute(ctx, chain.Operation{}, nil, func(ctx context.Context) error {
+		return ctx.Err()
+	})
+	assert.Error(t, err).Is(context.Canceled)
+
+	// Recorded as a failure, this next call would be short-circuited. It must
+	// still reach fn.
+	assert.Error(t, e.Execute(context.Background(), chain.Operation{}, nil, func(context.Context) error {
+		return nil
+	})).Nil()
+}
+
+// A cancelled half-open trial carries no verdict, so its permit goes back and
+// the next request becomes the deciding trial.
+func TestHalfOpenCallerCancelReturnsPermit(t *testing.T) {
+	e := newBuiltin(t, Policy{ErrorThreshold: 1, OpenDuration: 30 * time.Millisecond})
+	err := e.Execute(context.Background(), chain.Operation{}, nil, func(context.Context) error {
+		return errutil.Explain(nil, "boom")
+	})
+	assert.Error(t, err).NotNil()
+
+	time.Sleep(40 * time.Millisecond) // cool-down elapses -> half-open
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	err = e.Execute(ctx, chain.Operation{}, nil, func(ctx context.Context) error { return ctx.Err() })
+	assert.Error(t, err).Is(context.Canceled)
+
+	// The trial permit came back: a success closes the circuit instead of being
+	// refused as a spent half-open round.
+	assert.Error(t, e.Execute(context.Background(), chain.Operation{}, nil, func(context.Context) error {
+		return nil
+	})).Nil()
+	assert.That(t, breakerStats(t, e, "svc").State).Equal(circuitbreaker.StateClosed)
+}
+
+func TestPolicyTimeoutIsFailure(t *testing.T) {
+	e := newBuiltin(t, Policy{ErrorThreshold: 1, OpenDuration: time.Hour, Timeout: 20 * time.Millisecond})
+	err := e.Execute(context.Background(), chain.Operation{}, nil, func(ctx context.Context) error {
+		<-ctx.Done()
+		return ctx.Err()
+	})
+	assert.Error(t, err).Is(context.DeadlineExceeded)
+
+	err = e.Execute(context.Background(), chain.Operation{}, nil, func(context.Context) error { return nil })
+	assert.Error(t, err).Is(chain.ErrCircuitOpen)
+}
+
 func TestHalfOpenAdmitsSingleTrialConcurrent(t *testing.T) {
 	// Regression for the bool-flag half-open bug: once cool-down elapses, at
 	// most ONE trial is admitted even under concurrency. A second concurrent
 	// caller is treated as still-open.
 	e := newBuiltin(t, Policy{ErrorThreshold: 1, OpenDuration: 30 * time.Millisecond})
 
-	// Trip the breaker.
+	// Trip the circuitbreaker.
 	_ = e.Execute(context.Background(), chain.Operation{}, nil, func(context.Context) error {
 		return errutil.Explain(nil, "boom")
 	})
@@ -450,12 +505,83 @@ func TestHalfOpenAdmitsSingleTrialConcurrent(t *testing.T) {
 	assert.That(t, atomic.LoadInt32(&rejected)).Equal(int32(1))
 }
 
+func TestHalfOpenTrialKeepsItsPermitAcrossRetries(t *testing.T) {
+	// The breaker admits one LOGICAL call per trial, not one attempt. The retry
+	// of a trial must therefore run under the trial's permit instead of finding
+	// the half-open gate spent and leaving the round unresolved.
+	e := newBuiltin(t, Policy{
+		ErrorThreshold:   1,
+		HalfOpenRequests: 1,
+		OpenDuration:     30 * time.Millisecond,
+		Retry:            chain.RetryPolicy{MaxRetries: 1},
+	})
+
+	// Trip the breaker.
+	_ = e.Execute(context.Background(), chain.Operation{}, nil, func(context.Context) error {
+		return errutil.Explain(nil, "boom")
+	})
+	time.Sleep(40 * time.Millisecond) // cool-down elapses -> half-open
+
+	// The trial fails once and succeeds on its retry; the logical call succeeds
+	// and closes the circuit.
+	attempts := 0
+	err := e.Execute(context.Background(), chain.Operation{}, nil, func(context.Context) error {
+		attempts++
+		if attempts == 1 {
+			return errutil.Explain(nil, "boom")
+		}
+		return nil
+	})
+	assert.Error(t, err).Nil()
+	assert.That(t, attempts).Equal(2)
+
+	// Closed: the next call reaches fn instead of being refused.
+	ran := false
+	assert.Error(t, e.Execute(context.Background(), chain.Operation{}, nil, func(context.Context) error {
+		ran = true
+		return nil
+	})).Nil()
+	assert.That(t, ran).True()
+}
+
+func TestHalfOpenTrialPanicSettlesAsFailure(t *testing.T) {
+	// A panicking trial must still settle its permit. Otherwise the round would
+	// keep one permit outstanding forever: with no HalfOpenTimeout by default,
+	// that must re-open the circuit rather than leave it stuck half-open.
+	e := newBuiltin(t, Policy{
+		ErrorThreshold:   1,
+		HalfOpenRequests: 2,
+		OpenDuration:     30 * time.Millisecond,
+	})
+
+	// Trip the breaker.
+	_ = e.Execute(context.Background(), chain.Operation{}, nil, func(context.Context) error {
+		return errutil.Explain(nil, "boom")
+	})
+	time.Sleep(40 * time.Millisecond) // cool-down elapses -> half-open
+
+	// The first trial panics before returning; the deferred settlement records a
+	// failure and re-opens the circuit.
+	func() {
+		defer func() { _ = recover() }()
+		_ = e.Execute(context.Background(), chain.Operation{}, nil, func(context.Context) error {
+			panic("boom")
+		})
+	}()
+
+	// If the permit had been left unsettled, the second trial permit would still
+	// admit this call; a re-opened circuit refuses it during the cool-down.
+	assert.Error(t, e.Execute(context.Background(), chain.Operation{}, nil, func(context.Context) error {
+		return nil
+	})).Is(chain.ErrCircuitOpen)
+}
+
 func TestErrorRateBreakerTripsOnRatio(t *testing.T) {
 	// error-rate breaker: trips when fails/total >= threshold with enough
 	// samples, even though successes are interleaved (so a consecutive counter
 	// would never trip).
 	e := newBuiltin(t, Policy{
-		BreakerStrategy:    breaker.ErrorRate,
+		BreakerStrategy:    circuitbreaker.StrategyErrorRate,
 		ErrorRateThreshold: 0.5,
 		MinRequests:        4,
 		BreakerWindow:      time.Second,
@@ -520,7 +646,7 @@ func TestSlowCallBreaker(t *testing.T) {
 	// A downstream that never FAILS but always answers slowly trips the
 	// slow-call breaker over the rate window.
 	e := newBuiltin(t, Policy{
-		BreakerStrategy:           breaker.ErrorRate,
+		BreakerStrategy:           circuitbreaker.StrategyErrorRate,
 		ErrorRateThreshold:        0, // errors never happen
 		SlowCallDurationThreshold: 20 * time.Millisecond,
 		SlowCallRateThreshold:     0.5,
@@ -530,7 +656,7 @@ func TestSlowCallBreaker(t *testing.T) {
 	})
 	slow := func() error {
 		return e.Execute(context.Background(), chain.Operation{}, nil, func(context.Context) error {
-			time.Sleep(25 * time.Millisecond) // >= threshold: a slow success
+			time.Sleep(25 * time.Millisecond) // > threshold: a slow success
 			return nil
 		})
 	}
@@ -576,10 +702,10 @@ func TestHalfOpenMultipleTrials(t *testing.T) {
 
 // TestSlowCallStrategyBreaker pins the EXPLICIT slow-call strategy: only the
 // slow-call ratio trips it — fast failures (the error-rate window's signal) must
-// NOT open a slow-call breaker, and slow-but-successful calls MUST.
+// NOT open a slow-call breaker, and slow calls (successful or not) MUST.
 func TestSlowCallStrategyBreaker(t *testing.T) {
 	e := newBuiltin(t, Policy{
-		BreakerStrategy:           breaker.SlowCall,
+		BreakerStrategy:           circuitbreaker.StrategySlowCall,
 		SlowCallDurationThreshold: 20 * time.Millisecond,
 		// 0.2: the 5 fast failures above stay in the same window's denominator,
 		// so 2 slow calls out of 7 total reach 0.29 >= 0.2.
@@ -597,7 +723,7 @@ func TestSlowCallStrategyBreaker(t *testing.T) {
 	err := e.Execute(context.Background(), chain.Operation{}, nil, func(context.Context) error { return nil })
 	assert.Error(t, err).Nil() // still closed: failures are not slowness
 
-	// Slow successes only: 2/2 slow >= 0.5 trips it.
+	// Slow calls only: 2/2 slow, ratio 1.0 > 0.5, trips it.
 	for range 2 {
 		_ = e.Execute(context.Background(), chain.Operation{}, nil, func(context.Context) error {
 			time.Sleep(25 * time.Millisecond)
@@ -614,7 +740,7 @@ func TestSlowCallStrategyBreaker(t *testing.T) {
 // enough keeps it closed.
 func TestErrorCountStrategyBreaker(t *testing.T) {
 	e := newBuiltin(t, Policy{
-		BreakerStrategy: breaker.ErrorCount,
+		BreakerStrategy: circuitbreaker.StrategyErrorCount,
 		ErrorThreshold:  3,
 		MinRequests:     1,
 		BreakerWindow:   time.Minute,
@@ -636,7 +762,7 @@ func TestFallbackDegradesOnRejection(t *testing.T) {
 	e := newBuiltin(t, Policy{ErrorThreshold: 1, OpenDuration: time.Minute})
 	boom := errutil.Explain(nil, "boom")
 
-	// Trip the breaker.
+	// Trip the circuitbreaker.
 	assert.Error(t, e.Execute(context.Background(), chain.Operation{}, nil, func(context.Context) error { return boom })).Is(boom)
 
 	var seen error
@@ -670,67 +796,62 @@ func TestFallbackNilExecStillDegrades(t *testing.T) {
 	assert.Error(t, err).Nil()
 }
 
-// recordingListener captures breaker state transitions for test assertions.
-type recordingListener struct {
-	events []struct {
-		service  string
-		from, to breaker.State
+// breakerStats reads the executor's breaker for service through the same lock
+// the call path uses. Tests assert on the state the executor publishes, not on
+// an event stream: the breaker emits nothing itself.
+func breakerStats(t *testing.T, exec chain.Executor, service string) circuitbreaker.Stats {
+	t.Helper()
+	e, ok := exec.(*defaultExecutor)
+	if !ok {
+		t.Fatalf("unexpected executor type %T", exec)
 	}
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if e.cur == nil {
+		return circuitbreaker.Stats{State: circuitbreaker.StateClosed}
+	}
+	s, ok := e.cur.states[service]
+	if !ok || s.breaker == nil {
+		t.Fatalf("no breaker for %q", service)
+	}
+	return s.breaker.Stats()
 }
 
-func (l *recordingListener) OnBreakerStateChange(service string, from, to breaker.State) {
-	l.events = append(l.events, struct {
-		service  string
-		from, to breaker.State
-	}{service, from, to})
-}
-
-// TestBreakerEvents verifies the default driver emits closed→open (trip),
-// open→half-open (probe) and half-open→closed (recovery) transitions to a
-// listener attached via SetBreakerEventListener.
-func TestBreakerEvents(t *testing.T) {
+// TestBreakerStats verifies the breaker's observable state passes through
+// closed → open → half_open → closed, with the per-instance transition counts
+// a state observer reports.
+func TestBreakerStats(t *testing.T) {
 	d := NewDefaultDriver(nil)
 	exec, err := d.NewExecutor("svc", Policy{ErrorThreshold: 2, OpenDuration: 5 * time.Millisecond})
 	assert.Error(t, err).Nil()
 	defer func() { _ = exec.Close() }()
-
-	rec := &recordingListener{}
-	exec.(breaker.EventListenerSetter).SetBreakerEventListener(rec)
 
 	boom := errutil.Explain(nil, "boom")
 	ctx := context.Background()
 	// Two consecutive failures trip the breaker (closed → open).
 	_ = exec.Execute(ctx, chain.Operation{}, nil, func(context.Context) error { return boom })
 	_ = exec.Execute(ctx, chain.Operation{}, nil, func(context.Context) error { return boom })
-	assert.That(t, len(rec.events)).Equal(1)
-	assert.That(t, rec.events[0].from).Equal(breaker.Closed)
-	assert.That(t, rec.events[0].to).Equal(breaker.Open)
+	s := breakerStats(t, exec, "svc")
+	assert.That(t, s.State).Equal(circuitbreaker.StateOpen)
+	assert.That(t, s.Trips).Equal(uint64(1))
+	assert.That(t, s.HalfOpens).Equal(uint64(0))
+	assert.That(t, s.Recovers).Equal(uint64(0))
 
 	// The breaker is open: this call is rejected before fn runs, no transition.
 	_ = exec.Execute(ctx, chain.Operation{}, nil, func(context.Context) error { return nil })
-	assert.That(t, len(rec.events)).Equal(1)
+	s = breakerStats(t, exec, "svc")
+	assert.That(t, s.State).Equal(circuitbreaker.StateOpen)
+	assert.That(t, s.Trips).Equal(uint64(1))
 
 	// Wait out the cool-down so the next call is admitted as a half-open trial.
 	time.Sleep(20 * time.Millisecond)
 	// Trial succeeds: open → half-open (probe admitted), then half-open → closed.
 	_ = exec.Execute(ctx, chain.Operation{}, nil, func(context.Context) error { return nil })
-	assert.That(t, len(rec.events)).Equal(3)
-	assert.That(t, rec.events[1].from).Equal(breaker.Open)
-	assert.That(t, rec.events[1].to).Equal(breaker.HalfOpen)
-	assert.That(t, rec.events[2].from).Equal(breaker.HalfOpen)
-	assert.That(t, rec.events[2].to).Equal(breaker.Closed)
-}
-
-// TestBreakerEventsNoListener confirms the breaker still works (no panic) when
-// no listener is attached.
-func TestBreakerEventsNoListener(t *testing.T) {
-	d := NewDefaultDriver(nil)
-	exec, err := d.NewExecutor("svc", Policy{ErrorThreshold: 1, OpenDuration: time.Second})
-	assert.Error(t, err).Nil()
-	defer func() { _ = exec.Close() }()
-
-	err = exec.Execute(context.Background(), chain.Operation{}, nil, func(context.Context) error { return errutil.Explain(nil, "boom") })
-	assert.Error(t, err).NotNil() // tripped, no panic
+	s = breakerStats(t, exec, "svc")
+	assert.That(t, s.State).Equal(circuitbreaker.StateClosed)
+	assert.That(t, s.Trips).Equal(uint64(1))
+	assert.That(t, s.HalfOpens).Equal(uint64(1))
+	assert.That(t, s.Recovers).Equal(uint64(1))
 }
 
 // TestExecutorRebuildStartsClean pins what replaced hot reload: a policy change
@@ -756,12 +877,11 @@ func TestExecutorRebuildStartsClean(t *testing.T) {
 	defer func() { _ = loose.Close() }()
 	assert.Error(t, loose.Execute(ctx, chain.Operation{}, nil, func(context.Context) error { return nil })).Nil()
 
-	// A negative rate limit is not special-cased at construction: it builds, and
-	// the rate-limit stage treats it as no limit at all (RateLimit <= 0 is off).
-	neg, err := d.NewExecutor("svc", Policy{RateLimit: -1})
-	assert.Error(t, err).Nil()
-	defer func() { _ = neg.Close() }()
-	assert.Error(t, neg.Execute(ctx, chain.Operation{}, nil, func(context.Context) error { return nil })).Nil()
+	// A negative rate limit is invalid: construction rejects it instead of
+	// silently turning the stage into a pass-through.
+	if _, err := d.NewExecutor("svc", Policy{RateLimit: -1}); err == nil {
+		t.Fatal("a negative rate limit must be rejected")
+	}
 }
 
 // TestGovernanceLoopRecordsAttempts proves the retry loop writes each attempt —

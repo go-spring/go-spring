@@ -115,7 +115,7 @@ func (d *nacosDiscovery) Resolve(ctx context.Context, name string, opts ...disco
 		// starts the freshness clock before any push arrives.
 		d.obs.Synced(name, nil)
 	}
-	eps := discovery.FilterByScheme(append([]discovery.Endpoint(nil), e.eps...), discovery.NewQuery("", opts...).Scheme)
+	eps := discovery.Snapshot(e.eps, discovery.NewQuery(name, opts...))
 	return eps, nil
 }
 

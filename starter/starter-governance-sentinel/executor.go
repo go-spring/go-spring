@@ -19,10 +19,9 @@ package StarterGovernanceSentinel
 import (
 	"context"
 	"fmt"
-	"go-spring.org/cloud/runtime/dataplane/kernel/breaker"
+	breaker "go-spring.org/cloud/runtime/dataplane/kernel/circuitbreaker"
 	"go-spring.org/cloud/runtime/dataplane/outbound/chain"
 	"sync"
-	"sync/atomic"
 
 	"go-spring.org/log"
 	"go-spring.org/stdlib/errutil"
@@ -65,8 +64,6 @@ type sentinelExecutor struct {
 	// rather than a rebuild of materialized state — the boundary that makes it
 	// the one backend that cannot show the "state starts over" contract.
 	source resilience.PolicySource
-
-	listener atomic.Pointer[breaker.EventListener]
 }
 
 // SetPolicySource installs src, the manager this executor follows the config
@@ -77,17 +74,11 @@ func (e *sentinelExecutor) SetPolicySource(src resilience.PolicySource) {
 	e.source = src
 }
 
-// SetBreakerEventListener attaches l and routes sentinel breaker state changes
-// for the resource this executor serves (via ensureRules) to it. Satisfies
-// [breaker.EventListenerSetter]; observe-resilience uses it.
-func (e *sentinelExecutor) SetBreakerEventListener(l breaker.EventListener) {
-	ensureRouteListener()
-	e.listener.Store(&l)
-}
-
 func newSentinelExecutor(service string, p resilience.Policy) (*sentinelExecutor, error) {
-	if p.RateLimit < 0 {
-		return nil, errutil.Explain(nil, "resilience: negative rate limit %v", p.RateLimit)
+	// The same boundary validation as the builtin driver: a bad or ambiguous
+	// policy fails construction instead of silently loading fewer rules.
+	if err := resilience.ValidateSettings(resilience.Settings{Default: p}); err != nil {
+		return nil, err
 	}
 	return &sentinelExecutor{service: service, policy: p}, nil
 }
@@ -118,30 +109,59 @@ func (e *sentinelExecutor) ensureRules() error {
 		}
 	}
 
-	if e.policy.BreakerActive() {
+	if e.breakerActive() {
+		spec := e.policy.BreakerSpec()
 		rule := breakerRule(service, breakerKnobs{
-			strategy:       e.policy.ResolvedBreakerStrategy(),
-			errorThreshold: e.policy.ErrorThreshold,
-			rateThreshold:  e.policy.ErrorRateThreshold,
-			slowThreshold:  e.policy.SlowCallDurationThreshold,
-			slowRate:       e.policy.SlowCallRateThreshold,
-			minRequests:    e.policy.MinRequests,
-			window:         e.policy.BreakerWindow,
-			open:           e.policy.OpenDuration,
-			probeN:         e.policy.HalfOpenRequests,
+			strategy:       spec.Strategy,
+			errorThreshold: spec.FailureThreshold,
+			rateThreshold:  spec.FailureRate,
+			slowThreshold:  spec.SlowThreshold,
+			slowRate:       spec.SlowRate,
+			minRequests:    spec.MinSamples,
+			window:         spec.Window,
+			open:           spec.OpenDuration,
+			probeN:         spec.HalfOpenTrials,
 		})
 		if _, err := circuitbreaker.LoadRulesOfResource(service, []*circuitbreaker.Rule{rule}); err != nil {
 			return errutil.Explain(err, "resilience: load breaker rule for %q", service)
 		}
-		// Route sentinel breaker state changes for this service to the
-		// attached listener (if any), so observe-resilience gets the events.
-		if l := e.listener.Load(); l != nil {
-			registerBreakerRoute(service, *l)
+		// Keep this driver's own mirror of the breaker state so its metrics can
+		// report it: sentinel exposes transitions only through a process-wide
+		// listener, so the driver subscribes and records them itself.
+		ensureRouteListener()
+		registerBreakerRoute(service)
+		ensureStateObserver()
+	} else {
+		// The switch can turn an active breaker off between generations: clear
+		// the rule and stop mirroring its state, or the old rule keeps tripping.
+		if _, err := circuitbreaker.LoadRulesOfResource(service, nil); err != nil {
+			return errutil.Explain(err, "resilience: clear breaker rule for %q", service)
 		}
+		unregisterBreakerRoute(service)
 	}
 
 	e.loaded = true
 	return nil
+}
+
+// breakerActive reports whether the resolved strategy's own thresholds are
+// set, so the driver loads a breaker rule only when one can trip. This mirrors
+// what the kernel's Spec.Validate demands; it lives here because "configured"
+// is a policy question the driver answers before touching the kernel.
+func (e *sentinelExecutor) breakerActive() bool {
+	p := e.policy
+	if !p.BreakerEnabled() {
+		return false
+	}
+	spec := p.BreakerSpec()
+	switch spec.Strategy {
+	case breaker.StrategyErrorRate:
+		return spec.FailureRate > 0 || (spec.SlowThreshold > 0 && spec.SlowRate > 0)
+	case breaker.StrategySlowCall:
+		return spec.SlowThreshold > 0 && spec.SlowRate > 0
+	default: // Consecutive, ErrorCount
+		return spec.FailureThreshold > 0
+	}
 }
 
 // load brings this resource's rules up to date with the policy the manager now
@@ -257,7 +277,10 @@ func (e *sentinelExecutor) Execute(ctx context.Context, call chain.Operation, re
 		}
 
 		err = fn(callCtx)
-		if err != nil {
+		// A caller that walked away is not a verdict about the downstream, so it
+		// must not feed sentinel's circuit-breaker statistics. A policy-budget
+		// timeout still does: that is the unit failing to serve in time.
+		if err != nil && !resilience.CallerAborted(ctx, err) {
 			sentinel.TraceError(entry, err)
 		}
 		entry.Exit()
@@ -281,7 +304,12 @@ func (e *sentinelExecutor) Execute(ctx context.Context, call chain.Operation, re
 	return err
 }
 
-func (e *sentinelExecutor) Close() error { return nil }
+// Close drops this executor's breaker mirror so a torn-down executor stops
+// reporting and the sentinel demultiplexer holds no stale entry.
+func (e *sentinelExecutor) Close() error {
+	unregisterBreakerRoute(e.service)
+	return nil
+}
 
 // mapBlockError translates sentinel's block reason into the framework's neutral
 // sentinel errors so callers depend only on

@@ -138,7 +138,7 @@ func (d *dnsDiscovery) Resolve(ctx context.Context, name string, opts ...discove
 			d.obs.Synced(name, nil)
 		}
 	}
-	return discovery.FilterByScheme(append([]discovery.Endpoint(nil), e.eps...), discovery.NewQuery("", opts...).Scheme), nil
+	return discovery.Snapshot(e.eps, discovery.NewQuery(name, opts...)), nil
 }
 
 // fetch runs the live DNS query for name.

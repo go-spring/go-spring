@@ -207,7 +207,7 @@ func (c *coordinator) Recover(ctx context.Context, t Transaction) (Result, error
 	// result was never recorded is cancelled first, with a nil value (empty
 	// rollback), which participants must tolerate.
 	if snap.InProgress != "" {
-		if p, ok := byName[snap.InProgress]; ok && !containsName(snap.Tried, snap.InProgress) {
+		if p, ok := byName[snap.InProgress]; ok && !slices.Contains(snap.Tried, snap.InProgress) {
 			tried = append(tried, triedParticipant{participant: p, result: nil})
 		}
 	}
@@ -353,10 +353,6 @@ func isTerminal(s Status) bool {
 	default:
 		return false
 	}
-}
-
-func containsName(names []string, name string) bool {
-	return slices.Contains(names, name)
 }
 
 // runWithPolicy runs fn once when the policy is zero, or under the bundled

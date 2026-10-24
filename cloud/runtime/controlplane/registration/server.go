@@ -188,7 +188,7 @@ type RegistrationConfig struct {
 	Addr string `value:"${addr:=}"`
 
 	// Weight is the initial load-balancing weight; 0 means drained.
-	Weight int `value:"${weight:=100}"`
+	Weight int `value:"${weight:=100}" expr:"$ >= 0"`
 
 	// Version is the application version of this instance; empty means not
 	// advertised. Consumers may route on it (e.g. canary by version).

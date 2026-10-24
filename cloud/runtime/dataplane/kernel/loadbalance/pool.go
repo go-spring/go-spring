@@ -32,10 +32,10 @@ import (
 // the standalone case, for callers with no governance manager behind them.
 //
 // The endpoint source of a Pool is a [discovery.Resolver] — a plain
-// `func() ([]Endpoint, error)`, typically bound to one service name via
-// [discovery.NewResolver] — re-read live on every Pick. A source error (a
-// registry hiccup, an unknown service) propagates out of [Pool.Pick] instead
-// of being treated as "no endpoints".
+// `func(ctx context.Context) ([]Endpoint, error)`, typically bound to one
+// service name via [discovery.NewResolver] — re-read live on every Pick. A
+// source error (a registry hiccup, an unknown service) propagates out of
+// [Pool.Pick] instead of being treated as "no endpoints".
 // On every [Pool.Pick] it takes the live endpoint snapshot from its
 // [discovery.Resolver] (kept fresh by discovery Watch), filters it, and hands
 // the survivors to a [Balancer] to choose one.
@@ -113,10 +113,14 @@ func (p *Pool) Tracker() *Tracker { return p.tracker }
 // when the request finishes: it advances least-conn accounting and feeds the
 // suspension tracker, so skipping it defeats health suspension.
 //
+// ctx is the request's context, threaded to the endpoint source. The source is
+// usually a cache read, but a backend may refresh on demand, and that read owes
+// the request its deadline, cancellation and trace.
+//
 // It returns [ErrNoAvailable] when the source has no endpoints, or every
 // endpoint is disabled.
-func (p *Pool) Pick(info PickInfo) (discovery.Endpoint, error) {
-	eps, err := p.src()
+func (p *Pool) Pick(ctx context.Context, info PickInfo) (discovery.Endpoint, error) {
+	eps, err := p.src(ctx)
 	if err != nil {
 		return discovery.Endpoint{}, err
 	}

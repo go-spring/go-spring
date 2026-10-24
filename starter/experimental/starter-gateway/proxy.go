@@ -53,7 +53,7 @@ func (t *RouteTable) buildPicker(routeID string, up *Upstream) (picker, error) {
 		return nil, err
 	}
 	return func(r *http.Request) (*url.URL, func(error), error) {
-		ep, err := chain.Pick(loadbalance.PickInfo{HashKey: clientIP(r)})
+		ep, err := chain.Pick(r.Context(), loadbalance.PickInfo{HashKey: clientIP(r)})
 		if err != nil {
 			return nil, nil, err
 		}

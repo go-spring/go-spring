@@ -213,8 +213,7 @@ Rationale (from the source comments in `ApplyMiddlewares`, middleware.go:89-174)
 2. RequestID generates/propagates the id → response header `X-Request-Id`, ctx value for logs
 3. Observe: skip-check (path or route pattern), span `{method} {route}` starts, in-flight
    gauge +1 (opt-in), request body tee'd into a bounded buffer (payload capture)
-4. admission: `exec.Execute` around the handler — over limit → 429, breaker open → 503;
-   handler 5xx feeds the breaker as a failure
+4. admission: bulkhead + rate limit around the handler — over limit → 429
 5. fault: `_, err := srv.Fire(ctx, fault.Target{Service: "gin", Action: "GET /x"})`
    — `inj` is the injected `*serverfault.ServerManager` bean, and the built-in target names the route
    (`METHOD` + `c.FullPath()`), so a rule can fire one endpoint; marked traffic at `rate` gets
@@ -312,8 +311,7 @@ curl -i :8001/healthz    # starter-served liveness, independent of app routes
 1. Start §1's project with `spring.governance.server.default.rate-limit=5` (inbound admission
    reads the `server` block — see cloud/runtime/controlplane/governance README §4).
 2. Burst: `for i in $(seq 1 20); do curl -s -o/dev/null -w '%{http_code}\n' :8001/echo/x; done`
-   → both 200s and 429s (the smoke asserts exactly that). Breaker open → 503
-   (`admission.go:79-82`).
+   → both 200s and 429s (the smoke asserts exactly that).
 3. Tighten at runtime: governance hot-reloads (`ServerManager.ServerGuardFor` seam) — raise/lower
    `rate-limit` without restart and re-burst.
 

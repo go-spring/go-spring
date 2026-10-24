@@ -88,15 +88,23 @@ type Endpoint struct {
 ## 选项：收窄查询
 
 ```go
-eps, _ := d.Resolve(ctx, "orders", discovery.WithScheme("grpc"), discovery.WithTag("v2"))
+eps, _ := d.Resolve(ctx, "orders", discovery.WithScheme("grpc"))
 ```
 
 | 选项 | 语义 | 谁来生效 |
 |---|---|---|
-| `WithScheme(s)` | 限定到单一传输 scheme；空 scheme 与 `"tcp"` 等价 | 所有后端，经 `FilterByScheme` |
-| `WithTag(t)` | 注册中心原生标记（Consul service tag、discovery label） | 注册中心支持 tag 的后端在查询侧过滤；其余忽略 |
+| `WithScheme(s)` | 限定到单一传输 scheme；空 scheme 与 `"tcp"` 等价 | 所有后端，经 `Narrow` |
+| `WithSelector(s)` | 元数据合取：点名的每个 key 都必须存在且满足对应 term；term 之间是 AND | 所有后端，经 `Narrow`——后端可以下推任意 term，但本地过滤才是契约 |
 
-两者传空都是 no-op——配置值可以无条件透传。
+所有选项传空都是 no-op——配置值可以无条件透传。
+
+Selector 是作用在 `Endpoint.Metadata` 上的类型化合取式。匹配种类是封闭集合——
+`exact`、`prefix`、`suffix`、`contains`——term 是纯值，所以同一条规则既可以写在
+代码里，也可以从控制面解码而来。`matcher.Selector.Validate` 是解码规则的边界校验
+（未知 kind、空 key、空的 prefix/suffix/contains）；在规则生效时校验一次，
+失败就继续用上一条规则。这里刻意没有布尔连接符：“或”属于上一层的规则列表。空
+selector 表示“不收窄”，因此控制面解码器应当拒绝显式空规则，而不是把它装成“匹配
+全部”。
 
 ## Resolver：按名绑定的消费方
 
@@ -105,7 +113,7 @@ backend := discovery.NewStaticDiscovery(/* ... 来自注册中心的实时端点
 load, err := discovery.NewResolver(ctx, backend, "orders-redis")
 bal := loadbalance.NewRoundRobin()
 pool := loadbalance.NewPool(load, bal)
-ep, err := pool.Pick(loadbalance.PickInfo{})
+ep, err := pool.Pick(ctx, loadbalance.PickInfo{})
 ```
 
 - `NewResolver` 把后端标签 + 服务名（加上选项）一次性绑定，用一次同步 `Resolve`
@@ -133,8 +141,8 @@ func (b *myBackend) Resolve(ctx context.Context, name string, opts ...discovery.
     q := discovery.NewQuery(name, opts...)
     // 读缓存快照（首次调用查一次注册中心播种，之后用注册中心自己的
     // watch/订阅/轮询机制保持新鲜）；
-    // 用 discovery.FilterByScheme(raw, q.Scheme) 过滤；
-    // 注册中心支持 tag 则在查询里带上 q.Tag
+    // 返回 discovery.Snapshot(raw, q)——本地契约（含 q.Selector，后端没有
+    // 义务下推它）加上调用方安全的缓存副本，一次调用完成
 }
 
 // 在 starter 的模块接线里：
@@ -246,7 +254,7 @@ func (m *Manager) Labels() []string
 - 后端新鲜度选型：事件推送（etcd `clientv3.Watch` / nacos `Subscribe` 回调刷缓存）、
   读穿 TTL（DNS 类，无 goroutine）、informer（k8s endpointslice，`Close` 停全部）、
   blocking-query 循环（consul）。
-- `discovery.Resolver` 是函数类型 `func() ([]Endpoint, error)`；构造器
+- `discovery.Resolver` 是函数类型 `func(ctx context.Context) ([]Endpoint, error)`；构造器
   `NewResolver(ctx, backend, name, opts)` 绑 backend+name 一次、同步 `Resolve` 播种
   fail-fast、mesh/无名返回 `(nil,nil)`；**零资源无 Stop**。
 - **Resolver 不做端点选择。** `Pick` 与内部 mini-RR 已删，选择全归
@@ -257,7 +265,7 @@ func (m *Manager) Labels() []string
 - `Pool` 直接收 `discovery.Resolver`：`NewPool(src discovery.Resolver, bal Balancer,
   opts ...PoolOption)`，`Pool.Pick` 传播源错误。没有 `EndpointSource` / `SourceFunc`
   （已删）；`discovery.Allows` 早已移成 loadbalance 私有 `admission`。
-- 连接池消费形态：`NewPool(resolver, bal)`，拨号闭包里 `pool.Pick(PickInfo{})`；
+- 连接池消费形态：`NewPool(resolver, bal)`，拨号闭包里 `pool.Pick(ctx, PickInfo{})`；
   gormcore 提供 `Common.NewResolver` / `NewPickPool` 共享函数。
 - 「cloud 无 spring 依赖」从铁律降级为默认倾向（用户明示可突破）。
 

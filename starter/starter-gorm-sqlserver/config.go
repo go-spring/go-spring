@@ -31,11 +31,11 @@ import (
 type Config struct {
 	gormcore.Common
 
-	User     string `value:"${user}"`       // Database username
-	Password string `value:"${password}"`   // Database password
-	Host     string `value:"${host:=}"`     // Database host (required unless ServiceName is set)
-	Port     string `value:"${port:=1433}"` // Database port
-	DB       string `value:"${db}"`         // Database name
+	User     string `value:"${user}" expr:"$ != ''"` // Database username
+	Password string `value:"${password}"`            // Database password
+	Host     string `value:"${host:=}"`              // Database host (required unless ServiceName is set)
+	Port     string `value:"${port:=1433}"`          // Database port
+	DB       string `value:"${db}" expr:"$ != ''"`   // Database name
 
 	// Connect/dial timeouts. SQL Server has no DSN-level read/write timeout;
 	// per-operation deadlines are driven through context. A zero value leaves

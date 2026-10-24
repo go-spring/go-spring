@@ -75,7 +75,7 @@ Verified dependency facts (do not violate):
     `admission.Manager`; the control plane pushes it the server half of the
     document, and adapters get one `Guard` per server instance from
     `runtime.InboundFor`.
-  - The neutral organs behind both are shared: `cloud/runtime/dataplane/kernel/breaker`
+  - The neutral organs behind both are shared: `cloud/runtime/dataplane/kernel/circuitbreaker`
     owns the breaker state machine, and `cloud/runtime/dataplane/kernel/ratelimit` owns the
     rate-limit vocabulary, local budget and counting algorithms. Sharing an
     organ does not merge authorities: each direction still maps its own policy

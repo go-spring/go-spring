@@ -34,7 +34,10 @@ func serveServerPolicy(t *testing.T, handler echo.HandlerFunc) (*httptest.Respon
 	t.Helper()
 	e := echo.New()
 	handlerRuns := 0
-	in := testCenter(nil).InboundFor("echo", "echo:test")
+	in, err := testCenter(nil).InboundFor("echo", "echo:test")
+	if err != nil {
+		t.Fatal(err)
+	}
 	e.Use(resilienceServerPolicy(in, "echo:test", true))
 	e.GET("/x", func(c echo.Context) error {
 		handlerRuns++

@@ -146,7 +146,10 @@ func (p *livePool) reconcileLocked() {
 	}
 	p.last = time.Now()
 
-	eps, err := p.resolve()
+	// Elasticsearch's connection-pool hooks carry no caller context (the
+	// transport calls them from its own goroutine), so this adapter boundary is
+	// where a background context is supplied.
+	eps, err := p.resolve(context.Background())
 	if err != nil || len(eps) == 0 {
 		return // keep the last good set
 	}

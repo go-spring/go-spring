@@ -199,7 +199,7 @@ func (c *inventoryClient) client() (*http.Client, error) {
 		}
 		nd := &net.Dialer{}
 		c.hc = &http.Client{Transport: &http.Transport{DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
-			eps, err := rsv()
+			eps, err := rsv(ctx)
 			if err != nil {
 				return nil, err
 			}

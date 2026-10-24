@@ -32,7 +32,7 @@ import (
 
 // buildServerPolicy builds the inbound governance middleware. The inbound
 // governance object comes from the injected [runtime.Runtime], so this server
-// gets its rate-limit / bulkhead / breaker limits from the governance document's
+// gets its rate-limit / bulkhead limits from the governance document's
 // SERVER block (spring.governance.server.*). A nil center — a standalone call, or
 // an app that does not import governance — is normalized inside the center to an
 // unarmed authority, whose guard is a transparent pass-through, so the middleware
@@ -40,17 +40,20 @@ import (
 // its backing engine per call and follows the manager's hot-reload, so an operator
 // can tighten inbound governance without a restart, independently of every
 // outbound client's policy. The center composes the observe object around the
-// guard, so breaker trips / rejects emit span + counter + histogram + access log.
+// guard, so refusals emit span + counter + histogram + access log.
 func buildServerPolicy(cfg Config, center *runtime.Runtime) (gin.HandlerFunc, error) {
 	service := label.ServiceLabel("gin", cfg.Address)
-	return resilienceServerPolicy(center.InboundFor("gin", service)), nil
+	in, err := center.InboundFor("gin", service)
+	if err != nil {
+		return nil, err
+	}
+	return resilienceServerPolicy(in), nil
 }
 
 // resilienceServerPolicy is the inbound governance middleware: each request runs
-// through the inbound object so the configured rate-limit / bulkhead / breaker
-// policy is enforced before the handler chain. Refusals map to 429
-// (rate/bulkhead) or 503 (circuit open); a handler-emitted 5xx counts as a failure
-// for the breaker.
+// through the inbound object so the configured rate-limit / bulkhead policy is
+// enforced before the handler chain. Rate/bulkhead refusals map to 429 and an
+// injected fault to 503.
 //
 // Inbound cannot retry — a handler that has already produced side effects cannot
 // be replayed (inbound serving is not idempotent). That is structural:
@@ -86,16 +89,16 @@ func resilienceServerPolicy(in *runtime.Inbound) gin.HandlerFunc {
 }
 
 // httpStatusFor maps an inbound refusal to the HTTP status a client can act on:
-// rate/bulkhead rejections are 429, an open circuit or an injected fault is 503.
+// rate/bulkhead rejections are 429, an injected fault is 503.
 func httpStatusFor(kind admission.Verdict) int {
-	if kind == admission.VerdictCircuitOpen || kind == admission.VerdictFaultInjected || kind == admission.VerdictDegraded {
+	if kind == admission.VerdictFaultInjected {
 		return http.StatusServiceUnavailable
 	}
 	return http.StatusTooManyRequests
 }
 
-// errHTTP5xx is the failure signal a handler-emitted 5xx feeds back into the
-// breaker (the breaker counts non-nil errors from fn).
+// errHTTP5xx is the failure signal a handler-emitted 5xx carries into the
+// request record and the span status.
 type errHTTP5xx struct{ code int }
 
 func (e errHTTP5xx) Error() string { return fmt.Sprintf("http: server returned %d", e.code) }

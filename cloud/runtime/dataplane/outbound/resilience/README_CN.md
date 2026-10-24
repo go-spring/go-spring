@@ -35,6 +35,90 @@
   服务持有的预算，交给它一份 `ClusterLimiter` 存储（`starter-go-redis` 的 Redis）
   则跨副本共用一份预算。
 
+## 熔断规则
+
+熔断**只属于出站**，作用域是单个下游 **service** —— 与限流同一个 scope。
+一个 service label 只有一个 executor，因此该 label 的所有调用方共用一台熔断器：
+下游坏了，所有人一起被拒；下游健康时，也不会因为某个调用方自己乱来而被拒。
+不提供按 endpoint 的粒度：它只会成倍增加熔断器，却换不来调用方需要的隔离。
+
+熔断器只回答一个问题：**这个单元还值得再试吗？** 它说的是单元，不是这次请求，
+也不替代其他 stage：
+
+| 机制 | 限制什么 | 依据 | 拒绝时 |
+| --- | --- | --- | --- |
+| 限流 | 请求速率 | 配置的配额 | `ErrRateLimited` |
+| bulkhead | 并发度 | 配置的容量 | `ErrBulkheadFull` |
+| **熔断** | **是否还值得尝试** | **近期结果** | `ErrCircuitOpen` |
+| 重试 | 单次调用的尝试次数 | 上一次尝试 | 再试一次 |
+| 降级 | — | 拒绝结果 | 调用方自己的兜底 |
+
+### 分类
+
+每个**逻辑调用**（含全部重试）恰好贡献一个样本。分类由 adapter 完成，
+熔断器只负责计数：
+
+| 样本 | 具体情形 |
+| --- | --- |
+| failure | 连接拒绝/重置、DNS/TLS 失败、响应前 EOF、I/O 超时、`Policy.Timeout` 到期、HTTP 5xx、gRPC `Unavailable` / `Internal` / `DeadlineExceeded` / `DataLoss`，以及调用返回前的 panic |
+| success | HTTP 2xx/3xx、HTTP 4xx（单元正常作答并拒绝了这次请求）、HTTP 429 / gRPC `ResourceExhausted`（流控也是一种作答，不是故障）、未列入 failure 的 gRPC code、adapter 声明的成功哨兵（cache miss / no rows） |
+| ignored | 调用方自身的取消或超时，且此时还没有拿到关于该单元的裁决 |
+
+慢调用**不是独立的样本类别**：每个样本都带耗时，由选中的策略在耗时**严格大于** `SlowCallDurationThreshold` 时把它计为慢调用——成功和失败都一样。`error-rate` 下，慢失败既是 failure（失败率分子），也是慢调用（慢率分子）；`slow-call` 下只看慢。resilience4j 和 Sentinel 都是这样统计的。
+
+4xx **不是** failure：下游正常工作了，是请求有问题。5xx 才是：下游收到请求但没做成。
+调用方中途离开不构成任何证据；`Policy.Timeout` 是我们自己的处理预算，到期仍算 failure。
+重试预算拒绝不会抹掉第一次尝试的失败：样本取自逻辑调用，而不是那次拒绝。
+ignored 样本既不打开也不关闭电路；在半开状态下它归还探测许可，
+所以一次无裁决的探测不会把健康的电路重新打开。
+
+### adapter 的责任
+
+上表是每个 adapter 要实现的契约；引擎只看得到 `error`。HTTP adapter 把
+`>= 500` 映射为 failure，其余响应原样返回，所以 2xx/3xx/4xx 和 429 都是
+success。gRPC adapter 必须把 `InvalidArgument` / `NotFound` / `AlreadyExists` /
+`PermissionDenied` / `Unauthenticated` / `FailedPrecondition` / `OutOfRange`
+映射为 success，把 `Unavailable` / `Internal` / `DataLoss` / `Canceled` 映射为
+failure。**调用方自身的取消**是唯一的 ignored 情形，由引擎从调用方 context
+自行识别；adapter 没有单独的 ignored 通道，凡是以 error 上报的都算 failure。
+cache miss / no rows 这类业务哨兵算 success。adapter 无法归类时，如实透传
+真实 error，不要凭空造一个。
+
+### 触发、冷却与恢复
+
+在最近一个 `BreakerWindow` 内，满足任一条件即熔断：
+
+- 样本数 ≥ `MinRequests`，且失败率 ≥ `ErrorRateThreshold`；或
+- 配置了慢调用阈值对时，慢调用率 ≥ `SlowCallRateThreshold`；或
+- `consecutive` 策略下连续失败 ≥ `ErrorThreshold` 次。
+
+熔断进入 Open，持续 `OpenDuration`；随后半开轮次放行 `HalfOpenRequests`
+个探测，全部成功才关闭，首个失败立即重新打开。`HalfOpenTimeout`
+约束始终不结算的轮次；为 0 时无限等待，低流量下就是持续探测。
+
+拒绝以 `ErrCircuitOpen` 暴露。调用方拿到拒绝后返回什么——缓存值、默认值、
+错误——是它自己的降级，不属于熔断器。
+
+### 开关、默认值与严格性
+
+一个熔断旋钮都没配时，熔断是关闭的；配置任意一个旋钮即开启（`BreakerDisabled`
+保留旋钮但显式关闭保护，即 kill switch）。
+
+选中策略但没写跳闸条件时，会套用该策略的主流默认值：`consecutive` /
+`error-count` 默认 5 次（gobreaker），`error-rate` 默认 50%（Hystrix/resilience4j），
+所有窗口策略的最小样本默认 5（Sentinel）。slow-call 没有有意义的默认 pair，仍然必填。
+辅助旋钮默认 `BreakerWindow` 1s、`OpenDuration` 5s、`HalfOpenTrials` 1、
+`HalfOpenTimeout` 无限等待。
+
+所有值都在边界校验：非法或含糊的配置在构造时被拒绝，绝不会静默退化成惰性熔断器。
+
+### 方向
+
+本契约仅限客户端。入站请求由 `admission` 治理，**入站没有熔断器**（决定日期 2026-10-24）：
+实例级“全拒”没有安全的爆炸半径。将来若做入站自保，它会是入站侧自己的一份组合——
+按资源（action/route）分粒度、动作是降级——而不是把这台按 service 的熔断器
+搬过方向。kernel 的状态机可以作为积木复用；scope、决策点和效果则不能。
+
 ## 对齐：sentinel 与 OpenSergo
 
 策略模型是两个引擎共同翻译的中立超集，可直接映射到
@@ -197,6 +281,16 @@ sentinel 驱动。
   `chain.ErrBulkheadFull`；adapter 已经会映射它。
 - client adapter 里 `redis.Nil` / `gorm.ErrRecordNotFound` 这类"无数据"错误
   绝不能喂给熔断器；adapter 在返回 `Execute` 前把它映射为 success。
+- 半开态下内置驱动严格只放行一个试探（单许可 channel，不是 bool 标志，
+  所以冷却刚过时的两个并发调用不会都被放行）。sentinel 驱动用
+  `ProbeNum=1` 近似；其自身的 probe 计数在强并发下不保证严格单次放行。
+- 开启重试时，两个驱动的**采样数**不同：内置引擎每个**逻辑调用**只记一个
+  熔断样本（跨全部重试），sentinel 驱动每次 **attempt** 建一个
+  `sentinel.Entry`，所以每次重试也会成为一个样本。sentinel 把流控与熔断计数
+  耦合在同一个 entry 上，要对齐就得放弃按 attempt 的流控；"每个逻辑调用一个
+  样本"是内置引擎的契约，也是本包写在规范里的规则。
+- 内置的 `error-rate` 熔断是“失败率 OR 慢率”。sentinel 驱动每个资源规则只能
+  映射一个策略，它的 `error-rate` 规则只覆盖失败率；两个信号都需要时请用内置驱动。
 
 ## 4. 权衡与放弃的方案
 
@@ -226,9 +320,9 @@ sentinel 驱动。
 - **器官共享、参数中立。** 熔断状态机 / 限流桶 / `serviceState` / `ClusterLimiter`
   各一份，各自收自己的词汇：`RateSpec` 导出（store 实现与 gateway 过滤器都要读），
   `breakerSpec` 包内，`resolveBreakerStrategy` 决定策略。
-- **依赖方向严格单向：** `chain ← observability ← resilience`。拒绝哨兵在 `chain`；
-  `BreakerState` / `BreakerEventListener(Setter)` 定义在 `observability/breaker.go`，
-  resilience 侧全用别名保兼容。
+- **两个互不依赖的观测面。** 请求面（`outbound/observe`）只记录单次调用的结果，从不读取治理状态；
+  本包通过 `observe.go` 注册的 observable 仪器发布**自己的**器官状态（breaker、限流预算）。
+  因此不存在跨层 listener 契约，也不在 `chain.Executor` 上放状态快照接口。
 - **命名：** 出站不再带方向限定词——本包就是出站。入站在 `guard`
   （`admission.Manager` / `admission.Policy`），两个 authority 读起来是一对对称的类型，
   谁都不需要 `Client`/`Server` 前缀。
@@ -242,15 +336,13 @@ sentinel 驱动。
   一份预算。`call.Target` / `call.Scenario` 目前只是**携带给读者**（以及将来按它分域的那一步）；
   它们现在不划分任何东西。绝不要让 `Execute` 按任意 per-call key **选择**保护状态；要按 key
   分区计数器，就递一个 `ClusterLimiter` 并在 scope 里放 key。
-- **breaker 必须首次调用时惰性构建**（`snapshot()` / `buildState()`），不能在构造
-  executor 时建——否则 `SetBreakerEventListener` 接不上（`Manager.ExecutorFor`
-  里的 `WrapClientExecutor` 是手递手装上的）。
+- **器官在首次调用时惰性构建**（`snapshot()` / `buildState()`）。executor 的状态观测在采集时
+  读取当前代际，因此惰性构建和策略换代都不需要任何装配握手。
 - **托管路径一个 label 一个 executor。** client 一律走
   `Manager.ExecutorFor`，不自己 `Subscribe` + `NewExecutor`。别给某个 client
   加「需要看见 resolved policy」的能力（那会逼它绕开 manager），要改就在 govern rule
   层改。httpx 曾是唯一绕开 manager 的 client（自带 `min-requests=5` 下限），该下限
-  已删、改走 `ExecutorFor("http", service)`；`Policy.MinRequests` 的零值下限
-  `<=0 → 1` 保持原样。
+  已删、改走 `ExecutorFor("http", service)`；`Policy.MinRequests` 的默认值现在是 5（Sentinel 的 minRequestAmount）。
 - **executor 是稳定的壳，它物化的状态是一代可替换的内核。** 刷新协议已不存在。
   `Manager.Apply` 发布一份快照就结束；每个 executor 持有一个 `PolicySource`（就是
   manager），在调用点上问「这次调用跑在什么策略下、属于哪一代」

@@ -23,5 +23,5 @@ package StarterLuaFilter
 type Config struct {
 	// Script is the path to the Lua source file, resolved relative to the
 	// application working directory.
-	Script string `value:"${script}"`
+	Script string `value:"${script}" expr:"$ != ''"`
 }

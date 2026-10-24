@@ -17,7 +17,7 @@
 // Command example demonstrates starter-gin's inbound resilience inbound: with
 // spring.gin.server.resilience.enabled, every request runs through the selected
 // resilience driver's chain.Executor, so a burst over the configured rate limit is
-// shed with HTTP 429 (circuit-open with 503) before the business handler runs.
+// shed with HTTP 429 before the business handler runs.
 //
 // This is entirely config-driven — the starter applies the inbound middleware
 // itself; the app only wires a route. The smoke test fires a burst and asserts

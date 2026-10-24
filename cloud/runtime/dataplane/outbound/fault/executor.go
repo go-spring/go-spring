@@ -48,12 +48,12 @@ type Client struct {
 // It does NOT call anything: the returned error is the "may I proceed?" answer —
 // nil means run the real call, anything else means return it instead (an
 // injected failure, or the context error when the injected latency was cancelled
-// mid-sleep). [Decision] says what happened either way.
+// mid-sleep). [kfault.Decision] says what happened either way.
 //
 // The outbound side is fixed by which shell this is, so a caller cannot aim a
 // fire at the inbound config; its inbound counterpart is
 // [go-spring.org/cloud/runtime/dataplane/inbound/fault.Server.Fire].
-func (c *Client) Fire(ctx context.Context, t Target) (Decision, error) {
+func (c *Client) Fire(ctx context.Context, t kfault.Target) (kfault.Decision, error) {
 	return c.Shell.Fire(ctx, t)
 }
 
@@ -85,9 +85,9 @@ type faultExecutor struct {
 // pass-through anyway.
 //
 // The service a fault rule matches is the call's OWN: [chain.Operation.Service],
-// which the client states when it builds the call (see [Target]). This adapter
-// takes no label of its own — a call that names no service matches only the
-// rules that name none, and quietly borrowing a label here would make a
+// which the client states when it builds the call (see [kfault.Target]). This
+// adapter takes no label of its own — a call that names no service matches only
+// the rules that name none, and quietly borrowing a label here would make a
 // mislabelled call look correctly targeted. inner is the executor for the same
 // service, so a fault rule and a resilience rule name the same thing.
 //
@@ -108,10 +108,10 @@ func (m *ClientManager) WrapClientExecutor(inner chain.Executor) chain.Executor 
 // first try. A push landing mid-call takes effect on the next call.
 func (e *faultExecutor) Execute(ctx context.Context, call chain.Operation, rec *chain.Recorder, fn func(context.Context) error) error {
 	// The adapter translates: the client-shaped call description collapses into
-	// the three coordinates a rule matches (see [Target]). Service is taken as
-	// the call states it — no fallback, because a fallback would hide a caller
-	// that forgot to name the service it is calling.
-	t := Target{
+	// the three coordinates a rule matches (see [kfault.Target]). Service is
+	// taken as the call states it — no fallback, because a fallback would hide a
+	// caller that forgot to name the service it is calling.
+	t := kfault.Target{
 		Service:  call.Service,
 		Action:   call.Request.Action,
 		Metadata: call.Request.Metadata,

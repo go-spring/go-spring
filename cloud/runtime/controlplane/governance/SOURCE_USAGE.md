@@ -331,35 +331,56 @@ app.properties.
 | `spring.governance.client.default.*` | resilience.Policy | all off | Baseline policy for every service no ClientRule matches. | — |
 | `spring.governance.client.rules[n].*` | []ClientRule | empty | The ClientRule whose Service equals the label wins (labels are unique — a duplicate is rejected). ⚠ A matched ClientRule **fully replaces** Default — no field-wise merge: a zero policy field means "disabled", so a partial merge could not distinguish "explicitly 0" from "unset" (`cloud/runtime/controlplane/governance/center.go:364`). List specific rules first. | ClientRule setting only `timeout` silently turns OFF the default's retries for that service. |
 | `spring.governance.client.fault.*` | fault.Config | all off | OUTBOUND fault injection — the fire that tests this process's own retry/breaker/timeout, see §3.4. | — |
-| `spring.governance.server.default.*` | resilience.ServerPolicy | all off | Baseline INBOUND admission for every route no ClientRule matches: rate limit, concurrency cap, inbound breaker, handling budget. | — |
+| `spring.governance.server.default.*` | admission.Policy | all off | Baseline INBOUND admission for every route no ServerRule matches: rate limit, concurrency cap, handling budget. No circuit breaker. | — |
 | `spring.governance.server.rules[n].*` | []ServerRule | empty | Per-route admission override, matched by the same exact label the inbound middleware passes (e.g. `gin::8080`, `grpc:/pkg.Svc/Method`). Same full-replace semantics as the client rules. | — |
-| `spring.governance.server.fault.*` | fault.Config | all off | INBOUND fault injection — the fire that tests this server's error paths, observe classification and inbound breaker, see §3.4. | — |
+| `spring.governance.server.fault.*` | fault.Config | all off | INBOUND fault injection — the fire that tests this server's error paths and observe classification, see §3.4. | — |
 
 Service labels live in a **value**, never a key (`config.go`): `redis:cache`,
 `gorm:mysql:primary`, `gin:api`, `dubbo:com.example.Foo:1.0.0` — colons and dots need no escaping.
 
 ### 3.3 Policy knobs (16, usable under `spring.governance.client.default.*` and each `spring.governance.client.rules[n].*`, all default 0/off)
 
-The INBOUND model (`resilience.ServerPolicy`, under `spring.governance.server.*`) accepts the same knobs
-**minus the retry family** (`retry.max-retries` / `retry.retry-budget` / `retry.initial-interval` /
-`retry.multiplier` / `retry.max-interval` / `retry.randomization-factor`): a handler that already
-produced side effects cannot be replayed, so inbound has no retry to express. `timeout` means
-exactly what it means outbound — the whole call's wall time — and inbound is simply the case
-with one stage to cover. The other knobs keep their names and meanings, so a value moves
-between directions without relearning. Inbound additionally carries `max-concurrent` /
-`bulkhead-queue-duration` — the concurrency cap, which an outbound client does not have.
+The INBOUND model is `admission.Policy`, under `spring.governance.server.*`. It is deliberately
+smaller than the client model: no retry (a handler that already produced side effects cannot
+be replayed), no endpoint selection, and **no circuit breaker** — an instance-wide "reject all"
+has no safe blast radius (see the outbound [circuit-breaking rule](../../dataplane/outbound/resilience/README.md#circuit-breaking-the-rule)).
+Its knobs are:
+
+| Key | Type | Notes |
+|-----|------|-------|
+| `rate-limit` / `burst` / `rate-limit-max-wait` | float / int / duration | ops/sec cap; burst defaults to a small multiple of rate-limit when unset; max-wait queues over-limit requests up to that long instead of rejecting (0 = reject immediately). |
+| `algorithm` / `window` | enum / duration | counting scheme (`token-bucket` when empty, or `sliding-window`) and its rolling interval. |
+| `rate-limit-warm-up-duration` / `warm-up-cold-factor` | duration / int | cold-start ramp-in; 0 disables it. |
+| `max-concurrent` / `bulkhead-queue-duration` | int / duration | concurrency cap (the bulkhead) and how long a request finding it full may wait for a slot; 0 concurrency disables the stage, 0 queue refuses immediately. |
+| `timeout` | duration | the handling budget the adapter applies to the handler's context. |
+
+**Migration (2026-10-24):** the inbound breaker keys (`error-threshold`,
+`open-duration`, `breaker-strategy`, `error-rate-threshold`, `min-requests`,
+`breaker-window`, `slow-call-*`, `half-open-*`, `degrade-on-open`) no longer
+have a field in `admission.Policy` and are no longer bound. Delete them from
+pushed documents; the remaining keys keep working. Outbound breaking is
+unchanged and still configured under `spring.governance.client.*`.
 
 | Key | Type | Group | Notes |
 |-----|------|-------|-------|
 | `rate-limit` / `burst` / `rate-limit-max-wait` | float / int / duration | ratelimit | ops/sec cap; burst defaults to a small multiple of rate-limit when unset; max-wait queues over-limit calls up to that long instead of rejecting (0 = reject immediately). |
-| `error-threshold` / `open-duration` | int / duration | breaker | consecutive-error trip. |
-| `breaker-strategy` | enum | breaker | `consecutive` \| `error-rate`. |
-| `error-rate-threshold` / `min-requests` / `breaker-window` | float / int / duration | breaker | error-rate strategy inputs. |
-| `slow-call-duration-threshold` / `slow-call-rate-threshold` | duration / float | breaker | slow-call breaker: successes at/above the duration count toward the rate-window numerator. |
+| `breaker-disabled` | bool | breaker | keep the breaker knobs but switch protection off (an explicit kill switch). Disabled knobs are ignored, not validated. |
+| `error-threshold` / `open-duration` | int / duration | breaker | consecutive/error-count trip count and cool-down. `error-threshold` defaults to 5; `open-duration` defaults to 5s. |
+| `breaker-strategy` | enum | breaker | `consecutive` (default when unset) \| `error-rate` \| `slow-call` \| `error-count`. Required when error-rate/slow-call knobs are set, or when only general knobs are set. |
+| `error-rate-threshold` / `min-requests` / `breaker-window` | float / int / duration | breaker | error-rate trip ratio and window. Defaults: 0.5 (50%), 5 samples, 1s (Sentinel). |
+| `slow-call-duration-threshold` / `slow-call-rate-threshold` | duration / float | breaker | a complete pair is required for slow-call; under error-rate it is an additional OR arm alongside the (defaulted) failure rate. |
 | `half-open-requests` | int | breaker | trials admitted in half-open before deciding (0/1 = single trial; close after all succeed). |
+| `half-open-timeout` | duration | breaker | how long a half-open round may wait for its trial outcomes; 0 (default) waits indefinitely so low traffic keeps probing; positive re-opens the circuit when the round outlives it. |
 | `retry.max-retries` / `retry.initial-interval` / `retry.multiplier` / `retry.max-interval` / `retry.randomization-factor` | … | retry | the retry node — default OFF; retry is declared per call and a center can push a node here. |
 | `retry.retry-budget` | int | retry | cap on in-flight retries across one executor; over-budget retries get `resilience: retry budget exceeded`. |
 | `timeout` | duration | timeout | wall-time bound on the WHOLE call, applied as one context deadline at the entry; retries and backoff share it rather than each getting their own. |
+
+**Breaker enablement:** the breaker is on when at least one breaker knob is
+configured, and `breaker-disabled=true` is the explicit way to keep those knobs
+while switching protection off. Selecting a strategy applies its mainstream
+defaults to a trip condition that was left unset; invalid or ambiguous
+configurations are rejected when the document is validated, never silently
+turned into a no-op.
 
 Driver selection is a static startup choice (`spring.resilience.driver`, an app-config key, not a governance-document key) and
 deliberately NOT re-bindable per service. Semantics of each knob (backoff math, breaker states)

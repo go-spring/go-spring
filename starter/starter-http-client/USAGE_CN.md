@@ -339,8 +339,9 @@ endpoint,看打散变化——链路是整条重建的,不用重启;用真实发
    `resilience.ErrCircuitOpen`,微秒级返回(无网络往返)。
 2. 用自己的 binary 做等价手工演练:杀掉后端、循环调用,观察错误从网络/500 错误变为
    `circuit open`;恢复后端后等 `open-duration`(30s)——half-open 试探成功、熔断闭合。
-3. 观察跳变:`resilience.client.breaker.state_change{from=...,to=...}` 计数器递增并输出状态
-   迁移日志(cloud/runtime/dataplane/outbound/resilience/observe.go:98-110)。
+3. 观察跳变:`resilience.client.breaker.transitions_total{to="open"}` 递增,
+   `resilience.client.breaker.state{state="open"}` 报告打开状态
+   (由 resilience executor 自己发布,见 cloud/runtime/dataplane/outbound/resilience/observe.go)。
 
 ### 4.4 故障注入(免重启)
 
@@ -362,7 +363,10 @@ spring.governance.client.fault.error=timeout    # 或 generic / reset
   `resilience.client.calls` 计数器,属性 `resilience.system="http"`、
   `resilience.service="http:greet-svc"`、`status` ∈ {ok, error},以及保护拒绝该调用时的
   `resilience.error_type` ∈ {rate_limited, circuit_open, bulkhead_full, timeout};
-  `resilience.client.breaker.state_change` 带 from/to。
+  `resilience.client.breaker.state`(按 state 1-hot)、
+  `resilience.client.breaker.transitions_total{to}`;
+  `resilience.client.ratelimit.usage_ratio`(仅本地预算——配置了 ClusterLimiter 时
+  不发布;包含被熔断拒绝的尝试与重试)。
 - 访问日志:由 `observability.level` 门控(默认 brief = 开),tag
   `_app_http_resilience`(`log.RegisterAppTag("http", "resilience")`)。
 - trace:httpx 内置的 otelhttp 层每请求一个 client span(命名遵循

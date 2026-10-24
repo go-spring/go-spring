@@ -42,6 +42,7 @@ import (
 	"github.com/gogf/gf/v2/net/gtcp"
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
+	"go-spring.org/stdlib/errutil"
 
 	"go-spring.org/starter-goframe/internal/logger"
 )
@@ -73,20 +74,32 @@ type Config struct {
 	Name string `value:"${name:=goframe}"`
 
 	// Address is the gtcp.Server bind address, e.g. ":8003".
-	Address string `value:"${address}"`
+	Address string `value:"${address}" expr:"$ != ''"`
 
 	// AdvertiseHost/Port is the endpoint published into etcd. Because gtcp binds
 	// on Address and never asks the OS for a public IP, the consumer would fail
 	// to dial "0.0.0.0" — the provider has to name the address clients connect
 	// on. Only used when Registry.Etcd is set.
-	AdvertiseHost string `value:"${advertise.host:=127.0.0.1}"`
-	AdvertisePort int    `value:"${advertise.port:=8003}"`
+	AdvertiseHost string `value:"${advertise.host:=}"`
+	AdvertisePort int    `value:"${advertise.port:=0}"`
 
 	// Registry publishes the server into etcd for discovery. Leave etcd empty
 	// (the default) for a plain TCP server with no registration.
 	Registry struct {
 		Etcd string `value:"${etcd:=}"`
 	} `value:"${registry}"`
+}
+
+// Validate makes the advertised endpoint required once registration is on. The
+// old 127.0.0.1:8003 defaults were placeholders that only make sense on a local
+// machine, and gtcp cannot detect the real outbound address, so a registered
+// server must state it. The rule spans the registry and advertise fields, so an
+// expr tag cannot express it.
+func (c Config) Validate() error {
+	if c.Registry.Etcd != "" && (c.AdvertiseHost == "" || c.AdvertisePort <= 0) {
+		return errutil.Explain(nil, "goframe tcp: advertise.host and advertise.port are required when registry.etcd is set")
+	}
+	return nil
 }
 
 // TCPServer wraps a goframe *gtcp.Server together with the optional gsvc

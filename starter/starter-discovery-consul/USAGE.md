@@ -200,7 +200,8 @@ Discovery needs **no configuration**: each block's bean IS a `cloud/runtime/data
 `consul.<name>`; clients cite that bean name (`discovery=consul.main`). The bean is lazy — a
 pure provider never pays for the read half; a pure consumer configures only connection blocks and
 registers nothing. Multi-agent discovery is just multiple blocks — cite whichever agent you want
-to read from. Per-call, `discovery.WithTag` still narrows a query by Consul service tag.
+to read from. The block's `tag` narrows the Consul query server-side; caller options
+(`WithScheme`, `WithSelector`) narrow the cached snapshot locally.
 
 Mapping: `Service.Address:Port` → `Endpoint.Addr` (node address fallback when the service has
 none), `Weights.Passing` → weight, `Meta` → metadata, `Meta["scheme"]` → `Endpoint.Scheme`;

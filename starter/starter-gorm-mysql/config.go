@@ -31,17 +31,17 @@ import (
 type Config struct {
 	gormcore.Common
 
-	User         string        `value:"${user}"`           // Database username
-	Password     string        `value:"${password}"`       // Database password
-	Network      string        `value:"${net:=}"`          // Network type (tcp, unix), optional
-	Addr         string        `value:"${addr:=}"`         // Database host:port or socket path (required unless ServiceName is set)
-	DB           string        `value:"${db}"`             // Database name
-	Timeout      time.Duration `value:"${timeout:=}"`      // Connection timeout
-	ReadTimeout  time.Duration `value:"${readTimeout:=}"`  // Read timeout
-	WriteTimeout time.Duration `value:"${writeTimeout:=}"` // Write timeout
-	Charset      string        `value:"${charset:=}"`      // Character set, e.g., utf8mb4
-	ParseTime    bool          `value:"${parseTime:=}"`    // Parse time values into time.Time
-	Location     string        `value:"${loc:=}"`          // Timezone location, e.g., Asia/Shanghai
+	User         string        `value:"${user}" expr:"$ != ''"` // Database username
+	Password     string        `value:"${password}"`            // Database password
+	Network      string        `value:"${net:=}"`               // Network type (tcp, unix), optional
+	Addr         string        `value:"${addr:=}"`              // Database host:port or socket path (required unless ServiceName is set)
+	DB           string        `value:"${db}" expr:"$ != ''"`   // Database name
+	Timeout      time.Duration `value:"${timeout:=}"`           // Connection timeout
+	ReadTimeout  time.Duration `value:"${readTimeout:=}"`       // Read timeout
+	WriteTimeout time.Duration `value:"${writeTimeout:=}"`      // Write timeout
+	Charset      string        `value:"${charset:=}"`           // Character set, e.g., utf8mb4
+	ParseTime    bool          `value:"${parseTime:=}"`         // Parse time values into time.Time
+	Location     string        `value:"${loc:=}"`               // Timezone location, e.g., Asia/Shanghai
 
 	// TLS configuration. When TLS.Enabled is set, the connection negotiates TLS
 	// and a *tls.Config built from CA/cert/key/server-name/insecure-skip-verify

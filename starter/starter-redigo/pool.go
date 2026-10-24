@@ -165,7 +165,7 @@ func newRawPool(c Config, tlsConfig *tls.Config, lbChain *loadbalance.Chain) *re
 				nd := &net.Dialer{Timeout: c.DialTimeout}
 				opts = append(opts, redis.DialContextFunc(
 					func(ctx context.Context, network, _ string) (net.Conn, error) {
-						ep, err := lbChain.Pick(loadbalance.PickInfo{})
+						ep, err := lbChain.Pick(ctx, loadbalance.PickInfo{})
 						if err != nil {
 							return nil, err
 						}

@@ -143,8 +143,10 @@ func (DefaultDriver) CreateClient(ctx context.Context, c Config, center *runtime
 // had, so a registry hiccup leaves the driver exactly as it was rather than
 // handing it an empty router list to fail on.
 func liveRouterAddresses(resolve discovery.Resolver) neo4j.ServerAddressResolver {
+	// The driver's address-resolver hook carries no context, so this is one of
+	// the adapter boundaries that supplies context.Background() itself.
 	return func(current neo4j.ServerAddress) []neo4j.ServerAddress {
-		eps, err := resolve()
+		eps, err := resolve(context.Background())
 		if err != nil || len(eps) == 0 {
 			return []neo4j.ServerAddress{current}
 		}
@@ -216,14 +218,14 @@ func resolveURI(ctx context.Context, c Config, backend discovery.Discovery) (str
 	if err != nil {
 		return "", errutil.Explain(err, "neo4j: resolve service %s", c.ServiceName)
 	}
-	eps, err := resolver()
+	eps, err := resolver(ctx)
 	if err != nil {
 		return "", errutil.Explain(err, "neo4j: pick endpoint for %s", c.ServiceName)
 	}
 	bal := loadbalance.NewRoundRobin()
-	ep, err := loadbalance.NewPool(func() ([]discovery.Endpoint, error) {
+	ep, err := loadbalance.NewPool(func(context.Context) ([]discovery.Endpoint, error) {
 		return eps, nil
-	}, bal).Pick(loadbalance.PickInfo{})
+	}, bal).Pick(ctx, loadbalance.PickInfo{})
 	if err != nil {
 		return "", errutil.Explain(err, "neo4j: pick endpoint for %s", c.ServiceName)
 	}

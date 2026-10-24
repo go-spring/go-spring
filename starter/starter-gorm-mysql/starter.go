@@ -219,7 +219,7 @@ func newDiscoveryConn(ctx context.Context, c Config, backend discovery.Discovery
 	// The addr is ignored; the dialer picks a live endpoint via the chain's
 	// current generation.
 	mysql.RegisterDialContext(netName, func(ctx context.Context, _ string) (net.Conn, error) {
-		ep, perr := lb.Pick(loadbalance.PickInfo{})
+		ep, perr := lb.Pick(ctx, loadbalance.PickInfo{})
 		if perr != nil {
 			return nil, perr
 		}

@@ -49,7 +49,7 @@ belong to `gs`; see the spring documentation.
 - `Authorize(authorities ...string)` — anonymous yields 401; an authenticated
   caller missing any required authority yields 403; with no arguments it only
   requires an authenticated caller.
-- `ServerPolicy(label, mgr) Middleware` — inbound admission, and the request's span +
+- `ServerPolicy(label, mgr) (Middleware, error)` — inbound admission, and the request's span +
   metrics + access log (both ride the same executor); see §4.
 - `CORS(CORSConfig)` / `CSRF(CSRFConfig)` — see the constraints in
   [cloud/security DESIGN](../../cloud/security/README.md) (wildcard ×
@@ -69,8 +69,12 @@ because two middlewares each holding an executor meant two ways to be observed
 and one way to be admitted.)
 
 ```go
+admit, err := httpsvr.ServerPolicy("http-server::9090", mgr)
+if err != nil {
+    return err
+}
 mux.Handle("/api/me", httpsvr.Chain(
-    httpsvr.ServerPolicy("http-server::9090", mgr),
+    admit,
     httpsvr.CORS(cfg),
     httpsvr.Authenticate(v, true),
 )(handler))

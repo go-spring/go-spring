@@ -53,6 +53,35 @@ func TestRoundTripperRetriesOn5xx(t *testing.T) {
 	assert.That(t, atomic.LoadInt32(&hits)).Equal(int32(3))
 }
 
+// A non-5xx response is an answer, not a fault: 4xx rejects the request and
+// 429 asks us to back off, but neither says the unit is unhealthy. Neither may
+// trip the breaker.
+func TestRoundTripperNon5xxDoesNotTrip(t *testing.T) {
+	for _, code := range []int{http.StatusBadRequest, http.StatusTooManyRequests} {
+		t.Run(http.StatusText(code), func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(code)
+			}))
+			defer srv.Close()
+
+			e := newBuiltin(t, Policy{ErrorThreshold: 1, OpenDuration: time.Minute})
+			client := &http.Client{Transport: NewRoundTripper(http.DefaultTransport, e, "svc", nil)}
+
+			resp, err := client.Get(srv.URL)
+			assert.Error(t, err).Nil()
+			assert.That(t, resp.StatusCode).Equal(code)
+			_ = resp.Body.Close()
+
+			// Still closed: if the status had counted as a failure, this call
+			// would come back as ErrCircuitOpen instead of the response.
+			resp, err = client.Get(srv.URL)
+			assert.Error(t, err).Nil()
+			assert.That(t, resp.StatusCode).Equal(code)
+			_ = resp.Body.Close()
+		})
+	}
+}
+
 func TestRoundTripperCircuitOpenIsError(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusBadGateway)

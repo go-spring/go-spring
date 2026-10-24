@@ -35,7 +35,7 @@ type Config struct {
 	// spring.go-redis.instances.<Client>. Empty is a fail-fast configuration error —
 	// the starter refuses to boot rather than silently falling back to some
 	// default instance.
-	Client string `value:"${client}"`
+	Client string `value:"${client}" expr:"$ != ''"`
 
 	// KeyPrefix is prepended to every key before it hits Redis. Multiple
 	// applications sharing a Redis instance use different prefixes to keep

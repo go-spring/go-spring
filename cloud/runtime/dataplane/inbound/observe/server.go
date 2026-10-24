@@ -25,7 +25,6 @@ import (
 	"go-spring.org/cloud/observability/attrs"
 	"go-spring.org/cloud/observability/instrument"
 	"go-spring.org/cloud/runtime/dataplane/inbound/admission"
-	"go-spring.org/cloud/runtime/dataplane/kernel/breaker"
 
 	"go-spring.org/log"
 	"go.opentelemetry.io/otel"
@@ -35,20 +34,23 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
-// serverInstrumentSet is the inbound layer's always-on signals: the per-request
-// duration and status counter, and the circuit-breaker transition counter. One
-// set per process, resolved lazily on first use so it binds to whichever
-// providers are current then, and immutable afterwards. It holds no per-route
-// state — the system and service labels travel with each observer, not here.
+// serverInstrumentSet is the inbound REQUEST plane's always-on signals: the
+// per-request duration and status counter. One set per process, resolved lazily
+// on first use so it binds to whichever providers are current then, and
+// immutable afterwards. It holds no per-route state — the system and service
+// labels travel with each observer, not here.
+//
+// Governance organs' own state (rate budget, bulkhead) is deliberately absent:
+// each organ publishes its own state from its own package, by pull.
+// This plane answers only what happened to one request.
 //
 // It is a separate set from the outbound (resilience.client.*) family rather
 // than one family with a direction attribute: the outcome sets genuinely differ
 // (inbound has no retry, so no retry_budget_exceeded and no per-attempt timeout),
 // and keeping them apart leaves existing outbound dashboards untouched.
 type serverInstrumentSet struct {
-	duration       metric.Float64Histogram
-	calls          metric.Int64Counter
-	breakerChanges metric.Int64Counter
+	duration metric.Float64Histogram
+	calls    metric.Int64Counter
 }
 
 // serverInstruments is the one inbound instrument set this package uses for the
@@ -65,9 +67,6 @@ func buildServerInstruments() *serverInstrumentSet {
 	in.calls, _ = m.Int64Counter("resilience.server.calls",
 		metric.WithDescription("Number of inbound requests by inbound status"),
 		metric.WithUnit("{request}"))
-	in.breakerChanges, _ = m.Int64Counter("resilience.server.breaker.state_change",
-		metric.WithDescription("Inbound circuit-breaker state transitions (from/to attrs)"),
-		metric.WithUnit("{event}"))
 	return in
 }
 
@@ -145,30 +144,6 @@ func (o *ServerObserver) End(ob *Observation, err error) {
 		return
 	}
 	ob.end(err)
-}
-
-// OnBreakerStateChange satisfies [breaker.EventListener] for the route's
-// inbound breaker. A trip (→open) is a route-level degradation worth flagging at
-// Warn; recovery and half-open trial are Info — the same levelling the outbound
-// listener uses.
-func (o *ServerObserver) OnBreakerStateChange(service string, from, to breaker.State) {
-	o.ins.breakerChanges.Add(context.Background(), 1, metric.WithAttributes(
-		attribute.String("system", o.system),
-		attribute.String("service", o.service),
-		attribute.String("from", from.String()),
-		attribute.String("to", to.String()),
-	))
-	fields := []log.Field{
-		log.String("system", o.system),
-		log.String("service", o.service),
-		log.String("from", from.String()),
-		log.String("to", to.String()),
-	}
-	if to == breaker.Open {
-		log.Warn(context.Background(), instrument.Tag, "resilience: circuit breaker opened", fields...)
-	} else {
-		log.Info(context.Background(), instrument.Tag, "resilience: circuit breaker state changed", fields...)
-	}
 }
 
 // Observation is one inbound request's observation state, held between
@@ -330,8 +305,6 @@ func serverErrorType(err error) string {
 	switch {
 	case errors.Is(err, admission.ErrRateLimited):
 		return "rate_limited"
-	case errors.Is(err, admission.ErrCircuitOpen):
-		return "circuit_open"
 	case errors.Is(err, admission.ErrBulkheadFull):
 		return "bulkhead_full"
 	case errors.Is(err, context.DeadlineExceeded):

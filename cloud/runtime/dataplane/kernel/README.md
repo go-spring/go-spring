@@ -25,7 +25,7 @@ This is also a dependency invariant:
 
 | Package | Answers |
 | --- | --- |
-| [breaker](breaker/) | What is this route's/endpoint's circuit state? |
+| [circuitbreaker](circuitbreaker/) | What is this route's/endpoint's circuit state? |
 | [bulkhead](bulkhead/) | How many callers may hold a concurrency slot at once? |
 | [ratelimit](ratelimit/) | How much budget is left, and how is it counted? |
 | [fault](fault/) | Which rule governs this call, and what did it decide? |

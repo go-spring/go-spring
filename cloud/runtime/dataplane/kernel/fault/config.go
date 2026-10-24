@@ -19,6 +19,8 @@ package fault
 import (
 	"strings"
 	"time"
+
+	"go-spring.org/cloud/runtime/dataplane/kernel/matcher"
 )
 
 // config.go is the CONFIGURATION vocabulary: what an operator writes. A rule
@@ -57,10 +59,11 @@ import (
 // "match strategy" enum on an existing field. Case-insensitivity, if ever
 // needed, is spelled " (?i)" in the pattern the way Traefik and Spring do it.
 //
-// It is fault's own type, structurally identical to [chain.ActionMatch] and
-// derived from nothing — chain's matcher pairs with chain.Selector, whose
-// Matches takes a chain.Operation, which is the client-shaped call description a
-// rule has no business reading (see [Target]).
+// It is fault's own type, structurally identical to [chain.ActionMatch]: the
+// shared [go-spring.org/cloud/runtime/dataplane/kernel/matcher] vocabulary
+// covers metadata maps, not the single-value "which action" question, and fault
+// must not import chain, whose matcher pairs with chain.Operation — the
+// client-shaped call description a rule has no business reading (see [Target]).
 type ActionMatcher struct {
 	Exact  string `value:"${exact:=}"`
 	Prefix string `value:"${prefix:=}"`
@@ -98,18 +101,18 @@ type Rule struct {
 	// not a pattern language. Chaos Mesh's request_headers and ChaosBlade's
 	// business parameters are the same shape.
 	//
-	// It is a plain map, not a named type: the check is a few lines in
-	// [Rule.matchesRule], and a type would add an exported symbol plus a method
-	// for callers who only ever write this in a config file. Bind via indexed
-	// properties, e.g.
-	// spring.governance.client.fault.rules[0].match.tenant=acme.
+	// It is [matcher.ExactMap], the exact-only shape of the shared matching
+	// vocabulary: the map spelling is kept because a rule config reads better as
+	// `match.tenant=acme` than as an indexed term list, and its semantics are
+	// exactly the [matcher.Exact] terms of a [matcher.Selector] — subset-match
+	// with the named key required to be present. Bind via indexed properties,
+	// e.g. spring.governance.client.fault.rules[0].match.tenant=acme.
 	//
-	// EXTENSION: richer metadata matching (prefix/regex/presence) will arrive as
-	// a SIBLING field — MetadataMatchers []MetadataMatcher, the {key, operator,
-	// value} list Envoy/Istio/Sentinel use — that ANDs with this map. This map's
-	// type and config spelling must never change, so a config written today keeps
-	// working forever.
-	MetadataMatch map[string]string `value:"${match:=}"`
+	// EXTENSION: richer metadata matching (prefix/suffix/contains) arrives as a
+	// SIBLING field — MetadataMatchers matcher.Selector, the {key, kind, value}
+	// list Envoy/Istio/Sentinel use — that ANDs with this map. This field's
+	// spelling never changes, so a config written today keeps working forever.
+	MetadataMatch matcher.ExactMap `value:"${match:=}"`
 
 	// ActionMatch narrows the rule to calls whose [Target.Action] it matches —
 	// the interface being invoked ("insert", "GET /users/{id}"). Empty matches
@@ -130,24 +133,24 @@ type Rule struct {
 	// An unknown value behaves as "". It is per-rule because it is a targeting
 	// dimension like the others: one experiment may burn real traffic while
 	// another burns the synthetic load.
-	Scope string `value:"${scope:=}"`
+	Scope string `value:"${scope:=}" expr:"$ == '' || $ in ['real', 'loadtest']"`
 
 	// Rate is the per-call probability (0..1) of injecting the configured Error.
 	// 0 means never inject; 1 means every call fails. Latency, when set, is
 	// applied to every call regardless of Rate — use it to model a uniformly
 	// slow downstream without forcing errors.
-	Rate float64 `value:"${rate:=0}"`
+	Rate float64 `value:"${rate:=0}" expr:"$ >= 0 && $ <= 1"`
 
 	// Latency is injected before each call (and before the error decision). Use
 	// it to exercise slow-call and per-attempt timeout paths. 0 disables.
-	Latency time.Duration `value:"${latency:=0}"`
+	Latency time.Duration `value:"${latency:=0}" expr:"int($) >= 0"`
 
 	// LatencyJitter randomizes the injected latency: each call sleeps Latency
 	// plus a uniform draw in [-LatencyJitter, +LatencyJitter], clamped to ≥ 0.
 	// A fixed Latency can resonate with a fixed retry backoff; jitter spreads
 	// the slow-down the way real network variance does. 0 (the default) keeps
 	// the sleep exactly Latency.
-	LatencyJitter time.Duration `value:"${latency-jitter:=0}"`
+	LatencyJitter time.Duration `value:"${latency-jitter:=0}" expr:"int($) >= 0"`
 
 	// Error selects the injected failure kind, applied at Rate:
 	//   "" / "generic" — a retryable injected error ([ErrInjected])
@@ -155,7 +158,7 @@ type Rule struct {
 	//   "reset"        — wraps syscall.ECONNRESET
 	//   "refused"      — wraps syscall.ECONNREFUSED
 	// Empty plus Rate 0 means no errors are injected.
-	Error string `value:"${error:=}"`
+	Error string `value:"${error:=}" expr:"$ == '' || $ in ['generic', 'timeout', 'reset', 'refused']"`
 
 	// MaxDuration is this experiment's safety auto-off: after this much time
 	// elapses since ITS first affected call, the rule stops applying any fault
@@ -165,7 +168,7 @@ type Rule struct {
 	// effect promptly; lengthening it does not un-trip an already-expired fire —
 	// the first-affected stamp is kept per rule across config pushes, so
 	// re-arming the window takes a process restart (or a rule identity change).
-	MaxDuration time.Duration `value:"${max-duration:=0}"`
+	MaxDuration time.Duration `value:"${max-duration:=0}" expr:"int($) >= 0"`
 
 	// MaxAffected is this experiment's blast-radius cap: once this many calls
 	// have received any fault effect (latency or error) FROM THIS RULE, it stops.
@@ -173,7 +176,7 @@ type Rule struct {
 	// (the default) means no count bound. Per rule on purpose — one experiment's
 	// budget must not silently switch another one off; the counters are keyed by
 	// the rule's identity.
-	MaxAffected int64 `value:"${max-affected:=0}"`
+	MaxAffected int64 `value:"${max-affected:=0}" expr:"$ >= 0"`
 }
 
 // Config is one direction's list of fault EXPERIMENTS. The SAME type serves both
@@ -237,11 +240,6 @@ func (r Rule) matchesRule(t Target) bool {
 	if !r.ActionMatch.Matches(t.Action) {
 		return false
 	}
-	// The metadata subset-match, inline: every key the rule names must agree.
-	for k, want := range r.MetadataMatch {
-		if t.Metadata[k] != want {
-			return false
-		}
-	}
-	return true
+	// The metadata subset-match: every key the rule names must agree.
+	return r.MetadataMatch.Matches(t.Metadata)
 }

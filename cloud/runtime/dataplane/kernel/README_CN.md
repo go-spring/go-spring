@@ -19,7 +19,7 @@
 
 | 包 | 回答的问题 |
 | --- | --- |
-| [breaker](breaker/) | 这个路由/端点的熔断状态是什么？ |
+| [circuitbreaker](circuitbreaker/) | 这个路由/端点的熔断状态是什么？ |
 | [bulkhead](bulkhead/) | 同时允许多少调用方占住并发槽？ |
 | [ratelimit](ratelimit/) | 预算还剩多少，怎么计数？ |
 | [fault](fault/) | 哪条规则管辖这次调用，它决定了什么？ |

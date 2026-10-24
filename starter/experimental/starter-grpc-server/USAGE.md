@@ -242,8 +242,8 @@ Rationale (from the source comments, verified):
 3. Tracing: W3C context extracted from metadata (`extractTraceContext`), server span started,
    name = FullMethod, attributes `rpc.system=grpc`, `rpc.service`, `rpc.method`.
 4. Metrics: in-flight +1 (`rpc.method` attr); duration clock starts.
-5. Resilience: `exec.Execute(ctx, chain.Operation{})` — over the rate cap → the handler never
-   runs and `mapAdmissionError` maps to `ResourceExhausted`; breaker open → `Unavailable`.
+5. Resilience: `exec.Execute(ctx, chain.Operation{})` — over the rate cap → the handler never runs and `mapAdmissionError` maps it
+   to `ResourceExhausted`.
 6. Fault: `_, err := srv.Fire(ctx, fault.Target{Service: "grpc", Action: info.FullMethod})`
    — `inj` is the injected `*serverfault.ServerManager` bean, and the method is the ACTION (`service` names
    the entrance), so a rule can fire one method; marked traffic
@@ -359,9 +359,8 @@ grpcurl -plaintext -d '{"message":"x"}' :9494 EchoService/Echo                  
 
 Service label is `grpc:{addr}` → `grpc::9494`. Add a rule (`spring.governance.client.rules[n].service=grpc::9494`,
 `rate-limit=...`) below your traffic rate:
-rejections surface as `codes.ResourceExhausted` (rate/bulkhead) or `codes.Unavailable` (open
-breaker) — `mapAdmissionError` guarantees consumers can branch on the code. The wrapped
-observe-resilience executor emits its own counters/histogram for trips and rejects. Do NOT
+rejections surface as `codes.ResourceExhausted` (rate/bulkhead) —
+`mapAdmissionError` guarantees consumers can branch on the code. Do NOT
 configure inbound retry: a handler that already produced side effects cannot be replayed
 (admission.go's own warning).
 

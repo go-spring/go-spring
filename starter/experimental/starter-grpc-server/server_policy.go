@@ -40,42 +40,44 @@ type resilienceInterceptors struct {
 // buildResilienceInterceptors constructs an inbound-inbound executor from the
 // injected [admission.Manager] and returns the unary interceptor that runs each
 // RPC through it. The manager is the governance starter's bean, so this server
-// gets its rate-limit / bulkhead / breaker limits from the governance document's
+// gets its rate-limit / bulkhead limits from the governance document's
 // SERVER block (spring.governance.server.*)
 // without this package owning how that runtime is assembled. A nil runtime — a standalone call, or an app
 // that does not import — is normalized to an unarmed one,
 // whose executor is a transparent pass-through (fn runs once, untouched). The
 // executor handle resolves its backing implementation per call and follows the
 // manager's hot-reload. The executor is wrapped with observe-resilience so
-// breaker trips / rate rejects / bulkhead rejects emit span + counter +
+// rate rejects / bulkhead rejects emit span + counter +
 // histogram.
 //
 // Inbound resilience is inbound control: set RateLimit / MaxConcurrent to
-// protect the server from overload; ErrRateLimited / ErrBulkheadFull /
-// ErrCircuitOpen surface as the executor's error on the RPC. Do NOT configure
+// protect the server from overload; ErrRateLimited / ErrBulkheadFull surface
+// as the executor's error on the RPC. Do NOT configure
 // retry for inbound (a handler that has already produced side effects cannot be
 // replayed) — leave MaxRetries at 0: inbound serving is not idempotent.
-func (s *SimpleGrpcServer) buildResilienceInterceptors() (resilienceInterceptors, bool) {
+func (s *SimpleGrpcServer) buildResilienceInterceptors() (resilienceInterceptors, bool, error) {
 	service := label.ServiceLabel("grpc", s.cfg.Addr)
 	// The center composes the observe object with the guard (and normalizes a nil
 	// center to an unarmed authority), so this package names neither observability
 	// nor the manager's raw handle.
-	in := s.center.InboundFor("grpc", service)
+	in, err := s.center.InboundFor("grpc", service)
+	if err != nil {
+		return resilienceInterceptors{}, false, err
+	}
 	return resilienceInterceptors{
 		unary:  resilienceUnaryInterceptor(in, service),
 		stream: resilienceStreamInterceptor(in),
-	}, true
+	}, true, nil
 }
 
 // resilienceUnaryInterceptor runs each unary RPC through the executor so the
-// configured rate-limit / bulkhead / breaker (inbound) policy is enforced
+// configured rate-limit / bulkhead policy is enforced
 // before the handler runs.
 //
 // ServerPolicy rejections are mapped to semantic gRPC status codes so consumers
 // that branch on status code (retry policies, circuit breakers, dashboards)
 // can tell "this client is being throttled" from an arbitrary handler failure:
-// rate/bulkhead rejections are ResourceExhausted, an open circuit is
-// Unavailable. Without the mapping they cross the wire as codes.Unknown,
+// rate/bulkhead rejections are ResourceExhausted. Without the mapping they cross the wire as codes.Unknown,
 // which no consumer can act on.
 func resilienceUnaryInterceptor(in *runtime.Inbound, service string) grpc.UnaryServerInterceptor {
 	return func(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
@@ -126,8 +128,6 @@ func mapServerPolicyError(err error) error {
 	switch ref.Verdict() {
 	case admission.VerdictRateLimited, admission.VerdictBulkheadFull:
 		return status.Error(codes.ResourceExhausted, ref.Error())
-	case admission.VerdictCircuitOpen, admission.VerdictDegraded:
-		return status.Error(codes.Unavailable, ref.Error())
 	default:
 		return err
 	}

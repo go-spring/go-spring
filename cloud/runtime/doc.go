@@ -55,7 +55,7 @@
 //
 //   - The control-plane document embeds data-plane policy types
 //     ([resilience.Policy], [guard.Policy], [loadbalance.Selection],
-//     [fault.Config], [chain.Selector]), and [governance.Center] pushes them
+//     [fault.Config], [matcher.ExactMap]), and [governance.Center] pushes them
 //     into the concrete managers. An in-process control plane has no
 //     independent deployment or document version, so type and configuration
 //     unity is worth more than schema independence. The invariant to keep is

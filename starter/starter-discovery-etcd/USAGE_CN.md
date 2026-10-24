@@ -184,8 +184,8 @@ gs.Run()
    并写入缓存,随后启动后台 watcher(`clientv3.Watch(bgCtx, prefix, WithPrefix())`)。
 2. watch 通道上每个 etcd 事件都触发一次**全新全量快照**(不是增量)写入缓存;刷新失败
    保留旧快照——"陈旧地址好过没有地址"。
-3. 之后的 Resolve 都是对缓存(未过滤全集)的内存读,每次调用经 `FilterByScheme` 按
-   scheme 收窄。
+3. 之后的 Resolve 都是对缓存(未过滤全集)的内存读,每次调用经 `Narrow` 按
+   query(scheme 与 metadata selector)收窄。
 4. 每个 KV 从 registry 的 JSON 解码;`Healthy` 恒为 true——**key 存在即健康信号**
    (lease 过期删 key)(文件头注释 29-32 行)。畸形 payload 跳过并 Warn,不打断快照。
 5. `Services` 按 key 布局枚举服务名。

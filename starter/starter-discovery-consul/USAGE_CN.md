@@ -58,7 +58,8 @@ blank-import + `gs.Run()`。注册器用 TTL 心跳保活;`PreStop` 反注册。
 `consul.<name>`(`starter.go`),client 按 bean 名引用(`discovery=consul.main`)。
 该 bean 惰性——纯 provider 从不解析、从不付费;纯消费方只配连接块(不设
 `service-name`/`addr`),不注册任何实例。多 agent 发现就是多个块:引用哪个块就从哪个
-agent 读。调用侧 `discovery.WithTag` 仍可逐次按 Consul 服务标签收窄查询。
+agent 读。块的 `tag` 会在 Consul 查询侧收窄结果；调用侧的 `WithScheme` /
+`WithSelector` 则在本地对缓存快照收窄。
 
 解析语义:只查 **passing** 实例(不健康不进快照);每个已解析服务一条后台 blocking
 query(index 长轮询)保鲜,后续 Resolve 读缓存;`Meta["scheme"]` → `Endpoint.Scheme`,

@@ -29,11 +29,4 @@ var (
 	// ErrBulkheadFull means the instance already handles the maximum number of
 	// concurrent requests.
 	ErrBulkheadFull = errors.New("admission: bulkhead full")
-
-	// ErrCircuitOpen means the instance's circuit breaker is open.
-	ErrCircuitOpen = errors.New("admission: circuit open")
 )
-
-// errNotSettled is what a deadline fallback settles with: the handler outlived
-// the request's deadline without reporting, so the sample is unknown.
-var errNotSettled = errors.New("admission: request not settled before its deadline")

@@ -21,13 +21,14 @@ package StarterElasticsearch
 
 import (
 	"go-spring.org/cloud/runtime/dataplane/kernel/discovery"
+	"go-spring.org/stdlib/errutil"
 )
 
 // Config defines Elasticsearch client connection configuration.
 type Config struct {
 	// Addresses is the list of Elasticsearch node addresses to connect to,
 	// e.g., "http://127.0.0.1:9200". Multiple addresses can be separated by commas.
-	Addresses []string `value:"${addresses}" expr:"len($) > 0"`
+	Addresses []string `value:"${addresses:=}"`
 
 	// Username is the username for HTTP Basic Authentication, default is empty.
 	Username string `value:"${username:=}"`
@@ -109,4 +110,16 @@ type Config struct {
 	// report, e.g. for a backend whose downtime must not pull the pod out of
 	// rotation.
 	Health bool `value:"${health:=true}"`
+}
+
+// Validate enforces the one cross-field rule of this config: the node list must
+// come from somewhere. Addresses is optional at bind time because a Cloud
+// deployment is named by CloudID and a discovered service by ServiceName —
+// requiring the list itself would reject both. A per-field expr cannot express
+// "one of three", so the check lives here.
+func (c Config) Validate() error {
+	if len(c.Addresses) == 0 && c.CloudID == "" && c.ServiceName == "" {
+		return errutil.Explain(nil, "elasticsearch: one of addresses, cloud-id or service-name is required")
+	}
+	return nil
 }

@@ -377,7 +377,7 @@ propagator 的 `IsLoadTest(ctx)` 分流同一标记，业务代码可在合成�
 4. 已修复：server 侧改用 `security.TLSConfig.BuildServer()`（原 `Build()` 是客户端语义）——`ca-file`
    即开启 mTLS（`RequireAndVerifyClientCert`），与 starter-grpc 对齐；`server-name`/
    `insecure-skip-verify` 仍为客户端 key，server 侧无效果。
-5. 入站路径无韧性准入（限流/熔断）——与 starter-gin 不对称；fault 注入已接线、防护没有。
+5. 入站路径无韧性准入（限流/隔板）——与 starter-gin 不对称；fault 注入已接线、防护没有。
 6. `requestId` 与 `loadtest` 都不再暴露头名：标记头归 propagator bean，请求 id 归
    hertz-contrib 默认。
 7. 无 `middleware.enabled` 总开关，与 echo/gin 不同——只有逐 key 开关（可能更安全；

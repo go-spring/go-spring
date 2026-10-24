@@ -22,6 +22,7 @@ import (
 	"sync/atomic"
 
 	"go-spring.org/cloud/runtime/dataplane/kernel/discovery"
+	"go-spring.org/cloud/runtime/dataplane/kernel/matcher"
 	"go-spring.org/log"
 )
 
@@ -114,8 +115,10 @@ func newChain(src discovery.Resolver, label string, source SelectionSource) *Cha
 // it once. A rebuild between a Pick and its [Chain.Complete] settles the request
 // against the new generation — harmless, because a rebuild already discards the
 // previous generation's least-conn and suspension state wholesale.
-func (c *Chain) Pick(info PickInfo) (discovery.Endpoint, error) {
-	return c.current().Pick(info)
+//
+// ctx is the request's, and is threaded to the pool's endpoint source.
+func (c *Chain) Pick(ctx context.Context, info PickInfo) (discovery.Endpoint, error) {
+	return c.current().Pick(ctx, info)
 }
 
 // Complete settles the request that Pick issued to ep. Invoke it exactly once
@@ -227,7 +230,16 @@ func (c *Chain) build(s Selection) (*Pool, error) {
 		}
 		bal = b
 	}
-	p := NewPool(c.src, bal, WithTrackerConfig(TrackerConfig{
+	// A selector on the selection narrows the endpoint set before the strategy
+	// sees it. It is applied to the source's output rather than pushed into the
+	// resolver, so the dynamic rule composes with whatever static narrowing the
+	// resolver already does (both must hold) and needs no re-resolution of the
+	// chain's target.
+	src := c.src
+	if len(s.Selector) > 0 {
+		src = selectorSource(c.src, s.Selector)
+	}
+	p := NewPool(src, bal, WithTrackerConfig(TrackerConfig{
 		Threshold:  s.OutlierThreshold,
 		SuspendFor: s.OutlierSuspendFor,
 	}))
@@ -235,4 +247,18 @@ func (c *Chain) build(s Selection) (*Pool, error) {
 	// generation reads back what it was built from (see [Pool.Selection]).
 	p.recordSelection(s)
 	return p, nil
+}
+
+// selectorSource returns a resolver that narrows the endpoints src returns to
+// those whose metadata satisfies s. The selector is captured by value, so a
+// generation's filter is immutable for that generation's life: a pushed change
+// builds a new generation instead of mutating one in place.
+func selectorSource(src discovery.Resolver, s matcher.Selector) discovery.Resolver {
+	return func(ctx context.Context) ([]discovery.Endpoint, error) {
+		eps, err := src(ctx)
+		if err != nil {
+			return nil, err
+		}
+		return discovery.Narrow(eps, discovery.Query{Selector: s}), nil
+	}
 }

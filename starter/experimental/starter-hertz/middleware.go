@@ -119,12 +119,14 @@ func applyMiddlewares(h *server.Hertz, cfg Config, center *runtime.Runtime, prop
 	if mw.Gzip.Enabled {
 		h.Use(gzip.Gzip(mw.Gzip.Level))
 	}
-	// Inbound governance (rate limit / bulkhead / breaker / fault) is innermost,
-	// so the resulting 429/503 is still logged by AccessLog and an injected
-	// failure is folded back into the breaker. A nil center is the standalone
+	// Inbound governance (rate limit / bulkhead / fault) is innermost, so the
+	// resulting 429/503 is still logged by AccessLog. A nil center is the standalone
 	// case: governance is not imported, so nothing is installed.
 	if center != nil {
-		in := center.InboundFor("hertz", label.ServiceLabel("hertz", cfg.Addr))
+		in, err := center.InboundFor("hertz", label.ServiceLabel("hertz", cfg.Addr))
+		if err != nil {
+			return errutil.Explain(err, "hertz: inbound governance")
+		}
 		h.Use(buildServerPolicy(in))
 	}
 	return nil
@@ -132,7 +134,7 @@ func applyMiddlewares(h *server.Hertz, cfg Config, center *runtime.Runtime, prop
 
 // buildServerPolicy builds the inbound governance middleware. It drives the
 // admission's Admit/Done pair and maps a refusal to 429 (rate limit / bulkhead) or
-// 503 (circuit open / degraded / injected fault).
+// 503 (injected fault).
 func buildServerPolicy(in *runtime.Inbound) app.HandlerFunc {
 	return func(ctx context.Context, c *app.RequestContext) {
 		op := observability.ServerOperation{Action: actionName(c)}
@@ -153,17 +155,16 @@ func buildServerPolicy(in *runtime.Inbound) app.HandlerFunc {
 }
 
 // httpStatusFor maps an inbound refusal to the HTTP status a client can act on:
-// rate/bulkhead rejections are 429, an open circuit, a degraded response or an
-// injected fault is 503.
+// rate/bulkhead rejections are 429, an injected fault is 503.
 func httpStatusFor(kind admission.Verdict) int {
-	if kind == admission.VerdictCircuitOpen || kind == admission.VerdictDegraded || kind == admission.VerdictFaultInjected {
+	if kind == admission.VerdictFaultInjected {
 		return http.StatusServiceUnavailable
 	}
 	return http.StatusTooManyRequests
 }
 
-// errHTTP5xx is the failure signal a handler-emitted 5xx feeds back into the
-// breaker.
+// errHTTP5xx is the failure signal a handler-emitted 5xx carries into the
+// request record and the span status.
 type errHTTP5xx struct{ code int }
 
 func (e errHTTP5xx) Error() string { return fmt.Sprintf("http: server returned %d", e.code) }

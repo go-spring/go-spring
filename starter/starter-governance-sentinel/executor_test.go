@@ -25,7 +25,7 @@ import (
 	"testing"
 	"time"
 
-	"go-spring.org/cloud/runtime/dataplane/kernel/breaker"
+	breaker "go-spring.org/cloud/runtime/dataplane/kernel/circuitbreaker"
 	"go-spring.org/cloud/runtime/dataplane/outbound/chain"
 
 	"github.com/alibaba/sentinel-golang/core/circuitbreaker"
@@ -111,7 +111,7 @@ func TestSentinelRoundTripperRetry(t *testing.T) {
 // even when successes are interleaved (so a consecutive counter would not trip).
 func TestSentinelErrorRateBreaker(t *testing.T) {
 	e := newExec(t, "svc-errrate", resilience.Policy{
-		BreakerStrategy:    breaker.ErrorRate,
+		BreakerStrategy:    breaker.StrategyErrorRate,
 		ErrorRateThreshold: 0.5,
 		MinRequests:        4,
 		BreakerWindow:      time.Second,
@@ -131,6 +131,25 @@ func TestSentinelErrorRateBreaker(t *testing.T) {
 		}
 	}
 	assert.That(t, tripped).True()
+}
+
+// A caller that walks away is not a verdict about the downstream: sentinel must
+// not trace it as a failure. With ErrorThreshold 1, one traced cancel would trip.
+func TestSentinelCallerCancelDoesNotTrip(t *testing.T) {
+	e := newExec(t, "svc-cancel", resilience.Policy{ErrorThreshold: 1, OpenDuration: time.Hour})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	err := e.Execute(ctx, chain.Operation{}, nil, func(ctx context.Context) error {
+		return ctx.Err()
+	})
+	assert.Error(t, err).Is(context.Canceled)
+
+	// Had the cancellation been traced, this call would be short-circuited.
+	err = e.Execute(context.Background(), chain.Operation{}, nil, func(context.Context) error {
+		return nil
+	})
+	assert.Error(t, err).Nil()
 }
 
 // TestSentinelHalfOpenRecovery verifies sentinel's half-open behavior maps onto
@@ -176,39 +195,43 @@ func TestSentinelHalfOpenReopensOnFailedTrial(t *testing.T) {
 	assert.Error(t, err).Is(chain.ErrCircuitOpen)
 }
 
-// sentinelRec captures breaker state transitions routed from sentinel-golang via
-// the global routeListener, for TestSentinelBreakerEvents.
-type sentinelRec struct {
-	events []struct{ service, from, to string }
+// breakerStats reads the driver's own mirror for a service. The sentinel driver
+// cannot query sentinel-golang's state, so it records transitions from the
+// process-wide listener; that mirror is what the driver's metrics publish.
+func breakerStats(t *testing.T, service string) breaker.Stats {
+	t.Helper()
+	v, ok := breakerRoutes.Load(service)
+	if !ok {
+		t.Fatalf("no breaker mirror for %q", service)
+	}
+	return v.(*breakerMirror).stats()
 }
 
-func (l *sentinelRec) OnBreakerStateChange(service string, from, to breaker.State) {
-	l.events = append(l.events, struct{ service, from, to string }{service, from.String(), to.String()})
-}
-
-// TestSentinelBreakerEvents verifies the sentinel driver emits the same
-// closed->open->half-open->closed transitions as the builtin, routed through the
-// global routeListener to a listener attached via SetBreakerEventListener.
-func TestSentinelBreakerEvents(t *testing.T) {
+// TestSentinelBreakerState verifies the sentinel driver records the same
+// closed -> open -> half_open -> closed progression as the builtin, in the
+// mirror its metrics report.
+func TestSentinelBreakerState(t *testing.T) {
 	e := newExec(t, "svc-evt", resilience.Policy{ErrorThreshold: 1, OpenDuration: 30 * time.Millisecond})
-	rec := &sentinelRec{}
-	e.(breaker.EventListenerSetter).SetBreakerEventListener(rec)
+	defer func() { _ = e.Close() }()
 
 	// Trip: closed -> open.
 	_ = e.Execute(context.Background(), chain.Operation{}, nil, func(context.Context) error { return errors.New("boom") })
-	assert.That(t, len(rec.events)).Equal(1)
-	assert.That(t, rec.events[0].to).Equal("open")
+	s := breakerStats(t, "svc-evt")
+	assert.That(t, s.State).Equal(breaker.StateOpen)
+	assert.That(t, s.Trips).Equal(uint64(1))
 
 	// Breaker open: rejected before fn runs, no transition.
 	_ = e.Execute(context.Background(), chain.Operation{}, nil, func(context.Context) error { return nil })
-	assert.That(t, len(rec.events)).Equal(1)
+	s = breakerStats(t, "svc-evt")
+	assert.That(t, s.Trips).Equal(uint64(1))
 
-	// After cool-down a successful trial: open -> half-open -> closed.
+	// After cool-down a successful trial: open -> half_open -> closed.
 	time.Sleep(40 * time.Millisecond)
 	_ = e.Execute(context.Background(), chain.Operation{}, nil, func(context.Context) error { return nil })
-	assert.That(t, len(rec.events)).Equal(3)
-	assert.That(t, rec.events[1].to).Equal("half_open")
-	assert.That(t, rec.events[2].to).Equal("closed")
+	s = breakerStats(t, "svc-evt")
+	assert.That(t, s.State).Equal(breaker.StateClosed)
+	assert.That(t, s.HalfOpens).Equal(uint64(1))
+	assert.That(t, s.Recovers).Equal(uint64(1))
 }
 
 // The rule-mapping tests below pin the TRANSLATION (rules.go): after one
@@ -275,7 +298,7 @@ func TestSentinelFlowRuleWarmUp(t *testing.T) {
 func TestSentinelBreakerRuleSlowCall(t *testing.T) {
 	const svc = "svc-rule-slowcall"
 	e := newExec(t, svc, resilience.Policy{
-		BreakerStrategy:           breaker.SlowCall,
+		BreakerStrategy:           breaker.StrategySlowCall,
 		SlowCallDurationThreshold: 200 * time.Millisecond,
 		SlowCallRateThreshold:     0.5,
 		MinRequests:               3,
@@ -301,7 +324,7 @@ func TestSentinelBreakerRuleSlowCall(t *testing.T) {
 func TestSentinelBreakerRuleErrorCount(t *testing.T) {
 	const svc = "svc-rule-errcount"
 	e := newExec(t, svc, resilience.Policy{
-		BreakerStrategy:  breaker.ErrorCount,
+		BreakerStrategy:  breaker.StrategyErrorCount,
 		ErrorThreshold:   7,
 		MinRequests:      2,
 		HalfOpenRequests: 3,

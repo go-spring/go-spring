@@ -30,7 +30,7 @@ type Config struct {
 	// Address is the Consul agent endpoint, e.g. "127.0.0.1:8500". Required;
 	// the starter fails fast at startup when it is empty rather than silently
 	// defaulting to localhost.
-	Address string `value:"${address}"`
+	Address string `value:"${address}" expr:"$ != ''"`
 
 	// Scheme selects the transport, "http" or "https". TLS actually kicks in
 	// through the nested TLS block below; setting Scheme=https on its own

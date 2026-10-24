@@ -348,7 +348,7 @@ type balancedTransport struct {
 }
 
 func (t *balancedTransport) RoundTrip(req *http.Request) (*http.Response, error) {
-	ep, err := t.chain.Pick(loadbalance.PickInfo{})
+	ep, err := t.chain.Pick(req.Context(), loadbalance.PickInfo{})
 	if err != nil {
 		return nil, err
 	}

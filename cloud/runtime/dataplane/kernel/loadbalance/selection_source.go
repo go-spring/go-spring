@@ -123,23 +123,34 @@ func labelGen(label string, s *Settings) uint64 {
 // selectionFingerprint writes one selection, delimited so that neighbouring fields cannot
 // run together, and with its parameter map in key order — a Go map iterates
 // nondeterministically, and a generation that changed on every process start
-// would rebuild every chain for no reason.
+// would rebuild every chain for no reason. The selector's terms are written in
+// document order; every field is NUL-terminated, so the sequence is unambiguous.
 func selectionFingerprint(h hash.Hash64, s Selection) {
 	selectionField(h, s.Balancer)
 	selectionField(h, strconv.FormatInt(int64(s.OutlierThreshold), 10))
 	selectionField(h, strconv.FormatInt(int64(s.OutlierSuspendFor), 10))
+
 	if len(s.Params) == 0 {
 		h.Write([]byte{0})
-		return
+	} else {
+		keys := make([]string, 0, len(s.Params))
+		for k := range s.Params {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		for _, k := range keys {
+			selectionField(h, k)
+			selectionField(h, s.Params[k])
+		}
 	}
-	keys := make([]string, 0, len(s.Params))
-	for k := range s.Params {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-	for _, k := range keys {
-		selectionField(h, k)
-		selectionField(h, s.Params[k])
+
+	// The count makes "no selector" distinct from a term whose fields happen to
+	// be empty.
+	selectionField(h, strconv.Itoa(len(s.Selector)))
+	for _, t := range s.Selector {
+		selectionField(h, t.Key)
+		selectionField(h, string(t.Op))
+		selectionField(h, t.Value)
 	}
 }
 

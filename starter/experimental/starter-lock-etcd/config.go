@@ -28,7 +28,7 @@ import (
 type Config struct {
 	// Endpoints lists the etcd cluster nodes to dial. Required; an empty list
 	// is rejected at startup so a misconfigured instance never boots silently.
-	Endpoints []string `value:"${endpoints}"`
+	Endpoints []string `value:"${endpoints}" expr:"len($) > 0"`
 
 	// Username / Password authenticate against etcd when auth is enabled.
 	// Leave empty for anonymous clusters.

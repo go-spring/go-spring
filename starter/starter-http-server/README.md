@@ -14,7 +14,7 @@ identity model in [`cloud/security`](../../cloud/security).
 | `Authorize(authorities...)` | Gates a route on authorities (401 anonymous / 403 lacking) |
 | `CORS(cfg)` | Adds `Access-Control-Allow-*` headers, answers preflights |
 | `CSRF(cfg)` | Double-submit-cookie CSRF defence for browser flows |
-| `ServerPolicy(label, mgr)` | Inbound admission — and the request's span, metrics and access log, see Observability |
+| `ServerPolicy(label, mgr) (Middleware, error)` | Inbound admission — and the request's span, metrics and access log, see Observability |
 
 ## Quick Start
 
@@ -49,8 +49,12 @@ now: the middleware **declares** what the request is, and the resilience emitter
 signals from that declaration. There is nothing else to install:
 
 ```go
+admit, err := httpsvr.ServerPolicy("http-server::9090", mgr)
+if err != nil {
+    return err
+}
 mux.Handle("/api/me", httpsvr.Chain(
-    httpsvr.ServerPolicy("http-server::9090", mgr),
+    admit,
     httpsvr.CORS(cfg),
     httpsvr.Authenticate(v, true),
 )(handler))

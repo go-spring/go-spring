@@ -164,7 +164,10 @@ func main() {
 	if err = mgr.Apply(admission.Settings{Default: admission.Policy{RateLimit: 3}}); err != nil {
 		fail("guard apply: %v", err)
 	}
-	inboundGuard = mgr.GuardFor(admission.Identity{System: "example", Service: "example:cloudnative"})
+	inboundGuard, err = mgr.GuardFor(admission.Identity{System: "example", Service: "example:cloudnative"})
+	if err != nil {
+		fail("guard for: %v", err)
+	}
 
 	// Wire the gin routes. The RouterRegister receives the Config bean through
 	// the container, so the /greeting handler reads the live Dync value.
@@ -234,7 +237,7 @@ func runTest() {
 	if err != nil {
 		fail("new resolver: %v", err)
 	}
-	eps, err := r()
+	eps, err := r(ctx)
 	if err != nil {
 		fail("resolve: %v", err)
 	}
@@ -261,7 +264,7 @@ func runTest() {
 		switch {
 		case r.Admitted():
 			admitted++
-			done(admission.OutcomeSuccess, nil)
+			done()
 		case errors.Is(r.Err(), admission.ErrRateLimited):
 			rejected++
 		default:
@@ -451,7 +454,7 @@ func (h *admissionHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	})
 	if !result.Admitted() {
 		switch result.Verdict() {
-		case admission.VerdictCircuitOpen, admission.VerdictDegraded, admission.VerdictFaultInjected:
+		case admission.VerdictFaultInjected:
 			http.Error(w, "service unavailable", http.StatusServiceUnavailable)
 		default:
 			http.Error(w, "too many requests", http.StatusTooManyRequests)
@@ -459,5 +462,5 @@ func (h *admissionHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.next.ServeHTTP(w, r)
-	done(admission.OutcomeSuccess, nil)
+	done()
 }

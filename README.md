@@ -1,5 +1,7 @@
 # Go-Spring: Make Go Service Development as Simple as Spring Boot, and Then Some
 
+> **Project status: unreleased.** The stack is still being polished: APIs and boundaries may change, and large-scale breaking changes are allowed — principles take precedence over compatibility. See [STATUS.md](STATUS.md).
+
 <div align="center">
  <img src="https://raw.githubusercontent.com/go-spring/go-spring/master/logo@h.png" width="140" alt="logo"/>
 </div>
@@ -155,7 +157,7 @@ The direction is not "more features for their own sake" — it's making the foun
 
 1. **Close the long tail of integrations.** If a service needs it, the answer should be a Starter rather than an in-house glue package. New starters land under the same shared design constraints ([starter/DESIGN.md](starter/DESIGN.md)) — ports, driver mode, multi-instance addressing, fail-fast validation — so they behave like the ones already there.
 2. **One governance and observability model, for every component.** Coverage already spans the common stacks; the direction is that no backend is a second-class citizen — governed from the same rules document, instrumented under the same vocabulary, checked by the same script.
-3. **Keep the application-level API stable.** A framework earns the word "foundation" by not forcing business code to change when it evolves. That is the standing constraint on everything above: additive helpers are fine, breaking changes are not.
+3. **Keep the application-level API stable.** A framework earns the word "foundation" by not forcing business code to change when it evolves. That is the standing constraint on everything above **after release**: additive helpers are fine, breaking changes are not. During the current pre-release polishing phase, breaking changes are allowed — see [STATUS.md](STATUS.md).
 4. **Make the conventions machine-readable.** The project's rules already live next to the code — [starter/DESIGN.md](starter/DESIGN.md), per-module `DESIGN` / `USAGE` docs, and the [`/gs`](skills/gs) skill. As agents take on more of the coding, a framework whose conventions an agent can *read and follow* — not merely call — is what makes it usable as a substrate.
 
 If you build Go services for a living, this is a seat worth filling together: every integration you contribute is one fewer internal wrapper someone else has to write.

@@ -18,6 +18,8 @@ package governance
 
 import (
 	"context"
+	"go-spring.org/cloud/runtime/dataplane/inbound/admission"
+	"go-spring.org/cloud/runtime/dataplane/outbound/resilience"
 	"net/http"
 	"net/http/httptest"
 	"sync"
@@ -92,10 +94,11 @@ spring.governance.fault.rate=1
 	}
 	// The document binds only the keys that survived; the driver key is no longer
 	// part of the document (it is a startup property now), so it binds nothing.
-	if !cfg.Client.Default.Policy.IsZero() || len(cfg.Client.Rules) != 0 {
-		t.Fatalf("legacy spring.governance.default/rules must arm no outbound policy: %+v", cfg.Client)
+	want := resilience.Policy{}
+	if cfg.Client.Default.Policy != want || len(cfg.Client.Rules) != 0 {
+		t.Fatalf("legacy spring.governance.default/rules must bind only the tag defaults: %+v", cfg.Client)
 	}
-	if !cfg.Server.Default.IsZero() || len(cfg.Server.Rules) != 0 {
+	if cfg.Server.Default != admission.DefaultPolicy() || len(cfg.Server.Rules) != 0 {
 		t.Fatalf("legacy keys must arm no inbound governance: %+v", cfg.Server)
 	}
 	if !cfg.Client.Fault.Inert() || !cfg.Server.Fault.Inert() {

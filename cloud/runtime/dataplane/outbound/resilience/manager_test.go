@@ -429,3 +429,16 @@ func TestManagerMatchesRuleByAction(t *testing.T) {
 		}
 	}
 }
+
+// TestApplyRejectsInvalidPolicy verifies a document that cannot materialize a
+// stage is rejected whole, instead of publishing a generation that silently
+// drops it.
+func TestApplyRejectsInvalidPolicy(t *testing.T) {
+	m := NewManager(NewDefaultDriver(nil))
+	if err := m.Apply(Settings{Default: Policy{RateLimit: -1}}); err == nil {
+		t.Fatal("Apply accepted a negative rate limit")
+	}
+	if err := m.Apply(Settings{Default: Policy{BreakerStrategy: "bogus"}}); err == nil {
+		t.Fatal("Apply accepted an unknown breaker strategy")
+	}
+}

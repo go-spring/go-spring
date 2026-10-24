@@ -43,19 +43,19 @@ func TestRecompilePriorityOrder(t *testing.T) {
 	tbl := newTestTable(t)
 	raw := map[string]RouteRaw{
 		"a-first": {Upstream: struct { // id sorts first, no priority
-			Target    string `value:"${target:=}"`
+			Target    string `value:"${target}" expr:"$ != ''"`
 			Discovery string `value:"${discovery:=}"`
 		}{Target: "http://127.0.0.1:19000"}},
 		"b-catchall": {Priority: 10, Upstream: struct {
-			Target    string `value:"${target:=}"`
+			Target    string `value:"${target}" expr:"$ != ''"`
 			Discovery string `value:"${discovery:=}"`
 		}{Target: "http://127.0.0.1:19000"}},
 		"c-second": {Priority: 5, Upstream: struct {
-			Target    string `value:"${target:=}"`
+			Target    string `value:"${target}" expr:"$ != ''"`
 			Discovery string `value:"${discovery:=}"`
 		}{Target: "http://127.0.0.1:19000"}},
 		"d-tie": {Priority: 10, Upstream: struct { // ties with b-catchall -> id order
-			Target    string `value:"${target:=}"`
+			Target    string `value:"${target}" expr:"$ != ''"`
 			Discovery string `value:"${discovery:=}"`
 		}{Target: "http://127.0.0.1:19000"}},
 	}

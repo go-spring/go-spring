@@ -16,7 +16,11 @@
 
 package StarterActuator
 
-import "time"
+import (
+	"time"
+
+	"go-spring.org/stdlib/errutil"
+)
 
 // Config is the actuator's configuration under ${spring.actuator}. It carries
 // only configured values; the server that consumes it lives in server.go.
@@ -36,26 +40,26 @@ type Config struct {
 	// this key is what activates the starter. Documented layout: main HTTP
 	// server (:9090), actuator (:9370, all interfaces so in-cluster probes can
 	// reach it), pprof (127.0.0.1:9981).
-	Address string `value:"${addr}"`
+	Address string `value:"${addr}" expr:"$ != ''"`
 
 	// CheckTimeout bounds a single probe check across all indicators so one
 	// slow dependency cannot stall the probe past a typical kubelet probe
 	// timeout (spring.actuator.check-timeout, default 3s).
-	CheckTimeout time.Duration `value:"${check-timeout:=3s}" expr:"$ > 0"`
+	CheckTimeout time.Duration `value:"${check-timeout:=3s}" expr:"int($) > 0"`
 
 	// ReadHeaderTimeout is the deadline for reading request headers, the
 	// slowloris guard (spring.actuator.read-header-timeout, default 5s). Zero
 	// disables it.
-	ReadHeaderTimeout time.Duration `value:"${read-header-timeout:=5s}" expr:"$ >= 0"`
+	ReadHeaderTimeout time.Duration `value:"${read-header-timeout:=5s}" expr:"int($) >= 0"`
 
 	// ReadTimeout, WriteTimeout and IdleTimeout mirror http.Server's fields
 	// (spring.actuator.read-timeout / write-timeout / idle-timeout, default 0 =
 	// no limit). A management port serves short probe/metrics requests, so the
 	// defaults leave these off; set WriteTimeout if the port is reachable from
 	// untrusted networks.
-	ReadTimeout  time.Duration `value:"${read-timeout:=0}" expr:"$ >= 0"`
-	WriteTimeout time.Duration `value:"${write-timeout:=0}" expr:"$ >= 0"`
-	IdleTimeout  time.Duration `value:"${idle-timeout:=0}" expr:"$ >= 0"`
+	ReadTimeout  time.Duration `value:"${read-timeout:=0}" expr:"int($) >= 0"`
+	WriteTimeout time.Duration `value:"${write-timeout:=0}" expr:"int($) >= 0"`
+	IdleTimeout  time.Duration `value:"${idle-timeout:=0}" expr:"int($) >= 0"`
 
 	// Token, when set, requires an "Authorization: Bearer <token>" header on
 	// every request to the management port (spring.actuator.token). Takes
@@ -67,4 +71,15 @@ type Config struct {
 	// spring.actuator.password).
 	Username string `value:"${username:=}"`
 	Password string `value:"${password:=}"`
+}
+
+// Validate rejects a half-configured Basic auth pair. The guard enables only
+// when both fields are set, so configuring one silently leaves the management
+// port unauthenticated while the operator believes it is protected. The rule
+// spans two fields, so an expr tag cannot express it.
+func (c Config) Validate() error {
+	if (c.Username == "") != (c.Password == "") {
+		return errutil.Explain(nil, "actuator: username and password must be set together")
+	}
+	return nil
 }

@@ -67,7 +67,7 @@ type Config struct {
 
 	// Mode selects the discovery mechanism: "dns" (default, headless Service
 	// DNS, zero dependency) or "endpointslice" (client-go informer, real-time).
-	Mode string `value:"${mode:=dns}"`
+	Mode string `value:"${mode:=dns}" expr:"$ in ['dns', 'endpointslice']"`
 
 	// Namespace is the Kubernetes namespace the target Service lives in.
 	Namespace string `value:"${namespace:=default}"`

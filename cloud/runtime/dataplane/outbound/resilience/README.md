@@ -37,6 +37,111 @@ outbound calls alone.
   `ClusterLimiter` store handed in (Redis, in `starter-go-redis`), one budget
   across replicas.
 
+## Circuit breaking: the rule
+
+Circuit breaking is **outbound-only** and scoped to one downstream
+**service** — the same scope as the rate limit. One executor exists per service
+label, so every caller of that label shares one breaker: a broken downstream is
+refused for all of them, and a healthy one is never refused because a single
+call site misbehaves. Per-endpoint keying is not offered; it multiplies breakers
+without adding isolation the caller needs.
+
+A breaker answers one question: **is it still worth attempting this unit?** It
+is a statement about the unit, not about the request, and it does not replace
+the other stages:
+
+| Mechanism | Bounds | Judged from | On refusal |
+| --- | --- | --- | --- |
+| rate limit | request rate | configured quota | `ErrRateLimited` |
+| bulkhead | concurrency | configured capacity | `ErrBulkheadFull` |
+| **circuit breaker** | **whether to attempt** | **recent outcomes** | `ErrCircuitOpen` |
+| retry | attempts of one call | the last attempt | another attempt |
+| fallback | — | the refusal | the caller's degraded answer |
+
+### Classification
+
+Each **logical call** (all retries included) contributes exactly one sample.
+The adapter classifies the result; the breaker counts it:
+
+| Sample | Outcomes |
+| --- | --- |
+| failure | connection refused/reset, DNS/TLS failure, EOF before a response, I/O timeout, `Policy.Timeout` expiry, HTTP 5xx, gRPC `Unavailable` / `Internal` / `DeadlineExceeded` / `DataLoss`, and a panic before the call returned |
+| success | HTTP 2xx/3xx, HTTP 4xx (the unit answered and rejected the request), HTTP 429 / gRPC `ResourceExhausted` (flow control is an answer, not a failure), gRPC codes not listed as failure, adapter-declared sentinels such as cache miss / no rows |
+| ignored | the caller's own cancellation or deadline, while no verdict about the unit was known |
+
+Slow is **not a separate sample class**: every sample carries its duration, and
+the selected strategy counts it as slow when the duration is above
+`SlowCallDurationThreshold` — for a success and a failure alike. Under
+`error-rate`, a slow failure is both a failure (failure ratio) and a slow call
+(slow ratio); under `slow-call`, slowness alone trips. This is how resilience4j
+and Sentinel count it.
+
+A 4xx is **not** a failure: the downstream worked and the request was wrong. A
+5xx is: the downstream received the request and did not serve it. A caller that
+walks away is not evidence either way; `Policy.Timeout` is our own handling
+budget, so its expiry stays a failure. A retry-budget refusal does not erase the
+first attempt's failure: the sample is taken from the logical call, not from the
+refusal. Ignored samples neither open nor close the circuit; in half-open they
+return the trial permit, so a verdict-free probe cannot reopen a healthy
+circuit.
+
+### Adapter responsibilities
+
+The table is the contract each adapter implements; the engine only sees `error`.
+HTTP maps `>= 500` to a failure and returns every other response, so 2xx/3xx/4xx
+and 429 are successes. A gRPC adapter must map `InvalidArgument` / `NotFound` /
+`AlreadyExists` / `PermissionDenied` / `Unauthenticated` / `FailedPrecondition` /
+`OutOfRange` to success, and `Unavailable` / `Internal` / `DataLoss` / `Canceled`
+to failure. A *caller's* cancellation is the one ignored case and the engine
+detects it from the caller context by itself; adapters have no separate ignored
+channel, so anything they report as an error is a failure. Business sentinels
+such as cache miss or no rows are successes. When an adapter cannot classify a
+result, it must pass the call's true error through rather than inventing one.
+
+### Trip, cool-down, recovery
+
+Over the last `BreakerWindow` the breaker trips when:
+
+- samples ≥ `MinRequests` and the failure ratio ≥ `ErrorRateThreshold`; or
+- the slow ratio ≥ `SlowCallRateThreshold` when the slow pair is configured; or
+- under the `consecutive` strategy, `ErrorThreshold` failures in a row.
+
+Tripping enters Open for `OpenDuration`; afterwards a half-open round admits
+`HalfOpenRequests` probes. All must succeed to close, the first failure
+re-opens. `HalfOpenTimeout` bounds a round that never settles; zero waits
+indefinitely, so low traffic simply keeps probing.
+
+A refusal surfaces as `ErrCircuitOpen`. What the caller returns instead — a
+cached value, a default, an error — is its own fallback, not part of the
+breaker.
+
+### Enablement, defaults and strictness
+
+The breaker is off when no breaker knob is configured; configuring any knob
+turns it on (`BreakerDisabled` keeps the knobs but switches protection off, a
+kill switch).
+
+Selecting a strategy applies that strategy's mainstream defaults when the trip
+condition is omitted: 5 consecutive failures (gobreaker) for
+`consecutive`/`error-count`, a 50% failure rate (Hystrix/resilience4j) for
+`error-rate`, and 5 minimum samples (Sentinel) for every windowed strategy. The
+slow-call pair has no useful default and stays required. Supporting knobs
+default to `BreakerWindow` 1s, `OpenDuration` 5s, `HalfOpenTrials` 1 and
+`HalfOpenTimeout` unlimited.
+
+Values are validated at the boundary: an invalid or ambiguous configuration is
+rejected at construction, never silently reduced to an inert breaker.
+
+### Direction
+
+This contract is client-side. Inbound requests are governed by `admission`,
+which has **no circuit breaker** (decision 2026-10-24): an instance-wide "reject
+all" has no safe blast radius. If inbound self-protection is ever built it will
+be an inbound-side composition of its own — per resource (action/route), with
+degradation as the action — not this service-scoped breaker moved across the
+direction. The kernel state machine may be reused as a building block; the
+scope, the decision point and the effect are not.
+
 ## Alignment: sentinel & OpenSergo
 
 The policy model is the neutral superset both engines translate from, and it
@@ -235,8 +340,18 @@ sentinel driver from `starter/starter-governance-sentinel`.
   arriving right after cool-down cannot both be admitted). The sentinel
   driver approximates this with `ProbeNum=1`; sentinel's own probe
   accounting does not guarantee strict single-admission under tight
-  concurrency, which is the one residual behavioral difference between
-  the two drivers.
+  concurrency.
+- Sample count differs between drivers when retry is on. The builtin records
+  one breaker sample per LOGICAL call (all retries included). The sentinel
+  driver creates one `sentinel.Entry` per ATTEMPT, so every retry is also a
+  breaker sample. Sentinel couples flow control and breaker accounting on the
+  same entry, so aligning this would mean giving up per-attempt flow
+  accounting; one sample per logical call is the builtin's contract and the
+  rule this package documents.
+- The builtin `error-rate` breaker trips on failure ratio OR slow ratio. The
+  sentinel driver maps one strategy per resource rule, so its `error-rate` rule
+  covers the failure ratio only; use the builtin driver when both signals are
+  required.
 - Retry is the one stage that is OPT-IN and declared by the caller, not a
   framework default: it lives in a `chain.RetryPolicy` node carried on
   `chain.Operation` (`op.Retry`), and its zero value means "no retry". A
@@ -292,15 +407,17 @@ sentinel driver from `starter/starter-governance-sentinel`.
   package `cloud/runtime/dataplane/outbound/chain`). Inbound is not expressed here at all; it lives in
   `cloud/runtime/dataplane/inbound/admission`.
 - **Organs, neutral parameters.** The breaker state machine lives in
-  `cloud/runtime/dataplane/kernel/breaker`; the rate-limit vocabulary, local budget, `ClusterLimiter`
+  `cloud/runtime/dataplane/kernel/circuitbreaker`; the rate-limit vocabulary, local budget, `ClusterLimiter`
   seam and counting algorithms live in `cloud/runtime/dataplane/kernel/ratelimit`. Both are leaf
   packages shared with inbound `guard`, so both directions map their own policy
   into the same organs and a fix lands once. `Policy.breakerSpec()` and
   `RateSpec()` are the outbound mappings.
-- **Strictly one-way dependencies:** `chain ← observability ← resilience`. The
-  rejection sentinels live in `chain`; `BreakerState` /
-  `BreakerEventListener(Setter)` are defined in `observability/breaker.go`, and
-  resilience refers to them through aliases for compatibility.
+- **Two independent observation planes.** The request plane
+  (`outbound/observe`) records what happened to one call and never reads
+  governance state. This package publishes its OWN organ state (breaker, rate
+  budget) through observable instruments registered from `observe.go`, so there
+  is no cross-layer listener contract and no state snapshot interface on
+  `chain.Executor`.
 - **Naming:** outbound has no direction qualifier any more — the package IS
   outbound. Inbound lives in `guard` (`admission.Manager` / `admission.Policy`), so
   the two authorities read as a symmetric pair without either carrying a
@@ -319,18 +436,17 @@ sentinel driver from `starter/starter-governance-sentinel`.
   keys state on them); they partition nothing yet. Never let `Execute` *select*
   protection state by an arbitrary per-call key — to partition counters by key,
   hand in a `ClusterLimiter` and put the key in the scope.
-- **The breaker must be built lazily on the first call** (`snapshot()` /
-  `buildState()`), never at executor construction — otherwise
-  `SetBreakerEventListener` cannot attach (the `WrapClientExecutor` in
-  `Manager.ExecutorFor` is handed over by hand).
+- **Organs are built lazily on the first call** (`snapshot()` / `buildState()`).
+  The executor's state observer reads whatever generation is current at
+  collection time, so lazy construction and a policy swap need no handshake.
 - **One label, one executor on the managed path.** Clients always go through
   `Manager.ExecutorFor`; none builds its own via `Subscribe` +
   `NewExecutor`. Don't give a single client a "needs to see the resolved policy"
   escape (that forces it around the manager) — change things at the govern-rule
   layer instead. httpx was the only client that bypassed the manager with a
-  `min-requests=5` floor; that floor is deleted and it now uses
-  `ExecutorFor("http", service)`. `Policy.MinRequests`'s `<=0 → 1` default
-  is unchanged.
+  `min-requests=5` floor; that client-specific floor is deleted and it now uses
+  `ExecutorFor("http", service)`. The policy-level default is now 5 (Sentinel's
+  `minRequestAmount`).
 - **The executor is a stable shell; its state is a replaceable generation.**
   There is no refresh protocol any more. `Manager.Apply` publishes a snapshot
   and stops; each executor holds a `PolicySource` — the manager — and asks it on

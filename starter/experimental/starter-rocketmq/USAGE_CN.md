@@ -362,7 +362,7 @@ curl -s :9090/metrics | grep resilience_calls
   字段 `messaging.operation`、`messaging.destination.name`（截断至 512）、`status`、
   `duration_ms`；带 topic 的成功在 Debug、出错在 Warn。
 - guarded 路径（未声明的回退）：直方图 `resilience.client.duration` 与计数器
-  `resilience.client.calls` / `resilience.client.breaker.state_change`，日志 tag
+  `resilience.client.calls` / `resilience.client.breaker.transitions_total`，日志 tag
   `_app_resilience`。
 - 手动 helper（裸客户端）：tracer `go-spring.org/starter-rocketmq` 产出 span
   `rocketmq.produce` / `rocketmq.consume <topic>`，属性 `messaging.system/

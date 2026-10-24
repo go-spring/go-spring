@@ -163,7 +163,7 @@ func build(ctx context.Context, c Config, center *runtime.Runtime) (gormcore.Spe
 			// chain's current generation.
 			nd := &net.Dialer{}
 			opts.DialContext = func(ctx context.Context, _ string) (net.Conn, error) {
-				ep, perr := lb.Pick(loadbalance.PickInfo{})
+				ep, perr := lb.Pick(ctx, loadbalance.PickInfo{})
 				if perr != nil {
 					return nil, perr
 				}

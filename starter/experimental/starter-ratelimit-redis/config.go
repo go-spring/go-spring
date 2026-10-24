@@ -31,5 +31,5 @@ type Config struct {
 	// spring.go-redis.instances.<Client>. The key is required: an empty value is
 	// a fail-fast wiring error, since silently defaulting would hide a
 	// misconfiguration until the first protected call.
-	Client string `value:"${client}"`
+	Client string `value:"${client}" expr:"$ != ''"`
 }

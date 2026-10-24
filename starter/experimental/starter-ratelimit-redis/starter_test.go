@@ -200,8 +200,10 @@ func TestKeyTTLPreventsColdKeyPileup(t *testing.T) {
 }
 
 // TestWiring_MissingClientNameFailsStartup pins the fail-fast contract: a
-// present block with an empty client, and an absent block, both refuse to wire
-// and both name the property. setup returns before touching the BeanProvider on
+// present block with an empty client, and an absent block, both refuse to wire.
+// The empty case is caught by the field's expr (which names Config.Client, not
+// the full property path); the absent case is caught by the required tag, which
+// does name the property. setup returns before touching the BeanProvider on
 // that path, so passing nil is safe.
 func TestWiring_MissingClientNameFailsStartup(t *testing.T) {
 	p := flatten.NewPropertiesStorage(flatten.NewProperties(map[string]string{
@@ -211,8 +213,8 @@ func TestWiring_MissingClientNameFailsStartup(t *testing.T) {
 	if err == nil {
 		t.Fatal("an empty client name must fail wiring")
 	}
-	if !strings.Contains(err.Error(), "spring.ratelimit.redis.client") {
-		t.Fatalf("error %q does not name the missing property", err.Error())
+	if !strings.Contains(err.Error(), "Config.Client") {
+		t.Fatalf("error %q does not name the client field", err.Error())
 	}
 
 	// No key at all: the required value tag rejects it, and the message still

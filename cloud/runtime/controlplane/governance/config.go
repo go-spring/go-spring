@@ -28,6 +28,7 @@ import (
 	"go-spring.org/cloud/runtime/dataplane/inbound/admission"
 	"go-spring.org/cloud/runtime/dataplane/kernel/fault"
 	"go-spring.org/cloud/runtime/dataplane/kernel/loadbalance"
+	"go-spring.org/cloud/runtime/dataplane/kernel/matcher"
 	"go-spring.org/cloud/runtime/dataplane/outbound/chain"
 	"go-spring.org/cloud/runtime/dataplane/outbound/resilience"
 	"go-spring.org/stdlib/errutil"
@@ -47,7 +48,7 @@ import (
 //     ([loadbalance.Selection]), which is outbound by nature. This is the
 //     protection this process wants when it CALLS something.
 //   - [Config.Server] (inbound) — [admission.Policy]: rate limit, concurrency
-//     cap, inbound breaker, handling budget. This is the protection this process
+//     cap, handling budget. This is the protection this process
 //     wants against the requests it RECEIVES. No retry (a handler that already
 //     produced side effects cannot be replayed) and no endpoint selection (there
 //     is no endpoint to choose) — those are not disabled here, they have no
@@ -145,10 +146,10 @@ type ServerConfig struct {
 	Rules []ServerRule `value:"${rules:=}"`
 
 	// Fault is this direction's fault-injection config. The server side injects
-	// at the inbound seam (see [serverfault.Server.Fire]), so a fire here tests this
-	// process's error paths, its observe classification and its inbound breaker,
-	// and lets upstream callers' retry/breaker behaviour be verified without
-	// touching a real dependency. Independent of [ClientConfig.Fault], including
+	// at the inbound seam (see [serverfault.Server.Fire]), so a fire here tests
+	// this process's error paths and its observe classification, and lets
+	// upstream callers' retry/breaker behaviour be verified without touching a
+	// real dependency. Independent of [ClientConfig.Fault], including
 	// the guardrails: each direction counts its own MaxDuration/MaxAffected, so a
 	// self-healed client fire does not disarm a server one. Bind via
 	// spring.governance.server.fault.*.
@@ -194,7 +195,7 @@ type ClientRule struct {
 	// equals the call's and whose Match it satisfies wins, which is how one
 	// service is governed differently per tenant, region or canary. Bind via
 	// indexed properties, e.g. spring.governance.client.rules[0].match.tenant=acme.
-	Match chain.Selector `value:"${match:=}"`
+	Match matcher.ExactMap `value:"${match:=}"`
 
 	// Action narrows the rule to calls whose [chain.Request.Action] it matches — the
 	// interface being invoked ("insert", "GET /users/{id}"). Empty matches every
@@ -258,7 +259,7 @@ func canonicalAction(a chain.ActionMatch) string {
 // canonicalSelector renders a selector as a stable, order-independent string, so
 // two selectors that name the same keys and values compare equal however their
 // maps were laid out.
-func canonicalSelector(s chain.Selector) string {
+func canonicalSelector(s matcher.ExactMap) string {
 	if len(s) == 0 {
 		return ""
 	}

@@ -45,7 +45,7 @@ type Config struct {
 	// Consistency is the default consistency level: any|one|two|three|
 	// quorum|all|local-quorum|each-quorum|local-one. Default
 	// "local-quorum".
-	Consistency string `value:"${consistency:=local-quorum}"`
+	Consistency string `value:"${consistency:=local-quorum}" expr:"$ == '' || $ in ['any', 'one', 'two', 'three', 'quorum', 'all', 'local-quorum', 'each-quorum', 'local-one']"`
 
 	// Timeout bounds query execution on the client side, e.g., "11s".
 	Timeout time.Duration `value:"${timeout:=11s}"`

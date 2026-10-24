@@ -23,6 +23,7 @@ import (
 	"go-spring.org/cloud/security"
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
+	"go-spring.org/stdlib/errutil"
 	"go-spring.org/stdlib/netutil"
 )
 
@@ -45,6 +46,17 @@ type Config struct {
 	// Username and Password, when both set, require HTTP Basic authentication.
 	Username string `value:"${username:=}"`
 	Password string `value:"${password:=}"`
+}
+
+// Validate rejects a half-configured Basic auth pair. The guard enables only
+// when both fields are set, so configuring one silently leaves the pprof
+// endpoints unauthenticated while the operator believes they are protected.
+// The rule spans two fields, so an expr tag cannot express it.
+func (c Config) Validate() error {
+	if (c.Username == "") != (c.Password == "") {
+		return errutil.Explain(nil, "pprof: username and password must be set together")
+	}
+	return nil
 }
 
 // SimplePProfServer is a simple HTTP server that exposes pprof endpoints.

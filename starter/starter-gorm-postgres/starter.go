@@ -160,7 +160,7 @@ func build(ctx context.Context, c Config, center *runtime.Runtime) (gormcore.Spe
 		// the Resolver and dials it over TCP.
 		nd := &net.Dialer{}
 		pgxCfg.DialFunc = func(ctx context.Context, _, _ string) (net.Conn, error) {
-			ep, perr := lb.Pick(loadbalance.PickInfo{})
+			ep, perr := lb.Pick(ctx, loadbalance.PickInfo{})
 			if perr != nil {
 				return nil, perr
 			}

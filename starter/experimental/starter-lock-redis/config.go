@@ -30,7 +30,7 @@ type Config struct {
 	// The bean must be provided by starter-go-redis under spring.go-redis.instances.<Client>.
 	// Empty is a fail-fast configuration error — the starter refuses to boot
 	// rather than silently falling back to a default instance.
-	Client string `value:"${client}"`
+	Client string `value:"${client}" expr:"$ != ''"`
 
 	// TTL is the default lease duration handed to the lock package when a
 	// caller does not override it via lock.WithTTL. The lock package clamps

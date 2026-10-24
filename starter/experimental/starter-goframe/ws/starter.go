@@ -65,7 +65,7 @@ type ServiceRegister func(s *ghttp.Server)
 // fields mirror the http sibling — gsvc registration hangs off the HTTP server.
 type Config struct {
 	Name    string `value:"${name:=goframe}"`
-	Address string `value:"${address}"`
+	Address string `value:"${address}" expr:"$ != ''"`
 
 	// Registry publishes the server into etcd for discovery. Leave etcd empty
 	// (the default) for a plain server with no registration.

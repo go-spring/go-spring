@@ -19,7 +19,6 @@ package luohua
 import (
 	"context"
 
-	"go-spring.org/cloud/runtime/dataplane/kernel/breaker"
 	"go-spring.org/cloud/runtime/dataplane/kernel/ratelimit"
 	"go-spring.org/cloud/runtime/dataplane/outbound/chain"
 
@@ -80,17 +79,6 @@ func (e *luohuaExecutor) Execute(ctx context.Context, op chain.Operation, rec *c
 		return []log.Field{log.String("service", e.service)}
 	})
 	return e.inner.Execute(ctx, op, rec, fn)
-}
-
-// SetBreakerEventListener forwards to the inner executor so the breakers of the
-// driver beneath luohua still emit state transitions. A wrapper that swallowed
-// this capability would silently disable breaker observability for
-// spring.resilience.driver=luohua, since [resilience.Manager.ExecutorFor] attaches the observe
-// listener through this handshake.
-func (e *luohuaExecutor) SetBreakerEventListener(l breaker.EventListener) {
-	if s, ok := e.inner.(breaker.EventListenerSetter); ok {
-		s.SetBreakerEventListener(l)
-	}
 }
 
 // SetPolicySource forwards the manager to the inner executor, so the luohua

@@ -19,6 +19,7 @@ package httpx
 import (
 	"context"
 	"errors"
+	"go-spring.org/cloud/runtime/dataplane/inbound/admission"
 	"net/http"
 	"sync"
 	"testing"
@@ -352,7 +353,7 @@ func TestConfigServiceDerivation(t *testing.T) {
 // testCenter bundles the trio of test authorities into the one center bean
 // NewTransport takes.
 func testCenter(mgr *resilience.Manager, inj *clientfault.ClientManager, lb *loadbalance.Manager) *runtime.Runtime {
-	ctr, err := runtime.New(mgr, lb, inj, serverfault.NewServerManager(nil), nil, governance.NewPushSource(governance.Config{}))
+	ctr, err := runtime.New(mgr, lb, inj, serverfault.NewServerManager(nil), nil, governance.NewPushSource(governance.Config{Server: governance.ServerConfig{Default: admission.DefaultPolicy()}}))
 	if err != nil {
 		panic(err)
 	}

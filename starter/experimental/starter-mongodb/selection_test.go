@@ -53,7 +53,7 @@ func TestNewPickChainRebuildsFromScratch(t *testing.T) {
 	// The base generation: round-robin, suspension disabled, live instance picked.
 	assert.Number(t, chain.Generation()).Equal(uint64(1))
 	assert.That(t, chain.Selection()).Equal(loadbalance.Selection{})
-	ep, err := chain.Pick(loadbalance.PickInfo{})
+	ep, err := chain.Pick(context.Background(), loadbalance.PickInfo{})
 	assert.Error(t, err).Nil()
 	assert.That(t, ep.Addr).Equal("127.0.0.1:27017")
 
@@ -85,7 +85,7 @@ func TestNewPickChainUnarmedManagerIsPassThrough(t *testing.T) {
 	assert.Number(t, chain.Generation()).Equal(uint64(1))
 	assert.That(t, chain.Selection()).Equal(loadbalance.Selection{})
 
-	ep, err := chain.Pick(loadbalance.PickInfo{})
+	ep, err := chain.Pick(context.Background(), loadbalance.PickInfo{})
 	assert.Error(t, err).Nil()
 	assert.That(t, ep.Addr).Equal("127.0.0.1:27017")
 }

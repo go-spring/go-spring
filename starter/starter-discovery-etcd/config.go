@@ -31,7 +31,7 @@ type EtcdConfig struct {
 
 	// Endpoints lists the etcd cluster nodes to dial. Required; setting it is
 	// what activates this starter (fail-loud opt-in; no silent localhost).
-	Endpoints []string `value:"${endpoints}"`
+	Endpoints []string `value:"${endpoints}" expr:"len($) > 0"`
 
 	// Username / Password authenticate against etcd when auth is enabled.
 	// Leave empty for anonymous clusters.
@@ -48,7 +48,7 @@ type EtcdConfig struct {
 	// if the process dies the lease expires after roughly TTL and etcd removes
 	// the key. etcd leases use whole-second TTLs, so sub-second values are
 	// rounded up to one second.
-	TTL time.Duration `value:"${ttl:=15s}"`
+	TTL time.Duration `value:"${ttl:=15s}" expr:"int($) > 0"`
 
 	// KeyPrefix is prepended to every registered key so multiple applications can
 	// share one cluster without collisions. Trailing slashes are preserved.

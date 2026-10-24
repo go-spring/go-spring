@@ -166,13 +166,14 @@ re-registered when `ensureRules` re-runs.
 ### 2.5 Breaker events and outcome mapping (breaker_listener.go)
 
 - **State events**: sentinel's `StateChangeListener` is a process-wide singleton, so a
-  single `routeListener` demultiplexes by `rule.Resource` through the `breakerRoutes`
-  sync.Map to the per-executor `breaker.EventListener`. Attachment:
-  `SetBreakerEventListener(l)` (implements `breaker.EventListenerSetter`;
-  observe-resilience's WrapExecutor uses it); the listener is registered with sentinel
-  once (`ensureRouteListener`, sync.Once) and per service inside `ensureRules`. States map
-  1:1: sentinel Open/HalfOpen/Closed → `breaker.Open/BreakerHalfOpen/BreakerClosed`.
-  A service with no route (breaker rules loaded outside go-spring) is silently ignored.
+  single `routeListener` demultiplexes by `rule.Resource` into the driver's own
+  per-service `breakerMirror` held in the `breakerRoutes` sync.Map. The listener is
+  registered with sentinel once (`ensureRouteListener`, sync.Once) and a mirror is
+  created per service inside `ensureRules`; `Close` removes it. States map 1:1:
+  sentinel Open/HalfOpen/Closed → `breaker.StateOpen/StateHalfOpen/StateClosed`.
+  The mirror is what the driver publishes as `resilience.client.breaker.*` metrics
+  (observe.go). A service with no route (breaker rules loaded outside go-spring) is
+  silently ignored.
 - **Block outcomes**: `mapBlockError` translates sentinel's block reason into the neutral
   sentinels — `BlockTypeCircuitBreaking` → `ErrCircuitOpen`, `BlockTypeIsolation` →
   `ErrBulkheadFull`, everything else (i.e. flow rejection) → `ErrRateLimited` — so callers
@@ -185,10 +186,10 @@ re-registered when `ensureRules` re-runs.
 | `RateLimit` + `Window` | flow `Threshold` (normalized per window: per-second × StatIntervalInMs/1000) + `StatIntervalInMs` | Window → 1000ms; not installed when `<=0` |
 | `RateLimitMaxWait` | flow `ControlBehavior=Throttling` + `MaxQueueingTimeMs` (queue instead of reject) | 0 → Reject |
 | `RateLimitWarmUpDuration`/`WarmUpColdFactor` | flow `WarmUp` + `WarmUpPeriodSec`/`WarmUpColdFactor` (exclusive with queueing — warm-up wins, Reject only) | 0 → Direct; ColdFactor → 3 |
-| `BreakerStrategy=error-rate` | circuitbreaker.ErrorRatio; `Threshold=ErrorRateThreshold`; `MinRequestAmount=MinRequests` | MinRequests → 1 |
-| `BreakerStrategy=slow-call` | circuitbreaker.SlowRequestRatio; `MaxAllowedRtMs=SlowCallDurationThreshold`; `Threshold=SlowCallRateThreshold` | same |
-| `BreakerStrategy=error-count` | circuitbreaker.ErrorCount; `Threshold=float64(ErrorThreshold)` (exact) | same |
-| `BreakerStrategy=consecutive` | same as error-count — **approximation** (sentinel has no consecutive-run breaker) | — |
+| `BreakerStrategy=error-rate` | circuitbreaker.ErrorRatio; `Threshold=ErrorRateThreshold`; `MinRequestAmount=MinRequests` | ErrorRateThreshold → 0.5; MinRequests → 5 |
+| `BreakerStrategy=slow-call` | circuitbreaker.SlowRequestRatio; `MaxAllowedRtMs=SlowCallDurationThreshold`; `Threshold=SlowCallRateThreshold` | required pair (no default) |
+| `BreakerStrategy=error-count` | circuitbreaker.ErrorCount; `Threshold=float64(ErrorThreshold)` (exact) | ErrorThreshold → 5 |
+| `BreakerStrategy=consecutive` | same as error-count — **approximation** (sentinel has no consecutive-run breaker) | ErrorThreshold → 5 |
 | `OpenDuration` | `RetryTimeoutMs` | 5000ms |
 | `BreakerWindow` | `StatIntervalMs` | 1000ms |
 | `HalfOpenRequests` | `ProbeNum` | 0/1 → 1 |
@@ -253,11 +254,12 @@ Hold an executor built with `RateLimit: 1`, observe throttling as in §4.4, then
 governance source when running under cloud/runtime/controlplane/governance): the next Execute reloads rules and
 throttling stops. Note the breaker stat window resets on refresh (§2.4).
 
-### 4.6 Breaker event observation
+### 4.6 Breaker state observation
 
-Implement `breaker.EventListener`, attach via `SetBreakerEventListener` before
-first Execute of the service: transitions fire as Closed→Open→HalfOpen→Closed during the
-drills above — the seam observe-resilience's WrapExecutor consumes.
+The driver keeps a per-service mirror of sentinel's breaker state (sentinel exposes
+transitions only through a process-wide listener and has no state query API) and
+publishes it as `resilience.client.breaker.state` and `...transitions_total{to}`. During the drills above the mirror passes through
+Closed→Open→HalfOpen→Closed; scrape the metrics endpoint to see it.
 
 ---
 
@@ -268,7 +270,7 @@ drills above — the seam observe-resilience's WrapExecutor consumes.
 | Process panics at import: "sentinel init failed" | broken environment for `sentinel.InitDefault()` (config/log dirs) | Fix the env — the panic is by design, fail-loudly at import (suspect #1). |
 | Startup reports `no driver named "sentinel"` | starter not blank-imported | Add `import _ "go-spring.org/starter-governance-sentinel"`. |
 | Consumers stay on builtin resilience | the governance document's `spring.resilience.driver` is not `sentinel` | Set `spring.resilience.driver=sentinel` — one process-wide switch, effective everywhere (suspect #3). |
-| Breaker never opens | `MinRequestAmount` not yet reached, or `ErrorThreshold`/window mis-sized | Check the defaults table §2.6 (`MinRequests` → 1, window → 1000ms). |
+| Breaker never opens | `MinRequestAmount` not yet reached, or `ErrorThreshold`/window mis-sized | Check the defaults table §2.6 (`MinRequests` → 5, window → 1000ms). |
 | Breaker state looks reset after a config push | `Refresh` clears rules; sentinel replaces them and resets the stat window | Intended lazy-reload semantic (§2.4). |
 | Doubled resources in the sentinel console/metrics | bulkhead lives under `<label>$bulkhead` | Driver-internal naming (suspect #2) — filter by suffix. |
 | No retry despite `MaxRetries` set | `ShouldRetry(err)` false, or the `Timeout` exhausted before the next attempt | Check the policy's retry predicate and budget. |

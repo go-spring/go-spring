@@ -16,7 +16,11 @@
 
 package StarterAdminUI
 
-import "time"
+import (
+	"time"
+
+	"go-spring.org/stdlib/errutil"
+)
 
 // Config carries the settings bound from the "spring.admin-ui.*" property tree.
 // The tag on the Server.Config field ("${spring.admin-ui}") sets the prefix;
@@ -34,7 +38,7 @@ type Config struct {
 	// starter-actuator's spring.actuator.addr contract). Documented layout:
 	// main HTTP server (:9090), actuator (:9370), admin UI (:9280), pprof
 	// (127.0.0.1:9981), so all four can coexist in a single process.
-	Addr string `value:"${addr}"`
+	Addr string `value:"${addr}" expr:"$ != ''"`
 
 	// Token, when set, requires each request to present it as an
 	// "Authorization: Bearer <token>" header. Takes precedence over
@@ -68,4 +72,15 @@ type Config struct {
 	// same binary shipped to multiple environments can label the dashboard
 	// with the environment name ("prod cluster", "staging", ...).
 	Title string `value:"${title:=Go-Spring Admin}"`
+}
+
+// Validate rejects a half-configured Basic auth pair. Guard.Enabled() requires
+// both fields, so setting only one silently turns authentication off — the
+// dashboard stays reachable while the operator believes it is protected. The
+// rule spans two fields, so an expr tag cannot express it.
+func (c Config) Validate() error {
+	if (c.Username == "") != (c.Password == "") {
+		return errutil.Explain(nil, "admin-ui: username and password must be set together")
+	}
+	return nil
 }

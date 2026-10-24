@@ -35,6 +35,7 @@ import (
 	"github.com/zeromicro/go-zero/zrpc"
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
+	"go-spring.org/stdlib/errutil"
 	"google.golang.org/grpc"
 
 	"go-spring.org/starter-go-zero/internal/logger"
@@ -62,7 +63,7 @@ type ServiceRegister func(grpcServer *grpc.Server)
 // go-zero-native via the DevServer, on by default.
 type Config struct {
 	Name     string `value:"${name:=go-zero}"`
-	ListenOn string `value:"${listen-on}"`
+	ListenOn string `value:"${listen-on}" expr:"$ != ''"`
 
 	// Etcd service discovery. Empty Addr disables registration (direct-connect).
 	Etcd struct {
@@ -92,6 +93,16 @@ type Config struct {
 	Log struct {
 		Level string `value:"${level:=info}"`
 	} `value:"${log}"`
+}
+
+// Validate enforces the etcd registration pair: an Addr without a Key selects
+// registration but leaves it unkeyed, which fails only when the client talks to
+// etcd. The rule spans the two nested fields, so an expr tag cannot express it.
+func (c Config) Validate() error {
+	if c.Etcd.Addr != "" && c.Etcd.Key == "" {
+		return errutil.Explain(nil, "go-zero zrpc: etcd key is required when etcd addr is set")
+	}
+	return nil
 }
 
 // ZrpcServer adapts a zrpc.RpcServer to the Go-Spring server lifecycle. The

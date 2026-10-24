@@ -24,7 +24,6 @@ import (
 
 	"go-spring.org/cloud/observability/attrs"
 	"go-spring.org/cloud/observability/instrument"
-	"go-spring.org/cloud/runtime/dataplane/kernel/breaker"
 	"go-spring.org/cloud/runtime/dataplane/outbound/chain"
 
 	"go-spring.org/log"
@@ -35,20 +34,23 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
-// clientInstrumentSet is the outbound layer's always-on signals: the per-call
-// duration and status counter, and the circuit-breaker transition counter. One
-// set per process, resolved lazily on first use so it binds to whichever
-// providers are current then, and immutable afterwards. It holds no per-client
-// state — the system and service labels travel with each wrapper, not here.
+// clientInstrumentSet is the outbound REQUEST plane's always-on signals: the
+// per-call duration and status counter. One set per process, resolved lazily on
+// first use so it binds to whichever providers are current then, and immutable
+// afterwards. It holds no per-client state — the system and service labels
+// travel with each wrapper, not here.
+//
+// Governance organs' own state (breaker, rate budget) is deliberately absent:
+// each organ publishes its own state from its own package, by pull. This plane
+// answers only what happened to one call.
 //
 // It is a separate set from the inbound (resilience.server.*) family rather than
 // one family with a direction attribute: the outcome sets genuinely differ
 // (inbound has no retry, so no retry_budget_exceeded and no per-attempt timeout),
 // and keeping them apart leaves existing outbound dashboards untouched.
 type clientInstrumentSet struct {
-	duration       metric.Float64Histogram
-	calls          metric.Int64Counter
-	breakerChanges metric.Int64Counter
+	duration metric.Float64Histogram
+	calls    metric.Int64Counter
 }
 
 // clientInstruments is the one outbound instrument set this package uses for the
@@ -68,10 +70,6 @@ func buildClientInstruments() *clientInstrumentSet {
 	in.calls, _ = m.Int64Counter("resilience.client.calls",
 		metric.WithDescription("Number of resilience-protected calls by status"),
 		metric.WithUnit("{call}"))
-	// breakerChanges counts circuit-breaker state transitions (from/to attrs).
-	in.breakerChanges, _ = m.Int64Counter("resilience.client.breaker.state_change",
-		metric.WithDescription("Circuit-breaker state transitions (from/to attrs)"),
-		metric.WithUnit("{event}"))
 	return in
 }
 
@@ -88,12 +86,10 @@ func buildClientInstruments() *clientInstrumentSet {
 // executor it built directly (e.g. httpx's custom chain.Executor / ResilienceDriver
 // paths).
 //
-// Attaching the breaker listener happens here, while inner is still private:
-// the type assertion below is a construction-time handshake, so the executor
-// never escapes without its listener and no late binding is needed. The shared
-// instruments are resolved at this point — the first resolve time, not package
-// init — so an SDK installed after this package's init still receives the spans
-// and records. The tracer is not held at all; see [wrappedClientExecutor.Execute].
+// The shared instruments are resolved at this point — the first resolve time,
+// not package init — so an SDK installed after this package's init still
+// receives the spans and records. The tracer is not held at all; see
+// [wrappedClientExecutor.Execute].
 func WrapClientExecutor(inner chain.Executor, system, service string) chain.Executor {
 	if inner == nil {
 		return nil
@@ -105,13 +101,6 @@ func WrapClientExecutor(inner chain.Executor, system, service string) chain.Exec
 			service: service,
 			ins:     clientInstruments(),
 		},
-	}
-	// If the inner executor emits breaker state transitions, subscribe so each
-	// trip / half-open / recovery emits a counter + log automatically. Drivers
-	// without that capability (no breaker.EventListenerSetter) are silently
-	// skipped — the call-level signals still emit.
-	if setter, ok := inner.(breaker.EventListenerSetter); ok {
-		setter.SetBreakerEventListener(w)
 	}
 	return w
 }
@@ -135,31 +124,6 @@ type callEmitter struct {
 	// held alongside it: a captured otel.Tracer stops forwarding once the global
 	// provider is set again, so it is looked up per use.
 	ins *clientInstrumentSet
-}
-
-// OnBreakerStateChange satisfies [breaker.EventListener]. It is invoked
-// synchronously from inside the breaker's transition (so it must not call back
-// into the executor); it emits a state-change counter and a log line.
-func (w *wrappedClientExecutor) OnBreakerStateChange(service string, from, to breaker.State) {
-	w.ins.breakerChanges.Add(context.Background(), 1, metric.WithAttributes(
-		attribute.String("system", w.system),
-		attribute.String("service", w.service),
-		attribute.String("from", from.String()),
-		attribute.String("to", to.String()),
-	))
-	fields := []log.Field{
-		log.String("system", w.system),
-		log.String("service", w.service),
-		log.String("from", from.String()),
-		log.String("to", to.String()),
-	}
-	// A trip (→open) is a service-level degradation worth flagging at Warn;
-	// recovery and half-open trial are Info.
-	if to == breaker.Open {
-		log.Warn(context.Background(), instrument.Tag, "resilience: circuit breaker opened", fields...)
-	} else {
-		log.Info(context.Background(), instrument.Tag, "resilience: circuit breaker state changed", fields...)
-	}
 }
 
 // opInstrumentSet holds the instruments one metric prefix needs. The prefix

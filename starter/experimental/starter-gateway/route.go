@@ -110,7 +110,7 @@ type RouteRaw struct {
 	Priority int `value:"${priority:=0}"`
 
 	Upstream struct {
-		Target    string `value:"${target:=}"` // lb://name or http(s)://host:port
+		Target    string `value:"${target}" expr:"$ != ''"` // lb://name or http(s)://host:port
 		Discovery string `value:"${discovery:=}"`
 		// The load-balancing strategy and outlier suspension for this route's
 		// lb:// upstream are NOT keys here: they are governance rules matched by

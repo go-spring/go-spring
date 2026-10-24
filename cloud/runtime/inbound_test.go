@@ -36,9 +36,12 @@ func TestInboundOver_InjectsFaultThroughGuard(t *testing.T) {
 	gm := admission.NewManager()
 	defer gm.Close()
 
-	in := InboundOver("gin", "gin:test", gm, inj)
+	in, err := InboundOver("gin", "gin:test", gm, inj)
+	if err != nil {
+		t.Fatal(err)
+	}
 	ran := false
-	err := in.Run(context.Background(), observe.ServerOperation{Action: "GET /x"},
+	err = in.Run(context.Background(), observe.ServerOperation{Action: "GET /x"},
 		func(context.Context) error {
 			ran = true
 			return nil
@@ -63,8 +66,12 @@ func TestInboundOver_NoInjectorIsGovernanceOnly(t *testing.T) {
 	gm := admission.NewManager()
 	defer gm.Close()
 
+	in, err := InboundOver("gin", "gin:test", gm)
+	if err != nil {
+		t.Fatal(err)
+	}
 	ran := false
-	err := InboundOver("gin", "gin:test", gm).Run(context.Background(),
+	err = in.Run(context.Background(),
 		observe.ServerOperation{Action: "GET /x"}, func(context.Context) error {
 			ran = true
 			return nil

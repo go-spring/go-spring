@@ -78,7 +78,7 @@ type LoadTestConfig struct {
 
 // Config defines gRPC server configuration.
 type Config struct {
-	Addr                 string             `value:"${addr}"`
+	Addr                 string             `value:"${addr}" expr:"$ != ''"`
 	ConnectionTimeout    time.Duration      `value:"${connectionTimeout:=0}"`
 	MaxRecvMsgSize       int                `value:"${maxRecvMsgSize:=0}"`
 	MaxSendMsgSize       int                `value:"${maxSendMsgSize:=0}"`
@@ -135,7 +135,7 @@ type SimpleGrpcServer struct {
 }
 
 // NewSimpleGrpcServer creates a SimpleGrpcServer from ${spring.grpc.server}
-// configuration. Inbound inbound protection (rate-limit / breaker) is built
+// configuration. Inbound protection (rate-limit / bulkhead) is built
 // inside buildResilienceInterceptors from the injected mgr. User-contributed
 // interceptors arrive as bean collections: an application gs.Provides each
 // interceptor and exports it As the interceptor type, and the container injects
@@ -235,12 +235,16 @@ func (s *SimpleGrpcServer) buildOptions() ([]grpc.ServerOption, error) {
 		unary = append(unary, MetricsUnaryInterceptor())
 		stream = append(stream, MetricsStreamInterceptor())
 	}
-	if ropts, ok := s.buildResilienceInterceptors(); ok {
+	ropts, ok, err := s.buildResilienceInterceptors()
+	if err != nil {
+		return nil, err
+	}
+	if ok {
 		unary = append(unary, ropts.unary)
 		stream = append(stream, ropts.stream)
 	}
 	// Fault injection is part of the inbound guard now, for unary and stream
-	// alike (innermost, after the breaker gate).
+	// alike (innermost, after the rate-limit / bulkhead gate).
 	// Recovery (always installed), innermost so a converted panic flows back
 	// through tracing/metrics/resilience as a codes.Internal error and is
 	// observed — grpc-go recovers handler panics nowhere by itself.

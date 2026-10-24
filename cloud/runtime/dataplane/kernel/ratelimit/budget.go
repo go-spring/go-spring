@@ -144,6 +144,27 @@ func (b Budget) Allow(ctx context.Context, n int) bool {
 	return true
 }
 
+// Usage is a budget's consumption in the counting algorithm's own units. A
+// configured local budget always has Limit > 0; a zero Limit means there is no
+// local usage to report (an unlimited budget, or one charged through a
+// [ClusterLimiter], whose local counters stay untouched).
+type Usage struct {
+	Used  float64
+	Limit float64
+}
+
+// Usage reports how much of the local budget is spent. The zero Usage means the
+// holder publishes no usage series.
+func (b Budget) Usage() Usage {
+	if b.window != nil {
+		return b.window.Usage()
+	}
+	if b.bucket != nil {
+		return b.bucket.Usage()
+	}
+	return Usage{}
+}
+
 // Charge spends n units of spec's budget for scope: the supplied store when
 // there is one (that is what extends the budget past this process), otherwise
 // the local budget. It reports whether the units were admitted; a non-nil error

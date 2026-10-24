@@ -26,7 +26,7 @@ import (
 // own resolved policy when the document moves.
 //
 // It is deliberately NOT a state registry: a Guard owns its stages and their
-// state, and the Manager never resolves a request or shares one Guard's breaker
+// state, and the Manager never resolves a request or shares one Guard's stages
 // with another. Two Guards created for the same label are two independent
 // instances — that is the point, not an accident.
 //
@@ -42,8 +42,9 @@ type Manager struct {
 	opts options
 }
 
-// NewManager returns an unarmed inbound manager. Every Guard it creates before
-// the first Apply resolves the zero [Settings], i.e. the pass-through.
+// NewManager returns an inbound manager with no document. Every Guard it
+// creates before the first Apply resolves [DefaultPolicy], i.e. the
+// pass-through.
 //
 // opts apply to every Guard this manager creates; a caller can add per-instance
 // options through [Manager.GuardFor].
@@ -52,22 +53,62 @@ func NewManager(opts ...Option) *Manager {
 	for _, f := range opts {
 		f(&o)
 	}
-	return &Manager{guards: make(map[*server]struct{}), opts: o}
+	return &Manager{
+		guards:   make(map[*server]struct{}),
+		opts:     o,
+		settings: Settings{Default: DefaultPolicy()},
+	}
+}
+
+// DefaultPolicy is the policy an instance runs under when no document has been
+// applied. Every field is zero, so no stage rejects anything.
+func DefaultPolicy() Policy {
+	return Policy{}
 }
 
 // Apply adopts s as the inbound document and pushes each registered Guard its
 // resolved policy. A document identical to the current one is a no-op: a
-// redundant push does not reset a live breaker.
+// redundant push does not rebuild live stages.
+//
+// A policy that cannot be built (see [New]) rejects the document whole: no
+// Guard is moved and the current document keeps serving.
 func (m *Manager) Apply(s Settings) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.closed || reflect.DeepEqual(m.settings, s) {
 		return nil
 	}
-	m.settings = s
+
+	// Build every guard's next generation before installing any of them: a
+	// malformed policy rejects the document whole, leaving every guard on the
+	// generation it was already serving.
+	type update struct {
+		g  *server
+		st *state
+	}
+	updates := make([]update, 0, len(m.guards))
 	for g := range m.guards {
 		p, rule := resolvePolicy(s, g.id.Service)
-		g.apply(p, rule)
+		g.mu.Lock()
+		if g.closed || (g.st != nil && g.st.policy == p && g.st.rule == rule) {
+			g.mu.Unlock()
+			continue
+		}
+		st, err := buildState(p, rule, g.id.Service, g.opts.limiter)
+		g.mu.Unlock()
+		if err != nil {
+			return err
+		}
+		updates = append(updates, update{g: g, st: st})
+	}
+
+	m.settings = s
+	for _, u := range updates {
+		u.g.mu.Lock()
+		if !u.g.closed {
+			u.g.st = u.st
+		}
+		u.g.mu.Unlock()
 	}
 	return nil
 }
@@ -75,7 +116,12 @@ func (m *Manager) Apply(s Settings) error {
 // GuardFor creates the Guard for one server instance and registers it for
 // future pushes. The Guard snapshots the current settings at creation, so a
 // Guard wired after Apply still starts under the live document.
-func (m *Manager) GuardFor(id Identity, opts ...Option) Guard {
+//
+// An error means the resolved policy cannot be built (see [New]); the Guard is
+// then not created. [Apply] admits only buildable documents, so a normal
+// manager-driven call succeeds — the error is carried so that construction
+// stays honest about what it can reject.
+func (m *Manager) GuardFor(id Identity, opts ...Option) (Guard, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	o := m.opts
@@ -83,14 +129,17 @@ func (m *Manager) GuardFor(id Identity, opts ...Option) Guard {
 		f(&o)
 	}
 	p, rule := resolvePolicy(m.settings, id.Service)
-	s := &server{id: id, opts: o, mgr: m}
-	s.st = buildState(p, rule, id.Service, nil, o.limiter)
+	st, err := buildState(p, rule, id.Service, o.limiter)
+	if err != nil {
+		return nil, err
+	}
+	s := &server{id: id, opts: o, mgr: m, st: st}
 	if m.closed {
 		s.closed = true
 	} else {
 		m.guards[s] = struct{}{}
 	}
-	return s
+	return s, nil
 }
 
 // Close closes every registered Guard and empties the registry. It does not

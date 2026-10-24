@@ -17,6 +17,7 @@
 package StarterNeo4j
 
 import (
+	"context"
 	"errors"
 	"sync"
 	"testing"
@@ -50,7 +51,7 @@ func (f *fakeResolver) fail(err error) {
 	f.err = err
 }
 
-func (f *fakeResolver) resolve() ([]discovery.Endpoint, error) {
+func (f *fakeResolver) resolve(context.Context) ([]discovery.Endpoint, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if f.err != nil {

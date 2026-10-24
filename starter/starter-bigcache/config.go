@@ -19,7 +19,11 @@
 
 package StarterBigCache
 
-import "time"
+import (
+	"time"
+
+	"go-spring.org/stdlib/errutil"
+)
 
 // Config defines BigCache in-memory cache configuration. BigCache is a purely
 // in-process cache, so there is no address or connection pool to configure —
@@ -54,4 +58,15 @@ type Config struct {
 	// it off trades those counters — and KeyMetadata() — for the per-key
 	// bookkeeping bigcache keeps alongside the cache while it is on.
 	StatsEnabled bool `value:"${stats-enabled:=true}"`
+}
+
+// Validate rejects a shard count bigcache cannot split into. The constraint is
+// field-local but not expressible as a per-field expr (expr has no bitwise
+// operator), so it falls back to the object-level check — still at bind time,
+// before the driver reaches bigcache.New.
+func (c Config) Validate() error {
+	if c.Shards <= 0 || c.Shards&(c.Shards-1) != 0 {
+		return errutil.Explain(nil, "bigcache: shards must be a positive power of two, got %d", c.Shards)
+	}
+	return nil
 }

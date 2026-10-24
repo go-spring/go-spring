@@ -18,18 +18,16 @@ package runtime
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	"go-spring.org/cloud/runtime/dataplane/inbound/admission"
 	"go-spring.org/cloud/runtime/dataplane/inbound/fault"
 	"go-spring.org/cloud/runtime/dataplane/inbound/observe"
-	"go-spring.org/cloud/runtime/dataplane/kernel/breaker"
 )
 
 // InboundFor returns the pair of inbound objects one route's middleware drives,
-// wired together: the admission's breaker transitions are emitted through the
-// observer. It replaces the old ServerExecutorFor — inbound is no longer a chain
+// wired together: the observer records the request plane, while the admission
+// publishes its own state. It replaces the old ServerExecutorFor — inbound is no longer a chain
 // (a governed request has two hook points a chain cannot span), so what a server
 // gets is two peer objects, not one executor.
 //
@@ -38,7 +36,7 @@ import (
 // of both) supplies the observer, so no middleware wires the observe object to
 // the admission itself and no other package needs to know both. The inbound fault
 // authority is folded in too, innermost, so a server has ONE inbound seam.
-func (r *Runtime) InboundFor(system, label string) *Inbound {
+func (r *Runtime) InboundFor(system, label string) (*Inbound, error) {
 	return InboundOver(system, label, r.guardServer, r.injServer)
 }
 
@@ -51,7 +49,7 @@ func (r *Runtime) InboundFor(system, label string) *Inbound {
 // admission (innermost, after the breaker gate), so ordering and breaker accounting
 // are fixed in one place. A caller with no injector gets governance without
 // fault.
-func InboundOver(system, label string, mgr *admission.Manager, inj ...*fault.ServerManager) *Inbound {
+func InboundOver(system, label string, mgr *admission.Manager, inj ...*fault.ServerManager) (*Inbound, error) {
 	if mgr == nil {
 		panic("runtime: InboundOver requires a non-nil admission.Manager")
 	}
@@ -60,11 +58,11 @@ func InboundOver(system, label string, mgr *admission.Manager, inj ...*fault.Ser
 		opts = append(opts, admission.WithFault(fault.Stage(system, inj[0].NewServer())))
 	}
 	obs := observe.NewServerObserver(system, label)
-	g := mgr.GuardFor(admission.Identity{System: system, Service: label}, opts...)
-	if s, ok := g.(breaker.EventListenerSetter); ok {
-		s.SetBreakerEventListener(obs)
+	g, err := mgr.GuardFor(admission.Identity{System: system, Service: label}, opts...)
+	if err != nil {
+		return nil, err
 	}
-	return &Inbound{observe: obs, govern: g}
+	return &Inbound{observe: obs, govern: g}, nil
 }
 
 // Refusal is a rejected request's error. It carries the admission's neutral verdict
@@ -138,12 +136,12 @@ func (in *Inbound) run(ctx context.Context, op observe.ServerOperation, fn func(
 	defer cancel()
 	defer func() {
 		if p := recover(); p != nil {
-			done(admission.OutcomeFailure, fmt.Errorf("admission: handler panicked: %v", p))
+			done()
 			panic(p)
 		}
 	}()
 	err = fn(ctx)
-	done(classify(err), err)
+	done()
 	return err
 }
 
@@ -166,13 +164,13 @@ func (in *Inbound) Before(ctx context.Context, op observe.ServerOperation) (*Hoo
 	return &Hooks{ctx: runCtx, ob: ob, done: done, cancel: cancel}, nil
 }
 
-// After settles an attempt begun by [Inbound.Before]: the admission first (so the
-// breaker sees the outcome before the span closes), then the observer.
+// After settles an attempt begun by [Inbound.Before]: the admission first (it
+// releases the bulkhead slot), then the observer.
 func (in *Inbound) After(h *Hooks, err error) {
 	if h == nil {
 		return
 	}
-	h.done(classify(err), err)
+	h.done()
 	if h.cancel != nil {
 		h.cancel()
 	}
@@ -206,12 +204,4 @@ func withBudget(ctx context.Context, d time.Duration) (context.Context, context.
 		return context.WithTimeout(ctx, d)
 	}
 	return ctx, func() {}
-}
-
-// classify turns a handler's outcome into the admission's neutral classification.
-func classify(err error) admission.Outcome {
-	if err != nil {
-		return admission.OutcomeFailure
-	}
-	return admission.OutcomeSuccess
 }

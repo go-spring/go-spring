@@ -66,7 +66,7 @@ type ServiceRegister func(gs *kgrpc.Server) error
 type Config struct {
 	Name    string        `value:"${name:=kratos-grpc}"`
 	Network string        `value:"${network:=}"`
-	Addr    string        `value:"${addr}"`
+	Addr    string        `value:"${addr}" expr:"$ != ''"`
 	Timeout time.Duration `value:"${timeout:=1s}"`
 
 	// Etcd service discovery. Empty Addr disables registration (direct-connect).

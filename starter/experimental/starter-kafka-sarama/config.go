@@ -18,6 +18,7 @@ package StarterKafkaSarama
 
 import (
 	"go-spring.org/cloud/security"
+	"go-spring.org/stdlib/errutil"
 )
 
 // Config defines Kafka client configuration via the sarama driver.
@@ -73,14 +74,24 @@ type SASLConfig struct {
 	Password string `value:"${password:=}"`
 }
 
+// Validate rejects a half-configured SASL block: enabling SASL without both
+// credentials would reach the broker and fail there, far from the document that
+// caused it. The rule spans two fields, so an expr tag cannot express it.
+func (c SASLConfig) Validate() error {
+	if c.Enabled && (c.Username == "" || c.Password == "") {
+		return errutil.Explain(nil, "kafka-sarama: sasl username and password are required when sasl is enabled")
+	}
+	return nil
+}
+
 // ProducerConfig tunes the producer. Zero values leave sarama's own defaults
 // in place.
 type ProducerConfig struct {
 	// Compression is the batch compression codec: "none", "gzip", "snappy",
 	// "lz4" or "zstd", default is empty (sarama default: none).
-	Compression string `value:"${compression:=}"`
+	Compression string `value:"${compression:=}" expr:"$ == '' || lower($) in ['none', 'gzip', 'snappy', 'lz4', 'zstd']"`
 
 	// RequiredAcks is the ack policy: "all" (all in-sync replicas), "leader"
 	// (leader only) or "none". Default is "all".
-	RequiredAcks string `value:"${required-acks:=all}"`
+	RequiredAcks string `value:"${required-acks:=all}" expr:"lower($) in ['all', 'leader', 'none']"`
 }

@@ -38,11 +38,11 @@ func dur(d int) time.Duration { return time.Duration(d) * time.Millisecond }
 // timeoutConfig returns a Config whose client Default policy sets a per-attempt
 // timeout, the knob the center exists to centralize.
 func timeoutConfig(d int) Config {
-	return Config{
+	return withInboundDefaults(Config{
 		Client: ClientConfig{
 			Default: ClientDefaultPolicy{Policy: resilience.Policy{Timeout: dur(d)}},
 		},
-	}
+	})
 }
 
 // newAuthorities returns the three module authorities a center distributes to.
@@ -61,7 +61,7 @@ func newAuthorities() (*resilience.Manager,
 func newTestCenterWith(cfg Config) (*Center, *resilience.Manager,
 	*loadbalance.Manager, *clientfault.ClientManager, *serverfault.ServerManager) {
 	resClient, lb, fc, fs := newAuthorities()
-	c, err := NewCenter(resClient, admission.NewManager(), lb, fc, fs, NewPushSource(cfg))
+	c, err := NewCenter(resClient, admission.NewManager(), lb, fc, fs, pushSource(cfg))
 	if err != nil {
 		panic(err)
 	}
@@ -72,6 +72,20 @@ func newTestCenterWith(cfg Config) (*Center, *resilience.Manager,
 func newTestCenter(cfg Config) *Center {
 	c, _, _, _, _ := newTestCenterWith(cfg)
 	return c
+}
+
+// pushSource is NewPushSource with the defaults a bound document would carry.
+// Tests build Configs in code, so they fill the configuration tags' defaults
+// themselves instead of relying on a binding step that does not run here.
+func pushSource(cfg Config) *PushSource {
+	return NewPushSource(withInboundDefaults(cfg))
+}
+
+// withInboundDefaults is the identity now that inbound policy carries no
+// tag-supplied defaults. The test helpers that build a Config in code still
+// call it for symmetry with a bound document.
+func withInboundDefaults(cfg Config) Config {
+	return cfg
 }
 
 func TestPolicyFor_Default(t *testing.T) {
@@ -147,10 +161,10 @@ func TestServerPolicyFor_ServerBlock(t *testing.T) {
 	}
 }
 
-func TestServerPolicyFor_EmptyDocumentIsZero(t *testing.T) {
+func TestServerPolicyFor_EmptyDocumentUsesTagDefaults(t *testing.T) {
 	c := newTestCenter(Config{})
-	if a := c.guardServer.PolicyFor("gin::8080"); !a.IsZero() {
-		t.Fatalf("an empty document must yield a zero inbound, got %+v", a)
+	if a := c.guardServer.PolicyFor("gin::8080"); a != admission.DefaultPolicy() {
+		t.Fatalf("an empty document must resolve to the tag-default policy, got %+v", a)
 	}
 }
 
@@ -295,7 +309,7 @@ func TestSource_AdoptSwapsFaultConfig(t *testing.T) {
 // snapshot arms the authorities in the same breath.
 func TestCenter_ConstructorSourceBinds(t *testing.T) {
 	resClient, lb, fc, fs := newAuthorities()
-	c, err := NewCenter(resClient, admission.NewManager(), lb, fc, fs, NewPushSource(timeoutConfig(300)))
+	c, err := NewCenter(resClient, admission.NewManager(), lb, fc, fs, pushSource(timeoutConfig(300)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -309,7 +323,7 @@ func TestCenter_ConstructorSourceBinds(t *testing.T) {
 // fault injector.
 func TestCenter_ConstructsArmed(t *testing.T) {
 	resClient, lb, fc, fs := newAuthorities()
-	_, err := NewCenter(resClient, admission.NewManager(), lb, fc, fs, NewPushSource(Config{
+	_, err := NewCenter(resClient, admission.NewManager(), lb, fc, fs, pushSource(Config{
 		Client: ClientConfig{Fault: fault.Config{Rules: []fault.Rule{{Rate: 0.25}}}},
 	}))
 	if err != nil {
@@ -328,7 +342,7 @@ func TestCenter_ConstructsArmed(t *testing.T) {
 // endpoint source registered under the label with the center's loadbalance
 // authority, so the rule reaching that label reaches this chain.
 func selectionChain(m *loadbalance.Manager, label string) *loadbalance.Chain {
-	src := func() ([]discovery.Endpoint, error) {
+	src := func(context.Context) ([]discovery.Endpoint, error) {
 		return []discovery.Endpoint{{Addr: "10.0.0.1:8080", Healthy: true, Weight: 1}}, nil
 	}
 	return m.Chain(context.Background(), src, label)
@@ -338,7 +352,7 @@ func selectionChain(m *loadbalance.Manager, label string) *loadbalance.Chain {
 // an outlier-suspension policy. It sets only the selection half — the protection
 // half stays zero, which is what proves the two halves are independent.
 func selectionConfig(label, balancer string, threshold int, suspendFor time.Duration) Config {
-	return Config{
+	return withInboundDefaults(Config{
 		Client: ClientConfig{
 			Rules: []ClientRule{{
 				Service: label,
@@ -349,7 +363,7 @@ func selectionConfig(label, balancer string, threshold int, suspendFor time.Dura
 				},
 			}},
 		},
-	}
+	})
 }
 
 // TestSelection_AppliesCurrentThenChanges is the end-to-end control-plane test:
@@ -463,7 +477,7 @@ func TestSelection_NoRuleIsPassThrough(t *testing.T) {
 func TestCenter_ConstructsArmedSelection(t *testing.T) {
 	const label = "grpc:client"
 	resClient, lb, fc, fs := newAuthorities()
-	if _, err := NewCenter(resClient, admission.NewManager(), lb, fc, fs, NewPushSource(selectionConfig(label, loadbalance.P2C, 4, 2*time.Second))); err != nil {
+	if _, err := NewCenter(resClient, admission.NewManager(), lb, fc, fs, pushSource(selectionConfig(label, loadbalance.P2C, 4, 2*time.Second))); err != nil {
 		t.Fatal(err)
 	}
 

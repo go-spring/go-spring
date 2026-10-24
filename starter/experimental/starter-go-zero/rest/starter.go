@@ -63,7 +63,7 @@ type HandlerRegister func(server *rest.Server)
 type Config struct {
 	Name string `value:"${name:=go-zero}"`
 	Host string `value:"${host:=0.0.0.0}"`
-	Port int    `value:"${port}"`
+	Port int    `value:"${port}" expr:"$ > 0"`
 
 	// Tracing: defer to starter-otel by default (Disabled=true). Endpoint /
 	// Sampler / Batcher only take effect when Disabled=false, i.e. go-zero

@@ -135,6 +135,9 @@ type defaultDriver struct {
 }
 
 func (d defaultDriver) NewExecutor(service string, p Policy) (chain.Executor, error) {
+	if err := validatePolicy(p); err != nil {
+		return nil, err
+	}
 	e := newExecutor(service, p, d.limiter)
 	return e, nil
 }

@@ -33,7 +33,7 @@ type Config struct {
 	//                SentinelAddrs; the bean type is still *redis.Client.
 	//   - cluster:   connects to the cluster seeded by Addrs; the bean type is
 	//                *redis.ClusterClient (a distinct type — see README).
-	Mode string `value:"${mode:=single}"`
+	Mode string `value:"${mode:=single}" expr:"$ in ['single', 'sentinel', 'cluster']"`
 
 	// Addr is the Redis server address, e.g., "127.0.0.1:6379".
 	// Used only in single mode; either Addr or ServiceName must be set.

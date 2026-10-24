@@ -55,14 +55,15 @@ type Server struct {
 // what "failed" looks like on someone else's wire.
 //
 // t is the inbound call as the adapter can name it: the entrance this server
-// presents ([Target.Service], "gin" / "grpc"), the interface of it being invoked
-// ([Target.Action] — the HTTP route, the RPC method), and any request metadata
-// the adapter chose to expose for matching ([Target.Metadata], often from
-// headers). This package has no way to derive them — an inbound request's shape
-// is the protocol's — so they are the adapter's to fill, and an Action left empty
-// simply leaves that rule filter unused.
+// presents ([kfault.Target.Service], "gin" / "grpc"), the interface of it being
+// invoked ([kfault.Target.Action] — the HTTP route, the RPC method), and any
+// request metadata the adapter chose to expose for matching
+// ([kfault.Target.Metadata], often from headers). This package has no way to
+// derive them — an inbound request's shape is the protocol's — so they are the
+// adapter's to fill, and an Action left empty simply leaves that rule filter
+// unused.
 //
-// The returned [Decision] is what the manager pushed: which rule governed,
+// The returned [kfault.Decision] is what the manager pushed: which rule governed,
 // whether an error was injected, how much latency was applied. An adapter uses it
 // to tell an injected failure from a cancelled delay, and — since an inbound
 // request has nowhere else to record it — it is the only source for "this
@@ -70,6 +71,6 @@ type Server struct {
 //
 // The inbound side is fixed by which shell this is, so a caller cannot aim a fire
 // at the outbound config. Fire does NOT retry — retry is a client concern.
-func (s *Server) Fire(ctx context.Context, t Target) (Decision, error) {
+func (s *Server) Fire(ctx context.Context, t kfault.Target) (kfault.Decision, error) {
 	return s.Shell.Fire(ctx, t)
 }

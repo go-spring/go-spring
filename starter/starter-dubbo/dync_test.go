@@ -17,6 +17,7 @@
 package StarterDubbo
 
 import (
+	"go-spring.org/cloud/runtime/dataplane/inbound/admission"
 	"testing"
 	"time"
 
@@ -44,7 +45,7 @@ func setConsumer(p *dyncPoller, c DubboConsumer) {
 // from another test. There is no process-global authority to reset any more —
 // each test owns its manager.
 func newTestPoller() *dyncPoller {
-	ctr, err := runtime.New(resilience.NewManager(resilience.NewDefaultDriver(nil)), loadbalance.NewManager(), clientfault.NewClientManager(nil), serverfault.NewServerManager(nil), nil, governance.NewPushSource(governance.Config{}))
+	ctr, err := runtime.New(resilience.NewManager(resilience.NewDefaultDriver(nil)), loadbalance.NewManager(), clientfault.NewClientManager(nil), serverfault.NewServerManager(nil), nil, governance.NewPushSource(governance.Config{Server: governance.ServerConfig{Default: admission.DefaultPolicy()}}))
 	if err != nil {
 		panic(err)
 	}

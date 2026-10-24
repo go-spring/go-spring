@@ -127,7 +127,7 @@ func ApplyMiddlewares(e *gin.Engine, cfg Config, center *runtime.Runtime, prop t
 	e.Use(Observe(accessCfg))
 
 	// Resilience inbound (opt-in): runs the request through the configured
-	// rate-limit / bulkhead / breaker before the handler chain. Sits inside
+	// rate-limit / bulkhead before the handler chain. Sits inside
 	// Observe so 429/503 rejects are still observed.
 	adm, err := buildServerPolicy(cfg, center)
 	if err != nil {
@@ -138,8 +138,8 @@ func ApplyMiddlewares(e *gin.Engine, cfg Config, center *runtime.Runtime, prop t
 	}
 
 	// Fault injection is part of the inbound guard now: it runs innermost, after
-	// the rate-limit / bulkhead / breaker gate, so a rate-limited request is not
-	// also faulted and an injected failure is folded back into the breaker.
+	// the rate-limit / bulkhead gate, so a rate-limited request is not also
+	// faulted.
 
 	// Policy middlewares - opt-in, and they sit inside Observe so short-circuit
 	// responses (204, 403) are still observed.

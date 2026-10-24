@@ -51,7 +51,7 @@ type Backend struct {
 	entries map[string]*consulEntry
 }
 
-// consulEntry is the cached snapshot for one service name+tag.
+// consulEntry is the cached snapshot for one service name.
 type consulEntry struct {
 	mu     sync.Mutex
 	eps    []discovery.Endpoint
@@ -84,31 +84,31 @@ func New(addr string) (*Backend, error) {
 
 // Resolve returns the current healthy endpoints for name. The first call seeds
 // a per-service cache and starts a blocking-query loop that keeps it fresh;
-// later calls are in-memory reads. opts narrow the result: [discovery.WithTag]
-// is passed to Consul's service query server-side, [discovery.WithScheme]
-// filters the returned endpoints by transport scheme.
+// later calls are in-memory reads. opts narrow the result locally —
+// [discovery.WithScheme] by transport scheme, [discovery.WithSelector] by
+// metadata.
 func (b *Backend) Resolve(ctx context.Context, name string, opts ...discovery.Option) ([]discovery.Endpoint, error) {
 	q := discovery.NewQuery(name, opts...)
-	e := b.entry(name, q.Tag)
+	e := b.entry(name)
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	if !e.seeded {
-		entries, _, err := b.client.Health().Service(name, q.Tag, true, (&api.QueryOptions{}).WithContext(ctx))
+		entries, _, err := b.client.Health().Service(name, "", true, (&api.QueryOptions{}).WithContext(ctx))
 		if err != nil {
 			return nil, fmt.Errorf("consuldisc: resolve %q: %w", name, err)
 		}
 		e.eps = toEndpoints(entries)
 		e.seeded = true
-		go b.watchLoop(name, q.Tag, e)
+		go b.watchLoop(name, e)
 	}
-	return discovery.FilterByScheme(append([]discovery.Endpoint(nil), e.eps...), q.Scheme), nil
+	return discovery.Snapshot(e.eps, q), nil
 }
 
 // watchLoop keeps one service's cache fresh via Consul blocking queries until
 // the backend's context ends. A failed query keeps the stale snapshot — stale
 // addresses are safer than none — and retries on the next index advance.
-func (b *Backend) watchLoop(name, tag string, e *consulEntry) {
-	w := &watcher{backend: b, name: name, tag: tag, ctx: b.ctx}
+func (b *Backend) watchLoop(name string, e *consulEntry) {
+	w := &watcher{backend: b, name: name, ctx: b.ctx}
 	for w.ctx.Err() == nil {
 		eps, err := w.next()
 		if err != nil {
@@ -123,15 +123,14 @@ func (b *Backend) watchLoop(name, tag string, e *consulEntry) {
 	}
 }
 
-// entry returns (creating if needed) the cache entry for name+tag.
-func (b *Backend) entry(name, tag string) *consulEntry {
+// entry returns (creating if needed) the cache entry for name.
+func (b *Backend) entry(name string) *consulEntry {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	key := name + "\x00" + tag
-	e, ok := b.entries[key]
+	e, ok := b.entries[name]
 	if !ok {
 		e = &consulEntry{}
-		b.entries[key] = e
+		b.entries[name] = e
 	}
 	return e
 }
@@ -163,7 +162,6 @@ func toEndpoints(entries []*api.ServiceEntry) []discovery.Endpoint {
 type watcher struct {
 	backend   *Backend
 	name      string
-	tag       string // narrowing from WithTag; "" = any
 	lastIndex uint64
 	ctx       context.Context
 }
@@ -177,7 +175,7 @@ func (w *watcher) next() ([]discovery.Endpoint, error) {
 			return nil, err
 		}
 		q := (&api.QueryOptions{WaitIndex: w.lastIndex, WaitTime: 30 * time.Second}).WithContext(w.ctx)
-		entries, meta, err := w.backend.client.Health().Service(w.name, w.tag, true, q)
+		entries, meta, err := w.backend.client.Health().Service(w.name, "", true, q)
 		if err != nil {
 			if w.ctx.Err() != nil {
 				return nil, w.ctx.Err()

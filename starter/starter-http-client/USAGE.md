@@ -363,8 +363,9 @@ The `guarded` route targets the always-500 backend on :9473 with
 2. Equivalent manual drill with your own binary: kill the backend, loop the call, watch the error
    change from a network/500 error to `circuit open`, wait out `open-duration` (30s) with the
    backend restored — the half-open trial succeeds and the breaker closes.
-3. Observe the trip: `resilience.client.breaker.state_change{from=...,to=...}` counter increments and a
-   state-change log line is emitted (cloud/runtime/dataplane/outbound/resilience/observe.go:98-110).
+3. Observe the trip: `resilience.client.breaker.transitions_total{to="open"}` increments, and
+   `resilience.client.breaker.state{state="open"}` reports the open state (published by the
+   resilience executor itself, see cloud/runtime/dataplane/outbound/resilience/observe.go).
 
 ### 4.4 Fault injection (no restart)
 
@@ -388,7 +389,11 @@ whole stack, not just the injector.
   `resilience.service="http:greet-svc"`, `status` ∈ {ok, error}, plus
   `resilience.error_type` ∈ {rate_limited, circuit_open, bulkhead_full, timeout} when
   protection refused the call;
-  `resilience.client.breaker.state_change` with from/to.
+  `resilience.client.breaker.state` (1-hot by state) and
+  `resilience.client.breaker.transitions_total{to}`;
+  `resilience.client.ratelimit.usage_ratio` (local budget only — absent when a cluster
+  limiter is configured; it counts every governance-path charge, including attempts the
+  breaker refused and retries).
 - Access log: gated by `observability.level` (default brief = on), tag `_app_http_resilience`
   (`log.RegisterAppTag("http", "resilience")`).
 - Traces: client span per request from httpx's built-in otelhttp layer (`GET /greet`-style naming per

@@ -14,7 +14,7 @@ protected request. It is not a server-side executor.
 | observability | uniform, carried on `Operation` | optional and protocol-specific |
 
 A server request cannot be expressed as an `Executor`: admission happens before
-the handler, and the breaker/bulkhead state can only be completed after it.
+the handler, and the bulkhead state can only be completed after it.
 
 ## Model
 
@@ -24,12 +24,27 @@ one server instance  =  one Guard  =  one state manager
 
 - Created at wiring time, bound to an `Identity{System, Service}`, captured by
   the protocol middleware.
-- Owns the instance's rate budget, bulkhead count, circuit breaker and the
-  config generation it materialized. Two instances never share this state, even
-  under the same label.
+- Owns the instance's rate budget, bulkhead count and the config generation it
+  materialized. Two instances never share this state, even under the same label.
 - The governance authority pushes a new configuration generation; the Guard
   replaces its materialized state. The call path only reads the current
   generation.
+
+## Circuit breaking: inbound has none
+
+Circuit breaking is **outbound-only**; its contract is specified in
+[`resilience`](../../outbound/resilience/README.md#circuit-breaking-the-rule).
+An inbound breaker scoped to one server instance can only reject every request,
+which has no safe blast radius (one bad route or shared dependency would take
+out every healthy route on the instance). The former per-instance breaker stage
+was therefore removed on 2026-10-24, together with its policy fields, verdicts,
+`Outcome` classification and metrics.
+
+If inbound self-protection returns, it will be an inbound-side composition of
+its own — per resource (action/route), with degradation as the action — not the
+client's service-scoped breaker moved across the direction. The kernel state
+machine may be reused as a building block; the scope, the decision point and
+the effect are not.
 
 ## Surface
 
@@ -39,14 +54,15 @@ type Guard interface {
     Close() error
 }
 
-type Done func(Outcome, error)
+type Done func()
 
-// Standalone, fixed policy.
-func New(id Identity, p Policy, opts ...Option) Guard
+// Standalone, fixed policy. The error reports a policy that cannot be built
+// (a negative max-concurrent).
+func New(id Identity, p Policy, opts ...Option) (Guard, error)
 
 // Managed: follows a pushed Settings document.
 m := admission.NewManager()
-g := m.GuardFor(id, admission.WithFault(f))   // one Guard per server instance
+g, err := m.GuardFor(id, admission.WithFault(f))   // one Guard per server instance
 m.Apply(admission.Settings{Default: ..., Rules: ...})
 ```
 
@@ -56,8 +72,9 @@ to the handler's context (the Guard cannot cancel a context it does not hand
 out).
 
 `WithFault` injects the inbound fault stage; the `Fault` implementation lives in
-the `fault` package. Observability attaches its breaker listener through the
-optional `BreakerEventListenerSetter` interface.
+the `fault` package. The guard publishes its OWN stage state (rate usage,
+bulkhead occupancy) through observable instruments registered from `observe.go`;
+the request-plane observer never reads this state.
 
 `WithClusterLimiter` makes the rate-limit stage charge a shared store (Redis,
 typically) instead of the instance-local budget, so a limit can span every
@@ -65,36 +82,33 @@ replica. The store failure policy is "allow": an unreachable counter backend mus
 not become an outage. `governance` adapts the process's existing
 `ratelimit.ClusterLimiter` bean, so one limiter covers both directions.
 
-The stages are also exported as standalone objects, for a caller assembling its
-own middleware over the same state model:
+The stages are also available as standalone objects, for a caller assembling
+its own middleware over the same state model. Only the rate limiter is exported
+by this package; the bulkhead comes straight from its kernel package, with no
+re-export here:
 
 ```go
 lim := admission.NewRateLimiter(p, id.Service, nil)   // Allow(ctx) bool
-bulk := admission.NewBulkhead(p.MaxConcurrent, p.BulkheadQueueDuration) // Acquire -> release
-br := admission.NewBreaker(p, id.Service, listener)   // Allow / Record(Outcome, dur)
+bulk := bulkhead.New(p.MaxConcurrent, bulkhead.WithQueueTimeout(p.BulkheadQueueDuration)) // Acquire -> release
 ```
 
 `Admit` is the composition of exactly these; there is no second implementation.
 
-Degradation is a policy switch: `Policy.DegradeOnOpen` reports an open circuit
-as `VerdictDegraded` while keeping `ErrCircuitOpen` as the cause, so the adapter
-can serve its own fallback. The Guard never produces a response body.
+`Admit` runs the pre-handler stages — bulkhead → rate limit → fault — and
+returns this request's judgment. It never runs the handler.
 
-`Admit` runs the pre-handler stages — rate limit → bulkhead → breaker gate →
-fault — and returns this request's judgment. It never runs the handler.
-
-`Done` is the completion half. It is always non-nil (a no-op when neither the
-bulkhead nor the breaker is active), idempotent, and normally deferred by the
-adapter:
+`Done` is the completion half. It is always non-nil (a no-op when no bulkhead is
+active), idempotent — the completion folds a deadline fallback and an explicit
+call into one release, which is what keeps the bulkhead's exactly-once return
+exact — and normally deferred by the adapter:
 
 ```go
 r, done := g.Admit(ctx, req)
-defer func() { done(classify(), err) }()
+defer done()
 if !r.Admitted() {
     return mapVerdict(r.Verdict()), r.Err()
 }
-err = handler(ctx)
-return err
+return handler(ctx)
 ```
 
 The returned-function convention is deliberate: it is the Go idiom for "this
@@ -107,25 +121,21 @@ cannot settle the wrong request.
 
 - rate limit
 - fault injection (delay / error)
-- static degradation
 
 **Two-phase** — acquired at `Admit`, completed by `Done`:
 
 - bulkhead (slot acquisition / release)
-- circuit breaker (gate / outcome record, half-open trial)
-- dynamic degradation (depends on breaker state)
 
-The reason for the split is outcome dependency, not API convenience: a breaker
-cannot know a request failed until the handler has run, and a bulkhead slot
-cannot be released until then either.
+The reason for the split is lifetime, not API convenience: a slot cannot be
+returned until the handler has finished.
 
 ## Ownership
 
 The package owns:
 
-- the shape (`Identity`, `Request`, `Verdict`, `Result`, `Outcome`, `Done`)
+- the shape (`Identity`, `Request`, `Verdict`, `Result`, `Done`)
 - the policy shapes (`Policy`, `Settings`, `Rule`)
-- the per-instance state manager and the default engine (next step)
+- the per-instance state manager and the default engine
 
 It does not own:
 
@@ -141,11 +151,12 @@ wiring time; `admission` does not import `fault`.
 
 ## Relationship to `resilience`
 
-The target is: `admission` is the server side, `resilience` is the client side.
-The neutral organs are shared: the breaker state machine lives in
-`cloud/runtime/dataplane/kernel/breaker`, and the rate-limit vocabulary, local budget, `ClusterLimiter`
-seam and counting algorithms live in `cloud/runtime/dataplane/kernel/ratelimit`. Neither direction owns
-the other's implementation; each maps its own policy into the shared specs.
+`admission` is the server side, `resilience` is the client side. Only the
+rate-limit vocabulary is shared today: the `Spec`, local budget,
+`ClusterLimiter` seam and counting algorithms live in
+`cloud/runtime/dataplane/kernel/ratelimit`, and each direction maps its own
+policy into them. The circuit breaker is an outbound organ
+(`cloud/runtime/dataplane/kernel/circuitbreaker`) with no inbound consumer.
 
 ## Migration plan
 
@@ -153,7 +164,6 @@ the other's implementation; each maps its own policy into the shared specs.
 2. **Engine** (done): per-instance state manager, default stages, tests.
     - `engine.go` — fixed-policy `New`, managed `Manager.GuardFor`, Admit/Done
     - `ratelimit.go` — policy → shared `cloud/runtime/dataplane/kernel/ratelimit` budget
-    - `breaker.go` — policy → shared `cloud/runtime/dataplane/kernel/breaker` state machine
     - `manager.go` — push registry (no shared state)
 3. **Wiring** (done): `runtime.Runtime.InboundFor` composes `observability`
    (outer) around `admission` (inner) and injects the inbound fault stage.
@@ -169,6 +179,13 @@ the other's implementation; each maps its own policy into the shared specs.
    `Rejection` / `Driver.NewServerExecutor`). `resilience` is outbound-only.
    sentinel and luohua contribute outbound behavior only; their inbound
    implementations were retired.
+5. **Inbound circuit breaking removed** (2026-10-24): the per-instance breaker
+   stage, its policy fields (`ErrorThreshold`, `BreakerStrategy`,
+   `ErrorRateThreshold`, `MinRequests`, `BreakerWindow`,
+   `SlowCallDurationThreshold`, `SlowCallRateThreshold`, `HalfOpenRequests`,
+   `HalfOpenTimeout`, `OpenDuration`, `DegradeOnOpen`), verdicts
+   (`VerdictCircuitOpen`, `VerdictDegraded`), `Outcome` classification,
+   breaker metrics and `errHTTP5xx`-to-breaker feedback were all deleted.
 
 ## Open items
 
@@ -176,5 +193,6 @@ the other's implementation; each maps its own policy into the shared specs.
   `Guard`; a future backend seam would be needed only if a provider wants to
   replace admission's bundled inbound engine wholesale (sentinel's system/hotspot
   rules are not expressible through the current `Policy`).
-- Degradation: the shape currently only reports `VerdictDegraded`; response
-  generation stays in the adapter. No fallback callback is planned.
+- Inbound self-protection, if ever built, is per-resource (action/route) with
+  degradation as the action; it is not a revival of the removed instance-level
+  breaker.

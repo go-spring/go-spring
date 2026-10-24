@@ -166,7 +166,7 @@ func newClient(ctx *gs.ContextProvider, c Config, discoveryLabel string,
 		// The discovery dialer ignores the URI address and picks a live
 		// endpoint from the chain's CURRENT generation on each new connection.
 		baseDial = func(ctx context.Context, network, _ string) (net.Conn, error) {
-			ep, err := chain.Pick(loadbalance.PickInfo{})
+			ep, err := chain.Pick(ctx, loadbalance.PickInfo{})
 			if err != nil {
 				return nil, err
 			}

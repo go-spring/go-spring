@@ -122,17 +122,10 @@ func (d *consulDiscovery) fetch(ctx context.Context, name, tag string) ([]discov
 
 // Resolve returns the current healthy instance set for name. The first call
 // pays the seed query (bounded by ctx) and starts the background blocking
-// query; later calls read the cache. A per-call WithTag option narrows that
-// one lookup server-side (a one-off query, since the cache is untagged).
+// query; later calls read the cache. The block's tag narrows the registry
+// query server-side; the caller's options narrow the cached result locally.
 func (d *consulDiscovery) Resolve(ctx context.Context, name string, opts ...discovery.Option) ([]discovery.Endpoint, error) {
 	q := discovery.NewQuery(name, opts...)
-	if q.Tag != "" && q.Tag != d.tag {
-		eps, err := d.fetch(ctx, name, q.Tag)
-		if err != nil {
-			return nil, errutil.Explain(err, "discovery-consul: query %q (tag %q) failed", name, q.Tag)
-		}
-		return discovery.FilterByScheme(eps, q.Scheme), nil
-	}
 	e := d.entry(name)
 	e.mu.Lock()
 	defer e.mu.Unlock()
@@ -148,7 +141,7 @@ func (d *consulDiscovery) Resolve(ctx context.Context, name string, opts ...disc
 		d.obs.Synced(name, nil)
 		go d.watchLoop(name, e)
 	}
-	return discovery.FilterByScheme(append([]discovery.Endpoint(nil), e.eps...), q.Scheme), nil
+	return discovery.Snapshot(e.eps, q), nil
 }
 
 // watchLoop keeps a service's cache current with a Consul blocking query:

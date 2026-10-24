@@ -1,5 +1,7 @@
 # Go-Spring：让 Go 服务研发像 Spring Boot 一样简单，甚至更强大
 
+> **项目状态：未发布。** 整个体系仍在打磨：API 与边界可能变化，允许较大规模的破坏性变更——原则优先于兼容性。见 [STATUS_CN.md](STATUS_CN.md)。
+
 <div align="center">
  <img src="https://raw.githubusercontent.com/go-spring/go-spring/master/logo@h.png" width="140" alt="logo"/>
 </div>
@@ -155,7 +157,7 @@ Go-Spring 用两种抽象覆盖了所有服务形态：
 
 1. **补齐长尾集成。** 只要一个服务需要某个能力，答案就应该是 Starter，而不是团队内部的胶水包。新 starter 一律落在同一套设计约束下（[starter/DESIGN_CN.md](starter/DESIGN_CN.md)）——端口、driver 模式、多实例寻址、fail-fast 校验——行为与已有的那些保持一致。
 2. **每个组件都进同一套治理与可观测模型。** 今天的覆盖已经跨过常用技术栈；方向是没有任何后端是二等公民——同一份规则文档治理、同一套词汇插桩、同一个脚本校验。
-3. **保持应用层 API 稳定。** 一个框架配得上"基础"二字，靠的是自身演进时不逼业务代码跟着改。这是压在上面每一条之上的长期约束：加增量助手可以，破坏性变更不行。
+3. **保持应用层 API 稳定。** 一个框架配得上"基础"二字，靠的是自身演进时不逼业务代码跟着改。这是压在上面每一条之上的长期约束——**发布后**生效：加增量助手可以，破坏性变更不行。当前的发布前打磨阶段允许破坏性变更，见 [STATUS_CN.md](STATUS_CN.md)。
 4. **让约定机器可读。** 项目的规则本就写在代码旁边——[starter/DESIGN_CN.md](starter/DESIGN_CN.md)、各模块的 `DESIGN` / `USAGE` 文档，以及 [`/gs`](skills/gs) Skill。当 agent 承担越来越多的编码工作，一个约定能被 agent **读懂并遵守**（而不只是能被调用）的框架，才谈得上是底座。
 
 如果你也以写 Go 服务为生，这个位置值得一起来填：你贡献的每一个集成，都让另一个人少写一个内部包装。

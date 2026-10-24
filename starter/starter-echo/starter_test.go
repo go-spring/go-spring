@@ -17,6 +17,7 @@
 package StarterEcho
 
 import (
+	"go-spring.org/cloud/runtime/dataplane/inbound/admission"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -59,7 +60,7 @@ func testCenter(inj *serverfault.ServerManager) *runtime.Runtime {
 		inj = serverfault.NewServerManager(nil)
 	}
 	armed := inj.Config()
-	ctr, err := runtime.New(resilience.NewManager(resilience.NewDefaultDriver(nil)), loadbalance.NewManager(), clientfault.NewClientManager(nil), inj, nil, governance.NewPushSource(governance.Config{}))
+	ctr, err := runtime.New(resilience.NewManager(resilience.NewDefaultDriver(nil)), loadbalance.NewManager(), clientfault.NewClientManager(nil), inj, nil, governance.NewPushSource(governance.Config{Server: governance.ServerConfig{Default: admission.DefaultPolicy()}}))
 	if err != nil {
 		panic(err)
 	}

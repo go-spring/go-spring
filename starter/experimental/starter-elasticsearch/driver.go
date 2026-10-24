@@ -163,7 +163,7 @@ func resolveAddresses(ctx context.Context, c Config, backend discovery.Discovery
 	if err != nil {
 		return nil, errutil.Explain(err, "elasticsearch: resolve service %s", c.ServiceName)
 	}
-	eps, err := resolver()
+	eps, err := resolver(ctx)
 	if err != nil {
 		return nil, errutil.Explain(err, "elasticsearch: resolve service %s", c.ServiceName)
 	}

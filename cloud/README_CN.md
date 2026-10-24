@@ -13,7 +13,7 @@
 | 包 | 回答什么问题 |
 | --- | --- |
 | [actuator](actuator/) | 管理端点：探针路径（[endpoint](actuator/endpoint/)）、组件健康检查（[health](actuator/health/)）、Kubernetes Pod 元数据（[podinfo](actuator/podinfo/)）。 |
-| [breaker](runtime/dataplane/kernel/breaker/) | 方向中立的熔断状态机，由 [resilience](runtime/dataplane/outbound/resilience/)（出站）与 [admission](runtime/dataplane/inbound/admission/)（入站）共享。 |
+| [circuitbreaker](runtime/dataplane/kernel/circuitbreaker/) | 方向中立的熔断状态机，由 [resilience](runtime/dataplane/outbound/resilience/)（出站）与 [admission](runtime/dataplane/inbound/admission/)（入站）共享。 |
 | [cache](cache/) | 缓存 API：配置声明一次（`spring.cache`），由 go-redis / redigo / bigcache / memcached 等 starter 提供后端实现。 |
 | [chain](runtime/dataplane/outbound/chain/) | 各层共享的受治理调用词汇：`Executor`、`Operation`、`Recorder` 与拒绝哨兵。 |
 | [discovery](runtime/dataplane/kernel/discovery/) | 「这个逻辑名此刻有哪些存活的 `host:port`？」——命名服务的**读侧**（resolver + 本地 endpoint 目录，数据面）；写侧见 [registration](runtime/controlplane/registration/)。 |

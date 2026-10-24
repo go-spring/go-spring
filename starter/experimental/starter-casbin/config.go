@@ -18,9 +18,9 @@ package StarterCasbin
 
 // Config holds the configuration parameters for a Casbin enforcer.
 type Config struct {
-	Model    string `value:"${model}"`          // Path to the model file (model.conf)
-	Policy   string `value:"${policy:=}"`       // Path to the policy file (policy.csv); mutually exclusive with Adapter
-	AutoSave bool   `value:"${autoSave:=true}"` // Whether policy mutations are persisted back to the storage
+	Model    string `value:"${model}" expr:"$ != ''"` // Path to the model file (model.conf)
+	Policy   string `value:"${policy:=}"`             // Path to the policy file (policy.csv); mutually exclusive with Adapter
+	AutoSave bool   `value:"${autoSave:=true}"`       // Whether policy mutations are persisted back to the storage
 
 	// Adapter names the persist.Adapter bean the application provides (under
 	// this bean name) that backs this enforcer. When set, the enforcer

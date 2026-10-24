@@ -214,8 +214,13 @@ func Validate(s Settings) error {
 }
 
 // validateSelection resolves one selection's strategy, discarding the instance:
-// it exists only to surface the error [New] would report.
+// it exists only to surface the error [New] would report. It also validates the
+// metadata selector, which is checked even when no strategy is named — the
+// base strategy is a default, not a reason to skip the rest of the policy.
 func validateSelection(sel Selection) error {
+	if err := sel.Selector.Validate(); err != nil {
+		return err
+	}
 	if sel.Balancer == "" {
 		return nil // the base strategy; nothing to resolve
 	}

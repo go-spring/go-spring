@@ -96,15 +96,25 @@ resurrected by the "no healthy → use all" fallback.
 ## Options: narrowing a lookup
 
 ```go
-eps, _ := d.Resolve(ctx, "orders", discovery.WithScheme("grpc"), discovery.WithTag("v2"))
+eps, _ := d.Resolve(ctx, "orders", discovery.WithScheme("grpc"))
 ```
 
 | Option | Semantics | Honored by |
 |---|---|---|
-| `WithScheme(s)` | restrict to one transport scheme; empty scheme and `"tcp"` are equivalent | every backend, via `FilterByScheme` |
-| `WithTag(t)` | a backend-native marker (Consul service tag, discovery label) | backends that support tags, in the backend call; others ignore it |
+| `WithScheme(s)` | restrict to one transport scheme; empty scheme and `"tcp"` are equivalent | every backend, via `Narrow` |
+| `WithSelector(s)` | metadata conjunction: every named key must exist and satisfy its term; terms are ANDed | every backend, via `Narrow` — a backend may push terms down, but the local filter is the contract |
 
-Both are no-ops when empty — pass config values through unconditionally.
+Every option is a no-op when empty — pass config values through unconditionally.
+
+A selector is a conjunction of typed terms over `Endpoint.Metadata`. The kinds
+are a closed set — `exact`, `prefix`, `suffix`, `contains` — and a term is a
+pure value, so the same rule can be built in code or decoded from a control
+plane. `matcher.Selector.Validate` is the boundary check for decoded rules
+(unknown kind, empty key, empty prefix/suffix/contains); validate
+once at apply time and keep serving the previous rule on error. There is
+deliberately no boolean combinator: "or" belongs one level up, in a list of
+rules. An empty selector means "no narrowing", so a control-plane decoder should
+reject an explicitly empty selector rather than install "match all".
 
 ## Resolver: the bound by-name consumer
 
@@ -113,7 +123,7 @@ backend := discovery.NewStaticDiscovery(/* ... live endpoints from the backend .
 load, err := discovery.NewResolver(ctx, backend, "orders-redis")
 bal := loadbalance.NewRoundRobin()
 pool := loadbalance.NewPool(load, bal)
-ep, err := pool.Pick(loadbalance.PickInfo{})
+ep, err := pool.Pick(ctx, loadbalance.PickInfo{})
 ```
 
 - `NewResolver` binds a backend label + service name (plus options) once and
@@ -146,8 +156,9 @@ func (b *myBackend) Resolve(ctx context.Context, name string, opts ...discovery.
     q := discovery.NewQuery(name, opts...)
     // read the cached snapshot (seed it with a backend query on first call,
     // keep it fresh with the backend's own watch/subscribe/poll mechanism);
-    // apply discovery.FilterByScheme(raw, q.Scheme);
-    // honor q.Tag in the backend call if it supports tags
+    // return discovery.Snapshot(raw, q) — the local contract (including
+    // q.Selector, which no backend is required to push down) and the
+    // caller-safe copy of your cached set, in one call
 }
 
 // in a starter's module wiring:
@@ -277,7 +288,7 @@ func (m *Manager) Labels() []string
   `Subscribe` callback refreshing a cache), read-through TTL (the DNS type, no
   goroutine), informer (k8s endpointslice, `Close` stops them all), or a
   blocking-query loop (consul).
-- `discovery.Resolver` is the function type `func() ([]Endpoint, error)`; the
+- `discovery.Resolver` is the function type `func(ctx context.Context) ([]Endpoint, error)`; the
   constructor `NewResolver(ctx, backend, name, opts)` binds backend+name once,
   seeds with a synchronous `Resolve` (fail-fast), returns `(nil, nil)` for
   mesh/empty-name, and holds **no resources and no `Stop`**.
@@ -293,7 +304,7 @@ func (m *Manager) Labels() []string
   deleted; `discovery.Allows` long ago moved to loadbalance's private
   `admission`.
 - Connection-pool consumption shape: `NewPool(resolver, bal)`, then
-  `pool.Pick(PickInfo{})` inside the dial closure; gormcore offers the shared
+  `pool.Pick(ctx, PickInfo{})` inside the dial closure; gormcore offers the shared
   `Common.NewResolver` / `NewPickPool`.
 - "Cloud has no spring dependency" was downgraded from an iron rule to a
   default preference (the user may explicitly break it).

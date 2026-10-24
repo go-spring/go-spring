@@ -53,17 +53,9 @@ func TestManager_LabelsSorted(t *testing.T) {
 	assert.That(t, m.Labels()).Equal([]string{"consul.default", "etcd.main", "nacos.main"})
 }
 
-// TestManager_NilAndEmptyAreMisses pins the nil-receiver and no-backend cases:
-// both are valid "discovery not configured" states that must read as a miss (a
-// nil Manager comes from a nil runtime; an empty one from a container
-// with no discovery backend bean), never a false hit or a panic.
-func TestManager_NilAndEmptyAreMisses(t *testing.T) {
-	var absent *Manager
-	if _, ok := absent.Get("etcd.main"); ok {
-		t.Fatal("a nil Manager must miss, not hit")
-	}
-	assert.That(t, absent.Labels()).Nil()
-
+// TestManager_EmptyIsAMiss pins the no-backend case: a Manager over an empty
+// directory reads as a miss, never a false hit or a panic.
+func TestManager_EmptyIsAMiss(t *testing.T) {
 	empty := NewManager(nil)
 	if _, ok := empty.Get("etcd.main"); ok {
 		t.Fatal("a Manager over a nil map must miss, not hit")

@@ -58,7 +58,7 @@ type Config struct {
 	// the switch opts OUT, the addr key below opts IN.
 	Enabled bool `value:"${enabled:=true}"`
 
-	Addr          string             `value:"${addr}"`
+	Addr          string             `value:"${addr}" expr:"$ != ''"`
 	ClientTimeout time.Duration      `value:"${clientTimeout:=0}"`
 	Protocol      string             `value:"${protocol:=binary}"`
 	Transport     string             `value:"${transport:=none}"`
@@ -189,7 +189,7 @@ func (s *SimpleThriftServer) Run(ctx context.Context, sig gs.ReadySignal) error 
 	// Observe is the only one behind a switch — it rides the OTel globals.
 	// AccessLog is always installed (the RPC family requires every member to
 	// have one), and so is inbound: each call passes the service's
-	// rate-limit / bulkhead / breaker policy before reaching the service; with
+	// rate-limit / bulkhead policy before reaching the service; with
 	// governance off the executor is a transparent pass-through, so installing
 	// it costs a call frame and changes nothing else.
 	var mws []thrift.ProcessorMiddleware
@@ -197,7 +197,11 @@ func (s *SimpleThriftServer) Run(ctx context.Context, sig gs.ReadySignal) error 
 		mws = append(mws, Observe())
 	}
 	mws = append(mws, AccessLog())
-	mws = append(mws, Admit(label.ServiceLabel("thrift", s.cfg.Addr), "thrift", s.center))
+	admit, err := Admit(label.ServiceLabel("thrift", s.cfg.Addr), "thrift", s.center)
+	if err != nil {
+		return err
+	}
+	mws = append(mws, admit)
 	proc := thrift.WrapProcessor(s.proc, mws...)
 	s.svr = thrift.NewTSimpleServer4(proc, transport, transFactory, protoFactory)
 	<-sig.TriggerAndWait()

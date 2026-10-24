@@ -45,6 +45,7 @@ import (
 	"context"
 
 	"go-spring.org/cloud/mesh"
+	"go-spring.org/cloud/runtime/dataplane/kernel/matcher"
 	"go-spring.org/stdlib/errutil"
 )
 
@@ -125,36 +126,32 @@ type Query struct {
 	// when the caller passed no [WithScheme], which means "no narrowing — return
 	// every scheme the service exposes". When non-empty ("tls", "https", "grpc",
 	// ...) a backend returns only endpoints whose [Endpoint.Scheme] matches, per
-	// [FilterByScheme]. It lets one service name expose both plain and secure
-	// instances and have a caller pick one without filtering client-side.
+	// [Narrow]. It lets one service name expose both plain and secure instances
+	// and have a caller pick one without filtering client-side.
 	Scheme string
 
-	// Tag narrows the lookup to instances carrying tag — a Consul service tag, a
-	// discovery label, or any backend-specific marker that partitions a service's
-	// instances and is part of the discovery query (not a generic field on
-	// [Endpoint]). It is "" (the default) when the caller passed no [WithTag].
-	//
-	// Unlike [Query.Scheme], tag has no package-level filter ([FilterByScheme]):
-	// tag is part of the discovery backend's own query (Consul's Health().Service takes
-	// the tag server-side), so a backend that supports tags honors it in its
-	// backend call, and a backend that does not (the static backend, k8s DNS,
-	// ...) silently ignores it. That asymmetry is intentional — only dimensions
-	// with a generic [Endpoint] representation get a shared filter.
-	Tag string
+	// Selector narrows the result to endpoints whose [Endpoint.Metadata]
+	// satisfies it, per [Narrow]. It is the one dimension with an open
+	// vocabulary: a backend may push any of its terms down to its own server,
+	// but the returned set is always narrowed by the same selector locally, so
+	// what a rule means never depends on which backend produced the endpoints
+	// or how much of the query that backend could push down. A nil selector
+	// means "no narrowing". Matching semantics are [matcher.Selector]'s.
+	Selector matcher.Selector
 }
 
 // Option narrows a [Query]. The zero-length Option set means "no narrowing":
-// resolve every endpoint the service exposes, in every scheme/tag. Each
-// exported Option (WithScheme, WithTag, ...) sets one optional
-// dimension; future dimensions are added as further WithX functions without
-// breaking existing call sites or backends, which is why the lookup is
+// resolve every endpoint the service exposes, in every scheme and with no
+// metadata selector. Each exported Option (WithScheme, WithSelector) sets one
+// optional dimension; future dimensions are added as further WithX functions
+// without breaking existing call sites or backends, which is why the lookup is
 // name-plus-options rather than a growing positional parameter list.
 type Option func(*Query)
 
 // WithScheme narrows the lookup to endpoints whose [Endpoint.Scheme] matches s.
 // An empty s is a no-op (it leaves the "any scheme" default), so passing
 // conditionally — discovery.WithScheme(cfg.Scheme) — needs no guard. Matching
-// follows [FilterByScheme]: the empty scheme and "tcp" are treated as the same
+// follows [Narrow]: the empty scheme and "tcp" are treated as the same
 // "plain TCP" scheme, so WithScheme("tcp") selects both "" and "tcp" endpoints.
 func WithScheme(s string) Option {
 	return func(q *Query) {
@@ -164,13 +161,16 @@ func WithScheme(s string) Option {
 	}
 }
 
-// WithTag narrows the lookup to instances carrying tag (a Consul service tag, a
-// discovery label, ...). An empty t is a no-op. Honoring tag is backend-specific
-// and has no package-level filter — see [Query.Tag].
-func WithTag(t string) Option {
+// WithSelector narrows the lookup to endpoints whose [Endpoint.Metadata]
+// satisfies s. A nil or empty selector is a no-op. The selector is a pure
+// value, so the same rule can be built here or decoded from a control-plane
+// payload; a decoder must reject a malformed rule (and call
+// [matcher.Selector.Validate] for the operand rule) before installing one,
+// since this Option has no way to report a malformed rule.
+func WithSelector(s matcher.Selector) Option {
 	return func(q *Query) {
-		if t != "" {
-			q.Tag = t
+		if len(s) > 0 {
+			q.Selector = s
 		}
 	}
 }
@@ -178,8 +178,9 @@ func WithTag(t string) Option {
 // NewQuery materializes name plus opts into a [Query]. It is the canonical way a
 // [Discovery] backend turns the variadic Option slice it receives from
 // Resolve into values it can read: q := NewQuery(name, opts...), then use
-// q.Name, q.Scheme, q.Tag. name is required but not validated here — a backend that
-// needs a non-empty name checks it itself.
+// q.Name, q.Scheme, q.Selector, and hand q to [Narrow] on the raw
+// result. name is required but not validated here — a backend that needs a
+// non-empty name checks it itself.
 func NewQuery(name string, opts ...Option) Query {
 	q := Query{Name: name}
 	for _, o := range opts {
@@ -214,9 +215,10 @@ type Discovery interface {
 	// Resolve returns the current snapshot of endpoints for name, narrowed by
 	// opts (e.g. [WithScheme]). It may block on the first call for a service
 	// (seed fetch); a real backend performs network I/O there, so ctx is the
-	// call's deadline/cancellation. A backend that receives a non-empty Scheme
-	// option returns only matching endpoints — apply [FilterByScheme] to the
-	// raw result to honor that contract uniformly.
+	// call's deadline/cancellation. A backend returns only endpoints that
+	// satisfy every narrowing dimension of the query — apply [Narrow] to the
+	// raw result to honor that contract uniformly, including the metadata
+	// [Query.Selector] no backend is required to push down.
 	Resolve(ctx context.Context, name string, opts ...Option) ([]Endpoint, error)
 }
 
@@ -232,10 +234,18 @@ type Discovery interface {
 // backend, since freshness lives inside the backend). Callers that want a
 // selection layer feed it to loadbalance.NewPool; callers that want a bare
 // snapshot call it directly.
-type Resolver func() ([]Endpoint, error)
+//
+// ctx is the CALLER's context — the request whose endpoint selection this is —
+// and is forwarded to [Discovery.Resolve] unchanged. It must not be a
+// constructor or background context: some backends do I/O on a read (a lazily
+// refreshed DNS snapshot, a per-call tagged lookup), and a request-path read
+// owes that I/O its deadline, cancellation and trace. Adapters whose host SDK
+// offers no context (a selector callback, a static address hook) are the only
+// place that should pass context.Background().
+type Resolver func(ctx context.Context) ([]Endpoint, error)
 
 // NewResolver binds the Discovery backend d to the service name, narrowed by
-// opts (e.g. [WithScheme], [WithTag]), and returns a Resolver that re-reads the
+// opts (e.g. [WithScheme], [WithSelector]), and returns a Resolver that re-reads the
 // live snapshot on every call. It is the single constructor every
 // infrastructure client starter (Redis, MySQL, MongoDB, ...) and
 // discovery-aware transport (httpx, the gateway) reuses: the starter injects
@@ -243,7 +253,9 @@ type Resolver func() ([]Endpoint, error)
 // service name.
 //
 // It seeds with one explicit [Discovery.Resolve] — a synchronous read of the
-// current state that also fails fast when the service is unknown.
+// current state that also fails fast when the service is unknown. The seed uses
+// the construction ctx; the returned Resolver does NOT capture it, it takes the
+// caller's ctx on every read (see [Resolver]).
 //
 // It returns (nil, nil) — "discovery not in effect" — when d is nil or name is
 // empty or mesh mode is on (a sidecar owns discovery+LB), in which case the
@@ -257,8 +269,8 @@ func NewResolver(ctx context.Context, d Discovery, name string, opts ...Option) 
 	if _, err := d.Resolve(ctx, name, opts...); err != nil {
 		return nil, errutil.Explain(err, "discovery: resolve %q", name)
 	}
-	return func() ([]Endpoint, error) {
-		return d.Resolve(context.Background(), name, opts...)
+	return func(ctx context.Context) ([]Endpoint, error) {
+		return d.Resolve(ctx, name, opts...)
 	}, nil
 }
 
@@ -279,20 +291,57 @@ type staticBackend struct {
 	eps []Endpoint
 }
 
-func (b *staticBackend) Resolve(_ context.Context, _ string, opts ...Option) ([]Endpoint, error) {
-	return FilterByScheme(append([]Endpoint(nil), b.eps...), NewQuery("", opts...).Scheme), nil
+func (b *staticBackend) Resolve(_ context.Context, name string, opts ...Option) ([]Endpoint, error) {
+	return Snapshot(b.eps, NewQuery(name, opts...)), nil
 }
 
-// FilterByScheme returns eps restricted to those whose [Endpoint.Scheme] matches
-// scheme, or eps unchanged when scheme is "". It is the canonical implementation
-// of the Scheme narrowing every backend applies to its raw results before
-// returning them, so the matching rule lives in one place.
+// Narrow applies every per-endpoint dimension of q to eps and returns the
+// endpoints a caller may use. It is the single local contract behind
+// [Discovery.Resolve]: a backend calls it on its raw result before returning,
+// so a narrowing dimension means the same thing whichever backend produced the
+// endpoints, and however much of the query that backend could push down.
+// Pushdown is an optimization; Narrow is the semantics.
+//
+// Name is not a dimension here: it selects which endpoint set to read, and the
+// endpoints a backend returns for it already belong to that service. Nor are
+// [Endpoint.Healthy], [Endpoint.Disabled] or [Endpoint.Weight] — eligibility and
+// picking belong to loadbalance, not to the naming read.
+//
+// When q narrows nothing, eps is returned unchanged; otherwise the result is a
+// new slice and eps is left untouched. A backend returning its own cache should
+// call [Snapshot] instead, which adds the caller-safe copy.
+func Narrow(eps []Endpoint, q Query) []Endpoint {
+	eps = filterByScheme(eps, q.Scheme)
+	return filterByMetadata(eps, q.Selector)
+}
+
+// Snapshot returns a narrowed COPY of a backend's cached endpoint set: the one
+// line every [Discovery] backend ends with.
+//
+//	return discovery.Snapshot(e.eps, discovery.NewQuery(name, opts...)), nil
+//
+// It exists because [Narrow] deliberately returns its input unchanged when the
+// query narrows nothing, while a backend's slice is its live cache — handing it
+// out directly would let a caller append to or overwrite the snapshot slice for
+// everyone. Folding the defensive copy into this call keeps that invariant from
+// being something each adapter has to remember.
+//
+// The copy is SHALLOW: the endpoint values travel by value, but each
+// [Endpoint.Metadata] map is still shared with the cache. Metadata is read-only
+// by contract — the backend fills it and consumers route on it — so a caller
+// must not write to it; doing so would mutate the cache for every other reader.
+func Snapshot(cached []Endpoint, q Query) []Endpoint {
+	return Narrow(append([]Endpoint(nil), cached...), q)
+}
+
+// filterByScheme keeps the endpoints whose [Endpoint.Scheme] matches scheme, or
+// the whole slice when scheme is "".
 //
 // The empty scheme and "tcp" are treated as equivalent ("plain TCP"), mirroring
 // the [Endpoint.Scheme] convention: WithScheme("tcp") therefore selects both
 // "" and "tcp" endpoints, and WithScheme("") (no narrowing) returns everything.
 // Any other value matches exactly.
-func FilterByScheme(eps []Endpoint, scheme string) []Endpoint {
+func filterByScheme(eps []Endpoint, scheme string) []Endpoint {
 	if scheme == "" {
 		return eps
 	}
@@ -306,11 +355,26 @@ func FilterByScheme(eps []Endpoint, scheme string) []Endpoint {
 	return out
 }
 
+// filterByMetadata keeps the endpoints whose metadata satisfies s, or the whole
+// slice when s is empty.
+func filterByMetadata(eps []Endpoint, s matcher.Selector) []Endpoint {
+	if len(s) == 0 {
+		return eps
+	}
+	out := eps[:0:0]
+	for _, e := range eps {
+		if s.Matches(e.Metadata) {
+			out = append(out, e)
+		}
+	}
+	return out
+}
+
 // normalizeScheme collapses the empty string and "tcp" to the same plain-TCP
 // bucket so they match each other; every other scheme is left as-is. Most
 // backends never set Scheme, so "" is the common spelling of a plain endpoint —
 // without this, WithScheme("tcp") would silently match nothing. Keeping this
-// unexported forces all scheme comparisons through [FilterByScheme].
+// unexported forces all scheme comparisons through [Narrow].
 func normalizeScheme(s string) string {
 	if s == "" || s == "tcp" {
 		return ""

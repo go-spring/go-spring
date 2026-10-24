@@ -72,7 +72,7 @@ type coordinator struct {
 }
 
 func (c *coordinator) Begin(ctx context.Context) (context.Context, string) {
-	xid := newXID()
+	xid := randutil.Hex(16) // a random 16-byte hex global transaction id
 	c.mu.Lock()
 	c.active[xid] = nil
 	c.mu.Unlock()
@@ -190,9 +190,6 @@ func (c *coordinator) runPhase(ctx context.Context, xid string, b Branch, phase 
 	end(err)
 	return err
 }
-
-// newXID returns a random 16-byte hex global transaction id.
-func newXID() string { return randutil.Hex(16) }
 
 // runWithPolicy runs fn once when the policy is zero, or under the bundled
 // resilience "default" executor (retry, per-attempt timeout, ...) otherwise. It

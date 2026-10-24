@@ -45,21 +45,16 @@ func NewManager(backends map[string]Discovery) *Manager {
 }
 
 // Get returns the backend registered under label and whether one exists.
-// Nil-receiver safe, so a container-less caller holding a nil Manager reads a
-// miss rather than a false hit.
 func (m *Manager) Get(label string) (Discovery, bool) {
-	if m == nil {
-		return nil, false
-	}
 	d, ok := m.backends[label]
 	return d, ok
 }
 
 // Labels returns every configured backend label in sorted order — for
 // diagnostics, and for a caller that must report which labels it could have
-// cited. Nil-receiver safe.
+// cited.
 func (m *Manager) Labels() []string {
-	if m == nil || len(m.backends) == 0 {
+	if len(m.backends) == 0 {
 		return nil
 	}
 	out := make([]string, 0, len(m.backends))

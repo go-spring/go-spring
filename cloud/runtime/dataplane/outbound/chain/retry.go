@@ -48,25 +48,25 @@ import "time"
 type RetryPolicy struct {
 	// MaxRetries is the number of extra attempts after the first failure. 0 (the
 	// zero value) means a single attempt with no retry.
-	MaxRetries int `value:"${max-retries:=0}"`
+	MaxRetries int `value:"${max-retries:=0}" expr:"$ >= 0"`
 
 	// InitialInterval is the backoff before the first retry. 0 disables backoff
 	// entirely (retries run back-to-back). Pair with Multiplier, MaxInterval and
 	// RandomizationFactor.
-	InitialInterval time.Duration `value:"${initial-interval:=0}"`
+	InitialInterval time.Duration `value:"${initial-interval:=0}" expr:"int($) >= 0"`
 
 	// Multiplier is the exponential growth factor applied to InitialInterval
 	// between successive retries. 0 and 1 both mean a constant interval.
-	Multiplier float64 `value:"${multiplier:=0}"`
+	Multiplier float64 `value:"${multiplier:=0}" expr:"$ >= 0"`
 
 	// MaxInterval caps the grown backoff so it does not expand unbounded. 0 means
 	// no cap.
-	MaxInterval time.Duration `value:"${max-interval:=0}"`
+	MaxInterval time.Duration `value:"${max-interval:=0}" expr:"int($) >= 0"`
 
 	// RandomizationFactor is the jitter fraction in [0,1) applied to each computed
 	// interval as interval*(1 ± factor), decorrelating clients that would
 	// otherwise retry in lockstep. 0 means no jitter.
-	RandomizationFactor float64 `value:"${randomization-factor:=0}"`
+	RandomizationFactor float64 `value:"${randomization-factor:=0}" expr:"$ >= 0 && $ < 1"`
 
 	// NonIdempotent marks a call whose repetition is a second side effect rather
 	// than a second attempt — sending an email, publishing to a broker. A call
@@ -89,7 +89,7 @@ type RetryPolicy struct {
 	// read ONLY from a policy node at construction time; a value on a per-call
 	// node is deliberately ignored (a per-call budget would not be shared, which
 	// is the whole point of the guard).
-	RetryBudget int `value:"${retry-budget:=0}"`
+	RetryBudget int `value:"${retry-budget:=0}" expr:"$ >= 0"`
 }
 
 // IsZero reports whether the node declares nothing at all.

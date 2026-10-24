@@ -29,7 +29,7 @@ import (
 )
 
 // GuardServerFilter is the inbound governance filter: one admission judgment
-// (rate limit / bulkhead / breaker / fault) before the handler, and one
+// (rate limit / bulkhead / fault) before the handler, and one
 // completion after it. It is registered by the starter as "governance" and
 // included in the server's default filter chain.
 func GuardServerFilter(in *runtime.Inbound) filter.ServerFilter {
@@ -64,8 +64,6 @@ func refusalError(ref *runtime.Refusal) error {
 	switch ref.Verdict() {
 	case admission.VerdictRateLimited, admission.VerdictBulkheadFull:
 		return errs.New(errs.RetServerThrottled, ref.Error())
-	case admission.VerdictCircuitOpen, admission.VerdictDegraded:
-		return errs.New(errs.RetServerOverload, ref.Error())
 	case admission.VerdictFaultInjected:
 		return errs.New(errs.RetServerSystemErr, ref.Error())
 	default:

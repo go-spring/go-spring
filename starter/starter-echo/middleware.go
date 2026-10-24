@@ -126,16 +126,20 @@ func applyMiddlewares(e *echo.Echo, cfg Config, center *runtime.Runtime, prop tr
 	}
 
 	// Resilience inbound (always installed): runs the request through the
-	// configured rate-limit / bulkhead / breaker before the handler chain. Sits
+	// configured rate-limit / bulkhead before the handler chain. Sits
 	// inside AccessLog so 429/503 rejects are still logged, and outside fault so
 	// a rate-limited request is not also faulted. mgr is the governance
 	// starter's manager bean (nil when governance is not imported); without it
 	// the executor is a transparent pass-through, so installing it costs a call
 	// frame and changes nothing else.
-	e.Use(buildServerPolicy(cfg, center))
+	policy, err := buildServerPolicy(cfg, center)
+	if err != nil {
+		return err
+	}
+	e.Use(policy)
 
 	// Fault injection is part of the inbound guard now: it runs innermost, after
-	// the rate-limit / bulkhead / breaker gate.
+	// the rate-limit / bulkhead gate.
 	return nil
 }
 

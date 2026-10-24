@@ -30,3 +30,21 @@ func TestSlidingWindowLimit(t *testing.T) {
 	assert.That(t, w.AllowN(1)).True()
 	assert.That(t, w.AllowN(1)).False()
 }
+
+// TestSlidingWindowUsageReadOnly pins the window's projected estimate: it
+// reports what AllowN would see without recording anything.
+func TestSlidingWindowUsageReadOnly(t *testing.T) {
+	w := ratelimit.NewSlidingWindow(10, time.Second)
+	usage := w.Usage()
+	assert.That(t, usage.Limit).Equal(float64(10))
+	assert.That(t, usage.Used).Equal(float64(0))
+
+	assert.That(t, w.AllowN(3)).True()
+	usage = w.Usage()
+	assert.That(t, usage.Used > 2.99 && usage.Used < 3.01).True()
+
+	// A refused charge adds nothing, and neither does a read.
+	assert.That(t, w.AllowN(8)).False()
+	usage = w.Usage()
+	assert.That(t, usage.Used > 2.99 && usage.Used < 3.01).True()
+}

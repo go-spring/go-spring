@@ -29,7 +29,7 @@ import (
 // a PushSource handed to NewCenter arms the center from its snapshot and later
 // pushes fan out to the module authorities — the same fan-out any source drives.
 func TestSource_PushSourceDrivesCenter(t *testing.T) {
-	src := NewPushSource(timeoutConfig(100))
+	src := pushSource(timeoutConfig(100))
 	resClient, lb, fc, fs := newAuthorities()
 	if _, err := NewCenter(resClient, admission.NewManager(), lb, fc, fs, src); err != nil {
 		t.Fatal(err)
@@ -52,7 +52,7 @@ func TestSource_PushSourceDrivesCenter(t *testing.T) {
 // TestPushSource_Concurrent runs Push/Snapshot/Subscribe concurrently; run
 // with -race, this guards the lock discipline of the ready-made source.
 func TestPushSource_Concurrent(t *testing.T) {
-	p := NewPushSource(Config{})
+	p := pushSource(Config{})
 	done := make(chan struct{})
 	go func() { defer close(done); p.Subscribe(func(context.Context, Config) {}) }()
 	for i := range 100 {
@@ -82,7 +82,7 @@ func TestDestroy_ClosesCloseableSource(t *testing.T) {
 
 	// With a plain PushSource (no Close method): Destroy is a no-op.
 	resClient2, lb2, fc2, fs2 := newAuthorities()
-	c2, err := NewCenter(resClient2, admission.NewManager(), lb2, fc2, fs2, NewPushSource(Config{}))
+	c2, err := NewCenter(resClient2, admission.NewManager(), lb2, fc2, fs2, pushSource(Config{}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -99,7 +99,7 @@ type closeableSource struct {
 }
 
 func newCloseableSource(cfg Config) *closeableSource {
-	return &closeableSource{Push: NewPushSource(cfg)}
+	return &closeableSource{Push: pushSource(cfg)}
 }
 
 func (s *closeableSource) Snapshot() Config                                   { return s.Push.Snapshot() }
@@ -110,7 +110,7 @@ func (s *closeableSource) Close() error                                       { 
 // seam unchanged: the subscriber - and through it the center - logs what it did
 // about the change against the identity the source named it with.
 func TestPushDeliversTheChangesContext(t *testing.T) {
-	p := NewPushSource(Config{})
+	p := pushSource(Config{})
 	var got context.Context
 	p.Subscribe(func(ctx context.Context, _ Config) { got = ctx })
 

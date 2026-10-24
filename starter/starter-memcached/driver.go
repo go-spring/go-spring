@@ -112,7 +112,7 @@ func (DefaultDriver) CreateClient(ctx context.Context, name string, c Config, ce
 		// Fail fast on an unusable cluster: the live selector tolerates a later
 		// empty snapshot per operation, but booting against one is a
 		// misconfiguration the operator should see now.
-		eps, err := resolver()
+		eps, err := resolver(ctx)
 		if err != nil {
 			return nil, errutil.Explain(err, "memcached: discovery resolve %q failed", c.ServiceName)
 		}

@@ -50,7 +50,7 @@ func testCenter() *runtime.Runtime {
 	driver := resilience.NewDefaultDriver(nil)
 	resClient := resilience.NewManager(driver)
 	ctr, err := runtime.New(resClient, loadbalance.NewManager(),
-		clientfault.NewClientManager(nil), serverfault.NewServerManager(nil), nil, governance.NewPushSource(governance.Config{}))
+		clientfault.NewClientManager(nil), serverfault.NewServerManager(nil), nil, governance.NewPushSource(governance.Config{Server: governance.ServerConfig{Default: admission.DefaultPolicy()}}))
 	if err != nil {
 		panic(err)
 	}
@@ -61,7 +61,10 @@ func testCenter() *runtime.Runtime {
 func armRateLimit(t *testing.T, ctr *runtime.Runtime) {
 	t.Helper()
 	assert.That(t, ctr.GuardServer().Apply(admission.Settings{
-		Default: admission.Policy{RateLimit: 1, Burst: 1},
+		Default: admission.Policy{
+			RateLimit: 1,
+			Burst:     1,
+		},
 	})).Nil()
 }
 
@@ -79,7 +82,9 @@ var addrSerial atomic.Int64
 func TestResilienceUnaryInterceptor_Unit(t *testing.T) {
 	ctr := testCenter()
 	armRateLimit(t, ctr)
-	ic := resilienceUnaryInterceptor(ctr.InboundFor("grpc", "grpc:test"), "grpc:test")
+	in, err := ctr.InboundFor("grpc", "grpc:test")
+	assert.That(t, err).Nil()
+	ic := resilienceUnaryInterceptor(in, "grpc:test")
 	info := &grpc.UnaryServerInfo{FullMethod: "/demo.Service/Echo"}
 
 	hits := 0
@@ -156,7 +161,8 @@ func TestServerPolicy_EndToEndOverBufconn(t *testing.T) {
 func TestServerPolicy_UnarmedManagerIsTransparent(t *testing.T) {
 	addr := uniqueTestAddr("inbound-unarmed")
 	s := NewSimpleGrpcServer(Config{Addr: addr}, func(*grpc.Server) {}, nil, nil, testCenter(), nil)
-	ri, ok := s.buildResilienceInterceptors()
+	ri, ok, err := s.buildResilienceInterceptors()
+	assert.That(t, err).Nil()
 	assert.That(t, ok).True()
 
 	hits := 0

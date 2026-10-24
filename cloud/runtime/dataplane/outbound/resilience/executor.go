@@ -35,7 +35,9 @@ import (
 	"sync"
 	"time"
 
-	"go-spring.org/cloud/runtime/dataplane/kernel/breaker"
+	"go.opentelemetry.io/otel/metric"
+
+	"go-spring.org/cloud/runtime/dataplane/kernel/circuitbreaker"
 	"go-spring.org/cloud/runtime/dataplane/kernel/ratelimit"
 	"go-spring.org/cloud/runtime/dataplane/outbound/chain"
 	"go-spring.org/log"
@@ -100,7 +102,13 @@ type defaultExecutor struct {
 	// this executor.
 	source PolicySource
 
-	listener breaker.EventListener
+	// observe is this executor's own state plane: it publishes the breakers and
+	// budgets the executor owns (see observe.go). It is registered lazily on the
+	// first call because the global meter provider may be installed after this
+	// executor is built, and it is unregistered by Close.
+	observeOnce sync.Once
+	observeReg  metric.Registration
+	closed      bool
 }
 
 // execState is one generation of the executor's materialized protection: every
@@ -117,8 +125,9 @@ type execState struct {
 
 // newExecutor builds the executor for service. Nothing is materialized
 // here — not even the retry budget, which now belongs to the first generation:
-// the organs are built on first use by [defaultExecutor.snapshot], because they
-// must see the breaker listener, and [WrapClientExecutor] attaches that after this
+// the organs are built on first use by [defaultExecutor.snapshot]. The
+// executor's own state observer registers on that first call too (see
+// observe.go), because the global meter provider may be installed after this
 // returns.
 func newExecutor(service string, p Policy, limiter ratelimit.ClusterLimiter) *defaultExecutor {
 	return &defaultExecutor{service: service, fixed: p, limiter: limiter}
@@ -161,9 +170,9 @@ func (e *defaultExecutor) callPolicy(op chain.Operation) CallPolicy {
 
 // snapshot returns the state, rate budget, policy and retry budget a call runs
 // on, materializing them on first use of the key. Deferring the build to the
-// first call is load-bearing: [WrapClientExecutor] attaches the breaker listener
-// while the executor is still private (see [breaker.EventListenerSetter]), so the
-// breaker must be created against a listener that is already in place.
+// first call costs nothing to composition: an organ is built from the policy
+// alone, and the executor's own state observer reads whatever generation is
+// current at collection time.
 //
 // The four are returned together, under one lock, so a call never sees a
 // half-built set — and so the retry budget is read under the same lock that
@@ -192,7 +201,7 @@ func (e *defaultExecutor) snapshot(op chain.Operation) (serviceState, ratelimit.
 	}
 	s, ok := st.states[c.Key]
 	if !ok {
-		s = e.buildState(c.Key, c.Policy)
+		s = e.buildState(c.Policy)
 		st.states[c.Key] = s
 		st.rates[c.Key] = ratelimit.NewBudget(c.Policy.RateSpec())
 	}
@@ -212,37 +221,29 @@ func (e *defaultExecutor) SetPolicySource(src PolicySource) {
 }
 
 // buildState builds the stages whose state belongs to this executor alone,
-// against its policy and listener. Callers must hold mu. The knobs reach each
-// stage in the stage's own vocabulary (see [breaker.Spec], [ratelimit.Spec]), so the
+// against its policy. Callers must hold mu. The knobs reach each stage in the
+// stage's own vocabulary (see [circuitbreaker.Spec], [ratelimit.Spec]), so the
 // organs are shared with the inbound engine without either policy being
 // privileged.
-func (e *defaultExecutor) buildState(key string, p Policy) serviceState {
-	state := serviceState{}
-	spec := p.breakerSpec()
-	if spec.Active() {
-		state.breaker = breaker.New(spec, p.OpenDuration, key, e.listener)
+func (e *defaultExecutor) buildState(p Policy) serviceState {
+	if !p.BreakerEnabled() {
+		return serviceState{} // nil breaker: the OFF stage, like a nil *Bulkhead
 	}
-	return state
-}
-
-// SetBreakerEventListener attaches l so this executor's breaker — the one it
-// builds for its service — emits state transitions. It satisfies
-// [breaker.EventListenerSetter].
-//
-// It must be called before the executor is shared — that is, before its first
-// [defaultExecutor.Execute], which is when the breaker is built. [WrapClientExecutor]
-// attaches the listener while the executor is still being constructed inside
-// [Manager.buildLocked], so the executor never escapes unobserved.
-func (e *defaultExecutor) SetBreakerEventListener(l breaker.EventListener) {
-	e.listener = l
+	b, err := circuitbreaker.New(p.BreakerSpec())
+	if err != nil {
+		// The policy is validated before publication; reaching this means the
+		// validator and the materializer drifted.
+		panic("resilience: validated policy produced an invalid breaker: " + err.Error())
+	}
+	return serviceState{breaker: b}
 }
 
 // serviceState is the state of the stages that belong to ONE service or route and
 // one executor alone. Today that is the breaker; nothing about it knows a
 // direction, and the breaker inside is the shared
-// go-spring.org/cloud/runtime/dataplane/kernel/breaker.
+// go-spring.org/cloud/runtime/dataplane/kernel/circuitbreaker.
 type serviceState struct {
-	breaker *breaker.Breaker
+	breaker *circuitbreaker.Breaker
 }
 
 // releaseRetryBudget returns a held retry-budget slot to the channel it was
@@ -255,6 +256,16 @@ func releaseRetryBudget(sem chan struct{}, held int) {
 		return
 	}
 	<-sem
+}
+
+// CallerAborted reports whether err is the CALLER's own cancellation rather
+// than the downstream's verdict. Only the parent context counts: a timeout
+// derived from the policy budget means the unit did not serve within the budget
+// and remains a failure, while a caller that walked away says nothing about the
+// unit's health and must carry no verdict. Engines use it to exclude such a call
+// from the breaker's sample.
+func CallerAborted(ctx context.Context, err error) bool {
+	return ctx.Err() != nil && errors.Is(err, ctx.Err())
 }
 
 // refusedRound records a gate's verdict as the call's round. A refusal IS a
@@ -280,6 +291,7 @@ func refusedRound(rec *chain.Recorder, err error) {
 }
 
 func (e *defaultExecutor) Execute(ctx context.Context, op chain.Operation, rec *chain.Recorder, fn func(context.Context) error) error {
+	e.readyObserve()
 	s, rate, policy, retrySem := e.snapshot(op)
 
 	// Record the policy this call ran under — the rule that was matched and the
@@ -329,6 +341,52 @@ func (e *defaultExecutor) Execute(ctx context.Context, op chain.Operation, rec *
 	ran := false                 // whether at least one attempt actually invoked fn this call
 	budgetHeld := -1             // attempt index currently holding a retry-budget slot
 	var budgetSem chan struct{}  // the channel that slot was taken from
+
+	// The rate-limit stage charges every attempt — each attempt is a real
+	// downstream request the budget exists to bound. The first charge happens
+	// before the breaker gate so a rate-limited call never spends a half-open
+	// trial permit. A store failure is not a budget decision: the call proceeds
+	// rather than turning an unreachable counter backend into an outage.
+	if admitted, lerr := allowRate(callCtx, rate, policy.RateSpec(), e.service, e.limiter); lerr != nil {
+		log.Warn(callCtx, log.TagAppDef, "resilience: rate-limit counters unavailable, allowing call",
+			log.Err(lerr))
+	} else if !admitted {
+		refusedRound(rec, chain.ErrRateLimited)
+		return chain.ErrRateLimited
+	}
+
+	// The breaker admits the LOGICAL call once, not each retry: the permit
+	// settles exactly one sample, which is what the breaker counts. Recording
+	// once per Execute also stops a retrying client from amplifying one
+	// downstream failure into N breaker samples (the "resilience on => breaker
+	// trips instantly" symptom). The deferred Record runs on every return path,
+	// so an admitted call is never left unsettled — a half-open trial whose
+	// outcome vanished would pin the round until its deadline.
+	if br := s.breaker; br != nil {
+		permit, ok := br.Allow()
+		if !ok {
+			refusedRound(rec, chain.ErrCircuitOpen)
+			return chain.ErrCircuitOpen
+		}
+		defer func() {
+			// One sample per LOGICAL call. A panic before fn returns leaves ran
+			// false: settle it as a failure rather than leaving a half-open trial
+			// unspent. A caller cancellation (or the caller's own deadline) is not
+			// evidence about the unit, so it carries no verdict; a timeout from our
+			// own policy budget is evidence, and stays a failure.
+			switch {
+			case !ran:
+				br.Record(permit, false, attemptDur)
+			case err == nil:
+				br.Record(permit, true, attemptDur)
+			case CallerAborted(ctx, err):
+				br.RecordIgnored(permit)
+			default:
+				br.Record(permit, false, attemptDur)
+			}
+		}()
+	}
+
 	for i := range attempts {
 		// The retry budget gates attempts after the first: when the executor-
 		// wide in-flight retry cap is exhausted, this call stops with
@@ -343,35 +401,17 @@ func (e *defaultExecutor) Execute(ctx context.Context, op chain.Operation, rec *
 				return chain.ErrRetryBudgetExceeded
 			}
 		}
-		// The rate-limit stage charges every attempt — each attempt is a real
-		// downstream request the budget exists to bound. Where the count goes
-		// depends on what this executor was built with: a store, when the driver
-		// was handed one (shared with every other executor spending it, and with
-		// every replica when that store is over a shared backend), or otherwise a
-		// bucket of its own, charging this executor's service. A store failure is
-		// not a budget decision: the call proceeds rather than turning an
-		// unreachable counter backend into an outage.
-		if admitted, lerr := allowRate(callCtx, rate, policy.RateSpec(), e.service, e.limiter); lerr != nil {
-			log.Warn(callCtx, log.TagAppDef, "resilience: rate-limit counters unavailable, allowing call",
-				log.Err(lerr))
-		} else if !admitted {
-			refusedRound(rec, chain.ErrRateLimited)
-			releaseRetryBudget(budgetSem, budgetHeld)
-			return chain.ErrRateLimited
-		}
-		if s.breaker != nil && !s.breaker.Allow() {
-			// Breaker rejected the attempt. If an earlier attempt already ran
-			// this call — e.g. it won the half-open trial permit, failed, and a
-			// retry now finds the gate spent — fold that outcome in once so a
-			// won trial is never left unresolved (which would stick the breaker
-			// half-open with a consumed permit). When nothing ran yet there is
-			// no sample to record.
-			if ran {
-				s.breaker.Record(err == nil, attemptDur)
+		// Every attempt past the first is charged here; the first was charged
+		// before the breaker gate.
+		if i > 0 {
+			if admitted, lerr := allowRate(callCtx, rate, policy.RateSpec(), e.service, e.limiter); lerr != nil {
+				log.Warn(callCtx, log.TagAppDef, "resilience: rate-limit counters unavailable, allowing call",
+					log.Err(lerr))
+			} else if !admitted {
+				refusedRound(rec, chain.ErrRateLimited)
+				releaseRetryBudget(budgetSem, budgetHeld)
+				return chain.ErrRateLimited
 			}
-			refusedRound(rec, chain.ErrCircuitOpen)
-			releaseRetryBudget(budgetSem, budgetHeld)
-			return chain.ErrCircuitOpen
 		}
 
 		start := time.Now()
@@ -417,21 +457,16 @@ func (e *defaultExecutor) Execute(ctx context.Context, op chain.Operation, rec *
 		budgetHeld = -1 // the slot covers the attempt, not the backoff sleep
 	}
 	releaseRetryBudget(budgetSem, budgetHeld)
-	// The breaker measures the outcome of one protected call, not each retry
-	// attempt. Recording once per logical Execute — rather than once per
-	// attempt inside the loop — stops a retrying client from amplifying a
-	// single downstream failure into N breaker samples, which would trip the
-	// circuit far faster than the configured ErrorThreshold / error-rate
-	// implies (the "resilience on => breaker trips instantly" symptom). The
-	// rate limiter above intentionally still charges per attempt, because each
-	// attempt is a real downstream request the limiter exists to bound.
-	if s.breaker != nil {
-		s.breaker.Record(err == nil, attemptDur)
-	}
 	return err
 }
 
-func (e *defaultExecutor) Close() error { return nil }
+// Close releases the executor's state observer and marks it closed. A later
+// Execute still runs (governance degrades to the zero policy), but it will not
+// re-register the observer.
+func (e *defaultExecutor) Close() error {
+	e.closeObserve()
+	return nil
+}
 
 // EffectiveRetry resolves the retry node one call runs under, from the two
 // sources: the policy node (a governance center's push, or a directly

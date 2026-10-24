@@ -59,7 +59,7 @@ func TestSelectionHashKeyAffinity(t *testing.T) {
 	chain := mgr.Chain(context.Background(), gatewaySource(t, "10.0.0.1:80", "10.0.0.2:80"), gatewayLabel("orders"))
 
 	pickFor := func(clientIP string) string {
-		ep, err := chain.Pick(loadbalance.PickInfo{HashKey: clientIP})
+		ep, err := chain.Pick(context.Background(), loadbalance.PickInfo{HashKey: clientIP})
 		assert.Error(t, err).Nil()
 		chain.Complete(context.Background(), ep, nil)
 		return ep.Addr
@@ -103,7 +103,7 @@ func gatewaySource(t *testing.T, addrs ...string) discovery.Resolver {
 	for _, a := range addrs {
 		eps = append(eps, discovery.Endpoint{Addr: a, Healthy: true, Weight: 1})
 	}
-	return func() ([]discovery.Endpoint, error) { return eps, nil }
+	return func(context.Context) ([]discovery.Endpoint, error) { return eps, nil }
 }
 
 // TestClientIPHeadersAreNotTheOnlySource keeps the helper honest for a request

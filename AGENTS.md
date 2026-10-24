@@ -55,7 +55,7 @@ reorganizing any rule:
 ### Self-Directed Evolution
 
 - Do not wait to be assigned work; find it. Keep interrogating an implementation for a better solution, even trying several and picking the best ("best of the best").
-- Sacred core (no breaking changes): `stdlib/`, `log/`, and the `gs` core of `spring/` — additive helpers are fine, breaking changes are not. Freely reshapeable: the ecosystem (`starter/`, `contrib/`, the `gs/` tooling, `examples/`).
+- **Pre-release:** the whole stack is unreleased and may take large-scale breaking changes; principles take precedence over compatibility ([STATUS.md](STATUS.md)). The **post-release** rule is: sacred core (`stdlib/`, `log/`, the `gs` core of `spring/`) takes additive helpers only, while the ecosystem (`starter/`, `contrib/`, the `gs/` tooling, `examples/`) is freely reshapeable.
 - The previous bullet is a self-imposed constraint, not a boundary to hold up against the user: when the user gives an explicit instruction, the user wins (2026-09-21).
 - Expose problems through "cross-backend / cross-module consistency": where an implementation deviates from its family's contract is usually a real defect.
 - The repository docs (`ARCHITECTURE.md`, `starter/DESIGN.md`, each package's `DESIGN.md`) encode the contract — read them first as a ruler, and fix doc drift alongside the code.

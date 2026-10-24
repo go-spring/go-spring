@@ -125,7 +125,7 @@ type connState struct {
 // injects the manager bean.
 func newConnState(label string, mgr *loadbalance.Manager) *connState {
 	s := &connState{}
-	src := func() ([]discovery.Endpoint, error) {
+	src := func(context.Context) ([]discovery.Endpoint, error) {
 		if eps := s.eps.Load(); eps != nil {
 			return *eps, nil
 		}
@@ -137,7 +137,7 @@ func newConnState(label string, mgr *loadbalance.Manager) *connState {
 
 // Pick selects one READY endpoint through the chain's generation in force.
 func (s *connState) Pick(info balancer.PickInfo) (discovery.Endpoint, error) {
-	return s.chain.Pick(pickInfoFrom(info))
+	return s.chain.Pick(info.Ctx, pickInfoFrom(info))
 }
 
 // Complete settles a pick issued by [connState.Pick].

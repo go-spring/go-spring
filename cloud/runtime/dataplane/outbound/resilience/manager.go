@@ -135,6 +135,9 @@ func NewManager(driver Driver) *Manager {
 // error return is kept for the caller's convenience (the center treats Apply as
 // infallible) and is always nil.
 func (m *Manager) Apply(s Settings) error {
+	if err := ValidateSettings(s); err != nil {
+		return err
+	}
 	snap := newSnapshot(s)
 
 	m.mu.Lock()
@@ -203,10 +206,10 @@ func (m *Manager) Close() error {
 // executor picks it up on its next call. One label still maps to exactly ONE
 // executor: a second caller for the same label receives the first's executor.
 //
-// The observe layer attaches its breaker listener AFTER this returns (via
-// [breaker.EventListenerSetter]) — sound because the organs an executor builds
-// from its policy are lazy, created on the first Execute, after composition is
-// complete.
+// The observe layer wraps the returned executor afterwards, but the two planes
+// stay independent: the request observer records the call, while the executor
+// publishes its own organ state from this package, so no construction-time
+// handshake is needed.
 func (m *Manager) ExecutorFor(system, service string) chain.Executor {
 	_ = system // the system label is the observer's concern; this engine keys on label alone
 	if v, ok := m.entries.Load(service); ok {
@@ -336,11 +339,11 @@ func (m *Manager) buildLocked(label string) chain.Executor {
 	if err != nil || e == nil {
 		panic(fmt.Sprintf("resilience: driver %T failed to build executor for %q: %v", m.driver, label, err))
 	}
-	// Install the policy source while the executor is still private — the same
-	// construction-time handshake, at the same moment, as the breaker listener
-	// the observe layer attaches. Drivers without the capability (an external
-	// backend) are skipped: their executors keep the construction-time policy,
-	// key on the label alone, and do not follow the config.
+	// Install the policy source while the executor is still private, so no
+	// decorator stacked on top of it ever sees the protocol. Drivers without the
+	// capability (an external backend) are skipped: their executors keep the
+	// construction-time policy, key on the label alone, and do not follow the
+	// config.
 	if setter, ok := e.(PolicySourceSetter); ok {
 		setter.SetPolicySource(m)
 	}

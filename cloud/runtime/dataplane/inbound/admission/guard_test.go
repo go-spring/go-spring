@@ -20,11 +20,10 @@ import (
 	"context"
 	"errors"
 	"sync"
-	"sync/atomic"
 	"testing"
 	"time"
 
-	"go-spring.org/cloud/runtime/dataplane/kernel/breaker"
+	"go-spring.org/cloud/runtime/dataplane/kernel/bulkhead"
 	"go-spring.org/cloud/runtime/dataplane/kernel/ratelimit"
 )
 
@@ -32,8 +31,29 @@ func ctx() context.Context { return context.Background() }
 
 var id = Identity{System: "gin", Service: "gin:127.0.0.1:8080"}
 
+// mustNew builds a standalone Guard whose policy is expected to be valid.
+func mustNew(t *testing.T, p Policy, opts ...Option) Guard {
+	t.Helper()
+	g, err := New(id, p, opts...)
+	if err != nil {
+		t.Fatalf("New(%+v): %v", p, err)
+	}
+	return g
+}
+
+// mustGuardFor creates the Guard for id under m, whose settings are expected to
+// be valid.
+func mustGuardFor(t *testing.T, m *Manager, id Identity) Guard {
+	t.Helper()
+	g, err := m.GuardFor(id)
+	if err != nil {
+		t.Fatalf("GuardFor(%q): %v", id.Service, err)
+	}
+	return g
+}
+
 func TestZeroPolicyPassesThrough(t *testing.T) {
-	g := New(id, Policy{})
+	g := mustNew(t, Policy{})
 	defer g.Close()
 
 	r, done := g.Admit(ctx(), Request{Action: "GET /ping"})
@@ -43,11 +63,11 @@ func TestZeroPolicyPassesThrough(t *testing.T) {
 	if r.Err() != nil {
 		t.Fatalf("zero policy returned error: %v", r.Err())
 	}
-	done(OutcomeSuccess, nil) // no-op, must not panic
+	done() // no-op, must not panic
 }
 
 func TestRateLimit(t *testing.T) {
-	g := New(id, Policy{RateLimit: 1, Burst: 1})
+	g := mustNew(t, Policy{RateLimit: 1, Burst: 1})
 	defer g.Close()
 
 	r, _ := g.Admit(ctx(), Request{})
@@ -65,7 +85,7 @@ func TestRateLimit(t *testing.T) {
 }
 
 func TestBulkheadPairing(t *testing.T) {
-	g := New(id, Policy{MaxConcurrent: 1})
+	g := mustNew(t, Policy{MaxConcurrent: 1})
 	defer g.Close()
 
 	r1, done1 := g.Admit(ctx(), Request{})
@@ -78,7 +98,7 @@ func TestBulkheadPairing(t *testing.T) {
 		t.Fatalf("second request not refused by bulkhead: %v", r2.Verdict())
 	}
 
-	done1(OutcomeSuccess, nil)
+	done1()
 
 	r3, _ := g.Admit(ctx(), Request{})
 	if !r3.Admitted() {
@@ -86,56 +106,23 @@ func TestBulkheadPairing(t *testing.T) {
 	}
 }
 
-func TestBreakerConsecutive(t *testing.T) {
-	g := New(id, Policy{ErrorThreshold: 2, OpenDuration: time.Hour})
-	defer g.Close()
-
-	for i := range 2 {
-		r, done := g.Admit(ctx(), Request{})
-		if !r.Admitted() {
-			t.Fatalf("request %d refused before threshold: %v", i, r.Err())
-		}
-		done(OutcomeFailure, errors.New("boom"))
-	}
-
-	r, _ := g.Admit(ctx(), Request{})
-	if r.Verdict() != VerdictCircuitOpen {
-		t.Fatalf("breaker did not open: verdict=%v", r.Verdict())
-	}
-	if !errors.Is(r.Err(), ErrCircuitOpen) {
-		t.Fatalf("unexpected error: %v", r.Err())
-	}
-}
-
-func TestBreakerIgnoresUnknownOutcome(t *testing.T) {
-	g := New(id, Policy{ErrorThreshold: 1, OpenDuration: time.Hour})
-	defer g.Close()
-
-	r, done := g.Admit(ctx(), Request{})
-	if !r.Admitted() {
-		t.Fatalf("first request refused: %v", r.Err())
-	}
-	done(OutcomeUnknown, nil)
-
-	r, _ = g.Admit(ctx(), Request{})
-	if !r.Admitted() {
-		t.Fatalf("unknown outcome tripped the breaker: %v", r.Verdict())
-	}
-}
-
 func TestDoneIsIdempotent(t *testing.T) {
-	g := New(id, Policy{MaxConcurrent: 1, ErrorThreshold: 1, OpenDuration: time.Hour})
+	g := mustNew(t, Policy{MaxConcurrent: 1})
 	defer g.Close()
 
 	_, done := g.Admit(ctx(), Request{})
-	done(OutcomeFailure, errors.New("boom"))
-	done(OutcomeFailure, errors.New("boom")) // must not double-count or panic
+	done()
+	done() // must not release the slot twice or panic
 
-	// The breaker is open after exactly one failure; a double count would not be
-	// observable here, but the bulkhead release must have happened once.
+	// The slot is free exactly once: a double release would have returned a
+	// second slot the bulkhead never held.
 	r, _ := g.Admit(ctx(), Request{})
-	if r.Verdict() != VerdictCircuitOpen {
-		t.Fatalf("expected open circuit, got %v", r.Verdict())
+	if !r.Admitted() {
+		t.Fatalf("slot not released: %v", r.Err())
+	}
+	r, _ = g.Admit(ctx(), Request{})
+	if r.Verdict() != VerdictBulkheadFull {
+		t.Fatalf("expected bulkhead full, got %v", r.Verdict())
 	}
 }
 
@@ -155,7 +142,7 @@ func (f *fakeFault) Fire(context.Context, Request) (FaultResult, error) {
 
 func TestFaultInjection(t *testing.T) {
 	f := &fakeFault{err: errors.New("injected"), rule: "svc[0]"}
-	g := New(id, Policy{}, WithFault(f))
+	g := mustNew(t, Policy{}, WithFault(f))
 	defer g.Close()
 
 	r, done := g.Admit(ctx(), Request{})
@@ -165,17 +152,17 @@ func TestFaultInjection(t *testing.T) {
 	if r.Err() == nil || r.Fault().Rule != "svc[0]" || r.Rule() != "svc[0]" {
 		t.Fatalf("fault result not reported: err=%v fault=%+v rule=%q", r.Err(), r.Fault(), r.Rule())
 	}
-	done(OutcomeFailure, r.Err()) // no-op, must not panic
+	done() // no-op, must not panic
 }
 
 func TestManagerPush(t *testing.T) {
 	m := NewManager()
 	defer m.Close()
-	g := m.GuardFor(id)
+	g := mustGuardFor(t, m, id)
 
 	r, _ := g.Admit(ctx(), Request{})
 	if !r.Admitted() {
-		t.Fatalf("unarmed manager refused: %v", r.Err())
+		t.Fatalf("a manager with no document refused: %v", r.Err())
 	}
 
 	if err := m.Apply(Settings{Rules: []Rule{{Service: id.Service, Policy: Policy{MaxConcurrent: 1}}}}); err != nil {
@@ -190,7 +177,7 @@ func TestManagerPush(t *testing.T) {
 	if r2.Verdict() != VerdictBulkheadFull {
 		t.Fatalf("push not applied: %v", r2.Verdict())
 	}
-	done(OutcomeSuccess, nil)
+	done()
 }
 
 func TestTwoInstancesDoNotShareState(t *testing.T) {
@@ -198,8 +185,8 @@ func TestTwoInstancesDoNotShareState(t *testing.T) {
 	defer m.Close()
 	_ = m.Apply(Settings{Default: Policy{MaxConcurrent: 1}})
 
-	a := m.GuardFor(id)
-	b := m.GuardFor(id) // same label, different server instance
+	a := mustGuardFor(t, m, id)
+	b := mustGuardFor(t, m, id) // same label, different server instance
 
 	ra, doneA := a.Admit(ctx(), Request{})
 	if !ra.Admitted() {
@@ -214,11 +201,11 @@ func TestTwoInstancesDoNotShareState(t *testing.T) {
 	if ra2.Verdict() != VerdictBulkheadFull {
 		t.Fatalf("a's bulkhead not independent: %v", ra2.Verdict())
 	}
-	doneA(OutcomeSuccess, nil)
+	doneA()
 }
 
 func TestDeadlineReleasesBulkhead(t *testing.T) {
-	g := New(id, Policy{MaxConcurrent: 1})
+	g := mustNew(t, Policy{MaxConcurrent: 1})
 	defer g.Close()
 
 	dl, cancel := context.WithTimeout(ctx(), 20*time.Millisecond)
@@ -233,46 +220,6 @@ func TestDeadlineReleasesBulkhead(t *testing.T) {
 	r2, _ := g.Admit(ctx(), Request{})
 	if !r2.Admitted() {
 		t.Fatalf("deadline fallback did not release the slot: %v", r2.Err())
-	}
-}
-
-type recordingListener struct {
-	mu        sync.Mutex
-	from, to  []breaker.State
-	services  []string
-	transited int32
-}
-
-func (l *recordingListener) OnBreakerStateChange(service string, from, to breaker.State) {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	l.services = append(l.services, service)
-	l.from = append(l.from, from)
-	l.to = append(l.to, to)
-	atomic.AddInt32(&l.transited, 1)
-}
-
-func TestBreakerListener(t *testing.T) {
-	g := New(id, Policy{ErrorThreshold: 1, OpenDuration: time.Hour})
-	defer g.Close()
-
-	l := &recordingListener{}
-	g.(breaker.EventListenerSetter).SetBreakerEventListener(l)
-
-	r, done := g.Admit(ctx(), Request{})
-	if !r.Admitted() {
-		t.Fatalf("request refused: %v", r.Err())
-	}
-	done(OutcomeFailure, errors.New("boom"))
-
-	if atomic.LoadInt32(&l.transited) != 1 {
-		t.Fatalf("expected one transition, got %d", l.transited)
-	}
-	if l.from[0] != breaker.Closed || l.to[0] != breaker.Open {
-		t.Fatalf("unexpected transition %v -> %v", l.from[0], l.to[0])
-	}
-	if l.services[0] != id.Service {
-		t.Fatalf("unexpected service %q", l.services[0])
 	}
 }
 
@@ -296,7 +243,7 @@ func (l *fakeLimiter) Allow(_ context.Context, scope string, spec ratelimit.Spec
 
 func TestClusterLimiter(t *testing.T) {
 	l := &fakeLimiter{allow: true}
-	g := New(id, Policy{RateLimit: 10, Burst: 3}, WithClusterLimiter(l))
+	g := mustNew(t, Policy{RateLimit: 10, Burst: 3}, WithClusterLimiter(l))
 	defer g.Close()
 
 	r, _ := g.Admit(ctx(), Request{})
@@ -324,22 +271,6 @@ func TestClusterLimiter(t *testing.T) {
 	}
 }
 
-func TestDegradeOnOpen(t *testing.T) {
-	g := New(id, Policy{ErrorThreshold: 1, OpenDuration: time.Hour, DegradeOnOpen: true})
-	defer g.Close()
-
-	_, done := g.Admit(ctx(), Request{})
-	done(OutcomeFailure, errors.New("boom"))
-
-	r, _ := g.Admit(ctx(), Request{})
-	if !r.Degraded() {
-		t.Fatalf("expected a degraded verdict, got %v", r.Verdict())
-	}
-	if !errors.Is(r.Err(), ErrCircuitOpen) {
-		t.Fatalf("degradation must keep the cause: %v", r.Err())
-	}
-}
-
 func TestStandaloneRateLimiter(t *testing.T) {
 	l := NewRateLimiter(Policy{RateLimit: 1, Burst: 1}, "svc", nil)
 	if !l.Allow(ctx()) {
@@ -348,13 +279,10 @@ func TestStandaloneRateLimiter(t *testing.T) {
 	if l.Allow(ctx()) {
 		t.Fatal("second request should be limited")
 	}
-	if !(*RateLimiter)(nil).Allow(ctx()) {
-		t.Fatal("a nil limiter should admit")
-	}
 }
 
 func TestStandaloneBulkhead(t *testing.T) {
-	b := NewBulkhead(1, 0)
+	b := bulkhead.New(1)
 	release, ok := b.Acquire(ctx())
 	if !ok {
 		t.Fatal("first acquire should succeed")
@@ -363,31 +291,28 @@ func TestStandaloneBulkhead(t *testing.T) {
 		t.Fatal("second acquire should be refused")
 	}
 	release()
-	release() // idempotent
 	if _, ok := b.Acquire(ctx()); !ok {
 		t.Fatal("slot was not released")
 	}
 }
 
-func TestStandaloneBreaker(t *testing.T) {
-	b := NewBreaker(Policy{ErrorThreshold: 1, OpenDuration: time.Hour}, "svc", nil)
-	if !b.Allow() {
-		t.Fatal("closed breaker should allow")
-	}
-	b.Record(OutcomeFailure, 0)
-	if b.Allow() {
-		t.Fatal("breaker should be open")
-	}
-	if !(*Breaker)(nil).Allow() {
-		t.Fatal("a nil breaker should allow")
-	}
-}
-
 func TestTimeoutExposed(t *testing.T) {
-	g := New(id, Policy{Timeout: 3 * time.Second})
+	g := mustNew(t, Policy{Timeout: 3 * time.Second})
 	defer g.Close()
 	r, _ := g.Admit(ctx(), Request{})
 	if r.Timeout() != 3*time.Second {
 		t.Fatalf("timeout = %v", r.Timeout())
+	}
+}
+
+// TestNegativeMaxConcurrentRejected pins the bulkhead's constructor invariant:
+// the caller guarantees maxConcurrent >= 0, and an invalid policy is rejected
+// before a Bulkhead is built.
+func TestNegativeMaxConcurrentRejected(t *testing.T) {
+	if _, err := New(id, Policy{MaxConcurrent: -1}); err == nil {
+		t.Fatal("New accepted a negative max-concurrent")
+	}
+	if err := ValidateSettings(Settings{Default: Policy{MaxConcurrent: -1}}); err == nil {
+		t.Fatal("ValidateSettings accepted a negative max-concurrent")
 	}
 }

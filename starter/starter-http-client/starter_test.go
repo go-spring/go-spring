@@ -17,6 +17,7 @@
 package StarterHTTPClient
 
 import (
+	"go-spring.org/cloud/runtime/dataplane/inbound/admission"
 	"testing"
 
 	"go-spring.org/cloud/runtime"
@@ -42,7 +43,7 @@ func TestNewRoute_ResolvesDiscoveryLabel(t *testing.T) {
 	})
 	lb := loadbalance.NewManager()
 	center, err := runtime.New(
-		resilience.NewManager(resilience.NewDefaultDriver(nil)), lb, clientfault.NewClientManager(nil), serverfault.NewServerManager(nil), disc, governance.NewPushSource(governance.Config{}))
+		resilience.NewManager(resilience.NewDefaultDriver(nil)), lb, clientfault.NewClientManager(nil), serverfault.NewServerManager(nil), disc, governance.NewPushSource(governance.Config{Server: governance.ServerConfig{Default: admission.DefaultPolicy()}}))
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -74,18 +74,36 @@ func (b *TokenBucket) WithWarmUp(warmup time.Duration, coldFactor int) *TokenBuc
 	return b
 }
 
-// cap returns the bucket's current capacity — full burst, or the ramped-in
+// cap returns the bucket's capacity at now — full burst, or the ramped-in
 // ceiling while a warm-up period is in progress. Callers hold mu.
-func (b *TokenBucket) cap() float64 {
+func (b *TokenBucket) cap(now time.Time) float64 {
 	if b.warmup <= 0 {
 		return b.burst
 	}
-	elapsed := time.Since(b.started)
+	elapsed := now.Sub(b.started)
 	if elapsed >= b.warmup {
 		return b.burst
 	}
 	progress := float64(elapsed) / float64(b.warmup)
 	return b.cold + (b.burst-b.cold)*progress
+}
+
+// Usage reports how much of the bucket's current capacity is spent, without
+// changing the bucket: the same refill and warm-up arithmetic as [AllowN],
+// projected at now and discarded.
+func (b *TokenBucket) Usage() Usage {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	now := time.Now()
+	ceiling := b.cap(now)
+	tokens := b.tokens + now.Sub(b.last).Seconds()*b.rate
+	if tokens > ceiling {
+		tokens = ceiling
+	}
+	if tokens < 0 {
+		tokens = 0
+	}
+	return Usage{Used: ceiling - tokens, Limit: ceiling}
 }
 
 // AllowN consumes n tokens if at least n are available.
@@ -94,7 +112,7 @@ func (b *TokenBucket) AllowN(n float64) bool {
 	defer b.mu.Unlock()
 	now := time.Now()
 	b.tokens += now.Sub(b.last).Seconds() * b.rate
-	if ceiling := b.cap(); b.tokens > ceiling {
+	if ceiling := b.cap(now); b.tokens > ceiling {
 		b.tokens = ceiling
 	}
 	b.last = now
@@ -124,7 +142,7 @@ func (b *TokenBucket) WaitN(ctx context.Context, n float64, maxWait time.Duratio
 		b.mu.Lock()
 		now := time.Now()
 		b.tokens += now.Sub(b.last).Seconds() * b.rate
-		if ceiling := b.cap(); b.tokens > ceiling {
+		if ceiling := b.cap(now); b.tokens > ceiling {
 			b.tokens = ceiling
 		}
 		b.last = now

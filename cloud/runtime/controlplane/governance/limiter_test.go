@@ -45,14 +45,17 @@ func (s *fakeStore) Allow(_ context.Context, scope string, _ ratelimit.Spec, _ i
 func TestInboundUsesClusterLimiter(t *testing.T) {
 	store := &fakeStore{admit: false}
 	resClient, lb, fc, fs := newAuthorities()
-	c, err := NewCenter(resClient, admission.NewManager(admission.WithClusterLimiter(store)), lb, fc, fs, NewPushSource(Config{Server: ServerConfig{Default: admission.Policy{RateLimit: 10}}}))
+	c, err := NewCenter(resClient, admission.NewManager(admission.WithClusterLimiter(store)), lb, fc, fs, pushSource(Config{Server: ServerConfig{Default: admission.Policy{RateLimit: 10}}}))
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	g := c.guardServer.GuardFor(admission.Identity{System: "gin", Service: "gin:test"})
+	g, err := c.guardServer.GuardFor(admission.Identity{System: "gin", Service: "gin:test"})
+	if err != nil {
+		t.Fatal(err)
+	}
 	r, done := g.Admit(context.Background(), admission.Request{})
-	defer done(admission.OutcomeSuccess, nil)
+	defer done()
 
 	if r.Admitted() {
 		t.Fatal("want the inbound rate limit to refuse the request")
@@ -70,14 +73,17 @@ func TestInboundUsesClusterLimiter(t *testing.T) {
 func TestInboundStoreFailureAllows(t *testing.T) {
 	store := &fakeStore{admit: true, err: errors.New("store down")}
 	resClient, lb, fc, fs := newAuthorities()
-	c, err := NewCenter(resClient, admission.NewManager(admission.WithClusterLimiter(store)), lb, fc, fs, NewPushSource(Config{Server: ServerConfig{Default: admission.Policy{RateLimit: 10}}}))
+	c, err := NewCenter(resClient, admission.NewManager(admission.WithClusterLimiter(store)), lb, fc, fs, pushSource(Config{Server: ServerConfig{Default: admission.Policy{RateLimit: 10}}}))
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	g := c.guardServer.GuardFor(admission.Identity{System: "gin", Service: "gin:test"})
+	g, err := c.guardServer.GuardFor(admission.Identity{System: "gin", Service: "gin:test"})
+	if err != nil {
+		t.Fatal(err)
+	}
 	r, done := g.Admit(context.Background(), admission.Request{})
-	defer done(admission.OutcomeSuccess, nil)
+	defer done()
 	if !r.Admitted() {
 		t.Fatalf("store failure must allow the request: %v", r.Err())
 	}

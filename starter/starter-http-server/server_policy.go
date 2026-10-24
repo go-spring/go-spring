@@ -28,8 +28,8 @@ import (
 )
 
 // ServerPolicy returns the inbound governance filter: every request runs through
-// the route's inbound governance object, so the configured rate-limit / bulkhead /
-// breaker policy is enforced before the wrapped handler. It is the stdlib member
+// the route's inbound governance object, so the configured rate-limit / bulkhead
+// policy is enforced before the wrapped handler. It is the stdlib member
 // of the same family as gin's and echo's inbound middleware — here you compose it
 // yourself, because this package provides filters rather than owning a server.
 //
@@ -41,22 +41,27 @@ import (
 // rt is the process runtime — the family's sole injection point. This package
 // provides filters rather than owning a server, so it has no bean to inject
 // into: whoever composes the chain takes the runtime bean on their own bean and
-// passes it here. Admission, breaker accounting and inbound fault injection all
-// come from that one object. A nil runtime is the standalone case — the filter
+// passes it here. Admission and inbound fault injection all come
+// from that one object. A nil runtime is the standalone case — the filter
 // then runs under an unarmed authority, a transparent pass-through that never
 // rejects.
 //
-// Refusals map to 429 (rate limit, bulkhead full) and 503 (circuit open,
-// degraded, injected fault); a handler-committed 5xx is fed back to the breaker.
+// Refusals map to 429 (rate limit, bulkhead full) and 503 (injected fault).
 // Inbound never retries — a handler that already produced side effects cannot be
 // replayed, and [admission.Policy] has no retry field to express one with.
 //
 // Compose it inside Chain, after the security filters that must run even for a
 // rejected request, and outside the handler:
 //
-//	Chain(CORS(corsCfg), ServerPolicy("http-server::9090", rt))(mux)
-func ServerPolicy(label string, rt *runtime.Runtime) Middleware {
-	return serverPolicyWith(rt.InboundFor("http-server", label))
+//	mw, err := ServerPolicy("http-server::9090", rt)
+//	if err != nil { return err }
+//	handler := Chain(CORS(corsCfg), mw)(mux)
+func ServerPolicy(label string, rt *runtime.Runtime) (Middleware, error) {
+	in, err := rt.InboundFor("http-server", label)
+	if err != nil {
+		return nil, err
+	}
+	return serverPolicyWith(in), nil
 }
 
 // serverPolicyWith builds the filter over an already-built inbound object. It is
@@ -100,16 +105,16 @@ func serverPolicyWith(in *runtime.Inbound) Middleware {
 }
 
 // httpStatusFor maps an inbound refusal to the HTTP status a client can act on:
-// rate/bulkhead rejections are 429, an open circuit or an injected fault is 503.
+// rate/bulkhead rejections are 429, an injected fault is 503.
 func httpStatusFor(kind admission.Verdict) int {
-	if kind == admission.VerdictCircuitOpen || kind == admission.VerdictFaultInjected || kind == admission.VerdictDegraded {
+	if kind == admission.VerdictFaultInjected {
 		return http.StatusServiceUnavailable
 	}
 	return http.StatusTooManyRequests
 }
 
-// errHTTP5xx is the failure signal a handler-committed 5xx feeds back into the
-// breaker (the breaker counts non-nil errors from fn).
+// errHTTP5xx is the failure signal a handler-committed 5xx carries into the
+// request record and the span status.
 type errHTTP5xx struct{ code int }
 
 func (e errHTTP5xx) Error() string { return http.StatusText(e.code) }

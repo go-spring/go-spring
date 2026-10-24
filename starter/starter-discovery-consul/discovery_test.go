@@ -229,8 +229,8 @@ func TestConsulDiscovery_WatchRefreshesSnapshot(t *testing.T) {
 }
 
 // TestConsulDiscovery_TagNarrowsQuery covers the tag contract: the block's
-// tag reaches the discovery query server-side, and a per-call WithTag option
-// overrides it for that one lookup.
+// configured tag reaches the discovery query server-side. Tag is a backend
+// setting, not a query dimension.
 func TestConsulDiscovery_TagNarrowsQuery(t *testing.T) {
 	fake := &fakeConsul{entries: []*api.ServiceEntry{svcEntry("a", "10.0.0.1", 8080, 1, nil)}}
 	d := newTestDiscovery(t, fake, "v2")
@@ -240,18 +240,6 @@ func TestConsulDiscovery_TagNarrowsQuery(t *testing.T) {
 	}
 	if !fake.saw("v2") {
 		t.Fatalf("block tag never reached the registry query (tags seen: %v)", fake.snapshotTags())
-	}
-
-	// A per-call tag overrides the backend's for that lookup.
-	eps, err := d.Resolve(context.Background(), "orders", discovery.WithTag("canary"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(eps) != 1 {
-		t.Fatalf("tag override query wrong: %+v", eps)
-	}
-	if !fake.saw("canary") {
-		t.Fatalf("per-call WithTag never reached the registry query (tags seen: %v)", fake.snapshotTags())
 	}
 }
 

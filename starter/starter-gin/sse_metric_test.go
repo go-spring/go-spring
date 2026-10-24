@@ -18,6 +18,7 @@ package StarterGin
 
 import (
 	"context"
+	"go-spring.org/cloud/runtime/dataplane/inbound/admission"
 	"net/http"
 	"net/http/httptest"
 	"sync"
@@ -424,7 +425,7 @@ func writeSSE(c *gin.Context, n int, flush bool) {
 // testCenter builds the runtime bean the middleware chain takes, so a
 // container-less test still exercises the real injection path.
 func testCenter() *runtime.Runtime {
-	ctr, err := runtime.New(resilience.NewManager(resilience.NewDefaultDriver(nil)), loadbalance.NewManager(), clientfault.NewClientManager(nil), serverfault.NewServerManager(nil), nil, governance.NewPushSource(governance.Config{}))
+	ctr, err := runtime.New(resilience.NewManager(resilience.NewDefaultDriver(nil)), loadbalance.NewManager(), clientfault.NewClientManager(nil), serverfault.NewServerManager(nil), nil, governance.NewPushSource(governance.Config{Server: governance.ServerConfig{Default: admission.DefaultPolicy()}}))
 	if err != nil {
 		panic(err)
 	}

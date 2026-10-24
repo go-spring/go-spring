@@ -169,7 +169,7 @@ type resolverDialer struct {
 }
 
 func (d resolverDialer) DialContext(ctx context.Context, _, _ string) (net.Conn, error) {
-	ep, err := d.lb.Pick(loadbalance.PickInfo{})
+	ep, err := d.lb.Pick(ctx, loadbalance.PickInfo{})
 	if err != nil {
 		return nil, err
 	}

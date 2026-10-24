@@ -31,7 +31,7 @@ type ConsulConfig struct {
 
 	// Address is the Consul HTTP API address, e.g. "127.0.0.1:8500". Setting it
 	// is what activates this starter (fail-loud opt-in; no silent localhost).
-	Address string `value:"${address}"`
+	Address string `value:"${address}" expr:"$ != ''"`
 
 	// Scheme is the URI scheme for the Consul server, "http" or "https".
 	Scheme string `value:"${scheme:=http}"`
@@ -53,7 +53,7 @@ type ConsulConfig struct {
 	// TTL is the Consul TTL health check interval. The registry refreshes the
 	// check on a heartbeat at half this interval so the instance stays passing;
 	// if the process dies the check goes critical after one TTL.
-	TTL time.Duration `value:"${ttl:=15s}"`
+	TTL time.Duration `value:"${ttl:=15s}" expr:"int($) > 0"`
 
 	// DeregisterCriticalAfter tells Consul to drop the instance automatically if
 	// its check stays critical this long (e.g. after an ungraceful crash that

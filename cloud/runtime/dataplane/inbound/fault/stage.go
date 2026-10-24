@@ -20,6 +20,7 @@ import (
 	"context"
 
 	"go-spring.org/cloud/runtime/dataplane/inbound/admission"
+	kfault "go-spring.org/cloud/runtime/dataplane/kernel/fault"
 )
 
 // Stage adapts this package's inbound shell to guard's [admission.Fault] interface,
@@ -31,14 +32,15 @@ func Stage(system string, srv *Server) admission.Fault {
 }
 
 // stage is the adapter: it translates guard's neutral request into the fault
-// authority's Target and its Decision back into guard's FaultResult.
+// authority's [kfault.Target] and its [kfault.Decision] back into guard's
+// FaultResult.
 type stage struct {
 	system string
 	srv    *Server
 }
 
 func (s *stage) Fire(ctx context.Context, req admission.Request) (admission.FaultResult, error) {
-	d, err := s.srv.Fire(ctx, Target{
+	d, err := s.srv.Fire(ctx, kfault.Target{
 		Service:  s.system,
 		Action:   req.Action,
 		Metadata: req.Metadata,

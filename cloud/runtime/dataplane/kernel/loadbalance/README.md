@@ -38,7 +38,7 @@ pool := loadbalance.NewPool(resolver, bal, loadbalance.WithTrackerConfig(loadbal
 }))
 
 for {
-    ep, err := pool.Pick(loadbalance.PickInfo{})
+    ep, err := pool.Pick(ctx, loadbalance.PickInfo{})
     if err != nil { return err }
     err = call(ep.Addr)     // your RPC/HTTP call
     pool.Complete(ctx, ep, err)  // must be paired: settles accounting + feeds the tracker
@@ -56,7 +56,7 @@ pool := loadbalance.NewPool(resolver, bal)
 ```
 
 - **The endpoint source** is a `discovery.Resolver` —
-  `func() ([]discovery.Endpoint, error)`. Freshness lives entirely inside the
+  `func(ctx context.Context) ([]discovery.Endpoint, error)`. Freshness lives entirely inside the
   discovery backend, so each `Pick` re-reads the latest snapshot.
 - Each `Pick` filters in order: **discovery eligibility** (disabled/unhealthy
   instances) → **suspension** (instances cooling down in the `Tracker`) →
@@ -129,11 +129,11 @@ are optional; stateless strategies ignore them:
 
 ```go
 // Hash-key affinity (consumed by consistent_hash).
-ep, _ := pool.Pick(loadbalance.PickInfo{HashKey: userID})
+ep, _ := pool.Pick(ctx, loadbalance.PickInfo{HashKey: userID})
 
 // Zone locality (consumed by zone_aware); accepts an ordered fallback
 // list, tried level by level, spilling over only when every level is empty.
-ep, _ := pool.Pick(loadbalance.PickInfo{Zone: "us-east-1a,us-east-1"})
+ep, _ := pool.Pick(ctx, loadbalance.PickInfo{Zone: "us-east-1a,us-east-1"})
 ```
 
 ## Tracker: outlier suspension
@@ -171,7 +171,7 @@ if mgr != nil {
 } else {
 	chain = loadbalance.NewChain(resolver, "http:user-svc") // standalone
 }
-ep, err := chain.Pick(loadbalance.PickInfo{})
+ep, err := chain.Pick(ctx, loadbalance.PickInfo{})
 ```
 
 - `mgr.Chain(resolver, label)` builds the chain under the label, so the
@@ -219,7 +219,19 @@ balancer: consistent_hash
 balancer-params:
   replicas: 200
 outlier-threshold: 5
+selector:                 # endpoint narrowing, applied before the strategy picks
+  - key: version
+    kind: prefix
+    value: v2.
 ```
+
+The selector is the dynamic half of endpoint narrowing: it filters the source's
+output with `discovery.Narrow` before the pool sees it, so it composes with
+whatever static narrowing the resolver already applies (both must hold) and a
+pushed change moves the label's generation like any other selection change.
+There is no implicit fallback — a selector that matches no endpoint surfaces as
+`ErrNoAvailable`, because falling back silently would widen a canary rule to
+every instance.
 
 `Chain.build` is where a strategy name becomes a strategy: it resolves the name
 against the package registry — the built-in strategies plus anything a linked

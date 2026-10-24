@@ -789,14 +789,13 @@ baseline (its identity, wire vocabulary, error catalog, standard drivers).
   - **Turning governance off does not turn observation off.** The center wraps
     the pass-through handle too, so an inert document (configuring nothing)
     keeps every span, metric and access log and drops only the protection.
-  - **The dependency points observability → resilience, never the reverse.**
-    The emitter lives in `cloud/observability/attrs`; the breaker state vocabulary
-    (`breaker.State` / `breaker.EventListener`) and the per-call `Recorder` live
-    in `cloud/runtime/dataplane/outbound/resilience`, and the observer imports them — governance never
-    names the observer. The two are composed in exactly one place, the
-    runtime composition root (`Runtime.ExecutorFor` / `Runtime.InboundFor`), which
-    stacks `fault(observe(resilience))` and reaches the breaker through the
-    handle's listener contract.
+  - **Two independent observation planes.** The request plane (the observe
+    packages) records what happened to one call and never reads governance state;
+    each governance organ publishes its own state (breaker, rate budget,
+    bulkhead) from its own package through observable instruments. The two are
+    composed in exactly one place, the runtime composition root
+    (`Runtime.ExecutorFor` / `Runtime.InboundFor`), which stacks
+    `fault(observe(resilience))` without any cross-layer state contract.
   - **`Attrs` must be bounded**: every attribute there becomes a metric label,
     a span attribute and a log field, so an unbounded value (a cache key, a
     subject) would multiply the series without bound. **`Detail` may be

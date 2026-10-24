@@ -64,7 +64,7 @@ type ServiceRegister func(ws *kws.Server) error
 type Config struct {
 	Name    string `value:"${name:=kratos-ws}"`
 	Network string `value:"${network:=}"`
-	Addr    string `value:"${addr}"`
+	Addr    string `value:"${addr}" expr:"$ != ''"`
 	Path    string `value:"${path:=/}"`
 
 	// Etcd service discovery. Empty Addr disables registration (direct-connect).

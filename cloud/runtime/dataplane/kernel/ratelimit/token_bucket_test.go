@@ -52,3 +52,20 @@ func TestTokenBucketWaitN(t *testing.T) {
 	assert.That(t, b.WaitN(ctx, 1, time.Second)).True()        // waits for the refill
 	assert.That(t, b.WaitN(ctx, 10, time.Millisecond)).False() // 10 never arrive in time
 }
+
+// TestTokenBucketUsageReadOnly pins the projection a state observer reads: it
+// reports spent capacity without consuming or refilling anything.
+func TestTokenBucketUsageReadOnly(t *testing.T) {
+	b := ratelimit.NewTokenBucket(1, 10) // slow refill; reads must not perturb it
+
+	usage := b.Usage()
+	assert.That(t, usage.Limit).Equal(float64(10))
+	assert.That(t, usage.Used < 0.01).True()
+
+	assert.That(t, b.AllowN(4)).True()
+	usage = b.Usage()
+	assert.That(t, usage.Used > 3.99 && usage.Used < 4.01).True()
+
+	// Reading spent nothing: the six remaining tokens are still available.
+	assert.That(t, b.AllowN(6)).True()
+}

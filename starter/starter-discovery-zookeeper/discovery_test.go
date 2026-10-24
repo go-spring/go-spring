@@ -100,8 +100,8 @@ func TestValuesToEndpointsSchemeFilter(t *testing.T) {
 		"s-10.0.0.1:80": mustPayload(t, instanceValue{Addr: "10.0.0.1:80", Scheme: "tls"}),
 		"s-10.0.0.2:80": mustPayload(t, instanceValue{Addr: "10.0.0.2:80"}),
 	}
-	// FilterByScheme narrows to the tls instance only.
-	eps := discovery.FilterByScheme(valuesToEndpoints(newTestObserver(), vals), "tls")
+	// Narrow narrows to the tls instance only.
+	eps := discovery.Narrow(valuesToEndpoints(newTestObserver(), vals), discovery.NewQuery("s", discovery.WithScheme("tls")))
 	assert.That(t, len(eps)).Equal(1)
 	assert.That(t, eps[0].Addr).Equal("10.0.0.1:80")
 }

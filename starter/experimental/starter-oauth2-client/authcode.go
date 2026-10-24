@@ -32,21 +32,21 @@ import (
 // code for a token with Exchange.
 type AuthCodeConfig struct {
 	// ClientID is the OAuth2 client identifier issued by the authorization server.
-	ClientID string `value:"${client-id}"`
+	ClientID string `value:"${client-id}" expr:"$ != ''"`
 
 	// ClientSecret is the OAuth2 client secret issued by the authorization server.
-	ClientSecret string `value:"${client-secret}"`
+	ClientSecret string `value:"${client-secret}" expr:"$ != ''"`
 
 	// AuthURL is the authorization endpoint the user is redirected to,
 	// e.g., "https://auth.example.com/oauth/authorize".
-	AuthURL string `value:"${auth-url}"`
+	AuthURL string `value:"${auth-url}" expr:"$ != ''"`
 
 	// TokenURL is the token endpoint that swaps an authorization code for a token,
 	// e.g., "https://auth.example.com/oauth/token".
-	TokenURL string `value:"${token-url}"`
+	TokenURL string `value:"${token-url}" expr:"$ != ''"`
 
 	// RedirectURL is the callback URL registered with the authorization server.
-	RedirectURL string `value:"${redirect-url:=}"`
+	RedirectURL string `value:"${redirect-url}" expr:"$ != ''"`
 
 	// Scopes is the optional list of scopes requested during authorization.
 	Scopes []string `value:"${scopes:=}"`

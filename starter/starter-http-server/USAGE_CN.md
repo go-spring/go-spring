@@ -44,7 +44,7 @@ Token 来源:注入 `security.TokenValidator`(由 `starter-oauth2-resource-serve
   `required=true` 401、`false` 透传;非法 token 恒 401。
 - `Authorize(authorities ...string)` — 匿名 401;已认证但缺任一所需权限
   403;无参数 = 仅要求已认证。
-- `ServerPolicy(label, mgr) Middleware` — 入站准入,同时也是本请求的 span + 指标 +
+- `ServerPolicy(label, mgr) (Middleware, error)` — 入站准入,同时也是本请求的 span + 指标 +
   访问日志(两者走同一个 executor);见 §4。
 - `CORS(CORSConfig)` / `CSRF(CSRFConfig)` — 见
   [cloud/security DESIGN](../../cloud/security/README_CN.md) 的约束(wildcard
@@ -61,8 +61,12 @@ CSRF cookie 名/头名默认 `csrf_token` / `X-CSRF-Token`,与 gin/echo 壳一�
 的方式、一种被准入的方式。)
 
 ```go
+admit, err := httpsvr.ServerPolicy("http-server::9090", mgr)
+if err != nil {
+    return err
+}
 mux.Handle("/api/me", httpsvr.Chain(
-    httpsvr.ServerPolicy("http-server::9090", mgr),
+    admit,
     httpsvr.CORS(cfg),
     httpsvr.Authenticate(v, true),
 )(handler))

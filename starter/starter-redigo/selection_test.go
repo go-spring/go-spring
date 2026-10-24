@@ -18,6 +18,7 @@ package StarterRedigo
 
 import (
 	"context"
+	"go-spring.org/cloud/runtime/dataplane/inbound/admission"
 	"testing"
 	"time"
 
@@ -43,7 +44,7 @@ func TestNewPoolChainRebuildsFromScratch(t *testing.T) {
 		"static": discovery.NewStaticDiscovery(discovery.Endpoint{Addr: "127.0.0.1:6379", Healthy: true, Weight: 1}),
 	})
 	ctr, err := runtime.New(resilience.NewManager(resilience.NewDefaultDriver(nil)), mgr,
-		clientfault.NewClientManager(nil), serverfault.NewServerManager(nil), disc, governance.NewPushSource(governance.Config{}))
+		clientfault.NewClientManager(nil), serverfault.NewServerManager(nil), disc, governance.NewPushSource(governance.Config{Server: governance.ServerConfig{Default: admission.DefaultPolicy()}}))
 	assert.Error(t, err).Nil()
 
 	c := Config{Addressing: discovery.Addressing{ServiceName: "cache", Discovery: "static"}}
@@ -57,7 +58,7 @@ func TestNewPoolChainRebuildsFromScratch(t *testing.T) {
 	// The base generation: round-robin, suspension disabled, live instance picked.
 	assert.Number(t, p.lbChain.Generation()).Equal(uint64(1))
 	assert.That(t, p.lbChain.Selection()).Equal(loadbalance.Selection{})
-	ep, err := p.lbChain.Pick(loadbalance.PickInfo{})
+	ep, err := p.lbChain.Pick(context.Background(), loadbalance.PickInfo{})
 	assert.Error(t, err).Nil()
 	assert.That(t, ep.Addr).Equal("127.0.0.1:6379")
 

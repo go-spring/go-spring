@@ -28,7 +28,7 @@ type NacosConfig struct {
 
 	// Server is the Nacos server address, e.g. "127.0.0.1:8848". Setting it is
 	// what activates this starter (fail-loud opt-in; no silent localhost).
-	Server string `value:"${server}"`
+	Server string `value:"${server}" expr:"$ != ''"`
 
 	// Namespace is the Nacos namespace id to register into; empty uses "public".
 	Namespace string `value:"${namespace:=}"`

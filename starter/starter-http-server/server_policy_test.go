@@ -33,7 +33,10 @@ func serveServerPolicy(t *testing.T, handler http.HandlerFunc) (*httptest.Respon
 	t.Helper()
 	handlerRuns := 0
 	mgr := admission.NewManager()
-	in := runtime.InboundOver("http-server", "http-server::9090", mgr)
+	in, err := runtime.InboundOver("http-server", "http-server::9090", mgr)
+	if err != nil {
+		t.Fatal(err)
+	}
 	mw := serverPolicyWith(in)
 	h := mw(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		handlerRuns++

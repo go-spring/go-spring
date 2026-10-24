@@ -23,8 +23,7 @@ import (
 
 // Identity names the server instance a [Guard] protects. It is bound ONCE, at
 // construction, because every piece of state behind the Guard belongs to that
-// instance: the one rate budget, the one bulkhead, the one breaker and the one
-// config generation.
+// instance: the one rate budget, the one bulkhead and the one config generation.
 //
 // System is the protocol family's own value — "gin", "grpc", "dubbo" — and it
 // is what a signal labels itself with. Service is the instance label a policy
@@ -73,17 +72,9 @@ const (
 	// of concurrent requests.
 	VerdictBulkheadFull
 
-	// VerdictCircuitOpen means the route's circuit is open. The adapter may serve
-	// a degraded response instead of failing hard.
-	VerdictCircuitOpen
-
 	// VerdictFaultInjected means an injected fault produced this request's
 	// failure. See [Result.Err].
 	VerdictFaultInjected
-
-	// VerdictDegraded means a rule asked for a degraded response. Like
-	// VerdictCircuitOpen, the response itself is the adapter's to produce.
-	VerdictDegraded
 )
 
 // String returns the verdict's lowercase name for logs and labels.
@@ -93,12 +84,8 @@ func (v Verdict) String() string {
 		return "rate_limited"
 	case VerdictBulkheadFull:
 		return "bulkhead_full"
-	case VerdictCircuitOpen:
-		return "circuit_open"
 	case VerdictFaultInjected:
 		return "fault_injected"
-	case VerdictDegraded:
-		return "degraded"
 	default:
 		return "admitted"
 	}
@@ -121,16 +108,11 @@ type Result struct {
 // Admitted reports whether the request may proceed to its handler.
 func (r Result) Admitted() bool { return r.verdict == VerdictAdmitted }
 
-// Degraded reports whether the request was refused because the deployment asked
-// for a degraded response. The handler did not run; Err names the cause
-// ([ErrCircuitOpen] today).
-func (r Result) Degraded() bool { return r.verdict == VerdictDegraded }
-
 // Verdict is why the request was admitted or refused.
 func (r Result) Verdict() Verdict { return r.verdict }
 
 // Err is the refusal's error, or the failure an injected fault produced. It is
-// nil for an admitted request and for a degradation verdict.
+// nil for an admitted request.
 func (r Result) Err() error { return r.err }
 
 // RetryAfter is how long the caller is asked to wait before retrying, when the
@@ -157,45 +139,12 @@ func (r Result) Timeout() time.Duration { return r.timeout }
 // [VerdictFaultInjected], and also reports a delay-only injection.
 func (r Result) Fault() FaultResult { return r.fault }
 
-// Outcome is the protocol-level classification of a completed request, reported
-// back by the adapter. It is deliberately not a Go error: an HTTP handler may
-// write a 500 and return nil, and a streaming handler may have no error at all.
-type Outcome uint8
-
-const (
-	// OutcomeSuccess means the handler completed normally.
-	OutcomeSuccess Outcome = iota
-
-	// OutcomeFailure means the handler failed — a 5xx response, a non-OK gRPC
-	// status, a panic, or a fault the adapter decided to count as failure.
-	OutcomeFailure
-
-	// OutcomeUnknown means the adapter cannot classify the result. The bulkhead
-	// slot is still released, but the breaker does not count the sample.
-	OutcomeUnknown
-)
-
-// String returns the outcome's lowercase name for logs.
-func (o Outcome) String() string {
-	switch o {
-	case OutcomeFailure:
-		return "failure"
-	case OutcomeUnknown:
-		return "unknown"
-	default:
-		return "success"
-	}
-}
-
 // Done is the completion function returned alongside a [Result]. It is the
-// request's other half: it returns the bulkhead slot and folds the outcome into
-// the breaker. Call it exactly once — normally with defer — after the handler
-// has finished. It is safe to call more than once.
-//
-// Err is diagnostic only; the classification is Outcome. A configuration with
-// neither a bulkhead nor a breaker returns a no-op Done, so callers never
-// branch on "is protection on".
-type Done func(o Outcome, err error)
+// request's other half: it returns the bulkhead slot. Call it exactly once —
+// normally with defer — after the handler has finished. It is safe to call more
+// than once. A configuration with no bulkhead returns a no-op Done, so callers
+// never branch on "is protection on".
+type Done func()
 
 // Guard is the inbound governance object a server middleware holds. One
 // instance per server instance, created at wiring time and captured by the

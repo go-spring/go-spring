@@ -539,11 +539,10 @@ WebSocket(`websocket`、`websocket-coder`)、中间件(`lua-filter`)、鉴权
     的 span。这是刻意的取舍,不是缺口。
   - **关掉治理不等于关掉观测。** center 对**透传 handle 也套**观测层,所以
     一份惰性文档(什么都不配)保留全部 span、指标与访问日志,只丢掉保护。
-  - **依赖方向是 observability → resilience,绝不反过来。** 发射点落在
-    `cloud/observability/attrs`;breaker 状态词表（`breaker.State` / `breaker.EventListener`）与
-    per-call `Recorder` 落在 `cloud/runtime/dataplane/outbound/resilience`,由观测层 import —— 治理从不认识观测。
-    两者只在**一处**组装:运行时组合根（`Runtime.ExecutorFor` / `Runtime.InboundFor`）,
-    它叠出 `fault(observe(resilience))`,并通过 handle 的 listener 契约够到 breaker。
+  - **两个互不依赖的观测面。** 请求面（各 observe 包）只记录单次调用的结果，从不读取治理状态；
+    每个治理器官在自己的包里通过 observable 仪器发布自己的状态（breaker、限流预算、bulkhead）。
+    两者只在**一处**组装:运行时组合根（`Runtime.ExecutorFor` / `Runtime.InboundFor`），
+    它叠出 `fault(observe(resilience))`，不存在跨层状态契约。
   - **`Attrs` 必须有界**:这里的每个属性都会同时变成 metric label、span 属性和日志字段,
     无界的值（缓存键、主题名）会把序列撑爆。**`Detail` 可以无界** —— 键、语句、URL 路径、
     主题 —— 它进 span 和日志,但**永不**进 metric label。

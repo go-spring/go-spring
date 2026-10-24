@@ -43,6 +43,27 @@ func NewSlidingWindow(limit float64, window time.Duration) *SlidingWindow {
 	return &SlidingWindow{limit: limit, window: window, curStart: time.Now()}
 }
 
+// Usage reports the window's current weighted estimate and limit without
+// changing it: the same roll-forward arithmetic as [AllowN], projected at now
+// and discarded.
+func (w *SlidingWindow) Usage() Usage {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	elapsed := time.Since(w.curStart)
+	prev, cur := w.prevCount, w.curCount
+	if elapsed >= w.window {
+		if elapsed >= 2*w.window {
+			prev = 0
+		} else {
+			prev = w.curCount
+		}
+		cur = 0
+		elapsed = 0
+	}
+	weight := float64(w.window-elapsed) / float64(w.window)
+	return Usage{Used: prev*weight + cur, Limit: w.limit}
+}
+
 // AllowN records n events when the window's estimate still has room for them.
 func (w *SlidingWindow) AllowN(n int) bool {
 	w.mu.Lock()

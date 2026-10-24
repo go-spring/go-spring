@@ -29,7 +29,7 @@ type ZookeeperConfig struct {
 	// Servers lists the ZooKeeper ensemble members to connect to, e.g.
 	// "127.0.0.1:2181". Required; setting it is what activates this starter
 	// (fail-loud opt-in; no silent localhost).
-	Servers []string `value:"${servers}"`
+	Servers []string `value:"${servers}" expr:"len($) > 0"`
 
 	// SessionTimeout is the ZooKeeper session timeout. Ephemeral registration
 	// nodes survive as long as the session; if the process dies ZooKeeper removes

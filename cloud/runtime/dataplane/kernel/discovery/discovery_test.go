@@ -21,6 +21,7 @@ import (
 	"sync"
 	"testing"
 
+	"go-spring.org/cloud/runtime/dataplane/kernel/matcher"
 	"go-spring.org/stdlib/errutil"
 )
 
@@ -45,7 +46,7 @@ func TestNewResolverBindsBackendAndSeeds(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewResolver: %v", err)
 	}
-	eps, err := r()
+	eps, err := r(context.Background())
 	if err != nil || len(eps) != 1 || eps[0].Addr != "10.0.0.1:80" {
 		t.Fatalf("resolver = %v, err %v — want the bound backend's snapshot", eps, err)
 	}
@@ -145,17 +146,99 @@ func TestQueryOptionsCompose(t *testing.T) {
 	// zero defaults. This is the plumbing backends rely on to read opts.
 	q := NewQuery("svc",
 		WithScheme("tls"),
-		WithTag("v2"),
+		WithSelector(matcher.Selector{{Key: "version", Op: matcher.Prefix, Value: "v2."}}),
 	)
-	if q.Name != "svc" || q.Scheme != "tls" || q.Tag != "v2" {
-		t.Fatalf("NewQuery = %+v, want all three dimensions set", q)
+	if q.Name != "svc" || q.Scheme != "tls" || len(q.Selector) != 1 {
+		t.Fatalf("NewQuery = %+v, want every dimension set", q)
 	}
 
 	// Empty values are no-ops, so conditionally passing a config field needs no
-	// guard - WithScheme("") leaves the default.
-	q2 := NewQuery("svc", WithScheme(""), WithTag(""))
-	if q2.Scheme != "" || q2.Tag != "" {
+	// guard - WithScheme("") and an empty selector leave the defaults.
+	q2 := NewQuery("svc", WithScheme(""), WithSelector(nil))
+	if q2.Scheme != "" || len(q2.Selector) != 0 {
 		t.Fatalf("empty options should be no-ops, got %+v", q2)
+	}
+}
+
+func TestSelectorNarrows(t *testing.T) {
+	d := NewStaticDiscovery(
+		Endpoint{Addr: "10.0.0.1:80", Metadata: map[string]string{"version": "v1.9"}},
+		Endpoint{Addr: "10.0.0.2:80", Metadata: map[string]string{"version": "v2.1"}},
+		Endpoint{Addr: "10.0.0.3:80", Metadata: map[string]string{"version": "v2.2"}},
+	)
+	sel := matcher.Selector{{Key: "version", Op: matcher.Prefix, Value: "v2."}}
+
+	got, err := d.Resolve(context.Background(), "svc", WithSelector(sel))
+	if err != nil || len(got) != 2 || got[0].Addr != "10.0.0.2:80" || got[1].Addr != "10.0.0.3:80" {
+		t.Fatalf("Resolve(selector) = %+v, err %v — want the two v2 instances", got, err)
+	}
+
+	all, err := d.Resolve(context.Background(), "svc", WithSelector(nil))
+	if err != nil || len(all) != 3 {
+		t.Fatalf("Resolve(nil selector) = %d endpoints, err %v — want 3", len(all), err)
+	}
+}
+
+func TestNarrowCombinesDimensions(t *testing.T) {
+	eps := []Endpoint{
+		{Addr: "a", Scheme: "tls", Metadata: map[string]string{"version": "v2.1"}},
+		{Addr: "b", Scheme: "tls", Metadata: map[string]string{"version": "v1.9"}},
+		{Addr: "c", Scheme: "", Metadata: map[string]string{"version": "v2.2"}},
+	}
+	q := NewQuery("svc",
+		WithScheme("tls"),
+		WithSelector(matcher.Selector{{Key: "version", Op: matcher.Prefix, Value: "v2."}}),
+	)
+	got := Narrow(eps, q)
+	if len(got) != 1 || got[0].Addr != "a" {
+		t.Fatalf("Narrow = %+v, want only the tls v2 instance", got)
+	}
+}
+
+func TestSnapshotCopiesAndNarrows(t *testing.T) {
+	cached := []Endpoint{
+		{Addr: "a", Metadata: map[string]string{"version": "v2"}},
+		{Addr: "b", Metadata: map[string]string{"version": "v1"}},
+	}
+
+	// Narrowing applies the whole query.
+	q := NewQuery("svc", WithSelector(matcher.Selector{{Key: "version", Op: matcher.Exact, Value: "v2"}}))
+	got := Snapshot(cached, q)
+	if len(got) != 1 || got[0].Addr != "a" {
+		t.Fatalf("Snapshot = %+v, want only the v2 endpoint", got)
+	}
+
+	// Even with no narrowing the SLICE is a copy, so a caller cannot overwrite
+	// the backend's cached elements. (The Metadata maps are shared and
+	// read-only by contract; see Snapshot.)
+	copied := Snapshot(cached, NewQuery("svc"))
+	if len(copied) != 2 || &copied[0] == &cached[0] {
+		t.Fatal("Snapshot must return a copy even when nothing narrows")
+	}
+	copied[0].Addr = "mutated"
+	if cached[0].Addr == "mutated" {
+		t.Fatal("Snapshot result aliases the cached slice")
+	}
+}
+
+func TestNarrowAliasing(t *testing.T) {
+	eps := []Endpoint{{Addr: "a"}, {Addr: "b"}}
+
+	// No narrowing dimension: the input is returned unchanged.
+	got := Narrow(eps, NewQuery("svc"))
+	if len(got) != 2 || &got[0] != &eps[0] {
+		t.Fatal("Narrow without narrowing dimensions must return the input slice")
+	}
+
+	// Any narrowing yields a fresh slice, so mutating the result cannot reach
+	// the caller's snapshot.
+	got = Narrow(eps, NewQuery("svc", WithScheme("tcp")))
+	if len(got) != 2 {
+		t.Fatalf("Narrow(tcp) = %d endpoints, want 2", len(got))
+	}
+	got[0].Addr = "mutated"
+	if eps[0].Addr == "mutated" {
+		t.Fatal("Narrow must not alias the input when it filters")
 	}
 }
 
@@ -202,7 +285,7 @@ func (s *staticDiscovery) set(name string, eps ...Endpoint) {
 func (s *staticDiscovery) Resolve(_ context.Context, name string, opts ...Option) ([]Endpoint, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return FilterByScheme(append([]Endpoint(nil), s.eps[name]...), NewQuery("", opts...).Scheme), nil
+	return Narrow(append([]Endpoint(nil), s.eps[name]...), NewQuery(name, opts...)), nil
 }
 
 // Update replaces the snapshot for name. It is how tests simulate a topology

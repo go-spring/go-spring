@@ -33,7 +33,7 @@ type Config struct {
 	// (V<version>__<name>.sql, forward-only via goose.Up). Use an absolute or
 	// working-directory-relative path; for a self-contained binary prefer
 	// copying the embedded migrations to a temp dir and pointing Dir there.
-	Dir string `value:"${dir:=}"`
+	Dir string `value:"${dir}" expr:"$ != ''"`
 
 	// Table is goose's version-table name.
 	Table string `value:"${table:=goose_db_version}"`

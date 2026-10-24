@@ -380,7 +380,7 @@ curl -s :9090/metrics | grep resilience_calls
   fields `messaging.operation`, `messaging.destination.name` (truncated to 512), `status`,
   `duration_ms`; success with a topic at Debug, error at Warn.
 - Guarded path (undeclared fallback): histogram `resilience.client.duration` and counters
-  `resilience.client.calls` / `resilience.client.breaker.state_change`, log tag `_app_resilience`.
+  `resilience.client.calls` / `resilience.client.breaker.transitions_total`, log tag `_app_resilience`.
 - Manual helpers (raw client): spans `rocketmq.produce` / `rocketmq.consume <topic>` from tracer
   `go-spring.org/starter-rocketmq` with `messaging.system/destination.name/operation` attributes
   [command.go]; W3C context rides the user properties via `msgCarrier` (round-trip proved by

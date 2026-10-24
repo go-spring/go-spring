@@ -57,7 +57,7 @@ type ServiceRegister func(s grpc.ServiceRegistrar)
 // RPCs off the global OpenTelemetry TracerProvider that starter-otel installs.
 type Config struct {
 	Name    string `value:"${name:=goframe}"`
-	Address string `value:"${address}"`
+	Address string `value:"${address}" expr:"$ != ''"`
 
 	// Registry publishes the server into etcd for discovery. Leave etcd empty
 	// (the default) for a plain server with no registration — grpcx reads

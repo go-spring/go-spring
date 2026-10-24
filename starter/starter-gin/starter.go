@@ -98,7 +98,7 @@ type SimpleGinServer struct {
 // the outside of the chain. cfg is bound from ${spring.gin.server}. center is
 // the runtime bean (nullable - nil when governance is not imported),
 // whose resilience authority supplies the inbound middleware's
-// rate-limit / bulkhead / breaker policy and whose fault authority backs the
+// rate-limit / bulkhead policy and whose fault authority backs the
 // inbound fault middleware; both are handed to ApplyMiddlewares. prop is the
 // application's load-test convention bean (nullable - nil when none is
 // provided), which the inbound LoadTest middleware tags the request context

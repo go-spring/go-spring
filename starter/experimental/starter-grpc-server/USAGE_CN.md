@@ -232,7 +232,7 @@ Stream 链相同，但没有 Resilience（准入只覆盖 unary）。
   为 no-op。
 - **Tracing 在 Metrics 之前**：span 同时包住 metrics 观测，时长与状态落在同一 trace 上下文。
 - **Resilience 在 Fault/Recover 之前**：准入控制在做事之前裁决；注入的
-  `resilience.Manager` 的 `ExecutorFor` 返回的 executor 已自带 observe 层，熔断/拒绝自身
+  `resilience.Manager` 的 `ExecutorFor` 返回的 executor 已自带 observe 层，拒绝自身
   会打 span + counter + histogram。
 - **Fault 位于策略最内层**（fault.go）："安装在最内层，让注入的错误回穿 tracing/metrics/
   resilience 被观测到"——你放的火自己看得见。
@@ -250,7 +250,7 @@ Stream 链相同，但没有 Resilience（准入只覆盖 unary）。
    名字 = FullMethod，属性 `rpc.system=grpc`、`rpc.service`、`rpc.method`。
 4. Metrics：in-flight +1（仅 `rpc.method` 属性）；时长计时开始。
 5. Resilience：`exec.Execute(ctx, chain.Operation{})`——超限则 handler 不执行，
-   `mapAdmissionError` 映射为 `ResourceExhausted`；熔断开启 → `Unavailable`。
+   `mapAdmissionError` 映射为 `ResourceExhausted`。
 6. Fault：`_, err := srv.Fire(ctx, fault.Target{Service: "grpc", Action: info.FullMethod})`
    ——`inj` 是注入的 `*serverfault.ServerManager` bean；方法名是 ACTION（`service` 表示入口），所以规则可以
    只给单个方法放火；被标记
@@ -362,10 +362,9 @@ grpcurl -plaintext -d '{"message":"x"}' :9494 EchoService/Echo                  
 
 服务 label 为 `grpc:{addr}` → `grpc::9494`。加一条规则
 （`spring.governance.client.rules[n].service=grpc::9494`、`rate-limit=...`）把限流压到流量之下：拒绝以
-`codes.ResourceExhausted`（限流/舱壁）或 `codes.Unavailable`（熔断开启）呈现——
-`mapAdmissionError` 保证消费方可按 code 分支。被包裹的 observe-resilience executor 自身
-对熔断/拒绝打 counter/histogram。**不要**给入站配 retry：已产生副作用的 handler 无法重放
-（admission.go 自带的警告）。
+`codes.ResourceExhausted`（限流/舱壁）呈现——`mapAdmissionError` 保证消费方可按 code 分支。
+**入站准入没有重试也没有熔断**：已产生副作用的 handler 无法重放，熔断则因为实例级全拒
+没有安全的爆炸半径而不提供。
 
 ### 4.5 负载均衡演练
 

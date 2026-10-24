@@ -30,7 +30,7 @@ import (
 	"github.com/alibaba/sentinel-golang/core/circuitbreaker"
 	"github.com/alibaba/sentinel-golang/core/flow"
 
-	"go-spring.org/cloud/runtime/dataplane/kernel/breaker"
+	breaker "go-spring.org/cloud/runtime/dataplane/kernel/circuitbreaker"
 )
 
 // flowKnobs is the direction-neutral view of the rate-limit stage a policy
@@ -103,7 +103,7 @@ func flowRule(service string, k flowKnobs) *flow.Rule {
 // rule for service. sentinel's strategies line up with ours one-to-one except
 // consecutive: sentinel has no consecutive-run breaker (its ErrorCount counts
 // over the stat window), so consecutive maps onto ErrorCount as a documented
-// approximation — an exact windowed mapping is what [breaker.ErrorCount]
+// approximation — an exact windowed mapping is what [breaker.StrategyErrorCount]
 // is for.
 func breakerRule(service string, k breakerKnobs) *circuitbreaker.Rule {
 	openMs := k.open.Milliseconds()
@@ -125,20 +125,20 @@ func breakerRule(service string, k breakerKnobs) *circuitbreaker.Rule {
 		ProbeNum:       probe,
 	}
 	switch k.strategy {
-	case breaker.ErrorRate:
+	case breaker.StrategyErrorRate:
 		rule.Strategy = circuitbreaker.ErrorRatio
 		rule.MinRequestAmount = uint64(max(k.minRequests, 1))
 		rule.Threshold = k.rateThreshold
-	case breaker.SlowCall:
+	case breaker.StrategySlowCall:
 		rule.Strategy = circuitbreaker.SlowRequestRatio
 		rule.MinRequestAmount = uint64(max(k.minRequests, 1))
 		rule.MaxAllowedRtMs = uint64(k.slowThreshold.Milliseconds())
 		rule.Threshold = k.slowRate
-	case breaker.ErrorCount:
+	case breaker.StrategyErrorCount:
 		rule.Strategy = circuitbreaker.ErrorCount
 		rule.MinRequestAmount = uint64(max(k.minRequests, 1))
 		rule.Threshold = float64(k.errorThreshold)
-	default: // breaker.Consecutive: sentinel approximation, see the doc comment
+	default: // breaker.StrategyConsecutive: sentinel approximation, see the doc comment
 		rule.Strategy = circuitbreaker.ErrorCount
 		rule.MinRequestAmount = 1
 		rule.Threshold = float64(k.errorThreshold)

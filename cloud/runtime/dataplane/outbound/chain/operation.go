@@ -166,8 +166,9 @@ type Request struct {
 	// governance or fault rule governs this call — the third filter after
 	// [Operation.Service] and [Request.Action]. It is filled by the CALLER (or a
 	// middleware, often from request headers) and is matched, never emitted: a
-	// rule carries a [Selector] over it and the first rule whose selector is a
-	// subset of this map wins.
+	// rule carries a metadata selector over it
+	// ([go-spring.org/cloud/runtime/dataplane/kernel/matcher]) and the first
+	// rule whose selector is a subset of this map wins.
 	//
 	// It is deliberately opaque to this package: it holds whatever dimensions the
 	// deployment cares about ("tenant", "region", "canary", …), and a small
@@ -378,26 +379,6 @@ type Operation struct {
 	// NonIdempotent flag is preserved from both (see the resilience package's
 	// EffectiveRetry, which is the single place the two are merged).
 	Retry RetryPolicy
-}
-
-// Selector is a rule's match condition over a call's [Request.Metadata]:
-// it holds for a call when every key it names is present in the call's metadata
-// with an equal value. An empty Selector holds for every call, so a rule that
-// declares no selector matches its service alone.
-//
-// It is subset-match (a call may carry metadata the rule does not name), which
-// is what lets a rule target "tenant=acme" without having to enumerate every
-// other dimension a given call happens to carry.
-type Selector map[string]string
-
-// Matches reports whether op satisfies s.
-func (s Selector) Matches(op Operation) bool {
-	for k, want := range s {
-		if op.Request.Metadata[k] != want {
-			return false
-		}
-	}
-	return true
 }
 
 // ActionMatch is a rule's match condition over a call's [Request.Action] — the

@@ -27,15 +27,15 @@ import (
 
 // Admit returns the middleware that runs every call through the service's
 // governance executor before it reaches the service implementation: inbound
-// rate limiting, bulkhead isolation and circuit breaking for the whole server.
+// rate limiting and bulkhead isolation for the whole server.
 // It is the thrift counterpart of gin's and echo's inbound middleware.
 //
 // It sits on the same per-method seam as [Observe] rather than around
 // TProcessor.Process. Both must be on the same seam for the ordering promise to
-// hold: installed as `thrift.WrapProcessor(proc, Observe(), Admit(...))`, a call
-// this middleware rejects still returns through Observe and is traced, counted
-// and logged. With inbound one layer above, a rejection short-circuits before
-// the per-method functions run and would leave no trace at all.
+// hold: installed as `thrift.WrapProcessor(proc, Observe(), admit)`, a call this
+// middleware rejects still returns through Observe and is traced, counted and
+// logged. With inbound one layer above, a rejection short-circuits before the
+// per-method functions run and would leave no trace at all.
 //
 // The inbound governance object comes from the injected [runtime.Runtime],
 // which composes the observe object with the guard here — this package names
@@ -45,22 +45,24 @@ import (
 // resolves its backing engine per call and follows the manager's hot-reload, so
 // inbound governance can be tightened without a restart, the same way every
 // outbound client's policy is tuned.
-func Admit(label string, system string, center *runtime.Runtime) thrift.ProcessorMiddleware {
-	ib := center.InboundFor(system, label)
+func Admit(label string, system string, center *runtime.Runtime) (thrift.ProcessorMiddleware, error) {
+	ib, err := center.InboundFor(system, label)
+	if err != nil {
+		return nil, err
+	}
 	return func(name string, next thrift.TProcessorFunction) thrift.TProcessorFunction {
 		return thrift.WrappedTProcessorFunction{
 			Wrapped: func(ctx context.Context, seqID int32, in, out thrift.TProtocol) (bool, thrift.TException) {
 				return admit(ctx, ib, label, name, seqID, in, out, next)
 			},
 		}
-	}
+	}, nil
 }
 
 // admit runs one call through the inbound governance object. A refusal (rate
-// limit, bulkhead full, open circuit) is surfaced as a TApplicationException with
+// limit, bulkhead full) is surfaced as a TApplicationException with
 // INTERNAL_ERROR — thrift has no status code channel, so the caller sees a failed
-// call and the message names the reason. A service exception counts as a failure
-// for the breaker, which is what lets the breaker trip on server-side errors.
+// call and the message names the reason.
 //
 // Inbound must NOT retry — a handler that has already produced side effects
 // cannot be replayed, and [guard.Policy] has no retry field to express

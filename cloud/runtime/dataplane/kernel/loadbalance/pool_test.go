@@ -35,7 +35,7 @@ func TestPoolHealthFilter(t *testing.T) {
 	p := NewPool(src, NewRoundRobin())
 	m := map[string]int{}
 	for range 20 {
-		ep, err := p.Pick(PickInfo{})
+		ep, err := p.Pick(context.Background(), PickInfo{})
 		assert.Error(t, err).Nil()
 		m[ep.Addr]++
 		p.Complete(context.Background(), ep, nil)
@@ -51,7 +51,7 @@ func TestPoolEvictionViaComplete(t *testing.T) {
 
 	// Drive "a" to failure through the pool's Complete wiring, twice, to suspend it.
 	for range 5 {
-		ep, err := p.Pick(PickInfo{})
+		ep, err := p.Pick(context.Background(), PickInfo{})
 		assert.Error(t, err).Nil()
 		if ep.Addr == "a" {
 			p.Complete(context.Background(), ep, errutil.Explain(nil, "boom"))
@@ -63,7 +63,7 @@ func TestPoolEvictionViaComplete(t *testing.T) {
 
 	// Subsequent picks avoid the evicted instance.
 	for range 10 {
-		ep, err := p.Pick(PickInfo{})
+		ep, err := p.Pick(context.Background(), PickInfo{})
 		assert.Error(t, err).Nil()
 		assert.String(t, ep.Addr).Equal("b")
 		p.Complete(context.Background(), ep, nil)
@@ -72,7 +72,7 @@ func TestPoolEvictionViaComplete(t *testing.T) {
 
 func TestPoolEmpty(t *testing.T) {
 	p := NewPool(staticSource(), NewRoundRobin())
-	_, err := p.Pick(PickInfo{})
+	_, err := p.Pick(context.Background(), PickInfo{})
 	assert.Error(t, err).Is(ErrNoAvailable)
 }
 
@@ -82,14 +82,14 @@ func TestPoolWithoutTrackerConfig(t *testing.T) {
 	src := staticSource(eps("a", "b")...)
 	p := NewPool(src, NewRoundRobin())
 	for range 10 {
-		ep, err := p.Pick(PickInfo{})
+		ep, err := p.Pick(context.Background(), PickInfo{})
 		assert.Error(t, err).Nil()
 		p.Complete(context.Background(), ep, errutil.Explain(nil, "boom")) // failures, but no thresholds set
 	}
 	// Both endpoints keep receiving traffic.
 	m := map[string]int{}
 	for range 10 {
-		ep, err := p.Pick(PickInfo{})
+		ep, err := p.Pick(context.Background(), PickInfo{})
 		assert.Error(t, err).Nil()
 		m[ep.Addr]++
 		p.Complete(context.Background(), ep, nil)
@@ -107,7 +107,7 @@ func TestPoolZeroWeightDrains(t *testing.T) {
 	)
 	p := NewPool(src, NewRoundRobin())
 	for range 10 {
-		ep, err := p.Pick(PickInfo{})
+		ep, err := p.Pick(context.Background(), PickInfo{})
 		assert.Error(t, err).Nil()
 		assert.String(t, ep.Addr).Equal("a")
 		p.Complete(context.Background(), ep, nil)
@@ -125,7 +125,7 @@ func TestPoolAllZeroWeightFallsBack(t *testing.T) {
 	p := NewPool(src, NewRoundRobin())
 	m := map[string]int{}
 	for range 20 {
-		ep, err := p.Pick(PickInfo{})
+		ep, err := p.Pick(context.Background(), PickInfo{})
 		assert.Error(t, err).Nil()
 		m[ep.Addr]++
 		p.Complete(context.Background(), ep, nil)
@@ -144,7 +144,7 @@ func TestPoolNegativeWeightKept(t *testing.T) {
 	)
 	p := NewPool(src, NewRoundRobin())
 	for range 10 {
-		ep, err := p.Pick(PickInfo{})
+		ep, err := p.Pick(context.Background(), PickInfo{})
 		assert.Error(t, err).Nil()
 		assert.String(t, ep.Addr).Equal("a")
 		p.Complete(context.Background(), ep, nil)

@@ -70,7 +70,7 @@ type WillConfig struct {
 
 	// QoS is the delivery quality of service for the will (0, 1, or 2),
 	// default is 0.
-	QoS byte `value:"${qos:=0}"`
+	QoS byte `value:"${qos:=0}" expr:"$ >= 0 && $ <= 2"`
 
 	// Retained controls whether the broker retains the will message,
 	// default is false.

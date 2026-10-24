@@ -21,7 +21,11 @@
 
 package loadbalance
 
-import "time"
+import (
+	"time"
+
+	"go-spring.org/cloud/runtime/dataplane/kernel/matcher"
+)
 
 // Selection is the resolved endpoint-selection policy: the strategy (by name),
 // the strategy's own parameters, and the outlier-suspension thresholds.
@@ -50,11 +54,27 @@ type Selection struct {
 
 	// OutlierThreshold is the consecutive-failure count that suspends an
 	// endpoint. 0 disables suspension.
-	OutlierThreshold int `value:"${outlier-threshold:=0}"`
+	OutlierThreshold int `value:"${outlier-threshold:=0}" expr:"$ >= 0"`
 
 	// OutlierSuspendFor is the cool-down before a suspended endpoint gets a
 	// half-open trial request. Ignored when [Selection.OutlierThreshold] is 0.
-	OutlierSuspendFor time.Duration `value:"${outlier-suspend-for:=0}"`
+	OutlierSuspendFor time.Duration `value:"${outlier-suspend-for:=0}" expr:"int($) >= 0"`
+
+	// Selector narrows the endpoint set this label may choose from, before the
+	// strategy picks — a conjunction over the endpoint's metadata, see
+	// [matcher.Selector]. It is the DYNAMIC half of endpoint narrowing: the
+	// static half is the discovery query's selector, fixed by the client's own
+	// configuration, and when both are set both must hold. Because
+	// it rides the selection document, a pushed rule can move traffic between
+	// versions or zones without a redeploy, and a change rebuilds the chain's
+	// generation like any other selection change.
+	//
+	// Empty means no narrowing. A selector that matches nothing leaves the pool
+	// with no candidates, which surfaces as [ErrNoAvailable] — there is
+	// deliberately no implicit fallback, because silently falling back would
+	// make a narrow rule (a canary, say) widen to every instance without anyone
+	// being told.
+	Selector matcher.Selector `value:"${selector:=}"`
 }
 
 // Selection returns the selection the pool was BUILT from.

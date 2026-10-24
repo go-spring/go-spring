@@ -356,7 +356,7 @@ propagator 的 `IsLoadTest(ctx)` 分支同一个标记（由 `loadtest` filter �
    借来的演示值，对真实应用不是合理默认。
 2. filter 按名字全局注册，生成配置未引用就不会执行——激活语义是隐式的。
 3. `addr` 必须是 `host:port`；HTTP starter 常见的裸 `:port` 形式会失败。
-4. 关停无优雅排空（`svr.Close(nil)`）；无 resilience 准入（限流/熔断）——与 starter-grpc
+4. 关停无优雅排空（`svr.Close(nil)`）；无 resilience 准入（限流/隔板）——与 starter-grpc
    不同，此处未接线。
 5. 死 key：`example-otel/conf` 的 `spring.trpc.server.interceptor.*` 前缀——已修复，
    配置改用生效的 `spring.trpc.server.observer.*` key（§3.3）。

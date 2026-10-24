@@ -7,12 +7,12 @@
 | 域 | 角色 | 被中心分发到 |
 |------|------|------|
 | [resilience](../../dataplane/outbound/resilience/) | **出站原语** | `*resilience.Manager` —— 熔断 / 限流 / 重试 / 退避 / `Executor` 接缝 |
-| [admission](../../dataplane/inbound/admission/) | **入站原语** | `*admission.Manager` —— 每实例的 `Guard`，限流 / 隔板 / 熔断 / 放火 |
+| [admission](../../dataplane/inbound/admission/) | **入站原语** | `*admission.Manager` —— 每实例的 `Guard`，限流 / 隔板 / 放火 |
 | [fault](../../dataplane/kernel/fault/) | **混沌面** | 中立内核 + 两个方向各自的管理器 —— 出站借用 `Executor` 接缝、入站借用中间件 |
 | [loadbalance](../../dataplane/kernel/loadbalance/) | **选点域** | `*loadbalance.Manager` —— 端点选择策略 |
 | [discovery](../../dataplane/kernel/discovery/) | **不参与** | 命名后端目录；**不出现在规则文档里**，控制面既不持有也不裁决——它由 `runtime.Runtime` 持有并交给调用方 |
 
-目录内另有两个**中立器官**：[breaker](../../dataplane/kernel/breaker/)（熔断状态机）与 [ratelimit](../../dataplane/kernel/ratelimit/)（限流词汇、本地预算、`ClusterLimiter` 接缝与计数算法）。它们不接收中心推送，由 `admission` / `resilience` 各自把自己的策略映射进去使用。
+目录内另有两个**中立器官**：[circuitbreaker](../../dataplane/kernel/circuitbreaker/)（熔断状态机）与 [ratelimit](../../dataplane/kernel/ratelimit/)（限流词汇、本地预算、`ClusterLimiter` 接缝与计数算法）。它们不接收中心推送，由 `admission` / `resilience` 各自把自己的策略映射进去使用。
 
 [label](../../dataplane/kernel/label/) 是**服务 label 规约**：两个方向与所有协议适配器都用 `label.ServiceLabel` 拼出同一个 `prefix:name`，治理规则才能按这个字符串同时命中 client executor 与入站 admission。不要在 starter 里重写拼接逻辑。
 
@@ -252,14 +252,14 @@ type ClientConfig struct {
 }
 
 type ServerConfig struct {
-    Default resilience.ServerPolicy // 入站兜底（限流/并发/熔断/处理预算）
+    Default admission.Policy // 入站兜底（限流/并发/处理预算；无熔断）
     Rules   []ServerRule      // 入站逐路由列表；同一 label 重复即拒绝
     Fault   fault.Config         // 入站放火：spring.governance.server.fault.*
 }
 
 type ClientDefaultPolicy struct {
     resilience.Policy     // 保护半边：timeout / retry / error-threshold / …
-    loadbalance.Selection // 选择半边：balancer / outlier-threshold / outlier-suspend-for
+    loadbalance.Selection // 选择半边：balancer / outlier-threshold / outlier-suspend-for / selector
 }
 
 type ClientRule struct {
@@ -270,7 +270,7 @@ type ClientRule struct {
 
 type ServerRule struct {
     Service string       // 该 ServerRule 匹配的入站 label；空=不匹配
-    resilience.ServerPolicy // 入站模型：无 retry / 无 fallback / 无选择（字段上就没有）
+    admission.Policy // 入站模型：无 retry / 无 fallback / 无选择 / 无熔断（字段上就没有）
 }
 
 // Center 只做文档与分发；接线方（本包自己的 starter.go）驱动它
@@ -291,9 +291,9 @@ func (m *resilience.Manager) ExecutorFor(system, service string) Executor   // �
 func (m *resilience.Manager) PolicyFor(label string) Policy
 func (m *resilience.Manager) Subscribe(label string, cb func(Policy)) Subscription
 func (m *resilience.Manager) Resolve(op chain.Operation) CallPolicy / ResolveLabel(label) CallPolicy
-func (m *resilience.ServerManager) Apply(ServerSettings) error / Close() error
-func (m *resilience.ServerManager) ServerGuardFor(system, service string) *ServerGuard   // 入站
-func (m *resilience.ServerManager) ServerPolicyFor(label string) ServerPolicy / ResolveRoute(label) RoutePolicy
+func (m *admission.Manager) Apply(Settings) error / Close() error
+func (m *admission.Manager) GuardFor(id Identity, opts ...Option) (Guard, error)   // 入站
+func (m *admission.Manager) PolicyFor(label string) Policy
 func NewManager() *Manager                           // loadbalance；策略从包级注册表解析
 func loadbalance.NewChain(src discovery.Resolver, label string, opts ...ChainOption) *Chain  // standalone，不注册
 func (m *loadbalance.Manager) Chain(src discovery.Resolver, label string, opts ...ChainOption) *Chain
@@ -353,7 +353,7 @@ label 是 `resilience.Manager.ExecutorFor` / `PolicyFor` 与 `loadbalance.NewCha
 **同一个 label 也管端点选择**：凡是走发现模式建了 `loadbalance.Chain` 的 client（`http` / `gateway` /
 gorm 四方言 / `redigo` / `redis` / `mongodb`），都用上表里它自己那一行的 label 去 `lbMgr.Chain(resolver, label)`，
 所以一条 ClientRule 同时决定这条服务的保护策略**和**选点策略（`balancer` / `outlier-threshold` /
-`outlier-suspend-for`）。`gateway` 的保护与选点用两个不同 label（policy 名 vs route id），是表里已
+`outlier-suspend-for` / `selector`）。`gateway` 的保护与选点用两个不同 label（policy 名 vs route id），是表里已
 注明的既有例外。
 
 三类刻意的缺口，判据都是"**这条 client 每次请求/每次建连会重新挑端点吗**"：
@@ -393,7 +393,7 @@ fault（"放火"）已**收进治理中心**，和 resilience 共用同一个 `g
 
 **三个 authority 现在是同一副形态：中心推规则数据，模块自己按 label 匹配。** fault 从一开始就是这样，resilience 与端点选择现在也对齐——`dispatch` 把文档翻成各模块自己的规则类型并整体推给对应 manager，中心不再替谁解析 label。区别只在规则数据长在哪：
 
-- `resilience.Policy` / `ServerPolicy` **没有**内置的多服务定向能力，redis 和 gorm 是两个独立对象，所以 center 推一份 default 加一份 `Rules`，由 manager 自己做"属于你的那一个"的首条匹配（找不到回落 Default）。
+- `resilience.Policy` / `admission.Policy` **没有**内置的多服务定向能力，redis 和 gorm 是两个独立对象，所以 center 推一份 default 加一份 `Rules`，由 manager 自己做"属于你的那一个"的首条匹配（找不到回落 Default）。
 - [`fault.Config`](../../dataplane/kernel/fault/config.go) 的多服务定向写进类型本身：`Rules []Rule` 每条有自己的 `Service / Rate / Latency / Error`，一份 Config 即可描述"redis 打 0.5 错误、gorm 加延迟、其余全量慢调用"。所以 fault 只推一份带 Rules 的 Config，由 injector 在分发时匹配。
 
 starter 侧注入本方向的 fault bean 接入，零耦合 cloud/runtime/controlplane/governance：
@@ -403,7 +403,7 @@ starter 侧注入本方向的 fault bean 接入，零耦合 cloud/runtime/contro
 
 **两个方向的火互不污染**，包括护栏：`MaxAffected` / `MaxDuration` 的计数器是**按方向各算**的。所以"出站烧到熔断自愈"不会顺手关掉入站的演练，反之亦然——这正是拆方向要买的东西。
 
-**入站放火（`Server.Fire`）验证的不是本进程的重试栈**（入站没有重试），而是：本服务自己的错误路径与错误响应、observe 归类、入站熔断器是否把 5xx 计为失败，以及上游客户端面对 503 / 慢响应时的重试与断路器行为。出站放火（`WrapClientExecutor`）才验证本进程的 retry / breaker / timeout / fallback。生态里的混沌工程同样两侧都做（Chaos Mesh 的 HTTPChaos `target: Request`、Istio 的 `SIDECAR_INBOUND` fault filter），所以 `server.fault` 不是可选装饰。
+**入站放火（`Server.Fire`）验证的不是本进程的重试栈**（入站没有重试），而是：本服务自己的错误路径与错误响应、observe 归类，以及上游客户端面对 503 / 慢响应时的重试与断路器行为。出站放火（`WrapClientExecutor`）才验证本进程的 retry / breaker / timeout / fallback。生态里的混沌工程同样两侧都做（Chaos Mesh 的 HTTPChaos `target: Request`、Istio 的 `SIDECAR_INBOUND` fault filter），所以 `server.fault` 不是可选装饰。
 
 ## 9. 家族接缝、注入与治理判据
 
@@ -432,9 +432,9 @@ starter 侧注入本方向的 fault bean 接入，零耦合 cloud/runtime/contro
 ### 9.3 driver 与出站/入站方向
 
 - driver 留根一份：一个 `Manager` 造两侧 executor，`Driver` 接口两个方法（`NewExecutor` 出站 / `NewServerExecutor` 入站），`spring.resilience.driver=sentinel` 一句话选定全进程两侧后端；不再把 driver 下沉到 client。后端是**静态启动选择**（`spring.resilience.driver`，app 配置经 `gs.TagArg` 按 bean 名注入），不在治理文档、不热重载。（2026-09-29；2026-10-11 改为静态注入，去掉 driver 目录）
-- 配置按方向拆 block：`spring.governance.client.{default,rules,fault}` 与 `spring.governance.server.{default,rules,fault}`；入站模型 `ServerPolicy` = `Policy` 减 retry 族与 max-duration。（2026-09-29，旧 `govern.default/rules/fault` 已不绑定任何东西）
+- 配置按方向拆 block：`spring.governance.client.{default,rules,fault}` 与 `spring.governance.server.{default,rules,fault}`；入站模型 `admission.Policy` 只有限流 / 并发上限 / timeout / 放火；没有 retry、端点选择和熔断。（2026-09-29，旧 `govern.default/rules/fault` 已不绑定任何东西）
 - rules 不按方向拆：一条 rule 由 label 定位，label 自带方向（`gin::8080` 入站 / `redis:cache` 出站），一份足够；只有 fault 必须拆 block，因其有无 label 的全局旋钮（rate/latency/error/scope/护栏）。（2026-09-29）
-- 「模型拆、引擎不拆」；出站与入站各有一个引擎（`defaultExecutor` 带重试 / `serverExecutor` 不带重试，`Timeout` 是整通预算），两者不 embed、不投影——`ServerPolicy.AsPolicy() Policy` **已删除**；`Refresh`/`Refreshable` 与 `PolicyResolverSetter` **已全部删除**，热更换成「manager 发布代际、executor 调用点拉取并整份重建状态」（`PolicySource`，见 resilience 的 README）；库内方向词是 `side`（旧泛型 `lane` 已废弃）。（2026-09-29 提出，2026-10-03 定稿；2026-10-16 改为拉取式代际）
+- 「模型拆、引擎不拆」；出站与入站各有一个引擎（`defaultExecutor` 带重试 / `admission` 的 Guard 不带重试，`Timeout` 是整通预算），两者不 embed、不投影；`Refresh`/`Refreshable` 与 `PolicyResolverSetter` **已全部删除**，热更换成「manager 发布代际、executor 调用点拉取并整份重建状态」（`PolicySource`，见 resilience 的 README）；库内方向词是 `side`（旧泛型 `lane` 已废弃）。（2026-09-29 提出，2026-10-03 定稿；2026-10-16 改为拉取式代际）
 - 命名：真有对偶的概念才加方向前缀且显式带 `Client`/`Server`——出站 `Policy` / `Executor` / `ClientRule` / `ClientDefaultPolicy` / `Manager.ExecutorFor` / `Manager.PolicyFor` / `Driver.NewExecutor` / `outbound/observe.WrapClientExecutor` / `clientfault.ClientManager.WrapClientExecutor` / 指标 `resilience.client.*` 对 `resilience.server.*`；没有对偶的不加（`Driver` / `loadbalance.Selection` / `ClusterLimiter` / `Fallback` / `ServiceLabel` / `Retryable` / fault 的 `Config`/`Rule`）。`admission` 只作概念保留（文档里的「入站准入」；代码里没有对应的导出名）。（2026-09-29）
 - Driver 后端 starter 命名归 `governance-` 家族（`starter-resilience` → `starter-governance-sentinel`，对齐 `StarterGovernanceEtcd`/`StarterGovernanceNacos`）；选择键是静态的 `spring.resilience.driver=sentinel`（app 配置，非 per-client key）。容器外用法保留 `NewSentinelDriver()`。（2026-09-13）
 
@@ -458,7 +458,7 @@ starter 侧注入本方向的 fault bean 接入，零耦合 cloud/runtime/contro
 ### 9.6 什么该收进治理（判据 P1–P4）
 
 - 四条判据须同时满足：**P1 是策略不是身份**（值会因流量/运维变，不是 addr/dsn/uri/密码/db/tls）；**P2 可按 label 寻址**（客户端已算出 `http:user-svc` 这类 label）；**P3 组件能不重建对象就采纳新值**（否则只是「文档集中了、改完还得重启」，最易被忽略）；**P4 跨 starter 重复或与已有 govern 概念重叠**。（2026-09-12）
-- 落点判据（第 5 条）：只有**保护 / 选择 / 放火**三类的键才进 `resilience.Policy` / `ServerPolicy`；往里塞连接池尺寸等实现细节会让 Policy 变杂物袋。
+- 落点判据（第 5 条）：只有**保护 / 选择 / 放火**三类的键才进 `resilience.Policy` / `admission.Policy`；往里塞连接池尺寸等实现细节会让 Policy 变杂物袋。
 - 明确不收（避免反复议）：① 身份/凭据/寻址（addr/dsn/uri/user/password/db/tls）；② 决定 bean 存不存在的装配开关（`health.enabled` / `observe.enabled` / `discovery` / 选择用 `driver`）；③ 中间件开关（cors/gzip/secureHeaders/accessLog）；④ 服务端 read/write/idle timeout（`http.Server` 构造期参数）；⑤ 算法内部常数（`p2c.go` 的 ewmaBeta/ewmaTau/p2cFailurePenalty、consistenthash replicas）；⑥ lock TTL / session IdleTimeout / outbox 轮询退避（lock 已有自己的三层解析）。
 - 客户端 dial/read/write timeout、server 构造期参数、池尺寸、gorm slow-threshold、入站准入上限、实例权重：**逐项裁决后不做**（P3 不成立 + 落点不成立）。
 - grpc 客户端不再自带实例摘除：内置 balancer 的硬编码 5 次/30s 已删，改治理驱动、**初始禁用**（「不配置=不生效」）；要摘除就在治理文档的 client 默认策略里配 `outlier-threshold`，定向到具体 service 用 `spring.governance.client.rules[N]`。（旧 `govern.*` 键已废弃）
@@ -531,7 +531,7 @@ spring.governance.client.default.open-duration=5s     # 熔断持续 5s 后半�
 
 配完这份文件（加上 §1 的 `spring.governance.source.file.path`），项目里的 redis、gorm、mongo、http-client……全部自动套用这套超时/重试/限流/熔断，且**热重载**——file source 盯着这个文件，改完不用重启（远程 source 同样的效果）。
 
-> 规则文件里的键就是 `spring.governance.*` 命名空间。`spring.governance.client.default.*` 下可用字段是 `resilience.Policy` 的全部旋钮：`timeout` / `retry`(节点：`retry.max-retries` / `retry.initial-interval` / …，**默认关闭**，重试由调用方在 `chain.Operation.Retry` 上逐次声明，中心下发节点则整体覆盖) / `rate-limit` / `burst` / `rate-limit-max-wait` / `algorithm`(token-bucket|sliding-window) / `window` / `error-threshold` / `open-duration` / `breaker-strategy`(consecutive|error-rate) / `error-rate-threshold` / `min-requests` / `breaker-window`，以及端点选择类的 `balancer` / `balancer-params`（策略自己的参数，扁平子映射）/ `outlier-threshold` / `outlier-suspend-for`（见 §3.1）。字段含义见 [cloud/runtime/dataplane/outbound/resilience/policy.go](../../dataplane/outbound/resilience/policy.go)。
+> 规则文件里的键就是 `spring.governance.*` 命名空间。`spring.governance.client.default.*` 下可用字段是 `resilience.Policy` 的全部旋钮：`timeout` / `retry`(节点：`retry.max-retries` / `retry.initial-interval` / …，**默认关闭**，重试由调用方在 `chain.Operation.Retry` 上逐次声明，中心下发节点则整体覆盖) / `rate-limit` / `burst` / `rate-limit-max-wait` / `algorithm`(token-bucket|sliding-window) / `window` / `breaker-disabled` / `error-threshold` / `open-duration` / `breaker-strategy`(consecutive|error-rate|slow-call|error-count) / `error-rate-threshold` / `min-requests` / `breaker-window` / `slow-call-duration-threshold` / `slow-call-rate-threshold` / `half-open-requests` / `half-open-timeout`，以及端点选择类的 `balancer` / `balancer-params`（策略自己的参数，扁平子映射）/ `outlier-threshold` / `outlier-suspend-for` / `selector`（见 §3.1）。字段含义见 [cloud/runtime/dataplane/outbound/resilience/policy.go](../../dataplane/outbound/resilience/policy.go)。
 
 ---
 
@@ -599,9 +599,19 @@ spring.governance.client.rules[3].service=http:user-svc
 spring.governance.client.rules[3].balancer=least_conn
 spring.governance.client.rules[3].outlier-threshold=5
 spring.governance.client.rules[3].outlier-suspend-for=10s
+
+# 灰度：只把 v2.* 且同可用区的实例放进候选集
+spring.governance.client.rules[4].service=redis:cache
+spring.governance.client.rules[4].selector[0].key=version
+spring.governance.client.rules[4].selector[0].kind=prefix
+spring.governance.client.rules[4].selector[0].value=v2.
+spring.governance.client.rules[4].selector[1].key=zone
+spring.governance.client.rules[4].selector[1].kind=exact
+spring.governance.client.rules[4].selector[1].value=cn-north-1a
 ```
 
 - **`balancer`**：`round_robin`（默认） / `least_conn` / `consistent_hash` / `weighted` / `zone_aware`（包内还注册了 `random` / `p2c`），以及部署自己注册的策略（见 `loadbalance.Register`，如 `luohua`）。留空 = 保持该 client 的默认（round_robin）。写错策略名会被**忽略并沿用当前策略**，不影响调用——治理文档没有错误通道（"你推什么，你担保什么"）。**策略参数也在这份文档里配、随 push 热更**，放在 `balancer-params` 这个扁平子映射里，核心不解释键名，由策略自己读取：`replicas`（consistent_hash 虚拟节点数）、`zone-key` / `delegate`（zone_aware 的元数据键与内层策略）。写错参数名会在构造期报错并被忽略，不会静默丢参。
+- **`selector`**：在候选集进入策略之前按 `Endpoint.Metadata` 收窄（灰度、按版本、按可用区）。点名的每个 key 都必须存在且满足对应 term，kind 是封闭集合：`exact` / `prefix` / `suffix` / `contains`；term 之间是 AND，没有布尔连接符——"或"放到值的取值集合里，或另起一条规则。它是端点收窄**动态的一半**：静态的一半是 client 自己配置里的 `discovery.Query.Selector`，两者同时设置时必须都成立。匹配不到任何实例时**不兜底**，直接 `ErrNoAvailable`——隐式兜底会让一条窄规则（灰度）悄悄放宽到全量。selector 变更会重建该 label 的链，链上状态（在途计数、哈希环、摘除记录）和切策略一样重置。
 - **`outlier-threshold`**：与 `error-threshold` 是同一套语义（连续失败 + 半开试探），区别在作用对象——`error-threshold` 熔断的是**整个服务**，`outlier-threshold` 摘的是**单个实例**。0 表示不摘除。
 - 两个旋钮都**原地生效**：改完 push，下一次请求就走新策略/新阈值，不用重启，也不会重建 transport。（策略自身的状态不跨切换保留——`least_conn` 的在途计数、`consistent_hash` 的哈希环、p2c 的延迟模型都会重来。）
 
@@ -683,7 +693,7 @@ spring.governance.client.rules[0].service=kafka:10.0.0.1:9092
 
 ## 4. 入站流量的治理（gin / grpc / echo / hertz / trpc / http-server）
 
-入站侧是**另一个方向**：策略作用在"处理一个进来的请求"上，读文档的 `server` 块，模型是 `resilience.ServerPolicy`——限流 / 并发上限 / 入站熔断 / 处理预算。它**没有**重试（handler 已产生副作用，不能重放）、**没有** fallback、**没有**端点选择；这些在 `ServerPolicy` 里根本没有对应字段，不是"设成 0 就禁用"。
+入站侧是**另一个方向**：策略作用在"处理一个进来的请求"上，读文档的 `server` 块，模型是 `admission.Policy`——限流 / 并发上限 / 处理预算。它**没有**重试（handler 已产生副作用，不能重放）、**没有** fallback、**没有**端点选择、**没有**熔断器；这些在 `admission.Policy` 里根本没有对应字段，不是"设成 0 就禁用"。
 
 label 是**本进程这侧入口**的身份（不是被调方）：监听地址（gin / echo / http-server / grpc 的 `grpc::{addr}`），thrift 由调用方自定。同一个 `service` 键在两侧指的都是"starter 交给管理器的那个身份串"，只是入站的值恰好是个地址：
 

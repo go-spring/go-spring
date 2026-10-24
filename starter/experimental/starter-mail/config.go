@@ -24,7 +24,7 @@ import (
 type Config struct {
 	// Host is the SMTP server hostname, e.g., "smtp.example.com". It is
 	// required; there is no localhost fallback (fail-fast at startup).
-	Host string `value:"${host:=}"`
+	Host string `value:"${host}" expr:"$ != ''"`
 
 	// Port is the SMTP server port. 587 (submission + STARTTLS) is the default;
 	// use 465 with tls.mode=tls for implicit TLS, or 25/1025 for plaintext.
@@ -40,7 +40,7 @@ type Config struct {
 	// AuthType selects the SMTP authentication mechanism. It is only consulted
 	// when Username is set. One of: "auto" (negotiate the strongest mechanism
 	// the server offers), "plain", "login", "cram-md5". Default is "auto".
-	AuthType string `value:"${auth-type:=auto}"`
+	AuthType string `value:"${auth-type:=auto}" expr:"$ == '' || lower($) in ['auto', 'plain', 'login', 'cram-md5', 'crammd5']"`
 
 	// From is the default sender address used when a Message does not set its
 	// own From. It may be empty, in which case every Message must set From.
@@ -70,7 +70,7 @@ type TLSConfig struct {
 	//     required (the connection fails if the server does not offer it).
 	//   - "tls": implicit TLS from the first byte (SMTPS, typically port 465).
 	//   - "none": no encryption; intended for local test servers only.
-	Mode string `value:"${mode:=starttls}"`
+	Mode string `value:"${mode:=starttls}" expr:"lower($) in ['starttls', 'tls', 'none']"`
 
 	// InsecureSkipVerify disables server certificate verification. It is
 	// intended for testing only and must not be used in production.

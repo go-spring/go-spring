@@ -17,7 +17,10 @@
 package StarterOAuth2Server
 
 import (
+	"slices"
 	"time"
+
+	"go-spring.org/stdlib/errutil"
 )
 
 // Config binds ${spring.oauth2.server}: the authorization server's token
@@ -97,4 +100,19 @@ type ClientConfig struct {
 	// ("authorization_code", "client_credentials", "refresh_token"). Empty allows
 	// all three.
 	GrantTypes []string `value:"${grant-types:=}"`
+}
+
+// Validate enforces the two cross-field rules of a client registration, both of
+// which would otherwise surface as an authentication failure at request time:
+// a confidential client needs a secret, and a client that may run the
+// authorization_code flow needs at least one registered redirect URI. Neither
+// rule fits a per-field expr.
+func (c ClientConfig) Validate() error {
+	if !c.Public && c.Secret == "" {
+		return errutil.Explain(nil, "oauth2-server: a confidential client requires a secret")
+	}
+	if len(c.RedirectURIs) == 0 && (len(c.GrantTypes) == 0 || slices.Contains(c.GrantTypes, "authorization_code")) {
+		return errutil.Explain(nil, "oauth2-server: authorization_code clients require at least one redirect-uri")
+	}
+	return nil
 }

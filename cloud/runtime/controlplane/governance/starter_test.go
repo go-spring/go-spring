@@ -34,14 +34,14 @@ import (
 // govCfg builds a document with an outbound timeout and a CLIENT-side fault
 // fire; the server side is covered by the same shape on the other block.
 func govCfg(timeoutMs int, fc fault.Config) Config {
-	return Config{
+	return withInboundDefaults(Config{
 		Client: ClientConfig{
 			Default: ClientDefaultPolicy{
 				Policy: resilience.Policy{Timeout: time.Duration(timeoutMs) * time.Millisecond},
 			},
 			Fault: fc,
 		},
-	}
+	})
 }
 
 // newTestCenter builds the center bean over a fresh set of authorities, exactly
@@ -51,7 +51,7 @@ func govCfg(timeoutMs int, fc fault.Config) Config {
 // the bean's Init hook.
 func newTestStartup() (*Center, *resilience.Manager,
 	*loadbalance.Manager, *clientfault.ClientManager, *serverfault.ServerManager) {
-	return newTestStartupWith(NewPushSource(Config{}))
+	return newTestStartupWith(pushSource(Config{}))
 }
 
 // newTestStartupWith is newTestStartup over the given source — the test's
@@ -76,7 +76,7 @@ func newTestStartupWith(src Source) (*Center, *resilience.Manager,
 // the module authorities — the same sequence gs runs in production.
 func TestStarter_SrcBeanArmsCenter(t *testing.T) {
 	_, resClient, _, fc, _ := newTestStartupWith(
-		NewPushSource(govCfg(300, fault.Config{Rules: []fault.Rule{{Rate: 0.25}}})))
+		pushSource(govCfg(300, fault.Config{Rules: []fault.Rule{{Rate: 0.25}}})))
 
 	if p := resClient.PolicyFor("redis:cache"); p.Timeout != 300*time.Millisecond {
 		t.Fatalf("src bean policy: want 300ms, got %v", p.Timeout)
@@ -100,7 +100,7 @@ func TestStarter_EmptySource_StaysUnarmed(t *testing.T) {
 	}
 	// The manager exposes no read-back — production only ever pushes into sinks —
 	// so ask through one: a chain registers with the selection already in force.
-	lbChain := lb.Chain(context.Background(), func() ([]discovery.Endpoint, error) { return nil, nil }, "redis:cache")
+	lbChain := lb.Chain(context.Background(), func(context.Context) ([]discovery.Endpoint, error) { return nil, nil }, "redis:cache")
 	if got := lbChain.Selection(); got.Balancer != "" || got.OutlierThreshold != 0 {
 		t.Fatalf("empty source: selection must resolve zero, got %+v", got)
 	}
@@ -112,7 +112,7 @@ func TestStarter_EmptySource_StaysUnarmed(t *testing.T) {
 // TestStarter_LatePushDrivesArmedModules pins the push path end to end: after
 // Init, a source push reaches the module authorities with no further setup step.
 func TestStarter_LatePushDrivesArmedModules(t *testing.T) {
-	src := NewPushSource(govCfg(100, fault.Config{}))
+	src := pushSource(govCfg(100, fault.Config{}))
 	_, resClient, _, fc, _ := newTestStartupWith(src)
 
 	// A live push swaps both the resilience side and the fault side.
@@ -133,7 +133,7 @@ func TestStarter_UnknownBalancerFailsStartup(t *testing.T) {
 	driver := resilience.NewDefaultDriver(nil)
 	_, err := NewCenter(resilience.NewManager(driver), admission.NewManager(), loadbalance.NewManager(),
 		clientfault.NewClientManager(nil), serverfault.NewServerManager(nil),
-		NewPushSource(selectionConfig("redis:cache", "no_such_strategy", 0, 0)))
+		pushSource(selectionConfig("redis:cache", "no_such_strategy", 0, 0)))
 	if err == nil {
 		t.Fatal("an unregistered strategy name must fail construction")
 	}

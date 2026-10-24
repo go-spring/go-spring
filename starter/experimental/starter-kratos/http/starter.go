@@ -66,7 +66,7 @@ type ServiceRegister func(hs *khttp.Server) error
 type Config struct {
 	Name    string        `value:"${name:=kratos-http}"`
 	Network string        `value:"${network:=}"`
-	Addr    string        `value:"${addr}"`
+	Addr    string        `value:"${addr}" expr:"$ != ''"`
 	Timeout time.Duration `value:"${timeout:=1s}"`
 
 	// Etcd service discovery. Empty Addr disables registration (direct-connect).

@@ -17,6 +17,7 @@
 package StarterMemcached
 
 import (
+	"context"
 	"hash/crc32"
 	"net"
 	"sort"
@@ -134,7 +135,9 @@ func (s *liveServers) Each(f func(net.Addr) error) error {
 // caller as-is: for a cache, "the cluster is unknown" must not be papered over
 // with a stale set the key may no longer live on.
 func (s *liveServers) snapshot() ([]net.Addr, error) {
-	eps, err := s.resolve()
+	// gomemcache's ServerSelector hooks carry no context, so this adapter
+	// boundary supplies a background one.
+	eps, err := s.resolve(context.Background())
 	if err != nil {
 		return nil, err
 	}

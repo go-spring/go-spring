@@ -28,7 +28,7 @@ type Config struct {
 	// Channel selects the payload format (and signing scheme) of the
 	// receiver: "generic" (plain JSON POST), "dingtalk", "feishu", "wecom" or
 	// "slack". Default is "generic".
-	Channel string `value:"${channel:=generic}"`
+	Channel string `value:"${channel:=generic}" expr:"$ == '' || $ in ['generic', 'dingtalk', 'feishu', 'wecom', 'slack']"`
 
 	// Secret enables signing where the channel supports it: the DingTalk
 	// "加签" secret (SEC...) or the Feishu signing secret. Ignored by the

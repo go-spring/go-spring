@@ -152,13 +152,13 @@ policy 并**清空 loaded 集合**。sentinel 的 `LoadRulesOfResource` 会替�
 ### 2.5 熔断事件与结果映射（breaker_listener.go）
 
 - **状态事件**：sentinel 的 `StateChangeListener` 是进程级单例，因此单个
-  `routeListener` 按 `rule.Resource` 经 `breakerRoutes` sync.Map 分发到各 executor
-  的 `breaker.EventListener`。挂接方式：`SetBreakerEventListener(l)`
-  （实现 `breaker.EventListenerSetter`；observe-resilience 的 WrapExecutor
-  即用它）；listener 向 sentinel 注册一次（`ensureRouteListener`，sync.Once），并
-  在 `ensureRules` 里按服务注册路由。状态 1:1 映射：sentinel Open/HalfOpen/Closed →
-  `breaker.Open/BreakerHalfOpen/BreakerClosed`。无路由的服务（go-spring
-  之外加载的熔断规则）被静默忽略。
+  `routeListener` 按 `rule.Resource` 把事件分发到驱动自己维护的、按服务的
+  `breakerMirror`（存在 `breakerRoutes` sync.Map 中）。listener 向 sentinel 注册一次
+  （`ensureRouteListener`，sync.Once），镜像在 `ensureRules` 里按服务创建、在 `Close`
+  时删除。状态 1:1 映射：sentinel Open/HalfOpen/Closed →
+  `breaker.StateOpen/StateHalfOpen/StateClosed`。该镜像就是驱动发布
+  `resilience.client.breaker.*` 指标的数据源（见 observe.go）。无路由的服务
+  （go-spring 之外加载的熔断规则）被静默忽略。
 - **block 结果**：`mapBlockError` 把 sentinel 的 block 原因翻译成中立哨兵错误 ——
   `BlockTypeCircuitBreaking` → `ErrCircuitOpen`、`BlockTypeIsolation` →
   `ErrBulkheadFull`、其余（即 flow 拒绝）→ `ErrRateLimited` —— 调用方只 import
@@ -171,10 +171,10 @@ policy 并**清空 loaded 集合**。sentinel 的 `LoadRulesOfResource` 会替�
 | `RateLimit` + `Window` | flow `Threshold`（按窗口归一化：每秒 × StatIntervalInMs/1000）+ `StatIntervalInMs` | Window → 1000ms；`<=0` 不安装 |
 | `RateLimitMaxWait` | flow `ControlBehavior=Throttling` + `MaxQueueingTimeMs`（排队而非拒绝） | 0 → Reject |
 | `RateLimitWarmUpDuration`/`WarmUpColdFactor` | flow `WarmUp` + `WarmUpPeriodSec`/`WarmUpColdFactor`（与排队互斥，预热优先，只配 Reject） | 0 → Direct；ColdFactor → 3 |
-| `BreakerStrategy=error-rate` | circuitbreaker.ErrorRatio；`Threshold=ErrorRateThreshold`；`MinRequestAmount=MinRequests` | MinRequests → 1 |
-| `BreakerStrategy=slow-call` | circuitbreaker.SlowRequestRatio；`MaxAllowedRtMs=SlowCallDurationThreshold`；`Threshold=SlowCallRateThreshold` | 同上 |
-| `BreakerStrategy=error-count` | circuitbreaker.ErrorCount；`Threshold=float64(ErrorThreshold)`（精确） | 同上 |
-| `BreakerStrategy=consecutive` | 同 error-count —— **近似**（sentinel 无连续失败熔断） | — |
+| `BreakerStrategy=error-rate` | circuitbreaker.ErrorRatio；`Threshold=ErrorRateThreshold`；`MinRequestAmount=MinRequests` | ErrorRateThreshold → 0.5；MinRequests → 5 |
+| `BreakerStrategy=slow-call` | circuitbreaker.SlowRequestRatio；`MaxAllowedRtMs=SlowCallDurationThreshold`；`Threshold=SlowCallRateThreshold` | 必须成对配置，无默认值 |
+| `BreakerStrategy=error-count` | circuitbreaker.ErrorCount；`Threshold=float64(ErrorThreshold)`（精确） | ErrorThreshold → 5 |
+| `BreakerStrategy=consecutive` | 同 error-count —— **近似**（sentinel 无连续失败熔断） | ErrorThreshold → 5 |
 | `OpenDuration` | `RetryTimeoutMs` | 5000ms |
 | `BreakerWindow` | `StatIntervalMs` | 1000ms |
 | `HalfOpenRequests` | `ProbeNum` | 0/1 → 1 |
@@ -234,11 +234,12 @@ cd starter/starter-governance-sentinel && go test ./...
 source 推送变更）：下次 Execute 重载规则、限流消失。注意 refresh 会重置熔断统计窗口
 （§2.4）。
 
-### 4.6 熔断事件观测
+### 4.6 熔断状态观测
 
-实现 `breaker.EventListener`，在该服务首次 Execute 前经
-`SetBreakerEventListener` 挂接：上述演练中会依次触发 Closed→Open→HalfOpen→Closed
-状态迁移 —— 即 observe-resilience WrapExecutor 消费的 seam。
+驱动为每个服务维护 sentinel 熔断状态的本地镜像（sentinel 只通过进程级 listener
+暴露迁移、没有状态查询 API），并发布为 `resilience.client.breaker.state`、
+`...transitions_total{to}`。上述演练中镜像会依次经过
+Closed→Open→HalfOpen→Closed；抓取 metrics 端点即可看到。
 
 ---
 
@@ -249,7 +250,7 @@ source 推送变更）：下次 Execute 重载规则、限流消失。注意 ref
 | import 时进程 panic："sentinel init failed" | `sentinel.InitDefault()` 所需环境损坏（配置/日志目录） | 修复环境 —— panic 是刻意的 import 期大声失败（嫌疑 #1）。 |
 | 启动报 `no driver named "sentinel"` | 未 blank-import starter | 加 `import _ "go-spring.org/starter-governance-sentinel"`。 |
 | 消费方仍走内置 resilience | 治理文档的 `spring.resilience.driver` 未设为 sentinel | 设 `spring.resilience.driver=sentinel` —— 全进程一个开关，一处切换处处生效（嫌疑 #3）。 |
-| 熔断器从不打开 | 未达 `MinRequestAmount`，或 `ErrorThreshold`/窗口配比不当 | 对照 §2.6 默认值表（MinRequests → 1、窗口 → 1000ms）。 |
+| 熔断器从不打开 | 未达 `MinRequestAmount`，或 `ErrorThreshold`/窗口配比不当 | 对照 §2.6 默认值表（MinRequests → 5、窗口 → 1000ms）。 |
 | 配置推送后熔断状态像是被重置 | `Refresh` 清空规则；sentinel 替换规则并重置统计窗口 | 刻意的惰性重载语义（§2.4）。 |
 | sentinel 控制台/指标里服务数翻倍 | bulkhead 挂在 `service$bulkhead` 名下 | 驱动内部命名（嫌疑 #2）—— 按后缀过滤。 |
 | 设了 `MaxRetries` 却不重试 | `ShouldRetry(err)` 为 false，或 `Timeout` 在下次尝试前耗尽 | 检查 policy 的重试谓词与预算。 |

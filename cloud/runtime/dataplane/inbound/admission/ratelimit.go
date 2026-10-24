@@ -55,10 +55,10 @@ func NewRateLimiter(p Policy, scope string, limiter ratelimit.ClusterLimiter) *R
 	}
 }
 
-// Allow charges one request against the budget. A nil limiter or a zero
-// p.RateLimit admits everything.
+// Allow charges one request against the budget. A zero p.RateLimit admits
+// everything.
 func (l *RateLimiter) Allow(ctx context.Context) bool {
-	if l == nil || l.p.RateLimit <= 0 {
+	if l.p.RateLimit <= 0 {
 		return true
 	}
 	admitted, err := ratelimit.Charge(ctx, l.limiter, l.scope, l.spec, l.budget, 1)
@@ -68,6 +68,16 @@ func (l *RateLimiter) Allow(ctx context.Context) bool {
 		return true
 	}
 	return admitted
+}
+
+// Usage reports how much of the LOCAL budget is spent. The zero Usage means
+// there is nothing to report: the stage is unlimited, or a ClusterLimiter is
+// configured and the store, not the local budget, is charged.
+func (l *RateLimiter) Usage() ratelimit.Usage {
+	if l.limiter != nil || l.p.RateLimit <= 0 {
+		return ratelimit.Usage{}
+	}
+	return l.budget.Usage()
 }
 
 // rateSpecFor is the policy's view of the rate-limit stage.

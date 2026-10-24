@@ -54,7 +54,7 @@ type ServiceRegister func(svr server.Server) error
 
 // Config defines Kitex server configuration, bound from ${spring.kitex.server}.
 type Config struct {
-	Addr        string `value:"${addr}"`
+	Addr        string `value:"${addr}" expr:"$ != ''"`
 	ServiceName string `value:"${service.name:=kitex}"`
 
 	// RegistryAddr is the etcd registry address. Empty (the default) runs a
