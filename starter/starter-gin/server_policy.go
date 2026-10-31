@@ -23,17 +23,18 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	"go-spring.org/cloud/runtime"
-	"go-spring.org/cloud/runtime/dataplane/inbound/admission"
-	observability "go-spring.org/cloud/runtime/dataplane/inbound/observe"
-	"go-spring.org/cloud/runtime/dataplane/kernel/fault"
-	"go-spring.org/cloud/runtime/dataplane/kernel/label"
+	"go-spring.org/cloud/governance"
+	"go-spring.org/cloud/governance/capability/fault"
+	"go-spring.org/cloud/governance/capability/label"
+	"go-spring.org/cloud/governance/capability/traffic"
+	"go-spring.org/cloud/governance/dataplane/inbound/admission"
+	observability "go-spring.org/cloud/governance/dataplane/inbound/observe"
 )
 
 // buildServerPolicy builds the inbound governance middleware. The inbound
-// governance object comes from the injected [runtime.Runtime], so this server
+// governance object comes from the injected [governance.Runtime], so this server
 // gets its rate-limit / bulkhead limits from the governance document's
-// SERVER block (spring.governance.server.*). A nil center — a standalone call, or
+// SERVER block (server.*). A nil center — a standalone call, or
 // an app that does not import governance — is normalized inside the center to an
 // unarmed authority, whose guard is a transparent pass-through, so the middleware
 // runs but never rejects (the handler runs once, untouched). The object resolves
@@ -41,13 +42,13 @@ import (
 // can tighten inbound governance without a restart, independently of every
 // outbound client's policy. The center composes the observe object around the
 // guard, so refusals emit span + counter + histogram + access log.
-func buildServerPolicy(cfg Config, center *runtime.Runtime) (gin.HandlerFunc, error) {
+func buildServerPolicy(cfg Config, center *governance.Runtime, prop traffic.Propagator) (gin.HandlerFunc, error) {
 	service := label.ServiceLabel("gin", cfg.Address)
 	in, err := center.InboundFor("gin", service)
 	if err != nil {
 		return nil, err
 	}
-	return resilienceServerPolicy(in), nil
+	return resilienceServerPolicy(in, prop), nil
 }
 
 // resilienceServerPolicy is the inbound governance middleware: each request runs
@@ -60,12 +61,15 @@ func buildServerPolicy(cfg Config, center *runtime.Runtime) (gin.HandlerFunc, er
 // [admission.Policy] has no retry field, so the engine built from the
 // server block has no retry stage at all; a Written() guard also prevents reentry
 // regardless.
-func resilienceServerPolicy(in *runtime.Inbound) gin.HandlerFunc {
+func resilienceServerPolicy(in *governance.Inbound, prop traffic.Propagator) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var served bool
 		// The object emits the request span, the inbound family metrics and the
 		// access log; the route is named by the same word the fault rules match on.
-		op := observability.ServerOperation{Action: faultTarget(c).Action}
+		// The base constructor records the request's traffic class on the
+		// operation's metadata, so a rule matches match.traffic=... like any other
+		// dimension.
+		op := observability.NewServerOperation(c.Request.Context(), prop, faultTarget(c).Action)
 		err := in.Run(c.Request.Context(), op, func(ctx context.Context) error {
 			if served {
 				return nil // reentry guard: handler already ran this request
@@ -81,17 +85,23 @@ func resilienceServerPolicy(in *runtime.Inbound) gin.HandlerFunc {
 			}
 			return nil
 		})
-		var ref *runtime.Refusal
+		var ref *governance.Refusal
 		if errors.As(err, &ref) && !c.Writer.Written() {
-			c.AbortWithStatus(httpStatusFor(ref.Verdict()))
+			c.AbortWithStatus(httpStatusFor(ref))
 		}
 	}
 }
 
 // httpStatusFor maps an inbound refusal to the HTTP status a client can act on:
-// rate/bulkhead rejections are 429, an injected fault is 503.
-func httpStatusFor(kind admission.Verdict) int {
-	if kind == admission.VerdictFaultInjected {
+// rate/bulkhead rejections are 429; an injected fault follows the class the rule
+// declared — a business failure (the caller's mistake) is 400, anything else is
+// 503. Mapping every injected fault to 503 would make "inject a 4xx" impossible
+// and would teach the caller that a healthy downstream is down.
+func httpStatusFor(ref *governance.Refusal) int {
+	if ref.Verdict() == admission.VerdictFaultInjected {
+		if ref.Fault().Business() {
+			return http.StatusBadRequest
+		}
 		return http.StatusServiceUnavailable
 	}
 	return http.StatusTooManyRequests

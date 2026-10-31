@@ -22,9 +22,11 @@
 package StarterElasticsearch
 
 import (
+	"context"
 	"net/http"
 
-	"go-spring.org/cloud/runtime/dataplane/outbound/chain"
+	"go-spring.org/cloud/governance/capability/traffic"
+	"go-spring.org/cloud/governance/dataplane/outbound/chain"
 )
 
 // callFor derives a request's semantic identity — its method + URL path, see
@@ -34,6 +36,6 @@ import (
 // [resilience.NewRoundTripper] as the callFor callback, and every link of the
 // chain reads the operation from the Execute signature rather than from the
 // context. [Client.installTransport] wires it in.
-func callFor(req *http.Request) chain.Operation {
-	return operation(req.Method, req.URL.Path)
+func callFor(ctx context.Context, prop traffic.Propagator, req *http.Request) chain.Operation {
+	return operation(ctx, prop, req.Method, req.URL.Path)
 }

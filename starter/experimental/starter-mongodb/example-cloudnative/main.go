@@ -36,7 +36,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"go-spring.org/cloud/runtime/dataplane/outbound/chain"
+	"go-spring.org/cloud/governance/dataplane/outbound/chain"
 	"io"
 	"net/http"
 	"os"
@@ -46,7 +46,7 @@ import (
 	"syscall"
 	"time"
 
-	"go-spring.org/cloud/runtime/dataplane/kernel/discovery"
+	"go-spring.org/cloud/governance/capability/discovery"
 	"go-spring.org/spring/gs"
 	"go.mongodb.org/mongo-driver/v2/bson"
 

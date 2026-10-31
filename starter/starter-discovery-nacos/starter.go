@@ -37,7 +37,7 @@
 // separate starters with separate config prefixes.
 //
 // The registration core - the single discoveryServer bean that publishes into
-// every configured center (across backends) - lives in cloud/runtime/dataplane/kernel/discovery, which
+// every configured center (across backends) - lives in cloud/governance/capability/discovery, which
 // this package imports anyway, so it exists exactly once per process.
 package StarterDiscoveryNacos
 
@@ -49,8 +49,8 @@ import (
 	"github.com/nacos-group/nacos-sdk-go/v2/common/constant"
 	"github.com/nacos-group/nacos-sdk-go/v2/vo"
 	"go-spring.org/cloud/actuator/health"
-	"go-spring.org/cloud/runtime/controlplane/registration"
-	"go-spring.org/cloud/runtime/dataplane/kernel/discovery"
+	"go-spring.org/cloud/governance/capability/discovery"
+	"go-spring.org/cloud/governance/controlplane/registration"
 	"go-spring.org/log"
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/gs"
@@ -208,8 +208,8 @@ func (b *nacosBackend) UpdateWeight(ctx context.Context, inst registration.Insta
 
 // Resolve serves snapshots of the instances in this server's
 // namespace/group/cluster.
-func (b *nacosBackend) Resolve(ctx context.Context, name string, opts ...discovery.Option) ([]discovery.Endpoint, error) {
-	return b.disc.Resolve(ctx, name, opts...)
+func (b *nacosBackend) Resolve(ctx context.Context, name string) ([]discovery.Endpoint, error) {
+	return b.disc.Resolve(ctx, name)
 }
 
 // newNamingClient builds a Nacos naming client for the block's config and,

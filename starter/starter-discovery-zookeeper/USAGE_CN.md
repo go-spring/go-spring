@@ -3,8 +3,8 @@
 详细使用文档。概览见 [README](README_CN.md)。所有行为声明均已对照 starter 源码（`starter.go`、
 `registry.go`、`discovery.go`、`config.go`、`starter_test.go`、`registry_test.go`、
 `discovery_test.go`）、
-注册核心（`../starter-discovery/starter.go`、`../starter-discovery/config.go`）、`cloud/runtime/dataplane/kernel/discovery`
-接缝（`cloud/runtime/dataplane/kernel/discovery/registry.go`、`cloud/runtime/dataplane/kernel/loadbalance/pool.go`）与可运行的 [example/](example/)
+注册核心（`../starter-discovery/starter.go`、`../starter-discovery/config.go`）、`cloud/governance/capability/discovery`
+接缝（`cloud/governance/capability/discovery/registry.go`、`cloud/governance/capability/loadbalance/pool.go`）与可运行的 [example/](example/)
 （`example/check.sh` 跑单测 + docker-compose ZooKeeper 端到端启动）核实。**ZooKeeper 自身语义
 （会话、临时 znode、watcher、digest 认证）见
 [ZooKeeper 文档](https://zookeeper.apache.org/doc/current/zookeeperProgrammers.html)**——
@@ -12,7 +12,7 @@
 
 **激活条件**：每个 `spring.discovery.zookeeper.<name>` 块即一个注册中心 —— 一个共享会话、一套
 生命周期(仅 `ping=true` 时才有一次启动探测;`starter.go`)。名为 `zookeeper.<name>` 的 bean 同时导出
-`registration.Registry`（设置了 `spring.discovery.service-name` 时由 cloud/runtime/controlplane/registration 核心收集
+`registration.Registry`（设置了 `spring.discovery.service-name` 时由 cloud/governance/controlplane/registration 核心收集
 —— 纯消费方应用不注册任何实例）与 `discovery.Discovery`（按 bean 名引用，纯提供方不为读侧
 付出成本）。本 starter **两侧都做**：把本实例以临时 znode 发布到 ZooKeeper，同时携带客户端
 发现后端（见 §1 消费侧说明）。不监听端口 —— 注册经核心的 `discoveryServer` 接进应用生命周期。
@@ -280,13 +280,13 @@ zk 侧检查均可用容器内 `zkCli.sh`（见 §1）或任意 zk 客户端完�
 嫌疑清单（保留旧版条目，另记新发现）：
 
 1. ~~`spring.discovery.*` 实例 key 绑定在本 starter 内~~ 2026-09 已解决：`${spring.discovery}`
-   身份块现在位于共享的 cloud/runtime/controlplane/registration 核心（`RegistrationConfig`），每个后端 starter 恰好
+   身份块现在位于共享的 cloud/governance/controlplane/registration 核心（`RegistrationConfig`），每个后端 starter 恰好
    绑定一次。
 2. 会话丢失后无重注册：zk 库会透明重连，但会话一旦过期临时节点已删，运行中的进程毫无感知——
    实例无声从发现侧消失，直到重启。候选修法是 SessionW/State 驱动的重注册循环。
 3. ~~不带消费侧~~ 已解决：`discovery.go` 自带发现后端——自 2026-09 多注册中心命名块
    改造起，它就是该块的 bean（`zookeeper.<name>`），同时实现 `registration.Registry` 与
-   `discovery.Discovery`；注册收进共享的 cloud/runtime/controlplane/registration 核心。
+   `discovery.Discovery`；注册收进共享的 cloud/governance/controlplane/registration 核心。
 4. `addr` 写入时不校验 `host:port` 形态（consul 校验数字端口）；畸形值原样存储，只在消费方
    拨号时失败。
 5. 启动校验发生在 Run 而非绑定期——空 `service-name` 要等应用其他部分都起来了才报（仍是

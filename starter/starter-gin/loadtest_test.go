@@ -22,7 +22,7 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
-	"go-spring.org/cloud/runtime/dataplane/kernel/traffic"
+	"go-spring.org/cloud/governance/capability/traffic"
 	"go-spring.org/stdlib/testing/assert"
 )
 
@@ -32,13 +32,13 @@ func TestLoadTestMiddleware_TagsContextFromHeader(t *testing.T) {
 	e := gin.New()
 	e.Use(LoadTest(prop))
 	e.GET("/x", func(c *gin.Context) {
-		saw = prop.IsLoadTest(c.Request.Context())
+		saw = traffic.IsLoadTest(c.Request.Context(), prop)
 		c.Status(http.StatusOK)
 	})
 
 	// With the marker header: handler sees a load-test context.
 	req := httptest.NewRequest(http.MethodGet, "/x", nil)
-	req.Header.Set("X-LoadTest", "1")
+	req.Header.Set("X-Traffic", "loadtest")
 	e.ServeHTTP(httptest.NewRecorder(), req)
 	assert.That(t, saw).True()
 
@@ -49,7 +49,7 @@ func TestLoadTestMiddleware_TagsContextFromHeader(t *testing.T) {
 	assert.That(t, saw).False()
 }
 
-func TestLoadTestMiddleware_RebasedHeaderAndTruthyValues(t *testing.T) {
+func TestLoadTestMiddleware_RebasedHeaderAndOtherKinds(t *testing.T) {
 	var saw bool
 	// The header a hop reads belongs to the propagator, so a company re-bases it
 	// there (not in the middleware config).
@@ -59,18 +59,18 @@ func TestLoadTestMiddleware_RebasedHeaderAndTruthyValues(t *testing.T) {
 	e := gin.New()
 	e.Use(LoadTest(prop))
 	e.GET("/x", func(c *gin.Context) {
-		saw = prop.IsLoadTest(c.Request.Context())
+		saw = traffic.IsLoadTest(c.Request.Context(), prop)
 	})
 
-	// Custom header, the wire value matches.
-	for _, v := range []string{"1"} {
+	// Custom header, the load-test label under it.
+	for _, v := range []string{"loadtest"} {
 		saw = false
 		req := httptest.NewRequest(http.MethodGet, "/x", nil)
 		req.Header.Set("X-Stress", v)
 		e.ServeHTTP(httptest.NewRecorder(), req)
 		assert.That(t, saw).True()
 	}
-	// Any other value is real traffic.
+	// Any other label is a different kind, not load-test traffic.
 	for _, v := range []string{"true", "ON", "0"} {
 		saw = false
 		req := httptest.NewRequest(http.MethodGet, "/x", nil)
@@ -78,7 +78,7 @@ func TestLoadTestMiddleware_RebasedHeaderAndTruthyValues(t *testing.T) {
 		e.ServeHTTP(httptest.NewRecorder(), req)
 		assert.That(t, saw).False()
 	}
-	// Non-truthy value does not tag.
+	// Another label does not classify as load-test traffic.
 	saw = false
 	req := httptest.NewRequest(http.MethodGet, "/x", nil)
 	req.Header.Set("X-Stress", "0")
@@ -88,7 +88,7 @@ func TestLoadTestMiddleware_RebasedHeaderAndTruthyValues(t *testing.T) {
 	// The default header does NOT match when a custom one is configured.
 	saw = false
 	req2 := httptest.NewRequest(http.MethodGet, "/x", nil)
-	req2.Header.Set("X-LoadTest", "1")
+	req2.Header.Set("X-Traffic", "loadtest")
 	e.ServeHTTP(httptest.NewRecorder(), req2)
 	assert.That(t, saw).False()
 }

@@ -19,27 +19,34 @@ package gormresilience
 import (
 	"context"
 	"errors"
-	"go-spring.org/cloud/runtime/dataplane/outbound/chain"
+	"go-spring.org/cloud/governance/dataplane/outbound/chain"
 	"testing"
 
-	"go-spring.org/cloud/runtime/dataplane/outbound/resilience"
+	"go-spring.org/cloud/governance/dataplane/outbound/resilience"
 	"go-spring.org/stdlib/testing/assert"
 	"gorm.io/gorm"
 )
 
-func newExec(t *testing.T, p resilience.Policy) chain.Executor {
+func newExec(t *testing.T, p any) chain.Executor {
 	t.Helper()
-	d := resilience.NewDefaultDriver(nil)
-	exec, err := d.NewExecutor("svc", p)
-	assert.Error(t, err).Nil()
-	return exec
+	m := resilience.NewManager(resilience.NewDefaultDriver(nil))
+	switch v := p.(type) {
+	case nil:
+	case resilience.Limits:
+		assert.Error(t, m.ApplyLimits(resilience.LimitsSettings{Default: v})).Nil()
+	case resilience.BreakerPolicy:
+		assert.Error(t, m.ApplyBreaker(resilience.BreakerSettings{Default: v})).Nil()
+	case resilience.RateLimitPolicy:
+		assert.Error(t, m.ApplyRateLimit(resilience.RateLimitSettings{Default: v})).Nil()
+	}
+	return m.ExecutorFor("svc")
 }
 
 // TestRunGuardRecordNotFoundNeverTripsBreaker is the gorm-specific nuance:
 // gorm.ErrRecordNotFound is a normal outcome, not a failure, so no amount of
 // misses may open the circuit.
 func TestRunGuardRecordNotFoundNeverTripsBreaker(t *testing.T) {
-	exec := newExec(t, resilience.Policy{ErrorThreshold: 2})
+	exec := newExec(t, resilience.BreakerPolicy{ErrorThreshold: 2})
 	defer func() { _ = exec.Close() }()
 
 	for range 10 {
@@ -56,7 +63,7 @@ func TestRunGuardRecordNotFoundNeverTripsBreaker(t *testing.T) {
 // TestRunGuardRealErrorsTripBreaker confirms genuine failures open the circuit
 // and the rejection is surfaced to the caller.
 func TestRunGuardRealErrorsTripBreaker(t *testing.T) {
-	exec := newExec(t, resilience.Policy{ErrorThreshold: 2})
+	exec := newExec(t, resilience.BreakerPolicy{ErrorThreshold: 2})
 	defer func() { _ = exec.Close() }()
 
 	boom := errors.New("connection reset")
@@ -70,7 +77,7 @@ func TestRunGuardRealErrorsTripBreaker(t *testing.T) {
 // is spent, further operations are rejected as rate-limited without invoking
 // the stub.
 func TestRunGuardRateLimitRejects(t *testing.T) {
-	exec := newExec(t, resilience.Policy{RateLimit: 1, Burst: 2})
+	exec := newExec(t, resilience.RateLimitPolicy{RateLimit: 1, Burst: 2})
 	defer func() { _ = exec.Close() }()
 
 	var ran int

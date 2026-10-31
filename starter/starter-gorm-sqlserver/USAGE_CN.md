@@ -101,7 +101,7 @@ func main() {
 ```go
 package main
 
-import "go-spring.org/cloud/runtime/dataplane/kernel/discovery"
+import "go-spring.org/cloud/governance/capability/discovery"
 
 func init() {
     gs.Provide(func() (discovery.Discovery, error) {
@@ -299,12 +299,12 @@ example 的 `discovery` 实例用哑值 `0.0.0.0:0`；`Response from discovered 
 ```bash
 cd example-load && docker compose up -d
 go run . -duration=10s                       # SELECT 1 基线吞吐
-# 放火 —— 编辑 conf/app.properties（cloud/runtime/controlplane/governance 热加载）：
-#   spring.governance.client.fault.rate=0.5  spring.governance.client.fault.error=generic
+# 放火 —— 编辑 conf/app.properties（各策略根 热加载）：
+#   spring.fault.client.rate=0.5  spring.fault.client.error=generic
 go run . -duration=10s                       # 错误分布显示 ~50% 注入
 ```
 
-熔断（`spring.governance.client.default.error-threshold=20`）触发同样体现在错误分布里；`WithContext`
+熔断（`spring.governance.client.resilience.error-threshold=20`）触发同样体现在错误分布里；`WithContext`
 透传 harness 截止时间，500ms 超时可打断在途查询。
 
 ### 4.4 可观测（example-otel）

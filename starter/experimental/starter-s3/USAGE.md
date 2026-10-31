@@ -116,7 +116,7 @@ spring.s3.instances.b.secret-access-key=minioadmin
 spring.actuator.addr=:9370
 
 # --- governance (optional: retry/limiter/breaker/fault under s3:<endpoint>) ---
-spring.governance.source.file.path=conf/governance.yaml
+# (the file source is wired in source.go; no property key)
 ```
 
 Local dependency: `cd example && docker compose up -d` (MinIO :9000/:9001, plus an
@@ -157,8 +157,8 @@ gs.Run()
   │    │        static creds + region + bucket-lookup + a dynamicTransport inside minio.Options
   │    │      → NewClient builds the *Client wrapper: identity, exec =
   │    │        center.ExecutorFor("s3", "s3:<endpoint>") (center is the injected
-  │    │        *runtime.Runtime, holding the *resilience.Manager /
-  │    │        *clientfault.ClientManager beans), then installs the transport —
+  │    │        *governance.Runtime, holding the *resilience.Manager /
+  │    │        *clientfault.Manager beans), then installs the transport —
   │    │        declaration outermost, resilience inside
   │    ├─ ping=true only: fail-fast probe HealthCheck(ctx, client) — one ListBuckets
   │    │      straight to the raw client; an unreachable endpoint or rejected credentials
@@ -176,7 +176,7 @@ setter, while the real transport (declaration + resilience) is assembled by the 
 RoundTripper indirection (RWMutex-guarded, not atomic.Value, because the active tripper is
 one of several concrete types) — and returns the `*Client` wrapper built over it:
 `NewClient` swaps the declaration+resilience stack in (its executor comes from the
-`*runtime.Runtime` the ctor passes down). Until the swap happens, requests pass
+`*governance.Runtime` the ctor passes down). Until the swap happens, requests pass
 straight through to `http.DefaultTransport`.
 
 ### 2.3 One upload, layer by layer
@@ -193,12 +193,12 @@ straight through to `http.DefaultTransport`.
    attempt (retries included); a declaration made per attempt inside the executor would be
    read by nobody.
 3. The request enters the executor built at
-   construction for service `s3:<endpoint>` from the `*runtime.Runtime` the ctor passed
-   down (`*resilience.Manager` / `*clientfault.ClientManager` beans) — retry / rate-limit /
+   construction for service `s3:<endpoint>` from the `*governance.Runtime` the ctor passed
+   down (`*resilience.Manager` / `*clientfault.Manager` beans) — retry / rate-limit /
    circuit-breaker / bulkhead when a governance rules source applies them (hot-reloadable through
    the governance center); the resilience manager is required and always supplied by the
    container, so there is no unmanaged/observe-only fallback. The
-   `*clientfault.ClientManager` (nil-safe) may inject failures for drills. This executor is the SINGLE
+   `*clientfault.Manager` (nil-safe) may inject failures for drills. This executor is the SINGLE
    emitter: it opens the call span, records the call-level `db.client.operation.duration`,
    the attempt-level `db.client.attempt.duration` per retry, and writes one access log —
    covering the whole call, retries included (minio-go ships no OTel hooks of its own).

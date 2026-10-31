@@ -25,8 +25,8 @@ import (
 	"context"
 
 	"github.com/bradfitz/gomemcache/memcache"
-	"go-spring.org/cloud/runtime"
-	"go-spring.org/cloud/runtime/dataplane/kernel/discovery"
+	"go-spring.org/cloud/governance"
+	"go-spring.org/cloud/governance/capability/discovery"
 	"go-spring.org/stdlib/errutil"
 )
 
@@ -61,7 +61,7 @@ import (
 // ${spring.memcached} is built through it, and per-instance differences are
 // expressed through [Config].
 type Driver interface {
-	CreateClient(ctx context.Context, name string, c Config, center *runtime.Runtime) (*Client, error)
+	CreateClient(ctx context.Context, name string, c Config, center *governance.Runtime) (*Client, error)
 }
 
 // DefaultDriver is the default implementation of the Driver interface.
@@ -69,7 +69,7 @@ type DefaultDriver struct{}
 
 // CreateClient creates a new Memcached client based on the provided configuration.
 //
-// When c.ServiceName is set (and mesh mode is not enabled), the server set
+// When in-process discovery applies (a service name is set and the process is not in mesh mode), the server set
 // follows the discovery backend (backend, wired from the ${discovery} label)
 // instead of c.Servers: the client is built over a live
 // [memcache.ServerSelector] that re-reads the endpoint snapshot on every key
@@ -85,33 +85,34 @@ type DefaultDriver struct{}
 // center.Discovery() itself, failing construction when an entry routes by
 // service-name and the label names no bean.
 //
-// In mesh mode (mesh.Enabled) discovery is skipped entirely: a sidecar owns
+// In mesh mode discovery is skipped entirely (the runtime reports in-process discovery as off): a sidecar owns
 // discovery+LB, so the client connects straight to the configured static
 // Servers list (the service's stable DNS address).
-func (DefaultDriver) CreateClient(ctx context.Context, name string, c Config, center *runtime.Runtime) (*Client, error) {
+func (DefaultDriver) CreateClient(ctx context.Context, name string, c Config, center *governance.Runtime) (*Client, error) {
 	servers := c.Servers
-	// Resolve the discovery backend this entry cites. The label rides on the
-	// config (c.Discovery, already carrying the family default); an entry routed
-	// by service-name that cites no existing backend fails here, at construction.
-	var backend discovery.Discovery
-	if c.ServiceName != "" {
-		backend, _ = center.Discovery().Get(c.Discovery)
+	var client *memcache.Client
+	// Mesh mode wins over a configured service-name: the sidecar owns
+	// discovery+LB, so the client uses the configured Servers list (the stable
+	// addresses) and no resolver is built.
+	if !center.UsesDiscovery(c.ServiceName) {
+		client = memcache.New(servers...)
+	} else {
+		// Resolve the discovery backend this entry cites. The label rides on the
+		// config (c.Discovery, already carrying the family default); an entry
+		// routed by service-name that cites no existing backend fails here, at
+		// construction.
+		backend, _ := center.Discovery().Get(c.Discovery)
 		if backend == nil {
 			return nil, errutil.Explain(nil, "memcached: instance %q routes by service-name but cites discovery backend %q, which names no bean", name, c.Discovery)
 		}
-	}
-	// A nil resolver (service-name unset, or mesh mode where a sidecar owns
-	// discovery+LB) means the caller uses the configured Servers list.
-	// Resolver freshness lives inside the backend, so there is nothing to release.
-	resolver, err := discovery.NewResolver(ctx, backend, c.ServiceName, discovery.WithScheme(c.Scheme))
-	if err != nil {
-		return nil, errutil.Explain(err, "memcached: discovery resolve %q failed", c.ServiceName)
-	}
-	var client *memcache.Client
-	if resolver != nil {
 		// Fail fast on an unusable cluster: the live selector tolerates a later
 		// empty snapshot per operation, but booting against one is a
 		// misconfiguration the operator should see now.
+		// Resolver freshness lives inside the backend, so there is nothing to release.
+		resolver, err := discovery.NewResolver(ctx, backend, c.ServiceName, c.Scheme)
+		if err != nil {
+			return nil, errutil.Explain(err, "memcached: discovery resolve %q failed", c.ServiceName)
+		}
 		eps, err := resolver(ctx)
 		if err != nil {
 			return nil, errutil.Explain(err, "memcached: discovery resolve %q failed", c.ServiceName)
@@ -120,8 +121,6 @@ func (DefaultDriver) CreateClient(ctx context.Context, name string, c Config, ce
 			return nil, errutil.Explain(nil, "memcached: discovery returned no endpoints for %q", c.ServiceName)
 		}
 		client = memcache.NewFromSelector(newLiveServers(resolver))
-	} else {
-		client = memcache.New(servers...)
 	}
 	if c.Timeout > 0 {
 		client.Timeout = c.Timeout

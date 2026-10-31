@@ -28,14 +28,15 @@ import (
 	"net/http"
 	"sync"
 
-	"go-spring.org/cloud/runtime/dataplane/kernel/label"
-	"go-spring.org/cloud/runtime/dataplane/outbound/chain"
+	"go-spring.org/cloud/governance/capability/label"
+	"go-spring.org/cloud/governance/capability/traffic"
+	"go-spring.org/cloud/governance/dataplane/outbound/chain"
 
 	influxdb2 "github.com/influxdata/influxdb-client-go/v2"
 	"github.com/influxdata/influxdb-client-go/v2/api"
 	"github.com/influxdata/influxdb-client-go/v2/api/write"
-	"go-spring.org/cloud/runtime"
-	"go-spring.org/cloud/runtime/dataplane/outbound/resilience"
+	"go-spring.org/cloud/governance"
+	"go-spring.org/cloud/governance/dataplane/outbound/resilience"
 	"go-spring.org/log"
 )
 
@@ -64,11 +65,15 @@ type Client struct {
 
 	// exec is the resilience executor protecting writes, applied by [NewClient]
 	// from the runtime, which is required to carry a
-	// [resilience.Manager]: [runtime.Runtime.ExecutorFor] panics without one.
+	// [resilience.Manager]: [governance.Runtime.ExecutorFor] panics without one.
 	exec chain.Executor
 	// serviceLabel is the resilience service key ("influxdb:<url>") exec scopes
 	// limiter/breaker state by.
 	serviceLabel string
+
+	// prop records the process traffic convention on each request's operation,
+	// so a rule can match a load-test call like any other dimension.
+	prop traffic.Propagator
 
 	// errOnce tracks the async-writer error drain goroutine.
 	errOnce sync.Once
@@ -82,12 +87,12 @@ type Client struct {
 // transport is not reachable and cannot be replaced), though its own write
 // helpers still go through the executor.
 //
-// center carries the container's facilities (see [runtime.Runtime]) and is
+// center carries the container's facilities (see [governance.Runtime]) and is
 // applied HERE so a Client cannot exist half-assembled: there is no Init step,
 // no later patching, and nothing the container has to remember to call. A
-// hand-built client must supply a [runtime.Runtime] over a
-// [resilience.Manager]: [runtime.Runtime.ResilienceClient] is required, so a nil
-// center is a construction error — [runtime.Runtime.ExecutorFor] panics —
+// hand-built client must supply a [governance.Runtime] over a
+// [resilience.Manager]: [governance.Runtime.ResilienceClient] is required, so a nil
+// center is a construction error — [governance.Runtime.ExecutorFor] panics —
 // never a graceful downgrade to an unprotected client.
 //
 // The resilience round-tripper derives each request's operation through
@@ -100,16 +105,20 @@ type Client struct {
 // The manager's ExecutorFor resolves its backing executor lazily, on each
 // Execute, so the call order relative to the center's wiring is
 // irrelevant.
-func NewClient(raw influxdb2.Client, transport http.RoundTripper, cfg Config, center *runtime.Runtime) *Client {
+func NewClient(raw influxdb2.Client, transport http.RoundTripper, cfg Config, center *governance.Runtime) *Client {
 	o := &Client{Client: raw, cfg: cfg}
 	o.serviceLabel = label.ServiceLabel("influxdb", cfg.ServerURL)
 	o.exec = center.ExecutorFor("influxdb", o.serviceLabel)
+	o.prop = center.TrafficPropagator()
 	// Only the driver's own indirection is swappable; anything else leaves the
 	// resilience transport uninstalled, so the client keeps the
 	// executor on its own write helpers but not on the raw transport.
 	if t, ok := transport.(*dynamicTransport); ok {
 		o.dyn = t
-		o.dyn.Swap(resilience.NewRoundTripper(http.DefaultTransport, o.exec, o.serviceLabel, callFor))
+		o.dyn.Swap(resilience.NewRoundTripper(http.DefaultTransport, o.exec, o.serviceLabel,
+			func(req *http.Request) chain.Operation {
+				return callFor(req.Context(), o.prop, req)
+			}))
 	}
 	return o
 }
@@ -135,7 +144,9 @@ func (o *Client) WritePoints(ctx context.Context, points ...*write.Point) error 
 		return errMissingOrgBucket()
 	}
 	w := o.WriteAPIBlocking(o.cfg.Org, o.cfg.Bucket)
-	return o.exec.Execute(ctx, chain.Operation{Service: o.serviceLabel}, nil, func(ctx context.Context) error {
+	op := chain.NewOperation(ctx, o.prop)
+	op.Service = o.serviceLabel
+	return o.exec.Execute(ctx, op, nil, func(ctx context.Context) error {
 		return w.WritePoint(ctx, points...)
 	})
 }

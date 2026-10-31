@@ -15,11 +15,11 @@
  */
 
 // Package StarterGovernanceEtcd adapts etcd as a governance rule source: it
-// watches one etcd key holding the governance rule document and pushes every
-// changed version into the governance center through the
-// [go-spring.org/cloud/runtime/controlplane/governance.Source] contract.
+// watches one etcd key holding the selection rule document and pushes every
+// changed version into the selection center through the
+// [go-spring.org/cloud/governance/controlplane/source.Source[loadbalance.Settings]] contract.
 //
-// It is the etcd member of the governance-source adapter family — the
+// It is the etcd member of the selection-source adapter family — the
 // Sentinel-datasource shape. The rule document is governance's own, not an
 // application-config import, so enabling governance never turns on app-property
 // refresh and vice versa; this module is therefore separate from
@@ -27,10 +27,10 @@
 // client exclusively, so it is free to carry its own instrumentation
 // independently of the config-import bootstrap client.
 //
-// Configure with ${spring.governance.source.etcd.*}:
+// Configure with ${source.etcd.*}:
 //
-//	spring.governance.source.etcd.endpoints=127.0.0.1:2379
-//	spring.governance.source.etcd.key=/app/governance.yaml
+//	source.etcd.endpoints=127.0.0.1:2379
+//	source.etcd.key=/app/governance.yaml
 //
 // The bean is registered only when that key is present, so importing this
 // package is inert otherwise.
@@ -41,7 +41,8 @@ import (
 	"reflect"
 	"time"
 
-	"go-spring.org/cloud/runtime/controlplane/governance"
+	"go-spring.org/cloud/governance/capability/loadbalance"
+	"go-spring.org/cloud/governance/controlplane/source"
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
@@ -53,13 +54,13 @@ import (
 var starterTag = log.RegisterAppTag("governance", "etcd")
 
 func init() {
-	gs.Module(gs.OnProperty("spring.governance.source.etcd"), func(r gs.BeanProvider, _ flatten.Storage) error {
+	gs.Module(gs.OnProperty("source.etcd"), func(r gs.BeanProvider, _ flatten.Storage) error {
 		r.Provide(func(ctx *gs.ContextProvider, c governanceEtcdConfig) (*EtcdSource, error) {
 			return NewEtcdSource(ctx.Context, c)
-		}, gs.IndexArg(1, gs.TagArg("${spring.governance.source.etcd:=}"))).
+		}, gs.IndexArg(1, gs.TagArg("${source.etcd:=}"))).
 			Init((*EtcdSource).Init).
 			Destroy((*EtcdSource).Close).
-			Export(gs.As[governance.Source]()).Caller(1)
+			Export(gs.As[source.Source[loadbalance.Settings]]()).Caller(1)
 		return nil
 	})
 }
@@ -72,10 +73,10 @@ type etcdKV interface {
 	Close() error
 }
 
-// EtcdSource is a governance.Source backed by one etcd key. The initial Get
+// EtcdSource is a source.Source[loadbalance.Settings] backed by one etcd key. The initial Get
 // seeds the snapshot (a missing key or bad document fails construction, so a
 // misconfigured path surfaces at startup); the Watch stream then delivers each
-// PUT, which re-parses through governance.Parse and pushes when the rules
+// PUT, which re-parses through source.Parse and pushes when the rules
 // actually changed. A bad value keeps the last good snapshot and logs.
 type EtcdSource struct {
 	kv     etcdKV
@@ -83,11 +84,11 @@ type EtcdSource struct {
 	format string
 	doc    string // latest document bytes (for dedupe before parsing)
 
-	// governance.PushSource is embedded so this transport inherits the [Source]
+	// source.PushSource[loadbalance.Settings] is embedded so this transport inherits the [Source]
 	// read and subscribe pair (the watch stream feeds it through apply).
 	// Embedding also promotes Push — the INTERNAL commit path that skips apply's
 	// parse and change-dedup guards — so callers must never call Push directly.
-	*governance.PushSource
+	*source.PushSource[loadbalance.Settings]
 
 	// cancel stops the watch stream. It is set by Init and called by Close with
 	// no lock: gs runs Init synchronously while wiring the bean and Destroy
@@ -125,11 +126,11 @@ func newEtcdSource(seedCtx context.Context, kv etcdKV, key, format string) (*Etc
 		return nil, errutil.Explain(nil, "governance etcd source: key %s is empty", key)
 	}
 	doc := string(resp.Kvs[0].Value)
-	cfg, err := governance.Parse(key, []byte(doc), format)
+	cfg, err := source.Parse[loadbalance.Settings](key, []byte(doc), format)
 	if err != nil {
 		return nil, err
 	}
-	return &EtcdSource{kv: kv, key: key, format: format, doc: doc, PushSource: governance.NewPushSource(cfg)}, nil
+	return &EtcdSource{kv: kv, key: key, format: format, doc: doc, PushSource: source.NewPushSource(cfg)}, nil
 }
 
 // Init opens the watch stream (the gs bean lifecycle hook). The stream runs
@@ -160,7 +161,7 @@ func (s *EtcdSource) Init() error {
 
 // Close stops the watch stream and closes the source's own client — the client
 // is built by the bean ctor and dies with the bean. Implements the
-// optional-close contract the governance center probes for on Destroy.
+// optional-close contract the selection center probes for on Destroy.
 func (s *EtcdSource) Close() error {
 	if s.cancel != nil { // never initialized — only the client to close
 		s.cancel()
@@ -175,7 +176,7 @@ func (s *EtcdSource) Close() error {
 // the center that applies it, so the trace_id is the one both lines carry.
 func (s *EtcdSource) apply(ctx context.Context, data string) {
 	ctx = log.WithFields(ctx, log.String("trace_id", randutil.Hex(16)))
-	cfg, err := governance.Parse(s.key, []byte(data), s.format)
+	cfg, err := source.Parse[loadbalance.Settings](s.key, []byte(data), s.format)
 	if err != nil {
 		log.Error(ctx, starterTag, err, "governance etcd source got an invalid value (keeping last good config)")
 		return

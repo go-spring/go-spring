@@ -19,10 +19,10 @@ package luohua
 import (
 	"context"
 
-	"go-spring.org/cloud/runtime/dataplane/kernel/ratelimit"
-	"go-spring.org/cloud/runtime/dataplane/outbound/chain"
+	"go-spring.org/cloud/governance/capability/ratelimit"
+	"go-spring.org/cloud/governance/dataplane/outbound/chain"
 
-	"go-spring.org/cloud/runtime/dataplane/outbound/resilience"
+	"go-spring.org/cloud/governance/dataplane/outbound/resilience"
 	"go-spring.org/log"
 )
 
@@ -49,9 +49,10 @@ type luohuaResilienceDriver struct {
 }
 
 // NewExecutor builds a luohua-flavored [chain.Executor] for service on top
-// of the bundled engine.
-func (d luohuaResilienceDriver) NewExecutor(service string, p resilience.Policy) (chain.Executor, error) {
-	inner, err := resilience.NewDefaultDriver(d.limiter).NewExecutor(service, p)
+// of the bundled engine. m is the manager the inner executor reads its policy
+// from; the wrapper forwards nothing because the inner executor already holds it.
+func (d luohuaResilienceDriver) NewExecutor(service string, m *resilience.Manager) (chain.Executor, error) {
+	inner, err := resilience.NewDefaultDriver(d.limiter).NewExecutor(service, m)
 	if err != nil {
 		return nil, err
 	}
@@ -79,18 +80,6 @@ func (e *luohuaExecutor) Execute(ctx context.Context, op chain.Operation, rec *c
 		return []log.Field{log.String("service", e.service)}
 	})
 	return e.inner.Execute(ctx, op, rec, fn)
-}
-
-// SetPolicySource forwards the manager to the inner executor, so the luohua
-// marker does not stand between the manager and the executor that follows its
-// config. Forwarding it is not optional: an inner executor that never receives
-// its source keeps the construction-time policy for every call, which means
-// per-rule matching and hot reload are silently off for
-// spring.resilience.driver=luohua — the marker would be the only reason.
-func (e *luohuaExecutor) SetPolicySource(src resilience.PolicySource) {
-	if s, ok := e.inner.(resilience.PolicySourceSetter); ok {
-		s.SetPolicySource(src)
-	}
 }
 
 func (e *luohuaExecutor) Close() error { return e.inner.Close() }

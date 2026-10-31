@@ -132,7 +132,7 @@ spring.observability.metrics.exporter=prometheus
 spring.observability.metrics.port=0        # /metrics 只走 actuator
 
 # --- governance(运行期故障注入)----------------------------------------------
-spring.governance.source.file.path=conf/governance.yaml
+# (the file source is wired in source.go; no property key)
 ```
 
 **conf/governance.yaml**(§4.4 的故障演练用它):
@@ -145,7 +145,8 @@ spring:
       fault:
         # rate: 0.2           # 配上 rate 即"点火",无需重启
         error: timeout
-        scope: loadtest       # 只有带 X-LoadTest 标记的流量受影响
+        match:
+          traffic: loadtest       # 只有带 X-Traffic 标记的流量受影响
 ```
 
 **验证**:
@@ -189,7 +190,7 @@ LoadTest → Recovery → RequestID(+propagate) → Tracing → Metrics → Acce
 理由(源自源码注释,已核对):
 
 - **LoadTest 最外层**:标记在任何东西之前落到请求 context 上,后续每一层——以及 handler
-  调用的每个出站 client——都能用 propagator 的 `IsLoadTest(ctx)` 分流。单次头查找;无标记即空操作。
+  调用的每个出站 client——都能用 `traffic.IsLoadTest(ctx, prop)` 分流。单次头查找;无标记即空操作。
 - **Recovery** 兜住所有内层的 panic,并上报到共享的 goutil panic 链(统一 panic 策略),
   不是裸用 echo 自带 Recover。
 - **RequestID 在 AccessLog 之前**:每条访问记录都带请求 id;id 同时存进请求 context
@@ -199,7 +200,7 @@ LoadTest → Recovery → RequestID(+propagate) → Tracing → Metrics → Acce
 - **admission 在 fault 外层**:被入站限流/隔离拦下(或放行)的请求不会再被放火;它产生的
   429/503 照样过 AccessLog/Tracing/Metrics。**无条件安装**——治理关着时 executor 是透明透传,
   只多一帧调用,别的不变。服务 label 是 `echo:<address>`(如 `echo::8080`),与治理规则一致:
-  `spring.governance.server.rules[N].service=echo::8080`,配 `rate-limit` / `max-concurrent` 等旋钮。拒绝映射为 **429**
+  `spring.governance.server.services[N].service=echo::8080`,配 `rate-limit` / `max-concurrent` 等旋钮。拒绝映射为 **429**
   (限流、隔离满);注入故障映射为 **503**。入站准入既没有重试也没有熔断——handler 已产生
   副作用就不能重放,配置里也不存在对应字段。
 - **fault 最内层**:注入的 503 出来时照样过 AccessLog/Tracing/Metrics——你放的火可观测。
@@ -208,9 +209,9 @@ LoadTest → Recovery → RequestID(+propagate) → Tracing → Metrics → Acce
 
 ### 2.3 一次请求,逐层走读
 
-带 `X-LoadTest: 1` 的 `GET /echo/world`,fault scope 已启用:
+带 `X-Traffic: loadtest` 的 `GET /echo/world`,流量类别匹配已启用:
 
-1. LoadTest 打标(propagator 的 `IsLoadTest(ctx) == true`)
+1. LoadTest 打标(`traffic.IsLoadTest(ctx, prop)`)
 2. Recovery 布防
 3. RequestID 生成/透传 id → 响应头
 4. Tracing 开 server span `{method} {route}`(无 OTel provider 时空操作)
@@ -218,8 +219,8 @@ LoadTest → Recovery → RequestID(+propagate) → Tracing → Metrics → Acce
 6. AccessLog 布防(字段在出口捕获)
 7. SecureHeaders/CORS/Gzip 按配置;BodyLimit 执行 `maxBodySize`
 8. fault:`_, err := srv.Fire(ctx, fault.Target{Service: "echo", Action: "GET /x"})`
-   ——`inj` 是注入的 `*serverfault.ServerManager` bean，内置的 target 会带上路由（`METHOD` + `c.Path()`），
-   所以规则可以只给单个接口放火；`scope: loadtest` 且有标记时,
+   ——`inj` 是注入的 `*serverfault.Manager` bean，内置的 target 会带上路由（`METHOD` + `c.Path()`），
+   所以规则可以只给单个接口放火；`match.traffic=loadtest` 且有标记时,
    约 `rate` 比例的请求拿到注入错误 → 503;其余放行
 9. 你的路由执行;响应按 6→5→4→3 解栈:访问记录落盘(按状态定级)、
    带 `http.request.method`/`http.route`/`http.response.status_code` 属性的耗时入库、
@@ -296,8 +297,8 @@ curl -i :8002/healthz    # echo 侧存活(starter 服务)
 4. 标记流量着火、正常流量无感:
 
 ```bash
-curl -i :8002/echo/x                          # 200(scope=loadtest,无标记)
-curl -i -H 'X-LoadTest: 1' :8002/echo/x       # ~20% → 503 service unavailable
+curl -i :8002/echo/x                          # 200(match.traffic=loadtest,无标记)
+curl -i -H 'X-Traffic: loadtest' :8002/echo/x       # ~20% → 503 service unavailable
 ```
 
 5. 在可观测面看火:访问日志 503 的 Warn 记录、耗时直方图的 503 桶、被注入请求的 span。
@@ -305,8 +306,8 @@ curl -i -H 'X-LoadTest: 1' :8002/echo/x       # ~20% → 503 service unavailable
 
 ### 4.5 压测标记演练
 
-把 `scope` 换成 `real` 则注入作用于无标记流量——只在专用环境用。handler 里
-propagator 的 `IsLoadTest(ctx)` 分流同一标记,业务代码可在合成流量下自动降级功能。
+把 `match.traffic` 换成 `real` 则注入作用于无标记流量——只在专用环境用。handler 里
+`traffic.IsLoadTest(ctx, prop)` 分流同一标记,业务代码可在合成流量下自动降级功能。
 
 ---
 

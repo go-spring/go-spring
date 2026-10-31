@@ -26,11 +26,11 @@ package StarterMilvus
 import (
 	"context"
 
-	"go-spring.org/cloud/runtime/dataplane/kernel/label"
-	"go-spring.org/cloud/runtime/dataplane/outbound/chain"
+	"go-spring.org/cloud/governance/capability/label"
+	"go-spring.org/cloud/governance/dataplane/outbound/chain"
 
 	"github.com/milvus-io/milvus-sdk-go/v2/client"
-	"go-spring.org/cloud/runtime"
+	"go-spring.org/cloud/governance"
 	"go-spring.org/stdlib/errutil"
 )
 
@@ -68,20 +68,20 @@ type Client struct {
 // exported seam taking an unexported *guardSlot could not be called from
 // outside the package, so it would be an exported name in appearance only.
 //
-// center carries the container's facilities (see [runtime.Runtime]), and is
+// center carries the container's facilities (see [governance.Runtime]), and is
 // applied HERE so a Client cannot exist half-assembled: there is no Init step,
 // no later patching, and nothing the container has to remember to call. A
-// hand-built client must supply a [runtime.Runtime] over a
-// [resilience.Manager]: [runtime.Runtime.ResilienceClient] is required, so a nil
-// center is a construction error — [runtime.Runtime.ExecutorFor] panics —
+// hand-built client must supply a [governance.Runtime] over a
+// [resilience.Manager]: [governance.Runtime.ResilienceClient] is required, so a nil
+// center is a construction error — [governance.Runtime.ExecutorFor] panics —
 // never a graceful downgrade to an unprotected client.
 //
-// The executor is resolved through [runtime.Runtime.ExecutorFor] and handed
+// The executor is resolved through [governance.Runtime.ExecutorFor] and handed
 // to the slot before any RPC can flow, so every subsequent call — the caller's
 // startup probe included — already runs under the guard. The manager resolves
 // its backing executor lazily, on each Execute, so the call order relative to
 // the center's wiring is irrelevant.
-func NewClient(ctx context.Context, cfg Config, center *runtime.Runtime) (*Client, error) {
+func NewClient(ctx context.Context, cfg Config, center *governance.Runtime) (*Client, error) {
 	slot := &guardSlot{}
 	raw, err := client.NewClient(ctx, client.Config{
 		Address:     cfg.Addr,
@@ -96,7 +96,7 @@ func NewClient(ctx context.Context, cfg Config, center *runtime.Runtime) (*Clien
 	o := &Client{Client: raw, cfg: cfg}
 	o.serviceLabel = label.ServiceLabel("milvus", cfg.Addr)
 	o.exec = center.ExecutorFor("milvus", o.serviceLabel)
-	slot.apply(o.exec, o.serviceLabel)
+	slot.apply(o.exec, o.serviceLabel, center.TrafficPropagator())
 	return o, nil
 }
 

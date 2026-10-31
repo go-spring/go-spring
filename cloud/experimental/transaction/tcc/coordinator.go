@@ -23,8 +23,9 @@ import (
 	"sync"
 	"time"
 
-	"go-spring.org/cloud/runtime/dataplane/outbound/chain"
-	"go-spring.org/cloud/runtime/dataplane/outbound/resilience"
+	"go-spring.org/cloud/governance/capability/traffic"
+	"go-spring.org/cloud/governance/dataplane/outbound/chain"
+	"go-spring.org/cloud/governance/dataplane/outbound/resilience"
 	"go-spring.org/log"
 	"go-spring.org/stdlib/errutil"
 	"go.opentelemetry.io/otel"
@@ -47,6 +48,13 @@ func WithStore(s Store) Option { return func(c *coordinator) { c.store = s } }
 // WithObserver sets the [Observer] used to instrument every participant phase,
 // e.g. a starter that opens otel spans.
 func WithObserver(o Observer) Option { return func(c *coordinator) { c.observer = o } }
+
+// WithTraffic sets the process traffic convention used to stamp each phase's
+// operation, so a fault rule can target match.traffic. Without it the
+// coordinator uses go-spring's standard binding.
+func WithTraffic(prop traffic.Propagator) Option {
+	return func(c *coordinator) { c.prop = prop }
+}
 
 // instrumentSet bundles the metrics a TCC transaction records: one per process,
 // resolved lazily on first use so the set binds to whichever OTel global
@@ -82,7 +90,7 @@ func resetInstruments() { instruments = sync.OnceValue(buildInstruments) }
 // ones in reverse (on any try failure). With no options it uses no store and no
 // observer, which is a valid transparent setup for tests and development.
 func NewCoordinator(opts ...Option) Coordinator {
-	c := &coordinator{}
+	c := &coordinator{prop: traffic.NewDefaultPropagator(traffic.DefaultBinding())}
 	for _, opt := range opts {
 		opt(c)
 	}
@@ -92,6 +100,7 @@ func NewCoordinator(opts ...Option) Coordinator {
 type coordinator struct {
 	store    Store
 	observer Observer
+	prop     traffic.Propagator
 }
 
 // triedParticipant records a participant whose Try ran, with the value it
@@ -258,7 +267,7 @@ func (c *coordinator) runPhase(ctx context.Context, txID string, p Participant, 
 	}
 
 	var result any
-	err := runWithPolicy(ctx, p.Retry, p.Name, func(ctx context.Context) error {
+	err := runWithPolicy(ctx, c.prop, p.Retry, p.Name, func(ctx context.Context) error {
 		var e error
 		result, e = fn(ctx)
 		return e
@@ -357,16 +366,19 @@ func isTerminal(s Status) bool {
 
 // runWithPolicy runs fn once when the policy is zero, or under the bundled
 // resilience "default" executor (retry, per-attempt timeout, ...) otherwise. It
-// reuses [resilience.Policy] so TCC phase retries and outbound resilience share
+// reuses [resilience.Limits] so TCC phase retries and outbound resilience share
 // one knob set instead of duplicating retry logic here.
-func runWithPolicy(ctx context.Context, p RetryPolicy, resource string, fn func(context.Context) error) error {
+func runWithPolicy(ctx context.Context, prop traffic.Propagator, p RetryPolicy, resource string, fn func(context.Context) error) error {
 	if p.IsZero() {
 		return fn(ctx)
 	}
-	exec, err := resilience.NewDefaultDriver(nil).NewExecutor(resource, resilience.Policy{Retry: p})
-	if err != nil {
+	mgr := resilience.NewManager(resilience.NewDefaultDriver(nil))
+	if err := mgr.ApplyLimits(resilience.LimitsSettings{Default: resilience.Limits{Retry: p}}); err != nil {
 		return err
 	}
-	defer func() { _ = exec.Close() }()
-	return exec.Execute(ctx, chain.Operation{Service: resource}, nil, fn)
+	defer func() { _ = mgr.Close() }()
+	exec := mgr.ExecutorFor(resource)
+	op := chain.NewOperation(ctx, prop)
+	op.Service = resource
+	return exec.Execute(ctx, op, nil, fn)
 }

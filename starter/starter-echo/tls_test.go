@@ -33,6 +33,7 @@ import (
 	"time"
 
 	"github.com/labstack/echo/v4"
+	"go-spring.org/cloud/governance/capability/traffic"
 	"go-spring.org/cloud/security"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/testing/assert"
@@ -75,7 +76,7 @@ func TestEchoServer_MTLS(t *testing.T) {
 	}
 	svr, err := NewSimpleEchoServer(func(e *echo.Echo) {
 		e.GET("/ping", func(c echo.Context) error { return c.String(http.StatusOK, "pong") })
-	}, nil, cfg, testCenter(nil), nil)
+	}, nil, cfg, testCenter(nil), traffic.NewDefaultPropagator(traffic.DefaultBinding()))
 	assert.That(t, err).Nil()
 
 	ctx, cancel := context.WithCancel(context.Background())

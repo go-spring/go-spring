@@ -18,11 +18,11 @@ package StarterMilvus
 
 import (
 	"context"
-	"go-spring.org/cloud/runtime/dataplane/outbound/chain"
+	"go-spring.org/cloud/governance/dataplane/outbound/chain"
 	"testing"
 
 	"github.com/milvus-io/milvus-sdk-go/v2/client"
-	"go-spring.org/cloud/runtime/dataplane/outbound/resilience"
+	"go-spring.org/cloud/governance/dataplane/outbound/resilience"
 	"go-spring.org/stdlib/testing/assert"
 	"google.golang.org/grpc"
 )
@@ -40,12 +40,12 @@ func TestConfigDefaults(t *testing.T) {
 // newGuardedSlot builds a slot applied with a real executor from the default
 // resilience driver, for driving the interceptors directly (no live Milvus
 // server is needed).
-func newGuardedSlot(t *testing.T, p resilience.Policy) *guardSlot {
-	d := resilience.NewDefaultDriver(nil)
-	exec, err := d.NewExecutor("svc", p)
-	assert.Error(t, err).Nil()
+func newGuardedSlot(t *testing.T, p resilience.RateLimitPolicy) *guardSlot {
+	m := resilience.NewManager(resilience.NewDefaultDriver(nil))
+	assert.Error(t, m.ApplyRateLimit(resilience.RateLimitSettings{Default: p})).Nil()
+	exec := m.ExecutorFor("svc")
 	s := &guardSlot{}
-	s.apply(exec, "milvus:test")
+	s.apply(exec, "milvus:test", testProp)
 	return s
 }
 
@@ -66,7 +66,7 @@ func TestUnaryGuardPassThrough(t *testing.T) {
 // TestUnaryGuardRateLimit confirms the flow-control path: once the burst is
 // spent, the RPC is rejected without reaching the invoker.
 func TestUnaryGuardRateLimit(t *testing.T) {
-	slot := newGuardedSlot(t, resilience.Policy{RateLimit: 1, Burst: 1})
+	slot := newGuardedSlot(t, resilience.RateLimitPolicy{RateLimit: 1, Burst: 1})
 	var ran int
 	invoker := func(context.Context, string, any, any, *grpc.ClientConn, ...grpc.CallOption) error {
 		ran++
@@ -82,7 +82,7 @@ func TestUnaryGuardRateLimit(t *testing.T) {
 // TestStreamGuardRateLimit confirms the stream path short-circuits the same
 // way: the stream open is rejected without calling the streamer.
 func TestStreamGuardRateLimit(t *testing.T) {
-	slot := newGuardedSlot(t, resilience.Policy{RateLimit: 1, Burst: 1})
+	slot := newGuardedSlot(t, resilience.RateLimitPolicy{RateLimit: 1, Burst: 1})
 	var ran int
 	streamer := func(context.Context, *grpc.StreamDesc, *grpc.ClientConn, string, ...grpc.CallOption) (grpc.ClientStream, error) {
 		ran++

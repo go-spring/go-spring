@@ -23,9 +23,9 @@ import (
 	"dubbo.apache.org/dubbo-go/v3/filter"
 	"dubbo.apache.org/dubbo-go/v3/protocol/base"
 	"dubbo.apache.org/dubbo-go/v3/protocol/result"
-	"go-spring.org/cloud/runtime"
-	serverfault "go-spring.org/cloud/runtime/dataplane/inbound/fault"
-	"go-spring.org/cloud/runtime/dataplane/kernel/fault"
+	"go-spring.org/cloud/governance"
+	"go-spring.org/cloud/governance/capability/fault"
+	serverfault "go-spring.org/cloud/governance/dataplane/inbound/fault"
 )
 
 const faultFilterKey = "fault"
@@ -35,7 +35,7 @@ const faultFilterKey = "fault"
 // field because dubbo — not this starter — constructs filter instances through
 // its own registry, so there is no bean whose constructor could receive it.
 // No ordering constraint applies: the shell holds its own kernel pointer, and
-// the authority swaps that kernel in place ([serverfault.ServerManager.Refresh]), so
+// the authority swaps that kernel in place ([serverfault.Manager.Refresh]), so
 // whatever the runtime pushes later is visible to the filter without
 // re-installing.
 //
@@ -57,7 +57,7 @@ type injectorHook struct{}
 // than skipping a nil) keeps the handle from surviving a container that did have
 // one — a test-process concern, but the same "last wiring wins" rule in both
 // cases.
-func newInjectorHook(center *runtime.Runtime) (*injectorHook, error) {
+func newInjectorHook(center *governance.Runtime) (*injectorHook, error) {
 	faultServer.Store(center.FaultServer().NewServer())
 	return &injectorHook{}, nil
 }
@@ -92,7 +92,10 @@ func (f *dubboFaultFilter) Invoke(ctx context.Context, invoker base.Invoker, inv
 // target. The method is the ACTION, not the service, so one rule can cover the
 // whole provider and another a single method of it.
 func faultTarget(inv base.Invocation) fault.Target {
-	return fault.Target{Service: "dubbo", Action: inv.MethodName()}
+	return fault.Target{
+		Service: "dubbo",
+		Action:  inv.MethodName(),
+	}
 }
 
 // OnResponse is a pass-through.

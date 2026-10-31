@@ -21,14 +21,25 @@ import (
 	"testing"
 	"time"
 
-	"go-spring.org/cloud/runtime/dataplane/kernel/fault"
-	"go-spring.org/cloud/runtime/dataplane/kernel/traffic"
-	"go-spring.org/cloud/runtime/dataplane/outbound/chain"
-	clientfault "go-spring.org/cloud/runtime/dataplane/outbound/fault"
-	"go-spring.org/cloud/runtime/dataplane/outbound/resilience"
+	"go-spring.org/cloud/governance/capability/fault"
+	"go-spring.org/cloud/governance/capability/matcher"
+	"go-spring.org/cloud/governance/capability/traffic"
+	"go-spring.org/cloud/governance/dataplane/outbound/chain"
+	clientfault "go-spring.org/cloud/governance/dataplane/outbound/fault"
+	"go-spring.org/cloud/governance/dataplane/outbound/resilience"
 	"go-spring.org/stdlib/errutil"
 	"go-spring.org/stdlib/testing/assert"
 )
+
+// newGovernedExec builds the bundled-driver executor for "svc" under p, released
+// at test cleanup.
+func newGovernedExec(t *testing.T, p resilience.BreakerPolicy) chain.Executor {
+	t.Helper()
+	m := resilience.NewManager(resilience.NewDefaultDriver(nil))
+	assert.Error(t, m.ApplyBreaker(resilience.BreakerSettings{Default: p})).Nil()
+	t.Cleanup(func() { _ = m.Close() })
+	return m.ExecutorFor("svc")
+}
 
 // TestIntegration_LoadFaultBreaker is the capstone: it proves the load-test +
 // fault-injection + resilience stack actually engage together — the whole
@@ -40,14 +51,11 @@ import (
 // This is the closed loop the design calls "证明保护机制不是摆设": 放火制造故障,
 // 压测制造压力, 断言熔断真的开。
 func TestIntegration_LoadFaultBreaker(t *testing.T) {
-	d := resilience.NewDefaultDriver(nil)
-	exec, err := d.NewExecutor("svc", resilience.Policy{ErrorThreshold: 3, OpenDuration: time.Minute})
-	assert.Error(t, err).Nil()
-	t.Cleanup(func() { _ = exec.Close() })
+	exec := newGovernedExec(t, resilience.BreakerPolicy{ErrorThreshold: 3, OpenDuration: time.Minute})
 
 	// Fault wraps the executor: every call returns an injected error.
-	inj := clientfault.NewClientManager(nil)
-	inj.Refresh(fault.Config{Rules: []fault.Rule{{Rate: 1, Error: "generic"}}})
+	inj := clientfault.NewManager()
+	inj.Refresh(fault.Config{Rules: []fault.Rule{{Name: "all", Service: "svc", Rate: 1, Class: fault.ClassTransient, Error: "generic"}}})
 	fexec := inj.WrapClientExecutor(exec)
 
 	// The op routes through the faulted executor; its inner fn would succeed,
@@ -84,17 +92,24 @@ func TestIntegration_LoadFaultBreaker(t *testing.T) {
 // closed loop the other way: with scope "real", load-test traffic (which the
 // harness tags) is NOT faulted, so the breaker never opens.
 func TestIntegration_ScopeRealTrafficSkipsFault(t *testing.T) {
-	d := resilience.NewDefaultDriver(nil)
-	exec, err := d.NewExecutor("svc", resilience.Policy{ErrorThreshold: 1, OpenDuration: time.Minute})
-	assert.Error(t, err).Nil()
-	t.Cleanup(func() { _ = exec.Close() })
+	exec := newGovernedExec(t, resilience.BreakerPolicy{ErrorThreshold: 1, OpenDuration: time.Minute})
 
-	inj := clientfault.NewClientManager(traffic.NewDefaultPropagator(traffic.DefaultBinding()))
-	// Scope "real": skip load-test traffic.
-	inj.Refresh(fault.Config{Rules: []fault.Rule{{Rate: 1, Error: "generic", Scope: "real"}}})
+	inj := clientfault.NewManager()
+	// match.traffic=real: skip load-test traffic.
+	inj.Refresh(fault.Config{Rules: []fault.Rule{{
+		Name: "real-only", Service: "svc", Rate: 1, Class: fault.ClassTransient, Error: "generic",
+		MetadataMatch: matcher.ExactMap{"traffic": "real"},
+	}}})
 	fexec := inj.WrapClientExecutor(exec)
+	prop := traffic.NewDefaultPropagator(traffic.DefaultBinding())
 	op := func(ctx context.Context) error {
-		return fexec.Execute(ctx, chain.Operation{Service: "svc"}, nil, func(context.Context) error { return nil })
+		// Build the operation the way a client's base constructor does: the
+		// traffic class is one ordinary metadata entry.
+		o := chain.Operation{
+			Service: "svc",
+			Request: chain.Request{Metadata: map[string]string{"traffic": prop.Kind(ctx).Label()}},
+		}
+		return fexec.Execute(ctx, o, nil, func(context.Context) error { return nil })
 	}
 
 	r := New().Driver(ClosedLoop{Concurrency: 4}).Duration(150*time.Millisecond).

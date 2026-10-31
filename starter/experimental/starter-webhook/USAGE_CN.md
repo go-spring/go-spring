@@ -106,7 +106,7 @@ spring.observability.trace.endpoint=127.0.0.1:4317
 spring.observability.trace.insecure=true
 
 # --- governance（可选；服务标签 webhook:alert:dingtalk）------------------------
-spring.governance.source.file.path=conf/governance.yaml
+# (the file source is wired in source.go; no property key)
 ```
 
 其他渠道（见 [example/conf/app.properties](example/conf/app.properties) 注释）：

@@ -4,7 +4,7 @@
 
 `starter-discovery-zookeeper` 把 ZooKeeper 适配为服务注册中心：每一个配置的集群都成为
 一个后端 bean，同时服务命名习语的两半 —— 写侧（把**当前实例**注册为临时 znode）与读侧
-（供解析其他实例的 `cloud/runtime/dataplane/kernel/discovery` 后端）。它相当于 Spring Cloud 的 `ServiceRegistry` +
+（供解析其他实例的 `cloud/governance/capability/discovery` 后端）。它相当于 Spring Cloud 的 `ServiceRegistry` +
 `DiscoveryClient` 的 Go-Spring 对应物，以临时节点（ephemeral znode）为底座。
 
 适用于**虚机 / 裸机 / 混合**部署，即平台不替你注册实例的场景。**纯 Kubernetes**
@@ -32,7 +32,7 @@ spring.discovery.zookeeper.dr.servers=10.2.0.1:2181   # 第二个集群，bean �
 
 ## 注册归 starter-discovery 所有
 
-导入本 starter 会传递导入注册核心 [cloud/runtime/dataplane/kernel/discovery](../../cloud/runtime/dataplane/kernel/discovery)：唯一的
+导入本 starter 会传递导入注册核心 [cloud/governance/capability/discovery](../../cloud/governance/capability/discovery)：唯一的
 `discoveryServer`（`gs.Server`）收集**所有**后端的全部 discovery bean，在应用就绪后把实例
 注册进**每一个**已配置的中心，停机开始时（经 `PreStop`）从所有中心注销，并广播
 `UpdateWeight`。任一中心注册失败即启动失败，各中心的消费侧视图因此不会分裂。
@@ -117,7 +117,7 @@ spring.http-client.instances.users.discovery=zookeeper.main
 
 - 每个块的后端 bean 立即构造：拨号该集群（`ping=true` 时探测 —— 一次 `Exists` 调用会阻塞
   到会话连上 —— 不可达的 ZooKeeper 会让启动失败）并持有该块的会话，两个半区共享它。
-- cloud/runtime/controlplane/registration 核心的 `discoveryServer` 收集每个后端的 registry，等待就绪，然后把实例
+- cloud/governance/controlplane/registration 核心的 `discoveryServer` 收集每个后端的 registry，等待就绪，然后把实例
   注册进每个中心：按需创建持久父目录，并把实例写成一个**临时**叶子节点。
 - 停机时 `PreStop` 在 pre-stop 延迟之前向每个中心注销（删除 znode），让发现体系在在途
   请求仍被服务时就摘掉它。`Stop` 作为幂等兜底再次注销。若进程崩溃，会话过期后

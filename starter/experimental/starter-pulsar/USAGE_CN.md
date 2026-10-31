@@ -144,7 +144,7 @@ spring.observability.metrics.exporter=prometheus
 spring.observability.metrics.port=0        # OTel 指标仅经 actuator 暴露
 
 # --- 治理（服务 pulsar|pulsar://127.0.0.1:6650 的熔断/限流）-------------------
-spring.governance.source.file.path=conf/governance.yaml
+# (the file source is wired in source.go; no property key)
 ```
 
 **启动 Pulsar**（同 [example/docker-compose.yml](example/docker-compose.yml)）：
@@ -187,7 +187,7 @@ gs.Run()
   │       Prometheus registry + :port /metrics server、日志桥、
   │       pulsar.NewClient，随后 attachGuard —— center.ExecutorFor("pulsar",
   │       "pulsar:<url>") 按 client 索引，客户端在此刻已完整；center 即注入的
-  │       *runtime.Runtime                       [driver.go:76-115, command.go:225]
+  │       *governance.Runtime                       [driver.go:76-115, command.go:225]
   │    3. 再探测（Ping）：cl.TopicPartitions(HealthCheckTopic) —— 一次
   │       覆盖地址+认证+TLS 的 lookup（不产生消息）；失败 →
   │       closeResilience + cl.Close + metrics 下线 + 启动报错            [starter.go:108-116]
@@ -197,7 +197,7 @@ gs.Run()
 ```
 
 **装配扩展点**：client 装配由 `Driver`（接口，`driver.go:62-72`）负责：
-`CreateClient(ctx, c Config, center *runtime.Runtime) (pulsar.Client, error)`。driver 返回的
+`CreateClient(ctx, c Config, center *governance.Runtime) (pulsar.Client, error)`。driver 返回的
 client 已完整——它在构建时就自行挂上治理 executor（`attachGuard`），此后没有任何补丁步骤。
 公司/伞包 starter 可把自己的 `Driver` 作为**可选容器 bean** 提供
 （`gs.Provide(func() StarterPulsar.Driver{...})`，因为是 bean，可在装配期注入从配置文件绑定的
@@ -233,9 +233,9 @@ GuardedSend(ctx, cl, producer, msg)                       [command.go]
 
 `attachGuard` 挂上的 executor 来自 `center.ExecutorFor("pulsar", service)`（`service` =
 `pulsar:<url>`）[command.go]，其中 `center` 是 ctor 交给 driver 的注入
-`*runtime.Runtime`（携带注入的 `*resilience.Manager` 与 `*clientfault.ClientManager`）：
+`*governance.Runtime`（携带注入的 `*resilience.Manager` 与 `*clientfault.Manager`）：
 有 manager 时返回已完整组装的 executor（核心熔断/限流/重试外包 resilience observer——outcome
-计数 + 访问日志），最外层再由注入的 `*clientfault.ClientManager` 做运行期故障注入（注入的错误穿过内层
+计数 + 访问日志），最外层再由注入的 `*clientfault.Manager` 做运行期故障注入（注入的错误穿过内层
 重试循环，熔断器照常计数）。manager 必填——容器始终提供；不存在 unmanaged/仅观测的兜底。
 
 **未保护面**（均有源码注释说明是有意的）：
@@ -250,7 +250,7 @@ GuardedSend(ctx, cl, producer, msg)                       [command.go]
 `pub.Publish(ctx, msg)`，其中 `Key: "k"`、`Headers: h`、ctx 带压测标记
 [messaging.go:104-131]：
 
-1. header 拷贝：若 propagator 的 `IsLoadTest(ctx)`，headers 被**复制**（绝不改调用方的 map）
+1. header 拷贝：若 `traffic.IsLoadTest(ctx, prop)`，headers 被**复制**（绝不改调用方的 map）
    并追加 `x-load-test=1` [messaging.go:110-118]。
 2. 信封 → `pulsar.ProducerMessage`：`Payload`、`Properties`（= headers）、**Key 仅在
    非空时设置** [messaging.go:119-125]。未映射：`Timestamp`（信封有，但 Pulsar 发布时间由
@@ -278,7 +278,7 @@ GuardedSend(ctx, cl, producer, msg)                       [command.go]
    把消费声明（`operation("consume", source)`）写到 handler ctx，再把 handler 放进
    `guard` 执行 —— resilience observer 依据声明开 consumer span、记录指标、写访问日志。
 4. 压测标记：若生产者往 Properties 里写了 `x-load-test`，handler ctx 会经
-   `prop.WithLoadTest(ctx)` 重新打标（即上面的 `prop.Extract`）。
+   `prop.WithKind(ctx, traffic.KindLoadTest)` 重新打标（即上面的 `prop.Extract`）。
 5. `fromPulsarMsg` 反向映射：Pulsar `Key()` → 信封 Key、`Payload()`、`Properties()` →
    Headers（含注入的 `traceparent` —— 消费侧 headers 会多出 key）、`PublishTime()` →
    Timestamp [messaging.go]。两个方向都保留 Key 与 Properties。

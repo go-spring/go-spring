@@ -24,12 +24,14 @@
 package StarterRedigo
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
 	"go-spring.org/stdlib/strutil"
 
-	"go-spring.org/cloud/runtime/dataplane/outbound/chain"
+	"go-spring.org/cloud/governance/capability/traffic"
+	"go-spring.org/cloud/governance/dataplane/outbound/chain"
 	"go-spring.org/log"
 )
 
@@ -59,12 +61,12 @@ const maxStatement = 512
 // usually a key, drawn from an open set, so as a metric label it would multiply
 // the series without bound. A command with no arguments carries no detail at
 // all, which is also what levelled its success log at Info.
-func operation(cmd string, args []interface{}) chain.Operation {
+func operation(ctx context.Context, prop traffic.Propagator, cmd string, args []interface{}) chain.Operation {
 	stmt := ""
 	if len(args) > 0 {
 		stmt = summarizeCommand(cmd, args)
 	}
-	op := chain.DBOp(redisSystem, strings.ToLower(cmd), stmt)
+	op := chain.DBOp(ctx, prop, redisSystem, strings.ToLower(cmd), stmt)
 	// The span is named after the command as written ("GET"), while the
 	// db.operation label carries it lowercased, the family's convention.
 	op.Request.Action = cmd
@@ -77,11 +79,11 @@ func operation(cmd string, args []interface{}) chain.Operation {
 // resilience layer still runs and reports as such. It is the single place the
 // skip decision is made; the resilience interceptor (see conn.go) calls it to
 // build the op it passes explicitly to the executor.
-func opFor(cmd string, args []interface{}) chain.Operation {
+func opFor(ctx context.Context, prop traffic.Propagator, cmd string, args []interface{}) chain.Operation {
 	if _, skip := skipOps[strings.ToUpper(cmd)]; skip {
 		return chain.Operation{}
 	}
-	return operation(cmd, args)
+	return operation(ctx, prop, cmd, args)
 }
 
 // summarizeCommand renders a short, loggable summary of the command — the

@@ -33,13 +33,13 @@
 - `log/` 依赖 `stdlib/`(外加一个 ANTLR 解析器用于其配置语法);它是基础模块,不属于 `spring`。
 - `spring/` 只依赖 `log/` 和 `stdlib/`,且**只含纯核心**:`gs`(IoC 容器、生命周期)与
   `conf`(分层配置引擎)。不含三方业务包,不含能力家族。
-- `cloud/`(模块 `go-spring.org/cloud`)是**生态抽象库**:治理运行时(`cloud/runtime`:
+- `cloud/`(模块 `go-spring.org/cloud`)是**生态抽象库**:治理运行时(`cloud/governance`:
   控制面 + 数据面 + 组合根,含 governance/registration/resilience/admission/fault/traffic/discovery/loadbalance/observability)、
   cache、repository、migration、i18n、validation、
   event/scheduling/batch、lock、messaging、transaction、actuator……它只依赖 `stdlib`/`log`,
   **不 import 任何 spring 包**——整个库可脱离容器使用。原先与这些抽象同处的 gs 接线
   已外移进 starter(如 `starter-cache`);治理规则源是个例外——file/http 源已内置于
-  `cloud/runtime/controlplane/governance`,原先的 `starter-governance-file` 模块已删除。
+  `cloud/governance/controlplane/source`,原先的 `starter-governance-file` 模块已删除。
 - `starter-*` 与 `gs-*` 位于上层,可以引入三方包。
 - 下层模块不得 import 上层。`starter` import 另一个 `starter`、或 `spring`/`cloud` import
   `starter`,都是分层违规。全仓口径:**抽象进 cloud,三方 SDK 与 gs 接线进 starter,
@@ -90,7 +90,7 @@
 - *"这个抽象需要 Redis 客户端,我放 stdlib 吧。"* 不行——两处都错。它不是纯工具(它是能力
   抽象,家在 `cloud/` 而非 `stdlib/`),且一旦需要三方 import 就不能待在任一基础层。
   正确模式是:**抽象 + driver 缝放 `cloud/`,具体后端与 gs 接线放 `starter`**
-  (见 `cloud/cache`、`cloud/lock`、`cloud/runtime/dataplane/kernel/discovery`)。
+  (见 `cloud/cache`、`cloud/lock`、`cloud/governance/capability/discovery`)。
 
 ## 4. 范围红线(非目标)
 
@@ -114,7 +114,7 @@
 Go-Spring 的存在意义是服务所有团队的全场景;它无法交付一套固定功能就指望正好合用。所以在框架各层——`stdlib/`、`spring/`、`starter/`——**扩展点不是可选项**:
 
 - **每个能力都留一处缝。** 能力抽象定义接口 + driver 注册表,具体行为插在其后。框架没预料到的场景也必须有路进来——否则架构是以"缺失"的方式失效,而非以一个看得见的 bug 失效。
-- **内置功能走它对外暴露的同一处缝。** Go-Spring 自己的内置实现必须经由提供给用户的那些扩展点,绝不走特权私有路径——`cloud/cache` 的 Memory 后端、`cloud/runtime/dataplane/outbound/resilience` 的内置策略、starter 各形态,都在消费自己的注册表/接口。若某个内置功能无法经由公开缝表达,那是缝错了,不是内置错了。
+- **内置功能走它对外暴露的同一处缝。** Go-Spring 自己的内置实现必须经由提供给用户的那些扩展点,绝不走特权私有路径——`cloud/cache` 的 Memory 后端、`cloud/governance/dataplane/outbound/resilience` 的内置策略、starter 各形态,都在消费自己的注册表/接口。若某个内置功能无法经由公开缝表达,那是缝错了,不是内置错了。
 - **扩展是一层封装,不是表里一行。** 尽量用洋葱模型:包住你要扩展的东西(`Manager.WrapClientExecutor(inner)`、`Observe(inner Driver, ...)`、一条中间件链),而不是往全局 map 里注册一个名字,也不是让所有调用点都去写同一个包级状态对象。层靠**嵌套**组合——retry → 熔断 → 隔离 → 观测,每层只认识它包住的那个接口,各自持有自己累积的状态:那份状态的生命周期就是被包对象的生命周期,所以没有全局的东西要重置,同进程内两个实例也不可能互相污染。注册表仍有它的位置,那是**选择**机制(配置值挑一个实现);但它交出来的必须是一层携带行为与状态的封装,而不是一个让行为往里写的全局物。这条规则在客户端侧的落地就是掏空的客户端链条——库交付无 hook 的具体类型时,客户端嵌入一个 `Inner*` 接口(身份层套治理层套原生适配层),而不是把原始实例私藏;见 [starter/DESIGN.md §2.2](starter/DESIGN.md)。
 - **层持有自己的状态,但它可以读一份共享的仪器集。** 上一条说的是层累积的**状态**——那份状态的生命周期就是被包对象的生命周期。**仪器**是另一回事:OTel SDK 本来就按 name/description/unit/kind 在进程范围内给仪器建索引,所以每实例一份副本最好是"不可见",而对 observable gauge 来说则是**实打实的错**。因此层解析的是**每进程一份、解析后不可变**的共享仪器集,同时仍然持有自己累积的每一份状态。配套的规则(gauge 怎么注册、谁来反注册)在 [starter/DESIGN.md §3](starter/DESIGN_CN.md)。
 - **一层只能看见穿过它所包之缝的东西,所以要包住所有路径都经过的最低那层。** 若某条路径绕过了接口——库内部的自动重试、一次不再进入 `Register` 的自愈重注册——那么在接口外面包的这一层会静默漏掉它,而"静默漏掉覆盖"比没有这一层更糟。要么包住两条路径共同的漏斗,要么把这次绕过当作"缝的位置不对"的证据——与"若某个内置功能无法经由公开缝表达,那是缝错了,不是内置错了"同一个判据。
@@ -138,7 +138,7 @@ IoC 容器只做装配,不做裁决。评估一个扩展点时问:它解决的�
 
 ### 6.2 洋葱模型的应用
 
-§5 已把洋葱写成框架的扩展性契约。落地它的家族:`cloud/lock.Observe`、`observe.WrapClientExecutor` / `WrapServerExecutor`、`clientfault.ClientManager.WrapClientExecutor`。
+§5 已把洋葱写成框架的扩展性契约。落地它的家族:`cloud/lock.Observe`、`observe.WrapClientExecutor` / `WrapServerExecutor`、`clientfault.Manager.WrapClientExecutor`。
 
 - **已按本原则处死(勿复活):** `actuator/endpoint` 的 `serving` 全局信号(`MarkServing()` / `IsServing()`)已整体删除,勿再以「启动检测」名义加回;无人收集的 `*endpoint.Endpoint` bean 就是不被装配、保持静默(2026-10-03)。
 
@@ -146,8 +146,8 @@ IoC 容器只做装配,不做裁决。评估一个扩展点时问:它解决的�
 
 方法级横切(事务 / 安全这类「包住业务方法」的 concern)不建共享拦截器协议包:各家族自带最小装饰器形状,组合靠普通函数嵌套(中间件模式)——`cloud/experimental/aspect` 已为此删除。
 
-- **client 与 server 是两个独立职权,且不再共用形状。** 出站走 `chain.Executor`:单一环绕函数、N 次重试、`Operation` 声明 + `Recorder` 写回;入站走 `cloud/runtime/dataplane/inbound/admission`:一个绑定 server 实例的 `Guard`、一次判断(`Admit`)+ 一次完成(`Done`),没有重试,也不碰 `chain` 类型。`runtime.Runtime` 持有入站的 `admission.Manager`,把文档的 server 半边推给它;adapter 通过 `InboundFor` 为每个 server 实例拿一个 Guard。两个方向背后的中立器官是共享的:`cloud/runtime/dataplane/kernel/circuitbreaker` 持有熔断状态机,`cloud/runtime/dataplane/kernel/ratelimit` 持有限流词汇、本地预算与计数算法。共享器官不等于合并职权:每个方向仍然把自己的策略映射进共享 spec。**布局按平面分层。** `cloud/runtime/` 是治理运行时总目录:`controlplane/` 放控制面(`governance` 获取并分发文档、`registration` 发布端点态),根包 `runtime.Runtime` 是组合根,`dataplane/` 分方向层与内核层:`outbound/` 与 `inbound/` 放各方向的契约、执行、职权与组合,`kernel/` 放方向中立的 `breaker`、`bulkhead`、`ratelimit`、`fault`、`traffic`、`label`、`discovery`、`loadbalance`;`cloud/runtime/controlplane/governance` 仍是控制面包名,只是 import 路径移到 `runtime/controlplane` 下。跨平面的通用词汇(`propagate`、`mesh`)留在 `cloud/` 顶层。目录分层不改变依赖方向:控制面可以 import 数据面,数据面绝不能 import 控制面根包——这是该分层唯一可能造环的方式。**平面归属按它服务的执行体系判定,不按对象角色:** 数据面是请求执行的依赖闭包,所以方向中立的 `breaker`/`ratelimit` 器官和共享的 `label`/`traffic` 词汇都属于它;只有当一个包同时被请求路径之外的消费者(cache、lock、scheduler、config)需要时,才上浮到最近公共祖先——`cloud/observability/attrs` 与 `.../conf` 位于 `runtime/` 之外正是这条规则的结果。有两处耦合是刻意保留的:控制面文档直接嵌入数据面策略类型(进程内控制面优先类型/配置统一,而非 schema 独立);`registration.Instance` 与 `discovery.Endpoint` 保持两套词汇,由后端 starter 负责同步。**服务 label 是治理约定,不是各 starter 的私有 helper:** 两个方向和所有协议适配器都必须用 `cloud/runtime/dataplane/kernel/label.ServiceLabel` 拼接;starter 不得自行实现拼接逻辑,因为 client 规则与入站 admission 匹配的是同一个字符串。
-- `cloud/runtime/dataplane/outbound/resilience` 的入站半边已经删除。`resilience.Driver` 只答出站(`NewExecutor`);`starter-governance-sentinel`、`starter-luohua` 只贡献出站行为,它们的入站实现已退役,因为框架可表达的入站策略字段已被 admission 的默认引擎完整覆盖。`runtime.Runtime` 是组合根(刻意同时持有两个平面的对象,但不是合并职权);`security.TLSConfig`(带两个构建方法的配置值)是非授权对象。在别处新增合并 manager 视为回归。
+- **client 与 server 是两个独立职权,且不再共用形状。** 出站走 `chain.Executor`:单一环绕函数、N 次重试、`Operation` 声明 + `Recorder` 写回;入站走 `cloud/governance/dataplane/inbound/admission`:一个绑定 server 实例的 `Guard`、一次判断(`Admit`)+ 一次完成(`Done`),没有重试,也不碰 `chain` 类型。`governance.Runtime` 持有入站的 `admission.Manager`,把文档的 server 半边推给它;adapter 通过 `InboundFor` 为每个 server 实例拿一个 Guard。两个方向背后的中立器官是共享的:`cloud/governance/capability/circuitbreaker` 持有熔断状态机,`cloud/governance/capability/ratelimit` 持有限流词汇、本地预算与计数算法。共享器官不等于合并职权:每个方向仍然把自己的策略映射进共享 spec。**布局按平面分层。** `cloud/governance/` 是治理运行时总目录:`controlplane/` 放控制面(`source` 是泛型传输、`policy`（timeoutretry/circuitbreaker/ratelimit/loadbalance/admission）与 `fault` 是并列的配置根、`registration` 发布端点态),根包 `governance.Runtime` 只收数据面、不持有控制面中心,`dataplane/` 只放两棵方向树 `outbound/` 与 `inbound/`（各方向的契约、执行、职权与组合）;`capability/` 是与之并列的平面中立体,放两个平面都不拥有、但都消费的机制与概念:`breaker`、`bulkhead`、`ratelimit`、`fault`、`traffic`、`label`、`discovery`、`loadbalance`、`matcher`;控制面各根在 `controlplane/` 下并列,共享 `controlplane/source` 传输。跨平面的通用词汇(`propagate`、`mesh`)留在 `cloud/` 顶层。目录分层不改变依赖方向:控制面可以 import 数据面与能力层,数据面可以 import 能力层,但数据面与能力层绝不能 import 控制面根包——这是该分层唯一可能造环的方式。**归属按它服务的执行体系判定,不按对象角色:** 知道调用方向的包归入该方向树;既不知道方向、也不知道文档来源的包归入 `capability/`——两个平面都消费它们,但都不拥有;只有当一个包同时被请求路径之外的消费者(cache、lock、scheduler、config)需要时,才上浮到最近公共祖先——`cloud/observability/attrs` 与 `.../conf` 位于 `governance/` 之外正是这条规则的结果。有两处耦合是刻意保留的:每个根的文档嵌入它负责的数据面策略类型(进程内控制面优先类型/配置统一,而非 schema 独立);两个根互不 import,`controlplane/source` 不 import 任何文档类型;`registration.Instance` 与 `discovery.Endpoint` 保持两套词汇,由后端 starter 负责同步。**服务 label 是治理约定,不是各 starter 的私有 helper:** 两个方向和所有协议适配器都必须用 `cloud/governance/capability/label.ServiceLabel` 拼接;starter 不得自行实现拼接逻辑,因为 client 规则与入站 admission 匹配的是同一个字符串。
+- `cloud/governance/dataplane/outbound/resilience` 的入站半边已经删除。`resilience.Driver` 只答出站(`NewExecutor`);`starter-governance-sentinel`、`starter-luohua` 只贡献出站行为,它们的入站实现已退役,因为框架可表达的入站策略字段已被 admission 的默认引擎完整覆盖。`governance.Runtime` 是组合根(刻意同时持有两个平面的对象,但不是合并职权);`security.TLSConfig`(带两个构建方法的配置值)是非授权对象。在别处新增合并 manager 视为回归。
 
 - 别再提议任何「统一拦截器链 / AOP 协议」包(含未来方法级治理 / 幂等 / 方法级锁场景——出现就让那个家族自带装饰器)。
 - 新写方法级横切时照抄 `GlobalTransactional` 的形状与文档措辞(doc 里明确 "deliberately no shared interceptor-chain protocol")。
@@ -206,7 +206,7 @@ go-spring 是完整、开箱即用的生态(不接任何公司扩展也能独立
 - 真反模式 = 容器创建的实例逃逸进包级全局(bean ctor 自注册 + 全局 `Get` 服务定位);据此删除 `cloud/messaging` 的 `RegisterDriver` / `GetDriver`、`cloud/security` 的 `RegisterValidator` / `GetValidator`(改走 bean),`starter-casbin` 的 `RegisterAdapter` / `Watcher` 改 config `adapter` / `watcher` = bean 名(2026-09-08)。
 - **保留不动**(合法静态插件目录,不是 bean 逃逸):`starter-gateway` 的 `RegisterFilter(name, FilterFactory)`、`starter-otel` 的 `RegisterSpanExporter` / `RegisterMeterExporter` / `RegisterPropagator`——都是包级注册 type-level 构造器,不是容器实例逃逸。别再提议删它们(2026-09-08)。
 - 删公开 API 的代价:`cloud/messaging` / `cloud/security` 属已发布的 `go-spring.org/cloud` 模块,删公开 API 需配版本。
-- 新判据(取代旧「包 init 注册 type-level 构造器 = 合法」):同一份契约另有容器内先例(`map[string]discovery.Discovery`、named Driver bean、同 wiring bean 内的 `governance.Source` 注入)时,全局注册表就是遗留而非法定形态(2026-09-13)。
+- 新判据(取代旧「包 init 注册 type-level 构造器 = 合法」):同一份契约另有容器内先例(`map[string]discovery.Discovery`、named Driver bean、同 wiring bean 内的 `source.Source` 注入)时,全局注册表就是遗留而非法定形态(2026-09-13)。
 - 配置源族(init 里 `conf.RegisterProvider`)不是待治理逃逸,是结构性 seam——`spring.config.import` 在容器建立前解析(容器由这份配置构建,鸡生蛋),跨阶段缝合点只能进程级。别再提议 per-container 化。包级可变的 `xxxController` 变量**已全部删除**(8 处改为 init 闭包内 `(&xxxCtrl{}).Load`,方法值闭包持状态)。
 - `dubbo` mapconfig 的 `singleton` 保留:它是 dubbo-go 进程级全局世界的适配器(gs 写入与 dubbo extension factory 读取须同一实例)。
 - 按名注入可选 bean 的手法:`TagArg(name)` 按名注入;键为空要传 nil 时用 `ValueArg((persist.Adapter)(nil))`(类型化 nil 接口),别用 `TagArg("?")`(by-type nullable 会误抓无关 bean)。

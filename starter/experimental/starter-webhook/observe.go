@@ -29,11 +29,13 @@
 package StarterWebhook
 
 import (
+	"context"
 	"net/url"
 
+	"go-spring.org/cloud/governance/capability/traffic"
 	"go-spring.org/stdlib/strutil"
 
-	"go-spring.org/cloud/runtime/dataplane/outbound/chain"
+	"go-spring.org/cloud/governance/dataplane/outbound/chain"
 	"go-spring.org/log"
 	"go.opentelemetry.io/otel/attribute"
 )
@@ -61,37 +63,34 @@ var accessTag = log.RegisterAppTag("webhook", "access")
 // target is exactly what makes a line worth reading, and never a label. A
 // delivery that resolves no host (an unparseable URL) carries no detail at all,
 // which is also what levels its success log at Info.
-func operation(channel, endpoint string) chain.Operation {
-	o := chain.Operation{
-		Request: chain.Request{
-			// A delivery is a producer publish: the webhook endpoint is downstream
-			// of us, and the direction is what keeps that edge visible once the
-			// emitter opens the span.
-			Kind:   chain.KindPublish,
-			System: webhookSystem,
-			Action: "webhook.send",
-		},
-		Observe: chain.Observe{
-			Metric: chain.Metric{
-				Name: "messaging.client",
-				Attrs: []attribute.KeyValue{
-					attribute.String("messaging.system", webhookSystem),
-					attribute.String("messaging.operation", "send"),
-					attribute.String("webhook.channel", channel),
-				},
-			},
-			Span: chain.Span{Attrs: []attribute.KeyValue{
+func operation(ctx context.Context, prop traffic.Propagator, channel, endpoint string) chain.Operation {
+	o := chain.NewOperation(ctx, prop)
+	// A delivery is a producer publish: the webhook endpoint is downstream
+	// of us, and the direction is what keeps that edge visible once the
+	// emitter opens the span.
+	o.Request.Kind = chain.KindPublish
+	o.Request.System = webhookSystem
+	o.Request.Action = "webhook.send"
+	o.Observe = chain.Observe{
+		Metric: chain.Metric{
+			Name: "messaging.client",
+			Attrs: []attribute.KeyValue{
 				attribute.String("messaging.system", webhookSystem),
 				attribute.String("messaging.operation", "send"),
 				attribute.String("webhook.channel", channel),
-			}},
-			Log: chain.Log{
-				Tag: accessTag,
-				Fields: []log.Field{
-					log.String("messaging.system", webhookSystem),
-					log.String("messaging.operation", "send"),
-					log.String("webhook.channel", channel),
-				},
+			},
+		},
+		Span: chain.Span{Attrs: []attribute.KeyValue{
+			attribute.String("messaging.system", webhookSystem),
+			attribute.String("messaging.operation", "send"),
+			attribute.String("webhook.channel", channel),
+		}},
+		Log: chain.Log{
+			Tag: accessTag,
+			Fields: []log.Field{
+				log.String("messaging.system", webhookSystem),
+				log.String("messaging.operation", "send"),
+				log.String("webhook.channel", channel),
 			},
 		},
 	}

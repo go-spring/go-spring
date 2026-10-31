@@ -18,13 +18,17 @@ package StarterMQTT
 
 import (
 	"context"
-	"go-spring.org/cloud/runtime/dataplane/outbound/chain"
+	"go-spring.org/cloud/governance/capability/traffic"
+	"go-spring.org/cloud/governance/dataplane/outbound/chain"
 	"go.opentelemetry.io/otel/attribute"
 	"strings"
 	"testing"
 
 	"go-spring.org/stdlib/testing/assert"
 )
+
+// testProp is the process traffic convention these fixtures run under.
+var testProp = traffic.NewDefaultPropagator(traffic.DefaultBinding())
 
 // A connection event's counter attribute and its log field must be the same key
 // with the same value, or a dashboard selecting
@@ -45,7 +49,7 @@ func TestConnStateRecordCarriesTheMetricKeys(t *testing.T) {
 // metric labels, so they must carry only the family vocabulary; the topic rides
 // in Detail (span + log only), and the access tag rides along.
 func TestOperationDeclaresBoundedAttrsAndTopicDetail(t *testing.T) {
-	op := operation(opSend, "sensors/temp")
+	op := operation(context.Background(), testProp, opSend, "sensors/temp")
 
 	assert.That(t, op.Request.Action).Equal("send sensors/temp")
 	assert.That(t, op.Observe.Metric.Name).Equal("messaging.client")
@@ -65,14 +69,14 @@ func TestOperationDeclaresBoundedAttrsAndTopicDetail(t *testing.T) {
 // A topicless call carries no detail at all, which is also what levelled its
 // success log at Info rather than Debug.
 func TestOperationOmitsDetailWithoutTopic(t *testing.T) {
-	op := operation(opProcess, "")
+	op := operation(context.Background(), testProp, opProcess, "")
 	assert.That(t, len(detailAttrs(op))).Equal(0)
 }
 
 // The topic in Detail is bounded — a topic can be arbitrarily long and a span or
 // a log line has no use for all of it.
 func TestOperationTruncatesTopic(t *testing.T) {
-	op := operation(opSend, strings.Repeat("a", 512+64))
+	op := operation(context.Background(), testProp, opSend, strings.Repeat("a", 512+64))
 	assert.That(t, len(detailAttrs(op)[0].Value.AsString())).Equal(512)
 }
 

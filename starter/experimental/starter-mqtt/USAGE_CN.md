@@ -196,7 +196,7 @@ paho.mqtt.golang 没有 reject-capable 中间件，所以不存在透明 client 
 
 ```
 CreateClient [driver.go:115-123]（装配 seam）：
-  exec = center.ExecutorFor("mqtt", "mqtt:<broker>")   // 注入的 *runtime.Runtime
+  exec = center.ExecutorFor("mqtt", "mqtt:<broker>")   // 注入的 *governance.Runtime
   attachGuard(cl, exec, label) —— 以 mqtt.Client 值为键存入 sync.Map  [command.go:98-100]
   （center.ExecutorFor = inj.WrapClientExecutor(mgr.ExecutorFor("mqtt", label))；
    resilience manager 必填——容器始终提供）
@@ -224,7 +224,7 @@ GuardedPublish [command.go:134-141]：
   [client.go:98]；该 error 之后仅记日志 [client.go:107-111]。除 panic 外，每次投递都经
   `GuardedConsume` 声明并受保护 [client.go:107-109]。
 
-manager 是必需的 —— 这个 starter 传递链接 cloud/runtime/controlplane/governance，"关治理"是发布一份什么都不配、
+manager 是必需的 —— 这个 starter 传递链接各策略根，"关治理"是发布一份什么都不配、
 但仍带一个 `spring.governance.*` 键的文档，而不是 bean 缺失；独立（非 gs）调用者也必须提供一个
 ——`center.ExecutorFor` 对 nil `center.ResilienceClient()` 直接 panic，所以不带 manager 组装的 client 是装配
 错误，而不是静默 no-op [starter.go:87-88, driver.go:115-123]。
@@ -237,7 +237,7 @@ manager 是必需的 —— 这个 starter 传递链接 cloud/runtime/controlpla
    （`messaging.system`、`messaging.operation`，topic 走 Detail）[command.go:135,
    observe.go:78-99]。
 2. `guard` 从 sync.Map 解析该 client 的 executor [command.go:114-121]。
-3. fault 注入检查（spring.governance.client.fault.* 策略，启用时）。
+3. fault 注入检查（spring.fault.client.* 策略，启用时）。
 4. resilience observe 打开名为 `publish` 的调用 span，并在调用返回后发射调用级
    `messaging.client.operation.duration`、尝试级 `messaging.client.attempt.duration`、
    `resilience.client.calls` 计数器与唯一一条访问日志 —— 全部从声明读取。publish 与 consume

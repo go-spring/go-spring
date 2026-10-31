@@ -240,7 +240,6 @@ use (
 	./starter/starter-gorm-sqlserver/example
 	./starter/starter-gorm-sqlserver/example-load
 	./starter/starter-gorm-sqlserver/example-otel
-	./cloud/runtime/controlplane/governance/example
 	./starter/starter-governance-etcd
 	./starter/starter-governance-etcd/example
 	./starter/starter-governance-nacos

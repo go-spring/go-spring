@@ -20,7 +20,7 @@ import (
 	"context"
 	"sync/atomic"
 
-	"go-spring.org/cloud/runtime/dataplane/kernel/traffic"
+	"go-spring.org/cloud/governance/capability/traffic"
 	"go.opentelemetry.io/otel/attribute"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 )
@@ -77,7 +77,7 @@ type loadTestProcessor struct{}
 
 // OnStart implements sdktrace.SpanProcessor.
 func (loadTestProcessor) OnStart(parent context.Context, s sdktrace.ReadWriteSpan) {
-	if currentLoadTestPropagator().IsLoadTest(parent) {
+	if traffic.IsLoadTest(parent, currentLoadTestPropagator()) {
 		s.SetAttributes(attribute.Bool(loadTestAttribute, true))
 	}
 }

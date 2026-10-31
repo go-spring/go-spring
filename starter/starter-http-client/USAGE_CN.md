@@ -11,7 +11,7 @@ go-spring 增量:分派、服务发现/负载均衡、韧性/治理、可观测�
 **激活条件**:只有存在至少一个 `spring.http-client.instances.<name>.*` 配置项时才安装进程级 transport
 (`gs.OnProperty("spring.http-client.instances")`,starter.go:60)。每个配置项成为一个 route bean——
 以条目名命名,持有自己的 target(addr 或 service-name)与装配好的 transport——由路由表
-收集。韧性/故障策略不在这里配置——进程级 `spring.governance.*`(见 cloud/runtime/controlplane/governance 的 SOURCE_USAGE_CN.md)。
+收集。韧性/故障策略不在这里配置——进程级 `spring.governance.*`(见 cloud/governance/controlplane/source 的 USAGE_CN.md)。
 
 ---
 
@@ -66,7 +66,7 @@ import (
     "fmt"
     "net/http"
 
-    "go-spring.org/cloud/runtime/dataplane/kernel/discovery"
+    "go-spring.org/cloud/governance/capability/discovery"
 )
 
 const (
@@ -117,7 +117,7 @@ lb     := &proto.Client{Target: "greet-svc"}          // 发现模式
 spring.http-client.instances.direct.addr=127.0.0.1:9471
 
 # (2) 服务发现 + 负载均衡:按逻辑服务名路由。
-# LB 策略与端点剔除是该 entry 的治理规则(spring.governance.client.rules[N].balancer / .outlier-threshold),
+# LB 策略与端点剔除是该 entry 的治理规则(spring.governance.client.loadbalance.services[N].balancer / .outlier-threshold),
 # 不是这里的 key —— 见下文。
 spring.http-client.instances.discovered.service-name=greet-svc
 spring.http-client.instances.discovered.discovery=static
@@ -125,10 +125,10 @@ spring.http-client.instances.discovered.discovery=static
 # (3) 韧性守卫路由:策略在进程级 spring.governance.* 下。
 # 内置 DefaultDriver 连续失败 2 次后熔断,持续 30s。
 spring.http-client.instances.guarded.addr=127.0.0.1:9473
-# NOTE: governance RULES go in conf/governance.properties, referenced by spring.governance.source.file.path in app.properties (see cloud/runtime/controlplane/governance's SOURCE_USAGE).
+# NOTE: governance RULES go in conf/governance.properties, wired by the example's source starter (source.go) (see cloud/governance/controlplane/source's USAGE).
 spring.resilience.driver=default
-spring.governance.client.default.error-threshold=2
-spring.governance.client.default.open-duration=30s
+spring.governance.client.resilience.error-threshold=2
+spring.governance.client.resilience.open-duration=30s
 
 # 本 demo 不需要入站 HTTP server。
 spring.http.server.enabled=false
@@ -179,7 +179,7 @@ gs.Run()
 
 ```
 自定义 driver 包裹(最外层:嵌 DefaultDriver 后包裹装配产物)
-  → trafficTransport        (逐请求注入 X-LoadTest 标记 header)
+  → trafficTransport        (逐请求注入 X-Traffic 标记 header)
   → resilience roundTripper (executor:每次调用 observe( fault( rawExec ) ))
   → balancedTransport | fixedHostTransport   (LB 选点 + host 改写 | 钉到 addr)
   → otelhttp.NewTransport(http.DefaultTransport | tls.enabled 时为配置过 TLS 的克隆)
@@ -222,7 +222,7 @@ gs.Run()
    无路由 → 请求时报错 `http-client: no transport for target <target>`**。查表放在这一层而不是
    RoundTripper 里,是因为 net/http 只把 `*http.Request` 交给 transport——在这一层路由才能让
    声明的 Target 直接当键,同时也让重定向的每一跳都留在调用起始的那条路由上。
-3. trafficTransport 当且仅当 propagator 的 `IsLoadTest(ctx)` 时注入压测标记 header。
+3. trafficTransport 当且仅当 `traffic.IsLoadTest(ctx, prop)` 时注入压测标记 header。
 4. executor 把整个 round-trip 作为一次受保护调用执行:一个 `timeout` 期限罩住**整通**调用,
    其下是 限流 → 熔断闸门 → 带退避的重试循环——各轮共用这一个预算;
    熔断对整个调用只记录**一次**结果(§2.2)。
@@ -283,17 +283,17 @@ func init() {
 `label.ServiceLabel("http", ServiceName, Addr)` → 只要设置了 `service-name`(发现模式,
 或直连模式下作为纯 label 保留)就是 `http:<service-name>`,只有完全没有 service-name 的
 entry 才回退 `http:<addr>`(httpx.go `Config.service`)。因此按 `http:<service-name>`
-配的 `spring.governance.client.rules[].services` 在直连/发现两种寻址间切换时始终匹配——切换时保留
+配的 `spring.governance.client.resilience.services[].service` 在直连/发现两种寻址间切换时始终匹配——切换时保留
 service-name 即可;只有彻底删掉 service-name 才会换 key。
 另:直连模式下熔断按 host:port 计——同一后端两种 `addr` 写法得到两个熔断器。
 
 **不在这里**(`spring.http-client.*` 下没有):超时、重试、熔断、限流、故障注入。所有
-策略是进程级 `spring.governance.*`(见 cloud/runtime/controlplane/governance 的 SOURCE_USAGE_CN.md)——
-`spring.governance.client.default.<策略字段>`(rate-limit / burst / error-threshold / open-duration /
+策略是进程级 `spring.governance.*`(见 cloud/governance/controlplane/source 的 USAGE_CN.md)——
+`spring.governance.client.resilience.<策略字段>`(rate-limit / burst / error-threshold / open-duration /
 breaker-strategy / error-rate-threshold / min-requests / max-retries /
 initial-interval / multiplier / max-interval / timeout),故障注入在
-`spring.governance.client.fault.*`。按 target 定策略 = 一条 `spring.governance.client.rules[n]`,service 指向上面的 label。
-该配置面详见 cloud/runtime/controlplane/governance 的 SOURCE_USAGE_CN.md。
+`spring.fault.client.*`。按 target 定策略 = 一条 `spring.governance.client.resilience.services[n]`,service 指向上面的 label。
+该配置面详见 cloud/governance/controlplane/source 的 USAGE_CN.md。
 
 `min-requests`:error-rate 熔断的最小样本数直接取自 governance rule,由 resilience 施加;未配置
 即 resilience 自己的零值下限 1,低流量下单次失败就可能跳闸——下游是低流量时请显式配置。
@@ -331,7 +331,7 @@ endpoint,看打散变化——链路是整条重建的,不用重启;用真实发
 
 ### 4.3 熔断演练 ——打开、快速失败、恢复
 
-`guarded` 路由指向 :9473 上恒返 500 的后端,配置 `spring.governance.client.default.error-threshold=2`、
+`guarded` 路由指向 :9473 上恒返 500 的后端,配置 `spring.governance.client.resilience.error-threshold=2`、
 `open-duration=30s`:
 
 1. 跑 example:`./check.sh`。守卫客户端最初几次调用打网络失败;连续 2 次失败后熔断
@@ -341,17 +341,17 @@ endpoint,看打散变化——链路是整条重建的,不用重启;用真实发
    `circuit open`;恢复后端后等 `open-duration`(30s)——half-open 试探成功、熔断闭合。
 3. 观察跳变:`resilience.client.breaker.transitions_total{to="open"}` 递增,
    `resilience.client.breaker.state{state="open"}` 报告打开状态
-   (由 resilience executor 自己发布,见 cloud/runtime/dataplane/outbound/resilience/observe.go)。
+   (由 resilience executor 自己发布,见 cloud/governance/dataplane/outbound/resilience/observe.go)。
 
 ### 4.4 故障注入(免重启)
 
-fault 挂在同一治理 source 上;`spring.governance.client.fault.*` 热加载(见 example-load 的 conf 注释)。
+fault 挂在同一治理 source 上;`spring.fault.client.*` 热加载(见 example-load 的 conf 注释)。
 在配置文件里翻转:
 
 ```properties
-# NOTE: governance RULES go in conf/governance.properties, referenced by spring.governance.source.file.path in app.properties (see cloud/runtime/controlplane/governance's SOURCE_USAGE).
-spring.governance.client.fault.rate=0.5
-spring.governance.client.fault.error=timeout    # 或 generic / reset
+# NOTE: governance RULES go in conf/governance.properties, wired by the example's source starter (source.go) (see cloud/governance/controlplane/source's USAGE).
+spring.fault.client.rate=0.5
+spring.fault.client.error=timeout    # 或 generic / reset
 ```
 
 注入的故障流经 resilience executor **之内**(§2.2),因此重试会触发、熔断会计数、
@@ -384,7 +384,7 @@ spring.governance.client.fault.error=timeout    # 或 generic / reset
 | 容器启动失败:"one of addr or service-name is required" / "discovery is required" | validate() 规则(config.go) | 至少配一种寻址;只配 service-name 时必须配 `discovery`。 |
 | 一切正常但没有熔断/限流 | 没有治理规则匹配客户端的 label,或解析出的 `Default` 全零 | 配置一个治理规则源,并配上匹配该 label 的策略。 |
 | 单次失败即熔断 | `breaker-strategy=error-rate` 且 `min-requests` 未配置 | 在 governance rule 里显式配 `min-requests`(如 5)或调高 `error-rate-threshold`;未配置时熔断可能在第一次失败就跳闸。 |
-| addr ↔ service-name 切换后策略"失效" | ⚠ label 耦合:service key 变了(§3) | 把 `spring.governance.client.rules[].services` 更新为新 label。 |
+| addr ↔ service-name 切换后策略"失效" | ⚠ label 耦合:service key 变了(§3) | 把 `spring.governance.client.resilience.services[].service` 更新为新 label。 |
 | 客户端无 trace / 指标 | 未 import starter-otel;otelhttp 与 meter 依赖 OTel globals | 空导入 starter-otel 并配 `spring.observability.*`。 |
 | TLS/https 不通 | 该 entry 未设 `tls.enabled` | 打开 entry 的 `tls.*` 配置块(`ca-file`/`server-name`/...);它会在 otel base 下接入 TLS 配置过的 transport。 |
 | 加入本 starter 后进程内其他 httpclt 使用方异常 | starter 替换了进程级 `httpclt.DoRequest`——所有 httpclt 调用都经它路由 | 确保进程内每个 httpclt Target 都对应一条配置路由。 |

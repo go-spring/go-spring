@@ -60,7 +60,7 @@ import (
 type Service struct {
     // Ready-to-use client: fetches and refreshes the bearer token, attaches it
     // to every request, retries/breaks via the executor read from the injected
-    // *runtime.Runtime (center).
+    // *governance.Runtime (center).
     Client *http.Client `autowire:"downstream"`
     // Raw token source for non-HTTP call sites (gRPC metadata, WebSocket).
     // NOTE: not resilience-wrapped — see §2.3.
@@ -99,11 +99,11 @@ spring.oauth2.authcode.instances.login.scopes=openid,profile
 
 # --- governance (resilience for the *http.Client transport) ------------------
 # Same service label as the client: oauth2:<client-id>.
-# NOTE: governance RULES go in conf/governance.properties, referenced by spring.governance.source.file.path in app.properties (see cloud/runtime/controlplane/governance's SOURCE_USAGE).
+# NOTE: governance RULES go in conf/governance.properties, wired by the example's source starter (source.go) (see cloud/governance/controlplane/source's USAGE).
 spring.resilience.driver=default
-spring.governance.client.default.max-retries=3
-spring.governance.client.default.error-threshold=10
-spring.governance.client.default.timeout=2s
+spring.governance.client.resilience.max-retries=3
+spring.governance.client.resilience.error-threshold=10
+spring.governance.client.resilience.timeout=2s
 
 # --- observability (starter-otel, optional) ----------------------------------
 spring.observability.service-name=demo
@@ -196,7 +196,7 @@ resilience. You call `AuthCodeURL(state)` and `Exchange(ctx, code)` yourself; th
 4. The access token is cached; the `Authorization: Bearer <token>` header is set on the
    outbound request *before* the base transport runs.
 5. `resilience.NewRoundTripper` executes the request through the executor the constructor
-   reads from the injected `*runtime.Runtime` (`center`) via
+   reads from the injected `*governance.Runtime` (`center`) via
    `center.ResilienceClient().ExecutorFor("oauth2", "oauth2:<client-id>")` — retry / circuit
    breaker / rate limit policy from the governance document. The center is the governance
    family's sole injection point (a required bean in a gs app); an unarmed center — or a nil one
@@ -290,7 +290,7 @@ exists for `TokenSource`.
 
 ### 4.5 Governance hot-toggle
 
-With `spring.governance.source.file.path`, flip `max-retries=0` in the file while the example runs —
+With the file source wired in source.go, flip `max-retries=0` in the file while the example runs —
 the same flaky call now fails fast to the caller (executor policy is resolved at call
 time. No restart.
 

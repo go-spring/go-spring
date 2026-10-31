@@ -25,9 +25,9 @@ import (
 	"github.com/apache/rocketmq-client-go/v2/consumer"
 	"github.com/apache/rocketmq-client-go/v2/primitive"
 	"github.com/apache/rocketmq-client-go/v2/producer"
+	"go-spring.org/cloud/governance/capability/traffic"
 	"go-spring.org/cloud/messaging"
 	"go-spring.org/cloud/propagate"
-	"go-spring.org/cloud/runtime/dataplane/kernel/traffic"
 	"go-spring.org/log"
 )
 
@@ -155,13 +155,13 @@ func (s *subscriber) Subscribe(_ context.Context, handler messaging.Handler) err
 		for _, ext := range exts {
 			// Extract the load-test marker the producer put in the user
 			// properties so the handler sees synthetic load via the
-			// propagator's IsLoadTest(ctx), then continue the producer's W3C
+			// `traffic.IsLoadTest`, then continue the producer's W3C
 			// trace and declare the consume. The handler runs under the client's
 			// resilience executor, which emits the span, metrics and access log
 			// from the declaration.
 			msgCtx := s.prop.Extract(ctx, propagate.StringMap(ext.GetProperties()))
 			msgCtx = extractTraceContext(msgCtx, ext.GetProperties())
-			herr := s.cl.execute(msgCtx, operation(opProcess, s.topic), func(attemptCtx context.Context) error {
+			herr := s.cl.execute(msgCtx, operation(msgCtx, s.prop, opProcess, s.topic), func(attemptCtx context.Context) error {
 				return handler(attemptCtx, fromMessageExt(ext))
 			})
 			if herr != nil {

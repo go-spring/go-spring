@@ -27,9 +27,9 @@ import (
 	"database/sql"
 	"database/sql/driver"
 
-	"go-spring.org/cloud/runtime"
-	"go-spring.org/cloud/runtime/dataplane/kernel/label"
-	"go-spring.org/cloud/runtime/dataplane/outbound/chain"
+	"go-spring.org/cloud/governance"
+	"go-spring.org/cloud/governance/capability/label"
+	"go-spring.org/cloud/governance/dataplane/outbound/chain"
 )
 
 // Client is the wrapper bean TDengine connections are injected as. It embeds
@@ -50,7 +50,7 @@ type Client struct {
 	// connection; the resilience executor is applied on it by [NewClient].
 	slot *clientSlot
 	// exec is the resilience executor, applied by [NewClient] from the
-	// [runtime.Runtime] the container supplies; the center is required to
+	// [governance.Runtime] the container supplies; the center is required to
 	// carry a [resilience.Manager], so statements are always observed.
 	exec chain.Executor
 	// serviceLabel is the resilience service key ("tdengine:<dsn addr>") exec
@@ -65,18 +65,18 @@ type Client struct {
 // the pool, and applies the pool sizes from c. connector must be a ready-to-use
 // driver.Connector (parsed DSN + dialer) — it is normally the Driver's product.
 //
-// center carries the container's facilities (see [runtime.Runtime]), and is
+// center carries the container's facilities (see [governance.Runtime]), and is
 // applied HERE so a Client cannot exist half-assembled: there is no Init step,
 // no later patching, and nothing the container has to remember to call. It
-// resolves the executor once — [runtime.Runtime.ExecutorFor] — and installs
+// resolves the executor once — [governance.Runtime.ExecutorFor] — and installs
 // it on the slot every pooled connection consults. A hand-built client must
-// supply a [runtime.Runtime] over a
-// [resilience.Manager]: [runtime.Runtime.ResilienceClient] is required,
+// supply a [governance.Runtime] over a
+// [resilience.Manager]: [governance.Runtime.ResilienceClient] is required,
 // so a nil center is a construction error — never a graceful
 // downgrade. The manager resolves its backing
 // executor lazily, so the call order relative to the center's wiring is
 // irrelevant.
-func NewClient(connector driver.Connector, c Config, center *runtime.Runtime) *Client {
+func NewClient(connector driver.Connector, c Config, center *governance.Runtime) *Client {
 	slot := &clientSlot{}
 	db := sql.OpenDB(guardedConnector{base: connector, slot: slot})
 	db.SetMaxOpenConns(c.MaxOpenConns)
@@ -87,6 +87,7 @@ func NewClient(connector driver.Connector, c Config, center *runtime.Runtime) *C
 	slot.service = cl.serviceLabel
 	cl.exec = center.ExecutorFor("tdengine", cl.serviceLabel)
 	slot.exec = cl.exec
+	slot.prop = center.TrafficPropagator()
 	return cl
 }
 

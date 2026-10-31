@@ -21,9 +21,9 @@ import (
 	"net"
 
 	"github.com/redis/go-redis/v9"
-	"go-spring.org/cloud/runtime"
-	"go-spring.org/cloud/runtime/dataplane/kernel/discovery"
-	"go-spring.org/cloud/runtime/dataplane/kernel/loadbalance"
+	"go-spring.org/cloud/governance"
+	"go-spring.org/cloud/governance/capability/discovery"
+	"go-spring.org/cloud/governance/capability/loadbalance"
 	"go-spring.org/stdlib/errutil"
 )
 
@@ -65,7 +65,7 @@ import (
 // center.Discovery() itself, failing construction when an entry routes by
 // service-name and the label names no bean.
 type Driver interface {
-	CreateClient(ctx context.Context, c Config, center *runtime.Runtime) (*Client, error)
+	CreateClient(ctx context.Context, c Config, center *governance.Runtime) (*Client, error)
 }
 
 // ClusterDriver is an optional interface a Driver may also implement to support
@@ -78,7 +78,7 @@ type Driver interface {
 // so the pool argument to [NewClient] is nil on this path, and only the center's
 // resilience + fault capabilities apply.
 type ClusterDriver interface {
-	CreateClusterClient(ctx context.Context, c Config, center *runtime.Runtime) (*Client, error)
+	CreateClusterClient(ctx context.Context, c Config, center *governance.Runtime) (*Client, error)
 }
 
 // DefaultDriver is the default implementation of the Driver interface. It also
@@ -106,7 +106,7 @@ var (
 // A pick pool is built only for a discovery-routed single-mode entry; it is
 // handed to [NewClient], which binds it through the center. See the [Driver]
 // interface for the contract.
-func (DefaultDriver) CreateClient(ctx context.Context, c Config, center *runtime.Runtime) (*Client, error) {
+func (DefaultDriver) CreateClient(ctx context.Context, c Config, center *governance.Runtime) (*Client, error) {
 	tlsConfig, err := c.TLS.BuildClient()
 	if err != nil {
 		return nil, errutil.Explain(err, "redis: build TLS")
@@ -148,55 +148,57 @@ func (DefaultDriver) CreateClient(ctx context.Context, c Config, center *runtime
 		TLSConfig:       tlsConfig,
 	}
 
+	// Mesh mode wins over a configured service-name: the sidecar owns discovery
+	// and load balancing, so this entry dials the stable Addr directly.
+	if !center.UsesDiscovery(c.ServiceName) {
+		return NewClient(redis.NewClient(opts), c, nil, center)
+	}
+
 	// Resolve the discovery backend this entry cites. The label rides on the
 	// config (c.Discovery, already carrying the family default); an entry routed
 	// by service-name that cites no existing backend fails here, at construction.
-	var backend discovery.Discovery
-	if c.ServiceName != "" {
-		backend, _ = center.Discovery().Get(c.Discovery)
-		if backend == nil {
-			return nil, errutil.Explain(nil, "redis: instance routes by service-name but cites discovery backend %q, which names no bean", c.Discovery)
-		}
+	backend, _ := center.Discovery().Get(c.Discovery)
+	if backend == nil {
+		return nil, errutil.Explain(nil, "redis: instance routes by service-name but cites discovery backend %q, which names no bean", c.Discovery)
 	}
-	resolver, err := discovery.NewResolver(ctx, backend, c.ServiceName, discovery.WithScheme(c.Scheme))
+	resolver, err := discovery.NewResolver(ctx, backend, c.ServiceName, c.Scheme)
 	if err != nil {
 		return nil, errutil.Explain(err, "redis: discovery resolve %q failed", c.ServiceName)
 	}
-	if resolver != nil {
-		nd := &net.Dialer{Timeout: c.DialTimeout}
-		// Addr becomes a label for the chain; the dialer picks a live endpoint
-		// through the shared loadbalance machinery (per the balancer config, per connection).
-		// Freshness lives inside the discovery backend, so the resolver owns no
-		// resources. The tracker makes outlier suspension possible, and building
-		// the chain here (rather than binding a pool in [NewClient]) is what
-		// registers it under the service's governance label — the same rule that
-		// drives its protection executor — so the dialer below picks under the
-		// selection in force.
-		lbChain := center.Loadbalance().Chain(ctx, resolver, serviceLabel(c))
-		opts.Addr = c.ServiceName
-		opts.Dialer = func(ctx context.Context, network, _ string) (net.Conn, error) {
-			ep, err := lbChain.Pick(ctx, loadbalance.PickInfo{})
-			if err != nil {
-				return nil, err
-			}
-			conn, derr := nd.DialContext(ctx, network, ep.Addr)
-			// The dial outcome is the only signal this picker has; feeding it
-			// makes outlier suspension evict an instance that keeps refusing
-			// connections.
-			lbChain.Complete(ctx, ep, derr)
-			return conn, derr
-		}
-		return NewClient(redis.NewClient(opts), c, lbChain, center)
+	nd := &net.Dialer{Timeout: c.DialTimeout}
+	// Addr becomes a label for the chain; the dialer picks a live endpoint
+	// through the shared loadbalance machinery (per the balancer config, per connection).
+	// Freshness lives inside the discovery backend, so the resolver owns no
+	// resources. The tracker makes outlier suspension possible, and building
+	// the chain here (rather than binding a pool in [NewClient]) is what
+	// registers it under the service's governance label — the same rule that
+	// drives its protection executor — so the dialer below picks under the
+	// selection in force.
+	lbChain, err := center.Loadbalance().Chain(ctx, resolver, serviceLabel(c))
+	if err != nil {
+		return nil, err
 	}
-
-	return NewClient(redis.NewClient(opts), c, nil, center)
+	opts.Addr = c.ServiceName
+	opts.Dialer = func(ctx context.Context, network, _ string) (net.Conn, error) {
+		ep, err := lbChain.Pick(ctx, loadbalance.PickInfo{})
+		if err != nil {
+			return nil, err
+		}
+		conn, derr := nd.DialContext(ctx, network, ep.Addr)
+		// The dial outcome is the only signal this picker has; feeding it
+		// makes outlier suspension evict an instance that keeps refusing
+		// connections.
+		lbChain.Complete(ctx, ep, derr)
+		return conn, derr
+	}
+	return NewClient(redis.NewClient(opts), c, lbChain, center)
 }
 
 // CreateClusterClient creates a cluster Redis client seeded by c.Addrs. It
 // returns the starter's wrapped [Client]. Cluster mode self-discovers its nodes,
 // so c.ServiceName / the discovery resolver is not used and no pick pool is
 // built; only the center's resilience + fault capabilities apply.
-func (DefaultDriver) CreateClusterClient(ctx context.Context, c Config, center *runtime.Runtime) (*Client, error) {
+func (DefaultDriver) CreateClusterClient(ctx context.Context, c Config, center *governance.Runtime) (*Client, error) {
 	tlsConfig, err := c.TLS.BuildClient()
 	if err != nil {
 		return nil, errutil.Explain(err, "redis: build TLS")

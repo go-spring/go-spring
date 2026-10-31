@@ -31,7 +31,8 @@ package StarterMilvus
 
 import (
 	"context"
-	"go-spring.org/cloud/runtime/dataplane/outbound/chain"
+	"go-spring.org/cloud/governance/capability/traffic"
+	"go-spring.org/cloud/governance/dataplane/outbound/chain"
 	"sync"
 
 	"google.golang.org/grpc"
@@ -46,24 +47,27 @@ type guardSlot struct {
 	mu      sync.RWMutex
 	exec    chain.Executor
 	service string // the governance label the executor was built for
+	prop    traffic.Propagator
 }
 
 // apply installs the executor the interceptors route through, with the service
 // label it was built for (each call states it on its operation so a layer
-// outside the executor — the fault layer — matches the same service).
-func (s *guardSlot) apply(exec chain.Executor, service string) {
+// outside the executor — the fault layer — matches the same service) and the
+// process traffic convention each call's operation records.
+func (s *guardSlot) apply(exec chain.Executor, service string, prop traffic.Propagator) {
 	s.mu.Lock()
 	s.exec = exec
 	s.service = service
+	s.prop = prop
 	s.mu.Unlock()
 }
 
 // load returns the applied executor and its service label, or nil before
-// [NewClient] applies it.
-func (s *guardSlot) load() (chain.Executor, string) {
+// [NewClient] applies it, along with the process traffic convention.
+func (s *guardSlot) load() (chain.Executor, string, traffic.Propagator) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	return s.exec, s.service
+	return s.exec, s.service, s.prop
 }
 
 // guardDialOptions returns the gRPC dial options that route every RPC through
@@ -94,8 +98,8 @@ func unaryGuard(slot *guardSlot) grpc.UnaryClientInterceptor {
 		method string, req, reply any,
 		cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption,
 	) error {
-		if exec, service := slot.load(); exec != nil {
-			op := operation(method)
+		if exec, service, prop := slot.load(); exec != nil {
+			op := operation(ctx, prop, method)
 			op.Service = service
 			return exec.Execute(ctx, op, nil, func(ctx context.Context) error {
 				return invoker(ctx, method, req, reply, cc, opts...)
@@ -119,8 +123,8 @@ func streamGuard(slot *guardSlot) grpc.StreamClientInterceptor {
 		desc *grpc.StreamDesc, cc *grpc.ClientConn,
 		method string, streamer grpc.Streamer, opts ...grpc.CallOption,
 	) (grpc.ClientStream, error) {
-		if exec, service := slot.load(); exec != nil {
-			op := operation(method)
+		if exec, service, prop := slot.load(); exec != nil {
+			op := operation(ctx, prop, method)
 			op.Service = service
 			var cs grpc.ClientStream
 			err := exec.Execute(ctx, op, nil, func(ctx context.Context) error {

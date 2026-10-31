@@ -114,9 +114,9 @@ spring.observability.trace.endpoint=127.0.0.1:4317
 spring.observability.metrics.exporter=prometheus
 
 # --- governance (rate limit on the sync produce path) -----------------------
-# NOTE: governance RULES go in conf/governance.properties, referenced by spring.governance.source.file.path in app.properties (see cloud/runtime/controlplane/governance's SOURCE_USAGE).
+# NOTE: governance RULES go in conf/governance.properties, wired by the example's source starter (source.go) (see cloud/governance/controlplane/source's USAGE).
 spring.resilience.driver=default
-spring.governance.client.default.rate-limit=8
+spring.governance.client.resilience.rate-limit=8
 ```
 
 **Verify** (broker startup mirrors [example/docker-compose.yml](example/docker-compose.yml) —
@@ -152,7 +152,7 @@ gs.Run()
   │   1. optional Driver bean — none → bundled DefaultDriver                [starter.go:101-102]
   │   2. d.CreateClient(ctx, c, center): full client assembly — the driver
   │      builds the raw client and returns it. center is the injected
-  │      *runtime.Runtime (the family's sole injection point: it hands out the
+  │      *governance.Runtime (the family's sole injection point: it hands out the
   │      resilience/fault/loadbalance authorities — e.g. center.ExecutorFor("kafka",
   │      "kafka:<brokers>")). Governance is applied one step up, by NewClient while
   │      it wraps the returned client in its chain  [driver.go:78,122; starter.go:109,120]
@@ -176,7 +176,7 @@ assembly (`starter.go:100-102`). When several Driver beans coexist, an entry sel
 by name: `spring.kafka.instances.<name>.driver = <bean-name>` (empty = inject the single Driver
 bean by type; naming a missing bean fails startup).
 
-`CreateClient` receives the injected `*runtime.Runtime` — the family's sole injection point — and
+`CreateClient` receives the injected `*governance.Runtime` — the family's sole injection point — and
 returns the raw client; governance is applied one step up, by `NewClient` wrapping that raw
 `*kgo.Client` in the client's chain, so nothing patches the client afterwards. `GuardedProduceSync`
 takes the wrapper `*Client` and resolves the executor from its chain, so a custom Driver only has to
@@ -375,7 +375,7 @@ W3C trace keys or the load-test header is overwritten by the inject step [client
 ### 4.3 Guarded vs unguarded produce
 
 ```bash
-# example-cloudnative with spring.governance.client.default.rate-limit=8:
+# example-cloudnative with spring.governance.client.resilience.rate-limit=8:
 go run .    # prints "resilience: N produce admitted, M rejected with ErrRateLimited"
 ```
 

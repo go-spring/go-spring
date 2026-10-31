@@ -31,10 +31,9 @@ import (
 	mssql "github.com/microsoft/go-mssqldb"
 	"github.com/microsoft/go-mssqldb/msdsn"
 	"go-spring.org/cloud/actuator/health"
-	"go-spring.org/cloud/runtime"
-	"go-spring.org/cloud/runtime/dataplane/kernel/discovery"
-	"go-spring.org/cloud/runtime/dataplane/kernel/label"
-	"go-spring.org/cloud/runtime/dataplane/kernel/loadbalance"
+	"go-spring.org/cloud/governance"
+	"go-spring.org/cloud/governance/capability/label"
+	"go-spring.org/cloud/governance/capability/loadbalance"
 	"go-spring.org/log"
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/gs"
@@ -62,7 +61,7 @@ func init() {
 			// bean-name space, so two dialects may carry an instance of the same
 			// name.
 			beanName := "sqlserver." + name
-			r.Provide(func(ctx *gs.ContextProvider, discoveryLabel string, center *runtime.Runtime) (*gormcore.DB, error) {
+			r.Provide(func(ctx *gs.ContextProvider, discoveryLabel string, center *governance.Runtime) (*gormcore.DB, error) {
 				// The wiring tag applies the family-default discovery fallback
 				// (discoveryLabel); fold it into the config so the dialect's build
 				// reads one label — c.Discovery — and resolves the backend itself,
@@ -96,13 +95,13 @@ func init() {
 // build constructs the driver-specific dialector for a Config, handling service
 // discovery, and returns the Spec [gormcore.NewDB] assembles.
 //
-// When c.ServiceName is set (and mesh mode is off), the connection is routed
+// When in-process discovery applies (a service name is set and the process is not in mesh mode), the connection is routed
 // through a Resolver that resolves the service name against the configured
 // discovery backend on every dial. The mssql Connector.Dialer hook accepts our
 // resolverDialer adapter, which implements mssql.Dialer. In mesh mode a sidecar
 // owns discovery+LB, so the configured Host is used as-is. When c.ServiceName
 // is empty this stays a plain DSN dial, unchanged from before.
-func build(ctx context.Context, c Config, center *runtime.Runtime) (gormcore.Spec, error) {
+func build(ctx context.Context, c Config, center *governance.Runtime) (gormcore.Spec, error) {
 	if c.Host == "" && c.ServiceName == "" {
 		return gormcore.Spec{}, errutil.Explain(nil, "gorm sqlserver: one of host or service-name must be set")
 	}
@@ -113,23 +112,25 @@ func build(ctx context.Context, c Config, center *runtime.Runtime) (gormcore.Spe
 
 	service := label.ServiceLabel("gorm:sqlserver", c.ServiceName, c.Host)
 
-	// Resolve the discovery backend the entry cites before building the dialer:
-	// the build reads one label (c.Discovery) and fails construction when it
-	// names no bean, rather than silently dialing the static host.
-	var backend discovery.Discovery
-	if c.ServiceName != "" {
-		backend, _ = center.Discovery().Get(c.Discovery)
+	var dialector gorm.Dialector
+
+	// Mesh mode wins over a configured service-name: the sidecar owns
+	// discovery+LB, so the configured Host is used as-is and no pool is built.
+	var lb *loadbalance.Chain
+	if center.UsesDiscovery(c.ServiceName) {
+		// Resolve the discovery backend the entry cites before building the
+		// dialer: the build reads one label (c.Discovery) and fails construction
+		// when it names no bean, rather than silently dialing the static host.
+		backend, _ := center.Discovery().Get(c.Discovery)
 		if backend == nil {
 			return gormcore.Spec{}, errutil.Explain(nil, "gorm sqlserver: instance routes by service-name but cites discovery backend %q, which names no bean", c.Discovery)
 		}
-	}
-
-	var dialector gorm.Dialector
-
-	lb, _, err := c.NewPickPool(ctx, backend, service, center.Loadbalance())
-	if err != nil {
-		log.Error(ctx, log.TagAppDef, err, "gorm sqlserver build discovery resolver failed")
-		return gormcore.Spec{}, err
+		var err error
+		lb, _, err = c.NewPickPool(ctx, backend, service, center.Loadbalance())
+		if err != nil {
+			log.Error(ctx, log.TagAppDef, err, "gorm sqlserver build discovery resolver failed")
+			return gormcore.Spec{}, err
+		}
 	}
 	if lb != nil {
 		msCfg, err := msdsn.Parse(c.DSN())

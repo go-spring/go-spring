@@ -136,11 +136,11 @@ spring.observability.metrics.exporter=prometheus
 # --- actuator: readiness folds in neo4j:graph and neo4j:analytics -----------
 spring.actuator.addr=:9370
 # --- governance: guard for Query / RunWithResilience ------------------------
-# NOTE: governance RULES go in conf/governance.properties, referenced by spring.governance.source.file.path in app.properties (see cloud/runtime/controlplane/governance's SOURCE_USAGE).
+# NOTE: governance RULES go in conf/governance.properties, wired by the example's source starter (source.go) (see cloud/governance/controlplane/source's USAGE).
 spring.resilience.driver=default
-spring.governance.client.default.rate-limit=100
-spring.governance.client.default.max-retries=1
-spring.governance.client.default.timeout=500ms
+spring.governance.client.resilience.rate-limit=100
+spring.governance.client.resilience.max-retries=1
+spring.governance.client.resilience.timeout=500ms
 ```
 
 **Verify** (start Neo4j first — `docker run -d -e NEO4J_AUTH=neo4j/password -p 7687:7687 -p 7474:7474 neo4j:5`,
@@ -184,11 +184,11 @@ gs.Run()
   │   │  then the single Driver bean by type; naming a missing bean fails startup)
   │   ├─ d.CreateClient(ctx, c, center) (auth + pool knobs + TLS) returns the *Client
   │   │  COMPLETE — identity (session + service label) and governance both applied
-  │   │  [starter.go:123, driver.go:77]; center is the injected *runtime.Runtime,
+  │   │  [starter.go:123, driver.go:77]; center is the injected *governance.Runtime,
   │   │  handing out the resilience/fault authorities (the resilience manager is required)
   │   ├─ NewClient [client.go:96-103]: service = label.ServiceLabel("neo4j",
   │   │  ServiceName, URI) → center.ExecutorFor("neo4j", service) — the governed executor
-  │   │  (clientfault.ClientManager.WrapClientExecutor over center.ResilienceClient().ExecutorFor); the center is always
+  │   │  (clientfault.Manager.WrapClientExecutor over center.ResilienceClient().ExecutorFor); the center is always
   │   │  present (the resilience manager is required)
   │   └─ ping=true only: fail-fast HealthCheck (VerifyConnectivity on the raw driver),
   │      bounded by socket-connect-timeout or 5s; on failure the client is destroyed
@@ -206,7 +206,7 @@ already-governed client (`Destroy`) rather than leaking the executor.
 `driver.go:66-68`). A company/umbrella starter may provide its own `Driver` as an **optional
 container bean** (a `gs.Provide(func() StarterNeo4j.Driver{...})`, so it can inject config bound
 from the properties file at wiring time); every instance under `spring.neo4j` is then built
-through it. `CreateClient(ctx, c, center)` receives the injected `*runtime.Runtime`; the driver
+through it. `CreateClient(ctx, c, center)` receives the injected `*governance.Runtime`; the driver
 resolves the discovery backend itself from `center.Discovery().Get(c.Discovery)` — the entry's
 `${discovery}` label rides on the config (the ctor has folded the family default into `c.Discovery`),
 so no pre-resolved backend is passed. When no such bean exists the
@@ -297,7 +297,7 @@ unchanged [starter.go:103].
 
 ⚠ **Deliberately not wired to governed endpoint selection.** There is no per-query pick to govern:
 the boot-time pick is frozen into a URI string and the pool is built, used, and discarded in that
-one function. `spring.governance.client.rules[N].balancer` / `outlier-threshold` therefore have no effect on neo4j;
+one function. `spring.governance.client.loadbalance.services[N].balancer` / `outlier-threshold` therefore have no effect on neo4j;
 its governance stops at the protection policy (timeout / retries / breaker under the label
 `neo4j:<service-name|uri>`). Recorded here so the absence reads as a decision, not a gap. (The
 `AddressResolver` hook above is about *which cluster*, not *which node* — the driver still chooses
@@ -385,9 +385,9 @@ silence is the un-intercepted path, not a broken pipeline (§2.2).
 ### 4.3 Resilience drill (example-cloudnative / example-load shape)
 
 ```properties
-# NOTE: governance RULES go in conf/governance.properties, referenced by spring.governance.source.file.path in app.properties (see cloud/runtime/controlplane/governance's SOURCE_USAGE).
+# NOTE: governance RULES go in conf/governance.properties, wired by the example's source starter (source.go) (see cloud/governance/controlplane/source's USAGE).
 spring.resilience.driver=default
-spring.governance.client.default.rate-limit=5
+spring.governance.client.resilience.rate-limit=5
 ```
 
 ```bash
@@ -396,7 +396,7 @@ go run ./example-cloudnative -manual   # self-asserts: burst of 15 → some admi
 ```
 
 Fault injection (hot-reload, example-load): add a rule in `conf/governance.properties` while the
-load binary runs — e.g. `spring.governance.client.fault.rules[0].service=neo4j:<service-name|uri>`
+load binary runs — e.g. `spring.fault.client.rules[0].service=neo4j:<service-name|uri>`
 with `.rate=0.5` and `.error=timeout` — the error breakdown moves without restart.
 
 ### 4.4 Discovery drill

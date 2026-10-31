@@ -30,9 +30,10 @@ import (
 	"strings"
 	"sync"
 
-	"go-spring.org/cloud/runtime/dataplane/kernel/label"
-	"go-spring.org/cloud/runtime/dataplane/outbound/chain"
-	observability "go-spring.org/cloud/runtime/dataplane/outbound/observe"
+	"go-spring.org/cloud/governance/capability/label"
+	"go-spring.org/cloud/governance/capability/traffic"
+	"go-spring.org/cloud/governance/dataplane/outbound/chain"
+	observability "go-spring.org/cloud/governance/dataplane/outbound/observe"
 
 	"github.com/apache/rocketmq-client-go/v2"
 	"github.com/apache/rocketmq-client-go/v2/consumer"
@@ -63,6 +64,7 @@ type Client struct {
 	// metrics and access log. serviceLabel is the label it reports under.
 	obs          *observability.OperationObserver
 	serviceLabel string
+	prop         traffic.Propagator
 
 	mu        sync.Mutex
 	closed    bool
@@ -82,8 +84,8 @@ type Client struct {
 // governance: the observer emits the span, metrics and access log, and nothing
 // throttles or retries. It is the constructor the bundled [DefaultDriver] uses; a
 // company Driver may call it too.
-func NewClient(nameServers []string, c Config) *Client {
-	cl := &Client{nameServers: primitive.NamesrvAddr(nameServers), cfg: c}
+func NewClient(nameServers []string, c Config, prop traffic.Propagator) *Client {
+	cl := &Client{nameServers: primitive.NamesrvAddr(nameServers), cfg: c, prop: prop}
 	cl.serviceLabel = label.ServiceLabel("rocketmq", strings.Join(nameServers, ","))
 	cl.obs = observability.NewOperationObserver("rocketmq", cl.serviceLabel)
 	return cl
@@ -211,7 +213,7 @@ func (cl *Client) Close() error {
 // returned head in your own [InnerProducer] layer to modify
 // what a send does — the topics a layer rewrites are what gets declared.
 func (cl *Client) GuardedProducer(p rocketmq.Producer) InnerProducer {
-	return NewObsProducer(NewRawProducer(p), cl.obs)
+	return NewObsProducer(NewRawProducer(p), cl.obs, cl.prop)
 }
 
 // execute routes call through the client's resilience executor, and otherwise

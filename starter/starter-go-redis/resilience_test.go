@@ -19,19 +19,26 @@ package StarterGoRedis
 import (
 	"context"
 	"errors"
-	"go-spring.org/cloud/runtime/dataplane/outbound/chain"
+	"go-spring.org/cloud/governance/dataplane/outbound/chain"
 	"testing"
 
 	"github.com/redis/go-redis/v9"
-	"go-spring.org/cloud/runtime/dataplane/outbound/resilience"
+	"go-spring.org/cloud/governance/dataplane/outbound/resilience"
 	"go-spring.org/stdlib/testing/assert"
 )
 
-func newHook(t *testing.T, p resilience.Policy) *resilienceHook {
-	d := resilience.NewDefaultDriver(nil)
-	exec, err := d.NewExecutor("svc", p)
-	assert.Error(t, err).Nil()
-	return &resilienceHook{exec: exec, serviceLabel: "redis:test"}
+func newHook(t *testing.T, p any) *resilienceHook {
+	m := resilience.NewManager(resilience.NewDefaultDriver(nil))
+	switch v := p.(type) {
+	case nil:
+	case resilience.Limits:
+		assert.Error(t, m.ApplyLimits(resilience.LimitsSettings{Default: v})).Nil()
+	case resilience.BreakerPolicy:
+		assert.Error(t, m.ApplyBreaker(resilience.BreakerSettings{Default: v})).Nil()
+	case resilience.RateLimitPolicy:
+		assert.Error(t, m.ApplyRateLimit(resilience.RateLimitSettings{Default: v})).Nil()
+	}
+	return &resilienceHook{exec: m.ExecutorFor("svc"), serviceLabel: "redis:test", prop: testProp}
 }
 
 // call drives one command through the hook with a stubbed next that returns
@@ -51,7 +58,7 @@ func call(h *resilienceHook, nextErr error) (seen, onCmd error) {
 // get right: a cache miss (redis.Nil) is a normal outcome, not a failure, so no
 // amount of misses may open the circuit.
 func TestRedisNilNeverTripsBreaker(t *testing.T) {
-	h := newHook(t, resilience.Policy{ErrorThreshold: 2})
+	h := newHook(t, resilience.BreakerPolicy{ErrorThreshold: 2})
 	for range 10 {
 		seen, onCmd := call(h, redis.Nil)
 		assert.Error(t, seen).Is(redis.Nil)
@@ -65,7 +72,7 @@ func TestRedisNilNeverTripsBreaker(t *testing.T) {
 // TestRealErrorsTripBreaker confirms genuine failures still open the circuit and
 // the rejection is surfaced both to the caller and onto the command.
 func TestRealErrorsTripBreaker(t *testing.T) {
-	h := newHook(t, resilience.Policy{ErrorThreshold: 2})
+	h := newHook(t, resilience.BreakerPolicy{ErrorThreshold: 2})
 	boom := errors.New("connection reset")
 
 	seen, _ := call(h, boom)
@@ -82,7 +89,7 @@ func TestRealErrorsTripBreaker(t *testing.T) {
 // TestRateLimitRejects confirms the flow-control path: once the burst is spent,
 // further commands are rejected as rate-limited without invoking next.
 func TestRateLimitRejects(t *testing.T) {
-	h := newHook(t, resilience.Policy{RateLimit: 1, Burst: 2})
+	h := newHook(t, resilience.RateLimitPolicy{RateLimit: 1, Burst: 2})
 	var ran int
 	stub := h.ProcessHook(func(ctx context.Context, c redis.Cmder) error {
 		ran++

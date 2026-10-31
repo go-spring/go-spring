@@ -20,9 +20,9 @@ import (
 	"context"
 	"math"
 
-	"go-spring.org/cloud/runtime"
-	"go-spring.org/cloud/runtime/dataplane/kernel/label"
-	"go-spring.org/cloud/runtime/dataplane/kernel/traffic"
+	"go-spring.org/cloud/governance"
+	"go-spring.org/cloud/governance/capability/label"
+	"go-spring.org/cloud/governance/capability/traffic"
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
 	"go-spring.org/starter-trpc/internal/logger"
@@ -81,8 +81,7 @@ type Config struct {
 // LoadTestConfig toggles registration of the inbound load-test identification
 // filter ("loadtest"). Enabled by default; add "loadtest" to a service's filter
 // chain (first position) to activate it — it tags the handler context from
-// inbound metadata so downstream code can branch on the injected propagator's
-// IsLoadTest(ctx).
+// inbound metadata so downstream code can branch on `traffic.IsLoadTest`.
 type LoadTestConfig struct {
 	Enabled bool `value:"${enabled:=true}"`
 }
@@ -120,7 +119,7 @@ type SimpleTrpcServer struct {
 	// center is the runtime bean (nil when governance is not imported); its
 	// inbound guard — fault included — backs the always-registered
 	// "governance" server filter.
-	center *runtime.Runtime
+	center *governance.Runtime
 	// prop is the load-test convention bean — the application.s when it provides
 	// one, go-spring.s default otherwise — the "loadtest" server filter reads the inbound marker
 	// through it.
@@ -135,7 +134,7 @@ type SimpleTrpcServer struct {
 // (nil when governance is not imported). prop is the load-test
 // convention bean — the application.s when it provides one, go-spring.s default
 // otherwise — handed to the "loadtest" server filter.
-func NewSimpleTrpcServer(cfg Config, reg ServiceRegister, center *runtime.Runtime, prop traffic.Propagator) *SimpleTrpcServer {
+func NewSimpleTrpcServer(cfg Config, reg ServiceRegister, center *governance.Runtime, prop traffic.Propagator) *SimpleTrpcServer {
 	log.Debug(context.Background(), log.TagAppDef, "create trpc server success", func() []log.Field {
 		return []log.Field{
 			log.String("addr", cfg.Addr),
@@ -174,7 +173,7 @@ func (s *SimpleTrpcServer) Run(ctx context.Context, sig gs.ReadySignal) error {
 		if err != nil {
 			return err
 		}
-		filter.Register("governance", GuardServerFilter(in), nil)
+		filter.Register("governance", GuardServerFilter(in, s.prop), nil)
 		filters = append(filters, "governance")
 	}
 

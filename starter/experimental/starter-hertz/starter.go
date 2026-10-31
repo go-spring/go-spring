@@ -22,8 +22,8 @@ import (
 	"github.com/cloudwego/hertz/pkg/app"
 	"github.com/cloudwego/hertz/pkg/app/server"
 	"github.com/cloudwego/hertz/pkg/common/config"
-	"go-spring.org/cloud/runtime"
-	"go-spring.org/cloud/runtime/dataplane/kernel/traffic"
+	"go-spring.org/cloud/governance"
+	"go-spring.org/cloud/governance/capability/traffic"
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
@@ -71,7 +71,7 @@ type SimpleHertzServer struct {
 // resolving per request, so a config swap on the bean takes effect without
 // re-resolution. prop is the load-test convention bean — the application.s when it provides
 // one, go-spring.s default otherwise — handed to the inbound LoadTest middleware.
-func NewSimpleHertzServer(register RouterRegister, cfg Config, center *runtime.Runtime, prop traffic.Propagator) (*SimpleHertzServer, error) {
+func NewSimpleHertzServer(register RouterRegister, cfg Config, center *governance.Runtime, prop traffic.Propagator) (*SimpleHertzServer, error) {
 	opts := []config.Option{
 		server.WithHostPorts(cfg.Addr),
 		server.WithReadTimeout(cfg.ReadTimeout),

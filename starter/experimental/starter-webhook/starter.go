@@ -32,8 +32,9 @@ import (
 	"net/url"
 	"time"
 
-	"go-spring.org/cloud/runtime/dataplane/kernel/label"
-	observability "go-spring.org/cloud/runtime/dataplane/outbound/observe"
+	"go-spring.org/cloud/governance/capability/label"
+	"go-spring.org/cloud/governance/capability/traffic"
+	observability "go-spring.org/cloud/governance/dataplane/outbound/observe"
 	"go-spring.org/log"
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/gs"
@@ -83,6 +84,7 @@ type Notifier struct {
 	cfg    Config
 	client *http.Client
 	obs    *observability.OperationObserver
+	prop   traffic.Propagator
 }
 
 // newNotifier builds a Notifier from config. There is deliberately no startup
@@ -92,7 +94,7 @@ type Notifier struct {
 // A webhook delivery is emitted by this starter's own observer rather than
 // routed through the resilience executor (see observe.go) — a delivery has no
 // seam for one — so no runtime is injected here.
-func newNotifier(ctx *gs.ContextProvider, name string, c Config) (*Notifier, error) {
+func newNotifier(ctx *gs.ContextProvider, name string, c Config, prop traffic.Propagator) (*Notifier, error) {
 	if _, _, err := buildPayload(c.Channel, &Notification{}, c.Secret, time.Now()); err != nil {
 		return nil, err
 	}
@@ -111,6 +113,7 @@ func newNotifier(ctx *gs.ContextProvider, name string, c Config) (*Notifier, err
 		cfg:    c,
 		client: &http.Client{Timeout: c.Timeout},
 		obs:    obs,
+		prop:   prop,
 	}, nil
 }
 
@@ -140,7 +143,7 @@ func (n *Notifier) Send(ctx context.Context, notification *Notification) error {
 	// The delivery's span, duration metrics and access log are emitted here, by
 	// this starter's own observer — a webhook has no seam for the resilience
 	// executor, so there is no governance on this path.
-	return n.obs.Observe(ctx, operation(n.cfg.Channel, endpoint), nil, func(callCtx context.Context) error {
+	return n.obs.Observe(ctx, operation(ctx, n.prop, n.cfg.Channel, endpoint), nil, func(callCtx context.Context) error {
 		return n.post(callCtx, endpoint, body)
 	})
 }

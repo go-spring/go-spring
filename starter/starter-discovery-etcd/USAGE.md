@@ -9,7 +9,7 @@ auth) are [etcd documentation](https://etcd.io/docs/)** — everything below is 
 **Model**: config is NAMED BLOCKS — each `spring.discovery.etcd.<name>.*` block describes ONE etcd
 cluster and becomes ONE backend bean named `etcd.<name>` (`starter.go`). The bean implements BOTH
 sides of the naming idiom: `registration.Registry` (write — collected by the `discoveryServer` from
-the [cloud/runtime/controlplane/registration](../../cloud/runtime/controlplane/registration) core, imported transitively, which registers into
+the [cloud/governance/controlplane/registration](../../cloud/governance/controlplane/registration) core, imported transitively, which registers into
 EVERY configured center across backends) and `discovery.Discovery` (read — consumers cite the bean
 name, e.g. `discovery=etcd.main`; the bean is lazy, so a pure provider never pays for the read
 half). Read and write share the block's client and key prefix, so they can never diverge. There is
@@ -17,7 +17,7 @@ no default/unnamed block. Registration activates only when `spring.discovery.ser
 a pure consumer app configures only connection blocks and registers nothing. Multi-center (dual
 registration, cross-backend mixes) is just more blocks: configure two blocks + service-name and
 every center gets the instance. It opens no port — the exported `gs.Server` (in the
-cloud/runtime/controlplane/registration core) exists purely to plug registration into the app lifecycle.
+cloud/governance/controlplane/registration core) exists purely to plug registration into the app lifecycle.
 
 ---
 
@@ -75,7 +75,7 @@ package main
 import (
     "context"
 
-    "go-spring.org/cloud/runtime/dataplane/kernel/discovery"
+    "go-spring.org/cloud/governance/capability/discovery"
     "go-spring.org/spring/gs"
 )
 
@@ -102,7 +102,7 @@ func (d *Drainer) Restore(ctx context.Context) error { return d.srv.UpdateWeight
 spring.app.name=discovery-etcd-example
 
 # One named block per etcd cluster; each block becomes the backend bean
-# "etcd.<name>" serving both registration (via the cloud/runtime/controlplane/registration core)
+# "etcd.<name>" serving both registration (via the cloud/governance/controlplane/registration core)
 # and discovery.
 spring.discovery.etcd.main.endpoints=127.0.0.1:2379
 spring.discovery.etcd.main.ttl=10s
@@ -143,7 +143,7 @@ import starter-discovery-etcd (transitively imports starter-discovery)
   │      Module Condition: OnProperty("spring.discovery.etcd")       [starter.go]
   │      Export(As[discovery.Discovery], As[registration.Registry]) + Destroy(Close)
   │
-  ├─ cloud/runtime/controlplane/registration core: gs.Provide(NewServer).Name("discoveryServer")
+  ├─ cloud/governance/controlplane/registration core: gs.Provide(NewServer).Name("discoveryServer")
   │      Condition: OnProperty("spring.discovery.service-name")      [starter-discovery/starter.go]
   │      Registries []registration.Registry — the container collects EVERY backend
   │      bean's registry (etcd, zookeeper, ... mixed) by slice injection
@@ -192,8 +192,9 @@ TTL removes dead keys "self-healing without a reaper" (`starter.go`).
    (`clientv3.Watch(bgCtx, prefix, WithPrefix())`).
 2. Every etcd event on the watch channel triggers a **fresh full snapshot** (not a delta) stored
    into the cache; a failed refresh keeps the stale one — stale addresses are safer than none.
-3. Later Resolve calls are in-memory reads over the cached (unfiltered) set, narrowed by the
-   query (scheme and metadata selector) via `Narrow` per call.
+3. Later Resolve calls are in-memory copies of the cached (unfiltered) set; the consumer
+   passes the fixed scheme to `discovery.NewResolver` and the metadata
+   selector via `discovery.FilterByMetadata` per read.
 4. Each KV is decoded from the registry's JSON; `Healthy` is always true — **key existence IS the
    health signal** (lease expiry deletes the key) (header comment lines 29-32). A malformed
    payload is skipped with a Warn, not a broken snapshot.
@@ -202,7 +203,7 @@ TTL removes dead keys "self-healing without a reaper" (`starter.go`).
 Downstream, a loadbalance `Pool` consumes these snapshots and applies **weight-0 filtering** on
 every Pick: `excludeDrained` drops `Weight == 0` endpoints, falling back to the full set when
 every endpoint is drained so an unnormalized snapshot cannot blackhole the pool
-(`cloud/runtime/dataplane/kernel/loadbalance/pool.go:97-99,122-135`).
+(`cloud/governance/capability/loadbalance/pool.go:97-99,122-135`).
 
 ### 2.4 DRAIN path — UpdateWeight(0)
 
@@ -278,7 +279,7 @@ collection is backend-agnostic.
 ### 3.3 Discovery — cite the block's bean name (no config)
 
 There is no discovery configuration path. Every block's backend bean IS a
-`cloud/runtime/dataplane/kernel/discovery.Discovery` named `etcd.<name>` on the block's shared client (`starter.go`).
+`cloud/governance/capability/discovery.Discovery` named `etcd.<name>` on the block's shared client (`starter.go`).
 Client starters cite that bean name (`spring.http-client.instances.<n>.discovery=etcd.main`).
 The bean is lazy — a pure provider never resolves, never pays for the read half. A pure consumer
 configures only connection blocks (no `service-name`/`addr`) and registers nothing.

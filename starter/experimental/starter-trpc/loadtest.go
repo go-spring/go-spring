@@ -19,8 +19,8 @@ package StarterTrpc
 import (
 	"context"
 
+	"go-spring.org/cloud/governance/capability/traffic"
 	"go-spring.org/cloud/propagate"
-	"go-spring.org/cloud/runtime/dataplane/kernel/traffic"
 	trpc "trpc.group/trpc-go/trpc-go"
 	"trpc.group/trpc-go/trpc-go/filter"
 )
@@ -30,9 +30,9 @@ import (
 // The starter registers it under the name "loadtest" (filter.Register); add
 // "loadtest" to the service filter chain — ideally first, so the marker is on the
 // context before tracing, metrics and the handler run, letting every downstream
-// layer branch on prop.IsLoadTest(ctx).
+// layer branch on traffic.IsLoadTest(ctx, prop).
 //
-// It is the tRPC inbound companion to cloud/runtime/dataplane/kernel/traffic's outbound carrier
+// It is the tRPC inbound companion to cloud/governance/capability/traffic's outbound carrier
 // injection, letting a load-test flag ride a tRPC hop end to end. Without the
 // marker the filter is a no-op pass-through.
 func LoadTestServerFilter(prop traffic.Propagator) filter.ServerFilter {

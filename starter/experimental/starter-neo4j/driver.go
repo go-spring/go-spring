@@ -30,10 +30,9 @@ import (
 
 	"github.com/neo4j/neo4j-go-driver/v5/neo4j"
 	"github.com/neo4j/neo4j-go-driver/v5/neo4j/auth"
-	"go-spring.org/cloud/mesh"
-	"go-spring.org/cloud/runtime"
-	"go-spring.org/cloud/runtime/dataplane/kernel/discovery"
-	"go-spring.org/cloud/runtime/dataplane/kernel/loadbalance"
+	"go-spring.org/cloud/governance"
+	"go-spring.org/cloud/governance/capability/discovery"
+	"go-spring.org/cloud/governance/capability/loadbalance"
 	"go-spring.org/cloud/security"
 	"go-spring.org/stdlib/errutil"
 )
@@ -67,7 +66,7 @@ import (
 // center.Discovery() itself, failing construction when an entry routes by
 // service-name and the label names no bean.
 type Driver interface {
-	CreateClient(ctx context.Context, c Config, center *runtime.Runtime) (*Client, error)
+	CreateClient(ctx context.Context, c Config, center *governance.Runtime) (*Client, error)
 }
 
 // DefaultDriver is the default implementation of the Driver interface.
@@ -75,18 +74,19 @@ type DefaultDriver struct{}
 
 // CreateClient creates a new Neo4j client based on the provided configuration.
 //
-// When c.ServiceName is set and mesh mode is off, the discovery backend the
+// When in-process discovery applies (a service name is set and the process is not in mesh mode), the discovery backend the
 // entry's ${discovery} label names is resolved from center.Discovery() and one
 // endpoint is picked, its address spliced into the URI host (the seed); the
 // same resolver feeds the driver's AddressResolver hook so a routing client can
 // re-find the cluster. An entry routed by service-name that cites no existing
 // backend fails here, at construction.
-func (DefaultDriver) CreateClient(ctx context.Context, c Config, center *runtime.Runtime) (*Client, error) {
+func (DefaultDriver) CreateClient(ctx context.Context, c Config, center *governance.Runtime) (*Client, error) {
 	// Seed the URI host from the discovery backend this entry cites. The label
 	// rides on the config (c.Discovery, already carrying the family default);
 	// resolveURI fails loudly when it names no bean.
+	useDiscovery := center.UsesDiscovery(c.ServiceName)
 	var backend discovery.Discovery
-	if c.ServiceName != "" && !mesh.Enabled() {
+	if useDiscovery {
 		backend, _ = center.Discovery().Get(c.Discovery)
 		uri, err := resolveURI(ctx, c, backend)
 		if err != nil {
@@ -111,10 +111,10 @@ func (DefaultDriver) CreateClient(ctx context.Context, c Config, center *runtime
 		// again instead of staying broken until the process restarts. The driver
 		// only consults this hook in routing mode (neo4j:// schemes) — a direct
 		// bolt:// client has no routing table to rebuild and is unchanged.
-		if c.ServiceName != "" && backend != nil && !mesh.Enabled() {
-			if resolve, rerr := discovery.NewResolver(ctx, backend, c.ServiceName, discovery.WithScheme(c.Scheme)); rerr != nil {
+		if useDiscovery {
+			if resolve, rerr := discovery.NewResolver(ctx, backend, c.ServiceName, c.Scheme); rerr != nil {
 				tlsErr = errutil.Explain(rerr, "neo4j: resolve service %s", c.ServiceName)
-			} else if resolve != nil {
+			} else {
 				conf.AddressResolver = liveRouterAddresses(resolve)
 			}
 		}
@@ -214,7 +214,7 @@ func resolveURI(ctx context.Context, c Config, backend discovery.Discovery) (str
 		}
 		return "", errutil.Explain(nil, "neo4j: discovery backend %q not found (no discovery.Discovery bean with this name; cited by the entry's ${discovery} label)", c.Discovery)
 	}
-	resolver, err := discovery.NewResolver(ctx, backend, c.ServiceName, discovery.WithScheme(c.Scheme))
+	resolver, err := discovery.NewResolver(ctx, backend, c.ServiceName, c.Scheme)
 	if err != nil {
 		return "", errutil.Explain(err, "neo4j: resolve service %s", c.ServiceName)
 	}
@@ -222,10 +222,13 @@ func resolveURI(ctx context.Context, c Config, backend discovery.Discovery) (str
 	if err != nil {
 		return "", errutil.Explain(err, "neo4j: pick endpoint for %s", c.ServiceName)
 	}
-	bal := loadbalance.NewRoundRobin()
+	bal, err := loadbalance.New(loadbalance.Selection{Balancer: loadbalance.RoundRobin})
+	if err != nil {
+		return "", errutil.Explain(err, "neo4j: build balancer")
+	}
 	ep, err := loadbalance.NewPool(func(context.Context) ([]discovery.Endpoint, error) {
 		return eps, nil
-	}, bal).Pick(ctx, loadbalance.PickInfo{})
+	}, bal, loadbalance.NewTracker(loadbalance.TrackerConfig{}), loadbalance.Selection{}).Pick(ctx, loadbalance.PickInfo{})
 	if err != nil {
 		return "", errutil.Explain(err, "neo4j: pick endpoint for %s", c.ServiceName)
 	}

@@ -62,7 +62,7 @@ import (
     "context"
 
     "github.com/IBM/sarama"
-    "go-spring.org/cloud/runtime/dataplane/kernel/traffic"
+    "go-spring.org/cloud/governance/capability/traffic"
     "go-spring.org/spring/gs"
     StarterKafkaSarama "go-spring.org/starter-kafka-sarama"
 )
@@ -193,7 +193,7 @@ gs.Run()
 A company/umbrella starter may provide its own `Driver` as an **optional container bean** (a
 `gs.Provide(func() StarterKafkaSarama.Driver{...})`, so it can inject config bound from the
 properties file at wiring time); every instance under `spring.kafka-sarama` is then built through
-it. `CreateClient` receives the container's `*runtime.Runtime` (the parameter `center`) and
+it. `CreateClient` receives the container's `*governance.Runtime` (the parameter `center`) and
 returns the client complete — it must attach the executor it builds from `center` the same way the
 bundled driver does (see `attachExecutor`). When no such bean exists the starter falls back to the bundled
 `DefaultDriver` (`driver.go:67-112`) inside assembly (`client.go:73-75`). When several Driver beans
@@ -216,7 +216,7 @@ surface:
 ```
 SendMessage / SendMessages
   → build op: operation("publish", msg.Topic), passed explicitly to the observer
-  → clientfault.ClientManager.WrapClientExecutor (injected faults when spring.governance.client.fault enabled)
+  → clientfault.Manager.WrapClientExecutor (injected faults when spring.fault.client enabled)
     → resilience executor wrapper (span + outcome counter + call/attempt duration + access log)
       → resilience executor (breaker / rate limit / retry, policy from governance center)
         → inject W3C trace context + load-test marker into msg.Headers
@@ -361,7 +361,7 @@ Publish then consume on the same topic (partition consumer from oldest, as in
   Jaeger shows `publish` → `consume` as one trace (the [example-otel](example-otel/)
   smoke asserts exactly this against the Jaeger API).
 - Load-test marker: publish under a marked ctx (e.g. echo's loadtest middleware upstream),
-  then in the consumer the propagator's `IsLoadTest(ctx)` is true after `Consume` has
+  then in the consumer `traffic.IsLoadTest(ctx, prop)` is true after `Consume` has
   extracted it.
 - ⚠ A pre-set `traceparent`/marker header on the producer message is REPLACED, not merged.
   There is no message-Key mapping anywhere (no driver) — `msg.Key` is whatever you set.

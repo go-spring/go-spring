@@ -19,14 +19,14 @@ package StarterGateway
 import (
 	"context"
 	"fmt"
-	"go-spring.org/cloud/runtime/dataplane/outbound/chain"
+	"go-spring.org/cloud/governance/dataplane/outbound/chain"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
 
-	"go-spring.org/cloud/runtime/dataplane/kernel/discovery"
-	"go-spring.org/cloud/runtime/dataplane/kernel/loadbalance"
-	"go-spring.org/cloud/runtime/dataplane/outbound/resilience"
+	"go-spring.org/cloud/governance/capability/discovery"
+	"go-spring.org/cloud/governance/capability/loadbalance"
+	"go-spring.org/cloud/governance/dataplane/outbound/resilience"
 	"go-spring.org/log"
 )
 
@@ -93,26 +93,29 @@ func (t *RouteTable) chainFor(routeID string, up *Upstream) (*loadbalance.Chain,
 	if disName == "" {
 		return nil, &parseError{what: "lb:// upstream without a discovery backend (set upstream.discovery or spring.gateway.discovery)", token: up.Service}
 	}
+	if !t.ctr.UsesDiscovery(up.Service) {
+		// Mesh mode wins: the sidecar owns discovery+LB, and an lb:// upstream
+		// carries no address of its own to fall back to, so the route table
+		// cannot honor it. Point the operator at the direct-URL form instead of
+		// silently building a chain over an empty source.
+		return nil, &parseError{what: "lb:// upstream requires in-process discovery, but the process runs in mesh mode; route to the service's stable address with an http(s):// upstream instead", token: up.Service}
+	}
 	d, ok := t.disc.Get(disName)
 	if !ok || d == nil {
-		return nil, &parseError{what: fmt.Sprintf("lb:// upstream cites discovery backend %q but no such backend exists (registered: %v)", disName, t.disc.Labels()), token: up.Service}
+		return nil, &parseError{what: fmt.Sprintf("lb:// upstream cites discovery backend %q but no such backend exists (registered: %v)", disName, t.disc.Names()), token: up.Service}
 	}
-	resolver, err := discovery.NewResolver(t.ctx, d, up.Service)
+	resolver, err := discovery.NewResolver(t.ctx, d, up.Service, "")
 	if err != nil {
 		return nil, err
-	}
-	if resolver == nil {
-		// NewResolver yields (nil, nil) when discovery is not in effect — empty
-		// name or mesh mode active. A gateway lb:// upstream needs a live
-		// resolver, so surface that as a route-table compile error rather than
-		// handing a nil source to the chain.
-		return nil, &parseError{what: "lb:// upstream cannot resolve (empty service name or mesh mode active — in mesh mode route to the service's stable address instead)", token: up.Service}
 	}
 	// Round-robin is only the starting strategy, and the tracker starts
 	// disabled: both are governance decisions now (the rule matching
 	// "gateway:<route-id>"). Building the chain under that label is what
 	// registers it, so the selection in force applies from the first request.
-	chain := t.lbMgr.Chain(t.ctx, resolver, gatewayLabel(routeID))
+	chain, err := t.lbMgr.Chain(t.ctx, resolver, gatewayLabel(routeID))
+	if err != nil {
+		return nil, err
+	}
 	if t.chains == nil {
 		t.chains = make(map[string]chainEntry)
 	}

@@ -38,7 +38,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"go-spring.org/cloud/runtime/dataplane/outbound/chain"
+	"go-spring.org/cloud/governance/dataplane/outbound/chain"
 	"io"
 	"net/http"
 	"os"
@@ -51,9 +51,9 @@ import (
 
 	"github.com/labstack/echo/v4"
 	"go-spring.org/cloud/actuator/health"
-	"go-spring.org/cloud/runtime/dataplane/kernel/discovery"
-	"go-spring.org/cloud/runtime/dataplane/kernel/loadbalance"
-	"go-spring.org/cloud/runtime/dataplane/outbound/resilience"
+	"go-spring.org/cloud/governance/capability/discovery"
+	"go-spring.org/cloud/governance/capability/loadbalance"
+	"go-spring.org/cloud/governance/dataplane/outbound/resilience"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
 
@@ -121,10 +121,11 @@ func main() {
 	}
 
 	var err error
-	exec, err = resilience.NewDefaultDriver(nil).NewExecutor("echo:demo", resilience.Policy{RateLimit: 3})
-	if err != nil {
+	rmgr := resilience.NewManager(resilience.NewDefaultDriver(nil))
+	if err = rmgr.ApplyRateLimit(resilience.RateLimitSettings{Default: resilience.RateLimitPolicy{RateLimit: 3}}); err != nil {
 		fail("resilience executor: %v", err)
 	}
+	exec = rmgr.ExecutorFor("echo:demo")
 
 	// Wire the echo routes. The RouterRegister receives the Config bean through
 	// the container, so /greeting reads the live Dync value.
@@ -187,12 +188,15 @@ func runTest() {
 	// static backend the init above registered as the "static" bean.
 	resolver, err := discovery.NewResolver(ctx, discovery.NewStaticDiscovery(
 		discovery.Endpoint{Addr: "127.0.0.1:8082", Healthy: true},
-	), "cloudnative-echo")
+	), "cloudnative-echo", "")
 	if err != nil {
 		fail("new resolver: %v", err)
 	}
-	bal := loadbalance.NewRoundRobin()
-	ep, err := loadbalance.NewPool(resolver, bal).Pick(ctx, loadbalance.PickInfo{})
+	bal, err := loadbalance.New(loadbalance.Selection{Balancer: loadbalance.RoundRobin})
+	if err != nil {
+		fail("new balancer: %v", err)
+	}
+	ep, err := loadbalance.NewPool(resolver, bal, loadbalance.NewTracker(loadbalance.TrackerConfig{}), loadbalance.Selection{}).Pick(ctx, loadbalance.PickInfo{})
 	if err != nil {
 		fail("resolve: %v", err)
 	}

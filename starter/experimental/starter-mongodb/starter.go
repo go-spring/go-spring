@@ -22,10 +22,10 @@ import (
 	"sync/atomic"
 	"time"
 
-	"go-spring.org/cloud/runtime"
+	"go-spring.org/cloud/governance"
 
 	"go-spring.org/cloud/actuator/health"
-	"go-spring.org/cloud/runtime/dataplane/kernel/loadbalance"
+	"go-spring.org/cloud/governance/capability/loadbalance"
 	"go-spring.org/log"
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/gs"
@@ -86,7 +86,7 @@ func init() {
 // that is not up yet does not block startup. There is no Init hook: the client
 // is complete when this ctor returns.
 //
-// When c.ServiceName is set and mesh mode is off, the address is resolved
+// When in-process discovery applies (a service name is set and the process is not in mesh mode), the address is resolved
 // through the backend the entry's ${discovery} label names, looked up in the
 // center's discovery directory: a loader-backed dialer is injected as the client's
 // ContextDialer, so each new connection dials a currently-live instance picked
@@ -100,7 +100,7 @@ func init() {
 // read from it; its loadbalance authority additionally binds the discovery pick
 // pool this constructor builds, which is where the pool first exists.
 func newClient(ctx *gs.ContextProvider, c Config, discoveryLabel string,
-	center *runtime.Runtime) (*Client, error) {
+	center *governance.Runtime) (*Client, error) {
 	// The client's identity rides on a context derived here: every line below
 	// carries it without repeating it. The provider's own context is left
 	// alone — that one is the shared application context, not this
@@ -155,11 +155,16 @@ func newClient(ctx *gs.ContextProvider, c Config, discoveryLabel string,
 	var obsRef atomic.Pointer[dbObserver]
 	opts.SetMonitor(newCommandMonitor(func() *dbObserver { return obsRef.Load() }))
 
+	// Mesh mode wins over a configured service-name: the sidecar owns
+	// discovery+LB, so the URI hosts are dialed directly and no chain is built.
 	var baseDial func(ctx context.Context, network, address string) (net.Conn, error)
-	chain, err := newPickChain(ctx.Context, c, backend, center.Loadbalance())
-	if err != nil {
-		log.Error(cctx, log.TagAppDef, err, "mongodb: build discovery resolver failed")
-		return nil, err
+	var chain *loadbalance.Chain
+	if center.UsesDiscovery(c.ServiceName) {
+		chain, err = newPickChain(ctx.Context, c, backend, center.Loadbalance())
+		if err != nil {
+			log.Error(cctx, log.TagAppDef, err, "mongodb: build discovery resolver failed")
+			return nil, err
+		}
 	}
 	if chain != nil {
 		nd := &net.Dialer{Timeout: c.ConnectTimeout}
@@ -200,7 +205,7 @@ func newClient(ctx *gs.ContextProvider, c Config, discoveryLabel string,
 	obsRef.Store(w.obs)
 	// Endpoint selection needs no binding step here: newPickChain registered the
 	// chain under the service's governance label as it built it, so one
-	// spring.governance.client.rules[N] rule drives its balancing strategy from
+	// client.loadbalance.services[N] rule drives its balancing strategy from
 	// the first dial. This starter applies no protection (no per-command hook),
 	// so no dial wrapping happens here.
 

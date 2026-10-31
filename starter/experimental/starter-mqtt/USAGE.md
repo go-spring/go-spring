@@ -194,7 +194,7 @@ guards** [command.go:17-29]:
 
 ```
 CreateClient [driver.go:115-123] (the assembly seam):
-  exec = center.ExecutorFor("mqtt", "mqtt:<broker>")   // injected *runtime.Runtime
+  exec = center.ExecutorFor("mqtt", "mqtt:<broker>")   // injected *governance.Runtime
   attachGuard(cl, exec, label) — stored in sync.Map keyed by the mqtt.Client value  [command.go:98-100]
   (center.ExecutorFor = inj.WrapClientExecutor(mgr.ExecutorFor("mqtt", label));
    the resilience manager is required — the container always supplies it)
@@ -241,7 +241,7 @@ error, not a silent no-op
    identity (`messaging.system`, `messaging.operation`, topic in Detail) [command.go:135,
    observe.go:78-99].
 2. `guard` resolves the executor for this client from the sync.Map [command.go:114-121].
-3. fault injection check (spring.governance.client.fault.* policy, if enabled).
+3. fault injection check (spring.fault.client.* policy, if enabled).
 4. resilience observe opens the call span named `publish` and, once the call returns, emits
    the call-level `messaging.client.operation.duration`, the attempt-level
    `messaging.client.attempt.duration`, the `resilience.client.calls` counter and the one

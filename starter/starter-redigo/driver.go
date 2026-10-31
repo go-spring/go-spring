@@ -19,7 +19,7 @@ package StarterRedigo
 import (
 	"context"
 
-	"go-spring.org/cloud/runtime"
+	"go-spring.org/cloud/governance"
 )
 
 // Driver interface defines how to create a Redis client (a connection pool) —
@@ -63,7 +63,7 @@ import (
 // A hand-built pool (an example, a test) must supply a center holding a
 // [resilience.Manager]; a nil center is a construction error.
 type Driver interface {
-	CreateClient(ctx context.Context, c Config, center *runtime.Runtime) (*Pool, error)
+	CreateClient(ctx context.Context, c Config, center *governance.Runtime) (*Pool, error)
 }
 
 // DefaultDriver is the default implementation of the Driver interface.
@@ -71,7 +71,7 @@ type DefaultDriver struct{}
 
 // CreateClient creates a new Redis pool based on the provided configuration.
 //
-// When c.ServiceName is set (and mesh mode is not enabled), the address is
+// When in-process discovery applies (a service name is set and the process is not in mesh mode), the address is
 // resolved through the discovery backend (center.Discovery().Get(c.Discovery))
 // instead of c.Addr: a discovery loader keeps the endpoint set fresh via the
 // backend's watch and the pool dials a live instance (Pick) for each new
@@ -84,12 +84,12 @@ type DefaultDriver struct{}
 // center.Discovery() itself, failing construction when an entry routes by
 // service-name and the label names no bean.
 //
-// In mesh mode (mesh.Enabled) discovery is skipped entirely: a sidecar owns
+// In mesh mode discovery is skipped entirely (the runtime reports in-process discovery as off): a sidecar owns
 // discovery+LB, so the pool connects straight to the configured static Addr
 // (the service's stable DNS address).
 //
 // center is passed straight through to [NewPool], which applies it during
 // assembly, so the returned Pool is complete.
-func (DefaultDriver) CreateClient(ctx context.Context, c Config, center *runtime.Runtime) (*Pool, error) {
+func (DefaultDriver) CreateClient(ctx context.Context, c Config, center *governance.Runtime) (*Pool, error) {
 	return NewPool(ctx, c, center)
 }

@@ -28,12 +28,13 @@ import (
 	"net/http"
 	"sync"
 
-	"go-spring.org/cloud/runtime/dataplane/kernel/label"
-	"go-spring.org/cloud/runtime/dataplane/outbound/chain"
+	"go-spring.org/cloud/governance/capability/label"
+	"go-spring.org/cloud/governance/capability/traffic"
+	"go-spring.org/cloud/governance/dataplane/outbound/chain"
 
 	"github.com/minio/minio-go/v7"
-	"go-spring.org/cloud/runtime"
-	"go-spring.org/cloud/runtime/dataplane/outbound/resilience"
+	"go-spring.org/cloud/governance"
+	"go-spring.org/cloud/governance/dataplane/outbound/resilience"
 )
 
 // Client is the wrapper bean S3 clients are injected as. It embeds the concrete
@@ -66,12 +67,15 @@ type Client struct {
 	dyn *dynamicTransport
 
 	// exec is the resilience executor protecting requests, built by [NewClient]
-	// from the [runtime.Runtime] the container supplied; the center is required
+	// from the [governance.Runtime] the container supplied; the center is required
 	// to carry a [resilience.Manager] rather than a bare client.
 	exec chain.Executor
 	// serviceLabel is the resilience service key ("s3:<endpoint>") exec scopes
 	// limiter/breaker state by.
 	serviceLabel string
+	// prop records the process traffic convention on each request's operation,
+	// so a rule can match a load-test call like any other dimension.
+	prop traffic.Propagator
 }
 
 // NewClient builds a complete Client — identity, governance and all — over a
@@ -82,17 +86,17 @@ type Client struct {
 // anything else (typically nil), and the client then runs with no declaration or
 // resilience transport because its HTTP transport is not reachable.
 //
-// center carries the container's facilities (see [runtime.Runtime]), and is
+// center carries the container's facilities (see [governance.Runtime]), and is
 // applied HERE so a Client cannot exist half-assembled: there is no Init step,
 // no later patching, and nothing the container has to remember to call. A
-// hand-built client must supply a [runtime.Runtime] over a
-// [resilience.Manager]: [runtime.Runtime.ResilienceClient] is required, so a nil
+// hand-built client must supply a [governance.Runtime] over a
+// [resilience.Manager]: [governance.Runtime.ResilienceClient] is required, so a nil
 // center is a construction error — never a graceful downgrade.
 //
 // The manager's ExecutorFor resolves its backing executor lazily, on each
 // Execute, so the call order relative to the center's wiring is
 // irrelevant.
-func NewClient(client *minio.Client, transport http.RoundTripper, cfg Config, center *runtime.Runtime) *Client {
+func NewClient(client *minio.Client, transport http.RoundTripper, cfg Config, center *governance.Runtime) *Client {
 	c := &Client{
 		Client: client,
 		cfg:    cfg,
@@ -105,6 +109,7 @@ func NewClient(client *minio.Client, transport http.RoundTripper, cfg Config, ce
 	}
 	c.serviceLabel = label.ServiceLabel("s3", c.cfg.Endpoint)
 	c.exec = center.ExecutorFor("s3", c.serviceLabel)
+	c.prop = center.TrafficPropagator()
 	c.installTransport()
 	return c
 }
@@ -121,7 +126,10 @@ func (c *Client) installTransport() {
 	if c.dyn == nil {
 		return
 	}
-	c.dyn.Swap(resilience.NewRoundTripper(http.DefaultTransport, c.exec, c.serviceLabel, callFor))
+	c.dyn.Swap(resilience.NewRoundTripper(http.DefaultTransport, c.exec, c.serviceLabel,
+		func(req *http.Request) chain.Operation {
+			return callFor(req.Context(), c.prop, req)
+		}))
 }
 
 // Destroy releases the resilience executor. The minio client holds no

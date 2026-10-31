@@ -7,10 +7,13 @@ service-mesh sidecar?** When it is, the sidecar already does discovery and load
 balancing, so the application's own client-side discovery and load balancing
 step aside instead of balancing traffic a second time.
 
-Starters read `mesh.Enabled()` and, when it is on, dial the service's stable
-DNS address instead of building a discovery Resolver or a load-balance Pool.
-You normally don't call this package yourself — you set one environment
-variable and the starters react.
+The [runtime composition root](../runtime) reads `mesh.Enabled()` once, at
+startup, and exposes the answer as `Runtime.UsesDiscovery(serviceName)`. Client
+starters ask that one question; when it says no they dial their configured
+stable address instead of building a discovery Resolver or a load-balance Pool.
+The discovery stack itself (backends, `discovery.NewResolver`, `loadbalance`)
+carries no mesh reference at all — mesh is an ADDRESSING decision, not another
+kind of discovery.
 
 ## Installation
 
@@ -39,16 +42,18 @@ environment, not runtime config or code. Set `GS_MESH_MODE`:
 export GS_MESH_MODE=off
 ```
 
-With mesh mode on, a starter configured with `service-name` ignores client-side
-discovery and dials the stable address (`host:port` / ClusterDNS name) directly.
-With it off, everything behaves as if the package didn't exist.
+With mesh mode on, an entry configured with `service-name` ignores in-process
+discovery and dials its configured stable address (`host:port`, ClusterDNS name,
+or a fixed endpoint) directly. The `service-name` is a harmless leftover of a
+config shared with non-mesh deployments — it is ignored, not treated as an
+error. With mesh mode off, everything behaves as if the package didn't exist.
 
 ## API
 
 ```go
 import "go-spring.org/cloud/mesh"
 
-mesh.Enabled() // bool — the one call starters make
+mesh.Enabled() // bool — consulted by Runtime.UsesDiscovery, not by client code
 mesh.Detect()  // bool — sidecar inference only (backs "auto"); rarely called directly
 ```
 
@@ -62,25 +67,31 @@ mesh.Detect()  // bool — sidecar inference only (backs "auto"); rarely called 
 ## Writing a mesh-aware starter
 
 ```go
-useDiscovery := c.ServiceName != "" && !mesh.Enabled()
+if center.UsesDiscovery(c.ServiceName) {
+    // in-process discovery + load balancing
+} else {
+    // dial the configured stable address
+}
 ```
 
-Gate client-side discovery/LB construction on `!mesh.Enabled()`; in mesh mode
-fall back to the configured static address. For infra clients that resolve via
-`discovery`, prefer `discovery.NewResolver` — it already folds this check in
-and returns a nil Resolver in mesh mode, so callers dial the configured address
-directly.
+That is the whole integration: one question at the entry's addressing-mode
+decision. Do not import `mesh` from a client driver and do not check it inside
+`discovery.NewResolver` or any inner resolver/pool helper — they only ever run
+on the discovery branch. With a configured stable address (`addr`/DSN/ClusterDNS
+name), mesh simply makes the entry take the direct branch.
 
 ## Design notes
 
 - `mesh.Enabled()` is a pure, stateless function: no caching, no side effects,
-  `os`/`strings` only, and it reads `GS_MESH_MODE` on every call. An empty
-  value and an unset variable are indistinguishable to `os.Getenv`, so both
-  fall through to auto.
+  `os`/`strings` only. An empty value and an unset variable are
+  indistinguishable to `os.Getenv`, so both fall through to auto.
+- It is consulted in exactly ONE place, `Runtime.UsesDiscovery`, at client
+  construction rather than per request. Being pure, it needs no caching and
+  stores no `Runtime` field; client code never reads the environment.
 - There is no `SetEnabled`, no tri-state `atomic.Value`, and no `starter-mesh`
   module. `cloud/mesh` carries no context, log, or `sync.Once` startup
   logging — observability is the consumer starter's job.
-- `mesh.Enabled` is consulted once, at client-construction time, never on a
-  request's hot path: `loadbalance` holds zero mesh references, and `httpx`
-  checks it in `NewTransport`, not `RoundTrip`.
-- Tests drive it with `t.Setenv("GS_MESH_MODE", ...)`.
+- Never on a request's hot path: `loadbalance` holds zero mesh references, and
+  the decision is made in the client constructor, not in `RoundTrip`/`Pick`.
+- Tests drive it with `t.Setenv("GS_MESH_MODE", ...)` before constructing the
+  runtime; `Runtime.UsesDiscovery` itself is unit-tested against the field.

@@ -138,15 +138,15 @@ spring.observability.metrics.exporter=prometheus
 spring.observability.metrics.port=0        # /metrics 仅经 actuator
 
 # --- 服务治理(运行期故障注入 / 熔断 / 重试)-------------------------------
-# NOTE: governance RULES go in conf/governance.properties, referenced by spring.governance.source.file.path in app.properties (see cloud/runtime/controlplane/governance's SOURCE_USAGE).
+# NOTE: governance RULES go in conf/governance.properties, wired by the example's source starter (source.go) (see cloud/governance/controlplane/source's USAGE).
 spring.resilience.driver=default
-spring.governance.client.default.error-threshold=20
-spring.governance.client.default.open-duration=5s
-spring.governance.client.default.max-retries=1
-spring.governance.client.default.timeout=500ms
-# 端点选择走同一个标签：`gorm:mysql:orders-db` 命中的 spring.governance.client.rules[N].balancer /
+spring.governance.client.resilience.error-threshold=20
+spring.governance.client.resilience.open-duration=5s
+spring.governance.client.resilience.max-retries=1
+spring.governance.client.resilience.timeout=500ms
+# 端点选择走同一个标签：`gorm:mysql:orders-db` 命中的 spring.governance.client.loadbalance.services[N].balancer /
 # outlier-threshold / outlier-suspend-for 会整条重建该 entry 的链路
-# （见 cloud/runtime/controlplane/governance/README.md §3.1）。
+# （见 cloud/governance/README.md §3.1）。
 ```
 
 每个走发现拨号的方言都给链路挂上 suspension tracker，并在
@@ -221,7 +221,7 @@ gorm:query processor 链
                                              // db.statement、访问 tag)
         resilience.Run(ctx, exec, op)
           ├─ 准入(限流 / 舱壁,若已配置)
-          ├─ fault 注入器(spring.governance.client.fault.*——可能短路本次尝试)
+          ├─ fault 注入器(spring.fault.client.*——可能短路本次尝试)
           ├─ timeout / breaker / retry 包络
           ├─ 原始 gorm:query 主体:复用已构造的 SQL、执行、应用 gorm 自身
           │  logger(慢查询 warn,见 slow-threshold)
@@ -249,7 +249,7 @@ gorm:query processor 链
   是正常结果不是故障,不得触发熔断(DB 侧的 redis.Nil 对应物)。
 - **拒绝错误传播**(resilience/callbacks.go:76-83):resilience 拒绝(限流/熔断开/
   舱壁满)或 fault 注入错误会写到 `tx.Error`;真实操作错误保持 gorm 原样。
-- **治理关闭时零开销**:治理 bean 始终存在(本 starter 传递链接 cloud/runtime/controlplane/governance,治理 bean 由各自的拥有包注册),
+- **治理关闭时零开销**:治理 bean 始终存在(本 starter 传递链接 各策略根,治理 bean 由各自的拥有包注册),
   故"关闭"指 manager 未装弹(无匹配规则 / 无规则源),其解析出的
   executor 是透明直通——回调仍包裹但无任何行为,链路留在原地不产生成本。resilience manager
   必填——手搓的客户端(example、测试)也必须提供一个,因为容器始终提供;不带 manager 打开 DB
@@ -344,11 +344,11 @@ health.go:33-35),因此探针失败不会触发 resilience 熔断。
 
 ### 4.4 故障 / resilience 演练(免重启)
 
-用 §1 的治理配置加文件 source(见 cloud/runtime/controlplane/governance 的 SOURCE_USAGE_CN.md)或 example-load 布局
+用 §1 的治理配置加文件 source(见 cloud/governance/controlplane/source 的 USAGE_CN.md)或 example-load 布局
 (`starter-gorm-mysql/example-load`):
 
-1. 不配 `spring.governance.client.fault.rate` 启动;基线查询全部成功。
-2. 配上 `spring.governance.client.fault.rate`(以及 `error`)——治理 source 热加载。
+1. 不配 `spring.fault.client.rate` 启动;基线查询全部成功。
+2. 配上 `spring.fault.client.rate`(以及 `error`)——治理 source 热加载。
 3. 被注入的尝试在 SQL 执行前短路:注入错误落到 `tx.Error`,熔断计数,resilience 层仍
    记录失败操作——可以在访问日志和 `db.client.operation.duration` 的错误 status 桶
    里观察"火情"。

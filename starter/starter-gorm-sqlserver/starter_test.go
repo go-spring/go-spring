@@ -26,10 +26,17 @@ import (
 
 	"github.com/microsoft/go-mssqldb/msdsn"
 	"go-spring.org/cloud/actuator/health"
-	"go-spring.org/cloud/runtime"
-	serverfault "go-spring.org/cloud/runtime/dataplane/inbound/fault"
-	clientfault "go-spring.org/cloud/runtime/dataplane/outbound/fault"
-	"go-spring.org/cloud/runtime/dataplane/outbound/resilience"
+	"go-spring.org/cloud/governance"
+	"go-spring.org/cloud/governance/capability/discovery"
+	"go-spring.org/cloud/governance/capability/loadbalance"
+	"go-spring.org/cloud/governance/capability/traffic"
+	admissionplane "go-spring.org/cloud/governance/controlplane/admission"
+	loadbalanceplane "go-spring.org/cloud/governance/controlplane/loadbalance"
+	"go-spring.org/cloud/governance/controlplane/source"
+	"go-spring.org/cloud/governance/dataplane/inbound/admission"
+	serverfault "go-spring.org/cloud/governance/dataplane/inbound/fault"
+	clientfault "go-spring.org/cloud/governance/dataplane/outbound/fault"
+	"go-spring.org/cloud/governance/dataplane/outbound/resilience"
 	"go-spring.org/spring/gs"
 	gormcore "go-spring.org/starter-gorm"
 	"go-spring.org/stdlib/testing/assert"
@@ -38,10 +45,21 @@ import (
 // testCenter is the runtime Open requires to assemble a DB: a
 // resilience manager with no rules — enough for the pool-sizing lookup, with no
 // governance document to serve.
-func testCenter(t *testing.T) *runtime.Runtime {
+func testCenter(t *testing.T) *governance.Runtime {
 	t.Helper()
-	ctr, err := runtime.NewProcess(resilience.NewManager(resilience.NewDefaultDriver(nil)), clientfault.NewClientManager(nil), serverfault.NewServerManager(nil))
-	if err != nil {
+	ctr := &governance.Runtime{
+		Resilience:  resilience.NewManager(resilience.NewDefaultDriver(nil)),
+		LoadBalance: loadbalance.NewManager(),
+		Admission:   admission.NewManager(),
+		ClientFault: clientfault.NewManager(),
+		ServerFault: serverfault.NewManager(),
+		Directory:   discovery.NewManager(nil),
+		Traffic:     traffic.NewDefaultPropagator(traffic.DefaultBinding()),
+	}
+	if _, err := loadbalanceplane.NewCenter(context.Background(), ctr.LoadBalance, source.NewPushSource(loadbalance.Settings{})); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := admissionplane.NewCenter(context.Background(), ctr.Admission, source.NewPushSource(admission.Settings{})); err != nil {
 		t.Fatal(err)
 	}
 	return ctr

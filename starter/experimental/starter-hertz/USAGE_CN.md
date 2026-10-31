@@ -141,7 +141,7 @@ spring.observability.metrics.exporter=prometheus
 spring.observability.metrics.port=9090
 
 # --- governance（运行期故障注入）----------------------------------------------
-spring.governance.source.file.path=conf/governance.yaml
+# (the file source is wired in source.go; no property key)
 ```
 
 **conf/governance.yaml**（§4.4 的故障演练用它）：
@@ -154,7 +154,8 @@ spring:
       fault:
         # rate: 0.2           # 配上 rate 即"点火"，无需重启
         error: timeout
-        scope: loadtest       # 只有带 X-LoadTest 标记的流量受影响
+        match:
+          traffic: loadtest       # 只有带 X-Traffic 标记的流量受影响
 ```
 
 **验证**（与 `example/check.sh` 断言同构——X-App 头、X-Request-Id 头、JSON 体、
@@ -204,7 +205,7 @@ LoadTest → Recovery → RequestID(+propagate) → Tracing → Metrics → Acce
 理由（源自 `applyMiddlewares` 注释，已核对）：
 
 - **LoadTest 最外层**：标记在任何东西之前落到请求 context 上，后续每一层——以及
-  handler 调用的每个出站 client——都能用 propagator 的 `IsLoadTest(ctx)` 分流。单次头查找
+  handler 调用的每个出站 client——都能用 `traffic.IsLoadTest(ctx, prop)` 分流。单次头查找
   （`Header.Peek`）；无标记即空操作。
 - **Recovery**（starter 自有 `Recover()`，非 hertz contrib 中间件）兜住所有内层 panic，
   上报共享 goutil panic 链（统一 panic 策略），然后 500 中止。
@@ -219,7 +220,7 @@ LoadTest → Recovery → RequestID(+propagate) → Tracing → Metrics → Acce
 
 ### 2.3 一次请求，逐层走读
 
-带 `X-LoadTest: 1` 的 `GET /echo/world`，fault scope 已启用：
+带 `X-Traffic: loadtest` 的 `GET /echo/world`，流量类别匹配已启用：
 
 1. LoadTest 打标（`prop.Extract(ctx, <hertz 头 carrier>)`）
 2. Recovery 布防（`defer`/`recover`）
@@ -231,7 +232,7 @@ LoadTest → Recovery → RequestID(+propagate) → Tracing → Metrics → Acce
 6. AccessLog 布防（字段在出口捕获）
 7. SecureHeaders/CORS/Gzip 按配置（引擎独立执行 `maxBodySize`）
 8. fault：`_, err := srv.Fire(ctx, fault.Target{Service: "hertz", Action: "GET /x"})`
-   （inj = 注入的 bean；内置 target 会带上 `METHOD` + `c.FullPath()`，规则可以只给单个路由放火）——`scope: loadtest`
+   （inj = 注入的 bean；内置 target 会带上 `METHOD` + `c.FullPath()`，规则可以只给单个路由放火）——`match.traffic=loadtest`
    且有标记时，约 `rate` 比例的请求拿到注入错误 → 503；其余放行
 9. 你的路由执行；响应按 6→5→4→3 解栈：访问记录落盘（按状态定级）、耗时/计数入库、
    in-flight 减一、span 结束（5xx 标 Error）、id 头写回。
@@ -327,8 +328,8 @@ curl -i 127.0.0.1:9370/readyz    # actuator 就绪（需加 starter-actuator）
 4. 标记流量着火、正常流量无感：
 
 ```bash
-curl -i 127.0.0.1:8003/echo/x                          # 200（scope=loadtest，无标记）
-curl -i -H 'X-LoadTest: 1' 127.0.0.1:8003/echo/x       # ~20% → 503 service unavailable
+curl -i 127.0.0.1:8003/echo/x                          # 200（match.traffic=loadtest，无标记）
+curl -i -H 'X-Traffic: loadtest' 127.0.0.1:8003/echo/x       # ~20% → 503 service unavailable
 ```
 
 5. 在可观测面看火：访问日志 503 的 Error 记录、耗时直方图的 503 桶、被注入请求的
@@ -336,8 +337,8 @@ curl -i -H 'X-LoadTest: 1' 127.0.0.1:8003/echo/x       # ~20% → 503 service un
 
 ### 4.5 压测标记演练
 
-把 `scope` 换成 `real` 则注入作用于无标记流量——只在专用环境用。handler 里
-propagator 的 `IsLoadTest(ctx)` 分流同一标记，业务代码可在合成流量下自动降级功能。
+把 `match.traffic` 换成 `real` 则注入作用于无标记流量——只在专用环境用。handler 里
+`traffic.IsLoadTest(ctx, prop)` 分流同一标记，业务代码可在合成流量下自动降级功能。
 
 ---
 

@@ -22,7 +22,11 @@ import (
 	"testing"
 
 	"github.com/labstack/echo/v4"
+	"go-spring.org/cloud/governance/capability/traffic"
 )
+
+// testProp is the traffic convention these fixtures run under.
+var testProp = traffic.NewDefaultPropagator(traffic.DefaultBinding())
 
 // serveServerPolicy drives one GET through an echo engine carrying only the
 // inbound middleware, and reports the response plus how often the handler
@@ -38,7 +42,7 @@ func serveServerPolicy(t *testing.T, handler echo.HandlerFunc) (*httptest.Respon
 	if err != nil {
 		t.Fatal(err)
 	}
-	e.Use(resilienceServerPolicy(in, "echo:test", true))
+	e.Use(resilienceServerPolicy(in, "echo:test", true, testProp))
 	e.GET("/x", func(c echo.Context) error {
 		handlerRuns++
 		return handler(c)

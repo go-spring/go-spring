@@ -19,7 +19,7 @@ package StarterGoRedis
 import (
 	"time"
 
-	"go-spring.org/cloud/runtime/dataplane/kernel/discovery"
+	"go-spring.org/cloud/governance/capability/discovery"
 	"go-spring.org/cloud/security"
 )
 
@@ -165,7 +165,7 @@ type OtelConfig struct {
 }
 
 // Resilience is not a field of Config: the [Client] wrapper applies it from the
-// [runtime.Runtime] the container injects (see [NewClient]).
+// [governance.Runtime] the container injects (see [NewClient]).
 
 // Resilience binds the backend-neutral resilience knobs shared by every client
 // starter (see [resilience.Config]). Driver selects which registered backend

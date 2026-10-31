@@ -22,8 +22,8 @@ import (
 	"testing"
 	"time"
 
-	"go-spring.org/cloud/runtime/dataplane/kernel/discovery"
-	"go-spring.org/cloud/runtime/dataplane/kernel/loadbalance"
+	"go-spring.org/cloud/governance/capability/discovery"
+	"go-spring.org/cloud/governance/capability/loadbalance"
 	"go-spring.org/stdlib/testing/assert"
 	"google.golang.org/grpc/balancer"
 	"google.golang.org/grpc/balancer/base"
@@ -56,19 +56,19 @@ func TestOneBalancerNameIsRegistered(t *testing.T) {
 // attribute bridge: weight, zone and health survive the trip, and the
 // connection's selection rides along with them.
 func TestAddrEndpointRoundTrip(t *testing.T) {
-	sel := newConnState("grpc:svc", loadbalance.NewManager())
+	sel := mustConnState(t, "grpc:svc", loadbalance.NewManager())
 	in := discovery.Endpoint{
 		Addr:     "10.0.0.1:8080",
 		Weight:   7,
 		Healthy:  true,
-		Metadata: map[string]string{loadbalance.DefaultZoneKey: "az1"},
+		Metadata: map[string]string{discovery.MetaKeyZone: "az1"},
 	}
 	a := addrFromEndpoint(in, sel)
 	out := endpointFromAddr(a)
 	assert.That(t, out.Addr).Equal(in.Addr)
 	assert.That(t, out.Weight).Equal(7)
 	assert.That(t, out.Healthy).True()
-	assert.That(t, out.Metadata[loadbalance.DefaultZoneKey]).Equal("az1")
+	assert.That(t, out.Metadata[discovery.MetaKeyZone]).Equal("az1")
 
 	// The selection the picker will read back is the connection's OWN.
 	assert.That(t, selectionFromAddr(a)).Same(sel)
@@ -97,27 +97,24 @@ func TestPickInfoFrom_HashKeyAndZone(t *testing.T) {
 // TestSelectionKeepsBaseStrategyAndRebuilds covers the selection contract of one
 // connection: the base strategy (round-robin) is what a rule falls back to (a
 // rule naming none leaves it in force), a named rule replaces it, and every
-// change REBUILDS the chain's generation — a fresh strategy and a fresh tracker,
-// so nothing of the replaced selection keeps deciding traffic.
+// change REBUILDS the chain's generation — the record in force moves whole, so
+// nothing of the replaced selection keeps deciding traffic.
 func TestSelectionKeepsBaseStrategyAndRebuilds(t *testing.T) {
 	mgr := loadbalance.NewManager()
-	sel := newConnState("grpc:svc", mgr)
-	assert.Number(t, sel.chain.Generation()).Equal(uint64(1)) // base: round-robin
+	sel := mustConnState(t, "grpc:svc", mgr)
+	assert.That(t, sel.chain.Selection().Balancer).Equal(loadbalance.RoundRobin) // base, stated
 
-	// A rule that only sets thresholds keeps the base strategy (a zero-selection
-	// rebuild would fall back to it) but DOES replace the tracker, so the new
-	// thresholds are the whole state.
+	// A rule that only sets thresholds states the base strategy and replaces the
+	// generation, so the new thresholds are the whole state.
 	mgr.Apply(context.Background(), loadbalance.Settings{Rules: []loadbalance.Rule{
-		{Service: "grpc:svc", Selection: loadbalance.Selection{OutlierThreshold: 4, OutlierSuspendFor: time.Minute}},
+		{Service: "grpc:svc", Selection: loadbalance.Selection{Balancer: loadbalance.RoundRobin, OutlierThreshold: 4, OutlierSuspendFor: time.Minute}},
 	}})
-	assert.Number(t, sel.chain.Generation()).Equal(uint64(2))
-	assert.Number(t, sel.chain.Tracker().Config().Threshold).Equal(4)
+	assert.Number(t, sel.chain.Selection().OutlierThreshold).Equal(4)
 
 	// A named rule replaces the strategy too.
 	mgr.Apply(context.Background(), loadbalance.Settings{Rules: []loadbalance.Rule{
 		{Service: "grpc:svc", Selection: loadbalance.Selection{Balancer: loadbalance.Weighted, OutlierThreshold: 4}},
 	}})
-	assert.Number(t, sel.chain.Generation()).Equal(uint64(3))
 	assert.That(t, sel.chain.Selection().Balancer).Equal(loadbalance.Weighted)
 }
 
@@ -127,13 +124,14 @@ func TestSelectionKeepsBaseStrategyAndRebuilds(t *testing.T) {
 // error channel, so the log line IS the report).
 func TestSelectionUnknownStrategyKeepsLastGood(t *testing.T) {
 	mgr := loadbalance.NewManager()
-	sel := newConnState("grpc:svc", mgr)
+	sel := mustConnState(t, "grpc:svc", mgr)
 
 	mgr.Apply(context.Background(), loadbalance.Settings{Rules: []loadbalance.Rule{
 		{Service: "grpc:svc", Selection: loadbalance.Selection{Balancer: "no_such_strategy"}},
 	}})
-	// The refused rebuild built nothing: the base generation still serves.
-	assert.Number(t, sel.chain.Generation()).Equal(uint64(1))
+	// The refused rebuild built nothing: the base generation still serves, and
+	// the record in force still says so.
+	assert.That(t, sel.chain.Selection().Balancer).Equal(loadbalance.RoundRobin)
 }
 
 // TestSelectionSubscribesPerConnection pins the wiring [Client.Dial] performs:
@@ -143,16 +141,16 @@ func TestSelectionUnknownStrategyKeepsLastGood(t *testing.T) {
 func TestSelectionSubscribesPerConnection(t *testing.T) {
 	mgr := loadbalance.NewManager()
 
-	one := newConnState("grpc:one", mgr)
-	two := newConnState("grpc:two", mgr)
+	one := mustConnState(t, "grpc:one", mgr)
+	two := mustConnState(t, "grpc:two", mgr)
 
 	mgr.Apply(context.Background(), loadbalance.Settings{Rules: []loadbalance.Rule{
-		{Service: "grpc:one", Selection: loadbalance.Selection{OutlierThreshold: 7}},
+		{Service: "grpc:one", Selection: loadbalance.Selection{Balancer: loadbalance.RoundRobin, OutlierThreshold: 7}},
 	}})
 
-	assert.Number(t, one.chain.Tracker().Config().Threshold).Equal(7)
+	assert.Number(t, one.chain.Selection().OutlierThreshold).Equal(7)
 	// The other connection's label was not moved: policies are per connection.
-	assert.Number(t, two.chain.Tracker().Config().Threshold).Equal(0)
+	assert.Number(t, two.chain.Selection().OutlierThreshold).Equal(0)
 }
 
 // ---------------------------------------------------------------------------
@@ -208,9 +206,9 @@ func TestPickerBuild_RefusesAddressesWithoutSelection(t *testing.T) {
 // serve every pick.
 func TestPicker_RotatesAndEvictsFailingInstance(t *testing.T) {
 	mgr := loadbalance.NewManager()
-	sel := newConnState("grpc:svc", mgr)
+	sel := mustConnState(t, "grpc:svc", mgr)
 	mgr.Apply(context.Background(), loadbalance.Settings{Rules: []loadbalance.Rule{
-		{Service: "grpc:svc", Selection: loadbalance.Selection{OutlierThreshold: 5, OutlierSuspendFor: 30 * time.Second}},
+		{Service: "grpc:svc", Selection: loadbalance.Selection{Balancer: loadbalance.RoundRobin, OutlierThreshold: 5, OutlierSuspendFor: 30 * time.Second}},
 	}})
 
 	good, bad := "10.0.0.1:8080", "10.0.0.2:8080"
@@ -275,7 +273,7 @@ func countPicks(t *testing.T, picker balancer.Picker, n int) map[string]int {
 // that stops naming a strategy returns it to the base.
 func TestPicker_FollowsTheSelectionOnTheNextPick(t *testing.T) {
 	mgr := loadbalance.NewManager()
-	sel := newConnState("grpc:svc", mgr)
+	sel := mustConnState(t, "grpc:svc", mgr)
 
 	// 9:1 weights: round-robin splits evenly, weighted strongly favors the first.
 	picker := pickerFor(t, sel,
@@ -293,9 +291,10 @@ func TestPicker_FollowsTheSelectionOnTheNextPick(t *testing.T) {
 	counts = countPicks(t, picker, 100)
 	assert.That(t, counts["10.0.0.1:80"] > 80).True()
 
-	// No strategy named: back to the base strategy, round-robin.
+	// Back to the base strategy, stated explicitly (an empty name would be
+	// rejected and leave the weighted generation in force).
 	mgr.Apply(context.Background(), loadbalance.Settings{Rules: []loadbalance.Rule{
-		{Service: "grpc:svc", Selection: loadbalance.Selection{}},
+		{Service: "grpc:svc", Selection: loadbalance.Selection{Balancer: loadbalance.RoundRobin}},
 	}})
 	counts = countPicks(t, picker, 40)
 	assert.Number(t, counts["10.0.0.1:80"]).Equal(20)
@@ -315,7 +314,7 @@ type fakePollDiscovery struct {
 	calls int
 }
 
-func (f *fakePollDiscovery) Resolve(_ context.Context, _ string, _ ...discovery.Option) ([]discovery.Endpoint, error) {
+func (f *fakePollDiscovery) Resolve(_ context.Context, _ string) ([]discovery.Endpoint, error) {
 	i := f.calls
 	if i >= len(f.snaps) {
 		i = len(f.snaps) - 1
@@ -347,7 +346,7 @@ func TestPollLoop_PushesChanges(t *testing.T) {
 		{{Addr: "10.0.0.1:80"}, {Addr: "10.0.0.2:80"}}, // scale up: pushed
 	}}
 	cc := &fakeClientConn{states: make(chan resolver.State, 4)}
-	sel := newConnState("grpc:svc", loadbalance.NewManager())
+	sel := mustConnState(t, "grpc:svc", loadbalance.NewManager())
 
 	ctx, cancel := context.WithCancel(context.Background())
 	r := &discoveryResolver{
@@ -377,4 +376,14 @@ func TestPollLoop_PushesChanges(t *testing.T) {
 		t.Fatal("pollLoop did not observe context cancellation promptly")
 	case <-ctx.Done():
 	}
+}
+
+// mustConnState is newConnState with the construction error asserted away.
+func mustConnState(t *testing.T, label string, mgr *loadbalance.Manager) *connState {
+	t.Helper()
+	s, err := newConnState(label, mgr)
+	if err != nil {
+		t.Fatalf("conn state for %q: %v", label, err)
+	}
+	return s
 }

@@ -21,13 +21,14 @@ import (
 	"crypto/tls"
 	"net"
 
-	"go-spring.org/cloud/runtime/dataplane/kernel/label"
-	"go-spring.org/cloud/runtime/dataplane/outbound/chain"
+	"go-spring.org/cloud/governance/capability/label"
+	"go-spring.org/cloud/governance/capability/traffic"
+	"go-spring.org/cloud/governance/dataplane/outbound/chain"
 
 	"github.com/gomodule/redigo/redis"
-	"go-spring.org/cloud/runtime"
-	"go-spring.org/cloud/runtime/dataplane/kernel/discovery"
-	"go-spring.org/cloud/runtime/dataplane/kernel/loadbalance"
+	"go-spring.org/cloud/governance"
+	"go-spring.org/cloud/governance/capability/discovery"
+	"go-spring.org/cloud/governance/capability/loadbalance"
 	"go-spring.org/stdlib/errutil"
 )
 
@@ -52,42 +53,24 @@ type Pool struct {
 	exec         chain.Executor       // the executor every command runs under, set by [NewPool] from the governance bundle; always non-nil on a NewPool-built pool
 	chain        []CommandInterceptor // user interceptor chain, first entry outermost; nil when none registered
 	serviceLabel string               // governance service label (stable per pool)
+	prop         traffic.Propagator   // process traffic convention, read when a command's operation is built
 	lbChain      *loadbalance.Chain   // endpoint-selection chain, nil when discovery is not in effect
 }
 
-// center carries the container's facilities (see [runtime.Runtime]). The
+// center carries the container's facilities (see [governance.Runtime]). The
 // entry's ${discovery} label rides on the config (c.Discovery, already carrying
 // the family default); NewPool resolves it against center.Discovery() itself.
 // It is applied HERE, while the pool is built, so a Pool cannot exist
 // half-assembled: there is no separate apply step and nothing the container has
 // to remember to call. A stand-alone caller must supply a center holding a
-// [resilience.Manager]: [runtime.Runtime.ExecutorFor] is required, so a nil
+// [resilience.Manager]: [governance.Runtime.ExecutorFor] is required, so a nil
 // center is a construction error rather than running bare.
-func NewPool(ctx context.Context, c Config, center *runtime.Runtime) (*Pool, error) {
+func NewPool(ctx context.Context, c Config, center *governance.Runtime) (*Pool, error) {
 	tlsConfig, err := c.TLS.BuildClient()
 	if err != nil {
 		return nil, errutil.Explain(err, "redis: build TLS")
 	}
 
-	// Resolve the discovery backend this entry cites. The label rides on the
-	// config (c.Discovery, already carrying the family default); an entry routed
-	// by service-name that cites no existing backend fails here, at construction.
-	var backend discovery.Discovery
-	if c.ServiceName != "" {
-		backend, _ = center.Discovery().Get(c.Discovery)
-		if backend == nil {
-			return nil, errutil.Explain(nil, "redis: instance routes by service-name but cites discovery backend %q, which names no bean", c.Discovery)
-		}
-	}
-	// Bind service discovery; nil resolver means discovery not in effect (no
-	// service name / no backend / mesh), so the pool dials the
-	// configured Addr directly. Freshness lives inside the backend, so the
-	// resolver has no resources to release.
-	resolver, err := discovery.NewResolver(ctx, backend, c.ServiceName,
-		discovery.WithScheme(c.Scheme))
-	if err != nil {
-		return nil, err
-	}
 	// The service label scopes limiter/breaker state AND endpoint selection to
 	// this Redis instance (not per command): fall back across the address fields
 	// via the shared [label.ServiceLabel] helper. Computed here because the
@@ -97,23 +80,36 @@ func NewPool(ctx context.Context, c Config, center *runtime.Runtime) (*Pool, err
 	// Endpoint selection rides the shared loadbalance machinery (round-robin
 	// base, per opened connection). The tracker makes outlier suspension possible
 	// and the chain's registration makes the label's governance rule REBUILD both
-	// halves from scratch when it moves.
+	// halves from scratch when it moves. Mesh mode wins over a configured
+	// service-name: the sidecar owns discovery+LB, so no chain is built and the
+	// pool dials the configured Addr.
 	var lbChain *loadbalance.Chain
-	if resolver != nil {
-		lbChain = center.Loadbalance().Chain(ctx, resolver, serviceLabel)
+	if center.UsesDiscovery(c.ServiceName) {
+		backend, _ := center.Discovery().Get(c.Discovery)
+		if backend == nil {
+			return nil, errutil.Explain(nil, "redis: instance routes by service-name but cites discovery backend %q, which names no bean", c.Discovery)
+		}
+		resolver, err := discovery.NewResolver(ctx, backend, c.ServiceName, c.Scheme)
+		if err != nil {
+			return nil, err
+		}
+		lbChain, err = center.Loadbalance().Chain(ctx, resolver, serviceLabel)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	pool := newRawPool(c, tlsConfig, lbChain)
-	w := &Pool{Pool: pool, cfg: c, serviceLabel: serviceLabel, lbChain: lbChain}
+	w := &Pool{Pool: pool, cfg: c, serviceLabel: serviceLabel, lbChain: lbChain, prop: center.TrafficPropagator()}
 
 	// Governance is assembled complete, in one step. The executor the pool's
 	// service label resolves to is the stack observe(fault(execFor)): fault wraps
 	// the resolved executor's operation fn so injected failures land INSIDE the
 	// retry/breaker loop (and so are observed), and the resilience layer emits the
 	// span + counter + histogram + access log for the whole call, retries included.
-	// A nil Fault degrades to the unwrapped executor (runtime.Runtime.ExecutorFor
+	// A nil Fault degrades to the unwrapped executor (governance.Runtime.ExecutorFor
 	// guards it); the center is required to carry a [resilience.Manager], and
-	// runtime.Runtime.ExecutorFor panics without one. Resolution is deferred
+	// governance.Runtime.ExecutorFor panics without one. Resolution is deferred
 	// to call time, so the order relative to the center's wiring is
 	// irrelevant; rate / error / latency hot-toggle and the bound protection policy
 	// is adopted at runtime through the executor's Refresh.
@@ -236,7 +232,7 @@ func (p *Pool) wrapConn(raw redis.Conn) redis.Conn {
 	var layers []CommandInterceptor
 	layers = append(layers, p.chain...)
 	if p.exec != nil {
-		layers = append(layers, resilienceInterceptor(p.exec, p.serviceLabel))
+		layers = append(layers, resilienceInterceptor(p.exec, p.serviceLabel, p.prop))
 	}
 	return NewConn(raw, layers...)
 }

@@ -21,7 +21,7 @@ import (
 	"strings"
 	"sync"
 
-	"go-spring.org/cloud/runtime/dataplane/kernel/traffic"
+	"go-spring.org/cloud/governance/capability/traffic"
 	"go.opentelemetry.io/otel/propagation"
 )
 

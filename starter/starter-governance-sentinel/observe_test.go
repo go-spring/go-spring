@@ -27,8 +27,8 @@ import (
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 
-	"go-spring.org/cloud/runtime/dataplane/outbound/chain"
-	"go-spring.org/cloud/runtime/dataplane/outbound/resilience"
+	"go-spring.org/cloud/governance/dataplane/outbound/chain"
+	"go-spring.org/cloud/governance/dataplane/outbound/resilience"
 )
 
 // TestSentinelBreakerMetrics verifies the driver publishes the mirror it keeps
@@ -44,7 +44,7 @@ func TestSentinelBreakerMetrics(t *testing.T) {
 		_ = mp.Shutdown(context.Background())
 	}()
 
-	e := newExec(t, "svc-metrics", resilience.Policy{ErrorThreshold: 1, OpenDuration: time.Hour})
+	e := newExec(t, "svc-metrics", resilience.BreakerPolicy{ErrorThreshold: 1, OpenDuration: time.Hour})
 	defer func() { _ = e.Close() }()
 
 	_ = e.Execute(context.Background(), chain.Operation{}, nil,

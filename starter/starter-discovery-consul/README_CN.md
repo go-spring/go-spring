@@ -3,7 +3,7 @@
 [English](README.md) | [中文](README_CN.md)
 
 `starter-discovery-consul` 把**当前实例**注册进 Consul 服务注册中心 —— 它是
-Go-Spring 客户端服务发现(`cloud/runtime/dataplane/kernel/discovery`)的注册侧对应物 —— **并且**提供消费侧的
+Go-Spring 客户端服务发现(`cloud/governance/capability/discovery`)的注册侧对应物 —— **并且**提供消费侧的
 Consul discovery 后端,一个 starter 同时覆盖命名两半。相当于 Spring Cloud 的
 `ServiceRegistry` + `DiscoveryClient`,以 Consul TTL 健康检查为底。
 
@@ -21,7 +21,7 @@ provider 注册仍保持框架原生,不在本 starter 范围内(见
 agent/集群,并成为一个名为 `consul.<name>` 的后端 bean,同时实现写侧
 (`registration.Registry`)与读侧(`discovery.Discovery`),共享该块的客户端。没有默认/无名块。
 
-注册本身由 [cloud/runtime/controlplane/registration](../../cloud/runtime/controlplane/registration) 核心拥有(传递依赖自动引入):它
+注册本身由 [cloud/governance/controlplane/registration](../../cloud/governance/controlplane/registration) 核心拥有(传递依赖自动引入):它
 唯一的 `discoveryServer`(`gs.Server`)收集**所有**已配置中心的 registry bean——跨后端
 ——在应用就绪后把实例注册进每一个中心,停机时从全部中心注销,并向所有中心广播
 `UpdateWeight`。配两个块(consul + consul,或 consul + etcd……)再加
@@ -106,7 +106,7 @@ spring.discovery.metadata.version=v1
 
 ### 发现(消费侧)
 
-发现**无需任何自有配置**:每个块的 bean 本身就是一个 `cloud/runtime/dataplane/kernel/discovery` 后端,bean 名即
+发现**无需任何自有配置**:每个块的 bean 本身就是一个 `cloud/governance/capability/discovery` 后端,bean 名即
 `consul.<name>`。client starter 按该名字引用:
 
 ```properties
@@ -139,7 +139,7 @@ blocking query 持续刷新,后续 Resolve 都是内存读。通告的 passing �
 - 每个块在 bean 构造阶段成为**一个**后端 bean(`consul.<name>`),持有该 agent 的
   客户端与命名体系的两半。`ping=true` 时它会探测 agent(`Catalog().Services`),不可达即
   启动失败,每块一次。
-- [cloud/runtime/controlplane/registration](../../cloud/runtime/controlplane/registration) 核心(传递依赖自动引入)的 `discoveryServer`
+- [cloud/governance/controlplane/registration](../../cloud/governance/controlplane/registration) 核心(传递依赖自动引入)的 `discoveryServer`
   收集每个后端的 registry——跨所有后端——等待就绪,然后带一个 Consul **TTL 健康检查**
   把实例 `Register` 进每个中心。它立即让检查通过,并以 TTL 一半的间隔在后台心跳保活。
 - 停机时 `PreStop` 在 pre-stop 延迟之前从每个中心注销实例(停心跳并从 Consul 摘除),

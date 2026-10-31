@@ -24,14 +24,18 @@ import (
 	"testing"
 	"time"
 
-	"go-spring.org/cloud/runtime"
+	"go-spring.org/cloud/governance"
 
-	"go-spring.org/cloud/runtime/controlplane/governance"
-	"go-spring.org/cloud/runtime/dataplane/inbound/admission"
-	serverfault "go-spring.org/cloud/runtime/dataplane/inbound/fault"
-	"go-spring.org/cloud/runtime/dataplane/kernel/loadbalance"
-	clientfault "go-spring.org/cloud/runtime/dataplane/outbound/fault"
-	"go-spring.org/cloud/runtime/dataplane/outbound/resilience"
+	"go-spring.org/cloud/governance/capability/discovery"
+	"go-spring.org/cloud/governance/capability/loadbalance"
+	"go-spring.org/cloud/governance/capability/traffic"
+	admissionplane "go-spring.org/cloud/governance/controlplane/admission"
+	loadbalanceplane "go-spring.org/cloud/governance/controlplane/loadbalance"
+	"go-spring.org/cloud/governance/controlplane/source"
+	"go-spring.org/cloud/governance/dataplane/inbound/admission"
+	serverfault "go-spring.org/cloud/governance/dataplane/inbound/fault"
+	clientfault "go-spring.org/cloud/governance/dataplane/outbound/fault"
+	"go-spring.org/cloud/governance/dataplane/outbound/resilience"
 	"go-spring.org/stdlib/testing/assert"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -42,23 +46,36 @@ import (
 	"google.golang.org/grpc/test/bufconn"
 )
 
+// testProp is the traffic convention these fixtures run under.
+var testProp = traffic.NewDefaultPropagator(traffic.DefaultBinding())
+
 // testCenter builds the runtime the server takes. The resilience
 // authorities are real unarmed managers (construction dispatches into every
 // authority), and the injector is a real inert one, mirroring the DI wiring
 // where every bean is always present (an absent bean fails startup).
-func testCenter() *runtime.Runtime {
+func testCenter() *governance.Runtime {
 	driver := resilience.NewDefaultDriver(nil)
 	resClient := resilience.NewManager(driver)
-	ctr, err := runtime.New(resClient, loadbalance.NewManager(),
-		clientfault.NewClientManager(nil), serverfault.NewServerManager(nil), nil, governance.NewPushSource(governance.Config{Server: governance.ServerConfig{Default: admission.DefaultPolicy()}}))
-	if err != nil {
+	ctr := &governance.Runtime{
+		Resilience:  resClient,
+		LoadBalance: loadbalance.NewManager(),
+		Admission:   admission.NewManager(),
+		ClientFault: clientfault.NewManager(),
+		ServerFault: serverfault.NewManager(),
+		Directory:   discovery.NewManager(nil),
+		Traffic:     traffic.NewDefaultPropagator(traffic.DefaultBinding()),
+	}
+	if _, err := loadbalanceplane.NewCenter(context.Background(), ctr.LoadBalance, source.NewPushSource(loadbalance.Settings{})); err != nil {
+		panic(err)
+	}
+	if _, err := admissionplane.NewCenter(context.Background(), ctr.Admission, source.NewPushSource(admission.Settings{})); err != nil {
 		panic(err)
 	}
 	return ctr
 }
 
 // armRateLimit pushes a one-request rate budget into the center's guard authority.
-func armRateLimit(t *testing.T, ctr *runtime.Runtime) {
+func armRateLimit(t *testing.T, ctr *governance.Runtime) {
 	t.Helper()
 	assert.That(t, ctr.GuardServer().Apply(admission.Settings{
 		Default: admission.Policy{
@@ -84,7 +101,7 @@ func TestResilienceUnaryInterceptor_Unit(t *testing.T) {
 	armRateLimit(t, ctr)
 	in, err := ctr.InboundFor("grpc", "grpc:test")
 	assert.That(t, err).Nil()
-	ic := resilienceUnaryInterceptor(in, "grpc:test")
+	ic := resilienceUnaryInterceptor(in, "grpc:test", ctr.TrafficPropagator())
 	info := &grpc.UnaryServerInfo{FullMethod: "/demo.Service/Echo"}
 
 	hits := 0
@@ -116,7 +133,7 @@ func TestServerPolicy_EndToEndOverBufconn(t *testing.T) {
 	addr := uniqueTestAddr("inbound-e2e")
 
 	ctr := testCenter()
-	s := NewSimpleGrpcServer(Config{Addr: addr}, func(*grpc.Server) {}, nil, nil, ctr, nil)
+	s := NewSimpleGrpcServer(Config{Addr: addr}, func(*grpc.Server) {}, nil, nil, ctr, testProp)
 	// Arm AFTER constructing the server: the server captures its Inbound at
 	// wiring time, and the guard follows the manager's later pushes.
 	armRateLimit(t, ctr)
@@ -160,7 +177,7 @@ func TestServerPolicy_EndToEndOverBufconn(t *testing.T) {
 // no-op, so every RPC runs the handler untouched.
 func TestServerPolicy_UnarmedManagerIsTransparent(t *testing.T) {
 	addr := uniqueTestAddr("inbound-unarmed")
-	s := NewSimpleGrpcServer(Config{Addr: addr}, func(*grpc.Server) {}, nil, nil, testCenter(), nil)
+	s := NewSimpleGrpcServer(Config{Addr: addr}, func(*grpc.Server) {}, nil, nil, testCenter(), testProp)
 	ri, ok, err := s.buildResilienceInterceptors()
 	assert.That(t, err).Nil()
 	assert.That(t, ok).True()

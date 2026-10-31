@@ -81,7 +81,7 @@ Consul/Nacos 并推送新快照）：
 ```go
 package main
 
-import "go-spring.org/cloud/runtime/dataplane/kernel/discovery"
+import "go-spring.org/cloud/governance/capability/discovery"
 
 func init() {
     gs.Provide(func() (discovery.Discovery, error) {
@@ -153,7 +153,7 @@ bean 不存在则启动失败）。
 `NewClient` 是唯一构造入口，driver 把条目的 name 与 `c.ServiceName` 交给它，所以 Client 不可能在缺身份
 的情况下存在。observe 层也在此安装 —— 它不需要任何外部输入，属于「客户端是什么」，不是后续的装配步骤。
 driver 唯一不装配的是治理：executor 由 `Client.applyGovernance` 装备，构造函数紧接着调用它，因为这些
-authority 来自容器，driver 不应被迫依赖 `cloud/runtime/controlplane/governance`。
+authority 来自容器，driver 不应被迫依赖 `各策略根`。
 
 这里**刻意没有 `Init` 钩子**。初始化就是「对象存在之后立刻要做的事」，而构造函数在一处做完：
 `NewClient` 定身份与 observe，`applyGovernance` 装治理。把任一步拆成独立的 `gs.InitMethod` 一无所获，
@@ -236,7 +236,7 @@ starter）。
 
 `driver` key 按名指定 Driver bean：留空 = 先回退家族级 `spring.<family>.default.driver`，再按类型注入唯一 Driver bean（见 §2.1），配置
 bean 名则显式选定一个；无 `resilience` key：resilience/fault 来自治理中心
-（`cloud/runtime/controlplane/governance` 的 `spring.governance.*` 配置），按服务 `memcached:<service-name 或实例名>` 隔离。
+（`各策略根` 的 `spring.governance.*` 配置），按服务 `memcached:<service-name 或实例名>` 隔离。
 
 ---
 

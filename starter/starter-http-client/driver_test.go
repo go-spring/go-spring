@@ -18,20 +18,23 @@ package StarterHTTPClient
 
 import (
 	"context"
-	"go-spring.org/cloud/runtime/dataplane/inbound/admission"
 	"net/http"
 	"reflect"
 	"testing"
 
-	"go-spring.org/cloud/runtime"
-	"go-spring.org/cloud/runtime/controlplane/governance"
+	"go-spring.org/cloud/governance/dataplane/inbound/admission"
 
-	serverfault "go-spring.org/cloud/runtime/dataplane/inbound/fault"
-	"go-spring.org/cloud/runtime/dataplane/kernel/discovery"
-	"go-spring.org/cloud/runtime/dataplane/kernel/loadbalance"
-	"go-spring.org/cloud/runtime/dataplane/kernel/traffic"
-	clientfault "go-spring.org/cloud/runtime/dataplane/outbound/fault"
-	"go-spring.org/cloud/runtime/dataplane/outbound/resilience"
+	"go-spring.org/cloud/governance"
+	admissionplane "go-spring.org/cloud/governance/controlplane/admission"
+	loadbalanceplane "go-spring.org/cloud/governance/controlplane/loadbalance"
+	"go-spring.org/cloud/governance/controlplane/source"
+
+	"go-spring.org/cloud/governance/capability/discovery"
+	"go-spring.org/cloud/governance/capability/loadbalance"
+	"go-spring.org/cloud/governance/capability/traffic"
+	serverfault "go-spring.org/cloud/governance/dataplane/inbound/fault"
+	clientfault "go-spring.org/cloud/governance/dataplane/outbound/fault"
+	"go-spring.org/cloud/governance/dataplane/outbound/resilience"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/httpclt"
 )
@@ -40,10 +43,19 @@ import (
 // DefaultDriver when no Driver bean is provided (nil). Building the transport
 // needs no live server — it only assembles the RoundTripper.
 func TestDefaultDriverFallback(t *testing.T) {
-	center, err := runtime.New(
-		resilience.NewManager(resilience.NewDefaultDriver(nil)), loadbalance.NewManager(),
-		clientfault.NewClientManager(nil), serverfault.NewServerManager(nil), discovery.NewManager(nil), governance.NewPushSource(governance.Config{Server: governance.ServerConfig{Default: admission.DefaultPolicy()}}))
-	if err != nil {
+	center := &governance.Runtime{
+		Resilience:  resilience.NewManager(resilience.NewDefaultDriver(nil)),
+		LoadBalance: loadbalance.NewManager(),
+		Admission:   admission.NewManager(),
+		ClientFault: clientfault.NewManager(),
+		ServerFault: serverfault.NewManager(),
+		Traffic:     traffic.NewDefaultPropagator(traffic.DefaultBinding()),
+		Directory:   discovery.NewManager(nil),
+	}
+	if _, err := loadbalanceplane.NewCenter(context.Background(), center.LoadBalance, source.NewPushSource(loadbalance.Settings{})); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := admissionplane.NewCenter(context.Background(), center.Admission, source.NewPushSource(admission.Settings{})); err != nil {
 		t.Fatal(err)
 	}
 	rt, _, err := assembleTransport(nil, "x", Config{Addr: "10.0.0.1:8080"}, nil, nil, center, nil)
@@ -67,10 +79,10 @@ type recordingDriver struct {
 	// center records the runtime handed to CreateTransport, so a
 	// test can prove the container's authority reaches a custom driver as an
 	// argument (the bean, not a package-level seam).
-	center *runtime.Runtime
+	center *governance.Runtime
 }
 
-func (d *recordingDriver) CreateTransport(ctx context.Context, name string, c Config, backend discovery.Discovery, center *runtime.Runtime, prop traffic.Propagator) (http.RoundTripper, func() error, error) {
+func (d *recordingDriver) CreateTransport(ctx context.Context, name string, c Config, backend discovery.Discovery, center *governance.Runtime, prop traffic.Propagator) (http.RoundTripper, func() error, error) {
 	d.called = true
 	d.backend = backend
 	d.center = center
@@ -81,10 +93,19 @@ func (d *recordingDriver) CreateTransport(ctx context.Context, name string, c Co
 // dispatches through, replacing the internal DefaultDriver fallback.
 func TestCustomDriverUsed(t *testing.T) {
 	drv := &recordingDriver{}
-	center, err := runtime.New(
-		resilience.NewManager(resilience.NewDefaultDriver(nil)), loadbalance.NewManager(),
-		clientfault.NewClientManager(nil), serverfault.NewServerManager(nil), discovery.NewManager(nil), governance.NewPushSource(governance.Config{Server: governance.ServerConfig{Default: admission.DefaultPolicy()}}))
-	if err != nil {
+	center := &governance.Runtime{
+		Resilience:  resilience.NewManager(resilience.NewDefaultDriver(nil)),
+		LoadBalance: loadbalance.NewManager(),
+		Admission:   admission.NewManager(),
+		ClientFault: clientfault.NewManager(),
+		ServerFault: serverfault.NewManager(),
+		Traffic:     traffic.NewDefaultPropagator(traffic.DefaultBinding()),
+		Directory:   discovery.NewManager(nil),
+	}
+	if _, err := loadbalanceplane.NewCenter(context.Background(), center.LoadBalance, source.NewPushSource(loadbalance.Settings{})); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := admissionplane.NewCenter(context.Background(), center.Admission, source.NewPushSource(admission.Settings{})); err != nil {
 		t.Fatal(err)
 	}
 	rt, _, err := assembleTransport(nil, "x", Config{Addr: "10.0.0.1:8080"}, nil, drv, center, nil)
@@ -102,7 +123,7 @@ func TestCustomDriverUsed(t *testing.T) {
 // stubDiscovery is a minimal named discovery backend bean for wiring tests.
 type stubDiscovery struct{}
 
-func (stubDiscovery) Resolve(context.Context, string, ...discovery.Option) ([]discovery.Endpoint, error) {
+func (stubDiscovery) Resolve(context.Context, string) ([]discovery.Endpoint, error) {
 	return nil, nil
 }
 
@@ -139,7 +160,7 @@ func TestCustomDriverReceivesResolvedBackend(t *testing.T) {
 //
 // The test does NOT register those beans itself. Importing this starter blank-
 // imports the runtime, which registers them — so a container already
-// holds one *resilience.Manager / *clientfault.ClientManager, and providing another would
+// holds one *resilience.Manager / *clientfault.Manager, and providing another would
 // be a duplicate. The assertion is therefore identity with what another
 // injection resolves, which is the same claim.
 func TestCustomDriverReceivesGovernanceBeans(t *testing.T) {
@@ -148,9 +169,9 @@ func TestCustomDriverReceivesGovernanceBeans(t *testing.T) {
 		app.Property("spring.http-client.instances.demo.addr", "10.0.0.1:8080")
 		app.Provide(func() Driver { return &drv })
 	}).RunTest(t, func(ts *struct {
-		DT  *dispatchTransport         `autowire:""`
-		Mgr *resilience.Manager        `autowire:""`
-		Inj *clientfault.ClientManager `autowire:""`
+		DT  *dispatchTransport   `autowire:""`
+		Mgr *resilience.Manager  `autowire:""`
+		Inj *clientfault.Manager `autowire:""`
 	}) {
 		if ts.DT == nil {
 			t.Fatal("expected a wired dispatch transport")

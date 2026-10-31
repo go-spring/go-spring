@@ -29,12 +29,12 @@ import (
 	"github.com/hertz-contrib/cors"
 	"github.com/hertz-contrib/gzip"
 	"github.com/hertz-contrib/requestid"
+	"go-spring.org/cloud/governance"
+	"go-spring.org/cloud/governance/capability/label"
+	"go-spring.org/cloud/governance/capability/traffic"
+	"go-spring.org/cloud/governance/dataplane/inbound/admission"
+	observability "go-spring.org/cloud/governance/dataplane/inbound/observe"
 	"go-spring.org/cloud/propagate"
-	"go-spring.org/cloud/runtime"
-	"go-spring.org/cloud/runtime/dataplane/inbound/admission"
-	observability "go-spring.org/cloud/runtime/dataplane/inbound/observe"
-	"go-spring.org/cloud/runtime/dataplane/kernel/label"
-	"go-spring.org/cloud/runtime/dataplane/kernel/traffic"
 	"go-spring.org/log"
 	"go-spring.org/stdlib/errutil"
 )
@@ -77,12 +77,12 @@ func RequestIDFromContext(ctx context.Context) string {
 // 403) are still logged. Body limiting is handled by the engine option
 // WithMaxRequestBodySize, not a middleware, so an over-limit 413 is likewise
 // logged.
-func applyMiddlewares(h *server.Hertz, cfg Config, center *runtime.Runtime, prop traffic.Propagator) error {
+func applyMiddlewares(h *server.Hertz, cfg Config, center *governance.Runtime, prop traffic.Propagator) error {
 	mw := cfg.Middleware
 
 	// LoadTest identification is outermost of all so the marker is on the
 	// request context before Recovery, RequestID or any handler runs, letting
-	// every downstream layer branch on the load-test convention's IsLoadTest. A
+	// every downstream layer branch on `traffic.IsLoadTest`. A
 	// single header lookup; off when disabled.
 	if mw.LoadTest.Enabled {
 		h.Use(LoadTest(prop))
@@ -127,7 +127,7 @@ func applyMiddlewares(h *server.Hertz, cfg Config, center *runtime.Runtime, prop
 		if err != nil {
 			return errutil.Explain(err, "hertz: inbound governance")
 		}
-		h.Use(buildServerPolicy(in))
+		h.Use(buildServerPolicy(in, prop))
 	}
 	return nil
 }
@@ -135,9 +135,9 @@ func applyMiddlewares(h *server.Hertz, cfg Config, center *runtime.Runtime, prop
 // buildServerPolicy builds the inbound governance middleware. It drives the
 // admission's Admit/Done pair and maps a refusal to 429 (rate limit / bulkhead) or
 // 503 (injected fault).
-func buildServerPolicy(in *runtime.Inbound) app.HandlerFunc {
+func buildServerPolicy(in *governance.Inbound, prop traffic.Propagator) app.HandlerFunc {
 	return func(ctx context.Context, c *app.RequestContext) {
-		op := observability.ServerOperation{Action: actionName(c)}
+		op := observability.NewServerOperation(ctx, prop, actionName(c))
 		err := in.Run(ctx, op, func(ctx context.Context) error {
 			c.Next(ctx)
 			if c.Response.StatusCode() >= 500 {
@@ -146,18 +146,23 @@ func buildServerPolicy(in *runtime.Inbound) app.HandlerFunc {
 			return nil
 		})
 		if err != nil {
-			var ref *runtime.Refusal
+			var ref *governance.Refusal
 			if errors.As(err, &ref) && !c.Response.IsBodyStream() && c.Response.StatusCode() == 0 {
-				c.AbortWithStatus(httpStatusFor(ref.Verdict()))
+				c.AbortWithStatus(httpStatusFor(ref))
 			}
 		}
 	}
 }
 
 // httpStatusFor maps an inbound refusal to the HTTP status a client can act on:
-// rate/bulkhead rejections are 429, an injected fault is 503.
-func httpStatusFor(kind admission.Verdict) int {
-	if kind == admission.VerdictFaultInjected {
+// rate/bulkhead rejections are 429; an injected fault follows the class the rule
+// declared — a business failure (the caller's mistake) is 400, anything else is
+// 503.
+func httpStatusFor(ref *governance.Refusal) int {
+	if ref.Verdict() == admission.VerdictFaultInjected {
+		if ref.Fault().Business() {
+			return http.StatusBadRequest
+		}
 		return http.StatusServiceUnavailable
 	}
 	return http.StatusTooManyRequests
@@ -199,9 +204,9 @@ func accessLogSkipSet(cfg Config) map[string]struct{} {
 
 // LoadTest installs the inbound load-test traffic identification middleware.
 // When the incoming request carries the configured marker header (default
-// X-LoadTest) it tags the request context, so handlers and outbound clients can
-// recognise synthetic load through the propagator's IsLoadTest. It is the
-// inbound companion to cloud/runtime/dataplane/kernel/traffic's outbound injection: together
+// X-Traffic) it tags the request context, so handlers and outbound clients can
+// recognise synthetic load through `traffic.IsLoadTest`. It is the
+// inbound companion to cloud/governance/capability/traffic's outbound injection: together
 // they let a load-test flag ride an HTTP hop end to end. An empty header falls
 // back to the propagator.s own header name.
 // Without the marker it is a no-op. Hertz stores headers as []byte; Peek returns

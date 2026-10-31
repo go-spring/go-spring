@@ -28,7 +28,7 @@ import (
 	"sync"
 	"time"
 
-	"go-spring.org/cloud/runtime/dataplane/kernel/ratelimit"
+	"go-spring.org/cloud/governance/capability/ratelimit"
 )
 
 // maxScopes bounds how many keys the store tracks before it starts evicting

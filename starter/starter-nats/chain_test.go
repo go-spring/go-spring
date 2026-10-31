@@ -55,7 +55,7 @@ func (f *fakeTail) Release(bool) error { return nil }
 // attached runs the call inline and returns its result unchanged.
 func TestChainPassThrough(t *testing.T) {
 	tail := &fakeTail{}
-	c := &Conn{InnerConn: NewObsConn(tail, nil)}
+	c := &Conn{InnerConn: NewObsConn(tail, nil, testProp)}
 
 	boom := errors.New("boom")
 	tail.err = boom

@@ -14,7 +14,7 @@ observability.
 starter.go:60). Each entry becomes one route bean — named after the entry, holding its target
 (addr or service-name) and its assembled transport — and the route table collects them.
 Resilience/fault policy is NOT configured here — it is process-wide
-under `spring.governance.*` (see cloud/runtime/controlplane/governance's SOURCE_USAGE).
+under `spring.governance.*` (see cloud/governance/controlplane/source's USAGE).
 
 ---
 
@@ -69,7 +69,7 @@ import (
     "fmt"
     "net/http"
 
-    "go-spring.org/cloud/runtime/dataplane/kernel/discovery"
+    "go-spring.org/cloud/governance/capability/discovery"
 )
 
 const (
@@ -124,7 +124,7 @@ spring.http-client.instances.direct.addr=127.0.0.1:9471
 
 # (2) Service discovery + load balancing: routes by logical service name.
 # The LB strategy and endpoint suspension for this entry are governance rules
-# (spring.governance.client.rules[N].balancer / .outlier-threshold), not keys here — see below.
+# (spring.governance.client.loadbalance.services[N].balancer / .outlier-threshold), not keys here — see below.
 spring.http-client.instances.discovered.service-name=greet-svc
 spring.http-client.instances.discovered.discovery=static
 
@@ -132,10 +132,10 @@ spring.http-client.instances.discovered.discovery=static
 # The bundled DefaultDriver trips the breaker after two consecutive failures and
 # keeps it open 30s.
 spring.http-client.instances.guarded.addr=127.0.0.1:9473
-# NOTE: governance RULES go in conf/governance.properties, referenced by spring.governance.source.file.path in app.properties (see cloud/runtime/controlplane/governance's SOURCE_USAGE).
+# NOTE: governance RULES go in conf/governance.properties, wired by the example's source starter (source.go) (see cloud/governance/controlplane/source's USAGE).
 spring.resilience.driver=default
-spring.governance.client.default.error-threshold=2
-spring.governance.client.default.open-duration=30s
+spring.governance.client.resilience.error-threshold=2
+spring.governance.client.resilience.open-duration=30s
 
 # No inbound HTTP server needed in this demo.
 spring.http.server.enabled=false
@@ -188,7 +188,7 @@ Per entry, outermost → innermost (assembled in `assembleTransport`, starter.go
 
 ```
 custom driver wrap (outermost: embed DefaultDriver and wrap the assembled transport)
-  → trafficTransport        (injects the X-LoadTest marker header per request)
+  → trafficTransport        (injects the X-Traffic marker header per request)
   → resilience roundTripper (executor: observe( fault( rawExec ) ) per call)
   → balancedTransport | fixedHostTransport   (LB pick + host rewrite | pin to addr)
   → otelhttp.NewTransport(http.DefaultTransport | TLS-configured clone when tls.enabled)
@@ -236,7 +236,7 @@ Rationale (from the source comments, verified):
    because `net/http` hands a transport nothing but the `*http.Request` — routing at this layer is
    what keeps the declared Target as the key, and it also keeps every hop of a redirect on the
    route the call started on.
-3. trafficTransport injects the load-test marker header iff the propagator's `IsLoadTest(ctx)`.
+3. trafficTransport injects the load-test marker header iff `traffic.IsLoadTest(ctx, prop)`.
 4. The executor runs the round-trip as one protected call: one `timeout` deadline over the
    WHOLE call, then rate limit → breaker gate → retry loop with backoff beneath it — the
    rounds share that one budget;
@@ -301,19 +301,19 @@ Keys under `spring.http-client.instances.<name>.*` (cross-checked with
 `label.ServiceLabel("http", ServiceName, Addr)` → `http:<service-name>` whenever
 `service-name` is set (discovery mode AND direct mode, where it stays a pure label), falling back
 to `http:<addr>` only for entries with no service-name at all (httpx.go `Config.service`).
-So a `spring.governance.client.rules[].services` entry scoped to `http:<service-name>` keeps matching when the
+So a `spring.governance.client.resilience.services[].service` entry scoped to `http:<service-name>` keeps matching when the
 entry switches between direct and discovery addressing — keep `service-name` set across the
 switch. Only dropping service-name entirely changes the key. Also: in direct mode the breaker
 keys per host:port — same backend reached through two different `addr` spellings gets two
 breakers.
 
 **Not here** (no keys under `spring.http-client.*`): timeouts, retries, breaker, rate limit, fault.
-All policy is process-wide under `spring.governance.*` (see cloud/runtime/controlplane/governance's SOURCE_USAGE) —
-`spring.governance.client.default.<policy-field>` (rate-limit / burst / error-threshold /
+All policy is process-wide under `spring.governance.*` (see cloud/governance/controlplane/source's USAGE) —
+`spring.governance.client.resilience.<policy-field>` (rate-limit / burst / error-threshold /
 open-duration / breaker-strategy / error-rate-threshold / min-requests /
 max-retries / initial-interval / multiplier / max-interval / timeout) and
-`spring.governance.client.fault.*` for fault injection. Per-target policy = one `spring.governance.client.rules[n]` entry scoped to the
-service label above. See cloud/runtime/controlplane/governance's SOURCE_USAGE for that surface.
+`spring.fault.client.*` for fault injection. Per-target policy = one `spring.governance.client.resilience.services[n]` entry scoped to the
+service label above. See cloud/governance/controlplane/source's USAGE for that surface.
 
 `min-requests`: an error-rate breaker's minimum sample size is read straight from the governance rule
 and applied by resilience; unset means resilience's own zero-value floor of 1, so a single failure
@@ -354,7 +354,7 @@ loses it and the chain stops picking it (httpx.go:207-243).
 ### 4.3 Breaker drill — open, fast-fail, recover
 
 The `guarded` route targets the always-500 backend on :9473 with
-`spring.governance.client.default.error-threshold=2`, `open-duration=30s`:
+`spring.governance.client.resilience.error-threshold=2`, `open-duration=30s`:
 
 1. Run the example: `./check.sh`. The guarded client's first calls fail against the network; after
    2 consecutive failures the breaker opens and the run prints
@@ -365,17 +365,17 @@ The `guarded` route targets the always-500 backend on :9473 with
    backend restored — the half-open trial succeeds and the breaker closes.
 3. Observe the trip: `resilience.client.breaker.transitions_total{to="open"}` increments, and
    `resilience.client.breaker.state{state="open"}` reports the open state (published by the
-   resilience executor itself, see cloud/runtime/dataplane/outbound/resilience/observe.go).
+   resilience executor itself, see cloud/governance/dataplane/outbound/resilience/observe.go).
 
 ### 4.4 Fault injection (no restart)
 
-Fault rides the same governance source; `spring.governance.client.fault.*` hot-reloads (see example-load's
+Fault rides the same governance source; `spring.fault.client.*` hot-reloads (see example-load's
 conf comments). Flip in the config file:
 
 ```properties
-# NOTE: governance RULES go in conf/governance.properties, referenced by spring.governance.source.file.path in app.properties (see cloud/runtime/controlplane/governance's SOURCE_USAGE).
-spring.governance.client.fault.rate=0.5
-spring.governance.client.fault.error=timeout    # or generic / reset
+# NOTE: governance RULES go in conf/governance.properties, wired by the example's source starter (source.go) (see cloud/governance/controlplane/source's USAGE).
+spring.fault.client.rate=0.5
+spring.fault.client.error=timeout    # or generic / reset
 ```
 
 Injected faults flow *inside* the resilience executor (§2.2), so retries fire, the breaker counts

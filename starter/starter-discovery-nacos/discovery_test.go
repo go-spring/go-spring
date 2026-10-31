@@ -24,8 +24,8 @@ import (
 	"github.com/nacos-group/nacos-sdk-go/v2/clients/naming_client"
 	"github.com/nacos-group/nacos-sdk-go/v2/model"
 	"github.com/nacos-group/nacos-sdk-go/v2/vo"
-	"go-spring.org/cloud/runtime/controlplane/registration"
-	"go-spring.org/cloud/runtime/dataplane/kernel/discovery"
+	"go-spring.org/cloud/governance/capability/discovery"
+	"go-spring.org/cloud/governance/controlplane/registration"
 )
 
 // newTestObserver builds the observation layer a test's backend block would own.
@@ -113,13 +113,17 @@ func TestNacosDiscovery_Resolve(t *testing.T) {
 		t.Fatalf("endpoint metadata dropped: %+v", eps[1])
 	}
 
-	// Scheme narrowing drops the plain instance.
-	eps, err = d.Resolve(context.Background(), "order-svc", discovery.WithScheme("tls"))
+	// The consumer's construction-time schema drops the plain instance.
+	r, err := discovery.NewResolver(context.Background(), d, "order-svc", "tls")
+	if err != nil {
+		t.Fatal(err)
+	}
+	eps, err = r(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(eps) != 1 || eps[0].Addr != "10.0.0.2:8443" {
-		t.Fatalf("scheme filter wrong: %+v", eps)
+		t.Fatalf("scheme schema wrong: %+v", eps)
 	}
 }
 

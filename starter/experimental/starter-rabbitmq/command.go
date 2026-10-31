@@ -32,8 +32,10 @@ package StarterRabbitMQ
 
 import (
 	"context"
+
 	amqp "github.com/rabbitmq/amqp091-go"
-	observability "go-spring.org/cloud/runtime/dataplane/outbound/observe"
+	"go-spring.org/cloud/governance/capability/traffic"
+	observability "go-spring.org/cloud/governance/dataplane/outbound/observe"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/propagation"
 )
@@ -172,11 +174,12 @@ func (r *RawPublisher) Publish(ctx context.Context, ch *amqp.Channel, exchange, 
 type ObsPublisher struct {
 	next InnerPublisher
 	obs  *observability.OperationObserver
+	prop traffic.Propagator
 }
 
 // NewObsPublisher builds the emitting layer over next.
-func NewObsPublisher(next InnerPublisher, obs *observability.OperationObserver) *ObsPublisher {
-	return &ObsPublisher{next: next, obs: obs}
+func NewObsPublisher(next InnerPublisher, obs *observability.OperationObserver, prop traffic.Propagator) *ObsPublisher {
+	return &ObsPublisher{next: next, obs: obs, prop: prop}
 }
 
 // Release hands releaseRaw to the layer under it — this layer holds no
@@ -192,7 +195,7 @@ func (o *ObsPublisher) Publish(ctx context.Context, ch *amqp.Channel, exchange, 
 	if o.obs == nil {
 		return o.next.Publish(ctx, ch, exchange, key, mandatory, immediate, pub)
 	}
-	return o.obs.Observe(ctx, operation(opSend, dest), nil, func(callCtx context.Context) error {
+	return o.obs.Observe(ctx, operation(ctx, o.prop, opSend, dest), nil, func(callCtx context.Context) error {
 		return o.next.Publish(callCtx, ch, exchange, key, mandatory, immediate, pub)
 	})
 }

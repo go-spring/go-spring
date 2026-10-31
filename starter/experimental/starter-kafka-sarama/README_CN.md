@@ -76,7 +76,7 @@ fmt.Println(string(msg.Value))
 
 本 starter **声明**每次发布与消费的身份,自身不发射任何信号。信号——span、duration
 指标、访问日志——由 resilience 层统一发射(见
-[governance](../../cloud/runtime/dataplane/outbound/resilience)),它是执行链上唯一能看到完整一次调用
+[governance](../../cloud/governance/dataplane/outbound/resilience)),它是执行链上唯一能看到完整一次调用
 (含重试)的点。它依赖 [starter-otel](../../starter-otel) 安装的全局 `TracerProvider`
 与传播器;未引入 starter-otel 时它们是空操作,也不会改动任何消息字节,因此埋点是安全、
 零配置的可选项。

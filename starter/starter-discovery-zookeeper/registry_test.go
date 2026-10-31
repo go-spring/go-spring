@@ -25,7 +25,7 @@ import (
 	"time"
 
 	"github.com/go-zookeeper/zk"
-	"go-spring.org/cloud/runtime/controlplane/registration"
+	"go-spring.org/cloud/governance/controlplane/registration"
 	"go-spring.org/stdlib/testing/assert"
 )
 

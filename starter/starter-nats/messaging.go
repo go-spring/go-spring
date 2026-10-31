@@ -20,9 +20,9 @@ import (
 	"context"
 
 	"github.com/nats-io/nats.go"
+	"go-spring.org/cloud/governance/capability/traffic"
 	"go-spring.org/cloud/messaging"
 	"go-spring.org/cloud/propagate"
-	"go-spring.org/cloud/runtime/dataplane/kernel/traffic"
 )
 
 // NewDriver adapts a NATS connection to the broker-neutral messaging.Driver, so
@@ -86,7 +86,7 @@ func (p *publisher) Publish(ctx context.Context, msg *messaging.Message) error {
 	// recognises synthetic load. The header map is allocated on demand because a
 	// headerless message leaves it nil and writing to it must not panic; the
 	// adapter writes through Header.Set, so the key lands in canonical spelling.
-	if p.prop.IsLoadTest(ctx) {
+	if traffic.IsLoadTest(ctx, p.prop) {
 		if nm.Header == nil {
 			nm.Header = nats.Header{}
 		}

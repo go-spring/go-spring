@@ -3,13 +3,13 @@
 [English](README.md) | [中文](README_CN.md)
 
 `starter-governance-nacos` 把 [Nacos](https://nacos.io/) 接入为 Go-Spring 的治理规则源。
-它监听一个承载治理规则文档的 Nacos dataId，把每个已发布的版本经 `governance.Source`
-契约推送进 [`go-spring.org/cloud/runtime/controlplane/governance`](../../cloud/runtime/controlplane/governance) 治理中心——
+它监听一个承载治理规则文档的 Nacos dataId，把每个已发布的版本经 `source.Source`
+契约推送进 [`go-spring.org/cloud/governance/controlplane/source`](../../cloud/governance/controlplane/source) 治理中心——
 规则变更实时重解析治理策略，无需重启，也不触发全应用属性重绑。
 
 它是治理规则源适配器家族（Sentinel-datasource 形态）的 Nacos 成员；etcd 成员是
-[starter-governance-etcd](../starter-governance-etcd)，file/http 两个源由
-[cloud/runtime/controlplane/governance](../../cloud/runtime/controlplane/governance) 内置。三者都经 `governance.Parse` 解析同一份规则文档，
+[starter-governance-etcd](../starter-governance-etcd)，文件源由
+[cloud/governance/controlplane/source](../../cloud/governance/controlplane/source) 内置。两者都经 `source.Parse` 解析同一份规则文档，
 所以文档在各后端之间逐字节可移植。
 
 ## 与 starter-config-nacos 的关系
@@ -63,18 +63,17 @@ spring:
   governance:
     driver: default
     client:
-      default:
+      resilience:
         timeout: 100ms
-    client:
-      rules:
-        - services: demo:service
-          timeout: 50ms
+        services:
+          - service: demo:service
+            timeout: 50ms
 ```
 
-每个已发布版本都会被重新解析并推送进治理中心。规则词表（`spring.governance.client.default.*`、
-`spring.governance.client.rules[n].*`、`spring.governance.client.fault.*`）属于治理域，完整参考见
-[cloud/runtime/controlplane/governance 的 SOURCE_USAGE_CN.md](../../cloud/runtime/controlplane/governance/SOURCE_USAGE_CN.md)。引入治理中心本身仍是
-[cloud/runtime/controlplane/governance](../../cloud/runtime/controlplane/governance) 的职责——本模块只提供规则源。
+每个已发布版本都会被重新解析并推送进治理中心。规则词表（`spring.governance.client.resilience.*`、
+`spring.governance.client.resilience.services[n].*`、`spring.fault.client.*`）属于治理域，完整参考见
+[cloud/governance/controlplane/source 的 USAGE_CN.md](../../cloud/governance/controlplane/source/USAGE_CN.md)。引入治理中心本身仍是
+[cloud/governance/controlplane/source](../../cloud/governance/controlplane/source) 的职责——本模块只提供规则源。
 
 ## 配置项
 

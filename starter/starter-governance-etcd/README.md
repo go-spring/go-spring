@@ -3,14 +3,14 @@
 [English](README.md) | [中文](README_CN.md)
 
 `starter-governance-etcd` is the etcd member of the governance rule-source family
-— the same datasource shape as the file and http sources built into
-[`cloud/runtime/controlplane/governance`](../../cloud/runtime/controlplane/governance). It watches ONE etcd key
+— the same datasource shape as the file source built into
+[`cloud/governance/controlplane/source`](../../cloud/governance/controlplane/source). It watches ONE etcd key
 holding a governance rule document and pushes each changed version into the
-governance center through the `governance.Source` contract of
-[`go-spring.org/cloud/runtime/controlplane/governance`](../../cloud/runtime/controlplane/governance).
+governance center through the `source.Source` contract of
+[`go-spring.org/cloud/governance/controlplane/source`](../../cloud/governance/controlplane/source).
 
 Blank-importing this module is inert until `spring.governance.source.etcd.*` is configured;
-then it registers one `governance.Source` bean. The document in the key uses the
+then it registers one `source.Source` bean. The document in the key uses the
 same `spring.governance.*` keys any other source accepts, so a rules file is byte-portable
 between the file, http and etcd backends.
 
@@ -42,8 +42,8 @@ go get go-spring.org/starter-governance-etcd
 import _ "go-spring.org/starter-governance-etcd"
 ```
 
-This starter transitively links `cloud/runtime/controlplane/governance`; once configured it registers
-a `governance.Source` bean, which arms the center.
+This starter transitively links `cloud/governance/controlplane/source`; once configured it registers
+a `source.Source` bean, which arms the center.
 
 ### 2. Configure the source
 
@@ -67,7 +67,7 @@ spring:
   governance:
     driver: default
     client:
-      default:
+      resilience:
         timeout: 100ms
 ```
 

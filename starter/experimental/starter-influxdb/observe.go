@@ -30,10 +30,12 @@
 package StarterInfluxdb
 
 import (
+	"context"
 	"net/http"
 	"strings"
 
-	"go-spring.org/cloud/runtime/dataplane/outbound/chain"
+	"go-spring.org/cloud/governance/capability/traffic"
+	"go-spring.org/cloud/governance/dataplane/outbound/chain"
 	"go-spring.org/log"
 )
 
@@ -58,8 +60,8 @@ var accessTag = log.RegisterAppTag("influxdb", "access")
 // lowercased, the family's convention — is the bounded operation word; the
 // open-set path rides in detail, while the span Name keeps the request's full
 // "METHOD /path" form. The family's vocabulary lives in [wire].
-func operation(method, path string) chain.Operation {
-	o := chain.DBOp(influxdbSystem, strings.ToLower(method), path)
+func operation(ctx context.Context, prop traffic.Propagator, method, path string) chain.Operation {
+	o := chain.DBOp(ctx, prop, influxdbSystem, strings.ToLower(method), path)
 	o.Request.Action = method + " " + path
 	o.Observe.Log.Tag = accessTag
 	return o
@@ -73,8 +75,8 @@ func operation(method, path string) chain.Operation {
 // the operation from the Execute signature rather than from the context. Every
 // link of the chain therefore sees the whole call from Execute entry, attempts
 // included. [NewClient] wires it in.
-func callFor(req *http.Request) chain.Operation {
-	return operation(req.Method, req.URL.Path)
+func callFor(ctx context.Context, prop traffic.Propagator, req *http.Request) chain.Operation {
+	return operation(ctx, prop, req.Method, req.URL.Path)
 }
 
 // asyncWriteFields returns the fields an async write failure carries: the same

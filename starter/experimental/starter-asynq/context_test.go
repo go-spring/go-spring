@@ -78,7 +78,7 @@ func TestEnqueueSpanCarriesSpanAttributes(t *testing.T) {
 
 	var producer sdktrace.ReadOnlySpan
 	for _, s := range sr.Ended() {
-		if s.Name() == "enqueue" {
+		if s.Name() == "enqueue probe:task" {
 			producer = s
 		}
 	}

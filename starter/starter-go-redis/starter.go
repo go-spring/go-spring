@@ -20,7 +20,7 @@ import (
 	"context"
 	"time"
 
-	"go-spring.org/cloud/runtime"
+	"go-spring.org/cloud/governance"
 
 	"github.com/redis/go-redis/extra/redisotel/v9"
 	"github.com/redis/go-redis/v9"
@@ -128,7 +128,7 @@ func init() {
 // container supplies it via the runtime, so a bundle without one
 // fails at construction.
 func newClient(ctx *gs.ContextProvider, c Config, d Driver, discoveryLabel string,
-	center *runtime.Runtime) (*Client, error) {
+	center *governance.Runtime) (*Client, error) {
 	// The client's identity rides on a context derived here: every line below
 	// carries it without repeating it. The provider's own context is left
 	// alone — that one is the shared application context, not this
@@ -200,7 +200,7 @@ func newClient(ctx *gs.ContextProvider, c Config, d Driver, discoveryLabel strin
 // authorities are read from the center by the Driver, which builds the per-command executor while assembling
 // the client. Cluster mode self-discovers its nodes, so no endpoint-selection
 // pool exists and the bundle carries no loadbalance authority.
-func newClusterClient(ctx *gs.ContextProvider, c Config, d Driver, center *runtime.Runtime) (*Client, error) {
+func newClusterClient(ctx *gs.ContextProvider, c Config, d Driver, center *governance.Runtime) (*Client, error) {
 	// See newClient: the cluster's node list rides on a context derived here.
 	cctx := log.WithFields(ctx.Context, log.Strings("addrs", c.Addrs))
 

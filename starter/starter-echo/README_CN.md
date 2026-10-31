@@ -103,7 +103,7 @@ starter 在应用的 `RouterRegister` 执行**之前**，按固定顺序在 `*ec
 | 中间件 | 默认 | 来源 | 说明 |
 |---|---|---|---|
 | `recovery` | 开 | `middleware.Recover()`（starter 接缝） | 捕获请求 goroutine 的 panic；关闭可能导致进程崩溃。 |
-| `loadtest` | 开 | 自实现 | 请求携带 `X-LoadTest`（可配置）标记头时给请求 context 打标，下游可通过 propagator 的 `IsLoadTest` 分流。 |
+| `loadtest` | 开 | 自实现 | 请求携带 `X-Traffic`（可配置）标记头时给请求 context 打标，下游可通过 `traffic.IsLoadTest` 分流。 |
 | `requestId` | 开 | `middleware.RequestID()` | 生成/透传 `X-Request-Id`，同时写入请求 context（见 `RequestIDFromContext`）。 |
 | `observability` | 开 | resilience 发射点 | 请求的 span、HTTP 族指标与访问日志。链路里不装任何东西：admission 中间件**声明**请求，执行器发信号。关掉不会让服务静默 —— 请求落到 `resilience.server.*` + 一行 resilience tag 日志。 |
 | `tracing` / `metrics` / `accessLog` | 开 | LEGACY | 保留可绑定，但按信号的粒度已合并（三者是一组），任一为 false 即整组关闭并告警一次。改用 `observability.enabled`。 |
@@ -114,7 +114,7 @@ starter 在应用的 `RouterRegister` 执行**之前**，按固定顺序在 `*ec
 
 顺序（最外层在前）：`LoadTest -> Recovery -> RequestID -> Tracing -> Metrics -> AccessLog
 -> SecureHeaders -> CORS -> Gzip -> BodyLimit -> fault`。LoadTest 在最外层使后续所有层可按
-propagator 的 `IsLoadTest` 分流；Recovery 兜住后续所有层的 panic；RequestID 在 AccessLog 之前，使每条
+`traffic.IsLoadTest` 分流；Recovery 兜住后续所有层的 panic；RequestID 在 AccessLog 之前，使每条
 访问日志都带上请求 id；AccessLog 包裹策略类中间件，使短路响应（413、204、403）也能被记录。
 fault 注入中间件恒装在最内层（治理中心无 fault 规则时透明）。
 

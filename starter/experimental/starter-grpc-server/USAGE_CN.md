@@ -86,7 +86,7 @@ type Controller struct {
 func (c *Controller) Echo(ctx context.Context, req *proto.EchoRequest) (*proto.EchoResponse, error) {
     // prop 即注入的 traffic.Propagator
     // ctx 已携带 trace span 与 load-test 标记（若有）——
-    // 可用 prop.IsLoadTest(ctx) 在压测流量下降级功能。
+    // 可用 traffic.IsLoadTest(ctx, prop) 在压测流量下降级功能。
     log.Info(ctx, log.TagAppDef, "echo", log.String("message", req.Message))
     return &proto.EchoResponse{Message: req.Message}, nil
 }
@@ -147,7 +147,7 @@ spring.observability.metrics.exporter=prometheus
 spring.observability.metrics.port=9090
 
 # --- 治理（准入 + fault；从该文件热加载）--------------------------------------
-spring.governance.source.file.path=conf/governance.yaml
+# (the file source is wired in source.go; no property key)
 ```
 
 **conf/governance.yaml**（fault 演练见 §4.3；准入在 resilience 规则里）：
@@ -155,20 +155,24 @@ spring.governance.source.file.path=conf/governance.yaml
 ```yaml
 spring:
   governance:
-    driver: default
-    # 按服务的 resilience 规则；服务 label = "grpc:{addr}"（见 admission.go）。
-    # 入站（本服务）：准入 + 放火演练，都读 server 块
+    # 入站（本服务）：这个入口的准入限制。
+    server:
+      admission:
+        services:
+          - service: "grpc::9494"   # label = "grpc:{addr}"（admission.go）
+            rate-limit: 100         # QPS 上限；超限 → codes.ResourceExhausted
+            max-concurrent: 50      # 舱壁；超限 → codes.ResourceExhausted
+  # 放火是并列的另一个根，有自己的文档与 source（通常在 conf/fault.yaml）；
+  # 这里只是为了把演练形态放在一处。
+  fault:
     server:
       rules:
-        - service: "grpc::9494"   # label = "grpc:{addr}"（admission.go）
-          rate-limit: 100         # QPS 上限；超限 → codes.ResourceExhausted
-          max-concurrent: 50      # 舱壁；超限 → codes.ResourceExhausted
-      fault:
-        scope: loadtest           # 只影响带 x-loadtest 标记的流量
-        rules:
-          - service: "grpc:/EchoService/Echo"   # 规则 label = "grpc:{FullMethod}"
-            # rate: 0.2           # 配上 rate 即可不重启"放火"
-            error: timeout
+        - name: echo-drill          # 必填身份，方向内唯一
+          service: "grpc:/EchoService/Echo"   # 规则 label = "grpc:{FullMethod}"
+          match:
+            traffic: loadtest       # 只影响带 x-traffic 标记的流量
+          error: timeout
+          # rate: 0.2             # 配上 rate 即可不重启"放火"
 ```
 
 **验证**（与示例断言同构）：
@@ -228,7 +232,7 @@ Stream 链相同，但没有 Resilience（准入只覆盖 unary）。
 - **用户拦截器最外层**（extension.go）："app guard 在内置栈之前看到请求，可在任何工作被
   观测前短路"——对齐 starter-gin 的 EngineMiddleware 模型。
 - **LoadTest 是内置链最外层**（starter.go:173）：标记在 tracing、metrics、resilience、
-  handler 之前进入 context，所有下游层都能基于 propagator 的 `IsLoadTest(ctx)` 分支；无标记时
+  handler 之前进入 context，所有下游层都能基于 `traffic.IsLoadTest(ctx, prop)` 分支；无标记时
   为 no-op。
 - **Tracing 在 Metrics 之前**：span 同时包住 metrics 观测，时长与状态落在同一 trace 上下文。
 - **Resilience 在 Fault/Recover 之前**：准入控制在做事之前裁决；注入的
@@ -241,20 +245,20 @@ Stream 链相同，但没有 Resilience（准入只覆盖 unary）。
 
 ### 2.3 一次 unary RPC 逐层走读
 
-带 metadata `x-loadtest: 1`、fault scope 生效、配置了限流的 `Echo(msg)`：
+带 metadata `x-traffic: loadtest`、流量类别匹配生效、配置了限流的 `Echo(msg)`：
 
 1. 用户拦截器——auth/guard 可在任何观测发生前拒绝。
-2. LoadTest：`extractLoadTest` 从入站 metadata 读 `x-loadtest` → ctx 打标
-   （propagator 的 `IsLoadTest(ctx)` 变为 true）。
+2. LoadTest：`extractLoadTest` 从入站 metadata 读 `x-traffic` → ctx 打标
+   （`traffic.IsLoadTest(ctx, prop)` 变为 true）。
 3. Tracing：从 metadata 抽取 W3C 上下文（`extractTraceContext`），启动 server span，
    名字 = FullMethod，属性 `rpc.system=grpc`、`rpc.service`、`rpc.method`。
 4. Metrics：in-flight +1（仅 `rpc.method` 属性）；时长计时开始。
 5. Resilience：`exec.Execute(ctx, chain.Operation{})`——超限则 handler 不执行，
    `mapAdmissionError` 映射为 `ResourceExhausted`。
 6. Fault：`_, err := srv.Fire(ctx, fault.Target{Service: "grpc", Action: info.FullMethod})`
-   ——`inj` 是注入的 `*serverfault.ServerManager` bean；方法名是 ACTION（`service` 表示入口），所以规则可以
+   ——`inj` 是注入的 `*serverfault.Manager` bean；方法名是 ACTION（`service` 表示入口），所以规则可以
    只给单个方法放火；被标记
-   流量按 ~`rate` 概率失败或增加注入延迟；未标记/scope 关闭则直通。
+   流量按 ~`rate` 概率失败或增加注入延迟；未标记/不匹配类别则直通。
 7. Recover 布防；handler 执行。panic 经 `goutil.ReportPanic` 上报并转换为
    `codes.Internal`。
 8. 响应/错误回穿 6→5→4→3：带 `rpc.grpc.status_code` 记录时长、count +1、in-flight −1、
@@ -267,11 +271,11 @@ Stream 链相同，但没有 Resilience（准入只覆盖 unary）。
 - 仅靠 service config 选策略：`grpc.WithDefaultServiceConfig(
   StarterGrpc.LoadBalancingConfig(strategy))`。balancer 名为 `gs_round_robin`、`gs_least_conn`、
   `gs_consistent_hash`、`gs_weighted`、`gs_zone_aware`。它们在 init 预注册，**初始不启用驱逐**；
-  用一条治理规则统一配置：`spring.governance.client.default.outlier-threshold` / `.outlier-suspend-for`
-  （它们解析的是进程级默认；要显式定向就写 `spring.governance.client.rules[N].service=grpc:client`）。
+  用一条治理规则统一配置：`spring.governance.client.loadbalance.outlier-threshold` / `.outlier-suspend-for`
+  （它们解析的是进程级默认；要显式定向就写 `spring.governance.client.loadbalance.services[N].service=grpc:client`）。
   规则里的 `balancer` 会**覆盖**所有内置 `gs_*` 名字的 service config 选择——picker 每次挑选都重读，
   所以 push 完下一笔 RPC 就走新策略，不用重连。`balancer` 留空 = 仍由 service config 决定；写错
-  名字 = 被忽略。由于标签是进程级的，配 `grpc:client`（或 `spring.governance.client.default.balancer`）会**同时**改掉
+  名字 = 被忽略。由于标签是进程级的，配 `grpc:client`（或 `spring.governance.client.loadbalance.balancer`）会**同时**改掉
   所有内置客户端——这是这条 seam 的钝角所在。经 `RegisterBalancer` 注册的自定义名字不受影响：
   它们按设计保留自己的策略。
 - 按调用提示：`WithHashKey`（consistent-hash 亲和）、`WithZone`（zone 亲和）。
@@ -302,7 +306,7 @@ Stream 链相同，但没有 Resilience（准入只覆盖 unary）。
 | `tls.ca-file` | string | — | **服务端语义 = mTLS**：设 ClientCAs + `RequireAndVerifyClientCert`（security.BuildServer）。 | 随手一配 → 所有无证书客户端被拒。 |
 | `tls.server-name` / `tls.insecure-skip-verify` | | — | 客户端旋钮；**此处为死 key**（BuildServer 忽略）。 | 虚假安全感；无任何效果。 |
 | `health.enabled` | bool | true | 注册 `grpc_health_v1`，整体状态 SERVING。 | false → 探针/LB 健康检查得到 Unimplemented。 |
-| `loadtest.enabled` | bool | true | 安装 LoadTest 拦截器，读 `x-loadtest` metadata（小写——grpc metadata key 一律小写）。 | false → load-test 标记不可见；fault `scope: loadtest` 永不触发。 |
+| `loadtest.enabled` | bool | true | 安装 LoadTest 拦截器，读 `x-traffic` metadata（小写——grpc metadata key 一律小写）。 | false → load-test 标记不可见；fault `match.traffic=loadtest` 永不触发。 |
 | `observer.tracing.enabled` | bool | true | 安装 tracing 拦截器，依附 OTel 全局；无 starter-otel 时为 no-op（无告警）。⚠ example-otel 的 conf 用的是 `interceptor.tracing.*`——死路径，全靠默认 true 兜住。 | 前缀写错 → 静默落默认值。 |
 | `observer.metrics.enabled` | bool | true | 安装 metrics 拦截器；同样 no-op 陷阱。 | 同上。 |
 
@@ -345,13 +349,13 @@ example-otel 端到端验证走 Jaeger API
 
 1. 以 `governance.yaml` 启动（不设 fault `rate`，注入为空）。
 2. 打基线流量 → 全部正常。
-3. 把 fault 规则的 `rate` 配成 `0.2`——拦截器持有注入的 `*serverfault.ServerManager`，治理中心就地替换
+3. 把 fault 规则的 `rate` 配成 `0.2`——拦截器持有注入的 `*serverfault.Manager`，治理中心就地替换
    其配置，改动在下一个 RPC 生效，无需重启。
 4. 规则 label 是 `grpc:{FullMethod}`（如 `grpc:/EchoService/Echo`）——可以只烧一个方法。
-   `scope: loadtest` 时只烧带标记的流量：
+   `match.traffic=loadtest` 时只烧带标记的流量：
 
 ```bash
-grpcurl -plaintext -H 'x-loadtest: 1' -d '{"message":"x"}' :9494 EchoService/Echo  # ~20% 失败
+grpcurl -plaintext -H 'x-traffic: loadtest' -d '{"message":"x"}' :9494 EchoService/Echo  # ~20% 失败
 grpcurl -plaintext -d '{"message":"x"}' :9494 EchoService/Echo                      # 持续 200
 ```
 
@@ -361,7 +365,7 @@ grpcurl -plaintext -d '{"message":"x"}' :9494 EchoService/Echo                  
 ### 4.4 准入演练（admission.go）
 
 服务 label 为 `grpc:{addr}` → `grpc::9494`。加一条规则
-（`spring.governance.client.rules[n].service=grpc::9494`、`rate-limit=...`）把限流压到流量之下：拒绝以
+（`spring.governance.server.services[n].service=grpc::9494`、`rate-limit=...`）把限流压到流量之下：拒绝以
 `codes.ResourceExhausted`（限流/舱壁）呈现——`mapAdmissionError` 保证消费方可按 code 分支。
 **入站准入没有重试也没有熔断**：已产生副作用的 handler 无法重放，熔断则因为实例级全拒
 没有安全的爆炸半径而不提供。
@@ -388,7 +392,7 @@ handler panic → `codes.Internal` "panic in {FullMethod}: ..."，并经共享 g
 | tracing/metrics "开了"但没有导出 | 未 import starter-otel——OTel 全局是无声 no-op | 加 import（照 example-otel）。 |
 | 拦截器配置不生效 | 前缀写错：是 `observer.*`，不是 `interceptor.*`（example-otel 的 conf 就带这个死 key） | 用 `spring.grpc.server.observer.tracing/metrics.enabled`。 |
 | 客户端 TLS 握手被拒、证书报错 | 配了 `tls.ca-file`——那会开启 **mTLS**（`RequireAndVerifyClientCert`） | 单向 TLS 就删掉它，否则给客户端发证。 |
-| 一切正常但 fault/准入无效果 | 治理未接入——容器里没有 `cloud/runtime/controlplane/governance` 的 bean，seam 直通 | 配置规则源：把 `spring.governance.source.file.path` 指向文件。 |
+| 一切正常但 fault/准入无效果 | 治理未接入——容器里没有 策略根 bean，seam 直通 | 配置规则源：在你自己的 source starter 里提供 source.Source[governance.Config]（参考示例的 source.go）。 |
 | `ResourceExhausted` "received message larger than max" | `maxRecvMsgSize` 低于报文 | 调大上限。 |
 | stream RPC 绕过限流 | 准入设计上只覆盖 unary | 用用户 stream 拦截器 bean 防护（注入为 grpc.StreamServerInterceptor）。 |
 | GOAWAY / 连接抖动 | 激进的 `keepalive.time` 对上低频 ping 的客户端 | grpc keepalive 语义；放宽服务端参数。 |

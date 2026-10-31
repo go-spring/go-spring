@@ -5,15 +5,15 @@
 `starter-governance-nacos` adapts [Nacos](https://nacos.io/) as a governance
 rule source for Go-Spring. It listens on one Nacos dataId holding the
 governance rule document and pushes every published version into the
-[`go-spring.org/cloud/runtime/controlplane/governance`](../../cloud/runtime/controlplane/governance) center through
-the `governance.Source` contract, so a rule change re-resolves governance live
+[`go-spring.org/cloud/governance/controlplane/source`](../../cloud/governance/controlplane/source) center through
+the `source.Source` contract, so a rule change re-resolves governance live
 without a restart and without an application-wide property re-bind.
 
 It is the Nacos member of the governance-source adapter family (the
 Sentinel-datasource shape); the etcd member is
-[starter-governance-etcd](../starter-governance-etcd) and the file/http
-sources are built into [cloud/runtime/controlplane/governance](../../cloud/runtime/controlplane/governance). All of them
-parse the same rule document through `governance.Parse`, so a document is
+[starter-governance-etcd](../starter-governance-etcd) and the file
+source is built into [cloud/governance/controlplane/source](../../cloud/governance/controlplane/source). All of them
+parse the same rule document through `source.Parse`, so a document is
 byte-portable between backends.
 
 ## Relation to starter-config-nacos
@@ -76,20 +76,19 @@ spring:
   governance:
     driver: default
     client:
-      default:
+      resilience:
         timeout: 100ms
-    client:
-      rules:
-        - services: demo:service
-          timeout: 50ms
+        services:
+          - service: demo:service
+            timeout: 50ms
 ```
 
 Every published version is re-parsed and pushed into the center. The rule
-vocabulary (`spring.governance.client.default.*`, `spring.governance.client.rules[n].*`,
-`spring.governance.client.fault.*`) belongs to the governance domain; see
-[cloud/runtime/controlplane/governance's SOURCE_USAGE](../../cloud/runtime/controlplane/governance/SOURCE_USAGE.md) for the full
+vocabulary (`spring.governance.client.resilience.*`, `spring.governance.client.resilience.services[n].*`,
+`spring.fault.client.*`) belongs to the governance domain; see
+[cloud/governance/controlplane/source's USAGE](../../cloud/governance/controlplane/source/USAGE.md) for the full
 reference. Introducing the governance center itself is still
-[cloud/runtime/controlplane/governance](../../cloud/runtime/controlplane/governance)'s job — this module only supplies
+[cloud/governance/controlplane/source](../../cloud/governance/controlplane/source)'s job — this module only supplies
 the source.
 
 ## Configuration Keys

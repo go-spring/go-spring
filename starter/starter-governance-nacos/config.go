@@ -21,7 +21,7 @@ import (
 	"time"
 )
 
-// governanceNacosConfig binds ${spring.governance.source.nacos.*}.
+// governanceNacosConfig binds ${source.nacos.*}.
 type governanceNacosConfig struct {
 	// Server is the Nacos server address, host:port.
 	Server string `value:"${server}" expr:"$ != ''"`

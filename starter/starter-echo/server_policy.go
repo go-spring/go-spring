@@ -23,10 +23,11 @@ import (
 	"net/http"
 
 	"github.com/labstack/echo/v4"
-	"go-spring.org/cloud/runtime"
-	"go-spring.org/cloud/runtime/dataplane/inbound/admission"
-	observability "go-spring.org/cloud/runtime/dataplane/inbound/observe"
-	"go-spring.org/cloud/runtime/dataplane/kernel/label"
+	"go-spring.org/cloud/governance"
+	"go-spring.org/cloud/governance/capability/label"
+	"go-spring.org/cloud/governance/capability/traffic"
+	"go-spring.org/cloud/governance/dataplane/inbound/admission"
+	observability "go-spring.org/cloud/governance/dataplane/inbound/observe"
 	"go-spring.org/log"
 	"go.opentelemetry.io/otel/attribute"
 )
@@ -34,7 +35,7 @@ import (
 // buildServerPolicy builds the inbound middleware. The resilience
 // executor is built from the injected [admission.Manager], so this server gets
 // its rate-limit / bulkhead limits from the governance document's SERVER
-// block (spring.governance.server.*)
+// block (server.*)
 // without the server package owning how that runtime is assembled. A nil runtime — a standalone call, or an app
 // that does not import — is normalized to an unarmed one,
 // whose executor is a transparent pass-through, so the inbound middleware runs
@@ -45,13 +46,13 @@ import (
 //
 // The label is "echo:<address>", the same one the fault middleware's sibling
 // tables use for this server, so one governance rule covers the whole inbound side.
-func buildServerPolicy(cfg Config, center *runtime.Runtime) (echo.MiddlewareFunc, error) {
+func buildServerPolicy(cfg Config, center *governance.Runtime, prop traffic.Propagator) (echo.MiddlewareFunc, error) {
 	service := label.ServiceLabel("echo", cfg.Address)
 	in, err := center.InboundFor("echo", service)
 	if err != nil {
 		return nil, err
 	}
-	return resilienceServerPolicy(in, service, observeEnabled(cfg)), nil
+	return resilienceServerPolicy(in, service, observeEnabled(cfg), prop), nil
 }
 
 // resilienceServerPolicy is the inbound middleware: each request runs
@@ -63,7 +64,7 @@ func buildServerPolicy(cfg Config, center *runtime.Runtime) (echo.MiddlewareFunc
 // effects cannot be replayed (inbound serving is not idempotent). Leave
 // [admission.Policy] has no retry field at all, so the executor built from the
 // server block has no retry stage; the committed guard also prevents reentry.
-func resilienceServerPolicy(in *runtime.Inbound, service string, observe bool) echo.MiddlewareFunc {
+func resilienceServerPolicy(in *governance.Inbound, service string, observe bool, prop traffic.Propagator) echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
 			ctx := c.Request().Context()
@@ -72,7 +73,7 @@ func resilienceServerPolicy(in *runtime.Inbound, service string, observe bool) e
 			var handlerErr error
 			// run executes the handler chain. h is the split-form observation when
 			// observe is on (so the response half can be recorded), nil otherwise.
-			run := func(ctx context.Context, h *runtime.Hooks) error {
+			run := func(ctx context.Context, h *governance.Hooks) error {
 				if served {
 					return nil // reentry guard: handler already ran this request
 				}
@@ -102,7 +103,7 @@ func resilienceServerPolicy(in *runtime.Inbound, service string, observe bool) e
 				// HTTP family metrics and the access log from it. The route is
 				// known here: echo resolves it before the handler chain runs. The
 				// split form is used so the handler's response half can be recorded.
-				h, err := in.Before(ctx, operation(c))
+				h, err := in.Before(ctx, operation(c, prop))
 				if err != nil {
 					return renderInjectedOrRefusal(c, err)
 				}
@@ -110,8 +111,8 @@ func resilienceServerPolicy(in *runtime.Inbound, service string, observe bool) e
 				in.After(h, runErr)
 			} else {
 				// Observability off: governance still runs, silently.
-				if gErr := in.GovernedRun(ctx, operation(c), func(ctx context.Context) error { return run(ctx, nil) }); gErr != nil {
-					var ref *runtime.Refusal
+				if gErr := in.GovernedRun(ctx, operation(c, prop), func(ctx context.Context) error { return run(ctx, nil) }); gErr != nil {
+					var ref *governance.Refusal
 					if errors.As(gErr, &ref) {
 						return renderInjectedOrRefusal(c, gErr)
 					}
@@ -133,28 +134,33 @@ func renderRefusal(err error) error {
 	if err == nil {
 		return nil
 	}
-	var ref *runtime.Refusal
+	var ref *governance.Refusal
 	if errors.As(err, &ref) {
-		return echo.NewHTTPError(httpStatusFor(ref.Verdict()), ref.Error())
+		return echo.NewHTTPError(httpStatusFor(ref), ref.Error())
 	}
 	return err
 }
 
-// renderInjectedOrRefusal writes an injected fault as a plain-text 503 (the
-// shape the standalone fault middleware used) and renders any other refusal as
-// an echo HTTP error.
+// renderInjectedOrRefusal writes an injected fault as plain text and renders any
+// other refusal as an echo HTTP error. The status follows the fault's class: a
+// business failure is 400, anything else is 503.
 func renderInjectedOrRefusal(c echo.Context, err error) error {
-	var ref *runtime.Refusal
+	var ref *governance.Refusal
 	if errors.As(err, &ref) && ref.Verdict() == admission.VerdictFaultInjected {
-		return c.String(http.StatusServiceUnavailable, "service unavailable")
+		return c.String(httpStatusFor(ref), "service unavailable")
 	}
 	return renderRefusal(err)
 }
 
 // httpStatusFor maps an inbound refusal to the HTTP status a client can act on:
-// rate/bulkhead rejections are 429, an injected fault is 503.
-func httpStatusFor(kind admission.Verdict) int {
-	if kind == admission.VerdictFaultInjected {
+// rate/bulkhead rejections are 429; an injected fault follows the class the rule
+// declared — a business failure (the caller's mistake) is 400, anything else is
+// 503.
+func httpStatusFor(ref *governance.Refusal) int {
+	if ref.Verdict() == admission.VerdictFaultInjected {
+		if ref.Fault().Business() {
+			return http.StatusBadRequest
+		}
 		return http.StatusServiceUnavailable
 	}
 	return http.StatusTooManyRequests
@@ -200,39 +206,38 @@ func observeEnabled(cfg Config) bool {
 // the host and the scheme are per-request and open-ended, so they are Detail:
 // span and log only. The one thing not known here is the response status, which
 // the handler records as it answers (see resilienceServerPolicy).
-func operation(c echo.Context) observability.ServerOperation {
+func operation(c echo.Context, prop traffic.Propagator) observability.ServerOperation {
 	r := c.Request()
 	route := c.Path()
-	return observability.ServerOperation{
-		Action: actionName(c),
-		Observe: observability.ServerObserve{
-			Metric: observability.ServerMetric{
-				Name: "http.server",
-				Attrs: []attribute.KeyValue{
-					attribute.String("http.request.method", r.Method),
-					attribute.String("http.route", route),
-				},
-			},
-			Span: observability.ServerSpan{Attrs: []attribute.KeyValue{
+	op := observability.NewServerOperation(r.Context(), prop, actionName(c))
+	op.Observe = observability.ServerObserve{
+		Metric: observability.ServerMetric{
+			Name: "http.server",
+			Attrs: []attribute.KeyValue{
 				attribute.String("http.request.method", r.Method),
 				attribute.String("http.route", route),
-				attribute.String("url.path", r.URL.Path),
-				attribute.String("server.address", r.Host),
-				attribute.String("url.scheme", scheme(r)),
-			}},
-			Log: observability.ServerLog{
-				Tag:          accessLogTag,
-				QuietSuccess: true,
-				Fields: []log.Field{
-					log.String("http.request.method", r.Method),
-					log.String("http.route", route),
-					log.String("url.path", r.URL.Path),
-					log.String("server.address", r.Host),
-					log.String("url.scheme", scheme(r)),
-				},
+			},
+		},
+		Span: observability.ServerSpan{Attrs: []attribute.KeyValue{
+			attribute.String("http.request.method", r.Method),
+			attribute.String("http.route", route),
+			attribute.String("url.path", r.URL.Path),
+			attribute.String("server.address", r.Host),
+			attribute.String("url.scheme", scheme(r)),
+		}},
+		Log: observability.ServerLog{
+			Tag:          accessLogTag,
+			QuietSuccess: true,
+			Fields: []log.Field{
+				log.String("http.request.method", r.Method),
+				log.String("http.route", route),
+				log.String("url.path", r.URL.Path),
+				log.String("server.address", r.Host),
+				log.String("url.scheme", scheme(r)),
 			},
 		},
 	}
+	return op
 }
 
 // actionName names the inbound call the way an interface-precise rule needs it:

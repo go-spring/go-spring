@@ -134,7 +134,7 @@ spring.observability.metrics.exporter=prometheus
 spring.observability.metrics.port=9090
 
 # --- governance (rate limit / breaker for rocketmq:127.0.0.1:9876) ---------
-spring.governance.source.file.path=conf/governance.yaml
+# (the file source is wired in source.go; no property key)
 ```
 
 **Start RocketMQ** (copy [example/docker-compose.yml](example/docker-compose.yml) +
@@ -181,8 +181,8 @@ gs.Run()
   │       bridge (process-global, exactly once via sync.Once) and delegates to
   │       NewClient, which fixes the identity (name servers + Config) AND attaches
   │       the governance executor in the same step — center.ExecutorFor("rocketmq",
-  │       service) over the injected *runtime.Runtime (which bundles the
-  │       *resilience.Manager / *clientfault.ClientManager beans)        [driver.go, client.go]
+  │       service) over the injected *governance.Runtime (which bundles the
+  │       *resilience.Manager / *clientfault.Manager beans)        [driver.go, client.go]
   │    3. Ping probe (opt-in): TCP dial, first reachable addr wins, 3s budget
   │       per address; runs AFTER assembly, failure → boot error (Client closed)
   ├─ app injects *Client wherever `autowire:"<name>"` appears
@@ -218,8 +218,8 @@ GuardedSend(ctx, cl, producer, msg)                       [command.go]
   └─ cl.execute                                            [client.go]
        ├─ executor is a pass-through (governance off) or absent (bare Client)
        │     → producer.SendSync runs inline, identical to raw
-       └─ exec.Execute(ctx, chain.Call{}, injectTraceContext + send)  — fault.ClientManager outermost
-                  (clientfault.ClientManager.WrapClientExecutor), resilience observer inside it; the
+       └─ exec.Execute(ctx, chain.Call{}, injectTraceContext + send)  — fault.Manager outermost
+                  (clientfault.Manager.WrapClientExecutor), resilience observer inside it; the
                   observer emits span + messaging.client.* metrics + access log
                   from the declaration; rejection returns a resilience sentinel
                   and the send never reaches the wire
@@ -229,11 +229,11 @@ The consumer direction declares the same way inside the driver's receive callbac
 (`operation("consume", topic)`), then runs the handler under `cl.execute`
 [messaging.go].
 
-Wrap order inside `center.ExecutorFor("rocketmq", service)` [cloud/runtime/controlplane/governance/center.go], called
+Wrap order inside `center.ExecutorFor("rocketmq", service)` [cloud/governance/runtime.go], called
 from `NewClient`: `mgr.ExecutorFor("rocketmq", service)` — mgr being the injected
 `*resilience.Manager` — returns the fully assembled executor (core breaker/limiter/retry wrapped by
 the resilience observer — outcome counters + access log) → wrapped outermost by
-`inj.WrapClientExecutor(...)` (runtime fault injection from the injected `*clientfault.ClientManager`;
+`inj.WrapClientExecutor(...)` (runtime fault injection from the injected `*clientfault.Manager`;
 the injected error flows through the inner retry loop, so the breaker counts it). The `*resilience.Manager`
 is required — the container always supplies it; there is no unmanaged/observe-only fallback.
 
@@ -259,7 +259,7 @@ is required — the container always supplies it; there is no unmanaged/observe-
 
 1. A `primitive.Message` is built for the publisher's fixed topic; `Key` (single string) becomes
    the message keys via `WithKeys`; each Header entry becomes a user property.
-2. If the ctx carries the load-test marker, `x-loadtest=1` is added to the user properties
+2. If the ctx carries the load-test marker, `x-traffic=loadtest` is added to the user properties
    [traffic.go:60].
 3. `GuardedSend` declares the publish (`operation("publish", msg.Topic)`): the direction names the
    span, `messaging.system`/`messaging.operation` are the bounded labels, and the topic is
@@ -282,8 +282,8 @@ The SDK push-consumer goroutines invoke the starter's handler [messaging.go]:
    (`extractTraceContext`), declares the consume (`operation("consume", topic)`) onto the handler
    ctx, and runs the handler under `cl.execute` — so the resilience observer opens the consumer
    span, records the metrics and writes the access log from the declaration.
-3. The `x-loadtest` property is mapped back onto the ctx, so the handler sees
-   the propagator's `IsLoadTest(ctx)`.
+3. The `x-traffic` property is mapped back onto the ctx, so the handler sees
+   `traffic.IsLoadTest(ctx, prop)`.
 4. `fromMessageExt` builds the envelope: `Key` from the KEYS property, `Payload` = body,
    `Headers` = **all** user properties, `Timestamp` from StoreTimestamp [messaging.go].
 5. Handler error → logged at Error + `ConsumeRetryLater` (broker redelivers per RocketMQ retry
@@ -294,7 +294,7 @@ Known mapping drops (both directions) — all verified in messaging.go:
 | Field | Publish (envelope → RocketMQ) | Consume (RocketMQ → envelope) |
 |---|---|---|
 | Key | single string → single message key | KEYS property read back as one string; multi-key producers get a joined value, not the original list |
-| Headers | entries → user properties, verbatim | ALL properties returned, including SDK-internal ones (`traceparent`, KEYS, `x-loadtest`) — they leak into `msg.Headers` |
+| Headers | entries → user properties, verbatim | ALL properties returned, including SDK-internal ones (`traceparent`, KEYS, `x-traffic`) — they leak into `msg.Headers` |
 | Tags | **no mapping** — `messaging.Message` has no tag concept; driver publishes untagged messages | **no mapping** — subscription hardcodes selector `TAG *`; tag-filtered consumption needs the raw client |
 | Timestamp | not sent | StoreTimestamp (broker store time), not BornTimestamp |
 | Topic | fixed at NewPublisher | not surfaced on the envelope |
@@ -357,7 +357,7 @@ comma-joined name-servers — check it matches your governance rules):
   seam — → rejections return `resilience.ErrRateLimited`, the send is never invoked, and
   `resilience.client.calls` records appear with `resilience.error_type=rate_limited`, alongside one access log
   per call (`_app_rocketmq_access`, or `_app_resilience` on the fallback path)
-  [cloud/runtime/dataplane/outbound/resilience/observe.go].
+  [cloud/governance/dataplane/outbound/resilience/observe.go].
 - Raw `SendSync` called directly on a producer is unguarded (§2.2): it is the app's own path and
   has no executor around it. That contrast IS the §2.2 boundary.
 
@@ -387,7 +387,7 @@ curl -s :9090/metrics | grep resilience_calls
   TestMsgCarrierRoundTrip [rocketmq_test.go:74-98]). [example-otel](example-otel/main.go) verifies
   the linked spans land in Jaeger (`:16686`, service `rocketmq-otel-example`).
 - Load-test marker drill: publish under a ctx marked by the traffic layer; inside the consumer
-  handler the propagator's `IsLoadTest(ctx)` is true via the `x-loadtest` property [messaging.go].
+  handler `traffic.IsLoadTest(ctx, prop)` is true via the `x-traffic` property [messaging.go].
 
 ---
 
@@ -420,7 +420,7 @@ Design suspects (audit ledger; from the previous doc unless noted):
 - Driver Subscribe hardcodes a `TAG *` selector; no tag sub-expression support, and
   `messaging.Message` cannot carry tags at all (§2.4 table) (carried over, unfixed).
 - Driver Timestamp uses StoreTimestamp, not born time (carried over, unfixed).
-- Consume envelope leaks SDK-internal user properties (`traceparent`, KEYS, `x-loadtest`) into
+- Consume envelope leaks SDK-internal user properties (`traceparent`, KEYS, `x-traffic`) into
   `Headers`, and multi-key round trips return a joined string (§2.4; new).
 - The `name-servers` segment of the service label is dead — `ResourceLabel` returns at the
   client name, so the passed address list can never appear in the label (§2.2; new; the previous

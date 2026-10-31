@@ -26,8 +26,9 @@ package StarterNats
 import (
 	"github.com/nats-io/nats.go"
 	"github.com/nats-io/nats.go/jetstream"
-	"go-spring.org/cloud/runtime/dataplane/kernel/label"
-	observability "go-spring.org/cloud/runtime/dataplane/outbound/observe"
+	"go-spring.org/cloud/governance/capability/label"
+	"go-spring.org/cloud/governance/capability/traffic"
+	observability "go-spring.org/cloud/governance/dataplane/outbound/observe"
 )
 
 // Conn wraps a NATS connection together with an optional JetStream context. It
@@ -62,6 +63,10 @@ type Conn struct {
 	// wrapper cannot ride the chain (see command.go), so it runs the executor
 	// directly. Unaffected by head reorganization.
 	obs *observability.OperationObserver
+
+	// prop is the process traffic convention, held for Consume's per-delivery
+	// operation declaration (the chain layers hold their own copy).
+	prop traffic.Propagator
 }
 
 // NewConn builds a complete Conn — identity, governance and all — over a
@@ -72,9 +77,9 @@ type Conn struct {
 // half-assembled. A nats client has no seam for the resilience executor, so
 // there is no governance: the observer emits the span, metrics and access log,
 // and nothing throttles or retries.
-func NewConn(raw *nats.Conn, url string) *Conn {
+func NewConn(raw *nats.Conn, url string, prop traffic.Propagator) *Conn {
 	obs := observability.NewOperationObserver("nats", label.ServiceLabel("nats", url))
-	return &Conn{Conn: raw, InnerConn: NewObsConn(NewRawConn(raw), obs), obs: obs}
+	return &Conn{Conn: raw, InnerConn: NewObsConn(NewRawConn(raw), obs, prop), obs: obs, prop: prop}
 }
 
 // Close tears the connection down through its chain — the head's Release(true):

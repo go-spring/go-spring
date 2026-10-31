@@ -29,9 +29,9 @@ import (
 	"sync"
 
 	"github.com/twmb/franz-go/pkg/kgo"
+	"go-spring.org/cloud/governance/capability/traffic"
 	"go-spring.org/cloud/messaging"
 	"go-spring.org/cloud/propagate"
-	"go-spring.org/cloud/runtime/dataplane/kernel/traffic"
 	"go-spring.org/log"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/propagation"

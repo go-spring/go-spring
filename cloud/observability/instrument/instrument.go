@@ -40,12 +40,12 @@ const (
 	// The string deliberately still says "resilience": it is an observability
 	// contract (dashboards and backends key off it), not a package path. Moving
 	// the inbound half under inbound/ does not rename what it emits.
-	Scope = "go-spring.org/cloud/runtime/dataplane/resilience"
+	Scope = "go-spring.org/cloud/governance/dataplane/resilience"
 
 	// ComponentName is the instrumentation component name every tracer in this
 	// family reports under. Like Scope, it is kept byte-for-byte for backend
 	// continuity.
-	ComponentName = "go-spring.org/cloud/runtime/dataplane/observability"
+	ComponentName = "go-spring.org/cloud/governance/dataplane/observability"
 )
 
 // Tag is the static log tag for the resilience access log; the protected

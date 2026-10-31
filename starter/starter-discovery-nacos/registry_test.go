@@ -22,7 +22,7 @@ import (
 	"testing"
 
 	"github.com/nacos-group/nacos-sdk-go/v2/vo"
-	"go-spring.org/cloud/runtime/controlplane/registration"
+	"go-spring.org/cloud/governance/controlplane/registration"
 	"go-spring.org/stdlib/netutil"
 	"go-spring.org/stdlib/testing/assert"
 	"go.opentelemetry.io/otel/codes"

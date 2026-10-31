@@ -19,14 +19,14 @@ package luohua
 import (
 	"context"
 
-	"go-spring.org/cloud/runtime/dataplane/kernel/discovery"
-	"go-spring.org/cloud/runtime/dataplane/kernel/loadbalance"
+	"go-spring.org/cloud/governance/capability/discovery"
+	"go-spring.org/cloud/governance/capability/loadbalance"
 	"go-spring.org/stdlib/errutil"
 )
 
 // LuohuaZone is the company's preferred data-center zone, used as the default
-// for the "luohua" balancer's zone parameter. A rule may override it with
-// `balancer-params: {zone: ...}`.
+// for the "luohua" balancer's zone parameter. A rule may override it with the
+// loose-params seam: `balancer-params: {zone: ...}`.
 const LuohuaZone = "cn-luohua"
 
 // luohuaStrategy is the bean name the company's balancer answers to: a rule
@@ -34,12 +34,19 @@ const LuohuaZone = "cn-luohua"
 const luohuaStrategy = "luohua"
 
 // luohuaFactory builds the company's zone-affine [loadbalance.Balancer]. Its
-// only parameter is the preferred zone, so a deployment can pin a service to a
-// different zone without a new strategy.
-func luohuaFactory(p *loadbalance.Params) (loadbalance.Balancer, error) {
-	zone := p.String("zone", LuohuaZone)
-	if err := p.Done(); err != nil {
-		return nil, err
+// only parameter is the preferred zone, read out of the selection's loose-params
+// seam, so a deployment can pin a service to a different zone without a new
+// strategy. The keys are this strategy's own: an unknown one is rejected here,
+// never silently dropped.
+func luohuaFactory(sel loadbalance.Selection) (loadbalance.Balancer, error) {
+	zone := LuohuaZone
+	if v, ok := sel.Params["zone"]; ok {
+		zone = v
+	}
+	for k := range sel.Params {
+		if k != "zone" {
+			return nil, errutil.Explain(nil, "luohua: unknown parameter %q; only \"zone\" is read", k)
+		}
 	}
 	return luohuaBalancer{zone: zone}, nil
 }

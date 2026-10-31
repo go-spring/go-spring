@@ -26,10 +26,11 @@ import (
 	"context"
 
 	"github.com/wneessen/go-mail"
-	"go-spring.org/cloud/runtime"
-	"go-spring.org/cloud/runtime/dataplane/kernel/label"
-	"go-spring.org/cloud/runtime/dataplane/outbound/chain"
-	"go-spring.org/cloud/runtime/dataplane/outbound/resilience"
+	"go-spring.org/cloud/governance"
+	"go-spring.org/cloud/governance/capability/label"
+	"go-spring.org/cloud/governance/capability/traffic"
+	"go-spring.org/cloud/governance/dataplane/outbound/chain"
+	"go-spring.org/cloud/governance/dataplane/outbound/resilience"
 	"go-spring.org/stdlib/errutil"
 )
 
@@ -230,15 +231,16 @@ type GuardMailer struct {
 	exec    chain.Executor
 	service string // the governance label this layer guards, stamped onto each call
 	next    InnerMailer
+	prop    traffic.Propagator
 }
 
 // NewGuardMailer builds the governance layer over next, constructing its own
-// executor: center carries the container's facilities (see [runtime.Runtime])
+// executor: center carries the container's facilities (see [governance.Runtime])
 // and instanceName/host fix the governance label its limiter and breaker state
 // scope by.
-func NewGuardMailer(next InnerMailer, instanceName, host string, center *runtime.Runtime) *GuardMailer {
+func NewGuardMailer(next InnerMailer, instanceName, host string, center *governance.Runtime) *GuardMailer {
 	label := label.ServiceLabel("mail", instanceName, host)
-	return &GuardMailer{exec: center.ExecutorFor("mail", label), service: label, next: next}
+	return &GuardMailer{exec: center.ExecutorFor("mail", label), service: label, next: next, prop: center.TrafficPropagator()}
 }
 
 // Release hands releaseRaw to the layer under it, and on the FULL teardown
@@ -257,7 +259,7 @@ func (g *GuardMailer) Release(releaseRaw bool) error {
 // passed explicitly, so the executor reads the whole description from its
 // signature.
 func (g *GuardMailer) Send(ctx context.Context, msgs ...*Message) error {
-	op := operation(msgs)
+	op := operation(ctx, g.prop, msgs)
 	// Name the service on the operation: the fault layer matches its rules on it
 	// and sits outside this executor.
 	op.Service = g.service

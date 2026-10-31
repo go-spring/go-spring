@@ -136,7 +136,7 @@ spring.observability.metrics.exporter=prometheus
 spring.observability.metrics.port=0        # /metrics via actuator only
 
 # --- governance (runtime fault injection) ------------------------------------
-spring.governance.source.file.path=conf/governance.yaml
+# (the file source is wired in source.go; no property key)
 ```
 
 **conf/governance.yaml** (fault drills in §4.4 use this):
@@ -149,7 +149,8 @@ spring:
       fault:
         # rate: 0.2           # set a rate to "set fire" without restart
         error: timeout
-        scope: loadtest       # only traffic marked X-LoadTest is affected
+        match:
+          traffic: loadtest       # only traffic marked X-Traffic is affected
 ```
 
 **Verify**:
@@ -196,7 +197,7 @@ Rationale (from the source comments, verified):
 
 - **LoadTest outermost**: the marker lands on the request context before anything else runs, so
   every downstream layer — and every outbound client your handler calls — can branch on
-  the propagator's `IsLoadTest(ctx)`. Single header lookup; no-op without the marker.
+  `traffic.IsLoadTest(ctx, prop)`. Single header lookup; no-op without the marker.
 - **Recovery** catches panics from every later layer and reports through the shared goutil panic
   chain (unified panic policy), not echo's stock Recover alone.
 - **RequestID before AccessLog**: every access record carries the request id; the id is also
@@ -209,7 +210,7 @@ Rationale (from the source comments, verified):
   Metrics. Installed unconditionally — with governance off the executor is a transparent
   pass-through, so it costs a call frame and changes nothing else. The service label is
   `echo:<address>` (e.g. `echo::8080`), the same one a governance rule uses:
-  `spring.governance.server.rules[N].service=echo::8080` with the usual `rate-limit` / `max-concurrent` knobs. Rejections map to
+  `spring.governance.server.services[N].service=echo::8080` with the usual `rate-limit` / `max-concurrent` knobs. Rejections map to
   **429** (rate limit, bulkhead full); injected faults map to **503**. Inbound admission never retries — a handler
   that already produced side effects cannot be replayed — so leave `max-retries` at 0; a reentry
   guard makes a retrying policy harmless anyway (the handler still runs exactly once).
@@ -220,9 +221,9 @@ Rationale (from the source comments, verified):
 
 ### 2.3 One request, layer by layer
 
-`GET /echo/world` with header `X-LoadTest: 1`, fault scope engaged:
+`GET /echo/world` with header `X-Traffic: loadtest`, traffic class matched:
 
-1. LoadTest tags ctx (the propagator's `IsLoadTest(ctx) == true`)
+1. LoadTest tags ctx (`traffic.IsLoadTest(ctx, prop)` is true)
 2. Recovery arms
 3. RequestID generates/propagates the id → response header
 4. Tracing starts the server span `{method} {route}` (no-op without an OTel provider)
@@ -230,8 +231,8 @@ Rationale (from the source comments, verified):
 6. AccessLog arms (fields captured on the way out)
 7. SecureHeaders/CORS/Gzip as enabled; BodyLimit enforces `maxBodySize`
 8. fault: `_, err := srv.Fire(ctx, fault.Target{Service: "echo", Action: "GET /x"})`
-   — `inj` is the injected `*serverfault.ServerManager` bean, and the built-in target names the route
-   (`METHOD` + `c.Path()`), so a rule can fire one endpoint; with `scope: loadtest` and the
+   — `inj` is the injected `*serverfault.Manager` bean, and the built-in target names the route
+   (`METHOD` + `c.Path()`), so a rule can fire one endpoint; with `match.traffic=loadtest` and the
    marker present, ~`rate` of requests get the injected error → 503; others pass through
 9. your route runs; the response unwinds through 6→5→4→3: access record logged (severity by
    status), duration recorded with `http.request.method`/`http.route`/`http.response.status_code`
@@ -312,8 +313,8 @@ curl -i :9370/healthz    # the echo-side liveness is on :8002/healthz (starter-s
 4. Marked traffic burns, normal traffic unaffected:
 
 ```bash
-curl -i :8002/echo/x                          # 200 (scope=loadtest, no marker)
-curl -i -H 'X-LoadTest: 1' :8002/echo/x       # ~20% → 503 service unavailable
+curl -i :8002/echo/x                          # 200 (match.traffic=loadtest, no marker)
+curl -i -H 'X-Traffic: loadtest' :8002/echo/x       # ~20% → 503 service unavailable
 ```
 
 5. Watch the fire in the observables: access-log Warn records with status 503, the duration
@@ -321,8 +322,8 @@ curl -i -H 'X-LoadTest: 1' :8002/echo/x       # ~20% → 503 service unavailable
 
 ### 4.5 Load-test marking drill
 
-With `scope: real` instead of `loadtest`, the injector affects unmarked traffic — use only in
-dedicated environments. The propagator's `IsLoadTest(ctx)` in your handler branches on the same marker,
+With `match.traffic=real` instead of `loadtest`, the injector affects unmarked traffic — use only in
+dedicated environments. `traffic.IsLoadTest(ctx, prop)` in your handler branches on the same marker,
 so business code can degrade features under synthetic load.
 
 ---

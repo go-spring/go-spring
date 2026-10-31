@@ -27,8 +27,9 @@ import (
 	"context"
 
 	amqp "github.com/rabbitmq/amqp091-go"
-	"go-spring.org/cloud/runtime/dataplane/outbound/chain"
-	observability "go-spring.org/cloud/runtime/dataplane/outbound/observe"
+	"go-spring.org/cloud/governance/capability/traffic"
+	"go-spring.org/cloud/governance/dataplane/outbound/chain"
+	observability "go-spring.org/cloud/governance/dataplane/outbound/observe"
 )
 
 // Client wraps an AMQP connection. It holds exactly two exported things: the
@@ -60,9 +61,9 @@ type Client struct {
 // rabbitmq client has no seam for the resilience executor, so there is no
 // governance: the observer emits the span, metrics and access log, and nothing
 // throttles or retries.
-func NewClient(conn *amqp.Connection, serviceLabel string) *Client {
+func NewClient(conn *amqp.Connection, serviceLabel string, prop traffic.Propagator) *Client {
 	obs := observability.NewOperationObserver("rabbitmq", serviceLabel)
-	return &Client{Conn: conn, InnerPublisher: NewObsPublisher(nil, obs), obs: obs}
+	return &Client{Conn: conn, InnerPublisher: NewObsPublisher(nil, obs, prop), obs: obs}
 }
 
 // Close tears the client down: the connection closes (which also closes the

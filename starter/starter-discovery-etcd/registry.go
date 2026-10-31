@@ -22,7 +22,7 @@ import (
 	"sync"
 	"time"
 
-	"go-spring.org/cloud/runtime/controlplane/registration"
+	"go-spring.org/cloud/governance/controlplane/registration"
 	"go-spring.org/log"
 	"go-spring.org/stdlib/errutil"
 	clientv3 "go.etcd.io/etcd/client/v3"

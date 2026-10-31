@@ -25,36 +25,33 @@ package StarterMongoDB
 import (
 	"context"
 
-	"go-spring.org/cloud/mesh"
-	"go-spring.org/cloud/runtime/dataplane/kernel/discovery"
-	"go-spring.org/cloud/runtime/dataplane/kernel/loadbalance"
+	"go-spring.org/cloud/governance/capability/discovery"
+	"go-spring.org/cloud/governance/capability/loadbalance"
 	"go-spring.org/stdlib/errutil"
 )
 
 // newPickChain resolves the discovery backend the starter wiring resolved from
 // c.Discovery into a by-name Resolver and wraps it in a load-balancing chain, so
 // each new connection can pick a live instance from the service's current
-// endpoint snapshot. It returns (nil, nil) when discovery is not in effect —
-// service-name unset or mesh mode enabled (a sidecar owns discovery+LB) — in
-// which case the caller dials the configured URI hosts directly. It fails
-// loudly when service-name is set (and mesh is off) but backend is nil (no
-// backend bean cited by the ${discovery} label). Resolver freshness lives inside
-// the backend, so the chain has no resources to release.
+// endpoint snapshot. The caller constructs it only when in-process discovery
+// applies ([governance.Runtime.UsesDiscovery]); it fails loudly when the entry
+// routes by service-name but cites no backend bean. Resolver freshness lives
+// inside the backend, so the chain has no resources to release.
 //
 // The chain is registered with lbMgr under the service's governance label as it
 // is built (see [loadbalance.Manager.Chain]), so the endpoint selection in force
 // applies from the first dial, and a rule that moves that selection REBUILDS the
 // chain from scratch rather than retuning it. lbMgr must be non-nil.
 func newPickChain(ctx context.Context, c Config, backend discovery.Discovery, lbMgr *loadbalance.Manager) (*loadbalance.Chain, error) {
-	if c.ServiceName != "" && backend == nil && !mesh.Enabled() {
+	if backend == nil {
 		if c.Discovery == "" {
 			return nil, errutil.Explain(nil, "mongodb: instance routes by service-name but sets no discovery backend (set spring.mongodb.instances.<name>.discovery to the name of a discovery backend bean)")
 		}
 		return nil, errutil.Explain(nil, "mongodb: discovery backend %q not found (no discovery.Discovery bean with this name; cited by the entry's ${discovery} label)", c.Discovery)
 	}
-	resolver, err := discovery.NewResolver(ctx, backend, c.ServiceName, discovery.WithScheme(c.Scheme))
-	if err != nil || resolver == nil {
+	resolver, err := discovery.NewResolver(ctx, backend, c.ServiceName, c.Scheme)
+	if err != nil {
 		return nil, err
 	}
-	return lbMgr.Chain(ctx, resolver, serviceLabel(c)), nil
+	return lbMgr.Chain(ctx, resolver, serviceLabel(c))
 }

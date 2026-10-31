@@ -22,8 +22,9 @@ import (
 	"slices"
 	"sync"
 
-	"go-spring.org/cloud/runtime/dataplane/outbound/chain"
-	"go-spring.org/cloud/runtime/dataplane/outbound/resilience"
+	"go-spring.org/cloud/governance/capability/traffic"
+	"go-spring.org/cloud/governance/dataplane/outbound/chain"
+	"go-spring.org/cloud/governance/dataplane/outbound/resilience"
 	"go-spring.org/stdlib/errutil"
 	"go-spring.org/stdlib/randutil"
 )
@@ -45,6 +46,13 @@ func WithGlobalLock(l GlobalLock) Option { return func(c *coordinator) { c.lock 
 // starter that opens otel spans.
 func WithObserver(o Observer) Option { return func(c *coordinator) { c.observer = o } }
 
+// WithTraffic sets the process traffic convention used to stamp each branch
+// phase's operation, so a fault rule can target match.traffic. Without it the
+// coordinator uses go-spring's standard binding.
+func WithTraffic(prop traffic.Propagator) Option {
+	return func(c *coordinator) { c.prop = prop }
+}
+
 // WithRetry sets the [RetryPolicy] applied to each branch's second-phase
 // operation. The zero value (default) means a single attempt; a non-zero policy
 // is useful because commit/rollback are expected to eventually succeed.
@@ -54,7 +62,11 @@ func WithRetry(p RetryPolicy) Option { return func(c *coordinator) { c.retry = p
 // uses no global lock and no observer, which is a valid transparent setup for
 // tests and single-writer development.
 func NewCoordinator(opts ...Option) Coordinator {
-	c := &coordinator{active: make(map[string][]Branch), enrolled: make(map[string]Branch)}
+	c := &coordinator{
+		active:   make(map[string][]Branch),
+		enrolled: make(map[string]Branch),
+		prop:     traffic.NewDefaultPropagator(traffic.DefaultBinding()),
+	}
 	for _, opt := range opts {
 		opt(c)
 	}
@@ -65,6 +77,7 @@ type coordinator struct {
 	lock     GlobalLock
 	observer Observer
 	retry    RetryPolicy
+	prop     traffic.Propagator
 
 	mu       sync.Mutex
 	active   map[string][]Branch // xid -> registered branches, in registration order
@@ -184,7 +197,7 @@ func (c *coordinator) runPhase(ctx context.Context, xid string, b Branch, phase 
 	if c.observer != nil {
 		ctx, end = c.observer.Begin(ctx, xid, b.ID(), phase.TxPhase())
 	}
-	err := runWithPolicy(ctx, c.retry, b.ID(), func(ctx context.Context) error {
+	err := runWithPolicy(ctx, c.prop, c.retry, b.ID(), func(ctx context.Context) error {
 		return fn(ctx, xid)
 	})
 	end(err)
@@ -193,16 +206,19 @@ func (c *coordinator) runPhase(ctx context.Context, xid string, b Branch, phase 
 
 // runWithPolicy runs fn once when the policy is zero, or under the bundled
 // resilience "default" executor (retry, per-attempt timeout, ...) otherwise. It
-// reuses [resilience.Policy] so AT phase retries and outbound resilience share
+// reuses [resilience.Limits] so AT phase retries and outbound resilience share
 // one knob set instead of duplicating retry logic here.
-func runWithPolicy(ctx context.Context, p RetryPolicy, resource string, fn func(context.Context) error) error {
+func runWithPolicy(ctx context.Context, prop traffic.Propagator, p RetryPolicy, resource string, fn func(context.Context) error) error {
 	if p.IsZero() {
 		return fn(ctx)
 	}
-	exec, err := resilience.NewDefaultDriver(nil).NewExecutor(resource, resilience.Policy{Retry: p})
-	if err != nil {
+	mgr := resilience.NewManager(resilience.NewDefaultDriver(nil))
+	if err := mgr.ApplyLimits(resilience.LimitsSettings{Default: resilience.Limits{Retry: p}}); err != nil {
 		return err
 	}
-	defer func() { _ = exec.Close() }()
-	return exec.Execute(ctx, chain.Operation{Service: resource}, nil, fn)
+	defer func() { _ = mgr.Close() }()
+	exec := mgr.ExecutorFor(resource)
+	op := chain.NewOperation(ctx, prop)
+	op.Service = resource
+	return exec.Execute(ctx, op, nil, fn)
 }

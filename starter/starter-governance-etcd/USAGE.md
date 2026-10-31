@@ -4,19 +4,19 @@
 
 Detailed usage reference. Overview: [README.md](README.md). Every behavior claim below is verified
 against the starter source (`starter.go`, `governance.go`, `governance_test.go`), the shared parse subpackage
-[`cloud/runtime/controlplane/governance/rules.go`](../../cloud/runtime/controlplane/governance/rules.go), the two-method
-`governance.Source` contract of [`cloud/runtime/controlplane/governance`](../../cloud/runtime/controlplane/governance) (`source.go`,
+[`cloud/governance/controlplane/source/file.go`](../../cloud/governance/controlplane/source/file.go), the two-method
+`source.Source` contract of [`cloud/governance/controlplane/source`](../../cloud/governance/controlplane/source) (`source.go`,
 `center.go`), and the runnable, self-asserting [example](example) (`example/main.go`,
 `example/check.sh`). etcd's own client semantics are [etcd docs](https://etcd.io/docs/latest/) —
 everything below is go-spring's increment.
 
 **Activation**: any `spring.governance.source.etcd.*` property arms the conditional module (`gs.OnProperty`
 is a **prefix** check, so a single sub-key is enough to fire it), and a single
-`governance.Source` bean is registered. A blank import with no such property registers nothing.
+`source.Source` bean is registered. A blank import with no such property registers nothing.
 The bean alone does not arm governance — the center bean of
-[`cloud/runtime/controlplane/governance`](../../cloud/runtime/controlplane/governance/README.md) takes it as a REQUIRED constructor
+[`cloud/governance/controlplane/source`](../../cloud/governance/README.md) takes it as a REQUIRED constructor
 argument (a container with no Source bean fails startup); import that too. Exactly one source is active per process (the center holds a single source), so configure
-exactly one of file/http/etcd/nacos.
+exactly one of file/etcd/nacos.
 
 ---
 
@@ -52,7 +52,7 @@ import (
     "fmt"
     "time"
 
-    "go-spring.org/cloud/runtime/dataplane/outbound/resilience"
+    "go-spring.org/cloud/governance/dataplane/outbound/resilience"
     "go-spring.org/spring/gs"
 
     _ "go-spring.org/starter-governance-etcd"
@@ -81,7 +81,7 @@ func (p *printer) Run(ctx context.Context) error {
 }
 
 // newPrinter builds the printer over the injected manager. A nil manager — a
-// container without cloud/runtime/controlplane/governance's bean — is normalized to a fresh unarmed one.
+// container without the policy roots's bean — is normalized to a fresh unarmed one.
 func newPrinter(mgr *resilience.Manager) *printer {
     if mgr == nil {
         mgr = resilience.NewManager()
@@ -110,7 +110,7 @@ spring:
   governance:
     driver: default
     client:
-      default:
+      resilience:
         timeout: 100ms
 ```
 
@@ -135,7 +135,7 @@ skipped gracefully when docker is absent.
 
 ### 2.1 The Source contract — what the center depends on
 
-`governance.Source` (`cloud/runtime/controlplane/governance/source.go`) is two methods:
+`source.Source` (`cloud/governance/controlplane/source/source.go`) is two methods:
 
 ```go
 type Source interface {
@@ -163,11 +163,11 @@ import starter-governance-etcd
         └─ Provide newEtcdSource bean
              .Init((*EtcdSource).Init)                    ← opens the watch stream
              .Destroy((*EtcdSource).Close)                ← cancels watch + closes client
-             .Export(gs.As[governance.Source]())
+             .Export(gs.As[source.Source]())
   ├─ newEtcdSource: clientv3.New(Endpoints:[endpoint], Username, Password, DialTimeout:5s)
   │     └─ NewEtcdSource: initial Get (5s ctx) seeds the snapshot
   │           ├─ key missing  → "governance etcd source: key <key> is empty"   (startup error)
-  │           └─ bad document → governance.Parse error                              (startup error)
+  │           └─ bad document → source.Parse error                              (startup error)
   ├─ source bean wired: Init opens the watch stream
   ├─ center bean wired: the Source arrives as a NULLABLE constructor argument —
   │     NewCenter subscribes + adopts Snapshot() at construction
@@ -185,7 +185,7 @@ any config-import bootstrap client — see the boundary note in [README.md](READ
    (`governance.go` `Init`). Responses with no events (compactions, auth refreshes) are ignored.
 3. `apply(data)`: a value **byte-identical** to the last delivered document returns immediately —
    a re-put with no change pushes nothing.
-4. Otherwise `governance.Parse(key, data, format)` runs — the same parser every governance backend uses,
+4. Otherwise `source.Parse(key, data, format)` runs — the same parser every governance backend uses,
    so a document that works as a local rules file works unchanged here. A parse failure logs
    `governance etcd source: key <key> got an invalid value (keeping last good config): ...` under
    tag `_app_governance_etcd`, keeps the last good snapshot, and pushes nothing.
@@ -224,16 +224,16 @@ dimension — a source is a single object, and the center holds one.
 | `key` | string | — (**required**, `expr:"$ != ''"`) | The single KV key holding the rules document. Also the format-inference source when `format` is unset. | Empty → bind fails at startup. |
 | `username` | string | `""` | etcd auth username; empty means no auth. | Wrong creds → the initial `Get` fails → startup error. |
 | `password` | string | `""` | etcd auth password. | As above. |
-| `format` | string | key extension, else `properties` | Overrides document-format detection. `"yaml" \| "json" \| "properties" \| "toml"` (any format registered in the shared reader registry). | Wrong-but-known format → parse error (startup error on seed, keep-last-good after). |
+| `format` | string | key extension, else `properties` | Services document-format detection. `"yaml" \| "json" \| "properties" \| "toml"` (any format registered in the shared reader registry). | Wrong-but-known format → parse error (startup error on seed, keep-last-good after). |
 
 Format inference: an explicit `format` wins; otherwise the key's dotted extension is used
 (`/app/governance.yaml` → `yaml`); otherwise it falls back to `properties`. A key with no extension and
 a non-properties document therefore needs an explicit `format`.
 
-The document itself is parsed by `governance.Parse`, which requires **at least one `spring.governance.*` key** — a
+The document itself is parsed by `source.Parse`, which requires **at least one `spring.governance.*` key** — a
 document that parses but carries none (truncated, or emptied) is an error, not "no governance".
-The rules keys (`spring.governance.client.default.*`, `spring.governance.client.rules[n].*`, `spring.governance.client.fault.*`) are
-documented in [`cloud/runtime/controlplane/governance`'s SOURCE_USAGE](../../cloud/runtime/controlplane/governance/SOURCE_USAGE.md); they are identical across
+The rules keys (`spring.governance.client.resilience.*`, `spring.governance.client.resilience.services[n].*`, `spring.fault.client.*`) are
+documented in [`cloud/governance/controlplane/source`'s USAGE](../../cloud/governance/controlplane/source/USAGE.md); they are identical across
 backends.
 
 ---
@@ -278,7 +278,7 @@ only advances on a successful parse.
 | Drill | Expected |
 |-------|----------|
 | key absent before boot | startup error `governance etcd source: key <key> is empty` |
-| key holds an unparseable document | startup error from `governance.Parse` (the document cannot be armed) |
+| key holds an unparseable document | startup error from `source.Parse` (the document cannot be armed) |
 | etcd unreachable | startup error `governance etcd source: get <key> failed` |
 | `endpoint`/`key` only partially configured | startup error from the `expr:"$ != ''"` bind (any sub-key fires the module) |
 
@@ -305,7 +305,7 @@ compose is unavailable.
 
 | Symptom | Likely cause | Fix |
 |---------|--------------|-----|
-| Governance stays off (no policy takes effect) despite the key changing | no governance center linked → no center bean, the Source is never collected | Link `cloud/runtime/controlplane/governance` (any governance source starter does it). |
+| Governance stays off (no policy takes effect) despite the key changing | no governance center linked → no center bean, the Source is never collected | Link `cloud/governance/controlplane/source` (any governance source starter does it). |
 | Startup fails `key <key> is empty` | Required key not present before boot | Seed the key before starting. |
 | Startup fails `get <key> failed` | etcd unreachable, wrong port, or auth required but no `username`/`password` | Check endpoint and credentials. |
 | Startup fails on an empty `endpoint`/`key` | `spring.governance.source.etcd.*` partially configured (`OnProperty` fired on any sub-key) | Provide both required keys, or remove the whole prefix. |
@@ -332,4 +332,4 @@ Design suspects (for the audit ledger):
 - **No watch-gap surfacing.** A dropped/compacted watch or a rejected auth refresh produces no log
   or metric; DELETEs are silently ignored. Observability increment candidate.
 - **Shared parse semantics** are the reason documents are portable across backends; any change to
-  `governance.Parse` (e.g. the "must carry a `spring.governance.*` key" rule) applies to every source at once.
+  `source.Parse` (e.g. the "must carry a `spring.governance.*` key" rule) applies to every source at once.

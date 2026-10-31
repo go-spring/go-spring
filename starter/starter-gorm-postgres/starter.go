@@ -29,10 +29,10 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/stdlib"
 	"go-spring.org/cloud/actuator/health"
-	"go-spring.org/cloud/runtime"
-	"go-spring.org/cloud/runtime/dataplane/kernel/discovery"
-	"go-spring.org/cloud/runtime/dataplane/kernel/label"
-	"go-spring.org/cloud/runtime/dataplane/kernel/loadbalance"
+	"go-spring.org/cloud/governance"
+	"go-spring.org/cloud/governance/capability/discovery"
+	"go-spring.org/cloud/governance/capability/label"
+	"go-spring.org/cloud/governance/capability/loadbalance"
 	"go-spring.org/log"
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/gs"
@@ -60,7 +60,7 @@ func init() {
 			// bean-name space, so two dialects may carry an instance of the same
 			// name.
 			beanName := "postgres." + name
-			r.Provide(func(ctx *gs.ContextProvider, discoveryLabel string, center *runtime.Runtime) (*gormcore.DB, error) {
+			r.Provide(func(ctx *gs.ContextProvider, discoveryLabel string, center *governance.Runtime) (*gormcore.DB, error) {
 				// The wiring tag applies the family-default discovery fallback
 				// (discoveryLabel); fold it into the config so the dialect's build
 				// reads one label — c.Discovery — and resolves the backend itself,
@@ -95,13 +95,13 @@ func init() {
 // discovery, and returns the Spec [gormcore.NewDB] assembles.
 // client.
 //
-// When c.ServiceName is set (and mesh mode is off), the address is resolved
+// When in-process discovery applies (a service name is set and the process is not in mesh mode), the address is resolved
 // through the registered discovery backend: a Resolver is bound to the pgx
 // DialFunc so each new physical connection reaches a live instance and address
 // changes take effect without rebuilding the client. In mesh mode a sidecar
 // owns discovery+LB, so the configured Host is used as-is. When c.ServiceName
 // is empty this is a plain DSN dial, unchanged from before.
-func build(ctx context.Context, c Config, center *runtime.Runtime) (gormcore.Spec, error) {
+func build(ctx context.Context, c Config, center *governance.Runtime) (gormcore.Spec, error) {
 	if c.Host == "" && c.ServiceName == "" {
 		return gormcore.Spec{}, errutil.Explain(nil, "gorm postgres: one of host or service-name must be set")
 	}
@@ -120,23 +120,28 @@ func build(ctx context.Context, c Config, center *runtime.Runtime) (gormcore.Spe
 
 	service := label.ServiceLabel("gorm:postgresql", c.ServiceName, c.Host)
 
-	// Resolve the discovery backend the entry cites before building the dialer:
-	// the build reads one label (c.Discovery) and fails construction when it
-	// names no bean, rather than silently dialing the static host.
-	var backend discovery.Discovery
-	if c.ServiceName != "" {
-		backend, _ = center.Discovery().Get(c.Discovery)
+	var dialector gorm.Dialector
+
+	// Mesh mode wins over a configured service-name: the sidecar owns
+	// discovery+LB, so the configured Host is used as-is and no pool is built.
+	var (
+		lb *loadbalance.Chain
+		ld discovery.Resolver
+	)
+	if center.UsesDiscovery(c.ServiceName) {
+		// Resolve the discovery backend the entry cites before building the
+		// dialer: the build reads one label (c.Discovery) and fails construction
+		// when it names no bean, rather than silently dialing the static host.
+		backend, _ := center.Discovery().Get(c.Discovery)
 		if backend == nil {
 			return gormcore.Spec{}, errutil.Explain(nil, "gorm postgres: instance routes by service-name but cites discovery backend %q, which names no bean", c.Discovery)
 		}
-	}
-
-	var dialector gorm.Dialector
-
-	lb, ld, err := c.NewPickPool(ctx, backend, service, center.Loadbalance())
-	if err != nil {
-		log.Error(ctx, log.TagAppDef, err, "gorm postgres build discovery resolver failed")
-		return gormcore.Spec{}, err
+		var err error
+		lb, ld, err = c.NewPickPool(ctx, backend, service, center.Loadbalance())
+		if err != nil {
+			log.Error(ctx, log.TagAppDef, err, "gorm postgres build discovery resolver failed")
+			return gormcore.Spec{}, err
+		}
 	}
 
 	// Always go through a parsed pgx config: it validates the DSN once at
@@ -183,7 +188,7 @@ func build(ctx context.Context, c Config, center *runtime.Runtime) (gormcore.Spe
 }
 
 // Discovery dialer — a client can be dialed straight from a configured Host, or
-// (when ServiceName is set and mesh mode is off) through a discovery resolver
+// (when in-process discovery applies) through a discovery resolver
 // whose background watch keeps the endpoint set fresh. The resolver (built by
 // [gormcore.Common.NewPickPool]) is adapted to pgx's DialFunc
 // stopped via the closer [build] attaches to the client.

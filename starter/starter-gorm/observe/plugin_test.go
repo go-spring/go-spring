@@ -24,8 +24,9 @@ import (
 	"strings"
 	"testing"
 
-	"go-spring.org/cloud/runtime/dataplane/outbound/chain"
-	observability "go-spring.org/cloud/runtime/dataplane/outbound/observe"
+	"go-spring.org/cloud/governance/capability/traffic"
+	"go-spring.org/cloud/governance/dataplane/outbound/chain"
+	observability "go-spring.org/cloud/governance/dataplane/outbound/observe"
 	gormresilience "go-spring.org/starter-gorm/resilience"
 	"go-spring.org/stdlib/testing/assert"
 	"go.opentelemetry.io/otel/attribute"
@@ -41,6 +42,9 @@ import (
 // owns: the operation reaches the emitter with the identity gorm demands (name,
 // db.system/db.operation, the SQL statement in Detail and the access tag). What
 // the emitter builds from it is covered by resilience's own tests.
+
+// testProp is the process traffic convention the tests build operations with.
+var testProp = traffic.NewDefaultPropagator(traffic.DefaultBinding())
 
 // probeConn is a minimal database/sql driver Conn: the tests run gorm in
 // DryRun, so no statement ever reaches it — only the gorm.Open ping does.
@@ -114,7 +118,7 @@ func newProbeDB(t *testing.T, system string) (*gorm.DB, *captureExecutor) {
 	t.Helper()
 	db, err := gorm.Open(probeDialector{}, &gorm.Config{DryRun: true, SkipDefaultTransaction: true})
 	assert.Error(t, err).Nil("gorm open")
-	plugin := NewPlugin(system)
+	plugin := NewPlugin(system, testProp)
 	if err := db.Use(plugin); err != nil {
 		t.Fatalf("use plugin: %v", err)
 	}

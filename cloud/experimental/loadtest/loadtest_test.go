@@ -18,13 +18,13 @@ package loadtest
 
 import (
 	"context"
-	"go-spring.org/cloud/runtime/dataplane/outbound/chain"
+	"go-spring.org/cloud/governance/dataplane/outbound/chain"
 	"sync/atomic"
 	"testing"
 	"time"
 
-	"go-spring.org/cloud/runtime/dataplane/kernel/fault"
-	"go-spring.org/cloud/runtime/dataplane/kernel/traffic"
+	"go-spring.org/cloud/governance/capability/fault"
+	"go-spring.org/cloud/governance/capability/traffic"
 	"go-spring.org/stdlib/errutil"
 	"go-spring.org/stdlib/testing/assert"
 )
@@ -105,7 +105,7 @@ func TestRun_TagsOpContextLoadTest(t *testing.T) {
 	prop := traffic.NewDefaultPropagator(traffic.DefaultBinding())
 	Run(context.Background(), Config{Concurrency: 2, Duration: 20 * time.Millisecond},
 		func(ctx context.Context) error {
-			if prop.IsLoadTest(ctx) {
+			if traffic.IsLoadTest(ctx, prop) {
 				seen.Store(true)
 			}
 			return nil

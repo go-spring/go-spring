@@ -15,11 +15,11 @@
  */
 
 // Package StarterGovernanceNacos adapts Nacos as a governance rule source: it
-// listens on one Nacos dataId holding the governance rule document and pushes
-// every published version into the governance center through the
-// [go-spring.org/cloud/runtime/controlplane/governance.Source] contract.
+// listens on one Nacos dataId holding the selection rule document and pushes
+// every published version into the selection center through the
+// [go-spring.org/cloud/governance/controlplane/source.Source[loadbalance.Settings]] contract.
 //
-// It is the Nacos member of the governance-source adapter family — the
+// It is the Nacos member of the selection-source adapter family — the
 // Sentinel-datasource shape. The rule document is governance's own, not an
 // application-config import, so enabling governance never turns on app-property
 // refresh and vice versa; this module is therefore separate from
@@ -27,11 +27,11 @@
 // client exclusively, so it is free to carry its own instrumentation
 // independently of the config-import bootstrap client.
 //
-// Configure with ${spring.governance.source.nacos.*}:
+// Configure with ${source.nacos.*}:
 //
-//	spring.governance.source.nacos.server=127.0.0.1:8848
-//	spring.governance.source.nacos.data-id=app-governance.yaml
-//	spring.governance.source.nacos.group=DEFAULT_GROUP
+//	source.nacos.server=127.0.0.1:8848
+//	source.nacos.data-id=app-governance.yaml
+//	source.nacos.group=DEFAULT_GROUP
 //
 // The bean is registered only when that key is present, so importing this
 // package is inert otherwise.
@@ -45,7 +45,8 @@ import (
 	"github.com/nacos-group/nacos-sdk-go/v2/clients/config_client"
 	"github.com/nacos-group/nacos-sdk-go/v2/common/constant"
 	"github.com/nacos-group/nacos-sdk-go/v2/vo"
-	"go-spring.org/cloud/runtime/controlplane/governance"
+	"go-spring.org/cloud/governance/capability/loadbalance"
+	"go-spring.org/cloud/governance/controlplane/source"
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
@@ -57,13 +58,13 @@ import (
 var starterTag = log.RegisterAppTag("governance", "nacos")
 
 func init() {
-	gs.Module(gs.OnProperty("spring.governance.source.nacos"), func(r gs.BeanProvider, _ flatten.Storage) error {
+	gs.Module(gs.OnProperty("source.nacos"), func(r gs.BeanProvider, _ flatten.Storage) error {
 		r.Provide(func(c governanceNacosConfig) (*NacosSource, error) {
 			return NewNacosSource(c)
-		}, gs.TagArg("${spring.governance.source.nacos:=}")).
+		}, gs.TagArg("${source.nacos:=}")).
 			Init((*NacosSource).Init).
 			Destroy((*NacosSource).Close).
-			Export(gs.As[governance.Source]()).
+			Export(gs.As[source.Source[loadbalance.Settings]]()).
 			Caller(1)
 		return nil
 	})
@@ -77,10 +78,10 @@ type governanceSource struct {
 	format string
 }
 
-// NacosSource is a governance.Source backed by one nacos dataId. The initial
+// NacosSource is a source.Source[loadbalance.Settings] backed by one nacos dataId. The initial
 // GetConfig seeds the snapshot (a missing or bad document fails construction,
 // so a misconfigured dataId surfaces at startup); ListenConfig then delivers
-// each published version, which re-parses through governance.Parse and pushes
+// each published version, which re-parses through source.Parse and pushes
 // when the rules actually changed. A bad publish keeps the last good snapshot
 // and logs.
 type NacosSource struct {
@@ -88,11 +89,11 @@ type NacosSource struct {
 	src governanceSource
 	doc string // latest document bytes (for dedupe before parsing)
 
-	// governance.PushSource is embedded so this transport inherits the [Source]
+	// source.PushSource[loadbalance.Settings] is embedded so this transport inherits the [Source]
 	// read and subscribe pair (the nacos listener feeds it through apply).
 	// Embedding also promotes Push — the INTERNAL commit path that skips apply's
 	// parse and change-dedup guards — so callers must never call Push directly.
-	*governance.PushSource
+	*source.PushSource[loadbalance.Settings]
 }
 
 // NewNacosSource builds the client from the bound config and seeds the
@@ -129,11 +130,11 @@ func newNacosSource(cli config_client.IConfigClient, src governanceSource) (*Nac
 	if err != nil {
 		return nil, errutil.Explain(err, "governance nacos source: get %s/%s failed", src.group, src.dataID)
 	}
-	cfg, err := governance.Parse(src.dataID, []byte(content), src.format)
+	cfg, err := source.Parse[loadbalance.Settings](src.dataID, []byte(content), src.format)
 	if err != nil {
 		return nil, err
 	}
-	return &NacosSource{cli: cli, src: src, doc: content, PushSource: governance.NewPushSource(cfg)}, nil
+	return &NacosSource{cli: cli, src: src, doc: content, PushSource: source.NewPushSource(cfg)}, nil
 }
 
 // Init installs the change listener (the gs bean lifecycle hook). The listener
@@ -158,7 +159,7 @@ func (s *NacosSource) Init() error {
 
 // Close removes the listener and closes the source's own client — the client
 // is built by the bean ctor and dies with the bean. Implements the
-// optional-close contract the governance center probes for on Destroy.
+// optional-close contract the selection center probes for on Destroy.
 func (s *NacosSource) Close() error {
 	err := s.cli.CancelListenConfig(vo.ConfigParam{DataId: s.src.dataID, Group: s.src.group})
 	s.cli.CloseClient()
@@ -173,7 +174,7 @@ func (s *NacosSource) Close() error {
 // lines carry.
 func (s *NacosSource) apply(ctx context.Context, data string) {
 	ctx = log.WithFields(ctx, log.String("trace_id", randutil.Hex(16)))
-	cfg, err := governance.Parse(s.src.dataID, []byte(data), s.src.format)
+	cfg, err := source.Parse[loadbalance.Settings](s.src.dataID, []byte(data), s.src.format)
 	if err != nil {
 		log.Error(ctx, starterTag, err, "governance nacos source published an invalid document (keeping last good config)")
 		return

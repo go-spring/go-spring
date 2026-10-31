@@ -36,8 +36,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"go-spring.org/cloud/runtime/dataplane/outbound/chain"
-	"go-spring.org/cloud/runtime/dataplane/outbound/resilience"
+	"go-spring.org/cloud/governance/dataplane/outbound/chain"
+	"go-spring.org/cloud/governance/dataplane/outbound/resilience"
 
 	StarterGovernanceSentinel "go-spring.org/starter-governance-sentinel"
 )
@@ -60,15 +60,24 @@ func main() {
 // is recovered transparently within the retry budget while the (generous) limit
 // and breaker stay closed.
 func demoComposedRetry(driver resilience.Driver) {
-	exec, err := driver.NewExecutor("sentinel:composed", resilience.Policy{
-		RateLimit:      100,
-		ErrorThreshold: 10,
-		Timeout:        time.Second,
-		Retry:          chain.RetryPolicy{MaxRetries: 3},
-	})
-	if err != nil {
-		fail("composed executor: %v", err)
+	m := resilience.NewManager(driver)
+	if err := m.ApplyLimits(resilience.LimitsSettings{Default: resilience.Limits{
+		Timeout: time.Second,
+		Retry:   chain.RetryPolicy{MaxRetries: 3},
+	}}); err != nil {
+		fail("composed limits: %v", err)
 	}
+	if err := m.ApplyBreaker(resilience.BreakerSettings{Default: resilience.BreakerPolicy{
+		ErrorThreshold: 10,
+	}}); err != nil {
+		fail("composed breaker: %v", err)
+	}
+	if err := m.ApplyRateLimit(resilience.RateLimitSettings{Default: resilience.RateLimitPolicy{
+		RateLimit: 100,
+	}}); err != nil {
+		fail("composed rate limit: %v", err)
+	}
+	exec := m.ExecutorFor("sentinel:composed")
 
 	var hits int32
 	srv := &http.Server{}

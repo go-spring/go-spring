@@ -25,7 +25,7 @@ import (
 	"testing"
 
 	"github.com/bradfitz/gomemcache/memcache"
-	"go-spring.org/cloud/runtime/dataplane/kernel/discovery"
+	"go-spring.org/cloud/governance/capability/discovery"
 	"go-spring.org/stdlib/testing/assert"
 )
 

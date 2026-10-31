@@ -23,8 +23,8 @@ import (
 	"testing"
 	"time"
 
-	"go-spring.org/cloud/runtime/dataplane/outbound/chain"
-	"go-spring.org/cloud/runtime/dataplane/outbound/resilience"
+	"go-spring.org/cloud/governance/dataplane/outbound/chain"
+	"go-spring.org/cloud/governance/dataplane/outbound/resilience"
 	"go-spring.org/stdlib/testing/assert"
 )
 
@@ -37,9 +37,19 @@ import (
 // equivCase is one deterministic scenario: a policy and a script of calls whose
 // outcomes the drivers must agree on, verdict by verdict.
 type equivCase struct {
-	name   string
-	policy resilience.Policy
-	script func(e chain.Executor) []error
+	name      string
+	limits    resilience.Limits
+	breaker   resilience.BreakerPolicy
+	rateLimit resilience.RateLimitPolicy
+	script    func(e chain.Executor) []error
+}
+
+// armForEquiv applies the case's three capabilities to m.
+func armForEquiv(t *testing.T, m *resilience.Manager, c equivCase) {
+	t.Helper()
+	assert.Error(t, m.ApplyLimits(resilience.LimitsSettings{Default: c.limits})).Nil()
+	assert.Error(t, m.ApplyBreaker(resilience.BreakerSettings{Default: c.breaker})).Nil()
+	assert.Error(t, m.ApplyRateLimit(resilience.RateLimitSettings{Default: c.rateLimit})).Nil()
 }
 
 // runEquiv drives one case through both drivers and compares verdicts: for
@@ -47,10 +57,13 @@ type equivCase struct {
 // sentinel error it carried.
 func runEquiv(t *testing.T, c equivCase) {
 	t.Helper()
-	def, err := resilience.NewDefaultDriver(nil).NewExecutor("equiv:"+c.name, c.policy)
-	assert.Error(t, err).Nil()
-	sen, err := NewSentinelDriver().NewExecutor("equiv-sentinel:"+c.name, c.policy)
-	assert.Error(t, err).Nil()
+	defMgr := resilience.NewManager(resilience.NewDefaultDriver(nil))
+	armForEquiv(t, defMgr, c)
+	def := defMgr.ExecutorFor("equiv:" + c.name)
+
+	senMgr := resilience.NewManager(NewSentinelDriver())
+	armForEquiv(t, senMgr, c)
+	sen := senMgr.ExecutorFor("equiv-sentinel:" + c.name)
 
 	want := c.script(def)
 	got := c.script(sen)
@@ -74,8 +87,8 @@ func runEquiv(t *testing.T, c equivCase) {
 
 func TestEquivRateLimit(t *testing.T) {
 	runEquiv(t, equivCase{
-		name:   "ratelimit",
-		policy: resilience.Policy{RateLimit: 2},
+		name:      "ratelimit",
+		rateLimit: resilience.RateLimitPolicy{RateLimit: 2},
 		script: func(e chain.Executor) []error {
 			var out []error
 			for range 3 {
@@ -88,8 +101,8 @@ func TestEquivRateLimit(t *testing.T) {
 
 func TestEquivConsecutiveBreaker(t *testing.T) {
 	runEquiv(t, equivCase{
-		name:   "breaker",
-		policy: resilience.Policy{ErrorThreshold: 1, OpenDuration: time.Minute},
+		name:    "breaker",
+		breaker: resilience.BreakerPolicy{ErrorThreshold: 1, OpenDuration: time.Minute},
 		script: func(e chain.Executor) []error {
 			var out []error
 			// Trip: one failure.

@@ -134,7 +134,7 @@ spring.observability.metrics.exporter=prometheus
 spring.observability.metrics.port=9090
 
 # --- governance（rocketmq:127.0.0.1:9876 的限流/熔断）---------------------
-spring.governance.source.file.path=conf/governance.yaml
+# (the file source is wired in source.go; no property key)
 ```
 
 **启动 RocketMQ**（复制 [example/docker-compose.yml](example/docker-compose.yml) 与
@@ -180,8 +180,8 @@ gs.Run()
   │       DefaultDriver：安装 rlog→go-spring 日志桥接
   │       （进程级全局，sync.Once 仅一次）并委托 NewClient——
   │       NewClient 在同一步固定身份（name server 列表 + Config）并挂载治理 executor：
-  │       center.ExecutorFor("rocketmq", service)，其来源为注入的 *runtime.Runtime
-  │       （内含 *resilience.Manager / *clientfault.ClientManager）           [driver.go, client.go]
+  │       center.ExecutorFor("rocketmq", service)，其来源为注入的 *governance.Runtime
+  │       （内含 *resilience.Manager / *clientfault.Manager）           [driver.go, client.go]
   │    3. Ping 探测（可选）：TCP dial，首个可达地址即通过，每地址 3s 预算；
   │       在装配完成之后跑，失败 → 启动失败（Client 已关闭）
   ├─ 应用按 `autowire:"<name>"` 注入 *Client
@@ -214,8 +214,8 @@ GuardedSend(ctx, cl, producer, msg)                       [command.go]
   └─ cl.execute                                            [client.go]
        ├─ executor 为直通（governance 关闭）或不存在（裸 Client）
        │     → producer.SendSync 直通，与裸调用一致
-       └─ exec.Execute(ctx, chain.Call{}, injectTraceContext + send)  — fault.ClientManager 在最外
-                  （clientfault.ClientManager.WrapClientExecutor），resilience 观察器在其内；观察器依据
+       └─ exec.Execute(ctx, chain.Call{}, injectTraceContext + send)  — fault.Manager 在最外
+                  （clientfault.Manager.WrapClientExecutor），resilience 观察器在其内；观察器依据
                   声明发射 span + messaging.client.* 指标 + 访问日志；拒绝时返回
                   resilience 哨兵，发送不落到线上
 ```
@@ -223,11 +223,11 @@ GuardedSend(ctx, cl, producer, msg)                       [command.go]
 consume 方向在 driver 的接收回调里以同样方式声明（`operation("consume", topic)`），
 再在 `cl.execute` 下运行 handler [messaging.go]。
 
-`center.ExecutorFor("rocketmq", service)` 内的包裹顺序 [cloud/runtime/controlplane/governance/center.go]，
+`center.ExecutorFor("rocketmq", service)` 内的包裹顺序 [cloud/governance/runtime.go]，
 由 `NewClient` 调用：`mgr.ExecutorFor("rocketmq", service)`——mgr 为注入的
 `*resilience.Manager`——返回已完整组装的 executor（核心 breaker/limiter/retry 被 resilience
 观察器包住——outcome 计数器 + 访问日志）→ 最外层再由 `inj.WrapClientExecutor(...)`
-包裹（来自注入的 `*clientfault.ClientManager` 的运行时故障注入；注入的错误会穿过内层重试循环，因此
+包裹（来自注入的 `*clientfault.Manager` 的运行时故障注入；注入的错误会穿过内层重试循环，因此
 breaker 会计入它）。`*resilience.Manager` 必填——容器始终提供；
 不存在 unmanaged/仅观测的兜底。
 
@@ -249,7 +249,7 @@ breaker 会计入它）。`*resilience.Manager` 必填——容器始终提供�
 
 1. 为 publisher 的固定 topic 构建 `primitive.Message`；`Key`（单个字符串）经 `WithKeys`
    成为消息 key；每个 Header 写入 user property。
-2. 若 ctx 携带压测标记，写入 `x-loadtest=1` user property [traffic.go:60]。
+2. 若 ctx 携带压测标记，写入 `x-traffic=loadtest` user property [traffic.go:60]。
 3. `GuardedSend` 声明该 publish（`operation("publish", msg.Topic)`）：方向即 span 名，
    `messaging.system`/`messaging.operation` 是有界的 label，topic 则是逐调用 Detail——
    只到 span 与日志、绝不进 label。
@@ -268,7 +268,7 @@ SDK push-consumer 协程回调 starter 的 handler [messaging.go]：
 2. 每条消息：driver 从 user properties 提取上游 W3C trace（`extractTraceContext`），在 handler
    ctx 上声明该 consume（`operation("consume", topic)`），再在 `cl.execute` 下运行 handler——
    于是 resilience 观察器依据声明打开 consumer span、记录指标并写访问日志。
-3. `x-loadtest` property 映射回 ctx，handler 里 propagator 的 `IsLoadTest(ctx)` 为真。
+3. `x-traffic` property 映射回 ctx，handler 里 `traffic.IsLoadTest(ctx, prop)` 为真。
 4. `fromMessageExt` 构建信封：`Key` 取 KEYS property、`Payload` = body、
    `Headers` = **全部** user properties、`Timestamp` 取 StoreTimestamp [messaging.go]。
 5. handler 出错 → Error 日志 + `ConsumeRetryLater`（broker 按 RocketMQ 重试语义重投）；
@@ -279,7 +279,7 @@ SDK push-consumer 协程回调 starter 的 handler [messaging.go]：
 | 字段 | Publish（信封 → RocketMQ） | Consume（RocketMQ → 信封） |
 |---|---|---|
 | Key | 单字符串 → 单个消息 key | KEYS property 读回为一个字符串；多 key 生产方得到拼接值而非原列表 |
-| Headers | 条目原样写入 user properties | 返回**全部** properties，含 SDK 内部项（`traceparent`、KEYS、`x-loadtest`）——会漏进 `msg.Headers` |
+| Headers | 条目原样写入 user properties | 返回**全部** properties，含 SDK 内部项（`traceparent`、KEYS、`x-traffic`）——会漏进 `msg.Headers` |
 | Tags | **无映射**——`messaging.Message` 无 tag 概念；driver 发的是无 tag 消息 | **无映射**——订阅硬编码选择器 `TAG *`；按 tag 过滤消费需走裸客户端 |
 | Timestamp | 不发送 | StoreTimestamp（broker 存储时间），非 BornTimestamp |
 | Topic | 在 NewPublisher 时固定 | 不回填到信封 |
@@ -339,7 +339,7 @@ name-servers——须与 governance 规则一致）：
 - 压 `GuardedSend`——或 driver 的 `Publish`（它同样经 `GuardedSend` 接缝）→ 拒绝返回
   `resilience.ErrRateLimited`，发送未被调用，出现 `resilience.error_type=rate_limited` 的
   `resilience.client.calls` 记录，以及每次调用一条访问日志（`_app_rocketmq_access`，
-  回退路径为 `_app_resilience`）[cloud/runtime/dataplane/outbound/resilience/observe.go]。
+  回退路径为 `_app_resilience`）[cloud/governance/dataplane/outbound/resilience/observe.go]。
 - 直接在 producer 上调用裸 `SendSync` 则未守护（§2.2）：它是应用自己的路径、外面没有
   executor。这个对比正是 §2.2 的边界。
 
@@ -371,7 +371,7 @@ curl -s :9090/metrics | grep resilience_calls
   [example-otel](example-otel/main.go) 验证关联 span 落入 Jaeger（`:16686`，服务名
   `rocketmq-otel-example`）。
 - 压测标记演练：在带流量层标记的 ctx 下 publish；consumer handler 里
-  propagator 的 `IsLoadTest(ctx)` 经 `x-loadtest` property 变为真 [messaging.go]。
+  `traffic.IsLoadTest(ctx, prop)` 经 `x-traffic` property 变为真 [messaging.go]。
 
 ---
 
@@ -404,7 +404,7 @@ curl -s :9090/metrics | grep resilience_calls
 - driver Subscribe 硬编码 `TAG *` 选择器；不支持 tag 子表达式，且
   `messaging.Message` 根本无法携带 tag（§2.4 表）（承接，未修）。
 - driver Timestamp 用 StoreTimestamp 而非出生时间（承接，未修）。
-- 消费信封把 SDK 内部 user properties（`traceparent`、KEYS、`x-loadtest`）漏进
+- 消费信封把 SDK 内部 user properties（`traceparent`、KEYS、`x-traffic`）漏进
   `Headers`，多 key 往返返回拼接字符串（§2.4；新增）。
 - 服务标签的 name-servers 段是死代码——`ResourceLabel` 在客户端名处即返回，
   传入的地址列表永远不可能出现在标签里（§2.2；新增；上一版文档的

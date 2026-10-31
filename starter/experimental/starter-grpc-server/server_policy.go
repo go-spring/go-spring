@@ -20,11 +20,12 @@ import (
 	"context"
 	"errors"
 
-	"go-spring.org/cloud/runtime"
+	"go-spring.org/cloud/governance"
 
-	"go-spring.org/cloud/runtime/dataplane/inbound/admission"
-	observability "go-spring.org/cloud/runtime/dataplane/inbound/observe"
-	"go-spring.org/cloud/runtime/dataplane/kernel/label"
+	"go-spring.org/cloud/governance/capability/label"
+	"go-spring.org/cloud/governance/capability/traffic"
+	"go-spring.org/cloud/governance/dataplane/inbound/admission"
+	observability "go-spring.org/cloud/governance/dataplane/inbound/observe"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -41,7 +42,7 @@ type resilienceInterceptors struct {
 // injected [admission.Manager] and returns the unary interceptor that runs each
 // RPC through it. The manager is the governance starter's bean, so this server
 // gets its rate-limit / bulkhead limits from the governance document's
-// SERVER block (spring.governance.server.*)
+// SERVER block (server.*)
 // without this package owning how that runtime is assembled. A nil runtime — a standalone call, or an app
 // that does not import — is normalized to an unarmed one,
 // whose executor is a transparent pass-through (fn runs once, untouched). The
@@ -65,8 +66,8 @@ func (s *SimpleGrpcServer) buildResilienceInterceptors() (resilienceInterceptors
 		return resilienceInterceptors{}, false, err
 	}
 	return resilienceInterceptors{
-		unary:  resilienceUnaryInterceptor(in, service),
-		stream: resilienceStreamInterceptor(in),
+		unary:  resilienceUnaryInterceptor(in, service, s.prop),
+		stream: resilienceStreamInterceptor(in, s.prop),
 	}, true, nil
 }
 
@@ -79,10 +80,10 @@ func (s *SimpleGrpcServer) buildResilienceInterceptors() (resilienceInterceptors
 // can tell "this client is being throttled" from an arbitrary handler failure:
 // rate/bulkhead rejections are ResourceExhausted. Without the mapping they cross the wire as codes.Unknown,
 // which no consumer can act on.
-func resilienceUnaryInterceptor(in *runtime.Inbound, service string) grpc.UnaryServerInterceptor {
+func resilienceUnaryInterceptor(in *governance.Inbound, service string, prop traffic.Propagator) grpc.UnaryServerInterceptor {
 	return func(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
 		var resp any
-		op := observability.ServerOperation{Action: info.FullMethod}
+		op := observability.NewServerOperation(ctx, prop, info.FullMethod)
 		err := in.Run(ctx, op, func(ctx context.Context) error {
 			var e error
 			resp, e = handler(ctx, req)
@@ -96,9 +97,9 @@ func resilienceUnaryInterceptor(in *runtime.Inbound, service string) grpc.UnaryS
 // as a unary call: admission happens once when the stream opens, the handler
 // runs with the derived context, and settlement happens when the handler
 // returns. Fault injection therefore lives inside the guard for streams too.
-func resilienceStreamInterceptor(in *runtime.Inbound) grpc.StreamServerInterceptor {
+func resilienceStreamInterceptor(in *governance.Inbound, prop traffic.Propagator) grpc.StreamServerInterceptor {
 	return func(srv any, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
-		op := observability.ServerOperation{Action: info.FullMethod}
+		op := observability.NewServerOperation(ss.Context(), prop, info.FullMethod)
 		return in.Run(ss.Context(), op, func(ctx context.Context) error {
 			return handler(srv, &contextServerStream{ServerStream: ss, ctx: ctx})
 		})
@@ -121,13 +122,22 @@ func mapServerPolicyError(err error) error {
 	if err == nil {
 		return nil
 	}
-	var ref *runtime.Refusal
+	var ref *governance.Refusal
 	if !errors.As(err, &ref) {
 		return err
 	}
 	switch ref.Verdict() {
 	case admission.VerdictRateLimited, admission.VerdictBulkheadFull:
 		return status.Error(codes.ResourceExhausted, ref.Error())
+	case admission.VerdictFaultInjected:
+		// The fault's class decides the wire code: a caller-mistake failure must
+		// not reach the client as "the downstream is unavailable", or its retry
+		// policy and breaker would act on a lie. Passing the raw error through
+		// (the old behavior) made it cross as codes.Unknown.
+		if ref.Fault().Business() {
+			return status.Error(codes.InvalidArgument, ref.Error())
+		}
+		return status.Error(codes.Unavailable, ref.Error())
 	default:
 		return err
 	}

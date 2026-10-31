@@ -21,7 +21,7 @@ import (
 
 	"github.com/hibiken/asynq"
 	"go-spring.org/cloud/actuator/health"
-	"go-spring.org/cloud/runtime"
+	"go-spring.org/cloud/governance"
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/flatten"
@@ -91,7 +91,7 @@ func init() {
 // manager is required — the container supplies it via the runtime —
 // so a bundle carrying none is a construction error, never a graceful
 // downgrade.
-func newClient(ctx *gs.ContextProvider, c Config, d Driver, center *runtime.Runtime) (*Client, error) {
+func newClient(ctx *gs.ContextProvider, c Config, d Driver, center *governance.Runtime) (*Client, error) {
 	// No company Driver bean → fall back to the bundled default assembly.
 	if d == nil {
 		d = DefaultDriver{}
@@ -100,7 +100,7 @@ func newClient(ctx *gs.ContextProvider, c Config, d Driver, center *runtime.Runt
 	if err != nil {
 		return nil, err
 	}
-	return NewClient(connOpt, c.Addr), nil
+	return NewClient(connOpt, c.Addr, center.TrafficPropagator()), nil
 }
 
 // newServer builds the worker Server bean. The asynq server is constructed here

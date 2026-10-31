@@ -24,7 +24,10 @@
 package StarterTdengine
 
 import (
-	"go-spring.org/cloud/runtime/dataplane/outbound/chain"
+	"context"
+
+	"go-spring.org/cloud/governance/capability/traffic"
+	"go-spring.org/cloud/governance/dataplane/outbound/chain"
 	"go-spring.org/log"
 )
 
@@ -41,8 +44,8 @@ var accessTag = log.RegisterAppTag("tdengine", "access")
 // statement kind — "exec" or "query" — a closed set; stmt is the SQL text. The
 // family's vocabulary lives in [wire]; this starter supplies only what only it
 // knows.
-func operation(op, stmt string) chain.Operation {
-	o := chain.DBOp(tdengineSystem, op, stmt)
+func operation(ctx context.Context, prop traffic.Propagator, op, stmt string) chain.Operation {
+	o := chain.DBOp(ctx, prop, tdengineSystem, op, stmt)
 	o.Observe.Log.Tag = accessTag
 	return o
 }

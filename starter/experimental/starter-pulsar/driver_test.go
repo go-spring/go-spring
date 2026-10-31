@@ -24,8 +24,8 @@ import (
 	"time"
 
 	"github.com/apache/pulsar-client-go/pulsar"
+	"go-spring.org/cloud/governance/capability/traffic"
 	"go-spring.org/cloud/messaging"
-	"go-spring.org/cloud/runtime/dataplane/kernel/traffic"
 	"go-spring.org/stdlib/testing/assert"
 )
 

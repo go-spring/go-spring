@@ -22,8 +22,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"go-spring.org/cloud/runtime/dataplane/kernel/discovery"
-	"go-spring.org/cloud/runtime/dataplane/kernel/loadbalance"
+	"go-spring.org/cloud/governance/capability/discovery"
+	"go-spring.org/cloud/governance/capability/loadbalance"
 	"go-spring.org/stdlib/testing/assert"
 )
 
@@ -56,7 +56,8 @@ func TestClientIP(t *testing.T) {
 // computed on the proxy path.
 func TestSelectionHashKeyAffinity(t *testing.T) {
 	mgr := loadbalance.NewManager()
-	chain := mgr.Chain(context.Background(), gatewaySource(t, "10.0.0.1:80", "10.0.0.2:80"), gatewayLabel("orders"))
+	chain, err := mgr.Chain(context.Background(), gatewaySource(t, "10.0.0.1:80", "10.0.0.2:80"), gatewayLabel("orders"))
+	assert.Error(t, err).Nil()
 
 	pickFor := func(clientIP string) string {
 		ep, err := chain.Pick(context.Background(), loadbalance.PickInfo{HashKey: clientIP})
@@ -76,8 +77,11 @@ func TestSelectionHashKeyAffinity(t *testing.T) {
 	// path, driven through the manager exactly as a center push drives it — and
 	// the new generation makes the hint authoritative.
 	mgr.Apply(context.Background(), loadbalance.Settings{Rules: []loadbalance.Rule{{
-		Service:   gatewayLabel("orders"),
-		Selection: loadbalance.Selection{Balancer: loadbalance.ConsistentHash},
+		Service: gatewayLabel("orders"),
+		Selection: loadbalance.Selection{
+			Balancer:       loadbalance.ConsistentHash,
+			ConsistentHash: loadbalance.ConsistentHashParams{Replicas: 100},
+		},
 	}}})
 	assert.That(t, chain.Selection().Balancer).Equal(loadbalance.ConsistentHash)
 

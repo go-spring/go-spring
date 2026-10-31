@@ -194,7 +194,7 @@ no run to trace.
   `WithTimeout`, and endpoint selection does not apply. What needs governing is
   a call the job body makes (say an http-client `http:` label), not the job
   itself; job health is covered by the `scheduling.runs` outcome plus the lag
-  metric. The full rationale lives in `cloud/runtime/controlplane/governance/README.md`.
+  metric. The full rationale lives in `cloud/governance/README.md`.
 - `NewScheduler` returns the exported concrete `*Scheduler` (all fields
   private) — the `Scheduler` interface was removed. `NewJob` returns
   `(*Job, error)` (error, not panic), and `Schedule(j *Job)` is the one

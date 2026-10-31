@@ -5,7 +5,7 @@
 `starter-discovery-zookeeper` adapts ZooKeeper as a service registry: each configured
 ensemble becomes ONE backend bean that serves both halves of the naming idiom — the write
 side (registering the **current instance** as an ephemeral znode) and the read side (a
-`cloud/runtime/dataplane/kernel/discovery` backend for resolving other instances). It is the Go-Spring equivalent of
+`cloud/governance/capability/discovery` backend for resolving other instances). It is the Go-Spring equivalent of
 Spring Cloud's `ServiceRegistry` + `DiscoveryClient`, backed by ephemeral znodes.
 
 Use it for **VM / bare-metal / hybrid** deployments where the platform does not register
@@ -37,7 +37,7 @@ Two blocks = one registration fanned out to two ensembles; blocks across backend
 ## Registration Is Owned by starter-discovery
 
 Importing this starter imports the registration core
-([cloud/runtime/dataplane/kernel/discovery](../../cloud/runtime/dataplane/kernel/discovery)) transitively: a single `discoveryServer` `gs.Server`
+([cloud/governance/capability/discovery](../../cloud/governance/capability/discovery)) transitively: a single `discoveryServer` `gs.Server`
 collects ALL discovery beans — across ALL backends — and registers the instance into EVERY
 configured center once the app is ready, deregisters from all of them as shutdown begins
 (via `PreStop`), and broadcasts `UpdateWeight`. Any registration failure fails startup, so
@@ -129,7 +129,7 @@ reconstruct an `Endpoint`.
 - Each block's backend bean is constructed eagerly: it dials the ensemble (probing it — an
   `Exists` call blocks until the session connects — so an unreachable ZooKeeper fails
   startup) and owns the block's session, both halves sharing it.
-- The `discoveryServer` from the cloud/runtime/controlplane/registration core collects every backend's registry,
+- The `discoveryServer` from the cloud/governance/controlplane/registration core collects every backend's registry,
   waits for readiness, then `Register`s the instance into each center: it creates the
   persistent parent directories on demand and writes the instance as an **ephemeral** leaf
   znode.

@@ -138,7 +138,7 @@ logger.lock_access.tag=_app_lock_access
   `starter-go-redis`.
 * **There is no `driver=` key: the backend is chosen by blank import.** `cloud/lock`
   takes a *live* backend handle rather than a declarative driver string, so unlike
-  `cloud/runtime/dataplane/kernel/discovery` / `cloud/runtime/dataplane/outbound/resilience` there is no package-level driver registry;
+  `cloud/governance/capability/discovery` / `cloud/governance/dataplane/outbound/resilience` there is no package-level driver registry;
   swapping to etcd/consul/k8s is a blank-import change under the same `spring.lock`
   prefix.
 * **Per-acquire knobs go through `lock.Option`, not config.** TTL, renew/retry

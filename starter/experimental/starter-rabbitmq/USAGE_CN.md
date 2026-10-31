@@ -211,7 +211,7 @@ gs.Run()
 ```
 
 即：publish 只被声明与观测，从不被守卫。`newClient` [starter.go:87] 仍注入必填的
-`*runtime.Runtime`（`center`）——治理家族唯一的注入点，client 正是从这一个对象上读取其
+`*governance.Runtime`（`center`）——治理家族唯一的注入点，client 正是从这一个对象上读取其
 resilience/fault 职权（`center.ResilienceClient()`、`center.FaultClient()`）——但 rabbitmq client 没有
 可挂 resilience executor 的缝 [entity.go:58-62]，故中心里的职权都不作用于任何 publish 或
 consume：既不限流、不熔断、不重试，也不注入故障。`center` 是必填的（成功启动的应用里绝不为
@@ -227,7 +227,7 @@ Publish [client.go:109-134]：
 
 1. 信封 → `amqp.Publishing`：`Body` ← Payload、`Headers` ← 字符串头
    （toAMQPTable，空则 nil）、`MessageId` ← `msg.Key`。
-2. 若 propagator 的 `IsLoadTest(ctx)`，标记写入 AMQP header `x-loadtest`，
+2. 若 `traffic.IsLoadTest(ctx, prop)`，标记写入 AMQP header `x-traffic`，
    让消费侧识别压测流量。
 3. `GuardedPublish` 在 ctx 上声明该 publish 的身份（`chain.Operation`，见
    observe.go）并在连接的 observer 下运行调用。observer 是唯一的发射点：

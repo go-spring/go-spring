@@ -17,13 +17,18 @@
 package StarterAsynq
 
 import (
-	"go-spring.org/cloud/runtime/dataplane/outbound/chain"
+	"context"
+	"go-spring.org/cloud/governance/capability/traffic"
+	"go-spring.org/cloud/governance/dataplane/outbound/chain"
 	"strings"
 	"testing"
 
 	"go-spring.org/stdlib/testing/assert"
 	"go.opentelemetry.io/otel/attribute"
 )
+
+// testProp is the process traffic convention these fixtures run under.
+var testProp = traffic.NewDefaultPropagator(traffic.DefaultBinding())
 
 // attrsLine renders attributes as "k=v" pairs in slice order.
 func attrsLine(attrs []attribute.KeyValue) string {
@@ -38,8 +43,8 @@ func attrsLine(attrs []attribute.KeyValue) string {
 // the emitter needs: the operation name for the span, the family's metric
 // prefix, the messaging.* labels and this starter's access-log tag.
 func TestOperationDeclaresFamilyVocabulary(t *testing.T) {
-	op := operation("enqueue", "probe:task")
-	assert.String(t, op.Request.Action).Equal("enqueue")
+	op := operation(context.Background(), testProp, "enqueue", "probe:task")
+	assert.String(t, op.Request.Action).Equal("enqueue probe:task")
 	assert.String(t, op.Observe.Metric.Name).Equal("messaging.client")
 	assert.String(t, attrsLine(op.Observe.Metric.Attrs)).Equal("messaging.system=asynq,messaging.operation=enqueue")
 	assert.That(t, op.Observe.Log.Tag == accessTag).True()
@@ -50,7 +55,7 @@ func TestOperationDeclaresFamilyVocabulary(t *testing.T) {
 // multiply without bound. It is asserted on Attrs because Attrs is what labels
 // are built from.
 func TestOperationTaskTypeStaysOutOfLabels(t *testing.T) {
-	op := operation("enqueue", "probe:task")
+	op := operation(context.Background(), testProp, "enqueue", "probe:task")
 	for _, a := range op.Observe.Metric.Attrs {
 		assert.That(t, string(a.Key) == "messaging.destination.name").False()
 	}
@@ -61,14 +66,14 @@ func TestOperationTaskTypeStaysOutOfLabels(t *testing.T) {
 // carries no detail, which is also what levelled its success log at Info rather
 // than Debug — the same rule the emitter applies.
 func TestOperationWithoutTaskTypeCarriesNoDetail(t *testing.T) {
-	assert.Number(t, len(detailAttrs(operation("enqueue", "")))).Equal(0)
+	assert.Number(t, len(detailAttrs(operation(context.Background(), testProp, "enqueue", "")))).Equal(0)
 }
 
 // TestOperationTruncatesDestination proves a long task type is bounded before it
 // reaches the span or the log.
 func TestOperationTruncatesDestination(t *testing.T) {
 	const maxDetail = 512
-	op := operation("enqueue", strings.Repeat("t", maxDetail+50))
+	op := operation(context.Background(), testProp, "enqueue", strings.Repeat("t", maxDetail+50))
 	assert.Number(t, len(detailAttrs(op)[0].Value.AsString())).Equal(maxDetail)
 }
 

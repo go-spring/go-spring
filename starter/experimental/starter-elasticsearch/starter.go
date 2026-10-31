@@ -21,7 +21,7 @@ import (
 
 	"github.com/elastic/go-elasticsearch/v8/esapi"
 	"go-spring.org/cloud/actuator/health"
-	"go-spring.org/cloud/runtime"
+	"go-spring.org/cloud/governance"
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
@@ -78,7 +78,7 @@ func init() {
 // cluster fails fast rather than on first use; the probe is off by default, so a
 // cluster that is not up yet does not block startup.
 //
-// When c.ServiceName is set and mesh mode is off, the driver builds a by-name
+// When in-process discovery applies (a service name is set and the process is not in mesh mode), the driver builds a by-name
 // loader against the discovery backend the entry's ${discovery} label names,
 // its current live endpoint snapshot is turned into "scheme://host:port" node
 // addresses, and those override c.Addresses. This read is the fail-fast probe
@@ -98,7 +98,7 @@ func init() {
 // container supplies it via the runtime, so a center without one fails
 // at construction.
 func newClient(ctx *gs.ContextProvider, c Config, discoveryLabel string, d Driver,
-	center *runtime.Runtime) (*Client, error) {
+	center *governance.Runtime) (*Client, error) {
 	// The wiring tag applies the family-default discovery fallback (discoveryLabel);
 	// fold it into the config so the driver reads one label — c.Discovery — and
 	// resolves the backend itself, failing construction if it names no bean. "none"

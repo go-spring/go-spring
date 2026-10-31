@@ -21,15 +21,19 @@ import (
 	"testing"
 
 	"github.com/gomodule/redigo/redis"
+	"go-spring.org/cloud/governance/capability/traffic"
+	"go-spring.org/cloud/governance/dataplane/outbound/chain"
+	observability "go-spring.org/cloud/governance/dataplane/outbound/observe"
 	"go-spring.org/cloud/observability/attrs"
-	"go-spring.org/cloud/runtime/dataplane/outbound/chain"
-	observability "go-spring.org/cloud/runtime/dataplane/outbound/observe"
 	"go-spring.org/stdlib/testing/assert"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 )
+
+// testProp is the process traffic convention the tests build operations with.
+var testProp = traffic.NewDefaultPropagator(traffic.DefaultBinding())
 
 // The reader is the real one now that it lives in cloud/observability/attrs: this
 // module still has no starter-otel dependency, but it no longer has to mirror
@@ -101,7 +105,7 @@ func TestDoContextSpanCarriesSpanAttributes(t *testing.T) {
 	// The resilience layer declares the command's identity and the executor
 	// emits from it — one merged layer.
 	exec := observability.WrapClientExecutor(passthroughExecutor{}, "redigo", "svc")
-	c := NewConn(inner, user, resilienceInterceptor(exec, "svc"))
+	c := NewConn(inner, user, resilienceInterceptor(exec, "svc", testProp))
 
 	ctx := attrs.WithSpanAttributes(context.Background(),
 		attribute.String("deployment", "canary"))

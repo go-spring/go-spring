@@ -34,10 +34,10 @@ curl -fsS -X POST 'http://127.0.0.1:8848/nacos/v1/cs/configs' \
   governance:
     enabled: true
     client:
-      default:
-        enabled: true
+      enabled: true
+      resilience:
         timeout: 900ms
-        max-retries: 2'
+      max-retries: 2'
 # 打印: policy: enabled=true timeout=900ms retries=2
 ```
 

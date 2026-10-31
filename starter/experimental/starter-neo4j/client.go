@@ -24,11 +24,12 @@ package StarterNeo4j
 import (
 	"context"
 
-	"go-spring.org/cloud/runtime/dataplane/kernel/label"
-	"go-spring.org/cloud/runtime/dataplane/outbound/chain"
+	"go-spring.org/cloud/governance/capability/label"
+	"go-spring.org/cloud/governance/capability/traffic"
+	"go-spring.org/cloud/governance/dataplane/outbound/chain"
 
 	"github.com/neo4j/neo4j-go-driver/v5/neo4j"
-	"go-spring.org/cloud/runtime"
+	"go-spring.org/cloud/governance"
 )
 
 // Client is the wrapper bean Neo4j drivers are injected as. It embeds the raw
@@ -61,11 +62,15 @@ type Client struct {
 
 	// exec is the resilience executor protecting queries, fixed by [NewClient]
 	// from the runtime it is handed. The center is required to carry a
-	// [resilience.Manager] — [runtime.Runtime.ExecutorFor] panics without one —
+	// [resilience.Manager] — [governance.Runtime.ExecutorFor] panics without one —
 	// rather than silently running bare. A zero Client built
 	// by hand (a test) leaves it nil, and [Query] / [RunWithResilience] then run
 	// their call inline.
 	exec chain.Executor
+
+	// prop is the process traffic convention, taken from the runtime when the
+	// client is built; each call's operation records its traffic class.
+	prop traffic.Propagator
 }
 
 // NewClient builds a complete Client — identity and governance both — over a
@@ -80,20 +85,21 @@ type Client struct {
 // and initializing it are the same act, so the container has no lifecycle hook
 // to register and no way to hand out a half-built client.
 //
-// center carries the container's facilities (see [runtime.Runtime]), applied
+// center carries the container's facilities (see [governance.Runtime]), applied
 // HERE so a Client cannot exist half-assembled: there is no later patching and
 // nothing the wiring has to remember to call. A hand-built client must supply a
-// center holding a [resilience.Manager]: [runtime.Runtime.ExecutorFor] is
+// center holding a [resilience.Manager]: [governance.Runtime.ExecutorFor] is
 // required, so a nil center is a construction error —
-// [runtime.Runtime.ExecutorFor] panics — never a graceful downgrade. The manager's ExecutorFor resolves its backing
+// [governance.Runtime.ExecutorFor] panics — never a graceful downgrade. The manager's ExecutorFor resolves its backing
 // executor lazily, on each Execute, so the call order relative to
 // the center's wiring is irrelevant.
-func NewClient(client neo4j.DriverWithContext, cfg Config, center *runtime.Runtime) *Client {
+func NewClient(client neo4j.DriverWithContext, cfg Config, center *governance.Runtime) *Client {
 	c := &Client{
 		DriverWithContext: client,
 	}
 	c.serviceLabel = label.ServiceLabel("neo4j", cfg.ServiceName, cfg.URI)
 	c.exec = center.ExecutorFor("neo4j", c.serviceLabel)
+	c.prop = center.TrafficPropagator()
 	return c
 }
 

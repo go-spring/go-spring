@@ -17,8 +17,8 @@
 package StarterHTTPClient
 
 import (
-	"go-spring.org/cloud/runtime/dataplane/kernel/discovery"
-	"go-spring.org/cloud/runtime/dataplane/kernel/label"
+	"go-spring.org/cloud/governance/capability/discovery"
+	"go-spring.org/cloud/governance/capability/label"
 	"go-spring.org/cloud/security"
 	"go-spring.org/starter-http-client/httpx"
 	"go-spring.org/stdlib/errutil"
@@ -41,7 +41,7 @@ type Config struct {
 	// a fixed address. It may also be set ALONGSIDE Addr: Addr then pins the
 	// direct address while ServiceName remains the (stable) governance service
 	// label — so switching an entry between direct and discovery addressing does
-	// not silently change the key spring.governance.client.rules match on.
+	// not silently change the key client.resilience.services match on.
 	ServiceName string `value:"${service-name:=}"`
 
 	// Discovery is the label of the discovery backend that resolves ServiceName,
@@ -56,7 +56,7 @@ type Config struct {
 	// pair (tls.cert-file/key-file), a CA bundle (tls.ca-file), the expected
 	// peer name (tls.server-name) and an insecure escape hatch. Off by default;
 	// when enabled it is wired into the transport's TLS config, so
-	// WithScheme("https") gets verifiable TLS instead of system defaults.
+	// scheme "https" gets verifiable TLS instead of system defaults.
 	TLS security.TLSConfig `value:"${tls:=}"`
 }
 
@@ -64,7 +64,7 @@ type Config struct {
 // in the governance rules document (the governance center), matched by this
 // entry's service label. That includes the load-balancing strategy
 // (`balancer`) and outlier suspension (`outlier-threshold` /
-// `outlier-suspend-for`) — write them under spring.governance.client.rules[N], not here.
+// `outlier-suspend-for`) — write them under client.loadbalance.services[N], not here.
 //
 // Keep governance retry counts at 0 unless requests are idempotent: the client may
 // issue POSTs and other non-idempotent verbs, and a retry re-sends them.

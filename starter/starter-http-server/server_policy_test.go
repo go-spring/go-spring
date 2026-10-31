@@ -21,9 +21,13 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"go-spring.org/cloud/runtime"
-	"go-spring.org/cloud/runtime/dataplane/inbound/admission"
+	"go-spring.org/cloud/governance"
+	"go-spring.org/cloud/governance/capability/traffic"
+	"go-spring.org/cloud/governance/dataplane/inbound/admission"
 )
+
+// testProp is the traffic convention these fixtures run under.
+var testProp = traffic.NewDefaultPropagator(traffic.DefaultBinding())
 
 // serveServerPolicy drives one request through the inbound filter and reports the
 // response plus how often the handler ran. The inbound authority is armed with
@@ -33,11 +37,11 @@ func serveServerPolicy(t *testing.T, handler http.HandlerFunc) (*httptest.Respon
 	t.Helper()
 	handlerRuns := 0
 	mgr := admission.NewManager()
-	in, err := runtime.InboundOver("http-server", "http-server::9090", mgr)
+	in, err := governance.InboundOver("http-server", "http-server::9090", mgr)
 	if err != nil {
 		t.Fatal(err)
 	}
-	mw := serverPolicyWith(in)
+	mw := serverPolicyWith(in, testProp)
 	h := mw(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		handlerRuns++
 		handler(w, r)

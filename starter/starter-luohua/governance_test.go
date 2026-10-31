@@ -20,8 +20,8 @@ import (
 	"context"
 	"testing"
 
-	"go-spring.org/cloud/runtime/dataplane/outbound/chain"
-	"go-spring.org/cloud/runtime/dataplane/outbound/resilience"
+	"go-spring.org/cloud/governance/dataplane/outbound/chain"
+	"go-spring.org/cloud/governance/dataplane/outbound/resilience"
 )
 
 // TestGovernanceDriverRegisteredAndFlavored locks the luohua governance
@@ -33,10 +33,8 @@ import (
 func TestGovernanceDriverRegisteredAndFlavored(t *testing.T) {
 	d := luohuaResilienceDriver{}
 
-	ex, err := d.NewExecutor("svc", resilience.Policy{})
-	if err != nil {
-		t.Fatalf("NewExecutor: %v", err)
-	}
+	m := resilience.NewManager(d)
+	ex := m.ExecutorFor("svc")
 	lh, ok := ex.(*luohuaExecutor)
 	if !ok {
 		t.Fatalf("executor is %T, want *luohuaExecutor (the luohua flavor over the bundled engine)", ex)

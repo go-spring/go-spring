@@ -18,28 +18,42 @@ package StarterGoRedis
 
 import (
 	"context"
-	"go-spring.org/cloud/runtime/dataplane/inbound/admission"
 	"testing"
 	"time"
 
+	"go-spring.org/cloud/governance/dataplane/inbound/admission"
+
 	"github.com/redis/go-redis/v9"
-	"go-spring.org/cloud/runtime"
-	"go-spring.org/cloud/runtime/controlplane/governance"
-	serverfault "go-spring.org/cloud/runtime/dataplane/inbound/fault"
-	"go-spring.org/cloud/runtime/dataplane/kernel/discovery"
-	"go-spring.org/cloud/runtime/dataplane/kernel/loadbalance"
-	clientfault "go-spring.org/cloud/runtime/dataplane/outbound/fault"
-	"go-spring.org/cloud/runtime/dataplane/outbound/resilience"
+	"go-spring.org/cloud/governance"
+	"go-spring.org/cloud/governance/capability/discovery"
+	"go-spring.org/cloud/governance/capability/loadbalance"
+	"go-spring.org/cloud/governance/capability/traffic"
+	admissionplane "go-spring.org/cloud/governance/controlplane/admission"
+	loadbalanceplane "go-spring.org/cloud/governance/controlplane/loadbalance"
+	"go-spring.org/cloud/governance/controlplane/source"
+	serverfault "go-spring.org/cloud/governance/dataplane/inbound/fault"
+	clientfault "go-spring.org/cloud/governance/dataplane/outbound/fault"
+	"go-spring.org/cloud/governance/dataplane/outbound/resilience"
 	"go-spring.org/stdlib/testing/assert"
 )
 
 // testCenter builds a runtime over res and lb with an unarmed fault
 // injector and an empty document: everything a driver reads, with no wiring.
-func testCenter(t *testing.T, resClient *resilience.Manager, lb *loadbalance.Manager) *runtime.Runtime {
+func testCenter(t *testing.T, resClient *resilience.Manager, lb *loadbalance.Manager) *governance.Runtime {
 	t.Helper()
-	ctr, err := runtime.New(resClient, lb, clientfault.NewClientManager(nil), serverfault.NewServerManager(nil), nil,
-		governance.NewPushSource(governance.Config{Server: governance.ServerConfig{Default: admission.DefaultPolicy()}}))
-	if err != nil {
+	ctr := &governance.Runtime{
+		Resilience:  resClient,
+		LoadBalance: lb,
+		Admission:   admission.NewManager(),
+		ClientFault: clientfault.NewManager(),
+		ServerFault: serverfault.NewManager(),
+		Directory:   discovery.NewManager(nil),
+		Traffic:     traffic.NewDefaultPropagator(traffic.DefaultBinding()),
+	}
+	if _, err := loadbalanceplane.NewCenter(context.Background(), ctr.LoadBalance, source.NewPushSource(loadbalance.Settings{})); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := admissionplane.NewCenter(context.Background(), ctr.Admission, source.NewPushSource(admission.Settings{})); err != nil {
 		t.Fatal(err)
 	}
 	return ctr
@@ -58,9 +72,13 @@ type poolDriver struct {
 	returned *loadbalance.Chain
 }
 
-func (d *poolDriver) CreateClient(ctx context.Context, c Config, center *runtime.Runtime) (*Client, error) {
+func (d *poolDriver) CreateClient(ctx context.Context, c Config, center *governance.Runtime) (*Client, error) {
 	src := func(context.Context) ([]discovery.Endpoint, error) { return d.endpoints, nil }
-	d.returned = center.Loadbalance().Chain(ctx, src, serviceLabel(c))
+	chain, cerr := center.Loadbalance().Chain(ctx, src, serviceLabel(c))
+	if cerr != nil {
+		return nil, cerr
+	}
+	d.returned = chain
 	// A real *redis.Client is not needed: this driver builds no dialer.
 	return NewClient(redis.NewClient(&redis.Options{Addr: "127.0.0.1:0"}), c, d.returned, center)
 }
@@ -92,6 +110,7 @@ func TestDriverChainIsGovernedFromConstruction(t *testing.T) {
 		Service: serviceLabel(cfg),
 		Selection: loadbalance.Selection{
 			Balancer:          loadbalance.ConsistentHash,
+			ConsistentHash:    loadbalance.ConsistentHashParams{Replicas: 100},
 			OutlierThreshold:  3,
 			OutlierSuspendFor: time.Second,
 		},
@@ -100,9 +119,8 @@ func TestDriverChainIsGovernedFromConstruction(t *testing.T) {
 	// The rule landed on the chain the driver returned, as a rebuild — a fresh
 	// generation, not the base one retuned.
 	assert.That(t, drv.returned).NotNil()
-	assert.Number(t, drv.returned.Generation()).Equal(uint64(2))
 	assert.That(t, drv.returned.Selection().Balancer).Equal(loadbalance.ConsistentHash)
-	assert.Number(t, drv.returned.Tracker().Config().Threshold).Equal(3)
+	assert.Number(t, drv.returned.Selection().OutlierThreshold).Equal(3)
 	// Destroy still releases the client.
 	assert.Error(t, w.Destroy()).Nil()
 }

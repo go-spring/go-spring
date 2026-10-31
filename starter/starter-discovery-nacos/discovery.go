@@ -15,7 +15,7 @@
  */
 
 // This file is the CONSUMER half of Nacos service discovery: the
-// cloud/runtime/dataplane/kernel/discovery Discovery backend serving snapshots of instances from Nacos
+// cloud/governance/capability/discovery Discovery backend serving snapshots of instances from Nacos
 // naming. It is derived from the ${spring.discovery.nacos} center (starter.go)
 // under the fixed label "nacos" — there is no separate discovery config block;
 // read and write share the center's namespace/group/cluster, so they can never
@@ -34,7 +34,7 @@ import (
 	"github.com/nacos-group/nacos-sdk-go/v2/clients/naming_client"
 	"github.com/nacos-group/nacos-sdk-go/v2/model"
 	"github.com/nacos-group/nacos-sdk-go/v2/vo"
-	"go-spring.org/cloud/runtime/dataplane/kernel/discovery"
+	"go-spring.org/cloud/governance/capability/discovery"
 	"go-spring.org/log"
 	"go-spring.org/stdlib/errutil"
 )
@@ -92,7 +92,7 @@ func (d *nacosDiscovery) entry(name string) *nacosEntry {
 // Resolve returns the current healthy instance set for name. The first call
 // pays the seed query (bounded by ctx) and opens the Nacos subscription; later
 // calls read the cache.
-func (d *nacosDiscovery) Resolve(ctx context.Context, name string, opts ...discovery.Option) ([]discovery.Endpoint, error) {
+func (d *nacosDiscovery) Resolve(ctx context.Context, name string) ([]discovery.Endpoint, error) {
 	e := d.entry(name)
 	e.mu.Lock()
 	defer e.mu.Unlock()
@@ -115,7 +115,7 @@ func (d *nacosDiscovery) Resolve(ctx context.Context, name string, opts ...disco
 		// starts the freshness clock before any push arrives.
 		d.obs.Synced(name, nil)
 	}
-	eps := discovery.Snapshot(e.eps, discovery.NewQuery(name, opts...))
+	eps := e.eps
 	return eps, nil
 }
 

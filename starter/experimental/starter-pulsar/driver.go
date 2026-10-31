@@ -30,7 +30,7 @@ import (
 	"github.com/apache/pulsar-client-go/pulsar"
 	plog "github.com/apache/pulsar-client-go/pulsar/log"
 	"github.com/prometheus/client_golang/prometheus"
-	"go-spring.org/cloud/runtime"
+	"go-spring.org/cloud/governance"
 	"go-spring.org/log"
 	"go-spring.org/stdlib/errutil"
 )
@@ -52,7 +52,7 @@ import (
 // client for the starter to complete.
 //
 // center supplies the container's service-governance capabilities (see
-// [runtime.Runtime]); it is one object rather than a parameter per
+// [governance.Runtime]); it is one object rather than a parameter per
 // capability so this interface — which every company driver implements — stays
 // stable as capabilities are added. A driver that has no use for one of its
 // authorities simply ignores it.
@@ -61,7 +61,7 @@ import (
 // ${spring.pulsar} is built through it, and per-instance differences are
 // expressed through [Config].
 type Driver interface {
-	CreateClient(ctx context.Context, c Config, center *runtime.Runtime) (pulsar.Client, error)
+	CreateClient(ctx context.Context, c Config, center *governance.Runtime) (pulsar.Client, error)
 }
 
 // DefaultDriver is the default implementation of the Driver interface.
@@ -74,7 +74,7 @@ type DefaultDriver struct{}
 // via [AttachGovernance], so the client is complete when returned) — but not the
 // startup broker probe (Ping), which is the starter's lifecycle concern (see
 // newClient in starter.go).
-func (DefaultDriver) CreateClient(ctx context.Context, c Config, center *runtime.Runtime) (pulsar.Client, error) {
+func (DefaultDriver) CreateClient(ctx context.Context, c Config, center *governance.Runtime) (pulsar.Client, error) {
 	opts := pulsar.ClientOptions{
 		URL:                        c.URL,
 		OperationTimeout:           c.OperationTimeout,

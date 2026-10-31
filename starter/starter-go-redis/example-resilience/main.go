@@ -26,7 +26,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"go-spring.org/cloud/runtime/dataplane/outbound/chain"
+	"go-spring.org/cloud/governance/dataplane/outbound/chain"
 	"os"
 	"path/filepath"
 	"runtime"

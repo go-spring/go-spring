@@ -15,13 +15,13 @@ per configured center —
 - **Provider half** (`spring.discovery.nacos.<name>.*` + `spring.discovery.*`): registers this
   process into every configured Nacos center once the app is ready. For VM / bare-metal /
   hybrid deployments; in pure Kubernetes the platform registers Pods for you.
-- **Consumer half** (no config of its own): the same bean is a `cloud/runtime/dataplane/kernel/discovery` backend which
+- **Consumer half** (no config of its own): the same bean is a `cloud/governance/capability/discovery` backend which
   client starters (gateway `lb://` routes, `spring.http-client.instances.<n>.discovery`, etc.)
   resolve through by citing the bean name `nacos.<name>`.
 
 **Activation**: each `spring.discovery.nacos.<name>` block is one discovery center — one shared
 naming client, one lifecycle (a startup probe only when `ping=true`; `starter.go`). The bean named `nacos.<name>`
-exports BOTH `registration.Registry` (collected by the cloud/runtime/controlplane/registration core when
+exports BOTH `registration.Registry` (collected by the cloud/governance/controlplane/registration core when
 `spring.discovery.service-name` is set — a pure consumer app registers nothing) and
 `discovery.Discovery` (cited by bean name, so a pure provider never pays for the read half).
 
@@ -52,7 +52,7 @@ demo/
 require (
     go-spring.org/spring                     v1.3.x
     go-spring.org/starter-discovery-nacos     latest
-    go-spring.org/starter-gateway            latest   // consumer: lb:// routes via cloud/runtime/dataplane/kernel/discovery
+    go-spring.org/starter-gateway            latest   // consumer: lb:// routes via cloud/governance/capability/discovery
     go-spring.org/starter-echo               latest   // the served HTTP surface of the provider
 )
 ```
@@ -125,8 +125,8 @@ spring.gateway.discovery=nacos.main                 # the backend bean's name
 spring.gateway.routes.orders.path=/api/**
 spring.gateway.routes.orders.upstream.target=lb://orders
 # The route's balancing strategy is NOT a gateway key: it is a governance rule
-# for the route's label — spring.governance.client.rules[N].service=gateway:orders with
-# spring.governance.client.rules[N].balancer=weighted (see cloud/runtime/controlplane/governance/README.md §3.1).
+# for the route's label — spring.governance.client.loadbalance.services[N].service=gateway:orders with
+# spring.governance.client.loadbalance.services[N].balancer=weighted (see cloud/governance/README.md §3.1).
 ```
 
 **Verify** (nacos from `example/docker-compose.yml` — `docker compose up -d`, then wait for
@@ -149,7 +149,7 @@ The example's one-shot self-verification (`go run ./example -manual` to keep it 
 
 ### 2.1 Registration lifecycle (provider half)
 
-Registration is owned by the **cloud/runtime/controlplane/registration core** (`../starter-discovery`), imported
+Registration is owned by the **cloud/governance/controlplane/registration core** (`../starter-discovery`), imported
 transitively by this starter; the nacos starter only contributes one registry bean per block:
 
 ```
@@ -295,7 +295,7 @@ curl -s -X PUT '127.0.0.1:8848/nacos/v1/ns/instance?serviceName=orders&ip=127.0.
 ```
 
 If every replica is drained, the pool falls back to an even split rather than erroring — a
-fully-drained service must be caught by monitoring (ErrNoAvailable only when the set is empty
+fully-drained service must be caught by monitoring (ErrNoEndpoints only when the set is empty
 or all Disabled).
 
 ### 4.3 Kill provider / heartbeat expiry
@@ -359,5 +359,5 @@ ip:port; the core still binds an `id` under `${spring.discovery}` for other back
 nacos side ignores it). Resolved 2026-09 (multi-center named blocks): the single-block form
 was replaced by `spring.discovery.nacos.<name>.*` — one backend bean per block named
 `nacos.<name>` carrying BOTH the registry and the discovery backend, registration moved into
-the shared cloud/runtime/controlplane/registration core (one publication fanned out to every center), and discovery
+the shared cloud/governance/controlplane/registration core (one publication fanned out to every center), and discovery
 now cites the bean name instead of a fixed label. Observability: registration and discovery emit OTel metrics through the global providers — a no-op unless `starter-otel` is imported. `register`, `deregister` and `update_weight` each produce a client span plus a `discovery.operation.duration` record labelled `system`/`operation`/`service`/`status`; `discovery.registration.attempts_total` counts attempts by `reason` and `status`; the `discovery.instance.registered` gauge reads 1 while this instance is published and 0 while it is not, so a failed self-heal lands there instead of only in a log line. The discovery half reports every background cache sync to `discovery.sync_total` and keeps `discovery.cache.age_seconds` (seconds since the snapshot was last confirmed fresh), so a dead watch shows a climbing age rather than a silently stale address list. Nacos has no self-healing re-register — the SDK's ephemeral heartbeat keeps the instance alive — so `reason` is always `initial`.

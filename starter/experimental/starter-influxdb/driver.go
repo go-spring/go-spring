@@ -26,7 +26,7 @@ import (
 	"net/http"
 
 	influxdb2 "github.com/influxdata/influxdb-client-go/v2"
-	"go-spring.org/cloud/runtime"
+	"go-spring.org/cloud/governance"
 )
 
 // Driver interface defines how to create an InfluxDB client. It is an OPTIONAL
@@ -41,7 +41,7 @@ import (
 // of the ecosystem sees and future wrapper capabilities are reachable from it.
 // It returns the client COMPLETE: a custom driver builds its raw client however
 // it likes and hands it to [NewClient] together with center, which supplies the
-// container's facilities (see [runtime.Runtime]) and is applied while the
+// container's facilities (see [governance.Runtime]) and is applied while the
 // client is built. Nothing patches the client afterwards.
 //
 // center is one object rather than a parameter per capability so this interface
@@ -52,7 +52,7 @@ import (
 // ${spring.influxdb} is built through it, and per-instance differences are
 // expressed through [Config].
 type Driver interface {
-	CreateClient(ctx context.Context, c Config, center *runtime.Runtime) (*Client, error)
+	CreateClient(ctx context.Context, c Config, center *governance.Runtime) (*Client, error)
 }
 
 // DefaultDriver is the default implementation of the Driver interface.
@@ -65,7 +65,7 @@ type DefaultDriver struct{}
 // resilience transport into while the client is built (from
 // center's executor). The indirection is handed to [NewClient] so the wrapper
 // can reach it.
-func (DefaultDriver) CreateClient(ctx context.Context, c Config, center *runtime.Runtime) (*Client, error) {
+func (DefaultDriver) CreateClient(ctx context.Context, c Config, center *governance.Runtime) (*Client, error) {
 	dyn := newDynamicTransport()
 	opts := influxdb2.DefaultOptions().SetHTTPClient(&http.Client{Transport: dyn})
 	cl := influxdb2.NewClientWithOptions(c.ServerURL, c.AuthToken, opts)

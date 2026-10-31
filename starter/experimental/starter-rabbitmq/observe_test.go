@@ -18,13 +18,16 @@ package StarterRabbitMQ
 
 import (
 	"context"
-	"go-spring.org/cloud/runtime/dataplane/outbound/chain"
-	"go.opentelemetry.io/otel/attribute"
 	"strings"
 	"testing"
 
+	"go-spring.org/cloud/governance/capability/traffic"
+	"go-spring.org/cloud/governance/dataplane/outbound/chain"
 	"go-spring.org/stdlib/testing/assert"
+	"go.opentelemetry.io/otel/attribute"
 )
+
+var testProp = traffic.NewDefaultPropagator(traffic.DefaultBinding())
 
 // A connection event's counter attribute and its log field must be the same key
 // with the same value, or a dashboard selecting
@@ -46,7 +49,7 @@ func TestConnStateRecordCarriesTheMetricKeys(t *testing.T) {
 // other way around. A destination in Attrs would become a metric label and
 // multiply the series without bound — the rule this pins.
 func TestOperationDeclaresBoundedAttrsAndUnboundedDetail(t *testing.T) {
-	op := operation(opSend, "orders.created")
+	op := operation(context.Background(), testProp, opSend, "orders.created")
 
 	assert.That(t, op.Request.Action).Equal("send orders.created")
 	assert.That(t, op.Observe.Metric.Name).Equal("messaging.client")
@@ -66,14 +69,14 @@ func TestOperationDeclaresBoundedAttrsAndUnboundedDetail(t *testing.T) {
 // A destinationless call carries no Detail at all — which is what levelled its
 // success log at Info rather than Debug.
 func TestOperationWithoutDestinationHasNoDetail(t *testing.T) {
-	if op := operation(opProcess, ""); len(detailAttrs(op)) != 0 {
+	if op := operation(context.Background(), testProp, opProcess, ""); len(detailAttrs(op)) != 0 {
 		t.Fatalf("a destinationless operation must carry no detail, got %v", detailAttrs(op))
 	}
 }
 
 // The destination is bounded at the same limit the access log applied.
 func TestOperationTruncatesDestination(t *testing.T) {
-	op := operation(opSend, strings.Repeat("q", 512+100))
+	op := operation(context.Background(), testProp, opSend, strings.Repeat("q", 512+100))
 	if got := len(detailAttrs(op)[0].Value.AsString()); got != 512 {
 		t.Fatalf("destination must be truncated to %d, got %d", 512, got)
 	}

@@ -16,7 +16,7 @@
 
 // rules.go holds the one translation from the neutral resilience knobs onto
 // sentinel-golang's rule shapes. It is OUTBOUND only: inbound requests run
-// through go-spring.org/cloud/runtime/dataplane/inbound/admission, which has its own bundled engine.
+// through go-spring.org/cloud/governance/dataplane/inbound/admission, which has its own bundled engine.
 //
 // Knobs a driver may legitimately NOT map are not faked here — the tables in
 // the READMEs name them (Burst and Algorithm on flow; sentinel v1.0.4 has no
@@ -30,7 +30,7 @@ import (
 	"github.com/alibaba/sentinel-golang/core/circuitbreaker"
 	"github.com/alibaba/sentinel-golang/core/flow"
 
-	breaker "go-spring.org/cloud/runtime/dataplane/kernel/circuitbreaker"
+	breaker "go-spring.org/cloud/governance/capability/circuitbreaker"
 )
 
 // flowKnobs is the direction-neutral view of the rate-limit stage a policy
@@ -44,7 +44,7 @@ type flowKnobs struct {
 }
 
 // breakerKnobs is the direction-neutral view of the circuit-breaker stage.
-// strategy arrives already resolved (see [resilience.Policy.ResolvedBreakerStrategy]).
+// strategy arrives already resolved (see [resilience.BreakerPolicy.ResolvedStrategy]).
 type breakerKnobs struct {
 	strategy       breaker.Strategy
 	errorThreshold int           // consecutive / error-count count

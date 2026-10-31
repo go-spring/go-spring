@@ -19,12 +19,12 @@
 // operation IS — its name, its db.system/db.operation labels, its SQL statement
 // and its access tag — as a [chain.Operation]; it emits nothing itself.
 //
-//	db.Use(gormobserve.NewPlugin("mysql"))
+//	db.Use(gormobserve.NewPlugin("mysql", prop))
 //
 // The signals — the call span, the call- and attempt-level duration histograms,
 // the in-flight gauge and the one access log — are emitted by the resilience
 // layer, the one place on the executor chain that sees a whole call (retries
-// included); see cloud/runtime/dataplane/outbound/resilience/observe.go. The identity now travels as an
+// included); see cloud/governance/dataplane/outbound/resilience/observe.go. The identity now travels as an
 // explicit argument to the executor rather than on the call's context: the
 // resilience callback that wraps each gorm processor asks this plugin for the
 // operation ([Plugin.Operation]) and passes it to resilience.Run. Building
@@ -33,7 +33,10 @@
 package gormobservability
 
 import (
-	"go-spring.org/cloud/runtime/dataplane/outbound/chain"
+	"context"
+
+	"go-spring.org/cloud/governance/capability/traffic"
+	"go-spring.org/cloud/governance/dataplane/outbound/chain"
 	"go-spring.org/log"
 	"gorm.io/gorm"
 )
@@ -49,8 +52,8 @@ var accessTag = log.RegisterAppTag("gorm", "access")
 // for it, empty when the operation produced none. The family's vocabulary —
 // attribute keys, the bounded/open split that puts the SQL in detail, the
 // truncation bound — lives in [wire].
-func operation(system, kind, stmt string) chain.Operation {
-	o := chain.DBOp(system, kind, stmt)
+func operation(ctx context.Context, prop traffic.Propagator, system, kind, stmt string) chain.Operation {
+	o := chain.DBOp(ctx, prop, system, kind, stmt)
 	o.Observe.Log.Tag = accessTag
 	return o
 }
@@ -67,6 +70,7 @@ func operation(system, kind, stmt string) chain.Operation {
 // layer reports them as any other undeclared call.
 type Plugin struct {
 	system string
+	prop   traffic.Propagator
 
 	// orig holds the dialect's own per-operation processor, captured in
 	// [Plugin.Initialize] before anything replaces it — the resilience callbacks
@@ -80,8 +84,8 @@ type Plugin struct {
 // given db.system label (e.g. "mysql", "postgresql", "clickhouse",
 // "microsoft.sql_server"). The signals themselves are emitted by the resilience
 // layer from the supplied operation.
-func NewPlugin(system string) *Plugin {
-	return &Plugin{system: system}
+func NewPlugin(system string, prop traffic.Propagator) *Plugin {
+	return &Plugin{system: system, prop: prop}
 }
 
 func (p *Plugin) Name() string { return "go-spring:observe" }
@@ -121,5 +125,5 @@ func (p *Plugin) Operation(tx *gorm.DB, kind string) chain.Operation {
 		return chain.Operation{}
 	}
 	orig(tx.Session(&gorm.Session{DryRun: true}))
-	return operation(p.system, kind, tx.Statement.SQL.String())
+	return operation(tx.Statement.Context, p.prop, p.system, kind, tx.Statement.SQL.String())
 }

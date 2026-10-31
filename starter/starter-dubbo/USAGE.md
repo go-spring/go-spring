@@ -224,7 +224,7 @@ Two dubbo-go filters are registered at init time; both are **opt-in per service*
 name to the provider's `filter` key (comma-separated, dubbo-go semantics for the rest):
 
 - **`loadtest`** (starter.go:102): reads the load-test marker from the inbound dubbo attachment
-  (string or []byte, both handled) and tags the context so the propagator's `IsLoadTest(ctx)` works in
+  (string or []byte, both handled) and tags the context so `traffic.IsLoadTest(ctx, prop)` works in
   later filters and in your service impl. Put it **first** in the chain (source comment,
   starter.go:97-101) so the marker lands before anything else branches on it.
 - **`fault`** (starter.go:90): reads the governance starter's fault injector bean, which a wiring
@@ -242,7 +242,7 @@ restart; timeout/retries do not (§4.2).
    (client.go:166-170).
 2. dubbo-go's consumer filter chain (whatever `consumer.filter` /
    `consumer.references.<n>.filter` installed) runs; outbound load-test marking is done by
-   cloud/runtime/dataplane/kernel/traffic's carrier injection — the starter's `loadtest` filter is the
+   cloud/governance/capability/traffic's carrier injection — the starter's `loadtest` filter is the
    inbound companion (starter.go:108 comment).
 3. Cluster strategy / loadbalance pick an instance (dubbo-go semantics; URL params — this is
    exactly the set the hot-reload path can change at runtime, §4.2).
@@ -405,7 +405,7 @@ land, the reference's `version`/`group` must match what the provider exported.
 
 Optional; active only when a governance rules source is configured and its rules document carries
 policy for the labels below. The poller injects the `*resilience.Manager` and the
-`*runtime.Runtime` as nullable constructor params (starter.go:59) and
+`*governance.Runtime` as nullable constructor params (starter.go:59) and
 subscribes to governance policies under two service labels (dync.go:252-253):
 
 - `dubbo:<application.name>` — consumer-level defaults
@@ -421,11 +421,11 @@ without restart.
 ### 4.5 Fault drill (provider side, no restart)
 
 1. Add `fault` to the service's filter chain: `...services.greet.filter=loadtest,fault`.
-2. Configure a governance rules source; set `spring.governance.client.fault.*` (rate/error/scope) in its rules.
-3. With `scope: loadtest`, only invocations carrying the load-test marker burn — mark them by
-   injecting the outbound carrier (cloud/runtime/dataplane/kernel/traffic) from a marked upstream, or use
-   `scope: real` in a dedicated environment.
-4. Watch: consumer receives the injected error; the propagator's `IsLoadTest(ctx)` returns true inside
+2. Configure a governance rules source; set `spring.fault.client.*` (rate/error/match.traffic) in its rules.
+3. With `match.traffic=loadtest`, only invocations carrying the load-test marker burn — mark them by
+   injecting the outbound carrier (cloud/governance/capability/traffic) from a marked upstream, or use
+   `match.traffic=real` in a dedicated environment.
+4. Watch: consumer receives the injected error; `traffic.IsLoadTest(ctx, prop)` returns true inside
    the impl for marked calls (loadtest filter ordered first).
 
 ### 4.6 Observing the log bridge

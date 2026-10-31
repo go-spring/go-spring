@@ -199,7 +199,7 @@
             },
             "header": {
               "type": "string",
-              "default": "X-LoadTest",
+              "default": "X-Traffic",
               "description": "Header marking load-test traffic"
             }
           }

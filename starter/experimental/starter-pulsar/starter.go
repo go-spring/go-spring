@@ -23,9 +23,9 @@ package StarterPulsar
 
 import (
 	"github.com/apache/pulsar-client-go/pulsar"
+	"go-spring.org/cloud/governance"
+	"go-spring.org/cloud/governance/capability/traffic"
 	"go-spring.org/cloud/messaging"
-	"go-spring.org/cloud/runtime"
-	"go-spring.org/cloud/runtime/dataplane/kernel/traffic"
 	"go-spring.org/log"
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/gs"
@@ -86,7 +86,7 @@ func init() {
 // list, bad credentials or TLS mismatch fail fast at startup instead of
 // surfacing on the first produce/consume. A failed probe releases what was just
 // assembled.
-func newClient(ctx *gs.ContextProvider, name string, c Config, d Driver, center *runtime.Runtime) (pulsar.Client, error) {
+func newClient(ctx *gs.ContextProvider, name string, c Config, d Driver, center *governance.Runtime) (pulsar.Client, error) {
 	// The client's identity rides on a context derived here: every line below
 	// carries it without repeating it. The provider's own context is left
 	// alone — that one is the shared application context, not this

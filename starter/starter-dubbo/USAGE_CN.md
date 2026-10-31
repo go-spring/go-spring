@@ -219,7 +219,7 @@ init 期注册两个 dubbo-go filter；都是**按 service 显式启用**——�
 `filter` key（逗号分隔，其余语义归 dubbo-go）：
 
 - **`loadtest`**（starter.go:102）：从入站 dubbo attachment 读压测标记（string 与 []byte
-  都处理），给 context 打标，使后续 filter 与你的服务实现里 propagator 的 `IsLoadTest(ctx)` 可用。
+  都处理），给 context 打标，使后续 filter 与你的服务实现里 `traffic.IsLoadTest(ctx, prop)` 可用。
   请放在链的**最前**（源码注释，starter.go:97-101），标记要先于任何依赖它的层落位。
 - **`fault`**（starter.go:90）：读治理 starter 的 fault injector bean——dubbo 的 filter 注册表
   只提供无参构造，无处注入，故由一个接线钩子装入；句柄**每次调用**读取——可运行期
@@ -234,7 +234,7 @@ Filter 在 Refer/导出时**冻结**（dync.go:49）——改 `filter` key 要�
 1. 业务代码调类型化 stub（`*greet.GreetService`），它由 `RegisterReference` 用共享
    `*client.Client` + 该 reference 的 `ReferenceOption` 组装（client.go:166-170）。
 2. 跑 dubbo-go 的 consumer filter 链（`consumer.filter` /
-   `consumer.references.<n>.filter` 所装）；出站压测标记由 cloud/runtime/dataplane/kernel/traffic 的
+   `consumer.references.<n>.filter` 所装）；出站压测标记由 cloud/governance/capability/traffic 的
    carrier 注入完成——starter 的 `loadtest` filter 是入站侧配套（starter.go:108 注释）。
 3. Cluster 策略 / loadbalance 选实例（dubbo-go 语义；URL 参数——这正是热更新通道能在运行期
    改动的那组，§4.2）。
@@ -390,7 +390,7 @@ reference 的 `version`/`group` 必须与 provider 导出的一致。
 ### 4.4 治理合入通道（中心的动态超时）
 
 可选；仅当配好治理规则源且文档为下面的 label 配了策略时激活。poller 以可空构造函数
-参数注入 `*resilience.Manager` 与 `*runtime.Runtime`（starter.go:59），并订阅两类治理
+参数注入 `*resilience.Manager` 与 `*governance.Runtime`（starter.go:59），并订阅两类治理
 服务 label（dync.go:252-253）：
 
 - `dubbo:<application.name>` —— consumer 级默认
@@ -405,10 +405,10 @@ reference override 免重启重新下发。
 ### 4.5 故障演练（provider 侧，免重启）
 
 1. 给 service 的 filter 链加 `fault`：`...services.greet.filter=loadtest,fault`。
-2. 配好治理规则源；在规则里配置 `spring.governance.client.fault.*`（rate/error/scope）。
-3. `scope: loadtest` 时只有带压测标记的调用被烧——由带标记的上游注入出站 carrier
-   （cloud/runtime/dataplane/kernel/traffic）来打标，或在专属环境用 `scope: real`。
-4. 观察：consumer 收到注入错误；带标记调用在实现内 propagator 的 `IsLoadTest(ctx)` 为 true
+2. 配好治理规则源；在规则里配置 `spring.fault.client.*`(rate/error/match.traffic)。
+3. `match.traffic=loadtest` 时只有带压测标记的调用被烧——由带标记的上游注入出站 carrier
+   （cloud/governance/capability/traffic）来打标，或在专属环境用 `match.traffic=real`。
+4. 观察：consumer 收到注入错误；带标记调用在实现内 `traffic.IsLoadTest(ctx, prop)` 为 true
    （loadtest filter 排最前）。
 
 ### 4.6 观测日志桥

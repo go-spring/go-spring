@@ -27,10 +27,11 @@ package StarterNeo4j
 import (
 	"context"
 
-	"go-spring.org/cloud/runtime/dataplane/outbound/chain"
+	"go-spring.org/cloud/governance/capability/traffic"
+	"go-spring.org/cloud/governance/dataplane/outbound/chain"
 
 	"github.com/neo4j/neo4j-go-driver/v5/neo4j"
-	"go-spring.org/cloud/runtime/dataplane/outbound/resilience"
+	"go-spring.org/cloud/governance/dataplane/outbound/resilience"
 )
 
 // Why a kit-backed Query entry (not a transparent driver wrapper):
@@ -69,7 +70,7 @@ func Query[T any](
 	newResultTransformer func() neo4j.ResultTransformer[T],
 	settings ...neo4j.ExecuteQueryConfigurationOption,
 ) (T, error) {
-	op := operation("query", query)
+	op := operation(ctx, client.prop, "query", query)
 	op.Service = client.serviceLabel
 	return resilience.Run(ctx, client.exec, op,
 		func(ctx context.Context) (T, error) {
@@ -104,6 +105,6 @@ func RunWithResilience(ctx context.Context, client *Client, op chain.Operation, 
 // metrics and the access log from the identity — the starter only states what
 // the operation is. op names the operation; summary is the Cypher text (recorded
 // as db.statement, bounded).
-func Operation(op, summary string) chain.Operation {
-	return operation(op, summary)
+func Operation(ctx context.Context, prop traffic.Propagator, op, summary string) chain.Operation {
+	return operation(ctx, prop, op, summary)
 }

@@ -34,10 +34,11 @@ import (
 	"fmt"
 
 	"github.com/bradfitz/gomemcache/memcache"
-	"go-spring.org/cloud/runtime"
-	"go-spring.org/cloud/runtime/dataplane/kernel/label"
-	"go-spring.org/cloud/runtime/dataplane/outbound/chain"
-	"go-spring.org/cloud/runtime/dataplane/outbound/resilience"
+	"go-spring.org/cloud/governance"
+	"go-spring.org/cloud/governance/capability/label"
+	"go-spring.org/cloud/governance/capability/traffic"
+	"go-spring.org/cloud/governance/dataplane/outbound/chain"
+	"go-spring.org/cloud/governance/dataplane/outbound/resilience"
 )
 
 // Client wraps a memcache client so every operation carries its semantic
@@ -82,17 +83,17 @@ type Client struct {
 // entry's key and serviceName its discovery name; both may be empty when the
 // entry addresses a fixed server list.
 //
-// center carries the container's facilities (see [runtime.Runtime]), and is
+// center carries the container's facilities (see [governance.Runtime]), and is
 // applied HERE so a Client cannot exist half-assembled: there is no Init step,
 // no later patching, and nothing the container has to remember to call. A
 // hand-built client must supply a center holding a [resilience.Manager]:
-// [runtime.Runtime.ExecutorFor] is required, so a nil center is a
+// [governance.Runtime.ExecutorFor] is required, so a nil center is a
 // construction error — never a graceful downgrade.
 //
 // The manager's ExecutorFor resolves its backing executor lazily, on each
 // Execute, so the call order relative to the center's wiring is
 // irrelevant.
-func NewClient(client *memcache.Client, instanceName, serviceName string, center *runtime.Runtime) *Client {
+func NewClient(client *memcache.Client, instanceName, serviceName string, center *governance.Runtime) *Client {
 	raw := NewRawClient(client)
 	guard := NewGuardClient(raw, instanceName, serviceName, center)
 	return &Client{Client: client, InnerClient: guard}
@@ -253,25 +254,26 @@ func (r *RawClient) FlushAll(_ context.Context) error { return r.raw.FlushAll() 
 type GuardClient struct {
 	exec    chain.Executor
 	service string // the governance label this layer guards, stamped onto each call
+	prop    traffic.Propagator
 	next    InnerClient
 }
 
 // NewGuardClient builds the governance layer over next, constructing its own
 // executor along the way: center carries the container's facilities (see
-// [runtime.Runtime]) and instanceName/serviceName fix the governance label
+// [governance.Runtime]) and instanceName/serviceName fix the governance label
 // ("memcached:<service-name or instance-name>") its limiter and breaker state
 // scope by. The executor is the layer's own business end to end — built here,
 // used here, closed at the layer's Release — and never leaves it.
-func NewGuardClient(next InnerClient, instanceName, serviceName string, center *runtime.Runtime) *GuardClient {
+func NewGuardClient(next InnerClient, instanceName, serviceName string, center *governance.Runtime) *GuardClient {
 	label := label.ServiceLabel("memcached", serviceName, instanceName)
-	return &GuardClient{exec: center.ExecutorFor("memcached", label), service: label, next: next}
+	return &GuardClient{exec: center.ExecutorFor("memcached", label), service: label, prop: center.TrafficPropagator(), next: next}
 }
 
 // op builds one call's identity with this layer's service label: the fault layer
 // matches its rules on it and sits outside the executor, so it cannot borrow the
 // label from there. It is the single place the label is attached.
-func (g *GuardClient) op(name, key string) chain.Operation {
-	o := operation(name, key)
+func (g *GuardClient) op(ctx context.Context, name, key string) chain.Operation {
+	o := operation(ctx, g.prop, name, key)
 	o.Service = g.service
 	return o
 }
@@ -303,65 +305,65 @@ func (g *GuardClient) Release(releaseRaw bool) error {
 }
 
 func (g *GuardClient) Get(ctx context.Context, key string) (*memcache.Item, error) {
-	return guard(ctx, g.exec, g.op("get", key), func(context.Context) (*memcache.Item, error) { return g.next.Get(ctx, key) })
+	return guard(ctx, g.exec, g.op(ctx, "get", key), func(context.Context) (*memcache.Item, error) { return g.next.Get(ctx, key) })
 }
 
 func (g *GuardClient) GetAndTouch(ctx context.Context, key string, seconds int32) (*memcache.Item, error) {
-	return guard(ctx, g.exec, g.op("get_and_touch", key), func(context.Context) (*memcache.Item, error) { return g.next.GetAndTouch(ctx, key, seconds) })
+	return guard(ctx, g.exec, g.op(ctx, "get_and_touch", key), func(context.Context) (*memcache.Item, error) { return g.next.GetAndTouch(ctx, key, seconds) })
 }
 
 func (g *GuardClient) GetMulti(ctx context.Context, keys []string) (map[string]*memcache.Item, error) {
-	return guard(ctx, g.exec, g.op("get_multi", fmt.Sprintf("%d keys", len(keys))), func(context.Context) (map[string]*memcache.Item, error) { return g.next.GetMulti(ctx, keys) })
+	return guard(ctx, g.exec, g.op(ctx, "get_multi", fmt.Sprintf("%d keys", len(keys))), func(context.Context) (map[string]*memcache.Item, error) { return g.next.GetMulti(ctx, keys) })
 }
 
 func (g *GuardClient) Touch(ctx context.Context, key string, seconds int32) error {
-	return guardErr(ctx, g.exec, g.op("touch", key), func(context.Context) error { return g.next.Touch(ctx, key, seconds) })
+	return guardErr(ctx, g.exec, g.op(ctx, "touch", key), func(context.Context) error { return g.next.Touch(ctx, key, seconds) })
 }
 
 func (g *GuardClient) Set(ctx context.Context, item *memcache.Item) error {
-	return guardErr(ctx, g.exec, g.op("set", item.Key), func(context.Context) error { return g.next.Set(ctx, item) })
+	return guardErr(ctx, g.exec, g.op(ctx, "set", item.Key), func(context.Context) error { return g.next.Set(ctx, item) })
 }
 
 func (g *GuardClient) Add(ctx context.Context, item *memcache.Item) error {
-	return guardErr(ctx, g.exec, g.op("add", item.Key), func(context.Context) error { return g.next.Add(ctx, item) })
+	return guardErr(ctx, g.exec, g.op(ctx, "add", item.Key), func(context.Context) error { return g.next.Add(ctx, item) })
 }
 
 func (g *GuardClient) Replace(ctx context.Context, item *memcache.Item) error {
-	return guardErr(ctx, g.exec, g.op("replace", item.Key), func(context.Context) error { return g.next.Replace(ctx, item) })
+	return guardErr(ctx, g.exec, g.op(ctx, "replace", item.Key), func(context.Context) error { return g.next.Replace(ctx, item) })
 }
 
 func (g *GuardClient) Append(ctx context.Context, item *memcache.Item) error {
-	return guardErr(ctx, g.exec, g.op("append", item.Key), func(context.Context) error { return g.next.Append(ctx, item) })
+	return guardErr(ctx, g.exec, g.op(ctx, "append", item.Key), func(context.Context) error { return g.next.Append(ctx, item) })
 }
 
 func (g *GuardClient) Prepend(ctx context.Context, item *memcache.Item) error {
-	return guardErr(ctx, g.exec, g.op("prepend", item.Key), func(context.Context) error { return g.next.Prepend(ctx, item) })
+	return guardErr(ctx, g.exec, g.op(ctx, "prepend", item.Key), func(context.Context) error { return g.next.Prepend(ctx, item) })
 }
 
 func (g *GuardClient) CompareAndSwap(ctx context.Context, item *memcache.Item) error {
-	return guardErr(ctx, g.exec, g.op("cas", item.Key), func(context.Context) error { return g.next.CompareAndSwap(ctx, item) })
+	return guardErr(ctx, g.exec, g.op(ctx, "cas", item.Key), func(context.Context) error { return g.next.CompareAndSwap(ctx, item) })
 }
 
 func (g *GuardClient) Delete(ctx context.Context, key string) error {
-	return guardErr(ctx, g.exec, g.op("delete", key), func(context.Context) error { return g.next.Delete(ctx, key) })
+	return guardErr(ctx, g.exec, g.op(ctx, "delete", key), func(context.Context) error { return g.next.Delete(ctx, key) })
 }
 
 func (g *GuardClient) DeleteAll(ctx context.Context) error {
-	return guardErr(ctx, g.exec, g.op("delete_all", ""), func(context.Context) error { return g.next.DeleteAll(ctx) })
+	return guardErr(ctx, g.exec, g.op(ctx, "delete_all", ""), func(context.Context) error { return g.next.DeleteAll(ctx) })
 }
 
 func (g *GuardClient) Increment(ctx context.Context, key string, delta uint64) (uint64, error) {
-	return guard(ctx, g.exec, g.op("increment", key), func(context.Context) (uint64, error) { return g.next.Increment(ctx, key, delta) })
+	return guard(ctx, g.exec, g.op(ctx, "increment", key), func(context.Context) (uint64, error) { return g.next.Increment(ctx, key, delta) })
 }
 
 func (g *GuardClient) Decrement(ctx context.Context, key string, delta uint64) (uint64, error) {
-	return guard(ctx, g.exec, g.op("decrement", key), func(context.Context) (uint64, error) { return g.next.Decrement(ctx, key, delta) })
+	return guard(ctx, g.exec, g.op(ctx, "decrement", key), func(context.Context) (uint64, error) { return g.next.Decrement(ctx, key, delta) })
 }
 
 func (g *GuardClient) Ping(ctx context.Context) error {
-	return guardErr(ctx, g.exec, g.op("ping", ""), func(context.Context) error { return g.next.Ping(ctx) })
+	return guardErr(ctx, g.exec, g.op(ctx, "ping", ""), func(context.Context) error { return g.next.Ping(ctx) })
 }
 
 func (g *GuardClient) FlushAll(ctx context.Context) error {
-	return guardErr(ctx, g.exec, g.op("flush_all", ""), func(context.Context) error { return g.next.FlushAll(ctx) })
+	return guardErr(ctx, g.exec, g.op(ctx, "flush_all", ""), func(context.Context) error { return g.next.FlushAll(ctx) })
 }

@@ -3,8 +3,8 @@
 Detailed usage reference. Overview: [README.md](README.md). All behavior claims are verified against
 the starter source (`starter.go`, `registry.go`, `discovery.go`, `config.go`,
 `starter_test.go`, `registry_test.go`, `discovery_test.go`), the registration core (`../starter-discovery/starter.go`,
-`../starter-discovery/config.go`), the `cloud/runtime/dataplane/kernel/discovery` seam (`cloud/runtime/dataplane/kernel/discovery/registry.go`,
-`cloud/runtime/dataplane/kernel/loadbalance/pool.go`) and the runnable [example/](example/) (`example/check.sh` runs unit
+`../starter-discovery/config.go`), the `cloud/governance/capability/discovery` seam (`cloud/governance/capability/discovery/registry.go`,
+`cloud/governance/capability/loadbalance/pool.go`) and the runnable [example/](example/) (`example/check.sh` runs unit
 tests + a docker-compose ZooKeeper end-to-end boot). **ZooKeeper's own semantics (sessions,
 ephemeral znodes, watchers, digest auth) are
 [ZooKeeper documentation](https://zookeeper.apache.org/doc/current/zookeeperProgrammers.html)** —
@@ -12,7 +12,7 @@ everything below is go-spring's increment.
 
 **Activation**: each `spring.discovery.zookeeper.<name>` block is one discovery center — one shared
 session, one lifecycle (a startup probe only when `ping=true`; `starter.go`). The bean named `zookeeper.<name>` exports
-BOTH `registration.Registry` (collected by the cloud/runtime/controlplane/registration core when
+BOTH `registration.Registry` (collected by the cloud/governance/controlplane/registration core when
 `spring.discovery.service-name` is set — a pure consumer app registers nothing) and
 `discovery.Discovery` (cited by bean name, so a pure provider never pays for the read half). This
 starter serves **both sides**: it advertises this instance to ZooKeeper as an ephemeral znode AND
@@ -305,7 +305,7 @@ shared registration lifecycle lines. Observability: registration and discovery e
 Suspect ledger (kept from the previous edition, plus new findings):
 
 1. ~~`spring.discovery.*` instance keys bound in this one starter~~ RESOLVED 2026-09: the
-   `${spring.discovery}` identity block now lives in the shared cloud/runtime/controlplane/registration core
+   `${spring.discovery}` identity block now lives in the shared cloud/governance/controlplane/registration core
    (`RegistrationConfig`), so every backend starter binds it exactly once.
 2. No re-registration after session loss: the zk library reconnects transparently, but once the
    session has expired the ephemeral node is gone and the running process never notices — the
@@ -314,7 +314,7 @@ Suspect ledger (kept from the previous edition, plus new findings):
 3. ~~No shipped consumer side~~ RESOLVED: `discovery.go` ships the backend — since the
    2026-09 multi-discovery named-block redesign it IS the block's bean (`zookeeper.<name>`),
    implementing both `registration.Registry` and `discovery.Discovery`; registration moved into
-   the shared cloud/runtime/controlplane/registration core.
+   the shared cloud/governance/controlplane/registration core.
 4. `addr` is not validated for `host:port` shape at write time (consul validates a numeric port);
    a malformed value is stored verbatim and only fails on the consumer dial.
 5. Startup validation happens in Run, not bind time — an empty `service-name` fails only after

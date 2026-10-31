@@ -26,7 +26,7 @@ import (
 	"time"
 
 	"github.com/elastic/elastic-transport-go/v8/elastictransport"
-	"go-spring.org/cloud/runtime/dataplane/kernel/discovery"
+	"go-spring.org/cloud/governance/capability/discovery"
 )
 
 // errNoConnection is what the fallback pool reports when no seed connection

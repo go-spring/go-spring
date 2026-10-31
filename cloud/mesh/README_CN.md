@@ -6,9 +6,11 @@
 如果在，发现和负载均衡已由 sidecar 完成，应用自己的客户端发现与负载均衡应该
 让位，而不是把流量再均衡一遍。
 
-starter 读取 `mesh.Enabled()`，为 on 时直连服务的稳定 DNS 地址，不再构建
-discovery Resolver 或负载均衡 Pool。通常你不需要自己调用这个包——设置一个
-环境变量，starter 会自行反应。
+[runtime 组合根](../runtime) 在启动时读取一次 `mesh.Enabled()`，把答案暴露成
+`Runtime.UsesDiscovery(serviceName)`。client starter 只问这一个问题；回答为否时
+直连配置的稳定地址，不再构建 discovery Resolver 或负载均衡 Pool。discovery 链路
+本身（backend、`discovery.NewResolver`、`loadbalance`）零 mesh 引用——mesh 是一个
+**寻址决策**，不是另一种服务发现。
 
 ## 安装
 
@@ -36,15 +38,17 @@ mesh 模式是部署的固定属性，由环境承载，而非运行时配置或
 export GS_MESH_MODE=off
 ```
 
-mesh 模式开启时，配置了 `service-name` 的 starter 会忽略客户端发现，直接拨号
-稳定地址（`host:port` / ClusterDNS 名）。关闭时，一切如同这个包不存在。
+mesh 模式开启时，配置了 `service-name` 的 entry 会忽略进程内发现，直接拨号自己的
+稳定地址（`host:port`、ClusterDNS 名或固定 endpoint）。此时 `service-name` 只是
+与 mesh 外部署共用配置时的遗留物——**忽略即可，不是错误**。关闭时，一切如同这个
+包不存在。
 
 ## API
 
 ```go
 import "go-spring.org/cloud/mesh"
 
-mesh.Enabled() // bool — starter 唯一需要的调用
+mesh.Enabled() // bool — 由 Runtime.UsesDiscovery 查询，client 代码不直接调用
 mesh.Detect()  // bool — 仅做 sidecar 探测（"auto" 的底层）；很少直接调用
 ```
 
@@ -56,22 +60,28 @@ mesh.Detect()  // bool — 仅做 sidecar 探测（"auto" 的底层）；很少�
 ## 写一个感知 mesh 的 starter
 
 ```go
-useDiscovery := c.ServiceName != "" && !mesh.Enabled()
+if center.UsesDiscovery(c.ServiceName) {
+    // 进程内发现 + 负载均衡
+} else {
+    // 直连配置的稳定地址
+}
 ```
 
-用 `!mesh.Enabled()` 作为是否构建客户端发现/LB 的闸门；mesh 模式下回退到配置的
-静态地址。对于经 `discovery` 解析的基础设施客户端，优先用
-`discovery.NewResolver`——它已内置该检查，mesh 模式下返回 nil Resolver，调用方
-直接拨号配置地址。
+整合就这么多：在 entry 决定寻址模式的地方问一次。不要在 client driver 里 import
+`mesh`，也不要在 `discovery.NewResolver` 或任何内层 resolver/pool helper 里判断
+——它们只会在 discovery 分支上运行。只要配置了稳定地址（`addr`/DSN/ClusterDNS
+名），mesh 就让 entry 走直连分支。
 
 ## 设计说明
 
-- `mesh.Enabled()` 是纯函数、无状态：不缓存、无副作用，只用 `os`/`strings`，
-  每次调用现读 `GS_MESH_MODE`。空串与未设置在 `os.Getenv` 里无从区分，均落到
-  auto。
+- `mesh.Enabled()` 是纯函数、无状态：不缓存、无副作用，只用 `os`/`strings`。
+  空串与未设置在 `os.Getenv` 里无从区分，均落到 auto。
+- 它只在 `Runtime.UsesDiscovery` 一处被查询，发生在 client 构造期而不是每次请求。
+  因为是纯函数，不需要缓存、也不在 `Runtime` 上存字段。client 代码从不读环境变量。
 - 没有 `SetEnabled`、没有三态 `atomic.Value`、没有 `starter-mesh` 模块。
   `cloud/mesh` 不塞 context、log 或 `sync.Once` 启动日志——可观测性归消费侧
   starter。
-- `mesh.Enabled` 只在 client 构造期被调一次，绝不在请求热路径上：`loadbalance`
-  零 mesh 引用，`httpx` 在 `NewTransport` 而非 `RoundTrip` 里检查。
-- 测试用 `t.Setenv("GS_MESH_MODE", ...)` 驱动。
+- 绝不在请求热路径上：`loadbalance` 零 mesh 引用，决策发生在 client 构造期，
+  不在 `RoundTrip`/`Pick` 里。
+- 测试在构造 runtime 前用 `t.Setenv("GS_MESH_MODE", ...)` 驱动；
+  `Runtime.UsesDiscovery` 本身对字段做单测。

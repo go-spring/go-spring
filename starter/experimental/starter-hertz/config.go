@@ -74,8 +74,8 @@ type MiddlewareConfig struct {
 // (the default — one header lookup per request) the LoadTest middleware reads
 // the marker header off the incoming request and tags the request context, so
 // every downstream handler and outbound client can tell synthetic load apart
-// from real traffic through the load-test convention's IsLoadTest. Defaults to
-// X-LoadTest.
+// from real traffic through `traffic.IsLoadTest`. Defaults to
+// X-Traffic.
 type LoadTestConfig struct {
 	Enabled bool `value:"${enabled:=true}"`
 }

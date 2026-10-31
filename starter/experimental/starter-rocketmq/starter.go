@@ -22,9 +22,9 @@
 package StarterRocketmq
 
 import (
+	"go-spring.org/cloud/governance"
+	"go-spring.org/cloud/governance/capability/traffic"
 	"go-spring.org/cloud/messaging"
-	"go-spring.org/cloud/runtime"
-	"go-spring.org/cloud/runtime/dataplane/kernel/traffic"
 	"go-spring.org/log"
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/gs"
@@ -84,7 +84,7 @@ func init() {
 // it to [NewClient] — so the client is assembled complete in one step, with the
 // resilience manager required: the container supplies it via the governance
 // center, so a center without one fails at construction.
-func newClient(ctx *gs.ContextProvider, name string, c Config, d Driver, center *runtime.Runtime) (*Client, error) {
+func newClient(ctx *gs.ContextProvider, name string, c Config, d Driver, center *governance.Runtime) (*Client, error) {
 	// The client's identity rides on a context derived here: every line below
 	// carries it without repeating it. The provider's own context is left
 	// alone — that one is the shared application context, not this

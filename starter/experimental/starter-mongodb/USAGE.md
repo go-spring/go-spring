@@ -64,7 +64,7 @@ keeps the demo self-contained (copied from [example/discovery.go](example/discov
 ```go
 package main
 
-import "go-spring.org/cloud/runtime/dataplane/kernel/discovery"
+import "go-spring.org/cloud/governance/capability/discovery"
 
 func init() {
     gs.Provide(func() (discovery.Discovery, error) {
@@ -129,9 +129,9 @@ spring.mongodb.instances.disc.server-selection-timeout=10s
 
 # --- governance: policy for the dial seam (rate-limit makes the dial
 #     protection observable; breaker/retry/timeout also apply) ---------------
-# NOTE: governance RULES go in conf/governance.properties, referenced by spring.governance.source.file.path in app.properties (see cloud/runtime/controlplane/governance's SOURCE_USAGE).
+# NOTE: governance RULES go in conf/governance.properties, wired by the example's source starter (source.go) (see cloud/governance/controlplane/source's USAGE).
 spring.resilience.driver=default
-spring.governance.client.default.rate-limit=5
+spring.governance.client.resilience.rate-limit=5
 
 # --- actuator + otel --------------------------------------------------------
 spring.actuator.addr=:9370
@@ -173,7 +173,7 @@ import starter-mongodb
 
 gs.Run()
   ├─ ctor newClient [starter.go:105]: ApplyURI → timeouts/pool/auth → tls.Build
-  │   → read the injected authorities off the *runtime.Runtime (variable center):
+  │   → read the injected authorities off the *governance.Runtime (variable center):
   │     center.ResilienceClient() / center.FaultClient() / center.Loadbalance() (mgr / inj / lbMgr)
   │   → SetMonitor(command monitor, lazy observer holder) [starter.go:152]
   │   → newPickPool(ctx, c, backend) (loader-backed endpoint picker when service-name set, mesh off) [starter.go:155]
@@ -282,29 +282,29 @@ There are no observability keys — observation is unconditional (see §3.3).
 
 ### 3.2 Resilience / fault (spring.governance.*, not under the instance prefix)
 
-Policy keys live in the governance rules document under `spring.governance.*` (cloud/runtime/controlplane/governance's governance center);
-`newClient` reads the injected `*resilience.Manager` / `*clientfault.ClientManager` (`mgr`/`inj`) and
-`*loadbalance.Manager` (`lbMgr`) off the `*runtime.Runtime`, whose
+Policy keys live in the governance rules document under `spring.governance.*` (the policy roots' centers);
+`newClient` reads the injected `*resilience.Manager` / `*clientfault.Manager` (`mgr`/`inj`) and
+`*loadbalance.Manager` (`lbMgr`) off the `*governance.Runtime`, whose
 `center.ExecutorFor("mongodb", "mongodb:<service-name|uri>")` resolves
 `inj.WrapClientExecutor(mgr.ExecutorFor("mongodb", "mongodb:<service-name|uri>"))`
 in one call [client.go:113-121]. Relevant keys: `spring.resilience.driver` (the backend, a
-static app-config key) and, in the governance document (see cloud/runtime/controlplane/governance's SOURCE_USAGE
-for the full set), `spring.governance.client.default.rate-limit` /
-`error-threshold` / `open-duration` / `max-retries` / `timeout`, and the `spring.governance.client.fault.*`
+static app-config key) and, in the governance document (see cloud/governance/controlplane/source's USAGE
+for the full set), `spring.governance.client.resilience.rate-limit` /
+`error-threshold` / `open-duration` / `max-retries` / `timeout`, and the `spring.fault.client.*`
 injection block (enable/rate/error). ⚠ Remember the seam is the **dial layer**: a breaker
 policy manifests as rejected *connections*; a fault injection fires per dial, not per command.
 
 **Endpoint selection is governed by the same rule, same label.** In discovery mode the chain is
 built with a suspension tracker and registered under `mongodb:<service-name|uri>` as
 `lbMgr.Chain(resolver, label)` is called (the `*loadbalance.Manager` bean injected into
-`newClient`), so `spring.governance.client.rules[N].balancer` (round_robin / least_conn /
+`newClient`), so `spring.governance.client.loadbalance.services[N].balancer` (round_robin / least_conn /
 consistent_hash / weighted / zone_aware / random / p2c) and `outlier-threshold` /
 `outlier-suspend-for` **rebuild the chain from scratch** — the next dial runs the new strategy on a
 fresh balancer and suspension tracker, no restart and no re-dial of existing connections. Direct
 (URI-only) instances have no candidate set, so these keys
 are inert for them. ⚠ The dialer's only outcome signal is the dial itself, so `outlier-threshold`
 evicts instances that keep refusing *connections*; per-command failures belong to the resilience
-executor above. See `cloud/runtime/controlplane/governance/README.md` §3.1.
+executor above. See `cloud/governance/README.md` §3.1.
 
 ### 3.3 Observability
 
@@ -359,9 +359,9 @@ grep _app_mongodb_access app.log | tail -1
 ### 4.3 Dial-layer resilience drill (from example-cloudnative)
 
 ```properties
-# NOTE: governance RULES go in conf/governance.properties, referenced by spring.governance.source.file.path in app.properties (see cloud/runtime/controlplane/governance's SOURCE_USAGE).
+# NOTE: governance RULES go in conf/governance.properties, wired by the example's source starter (source.go) (see cloud/governance/controlplane/source's USAGE).
 spring.resilience.driver=default
-spring.governance.client.default.rate-limit=5
+spring.governance.client.resilience.rate-limit=5
 spring.mongodb.instances.a.max-pool-size=100   # room for the burst to force fresh dials
 ```
 
@@ -374,9 +374,9 @@ the executor hot-reloads without restart (governance center).
 ### 4.4 Fault injection + load drill (example-load)
 
 ```properties
-# NOTE: governance RULES go in conf/governance.properties, referenced by spring.governance.source.file.path in app.properties (see cloud/runtime/controlplane/governance's SOURCE_USAGE).
-spring.governance.client.fault.rate=0.5
-spring.governance.client.fault.error=generic    # or: timeout / reset
+# NOTE: governance RULES go in conf/governance.properties, wired by the example's source starter (source.go) (see cloud/governance/controlplane/source's USAGE).
+spring.fault.client.rate=0.5
+spring.fault.client.error=generic    # or: timeout / reset
 ```
 
 Run [example-load](example-load/): the upsert/FindOne closed loop prints throughput, latency

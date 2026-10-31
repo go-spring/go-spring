@@ -20,10 +20,17 @@ import (
 	"context"
 	"testing"
 
-	"go-spring.org/cloud/runtime"
-	serverfault "go-spring.org/cloud/runtime/dataplane/inbound/fault"
-	clientfault "go-spring.org/cloud/runtime/dataplane/outbound/fault"
-	"go-spring.org/cloud/runtime/dataplane/outbound/resilience"
+	"go-spring.org/cloud/governance"
+	"go-spring.org/cloud/governance/capability/discovery"
+	"go-spring.org/cloud/governance/capability/loadbalance"
+	"go-spring.org/cloud/governance/capability/traffic"
+	admissionplane "go-spring.org/cloud/governance/controlplane/admission"
+	loadbalanceplane "go-spring.org/cloud/governance/controlplane/loadbalance"
+	"go-spring.org/cloud/governance/controlplane/source"
+	"go-spring.org/cloud/governance/dataplane/inbound/admission"
+	serverfault "go-spring.org/cloud/governance/dataplane/inbound/fault"
+	clientfault "go-spring.org/cloud/governance/dataplane/outbound/fault"
+	"go-spring.org/cloud/governance/dataplane/outbound/resilience"
 	"go-spring.org/stdlib/testing/assert"
 )
 
@@ -64,13 +71,24 @@ func (b bccLayer) Send(ctx context.Context, msgs ...*Message) error {
 // and governance layers real (executor from an unarmed manager, governance off).
 func newChainMailer(t *testing.T, tail InnerMailer) *Mailer {
 	t.Helper()
-	ctr, err := runtime.NewProcess(resilience.NewManager(resilience.NewDefaultDriver(nil)), clientfault.NewClientManager(nil), serverfault.NewServerManager(nil))
-	if err != nil {
+	ctr := &governance.Runtime{
+		Resilience:  resilience.NewManager(resilience.NewDefaultDriver(nil)),
+		LoadBalance: loadbalance.NewManager(),
+		Admission:   admission.NewManager(),
+		ClientFault: clientfault.NewManager(),
+		ServerFault: serverfault.NewManager(),
+		Directory:   discovery.NewManager(nil),
+		Traffic:     traffic.NewDefaultPropagator(traffic.DefaultBinding()),
+	}
+	if _, err := loadbalanceplane.NewCenter(context.Background(), ctr.LoadBalance, source.NewPushSource(loadbalance.Settings{})); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := admissionplane.NewCenter(context.Background(), ctr.Admission, source.NewPushSource(admission.Settings{})); err != nil {
 		t.Fatal(err)
 	}
 	raw := NewRawMailer(nil, "")
 	guard := NewGuardMailer(raw, "hot", "", ctr)
-	return &Mailer{InnerMailer: NewObsMailer(&GuardMailer{exec: guard.exec, next: tail})}
+	return &Mailer{InnerMailer: NewObsMailer(&GuardMailer{exec: guard.exec, next: tail, prop: guard.prop})}
 }
 
 // TestInnerChainRewritesMessages pins the wrap-head protocol: a custom layer

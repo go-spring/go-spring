@@ -34,7 +34,7 @@ import (
 	"syscall"
 	"time"
 
-	rt "go-spring.org/cloud/runtime"
+	"go-spring.org/cloud/governance"
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
@@ -71,7 +71,7 @@ const rulesV2 = `spring:
 // demo reads the resolved policy off the field-injected runtime, so
 // a rule push is visible without any client wiring.
 type demo struct {
-	Center *rt.Runtime `autowire:""`
+	Center *governance.Runtime `autowire:""`
 }
 
 var manual = flag.Bool("manual", false, "run in manual verification mode (server stays up)")
@@ -113,7 +113,7 @@ func main() {
 			tk := time.NewTicker(time.Second)
 			defer tk.Stop()
 			for range tk.C {
-				pol := demo.Center.ResilienceClient().PolicyFor("demo:service")
+				pol := demo.Center.ResilienceClient().LimitsFor("demo:service")
 				fmt.Printf("policy: enabled=%v timeout=%v retries=%d\n",
 					!pol.IsZero(), pol.Timeout, pol.Retry.MaxRetries)
 			}
@@ -130,7 +130,7 @@ func runTest(d *demo) {
 	center := d.Center
 
 	// Cold load: the seeded document is already in effect.
-	pol := center.ResilienceClient().PolicyFor("demo:service")
+	pol := center.ResilienceClient().LimitsFor("demo:service")
 	if pol.Timeout != 100*time.Millisecond {
 		err := errutil.Explain(nil, "cold-load mismatch: timeout=%v, want 100ms", pol.Timeout)
 		log.Error(ctx, log.TagAppDef, err, "cold-load mismatch")
@@ -147,7 +147,7 @@ func runTest(d *demo) {
 	tk := time.NewTicker(200 * time.Millisecond)
 	defer tk.Stop()
 	for range tk.C {
-		pol = center.ResilienceClient().PolicyFor("demo:service")
+		pol = center.ResilienceClient().LimitsFor("demo:service")
 		fmt.Printf("policy: enabled=%v timeout=%v retries=%d\n", !pol.IsZero(), pol.Timeout, pol.Retry.MaxRetries)
 		if pol.Timeout == 900*time.Millisecond {
 			fmt.Println("rule push observed: timeout is now", pol.Timeout)

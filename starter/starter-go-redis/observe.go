@@ -28,12 +28,14 @@
 package StarterGoRedis
 
 import (
+	"context"
 	"fmt"
 
 	"go-spring.org/stdlib/strutil"
 
 	"github.com/redis/go-redis/v9"
-	"go-spring.org/cloud/runtime/dataplane/outbound/chain"
+	"go-spring.org/cloud/governance/capability/traffic"
+	"go-spring.org/cloud/governance/dataplane/outbound/chain"
 	"go-spring.org/log"
 )
 
@@ -67,10 +69,10 @@ var skipOps = map[string]struct{}{"ping": {}}
 // exactly what makes a line worth reading — and never a label. A command with
 // no argument carries no detail at all, which is also what levelled its
 // success log at Info.
-func operation(cmd redis.Cmder) chain.Operation {
+func operation(ctx context.Context, prop traffic.Propagator, cmd redis.Cmder) chain.Operation {
 	// The command's full name (cmd.FullName(), e.g. "get") names the span and
 	// carries the family's db.operation label; its argument rides in detail.
-	o := chain.DBOp(redisSystem, cmd.FullName(), argOf(cmd))
+	o := chain.DBOp(ctx, prop, redisSystem, cmd.FullName(), argOf(cmd))
 	o.Observe.Log.Tag = accessTag
 	return o
 }
@@ -78,8 +80,8 @@ func operation(cmd redis.Cmder) chain.Operation {
 // pipelineOperation is the semantic identity of a pipelined batch: a pipeline
 // is not one command and carries no single argument, so its name is the literal
 // "pipeline" and it declares no detail — which levels its success log at Info.
-func pipelineOperation() chain.Operation {
-	o := chain.DBOp(redisSystem, "pipeline", "")
+func pipelineOperation(ctx context.Context, prop traffic.Propagator) chain.Operation {
+	o := chain.DBOp(ctx, prop, redisSystem, "pipeline", "")
 	o.Observe.Log.Tag = accessTag
 	return o
 }

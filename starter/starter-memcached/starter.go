@@ -19,7 +19,7 @@ package StarterMemcached
 import (
 	"go-spring.org/cloud/actuator/health"
 	"go-spring.org/cloud/cache"
-	"go-spring.org/cloud/runtime"
+	"go-spring.org/cloud/governance"
 	"go-spring.org/log"
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/gs"
@@ -91,7 +91,7 @@ func init() {
 // container supplies it via the runtime, so a center without one
 // fails at construction.
 func newClient(ctx *gs.ContextProvider, name string, c Config, d Driver, discoveryLabel string,
-	center *runtime.Runtime) (*Client, error) {
+	center *governance.Runtime) (*Client, error) {
 	// The client's identity rides on a context derived here: every line below
 	// carries it without repeating it. The provider's own context is left
 	// alone — that one is the shared application context, not this

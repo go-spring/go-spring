@@ -17,25 +17,44 @@
 package gormcore
 
 import (
+	"context"
 	"testing"
 	"time"
 
-	"go-spring.org/cloud/runtime"
-	serverfault "go-spring.org/cloud/runtime/dataplane/inbound/fault"
-	clientfault "go-spring.org/cloud/runtime/dataplane/outbound/fault"
-	"go-spring.org/cloud/runtime/dataplane/outbound/resilience"
+	"go-spring.org/cloud/governance"
+	"go-spring.org/cloud/governance/capability/discovery"
+	"go-spring.org/cloud/governance/capability/loadbalance"
+	"go-spring.org/cloud/governance/capability/traffic"
+	admissionplane "go-spring.org/cloud/governance/controlplane/admission"
+	loadbalanceplane "go-spring.org/cloud/governance/controlplane/loadbalance"
+	"go-spring.org/cloud/governance/controlplane/source"
+	"go-spring.org/cloud/governance/dataplane/inbound/admission"
+	serverfault "go-spring.org/cloud/governance/dataplane/inbound/fault"
+	clientfault "go-spring.org/cloud/governance/dataplane/outbound/fault"
+	"go-spring.org/cloud/governance/dataplane/outbound/resilience"
 	"go-spring.org/stdlib/testing/assert"
 )
 
 // testCenter returns a process runtime — an unarmed resilience manager
 // (observe-only pass-through) plus an injector with no rules (transparent
 // pass-through) — what a hand-built client takes now that Open receives a
-// *runtime.Runtime rather than a bundle of authorities.
-func testCenter(t *testing.T) *runtime.Runtime {
+// *governance.Runtime rather than a bundle of authorities.
+func testCenter(t *testing.T) *governance.Runtime {
 	t.Helper()
-	center, err := runtime.NewProcess(resilience.NewManager(resilience.NewDefaultDriver(nil)), clientfault.NewClientManager(nil), serverfault.NewServerManager(nil))
-	if err != nil {
-		t.Fatalf("new process center: %v", err)
+	center := &governance.Runtime{
+		Resilience:  resilience.NewManager(resilience.NewDefaultDriver(nil)),
+		LoadBalance: loadbalance.NewManager(),
+		Admission:   admission.NewManager(),
+		ClientFault: clientfault.NewManager(),
+		ServerFault: serverfault.NewManager(),
+		Directory:   discovery.NewManager(nil),
+		Traffic:     traffic.NewDefaultPropagator(traffic.DefaultBinding()),
+	}
+	if _, err := loadbalanceplane.NewCenter(context.Background(), center.LoadBalance, source.NewPushSource(loadbalance.Settings{})); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := admissionplane.NewCenter(context.Background(), center.Admission, source.NewPushSource(admission.Settings{})); err != nil {
+		t.Fatal(err)
 	}
 	return center
 }

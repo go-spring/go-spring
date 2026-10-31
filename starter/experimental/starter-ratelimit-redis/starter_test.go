@@ -26,11 +26,18 @@ import (
 
 	"github.com/alicebob/miniredis/v2"
 	"github.com/redis/go-redis/v9"
-	"go-spring.org/cloud/runtime"
-	serverfault "go-spring.org/cloud/runtime/dataplane/inbound/fault"
-	"go-spring.org/cloud/runtime/dataplane/kernel/ratelimit"
-	clientfault "go-spring.org/cloud/runtime/dataplane/outbound/fault"
-	"go-spring.org/cloud/runtime/dataplane/outbound/resilience"
+	"go-spring.org/cloud/governance"
+	"go-spring.org/cloud/governance/capability/discovery"
+	"go-spring.org/cloud/governance/capability/loadbalance"
+	"go-spring.org/cloud/governance/capability/ratelimit"
+	"go-spring.org/cloud/governance/capability/traffic"
+	admissionplane "go-spring.org/cloud/governance/controlplane/admission"
+	loadbalanceplane "go-spring.org/cloud/governance/controlplane/loadbalance"
+	"go-spring.org/cloud/governance/controlplane/source"
+	"go-spring.org/cloud/governance/dataplane/inbound/admission"
+	serverfault "go-spring.org/cloud/governance/dataplane/inbound/fault"
+	clientfault "go-spring.org/cloud/governance/dataplane/outbound/fault"
+	"go-spring.org/cloud/governance/dataplane/outbound/resilience"
 	"go-spring.org/spring/gs"
 	goredis "go-spring.org/starter-go-redis"
 	experimental "go-spring.org/starter-go-redis/experimental"
@@ -238,9 +245,20 @@ func TestWiring_ContributesRedisStore(t *testing.T) {
 
 	// The *goredis.Client bean starter-go-redis would publish, built the same
 	// way that starter builds one (identity + observation, no governance).
-	center, err := runtime.NewProcess(resilience.NewManager(resilience.NewDefaultDriver(nil)), clientfault.NewClientManager(nil), serverfault.NewServerManager(nil))
-	if err != nil {
-		t.Fatalf("runtime.NewProcess: %v", err)
+	center := &governance.Runtime{
+		Resilience:  resilience.NewManager(resilience.NewDefaultDriver(nil)),
+		LoadBalance: loadbalance.NewManager(),
+		Admission:   admission.NewManager(),
+		ClientFault: clientfault.NewManager(),
+		ServerFault: serverfault.NewManager(),
+		Directory:   discovery.NewManager(nil),
+		Traffic:     traffic.NewDefaultPropagator(traffic.DefaultBinding()),
+	}
+	if _, err := loadbalanceplane.NewCenter(context.Background(), center.LoadBalance, source.NewPushSource(loadbalance.Settings{})); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := admissionplane.NewCenter(context.Background(), center.Admission, source.NewPushSource(admission.Settings{})); err != nil {
+		t.Fatal(err)
 	}
 	w, err := goredis.NewClient(cli, goredis.Config{}, nil, center)
 	if err != nil {

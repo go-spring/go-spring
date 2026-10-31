@@ -23,8 +23,9 @@ import (
 	"sync"
 	"time"
 
-	"go-spring.org/cloud/runtime/dataplane/outbound/chain"
-	"go-spring.org/cloud/runtime/dataplane/outbound/resilience"
+	"go-spring.org/cloud/governance/capability/traffic"
+	"go-spring.org/cloud/governance/dataplane/outbound/chain"
+	"go-spring.org/cloud/governance/dataplane/outbound/resilience"
 	"go-spring.org/log"
 	"go-spring.org/stdlib/errutil"
 	"go.opentelemetry.io/otel"
@@ -47,6 +48,13 @@ func WithStore(s Store) Option { return func(c *coordinator) { c.store = s } }
 // WithObserver sets the [Observer] used to instrument every step phase, e.g. a
 // starter that opens otel spans.
 func WithObserver(o Observer) Option { return func(c *coordinator) { c.observer = o } }
+
+// WithTraffic sets the process traffic convention used to stamp the operation
+// each step runs under, so a fault rule can target match.traffic. Without it the
+// coordinator uses go-spring's standard binding.
+func WithTraffic(prop traffic.Propagator) Option {
+	return func(c *coordinator) { c.prop = prop }
+}
 
 // instrumentSet bundles the metrics a saga records: one per process, resolved
 // lazily on first use so the set binds to whichever OTel global provider is
@@ -82,7 +90,7 @@ func resetInstruments() { instruments = sync.OnceValue(buildInstruments) }
 // succeeded steps in reverse order. With no options it uses no store and no
 // observer, which is a valid transparent setup for tests and development.
 func NewCoordinator(opts ...Option) Coordinator {
-	c := &coordinator{}
+	c := &coordinator{prop: traffic.NewDefaultPropagator(traffic.DefaultBinding())}
 	for _, opt := range opts {
 		opt(c)
 	}
@@ -92,6 +100,7 @@ func NewCoordinator(opts ...Option) Coordinator {
 type coordinator struct {
 	store    Store
 	observer Observer
+	prop     traffic.Propagator
 }
 
 // completedStep records a step that succeeded, so compensation can replay it in
@@ -245,7 +254,7 @@ func (c *coordinator) runPhase(ctx context.Context, sagaID string, step Step, ph
 	}
 
 	var result any
-	err := runWithPolicy(ctx, step.Retry, step.Name, func(ctx context.Context) error {
+	err := runWithPolicy(ctx, c.prop, step.Retry, step.Name, func(ctx context.Context) error {
 		var e error
 		result, e = fn(ctx)
 		return e
@@ -318,17 +327,20 @@ func (c *coordinator) snapshot(s Saga, status Status, completed []completedStep,
 
 // runWithPolicy runs fn once when the policy is zero, or under the bundled
 // resilience "default" executor (retry, per-attempt timeout, ...) otherwise. It
-// reuses [resilience.Policy] so Saga step retries and outbound resilience share
+// reuses [resilience.Limits] so Saga step retries and outbound resilience share
 // one knob set instead of duplicating retry logic here; the step's node becomes the
 // executor's policy retry node.
-func runWithPolicy(ctx context.Context, p RetryPolicy, resource string, fn func(context.Context) error) error {
+func runWithPolicy(ctx context.Context, prop traffic.Propagator, p RetryPolicy, resource string, fn func(context.Context) error) error {
 	if p.IsZero() {
 		return fn(ctx)
 	}
-	exec, err := resilience.NewDefaultDriver(nil).NewExecutor(resource, resilience.Policy{Retry: p})
-	if err != nil {
+	mgr := resilience.NewManager(resilience.NewDefaultDriver(nil))
+	if err := mgr.ApplyLimits(resilience.LimitsSettings{Default: resilience.Limits{Retry: p}}); err != nil {
 		return err
 	}
-	defer func() { _ = exec.Close() }()
-	return exec.Execute(ctx, chain.Operation{Service: resource}, nil, fn)
+	defer func() { _ = mgr.Close() }()
+	exec := mgr.ExecutorFor(resource)
+	op := chain.NewOperation(ctx, prop)
+	op.Service = resource
+	return exec.Execute(ctx, op, nil, fn)
 }

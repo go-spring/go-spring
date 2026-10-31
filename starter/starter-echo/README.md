@@ -104,7 +104,7 @@ correlation).
 | Middleware | Default | Source | Notes |
 |---|---|---|---|
 | `recovery` | on | `middleware.Recover()` (starter seam) | Catches request-goroutine panics; turning it off risks a process crash. |
-| `loadtest` | on | self | Tags the request context when the `X-LoadTest` (configurable) marker header is present, so downstream code can branch on the propagator's `IsLoadTest`. |
+| `loadtest` | on | self | Tags the request context when the `X-Traffic` (configurable) marker header is present, so downstream code can branch on `traffic.IsLoadTest`. |
 | `requestId` | on | `middleware.RequestID()` | Generates/propagates `X-Request-Id`; also stored on the request context (see `RequestIDFromContext`). |
 | `observability` | on | the resilience emitter | The request's span, HTTP family metrics and access log. Nothing is installed into the chain: the admission middleware DECLARES the request and the executor emits. Turning it off does not silence the server — the request falls back to `resilience.server.*` plus one line under the resilience tag. |
 | `tracing` / `metrics` / `accessLog` | on | legacy | Kept readable so an existing configuration still binds. Their per-signal granularity is gone: the three signals are one set now, so turning any of them off turns the set off (and warns once). Use `observability.enabled`. |
@@ -117,7 +117,7 @@ Order (outermost first): `LoadTest -> Recovery -> RequestID -> Admission
 -> SecureHeaders -> CORS -> Gzip -> BodyLimit -> fault`. Admission declares the request and
 enforces the inbound policy; observation rides it (the executor emits the span, the metrics and
 the access log), so there is no separate tracing/metrics/access-log middleware to order. LoadTest is outermost so every later
-layer can branch on the propagator's `IsLoadTest`; Recovery catches panics from every later layer;
+layer can branch on `traffic.IsLoadTest`; Recovery catches panics from every later layer;
 RequestID runs before Admission so each access record carries the id; Admission wraps the policy
 middlewares so short-circuit responses (413, 204, 403) are still recorded. A fault-injection
 middleware is always installed innermost (transparent when the governance center has no fault

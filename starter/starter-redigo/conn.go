@@ -18,11 +18,12 @@ package StarterRedigo
 
 import (
 	"context"
-	"go-spring.org/cloud/runtime/dataplane/outbound/chain"
 	"time"
 
 	"github.com/gomodule/redigo/redis"
-	"go-spring.org/cloud/runtime/dataplane/outbound/resilience"
+	"go-spring.org/cloud/governance/capability/traffic"
+	"go-spring.org/cloud/governance/dataplane/outbound/chain"
+	"go-spring.org/cloud/governance/dataplane/outbound/resilience"
 )
 
 // CommandHandler runs one Redis command. It is the pipeline's core signature:
@@ -177,13 +178,13 @@ func (c *Conn) run(ctx context.Context, cmd string, args []interface{},
 // (rate-limited / circuit-open / bulkhead-full) surface to the caller verbatim.
 // The executor plumbing (nil-as-success + rejection/fault translation) lives in
 // [resilience.Run], shared with the other client adapters.
-func resilienceInterceptor(exec chain.Executor, service string) CommandInterceptor {
+func resilienceInterceptor(exec chain.Executor, service string, prop traffic.Propagator) CommandInterceptor {
 	return func(next CommandHandler) CommandHandler {
 		return func(ctx context.Context, cmd string, args []interface{}) (interface{}, error) {
 			// Name the service on the operation: the fault layer matches its rules
 			// on it, and it sits outside this executor so it cannot borrow the
 			// label from here.
-			op := opFor(cmd, args)
+			op := opFor(ctx, prop, cmd, args)
 			op.Service = service
 			return resilience.Run(ctx, exec, op,
 				func(attemptCtx context.Context) (interface{}, error) {

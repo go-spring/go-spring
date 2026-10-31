@@ -34,7 +34,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"go-spring.org/cloud/runtime/dataplane/outbound/chain"
+	"go-spring.org/cloud/governance/dataplane/outbound/chain"
 	"io"
 	"net/http"
 	"os"
@@ -44,7 +44,7 @@ import (
 	"time"
 
 	"github.com/gomodule/redigo/redis"
-	"go-spring.org/cloud/runtime/dataplane/kernel/discovery"
+	"go-spring.org/cloud/governance/capability/discovery"
 	"go-spring.org/spring/gs"
 
 	_ "go-spring.org/starter-actuator"    // aggregates the redigo health.Indicator

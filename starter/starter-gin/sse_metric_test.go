@@ -18,20 +18,25 @@ package StarterGin
 
 import (
 	"context"
-	"go-spring.org/cloud/runtime/dataplane/inbound/admission"
 	"net/http"
 	"net/http/httptest"
 	"sync"
 	"testing"
 	"time"
 
+	"go-spring.org/cloud/governance/dataplane/inbound/admission"
+
 	"github.com/gin-gonic/gin"
-	"go-spring.org/cloud/runtime"
-	"go-spring.org/cloud/runtime/controlplane/governance"
-	serverfault "go-spring.org/cloud/runtime/dataplane/inbound/fault"
-	"go-spring.org/cloud/runtime/dataplane/kernel/loadbalance"
-	clientfault "go-spring.org/cloud/runtime/dataplane/outbound/fault"
-	"go-spring.org/cloud/runtime/dataplane/outbound/resilience"
+	"go-spring.org/cloud/governance"
+	"go-spring.org/cloud/governance/capability/discovery"
+	"go-spring.org/cloud/governance/capability/loadbalance"
+	"go-spring.org/cloud/governance/capability/traffic"
+	admissionplane "go-spring.org/cloud/governance/controlplane/admission"
+	loadbalanceplane "go-spring.org/cloud/governance/controlplane/loadbalance"
+	"go-spring.org/cloud/governance/controlplane/source"
+	serverfault "go-spring.org/cloud/governance/dataplane/inbound/fault"
+	clientfault "go-spring.org/cloud/governance/dataplane/outbound/fault"
+	"go-spring.org/cloud/governance/dataplane/outbound/resilience"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
@@ -424,9 +429,20 @@ func writeSSE(c *gin.Context, n int, flush bool) {
 
 // testCenter builds the runtime bean the middleware chain takes, so a
 // container-less test still exercises the real injection path.
-func testCenter() *runtime.Runtime {
-	ctr, err := runtime.New(resilience.NewManager(resilience.NewDefaultDriver(nil)), loadbalance.NewManager(), clientfault.NewClientManager(nil), serverfault.NewServerManager(nil), nil, governance.NewPushSource(governance.Config{Server: governance.ServerConfig{Default: admission.DefaultPolicy()}}))
-	if err != nil {
+func testCenter() *governance.Runtime {
+	ctr := &governance.Runtime{
+		Resilience:  resilience.NewManager(resilience.NewDefaultDriver(nil)),
+		LoadBalance: loadbalance.NewManager(),
+		Admission:   admission.NewManager(),
+		ClientFault: clientfault.NewManager(),
+		ServerFault: serverfault.NewManager(),
+		Directory:   discovery.NewManager(nil),
+		Traffic:     traffic.NewDefaultPropagator(traffic.DefaultBinding()),
+	}
+	if _, err := loadbalanceplane.NewCenter(context.Background(), ctr.LoadBalance, source.NewPushSource(loadbalance.Settings{})); err != nil {
+		panic(err)
+	}
+	if _, err := admissionplane.NewCenter(context.Background(), ctr.Admission, source.NewPushSource(admission.Settings{})); err != nil {
 		panic(err)
 	}
 	return ctr

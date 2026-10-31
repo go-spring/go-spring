@@ -52,8 +52,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"go-spring.org/cloud/actuator/health"
-	"go-spring.org/cloud/runtime/dataplane/inbound/admission"
-	"go-spring.org/cloud/runtime/dataplane/kernel/discovery"
+	"go-spring.org/cloud/governance/capability/discovery"
+	"go-spring.org/cloud/governance/dataplane/inbound/admission"
 	"go-spring.org/spring/gs"
 
 	_ "go-spring.org/starter-actuator"    // registers the actuator Server bean (gated on spring.actuator.addr)
@@ -233,7 +233,7 @@ func runTest() {
 	fmt.Println("health: readiness aggregate OK (UP -> DOWN when dependency down -> UP)")
 
 	// --- 2. Discovery ----------------------------------------------------
-	r, err := discovery.NewResolver(ctx, staticDiscovery, "cloudnative-app")
+	r, err := discovery.NewResolver(ctx, staticDiscovery, "cloudnative-app", "")
 	if err != nil {
 		fail("new resolver: %v", err)
 	}

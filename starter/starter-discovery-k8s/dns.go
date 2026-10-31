@@ -26,7 +26,7 @@ import (
 	"sync"
 	"time"
 
-	"go-spring.org/cloud/runtime/dataplane/kernel/discovery"
+	"go-spring.org/cloud/governance/capability/discovery"
 	"go-spring.org/log"
 	"go-spring.org/stdlib/errutil"
 )
@@ -92,9 +92,9 @@ func (d *dnsDiscovery) fqdn(service string) string {
 // Port. A headless Service publishes records only for ready addresses by
 // default, so returned endpoints are marked Healthy. A result older than
 // RefreshInterval triggers a re-fetch (bounded by ctx); younger ones read the
-// cache. opts narrow the result; [discovery.WithScheme] filters by transport
-// scheme.
-func (d *dnsDiscovery) Resolve(ctx context.Context, name string, opts ...discovery.Option) ([]discovery.Endpoint, error) {
+// cache. The full set is returned; narrowing (scheme, metadata) is the
+// consumer's, applied via [discovery.Narrow].
+func (d *dnsDiscovery) Resolve(ctx context.Context, name string) ([]discovery.Endpoint, error) {
 	interval := d.cfg.RefreshInterval
 	if interval <= 0 {
 		interval = 10 * time.Second
@@ -138,7 +138,7 @@ func (d *dnsDiscovery) Resolve(ctx context.Context, name string, opts ...discove
 			d.obs.Synced(name, nil)
 		}
 	}
-	return discovery.Snapshot(e.eps, discovery.NewQuery(name, opts...)), nil
+	return e.eps, nil
 }
 
 // fetch runs the live DNS query for name.

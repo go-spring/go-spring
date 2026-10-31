@@ -28,8 +28,8 @@ import (
 	"time"
 
 	"github.com/hashicorp/consul/api"
-	"go-spring.org/cloud/runtime/controlplane/registration"
-	"go-spring.org/cloud/runtime/dataplane/kernel/discovery"
+	"go-spring.org/cloud/governance/capability/discovery"
+	"go-spring.org/cloud/governance/controlplane/registration"
 	"go-spring.org/stdlib/testing/assert"
 )
 
@@ -181,13 +181,17 @@ func TestConsulDiscovery_Resolve(t *testing.T) {
 	assert.That(t, eps[1].Scheme).Equal("tls")
 	assert.That(t, eps[1].Metadata["zone"]).Equal("b")
 
-	// Scheme narrowing drops the plain instances.
-	eps, err = d.Resolve(context.Background(), "orders", discovery.WithScheme("tls"))
+	// The consumer's construction-time schema drops the plain instances.
+	r, err := discovery.NewResolver(context.Background(), d, "orders", "tls")
+	if err != nil {
+		t.Fatal(err)
+	}
+	eps, err = r(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(eps) != 1 || eps[0].Addr != "10.0.0.2:8080" {
-		t.Fatalf("scheme filter wrong: %+v", eps)
+		t.Fatalf("scheme schema wrong: %+v", eps)
 	}
 }
 

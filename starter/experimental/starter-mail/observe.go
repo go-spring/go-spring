@@ -29,7 +29,13 @@
 package StarterMail
 
 import (
-	"go-spring.org/cloud/runtime/dataplane/outbound/chain"
+	"context"
+
+	"go-spring.org/cloud/governance/capability/traffic"
+)
+
+import (
+	"go-spring.org/cloud/governance/dataplane/outbound/chain"
 	"go-spring.org/log"
 	"go.opentelemetry.io/otel/attribute"
 )
@@ -53,30 +59,27 @@ var accessTag = log.RegisterAppTag("mail", "access")
 // The operation is declared non-idempotent: a resend is a second email, not a
 // second attempt, so the executor chain must not retry it however a governance
 // rule is configured.
-func operation(msgs []*Message) chain.Operation {
-	o := chain.Operation{
-		Request: chain.Request{
-			System: emailSystem,
-			Action: "mail.send",
-		},
-		Observe: chain.Observe{
-			Metric: chain.Metric{
-				Name: "email.client",
-				Attrs: []attribute.KeyValue{
-					attribute.String("email.system", emailSystem),
-					attribute.String("email.operation", "send"),
-				},
-			},
-			Span: chain.Span{Attrs: []attribute.KeyValue{
+func operation(ctx context.Context, prop traffic.Propagator, msgs []*Message) chain.Operation {
+	o := chain.NewOperation(ctx, prop)
+	o.Request.System = emailSystem
+	o.Request.Action = "mail.send"
+	o.Observe = chain.Observe{
+		Metric: chain.Metric{
+			Name: "email.client",
+			Attrs: []attribute.KeyValue{
 				attribute.String("email.system", emailSystem),
 				attribute.String("email.operation", "send"),
-			}},
-			Log: chain.Log{
-				Tag: accessTag,
-				Fields: []log.Field{
-					log.String("email.system", emailSystem),
-					log.String("email.operation", "send"),
-				},
+			},
+		},
+		Span: chain.Span{Attrs: []attribute.KeyValue{
+			attribute.String("email.system", emailSystem),
+			attribute.String("email.operation", "send"),
+		}},
+		Log: chain.Log{
+			Tag: accessTag,
+			Fields: []log.Field{
+				log.String("email.system", emailSystem),
+				log.String("email.operation", "send"),
 			},
 		},
 	}

@@ -15,7 +15,7 @@
  */
 
 // This file is the CONSUMER half of etcd service discovery: the
-// cloud/runtime/dataplane/kernel/discovery Discovery backend serving snapshots of the instances the
+// cloud/governance/capability/discovery Discovery backend serving snapshots of the instances the
 // registry (registry.go) publishes. It is derived from the
 // ${spring.discovery.etcd} center (starter.go) under the fixed label "etcd" —
 // there is no separate discovery config block. Freshness is internal: each
@@ -38,7 +38,7 @@ import (
 	"sync"
 	"time"
 
-	"go-spring.org/cloud/runtime/dataplane/kernel/discovery"
+	"go-spring.org/cloud/governance/capability/discovery"
 	"go-spring.org/log"
 	"go-spring.org/stdlib/errutil"
 	"go.etcd.io/etcd/api/v3/mvccpb"
@@ -120,7 +120,7 @@ func (d *etcdDiscovery) fetch(ctx context.Context, prefix string) ([]discovery.E
 // health signal: leases delete expired keys, so everything found is live. The
 // first call pays the seed fetch (bounded by ctx) and starts the background
 // watcher; later calls read the cache.
-func (d *etcdDiscovery) Resolve(ctx context.Context, name string, opts ...discovery.Option) ([]discovery.Endpoint, error) {
+func (d *etcdDiscovery) Resolve(ctx context.Context, name string) ([]discovery.Endpoint, error) {
 	e := d.entry(name)
 	e.mu.Lock()
 	defer e.mu.Unlock()
@@ -136,7 +136,7 @@ func (d *etcdDiscovery) Resolve(ctx context.Context, name string, opts ...discov
 		d.obs.Synced(name, nil)
 		go d.watchLoop(name, e)
 	}
-	eps := discovery.Snapshot(e.eps, discovery.NewQuery(name, opts...))
+	eps := e.eps
 	return eps, nil
 }
 

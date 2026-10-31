@@ -23,8 +23,8 @@ import (
 	"testing"
 	"time"
 
-	"go-spring.org/cloud/runtime/controlplane/registration"
-	"go-spring.org/cloud/runtime/dataplane/kernel/discovery"
+	"go-spring.org/cloud/governance/capability/discovery"
+	"go-spring.org/cloud/governance/controlplane/registration"
 	"go-spring.org/stdlib/testing/assert"
 	"go.etcd.io/etcd/api/v3/mvccpb"
 	clientv3 "go.etcd.io/etcd/client/v3"
@@ -82,15 +82,21 @@ func TestKvsToEndpoints(t *testing.T) {
 	assert.That(t, eps[1].Metadata["zone"]).Equal("b")
 }
 
-func TestKvsToEndpointsSchemeFilter(t *testing.T) {
+func TestKvsToEndpointsScheme(t *testing.T) {
 	kvs := []*mvccpb.KeyValue{
 		mustKV(t, "/services/s/a", instanceValue{Addr: "10.0.0.1:80", Scheme: "tls"}),
 		mustKV(t, "/services/s/b", instanceValue{Addr: "10.0.0.2:80"}),
 	}
-	// Narrow narrows to the tls instance only.
-	eps := discovery.Narrow(kvsToEndpoints(newTestObserver(), kvs), discovery.NewQuery("s", discovery.WithScheme("tls")))
-	assert.That(t, len(eps)).Equal(1)
-	assert.That(t, eps[0].Addr).Equal("10.0.0.1:80")
+	// The adapter restores the scheme onto each endpoint; narrowing is the
+	// consumer's job (Schema at construction, FilterByMetadata per read).
+	eps := kvsToEndpoints(newTestObserver(), kvs)
+	assert.That(t, len(eps)).Equal(2)
+	schemes := map[string]string{}
+	for _, e := range eps {
+		schemes[e.Addr] = e.Scheme
+	}
+	assert.That(t, schemes["10.0.0.1:80"]).Equal("tls")
+	assert.That(t, schemes["10.0.0.2:80"]).Equal("")
 }
 
 func TestEndpointsKey(t *testing.T) {

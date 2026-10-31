@@ -16,11 +16,11 @@ Neither imports `chain`, `guard`, `breaker` or `resilience`, so a cache, a lock,
 a scheduler, a config starter or the control-plane registration package can use
 them without pulling the governance stack into its dependency graph.
 
-This directory is deliberately **not** under `runtime/dataplane/`: the governed-call
+This directory is deliberately **not** under `governance/dataplane/`: the governed-call
 instrumentation (which *is* data plane, and the outermost layer of it) lives in
 each direction's tree —
-[outbound/observe](../runtime/dataplane/outbound/observe/) wraps
-`chain.Executor`, and [inbound/observe](../runtime/dataplane/inbound/observe/)
+[outbound/observe](../governance/dataplane/outbound/observe/) wraps
+`chain.Executor`, and [inbound/observe](../governance/dataplane/inbound/observe/)
 drives the admission authority's Admit/Done.
 
 Dependency rule: neutral vocabulary at the `cloud/` top level — `propagate`,

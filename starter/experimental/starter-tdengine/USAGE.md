@@ -162,7 +162,7 @@ gs.Run()
   │     spring.tdengine.instances.<name>.driver = <bean-name> (empty = the single Driver
   │     bean by type; naming a missing bean fails startup)
   │     → d.CreateClient(ctx, c, center): the ctor hands the driver the injected
-  │       *runtime.Runtime (variable center); the *resilience.Manager / *clientfault.ClientManager
+  │       *governance.Runtime (variable center); the *resilience.Manager / *clientfault.Manager
   │       it needs are read from the center (via center.ResilienceClient() / center.FaultClient()) →
   │       ParseDSN → taosws.NewConnector → NewClient
   │     → NewClient [client.go]: builds the slot, wraps the connector

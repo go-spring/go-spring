@@ -24,7 +24,7 @@ import (
 	"context"
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
-	"go-spring.org/cloud/runtime"
+	"go-spring.org/cloud/governance"
 	"go-spring.org/log"
 	"go-spring.org/stdlib/errutil"
 )
@@ -41,7 +41,7 @@ import (
 // which fixes the executor — and nothing patches the client afterwards.
 //
 // center supplies the container's service-governance capabilities (see
-// [runtime.Runtime]); it is one object rather than a parameter per capability
+// [governance.Runtime]); it is one object rather than a parameter per capability
 // so this interface — which every company driver implements — stays stable as
 // capabilities are added. A driver that has no use for one of its authorities
 // simply ignores it.
@@ -56,7 +56,7 @@ import (
 // from the starter's side. A custom Driver that omits them therefore reports no
 // connection events at all.
 type Driver interface {
-	CreateClient(ctx context.Context, c Config, center *runtime.Runtime) (mqtt.Client, error)
+	CreateClient(ctx context.Context, c Config, center *governance.Runtime) (mqtt.Client, error)
 }
 
 // DefaultDriver is the default implementation of the Driver interface.
@@ -68,7 +68,7 @@ type DefaultDriver struct{}
 // will — and installs the governance executor, so the returned client is complete
 // (see [Driver]). The broker connect/ping is the starter's lifecycle concern (see
 // newClient in starter.go).
-func (DefaultDriver) CreateClient(ctx context.Context, c Config, center *runtime.Runtime) (mqtt.Client, error) {
+func (DefaultDriver) CreateClient(ctx context.Context, c Config, center *governance.Runtime) (mqtt.Client, error) {
 	opts := mqtt.NewClientOptions().
 		AddBroker(c.Broker).
 		SetClientID(c.ClientID).
@@ -116,6 +116,6 @@ func (DefaultDriver) CreateClient(ctx context.Context, c Config, center *runtime
 	// state per broker rather than per topic. Attaching requires a center that
 	// carries a [resilience.Manager]: resolving the executor panics
 	// without one.
-	AttachObserver(cl, c.Broker)
+	AttachObserver(cl, c.Broker, center.TrafficPropagator())
 	return cl, nil
 }

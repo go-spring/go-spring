@@ -25,9 +25,9 @@ import (
 	"testing"
 	"time"
 
-	"go-spring.org/cloud/runtime/controlplane/registration"
-	"go-spring.org/cloud/runtime/dataplane/kernel/discovery"
-	"go-spring.org/cloud/runtime/dataplane/kernel/loadbalance"
+	"go-spring.org/cloud/governance/capability/discovery"
+	"go-spring.org/cloud/governance/capability/loadbalance"
+	"go-spring.org/cloud/governance/controlplane/registration"
 	"go-spring.org/stdlib/testing/assert"
 	clientv3 "go.etcd.io/etcd/client/v3"
 	"go.opentelemetry.io/otel/codes"
@@ -169,7 +169,8 @@ func TestUpdateWeightHotReloadLive(t *testing.T) {
 
 	// pickCounts runs a fresh weighted balancer over n picks of eps.
 	pickCounts := func(eps []discovery.Endpoint, n int) map[string]int {
-		lb := loadbalance.NewWeighted()
+		lb, err := loadbalance.New(loadbalance.Selection{Balancer: loadbalance.Weighted})
+		assert.Error(t, err).Nil()
 		m := map[string]int{}
 		for range n {
 			ep, err := lb.Pick(eps, loadbalance.PickInfo{})

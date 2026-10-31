@@ -18,10 +18,14 @@ package batch
 
 import (
 	"context"
-	"go-spring.org/cloud/runtime/dataplane/outbound/chain"
 
-	"go-spring.org/cloud/runtime/dataplane/outbound/resilience"
+	"go-spring.org/cloud/governance/capability/traffic"
+	"go-spring.org/cloud/governance/dataplane/outbound/chain"
+	"go-spring.org/cloud/governance/dataplane/outbound/resilience"
 )
+
+// defaultPropagator classifies calls whose step declares no traffic convention.
+var defaultPropagator = traffic.NewDefaultPropagator(traffic.DefaultBinding())
 
 // DefaultChunkSize is used when [ChunkStep.ChunkSize] is not set.
 const DefaultChunkSize = 100
@@ -64,6 +68,11 @@ type ChunkStep[I, O any] struct {
 	// from Retry — plug in a production driver (e.g. sentinel) here. When both
 	// Executor and Retry are unset, a chunk runs once with no retry.
 	Executor chain.Executor
+
+	// Propagator is the process traffic convention used to stamp each chunk's
+	// operation, so a fault rule can target match.traffic. Optional: when nil,
+	// go-spring's standard binding is used.
+	Propagator traffic.Propagator
 }
 
 // StepName implements [Step].
@@ -78,7 +87,11 @@ func (s *ChunkStep[I, O]) executor() (chain.Executor, error) {
 	if s.Retry.IsZero() {
 		return nil, nil
 	}
-	return resilience.NewDefaultDriver(nil).NewExecutor(s.Name, resilience.Policy{Retry: s.Retry})
+	mgr := resilience.NewManager(resilience.NewDefaultDriver(nil))
+	if err := mgr.ApplyLimits(resilience.LimitsSettings{Default: resilience.Limits{Retry: s.Retry}}); err != nil {
+		return nil, err
+	}
+	return mgr.ExecutorFor(s.Name), nil
 }
 
 // Run implements [Step]. It resumes from rc.StepExecution, drives the chunk
@@ -171,7 +184,13 @@ func (s *ChunkStep[I, O]) Run(ctx context.Context, rc *StepContext) error {
 		}
 
 		if exec != nil {
-			err = exec.Execute(ctx, chain.Operation{Service: s.Name}, nil, writeChunk)
+			prop := s.Propagator
+			if prop == nil {
+				prop = defaultPropagator
+			}
+			op := chain.NewOperation(ctx, prop)
+			op.Service = s.Name
+			err = exec.Execute(ctx, op, nil, writeChunk)
 		} else {
 			err = writeChunk(ctx)
 		}

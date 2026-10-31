@@ -162,7 +162,7 @@ gs.Run()
   │       （d == nil [starter.go:83-85]）；容器中存在多个 Driver bean 时，
   │       实例可按名指定：`spring.influxdb.instances.<name>.driver = <bean 名>`
   │       （留空 = 先回退家族级 `spring.<family>.default.driver`，再按类型注入唯一 Driver bean；指定的 bean 不存在则启动失败）
-  │    2. 构造器把注入的 *runtime.Runtime（变量 center）
+  │    2. 构造器把注入的 *governance.Runtime（变量 center）
   │       交给 driver.CreateClient(ctx, c, center) [driver.go:67]
   │    3. driver.CreateClient → NewClient [client.go:102]：由治理中心构建 executor
   │       exec = center.ExecutorFor("influxdb", "influxdb:<server-url>")，再在裸
@@ -179,7 +179,7 @@ gs.Run()
 **装配扩展点**：client 装配由 `Driver`（接口，`driver.go:52`）负责。公司/伞包 starter 可把
 自己的 `Driver` 作为**可选容器 bean** 提供（`gs.Provide(func() StarterInfluxdb.Driver{...})`，
 因为是 bean，可在装配期注入从配置文件绑定的配置）；`spring.influxdb` 下每个实例都经它构建。
-driver 随配置一并收到注入的 `*runtime.Runtime`，返回模块的 `*Client`——它构建裸 client 并
+driver 随配置一并收到注入的 `*governance.Runtime`，返回模块的 `*Client`——它构建裸 client 并
 连同 `center` 一起交给 `NewClient`，由后者在构建期施加治理；不安装 `dynamicTransport`
 的自定义 driver 得到的 client 没有 transport 层声明/治理。
 没有该 bean 时 starter 在装配内回退到内置 `DefaultDriver`（`driver.go:67`，`starter.go:83-85`）。
@@ -242,7 +242,7 @@ flush 残留批次。
 SDK 在构造期固定 `*http.Client`（`Options.SetHTTPClient`），而声明/治理链要用 driver
 不该依赖的 bean 构建。因此 DefaultDriver 安装一个直通的 `dynamicTransport`
 [driver.go:68-72] 并交给 `NewClient`，而 driver 调用 `NewClient` 时一并传入
-`*runtime.Runtime`；`NewClient` 在构建 client 的同时换入真正的链
+`*governance.Runtime`；`NewClient` 在构建 client 的同时换入真正的链
 [client.go:102-113]——因此构造与治理之间没有空窗：driver 一返回链即已生效。不传入该
 transport 的自定义 driver 得到的 client 没有传输层声明/治理——该 client 的 resilience
 即不可用 [client.go:102-113]；逐调用的 `WritePoints` executor 仍然有效。
@@ -318,7 +318,7 @@ server 在启动**之后**挂掉：readiness 翻 DOWN（§4.1）；阻塞写返�
 配置治理规则源后，服务 `influxdb:http://127.0.0.1:8086` 上的限流/熔断策略
 对经 transport executor 的**每一个**请求生效（写、查、健康探测）。压测 `WritePoints`
 并观察拒绝以 `_app_influxdb_access` 记录与 resilience observer 的 outcome 计数器浮出。
-运行期翻策略——executor 热更新，无需重启。注入故障（`spring.governance.client.fault.*`）也在同一
+运行期翻策略——executor 热更新，无需重启。注入故障（`spring.fault.client.*`）也在同一
 seam 生效。
 
 ### 4.5 异步 writer 排干

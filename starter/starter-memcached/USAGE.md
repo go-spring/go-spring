@@ -83,7 +83,7 @@ real one talks to Consul/Nacos and pushes fresh snapshots):
 ```go
 package main
 
-import "go-spring.org/cloud/runtime/dataplane/kernel/discovery"
+import "go-spring.org/cloud/governance/capability/discovery"
 
 func init() {
     gs.Provide(func() (discovery.Discovery, error) {
@@ -158,7 +158,7 @@ entry's name and `c.ServiceName`, so a Client can never exist without its identi
 layer is installed there too — it needs no external input, so it is part of what the client *is*,
 not a later assembly step. The one thing a driver does not assemble is governance: the resilience
 executor is applied by `Client.applyGovernance`, called by the ctor right after, because the
-authorities come from the container and a driver must not have to depend on `cloud/runtime/controlplane/governance`.
+authorities come from the container and a driver must not have to depend on `the policy roots`.
 
 There is deliberately **no `Init` hook**. Initialization is "what happens right after the object
 exists", and the constructor does it in one place: `NewClient` fixes identity and observe,
@@ -258,7 +258,7 @@ the output belongs to the example app, not the starter).
 The `driver` key names the Driver bean: empty = fall back to the family-wide `spring.<family>.default.driver`, then to the single Driver bean by type (see
 §2.1), set to a bean name to select one explicitly; no `resilience` key: resilience/fault come from the governance center
 (`spring.governance.*` config of
-cloud/runtime/controlplane/governance), keyed by service `memcached:<service-name or instance-name>`.
+the policy roots), keyed by service `memcached:<service-name or instance-name>`.
 
 ---
 

@@ -17,10 +17,10 @@
 package StarterGrpcClient
 
 import (
-	"go-spring.org/cloud/runtime"
-	"go-spring.org/cloud/runtime/dataplane/kernel/discovery"
-	"go-spring.org/cloud/runtime/dataplane/kernel/label"
-	"go-spring.org/cloud/runtime/dataplane/kernel/loadbalance"
+	"go-spring.org/cloud/governance"
+	"go-spring.org/cloud/governance/capability/discovery"
+	"go-spring.org/cloud/governance/capability/label"
+	"go-spring.org/cloud/governance/capability/loadbalance"
 	"google.golang.org/grpc"
 )
 
@@ -44,10 +44,10 @@ type Client struct {
 	lbMgr *loadbalance.Manager
 }
 
-// NewClient builds the dialer over the center's authorities. The center bean is
-// provided by cloud/runtime/controlplane/governance, which this package imports, so it is always
-// present when the module is linked.
-func NewClient(center *runtime.Runtime) (*Client, error) {
+// NewClient builds the dialer over the runtime's authorities. The runtime bean is
+// provided by cloud/governance, whose control-plane roots arm its authorities, so it
+// is always present when the module is linked.
+func NewClient(center *governance.Runtime) (*Client, error) {
 	return NewClientFrom(center.Discovery(), center.Loadbalance()), nil
 }
 
@@ -90,7 +90,10 @@ func (c *Client) Dial(service string, backend string, opts ...grpc.DialOption) (
 	// the selection in force for the label now, and rebuilds its generation on
 	// every change. Nothing process-wide is touched, so two connections to
 	// different services (or two containers in one process) never share a policy.
-	sel := newConnState(GovernLabel(service), c.lbMgr)
+	sel, err := newConnState(GovernLabel(service), c.lbMgr)
+	if err != nil {
+		return nil, err
+	}
 
 	target := Scheme + ":///" + service
 	if backend != "" && backend != "default" {

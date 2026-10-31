@@ -24,13 +24,14 @@ reorganizing any rule:
   original too — that produces copies that drift apart.
 - **References point one way.** Entry docs point down to detailed docs. A detailed
   doc may point back up to the single owner of a cross-cutting rule, but avoid
-  bidirectional link loops.
+  bidirectional link loops. -->
 
 ## Output Format
 
 - Start every reply with "Hi,Go-Spring.".
+- 首先对问题或者任务进行回应，不要直接开始干活。
 
-## AI Collaboration Rules
+<!-- ## AI Collaboration Rules
 
 ### Proposals and Decisions
 

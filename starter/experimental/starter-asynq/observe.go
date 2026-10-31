@@ -24,7 +24,10 @@
 package StarterAsynq
 
 import (
-	"go-spring.org/cloud/runtime/dataplane/outbound/chain"
+	"context"
+
+	"go-spring.org/cloud/governance/capability/traffic"
+	"go-spring.org/cloud/governance/dataplane/outbound/chain"
 	"go-spring.org/log"
 )
 
@@ -41,8 +44,8 @@ var accessTag = log.RegisterAppTag("asynq", "access")
 // publish — the task is handed to a broker for a worker to consume later — so
 // the messaging family's vocabulary in [wire] describes it; this starter
 // supplies only the system and the task type.
-func operation(op, taskType string) chain.Operation {
-	o := chain.MessagingOp(chain.KindPublish, asynqSystem, op, taskType)
+func operation(ctx context.Context, prop traffic.Propagator, op, taskType string) chain.Operation {
+	o := chain.MessagingOp(ctx, prop, chain.KindPublish, asynqSystem, op, taskType)
 	o.Observe.Log.Tag = accessTag
 	return o
 }

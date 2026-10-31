@@ -37,7 +37,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"go-spring.org/cloud/runtime/dataplane/outbound/chain"
+	"go-spring.org/cloud/governance/dataplane/outbound/chain"
 	"io"
 	"net/http"
 	"os"
@@ -47,7 +47,8 @@ import (
 	"time"
 
 	"github.com/neo4j/neo4j-go-driver/v5/neo4j"
-	"go-spring.org/cloud/runtime/dataplane/kernel/discovery"
+	"go-spring.org/cloud/governance/capability/discovery"
+	"go-spring.org/cloud/governance/capability/traffic"
 	"go-spring.org/spring/gs"
 
 	_ "go-spring.org/starter-actuator"    // aggregates the neo4j health.Indicator
@@ -145,7 +146,8 @@ func runTest(s *Service, c *Config) {
 	// "default" executor; a burst over rate-limit is rejected with ErrRateLimited.
 	// The manual call declares its own operation identity up front (see
 	// StarterNeo4j.Operation); RunWithResilience takes that op explicitly.
-	op := StarterNeo4j.Operation("query", "MERGE (p:Person {name: $name}) SET p.age = $age RETURN p")
+	op := StarterNeo4j.Operation(ctx, traffic.NewDefaultPropagator(traffic.DefaultBinding()),
+		"query", "MERGE (p:Person {name: $name}) SET p.age = $age RETURN p")
 	var admitted, rejected int
 	for range 15 {
 		err := StarterNeo4j.RunWithResilience(ctx, s.Neo4j, op, func(ctx context.Context) error {

@@ -26,7 +26,7 @@ import (
 	"context"
 	"net"
 
-	"go-spring.org/cloud/runtime/dataplane/kernel/label"
+	"go-spring.org/cloud/governance/capability/label"
 	"go.mongodb.org/mongo-driver/v2/mongo"
 )
 
@@ -90,7 +90,7 @@ func NewClient(raw *mongo.Client, cfg Config) *Client {
 
 // serviceLabel derives a stable, human-readable service key for a client, so
 // limiter and breaker state is scoped per MongoDB instance rather than per
-// connection. The same label is what a spring.governance.client.rules[N] rule matches to drive
+// connection. The same label is what a client.loadbalance.services[N] rule matches to drive
 // this client's endpoint selection (balancer / outlier suspension).
 func serviceLabel(c Config) string {
 	return label.ServiceLabel("mongodb", c.ServiceName, c.URI)

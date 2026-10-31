@@ -31,10 +31,10 @@ docker exec starter-governance-etcd etcdctl put /gs-govern-demo.yaml 'spring:
   governance:
     enabled: true
     client:
-      default:
-        enabled: true
+      enabled: true
+      resilience:
         timeout: 900ms
-        max-retries: 2'
+      max-retries: 2'
 # 打印: policy: enabled=true timeout=900ms retries=2
 ```
 

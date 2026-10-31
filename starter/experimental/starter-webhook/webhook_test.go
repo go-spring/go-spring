@@ -26,10 +26,14 @@ import (
 	"testing"
 	"time"
 
+	"go-spring.org/cloud/governance/capability/traffic"
 	"go-spring.org/stdlib/testing/assert"
 
-	observability "go-spring.org/cloud/runtime/dataplane/outbound/observe"
+	observability "go-spring.org/cloud/governance/dataplane/outbound/observe"
 )
+
+// testProp is the traffic convention these fixtures run under.
+var testProp = traffic.NewDefaultPropagator(traffic.DefaultBinding())
 
 // TestBuildPayloadChannels pins each channel's payload shape: the receiver
 // must recognize the message the starter sends.
@@ -96,6 +100,7 @@ func TestNotifierSendRoundTrip(t *testing.T) {
 		cfg:    Config{URL: srv.URL, Channel: "generic", Timeout: 2 * time.Second},
 		client: &http.Client{Timeout: 2 * time.Second},
 		obs:    observability.NewOperationObserver("webhook", "test"),
+		prop:   testProp,
 	}
 	assert.Error(t, n.Send(context.Background(), &Notification{Title: "deploy", Text: "ok"})).Nil()
 	assert.That(t, got["title"]).Equal("deploy")
@@ -114,6 +119,7 @@ func TestNotifierSendBadStatus(t *testing.T) {
 		cfg:    Config{URL: srv.URL, Channel: "generic", Timeout: 2 * time.Second},
 		client: &http.Client{Timeout: 2 * time.Second},
 		obs:    observability.NewOperationObserver("webhook", "test"),
+		prop:   testProp,
 	}
 	assert.That(t, n.Send(context.Background(), &Notification{Title: "x"}) != nil).True()
 }
@@ -148,6 +154,7 @@ func TestNotifierSendBusinessError(t *testing.T) {
 				cfg:    Config{URL: srv.URL, Channel: c.channel, Timeout: 2 * time.Second},
 				client: &http.Client{Timeout: 2 * time.Second},
 				obs:    observability.NewOperationObserver("webhook", "test"),
+				prop:   testProp,
 			}
 			err := n.Send(context.Background(), &Notification{Title: "x"})
 			if c.wantErr {

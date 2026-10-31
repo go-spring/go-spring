@@ -303,7 +303,7 @@ key the later source wins.
 go-spring uses the same mechanism for one attribute of its own: every span of a request tagged as
 synthetic load carries `load_test=true`, so a load-test run can be filtered out of production
 dashboards and alerts instead of blending into them. That is a **read** of the `traffic` contract
-(see `cloud/runtime/dataplane/kernel/traffic`), not an action on it — deciding what a load-test request should
+(see `cloud/governance/capability/traffic`), not an action on it — deciding what a load-test request should
 *do* stays the application's business.
 
 **Metrics are not covered.** The metric SDK has no per-record hook, so built-in metric labels stay

@@ -22,10 +22,10 @@
 // abstractions a microservice call needs, all behind the single http.RoundTripper
 // seam already used by resilience and the otelhttp transport:
 //
-//   - discovery — when a ServiceName is given (and mesh mode is off), a
-//     [discovery.NewResolver] keeps a fresh endpoint snapshot (freshness lives
-//     inside the backend); in mesh
-//     mode a sidecar owns discovery+LB, so this layer is skipped;
+//   - discovery — when in-process discovery applies (a ServiceName is given and
+//     the process is not in mesh mode), a [discovery.NewResolver] keeps a fresh
+//     endpoint snapshot (freshness lives inside the backend); in mesh mode a
+//     sidecar owns discovery+LB, so this layer is skipped;
 //   - loadbalance — a [loadbalance.Pool] picks one live endpoint per request
 //     (any of the registered strategies, plus optional outlier suspension) and the
 //     transport rewrites the request host to it;
@@ -45,7 +45,7 @@
 // (gated by Observability). With no
 // OTel SDK registered these are no-ops, so the transport stays usable bare. The
 // package never imports a concrete starter; the governance authority reaches it
-// as the beans [NewTransport] takes — a [resilience.Manager], a [fault.ClientManager]
+// as the beans [NewTransport] takes — a [resilience.Manager], a [fault.Manager]
 // and a [loadbalance.Manager] for the selection half — never through a
 // package-level seam.
 package httpx
@@ -54,18 +54,19 @@ import (
 	"context"
 	"net/http"
 
-	"go-spring.org/cloud/runtime"
+	"go-spring.org/cloud/governance"
 
-	"go-spring.org/cloud/runtime/dataplane/kernel/label"
+	"go-spring.org/cloud/governance/capability/label"
 
+	"go-spring.org/cloud/governance/capability/discovery"
+	"go-spring.org/cloud/governance/capability/loadbalance"
+	"go-spring.org/cloud/governance/capability/traffic"
+	"go-spring.org/cloud/governance/dataplane/outbound/chain"
+	observability "go-spring.org/cloud/governance/dataplane/outbound/observe"
+	"go-spring.org/cloud/governance/dataplane/outbound/resilience"
 	"go-spring.org/cloud/propagate"
-	"go-spring.org/cloud/runtime/dataplane/kernel/discovery"
-	"go-spring.org/cloud/runtime/dataplane/kernel/loadbalance"
-	"go-spring.org/cloud/runtime/dataplane/kernel/traffic"
-	"go-spring.org/cloud/runtime/dataplane/outbound/chain"
-	observability "go-spring.org/cloud/runtime/dataplane/outbound/observe"
-	"go-spring.org/cloud/runtime/dataplane/outbound/resilience"
 	"go-spring.org/cloud/security"
+	"go-spring.org/stdlib/errutil"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 )
 
@@ -121,9 +122,12 @@ type Config struct {
 	// a transparent pass-through.
 	ResilienceDriver resilience.Driver
 
-	// ResiliencePolicy is the backend-neutral protection applied when
-	// ResilienceDriver is set.
-	ResiliencePolicy resilience.Policy
+	// The three fields below are the backend-neutral protection applied when
+	// ResilienceDriver is set. They are independent capabilities, like the
+	// governance document's blocks.
+	ResilienceLimits    resilience.Limits
+	ResilienceBreaker   resilience.BreakerPolicy
+	ResilienceRateLimit resilience.RateLimitPolicy
 
 	// Executor is a pre-built resilience executor to use in place of the
 	// ResilienceDriver+ResiliencePolicy pair. When non-nil it takes precedence:
@@ -153,7 +157,7 @@ type Config struct {
 	// cross-cutting concern — without having to replace the whole chain or
 	// disable the built-in layers. Applied outermost, so it sees each request
 	// before the built-in layers; to detect load-test traffic from a wrapper,
-	// ask the injected propagator's IsLoadTest(req.Context()) (the ctx is tagged
+	// ask the injected `traffic.IsLoadTest`(req.Context()) (the ctx is tagged
 	// at every layer).
 	WrapTransport func(http.RoundTripper) http.RoundTripper
 }
@@ -168,11 +172,11 @@ type Config struct {
 //
 // center is the runtime bean the caller received from the container;
 // it must not be nil — the wiring fails fast when no center bean exists, and a
-// standalone caller assembles one with runtime.New first.
+// standalone caller assembles one from a field literal and Runtime.Init first.
 // prop is the load-test convention bean — the application's when it provides
 // one, go-spring's default otherwise — which stamps the marker onto every
 // outbound request.
-func NewTransport(cfg Config, center *runtime.Runtime, prop traffic.Propagator) (rt http.RoundTripper, close func() error, err error) {
+func NewTransport(cfg Config, center *governance.Runtime, prop traffic.Propagator) (rt http.RoundTripper, close func() error, err error) {
 
 	// Base dialer: an explicit Base wins; otherwise DefaultTransport, cloned with
 	// the configured TLS surface when enabled (nil BuildClient keeps system
@@ -193,19 +197,20 @@ func NewTransport(cfg Config, center *runtime.Runtime, prop traffic.Propagator) 
 	// OTel SDK is registered.
 	base = otelhttp.NewTransport(base)
 
-	var resolver discovery.Resolver
 	closeFns := []func() error{}
 
-	// Discovery + load balancing. NewResolver returns (nil, nil) — "discovery
-	// not in effect" — when no service name is configured or mesh mode is on
-	// (a sidecar then owns discovery+LB); in that case requests flow to whatever
-	// host the caller set (the service's stable mesh address). Freshness lives
-	// inside the discovery backend, so the resolver has no resources to release.
-	resolver, err = discovery.NewResolver(context.Background(), cfg.Discovery, cfg.ServiceName, discovery.WithScheme(cfg.Scheme))
-	if err != nil {
-		return nil, nil, err
-	}
-	if resolver != nil {
+	// Discovery + load balancing. Mesh mode wins over a configured service-name:
+	// the sidecar owns discovery+LB, so requests flow to whatever host the caller
+	// set (the service's stable mesh address). Freshness lives inside the
+	// discovery backend, so the resolver has no resources to release.
+	if center.UsesDiscovery(cfg.ServiceName) {
+		if cfg.Discovery == nil {
+			return nil, nil, errutil.Explain(nil, "httpx: service-name %q is set without a discovery backend", cfg.ServiceName)
+		}
+		resolver, err := discovery.NewResolver(context.Background(), cfg.Discovery, cfg.ServiceName, cfg.Scheme)
+		if err != nil {
+			return nil, nil, err
+		}
 		// Endpoint selection is governed unconditionally: the chain is built
 		// through the center's manager and registers itself under the service's
 		// label as it is built. A caller-supplied Executor or ResilienceDriver
@@ -222,7 +227,10 @@ func NewTransport(cfg Config, center *runtime.Runtime, prop traffic.Propagator) 
 		// The resolver (bound by-name re-read of the backend snapshot) feeds the
 		// chain as its endpoint source, so it follows the naming service in real
 		// time.
-		chain := center.Loadbalance().Chain(context.Background(), resolver, cfg.service())
+		chain, cerr := center.Loadbalance().Chain(context.Background(), resolver, cfg.service())
+		if cerr != nil {
+			return nil, nil, cerr
+		}
 		base = &balancedTransport{base: base, chain: chain}
 	} else if cfg.Addr != "" {
 		// Direct mode: pin every request to the configured address so callers
@@ -247,12 +255,24 @@ func NewTransport(cfg Config, center *runtime.Runtime, prop traffic.Propagator) 
 	case cfg.Executor != nil:
 		exec = cfg.Executor
 	case cfg.ResilienceDriver != nil:
-		if exec, err = cfg.ResilienceDriver.NewExecutor(cfg.service(), cfg.ResiliencePolicy); err != nil {
+		// The driver builds an executor over a manager, so an explicit
+		// driver+policy triple is just a private, single-label manager.
+		mgr := resilience.NewManager(cfg.ResilienceDriver)
+		if err = mgr.ApplyLimits(resilience.LimitsSettings{Default: cfg.ResilienceLimits}); err != nil {
 			closeAll(closeFns)
 			return nil, nil, err
 		}
+		if err = mgr.ApplyBreaker(resilience.BreakerSettings{Default: cfg.ResilienceBreaker}); err != nil {
+			closeAll(closeFns)
+			return nil, nil, err
+		}
+		if err = mgr.ApplyRateLimit(resilience.RateLimitSettings{Default: cfg.ResilienceRateLimit}); err != nil {
+			closeAll(closeFns)
+			return nil, nil, err
+		}
+		exec = mgr.ExecutorFor(cfg.service())
 	default:
-		exec = center.ResilienceClient().ExecutorFor("http", cfg.service())
+		exec = center.ResilienceClient().ExecutorFor(cfg.service())
 		managerOwned = true
 		// The chain's endpoint-selection half follows the governance rule through
 		// the registration its construction performed — the protection policy
@@ -284,7 +304,9 @@ func NewTransport(cfg Config, center *runtime.Runtime, prop traffic.Propagator) 
 		}
 	}
 	exec = wrap(exec)
-	base = resilience.NewRoundTripper(base, exec, cfg.service(), callFor)
+	base = resilience.NewRoundTripper(base, exec, cfg.service(), func(req *http.Request) chain.Operation {
+		return callFor(req, prop)
+	})
 	// The manager owns its executor for the process lifetime, so closing it with
 	// one transport would be wrong; only an httpx-built one is released here.
 	if !managerOwned {
@@ -311,7 +333,7 @@ func NewTransport(cfg Config, center *runtime.Runtime, prop traffic.Propagator) 
 
 // trafficTransport injects the load-test marker header onto each request when
 // the request's context is a load-test context, then delegates to base. It is
-// the outbound seam for [go-spring.org/cloud/runtime/dataplane/kernel/traffic] on the HTTP client path.
+// the outbound seam for [go-spring.org/cloud/governance/capability/traffic] on the HTTP client path.
 type trafficTransport struct {
 	base http.RoundTripper
 	prop traffic.Propagator
@@ -324,12 +346,12 @@ type trafficTransport struct {
 // this client. The path is the concrete request path (a client has no route
 // template); a rule that must cover a family of paths uses [chain.ActionMatch]
 // with a Prefix.
-func callFor(req *http.Request) chain.Operation {
+func callFor(req *http.Request, prop traffic.Propagator) chain.Operation {
 	path := ""
 	if req.URL != nil {
 		path = req.URL.Path
 	}
-	return chain.HTTPOp(req.Method, path)
+	return chain.HTTPOp(req.Context(), prop, req.Method, path)
 }
 
 func (t *trafficTransport) RoundTrip(req *http.Request) (*http.Response, error) {

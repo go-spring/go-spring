@@ -20,7 +20,7 @@ import (
 	"context"
 	"testing"
 
-	"go-spring.org/cloud/runtime/dataplane/kernel/traffic"
+	"go-spring.org/cloud/governance/capability/traffic"
 	"go-spring.org/stdlib/testing/assert"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 )
@@ -32,7 +32,7 @@ func TestLoadTestProcessorTagsMarkedSpans(t *testing.T) {
 	tp, rec := newTestRecorderProvider()
 
 	prop := traffic.NewDefaultPropagator(traffic.DefaultBinding())
-	ctx := prop.WithLoadTest(context.Background())
+	ctx := prop.WithKind(context.Background(), traffic.KindLoadTest)
 	_, span := tp.Tracer("test").Start(ctx, "op")
 	span.End()
 
@@ -59,8 +59,8 @@ func TestLoadTestProcessorLeavesRealTrafficAlone(t *testing.T) {
 // the slot swapped for one that calls every context load-test traffic.
 func alwaysBound() traffic.Binding {
 	b := traffic.DefaultBinding()
-	b.Bind = func(ctx context.Context) context.Context { return ctx }
-	b.Bound = func(context.Context) bool { return true }
+	b.WithKind = func(ctx context.Context, _ traffic.Kind) context.Context { return ctx }
+	b.Kind = func(context.Context) traffic.Kind { return traffic.KindLoadTest }
 	return b
 }
 
@@ -100,7 +100,7 @@ func TestNewTracerProviderWiresLoadTest(t *testing.T) {
 	defer func() { _ = tp.Shutdown(context.Background()) }()
 
 	prop := traffic.NewDefaultPropagator(traffic.DefaultBinding())
-	ctx := prop.WithLoadTest(context.Background())
+	ctx := prop.WithKind(context.Background(), traffic.KindLoadTest)
 	_, span := tp.Tracer("test").Start(ctx, "op")
 	span.End()
 	assert.Error(t, tp.ForceFlush(context.Background())).Nil()

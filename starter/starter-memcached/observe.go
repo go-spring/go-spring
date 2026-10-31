@@ -23,7 +23,10 @@
 package StarterMemcached
 
 import (
-	"go-spring.org/cloud/runtime/dataplane/outbound/chain"
+	"context"
+
+	"go-spring.org/cloud/governance/capability/traffic"
+	"go-spring.org/cloud/governance/dataplane/outbound/chain"
 	"go-spring.org/log"
 )
 
@@ -41,8 +44,8 @@ var accessTag = log.RegisterAppTag("memcached", "access")
 // the span and the log but never a label. An empty key (Ping, FlushAll) carries
 // no detail, which levels its success log at Info. The family's vocabulary lives
 // in [wire].
-func operation(op, key string) chain.Operation {
-	o := chain.DBOp(memcachedSystem, op, key)
+func operation(ctx context.Context, prop traffic.Propagator, op, key string) chain.Operation {
+	o := chain.DBOp(ctx, prop, memcachedSystem, op, key)
 	o.Observe.Log.Tag = accessTag
 	return o
 }

@@ -30,7 +30,10 @@
 package StarterKafkaSarama
 
 import (
-	"go-spring.org/cloud/runtime/dataplane/outbound/chain"
+	"context"
+
+	"go-spring.org/cloud/governance/capability/traffic"
+	"go-spring.org/cloud/governance/dataplane/outbound/chain"
 	"go-spring.org/log"
 )
 
@@ -67,10 +70,10 @@ var (
 // The vocabulary — the family's attribute keys, the bounded/open split that puts
 // the destination in detail and the system in a label, and the trace edge each
 // word adds — is the messaging family's, not this file's; it lives in
-// [cloud/runtime/dataplane/outbound/chain]. This starter supplies only what only it knows: that the calls
+// [cloud/governance/dataplane/outbound/chain]. This starter supplies only what only it knows: that the calls
 // reach a kafka broker, and their word and destination.
-func operation(word opWord, topic string) chain.Operation {
-	op := chain.MessagingOp(word.shape, kafkaSystem, word.word, topic)
+func operation(ctx context.Context, prop traffic.Propagator, word opWord, topic string) chain.Operation {
+	op := chain.MessagingOp(ctx, prop, word.shape, kafkaSystem, word.word, topic)
 	op.Observe.Log.Tag = accessTag
 	return op
 }

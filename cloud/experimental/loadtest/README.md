@@ -38,9 +38,9 @@ res.Print(os.Stdout)
 
 `Op` is `func(ctx) error` — nil on success; the starter-specific main
 supplies the client call. Every op's context is tagged as load-test traffic
-(`prop.WithLoadTest(ctx)`) so downstream clients recognize the synthetic load
+(`prop.WithKind(ctx, traffic.KindLoadTest)`) so downstream clients recognize the synthetic load
 (shadow-table routing, fault-injection scope, and metrics labeling in
-`cloud/runtime/dataplane/kernel/traffic` all key off it).
+`cloud/governance/capability/traffic` all key off it).
 
 ## Choosing a driver
 

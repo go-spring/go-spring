@@ -24,9 +24,11 @@
 package StarterMilvus
 
 import (
+	"context"
 	"strings"
 
-	"go-spring.org/cloud/runtime/dataplane/outbound/chain"
+	"go-spring.org/cloud/governance/capability/traffic"
+	"go-spring.org/cloud/governance/dataplane/outbound/chain"
 	"go-spring.org/log"
 	"go.opentelemetry.io/otel/attribute"
 )
@@ -51,12 +53,12 @@ var accessTag = log.RegisterAppTag("milvus", "access")
 // the SDK), so nothing unbounded is ever put at risk of becoming a label. The
 // full method path rides in detail under the family's own key, reaching the span
 // and the log but never a label. The family's vocabulary lives in [wire].
-func operation(method string) chain.Operation {
+func operation(ctx context.Context, prop traffic.Propagator, method string) chain.Operation {
 	name := method
 	if i := strings.LastIndex(method, "/"); i >= 0 {
 		name = method[i+1:]
 	}
-	o := chain.DBOp(milvusSystem, name, "")
+	o := chain.DBOp(ctx, prop, milvusSystem, name, "")
 	o.Observe.Span.Attrs = append(o.Observe.Span.Attrs, attribute.String("db.method", method))
 	o.Observe.Log.Fields = append(o.Observe.Log.Fields, log.String("db.method", method))
 	o.Observe.Log.QuietSuccess = true

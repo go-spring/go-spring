@@ -35,7 +35,7 @@
 // this starter publishes a plain instance (any transport) to Consul.
 //
 // The registration core - the single discoveryServer bean that publishes into
-// every configured center (across backends) - lives in cloud/runtime/dataplane/kernel/discovery, which
+// every configured center (across backends) - lives in cloud/governance/capability/discovery, which
 // this package imports anyway, so it exists exactly once per process.
 package StarterDiscoveryConsul
 
@@ -45,8 +45,8 @@ import (
 
 	"github.com/hashicorp/consul/api"
 	"go-spring.org/cloud/actuator/health"
-	"go-spring.org/cloud/runtime/controlplane/registration"
-	"go-spring.org/cloud/runtime/dataplane/kernel/discovery"
+	"go-spring.org/cloud/governance/capability/discovery"
+	"go-spring.org/cloud/governance/controlplane/registration"
 	"go-spring.org/log"
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/gs"
@@ -187,8 +187,8 @@ func (b *consulBackend) UpdateWeight(ctx context.Context, inst registration.Inst
 }
 
 // Resolve serves snapshots of the healthy instances this agent reports.
-func (b *consulBackend) Resolve(ctx context.Context, name string, opts ...discovery.Option) ([]discovery.Endpoint, error) {
-	return b.disc.Resolve(ctx, name, opts...)
+func (b *consulBackend) Resolve(ctx context.Context, name string) ([]discovery.Endpoint, error) {
+	return b.disc.Resolve(ctx, name)
 }
 
 // probe reports this agent's health for the block's health.Indicator: one

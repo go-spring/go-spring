@@ -123,7 +123,7 @@ starter 自身不再做任何逐调用发射 —— 它只声明身份，由 res
 res, err := StarterRocketmq.GuardedSend(ctx, s.Client, p, msg)
 ```
 
-治理未接入（容器里没有 `cloud/runtime/controlplane/governance` 的 bean）时，它和 `p.SendSync(ctx, msg)` 行为完全一致。
+治理未接入（容器里没有 策略根 bean）时，它和 `p.SendSync(ctx, msg)` 行为完全一致。
 
 [消息 Driver](#消息-driver)的 publish 与 consume 路径同样经由该 executor，因此
 driver 流量也受到保护并被声明。
@@ -149,8 +149,8 @@ type Service struct {
 `primitive.NsResolver`）。它是可选的容器 bean：`spring.rocketmq.instances.*` 下每个
 客户端都经它构建，仅当没有 `Driver` bean 时才回退到内置 `DefaultDriver`。
 内嵌 `StarterRocketmq.DefaultDriver` 并委托 `CreateClient` 以保留默认装配。
-`CreateClient` 接收容器注入的 `*runtime.Runtime`（见
-`go-spring.org/cloud/runtime/controlplane/governance`）并原样传递，因此客户端在一步内装配完整——
+`CreateClient` 接收容器注入的 `*governance.Runtime`（见
+`go-spring.org/cloud/governance`）并原样传递，因此客户端在一步内装配完整——
 身份与 executor 同时就位；照原样委托即可让治理继续生效：
 
 ```go
@@ -165,7 +165,7 @@ type myDriver struct {
 }
 
 func (d myDriver) CreateClient(ctx context.Context, c StarterRocketmq.Config,
-    center *runtime.Runtime) (*StarterRocketmq.Client, error) {
+    center *governance.Runtime) (*StarterRocketmq.Client, error) {
     return d.DefaultDriver.CreateClient(ctx, c, center)
 }
 ```

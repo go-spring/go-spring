@@ -23,9 +23,11 @@
 package StarterS3
 
 import (
+	"context"
 	"net/http"
 
-	"go-spring.org/cloud/runtime/dataplane/outbound/chain"
+	"go-spring.org/cloud/governance/capability/traffic"
+	"go-spring.org/cloud/governance/dataplane/outbound/chain"
 )
 
 // callFor resolves the semantic identity of an S3 request. It is handed to
@@ -35,6 +37,6 @@ import (
 // every attempt, retries included. Building the operation inside the
 // round-tripper (rather than on the request's context from an outer transport)
 // is what keeps the identity known at the point the executor reads it.
-func callFor(req *http.Request) chain.Operation {
-	return operation(req.Method, req.URL.Path)
+func callFor(ctx context.Context, prop traffic.Propagator, req *http.Request) chain.Operation {
+	return operation(ctx, prop, req.Method, req.URL.Path)
 }

@@ -20,7 +20,7 @@ import (
 	"context"
 	"testing"
 
-	"go-spring.org/cloud/runtime/dataplane/kernel/traffic"
+	"go-spring.org/cloud/governance/capability/traffic"
 	"go-spring.org/stdlib/testing/assert"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
@@ -32,14 +32,14 @@ func TestLoadTestUnaryInterceptor_TagsFromMetadata(t *testing.T) {
 	var saw bool
 	handler := func(ctx context.Context, _ any) (any, error) {
 		hits++
-		saw = prop.IsLoadTest(ctx)
+		saw = traffic.IsLoadTest(ctx, prop)
 		return "ok", nil
 	}
 	info := &grpc.UnaryServerInfo{FullMethod: "/svc/Method"}
 	intc := LoadTestUnaryInterceptor(prop)
 
 	// With the marker metadata: handler ctx is tagged.
-	ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs("x-loadtest", "1"))
+	ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs("x-traffic", "loadtest"))
 	_, _ = intc(ctx, nil, info, handler)
 	assert.That(t, hits).Equal(1)
 	assert.That(t, saw).True()
@@ -68,13 +68,13 @@ func TestLoadTestStreamInterceptor_TagsFromMetadata(t *testing.T) {
 	prop := traffic.NewDefaultPropagator(traffic.DefaultBinding())
 	var saw bool
 	handler := func(_ any, ss grpc.ServerStream) error {
-		saw = prop.IsLoadTest(ss.Context())
+		saw = traffic.IsLoadTest(ss.Context(), prop)
 		return nil
 	}
 	info := &grpc.StreamServerInfo{}
 
 	// Marker present in inbound metadata => stream ctx tagged.
-	ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs("x-loadtest", "1"))
+	ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs("x-traffic", "loadtest"))
 	err := LoadTestStreamInterceptor(prop)(nil, &fakeStream{ctx: ctx}, info, handler)
 	assert.Error(t, err).Nil()
 	assert.That(t, saw).True()
@@ -97,7 +97,7 @@ func TestUserInterceptorsComposeInOrder(t *testing.T) {
 		return h(ctx, nil)
 	}
 
-	s := NewSimpleGrpcServer(Config{}, func(*grpc.Server) {}, []grpc.UnaryServerInterceptor{outer, inner}, nil, testCenter(), nil)
+	s := NewSimpleGrpcServer(Config{}, func(*grpc.Server) {}, []grpc.UnaryServerInterceptor{outer, inner}, nil, testCenter(), testProp)
 	opts, err := s.buildOptions()
 	if err != nil {
 		t.Fatal(err)

@@ -60,7 +60,7 @@ import (
     "context"
 
     "github.com/IBM/sarama"
-    "go-spring.org/cloud/runtime/dataplane/kernel/traffic"
+    "go-spring.org/cloud/governance/capability/traffic"
     "go-spring.org/spring/gs"
     StarterKafkaSarama "go-spring.org/starter-kafka-sarama"
 )
@@ -184,7 +184,7 @@ gs.Run()
 **装配扩展点**：client 装配由 `Driver`（接口，`driver.go:44-66`）负责。公司/伞包 starter 可把
 自己的 `Driver` 作为**可选容器 bean** 提供（`gs.Provide(func() StarterKafkaSarama.Driver{...})`，
 因为是 bean，可在装配期注入从配置文件绑定的配置）；`spring.kafka-sarama` 下每个实例都经它
-构建。`CreateClient` 接收容器的 `*runtime.Runtime`（参数名 `center`）并返回完整的 client ——
+构建。`CreateClient` 接收容器的 `*governance.Runtime`（参数名 `center`）并返回完整的 client ——
 它必须像内置 driver 那样，从 `center` 构建并挂上 executor（见 `attachExecutor`）。没有该 bean 时 starter 在
 装配内回退到内置 `DefaultDriver`（`driver.go:67-112`，`client.go:73-75`）。当容器中存在多个
 Driver bean 时，实例可按名指定：
@@ -204,7 +204,7 @@ bean 不存在则启动失败）。
 ```
 SendMessage / SendMessages
   → 构建 op：operation("publish", msg.Topic)，显式传给 observer
-  → clientfault.ClientManager.WrapClientExecutor（spring.governance.client.fault 启用时注入故障）
+  → clientfault.Manager.WrapClientExecutor（spring.fault.client 启用时注入故障）
     → resilience executor 包装（span + outcome 计数 + call/attempt duration + 访问日志）
       → resilience executor（breaker / rate limit / retry，策略来自治理中心）
         → 注入 W3C 链路上下文 + 压测标记到 msg.Headers
@@ -341,7 +341,7 @@ producer.SendMessage(msg)  // 裸句柄依旧不受保护 —— wrapper 不改�
 - `WrapSyncProducer` 注入的 `traceparent` 在消费侧可读 —— Jaeger 里 `publish` →
   `consume` 是同一条 trace（[example-otel](example-otel/) 冒烟正是对 Jaeger API 断言这点）。
 - 压测标记：在带标记的 ctx 下发布（如上游 echo 的 loadtest 中间件），消费侧
-  `Consume` 提取之后 propagator 的 `IsLoadTest(ctx)` 为真。
+  `Consume` 提取之后 `traffic.IsLoadTest(ctx, prop)` 为真。
 - ⚠ producer 消息上预设的 `traceparent`/标记 header 会被**替换**而非合并。
   任何地方都没有消息 Key 映射（无 driver）—— `msg.Key` 是什么就是什么。
 

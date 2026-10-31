@@ -4,7 +4,7 @@
 
 `starter-discovery-etcd` registers the **current instance** into an etcd cluster —
 the provider-side counterpart to Go-Spring's client-side discovery
-(`cloud/runtime/dataplane/kernel/discovery`) — **and** provides the consumer-side etcd discovery
+(`cloud/governance/capability/discovery`) — **and** provides the consumer-side etcd discovery
 backend, so one starter serves both halves of the naming idiom. It is the
 Go-Spring equivalent of Spring Cloud's `ServiceRegistry` + `DiscoveryClient`,
 backed by etcd leases.
@@ -28,7 +28,7 @@ ONE backend bean named `etcd.<name>` that implements BOTH the write side
 (`registration.Registry`) and the read side (`discovery.Discovery`), sharing the
 block's client and key prefix. There is no default/unnamed block.
 
-Registration itself is owned by the [cloud/runtime/dataplane/kernel/discovery](../../cloud/runtime/dataplane/kernel/discovery)
+Registration itself is owned by the [cloud/governance/capability/discovery](../../cloud/governance/capability/discovery)
 core (imported transitively): its single `discoveryServer` `gs.Server` collects
 the discovery beans of **every** configured center — across backends — and
 registers the instance into all of them once the app is ready, deregisters from
@@ -120,7 +120,7 @@ can reconstruct an `Endpoint`.
 ### Discovering (other instances)
 
 Discovery needs **no configuration of its own**: each block's bean IS a
-`cloud/runtime/dataplane/kernel/discovery` backend under the bean name `etcd.<name>`. Client starters
+`cloud/governance/capability/discovery` backend under the bean name `etcd.<name>`. Client starters
 cite that name:
 
 ```properties
@@ -159,7 +159,7 @@ selection, mirroring the nacos adapter.
   the cluster's client and both halves of the naming idiom. With `ping=true` it
   probes the cluster (a `Status` call) so an unreachable etcd fails startup,
   once per block.
-- The `discoveryServer` from the [cloud/runtime/controlplane/registration](../../cloud/runtime/controlplane/registration) core
+- The `discoveryServer` from the [cloud/governance/controlplane/registration](../../cloud/governance/controlplane/registration) core
   (transitively imported) collects every backend's registry — across all
   backends — and waits for readiness, then `Register`s the instance into every
   center: it grants a **lease** per center, writes the key under that lease,

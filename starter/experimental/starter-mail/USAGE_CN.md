@@ -149,7 +149,7 @@ gs.Run()
 ```
 
 此处用 `gs.Module`（而非 `gs.Group`）是为了让构造函数在配置之外还能接住注入的
-`*runtime.Runtime`（变量 `center`）。SMTP 客户端每次 Send 自行拨号并关闭，没有连接池
+`*governance.Runtime`（变量 `center`）。SMTP 客户端每次 Send 自行拨号并关闭，没有连接池
 要释放——`Destroy` hook 唯一释放的是 resilience 执行器。
 
 ### 2.2 一次发送的逐层走读

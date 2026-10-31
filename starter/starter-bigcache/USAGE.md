@@ -269,7 +269,7 @@ embedded `InnerCache`. That decides the shape of the public type:
 
 No executor sits under these calls: nothing here reaches out of the process, so there is no
 protection to apply and no access log worth writing. The starter consequently takes no
-governance bean and no `*runtime.Runtime` — a seam with nothing behind it.
+governance bean and no `*governance.Runtime` — a seam with nothing behind it.
 
 ### 2.3 One `Get("key")` on a miss, layer by layer
 

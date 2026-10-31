@@ -102,7 +102,7 @@ against (in a real deployment this is your company's adapter):
 ```go
 package main
 
-import "go-spring.org/cloud/runtime/dataplane/kernel/discovery"
+import "go-spring.org/cloud/governance/capability/discovery"
 
 func init() {
     gs.Provide(func() (discovery.Discovery, error) {
@@ -210,8 +210,8 @@ Consequence: with `service-name` set, `host`/`port` are never dialed — but the
 optional either**: the DSN still embeds them (`sqlserver://...@host:port?...`) and must
 parse through `msdsn.Parse`. The example sets the deliberate dummies `0.0.0.0`/`0` to prove
 the address really comes from discovery (example/conf/app.properties, `discovery` block).
-In mesh mode (`NewResolver` returns nil) the configured Host is used as-is — the sidecar
-owns discovery+LB.
+In mesh mode (`Runtime.UsesDiscovery` returns false) the configured Host is used as-is —
+the sidecar owns discovery+LB.
 
 ### 2.3 One query, layer by layer
 
@@ -305,12 +305,12 @@ instance (per-dial `Pick()`).
 ```bash
 cd example-load && docker compose up -d
 go run . -duration=10s                       # baseline SELECT 1 throughput
-# set fire — edit conf/governance.properties (hot-reload via cloud/runtime/controlplane/governance's file source):
-#   spring.governance.client.fault.rate=0.5  spring.governance.client.fault.error=generic
+# set fire — edit conf/governance.properties (hot-reload via the policy roots's file source):
+#   spring.fault.client.rate=0.5  spring.fault.client.error=generic
 go run . -duration=10s                       # error breakdown shows ~50% injected
 ```
 
-The breaker (`spring.governance.client.default.error-threshold=20`) trips visible in the same breakdown;
+The breaker (`spring.governance.client.resilience.error-threshold=20`) trips visible in the same breakdown;
 `WithContext` threads the harness deadline so the 500 ms timeout can interrupt in-flight
 queries.
 

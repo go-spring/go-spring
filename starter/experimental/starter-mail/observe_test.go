@@ -17,13 +17,18 @@
 package StarterMail
 
 import (
-	"go-spring.org/cloud/runtime/dataplane/outbound/chain"
+	"context"
 	"strings"
 	"testing"
 
+	"go-spring.org/cloud/governance/capability/traffic"
+	"go-spring.org/cloud/governance/dataplane/outbound/chain"
 	"go-spring.org/stdlib/testing/assert"
 	"go.opentelemetry.io/otel/attribute"
 )
+
+// testProp is the traffic convention these fixtures run under.
+var testProp = traffic.NewDefaultPropagator(traffic.DefaultBinding())
 
 // attrsLine renders attributes as "k=v" pairs in slice order.
 func attrsLine(attrs []attribute.KeyValue) string {
@@ -40,7 +45,7 @@ func attrsLine(attrs []attribute.KeyValue) string {
 // a configured retry from sending the same mail twice now rides on the
 // [chain.Operation] passed to [resilience.Run] at the [GuardMailer] call site.
 func TestOperationDeclaresFamilyVocabulary(t *testing.T) {
-	op := operation([]*Message{{To: []string{"alice@example.com"}, Subject: "hi"}})
+	op := operation(context.Background(), testProp, []*Message{{To: []string{"alice@example.com"}, Subject: "hi"}})
 	assert.String(t, op.Request.Action).Equal("mail.send")
 	assert.String(t, op.Observe.Metric.Name).Equal("email.client")
 	assert.String(t, attrsLine(op.Observe.Metric.Attrs)).Equal("email.system=smtp,email.operation=send")
@@ -52,7 +57,7 @@ func TestOperationDeclaresFamilyVocabulary(t *testing.T) {
 // Warn unconditionally — so neither may appear anywhere the operation declares.
 // Asserted over Attrs and Detail together, because either one would record it.
 func TestOperationDetailCarriesNoPII(t *testing.T) {
-	op := operation([]*Message{{
+	op := operation(context.Background(), testProp, []*Message{{
 		To:      []string{"alice@example.com", "bob@example.com"},
 		Cc:      []string{"carol@example.com"},
 		Subject: "daily report",
@@ -66,7 +71,7 @@ func TestOperationDetailCarriesNoPII(t *testing.T) {
 // TestOperationCountsEveryRecipient proves the detail still says how big the
 // batch was, aggregating To and Cc across every message of the call.
 func TestOperationCountsEveryRecipient(t *testing.T) {
-	op := operation([]*Message{
+	op := operation(context.Background(), testProp, []*Message{
 		{To: []string{"alice@example.com"}, Cc: []string{"carol@example.com"}},
 		{To: []string{"bob@example.com"}},
 	})

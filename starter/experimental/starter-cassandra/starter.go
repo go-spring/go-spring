@@ -18,7 +18,7 @@ package StarterCassandra
 
 import (
 	"go-spring.org/cloud/actuator/health"
-	"go-spring.org/cloud/runtime"
+	"go-spring.org/cloud/governance"
 	"go-spring.org/log"
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/gs"
@@ -77,7 +77,7 @@ func init() {
 // [NewClient] — so the client is assembled complete in one step, with the
 // resilience manager required: the container supplies it via the governance
 // center, so a center without one fails at construction.
-func newClient(ctx *gs.ContextProvider, c Config, d Driver, center *runtime.Runtime) (*Client, error) {
+func newClient(ctx *gs.ContextProvider, c Config, d Driver, center *governance.Runtime) (*Client, error) {
 	log.Debug(ctx.Context, log.TagAppDef, "creating cassandra client", func() []log.Field {
 		return []log.Field{
 			log.Strings("hosts", c.Hosts),

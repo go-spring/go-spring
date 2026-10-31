@@ -233,13 +233,13 @@ Database, cache, and message-queue clients (`go-redis`, `gorm-*`, `mongodb`,
   `ClusterDriver`) so existing custom drivers keep compiling.
 - **A client starter whose component reaches out gets governance from its own imports.** No
   governance import is needed: each authority is registered by the package that
-  **owns it** — `cloud/runtime/dataplane/outbound/resilience` registers `*resilience.Manager`,
-  `cloud/runtime/dataplane/kernel/loadbalance` registers `*loadbalance.Manager`,
-  `cloud/runtime/dataplane/{outbound,inbound}/fault` registers `*clientfault.ClientManager` and
-  `*serverfault.ServerManager`, and `cloud/runtime/dataplane/kernel/discovery` registers
+  **owns it** — `cloud/governance/dataplane/outbound/resilience` registers `*resilience.Manager`,
+  `cloud/governance/capability/loadbalance` registers `*loadbalance.Manager`,
+  `cloud/governance/dataplane/{outbound,inbound}/fault` registers `*clientfault.Manager` and
+  `*serverfault.Manager`, and `cloud/governance/capability/discovery` registers
   `*discovery.Manager` — and a starter that injects one has necessarily imported
   that package for the type. The runtime root composes them into the one
-  `*runtime.Runtime` bean (it creates the inbound `*admission.Manager` itself).
+  `*governance.Runtime` bean (it creates the inbound `*admission.Manager` itself).
   So every direction's authorities are always in the container; a client injects
   the three it uses (resilience client, loadbalance, fault client) as
   REQUIRED (`gs.IndexArg(N, gs.TagArg(""))`), never as nullable (`"?"`). The beans
@@ -247,17 +247,17 @@ Database, cache, and message-queue clients (`go-redis`, `gorm-*`, `mongodb`,
   construction — and with the rules document configuring nothing they behave
   exactly as before, so having them changes no default behaviour. Turning
   governance off is publishing a document that configures nothing (empty
-  `client`/`server`, zero `Default`, no rules) — **not the absence of a bean** —
-  and not the absence of a source either: the center's Source parameter is
-  required, so a process that contributes none fails startup. A nullable injection
-  would turn "the user forgot the import" into a silent degradation (governance
-  looks on, is not) — exactly the error class this removes.
+  `client`/`server`, zero `Default`, no rules) — **not the absence of a bean**.
+  The center's Source injection is OPTIONAL ("?"): a process that contributes no
+  source is armed with an empty document and runs ungoverned, so the container is
+  usable without a governance document; a source that IS configured still fails
+  loudly in its own adapter (an unreadable rules file, an unreachable console).
   (Blank-import it in non-test code only; `gs.RunTest` forces every injection
   nullable via `spring.force-autowire-is-nullable`, which is gs's behaviour, not
   an exception to this rule.)
   The constructor wires them **at construction time**, as part of what the client
   *is* rather than as a step someone must remember: it takes the injected
-  `*runtime.Runtime` and pins `exec = rt.ExecutorFor(system, label)` before
+  `*governance.Runtime` and pins `exec = rt.ExecutorFor(system, label)` before
   returning. `ExecutorFor` reads a non-nil `rt.ResilienceClient()` and panics on a
   nil manager, so a client assembled outside the container without a resilience
   manager is an assembly error rather than a silent hole: the container always
@@ -269,7 +269,7 @@ Database, cache, and message-queue clients (`go-redis`, `gorm-*`, `mongodb`,
   transient local failure (an oversized entry) would reject calls that would have
   hit, since the "shared downstream is down" premise does not hold. So bigcache
   injects no governance bean, `Driver.CreateClient` takes no
-  `*runtime.Runtime`, and it does not route through the executor chain at all:
+  `*governance.Runtime`, and it does not route through the executor chain at all:
   it opens the operation's span and records its own metrics
   (`bigcache.operation.total` / `.duration`), and writes no access log — a cache
   call is high-frequency, and it is not a call to anything outside the process.
@@ -292,14 +292,15 @@ Database, cache, and message-queue clients (`go-redis`, `gorm-*`, `mongodb`,
     Connection-creation only.
   - `starter.go` — the `init()`-time `gs.Group` / `gs.Module` registration and
     the constructor (`newClient`) that assembles the bean.
-  - `discovery.go` — the client-side service-discovery seam: the mesh-gated
-    builder (`discovery.NewResolver` over the backend the driver resolves from
-    the center by the config's `discovery` label (`rt.Discovery().Get(c.Discovery)`)
-    + `WithScheme`, returning `nil` when the backend
-    is absent, `ServiceName` is empty, or mesh is on). A `Resolver` is a pure
-    snapshot function — no resources, no `Stop`, freshness lives inside the
-    discovery backend bean — so nothing is cached per client and nothing is torn
-    down on `Destroy`. The driver's per-backend dialer (which builds a
+  - `discovery.go` — the client-side service-discovery seam: the driver's entry
+    asks `Runtime.UsesDiscovery(serviceName)` once and, on yes, builds a
+    `discovery.NewResolver` over the backend it resolves from the center by the
+    config's `discovery` label (`rt.Discovery().Get(c.Discovery)`) with a fixed
+    scheme; a missing service-name or mesh mode takes the direct-addressing
+    branch instead. A `Resolver` is a pure snapshot function — no resources, no
+    `Stop`, freshness lives inside the discovery backend bean — so nothing is
+    cached per client and nothing is torn down on `Destroy`. The driver's
+    per-backend dialer (which builds a
     round-robin `Chain` over the resolver and `Pick`s per
     connection) stays in `config.go` / `starter.go`; only the resolver build
     lives here. Every discovery-mode chain is built the same way: with a
@@ -307,7 +308,7 @@ Database, cache, and message-queue clients (`go-redis`, `gorm-*`, `mongodb`,
     `lbMgr.Chain(resolver, entry label)` with the injected
     `*loadbalance.Manager` — so the entry's
     governance rule rebuilds the chain for `balancer` / `outlier-threshold` / `outlier-suspend-for`,
-    through the `loadbalance` manager rather than by importing `cloud/runtime/controlplane/governance`.
+    through the `loadbalance` manager rather than by importing the policy roots.
   - `client.go` — the assembled client and the resilience side of it: the
     executor the constructor pins on the client, the per-call routing into it,
     the `Close` Destroy hook, and any per-client protection seam (e.g. the
@@ -315,7 +316,7 @@ Database, cache, and message-queue clients (`go-redis`, `gorm-*`, `mongodb`,
     package because its semantics fit no other client).
   - `observe.go` — the operation declarations this starter hands the framework's
     single emitter (its `Metric` prefix, its bounded attrs, its unbounded detail,
-    its access `LogTag`); the emitter itself lives in `cloud/runtime/dataplane/outbound/resilience` (§3).
+    its access `LogTag`); the emitter itself lives in `cloud/governance/dataplane/outbound/resilience` (§3).
   - `health.go` — the health-indicator constructor, in the starter's root
     package (a single-function subpackage is not worth the import cost). Omitted
     by a starter whose component has nothing to probe (bigcache, §3).
@@ -390,16 +391,16 @@ Database, cache, and message-queue clients (`go-redis`, `gorm-*`, `mongodb`,
 - **A stateless client registers neither a health indicator nor a destroy hook.** A
   client that holds no connection has nothing to probe and nothing to close.
 - **The driver's contract is one signature.** `CreateClient(ctx context.Context,
-  c Config, center *runtime.Runtime) (T, error)`, where `T` is the *module's
+  c Config, center *governance.Runtime) (T, error)`, where `T` is the *module's
   exported client type* — the wrapper if there is one, the bare type if not. A
   driver only builds; it does not register, and it returns an identity-complete
   type, never a partial one. A few old starters still carry the shorter
   `CreateClient(ctx, name string, c Config)` — untidy lag, not a second shape.
 - **`Config` is what the user writes; `Center` is what the container
   provides.** One declares, the other injects — never put a container bean into
-  a `Config` field. `*runtime.Runtime` is the one object the container hands
+  a `Config` field. `*governance.Runtime` is the one object the container hands
   over: it expands to `ResilienceClient() *resilience.Manager` / `GuardServer() *admission.Manager` / `FaultClient()
-  *clientfault.ClientManager` / `FaultServer() *serverfault.ServerManager` / `Loadbalance() *loadbalance.Manager` / `Discovery()
+  *clientfault.Manager` / `FaultServer() *serverfault.Manager` / `Loadbalance() *loadbalance.Manager` / `Discovery()
   *discovery.Manager` (the directory a driver resolves its backend label against,
   via `Get`), plus `ExecutorFor(system,
   label) chain.Executor` and `PolicyFor(label) Policy`. **`ResilienceClient()` is
@@ -436,9 +437,9 @@ Database, cache, and message-queue clients (`go-redis`, `gorm-*`, `mongodb`,
   — the instance key first, then the family `default.driver`, then `?` (inject the
   sole driver bean by type). A configured bean name that resolves to nothing fails
   startup. No `Config` field; http-client follows the same per-entry shape.
-- **A client that needs governance injects the required `*runtime.Runtime`.**
-  Import `go-spring.org/cloud/runtime` (or blank-import any governance source
-  starter), then take an **injected, required** `*runtime.Runtime` (by type, no
+- **A client that needs governance injects the required `*governance.Runtime`.**
+  Import `go-spring.org/cloud/governance` (or blank-import any governance source
+  starter), then take an **injected, required** `*governance.Runtime` (by type, no
   `"?"` / `IndexArg`) and expand it via `rt.ResilienceClient()` / `FaultClient()` / `FaultServer()` /
   `Loadbalance()` / `Discovery()`. Turning governance off is publishing a document
   that configures nothing (still carrying one `spring.governance.*` key), not an
@@ -527,7 +528,7 @@ application can load configuration from it at startup and hot-reload at runtime.
   backends — they serve both configuration and service discovery. These two are
   different integration points in Go-Spring, so they live in different starters:
   the **config** role is a config-provider starter (this archetype); the
-  **discovery** role is client-side (`cloud/runtime/dataplane/kernel/discovery`, §3) or framework-native
+  **discovery** role is client-side (`cloud/governance/capability/discovery`, §3) or framework-native
   (`contrib/discovery/`, §3). A config-provider starter does the config role and
   nothing else. The naming mirrors Spring Cloud Alibaba
   (`nacos-config` vs `nacos-discovery`).
@@ -648,8 +649,8 @@ baseline (its identity, wire vocabulary, error catalog, standard drivers).
   `cloud/actuator/health.NewIndicator` (factory for that package's
   `Indicator` interface), `stdlib/errutil.RequireField`/`RequireAny`
   (formatting sugar over `errutil.Explain`). Starters import these directly.
-  `cloud/runtime/controlplane/governance.Parse` is the fourth: the rule-document parser is shared by
-  the file/http/etc/nacos sources, so it sits with the model it produces rather
+  `cloud/governance/controlplane/source.Parse` is the fourth: the rule-document parser is shared by
+  the file/etc/nacos sources, so it sits with the model it produces rather
   than in one starter its siblings would have to reach into — the one place
   `cloud/` takes a `spring` import, which is accepted because the document
   format is the framework's.
@@ -677,34 +678,33 @@ baseline (its identity, wire vocabulary, error catalog, standard drivers).
     seam, and only when a concrete requirement lands.
 - **Client-side discovery is already unified; provider registration is not.**
   Client starters resolve a `ServiceName` to live endpoints through
-  `cloud/runtime/dataplane/kernel/discovery` (a `Loader` built via the driver's dialer hook); this
+  `cloud/governance/capability/discovery` (a `Loader` built via the driver's dialer hook); this
   is generic across infrastructure clients. RPC *provider* registration stays
   framework-native per the principle above. When `ServiceName` is empty the
   client dials the address directly, unchanged. For examples of framework-native
   provider registration into consul/etcd/nacos/zookeeper/polaris, see
   `contrib/discovery/`.
-- **Service-mesh mode degrades the client-side stack centrally, not per
-  starter.** When a sidecar (Istio/Envoy, Linkerd) is injected it already does
-  discovery and load balancing, so running the app's own on top double-balances
-  and confuses locality/outlier logic. A single process-global switch
-  (`mesh.Enabled`, auto-detected from sidecar env vars by default; the `GS_MESH_MODE`
-  env var — on/off/auto — overrides) is read at the discovery and load-balancing
-  factory points — each client starter's mesh-gated loader builder (§2.2) and
-  `loadbalance.Pool` — and degrades both to a
-  pass-through: names resolve to one stable Service address (ClusterIP) the
-  sidecar intercepts, and the balancer stops selecting and ejecting. Because
-  the loader builder reads `mesh.Enabled()` internally and returns `nil` when
-  mesh is on, a client starter honors the switch without per-starter branching
-  at the call site — the driver just skips installing its discovery-backed
-  dialer and dials the configured
-  address directly. The code is not removed — flipping the switch off restores
-  full client-side behavior.
+- **Service-mesh mode is an ADDRESSING decision, resolved once by the
+  composition root.** When a sidecar (Istio/Envoy, Linkerd) is injected it
+  already does discovery and load balancing, so running the app's own on top
+  double-balances and confuses locality/outlier logic. The process-global switch
+  (`mesh.Enabled`, auto-detected from sidecar env vars by default; the
+  `GS_MESH_MODE` env var — on/off/auto — overrides) is consulted in
+  `Runtime.UsesDiscovery`; every client entry asks that one question at construction,
+  `Runtime.UsesDiscovery(serviceName)`, and takes its discovery branch or its
+  direct-addressing branch. Mesh wins: a configured `service-name` is ignored
+  rather than treated as an error, and the entry dials its configured stable
+  address (ClusterDNS name, fixed endpoint, or managed-DB endpoint). The
+  discovery and load-balancing stack itself — `discovery.NewResolver`, the
+  discovery backends, `loadbalance` — holds zero mesh references; inner
+  resolver/pool helpers only ever run on the discovery branch. Flipping the
+  switch off restores full client-side behavior.
 - **Instance-level registration is per-starter; RPC-framework provider
   registration is not.** Do not conflate two different "registration" concerns.
   (1) Registering *this process* into an external registry
   (Nacos/Consul/Eureka/ZooKeeper) - the Spring Cloud `@EnableDiscoveryClient`
   direction - is a generic, transport-agnostic capability. Its publication
-  lifecycle lives in `cloud/runtime/dataplane/kernel/discovery`: `Server` is the one exported
+  lifecycle lives in `cloud/governance/capability/discovery`: `Server` is the one exported
   `gs.Server` that drives every configured center, and each
   `starter-discovery-<backend>` (etcd/nacos/consul/zookeeper) contributes a
   `Registry` - the protocol adapter for its own center. Swapping backends means
@@ -947,7 +947,7 @@ baseline (its identity, wire vocabulary, error catalog, standard drivers).
   `createNode`, consul `upsert`), not around the `registration.Registry`
   interface: the self-heal path never crosses that interface, and it is the one
   that leaves an instance serving while no longer discoverable. The metric and
-  span definitions live once in `cloud/runtime/dataplane/kernel/discovery/observe.go` — backends never
+  span definitions live once in `cloud/governance/capability/discovery/observe.go` — backends never
   name an instrument themselves.
   A **discovery-only** backend of this family (`starter-discovery-k8s`, where the
   platform registers Pods for you) has no such seam to report at: it builds the
@@ -1012,7 +1012,7 @@ baseline (its identity, wire vocabulary, error catalog, standard drivers).
   directory map). A name that does not match its use is fixed (e.g.
   `memcached/liveServers.key`, which stores an address-snapshot signature, becomes
   `snapshotKey`). Explicitly **not** renamed: the `service` inside
-  `cloud/runtime/dataplane/outbound/resilience|fault`, `starter-governance-sentinel`, and
+  `cloud/governance/dataplane/outbound/resilience|fault`, `starter-governance-sentinel`, and
   `starter-luohua` — there `service` is the parameter name of the
   `NewExecutor(service string, ...)` contract itself. Do not paper over a
   bare name with a comment.
@@ -1078,7 +1078,7 @@ baseline (its identity, wire vocabulary, error catalog, standard drivers).
    *same* `label.ServiceLabel` the entry's executor uses. That is what makes
    `balancer` / `outlier-threshold` / `outlier-suspend-for` configurable through the
    governance rule instead of hardcoded — no `balancer` key of your own, and no import of
-   `cloud/runtime/controlplane/governance`. A client that cannot re-pick (one-shot resolution, or a
+   the policy roots. A client that cannot re-pick (one-shot resolution, or a
    library that owns its own selector) stays out of this on purpose; say so in its
    USAGE.
 5. Server? → own port, listen-early/serve-on-ready, graceful `Stop`,

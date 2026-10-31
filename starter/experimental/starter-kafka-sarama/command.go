@@ -56,13 +56,13 @@ import (
 	"context"
 	"sync"
 
-	"go-spring.org/cloud/runtime/dataplane/kernel/label"
-	"go-spring.org/cloud/runtime/dataplane/outbound/chain"
-	observability "go-spring.org/cloud/runtime/dataplane/outbound/observe"
+	"go-spring.org/cloud/governance/capability/label"
+	"go-spring.org/cloud/governance/dataplane/outbound/chain"
+	observability "go-spring.org/cloud/governance/dataplane/outbound/observe"
 
 	"github.com/IBM/sarama"
+	"go-spring.org/cloud/governance/capability/traffic"
 	"go-spring.org/cloud/propagate"
-	"go-spring.org/cloud/runtime/dataplane/kernel/traffic"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/propagation"
 )
@@ -273,7 +273,7 @@ type guardedSyncProducer struct {
 var _ sarama.SyncProducer = (*guardedSyncProducer)(nil)
 
 func (g *guardedSyncProducer) SendMessage(msg *sarama.ProducerMessage) (partition int32, offset int64, err error) {
-	err = observe(g.obs, context.Background(), operation(opSend, msg.Topic), func(attemptCtx context.Context) error {
+	err = observe(g.obs, context.Background(), operation(context.Background(), g.prop, opSend, msg.Topic), func(attemptCtx context.Context) error {
 		injectProducer(attemptCtx, msg, g.prop)
 		var perr error
 		partition, offset, perr = g.p.SendMessage(msg)
@@ -295,7 +295,7 @@ func (g *guardedSyncProducer) SendMessage(msg *sarama.ProducerMessage) (partitio
 // would attribute it to a topic only part of it went to.
 func (g *guardedSyncProducer) SendMessages(msgs []*sarama.ProducerMessage) error {
 	topic := sharedTopic(msgs)
-	return observe(g.obs, context.Background(), operation(opSend, topic), func(attemptCtx context.Context) error {
+	return observe(g.obs, context.Background(), operation(context.Background(), g.prop, opSend, topic), func(attemptCtx context.Context) error {
 		for _, m := range msgs {
 			injectProducer(attemptCtx, m, g.prop)
 		}
@@ -356,5 +356,5 @@ func (g *guardedSyncProducer) AddMessageToTxn(msg *sarama.ConsumerMessage, gid s
 // with the extracted context. prop is the process.s load-test convention (required).
 func Consume(ctx context.Context, cl sarama.Client, msg *sarama.ConsumerMessage, prop traffic.Propagator, handle func(context.Context) error) error {
 	ctx = extractConsumer(ctx, msg, prop)
-	return observe(observerFor(cl), ctx, operation(opProcess, msg.Topic), handle)
+	return observe(observerFor(cl), ctx, operation(ctx, prop, opProcess, msg.Topic), handle)
 }

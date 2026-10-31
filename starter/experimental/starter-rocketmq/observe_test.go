@@ -17,13 +17,17 @@
 package StarterRocketmq
 
 import (
-	"go-spring.org/cloud/runtime/dataplane/outbound/chain"
+	"context"
 	"strings"
 	"testing"
 
+	"go-spring.org/cloud/governance/capability/traffic"
+	"go-spring.org/cloud/governance/dataplane/outbound/chain"
 	"go-spring.org/stdlib/testing/assert"
 	"go.opentelemetry.io/otel/attribute"
 )
+
+var testProp = traffic.NewDefaultPropagator(traffic.DefaultBinding())
 
 // attrsLine renders attributes as "k=v" pairs in slice order.
 func attrsLine(attrs []attribute.KeyValue) string {
@@ -38,7 +42,7 @@ func attrsLine(attrs []attribute.KeyValue) string {
 // identity the emitter needs: the direction for the span name, the family's
 // metric prefix, the messaging.* labels and this starter's access-log tag.
 func TestOperationDeclaresFamilyVocabulary(t *testing.T) {
-	op := operation(opSend, "orders")
+	op := operation(context.Background(), testProp, opSend, "orders")
 	assert.String(t, op.Request.Action).Equal("send orders")
 	assert.String(t, op.Observe.Metric.Name).Equal("messaging.client")
 	assert.String(t, attrsLine(op.Observe.Metric.Attrs)).Equal("messaging.system=rocketmq,messaging.operation=send")
@@ -50,7 +54,7 @@ func TestOperationDeclaresFamilyVocabulary(t *testing.T) {
 // without bound. It is asserted on Attrs because Attrs is what labels are built
 // from.
 func TestOperationTopicStaysOutOfLabels(t *testing.T) {
-	op := operation(opProcess, "orders")
+	op := operation(context.Background(), testProp, opProcess, "orders")
 	for _, a := range op.Observe.Metric.Attrs {
 		assert.That(t, string(a.Key) == "messaging.destination.name").False()
 	}
@@ -61,13 +65,13 @@ func TestOperationTopicStaysOutOfLabels(t *testing.T) {
 // detail, which is also what levelled its success log at Info rather than Debug
 // — the same rule the emitter applies.
 func TestOperationWithoutTopicCarriesNoDetail(t *testing.T) {
-	assert.Number(t, len(detailAttrs(operation(opProcess, "")))).Equal(0)
+	assert.Number(t, len(detailAttrs(operation(context.Background(), testProp, opProcess, "")))).Equal(0)
 }
 
 // TestOperationTruncatesTopic proves a long topic is bounded before it reaches
 // the span or the log.
 func TestOperationTruncatesTopic(t *testing.T) {
-	op := operation(opSend, strings.Repeat("t", 512+50))
+	op := operation(context.Background(), testProp, opSend, strings.Repeat("t", 512+50))
 	assert.Number(t, len(detailAttrs(op)[0].Value.AsString())).Equal(512)
 }
 

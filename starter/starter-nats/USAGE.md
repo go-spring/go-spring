@@ -137,7 +137,7 @@ spring.observability.metrics.exporter=prometheus
 spring.observability.metrics.port=0        # /metrics via actuator only
 
 # --- governance (runtime resilience) -------------------------------------------
-spring.governance.source.file.path=conf/governance.yaml
+# (the file source is wired in source.go; no property key)
 ```
 
 **conf/governance.yaml** (drills in §4 use this):
@@ -187,7 +187,7 @@ gs.Run()
   │           [driver.go:145; client.go:86-93]
   ├─ jetstream.enabled → jetstream.New(nc); failure closes nc and fails boot
   │           [driver.go:149-157]
-  ├─ newConn: receives the injected *runtime.Runtime — the container's sole injection
+  ├─ newConn: receives the injected *governance.Runtime — the container's sole injection
   │           point, holding the resilience/fault/loadbalance authorities — and hands it to the
   │           Driver; nothing patches the Conn afterwards
   │           [driver.go:181-182]
@@ -211,7 +211,7 @@ are logged (`nats disconnected` Warn) and the client auto-reconnects [driver.go:
    reserved `x-msg-key` header (restored into `Key` on consume; never leaks into
    `Headers`) [messaging.go:82-89]. Empty header map → nil header.
 2. Load-test marker: `prop.Inject(ctx, …)` stamps the marker (canonical
-   `X-LoadTest: 1`) so consumers recognise synthetic load; it is a no-op outside
+   `X-Traffic: loadtest`) so consumers recognise synthetic load; it is a no-op outside
    load-test traffic, and the header map is allocated on demand.
 3. The driver DECLARES the publish's identity and routes it through the Conn's publish
    seam [messaging.go:100-107]: `PublishMsgContext` declares `operation(opPublish, subject)`
@@ -239,7 +239,7 @@ group / competing consumers) [messaging.go:134-137]. Per message:
    connection's resilience executor — the single emitter — opens the consumer span (child
    of the producer span), records the durations and writes the access log before calling
    the handler [command.go:158-165].
-2. `X-LoadTest` header re-materialised into ctx as the load-test marker
+2. `X-Traffic` header re-materialised into ctx as the load-test marker
    [messaging.go:134-137].
 3. `fromNatsMsg`: multi-valued NATS headers flattened to single values (`Get` = first
    value wins) [messaging.go:169-180].
@@ -279,10 +279,10 @@ re-publishing or re-running a handler is a second side effect, not a second atte
 (`resilience.client.duration`, a span named after the service) rather than a `messaging.client.*`
 one — no operation span is named for it.
 
-Wrap order inside `Runtime.ExecutorFor` (see `cloud/runtime/controlplane/governance/center.go`, called by
+Wrap order inside `Runtime.ExecutorFor` (see `cloud/governance/runtime.go`, called by
 [NewConn](client.go:86-93)): `mgr.ExecutorFor("nats", service)`
 (armed from the injected `*resilience.Manager` bean — required, so always supplied
-by the container) → `clientfault.ClientManager.WrapClientExecutor` (fault injection, outermost). The manager's resolve step
+by the container) → `clientfault.Manager.WrapClientExecutor` (fault injection, outermost). The manager's resolve step
 wraps the backing executor with the observe emitter (see `resilience/observe.go`), so the declared
 operation's span/counter/histogram/access-log are produced once, from the one point on the chain
 that sees a whole call. On rejection the guarded call returns a resilience sentinel

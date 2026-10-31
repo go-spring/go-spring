@@ -28,11 +28,12 @@ import (
 	"context"
 
 	"github.com/redis/go-redis/v9"
-	"go-spring.org/cloud/runtime"
-	"go-spring.org/cloud/runtime/dataplane/kernel/label"
-	"go-spring.org/cloud/runtime/dataplane/kernel/loadbalance"
-	"go-spring.org/cloud/runtime/dataplane/outbound/chain"
-	"go-spring.org/cloud/runtime/dataplane/outbound/resilience"
+	"go-spring.org/cloud/governance"
+	"go-spring.org/cloud/governance/capability/label"
+	"go-spring.org/cloud/governance/capability/loadbalance"
+	"go-spring.org/cloud/governance/capability/traffic"
+	"go-spring.org/cloud/governance/dataplane/outbound/chain"
+	"go-spring.org/cloud/governance/dataplane/outbound/resilience"
 )
 
 // Client is the wrapper bean go-redis clients are injected as. It EMBEDS the
@@ -56,8 +57,8 @@ type Client struct {
 	cfg Config
 
 	// exec is the resilience executor protecting every command, set by [NewClient]
-	// from the container's runtime. The center must hold a
-	// [resilience.Manager]: [runtime.Runtime.ExecutorFor] panics without one.
+	// from the container's governance. The center must hold a
+	// [resilience.Manager]: [governance.Runtime.ExecutorFor] panics without one.
 	exec chain.Executor
 	// serviceLabel is the resilience service key ("redis:<...>") exec scopes
 	// limiter/breaker state by. Fixed by [NewClient].
@@ -79,11 +80,11 @@ type Client struct {
 // fields the service label is derived from; lbChain is the endpoint-selection
 // chain the Driver built for a discovery-routed entry, or nil when it built none.
 //
-// center carries the container's facilities (see [runtime.Runtime]) and is
+// center carries the container's facilities (see [governance.Runtime]) and is
 // applied HERE, so a Client cannot exist half-assembled: [Client.exec] is set in
 // the constructor and there is no Init step and nothing the container has to
 // remember to call later. A hand-built client must supply a center holding a
-// [resilience.Manager]: [runtime.Runtime.ExecutorFor] is required, so a nil
+// [resilience.Manager]: [governance.Runtime.ExecutorFor] is required, so a nil
 // center is a construction error — never a graceful downgrade to an unprotected
 // client.
 //
@@ -104,7 +105,7 @@ type Client struct {
 // The manager's ExecutorFor resolves its backing executor lazily, on each
 // Execute, so the call order relative to the center's wiring is
 // irrelevant.
-func NewClient(client redis.UniversalClient, cfg Config, lbChain *loadbalance.Chain, center *runtime.Runtime) (*Client, error) {
+func NewClient(client redis.UniversalClient, cfg Config, lbChain *loadbalance.Chain, center *governance.Runtime) (*Client, error) {
 	c := &Client{UniversalClient: client, cfg: cfg, lbChain: lbChain}
 	// Install the redisotel pool metrics before any command runs, so they belong
 	// to construction, not to a later assembly step.
@@ -125,7 +126,7 @@ func NewClient(client redis.UniversalClient, cfg Config, lbChain *loadbalance.Ch
 	c.exec = center.ExecutorFor("redis", c.serviceLabel)
 	// The resilience hook is the only hook we install: it builds each command's
 	// identity itself and emits the call's span, metrics and access log.
-	c.UniversalClient.AddHook(&resilienceHook{exec: c.exec, serviceLabel: c.serviceLabel})
+	c.UniversalClient.AddHook(&resilienceHook{exec: c.exec, serviceLabel: c.serviceLabel, prop: center.TrafficPropagator()})
 	return c, nil
 }
 
@@ -170,6 +171,7 @@ func serviceLabel(c Config) string {
 type resilienceHook struct {
 	exec         chain.Executor
 	serviceLabel string
+	prop         traffic.Propagator
 }
 
 var _ redis.Hook = (*resilienceHook)(nil)
@@ -182,7 +184,7 @@ func (h *resilienceHook) ProcessHook(next redis.ProcessHook) redis.ProcessHook {
 	return func(ctx context.Context, cmd redis.Cmder) error {
 		op := chain.Operation{}
 		if _, skip := skipOps[cmd.FullName()]; !skip {
-			op = operation(cmd)
+			op = operation(ctx, h.prop, cmd)
 		}
 		return h.guard(ctx, op, cmd, func(ctx context.Context) error {
 			return next(ctx, cmd)
@@ -197,7 +199,7 @@ func (h *resilienceHook) ProcessPipelineHook(next redis.ProcessPipelineHook) red
 				cmd.SetErr(err)
 			}
 		}
-		return h.run(ctx, pipelineOperation(), setErr, func(ctx context.Context) error {
+		return h.run(ctx, pipelineOperation(ctx, h.prop), setErr, func(ctx context.Context) error {
 			return next(ctx, cmds)
 		})
 	}

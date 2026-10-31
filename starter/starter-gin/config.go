@@ -29,7 +29,7 @@ import (
 // resilience binding here: it flows through the neutral resilience.Manager.ExecutorFor
 // seam (backed by the center when armed), so an incoming request's protection
 // policy is governed alongside every outbound client and hot-reloads without
-// this starter coupling to cloud/runtime/controlplane/governance. Fault injection stays server-local (it
+// this starter coupling to a control-plane root. Fault injection stays server-local (it
 // is chaos tooling, not governance).
 type Config struct {
 	Address      string             `value:"${addr}" expr:"$ != ''"`
@@ -86,9 +86,9 @@ type MiddlewareConfig struct {
 // (the default — it costs a single header lookup per request) the LoadTest
 // middleware reads the marker header off the incoming request and tags the
 // request context, so every downstream handler, middleware and outbound client
-// can tell synthetic load apart from real traffic through the propagator's
-// IsLoadTest. The
-// header name defaults to the canonical X-LoadTest used across go-spring; set it
+// can tell synthetic load apart from real traffic through `traffic.IsLoadTest`.
+// The
+// header name defaults to the canonical X-Traffic used across go-spring; set it
 // to match whatever an upstream proxy or load generator sends.
 type LoadTestConfig struct {
 	Enabled bool `value:"${enabled:=true}"`

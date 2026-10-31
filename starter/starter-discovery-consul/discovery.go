@@ -15,7 +15,7 @@
  */
 
 // This file is the CONSUMER half of Consul service discovery: the
-// cloud/runtime/dataplane/kernel/discovery Discovery backend serving snapshots of the instances the
+// cloud/governance/capability/discovery Discovery backend serving snapshots of the instances the
 // registry (registry.go) publishes. It is derived from the
 // ${spring.discovery.consul} center (starter.go) under the fixed label "consul"
 // — there is no separate discovery config block. Freshness is internal: each
@@ -36,7 +36,7 @@ import (
 	"time"
 
 	"github.com/hashicorp/consul/api"
-	"go-spring.org/cloud/runtime/dataplane/kernel/discovery"
+	"go-spring.org/cloud/governance/capability/discovery"
 	"go-spring.org/log"
 	"go-spring.org/stdlib/errutil"
 )
@@ -123,9 +123,9 @@ func (d *consulDiscovery) fetch(ctx context.Context, name, tag string) ([]discov
 // Resolve returns the current healthy instance set for name. The first call
 // pays the seed query (bounded by ctx) and starts the background blocking
 // query; later calls read the cache. The block's tag narrows the registry
-// query server-side; the caller's options narrow the cached result locally.
-func (d *consulDiscovery) Resolve(ctx context.Context, name string, opts ...discovery.Option) ([]discovery.Endpoint, error) {
-	q := discovery.NewQuery(name, opts...)
+// query server-side; any further narrowing (scheme, metadata) is the
+// consumer's, applied via [discovery.Narrow].
+func (d *consulDiscovery) Resolve(ctx context.Context, name string) ([]discovery.Endpoint, error) {
 	e := d.entry(name)
 	e.mu.Lock()
 	defer e.mu.Unlock()
@@ -141,7 +141,7 @@ func (d *consulDiscovery) Resolve(ctx context.Context, name string, opts ...disc
 		d.obs.Synced(name, nil)
 		go d.watchLoop(name, e)
 	}
-	return discovery.Snapshot(e.eps, q), nil
+	return e.eps, nil
 }
 
 // watchLoop keeps a service's cache current with a Consul blocking query:

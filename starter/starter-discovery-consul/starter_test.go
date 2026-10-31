@@ -23,7 +23,7 @@ import (
 	"testing"
 
 	"go-spring.org/cloud/actuator/health"
-	"go-spring.org/cloud/runtime/controlplane/registration"
+	"go-spring.org/cloud/governance/controlplane/registration"
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/testing/assert"

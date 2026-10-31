@@ -17,7 +17,7 @@
 package StarterGrpcClient
 
 // This file is the client-side load-balancing adapter that plugs the
-// framework-neutral [go-spring.org/cloud/runtime/dataplane/kernel/loadbalance] chain into gRPC's own
+// framework-neutral [go-spring.org/cloud/governance/capability/loadbalance] chain into gRPC's own
 // resolver + balancer machinery: a per-connection resolver (scheme
 // "gsdiscovery") that turns a discovery backend into the stream of address
 // snapshots gRPC consumes, and a picker that selects among the READY SubConns
@@ -48,8 +48,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"go-spring.org/cloud/runtime/dataplane/kernel/discovery"
-	"go-spring.org/cloud/runtime/dataplane/kernel/loadbalance"
+	"go-spring.org/cloud/governance/capability/discovery"
+	"go-spring.org/cloud/governance/capability/loadbalance"
 	"go-spring.org/log"
 	"go-spring.org/stdlib/errutil"
 	"google.golang.org/grpc/attributes"
@@ -123,7 +123,7 @@ type connState struct {
 // newConnState builds a connection's selection state: a chain over the
 // READY-snapshot source, following label. mgr must be non-nil — the container
 // injects the manager bean.
-func newConnState(label string, mgr *loadbalance.Manager) *connState {
+func newConnState(label string, mgr *loadbalance.Manager) (*connState, error) {
 	s := &connState{}
 	src := func(context.Context) ([]discovery.Endpoint, error) {
 		if eps := s.eps.Load(); eps != nil {
@@ -131,8 +131,15 @@ func newConnState(label string, mgr *loadbalance.Manager) *connState {
 		}
 		return nil, nil
 	}
-	s.chain = mgr.Chain(context.Background(), src, label)
-	return s
+	chain, err := mgr.Chain(context.Background(), src, label)
+	if err != nil {
+		return nil, err
+	}
+	s.chain = chain
+	if err != nil {
+		return nil, err
+	}
+	return s, nil
 }
 
 // Pick selects one READY endpoint through the chain's generation in force.
@@ -219,7 +226,7 @@ func addrFromEndpoint(ep discovery.Endpoint, sel *connState) resolver.Address {
 		Attributes: attributes.New(addrAttrKey{}, addrAttr{
 			weight:  ep.Weight,
 			healthy: ep.Healthy,
-			zone:    ep.Metadata[loadbalance.DefaultZoneKey],
+			zone:    ep.Metadata[discovery.MetaKeyZone],
 			sel:     sel,
 		}),
 	}
@@ -231,7 +238,7 @@ func endpointFromAddr(a resolver.Address) discovery.Endpoint {
 		ep.Weight = v.weight
 		ep.Healthy = v.healthy
 		if v.zone != "" {
-			ep.Metadata = map[string]string{loadbalance.DefaultZoneKey: v.zone}
+			ep.Metadata = map[string]string{discovery.MetaKeyZone: v.zone}
 		}
 	}
 	return ep
@@ -350,7 +357,7 @@ func (b resolverBuilder) Build(target resolver.Target, cc resolver.ClientConn, _
 
 	d, ok := b.dir.Get(backend)
 	if !ok {
-		return nil, errutil.Explain(nil, "grpc: discovery backend %q not found (no discovery.Discovery bean with this name; registered: %v)", backend, b.dir.Labels())
+		return nil, errutil.Explain(nil, "grpc: discovery backend %q not found (no discovery.Discovery bean with this name; registered: %v)", backend, b.dir.Names())
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())

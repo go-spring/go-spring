@@ -29,8 +29,8 @@ import (
 	"syscall"
 	"time"
 
-	rt "go-spring.org/cloud/runtime"
-	"go-spring.org/cloud/runtime/dataplane/outbound/chain"
+	"go-spring.org/cloud/governance"
+	"go-spring.org/cloud/governance/dataplane/outbound/chain"
 
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
@@ -61,7 +61,7 @@ const service = "ratelimit-redis:api"
 var manual = flag.Bool("manual", false, "run in manual verification mode (server stays up)")
 
 func init() {
-	gs.Provide(func(center *rt.Runtime) *gs.HttpServeMux {
+	gs.Provide(func(center *governance.Runtime) *gs.HttpServeMux {
 		// Handlers A and B model two replicas of a service: they share NO
 		// in-process state. Each gets its own executor handle for the same
 		// service label, and both draw on the one Redis-backed counter store
@@ -76,7 +76,7 @@ func init() {
 // executor returns the handle for the shared service label. The center composes
 // the observe layer and resolves the backing executor lazily, on each Execute, so
 // the policy is read after the runtime has gone live.
-func executor(center *rt.Runtime) chain.Executor {
+func executor(center *governance.Runtime) chain.Executor {
 	return center.ExecutorFor("ratelimit-redis", service)
 }
 
@@ -84,7 +84,8 @@ func executor(center *rt.Runtime) chain.Executor {
 // charges the shared store; an over-budget call comes back as ErrRateLimited.
 func serve(exec chain.Executor) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		err := exec.Execute(r.Context(), chain.Operation{}, nil, func(context.Context) error { return nil })
+		op := chain.Operation{Request: chain.Request{Action: "serve"}}
+		err := exec.Execute(r.Context(), op, nil, func(context.Context) error { return nil })
 		switch {
 		case err == nil:
 			_, _ = w.Write([]byte("ok"))

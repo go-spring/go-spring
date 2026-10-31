@@ -56,7 +56,7 @@ deployment points Consul/Nacos/k8s here; see example/discovery.go):
 ```go
 package main
 
-import "go-spring.org/cloud/runtime/dataplane/kernel/discovery"
+import "go-spring.org/cloud/governance/capability/discovery"
 
 func init() {
     gs.Provide(func() (discovery.Discovery, error) {
@@ -158,7 +158,7 @@ import starter-elasticsearch
 gs.Run()
   ├─ ctor newClient:
   │    ├─ the ctor folds the family-wide `${spring.elasticsearch.default.discovery}`
-  │    │      fallback into c.Discovery and hands the injected *runtime.Runtime
+  │    │      fallback into c.Discovery and hands the injected *governance.Runtime
   │    │      (variable center) to the driver
   │    ├─ optional Driver bean (none → bundled DefaultDriver; several coexist →
   │    │      the entry selects one by name: spring.elasticsearch.instances.<name>.driver =
@@ -244,7 +244,7 @@ Rationale (source comments, [command.go] and [client.go]):
    histograms and the access log. The caller sees exactly what plain go-elasticsearch returns —
    including 4xx `res.IsError()` bodies; only transport-level errors (5xx are mapped to a
    breaker-tripping, retryable error by the resilience round-tripper,
-   cloud/runtime/dataplane/outbound/resilience/roundtripper.go:99-104).
+   cloud/governance/dataplane/outbound/resilience/roundtripper.go:99-104).
 
 **Pass a context on every call.** It carries the call's cancellation and deadline, and the
 operation span the resilience layer opens inherits it — `HealthCheck` and the health indicator
@@ -303,7 +303,7 @@ unconditional (see §3.4).
 
 | Key | Type | Default | Behavior / interactions | Misconfiguration consequence |
 |-----|------|---------|-------------------------|------------------------------|
-| `max-retries` | int | 3 | elastictransport retry count. ⚠ Interacts with the governance executor's retry (`spring.governance.client.default.max-retries`) — two stacked retry loops multiply attempts and latency. | Large + governance retry → multiplied attempts. |
+| `max-retries` | int | 3 | elastictransport retry count. ⚠ Interacts with the governance executor's retry (`spring.governance.client.resilience.max-retries`) — two stacked retry loops multiply attempts and latency. | Large + governance retry → multiplied attempts. |
 | `disable-retry` | bool | false | Disables the client retry loop entirely. | — |
 | `compress-request-body` | bool | false | gzip request bodies. | — |
 | `enable-metrics` | bool | true | Client's built-in elastictransport metrics switch (⚠ schema.json wrongly says default false — code is the truth). | — |
@@ -356,13 +356,13 @@ grep _app_elasticsearch_access app.log | tail -1
 ### 4.3 Resilience / fault drill (example-load style)
 
 ```properties
-# NOTE: governance RULES go in conf/governance.properties, referenced by spring.governance.source.file.path in app.properties (see cloud/runtime/controlplane/governance's SOURCE_USAGE).
+# NOTE: governance RULES go in conf/governance.properties, wired by the example's source starter (source.go) (see cloud/governance/controlplane/source's USAGE).
 spring.resilience.driver=default
-spring.governance.client.default.rate-limit=5          # burst > 5 concurrent → ErrRateLimited rejections
-spring.governance.client.default.error-threshold=20
-spring.governance.client.default.open-duration=5s
-# spring.governance.client.fault.rules[0].service=elasticsearch:http://127.0.0.1:9200
-# spring.governance.client.fault.rules[0].rate=0.5      # a rule with a rate (+ error=timeout) sets fire; no such rule = inert
+spring.governance.client.resilience.rate-limit=5          # burst > 5 concurrent → ErrRateLimited rejections
+spring.governance.client.resilience.error-threshold=20
+spring.governance.client.resilience.open-duration=5s
+# spring.fault.client.rules[0].service=elasticsearch:http://127.0.0.1:9200
+# spring.fault.client.rules[0].rate=0.5      # a rule with a rate (+ error=timeout) sets fire; no such rule = inert
 ```
 
 Run [example-load/](example-load/) (`go run . -concurrency=16 -duration=5s`): the printed

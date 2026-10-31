@@ -20,9 +20,10 @@ import (
 	"errors"
 	"net/http"
 
-	"go-spring.org/cloud/runtime"
-	"go-spring.org/cloud/runtime/dataplane/inbound/admission"
-	observability "go-spring.org/cloud/runtime/dataplane/inbound/observe"
+	"go-spring.org/cloud/governance"
+	"go-spring.org/cloud/governance/capability/traffic"
+	"go-spring.org/cloud/governance/dataplane/inbound/admission"
+	observability "go-spring.org/cloud/governance/dataplane/inbound/observe"
 	"go-spring.org/log"
 	"go.opentelemetry.io/otel/attribute"
 )
@@ -34,9 +35,9 @@ import (
 // yourself, because this package provides filters rather than owning a server.
 //
 // label is the governance service label this server is addressed as, e.g.
-// "http-server::9090" (see cloud/runtime/controlplane/governance/README.md 设计说明 §6). Build it with
-// label.ServiceLabel(system, addr) if you want the conventional shape;
-// governance rules match it with spring.governance.server.rules[N].service=<label>.
+// "http-server::9090" (see the package doc of cloud/governance/controlplane/admission).
+// Build it with label.ServiceLabel(system, addr) if you want the conventional
+// shape; admission rules match it with services[N].service=<label>.
 //
 // rt is the process runtime — the family's sole injection point. This package
 // provides filters rather than owning a server, so it has no bean to inject
@@ -56,27 +57,27 @@ import (
 //	mw, err := ServerPolicy("http-server::9090", rt)
 //	if err != nil { return err }
 //	handler := Chain(CORS(corsCfg), mw)(mux)
-func ServerPolicy(label string, rt *runtime.Runtime) (Middleware, error) {
+func ServerPolicy(label string, rt *governance.Runtime) (Middleware, error) {
 	in, err := rt.InboundFor("http-server", label)
 	if err != nil {
 		return nil, err
 	}
-	return serverPolicyWith(in), nil
+	return serverPolicyWith(in, rt.TrafficPropagator()), nil
 }
 
 // serverPolicyWith builds the filter over an already-built inbound object. It is
 // the seam the tests build on, and keeps the object construction out of the filter
 // itself. The split form is used so the handler's response half can be recorded.
-func serverPolicyWith(in *runtime.Inbound) Middleware {
+func serverPolicyWith(in *governance.Inbound, prop traffic.Propagator) Middleware {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			sw := &statusWriter{ResponseWriter: w}
 
-			h, err := in.Before(r.Context(), operation(r))
+			h, err := in.Before(r.Context(), operation(r, prop))
 			if err != nil {
-				var ref *runtime.Refusal
+				var ref *governance.Refusal
 				if errors.As(err, &ref) && !sw.written {
-					http.Error(w, ref.Error(), httpStatusFor(ref.Verdict()))
+					http.Error(w, ref.Error(), httpStatusFor(ref))
 				}
 				return
 			}
@@ -105,9 +106,14 @@ func serverPolicyWith(in *runtime.Inbound) Middleware {
 }
 
 // httpStatusFor maps an inbound refusal to the HTTP status a client can act on:
-// rate/bulkhead rejections are 429, an injected fault is 503.
-func httpStatusFor(kind admission.Verdict) int {
-	if kind == admission.VerdictFaultInjected {
+// rate/bulkhead rejections are 429; an injected fault follows the class the rule
+// declared — a business failure (the caller's mistake) is 400, anything else is
+// 503.
+func httpStatusFor(ref *governance.Refusal) int {
+	if ref.Verdict() == admission.VerdictFaultInjected {
+		if ref.Fault().Business() {
+			return http.StatusBadRequest
+		}
 		return http.StatusServiceUnavailable
 	}
 	return http.StatusTooManyRequests
@@ -179,28 +185,27 @@ var accessTag = log.RegisterAppTag("http_server", "access")
 // only, never a label). What is NOT known up front — the response status code —
 // is recorded by the handler as it answers, through [observability.Response];
 // see the inbound filter below.
-func operation(r *http.Request) observability.ServerOperation {
-	return observability.ServerOperation{
-		Action: r.Method + " " + r.URL.Path,
-		Observe: observability.ServerObserve{
-			Metric: observability.ServerMetric{
-				Name: "http.server",
-				Attrs: []attribute.KeyValue{
-					attribute.String("http.request.method", r.Method),
-				},
-			},
-			Span: observability.ServerSpan{Attrs: []attribute.KeyValue{
+func operation(r *http.Request, prop traffic.Propagator) observability.ServerOperation {
+	op := observability.NewServerOperation(r.Context(), prop, r.Method+" "+r.URL.Path)
+	op.Observe = observability.ServerObserve{
+		Metric: observability.ServerMetric{
+			Name: "http.server",
+			Attrs: []attribute.KeyValue{
 				attribute.String("http.request.method", r.Method),
-				attribute.String("url.path", r.URL.Path),
-			}},
-			Log: observability.ServerLog{
-				Tag:          accessTag,
-				QuietSuccess: true,
-				Fields: []log.Field{
-					log.String("http.request.method", r.Method),
-					log.String("url.path", r.URL.Path),
-				},
+			},
+		},
+		Span: observability.ServerSpan{Attrs: []attribute.KeyValue{
+			attribute.String("http.request.method", r.Method),
+			attribute.String("url.path", r.URL.Path),
+		}},
+		Log: observability.ServerLog{
+			Tag:          accessTag,
+			QuietSuccess: true,
+			Fields: []log.Field{
+				log.String("http.request.method", r.Method),
+				log.String("url.path", r.URL.Path),
 			},
 		},
 	}
+	return op
 }

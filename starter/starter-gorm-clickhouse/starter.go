@@ -29,11 +29,10 @@ import (
 
 	ch "github.com/ClickHouse/clickhouse-go/v2"
 	"go-spring.org/cloud/actuator/health"
-	"go-spring.org/cloud/mesh"
-	"go-spring.org/cloud/runtime"
-	"go-spring.org/cloud/runtime/dataplane/kernel/discovery"
-	"go-spring.org/cloud/runtime/dataplane/kernel/label"
-	"go-spring.org/cloud/runtime/dataplane/kernel/loadbalance"
+	"go-spring.org/cloud/governance"
+	"go-spring.org/cloud/governance/capability/discovery"
+	"go-spring.org/cloud/governance/capability/label"
+	"go-spring.org/cloud/governance/capability/loadbalance"
 	"go-spring.org/log"
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/gs"
@@ -60,7 +59,7 @@ func init() {
 			// bean-name space, so two dialects may carry an instance of the same
 			// name.
 			beanName := "clickhouse." + name
-			r.Provide(func(ctx *gs.ContextProvider, discoveryLabel string, center *runtime.Runtime) (*gormcore.DB, error) {
+			r.Provide(func(ctx *gs.ContextProvider, discoveryLabel string, center *governance.Runtime) (*gormcore.DB, error) {
 				// The wiring tag applies the family-default discovery fallback
 				// (discoveryLabel); fold it into the config so the dialect's build
 				// reads one label — c.Discovery — and resolves the backend itself,
@@ -94,14 +93,14 @@ func init() {
 // build constructs the driver-specific dialector for a Config, handling TLS and
 // service discovery, and returns the Spec [gormcore.NewDB] assembles.
 //
-// When c.ServiceName is set (and mesh mode is off), the connection is routed
+// When in-process discovery applies (a service name is set and the process is not in mesh mode), the connection is routed
 // through a Resolver: the ClickHouse native driver builds a *sql.DB with our
 // DialContext, so each new connection reaches a live instance resolved from the
 // discovery backend and address changes take effect without rebuilding the
 // client. In mesh mode a sidecar owns discovery+LB, so the configured Addr is
 // used as-is. When c.ServiceName is empty this is a plain DSN dial, unchanged
 // from before.
-func build(ctx context.Context, c Config, center *runtime.Runtime) (gormcore.Spec, error) {
+func build(ctx context.Context, c Config, center *governance.Runtime) (gormcore.Spec, error) {
 	if c.Addr == "" && c.ServiceName == "" {
 		return gormcore.Spec{}, errutil.Explain(nil, "gorm clickhouse: one of addr or service-name must be set")
 	}
@@ -112,11 +111,17 @@ func build(ctx context.Context, c Config, center *runtime.Runtime) (gormcore.Spe
 
 	service := label.ServiceLabel("gorm:clickhouse", c.ServiceName, c.Addr)
 
-	// Resolve the discovery backend the entry cites before building the dialer:
-	// the build reads one label (c.Discovery) and fails construction when it
-	// names no bean, rather than silently dialing the static address.
+	// The native driver (ch.OpenDB) is required whenever we must inject a custom
+	// TLS config or a discovery-backed dialer, neither of which the URL-style DSN
+	// can express. Otherwise the plain DSN path stays as before. Mesh mode wins
+	// over a configured service-name (the sidecar owns discovery+LB) but may
+	// still need native for TLS.
+	useDiscovery := center.UsesDiscovery(c.ServiceName)
 	var backend discovery.Discovery
-	if c.ServiceName != "" {
+	if useDiscovery {
+		// Resolve the discovery backend the entry cites before building the
+		// dialer: the build reads one label (c.Discovery) and fails construction
+		// when it names no bean, rather than silently dialing the static address.
 		backend, _ = center.Discovery().Get(c.Discovery)
 		if backend == nil {
 			return gormcore.Spec{}, errutil.Explain(nil, "gorm clickhouse: instance routes by service-name but cites discovery backend %q, which names no bean", c.Discovery)
@@ -127,11 +132,6 @@ func build(ctx context.Context, c Config, center *runtime.Runtime) (gormcore.Spe
 		dialector = clickhouse.Open(c.DSN())
 	)
 
-	// The native driver (ch.OpenDB) is required whenever we must inject a custom
-	// TLS config or a discovery-backed dialer, neither of which the URL-style DSN
-	// can express. Otherwise the plain DSN path stays as before. Mesh mode skips
-	// discovery (sidecar owns it) but may still need native for TLS.
-	useDiscovery := c.ServiceName != "" && !mesh.Enabled()
 	useNative := useDiscovery || c.TLS.Enabled
 	if useNative {
 		opts := &ch.Options{
@@ -187,7 +187,7 @@ func build(ctx context.Context, c Config, center *runtime.Runtime) (gormcore.Spe
 }
 
 // Discovery dialer — a client can be dialed straight from a configured Addr, or
-// (when ServiceName is set and mesh mode is off) through a discovery resolver
+// (when in-process discovery applies) through a discovery resolver
 // whose background watch keeps the endpoint set fresh. The resolver (built by
 // [gormcore.Common.NewPickPool]) is adapted to the native driver's DialContext,
 // and its watch is stopped via the closer [build] attaches to the client.

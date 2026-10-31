@@ -28,8 +28,8 @@ import (
 
 	gormsqlite "github.com/glebarez/sqlite"
 	"go-spring.org/cloud/actuator/health"
-	"go-spring.org/cloud/runtime"
-	"go-spring.org/cloud/runtime/dataplane/kernel/label"
+	"go-spring.org/cloud/governance"
+	"go-spring.org/cloud/governance/capability/label"
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/gs"
 	gormcore "go-spring.org/starter-gorm"
@@ -52,7 +52,7 @@ func init() {
 			// The dialect qualifier keeps sqlite's instances in their own bean-name
 			// space, so two dialects may carry an instance of the same name.
 			beanName := "sqlite." + name
-			r.Provide(func(ctx *gs.ContextProvider, discoveryLabel string, center *runtime.Runtime) (*gormcore.DB, error) {
+			r.Provide(func(ctx *gs.ContextProvider, discoveryLabel string, center *governance.Runtime) (*gormcore.DB, error) {
 				// SQLite has no network transport, so there is no discovery backend
 				// to resolve and the dialector dials the configured file. The center
 				// is still the family's sole injection point, handed to build and
@@ -86,7 +86,7 @@ func init() {
 // center argument — shared by every dialect's build signature so the wiring can
 // hand them all the same bundle — is ignored, since there is no candidate set to
 // select from.
-func build(ctx context.Context, c Config, _ *runtime.Runtime) (gormcore.Spec, error) {
+func build(ctx context.Context, c Config, _ *governance.Runtime) (gormcore.Spec, error) {
 	return gormcore.Spec{
 		Dialector:      gormsqlite.Open(c.DSN()),
 		Pool:           c.Pool(),

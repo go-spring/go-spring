@@ -48,9 +48,10 @@ import (
 	"sync"
 	"time"
 
-	"go-spring.org/cloud/runtime/dataplane/kernel/label"
-	"go-spring.org/cloud/runtime/dataplane/outbound/chain"
-	observability "go-spring.org/cloud/runtime/dataplane/outbound/observe"
+	"go-spring.org/cloud/governance/capability/label"
+	"go-spring.org/cloud/governance/capability/traffic"
+	"go-spring.org/cloud/governance/dataplane/outbound/chain"
+	observability "go-spring.org/cloud/governance/dataplane/outbound/observe"
 
 	"github.com/apache/pulsar-client-go/pulsar"
 	"github.com/prometheus/client_golang/prometheus"
@@ -255,9 +256,9 @@ func observe(ctx context.Context, cl pulsar.Client, op chain.Operation, call fun
 // while the executor is always scoped to the client the starter created. The
 // synchronous Producer.Send blocks until the broker acknowledges, which is the
 // path worth protecting; the asynchronous SendAsync is intentionally untouched.
-func GuardedSend(ctx context.Context, cl pulsar.Client, producer pulsar.Producer, msg *pulsar.ProducerMessage) (pulsar.MessageID, error) {
+func GuardedSend(ctx context.Context, prop traffic.Propagator, cl pulsar.Client, producer pulsar.Producer, msg *pulsar.ProducerMessage) (pulsar.MessageID, error) {
 	var id pulsar.MessageID
-	err := observe(ctx, cl, operation(opSend, producer.Topic()), func(attemptCtx context.Context) error {
+	err := observe(ctx, cl, operation(ctx, prop, opSend, producer.Topic()), func(attemptCtx context.Context) error {
 		injectTraceContext(attemptCtx, msg)
 		var serr error
 		id, serr = producer.Send(attemptCtx, msg)

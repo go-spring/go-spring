@@ -662,8 +662,8 @@ check_mongodb_gap
 #
 # 完整性这条原则以前逐组件查("每个组件都要有 span/时长/在途/一行访问日志")。现在它
 # 是**一个**发射点的义务,故在这里查一次 —— 客户端的齐整靠声明(见 §声明族),
-# 发射点靠这段。发射点位于 cloud/runtime/dataplane/observability(已从 resilience 迁出:可观测依赖
-# 服务治理,而非反过来),查的是 cloud/runtime/dataplane/observability/client.go 的 call 发射,
+# 发射点靠这段。发射点位于 cloud/governance/dataplane/outbound/observe(已从 resilience 迁出:可观测依赖
+# 服务治理,而非反过来),查的是 cloud/governance/dataplane/outbound/observe/client.go 的 call 发射,
 # 仪器名则在同包的 executor.go:
 #   * 调用级 span(otel.Tracer( 开的那个),形状是 SpanKindInternal;
 #   * 两级时长:operation.duration(整次调用,含重试与退避)与 attempt.duration(每次下游尝试);
@@ -673,8 +673,8 @@ check_mongodb_gap
 #     不带 Detail 的成功 Info;状态与时长字段是 status / duration_ms。
 #   * Detail 不得进 metric label —— 发射时给指标用的只有 Attrs(callLabels(op.Attrs, ...))。
 check_emitter() {
-  local f="cloud/runtime/dataplane/observability/client.go"
-  local g="cloud/runtime/dataplane/observability/client.go"
+  local f="cloud/governance/dataplane/outbound/observe/client.go"
+  local g="cloud/governance/dataplane/outbound/observe/client.go"
   [ -f "$f" ] || { report "[发射点] $f 不存在 —— 发射点漂移,client 侧信号无处发出"; return; }
 
   grep -qE 'otel\.Tracer\(' "$f" \
@@ -802,7 +802,7 @@ check_instrument_hygiene() {
 #
 # 为什么查"上报点"而不是"接口装饰":自愈重注册不经过 discovery.Registrar 接口,
 # 只在后端自己的漏斗里(etcd publish / zk createNode / consul upsert),所以
-# "在接口外面包一层"看起来合规却漏掉最高价值的信号。名字全部落在 cloud/runtime/dataplane/discovery/observe.go,
+# "在接口外面包一层"看起来合规却漏掉最高价值的信号。名字全部落在 cloud/governance/capability/discovery/observe.go,
 # 后端从不自己命名 instrument —— 本段查的是"调用确实存在于模块内"。
 #
 # 无自愈路径的后端:存活由 SDK 自身的 ephemeral 心跳维持,故永远不产出 self_heal 上报。
@@ -833,7 +833,7 @@ check_discovery() {
       *" $b "*) ;;
       *)
         has_call() { grep -rq "$1" --include='*.go' --exclude='*_test.go' "$dir"; }
-        # 上报走块自己的 observer 层(cloud/runtime/dataplane/discovery.Observer),不写包级状态:
+        # 上报走块自己的 observer 层(cloud/governance/capability/discovery.Observer),不写包级状态:
         # 匹配的是方法名,实例变量名随各后端自便。
         has_call '\.RegisterAttempt(' \
           || report "[discovery] $b: 未上报 RegisterAttempt(注册,含自愈重注册)"
@@ -865,7 +865,7 @@ check_discovery() {
 
 # ── config 族:完全委托 observability.RefreshConf ───────────────────────
 #
-# 七个配置源 starter 自身零插桩:每条配置的刷新由 cloud/runtime/dataplane/observability 的 RefreshConf
+# 七个配置源 starter 自身零插桩:每条配置的刷新由 cloud/observability/conf 的 Refresh
 # 漏斗观测(config.refresh.total / duration / last_success),starter 只负责把它接上。
 # (旧的 cloud/confrefresh 已并入 observability,故认的是 observability.RefreshConf。)
 # 成员是**显式清单**而非 ls starter/starter-config-*:后者会把 starter-config-bus
@@ -888,7 +888,7 @@ check_config() {
     grep -rqE 'RegisterAppTag\("config_' --include='*.go' --exclude='*_test.go' "$dir" 2>/dev/null \
       || report "[config] $b: 无 config_<backend> 生命周期 tag"
 
-    # 回归绊线:配置源的插桩全在 cloud/runtime/dataplane/observability 的刷新漏斗,本地出现仪器就是重复上报。
+    # 回归绊线:配置源的插桩全在 cloud/observability/conf 的刷新漏斗,本地出现仪器就是重复上报。
     grep -rqE 'Float64Histogram\(|Int64Counter\(|Int64UpDownCounter\(|metric\.WithAttributes\(|otel\.Tracer\(' \
          --include='*.go' --exclude='*_test.go' "$dir" 2>/dev/null \
       && report "[config] $b: 自建插桩 —— config 族的可观测性完全委托 observability.RefreshConf,不该有本地仪器"
@@ -1010,7 +1010,7 @@ check_baseline() {
 #
 # 这些组件自己不建仪器、也不发每调用信号 —— 信号全部来自它们装配的共享层
 # (starter-http-client:metric 与 span 由 httpx 包里的 otelhttp 发出,每调用的日志由
-# cloud/runtime/dataplane/resilience 的发射点发;scheduler 的 span/指标/日志全在 cloud/scheduling)。
+# cloud/governance/dataplane/outbound/resilience 的发射点发;scheduler 的 span/指标/日志全在 cloud/scheduling)。
 # 因此这里能查的**不是**"词汇齐不齐",而是"接线还在不在":每条登记必须能 grep 到全部
 # 接入点,少一处即报错。
 #
@@ -1139,7 +1139,7 @@ check_cloud_join
 #
 # 只认「访问日志 tag」RegisterAppTag(x, "access")。生命周期 tag RegisterAppTag(x, "") 是
 # starter 自己的日志分类,不是访问日志 —— config / discovery 族的每操作可观测性委托给
-# cloud/runtime/dataplane/observability 与 cloud/runtime/dataplane/discovery,本来就没有 per-starter 访问日志,不该被算作漏检。
+# cloud/governance/dataplane/outbound/observe 与 cloud/governance/capability/discovery,本来就没有 per-starter 访问日志,不该被算作漏检。
 #
 # 谓词是「有插桩迹象」,不是「有 access tag」:后者只覆盖自己发访问日志的 starter,
 # 而真正会漏的恰恰是不发的那种(kitex/kratos 的仪器由库发、http-client 连日志都由共享层发)。

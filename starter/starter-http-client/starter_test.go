@@ -17,17 +17,22 @@
 package StarterHTTPClient
 
 import (
-	"go-spring.org/cloud/runtime/dataplane/inbound/admission"
+	"context"
 	"testing"
 
-	"go-spring.org/cloud/runtime"
+	"go-spring.org/cloud/governance/dataplane/inbound/admission"
 
-	"go-spring.org/cloud/runtime/controlplane/governance"
-	serverfault "go-spring.org/cloud/runtime/dataplane/inbound/fault"
-	"go-spring.org/cloud/runtime/dataplane/kernel/discovery"
-	"go-spring.org/cloud/runtime/dataplane/kernel/loadbalance"
-	clientfault "go-spring.org/cloud/runtime/dataplane/outbound/fault"
-	"go-spring.org/cloud/runtime/dataplane/outbound/resilience"
+	"go-spring.org/cloud/governance"
+
+	"go-spring.org/cloud/governance/capability/discovery"
+	"go-spring.org/cloud/governance/capability/loadbalance"
+	"go-spring.org/cloud/governance/capability/traffic"
+	admissionplane "go-spring.org/cloud/governance/controlplane/admission"
+	loadbalanceplane "go-spring.org/cloud/governance/controlplane/loadbalance"
+	"go-spring.org/cloud/governance/controlplane/source"
+	serverfault "go-spring.org/cloud/governance/dataplane/inbound/fault"
+	clientfault "go-spring.org/cloud/governance/dataplane/outbound/fault"
+	"go-spring.org/cloud/governance/dataplane/outbound/resilience"
 	"go-spring.org/cloud/security"
 	"go-spring.org/spring/conf"
 	"go-spring.org/stdlib/flatten"
@@ -42,13 +47,23 @@ func TestNewRoute_ResolvesDiscoveryLabel(t *testing.T) {
 		"default": discovery.NewStaticDiscovery(discovery.Endpoint{Addr: "10.0.0.1:8080", Healthy: true, Weight: 1}),
 	})
 	lb := loadbalance.NewManager()
-	center, err := runtime.New(
-		resilience.NewManager(resilience.NewDefaultDriver(nil)), lb, clientfault.NewClientManager(nil), serverfault.NewServerManager(nil), disc, governance.NewPushSource(governance.Config{Server: governance.ServerConfig{Default: admission.DefaultPolicy()}}))
-	if err != nil {
+	center := &governance.Runtime{
+		Resilience:  resilience.NewManager(resilience.NewDefaultDriver(nil)),
+		LoadBalance: lb,
+		Admission:   admission.NewManager(),
+		ClientFault: clientfault.NewManager(),
+		ServerFault: serverfault.NewManager(),
+		Traffic:     traffic.NewDefaultPropagator(traffic.DefaultBinding()),
+		Directory:   disc,
+	}
+	if _, err := loadbalanceplane.NewCenter(context.Background(), center.LoadBalance, source.NewPushSource(loadbalance.Settings{})); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := admissionplane.NewCenter(context.Background(), center.Admission, source.NewPushSource(admission.Settings{})); err != nil {
 		t.Fatal(err)
 	}
 
-	_, err = newRoute(nil, "x", Config{ServiceName: "user-svc", Discovery: "nope"}, nil, center, nil)
+	_, err := newRoute(nil, "x", Config{ServiceName: "user-svc", Discovery: "nope"}, nil, center, nil)
 	assert.Error(t, err).Matches("no such backend")
 	assert.String(t, err.Error()).Contains("default") // the registered labels are reported
 
@@ -61,7 +76,7 @@ func TestNewRoute_ResolvesDiscoveryLabel(t *testing.T) {
 // The governance service label must be STABLE across addressing modes: an
 // entry that keeps service-name set must resolve to http:<service-name> whether
 // it addresses directly (addr pinned, service-name a pure label) or through
-// discovery — spring.governance.client.rules scoped to the label keep matching either way.
+// discovery — client.resilience.services scoped to the label keep matching either way.
 func TestServiceLabelStableAcrossAddressingModes(t *testing.T) {
 	assert.That(t, Config{ServiceName: "user-svc", Discovery: "nacos"}.toTransportConfig(nil).Service).
 		Equal("http:user-svc")

@@ -39,8 +39,10 @@ import (
 	"time"
 
 	"github.com/nats-io/nats.go"
-	"go-spring.org/cloud/runtime/dataplane/outbound/chain"
-	observability "go-spring.org/cloud/runtime/dataplane/outbound/observe"
+	"go-spring.org/cloud/governance/capability/traffic"
+	"go-spring.org/cloud/governance/dataplane/outbound/chain"
+	observability "go-spring.org/cloud/governance/dataplane/outbound/observe"
+	"go-spring.org/cloud/propagate"
 	"go.opentelemetry.io/otel/propagation"
 )
 
@@ -114,11 +116,12 @@ func (r *RawConn) RequestGuarded(ctx context.Context, subj string, data []byte, 
 type ObsConn struct {
 	next InnerConn
 	obs  *observability.OperationObserver
+	prop traffic.Propagator
 }
 
 // NewObsConn builds the emitting layer over next.
-func NewObsConn(next InnerConn, obs *observability.OperationObserver) *ObsConn {
-	return &ObsConn{next: next, obs: obs}
+func NewObsConn(next InnerConn, obs *observability.OperationObserver, prop traffic.Propagator) *ObsConn {
+	return &ObsConn{next: next, obs: obs, prop: prop}
 }
 
 // Release hands releaseRaw to the layer under it — this layer holds no
@@ -130,14 +133,14 @@ func (o *ObsConn) PublishMsg(msg *nats.Msg) error {
 }
 
 func (o *ObsConn) PublishMsgContext(ctx context.Context, msg *nats.Msg) error {
-	return observe(o.obs, ctx, operation(opSend, msg.Subject), func(callCtx context.Context) error {
+	return observe(o.obs, ctx, operation(ctx, o.prop, opSend, msg.Subject), func(callCtx context.Context) error {
 		return o.next.PublishMsgContext(callCtx, msg)
 	})
 }
 
 func (o *ObsConn) RequestGuarded(ctx context.Context, subj string, data []byte, timeout time.Duration) (*nats.Msg, error) {
 	var reply *nats.Msg
-	err := observe(o.obs, ctx, operation(opSend, subj), func(callCtx context.Context) error {
+	err := observe(o.obs, ctx, operation(ctx, o.prop, opSend, subj), func(callCtx context.Context) error {
 		msg, rerr := o.next.RequestGuarded(callCtx, subj, data, timeout)
 		if rerr != nil {
 			return rerr
@@ -211,7 +214,8 @@ func (c *Conn) wrapConsume(subject string, handler ContextHandler) nats.MsgHandl
 	obs := c.obs
 	return func(nm *nats.Msg) {
 		ctx := extractW3C(context.Background(), nm)
-		_ = observe(obs, ctx, operation(opProcess, subject), func(callCtx context.Context) error {
+		ctx = c.prop.Extract(ctx, propagate.Header(nm.Header))
+		_ = observe(obs, ctx, operation(ctx, c.prop, opProcess, subject), func(callCtx context.Context) error {
 			return handler(callCtx, nm)
 		})
 	}

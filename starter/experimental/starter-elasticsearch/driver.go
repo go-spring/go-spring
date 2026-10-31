@@ -26,9 +26,8 @@ import (
 
 	"github.com/elastic/elastic-transport-go/v8/elastictransport"
 	"github.com/elastic/go-elasticsearch/v8"
-	"go-spring.org/cloud/mesh"
-	"go-spring.org/cloud/runtime"
-	"go-spring.org/cloud/runtime/dataplane/kernel/discovery"
+	"go-spring.org/cloud/governance"
+	"go-spring.org/cloud/governance/capability/discovery"
 	"go-spring.org/stdlib/errutil"
 )
 
@@ -63,7 +62,7 @@ import (
 // center.Discovery() itself, failing construction when an entry routes by
 // service-name and the label names no bean.
 type Driver interface {
-	CreateClient(ctx context.Context, c Config, center *runtime.Runtime) (*Client, error)
+	CreateClient(ctx context.Context, c Config, center *governance.Runtime) (*Client, error)
 }
 
 // DefaultDriver is the default implementation of the Driver interface.
@@ -84,18 +83,19 @@ type DefaultDriver struct{}
 // declaration+resilience stack in, with the indirection keeping it installable
 // after elasticsearch.NewClient has already captured the transport.
 //
-// When c.ServiceName is set and mesh mode is off, the discovery backend the
+// When in-process discovery applies (a service name is set and the process is not in mesh mode), the discovery backend the
 // entry's ${discovery} label names is resolved from center.Discovery() and its
 // current live endpoint snapshot overrides c.Addresses (the fail-fast probe and
 // seed); the live feed is the connection pool installed below over the same
 // resolver. An entry routed by service-name that cites no existing backend fails
 // here, at construction.
-func (DefaultDriver) CreateClient(ctx context.Context, c Config, center *runtime.Runtime) (*Client, error) {
+func (DefaultDriver) CreateClient(ctx context.Context, c Config, center *governance.Runtime) (*Client, error) {
 	// Seed the node addresses from the discovery backend this entry cites. The
 	// label rides on the config (c.Discovery, already carrying the family
 	// default); resolveAddresses fails loudly when it names no bean.
 	var backend discovery.Discovery
-	if c.ServiceName != "" && !mesh.Enabled() {
+	useDiscovery := center.UsesDiscovery(c.ServiceName)
+	if useDiscovery {
 		backend, _ = center.Discovery().Get(c.Discovery)
 		addrs, err := resolveAddresses(ctx, c, backend)
 		if err != nil {
@@ -124,15 +124,13 @@ func (DefaultDriver) CreateClient(ctx context.Context, c Config, center *runtime
 	// boot-time snapshot. Transport node selection is untouched — the live pool
 	// keeps a library-built inner pool and only rebuilds it when the node set
 	// changes. Without discovery the static Addresses stand as configured.
-	if c.ServiceName != "" && backend != nil && !mesh.Enabled() {
-		resolver, err := discovery.NewResolver(ctx, backend, c.ServiceName, discovery.WithScheme(c.Scheme))
+	if useDiscovery {
+		resolver, err := discovery.NewResolver(ctx, backend, c.ServiceName, c.Scheme)
 		if err != nil {
 			return nil, errutil.Explain(err, "elasticsearch: resolve service %s", c.ServiceName)
 		}
-		if resolver != nil {
-			cfg.ConnectionPoolFunc = func(conns []*elastictransport.Connection, sel elastictransport.Selector) elastictransport.ConnectionPool {
-				return newLivePool(resolver, c.DiscoveryScheme, sel, conns)
-			}
+		cfg.ConnectionPoolFunc = func(conns []*elastictransport.Connection, sel elastictransport.Selector) elastictransport.ConnectionPool {
+			return newLivePool(resolver, c.DiscoveryScheme, sel, conns)
 		}
 	}
 	client, err := elasticsearch.NewClient(cfg)
@@ -159,7 +157,7 @@ func resolveAddresses(ctx context.Context, c Config, backend discovery.Discovery
 		}
 		return nil, errutil.Explain(nil, "elasticsearch: discovery backend %q not found (no discovery.Discovery bean with this name; cited by the entry's ${discovery} label)", c.Discovery)
 	}
-	resolver, err := discovery.NewResolver(ctx, backend, c.ServiceName, discovery.WithScheme(c.Scheme))
+	resolver, err := discovery.NewResolver(ctx, backend, c.ServiceName, c.Scheme)
 	if err != nil {
 		return nil, errutil.Explain(err, "elasticsearch: resolve service %s", c.ServiceName)
 	}

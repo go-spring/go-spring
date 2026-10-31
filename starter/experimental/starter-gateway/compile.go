@@ -26,11 +26,11 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"go-spring.org/cloud/runtime"
-	"go-spring.org/cloud/runtime/dataplane/kernel/discovery"
-	"go-spring.org/cloud/runtime/dataplane/kernel/loadbalance"
-	"go-spring.org/cloud/runtime/dataplane/kernel/ratelimit"
-	"go-spring.org/cloud/runtime/dataplane/outbound/chain"
+	"go-spring.org/cloud/governance"
+	"go-spring.org/cloud/governance/capability/discovery"
+	"go-spring.org/cloud/governance/capability/loadbalance"
+	"go-spring.org/cloud/governance/capability/ratelimit"
+	"go-spring.org/cloud/governance/dataplane/outbound/chain"
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
@@ -105,7 +105,7 @@ type RouteTable struct {
 	// already observed (the center composes the observe layer, so this package no
 	// longer names observability). lbMgr is the authority each route's
 	// endpoint-selection chain registers with for strategy + suspension.
-	ctr   *runtime.Runtime
+	ctr   *governance.Runtime
 	lbMgr *loadbalance.Manager
 
 	// limiter is the rate-limit store the rateLimit filter spends. A route's
@@ -161,7 +161,7 @@ type chainEntry struct {
 // to the fallback there is nothing to reject, but it is reported at startup
 // rather than swallowed.
 func newRouteTable(ctx *gs.ContextProvider, o *observer,
-	center *runtime.Runtime, limiter ratelimit.ClusterLimiter) (*RouteTable, error) {
+	center *governance.Runtime, limiter ratelimit.ClusterLimiter) (*RouteTable, error) {
 	if limiter == nil {
 		// No cluster limiter was contributed, so per-route and per-client budgets
 		// are this process's own — the same reach a per-service executor would have.

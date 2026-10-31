@@ -31,11 +31,12 @@ package StarterKafka
 import (
 	"context"
 
-	"go-spring.org/cloud/runtime/dataplane/kernel/label"
-	"go-spring.org/cloud/runtime/dataplane/outbound/chain"
+	"go-spring.org/cloud/governance/capability/label"
+	"go-spring.org/cloud/governance/capability/traffic"
+	"go-spring.org/cloud/governance/dataplane/outbound/chain"
 
 	"github.com/twmb/franz-go/pkg/kgo"
-	observability "go-spring.org/cloud/runtime/dataplane/outbound/observe"
+	observability "go-spring.org/cloud/governance/dataplane/outbound/observe"
 )
 
 // serviceLabelOf fixes the governance label a broker list scopes
@@ -104,7 +105,7 @@ func (r *RawKafka) ProduceSync(ctx context.Context, recs ...*kgo.Record) kgo.Pro
 // .FirstErr() reads the same error the observer saw.
 func (o *ObsKafka) ProduceSync(ctx context.Context, recs ...*kgo.Record) kgo.ProduceResults {
 	var results kgo.ProduceResults
-	_ = runObserved(ctx, o.obs, operation(opSend, topicOf(recs)), func(callCtx context.Context) error {
+	_ = runObserved(ctx, o.obs, operation(ctx, o.prop, opSend, topicOf(recs)), func(callCtx context.Context) error {
 		results = o.next.ProduceSync(callCtx, recs...)
 		return results.FirstErr()
 	})
@@ -119,11 +120,12 @@ func (o *ObsKafka) ProduceSync(ctx context.Context, recs ...*kgo.Record) kgo.Pro
 type ObsKafka struct {
 	next InnerKafka
 	obs  *observability.OperationObserver
+	prop traffic.Propagator
 }
 
 // NewObsKafka builds the emitting layer over next.
-func NewObsKafka(next InnerKafka, obs *observability.OperationObserver) *ObsKafka {
-	return &ObsKafka{next: next, obs: obs}
+func NewObsKafka(next InnerKafka, obs *observability.OperationObserver, prop traffic.Propagator) *ObsKafka {
+	return &ObsKafka{next: next, obs: obs, prop: prop}
 }
 
 // Release hands releaseRaw to the layer under it — this layer holds no
@@ -155,7 +157,7 @@ func GuardedProduceSync(ctx context.Context, cl *Client, recs ...*kgo.Record) kg
 // whoever owns the poll loop — franz-go's hooks observe a record, they do not
 // wrap the call — so it uses the client's observer seam instead.
 func GuardedConsume(ctx context.Context, cl *Client, rec *kgo.Record, handler func(context.Context) error) error {
-	return cl.observe(ctx, operation(opProcess, rec.Topic), handler)
+	return cl.observe(ctx, operation(ctx, cl.prop, opProcess, rec.Topic), handler)
 }
 
 // topicOf returns the destination of a produce batch: its topic when EVERY

@@ -64,7 +64,7 @@ Consul/Nacos/k8s；见 example/discovery.go）：
 ```go
 package main
 
-import "go-spring.org/cloud/runtime/dataplane/kernel/discovery"
+import "go-spring.org/cloud/governance/capability/discovery"
 
 func init() {
     gs.Provide(func() (discovery.Discovery, error) {
@@ -166,7 +166,7 @@ import starter-elasticsearch
 gs.Run()
   ├─ 构造 newClient：
   │    ├─ 构造器把家族级 `${spring.elasticsearch.default.discovery}` 兜底
-  │    │      折进 c.Discovery，并把注入的 *runtime.Runtime（变量 center）
+  │    │      折进 c.Discovery，并把注入的 *governance.Runtime（变量 center）
   │    │      交给 driver
   │    ├─ 可选 Driver bean（无则用内置 DefaultDriver；多个并存时实例可按名指定：
   │    │      `spring.elasticsearch.instances.<name>.driver = <bean 名>`，留空 = 按类型注入
@@ -244,7 +244,7 @@ elasticsearch API（Index/Get/...）
 5. 完成时 executor 发射唯一的 span、call 级/attempt 级 duration 直方图与访问日志。
    调用方拿到的与裸 go-elasticsearch 完全一致——包括 4xx 的 `res.IsError()` 响应体；
    只有传输层错误进入异常路径（5xx 由 resilience round-tripper 映射为可触发熔断、
-   可重试的错误，cloud/runtime/dataplane/outbound/resilience/roundtripper.go:99-104）。
+   可重试的错误，cloud/governance/dataplane/outbound/resilience/roundtripper.go:99-104）。
 
 **每次调用都要传 context。** 它承载这次调用的取消与截止时间，resilience 层打开的操作 span
 也继承它——`HealthCheck` 与健康指示器都显式传 context [starter.go, health.go]；
@@ -297,7 +297,7 @@ Addresses（或 CloudID）原样使用。
 
 | Key | 类型 | 默认值 | 行为 / 联动 | 配错后果 |
 |-----|------|--------|-------------|----------|
-| `max-retries` | int | 3 | elastictransport 重试次数。⚠ 与治理 executor 的重试（`spring.governance.client.default.max-retries`）叠加——两层重试相乘放大次数与时延。 | 大值 + 治理重试 → 尝试次数成倍。 |
+| `max-retries` | int | 3 | elastictransport 重试次数。⚠ 与治理 executor 的重试（`spring.governance.client.resilience.max-retries`）叠加——两层重试相乘放大次数与时延。 | 大值 + 治理重试 → 尝试次数成倍。 |
 | `disable-retry` | bool | false | 彻底关闭客户端重试循环。 | — |
 | `compress-request-body` | bool | false | 请求体 gzip 压缩。 | — |
 | `enable-metrics` | bool | true | 客户端内建 elastictransport 指标开关（⚠ schema.json 误写默认 false——以代码为准）。 | — |
@@ -348,13 +348,13 @@ grep _app_elasticsearch_access app.log | tail -1
 ### 4.3 resilience / fault 演练（example-load 风格）
 
 ```properties
-# NOTE: governance RULES go in conf/governance.properties, referenced by spring.governance.source.file.path in app.properties (see cloud/runtime/controlplane/governance's SOURCE_USAGE).
+# NOTE: governance RULES go in conf/governance.properties, wired by the example's source starter (source.go) (see cloud/governance/controlplane/source's USAGE).
 spring.resilience.driver=default
-spring.governance.client.default.rate-limit=5          # 并发 > 5 → ErrRateLimited 拒绝
-spring.governance.client.default.error-threshold=20
-spring.governance.client.default.open-duration=5s
-# spring.governance.client.fault.rules[0].service=elasticsearch:http://127.0.0.1:9200
-# spring.governance.client.fault.rules[0].rate=0.5      # 规则里配上 rate(+ error=timeout)即"放火";没有这样的规则即惰性
+spring.governance.client.resilience.rate-limit=5          # 并发 > 5 → ErrRateLimited 拒绝
+spring.governance.client.resilience.error-threshold=20
+spring.governance.client.resilience.open-duration=5s
+# spring.fault.client.rules[0].service=elasticsearch:http://127.0.0.1:9200
+# spring.fault.client.rules[0].rate=0.5      # 规则里配上 rate(+ error=timeout)即"放火";没有这样的规则即惰性
 ```
 
 运行 [example-load/](example-load/)（`go run . -concurrency=16 -duration=5s`）：打印的

@@ -34,11 +34,11 @@ go get go-spring.org/starter-http-client
 `http.RoundTripper` 由 [`starter-http-client/httpx`](httpx)
 用三个可组合的 stdlib 抽象装配而成,全部收敛在同一个 `http.RoundTripper` 缝隙上:
 
-* [`discovery`](../../cloud/runtime/dataplane/kernel/discovery) —— 设置了 `service-name` 时,`Resolver`
+* [`discovery`](../../cloud/governance/capability/discovery) —— 设置了 `service-name` 时,`Resolver`
   持续维护最新的端点快照;
-* [`loadbalance`](../../cloud/runtime/dataplane/kernel/loadbalance) —— `Pool` 为每次请求挑选一个存活端点
+* [`loadbalance`](../../cloud/governance/capability/loadbalance) —— `Pool` 为每次请求挑选一个存活端点
   (任意已注册策略,并可选离群剔除),传输层随即把请求主机改写为该端点;
-* [`resilience`](../../cloud/runtime/dataplane/outbound/resilience) —— 可选的执行器包裹整条链路,使限流、
+* [`resilience`](../../cloud/governance/dataplane/outbound/resilience) —— 可选的执行器包裹整条链路,使限流、
   熔断与重试保护每一次调用。由于它位于负载均衡器**之外**,重试会重新挑选一个
   新端点,而熔断器则以逻辑服务名为键。
 
@@ -68,11 +68,11 @@ spring.http-client.instances.direct.addr=127.0.0.1:9471
 spring.http-client.instances.discovered.service-name=greet-svc
 spring.http-client.instances.discovered.discovery=static
 
-# 韧性与端点选择不在这里配置:策略写在治理规则文档的 spring.governance.* 下(cloud/runtime/controlplane/governance;
-# conf/governance.properties,由 spring.governance.source.file.path 指向)。连续 2 次失败熔断:
+# 韧性与端点选择不在这里配置:策略写在治理规则文档的 spring.governance.* 下(各策略根;
+# conf/governance.properties,由示例的 source starter（source.go）接线)。连续 2 次失败熔断:
 #   spring.resilience.driver=default
-#   spring.governance.client.default.error-threshold=2
-#   spring.governance.client.default.open-duration=30s
+#   spring.governance.client.resilience.error-threshold=2
+#   spring.governance.client.resilience.open-duration=30s
 spring.http-client.instances.guarded.addr=127.0.0.1:9473
 ```
 
@@ -110,8 +110,8 @@ _, resp, err := client.Greet(ctx, &proto.GreetReq{Name: "Grace"})
 | `spring.http-client.instances.<name>.tls.enabled` | `false` | 打开该 entry 的 TLS 配置面(完整 `tls.*`:cert-file/key-file/ca-file/server-name/insecure-skip-verify)。 |
 
 韧性、故障注入与端点选择在这里**没有配置 key**:它们是按服务的策略,写在治理规则文档里(见
-cloud/runtime/controlplane/governance 的 SOURCE_USAGE_CN.md)。治理服务标签在发现模式下为 `http:<service-name>`,直连模式下为
-`http:<addr>`。单次请求超时来自 `spring.governance.client.default.timeout`;负载均衡策略与端点剔除来自
+cloud/governance/controlplane/source 的 USAGE_CN.md)。治理服务标签在发现模式下为 `http:<service-name>`,直连模式下为
+`http:<addr>`。单次请求超时来自 `spring.governance.client.resilience.timeout`;负载均衡策略与端点剔除来自
 命中该标签的规则上的 `balancer` / `outlier-threshold` / `outlier-suspend-for`。
 
 本 starter 在装配期即快速失败:`addr` 与 `service-name` 至少设置其一;仅按

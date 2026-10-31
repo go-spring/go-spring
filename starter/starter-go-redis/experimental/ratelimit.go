@@ -21,7 +21,7 @@ import (
 	"time"
 
 	"github.com/redis/go-redis/v9"
-	"go-spring.org/cloud/runtime/dataplane/kernel/ratelimit"
+	"go-spring.org/cloud/governance/capability/ratelimit"
 	"go-spring.org/stdlib/errutil"
 )
 

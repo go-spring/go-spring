@@ -19,13 +19,13 @@ package StarterRocketmq
 import (
 	"context"
 	"errors"
-	"go-spring.org/cloud/runtime/dataplane/outbound/chain"
+	"go-spring.org/cloud/governance/dataplane/outbound/chain"
 	"strings"
 	"testing"
 
 	"github.com/apache/rocketmq-client-go/v2/primitive"
+	"go-spring.org/cloud/governance/capability/traffic"
 	"go-spring.org/cloud/propagate"
-	"go-spring.org/cloud/runtime/dataplane/kernel/traffic"
 	"go-spring.org/stdlib/testing/assert"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/propagation"
@@ -83,7 +83,7 @@ func TestFromMessageExt(t *testing.T) {
 
 	prop := traffic.NewDefaultPropagator(traffic.DefaultBinding())
 	c := propagate.StringMap{}
-	prop.Inject(prop.WithLoadTest(context.Background()), c)
+	prop.Inject(prop.WithKind(context.Background(), traffic.KindLoadTest), c)
 	for k, v := range c {
 		ext.WithProperty(k, v)
 	}
@@ -93,7 +93,7 @@ func TestFromMessageExt(t *testing.T) {
 	assert.That(t, string(msg.Payload)).Equal("value")
 	assert.That(t, msg.Headers["from"]).Equal("example")
 	roundTrip := prop.Extract(context.Background(), propagate.StringMap(msg.Headers))
-	assert.That(t, prop.IsLoadTest(roundTrip)).True()
+	assert.That(t, traffic.IsLoadTest(roundTrip, prop)).True()
 	assert.That(t, msg.Timestamp.UnixMilli()).Equal(int64(1700000000000))
 }
 
@@ -128,7 +128,7 @@ func (t topicLayer) SendSync(ctx context.Context, msg *primitive.Message) (*prim
 // through it — the tail sees the rewritten topic.
 func TestInnerProducerReorganize(t *testing.T) {
 	fake := &fakeProducerTail{}
-	head := NewObsProducer(fake, nil)
+	head := NewObsProducer(fake, nil, traffic.NewDefaultPropagator(traffic.DefaultBinding()))
 	wrapped := topicLayer{InnerProducer: head, prefix: "tenant."}
 
 	msg := primitive.NewMessage("orders", []byte("x"))

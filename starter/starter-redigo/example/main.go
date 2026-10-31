@@ -29,7 +29,7 @@ import (
 	"time"
 
 	"github.com/gomodule/redigo/redis"
-	rt "go-spring.org/cloud/runtime"
+	"go-spring.org/cloud/governance"
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
 	StarterRedigo "go-spring.org/starter-redigo"
@@ -61,7 +61,7 @@ type AnotherRedisDriver struct {
 	external string
 }
 
-func (d AnotherRedisDriver) CreateClient(ctx context.Context, c StarterRedigo.Config, center *rt.Runtime) (*StarterRedigo.Pool, error) {
+func (d AnotherRedisDriver) CreateClient(ctx context.Context, c StarterRedigo.Config, center *governance.Runtime) (*StarterRedigo.Pool, error) {
 	log.Info(context.Background(), log.TagAppDef, "AnotherRedisDriver::CreateClient external", log.Any("external", d.external))
 	// Delegate to the standard one-shot assembly, then the driver could
 	// customize the pool via its public API (e.g. UseCommandInterceptor). center

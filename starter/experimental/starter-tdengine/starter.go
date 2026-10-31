@@ -21,7 +21,7 @@ import (
 	"strings"
 	"time"
 
-	"go-spring.org/cloud/runtime"
+	"go-spring.org/cloud/governance"
 
 	"go-spring.org/cloud/actuator/health"
 	"go-spring.org/log"
@@ -81,7 +81,7 @@ func init() {
 // injection point; the ctor hands it to the driver, which passes it to
 // [NewClient]. The resilience manager is required — the container supplies it
 // via the runtime — so a center without one fails at construction.
-func newClient(ctx *gs.ContextProvider, c Config, d Driver, center *runtime.Runtime) (*Client, error) {
+func newClient(ctx *gs.ContextProvider, c Config, d Driver, center *governance.Runtime) (*Client, error) {
 	log.Debug(ctx.Context, log.TagAppDef, "creating tdengine client", func() []log.Field {
 		return []log.Field{
 			log.String("dsn_addr", dsnAddr(c.DSN)),

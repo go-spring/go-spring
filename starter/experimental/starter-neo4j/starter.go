@@ -20,7 +20,7 @@ import (
 	"context"
 	"time"
 
-	"go-spring.org/cloud/runtime"
+	"go-spring.org/cloud/governance"
 
 	"go-spring.org/cloud/actuator/health"
 	"go-spring.org/log"
@@ -93,7 +93,7 @@ func init() {
 // and unguarded, a documented gap driven by upstream driver support, not an
 // oversight.
 //
-// When c.ServiceName is set and mesh mode is off, the driver builds a Resolver
+// When in-process discovery applies (a service name is set and the process is not in mesh mode), the driver builds a Resolver
 // against the backend the entry's ${discovery} label names, looked up in the
 // center's discovery directory, picks one endpoint, and splices its address into
 // the URI host. That pick is a seed: the driver exposes no dialer injection
@@ -112,7 +112,7 @@ func init() {
 // the client is assembled complete in one step, with the resilience manager
 // required: the container supplies it via the runtime, so a center
 // without one fails at construction.
-func newClient(ctx *gs.ContextProvider, c Config, discoveryLabel string, d Driver, center *runtime.Runtime) (*Client, error) {
+func newClient(ctx *gs.ContextProvider, c Config, discoveryLabel string, d Driver, center *governance.Runtime) (*Client, error) {
 	// The client's identity rides on a context derived here: every line below
 	// carries it without repeating it. The provider's own context is left
 	// alone — that one is the shared application context, not this

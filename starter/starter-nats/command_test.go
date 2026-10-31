@@ -24,13 +24,16 @@ import (
 	"time"
 
 	"github.com/nats-io/nats.go"
-	observability "go-spring.org/cloud/runtime/dataplane/outbound/observe"
+	"go-spring.org/cloud/governance/capability/traffic"
+	observability "go-spring.org/cloud/governance/dataplane/outbound/observe"
 	"go-spring.org/stdlib/testing/assert"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/propagation"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/trace"
 )
+
+var testProp = traffic.NewDefaultPropagator(traffic.DefaultBinding())
 
 // subjectLayer wraps the chain head and namespaces every subject it passes
 // down — the kind of behavior change no nats middleware could express.
@@ -50,7 +53,7 @@ func (s subjectLayer) PublishMsgContext(ctx context.Context, msg *nats.Msg) erro
 // sees the rewritten subject.
 func TestInnerConnReorganize(t *testing.T) {
 	tail := &fakeTail{}
-	c := &Conn{InnerConn: NewObsConn(tail, nil)}
+	c := &Conn{InnerConn: NewObsConn(tail, nil, testProp), prop: testProp}
 	c.InnerConn = subjectLayer{InnerConn: c.InnerConn, prefix: "tenant."}
 
 	msg := &nats.Msg{Subject: "orders", Data: []byte("x")}
@@ -105,7 +108,7 @@ func newInstrumentedConn(t *testing.T) *Conn {
 
 func newInstrumentedConnErr(err error) *Conn {
 	obs := observability.NewOperationObserver("nats", "nats:test")
-	return &Conn{InnerConn: NewObsConn(injectTail{err: err}, obs), obs: obs}
+	return &Conn{InnerConn: NewObsConn(injectTail{err: err}, obs, testProp), obs: obs, prop: testProp}
 }
 
 // traceIDOf extracts the trace context a producer injected into msg.Header.
@@ -225,7 +228,7 @@ func TestWrapConsumeReportsHandlerError(t *testing.T) {
 // ctx holds no valid span).
 func TestChainDelegatesWithoutExecutor(t *testing.T) {
 	tail := &fakeTail{}
-	c := &Conn{InnerConn: NewObsConn(tail, nil)}
+	c := &Conn{InnerConn: NewObsConn(tail, nil, testProp), prop: testProp}
 
 	msg := &nats.Msg{Subject: "t.subject"}
 	assert.Error(t, c.PublishMsgContext(context.Background(), msg)).Nil()

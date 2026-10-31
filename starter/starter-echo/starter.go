@@ -22,10 +22,10 @@ import (
 	"net"
 	"net/http"
 
-	"go-spring.org/cloud/runtime"
+	"go-spring.org/cloud/governance"
 
 	"github.com/labstack/echo/v4"
-	"go-spring.org/cloud/runtime/dataplane/kernel/traffic"
+	"go-spring.org/cloud/governance/capability/traffic"
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
@@ -87,7 +87,7 @@ type SimpleEchoServer struct {
 // policy and its fault authority backs the inbound fault
 // middleware, both handed to applyMiddlewares. prop is the load-test convention bean — the application.s when it provides
 // one, go-spring.s default otherwise — handed to the inbound LoadTest middleware.
-func NewSimpleEchoServer(register RouterRegister, outer EngineMiddleware, cfg Config, center *runtime.Runtime, prop traffic.Propagator) (*SimpleEchoServer, error) {
+func NewSimpleEchoServer(register RouterRegister, outer EngineMiddleware, cfg Config, center *governance.Runtime, prop traffic.Propagator) (*SimpleEchoServer, error) {
 	e := echo.New()
 	e.HideBanner = true
 

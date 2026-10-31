@@ -30,10 +30,10 @@ import (
 
 	"github.com/go-sql-driver/mysql"
 	"go-spring.org/cloud/actuator/health"
-	"go-spring.org/cloud/runtime"
-	"go-spring.org/cloud/runtime/dataplane/kernel/discovery"
-	"go-spring.org/cloud/runtime/dataplane/kernel/label"
-	"go-spring.org/cloud/runtime/dataplane/kernel/loadbalance"
+	"go-spring.org/cloud/governance"
+	"go-spring.org/cloud/governance/capability/discovery"
+	"go-spring.org/cloud/governance/capability/label"
+	"go-spring.org/cloud/governance/capability/loadbalance"
 	"go-spring.org/log"
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/gs"
@@ -59,7 +59,7 @@ func init() {
 			// The dialect qualifier keeps mysql's instances in their own bean-name
 			// space, so two dialects may carry an instance of the same name.
 			beanName := "mysql." + name
-			r.Provide(func(ctx *gs.ContextProvider, discoveryLabel string, center *runtime.Runtime) (*gormcore.DB, error) {
+			r.Provide(func(ctx *gs.ContextProvider, discoveryLabel string, center *governance.Runtime) (*gormcore.DB, error) {
 				// The wiring tag applies the family-default discovery fallback
 				// (discoveryLabel); fold it into the config so the dialect's build
 				// reads one label — c.Discovery — and resolves the backend itself,
@@ -96,14 +96,14 @@ var tlsSeq atomic.Uint64
 // build constructs the driver-specific dialector for a Config, handling TLS and
 // service-discovery routing, and returns the Spec [gormcore.NewDB] assembles.
 //
-// When c.ServiceName is set (and mesh mode is off), the address is resolved
+// When in-process discovery applies (a service name is set and the process is not in mesh mode), the address is resolved
 // through the registered discovery backend: a Resolver is bound to a unique
 // mysql dial network name and the DSN routes through it, so each new connection
 // reaches a live instance and address changes take effect without rebuilding
 // the client. In mesh mode a sidecar owns discovery+LB, so the configured Addr
 // is used as-is. When c.ServiceName is empty this is a plain Addr dial,
 // unchanged from before.
-func build(ctx context.Context, c Config, center *runtime.Runtime) (gormcore.Spec, error) {
+func build(ctx context.Context, c Config, center *governance.Runtime) (gormcore.Spec, error) {
 	if c.Addr == "" && c.ServiceName == "" {
 		return gormcore.Spec{}, errutil.Explain(nil, "gorm mysql: one of addr or service-name must be set")
 	}
@@ -139,22 +139,25 @@ func build(ctx context.Context, c Config, center *runtime.Runtime) (gormcore.Spe
 	dsn := c.DSN()
 
 	service := label.ServiceLabel("gorm:mysql", c.ServiceName, c.Addr)
-	var backend discovery.Discovery
-	if c.ServiceName != "" {
-		backend, _ = center.Discovery().Get(c.Discovery)
+	// Mesh mode wins over a configured service-name: the sidecar owns
+	// discovery+LB, so the configured Addr is dialed as-is.
+	useDiscovery := center.UsesDiscovery(c.ServiceName)
+	var conn *discoveryConn
+	if useDiscovery {
+		backend, _ := center.Discovery().Get(c.Discovery)
 		if backend == nil {
 			return gormcore.Spec{}, errutil.Explain(nil, "gorm mysql: instance routes by service-name but cites discovery backend %q, which names no bean", c.Discovery)
 		}
-	}
-	conn, err := newDiscoveryConn(ctx, c, backend, service, center.Loadbalance())
-	if err != nil {
-		log.Error(ctx, log.TagAppDef, err, "gorm mysql build discovery dialer failed")
-		if tlsCloser != nil {
-			tlsCloser()
+		conn, err = newDiscoveryConn(ctx, c, backend, service, center.Loadbalance())
+		if err != nil {
+			log.Error(ctx, log.TagAppDef, err, "gorm mysql build discovery dialer failed")
+			if tlsCloser != nil {
+				tlsCloser()
+			}
+			return gormcore.Spec{}, err
 		}
-		return gormcore.Spec{}, err
 	}
-	if conn != nil {
+	if useDiscovery {
 		// Route the DSN through the registered dialer; Addr becomes a label the
 		// dialer ignores since it picks a live endpoint itself.
 		dc := c
@@ -182,9 +185,9 @@ func build(ctx context.Context, c Config, center *runtime.Runtime) (gormcore.Spe
 }
 
 // Discovery dialer — the live-dialer + resolver lifecycle concept. A client can
-// be dialed straight from a configured Addr, or (when ServiceName is set and
-// mesh mode is off) through a discovery resolver whose background watch keeps
-// the endpoint set fresh. The resolver is registered under a unique mysql dial
+// be dialed straight from a configured Addr, or (when in-process discovery
+// applies) through a discovery resolver whose background watch keeps the
+// endpoint set fresh. The resolver is registered under a unique mysql dial
 // network name, and its watch is stopped (and the dialer deregistered) via the
 // closer [build] attaches to the client.
 
@@ -199,19 +202,16 @@ type discoveryConn struct {
 }
 
 // newDiscoveryConn resolves the registered discovery backend for c and registers
-// a mysql dialer that routes each new connection through a live endpoint. It
-// returns (nil, nil) when service-name is unset or mesh mode is enabled (a
-// sidecar owns discovery+LB), in which case the caller dials the configured Addr
-// directly. The caller owns the lifecycle and must release the conn via
+// a mysql dialer that routes each new connection through a live endpoint. The
+// caller invokes it only when in-process discovery applies
+// ([governance.Runtime.UsesDiscovery]); mesh mode dials the configured Addr
+// directly instead. The caller owns the lifecycle and must release the conn via
 // stopDiscoveryConn. service is the entry's governance label, to which the
 // pool's endpoint selection is bound.
 func newDiscoveryConn(ctx context.Context, c Config, backend discovery.Discovery, service string, lbMgr *loadbalance.Manager) (*discoveryConn, error) {
 	lb, _, err := c.NewPickPool(ctx, backend, service, lbMgr)
 	if err != nil {
 		return nil, err
-	}
-	if lb == nil {
-		return nil, nil
 	}
 	netName := fmt.Sprintf("gsdisco_%s_%d", c.ServiceName, netSeq.Add(1))
 	nd := &net.Dialer{}

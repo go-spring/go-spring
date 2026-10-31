@@ -21,7 +21,7 @@ import (
 	"testing"
 
 	"github.com/twmb/franz-go/pkg/kgo"
-	observability "go-spring.org/cloud/runtime/dataplane/outbound/observe"
+	observability "go-spring.org/cloud/governance/dataplane/outbound/observe"
 )
 
 // fakeTail is a scripted InnerKafka tail: it counts the produces that reached
@@ -41,7 +41,7 @@ func (f *fakeTail) Release(bool) error { return nil }
 // over the client's observer. A kafka client has no seam for the resilience
 // executor, so what it attaches is observation — not governance.
 func TestNewClientAttachesObserver(t *testing.T) {
-	cl := NewClient(nil, "127.0.0.1:1")
+	cl := NewClient(nil, "127.0.0.1:1", testProp)
 	if cl.obs == nil {
 		t.Fatal("NewClient must attach an observer")
 	}
@@ -68,7 +68,7 @@ func (t topicLayer) ProduceSync(ctx context.Context, recs ...*kgo.Record) kgo.Pr
 // tail sees the rewritten topic.
 func TestInnerKafkaReorganize(t *testing.T) {
 	tail := &fakeTail{}
-	cl := &Client{InnerKafka: NewObsKafka(tail, observability.NewOperationObserver("kafka", "test"))}
+	cl := &Client{InnerKafka: NewObsKafka(tail, observability.NewOperationObserver("kafka", "test"), testProp)}
 	cl.InnerKafka = topicLayer{InnerKafka: cl.InnerKafka, prefix: "tenant."}
 
 	results := cl.InnerKafka.ProduceSync(context.Background(), &kgo.Record{Topic: "orders"})

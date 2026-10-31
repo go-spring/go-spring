@@ -15,7 +15,7 @@
  */
 
 // This file is the CONSUMER half of ZooKeeper service discovery: the
-// cloud/runtime/dataplane/kernel/discovery Discovery backend serving snapshots of the instances the
+// cloud/governance/capability/discovery Discovery backend serving snapshots of the instances the
 // registry (registry.go) publishes. It is derived from the
 // ${spring.discovery.zookeeper} center (starter.go) under the fixed label
 // "zookeeper" — there is no separate discovery config block. Freshness is
@@ -38,7 +38,7 @@ import (
 	"time"
 
 	"github.com/go-zookeeper/zk"
-	"go-spring.org/cloud/runtime/dataplane/kernel/discovery"
+	"go-spring.org/cloud/governance/capability/discovery"
 	"go-spring.org/log"
 	"go-spring.org/stdlib/errutil"
 )
@@ -124,7 +124,7 @@ func (d *zkDiscovery) entry(name string) *serviceEntry {
 // session dies, so everything found is live. The first call pays the seed
 // fetch (bounded by ctx) and starts the background watcher; later calls read
 // the cache.
-func (d *zkDiscovery) Resolve(ctx context.Context, name string, opts ...discovery.Option) ([]discovery.Endpoint, error) {
+func (d *zkDiscovery) Resolve(ctx context.Context, name string) ([]discovery.Endpoint, error) {
 	e := d.entry(name)
 	e.mu.Lock()
 	defer e.mu.Unlock()
@@ -140,7 +140,7 @@ func (d *zkDiscovery) Resolve(ctx context.Context, name string, opts ...discover
 		d.obs.Synced(name, nil)
 		go d.watchLoop(name, e)
 	}
-	eps := discovery.Snapshot(e.eps, discovery.NewQuery(name, opts...))
+	eps := e.eps
 	return eps, nil
 }
 

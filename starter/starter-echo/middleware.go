@@ -21,12 +21,12 @@ import (
 	"net/http"
 	"strconv"
 
-	"go-spring.org/cloud/runtime"
+	"go-spring.org/cloud/governance"
 
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
+	"go-spring.org/cloud/governance/capability/traffic"
 	"go-spring.org/cloud/propagate"
-	"go-spring.org/cloud/runtime/dataplane/kernel/traffic"
 	"go-spring.org/log"
 )
 
@@ -41,10 +41,10 @@ type requestIDCtxKey struct{}
 
 // LoadTest installs the inbound load-test traffic identification middleware.
 // When the incoming request carries the configured marker header (default
-// X-LoadTest) it tags the request context, so the handler chain and every
+// X-Traffic) it tags the request context, so the handler chain and every
 // outbound client the handlers drive can recognise synthetic load through the
-// propagator's IsLoadTest. It is the inbound companion to
-// cloud/runtime/dataplane/kernel/traffic's outbound injection: together they let a load-test
+// `traffic.IsLoadTest`. It is the inbound companion to
+// cloud/governance/capability/traffic's outbound injection: together they let a load-test
 // flag ride an HTTP hop end to end. An empty header falls back to the
 // propagator's own header name; prop nil means go-spring's default. Without the
 // marker it is a no-op.
@@ -86,13 +86,13 @@ func RequestIDFromContext(ctx context.Context) string {
 // both; AccessLog wraps the policy middlewares so short-circuit responses (413,
 // 204, 403) are still logged. BodyLimit sits inside the chain so an over-limit
 // 413 is logged and recovered like any other response.
-func applyMiddlewares(e *echo.Echo, cfg Config, center *runtime.Runtime, prop traffic.Propagator) error {
+func applyMiddlewares(e *echo.Echo, cfg Config, center *governance.Runtime, prop traffic.Propagator) error {
 	mw := cfg.Middleware
 
 	// LoadTest identification is outermost of all so the marker is on the
 	// request context before Recovery, RequestID or any handler runs, letting
 	// every downstream layer (and any outbound client the handler calls) branch
-	// on the load-test convention's IsLoadTest. A single header lookup; off when
+	// on `traffic.IsLoadTest`. A single header lookup; off when
 	// disabled.
 	if mw.LoadTest.Enabled {
 		e.Use(LoadTest(prop))
@@ -132,7 +132,7 @@ func applyMiddlewares(e *echo.Echo, cfg Config, center *runtime.Runtime, prop tr
 	// starter's manager bean (nil when governance is not imported); without it
 	// the executor is a transparent pass-through, so installing it costs a call
 	// frame and changes nothing else.
-	policy, err := buildServerPolicy(cfg, center)
+	policy, err := buildServerPolicy(cfg, center, prop)
 	if err != nil {
 		return err
 	}

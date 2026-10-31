@@ -20,8 +20,8 @@ import (
 	"encoding/json"
 	"testing"
 
-	"go-spring.org/cloud/runtime/controlplane/registration"
-	"go-spring.org/cloud/runtime/dataplane/kernel/discovery"
+	"go-spring.org/cloud/governance/capability/discovery"
+	"go-spring.org/cloud/governance/controlplane/registration"
 	"go-spring.org/stdlib/testing/assert"
 )
 
@@ -95,15 +95,21 @@ func TestValuesToEndpointsDrainEncoding(t *testing.T) {
 	assert.That(t, eps[0].Weight).Equal(0)
 }
 
-func TestValuesToEndpointsSchemeFilter(t *testing.T) {
+func TestValuesToEndpointsScheme(t *testing.T) {
 	vals := map[string][]byte{
 		"s-10.0.0.1:80": mustPayload(t, instanceValue{Addr: "10.0.0.1:80", Scheme: "tls"}),
 		"s-10.0.0.2:80": mustPayload(t, instanceValue{Addr: "10.0.0.2:80"}),
 	}
-	// Narrow narrows to the tls instance only.
-	eps := discovery.Narrow(valuesToEndpoints(newTestObserver(), vals), discovery.NewQuery("s", discovery.WithScheme("tls")))
-	assert.That(t, len(eps)).Equal(1)
-	assert.That(t, eps[0].Addr).Equal("10.0.0.1:80")
+	// The adapter restores the scheme onto each endpoint; narrowing is the
+	// consumer's job (Schema at construction, FilterByMetadata per read).
+	eps := valuesToEndpoints(newTestObserver(), vals)
+	assert.That(t, len(eps)).Equal(2)
+	schemes := map[string]string{}
+	for _, e := range eps {
+		schemes[e.Addr] = e.Scheme
+	}
+	assert.That(t, schemes["10.0.0.1:80"]).Equal("tls")
+	assert.That(t, schemes["10.0.0.2:80"]).Equal("")
 }
 
 func TestFirstEventEmptyIsNil(t *testing.T) {

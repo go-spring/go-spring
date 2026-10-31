@@ -23,8 +23,8 @@ import (
 	"sync"
 	"time"
 
-	"go-spring.org/cloud/runtime"
-	"go-spring.org/cloud/runtime/dataplane/outbound/resilience"
+	"go-spring.org/cloud/governance"
+	"go-spring.org/cloud/governance/dataplane/outbound/resilience"
 	mapconfig "go-spring.org/starter-dubbo/internal/mapconfig"
 )
 
@@ -49,7 +49,7 @@ type dyncPoller struct {
 	// the poller's sole governance entry: [dyncPoller.mgr] reads the resilience
 	// authority off it, whose Subscribe callbacks re-run the poll on every
 	// governance push.
-	ctr *runtime.Runtime
+	ctr *governance.Runtime
 
 	// consumer is the entire consumer node under ${spring.dubbo.consumer},
 	// bound once at construction.
@@ -64,7 +64,7 @@ type dyncPoller struct {
 // ${spring.dubbo.consumer} node. ctr is the runtime bean; it is nil
 // when governance is not imported, which leaves the poller pushing the
 // dubbo-native values only.
-func newDyncPoller(app DubboApplication, consumer DubboConsumer, ctr *runtime.Runtime) *dyncPoller {
+func newDyncPoller(app DubboApplication, consumer DubboConsumer, ctr *governance.Runtime) *dyncPoller {
 	return &dyncPoller{
 		dynCfg:   mapconfig.Singleton(),
 		appName:  app.Name,
@@ -117,7 +117,7 @@ func (p *dyncPoller) poll() {
 	p.mu.Unlock()
 	for _, l := range toReg {
 		l := l
-		p.mgr().Subscribe(l, func(resilience.Policy) { p.poll() })
+		p.mgr().SubscribeLimits(l, func(resilience.Limits) { p.poll() })
 	}
 
 	if len(rules) == 0 {
@@ -164,7 +164,7 @@ func (p *dyncPoller) consumerToOverrideRules(c *DubboConsumer) map[string]map[st
 	}
 	// applyGovernOverride writes only set (>0) values, so a document that
 	// configures nothing leaves dubbo's native values untouched.
-	applyGovernOverride(appParams, p.mgr().PolicyFor(dubboAppLabel(appName)))
+	applyGovernOverride(appParams, p.mgr().LimitsFor(dubboAppLabel(appName)))
 	if len(appParams) > 0 {
 		rules[appName] = appParams
 	}
@@ -209,7 +209,7 @@ func (p *dyncPoller) consumerToOverrideRules(c *DubboConsumer) map[string]map[st
 			addIfSet(refParams, prefix+"execute.limit", strconv.Itoa(m.ExecuteLimit))
 			addIfSet(refParams, prefix+"execute.limit.rejected.handler", m.ExecuteLimitRejectedHandler)
 		}
-		applyGovernOverride(refParams, p.mgr().PolicyFor(dubboRefLabel(key)))
+		applyGovernOverride(refParams, p.mgr().LimitsFor(dubboRefLabel(key)))
 		if len(refParams) > 0 {
 			rules[key] = refParams
 		}
@@ -277,7 +277,7 @@ func dubboServiceLabels(appName string, c *DubboConsumer) map[string]bool {
 // Note: dubbo retries is cluster-failover-level (retries across providers), so
 // Policy.Retry.MaxRetries here maps to dubbo cluster retries, not resilience-layer
 // retry - the center documents dubbo's timeout/retry in dubbo's own semantics.
-func applyGovernOverride(params map[string]string, p resilience.Policy) {
+func applyGovernOverride(params map[string]string, p resilience.Limits) {
 	if p.Timeout > 0 {
 		params["timeout"] = strconv.FormatInt(int64(p.Timeout/time.Millisecond), 10)
 	}

@@ -23,10 +23,10 @@ import (
 	"context"
 	"time"
 
-	"go-spring.org/cloud/runtime"
+	"go-spring.org/cloud/governance"
 
+	"go-spring.org/cloud/governance/capability/traffic"
 	"go-spring.org/cloud/messaging"
-	"go-spring.org/cloud/runtime/dataplane/kernel/traffic"
 	"go-spring.org/log"
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/gs"
@@ -94,7 +94,7 @@ const pingTimeout = 10 * time.Second
 // point; the ctor hands it to the driver, which applies its authorities while
 // building.
 func newClient(ctx *gs.ContextProvider, name string, c Config, d Driver,
-	center *runtime.Runtime) (*Client, error) {
+	center *governance.Runtime) (*Client, error) {
 	log.Debug(ctx.Context, log.TagAppDef, "creating kafka client", func() []log.Field {
 		return []log.Field{
 			log.String("brokers", c.Brokers),
@@ -118,7 +118,7 @@ func newClient(ctx *gs.ContextProvider, name string, c Config, d Driver,
 	// goes straight to the raw client on purpose: it is a connectivity check,
 	// not business traffic, so it must not spend limiter/breaker budget. A
 	// failure abandons the client, chain and all.
-	cl := NewClient(raw, c.Brokers)
+	cl := NewClient(raw, c.Brokers, center.TrafficPropagator())
 	if c.Ping {
 		pingCtx, cancel := context.WithTimeout(ctx.Context, pingTimeout)
 		defer cancel()

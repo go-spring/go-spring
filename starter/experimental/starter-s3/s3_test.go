@@ -17,15 +17,20 @@
 package StarterS3
 
 import (
-	"go-spring.org/cloud/runtime/dataplane/outbound/chain"
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
 	"github.com/minio/minio-go/v7"
+	"go-spring.org/cloud/governance/capability/traffic"
+	"go-spring.org/cloud/governance/dataplane/outbound/chain"
 	"go-spring.org/stdlib/testing/assert"
 	"go.opentelemetry.io/otel/attribute"
 )
+
+// testProp is the propagator the tests hand to the operation builder.
+var testProp = traffic.NewDefaultPropagator(traffic.DefaultBinding())
 
 // TestBucketLookupType covers the config-string mapping, including the
 // virtual-host alias and the rejection of unknown values.
@@ -82,7 +87,7 @@ func TestDynamicTransportSwap(t *testing.T) {
 // path is detail (Detail, as db.statement).
 func TestCallForDeclaresOperation(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPut, "http://127.0.0.1:9000/bucket/key", nil)
-	got := callFor(req)
+	got := callFor(context.Background(), testProp, req)
 	assert.That(t, got.Request.Action).Equal("PUT /bucket/key")
 	assert.That(t, got.Observe.Metric.Name).Equal("db.client")
 	assert.That(t, got.Observe.Log.Tag).Equal(accessTag)

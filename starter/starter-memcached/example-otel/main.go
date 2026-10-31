@@ -39,7 +39,7 @@ import (
 	"time"
 
 	"github.com/bradfitz/gomemcache/memcache"
-	rt "go-spring.org/cloud/runtime"
+	"go-spring.org/cloud/governance"
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
 	StarterMemcached "go-spring.org/starter-memcached"
@@ -67,7 +67,7 @@ type AnotherMemcachedDriver struct {
 }
 
 func (d AnotherMemcachedDriver) CreateClient(ctx context.Context, name string, c StarterMemcached.Config,
-	center *rt.Runtime) (*StarterMemcached.Client, error) {
+	center *governance.Runtime) (*StarterMemcached.Client, error) {
 	log.Info(context.Background(), log.TagAppDef, "AnotherMemcachedDriver::CreateClient")
 	return d.DefaultDriver.CreateClient(ctx, name, c, center)
 }

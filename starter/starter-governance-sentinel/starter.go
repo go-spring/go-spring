@@ -16,7 +16,7 @@
 
 // Package StarterGovernanceSentinel contributes sentinel-golang as the recommended
 // resilience backend for the framework defined in
-// [go-spring.org/cloud/runtime/dataplane/outbound/resilience].
+// [go-spring.org/cloud/governance/dataplane/outbound/resilience].
 //
 // Contribution is a blank import:
 //
@@ -34,11 +34,11 @@ package StarterGovernanceSentinel
 
 import (
 	"context"
-	"go-spring.org/cloud/runtime/dataplane/outbound/chain"
+	"go-spring.org/cloud/governance/dataplane/outbound/chain"
 
 	sentinel "github.com/alibaba/sentinel-golang/api"
 
-	"go-spring.org/cloud/runtime/dataplane/outbound/resilience"
+	"go-spring.org/cloud/governance/dataplane/outbound/resilience"
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
 )
@@ -74,6 +74,6 @@ type sentinelDriver struct{}
 // the same backend is contributed as the bean named [SentinelName].
 func NewSentinelDriver() resilience.Driver { return sentinelDriver{} }
 
-func (sentinelDriver) NewExecutor(service string, p resilience.Policy) (chain.Executor, error) {
-	return newSentinelExecutor(service, p)
+func (sentinelDriver) NewExecutor(label string, m *resilience.Manager) (chain.Executor, error) {
+	return newSentinelExecutor(label, m)
 }

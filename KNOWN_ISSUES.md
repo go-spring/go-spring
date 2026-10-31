@@ -20,7 +20,7 @@
 
 **排查方向**:对比包与不包 httpx transport 时 breaker 的 success/failure 计数(RoundTripper 的返回值 + 5xx 判定)。
 
-**⚠ 现状待重新确认(2026-10-06)**:当年的 `cloud/runtime/dataplane/outbound/resilience/roundtripper.go` **已不存在**,机制演进为 `cloud/runtime/dataplane/outbound/resilience/adapter_http.go` 的 `NewRoundTripper(base, exec, service, nil)`(现在 influxdb、gateway 在用)。**这条缺陷是否仍在,只能真跑 `example-load` 才能判定**——本轮整理时未跑。
+**⚠ 现状待重新确认(2026-10-06)**:当年的 `cloud/governance/dataplane/outbound/resilience/roundtripper.go` **已不存在**,机制演进为 `cloud/governance/dataplane/outbound/resilience/adapter_http.go` 的 `NewRoundTripper(base, exec, service, nil)`(现在 influxdb、gateway 在用)。**这条缺陷是否仍在,只能真跑 `example-load` 才能判定**——本轮整理时未跑。
 
 ---
 
@@ -48,7 +48,7 @@
     （如 sentinel 外部规则）仍可能产生它。
   - *触发条件*：出现「某个慢下游拖垮调用方 goroutine」的真实案例，或明确需要按下游 fail-fast
     卸载时再做。
-  - *实现时的最小形状*：per-key fail-fast 信号量（默认不排队）→ 复用 `kernel/bulkhead`
+  - *实现时的最小形状*：per-key fail-fast 信号量（默认不排队）→ 复用 `capability/bulkhead`
     `cloud/bulkhead` 共享 → 顺序 bulkhead → rate → breaker → 跨重试持有 → 补 per-key 指标 →
     全局安全网按需再加；排队模式必须带 deadline 并在文档声明不可重入。
 

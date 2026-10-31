@@ -147,7 +147,7 @@ spring.observability.metrics.exporter=prometheus
 spring.observability.metrics.port=0        # OTel metrics via actuator only
 
 # --- governance (breaker/limiter for service pulsar:pulsar://127.0.0.1:6650)
-spring.governance.source.file.path=conf/governance.yaml
+# (the file source is wired in source.go; no property key)
 ```
 
 **Start Pulsar** (same as [example/docker-compose.yml](example/docker-compose.yml)):
@@ -190,7 +190,7 @@ gs.Run()
   │       Prometheus registry + :port /metrics server, log bridge,
   │       pulsar.NewClient, then attachGuard — center.ExecutorFor("pulsar",
   │       "pulsar:<url>") indexed by client, so the client is COMPLETE when
-  │       returned; center is the injected *runtime.Runtime   [driver.go:76-115, command.go:225]
+  │       returned; center is the injected *governance.Runtime   [driver.go:76-115, command.go:225]
   │    3. then probe (Ping): cl.TopicPartitions(HealthCheckTopic) — a lookup
   │       that exercises address+auth+TLS without producing; failure →
   │       closeResilience + cl.Close + metrics shutdown + boot error     [starter.go:108-116]
@@ -200,7 +200,7 @@ gs.Run()
 ```
 
 **Assembly extension point**: client assembly is owned by a `Driver` (interface,
-`driver.go:62-72`): `CreateClient(ctx, c Config, center *runtime.Runtime) (pulsar.Client, error)`.
+`driver.go:62-72`): `CreateClient(ctx, c Config, center *governance.Runtime) (pulsar.Client, error)`.
 The driver returns the client COMPLETE — it applies the governance executor itself (via
 `attachGuard`) while building, so nothing patches the client afterwards. A company/umbrella starter
 may provide its own `Driver` as an **optional container bean** (a
@@ -241,10 +241,10 @@ The consumer direction declares the same way inside the driver's receive loop
 
 The executor attached by `attachGuard` [command.go] comes from
 `center.ExecutorFor("pulsar", service)` (`service` = `pulsar:<url>`), where `center` is the
-injected `*runtime.Runtime` the ctor hands the driver — carrying the injected
-`*resilience.Manager` and `*clientfault.ClientManager`: with a manager it returns the fully assembled executor (core
+injected `*governance.Runtime` the ctor hands the driver — carrying the injected
+`*resilience.Manager` and `*clientfault.Manager`: with a manager it returns the fully assembled executor (core
 breaker/limiter/retry wrapped by the resilience observer — outcome counters + access log) wrapped
-outermost by fault injection from the injected `*clientfault.ClientManager` (the injected error flows through
+outermost by fault injection from the injected `*clientfault.Manager` (the injected error flows through
 the inner retry loop, so the breaker counts it). The manager is required — the container
 always supplies it; there is no unmanaged/observe-only fallback.
 
@@ -262,7 +262,7 @@ always supplies it; there is no unmanaged/observe-only fallback.
 `pub.Publish(ctx, msg)` with `Key: "k"`, `Headers: h`, load-test marker on ctx
 [messaging.go:104-131]:
 
-1. Header copy: if the propagator's `IsLoadTest(ctx)`, headers are **copied** (caller's map never
+1. Header copy: if `traffic.IsLoadTest(ctx, prop)`, headers are **copied** (caller's map never
    mutated) and `x-load-test=1` is added [messaging.go:110-118].
 2. Envelope → `pulsar.ProducerMessage`: `Payload`, `Properties` (= headers), and **Key only
    when non-empty** [messaging.go:119-125]. Not mapped: `Timestamp` (messaging envelope has one;
@@ -295,7 +295,7 @@ always supplies it; there is no unmanaged/observe-only fallback.
    handler ctx, and runs the handler under `guard` — so the resilience observer opens the
    consumer span, records the metrics and writes the access log from the declaration.
 4. Load-test marker: if the producer stamped `x-load-test` in Properties, the handler ctx is
-   re-marked via `prop.WithLoadTest(ctx)` (the `prop.Extract` above).
+   re-marked via `prop.WithKind(ctx, traffic.KindLoadTest)` (the `prop.Extract` above).
 5. `fromPulsarMsg` maps back: Pulsar `Key()` → envelope Key, `Payload()`, `Properties()` →
    Headers (including the injected `traceparent` — consumer headers gain keys), `PublishTime()`
    → Timestamp [driver.go]. Both directions preserve Key and Properties.

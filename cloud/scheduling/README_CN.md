@@ -142,7 +142,7 @@ fixed-rate/cron 任务到了触发点而上一次还在跑：
   （副作用型任务短时双跑）、熔断负收益（打开 = 任务静默不跑）、超时已有本地
   `WithTimeout`、选点不适用；要治理的是任务体内发起的调用（如 http-client 的
   `http:` 标签），不是任务本身；任务健康由 `scheduling.runs` 的 outcome 加 lag
-  指标覆盖。完整理由落在 `cloud/runtime/controlplane/governance/README.md`。
+  指标覆盖。完整理由落在 `cloud/governance/README.md`。
 - `NewScheduler` 返回导出的具体类型 `*Scheduler`（字段全私有）——`Scheduler`
   接口已删。`NewJob` 返回 `(*Job, error)`（返回错误而非 panic），`Schedule(j *Job)`
   是唯一的注册形态；`Job` 接口已删。判据是「多组件可互换才立抽象层」——别给

@@ -60,7 +60,7 @@ live endpoints. Each backend is configured as a named block under
 `${spring.discovery.<backend>.<name>}`, and clients cite the resulting bean by name
 (`discovery: consul.main`). The publication lifecycle itself — the single
 `Server` that drives every center — lives in
-[`cloud/runtime/dataplane/kernel/discovery`](../cloud/runtime/dataplane/kernel/discovery/README.md); these starters contribute
+[`cloud/governance/capability/discovery`](../cloud/governance/capability/discovery/README.md); these starters contribute
 only the per-center `Registry`.
 
 | Starter | Underlying library | Domain |

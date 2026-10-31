@@ -24,7 +24,10 @@
 package StarterS3
 
 import (
-	"go-spring.org/cloud/runtime/dataplane/outbound/chain"
+	"context"
+
+	"go-spring.org/cloud/governance/capability/traffic"
+	"go-spring.org/cloud/governance/dataplane/outbound/chain"
 	"go-spring.org/log"
 )
 
@@ -42,8 +45,8 @@ var accessTag = log.RegisterAppTag("s3", "access")
 // Name keeps the descriptive "METHOD /path" form — Name is a span name, not a
 // label, so it is the right place for a path to survive. The family's vocabulary
 // lives in [wire].
-func operation(method, path string) chain.Operation {
-	op := chain.DBOp(s3System, method, path)
+func operation(ctx context.Context, prop traffic.Propagator, method, path string) chain.Operation {
+	op := chain.DBOp(ctx, prop, s3System, method, path)
 	op.Request.Action = method + " " + path
 	op.Observe.Log.Tag = accessTag
 	return op

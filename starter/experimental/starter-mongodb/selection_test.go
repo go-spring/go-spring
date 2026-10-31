@@ -21,8 +21,8 @@ import (
 	"testing"
 	"time"
 
-	"go-spring.org/cloud/runtime/dataplane/kernel/discovery"
-	"go-spring.org/cloud/runtime/dataplane/kernel/loadbalance"
+	"go-spring.org/cloud/governance/capability/discovery"
+	"go-spring.org/cloud/governance/capability/loadbalance"
 	"go-spring.org/stdlib/testing/assert"
 )
 
@@ -51,8 +51,7 @@ func TestNewPickChainRebuildsFromScratch(t *testing.T) {
 	chain, c := pickChain(t, mgr)
 
 	// The base generation: round-robin, suspension disabled, live instance picked.
-	assert.Number(t, chain.Generation()).Equal(uint64(1))
-	assert.That(t, chain.Selection()).Equal(loadbalance.Selection{})
+	assert.That(t, chain.Selection()).Equal(loadbalance.Selection{Balancer: loadbalance.RoundRobin})
 	ep, err := chain.Pick(context.Background(), loadbalance.PickInfo{})
 	assert.Error(t, err).Nil()
 	assert.That(t, ep.Addr).Equal("127.0.0.1:27017")
@@ -63,9 +62,8 @@ func TestNewPickChainRebuildsFromScratch(t *testing.T) {
 		{Service: serviceLabel(c), Selection: moved},
 	}})
 
-	assert.Number(t, chain.Generation()).Equal(uint64(2))
 	assert.That(t, chain.Selection().Balancer).Equal(loadbalance.LeastConn)
-	assert.Number(t, chain.Tracker().Config().Threshold).Equal(3)
+	assert.Number(t, chain.Selection().OutlierThreshold).Equal(3)
 
 	// ...while a push for another label leaves it alone, even though the document
 	// as a whole changed.
@@ -73,7 +71,7 @@ func TestNewPickChainRebuildsFromScratch(t *testing.T) {
 		{Service: serviceLabel(c), Selection: moved},
 		{Service: "mongodb:other", Selection: loadbalance.Selection{Balancer: loadbalance.Weighted}},
 	}})
-	assert.Number(t, chain.Generation()).Equal(uint64(2))
+	assert.That(t, chain.Selection().Balancer).Equal(loadbalance.LeastConn)
 }
 
 // TestNewPickChainUnarmedManagerIsPassThrough pins the "governance off" case: an
@@ -82,21 +80,11 @@ func TestNewPickChainRebuildsFromScratch(t *testing.T) {
 func TestNewPickChainUnarmedManagerIsPassThrough(t *testing.T) {
 	chain, _ := pickChain(t, loadbalance.NewManager())
 
-	assert.Number(t, chain.Generation()).Equal(uint64(1))
-	assert.That(t, chain.Selection()).Equal(loadbalance.Selection{})
+	assert.That(t, chain.Selection()).Equal(loadbalance.Selection{Balancer: loadbalance.RoundRobin})
 
 	ep, err := chain.Pick(context.Background(), loadbalance.PickInfo{})
 	assert.Error(t, err).Nil()
 	assert.That(t, ep.Addr).Equal("127.0.0.1:27017")
-}
-
-// TestNewPickChainDirectInstanceHasNoChain pins that a client citing no
-// service-name has no candidate set to choose from: newPickChain returns a nil
-// chain and the caller dials the URI hosts directly.
-func TestNewPickChainDirectInstanceHasNoChain(t *testing.T) {
-	chain, err := newPickChain(context.Background(), Config{}, nil, loadbalance.NewManager())
-	assert.Error(t, err).Nil()
-	assert.That(t, chain == nil).True()
 }
 
 // TestNewPickChainMissingBackendFails pins the loud failure: a service-name with

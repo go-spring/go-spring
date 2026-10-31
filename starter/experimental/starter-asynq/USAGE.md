@@ -168,7 +168,7 @@ gs.Run()
   ├─ bean wiring: app beans autowire *Client / *Server by instance name
   ├─ ctor newClient (starter.go): resolves RedisConnOpt, then NewClient fixes
   │    the service label (label.ServiceLabel("asynq", addr)) and attaches
-  │    the observer; the ctor injects the required *runtime.Runtime (center),
+  │    the observer; the ctor injects the required *governance.Runtime (center),
   │    but the asynq client has no resilience seam, so nothing from it applies
   │    — no Init hook
   ├─ ctor newServer (starter.go): builds asynq.NewServer(connOpt, Config{...})
@@ -204,7 +204,7 @@ gs.Run()
    observe.go: span name `enqueue`, the `messaging.system`/`messaging.operation` labels, the
    task type as `messaging.destination.name` detail) and puts it on the ctx. It emits nothing.
 3. The enqueue runs under the **observer**, not an executor. `newClient` injects the required
-   `*runtime.Runtime` (`center`) — the governance family's sole injection point, the one object
+   `*governance.Runtime` (`center`) — the governance family's sole injection point, the one object
    a client reads its resilience/fault authorities from (`center.ResilienceClient()`, `center.FaultClient()`) —
    but an asynq producer client exposes no seam for a resilience executor (client.go:57-59), so no
    authority from the center governs this path: nothing throttles or retries, and a rate-limit /
@@ -287,7 +287,7 @@ than the run abandons it (asynq then retries it on the next delivery — asynq s
 The enqueue path carries no resilience executor (§2.3 step 3): a governance rule on service
 `asynq:<addr>` — a rate limit, an open circuit, an injected fault — is never consulted, so
 `Client.Enqueue` always reaches Redis. `newClient` still injects the required
-`*runtime.Runtime` (`center`, the governance family's sole injection point), but an asynq
+`*governance.Runtime` (`center`, the governance family's sole injection point), but an asynq
 producer client has no seam to apply it.
 
 ---
@@ -298,7 +298,7 @@ producer client has no seam to apply it.
 |---------|--------------|-----|
 | Container fails: bean `a:server` not found | `server.enabled` not set (worker opt-in) | Set `spring.asynq.instances.<n>.server.enabled=true` or drop the autowire. |
 | Tasks enqueued but never run | Worker not enabled; enqueue to a queue not in `queues`; producer and worker on different `db` | Align config; enqueue with `asynq.Queue("<listed>")`. |
-| No governance on the enqueue path | The asynq producer client has no seam for a resilience executor, so the injected `*runtime.Runtime` cannot be applied (client.go:57-59) | By design: calls are observed only (span/metrics/access log), never throttled; use the wrapper's `Enqueue` (client.go:71) for the observed path. |
+| No governance on the enqueue path | The asynq producer client has no seam for a resilience executor, so the injected `*governance.Runtime` cannot be applied (client.go:57-59) | By design: calls are observed only (span/metrics/access log), never throttled; use the wrapper's `Enqueue` (client.go:71) for the observed path. |
 | Health DOWN though enqueue works | `default` queue never created / ACL limits Inspector | Health checks the `default` queue specifically; ensure Redis reachable and permissions. |
 | Tasks lost on deploy | `shutdown-timeout` shorter than in-flight run | Raise it above the longest expected task. |
 | Custom Driver bean never used | The entry did not select it and by-type injection picked another | When several `Driver` beans coexist, select one per instance: `spring.asynq.instances.<name>.driver = <bean-name>` (empty = the single Driver bean by type; naming a missing bean fails startup). |
@@ -319,5 +319,5 @@ Design suspects (kept from the prior edition, plus new findings; the former
   `concurrency`/`queues`/`shutdown-timeout` are worker-only keys at top level.
 - The promoted `*asynq.Client` methods (`EnqueueContext`, etc.) bypass the observation
   seam — easy to call by accident; and the constructor injects the required
-  `*runtime.Runtime` that an asynq producer client has no seam to apply, so the parameter is
+  `*governance.Runtime` that an asynq producer client has no seam to apply, so the parameter is
   currently unused on this path.

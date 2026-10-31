@@ -31,7 +31,7 @@ import (
 	"github.com/twmb/franz-go/pkg/sasl/plain"
 	"github.com/twmb/franz-go/pkg/sasl/scram"
 	"github.com/twmb/franz-go/plugin/kotel"
-	"go-spring.org/cloud/runtime"
+	"go-spring.org/cloud/governance"
 	"go-spring.org/log"
 	"go-spring.org/stdlib/errutil"
 )
@@ -44,7 +44,7 @@ import (
 // it needs — e.g. company config bound from a properties file at wiring time.
 //
 // CreateClient returns the client COMPLETE. center supplies the container's
-// service-governance capabilities (see [runtime.Runtime]), which the
+// service-governance capabilities (see [governance.Runtime]), which the
 // driver applies WHILE it builds — by calling [AttachGovernance] — so nothing
 // patches the client afterwards. Attaching is part of the contract, not an
 // optional extra: the guard is indexed by the raw *kgo.Client the driver
@@ -60,7 +60,7 @@ import (
 // ${spring.kafka} is built through it, and per-instance differences are
 // expressed through [Config].
 type Driver interface {
-	CreateClient(ctx context.Context, c Config, center *runtime.Runtime) (*kgo.Client, error)
+	CreateClient(ctx context.Context, c Config, center *governance.Runtime) (*kgo.Client, error)
 }
 
 // DefaultDriver is the default implementation of the Driver interface.
@@ -75,7 +75,7 @@ type DefaultDriver struct{}
 // The per-message access log is no longer a client hook (the observe hook was
 // removed): the resilience executor emits it from the declared operation (see
 // observe.go and command.go), so the hook set here is kotel's alone.
-func (DefaultDriver) CreateClient(ctx context.Context, c Config, center *runtime.Runtime) (*kgo.Client, error) {
+func (DefaultDriver) CreateClient(ctx context.Context, c Config, center *governance.Runtime) (*kgo.Client, error) {
 	kt := kotel.NewKotel(
 		kotel.WithTracer(kotel.NewTracer()),
 		kotel.WithMeter(kotel.NewMeter()),

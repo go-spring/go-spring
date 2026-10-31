@@ -77,8 +77,8 @@ type MiddlewareConfig struct {
 // (the default — one header lookup per request) the LoadTest middleware reads
 // the marker header off the incoming request and tags the request context, so
 // every downstream handler, middleware and outbound client can tell synthetic
-// load apart from real traffic through the load-test convention's IsLoadTest.
-// Defaults to the canonical X-LoadTest header used across go-spring.
+// load apart from real traffic through `traffic.IsLoadTest`.
+// Defaults to the canonical X-Traffic header used across go-spring.
 type LoadTestConfig struct {
 	Enabled bool `value:"${enabled:=true}"`
 }
@@ -176,8 +176,8 @@ type MetricsConfig struct {
 // ObservabilityConfig gates the whole observability set for this server — the
 // request span, the HTTP family metrics and the access log. It is on by
 // default, and it is the one switch to reach for: everything it controls is
-// emitted by the resilience executor (see [runtime.Runtime] and
-// cloud/runtime/dataplane/outbound/resilience), which is also why the signals are one set rather than three
+// emitted by the resilience executor (see [governance.Runtime] and
+// cloud/governance/dataplane/outbound/resilience), which is also why the signals are one set rather than three
 // independently switchable ones.
 //
 // Turning it off does not silence the server: the inbound middleware stops

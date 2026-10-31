@@ -2,13 +2,13 @@
 
 详细使用参考。概览见 [README_CN.md](README_CN.md)。所有行为声明均已对照 starter 源码
 （`starter.go`、`executor.go`、`breaker_listener.go`、`executor_test.go`）、抽象层
-[cloud/runtime/dataplane/outbound/resilience](../../cloud/runtime/dataplane/outbound/resilience)（`driver.go`、
+[cloud/governance/dataplane/outbound/resilience](../../cloud/governance/dataplane/outbound/resilience)（`driver.go`、
 `manager.go`）与自断言的 [example/](example/)（`example/check.sh` —— 无容器、无外部
 依赖）。**resilience 语义（熔断窗口、重试退避、policy 词汇）见
-[cloud/runtime/dataplane/outbound/resilience](../../cloud/runtime/dataplane/outbound/resilience)；sentinel-golang 行为见
+[cloud/governance/dataplane/outbound/resilience](../../cloud/governance/dataplane/outbound/resilience)；sentinel-golang 行为见
 [官方文档](https://github.com/alibaba/sentinel-golang)** —— 下文只写驱动接线。
 
-**激活方式**：与 [`cloud/runtime/controlplane/governance`](../../cloud/runtime/controlplane/governance) 一起 blank import
+**激活方式**：与 [`cloud/governance/controlplane/source`](../../cloud/governance/controlplane/source) 一起 blank import
 （后者负责把策略推给 resilience manager）。`init`（starter.go）调用 `sentinel.InitDefault()`
 （失败即 panic —— 源码注释："让配置错误的环境在这里大声失败，而不是等到首次使用"），
 随后把后端贡献为名为 `sentinel` 的 `resilience.Driver` bean。无端口、**无自有配置
@@ -47,7 +47,7 @@ import (
     "sync/atomic"
     "time"
 
-    "go-spring.org/cloud/runtime/dataplane/outbound/resilience"
+    "go-spring.org/cloud/governance/dataplane/outbound/resilience"
 
     _ "go-spring.org/starter-governance-sentinel" // 注册 "sentinel" 驱动
 )
@@ -107,7 +107,7 @@ import starter-governance-sentinel
 `resilience.Manager.ExecutorFor(system, service)`（抽象层 `manager.go`，不在本 starter）
 是客户端唯一要调的调用 —— 调在它们注入的 `*resilience.Manager` bean 上：
 
-`resilience.ServerManager.ServerGuardFor(system, service)` 是它的入站孪生，协议 starter 的准入
+`resilience.Manager.ServerGuardFor(system, service)` 是它的入站孪生，协议 starter 的准入
 中间件用它：同一个 label 在另一条 lane 上解析，构造走 `Driver.NewServerExecutor` 而非
 `Driver.NewExecutor`，所以 `spring.resilience.driver=sentinel` 一个键覆盖两个方向，而两份配置互不
 影响。
@@ -115,9 +115,9 @@ import starter-governance-sentinel
 - 返回持有系统名与 label 的稳定 `managedExecutor`；真正的 executor 在**每次 Execute 时
   惰性解析**并按 label 记忆化（sync.Map 缓存）。observe 层就在这次解析中、在 executor
   尚未发布时应用，所以客户端拿到的已是组装好的 executor，不再自己包一层。
-- manager 由 cloud/runtime/controlplane/governance 在中心 go live 时一次性武装（同一个 bean 既服务中心、
+- manager 由 各策略根 在中心 go live 时一次性武装（同一个 bean 既服务中心、
   也服务客户端）；因为解析推迟到调用时，客户端与 governance 的装配先后无关紧要。
-- 未注入 manager（治理未接入，容器里没有 cloud/runtime/controlplane/governance 的 bean）或 manager 未武装/已关闭时，executor 是透明的
+- 未注入 manager（治理未接入，容器里没有 各策略根 的 bean）或 manager 未武装/已关闭时，executor 是透明的
   **no-op**：fn 原样跑一次 —— 无论是否配置 resilience，客户端代码形态一致。
 - 热切换挂在 backing executor 上：构建它即在那个 manager 上注册订阅并原地刷新；
   本 starter 的 `Refresh`（下述）才是把新 policy 真正应用到 sentinel 的那一步。
@@ -190,10 +190,10 @@ policy 并**清空 loaded 集合**。sentinel 的 `LoadRulesOfResource` 会替�
 ## 3. 逐 key 行为参考
 
 **本模块自有前缀下没有 key。** `grep -rhoE 'value:"[^"]+"' starter-governance-sentinel` 无命中。
-`Policy` 各字段（`rate-limit`、`error-threshold`、`open-duration`、`max-retries`、`timeout` 等）写在**治理文档**里 —— 全进程用 `spring.governance.client.default.*`，某个服务
-单独配用 `spring.governance.client.rules[N].*` —— 经 `ExecutorFor` + `Refresh` 到达本驱动。字段含义见
-[cloud/runtime/dataplane/outbound/resilience](../../cloud/runtime/dataplane/outbound/resilience)，键的排布见
-[`cloud/runtime/controlplane/governance/README.md`](../../cloud/runtime/controlplane/governance/README.md)。
+`Policy` 各字段（`rate-limit`、`error-threshold`、`open-duration`、`max-retries`、`timeout` 等）写在**治理文档**里 —— 全进程用 `spring.governance.client.resilience.*`，某个服务
+单独配用 `spring.governance.client.resilience.services[N].*` —— 经 `ExecutorFor` + `Refresh` 到达本驱动。字段含义见
+[cloud/governance/dataplane/outbound/resilience](../../cloud/governance/dataplane/outbound/resilience)，键的排布见
+[`cloud/governance/README.md`](../../cloud/governance/README.md)。
 
 ---
 
@@ -208,7 +208,7 @@ cd starter/starter-governance-sentinel && go test ./...
 
 或：`StarterGovernanceSentinel.NewSentinelDriver()` 必须返回非 nil；import 时的 Info 日志
 "registered sentinel resilience driver"（tag：app 默认）确认 init 已执行。容器侧则由
-`cloud/runtime/controlplane/governance` 的驱动目录测试固化（bean 被收集 + `spring.resilience.driver=sentinel` 能选中）。
+`cloud/governance/controlplane/source` 的驱动目录测试固化（bean 被收集 + `spring.resilience.driver=sentinel` 能选中）。
 
 ### 4.2 熔断演练（来自 example）
 
@@ -230,7 +230,7 @@ cd starter/starter-governance-sentinel && go test ./...
 ### 4.5 Refresh 演练（热切换）
 
 持有 `RateLimit: 1` 构建的 executor，按 §4.4 观察到限流后调用
-`exec.Refresh(resilience.Policy{RateLimit: 1000})`（或在 cloud/runtime/controlplane/governance 下经 governance
+`exec.Refresh(resilience.Policy{RateLimit: 1000})`（或在 各策略根 下经 governance
 source 推送变更）：下次 Execute 重载规则、限流消失。注意 refresh 会重置熔断统计窗口
 （§2.4）。
 

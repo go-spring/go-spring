@@ -26,11 +26,12 @@ import (
 	"context"
 	"database/sql/driver"
 
-	"go-spring.org/cloud/runtime/dataplane/outbound/chain"
+	"go-spring.org/cloud/governance/capability/traffic"
+	"go-spring.org/cloud/governance/dataplane/outbound/chain"
 
 	taosws "github.com/taosdata/driver-go/v3/taosWS"
-	"go-spring.org/cloud/runtime"
-	"go-spring.org/cloud/runtime/dataplane/outbound/resilience"
+	"go-spring.org/cloud/governance"
+	"go-spring.org/cloud/governance/dataplane/outbound/resilience"
 	"go-spring.org/stdlib/errutil"
 )
 
@@ -45,7 +46,7 @@ import (
 // CreateClient returns the module's exported [Client] — the wrapper apps inject
 // — not the raw *sql.DB, so a driver takes part in the type the rest of the
 // ecosystem sees. It returns the client COMPLETE: center supplies the
-// container's facilities (see [runtime.Runtime]), which [NewClient] applies
+// container's facilities (see [governance.Runtime]), which [NewClient] applies
 // while building. Nothing patches the client afterwards.
 //
 // center is one object rather than a parameter per capability so this interface
@@ -56,7 +57,7 @@ import (
 // ${spring.tdengine} is built through it, and per-instance differences are
 // expressed through [Config].
 type Driver interface {
-	CreateClient(ctx context.Context, c Config, center *runtime.Runtime) (*Client, error)
+	CreateClient(ctx context.Context, c Config, center *governance.Runtime) (*Client, error)
 }
 
 // DefaultDriver is the default implementation of the Driver interface.
@@ -71,7 +72,7 @@ type DefaultDriver struct{}
 // assembled complete — identity and governance both applied — before it is
 // returned. It does not run the startup ping probe, which is the starter's
 // lifecycle concern (newClient in starter.go).
-func (DefaultDriver) CreateClient(ctx context.Context, c Config, center *runtime.Runtime) (*Client, error) {
+func (DefaultDriver) CreateClient(ctx context.Context, c Config, center *governance.Runtime) (*Client, error) {
 	cfg, err := taosws.ParseDSN(c.DSN)
 	if err != nil {
 		return nil, errutil.Explain(err, "tdengine: invalid dsn")
@@ -91,6 +92,7 @@ func (DefaultDriver) CreateClient(ctx context.Context, c Config, center *runtime
 type clientSlot struct {
 	exec    chain.Executor
 	service string // the governance label the executor was built for
+	prop    traffic.Propagator
 }
 
 // guardedConnector wraps a driver.Connector so every connection it hands out
@@ -133,7 +135,7 @@ type guardedConn struct {
 // inline and the operation is inert.
 func (g guardedConn) ExecContext(ctx context.Context, query string, args []driver.NamedValue) (driver.Result, error) {
 	var res driver.Result
-	err := g.run(ctx, operation("exec", query), func(ctx context.Context) error {
+	err := g.run(ctx, operation(ctx, g.slot.prop, "exec", query), func(ctx context.Context) error {
 		var err error
 		res, err = execContext(g.base, ctx, query, args)
 		return err
@@ -149,7 +151,7 @@ func (g guardedConn) ExecContext(ctx context.Context, query string, args []drive
 // inline and the operation is inert.
 func (g guardedConn) QueryContext(ctx context.Context, query string, args []driver.NamedValue) (driver.Rows, error) {
 	var rows driver.Rows
-	err := g.run(ctx, operation("query", query), func(ctx context.Context) error {
+	err := g.run(ctx, operation(ctx, g.slot.prop, "query", query), func(ctx context.Context) error {
 		var err error
 		rows, err = queryContext(g.base, ctx, query, args)
 		return err

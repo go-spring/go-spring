@@ -145,7 +145,7 @@ spring.observability.metrics.exporter=prometheus
 spring.observability.metrics.port=9090
 
 # --- governance (runtime fault injection) ------------------------------------
-spring.governance.source.file.path=conf/governance.yaml
+# (the file source is wired in source.go; no property key)
 ```
 
 **conf/governance.yaml** (fault drills in §4.4 use this):
@@ -158,7 +158,8 @@ spring:
       fault:
         # rate: 0.2           # set a rate to "set fire" without restart
         error: timeout
-        scope: loadtest       # only traffic marked X-LoadTest is affected
+        match:
+          traffic: loadtest       # only traffic marked X-Traffic is affected
 ```
 
 **Verify** (structurally identical to what `example/check.sh` asserts — X-App header,
@@ -210,7 +211,7 @@ Rationale (from the `applyMiddlewares` comment, verified):
 
 - **LoadTest outermost**: the marker lands on the request context before anything else runs,
   so every downstream layer — and every outbound client your handler calls — can branch on
-  the propagator's `IsLoadTest(ctx)`. Single header lookup (`Header.Peek`); no-op without the marker.
+  `traffic.IsLoadTest(ctx, prop)`. Single header lookup (`Header.Peek`); no-op without the marker.
 - **Recovery** (starter-owned `Recover()`, not hertz's contrib middleware) catches panics from
   every later layer and reports through the shared goutil panic chain (unified panic policy),
   then aborts with 500.
@@ -228,7 +229,7 @@ Rationale (from the `applyMiddlewares` comment, verified):
 
 ### 2.3 One request, layer by layer
 
-`GET /echo/world` with header `X-LoadTest: 1`, fault scope engaged:
+`GET /echo/world` with header `X-Traffic: loadtest`, traffic class matched:
 
 1. LoadTest tags ctx (`prop.Extract(ctx, <hertz header carrier>)`)
 2. Recovery arms (`defer`/`recover`)
@@ -241,7 +242,7 @@ Rationale (from the `applyMiddlewares` comment, verified):
 7. SecureHeaders/CORS/Gzip as enabled (engine enforces `maxBodySize` independently)
 8. fault: `_, err := srv.Fire(ctx, fault.Target{Service: "hertz", Action: "GET /x"})`
    (inj = the injected bean; the built-in target carries `METHOD` + `c.FullPath()`, so a rule can
-   fire one route) — with `scope: loadtest`
+   fire one route) — with `match.traffic=loadtest`
    and the marker present, ~`rate` of requests get the injected error → 503; others pass
 9. your route runs; the response unwinds through 6→5→4→3: access record logged (severity by
    status), duration/count recorded, in-flight decremented, span ended and marked errored on
@@ -339,8 +340,8 @@ curl -i 127.0.0.1:9370/readyz    # actuator readiness (add starter-actuator)
 4. Marked traffic burns, normal traffic unaffected:
 
 ```bash
-curl -i 127.0.0.1:8003/echo/x                          # 200 (scope=loadtest, no marker)
-curl -i -H 'X-LoadTest: 1' 127.0.0.1:8003/echo/x       # ~20% → 503 service unavailable
+curl -i 127.0.0.1:8003/echo/x                          # 200 (match.traffic=loadtest, no marker)
+curl -i -H 'X-Traffic: loadtest' 127.0.0.1:8003/echo/x       # ~20% → 503 service unavailable
 ```
 
 5. Watch the fire in the observables: access-log Error records with status 503, the duration
@@ -348,8 +349,8 @@ curl -i -H 'X-LoadTest: 1' 127.0.0.1:8003/echo/x       # ~20% → 503 service un
 
 ### 4.5 Load-test marking drill
 
-With `scope: real` instead of `loadtest`, the injector affects unmarked traffic — use only in
-dedicated environments. The propagator's `IsLoadTest(ctx)` in your handler branches on the same marker,
+With `match.traffic=real` instead of `loadtest`, the injector affects unmarked traffic — use only in
+dedicated environments. `traffic.IsLoadTest(ctx, prop)` in your handler branches on the same marker,
 so business code can degrade features under synthetic load.
 
 ---

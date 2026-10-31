@@ -29,7 +29,7 @@ import (
 	"syscall"
 	"time"
 
-	rt "go-spring.org/cloud/runtime"
+	"go-spring.org/cloud/governance"
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
 	StarterElasticsearch "go-spring.org/starter-elasticsearch"
@@ -55,7 +55,7 @@ type AnotherESDriver struct {
 	StarterElasticsearch.DefaultDriver
 }
 
-func (d AnotherESDriver) CreateClient(ctx context.Context, c StarterElasticsearch.Config, center *rt.Runtime) (*StarterElasticsearch.Client, error) {
+func (d AnotherESDriver) CreateClient(ctx context.Context, c StarterElasticsearch.Config, center *governance.Runtime) (*StarterElasticsearch.Client, error) {
 	log.Info(context.Background(), log.TagAppDef, "AnotherESDriver::CreateClient")
 	return d.DefaultDriver.CreateClient(ctx, c, center)
 }

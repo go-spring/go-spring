@@ -29,7 +29,8 @@ import (
 	"context"
 
 	"github.com/gocql/gocql"
-	"go-spring.org/cloud/runtime/dataplane/outbound/chain"
+	"go-spring.org/cloud/governance/capability/traffic"
+	"go-spring.org/cloud/governance/dataplane/outbound/chain"
 )
 
 // InnerQuery is the terminal-execution seam a statement's traffic runs
@@ -122,20 +123,21 @@ type GuardQuery struct {
 	service string // the governance label the executor was built for
 	next    InnerQuery
 	stmt    string
+	prop    traffic.Propagator
 }
 
 // NewGuardQuery builds the guarded layer over next, supplying stmt as the
 // statement's identity and running every terminal call under exec. service is
 // the label exec was built for; each call states it on its operation so a layer
 // outside exec (the fault layer) matches the same service.
-func NewGuardQuery(next InnerQuery, exec chain.Executor, service, stmt string) *GuardQuery {
-	return &GuardQuery{exec: exec, service: service, next: next, stmt: stmt}
+func NewGuardQuery(next InnerQuery, exec chain.Executor, service, stmt string, prop traffic.Propagator) *GuardQuery {
+	return &GuardQuery{exec: exec, service: service, next: next, stmt: stmt, prop: prop}
 }
 
 // op builds one call's identity with the service label, the single place the
-// label is attached.
-func (g *GuardQuery) op(kind string) chain.Operation {
-	o := operation(kind, g.stmt)
+// label is attached. The traffic class is recorded from ctx at construction.
+func (g *GuardQuery) op(ctx context.Context, kind string) chain.Operation {
+	o := operation(ctx, g.prop, kind, g.stmt)
 	o.Service = g.service
 	return o
 }
@@ -146,12 +148,12 @@ func (g *GuardQuery) op(kind string) chain.Operation {
 func (g *GuardQuery) Release(releaseRaw bool) error { return g.next.Release(releaseRaw) }
 
 func (g *GuardQuery) Exec(ctx context.Context) error {
-	return g.exec.Execute(ctx, g.op("exec"), nil, func(context.Context) error { return g.next.Exec(ctx) })
+	return g.exec.Execute(ctx, g.op(ctx, "exec"), nil, func(context.Context) error { return g.next.Exec(ctx) })
 }
 
 func (g *GuardQuery) Iter(ctx context.Context) *gocql.Iter {
 	var it *gocql.Iter
-	_ = g.exec.Execute(ctx, g.op("query"), nil, func(context.Context) error {
+	_ = g.exec.Execute(ctx, g.op(ctx, "query"), nil, func(context.Context) error {
 		it = g.next.Iter(ctx)
 		return nil
 	})
@@ -159,12 +161,12 @@ func (g *GuardQuery) Iter(ctx context.Context) *gocql.Iter {
 }
 
 func (g *GuardQuery) Scan(ctx context.Context, dest ...any) error {
-	return g.exec.Execute(ctx, g.op("query"), nil, func(context.Context) error { return g.next.Scan(ctx, dest...) })
+	return g.exec.Execute(ctx, g.op(ctx, "query"), nil, func(context.Context) error { return g.next.Scan(ctx, dest...) })
 }
 
 func (g *GuardQuery) ScanCAS(ctx context.Context, dest ...any) (bool, error) {
 	var applied bool
-	err := g.exec.Execute(ctx, g.op("query"), nil, func(context.Context) error {
+	err := g.exec.Execute(ctx, g.op(ctx, "query"), nil, func(context.Context) error {
 		var e error
 		applied, e = g.next.ScanCAS(ctx, dest...)
 		return e
@@ -173,12 +175,12 @@ func (g *GuardQuery) ScanCAS(ctx context.Context, dest ...any) (bool, error) {
 }
 
 func (g *GuardQuery) MapScan(ctx context.Context, m map[string]any) error {
-	return g.exec.Execute(ctx, g.op("query"), nil, func(context.Context) error { return g.next.MapScan(ctx, m) })
+	return g.exec.Execute(ctx, g.op(ctx, "query"), nil, func(context.Context) error { return g.next.MapScan(ctx, m) })
 }
 
 func (g *GuardQuery) MapScanCAS(ctx context.Context, m map[string]any) (bool, error) {
 	var applied bool
-	err := g.exec.Execute(ctx, g.op("query"), nil, func(context.Context) error {
+	err := g.exec.Execute(ctx, g.op(ctx, "query"), nil, func(context.Context) error {
 		var e error
 		applied, e = g.next.MapScanCAS(ctx, m)
 		return e

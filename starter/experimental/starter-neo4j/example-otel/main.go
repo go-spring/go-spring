@@ -37,7 +37,7 @@ import (
 	"time"
 
 	"github.com/neo4j/neo4j-go-driver/v5/neo4j"
-	rt "go-spring.org/cloud/runtime"
+	"go-spring.org/cloud/governance"
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
 	StarterNeo4j "go-spring.org/starter-neo4j"
@@ -64,7 +64,7 @@ type AnotherNeo4jDriver struct {
 	StarterNeo4j.DefaultDriver
 }
 
-func (d AnotherNeo4jDriver) CreateClient(ctx context.Context, c StarterNeo4j.Config, center *rt.Runtime) (*StarterNeo4j.Client, error) {
+func (d AnotherNeo4jDriver) CreateClient(ctx context.Context, c StarterNeo4j.Config, center *governance.Runtime) (*StarterNeo4j.Client, error) {
 	log.Info(context.Background(), log.TagAppDef, "AnotherNeo4jDriver::CreateClient")
 	return d.DefaultDriver.CreateClient(ctx, c, center)
 }

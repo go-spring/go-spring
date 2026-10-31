@@ -21,7 +21,7 @@ import (
 
 	"github.com/alibaba/sentinel-golang/core/circuitbreaker"
 
-	breaker "go-spring.org/cloud/runtime/dataplane/kernel/circuitbreaker"
+	breaker "go-spring.org/cloud/governance/capability/circuitbreaker"
 )
 
 // This file is the sentinel driver's own state plane. sentinel-golang exposes

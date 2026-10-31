@@ -66,7 +66,7 @@ import (
 	"context"
 
 	"go-spring.org/cloud/experimental/transaction"
-	"go-spring.org/cloud/runtime/dataplane/outbound/chain"
+	"go-spring.org/cloud/governance/dataplane/outbound/chain"
 )
 
 // RetryPolicy governs how a branch's second-phase operation (commit or

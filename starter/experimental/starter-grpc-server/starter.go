@@ -21,8 +21,8 @@ import (
 	"net"
 	"time"
 
-	"go-spring.org/cloud/runtime"
-	"go-spring.org/cloud/runtime/dataplane/kernel/traffic"
+	"go-spring.org/cloud/governance"
+	"go-spring.org/cloud/governance/capability/traffic"
 	"go-spring.org/cloud/security"
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
@@ -70,8 +70,8 @@ type HealthConfig struct {
 // server. When enabled (the default — it costs one metadata lookup per RPC) the
 // LoadTest interceptors read the propagator's marker key off the incoming
 // metadata and tag the handler context, so tracing, metrics, resilience and the
-// handler itself can branch on the propagator's IsLoadTest(ctx). It is the gRPC
-// inbound counterpart to cloud/runtime/dataplane/kernel/traffic's outbound carrier injection.
+// handler itself can branch on `traffic.IsLoadTest`. It is the gRPC
+// inbound counterpart to cloud/governance/capability/traffic's outbound carrier injection.
 type LoadTestConfig struct {
 	Enabled bool `value:"${enabled:=true}"`
 }
@@ -126,7 +126,7 @@ type SimpleGrpcServer struct {
 	// center is the runtime bean (nil when governance is not
 	// imported); its fault authority backs the always-installed fault
 	// interceptors and its resilience authority supplies the inbound policy.
-	center *runtime.Runtime
+	center *governance.Runtime
 	// prop is the load-test convention bean — the application.s when it provides
 	// one, go-spring.s default otherwise — the LoadTest interceptors read the inbound marker
 	// through it.
@@ -148,7 +148,7 @@ type SimpleGrpcServer struct {
 // otherwise — handed to the LoadTest interceptors.
 func NewSimpleGrpcServer(cfg Config, reg ServiceRegister,
 	userUnary []grpc.UnaryServerInterceptor, userStream []grpc.StreamServerInterceptor,
-	center *runtime.Runtime, prop traffic.Propagator) *SimpleGrpcServer {
+	center *governance.Runtime, prop traffic.Propagator) *SimpleGrpcServer {
 	log.Debug(context.Background(), log.TagAppDef, "create grpc server success", func() []log.Field {
 		return []log.Field{log.String("addr", cfg.Addr)}
 	})
@@ -214,7 +214,7 @@ func (s *SimpleGrpcServer) buildOptions() ([]grpc.ServerOption, error) {
 	stream = append(stream, s.userStream...)
 	// LoadTest identification is outermost of the built-ins so the marker is on
 	// the context before tracing, metrics, resilience or the handler run, letting
-	// every downstream layer branch on the injected propagator's IsLoadTest(ctx).
+	// every downstream layer branch on the injected `traffic.IsLoadTest`.
 	// A no-op when the inbound metadata lacks the marker key.
 	if s.cfg.LoadTest.Enabled {
 		unary = append(unary, LoadTestUnaryInterceptor(s.prop))

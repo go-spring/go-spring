@@ -79,7 +79,7 @@ type Controller struct {
 func (c *Controller) Echo(ctx context.Context, req *proto.EchoRequest) (*proto.EchoResponse, error) {
     // prop is the injected traffic.Propagator
     // ctx already carries the trace span and the load-test marker (if any) —
-    // branch on prop.IsLoadTest(ctx) to degrade features under synthetic load.
+    // branch on traffic.IsLoadTest(ctx, prop) to degrade features under synthetic load.
     log.Info(ctx, log.TagAppDef, "echo", log.String("message", req.Message))
     return &proto.EchoResponse{Message: req.Message}, nil
 }
@@ -139,7 +139,7 @@ spring.observability.metrics.exporter=prometheus
 spring.observability.metrics.port=9090
 
 # --- governance (admission + fault; hot-reloaded from this file) --------------
-spring.governance.source.file.path=conf/governance.yaml
+# (the file source is wired in source.go; no property key)
 ```
 
 **conf/governance.yaml** (fault drill in §4.3; admission under resilience):
@@ -147,19 +147,24 @@ spring.governance.source.file.path=conf/governance.yaml
 ```yaml
 spring:
   governance:
-    driver: default
-    # INBOUND (this server): admission + fault drills, read from the server block.
+    # INBOUND (this server): admission limits for this entrance.
+    server:
+      admission:
+        services:
+          - service: "grpc::9494"   # label = "grpc:{addr}" (admission.go)
+            rate-limit: 100         # QPS cap; over → codes.ResourceExhausted
+            max-concurrent: 50      # bulkhead; over → codes.ResourceExhausted
+  # Fault is a PEER ROOT with its own document and source (usually
+  # conf/fault.yaml); shown here only so the drill's shape is in one place.
+  fault:
     server:
       rules:
-        - service: "grpc::9494"   # label = "grpc:{addr}" (admission.go)
-          rate-limit: 100         # QPS cap; over → codes.ResourceExhausted
-          max-concurrent: 50      # bulkhead; over → codes.ResourceExhausted
-      fault:
-        scope: loadtest           # only traffic marked x-loadtest is affected
-        rules:
-          - service: "grpc:/EchoService/Echo"   # rule label = "grpc:{FullMethod}"
-            # rate: 0.2           # set a rate to "set fire" without restart
-            error: timeout
+        - name: echo-drill          # required identity, unique within this direction
+          service: "grpc:/EchoService/Echo"   # rule label = "grpc:{FullMethod}"
+          match:
+            traffic: loadtest       # only traffic marked x-traffic is affected
+          error: timeout
+          # rate: 0.2             # set a rate to "set fire" without restart
 ```
 
 **Verify** (structurally identical to what the examples assert):
@@ -220,7 +225,7 @@ Rationale (from the source comments, verified):
   can short-circuit before any work is observed" — mirrors starter-gin's EngineMiddleware.
 - **LoadTest outermost of the built-ins** (starter.go:173): the marker is on the context before
   tracing, metrics, resilience or the handler run, so every downstream layer can branch on
-  the propagator's `IsLoadTest(ctx)`. No-op without the marker key.
+  `traffic.IsLoadTest(ctx, prop)`. No-op without the marker key.
 - **Tracing before Metrics**: the span wraps the metrics observation too, so duration and status
   land on the same trace context.
 - **Resilience before Fault/Recover**: admission control decides before work is attempted;
@@ -234,20 +239,20 @@ Rationale (from the source comments, verified):
 
 ### 2.3 One unary RPC, layer by layer
 
-`Echo(msg)` with metadata `x-loadtest: 1`, fault scope engaged, rate limit configured:
+`Echo(msg)` with metadata `x-traffic: loadtest`, traffic class matched, rate limit configured:
 
 1. User interceptor(s) — auth/guard may reject before anything is observed.
-2. LoadTest: `extractLoadTest` reads `x-loadtest` off incoming metadata → ctx tagged
-   (the propagator's `IsLoadTest(ctx)` is then true).
+2. LoadTest: `extractLoadTest` reads `x-traffic` off incoming metadata → ctx tagged
+   (`traffic.IsLoadTest(ctx, prop)` is then true).
 3. Tracing: W3C context extracted from metadata (`extractTraceContext`), server span started,
    name = FullMethod, attributes `rpc.system=grpc`, `rpc.service`, `rpc.method`.
 4. Metrics: in-flight +1 (`rpc.method` attr); duration clock starts.
 5. Resilience: `exec.Execute(ctx, chain.Operation{})` — over the rate cap → the handler never runs and `mapAdmissionError` maps it
    to `ResourceExhausted`.
 6. Fault: `_, err := srv.Fire(ctx, fault.Target{Service: "grpc", Action: info.FullMethod})`
-   — `inj` is the injected `*serverfault.ServerManager` bean, and the method is the ACTION (`service` names
+   — `inj` is the injected `*serverfault.Manager` bean, and the method is the ACTION (`service` names
    the entrance), so a rule can fire one method; marked traffic
-   fails ~`rate` of the time or gains injected latency; unmarked/scope-off passes through.
+   fails ~`rate` of the time or gains injected latency; unmarked/class-mismatch passes through.
 7. Recover arms; the handler runs. A panic is reported via `goutil.ReportPanic` and converted to
    `codes.Internal`.
 8. The response/error unwinds 6→5→4→3: duration recorded with `rpc.grpc.status_code`, count +1,
@@ -262,12 +267,12 @@ Rationale (from the source comments, verified):
   StarterGrpc.LoadBalancingConfig(strategy))`. Balancer names are `gs_round_robin`, `gs_least_conn`,
   `gs_consistent_hash`, `gs_weighted`, `gs_zone_aware`. They are pre-registered in init and
   start with suspension DISABLED; configure it once for all of them with a governance rule —
-  `spring.governance.client.default.outlier-threshold` / `.outlier-suspend-for` (they resolve under the
-  process-wide default; `spring.governance.client.rules[N].service=grpc:client` targets them explicitly).
+  `spring.governance.client.loadbalance.outlier-threshold` / `.outlier-suspend-for` (they resolve under the
+  process-wide default; `spring.governance.client.loadbalance.services[N].service=grpc:client` targets them explicitly).
   A rule's `balancer` **overrides** that service-config choice for every built-in `gs_*` name — the
   pickers re-read it per pick, so a pushed strategy lands on the next RPC with no re-dial. Empty
   `balancer` leaves service config in charge; an unknown name is ignored. Because the label is
-  process-wide, `grpc:client` (and `spring.governance.client.default.balancer`) flips **all** built-in clients at
+  process-wide, `grpc:client` (and `spring.governance.client.loadbalance.balancer`) flips **all** built-in clients at
   once — that is the blunt edge of this seam. Names registered via `RegisterBalancer` are exempt:
   they keep their own strategy by design.
 - Per-call hints: `WithHashKey` (consistent-hash affinity), `WithZone` (zone-aware preference).
@@ -298,7 +303,7 @@ All keys under `spring.grpc.server.*`. Reconciled with
 | `tls.ca-file` | string | — | **Server-side this means mTLS**: sets ClientCAs + `RequireAndVerifyClientCert` (security.BuildServer). | Setting it casually → all clients without certs rejected. |
 | `tls.server-name` / `tls.insecure-skip-verify` | | — | Client-side knobs; **dead keys here** (ignored by BuildServer). | False confidence; no effect. |
 | `health.enabled` | bool | true | Registers `grpc_health_v1`, overall status SERVING. | false → probes/LB health checks get Unimplemented. |
-| `loadtest.enabled` | bool | true | Installs LoadTest interceptors reading `x-loadtest` metadata (lowercase — grpc metadata keys are lower-case). | false → load-test marker invisible; fault `scope: loadtest` never fires. |
+| `loadtest.enabled` | bool | true | Installs LoadTest interceptors reading `x-traffic` metadata (lowercase — grpc metadata keys are lower-case). | false → load-test marker invisible; fault `match.traffic=loadtest` never fires. |
 | `observer.tracing.enabled` | bool | true | Installs tracing interceptors riding OTel globals; no-op without starter-otel (no warning). ⚠ example-otel's conf uses `interceptor.tracing.*` — a dead path; only the default-true saves it. | Prefix typo → silently the default. |
 | `observer.metrics.enabled` | bool | true | Installs metrics interceptors; same no-op caveat. | Same. |
 
@@ -342,13 +347,13 @@ and (on failure) `error` are the line's own payload. A failure is a Warn line.
 
 1. Start with `governance.yaml` (no fault `rate` set — inert).
 2. Baseline traffic → all OK.
-3. Set the fault rule's `rate: 0.2` in the file — the interceptor holds the injected `*serverfault.ServerManager`
+3. Set the fault rule's `rate: 0.2` in the file — the interceptor holds the injected `*serverfault.Manager`
    and the center swaps its config in place, so the change applies on the next RPC without restart.
 4. Rule label is `grpc:{FullMethod}` (e.g. `grpc:/EchoService/Echo`) — you can burn a single
-   method. With `scope: loadtest` only metadata-marked traffic burns:
+   method. With `match.traffic=loadtest` only metadata-marked traffic burns:
 
 ```bash
-grpcurl -plaintext -H 'x-loadtest: 1' -d '{"message":"x"}' :9494 EchoService/Echo  # ~20% fail
+grpcurl -plaintext -H 'x-traffic: loadtest' -d '{"message":"x"}' :9494 EchoService/Echo  # ~20% fail
 grpcurl -plaintext -d '{"message":"x"}' :9494 EchoService/Echo                      # 200s continue
 ```
 
@@ -357,7 +362,7 @@ grpcurl -plaintext -d '{"message":"x"}' :9494 EchoService/Echo                  
 
 ### 4.4 Admission drill (admission.go)
 
-Service label is `grpc:{addr}` → `grpc::9494`. Add a rule (`spring.governance.client.rules[n].service=grpc::9494`,
+Service label is `grpc:{addr}` → `grpc::9494`. Add a rule (`spring.governance.server.services[n].service=grpc::9494`,
 `rate-limit=...`) below your traffic rate:
 rejections surface as `codes.ResourceExhausted` (rate/bulkhead) —
 `mapAdmissionError` guarantees consumers can branch on the code. Do NOT
@@ -386,7 +391,7 @@ the shared goutil panic chain (`goutil.ReportPanic`) — visible in log and span
 | Tracing/metrics "enabled" but nothing exported | starter-otel not imported — OTel globals are silent no-ops | Add the import (example-otel pattern). |
 | Config for interceptors ignored | Wrong prefix: it's `observer.*`, not `interceptor.*` (example-otel's conf has this dead key) | Use `spring.grpc.server.observer.tracing/metrics.enabled`. |
 | Clients rejected at TLS handshake with cert errors | `tls.ca-file` set — that enables **mTLS** (`RequireAndVerifyClientCert`) | Remove it for one-way TLS, or issue client certs. |
-| Everything works, no fault/admission effect | governance not wired in — no `cloud/runtime/controlplane/governance` bean in the container, seams yield pass-through | Configure a rules source: point `spring.governance.source.file.path` at your file. |
+| Everything works, no fault/admission effect | governance not wired in — no policy-root bean in the container, seams yield pass-through | Configure a rules source: Provide a source.Source[governance.Config] from your source starter (see the example's source.go). |
 | `ResourceExhausted` "received message larger than max" | `maxRecvMsgSize` below payload | Raise the cap. |
 | Stream RPCs bypass rate limit | Admission is unary-only by design | Guard streams with a user stream-interceptor bean (injected as grpc.StreamServerInterceptor). |
 | GOAWAY / connection churn | Aggressive `keepalive.time` vs client ping rate | grpc keepalive semantics; relax server params. |

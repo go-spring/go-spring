@@ -18,11 +18,11 @@ package StarterNeo4j
 
 import (
 	"context"
-	"go-spring.org/cloud/runtime/dataplane/outbound/chain"
+	"go-spring.org/cloud/governance/dataplane/outbound/chain"
 	"testing"
 
 	"github.com/neo4j/neo4j-go-driver/v5/neo4j"
-	"go-spring.org/cloud/runtime/dataplane/outbound/resilience"
+	"go-spring.org/cloud/governance/dataplane/outbound/resilience"
 	"go-spring.org/stdlib/testing/assert"
 )
 
@@ -36,11 +36,10 @@ type fakeDriver struct {
 
 // newGuardedNeo4jClient builds a Client whose executor comes from the default
 // resilience driver. The embedded driver is nil.
-func newGuardedNeo4jClient(t *testing.T, p resilience.Policy) *Client {
-	d := resilience.NewDefaultDriver(nil)
-	exec, err := d.NewExecutor("svc", p)
-	assert.Error(t, err).Nil()
-	return &Client{DriverWithContext: fakeDriver{}, exec: exec}
+func newGuardedNeo4jClient(t *testing.T, p resilience.RateLimitPolicy) *Client {
+	m := resilience.NewManager(resilience.NewDefaultDriver(nil))
+	assert.Error(t, m.ApplyRateLimit(resilience.RateLimitSettings{Default: p})).Nil()
+	return &Client{DriverWithContext: fakeDriver{}, exec: m.ExecutorFor("svc")}
 }
 
 // TestRunWithResiliencePassThrough proves the zero-config stance: a Client with
@@ -53,7 +52,7 @@ func TestRunWithResiliencePassThrough(t *testing.T) {
 // TestRunWithResilienceRateLimit confirms the flow-control path: once the
 // burst is spent, fn is rejected without running.
 func TestRunWithResilienceRateLimit(t *testing.T) {
-	c := newGuardedNeo4jClient(t, resilience.Policy{RateLimit: 1, Burst: 1})
+	c := newGuardedNeo4jClient(t, resilience.RateLimitPolicy{RateLimit: 1, Burst: 1})
 	var ran int
 	fn := func(context.Context) error {
 		ran++

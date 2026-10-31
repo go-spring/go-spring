@@ -34,12 +34,12 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 
-	breaker "go-spring.org/cloud/runtime/dataplane/kernel/circuitbreaker"
+	breaker "go-spring.org/cloud/governance/capability/circuitbreaker"
 )
 
 // scope is the meter scope the builtin client-side family uses, so sentinel's
 // series land next to theirs.
-const scope = "go-spring.org/cloud/runtime/dataplane/resilience"
+const scope = "go-spring.org/cloud/governance/dataplane/resilience"
 
 type stateInstrumentSet struct {
 	meter       metric.Meter

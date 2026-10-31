@@ -146,15 +146,15 @@ spring.observability.metrics.exporter=prometheus
 spring.observability.metrics.port=0        # /metrics via actuator only
 
 # --- governance (runtime fault injection / breaker / retry) ------------------
-# NOTE: governance RULES go in conf/governance.properties, referenced by spring.governance.source.file.path in app.properties (see cloud/runtime/controlplane/governance's SOURCE_USAGE).
+# NOTE: governance RULES go in conf/governance.properties, wired by the example's source starter (source.go) (see cloud/governance/controlplane/source's USAGE).
 spring.resilience.driver=default
-spring.governance.client.default.error-threshold=20
-spring.governance.client.default.open-duration=5s
-spring.governance.client.default.max-retries=1
-spring.governance.client.default.timeout=500ms
-# Endpoint selection rides the same label: spring.governance.client.rules[N].balancer /
+spring.governance.client.resilience.error-threshold=20
+spring.governance.client.resilience.open-duration=5s
+spring.governance.client.resilience.max-retries=1
+spring.governance.client.resilience.timeout=500ms
+# Endpoint selection rides the same label: spring.governance.client.loadbalance.services[N].balancer /
 # outlier-threshold / outlier-suspend-for for "gorm:mysql:orders-db" rebuild the
-# entry's chain from scratch (see cloud/runtime/controlplane/governance/README.md §3.1).
+# entry's chain from scratch (see cloud/governance/README.md §3.1).
 ```
 
 Every dialect that dials through discovery builds its chain with a suspension tracker and registers
@@ -238,7 +238,7 @@ gorm:query processor chain
                                               // access tag)
         resilience.Run(ctx, exec, op)
           ├─ admission (rate limit / bulkhead, if configured)
-          ├─ fault injector (spring.governance.client.fault.* — may short-circuit the attempt)
+          ├─ fault injector (spring.fault.client.* — may short-circuit the attempt)
           ├─ timeout / breaker / retry envelope
           ├─ the ORIGINAL gorm:query body: reuses the SQL already built, executes,
           │  applies gorm's own logger (slow-query warn, see slow-threshold)
@@ -379,11 +379,11 @@ health.go:33-35).
 
 ### 4.4 Fault / resilience drill (no restart)
 
-Using the governance config from §1 plus a file source (see cloud/runtime/controlplane/governance's SOURCE_USAGE)
+Using the governance config from §1 plus a file source (see cloud/governance/controlplane/source's USAGE)
 or the example-load layout (`starter-gorm-mysql/example-load`):
 
-1. Start the app with no `spring.governance.client.fault.rate`; baseline queries succeed.
-2. Set `spring.governance.client.fault.rate` (+ `error`) — the governance source
+1. Start the app with no `spring.fault.client.rate`; baseline queries succeed.
+2. Set `spring.fault.client.rate` (+ `error`) — the governance source
    hot-reloads.
 3. Faulted attempts short-circuit before the SQL runs: the injected error lands
    on `tx.Error`, the breaker counts it, and the resilience layer still records

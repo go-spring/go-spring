@@ -55,7 +55,7 @@ info, err := s.Client.Enqueue(ctx, asynq.NewTask("example:greet", payload))
   a `Server` (only when `server.enabled=true`; a long-running worker is an
   opt-in). Both share the same Redis connection settings.
 - **One injected center** — the constructor takes the governance family's sole
-  injection point, the required `*runtime.Runtime` (the `center` parameter),
+  injection point, the required `*governance.Runtime` (the `center` parameter),
   the one object a client reads its resilience/fault authorities from
   (`center.ResilienceClient()`, `center.FaultClient()`). An asynq producer client exposes no
   seam for a resilience executor, so nothing from the center governs the enqueue

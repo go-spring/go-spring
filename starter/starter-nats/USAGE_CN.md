@@ -135,7 +135,7 @@ spring.observability.metrics.exporter=prometheus
 spring.observability.metrics.port=0        # /metrics 仅经 actuator
 
 # --- 治理（运行时 resilience）----------------------------------------------------
-spring.governance.source.file.path=conf/governance.yaml
+# (the file source is wired in source.go; no property key)
 ```
 
 **conf/governance.yaml**（§4 演练使用）：
@@ -184,7 +184,7 @@ gs.Run()
   │           [driver.go:145; client.go:86-93]
   ├─ jetstream.enabled → jetstream.New(nc)；失败会关闭 nc 并中断启动
   │           [driver.go:149-157]
-  ├─ newConn：接收注入的 *runtime.Runtime——容器唯一注入点，持有
+  ├─ newConn：接收注入的 *governance.Runtime——容器唯一注入点，持有
   │           resilience/fault/loadbalance 三个 authority——并交给 Driver；此后无任何补装配
   │           [driver.go:181-182]
   ├─ ping 时启动连通性检查（裸 client 的 IsConnected）；失败则销毁该 bean
@@ -206,7 +206,7 @@ gs.Run()
 1. 信封 → `nats.Msg{Subject, Data, Header}`；`messaging.Message.Key` 经保留 header
    `x-msg-key` 透传（消费侧还原进 `Key`，不会泄漏进 `Headers`）[messaging.go:82-89]。
    空 header map → nil header。
-2. 压测标记：`prop.Inject(ctx, …)` 写入标记（canonical 为 `X-LoadTest: 1`），
+2. 压测标记：`prop.Inject(ctx, …)` 写入标记（canonical 为 `X-Traffic: loadtest`），
    供消费侧识别合成流量；非压测流量下是空操作，header map 按需分配。
 3. driver 声明本次发布的语义并路由到 Conn 的发布缝 [messaging.go:100-107]：
    `PublishMsgContext` 在 ctx 上声明 `operation(opPublish, subject)`，把 W3C `traceparent`
@@ -231,7 +231,7 @@ gs.Run()
    `nm.Header`）提取 W3C `traceparent` 到新 ctx，在其上声明 `operation(opConsume, subject)`，
    连接的 resilience executor——唯一发射点——在调用 handler 前打开 consumer span
    （producer span 的子）、记录时长并写 access log [command.go:158-165]。
-2. `X-LoadTest` header 重新物化进 ctx 作为压测标记 [messaging.go:134-137]。
+2. `X-Traffic` header 重新物化进 ctx 作为压测标记 [messaging.go:134-137]。
 3. `fromNatsMsg`：多值 NATS header 压平为单值（`Get` = 首值优先）
    [messaging.go:169-180]。
 4. handler 执行；executor 记录结果，handler 返回的错误也会让 consumer span
@@ -266,10 +266,10 @@ handler 是第二个副作用，不是第二次尝试。
 `RequestGuarded` 不声明操作，因此 executor 只发射本层的兜底信号（`resilience.client.duration`、
 以 service 命名的 span），不会产生 `messaging.client.*` 信号——它没有专属的操作 span。
 
-`Runtime.ExecutorFor` 内部包裹顺序（见 `cloud/runtime/controlplane/governance/center.go`，由
+`Runtime.ExecutorFor` 内部包裹顺序（见 `cloud/governance/runtime.go`，由
 [NewConn](client.go:86-93) 调用）：`mgr.ExecutorFor("nats", service)`（由注入的
 `*resilience.Manager` bean 装备——必填，容器始终提供）→
-`clientfault.ClientManager.WrapClientExecutor`（故障注入，最外层）。manager 的 resolve 步骤会用 observe 发射器包裹后端
+`clientfault.Manager.WrapClientExecutor`（故障注入，最外层）。manager 的 resolve 步骤会用 observe 发射器包裹后端
 executor（见 `resilience/observe.go`），因此声明的操作其 span/counter/histogram/access-log 只在链上
 唯一能看到完整一次调用的那点产生一次。拒绝时 guarded 调用返回
 resilience 哨兵错误（`ErrRateLimited` / `ErrCircuitOpen`），底层发布/请求不会被调用

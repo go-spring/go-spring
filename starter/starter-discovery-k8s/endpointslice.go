@@ -31,7 +31,7 @@ import (
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/clientcmd"
 
-	"go-spring.org/cloud/runtime/dataplane/kernel/discovery"
+	"go-spring.org/cloud/governance/capability/discovery"
 	"go-spring.org/log"
 	"go-spring.org/stdlib/errutil"
 )
@@ -140,9 +140,10 @@ func (d *endpointSliceDiscovery) selector(name string) string {
 
 // Resolve returns the current endpoint set for name. The first call pays the
 // seed list (bounded by ctx) and starts the scoped informer that keeps the
-// cache current; later calls read the cache. opts narrow the result;
-// [discovery.WithScheme] filters by transport scheme.
-func (d *endpointSliceDiscovery) Resolve(ctx context.Context, name string, opts ...discovery.Option) ([]discovery.Endpoint, error) {
+// cache current; later calls read the cache. The full set is returned;
+// narrowing (scheme, metadata) is the consumer's, applied via
+// [discovery.Narrow].
+func (d *endpointSliceDiscovery) Resolve(ctx context.Context, name string) ([]discovery.Endpoint, error) {
 	e := d.entry(name)
 	e.mu.Lock()
 	defer e.mu.Unlock()
@@ -158,7 +159,7 @@ func (d *endpointSliceDiscovery) Resolve(ctx context.Context, name string, opts 
 		d.obs.Synced(name, nil)
 		go d.watchInformer(name, e)
 	}
-	eps := discovery.Snapshot(e.eps, discovery.NewQuery(name, opts...))
+	eps := e.eps
 	sortEndpoints(eps)
 	return eps, nil
 }

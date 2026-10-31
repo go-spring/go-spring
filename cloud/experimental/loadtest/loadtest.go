@@ -44,12 +44,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"go-spring.org/cloud/runtime/dataplane/outbound/chain"
+	"go-spring.org/cloud/governance/dataplane/outbound/chain"
 	"io"
 	"slices"
 	"time"
 
-	"go-spring.org/cloud/runtime/dataplane/kernel/fault"
+	"go-spring.org/cloud/governance/capability/fault"
 )
 
 // Op is one operation a worker fires per dispatch. It returns nil on success.

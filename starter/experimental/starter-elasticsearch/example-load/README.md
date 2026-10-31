@@ -17,9 +17,9 @@ go run . -concurrency=32 -duration=10s       # or run directly against an ES nod
 Edit `conf/governance.properties`:
 
 ```properties
-spring.governance.client.fault.rules[0].service=elasticsearch:http://127.0.0.1:9200
-spring.governance.client.fault.rules[0].rate=0.5
-spring.governance.client.fault.rules[0].error=generic       # or: timeout / reset
+spring.fault.client.rules[0].service=elasticsearch:http://127.0.0.1:9200
+spring.fault.client.rules[0].rate=0.5
+spring.fault.client.rules[0].error=generic       # or: timeout / reset
 ```
 
 then re-run — the error breakdown's `injected`/`circuit` counts climb and p99

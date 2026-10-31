@@ -49,7 +49,7 @@ func (f *fakeMQTTClient) Publish(topic string, qos byte, retained bool, payload 
 func TestAttachObserverInstallsObserver(t *testing.T) {
 	cl := &fakeMQTTClient{}
 
-	AttachObserver(cl, "tcp://127.0.0.1:1883")
+	AttachObserver(cl, "tcp://127.0.0.1:1883", testProp)
 	if _, ok := clientGuards.Load(cl); !ok {
 		t.Fatal("AttachObserver must install an observer")
 	}

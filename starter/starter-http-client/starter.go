@@ -28,10 +28,10 @@ import (
 	"io"
 	"net/http"
 
-	"go-spring.org/cloud/runtime"
+	"go-spring.org/cloud/governance"
 
-	"go-spring.org/cloud/runtime/dataplane/kernel/discovery"
-	"go-spring.org/cloud/runtime/dataplane/kernel/traffic"
+	"go-spring.org/cloud/governance/capability/discovery"
+	"go-spring.org/cloud/governance/capability/traffic"
 	"go-spring.org/log"
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/gs"
@@ -104,12 +104,12 @@ func init() {
 // authorities (all nil-safe). It is threaded to the driver, which hands it to the
 // transport assembler. Neither the entry's own config nor its service label
 // carries the authorities: they are beans, not bound values.
-func newRoute(ctx *gs.ContextProvider, name string, c Config, d Driver, center *runtime.Runtime, prop traffic.Propagator) (*route, error) {
+func newRoute(ctx *gs.ContextProvider, name string, c Config, d Driver, center *governance.Runtime, prop traffic.Propagator) (*route, error) {
 	var backend discovery.Discovery
 	if c.Discovery != "" {
 		b, ok := center.Discovery().Get(c.Discovery)
 		if !ok {
-			return nil, errutil.Explain(nil, "http-client: entry %q cites discovery backend %q but no such backend exists (registered: %v)", name, c.Discovery, center.Discovery().Labels())
+			return nil, errutil.Explain(nil, "http-client: entry %q cites discovery backend %q but no such backend exists (registered: %v)", name, c.Discovery, center.Discovery().Names())
 		}
 		backend = b
 	}
@@ -149,7 +149,7 @@ func newDispatchTransport(routes []*route) (*dispatchTransport, error) {
 // entry's already-resolved discovery backend (nil when it cites none). closeFn
 // (when non-nil) releases the discovery watch and resilience executor behind it.
 // center is the runtime, forwarded to the driver unchanged.
-func assembleTransport(ctx *gs.ContextProvider, name string, c Config, backend discovery.Discovery, d Driver, center *runtime.Runtime, prop traffic.Propagator) (rt http.RoundTripper, closeFn func() error, err error) {
+func assembleTransport(ctx *gs.ContextProvider, name string, c Config, backend discovery.Discovery, d Driver, center *governance.Runtime, prop traffic.Propagator) (rt http.RoundTripper, closeFn func() error, err error) {
 	if err = c.validate(); err != nil {
 		return nil, nil, err
 	}

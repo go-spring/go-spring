@@ -21,8 +21,8 @@ import (
 	"testing"
 	"time"
 
-	"go-spring.org/cloud/runtime/dataplane/kernel/discovery"
-	"go-spring.org/cloud/runtime/dataplane/kernel/loadbalance"
+	"go-spring.org/cloud/governance/capability/discovery"
+	"go-spring.org/cloud/governance/capability/loadbalance"
 	"go-spring.org/stdlib/testing/assert"
 )
 
@@ -50,7 +50,7 @@ func (a *armedManager) push(sel loadbalance.Selection) {
 
 // TestNewPickPoolRebuildsOnChange covers the gorm half of endpoint selection: the
 // shared builder attaches a suspension tracker and registers the chain under the
-// entry's service label, so one spring.governance.client.rules[N] rule — the same
+// entry's service label, so one client.loadbalance.services[N] rule — the same
 // label that drives the entry's protection executor — also governs its balancing
 // strategy. A rule that moves that selection REBUILDS the chain rather than
 // retuning it.
@@ -71,9 +71,8 @@ func TestNewPickPoolRebuildsOnChange(t *testing.T) {
 
 	// The selection in force at build time lands on the first generation, which
 	// already picks from the discovered endpoint.
-	assert.Number(t, chain.Generation()).Equal(uint64(1))
 	assert.That(t, chain.Selection().Balancer).Equal(loadbalance.LeastConn)
-	assert.Number(t, chain.Tracker().Config().Threshold).Equal(3)
+	assert.Number(t, chain.Selection().OutlierThreshold).Equal(3)
 	ep, perr := chain.Pick(context.Background(), loadbalance.PickInfo{})
 	assert.Error(t, perr).Nil()
 	assert.That(t, ep.Addr).Equal("127.0.0.1:3306")
@@ -81,9 +80,8 @@ func TestNewPickPoolRebuildsOnChange(t *testing.T) {
 	// A later push rebuilds the chain whole: a fresh pool, not the old one retuned.
 	a.push(loadbalance.Selection{Balancer: loadbalance.Weighted, OutlierThreshold: 5, OutlierSuspendFor: 2 * time.Minute})
 
-	assert.Number(t, chain.Generation()).Equal(uint64(2))
 	assert.That(t, chain.Selection().Balancer).Equal(loadbalance.Weighted)
-	assert.Number(t, chain.Tracker().Config().Threshold).Equal(5)
+	assert.Number(t, chain.Selection().OutlierThreshold).Equal(5)
 
 	// A rule scoped to ANOTHER entry's label does not reach this one, even though
 	// the document as a whole changed.
@@ -93,7 +91,7 @@ func TestNewPickPoolRebuildsOnChange(t *testing.T) {
 			{Service: "gorm:mysql:other-db", Selection: loadbalance.Selection{Balancer: loadbalance.P2C}},
 		},
 	})
-	assert.Number(t, chain.Generation()).Equal(uint64(2))
+	assert.Number(t, chain.Selection().OutlierThreshold).Equal(5) // untouched by the other label's rule
 }
 
 // TestNewPickPoolAnUnarmedManagerIsPassThrough pins the "governance off" case: an
@@ -112,8 +110,8 @@ func TestNewPickPoolAnUnarmedManagerIsPassThrough(t *testing.T) {
 	}
 	// Nothing was ever pushed: the base generation serves, with no strategy
 	// recorded and the tracker left at the zero config.
-	assert.That(t, chain.Selection()).Equal(loadbalance.Selection{})
-	assert.Number(t, chain.Tracker().Config().Threshold).Equal(0)
+	assert.That(t, chain.Selection()).Equal(loadbalance.Selection{Balancer: loadbalance.RoundRobin})
+	assert.Number(t, chain.Selection().OutlierThreshold).Equal(0)
 	ep, perr := chain.Pick(context.Background(), loadbalance.PickInfo{})
 	assert.Error(t, perr).Nil()
 	assert.That(t, ep.Addr).Equal("127.0.0.1:3306")

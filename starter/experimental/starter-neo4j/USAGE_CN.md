@@ -135,11 +135,11 @@ spring.observability.metrics.exporter=prometheus
 spring.actuator.addr=:9370
 
 # --- governance：Query / RunWithResilience 的保护 ----------------------------
-# NOTE: governance RULES go in conf/governance.properties, referenced by spring.governance.source.file.path in app.properties (see cloud/runtime/controlplane/governance's SOURCE_USAGE).
+# NOTE: governance RULES go in conf/governance.properties, wired by the example's source starter (source.go) (see cloud/governance/controlplane/source's USAGE).
 spring.resilience.driver=default
-spring.governance.client.default.rate-limit=100
-spring.governance.client.default.max-retries=1
-spring.governance.client.default.timeout=500ms
+spring.governance.client.resilience.rate-limit=100
+spring.governance.client.resilience.max-retries=1
+spring.governance.client.resilience.timeout=500ms
 ```
 
 **验证**（先启动 Neo4j —— `docker run -d -e NEO4J_AUTH=neo4j/password -p 7687:7687 -p 7474:7474 neo4j:5`，
@@ -182,11 +182,11 @@ gs.Run()
   │   │  Driver bean；指定的 bean 不存在则启动失败）
   │   ├─ d.CreateClient(ctx, c, center)（auth + 连接池参数 + TLS）返回 *Client
   │   │  已完整——身份（session + 服务标签）与治理均已应用
-  │   │  [starter.go:123, driver.go:77]；center 为注入的 *runtime.Runtime，
+  │   │  [starter.go:123, driver.go:77]；center 为注入的 *governance.Runtime，
   │   │  交出 resilience/fault 权威（resilience manager 必填）
   │   ├─ NewClient [client.go:96-103]：service = label.ServiceLabel("neo4j",
   │   │  ServiceName, URI) → center.ExecutorFor("neo4j", service)——受治理的
-  │   │  executor（clientfault.ClientManager.WrapClientExecutor 包住 center.ResilienceClient().ExecutorFor）；center 始终
+  │   │  executor（clientfault.Manager.WrapClientExecutor 包住 center.ResilienceClient().ExecutorFor）；center 始终
   │   │  存在（resilience manager 必填）
   │   └─ 仅 ping=true：fail-fast HealthCheck（直达裸 driver 的 VerifyConnectivity），
   │      受 socket-connect-timeout 或 5s 约束；失败时销毁 client，启动中止
@@ -203,7 +203,7 @@ gs.Run()
 **装配扩展点**：client 装配由 `Driver`（接口，`driver.go:66-68`）负责。公司/伞包 starter 可把
 自己的 `Driver` 作为**可选容器 bean** 提供（`gs.Provide(func() StarterNeo4j.Driver{...})`，
 因为是 bean，可在装配期注入从配置文件绑定的配置）；`spring.neo4j` 下每个实例都经它构建。
-`CreateClient(ctx, c, center)` 接收注入的 `*runtime.Runtime`；发现后端由 driver 自行从
+`CreateClient(ctx, c, center)` 接收注入的 `*governance.Runtime`；发现后端由 driver 自行从
 `center.Discovery().Get(c.Discovery)` 解析——该条目 `${discovery}` label 挂在 config 上
 （ctor 已把家族默认值折叠进 `c.Discovery`），因此不再传入预解析的后端。没有该 bean 时 starter
 在装配内回退到内置 `DefaultDriver`
@@ -281,7 +281,7 @@ gs.Run()
 sidecar 负责发现+LB，URI 原样使用 [starter.go:103]。
 
 ⚠ **刻意不接受管的端点选择。** 没有"每次查询挑选"可管：启动那次挑选被固化进 URI 字符串，池在同一
-个函数里建了就用、用完就丢。因此 `spring.governance.client.rules[N].balancer` / `outlier-threshold` 对 neo4j 无效；
+个函数里建了就用、用完就丢。因此 `spring.governance.client.loadbalance.services[N].balancer` / `outlier-threshold` 对 neo4j 无效；
 它的治理止于保护策略（label 为 `neo4j:<service-name|uri>` 的 timeout / retries / breaker）。写在这里
 是为了让这个缺口读起来是**决策**而不是遗漏。（上面的 `AddressResolver` 管的是**哪个集群**，
 不是**哪个节点**——节点仍然由 driver 自己选。）
@@ -367,9 +367,9 @@ curl -s :9090/metrics | grep -E 'db.client.(operation|attempt).duration|db.clien
 ### 4.3 韧性演练（example-cloudnative / example-load 形态）
 
 ```properties
-# NOTE: governance RULES go in conf/governance.properties, referenced by spring.governance.source.file.path in app.properties (see cloud/runtime/controlplane/governance's SOURCE_USAGE).
+# NOTE: governance RULES go in conf/governance.properties, wired by the example's source starter (source.go) (see cloud/governance/controlplane/source's USAGE).
 spring.resilience.driver=default
-spring.governance.client.default.rate-limit=5
+spring.governance.client.resilience.rate-limit=5
 ```
 
 ```bash
@@ -378,7 +378,7 @@ go run ./example-cloudnative -manual   # 自校验：15 连发 → 部分放行�
 ```
 
 故障注入（热切换，example-load）：压测进程运行中把 `conf/governance.properties` 的
-`spring.governance.client.fault.rules[0].service=neo4j:<service-name|uri>` 加上 `.rate=0.5`、`.error=timeout`
+`spring.fault.client.rules[0].service=neo4j:<service-name|uri>` 加上 `.rate=0.5`、`.error=timeout`
 配上——错误分布即时变化，无需重启。
 
 ### 4.4 发现演练

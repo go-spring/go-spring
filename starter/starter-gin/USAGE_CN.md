@@ -54,7 +54,7 @@ key 在 `spring.gin.server.*` 下(含 tls 约 54 个)。只有 `addr` 必填,其
 
 | 分组 | 主要 key(默认值) |
 |------|------------------|
-| `loadtest` | header `X-LoadTest`(开)——README 表里没有 |
+| `loadtest` | header `X-Traffic`(开)——README 表里没有 |
 | `requestId` | header `X-Request-Id`(开)——自实现(uuid),不是 gin-contrib/requestid |
 | `accessLog` | `skipPaths`;`payload.enabled`(开!)`payload.limit` 524288;`metrics.sseDistributions` 开、`metrics.activeRequests` 关 |
 | `cors` | allowAllOrigins/allowedOrigins/allowedMethods(空时代码默认全动词集)/allowedHeaders/exposeHeaders/allowCredentials/maxAge——默认关 |
@@ -84,7 +84,7 @@ Observe 之内。)手动模式导出 `ApplyMiddlewares`、`LoadTest`、`RequestI
 - tracing/metrics 走 OTel 全局对象——**无 starter-otel 时静默空操作**:server span
   `{method} {route}`、SSE 子 span、`http.server.request.duration` 等。
 - 治理:入口准入经注入的 `resilience.Manager` 的 `ExecutorFor("gin", "gin::{addr}")`——限流/舱满 429;
-  故障注入经注入的 `*serverfault.ServerManager` bean。均由治理中心热更新;恒安装,未配置时透传。
+  故障注入经注入的 `*serverfault.Manager` bean。均由治理中心热更新;恒安装,未配置时透传。
 
 ## 5. 设计体检表
 

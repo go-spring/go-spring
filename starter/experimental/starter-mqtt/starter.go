@@ -18,8 +18,8 @@ package StarterMQTT
 
 import (
 	mqtt "github.com/eclipse/paho.mqtt.golang"
+	"go-spring.org/cloud/governance"
 	"go-spring.org/cloud/messaging"
-	"go-spring.org/cloud/runtime"
 	"go-spring.org/log"
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/gs"
@@ -76,7 +76,7 @@ func init() {
 // resolves the executor through it — the governed one, from the resilience
 // authority the container always supplies via the runtime, so a
 // center without one fails at construction.
-func newClient(ctx *gs.ContextProvider, name string, c Config, d Driver, center *runtime.Runtime) (mqtt.Client, error) {
+func newClient(ctx *gs.ContextProvider, name string, c Config, d Driver, center *governance.Runtime) (mqtt.Client, error) {
 	// The client's identity rides on a context derived here: every line below
 	// carries it without repeating it. The provider's own context is left
 	// alone — that one is the shared application context, not this

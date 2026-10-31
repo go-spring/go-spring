@@ -113,7 +113,7 @@ func runTest(s *Service) {
 ```go
 package main
 
-import "go-spring.org/cloud/runtime/dataplane/kernel/discovery"
+import "go-spring.org/cloud/governance/capability/discovery"
 
 func init() {
     gs.Provide(func() (discovery.Discovery, error) {
@@ -311,8 +311,8 @@ pool connections land on it (per-dial `Pick()`).
 ```bash
 cd example-load && docker compose up -d
 go run . -duration=10s                        # baseline SELECT 1
-# set fire (hot-reload via cloud/runtime/controlplane/governance):
-#   spring.governance.client.fault.rate=0.5  spring.governance.client.fault.error=generic
+# set fire (hot-reload via the policy roots):
+#   spring.fault.client.rate=0.5  spring.fault.client.error=generic
 go run . -duration=10s                        # ~50% injected in the breakdown
 ```
 

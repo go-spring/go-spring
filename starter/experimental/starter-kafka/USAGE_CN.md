@@ -112,9 +112,9 @@ spring.observability.trace.endpoint=127.0.0.1:4317
 spring.observability.metrics.exporter=prometheus
 
 # --- governance（同步生产路径上的限流）--------------------------------------
-# NOTE: governance RULES go in conf/governance.properties, referenced by spring.governance.source.file.path in app.properties (see cloud/runtime/controlplane/governance's SOURCE_USAGE_CN.md).
+# NOTE: governance RULES go in conf/governance.properties, wired by the example's source starter (source.go) (see cloud/governance/controlplane/source's USAGE_CN.md).
 spring.resilience.driver=default
-spring.governance.client.default.rate-limit=8
+spring.governance.client.resilience.rate-limit=8
 ```
 
 **验证**（broker 启动同 [example/docker-compose.yml](example/docker-compose.yml) —— KRaft
@@ -149,7 +149,7 @@ gs.Run()
   ├─ ctor newClient [starter.go:96]:
   │   1. 可选 Driver bean——无则用内置 DefaultDriver              [starter.go:101-102]
   │   2. d.CreateClient(ctx, c, center)：完整 client 装配——driver 构建原始
-  │      client 并返回。center 是注入的 *runtime.Runtime（家族唯一注入点：
+  │      client 并返回。center 是注入的 *governance.Runtime（家族唯一注入点：
   │      交出 resilience/fault/loadbalance 三个 authority，如
   │      center.ExecutorFor("kafka", "kafka:<brokers>")）。治理由 NewClient
   │      在其包装返回的 client 时向上一层应用    [driver.go:78,122; starter.go:109,120]
@@ -171,7 +171,7 @@ gs.Run()
 `spring.kafka.instances.<name>.driver = <bean 名>`（留空 = 先回退家族级 `spring.<family>.default.driver`，再按类型注入唯一 Driver bean；指定的
 bean 不存在则启动失败）。
 
-`CreateClient` 接收注入的 `*runtime.Runtime`——家族唯一注入点——并返回原始 client；治理由
+`CreateClient` 接收注入的 `*governance.Runtime`——家族唯一注入点——并返回原始 client；治理由
 `NewClient` 在其包装该原始 `*kgo.Client` 时向上一层应用，此后无任何补装配。`GuardedProduceSync`
 接收包装后的 `*Client` 并从其链上解析 executor，因此自定义 Driver 只需返回原始 client
 [command.go, entity.go]。
@@ -357,7 +357,7 @@ grep messaging.access app.log | tail -2   # publish 记录（带时长）+ consu
 ### 4.3 受保护 vs 不受保护的生产路径
 
 ```bash
-# example-cloudnative 配 spring.governance.client.default.rate-limit=8：
+# example-cloudnative 配 spring.governance.client.resilience.rate-limit=8：
 go run .    # 打印 "resilience: N produce admitted, M rejected with ErrRateLimited"
 ```
 

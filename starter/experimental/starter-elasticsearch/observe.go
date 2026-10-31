@@ -24,7 +24,10 @@
 package StarterElasticsearch
 
 import (
-	"go-spring.org/cloud/runtime/dataplane/outbound/chain"
+	"context"
+
+	"go-spring.org/cloud/governance/capability/traffic"
+	"go-spring.org/cloud/governance/dataplane/outbound/chain"
 	"go-spring.org/log"
 )
 
@@ -41,8 +44,8 @@ var accessTag = log.RegisterAppTag("elasticsearch", "access")
 // HTTP transport as its method and URL path. The bounded operation word is the
 // HTTP method; the open-set path rides in detail while the full "METHOD /path"
 // names the span. The family's vocabulary lives in [wire].
-func operation(method, path string) chain.Operation {
-	op := chain.DBOp(elasticsearchSystem, method, path)
+func operation(ctx context.Context, prop traffic.Propagator, method, path string) chain.Operation {
+	op := chain.DBOp(ctx, prop, elasticsearchSystem, method, path)
 	op.Request.Action = method + " " + path
 	op.Observe.Log.Tag = accessTag
 	return op

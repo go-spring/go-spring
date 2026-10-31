@@ -26,7 +26,7 @@ package StarterRedigo
 import (
 	"go-spring.org/cloud/actuator/health"
 	"go-spring.org/cloud/cache"
-	"go-spring.org/cloud/runtime"
+	"go-spring.org/cloud/governance"
 	"go-spring.org/log"
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/gs"
@@ -104,7 +104,7 @@ func init() {
 // to the driver, which applies it in the constructor. The resilience manager is
 // required — the container supplies it via the runtime — so a center
 // without one fails at construction rather than degrading.
-func createPool(ctx *gs.ContextProvider, c Config, d Driver, discoveryLabel string, center *runtime.Runtime) (*Pool, error) {
+func createPool(ctx *gs.ContextProvider, c Config, d Driver, discoveryLabel string, center *governance.Runtime) (*Pool, error) {
 	// The pool's identity rides on a context derived here: every line below
 	// carries it without repeating it. The provider's own context is left
 	// alone — that one is the shared application context, not this

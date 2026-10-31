@@ -150,7 +150,7 @@ gs.Run()
 ```
 
 A `gs.Module` (not `gs.Group`) is used so the constructor can take the injected
-`*runtime.Runtime` (variable `center`) alongside its config. The SMTP client opens a fresh
+`*governance.Runtime` (variable `center`) alongside its config. The SMTP client opens a fresh
 connection per Send and closes it when done, so there is no pooled socket to release — the
 only resource the `Destroy` hook releases is the resilience executor.
 

@@ -18,18 +18,22 @@ package StarterRedigo
 
 import (
 	"context"
-	"go-spring.org/cloud/runtime/dataplane/inbound/admission"
 	"testing"
 	"time"
 
-	"go-spring.org/cloud/runtime"
+	"go-spring.org/cloud/governance/dataplane/inbound/admission"
 
-	"go-spring.org/cloud/runtime/controlplane/governance"
-	serverfault "go-spring.org/cloud/runtime/dataplane/inbound/fault"
-	"go-spring.org/cloud/runtime/dataplane/kernel/discovery"
-	"go-spring.org/cloud/runtime/dataplane/kernel/loadbalance"
-	clientfault "go-spring.org/cloud/runtime/dataplane/outbound/fault"
-	"go-spring.org/cloud/runtime/dataplane/outbound/resilience"
+	"go-spring.org/cloud/governance"
+
+	"go-spring.org/cloud/governance/capability/discovery"
+	"go-spring.org/cloud/governance/capability/loadbalance"
+	"go-spring.org/cloud/governance/capability/traffic"
+	admissionplane "go-spring.org/cloud/governance/controlplane/admission"
+	loadbalanceplane "go-spring.org/cloud/governance/controlplane/loadbalance"
+	"go-spring.org/cloud/governance/controlplane/source"
+	serverfault "go-spring.org/cloud/governance/dataplane/inbound/fault"
+	clientfault "go-spring.org/cloud/governance/dataplane/outbound/fault"
+	"go-spring.org/cloud/governance/dataplane/outbound/resilience"
 	"go-spring.org/stdlib/testing/assert"
 )
 
@@ -43,9 +47,21 @@ func TestNewPoolChainRebuildsFromScratch(t *testing.T) {
 	disc := discovery.NewManager(map[string]discovery.Discovery{
 		"static": discovery.NewStaticDiscovery(discovery.Endpoint{Addr: "127.0.0.1:6379", Healthy: true, Weight: 1}),
 	})
-	ctr, err := runtime.New(resilience.NewManager(resilience.NewDefaultDriver(nil)), mgr,
-		clientfault.NewClientManager(nil), serverfault.NewServerManager(nil), disc, governance.NewPushSource(governance.Config{Server: governance.ServerConfig{Default: admission.DefaultPolicy()}}))
-	assert.Error(t, err).Nil()
+	ctr := &governance.Runtime{
+		Resilience:  resilience.NewManager(resilience.NewDefaultDriver(nil)),
+		LoadBalance: mgr,
+		Admission:   admission.NewManager(),
+		ClientFault: clientfault.NewManager(),
+		ServerFault: serverfault.NewManager(),
+		Traffic:     traffic.NewDefaultPropagator(traffic.DefaultBinding()),
+		Directory:   disc,
+	}
+	if _, err := loadbalanceplane.NewCenter(context.Background(), ctr.LoadBalance, source.NewPushSource(loadbalance.Settings{})); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := admissionplane.NewCenter(context.Background(), ctr.Admission, source.NewPushSource(admission.Settings{})); err != nil {
+		t.Fatal(err)
+	}
 
 	c := Config{Addressing: discovery.Addressing{ServiceName: "cache", Discovery: "static"}}
 
@@ -56,8 +72,7 @@ func TestNewPoolChainRebuildsFromScratch(t *testing.T) {
 	}
 
 	// The base generation: round-robin, suspension disabled, live instance picked.
-	assert.Number(t, p.lbChain.Generation()).Equal(uint64(1))
-	assert.That(t, p.lbChain.Selection()).Equal(loadbalance.Selection{})
+	assert.That(t, p.lbChain.Selection()).Equal(loadbalance.Selection{Balancer: loadbalance.RoundRobin})
 	ep, err := p.lbChain.Pick(context.Background(), loadbalance.PickInfo{})
 	assert.Error(t, err).Nil()
 	assert.That(t, ep.Addr).Equal("127.0.0.1:6379")
@@ -66,9 +81,8 @@ func TestNewPoolChainRebuildsFromScratch(t *testing.T) {
 	moved := loadbalance.Selection{Balancer: loadbalance.LeastConn, OutlierThreshold: 3, OutlierSuspendFor: time.Minute}
 	mgr.Apply(context.Background(), loadbalance.Settings{Rules: []loadbalance.Rule{{Service: p.serviceLabel, Selection: moved}}})
 
-	assert.Number(t, p.lbChain.Generation()).Equal(uint64(2))
 	assert.That(t, p.lbChain.Selection().Balancer).Equal(loadbalance.LeastConn)
-	assert.Number(t, p.lbChain.Tracker().Config().Threshold).Equal(3)
+	assert.Number(t, p.lbChain.Selection().OutlierThreshold).Equal(3)
 
 	// ...while a push for another label leaves it alone, even though the document
 	// as a whole changed.
@@ -76,15 +90,28 @@ func TestNewPoolChainRebuildsFromScratch(t *testing.T) {
 		{Service: p.serviceLabel, Selection: moved},
 		{Service: "redigo:other", Selection: loadbalance.Selection{Balancer: loadbalance.Weighted}},
 	}})
-	assert.Number(t, p.lbChain.Generation()).Equal(uint64(2))
+	assert.That(t, p.lbChain.Selection().Balancer).Equal(loadbalance.LeastConn) // untouched: the other rule did not reach this label
 }
 
 // TestNewPoolWithoutDiscoveryHasNoChain pins that a fixed-address entry has no
 // candidate set to choose from: the pool dials the configured Addr directly and
 // carries no chain.
 func TestNewPoolWithoutDiscoveryHasNoChain(t *testing.T) {
-	ctr, err := runtime.NewProcess(resilience.NewManager(resilience.NewDefaultDriver(nil)), clientfault.NewClientManager(nil), serverfault.NewServerManager(nil))
-	assert.Error(t, err).Nil()
+	ctr := &governance.Runtime{
+		Resilience:  resilience.NewManager(resilience.NewDefaultDriver(nil)),
+		LoadBalance: loadbalance.NewManager(),
+		Admission:   admission.NewManager(),
+		ClientFault: clientfault.NewManager(),
+		ServerFault: serverfault.NewManager(),
+		Directory:   discovery.NewManager(nil),
+		Traffic:     traffic.NewDefaultPropagator(traffic.DefaultBinding()),
+	}
+	if _, err := loadbalanceplane.NewCenter(context.Background(), ctr.LoadBalance, source.NewPushSource(loadbalance.Settings{})); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := admissionplane.NewCenter(context.Background(), ctr.Admission, source.NewPushSource(admission.Settings{})); err != nil {
+		t.Fatal(err)
+	}
 	p, err := NewPool(context.Background(), Config{Addr: "127.0.0.1:6379"}, ctr)
 	assert.Error(t, err).Nil()
 	if p == nil {

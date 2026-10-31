@@ -20,9 +20,10 @@ import (
 	"context"
 	"errors"
 
-	"go-spring.org/cloud/runtime"
-	"go-spring.org/cloud/runtime/dataplane/inbound/admission"
-	observability "go-spring.org/cloud/runtime/dataplane/inbound/observe"
+	"go-spring.org/cloud/governance"
+	"go-spring.org/cloud/governance/capability/traffic"
+	"go-spring.org/cloud/governance/dataplane/inbound/admission"
+	observability "go-spring.org/cloud/governance/dataplane/inbound/observe"
 	"trpc.group/trpc-go/trpc-go"
 	"trpc.group/trpc-go/trpc-go/errs"
 	"trpc.group/trpc-go/trpc-go/filter"
@@ -32,9 +33,9 @@ import (
 // (rate limit / bulkhead / fault) before the handler, and one
 // completion after it. It is registered by the starter as "governance" and
 // included in the server's default filter chain.
-func GuardServerFilter(in *runtime.Inbound) filter.ServerFilter {
+func GuardServerFilter(in *governance.Inbound, prop traffic.Propagator) filter.ServerFilter {
 	return func(ctx context.Context, req interface{}, next filter.ServerHandleFunc) (interface{}, error) {
-		op := observability.ServerOperation{Action: actionName(ctx)}
+		op := observability.NewServerOperation(ctx, prop, actionName(ctx))
 		var resp interface{}
 		err := in.Run(ctx, op, func(ctx context.Context) error {
 			var e error
@@ -42,7 +43,7 @@ func GuardServerFilter(in *runtime.Inbound) filter.ServerFilter {
 			return e
 		})
 		if err != nil {
-			var ref *runtime.Refusal
+			var ref *governance.Refusal
 			if errors.As(err, &ref) {
 				return nil, refusalError(ref)
 			}
@@ -60,11 +61,17 @@ func actionName(ctx context.Context) string {
 
 // refusalError maps a guard refusal onto tRPC's return codes, so callers that
 // branch on code can tell throttling from an arbitrary handler failure.
-func refusalError(ref *runtime.Refusal) error {
+func refusalError(ref *governance.Refusal) error {
 	switch ref.Verdict() {
 	case admission.VerdictRateLimited, admission.VerdictBulkheadFull:
 		return errs.New(errs.RetServerThrottled, ref.Error())
 	case admission.VerdictFaultInjected:
+		// The fault's class decides the code: a caller-mistake failure maps to
+		// the validation code, everything else to a system error, so the client's
+		// retry/breaker policy sees the classification the rule declared.
+		if ref.Fault().Business() {
+			return errs.New(errs.RetServerValidateFail, ref.Error())
+		}
 		return errs.New(errs.RetServerSystemErr, ref.Error())
 	default:
 		return ref

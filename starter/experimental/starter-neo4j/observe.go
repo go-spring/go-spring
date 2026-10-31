@@ -24,7 +24,10 @@
 package StarterNeo4j
 
 import (
-	"go-spring.org/cloud/runtime/dataplane/outbound/chain"
+	"context"
+
+	"go-spring.org/cloud/governance/capability/traffic"
+	"go-spring.org/cloud/governance/dataplane/outbound/chain"
 	"go-spring.org/log"
 )
 
@@ -40,8 +43,8 @@ var accessTag = log.RegisterAppTag("neo4j", "access")
 // operation is the semantic identity of one neo4j operation. op names the
 // operation; summary is the Cypher text. The family's vocabulary lives in
 // [wire]; this starter supplies only what only it knows.
-func operation(op, summary string) chain.Operation {
-	o := chain.DBOp(neo4jSystem, op, summary)
+func operation(ctx context.Context, prop traffic.Propagator, op, summary string) chain.Operation {
+	o := chain.DBOp(ctx, prop, neo4jSystem, op, summary)
 	o.Observe.Log.Tag = accessTag
 	return o
 }

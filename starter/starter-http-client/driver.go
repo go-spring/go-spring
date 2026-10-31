@@ -20,10 +20,10 @@ import (
 	"context"
 	"net/http"
 
-	"go-spring.org/cloud/runtime"
+	"go-spring.org/cloud/governance"
 
-	"go-spring.org/cloud/runtime/dataplane/kernel/discovery"
-	"go-spring.org/cloud/runtime/dataplane/kernel/traffic"
+	"go-spring.org/cloud/governance/capability/discovery"
+	"go-spring.org/cloud/governance/capability/traffic"
 	"go-spring.org/starter-http-client/httpx"
 )
 
@@ -66,7 +66,7 @@ import (
 // DefaultDriver forwards it to [httpx.NewTransport] verbatim. prop is the application's load-test convention
 // bean (nil when none is provided), forwarded the same way.
 type Driver interface {
-	CreateTransport(ctx context.Context, name string, c Config, backend discovery.Discovery, center *runtime.Runtime, prop traffic.Propagator) (rt http.RoundTripper, close func() error, err error)
+	CreateTransport(ctx context.Context, name string, c Config, backend discovery.Discovery, center *governance.Runtime, prop traffic.Propagator) (rt http.RoundTripper, close func() error, err error)
 }
 
 // DefaultDriver is the default implementation of the Driver interface: the
@@ -78,6 +78,6 @@ type DefaultDriver struct{}
 // governance-resolved resilience executor, fault + observe wrap — is owned by
 // starter-http-client/httpx; see [httpx.NewTransport]. mgr, inj and prop are
 // forwarded verbatim: httpx owns how they are used and what a nil means.
-func (DefaultDriver) CreateTransport(ctx context.Context, name string, c Config, backend discovery.Discovery, center *runtime.Runtime, prop traffic.Propagator) (http.RoundTripper, func() error, error) {
+func (DefaultDriver) CreateTransport(ctx context.Context, name string, c Config, backend discovery.Discovery, center *governance.Runtime, prop traffic.Propagator) (http.RoundTripper, func() error, error) {
 	return httpx.NewTransport(c.toTransportConfig(backend), center, prop)
 }

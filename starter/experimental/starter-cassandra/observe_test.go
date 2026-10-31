@@ -17,9 +17,11 @@
 package StarterCassandra
 
 import (
-	"go-spring.org/cloud/runtime/dataplane/outbound/chain"
+	"context"
 	"strings"
 	"testing"
+
+	"go-spring.org/cloud/governance/dataplane/outbound/chain"
 
 	"go-spring.org/stdlib/testing/assert"
 	"go.opentelemetry.io/otel/attribute"
@@ -38,7 +40,7 @@ func attrsLine(attrs []attribute.KeyValue) string {
 // identity the emitter needs: the operation name for the span, the family's
 // metric prefix, the db.* labels and this starter's access-log tag.
 func TestOperationDeclaresFamilyVocabulary(t *testing.T) {
-	op := operation("exec", "INSERT INTO t VALUES (1)")
+	op := operation(context.Background(), testProp, "exec", "INSERT INTO t VALUES (1)")
 	assert.String(t, op.Request.Action).Equal("exec")
 	assert.String(t, op.Observe.Metric.Name).Equal("db.client")
 	assert.String(t, attrsLine(op.Observe.Metric.Attrs)).Equal("db.system=cassandra,db.operation=exec")
@@ -50,7 +52,7 @@ func TestOperationDeclaresFamilyVocabulary(t *testing.T) {
 // series multiply without bound. It is asserted on Attrs because Attrs is what
 // labels are built from.
 func TestOperationStatementStaysOutOfLabels(t *testing.T) {
-	op := operation("exec", "INSERT INTO t VALUES (1)")
+	op := operation(context.Background(), testProp, "exec", "INSERT INTO t VALUES (1)")
 	for _, a := range op.Observe.Metric.Attrs {
 		assert.That(t, string(a.Key) == "db.statement").False()
 	}
@@ -61,13 +63,13 @@ func TestOperationStatementStaysOutOfLabels(t *testing.T) {
 // operation carries no detail, which is also what levelled its success log at
 // Info rather than Debug — the same rule the emitter applies.
 func TestOperationWithoutStatementCarriesNoDetail(t *testing.T) {
-	assert.Number(t, len(detailAttrs(operation("exec", "")))).Equal(0)
+	assert.Number(t, len(detailAttrs(operation(context.Background(), testProp, "exec", "")))).Equal(0)
 }
 
 // TestOperationTruncatesStatement proves a long statement is bounded before it
 // reaches the span or the log.
 func TestOperationTruncatesStatement(t *testing.T) {
-	op := operation("exec", strings.Repeat("x", 512+50))
+	op := operation(context.Background(), testProp, "exec", strings.Repeat("x", 512+50))
 	assert.Number(t, len(detailAttrs(op)[0].Value.AsString())).Equal(512)
 }
 

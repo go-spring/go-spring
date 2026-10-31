@@ -26,7 +26,7 @@ import (
 
 	"github.com/nats-io/nats.go"
 	"github.com/nats-io/nats.go/jetstream"
-	"go-spring.org/cloud/runtime"
+	"go-spring.org/cloud/governance"
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
@@ -47,7 +47,7 @@ import (
 // [NewConn], which fixes the identity and the governance exec — and nothing
 // patches the connection afterwards.
 //
-// center supplies the container's facilities (see [runtime.Runtime]); it is
+// center supplies the container's facilities (see [governance.Runtime]); it is
 // one object rather than a parameter per capability so this interface — which
 // every company driver implements — stays stable as capabilities are added. A
 // driver that has no use for one of its authorities simply ignores it.
@@ -56,7 +56,7 @@ import (
 // ${spring.nats} is built through it, and per-instance differences are expressed
 // through [Config].
 type Driver interface {
-	CreateClient(ctx context.Context, c Config, center *runtime.Runtime) (*Conn, error)
+	CreateClient(ctx context.Context, c Config, center *governance.Runtime) (*Conn, error)
 }
 
 // DefaultDriver is the default implementation of the Driver interface.
@@ -72,7 +72,7 @@ type DefaultDriver struct{}
 // A custom Driver that omits the handlers therefore reports no connection-layer
 // events at all, rather than losing them to a starter-side override: nats.Conn's
 // Set*Handler methods replace a slot, so the two cannot be layered.
-func (DefaultDriver) CreateClient(ctx context.Context, c Config, center *runtime.Runtime) (*Conn, error) {
+func (DefaultDriver) CreateClient(ctx context.Context, c Config, center *governance.Runtime) (*Conn, error) {
 	// Connection-layer events are counted as well as logged, from this one
 	// place (see connStateCounter for why the pair cannot be split).
 	connState := newConnStateCounter()
@@ -137,7 +137,7 @@ func (DefaultDriver) CreateClient(ctx context.Context, c Config, center *runtime
 	// NewConn is the only way to build a Conn: identity and the governance
 	// executor are both applied here, so the driver returns a connection that is
 	// complete (see [Driver]).
-	conn := NewConn(nc, c.URL)
+	conn := NewConn(nc, c.URL, center.TrafficPropagator())
 	// JetStream is derived from the same connection rather than opening a second
 	// one, and it is part of the assembled client: a failure here discards the
 	// connection rather than leaking it.
@@ -167,7 +167,7 @@ func (DefaultDriver) CreateClient(ctx context.Context, c Config, center *runtime
 // resilience manager required: the container supplies it via the governance
 // center, so a center without one fails at construction.
 func newConn(ctx *gs.ContextProvider, name string, c Config, d Driver,
-	center *runtime.Runtime) (*Conn, error) {
+	center *governance.Runtime) (*Conn, error) {
 	// The connection's identity rides on a context derived here: every line
 	// below carries it without repeating it. The provider's own context is left
 	// alone — that one is the shared application context, not this

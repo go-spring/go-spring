@@ -21,7 +21,7 @@ import (
 	"time"
 )
 
-// governanceEtcdConfig binds ${spring.governance.source.etcd.*}.
+// governanceEtcdConfig binds ${source.etcd.*}.
 type governanceEtcdConfig struct {
 	// Endpoints lists the etcd cluster nodes to dial. Required.
 	Endpoints []string `value:"${endpoints}" expr:"len($) > 0"`

@@ -218,9 +218,9 @@ gs.Run()
 | `priority` | int | 0 | 匹配顺序:priority 大的先被检查;并列(含全不配)回落到 id 升序——历史默认。随路由一起热更新。 | 重叠路径解析到 priority 更大(其次 id 更小)的路由;配了 priority 后改名 id 不再改变优先级。 |
 | `filters` | string | "" | filter DSL,见 §3.3;按声明顺序由外向内生效。 | 编译期(而非绑定期)报错。 |
 | `upstream.target` | string | — | **事实必填**:`lb://<service>` 或 `http(s)://host[:port]`。缺失/畸形 → `parseError`(compile.go:379-392)。 | 路由编译失败。 |
-| *(已移除)* | — | — | `upstream.balancer` 迁到治理:命中 `gateway:<route-id>` 的规则的 `spring.governance.client.rules[N].balancer`。策略名未知会被忽略(沿用当前策略),不会让 reload 失败。 | 链路在 push 时整条重建换策略,不需要重载路由表。 |
+| *(已移除)* | — | — | `upstream.balancer` 迁到治理:命中 `gateway:<route-id>` 的规则的 `spring.governance.client.loadbalance.services[N].balancer`。策略名未知会被忽略(沿用当前策略),不会让 reload 失败。 | 链路在 push 时整条重建换策略,不需要重载路由表。 |
 | `upstream.discovery` | string | "" | 覆盖顶层 `discovery` 的每路由后端。 | |
-| *(已移除)* | — | — | `upstream.suspend-threshold` / `upstream.suspend-for` 迁到治理:`spring.governance.client.rules[N].outlier-threshold` / `.outlier-suspend-for`,`outlier-suspend-for` 留空回落 tracker 的 5s 默认。 | 僵尸实例(活着但持续失败)在冷却期内不再收流量,不再周期性产出 502。 |
+| *(已移除)* | — | — | `upstream.suspend-threshold` / `upstream.suspend-for` 迁到治理:`spring.governance.client.loadbalance.services[N].outlier-threshold` / `.outlier-suspend-for`,`outlier-suspend-for` 留空回落 tracker 的 5s 默认。 | 僵尸实例(活着但持续失败)在冷却期内不再收流量,不再周期性产出 502。 |
 | `resilience.policy` | string | "" | 必须指向已存在的 `spring.gateway.resilience.<name>` key。⚠ 耦合:未知名字 → `unknown resilience policy` 编译错误(compile.go:236)。 | 启动失败 / reload 保留旧表。 |
 
 ⚠ **优先级耦合**:没有任何路由配 `priority` 时,匹配顺序按路由 id 排序(compile.go)。
@@ -361,7 +361,7 @@ for i in $(seq 1 100); do curl -s -o /dev/null -w '%{http_code}\n' -X POST :9440
 | `unknown resilience policy` | `resilience.policy` 指向的名字不在 `spring.gateway.resilience` 下 | 把名字加为(无值的)key;策略值来自治理规则文档(`spring.governance.*`)、服务标签 `gateway:<name>`。 |
 | 遗留 `resilience.<name>.max-retries` 等不生效 | 设计如此——value 是空结构体;绑定器忽略子 key(route.go:121-128) | 把策略迁到治理中心,服务标签 `gateway:<name>`。 |
 | `no FilterWrapper bean named …` | `jwt-auth(x)`/`lua(x)` 引用的 bean 未以 `gateway.FilterWrapper` 导出 | 用 `.Export(gs.As[gateway.FilterWrapper]())` 导出(bean 注入发生在 warmup 之前)。 |
-| `lb:// upstream cannot resolve … mesh mode active` | lb 路由缺 discovery 后端,或 mesh 模式开启 | 配 `upstream.discovery`/`spring.gateway.discovery`;mesh 模式下改路由到服务的稳定地址(proxy.go:115)。 |
+| `lb:// upstream requires in-process discovery … mesh mode` | 进程处于 mesh 模式时的 lb 路由 | 改用 `http(s)://host:port` upstream 指向服务的稳定地址；发现+LB 归 sidecar (proxy.go:101)。 |
 | 莫名 429 / 限流不跨实例 | `rateLimit` key 默认按路由 id,内存计数器存储按副本计数 | 按客户端用 `key=ip`;跨实例预算需起一个贡献共享计数器存储的 starter(`starter-ratelimit-redis`)。 |
 | 上游收到错误 path/Host | stripPrefix 段数不对;Host 默认被改写 | 调 `stripPrefix(n)`;加 `preserveHostHeader()` 或 `rewriteHost(h)`。 |
 | `tracing.enabled=true` 却没有 trace | 未导入 starter-otel | 加上;否则 OTel 全局是静默空操作。 |

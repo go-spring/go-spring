@@ -25,8 +25,9 @@ package StarterAsynq
 import (
 	"context"
 
-	"go-spring.org/cloud/runtime/dataplane/kernel/label"
-	observability "go-spring.org/cloud/runtime/dataplane/outbound/observe"
+	"go-spring.org/cloud/governance/capability/label"
+	"go-spring.org/cloud/governance/capability/traffic"
+	observability "go-spring.org/cloud/governance/dataplane/outbound/observe"
 
 	"github.com/hibiken/asynq"
 	"go-spring.org/log"
@@ -47,6 +48,10 @@ type Client struct {
 	// obs is the observer emitting the synchronous Enqueue path's span, metrics
 	// and access log, fixed by [NewClient].
 	obs *observability.OperationObserver
+
+	// prop is the process traffic convention, taken from the runtime when the
+	// client is built; each enqueue's operation records its traffic class.
+	prop traffic.Propagator
 }
 
 // NewClient builds a complete Client — observer attached — over the asynq
@@ -58,10 +63,11 @@ type Client struct {
 // asynq client has no seam for the resilience executor, so there is no
 // governance: the observer emits the span, metrics and access log, and nothing
 // throttles or retries.
-func NewClient(connOpt asynq.RedisConnOpt, addr string) *Client {
+func NewClient(connOpt asynq.RedisConnOpt, addr string, prop traffic.Propagator) *Client {
 	o := &Client{
 		Client:       asynq.NewClient(connOpt),
 		serviceLabel: label.ServiceLabel("asynq", addr),
+		prop:         prop,
 	}
 	o.obs = observability.NewOperationObserver("asynq", o.serviceLabel)
 	return o
@@ -80,7 +86,7 @@ func (o *Client) Enqueue(ctx context.Context, task *asynq.Task, opts ...asynq.Op
 		return o.Client.EnqueueContext(ctx, task, opts...)
 	}
 	var info *asynq.TaskInfo
-	err := o.obs.Observe(ctx, operation("enqueue", task.Type()), nil, func(callCtx context.Context) error {
+	err := o.obs.Observe(ctx, operation(ctx, o.prop, "enqueue", task.Type()), nil, func(callCtx context.Context) error {
 		var eerr error
 		info, eerr = o.Client.EnqueueContext(callCtx, task, opts...)
 		return eerr

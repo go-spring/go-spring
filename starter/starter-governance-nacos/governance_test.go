@@ -20,28 +20,16 @@ import (
 	"context"
 	"sync"
 	"testing"
-	"time"
 
 	"github.com/nacos-group/nacos-sdk-go/v2/clients/config_client"
 	"github.com/nacos-group/nacos-sdk-go/v2/vo"
-	"go-spring.org/cloud/runtime/controlplane/governance"
+	"go-spring.org/cloud/governance/capability/loadbalance"
 )
 
-const govRulesV1 = `spring:
-  governance:
-    enabled: true
-    client:
-      default:
-        timeout: 100ms
+const govRulesV1 = `balancer: round_robin
 `
 
-const govRulesV2 = `spring:
-  governance:
-    enabled: true
-    client:
-      default:
-        timeout: 300ms
-        max-retries: 1
+const govRulesV2 = `balancer: least_conn
 `
 
 // fakeConfigClient stands in for a nacos server: it serves one document and
@@ -110,26 +98,26 @@ func TestNacosSource_PushChain(t *testing.T) {
 
 	var mu sync.Mutex
 	var pushes int
-	var pushed governance.Config
-	src.Subscribe(func(_ context.Context, cfg governance.Config) { mu.Lock(); pushed = cfg; pushes++; mu.Unlock() })
+	var pushed loadbalance.Settings
+	src.Subscribe(func(_ context.Context, cfg loadbalance.Settings) { mu.Lock(); pushed = cfg; pushes++; mu.Unlock() })
 
-	if cfg := src.Snapshot(); cfg.Client.Default.Timeout != 100*time.Millisecond {
-		t.Fatalf("seed snapshot: %+v", cfg.Client.Default)
+	if cfg := src.Snapshot(); cfg.Default.Balancer != "round_robin" {
+		t.Fatalf("seed snapshot: %+v", cfg.Default)
 	}
 
 	// A publish with new rules pushes.
 	fake.publish(govRulesV2)
 	mu.Lock()
-	got, n := pushed.Client.Default.Timeout, pushes
+	got, n := pushed.Default.Balancer, pushes
 	mu.Unlock()
-	if n != 1 || got != 300*time.Millisecond {
+	if n != 1 || got != "least_conn" {
 		t.Fatalf("publish should push new rules once: n=%d timeout=%v", n, got)
 	}
 
 	// A bad publish keeps the last good snapshot and pushes nothing.
 	fake.publish("govern: { broken")
-	if cfg := src.Snapshot(); cfg.Client.Default.Timeout != 300*time.Millisecond {
-		t.Fatalf("bad publish must keep last good snapshot: %+v", cfg.Client.Default)
+	if cfg := src.Snapshot(); cfg.Default.Balancer != "least_conn" {
+		t.Fatalf("bad publish must keep last good snapshot: %+v", cfg.Default)
 	}
 	mu.Lock()
 	n = pushes

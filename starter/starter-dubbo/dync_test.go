@@ -17,18 +17,25 @@
 package StarterDubbo
 
 import (
-	"go-spring.org/cloud/runtime/dataplane/inbound/admission"
+	"context"
 	"testing"
 	"time"
 
+	"go-spring.org/cloud/governance/dataplane/inbound/admission"
+
 	"dubbo.apache.org/dubbo-go/v3/config_center"
-	"go-spring.org/cloud/runtime"
-	"go-spring.org/cloud/runtime/controlplane/governance"
-	serverfault "go-spring.org/cloud/runtime/dataplane/inbound/fault"
-	"go-spring.org/cloud/runtime/dataplane/kernel/loadbalance"
-	"go-spring.org/cloud/runtime/dataplane/outbound/chain"
-	clientfault "go-spring.org/cloud/runtime/dataplane/outbound/fault"
-	"go-spring.org/cloud/runtime/dataplane/outbound/resilience"
+	"go-spring.org/cloud/governance"
+	"go-spring.org/cloud/governance/capability/discovery"
+	"go-spring.org/cloud/governance/capability/loadbalance"
+	"go-spring.org/cloud/governance/capability/traffic"
+	admissionplane "go-spring.org/cloud/governance/controlplane/admission"
+	loadbalanceplane "go-spring.org/cloud/governance/controlplane/loadbalance"
+	"go-spring.org/cloud/governance/controlplane/source"
+	"go-spring.org/cloud/governance/controlplane/timeoutretry"
+	serverfault "go-spring.org/cloud/governance/dataplane/inbound/fault"
+	"go-spring.org/cloud/governance/dataplane/outbound/chain"
+	clientfault "go-spring.org/cloud/governance/dataplane/outbound/fault"
+	"go-spring.org/cloud/governance/dataplane/outbound/resilience"
 	mapconfig "go-spring.org/starter-dubbo/internal/mapconfig"
 )
 
@@ -45,8 +52,19 @@ func setConsumer(p *dyncPoller, c DubboConsumer) {
 // from another test. There is no process-global authority to reset any more —
 // each test owns its manager.
 func newTestPoller() *dyncPoller {
-	ctr, err := runtime.New(resilience.NewManager(resilience.NewDefaultDriver(nil)), loadbalance.NewManager(), clientfault.NewClientManager(nil), serverfault.NewServerManager(nil), nil, governance.NewPushSource(governance.Config{Server: governance.ServerConfig{Default: admission.DefaultPolicy()}}))
-	if err != nil {
+	ctr := &governance.Runtime{
+		Resilience:  resilience.NewManager(resilience.NewDefaultDriver(nil)),
+		LoadBalance: loadbalance.NewManager(),
+		Admission:   admission.NewManager(),
+		ClientFault: clientfault.NewManager(),
+		ServerFault: serverfault.NewManager(),
+		Directory:   discovery.NewManager(nil),
+		Traffic:     traffic.NewDefaultPropagator(traffic.DefaultBinding()),
+	}
+	if _, err := loadbalanceplane.NewCenter(context.Background(), ctr.LoadBalance, source.NewPushSource(loadbalance.Settings{})); err != nil {
+		panic(err)
+	}
+	if _, err := admissionplane.NewCenter(context.Background(), ctr.Admission, source.NewPushSource(admission.Settings{})); err != nil {
 		panic(err)
 	}
 	return newDyncPoller(DubboApplication{Name: testApp}, DubboConsumer{}, ctr)
@@ -56,12 +74,26 @@ func newTestPoller() *dyncPoller {
 // the center live so the manager is armed with cfg's policy — the behavior the
 // old package-level Arm helper provided. It returns only the poller: tests assert on the
 // published override rules, not on the center.
-func armedPoller(cfg governance.Config) *dyncPoller {
+func armedPoller(doc resilience.LimitsSettings) *dyncPoller {
 	lb := loadbalance.NewManager()
 	driver := resilience.NewDefaultDriver(nil)
 	resClient := resilience.NewManager(driver)
-	ctr, err := runtime.New(resClient, lb, clientfault.NewClientManager(nil), serverfault.NewServerManager(nil), nil, governance.NewPushSource(cfg))
-	if err != nil {
+	ctr := &governance.Runtime{
+		Resilience:  resClient,
+		LoadBalance: lb,
+		Admission:   admission.NewManager(),
+		ClientFault: clientfault.NewManager(),
+		ServerFault: serverfault.NewManager(),
+		Directory:   discovery.NewManager(nil),
+		Traffic:     traffic.NewDefaultPropagator(traffic.DefaultBinding()),
+	}
+	if _, err := loadbalanceplane.NewCenter(context.Background(), ctr.LoadBalance, source.NewPushSource(loadbalance.Settings{})); err != nil {
+		panic(err)
+	}
+	if _, err := admissionplane.NewCenter(context.Background(), ctr.Admission, source.NewPushSource(admission.Settings{})); err != nil {
+		panic(err)
+	}
+	if _, err := timeoutretry.NewCenter(context.Background(), resClient, source.NewPushSource(doc)); err != nil {
 		panic(err)
 	}
 	return &dyncPoller{
@@ -433,19 +465,22 @@ func TestDyncPoller_SidePresent(t *testing.T) {
 // how the governance rules document takes over dubbo's dynamic timeout/retry.
 func TestDyncPoller_GovernOverride(t *testing.T) {
 	dc := mapconfig.Singleton()
-	p := armedPoller(governance.Config{
-		Client: governance.ClientConfig{
-			Default: governance.ClientDefaultPolicy{
-				Policy: resilience.Policy{Timeout: 2 * time.Second, Retry: chain.RetryPolicy{MaxRetries: 4}},
-			},
-			// Per-reference override: a different timeout for one service. The key
-			// is the full dubbo service label ("dubbo:" + colonSeparatedKey).
-			Rules: []governance.ClientRule{{
-				Service: "dubbo:greet.GreetService::",
-				Policy:  resilience.Policy{Timeout: 500 * time.Millisecond, Retry: chain.RetryPolicy{MaxRetries: 1}},
-			}},
+	p := armedPoller(resilience.LimitsSettings{Rules: []resilience.LimitsRule{
+		// App-level rule: every reference of this app inherits nothing, so the
+		// app label carries the center's baseline (2s/4).
+		{
+			Service: "dubbo:test-app",
+			Action:  chain.ActionMatch{Exact: resilience.ServiceScopeAction},
+			Limits:  resilience.Limits{Timeout: 2 * time.Second, Retry: chain.RetryPolicy{MaxRetries: 4}},
 		},
-	})
+		// Per-reference override: a different timeout for one service. The key
+		// is the full dubbo service label ("dubbo:" + colonSeparatedKey).
+		{
+			Service: "dubbo:greet.GreetService::",
+			Action:  chain.ActionMatch{Exact: resilience.ServiceScopeAction},
+			Limits:  resilience.Limits{Timeout: 500 * time.Millisecond, Retry: chain.RetryPolicy{MaxRetries: 1}},
+		},
+	}})
 
 	setConsumer(p, DubboConsumer{
 		// Dubbo-native values that the center must override:
@@ -492,7 +527,7 @@ func TestDyncPoller_EmptyGovernIsNoop(t *testing.T) {
 	dc := mapconfig.Singleton()
 	// An empty document: the center goes live and the manager is armed, but
 	// PolicyFor resolves zero, so nothing is overridden.
-	p := armedPoller(governance.Config{})
+	p := armedPoller(resilience.LimitsSettings{})
 
 	setConsumer(p, DubboConsumer{
 		RequestTimeout: "3000", Retries: 2,

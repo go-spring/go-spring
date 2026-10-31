@@ -21,8 +21,8 @@ import (
 	"time"
 
 	"github.com/apache/thrift/lib/go/thrift"
-	"go-spring.org/cloud/runtime"
-	"go-spring.org/cloud/runtime/dataplane/kernel/label"
+	"go-spring.org/cloud/governance"
+	"go-spring.org/cloud/governance/capability/label"
 	"go-spring.org/cloud/security"
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
@@ -94,13 +94,13 @@ type SimpleThriftServer struct {
 
 	// center is the runtime bean gs injects (nil in a standalone
 	// call); its resilience authority backs the inbound middleware Run installs.
-	center *runtime.Runtime
+	center *governance.Runtime
 }
 
 // NewSimpleThriftServer creates a SimpleThriftServer from ${spring.thrift.server}
 // configuration. center is the injected runtime the inbound
 // middleware is armed from.
-func NewSimpleThriftServer(cfg Config, proc thrift.TProcessor, center *runtime.Runtime) *SimpleThriftServer {
+func NewSimpleThriftServer(cfg Config, proc thrift.TProcessor, center *governance.Runtime) *SimpleThriftServer {
 	log.Debug(context.Background(), log.TagAppDef, "create thrift server success", func() []log.Field {
 		return []log.Field{
 			log.String("addr", cfg.Addr),

@@ -125,7 +125,7 @@ See [example/README.md](example/README.md) for the list, and
   the abstraction contributes the reload behaviour.
 * **Self-observed, never governed.** This starter emits its own span and metrics and
   takes no part in the framework's executor chain: no governance bean, no
-  `*runtime.Runtime`, nothing that a rule could arm. A rate limit or a breaker would be
+  `*governance.Runtime`, nothing that a rule could arm. A rate limit or a breaker would be
   wrong here — the dependency is in this process, so "the downstream is down" cannot
   happen, while a breaker tripped by a transient `ErrEntryTooLarge` would reject
   `Get`s that would have hit. It writes no access log either: a cache call is

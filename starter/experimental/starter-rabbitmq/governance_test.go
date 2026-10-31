@@ -21,6 +21,7 @@ import (
 	"testing"
 
 	amqp "github.com/rabbitmq/amqp091-go"
+	"go-spring.org/cloud/governance/capability/traffic"
 	"go-spring.org/stdlib/testing/assert"
 )
 
@@ -56,7 +57,7 @@ func (q queueLayer) Publish(ctx context.Context, ch *amqp.Channel, exchange, key
 func TestInnerPublisherReorganize(t *testing.T) {
 	tail := &fakeTail{}
 	// No observer: the emitting layer runs the publish inline.
-	cl := &Client{InnerPublisher: NewObsPublisher(tail, nil)}
+	cl := &Client{InnerPublisher: NewObsPublisher(tail, nil, traffic.NewDefaultPropagator(traffic.DefaultBinding()))}
 	cl.InnerPublisher = queueLayer{InnerPublisher: cl.InnerPublisher, prefix: "tenant."}
 
 	err := cl.InnerPublisher.Publish(context.Background(), nil, "", "jobs", false, false, amqp.Publishing{})

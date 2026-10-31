@@ -24,7 +24,7 @@ import (
 	"sync"
 	"time"
 
-	"go-spring.org/cloud/runtime/dataplane/kernel/traffic"
+	"go-spring.org/cloud/governance/capability/traffic"
 )
 
 // Classify maps an op's error to a bucket label. The default ([DefaultClassify])
@@ -122,7 +122,7 @@ func (r *Runner) Run(ctx context.Context, op Op) *Result {
 		runCtx, cancel = context.WithTimeout(ctx, r.duration)
 		defer cancel()
 	}
-	runCtx = r.prop.WithLoadTest(runCtx)
+	runCtx = r.prop.WithKind(runCtx, traffic.KindLoadTest)
 
 	rec := newRecorder(r.classify)
 

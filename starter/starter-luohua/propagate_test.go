@@ -22,9 +22,9 @@ import (
 	"strings"
 	"testing"
 
+	"go-spring.org/cloud/governance/capability/traffic"
 	"go-spring.org/cloud/observability/attrs"
 	"go-spring.org/cloud/propagate"
-	"go-spring.org/cloud/runtime/dataplane/kernel/traffic"
 	"go-spring.org/log"
 	"go.opentelemetry.io/otel/propagation"
 )
@@ -99,11 +99,11 @@ func TestLoadTestPropagatorRebasesTheMarker(t *testing.T) {
 	if _, ok := p.(traffic.DefaultPropagator); !ok {
 		t.Fatalf("loadTestPropagator returned %T, want go-spring's propagator", p)
 	}
-	ctx := p.WithLoadTest(context.Background())
+	ctx := p.WithKind(context.Background(), traffic.KindLoadTest)
 	carrier := propagate.MultiMap{}
 	p.Inject(ctx, carrier)
-	if got := carrier[meta]; len(got) != 1 || got[0] != "1" {
-		t.Fatalf("Inject wrote %v, want %q=1 under %q", got, "1", meta)
+	if got := carrier[meta]; len(got) != 1 || got[0] != "loadtest" {
+		t.Fatalf("Inject wrote %v, want %q under %q", got, "loadtest", meta)
 	}
 	plain, err := loadTestPropagator(PropagateConfig{})
 	if err != nil {

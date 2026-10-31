@@ -18,7 +18,7 @@ package StarterMilvus
 
 import (
 	"go-spring.org/cloud/actuator/health"
-	"go-spring.org/cloud/runtime"
+	"go-spring.org/cloud/governance"
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
@@ -71,7 +71,7 @@ func init() {
 //
 // cp carries the application context gs injects into a constructor (a bare
 // context.Context is not an injectable bean).
-func newClient(cp *gs.ContextProvider, c Config, center *runtime.Runtime) (*Client, error) {
+func newClient(cp *gs.ContextProvider, c Config, center *governance.Runtime) (*Client, error) {
 	ctx := cp.Context
 	w, err := NewClient(ctx, c, center)
 	if err != nil {

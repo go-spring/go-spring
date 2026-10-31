@@ -22,7 +22,7 @@ import (
 	"testing"
 
 	"go-spring.org/cloud/experimental/batch"
-	"go-spring.org/cloud/runtime/dataplane/outbound/chain"
+	"go-spring.org/cloud/governance/dataplane/outbound/chain"
 	"go-spring.org/stdlib/errutil"
 	"go-spring.org/stdlib/testing/assert"
 )

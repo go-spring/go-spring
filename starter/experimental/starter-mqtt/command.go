@@ -35,9 +35,10 @@ import (
 	"context"
 	"sync"
 
-	"go-spring.org/cloud/runtime/dataplane/kernel/label"
-	"go-spring.org/cloud/runtime/dataplane/outbound/chain"
-	observability "go-spring.org/cloud/runtime/dataplane/outbound/observe"
+	"go-spring.org/cloud/governance/capability/label"
+	"go-spring.org/cloud/governance/capability/traffic"
+	"go-spring.org/cloud/governance/dataplane/outbound/chain"
+	observability "go-spring.org/cloud/governance/dataplane/outbound/observe"
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 )
@@ -64,6 +65,10 @@ import (
 type clientObserver struct {
 	obs          *observability.OperationObserver
 	serviceLabel string
+	// prop is the process traffic convention the driver took from the runtime
+	// when it built the client; each declared operation records its traffic
+	// class.
+	prop traffic.Propagator
 }
 
 // clientGuards indexes the observer by the raw client, so GuardedPublish can
@@ -89,11 +94,12 @@ var clientGuards sync.Map // mqtt.Client -> *clientObserver
 // limiting the publish rate and short-circuiting (circuit breaker) when the
 // broker is unhealthy — and is driven through an opt-in call-site guard
 // ([GuardedPublish]).
-func AttachObserver(cl mqtt.Client, broker string) {
+func AttachObserver(cl mqtt.Client, broker string, prop traffic.Propagator) {
 	label := label.ServiceLabel("mqtt", broker)
 	clientGuards.Store(cl, &clientObserver{
 		obs:          observability.NewOperationObserver("mqtt", label),
 		serviceLabel: label,
+		prop:         prop,
 	})
 }
 
@@ -106,12 +112,13 @@ func forgetObserver(cl mqtt.Client) {
 // inline. A client built through a [Driver] always carries the observer, so
 // emission is a zero-code opt-in on the caller side; a bare client that never
 // went through a driver has none and the call runs inline, unobserved.
-func observe(ctx context.Context, cl mqtt.Client, op chain.Operation, call func(context.Context) error) error {
+func observe(ctx context.Context, cl mqtt.Client, declare func(traffic.Propagator) chain.Operation, call func(context.Context) error) error {
 	v, ok := clientGuards.Load(cl)
 	if !ok {
 		return call(ctx)
 	}
-	return v.(*clientObserver).obs.Observe(ctx, op, nil, call)
+	co := v.(*clientObserver)
+	return co.obs.Observe(ctx, declare(co.prop), nil, call)
 }
 
 // GuardedPublish publishes payload to topic at qos, routed through the
@@ -126,7 +133,9 @@ func observe(ctx context.Context, cl mqtt.Client, op chain.Operation, call func(
 // The function blocks until paho acknowledges the outbound handoff (immediately
 // at QoS 0, after a PUBACK/PUBCOMP at QoS 1/2).
 func GuardedPublish(ctx context.Context, cl mqtt.Client, topic string, qos byte, retained bool, payload interface{}) error {
-	return observe(ctx, cl, operation(opSend, topic), func(context.Context) error {
+	return observe(ctx, cl, func(prop traffic.Propagator) chain.Operation {
+		return operation(ctx, prop, opSend, topic)
+	}, func(context.Context) error {
 		token := cl.Publish(topic, qos, retained, payload)
 		token.Wait()
 		return token.Error()
@@ -151,5 +160,7 @@ func GuardedPublish(ctx context.Context, cl mqtt.Client, topic string, qos byte,
 // callback is fire-and-forget, so the returned error is the caller's to log —
 // there is no ack/nack for MQTT 3.1.1.
 func GuardedConsume(ctx context.Context, cl mqtt.Client, msg mqtt.Message, handler func(context.Context) error) error {
-	return observe(ctx, cl, operation(opProcess, msg.Topic()), handler)
+	return observe(ctx, cl, func(prop traffic.Propagator) chain.Operation {
+		return operation(ctx, prop, opProcess, msg.Topic())
+	}, handler)
 }

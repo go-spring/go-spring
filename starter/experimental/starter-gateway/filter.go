@@ -25,8 +25,8 @@ import (
 	"sync"
 	"time"
 
-	"go-spring.org/cloud/runtime/dataplane/kernel/ratelimit"
-	"go-spring.org/cloud/runtime/dataplane/outbound/resilience"
+	"go-spring.org/cloud/governance/capability/ratelimit"
+	"go-spring.org/cloud/governance/dataplane/outbound/resilience"
 	"go-spring.org/log"
 )
 
@@ -235,7 +235,7 @@ func rateLimitFilter(args []string, limiter ratelimit.ClusterLimiter) (Filter, e
 	if err != nil {
 		return nil, err
 	}
-	pol := resilience.Policy{Algorithm: ratelimit.Algorithm(kv["algorithm"])}
+	pol := resilience.RateLimitPolicy{Algorithm: ratelimit.Algorithm(kv["algorithm"])}
 	if s := kv["rate"]; s != "" {
 		if pol.RateLimit, err = strconv.ParseFloat(s, 64); err != nil {
 			return nil, &parseError{what: "rateLimit rate", token: s}
@@ -266,7 +266,7 @@ func rateLimitFilter(args []string, limiter ratelimit.ClusterLimiter) (Filter, e
 			if keyMode == "ip" {
 				scope = scope + "|" + clientIP(r)
 			}
-			admitted, err := limiter.Allow(r.Context(), scope, pol.RateSpec(), 1)
+			admitted, err := limiter.Allow(r.Context(), scope, pol.Spec(), 1)
 			switch {
 			case err != nil:
 				// Fail open: a broken counter store (e.g. a Redis blip) must

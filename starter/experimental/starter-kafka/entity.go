@@ -26,8 +26,9 @@ package StarterKafka
 import (
 	"context"
 	"github.com/twmb/franz-go/pkg/kgo"
-	"go-spring.org/cloud/runtime/dataplane/outbound/chain"
-	observability "go-spring.org/cloud/runtime/dataplane/outbound/observe"
+	"go-spring.org/cloud/governance/capability/traffic"
+	"go-spring.org/cloud/governance/dataplane/outbound/chain"
+	observability "go-spring.org/cloud/governance/dataplane/outbound/observe"
 	"go-spring.org/log"
 )
 
@@ -55,6 +56,10 @@ type Client struct {
 	// Unaffected by head reorganization. A kafka client has no seam for the
 	// resilience executor, so this is observation only — no governance.
 	obs *observability.OperationObserver
+
+	// prop is the process traffic convention, taken from the runtime when the
+	// client is built; each operation records its traffic class.
+	prop traffic.Propagator
 }
 
 // NewClient builds a complete Client — emitting layer and all — over a raw
@@ -63,9 +68,9 @@ type Client struct {
 // resilience executor, so there is no governance here: the observer emits the
 // produce/consume span, metrics and access log, and nothing throttles or
 // retries.
-func NewClient(cl *kgo.Client, brokers string) *Client {
+func NewClient(cl *kgo.Client, brokers string, prop traffic.Propagator) *Client {
 	obs := observability.NewOperationObserver("kafka", serviceLabelOf(brokers))
-	return &Client{Kafka: cl, InnerKafka: NewObsKafka(NewRawKafka(cl), obs), obs: obs}
+	return &Client{Kafka: cl, InnerKafka: NewObsKafka(NewRawKafka(cl), obs, prop), obs: obs, prop: prop}
 }
 
 // Close tears the client down: any buffered produce records are flushed (so

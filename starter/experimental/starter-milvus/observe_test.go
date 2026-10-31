@@ -21,11 +21,15 @@ import (
 	"strings"
 	"testing"
 
-	"go-spring.org/cloud/runtime/dataplane/outbound/chain"
+	"go-spring.org/cloud/governance/capability/traffic"
+	"go-spring.org/cloud/governance/dataplane/outbound/chain"
 	"go-spring.org/stdlib/testing/assert"
 	"go.opentelemetry.io/otel/attribute"
 	"google.golang.org/grpc"
 )
+
+// testProp is the process traffic convention these fixtures run under.
+var testProp = traffic.NewDefaultPropagator(traffic.DefaultBinding())
 
 // attrsLine renders attributes as "k=v" pairs in slice order.
 func attrsLine(attrs []attribute.KeyValue) string {
@@ -40,7 +44,7 @@ func attrsLine(attrs []attribute.KeyValue) string {
 // the emitter needs: the operation name for the span, the family's metric
 // prefix, the db.* labels and this starter's access-log tag.
 func TestOperationDeclaresFamilyVocabulary(t *testing.T) {
-	op := operation("/milvus.proto.milvus.MilvusService/Search")
+	op := operation(context.Background(), testProp, "/milvus.proto.milvus.MilvusService/Search")
 	assert.String(t, op.Request.Action).Equal("Search")
 	assert.String(t, op.Observe.Metric.Name).Equal("db.client")
 	assert.String(t, attrsLine(op.Observe.Metric.Attrs)).Equal("db.system=milvus,db.operation=Search")
@@ -51,7 +55,7 @@ func TestOperationDeclaresFamilyVocabulary(t *testing.T) {
 // path must reach the span and the log but never a metric label. It is asserted
 // on Attrs because Attrs is what labels are built from.
 func TestOperationMethodStaysOutOfLabels(t *testing.T) {
-	op := operation("/milvus.proto.milvus.MilvusService/Search")
+	op := operation(context.Background(), testProp, "/milvus.proto.milvus.MilvusService/Search")
 	for _, a := range op.Observe.Metric.Attrs {
 		assert.That(t, string(a.Key) == "db.method").False()
 	}
@@ -61,7 +65,7 @@ func TestOperationMethodStaysOutOfLabels(t *testing.T) {
 // TestOperationTakesBoundedMethodName proves the operation name is only the
 // bounded last segment — the finest dimension the gRPC interceptor can see.
 func TestOperationTakesBoundedMethodName(t *testing.T) {
-	op := operation("/milvus.proto.milvus.MilvusService/CreateCollection")
+	op := operation(context.Background(), testProp, "/milvus.proto.milvus.MilvusService/CreateCollection")
 	assert.String(t, op.Request.Action).Equal("CreateCollection")
 	assert.That(t, strings.Contains(attrsLine(op.Observe.Metric.Attrs), "db.operation=CreateCollection")).True()
 }
@@ -69,7 +73,7 @@ func TestOperationTakesBoundedMethodName(t *testing.T) {
 // TestOperationWithoutSlashKeepsWholeWord proves a bare method string (no path
 // separator) still declares a name and a detail rather than an empty one.
 func TestOperationWithoutSlashKeepsWholeWord(t *testing.T) {
-	op := operation("Flush")
+	op := operation(context.Background(), testProp, "Flush")
 	assert.String(t, op.Request.Action).Equal("Flush")
 	assert.String(t, attrsLine(detailAttrs(op))).Equal("db.method=Flush")
 }
@@ -98,7 +102,7 @@ func (e *captureExecutor) Close() error { return nil }
 func TestUnaryGuardDeclaresOperationBeforeExecuting(t *testing.T) {
 	exec := &captureExecutor{}
 	slot := &guardSlot{}
-	slot.apply(exec, "milvus:test")
+	slot.apply(exec, "milvus:test", testProp)
 
 	var ran int
 	invoker := func(context.Context, string, any, any, *grpc.ClientConn, ...grpc.CallOption) error {
@@ -118,7 +122,7 @@ func TestUnaryGuardDeclaresOperationBeforeExecuting(t *testing.T) {
 func TestStreamGuardDeclaresOperationBeforeExecuting(t *testing.T) {
 	exec := &captureExecutor{}
 	slot := &guardSlot{}
-	slot.apply(exec, "milvus:test")
+	slot.apply(exec, "milvus:test", testProp)
 
 	streamer := func(context.Context, *grpc.StreamDesc, *grpc.ClientConn, string, ...grpc.CallOption) (grpc.ClientStream, error) {
 		return nil, nil

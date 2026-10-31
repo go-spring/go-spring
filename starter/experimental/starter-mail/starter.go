@@ -22,7 +22,7 @@ import (
 	"strings"
 
 	"github.com/wneessen/go-mail"
-	"go-spring.org/cloud/runtime"
+	"go-spring.org/cloud/governance"
 	"go-spring.org/log"
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/gs"
@@ -64,7 +64,7 @@ func init() {
 // builds its executor from it, so the mailer is assembled complete in one step.
 // The resilience manager is required: the container supplies it via the
 // runtime, so a runtime without one fails at construction.
-func newMailer(ctx *gs.ContextProvider, name string, c Config, center *runtime.Runtime) (*Mailer, error) {
+func newMailer(ctx *gs.ContextProvider, name string, c Config, center *governance.Runtime) (*Mailer, error) {
 	if err := errutil.RequireField("mail", "host", c.Host); err != nil {
 		return nil, err
 	}
@@ -137,8 +137,8 @@ func newMailer(ctx *gs.ContextProvider, name string, c Config, center *runtime.R
 	// The chain owns everything, one statement per layer: identity over
 	// governance over the raw adapter. Governance is applied HERE, while the
 	// mailer is built, so a *Mailer cannot exist half-assembled; a hand-built
-	// mailer must supply a [runtime.Runtime] over a [resilience.Manager], since
-	// the center is required to carry one — [runtime.Runtime.ExecutorFor] panics
+	// mailer must supply a [governance.Runtime] over a [resilience.Manager], since
+	// the center is required to carry one — [governance.Runtime.ExecutorFor] panics
 	// otherwise, never a graceful downgrade.
 	raw := NewRawMailer(client, c.From)
 	guard := NewGuardMailer(raw, name, c.Host, center)

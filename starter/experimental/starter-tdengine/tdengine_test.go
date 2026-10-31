@@ -20,12 +20,16 @@ import (
 	"context"
 	"database/sql/driver"
 	"errors"
-	"go-spring.org/cloud/runtime/dataplane/outbound/chain"
+	"go-spring.org/cloud/governance/capability/traffic"
+	"go-spring.org/cloud/governance/dataplane/outbound/chain"
 	"testing"
 
-	"go-spring.org/cloud/runtime/dataplane/outbound/resilience"
+	"go-spring.org/cloud/governance/dataplane/outbound/resilience"
 	"go-spring.org/stdlib/testing/assert"
 )
+
+// testProp is the propagator the tests hand to the operation builder.
+var testProp = traffic.NewDefaultPropagator(traffic.DefaultBinding())
 
 // stubConn is a driver.Conn whose Exec/Query results are scripted.
 type stubConn struct {
@@ -51,7 +55,7 @@ func (c *stubConn) QueryContext(_ context.Context, query string, _ []driver.Name
 // the guard is a zero-config opt-in, matching the other client adapters.
 func TestGuardedConnPassThrough(t *testing.T) {
 	sc := &stubConn{}
-	conn := guardedConn{base: sc, slot: &clientSlot{}}
+	conn := guardedConn{base: sc, slot: &clientSlot{prop: testProp}}
 
 	_, err := conn.ExecContext(context.Background(), "CREATE DATABASE x", nil)
 	assert.Error(t, err).Nil()
@@ -61,14 +65,14 @@ func TestGuardedConnPassThrough(t *testing.T) {
 // TestGuardedConnRateLimit confirms the flow-control path: once the burst is
 // spent, the statement is rejected without reaching the connection.
 func TestGuardedConnRateLimit(t *testing.T) {
-	d := resilience.NewDefaultDriver(nil)
-	exec, err := d.NewExecutor("svc", resilience.Policy{RateLimit: 1, Burst: 1})
-	assert.Error(t, err).Nil()
+	m := resilience.NewManager(resilience.NewDefaultDriver(nil))
+	assert.Error(t, m.ApplyRateLimit(resilience.RateLimitSettings{Default: resilience.RateLimitPolicy{RateLimit: 1, Burst: 1}})).Nil()
+	exec := m.ExecutorFor("svc")
 
 	sc := &stubConn{}
-	conn := guardedConn{base: sc, slot: &clientSlot{exec: exec}}
+	conn := guardedConn{base: sc, slot: &clientSlot{exec: exec, prop: testProp}}
 
-	_, err = conn.ExecContext(context.Background(), "INSERT INTO t VALUES(now, 1)", nil)
+	_, err := conn.ExecContext(context.Background(), "INSERT INTO t VALUES(now, 1)", nil)
 	assert.Error(t, err).Nil()
 	_, err = conn.ExecContext(context.Background(), "INSERT INTO t VALUES(now, 2)", nil)
 	assert.Error(t, err).Is(chain.ErrRateLimited)

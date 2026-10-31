@@ -25,9 +25,9 @@ import (
 	"github.com/gin-contrib/gzip"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"go-spring.org/cloud/governance"
+	"go-spring.org/cloud/governance/capability/traffic"
 	"go-spring.org/cloud/propagate"
-	"go-spring.org/cloud/runtime"
-	"go-spring.org/cloud/runtime/dataplane/kernel/traffic"
 	"go-spring.org/stdlib/errutil"
 )
 
@@ -95,14 +95,14 @@ func RequestIDFromContext(ctx context.Context) string {
 // middleware the requests are gated on (nil likewise, which disables injection).
 // prop is the load-test convention bean — the application.s when it provides
 // one, go-spring.s default otherwise.
-func ApplyMiddlewares(e *gin.Engine, cfg Config, center *runtime.Runtime, prop traffic.Propagator) error {
+func ApplyMiddlewares(e *gin.Engine, cfg Config, center *governance.Runtime, prop traffic.Propagator) error {
 	mw := cfg.Middleware
 
 	// LoadTest identification is outermost of all: it tags the request context
 	// with the load-test marker (when the inbound header carries it) before
 	// RequestID, Observe or any handler runs, so every downstream layer —
 	// access logs, metrics, the handler, and any outbound client the handler
-	// calls — can branch on the load-test convention's IsLoadTest. The check is
+	// calls — can branch on `traffic.IsLoadTest`. The check is
 	// a single header lookup, so leaving it on (the default) is effectively
 	// free; flip middleware.loadtest.enabled off to disable.
 	if mw.LoadTest.Enabled {
@@ -129,7 +129,7 @@ func ApplyMiddlewares(e *gin.Engine, cfg Config, center *runtime.Runtime, prop t
 	// Resilience inbound (opt-in): runs the request through the configured
 	// rate-limit / bulkhead before the handler chain. Sits inside
 	// Observe so 429/503 rejects are still observed.
-	adm, err := buildServerPolicy(cfg, center)
+	adm, err := buildServerPolicy(cfg, center, prop)
 	if err != nil {
 		return errutil.Explain(err, "gin: resilience inbound")
 	}
@@ -180,7 +180,7 @@ func ApplyMiddlewares(e *gin.Engine, cfg Config, center *runtime.Runtime, prop t
 // When the incoming request carries the propagator's marker header it tags the
 // request context, so the handler chain and every outbound client the handlers
 // drive can recognise synthetic load through prop. It is the inbound companion
-// to cloud/runtime/dataplane/kernel/traffic's outbound injection: together they let a
+// to cloud/governance/capability/traffic's outbound injection: together they let a
 // load-test flag ride an HTTP hop end to end.
 //
 // Which header that is belongs to the propagator (a company re-bases it there,

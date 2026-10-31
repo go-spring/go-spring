@@ -23,8 +23,8 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	"go-spring.org/cloud/runtime"
-	"go-spring.org/cloud/runtime/dataplane/kernel/traffic"
+	"go-spring.org/cloud/governance"
+	"go-spring.org/cloud/governance/capability/traffic"
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
@@ -103,7 +103,7 @@ type SimpleGinServer struct {
 // application's load-test convention bean (nullable - nil when none is
 // provided), which the inbound LoadTest middleware tags the request context
 // with.
-func NewSimpleGinServer(register RouterRegister, outer EngineMiddleware, cfg Config, center *runtime.Runtime, prop traffic.Propagator) (*SimpleGinServer, error) {
+func NewSimpleGinServer(register RouterRegister, outer EngineMiddleware, cfg Config, center *governance.Runtime, prop traffic.Propagator) (*SimpleGinServer, error) {
 	e := gin.New()
 
 	// Run the application-supplied outer hook first, so it wraps the built-in

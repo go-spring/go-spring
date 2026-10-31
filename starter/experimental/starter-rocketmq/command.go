@@ -45,7 +45,8 @@ import (
 
 	"github.com/apache/rocketmq-client-go/v2"
 	"github.com/apache/rocketmq-client-go/v2/primitive"
-	observability "go-spring.org/cloud/runtime/dataplane/outbound/observe"
+	"go-spring.org/cloud/governance/capability/traffic"
+	observability "go-spring.org/cloud/governance/dataplane/outbound/observe"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
@@ -235,11 +236,12 @@ func (r *RawProducer) SendSync(ctx context.Context, msg *primitive.Message) (*pr
 type ObsProducer struct {
 	next InnerProducer
 	obs  *observability.OperationObserver
+	prop traffic.Propagator
 }
 
 // NewObsProducer builds the emitting layer over next.
-func NewObsProducer(next InnerProducer, obs *observability.OperationObserver) *ObsProducer {
-	return &ObsProducer{next: next, obs: obs}
+func NewObsProducer(next InnerProducer, obs *observability.OperationObserver, prop traffic.Propagator) *ObsProducer {
+	return &ObsProducer{next: next, obs: obs, prop: prop}
 }
 
 // Release hands releaseRaw to the layer under it — this layer holds no
@@ -251,7 +253,7 @@ func (o *ObsProducer) SendSync(ctx context.Context, msg *primitive.Message) (*pr
 	if o.obs == nil {
 		return o.next.SendSync(ctx, msg)
 	}
-	err := o.obs.Observe(ctx, operation(opSend, msg.Topic), nil, func(callCtx context.Context) error {
+	err := o.obs.Observe(ctx, operation(ctx, o.prop, opSend, msg.Topic), nil, func(callCtx context.Context) error {
 		var serr error
 		res, serr = o.next.SendSync(callCtx, msg)
 		return serr

@@ -153,7 +153,7 @@ import starter-go-redis
 gs.Run()
   └─ ctor newClient [starter.go:129] — assembles the client COMPLETELY, then probes:
        ├─ validateConfig → driver lookup → driver.CreateClient(ctx, c, center)
-       │    (the container injects one *runtime.Runtime — the family's sole
+       │    (the container injects one *governance.Runtime — the family's sole
        │     injection point; c.Discovery already carries the family-default
        │     discovery label, which the Driver resolves itself)
        │    └─ DefaultDriver builds the raw client, hands it (with center) to NewClient [client.go:106]
@@ -237,12 +237,12 @@ rejected at startup: those topologies discover their own nodes [starter.go].
 to `NewClient` (which keeps it on the wrapper); building it is itself the registration under
 `redis:<service-name|master-name|addr>` — `center.Loadbalance().Chain(resolver, label)` — so the Driver registers it
 against the governance center it already receives and a company Driver needs no extra step, and
-`spring.governance.client.rules[N].balancer` / `outlier-threshold` / `outlier-suspend-for` for that label **rebuild
+`spring.governance.client.loadbalance.services[N].balancer` / `outlier-threshold` / `outlier-suspend-for` for that label **rebuild
 the chain from scratch** — the next dial runs the new strategy on a fresh balancer and suspension tracker. The
 dialer feeds `Complete` with the dial
 outcome, so `outlier-threshold` evicts instances that keep refusing *connections*. Sentinel and
 cluster clients self-discover and have no chain, so these keys do not reach them. See
-`cloud/runtime/controlplane/governance/README.md` §3.1.
+`cloud/governance/README.md` §3.1.
 
 ---
 

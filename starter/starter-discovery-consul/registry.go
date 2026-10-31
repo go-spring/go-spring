@@ -27,8 +27,8 @@ import (
 	"time"
 
 	"github.com/hashicorp/consul/api"
-	"go-spring.org/cloud/runtime/controlplane/registration"
-	"go-spring.org/cloud/runtime/dataplane/kernel/discovery"
+	"go-spring.org/cloud/governance/capability/discovery"
+	"go-spring.org/cloud/governance/controlplane/registration"
 	"go-spring.org/log"
 	"go-spring.org/stdlib/errutil"
 )

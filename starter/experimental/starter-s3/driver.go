@@ -26,7 +26,7 @@ import (
 
 	"github.com/minio/minio-go/v7"
 	"github.com/minio/minio-go/v7/pkg/credentials"
-	"go-spring.org/cloud/runtime"
+	"go-spring.org/cloud/governance"
 	"go-spring.org/stdlib/errutil"
 )
 
@@ -42,7 +42,7 @@ import (
 // the ecosystem sees. It returns the client COMPLETE: cfg fixes the endpoint the
 // resilience service label is derived from, the driver hands the wrapper the
 // [dynamicTransport] it installed so the guarded transport can be swapped in,
-// and center supplies the container's facilities (see [runtime.Runtime]),
+// and center supplies the container's facilities (see [governance.Runtime]),
 // which [NewClient] applies while building. Nothing patches the client
 // afterwards.
 //
@@ -54,7 +54,7 @@ import (
 // ${spring.s3} is built through it, and per-instance differences are expressed
 // through [Config].
 type Driver interface {
-	CreateClient(ctx context.Context, c Config, center *runtime.Runtime) (*Client, error)
+	CreateClient(ctx context.Context, c Config, center *governance.Runtime) (*Client, error)
 }
 
 // DefaultDriver is the default implementation of the Driver interface.
@@ -69,7 +69,7 @@ type DefaultDriver struct{}
 // transport and returns a wrapper built over it: [NewClient] swaps the
 // declaration+resilience stack in, with the indirection keeping it installable
 // after minio.New has already captured the transport.
-func (DefaultDriver) CreateClient(ctx context.Context, c Config, center *runtime.Runtime) (*Client, error) {
+func (DefaultDriver) CreateClient(ctx context.Context, c Config, center *governance.Runtime) (*Client, error) {
 	lookup, err := bucketLookupType(c.BucketLookup)
 	if err != nil {
 		return nil, errutil.Explain(err, "s3: invalid bucket-lookup %q", c.BucketLookup)

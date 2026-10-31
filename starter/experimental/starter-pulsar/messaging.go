@@ -22,9 +22,9 @@ import (
 	"sync"
 
 	"github.com/apache/pulsar-client-go/pulsar"
+	"go-spring.org/cloud/governance/capability/traffic"
 	"go-spring.org/cloud/messaging"
 	"go-spring.org/cloud/propagate"
-	"go-spring.org/cloud/runtime/dataplane/kernel/traffic"
 	"go-spring.org/log"
 )
 
@@ -121,7 +121,7 @@ func (p *publisher) Publish(ctx context.Context, msg *messaging.Message) error {
 	// GuardedSend declares the publish (topic/direction) and runs it under the
 	// client-scoped resilience executor, a no-op pass-through when governance is
 	// off for this client and a rejection sentinel when rate-limited/circuit-open.
-	_, err := GuardedSend(ctx, p.cl, p.p, pm)
+	_, err := GuardedSend(ctx, p.prop, p.cl, p.p, pm)
 	return err
 }
 
@@ -167,13 +167,13 @@ func (s *subscriber) Subscribe(ctx context.Context, handler messaging.Handler) e
 				continue
 			}
 			// Extract the load-test marker the producer put in Properties so the
-			// handler sees synthetic load via the propagator's IsLoadTest(msgCtx),
+			// handler sees synthetic load via `traffic.IsLoadTest`,
 			// then continue the producer's W3C trace and declare the consume. The
 			// handler runs under the resilience executor, which emits the span,
 			// metrics and access log from the declaration.
 			msgCtx := s.prop.Extract(loopCtx, propagate.StringMap(msg.Properties()))
 			msgCtx = extractTraceContext(msgCtx, msg.Properties())
-			herr := observe(msgCtx, s.cl, operation(opProcess, s.source), func(attemptCtx context.Context) error {
+			herr := observe(msgCtx, s.cl, operation(msgCtx, s.prop, opProcess, s.source), func(attemptCtx context.Context) error {
 				return handler(attemptCtx, fromPulsarMsg(msg))
 			})
 			if herr != nil {

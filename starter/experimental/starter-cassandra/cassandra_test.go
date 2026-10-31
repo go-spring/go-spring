@@ -21,24 +21,45 @@ import (
 	"errors"
 	"testing"
 
-	"go-spring.org/cloud/runtime/dataplane/outbound/chain"
+	"go-spring.org/cloud/governance/capability/traffic"
+	admissionplane "go-spring.org/cloud/governance/controlplane/admission"
+	loadbalanceplane "go-spring.org/cloud/governance/controlplane/loadbalance"
+	"go-spring.org/cloud/governance/controlplane/source"
+	"go-spring.org/cloud/governance/dataplane/outbound/chain"
 
 	"github.com/gocql/gocql"
-	"go-spring.org/cloud/runtime"
-	serverfault "go-spring.org/cloud/runtime/dataplane/inbound/fault"
-	clientfault "go-spring.org/cloud/runtime/dataplane/outbound/fault"
-	observability "go-spring.org/cloud/runtime/dataplane/outbound/observe"
-	"go-spring.org/cloud/runtime/dataplane/outbound/resilience"
+	"go-spring.org/cloud/governance"
+	"go-spring.org/cloud/governance/capability/discovery"
+	"go-spring.org/cloud/governance/capability/loadbalance"
+	"go-spring.org/cloud/governance/dataplane/inbound/admission"
+	serverfault "go-spring.org/cloud/governance/dataplane/inbound/fault"
+	clientfault "go-spring.org/cloud/governance/dataplane/outbound/fault"
+	observability "go-spring.org/cloud/governance/dataplane/outbound/observe"
+	"go-spring.org/cloud/governance/dataplane/outbound/resilience"
 	"go-spring.org/stdlib/testing/assert"
 )
+
+// testProp is the process traffic convention these fixtures run under.
+var testProp = traffic.NewDefaultPropagator(traffic.DefaultBinding())
 
 // newTestCenter builds a runtime over an unarmed resilience manager
 // and an empty fault injector — the container-supplied facilities a Client is
 // assembled with.
-func newTestCenter(t *testing.T) *runtime.Runtime {
+func newTestCenter(t *testing.T) *governance.Runtime {
 	t.Helper()
-	ctr, err := runtime.NewProcess(resilience.NewManager(resilience.NewDefaultDriver(nil)), clientfault.NewClientManager(nil), serverfault.NewServerManager(nil))
-	if err != nil {
+	ctr := &governance.Runtime{
+		Resilience:  resilience.NewManager(resilience.NewDefaultDriver(nil)),
+		LoadBalance: loadbalance.NewManager(),
+		Admission:   admission.NewManager(),
+		ClientFault: clientfault.NewManager(),
+		ServerFault: serverfault.NewManager(),
+		Directory:   discovery.NewManager(nil),
+		Traffic:     traffic.NewDefaultPropagator(traffic.DefaultBinding()),
+	}
+	if _, err := loadbalanceplane.NewCenter(context.Background(), ctr.LoadBalance, source.NewPushSource(loadbalance.Settings{})); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := admissionplane.NewCenter(context.Background(), ctr.Admission, source.NewPushSource(admission.Settings{})); err != nil {
 		t.Fatal(err)
 	}
 	return ctr
@@ -119,10 +140,10 @@ func (c *captureExec) Close() error { return c.next.Close() }
 
 // newGuardedExec builds an executor from the default resilience driver, wrapped
 // by the resilience observe layer exactly as the container wiring does.
-func newGuardedExec(t *testing.T, p resilience.Policy) chain.Executor {
-	d := resilience.NewDefaultDriver(nil)
-	inner, err := d.NewExecutor("svc", p)
-	assert.Error(t, err).Nil()
+func newGuardedExec(t *testing.T, p resilience.RateLimitPolicy) chain.Executor {
+	m := resilience.NewManager(resilience.NewDefaultDriver(nil))
+	assert.Error(t, m.ApplyRateLimit(resilience.RateLimitSettings{Default: p})).Nil()
+	inner := m.ExecutorFor("svc")
 	return observability.WrapClientExecutor(inner, "cassandra", "cassandra:test")
 }
 
@@ -134,7 +155,7 @@ func TestGuardPassThrough(t *testing.T) {
 	c := NewClient(nil, Config{Hosts: []string{"127.0.0.1"}}, newTestCenter(t))
 	tail := &fakeTail{}
 	cap := &captureExec{next: c.exec}
-	head := NewGuardQuery(tail, cap, "cassandra:test", "SELECT 1")
+	head := NewGuardQuery(tail, cap, "cassandra:test", "SELECT 1", testProp)
 
 	boom := errors.New("boom")
 	assert.Error(t, head.Exec(context.Background())).Nil()
@@ -147,9 +168,9 @@ func TestGuardPassThrough(t *testing.T) {
 // TestGuardRateLimit confirms the flow-control path: once the burst is spent,
 // the statement is rejected without reaching the tail.
 func TestGuardRateLimit(t *testing.T) {
-	cap := &captureExec{next: newGuardedExec(t, resilience.Policy{RateLimit: 1, Burst: 1})}
+	cap := &captureExec{next: newGuardedExec(t, resilience.RateLimitPolicy{RateLimit: 1, Burst: 1})}
 	tail := &fakeTail{}
-	head := NewGuardQuery(tail, cap, "cassandra:test", "INSERT INTO t VALUES(?)")
+	head := NewGuardQuery(tail, cap, "cassandra:test", "INSERT INTO t VALUES(?)", testProp)
 
 	assert.Error(t, head.Exec(context.Background())).Nil()
 	assert.Error(t, head.Exec(context.Background())).Is(chain.ErrRateLimited)
@@ -173,7 +194,7 @@ func TestInnerQueryReorganize(t *testing.T) {
 	c := NewClient(nil, Config{Hosts: []string{"127.0.0.1"}}, newTestCenter(t))
 	tail := &fakeTail{}
 	cap := &captureExec{next: c.exec}
-	head := NewGuardQuery(tail, cap, "cassandra:test", "SELECT original")
+	head := NewGuardQuery(tail, cap, "cassandra:test", "SELECT original", testProp)
 
 	wrapped := passthroughLayer{InnerQuery: head}
 	assert.Error(t, wrapped.Exec(context.Background())).Nil()

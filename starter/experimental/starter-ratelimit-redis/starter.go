@@ -35,7 +35,7 @@
 //	# spring.ratelimit.redis.client=cache
 //
 // The rate-limit knobs themselves (rate-limit/burst/algorithm/window/
-// rate-limit-max-wait) are resilience.Policy fields on the governance rule
+// rate-limit-max-wait) are resilience.RateLimitPolicy fields on the governance rule
 // document, not starter configuration: this starter only decides WHERE the
 // counters live.
 //
@@ -47,7 +47,7 @@ package StarterRatelimitRedis
 import (
 	"context"
 
-	"go-spring.org/cloud/runtime/dataplane/kernel/ratelimit"
+	"go-spring.org/cloud/governance/capability/ratelimit"
 	"go-spring.org/log"
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/gs"

@@ -309,12 +309,12 @@ endpoint within 30s — no restart, no client rebuild.
 The pool's strategy is governed, not hardcoded: it is built with a suspension tracker and registered
 under `redigo:<service-name|addr>` as `lbMgr.Chain(resolver, label)` is called (the
 injected `*loadbalance.Manager` bean), so
-`spring.governance.client.rules[N].balancer` / `outlier-threshold` / `outlier-suspend-for` for that label
+`spring.governance.client.loadbalance.services[N].balancer` / `outlier-threshold` / `outlier-suspend-for` for that label
 **rebuild the chain from scratch** — the next dial runs the new strategy on a fresh balancer and
 suspension tracker. The dialer feeds `Complete` with the dial
 outcome, so `outlier-threshold` evicts instances that keep refusing *connections*; per-command
 failures belong to the resilience executor. Direct (`addr`-only) pools have no candidate set, so
-these keys are inert for them. See `cloud/runtime/controlplane/governance/README.md` §3.1.
+these keys are inert for them. See `cloud/governance/README.md` §3.1.
 
 ### 4.4 Cache abstraction wiring
 

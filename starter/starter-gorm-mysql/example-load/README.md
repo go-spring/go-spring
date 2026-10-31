@@ -17,8 +17,8 @@ go run . -concurrency=32 -duration=10s       # or run directly against a MySQL
 Edit `conf/governance.properties`:
 
 ```properties
-spring.governance.client.fault.rate=0.5
-spring.governance.client.fault.error=generic       # or: timeout / reset
+spring.fault.client.rate=0.5
+spring.fault.client.error=generic       # or: timeout / reset
 ```
 
 then re-run — the error breakdown's `injected`/`circuit` counts climb and p99

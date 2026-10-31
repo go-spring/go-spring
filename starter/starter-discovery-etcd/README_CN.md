@@ -3,7 +3,7 @@
 [English](README.md) | [中文](README_CN.md)
 
 `starter-discovery-etcd` 把**当前实例**注册进 etcd 集群 —— 它是 Go-Spring 客户端服务
-发现(`cloud/runtime/dataplane/kernel/discovery`)的注册侧对应物 —— **并**提供消费侧的 etcd discovery 后端,
+发现(`cloud/governance/capability/discovery`)的注册侧对应物 —— **并**提供消费侧的 etcd discovery 后端,
 一个 starter 覆盖命名体系的两半,相当于 Spring Cloud `ServiceRegistry` +
 `DiscoveryClient`,以 etcd 租约(lease)为底座。
 
@@ -21,7 +21,7 @@ provider 注册仍保持框架原生,不在本 starter 范围内(见
 一个名为 `etcd.<name>` 的后端 bean,同时实现写侧(`registration.Registry`)与读侧
 (`discovery.Discovery`),共享该块的客户端与键前缀。没有默认/无名块。
 
-注册本身由 [cloud/runtime/controlplane/registration](../../cloud/runtime/controlplane/registration) 核心拥有(传递依赖自动引入):它
+注册本身由 [cloud/governance/controlplane/registration](../../cloud/governance/controlplane/registration) 核心拥有(传递依赖自动引入):它
 唯一的 `discoveryServer`(`gs.Server`)收集**所有**已配置中心的 discovery bean——跨后端
 ——在应用就绪后把实例注册进每一个中心,停机时从全部中心注销,并向所有中心广播
 `UpdateWeight`。配两个块(etcd + etcd,或 etcd + zookeeper……)再加
@@ -104,7 +104,7 @@ spring.discovery.metadata.version=v1
 
 ### 发现(消费侧)
 
-发现**无需任何自有配置**:每个块的 bean 本身就是一个 `cloud/runtime/dataplane/kernel/discovery` 后端,bean 名即
+发现**无需任何自有配置**:每个块的 bean 本身就是一个 `cloud/governance/capability/discovery` 后端,bean 名即
 `etcd.<name>`。client starter 按该名字引用:
 
 ```properties
@@ -137,7 +137,7 @@ spring.http-client.instances.users.discovery=etcd.main
 - 每个块在 bean 构造阶段成为**一个**后端 bean(`etcd.<name>`),持有该集群的客户端与
   命名体系的两半。`ping=true` 时它会探测集群(一次 `Status` 调用),不可达的 etcd 会让
   启动失败,每块一次。
-- [cloud/runtime/controlplane/registration](../../cloud/runtime/controlplane/registration) 核心(传递依赖自动引入)的 `discoveryServer`
+- [cloud/governance/controlplane/registration](../../cloud/governance/controlplane/registration) 核心(传递依赖自动引入)的 `discoveryServer`
   收集每个后端的 registry——跨所有后端——等待就绪,然后把实例 `Register` 进每个中心:
   每中心申请一个**租约**、把键写在该租约下并用后台 keep-alive 保活。若租约在服务端死亡,
   registry 会带退避地重注册——条目无需运维干预即可回来。

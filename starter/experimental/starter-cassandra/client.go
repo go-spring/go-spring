@@ -27,11 +27,12 @@ package StarterCassandra
 import (
 	"context"
 
-	"go-spring.org/cloud/runtime/dataplane/kernel/label"
-	"go-spring.org/cloud/runtime/dataplane/outbound/chain"
+	"go-spring.org/cloud/governance/capability/label"
+	"go-spring.org/cloud/governance/capability/traffic"
+	"go-spring.org/cloud/governance/dataplane/outbound/chain"
 
 	"github.com/gocql/gocql"
-	"go-spring.org/cloud/runtime"
+	"go-spring.org/cloud/governance"
 )
 
 // Client is the wrapper bean Cassandra sessions are injected as. It holds the
@@ -67,6 +68,10 @@ type Client struct {
 	// query's operation states it, so a layer outside the executor (the fault
 	// layer) matches the same service.
 	serviceLabel string
+
+	// prop is the process traffic convention, taken from the runtime when the
+	// client is built; each call's operation records its traffic class.
+	prop traffic.Propagator
 }
 
 // NewClient builds a complete Client — identity, governance and all — over a
@@ -74,18 +79,18 @@ type Client struct {
 // Driver's product. The wrapper derives its service label from the connection
 // config.
 //
-// center carries the container's facilities (see [runtime.Runtime]), and is
+// center carries the container's facilities (see [governance.Runtime]), and is
 // applied HERE so a Client cannot exist half-assembled: there is no Init step,
 // no later patching, and nothing the container has to remember to call. A
-// hand-built client must supply a [runtime.Runtime] over a
-// [resilience.Manager]: [runtime.Runtime.ResilienceClient] is required, so a nil
-// center is a construction error — [runtime.Runtime.ExecutorFor] panics —
+// hand-built client must supply a [governance.Runtime] over a
+// [resilience.Manager]: [governance.Runtime.ResilienceClient] is required, so a nil
+// center is a construction error — [governance.Runtime.ExecutorFor] panics —
 // never a graceful downgrade to an unprotected client.
 //
 // The manager's ExecutorFor resolves its backing executor lazily, on each
 // Execute, so the call order relative to the center's wiring is
 // irrelevant.
-func NewClient(session *gocql.Session, cfg Config, center *runtime.Runtime) *Client {
+func NewClient(session *gocql.Session, cfg Config, center *governance.Runtime) *Client {
 	// The service label prefers the first contact point. Guard the index so a
 	// malformed Config (empty hosts, which the value:"${hosts}" expr is meant to
 	// reject) degrades to the bare prefix instead of panicking in the ctor.
@@ -98,6 +103,7 @@ func NewClient(session *gocql.Session, cfg Config, center *runtime.Runtime) *Cli
 		Session:      session,
 		exec:         center.ExecutorFor("cassandra", serviceLabel),
 		serviceLabel: serviceLabel,
+		prop:         center.TrafficPropagator(),
 	}
 }
 
@@ -135,7 +141,7 @@ func (o *Client) Bind(stmt string, b func(q *gocql.QueryInfo) ([]any, error)) *Q
 // chain assembles one query's chain: the guarded layer (identity + governance)
 // over the query's own raw adapter.
 func (o *Client) chain(q *Query) InnerQuery {
-	return NewGuardQuery(NewRawQuery(q), o.exec, o.serviceLabel, q.stmt)
+	return NewGuardQuery(NewRawQuery(q), o.exec, o.serviceLabel, q.stmt, o.prop)
 }
 
 // Exec executes a statement synchronously through the guarded path. It is a

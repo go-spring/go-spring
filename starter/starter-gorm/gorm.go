@@ -30,8 +30,8 @@ import (
 	"strings"
 	"time"
 
-	"go-spring.org/cloud/runtime/dataplane/kernel/discovery"
-	"go-spring.org/cloud/runtime/dataplane/kernel/loadbalance"
+	"go-spring.org/cloud/governance/capability/discovery"
+	"go-spring.org/cloud/governance/capability/loadbalance"
 	"go-spring.org/log"
 	"go-spring.org/stdlib/errutil"
 	"gorm.io/gorm"
@@ -131,32 +131,40 @@ func (c PoolSettings) Pool() PoolConfig {
 // NewResolver resolves the discovery backend the entry's ${discovery} label
 // cites into a by-name resolver that re-reads the service's live endpoint
 // snapshot. backend is that already-resolved bean, passed down by the dialect's
-// Build (nil when the label named no bean). It returns (nil, nil) when
-// ServiceName is unset or mesh mode is enabled (a sidecar owns discovery+LB), in
-// which case the caller dials the configured address directly; a discovery-
-// routed entry whose label named no backend fails loud instead of silently
-// dialing the configured address. Freshness lives inside the backend, so there
-// is nothing to release.
+// Build. The dialect calls this only when in-process discovery applies
+// ([governance.Runtime.UsesDiscovery]); mesh mode never reaches here, because the
+// sidecar owns discovery+LB and the client dials its configured address.
+//
+// An entry with no service-name is simply not discovery-configured, so this
+// returns (nil, nil) — the helper stays total for hand-built callers. A
+// discovery-routed entry whose label named no backend fails loud instead of
+// silently dialing the configured address. Freshness lives inside the backend,
+// so there is nothing to release.
 func (c Common) NewResolver(ctx context.Context, backend discovery.Discovery) (discovery.Resolver, error) {
-	if c.ServiceName != "" && backend == nil {
+	if c.ServiceName == "" {
+		return nil, nil
+	}
+	if backend == nil {
 		if c.Discovery == "" {
 			return nil, errutil.Explain(nil, "gorm: instance routes by service-name but sets no discovery backend (set <prefix>.instances.<name>.discovery or <prefix>.default.discovery to the name of a discovery backend bean)")
 		}
 		return nil, errutil.Explain(nil, "gorm: instance cites discovery backend %q but no such bean exists (register a discovery backend bean under that name)", c.Discovery)
 	}
-	return discovery.NewResolver(ctx, backend, c.ServiceName, discovery.WithScheme(c.Scheme))
+	return discovery.NewResolver(ctx, backend, c.ServiceName, c.Scheme)
 }
 
 // NewPickPool builds the shared per-connection endpoint selector over the
 // resolver from [Common.NewResolver]: a [loadbalance.Chain] the dialect
-// starter's DialContext reads on every new connection. It returns
-// (nil, nil, ...) when discovery is not in effect; otherwise the chain (and its
-// source resolver, which has no resources to release).
+// starter's DialContext reads on every new connection. The dialect calls it only
+// when in-process discovery applies; an entry with no service-name returns
+// (nil, nil, nil) — there is no chain to build and the caller dials its
+// configured address. Otherwise the chain (and its source resolver, which has no
+// resources to release) is built and registered.
 //
 // service is the entry's governance label ([label.ServiceLabel], e.g.
 // "gorm:mysql:orders-db"). The chain is built with a suspension tracker and
 // registered under that label as it is built, so one
-// spring.governance.client.rules[N] rule that matches the entry's protection
+// client.loadbalance.services[N] rule that matches the entry's protection
 // executor also governs its balancing strategy and outlier suspension — and a
 // rule that moves that selection REBUILDS the chain (balancer, tracker and pool)
 // rather than retuning it. The registration is one-way — released with the
@@ -169,7 +177,8 @@ func (c Common) NewPickPool(ctx context.Context, backend discovery.Discovery, se
 	if err != nil || resolver == nil {
 		return nil, resolver, err
 	}
-	return lbMgr.Chain(ctx, resolver, service), resolver, nil
+	chain, err := lbMgr.Chain(ctx, resolver, service)
+	return chain, resolver, err
 }
 
 // logWriter adapts GORM's logger onto the repo log core: every message GORM

@@ -56,7 +56,7 @@ import (
 // "downstream" 注册(见 conf/app.properties),按名注入。
 type Service struct {
     // 开箱即用的 client:取 token、刷新 token、给每个请求附 bearer 头,
-    // 经从注入的 *runtime.Runtime(center)读取的 executor 做 retry/breaker。
+    // 经从注入的 *governance.Runtime(center)读取的 executor 做 retry/breaker。
     Client *http.Client `autowire:"downstream"`
     // 面向非 HTTP 调用点(gRPC metadata、WebSocket)的裸 token 源。
     // 注意:没有 resilience 包裹——见 §2.3。
@@ -95,11 +95,11 @@ spring.oauth2.authcode.instances.login.scopes=openid,profile
 
 # --- governance(*http.Client transport 的韧性)-------------------------------
 # 与 client 同一服务标签:oauth2:<client-id>。
-# NOTE: governance RULES go in conf/governance.properties, referenced by spring.governance.source.file.path in app.properties (see cloud/runtime/controlplane/governance's SOURCE_USAGE_CN.md).
+# NOTE: governance RULES go in conf/governance.properties, wired by the example's source starter (source.go) (see cloud/governance/controlplane/source's USAGE_CN.md).
 spring.resilience.driver=default
-spring.governance.client.default.max-retries=3
-spring.governance.client.default.error-threshold=10
-spring.governance.client.default.timeout=2s
+spring.governance.client.resilience.max-retries=3
+spring.governance.client.resilience.error-threshold=10
+spring.governance.client.resilience.timeout=2s
 
 # --- observability(starter-otel,可选)--------------------------------------
 spring.observability.service-name=demo
@@ -186,7 +186,7 @@ governance 开启时的 `s.Client.Get("https://api.example.com/service")`:
    (executor 包的是外层 transport,不含 token 交换——见 §4.4 演练)。
 4. access token 入缓存;出站请求在 base transport 运行*之前*带上
    `Authorization: Bearer <token>` 头。
-5. `resilience.NewRoundTripper` 经构造函数从注入的 `*runtime.Runtime`（`center`）上读取的
+5. `resilience.NewRoundTripper` 经构造函数从注入的 `*governance.Runtime`（`center`）上读取的
    executor 执行请求——`center.ResilienceClient().ExecutorFor("oauth2", "oauth2:<client-id>")`——
    retry/熔断/限流策略来自治理文档。center 是治理家族唯一的注入点（gs 应用里必填）；未武装的
    center（或独立调用时的 nil center）读到的是 nil resilience manager，其 executor 为透明直通，
@@ -276,7 +276,7 @@ span/指标(`mgr.ExecutorFor("oauth2", service)`);`TokenSource` 没有对等物�
 
 ### 4.5 governance 热切换
 
-配置 `spring.governance.source.file.path` 后,example 运行中把文件里 `max-retries` 改成 `0`——
+示例在 source.go 里接好文件源后,example 运行中把文件里 `max-retries` 改成 `0`——
 同一个 flaky 调用立刻快速失败给调用方(executor 策略在调用期解析)。无需重启。
 
 ---

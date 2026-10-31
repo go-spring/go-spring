@@ -19,21 +19,24 @@ package httpx
 import (
 	"context"
 	"errors"
-	"go-spring.org/cloud/runtime/dataplane/inbound/admission"
 	"net/http"
 	"sync"
 	"testing"
 
-	"go-spring.org/cloud/runtime"
-	"go-spring.org/cloud/runtime/controlplane/governance"
-	"go-spring.org/cloud/runtime/dataplane/outbound/chain"
+	"go-spring.org/cloud/governance/dataplane/inbound/admission"
 
-	serverfault "go-spring.org/cloud/runtime/dataplane/inbound/fault"
-	"go-spring.org/cloud/runtime/dataplane/kernel/discovery"
-	"go-spring.org/cloud/runtime/dataplane/kernel/loadbalance"
-	"go-spring.org/cloud/runtime/dataplane/kernel/traffic"
-	clientfault "go-spring.org/cloud/runtime/dataplane/outbound/fault"
-	"go-spring.org/cloud/runtime/dataplane/outbound/resilience"
+	"go-spring.org/cloud/governance"
+	admissionplane "go-spring.org/cloud/governance/controlplane/admission"
+	loadbalanceplane "go-spring.org/cloud/governance/controlplane/loadbalance"
+	"go-spring.org/cloud/governance/controlplane/source"
+	"go-spring.org/cloud/governance/dataplane/outbound/chain"
+
+	"go-spring.org/cloud/governance/capability/discovery"
+	"go-spring.org/cloud/governance/capability/loadbalance"
+	"go-spring.org/cloud/governance/capability/traffic"
+	serverfault "go-spring.org/cloud/governance/dataplane/inbound/fault"
+	clientfault "go-spring.org/cloud/governance/dataplane/outbound/fault"
+	"go-spring.org/cloud/governance/dataplane/outbound/resilience"
 	"go-spring.org/stdlib/testing/assert"
 )
 
@@ -43,7 +46,7 @@ import (
 // passes the same unarmed ones the container would.
 var (
 	testMgr   = resilience.NewManager(resilience.NewDefaultDriver(nil))
-	testInj   = clientfault.NewClientManager(nil)
+	testInj   = clientfault.NewManager()
 	testLbMgr = mustLbManager()
 )
 
@@ -59,7 +62,7 @@ func mustLbManager() *loadbalance.Manager {
 // stubDiscovery serves a fixed endpoint set.
 type stubDiscovery struct{ eps []discovery.Endpoint }
 
-func (s stubDiscovery) Resolve(context.Context, string, ...discovery.Option) ([]discovery.Endpoint, error) {
+func (s stubDiscovery) Resolve(context.Context, string) ([]discovery.Endpoint, error) {
 	return s.eps, nil
 }
 
@@ -167,6 +170,7 @@ func TestGovernSelection_RebuildsThroughTheChain(t *testing.T) {
 	// transport; the next request is served by the new generation.
 	mgr.Apply(context.Background(), loadbalance.Settings{Default: loadbalance.Selection{
 		Balancer:         loadbalance.ConsistentHash,
+		ConsistentHash:   loadbalance.ConsistentHashParams{Replicas: 100},
 		OutlierThreshold: 3,
 	}})
 
@@ -180,16 +184,16 @@ func TestGovernSelection_RebuildsThroughTheChain(t *testing.T) {
 // errorDiscovery always fails Resolve, to exercise the seed fail-fast.
 type errorDiscovery struct{}
 
-func (errorDiscovery) Resolve(context.Context, string, ...discovery.Option) ([]discovery.Endpoint, error) {
+func (errorDiscovery) Resolve(context.Context, string) ([]discovery.Endpoint, error) {
 	return nil, errors.New("resolve boom")
 }
 
 func TestNewTransport_ResilienceBreakerFastFails(t *testing.T) {
 	rec := &recordRT{status: http.StatusInternalServerError}
 	rt, closeFn, err := NewTransport(Config{
-		ResilienceDriver: resilience.NewDefaultDriver(nil),
-		ResiliencePolicy: resilience.Policy{ErrorThreshold: 2},
-		Base:             rec,
+		ResilienceDriver:  resilience.NewDefaultDriver(nil),
+		ResilienceBreaker: resilience.BreakerPolicy{ErrorThreshold: 2},
+		Base:              rec,
 	}, testCenter(testMgr, testInj, testLbMgr), testProp())
 	assert.That(t, err).Nil()
 	defer func() { _ = closeFn() }()
@@ -223,7 +227,7 @@ func (h *headerRT) RoundTrip(req *http.Request) (*http.Response, error) {
 
 func TestNewTransport_InjectsLoadTestMarker(t *testing.T) {
 	prop := traffic.NewDefaultPropagator(traffic.DefaultBinding())
-	rec := &headerRT{headerKey: "X-LoadTest"}
+	rec := &headerRT{headerKey: "X-Traffic"}
 	rt, closeFn, err := NewTransport(Config{Base: rec}, testCenter(testMgr, testInj, testLbMgr), testProp())
 	assert.That(t, err).Nil()
 	defer func() { _ = closeFn() }()
@@ -235,7 +239,7 @@ func TestNewTransport_InjectsLoadTestMarker(t *testing.T) {
 
 	// Load-test ctx: the traffic layer injects the marker header.
 	req2, _ := http.NewRequest(http.MethodGet, "http://svc/ping", nil)
-	req2 = req2.WithContext(prop.WithLoadTest(context.Background()))
+	req2 = req2.WithContext(prop.WithKind(context.Background(), traffic.KindLoadTest))
 	_, _ = rt.RoundTrip(req2)
 	assert.That(t, rec.seen).True()
 }
@@ -248,16 +252,16 @@ func TestNewTransport_WrapTransportIsOutermost(t *testing.T) {
 	// built-in stack and can both observe (via ctx) and delegate.
 	var wrapperRan, wrapperSawHeaderBeforeTraffic, wrapperSawLoadTestCtx bool
 	prop := traffic.NewDefaultPropagator(traffic.DefaultBinding())
-	base := &headerRT{headerKey: "X-LoadTest"}
+	base := &headerRT{headerKey: "X-Traffic"}
 	rt, closeFn, err := NewTransport(Config{
 		Base: base,
 		WrapTransport: func(inner http.RoundTripper) http.RoundTripper {
 			return roundTripFunc(func(req *http.Request) (*http.Response, error) {
 				wrapperRan = true
 				// Outermost: header not yet injected by the traffic layer below.
-				wrapperSawHeaderBeforeTraffic = req.Header.Get("X-LoadTest") != ""
+				wrapperSawHeaderBeforeTraffic = req.Header.Get("X-Traffic") != ""
 				// ...but the ctx is already tagged, so a wrapper can always tell.
-				wrapperSawLoadTestCtx = prop.IsLoadTest(req.Context())
+				wrapperSawLoadTestCtx = traffic.IsLoadTest(req.Context(), prop)
 				return inner.RoundTrip(req)
 			})
 		},
@@ -266,7 +270,7 @@ func TestNewTransport_WrapTransportIsOutermost(t *testing.T) {
 	defer func() { _ = closeFn() }()
 
 	req, _ := http.NewRequest(http.MethodGet, "http://svc/ping", nil)
-	req = req.WithContext(prop.WithLoadTest(context.Background()))
+	req = req.WithContext(prop.WithKind(context.Background(), traffic.KindLoadTest))
 	_, err = rt.RoundTrip(req)
 	assert.That(t, err).Nil()
 	assert.That(t, wrapperRan).True()
@@ -284,12 +288,9 @@ func TestNewTransport_WrapExecReplacesDefault(t *testing.T) {
 	rec := &recordRT{}
 	called := false
 	mgr := resilience.NewManager(resilience.NewDefaultDriver(nil))
-	if err := mgr.Apply(resilience.Settings{}); err != nil { // arm before asking
-		t.Fatalf("Apply: %v", err)
-	}
 	rt, closeFn, err := NewTransport(Config{
 		Base:     rec,
-		Executor: mgr.ExecutorFor("test", "test-service"),
+		Executor: mgr.ExecutorFor("test-service"),
 		WrapExec: func(e chain.Executor) chain.Executor {
 			called = true
 			return e
@@ -327,7 +328,7 @@ func TestNewTransport_ResilienceFollowsManager(t *testing.T) {
 
 	// Arm the manager with an error-threshold breaker for the label and push it,
 	// exactly as the center does on a config change.
-	mgr.Apply(resilience.Settings{Default: resilience.Policy{ErrorThreshold: 2}})
+	mgr.ApplyBreaker(resilience.BreakerSettings{Default: resilience.BreakerPolicy{ErrorThreshold: 2}})
 
 	// Two consecutive 5xx now trip the breaker; the third call is rejected
 	// before it reaches the base transport — no rebuild in between.
@@ -352,9 +353,20 @@ func TestConfigServiceDerivation(t *testing.T) {
 
 // testCenter bundles the trio of test authorities into the one center bean
 // NewTransport takes.
-func testCenter(mgr *resilience.Manager, inj *clientfault.ClientManager, lb *loadbalance.Manager) *runtime.Runtime {
-	ctr, err := runtime.New(mgr, lb, inj, serverfault.NewServerManager(nil), nil, governance.NewPushSource(governance.Config{Server: governance.ServerConfig{Default: admission.DefaultPolicy()}}))
-	if err != nil {
+func testCenter(mgr *resilience.Manager, inj *clientfault.Manager, lb *loadbalance.Manager) *governance.Runtime {
+	ctr := &governance.Runtime{
+		Resilience:  mgr,
+		LoadBalance: lb,
+		Admission:   admission.NewManager(),
+		ClientFault: inj,
+		ServerFault: serverfault.NewManager(),
+		Directory:   discovery.NewManager(nil),
+		Traffic:     traffic.NewDefaultPropagator(traffic.DefaultBinding()),
+	}
+	if _, err := loadbalanceplane.NewCenter(context.Background(), ctr.LoadBalance, source.NewPushSource(loadbalance.Settings{})); err != nil {
+		panic(err)
+	}
+	if _, err := admissionplane.NewCenter(context.Background(), ctr.Admission, source.NewPushSource(admission.Settings{})); err != nil {
 		panic(err)
 	}
 	return ctr
