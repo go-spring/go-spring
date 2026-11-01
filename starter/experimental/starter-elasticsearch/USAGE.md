@@ -56,7 +56,7 @@ deployment points Consul/Nacos/k8s here; see example/discovery.go):
 ```go
 package main
 
-import "go-spring.org/cloud/governance/capability/discovery"
+import "go-spring.org/cloud/discovery"
 
 func init() {
     gs.Provide(func() (discovery.Discovery, error) {

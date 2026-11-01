@@ -20,13 +20,9 @@ import (
 	"context"
 	"strings"
 
-	"go-spring.org/cloud/governance/capability/discovery"
+	"go-spring.org/cloud/discovery"
 	"go-spring.org/stdlib/errutil"
 )
-
-func init() {
-	Register(ZoneAware, newZoneAware)
-}
 
 // ZoneAwareParams is the zone-aware filter's parameter group, bound from a
 // rule's `zone-aware` sub-map. A rule that omits zone-key gets
@@ -54,9 +50,10 @@ type ZoneAwareParams struct {
 	Delegate string `value:"${delegate:=}"`
 }
 
-// newZoneAware is the [Factory] behind the [ZoneAware] name. It composes with
-// any sibling strategy, resolved by name out of the package registry.
-func newZoneAware(sel Selection) (Balancer, error) {
+// newZoneAware is the constructor behind the [ZoneAware] name. It composes with
+// any sibling strategy, resolved through the [Resolver] the factory
+// supplies.
+func newZoneAware(sel Selection, resolve Resolver) (Balancer, error) {
 	// An empty, unknown or self-naming delegate is a construction error, not a
 	// silent fallback to round-robin: the filter only narrows the candidate set,
 	// so the caller must say who makes the final choice.
@@ -71,7 +68,7 @@ func newZoneAware(sel Selection) (Balancer, error) {
 	// strategy parameter groups describe the delegate, because zone_aware itself
 	// has no strategy parameters. Without that, a delegate such as consistent_hash
 	// would be built with zero knobs and fail on keyed traffic.
-	bal, err := New(Selection{
+	bal, err := resolve(Selection{
 		Balancer:       name,
 		ConsistentHash: sel.ConsistentHash,
 		Params:         sel.Params,

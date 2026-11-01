@@ -66,7 +66,7 @@ import (
     "fmt"
     "net/http"
 
-    "go-spring.org/cloud/governance/capability/discovery"
+    "go-spring.org/cloud/discovery"
 )
 
 const (
@@ -364,9 +364,7 @@ spring.fault.client.error=timeout    # 或 generic / reset
   `resilience.service="http:greet-svc"`、`status` ∈ {ok, error},以及保护拒绝该调用时的
   `resilience.error_type` ∈ {rate_limited, circuit_open, bulkhead_full, timeout};
   `resilience.client.breaker.state`(按 state 1-hot)、
-  `resilience.client.breaker.transitions_total{to}`;
-  `resilience.client.ratelimit.usage_ratio`(仅本地预算——配置了 ClusterLimiter 时
-  不发布;包含被熔断拒绝的尝试与重试)。
+  `resilience.client.breaker.transitions_total{to}`。
 - 访问日志:由 `observability.level` 门控(默认 brief = 开),tag
   `_app_http_resilience`(`log.RegisterAppTag("http", "resilience")`)。
 - trace:httpx 内置的 otelhttp 层每请求一个 client span(命名遵循

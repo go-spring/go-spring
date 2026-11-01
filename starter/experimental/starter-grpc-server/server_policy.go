@@ -23,9 +23,9 @@ import (
 	"go-spring.org/cloud/governance"
 
 	"go-spring.org/cloud/governance/capability/label"
-	"go-spring.org/cloud/governance/capability/traffic"
 	"go-spring.org/cloud/governance/dataplane/inbound/admission"
 	observability "go-spring.org/cloud/governance/dataplane/inbound/observe"
+	"go-spring.org/cloud/traffic"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"

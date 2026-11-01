@@ -26,8 +26,8 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"go-spring.org/cloud/discovery"
 	"go-spring.org/cloud/governance"
-	"go-spring.org/cloud/governance/capability/discovery"
 	"go-spring.org/cloud/governance/capability/loadbalance"
 	"go-spring.org/cloud/governance/capability/ratelimit"
 	"go-spring.org/cloud/governance/dataplane/outbound/chain"
@@ -108,12 +108,12 @@ type RouteTable struct {
 	ctr   *governance.Runtime
 	lbMgr *loadbalance.Manager
 
-	// limiter is the rate-limit store the rateLimit filter spends. A route's
-	// budget is keyed by route id (and the client IP, under key=ip), which is
-	// per-KEY counting rather than per-service — the store's own trade, not an
-	// executor's, so the filter uses it directly. With a shared backend
-	// contributed, every replica draws on the same budgets.
-	limiter ratelimit.ClusterLimiter
+	// factories are the limiter kinds the container contributed — the one path
+	// that creates counters. scopes caches the counter bound to each
+	// (kind, scope) pair with idle eviction, because a per-key budget is keyed
+	// by route id (and the client IP, under key=ip).
+	factories *ratelimit.Factory
+	scopes    *scopeStore
 
 	// chains caches the endpoint-selection chain per route id, so a recompile
 	// REUSES the chain it built last time rather than replacing it. That is what
@@ -161,24 +161,37 @@ type chainEntry struct {
 // to the fallback there is nothing to reject, but it is reported at startup
 // rather than swallowed.
 func newRouteTable(ctx *gs.ContextProvider, o *observer,
-	center *governance.Runtime, limiter ratelimit.ClusterLimiter) (*RouteTable, error) {
-	if limiter == nil {
-		// No cluster limiter was contributed, so per-route and per-client budgets
-		// are this process's own — the same reach a per-service executor would have.
-		limiter = newMemoryLimiter()
+	center *governance.Runtime, factories *ratelimit.Factory) (*RouteTable, error) {
+	if factories == nil {
+		panic("gateway: newRouteTable requires a non-nil ratelimit.Factory")
 	}
 	lbMgr := center.Loadbalance()
 	if lbMgr == nil {
-		lbMgr = loadbalance.NewManager()
+		lbMgr = loadbalance.NewManager(loadbalance.NewFactory([]loadbalance.Provider{loadbalance.NewBuiltinProvider()}))
 	}
 	return &RouteTable{
-		ctx:     ctx.Context,
-		obs:     o,
-		disc:    center.Discovery(),
-		ctr:     center,
-		lbMgr:   lbMgr,
-		limiter: limiter,
+		ctx:       ctx.Context,
+		obs:       o,
+		disc:      center.Discovery(),
+		ctr:       center,
+		lbMgr:     lbMgr,
+		factories: factories,
+		scopes:    newScopeStore(factories),
 	}, nil
+}
+
+// limiterFor resolves a route's limiter kind to a scope-bound constructor. Every
+// kind — the local algorithms as much as a shared store — is created by the
+// container's factory; the gateway only caches the result per scope.
+func (t *RouteTable) limiterFor(kind string) (func(string) (ratelimit.Limiter, error), bool) {
+	alg := string(kind)
+	// Building one counter is how the route learns the kind is servable.
+	if _, err := t.factories.Create(alg, ""); err != nil {
+		return nil, false
+	}
+	return func(scope string) (ratelimit.Limiter, error) {
+		return t.scopes.limiter(alg, scope)
+	}, true
 }
 
 // Init runs after field injection. It warns when routes are configured but the
@@ -378,7 +391,7 @@ func (t *RouteTable) buildFilters(spec string) ([]Filter, error) {
 		name, args := tok.name, tok.args
 		switch name {
 		case "rateLimit":
-			f, err := rateLimitFilter(args, t.limiter)
+			f, err := rateLimitFilter(args, t.limiterFor)
 			if err != nil {
 				return nil, err
 			}

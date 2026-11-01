@@ -31,7 +31,7 @@ import (
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/clientcmd"
 
-	"go-spring.org/cloud/governance/capability/discovery"
+	"go-spring.org/cloud/discovery"
 	"go-spring.org/log"
 	"go-spring.org/stdlib/errutil"
 )

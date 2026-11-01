@@ -27,8 +27,8 @@ import (
 	"github.com/nats-io/nats.go"
 	"github.com/nats-io/nats.go/jetstream"
 	"go-spring.org/cloud/governance/capability/label"
-	"go-spring.org/cloud/governance/capability/traffic"
 	observability "go-spring.org/cloud/governance/dataplane/outbound/observe"
+	"go-spring.org/cloud/traffic"
 )
 
 // Conn wraps a NATS connection together with an optional JetStream context. It

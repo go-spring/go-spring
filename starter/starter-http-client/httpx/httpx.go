@@ -57,15 +57,16 @@ import (
 	"go-spring.org/cloud/governance"
 
 	"go-spring.org/cloud/governance/capability/label"
+	"go-spring.org/cloud/governance/capability/ratelimit"
 
-	"go-spring.org/cloud/governance/capability/discovery"
+	"go-spring.org/cloud/discovery"
 	"go-spring.org/cloud/governance/capability/loadbalance"
-	"go-spring.org/cloud/governance/capability/traffic"
 	"go-spring.org/cloud/governance/dataplane/outbound/chain"
 	observability "go-spring.org/cloud/governance/dataplane/outbound/observe"
 	"go-spring.org/cloud/governance/dataplane/outbound/resilience"
 	"go-spring.org/cloud/propagate"
 	"go-spring.org/cloud/security"
+	"go-spring.org/cloud/traffic"
 	"go-spring.org/stdlib/errutil"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 )
@@ -127,7 +128,7 @@ type Config struct {
 	// governance document's blocks.
 	ResilienceLimits    resilience.Limits
 	ResilienceBreaker   resilience.BreakerPolicy
-	ResilienceRateLimit resilience.RateLimitPolicy
+	ResilienceRateLimit ratelimit.Policy
 
 	// Executor is a pre-built resilience executor to use in place of the
 	// ResilienceDriver+ResiliencePolicy pair. When non-nil it takes precedence:
@@ -257,7 +258,7 @@ func NewTransport(cfg Config, center *governance.Runtime, prop traffic.Propagato
 	case cfg.ResilienceDriver != nil:
 		// The driver builds an executor over a manager, so an explicit
 		// driver+policy triple is just a private, single-label manager.
-		mgr := resilience.NewManager(cfg.ResilienceDriver)
+		mgr := resilience.NewManager(cfg.ResilienceDriver, ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()}))
 		if err = mgr.ApplyLimits(resilience.LimitsSettings{Default: cfg.ResilienceLimits}); err != nil {
 			closeAll(closeFns)
 			return nil, nil, err
@@ -333,7 +334,7 @@ func NewTransport(cfg Config, center *governance.Runtime, prop traffic.Propagato
 
 // trafficTransport injects the load-test marker header onto each request when
 // the request's context is a load-test context, then delegates to base. It is
-// the outbound seam for [go-spring.org/cloud/governance/capability/traffic] on the HTTP client path.
+// the outbound seam for [go-spring.org/cloud/traffic] on the HTTP client path.
 type trafficTransport struct {
 	base http.RoundTripper
 	prop traffic.Propagator

@@ -46,7 +46,7 @@ import (
 	"time"
 
 	"github.com/bradfitz/gomemcache/memcache"
-	"go-spring.org/cloud/governance/capability/discovery"
+	"go-spring.org/cloud/discovery"
 	"go-spring.org/spring/gs"
 
 	_ "go-spring.org/starter-actuator"    // aggregates the memcached health.Indicator

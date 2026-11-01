@@ -81,17 +81,19 @@ var warnedNonIdempotent sync.Map
 type defaultExecutor struct {
 	service string
 
-	// limiter is nil in the ordinary case, and then the rate-limit stage counts
-	// in rate; non-nil means every call charges that store instead, under this
-	// executor's service as the scope.
-	limiter ratelimit.ClusterLimiter
+	// localLimiters holds one counter per rate key, built by the factory the
+	// key's rule names. It lives on the executor, not on a policy generation, so
+	// a configuration change updates the existing counter (the rule travels with
+	// every call) instead of replacing its state. A change of limiter KIND
+	// replaces the entry, because the factory (and so the state shape) changed.
+	localLimiters sync.Map // key -> *limiterEntry
+	rateGen       atomic.Uint64
 
-	// The three organs are materialized INDEPENDENTLY: each slot carries the
-	// generation of its own capability, so a change to one organ's knobs leaves
-	// the others' state untouched. An atomic pointer keeps the fast path —
-	// generation unchanged, key already built — entirely lock-free.
+	// The breaker and retry organs are materialized per generation: a change to
+	// one organ's knobs leaves the others' state untouched. An atomic pointer
+	// keeps the fast path — generation unchanged, key already built — entirely
+	// lock-free.
 	breaker atomic.Pointer[breakerSlot]
-	rate    atomic.Pointer[rateSlot]
 	retry   atomic.Pointer[retrySlot]
 
 	// mu serializes materialization: the first build of a generation and the
@@ -125,14 +127,6 @@ type breakerSlot struct {
 // *Breaker in a sync.Map would be indistinguishable from a missing entry).
 type breakerCell struct{ b *circuitbreaker.Breaker }
 
-// rateSlot is one generation of the rate-budget table, independent of the
-// breaker slot: changing breaker knobs must not reset a rate budget and vice
-// versa.
-type rateSlot struct {
-	gen  uint64
-	keys sync.Map // key -> ratelimit.Budget
-}
-
 // retrySlot is the label-level retry budget. It is keyed by its declared
 // capacity rather than a generation: the capacity IS the whole configuration, so
 // a change is visible as a different capacity.
@@ -144,8 +138,15 @@ type retrySlot struct {
 // organs is the materialized protection one call runs under.
 type organs struct {
 	breaker *circuitbreaker.Breaker // nil = the stage is off
-	budget  ratelimit.Budget
-	retry   chan struct{} // nil = no budget
+	rate    ratelimit.Limiter       // nil = no rate limit configured
+	retry   chan struct{}           // nil = no budget
+}
+
+// limiterEntry binds one counter to the kind that built it; a change of kind
+// starts that key's state over.
+type limiterEntry struct {
+	kind    string
+	limiter ratelimit.Limiter
 }
 
 // newExecutor builds the executor for service. Nothing is materialized
@@ -154,8 +155,8 @@ type organs struct {
 // executor's own state observer registers on that first call too (see
 // observe.go), because the global meter provider may be installed after this
 // returns.
-func newExecutor(service string, m *Manager, limiter ratelimit.ClusterLimiter) *defaultExecutor {
-	return &defaultExecutor{service: service, mgr: m, limiter: limiter}
+func newExecutor(service string, m *Manager) *defaultExecutor {
+	return &defaultExecutor{service: service, mgr: m}
 }
 
 // callPolicy asks the manager what this call runs under. The executor holds no
@@ -192,9 +193,18 @@ func (e *defaultExecutor) callPolicy(op chain.Operation) CallPolicy {
 // built exactly once per generation however many calls race onto it.
 func (e *defaultExecutor) snapshot(op chain.Operation) (CallPolicy, organs) {
 	c := e.callPolicy(op)
+	// Collect counters whose rule disappeared before deciding whether this call
+	// needs one: a generation that turns the stage OFF must still prune.
+	if e.rateGen.Load() != c.Rate.Gen {
+		e.pruneLocalLimiters(c.Rate.Gen)
+	}
+	var rate ratelimit.Limiter
+	if c.Rate.Policy.RateLimit > 0 {
+		rate = e.rateLimiter(c.Rate)
+	}
 	return c, organs{
 		breaker: e.breakerFor(c.Breaker),
-		budget:  e.budgetFor(c.Rate),
+		rate:    rate,
 		retry:   e.retryBudget(c.LabelLimits.Retry.RetryBudget),
 	}
 }
@@ -245,40 +255,52 @@ func (e *defaultExecutor) newBreaker(st *breakerSlot, r BreakerRef) *circuitbrea
 	return cell.b
 }
 
-// budgetFor returns this call's rate budget, materializing it per generation and
-// key exactly like the breaker. Its generation is separate, so changing breaker
-// knobs never resets a rate budget.
-func (e *defaultExecutor) budgetFor(r RateRef) ratelimit.Budget {
-	st := e.rate.Load()
-	if st == nil || st.gen != r.Gen {
-		st = e.newRateSlot(r.Gen)
+// rateLimiter returns the counter this call charges, built by the factory from
+// the kind its rule names. The counter lives for the executor's lifetime, not
+// for a policy generation, so a rule change updates it in place (numerics travel
+// per call); a change of KIND replaces it, because the factory changed. A
+// generation change also collects counters whose rule disappeared.
+func (e *defaultExecutor) rateLimiter(r RateRef) ratelimit.Limiter {
+	kind := r.Policy.Limiter
+	if v, ok := e.localLimiters.Load(r.Key); ok {
+		old := v.(*limiterEntry)
+		if old.kind == kind {
+			return old.limiter
+		}
 	}
-	if v, ok := st.keys.Load(r.Key); ok {
-		return v.(ratelimit.Budget)
+	lim, err := e.mgr.limiters.Create(kind, e.service)
+	if err != nil {
+		// Apply built this kind through the same call; a failure now is the
+		// backend's own.
+		panic(err)
 	}
-	return e.newBudget(st, r)
+	entry := &limiterEntry{kind: kind, limiter: lim}
+	actual, _ := e.localLimiters.LoadOrStore(r.Key, entry)
+	if old, ok := actual.(*limiterEntry); ok && old.kind != kind {
+		e.localLimiters.Store(r.Key, entry)
+		return lim
+	}
+	return actual.(*limiterEntry).limiter
 }
 
-func (e *defaultExecutor) newRateSlot(gen uint64) *rateSlot {
+// pruneLocalLimiters drops counters whose keys are no longer part of the label's
+// rate rules. A call that already holds a dropped counter keeps using it until
+// it returns; the next call rebuilds a fresh one if the key is active again.
+func (e *defaultExecutor) pruneLocalLimiters(gen uint64) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	if st := e.rate.Load(); st != nil && st.gen == gen {
-		return st
+	if e.rateGen.Load() == gen {
+		return
 	}
-	st := &rateSlot{gen: gen}
-	e.rate.Store(st)
-	return st
-}
-
-func (e *defaultExecutor) newBudget(st *rateSlot, r RateRef) ratelimit.Budget {
-	e.mu.Lock()
-	defer e.mu.Unlock()
-	if v, ok := st.keys.Load(r.Key); ok {
-		return v.(ratelimit.Budget)
+	if active := e.mgr.activeRateKeys(e.service); active != nil {
+		e.localLimiters.Range(func(k, _ any) bool {
+			if _, ok := active[k.(string)]; !ok {
+				e.localLimiters.Delete(k)
+			}
+			return true
+		})
 	}
-	b := ratelimit.NewBudget(r.Policy.Spec())
-	st.keys.Store(r.Key, b)
-	return b
+	e.rateGen.Store(gen)
 }
 
 // retryBudget returns the label-level retry budget, rebuilt only when its
@@ -403,7 +425,7 @@ func (e *defaultExecutor) Execute(ctx context.Context, op chain.Operation, rec *
 	// before the breaker gate so a rate-limited call never spends a half-open
 	// trial permit. A store failure is not a budget decision: the call proceeds
 	// rather than turning an unreachable counter backend into an outage.
-	if admitted, lerr := allowRate(callCtx, org.budget, c.Rate.Policy.Spec(), e.service, e.limiter); lerr != nil {
+	if admitted, lerr := allowRate(callCtx, org.rate, c.Rate.Policy, 1); lerr != nil {
 		log.Warn(callCtx, log.TagAppDef, "resilience: rate-limit counters unavailable, allowing call",
 			log.Err(lerr))
 	} else if !admitted {
@@ -467,7 +489,7 @@ func (e *defaultExecutor) Execute(ctx context.Context, op chain.Operation, rec *
 		// Every attempt past the first is charged here; the first was charged
 		// before the breaker gate.
 		if i > 0 {
-			if admitted, lerr := allowRate(callCtx, org.budget, c.Rate.Policy.Spec(), e.service, e.limiter); lerr != nil {
+			if admitted, lerr := allowRate(callCtx, org.rate, c.Rate.Policy, 1); lerr != nil {
 				log.Warn(callCtx, log.TagAppDef, "resilience: rate-limit counters unavailable, allowing call",
 					log.Err(lerr))
 			} else if !admitted {

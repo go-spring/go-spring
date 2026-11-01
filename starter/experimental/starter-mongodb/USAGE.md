@@ -64,7 +64,7 @@ keeps the demo self-contained (copied from [example/discovery.go](example/discov
 ```go
 package main
 
-import "go-spring.org/cloud/governance/capability/discovery"
+import "go-spring.org/cloud/discovery"
 
 func init() {
     gs.Provide(func() (discovery.Discovery, error) {

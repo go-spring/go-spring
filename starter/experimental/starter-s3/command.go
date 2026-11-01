@@ -26,8 +26,8 @@ import (
 	"context"
 	"net/http"
 
-	"go-spring.org/cloud/governance/capability/traffic"
 	"go-spring.org/cloud/governance/dataplane/outbound/chain"
+	"go-spring.org/cloud/traffic"
 )
 
 // callFor resolves the semantic identity of an S3 request. It is handed to

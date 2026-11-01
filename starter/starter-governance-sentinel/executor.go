@@ -19,9 +19,10 @@ package StarterGovernanceSentinel
 import (
 	"context"
 	"fmt"
+	"sync"
+
 	breaker "go-spring.org/cloud/governance/capability/circuitbreaker"
 	"go-spring.org/cloud/governance/dataplane/outbound/chain"
-	"sync"
 
 	"go-spring.org/log"
 	"go-spring.org/stdlib/errutil"
@@ -92,9 +93,9 @@ func (e *sentinelExecutor) ensureRules() error {
 		rule := flowRule(service, flowKnobs{
 			rateLimit:  rp.RateLimit,
 			window:     rp.Window,
-			maxWait:    rp.RateLimitMaxWait,
-			warmUp:     rp.RateLimitWarmUpDuration,
-			coldFactor: rp.WarmUpColdFactor,
+			maxWait:    rp.MaxWait,
+			warmUp:     rp.WarmUp,
+			coldFactor: rp.ColdFactor,
 		})
 		if _, err := flow.LoadRulesOfResource(service, []*flow.Rule{rule}); err != nil {
 			return errutil.Explain(err, "resilience: load flow rule for %q", service)

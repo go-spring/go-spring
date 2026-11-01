@@ -21,9 +21,9 @@ import (
 	"errors"
 
 	"go-spring.org/cloud/governance"
-	"go-spring.org/cloud/governance/capability/traffic"
 	"go-spring.org/cloud/governance/dataplane/inbound/admission"
 	observability "go-spring.org/cloud/governance/dataplane/inbound/observe"
+	"go-spring.org/cloud/traffic"
 	"trpc.group/trpc-go/trpc-go"
 	"trpc.group/trpc-go/trpc-go/errs"
 	"trpc.group/trpc-go/trpc-go/filter"

@@ -303,10 +303,10 @@ func (b *Breaker) Allow() (Permit, bool) {
 		if time.Since(b.openedAt) < b.openDuration {
 			return Permit{}, false // still cooling down
 		}
-		b.toHalfOpenLocked()
+		b.toHalfOpen()
 	case StateHalfOpen:
 		if b.halfOpenTimeout > 0 && time.Since(b.halfOpenStartedAt) >= b.halfOpenTimeout {
-			b.toOpenLocked()
+			b.toOpen()
 			return Permit{}, false
 		}
 	}
@@ -339,16 +339,16 @@ func (b *Breaker) Record(p Permit, success bool, duration time.Duration) {
 		if success {
 			b.halfOpenPassed++
 			if b.halfOpenPassed >= b.halfOpenTrials {
-				b.toClosedLocked()
+				b.toClosed()
 			}
 			return
 		}
-		b.toOpenLocked() // the first trial failure re-opens
+		b.toOpen() // the first trial failure re-opens
 	case StateOpen:
 		return // no permit can carry this generation
 	case StateClosed:
 		if b.strategy.record(success, duration) {
-			b.toOpenLocked()
+			b.toOpen()
 		}
 	}
 }
@@ -382,9 +382,9 @@ func (b *Breaker) RecordIgnored(p Permit) {
 // goes. Observers read the result through [Breaker.Stats]; the breaker emits
 // nothing itself.
 
-// toOpenLocked enters Open: any half-open round is discarded (its outstanding
+// toOpen enters Open: any half-open round is discarded (its outstanding
 // trial permits no longer count) and the cool-down restarts.
-func (b *Breaker) toOpenLocked() {
+func (b *Breaker) toOpen() {
 	now := time.Now()
 	b.state = StateOpen
 	b.gen++
@@ -394,9 +394,9 @@ func (b *Breaker) toOpenLocked() {
 	b.trips++
 }
 
-// toHalfOpenLocked opens a fresh half-open round: a bounded channel of trial
+// toHalfOpen opens a fresh half-open round: a bounded channel of trial
 // permits, timed for the optional HalfOpenTimeout safety valve (see Allow).
-func (b *Breaker) toHalfOpenLocked() {
+func (b *Breaker) toHalfOpen() {
 	now := time.Now()
 	b.state = StateHalfOpen
 	b.gen++
@@ -409,10 +409,10 @@ func (b *Breaker) toHalfOpenLocked() {
 	}
 }
 
-// toClosedLocked closes the circuit from a settled half-open round: the
+// toClosed closes the circuit from a settled half-open round: the
 // strategy's counters reset, so the fresh Closed state trips on fresh evidence
 // only.
-func (b *Breaker) toClosedLocked() {
+func (b *Breaker) toClosed() {
 	b.state = StateClosed
 	b.gen++
 	b.openedAt = time.Time{}

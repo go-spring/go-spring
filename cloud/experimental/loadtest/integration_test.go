@@ -23,10 +23,11 @@ import (
 
 	"go-spring.org/cloud/governance/capability/fault"
 	"go-spring.org/cloud/governance/capability/matcher"
-	"go-spring.org/cloud/governance/capability/traffic"
+	"go-spring.org/cloud/governance/capability/ratelimit"
 	"go-spring.org/cloud/governance/dataplane/outbound/chain"
 	clientfault "go-spring.org/cloud/governance/dataplane/outbound/fault"
 	"go-spring.org/cloud/governance/dataplane/outbound/resilience"
+	"go-spring.org/cloud/traffic"
 	"go-spring.org/stdlib/errutil"
 	"go-spring.org/stdlib/testing/assert"
 )
@@ -35,7 +36,7 @@ import (
 // at test cleanup.
 func newGovernedExec(t *testing.T, p resilience.BreakerPolicy) chain.Executor {
 	t.Helper()
-	m := resilience.NewManager(resilience.NewDefaultDriver(nil))
+	m := resilience.NewManager(resilience.NewDefaultDriver(), ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()}))
 	assert.Error(t, m.ApplyBreaker(resilience.BreakerSettings{Default: p})).Nil()
 	t.Cleanup(func() { _ = m.Close() })
 	return m.ExecutorFor("svc")

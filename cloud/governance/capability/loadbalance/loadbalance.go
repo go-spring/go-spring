@@ -14,51 +14,21 @@
  * limitations under the License.
  */
 
-// Package loadbalance is the client-side load-balancing layer that sits on top
-// of [go-spring.org/cloud/governance/capability/discovery].
-//
-// Discovery answers "which instances exist right now?"; this package answers
-// the next question — "given that live set, which one do I send this request
-// to?". It is deliberately split into two concerns:
-//
-//   - [Balancer] is the pluggable selection strategy (round-robin, least-conn,
-//     consistent-hash, weighted, zone-aware). It is pure: given a candidate
-//     endpoint set and a [PickInfo] it returns one endpoint, plus the
-//     Complete method that settles the request it issued.
-//   - [Pool] binds a live discovery source (a [discovery.Resolver] bound to one
-//     service name via [discovery.NewResolver]) and a
-//     [Tracker] (outlier suspension) to a Balancer, so the candidate set stays
-//     fresh as instances come and go and unhealthy instances are suspended.
-//
-// A strategy names itself in a selection rule and is resolved out of one
-// process-wide registry ([Register]): the built-ins each register from their own
-// file's init, and a deployment adds its own the same way — the package it links
-// registers. The core fixes only the [Balancer]/[Factory]/[Selection.Params] contract, so a
-// new strategy — with parameters of its own — is added entirely outside this
-// package.
-//
-// The package has zero third-party dependencies; RPC-framework adapters (gRPC
-// balancer.Builder, kitex loadbalance.Loadbalancer, ...) live in their starters
-// and translate a Balancer into the framework's own picker interface.
 package loadbalance
 
 import (
 	"context"
 	"errors"
-	"maps"
-	"slices"
-	"sync"
 
-	"go-spring.org/cloud/governance/capability/discovery"
-	"go-spring.org/stdlib/errutil"
+	"go-spring.org/cloud/discovery"
 )
 
-// Names of the built-in strategies, each registered by its own file's init. The
-// names appear in service configs and gRPC LB config, so they are stable. New
-// built-in strategies are admitted only after a survey of industry practice and
-// a real consumer; a deployment that wants an implementation variant with
-// equivalent semantics (maglev, rendezvous hashing; peak-ewma beside p2c)
-// registers it under its own name instead of growing this list.
+// Names of the built-in strategies, exported by the built-in provider. The names
+// appear in service configs and gRPC LB config, so they are stable. New built-in
+// strategies are admitted only after a survey of industry practice and a real
+// consumer; a deployment that wants an implementation variant with equivalent
+// semantics (maglev, rendezvous hashing; peak-ewma beside p2c) contributes its
+// own [Provider] under its own name instead of growing this list.
 const (
 	RoundRobin     = "round_robin"
 	LeastConn      = "least_conn"
@@ -119,182 +89,4 @@ type Balancer interface {
 	// picked endpoint, after the request ends (least_conn tolerates a repeat —
 	// its count deletes at zero).
 	Complete(ctx context.Context, ep discovery.Endpoint, err error)
-}
-
-// Factory builds a fresh, independent [Balancer] for one target. It is the
-// single extension point of this package: a strategy makes itself available by
-// calling [Register] from its own file's init — the registered name IS the
-// strategy name a selection rule cites — so adding a strategy, built-in or
-// third-party, never changes this file again.
-//
-// s is the whole selection the strategy was named by: a BUILT-IN factory reads
-// its own parameter group out of it and ignores everything else, while a
-// CONTRIBUTED factory reads the keys it owns out of [Selection.Params] and
-// rejects the rest itself — in both cases a parameter aimed at another strategy
-// is an error, never a silently dropped value. [Validate] enforces the same
-// partition at the document boundary.
-//
-// A factory holds no per-target state — the registry keeps ONE value and calls
-// it per target — so anything stateful belongs on the Balancer it returns, not
-// on the factory. It is a plain function type rather than an interface with a
-// Build method: a strategy has exactly one entry point and no state, so a named
-// type per strategy would buy nothing.
-type Factory func(s Selection) (Balancer, error)
-
-// strategies is the one table of strategies a process has, keyed by the name a
-// selection rule cites. The built-ins and anything a linked package registers
-// share it, which is what lets a composing factory (zone_aware's delegate) or an
-// RPC adapter resolve a name without being handed a directory.
-var (
-	mu         sync.RWMutex
-	strategies = map[string]Factory{}
-)
-
-// Register makes f available under name. It is called from a strategy file's
-// init, so it has no error channel: an empty name, a nil factory, or a name
-// registered twice are programming errors and panic. A duplicate means two
-// packages claim one name — a collision a deployment would otherwise meet only
-// as "my rule silently routed the other way".
-func Register(name string, f Factory) {
-	switch {
-	case name == "":
-		panic(errutil.Explain(nil, "loadbalance: register with empty name"))
-	case f == nil:
-		panic(errutil.Explain(nil, "loadbalance: register nil factory for %s", name))
-	}
-	mu.Lock()
-	defer mu.Unlock()
-	if _, ok := strategies[name]; ok {
-		panic(errutil.Explain(nil, "loadbalance: strategy already registered: %s", name))
-	}
-	strategies[name] = f
-}
-
-// New builds the strategy s names ([Selection.Balancer]). An empty name, an
-// unknown name, or parameters the strategy rejects is an error — callers
-// degrade it to "keep the current strategy" (see [Pool]), so a bad rule never
-// takes a client down.
-//
-// The base strategy, round-robin, is not implied by an empty name: every
-// producer states it, either in the settings document or — for the base
-// document an unarmed manager serves and for a governance document that leaves
-// the field out — in the translation that builds the [Settings].
-func New(s Selection) (Balancer, error) {
-	name := s.Balancer
-	if name == "" {
-		return nil, errutil.Explain(nil, "loadbalance: balancer name is required")
-	}
-	mu.RLock()
-	f, ok := strategies[name]
-	mu.RUnlock()
-	if !ok {
-		return nil, errutil.Explain(nil, "loadbalance: no strategy registered as %q (registered: %v)", name, names())
-	}
-	return f(s)
-}
-
-// Validate reports whether every strategy named by s could be built, WITHOUT
-// building any of them into a chain: the default's and every rule's
-// [Selection.Balancer] goes through the same [New] a chain rebuild uses, so a
-// missing or unregistered name and a params bag the strategy rejects are all
-// caught here rather than at the next rebuild.
-//
-// It is the check a caller runs BEFORE adopting s, so the answer cannot drift
-// from what adoption would do: same registry, same resolution path.
-//
-// Unlike the per-chain degrade in [Manager.Apply] (which keeps a bad rule's
-// resource on its previous strategy), this is all-or-nothing: it answers "is
-// the whole settings consistent with what this process has registered?".
-//
-// A package-level function rather than a [Manager] method: the registry is
-// process-wide (see [Register]), so there is no per-manager directory to consult.
-// It takes no lock beyond the registry's own, so it is safe for concurrent use.
-func Validate(s Settings) error {
-	seen := make(map[string]struct{}, len(s.Rules))
-	for i := range s.Rules {
-		r := &s.Rules[i]
-		if r.Service == "" {
-			return errutil.Explain(nil, "loadbalance: entry without a service")
-		}
-		if _, dup := seen[r.Service]; dup {
-			return errutil.Explain(nil, "loadbalance: duplicate entry for service %q", r.Service)
-		}
-		seen[r.Service] = struct{}{}
-		if err := validateSelection(r.Selection); err != nil {
-			return err
-		}
-	}
-	return validateSelection(s.withDefaults().Default)
-}
-
-// withDefaults resolves the block default to the base strategy when it names
-// none: a governance document is allowed to configure only other capabilities
-// and leave selection alone, so an empty Default means round-robin rather than
-// an error.
-func (s Settings) withDefaults() Settings {
-	if s.Default.Balancer == "" {
-		s.Default.Balancer = RoundRobin
-	}
-	return s
-}
-
-// validateSelection resolves one selection's strategy, discarding the instance:
-// it exists only to surface the error [New] would report. The metadata selector
-// and the parameter partition are checked first, so a document is rejected for
-// the more specific reason even when its strategy name is also missing.
-func validateSelection(sel Selection) error {
-	if err := sel.Selector.Validate(); err != nil {
-		return err
-	}
-	// The parameter partition: a group set under a strategy that does not read
-	// it — or loose params under a built-in that has its own groups — is a
-	// document error, the same strictness a factory enforced on construction
-	// now moved to the document boundary.
-	//
-	// zone_aware has no strategy parameters of its own, so its groups describe
-	// the DELEGATE: the partition is judged against the strategy that will
-	// actually consume them.
-	strategy := sel.Balancer
-	if strategy == ZoneAware && sel.ZoneAware.Delegate != "" {
-		strategy = sel.ZoneAware.Delegate
-	}
-	// "Not configured" has two spellings for this group: a bound selection
-	// carries the tag default (100 — conf.Bind materializes it even when the
-	// document never mentioned the group), while a selection built in code
-	// carries zero. Any other count under another strategy stays an error.
-	if r := sel.ConsistentHash.Replicas; r != 0 && r != 100 && strategy != ConsistentHash {
-		return errutil.Explain(nil, "loadbalance: consistent-hash parameters set under balancer %q", sel.Balancer)
-	}
-	// Same two spellings here: a bound selection carries the tag default for
-	// zone-key ([discovery.MetaKeyZone]) even when the document never mentioned
-	// the group, while a selection built in code carries zero. Any other key, or
-	// any delegate, under another strategy stays an error.
-	if z := sel.ZoneAware; z.Delegate != "" || (z.ZoneKey != "" && z.ZoneKey != discovery.MetaKeyZone) {
-		if sel.Balancer != ZoneAware {
-			return errutil.Explain(nil, "loadbalance: zone-aware parameters set under balancer %q", sel.Balancer)
-		}
-	}
-	if len(sel.Params) > 0 && isBuiltin(strategy) {
-		return errutil.Explain(nil, "loadbalance: loose balancer-params are for contributed strategies only, not built-in %q", sel.Balancer)
-	}
-	_, err := New(sel)
-	return err
-}
-
-// isBuiltin reports whether name is one of this package's own strategies (or
-// the empty base name): those read their typed groups, not the loose params
-// seam.
-func isBuiltin(name string) bool {
-	switch name {
-	case "", RoundRobin, LeastConn, ConsistentHash, Weighted, ZoneAware, Random, P2C:
-		return true
-	}
-	return false
-}
-
-// Names lists the registered strategy names, sorted.
-func names() []string {
-	mu.RLock()
-	defer mu.RUnlock()
-	return slices.Sorted(maps.Keys(strategies))
 }

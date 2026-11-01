@@ -21,8 +21,8 @@ import (
 	"net"
 
 	"github.com/redis/go-redis/v9"
+	"go-spring.org/cloud/discovery"
 	"go-spring.org/cloud/governance"
-	"go-spring.org/cloud/governance/capability/discovery"
 	"go-spring.org/cloud/governance/capability/loadbalance"
 	"go-spring.org/stdlib/errutil"
 )

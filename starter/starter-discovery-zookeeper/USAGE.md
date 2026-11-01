@@ -3,7 +3,7 @@
 Detailed usage reference. Overview: [README.md](README.md). All behavior claims are verified against
 the starter source (`starter.go`, `registry.go`, `discovery.go`, `config.go`,
 `starter_test.go`, `registry_test.go`, `discovery_test.go`), the registration core (`../starter-discovery/starter.go`,
-`../starter-discovery/config.go`), the `cloud/governance/capability/discovery` seam (`cloud/governance/capability/discovery/registry.go`,
+`../starter-discovery/config.go`), the `cloud/discovery` seam (`cloud/discovery/registry.go`,
 `cloud/governance/capability/loadbalance/pool.go`) and the runnable [example/](example/) (`example/check.sh` runs unit
 tests + a docker-compose ZooKeeper end-to-end boot). **ZooKeeper's own semantics (sessions,
 ephemeral znodes, watchers, digest auth) are

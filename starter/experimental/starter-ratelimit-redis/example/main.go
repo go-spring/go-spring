@@ -37,7 +37,7 @@ import (
 
 	// Blank-import both starters: starter-go-redis publishes the *goredis.Client
 	// bean named by spring.ratelimit.redis.client, and starter-ratelimit-redis
-	// contributes the Redis-backed ratelimit.ClusterLimiter store — the one the
+	// contributes the Redis-backed limiter provider — the one the
 	// resilience driver injects, in place of the private per-executor budgets a
 	// container with no store bean gets.
 	_ "go-spring.org/starter-go-redis"

@@ -25,7 +25,7 @@ package StarterMongoDB
 import (
 	"context"
 
-	"go-spring.org/cloud/governance/capability/discovery"
+	"go-spring.org/cloud/discovery"
 	"go-spring.org/cloud/governance/capability/loadbalance"
 	"go-spring.org/stdlib/errutil"
 )

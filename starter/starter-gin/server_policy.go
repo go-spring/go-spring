@@ -26,9 +26,9 @@ import (
 	"go-spring.org/cloud/governance"
 	"go-spring.org/cloud/governance/capability/fault"
 	"go-spring.org/cloud/governance/capability/label"
-	"go-spring.org/cloud/governance/capability/traffic"
 	"go-spring.org/cloud/governance/dataplane/inbound/admission"
 	observability "go-spring.org/cloud/governance/dataplane/inbound/observe"
+	"go-spring.org/cloud/traffic"
 )
 
 // buildServerPolicy builds the inbound governance middleware. The inbound

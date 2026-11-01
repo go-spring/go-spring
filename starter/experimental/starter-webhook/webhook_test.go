@@ -26,7 +26,7 @@ import (
 	"testing"
 	"time"
 
-	"go-spring.org/cloud/governance/capability/traffic"
+	"go-spring.org/cloud/traffic"
 	"go-spring.org/stdlib/testing/assert"
 
 	observability "go-spring.org/cloud/governance/dataplane/outbound/observe"

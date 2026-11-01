@@ -27,16 +27,17 @@ import (
 	"go-spring.org/cloud/governance/dataplane/inbound/admission"
 
 	"github.com/gin-gonic/gin"
+	"go-spring.org/cloud/discovery"
 	"go-spring.org/cloud/governance"
-	"go-spring.org/cloud/governance/capability/discovery"
 	"go-spring.org/cloud/governance/capability/loadbalance"
-	"go-spring.org/cloud/governance/capability/traffic"
+	"go-spring.org/cloud/governance/capability/ratelimit"
 	admissionplane "go-spring.org/cloud/governance/controlplane/admission"
 	loadbalanceplane "go-spring.org/cloud/governance/controlplane/loadbalance"
 	"go-spring.org/cloud/governance/controlplane/source"
 	serverfault "go-spring.org/cloud/governance/dataplane/inbound/fault"
 	clientfault "go-spring.org/cloud/governance/dataplane/outbound/fault"
 	"go-spring.org/cloud/governance/dataplane/outbound/resilience"
+	"go-spring.org/cloud/traffic"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
@@ -431,9 +432,9 @@ func writeSSE(c *gin.Context, n int, flush bool) {
 // container-less test still exercises the real injection path.
 func testCenter() *governance.Runtime {
 	ctr := &governance.Runtime{
-		Resilience:  resilience.NewManager(resilience.NewDefaultDriver(nil)),
-		LoadBalance: loadbalance.NewManager(),
-		Admission:   admission.NewManager(),
+		Resilience:  resilience.NewManager(resilience.NewDefaultDriver(), ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()})),
+		LoadBalance: loadbalance.NewManager(loadbalance.NewFactory([]loadbalance.Provider{loadbalance.NewBuiltinProvider()})),
+		Admission:   admission.NewManager(ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()})),
 		ClientFault: clientfault.NewManager(),
 		ServerFault: serverfault.NewManager(),
 		Directory:   discovery.NewManager(nil),

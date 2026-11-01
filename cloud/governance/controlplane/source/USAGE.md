@@ -266,7 +266,7 @@ gs.Run()
   ├─ bean wiring: every dependency is an injected field
   │      resilience.Manager  ← every bean exported as resilience.Driver
   │      loadbalance.Manager ← built with no arguments; resolves strategies out of the
-  │                             package registry (loadbalance.Register)
+  │                             collected Provider beans (loadbalance.Provider)
   │      source bean: construct (synchronous first read), then Run — fsnotify watch loop begins
   │      each Center ← its own root's authority beans + its source
   │        (OPTIONAL: no source bean ⇒ empty document, that root off)

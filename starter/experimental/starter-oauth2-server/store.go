@@ -73,7 +73,7 @@ func (s *store) putCode(c authCode) string {
 	code := opaqueToken()
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.sweepLocked()
+	s.sweep()
 	s.codes[code] = c
 	return code
 }
@@ -99,7 +99,7 @@ func (s *store) putRefresh(r refreshRecord) string {
 	tok := opaqueToken()
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.sweepLocked()
+	s.sweep()
 	s.refresh[tok] = r
 	return tok
 }
@@ -120,10 +120,10 @@ func (s *store) takeRefresh(tok string, nowSec int64) (refreshRecord, bool) {
 	return r, true
 }
 
-// sweepLocked drops expired entries; it runs opportunistically on each write so
+// sweep drops expired entries; it runs opportunistically on each write so
 // abandoned codes/tokens do not accumulate without a background janitor. The
 // caller must hold s.mu.
-func (s *store) sweepLocked() {
+func (s *store) sweep() {
 	nowSec := now().Unix()
 	for k, v := range s.codes {
 		if v.expiry < nowSec {

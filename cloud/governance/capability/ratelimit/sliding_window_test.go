@@ -14,37 +14,78 @@
  * limitations under the License.
  */
 
-package ratelimit_test
+package ratelimit
 
 import (
+	"context"
 	"testing"
+	"testing/synctest"
 	"time"
 
-	"go-spring.org/cloud/governance/capability/ratelimit"
 	"go-spring.org/stdlib/testing/assert"
 )
 
 func TestSlidingWindowLimit(t *testing.T) {
-	w := ratelimit.NewSlidingWindow(2, time.Hour) // never rolls within the test
-	assert.That(t, w.AllowN(1)).True()
-	assert.That(t, w.AllowN(1)).True()
-	assert.That(t, w.AllowN(1)).False()
+	synctest.Test(t, func(t *testing.T) {
+		w := &slidingWindow{}
+		p := windowPolicy(2, time.Hour) // never rolls within the test
+		assert.That(t, allow(w, p, 1)).True()
+		assert.That(t, allow(w, p, 1)).True()
+		assert.That(t, allow(w, p, 1)).False()
+	})
 }
 
-// TestSlidingWindowUsageReadOnly pins the window's projected estimate: it
-// reports what AllowN would see without recording anything.
-func TestSlidingWindowUsageReadOnly(t *testing.T) {
-	w := ratelimit.NewSlidingWindow(10, time.Second)
-	usage := w.Usage()
-	assert.That(t, usage.Limit).Equal(float64(10))
-	assert.That(t, usage.Used).Equal(float64(0))
+// TestSlidingWindowWidthChangeResets pins that a width change starts fresh
+// state: counts recorded under a different interval mean nothing in the new one.
+func TestSlidingWindowWidthChangeResets(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		w := &slidingWindow{}
+		assert.That(t, allow(w, windowPolicy(2, time.Second), 2)).True()
+		assert.That(t, allow(w, windowPolicy(2, time.Second), 1)).False()
+		assert.That(t, allow(w, windowPolicy(2, time.Minute), 2)).True()
+	})
+}
 
-	assert.That(t, w.AllowN(3)).True()
-	usage = w.Usage()
-	assert.That(t, usage.Used > 2.99 && usage.Used < 3.01).True()
+// TestSlidingWindowWeightedRoll pins the two-window blend: after a full
+// window the previous count is weighted by the fraction still in view.
+func TestSlidingWindowWeightedRoll(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		w := &slidingWindow{}
+		p := windowPolicy(10, time.Second)
+		assert.That(t, allow(w, p, 5)).True()
 
-	// A refused charge adds nothing, and neither does a read.
-	assert.That(t, w.AllowN(8)).False()
-	usage = w.Usage()
-	assert.That(t, usage.Used > 2.99 && usage.Used < 3.01).True()
+		time.Sleep(time.Second) // roll: the old count becomes prev, fully weighted
+		assert.That(t, allow(w, p, 5)).True()
+		assert.That(t, allow(w, p, 1)).False()
+
+		time.Sleep(500 * time.Millisecond) // prev is half-weighted: 2.5 + 5 spent
+		assert.That(t, allow(w, p, 2)).True()
+		assert.That(t, allow(w, p, 1)).False()
+
+		time.Sleep(2 * time.Second) // both windows aged out
+		assert.That(t, allow(w, p, 10)).True()
+	})
+}
+
+// TestSlidingWindowLimitRaiseKeepsCount pins in-place limit changes: raising the
+// cap does not forget the events already counted in the window.
+func TestSlidingWindowLimitRaiseKeepsCount(t *testing.T) {
+	w := &slidingWindow{}
+
+	policy := Policy{RateLimit: 2, Window: time.Second}
+	for range 2 {
+		allowed, _ := w.Allow(context.Background(), policy, 1)
+		assert.That(t, allowed).True()
+	}
+	allowed, _ := w.Allow(context.Background(), policy, 1)
+	assert.That(t, allowed).False()
+
+	// Raising the limit keeps the two events already counted.
+	policy.RateLimit = 4
+	for range 2 {
+		allowed, _ := w.Allow(context.Background(), policy, 1)
+		assert.That(t, allowed).True()
+	}
+	allowed, _ = w.Allow(context.Background(), policy, 1)
+	assert.That(t, allowed).False()
 }

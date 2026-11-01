@@ -19,9 +19,10 @@ package loadbalance
 import (
 	"context"
 	"testing"
+	"testing/synctest"
 	"time"
 
-	"go-spring.org/cloud/governance/capability/discovery"
+	"go-spring.org/cloud/discovery"
 	"go-spring.org/stdlib/errutil"
 	"go-spring.org/stdlib/testing/assert"
 )
@@ -102,33 +103,33 @@ func TestP2CSingleCandidate(t *testing.T) {
 }
 
 func TestP2CStalenessAgingReadmits(t *testing.T) {
-	// The frozen-estimate guard: an address whose EWMA went high (here via a
-	// failure penalty) and then stopped being picked must re-enter rotation
-	// once its estimate decays past the tau half-life — otherwise it starves
-	// forever behind a stale number.
-	now := time.Unix(0, 0)
-	b := newBalancer(t, Selection{Balancer: P2C}).(*p2c)
-	b.now = func() time.Time { return now }
-	set := eps("a", "b")
+	synctest.Test(t, func(t *testing.T) {
+		// The frozen-estimate guard: an address whose EWMA went high (here via a
+		// failure penalty) and then stopped being picked must re-enter rotation
+		// once its estimate decays past the tau half-life — otherwise it starves
+		// forever behind a stale number.
+		b := newBalancer(t, Selection{Balancer: P2C}).(*p2c)
+		set := eps("a", "b")
 
-	// Seed a failure on "a" so its EWMA carries the 1s penalty.
-	for range 10 {
-		ep, err := b.Pick(set, PickInfo{})
-		assert.Error(t, err).Nil()
-		if ep.Addr == "a" {
-			b.Complete(context.Background(), ep, errutil.Explain(nil, "boom"))
-			break
+		// Seed a failure on "a" so its EWMA carries the 1s penalty.
+		for range 10 {
+			ep, err := b.Pick(set, PickInfo{})
+			assert.Error(t, err).Nil()
+			if ep.Addr == "a" {
+				b.Complete(context.Background(), ep, errutil.Explain(nil, "boom"))
+				break
+			}
+			b.Complete(context.Background(), ep, nil)
 		}
-		b.Complete(context.Background(), ep, nil)
-	}
-	assert.Number(t, b.score("a")).GreaterThan(b.score("b") + 1) // a looks costly
+		assert.Number(t, b.score("a")).GreaterThan(b.score("b") + 1) // a looks costly
 
-	// Right after: the penalty dominates the score (score is in nanoseconds).
-	now = now.Add(time.Second)
-	assert.Number(t, b.score("a")).GreaterThan(0.1 * float64(p2cFailurePenalty))
+		// Right after: the penalty dominates the score (score is in nanoseconds).
+		time.Sleep(time.Second)
+		assert.Number(t, b.score("a")).GreaterThan(0.1 * float64(p2cFailurePenalty))
 
-	// After several taus with no observations, the stored estimate decays to
-	// microseconds of noise and "a" competes again.
-	now = now.Add(ewmaTau * 10)
-	assert.Number(t, b.score("a")).LessThan(float64(time.Millisecond))
+		// After several taus with no observations, the stored estimate decays to
+		// microseconds of noise and "a" competes again.
+		time.Sleep(ewmaTau * 10)
+		assert.Number(t, b.score("a")).LessThan(float64(time.Millisecond))
+	})
 }

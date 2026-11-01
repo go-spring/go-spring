@@ -30,6 +30,7 @@ import (
 	"time"
 
 	"go-spring.org/cloud/governance/capability/circuitbreaker"
+	"go-spring.org/cloud/governance/capability/ratelimit"
 	"go-spring.org/cloud/governance/dataplane/outbound/chain"
 	"go-spring.org/stdlib/errutil"
 	"go-spring.org/stdlib/testing/assert"
@@ -38,7 +39,7 @@ import (
 // newBuiltin builds the bundled client engine for one service under cfg. It is
 // the shared entry the executor, retry, breaker and emit tests all start from.
 //
-// cfg is one capability's policy — Limits, BreakerPolicy or RateLimitPolicy —
+// cfg is one capability's policy — Limits, BreakerPolicy or ratelimit.Policy —
 // because the three are independent and most tests exercise one at a time.
 func newBuiltin(t *testing.T, cfg any) chain.Executor {
 	t.Helper()
@@ -50,14 +51,14 @@ func newBuiltin(t *testing.T, cfg any) chain.Executor {
 // the manager.
 func newBuiltinManager(t *testing.T, cfg any) *Manager {
 	t.Helper()
-	m := NewManager(NewDefaultDriver(nil))
+	m := NewManager(NewDefaultDriver(), ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()}))
 	switch v := cfg.(type) {
 	case nil:
 	case Limits:
 		assert.Error(t, m.ApplyLimits(LimitsSettings{Default: v})).Nil()
 	case BreakerPolicy:
 		assert.Error(t, m.ApplyBreaker(BreakerSettings{Default: v})).Nil()
-	case RateLimitPolicy:
+	case ratelimit.Policy:
 		assert.Error(t, m.ApplyRateLimit(RateLimitSettings{Default: v})).Nil()
 	default:
 		t.Fatalf("unsupported test policy %T", cfg)
@@ -98,7 +99,7 @@ func TestExecuteTimeout(t *testing.T) {
 
 func TestRateLimit(t *testing.T) {
 	// Burst of 2, no refill within the test window: 3rd call is rejected.
-	e := newBuiltin(t, RateLimitPolicy{RateLimit: 1, Burst: 2})
+	e := newBuiltin(t, ratelimit.Policy{Limiter: ratelimit.TokenBucketAlgorithm, RateLimit: 1, Burst: 2})
 	run := func() error {
 		return e.Execute(context.Background(), chain.Operation{}, nil, func(context.Context) error { return nil })
 	}
@@ -111,14 +112,14 @@ func TestRateLimitQueueing(t *testing.T) {
 	// rate-limit-max-wait turns an over-limit call into a bounded wait: a
 	// 1/s bucket with burst 1 admits call 1 immediately, and call 2 — which
 	// maxWait=0 would reject — instead waits for the next token and succeeds.
-	e := newBuiltin(t, RateLimitPolicy{RateLimit: 20, Burst: 1, RateLimitMaxWait: 200 * time.Millisecond})
+	e := newBuiltin(t, ratelimit.Policy{Limiter: ratelimit.TokenBucketAlgorithm, RateLimit: 20, Burst: 1, MaxWait: 200 * time.Millisecond})
 	run := func() error {
 		return e.Execute(context.Background(), chain.Operation{}, nil, func(context.Context) error { return nil })
 	}
 	assert.Error(t, run()).Nil()
 	assert.Error(t, run()).Nil()
 	// And with no wait budget the same shape rejects.
-	e2 := newBuiltin(t, RateLimitPolicy{RateLimit: 20, Burst: 1})
+	e2 := newBuiltin(t, ratelimit.Policy{Limiter: ratelimit.TokenBucketAlgorithm, RateLimit: 20, Burst: 1})
 	assert.Error(t, e2.Execute(context.Background(), chain.Operation{}, nil, func(context.Context) error { return nil })).Nil()
 	assert.Error(t, e2.Execute(context.Background(), chain.Operation{}, nil, func(context.Context) error { return nil })).Is(chain.ErrRateLimited)
 }
@@ -130,11 +131,12 @@ func TestRateLimitQueueing(t *testing.T) {
 func TestWarmUpColdStart(t *testing.T) {
 	// rate 100/s, burst 10 (explicit), warm-up 2s at coldFactor 10: cold
 	// capacity 1 token, growing to 10 over 2 seconds.
-	e := newBuiltin(t, RateLimitPolicy{
-		RateLimit:               100,
-		Burst:                   10,
-		RateLimitWarmUpDuration: 2 * time.Second,
-		WarmUpColdFactor:        10,
+	e := newBuiltin(t, ratelimit.Policy{
+		Limiter:    ratelimit.TokenBucketAlgorithm,
+		RateLimit:  100,
+		Burst:      10,
+		WarmUp:     2 * time.Second,
+		ColdFactor: 10,
 	})
 	// The first call spends the single cold token; the second, immediately
 	// after, must be rejected — without warm-up the full burst of 10 would be
@@ -396,7 +398,7 @@ func TestCapabilityGenerationsAreIndependent(t *testing.T) {
 	}
 
 	// A change to the limits half must not refill the rate budget.
-	rate := RateLimitPolicy{RateLimit: 0.001, Burst: 1}
+	rate := ratelimit.Policy{Limiter: ratelimit.TokenBucketAlgorithm, RateLimit: 0.001, Burst: 1}
 	m := newBuiltinManager(t, rate)
 	e := m.ExecutorFor("svc")
 	defer func() { _ = m.Close() }()
@@ -407,8 +409,15 @@ func TestCapabilityGenerationsAreIndependent(t *testing.T) {
 	assert.Error(t, m.ApplyLimits(LimitsSettings{Default: Limits{Timeout: time.Second}})).Nil()
 	assert.Error(t, spend(e)).Is(chain.ErrRateLimited) // budget survived
 
-	// A rate change DOES rebuild the budget.
+	// A rate change updates the EXISTING budget; it does not refill it, so the
+	// spent token is still spent.
 	rate.Burst = 10
+	assert.Error(t, m.ApplyRateLimit(RateLimitSettings{Default: rate})).Nil()
+	assert.Error(t, spend(e)).Is(chain.ErrRateLimited)
+
+	// The new rule does reach the existing state: a high refill rate fills the
+	// bucket without resetting it.
+	rate.RateLimit = 1e9
 	assert.Error(t, m.ApplyRateLimit(RateLimitSettings{Default: rate})).Nil()
 	assert.Error(t, spend(e)).Nil()
 
@@ -420,13 +429,49 @@ func TestCapabilityGenerationsAreIndependent(t *testing.T) {
 	assert.Error(t, trip(e2)).Is(boom) // trips the breaker (threshold 1)
 	assert.Error(t, spend(e2)).Is(chain.ErrCircuitOpen)
 
-	assert.Error(t, m2.ApplyRateLimit(RateLimitSettings{Default: RateLimitPolicy{RateLimit: 0.001, Burst: 100}})).Nil()
+	assert.Error(t, m2.ApplyRateLimit(RateLimitSettings{Default: ratelimit.Policy{Limiter: ratelimit.TokenBucketAlgorithm, RateLimit: 0.001, Burst: 100}})).Nil()
 	assert.Error(t, spend(e2)).Is(chain.ErrCircuitOpen) // breaker survived
 
 	// A breaker change rebuilds it, so the call reaches the downstream again.
 	rb.ErrorThreshold = 5
 	assert.Error(t, m2.ApplyBreaker(BreakerSettings{Default: rb})).Nil()
 	assert.Error(t, spend(e2)).Nil()
+}
+
+// TestLocalLimitersPrunedOnRuleRemoval pins the collection half of the local
+// counter's lifetime: when a rule disappears, its counter goes with it.
+func TestLocalLimitersPrunedOnRuleRemoval(t *testing.T) {
+	m := NewManager(NewDefaultDriver(), ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()}))
+	defer func() { _ = m.Close() }()
+
+	rule := RateLimitRule{
+		Service: "svc-prune",
+		Action:  chain.ActionMatch{Exact: "limited"},
+		Policy:  ratelimit.Policy{Limiter: ratelimit.TokenBucketAlgorithm, RateLimit: 1, Burst: 1},
+	}
+	if err := m.ApplyRateLimit(RateLimitSettings{Rules: []RateLimitRule{rule}}); err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+	exec := m.ExecutorFor("svc-prune").(*defaultExecutor)
+	noop := func(context.Context) error { return nil }
+	call := func() {
+		_ = exec.Execute(context.Background(),
+			chain.Operation{Request: chain.Request{Action: "limited"}}, nil, noop)
+	}
+
+	call()
+	key := ruleKey("svc-prune", 0)
+	if _, ok := exec.localLimiters.Load(key); !ok {
+		t.Fatal("rule-key counter was not materialized")
+	}
+
+	if err := m.ApplyRateLimit(RateLimitSettings{}); err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+	call() // resolves the default again, and collects the retired rule key
+	if _, ok := exec.localLimiters.Load(key); ok {
+		t.Fatal("stale counter survived the rule removal")
+	}
 }
 
 func TestCircuitBreakerOpensAndRecovers(t *testing.T) {
@@ -493,7 +538,7 @@ func TestHalfOpenCallerCancelReturnsPermit(t *testing.T) {
 }
 
 func TestPolicyTimeoutIsFailure(t *testing.T) {
-	m := NewManager(NewDefaultDriver(nil))
+	m := NewManager(NewDefaultDriver(), ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()}))
 	assert.Error(t, m.ApplyBreaker(BreakerSettings{Default: BreakerPolicy{ErrorThreshold: 1, OpenDuration: time.Hour}})).Nil()
 	assert.Error(t, m.ApplyLimits(LimitsSettings{Default: Limits{Timeout: 20 * time.Millisecond}})).Nil()
 	e := m.ExecutorFor("svc")
@@ -546,7 +591,7 @@ func TestHalfOpenTrialKeepsItsPermitAcrossRetries(t *testing.T) {
 	// The breaker admits one LOGICAL call per trial, not one attempt. The retry
 	// of a trial must therefore run under the trial's permit instead of finding
 	// the half-open gate spent and leaving the round unresolved.
-	m := NewManager(NewDefaultDriver(nil))
+	m := NewManager(NewDefaultDriver(), ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()}))
 	assert.Error(t, m.ApplyBreaker(BreakerSettings{Default: BreakerPolicy{
 		ErrorThreshold:   1,
 		HalfOpenRequests: 1,
@@ -651,7 +696,7 @@ func TestBreakerRecordsOncePerCallNotPerAttempt(t *testing.T) {
 	// With ErrorThreshold 3 and MaxRetries 2 (3 attempts per call), a single
 	// failing call must NOT trip the breaker — under the old per-attempt
 	// recording it would record 3 failures and open immediately.
-	m := NewManager(NewDefaultDriver(nil))
+	m := NewManager(NewDefaultDriver(), ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()}))
 	assert.Error(t, m.ApplyBreaker(BreakerSettings{Default: BreakerPolicy{
 		ErrorThreshold: 3,
 		OpenDuration:   time.Minute,
@@ -961,7 +1006,7 @@ func TestGovernanceLoopRecordsAttempts(t *testing.T) {
 // own word in Outcome — so "rejected" is distinguishable from "ran and failed"
 // on the call's own record instead of being inferred from an empty one.
 func TestRejectionRecordsOneGateRound(t *testing.T) {
-	e := newBuiltin(t, RateLimitPolicy{RateLimit: 1, Burst: 1})
+	e := newBuiltin(t, ratelimit.Policy{Limiter: ratelimit.TokenBucketAlgorithm, RateLimit: 1, Burst: 1})
 
 	// First call spends the burst; the second is rejected before running fn.
 	rec := &chain.Recorder{}
@@ -1025,12 +1070,12 @@ func TestExecuteWithoutRecorderIsSafe(t *testing.T) {
 // share one rate budget, while another interface falls to the default and has
 // its own (absent) budget.
 func TestPartitionsStateByMatchedRule(t *testing.T) {
-	m := NewManager(NewDefaultDriver(nil))
+	m := NewManager(NewDefaultDriver(), ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()}))
 	assert.Error(t, m.ApplyRateLimit(RateLimitSettings{
 		Rules: []RateLimitRule{{
-			Service:         "svc",
-			Action:          chain.ActionMatch{Exact: "limited"},
-			RateLimitPolicy: RateLimitPolicy{RateLimit: 1, Burst: 1},
+			Service: "svc",
+			Action:  chain.ActionMatch{Exact: "limited"},
+			Policy:  ratelimit.Policy{Limiter: ratelimit.TokenBucketAlgorithm, RateLimit: 1, Burst: 1},
 		}},
 	})).Nil()
 	e := m.ExecutorFor("svc")

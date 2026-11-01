@@ -146,7 +146,7 @@ Database, cache, and message-queue clients (`go-redis`, `gorm-*`, `mongodb`,
 
     A seam (a type under `cloud/` that is a neutral, wholesale-replaceable
     contract: `session.SessionStore`, `batch.JobRepository`,
-    `discovery.Discovery`, `resilience.Driver`, `loadbalance.Factory`, ...; or a
+    `discovery.Discovery`, `resilience.Driver`, `loadbalance.Provider`, ...; or a
     framework interface such as `gs.Server`) → **every implementation's bean
     name must carry the implementation name**, as `<impl>.<instance>` when the
     family has instances. Beans are keyed by (name, type), so a second
@@ -236,7 +236,7 @@ Database, cache, and message-queue clients (`go-redis`, `gorm-*`, `mongodb`,
   **owns it** — `cloud/governance/dataplane/outbound/resilience` registers `*resilience.Manager`,
   `cloud/governance/capability/loadbalance` registers `*loadbalance.Manager`,
   `cloud/governance/dataplane/{outbound,inbound}/fault` registers `*clientfault.Manager` and
-  `*serverfault.Manager`, and `cloud/governance/capability/discovery` registers
+  `*serverfault.Manager`, and `cloud/discovery` registers
   `*discovery.Manager` — and a starter that injects one has necessarily imported
   that package for the type. The runtime root composes them into the one
   `*governance.Runtime` bean (it creates the inbound `*admission.Manager` itself).
@@ -448,7 +448,7 @@ Database, cache, and message-queue clients (`go-redis`, `gorm-*`, `mongodb`,
   0..N collections (`[]*health.Indicator`, `Registries`, `Jobs`,
   `map[string]discovery.Discovery`, ... — `?` means an empty collection is legal,
   otherwise it is `no beans collected`) and 0..1 with a meaningful nil
-  (`traffic.Propagator`, `ratelimit.ClusterLimiter`, gorm's `disc`). `gs.IndexArg`
+  (`traffic.Propagator`, `ratelimit.Limiter`, gorm's `disc`). `gs.IndexArg`
   always takes two args: to drop nullability write `gs.IndexArg(N, gs.TagArg(""))`
   (`gs.IndexArg(N)` does not compile).
 - **A multi-instance health indicator's `.Name` is globally unique across
@@ -528,7 +528,7 @@ application can load configuration from it at startup and hot-reload at runtime.
   backends — they serve both configuration and service discovery. These two are
   different integration points in Go-Spring, so they live in different starters:
   the **config** role is a config-provider starter (this archetype); the
-  **discovery** role is client-side (`cloud/governance/capability/discovery`, §3) or framework-native
+  **discovery** role is client-side (`cloud/discovery`, §3) or framework-native
   (`contrib/discovery/`, §3). A config-provider starter does the config role and
   nothing else. The naming mirrors Spring Cloud Alibaba
   (`nacos-config` vs `nacos-discovery`).
@@ -678,7 +678,7 @@ baseline (its identity, wire vocabulary, error catalog, standard drivers).
     seam, and only when a concrete requirement lands.
 - **Client-side discovery is already unified; provider registration is not.**
   Client starters resolve a `ServiceName` to live endpoints through
-  `cloud/governance/capability/discovery` (a `Loader` built via the driver's dialer hook); this
+  `cloud/discovery` (a `Loader` built via the driver's dialer hook); this
   is generic across infrastructure clients. RPC *provider* registration stays
   framework-native per the principle above. When `ServiceName` is empty the
   client dials the address directly, unchanged. For examples of framework-native
@@ -704,7 +704,7 @@ baseline (its identity, wire vocabulary, error catalog, standard drivers).
   (1) Registering *this process* into an external registry
   (Nacos/Consul/Eureka/ZooKeeper) - the Spring Cloud `@EnableDiscoveryClient`
   direction - is a generic, transport-agnostic capability. Its publication
-  lifecycle lives in `cloud/governance/capability/discovery`: `Server` is the one exported
+  lifecycle lives in `cloud/discovery`: `Server` is the one exported
   `gs.Server` that drives every configured center, and each
   `starter-discovery-<backend>` (etcd/nacos/consul/zookeeper) contributes a
   `Registry` - the protocol adapter for its own center. Swapping backends means
@@ -947,7 +947,7 @@ baseline (its identity, wire vocabulary, error catalog, standard drivers).
   `createNode`, consul `upsert`), not around the `registration.Registry`
   interface: the self-heal path never crosses that interface, and it is the one
   that leaves an instance serving while no longer discoverable. The metric and
-  span definitions live once in `cloud/governance/capability/discovery/observe.go` — backends never
+  span definitions live once in `cloud/discovery/observe.go` — backends never
   name an instrument themselves.
   A **discovery-only** backend of this family (`starter-discovery-k8s`, where the
   platform registers Pods for you) has no such seam to report at: it builds the

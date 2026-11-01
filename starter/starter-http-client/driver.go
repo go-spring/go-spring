@@ -22,8 +22,8 @@ import (
 
 	"go-spring.org/cloud/governance"
 
-	"go-spring.org/cloud/governance/capability/discovery"
-	"go-spring.org/cloud/governance/capability/traffic"
+	"go-spring.org/cloud/discovery"
+	"go-spring.org/cloud/traffic"
 	"go-spring.org/starter-http-client/httpx"
 )
 

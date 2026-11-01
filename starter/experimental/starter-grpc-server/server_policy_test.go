@@ -26,9 +26,9 @@ import (
 
 	"go-spring.org/cloud/governance"
 
-	"go-spring.org/cloud/governance/capability/discovery"
+	"go-spring.org/cloud/discovery"
 	"go-spring.org/cloud/governance/capability/loadbalance"
-	"go-spring.org/cloud/governance/capability/traffic"
+	"go-spring.org/cloud/governance/capability/ratelimit"
 	admissionplane "go-spring.org/cloud/governance/controlplane/admission"
 	loadbalanceplane "go-spring.org/cloud/governance/controlplane/loadbalance"
 	"go-spring.org/cloud/governance/controlplane/source"
@@ -36,6 +36,7 @@ import (
 	serverfault "go-spring.org/cloud/governance/dataplane/inbound/fault"
 	clientfault "go-spring.org/cloud/governance/dataplane/outbound/fault"
 	"go-spring.org/cloud/governance/dataplane/outbound/resilience"
+	"go-spring.org/cloud/traffic"
 	"go-spring.org/stdlib/testing/assert"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -54,12 +55,12 @@ var testProp = traffic.NewDefaultPropagator(traffic.DefaultBinding())
 // authority), and the injector is a real inert one, mirroring the DI wiring
 // where every bean is always present (an absent bean fails startup).
 func testCenter() *governance.Runtime {
-	driver := resilience.NewDefaultDriver(nil)
-	resClient := resilience.NewManager(driver)
+	driver := resilience.NewDefaultDriver()
+	resClient := resilience.NewManager(driver, ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()}))
 	ctr := &governance.Runtime{
 		Resilience:  resClient,
-		LoadBalance: loadbalance.NewManager(),
-		Admission:   admission.NewManager(),
+		LoadBalance: loadbalance.NewManager(loadbalance.NewFactory([]loadbalance.Provider{loadbalance.NewBuiltinProvider()})),
+		Admission:   admission.NewManager(ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()})),
 		ClientFault: clientfault.NewManager(),
 		ServerFault: serverfault.NewManager(),
 		Directory:   discovery.NewManager(nil),
@@ -78,10 +79,11 @@ func testCenter() *governance.Runtime {
 func armRateLimit(t *testing.T, ctr *governance.Runtime) {
 	t.Helper()
 	assert.That(t, ctr.GuardServer().Apply(admission.Settings{
-		Default: admission.Policy{
+		Default: admission.Policy{Policy: ratelimit.Policy{
+			Limiter:   ratelimit.TokenBucketAlgorithm,
 			RateLimit: 1,
 			Burst:     1,
-		},
+		}},
 	})).Nil()
 }
 

@@ -25,17 +25,16 @@ import (
 // constructor parameter is REQUIRED — an absent bean fails startup rather than
 // degrading silently.
 //
-// The manager needs no strategy directory: names resolve against the package
-// registry ([Register]), which every strategy file — and every package that
-// registers one, a company's balancer say — has already populated by init. So
-// there is no install step and no window in which a manager exists without its
-// strategies, and no constructor parameter for a deployment to fill in.
+// Strategies are [Provider] beans: this package contributes the built-in provider,
+// and any package that supplies a strategy contributes its own. [Factory]
+// collects them and is the manager's required dependency.
 //
 // The bean owns its own teardown: close runs on [Manager.Close], which drops
 // the chain registrations — the only references the manager keeps. gs destroys
 // beans in reverse construction order, so the chains — built after the
-// manager — are gone by then, which is the order the one-way registration
-// requires.
+// manager — are gone by then.
 func init() {
-	gs.Provide(NewManager).Destroy((*Manager).Close).Caller(1)
+	gs.Provide(NewBuiltinProvider)
+	gs.Provide(NewFactory)
+	gs.Provide(NewManager).Destroy((*Manager).Close)
 }

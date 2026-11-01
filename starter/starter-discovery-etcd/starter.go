@@ -39,7 +39,7 @@
 // expires and etcd deletes the key - self-healing without a reaper.
 //
 // The registration core - the single discoveryServer bean that publishes into
-// every configured center (across backends) - lives in cloud/governance/capability/discovery, which
+// every configured center (across backends) - lives in cloud/discovery, which
 // this package imports anyway, so it exists exactly once per process.
 package StarterDiscoveryEtcd
 
@@ -47,7 +47,7 @@ import (
 	"context"
 
 	"go-spring.org/cloud/actuator/health"
-	"go-spring.org/cloud/governance/capability/discovery"
+	"go-spring.org/cloud/discovery"
 	"go-spring.org/cloud/governance/controlplane/registration"
 	"go-spring.org/log"
 	"go-spring.org/spring/conf"

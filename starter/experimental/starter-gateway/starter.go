@@ -36,7 +36,7 @@ func init() {
 	gs.Provide(newRouteTable,
 		// The runtime is the family's sole injection point: it hands
 		// out the resilience/loadbalance authorities and the discovery directory.
-		gs.IndexArg(3, gs.TagArg("?")),
+		gs.IndexArg(3, gs.TagArg("")), // required limiter factory
 	).Caller(1)
 
 	// The listen-port server, wired into graceful drain as a gs.Server. Named

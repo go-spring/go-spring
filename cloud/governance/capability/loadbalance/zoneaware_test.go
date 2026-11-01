@@ -20,7 +20,7 @@ import (
 	"context"
 	"testing"
 
-	"go-spring.org/cloud/governance/capability/discovery"
+	"go-spring.org/cloud/discovery"
 	"go-spring.org/stdlib/testing/assert"
 )
 
@@ -119,6 +119,26 @@ func TestZoneLevels(t *testing.T) {
 // that takes knobs reads them from the SAME selection, so zone_aware delegating
 // to consistent_hash gets a real ring instead of a zero-replica one (which used
 // to panic on keyed traffic).
+// TestZoneAwarePassesSelectionToDelegate pins that zone_aware forwards the whole
+// selection to its delegate, which reads only the group it owns: a
+// consistent-hash delegate gets the replicas, a round-robin delegate ignores
+// them.
+func TestZoneAwarePassesSelectionToDelegate(t *testing.T) {
+	_, err := testFactories().Create(Selection{
+		Balancer:       ZoneAware,
+		ZoneAware:      ZoneAwareParams{ZoneKey: "zone", Delegate: ConsistentHash},
+		ConsistentHash: ConsistentHashParams{Replicas: 200},
+	})
+	assert.Error(t, err).Nil()
+
+	_, err = testFactories().Create(Selection{
+		Balancer:       ZoneAware,
+		ZoneAware:      ZoneAwareParams{ZoneKey: "zone", Delegate: RoundRobin},
+		ConsistentHash: ConsistentHashParams{Replicas: 200},
+	})
+	assert.Error(t, err).Nil()
+}
+
 func TestZoneAwareDelegatesWithParameters(t *testing.T) {
 	b := newBalancer(t, Selection{
 		Balancer:       ZoneAware,

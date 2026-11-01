@@ -73,10 +73,6 @@ func NewCenter(ctx context.Context, mgr *admission.Manager, src source.Source[ad
 // means: wiring propagates it and refuses to start; a source push ignores it —
 // the log is the intervention.
 func (c *Center) Refresh(ctx context.Context, doc admission.Settings) error {
-	if err := doc.Validate(); err != nil {
-		log.Error(ctx, log.TagAppDef, err, "admission: invalid config")
-		return err
-	}
 	if err := c.mgr.Apply(doc); err != nil {
 		log.Error(ctx, log.TagAppDef, err, "admission: config apply failed")
 		return err

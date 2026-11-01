@@ -64,7 +64,7 @@ Consul/Nacos/k8s；见 example/discovery.go）：
 ```go
 package main
 
-import "go-spring.org/cloud/governance/capability/discovery"
+import "go-spring.org/cloud/discovery"
 
 func init() {
     gs.Provide(func() (discovery.Discovery, error) {

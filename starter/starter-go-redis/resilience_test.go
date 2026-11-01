@@ -19,8 +19,10 @@ package StarterGoRedis
 import (
 	"context"
 	"errors"
-	"go-spring.org/cloud/governance/dataplane/outbound/chain"
 	"testing"
+
+	"go-spring.org/cloud/governance/capability/ratelimit"
+	"go-spring.org/cloud/governance/dataplane/outbound/chain"
 
 	"github.com/redis/go-redis/v9"
 	"go-spring.org/cloud/governance/dataplane/outbound/resilience"
@@ -28,14 +30,14 @@ import (
 )
 
 func newHook(t *testing.T, p any) *resilienceHook {
-	m := resilience.NewManager(resilience.NewDefaultDriver(nil))
+	m := resilience.NewManager(resilience.NewDefaultDriver(), ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()}))
 	switch v := p.(type) {
 	case nil:
 	case resilience.Limits:
 		assert.Error(t, m.ApplyLimits(resilience.LimitsSettings{Default: v})).Nil()
 	case resilience.BreakerPolicy:
 		assert.Error(t, m.ApplyBreaker(resilience.BreakerSettings{Default: v})).Nil()
-	case resilience.RateLimitPolicy:
+	case ratelimit.Policy:
 		assert.Error(t, m.ApplyRateLimit(resilience.RateLimitSettings{Default: v})).Nil()
 	}
 	return &resilienceHook{exec: m.ExecutorFor("svc"), serviceLabel: "redis:test", prop: testProp}
@@ -89,7 +91,7 @@ func TestRealErrorsTripBreaker(t *testing.T) {
 // TestRateLimitRejects confirms the flow-control path: once the burst is spent,
 // further commands are rejected as rate-limited without invoking next.
 func TestRateLimitRejects(t *testing.T) {
-	h := newHook(t, resilience.RateLimitPolicy{RateLimit: 1, Burst: 2})
+	h := newHook(t, ratelimit.Policy{Limiter: ratelimit.TokenBucketAlgorithm, RateLimit: 1, Burst: 2})
 	var ran int
 	stub := h.ProcessHook(func(ctx context.Context, c redis.Cmder) error {
 		ran++

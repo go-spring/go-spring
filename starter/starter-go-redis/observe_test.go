@@ -23,7 +23,7 @@ import (
 	"testing"
 
 	"github.com/redis/go-redis/v9"
-	"go-spring.org/cloud/governance/capability/traffic"
+	"go-spring.org/cloud/traffic"
 	"go-spring.org/stdlib/testing/assert"
 	"go.opentelemetry.io/otel/attribute"
 )

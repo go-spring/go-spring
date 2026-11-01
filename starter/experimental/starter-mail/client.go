@@ -28,9 +28,9 @@ import (
 	"github.com/wneessen/go-mail"
 	"go-spring.org/cloud/governance"
 	"go-spring.org/cloud/governance/capability/label"
-	"go-spring.org/cloud/governance/capability/traffic"
 	"go-spring.org/cloud/governance/dataplane/outbound/chain"
 	"go-spring.org/cloud/governance/dataplane/outbound/resilience"
+	"go-spring.org/cloud/traffic"
 	"go-spring.org/stdlib/errutil"
 )
 

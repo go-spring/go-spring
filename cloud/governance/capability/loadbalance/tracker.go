@@ -21,7 +21,7 @@ import (
 	"sync"
 	"time"
 
-	"go-spring.org/cloud/governance/capability/discovery"
+	"go-spring.org/cloud/discovery"
 	"go-spring.org/log"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/metric"
@@ -78,10 +78,6 @@ type Tracker struct {
 	// immutable afterwards. SuspendFor's default is applied by [NewTracker].
 	cfg TrackerConfig
 
-	// now is the clock, injectable so tests can drive suspension windows
-	// deterministically. Defaults to time.Now.
-	now func() time.Time
-
 	// ins is the shared instrument set, resolved once on first use (see
 	// [instruments]) so an OTel SDK installed later still receives the records.
 	// The tracer is deliberately NOT held here.
@@ -120,12 +116,6 @@ func buildInstruments() *instrumentSet {
 	return in
 }
 
-// resetInstruments makes the next use of instruments() resolve a fresh set. It
-// exists for tests that install their own MeterProvider: the set is process-wide
-// and resolved once, so a test running after one that already resolved it would
-// otherwise keep reporting into the earlier provider.
-func resetInstruments() { instruments = sync.OnceValue(buildInstruments) }
-
 // NewTracker builds a [Tracker] from cfg. A zero SuspendFor is normalized to
 // the 5s default here.
 func NewTracker(cfg TrackerConfig) *Tracker {
@@ -134,16 +124,9 @@ func NewTracker(cfg TrackerConfig) *Tracker {
 	}
 	return &Tracker{
 		cfg:    cfg,
-		now:    time.Now,
 		states: map[string]*suspendState{},
 		ins:    instruments(),
 	}
-}
-
-// Config returns the suspension config this tracker was built with (with the
-// SuspendFor default applied). It is primarily an inspection and test helper.
-func (t *Tracker) Config() TrackerConfig {
-	return t.cfg
 }
 
 // Allows returns the subset of eps that may currently receive traffic:
@@ -152,19 +135,21 @@ func (t *Tracker) Config() TrackerConfig {
 // trial). When the tracker is disabled it returns eps unchanged.
 //
 // If every endpoint is suspended it falls back to eps — black-holing all
-// traffic is worse than probing a degraded instance. Callers that own this
-// fallback themselves should use [Admissible] instead.
+// traffic is worse than probing a degraded instance. This is the only
+// suspension filter a caller needs; [admissible] is its pure inner half.
 func (t *Tracker) Allows(eps []discovery.Endpoint) []discovery.Endpoint {
-	out := t.Admissible(eps)
+	out := t.admissible(eps)
 	if len(out) == 0 {
 		return eps
 	}
 	return out
 }
 
-// Admissible is [Allows] without the fallback: when every endpoint is
-// suspended it returns an empty slice, leaving that decision to the caller.
-func (t *Tracker) Admissible(eps []discovery.Endpoint) []discovery.Endpoint {
+// admissible is [Allows] without the fallback: when every endpoint is
+// suspended it returns an empty slice. It is unexported because every caller
+// wants the fallback; keeping it separate is what lets tests pin the pure
+// filter without the caller-level policy.
+func (t *Tracker) admissible(eps []discovery.Endpoint) []discovery.Endpoint {
 	cfg := t.cfg
 	if cfg.Threshold <= 0 || len(eps) == 0 {
 		return eps
@@ -174,22 +159,22 @@ func (t *Tracker) Admissible(eps []discovery.Endpoint) []discovery.Endpoint {
 
 	out := make([]discovery.Endpoint, 0, len(eps))
 	for _, ep := range eps {
-		if t.admitLocked(ep.Addr, cfg.SuspendFor) {
+		if t.admit(ep.Addr, cfg.SuspendFor) {
 			out = append(out, ep)
 		}
 	}
 	return out
 }
 
-// admitLocked reports whether addr may receive a request, advancing a suspended
+// admit reports whether addr may receive a request, advancing a suspended
 // endpoint into the half-open trial state once its cool-down has elapsed. Caller
 // holds t.mu.
-func (t *Tracker) admitLocked(addr string, suspendFor time.Duration) bool {
+func (t *Tracker) admit(addr string, suspendFor time.Duration) bool {
 	s := t.states[addr]
 	if s == nil || s.suspendedAt.IsZero() {
 		return true // never failed, or recovered
 	}
-	if t.now().Sub(s.suspendedAt) < suspendFor {
+	if time.Now().Sub(s.suspendedAt) < suspendFor {
 		return false // suspended, cooling down
 	}
 	if !s.halfOpen {
@@ -237,7 +222,7 @@ func (t *Tracker) Record(ctx context.Context, addr string, success bool) {
 		// counted as suspended all along (half-open is still out of steady
 		// rotation), so the gauge does not move — only the event counter does.
 		s.halfOpen = false
-		s.suspendedAt = t.now()
+		s.suspendedAt = time.Now()
 		t.ins.suspensions.Add(context.Background(), 1)
 		log.Warn(ctx, log.TagAppDef, "loadbalance: half-open trial failed, endpoint re-suspended",
 			log.String("address", addr))
@@ -245,7 +230,7 @@ func (t *Tracker) Record(ctx context.Context, addr string, success bool) {
 	}
 	s.failures++
 	if s.failures >= cfg.Threshold && s.suspendedAt.IsZero() {
-		s.suspendedAt = t.now()
+		s.suspendedAt = time.Now()
 		t.ins.suspensions.Add(context.Background(), 1)
 		t.ins.suspended.Add(context.Background(), 1)
 		log.Warn(ctx, log.TagAppDef, "loadbalance: endpoint suspended after consecutive failures",
@@ -253,20 +238,4 @@ func (t *Tracker) Record(ctx context.Context, addr string, success bool) {
 			log.Int("failures", s.failures),
 			log.Float("suspend_for_ms", float64(cfg.SuspendFor.Nanoseconds())/1e6))
 	}
-}
-
-// Suspended reports whether addr is currently suspended and still cooling down. It
-// is primarily a test/inspection helper; routing decisions go through Allows.
-func (t *Tracker) Suspended(addr string) bool {
-	cfg := t.cfg
-	if cfg.Threshold <= 0 {
-		return false
-	}
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	s := t.states[addr]
-	if s == nil || s.suspendedAt.IsZero() {
-		return false
-	}
-	return t.now().Sub(s.suspendedAt) < cfg.SuspendFor
 }

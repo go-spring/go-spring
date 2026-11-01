@@ -19,13 +19,13 @@ package loadbalance
 import (
 	"context"
 
-	"go-spring.org/cloud/governance/capability/discovery"
+	"go-spring.org/cloud/discovery"
 )
 
 // Pool is the INNER layer of client-side load balancing: ONE immutable
 // generation of a complete endpoint-selection chain — a [discovery.Resolver]
 // source, the filter chain, a [Balancer] and its [Tracker] — built once and
-// never retuned. It is what a [Chain] assembles (see buildGeneration) and swaps
+// never retuned. It is what a [Chain] assembles (see buildPool) and swaps
 // whole on a governance refresh; request paths reach it THROUGH the chain, via
 // [Chain.Pick] and [Chain.Complete]. Building one directly with [NewPool] is
 // the standalone case, for callers with no governance manager behind them.
@@ -69,13 +69,13 @@ type Pool struct {
 
 // NewPool builds a [Pool] over src using balancer bal and tracker tracker, and
 // records sel as the selection it was built from. The collaborators are ones
-// the caller has already built: the pool creates nothing and assumes neither
-// src nor bal nor tracker is nil.
+// the caller has already built: the pool creates nothing, and a nil one is a
+// wiring error checked here rather than a nil dereference on the first Pick.
 //
 // src is the BASE source, the same in every generation of a chain: the
 // selection's selector is a filtering stage inside [Pool.Pick], not a wrapper
 // around the source. That is what keeps the source a stable way for the manager
-// to rebuild a chain (see [Manager.adopt]).
+// to rebuild a chain (see [Manager.Apply]).
 //
 // Build the tracker with [NewTracker]; a zero [TrackerConfig] is the disabled
 // state ("no suspension"), stated at the call site. Ownership passes to the
@@ -85,6 +85,9 @@ type Pool struct {
 // A standalone caller — one with no governance document behind it — passes
 // Selection{}, which [Pool.Selection] reports as the zero value.
 func NewPool(src discovery.Resolver, bal Balancer, tracker *Tracker, sel Selection) *Pool {
+	if src == nil || bal == nil || tracker == nil {
+		panic("loadbalance: NewPool requires non-nil resolver, balancer and tracker")
+	}
 	return &Pool{src: src, bal: bal, tracker: tracker, sel: sel}
 }
 
@@ -136,10 +139,9 @@ func (p *Pool) Pick(ctx context.Context, info PickInfo) (discovery.Endpoint, err
 	// instances.
 
 	// Suspension: drop instances the tracker has suspended for repeated
-	// failures.
-	if active := p.tracker.Admissible(candidates); len(active) > 0 {
-		candidates = active
-	}
+	// failures. Allows owns the all-suspended fallback, keeping the set
+	// usable when every instance is in cool-down.
+	candidates = p.tracker.Allows(candidates)
 
 	// Soft drain: drop instances whose weight was set to zero at the naming
 	// service (the runtime traffic-drain signal).

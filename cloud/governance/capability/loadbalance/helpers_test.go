@@ -20,7 +20,7 @@ import (
 	"context"
 	"testing"
 
-	"go-spring.org/cloud/governance/capability/discovery"
+	"go-spring.org/cloud/discovery"
 	"go-spring.org/cloud/governance/capability/matcher"
 	"go-spring.org/stdlib/testing/assert"
 )
@@ -42,6 +42,13 @@ func addrs(eps []discovery.Endpoint) []string {
 		out[i] = ep.Addr
 	}
 	return out
+}
+
+// suspended reports whether addr is currently suspended and cooling down: the
+// tracker's pure filter drops it from the admissible set only in that state, so
+// a half-open or recovered endpoint reads as not suspended.
+func suspended(tr *Tracker, addr string) bool {
+	return len(tr.admissible(eps(addr))) == 0
 }
 
 // counts tallies how many picks landed on each address over n calls.
@@ -67,13 +74,13 @@ func staticSource(eps ...discovery.Endpoint) discovery.Resolver {
 // factories.
 func newManager(t *testing.T) *Manager {
 	t.Helper()
-	return NewManager()
+	return NewManager(testFactories())
 }
 
-// selectionFor reads what label resolves to right now, through the same
+// selectionFor reads what service resolves to right now, through the same
 // resolution the manager runs when it arms and rebuilds chains.
-func selectionFor(m *Manager, label string) Selection {
-	return resolveSelection(m.snap.Load(), label)
+func selectionFor(m *Manager, service string) Selection {
+	return findSelection(m.snap.Load(), service)
 }
 
 // versionedSource is a source whose endpoints carry a version, the dimension the
@@ -92,20 +99,25 @@ func versionPrefix(v string) matcher.Selector {
 
 // mustChain is [Manager.Chain] with the construction error asserted away: a
 // chain armed from the base or a valid selection cannot fail to build.
-func mustChain(t *testing.T, m *Manager, ctx context.Context, src discovery.Resolver, label string) *Chain {
+func mustChain(t *testing.T, m *Manager, ctx context.Context, src discovery.Resolver, service string) *Chain {
 	t.Helper()
-	c, err := m.Chain(ctx, src, label)
+	c, err := m.Chain(ctx, src, service)
 	if err != nil {
-		t.Fatalf("chain for %q: %v", label, err)
+		t.Fatalf("chain for %q: %v", service, err)
 	}
 	return c
+}
+
+// testFactories is the built-in strategy set the tests build through.
+func testFactories() *Factory {
+	return NewFactory([]Provider{NewBuiltinProvider()})
 }
 
 // newBalancer builds the strategy a selection names, through the one entry
 // production uses, and fails the test if it cannot be built.
 func newBalancer(t *testing.T, s Selection) Balancer {
 	t.Helper()
-	b, err := New(s)
+	b, err := testFactories().Create(s)
 	if err != nil {
 		t.Fatalf("balancer %q: %v", s.Balancer, err)
 	}

@@ -22,7 +22,7 @@ import (
 	"testing"
 	"time"
 
-	"go-spring.org/cloud/governance/capability/discovery"
+	"go-spring.org/cloud/discovery"
 	"go-spring.org/cloud/governance/capability/loadbalance"
 	"go-spring.org/stdlib/testing/assert"
 	"google.golang.org/grpc/balancer"
@@ -56,7 +56,7 @@ func TestOneBalancerNameIsRegistered(t *testing.T) {
 // attribute bridge: weight, zone and health survive the trip, and the
 // connection's selection rides along with them.
 func TestAddrEndpointRoundTrip(t *testing.T) {
-	sel := mustConnState(t, "grpc:svc", loadbalance.NewManager())
+	sel := mustConnState(t, "grpc:svc", loadbalance.NewManager(loadbalance.NewFactory([]loadbalance.Provider{loadbalance.NewBuiltinProvider()})))
 	in := discovery.Endpoint{
 		Addr:     "10.0.0.1:8080",
 		Weight:   7,
@@ -100,7 +100,7 @@ func TestPickInfoFrom_HashKeyAndZone(t *testing.T) {
 // change REBUILDS the chain's generation — the record in force moves whole, so
 // nothing of the replaced selection keeps deciding traffic.
 func TestSelectionKeepsBaseStrategyAndRebuilds(t *testing.T) {
-	mgr := loadbalance.NewManager()
+	mgr := loadbalance.NewManager(loadbalance.NewFactory([]loadbalance.Provider{loadbalance.NewBuiltinProvider()}))
 	sel := mustConnState(t, "grpc:svc", mgr)
 	assert.That(t, sel.chain.Selection().Balancer).Equal(loadbalance.RoundRobin) // base, stated
 
@@ -123,7 +123,7 @@ func TestSelectionKeepsBaseStrategyAndRebuilds(t *testing.T) {
 // force instead of taking the connection down (the governance source has no
 // error channel, so the log line IS the report).
 func TestSelectionUnknownStrategyKeepsLastGood(t *testing.T) {
-	mgr := loadbalance.NewManager()
+	mgr := loadbalance.NewManager(loadbalance.NewFactory([]loadbalance.Provider{loadbalance.NewBuiltinProvider()}))
 	sel := mustConnState(t, "grpc:svc", mgr)
 
 	mgr.Apply(context.Background(), loadbalance.Settings{Rules: []loadbalance.Rule{
@@ -139,7 +139,7 @@ func TestSelectionUnknownStrategyKeepsLastGood(t *testing.T) {
 // reaches it — and nothing process-wide is touched, which is why two connections
 // (or two containers) never share a policy.
 func TestSelectionSubscribesPerConnection(t *testing.T) {
-	mgr := loadbalance.NewManager()
+	mgr := loadbalance.NewManager(loadbalance.NewFactory([]loadbalance.Provider{loadbalance.NewBuiltinProvider()}))
 
 	one := mustConnState(t, "grpc:one", mgr)
 	two := mustConnState(t, "grpc:two", mgr)
@@ -205,7 +205,7 @@ func TestPickerBuild_RefusesAddressesWithoutSelection(t *testing.T) {
 // the failing instance is evicted from eligibility — leaving the healthy one to
 // serve every pick.
 func TestPicker_RotatesAndEvictsFailingInstance(t *testing.T) {
-	mgr := loadbalance.NewManager()
+	mgr := loadbalance.NewManager(loadbalance.NewFactory([]loadbalance.Provider{loadbalance.NewBuiltinProvider()}))
 	sel := mustConnState(t, "grpc:svc", mgr)
 	mgr.Apply(context.Background(), loadbalance.Settings{Rules: []loadbalance.Rule{
 		{Service: "grpc:svc", Selection: loadbalance.Selection{Balancer: loadbalance.RoundRobin, OutlierThreshold: 5, OutlierSuspendFor: 30 * time.Second}},
@@ -272,7 +272,7 @@ func countPicks(t *testing.T, picker balancer.Picker, n int) map[string]int {
 // over on the very next pick with no re-dial and no picker rebuild, and a rule
 // that stops naming a strategy returns it to the base.
 func TestPicker_FollowsTheSelectionOnTheNextPick(t *testing.T) {
-	mgr := loadbalance.NewManager()
+	mgr := loadbalance.NewManager(loadbalance.NewFactory([]loadbalance.Provider{loadbalance.NewBuiltinProvider()}))
 	sel := mustConnState(t, "grpc:svc", mgr)
 
 	// 9:1 weights: round-robin splits evenly, weighted strongly favors the first.
@@ -346,7 +346,7 @@ func TestPollLoop_PushesChanges(t *testing.T) {
 		{{Addr: "10.0.0.1:80"}, {Addr: "10.0.0.2:80"}}, // scale up: pushed
 	}}
 	cc := &fakeClientConn{states: make(chan resolver.State, 4)}
-	sel := mustConnState(t, "grpc:svc", loadbalance.NewManager())
+	sel := mustConnState(t, "grpc:svc", loadbalance.NewManager(loadbalance.NewFactory([]loadbalance.Provider{loadbalance.NewBuiltinProvider()})))
 
 	ctx, cancel := context.WithCancel(context.Background())
 	r := &discoveryResolver{

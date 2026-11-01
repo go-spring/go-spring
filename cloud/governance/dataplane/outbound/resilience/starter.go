@@ -53,23 +53,18 @@ func init() {
 	// background resources (metric pumps) rather than leak them with the process.
 	// gs destroys beans in reverse construction order, so the clients and servers
 	// holding those objects are gone by then.
-	gs.Provide(func(d Driver) *Manager {
-		return NewManager(d)
-	}, gs.TagArg("${"+DriverProperty+":="+DefaultDriverName+"}")).
+	gs.Provide(func(d Driver, factories *ratelimit.Factory) *Manager {
+		return NewManager(d, factories)
+	}, gs.IndexArg(0, gs.TagArg("${"+DriverProperty+":="+DefaultDriverName+"}")), gs.IndexArg(1, gs.TagArg(""))).
 		Destroy((*Manager).Close).Caller(1)
 
 	// The bundled engine, contributed as the [Driver] bean NAMED
 	// [DefaultDriverName] — the driver the tag above resolves when
-	// ${spring.resilience.driver} is unset or "default". It takes the process's
-	// cluster limiter IF a backend starter contributed one — a Redis store, say,
-	// which is what puts a rate limit beyond the process and onto every replica.
-	// With no such bean the injection is nil and each executor counts in a budget
-	// of its own, which still means one budget per service: the manager builds one
-	// executor per label, shared by every caller of it. A process that configures
-	// driver=sentinel still gets this bean; it simply is not the one selected.
-	gs.Provide(func(c ratelimit.ClusterLimiter) Driver {
-		return NewDefaultDriver(c)
-	}, gs.TagArg("?")).
+	// ${spring.resilience.driver} is unset or "default". Rate-limit counters are
+	// not a driver concern: the manager resolves a rule's limiter kind against the
+	// factories injected into it. A process that configures driver=sentinel still
+	// gets this bean; it simply is not the one selected.
+	gs.Provide(NewDefaultDriver).
 		Name(DefaultDriverName).
 		Export(gs.As[Driver]()).Caller(1)
 }

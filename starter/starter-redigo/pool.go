@@ -22,12 +22,12 @@ import (
 	"net"
 
 	"go-spring.org/cloud/governance/capability/label"
-	"go-spring.org/cloud/governance/capability/traffic"
 	"go-spring.org/cloud/governance/dataplane/outbound/chain"
+	"go-spring.org/cloud/traffic"
 
 	"github.com/gomodule/redigo/redis"
+	"go-spring.org/cloud/discovery"
 	"go-spring.org/cloud/governance"
-	"go-spring.org/cloud/governance/capability/discovery"
 	"go-spring.org/cloud/governance/capability/loadbalance"
 	"go-spring.org/stdlib/errutil"
 )

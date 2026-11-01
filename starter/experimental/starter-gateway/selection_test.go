@@ -22,7 +22,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"go-spring.org/cloud/governance/capability/discovery"
+	"go-spring.org/cloud/discovery"
 	"go-spring.org/cloud/governance/capability/loadbalance"
 	"go-spring.org/stdlib/testing/assert"
 )
@@ -55,7 +55,7 @@ func TestClientIP(t *testing.T) {
 // different clients spread across both — which is the whole reason the key is
 // computed on the proxy path.
 func TestSelectionHashKeyAffinity(t *testing.T) {
-	mgr := loadbalance.NewManager()
+	mgr := loadbalance.NewManager(loadbalance.NewFactory([]loadbalance.Provider{loadbalance.NewBuiltinProvider()}))
 	chain, err := mgr.Chain(context.Background(), gatewaySource(t, "10.0.0.1:80", "10.0.0.2:80"), gatewayLabel("orders"))
 	assert.Error(t, err).Nil()
 

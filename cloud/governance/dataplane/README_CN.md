@@ -25,7 +25,7 @@
 | 输入 | 调用的结果与 `Recorder` | 器官自己的字段 |
 | 生命周期 | 一次调用 | 器官实例（`Close` 时反注册） |
 | 发布方式 | 每次调用（span、指标、日志） | 每次采集，拉取（observable 仪器） |
-| 所在包 | `outbound/observe`、`inbound/observe` | `outbound/resilience`、`inbound/admission`、sentinel starter、`../capability/loadbalance`、`../capability/discovery` |
+| 所在包 | `outbound/observe`、`inbound/observe` | `outbound/resilience`、`inbound/admission`、sentinel starter、`../capability/loadbalance`、`../../discovery` |
 
 ## 规则
 
@@ -37,7 +37,7 @@
 1. **请求面从不读取治理状态。** 它只记录调用返回了什么。被拒调用体现为
    `resilience.error_type=circuit_open`（及其同类），这是请求级事实，不是读熔断器。
 2. **能力包不 import 任何 observability SDK。** 它们只暴露只读访问器
-   （`Breaker.Stats`、`Budget.Usage`、`Bulkhead.Stats`）；持有它的器官自己注册
+   （`Breaker.Stats`、`Bulkhead.Stats`）；持有它的器官自己注册
    observable 回调，并在 `Close` 时反注册。不存在跨层状态 listener，
    `chain.Executor` 上也没有状态查询方法。
 
@@ -57,8 +57,6 @@
 | 指标 | 所有者 | 属性 |
 | --- | --- | --- |
 | `resilience.client.breaker.state`（1-hot）、`.transitions_total{to}` | 出站 resilience | `service`、`unit` |
-| `resilience.client.ratelimit.usage_ratio` | 出站 resilience | `service`、`unit` |
-| `resilience.server.ratelimit.usage_ratio` | 入站 admission | `system`、`service` |
 | `resilience.server.bulkhead.usage_ratio`、`.queued` | 入站 admission | `system`、`service` |
 | `loadbalance.endpoint.suspended`、`.suspension.total` | loadbalance | — |
 | `discovery.cache.age_seconds`、`discovery.sync_total` | discovery | 取决于 observer |
@@ -76,8 +74,6 @@
 
 ## 明确不覆盖
 
-- **ClusterLimiter 的远端用量。** 配置了 store 时扣减的是 store，它没有用量查询接口，
-  因此不发布本地用量；拒绝仍以每次调用的 `rate_limited` 体现。
 - **注入故障的归因。** 请求面把注入故障记录成它模仿的真实错误，因此注入与真实故障在指标上
   不可区分。这是既有的已知缺口。
 - **压测流量打标。** `traffic` 只负责传播标记；指标是否消费它由应用决定。

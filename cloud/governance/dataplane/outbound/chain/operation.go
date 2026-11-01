@@ -25,7 +25,7 @@ import (
 	"context"
 	"strings"
 
-	"go-spring.org/cloud/governance/capability/traffic"
+	"go-spring.org/cloud/traffic"
 	"go-spring.org/log"
 	"go-spring.org/stdlib/strutil"
 	"go.opentelemetry.io/otel/attribute"

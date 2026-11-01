@@ -104,28 +104,21 @@ func sumValue(t *testing.T, rm metricdata.ResourceMetrics, name string, want map
 	return 0, false
 }
 
-// allowAllLimiter stands in for a cluster store; the local budget is never
-// charged when one is configured.
-type allowAllLimiter struct{}
-
-func (allowAllLimiter) Allow(context.Context, string, ratelimit.Spec, int) (bool, error) {
-	return true, nil
-}
-
-// TestExecutorPublishesState verifies the executor reports its OWN breaker and
-// rate-budget state, by pull, from the resilience package.
+// TestExecutorPublishesState verifies the executor reports its OWN breaker
+// state, by pull, from the resilience package.
 func TestExecutorPublishesState(t *testing.T) {
 	rdr, restore := installStateMeter(t)
 	defer restore()
 
-	m := NewManager(NewDefaultDriver(nil))
+	m := NewManager(NewDefaultDriver(), ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()}))
 	if err := m.ApplyBreaker(BreakerSettings{Default: BreakerPolicy{
 		ErrorThreshold: 1,
 		OpenDuration:   time.Hour,
 	}}); err != nil {
 		t.Fatalf("ApplyBreaker: %v", err)
 	}
-	if err := m.ApplyRateLimit(RateLimitSettings{Default: RateLimitPolicy{
+	if err := m.ApplyRateLimit(RateLimitSettings{Default: ratelimit.Policy{
+		Limiter:   ratelimit.TokenBucketAlgorithm,
 		RateLimit: 1,
 		Burst:     10,
 	}}); err != nil {
@@ -139,7 +132,6 @@ func TestExecutorPublishesState(t *testing.T) {
 		func(context.Context) error { return boom })
 
 	rm := collect(t, rdr)
-	base := map[string]string{"service": "svc-state-metrics", "unit": "svc-state-metrics"}
 
 	open := map[string]string{"service": "svc-state-metrics", "unit": "svc-state-metrics", "state": "open"}
 	if v, ok := gaugeValue(t, rm, "resilience.client.breaker.state", open); !ok || v != 1 {
@@ -152,32 +144,6 @@ func TestExecutorPublishesState(t *testing.T) {
 	if trips, ok := sumValue(t, rm, "resilience.client.breaker.transitions_total",
 		map[string]string{"service": "svc-state-metrics", "unit": "svc-state-metrics", "to": "open"}); !ok || trips != 1 {
 		t.Fatalf("transitions to open = %v, ok = %v", trips, ok)
-	}
-	if usage, ok := gaugeValue(t, rm, "resilience.client.ratelimit.usage_ratio", base); !ok || usage <= 0 {
-		t.Fatalf("rate usage = %v, ok = %v", usage, ok)
-	}
-}
-
-// TestClusterLimiterSkipsUsage pins the documented omission: when a store is
-// charged, the untouched local budget must not be published as a permanent zero.
-func TestClusterLimiterSkipsUsage(t *testing.T) {
-	rdr, restore := installStateMeter(t)
-	defer restore()
-
-	m := NewManager(NewDefaultDriver(allowAllLimiter{}))
-	if err := m.ApplyRateLimit(RateLimitSettings{Default: RateLimitPolicy{RateLimit: 1, Burst: 10}}); err != nil {
-		t.Fatalf("Apply: %v", err)
-	}
-	exec := m.ExecutorFor("svc-cluster")
-	defer func() { _ = m.Close() }()
-
-	_ = exec.Execute(context.Background(), chain.Operation{}, nil,
-		func(context.Context) error { return nil })
-
-	rm := collect(t, rdr)
-	if _, ok := gaugeValue(t, rm, "resilience.client.ratelimit.usage_ratio",
-		map[string]string{"service": "svc-cluster", "unit": "svc-cluster"}); ok {
-		t.Fatal("published local rate usage while a cluster limiter is configured")
 	}
 }
 

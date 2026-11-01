@@ -29,11 +29,6 @@
 //     still counted (a gauge would miss a whole open interval between scrapes).
 //     Together, state and transitions answer "is it cut off now" and "how often"
 //     — start and end times are the gauge's edges in the time series.
-//   - ratelimit.usage_ratio is the local budget's spent fraction. It is absent
-//     when a ClusterLimiter is configured, because then the local budget is
-//     never charged and would read zero. It counts every charge on the
-//     governance path, including attempts the breaker later refused and retried
-//     attempts.
 //
 // The attributes carry service and unit (the policy key), but deliberately not
 // system: one executor serves every client backend of a label, so it does not
@@ -49,7 +44,6 @@ import (
 	"go.opentelemetry.io/otel/metric"
 
 	"go-spring.org/cloud/governance/capability/circuitbreaker"
-	"go-spring.org/cloud/governance/capability/ratelimit"
 	"go-spring.org/cloud/observability/instrument"
 )
 
@@ -60,7 +54,6 @@ type stateInstrumentSet struct {
 	meter       metric.Meter
 	state       metric.Float64ObservableGauge
 	transitions metric.Int64ObservableCounter
-	rateUsage   metric.Float64ObservableGauge
 }
 
 // stateInstruments is the one state instrument set this package uses.
@@ -78,11 +71,6 @@ func buildStateInstruments() *stateInstrumentSet {
 		metric.WithDescription("Circuit-breaker transitions, by destination state"),
 		metric.WithUnit("{transition}")); err != nil {
 		instrument.ReportInstrumentError("resilience.client.breaker.transitions_total", err)
-	}
-	if in.rateUsage, err = m.Float64ObservableGauge("resilience.client.ratelimit.usage_ratio",
-		metric.WithDescription("Local rate budget spent / current ceiling (includes refused and retried attempts)"),
-		metric.WithUnit("1")); err != nil {
-		instrument.ReportInstrumentError("resilience.client.ratelimit.usage_ratio", err)
 	}
 	return in
 }
@@ -111,7 +99,7 @@ func (e *defaultExecutor) readyObserve() {
 			return
 		}
 		reg, err := in.meter.RegisterCallback(e.observeState,
-			in.state, in.transitions, in.rateUsage)
+			in.state, in.transitions)
 		if err != nil {
 			instrument.ReportInstrumentError("resilience.client.breaker.state", err)
 			return
@@ -142,21 +130,15 @@ type breakerRef struct {
 	b    *circuitbreaker.Breaker
 }
 
-type budgetRef struct {
-	unit string
-	b    ratelimit.Budget
-}
-
-// observeState reports every breaker and rate budget of the executor's current
-// generation. A generation swap replaces cur wholesale; the copied pointers
-// stay valid for the collection, so an in-flight reading never mixes two
-// generations beyond the one instant of the copy. It takes no lock: the
-// generation is loaded atomically and its key table is a sync.Map.
+// observeState reports every breaker of the executor's current generation. A
+// generation swap replaces cur wholesale; the copied pointers stay valid for
+// the collection, so an in-flight reading never mixes two generations beyond
+// the one instant of the copy. It takes no lock: the generation is loaded
+// atomically and its key table is a sync.Map.
 func (e *defaultExecutor) observeState(_ context.Context, o metric.Observer) error {
 	in := stateInstruments()
 
 	var breakers []breakerRef
-	var budgets []budgetRef
 	if st := e.breaker.Load(); st != nil {
 		st.keys.Range(func(k, v any) bool {
 			unit, cell := k.(string), v.(*breakerCell)
@@ -166,13 +148,6 @@ func (e *defaultExecutor) observeState(_ context.Context, o metric.Observer) err
 			return true
 		})
 	}
-	if st := e.rate.Load(); st != nil {
-		st.keys.Range(func(k, v any) bool {
-			budgets = append(budgets, budgetRef{unit: k.(string), b: v.(ratelimit.Budget)})
-			return true
-		})
-	}
-	cluster := e.limiter != nil
 
 	for _, ref := range breakers {
 		s := ref.b.Stats()
@@ -196,18 +171,6 @@ func (e *defaultExecutor) observeState(_ context.Context, o metric.Observer) err
 			attribute.String("to", circuitbreaker.StateClosed.String())))
 	}
 
-	if cluster {
-		// The store, not the local budget, is charged — a local reading would be
-		// a permanent zero and actively misleading.
-		return nil
-	}
-	for _, ref := range budgets {
-		usage := ref.b.Usage()
-		if usage.Limit <= 0 {
-			continue
-		}
-		o.ObserveFloat64(in.rateUsage, usage.Used/usage.Limit, e.unitAttrs(ref.unit))
-	}
 	return nil
 }
 

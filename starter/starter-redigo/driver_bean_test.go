@@ -20,8 +20,8 @@ import (
 	"context"
 	"testing"
 
+	"go-spring.org/cloud/discovery"
 	"go-spring.org/cloud/governance"
-	"go-spring.org/cloud/governance/capability/discovery"
 	"go-spring.org/spring/gs"
 )
 

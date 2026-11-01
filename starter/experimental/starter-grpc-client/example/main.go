@@ -41,7 +41,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"go-spring.org/cloud/governance/capability/discovery"
+	"go-spring.org/cloud/discovery"
 	"go-spring.org/cloud/governance/capability/loadbalance"
 	"go-spring.org/starter-grpc-client"
 	"go-spring.org/starter-grpc-client/example/idl/proto"
@@ -183,7 +183,7 @@ func main() {
 	// container, so it hands the dialer the two authorities directly (a gs.Run app
 	// injects *StarterGrpcClient.Client instead, and the center supplies both).
 	d := newDisco(eps)
-	lbMgr := loadbalance.NewManager()
+	lbMgr := loadbalance.NewManager(loadbalance.NewFactory([]loadbalance.Provider{loadbalance.NewBuiltinProvider()}))
 
 	// A short-fused suspension policy so the breaker phases finish quickly: three
 	// consecutive failures evict an instance, and a 2s cool-down readmits it. It

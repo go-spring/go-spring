@@ -21,14 +21,15 @@ import (
 	"time"
 
 	"go-spring.org/cloud/governance/capability/circuitbreaker"
+	"go-spring.org/cloud/governance/capability/ratelimit"
 	"go-spring.org/stdlib/testing/assert"
 )
 
 // TestPolicyIsZeroCoversNewKnobs pins that IsZero sees the newer knobs: a
 // policy setting ONLY one of them is no longer "no protection".
 func TestPolicyIsZeroCoversNewKnobs(t *testing.T) {
-	assert.That(t, (RateLimitPolicy{RateLimitWarmUpDuration: time.Second}).IsZero()).False()
-	assert.That(t, (RateLimitPolicy{WarmUpColdFactor: 3}).IsZero()).False()
+	assert.That(t, (ratelimit.Policy{WarmUp: time.Second}).IsZero()).False()
+	assert.That(t, (ratelimit.Policy{ColdFactor: 3}).IsZero()).False()
 	assert.That(t, (BreakerPolicy{BreakerStrategy: circuitbreaker.StrategySlowCall}).IsZero()).False()
 	assert.That(t, (BreakerPolicy{BreakerStrategy: circuitbreaker.StrategyErrorCount}).IsZero()).False()
 	assert.That(t, (BreakerPolicy{BreakerDisabled: true}).IsZero()).False()

@@ -73,6 +73,6 @@ func TestConsistentHashTopologyChange(t *testing.T) {
 func TestFingerprintOrderIndependent(t *testing.T) {
 	a := eps("a", "b", "c")
 	b := eps("c", "a", "b")
-	assert.String(t, fingerprint(a)).Equal(fingerprint(b))
-	assert.String(t, fingerprint(a)).NotEqual(fingerprint(eps("a", "b")))
+	assert.That(t, fingerprint(a)).Equal(fingerprint(b))
+	assert.That(t, fingerprint(a)).NotEqual(fingerprint(eps("a", "b")))
 }

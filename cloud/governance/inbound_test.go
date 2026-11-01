@@ -22,6 +22,7 @@ import (
 	"testing"
 
 	"go-spring.org/cloud/governance/capability/fault"
+	"go-spring.org/cloud/governance/capability/ratelimit"
 	"go-spring.org/cloud/governance/dataplane/inbound/admission"
 	serverfault "go-spring.org/cloud/governance/dataplane/inbound/fault"
 	"go-spring.org/cloud/governance/dataplane/inbound/observe"
@@ -37,7 +38,7 @@ import (
 func TestInboundOver_InjectsFaultThroughGuard(t *testing.T) {
 	inj := serverfault.NewManager()
 	inj.Refresh(fault.Config{Rules: []fault.Rule{{Name: "all", Service: "gin", Rate: 1, Class: fault.ClassTransient, Error: "generic"}}})
-	gm := admission.NewManager()
+	gm := admission.NewManager(ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()}))
 	defer gm.Close()
 
 	in, err := InboundOver("gin", "gin:test", gm, inj)
@@ -67,7 +68,7 @@ func TestInboundOver_InjectsFaultThroughGuard(t *testing.T) {
 // authority leaves a plain, admitting inbound: fault is optional, not a second
 // always-on path.
 func TestInboundOver_NoInjectorIsGovernanceOnly(t *testing.T) {
-	gm := admission.NewManager()
+	gm := admission.NewManager(ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()}))
 	defer gm.Close()
 
 	in, err := InboundOver("gin", "gin:test", gm)
@@ -106,7 +107,7 @@ func TestInboundOver_TagsInjectedFaultOnSpan(t *testing.T) {
 	inj.Refresh(fault.Config{Rules: []fault.Rule{{
 		Name: "all", Service: "gin", Rate: 1, Class: fault.ClassTransient, Error: "generic",
 	}}})
-	gm := admission.NewManager()
+	gm := admission.NewManager(ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()}))
 	defer gm.Close()
 
 	in, err := InboundOver("gin", "gin:test", gm, inj)

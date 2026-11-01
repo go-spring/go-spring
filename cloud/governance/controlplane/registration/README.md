@@ -6,7 +6,7 @@
 it publishes this process into the configured naming centers and maintains that
 publication across the server lifecycle. The read side (`Discovery` /
 `Resolver` / the in-process endpoint directory) lives in
-[capability/discovery](../../capability/discovery/); no request ever passes
+[cloud/discovery](../../../discovery/); no request ever passes
 through this package.
 
 ## Why control plane
@@ -41,11 +41,11 @@ unset means a pure consumer.
 The instance identity (`Instance`, keys under `${spring.discovery}.*`), the
 naming-center blocks (`${spring.discovery.<backend>.<name>}.*`) and the
 consumer-side citation rules are documented in the
-[discovery README](../../capability/discovery/README.md) under "Configuration".
+[discovery README](../../../discovery/README.md) under "Configuration".
 
 ## Observability
 
 This package owns its own `Observer` (registration spans/duration/counter plus
 the `discovery.instance.registered` gauge), independent of the read-side sync
 observation: one observer per side, neither package imports the other, so
-`capability/discovery` never reverses the dependency into the control plane.
+`cloud/discovery` never reverses the dependency into the control plane.

@@ -94,10 +94,10 @@ Verified dependency facts (do not violate):
     holds only the two direction trees `outbound/` and `inbound/` (each
     direction's contract, execution, authority and composition). `capability/`
     is the plane-neutral tier beside them: mechanisms and concepts neither plane
-    owns (`breaker`, `bulkhead`, `ratelimit`, `fault`, `traffic`, `label`,
-    `discovery`, `loadbalance`, `matcher`), consumed by both. Shared,
-    plane-neutral vocabulary (`propagate`, `mesh`) stays at the `cloud/` top
-    level. The directory split does not change dependency direction: the control
+    owns (`breaker`, `bulkhead`, `ratelimit`, `fault`, `label`, `loadbalance`,
+    `matcher`), consumed by both. Shared, plane-neutral vocabulary
+    (`propagate`, `mesh`) and the packages with consumers outside the governance
+    runtime (`discovery`, `traffic`) stay at the `cloud/` top level. The directory split does not change dependency direction: the control
     plane may import the data plane and the capability tier, the data plane may
     import the capability tier, but a data-plane or capability package must
     never import the control-plane root — that is the one way the split can
@@ -197,7 +197,7 @@ Two recurring traps:
   its home is `spring/`, not `stdlib/`), and the moment a third-party import is
   required it cannot live in either foundation layer. The pattern is:
   **abstraction + driver registry in `spring/`, concrete backend in a `starter`**
-  (see `cloud/cache`, `cloud/lock`, `cloud/governance/capability/discovery`).
+  (see `cloud/cache`, `cloud/lock`, `cloud/discovery`).
 
 ## 4. Scope Red Lines (non-goals)
 

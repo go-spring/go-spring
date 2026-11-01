@@ -20,49 +20,82 @@
 package ratelimit
 
 import (
+	"context"
 	"sync"
 	"time"
 )
 
-// FixedWindow is the simplest counter: up to limit events per ALIGNED window
-// — the window boundaries fall on multiples of window since an arbitrary epoch,
-// shared by every FixedWindow with the same width, so budgets align across
-// instances without coordination. Its weakness is the boundary burst: up to
-// 2*limit events can pass in an instant straddling two windows' edge. Choose
-// it when simplicity and a hard per-window guarantee matter more than that
-// smoothness; [SlidingWindow] trades two counters' worth of state for it.
-type FixedWindow struct {
-	mu       sync.Mutex
-	limit    float64
-	window   time.Duration
-	curStart time.Time
-	count    float64
+// fixedWindow is the simplest counter: up to limit events per ALIGNED window —
+// the boundaries fall on multiples of the width counted from the zero time, so
+// every fixedWindow of the same width rolls at the same instant and instances
+// align without coordination. Its weakness is the boundary burst: up to 2*limit
+// events can pass in an instant straddling two windows' edge. Choose it when
+// simplicity and a hard per-window guarantee matter more than that evenness;
+// [slidingWindow] trades two counters' worth of state for it.
+type fixedWindow struct {
+	mu           sync.Mutex
+	limit        float64       // events allowed in a full window
+	width        time.Duration // the aligned window width
+	windowStart  time.Time     // when the current window began, truncated to width
+	currentCount float64       // events recorded in the current window
+
+	// policy and configured are driven by [fixedWindow.Allow]: the first call
+	// materializes the window from the rule, later ones reconfigure it in place.
+	policy     Policy
+	configured bool
 }
 
-// NewFixedWindow returns a window counting up to limit events per aligned
-// window of the given width.
-func NewFixedWindow(limit float64, window time.Duration) *FixedWindow {
-	return &FixedWindow{
-		limit:    limit,
-		window:   window,
-		curStart: time.Now().Truncate(window),
+// Allow charges n units under policy, materializing the window on the first
+// call and reconfiguring it in place whenever the rule changes. A new WIDTH
+// starts fresh state, because the old window's count means nothing in it.
+func (w *fixedWindow) Allow(_ context.Context, policy Policy, n int) (bool, error) {
+	if policy.RateLimit <= 0 || n <= 0 {
+		return true, nil
 	}
-}
+	width, limit := windowLimit(policy)
 
-// AllowN records n events when the current aligned window still has room for
-// them.
-func (w *FixedWindow) AllowN(n int) bool {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	now := time.Now()
-	if now.Sub(w.curStart) >= w.window {
-		// A gap of any length resets the same way: the old window is over.
-		w.count = 0
-		w.curStart = now.Truncate(w.window)
+	switch {
+	case !w.configured || w.width != width:
+		w.reset(width, limit)
+	case w.policy != policy:
+		w.limit = limit
 	}
-	if w.count+float64(n) > w.limit {
+	w.policy = policy
+	return w.charge(n), nil
+}
+
+// charge records n events when the current aligned window still has room for
+// them. Callers hold mu.
+func (w *fixedWindow) charge(n int) bool {
+	now := time.Now()
+	w.roll(now)
+	if w.currentCount+float64(n) > w.limit {
 		return false
 	}
-	w.count += float64(n)
+	w.currentCount += float64(n)
 	return true
+}
+
+// roll advances the window to now: once the current window has elapsed, the
+// next aligned one begins. A gap of any length resets the same way — the old
+// window is over. Callers hold mu.
+func (w *fixedWindow) roll(now time.Time) {
+	if now.Sub(w.windowStart) < w.width {
+		return
+	}
+	w.currentCount = 0
+	w.windowStart = now.Truncate(w.width)
+}
+
+// reset is the first-use and width-change transition: it starts a fresh
+// aligned window, discarding a count that belongs to a different width.
+// Callers hold mu.
+func (w *fixedWindow) reset(width time.Duration, limit float64) {
+	w.width = width
+	w.limit = limit
+	w.windowStart = time.Now().Truncate(width)
+	w.currentCount = 0
+	w.configured = true
 }

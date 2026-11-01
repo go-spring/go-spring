@@ -23,6 +23,7 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 
+	"go-spring.org/cloud/governance/capability/ratelimit"
 	"go-spring.org/cloud/governance/dataplane/inbound/chain"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/metric/metricdata"
@@ -101,14 +102,14 @@ func intGaugeValue(t *testing.T, rm metricdata.ResourceMetrics, name string, wan
 	return 0, false
 }
 
-// TestGuardPublishesBulkheadAndRate verifies the guard's organ state: a held
-// slot, the capacity, and the local budget's spent fraction.
-func TestGuardPublishesBulkheadAndRate(t *testing.T) {
+// TestGuardPublishesBulkhead verifies the guard's organ state: a held slot and
+// the capacity.
+func TestGuardPublishesBulkhead(t *testing.T) {
 	rdr, restore := installStateMeter(t)
 	defer restore()
 
 	id := Identity{System: "sys", Service: "svc-all-metrics"}
-	g, err := New(id, Policy{MaxConcurrent: 1, RateLimit: 1, Burst: 10})
+	g, err := New(id, Policy{MaxConcurrent: 1}, ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()}))
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -127,9 +128,6 @@ func TestGuardPublishesBulkheadAndRate(t *testing.T) {
 	if v, ok := intGaugeValue(t, rm, "resilience.server.bulkhead.queued", base); !ok || v != 0 {
 		t.Fatalf("bulkhead queued = %v, ok = %v", v, ok)
 	}
-	if usage, ok := gaugeValue(t, rm, "resilience.server.ratelimit.usage_ratio", base); !ok || usage <= 0 {
-		t.Fatalf("rate usage = %v, ok = %v", usage, ok)
-	}
 
 	done()
 }
@@ -141,7 +139,7 @@ func TestGuardCloseStopsPublishing(t *testing.T) {
 	defer restore()
 
 	id := Identity{System: "sys", Service: "svc-close-metrics"}
-	g, err := New(id, Policy{MaxConcurrent: 1})
+	g, err := New(id, Policy{MaxConcurrent: 1}, ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()}))
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}

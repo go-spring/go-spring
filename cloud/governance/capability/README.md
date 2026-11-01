@@ -33,23 +33,24 @@ This is also a dependency invariant:
 | [bulkhead](bulkhead/) | How many callers may hold a concurrency slot at once? |
 | [ratelimit](ratelimit/) | How much budget is left, and how is it counted? |
 | [fault](fault/) | Which rule governs this call, and what did it decide? |
-| [traffic](traffic/) | Is this call real traffic or a load-test one? |
 | [label](label/) | How is a governed service named (`prefix:name`)? |
-| [discovery](discovery/) | Which live `host:port` addresses serve this name? |
 | [loadbalance](loadbalance/) | Given the live set, which endpoint gets this request? |
 | [matcher](matcher/) | Which rules does this string map match? |
 
-`discovery` and `loadbalance` are consumed mostly by outbound code, but
-their APIs carry no direction vocabulary — they resolve a name and select an
-endpoint. `fault` and `loadbalance` also carry state that a control-plane root
-drives. They belong here by concept: neither the direction nor the document
-source is theirs.
+`loadbalance` is consumed mostly by outbound code, but its API carries no
+direction vocabulary — it selects an endpoint. `fault` and `loadbalance` also
+carry state that a control-plane root drives. They belong here by concept:
+neither the direction nor the document source is theirs.
+
+Service discovery ([discovery](../../discovery/)) and traffic classification
+([traffic](../../traffic/)) have been promoted to the top of `cloud/` because
+consumers outside the governance runtime need them.
 
 ## Notes
 
 - The directory is a namespace: it holds no Go package of its own.
 - OTel instrumentation scope strings inside these packages keep their
-  historical paths (for example `.../dataplane/discovery`). They are
+  historical paths (for example `.../dataplane/resilience`). They are
   backend-facing contracts, not import paths.
 - If one of these packages later gains consumers outside the governance runtime
   (cache, lock, scheduler, config), the consumption-surface rule promotes it to

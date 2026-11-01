@@ -11,7 +11,7 @@ This package is the **read side**, and it is data plane: the resolver and the
 in-process endpoint directory are read on the request path by `loadbalance`.
 The **write side** — publishing this process (`Instance`, `Registry`, `Server`)
 — is a control-plane lifecycle and lives in
-[cloud/governance/controlplane/registration](../../../controlplane/registration/).
+[cloud/governance/controlplane/registration](../governance/controlplane/registration/).
 Each `starter-discovery-*` backend contributes both adapters.
 
 ## Installation
@@ -27,7 +27,7 @@ import (
     "context"
     "net"
 
-    "go-spring.org/cloud/governance/capability/discovery"
+    "go-spring.org/cloud/discovery"
 )
 
 // d is the discovery backend bean a starter injected (named after its config
@@ -152,7 +152,7 @@ ep, err := pool.Pick(ctx, loadbalance.PickInfo{})
   backend hiccup is not hidden).
 - Endpoint selection — round-robin, weights, consistent hash, failure
   ejection — all of that lives one layer up in
-  [`loadbalance`](../loadbalance/README.md), which takes the resolver (via
+  [`loadbalance`](../governance/capability/loadbalance/README.md), which takes the resolver (via
   the resolver func) as its endpoint source. Discovery itself carries
   no selection policy, and the resolver owns no resources — freshness lives
   inside the backend, so there is nothing to stop.
@@ -196,7 +196,7 @@ Kubernetes) live in their own starters so this package stays dependency-free.
 ## Publishing
 
 The publication lifecycle is the control-plane half and lives in
-[registration](../../../controlplane/registration/): `Server` registers this
+[registration](../governance/controlplane/registration/): `Server` registers this
 process into every configured center, deregisters on shutdown (PreStop, the
 lossless-drain sequence) and broadcasts weight changes; each backend starter
 contributes one `registration.Registry` per configured block. See that
@@ -269,7 +269,7 @@ registering nowhere.
 
 ## The Manager: a directory over backends
 
-`cloud/governance/capability/discovery` also ships a small `Manager`:
+`cloud/discovery` also ships a small `Manager`:
 
 ```go
 func NewManager(backends map[string]Discovery) *Manager
@@ -338,7 +338,7 @@ func (m *Manager) Names() []string
 
 - A discovery backend is a **named bean** in the container — the bean name is
   the config label verbatim, no prefix — not a global map inside
-  `cloud/governance/capability/discovery`. `RegisterDiscovery` / `GetDiscovery` are deleted.
+  `cloud/discovery`. `RegisterDiscovery` / `GetDiscovery` are deleted.
   (2026-09-08)
 - `NewResolver(ctx, d Discovery, name, scheme string)` takes the injected
   instance; the caller has already decided in-process discovery applies, so `d`

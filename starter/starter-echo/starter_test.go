@@ -26,17 +26,18 @@ import (
 	"go-spring.org/cloud/governance/dataplane/inbound/admission"
 
 	"github.com/labstack/echo/v4"
+	"go-spring.org/cloud/discovery"
 	"go-spring.org/cloud/governance"
-	"go-spring.org/cloud/governance/capability/discovery"
 	"go-spring.org/cloud/governance/capability/fault"
 	"go-spring.org/cloud/governance/capability/loadbalance"
-	"go-spring.org/cloud/governance/capability/traffic"
+	"go-spring.org/cloud/governance/capability/ratelimit"
 	admissionplane "go-spring.org/cloud/governance/controlplane/admission"
 	loadbalanceplane "go-spring.org/cloud/governance/controlplane/loadbalance"
 	"go-spring.org/cloud/governance/controlplane/source"
 	serverfault "go-spring.org/cloud/governance/dataplane/inbound/fault"
 	clientfault "go-spring.org/cloud/governance/dataplane/outbound/fault"
 	"go-spring.org/cloud/governance/dataplane/outbound/resilience"
+	"go-spring.org/cloud/traffic"
 	"go-spring.org/spring/conf"
 	"go-spring.org/stdlib/flatten"
 	"go-spring.org/stdlib/testing/assert"
@@ -66,9 +67,9 @@ func testCenter(inj *serverfault.Manager) *governance.Runtime {
 	}
 	armed := inj.Config()
 	ctr := &governance.Runtime{
-		Resilience:  resilience.NewManager(resilience.NewDefaultDriver(nil)),
-		LoadBalance: loadbalance.NewManager(),
-		Admission:   admission.NewManager(),
+		Resilience:  resilience.NewManager(resilience.NewDefaultDriver(), ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()})),
+		LoadBalance: loadbalance.NewManager(loadbalance.NewFactory([]loadbalance.Provider{loadbalance.NewBuiltinProvider()})),
+		Admission:   admission.NewManager(ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()})),
 		ClientFault: clientfault.NewManager(),
 		ServerFault: inj,
 		Directory:   discovery.NewManager(nil),

@@ -26,11 +26,10 @@ import (
 
 	"github.com/alicebob/miniredis/v2"
 	"github.com/redis/go-redis/v9"
+	"go-spring.org/cloud/discovery"
 	"go-spring.org/cloud/governance"
-	"go-spring.org/cloud/governance/capability/discovery"
 	"go-spring.org/cloud/governance/capability/loadbalance"
 	"go-spring.org/cloud/governance/capability/ratelimit"
-	"go-spring.org/cloud/governance/capability/traffic"
 	admissionplane "go-spring.org/cloud/governance/controlplane/admission"
 	loadbalanceplane "go-spring.org/cloud/governance/controlplane/loadbalance"
 	"go-spring.org/cloud/governance/controlplane/source"
@@ -38,6 +37,7 @@ import (
 	serverfault "go-spring.org/cloud/governance/dataplane/inbound/fault"
 	clientfault "go-spring.org/cloud/governance/dataplane/outbound/fault"
 	"go-spring.org/cloud/governance/dataplane/outbound/resilience"
+	"go-spring.org/cloud/traffic"
 	"go-spring.org/spring/gs"
 	goredis "go-spring.org/starter-go-redis"
 	experimental "go-spring.org/starter-go-redis/experimental"
@@ -54,16 +54,28 @@ func newMiniRedis(t *testing.T) (*miniredis.Miniredis, redis.UniversalClient) {
 	return srv, cli
 }
 
-// newStore builds the store the starter contributes, over cli. Two stores over
+// store is a test handle that binds a scope to the factory the starter
+// contributes, so the tests keep a scope-shaped Allow.
+type store struct{ f ratelimit.Provider }
+
+func (s store) Allow(ctx context.Context, scope string, spec ratelimit.Policy, n int) (bool, error) {
+	lim, err := s.f.New(experimental.TokenBucketLimiter, scope)
+	if err != nil {
+		return false, err
+	}
+	return lim.Allow(ctx, spec, n)
+}
+
+// newStore builds the factory the starter contributes, over cli. Two stores over
 // one miniredis (and two clients) stand in for two replicas: each counts
 // nothing locally, both spend the same Redis budget.
-func newStore(t *testing.T, cli redis.UniversalClient) ratelimit.ClusterLimiter {
+func newStore(t *testing.T, cli redis.UniversalClient) store {
 	t.Helper()
-	c, err := experimental.NewClusterLimiter(cli)
+	f, err := experimental.NewProvider(cli)
 	if err != nil {
-		t.Fatalf("NewClusterLimiter: %v", err)
+		t.Fatalf("NewProvider: %v", err)
 	}
-	return c
+	return store{f: f}
 }
 
 // TestSharedBudgetAcrossReplicas pins the point of the starter: burst 5 with a
@@ -74,7 +86,7 @@ func TestSharedBudgetAcrossReplicas(t *testing.T) {
 	a := newStore(t, cli)
 	b := newStore(t, cli)
 	ctx := context.Background()
-	p := ratelimit.Spec{RateLimit: 0.001, Burst: 5}
+	p := ratelimit.Policy{RateLimit: 0.001, Burst: 5}
 
 	allowed := 0
 	for i := 0; i < 5; i++ {
@@ -91,7 +103,7 @@ func TestSharedBudgetAcrossReplicas(t *testing.T) {
 		t.Fatalf("interleaved allows = %d, want 5 (shared budget)", allowed)
 	}
 	// Both replicas must now be refused: the bucket lives in Redis, not in either.
-	for name, s := range map[string]ratelimit.ClusterLimiter{"a": a, "b": b} {
+	for name, s := range map[string]store{"a": a, "b": b} {
 		if admitted, err := s.Allow(ctx, "api", p, 1); err != nil || admitted {
 			t.Fatalf("replica %s after drain: admitted=%v err=%v, want refusal", name, admitted, err)
 		}
@@ -104,7 +116,7 @@ func TestScopeIsolation(t *testing.T) {
 	_, cli := newMiniRedis(t)
 	c := newStore(t, cli)
 	ctx := context.Background()
-	p := ratelimit.Spec{RateLimit: 0.001, Burst: 2}
+	p := ratelimit.Policy{RateLimit: 0.001, Burst: 2}
 
 	for i := 0; i < 2; i++ {
 		if _, err := c.Allow(ctx, "tenant-a", p, 1); err != nil {
@@ -126,7 +138,7 @@ func TestBatchAllowAllOrNothing(t *testing.T) {
 	_, cli := newMiniRedis(t)
 	c := newStore(t, cli)
 	ctx := context.Background()
-	p := ratelimit.Spec{RateLimit: 0.001, Burst: 5}
+	p := ratelimit.Policy{RateLimit: 0.001, Burst: 5}
 
 	if _, err := c.Allow(ctx, "api", p, 3); err != nil {
 		t.Fatalf("Allow(3) on full bucket: %v", err)
@@ -153,7 +165,7 @@ func TestUnlimitedPolicy(t *testing.T) {
 	ctx := context.Background()
 
 	for i := 0; i < 100; i++ {
-		if _, err := c.Allow(ctx, "api", ratelimit.Spec{}, 1); err != nil {
+		if _, err := c.Allow(ctx, "api", ratelimit.Policy{}, 1); err != nil {
 			t.Fatalf("unlimited allow %d: %v", i, err)
 		}
 	}
@@ -168,7 +180,7 @@ func TestConcurrency(t *testing.T) {
 	_, cli := newMiniRedis(t)
 	c := newStore(t, cli)
 	ctx := context.Background()
-	p := ratelimit.Spec{RateLimit: 0.001, Burst: 10}
+	p := ratelimit.Policy{RateLimit: 0.001, Burst: 10}
 
 	var granted atomic.Int64
 	var w sync.WaitGroup
@@ -196,7 +208,7 @@ func TestConcurrency(t *testing.T) {
 func TestKeyTTLPreventsColdKeyPileup(t *testing.T) {
 	srv, cli := newMiniRedis(t)
 	c := newStore(t, cli)
-	if _, err := c.Allow(context.Background(), "api", ratelimit.Spec{RateLimit: 2, Burst: 4}, 1); err != nil {
+	if _, err := c.Allow(context.Background(), "api", ratelimit.Policy{RateLimit: 2, Burst: 4}, 1); err != nil {
 		t.Fatalf("Allow: %v", err)
 	}
 	// ceil(burst/rate)+1 = 3s for the policy above.
@@ -237,7 +249,7 @@ func TestWiring_MissingClientNameFailsStartup(t *testing.T) {
 }
 
 // TestWiring_ContributesRedisStore proves the contribution contract end to end:
-// with the block configured, the container resolves ratelimit.ClusterLimiter to the
+// with the block configured, the container resolves the limiter factory for
 // Redis store. That bean is what the bundled driver injects, which
 // is how every executor ends up spending the shared budget.
 func TestWiring_ContributesRedisStore(t *testing.T) {
@@ -246,9 +258,9 @@ func TestWiring_ContributesRedisStore(t *testing.T) {
 	// The *goredis.Client bean starter-go-redis would publish, built the same
 	// way that starter builds one (identity + observation, no governance).
 	center := &governance.Runtime{
-		Resilience:  resilience.NewManager(resilience.NewDefaultDriver(nil)),
-		LoadBalance: loadbalance.NewManager(),
-		Admission:   admission.NewManager(),
+		Resilience:  resilience.NewManager(resilience.NewDefaultDriver(), ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()})),
+		LoadBalance: loadbalance.NewManager(loadbalance.NewFactory([]loadbalance.Provider{loadbalance.NewBuiltinProvider()})),
+		Admission:   admission.NewManager(ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()})),
 		ClientFault: clientfault.NewManager(),
 		ServerFault: serverfault.NewManager(),
 		Directory:   discovery.NewManager(nil),
@@ -269,35 +281,46 @@ func TestWiring_ContributesRedisStore(t *testing.T) {
 		app.Property("spring.ratelimit.redis.client", "cache")
 		app.Provide(func() *goredis.Client { return w }).Name("cache")
 	}).RunTest(t, func(ts *struct {
-		Limiter ratelimit.ClusterLimiter `autowire:"?"`
+		Factories *ratelimit.Factory `autowire:"?"`
 	}) {
-		if ts.Limiter == nil {
-			t.Fatal("the configured starter must contribute a ratelimit.ClusterLimiter bean")
+		if ts.Factories == nil {
+			t.Fatal("the container must contribute the collected limiter kinds")
+		}
+		if _, err := ts.Factories.Create(experimental.TokenBucketLimiter, "api"); err != nil {
+			t.Fatal("the configured starter must contribute its limiter kind")
 		}
 		// Only the Redis store can write the bucket key, which is what makes
-		// this an assertion about WHICH store was injected.
-		_, err := ts.Limiter.Allow(context.Background(), "api",
-			ratelimit.Spec{RateLimit: 100, Burst: 5}, 1)
+		// this an assertion about WHICH kind was contributed.
+		lim, err := ts.Factories.Create(experimental.TokenBucketLimiter, "api")
+		if err != nil {
+			t.Fatalf("Create: %v", err)
+		}
+		_, err = lim.Allow(context.Background(), ratelimit.Policy{RateLimit: 100, Burst: 5}, 1)
 		if err != nil {
 			t.Fatalf("Allow: %v", err)
 		}
 		if !srv.Exists("ratelimit:api") {
-			t.Fatal("the injected store did not reach Redis")
+			t.Fatal("the contributed store did not reach Redis")
 		}
 	})
 }
 
 // TestWiring_NoBlockContributesNoStore pins the opt-in: an imported but
-// unconfigured starter contributes nothing, and nothing else does either — the
-// container holds no counter store at all. That is the default the resilience
-// driver is built for (its store argument is optional): each executor counts in
-// a private store of its own, which still means one budget per service label.
+// unconfigured starter contributes no Redis kind. The process-local kinds are
+// still there (ratelimit's own starter registers them), so a rule that names
+// none of this starter's kinds stays local.
 func TestWiring_NoBlockContributesNoStore(t *testing.T) {
 	gs.Web(false).Configure(func(app gs.App) {}).RunTest(t, func(ts *struct {
-		Limiter ratelimit.ClusterLimiter `autowire:"?"`
+		Factories *ratelimit.Factory `autowire:"?"`
 	}) {
-		if ts.Limiter != nil {
-			t.Fatal("without spring.ratelimit.redis no counter store may be contributed")
+		if ts.Factories == nil {
+			t.Fatal("the container must contribute the collected limiter kinds")
+		}
+		if _, err := ts.Factories.Create(experimental.TokenBucketLimiter, "api"); err == nil {
+			t.Fatal("without spring.ratelimit.redis the redis kind may not be contributed")
+		}
+		if _, err := ts.Factories.Create(ratelimit.TokenBucketAlgorithm, "api"); err != nil {
+			t.Fatal("the built-in process-local kind must still be contributed")
 		}
 	})
 }

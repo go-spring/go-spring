@@ -21,7 +21,7 @@ import (
 	"testing"
 
 	amqp "github.com/rabbitmq/amqp091-go"
-	"go-spring.org/cloud/governance/capability/traffic"
+	"go-spring.org/cloud/traffic"
 	"go-spring.org/stdlib/testing/assert"
 )
 

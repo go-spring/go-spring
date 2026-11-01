@@ -26,20 +26,17 @@ import (
 // is what puts the one process-wide Manager in the container, and the runtime
 // composition root injects it as a field instead of constructing it.
 //
-// The cluster limiter is OPTIONAL ("?"): only a rate-limit backend starter (a
-// Redis store, say) contributes one, and without it each Guard charges its
-// per-instance budget. With one, the limit spans every replica of the service.
+// The limiter factory is a REQUIRED dependency: the ratelimit package
+// contributes it, and a backend starter (a Redis store, say) adds its kind to
+// the same collection. A rule names the kind it wants; an unregistered kind
+// rejects the document.
 //
 // The Manager owns its own teardown — [Manager.Close] drops the Guards and their
 // stage state — so the bean declares it as the Destroy hook and the runtime does
 // not close it.
 func init() {
-	gs.Provide(func(l ratelimit.ClusterLimiter) *Manager {
-		var opts []Option
-		if l != nil {
-			opts = append(opts, WithClusterLimiter(l))
-		}
-		return NewManager(opts...)
-	}, gs.IndexArg(0, gs.TagArg("?"))).
+	gs.Provide(func(factory *ratelimit.Factory) *Manager {
+		return NewManager(factory)
+	}, gs.IndexArg(0, gs.TagArg(""))).
 		Destroy((*Manager).Close).Caller(1)
 }

@@ -22,7 +22,7 @@ import (
 
 	"go-spring.org/cloud/governance"
 	"go-spring.org/cloud/governance/capability/label"
-	"go-spring.org/cloud/governance/capability/traffic"
+	"go-spring.org/cloud/traffic"
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
 	"go-spring.org/starter-trpc/internal/logger"

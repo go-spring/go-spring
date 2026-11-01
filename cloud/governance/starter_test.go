@@ -21,9 +21,9 @@ import (
 	"testing"
 	"time"
 
-	"go-spring.org/cloud/governance/capability/discovery"
+	"go-spring.org/cloud/discovery"
 	"go-spring.org/cloud/governance/capability/loadbalance"
-	"go-spring.org/cloud/governance/capability/traffic"
+	"go-spring.org/cloud/governance/capability/ratelimit"
 	admissionplane "go-spring.org/cloud/governance/controlplane/admission"
 	loadbalanceplane "go-spring.org/cloud/governance/controlplane/loadbalance"
 	"go-spring.org/cloud/governance/controlplane/source"
@@ -32,6 +32,7 @@ import (
 	"go-spring.org/cloud/governance/dataplane/outbound/chain"
 	clientfault "go-spring.org/cloud/governance/dataplane/outbound/fault"
 	"go-spring.org/cloud/governance/dataplane/outbound/resilience"
+	"go-spring.org/cloud/traffic"
 	"go-spring.org/spring/gs"
 )
 
@@ -179,9 +180,9 @@ func TestRuntime_HandsOutDiscovery(t *testing.T) {
 	disc := discovery.NewManager(map[string]discovery.Discovery{"etcd.main": backend})
 
 	rt := &Runtime{
-		Resilience:  resilience.NewManager(resilience.NewDefaultDriver(nil)),
-		LoadBalance: loadbalance.NewManager(),
-		Admission:   admission.NewManager(),
+		Resilience:  resilience.NewManager(resilience.NewDefaultDriver(), ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()})),
+		LoadBalance: loadbalance.NewManager(loadbalance.NewFactory([]loadbalance.Provider{loadbalance.NewBuiltinProvider()})),
+		Admission:   admission.NewManager(ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()})),
 		ClientFault: clientfault.NewManager(),
 		ServerFault: serverfault.NewManager(),
 		Traffic:     traffic.NewDefaultPropagator(traffic.DefaultBinding()),

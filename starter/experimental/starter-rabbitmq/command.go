@@ -34,8 +34,8 @@ import (
 	"context"
 
 	amqp "github.com/rabbitmq/amqp091-go"
-	"go-spring.org/cloud/governance/capability/traffic"
 	observability "go-spring.org/cloud/governance/dataplane/outbound/observe"
+	"go-spring.org/cloud/traffic"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/propagation"
 )

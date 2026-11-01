@@ -28,9 +28,9 @@ import (
 	"sync"
 
 	amqp "github.com/rabbitmq/amqp091-go"
-	"go-spring.org/cloud/governance/capability/traffic"
 	"go-spring.org/cloud/messaging"
 	"go-spring.org/cloud/propagate"
+	"go-spring.org/cloud/traffic"
 	"go-spring.org/log"
 )
 

@@ -252,7 +252,7 @@ gs.Run()
   ├─ source 构造：由 source starter 自己的接线决定（示例不需要 key）
   ├─ bean wiring: 依赖都是注入字段
   │      resilience.Manager  ← 每个导出为 resilience.Driver 的 bean
-  │      loadbalance.Manager ← 无构造参数；策略从包级注册表（loadbalance.Register）解析
+  │      loadbalance.Manager ← 构造时注入 Factory；策略从收集到的 Provider bean 解析
   │      source bean：先构造（同步首读），再由 Run 启动 fsnotify 监听循环
   │      Center ← 本根的 authority bean + source（**可空注入字段**：没有 source bean ⇒ 空文档）
   ├─ center bean 构造（Rooter，先于 Runtime）:

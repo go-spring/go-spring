@@ -36,7 +36,12 @@ var id = Identity{System: "gin", Service: "gin:127.0.0.1:8080"}
 // mustNew builds a standalone Guard whose policy is expected to be valid.
 func mustNew(t *testing.T, p Policy, opts ...Option) Guard {
 	t.Helper()
-	g, err := New(id, p, opts...)
+	return mustNewWith(t, p, ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()}), opts...)
+}
+
+func mustNewWith(t *testing.T, p Policy, factories *ratelimit.Factory, opts ...Option) Guard {
+	t.Helper()
+	g, err := New(id, p, factories, opts...)
 	if err != nil {
 		t.Fatalf("New(%+v): %v", p, err)
 	}
@@ -69,7 +74,7 @@ func TestZeroPolicyPassesThrough(t *testing.T) {
 }
 
 func TestRateLimit(t *testing.T) {
-	g := mustNew(t, Policy{RateLimit: 1, Burst: 1})
+	g := mustNew(t, Policy{Policy: ratelimit.Policy{Limiter: ratelimit.TokenBucketAlgorithm, RateLimit: 1, Burst: 1}})
 	defer g.Close()
 
 	r, _ := g.Admit(ctx(), chain.Request{})
@@ -164,7 +169,7 @@ func TestFaultInjection(t *testing.T) {
 }
 
 func TestManagerPush(t *testing.T) {
-	m := NewManager()
+	m := NewManager(ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()}))
 	defer m.Close()
 	g := mustGuardFor(t, m, id)
 
@@ -189,7 +194,7 @@ func TestManagerPush(t *testing.T) {
 }
 
 func TestTwoInstancesDoNotShareState(t *testing.T) {
-	m := NewManager()
+	m := NewManager(ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()}))
 	defer m.Close()
 	_ = m.Apply(Settings{Default: Policy{MaxConcurrent: 1}})
 
@@ -234,14 +239,12 @@ func TestDeadlineReleasesBulkhead(t *testing.T) {
 type fakeLimiter struct {
 	allow bool
 	err   error
-	scope string
-	spec  ratelimit.Spec
+	spec  ratelimit.Policy
 	calls int
 }
 
-func (l *fakeLimiter) Allow(_ context.Context, scope string, spec ratelimit.Spec, _ int) (bool, error) {
+func (l *fakeLimiter) Allow(_ context.Context, spec ratelimit.Policy, _ int) (bool, error) {
 	l.calls++
-	l.scope = scope
 	l.spec = spec
 	if l.err != nil {
 		return false, l.err
@@ -249,17 +252,56 @@ func (l *fakeLimiter) Allow(_ context.Context, scope string, spec ratelimit.Spec
 	return l.allow, nil
 }
 
+// fakeProvider builds the one fake limiter and records the scope it was built
+// for.
+type fakeProvider struct {
+	l     *fakeLimiter
+	scope string
+}
+
+func (f *fakeProvider) Algorithms() []string {
+	return []string{ratelimit.TokenBucketAlgorithm}
+}
+
+func (f *fakeProvider) New(_ string, scope string) (ratelimit.Limiter, error) {
+	f.scope = scope
+	return f.l, nil
+}
+
+func TestApplyRejectsUnknownLimiterKind(t *testing.T) {
+	f := &fakeProvider{l: &fakeLimiter{allow: true}}
+	factories := ratelimit.NewFactory([]ratelimit.Provider{f})
+	m := NewManager(factories)
+	defer func() { _ = m.Close() }()
+	// A Guard is what makes the default policy actually used; an unserved rule
+	// is just data and is not validated.
+	g := mustGuardFor(t, m, id)
+	defer g.Close()
+
+	sliding := Settings{Default: Policy{Policy: ratelimit.Policy{RateLimit: 1, Limiter: "redis:sliding-window"}}}
+	if err := m.Apply(sliding); err == nil {
+		t.Fatal("a rule naming an unregistered limiter kind was accepted")
+	}
+
+	bucket := Settings{Default: Policy{Policy: ratelimit.Policy{RateLimit: 1, Limiter: "token-bucket"}}}
+	if err := m.Apply(bucket); err != nil {
+		t.Fatalf("token-bucket rule refused: %v", err)
+	}
+}
+
 func TestClusterLimiter(t *testing.T) {
 	l := &fakeLimiter{allow: true}
-	g := mustNew(t, Policy{RateLimit: 10, Burst: 3}, WithClusterLimiter(l))
+	f := &fakeProvider{l: l}
+	factories := ratelimit.NewFactory([]ratelimit.Provider{f})
+	g := mustNewWith(t, Policy{Policy: ratelimit.Policy{RateLimit: 10, Burst: 3, Limiter: "token-bucket"}}, factories)
 	defer g.Close()
 
 	r, _ := g.Admit(ctx(), chain.Request{})
 	if !r.Admitted() {
 		t.Fatalf("first request refused: %v", r.Err())
 	}
-	if l.calls != 1 || l.scope != id.Service {
-		t.Fatalf("limiter not charged: calls=%d scope=%q", l.calls, l.scope)
+	if l.calls != 1 || f.scope != id.Service {
+		t.Fatalf("limiter not charged: calls=%d scope=%q", l.calls, f.scope)
 	}
 	if l.spec.RateLimit != 10 || l.spec.Burst != 3 {
 		t.Fatalf("limiter got wrong spec: %+v", l.spec)
@@ -279,13 +321,32 @@ func TestClusterLimiter(t *testing.T) {
 	}
 }
 
-func TestStandaloneRateLimiter(t *testing.T) {
-	l := NewRateLimiter(Policy{RateLimit: 1, Burst: 1}, "svc", nil)
-	if !l.Allow(ctx()) {
-		t.Fatal("first request should pass")
+// TestRateStateSurvivesPolicyChange pins the shared model on the inbound side:
+// a policy change updates the counter's rule without refilling it.
+func TestRateStateSurvivesPolicyChange(t *testing.T) {
+	m := NewManager(ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()}))
+	defer func() { _ = m.Close() }()
+
+	id := Identity{System: "sys", Service: "svc-rate-survives"}
+	if err := m.Apply(Settings{Default: Policy{Policy: ratelimit.Policy{Limiter: ratelimit.TokenBucketAlgorithm, RateLimit: 1, Burst: 1}}}); err != nil {
+		t.Fatalf("Apply: %v", err)
 	}
-	if l.Allow(ctx()) {
-		t.Fatal("second request should be limited")
+	g := mustGuardFor(t, m, id)
+	defer g.Close()
+
+	if r, _ := g.Admit(ctx(), chain.Request{}); !r.Admitted() {
+		t.Fatalf("first request refused: %v", r.Err())
+	}
+	if r, _ := g.Admit(ctx(), chain.Request{}); r.Admitted() {
+		t.Fatal("second request should be rate limited")
+	}
+
+	// Raising the burst must not refill the spent token.
+	if err := m.Apply(Settings{Default: Policy{Policy: ratelimit.Policy{Limiter: ratelimit.TokenBucketAlgorithm, RateLimit: 1, Burst: 10}}}); err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+	if r, _ := g.Admit(ctx(), chain.Request{}); r.Admitted() {
+		t.Fatal("policy change refilled the rate counter")
 	}
 }
 
@@ -317,7 +378,7 @@ func TestTimeoutExposed(t *testing.T) {
 // the caller guarantees maxConcurrent >= 0, and an invalid policy is rejected
 // before a Bulkhead is built.
 func TestNegativeMaxConcurrentRejected(t *testing.T) {
-	if _, err := New(id, Policy{MaxConcurrent: -1}); err == nil {
+	if _, err := New(id, Policy{MaxConcurrent: -1}, ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()})); err == nil {
 		t.Fatal("New accepted a negative max-concurrent")
 	}
 }

@@ -38,7 +38,6 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"go-spring.org/cloud/governance/dataplane/outbound/chain"
 	"io"
 	"net/http"
 	"os"
@@ -49,10 +48,13 @@ import (
 	"syscall"
 	"time"
 
+	"go-spring.org/cloud/governance/dataplane/outbound/chain"
+
 	"github.com/labstack/echo/v4"
 	"go-spring.org/cloud/actuator/health"
-	"go-spring.org/cloud/governance/capability/discovery"
+	"go-spring.org/cloud/discovery"
 	"go-spring.org/cloud/governance/capability/loadbalance"
+	"go-spring.org/cloud/governance/capability/ratelimit"
 	"go-spring.org/cloud/governance/dataplane/outbound/resilience"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
@@ -121,8 +123,8 @@ func main() {
 	}
 
 	var err error
-	rmgr := resilience.NewManager(resilience.NewDefaultDriver(nil))
-	if err = rmgr.ApplyRateLimit(resilience.RateLimitSettings{Default: resilience.RateLimitPolicy{RateLimit: 3}}); err != nil {
+	rmgr := resilience.NewManager(resilience.NewDefaultDriver(), ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()}))
+	if err = rmgr.ApplyRateLimit(resilience.RateLimitSettings{Default: ratelimit.Policy{Limiter: ratelimit.TokenBucketAlgorithm, RateLimit: 3}}); err != nil {
 		fail("resilience executor: %v", err)
 	}
 	exec = rmgr.ExecutorFor("echo:demo")
@@ -192,7 +194,8 @@ func runTest() {
 	if err != nil {
 		fail("new resolver: %v", err)
 	}
-	bal, err := loadbalance.New(loadbalance.Selection{Balancer: loadbalance.RoundRobin})
+	factories := loadbalance.NewFactory([]loadbalance.Provider{loadbalance.NewBuiltinProvider()})
+	bal, err := factories.Create(loadbalance.Selection{Balancer: loadbalance.RoundRobin})
 	if err != nil {
 		fail("new balancer: %v", err)
 	}

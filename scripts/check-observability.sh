@@ -802,7 +802,7 @@ check_instrument_hygiene() {
 #
 # 为什么查"上报点"而不是"接口装饰":自愈重注册不经过 discovery.Registrar 接口,
 # 只在后端自己的漏斗里(etcd publish / zk createNode / consul upsert),所以
-# "在接口外面包一层"看起来合规却漏掉最高价值的信号。名字全部落在 cloud/governance/capability/discovery/observe.go,
+# "在接口外面包一层"看起来合规却漏掉最高价值的信号。名字全部落在 cloud/discovery/observe.go,
 # 后端从不自己命名 instrument —— 本段查的是"调用确实存在于模块内"。
 #
 # 无自愈路径的后端:存活由 SDK 自身的 ephemeral 心跳维持,故永远不产出 self_heal 上报。
@@ -833,7 +833,7 @@ check_discovery() {
       *" $b "*) ;;
       *)
         has_call() { grep -rq "$1" --include='*.go' --exclude='*_test.go' "$dir"; }
-        # 上报走块自己的 observer 层(cloud/governance/capability/discovery.Observer),不写包级状态:
+        # 上报走块自己的 observer 层(cloud/discovery.Observer),不写包级状态:
         # 匹配的是方法名,实例变量名随各后端自便。
         has_call '\.RegisterAttempt(' \
           || report "[discovery] $b: 未上报 RegisterAttempt(注册,含自愈重注册)"
@@ -1139,7 +1139,7 @@ check_cloud_join
 #
 # 只认「访问日志 tag」RegisterAppTag(x, "access")。生命周期 tag RegisterAppTag(x, "") 是
 # starter 自己的日志分类,不是访问日志 —— config / discovery 族的每操作可观测性委托给
-# cloud/governance/dataplane/outbound/observe 与 cloud/governance/capability/discovery,本来就没有 per-starter 访问日志,不该被算作漏检。
+# cloud/governance/dataplane/outbound/observe 与 cloud/discovery,本来就没有 per-starter 访问日志,不该被算作漏检。
 #
 # 谓词是「有插桩迹象」,不是「有 access tag」:后者只覆盖自己发访问日志的 starter,
 # 而真正会漏的恰恰是不发的那种(kitex/kratos 的仪器由库发、http-client 连日志都由共享层发)。

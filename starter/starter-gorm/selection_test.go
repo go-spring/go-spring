@@ -21,7 +21,7 @@ import (
 	"testing"
 	"time"
 
-	"go-spring.org/cloud/governance/capability/discovery"
+	"go-spring.org/cloud/discovery"
 	"go-spring.org/cloud/governance/capability/loadbalance"
 	"go-spring.org/stdlib/testing/assert"
 )
@@ -36,7 +36,7 @@ type armedManager struct {
 
 func newArmedManager(t *testing.T, sel loadbalance.Selection) *armedManager {
 	t.Helper()
-	m := loadbalance.NewManager()
+	m := loadbalance.NewManager(loadbalance.NewFactory([]loadbalance.Provider{loadbalance.NewBuiltinProvider()}))
 	a := &armedManager{m: m}
 	a.push(sel)
 	return a
@@ -45,7 +45,7 @@ func newArmedManager(t *testing.T, sel loadbalance.Selection) *armedManager {
 // push adopts sel and re-evaluates every registered chain, as a governance
 // source push does.
 func (a *armedManager) push(sel loadbalance.Selection) {
-	a.m.Apply(context.Background(), loadbalance.Settings{Default: sel})
+	a.m.Apply(context.Background(), loadbalance.Settings{Selection: sel})
 }
 
 // TestNewPickPoolRebuildsOnChange covers the gorm half of endpoint selection: the
@@ -86,7 +86,7 @@ func TestNewPickPoolRebuildsOnChange(t *testing.T) {
 	// A rule scoped to ANOTHER entry's label does not reach this one, even though
 	// the document as a whole changed.
 	a.m.Apply(context.Background(), loadbalance.Settings{
-		Default: loadbalance.Selection{Balancer: loadbalance.Weighted, OutlierThreshold: 5, OutlierSuspendFor: 2 * time.Minute},
+		Selection: loadbalance.Selection{Balancer: loadbalance.Weighted, OutlierThreshold: 5, OutlierSuspendFor: 2 * time.Minute},
 		Rules: []loadbalance.Rule{
 			{Service: "gorm:mysql:other-db", Selection: loadbalance.Selection{Balancer: loadbalance.P2C}},
 		},
@@ -99,7 +99,7 @@ func TestNewPickPoolRebuildsOnChange(t *testing.T) {
 // configuration, and a stop from it is safe to call anyway. The manager must be
 // non-nil — the container always supplies one.
 func TestNewPickPoolAnUnarmedManagerIsPassThrough(t *testing.T) {
-	unarmed := loadbalance.NewManager()
+	unarmed := loadbalance.NewManager(loadbalance.NewFactory([]loadbalance.Provider{loadbalance.NewBuiltinProvider()}))
 	c := Common{Addressing: discovery.Addressing{ServiceName: "user-db"}, Scheme: "tcp"}
 	backend := discovery.NewStaticDiscovery(discovery.Endpoint{Addr: "127.0.0.1:3306", Healthy: true, Weight: 1})
 

@@ -47,8 +47,8 @@ import (
 	"time"
 
 	"github.com/neo4j/neo4j-go-driver/v5/neo4j"
-	"go-spring.org/cloud/governance/capability/discovery"
-	"go-spring.org/cloud/governance/capability/traffic"
+	"go-spring.org/cloud/discovery"
+	"go-spring.org/cloud/traffic"
 	"go-spring.org/spring/gs"
 
 	_ "go-spring.org/starter-actuator"    // aggregates the neo4j health.Indicator

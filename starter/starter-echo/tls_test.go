@@ -33,8 +33,8 @@ import (
 	"time"
 
 	"github.com/labstack/echo/v4"
-	"go-spring.org/cloud/governance/capability/traffic"
 	"go-spring.org/cloud/security"
+	"go-spring.org/cloud/traffic"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/testing/assert"
 )

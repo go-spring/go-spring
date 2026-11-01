@@ -26,7 +26,6 @@ import (
 	"time"
 
 	"go-spring.org/cloud/governance/capability/ratelimit"
-	"go-spring.org/cloud/governance/dataplane/outbound/resilience"
 	"go-spring.org/log"
 )
 
@@ -224,18 +223,23 @@ func requestIDFilter(args []string) (Filter, error) {
 // One store covers the whole process, and with a shared backend (a Redis store,
 // say) every gateway replica shares one budget per key with no route-level
 // switch.
-func rateLimitFilter(args []string, limiter ratelimit.ClusterLimiter) (Filter, error) {
-	if limiter == nil {
-		// A hand-built RouteTable (a test, a caller that skipped the wiring) has no
-		// store; normalize here so the filter never dereferences a nil store, the
-		// same way newRouteTable normalizes the injected one.
-		limiter = newMemoryLimiter()
-	}
+func rateLimitFilter(args []string, limiterFor func(string) (func(string) (ratelimit.Limiter, error), bool)) (Filter, error) {
 	kv, err := parseKV(args)
 	if err != nil {
 		return nil, err
 	}
-	pol := resilience.RateLimitPolicy{Algorithm: ratelimit.Algorithm(kv["algorithm"])}
+	kind := kv["limiter"]
+	if kind == "" {
+		kind = kv["algorithm"] // legacy spelling
+	}
+	if kind == "" {
+		kind = ratelimit.TokenBucketAlgorithm
+	}
+	makeLimiter, ok := limiterFor(kind)
+	if !ok {
+		return nil, &parseError{what: "rateLimit limiter (unregistered kind)", token: kind}
+	}
+	pol := ratelimit.Policy{Limiter: kind}
 	if s := kv["rate"]; s != "" {
 		if pol.RateLimit, err = strconv.ParseFloat(s, 64); err != nil {
 			return nil, &parseError{what: "rateLimit rate", token: s}
@@ -255,7 +259,7 @@ func rateLimitFilter(args []string, limiter ratelimit.ClusterLimiter) (Filter, e
 		}
 	}
 	if s := kv["max-wait"]; s != "" {
-		if pol.RateLimitMaxWait, err = time.ParseDuration(s); err != nil {
+		if pol.MaxWait, err = time.ParseDuration(s); err != nil {
 			return nil, &parseError{what: "rateLimit max-wait", token: s}
 		}
 	}
@@ -266,15 +270,18 @@ func rateLimitFilter(args []string, limiter ratelimit.ClusterLimiter) (Filter, e
 			if keyMode == "ip" {
 				scope = scope + "|" + clientIP(r)
 			}
-			admitted, err := limiter.Allow(r.Context(), scope, pol.Spec(), 1)
-			switch {
-			case err != nil:
+			lim, err := makeLimiter(scope)
+			if err == nil {
+				var admitted bool
+				if admitted, err = lim.Allow(r.Context(), pol, 1); err == nil && !admitted {
+					http.Error(w, "429 Too Many Requests", http.StatusTooManyRequests)
+					return
+				}
+			}
+			if err != nil {
 				// Fail open: a broken counter store (e.g. a Redis blip) must
 				// not take the gateway down.
 				log.Warn(r.Context(), log.TagAppDef, "gateway: rate limit check failed", log.Err(err))
-			case !admitted:
-				http.Error(w, "429 Too Many Requests", http.StatusTooManyRequests)
-				return
 			}
 			next.ServeHTTP(w, r)
 		})

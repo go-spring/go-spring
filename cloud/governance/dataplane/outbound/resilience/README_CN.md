@@ -13,7 +13,7 @@
 
 ## 特性
 
-- `Policy` 字段（出站）：`RateLimit` / `Burst` / `Algorithm` / `Window` /
+- `Policy` 字段（出站）：`RateLimit` / `Burst` / `Limiter` / `Window` /
   `RateLimitMaxWait` / `RateLimitWarmUpDuration` / `WarmUpColdFactor`、
   `ErrorThreshold` / `OpenDuration` / `BreakerStrategy`
   （`consecutive` | `error-rate` | `slow-call` | `error-count`）/
@@ -32,7 +32,7 @@
 - `Fallback(ctx, exec, fn, degrade)` —— 组合任意 executor 的降级
   helper。
 - 限流是受保护调用里的一个 stage，不是独立 API：计数器就是 executor 为自身
-  服务持有的预算，交给它一份 `ClusterLimiter` 存储（`starter-go-redis` 的 Redis）
+  服务持有的预算，交给它一份 `Limiter` 存储（`starter-go-redis` 的 Redis）
   则跨副本共用一份预算。
 
 ## 熔断规则
@@ -137,7 +137,7 @@ cache miss / no rows 这类业务哨兵算 success。adapter 无法归类时，�
 | `HalfOpenRequests` | `ProbeNum` | — |
 | `Retry`（`MaxRetries` / 退避） | 在 sentinel 之外（executor 自己的重试循环） | RetryStrategy |
 
-各 driver 的合法忽略（文档注明、绝不伪造）：`Burst`、`Algorithm` 在 sentinel
+各 driver 的合法忽略（文档注明、绝不伪造）：`Burst`、limiter kind 在 sentinel
 flow 中无对应；滑动窗口限流不排队（只有令牌桶吃 `RateLimitMaxWait`）；default
 driver 的预热是冷启动近似（容量爬坡），不是 sentinel 的速率爬坡；sentinel 的
 system / hotspot / 集群流控是 future work（入站或参数维度，暂无 policy 字段）。
@@ -159,7 +159,7 @@ gs.Provide(func() *sentinelDriver { return &sentinelDriver{} }).
 `Export` 是承重的：gs 按精确类型索引 bean，缺了它具体的 driver 对目录不可见。
 
 计数器存储也是后端，但是**可选**的 —— 它只决定限流能扩到多宽，不决定别的。
-容器里没有 `ClusterLimiter` bean 时，每个 executor 用自己的一份预算计数，和它的
+容器里没有 `Limiter` bean 时，每个 executor 用自己的一份预算计数，和它的
 熔断、舱壁状态完全一样：executor 按服务 label 建一份，所以"一份预算覆盖该
 label 的所有调用方"依然成立。贡献一份跨共享后端的存储（Redis），driver 会
 注入它，限额对全体副本生效，每个服务一份预算。它作用
@@ -215,7 +215,7 @@ sentinel 驱动。
 
 ## 1. 职责与边界
 
-- **做：** 定义 `Policy`、`Executor`、`Driver`、`ClusterLimiter`、`Algorithm`；
+- **做：** 定义 `Policy`、`Executor`、`Driver`、`Limiter`、`Algorithm`；
   内置 `default` 驱动；提供客户端 adapter（`NewRoundTripper`）；
   提供 `Fallback` 组合助手。
 - **不做：**
@@ -261,7 +261,7 @@ sentinel 驱动。
 - **限流是一个 stage，不是自己的 seam。** 它跑在 `Execute` 里，调用方从不
   自己造限流器：通过 `Policy` 配置这个 stage，通过 `ErrRateLimited` 读结果。
   限流是本地还是全局，取决于计数器放在哪 —— executor 自身的预算，或一份
-  `ClusterLimiter` 存储 —— 而不是第二套 API：默认一个 executor 只持有一份属于它那个
+  `Limiter` 存储 —— 而不是第二套 API：默认一个 executor 只持有一份属于它那个
   服务的预算，共享后端（Redis）按集群计数。
 - **计数器按 executor 绑定的服务分域。** 一份预算覆盖该服务的所有调用方，这才
   让限流保护的是下游，而不是下游的某一个 client。
@@ -317,9 +317,9 @@ sentinel 驱动。
   在 `guard`。两个方向只有一个 `Executor` 接口，**定义在叶子包
   `cloud/governance/dataplane/outbound/chain`**（`chain.Executor`），resilience 侧不另设别名；
   方向隔离由 `resilience.Policy` / `admission.Policy` 两个类型和各自的 manager 承担。
-- **器官共享、参数中立。** 熔断状态机 / 限流桶 / `serviceState` / `ClusterLimiter`
-  各一份，各自收自己的词汇：`RateSpec` 导出（store 实现与 gateway 过滤器都要读），
-  `breakerSpec` 包内，`resolveBreakerStrategy` 决定策略。
+- **器官共享、参数中立。** 熔断状态机 / 限流桶 / `serviceState` / `Limiter`
+  各一份，各自收自己的词汇：`ratelimit.Policy` 导出（store 实现与 gateway 过滤器都要读），
+  `BreakerPolicy.Spec()` 包内，`resolveBreakerStrategy` 决定策略。
 - **两个互不依赖的观测面。** 请求面（`outbound/observe`）只记录单次调用的结果，从不读取治理状态；
   本包通过 `observe.go` 注册的 observable 仪器发布**自己的**器官状态（breaker、限流预算）。
   因此不存在跨层 listener 契约，也不在 `chain.Executor` 上放状态快照接口。
@@ -335,7 +335,7 @@ sentinel 驱动。
   无须走 ctx——但保护**状态**仍绑定在构造期：一个 executor 一个 breaker、
   一份预算。`call.Target` / `call.Scenario` 目前只是**携带给读者**（以及将来按它分域的那一步）；
   它们现在不划分任何东西。绝不要让 `Execute` 按任意 per-call key **选择**保护状态；要按 key
-  分区计数器，就递一个 `ClusterLimiter` 并在 scope 里放 key。
+  分区计数器，就递一个 `Limiter` 并在 scope 里放 key。
 - **器官在首次调用时惰性构建**（`snapshot()` / `buildState()`）。executor 的状态观测在采集时
   读取当前代际，因此惰性构建和策略换代都不需要任何装配握手。
 - **托管路径一个 label 一个 executor。** client 一律走
@@ -346,9 +346,10 @@ sentinel 驱动。
 - **executor 是稳定的壳，它物化的状态是一代可替换的内核。** 刷新协议已不存在。
   `Manager.Apply` 发布一份快照就结束；每个 executor 持有一个 `PolicySource`（就是
   manager），在调用点上问「这次调用跑在什么策略下、属于哪一代」
-  （`PolicySource.Resolve`）。遇到自己还没物化过的那一代，它就把这一代拥有的东西整份
-  重建——breaker、rate 预算、retry 预算一起。没有任何东西被原地重调，所以也
-  不存在「哪个器官保留什么」的规则可写错：**配置变更 = 该 label 的状态重来。**
+  （`PolicySource.Resolve`）。遇到自己还没物化过的那一代，它会把这一代拥有的状态整份
+  重建——breaker 与 retry 预算。**限流计数器是例外**：它活在 executor 上，规则随每次
+  调用传入，配置变化是就地更新计数，而不是重建。**配置变更让 breaker/retry 重来，
+  限流计数器继续计数。**
   `loadbalance.Chain` 是同一形状（`SelectionSource` + 更换 `*Pool`），也是这次对齐的模板。
   两个要讲清的后果。**出站仍然不能走「淘汰 + 重建」——淘汰的是 EXECUTOR**：client 把构造
   时拿到的 executor 缓存终身（`go-redis`、`gorm`、`memcached`、`redigo`、`httpx` 都是）。
@@ -358,11 +359,11 @@ sentinel 驱动。
   重置一个活着的熔断器。
   状态在框架够不到的地方的后端保留自己的边界：sentinel 的规则在 SDK 里、按 resource
   name 存，对它来说换代是一次**换规则**，SDK 的统计得以保留。
-- **限流是 executor 的一个 stage**，只提供 1+3：第 1 层 executor 自带 per-service
-  预算（`rateState`，默认路径），第 3 层 `ClusterLimiter` 接口只服务跨副本共享存储
-  （scope = executor 绑定的 service 名）。第 2 层（进程内共享）已否决——不要往 cloud
-  加回内存 `ClusterLimiter` 实现（`NewMemoryCounters` 已删）；按 key 计数是消费方（gateway）
-  自己的事；给 `ClusterLimiter` 写文档只讲跨副本。
+- **限流是 executor 的一个 stage，只有一份契约。** `Limiter.Allow(ctx, policy, n)` 有两个实现：executor 自带的进程内计数器（每个 rate key 一个，
+  默认路径）与共享 store（Redis，跨副本一份预算；scope = executor 绑定的 service
+  名）。进程级、被无关 client 共享的内存 store 仍然否决——不要加回
+  `NewMemoryCounters`；按 key 计数是消费方（gateway）自己的事；共享 store 实现的
+  文档只讲跨副本。
 - **breaker 记录是 per-逻辑调用一次，rate-limit 保留 per-attempt。**
 - **`Policy` 单定义**、自带全部 value tag；governance 的 `ResilienceService` /
   `ResilienceConfig` 直接嵌它（`AdmissionService` 嵌 `admission.Policy`），不造绑定孪生或
@@ -384,7 +385,7 @@ sentinel 驱动。
   只接收**已经按 `${spring.resilience.driver}` 解析好的那一个** Driver bean——
   没有 wiring bean，也没有 `BindDrivers` / `SetDrivers`、名字解析或运行时切换：
   后端是启动决策、终身持有。选不到 bean 会在装配期失败，不会静默回落。
-  内置驱动 = `resilience.NewDefaultDriver(limiter ClusterLimiter)`。
+  内置驱动 = `resilience.NewDefaultDriver(limiter Limiter)`。
   `spring.resilience.driver` 留在治理文档（`autowire:"${...}"` 读 gs properties，
   而治理键来自 `Source.Snapshot()`，搬走会劈裂配置系统）。`gs.Provide` 的 ctor 返回
   具体类型时必须 `Export`（gs 按精确类型索引）。Limiter 的选择键来自 gateway route

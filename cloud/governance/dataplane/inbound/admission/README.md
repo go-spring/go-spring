@@ -76,19 +76,20 @@ the `fault` package. The guard publishes its OWN stage state (rate usage,
 bulkhead occupancy) through observable instruments registered from `observe.go`;
 the request-plane observer never reads this state.
 
-`WithClusterLimiter` makes the rate-limit stage charge a shared store (Redis,
-typically) instead of the instance-local budget, so a limit can span every
+`WithLimiter` makes the rate-limit stage charge a shared store (Redis,
+typically) instead of the process-local counter, so a limit can span every
 replica. The store failure policy is "allow": an unreachable counter backend must
 not become an outage. `governance` adapts the process's existing
-`ratelimit.ClusterLimiter` bean, so one limiter covers both directions.
+`ratelimit.Limiter` bean, so one limiter covers both directions.
 
-The stages are also available as standalone objects, for a caller assembling
-its own middleware over the same state model. Only the rate limiter is exported
-by this package; the bulkhead comes straight from its capability package, with no
-re-export here:
+The stages use the shared capability objects, for a caller assembling its own
+middleware over the same state model. The rate counter is a `ratelimit.Limiter`
+(a process-local counter by default, or a shared store); the rate-limit
+policy IS the stage's `ratelimit.Policy`, so it goes straight to `Allow`. The bulkhead comes straight from its capability package:
 
 ```go
-lim := admission.NewRateLimiter(p, id.Service, nil)   // Allow(ctx) bool
+lim, _ := ratelimit.NewLocalProvider().New(ratelimit.TokenBucketAlgorithm, id.Service)
+ok, err := lim.Allow(ctx, p.Policy, 1)
 bulk := bulkhead.New(p.MaxConcurrent, bulkhead.WithQueueTimeout(p.BulkheadQueueDuration)) // Acquire -> release
 ```
 
@@ -152,8 +153,8 @@ wiring time; `admission` does not import `fault`.
 ## Relationship to `resilience`
 
 `admission` is the server side, `resilience` is the client side. Only the
-rate-limit vocabulary is shared today: the `Spec`, local budget,
-`ClusterLimiter` seam and counting algorithms live in
+rate-limit vocabulary is shared today: the `Policy`, local budget,
+`Limiter` contract and counting algorithms live in
 `cloud/governance/capability/ratelimit`, and each direction maps its own
 policy into them. The circuit breaker is an outbound organ
 (`cloud/governance/capability/circuitbreaker`) with no inbound consumer.

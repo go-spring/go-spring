@@ -19,6 +19,7 @@ package admission
 import (
 	"time"
 
+	"go-spring.org/cloud/governance/capability/ratelimit"
 	"go-spring.org/stdlib/errutil"
 )
 
@@ -27,35 +28,12 @@ import (
 // from the client's policy type: retry has no representation here, and there is
 // no endpoint selection.
 //
-// Every field is zero-value-safe: an all-zero Policy configures nothing, and a
-// Guard built from it admits every request with a no-op Done.
+// The rate-limit knobs are [ratelimit.Policy], embedded so both call directions
+// and every limiter backend read the same vocabulary. Every field is
+// zero-value-safe: an all-zero Policy configures nothing, and a Guard built
+// from it admits every request with a no-op Done.
 type Policy struct {
-	// RateLimit caps inbound throughput in requests per second. 0 disables the
-	// rate-limit stage.
-	RateLimit float64 `value:"${rate-limit:=0}" expr:"$ >= 0"`
-
-	// Burst is how many requests may exceed RateLimit momentarily; ignored when
-	// RateLimit is 0.
-	Burst int `value:"${burst:=0}" expr:"$ >= 0"`
-
-	// RateLimitMaxWait is how long an over-limit request may wait for a token
-	// before being refused. 0 refuses immediately. Ignored when RateLimit is 0.
-	RateLimitMaxWait time.Duration `value:"${rate-limit-max-wait:=0}" expr:"int($) >= 0"`
-
-	// Algorithm selects the counting scheme: empty means token bucket,
-	// "sliding-window" the other. Ignored when RateLimit is 0.
-	Algorithm string `value:"${algorithm:=}" expr:"$ == '' || $ in ['token-bucket', 'sliding-window']"`
-
-	// Window is the rolling interval the sliding-window algorithm counts over;
-	// defaults to one second. Ignored by the token bucket.
-	Window time.Duration `value:"${window:=0}" expr:"int($) >= 0"`
-
-	// RateLimitWarmUpDuration ramps the limit up from a cold start over this
-	// duration. 0 disables warm-up.
-	RateLimitWarmUpDuration time.Duration `value:"${rate-limit-warm-up-duration:=0}" expr:"int($) >= 0"`
-
-	// WarmUpColdFactor shapes the ramp-in; 0 means the engine's default.
-	WarmUpColdFactor int `value:"${warm-up-cold-factor:=0}" expr:"$ >= 0"`
+	ratelimit.Policy
 
 	// MaxConcurrent caps how many requests the instance handles at the same
 	// time (the bulkhead). 0 disables it.
@@ -72,11 +50,8 @@ type Policy struct {
 
 // IsZero reports whether p configures no protection at all.
 func (p Policy) IsZero() bool {
-	return p.RateLimit == 0 && p.Burst == 0 && p.RateLimitMaxWait == 0 &&
-		p.Algorithm == "" && p.Window == 0 &&
-		p.RateLimitWarmUpDuration == 0 && p.WarmUpColdFactor == 0 &&
-		p.MaxConcurrent == 0 && p.BulkheadQueueDuration == 0 &&
-		p.Timeout == 0
+	return p.Policy.IsZero() &&
+		p.MaxConcurrent == 0 && p.BulkheadQueueDuration == 0 && p.Timeout == 0
 }
 
 // Settings is the inbound half of the governance document: one default policy

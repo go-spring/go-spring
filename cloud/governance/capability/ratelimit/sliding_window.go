@@ -20,73 +20,94 @@
 package ratelimit
 
 import (
+	"context"
 	"sync"
 	"time"
 )
 
-// SlidingWindow approximates a rolling-window counter with the standard
+// slidingWindow approximates a rolling-window counter with the standard
 // weighted two-window estimate: it blends the previous window's count by the
 // fraction of it still overlapping the current instant. This bounds events per
 // window without storing a timestamp per event.
-type SlidingWindow struct {
-	mu        sync.Mutex
-	limit     float64
-	window    time.Duration
-	curStart  time.Time
-	curCount  float64
-	prevCount float64
+type slidingWindow struct {
+	mu            sync.Mutex
+	limit         float64       // events allowed in a full window
+	width         time.Duration // the rolling interval
+	windowStart   time.Time     // when the current window began
+	currentCount  float64       // events recorded in the current window
+	previousCount float64       // events the previous window carried
+
+	// policy and configured are driven by [slidingWindow.Allow]: the first call
+	// materializes the window from the rule, later ones reconfigure it in place.
+	policy     Policy
+	configured bool
 }
 
-// NewSlidingWindow returns a window counting up to limit events per rolling
-// window, starting its first window now.
-func NewSlidingWindow(limit float64, window time.Duration) *SlidingWindow {
-	return &SlidingWindow{limit: limit, window: window, curStart: time.Now()}
-}
-
-// Usage reports the window's current weighted estimate and limit without
-// changing it: the same roll-forward arithmetic as [AllowN], projected at now
-// and discarded.
-func (w *SlidingWindow) Usage() Usage {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-	elapsed := time.Since(w.curStart)
-	prev, cur := w.prevCount, w.curCount
-	if elapsed >= w.window {
-		if elapsed >= 2*w.window {
-			prev = 0
-		} else {
-			prev = w.curCount
-		}
-		cur = 0
-		elapsed = 0
+// Allow charges n units under policy, materializing the window on the first
+// call and reconfiguring it in place whenever the rule changes. A new WIDTH
+// starts fresh state, because the old window's counts mean nothing in it.
+func (w *slidingWindow) Allow(_ context.Context, policy Policy, n int) (bool, error) {
+	if policy.RateLimit <= 0 || n <= 0 {
+		return true, nil
 	}
-	weight := float64(w.window-elapsed) / float64(w.window)
-	return Usage{Used: prev*weight + cur, Limit: w.limit}
-}
+	width, limit := windowLimit(policy)
 
-// AllowN records n events when the window's estimate still has room for them.
-func (w *SlidingWindow) AllowN(n int) bool {
 	w.mu.Lock()
 	defer w.mu.Unlock()
+	switch {
+	case !w.configured || w.width != width:
+		w.reset(width, limit)
+	case w.policy != policy:
+		w.limit = limit
+	}
+	w.policy = policy
+	return w.charge(n), nil
+}
+
+// charge records n events when the estimated count in view still has room for
+// them. Callers hold mu.
+func (w *slidingWindow) charge(n int) bool {
 	now := time.Now()
-	elapsed := now.Sub(w.curStart)
-	if elapsed >= w.window {
-		// Roll forward: an adjacent window becomes prev; a gap of two or more
-		// windows means the old counts have fully aged out.
-		if elapsed >= 2*w.window {
-			w.prevCount = 0
-		} else {
-			w.prevCount = w.curCount
-		}
-		w.curCount = 0
-		w.curStart = now
-		elapsed = 0
-	}
-	weight := float64(w.window-elapsed) / float64(w.window)
-	estimate := w.prevCount*weight + w.curCount
-	if estimate+float64(n) > w.limit {
+	w.roll(now)
+	if w.estimate(now)+float64(n) > w.limit {
 		return false
 	}
-	w.curCount += float64(n)
+	w.currentCount += float64(n)
 	return true
+}
+
+// roll advances the window to now: once the current window has elapsed it
+// becomes the previous one, and a gap of two or more windows ages both counts
+// out. Callers hold mu.
+func (w *slidingWindow) roll(now time.Time) {
+	elapsed := now.Sub(w.windowStart)
+	if elapsed < w.width {
+		return
+	}
+	if elapsed >= 2*w.width {
+		w.previousCount = 0
+	} else {
+		w.previousCount = w.currentCount
+	}
+	w.currentCount = 0
+	w.windowStart = now
+}
+
+// estimate is the count in view at now: the current window plus the previous
+// one weighted by the fraction still inside the rolling interval. Callers hold
+// mu and have already rolled.
+func (w *slidingWindow) estimate(now time.Time) float64 {
+	weight := float64(w.width-now.Sub(w.windowStart)) / float64(w.width)
+	return w.previousCount*weight + w.currentCount
+}
+
+// reset is the first-use and width-change transition: it starts a fresh
+// window, discarding counts that belong to a different width. Callers hold mu.
+func (w *slidingWindow) reset(width time.Duration, limit float64) {
+	w.width = width
+	w.limit = limit
+	w.windowStart = time.Now()
+	w.currentCount = 0
+	w.previousCount = 0
+	w.configured = true
 }

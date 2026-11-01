@@ -85,7 +85,7 @@ type Executor interface {
 var (
 	// ErrRateLimited is the chain's verdict that the configured rate limit is
 	// exceeded. The rate-limit stage reports admission as a boolean (see
-	// go-spring.org/cloud/governance/capability/ratelimit.ClusterLimiter), so this package owns the
+	// go-spring.org/cloud/governance/capability/ratelimit.Limiter), so this package owns the
 	// word without depending on the stage's implementation.
 	ErrRateLimited = errors.New("resilience: rate limited")
 

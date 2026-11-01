@@ -42,7 +42,7 @@ type Option func(*options)
 
 type options struct {
 	fault   chain.Fault
-	limiter ratelimit.ClusterLimiter
+	factory *ratelimit.Factory
 }
 
 // WithFault installs the inbound fault-injection stage. A nil Fault means no
@@ -51,20 +51,14 @@ func WithFault(f chain.Fault) Option {
 	return func(o *options) { o.fault = f }
 }
 
-// WithClusterLimiter makes the rate-limit stage charge a shared store instead
-// of the instance-local budget. A nil limiter keeps the count local (the
-// default).
-func WithClusterLimiter(l ratelimit.ClusterLimiter) Option {
-	return func(o *options) { o.limiter = l }
-}
-
 // state is one materialized policy generation. A request captures the pointer
 // it was admitted under, so a config push that replaces the state cannot change
 // the stages a request in flight is settling against.
 type state struct {
 	policy Policy
 	rule   string
-	rate   *RateLimiter
+	rate   ratelimit.Policy
+	kind   string
 	bulk   *bulkhead.Bulkhead
 }
 
@@ -72,6 +66,13 @@ type server struct {
 	id   Identity
 	opts options
 	mgr  *Manager
+
+	// rate is this instance's counter and rateKind the limiter kind that built
+	// it. They live for the guard's lifetime, not for a policy generation: a
+	// rule change updates the counter in place, and only a change of limiter
+	// kind replaces it.
+	rate     ratelimit.Limiter
+	rateKind string
 
 	mu     sync.Mutex
 	closed bool
@@ -87,22 +88,43 @@ type server struct {
 // [Manager], so the policy never changes; use [Manager.GuardFor] when the
 // instance follows a pushed configuration.
 //
-// An error means the policy cannot be built (a negative max-concurrent); a
-// valid policy always yields a Guard.
-func New(id Identity, p Policy, opts ...Option) (Guard, error) {
-	o := options{}
+// An error means the policy cannot be built — a negative max-concurrent, or an
+// enabled rate limit naming a kind no provider exports; a valid policy always
+// yields a Guard.
+func New(id Identity, p Policy, factory *ratelimit.Factory, opts ...Option) (Guard, error) {
+	if factory == nil {
+		panic("admission: New requires a non-nil ratelimit.Factory")
+	}
+	o := options{factory: factory}
 	for _, f := range opts {
 		f(&o)
 	}
-	st, err := buildState(p, "", id.Service, o.limiter)
+	st, err := buildState(p, "")
 	if err != nil {
 		return nil, err
 	}
-	return &server{id: id, opts: o, st: st}, nil
+	rate, err := newRate(o.factory, st.kind, id.Service)
+	if err != nil {
+		return nil, err
+	}
+	return &server{
+		id: id, opts: o, st: st,
+		rate:     rate,
+		rateKind: st.kind,
+	}, nil
+}
+
+// newRate builds the counter for scope, or nil when the policy configures no
+// rate limit. An unknown kind fails here: building the counter IS the check.
+func newRate(m *ratelimit.Factory, kind string, scope string) (ratelimit.Limiter, error) {
+	if kind == "" {
+		return nil, nil
+	}
+	return m.Create(kind, scope)
 }
 
 // buildState materializes one generation of the instance's stages.
-func buildState(p Policy, rule, service string, limiter ratelimit.ClusterLimiter) (*state, error) {
+func buildState(p Policy, rule string) (*state, error) {
 	if p.MaxConcurrent < 0 {
 		return nil, errutil.Explain(nil, "admission: max-concurrent must be >= 0")
 	}
@@ -110,10 +132,15 @@ func buildState(p Policy, rule, service string, limiter ratelimit.ClusterLimiter
 	if p.MaxConcurrent > 0 {
 		bulk = bulkhead.New(p.MaxConcurrent, bulkhead.WithQueueTimeout(p.BulkheadQueueDuration))
 	}
+	var kind string
+	if p.RateLimit > 0 {
+		kind = p.Limiter
+	}
 	return &state{
 		policy: p,
 		rule:   rule,
-		rate:   NewRateLimiter(p, service, limiter),
+		rate:   p.Policy,
+		kind:   kind,
 		bulk:   bulk,
 	}, nil
 }
@@ -160,10 +187,21 @@ func (s *server) Admit(ctx context.Context, req chain.Request) (Result, Done) {
 		}
 	}
 
-	// Rate limit: the request is charged before anything downstream runs.
-	if !st.rate.Allow(ctx) {
+	// Rate limit: the request is charged before anything downstream runs. A
+	// store failure is not an inbound decision: allow the request rather than
+	// turning an unreachable counter backend into an outage.
+	rateAllowed := true
+	if s.rate != nil {
+		allowed, rateErr := s.rate.Allow(ctx, st.rate, 1)
+		// A store failure is not an inbound decision: allow the request rather
+		// than turning an unreachable counter backend into an outage.
+		if rateErr == nil {
+			rateAllowed = allowed
+		}
+	}
+	if !rateAllowed {
 		release()
-		return refused(st, VerdictRateLimited, ErrRateLimited, st.policy.RateLimitMaxWait, start),
+		return refused(st, VerdictRateLimited, ErrRateLimited, st.policy.MaxWait, start),
 			func() {}
 	}
 

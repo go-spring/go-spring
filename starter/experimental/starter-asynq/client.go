@@ -26,8 +26,8 @@ import (
 	"context"
 
 	"go-spring.org/cloud/governance/capability/label"
-	"go-spring.org/cloud/governance/capability/traffic"
 	observability "go-spring.org/cloud/governance/dataplane/outbound/observe"
+	"go-spring.org/cloud/traffic"
 
 	"github.com/hibiken/asynq"
 	"go-spring.org/log"

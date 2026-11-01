@@ -25,6 +25,7 @@ import (
 	"time"
 
 	"go-spring.org/cloud/governance/capability/matcher"
+	"go-spring.org/cloud/governance/capability/ratelimit"
 	"go-spring.org/cloud/governance/dataplane/outbound/chain"
 	"go-spring.org/stdlib/testing/assert"
 )
@@ -38,7 +39,7 @@ type testManager struct {
 }
 
 func newTestManager(d Driver) *testManager {
-	return &testManager{mgr: NewManager(d)}
+	return &testManager{mgr: NewManager(d, ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()}))}
 }
 
 func (m *testManager) ApplyLimits(s LimitsSettings) error {
@@ -75,7 +76,7 @@ func (m *testManager) Close() error {
 // bundled driver (the driver is fixed at construction now, not part of settings).
 func armedLimits(t *testing.T, limits map[string]Limits) *testManager {
 	t.Helper()
-	m := newTestManager(NewDefaultDriver(nil))
+	m := newTestManager(NewDefaultDriver())
 	if err := m.ApplyLimits(LimitsSettings{Rules: limitsRules(limits)}); err != nil {
 		t.Fatalf("ApplyLimits: %v", err)
 	}
@@ -85,7 +86,7 @@ func armedLimits(t *testing.T, limits map[string]Limits) *testManager {
 // armedBreakers returns a manager whose breakers are fixed per label.
 func armedBreakers(t *testing.T, breakers map[string]BreakerPolicy) *testManager {
 	t.Helper()
-	m := newTestManager(NewDefaultDriver(nil))
+	m := newTestManager(NewDefaultDriver())
 	rules := make([]BreakerRule, 0, len(breakers))
 	for label, p := range breakers {
 		rules = append(rules, BreakerRule{Service: label, Action: chain.ActionMatch{Exact: ServiceScopeAction}, BreakerPolicy: p})
@@ -126,7 +127,7 @@ func runOnce(t *testing.T, e chain.Executor) bool {
 // can be built before any settings arrive, because construction reads no
 // configuration. Until a document is applied it is a transparent pass-through.
 func TestManagerBuildsBeforeAnySettings(t *testing.T) {
-	m := newTestManager(NewDefaultDriver(nil))
+	m := newTestManager(NewDefaultDriver())
 	e := m.ExecutorFor("redis:cache")
 	if e == nil {
 		t.Fatal("executor construction must not depend on configuration")
@@ -138,7 +139,7 @@ func TestManagerBuildsBeforeAnySettings(t *testing.T) {
 }
 
 func TestManagerEmptySettingsIsPassThrough(t *testing.T) {
-	m := newTestManager(NewDefaultDriver(nil))
+	m := newTestManager(NewDefaultDriver())
 	// A manager that has never been armed configures nothing, so every label
 	// resolves zero limits and the executor is the pass-through.
 	if p := m.LimitsFor("redis:cache"); !p.IsZero() {
@@ -177,7 +178,7 @@ func TestManagerSharesOneExecutorPerLabel(t *testing.T) {
 func TestManagerSubscribeArmsAndNotifies(t *testing.T) {
 	var mu sync.Mutex
 	policies := map[string]Limits{"redis:cache": {Timeout: time.Second}}
-	m := newTestManager(NewDefaultDriver(nil))
+	m := newTestManager(NewDefaultDriver())
 	// apply pushes the current "document" (the policies map) down, the way the
 	// center does on every source push.
 	apply := func() {
@@ -249,7 +250,7 @@ type countingDriver struct {
 
 func (d *countingDriver) NewExecutor(label string, m *Manager) (chain.Executor, error) {
 	d.executors.Add(1)
-	return NewDefaultDriver(nil).NewExecutor(label, m)
+	return NewDefaultDriver().NewExecutor(label, m)
 }
 
 // TestManagerApplyPublishesForPulling pins both halves of a push under the pull
@@ -339,7 +340,7 @@ func timeoutOf(t *testing.T, e chain.Executor) time.Duration {
 // the granularity the design offers is per LABEL, and a change to one service
 // leaves every other service alone.
 func TestManagerGenerationIsContentDerived(t *testing.T) {
-	m := newTestManager(NewDefaultDriver(nil))
+	m := newTestManager(NewDefaultDriver())
 
 	doc := func(get, set time.Duration) LimitsSettings {
 		return LimitsSettings{Rules: []LimitsRule{
@@ -379,7 +380,7 @@ func TestManagerGenerationIsContentDerived(t *testing.T) {
 // label falls to Default, a rule with an empty Service never captures a real
 // label (it is not a catch-all), and the first matching Rule wins.
 func TestManagerPolicyMatch(t *testing.T) {
-	m := newTestManager(NewDefaultDriver(nil))
+	m := newTestManager(NewDefaultDriver())
 	if err := m.ApplyLimits(LimitsSettings{
 		Default: Limits{Timeout: time.Second},
 		Rules: []LimitsRule{
@@ -397,12 +398,12 @@ func TestManagerPolicyMatch(t *testing.T) {
 	}
 }
 
-// TestManagerRejectsDuplicateRules pins the rule-list contract: two entries that
-// select the SAME calls make the winner depend on list order, so the document is
-// rejected.
-func TestManagerRejectsDuplicateRules(t *testing.T) {
-	m := newTestManager(NewDefaultDriver(nil))
-	err := m.ApplyLimits(LimitsSettings{Rules: []LimitsRule{
+// TestValidateRejectsDuplicateRules pins the rule-list contract: two entries
+// that select the SAME calls make the winner depend on list order, so the
+// document is rejected. Validation belongs to the source boundary (conf.Bind
+// runs it); Apply trusts the document it is handed.
+func TestValidateRejectsDuplicateRules(t *testing.T) {
+	err := ValidateLimits(LimitsSettings{Rules: []LimitsRule{
 		{Service: "redis:cache", Limits: Limits{Timeout: time.Second}},
 		{Service: "redis:cache", Action: chain.ActionMatch{Exact: ServiceScopeAction}, Limits: Limits{Timeout: 2 * time.Second}},
 	}})
@@ -411,7 +412,7 @@ func TestManagerRejectsDuplicateRules(t *testing.T) {
 	}
 
 	// A rule without a service names nothing and is rejected, not silent.
-	if err := m.ApplyLimits(LimitsSettings{Rules: []LimitsRule{{Limits: Limits{Timeout: time.Second}}}}); err == nil {
+	if err := ValidateLimits(LimitsSettings{Rules: []LimitsRule{{Limits: Limits{Timeout: time.Second}}}}); err == nil {
 		t.Fatal("a rule without a service must be rejected")
 	}
 }
@@ -421,7 +422,7 @@ func TestManagerRejectsDuplicateRules(t *testing.T) {
 // first) > selector size — so a broad rule listed before a narrow one never
 // shadows it.
 func TestMostSpecificRuleWins(t *testing.T) {
-	m := newTestManager(NewDefaultDriver(nil))
+	m := newTestManager(NewDefaultDriver())
 	if err := m.ApplyLimits(LimitsSettings{Rules: []LimitsRule{
 		{Service: "svc", Action: chain.ActionMatch{Exact: "GET /users/1"}, Limits: Limits{Timeout: 3 * time.Second}},
 		{Service: "svc", Action: chain.ActionMatch{Exact: ServiceScopeAction}, Limits: Limits{Timeout: time.Second}},
@@ -446,8 +447,7 @@ func TestMostSpecificRuleWins(t *testing.T) {
 // TestAmbiguousRulesRejected pins the other half: two rules of equal specificity
 // that can match the same call are a document error, not a list-order hint.
 func TestAmbiguousRulesRejected(t *testing.T) {
-	m := newTestManager(NewDefaultDriver(nil))
-	err := m.ApplyLimits(LimitsSettings{Rules: []LimitsRule{
+	err := ValidateLimits(LimitsSettings{Rules: []LimitsRule{
 		{Service: "svc", Action: chain.ActionMatch{Prefix: "GET /"}, Match: matcher.ExactMap{"tenant": "a"}, Limits: Limits{Timeout: time.Second}},
 		{Service: "svc", Action: chain.ActionMatch{Prefix: "GET /"}, Match: matcher.ExactMap{"region": "b"}, Limits: Limits{Timeout: 2 * time.Second}},
 	}})
@@ -461,9 +461,9 @@ func TestAmbiguousRulesRejected(t *testing.T) {
 // of the same service — the interface-level governance the service label alone
 // cannot express.
 func TestManagerMatchesRuleByAction(t *testing.T) {
-	m := newTestManager(NewDefaultDriver(nil))
+	m := newTestManager(NewDefaultDriver())
 	if err := m.ApplyRateLimit(RateLimitSettings{Rules: []RateLimitRule{
-		{Service: "svc", Action: chain.ActionMatch{Exact: "limited"}, RateLimitPolicy: RateLimitPolicy{RateLimit: 1, Burst: 1}},
+		{Service: "svc", Action: chain.ActionMatch{Exact: "limited"}, Policy: ratelimit.Policy{Limiter: ratelimit.TokenBucketAlgorithm, RateLimit: 1, Burst: 1}},
 	}}); err != nil {
 		t.Fatalf("Apply: %v", err)
 	}
@@ -488,12 +488,10 @@ func TestManagerMatchesRuleByAction(t *testing.T) {
 	}
 }
 
-// TestApplyRejectsInvalidPolicy verifies a document that cannot materialize a
-// stage is rejected whole, instead of publishing a generation that silently
-// drops it.
-func TestApplyRejectsInvalidPolicy(t *testing.T) {
-	m := NewManager(NewDefaultDriver(nil))
-	if err := m.ApplyBreaker(BreakerSettings{Default: BreakerPolicy{BreakerStrategy: "bogus"}}); err == nil {
-		t.Fatal("Apply accepted an unknown breaker strategy")
+// TestValidateRejectsInvalidPolicy verifies a document that cannot materialize a
+// stage is rejected at the boundary, instead of reaching the manager.
+func TestValidateRejectsInvalidPolicy(t *testing.T) {
+	if err := ValidateBreaker(BreakerSettings{Default: BreakerPolicy{BreakerStrategy: "bogus"}}); err == nil {
+		t.Fatal("ValidateBreaker accepted an unknown strategy")
 	}
 }

@@ -21,7 +21,7 @@ import (
 	"testing"
 	"time"
 
-	"go-spring.org/cloud/governance/capability/discovery"
+	"go-spring.org/cloud/discovery"
 	"go-spring.org/stdlib/errutil"
 	"go-spring.org/stdlib/testing/assert"
 )
@@ -59,7 +59,7 @@ func TestPoolEvictionViaComplete(t *testing.T) {
 			p.Complete(context.Background(), ep, nil)
 		}
 	}
-	assert.That(t, p.tracker.Suspended("a")).True()
+	assert.That(t, suspended(p.tracker, "a")).True()
 
 	// Subsequent picks avoid the evicted instance.
 	for range 10 {

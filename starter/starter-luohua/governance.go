@@ -19,7 +19,6 @@ package luohua
 import (
 	"context"
 
-	"go-spring.org/cloud/governance/capability/ratelimit"
 	"go-spring.org/cloud/governance/dataplane/outbound/chain"
 
 	"go-spring.org/cloud/governance/dataplane/outbound/resilience"
@@ -38,21 +37,13 @@ const LuohuaResilienceDriverName = "luohua"
 // observable luohua marker, so a mis-wired backend is discoverable instead of
 // silently passing through — the same "default + observable company flavor"
 // shape the redigo [RedisDriver] layers on its pools.
-type luohuaResilienceDriver struct {
-	// limiter is the cluster rate-limit store the container holds, if any,
-	// passed through so a luohua fleet keeps whatever sharing breadth the rest
-	// of the process has (a Redis store, typically, which is what carries a
-	// budget across replicas). It is nullable, and nil is the ordinary case: no
-	// backend starter contributed a store, so the bundled engine gives each
-	// executor a private one — one budget per service label all the same.
-	limiter ratelimit.ClusterLimiter
-}
+type luohuaResilienceDriver struct{}
 
 // NewExecutor builds a luohua-flavored [chain.Executor] for service on top
 // of the bundled engine. m is the manager the inner executor reads its policy
 // from; the wrapper forwards nothing because the inner executor already holds it.
 func (d luohuaResilienceDriver) NewExecutor(service string, m *resilience.Manager) (chain.Executor, error) {
-	inner, err := resilience.NewDefaultDriver(d.limiter).NewExecutor(service, m)
+	inner, err := resilience.NewDefaultDriver().NewExecutor(service, m)
 	if err != nil {
 		return nil, err
 	}

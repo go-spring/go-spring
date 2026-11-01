@@ -3,7 +3,7 @@
 [English](README.md) | [中文](README_CN.md)
 
 `loadbalance` is the client-side load-balancing layer on top of
-`go-spring.org/cloud/governance/capability/discovery`. Discovery answers "which instances exist
+`go-spring.org/cloud/discovery`. Discovery answers "which instances exist
 right now?"; this package answers "given that live set, which one do I send
 this request to?" — and suspends instances that keep failing.
 
@@ -20,7 +20,7 @@ import (
     "context"
     "time"
 
-    "go-spring.org/cloud/governance/capability/discovery"
+    "go-spring.org/cloud/discovery"
     "go-spring.org/cloud/governance/capability/loadbalance"
 )
 
@@ -95,11 +95,11 @@ never disturbs the state of the survivors.
 
 A custom strategy implements `Balancer` (Pick/Complete, concurrency-safe;
 `Complete` receives the context of the request it settles) and provides a
-`Factory` — the registered name is the strategy name a rule cites, and the
+`Provider` — the registered name is the strategy name a rule cites, and the
 strategy's own parameters arrive in the loose `Selection.Params` map:
 
 ```go
-func myFactory(sel loadbalance.Selection) (loadbalance.Balancer, error) {
+func newMyStrategy(sel loadbalance.Selection) (loadbalance.Balancer, error) {
     window := time.Second // the strategy's own parameter, defaulted here
     if v, ok := sel.Params["window"]; ok {
         w, err := time.ParseDuration(v)
@@ -116,13 +116,15 @@ func myFactory(sel loadbalance.Selection) (loadbalance.Balancer, error) {
     return &myBalancer{window: window}, nil
 }
 
-// in the contributing package's init:
-func init() { loadbalance.Register("my_strategy", myFactory) }
+// in the contributing package's starter:
+gs.Provide(func() loadbalance.Provider {
+    return myStrategyProvider{} // Strategies() = []string{"my_strategy"}
+}).Name("my_strategy")
 ```
 
-A strategy registers from the init of the package that defines it, into one
-process-wide registry, so linking that package is what puts the strategy in
-place.
+A strategy contributes a `loadbalance.Provider` bean. The manager collects every
+Provider bean — the built-in set plus each contribution — into one
+`Factory`, so no global registry or `init()` side effect is involved.
 
 The core knows no strategy parameter — `Params` is the flat `balancer-params`
 map of the rule, and the strategy reads the keys it owns and rejects the rest.
@@ -169,7 +171,7 @@ fully transparent.
 ## Managed selection (governance)
 
 A chain's strategy and suspension thresholds can be driven from outside the
-process, by service label rather than by construction-time argument. The caller
+process, by service rather than by construction-time argument. The caller
 injects the `*loadbalance.Manager` bean (see [Manager](manager.go)) and builds its
 chain under it:
 
@@ -177,7 +179,7 @@ chain under it:
 // mgr is the injected *loadbalance.Manager; nil means no governance is present.
 var ep discovery.Endpoint
 if mgr != nil {
-	chain, err := mgr.Chain(ctx, resolver, "http:user-svc") // follows the label
+	chain, err := mgr.Chain(ctx, resolver, "http:user-svc") // follows the service
 	if err != nil {
 		return err
 	}
@@ -192,12 +194,12 @@ if mgr != nil {
 }
 ```
 
-- `mgr.Chain(resolver, label)` builds the chain under the label, so the
-  label's current `Selection` applies to the generation it builds **immediately**,
+- `mgr.Chain(resolver, service)` builds the chain under that service, so the
+  service's current `Selection` applies to the generation it builds **immediately**,
   and a later change **rebuilds the chain from scratch** — a new balancer, a new
   tracker, a new pool, sharing nothing with the generation it replaces. The
   rebuild is PULLED, not pushed: the chain holds a `SelectionSource` (the
-  manager) and reads its label's generation on every request, rebuilding when it
+  manager) and reads its service's generation on every request, rebuilding when it
   moves. The `Chain` is the ONLY outward surface: a request path calls
   `chain.Pick` and `chain.Complete` directly; the inner `Pool` is not exposed. The
   registration is **one-way, and permanent**:
@@ -221,14 +223,14 @@ if mgr != nil {
 
 `Manager.Apply(Settings{...})` is the single entry point the governance center
 calls — once with the source's snapshot, then on every push. The center PUSHES the
-rules and this package does the matching — a `Settings.Default` plus a `Rules` list,
-the first Rule whose `Service` equals the label wins — the same shape `fault` already
+rules and this package does the matching — the default `Selection` (embedded at the document root) plus a `Rules` list,
+the first Rule whose `Service` equals the service wins — the same shape `fault` already
 had. Apply then STOPS: it publishes the document as a new generation and does not
-touch a single chain. Each chain reads its label's generation on the request path
-and rebuilds it right there on the push when its label's resolved selection
+touch a single chain. Each chain reads its service's generation on the request path
+and rebuilds it right there on the push when its service's resolved selection
 moved, so the request path is one atomic load of the generation in force. The
 change test compares the resolved selection BY VALUE: a push that changes
-nothing for a label costs its chains nothing, and re-applying an identical
+nothing for a service costs its chains nothing, and re-applying an identical
 document is not a change.
 
 A rule names the strategy; the built-ins carry their parameters in their own
@@ -251,14 +253,13 @@ with `discovery.FilterByMetadata` as the first filter stage, after reading the
 source and before eligibility — it does not wrap the source, which stays the
 chain's stable target across generations. It composes with the static narrowing
 of the resolver's construction-time scheme (both must hold), and a pushed change
-moves the label's generation like any other selection change.
+moves the service's generation like any other selection change.
 There is no implicit fallback — a selector that matches no endpoint surfaces as
 `ErrNoEndpoints`, because falling back silently would widen a canary rule to
 every instance.
 
-`buildGeneration` is where a strategy name becomes a strategy: it resolves the name
-against the package registry — the built-in strategies plus anything a linked
-package registered — and builds the pool with it, so a pool never holds the
+`buildGeneration` is where a strategy name becomes a strategy: it asks the
+manager's `Factory` to create the balancer, so a pool never holds the
 factory table. `Chain.Selection()` reads back the selection the chain's
 generation in force was built from — an inspection helper, not a request-path
 concern.
@@ -275,7 +276,7 @@ parameters beside it describe the DELEGATE, so
 on the same rule. A starter invents no local static `balancer` key of its own; each
 chain's base generation is round-robin, stated by the manager's base document
 and by the governance translation rather than implied by an empty name. The
-`Factory` parameterization is kept, to carry parameters on the governance
+`Provider` parameterization is kept, to carry parameters on the governance
 channel.
 
 Covered clients: every discovery-mode `loadbalance.Pool` consumer —
@@ -283,7 +284,7 @@ Covered clients: every discovery-mode `loadbalance.Pool` consumer —
 `grpc`.
 
 > Self-check: **does this client pick an endpoint again on every request /
-> every connect?** Yes → its label can carry a `balancer`. No → don't expect
+> every connect?** Yes → its service can carry a `balancer`. No → don't expect
 > `spring.governance.client.loadbalance.services[N].balancer` to affect it.
 
 The "no" cases, each deliberate:
@@ -302,7 +303,7 @@ only success/failure signal the `Tracker` can see is the dial result; a failed
 single query is handled by that client's own resilience executor and does not
 feed the tracker.
 
-**`grpc` picks under a process-level label.** Its selection label is the
+**`grpc` picks under a process-level service.** Its selection is keyed by the
 process-wide `grpc:client`, so setting `balancer=` on it also retunes every
 builtin `gs_*` balancer; to isolate per service, register a custom name via
 `RegisterBalancer` (a custom name keeps its own strategy, exempt from the
@@ -311,7 +312,7 @@ process-level override by design).
 **Building a pool** takes three parts: a `Tracker` + a paired
 `Pick` / `Complete` at the connect site + subscribing to the governance-pushed
 `Selection`. New clients copy this (it is written into `starter/DESIGN.md` §4 as
-a checklist). One label may map to several pools (the sink is a pool, not an
+a checklist). One service may map to several pools (the sink is a pool, not an
 object), so the manager does **not** memoize: each `Bind` is an independent
 subscription owned by the pool, and a pool must cancel it on destruction.
 

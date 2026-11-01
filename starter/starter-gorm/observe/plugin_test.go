@@ -24,9 +24,9 @@ import (
 	"strings"
 	"testing"
 
-	"go-spring.org/cloud/governance/capability/traffic"
 	"go-spring.org/cloud/governance/dataplane/outbound/chain"
 	observability "go-spring.org/cloud/governance/dataplane/outbound/observe"
+	"go-spring.org/cloud/traffic"
 	gormresilience "go-spring.org/starter-gorm/resilience"
 	"go-spring.org/stdlib/testing/assert"
 	"go.opentelemetry.io/otel/attribute"

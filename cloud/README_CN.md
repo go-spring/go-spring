@@ -16,7 +16,7 @@
 | [circuitbreaker](governance/capability/circuitbreaker/) | 方向中立的熔断状态机，由 [resilience](governance/dataplane/outbound/resilience/)（出站）与 [admission](governance/dataplane/inbound/admission/)（入站）共享。 |
 | [cache](cache/) | 缓存 API：配置声明一次（`spring.cache`），由 go-redis / redigo / bigcache / memcached 等 starter 提供后端实现。 |
 | [chain](governance/dataplane/outbound/chain/) | 各层共享的受治理调用词汇：`Executor`、`Operation`、`Recorder` 与拒绝哨兵。 |
-| [discovery](governance/capability/discovery/) | 「这个逻辑名此刻有哪些存活的 `host:port`？」——命名服务的**读侧**（resolver + 本地 endpoint 目录，数据面）；写侧见 [registration](governance/controlplane/registration/)。 |
+| [discovery](discovery/) | 「这个逻辑名此刻有哪些存活的 `host:port`？」——命名服务的**读侧**（resolver + 本地 endpoint 目录，数据面）；写侧见 [registration](governance/controlplane/registration/)。 |
 | [registration](governance/controlplane/registration/) | 服务发现的**写侧**（控制面）：把本进程发布到 naming center，随 `gs.Server` 生命周期注册/反注册/广播权重。 |
 | [fault](governance/capability/fault/) | 平面中立的故障注入能力：规则文档、匹配词汇、注入序列。两个壳分别在 [outbound/fault](governance/dataplane/outbound/fault/)（包装 `Executor`）与 [inbound/fault](governance/dataplane/inbound/fault/)（admission 阶段）；各自持有自己的文档。 |
 | [governance](governance/) | 服务治理运行时：各策略域（超时重试、熔断、限流、寻址选择、入站准入）与故障注入各自是一个控制面根，共用 source 传输；包内同时持有组装好的数据面与组合根。进程唯一注入点是 `governance.Runtime`。 |
@@ -28,12 +28,12 @@
 | [observability](observability/) | **跨平面的遥测词汇**：[attrs](observability/attrs/)（每请求属性载体、共享 duration 分桶）与 [conf](observability/conf/)（属性刷新漏斗）。两者都不 import 治理代码，cache/lock/scheduling/配置 starter 用它们时不会拖入治理栈。 |
 | [observe（出站）](governance/dataplane/outbound/observe/) · [observe（入站）](governance/dataplane/inbound/observe/) | 每个方向的**最外层**：出站包装 `chain.Executor`、入站驱动 admission 的 Admit/Done。各自可以依赖本方向的治理核心；上面的中立遥测在平面之外。 |
 | [propagate](propagate/) | 把领域标记——比如压测标记——跨协议边界传递：一个小的 `Carrier` 接缝，适配 HTTP header、gRPC metadata、Kafka 记录 header、dubbo attachment。 |
-| [ratelimit](governance/capability/ratelimit/) | 方向中立的限流阶段：计数算法、`Spec`、进程内预算与 `ClusterLimiter` 存储接缝，两个方向共享。 |
+| [ratelimit](governance/capability/ratelimit/) | 方向中立的限流阶段：计数算法、`Spec`，以及 `Limiter` 契约的进程内实现与共享 store 实现，两个方向共享。 |
 | [resilience](governance/dataplane/outbound/resilience/) | 客户端容错，一个 `Executor` 接缝：熔断、限流、重试、退避，`Driver` 可插拔。 |
 | [runtime](governance/) | 治理运行时：根包的 `Runtime` 是**组合根与唯一注入点**（不属于任何平面）；[controlplane](governance/controlplane/) 负责期望态的获取与发布（`governance` / `registration`），[dataplane](governance/dataplane/) 负责请求路径执行与进程内状态：方向层 `outbound/{chain,resilience,observe,fault}` 与 `inbound/{admission,observe,fault}`，;与之并列的 [capability](governance/capability/) 平面中立体（`breaker`、`bulkhead`、`ratelimit`、`fault`、`traffic`、`label`、`discovery`、`loadbalance`、`matcher`）由两个平面共同消费。 |
 | [scheduling](scheduling/) | 周期与 cron 后台任务：触发器（`FixedRate`、`FixedDelay`、`After`、`ParseCron`、`DailyWindow`）、并发策略、分布式锁去重。 |
 | [security](security/) | 与框架无关的认证与授权——身份模型加各协议族的中间件壳。 |
-| [traffic](governance/capability/traffic/) | 「在途请求是不是压测流量？」——一个进程级标记，经 [propagate](propagate/) 跨协议跳传播。 |
+| [traffic](traffic/) | 「在途请求是不是压测流量？」——一个进程级标记，经 [propagate](propagate/) 跨协议跳传播。 |
 | [experimental](experimental/) | 尚未承诺进稳定面的演进中能力：[batch](experimental/batch/)、[contract](experimental/contract/) 契约测试、[loadtest](experimental/loadtest/)、[outbox](experimental/outbox/)、[session](experimental/session/)、[transaction](experimental/transaction/)。 |
 
 每个包有自己的 `README.md`（及中文 `README_CN.md`），讲用法与设计取舍；

@@ -23,9 +23,10 @@ import (
 	"sync"
 	"time"
 
-	"go-spring.org/cloud/governance/capability/traffic"
+	"go-spring.org/cloud/governance/capability/ratelimit"
 	"go-spring.org/cloud/governance/dataplane/outbound/chain"
 	"go-spring.org/cloud/governance/dataplane/outbound/resilience"
+	"go-spring.org/cloud/traffic"
 	"go-spring.org/log"
 	"go-spring.org/stdlib/errutil"
 	"go.opentelemetry.io/otel"
@@ -334,7 +335,7 @@ func runWithPolicy(ctx context.Context, prop traffic.Propagator, p RetryPolicy, 
 	if p.IsZero() {
 		return fn(ctx)
 	}
-	mgr := resilience.NewManager(resilience.NewDefaultDriver(nil))
+	mgr := resilience.NewManager(resilience.NewDefaultDriver(), ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()}))
 	if err := mgr.ApplyLimits(resilience.LimitsSettings{Default: resilience.Limits{Retry: p}}); err != nil {
 		return err
 	}

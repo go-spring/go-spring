@@ -20,12 +20,11 @@ import (
 	"context"
 	"math/rand/v2"
 
-	"go-spring.org/cloud/governance/capability/discovery"
+	"go-spring.org/cloud/discovery"
 )
 
-// randomFactory is the [Factory] behind the [Random] name. The strategy has no
-// parameters: a rule that sets any is rejected by [Validate].
-func init() { Register(Random, newRandom) }
+// The [Random] strategy is exported by the built-in [Provider]. It has no
+// parameters of its own.
 
 func newRandom(Selection) (Balancer, error) {
 	return &randomBalancer{}, nil

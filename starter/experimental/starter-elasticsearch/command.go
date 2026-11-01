@@ -25,8 +25,8 @@ import (
 	"context"
 	"net/http"
 
-	"go-spring.org/cloud/governance/capability/traffic"
 	"go-spring.org/cloud/governance/dataplane/outbound/chain"
+	"go-spring.org/cloud/traffic"
 )
 
 // callFor derives a request's semantic identity — its method + URL path, see

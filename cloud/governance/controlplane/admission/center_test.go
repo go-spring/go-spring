@@ -21,6 +21,7 @@ import (
 	"testing"
 	"time"
 
+	"go-spring.org/cloud/governance/capability/ratelimit"
 	"go-spring.org/cloud/governance/controlplane/source"
 	"go-spring.org/cloud/governance/dataplane/inbound/admission"
 	"go-spring.org/stdlib/testing/assert"
@@ -37,9 +38,11 @@ func TestDocumentBinds(t *testing.T) {
 	assert.Error(t, err).Nil()
 
 	assert.Number(t, d.Default.RateLimit).Equal(100)
+	assert.That(t, d.Default.Limiter).Equal(ratelimit.TokenBucketAlgorithm)
 	assert.Number(t, len(d.Rules)).Equal(1)
 	assert.That(t, d.Rules[0].Service).Equal("gin::8080")
 	assert.Number(t, d.Rules[0].MaxConcurrent).Equal(50)
+	assert.That(t, d.Rules[0].Limiter).Equal(ratelimit.TokenBucketAlgorithm)
 }
 
 func TestDuplicateEntrancesRejected(t *testing.T) {
@@ -54,7 +57,13 @@ func TestCenterAppliesAndKeepsLastGood(t *testing.T) {
 	d, err := source.Parse[admission.Settings]("admission.properties", []byte(doc), "")
 	assert.Error(t, err).Nil()
 
-	mgr := admission.NewManager()
+	mgr := admission.NewManager(ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()}))
+	// A guard must exist for Apply to materialize a policy: construction is what
+	// rejects a document, so nothing is built for an instance this process does
+	// not serve.
+	if _, err := mgr.GuardFor(admission.Identity{System: "gin", Service: "gin::8080"}); err != nil {
+		t.Fatal(err)
+	}
 	src := source.NewPushSource(d)
 	if _, err := NewCenter(context.Background(), mgr, src); err != nil {
 		t.Fatal(err)
@@ -63,21 +72,23 @@ func TestCenterAppliesAndKeepsLastGood(t *testing.T) {
 	assert.Number(t, mgr.PolicyFor("gin::8080").MaxConcurrent).Equal(50)
 	assert.Number(t, mgr.PolicyFor("echo::9090").RateLimit).Equal(100)
 
-	// A duplicate document is rejected; the previous one keeps serving.
+	// A policy that cannot be built is rejected; the previous one keeps serving.
 	src.Push(context.Background(), admission.Settings{Rules: []admission.Rule{
-		{Service: "gin::8080", Policy: admission.Policy{MaxConcurrent: 1, Timeout: time.Second}},
-		{Service: "gin::8080", Policy: admission.Policy{MaxConcurrent: 2}},
+		{Service: "gin::8080", Policy: admission.Policy{MaxConcurrent: -1, Timeout: time.Second}},
 	}})
 	assert.Number(t, mgr.PolicyFor("gin::8080").MaxConcurrent).Equal(50)
 }
 
 // TestNewCenterRejectsUnservableSnapshot pins the startup contract: a source
-// whose initial document cannot serve fails wiring, rather than arming a center
-// that would run unconfigured.
+// whose initial document cannot be built fails wiring, rather than arming a
+// center that would run unconfigured.
 func TestNewCenterRejectsUnservableSnapshot(t *testing.T) {
-	mgr := admission.NewManager()
+	mgr := admission.NewManager(ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()}))
+	if _, err := mgr.GuardFor(admission.Identity{System: "gin", Service: "gin::8080"}); err != nil {
+		t.Fatal(err)
+	}
 	src := source.NewPushSource(admission.Settings{
-		Rules: []admission.Rule{{Service: ""}},
+		Rules: []admission.Rule{{Service: "gin::8080", Policy: admission.Policy{MaxConcurrent: -1}}},
 	})
 	if _, err := NewCenter(context.Background(), mgr, src); err == nil {
 		t.Fatal("NewCenter must reject an unservable initial document")

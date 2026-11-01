@@ -25,7 +25,7 @@ import (
 	"testing"
 	"time"
 
-	"go-spring.org/cloud/governance/capability/discovery"
+	"go-spring.org/cloud/discovery"
 	"go-spring.org/cloud/governance/capability/loadbalance"
 	"go-spring.org/cloud/governance/controlplane/registration"
 	"go-spring.org/stdlib/testing/assert"
@@ -169,7 +169,8 @@ func TestUpdateWeightHotReloadLive(t *testing.T) {
 
 	// pickCounts runs a fresh weighted balancer over n picks of eps.
 	pickCounts := func(eps []discovery.Endpoint, n int) map[string]int {
-		lb, err := loadbalance.New(loadbalance.Selection{Balancer: loadbalance.Weighted})
+		factories := loadbalance.NewFactory([]loadbalance.Provider{loadbalance.NewBuiltinProvider()})
+		lb, err := factories.Create(loadbalance.Selection{Balancer: loadbalance.Weighted})
 		assert.Error(t, err).Nil()
 		m := map[string]int{}
 		for range n {

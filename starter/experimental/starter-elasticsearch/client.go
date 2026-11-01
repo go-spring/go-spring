@@ -30,8 +30,8 @@ import (
 	"sync"
 
 	"go-spring.org/cloud/governance/capability/label"
-	"go-spring.org/cloud/governance/capability/traffic"
 	"go-spring.org/cloud/governance/dataplane/outbound/chain"
+	"go-spring.org/cloud/traffic"
 
 	"github.com/elastic/go-elasticsearch/v8"
 	"go-spring.org/cloud/governance"

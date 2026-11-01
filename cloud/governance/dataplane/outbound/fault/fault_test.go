@@ -28,6 +28,7 @@ import (
 
 	kfault "go-spring.org/cloud/governance/capability/fault"
 	"go-spring.org/cloud/governance/capability/matcher"
+	"go-spring.org/cloud/governance/capability/ratelimit"
 	serverfault "go-spring.org/cloud/governance/dataplane/inbound/fault"
 	"go-spring.org/cloud/governance/dataplane/outbound/resilience"
 	"go-spring.org/stdlib/testing/assert"
@@ -65,7 +66,7 @@ func (in *fixture) refresh(c configs) {
 // the injector matches its rules by that service.
 func newExec(t *testing.T, service string, cfg any) chain.Executor {
 	t.Helper()
-	m := resilience.NewManager(resilience.NewDefaultDriver(nil))
+	m := resilience.NewManager(resilience.NewDefaultDriver(), ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()}))
 	arm(t, m, cfg)
 	t.Cleanup(func() { _ = m.Close() })
 	return m.ExecutorFor(service)
@@ -80,7 +81,7 @@ func arm(t *testing.T, m *resilience.Manager, cfg any) {
 		assert.Error(t, m.ApplyLimits(resilience.LimitsSettings{Default: v})).Nil()
 	case resilience.BreakerPolicy:
 		assert.Error(t, m.ApplyBreaker(resilience.BreakerSettings{Default: v})).Nil()
-	case resilience.RateLimitPolicy:
+	case ratelimit.Policy:
 		assert.Error(t, m.ApplyRateLimit(resilience.RateLimitSettings{Default: v})).Nil()
 	default:
 		t.Fatalf("unsupported test policy %T", cfg)

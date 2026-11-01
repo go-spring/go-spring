@@ -24,15 +24,12 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"go-spring.org/cloud/governance/capability/discovery"
+	"go-spring.org/cloud/discovery"
 	"go-spring.org/stdlib/hashutil"
 )
 
-// consistentHashFactory is the [Factory] behind the [ConsistentHash] name. Its
+// The [ConsistentHash] strategy is exported by the built-in [Provider]. Its
 // only parameter is [ConsistentHashParams.Replicas].
-func init() {
-	Register(ConsistentHash, newConsistentHash)
-}
 
 // ConsistentHashParams is the consistent-hash strategy's parameter group, bound
 // from a rule's `consistent-hash` sub-map.
@@ -68,7 +65,7 @@ type consistentHash struct {
 	rr atomic.Uint64 // fallback cursor for empty HashKey
 
 	mu    sync.Mutex
-	fp    string // fingerprint of the endpoint set the ring was built from
+	fp    ringFingerprint // fingerprint of the endpoint set the ring was built from
 	ring  []uint32
 	owner map[uint32]discovery.Endpoint
 }
@@ -122,13 +119,21 @@ func (b *consistentHash) rebuild(eps []discovery.Endpoint) {
 	b.fp = fp
 }
 
-// fingerprint is an order-independent digest of the addresses in eps, used to
-// detect when the ring must be rebuilt. XOR of per-address hashes is
-// commutative, so a reordered but otherwise identical set keeps the same ring.
-func fingerprint(eps []discovery.Endpoint) string {
+// ringFingerprint is an order-independent digest of the addresses in eps, used
+// to detect when the ring must be rebuilt. XOR of per-address hashes is
+// commutative, so a reordered but otherwise identical set keeps the same ring;
+// n guards the XOR's one blind spot (two addresses hashing identically cancel
+// out). It is a comparable value rather than a string so a pick allocates
+// nothing to test it.
+type ringFingerprint struct {
+	sum uint64
+	n   int
+}
+
+func fingerprint(eps []discovery.Endpoint) ringFingerprint {
 	var x uint64
 	for _, ep := range eps {
 		x ^= uint64(hashutil.FNV1a32(ep.Addr))
 	}
-	return strconv.FormatUint(x, 16) + ":" + strconv.Itoa(len(eps))
+	return ringFingerprint{sum: x, n: len(eps)}
 }

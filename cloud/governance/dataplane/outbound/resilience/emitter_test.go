@@ -29,6 +29,7 @@ import (
 	"slices"
 	"testing"
 
+	"go-spring.org/cloud/governance/capability/ratelimit"
 	serverobserve "go-spring.org/cloud/governance/dataplane/inbound/observe"
 	"go-spring.org/cloud/governance/dataplane/outbound/chain"
 	clientobserve "go-spring.org/cloud/governance/dataplane/outbound/observe"
@@ -49,13 +50,13 @@ import (
 // one capability's policy.
 func newBuiltin(t *testing.T, p any) chain.Executor {
 	t.Helper()
-	m := resilience.NewManager(resilience.NewDefaultDriver(nil))
+	m := resilience.NewManager(resilience.NewDefaultDriver(), ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()}))
 	switch v := p.(type) {
 	case resilience.Limits:
 		assert.Error(t, m.ApplyLimits(resilience.LimitsSettings{Default: v})).Nil()
 	case resilience.BreakerPolicy:
 		assert.Error(t, m.ApplyBreaker(resilience.BreakerSettings{Default: v})).Nil()
-	case resilience.RateLimitPolicy:
+	case ratelimit.Policy:
 		assert.Error(t, m.ApplyRateLimit(resilience.RateLimitSettings{Default: v})).Nil()
 	default:
 		t.Fatalf("unsupported test policy %T", p)
@@ -367,7 +368,7 @@ func TestUndeclaredOperationKeepsHistoricalSignals(t *testing.T) {
 // volume is visible next to served volume instead of being silently absent.
 func TestRejectedCallStillEmits(t *testing.T) {
 	rdr := withMeter(t)
-	exec := clientobserve.WrapClientExecutor(newBuiltin(t, resilience.RateLimitPolicy{RateLimit: 1, Burst: 1}), "memcached", "svc")
+	exec := clientobserve.WrapClientExecutor(newBuiltin(t, ratelimit.Policy{Limiter: ratelimit.TokenBucketAlgorithm, RateLimit: 1, Burst: 1}), "memcached", "svc")
 	op := dbOperation()
 
 	// First call spends the burst; the second is rejected before running fn.

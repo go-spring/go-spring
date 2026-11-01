@@ -6,13 +6,13 @@
 | --- | --- | --- |
 | 组合根 | [根包](runtime.go)（`governance.Runtime`） | 持有控制面与全部数据面职权，是进程唯一的注入点；它自己不属于任何一个平面。 |
 | 控制面 | [controlplane/](controlplane/)：`policy` 各根（[timeoutretry](controlplane/timeoutretry/)、[circuitbreaker](controlplane/circuitbreaker/)、[ratelimit](controlplane/ratelimit/)、[loadbalance](controlplane/loadbalance/)、[admission](controlplane/admission/)）、[fault](controlplane/fault/) 与 [registration](controlplane/registration/) | 期望态的两端:**获取**各策略/实验文档（共用 [source](controlplane/source/) 传输）与**发布**本进程的端点态（`Registry` + `Server`）。不包含任何请求路径上的策略实现，也不暴露数据面职权。 |
-| 数据面 | [dataplane/](dataplane/) | 在请求路径上执行策略，并持有进程内状态：`chain`、`traffic`、`discovery`（读侧）、`loadbalance`、`observe`、`resilience`、`admission`、`fault`、`breaker`、`ratelimit`、`label`。|
+| 数据面 | [dataplane/](dataplane/) | 在请求路径上执行策略，并持有进程内状态：`chain`、`loadbalance`、`observe`、`resilience`、`admission`、`fault`、`breaker`、`ratelimit`、`label`。流量分类（[traffic](../traffic/)）与服务发现的读侧（[discovery](../discovery/)）位于 `cloud/` 顶层，因为治理运行时之外的消费者需要它们。|
 
 ## 平面的判定标准
 
 - **控制面 = 期望态的获取与发布**。规则文件的监听、HTTP 轮询、配置中心长连接、文档解析与分发都在这一侧;服务注册（`registration`）同样在这一侧——它把本进程的地址/权重/版本写入 naming center,是期望端点态的生产,由 `gs.Server` 生命周期驱动。etcd / nacos / 控制台等**传输适配器在 starter 模块里**。
-- **数据面 = 进程内状态 + 请求路径动作**。服务发现的**读侧**（`Discovery` / `Resolver` / 本地 endpoint 目录）属于这一侧:`loadbalance.Pick` 每个请求都读取它。这是 SDK 式客户端发现模型——SDK 的 resolver + cache 是数据面的本地视图,而权威 registry 与发布动作在控制面。
-- **归属按它服务的执行体系判定，不按对象角色。** 数据面是请求执行的依赖闭包,所以方向中立的叶子器官（`breaker`、`ratelimit`）和适配器共享的词汇（`label`、`traffic`）都属于它——"中立"不等于"在平面之外"。只有当请求路径之外的消费者（cache、lock、scheduler、config）也需要某个依赖时,它才上浮到最近公共祖先;`observability/attrs` 与 `observability/conf` 位于平面之外,正是这条规则的结果。
+- **数据面 = 进程内状态 + 请求路径动作**。服务发现的**读侧**（`Discovery` / `Resolver` / 本地 endpoint 目录）是数据面状态:`loadbalance.Pick` 每个请求都读取它。它现在位于 [cloud/discovery](../discovery/)。这是 SDK 式客户端发现模型——SDK 的 resolver + cache 是数据面的本地视图,而权威 registry 与发布动作在控制面。
+- **归属按它服务的执行体系判定，不按对象角色。** 数据面是请求执行的依赖闭包,所以方向中立的叶子器官（`breaker`、`ratelimit`）和适配器共享的词汇（`label`）都属于它——"中立"不等于"在平面之外"。只有当请求路径之外的消费者（cache、lock、scheduler、config）也需要某个依赖时,它才上浮到最近公共祖先;`observability/attrs` 与 `observability/conf` 位于平面之外,正是这条规则的结果;`discovery` 与 `traffic` 也已因此上浮到 `cloud/` 顶层。
 - **可观测层属于数据面，而且是最外层**。它实现了受治理的调用：出站包 `chain.Executor`，入站驱动 `admission` 的 Admit/Done。因此它允许依赖 `admission` / `breaker`，而请求路径上没有任何包依赖它。中立遥测工具已经移出平面（见下），所以这个层本身不携带跨平面词汇。
 - **组合根既不是控制面也不是数据面**。它是 `governance.Runtime`：把两个平面的对象组装成一个对象图，并作为唯一注入点交给 starter。`Center` 不再扮演这个角色。
 

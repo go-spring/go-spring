@@ -26,7 +26,7 @@ import (
 	"sync"
 	"time"
 
-	"go-spring.org/cloud/governance/capability/discovery"
+	"go-spring.org/cloud/discovery"
 	"go-spring.org/log"
 	"go-spring.org/stdlib/errutil"
 )

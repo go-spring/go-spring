@@ -17,7 +17,7 @@
 package StarterHTTPClient
 
 import (
-	"go-spring.org/cloud/governance/capability/discovery"
+	"go-spring.org/cloud/discovery"
 	"go-spring.org/cloud/governance/capability/label"
 	"go-spring.org/cloud/security"
 	"go-spring.org/starter-http-client/httpx"

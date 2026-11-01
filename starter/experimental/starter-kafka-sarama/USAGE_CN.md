@@ -60,7 +60,7 @@ import (
     "context"
 
     "github.com/IBM/sarama"
-    "go-spring.org/cloud/governance/capability/traffic"
+    "go-spring.org/cloud/traffic"
     "go-spring.org/spring/gs"
     StarterKafkaSarama "go-spring.org/starter-kafka-sarama"
 )

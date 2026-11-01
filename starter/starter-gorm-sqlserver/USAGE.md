@@ -102,7 +102,7 @@ against (in a real deployment this is your company's adapter):
 ```go
 package main
 
-import "go-spring.org/cloud/governance/capability/discovery"
+import "go-spring.org/cloud/discovery"
 
 func init() {
     gs.Provide(func() (discovery.Discovery, error) {

@@ -24,8 +24,8 @@ import (
 	"testing"
 
 	"github.com/apache/rocketmq-client-go/v2/primitive"
-	"go-spring.org/cloud/governance/capability/traffic"
 	"go-spring.org/cloud/propagate"
+	"go-spring.org/cloud/traffic"
 	"go-spring.org/stdlib/testing/assert"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/propagation"

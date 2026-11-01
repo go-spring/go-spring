@@ -25,6 +25,10 @@ import (
 	"go-spring.org/stdlib/errutil"
 )
 
+// TokenBucketLimiter is the limiter-kind key a rule names to charge this store:
+// the Redis backend plus the token-bucket algorithm, in one name.
+const TokenBucketLimiter string = "redis:token-bucket"
+
 // redisTokenBucket is the atomic token-bucket refill/consume, evaluated entirely
 // inside Redis so concurrent replicas share one budget. State lives in a hash
 // (tokens + last-refill ms); the key auto-expires once idle long enough to
@@ -55,59 +59,79 @@ redis.call('EXPIRE', KEYS[1], ttl)
 return allowed
 `)
 
-// redisClusterLimiter is a Redis-backed [ratelimit.ClusterLimiter]: one token
-// budget per scope, shared by every replica, in contrast to the stage's default
-// in-process budget, which each executor keeps to itself. The counters live in
-// Redis and the refill/consume runs as one atomic script, so replicas cannot
-// overspend a budget between them.
+// redisProvider is the [ratelimit.Provider] behind [TokenBucketLimiter]: one
+// token budget per scope, shared by every replica, in contrast to a process-local
+// limiter, which each counter keeps to itself. The counters live in Redis and
+// the refill/consume runs as one atomic script, so replicas cannot overspend a
+// budget between them.
 //
-// Two limits are deliberate. Sliding-window scopes are counted as token buckets
-// (the atomic script is what makes a shared budget correct, and a window does not
-// map onto one script cheaply). Queueing ([ratelimit.Spec.MaxWait])
-// is not offered either: waiting for a token would mean polling Redis, so a redis
-// store rejects an over-limit unit immediately — keep queueing for the in-process
-// budget.
-type redisClusterLimiter struct {
+// Two limits are deliberate. The kind is token-bucket only — the atomic script
+// is what makes a shared budget correct, and a window does not map onto one
+// script cheaply — so a sliding-window rule is refused at apply time because no
+// factory is registered for it. Queueing ([ratelimit.Policy.MaxWait]) is not
+// offered either: waiting for a token would mean polling Redis, so the store
+// rejects an over-limit unit immediately — keep queueing for the process-local
+// limiter.
+type redisProvider struct {
 	client redis.UniversalClient
 	prefix string
 }
 
-var _ ratelimit.ClusterLimiter = (*redisClusterLimiter)(nil)
+var _ ratelimit.Provider = (*redisProvider)(nil)
 
-// NewClusterLimiter returns a Redis-backed [ratelimit.ClusterLimiter] over client.
-// Contribute it to the container and the resilience driver injects it, so every
-// executor in the process — and every replica running this starter — spends one
-// budget per scope, instead of each executor counting privately:
+// NewProvider returns the Redis-backed [ratelimit.Provider] over client.
+// Contribute it to the container under [TokenBucketLimiter] and every rule that
+// names that kind spends one budget per scope, across every replica:
 //
-//	gs.Provide(func() (ratelimit.ClusterLimiter, error) {
-//	    return experimental.NewClusterLimiter(client)
-//	})
+//	gs.Provide(func(client *redis.Client) (ratelimit.Provider, error) {
+//	    return experimental.NewProvider(client)
+//	}).Name(string(experimental.TokenBucketLimiter))
 //
-// It returns the interface, so the bean is indexed under [ratelimit.ClusterLimiter]
-// and needs no Export. A nil client fails here with an error rather than
-// surfacing as a counter error on the first protected call.
-func NewClusterLimiter(client redis.UniversalClient) (ratelimit.ClusterLimiter, error) {
+// A nil client fails here with an error rather than surfacing as a counter error
+// on the first protected call.
+func NewProvider(client redis.UniversalClient) (ratelimit.Provider, error) {
 	if client == nil {
-		return nil, errutil.Explain(nil, "starter-go-redis: nil redis cluster-limiter client")
+		return nil, errutil.Explain(nil, "starter-go-redis: nil redis rate-limit client")
 	}
-	return &redisClusterLimiter{client: client, prefix: "ratelimit:"}, nil
+	return &redisProvider{client: client, prefix: "ratelimit:"}, nil
 }
 
-// Allow charges n units of scope's budget to Redis. Keys are namespaced under
+// Algorithms reports the kinds this provider answers: the Redis backend's token
+// bucket only.
+func (f *redisProvider) Algorithms() []string {
+	return []string{TokenBucketLimiter}
+}
+
+// New binds a new handle to scope. The handle is cheap; the state stays in Redis.
+func (f *redisProvider) New(algorithm string, scope string) (ratelimit.Limiter, error) {
+	if algorithm != TokenBucketLimiter {
+		return nil, errutil.Explain(nil, "starter-go-redis: redis provider does not support %q", algorithm)
+	}
+	return &redisLimiter{f: f, scope: scope}, nil
+}
+
+// redisLimiter charges one scope's budget to Redis. Keys are namespaced under
 // "ratelimit:" so per-scope counters never collide with application data.
-func (c *redisClusterLimiter) Allow(ctx context.Context, scope string, spec ratelimit.Spec, n int) (bool, error) {
-	if spec.RateLimit <= 0 || n <= 0 { // no budget configured
+type redisLimiter struct {
+	f     *redisProvider
+	scope string
+}
+
+var _ ratelimit.Limiter = (*redisLimiter)(nil)
+
+func (l *redisLimiter) Allow(ctx context.Context, policy ratelimit.Policy, n int) (bool, error) {
+	if policy.RateLimit <= 0 || n <= 0 { // no budget configured
 		return true, nil
 	}
-	burst := spec.Burst
+	burst := policy.Burst
 	if burst <= 0 {
-		if burst = int(spec.RateLimit); burst < 1 {
+		if burst = int(policy.RateLimit); burst < 1 {
 			burst = 1
 		}
 	}
-	res, err := redisTokenBucket.Run(ctx, c.client,
-		[]string{c.prefix + scope},
-		spec.RateLimit, float64(burst), time.Now().UnixMilli(), n,
+	res, err := redisTokenBucket.Run(ctx, l.f.client,
+		[]string{l.f.prefix + l.scope},
+		policy.RateLimit, float64(burst), time.Now().UnixMilli(), n,
 	).Int64()
 	if err != nil {
 		return false, err

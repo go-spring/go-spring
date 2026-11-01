@@ -20,12 +20,11 @@ import (
 	"context"
 	"sync/atomic"
 
-	"go-spring.org/cloud/governance/capability/discovery"
+	"go-spring.org/cloud/discovery"
 )
 
-// roundRobinFactory is the [Factory] behind the [RoundRobin] name. The strategy
+// The [RoundRobin] strategy is exported by the built-in [Provider]. It
 // has no parameters of its own.
-func init() { Register(RoundRobin, newRoundRobin) }
 
 func newRoundRobin(Selection) (Balancer, error) {
 	return &roundRobin{}, nil

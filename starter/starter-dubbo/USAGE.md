@@ -242,7 +242,7 @@ restart; timeout/retries do not (§4.2).
    (client.go:166-170).
 2. dubbo-go's consumer filter chain (whatever `consumer.filter` /
    `consumer.references.<n>.filter` installed) runs; outbound load-test marking is done by
-   cloud/governance/capability/traffic's carrier injection — the starter's `loadtest` filter is the
+   cloud/traffic's carrier injection — the starter's `loadtest` filter is the
    inbound companion (starter.go:108 comment).
 3. Cluster strategy / loadbalance pick an instance (dubbo-go semantics; URL params — this is
    exactly the set the hot-reload path can change at runtime, §4.2).
@@ -423,7 +423,7 @@ without restart.
 1. Add `fault` to the service's filter chain: `...services.greet.filter=loadtest,fault`.
 2. Configure a governance rules source; set `spring.fault.client.*` (rate/error/match.traffic) in its rules.
 3. With `match.traffic=loadtest`, only invocations carrying the load-test marker burn — mark them by
-   injecting the outbound carrier (cloud/governance/capability/traffic) from a marked upstream, or use
+   injecting the outbound carrier (cloud/traffic) from a marked upstream, or use
    `match.traffic=real` in a dedicated environment.
 4. Watch: consumer receives the injected error; `traffic.IsLoadTest(ctx, prop)` returns true inside
    the impl for marked calls (loadtest filter ordered first).

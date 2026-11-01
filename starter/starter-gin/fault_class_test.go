@@ -24,6 +24,7 @@ import (
 
 	"go-spring.org/cloud/governance"
 	kfault "go-spring.org/cloud/governance/capability/fault"
+	"go-spring.org/cloud/governance/capability/ratelimit"
 	"go-spring.org/cloud/governance/dataplane/inbound/admission"
 	serverfault "go-spring.org/cloud/governance/dataplane/inbound/fault"
 	"go-spring.org/cloud/governance/dataplane/inbound/observe"
@@ -47,7 +48,7 @@ func TestHTTPStatusFor_FollowsFaultClass(t *testing.T) {
 		inj.Refresh(kfault.Config{Rules: []kfault.Rule{{
 			Name: "fire", Service: "gin", Rate: 1, Class: tc.class,
 		}}})
-		gm := admission.NewManager()
+		gm := admission.NewManager(ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()}))
 		in, err := governance.InboundOver("gin", "gin:test", gm, inj)
 		if err != nil {
 			gm.Close()

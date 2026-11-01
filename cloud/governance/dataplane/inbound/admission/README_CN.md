@@ -55,14 +55,15 @@ m.Apply(admission.Settings{Default: ..., Rules: ...})
 
 `Result` 只读：`Admitted`、`Verdict`、`Err`、`RetryAfter`、`Latency`、`Rule`、`Timeout`、`Fault`。`Timeout` 是 adapter 施加到 handler context 上的处理预算（Guard 无法取消它没有交出去的 context）。
 
-`WithFault` 注入入站放火阶段，`Fault` 实现位于 `fault` 包。Guard 通过 `observe.go` 注册的可观测仪器发布**自己的**阶段状态（限流用量、bulkhead 占用）；请求面 observer 从不读取这些状态。
+`WithFault` 注入入站放火阶段，`Fault` 实现位于 `fault` 包。Guard 通过 `observe.go` 注册的可观测仪器发布**自己的**阶段状态（bulkhead 占用）；请求面 observer 从不读取这些状态。
 
-`WithClusterLimiter` 让限流阶段扣共享 store（通常是 Redis），而不是实例本地预算。store 失败策略是“放行”：计数后端不可达不能变成一次故障。`governance` 把进程已有的 `ratelimit.ClusterLimiter` bean 适配过来，一个 limiter 同时覆盖两个方向。
+`WithLimiter` 让限流阶段扣共享 store（通常是 Redis），而不是进程内计数器。store 失败策略是“放行”：计数后端不可达不能变成一次故障。`governance` 把进程已有的 `ratelimit.Limiter` bean 适配过来，一个 limiter 同时覆盖两个方向。
 
-各层也可以作为独立对象使用，供调用方在自己的中间件里组合同一套状态模型。本包只导出限流器；bulkhead 直接来自 capability 包，本包不做二次导出：
+各层使用共享的 capability 对象，供调用方在自己的中间件里组合同一套状态模型。限流计数器就是一个 `ratelimit.Limiter`（默认进程内实现，也可换成共享 store）；rate-limit policy 本身就是 `ratelimit.Policy`，直接传给 `Allow`。bulkhead 直接来自 capability 包：
 
 ```go
-lim := admission.NewRateLimiter(p, id.Service, nil)   // Allow(ctx) bool
+lim, _ := ratelimit.NewLocalProvider().New(ratelimit.TokenBucketAlgorithm, id.Service)
+ok, err := lim.Allow(ctx, p.Policy, 1)
 bulk := bulkhead.New(p.MaxConcurrent, bulkhead.WithQueueTimeout(p.BulkheadQueueDuration)) // Acquire -> release
 ```
 
@@ -103,7 +104,7 @@ return handler(ctx)
 - 形状：`Identity`、`Request`、`Verdict`、`Result`、`Done`
 - 策略：`Policy`、`Settings`、`Rule`
 - 每实例状态管理器与默认引擎
-- 可独立使用的层对象：本包导出 `RateLimiter`；`Bulkhead` 直接用 capability 包
+- 可独立使用的层对象：限流用 `ratelimit.Limiter`；`Bulkhead` 直接用 capability 包
 
 包外：
 
@@ -117,10 +118,10 @@ return handler(ctx)
 
 ## 集群限流
 
-`WithClusterLimiter` 让限流阶段扣共享 store（通常是 Redis），而不是实例本地预算。store 返回 `admission.ErrRateLimited` 才拒绝，其他错误按放行处理。`governance` 会把进程里已有的 `ratelimit.ClusterLimiter` bean 适配过来，一个 store 同时覆盖出站和入站。
+`WithLimiter` 让限流阶段扣共享 store（通常是 Redis），而不是进程内计数器。store 返回 `admission.ErrRateLimited` 才拒绝，其他错误按放行处理。`governance` 会把进程里已有的 `ratelimit.Limiter` bean 适配过来，一个 store 同时覆盖出站和入站。
 
 ## 与 resilience 的关系
 
-`admission` 是 server 侧，`resilience` 是 client 侧。今天只共享限流词汇：`Spec`、本地预算、`ClusterLimiter` seam 和计数算法都在 `cloud/governance/capability/ratelimit`，两个方向各自把自己的策略映射进去。熔断器是出站专属的器官（`cloud/governance/capability/circuitbreaker`），入站没有消费者。
+`admission` 是 server 侧，`resilience` 是 client 侧。今天共享整条限流契约：`Policy`、`Limiter`（本地与共享两种实现）和计数算法都在 `cloud/governance/capability/ratelimit`，两个方向各自把自己的策略映射进去。熔断器是出站专属的器官（`cloud/governance/capability/circuitbreaker`），入站没有消费者。
 
 `resilience` 的旧入站半边（`Manager` / `ServerEngine` / `ServerPolicy` / `Driver.NewServerExecutor`）已删除；`driver=sentinel` 现在只影响出站，入站统一走 admission 的默认引擎。

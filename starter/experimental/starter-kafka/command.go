@@ -32,8 +32,8 @@ import (
 	"context"
 
 	"go-spring.org/cloud/governance/capability/label"
-	"go-spring.org/cloud/governance/capability/traffic"
 	"go-spring.org/cloud/governance/dataplane/outbound/chain"
+	"go-spring.org/cloud/traffic"
 
 	"github.com/twmb/franz-go/pkg/kgo"
 	observability "go-spring.org/cloud/governance/dataplane/outbound/observe"

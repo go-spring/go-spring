@@ -21,7 +21,7 @@ import (
 	"testing"
 	"time"
 
-	"go-spring.org/cloud/governance/capability/discovery"
+	"go-spring.org/cloud/discovery"
 	kloadbalance "go-spring.org/cloud/governance/capability/loadbalance"
 	"go-spring.org/cloud/governance/controlplane/source"
 	"go-spring.org/stdlib/testing/assert"
@@ -45,8 +45,8 @@ func TestDocumentBinds(t *testing.T) {
 	d, err := source.Parse[kloadbalance.Settings]("loadbalance.yaml", []byte(doc), "")
 	assert.Error(t, err).Nil()
 
-	assert.That(t, d.Default.Balancer).Equal(kloadbalance.RoundRobin)
-	assert.Number(t, d.Default.OutlierThreshold).Equal(5)
+	assert.That(t, d.Balancer).Equal(kloadbalance.RoundRobin)
+	assert.Number(t, d.OutlierThreshold).Equal(5)
 	assert.Number(t, len(d.Rules)).Equal(1)
 	assert.That(t, d.Rules[0].Service).Equal("redis:cache")
 	assert.That(t, d.Rules[0].Balancer).Equal(kloadbalance.ConsistentHash)
@@ -57,27 +57,32 @@ func TestDocumentBinds(t *testing.T) {
 	assert.That(t, sel[0].Value).Equal("v2.")
 }
 
-// TestDuplicateServicesRejected pins the binding boundary: conf.Bind runs the
-// data-plane Validate, so a duplicate label is rejected where the document is
-// read. The rule matrix itself lives in capability/loadbalance's own tests.
-func TestDuplicateServicesRejected(t *testing.T) {
-	_, err := source.Parse[kloadbalance.Settings]("loadbalance.properties", []byte(`
+// TestDuplicateServicesFollowListOrder pins the resolution rule for a repeated
+// service: the document binds as written and the first matching rule wins — the
+// manager does not police the field, it just reads the list in one way. The rule
+// matrix itself lives in capability/loadbalance's own tests.
+func TestDuplicateServicesFollowListOrder(t *testing.T) {
+	d, err := source.Parse[kloadbalance.Settings]("loadbalance.properties", []byte(`
 services[0].service=redis:cache
 services[0].balancer=round_robin
 services[1].service=redis:cache
 services[1].balancer=least_conn
 `), "")
-	assert.Error(t, err).NotNil()
+	assert.Error(t, err).Nil()
+
+	m := kloadbalance.NewManager(kloadbalance.NewFactory([]kloadbalance.Provider{kloadbalance.NewBuiltinProvider()}))
+	assert.Error(t, m.Apply(context.Background(), d)).Nil()
+	assert.That(t, d.Rules[0].Balancer).Equal(kloadbalance.RoundRobin)
 }
 
-func selectionChain(t *testing.T, m *kloadbalance.Manager, label string) *kloadbalance.Chain {
+func selectionChain(t *testing.T, m *kloadbalance.Manager, service string) *kloadbalance.Chain {
 	t.Helper()
 	src := func(context.Context) ([]discovery.Endpoint, error) {
 		return []discovery.Endpoint{{Addr: "10.0.0.1:8080", Healthy: true, Weight: 1}}, nil
 	}
-	c, err := m.Chain(context.Background(), src, label)
+	c, err := m.Chain(context.Background(), src, service)
 	if err != nil {
-		t.Fatalf("chain for %q: %v", label, err)
+		t.Fatalf("chain for %q: %v", service, err)
 	}
 	return c
 }
@@ -86,7 +91,7 @@ func TestCenterAppliesAndKeepsLastGood(t *testing.T) {
 	d, err := source.Parse[kloadbalance.Settings]("loadbalance.yaml", []byte(doc), "")
 	assert.Error(t, err).Nil()
 
-	mgr := kloadbalance.NewManager()
+	mgr := kloadbalance.NewManager(kloadbalance.NewFactory([]kloadbalance.Provider{kloadbalance.NewBuiltinProvider()}))
 	src := source.NewPushSource(d)
 	if _, err := NewCenter(context.Background(), mgr, src); err != nil {
 		t.Fatal(err)
@@ -108,14 +113,17 @@ func TestCenterAppliesAndKeepsLastGood(t *testing.T) {
 }
 
 // TestNewCenterRejectsUnservableSnapshot pins the startup contract: a source
-// whose initial document cannot serve fails wiring, rather than arming a center
-// that would run unconfigured.
+// whose initial document cannot serve a REGISTERED chain fails wiring, rather
+// than arming a center that would run that chain unconfigured. Unserved rules
+// are just data and would not be built here.
 func TestNewCenterRejectsUnservableSnapshot(t *testing.T) {
-	mgr := kloadbalance.NewManager()
+	mgr := kloadbalance.NewManager(kloadbalance.NewFactory([]kloadbalance.Provider{kloadbalance.NewBuiltinProvider()}))
+	selectionChain(t, mgr, "redis:cache")
+
 	src := source.NewPushSource(kloadbalance.Settings{
-		Rules: []kloadbalance.Rule{{Service: "redis:cache"}},
+		Rules: []kloadbalance.Rule{{Service: "redis:cache", Selection: kloadbalance.Selection{Balancer: "no_such_strategy"}}},
 	})
 	if _, err := NewCenter(context.Background(), mgr, src); err == nil {
-		t.Fatal("NewCenter must reject an unservable initial document")
+		t.Fatal("NewCenter must reject an initial document that cannot serve a registered chain")
 	}
 }

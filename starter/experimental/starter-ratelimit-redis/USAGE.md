@@ -10,7 +10,7 @@ that makes the store reach the driver bean, and the self-asserting [example/](ex
 **Activation**: any `spring.ratelimit.redis.*` key arms the starter's module, and the block's one key
 must be set: `spring.ratelimit.redis.client` names the `*goredis.Client` bean (provided by
 starter-go-redis under `spring.go-redis.instances.<client>`) whose Redis instance backs the
-counters. The starter contributes ONE bean of type `ratelimit.ClusterLimiter`. With none in the container
+counters. The starter contributes ONE bean of type `ratelimit.Provider`. With none in the container
 each executor counts in a budget of its own, so contributing this one is the whole switch:
 [cloud/governance](../../../cloud/governance/README.md)'s driver bean injects it, and every executor in the
 process then spends one Redis budget per scope — across replicas, which an executor-local budget
@@ -154,15 +154,15 @@ import starter-go-redis + starter-ratelimit-redis
   └─ gs.Module(gs.OnProperty("spring.ratelimit.redis"))
         └─ conf.Bind("${spring.ratelimit.redis}") → Config{Client}
              ├─ fail fast when Client == ""   (boot error naming the property)
-             └─ Provide func(client *goredis.Client) (ratelimit.ClusterLimiter, error)
+             └─ Provide func(client *goredis.Client) (ratelimit.Provider, error)
                   (gs.TagArg(c.Client); the interface return type IS the bean type —
                    no Export is needed)
 
 gs.Run()
-  ├─ this store is now the container's only ratelimit.ClusterLimiter bean
+  ├─ this store is now the container's only `redis:token-bucket` provider
   ├─ bean wiring: the *goredis.Client bean named by client is injected by name;
   │     NewClusterLimiter wraps its UniversalClient (a nil client is a ctor error)
-  ├─ the resilience driver bean injects ratelimit.ClusterLimiter, so every executor
+  ├─ the resilience driver bean injects ratelimit.Provider, so every executor
   │     it builds spends this store — and the store itself instantiates because
   │     that driver needs it
   └─ on SIGTERM: nothing to release — the store holds no state of its own and
@@ -173,7 +173,7 @@ gs.Run()
 
 `exec.Execute(ctx, chain.Operation{}, fn)` with the rule `rate-limit: 2, burst: 5`:
 
-1. The executor's rate-limit stage calls `ClusterLimiter.Allow(ctx, service, policy, 1)` — the executor
+1. The executor's rate-limit stage calls `Limiter.Allow(ctx, service, policy, 1)` — the executor
    charges every attempt, and the scope is the service the executor was built for.
 2. Zero `RateLimit` short-circuits to an unlimited pass-through with **no Redis round-trip**. A lost
    rule therefore means no limiting at all: that is a governance-config symptom, not a store one.
@@ -190,9 +190,10 @@ gs.Run()
 
 ### 2.3 What the store does NOT do
 
-- It does not implement sliding windows: an `algorithm: sliding-window` policy is counted as a token
-  bucket. The atomic script is what makes a shared budget correct, and a window does not map onto one
-  script cheaply — use a token bucket when the counters are shared.
+- It does not implement sliding windows: an `limiter: sliding-window` policy is refused when the
+  document is applied (the store declares token-bucket support through
+  `ratelimit.AlgorithmLimiter`), rather than silently counted as a bucket. The atomic script is what
+  makes a shared budget correct, and a window does not map onto one script cheaply.
 - It does not queue: `rate-limit-max-wait` is ignored and an over-limit unit is rejected immediately.
   Waiting for a token would mean polling Redis; keep queueing for the in-memory store.
 - It keeps no metrics of its own — a rate-limited call shows up as `resilience.error_type=rate_limited` on the
@@ -211,7 +212,7 @@ what arms the starter; no other key belongs under it.
 |-----|------|---------|-------------------------|------------------------------|
 | `client` | string | — | **Required.** Name of the `*goredis.Client` bean under `spring.go-redis.instances.<client>`; checked before bean registration and injected with `TagArg(c.Client)` at construction. | Empty → boot fails naming the property; a name with no such bean → bean-wiring failure at boot. |
 
-⚠ The rate-limit knobs (`rate-limit`, `burst`, `algorithm`, `window`, `rate-limit-max-wait`) are NOT
+⚠ The rate-limit knobs (`rate-limit`, `burst`, `limiter`, `window`, `rate-limit-max-wait`) are NOT
 starter config: they are `resilience.Policy` fields on the governance rule document, per service.
 
 ---
@@ -270,7 +271,7 @@ cd example && ./check.sh    # docker-gated: compose up redis, run self-asserting
 | Boot fails while wiring the store (no bean named `<x>` of type `*goredis.Client`) | `client` names a redis instance that is not configured | Add `spring.go-redis.instances.<x>` (or fix the name). |
 | Different replicas limit independently | no store is contributed (each executor kept its private budget), or replicas point at different Redis instances | Configure this starter on every replica and point them at one Redis. |
 | No limiting at all, everything 200 | the service's policy has `rate-limit: 0`, or Redis is unreachable (the executor fails open) | Set an explicit positive `rate-limit` in the rules file; check Redis. |
-| The burst is larger/smaller than the window arithmetic suggests | the rule asks for `algorithm: sliding-window`, which the shared store counts as a token bucket | Model the cap as `rate-limit`/`burst`, or keep sliding windows on the in-memory store. |
+| The document is rejected with "does not support algorithm" | the rule asks for `limiter: sliding-window`, which this store refuses at apply time | Model the cap as `rate-limit`/`burst`, or keep sliding windows on the in-memory store. |
 | Calls pile up instead of being rejected | `rate-limit-max-wait` is set but the shared store does not queue | Keep queueing for the in-memory store, or drop the knob. |
 | An app whose document configures no rate limit has no limiting | with no matching rule (or a zero `Default`), every executor is a pass-through | Give the label a rule with a positive `rate-limit`; this starter only moves the counters. |
 
@@ -291,6 +292,6 @@ Design suspects (for the audit ledger):
   the container, and the container chooses it (none is contributed unless a backend starter does
   so), so the old failure modes — a driver name claimed twice, a route citing a driver name nobody
   registered, limiter state depending on wiring order across tests in one binary — no longer exist.
-- The store's two documented limits (sliding window counted as a token bucket, no queueing) are
+- The store's two documented limits (token bucket only, no queueing) are
   deliberate: the atomic script is what makes a shared budget correct. They are re-stated wherever
   the store is described so a caller cannot be surprised by them.

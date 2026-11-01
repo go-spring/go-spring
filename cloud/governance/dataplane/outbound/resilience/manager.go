@@ -21,8 +21,20 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"go-spring.org/cloud/governance/capability/ratelimit"
 	"go-spring.org/cloud/governance/dataplane/outbound/chain"
+	"go-spring.org/stdlib/errutil"
 )
+
+// activeRateKeys is the counter-key set label resolves to under the current
+// rate snapshot. Executors use it to drop local counters whose rule is gone.
+func (m *Manager) activeRateKeys(label string) map[string]struct{} {
+	rs := m.rateLimit.Load()
+	if rs == nil {
+		return nil
+	}
+	return rs.activeKeys(label)
+}
 
 // Manager is the OUTBOUND resilience authority: it owns the backend every
 // client executor is built with, the registry of executors built for it, and the
@@ -55,6 +67,11 @@ type Manager struct {
 	// driver is the backend every executor this manager hands out is built with,
 	// fixed at construction. It is never nil.
 	driver Driver
+
+	// limiters collects the rate-limit limiter kinds and creates their
+	// counters. The set is fixed at wiring; a rule naming a missing kind is
+	// rejected when its document is applied.
+	limiters *ratelimit.Factory
 
 	// The three published snapshots. Each is written by its own capability's
 	// Apply and read lock-free on the call path — one atomic load per capability,
@@ -100,11 +117,14 @@ type Manager struct {
 // a transparent pass-through until an Apply publishes a policy. Construction is
 // independent of the configuration: an executor can be built before, during or
 // after a push, because it reads the manager per call.
-func NewManager(driver Driver) *Manager {
+func NewManager(driver Driver, limiters *ratelimit.Factory) *Manager {
 	if driver == nil {
-		panic("resilience: NewManager requires a non-nil Driver; pass NewDefaultDriver(nil) for the bundled backend")
+		panic("resilience: NewManager requires a non-nil Driver; pass NewDefaultDriver() for the bundled backend")
 	}
-	m := &Manager{driver: driver, subs: map[string][]*subscriber{}}
+	if limiters == nil {
+		panic("resilience: NewManager requires a non-nil ratelimit.Factory")
+	}
+	m := &Manager{driver: driver, limiters: limiters, subs: map[string][]*subscriber{}}
 	// Publish zero snapshots from the start rather than leaving them absent: a
 	// label's generation is then the same number an applied empty document
 	// produces, so nothing depends on whether a document has arrived yet.
@@ -119,14 +139,13 @@ func NewManager(driver Driver) *Manager {
 // capability — once at startup, then on every push.
 //
 // Publishing is the whole of it: no registration is dropped, no executor is
-// reached into. Executors follow the new generation on their next call and
+// reached into. The document was validated at the source boundary (Parse →
+// conf.Bind → Validate); a programmatic caller vouches for what it hands in.
+// Executors follow the new generation on their next call and
 // rebuild only their limits-derived values (which need no state). A push that
 // changes nothing leaves every generation where it was, because generations are
 // derived from content rather than from the fact that Apply ran.
 func (m *Manager) ApplyLimits(s LimitsSettings) error {
-	if err := ValidateLimits(s); err != nil {
-		return err
-	}
 	m.limits.Store(&limitsSnapshot{settings: s})
 	m.notifyLimits()
 	return nil
@@ -134,21 +153,49 @@ func (m *Manager) ApplyLimits(s LimitsSettings) error {
 
 // ApplyBreaker adopts s as the breaker half of the outbound document. Only the
 // breaker generation moves; a live rate budget or retry budget keeps counting.
+// A document from a source was validated at the boundary; a programmatic caller
+// vouches for what it hands in.
 func (m *Manager) ApplyBreaker(s BreakerSettings) error {
-	if err := ValidateBreaker(s); err != nil {
-		return err
-	}
 	m.breaker.Store(&breakerSnapshot{settings: s})
 	return nil
 }
 
 // ApplyRateLimit adopts s as the rate-limit half of the outbound document. Only
 // the rate-limit generation moves; a live breaker keeps counting.
+//
+// Every enabled policy's counter is BUILT first, and the document is published
+// only once all of them build: construction is the validation, so an unknown
+// kind rejects the document whole and the previous snapshot keeps serving. The
+// built counters are discarded — a counter carries per-key state that lives in
+// the executors and must outlive the swap, so the executor rebuilds it from the
+// rule's kind on first use.
+//
+// Document-shape validation happened at the source boundary.
 func (m *Manager) ApplyRateLimit(s RateLimitSettings) error {
-	if err := ValidateRateLimit(s); err != nil {
+	if err := m.buildRateCounters(s); err != nil {
 		return err
 	}
 	m.rateLimit.Store(&rateSnapshot{settings: s})
+	return nil
+}
+
+// buildRateCounters builds one counter per enabled policy, proving the document
+// can be served. The scope is the rule's service label — the same scope the
+// executor will use.
+func (m *Manager) buildRateCounters(s RateLimitSettings) error {
+	if s.Default.RateLimit > 0 {
+		if _, err := m.limiters.Create(s.Default.Limiter, ""); err != nil {
+			return errutil.Explain(err, "resilience: default rate-limit policy")
+		}
+	}
+	for i := range s.Rules {
+		if s.Rules[i].RateLimit == 0 {
+			continue
+		}
+		if _, err := m.limiters.Create(s.Rules[i].Policy.Limiter, s.Rules[i].Service); err != nil {
+			return errutil.Explain(err, "resilience: rate-limit rule for service %q", s.Rules[i].Service)
+		}
+	}
 	return nil
 }
 
@@ -207,7 +254,7 @@ func (m *Manager) ExecutorFor(service string) chain.Executor {
 	if v, ok := m.entries.Load(service); ok { // built while we waited
 		return v.(*entry).exec
 	}
-	return m.buildLocked(service)
+	return m.build(service)
 }
 
 // LimitsFor returns the limits a label currently resolves to, or zero limits
@@ -272,7 +319,7 @@ func (m *Manager) Resolve(op chain.Operation) CallPolicy {
 		Breaker:     br,
 		Rate:        rr,
 		LabelLimits: ls.label(op.Service),
-		Gen:         mixGens(lr.Gen, br.Gen, rr.Gen),
+		Gen:         mixGens(lr.Gen, br.Gen, rs.gen(op.Service)),
 	}
 }
 
@@ -289,16 +336,17 @@ func (m *Manager) ResolveLabel(label string) CallPolicy {
 	}
 	lg, bg, rg := ls.gen(label), bs.gen(label), rs.gen(label)
 	lp := ls.label(label)
+	rate := RateRef{Policy: rs.label(label), Key: label}
 	return CallPolicy{
 		Limits:      LimitsRef{Timeout: lp.Timeout, Retry: lp.Retry, Gen: lg},
 		Breaker:     BreakerRef{Policy: bs.label(label), Key: label, Gen: bg},
-		Rate:        RateRef{Policy: rs.label(label), Key: label, Gen: rg},
+		Rate:        rate,
 		LabelLimits: lp,
 		Gen:         mixGens(lg, bg, rg),
 	}
 }
 
-// buildLocked builds and registers label's executor and returns it. Callers
+// build builds and registers label's executor and returns it. Callers
 // hold [Manager.buildMu], so the registration is the only one for its
 // label.
 //
@@ -311,7 +359,7 @@ func (m *Manager) ResolveLabel(label string) CallPolicy {
 // A driver that cannot build PANICs rather than degrade: it is a startup defect,
 // and a silent pass-through would mean governance is off without anyone knowing.
 // Fail fast, fail loud.
-func (m *Manager) buildLocked(label string) chain.Executor {
+func (m *Manager) build(label string) chain.Executor {
 	e, err := m.driver.NewExecutor(label, m)
 	if err != nil || e == nil {
 		panic(fmt.Sprintf("resilience: driver %T failed to build executor for %q: %v", m.driver, label, err))

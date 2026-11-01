@@ -18,7 +18,7 @@
 // its parameters, the outlier-suspension thresholds and the metadata selector.
 //
 // Selection is resolved per CONNECTION at wiring time, not per call, so its
-// document has no Action/Match level: one rule per service label.
+// document has no Action/Match level: one rule per service.
 //
 // The document is [kloadbalance.Settings] from the data plane — the root binds
 // it, validates it at the source boundary and pushes it whole.
@@ -70,15 +70,13 @@ func NewCenter(ctx context.Context, mgr *kloadbalance.Manager, src source.Source
 }
 
 // Refresh adopts doc as this root's state and returns the cause when it could
-// not, logging each rejection at its branch. The caller decides what a failure
-// means: wiring propagates it and refuses to start; a source push ignores it —
-// the log is the intervention.
+// not; the manager logs the rejection. The caller decides what a failure means:
+// wiring propagates it and refuses to start; a source push ignores it — the log
+// is the intervention.
 func (c *Center) Refresh(ctx context.Context, doc kloadbalance.Settings) error {
-	if err := doc.Validate(); err != nil {
-		log.Error(ctx, log.TagAppDef, err, "loadbalance: invalid config")
+	if err := c.mgr.Apply(ctx, doc); err != nil {
 		return err
 	}
-	c.mgr.Apply(ctx, doc)
 	log.Info(ctx, log.TagAppDef, "loadbalance: config applied")
 	return nil
 }

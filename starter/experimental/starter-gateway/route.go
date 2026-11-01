@@ -28,7 +28,7 @@
 // gateway down.
 //
 // Upstreams are either direct (http(s)://host:port) or discovery-backed
-// (lb://<service>), the latter reusing cloud/governance/capability/discovery + cloud/governance/capability/loadbalance.
+// (lb://<service>), the latter reusing cloud/discovery + cloud/governance/capability/loadbalance.
 // Forwarding runs through cloud/governance/dataplane/outbound/resilience for retry/circuit-breaking, and the
 // gateway contributes /metrics to the actuator management port.
 package StarterGateway

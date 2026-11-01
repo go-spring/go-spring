@@ -24,8 +24,8 @@ import (
 	"time"
 
 	"github.com/nats-io/nats.go"
-	"go-spring.org/cloud/governance/capability/traffic"
 	observability "go-spring.org/cloud/governance/dataplane/outbound/observe"
+	"go-spring.org/cloud/traffic"
 	"go-spring.org/stdlib/testing/assert"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/propagation"

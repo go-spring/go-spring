@@ -77,10 +77,6 @@ func NewCenter(ctx context.Context, mgr *resilience.Manager, src source.Source[r
 // means: wiring propagates it and refuses to start; a source push ignores it —
 // the log is the intervention.
 func (c *Center) Refresh(ctx context.Context, doc resilience.LimitsSettings) error {
-	if err := doc.Validate(); err != nil {
-		log.Error(ctx, log.TagAppDef, err, "timeoutretry: invalid config")
-		return err
-	}
 	if err := c.mgr.ApplyLimits(doc); err != nil {
 		log.Error(ctx, log.TagAppDef, err, "timeoutretry: config apply failed")
 		return err

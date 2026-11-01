@@ -22,6 +22,7 @@ import (
 	"testing"
 	"time"
 
+	"go-spring.org/cloud/governance/capability/ratelimit"
 	"go-spring.org/cloud/governance/dataplane/outbound/chain"
 	"go-spring.org/stdlib/testing/assert"
 )
@@ -43,7 +44,7 @@ func TestEveryGovernedCallRecordsAtLeastOneRound(t *testing.T) {
 	})
 
 	t.Run("refused-before-the-downstream", func(t *testing.T) {
-		e := newBuiltin(t, RateLimitPolicy{RateLimit: 1, Burst: 1})
+		e := newBuiltin(t, ratelimit.Policy{Limiter: ratelimit.TokenBucketAlgorithm, RateLimit: 1, Burst: 1})
 		// Spend the burst so the next call is refused.
 		assert.Error(t, e.Execute(context.Background(), chain.Operation{}, nil,
 			func(context.Context) error { return nil })).Nil()

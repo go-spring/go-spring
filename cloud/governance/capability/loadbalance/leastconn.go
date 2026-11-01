@@ -20,14 +20,11 @@ import (
 	"context"
 	"sync"
 
-	"go-spring.org/cloud/governance/capability/discovery"
+	"go-spring.org/cloud/discovery"
 )
 
-// leastConnFactory is the [Factory] behind the [LeastConn] name. The strategy
-// has no parameters of its own.
-func init() {
-	Register(LeastConn, newLeastConn)
-}
+// The [LeastConn] strategy is exported by the built-in [Provider]. It has
+// no parameters of its own.
 
 func newLeastConn(Selection) (Balancer, error) {
 	return &leastConn{

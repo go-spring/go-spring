@@ -15,7 +15,7 @@
  */
 
 // This file is the CONSUMER half of ZooKeeper service discovery: the
-// cloud/governance/capability/discovery Discovery backend serving snapshots of the instances the
+// cloud/discovery Discovery backend serving snapshots of the instances the
 // registry (registry.go) publishes. It is derived from the
 // ${spring.discovery.zookeeper} center (starter.go) under the fixed label
 // "zookeeper" — there is no separate discovery config block. Freshness is
@@ -38,7 +38,7 @@ import (
 	"time"
 
 	"github.com/go-zookeeper/zk"
-	"go-spring.org/cloud/governance/capability/discovery"
+	"go-spring.org/cloud/discovery"
 	"go-spring.org/log"
 	"go-spring.org/stdlib/errutil"
 )

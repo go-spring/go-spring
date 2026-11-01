@@ -27,7 +27,7 @@ lifetimes and inputs:
 | Input | The call's result and `Recorder` | The organ's own fields |
 | Lifetime | One call | The organ instance (`Close` unregisters) |
 | Publish mode | Per call (span, metric, log) | Per collection, by pull (observable instruments) |
-| Packages | `outbound/observe`, `inbound/observe` | `outbound/resilience`, `inbound/admission`, the sentinel starter, `../capability/loadbalance`, `../capability/discovery` |
+| Packages | `outbound/observe`, `inbound/observe` | `outbound/resilience`, `inbound/admission`, the sentinel starter, `../capability/loadbalance`, `../../discovery` |
 
 ## The rule
 
@@ -42,7 +42,7 @@ Two consequences, both normative:
    returned. A refused call is visible as `resilience.error_type=circuit_open`
    (and its siblings); that is a request-level fact, not a breaker read.
 2. **The capability packages never import an observability SDK.** They expose read-only
-   accessors (`Breaker.Stats`, `Budget.Usage`, `Bulkhead.Stats`); the holding
+   accessors (`Breaker.Stats`, `Bulkhead.Stats`); the holding
    organ registers its own observable callback and unregisters it on `Close`.
    There is no cross-layer state listener, and no state query method on
    `chain.Executor`.
@@ -63,8 +63,6 @@ Organ state plane:
 | Metric | Owner | Attributes |
 | --- | --- | --- |
 | `resilience.client.breaker.state` (1-hot), `.transitions_total{to}` | outbound resilience | `service`, `unit` |
-| `resilience.client.ratelimit.usage_ratio` | outbound resilience | `service`, `unit` |
-| `resilience.server.ratelimit.usage_ratio` | inbound admission | `system`, `service` |
 | `resilience.server.bulkhead.usage_ratio`, `.queued` | inbound admission | `system`, `service` |
 | `loadbalance.endpoint.suspended`, `.suspension.total` | load balancing | — |
 | `discovery.cache.age_seconds`, `discovery.sync_total` | discovery | depends on the observer |
@@ -84,9 +82,6 @@ Notes:
 
 ## Deliberately not covered
 
-- **Cluster rate-limit usage.** A `ClusterLimiter` store is charged instead of
-  the local budget and exposes no usage query, so no local usage series is
-  published. Refusals still appear per call as `rate_limited`.
 - **Injected-fault attribution.** The request plane records an injected fault as
   the real error it mimics, so injected and genuine failures are
   indistinguishable in metrics. This is an existing, known gap.

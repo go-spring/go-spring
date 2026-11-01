@@ -20,7 +20,7 @@
 package StarterMemcached
 
 import (
-	"go-spring.org/cloud/governance/capability/discovery"
+	"go-spring.org/cloud/discovery"
 	"time"
 )
 

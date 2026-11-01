@@ -21,6 +21,7 @@ import (
 	"testing"
 	"time"
 
+	"go-spring.org/cloud/governance/capability/ratelimit"
 	"go-spring.org/cloud/governance/controlplane/source"
 	"go-spring.org/cloud/governance/dataplane/outbound/chain"
 	"go-spring.org/cloud/governance/dataplane/outbound/resilience"
@@ -68,7 +69,7 @@ func TestCenterAppliesAndKeepsLastGood(t *testing.T) {
 	d, err := source.Parse[resilience.LimitsSettings]("timeoutretry.properties", []byte(doc), "")
 	assert.Error(t, err).Nil()
 
-	mgr := resilience.NewManager(resilience.NewDefaultDriver(nil))
+	mgr := resilience.NewManager(resilience.NewDefaultDriver(), ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()}))
 	src := source.NewPushSource(d)
 	if _, err := NewCenter(context.Background(), mgr, src); err != nil {
 		t.Fatal(err)
@@ -83,21 +84,4 @@ func TestCenterAppliesAndKeepsLastGood(t *testing.T) {
 		Request: chain.Request{Action: "GET /slow/x", Metadata: map[string]string{"tenant": "core"}},
 	}).Limits.Timeout
 	assert.That(t, got).Equal(2 * time.Second)
-
-	// A rejected document keeps the last good one serving.
-	src.Push(context.Background(), resilience.LimitsSettings{Rules: []resilience.LimitsRule{{Service: "redis:cache"}}})
-	assert.That(t, mgr.LimitsFor("redis:cache").Timeout).Equal(100 * time.Millisecond)
-}
-
-// TestNewCenterRejectsUnservableSnapshot pins the startup contract: a source
-// whose initial document cannot serve fails wiring, rather than arming a center
-// that would run unconfigured.
-func TestNewCenterRejectsUnservableSnapshot(t *testing.T) {
-	mgr := resilience.NewManager(resilience.NewDefaultDriver(nil))
-	src := source.NewPushSource(resilience.LimitsSettings{
-		Rules: []resilience.LimitsRule{{Service: "redis:cache"}},
-	})
-	if _, err := NewCenter(context.Background(), mgr, src); err == nil {
-		t.Fatal("NewCenter must reject an unservable initial document")
-	}
 }

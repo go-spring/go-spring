@@ -5,7 +5,7 @@
 `starter-discovery-nacos` adapts Nacos as a service registry: each configured
 Nacos server becomes ONE backend bean that serves both halves of the naming
 idiom — the write side (registering the **current instance** into Nacos) and
-the read side (a `cloud/governance/capability/discovery` backend for resolving other instances). It
+the read side (a `cloud/discovery` backend for resolving other instances). It
 is the Go-Spring equivalent of Spring Cloud Alibaba's `nacos-discovery`, and
 the registry counterpart to [starter-config-nacos](../starter-config-nacos)'s
 config role (the two are separate starters with separate config prefixes).
@@ -41,7 +41,7 @@ freely in one app.
 ## Registration Is Owned by starter-discovery
 
 Importing this starter imports the registration core
-([cloud/governance/capability/discovery](../../cloud/governance/capability/discovery)) transitively: a single `discoveryServer`
+([cloud/discovery](../../cloud/discovery)) transitively: a single `discoveryServer`
 `gs.Server` collects ALL registry beans — across ALL backends — and registers
 the instance into EVERY configured center once the app is ready, deregisters
 from all of them as shutdown begins (via `PreStop`), and broadcasts

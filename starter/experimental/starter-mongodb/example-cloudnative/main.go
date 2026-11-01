@@ -46,7 +46,7 @@ import (
 	"syscall"
 	"time"
 
-	"go-spring.org/cloud/governance/capability/discovery"
+	"go-spring.org/cloud/discovery"
 	"go-spring.org/spring/gs"
 	"go.mongodb.org/mongo-driver/v2/bson"
 

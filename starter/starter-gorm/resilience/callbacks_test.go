@@ -19,8 +19,10 @@ package gormresilience
 import (
 	"context"
 	"errors"
-	"go-spring.org/cloud/governance/dataplane/outbound/chain"
 	"testing"
+
+	"go-spring.org/cloud/governance/capability/ratelimit"
+	"go-spring.org/cloud/governance/dataplane/outbound/chain"
 
 	"go-spring.org/cloud/governance/dataplane/outbound/resilience"
 	"go-spring.org/stdlib/testing/assert"
@@ -29,14 +31,14 @@ import (
 
 func newExec(t *testing.T, p any) chain.Executor {
 	t.Helper()
-	m := resilience.NewManager(resilience.NewDefaultDriver(nil))
+	m := resilience.NewManager(resilience.NewDefaultDriver(), ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()}))
 	switch v := p.(type) {
 	case nil:
 	case resilience.Limits:
 		assert.Error(t, m.ApplyLimits(resilience.LimitsSettings{Default: v})).Nil()
 	case resilience.BreakerPolicy:
 		assert.Error(t, m.ApplyBreaker(resilience.BreakerSettings{Default: v})).Nil()
-	case resilience.RateLimitPolicy:
+	case ratelimit.Policy:
 		assert.Error(t, m.ApplyRateLimit(resilience.RateLimitSettings{Default: v})).Nil()
 	}
 	return m.ExecutorFor("svc")
@@ -77,7 +79,7 @@ func TestRunGuardRealErrorsTripBreaker(t *testing.T) {
 // is spent, further operations are rejected as rate-limited without invoking
 // the stub.
 func TestRunGuardRateLimitRejects(t *testing.T) {
-	exec := newExec(t, resilience.RateLimitPolicy{RateLimit: 1, Burst: 2})
+	exec := newExec(t, ratelimit.Policy{Limiter: ratelimit.TokenBucketAlgorithm, RateLimit: 1, Burst: 2})
 	defer func() { _ = exec.Close() }()
 
 	var ran int

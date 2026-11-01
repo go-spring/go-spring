@@ -31,7 +31,7 @@ package StarterMail
 import (
 	"context"
 
-	"go-spring.org/cloud/governance/capability/traffic"
+	"go-spring.org/cloud/traffic"
 )
 
 import (

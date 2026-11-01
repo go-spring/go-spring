@@ -11,7 +11,7 @@
 **激活方式**：任一 `spring.ratelimit.redis.*` 键即武装 starter 的 module，且该配置块唯一的键
 必须设置：`spring.ratelimit.redis.client` 指名的 `*goredis.Client` bean（由 starter-go-redis
 在 `spring.go-redis.instances.<client>` 下提供）所连的 Redis 实例承载计数器。starter 只贡献
-一个 `ratelimit.ClusterLimiter` 类型的 bean。容器里没有它时，每个 executor 用自己的一份预算计数，
+一个名为 `redis:token-bucket` 的 `ratelimit.Provider` bean。容器里没有它时，每个 executor 用自己的一份预算计数，
 所以贡献本存储就是全部的开关：[cloud/governance](../../../cloud/governance/README.md) 的 driver bean
 会注入它，进程内每个 executor 从此花 Redis 里每个 scope 的同一个预算——而且是跨副本的，这是
 executor 本地预算做不到的。
@@ -152,15 +152,15 @@ import starter-go-redis + starter-ratelimit-redis
   └─ gs.Module(gs.OnProperty("spring.ratelimit.redis"))
         └─ conf.Bind("${spring.ratelimit.redis}") → Config{Client}
              ├─ Client == "" 时 fail fast（启动报错并点名该属性）
-             └─ Provide func(client *goredis.Client) (ratelimit.ClusterLimiter, error)
+             └─ Provide func(client *goredis.Client) (ratelimit.Provider, error)
                   （gs.TagArg(c.Client)；接口返回类型即 bean 类型——
                    不需要 Export）
 
 gs.Run()
-  ├─ 本存储成为容器里唯一的 ratelimit.ClusterLimiter bean
+  ├─ 本存储成为容器里唯一的 `redis:token-bucket` provider
   ├─ bean 装配：client 指名的 *goredis.Client bean 按名注入；
   │     NewClusterLimiter 包住它的 UniversalClient（client 为 nil 是构造函数错误）
-  ├─ resilience driver bean 注入 ratelimit.ClusterLimiter，所以它构建的每个 executor
+  ├─ resilience driver bean 注入 ratelimit.Provider，所以它构建的每个 executor
   │     都花这份存储——存储本身也因此被实例化（driver 需要它）
   └─ SIGTERM 时：无需释放——存储自身不持有状态，redis 客户端的 Close
                  归 starter-go-redis
@@ -170,7 +170,7 @@ gs.Run()
 
 `exec.Execute(ctx, chain.Operation{}, fn)` 配规则 `rate-limit: 2, burst: 5`：
 
-1. executor 的限流阶段调用 `ClusterLimiter.Allow(ctx, service, policy, 1)`——executor 对每次尝试都
+1. executor 的限流阶段调用 `Limiter.Allow(ctx, service, policy, 1)`——executor 对每次尝试都
    计费，scope 即该 executor 构建时绑定的 service。
 2. `RateLimit` 为零直接放行为无限流，**不碰 Redis**。规则丢失意味着完全没有限流：这是治理
    配置的症状，不是存储的症状。
@@ -186,8 +186,9 @@ gs.Run()
 
 ### 2.3 存储不做的事
 
-- 不实现 sliding window：`algorithm: sliding-window` 的 policy 按令牌桶计数。共享预算的正确性
-  来自那条原子脚本，而窗口无法廉价地套进一条脚本——计数器共享时请用令牌桶。
+- 不实现 sliding window：`limiter: sliding-window` 的 policy 会在文档 apply 时被拒绝（store
+  通过 `ratelimit.AlgorithmLimiter` 声明只支持令牌桶），而不是悄悄按令牌桶计数。共享预算的
+  正确性来自那条原子脚本，而窗口无法廉价地套进一条脚本。
 - 不排队：`rate-limit-max-wait` 被忽略，超限的单位立即被拒绝。等一个令牌意味着轮询 Redis；
   排队留给内存存储。
 - 自身不记指标——被限流的调用体现在 executor 观测层的 `resilience.error_type=rate_limited` 上。
@@ -204,7 +205,7 @@ gs.Run()
 |----|------|------|-------------|------------|
 | `client` | string | — | **必填。** `spring.go-redis.instances.<client>` 下 `*goredis.Client` bean 的名字；注册 bean 前先校验，构造时以 `TagArg(c.Client)` 注入。 | 为空 → 启动失败并点名该属性；名字没有对应 bean → 启动期 bean 装配失败。 |
 
-⚠ 限流参数（`rate-limit`、`burst`、`algorithm`、`window`、`rate-limit-max-wait`）**不是**
+⚠ 限流参数（`rate-limit`、`burst`、`limiter`、`window`、`rate-limit-max-wait`）**不是**
 starter 配置：它们是治理规则文档上按 service 生效的 `resilience.Policy` 字段。
 
 ---
@@ -262,7 +263,7 @@ cd example && ./check.sh    # docker 门控：compose 起 redis，跑自断言�
 | 装配计数器存储时启动失败（没有名为 `<x>` 的 `*goredis.Client` bean） | `client` 指的是没配置的 redis 实例 | 补上 `spring.go-redis.instances.<x>`（或改正名字）。 |
 | 各副本各自限流 | 没有存储被贡献（每个 executor 保持自己的私有预算），或副本指向不同 Redis 实例 | 每个副本都配置本 starter，并指向同一个 Redis。 |
 | 完全不限流，全是 200 | 该 service 的 policy `rate-limit: 0`，或 Redis 不可达（executor 放行） | 在规则文件里给正数 `rate-limit`；检查 Redis。 |
-| 实际突发与窗口算法对不上 | 规则要求 `algorithm: sliding-window`，而共享存储按令牌桶计数 | 把上限建模成 `rate-limit`/`burst`，或让 sliding window 继续用内存存储。 |
+| 文档被拒绝，提示 "does not support algorithm" | 规则要求 `limiter: sliding-window`，本存储会在 apply 时拒绝 | 把上限建模成 `rate-limit`/`burst`，或让 sliding window 继续用内存存储。 |
 | 调用堆积而不是被拒绝 | 设了 `rate-limit-max-wait`，但共享存储不排队 | 排队继续留给内存存储，或去掉该参数。 |
 | 文档没配限流的应用完全没有限流 | 没有匹配规则（或零值 `Default`）时，所有 executor 都是直通 | 给该 label 配一条带正数 `rate-limit` 的规则；本 starter 只搬计数器。 |
 
@@ -275,12 +276,12 @@ cd example && ./check.sh    # docker 门控：compose 起 redis，跑自断言�
 | 配置键数 | 1 |
 | 必填 | 1（`client`） |
 | 快速上手外部依赖 | 1（Redis） |
-| "注意"条目 | 2（sliding window 按令牌桶计数、不排队） |
+| "注意"条目 | 2（只支持令牌桶、不排队） |
 
 设计疑点（审计台账用）：
 
 - 已解决（2026-09）：按实例的 limiter 注册表已删除。容器里至多有一个计数器存储，由容器挑选
   （除非有后端 starter 贡献，否则一个都没有），所以旧失败模式——driver 名被两次占用、某个路由
   引用了没人注册的 driver 名、限流状态依赖同一测试二进制内的装配顺序——都不存在了。
-- 存储的两条明示边界（sliding window 按令牌桶计数、不排队）是有意的：共享预算的正确性来自
+- 存储的两条明示边界（只支持令牌桶、不排队）是有意的：共享预算的正确性来自
   那条原子脚本。凡描述该存储之处都会重复这两条，以免调用方被它们意外到。

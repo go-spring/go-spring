@@ -39,11 +39,10 @@ import (
 
 	"go-spring.org/cloud/cache"
 	"go-spring.org/cloud/governance/capability/loadbalance"
-	"go-spring.org/cloud/governance/capability/ratelimit"
-	"go-spring.org/cloud/governance/capability/traffic"
 	"go-spring.org/cloud/governance/dataplane/outbound/resilience"
 	"go-spring.org/cloud/lock"
 	"go-spring.org/cloud/security"
+	"go-spring.org/cloud/traffic"
 	"go-spring.org/log"
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/gs"
@@ -128,9 +127,9 @@ func init() {
 	// "default" (and sentinel's blank-import contribution) this is an init-time
 	// availability registration, not a config-gated activation — the driver only
 	// governs when the process actually selects it.
-	gs.Provide(func(c ratelimit.ClusterLimiter) *luohuaResilienceDriver {
-		return &luohuaResilienceDriver{limiter: c}
-	}, gs.TagArg("?")).Name(LuohuaResilienceDriverName).
+	gs.Provide(func() *luohuaResilienceDriver {
+		return &luohuaResilienceDriver{}
+	}).Name(LuohuaResilienceDriverName).
 		Export(gs.As[resilience.Driver]()).
 		Caller(1)
 }
@@ -185,12 +184,14 @@ func init() {
 	})
 }
 
-// loadbalance registers the company balancer with the strategy registry.
+// loadbalance contributes the company balancer as a Factory bean.
 func init() {
-	// Registering from init is the whole extension — no change to
-	// cloud/governance/capability/loadbalance. The registered name IS the strategy name a selection
-	// rule cites, and linking this package is what puts it there.
-	loadbalance.Register(luohuaStrategy, luohuaFactory)
+	// The factory bean is the whole extension: the loadbalance manager collects
+	// it with the built-in factory, and the name it exports is what a selection
+	// rule cites.
+	gs.Provide(func() loadbalance.Provider {
+		return luohuaLoadBalancerProvider{}
+	}).Name(luohuaStrategy).Caller(1)
 }
 
 // lock registers the locker default (step-aside via OnMissingBean).

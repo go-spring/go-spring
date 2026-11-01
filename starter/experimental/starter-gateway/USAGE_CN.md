@@ -244,7 +244,7 @@ gs.Run()
 | `rewriteHost(h)` | host | 覆写出站 Host。 |
 | `preserveHostHeader()` | — | 保留入站 Host 而非上游的;设置 Director 认领的标记(proxy.go:174)。 |
 | `requestId([header])` | 可选 | 确保存在 `X-Request-Id`(或指定 header);缺失时生成随机 128-bit hex。 |
-| `rateLimit(k=v,…)` | 见说明 | `rate`(req/s,**必填** >0)、`burst`、`algorithm`(默认 `token-bucket` / `sliding-window`)、`window`、`max-wait`、`key`(默认 `route` / `ip`)。超限 → `429 Too Many Requests`;计数器存储出错时 **fail open** 并打 Warn 日志。 |
+| `rateLimit(k=v,…)` | 见说明 | `rate`(req/s,**必填** >0)、`burst`、`limiter`(默认 `token-bucket` / `sliding-window` / `redis:token-bucket`)、`window`、`max-wait`、`key`(默认 `route` / `ip`)。超限 → `429 Too Many Requests`;计数器存储出错时 **fail open** 并打 Warn 日志。 |
 
 bean 型 token(从注入的 `Wrappers` map 解析,不走注册表):
 

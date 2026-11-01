@@ -30,8 +30,8 @@ import (
 
 	"github.com/neo4j/neo4j-go-driver/v5/neo4j"
 	"github.com/neo4j/neo4j-go-driver/v5/neo4j/auth"
+	"go-spring.org/cloud/discovery"
 	"go-spring.org/cloud/governance"
-	"go-spring.org/cloud/governance/capability/discovery"
 	"go-spring.org/cloud/governance/capability/loadbalance"
 	"go-spring.org/cloud/security"
 	"go-spring.org/stdlib/errutil"
@@ -222,7 +222,8 @@ func resolveURI(ctx context.Context, c Config, backend discovery.Discovery) (str
 	if err != nil {
 		return "", errutil.Explain(err, "neo4j: pick endpoint for %s", c.ServiceName)
 	}
-	bal, err := loadbalance.New(loadbalance.Selection{Balancer: loadbalance.RoundRobin})
+	factories := loadbalance.NewFactory([]loadbalance.Provider{loadbalance.NewBuiltinProvider()})
+	bal, err := factories.Create(loadbalance.Selection{Balancer: loadbalance.RoundRobin})
 	if err != nil {
 		return "", errutil.Explain(err, "neo4j: build balancer")
 	}

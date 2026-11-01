@@ -18,8 +18,10 @@ package StarterNeo4j
 
 import (
 	"context"
-	"go-spring.org/cloud/governance/dataplane/outbound/chain"
 	"testing"
+
+	"go-spring.org/cloud/governance/capability/ratelimit"
+	"go-spring.org/cloud/governance/dataplane/outbound/chain"
 
 	"github.com/neo4j/neo4j-go-driver/v5/neo4j"
 	"go-spring.org/cloud/governance/dataplane/outbound/resilience"
@@ -36,8 +38,8 @@ type fakeDriver struct {
 
 // newGuardedNeo4jClient builds a Client whose executor comes from the default
 // resilience driver. The embedded driver is nil.
-func newGuardedNeo4jClient(t *testing.T, p resilience.RateLimitPolicy) *Client {
-	m := resilience.NewManager(resilience.NewDefaultDriver(nil))
+func newGuardedNeo4jClient(t *testing.T, p ratelimit.Policy) *Client {
+	m := resilience.NewManager(resilience.NewDefaultDriver(), ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()}))
 	assert.Error(t, m.ApplyRateLimit(resilience.RateLimitSettings{Default: p})).Nil()
 	return &Client{DriverWithContext: fakeDriver{}, exec: m.ExecutorFor("svc")}
 }
@@ -52,7 +54,7 @@ func TestRunWithResiliencePassThrough(t *testing.T) {
 // TestRunWithResilienceRateLimit confirms the flow-control path: once the
 // burst is spent, fn is rejected without running.
 func TestRunWithResilienceRateLimit(t *testing.T) {
-	c := newGuardedNeo4jClient(t, resilience.RateLimitPolicy{RateLimit: 1, Burst: 1})
+	c := newGuardedNeo4jClient(t, ratelimit.Policy{Limiter: ratelimit.TokenBucketAlgorithm, RateLimit: 1, Burst: 1})
 	var ran int
 	fn := func(context.Context) error {
 		ran++

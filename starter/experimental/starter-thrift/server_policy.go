@@ -20,8 +20,8 @@ import (
 	"context"
 
 	"go-spring.org/cloud/governance"
-	"go-spring.org/cloud/governance/capability/traffic"
 	observability "go-spring.org/cloud/governance/dataplane/inbound/observe"
+	"go-spring.org/cloud/traffic"
 
 	"github.com/apache/thrift/lib/go/thrift"
 )

@@ -101,14 +101,14 @@ func TestNacosSource_PushChain(t *testing.T) {
 	var pushed loadbalance.Settings
 	src.Subscribe(func(_ context.Context, cfg loadbalance.Settings) { mu.Lock(); pushed = cfg; pushes++; mu.Unlock() })
 
-	if cfg := src.Snapshot(); cfg.Default.Balancer != "round_robin" {
-		t.Fatalf("seed snapshot: %+v", cfg.Default)
+	if cfg := src.Snapshot(); cfg.Balancer != "round_robin" {
+		t.Fatalf("seed snapshot: %+v", cfg)
 	}
 
 	// A publish with new rules pushes.
 	fake.publish(govRulesV2)
 	mu.Lock()
-	got, n := pushed.Default.Balancer, pushes
+	got, n := pushed.Balancer, pushes
 	mu.Unlock()
 	if n != 1 || got != "least_conn" {
 		t.Fatalf("publish should push new rules once: n=%d timeout=%v", n, got)
@@ -116,8 +116,8 @@ func TestNacosSource_PushChain(t *testing.T) {
 
 	// A bad publish keeps the last good snapshot and pushes nothing.
 	fake.publish("govern: { broken")
-	if cfg := src.Snapshot(); cfg.Default.Balancer != "least_conn" {
-		t.Fatalf("bad publish must keep last good snapshot: %+v", cfg.Default)
+	if cfg := src.Snapshot(); cfg.Balancer != "least_conn" {
+		t.Fatalf("bad publish must keep last good snapshot: %+v", cfg)
 	}
 	mu.Lock()
 	n = pushes

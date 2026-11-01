@@ -14,24 +14,27 @@
  * limitations under the License.
  */
 
-// Package ratelimit holds the direction-neutral rate-limit stage: the counting
-// algorithms, the [Spec] vocabulary, the process-local [Budget] and the
-// [ClusterLimiter] seam. Both call directions run it — outbound
-// (go-spring.org/cloud/governance/dataplane/outbound/resilience) and inbound
-// (go-spring.org/cloud/governance/dataplane/inbound/admission) — and any process-local
-// ClusterLimiter store is built on the same algorithms. It lives under the
-// governance theme because rate limiting is a governance mechanism, but it
-// stays a leaf package: the stage depends on nothing beyond the standard
-// library (plus stdlib/timeutil for ctx-aware sleeping), so callers pull in no
-// resilience semantics to count with it.
+// Package ratelimit is the direction-neutral rate-limit stage: the counting
+// algorithms, the [Policy] a rule writes, the [Limiter] contract a counter
+// implements, the [Provider] an implementation contributes, and the [Factory]
+// that creates counters from them.
 //
-// The counters trade smoothness for state. [FixedWindow] is the simplest and
-// cheapest but admits a 2x burst at window boundaries; [SlidingWindow] smooths
-// that with a weighted second window; [TokenBucket] smooths fully, refilling
-// continuously, and adds a cold-start warm-up; [LeakyBucket] is the dual of
-// the token bucket, bounding by constant drain instead of refill; [GCRA] is
-// the token bucket expressed as one stored timestamp — the shape that ports
-// to an atomic store script with the least state per key.
+// Both call directions charge through it — outbound
+// (go-spring.org/cloud/governance/dataplane/outbound/resilience) and inbound
+// (go-spring.org/cloud/governance/dataplane/inbound/admission) — so the same
+// rule counts a request the same way whichever way it travels. A counter keeps
+// its state in memory when the process-local provider builds it, and outside
+// the process when a shared store does.
+//
+// The package sits under the governance theme because rate limiting is a
+// governance mechanism, but the counting code needs nothing beyond the standard
+// library (plus stdlib/timeutil for ctx-aware sleeping), so a caller pulls in
+// no resilience semantics to count with it.
+//
+// Three algorithms trade evenness for state: token-bucket, the default, refills
+// continuously and can ramp in from a cold start; sliding-window smooths the
+// window boundary with a weighted two-window estimate; fixed-window is the
+// cheapest per-window cap and accepts a burst across the boundary.
 //
 // All counters are safe for concurrent use.
 package ratelimit

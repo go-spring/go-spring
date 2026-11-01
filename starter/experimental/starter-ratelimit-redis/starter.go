@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-// Package StarterRatelimitRedis contributes a [ratelimit.ClusterLimiter] backed
+// Package StarterRatelimitRedis contributes a [ratelimit.Provider] backed
 // by Redis — the store the rate-limit stage of a [chain.Executor] spends — so
 // one budget per scope covers every replica instead of each replica counting its
 // own.
@@ -35,7 +35,7 @@
 //	# spring.ratelimit.redis.client=cache
 //
 // The rate-limit knobs themselves (rate-limit/burst/algorithm/window/
-// rate-limit-max-wait) are resilience.RateLimitPolicy fields on the governance rule
+// rate-limit-max-wait) are ratelimit.Policy fields on the governance rule
 // document, not starter configuration: this starter only decides WHERE the
 // counters live.
 //
@@ -85,11 +85,11 @@ func setup(r gs.BeanProvider, p flatten.Storage) error {
 		return []log.Field{log.String("client", c.Client)}
 	})
 	// TagArg injects the *goredis.Client bean by name — the seam that ties the
-	// limiter to one Redis instance. The ctor returns the interface type, so gs
-	// indexes the bean under ratelimit.ClusterLimiter: no Export is needed, and
-	// that type is what the bundled driver injects.
-	r.Provide(func(client *goredis.Client) (ratelimit.ClusterLimiter, error) {
-		return experimental.NewClusterLimiter(client)
-	}, gs.TagArg(c.Client)).Caller(1)
+	// limiter to one Redis instance. The provider's Algorithms() lists the kinds
+	// a rule may name ("redis:token-bucket"); the bean name is diagnostic. The
+	// Factory collects these providers and rejects a rule whose kind has none.
+	r.Provide(func(client *goredis.Client) (ratelimit.Provider, error) {
+		return experimental.NewProvider(client)
+	}, gs.TagArg(c.Client)).Name(experimental.TokenBucketLimiter).Caller(1)
 	return nil
 }

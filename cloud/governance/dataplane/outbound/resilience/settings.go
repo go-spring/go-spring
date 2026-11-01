@@ -56,6 +56,7 @@ import (
 	"strconv"
 
 	"go-spring.org/cloud/governance/capability/matcher"
+	"go-spring.org/cloud/governance/capability/ratelimit"
 	"go-spring.org/cloud/governance/dataplane/outbound/chain"
 )
 
@@ -154,7 +155,7 @@ type RateLimitSettings struct {
 	// Default is the rate limit applied to every service label no [RateLimitRule]
 	// matches. It carries NO value tag: the document has no global level, so a
 	// configuration source can never set it; it exists for programmatic callers.
-	Default RateLimitPolicy
+	Default ratelimit.Policy
 
 	// Rules are the overrides. See [RateLimitRule].
 	Rules []RateLimitRule `value:"${rules:=}"`
@@ -179,7 +180,7 @@ type RateLimitRule struct {
 	// service marker "-".
 	Action chain.ActionMatch `value:"${action:=}"`
 
-	RateLimitPolicy
+	ratelimit.Policy
 }
 
 // ruleKey is the identity a matched rule's protection state is keyed by: its

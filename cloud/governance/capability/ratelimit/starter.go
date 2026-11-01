@@ -14,21 +14,21 @@
  * limitations under the License.
  */
 
-package ratelimit_test
+package ratelimit
 
 import (
-	"testing"
-	"time"
-
-	"go-spring.org/cloud/governance/capability/ratelimit"
-	"go-spring.org/stdlib/testing/assert"
+	"go-spring.org/spring/gs"
 )
 
-func TestLeakyBucketDrainsAndOverflows(t *testing.T) {
-	b := ratelimit.NewLeakyBucket(100, 2) // drains 2 units in ~20ms
-	assert.That(t, b.AllowN(1)).True()
-	assert.That(t, b.AllowN(1)).True()
-	assert.That(t, b.AllowN(1)).False() // would overflow
-	time.Sleep(25 * time.Millisecond)
-	assert.That(t, b.AllowN(1)).True() // drained room for more
+// The process-local provider is contributed as a [Provider] bean, and [Factory]
+// collects it with every backend's provider (a Redis store, say) into the index
+// Create looks up. The factory is the construction-time dependency both
+// directions' managers take; what each provider answers is
+// [Provider.Algorithms], and bean names carry no semantics.
+//
+// This file is only the container wiring — importing the package links it. The
+// counting code itself stays dependency-free.
+func init() {
+	gs.Provide(NewLocalProvider)
+	gs.Provide(NewFactory)
 }

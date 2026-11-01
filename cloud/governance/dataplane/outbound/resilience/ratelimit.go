@@ -14,23 +14,19 @@
  * limitations under the License.
  */
 
-// ratelimit.go is the outbound view of the shared rate-limit stage: the
-// executor's own budget ([go-spring.org/cloud/governance/capability/ratelimit.Budget]) and the
-// [ratelimit.ClusterLimiter] seam (where a cross-replica budget lives). The counting
-// algorithms, the [ratelimit.Spec] vocabulary and the local budget live in
-// go-spring.org/cloud/governance/capability/ratelimit, a leaf package shared with inbound admission, so
-// one request is charged the same way in both directions.
+// ratelimit.go is the outbound view of the shared rate-limit stage: the manager
+// resolves a rule's limiter KIND to a [ratelimit.Provider], and the executor
+// keeps one [ratelimit.Limiter] per rate key, built by that factory. The
+// counting algorithms, the [ratelimit.Policy] vocabulary and both factory
+// families live in go-spring.org/cloud/governance/capability/ratelimit, a leaf
+// package shared with inbound admission, so one request is charged the same way
+// in both directions.
 //
 // Rate limiting is a stage of a protected call, not an API of its own: the call
 // either gets its budget or comes back as [chain.ErrRateLimited]. By default
-// the stage counts in a budget the executor holds for its service, exactly like
-// the other stages hold their state — one budget per service, since one
-// executor serves one service and the manager builds one executor per label.
-//
-// One thing goes beyond that default, and it is a [ratelimit.ClusterLimiter] store's
-// property: HOW WIDE a budget reaches. Supply one over a shared backend (Redis,
-// typically) and the limit covers every replica. With no store, the budget is
-// this executor's alone.
+// the kind is a process-local algorithm, so the counter lives in the executor;
+// naming a shared store's kind (a Redis factory bean) makes the same rule cover
+// every replica.
 
 package resilience
 
@@ -40,11 +36,13 @@ import (
 	"go-spring.org/cloud/governance/capability/ratelimit"
 )
 
-// allowRate charges one unit of the rate-limit stage for scope — an executor's
-// service — and reports whether it was admitted. It spends the supplied store
-// when the driver was handed one and otherwise the budget the caller holds
-// (rate). A non-nil error means the store failed, which the caller treats as
-// "allow" (see the executor's gate).
-func allowRate(ctx context.Context, rate ratelimit.Budget, spec ratelimit.Spec, scope string, limiter ratelimit.ClusterLimiter) (bool, error) {
-	return ratelimit.Charge(ctx, limiter, scope, spec, rate, 1)
+// allowRate charges n units of the rate-limit stage and reports whether they
+// were admitted. limiter is the counter the rule's factory built; nil means the
+// stage is off. A non-nil error means the store failed, which the caller treats
+// as "allow" (see the executor's gate).
+func allowRate(ctx context.Context, limiter ratelimit.Limiter, policy ratelimit.Policy, n int) (bool, error) {
+	if limiter == nil {
+		return true, nil
+	}
+	return limiter.Allow(ctx, policy, n)
 }

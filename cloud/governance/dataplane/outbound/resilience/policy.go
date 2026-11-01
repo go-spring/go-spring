@@ -21,7 +21,6 @@ import (
 	"time"
 
 	"go-spring.org/cloud/governance/capability/circuitbreaker"
-	"go-spring.org/cloud/governance/capability/ratelimit"
 	"go-spring.org/cloud/governance/dataplane/outbound/chain"
 )
 
@@ -30,8 +29,8 @@ import (
 //   - [Limits] — timeout and the retry schedule. Pure values: nothing is
 //     materialized, so a change costs no state.
 //   - [BreakerPolicy] — the circuit-breaker knobs. One state machine per key.
-//   - [RateLimitPolicy] — the rate-limit knobs. One token bucket (or store-backed
-//     counter) per key.
+//   - [ratelimit.Policy] — the rate-limit knobs. One token bucket (or
+//     store-backed counter) per key.
 //
 // The split is what lets the three capabilities be configured, refreshed and
 // materialized independently. There is deliberately no aggregate type: a document
@@ -240,75 +239,6 @@ func (p BreakerPolicy) ResolvedStrategy() circuitbreaker.Strategy {
 		return p.BreakerStrategy
 	}
 	return circuitbreaker.StrategyConsecutive
-}
-
-// RateLimitPolicy is the rate-limit half of a policy. Every field is
-// zero-value-safe: a zero policy disables the stage.
-type RateLimitPolicy struct {
-	// RateLimit caps sustained throughput in operations per second. 0 disables
-	// rate limiting.
-	RateLimit float64 `value:"${rate-limit:=0}" expr:"$ >= 0"`
-
-	// Burst is the maximum number of operations allowed to exceed RateLimit
-	// momentarily. It defaults to a small multiple of RateLimit when unset; it
-	// is ignored when RateLimit is 0.
-	Burst int `value:"${burst:=0}" expr:"$ >= 0"`
-
-	// RateLimitMaxWait is how long an over-limit call may WAIT for a token
-	// before being rejected with [chain.ErrRateLimited] (queueing / traffic
-	// shaping). 0 (the default) keeps the historical reject-immediately
-	// behavior; a positive value turns excess calls into bounded waits, smoothing
-	// bursts instead of failing them. The wait also ends when the caller's ctx is
-	// done. Ignored when RateLimit is 0.
-	RateLimitMaxWait time.Duration `value:"${rate-limit-max-wait:=0}" expr:"int($) >= 0"`
-
-	// Algorithm selects how the rate-limit stage counts: empty means
-	// [ratelimit.AlgorithmTokenBucket], the other value is
-	// [ratelimit.AlgorithmSlidingWindow]. Ignored when RateLimit is 0.
-	Algorithm ratelimit.Algorithm `value:"${algorithm:=}" expr:"string($) == '' || string($) in ['token-bucket', 'sliding-window']"`
-
-	// Window is the rolling interval [ratelimit.AlgorithmSlidingWindow] counts
-	// over; it defaults to one second and is ignored by
-	// [ratelimit.AlgorithmTokenBucket]. Ignored when RateLimit is 0.
-	Window time.Duration `value:"${window:=0}" expr:"int($) >= 0"`
-
-	// RateLimitWarmUpDuration ramps the rate limit up from a cold start over
-	// this duration, instead of admitting the full RateLimit the instant the
-	// process starts — a freshly restarted fleet must not hit a cold downstream
-	// at full quota. The default driver approximates it with a cold-start token
-	// bucket (capacity grows linearly to full over the duration); sentinel maps
-	// it onto flow-rule WarmUp. 0 disables warm-up. Ignored when RateLimit is 0.
-	RateLimitWarmUpDuration time.Duration `value:"${rate-limit-warm-up-duration:=0}" expr:"int($) >= 0"`
-
-	// WarmUpColdFactor shapes how conservative the ramp-in is: the admission
-	// curve starts at roughly RateLimit/coldFactor and rises to full RateLimit
-	// by the end of [RateLimitPolicy.RateLimitWarmUpDuration]. 0 means the
-	// backend's default (3). Ignored when RateLimitWarmUpDuration is 0.
-	WarmUpColdFactor int `value:"${warm-up-cold-factor:=0}" expr:"$ >= 0"`
-}
-
-// IsZero reports whether this rate-limit policy configures nothing.
-func (p RateLimitPolicy) IsZero() bool {
-	return p.RateLimit == 0 && p.Burst == 0 && p.RateLimitMaxWait == 0 &&
-		p.Algorithm == "" && p.Window == 0 &&
-		p.RateLimitWarmUpDuration == 0 && p.WarmUpColdFactor == 0
-}
-
-// Spec returns the rate-limit stage's view of p: the knobs the stage and any
-// [ratelimit.ClusterLimiter] store behind it read, in that stage's own
-// vocabulary. A caller that charges a store directly — a gateway filter, say —
-// builds the spec here rather than off the policy, so the one mapping from
-// policy to store lives with the model.
-func (p RateLimitPolicy) Spec() ratelimit.Spec {
-	return ratelimit.Spec{
-		RateLimit:  p.RateLimit,
-		Burst:      p.Burst,
-		Algorithm:  p.Algorithm,
-		Window:     p.Window,
-		MaxWait:    p.RateLimitMaxWait,
-		WarmUp:     p.RateLimitWarmUpDuration,
-		ColdFactor: p.WarmUpColdFactor,
-	}
 }
 
 // Retryable is implemented by an error to opt itself in or out of retry: the

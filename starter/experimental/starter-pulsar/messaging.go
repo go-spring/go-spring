@@ -22,9 +22,9 @@ import (
 	"sync"
 
 	"github.com/apache/pulsar-client-go/pulsar"
-	"go-spring.org/cloud/governance/capability/traffic"
 	"go-spring.org/cloud/messaging"
 	"go-spring.org/cloud/propagate"
+	"go-spring.org/cloud/traffic"
 	"go-spring.org/log"
 )
 

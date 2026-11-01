@@ -31,10 +31,10 @@ import (
 	"github.com/hertz-contrib/requestid"
 	"go-spring.org/cloud/governance"
 	"go-spring.org/cloud/governance/capability/label"
-	"go-spring.org/cloud/governance/capability/traffic"
 	"go-spring.org/cloud/governance/dataplane/inbound/admission"
 	observability "go-spring.org/cloud/governance/dataplane/inbound/observe"
 	"go-spring.org/cloud/propagate"
+	"go-spring.org/cloud/traffic"
 	"go-spring.org/log"
 	"go-spring.org/stdlib/errutil"
 )
@@ -206,7 +206,7 @@ func accessLogSkipSet(cfg Config) map[string]struct{} {
 // When the incoming request carries the configured marker header (default
 // X-Traffic) it tags the request context, so handlers and outbound clients can
 // recognise synthetic load through `traffic.IsLoadTest`. It is the
-// inbound companion to cloud/governance/capability/traffic's outbound injection: together
+// inbound companion to cloud/traffic's outbound injection: together
 // they let a load-test flag ride an HTTP hop end to end. An empty header falls
 // back to the propagator.s own header name.
 // Without the marker it is a no-op. Hertz stores headers as []byte; Peek returns

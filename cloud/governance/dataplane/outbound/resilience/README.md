@@ -16,7 +16,7 @@ outbound calls alone.
 
 ## Features
 
-- `Policy` fields (OUTBOUND): `RateLimit` / `Burst` / `Algorithm` / `Window` /
+- `Policy` fields (OUTBOUND): `RateLimit` / `Burst` / `Limiter` / `Window` /
   `RateLimitMaxWait` / `RateLimitWarmUpDuration` / `WarmUpColdFactor`,
   `ErrorThreshold` / `OpenDuration` / `BreakerStrategy`
   (`consecutive` | `error-rate` | `slow-call` | `error-count`) /
@@ -34,7 +34,7 @@ outbound calls alone.
   helper that composes with any executor.
 - Rate limiting is a stage of a protected call, not an API of its own: the
   counters are the executor's own budget for its service, or, with a
-  `ClusterLimiter` store handed in (Redis, in `starter-go-redis`), one budget
+  `Limiter` store handed in (Redis, in `starter-go-redis`), one budget
   across replicas.
 
 ## Circuit breaking: the rule
@@ -160,7 +160,7 @@ and the [OpenSergo](https://opensergo.io) fault-tolerance CRDs:
 | `HalfOpenRequests` | `ProbeNum` | — |
 | `Retry` (`MaxRetries` / backoff) | outside sentinel (executor-owned retry loop) | RetryStrategy |
 
-Per-driver legitimate ignores (documented, not faked): `Burst` and `Algorithm`
+Per-driver legitimate ignores (documented, not faked): `Burst` and the limiter kind
 have no sentinel flow counterpart; the sliding-window limiter ignores
 `RateLimitMaxWait` (only the token bucket queues); the default driver's warm-up
 is a cold-start approximation (capacity ramp), not sentinel's rate ramp;
@@ -189,7 +189,7 @@ The `Export` is load-bearing: gs indexes beans by their exact type, so a
 concrete driver without it is invisible to the by-name lookup.
 
 The counter store is a backend too, but an OPTIONAL one — how wide a rate limit
-reaches, nothing more. With no `ClusterLimiter` bean in the container, each executor
+reaches, nothing more. With no `Limiter` bean in the container, each executor
 counts in a budget of its own, exactly like its breaker state: an
 executor is built once per service label, so one budget still covers every
 caller of that label. Contribute a store over a shared backend (Redis) and the
@@ -248,7 +248,7 @@ sentinel driver from `starter/starter-governance-sentinel`.
 
 ## 1. Responsibilities & Boundaries
 
-- **Does:** define `Policy`, `Executor`, `Driver`, `ClusterLimiter`, `Algorithm`;
+- **Does:** define `Policy`, `Executor`, `Driver`, `Limiter`, `Algorithm`;
   provide the built-in `default` driver; expose the client adapter
   (`NewRoundTripper`); offer a `Fallback` composition helper.
 - **Refuses:**
@@ -308,10 +308,10 @@ sentinel driver from `starter/starter-governance-sentinel`.
   `Execute`, so the caller never builds a limiter: it configures the stage
   through `Policy` and reads the outcome through `ErrRateLimited`. What
   makes a limit local or global is where its counters live — the executor's
-  own budget, or a `ClusterLimiter` store — not a second API: by default one
+  own budget, or a `Limiter` store — not a second API: by default one
   executor holds one budget for its service, a shared backend (Redis)
   counts per fleet.
-- **ClusterLimiter are scoped by the service an executor is bound to.** One
+- **Limiter are scoped by the service an executor is bound to.** One
   budget covers that service for every caller of it, which is what makes a
   limit protect a downstream rather than one client of it.
 
@@ -407,11 +407,11 @@ sentinel driver from `starter/starter-governance-sentinel`.
   package `cloud/governance/dataplane/outbound/chain`). Inbound is not expressed here at all; it lives in
   `cloud/governance/dataplane/inbound/admission`.
 - **Organs, neutral parameters.** The breaker state machine lives in
-  `cloud/governance/capability/circuitbreaker`; the rate-limit vocabulary, local budget, `ClusterLimiter`
+  `cloud/governance/capability/circuitbreaker`; the rate-limit vocabulary, local budget, `Limiter`
   seam and counting algorithms live in `cloud/governance/capability/ratelimit`. Both are leaf
   packages shared with inbound `guard`, so both directions map their own policy
-  into the same organs and a fix lands once. `Policy.breakerSpec()` and
-  `RateSpec()` are the outbound mappings.
+  into the same organs and a fix lands once. `BreakerPolicy.Spec()` is the breaker mapping, and the
+  rate policy IS the stage's `ratelimit.Policy`.
 - **Two independent observation planes.** The request plane
   (`outbound/observe`) records what happened to one call and never reads
   governance state. This package publishes its OWN organ state (breaker, rate
@@ -435,7 +435,7 @@ sentinel driver from `starter/starter-governance-sentinel`.
   `call.Target` / `call.Scenario` are carried for readers (and a future step that
   keys state on them); they partition nothing yet. Never let `Execute` *select*
   protection state by an arbitrary per-call key — to partition counters by key,
-  hand in a `ClusterLimiter` and put the key in the scope.
+  hand in a `Limiter` and put the key in the scope.
 - **Organs are built lazily on the first call** (`snapshot()` / `buildState()`).
   The executor's state observer reads whatever generation is current at
   collection time, so lazy construction and a policy swap need no handshake.
@@ -451,11 +451,12 @@ sentinel driver from `starter/starter-governance-sentinel`.
   There is no refresh protocol any more. `Manager.Apply` publishes a snapshot
   and stops; each executor holds a `PolicySource` — the manager — and asks it on
   the call path what this operation runs under and which generation that is
-  (`PolicySource.Resolve`). A generation it has not materialized yet makes it
-  rebuild everything that generation owns — breaker, rate budget, retry
-  budget — in one go. Nothing is retuned in place, so there is no "which organ
-  keeps what" rule to get wrong: **a config change is the state of the label
-  starting over.**
+  (`PolicySource.Resolve`). A generation it has not materialized yet rebuilds
+  the state that generation owns — breaker and retry budget — in one go. The
+  rate counter is the exception: it lives on the executor and takes the current
+  rule on every call, so a config change updates its counts in place.
+  **A config change starts the breaker and retry state over; the rate counter
+  keeps counting.**
   `loadbalance.Chain` is the same shape (`SelectionSource` over a swapped
   `*Pool`), and it is the template this was aligned to.
   Two consequences worth stating. **Evict + rebuild of the EXECUTOR is still not
@@ -470,12 +471,12 @@ sentinel driver from `starter/starter-governance-sentinel`.
   Backends whose state the framework cannot reach keep their own boundary:
   sentinel's rules live in the SDK, keyed by resource name, so for it a
   generation change is a RULE SWAP that preserves the SDK's statistics.
-- **Rate limiting is one stage**, offered as 1+3: layer 1 is the executor's own
-  per-service budget (`rateState`, the default path); layer 3 is the `ClusterLimiter`
-  interface, which serves cross-replica shared stores only (scope = the service
-  the executor is bound to). Layer 2 (in-process sharing) is rejected — don't
-  add a memory `ClusterLimiter` implementation back (`NewMemoryCounters` is deleted);
-  counting by key is the caller's (gateway's) own job; document `ClusterLimiter` as
+- **Rate limiting is one stage with one contract.** `Limiter.Allow(ctx, policy, n)` is implemented by the executor's process-local counter
+  (one per rate key, the default path) and by shared stores
+  (Redis, one budget across replicas; scope = the service the executor is bound
+  to). A process-wide in-memory store shared by unrelated clients is still
+  rejected — don't add `NewMemoryCounters` back; counting by key is the caller's
+  (gateway's) own job, and a shared-store implementation is documented as
   cross-replica only.
 - **The breaker records once per logical call; rate-limit counts per attempt.**
 - **`Policy` is a single def** carrying all its own value tags; governance's
@@ -502,7 +503,7 @@ sentinel driver from `starter/starter-governance-sentinel`.
   `Export(gs.As[resilience.Driver]())`; the manager injects the one whose name
   `spring.resilience.driver` selects — `resilience.NewManager(driver)`, wired via
   `gs.TagArg("${spring.resilience.driver:=default}")`, with a nil driver falling
-  back to the builtin `resilience.NewDefaultDriver(limiter ClusterLimiter)`. The key is
+  back to the builtin `resilience.NewDefaultDriver(limiter Limiter)`. The key is
   a plain `app.properties` property read at wiring, **not** a governance-document
   key: the backend is fixed for the process's lifetime, because swapping it drops
   every executor's breaker/limiter state. An unresolvable name leaves the required

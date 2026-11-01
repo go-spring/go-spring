@@ -67,7 +67,7 @@ type breakerKnobs struct {
 // ratelimit.go's newRateState).
 //
 // Warm-up wins over queueing: sentinel pairs WarmUp only with Reject, so a
-// policy setting both RateLimitMaxWait and RateLimitWarmUpDuration gets warm-up
+// policy setting both MaxWait and WarmUp gets warm-up
 // with immediate rejection — the ramp bounds admission better than the queue
 // would, and the README says so.
 func flowRule(service string, k flowKnobs) *flow.Rule {

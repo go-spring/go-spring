@@ -69,7 +69,7 @@ import (
     "fmt"
     "net/http"
 
-    "go-spring.org/cloud/governance/capability/discovery"
+    "go-spring.org/cloud/discovery"
 )
 
 const (
@@ -390,10 +390,7 @@ whole stack, not just the injector.
   `resilience.error_type` ∈ {rate_limited, circuit_open, bulkhead_full, timeout} when
   protection refused the call;
   `resilience.client.breaker.state` (1-hot by state) and
-  `resilience.client.breaker.transitions_total{to}`;
-  `resilience.client.ratelimit.usage_ratio` (local budget only — absent when a cluster
-  limiter is configured; it counts every governance-path charge, including attempts the
-  breaker refused and retries).
+  `resilience.client.breaker.transitions_total{to}`.
 - Access log: gated by `observability.level` (default brief = on), tag `_app_http_resilience`
   (`log.RegisterAppTag("http", "resilience")`).
 - Traces: client span per request from httpx's built-in otelhttp layer (`GET /greet`-style naming per

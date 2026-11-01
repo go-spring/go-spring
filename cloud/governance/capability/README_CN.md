@@ -22,16 +22,16 @@
 | [bulkhead](bulkhead/) | 同时允许多少调用者占用并发槽？ |
 | [ratelimit](ratelimit/) | 还剩多少预算，怎么计数？ |
 | [fault](fault/) | 哪条规则管辖这次调用，它做了什么决定？ |
-| [traffic](traffic/) | 这次调用是真实流量还是压测流量？ |
 | [label](label/) | 受治理的服务怎么命名（`prefix:name`）？ |
-| [discovery](discovery/) | 这个逻辑名此刻有哪些存活的 `host:port`？ |
 | [loadbalance](loadbalance/) | 给定存活集合，这一发请求给谁？ |
 | [matcher](matcher/) | 这个字符串 map 命中哪些规则？ |
 
-`discovery` 与 `loadbalance` 主要被出站代码消费，但它们的 API 不携带任何方向词汇——它们只负责解析一个名字、选出一个端点。`fault` 与 `loadbalance` 还持有由控制面根驱动的状态。它们按概念归在这里：方向不是它们的，文档来源也不是它们的。
+`loadbalance` 主要被出站代码消费，但它的 API 不携带任何方向词汇——它只负责选出一个端点。`fault` 与 `loadbalance` 还持有由控制面根驱动的状态。它们按概念归在这里：方向不是它们的，文档来源也不是它们的。
+
+服务发现（[discovery](../../discovery/)）与流量分类（[traffic](../../traffic/)）已上浮到 `cloud/` 顶层，因为治理运行时之外的消费者需要它们。
 
 ## 说明
 
 - 本目录是命名空间：自身不持有 Go 包。
-- 这些包内部的 OTel instrumentation scope 字符串保留历史路径（例如 `.../dataplane/discovery`），它们是面向后端的契约，不是 import 路径。
+- 这些包内部的 OTel instrumentation scope 字符串保留历史路径（例如 `.../dataplane/resilience`），它们是面向后端的契约，不是 import 路径。
 - 若某个包后来出现治理运行时之外的消费者（cache、lock、scheduler、config），按消费面规则上浮到 `cloud/`，而不是留在这里。

@@ -22,8 +22,6 @@
 // State is pulled, not pushed. Each instrument is observable, and one callback
 // per guard reports the current generation at collection time:
 //
-//   - ratelimit.usage_ratio is the local budget's spent fraction; it is absent
-//     when a ClusterLimiter is configured or the stage is unlimited.
 //   - bulkhead.usage_ratio and bulkhead.queued are the slot pool's saturation
 //     and the callers currently blocked waiting for a slot.
 //
@@ -46,7 +44,6 @@ import (
 // at first use. It holds no per-guard state.
 type stateInstrumentSet struct {
 	meter      metric.Meter
-	rateUsage  metric.Float64ObservableGauge
 	bulkUsage  metric.Float64ObservableGauge
 	bulkQueued metric.Int64ObservableGauge
 }
@@ -58,11 +55,6 @@ func buildStateInstruments() *stateInstrumentSet {
 	m := otel.Meter(instrument.Scope)
 	in := &stateInstrumentSet{meter: m}
 	var err error
-	if in.rateUsage, err = m.Float64ObservableGauge("resilience.server.ratelimit.usage_ratio",
-		metric.WithDescription("Local rate budget spent / current ceiling"),
-		metric.WithUnit("1")); err != nil {
-		instrument.ReportInstrumentError("resilience.server.ratelimit.usage_ratio", err)
-	}
 	if in.bulkUsage, err = m.Float64ObservableGauge("resilience.server.bulkhead.usage_ratio",
 		metric.WithDescription("Bulkhead slots held / capacity"),
 		metric.WithUnit("1")); err != nil {
@@ -96,9 +88,9 @@ func (s *server) readyObserve() {
 			return
 		}
 		reg, err := in.meter.RegisterCallback(s.observeState,
-			in.rateUsage, in.bulkUsage, in.bulkQueued)
+			in.bulkUsage, in.bulkQueued)
 		if err != nil {
-			instrument.ReportInstrumentError("resilience.server.ratelimit.usage_ratio", err)
+			instrument.ReportInstrumentError("resilience.server.bulkhead.usage_ratio", err)
 			return
 		}
 		s.observeReg = reg
@@ -132,10 +124,6 @@ func (s *server) observeState(_ context.Context, o metric.Observer) error {
 	s.mu.Unlock()
 	if st == nil {
 		return nil
-	}
-
-	if usage := st.rate.Usage(); usage.Limit > 0 {
-		o.ObserveFloat64(in.rateUsage, usage.Used/usage.Limit, s.attrs())
 	}
 
 	// A nil bulkhead is the OFF stage: no occupancy series to publish.

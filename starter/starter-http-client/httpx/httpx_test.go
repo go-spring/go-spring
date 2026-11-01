@@ -31,12 +31,13 @@ import (
 	"go-spring.org/cloud/governance/controlplane/source"
 	"go-spring.org/cloud/governance/dataplane/outbound/chain"
 
-	"go-spring.org/cloud/governance/capability/discovery"
+	"go-spring.org/cloud/discovery"
 	"go-spring.org/cloud/governance/capability/loadbalance"
-	"go-spring.org/cloud/governance/capability/traffic"
+	"go-spring.org/cloud/governance/capability/ratelimit"
 	serverfault "go-spring.org/cloud/governance/dataplane/inbound/fault"
 	clientfault "go-spring.org/cloud/governance/dataplane/outbound/fault"
 	"go-spring.org/cloud/governance/dataplane/outbound/resilience"
+	"go-spring.org/cloud/traffic"
 	"go-spring.org/stdlib/testing/assert"
 )
 
@@ -45,7 +46,7 @@ import (
 // container always provides them. A test that calls the constructor directly
 // passes the same unarmed ones the container would.
 var (
-	testMgr   = resilience.NewManager(resilience.NewDefaultDriver(nil))
+	testMgr   = resilience.NewManager(resilience.NewDefaultDriver(), ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()}))
 	testInj   = clientfault.NewManager()
 	testLbMgr = mustLbManager()
 )
@@ -55,7 +56,7 @@ var (
 // the only shape a direct (non-gs) caller has. The constructor cannot fail for
 // that input.
 func mustLbManager() *loadbalance.Manager {
-	m := loadbalance.NewManager()
+	m := loadbalance.NewManager(loadbalance.NewFactory([]loadbalance.Provider{loadbalance.NewBuiltinProvider()}))
 	return m
 }
 
@@ -168,7 +169,7 @@ func TestGovernSelection_RebuildsThroughTheChain(t *testing.T) {
 
 	// A rule for this service's label rebuilds the chain underneath the live
 	// transport; the next request is served by the new generation.
-	mgr.Apply(context.Background(), loadbalance.Settings{Default: loadbalance.Selection{
+	mgr.Apply(context.Background(), loadbalance.Settings{Selection: loadbalance.Selection{
 		Balancer:         loadbalance.ConsistentHash,
 		ConsistentHash:   loadbalance.ConsistentHashParams{Replicas: 100},
 		OutlierThreshold: 3,
@@ -191,7 +192,7 @@ func (errorDiscovery) Resolve(context.Context, string) ([]discovery.Endpoint, er
 func TestNewTransport_ResilienceBreakerFastFails(t *testing.T) {
 	rec := &recordRT{status: http.StatusInternalServerError}
 	rt, closeFn, err := NewTransport(Config{
-		ResilienceDriver:  resilience.NewDefaultDriver(nil),
+		ResilienceDriver:  resilience.NewDefaultDriver(),
 		ResilienceBreaker: resilience.BreakerPolicy{ErrorThreshold: 2},
 		Base:              rec,
 	}, testCenter(testMgr, testInj, testLbMgr), testProp())
@@ -287,7 +288,7 @@ func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) { re
 func TestNewTransport_WrapExecReplacesDefault(t *testing.T) {
 	rec := &recordRT{}
 	called := false
-	mgr := resilience.NewManager(resilience.NewDefaultDriver(nil))
+	mgr := resilience.NewManager(resilience.NewDefaultDriver(), ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()}))
 	rt, closeFn, err := NewTransport(Config{
 		Base:     rec,
 		Executor: mgr.ExecutorFor("test-service"),
@@ -311,7 +312,7 @@ func TestNewTransport_WrapExecReplacesDefault(t *testing.T) {
 // every other client starter takes — so arming that manager hot-swaps the policy
 // behind a transport that was already built, with no transport rebuild.
 func TestNewTransport_ResilienceFollowsManager(t *testing.T) {
-	mgr := resilience.NewManager(resilience.NewDefaultDriver(nil))
+	mgr := resilience.NewManager(resilience.NewDefaultDriver(), ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()}))
 	rec := &recordRT{status: http.StatusInternalServerError}
 	rt, closeFn, err := NewTransport(Config{Addr: "svc:80", Base: rec}, testCenter(mgr, testInj, testLbMgr), testProp())
 	assert.That(t, err).Nil()
@@ -357,7 +358,7 @@ func testCenter(mgr *resilience.Manager, inj *clientfault.Manager, lb *loadbalan
 	ctr := &governance.Runtime{
 		Resilience:  mgr,
 		LoadBalance: lb,
-		Admission:   admission.NewManager(),
+		Admission:   admission.NewManager(ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()})),
 		ClientFault: inj,
 		ServerFault: serverfault.NewManager(),
 		Directory:   discovery.NewManager(nil),

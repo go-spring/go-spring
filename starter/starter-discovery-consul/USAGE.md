@@ -196,7 +196,7 @@ every center.
 | `spring.discovery.weight` | int | `100` | advertised weight; negative normalized to 1 at write time | 0 = drained; drains from startup as well as via `UpdateWeight(0)` |
 | `spring.discovery.metadata.*` | map[string]string | empty | instance attributes (zone, version, ...) passed through to discovery Metadata | — |
 
-Discovery needs **no configuration**: each block's bean IS a `cloud/governance/capability/discovery.Discovery` named
+Discovery needs **no configuration**: each block's bean IS a `cloud/discovery.Discovery` named
 `consul.<name>`; clients cite that bean name (`discovery=consul.main`). The bean is lazy — a
 pure provider never pays for the read half; a pure consumer configures only connection blocks and
 registers nothing. Multi-agent discovery is just multiple blocks — cite whichever agent you want

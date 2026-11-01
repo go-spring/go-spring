@@ -19,7 +19,7 @@ package luohua
 import (
 	"context"
 
-	"go-spring.org/cloud/governance/capability/discovery"
+	"go-spring.org/cloud/discovery"
 	"go-spring.org/cloud/governance/capability/loadbalance"
 	"go-spring.org/stdlib/errutil"
 )
@@ -33,12 +33,24 @@ const LuohuaZone = "cn-luohua"
 // selects it with `balancer: luohua`.
 const luohuaStrategy = "luohua"
 
-// luohuaFactory builds the company's zone-affine [loadbalance.Balancer]. Its
-// only parameter is the preferred zone, read out of the selection's loose-params
+// luohuaLoadBalancerProvider is the [loadbalance.Provider] this starter
+// contributes. It exports the one strategy name a rule cites.
+type luohuaLoadBalancerProvider struct{}
+
+var _ loadbalance.Provider = luohuaLoadBalancerProvider{}
+
+func (luohuaLoadBalancerProvider) Strategies() []string { return []string{luohuaStrategy} }
+
+func (luohuaLoadBalancerProvider) New(sel loadbalance.Selection, _ loadbalance.Resolver) (loadbalance.Balancer, error) {
+	return newLuohuaBalancer(sel)
+}
+
+// newLuohuaBalancer builds the company's zone-affine balancer. Its only
+// parameter is the preferred zone, read out of the selection's loose-params
 // seam, so a deployment can pin a service to a different zone without a new
 // strategy. The keys are this strategy's own: an unknown one is rejected here,
 // never silently dropped.
-func luohuaFactory(sel loadbalance.Selection) (loadbalance.Balancer, error) {
+func newLuohuaBalancer(sel loadbalance.Selection) (loadbalance.Balancer, error) {
 	zone := LuohuaZone
 	if v, ok := sel.Params["zone"]; ok {
 		zone = v

@@ -107,7 +107,7 @@ Web(`gin`、`echo`、`hertz`……)与 RPC(`grpc`、`kitex`、`thrift`、`dubbo`
 
     是接缝（类型在 `cloud/` 下，是中性、可整体替换的契约：`session.SessionStore`、
     `batch.JobRepository`、`discovery.Discovery`、`resilience.Driver`、
-    `loadbalance.Factory`……；或框架级接口 `gs.Server`）→ **每个实现的 bean 名必须自带
+    `loadbalance.Provider`……；或框架级接口 `gs.Server`）→ **每个实现的 bean 名必须自带
     实现名**，家族有实例概念时写成 `<实现名>.<实例名>`。bean 以（名字，类型）为键，第二个
     实现带一个同名实例就会注册出同一个键，容器直接拒绝启动。gorm 的五个方言模块
     （`starter-gorm-mysql`、`-postgres`、`-sqlite`、`-sqlserver`、`-clickhouse`）共享
@@ -168,7 +168,7 @@ Web(`gin`、`echo`、`hertz`……)与 RPC(`grpc`、`kitex`、`thrift`、`dubbo`
 - **要对外访问的 client starter 靠自己的 import 拿到治理能力。** 不需要任何治理 import:每个 authority
   由**管它的那个包**注册 —— `cloud/governance/dataplane/outbound/resilience` 注册 `*resilience.Manager`、
   `cloud/governance/capability/loadbalance` 注册 `*loadbalance.Manager`、`cloud/governance/dataplane/{outbound,inbound}/fault` 注册
-  `*clientfault.Manager` / `*serverfault.Manager`、`cloud/governance/capability/discovery` 注册
+  `*clientfault.Manager` / `*serverfault.Manager`、`cloud/discovery` 注册
   `*discovery.Manager` —— 而注入其中一个的 client 必然已经为了类型 import 了那个包。
   根包把它们组装成唯一的 `*governance.Runtime` bean(入站 `*admission.Manager` 由它自己创建)。于是 `*resilience.Manager` /
   `*loadbalance.Manager` / `*clientfault.Manager`（或 `*serverfault.Manager`）必然在容器里;注入写成**必填**
@@ -308,7 +308,7 @@ Web(`gin`、`echo`、`hertz`……)与 RPC(`grpc`、`kitex`、`thrift`、`dubbo`
   发布一份什么都不配的文档(仍带一个 `spring.governance.*` 键),不是 bean 不存在;写可空会把「忘 import」变成静默降级。`?` 只保留给
   两类:**0..N 集合**(`[]*health.Indicator`、`Registries`、`Jobs`、`map[string]discovery.Discovery` 等,
   `?` = 空集合合法,否则报 `no beans collected`)与 **0..1 有默认值**(`traffic.Propagator`、
-  `ratelimit.ClusterLimiter`、gorm `disc`,nil 是有意义状态)。`gs.IndexArg` 必须两参:去可空写
+  `ratelimit.Limiter`、gorm `disc`,nil 是有意义状态)。`gs.IndexArg` 必须两参:去可空写
   `gs.IndexArg(N, gs.TagArg(""))`(`gs.IndexArg(N)` 编译不过)。
 - **多实例 health indicator 的 `.Name` 跨 starter 全局唯一。** 提供成 `.Name(模块前缀 + ":" + name)`
   (如 `"mongo:" + name`)。通用规则:凡 `.Export(gs.As[共享接口]())` 的 bean,其 Name 必须跨 starter 唯一,
@@ -368,7 +368,7 @@ WebSocket(`websocket`、`websocket-coder`)、中间件(`lua-filter`)、鉴权
 - **按角色拆,不按后端拆。** Nacos、Consul、etcd 都是**双能力**后端 —— 既做配置也做
   服务发现。这两者在 Go-Spring 里是不同的接入点,因此落在不同 starter:**config**
   角色是配置 Provider 类 starter(本形态);**discovery** 角色走 client 侧
-  (`cloud/governance/capability/discovery`,§3)或框架原生(`contrib/discovery/`,§3)。配置 Provider 类
+  (`cloud/discovery`,§3)或框架原生(`contrib/discovery/`,§3)。配置 Provider 类
   starter 只做 config 角色,别的都不做。命名对标 Spring Cloud Alibaba
   (`nacos-config` vs `nacos-discovery`)。
 - **它注册的是 provider,不是 bean。** 接缝是 `init()` 里的
@@ -467,7 +467,7 @@ WebSocket(`websocket`、`websocket-coder`)、中间件(`lua-filter`)、鉴权
     Apache Thrift(`starter-thrift`)、纯 HTTP web(gin/echo/hertz)。只有这些才值得
     做 Go-Spring 注册 seam,且要等具体需求落地。
 - **client 侧发现已统一,provider 注册不统一。** client 类 starter 可通过
-  `cloud/governance/capability/discovery`(由 driver 的 dialer 钩子构建 `Loader`)把 `ServiceName`
+  `cloud/discovery`(由 driver 的 dialer 钩子构建 `Loader`)把 `ServiceName`
   解析成实时端点,这对各基础设施客户端是通用的。RPC 的 **provider** 注册按上述原则
   保持框架原生。`ServiceName` 为空时 client 按地址直连,行为不变。各框架原生注册进
   consul/etcd/nacos/zookeeper/polaris 的示例见 `contrib/discovery/`。
@@ -484,7 +484,7 @@ WebSocket(`websocket`、`websocket-coder`)、中间件(`lua-filter`)、鉴权
 - **实例级注册按 starter 各自提供;RPC 框架 provider 注册仍不统一。** 别把两种
   "注册"混为一谈。(1)把**本进程**注册进外部注册中心
   (Nacos/Consul/Eureka/ZooKeeper)-- 即 Spring Cloud `@EnableDiscoveryClient` 的方向
-  -- 是与传输无关的通用能力。它的发布生命周期住在 `cloud/governance/capability/discovery`:`Server` 是
+  -- 是与传输无关的通用能力。它的发布生命周期住在 `cloud/discovery`:`Server` 是
   唯一那个导出 `gs.Server`、统摄所有已配置中心的东西;每个
   `starter-discovery-<backend>`(etcd/nacos/consul/zookeeper)贡献一个 `Registry`
   -- 与它自己那个中心对话的协议适配器。换后端就是换 starter。
@@ -642,7 +642,7 @@ WebSocket(`websocket`、`websocket-coder`)、中间件(`lua-filter`)、鉴权
   测试之间也没有全局的东西要重置。要报在「首次发布」与「自愈路径」**共同经过**的漏斗上
   （etcd `publish`、zookeeper `createNode`、consul `upsert`）,而不是包在
   `registration.Registry` 接口外面:自愈路径根本不经过那个接口,而它恰恰是「实例还在服务、
-  却已不再可被发现」的那条路径。指标与 span 的定义只在 `cloud/governance/capability/discovery/observe.go` 里
+  却已不再可被发现」的那条路径。指标与 span 的定义只在 `cloud/discovery/observe.go` 里
   有一份 —— 后端自己从不命名 instrument。本家族的**只做发现**后端
   （`starter-discovery-k8s`,集群内平台已替你把 Pod 注册好）没有这样的漏斗可报:它建同一个
   observer、在成功与失败两侧上报 `Synced`,三个注册操作一个都不产出;该例外登记在

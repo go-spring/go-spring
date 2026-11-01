@@ -22,8 +22,9 @@ import (
 	"testing"
 
 	"go-spring.org/cloud/governance"
-	"go-spring.org/cloud/governance/capability/traffic"
+	"go-spring.org/cloud/governance/capability/ratelimit"
 	"go-spring.org/cloud/governance/dataplane/inbound/admission"
+	"go-spring.org/cloud/traffic"
 
 	"github.com/apache/thrift/lib/go/thrift"
 )
@@ -51,7 +52,7 @@ func (f *countingFunc) Process(ctx context.Context, seqID int32, in, out thrift.
 // a guard manager armed with p.
 func inboundFor(t *testing.T, p admission.Policy) *governance.Inbound {
 	t.Helper()
-	mgr := admission.NewManager()
+	mgr := admission.NewManager(ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()}))
 	_ = mgr.Apply(admission.Settings{Default: p})
 	in, err := governance.InboundOver("thrift", "thrift:test", mgr)
 	if err != nil {
@@ -75,7 +76,7 @@ func TestServerPolicy_PassThroughRunsServiceOnce(t *testing.T) {
 // A rejection must not reach the service, and must surface as a thrift
 // application exception (thrift has no status-code channel).
 func TestServerPolicy_RejectionNeverReachesService(t *testing.T) {
-	in := inboundFor(t, admission.Policy{RateLimit: 1, Burst: 1})
+	in := inboundFor(t, admission.Policy{Policy: ratelimit.Policy{Limiter: ratelimit.TokenBucketAlgorithm, RateLimit: 1, Burst: 1}})
 
 	// Consume the only token, so the request under test is the refused one.
 	ok, ex := admit(context.Background(), in, "thrift:test", "Ping", 1, nil, nil, &countingFunc{}, testProp)

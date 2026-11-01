@@ -19,6 +19,8 @@ package admission
 import (
 	"reflect"
 	"sync"
+
+	"go-spring.org/cloud/governance/capability/ratelimit"
 )
 
 // Manager is the inbound configuration authority: it holds the pushed
@@ -48,8 +50,11 @@ type Manager struct {
 //
 // opts apply to every Guard this manager creates; a caller can add per-instance
 // options through [Manager.GuardFor].
-func NewManager(opts ...Option) *Manager {
-	o := options{}
+func NewManager(factory *ratelimit.Factory, opts ...Option) *Manager {
+	if factory == nil {
+		panic("admission: NewManager requires a non-nil ratelimit.Factory")
+	}
+	o := options{factory: factory}
 	for _, f := range opts {
 		f(&o)
 	}
@@ -83,8 +88,9 @@ func (m *Manager) Apply(s Settings) error {
 	// malformed policy rejects the document whole, leaving every guard on the
 	// generation it was already serving.
 	type update struct {
-		g  *server
-		st *state
+		g    *server
+		st   *state
+		rate ratelimit.Limiter // built only when the kind changed
 	}
 	updates := make([]update, 0, len(m.guards))
 	for g := range m.guards {
@@ -94,18 +100,29 @@ func (m *Manager) Apply(s Settings) error {
 			g.mu.Unlock()
 			continue
 		}
-		st, err := buildState(p, rule, g.id.Service, g.opts.limiter)
+		oldKind := g.rateKind
 		g.mu.Unlock()
+		st, err := buildState(p, rule)
 		if err != nil {
 			return err
 		}
-		updates = append(updates, update{g: g, st: st})
+		u := update{g: g, st: st}
+		if oldKind != st.kind {
+			if u.rate, err = newRate(m.opts.factory, st.kind, g.id.Service); err != nil {
+				return err
+			}
+		}
+		updates = append(updates, u)
 	}
 
 	m.settings = s
 	for _, u := range updates {
 		u.g.mu.Lock()
 		if !u.g.closed {
+			if u.g.rateKind != u.st.kind {
+				u.g.rateKind = u.st.kind
+				u.g.rate = u.rate
+			}
 			u.g.st = u.st
 		}
 		u.g.mu.Unlock()
@@ -129,11 +146,19 @@ func (m *Manager) GuardFor(id Identity, opts ...Option) (Guard, error) {
 		f(&o)
 	}
 	p, rule := resolvePolicy(m.settings, id.Service)
-	st, err := buildState(p, rule, id.Service, o.limiter)
+	st, err := buildState(p, rule)
 	if err != nil {
 		return nil, err
 	}
-	s := &server{id: id, opts: o, mgr: m, st: st}
+	rate, err := newRate(o.factory, st.kind, id.Service)
+	if err != nil {
+		return nil, err
+	}
+	s := &server{
+		id: id, opts: o, mgr: m, st: st,
+		rate:     rate,
+		rateKind: st.kind,
+	}
 	if m.closed {
 		s.closed = true
 	} else {

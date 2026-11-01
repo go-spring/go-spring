@@ -52,7 +52,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"go-spring.org/cloud/actuator/health"
-	"go-spring.org/cloud/governance/capability/discovery"
+	"go-spring.org/cloud/discovery"
+	"go-spring.org/cloud/governance/capability/ratelimit"
 	"go-spring.org/cloud/governance/dataplane/inbound/admission"
 	"go-spring.org/spring/gs"
 
@@ -160,8 +161,8 @@ func main() {
 	// is armed with a default carrying the rate limit; the guard it hands out
 	// enforces it with its own per-instance state.
 	var err error
-	mgr := admission.NewManager()
-	if err = mgr.Apply(admission.Settings{Default: admission.Policy{RateLimit: 3}}); err != nil {
+	mgr := admission.NewManager(ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()}))
+	if err = mgr.Apply(admission.Settings{Default: admission.Policy{Policy: ratelimit.Policy{Limiter: ratelimit.TokenBucketAlgorithm, RateLimit: 3}}}); err != nil {
 		fail("guard apply: %v", err)
 	}
 	inboundGuard, err = mgr.GuardFor(admission.Identity{System: "example", Service: "example:cloudnative"})

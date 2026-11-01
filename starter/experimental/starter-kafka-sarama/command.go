@@ -61,8 +61,8 @@ import (
 	observability "go-spring.org/cloud/governance/dataplane/outbound/observe"
 
 	"github.com/IBM/sarama"
-	"go-spring.org/cloud/governance/capability/traffic"
 	"go-spring.org/cloud/propagate"
+	"go-spring.org/cloud/traffic"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/propagation"
 )

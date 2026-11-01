@@ -22,8 +22,8 @@ import (
 	"time"
 
 	"go-spring.org/cloud/governance"
-	"go-spring.org/cloud/governance/capability/traffic"
 	"go-spring.org/cloud/security"
+	"go-spring.org/cloud/traffic"
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
@@ -71,7 +71,7 @@ type HealthConfig struct {
 // LoadTest interceptors read the propagator's marker key off the incoming
 // metadata and tag the handler context, so tracing, metrics, resilience and the
 // handler itself can branch on `traffic.IsLoadTest`. It is the gRPC
-// inbound counterpart to cloud/governance/capability/traffic's outbound carrier injection.
+// inbound counterpart to cloud/traffic's outbound carrier injection.
 type LoadTestConfig struct {
 	Enabled bool `value:"${enabled:=true}"`
 }

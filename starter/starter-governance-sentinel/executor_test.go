@@ -26,6 +26,7 @@ import (
 	"time"
 
 	breaker "go-spring.org/cloud/governance/capability/circuitbreaker"
+	"go-spring.org/cloud/governance/capability/ratelimit"
 	"go-spring.org/cloud/governance/dataplane/outbound/chain"
 
 	"github.com/alibaba/sentinel-golang/core/circuitbreaker"
@@ -43,7 +44,7 @@ import (
 func TestDriverBuilds(t *testing.T) {
 	d := NewSentinelDriver()
 	assert.That(t, d).NotNil()
-	m := resilience.NewManager(d)
+	m := resilience.NewManager(d, ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()}))
 	e := m.ExecutorFor("svc-builds")
 	assert.That(t, e).NotNil()
 }
@@ -53,14 +54,14 @@ func TestDriverBuilds(t *testing.T) {
 // process-global, so a shared resource name would let one test's calls trip
 // another test's rule.
 func newExec(t *testing.T, service string, cfg any) chain.Executor {
-	m := resilience.NewManager(NewSentinelDriver())
+	m := resilience.NewManager(NewSentinelDriver(), ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()}))
 	switch v := cfg.(type) {
 	case nil:
 	case resilience.Limits:
 		assert.Error(t, m.ApplyLimits(resilience.LimitsSettings{Default: v})).Nil()
 	case resilience.BreakerPolicy:
 		assert.Error(t, m.ApplyBreaker(resilience.BreakerSettings{Default: v})).Nil()
-	case resilience.RateLimitPolicy:
+	case ratelimit.Policy:
 		assert.Error(t, m.ApplyRateLimit(resilience.RateLimitSettings{Default: v})).Nil()
 	default:
 		t.Fatalf("unsupported test policy %T", cfg)
@@ -82,7 +83,7 @@ func TestSentinelPassThrough(t *testing.T) {
 func TestSentinelRateLimit(t *testing.T) {
 	// Threshold 2 QPS: the third call within the same second is rejected as a
 	// flow-control block, surfaced through the neutral ErrRateLimited.
-	e := newExec(t, "svc-ratelimit", resilience.RateLimitPolicy{RateLimit: 2})
+	e := newExec(t, "svc-ratelimit", ratelimit.Policy{Limiter: ratelimit.TokenBucketAlgorithm, RateLimit: 2})
 	run := func() error {
 		return e.Execute(context.Background(), chain.Operation{}, nil, func(context.Context) error { return nil })
 	}
@@ -258,16 +259,17 @@ func runOnce(t *testing.T, e chain.Executor) {
 	_ = e.Execute(context.Background(), chain.Operation{}, nil, func(context.Context) error { return nil })
 }
 
-// TestSentinelFlowRuleQueueing pins the queueing translation: RateLimitMaxWait
+// TestSentinelFlowRuleQueueing pins the queueing translation: MaxWait
 // selects Throttling with MaxQueueingTimeMs, and Window scales both the stat
 // interval AND the threshold (per-second → per-interval) so the effective rate
 // is unchanged.
 func TestSentinelFlowRuleQueueing(t *testing.T) {
 	const svc = "svc-rule-queue"
-	e := newExec(t, svc, resilience.RateLimitPolicy{
-		RateLimit:        10,
-		Window:           2 * time.Second,
-		RateLimitMaxWait: 250 * time.Millisecond,
+	e := newExec(t, svc, ratelimit.Policy{
+		Limiter:   ratelimit.TokenBucketAlgorithm,
+		RateLimit: 10,
+		Window:    2 * time.Second,
+		MaxWait:   250 * time.Millisecond,
 	})
 	runOnce(t, e)
 
@@ -285,11 +287,12 @@ func TestSentinelFlowRuleQueueing(t *testing.T) {
 // with Reject only) even when a max-wait was also set.
 func TestSentinelFlowRuleWarmUp(t *testing.T) {
 	const svc = "svc-rule-warmup"
-	e := newExec(t, svc, resilience.RateLimitPolicy{
-		RateLimit:               5,
-		RateLimitWarmUpDuration: 30 * time.Second,
-		WarmUpColdFactor:        10,
-		RateLimitMaxWait:        time.Second, // must lose to warm-up
+	e := newExec(t, svc, ratelimit.Policy{
+		Limiter:    ratelimit.TokenBucketAlgorithm,
+		RateLimit:  5,
+		WarmUp:     30 * time.Second,
+		ColdFactor: 10,
+		MaxWait:    time.Second, // must lose to warm-up
 	})
 	runOnce(t, e)
 

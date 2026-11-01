@@ -249,7 +249,7 @@ registered via `RegisterFilter`. Registered built-ins (filter.go:73-86):
 | `rewriteHost(h)` | host | Override outbound Host. |
 | `preserveHostHeader()` | — | Keep inbound Host instead of the upstream's; sets a marker the Director honors (proxy.go:174). |
 | `requestId([header])` | optional | Ensure an `X-Request-Id` (or the given header) exists; generates a random 128-bit hex id when absent. |
-| `rateLimit(k=v,…)` | see below | `rate` (req/s, **required** >0), `burst`, `algorithm` (`token-bucket` default / `sliding-window`), `window`, `max-wait`, `key` (`route` default / `ip`). Reject → `429 Too Many Requests`; **fails open** on a counter-store error with a Warn log. |
+| `rateLimit(k=v,…)` | see below | `rate` (req/s, **required** >0), `burst`, `limiter` (`token-bucket` default / `sliding-window` / `redis:token-bucket`), `window`, `max-wait`, `key` (`route` default / `ip`). Reject → `429 Too Many Requests`; **fails open** on a counter-store error with a Warn log. |
 
 Bean-backed tokens (resolved from the injected `Wrappers` map, NOT the registry):
 

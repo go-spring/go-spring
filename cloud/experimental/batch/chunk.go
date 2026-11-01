@@ -19,9 +19,10 @@ package batch
 import (
 	"context"
 
-	"go-spring.org/cloud/governance/capability/traffic"
+	"go-spring.org/cloud/governance/capability/ratelimit"
 	"go-spring.org/cloud/governance/dataplane/outbound/chain"
 	"go-spring.org/cloud/governance/dataplane/outbound/resilience"
+	"go-spring.org/cloud/traffic"
 )
 
 // defaultPropagator classifies calls whose step declares no traffic convention.
@@ -87,7 +88,7 @@ func (s *ChunkStep[I, O]) executor() (chain.Executor, error) {
 	if s.Retry.IsZero() {
 		return nil, nil
 	}
-	mgr := resilience.NewManager(resilience.NewDefaultDriver(nil))
+	mgr := resilience.NewManager(resilience.NewDefaultDriver(), ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()}))
 	if err := mgr.ApplyLimits(resilience.LimitsSettings{Default: resilience.Limits{Retry: s.Retry}}); err != nil {
 		return nil, err
 	}

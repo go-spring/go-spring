@@ -20,6 +20,7 @@ import (
 	"context"
 	"testing"
 
+	"go-spring.org/cloud/governance/capability/ratelimit"
 	"go-spring.org/cloud/governance/dataplane/outbound/chain"
 	"go-spring.org/cloud/governance/dataplane/outbound/resilience"
 )
@@ -33,7 +34,7 @@ import (
 func TestGovernanceDriverRegisteredAndFlavored(t *testing.T) {
 	d := luohuaResilienceDriver{}
 
-	m := resilience.NewManager(d)
+	m := resilience.NewManager(d, ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()}))
 	ex := m.ExecutorFor("svc")
 	lh, ok := ex.(*luohuaExecutor)
 	if !ok {

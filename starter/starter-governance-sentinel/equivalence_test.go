@@ -23,6 +23,7 @@ import (
 	"testing"
 	"time"
 
+	"go-spring.org/cloud/governance/capability/ratelimit"
 	"go-spring.org/cloud/governance/dataplane/outbound/chain"
 	"go-spring.org/cloud/governance/dataplane/outbound/resilience"
 	"go-spring.org/stdlib/testing/assert"
@@ -40,7 +41,7 @@ type equivCase struct {
 	name      string
 	limits    resilience.Limits
 	breaker   resilience.BreakerPolicy
-	rateLimit resilience.RateLimitPolicy
+	rateLimit ratelimit.Policy
 	script    func(e chain.Executor) []error
 }
 
@@ -57,11 +58,11 @@ func armForEquiv(t *testing.T, m *resilience.Manager, c equivCase) {
 // sentinel error it carried.
 func runEquiv(t *testing.T, c equivCase) {
 	t.Helper()
-	defMgr := resilience.NewManager(resilience.NewDefaultDriver(nil))
+	defMgr := resilience.NewManager(resilience.NewDefaultDriver(), ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()}))
 	armForEquiv(t, defMgr, c)
 	def := defMgr.ExecutorFor("equiv:" + c.name)
 
-	senMgr := resilience.NewManager(NewSentinelDriver())
+	senMgr := resilience.NewManager(NewSentinelDriver(), ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()}))
 	armForEquiv(t, senMgr, c)
 	sen := senMgr.ExecutorFor("equiv-sentinel:" + c.name)
 
@@ -88,7 +89,7 @@ func runEquiv(t *testing.T, c equivCase) {
 func TestEquivRateLimit(t *testing.T) {
 	runEquiv(t, equivCase{
 		name:      "ratelimit",
-		rateLimit: resilience.RateLimitPolicy{RateLimit: 2},
+		rateLimit: ratelimit.Policy{Limiter: ratelimit.TokenBucketAlgorithm, RateLimit: 2},
 		script: func(e chain.Executor) []error {
 			var out []error
 			for range 3 {

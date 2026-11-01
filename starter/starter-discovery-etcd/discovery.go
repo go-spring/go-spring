@@ -15,7 +15,7 @@
  */
 
 // This file is the CONSUMER half of etcd service discovery: the
-// cloud/governance/capability/discovery Discovery backend serving snapshots of the instances the
+// cloud/discovery Discovery backend serving snapshots of the instances the
 // registry (registry.go) publishes. It is derived from the
 // ${spring.discovery.etcd} center (starter.go) under the fixed label "etcd" —
 // there is no separate discovery config block. Freshness is internal: each
@@ -38,7 +38,7 @@ import (
 	"sync"
 	"time"
 
-	"go-spring.org/cloud/governance/capability/discovery"
+	"go-spring.org/cloud/discovery"
 	"go-spring.org/log"
 	"go-spring.org/stdlib/errutil"
 	"go.etcd.io/etcd/api/v3/mvccpb"

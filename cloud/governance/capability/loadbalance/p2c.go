@@ -23,12 +23,11 @@ import (
 	"sync"
 	"time"
 
-	"go-spring.org/cloud/governance/capability/discovery"
+	"go-spring.org/cloud/discovery"
 )
 
-// p2cFactory is the [Factory] behind the [P2C] name. The strategy has no
-// parameters: a rule that sets any is rejected by [Validate].
-func init() { Register(P2C, newP2C) }
+// The [P2C] strategy is exported by the built-in [Provider]. It has no
+// parameters of its own.
 
 func newP2C(Selection) (Balancer, error) {
 	return &p2c{
@@ -36,7 +35,6 @@ func newP2C(Selection) (Balancer, error) {
 		ewma:     map[string]float64{},
 		last:     map[string]time.Time{},
 		started:  map[string][]time.Time{},
-		now:      time.Now,
 	}, nil
 }
 
@@ -87,10 +85,6 @@ type p2c struct {
 	// approximation of per-request timing that the two-method API makes exact
 	// enough for a moving average.
 	started map[string][]time.Time
-
-	// now is the clock, injectable so tests can drive the staleness aging
-	// deterministically. Defaults to time.Now.
-	now func() time.Time
 }
 
 func (b *p2c) Pick(eps []discovery.Endpoint, _ PickInfo) (discovery.Endpoint, error) {
@@ -115,7 +109,7 @@ func (b *p2c) Pick(eps []discovery.Endpoint, _ PickInfo) (discovery.Endpoint, er
 		best = eps[j]
 	}
 	b.inflight[best.Addr]++
-	b.started[best.Addr] = append(b.started[best.Addr], b.now())
+	b.started[best.Addr] = append(b.started[best.Addr], time.Now())
 	b.mu.Unlock()
 	return best, nil
 }
@@ -129,14 +123,14 @@ func (b *p2c) Complete(_ context.Context, ep discovery.Endpoint, err error) {
 
 	starts := b.started[ep.Addr]
 	if len(starts) > 0 {
-		d := b.now().Sub(starts[0])
+		d := time.Now().Sub(starts[0])
 		b.started[ep.Addr] = starts[1:]
 		if err != nil {
 			d = p2cFailurePenalty
 		}
 		old := b.ewma[ep.Addr]
 		b.ewma[ep.Addr] = old + ewmaBeta*(float64(d)-old)
-		b.last[ep.Addr] = b.now()
+		b.last[ep.Addr] = time.Now()
 	}
 	if n := b.inflight[ep.Addr]; n <= 1 {
 		delete(b.inflight, ep.Addr)
@@ -153,7 +147,7 @@ func (b *p2c) Complete(_ context.Context, ep discovery.Endpoint, err error) {
 func (b *p2c) score(addr string) float64 {
 	e := b.ewma[addr]
 	if t, ok := b.last[addr]; ok {
-		e *= math.Exp(-float64(b.now().Sub(t)) / float64(ewmaTau))
+		e *= math.Exp(-float64(time.Now().Sub(t)) / float64(ewmaTau))
 	}
 	return e * float64(b.inflight[addr]+1)
 }

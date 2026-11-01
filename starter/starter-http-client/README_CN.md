@@ -34,7 +34,7 @@ go get go-spring.org/starter-http-client
 `http.RoundTripper` 由 [`starter-http-client/httpx`](httpx)
 用三个可组合的 stdlib 抽象装配而成,全部收敛在同一个 `http.RoundTripper` 缝隙上:
 
-* [`discovery`](../../cloud/governance/capability/discovery) —— 设置了 `service-name` 时,`Resolver`
+* [`discovery`](../../cloud/discovery) —— 设置了 `service-name` 时,`Resolver`
   持续维护最新的端点快照;
 * [`loadbalance`](../../cloud/governance/capability/loadbalance) —— `Pool` 为每次请求挑选一个存活端点
   (任意已注册策略,并可选离群剔除),传输层随即把请求主机改写为该端点;

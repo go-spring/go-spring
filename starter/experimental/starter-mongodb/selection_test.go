@@ -21,7 +21,7 @@ import (
 	"testing"
 	"time"
 
-	"go-spring.org/cloud/governance/capability/discovery"
+	"go-spring.org/cloud/discovery"
 	"go-spring.org/cloud/governance/capability/loadbalance"
 	"go-spring.org/stdlib/testing/assert"
 )
@@ -47,7 +47,7 @@ func pickChain(t *testing.T, mgr *loadbalance.Manager) (*loadbalance.Chain, Conf
 // moves the label's selection REBUILDS the chain — a new pool, not the old one
 // retuned.
 func TestNewPickChainRebuildsFromScratch(t *testing.T) {
-	mgr := loadbalance.NewManager()
+	mgr := loadbalance.NewManager(loadbalance.NewFactory([]loadbalance.Provider{loadbalance.NewBuiltinProvider()}))
 	chain, c := pickChain(t, mgr)
 
 	// The base generation: round-robin, suspension disabled, live instance picked.
@@ -78,7 +78,7 @@ func TestNewPickChainRebuildsFromScratch(t *testing.T) {
 // unarmed manager (no rules in the process) leaves the chain on its base
 // configuration, and it still serves.
 func TestNewPickChainUnarmedManagerIsPassThrough(t *testing.T) {
-	chain, _ := pickChain(t, loadbalance.NewManager())
+	chain, _ := pickChain(t, loadbalance.NewManager(loadbalance.NewFactory([]loadbalance.Provider{loadbalance.NewBuiltinProvider()})))
 
 	assert.That(t, chain.Selection()).Equal(loadbalance.Selection{Balancer: loadbalance.RoundRobin})
 

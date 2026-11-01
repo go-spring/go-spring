@@ -79,10 +79,6 @@ func NewCenter(ctx context.Context, mgr *resilience.Manager, src source.Source[r
 // A breaker-only push moves only the breaker generation: a live rate budget or
 // retry budget keeps counting.
 func (c *Center) Refresh(ctx context.Context, doc resilience.BreakerSettings) error {
-	if err := doc.Validate(); err != nil {
-		log.Error(ctx, log.TagAppDef, err, "circuitbreaker: invalid config")
-		return err
-	}
 	if err := c.mgr.ApplyBreaker(doc); err != nil {
 		log.Error(ctx, log.TagAppDef, err, "circuitbreaker: config apply failed")
 		return err

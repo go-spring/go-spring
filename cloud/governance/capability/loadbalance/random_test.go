@@ -19,7 +19,7 @@ package loadbalance
 import (
 	"testing"
 
-	"go-spring.org/cloud/governance/capability/discovery"
+	"go-spring.org/cloud/discovery"
 	"go-spring.org/stdlib/testing/assert"
 )
 

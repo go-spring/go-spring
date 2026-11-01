@@ -75,7 +75,7 @@ package main
 import (
     "context"
 
-    "go-spring.org/cloud/governance/capability/discovery"
+    "go-spring.org/cloud/discovery"
     "go-spring.org/spring/gs"
 )
 
@@ -279,7 +279,7 @@ collection is backend-agnostic.
 ### 3.3 Discovery — cite the block's bean name (no config)
 
 There is no discovery configuration path. Every block's backend bean IS a
-`cloud/governance/capability/discovery.Discovery` named `etcd.<name>` on the block's shared client (`starter.go`).
+`cloud/discovery.Discovery` named `etcd.<name>` on the block's shared client (`starter.go`).
 Client starters cite that bean name (`spring.http-client.instances.<n>.discovery=etcd.main`).
 The bean is lazy — a pure provider never resolves, never pays for the read half. A pure consumer
 configures only connection blocks (no `service-name`/`addr`) and registers nothing.

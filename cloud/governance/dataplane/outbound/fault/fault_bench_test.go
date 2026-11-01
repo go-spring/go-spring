@@ -21,6 +21,7 @@ import (
 	"testing"
 
 	kfault "go-spring.org/cloud/governance/capability/fault"
+	"go-spring.org/cloud/governance/capability/ratelimit"
 	"go-spring.org/cloud/governance/dataplane/outbound/chain"
 	"go-spring.org/cloud/governance/dataplane/outbound/resilience"
 )
@@ -34,7 +35,7 @@ func noopFn(context.Context) error { return nil }
 // benchmark's cleanup.
 func benchExec(b *testing.B, cfg any) chain.Executor {
 	b.Helper()
-	m := resilience.NewManager(resilience.NewDefaultDriver(nil))
+	m := resilience.NewManager(resilience.NewDefaultDriver(), ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()}))
 	switch v := cfg.(type) {
 	case nil:
 	case resilience.Limits:
@@ -45,7 +46,7 @@ func benchExec(b *testing.B, cfg any) chain.Executor {
 		if err := m.ApplyBreaker(resilience.BreakerSettings{Default: v}); err != nil {
 			b.Fatalf("ApplyBreaker: %v", err)
 		}
-	case resilience.RateLimitPolicy:
+	case ratelimit.Policy:
 		if err := m.ApplyRateLimit(resilience.RateLimitSettings{Default: v}); err != nil {
 			b.Fatalf("ApplyRateLimit: %v", err)
 		}

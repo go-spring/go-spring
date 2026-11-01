@@ -304,7 +304,7 @@ an inner executor never writes into the outer call's record.
   its own instrumentation, and `DurationBuckets` is the one piece unified in `cloud/observability/attrs`.
 - **Process-level instrument state need not be global.** A multi-instance component uses a
   per-instance `Observer` (built at block construction, `Close()`d at teardown, state held in
-  instance fields) - template `cloud/governance/capability/discovery.Observer`. (2026-09-30)
+  instance fields) - template `cloud/discovery.Observer`. (2026-09-30)
 
 ## Extending observability
 

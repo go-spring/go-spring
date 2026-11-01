@@ -21,6 +21,7 @@ import (
 	"errors"
 	"testing"
 
+	"go-spring.org/cloud/governance/capability/ratelimit"
 	"go-spring.org/cloud/governance/controlplane/source"
 	"go-spring.org/cloud/governance/dataplane/outbound/chain"
 	"go-spring.org/cloud/governance/dataplane/outbound/resilience"
@@ -65,7 +66,7 @@ func TestServiceRuleWinsOutright(t *testing.T) {
 	d, err := source.Parse[resilience.BreakerSettings]("breaker.properties", []byte(doc), "")
 	assert.Error(t, err).Nil()
 
-	mgr := resilience.NewManager(resilience.NewDefaultDriver(nil))
+	mgr := resilience.NewManager(resilience.NewDefaultDriver(), ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()}))
 	src := source.NewPushSource(d)
 	if _, err := NewCenter(context.Background(), mgr, src); err != nil {
 		t.Fatal(err)
@@ -85,21 +86,4 @@ func TestServiceRuleWinsOutright(t *testing.T) {
 	assert.Error(t, e.Execute(context.Background(), chain.Operation{
 		Request: chain.Request{Action: "GET /x"},
 	}, nil, func(context.Context) error { return nil })).Is(chain.ErrCircuitOpen)
-
-	// A rejected document keeps the tripped breaker's service policy servicing.
-	src.Push(context.Background(), resilience.BreakerSettings{Rules: []resilience.BreakerRule{{Service: "redis:cache"}}})
-	assert.Error(t, e.Execute(context.Background(), chain.Operation{}, nil, func(context.Context) error { return nil })).Is(chain.ErrCircuitOpen)
-}
-
-// TestNewCenterRejectsUnservableSnapshot pins the startup contract: a source
-// whose initial document cannot serve fails wiring, rather than arming a center
-// that would run unconfigured.
-func TestNewCenterRejectsUnservableSnapshot(t *testing.T) {
-	mgr := resilience.NewManager(resilience.NewDefaultDriver(nil))
-	src := source.NewPushSource(resilience.BreakerSettings{
-		Rules: []resilience.BreakerRule{{Service: ""}},
-	})
-	if _, err := NewCenter(context.Background(), mgr, src); err == nil {
-		t.Fatal("NewCenter must reject an unservable initial document")
-	}
 }

@@ -36,6 +36,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"go-spring.org/cloud/governance/capability/ratelimit"
 	"go-spring.org/cloud/governance/dataplane/outbound/chain"
 	"go-spring.org/cloud/governance/dataplane/outbound/resilience"
 
@@ -60,7 +61,7 @@ func main() {
 // is recovered transparently within the retry budget while the (generous) limit
 // and breaker stay closed.
 func demoComposedRetry(driver resilience.Driver) {
-	m := resilience.NewManager(driver)
+	m := resilience.NewManager(driver, ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()}))
 	if err := m.ApplyLimits(resilience.LimitsSettings{Default: resilience.Limits{
 		Timeout: time.Second,
 		Retry:   chain.RetryPolicy{MaxRetries: 3},
@@ -72,7 +73,8 @@ func demoComposedRetry(driver resilience.Driver) {
 	}}); err != nil {
 		fail("composed breaker: %v", err)
 	}
-	if err := m.ApplyRateLimit(resilience.RateLimitSettings{Default: resilience.RateLimitPolicy{
+	if err := m.ApplyRateLimit(resilience.RateLimitSettings{Default: ratelimit.Policy{
+		Limiter:   ratelimit.TokenBucketAlgorithm,
 		RateLimit: 100,
 	}}); err != nil {
 		fail("composed rate limit: %v", err)

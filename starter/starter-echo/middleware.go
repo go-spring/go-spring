@@ -25,8 +25,8 @@ import (
 
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
-	"go-spring.org/cloud/governance/capability/traffic"
 	"go-spring.org/cloud/propagate"
+	"go-spring.org/cloud/traffic"
 	"go-spring.org/log"
 )
 
@@ -44,7 +44,7 @@ type requestIDCtxKey struct{}
 // X-Traffic) it tags the request context, so the handler chain and every
 // outbound client the handlers drive can recognise synthetic load through the
 // `traffic.IsLoadTest`. It is the inbound companion to
-// cloud/governance/capability/traffic's outbound injection: together they let a load-test
+// cloud/traffic's outbound injection: together they let a load-test
 // flag ride an HTTP hop end to end. An empty header falls back to the
 // propagator's own header name; prop nil means go-spring's default. Without the
 // marker it is a no-op.

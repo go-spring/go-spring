@@ -67,10 +67,13 @@ type BreakerRef struct {
 }
 
 // RateRef is the rate-limit capability as one call resolves it: the policy whose
-// rate knobs apply, the key the budget is partitioned by, and the generation of
-// the rate-limit half of its label's rules.
+// rate knobs apply, the key the counter is partitioned by, and the generation of
+// the rate-limit half of its label's rules. The generation does NOT key state —
+// the per-key counter survives it and takes the current rule per call — it tells the
+// executor when the set of active keys changed, so stale local counters can be
+// collected.
 type RateRef struct {
-	Policy RateLimitPolicy
+	Policy ratelimit.Policy
 	Key    string
 	Gen    uint64
 }
@@ -244,13 +247,28 @@ func (s *rateSnapshot) resolve(op chain.Operation) RateRef {
 		}
 		sc := specOf(r.Action, nil)
 		if best < 0 || sc.betterThan(bestSpec) {
-			best, bestSpec, p, key = i, sc, r.RateLimitPolicy, ruleKey(r.Service, i)
+			best, bestSpec, p, key = i, sc, r.Policy, ruleKey(r.Service, i)
 		}
 	}
 	return RateRef{Policy: p, Key: key, Gen: s.gen(op.Service)}
 }
 
-func (s *rateSnapshot) label(string) RateLimitPolicy {
+// activeKeys returns the counter keys a label can resolve to under this
+// snapshot: the default (the label itself) and every non-service-scope rule
+// naming it. It is the set an executor keeps; anything else is stale.
+func (s *rateSnapshot) activeKeys(label string) map[string]struct{} {
+	keys := map[string]struct{}{label: {}}
+	for i := range s.settings.Rules {
+		r := &s.settings.Rules[i]
+		if r.Service != label || isServiceScope(r.Action) {
+			continue
+		}
+		keys[ruleKey(r.Service, i)] = struct{}{}
+	}
+	return keys
+}
+
+func (s *rateSnapshot) label(string) ratelimit.Policy {
 	return s.settings.Default
 }
 
@@ -284,22 +302,6 @@ func breakerGen(label string, s *BreakerSettings) uint64 {
 		}
 		fingerprintRuleHead(h, i, r.Service, r.Action, nil)
 		fingerprintBreaker(h, r.BreakerPolicy)
-	}
-	return h.Sum64()
-}
-
-// rateGen fingerprints the rate-limit half of a label's rules.
-func rateGen(label string, s *RateLimitSettings) uint64 {
-	h := fnv.New64a()
-	fingerprint(h, "default")
-	fingerprintRate(h, s.Default)
-	for i := range s.Rules {
-		r := &s.Rules[i]
-		if r.Service != label {
-			continue
-		}
-		fingerprintRuleHead(h, i, r.Service, r.Action, nil)
-		fingerprintRate(h, r.RateLimitPolicy)
 	}
 	return h.Sum64()
 }
@@ -359,22 +361,40 @@ type rateFingerprint struct {
 	Rate       float64
 	Burst      int
 	MaxWait    time.Duration
-	Algorithm  ratelimit.Algorithm
+	Limiter    string
 	Window     time.Duration
 	WarmUp     time.Duration
 	ColdFactor int
 }
 
-func fingerprintRate(h hash.Hash64, p RateLimitPolicy) {
+func fingerprintRate(h hash.Hash64, p ratelimit.Policy) {
 	fingerprint(h, fmt.Sprintf("%+v", rateFingerprint{
 		Rate:       p.RateLimit,
 		Burst:      p.Burst,
-		MaxWait:    p.RateLimitMaxWait,
-		Algorithm:  p.Algorithm,
+		MaxWait:    p.MaxWait,
+		Limiter:    p.Limiter,
 		Window:     p.Window,
-		WarmUp:     p.RateLimitWarmUpDuration,
-		ColdFactor: p.WarmUpColdFactor,
+		WarmUp:     p.WarmUp,
+		ColdFactor: p.ColdFactor,
 	}))
+}
+
+// rateGen fingerprints the rate-limit half of a label's rules. The rate
+// counter itself no longer keys state by generation, but backends that reload
+// every family together still need to see a rate-only change.
+func rateGen(label string, s *RateLimitSettings) uint64 {
+	h := fnv.New64a()
+	fingerprint(h, "default")
+	fingerprintRate(h, s.Default)
+	for i := range s.Rules {
+		r := &s.Rules[i]
+		if r.Service != label {
+			continue
+		}
+		fingerprintRuleHead(h, i, r.Service, r.Action, nil)
+		fingerprintRate(h, r.Policy)
+	}
+	return h.Sum64()
 }
 
 // mixGens folds the three capability generations into one for backends that

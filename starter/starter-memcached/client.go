@@ -36,9 +36,9 @@ import (
 	"github.com/bradfitz/gomemcache/memcache"
 	"go-spring.org/cloud/governance"
 	"go-spring.org/cloud/governance/capability/label"
-	"go-spring.org/cloud/governance/capability/traffic"
 	"go-spring.org/cloud/governance/dataplane/outbound/chain"
 	"go-spring.org/cloud/governance/dataplane/outbound/resilience"
+	"go-spring.org/cloud/traffic"
 )
 
 // Client wraps a memcache client so every operation carries its semantic

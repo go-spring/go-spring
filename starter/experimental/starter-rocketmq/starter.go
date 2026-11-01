@@ -23,8 +23,8 @@ package StarterRocketmq
 
 import (
 	"go-spring.org/cloud/governance"
-	"go-spring.org/cloud/governance/capability/traffic"
 	"go-spring.org/cloud/messaging"
+	"go-spring.org/cloud/traffic"
 	"go-spring.org/log"
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/gs"

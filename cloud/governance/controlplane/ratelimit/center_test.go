@@ -20,6 +20,7 @@ import (
 	"context"
 	"testing"
 
+	"go-spring.org/cloud/governance/capability/ratelimit"
 	"go-spring.org/cloud/governance/controlplane/source"
 	"go-spring.org/cloud/governance/dataplane/outbound/chain"
 	"go-spring.org/cloud/governance/dataplane/outbound/resilience"
@@ -40,6 +41,9 @@ func TestDocumentBinds(t *testing.T) {
 	assert.Number(t, len(d.Rules)).Equal(1)
 	assert.That(t, d.Rules[0].Action.Prefix).Equal("GET /slow")
 	assert.Number(t, d.Rules[0].Burst).Equal(1)
+	// An omitted limiter binds to the documented default, so no downstream
+	// consumer ever sees an empty kind.
+	assert.That(t, d.Rules[0].Limiter).Equal(ratelimit.TokenBucketAlgorithm)
 }
 
 // TestDocumentRequiresInterfaceScope pins the binding boundary: conf.Bind runs
@@ -58,7 +62,7 @@ func TestCenterAppliesAndKeepsLastGood(t *testing.T) {
 	d, err := source.Parse[resilience.RateLimitSettings]("rate-limit.properties", []byte(doc), "")
 	assert.Error(t, err).Nil()
 
-	mgr := resilience.NewManager(resilience.NewDefaultDriver(nil))
+	mgr := resilience.NewManager(resilience.NewDefaultDriver(), ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()}))
 	src := source.NewPushSource(d)
 	if _, err := NewCenter(context.Background(), mgr, src); err != nil {
 		t.Fatal(err)
@@ -76,18 +80,25 @@ func TestCenterAppliesAndKeepsLastGood(t *testing.T) {
 		assert.Error(t, e.Execute(context.Background(), other, nil, noop)).Nil()
 	}
 
-	// A rejected document keeps the exhausted budget serving.
-	src.Push(context.Background(), resilience.RateLimitSettings{Rules: []resilience.RateLimitRule{{Service: "redis:cache"}}})
+	// A document whose rule names a kind no provider exports cannot be built, so
+	// the previous one keeps the exhausted budget serving.
+	src.Push(context.Background(), resilience.RateLimitSettings{Rules: []resilience.RateLimitRule{{
+		Service: "redis:cache",
+		Policy:  ratelimit.Policy{RateLimit: 1, Limiter: "redis:unregistered"},
+	}}})
 	assert.Error(t, e.Execute(context.Background(), slow, nil, noop)).Is(chain.ErrRateLimited)
 }
 
 // TestNewCenterRejectsUnservableSnapshot pins the startup contract: a source
-// whose initial document cannot serve fails wiring, rather than arming a center
-// that would run unconfigured.
+// whose initial document cannot be built fails wiring, rather than arming a
+// center that would run unconfigured.
 func TestNewCenterRejectsUnservableSnapshot(t *testing.T) {
-	mgr := resilience.NewManager(resilience.NewDefaultDriver(nil))
+	mgr := resilience.NewManager(resilience.NewDefaultDriver(), ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()}))
 	src := source.NewPushSource(resilience.RateLimitSettings{
-		Rules: []resilience.RateLimitRule{{Service: "redis:cache"}},
+		Rules: []resilience.RateLimitRule{{
+			Service: "redis:cache",
+			Policy:  ratelimit.Policy{RateLimit: 1, Limiter: "redis:unregistered"},
+		}},
 	})
 	if _, err := NewCenter(context.Background(), mgr, src); err == nil {
 		t.Fatal("NewCenter must reject an unservable initial document")

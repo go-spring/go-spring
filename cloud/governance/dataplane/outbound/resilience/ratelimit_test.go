@@ -30,29 +30,59 @@ import (
 
 // newExternalExecutor builds one executor over a private manager armed with p.
 // It is the stand-in for the constructor call sites outside the package use.
-func newExternalExecutor(t *testing.T, d resilience.Driver, label string, p resilience.RateLimitPolicy) chain.Executor {
+func newExternalExecutor(t *testing.T, d resilience.Driver, label string, p ratelimit.Policy) chain.Executor {
 	t.Helper()
-	m := resilience.NewManager(d)
+	m := resilience.NewManager(d, ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()}))
 	assert.That(t, m.ApplyRateLimit(resilience.RateLimitSettings{Default: p})).Nil()
 	return m.ExecutorFor(label)
 }
 
-// testClusterLimiter is a minimal store for seam-level tests: it counts units per
-// scope and rejects once a scope's count reaches the spec's burst. It exists
-// only to observe HOW the executor charges a store, not to test algorithms.
-type testClusterLimiter struct {
+// testStore is a minimal shared-store factory for seam-level tests: it counts
+// units per scope and rejects once a scope's count reaches the spec's burst. It
+// exists only to observe HOW the executor charges a store, not to test
+// algorithms.
+type testStore struct {
 	spent map[string]int
 }
 
-func (c *testClusterLimiter) Allow(_ context.Context, scope string, spec ratelimit.Spec, n int) (bool, error) {
-	if c.spent == nil {
-		c.spent = map[string]int{}
+func (c *testStore) Algorithms() []string {
+	return []string{ratelimit.TokenBucketAlgorithm}
+}
+
+func (c *testStore) New(_ string, scope string) (ratelimit.Limiter, error) {
+	return &testScoped{store: c, scope: scope}, nil
+}
+
+type testScoped struct {
+	store *testStore
+	scope string
+}
+
+func (s *testScoped) Allow(_ context.Context, spec ratelimit.Policy, n int) (bool, error) {
+	if s.store.spent == nil {
+		s.store.spent = map[string]int{}
 	}
-	if c.spent[scope]+n > spec.Burst {
+	if s.store.spent[s.scope]+n > spec.Burst {
 		return false, nil
 	}
-	c.spent[scope] += n
+	s.store.spent[s.scope] += n
 	return true, nil
+}
+
+// TestApplyRateLimitRejectsUnknownLimiterKind pins the apply-time check: a rule
+// naming a kind no factory was registered for is refused, not silently counted
+// as another algorithm.
+func TestApplyRateLimitRejectsUnknownLimiterKind(t *testing.T) {
+	factories := ratelimit.NewFactory([]ratelimit.Provider{
+		ratelimit.NewLocalProvider(),
+	})
+	m := resilience.NewManager(resilience.NewDefaultDriver(), factories)
+
+	sliding := ratelimit.Policy{RateLimit: 1, Limiter: "redis:sliding-window"}
+	assert.Error(t, m.ApplyRateLimit(resilience.RateLimitSettings{Default: sliding})).NotNil()
+
+	bucket := ratelimit.Policy{RateLimit: 1, Limiter: "token-bucket"}
+	assert.Error(t, m.ApplyRateLimit(resilience.RateLimitSettings{Default: bucket})).Nil()
 }
 
 // TestDefaultDriverCountsPerExecutor pins the default the rate-limit stage
@@ -61,8 +91,8 @@ func (c *testClusterLimiter) Allow(_ context.Context, scope string, spec ratelim
 // store — and that is still one budget per service through the manager, which
 // builds one executor per label and hands it to every caller of that label.
 func TestDefaultDriverCountsPerExecutor(t *testing.T) {
-	d := resilience.NewDefaultDriver(nil)
-	p := resilience.RateLimitPolicy{RateLimit: 1, Burst: 1}
+	d := resilience.NewDefaultDriver()
+	p := ratelimit.Policy{Limiter: ratelimit.TokenBucketAlgorithm, RateLimit: 1, Burst: 1}
 	ctx := context.Background()
 	e1 := newExternalExecutor(t, d, "svc", p)
 	e2 := newExternalExecutor(t, d, "svc", p)
@@ -80,12 +110,14 @@ func TestDefaultDriverCountsPerExecutor(t *testing.T) {
 // beyond the process (to every replica) when the store is over a shared
 // backend.
 func TestDefaultDriverSharesSuppliedStore(t *testing.T) {
-	store := &testClusterLimiter{}
-	d := resilience.NewDefaultDriver(store)
-	p := resilience.RateLimitPolicy{RateLimit: 1, Burst: 1}
+	store := &testStore{}
+	factories := ratelimit.NewFactory([]ratelimit.Provider{store})
+	m := resilience.NewManager(resilience.NewDefaultDriver(), factories)
+	p := ratelimit.Policy{RateLimit: 1, Burst: 1, Limiter: "token-bucket"}
+	assert.That(t, m.ApplyRateLimit(resilience.RateLimitSettings{Default: p})).Nil()
+	e1 := m.ExecutorFor("svc")
+	e2 := m.ExecutorFor("svc")
 	ctx := context.Background()
-	e1 := newExternalExecutor(t, d, "svc", p)
-	e2 := newExternalExecutor(t, d, "svc", p)
 	assert.That(t, e1.Execute(ctx, chain.Operation{}, nil, func(context.Context) error { return nil })).Nil()
 	assert.That(t, errors.Is(e2.Execute(ctx, chain.Operation{}, nil, func(context.Context) error { return nil }), chain.ErrRateLimited)).True()
 	// The charge landed under the service name, not some private key.

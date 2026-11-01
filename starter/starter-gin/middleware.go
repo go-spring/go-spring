@@ -26,8 +26,8 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"go-spring.org/cloud/governance"
-	"go-spring.org/cloud/governance/capability/traffic"
 	"go-spring.org/cloud/propagate"
+	"go-spring.org/cloud/traffic"
 	"go-spring.org/stdlib/errutil"
 )
 
@@ -180,7 +180,7 @@ func ApplyMiddlewares(e *gin.Engine, cfg Config, center *governance.Runtime, pro
 // When the incoming request carries the propagator's marker header it tags the
 // request context, so the handler chain and every outbound client the handlers
 // drive can recognise synthetic load through prop. It is the inbound companion
-// to cloud/governance/capability/traffic's outbound injection: together they let a
+// to cloud/traffic's outbound injection: together they let a
 // load-test flag ride an HTTP hop end to end.
 //
 // Which header that is belongs to the propagator (a company re-bases it there,

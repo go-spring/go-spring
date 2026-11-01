@@ -26,8 +26,8 @@ import (
 	"context"
 	"database/sql/driver"
 
-	"go-spring.org/cloud/governance/capability/traffic"
 	"go-spring.org/cloud/governance/dataplane/outbound/chain"
+	"go-spring.org/cloud/traffic"
 
 	taosws "github.com/taosdata/driver-go/v3/taosWS"
 	"go-spring.org/cloud/governance"

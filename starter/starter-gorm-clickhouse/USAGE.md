@@ -113,7 +113,7 @@ func runTest(s *Service) {
 ```go
 package main
 
-import "go-spring.org/cloud/governance/capability/discovery"
+import "go-spring.org/cloud/discovery"
 
 func init() {
     gs.Provide(func() (discovery.Discovery, error) {

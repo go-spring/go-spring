@@ -25,9 +25,9 @@
 // (http.RoundTripper, redis.Hook, gorm plugin, ...).
 //
 // The abstraction is split from its implementations exactly like
-// [go-spring.org/cloud/governance/capability/discovery]:
+// [go-spring.org/cloud/discovery]:
 //
-//   - [Limits], [BreakerPolicy] and [RateLimitPolicy] are backend-neutral,
+//   - [Limits], [BreakerPolicy] and [ratelimit.Policy] are backend-neutral,
 //     declarative descriptions of the desired protection, one per capability.
 //   - [Driver] builds a live [chain.Executor] for a label. A company (or the
 //     bundled default) implements Driver once and contributes it to the container
@@ -68,7 +68,6 @@
 package resilience
 
 import (
-	"go-spring.org/cloud/governance/capability/ratelimit"
 	"go-spring.org/cloud/governance/dataplane/outbound/chain"
 	"go-spring.org/stdlib/errutil"
 )
@@ -120,31 +119,21 @@ type Driver interface {
 // example sentinel-golang, in its own module) purely by changing the configured
 // driver name — the [chain.Executor] seam and every adapter stay put.
 //
-// limiter is the cluster-wide rate-limit store the executors it builds count in.
-// nil — the default — leaves each executor counting for its service in a bucket
-// of its own, which is how every other stage keeps its state and is enough for
-// one budget per service (the manager builds one executor per label, so every
-// caller of that label spends the same budget). Pass a store instead (the
-// wiring injects one when a backend starter contributed it, Redis typically)
-// and every executor this driver builds spends that one — which is what extends
-// a single budget past the process, to every replica. Sharing breadth is
-// therefore a property of the store, not of the driver.
-func NewDefaultDriver(limiter ratelimit.ClusterLimiter) Driver {
-	return defaultDriver{limiter: limiter}
+// Rate-limit counters are NOT a driver concern: the manager resolves a rule's
+// limiter kind against the factories injected into it, so the same driver works
+// with process-local counters and with a shared store.
+func NewDefaultDriver() Driver {
+	return defaultDriver{}
 }
 
 // defaultDriver is the bundled [Driver]: it builds a [defaultExecutor] for a
 // service. The executor itself (the stage pipeline + the per-service breaker
-// state) lives in executor.go. limiter is an
-// optional override of where those executors keep their rate-limit state; nil
-// leaves each one counting in a bucket of its own (see [NewDefaultDriver]).
-type defaultDriver struct {
-	limiter ratelimit.ClusterLimiter
-}
+// state) lives in executor.go.
+type defaultDriver struct{}
 
 func (d defaultDriver) NewExecutor(label string, m *Manager) (chain.Executor, error) {
 	if m == nil {
 		return nil, errutil.Explain(nil, "resilience: NewExecutor requires a non-nil Manager")
 	}
-	return newExecutor(label, m, d.limiter), nil
+	return newExecutor(label, m), nil
 }

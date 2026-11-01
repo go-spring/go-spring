@@ -2,7 +2,7 @@
 
 [English](README.md) | [中文](README_CN.md)
 
-`loadbalance` 是 `go-spring.org/cloud/governance/capability/discovery` 之上的客户端负载均衡层。
+`loadbalance` 是 `go-spring.org/cloud/discovery` 之上的客户端负载均衡层。
 discovery 回答"当下有哪些实例"；本包回答"给这份实时集合，该发到哪一个",
 并把持续失败的实例摘除。
 
@@ -19,7 +19,7 @@ import (
     "context"
     "time"
 
-    "go-spring.org/cloud/governance/capability/discovery"
+    "go-spring.org/cloud/discovery"
     "go-spring.org/cloud/governance/capability/loadbalance"
 )
 
@@ -83,12 +83,12 @@ pool := loadbalance.NewPool(resolver, bal, loadbalance.NewTracker(loadbalance.Tr
 状态按 endpoint 地址键，实例增删、快照重排都不影响幸存实例的存量状态。
 
 自定义策略实现 `Balancer`（Pick/Complete，须并发安全；`Complete` 收本次所结
-请求的 ctx），再提供一个 `Factory`——注册名即规则引用的策略名。工厂收到整份
+请求的 ctx），再提供一个 `Provider`——注册名即规则引用的策略名。工厂收到整份
 `Selection`，贡献策略从 `Selection.Params`（规则里的 `balancer-params` 扩展
 子映射）读自己拥有的键、拒绝其余：
 
 ```go
-func myFactory(sel loadbalance.Selection) (loadbalance.Balancer, error) {
+func newMyStrategy(sel loadbalance.Selection) (loadbalance.Balancer, error) {
     window := time.Second // 策略自己的参数，缺省值在此声明
     if v, ok := sel.Params["window"]; ok {
         w, err := time.ParseDuration(v)
@@ -105,12 +105,14 @@ func myFactory(sel loadbalance.Selection) (loadbalance.Balancer, error) {
     return &myBalancer{window: window}, nil
 }
 
-// 定义该策略的包的 init 里：
-func init() { loadbalance.Register("my_strategy", myFactory) }
+// 定义该策略的包的 starter 里：
+gs.Provide(func() loadbalance.Provider {
+    return myStrategyProvider{} // Strategies() = []string{"my_strategy"}
+}).Name("my_strategy")
 ```
 
-策略从定义它的包的 init 注册，注册进唯一一份进程级注册表；因此**链接该包**
-即完成注册。
+策略贡献一个 `loadbalance.Provider` bean。manager 把所有 Provider bean（内置集合 +
+各贡献）收集成一个 `Factory`，没有全局注册表，也没有 init 副作用。
 
 内置策略的参数是**显式分组**的：`Selection.ConsistentHash`（replicas）和
 `Selection.ZoneAware`（zone-key/delegate）各归各组，配在别的策略名下会被文档
@@ -154,14 +156,14 @@ ep, _ := pool.Pick(ctx, loadbalance.PickInfo{Zone: "us-east-1a,us-east-1"})
 
 ## 受管选择（治理）
 
-链的策略与摘除阈值可以从进程外驱动：按**服务标签**而不是构造期参数传进来。调用方注入
+链的策略与摘除阈值可以从进程外驱动：按**服务**而不是构造期参数传进来。调用方注入
 `*loadbalance.Manager` bean（见 [manager.go](manager.go)），在它下面建链：
 
 ```go
 // mgr 是注入进来的 *loadbalance.Manager;nil 表示进程里没有治理
 var ep discovery.Endpoint
 if mgr != nil {
-	chain, err := mgr.Chain(ctx, resolver, "http:user-svc") // 跟随该 label 的 Selection
+	chain, err := mgr.Chain(ctx, resolver, "http:user-svc") // 跟随该 service 的 Selection
 	if err != nil {
 		return err
 	}
@@ -176,10 +178,10 @@ if mgr != nil {
 }
 ```
 
-- `mgr.Chain(resolver, label)` 在该标签下把链建出来,于是标签当前的 `Selection` **立刻**
+- `mgr.Chain(resolver, service)` 在该 service 下把链建出来，于是它当前的 `Selection` **立刻**
   作用在它建出的这一代上，之后的变更**整条重建**——全新的 balancer、tracker、池，
   与它替换掉的那一代毫无共享。重建发生在**推送上**、不在请求路径上：
-  `Manager.Apply` 在治理源的单一 loop 里遍历注册的链，label 解析出的
+  `Manager.Apply` 在治理源的单一 loop 里遍历注册的链，service 解析出的
   `Selection` 与上一次**按值比较**，变了就当场重建换入。请求路径对刷新的
   全部感知是一次 atomic load。`Chain` 是唯一对外出口：请求路径直接
   `chain.Pick` / `chain.Complete`，内层 `Pool` 不对外暴露。注册发生在接线期
@@ -197,10 +199,10 @@ if mgr != nil {
   但没有配对就没有成败可计，阈值就是设在了空气上。
 
 `Manager.Apply(Settings{...})` 是治理中心唯一的入口——启动时用来源快照调一次，之后每次
-推送再调。中心只**推**规则、匹配由本包做——`Settings.Default` 加一份 `Rules` 列表，首条
-`Service` 等于 label 的 Rule 胜出，和 `fault` 早就是同一副形态。Apply 到此为止：它把文档作为新的一代
+推送再调。中心只**推**规则、匹配由本包做——默认 `Selection`（嵌在文档根上）加一份 `Rules` 列表，首条
+`Service` 等于该 service 的 Rule 胜出，和 `fault` 早就是同一副形态。Apply 到此为止：它把文档作为新的一代
 发布出去，再逐条链比对重建。变更检测是**按值**的：内容未变的重复推送对链是零成本，
-重复 Apply 同一份文档不算变更；每次真正动了 label 的推送当场重建该 label 的链。
+重复 Apply 同一份文档不算变更；每次真正动了 service 的推送当场重建该 service 的链。
 
 规则给出策略名，内置策略的参数配在各自的分组子映射里；`balancer-params` 是
 留给贡献策略的扩展缝（内置策略配了它会被整体拒绝）：
@@ -219,25 +221,24 @@ selector:                 # 候选集收窄，发生在策略挑点之前
 selector 是端点收窄**动态的一半**：由 `Pool.Pick` 用 `discovery.FilterByMetadata`
 作为第一个过滤阶段施加——先读源、再过滤、然后才做 eligibility；它**不**包装 resolver，
 源因此是链在代际之间稳定的目标。它能和 resolver 构造期传入的 scheme 已经施加的静态收窄叠加
-（两者都必须成立）；一次推送和任何选择变更一样，推动该 label 的代际。这里**不兜底**——selector
+（两者都必须成立）；一次推送和任何选择变更一样，推动该 service 的代际。这里**不兜底**——selector
 匹配不到任何端点时直接 `ErrNoEndpoints`，因为隐式兜底会把一条灰度规则悄悄放宽到全量实例。
 
-`buildGeneration` 是"策略名变成策略"的唯一位置：它拿名字去包注册表——内置策略
-加上链接进来的包注册的策略——构造出池，所以池永远不持有
-工厂表。`Chain.Selection()` 可读回当前生效那一代**构建时**用的选择——仅供检查，不在请求路径上。
+`buildGeneration` 是"策略名变成策略"的唯一位置：它让 manager 的
+`Factory` 创建 balancer，所以池永远不持有工厂表。`Chain.Selection()` 可读回当前生效那一代**构建时**用的选择——仅供检查，不在请求路径上。
 
 ## 覆盖范围与「会重新挑端点吗」自查
 
 选路**只**走治理动态通道——`balancer` 名 + `balancer-params` 子映射里的 `replicas` /
 `zone-key` / `delegate`，经 `Selection.Params` → `Manager.Apply` → 重建出的 `Chain` 新一代
 （热更新，但整条重建）。starter 不新增自己的本地静态 `balancer` 键；各链的基础代直接
-是 round_robin（不走注册表查名，无 error）。`Factory` 参数化保留，服务于
+是 round_robin（不走注册表查名，无 error）。`Provider` 参数化保留，服务于
 治理通道递参。
 
 覆盖到的客户端：所有走发现模式的 `loadbalance.Pool` 消费者——`httpx`/`gateway`、gorm
 四方言、`redigo`、`go-redis`、`mongodb`、`grpc`。
 
-> 自查：**这条 client 每次请求/每次建连会重新挑端点吗？** 会 → 它的服务标签就能配
+> 自查：**这条 client 每次请求/每次建连会重新挑端点吗？** 会 → 它的服务就能配
 > `balancer`；不会 → 别指望 `spring.governance.client.loadbalance.services[N].balancer` 对它生效。
 
 「不会」的每种，都是有意为之：
@@ -252,12 +253,12 @@ selector 是端点收窄**动态的一半**：由 `Pool.Pick` 用 `discovery.Fil
 的挑选发生在建连时，能喂给 `Tracker` 的成败信号只有 dial 结果本身；单条查询失败归各自
 的 resilience executor 管，不参与点数。
 
-**`grpc` 在进程级标签下挑点。** 它的选点标签是进程级 `grpc:client`，配 `balancer=` 会
+**`grpc` 在进程级服务下挑点。** 它的选点身份是进程级 `grpc:client`，配 `balancer=` 会
 同时改掉所有内置 `gs_*`；要按服务隔离，就用 `RegisterBalancer` 注册自定义名字（自定义
 名字保留自己的策略，按设计豁免进程级覆盖）。
 
 **建池三件套** = `Tracker` + 建连处 `Pick`/`Complete` 配对 + 订阅治理下发的
-`Selection`；新增 client 照做（已写进 `starter/DESIGN.md` §4 检查项）。同一 label 可能
+`Selection`；新增 client 照做（已写进 `starter/DESIGN.md` §4 检查项）。同一 service 可能
 对应多个池（sink 是池不是对象）→ manager 不做 memoize：每次 `Bind` 是一条由池自己持有的
 独立订阅，池销毁时必须撤销。
 

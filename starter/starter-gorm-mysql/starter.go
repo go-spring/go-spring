@@ -30,8 +30,8 @@ import (
 
 	"github.com/go-sql-driver/mysql"
 	"go-spring.org/cloud/actuator/health"
+	"go-spring.org/cloud/discovery"
 	"go-spring.org/cloud/governance"
-	"go-spring.org/cloud/governance/capability/discovery"
 	"go-spring.org/cloud/governance/capability/label"
 	"go-spring.org/cloud/governance/capability/loadbalance"
 	"go-spring.org/log"

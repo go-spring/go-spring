@@ -86,15 +86,15 @@ func TestEtcdSource_PushChain(t *testing.T) {
 	var pushed loadbalance.Settings
 	src.Subscribe(func(_ context.Context, cfg loadbalance.Settings) { mu.Lock(); pushed = cfg; pushes++; mu.Unlock() })
 
-	if cfg := src.Snapshot(); cfg.Default.Balancer != "round_robin" {
-		t.Fatalf("seed snapshot: %+v", cfg.Default)
+	if cfg := src.Snapshot(); cfg.Balancer != "round_robin" {
+		t.Fatalf("seed snapshot: %+v", cfg)
 	}
 
 	// A PUT with new rules pushes.
 	fake.put(govRulesV2)
 	time.Sleep(100 * time.Millisecond) // the watch goroutine delivers async
 	mu.Lock()
-	got, n := pushed.Default.Balancer, pushes
+	got, n := pushed.Balancer, pushes
 	mu.Unlock()
 	if n != 1 || got != "least_conn" {
 		t.Fatalf("put should push new rules once: n=%d timeout=%v", n, got)
@@ -103,8 +103,8 @@ func TestEtcdSource_PushChain(t *testing.T) {
 	// A bad value keeps the last good snapshot and pushes nothing.
 	fake.put("govern: { broken")
 	time.Sleep(100 * time.Millisecond)
-	if cfg := src.Snapshot(); cfg.Default.Balancer != "least_conn" {
-		t.Fatalf("bad put must keep last good snapshot: %+v", cfg.Default)
+	if cfg := src.Snapshot(); cfg.Balancer != "least_conn" {
+		t.Fatalf("bad put must keep last good snapshot: %+v", cfg)
 	}
 	mu.Lock()
 	n = pushes

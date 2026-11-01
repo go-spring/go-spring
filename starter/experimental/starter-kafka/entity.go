@@ -26,9 +26,9 @@ package StarterKafka
 import (
 	"context"
 	"github.com/twmb/franz-go/pkg/kgo"
-	"go-spring.org/cloud/governance/capability/traffic"
 	"go-spring.org/cloud/governance/dataplane/outbound/chain"
 	observability "go-spring.org/cloud/governance/dataplane/outbound/observe"
+	"go-spring.org/cloud/traffic"
 	"go-spring.org/log"
 )
 

@@ -26,7 +26,7 @@ import (
 	"time"
 
 	"go-spring.org/cloud/governance/capability/fault"
-	"go-spring.org/cloud/governance/capability/traffic"
+	"go-spring.org/cloud/traffic"
 	"go-spring.org/stdlib/errutil"
 	"go-spring.org/stdlib/testing/assert"
 )

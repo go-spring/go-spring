@@ -253,7 +253,7 @@ recorder 走的是**显式入参**,不走 context:`Execute` 收它,传 nil 就�
 - **`observe` 套件已拆除**（`cloud/observe` 整包删除），各域自建插桩；`DurationBuckets` 由
   `cloud/observability/attrs` 统一，其余逻辑各自本地实现。
 - **进程级仪器状态不必全局。** 多实例改用 per-instance Observer（块构造期建、块析构期 `Close()` 注销回调，
-  状态是实例字段），范本 `cloud/governance/capability/discovery.Observer`。（2026-09-30）
+  状态是实例字段），范本 `cloud/discovery.Observer`。（2026-09-30）
 
 ## 可观测扩展点
 

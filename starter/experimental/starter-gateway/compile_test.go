@@ -22,19 +22,22 @@ import (
 	"testing"
 
 	"go-spring.org/cloud/governance/capability/loadbalance"
+	"go-spring.org/cloud/governance/capability/ratelimit"
 )
 
 // newTestTable builds a RouteTable without the container, enough for
 // recompile: direct http upstreams need no discovery or wrappers.
 func newTestTable(t *testing.T) *RouteTable {
 	t.Helper()
-	lbMgr := loadbalance.NewManager()
+	lbMgr := loadbalance.NewManager(loadbalance.NewFactory([]loadbalance.Provider{loadbalance.NewBuiltinProvider()}))
+	factories := ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()})
 	tbl := &RouteTable{
-		ctx:     context.Background(),
-		obs:     newObserver(),
-		ctr:     nil, // no governance: the center's methods are nil-safe, giving observed pass-throughs
-		lbMgr:   lbMgr,
-		limiter: newMemoryLimiter(),
+		ctx:       context.Background(),
+		obs:       newObserver(),
+		ctr:       nil, // no governance: the center's methods are nil-safe, giving observed pass-throughs
+		lbMgr:     lbMgr,
+		factories: factories,
+		scopes:    newScopeStore(factories),
 	}
 	return tbl
 }

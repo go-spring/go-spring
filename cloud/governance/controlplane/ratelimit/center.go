@@ -71,18 +71,15 @@ func NewCenter(ctx context.Context, mgr *resilience.Manager, src source.Source[r
 }
 
 // Refresh adopts doc as this root's state and returns the cause when it could
-// not, logging each rejection at its branch. The caller decides what a failure
-// means: wiring propagates it and refuses to start; a source push ignores it —
-// the log is the intervention.
+// not, logging the rejection. The caller decides what a failure means: wiring
+// propagates it and refuses to start; a source push ignores it — the log is the
+// intervention. The document was validated at the source boundary; ApplyRateLimit
+// only checks the limiter kinds this process can serve.
 //
 // A rate-only push moves only the rate generation: a live breaker keeps counting.
 func (c *Center) Refresh(ctx context.Context, doc resilience.RateLimitSettings) error {
-	if err := doc.Validate(); err != nil {
-		log.Error(ctx, log.TagAppDef, err, "ratelimit: invalid config")
-		return err
-	}
 	if err := c.mgr.ApplyRateLimit(doc); err != nil {
-		log.Error(ctx, log.TagAppDef, err, "ratelimit: config apply failed")
+		log.Error(ctx, log.TagAppDef, err, "ratelimit: invalid config")
 		return err
 	}
 	log.Info(ctx, log.TagAppDef, "ratelimit: config applied")

@@ -21,16 +21,17 @@ import (
 	"errors"
 	"testing"
 
-	"go-spring.org/cloud/governance/capability/traffic"
 	admissionplane "go-spring.org/cloud/governance/controlplane/admission"
 	loadbalanceplane "go-spring.org/cloud/governance/controlplane/loadbalance"
 	"go-spring.org/cloud/governance/controlplane/source"
 	"go-spring.org/cloud/governance/dataplane/outbound/chain"
+	"go-spring.org/cloud/traffic"
 
 	"github.com/gocql/gocql"
+	"go-spring.org/cloud/discovery"
 	"go-spring.org/cloud/governance"
-	"go-spring.org/cloud/governance/capability/discovery"
 	"go-spring.org/cloud/governance/capability/loadbalance"
+	"go-spring.org/cloud/governance/capability/ratelimit"
 	"go-spring.org/cloud/governance/dataplane/inbound/admission"
 	serverfault "go-spring.org/cloud/governance/dataplane/inbound/fault"
 	clientfault "go-spring.org/cloud/governance/dataplane/outbound/fault"
@@ -48,9 +49,9 @@ var testProp = traffic.NewDefaultPropagator(traffic.DefaultBinding())
 func newTestCenter(t *testing.T) *governance.Runtime {
 	t.Helper()
 	ctr := &governance.Runtime{
-		Resilience:  resilience.NewManager(resilience.NewDefaultDriver(nil)),
-		LoadBalance: loadbalance.NewManager(),
-		Admission:   admission.NewManager(),
+		Resilience:  resilience.NewManager(resilience.NewDefaultDriver(), ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()})),
+		LoadBalance: loadbalance.NewManager(loadbalance.NewFactory([]loadbalance.Provider{loadbalance.NewBuiltinProvider()})),
+		Admission:   admission.NewManager(ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()})),
 		ClientFault: clientfault.NewManager(),
 		ServerFault: serverfault.NewManager(),
 		Directory:   discovery.NewManager(nil),
@@ -140,8 +141,8 @@ func (c *captureExec) Close() error { return c.next.Close() }
 
 // newGuardedExec builds an executor from the default resilience driver, wrapped
 // by the resilience observe layer exactly as the container wiring does.
-func newGuardedExec(t *testing.T, p resilience.RateLimitPolicy) chain.Executor {
-	m := resilience.NewManager(resilience.NewDefaultDriver(nil))
+func newGuardedExec(t *testing.T, p ratelimit.Policy) chain.Executor {
+	m := resilience.NewManager(resilience.NewDefaultDriver(), ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()}))
 	assert.Error(t, m.ApplyRateLimit(resilience.RateLimitSettings{Default: p})).Nil()
 	inner := m.ExecutorFor("svc")
 	return observability.WrapClientExecutor(inner, "cassandra", "cassandra:test")
@@ -168,7 +169,7 @@ func TestGuardPassThrough(t *testing.T) {
 // TestGuardRateLimit confirms the flow-control path: once the burst is spent,
 // the statement is rejected without reaching the tail.
 func TestGuardRateLimit(t *testing.T) {
-	cap := &captureExec{next: newGuardedExec(t, resilience.RateLimitPolicy{RateLimit: 1, Burst: 1})}
+	cap := &captureExec{next: newGuardedExec(t, ratelimit.Policy{Limiter: ratelimit.TokenBucketAlgorithm, RateLimit: 1, Burst: 1})}
 	tail := &fakeTail{}
 	head := NewGuardQuery(tail, cap, "cassandra:test", "INSERT INTO t VALUES(?)", testProp)
 

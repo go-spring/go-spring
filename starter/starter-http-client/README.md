@@ -37,7 +37,7 @@ pick it up with zero wiring. The chain is
 by [`starter-http-client/httpx`](httpx) from three composable stdlib
 abstractions, all behind the single `http.RoundTripper` seam:
 
-* [`discovery`](../../cloud/governance/capability/discovery) — when a `service-name` is set, a
+* [`discovery`](../../cloud/discovery) — when a `service-name` is set, a
   `Resolver` keeps a fresh endpoint snapshot;
 * [`loadbalance`](../../cloud/governance/capability/loadbalance) — a `Pool` picks one live endpoint
   per request (any registered strategy, plus optional outlier suspension) and the

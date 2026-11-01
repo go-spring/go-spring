@@ -20,9 +20,11 @@ import (
 	"context"
 	"database/sql/driver"
 	"errors"
-	"go-spring.org/cloud/governance/capability/traffic"
-	"go-spring.org/cloud/governance/dataplane/outbound/chain"
 	"testing"
+
+	"go-spring.org/cloud/governance/capability/ratelimit"
+	"go-spring.org/cloud/governance/dataplane/outbound/chain"
+	"go-spring.org/cloud/traffic"
 
 	"go-spring.org/cloud/governance/dataplane/outbound/resilience"
 	"go-spring.org/stdlib/testing/assert"
@@ -65,8 +67,8 @@ func TestGuardedConnPassThrough(t *testing.T) {
 // TestGuardedConnRateLimit confirms the flow-control path: once the burst is
 // spent, the statement is rejected without reaching the connection.
 func TestGuardedConnRateLimit(t *testing.T) {
-	m := resilience.NewManager(resilience.NewDefaultDriver(nil))
-	assert.Error(t, m.ApplyRateLimit(resilience.RateLimitSettings{Default: resilience.RateLimitPolicy{RateLimit: 1, Burst: 1}})).Nil()
+	m := resilience.NewManager(resilience.NewDefaultDriver(), ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()}))
+	assert.Error(t, m.ApplyRateLimit(resilience.RateLimitSettings{Default: ratelimit.Policy{Limiter: ratelimit.TokenBucketAlgorithm, RateLimit: 1, Burst: 1}})).Nil()
 	exec := m.ExecutorFor("svc")
 
 	sc := &stubConn{}

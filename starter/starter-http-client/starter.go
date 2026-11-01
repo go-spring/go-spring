@@ -30,8 +30,8 @@ import (
 
 	"go-spring.org/cloud/governance"
 
-	"go-spring.org/cloud/governance/capability/discovery"
-	"go-spring.org/cloud/governance/capability/traffic"
+	"go-spring.org/cloud/discovery"
+	"go-spring.org/cloud/traffic"
 	"go-spring.org/log"
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/gs"

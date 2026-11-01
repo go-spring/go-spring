@@ -14,22 +14,21 @@
  * limitations under the License.
  */
 
-package ratelimit_test
+package ratelimit
 
 import (
-	"testing"
+	"context"
 	"time"
-
-	"go-spring.org/cloud/governance/capability/ratelimit"
-	"go-spring.org/stdlib/testing/assert"
 )
 
-func TestGCRABurstAndPace(t *testing.T) {
-	g := ratelimit.NewGCRA(100, 2) // 10ms per event, 20ms burst tolerance
-	assert.That(t, g.AllowN(1)).True()
-	assert.That(t, g.AllowN(1)).True()
-	assert.That(t, g.AllowN(1)).True()  // tolerance admits one more than the bucket
-	assert.That(t, g.AllowN(1)).False() // schedule is beyond the tolerance
-	time.Sleep(15 * time.Millisecond)
-	assert.That(t, g.AllowN(1)).True() // the schedule has paced forward
+// allow charges n units through the [Limiter] contract and returns the verdict.
+func allow(l Limiter, p Policy, n int) bool {
+	ok, _ := l.Allow(context.Background(), p, n)
+	return ok
+}
+
+// windowPolicy asks for limit events per window — how the window algorithms'
+// tests state their budget.
+func windowPolicy(limit float64, window time.Duration) Policy {
+	return Policy{RateLimit: limit / window.Seconds(), Window: window}
 }

@@ -32,8 +32,8 @@ package StarterKafkaSarama
 import (
 	"context"
 
-	"go-spring.org/cloud/governance/capability/traffic"
 	"go-spring.org/cloud/governance/dataplane/outbound/chain"
+	"go-spring.org/cloud/traffic"
 	"go-spring.org/log"
 )
 

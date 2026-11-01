@@ -9,7 +9,7 @@
 本包是**读侧**，属于数据面：resolver 与进程内的端点快照会被 `loadbalance`
 在请求路径上读取。**写侧**——发布本进程（`Instance` / `Registry` / `Server`）——
 是控制面的生命周期，位于
-[cloud/governance/controlplane/registration](../../../controlplane/registration/)。
+[cloud/governance/controlplane/registration](../governance/controlplane/registration/)。
 每个 `starter-discovery-*` 后端同时贡献两侧适配器。
 
 ## 安装
@@ -25,7 +25,7 @@ import (
     "context"
     "net"
 
-    "go-spring.org/cloud/governance/capability/discovery"
+    "go-spring.org/cloud/discovery"
 )
 
 // d 是 starter 注入的发现后端 bean(bean 名 = 后端名字，如由 ${spring.discovery.etcd.main} 派生的 "etcd.main")。
@@ -133,7 +133,7 @@ ep, err := pool.Pick(ctx, loadbalance.PickInfo{})
 - 每次调用 resolver 都重读后端快照并如实上抛错误——对带缓存的后端就是一次廉价
   内存读，不掩盖注册中心抖动。
 - 端点选择——round-robin、权重、一致性哈希、失败摘除——全在上一层
-  [`loadbalance`](../loadbalance/README_CN.md)，它把 resolver（函数本体）收作端点源。
+  [`loadbalance`](../governance/capability/loadbalance/README_CN.md)，它把 resolver（函数本体）收作端点源。
   发现本身不携带选择策略，resolver 也不持有任何资源——新鲜度全在后端内部，
   没有什么可 Stop。
 
@@ -178,7 +178,7 @@ starter 里，本包只依赖本仓库的 `stdlib` / `matcher`，不引入第三
 ## 发布
 
 发布生命周期是控制面那一半，位于
-[registration](../../../controlplane/registration/)：`Server` 在应用就绪后把本进程
+[registration](../governance/controlplane/registration/)：`Server` 在应用就绪后把本进程
 注册到所有已配置中心、停机时（PreStop，无损下线时序）反注册、并把权重变更广播
 出去；每个后端 starter 为每个配置块贡献一个 `registration.Registry`。`Registry`
 契约与生命周期保证见该包的 README。
@@ -242,7 +242,7 @@ spring.http-client.default.discovery=etcd.main            # 家族默认
 
 ## Manager：后端之上的目录
 
-`cloud/governance/capability/discovery` 还提供一个小的 `Manager`：
+`cloud/discovery` 还提供一个小的 `Manager`：
 
 ```go
 func NewManager(backends map[string]Discovery) *Manager
@@ -292,7 +292,7 @@ func (m *Manager) Names() []string
 ## 后端 starter 约定
 
 - discovery 后端是 IoC 容器的**命名 bean**（bean 名 = 配置里写的名字原文，不加前缀），
-  不是 `cloud/governance/capability/discovery` 里的全局 map；`RegisterDiscovery` / `GetDiscovery` 已删。
+  不是 `cloud/discovery` 里的全局 map；`RegisterDiscovery` / `GetDiscovery` 已删。
   （2026-09-08）
 - `NewResolver(ctx, d Discovery, name, scheme string)` 收注入实例；调用方已决定
   进程内发现生效，因此 d 与 name 是前置条件（否则 entry 走直连路径）。

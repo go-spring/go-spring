@@ -20,12 +20,11 @@ import (
 	"context"
 	"sync"
 
-	"go-spring.org/cloud/governance/capability/discovery"
+	"go-spring.org/cloud/discovery"
 )
 
-// weightedFactory is the [Factory] behind the [Weighted] name. The strategy has
-// no parameters: a rule that sets any is rejected by [Validate].
-func init() { Register(Weighted, newWeighted) }
+// The [Weighted] strategy is exported by the built-in [Provider]. It has
+// no parameters of its own.
 
 func newWeighted(Selection) (Balancer, error) {
 	return &weighted{current: map[string]int{}}, nil
@@ -83,23 +82,34 @@ func (b *weighted) Pick(eps []discovery.Endpoint, _ PickInfo) (discovery.Endpoin
 	total := 0
 	best := -1
 	bestCur := 0
-	seen := make(map[string]struct{}, len(eps))
+	added := false
 	for i, ep := range eps {
 		w := effectiveWeight(ep)
 		total += w
-		cur := b.current[ep.Addr] + w // each endpoint accrues at its own weight's pace
+		cur, ok := b.current[ep.Addr]
+		if !ok {
+			added = true
+		}
+		cur += w // each endpoint accrues at its own weight's pace
 		b.current[ep.Addr] = cur
-		seen[ep.Addr] = struct{}{}
 		if best < 0 || cur > bestCur {
 			best = i
 			bestCur = cur
 		}
 	}
 	// Drop stale addresses so the map does not grow without bound as instances
-	// churn.
-	for addr := range b.current {
-		if _, ok := seen[addr]; !ok {
-			delete(b.current, addr)
+	// churn. In steady state the map holds exactly the picked set's addresses, so
+	// the sweep runs only when an address arrived or one departed — the common
+	// pick pays no allocation for it.
+	if added || len(b.current) > len(eps) {
+		present := make(map[string]struct{}, len(eps))
+		for _, ep := range eps {
+			present[ep.Addr] = struct{}{}
+		}
+		for addr := range b.current {
+			if _, ok := present[addr]; !ok {
+				delete(b.current, addr)
+			}
 		}
 	}
 	b.current[eps[best].Addr] = bestCur - total // the winner pays back the round's total

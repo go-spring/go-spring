@@ -22,7 +22,7 @@ import (
 	"testing"
 
 	"github.com/labstack/echo/v4"
-	"go-spring.org/cloud/governance/capability/traffic"
+	"go-spring.org/cloud/traffic"
 )
 
 // testProp is the traffic convention these fixtures run under.

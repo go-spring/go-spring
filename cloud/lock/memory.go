@@ -84,7 +84,7 @@ func (m *MemoryLocker) TryAcquire(_ context.Context, key string, opts ...Option)
 			return nil, false, nil // still held by someone
 		}
 		// Expired: reclaim it, signalling loss to the previous holder.
-		m.dropLocked(key, h)
+		m.drop(key, h)
 	}
 
 	h := &memoryHold{
@@ -159,10 +159,10 @@ func (m *MemoryLocker) renewLoop(key string, h *memoryHold) {
 	}
 }
 
-// dropLocked removes a hold from the map and ends its generation: the renew
+// drop removes a hold from the map and ends its generation: the renew
 // loop is told to stop and the old holder's Lost channel is closed. Caller
 // holds m.mu.
-func (m *MemoryLocker) dropLocked(key string, h *memoryHold) {
+func (m *MemoryLocker) drop(key string, h *memoryHold) {
 	delete(m.locks, key)
 	h.stopRenewLoop()
 	h.markLost()

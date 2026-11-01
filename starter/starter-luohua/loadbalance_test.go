@@ -19,7 +19,7 @@ package luohua
 import (
 	"testing"
 
-	"go-spring.org/cloud/governance/capability/discovery"
+	"go-spring.org/cloud/discovery"
 	"go-spring.org/cloud/governance/capability/loadbalance"
 )
 
@@ -30,9 +30,9 @@ import (
 // company owns its routing/affinity decision here, and a deployment can retune
 // the zone through the strategy's own parameter.
 func TestLoadBalanceCompanyRegisteredAndZoneAffine(t *testing.T) {
-	// The strategy is registered by this package's own init (see starter.go), so
-	// a rule citing "luohua" resolves with nothing else wired.
-	b, err := loadbalance.New(loadbalance.Selection{Balancer: luohuaStrategy})
+	// The strategy factory is contributed as a bean (see starter.go), so a rule
+	// citing "luohua" resolves once wiring collects it.
+	b, err := loadbalance.NewFactory([]loadbalance.Provider{luohuaLoadBalancerProvider{}}).Create(loadbalance.Selection{Balancer: luohuaStrategy})
 	if err != nil {
 		t.Fatalf("luohua balancer not built: %v", err)
 	}
@@ -42,7 +42,7 @@ func TestLoadBalanceCompanyRegisteredAndZoneAffine(t *testing.T) {
 
 	// The zone parameter overrides the default, so one strategy pins traffic to
 	// whichever zone a rule names.
-	other, err := loadbalance.New(loadbalance.Selection{Balancer: luohuaStrategy, Params: map[string]string{"zone": "cn-other-2"}})
+	other, err := loadbalance.NewFactory([]loadbalance.Provider{luohuaLoadBalancerProvider{}}).Create(loadbalance.Selection{Balancer: luohuaStrategy, Params: map[string]string{"zone": "cn-other-2"}})
 	if err != nil {
 		t.Fatalf("luohua balancer with a zone parameter: %v", err)
 	}
@@ -55,7 +55,7 @@ func TestLoadBalanceCompanyRegisteredAndZoneAffine(t *testing.T) {
 	}
 
 	// An unknown parameter is rejected at construction, not silently dropped.
-	if _, err := loadbalance.New(loadbalance.Selection{Balancer: luohuaStrategy, Params: map[string]string{"zoen": "typo"}}); err == nil {
+	if _, err := loadbalance.NewFactory([]loadbalance.Provider{luohuaLoadBalancerProvider{}}).Create(loadbalance.Selection{Balancer: luohuaStrategy, Params: map[string]string{"zoen": "typo"}}); err == nil {
 		t.Fatal("a misspelled parameter must fail construction")
 	}
 

@@ -26,7 +26,7 @@ import (
 	"time"
 
 	"github.com/elastic/elastic-transport-go/v8/elastictransport"
-	"go-spring.org/cloud/governance/capability/discovery"
+	"go-spring.org/cloud/discovery"
 )
 
 // errNoConnection is what the fallback pool reports when no seed connection
@@ -85,7 +85,7 @@ func newLivePool(resolve discovery.Resolver, scheme string, selector elastictran
 	}
 	p := &livePool{resolve: resolve, scheme: scheme, selector: selector, pool: inner}
 	p.mu.Lock()
-	p.reconcileLocked()
+	p.reconcile()
 	p.mu.Unlock()
 	return p
 }
@@ -94,7 +94,7 @@ func newLivePool(resolve discovery.Resolver, scheme string, selector elastictran
 func (p *livePool) Next() (*elastictransport.Connection, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	p.reconcileLocked()
+	p.reconcile()
 	return p.pool.Next()
 }
 
@@ -135,9 +135,9 @@ func (p *livePool) Close(ctx context.Context) error {
 	return nil
 }
 
-// reconcileLocked brings the inner pool in step with the current endpoint
+// reconcile brings the inner pool in step with the current endpoint
 // snapshot, at most once per refreshInterval. Caller holds p.mu.
-func (p *livePool) reconcileLocked() {
+func (p *livePool) reconcile() {
 	if p.closed {
 		return
 	}
