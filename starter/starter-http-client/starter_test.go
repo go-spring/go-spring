@@ -29,7 +29,7 @@ import (
 	"go-spring.org/cloud/governance/capability/ratelimit"
 	admissionplane "go-spring.org/cloud/governance/controlplane/admission"
 	loadbalanceplane "go-spring.org/cloud/governance/controlplane/loadbalance"
-	"go-spring.org/cloud/governance/controlplane/source"
+	"go-spring.org/cloud/governance/capability/source"
 	serverfault "go-spring.org/cloud/governance/dataplane/inbound/fault"
 	clientfault "go-spring.org/cloud/governance/dataplane/outbound/fault"
 	"go-spring.org/cloud/governance/dataplane/outbound/resilience"
@@ -48,10 +48,18 @@ func TestNewRoute_ResolvesDiscoveryLabel(t *testing.T) {
 		"default": discovery.NewStaticDiscovery(discovery.Endpoint{Addr: "10.0.0.1:8080", Healthy: true, Weight: 1}),
 	})
 	lb := loadbalance.NewManager(loadbalance.NewFactory([]loadbalance.Provider{loadbalance.NewBuiltinProvider()}))
+	fact, err := ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	fact2, err := ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()})
+	if err != nil {
+		t.Fatal(err)
+	}
 	center := &governance.Runtime{
-		Resilience:  resilience.NewManager(resilience.NewDefaultDriver(), ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()})),
+		Resilience:  resilience.NewManager(resilience.NewDefaultDriver(), fact),
 		LoadBalance: lb,
-		Admission:   admission.NewManager(ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()})),
+		Admission:   admission.NewManager(fact2),
 		ClientFault: clientfault.NewManager(),
 		ServerFault: serverfault.NewManager(),
 		Traffic:     traffic.NewDefaultPropagator(traffic.DefaultBinding()),
@@ -64,7 +72,7 @@ func TestNewRoute_ResolvesDiscoveryLabel(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, err := newRoute(nil, "x", Config{ServiceName: "user-svc", Discovery: "nope"}, nil, center, nil)
+	_, err = newRoute(nil, "x", Config{ServiceName: "user-svc", Discovery: "nope"}, nil, center, nil)
 	assert.Error(t, err).Matches("no such backend")
 	assert.String(t, err.Error()).Contains("default") // the registered labels are reported
 

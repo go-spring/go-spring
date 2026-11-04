@@ -46,6 +46,7 @@ require (
 	github.com/gorilla/websocket v1.5.4-0.20250319132907-e064f32e3674 // indirect
 	github.com/influxdata/tdigest v0.0.1 // indirect
 	github.com/jinzhu/copier v0.3.5 // indirect
+	github.com/joho/godotenv v1.5.1 // indirect
 	github.com/jtolds/gls v4.20.0+incompatible // indirect
 	github.com/k0kubun/pp v3.0.1+incompatible // indirect
 	github.com/klauspost/compress v1.19.2 // indirect
@@ -113,4 +114,3 @@ require (
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 )
-

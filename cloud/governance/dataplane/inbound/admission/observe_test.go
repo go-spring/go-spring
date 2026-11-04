@@ -109,7 +109,11 @@ func TestGuardPublishesBulkhead(t *testing.T) {
 	defer restore()
 
 	id := Identity{System: "sys", Service: "svc-all-metrics"}
-	g, err := New(id, Policy{MaxConcurrent: 1}, ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()}))
+	factories, err := ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	g, err := New(id, Policy{MaxConcurrent: 1}, factories)
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -139,7 +143,11 @@ func TestGuardCloseStopsPublishing(t *testing.T) {
 	defer restore()
 
 	id := Identity{System: "sys", Service: "svc-close-metrics"}
-	g, err := New(id, Policy{MaxConcurrent: 1}, ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()}))
+	factories, err := ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	g, err := New(id, Policy{MaxConcurrent: 1}, factories)
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}

@@ -228,7 +228,7 @@ func NewTransport(cfg Config, center *governance.Runtime, prop traffic.Propagato
 		// The resolver (bound by-name re-read of the backend snapshot) feeds the
 		// chain as its endpoint source, so it follows the naming service in real
 		// time.
-		chain, cerr := center.Loadbalance().Chain(context.Background(), resolver, cfg.service())
+		chain, cerr := center.LoadBalance.Chain(context.Background(), resolver, cfg.service())
 		if cerr != nil {
 			return nil, nil, cerr
 		}
@@ -258,7 +258,12 @@ func NewTransport(cfg Config, center *governance.Runtime, prop traffic.Propagato
 	case cfg.ResilienceDriver != nil:
 		// The driver builds an executor over a manager, so an explicit
 		// driver+policy triple is just a private, single-label manager.
-		mgr := resilience.NewManager(cfg.ResilienceDriver, ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()}))
+		fact, err := ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()})
+		if err != nil {
+			closeAll(closeFns)
+			return nil, nil, err
+		}
+		mgr := resilience.NewManager(cfg.ResilienceDriver, fact)
 		if err = mgr.ApplyLimits(resilience.LimitsSettings{Default: cfg.ResilienceLimits}); err != nil {
 			closeAll(closeFns)
 			return nil, nil, err
@@ -273,7 +278,7 @@ func NewTransport(cfg Config, center *governance.Runtime, prop traffic.Propagato
 		}
 		exec = mgr.ExecutorFor(cfg.service())
 	default:
-		exec = center.ResilienceClient().ExecutorFor(cfg.service())
+		exec = center.Resilience.ExecutorFor(cfg.service())
 		managerOwned = true
 		// The chain's endpoint-selection half follows the governance rule through
 		// the registration its construction performed — the protection policy
@@ -296,11 +301,11 @@ func NewTransport(cfg Config, center *governance.Runtime, prop traffic.Propagato
 	if wrap == nil {
 		if managerOwned {
 			wrap = func(e chain.Executor) chain.Executor {
-				return center.FaultClient().WrapClientExecutor(e)
+				return center.ClientFault.WrapClientExecutor(e)
 			}
 		} else {
 			wrap = func(e chain.Executor) chain.Executor {
-				return center.FaultClient().WrapClientExecutor(observability.WrapClientExecutor(e, "http", cfg.service()))
+				return center.ClientFault.WrapClientExecutor(observability.WrapClientExecutor(e, "http", cfg.service()))
 			}
 		}
 	}

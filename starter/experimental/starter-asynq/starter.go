@@ -100,7 +100,7 @@ func newClient(ctx *gs.ContextProvider, c Config, d Driver, center *governance.R
 	if err != nil {
 		return nil, err
 	}
-	return NewClient(connOpt, c.Addr, center.TrafficPropagator()), nil
+	return NewClient(connOpt, c.Addr, center.Traffic), nil
 }
 
 // newServer builds the worker Server bean. The asynq server is constructed here

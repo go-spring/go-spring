@@ -25,6 +25,7 @@ import (
 	"github.com/labstack/echo/v4"
 	"go-spring.org/cloud/governance"
 	"go-spring.org/cloud/governance/capability/label"
+	"go-spring.org/cloud/governance/dataplane/inbound"
 	"go-spring.org/cloud/governance/dataplane/inbound/admission"
 	observability "go-spring.org/cloud/governance/dataplane/inbound/observe"
 	"go-spring.org/cloud/traffic"
@@ -64,7 +65,7 @@ func buildServerPolicy(cfg Config, center *governance.Runtime, prop traffic.Prop
 // effects cannot be replayed (inbound serving is not idempotent). Leave
 // [admission.Policy] has no retry field at all, so the executor built from the
 // server block has no retry stage; the committed guard also prevents reentry.
-func resilienceServerPolicy(in *governance.Inbound, service string, observe bool, prop traffic.Propagator) echo.MiddlewareFunc {
+func resilienceServerPolicy(in *inbound.Inbound, service string, observe bool, prop traffic.Propagator) echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
 			ctx := c.Request().Context()
@@ -73,7 +74,7 @@ func resilienceServerPolicy(in *governance.Inbound, service string, observe bool
 			var handlerErr error
 			// run executes the handler chain. h is the split-form observation when
 			// observe is on (so the response half can be recorded), nil otherwise.
-			run := func(ctx context.Context, h *governance.Hooks) error {
+			run := func(ctx context.Context, h *inbound.Hooks) error {
 				if served {
 					return nil // reentry guard: handler already ran this request
 				}
@@ -112,7 +113,7 @@ func resilienceServerPolicy(in *governance.Inbound, service string, observe bool
 			} else {
 				// Observability off: governance still runs, silently.
 				if gErr := in.GovernedRun(ctx, operation(c, prop), func(ctx context.Context) error { return run(ctx, nil) }); gErr != nil {
-					var ref *governance.Refusal
+					var ref *inbound.Refusal
 					if errors.As(gErr, &ref) {
 						return renderInjectedOrRefusal(c, gErr)
 					}
@@ -134,7 +135,7 @@ func renderRefusal(err error) error {
 	if err == nil {
 		return nil
 	}
-	var ref *governance.Refusal
+	var ref *inbound.Refusal
 	if errors.As(err, &ref) {
 		return echo.NewHTTPError(httpStatusFor(ref), ref.Error())
 	}
@@ -145,7 +146,7 @@ func renderRefusal(err error) error {
 // other refusal as an echo HTTP error. The status follows the fault's class: a
 // business failure is 400, anything else is 503.
 func renderInjectedOrRefusal(c echo.Context, err error) error {
-	var ref *governance.Refusal
+	var ref *inbound.Refusal
 	if errors.As(err, &ref) && ref.Verdict() == admission.VerdictFaultInjected {
 		return c.String(httpStatusFor(ref), "service unavailable")
 	}
@@ -156,7 +157,7 @@ func renderInjectedOrRefusal(c echo.Context, err error) error {
 // rate/bulkhead rejections are 429; an injected fault follows the class the rule
 // declared — a business failure (the caller's mistake) is 400, anything else is
 // 503.
-func httpStatusFor(ref *governance.Refusal) int {
+func httpStatusFor(ref *inbound.Refusal) int {
 	if ref.Verdict() == admission.VerdictFaultInjected {
 		if ref.Fault().Business() {
 			return http.StatusBadRequest

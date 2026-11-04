@@ -48,7 +48,7 @@ func WithGlobalLock(l GlobalLock) Option { return func(c *coordinator) { c.lock 
 func WithObserver(o Observer) Option { return func(c *coordinator) { c.observer = o } }
 
 // WithTraffic sets the process traffic convention used to stamp each branch
-// phase's operation, so a fault rule can target match.traffic. Without it the
+// phase's operation, so a fault rule can target match.traffic.exact. Without it the
 // coordinator uses go-spring's standard binding.
 func WithTraffic(prop traffic.Propagator) Option {
 	return func(c *coordinator) { c.prop = prop }
@@ -213,7 +213,11 @@ func runWithPolicy(ctx context.Context, prop traffic.Propagator, p RetryPolicy, 
 	if p.IsZero() {
 		return fn(ctx)
 	}
-	mgr := resilience.NewManager(resilience.NewDefaultDriver(), ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()}))
+	factories, err := ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()})
+	if err != nil {
+		return err
+	}
+	mgr := resilience.NewManager(resilience.NewDefaultDriver(), factories)
 	if err := mgr.ApplyLimits(resilience.LimitsSettings{Default: resilience.Limits{Retry: p}}); err != nil {
 		return err
 	}

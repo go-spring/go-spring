@@ -28,7 +28,7 @@ import (
 	"context"
 
 	kloadbalance "go-spring.org/cloud/governance/capability/loadbalance"
-	"go-spring.org/cloud/governance/controlplane/source"
+	"go-spring.org/cloud/governance/capability/source"
 	"go-spring.org/log"
 )
 

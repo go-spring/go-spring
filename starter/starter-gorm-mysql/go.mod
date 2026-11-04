@@ -46,6 +46,12 @@ require go-spring.org/cloud v0.0.0
 
 require go-spring.org/starter-gorm v0.0.0
 
+require (
+	github.com/fsnotify/fsnotify v1.9.0 // indirect
+	github.com/google/uuid v1.6.0 // indirect
+	go.opentelemetry.io/otel/sdk v1.45.0 // indirect
+)
+
 replace go-spring.org/cloud => ../../cloud
 
 replace go-spring.org/starter-gorm => ../../starter/starter-gorm

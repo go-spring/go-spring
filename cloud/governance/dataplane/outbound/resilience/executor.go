@@ -268,7 +268,7 @@ func (e *defaultExecutor) rateLimiter(r RateRef) ratelimit.Limiter {
 			return old.limiter
 		}
 	}
-	lim, err := e.mgr.limiters.Create(kind, e.service)
+	lim, err := e.mgr.limiters.NewLimiter(kind, e.service)
 	if err != nil {
 		// Apply built this kind through the same call; a failure now is the
 		// backend's own.

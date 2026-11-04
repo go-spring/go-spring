@@ -67,14 +67,18 @@ func TestGuardedConnPassThrough(t *testing.T) {
 // TestGuardedConnRateLimit confirms the flow-control path: once the burst is
 // spent, the statement is rejected without reaching the connection.
 func TestGuardedConnRateLimit(t *testing.T) {
-	m := resilience.NewManager(resilience.NewDefaultDriver(), ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()}))
+	fact, err := ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := resilience.NewManager(resilience.NewDefaultDriver(), fact)
 	assert.Error(t, m.ApplyRateLimit(resilience.RateLimitSettings{Default: ratelimit.Policy{Limiter: ratelimit.TokenBucketAlgorithm, RateLimit: 1, Burst: 1}})).Nil()
 	exec := m.ExecutorFor("svc")
 
 	sc := &stubConn{}
 	conn := guardedConn{base: sc, slot: &clientSlot{exec: exec, prop: testProp}}
 
-	_, err := conn.ExecContext(context.Background(), "INSERT INTO t VALUES(now, 1)", nil)
+	_, err = conn.ExecContext(context.Background(), "INSERT INTO t VALUES(now, 1)", nil)
 	assert.Error(t, err).Nil()
 	_, err = conn.ExecContext(context.Background(), "INSERT INTO t VALUES(now, 2)", nil)
 	assert.Error(t, err).Is(chain.ErrRateLimited)

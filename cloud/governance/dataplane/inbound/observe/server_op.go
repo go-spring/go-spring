@@ -51,7 +51,7 @@ type ServerOperation struct {
 // from: the standard dimensions the request's context carries are recorded at
 // construction, so no middleware can forget them. Today that is the traffic
 // class, written as the ordinary metadata key "traffic" — a rule targets it with
-// match.traffic=loadtest (or =real) exactly like any other dimension.
+// match.traffic.exact=loadtest (or =real) exactly like any other dimension.
 //
 // The caller fills the rest of the declaration (the signal groups in
 // [ServerOperation.Observe]) on the returned value.

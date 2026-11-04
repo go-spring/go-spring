@@ -26,7 +26,7 @@ package admission
 import (
 	"context"
 
-	"go-spring.org/cloud/governance/controlplane/source"
+	"go-spring.org/cloud/governance/capability/source"
 	"go-spring.org/cloud/governance/dataplane/inbound/admission"
 	"go-spring.org/log"
 )

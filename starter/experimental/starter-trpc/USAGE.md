@@ -134,7 +134,8 @@ spring:
         # rate: 0.2           # set a rate to "set fire" without restart
         error: timeout
         match:
-          traffic: loadtest       # only traffic marked x-traffic is affected
+          traffic:
+            exact: loadtest       # only traffic marked x-traffic is affected
 ```
 
 **Verify** (mirrors example/check.sh, which is self-asserting):
@@ -210,12 +211,12 @@ errors still flow out through metrics/tracing and remain observable.
 
 ### 2.3 One call, layer by layer
 
-Client `Greet("world")` with metadata `x-traffic: loadtest`, `match.traffic=loadtest` matched:
+Client `Greet("world")` with metadata `x-traffic: loadtest`, `match.traffic.exact=loadtest` matched:
 
 1. `loadtest` reads `ServerMetaData()["x-traffic"]` → ctx tagged, so `traffic.IsLoadTest(ctx, prop)`
 2. `tracing` starts the server span `trpc.demo.greet.GreetService/Greet`
 3. `metrics`: active_requests +1, duration observation starts
-4. `fault`: `Injector.Server.Fire` consults the governance injector; with `match.traffic=loadtest` and the
+4. `fault`: `Injector.Server.Fire` consults the governance injector; with `match.traffic.exact=loadtest` and the
    marker present, ~`rate` of calls get the injected latency/error; the rest pass through
 5. your handler runs; the response unwinds 3→2: counters/histogram recorded with
    `rpc.method`, span ended (status Error + recorded error if the call failed)
@@ -333,7 +334,7 @@ requests are **not drained** — see §6.
 
 ### 4.5 Load-test marking drill
 
-`match.traffic=real` inverts the filter — unmarked traffic burns; use only in dedicated environments.
+`match.traffic.exact=real` inverts the filter — unmarked traffic burns; use only in dedicated environments.
 In your handler, `traffic.IsLoadTest(ctx, prop)` branches on the same marker (set by the `loadtest`
 filter from inbound metadata), so business code can degrade features under synthetic load.
 

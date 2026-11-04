@@ -27,7 +27,6 @@ require (
 	github.com/gopherjs/gopherjs v1.20.2 // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.29.0 // indirect
 	github.com/jtolds/gls v4.20.0+incompatible // indirect
-	github.com/klauspost/compress v1.19.2 // indirect
 	github.com/magiconair/properties v1.8.10 // indirect
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
 	github.com/pelletier/go-toml v1.9.5 // indirect
@@ -77,9 +76,6 @@ replace go-spring.org/starter-otel => ../../starter-otel
 
 replace go-spring.org/starter-actuator => ../../starter-actuator
 
-require (
-	go-spring.org/cloud v0.0.0
-)
+require go-spring.org/cloud v0.0.0
 
 replace go-spring.org/cloud => ../../../cloud
-

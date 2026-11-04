@@ -31,7 +31,11 @@ import (
 
 func newExec(t *testing.T, p any) chain.Executor {
 	t.Helper()
-	m := resilience.NewManager(resilience.NewDefaultDriver(), ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()}))
+	fact, err := ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := resilience.NewManager(resilience.NewDefaultDriver(), fact)
 	switch v := p.(type) {
 	case nil:
 	case resilience.Limits:

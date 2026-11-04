@@ -22,9 +22,9 @@ import (
 	"net/http"
 	"testing"
 
-	"go-spring.org/cloud/governance"
 	kfault "go-spring.org/cloud/governance/capability/fault"
 	"go-spring.org/cloud/governance/capability/ratelimit"
+	"go-spring.org/cloud/governance/dataplane/inbound"
 	"go-spring.org/cloud/governance/dataplane/inbound/admission"
 	serverfault "go-spring.org/cloud/governance/dataplane/inbound/fault"
 	"go-spring.org/cloud/governance/dataplane/inbound/observe"
@@ -48,8 +48,12 @@ func TestHTTPStatusFor_FollowsFaultClass(t *testing.T) {
 		inj.Refresh(kfault.Config{Rules: []kfault.Rule{{
 			Name: "fire", Service: "gin", Rate: 1, Class: tc.class,
 		}}})
-		gm := admission.NewManager(ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()}))
-		in, err := governance.InboundOver("gin", "gin:test", gm, inj)
+		fact, err := ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()})
+		if err != nil {
+			t.Fatal(err)
+		}
+		gm := admission.NewManager(fact)
+		in, err := inbound.Over("gin", "gin:test", gm, inj)
 		if err != nil {
 			gm.Close()
 			t.Fatal(err)
@@ -58,7 +62,7 @@ func TestHTTPStatusFor_FollowsFaultClass(t *testing.T) {
 			func(context.Context) error { return nil })
 		gm.Close()
 
-		var ref *governance.Refusal
+		var ref *inbound.Refusal
 		if !errors.As(err, &ref) {
 			t.Fatalf("class %q: want a refusal, got %v", tc.class, err)
 		}

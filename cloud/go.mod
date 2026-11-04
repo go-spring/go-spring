@@ -10,10 +10,18 @@ require (
 )
 
 require (
+	github.com/bytedance/mockey v1.4.6 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/go-logr/logr v1.4.4 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
+	github.com/gopherjs/gopherjs v1.20.2 // indirect
+	github.com/jtolds/gls v4.20.0+incompatible // indirect
+	github.com/smarty/assertions v1.16.0 // indirect
+	github.com/smartystreets/goconvey v1.8.1 // indirect
+	go-spring.org/gs-mock v0.0.9 // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
+	golang.org/x/arch v0.26.0 // indirect
+	gopkg.in/yaml.v2 v2.4.0 // indirect
 )
 
 require (

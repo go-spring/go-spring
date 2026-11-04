@@ -30,7 +30,10 @@ import (
 func newTestTable(t *testing.T) *RouteTable {
 	t.Helper()
 	lbMgr := loadbalance.NewManager(loadbalance.NewFactory([]loadbalance.Provider{loadbalance.NewBuiltinProvider()}))
-	factories := ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()})
+	factories, err := ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()})
+	if err != nil {
+		t.Fatal(err)
+	}
 	tbl := &RouteTable{
 		ctx:       context.Background(),
 		obs:       newObserver(),

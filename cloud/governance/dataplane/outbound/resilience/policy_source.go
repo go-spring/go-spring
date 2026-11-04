@@ -159,14 +159,14 @@ func (s *limitsSnapshot) best(op chain.Operation) int {
 		}
 		if isServiceScope(r.Action) {
 			if best < 0 {
-				best, bestSpec = i, specOf(r.Action, nil)
+				best, bestSpec = i, specOf(r.Action, 0)
 			}
 			continue
 		}
-		if !r.Action.Matches(op.Request.Action) || !r.Match.Matches(op.Request.Metadata) {
+		if !r.Action.Matches(op.Request.Action) || !matcher.Matches(r.Match, op.Request.Metadata) {
 			continue
 		}
-		sc := specOf(r.Action, r.Match)
+		sc := specOf(r.Action, len(r.Match))
 		if best < 0 || sc.betterThan(bestSpec) {
 			best, bestSpec = i, sc
 		}
@@ -219,7 +219,7 @@ func (s *breakerSnapshot) bestAction(op chain.Operation) int {
 		if r.Service != op.Service || isServiceScope(r.Action) || !r.Action.Matches(op.Request.Action) {
 			continue
 		}
-		sc := specOf(r.Action, nil)
+		sc := specOf(r.Action, 0)
 		if best < 0 || sc.betterThan(bestSpec) {
 			best, bestSpec = i, sc
 		}
@@ -245,7 +245,7 @@ func (s *rateSnapshot) resolve(op chain.Operation) RateRef {
 		if r.Service != op.Service || isServiceScope(r.Action) || !r.Action.Matches(op.Request.Action) {
 			continue
 		}
-		sc := specOf(r.Action, nil)
+		sc := specOf(r.Action, 0)
 		if best < 0 || sc.betterThan(bestSpec) {
 			best, bestSpec, p, key = i, sc, r.Policy, ruleKey(r.Service, i)
 		}
@@ -309,13 +309,13 @@ func breakerGen(label string, s *BreakerSettings) uint64 {
 // fingerprintRuleHead writes the parts every capability's fingerprint shares:
 // the rule's position and selector. A selector change moves all three
 // generations, because it changes which calls a rule's state belongs to.
-func fingerprintRuleHead(h hash.Hash64, index int, service string, action chain.ActionMatch, match matcher.ExactMap) {
+func fingerprintRuleHead(h hash.Hash64, index int, service string, action chain.ActionMatch, match map[string]matcher.StringMatch) {
 	fingerprint(h, "rule")
 	fingerprint(h, strconv.Itoa(index))
 	fingerprint(h, service)
 	fingerprint(h, action.Exact)
 	fingerprint(h, action.Prefix)
-	fingerprintSelector(h, match)
+	fingerprintMatch(h, match)
 }
 
 // fingerprintLimits writes the limits half (timeout and retry schedule).
@@ -414,21 +414,23 @@ func fingerprint(h hash.Hash64, s string) {
 	h.Write([]byte{0})
 }
 
-// fingerprintSelector writes a match selector in key order — a Go map iterates
-// nondeterministically, and a generation that changed on every process start
-// would rebuild every breaker for no reason.
-func fingerprintSelector(h hash.Hash64, sel matcher.ExactMap) {
-	if len(sel) == 0 {
+// fingerprintMatch writes a rule's metadata match in key order — a Go map
+// iterates nondeterministically, and a generation that changed on every
+// process start would rebuild every breaker for no reason. The struct renders
+// its fields in declaration order, so the op and value are covered without a
+// second vocabulary.
+func fingerprintMatch(h hash.Hash64, match map[string]matcher.StringMatch) {
+	if len(match) == 0 {
 		h.Write([]byte{0})
 		return
 	}
-	keys := make([]string, 0, len(sel))
-	for k := range sel {
+	keys := make([]string, 0, len(match))
+	for k := range match {
 		keys = append(keys, k)
 	}
 	sort.Strings(keys)
 	for _, k := range keys {
 		fingerprint(h, k)
-		fingerprint(h, sel[k])
+		fingerprint(h, fmt.Sprintf("%+v", match[k]))
 	}
 }

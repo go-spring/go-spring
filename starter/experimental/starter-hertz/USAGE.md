@@ -159,7 +159,8 @@ spring:
         # rate: 0.2           # set a rate to "set fire" without restart
         error: timeout
         match:
-          traffic: loadtest       # only traffic marked X-Traffic is affected
+          traffic:
+            exact: loadtest       # only traffic marked X-Traffic is affected
 ```
 
 **Verify** (structurally identical to what `example/check.sh` asserts — X-App header,
@@ -242,7 +243,7 @@ Rationale (from the `applyMiddlewares` comment, verified):
 7. SecureHeaders/CORS/Gzip as enabled (engine enforces `maxBodySize` independently)
 8. fault: `_, err := srv.Fire(ctx, fault.Target{Service: "hertz", Action: "GET /x"})`
    (inj = the injected bean; the built-in target carries `METHOD` + `c.FullPath()`, so a rule can
-   fire one route) — with `match.traffic=loadtest`
+   fire one route) — with `match.traffic.exact=loadtest`
    and the marker present, ~`rate` of requests get the injected error → 503; others pass
 9. your route runs; the response unwinds through 6→5→4→3: access record logged (severity by
    status), duration/count recorded, in-flight decremented, span ended and marked errored on
@@ -340,7 +341,7 @@ curl -i 127.0.0.1:9370/readyz    # actuator readiness (add starter-actuator)
 4. Marked traffic burns, normal traffic unaffected:
 
 ```bash
-curl -i 127.0.0.1:8003/echo/x                          # 200 (match.traffic=loadtest, no marker)
+curl -i 127.0.0.1:8003/echo/x                          # 200 (match.traffic.exact=loadtest, no marker)
 curl -i -H 'X-Traffic: loadtest' 127.0.0.1:8003/echo/x       # ~20% → 503 service unavailable
 ```
 
@@ -349,7 +350,7 @@ curl -i -H 'X-Traffic: loadtest' 127.0.0.1:8003/echo/x       # ~20% → 503 serv
 
 ### 4.5 Load-test marking drill
 
-With `match.traffic=real` instead of `loadtest`, the injector affects unmarked traffic — use only in
+With `match.traffic.exact=real` instead of `loadtest`, the injector affects unmarked traffic — use only in
 dedicated environments. `traffic.IsLoadTest(ctx, prop)` in your handler branches on the same marker,
 so business code can degrade features under synthetic load.
 

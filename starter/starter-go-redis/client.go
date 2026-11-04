@@ -126,7 +126,7 @@ func NewClient(client redis.UniversalClient, cfg Config, lbChain *loadbalance.Ch
 	c.exec = center.ExecutorFor("redis", c.serviceLabel)
 	// The resilience hook is the only hook we install: it builds each command's
 	// identity itself and emits the call's span, metrics and access log.
-	c.UniversalClient.AddHook(&resilienceHook{exec: c.exec, serviceLabel: c.serviceLabel, prop: center.TrafficPropagator()})
+	c.UniversalClient.AddHook(&resilienceHook{exec: c.exec, serviceLabel: c.serviceLabel, prop: center.Traffic})
 	return c, nil
 }
 

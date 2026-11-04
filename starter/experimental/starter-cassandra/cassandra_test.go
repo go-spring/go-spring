@@ -23,7 +23,7 @@ import (
 
 	admissionplane "go-spring.org/cloud/governance/controlplane/admission"
 	loadbalanceplane "go-spring.org/cloud/governance/controlplane/loadbalance"
-	"go-spring.org/cloud/governance/controlplane/source"
+	"go-spring.org/cloud/governance/capability/source"
 	"go-spring.org/cloud/governance/dataplane/outbound/chain"
 	"go-spring.org/cloud/traffic"
 
@@ -48,10 +48,18 @@ var testProp = traffic.NewDefaultPropagator(traffic.DefaultBinding())
 // assembled with.
 func newTestCenter(t *testing.T) *governance.Runtime {
 	t.Helper()
+	fact, err := ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	fact2, err := ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()})
+	if err != nil {
+		t.Fatal(err)
+	}
 	ctr := &governance.Runtime{
-		Resilience:  resilience.NewManager(resilience.NewDefaultDriver(), ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()})),
+		Resilience:  resilience.NewManager(resilience.NewDefaultDriver(), fact),
 		LoadBalance: loadbalance.NewManager(loadbalance.NewFactory([]loadbalance.Provider{loadbalance.NewBuiltinProvider()})),
-		Admission:   admission.NewManager(ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()})),
+		Admission:   admission.NewManager(fact2),
 		ClientFault: clientfault.NewManager(),
 		ServerFault: serverfault.NewManager(),
 		Directory:   discovery.NewManager(nil),
@@ -142,7 +150,11 @@ func (c *captureExec) Close() error { return c.next.Close() }
 // newGuardedExec builds an executor from the default resilience driver, wrapped
 // by the resilience observe layer exactly as the container wiring does.
 func newGuardedExec(t *testing.T, p ratelimit.Policy) chain.Executor {
-	m := resilience.NewManager(resilience.NewDefaultDriver(), ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()}))
+	fact, err := ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := resilience.NewManager(resilience.NewDefaultDriver(), fact)
 	assert.Error(t, m.ApplyRateLimit(resilience.RateLimitSettings{Default: p})).Nil()
 	inner := m.ExecutorFor("svc")
 	return observability.WrapClientExecutor(inner, "cassandra", "cassandra:test")

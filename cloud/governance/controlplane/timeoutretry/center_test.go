@@ -22,7 +22,7 @@ import (
 	"time"
 
 	"go-spring.org/cloud/governance/capability/ratelimit"
-	"go-spring.org/cloud/governance/controlplane/source"
+	"go-spring.org/cloud/governance/capability/source"
 	"go-spring.org/cloud/governance/dataplane/outbound/chain"
 	"go-spring.org/cloud/governance/dataplane/outbound/resilience"
 	"go-spring.org/stdlib/testing/assert"
@@ -36,7 +36,7 @@ rules[0].retry.max-retries=2
 
 rules[1].service=redis:cache
 rules[1].action.prefix=GET /slow
-rules[1].match.tenant=core
+rules[1].match.tenant.exact=core
 rules[1].timeout=2s
 `
 
@@ -69,7 +69,11 @@ func TestCenterAppliesAndKeepsLastGood(t *testing.T) {
 	d, err := source.Parse[resilience.LimitsSettings]("timeoutretry.properties", []byte(doc), "")
 	assert.Error(t, err).Nil()
 
-	mgr := resilience.NewManager(resilience.NewDefaultDriver(), ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()}))
+	factories, err := ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	mgr := resilience.NewManager(resilience.NewDefaultDriver(), factories)
 	src := source.NewPushSource(d)
 	if _, err := NewCenter(context.Background(), mgr, src); err != nil {
 		t.Fatal(err)

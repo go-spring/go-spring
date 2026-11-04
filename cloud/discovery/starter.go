@@ -25,7 +25,7 @@ import (
 // backend starter imports this package, and Go's package-init semantics run
 // this exactly once per process — the bean exists once and no starter has to
 // coordinate. The write side (publishing this process to a naming service) is
-// registered by cloud/governance/controlplane/registration, the package that owns
+// registered by cloud/discovery, the package that owns
 // that half.
 func init() {
 	// Collect every discovery.Discovery bean in the container into one Manager,

@@ -87,7 +87,7 @@ func NewClient(connector driver.Connector, c Config, center *governance.Runtime)
 	slot.service = cl.serviceLabel
 	cl.exec = center.ExecutorFor("tdengine", cl.serviceLabel)
 	slot.exec = cl.exec
-	slot.prop = center.TrafficPropagator()
+	slot.prop = center.Traffic
 	return cl
 }
 

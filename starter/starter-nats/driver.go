@@ -137,7 +137,7 @@ func (DefaultDriver) CreateClient(ctx context.Context, c Config, center *governa
 	// NewConn is the only way to build a Conn: identity and the governance
 	// executor are both applied here, so the driver returns a connection that is
 	// complete (see [Driver]).
-	conn := NewConn(nc, c.URL, center.TrafficPropagator())
+	conn := NewConn(nc, c.URL, center.Traffic)
 	// JetStream is derived from the same connection rather than opening a second
 	// one, and it is part of the assembled client: a failure here discards the
 	// connection rather than leaking it.

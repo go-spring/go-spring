@@ -31,27 +31,33 @@ func (p repeatingProvider) Algorithms() []string { return p.algorithms }
 func (repeatingProvider) New(string, string) (Limiter, error) { return &tokenBucket{}, nil }
 
 func TestFactoryToleratesOneProvidersRepeats(t *testing.T) {
-	f := NewFactory([]Provider{repeatingProvider{algorithms: []string{TokenBucketAlgorithm, TokenBucketAlgorithm}}})
-	_, err := f.Create(TokenBucketAlgorithm, "svc")
+	f, err := NewFactory([]Provider{repeatingProvider{algorithms: []string{TokenBucketAlgorithm, TokenBucketAlgorithm}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = f.NewLimiter(TokenBucketAlgorithm, "svc")
 	assert.Error(t, err).Nil()
 }
 
 func TestFactoryRejectsTwoProvidersOwningOneAlgorithm(t *testing.T) {
-	assert.Panic(t, func() {
-		NewFactory([]Provider{
-			NewLocalProvider(),
-			repeatingProvider{algorithms: []string{TokenBucketAlgorithm}},
-		})
-	}, "exported by two providers")
+	_, err := NewFactory([]Provider{
+		NewLocalProvider(),
+		repeatingProvider{algorithms: []string{TokenBucketAlgorithm}},
+	})
+	assert.Error(t, err).NotNil()
+	assert.That(t, err.Error() == `ratelimit: algorithm "token-bucket" exported by two providers`).True()
 }
 
 // TestCreateRejectsUnknownAlgorithm pins that an unregistered or empty name is
 // an error, not a silent default.
 func TestCreateRejectsUnknownAlgorithm(t *testing.T) {
-	f := NewFactory([]Provider{NewLocalProvider()})
-	_, err := f.Create("no-such-algorithm", "svc")
+	f, err := NewFactory([]Provider{NewLocalProvider()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = f.NewLimiter("no-such-algorithm", "svc")
 	assert.Error(t, err).NotNil()
-	_, err = f.Create("", "svc")
+	_, err = f.NewLimiter("", "svc")
 	assert.Error(t, err).NotNil()
 }
 

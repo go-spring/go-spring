@@ -3,7 +3,6 @@ module go-spring.org/starter-elasticsearch/example-otel
 go 1.26.1
 
 require (
-	github.com/elastic/go-elasticsearch/v8 v8.19.6
 	go-spring.org/log v0.1.4
 	go-spring.org/spring v1.3.4
 	go-spring.org/starter-elasticsearch v1.3.4
@@ -18,6 +17,7 @@ require (
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/elastic/elastic-transport-go/v8 v8.9.0 // indirect
+	github.com/elastic/go-elasticsearch/v8 v8.19.6 // indirect
 	github.com/expr-lang/expr v1.17.8 // indirect
 	github.com/go-logr/logr v1.4.4 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
@@ -25,7 +25,6 @@ require (
 	github.com/gopherjs/gopherjs v1.20.2 // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.29.0 // indirect
 	github.com/jtolds/gls v4.20.0+incompatible // indirect
-	github.com/klauspost/compress v1.19.2 // indirect
 	github.com/magiconair/properties v1.8.10 // indirect
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
 	github.com/pelletier/go-toml v1.9.5 // indirect

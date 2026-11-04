@@ -144,11 +144,11 @@ func build(ctx context.Context, c Config, center *governance.Runtime) (gormcore.
 	useDiscovery := center.UsesDiscovery(c.ServiceName)
 	var conn *discoveryConn
 	if useDiscovery {
-		backend, _ := center.Discovery().Get(c.Discovery)
+		backend, _ := center.Directory.Get(c.Discovery)
 		if backend == nil {
 			return gormcore.Spec{}, errutil.Explain(nil, "gorm mysql: instance routes by service-name but cites discovery backend %q, which names no bean", c.Discovery)
 		}
-		conn, err = newDiscoveryConn(ctx, c, backend, service, center.Loadbalance())
+		conn, err = newDiscoveryConn(ctx, c, backend, service, center.LoadBalance)
 		if err != nil {
 			log.Error(ctx, log.TagAppDef, err, "gorm mysql build discovery dialer failed")
 			if tlsCloser != nil {

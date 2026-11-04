@@ -20,7 +20,7 @@ import (
 	"context"
 	"errors"
 
-	"go-spring.org/cloud/governance"
+	"go-spring.org/cloud/governance/dataplane/inbound"
 	"go-spring.org/cloud/governance/dataplane/inbound/admission"
 	observability "go-spring.org/cloud/governance/dataplane/inbound/observe"
 	"go-spring.org/cloud/traffic"
@@ -33,7 +33,7 @@ import (
 // (rate limit / bulkhead / fault) before the handler, and one
 // completion after it. It is registered by the starter as "governance" and
 // included in the server's default filter chain.
-func GuardServerFilter(in *governance.Inbound, prop traffic.Propagator) filter.ServerFilter {
+func GuardServerFilter(in *inbound.Inbound, prop traffic.Propagator) filter.ServerFilter {
 	return func(ctx context.Context, req interface{}, next filter.ServerHandleFunc) (interface{}, error) {
 		op := observability.NewServerOperation(ctx, prop, actionName(ctx))
 		var resp interface{}
@@ -43,7 +43,7 @@ func GuardServerFilter(in *governance.Inbound, prop traffic.Propagator) filter.S
 			return e
 		})
 		if err != nil {
-			var ref *governance.Refusal
+			var ref *inbound.Refusal
 			if errors.As(err, &ref) {
 				return nil, refusalError(ref)
 			}
@@ -61,7 +61,7 @@ func actionName(ctx context.Context) string {
 
 // refusalError maps a guard refusal onto tRPC's return codes, so callers that
 // branch on code can tell throttling from an arbitrary handler failure.
-func refusalError(ref *governance.Refusal) error {
+func refusalError(ref *inbound.Refusal) error {
 	switch ref.Verdict() {
 	case admission.VerdictRateLimited, admission.VerdictBulkheadFull:
 		return errs.New(errs.RetServerThrottled, ref.Error())

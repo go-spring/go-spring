@@ -109,7 +109,7 @@ func NewClient(raw influxdb2.Client, transport http.RoundTripper, cfg Config, ce
 	o := &Client{Client: raw, cfg: cfg}
 	o.serviceLabel = label.ServiceLabel("influxdb", cfg.ServerURL)
 	o.exec = center.ExecutorFor("influxdb", o.serviceLabel)
-	o.prop = center.TrafficPropagator()
+	o.prop = center.Traffic
 	// Only the driver's own indirection is swappable; anything else leaves the
 	// resilience transport uninstalled, so the client keeps the
 	// executor on its own write helpers but not on the raw transport.

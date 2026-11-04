@@ -23,49 +23,15 @@ import (
 	"go-spring.org/cloud/governance/dataplane/outbound/chain"
 )
 
-// executor.go is the OUTBOUND seam: [Client] is the entry point a caller (or a
-// custom adapter) fires through, and [faultExecutor] is the [chain.Executor] a
-// client wraps itself in. Both load the authority's published kernel pointer;
-// neither takes its lock on the call path.
-
-// Client is the outbound entry point a caller fires through: it holds the
-// outbound authority and exposes only Fire, so the caller cannot aim a fire at
-// the inbound config or reach the authority's Refresh/Config.
-//
-// Create one with [Manager.NewClient] (a custom adapter driving its own
-// call loop) or implicitly with [Manager.WrapClientExecutor].
-type Client struct {
-	mgr *kfault.Manager
-}
-
-// Fire decides whether one outbound attempt should be set on fire, and applies
-// the configured latency. It is the CLIENT side's entry into the shared sequence
-// — the one [faultExecutor] uses per attempt, and the one a custom adapter that
-// drives its own call loop can use instead of wrapping an executor.
-//
-// It does NOT call anything: the returned error is the "may I proceed?" answer —
-// nil means run the real call, anything else means return it instead (an
-// injected failure, or the context error when the injected latency was cancelled
-// mid-sleep). [kfault.Result] says what happened either way.
-//
-// t is the call being fired at, as the adapter names it. It is the adapter's to
-// BUILD, traffic class included: construct it with [chain.NewOperation] (which
-// records the call's traffic class from the context) or put "traffic" into
-// [kfault.Target.Metadata] by hand. This seam adds nothing — a Target without
-// that entry simply does not match a rule that names match.traffic.
-//
-// The outbound side is fixed by which authority this is, so a caller cannot aim
-// a fire at the inbound config; its inbound counterpart is
-// [go-spring.org/cloud/governance/dataplane/inbound/fault.Server.Fire].
-func (c *Client) Fire(ctx context.Context, t kfault.Target) (kfault.Result, error) {
-	return c.mgr.Fire(ctx, t)
-}
+// executor.go is the OUTBOUND seam: [faultExecutor] is the [chain.Executor] a
+// client wraps itself in. It loads the authority's published kernel pointer and
+// never takes its lock on the call path.
 
 // faultExecutor is the [chain.Executor] [Manager.WrapClientExecutor]
 // returns: an outbound seam over the executor it delegates to.
 type faultExecutor struct {
-	client *Client
-	inner  chain.Executor
+	mgr   *kfault.Manager
+	inner chain.Executor
 }
 
 // WrapClientExecutor returns a chain.Executor that injects faults into fn before
@@ -98,7 +64,7 @@ type faultExecutor struct {
 // inner must be non-nil: every caller builds it through the
 // resilience/observability stack (never nil).
 func (m *Manager) WrapClientExecutor(inner chain.Executor) chain.Executor {
-	return &faultExecutor{client: m.NewClient(), inner: inner}
+	return &faultExecutor{mgr: m.Manager, inner: inner}
 }
 
 // Execute wraps fn so each attempt is faulted per the authority's current kernel
@@ -120,7 +86,7 @@ func (e *faultExecutor) Execute(ctx context.Context, call chain.Operation, rec *
 		Metadata: call.Request.Metadata,
 	}
 	return e.inner.Execute(ctx, call, rec, func(attemptCtx context.Context) error {
-		d, err := e.client.Fire(attemptCtx, t)
+		d, err := e.mgr.Fire(attemptCtx, t)
 		if d.Fired() {
 			// The record is CALL-level (one Recorder per call, shared by every
 			// attempt), so the write must still happen per attempt: a first attempt

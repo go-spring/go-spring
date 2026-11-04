@@ -14,237 +14,242 @@
  * limitations under the License.
  */
 
-// token_bucket.go is the token-bucket counter: the default rate limiter,
-// refilling continuously and (optionally) ramping in from a cold start.
+// token_bucket.go is the token-bucket counter: the default rate limiter, a
+// port of Guava's SmoothRateLimiter (both SmoothBursty and SmoothWarmingUp).
+// Permits are granted at the FRONT of the pipeline while each charge's cost is
+// appended to the BACK — a request pays for its predecessor, never for itself
+// — and warm-up is Guava's stored-permit model: the bucket cools while idle
+// and permit prices fall along a trapezoid as traffic drains it.
 
 package ratelimit
 
 import (
 	"context"
+	"math"
 	"sync"
 	"time"
 
 	"go-spring.org/stdlib/timeutil"
 )
 
-// tokenBucket is a minimal, dependency-free rate limiter. Tokens refill
-// continuously at rate per second up to burst. With a warm-up period set, the
-// bucket starts cold and its CAPACITY ramps from burst/coldFactor up to burst
-// over the period — the cold-start approximation of sentinel's WarmUp flow
-// rule: refilling still runs at the full rate, so throughput is bounded by a
-// growing ceiling rather than a growing refill.
+// tokenBucket is a minimal, dependency-free rate limiter. Fresh permits are
+// minted at rate per second; up to maxPermits stored permits may sit in the
+// bucket as a free stockpile. With a warm-up period set, the bucket starts
+// cold (full) and stored permits above thresholdPermits cost extra wait on a
+// trapezoid from coldInterval down to stableInterval — the Guava/Sentinel
+// cold-start model, refilling at a pace that takes warmUp to rebuild the whole
+// stockpile.
+//
+// reserveAt is the pipeline's tail, not the current time: it is when the queue
+// of reserved charges runs dry, and it doubles as the regrowth reference — the
+// stockpile only rebuilds while reserveAt lies in the past.
 type tokenBucket struct {
-	mu         sync.Mutex
-	rate       float64   // tokens added per second
-	burst      float64   // capacity, and the initial token count
-	tokens     float64   // current balance; negative while reservations queue
-	lastRefill time.Time // the instant tokens was last advanced
+	mu               sync.Mutex
+	rate             float64   // fresh permits per second; the sustained pace
+	stableInterval   float64   // seconds per fresh permit at the steady pace
+	maxPermits       float64   // stockpile capacity; derived from warmUp when set
+	thresholdPermits float64   // warm/cold boundary in stored permits (== maxPermits when warm-up is off)
+	coldInterval     float64   // seconds per permit at the coldest point (== stableInterval when off)
+	slope            float64   // seconds per permit of altitude above the threshold (0 when off)
+	cooldownInterval float64   // seconds per stored permit while the stockpile rebuilds
+	storedPermits    float64   // current stockpile, in [0, maxPermits]; never goes negative
+	reserveAt        time.Time // when the pipeline runs dry; the wait queue lives here; zero until first use
 
-	// warm-up state; warmUp <= 0 disables the ramp and cap stays at burst.
-	warmUp       time.Duration // how long the ramp-in takes
-	coldCapacity float64       // capacity at t=0 (burst/coldFactor)
-	rampStarted  time.Time     // when the ramp began
-
-	// policy and configured are driven by [tokenBucket.Allow]: the first call
-	// materializes the bucket from the rule, later ones reconfigure it in place.
-	// [Provider] implementations return one unconfigured; that is the only way a
-	// bucket is created.
-	policy     Policy
-	configured bool
+	// policy is driven by [tokenBucket.Allow]: the first call materializes the
+	// bucket from the rule, later ones reconfigure it in place. [Provider]
+	// implementations return one unconfigured; that is the only way a bucket is
+	// created.
+	policy Policy
 }
 
 // Allow charges n units under policy, materializing the bucket on the first
-// call and reconfiguring it in place whenever the rule changes.
+// call and reconfiguring the existing state whenever the rule changes.
 func (b *tokenBucket) Allow(ctx context.Context, policy Policy, n int) (bool, error) {
 	if policy.RateLimit <= 0 || n <= 0 {
 		return true, nil
 	}
 
+	// One clock read per call: configuration, the reservation and the wait all
+	// measure from this instant.
 	b.mu.Lock()
+	now := time.Now()
 	switch {
-	case !b.configured:
-		b.configure(policy, time.Now())
+	case b.reserveAt.IsZero():
+		b.configure(policy, now)
 	case b.policy != policy:
-		b.reconfigure(policy, time.Now())
+		b.reconfigure(policy, now)
 	}
 	b.policy = policy
 	b.mu.Unlock()
 
 	// Charge outside mu: a bucket may queue for up to policy.MaxWait, and
 	// holding the state lock while sleeping would serialize every caller.
-	return b.charge(ctx, float64(n), policy.MaxWait), nil
+	return b.charge(ctx, float64(n), policy.MaxWait, now), nil
 }
 
-// charge consumes n tokens, waiting up to maxWait (and no longer than ctx
-// allows) when the bucket is momentarily empty. maxWait 0 is the immediate
-// allow/reject decision.
+// charge takes n permits, waiting up to maxWait for its turn. Whether the
+// caller can afford the wait is not the bucket's concern: cancellation is left
+// to Sleep, which refunds a reservation that never matures. now is the call's single clock read: the reservation
+// and the wait both measure from it. Following Guava, a charge is granted at
+// the current head of the pipeline — it never waits for its own cost — and the
+// wait it owes is appended to the tail for whoever comes next. A false return
+// means the head was further away than the deadline allowed, and nothing
+// changed.
 //
-// The wait is reserved, not polled: the tokens are deducted up front (going
-// negative as a reservation), so concurrent waiters queue behind each other instead of
-// waking periodically to race for the same refill. A false return means no
-// token was obtained (deadline exceeded or ctx done), and the reservation is
-// refunded. Requests for more than the bucket can ever hold (n > burst) are
-// refused immediately.
-func (b *tokenBucket) charge(ctx context.Context, n float64, maxWait time.Duration) bool {
-	if n <= 0 {
-		return true
-	}
+// The wait is reserved, not polled: the queue is reserveAt, so concurrent
+// waiters line up on the time axis instead of waking periodically to race for
+// the same refill. A charge whose sleep is cancelled refunds both the permits
+// it consumed and the wait it queued.
+func (b *tokenBucket) charge(ctx context.Context, n float64, maxWait time.Duration, now time.Time) bool {
 	b.mu.Lock()
-	now := time.Now()
-	b.refill(now)
-	if b.tokens >= n {
-		b.tokens -= n
-		b.mu.Unlock()
-		return true
-	}
-	if maxWait <= 0 || b.rate <= 0 || n > b.burst {
+	b.resync(now)
+	granted := b.reserveAt // this request rides the head of the queue
+	if granted.After(now.Add(maxWait)) {
 		b.mu.Unlock()
 		return false
 	}
-	wait := b.waitTime(n, now)
-	deadline := now.Add(maxWait)
-	if ctxDeadline, ok := ctx.Deadline(); ok && ctxDeadline.Before(deadline) {
-		deadline = ctxDeadline
+	spend := math.Min(b.storedPermits, n)
+	cost := b.storedCost(spend) + (n-spend)*b.stableInterval
+	if b.reserveAt.Before(now) {
+		b.reserveAt = now
 	}
-	if now.Add(wait).After(deadline) {
-		b.mu.Unlock()
-		return false
-	}
-	b.tokens -= n // reserve now: later waiters queue behind this one
+	b.reserveAt = b.reserveAt.Add(seconds(cost)) // the tail moves by what this charge owes
+	b.storedPermits -= spend
+	rate, maxPermits := b.rate, b.maxPermits // the geometry the reservation was made under
 	b.mu.Unlock()
 
-	if wait <= 0 {
-		return true
-	}
-	if !timeutil.Sleep(ctx, wait) {
-		// Cancelled or timed out before the reservation matured: refund it.
-		b.refund(n)
-		return false
+	if wait := granted.Sub(now); wait > 0 {
+		if !timeutil.Sleep(ctx, wait) {
+			// Cancelled or timed out before the turn matured: refund it.
+			b.refund(now, cost, spend, rate, maxPermits)
+			return false
+		}
 	}
 	return true
 }
 
-// waitTime is how long n tokens take to become available, accounting for both
-// the refill rate and the growing warm-up ceiling. Callers hold mu and have
-// already refilled.
-func (b *tokenBucket) waitTime(n float64, now time.Time) time.Duration {
-	var seconds float64
-	if b.rate > 0 && b.tokens < n {
-		seconds = (n - b.tokens) / b.rate
-	}
-	if b.warmUp > 0 {
-		if ceiling := b.capacityAt(now); ceiling < n {
-			var readyAt time.Duration
-			if n >= b.burst || b.burst <= b.coldCapacity {
-				readyAt = b.warmUp
-			} else {
-				progress := (n - b.coldCapacity) / (b.burst - b.coldCapacity)
-				readyAt = time.Duration(progress * float64(b.warmUp))
-			}
-			if remaining := readyAt - now.Sub(b.rampStarted); remaining.Seconds() > seconds {
-				seconds = remaining.Seconds()
-			}
-		}
-	}
-	if seconds <= 0 {
+// seconds converts a wait in seconds to a [time.Duration].
+func seconds(s float64) time.Duration {
+	return time.Duration(s * float64(time.Second))
+}
+
+// storedCost is the wait owed for consuming take stored permits: free when
+// warm-up is off; along the trapezoid (averaging the prices at both ends)
+// above thresholdPermits and at the stable price below it. As in Guava, the
+// trapezoid applies to any positive altitude above the threshold, including a
+// fraction of a permit. Callers hold mu and pass take against the CURRENT
+// stockpile.
+func (b *tokenBucket) storedCost(take float64) float64 {
+	if b.slope == 0 { // no warm-up: stored permits are free
 		return 0
 	}
-	return time.Duration(seconds * float64(time.Second))
-}
-
-// refund returns a reservation that never matured, leaving the bucket exactly
-// where a refill would have put it.
-func (b *tokenBucket) refund(n float64) {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	now := time.Now()
-	b.refill(now)
-	b.tokens += n
-	if ceiling := b.capacityAt(now); b.tokens > ceiling {
-		b.tokens = ceiling
+	var seconds float64
+	if above := b.storedPermits - b.thresholdPermits; above > 0.0 {
+		cold := math.Min(above, take)
+		length := b.permitsToTime(above) + b.permitsToTime(above-cold)
+		seconds = cold * length / 2
+		take -= cold
 	}
+	return seconds + take*b.stableInterval
 }
 
-// configure is the unconfigured → configured transition: the bucket takes
-// the policy's rate and full initial capacity, and starts its warm-up ramp when
-// the policy asks for one. Callers hold mu.
+// permitsToTime is the price in seconds of the stored permit altitude seats
+// above the threshold. Callers hold mu.
+func (b *tokenBucket) permitsToTime(above float64) float64 {
+	return above*b.slope + b.stableInterval
+}
+
+// configure is the unconfigured → configured transition: the bucket takes the
+// policy's pace and shape, and starts empty — or, with warm-up, full and cold.
+// Callers hold mu.
 func (b *tokenBucket) configure(policy Policy, now time.Time) {
 	b.rate = policy.RateLimit
-	b.burst = float64(burstFor(policy))
-	b.lastRefill = now
-	b.tokens = b.burst
-	b.startWarmUp(policy.WarmUp, policy.ColdFactor, now)
-	b.configured = true
+	b.stableInterval = 1 / b.rate
+	b.reshape(policy)
+	b.storedPermits = 0
+	if policy.WarmUp > 0 {
+		b.storedPermits = b.maxPermits // a warming bucket starts cold
+	}
+	b.reserveAt = now
 }
 
-// startWarmUp enters the cold-start ramp: capacity begins at
-// burst/coldFactor and grows to burst over warmUp. A non-positive warmUp leaves
-// the bucket at full capacity. Callers hold mu.
-func (b *tokenBucket) startWarmUp(warmUp time.Duration, coldFactor int, now time.Time) {
-	b.warmUp = 0
-	b.coldCapacity = 0
-	if warmUp <= 0 {
+// reconfigure applies a changed rule to the existing state: the stockpile
+// advances under its old geometry, then keeps its level (scaled to the new
+// capacity) while the pace and shape change. Pending queue debt is rescaled by
+// the pace ratio, so charges that queue AFTER the change line up under the new
+// pace; charges already sleeping keep their original turn and are not woken.
+// Callers hold mu.
+func (b *tokenBucket) reconfigure(policy Policy, now time.Time) {
+	head := now
+	if b.reserveAt.After(head) {
+		head = b.reserveAt // resync up to the queue head
+	}
+	b.resync(head)
+	oldMax, oldRate := b.maxPermits, b.rate
+	b.rate = policy.RateLimit
+	b.stableInterval = 1 / b.rate
+	b.reshape(policy)
+	b.storedPermits = math.Min(b.storedPermits*b.maxPermits/oldMax, b.maxPermits)
+	if pending := b.reserveAt.Sub(now); pending > 0 {
+		b.reserveAt = now.Add(seconds(pending.Seconds() * oldRate / b.rate))
+	}
+}
+
+// resync advances the stockpile to now: while the pipeline has been idle,
+// stored permits regrow at one per cooldownInterval seconds, up to maxPermits.
+// Callers hold mu.
+func (b *tokenBucket) resync(now time.Time) {
+	if delta := now.Sub(b.reserveAt); delta > 0 {
+		b.storedPermits = math.Min(b.maxPermits, b.storedPermits+delta.Seconds()/b.cooldownInterval)
+		b.reserveAt = now
+	}
+}
+
+// reshape computes the stockpile geometry from the policy: burst-sized and
+// free without warm-up; with warm-up, maxPermits and thresholdPermits are
+// derived from the ramp and coldFactor (Guava's construction) and burst is
+// ignored. Callers hold mu.
+func (b *tokenBucket) reshape(policy Policy) {
+	b.slope = 0
+	b.coldInterval = b.stableInterval
+	if policy.WarmUp <= 0 {
+		b.maxPermits = float64(burstFor(policy))
+		b.thresholdPermits = b.maxPermits
+		b.cooldownInterval = b.stableInterval
 		return
 	}
+	coldFactor := policy.ColdFactor
 	if coldFactor <= 1 {
 		coldFactor = 3
 	}
-	b.warmUp = warmUp
-	b.coldCapacity = b.burst / float64(coldFactor)
-	b.tokens = b.coldCapacity
-	b.rampStarted = now
+	warmUp := policy.WarmUp.Seconds()
+	b.coldInterval = b.stableInterval * float64(coldFactor)
+	b.thresholdPermits = 0.5 * warmUp / b.stableInterval
+	b.maxPermits = b.thresholdPermits + 2*warmUp/(b.stableInterval+b.coldInterval)
+	b.slope = (b.coldInterval - b.stableInterval) / (b.maxPermits - b.thresholdPermits)
+	b.cooldownInterval = warmUp / b.maxPermits
 }
 
-// reconfigure applies a changed rule to the existing tokens: the bucket
-// advances to now under its old parameters, then takes the new rate, burst and
-// warm-up settings. Counts are preserved; only a burst decrease clamps them.
-// Callers hold mu.
-func (b *tokenBucket) reconfigure(policy Policy, now time.Time) {
-	b.refill(now)
-	b.rate = policy.RateLimit
-	b.burst = float64(burstFor(policy))
-	if policy.WarmUp > 0 {
-		coldFactor := policy.ColdFactor
-		if coldFactor <= 1 {
-			coldFactor = 3
+// refund returns a reservation that never matured: the stockpile gets its
+// permits back and the queue loses the wait this charge appended. Later
+// reservations keep their (now closer) turns. now is the call's single clock
+// read, so the refund is applied as of the request's own instant. rate and
+// maxPermits are the geometry the reservation was made under: if the rule
+// changed while the caller slept, the debt is rescaled to the new geometry
+// first — mirroring what reconfigure itself did to the state.
+func (b *tokenBucket) refund(now time.Time, cost, spend, rate, maxPermits float64) {
+	cost *= rate / b.rate
+	spend *= maxPermits / b.maxPermits
+
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.resync(now)
+	b.storedPermits = math.Min(b.storedPermits+spend, b.maxPermits)
+	if b.reserveAt.After(now) {
+		if rolled := b.reserveAt.Add(-seconds(cost)); rolled.After(now) {
+			b.reserveAt = rolled
+		} else {
+			b.reserveAt = now
 		}
-		if b.warmUp <= 0 {
-			b.rampStarted = now // a newly enabled warm-up starts now
-		}
-		b.warmUp = policy.WarmUp
-		b.coldCapacity = b.burst / float64(coldFactor)
-	} else {
-		b.warmUp = 0
-		b.coldCapacity = 0
 	}
-	if ceiling := b.capacityAt(now); b.tokens > ceiling {
-		b.tokens = ceiling
-	}
-}
-
-// capacityAt returns the bucket's capacity at now — full burst, or the ramped-in
-// ceiling while a warm-up period is in progress. Callers hold mu.
-func (b *tokenBucket) capacityAt(now time.Time) float64 {
-	if b.warmUp <= 0 {
-		return b.burst
-	}
-	elapsed := now.Sub(b.rampStarted)
-	if elapsed >= b.warmUp {
-		return b.burst
-	}
-	progress := float64(elapsed) / float64(b.warmUp)
-	return b.coldCapacity + (b.burst-b.coldCapacity)*progress
-}
-
-// refill advances the bucket to now and caps it at the current ceiling.
-// Callers hold mu. tokens may remain negative: charge reservations are taken
-// against future refills.
-func (b *tokenBucket) refill(now time.Time) {
-	if b.rate > 0 {
-		b.tokens += now.Sub(b.lastRefill).Seconds() * b.rate
-	}
-	if ceiling := b.capacityAt(now); b.tokens > ceiling {
-		b.tokens = ceiling
-	}
-	b.lastRefill = now
 }

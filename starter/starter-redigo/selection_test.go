@@ -30,7 +30,7 @@ import (
 	"go-spring.org/cloud/governance/capability/ratelimit"
 	admissionplane "go-spring.org/cloud/governance/controlplane/admission"
 	loadbalanceplane "go-spring.org/cloud/governance/controlplane/loadbalance"
-	"go-spring.org/cloud/governance/controlplane/source"
+	"go-spring.org/cloud/governance/capability/source"
 	serverfault "go-spring.org/cloud/governance/dataplane/inbound/fault"
 	clientfault "go-spring.org/cloud/governance/dataplane/outbound/fault"
 	"go-spring.org/cloud/governance/dataplane/outbound/resilience"
@@ -48,10 +48,18 @@ func TestNewPoolChainRebuildsFromScratch(t *testing.T) {
 	disc := discovery.NewManager(map[string]discovery.Discovery{
 		"static": discovery.NewStaticDiscovery(discovery.Endpoint{Addr: "127.0.0.1:6379", Healthy: true, Weight: 1}),
 	})
+	fact, err := ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	fact2, err := ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()})
+	if err != nil {
+		t.Fatal(err)
+	}
 	ctr := &governance.Runtime{
-		Resilience:  resilience.NewManager(resilience.NewDefaultDriver(), ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()})),
+		Resilience:  resilience.NewManager(resilience.NewDefaultDriver(), fact),
 		LoadBalance: mgr,
-		Admission:   admission.NewManager(ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()})),
+		Admission:   admission.NewManager(fact2),
 		ClientFault: clientfault.NewManager(),
 		ServerFault: serverfault.NewManager(),
 		Traffic:     traffic.NewDefaultPropagator(traffic.DefaultBinding()),
@@ -98,10 +106,18 @@ func TestNewPoolChainRebuildsFromScratch(t *testing.T) {
 // candidate set to choose from: the pool dials the configured Addr directly and
 // carries no chain.
 func TestNewPoolWithoutDiscoveryHasNoChain(t *testing.T) {
+	fact, err := ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	fact2, err := ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()})
+	if err != nil {
+		t.Fatal(err)
+	}
 	ctr := &governance.Runtime{
-		Resilience:  resilience.NewManager(resilience.NewDefaultDriver(), ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()})),
+		Resilience:  resilience.NewManager(resilience.NewDefaultDriver(), fact),
 		LoadBalance: loadbalance.NewManager(loadbalance.NewFactory([]loadbalance.Provider{loadbalance.NewBuiltinProvider()})),
-		Admission:   admission.NewManager(ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()})),
+		Admission:   admission.NewManager(fact2),
 		ClientFault: clientfault.NewManager(),
 		ServerFault: serverfault.NewManager(),
 		Directory:   discovery.NewManager(nil),

@@ -213,9 +213,8 @@ consistent-hash:
   replicas: 200
 outlier-threshold: 5
 selector:                 # 候选集收窄，发生在策略挑点之前
-  - key: version
-    kind: prefix
-    value: v2.
+  version:
+    prefix: v2.
 ```
 
 selector 是端点收窄**动态的一半**：由 `Pool.Pick` 用 `discovery.FilterByMetadata`

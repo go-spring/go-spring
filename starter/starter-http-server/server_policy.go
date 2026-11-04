@@ -21,6 +21,7 @@ import (
 	"net/http"
 
 	"go-spring.org/cloud/governance"
+	"go-spring.org/cloud/governance/dataplane/inbound"
 	"go-spring.org/cloud/governance/dataplane/inbound/admission"
 	observability "go-spring.org/cloud/governance/dataplane/inbound/observe"
 	"go-spring.org/cloud/traffic"
@@ -62,20 +63,20 @@ func ServerPolicy(label string, rt *governance.Runtime) (Middleware, error) {
 	if err != nil {
 		return nil, err
 	}
-	return serverPolicyWith(in, rt.TrafficPropagator()), nil
+	return serverPolicyWith(in, rt.Traffic), nil
 }
 
 // serverPolicyWith builds the filter over an already-built inbound object. It is
 // the seam the tests build on, and keeps the object construction out of the filter
 // itself. The split form is used so the handler's response half can be recorded.
-func serverPolicyWith(in *governance.Inbound, prop traffic.Propagator) Middleware {
+func serverPolicyWith(in *inbound.Inbound, prop traffic.Propagator) Middleware {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			sw := &statusWriter{ResponseWriter: w}
 
 			h, err := in.Before(r.Context(), operation(r, prop))
 			if err != nil {
-				var ref *governance.Refusal
+				var ref *inbound.Refusal
 				if errors.As(err, &ref) && !sw.written {
 					http.Error(w, ref.Error(), httpStatusFor(ref))
 				}
@@ -109,7 +110,7 @@ func serverPolicyWith(in *governance.Inbound, prop traffic.Propagator) Middlewar
 // rate/bulkhead rejections are 429; an injected fault follows the class the rule
 // declared — a business failure (the caller's mistake) is 400, anything else is
 // 503.
-func httpStatusFor(ref *governance.Refusal) int {
+func httpStatusFor(ref *inbound.Refusal) int {
 	if ref.Verdict() == admission.VerdictFaultInjected {
 		if ref.Fault().Business() {
 			return http.StatusBadRequest

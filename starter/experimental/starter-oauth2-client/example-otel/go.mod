@@ -11,11 +11,6 @@ require (
 )
 
 require (
-	github.com/fsnotify/fsnotify v1.9.0 // indirect
-	github.com/klauspost/compress v1.19.2 // indirect
-)
-
-require (
 	github.com/antlr4-go/antlr/v4 v4.13.1 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/bytedance/mockey v1.4.6 // indirect
@@ -79,4 +74,3 @@ replace go-spring.org/starter-oauth2-client => ../
 replace go-spring.org/starter-otel => ../../../starter-otel
 
 replace go-spring.org/starter-actuator => ../../../starter-actuator
-

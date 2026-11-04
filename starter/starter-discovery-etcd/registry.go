@@ -22,6 +22,7 @@ import (
 	"sync"
 	"time"
 
+	"go-spring.org/cloud/discovery"
 	"go-spring.org/cloud/governance/controlplane/registration"
 	"go-spring.org/log"
 	"go-spring.org/stdlib/errutil"
@@ -78,7 +79,7 @@ type etcdRegistry struct {
 type hold struct {
 	leaseID clientv3.LeaseID
 	cancel  context.CancelFunc
-	reg     registration.Instance
+	reg     discovery.Instance
 
 	// done is closed by stop to end the keep-alive drain and the re-register
 	// retry loop; stopOnce makes stop idempotent (Deregister + re-Register).
@@ -87,7 +88,7 @@ type hold struct {
 }
 
 // newHold builds a hold for reg with its stop signal wired up.
-func newHold(reg registration.Instance) *hold {
+func newHold(reg discovery.Instance) *hold {
 	return &hold{reg: reg, done: make(chan struct{})}
 }
 
@@ -143,7 +144,7 @@ func newEtcdRegistry(c EtcdConfig, cli registryKV, obs *registration.Observer) (
 
 // instanceID returns the instance id within the service: the caller-supplied ID,
 // or a stable one derived from the service name and advertised address.
-func instanceID(reg registration.Instance) string {
+func instanceID(reg discovery.Instance) string {
 	if reg.ID != "" {
 		return reg.ID
 	}
@@ -152,7 +153,7 @@ func instanceID(reg registration.Instance) string {
 
 // keyFor returns the etcd key an instance is written under: prefix + service +
 // "/" + instance id.
-func (r *etcdRegistry) keyFor(reg registration.Instance) string {
+func (r *etcdRegistry) keyFor(reg discovery.Instance) string {
 	return r.keyPrefix + reg.ServiceName + "/" + instanceID(reg)
 }
 
@@ -196,7 +197,7 @@ func normalizeWeight(w int) int {
 // restart, lease lost), re-registers with backoff so the key never silently
 // vanishes. Registering the same instance again refreshes it: the previous
 // lease is revoked first.
-func (r *etcdRegistry) Register(ctx context.Context, reg registration.Instance) error {
+func (r *etcdRegistry) Register(ctx context.Context, reg discovery.Instance) error {
 	if err := errutil.RequireField("discovery-etcd", "addr", reg.Addr); err != nil {
 		return err
 	}
@@ -364,7 +365,7 @@ func (r *etcdRegistry) watchKeepAlive(key string, h *hold, ka <-chan *clientv3.L
 // no lease is granted, revoked or re-kept-alive, so the instance never
 // disappears from discovery mid-update and watchers simply see a new value
 // for the same key. It fails if reg was never registered through Register.
-func (r *etcdRegistry) UpdateWeight(ctx context.Context, reg registration.Instance, weight int) error {
+func (r *etcdRegistry) UpdateWeight(ctx context.Context, reg discovery.Instance, weight int) error {
 	key := r.keyFor(reg)
 	r.mu.Lock()
 	h, ok := r.holds[key]
@@ -409,7 +410,7 @@ func (r *etcdRegistry) UpdateWeight(ctx context.Context, reg registration.Instan
 
 // Deregister stops the keep-alive and revokes the lease, which deletes the key.
 // It is idempotent: deregistering an instance that is not registered is a no-op.
-func (r *etcdRegistry) Deregister(ctx context.Context, reg registration.Instance) error {
+func (r *etcdRegistry) Deregister(ctx context.Context, reg discovery.Instance) error {
 	key := r.keyFor(reg)
 	r.mu.Lock()
 	h, ok := r.holds[key]

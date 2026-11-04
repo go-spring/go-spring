@@ -48,7 +48,7 @@ type Client struct {
 // provided by cloud/governance, whose control-plane roots arm its authorities, so it
 // is always present when the module is linked.
 func NewClient(center *governance.Runtime) (*Client, error) {
-	return NewClientFrom(center.Discovery(), center.Loadbalance()), nil
+	return NewClientFrom(center.Directory, center.LoadBalance), nil
 }
 
 // NewClientFrom builds a dialer from authorities a caller already holds — the

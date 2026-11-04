@@ -107,7 +107,7 @@ func Open(dialector gorm.Dialector, pool PoolConfig, opt Options) (*DB, error) {
 	// Operation.
 	var opFor func(*gorm.DB, string) chain.Operation
 	if o.observeEnabled {
-		plugin := gormobserve.NewPlugin(o.engine, opt.Center.TrafficPropagator())
+		plugin := gormobserve.NewPlugin(o.engine, opt.Center.Traffic)
 		if err := o.DB.Use(plugin); err != nil {
 			_ = closeSQL(db)
 			return nil, errutil.Explain(err, "gorm observe")

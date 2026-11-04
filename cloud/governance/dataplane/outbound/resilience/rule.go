@@ -17,6 +17,7 @@
 package resilience
 
 import (
+	"fmt"
 	"sort"
 	"strings"
 
@@ -46,11 +47,11 @@ type specificity struct {
 	matchLen  int
 }
 
-func specOf(a chain.ActionMatch, m matcher.ExactMap) specificity {
+func specOf(a chain.ActionMatch, matchLen int) specificity {
 	if isServiceScope(a) {
 		return specificity{rank: 0}
 	}
-	return specificity{rank: 2, exact: a.Exact != "", prefixLen: len(a.Prefix), matchLen: len(m)}
+	return specificity{rank: 2, exact: a.Exact != "", prefixLen: len(a.Prefix), matchLen: matchLen}
 }
 
 func (s specificity) betterThan(o specificity) bool {
@@ -176,7 +177,7 @@ func validateNoAmbiguity(rules []LimitsRule) error {
 		a := rules[i]
 		for j := 0; j < i; j++ {
 			b := rules[j]
-			if a.Service != b.Service || specOf(a.Action, a.Match) != specOf(b.Action, b.Match) {
+			if a.Service != b.Service || specOf(a.Action, len(a.Match)) != specOf(b.Action, len(b.Match)) {
 				continue
 			}
 			if actionsCanCoMatch(a.Action, b.Action) && matchCanCoMatch(a.Match, b.Match) {
@@ -204,38 +205,66 @@ func actionsCanCoMatch(a, b chain.ActionMatch) bool {
 	}
 }
 
-func matchCanCoMatch(a, b matcher.ExactMap) bool {
-	for k, v := range a {
-		if bv, ok := b[k]; ok && bv != v {
+// matchCanCoMatch reports whether two metadata matches can both hold for one
+// call: they cannot only when they name the same key with conditions no value
+// satisfies (overlap decides that pairwise).
+func matchCanCoMatch(a, b map[string]matcher.StringMatch) bool {
+	for k, ma := range a {
+		if mb, ok := b[k]; ok && !overlap(ma, mb) {
 			return false
 		}
 	}
 	return true
 }
 
-// ruleIdentity renders a rule's selector as a stable string for the duplicate
-// check.
-func ruleIdentity(service string, action chain.ActionMatch, match matcher.ExactMap) string {
-	return service + "\x00" + action.Exact + "\x00" + action.Prefix + "\x00" + canonicalSelector(match)
+// overlap reports whether some value satisfies both conditions. It is exact
+// for every op pair: exact pins the value, while the containment ops can
+// always be satisfied together by splicing their operands, so only exact and a
+// mismatched exact rule a pair out.
+func overlap(a, b matcher.StringMatch) bool {
+	switch {
+	case a.Exact != "" && b.Exact != "":
+		return a.Exact == b.Exact
+	case a.Exact != "":
+		return holds(b, a.Exact)
+	case b.Exact != "":
+		return holds(a, b.Exact)
+	default:
+		return true
+	}
 }
 
-// canonicalSelector renders a selector in key order, so two selectors that name
-// the same keys and values compare equal however their maps were laid out.
-func canonicalSelector(s matcher.ExactMap) string {
-	if len(s) == 0 {
-		return ""
+// holds reports whether v satisfies m, over the exported fields only (the
+// fail-closed default lives in the matcher package; here every condition has
+// passed validation, so exactly one op is set).
+func holds(m matcher.StringMatch, v string) bool {
+	switch {
+	case m.Exact != "":
+		return v == m.Exact
+	case m.Prefix != "":
+		return strings.HasPrefix(v, m.Prefix)
+	case m.Suffix != "":
+		return strings.HasSuffix(v, m.Suffix)
+	default:
+		return strings.Contains(v, m.Contains)
 	}
-	keys := make([]string, 0, len(s))
-	for k := range s {
+}
+
+// ruleIdentity renders a rule's selector as a stable string for the duplicate
+// check. The match renders in key order, so identical selectors compare equal
+// however their maps were laid out.
+func ruleIdentity(service string, action chain.ActionMatch, match map[string]matcher.StringMatch) string {
+	id := service + "\x00" + action.Exact + "\x00" + action.Prefix
+	if len(match) == 0 {
+		return id
+	}
+	keys := make([]string, 0, len(match))
+	for k := range match {
 		keys = append(keys, k)
 	}
 	sort.Strings(keys)
-	var b strings.Builder
 	for _, k := range keys {
-		b.WriteString(k)
-		b.WriteByte('=')
-		b.WriteString(s[k])
-		b.WriteByte('&')
+		id += "\x00" + fmt.Sprintf("%s=%+v", k, match[k])
 	}
-	return b.String()
+	return id
 }

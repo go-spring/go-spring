@@ -61,7 +61,11 @@ func main() {
 // is recovered transparently within the retry budget while the (generous) limit
 // and breaker stay closed.
 func demoComposedRetry(driver resilience.Driver) {
-	m := resilience.NewManager(driver, ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()}))
+	fact, err := ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()})
+	if err != nil {
+		fail("ratelimit factory: %v", err)
+	}
+	m := resilience.NewManager(driver, fact)
 	if err := m.ApplyLimits(resilience.LimitsSettings{Default: resilience.Limits{
 		Timeout: time.Second,
 		Retry:   chain.RetryPolicy{MaxRetries: 3},

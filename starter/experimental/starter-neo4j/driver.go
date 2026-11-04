@@ -63,7 +63,7 @@ import (
 //
 // The entry's ${discovery} label rides on the config (c.Discovery, already
 // carrying the family default): the driver resolves the backend it names from
-// center.Discovery() itself, failing construction when an entry routes by
+// center.Directory itself, failing construction when an entry routes by
 // service-name and the label names no bean.
 type Driver interface {
 	CreateClient(ctx context.Context, c Config, center *governance.Runtime) (*Client, error)
@@ -75,7 +75,7 @@ type DefaultDriver struct{}
 // CreateClient creates a new Neo4j client based on the provided configuration.
 //
 // When in-process discovery applies (a service name is set and the process is not in mesh mode), the discovery backend the
-// entry's ${discovery} label names is resolved from center.Discovery() and one
+// entry's ${discovery} label names is resolved from center.Directory and one
 // endpoint is picked, its address spliced into the URI host (the seed); the
 // same resolver feeds the driver's AddressResolver hook so a routing client can
 // re-find the cluster. An entry routed by service-name that cites no existing
@@ -87,7 +87,7 @@ func (DefaultDriver) CreateClient(ctx context.Context, c Config, center *governa
 	useDiscovery := center.UsesDiscovery(c.ServiceName)
 	var backend discovery.Discovery
 	if useDiscovery {
-		backend, _ = center.Discovery().Get(c.Discovery)
+		backend, _ = center.Directory.Get(c.Discovery)
 		uri, err := resolveURI(ctx, c, backend)
 		if err != nil {
 			return nil, err

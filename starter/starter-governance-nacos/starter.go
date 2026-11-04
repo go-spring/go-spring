@@ -17,7 +17,7 @@
 // Package StarterGovernanceNacos adapts Nacos as a governance rule source: it
 // listens on one Nacos dataId holding the selection rule document and pushes
 // every published version into the selection center through the
-// [go-spring.org/cloud/governance/controlplane/source.Source[loadbalance.Settings]] contract.
+// [go-spring.org/cloud/governance/capability/source.Source[loadbalance.Settings]] contract.
 //
 // It is the Nacos member of the selection-source adapter family — the
 // Sentinel-datasource shape. The rule document is governance's own, not an
@@ -46,7 +46,12 @@ import (
 	"github.com/nacos-group/nacos-sdk-go/v2/common/constant"
 	"github.com/nacos-group/nacos-sdk-go/v2/vo"
 	"go-spring.org/cloud/governance/capability/loadbalance"
-	"go-spring.org/cloud/governance/controlplane/source"
+	// The center that consumes what this source feeds: gs registers beans in
+	// package init(), and Go's import graph is the component scan — without this
+	// import the loadbalance root does not exist in the binary and the source
+	// feeds nobody.
+	_ "go-spring.org/cloud/governance/controlplane/loadbalance"
+	"go-spring.org/cloud/governance/capability/source"
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"

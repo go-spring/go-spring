@@ -240,7 +240,7 @@ type GuardMailer struct {
 // scope by.
 func NewGuardMailer(next InnerMailer, instanceName, host string, center *governance.Runtime) *GuardMailer {
 	label := label.ServiceLabel("mail", instanceName, host)
-	return &GuardMailer{exec: center.ExecutorFor("mail", label), service: label, next: next, prop: center.TrafficPropagator()}
+	return &GuardMailer{exec: center.ExecutorFor("mail", label), service: label, next: next, prop: center.Traffic}
 }
 
 // Release hands releaseRaw to the layer under it, and on the FULL teardown

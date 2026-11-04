@@ -26,8 +26,9 @@ import (
 
 	"go-spring.org/cloud/governance/dataplane/outbound/chain"
 
-	kfault "go-spring.org/cloud/governance/capability/fault"
 	"go-spring.org/cloud/governance/capability/matcher"
+
+	kfault "go-spring.org/cloud/governance/capability/fault"
 	"go-spring.org/cloud/governance/capability/ratelimit"
 	serverfault "go-spring.org/cloud/governance/dataplane/inbound/fault"
 	"go-spring.org/cloud/governance/dataplane/outbound/resilience"
@@ -66,7 +67,11 @@ func (in *fixture) refresh(c configs) {
 // the injector matches its rules by that service.
 func newExec(t *testing.T, service string, cfg any) chain.Executor {
 	t.Helper()
-	m := resilience.NewManager(resilience.NewDefaultDriver(), ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()}))
+	factories, err := ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := resilience.NewManager(resilience.NewDefaultDriver(), factories)
 	arm(t, m, cfg)
 	t.Cleanup(func() { _ = m.Close() })
 	return m.ExecutorFor(service)
@@ -135,7 +140,7 @@ func TestManager_RuleAttribution(t *testing.T) {
 // of it being one.
 func decidedAt(t *testing.T, in *fixture, tgt kfault.Target) kfault.Result {
 	t.Helper()
-	d, _ := in.client.NewClient().Fire(context.Background(), tgt)
+	d, _ := in.client.Fire(context.Background(), tgt)
 	return d
 }
 
@@ -283,7 +288,7 @@ func TestManager_TrafficClassIsPlainMetadata(t *testing.T) {
 	mk := func(class string) chain.Executor {
 		r := kfault.Rule{Name: "traffic", Service: "svc", Rate: 1, Class: kfault.ClassTransient, Error: "generic"}
 		if class != "" {
-			r.MetadataMatch = matcher.ExactMap{"traffic": class}
+			r.MetadataMatch = map[string]matcher.StringMatch{"traffic": {Exact: class}}
 		}
 		in := newFixture(configs{Client: kfault.Config{Rules: []kfault.Rule{r}}})
 		return in.client.WrapClientExecutor(newExec(t, "svc", nil))
@@ -299,14 +304,14 @@ func TestManager_TrafficClassIsPlainMetadata(t *testing.T) {
 	assert.That(t, kfault.IsInjected(all.Execute(context.Background(), op("real"), nil, countFn(new(int32), nil)))).True()
 	assert.That(t, kfault.IsInjected(all.Execute(context.Background(), op("loadtest"), nil, countFn(new(int32), nil)))).True()
 
-	// match.traffic=real: real traffic faulted, load-test passes through.
+	// match.traffic.exact=real: real traffic faulted, load-test passes through.
 	real := mk("real")
 	assert.That(t, kfault.IsInjected(real.Execute(context.Background(), op("real"), nil, countFn(new(int32), nil)))).True()
 	var ltCalls int32
 	assert.Error(t, real.Execute(context.Background(), op("loadtest"), nil, countFn(&ltCalls, nil))).Nil()
 	assert.That(t, atomic.LoadInt32(&ltCalls)).Equal(int32(1)) // fn ran, no fault
 
-	// match.traffic=loadtest: load-test faulted, real passes through.
+	// match.traffic.exact=loadtest: load-test faulted, real passes through.
 	lt := mk("loadtest")
 	assert.That(t, kfault.IsInjected(lt.Execute(context.Background(), op("loadtest"), nil, countFn(new(int32), nil)))).True()
 	var realCalls int32
@@ -379,16 +384,16 @@ func TestFireServer_ServerSideFault(t *testing.T) {
 		Execute(context.Background(), chain.Operation{Service: "svc"}, nil, countFn(new(int32), nil))).Nil()
 	assert.That(t, time.Since(start) >= 50*time.Millisecond).True()
 
-	// match.traffic=loadtest + real call => nothing fires, so the caller proceeds.
+	// match.traffic.exact=loadtest + real call => nothing fires, so the caller proceeds.
 	in2 := newFixture(configs{Server: kfault.Config{Rules: []kfault.Rule{{
 		Name: "loadtest-only", Service: "svc", Rate: 1, Class: kfault.ClassTransient, Error: "generic",
-		MetadataMatch: matcher.ExactMap{"traffic": "loadtest"},
+		MetadataMatch: map[string]matcher.StringMatch{"traffic": {Exact: "loadtest"}},
 	}}}})
 	srv := in2.server.NewServer()
 	_, err = srv.Fire(context.Background(), kfault.Target{Service: "svc", Metadata: map[string]string{"traffic": "real"}})
 	assert.Error(t, err).Nil()
 
-	// match.traffic=loadtest + load-test call => injected.
+	// match.traffic.exact=loadtest + load-test call => injected.
 	_, err = srv.Fire(context.Background(), kfault.Target{Service: "svc", Metadata: map[string]string{"traffic": "loadtest"}})
 	assert.That(t, kfault.IsInjected(err)).True()
 }
@@ -535,7 +540,7 @@ func TestFaultRuleMatchesMetadata(t *testing.T) {
 	in := newFixture(configs{Client: kfault.Config{Rules: []kfault.Rule{{
 		Name:          "acme-only",
 		Service:       "svc",
-		MetadataMatch: map[string]string{"tenant": "acme"},
+		MetadataMatch: map[string]matcher.StringMatch{"tenant": {Exact: "acme"}},
 		Rate:          1,
 	}}}})
 	exec := in.client.WrapClientExecutor(newExec(t, "svc", nil))
@@ -587,7 +592,7 @@ func TestFireServer_RuleMatchesActionAndMetadata(t *testing.T) {
 		Name:          "users-acme",
 		Service:       "gin",
 		ActionMatch:   kfault.ActionMatch{Prefix: "GET /users"},
-		MetadataMatch: map[string]string{"tenant": "acme"},
+		MetadataMatch: map[string]matcher.StringMatch{"tenant": {Exact: "acme"}},
 		Rate:          1,
 	}}}})
 

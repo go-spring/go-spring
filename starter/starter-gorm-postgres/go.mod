@@ -4,7 +4,7 @@ go 1.26.1
 
 require (
 	github.com/jackc/pgx/v5 v5.8.0
-	go-spring.org/spring v1.3.4 // indirect
+	go-spring.org/spring v1.3.4
 	go-spring.org/stdlib v0.1.7
 	gorm.io/driver/postgres v1.6.0
 	gorm.io/gorm v1.31.2
@@ -50,5 +50,11 @@ require go-spring.org/cloud v0.0.0
 replace go-spring.org/cloud => ../../cloud
 
 require go-spring.org/starter-gorm v0.0.0
+
+require (
+	github.com/fsnotify/fsnotify v1.9.0 // indirect
+	github.com/google/uuid v1.6.0 // indirect
+	go.opentelemetry.io/otel/sdk v1.45.0 // indirect
+)
 
 replace go-spring.org/starter-gorm => ../../starter/starter-gorm

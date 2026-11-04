@@ -39,7 +39,11 @@ type fakeDriver struct {
 // newGuardedNeo4jClient builds a Client whose executor comes from the default
 // resilience driver. The embedded driver is nil.
 func newGuardedNeo4jClient(t *testing.T, p ratelimit.Policy) *Client {
-	m := resilience.NewManager(resilience.NewDefaultDriver(), ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()}))
+	fact, err := ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := resilience.NewManager(resilience.NewDefaultDriver(), fact)
 	assert.Error(t, m.ApplyRateLimit(resilience.RateLimitSettings{Default: p})).Nil()
 	return &Client{DriverWithContext: fakeDriver{}, exec: m.ExecutorFor("svc")}
 }

@@ -58,7 +58,7 @@ func TestRule_Matches(t *testing.T) {
 		Name:          "r",
 		Service:       "svc",
 		ActionMatch:   ActionMatch{Prefix: "GET /users"},
-		MetadataMatch: matcher.ExactMap{"tenant": "acme"},
+		MetadataMatch: map[string]matcher.StringMatch{"tenant": {Exact: "acme"}},
 	}
 
 	acme := Target{Service: "svc", Action: "GET /users/1", Metadata: map[string]string{"tenant": "acme"}}
@@ -122,21 +122,21 @@ func TestRule_LatencyJitterBounds(t *testing.T) {
 }
 
 // TestRule_BindsMatchAndAction pins that a rule's Match and Action — fault's own
-// types, not chain's — bind from the flattened properties an operator writes.
+// types, not chain's — bind from the flattened properties a platform writes.
 // Both are reached by reflect kind rather than a registered converter, so what
-// matters is the spelling: match.<key> per metadata dimension, action.exact /
-// action.prefix for the interface.
+// matters is the spelling: match.<key>.<op> per metadata dimension, action.exact
+// / action.prefix for the interface.
 func TestRule_BindsMatchAndAction(t *testing.T) {
 	storage := flatten.NewPropertiesStorage(flatten.MapProperties(map[string]any{
-		"rules[0].name":          "gin-users",
-		"rules[0].service":       "gin",
-		"rules[0].action.exact":  "GET /users/{id}",
-		"rules[0].match.tenant":  "acme",
-		"rules[0].match.region":  "cn",
-		"rules[0].rate":          "1",
-		"rules[1].name":          "redis",
-		"rules[1].service":       "redis:cache",
-		"rules[1].action.prefix": "GET /users",
+		"rules[0].name":               "gin-users",
+		"rules[0].service":            "gin",
+		"rules[0].action.exact":       "GET /users/{id}",
+		"rules[0].match.tenant.exact": "acme",
+		"rules[0].match.region.exact": "cn",
+		"rules[0].rate":               "1",
+		"rules[1].name":               "redis",
+		"rules[1].service":            "redis:cache",
+		"rules[1].action.prefix":      "GET /users",
 	}))
 	var c Config
 	assert.Error(t, conf.Bind(storage, &c)).Nil()
@@ -146,8 +146,8 @@ func TestRule_BindsMatchAndAction(t *testing.T) {
 	assert.String(t, r0.Service).Equal("gin")
 	assert.String(t, r0.ActionMatch.Exact).Equal("GET /users/{id}")
 	assert.String(t, r0.ActionMatch.Prefix).Equal("")
-	assert.String(t, r0.MetadataMatch["tenant"]).Equal("acme")
-	assert.String(t, r0.MetadataMatch["region"]).Equal("cn")
+	assert.String(t, r0.MetadataMatch["tenant"].Exact).Equal("acme")
+	assert.String(t, r0.MetadataMatch["region"].Exact).Equal("cn")
 	assert.Number(t, int(c.Rules[1].Rate)).Equal(0)
 
 	// The bound rule governs exactly the call it names: same service, same

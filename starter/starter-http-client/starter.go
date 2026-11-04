@@ -107,9 +107,9 @@ func init() {
 func newRoute(ctx *gs.ContextProvider, name string, c Config, d Driver, center *governance.Runtime, prop traffic.Propagator) (*route, error) {
 	var backend discovery.Discovery
 	if c.Discovery != "" {
-		b, ok := center.Discovery().Get(c.Discovery)
+		b, ok := center.Directory.Get(c.Discovery)
 		if !ok {
-			return nil, errutil.Explain(nil, "http-client: entry %q cites discovery backend %q but no such backend exists (registered: %v)", name, c.Discovery, center.Discovery().Names())
+			return nil, errutil.Explain(nil, "http-client: entry %q cites discovery backend %q but no such backend exists (registered: %v)", name, c.Discovery, center.Directory.Names())
 		}
 		backend = b
 	}

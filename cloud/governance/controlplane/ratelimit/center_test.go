@@ -21,7 +21,7 @@ import (
 	"testing"
 
 	"go-spring.org/cloud/governance/capability/ratelimit"
-	"go-spring.org/cloud/governance/controlplane/source"
+	"go-spring.org/cloud/governance/capability/source"
 	"go-spring.org/cloud/governance/dataplane/outbound/chain"
 	"go-spring.org/cloud/governance/dataplane/outbound/resilience"
 	"go-spring.org/stdlib/testing/assert"
@@ -62,7 +62,11 @@ func TestCenterAppliesAndKeepsLastGood(t *testing.T) {
 	d, err := source.Parse[resilience.RateLimitSettings]("rate-limit.properties", []byte(doc), "")
 	assert.Error(t, err).Nil()
 
-	mgr := resilience.NewManager(resilience.NewDefaultDriver(), ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()}))
+	factories, err := ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	mgr := resilience.NewManager(resilience.NewDefaultDriver(), factories)
 	src := source.NewPushSource(d)
 	if _, err := NewCenter(context.Background(), mgr, src); err != nil {
 		t.Fatal(err)
@@ -93,7 +97,11 @@ func TestCenterAppliesAndKeepsLastGood(t *testing.T) {
 // whose initial document cannot be built fails wiring, rather than arming a
 // center that would run unconfigured.
 func TestNewCenterRejectsUnservableSnapshot(t *testing.T) {
-	mgr := resilience.NewManager(resilience.NewDefaultDriver(), ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()}))
+	factories, err := ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	mgr := resilience.NewManager(resilience.NewDefaultDriver(), factories)
 	src := source.NewPushSource(resilience.RateLimitSettings{
 		Rules: []resilience.RateLimitRule{{
 			Service: "redis:cache",

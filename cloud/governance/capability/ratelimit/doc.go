@@ -31,10 +31,13 @@
 // library (plus stdlib/timeutil for ctx-aware sleeping), so a caller pulls in
 // no resilience semantics to count with it.
 //
-// Three algorithms trade evenness for state: token-bucket, the default, refills
-// continuously and can ramp in from a cold start; sliding-window smooths the
-// window boundary with a weighted two-window estimate; fixed-window is the
-// cheapest per-window cap and accepts a burst across the boundary.
+// Three algorithms trade evenness for state: token-bucket, the default, is a
+// port of Guava's SmoothRateLimiter — a charge is granted at the head of the
+// pipeline and its cost charged to the next request, with an optional
+// cold-start warm-up that prices permits above a warm threshold at up to
+// coldFactor times their steady price; sliding-window smooths the window
+// boundary with a weighted two-window estimate; fixed-window is the cheapest
+// per-window cap and accepts a burst across the boundary.
 //
 // All counters are safe for concurrent use.
 package ratelimit

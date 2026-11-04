@@ -24,15 +24,16 @@ import (
 	"time"
 
 	"github.com/hashicorp/consul/api"
+	"go-spring.org/cloud/discovery"
 	"go-spring.org/cloud/governance/controlplane/registration"
 	"go-spring.org/stdlib/testing/assert"
 )
 
 func TestServiceID(t *testing.T) {
 	// An explicit ID is used verbatim.
-	assert.That(t, serviceID(registration.Instance{ID: "fixed", ServiceName: "orders", Addr: "1.2.3.4:80"})).Equal("fixed")
+	assert.That(t, serviceID(discovery.Instance{ID: "fixed", ServiceName: "orders", Addr: "1.2.3.4:80"})).Equal("fixed")
 	// Otherwise it is derived from name and addr so restarts replace the entry.
-	assert.That(t, serviceID(registration.Instance{ServiceName: "orders", Addr: "1.2.3.4:80"})).Equal("orders-1.2.3.4:80")
+	assert.That(t, serviceID(discovery.Instance{ServiceName: "orders", Addr: "1.2.3.4:80"})).Equal("orders-1.2.3.4:80")
 }
 
 func TestRegister_BadAddr(t *testing.T) {
@@ -42,10 +43,10 @@ func TestRegister_BadAddr(t *testing.T) {
 	assert.Error(t, err).Nil()
 	r := &consulRegistry{client: client, ttl: time.Second, heartbeats: map[string]chan struct{}{}}
 
-	err = r.Register(context.Background(), registration.Instance{ServiceName: "orders", Addr: "no-port"})
+	err = r.Register(context.Background(), discovery.Instance{ServiceName: "orders", Addr: "no-port"})
 	assert.Error(t, err).Matches("must be host:port")
 
-	err = r.Register(context.Background(), registration.Instance{ServiceName: "orders", Addr: "host:abc"})
+	err = r.Register(context.Background(), discovery.Instance{ServiceName: "orders", Addr: "host:abc"})
 	assert.Error(t, err).Matches("non-numeric port")
 }
 
@@ -64,24 +65,24 @@ func TestNormalizeWeight(t *testing.T) {
 func TestUpdateWeight_Unregistered(t *testing.T) {
 	client, err := api.NewClient(&api.Config{Address: "127.0.0.1:8500"})
 	assert.Error(t, err).Nil()
-	r := &consulRegistry{client: client, heartbeats: map[string]chan struct{}{}, regs: map[string]registration.Instance{}}
+	r := &consulRegistry{client: client, heartbeats: map[string]chan struct{}{}, regs: map[string]discovery.Instance{}}
 
-	err = r.UpdateWeight(context.Background(), registration.Instance{ServiceName: "orders", Addr: "1.2.3.4:80"}, 5)
+	err = r.UpdateWeight(context.Background(), discovery.Instance{ServiceName: "orders", Addr: "1.2.3.4:80"}, 5)
 	assert.Error(t, err).Matches("unregistered instance")
 }
 
 func TestBuildRegistration_AdvertisesDrainWeight(t *testing.T) {
 	// A drain weight of 0 is advertised as a zero passing weight — Consul
 	// routes no traffic to it — rather than being normalized away.
-	r := &consulRegistry{heartbeats: map[string]chan struct{}{}, regs: map[string]registration.Instance{}}
-	asr := r.buildRegistration(registration.Instance{ServiceName: "orders", Addr: "1.2.3.4:80", Weight: 0})
+	r := &consulRegistry{heartbeats: map[string]chan struct{}{}, regs: map[string]discovery.Instance{}}
+	asr := r.buildRegistration(discovery.Instance{ServiceName: "orders", Addr: "1.2.3.4:80", Weight: 0})
 	assert.That(t, asr.Weights.Passing).Equal(0)
 }
 
 func TestReRegister(t *testing.T) {
 	// An unknown id is a no-op (the instance was deregistered; the heartbeat's
 	// recovery path must not resurrect it).
-	r := &consulRegistry{heartbeats: map[string]chan struct{}{}, regs: map[string]registration.Instance{}}
+	r := &consulRegistry{heartbeats: map[string]chan struct{}{}, regs: map[string]discovery.Instance{}}
 	assert.Error(t, r.reRegister(context.Background(), "orders-1.2.3.4:80")).Nil()
 
 	// A known id attempts the upsert against the (here unreachable) agent: a
@@ -90,8 +91,8 @@ func TestReRegister(t *testing.T) {
 	// drained weight — is what gets re-registered.
 	client, err := api.NewClient(&api.Config{Address: "127.0.0.1:1"})
 	assert.Error(t, err).Nil()
-	r = &consulRegistry{client: client, heartbeats: map[string]chan struct{}{}, regs: map[string]registration.Instance{}}
-	drained := registration.Instance{ServiceName: "orders", Addr: "1.2.3.4:80", Weight: 0}
+	r = &consulRegistry{client: client, heartbeats: map[string]chan struct{}{}, regs: map[string]discovery.Instance{}}
+	drained := discovery.Instance{ServiceName: "orders", Addr: "1.2.3.4:80", Weight: 0}
 	r.regs["orders-1.2.3.4:80"] = drained
 	asr := r.buildRegistration(drained)
 	assert.That(t, asr.Weights.Passing).Equal(0)
@@ -125,10 +126,10 @@ func TestRegisterFailureIsReported(t *testing.T) {
 		client:     closedPortClient(t),
 		ttl:        time.Second,
 		heartbeats: map[string]chan struct{}{},
-		regs:       map[string]registration.Instance{},
+		regs:       map[string]discovery.Instance{},
 	}
 
-	err := r.Register(context.Background(), registration.Instance{ServiceName: "orders", Addr: "1.2.3.4:80", Weight: 1})
+	err := r.Register(context.Background(), discovery.Instance{ServiceName: "orders", Addr: "1.2.3.4:80", Weight: 1})
 	assert.Error(t, err).NotNil()
 
 	assert.Number(t, sumValue(t, "discovery.registration.attempts_total", map[string]string{
@@ -144,14 +145,14 @@ func TestRegisterFailureIsReported(t *testing.T) {
 // the Registry interface, so this asserts it is reported anyway — with
 // reason=self_heal, and with the gauge following each attempt's outcome.
 func TestSelfHealIsReported(t *testing.T) {
-	in := registration.Instance{ServiceName: "payments", Addr: "1.2.3.4:80", Weight: 1}
+	in := discovery.Instance{ServiceName: "payments", Addr: "1.2.3.4:80", Weight: 1}
 	id := serviceID(in)
 	r := &consulRegistry{
 		obs:        newTestRegObserver(),
 		client:     closedPortClient(t),
 		ttl:        time.Second,
 		heartbeats: map[string]chan struct{}{},
-		regs:       map[string]registration.Instance{id: in},
+		regs:       map[string]discovery.Instance{id: in},
 	}
 	gauge := map[string]string{"system": obsSystem, "service": "payments"}
 
@@ -179,7 +180,7 @@ func TestSelfHealIsReported(t *testing.T) {
 // 404 for an id it no longer holds is that no-op, and it must be reported as
 // success so a clean shutdown does not look like a wave of deregister failures.
 func TestDeregisterRepeatIsANoOp(t *testing.T) {
-	in := registration.Instance{ServiceName: "orders-repeat", Addr: "1.2.3.4:80", Weight: 1}
+	in := discovery.Instance{ServiceName: "orders-repeat", Addr: "1.2.3.4:80", Weight: 1}
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
 		_, _ = w.Write([]byte(`Unknown service ID "orders-repeat-1.2.3.4:80"`))
@@ -192,7 +193,7 @@ func TestDeregisterRepeatIsANoOp(t *testing.T) {
 		client:     client,
 		ttl:        time.Second,
 		heartbeats: map[string]chan struct{}{},
-		regs:       map[string]registration.Instance{},
+		regs:       map[string]discovery.Instance{},
 	}
 
 	assert.Error(t, r.Deregister(context.Background(), in)).Nil()
@@ -205,14 +206,14 @@ func TestDeregisterRepeatIsANoOp(t *testing.T) {
 // duration metric — the drain path in particular, which the discovery core does
 // not log.
 func TestDeregisterAndWeightChangeAreReported(t *testing.T) {
-	in := registration.Instance{ServiceName: "orders-drain", Addr: "1.2.3.4:80", Weight: 1}
+	in := discovery.Instance{ServiceName: "orders-drain", Addr: "1.2.3.4:80", Weight: 1}
 	id := serviceID(in)
 	r := &consulRegistry{
 		obs:        newTestRegObserver(),
 		client:     reachableClient(t),
 		ttl:        time.Second,
 		heartbeats: map[string]chan struct{}{},
-		regs:       map[string]registration.Instance{id: in},
+		regs:       map[string]discovery.Instance{id: in},
 	}
 	ctx := context.Background()
 

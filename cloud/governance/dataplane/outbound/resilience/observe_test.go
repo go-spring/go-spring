@@ -110,7 +110,11 @@ func TestExecutorPublishesState(t *testing.T) {
 	rdr, restore := installStateMeter(t)
 	defer restore()
 
-	m := NewManager(NewDefaultDriver(), ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()}))
+	factories, err := ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := NewManager(NewDefaultDriver(), factories)
 	if err := m.ApplyBreaker(BreakerSettings{Default: BreakerPolicy{
 		ErrorThreshold: 1,
 		OpenDuration:   time.Hour,

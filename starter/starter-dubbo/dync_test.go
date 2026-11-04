@@ -30,7 +30,7 @@ import (
 	"go-spring.org/cloud/governance/capability/ratelimit"
 	admissionplane "go-spring.org/cloud/governance/controlplane/admission"
 	loadbalanceplane "go-spring.org/cloud/governance/controlplane/loadbalance"
-	"go-spring.org/cloud/governance/controlplane/source"
+	"go-spring.org/cloud/governance/capability/source"
 	"go-spring.org/cloud/governance/controlplane/timeoutretry"
 	serverfault "go-spring.org/cloud/governance/dataplane/inbound/fault"
 	"go-spring.org/cloud/governance/dataplane/outbound/chain"
@@ -53,10 +53,18 @@ func setConsumer(p *dyncPoller, c DubboConsumer) {
 // from another test. There is no process-global authority to reset any more —
 // each test owns its manager.
 func newTestPoller() *dyncPoller {
+	fact, err := ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()})
+	if err != nil {
+		panic(err)
+	}
+	fact2, err := ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()})
+	if err != nil {
+		panic(err)
+	}
 	ctr := &governance.Runtime{
-		Resilience:  resilience.NewManager(resilience.NewDefaultDriver(), ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()})),
+		Resilience:  resilience.NewManager(resilience.NewDefaultDriver(), fact),
 		LoadBalance: loadbalance.NewManager(loadbalance.NewFactory([]loadbalance.Provider{loadbalance.NewBuiltinProvider()})),
-		Admission:   admission.NewManager(ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()})),
+		Admission:   admission.NewManager(fact2),
 		ClientFault: clientfault.NewManager(),
 		ServerFault: serverfault.NewManager(),
 		Directory:   discovery.NewManager(nil),
@@ -78,11 +86,19 @@ func newTestPoller() *dyncPoller {
 func armedPoller(doc resilience.LimitsSettings) *dyncPoller {
 	lb := loadbalance.NewManager(loadbalance.NewFactory([]loadbalance.Provider{loadbalance.NewBuiltinProvider()}))
 	driver := resilience.NewDefaultDriver()
-	resClient := resilience.NewManager(driver, ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()}))
+	resFact, err := ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()})
+	if err != nil {
+		panic(err)
+	}
+	resClient := resilience.NewManager(driver, resFact)
+	fact, err := ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()})
+	if err != nil {
+		panic(err)
+	}
 	ctr := &governance.Runtime{
 		Resilience:  resClient,
 		LoadBalance: lb,
-		Admission:   admission.NewManager(ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()})),
+		Admission:   admission.NewManager(fact),
 		ClientFault: clientfault.NewManager(),
 		ServerFault: serverfault.NewManager(),
 		Directory:   discovery.NewManager(nil),

@@ -14,15 +14,21 @@
  * limitations under the License.
  */
 
-package registration
+// registration.go is the WRITE side of discovery: the vocabulary a process
+// publishes itself with. The read side — what a consumer resolves — is the
+// endpoint, in discovery.go. The two halves of one domain live in one package
+// on purpose: [Instance] is the write-side mirror of the read side's endpoint,
+// and a reader of one should find the other beside it.
+
+package discovery
 
 import "context"
 
 // Instance is the process advertisement every registry publishes: one
 // physical instance of a named service. It is the write-side mirror of
-// the discovery read side's endpoint — [Server] fills it from the global ${spring.discovery}
-// identity block, so every backend registers the SAME
-// instance content (a multi-registry setup is one publication fanned out to
+// the discovery read side's endpoint — the registration Server fills it from
+// the global ${spring.discovery} identity block, so every backend registers the
+// SAME instance content (a multi-registry setup is one publication fanned out to
 // several centers, not several publications).
 //
 // Version, Zone and Scheme mirror the routing dimensions consumers read:
@@ -67,9 +73,9 @@ type Instance struct {
 }
 
 // Registry publishes one [Instance] into ONE discovery center. Each backend
-// starter derives one Registry per configured block; [Server] collects them
-// all and drives them through a single lifecycle — register on app-ready,
-// deregister on shutdown, broadcast weight changes.
+// starter derives one Registry per configured block; the registration Server
+// collects them all and drives them through a single lifecycle — register on
+// app-ready, deregister on shutdown, broadcast weight changes.
 // Implementations must make Deregister and UpdateWeight idempotent.
 type Registry interface {
 	// Register publishes inst into this center. It is called once, after the

@@ -118,7 +118,7 @@ func newClient(ctx *gs.ContextProvider, name string, c Config, d Driver,
 	// goes straight to the raw client on purpose: it is a connectivity check,
 	// not business traffic, so it must not spend limiter/breaker budget. A
 	// failure abandons the client, chain and all.
-	cl := NewClient(raw, c.Brokers, center.TrafficPropagator())
+	cl := NewClient(raw, c.Brokers, center.Traffic)
 	if c.Ping {
 		pingCtx, cancel := context.WithTimeout(ctx.Context, pingTimeout)
 		defer cancel()

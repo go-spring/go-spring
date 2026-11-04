@@ -243,9 +243,8 @@ consistent-hash:
   replicas: 200
 outlier-threshold: 5
 selector:                 # endpoint narrowing, applied before the strategy picks
-  - key: version
-    kind: prefix
-    value: v2.
+  version:
+    prefix: v2.
 ```
 
 The selector is the dynamic half of endpoint narrowing: `Pool.Pick` applies it

@@ -38,6 +38,33 @@ import (
 	"errors"
 )
 
+// The rejection sentinels a chain returns from Execute when it refuses to run
+// fn at all. They live here — not in any engine — because they are part of the
+// chain contract: every engine, and every observer of one, speaks the same four
+// words. Wrap or compare them with errors.Is.
+var (
+	// ErrRateLimited is the chain's verdict that the configured rate limit is
+	// exceeded. The rate-limit stage reports admission as a boolean (see
+	// go-spring.org/cloud/governance/capability/ratelimit.Limiter), so this package owns the
+	// word without depending on the stage's implementation.
+	ErrRateLimited = errors.New("resilience: rate limited")
+
+	// ErrCircuitOpen is the chain's verdict that the circuit breaker for the
+	// executor's service is open.
+	ErrCircuitOpen = errors.New("resilience: circuit open")
+
+	// ErrBulkheadFull is the chain's verdict that the service already has the
+	// maximum number of concurrent in-flight operations allowed by the bulkhead.
+	ErrBulkheadFull = errors.New("resilience: bulkhead full")
+
+	// ErrRetryBudgetExceeded is the chain's verdict that a RETRY attempt was
+	// rejected because the executor-wide in-flight retry cap is exhausted — the
+	// process-level guard against retry amplification. The first attempt of a
+	// call never takes budget, so it only ever replaces a retry, not the initial
+	// call.
+	ErrRetryBudgetExceeded = errors.New("resilience: retry budget exceeded")
+)
+
 // Executor runs one operation under the governance chain built for the ONE
 // service or route it was constructed for. The chain — not the caller — decides
 // whether the operation is throttled, short-circuited, retried or simply
@@ -77,33 +104,3 @@ type Executor interface {
 	// pumps in a production engine). It is safe to call more than once.
 	Close() error
 }
-
-// The rejection sentinels a chain returns from Execute when it refuses to run
-// fn at all. They live here — not in any engine — because they are part of the
-// chain contract: every engine, and every observer of one, speaks the same four
-// words. Wrap or compare them with errors.Is.
-var (
-	// ErrRateLimited is the chain's verdict that the configured rate limit is
-	// exceeded. The rate-limit stage reports admission as a boolean (see
-	// go-spring.org/cloud/governance/capability/ratelimit.Limiter), so this package owns the
-	// word without depending on the stage's implementation.
-	ErrRateLimited = errors.New("resilience: rate limited")
-
-	// ErrCircuitOpen is the chain's verdict that the circuit breaker for the
-	// executor's service is open.
-	ErrCircuitOpen = errors.New("resilience: circuit open")
-
-	// ErrBulkheadFull is the chain's verdict that the service already has the
-	// maximum number of concurrent in-flight operations allowed by the bulkhead.
-	ErrBulkheadFull = errors.New("resilience: bulkhead full")
-
-	// ErrRetryBudgetExceeded is the chain's verdict that a RETRY attempt was
-	// rejected because the executor-wide in-flight retry cap is exhausted — the
-	// process-level guard against retry amplification. The first attempt of a
-	// call never takes budget, so it only ever replaces a retry, not the initial
-	// call.
-	ErrRetryBudgetExceeded = errors.New("resilience: retry budget exceeded")
-)
-
-// [Operation] — the declaration of one governed call — is defined in
-// operation.go; the facts that call produced, in [Recorder], in recorder.go.

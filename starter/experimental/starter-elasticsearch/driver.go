@@ -59,7 +59,7 @@ import (
 //
 // The entry's ${discovery} label rides on the config (c.Discovery, already
 // carrying the family default): the driver resolves the backend it names from
-// center.Discovery() itself, failing construction when an entry routes by
+// center.Directory itself, failing construction when an entry routes by
 // service-name and the label names no bean.
 type Driver interface {
 	CreateClient(ctx context.Context, c Config, center *governance.Runtime) (*Client, error)
@@ -84,7 +84,7 @@ type DefaultDriver struct{}
 // after elasticsearch.NewClient has already captured the transport.
 //
 // When in-process discovery applies (a service name is set and the process is not in mesh mode), the discovery backend the
-// entry's ${discovery} label names is resolved from center.Discovery() and its
+// entry's ${discovery} label names is resolved from center.Directory and its
 // current live endpoint snapshot overrides c.Addresses (the fail-fast probe and
 // seed); the live feed is the connection pool installed below over the same
 // resolver. An entry routed by service-name that cites no existing backend fails
@@ -96,7 +96,7 @@ func (DefaultDriver) CreateClient(ctx context.Context, c Config, center *governa
 	var backend discovery.Discovery
 	useDiscovery := center.UsesDiscovery(c.ServiceName)
 	if useDiscovery {
-		backend, _ = center.Discovery().Get(c.Discovery)
+		backend, _ = center.Directory.Get(c.Discovery)
 		addrs, err := resolveAddresses(ctx, c, backend)
 		if err != nil {
 			return nil, err

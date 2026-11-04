@@ -19,7 +19,6 @@ package loadbalance
 import (
 	"context"
 	"maps"
-	"slices"
 	"sync/atomic"
 	"time"
 
@@ -144,8 +143,9 @@ type Selection struct {
 	OutlierSuspendFor time.Duration `value:"${outlier-suspend-for:=0}" expr:"int($) >= 0"`
 
 	// Selector narrows the endpoint set this service may choose from, before the
-	// strategy picks — a conjunction over the endpoint's metadata, see
-	// [matcher.Selector]. It is the DYNAMIC half of endpoint narrowing: the
+	// strategy picks — one [matcher.StringMatch] per metadata key, the shared
+	// matching vocabulary (`selector.version.prefix=v2`, op always spelled out).
+	// It is the DYNAMIC half of endpoint narrowing: the
 	// static half is the discovery query's selector, fixed by the client's own
 	// configuration, and when both are set both must hold. Because
 	// it rides the selection document, a pushed rule can move traffic between
@@ -157,7 +157,7 @@ type Selection struct {
 	// deliberately no implicit fallback, because silently falling back would
 	// make a narrow rule (a canary, say) widen to every instance without anyone
 	// being told.
-	Selector matcher.Selector `value:"${selector:=}"`
+	Selector map[string]matcher.StringMatch `value:"${selector:=}"`
 }
 
 // Equal reports whether s and other carry the same policy. Params and Selector
@@ -171,7 +171,7 @@ func (s Selection) Equal(other Selection) bool {
 		s.ConsistentHash == other.ConsistentHash &&
 		s.ZoneAware == other.ZoneAware &&
 		maps.Equal(s.Params, other.Params) &&
-		slices.Equal(s.Selector, other.Selector)
+		maps.Equal(s.Selector, other.Selector)
 }
 
 // NewManager returns an unarmed Manager over the collected strategy factories.

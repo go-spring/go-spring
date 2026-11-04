@@ -114,7 +114,7 @@ func newClient(ctx *gs.ContextProvider, c Config, discoveryLabel string,
 	// Resolve the entry's ${discovery} label against the center's directory. A
 	// label that names nothing (including the "none" sentinel) reads a nil
 	// backend, which the assembly below rejects when service-name routing is on.
-	backend, _ := center.Discovery().Get(discoveryLabel)
+	backend, _ := center.Directory.Get(discoveryLabel)
 
 	opts := options.Client().ApplyURI(c.URI)
 	if c.ConnectTimeout > 0 {
@@ -160,7 +160,7 @@ func newClient(ctx *gs.ContextProvider, c Config, discoveryLabel string,
 	var baseDial func(ctx context.Context, network, address string) (net.Conn, error)
 	var chain *loadbalance.Chain
 	if center.UsesDiscovery(c.ServiceName) {
-		chain, err = newPickChain(ctx.Context, c, backend, center.Loadbalance())
+		chain, err = newPickChain(ctx.Context, c, backend, center.LoadBalance)
 		if err != nil {
 			log.Error(cctx, log.TagAppDef, err, "mongodb: build discovery resolver failed")
 			return nil, err

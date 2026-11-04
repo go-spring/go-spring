@@ -17,12 +17,6 @@
 package governance
 
 import (
-	"go-spring.org/cloud/governance/controlplane/admission"
-	"go-spring.org/cloud/governance/controlplane/circuitbreaker"
-	faultplane "go-spring.org/cloud/governance/controlplane/fault"
-	loadbalanceplane "go-spring.org/cloud/governance/controlplane/loadbalance"
-	"go-spring.org/cloud/governance/controlplane/ratelimit"
-	"go-spring.org/cloud/governance/controlplane/timeoutretry"
 	"go-spring.org/spring/gs"
 )
 
@@ -39,25 +33,21 @@ import (
 // The control plane is NOT among them: limits, breaker, rate limit, selection,
 // admission and fault are peer roots (see doc.go), each registered by its own
 // package and exported as a gs.Rooter so gs constructs and arms it even though
-// nothing injects it.
+// nothing injects it. Their EXISTENCE is the deployment's declaration, not this
+// package's: gs has no classpath scan — Go's import graph is the component
+// scan — so a root is linked in by whoever feeds it (the governance source
+// starters, or the app itself), and this package deliberately aggregates none.
 //
-// Exported as a gs.Rooter so gs instantiates the runtime even when no client
-// injects one: without a collected-type export an unreachable bean is never
-// constructed, and none of the startup would run.
+// Exported as a plain bean, not a gs.Rooter: the runtime's construction has no
+// side effect (the authorities register and arm themselves in their own
+// packages), so a deployment where nothing injects a runtime loses nothing by
+// not building one.
 func init() {
-	gs.Provide(&Runtime{}).
-		// The control-plane roots are NOT fields (see doc.go), but they must still
-		// be armed before the runtime is built, so a client that asks for an
-		// executor during wiring already sees the published documents. DependsOn
-		// expresses the ordering without inventing a field that would put the
-		// control plane back into the runtime's object graph.
-		DependsOn(
-			gs.BeanIDFor[*timeoutretry.Center](),
-			gs.BeanIDFor[*circuitbreaker.Center](),
-			gs.BeanIDFor[*ratelimit.Center](),
-			gs.BeanIDFor[*loadbalanceplane.Center](),
-			gs.BeanIDFor[*admission.Center](),
-			gs.BeanIDFor[*faultplane.Center](),
-		).
-		Export(gs.As[gs.Rooter]())
+	// No DependsOn on the control-plane roots: construction order against
+	// this runtime is deliberately unconstrained, because every authority the
+	// runtime holds tolerates either order — an executor reads live snapshots
+	// per call, and a center's Apply pushes to whatever is registered by the
+	// time it runs. Ordering here would guard a constraint the data plane does
+	// not have.
+	gs.Provide(&Runtime{})
 }

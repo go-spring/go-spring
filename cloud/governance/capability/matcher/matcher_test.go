@@ -2,7 +2,7 @@
  * Copyright 2025 The Go-Spring Authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
- * You may not use this file except in compliance with the License.
+ * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
  *      https://www.apache.org/licenses/LICENSE-2.0
@@ -16,167 +16,120 @@
 
 package matcher
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
-func TestTermMatches(t *testing.T) {
-	tests := []struct {
-		name string
-		term Term
-		v    string
-		want bool
-	}{
-		{"exact hit", Term{Op: Exact, Value: "v2"}, "v2", true},
-		{"exact miss", Term{Op: Exact, Value: "v2"}, "v20", false},
-		{"exact empty matches empty", Term{Op: Exact, Value: ""}, "", true},
-		{"prefix hit", Term{Op: Prefix, Value: "cn-north"}, "cn-north-1a", true},
-		{"prefix miss", Term{Op: Prefix, Value: "cn-north"}, "cn-south-1a", false},
-		{"suffix hit", Term{Op: Suffix, Value: "-1a"}, "cn-north-1a", true},
-		{"suffix miss", Term{Op: Suffix, Value: "-1a"}, "cn-north-1b", false},
-		{"contains hit", Term{Op: Contains, Value: "north"}, "cn-north-1a", true},
-		{"contains miss", Term{Op: Contains, Value: "south"}, "cn-north-1a", false},
-		// An unknown op is rejected at the boundary; if one reaches here it
-		// must match nothing rather than everything.
-		{"unknown op", Term{Op: Op("regex"), Value: ".*"}, "anything", false},
+func TestStringMatchValidate(t *testing.T) {
+	valid := []StringMatch{
+		{Exact: "acme"},
+		{Prefix: "v2."},
+		{Suffix: "-1a"},
+		{Contains: "north"},
 	}
-	for _, tc := range tests {
+	for i, m := range valid {
+		if err := m.Validate(); err != nil {
+			t.Fatalf("valid match %d rejected: %v", i, err)
+		}
+	}
+	invalid := []struct {
+		name string
+		m    StringMatch
+		want string
+	}{
+		// An empty operand does not bind, so an all-empty value is "no op
+		// written" and a present-but-empty value cannot be targeted.
+		{"no op", StringMatch{}, "sets no op"},
+		{"two ops", StringMatch{Exact: "a", Prefix: "b"}, "more than one op"},
+		{"three ops", StringMatch{Prefix: "a", Suffix: "b", Contains: "c"}, "more than one op"},
+	}
+	for _, tc := range invalid {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := tc.term.Matches(tc.v); got != tc.want {
-				t.Fatalf("%+v.Matches(%q) = %v, want %v", tc.term, tc.v, got, tc.want)
+			err := tc.m.Validate()
+			if err == nil {
+				t.Fatalf("Validate accepted malformed match %+v", tc.m)
+			}
+			if !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("Validate error %q does not contain %q", err.Error(), tc.want)
 			}
 		})
 	}
 }
 
-func TestSelectorMatches(t *testing.T) {
-	sel := Selector{
-		{Key: "version", Op: Prefix, Value: "v2."},
-		{Key: "zone", Op: Exact, Value: "cn-north-1a"},
+func TestStringMatchMatches(t *testing.T) {
+	tests := []struct {
+		name  string
+		m     StringMatch
+		v     string
+		match bool
+	}{
+		{"exact hit", StringMatch{Exact: "v2"}, "v2", true},
+		{"exact miss", StringMatch{Exact: "v2"}, "v20", false},
+		{"prefix hit", StringMatch{Prefix: "cn-north"}, "cn-north-1a", true},
+		{"prefix miss", StringMatch{Prefix: "cn-north"}, "cn-south-1a", false},
+		{"suffix hit", StringMatch{Suffix: "-1a"}, "cn-north-1a", true},
+		{"suffix miss", StringMatch{Suffix: "-1a"}, "cn-north-1b", false},
+		{"contains hit", StringMatch{Contains: "north"}, "cn-north-1a", true},
+		{"contains miss", StringMatch{Contains: "south"}, "cn-north-1a", false},
+		// The operand may cover the whole value: prefix/suffix/contains are
+		// satisfied by an equal value, so "exact" is the spelling for it, not
+		// a different outcome.
+		{"prefix is the whole value", StringMatch{Prefix: "v2"}, "v2", true},
+		{"suffix is the whole value", StringMatch{Suffix: "v2"}, "v2", true},
+		{"contains is the whole value", StringMatch{Contains: "v2"}, "v2", true},
+		// A value that bypassed Validate must match nothing rather than
+		// everything.
+		{"no op fails closed", StringMatch{}, "anything", false},
+		// Validation rejects two set ops, but a programmatically built value
+		// can still carry them: pin the precedence the evaluation switch
+		// gives, so the behavior is a convention rather than an accident.
+		{"exact wins over prefix", StringMatch{Exact: "a", Prefix: "a"}, "a", true},
+		{"exact wins over prefix, miss", StringMatch{Exact: "a", Prefix: "ab"}, "ab", false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := tc.m.matches(tc.v); got != tc.match {
+				t.Fatalf("%+v.matches(%q) = %v, want %v", tc.m, tc.v, got, tc.match)
+			}
+		})
+	}
+}
+
+// TestMatches pins the one evaluation path: subset-match, presence required,
+// extra metadata allowed, entries ANDed. Repeating a key is impossible by
+// construction — a map holds one condition per key.
+func TestMatches(t *testing.T) {
+	match := map[string]StringMatch{
+		"version": {Prefix: "v2."},
+		"zone":    {Exact: "cn-north-1a"},
 	}
 	tests := []struct {
 		name string
 		md   map[string]string
 		want bool
 	}{
-		{"all terms satisfied", map[string]string{"version": "v2.1", "zone": "cn-north-1a"}, true},
+		{"all entries satisfied", map[string]string{"version": "v2.1", "zone": "cn-north-1a"}, true},
 		{"unnamed metadata is allowed", map[string]string{"version": "v2.1", "zone": "cn-north-1a", "tenant": "acme"}, true},
-		{"one term fails", map[string]string{"version": "v2.1", "zone": "cn-south-1a"}, false},
+		{"one entry fails", map[string]string{"version": "v2.1", "zone": "cn-south-1a"}, false},
 		{"missing named key fails", map[string]string{"version": "v2.1"}, false},
+		// Presence is not enough: a present-but-empty value cannot be
+		// targeted, because an empty operand does not bind (see [StringMatch]).
+		{"present-but-empty value fails", map[string]string{"version": "v2.1", "zone": ""}, false},
 		{"nil metadata fails", nil, false},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := sel.Matches(tc.md); got != tc.want {
+			if got := Matches(match, tc.md); got != tc.want {
 				t.Fatalf("Matches(%v) = %v, want %v", tc.md, got, tc.want)
 			}
 		})
 	}
 
-	// Two terms may name the same key: they are a conjunction, so both must hold.
-	sameKey := Selector{
-		{Key: "version", Op: Prefix, Value: "v2."},
-		{Key: "version", Op: Suffix, Value: "1"},
-	}
-	if !sameKey.Matches(map[string]string{"version": "v2.1"}) {
-		t.Fatal("v2.1 should satisfy prefix v2. and suffix 1")
-	}
-	if sameKey.Matches(map[string]string{"version": "v2.10"}) {
-		t.Fatal("v2.10 should fail suffix 1")
-	}
-
-	// The empty selector matches everything. That is the in-process "no
-	// narrowing" default; a control-plane decoder must reject an explicitly
-	// empty selector instead of installing it.
-	if !(Selector(nil)).Matches(nil) || !(Selector{}).Matches(nil) {
-		t.Fatal("empty selector should match everything")
-	}
-
-	// An empty operand still requires the key to be present.
-	if (Selector{{Key: "tenant", Op: Exact, Value: ""}}).Matches(nil) {
-		t.Fatal("exact-empty must not match a missing key")
-	}
-}
-
-func TestSelectorValidate(t *testing.T) {
-	valid := Selector{
-		{Key: "version", Op: Prefix, Value: "v2."},
-		{Key: "empty-value", Op: Exact, Value: ""},
-		// A repeated key is a conjunction, not a conflict.
-		{Key: "version", Op: Suffix, Value: "1"},
-	}
-	if err := valid.Validate(); err != nil {
-		t.Fatalf("valid selector rejected: %v", err)
-	}
-
-	// Key and Op are single-field rules owned by the field tags, so Validate
-	// does not re-check them; the cases below are the cross-field rule it owns.
-	tests := []struct {
-		name string
-		sel  Selector
-	}{
-		{"empty prefix", Selector{{Key: "v", Op: Prefix}}},
-		{"empty suffix", Selector{{Key: "v", Op: Suffix}}},
-		{"empty contains", Selector{{Key: "v", Op: Contains}}},
-	}
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			if err := tc.sel.Validate(); err == nil {
-				t.Fatalf("Validate accepted malformed selector %+v", tc.sel)
-			}
-		})
-	}
-}
-
-func TestExactMapMatches(t *testing.T) {
-	m := ExactMap{"tenant": "acme", "region": "cn"}
-	tests := []struct {
-		name string
-		md   map[string]string
-		want bool
-	}{
-		{"all pairs satisfied", map[string]string{"tenant": "acme", "region": "cn"}, true},
-		{"unnamed metadata is allowed", map[string]string{"tenant": "acme", "region": "cn", "x": "y"}, true},
-		{"wrong value", map[string]string{"tenant": "acme", "region": "us"}, false},
-		{"missing key", map[string]string{"tenant": "acme"}, false},
-	}
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			if got := m.Matches(tc.md); got != tc.want {
-				t.Fatalf("Matches(%v) = %v, want %v", tc.md, got, tc.want)
-			}
-		})
-	}
-
-	// The empty map matches everything, like the empty selector.
-	if !(ExactMap(nil)).Matches(nil) {
+	// The empty map matches everything. That is the in-process "no narrowing"
+	// default; a control-plane decoder must reject an explicitly empty map
+	// instead of installing it.
+	if !Matches(nil, nil) || !Matches(map[string]StringMatch{}, nil) {
 		t.Fatal("empty map should match everything")
-	}
-	// An empty operand still requires the key to be present — the exact case of
-	// Selector, so the two shapes cannot drift.
-	if (ExactMap{"tenant": ""}).Matches(nil) {
-		t.Fatal("empty value must not match a missing key")
-	}
-}
-
-// TestExactMapEqualsExactSelector pins the invariant the two shapes share: an ExactMap means
-// exactly the Selector built from the same pairs with Exact.
-func TestExactMapEqualsExactSelector(t *testing.T) {
-	m := ExactMap{"tenant": "acme", "region": "cn"}
-	sel := Selector{
-		{Key: "tenant", Op: Exact, Value: "acme"},
-		{Key: "region", Op: Exact, Value: "cn"},
-	}
-	corpora := []map[string]string{
-		nil,
-		{},
-		{"tenant": "acme"},
-		{"tenant": "acme", "region": "cn"},
-		{"tenant": "acme", "region": "cn", "x": "y"},
-		{"tenant": "acme", "region": ""},
-		{"tenant": "", "region": "cn"},
-	}
-	for _, md := range corpora {
-		if m.Matches(md) != sel.Matches(md) {
-			t.Fatalf("ExactMap and exact Selector disagree on %v", md)
-		}
 	}
 }

@@ -165,14 +165,14 @@ func newRouteTable(ctx *gs.ContextProvider, o *observer,
 	if factories == nil {
 		panic("gateway: newRouteTable requires a non-nil ratelimit.Factory")
 	}
-	lbMgr := center.Loadbalance()
+	lbMgr := center.LoadBalance
 	if lbMgr == nil {
 		lbMgr = loadbalance.NewManager(loadbalance.NewFactory([]loadbalance.Provider{loadbalance.NewBuiltinProvider()}))
 	}
 	return &RouteTable{
 		ctx:       ctx.Context,
 		obs:       o,
-		disc:      center.Discovery(),
+		disc:      center.Directory,
 		ctr:       center,
 		lbMgr:     lbMgr,
 		factories: factories,
@@ -186,7 +186,7 @@ func newRouteTable(ctx *gs.ContextProvider, o *observer,
 func (t *RouteTable) limiterFor(kind string) (func(string) (ratelimit.Limiter, error), bool) {
 	alg := string(kind)
 	// Building one counter is how the route learns the kind is servable.
-	if _, err := t.factories.Create(alg, ""); err != nil {
+	if _, err := t.factories.NewLimiter(alg, ""); err != nil {
 		return nil, false
 	}
 	return func(scope string) (ratelimit.Limiter, error) {

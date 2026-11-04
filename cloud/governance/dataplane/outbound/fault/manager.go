@@ -20,16 +20,16 @@ import (
 	kfault "go-spring.org/cloud/governance/capability/fault"
 )
 
-// Manager is the OUTBOUND fault authority: it owns the outbound document,
-// exposes the [Client] entry point clients fire through, and publishes a new
-// kernel when the document changes.
+// Manager is the OUTBOUND fault authority: it owns the outbound document and
+// publishes a new kernel when the document changes.
 //
 // It embeds the direction-neutral kernel manager but exposes its own type, so a
 // client starter can only reach the outbound object. An outbound fire and an
 // inbound one never see or trip each other.
 //
-// The call path never touches the manager: a [Client] reads its own kernel
-// pointer, and the manager is reached only on creation and on a config push.
+// The call path never touches the manager: the executor reads the published
+// kernel pointer per attempt, and the manager is reached only on creation and
+// on a config push.
 type Manager struct {
 	*kfault.Manager
 }
@@ -38,11 +38,4 @@ type Manager struct {
 // so it injects nothing until a document is pushed.
 func NewManager() *Manager {
 	return &Manager{Manager: kfault.NewManager()}
-}
-
-// NewClient returns the outbound entry point an adapter fires through. It holds
-// this authority and exposes only [Client.Fire], so the caller stays on the
-// outbound side and cannot reach the inbound document.
-func (m *Manager) NewClient() *Client {
-	return &Client{mgr: m.Manager}
 }

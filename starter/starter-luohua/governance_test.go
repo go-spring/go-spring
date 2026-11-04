@@ -34,7 +34,11 @@ import (
 func TestGovernanceDriverRegisteredAndFlavored(t *testing.T) {
 	d := luohuaResilienceDriver{}
 
-	m := resilience.NewManager(d, ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()}))
+	fact, err := ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := resilience.NewManager(d, fact)
 	ex := m.ExecutorFor("svc")
 	lh, ok := ex.(*luohuaExecutor)
 	if !ok {

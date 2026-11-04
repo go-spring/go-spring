@@ -52,6 +52,10 @@ replace go-spring.org/cloud => ../../cloud
 
 require go-spring.org/starter-gorm v0.0.0
 
-require golang.org/x/net v0.58.0 // indirect
+require (
+	github.com/fsnotify/fsnotify v1.9.0 // indirect
+	go.opentelemetry.io/otel/sdk v1.45.0 // indirect
+	golang.org/x/net v0.58.0 // indirect
+)
 
 replace go-spring.org/starter-gorm => ../../starter/starter-gorm

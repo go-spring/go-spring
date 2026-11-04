@@ -21,8 +21,10 @@
 // It owns desired endpoint state, not the request path: a business request
 // never enters this package. The read side — the in-process directory that
 // load balancing consults on every call — is
-// [go-spring.org/cloud/discovery]. Each backend starter
-// implements [Registry] for one center; [Server] drives all of them in
+// [go-spring.org/cloud/discovery], which also owns the write-side vocabulary:
+// [go-spring.org/cloud/discovery.Instance] and
+// [go-spring.org/cloud/discovery.Registry]. Each backend starter implements
+// the Registry for one center; [Server] drives all of them in
 // lockstep, because a process published to some centers but not others would
 // split consumers' view.
 //

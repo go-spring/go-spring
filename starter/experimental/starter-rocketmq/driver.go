@@ -74,7 +74,7 @@ func (DefaultDriver) CreateClient(ctx context.Context, c Config, center *governa
 	// rlog.SetLogger is process-global, so install the bridge exactly once.
 	installLogBridge()
 
-	return NewClient(c.NameServers, c, center.TrafficPropagator()), nil
+	return NewClient(c.NameServers, c, center.Traffic), nil
 }
 
 // -----------------------------------------------------------------------------

@@ -29,7 +29,7 @@
 // ([go-spring.org/cloud/governance/controlplane/admission]) and fault
 // ([go-spring.org/cloud/governance/controlplane/fault], experiments). Each has its
 // own document, source and last-good. They share the transport
-// ([go-spring.org/cloud/governance/controlplane/source]) but not the document, the
+// ([go-spring.org/cloud/governance/capability/source]) but not the document, the
 // writer or the validation. The data plane
 // ([go-spring.org/cloud/governance/dataplane]) owns what happens on and around the
 // request path: admission, resilience, fault injection, endpoint selection,
@@ -83,7 +83,7 @@
 //     and configuration unity is worth more than schema independence. The
 //     invariant to keep is the one-way dependency below.
 //   - The write side
-//     ([go-spring.org/cloud/governance/controlplane/registration.Instance]) and
+//     ([go-spring.org/cloud/governance/controlplane/discovery.Instance]) and
 //     the read side ([discovery.Endpoint]) keep separate vocabularies, synced
 //     at the backend starters, which fold the instance's version, zone and
 //     scheme into endpoint metadata under discovery's MetaKey* keys. Unifying

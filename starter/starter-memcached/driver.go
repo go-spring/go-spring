@@ -82,7 +82,7 @@ type DefaultDriver struct{}
 //
 // The entry's ${discovery} label rides on the config (c.Discovery, already
 // carrying the family default): the driver resolves it against
-// center.Discovery() itself, failing construction when an entry routes by
+// center.Directory itself, failing construction when an entry routes by
 // service-name and the label names no bean.
 //
 // In mesh mode discovery is skipped entirely (the runtime reports in-process discovery as off): a sidecar owns
@@ -101,7 +101,7 @@ func (DefaultDriver) CreateClient(ctx context.Context, name string, c Config, ce
 		// config (c.Discovery, already carrying the family default); an entry
 		// routed by service-name that cites no existing backend fails here, at
 		// construction.
-		backend, _ := center.Discovery().Get(c.Discovery)
+		backend, _ := center.Directory.Get(c.Discovery)
 		if backend == nil {
 			return nil, errutil.Explain(nil, "memcached: instance %q routes by service-name but cites discovery backend %q, which names no bean", name, c.Discovery)
 		}

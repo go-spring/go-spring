@@ -27,7 +27,7 @@ import (
 	"go-spring.org/cloud/governance"
 	admissionplane "go-spring.org/cloud/governance/controlplane/admission"
 	loadbalanceplane "go-spring.org/cloud/governance/controlplane/loadbalance"
-	"go-spring.org/cloud/governance/controlplane/source"
+	"go-spring.org/cloud/governance/capability/source"
 
 	"go-spring.org/cloud/discovery"
 	"go-spring.org/cloud/governance/capability/loadbalance"
@@ -44,10 +44,18 @@ import (
 // DefaultDriver when no Driver bean is provided (nil). Building the transport
 // needs no live server — it only assembles the RoundTripper.
 func TestDefaultDriverFallback(t *testing.T) {
+	fact, err := ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	fact2, err := ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()})
+	if err != nil {
+		t.Fatal(err)
+	}
 	center := &governance.Runtime{
-		Resilience:  resilience.NewManager(resilience.NewDefaultDriver(), ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()})),
+		Resilience:  resilience.NewManager(resilience.NewDefaultDriver(), fact),
 		LoadBalance: loadbalance.NewManager(loadbalance.NewFactory([]loadbalance.Provider{loadbalance.NewBuiltinProvider()})),
-		Admission:   admission.NewManager(ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()})),
+		Admission:   admission.NewManager(fact2),
 		ClientFault: clientfault.NewManager(),
 		ServerFault: serverfault.NewManager(),
 		Traffic:     traffic.NewDefaultPropagator(traffic.DefaultBinding()),
@@ -94,10 +102,18 @@ func (d *recordingDriver) CreateTransport(ctx context.Context, name string, c Co
 // dispatches through, replacing the internal DefaultDriver fallback.
 func TestCustomDriverUsed(t *testing.T) {
 	drv := &recordingDriver{}
+	fact, err := ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	fact2, err := ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()})
+	if err != nil {
+		t.Fatal(err)
+	}
 	center := &governance.Runtime{
-		Resilience:  resilience.NewManager(resilience.NewDefaultDriver(), ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()})),
+		Resilience:  resilience.NewManager(resilience.NewDefaultDriver(), fact),
 		LoadBalance: loadbalance.NewManager(loadbalance.NewFactory([]loadbalance.Provider{loadbalance.NewBuiltinProvider()})),
-		Admission:   admission.NewManager(ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()})),
+		Admission:   admission.NewManager(fact2),
 		ClientFault: clientfault.NewManager(),
 		ServerFault: serverfault.NewManager(),
 		Traffic:     traffic.NewDefaultPropagator(traffic.DefaultBinding()),
@@ -177,15 +193,15 @@ func TestCustomDriverReceivesGovernanceBeans(t *testing.T) {
 		if ts.DT == nil {
 			t.Fatal("expected a wired dispatch transport")
 		}
-		got := drv.center.ResilienceClient()
+		got := drv.center.Resilience
 		if got == nil || ts.Mgr == nil {
 			t.Fatalf("expected a resilience authority in both places, got drv=%p injected=%p", got, ts.Mgr)
 		}
 		if got != ts.Mgr {
 			t.Fatalf("the driver must receive the container's resilience authority, got %p want %p", got, ts.Mgr)
 		}
-		if drv.center.FaultClient() == nil || drv.center.FaultClient() != ts.Inj {
-			t.Fatalf("the driver must receive the container's fault injector, got %p want %p", drv.center.FaultClient(), ts.Inj)
+		if drv.center.ClientFault == nil || drv.center.ClientFault != ts.Inj {
+			t.Fatalf("the driver must receive the container's fault injector, got %p want %p", drv.center.ClientFault, ts.Inj)
 		}
 	})
 }

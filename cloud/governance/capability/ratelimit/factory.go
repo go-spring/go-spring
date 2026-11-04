@@ -54,7 +54,7 @@ type Limiter interface {
 // plain strings a rule writes; New builds the counter of one of them for scope.
 //
 // An algorithm may be exported by exactly one provider. [Factory] enforces that
-// at construction and routes Create by this set, so bean names are free-form.
+// at construction and routes NewLimiter by this set, so bean names are free-form.
 //
 // Implementations must be safe for concurrent use.
 type Provider interface {
@@ -66,7 +66,7 @@ type Provider interface {
 // creates counters. Callers ask it for an algorithm name and a scope; they
 // never touch a [Provider].
 //
-// It indexes the providers by algorithm name once, at construction: Create is a
+// It indexes the providers by algorithm name once, at construction: NewLimiter is a
 // map lookup, and an algorithm exported by two providers is a wiring error
 // caught then. A provider repeating one of its own names is harmless.
 type Factory struct {
@@ -74,8 +74,8 @@ type Factory struct {
 }
 
 // NewFactory collects providers into the algorithm index. An algorithm exported
-// by more than one provider is a wiring error and panics.
-func NewFactory(providers []Provider) *Factory {
+// by more than one provider is a wiring error reported here.
+func NewFactory(providers []Provider) (*Factory, error) {
 	byAlgorithm := make(map[string]Provider)
 	for _, p := range providers {
 		if p == nil {
@@ -88,21 +88,21 @@ func NewFactory(providers []Provider) *Factory {
 			}
 			seen[algorithm] = struct{}{}
 			if _, taken := byAlgorithm[algorithm]; taken {
-				panic(fmt.Errorf("ratelimit: algorithm %q exported by two providers", algorithm))
+				return nil, fmt.Errorf("ratelimit: algorithm %q exported by two providers", algorithm)
 			}
 			byAlgorithm[algorithm] = p
 		}
 	}
-	return &Factory{providers: byAlgorithm}
+	return &Factory{providers: byAlgorithm}, nil
 }
 
-// Create builds the counter of algorithm for scope. An unknown algorithm —
+// NewLimiter builds the counter of algorithm for scope. An unknown algorithm —
 // including the empty name a programmatic caller forgot — is an error; a caller
 // that must reject a document before serving it builds the counters the
 // document enables while applying it, so construction is the check. A
 // configuration document always names its algorithm (the default comes from the
 // binding; see [Policy.Limiter]).
-func (f *Factory) Create(algorithm string, scope string) (Limiter, error) {
+func (f *Factory) NewLimiter(algorithm string, scope string) (Limiter, error) {
 	p, ok := f.providers[algorithm]
 	if !ok {
 		return nil, fmt.Errorf("ratelimit: unknown algorithm %q", algorithm)

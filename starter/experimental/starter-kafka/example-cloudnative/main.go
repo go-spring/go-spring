@@ -71,7 +71,7 @@ type Config struct {
 
 // Service autowires the "a" kafka instance.
 type Service struct {
-	Client *kgo.Client `autowire:"a"`
+	Client *StarterKafka.Client `autowire:"a"`
 }
 
 // Health returns the app's kafka health indicator: the starter itself
@@ -87,7 +87,7 @@ func (s *Service) Health() *health.Indicator {
 		Probe: func(ctx context.Context) error {
 			pingCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 			defer cancel()
-			return s.Client.Ping(pingCtx)
+			return s.Client.Kafka.Ping(pingCtx)
 		},
 	}
 }
@@ -140,7 +140,7 @@ func (s *Service) consume(ctx context.Context, want string) error {
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
-		fetches := s.Client.PollFetches(ctx)
+		fetches := s.Client.Kafka.PollFetches(ctx)
 		if err := fetches.Err(); err != nil {
 			return err
 		}

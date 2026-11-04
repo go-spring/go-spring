@@ -3,7 +3,7 @@ module go-spring.org/starter-gorm-clickhouse
 go 1.26.1
 
 require (
-	github.com/ClickHouse/clickhouse-go/v2 v2.30.0
+	github.com/ClickHouse/clickhouse-go/v2 v2.34.0
 	go-spring.org/spring v1.3.4
 	go-spring.org/stdlib v0.1.7
 	gorm.io/driver/clickhouse v0.7.0
@@ -13,7 +13,7 @@ require (
 // Local, not-yet-published observe kit and gorm bridge. Removed once tagged.
 
 require (
-	github.com/ClickHouse/ch-go v0.61.5 // indirect
+	github.com/ClickHouse/ch-go v0.65.1 // indirect
 	github.com/andybalholm/brotli v1.1.1 // indirect
 	github.com/antlr4-go/antlr/v4 v4.13.1 // indirect
 	github.com/bytedance/mockey v1.4.6 // indirect
@@ -25,7 +25,7 @@ require (
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/gopherjs/gopherjs v1.20.2 // indirect
-	github.com/hashicorp/go-version v1.6.0 // indirect
+	github.com/hashicorp/go-version v1.7.0 // indirect
 	github.com/jinzhu/inflection v1.0.0 // indirect
 	github.com/jinzhu/now v1.1.5 // indirect
 	github.com/jtolds/gls v4.20.0+incompatible // indirect
@@ -34,7 +34,6 @@ require (
 	github.com/paulmach/orb v0.11.1 // indirect
 	github.com/pelletier/go-toml v1.9.5 // indirect
 	github.com/pierrec/lz4/v4 v4.1.26 // indirect
-	github.com/pkg/errors v0.9.1 // indirect
 	github.com/segmentio/asm v1.2.0 // indirect
 	github.com/shopspring/decimal v1.4.0 // indirect
 	github.com/smarty/assertions v1.16.0 // indirect
@@ -59,5 +58,10 @@ require go-spring.org/cloud v0.0.0
 replace go-spring.org/cloud => ../../cloud
 
 require go-spring.org/starter-gorm v0.0.0
+
+require (
+	github.com/fsnotify/fsnotify v1.9.0 // indirect
+	go.opentelemetry.io/otel/sdk v1.45.0 // indirect
+)
 
 replace go-spring.org/starter-gorm => ../../starter/starter-gorm

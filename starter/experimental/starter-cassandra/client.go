@@ -103,7 +103,7 @@ func NewClient(session *gocql.Session, cfg Config, center *governance.Runtime) *
 		Session:      session,
 		exec:         center.ExecutorFor("cassandra", serviceLabel),
 		serviceLabel: serviceLabel,
-		prop:         center.TrafficPropagator(),
+		prop:         center.Traffic,
 	}
 }
 

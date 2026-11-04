@@ -26,6 +26,7 @@ import (
 	"go-spring.org/cloud/governance"
 	"go-spring.org/cloud/governance/capability/fault"
 	"go-spring.org/cloud/governance/capability/label"
+	"go-spring.org/cloud/governance/dataplane/inbound"
 	"go-spring.org/cloud/governance/dataplane/inbound/admission"
 	observability "go-spring.org/cloud/governance/dataplane/inbound/observe"
 	"go-spring.org/cloud/traffic"
@@ -61,13 +62,13 @@ func buildServerPolicy(cfg Config, center *governance.Runtime, prop traffic.Prop
 // [admission.Policy] has no retry field, so the engine built from the
 // server block has no retry stage at all; a Written() guard also prevents reentry
 // regardless.
-func resilienceServerPolicy(in *governance.Inbound, prop traffic.Propagator) gin.HandlerFunc {
+func resilienceServerPolicy(in *inbound.Inbound, prop traffic.Propagator) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var served bool
 		// The object emits the request span, the inbound family metrics and the
 		// access log; the route is named by the same word the fault rules match on.
 		// The base constructor records the request's traffic class on the
-		// operation's metadata, so a rule matches match.traffic=... like any other
+		// operation's metadata, so a rule matches match.traffic.exact=... like any other
 		// dimension.
 		op := observability.NewServerOperation(c.Request.Context(), prop, faultTarget(c).Action)
 		err := in.Run(c.Request.Context(), op, func(ctx context.Context) error {
@@ -85,7 +86,7 @@ func resilienceServerPolicy(in *governance.Inbound, prop traffic.Propagator) gin
 			}
 			return nil
 		})
-		var ref *governance.Refusal
+		var ref *inbound.Refusal
 		if errors.As(err, &ref) && !c.Writer.Written() {
 			c.AbortWithStatus(httpStatusFor(ref))
 		}
@@ -97,7 +98,7 @@ func resilienceServerPolicy(in *governance.Inbound, prop traffic.Propagator) gin
 // declared — a business failure (the caller's mistake) is 400, anything else is
 // 503. Mapping every injected fault to 503 would make "inject a 4xx" impossible
 // and would teach the caller that a healthy downstream is down.
-func httpStatusFor(ref *governance.Refusal) int {
+func httpStatusFor(ref *inbound.Refusal) int {
 	if ref.Verdict() == admission.VerdictFaultInjected {
 		if ref.Fault().Business() {
 			return http.StatusBadRequest

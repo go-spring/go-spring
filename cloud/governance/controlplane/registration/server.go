@@ -17,6 +17,8 @@
 package registration
 
 import (
+	"go-spring.org/cloud/discovery"
+
 	"context"
 
 	"go-spring.org/log"
@@ -28,7 +30,7 @@ import (
 // The registration core: the ONE server that owns this process's publication
 // lifecycle across every configured discovery center. The backend starters
 // (starter-discovery-etcd, starter-discovery-consul, starter-discovery-nacos,
-// starter-discovery-zookeeper) each contribute one [Registry] per configured
+// starter-discovery-zookeeper) each contribute one [discovery.Registry] per configured
 // ${spring.discovery.<backend>.<name>} block; [Server] collects them all and
 // drives them in lockstep — registered everywhere once the app is ready,
 // deregistered everywhere as shutdown begins, weight changes broadcast to all.
@@ -57,9 +59,9 @@ type Server struct {
 
 	// Registries collects every backend's discovery bean — one per configured
 	// discovery-center block, across all backends.
-	Registries []Registry `autowire:"?"`
+	Registries []discovery.Registry `autowire:"?"`
 
-	inst Instance
+	inst discovery.Instance
 }
 
 // NewServer builds the registration server.
@@ -76,7 +78,7 @@ func (s *Server) Run(ctx context.Context, sig gs.ReadySignal) error {
 	if len(s.Registries) == 0 {
 		return errutil.Explain(nil, "discovery: ${spring.discovery.service-name} is set but no discovery center is configured (e.g. ${spring.discovery.etcd.<name>.endpoints})")
 	}
-	s.inst = Instance{
+	s.inst = discovery.Instance{
 		ServiceName: s.Config.ServiceName,
 		ID:          s.Config.ID,
 		Addr:        s.Config.Addr,
@@ -161,7 +163,7 @@ func (s *Server) deregister() {
 // registered. They are attached to a context with log.WithFields rather than
 // repeated at each call site, and "service" is the name the metric and span
 // instruments use.
-func instanceFields(inst Instance) []log.Field {
+func instanceFields(inst discovery.Instance) []log.Field {
 	return []log.Field{
 		log.String("service", inst.ServiceName),
 		log.String("id", inst.ID),

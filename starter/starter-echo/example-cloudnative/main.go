@@ -123,7 +123,11 @@ func main() {
 	}
 
 	var err error
-	rmgr := resilience.NewManager(resilience.NewDefaultDriver(), ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()}))
+	rfact, err := ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()})
+	if err != nil {
+		fail("ratelimit factory: %v", err)
+	}
+	rmgr := resilience.NewManager(resilience.NewDefaultDriver(), rfact)
 	if err = rmgr.ApplyRateLimit(resilience.RateLimitSettings{Default: ratelimit.Policy{Limiter: ratelimit.TokenBucketAlgorithm, RateLimit: 3}}); err != nil {
 		fail("resilience executor: %v", err)
 	}

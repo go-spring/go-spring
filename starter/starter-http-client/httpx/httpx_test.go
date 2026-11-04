@@ -28,7 +28,7 @@ import (
 	"go-spring.org/cloud/governance"
 	admissionplane "go-spring.org/cloud/governance/controlplane/admission"
 	loadbalanceplane "go-spring.org/cloud/governance/controlplane/loadbalance"
-	"go-spring.org/cloud/governance/controlplane/source"
+	"go-spring.org/cloud/governance/capability/source"
 	"go-spring.org/cloud/governance/dataplane/outbound/chain"
 
 	"go-spring.org/cloud/discovery"
@@ -46,7 +46,13 @@ import (
 // container always provides them. A test that calls the constructor directly
 // passes the same unarmed ones the container would.
 var (
-	testMgr   = resilience.NewManager(resilience.NewDefaultDriver(), ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()}))
+	testMgr = func() *resilience.Manager {
+		fact, err := ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()})
+		if err != nil {
+			panic(err)
+		}
+		return resilience.NewManager(resilience.NewDefaultDriver(), fact)
+	}()
 	testInj   = clientfault.NewManager()
 	testLbMgr = mustLbManager()
 )
@@ -288,7 +294,11 @@ func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) { re
 func TestNewTransport_WrapExecReplacesDefault(t *testing.T) {
 	rec := &recordRT{}
 	called := false
-	mgr := resilience.NewManager(resilience.NewDefaultDriver(), ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()}))
+	fact, err := ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	mgr := resilience.NewManager(resilience.NewDefaultDriver(), fact)
 	rt, closeFn, err := NewTransport(Config{
 		Base:     rec,
 		Executor: mgr.ExecutorFor("test-service"),
@@ -312,7 +322,11 @@ func TestNewTransport_WrapExecReplacesDefault(t *testing.T) {
 // every other client starter takes — so arming that manager hot-swaps the policy
 // behind a transport that was already built, with no transport rebuild.
 func TestNewTransport_ResilienceFollowsManager(t *testing.T) {
-	mgr := resilience.NewManager(resilience.NewDefaultDriver(), ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()}))
+	fact, err := ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	mgr := resilience.NewManager(resilience.NewDefaultDriver(), fact)
 	rec := &recordRT{status: http.StatusInternalServerError}
 	rt, closeFn, err := NewTransport(Config{Addr: "svc:80", Base: rec}, testCenter(mgr, testInj, testLbMgr), testProp())
 	assert.That(t, err).Nil()
@@ -355,10 +369,14 @@ func TestConfigServiceDerivation(t *testing.T) {
 // testCenter bundles the trio of test authorities into the one center bean
 // NewTransport takes.
 func testCenter(mgr *resilience.Manager, inj *clientfault.Manager, lb *loadbalance.Manager) *governance.Runtime {
+	fact, err := ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()})
+	if err != nil {
+		panic(err)
+	}
 	ctr := &governance.Runtime{
 		Resilience:  mgr,
 		LoadBalance: lb,
-		Admission:   admission.NewManager(ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()})),
+		Admission:   admission.NewManager(fact),
 		ClientFault: inj,
 		ServerFault: serverfault.NewManager(),
 		Directory:   discovery.NewManager(nil),

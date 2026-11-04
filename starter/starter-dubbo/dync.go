@@ -79,7 +79,7 @@ func newDyncPoller(app DubboApplication, consumer DubboConsumer, ctr *governance
 // the center bean is a constructor dependency, and it arms the authority in its
 // own constructor — so by the time this poller exists, governance is live.
 func (p *dyncPoller) mgr() *resilience.Manager {
-	return p.ctr.ResilienceClient()
+	return p.ctr.Resilience
 }
 
 // Init pushes the current override rules once. Later re-pushes come from the

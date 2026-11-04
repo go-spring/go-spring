@@ -37,7 +37,7 @@
 // in-process endpoint snapshot it reads are consumed by loadbalance on the
 // request path. Publishing this process to a registry (the provider-side write)
 // is the control-plane half and lives in
-// [go-spring.org/cloud/governance/controlplane/registration]; each backend starter
+// [go-spring.org/cloud/discovery]; each backend starter
 // contributes both adapters.
 package discovery
 
@@ -52,7 +52,7 @@ import (
 // scheme) travel inside [Endpoint.Metadata] (and the registration side's
 // Instance metadata) so backends store them without per-backend mapping. These
 // keys are the single source of truth for that convention: the write side
-// (registration.Server) folds the ${spring.discovery} identity fields in under
+// (the registration Server) folds the ${spring.discovery} identity fields in under
 // these keys, and the read side (backends restoring [Endpoint.Scheme],
 // zone-aware balancing) reads them back.
 const (
@@ -259,13 +259,13 @@ func (b *staticBackend) Resolve(_ context.Context, _ string) ([]Endpoint, error)
 //
 // An empty s narrows nothing and returns eps unchanged; otherwise the result is
 // a new slice and eps is left untouched.
-func FilterByMetadata(eps []Endpoint, s matcher.Selector) []Endpoint {
+func FilterByMetadata(eps []Endpoint, s map[string]matcher.StringMatch) []Endpoint {
 	if len(s) == 0 {
 		return eps
 	}
 	out := make([]Endpoint, 0, len(eps))
 	for _, e := range eps {
-		if s.Matches(e.Metadata) {
+		if matcher.Matches(s, e.Metadata) {
 			out = append(out, e)
 		}
 	}

@@ -32,7 +32,7 @@ import (
 	"go-spring.org/cloud/governance/capability/ratelimit"
 	admissionplane "go-spring.org/cloud/governance/controlplane/admission"
 	loadbalanceplane "go-spring.org/cloud/governance/controlplane/loadbalance"
-	"go-spring.org/cloud/governance/controlplane/source"
+	"go-spring.org/cloud/governance/capability/source"
 	"go-spring.org/cloud/governance/dataplane/inbound/admission"
 	serverfault "go-spring.org/cloud/governance/dataplane/inbound/fault"
 	clientfault "go-spring.org/cloud/governance/dataplane/outbound/fault"
@@ -257,10 +257,18 @@ func TestWiring_ContributesRedisStore(t *testing.T) {
 
 	// The *goredis.Client bean starter-go-redis would publish, built the same
 	// way that starter builds one (identity + observation, no governance).
+	fact, err := ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	fact2, err := ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()})
+	if err != nil {
+		t.Fatal(err)
+	}
 	center := &governance.Runtime{
-		Resilience:  resilience.NewManager(resilience.NewDefaultDriver(), ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()})),
+		Resilience:  resilience.NewManager(resilience.NewDefaultDriver(), fact),
 		LoadBalance: loadbalance.NewManager(loadbalance.NewFactory([]loadbalance.Provider{loadbalance.NewBuiltinProvider()})),
-		Admission:   admission.NewManager(ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()})),
+		Admission:   admission.NewManager(fact2),
 		ClientFault: clientfault.NewManager(),
 		ServerFault: serverfault.NewManager(),
 		Directory:   discovery.NewManager(nil),
@@ -286,12 +294,12 @@ func TestWiring_ContributesRedisStore(t *testing.T) {
 		if ts.Factories == nil {
 			t.Fatal("the container must contribute the collected limiter kinds")
 		}
-		if _, err := ts.Factories.Create(experimental.TokenBucketLimiter, "api"); err != nil {
+		if _, err := ts.Factories.NewLimiter(experimental.TokenBucketLimiter, "api"); err != nil {
 			t.Fatal("the configured starter must contribute its limiter kind")
 		}
 		// Only the Redis store can write the bucket key, which is what makes
 		// this an assertion about WHICH kind was contributed.
-		lim, err := ts.Factories.Create(experimental.TokenBucketLimiter, "api")
+		lim, err := ts.Factories.NewLimiter(experimental.TokenBucketLimiter, "api")
 		if err != nil {
 			t.Fatalf("Create: %v", err)
 		}
@@ -316,10 +324,10 @@ func TestWiring_NoBlockContributesNoStore(t *testing.T) {
 		if ts.Factories == nil {
 			t.Fatal("the container must contribute the collected limiter kinds")
 		}
-		if _, err := ts.Factories.Create(experimental.TokenBucketLimiter, "api"); err == nil {
+		if _, err := ts.Factories.NewLimiter(experimental.TokenBucketLimiter, "api"); err == nil {
 			t.Fatal("without spring.ratelimit.redis the redis kind may not be contributed")
 		}
-		if _, err := ts.Factories.Create(ratelimit.TokenBucketAlgorithm, "api"); err != nil {
+		if _, err := ts.Factories.NewLimiter(ratelimit.TokenBucketAlgorithm, "api"); err != nil {
 			t.Fatal("the built-in process-local kind must still be contributed")
 		}
 	})

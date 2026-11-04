@@ -20,6 +20,7 @@ import (
 	"context"
 
 	"go-spring.org/cloud/governance"
+	"go-spring.org/cloud/governance/dataplane/inbound"
 	observability "go-spring.org/cloud/governance/dataplane/inbound/observe"
 	"go-spring.org/cloud/traffic"
 
@@ -54,7 +55,7 @@ func Admit(label string, system string, center *governance.Runtime) (thrift.Proc
 	return func(name string, next thrift.TProcessorFunction) thrift.TProcessorFunction {
 		return thrift.WrappedTProcessorFunction{
 			Wrapped: func(ctx context.Context, seqID int32, in, out thrift.TProtocol) (bool, thrift.TException) {
-				return admit(ctx, ib, label, name, seqID, in, out, next, center.TrafficPropagator())
+				return admit(ctx, ib, label, name, seqID, in, out, next, center.Traffic)
 			},
 		}
 	}, nil
@@ -69,7 +70,7 @@ func Admit(label string, system string, center *governance.Runtime) (thrift.Proc
 // cannot be replayed, and [guard.Policy] has no retry field to express
 // one with. The served guard makes a stray retry harmless regardless: the service
 // implementation still runs exactly once.
-func admit(ctx context.Context, ib *governance.Inbound, service, name string, seqID int32, in, out thrift.TProtocol, next thrift.TProcessorFunction, prop traffic.Propagator) (bool, thrift.TException) {
+func admit(ctx context.Context, ib *inbound.Inbound, service, name string, seqID int32, in, out thrift.TProtocol, next thrift.TProcessorFunction, prop traffic.Propagator) (bool, thrift.TException) {
 	var (
 		ok     bool
 		svcErr thrift.TException

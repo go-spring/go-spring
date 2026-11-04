@@ -1,12 +1,12 @@
-# 控制面规则源使用说明 — file / http（泛型传输在 cloud/governance/controlplane/source）
+# 控制面规则源使用说明 — file / http（泛型传输在 cloud/governance/capability/source）
 
-> 传输只有一份实现，住在 `cloud/governance/controlplane/source`，**不知道任何文档类型**。每个根（治理、放火）
+> 传输只有一份实现，住在 `cloud/governance/capability/source`，**不知道任何文档类型**。每个根（治理、放火）
 > 消费一个 `source.Source[T]`；**根不负责创建它的接线**。部署从哪种传输读文档——本地文件、配置中心、
 > 控制面流——属于持有该部署配置的一方，由公司级 source starter 注册。
 > `governance/example/source.go` 是一份完整的参考实现。这份手册与它所描述的传输实现放在一起。
 
 详细使用参考。概览见 [README.md](../governance/README.md)。所有行为声明均核对过源码
-（`cloud/governance/controlplane/source` 的 `source.go` / `file.go` / `http.go` / `parse.go`，
+（`cloud/governance/capability/source` 的 `source.go` / `file.go` / `http.go` / `parse.go`，
 以及治理包的 `center.go`、`config.go`、`starter.go`）和可运行的
 [example/](../governance/example/)（`example/main.go` 每秒打印政策与放火状态，提示你在线编辑规则文件，6 秒后自动退出，`-manual` 可保持运行）。
 
@@ -196,7 +196,7 @@ go run . -manual
 
 **变体 —— 与 server starter 组合**：任何注入了模块权威（本 starter 注册的
 `*resilience.Manager` / `*clientfault.Manager` bean）的 client starter 都自动获得 policy，应用代码
-零改动。HTTP server 侧 `match.traffic=loadtest` 的完整放火演练见 starter-echo 的 USAGE §4.4。
+零改动。HTTP server 侧 `match.traffic.exact=loadtest` 的完整放火演练见 starter-echo 的 USAGE §4.4。
 
 ---
 
@@ -205,7 +205,7 @@ go run . -manual
 ### 2.1 Source 契约 —— 中心真正依赖的东西
 
 `center` 本身容器无关：其 只依赖两方法的 `Source` 接口
-（`cloud/governance/controlplane/source/source.go:43`）：
+（`cloud/governance/capability/source/source.go:43`）：
 
 ```go
 type Source interface {
@@ -390,7 +390,7 @@ per-attempt 闸门（出站），server 块驱动 `Injector.Server.Fire` 的入�
 |-----|------|------|------|
 | `service` | string | "" | 目标/入口标签，精确匹配；空 = catch-all（匹配一切）。 |
 | `action.exact` / `action.prefix` | string | "" | 接口匹配（`insert`、`GET /users`）；prefix 覆盖一族路径。 |
-| `match.<key>` | string | 空 | metadata 子集匹配（如 `match.tenant=acme`），可叠加多个键。流量类别是其中一维：`match.traffic=real` 只打真实流量、`=loadtest` 只打带压测标记的流量；不写则不限类别。 |
+| `match.<key>` | string | 空 | metadata 子集匹配（如 `match.tenant=acme`），可叠加多个键。流量类别是其中一维：`match.traffic.exact=real` 只打真实流量、`=loadtest` 只打带压测标记的流量；不写则不限类别。 |
 | `rate` | float | 0 | 单次调用注入所配错误的概率（0..1）。配了它（或 `latency`）才算武装这条规则。 |
 | `latency` / `latency-jitter` | duration | 0 | 每次命中前注入（先于错误决策），无视 rate 对**每个**调用生效；jitter 在 ± 区间内随机。 |
 | `error` | string | "" | `""`/`generic`（可重试 ErrInjected）\| `timeout`（包 DeadlineExceeded）\| `reset`（包 ECONNRESET）\| `refused`（包 ECONNREFUSED）。空 + rate 0 不注入。 |
@@ -429,8 +429,8 @@ printf '' > conf/governance.yaml                              # 空：无 spring
 1. governance.yaml 里不写任何带 `rate`/`latency` 的 client 规则启动——什么都不放火。
 2. 加 `client.fault.rules[0].service=...` 与 `.rate: 0.5` 并保存——`injClient.Refresh` 原地热换；
    下一次调用即受影响。
-3. 规则上的 `match.traffic=loadtest` 只有带 `X-Traffic: loadtest` 标记的流量被烧；`real` 反过来（只用于专用
-   环境）；不写 `match.traffic` 则全量。
+3. 规则上的 `match.traffic.exact=loadtest` 只有带 `X-Traffic: loadtest` 标记的流量被烧；`real` 反过来（只用于专用
+   环境）；不写 `match.traffic.exact` 则全量。
 4. 离开前给同一条规则加保险：`max-duration: 5m`（自动熄火）与 `max-affected: 1000`（爆炸半径上限）。
 5. 删掉这条规则熄火（或等 max-duration 到期）。
 

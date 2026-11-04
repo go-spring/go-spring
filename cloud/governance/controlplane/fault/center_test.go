@@ -23,7 +23,7 @@ import (
 	"time"
 
 	kfault "go-spring.org/cloud/governance/capability/fault"
-	"go-spring.org/cloud/governance/controlplane/source"
+	"go-spring.org/cloud/governance/capability/source"
 	serverfault "go-spring.org/cloud/governance/dataplane/inbound/fault"
 	clientfault "go-spring.org/cloud/governance/dataplane/outbound/fault"
 	"go-spring.org/stdlib/testing/assert"
@@ -182,7 +182,8 @@ const documentYAML = `spring:
           max-duration: 1m
           max-affected: 100
           match:
-            traffic: loadtest
+            traffic:
+              exact: loadtest
           action:
             exact: insert
     server:
@@ -204,7 +205,7 @@ func TestParse_DocumentShape(t *testing.T) {
 	assert.String(t, c.Service).Equal("redis:cache")
 	assert.That(t, c.Rate).Equal(0.5)
 	assert.String(t, c.ActionMatch.Exact).Equal("insert")
-	assert.String(t, c.MetadataMatch["traffic"]).Equal("loadtest")
+	assert.String(t, c.MetadataMatch["traffic"].Exact).Equal("loadtest")
 	assert.That(t, c.Latency).Equal(10 * time.Millisecond)
 	assert.That(t, c.MaxDuration).Equal(time.Minute)
 	assert.Number(t, int(c.MaxAffected)).Equal(100)

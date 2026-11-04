@@ -50,7 +50,9 @@ import (
 // one capability's policy.
 func newBuiltin(t *testing.T, p any) chain.Executor {
 	t.Helper()
-	m := resilience.NewManager(resilience.NewDefaultDriver(), ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()}))
+	factories, err := ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()})
+	assert.That(t, err).Nil()
+	m := resilience.NewManager(resilience.NewDefaultDriver(), factories)
 	switch v := p.(type) {
 	case resilience.Limits:
 		assert.Error(t, m.ApplyLimits(resilience.LimitsSettings{Default: v})).Nil()

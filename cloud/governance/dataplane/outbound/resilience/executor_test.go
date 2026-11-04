@@ -51,7 +51,9 @@ func newBuiltin(t *testing.T, cfg any) chain.Executor {
 // the manager.
 func newBuiltinManager(t *testing.T, cfg any) *Manager {
 	t.Helper()
-	m := NewManager(NewDefaultDriver(), ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()}))
+	factories, err := ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()})
+	assert.That(t, err).Nil()
+	m := NewManager(NewDefaultDriver(), factories)
 	switch v := cfg.(type) {
 	case nil:
 	case Limits:
@@ -98,12 +100,12 @@ func TestExecuteTimeout(t *testing.T) {
 }
 
 func TestRateLimit(t *testing.T) {
-	// Burst of 2, no refill within the test window: 3rd call is rejected.
+	// Guava semantics: the 1st call rides the head of the pipeline for free
+	// but owes a full second; the 2nd, immediately after, is rejected.
 	e := newBuiltin(t, ratelimit.Policy{Limiter: ratelimit.TokenBucketAlgorithm, RateLimit: 1, Burst: 2})
 	run := func() error {
 		return e.Execute(context.Background(), chain.Operation{}, nil, func(context.Context) error { return nil })
 	}
-	assert.Error(t, run()).Nil()
 	assert.Error(t, run()).Nil()
 	assert.Error(t, run()).Is(chain.ErrRateLimited)
 }
@@ -125,12 +127,14 @@ func TestRateLimitQueueing(t *testing.T) {
 }
 
 // TestWarmUpColdStart pins the warm-up knob on the default driver's token
-// bucket: right after construction the bucket holds only the cold capacity
-// (burst/coldFactor), so a burst beyond it is rejected before the ramp fills
-// the bucket — and the ramp completes to full burst capacity.
+// bucket (Guava SmoothWarmingUp): the bucket starts full and cold, and a cold
+// permit costs far more than its steady price — so the call right after the
+// first is rejected while the pipeline drains that cost. Without warm-up the
+// second call would also queue a debt, but only one steady interval, not the
+// expensive cold one.
 func TestWarmUpColdStart(t *testing.T) {
-	// rate 100/s, burst 10 (explicit), warm-up 2s at coldFactor 10: cold
-	// capacity 1 token, growing to 10 over 2 seconds.
+	// rate 100/s (steady 10ms/permit), warm-up 2s at coldFactor 10: the first
+	// stored permit above the warm threshold costs ~99ms — ~10 steady prices.
 	e := newBuiltin(t, ratelimit.Policy{
 		Limiter:    ratelimit.TokenBucketAlgorithm,
 		RateLimit:  100,
@@ -138,9 +142,8 @@ func TestWarmUpColdStart(t *testing.T) {
 		WarmUp:     2 * time.Second,
 		ColdFactor: 10,
 	})
-	// The first call spends the single cold token; the second, immediately
-	// after, must be rejected — without warm-up the full burst of 10 would be
-	// available.
+	// The first call is granted at the head but owes the cold price; the
+	// second, immediately after, is rejected.
 	assert.Error(t, e.Execute(context.Background(), chain.Operation{}, nil, func(context.Context) error { return nil })).Nil()
 	err := e.Execute(context.Background(), chain.Operation{}, nil, func(context.Context) error { return nil })
 	assert.Error(t, err).Is(chain.ErrRateLimited)
@@ -429,7 +432,7 @@ func TestCapabilityGenerationsAreIndependent(t *testing.T) {
 	assert.Error(t, trip(e2)).Is(boom) // trips the breaker (threshold 1)
 	assert.Error(t, spend(e2)).Is(chain.ErrCircuitOpen)
 
-	assert.Error(t, m2.ApplyRateLimit(RateLimitSettings{Default: ratelimit.Policy{Limiter: ratelimit.TokenBucketAlgorithm, RateLimit: 0.001, Burst: 100}})).Nil()
+	assert.Error(t, m2.ApplyRateLimit(RateLimitSettings{Default: ratelimit.Policy{Limiter: ratelimit.TokenBucketAlgorithm, RateLimit: 1e6, Burst: 100}})).Nil()
 	assert.Error(t, spend(e2)).Is(chain.ErrCircuitOpen) // breaker survived
 
 	// A breaker change rebuilds it, so the call reaches the downstream again.
@@ -441,7 +444,9 @@ func TestCapabilityGenerationsAreIndependent(t *testing.T) {
 // TestLocalLimitersPrunedOnRuleRemoval pins the collection half of the local
 // counter's lifetime: when a rule disappears, its counter goes with it.
 func TestLocalLimitersPrunedOnRuleRemoval(t *testing.T) {
-	m := NewManager(NewDefaultDriver(), ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()}))
+	factories, err := ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()})
+	assert.That(t, err).Nil()
+	m := NewManager(NewDefaultDriver(), factories)
 	defer func() { _ = m.Close() }()
 
 	rule := RateLimitRule{
@@ -538,11 +543,13 @@ func TestHalfOpenCallerCancelReturnsPermit(t *testing.T) {
 }
 
 func TestPolicyTimeoutIsFailure(t *testing.T) {
-	m := NewManager(NewDefaultDriver(), ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()}))
+	factories, err := ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()})
+	assert.That(t, err).Nil()
+	m := NewManager(NewDefaultDriver(), factories)
 	assert.Error(t, m.ApplyBreaker(BreakerSettings{Default: BreakerPolicy{ErrorThreshold: 1, OpenDuration: time.Hour}})).Nil()
 	assert.Error(t, m.ApplyLimits(LimitsSettings{Default: Limits{Timeout: 20 * time.Millisecond}})).Nil()
 	e := m.ExecutorFor("svc")
-	err := e.Execute(context.Background(), chain.Operation{}, nil, func(ctx context.Context) error {
+	err = e.Execute(context.Background(), chain.Operation{}, nil, func(ctx context.Context) error {
 		<-ctx.Done()
 		return ctx.Err()
 	})
@@ -591,7 +598,9 @@ func TestHalfOpenTrialKeepsItsPermitAcrossRetries(t *testing.T) {
 	// The breaker admits one LOGICAL call per trial, not one attempt. The retry
 	// of a trial must therefore run under the trial's permit instead of finding
 	// the half-open gate spent and leaving the round unresolved.
-	m := NewManager(NewDefaultDriver(), ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()}))
+	factories, err := ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()})
+	assert.That(t, err).Nil()
+	m := NewManager(NewDefaultDriver(), factories)
 	assert.Error(t, m.ApplyBreaker(BreakerSettings{Default: BreakerPolicy{
 		ErrorThreshold:   1,
 		HalfOpenRequests: 1,
@@ -611,7 +620,7 @@ func TestHalfOpenTrialKeepsItsPermitAcrossRetries(t *testing.T) {
 	// The trial fails once and succeeds on its retry; the logical call succeeds
 	// and closes the circuit.
 	attempts := 0
-	err := e.Execute(context.Background(), chain.Operation{}, nil, func(context.Context) error {
+	err = e.Execute(context.Background(), chain.Operation{}, nil, func(context.Context) error {
 		attempts++
 		if attempts == 1 {
 			return errutil.Explain(nil, "boom")
@@ -696,7 +705,9 @@ func TestBreakerRecordsOncePerCallNotPerAttempt(t *testing.T) {
 	// With ErrorThreshold 3 and MaxRetries 2 (3 attempts per call), a single
 	// failing call must NOT trip the breaker — under the old per-attempt
 	// recording it would record 3 failures and open immediately.
-	m := NewManager(NewDefaultDriver(), ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()}))
+	factories, err := ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()})
+	assert.That(t, err).Nil()
+	m := NewManager(NewDefaultDriver(), factories)
 	assert.Error(t, m.ApplyBreaker(BreakerSettings{Default: BreakerPolicy{
 		ErrorThreshold: 3,
 		OpenDuration:   time.Minute,
@@ -713,7 +724,7 @@ func TestBreakerRecordsOncePerCallNotPerAttempt(t *testing.T) {
 
 	// First failing call: 3 attempts, but only 1 breaker sample. The next call
 	// must still reach fn (return "boom"), proving the breaker did NOT open.
-	err := fail()
+	err = fail()
 	assert.Error(t, err).NotNil()
 	assert.That(t, !errors.Is(err, chain.ErrCircuitOpen)).True()
 
@@ -1070,7 +1081,9 @@ func TestExecuteWithoutRecorderIsSafe(t *testing.T) {
 // share one rate budget, while another interface falls to the default and has
 // its own (absent) budget.
 func TestPartitionsStateByMatchedRule(t *testing.T) {
-	m := NewManager(NewDefaultDriver(), ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()}))
+	factories, err := ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()})
+	assert.That(t, err).Nil()
+	m := NewManager(NewDefaultDriver(), factories)
 	assert.Error(t, m.ApplyRateLimit(RateLimitSettings{
 		Rules: []RateLimitRule{{
 			Service: "svc",

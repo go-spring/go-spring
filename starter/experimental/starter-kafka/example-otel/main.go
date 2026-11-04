@@ -47,7 +47,7 @@ import (
 const topic = "hello"
 
 type Service struct {
-	Client *kgo.Client `autowire:"a"`
+	Client *StarterKafka.Client `autowire:"a"`
 }
 
 var manual = flag.Bool("manual", false, "run in manual verification mode (server stays up)")
@@ -88,7 +88,7 @@ func (s *Service) publish(ctx context.Context, value string) error {
 
 // consume polls one batch of fetches and returns the first record's value.
 func (s *Service) consume(ctx context.Context) (string, error) {
-	fetches := s.Client.PollFetches(ctx)
+	fetches := s.Client.Kafka.PollFetches(ctx)
 	if err := fetches.Err(); err != nil {
 		return "", err
 	}

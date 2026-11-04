@@ -35,7 +35,11 @@ func noopFn(context.Context) error { return nil }
 // benchmark's cleanup.
 func benchExec(b *testing.B, cfg any) chain.Executor {
 	b.Helper()
-	m := resilience.NewManager(resilience.NewDefaultDriver(), ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()}))
+	factories, err := ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()})
+	if err != nil {
+		b.Fatal(err)
+	}
+	m := resilience.NewManager(resilience.NewDefaultDriver(), factories)
 	switch v := cfg.(type) {
 	case nil:
 	case resilience.Limits:

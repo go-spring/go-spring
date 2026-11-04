@@ -25,22 +25,23 @@ import (
 	"time"
 
 	"github.com/go-zookeeper/zk"
+	"go-spring.org/cloud/discovery"
 	"go-spring.org/cloud/governance/controlplane/registration"
 	"go-spring.org/stdlib/testing/assert"
 )
 
 func TestInstanceID(t *testing.T) {
 	// An explicit ID is used verbatim.
-	assert.That(t, instanceID(registration.Instance{ID: "fixed", ServiceName: "orders", Addr: "1.2.3.4:80"})).Equal("fixed")
+	assert.That(t, instanceID(discovery.Instance{ID: "fixed", ServiceName: "orders", Addr: "1.2.3.4:80"})).Equal("fixed")
 	// Otherwise it is derived from name and addr so restarts replace the entry.
-	assert.That(t, instanceID(registration.Instance{ServiceName: "orders", Addr: "1.2.3.4:80"})).Equal("orders-1.2.3.4:80")
+	assert.That(t, instanceID(discovery.Instance{ServiceName: "orders", Addr: "1.2.3.4:80"})).Equal("orders-1.2.3.4:80")
 }
 
 func TestPathFor(t *testing.T) {
 	// The base path's trailing slash is normalised away at construction, so the
 	// znode path has exactly one separator per level.
 	r := &zkRegistry{basePath: "/services"}
-	got := r.pathFor(registration.Instance{ServiceName: "orders", Addr: "1.2.3.4:80"})
+	got := r.pathFor(discovery.Instance{ServiceName: "orders", Addr: "1.2.3.4:80"})
 	assert.That(t, got).Equal("/services/orders/orders-1.2.3.4:80")
 }
 
@@ -73,13 +74,13 @@ func newHealRegistry() (*zkRegistry, *atomic.Int32) {
 		basePath:    "/services",
 		backoffBase: 5 * time.Millisecond,
 		backoffCap:  20 * time.Millisecond,
-		regs:        map[string]registration.Instance{},
+		regs:        map[string]discovery.Instance{},
 		done:        make(chan struct{}),
 	}
 	var cur atomic.Int32
 	cur.Store(int32(zk.StateHasSession))
 	r.state = func() zk.State { return zk.State(cur.Load()) }
-	r.reRegister = func(registration.Instance) error { return nil }
+	r.reRegister = func(discovery.Instance) error { return nil }
 	return r, &cur
 }
 
@@ -110,9 +111,9 @@ func TestReconcileSession(t *testing.T) {
 func TestMonitorSessionReCreatesNodesAfterRecovery(t *testing.T) {
 	r, cur := newHealRegistry()
 	var mu sync.Mutex
-	created := []registration.Instance{}
+	created := []discovery.Instance{}
 	failures := int32(2) // first two heal passes fail, as if the session flaps
-	r.reRegister = func(reg registration.Instance) error {
+	r.reRegister = func(reg discovery.Instance) error {
 		if atomic.AddInt32(&failures, -1) >= 0 {
 			return errors.New("connection lost")
 		}
@@ -121,8 +122,8 @@ func TestMonitorSessionReCreatesNodesAfterRecovery(t *testing.T) {
 		mu.Unlock()
 		return nil
 	}
-	r.regs["/services/orders/orders-1.2.3.4:80"] = registration.Instance{ServiceName: "orders", Addr: "1.2.3.4:80", Weight: 1}
-	r.regs["/service2"] = registration.Instance{ServiceName: "billing", Addr: "1.2.3.4:90", Weight: 3}
+	r.regs["/services/orders/orders-1.2.3.4:80"] = discovery.Instance{ServiceName: "orders", Addr: "1.2.3.4:80", Weight: 1}
+	r.regs["/service2"] = discovery.Instance{ServiceName: "billing", Addr: "1.2.3.4:90", Weight: 3}
 
 	go r.monitorSession()
 	// Session drops, then recovers on the next poll.
@@ -145,7 +146,7 @@ func TestMonitorSessionReCreatesNodesAfterRecovery(t *testing.T) {
 	defer mu.Unlock()
 	// Assert by name: the heal pass walks r.regs, a map, so the order the two
 	// instances are re-created in is not defined.
-	byName := map[string]registration.Instance{}
+	byName := map[string]discovery.Instance{}
 	for _, in := range created {
 		byName[in.ServiceName] = in
 	}
@@ -159,7 +160,7 @@ func TestMonitorSessionReCreatesNodesAfterRecovery(t *testing.T) {
 // after deregister would resurrect a drained instance.
 func TestDeregisterRemovesFromHealSet(t *testing.T) {
 	r, _ := newHealRegistry()
-	reg := registration.Instance{ServiceName: "orders", Addr: "1.2.3.4:80", Weight: 1}
+	reg := discovery.Instance{ServiceName: "orders", Addr: "1.2.3.4:80", Weight: 1}
 	r.regs[r.pathFor(reg)] = reg
 	// Deregister deletes from the map before touching the (here nil) conn; the
 	// map bookkeeping is what the heal set reads.
@@ -174,11 +175,11 @@ func TestDeregisterRemovesFromHealSet(t *testing.T) {
 // healAll exits when Close is called even while every attempt fails.
 func TestHealAllExitsOnClose(t *testing.T) {
 	r, _ := newHealRegistry()
-	// One tracked registration.Instance, so each heal pass must call reRegister (an empty
+	// One tracked discovery.Instance, so each heal pass must call reRegister (an empty
 	// heal set succeeds trivially and the loop would exit without any call).
-	r.regs["/services/orders/orders-1.2.3.4:80"] = registration.Instance{ServiceName: "orders", Addr: "1.2.3.4:80", Weight: 1}
+	r.regs["/services/orders/orders-1.2.3.4:80"] = discovery.Instance{ServiceName: "orders", Addr: "1.2.3.4:80", Weight: 1}
 	calls := make(chan struct{}, 16)
-	r.reRegister = func(registration.Instance) error { calls <- struct{}{}; return errors.New("down") }
+	r.reRegister = func(discovery.Instance) error { calls <- struct{}{}; return errors.New("down") }
 	done := make(chan struct{})
 	go func() { r.healAll(); close(done) }()
 	<-calls // at least one failed attempt happened
@@ -198,7 +199,7 @@ func TestSelfHealReRegistrationIsReported(t *testing.T) {
 	r := &zkRegistry{
 		obs:      newTestRegObserver(),
 		basePath: "/services",
-		regs: map[string]registration.Instance{
+		regs: map[string]discovery.Instance{
 			"/services/orders-selfheal/orders-selfheal-1.2.3.4:80": {
 				ServiceName: "orders-selfheal", Addr: "1.2.3.4:80", Weight: 1,
 			},
@@ -208,7 +209,7 @@ func TestSelfHealReRegistrationIsReported(t *testing.T) {
 
 	// The session is not usable yet: the pass fails and the instance is not
 	// discoverable, which is exactly what the gauge must say.
-	r.reRegister = func(registration.Instance) error { return errors.New("ensemble unreachable") }
+	r.reRegister = func(discovery.Instance) error { return errors.New("ensemble unreachable") }
 	// The failing service comes back with the error, so the caller's log line
 	// can carry the identity that joins it to the metric below.
 	failed, err := r.reRegisterAll()
@@ -222,7 +223,7 @@ func TestSelfHealReRegistrationIsReported(t *testing.T) {
 		Zero("a session loss that could not be healed must report as unpublished")
 
 	// The session recovers: healAll retries the pass and the node comes back.
-	r.reRegister = func(registration.Instance) error { return nil }
+	r.reRegister = func(discovery.Instance) error { return nil }
 	_, err = r.reRegisterAll()
 	assert.Error(t, err).Nil()
 	assert.Number(t, sumValue(t, "discovery.registration.attempts_total", map[string]string{

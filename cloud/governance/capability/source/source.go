@@ -14,14 +14,15 @@
  * limitations under the License.
  */
 
-// Package source is the control plane's TRANSPORT: it knows how a document
+// Package source is the config roots' shared TRANSPORT: it knows how a document
 // arrives, never what the document means.
 //
 // A config ROOT is a document that is validated, applied and rejected as a
 // whole; each root owns its own key and its own last-good snapshot. The roots
 // (policy, fault, ...) are peers and must not import each other, so the
-// transport they share cannot live in any of them. It lives here, generic over
-// the document type:
+// transport they share cannot live in any of them. It lives in capability —
+// beside the direction-neutral kernels, knowing no document type and no
+// direction — generic over the document type:
 //
 //	Source[T]      snapshot + change subscription (what a root's center consumes)
 //	PushSource[T]  the mutable core every adapter embeds
@@ -71,7 +72,7 @@ import (
 // sourceTag identifies transport-level log lines (reload failures). It
 // names the TRANSPORT, not a root: the document's coordinates (path/URL) are
 // log fields, and the root is named by the center that applies the document.
-var sourceTag = log.RegisterAppTag("controlplane", "")
+var sourceTag = log.RegisterAppTag("capability", "")
 
 // Source is one config root's awareness contract: a provider of that root's
 // document snapshot plus a change subscription. The root's center depends only

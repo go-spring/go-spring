@@ -31,6 +31,7 @@ import (
 	"github.com/hertz-contrib/requestid"
 	"go-spring.org/cloud/governance"
 	"go-spring.org/cloud/governance/capability/label"
+	"go-spring.org/cloud/governance/dataplane/inbound"
 	"go-spring.org/cloud/governance/dataplane/inbound/admission"
 	observability "go-spring.org/cloud/governance/dataplane/inbound/observe"
 	"go-spring.org/cloud/propagate"
@@ -135,7 +136,7 @@ func applyMiddlewares(h *server.Hertz, cfg Config, center *governance.Runtime, p
 // buildServerPolicy builds the inbound governance middleware. It drives the
 // admission's Admit/Done pair and maps a refusal to 429 (rate limit / bulkhead) or
 // 503 (injected fault).
-func buildServerPolicy(in *governance.Inbound, prop traffic.Propagator) app.HandlerFunc {
+func buildServerPolicy(in *inbound.Inbound, prop traffic.Propagator) app.HandlerFunc {
 	return func(ctx context.Context, c *app.RequestContext) {
 		op := observability.NewServerOperation(ctx, prop, actionName(c))
 		err := in.Run(ctx, op, func(ctx context.Context) error {
@@ -146,7 +147,7 @@ func buildServerPolicy(in *governance.Inbound, prop traffic.Propagator) app.Hand
 			return nil
 		})
 		if err != nil {
-			var ref *governance.Refusal
+			var ref *inbound.Refusal
 			if errors.As(err, &ref) && !c.Response.IsBodyStream() && c.Response.StatusCode() == 0 {
 				c.AbortWithStatus(httpStatusFor(ref))
 			}
@@ -158,7 +159,7 @@ func buildServerPolicy(in *governance.Inbound, prop traffic.Propagator) app.Hand
 // rate/bulkhead rejections are 429; an injected fault follows the class the rule
 // declared — a business failure (the caller's mistake) is 400, anything else is
 // 503.
-func httpStatusFor(ref *governance.Refusal) int {
+func httpStatusFor(ref *inbound.Refusal) int {
 	if ref.Verdict() == admission.VerdictFaultInjected {
 		if ref.Fault().Business() {
 			return http.StatusBadRequest

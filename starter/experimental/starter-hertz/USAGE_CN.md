@@ -155,7 +155,8 @@ spring:
         # rate: 0.2           # 配上 rate 即"点火"，无需重启
         error: timeout
         match:
-          traffic: loadtest       # 只有带 X-Traffic 标记的流量受影响
+          traffic:
+            exact: loadtest       # 只有带 X-Traffic 标记的流量受影响
 ```
 
 **验证**（与 `example/check.sh` 断言同构——X-App 头、X-Request-Id 头、JSON 体、
@@ -232,7 +233,7 @@ LoadTest → Recovery → RequestID(+propagate) → Tracing → Metrics → Acce
 6. AccessLog 布防（字段在出口捕获）
 7. SecureHeaders/CORS/Gzip 按配置（引擎独立执行 `maxBodySize`）
 8. fault：`_, err := srv.Fire(ctx, fault.Target{Service: "hertz", Action: "GET /x"})`
-   （inj = 注入的 bean；内置 target 会带上 `METHOD` + `c.FullPath()`，规则可以只给单个路由放火）——`match.traffic=loadtest`
+   （inj = 注入的 bean；内置 target 会带上 `METHOD` + `c.FullPath()`，规则可以只给单个路由放火）——`match.traffic.exact=loadtest`
    且有标记时，约 `rate` 比例的请求拿到注入错误 → 503；其余放行
 9. 你的路由执行；响应按 6→5→4→3 解栈：访问记录落盘（按状态定级）、耗时/计数入库、
    in-flight 减一、span 结束（5xx 标 Error）、id 头写回。
@@ -328,7 +329,7 @@ curl -i 127.0.0.1:9370/readyz    # actuator 就绪（需加 starter-actuator）
 4. 标记流量着火、正常流量无感：
 
 ```bash
-curl -i 127.0.0.1:8003/echo/x                          # 200（match.traffic=loadtest，无标记）
+curl -i 127.0.0.1:8003/echo/x                          # 200（match.traffic.exact=loadtest，无标记）
 curl -i -H 'X-Traffic: loadtest' 127.0.0.1:8003/echo/x       # ~20% → 503 service unavailable
 ```
 
@@ -337,7 +338,7 @@ curl -i -H 'X-Traffic: loadtest' 127.0.0.1:8003/echo/x       # ~20% → 503 serv
 
 ### 4.5 压测标记演练
 
-把 `match.traffic` 换成 `real` 则注入作用于无标记流量——只在专用环境用。handler 里
+把 `match.traffic.exact` 换成 `real` 则注入作用于无标记流量——只在专用环境用。handler 里
 `traffic.IsLoadTest(ctx, prop)` 分流同一标记，业务代码可在合成流量下自动降级功能。
 
 ---

@@ -72,7 +72,7 @@ type DefaultDriver struct{}
 // CreateClient creates a new Redis pool based on the provided configuration.
 //
 // When in-process discovery applies (a service name is set and the process is not in mesh mode), the address is
-// resolved through the discovery backend (center.Discovery().Get(c.Discovery))
+// resolved through the discovery backend (center.Directory.Get(c.Discovery))
 // instead of c.Addr: a discovery loader keeps the endpoint set fresh via the
 // backend's watch and the pool dials a live instance (Pick) for each new
 // connection. Combined with c.ConnMaxLifetime, pooled connections recycle onto
@@ -81,7 +81,7 @@ type DefaultDriver struct{}
 //
 // The entry's ${discovery} label rides on the config (c.Discovery, already
 // carrying the family default): the driver resolves it against
-// center.Discovery() itself, failing construction when an entry routes by
+// center.Directory itself, failing construction when an entry routes by
 // service-name and the label names no bean.
 //
 // In mesh mode discovery is skipped entirely (the runtime reports in-process discovery as off): a sidecar owns

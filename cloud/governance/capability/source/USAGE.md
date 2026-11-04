@@ -1,6 +1,6 @@
-# Control-Plane Rule Sources — Usage Reference (file / http, generic transport in cloud/governance/controlplane/source)
+# Control-Plane Rule Sources — Usage Reference (file / http, generic transport in cloud/governance/capability/source)
 
-> The transport is implemented ONCE, in `cloud/governance/controlplane/source`, and knows no document
+> The transport is implemented ONCE, in `cloud/governance/capability/source`, and knows no document
 > type. A config root (policy, fault) consumes a `source.Source[T]`; **the root does not ship
 > the wiring that creates it.** Which transport a deployment reads its documents from — a local
 > file, a config center, a control-plane stream — belongs to whoever owns that deployment's
@@ -22,7 +22,7 @@ Both roots are now transport-free: neither ships a source module. The example's
 `source.go` is the reference wiring; `FileSource` above is the piece it uses.
 
 Detailed usage reference. Overview: [README.md](../governance/README.md). All behavior claims are verified against
-the transport (`cloud/governance/controlplane/source`: `source.go`, `file.go`, `http.go`, `parse.go`), the policy roots it feeds (`controlplane/{timeoutretry,circuitbreaker,ratelimit,loadbalance,admission}`), and the
+the transport (`cloud/governance/capability/source`: `source.go`, `file.go`, `http.go`, `parse.go`), the policy roots it feeds (`controlplane/{timeoutretry,circuitbreaker,ratelimit,loadbalance,admission}`), and the
 runnable [example/](../governance/example/) (`example/main.go` prints the resolved policy and fire status every
 second, prompts you to edit the rules files live, and self-terminates after 6s unless `-manual`).
 
@@ -205,7 +205,7 @@ always come through a Source.
 **Variant — combining with a server starter**: any client starter that injects a module authority
 (the `*resilience.Manager` / `*clientfault.Manager` beans this starter registers) picks the policy up
 automatically — no application code changes. See starter-echo's USAGE §4.4 for a worked fault drill
-through an HTTP server with `match.traffic=loadtest`.
+through an HTTP server with `match.traffic.exact=loadtest`.
 
 ---
 
@@ -214,7 +214,7 @@ through an HTTP server with `match.traffic=loadtest`.
 ### 2.1 The Source contract — what the center actually depends on
 
 `Center` is container-free: it depends only on the two-method `Source` interface
-(`cloud/governance/controlplane/source/source.go:43`). The gs wiring lives in
+(`cloud/governance/capability/source/source.go:43`). The gs wiring lives in
 the package's `starter.go`.
 
 ```go
@@ -428,7 +428,7 @@ The client block drives `WrapClientExecutor`'s per-attempt gate (outbound), the 
 |-----|------|---------|----------|
 | `service` | string | "" | Target/entrance label, exact match; empty = catch-all (matches everything). |
 | `action.exact` / `action.prefix` | string | "" | Interface match (`insert`, `GET /users`); prefix covers a family of paths. |
-| `match.<key>` | string | empty | Metadata subset match (`match.tenant=acme`); several keys AND together. Traffic class is one dimension: `match.traffic=real` / `loadtest`; omit it for every class. |
+| `match.<key>` | string | empty | Metadata subset match (`match.tenant=acme`); several keys AND together. Traffic class is one dimension: `match.traffic.exact=real` / `loadtest`; omit it for every class. |
 | `rate` | float | 0 | Per-call probability of injecting the configured error (0..1). Setting it (or `latency`) is what arms the rule. |
 | `latency` / `latency-jitter` | duration | 0 | Injected before each hit and before the error decision, on EVERY matching call regardless of rate; jitter randomizes within ±. |
 | `error` | string | "" | `""`/`generic` (retryable ErrInjected) \| `timeout` (wraps DeadlineExceeded) \| `reset` (wraps ECONNRESET) \| `refused` (wraps ECONNREFUSED). Empty + rate 0 injects nothing. |
@@ -471,8 +471,8 @@ process receives.
 1. Start with no rule under `client.fault.rules[]` — nothing fires.
 2. Add `client.fault.rules[0].service=...` with `.rate: 0.5` and save — `injClient.Refresh`
    swaps in place; the next call is subject to it.
-3. The traffic class is per rule: `match.traffic=loadtest` burns only traffic marked `X-Traffic: loadtest`;
-   `match.traffic=real` inverts that (dedicated environments only); omitting it hits every class.
+3. The traffic class is per rule: `match.traffic.exact=loadtest` burns only traffic marked `X-Traffic: loadtest`;
+   `match.traffic.exact=real` inverts that (dedicated environments only); omitting it hits every class.
 4. Add the guards to the same rule before walking away: `max-duration: 5m` (auto-off) and
    `max-affected: 1000` (blast-radius cap).
 5. Extinguish by clearing the `rate` (or wait out max-duration).

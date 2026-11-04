@@ -27,7 +27,7 @@ package ratelimit
 import (
 	"context"
 
-	"go-spring.org/cloud/governance/controlplane/source"
+	"go-spring.org/cloud/governance/capability/source"
 	"go-spring.org/cloud/governance/dataplane/outbound/resilience"
 	"go-spring.org/log"
 )

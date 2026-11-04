@@ -76,7 +76,7 @@ import (
 // other.
 //
 // The kernel pointer is the only shared state. Refresh is UNSYNCHRONIZED, like
-// [go-spring.org/cloud/governance/controlplane/source.PushSource]: pushes arrive
+// [go-spring.org/cloud/governance/capability/source.PushSource]: pushes arrive
 // from one serialized source loop (initial snapshot in the constructor, the
 // subscribe callback afterwards), so seriality is the control plane's contract,
 // not this type's lock. [Manager.Fire] loads the pointer and evaluates against

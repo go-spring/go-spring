@@ -9,6 +9,7 @@ require (
 	go-spring.org/starter-actuator v0.0.0
 	go-spring.org/starter-config-file v0.0.0
 	go-spring.org/starter-echo v0.0.0
+	go-spring.org/stdlib v0.1.7
 )
 
 require (
@@ -19,6 +20,7 @@ require (
 	github.com/fsnotify/fsnotify v1.9.0 // indirect
 	github.com/go-logr/logr v1.4.4 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
+	github.com/google/uuid v1.6.0 // indirect
 	github.com/gopherjs/gopherjs v1.20.2 // indirect
 	github.com/jtolds/gls v4.20.0+incompatible // indirect
 	github.com/labstack/gommon v0.4.2 // indirect
@@ -33,10 +35,10 @@ require (
 	github.com/valyala/fasttemplate v1.2.2 // indirect
 	go-spring.org/gs-mock v0.0.9 // indirect
 	go-spring.org/log v0.1.4 // indirect
-	go-spring.org/stdlib v0.1.7 // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
 	go.opentelemetry.io/otel v1.45.0 // indirect
 	go.opentelemetry.io/otel/metric v1.45.0 // indirect
+	go.opentelemetry.io/otel/sdk v1.45.0 // indirect
 	go.opentelemetry.io/otel/trace v1.45.0 // indirect
 	golang.org/x/arch v0.26.0 // indirect
 	golang.org/x/crypto v0.55.0 // indirect

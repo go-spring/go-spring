@@ -18,7 +18,7 @@ package fault
 
 import (
 	kfault "go-spring.org/cloud/governance/capability/fault"
-	"go-spring.org/cloud/governance/controlplane/source"
+	"go-spring.org/cloud/governance/capability/source"
 	serverfault "go-spring.org/cloud/governance/dataplane/inbound/fault"
 	clientfault "go-spring.org/cloud/governance/dataplane/outbound/fault"
 	"go-spring.org/spring/gs"

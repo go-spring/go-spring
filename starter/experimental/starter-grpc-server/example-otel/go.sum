@@ -68,7 +68,6 @@ github.com/stretchr/testify v1.11.1/go.mod h1:wZwfW3scLgRK+23gO65QZefKpKQRnfz6sD
 go-spring.org/gs-mock v0.0.9 h1:7az0R0CB45prtQk6D/A02bPk5KRJbs2TbuRIIDTaKl0=
 go-spring.org/log v0.1.4 h1:LJR2Z7qyI6XbtZ8RwRu9vtImNVUdDAR6+4FAjBJXrTE=
 go-spring.org/spring v1.3.4 h1:Zmt+5JjU0c7PtQdaCnz1I5vq+fYr8prZX+jYxoWVJcU=
-go-spring.org/starter-grpc v1.3.4 h1:wZ/ZkWfElJybduBxrfKMf6D7yRpSxaSBvJQ17/k01E0=
 go-spring.org/stdlib v0.1.7 h1:sxB0/vXY2yyWx84THcBNfaiknBmsYqYh+UGT4xH3sAA=
 go.opentelemetry.io/auto/sdk v1.2.1 h1:jXsnJ4Lmnqd11kwkBV2LgLoFMZKizbCi5fNZ/ipaZ64=
 go.opentelemetry.io/auto/sdk v1.2.1/go.mod h1:KRTj+aOaElaLi+wW1kO/DZRXwkF4C5xPbEe3ZiIhN7Y=

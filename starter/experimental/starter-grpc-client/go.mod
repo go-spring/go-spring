@@ -5,9 +5,9 @@ go 1.26.1
 require (
 	go-spring.org/spring v1.3.4
 	go-spring.org/stdlib v0.1.7
-	go.opentelemetry.io/otel v1.45.0
-	go.opentelemetry.io/otel/metric v1.45.0
-	go.opentelemetry.io/otel/trace v1.45.0
+	go.opentelemetry.io/otel v1.45.0 // indirect
+	go.opentelemetry.io/otel/metric v1.45.0 // indirect
+	go.opentelemetry.io/otel/trace v1.45.0 // indirect
 	google.golang.org/grpc v1.80.0
 )
 
@@ -39,5 +39,11 @@ require (
 )
 
 require go-spring.org/cloud v0.0.0
+
+require (
+	github.com/fsnotify/fsnotify v1.9.0 // indirect
+	github.com/google/uuid v1.6.0 // indirect
+	go.opentelemetry.io/otel/sdk v1.45.0 // indirect
+)
 
 replace go-spring.org/cloud => ../../../cloud

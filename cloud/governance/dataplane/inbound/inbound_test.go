@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package governance
+package inbound
 
 import (
 	"context"
@@ -32,16 +32,20 @@ import (
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 )
 
-// TestInboundOver_InjectsFaultThroughGuard pins the single inbound seam: the
+// TestOver_InjectsFaultThroughGuard pins the single inbound seam: the
 // fault authority is folded into the guard as its innermost stage, so a server
 // adapter needs one Inbound and cannot double-fire.
-func TestInboundOver_InjectsFaultThroughGuard(t *testing.T) {
+func TestOver_InjectsFaultThroughGuard(t *testing.T) {
 	inj := serverfault.NewManager()
 	inj.Refresh(fault.Config{Rules: []fault.Rule{{Name: "all", Service: "gin", Rate: 1, Class: fault.ClassTransient, Error: "generic"}}})
-	gm := admission.NewManager(ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()}))
+	factories, err := ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	gm := admission.NewManager(factories)
 	defer gm.Close()
 
-	in, err := InboundOver("gin", "gin:test", gm, inj)
+	in, err := Over("gin", "gin:test", gm, inj)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -64,14 +68,18 @@ func TestInboundOver_InjectsFaultThroughGuard(t *testing.T) {
 	}
 }
 
-// TestInboundOver_NoInjectorIsGovernanceOnly pins that omitting the fault
+// TestOver_NoInjectorIsGovernanceOnly pins that omitting the fault
 // authority leaves a plain, admitting inbound: fault is optional, not a second
 // always-on path.
-func TestInboundOver_NoInjectorIsGovernanceOnly(t *testing.T) {
-	gm := admission.NewManager(ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()}))
+func TestOver_NoInjectorIsGovernanceOnly(t *testing.T) {
+	factories, err := ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	gm := admission.NewManager(factories)
 	defer gm.Close()
 
-	in, err := InboundOver("gin", "gin:test", gm)
+	in, err := Over("gin", "gin:test", gm)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -89,11 +97,11 @@ func TestInboundOver_NoInjectorIsGovernanceOnly(t *testing.T) {
 	}
 }
 
-// TestInboundOver_TagsInjectedFaultOnSpan pins the inbound half of the
+// TestOver_TagsInjectedFaultOnSpan pins the inbound half of the
 // "an injected fault is never read as a real failure" contract: the span carries
 // the same attributes the outbound edge writes, naming the experiments that
 // fired. Without it an inbound fire is indistinguishable from a genuine 5xx.
-func TestInboundOver_TagsInjectedFaultOnSpan(t *testing.T) {
+func TestOver_TagsInjectedFaultOnSpan(t *testing.T) {
 	spanExp := tracetest.NewInMemoryExporter()
 	tp := sdktrace.NewTracerProvider(sdktrace.WithSyncer(spanExp))
 	prev := otel.GetTracerProvider()
@@ -107,10 +115,14 @@ func TestInboundOver_TagsInjectedFaultOnSpan(t *testing.T) {
 	inj.Refresh(fault.Config{Rules: []fault.Rule{{
 		Name: "all", Service: "gin", Rate: 1, Class: fault.ClassTransient, Error: "generic",
 	}}})
-	gm := admission.NewManager(ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()}))
+	factories, err := ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	gm := admission.NewManager(factories)
 	defer gm.Close()
 
-	in, err := InboundOver("gin", "gin:test", gm, inj)
+	in, err := Over("gin", "gin:test", gm, inj)
 	if err != nil {
 		t.Fatal(err)
 	}

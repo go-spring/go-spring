@@ -20,7 +20,7 @@ import (
 	"context"
 	"errors"
 
-	"go-spring.org/cloud/governance"
+	"go-spring.org/cloud/governance/dataplane/inbound"
 
 	"go-spring.org/cloud/governance/capability/label"
 	"go-spring.org/cloud/governance/dataplane/inbound/admission"
@@ -80,7 +80,7 @@ func (s *SimpleGrpcServer) buildResilienceInterceptors() (resilienceInterceptors
 // can tell "this client is being throttled" from an arbitrary handler failure:
 // rate/bulkhead rejections are ResourceExhausted. Without the mapping they cross the wire as codes.Unknown,
 // which no consumer can act on.
-func resilienceUnaryInterceptor(in *governance.Inbound, service string, prop traffic.Propagator) grpc.UnaryServerInterceptor {
+func resilienceUnaryInterceptor(in *inbound.Inbound, service string, prop traffic.Propagator) grpc.UnaryServerInterceptor {
 	return func(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
 		var resp any
 		op := observability.NewServerOperation(ctx, prop, info.FullMethod)
@@ -97,7 +97,7 @@ func resilienceUnaryInterceptor(in *governance.Inbound, service string, prop tra
 // as a unary call: admission happens once when the stream opens, the handler
 // runs with the derived context, and settlement happens when the handler
 // returns. Fault injection therefore lives inside the guard for streams too.
-func resilienceStreamInterceptor(in *governance.Inbound, prop traffic.Propagator) grpc.StreamServerInterceptor {
+func resilienceStreamInterceptor(in *inbound.Inbound, prop traffic.Propagator) grpc.StreamServerInterceptor {
 	return func(srv any, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
 		op := observability.NewServerOperation(ss.Context(), prop, info.FullMethod)
 		return in.Run(ss.Context(), op, func(ctx context.Context) error {
@@ -122,7 +122,7 @@ func mapServerPolicyError(err error) error {
 	if err == nil {
 		return nil
 	}
-	var ref *governance.Refusal
+	var ref *inbound.Refusal
 	if !errors.As(err, &ref) {
 		return err
 	}

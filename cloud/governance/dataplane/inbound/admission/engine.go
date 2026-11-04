@@ -120,7 +120,7 @@ func newRate(m *ratelimit.Factory, kind string, scope string) (ratelimit.Limiter
 	if kind == "" {
 		return nil, nil
 	}
-	return m.Create(kind, scope)
+	return m.NewLimiter(kind, scope)
 }
 
 // buildState materializes one generation of the instance's stages.

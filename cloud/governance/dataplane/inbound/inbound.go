@@ -14,7 +14,16 @@
  * limitations under the License.
  */
 
-package governance
+// inbound.go assembles the INBOUND data plane's two hook points into one
+// middleware handle. A governed request is not a chain — observation wraps the
+// whole request while admission gates entry — so this package (a peer of the
+// admission/observe/fault/chain subpackages it composes) fixes the layer order
+// in one place: observation outermost, admission inside, fault innermost. The
+// composition root ([go-spring.org/cloud/governance.Runtime]) is a thin caller
+// of [Over]; the handle itself needs no runtime, which is what lets a filter
+// library or a test build one over an explicit manager.
+
+package inbound
 
 import (
 	"context"
@@ -27,33 +36,18 @@ import (
 	"go-spring.org/cloud/governance/dataplane/inbound/observe"
 )
 
-// InboundFor returns the pair of inbound objects one route's middleware drives,
-// wired together: the observer records the request plane, while the admission
-// publishes its own state. It replaces the old ServerExecutorFor — inbound is no longer a chain
-// (a governed request has two hook points a chain cannot span), so what a server
-// gets is two peer objects, not one executor.
-//
-// It is the same single composition point the outbound clients reach: the admission
-// authority supplies the governance object and this runtime (the only importer
-// of both) supplies the observer, so no middleware wires the observe object to
-// the admission itself and no other package needs to know both. The inbound fault
-// authority is folded in too, innermost, so a server has ONE inbound seam.
-func (r *Runtime) InboundFor(system, label string) (*Inbound, error) {
-	return InboundOver(system, label, r.Admission, r.ServerFault)
-}
-
-// InboundOver builds the inbound pair over an explicit admission authority — the
-// seam for a caller that holds the manager rather than a runtime (a filter
-// library with no bean to inject into, a test). mgr MUST be non-nil: an invalid
+// Over builds the inbound pair over an explicit admission authority — the seam
+// for a caller that holds the manager rather than a runtime (a filter library
+// with no bean to inject into, a test). mgr MUST be non-nil: an invalid
 // construction is refused, never silently wrapped.
 //
 // inj is optional: when present, the inbound fault stage becomes part of the
 // admission (innermost, after the breaker gate), so ordering and breaker accounting
 // are fixed in one place. A caller with no injector gets governance without
 // fault.
-func InboundOver(system, label string, mgr *admission.Manager, inj ...*fault.Manager) (*Inbound, error) {
+func Over(system, label string, mgr *admission.Manager, inj ...*fault.Manager) (*Inbound, error) {
 	if mgr == nil {
-		panic("runtime: InboundOver requires a non-nil admission.Manager")
+		panic("runtime: Over requires a non-nil admission.Manager")
 	}
 	var opts []admission.Option
 	if len(inj) > 0 && inj[0] != nil {

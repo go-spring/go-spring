@@ -170,7 +170,8 @@ spring:
         - name: echo-drill          # 必填身份，方向内唯一
           service: "grpc:/EchoService/Echo"   # 规则 label = "grpc:{FullMethod}"
           match:
-            traffic: loadtest       # 只影响带 x-traffic 标记的流量
+            traffic:
+              exact: loadtest       # 只影响带 x-traffic 标记的流量
           error: timeout
           # rate: 0.2             # 配上 rate 即可不重启"放火"
 ```
@@ -306,7 +307,7 @@ Stream 链相同，但没有 Resilience（准入只覆盖 unary）。
 | `tls.ca-file` | string | — | **服务端语义 = mTLS**：设 ClientCAs + `RequireAndVerifyClientCert`（security.BuildServer）。 | 随手一配 → 所有无证书客户端被拒。 |
 | `tls.server-name` / `tls.insecure-skip-verify` | | — | 客户端旋钮；**此处为死 key**（BuildServer 忽略）。 | 虚假安全感；无任何效果。 |
 | `health.enabled` | bool | true | 注册 `grpc_health_v1`，整体状态 SERVING。 | false → 探针/LB 健康检查得到 Unimplemented。 |
-| `loadtest.enabled` | bool | true | 安装 LoadTest 拦截器，读 `x-traffic` metadata（小写——grpc metadata key 一律小写）。 | false → load-test 标记不可见；fault `match.traffic=loadtest` 永不触发。 |
+| `loadtest.enabled` | bool | true | 安装 LoadTest 拦截器，读 `x-traffic` metadata（小写——grpc metadata key 一律小写）。 | false → load-test 标记不可见；fault `match.traffic.exact=loadtest` 永不触发。 |
 | `observer.tracing.enabled` | bool | true | 安装 tracing 拦截器，依附 OTel 全局；无 starter-otel 时为 no-op（无告警）。⚠ example-otel 的 conf 用的是 `interceptor.tracing.*`——死路径，全靠默认 true 兜住。 | 前缀写错 → 静默落默认值。 |
 | `observer.metrics.enabled` | bool | true | 安装 metrics 拦截器；同样 no-op 陷阱。 | 同上。 |
 
@@ -352,7 +353,7 @@ example-otel 端到端验证走 Jaeger API
 3. 把 fault 规则的 `rate` 配成 `0.2`——拦截器持有注入的 `*serverfault.Manager`，治理中心就地替换
    其配置，改动在下一个 RPC 生效，无需重启。
 4. 规则 label 是 `grpc:{FullMethod}`（如 `grpc:/EchoService/Echo`）——可以只烧一个方法。
-   `match.traffic=loadtest` 时只烧带标记的流量：
+   `match.traffic.exact=loadtest` 时只烧带标记的流量：
 
 ```bash
 grpcurl -plaintext -H 'x-traffic: loadtest' -d '{"message":"x"}' :9494 EchoService/Echo  # ~20% 失败

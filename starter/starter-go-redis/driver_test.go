@@ -30,7 +30,7 @@ import (
 	"go-spring.org/cloud/governance/capability/ratelimit"
 	admissionplane "go-spring.org/cloud/governance/controlplane/admission"
 	loadbalanceplane "go-spring.org/cloud/governance/controlplane/loadbalance"
-	"go-spring.org/cloud/governance/controlplane/source"
+	"go-spring.org/cloud/governance/capability/source"
 	serverfault "go-spring.org/cloud/governance/dataplane/inbound/fault"
 	clientfault "go-spring.org/cloud/governance/dataplane/outbound/fault"
 	"go-spring.org/cloud/governance/dataplane/outbound/resilience"
@@ -42,10 +42,14 @@ import (
 // injector and an empty document: everything a driver reads, with no wiring.
 func testCenter(t *testing.T, resClient *resilience.Manager, lb *loadbalance.Manager) *governance.Runtime {
 	t.Helper()
+	fact, err := ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()})
+	if err != nil {
+		t.Fatal(err)
+	}
 	ctr := &governance.Runtime{
 		Resilience:  resClient,
 		LoadBalance: lb,
-		Admission:   admission.NewManager(ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()})),
+		Admission:   admission.NewManager(fact),
 		ClientFault: clientfault.NewManager(),
 		ServerFault: serverfault.NewManager(),
 		Directory:   discovery.NewManager(nil),
@@ -75,7 +79,7 @@ type poolDriver struct {
 
 func (d *poolDriver) CreateClient(ctx context.Context, c Config, center *governance.Runtime) (*Client, error) {
 	src := func(context.Context) ([]discovery.Endpoint, error) { return d.endpoints, nil }
-	chain, cerr := center.Loadbalance().Chain(ctx, src, serviceLabel(c))
+	chain, cerr := center.LoadBalance.Chain(ctx, src, serviceLabel(c))
 	if cerr != nil {
 		return nil, cerr
 	}
@@ -101,8 +105,12 @@ func TestDriverChainIsGovernedFromConstruction(t *testing.T) {
 	// in for a center that pushes later.
 	mgr := loadbalance.NewManager(loadbalance.NewFactory([]loadbalance.Provider{loadbalance.NewBuiltinProvider()}))
 	cfg := Config{Addr: "10.0.0.1:6379"}
+	fact, err := ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()})
+	if err != nil {
+		t.Fatal(err)
+	}
 	w, err := drv.CreateClient(context.Background(), cfg,
-		testCenter(t, resilience.NewManager(resilience.NewDefaultDriver(), ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()})), mgr))
+		testCenter(t, resilience.NewManager(resilience.NewDefaultDriver(), fact), mgr))
 	assert.Error(t, err).Nil()
 
 	// The rule gives this service a strategy the chain was not built with, and
@@ -131,8 +139,12 @@ func TestDriverChainIsGovernedFromConstruction(t *testing.T) {
 // forced governance awareness.
 func TestDriverChainNilIsFine(t *testing.T) {
 	lb := loadbalance.NewManager(loadbalance.NewFactory([]loadbalance.Provider{loadbalance.NewBuiltinProvider()}))
+	fact, err := ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()})
+	if err != nil {
+		t.Fatal(err)
+	}
 	w, err := NewClient(redis.NewClient(&redis.Options{Addr: "127.0.0.1:0"}), Config{Addr: "10.0.0.1:6379"}, nil,
-		testCenter(t, resilience.NewManager(resilience.NewDefaultDriver(), ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()})), lb))
+		testCenter(t, resilience.NewManager(resilience.NewDefaultDriver(), fact), lb))
 	assert.Error(t, err).Nil()
 	assert.That(t, w.lbChain).Nil()
 }

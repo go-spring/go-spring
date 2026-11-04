@@ -17,7 +17,7 @@
 // Package StarterDiscoveryEtcd adapts etcd as a service registry. Each
 // ${spring.discovery.etcd.<name>} block becomes ONE backend bean named
 // "etcd.<name>" serving both sides of the naming idiom: the write side (a
-// registration.Registry collected by the discovery registration core, which registers
+// discovery.Registry collected by the discovery registration core, which registers
 // this instance once the app is ready and deregisters it on shutdown) and the
 // read side (a discovery.Discovery consumers cite by the bean's name). Blank-
 // import the package and configure one block per etcd cluster:
@@ -61,7 +61,7 @@ func init() {
 	// One NAMED bean per block under ${spring.discovery.etcd.<name>}: the bean
 	// name "etcd.<name>" is the label a client starter cites to pick this
 	// backend for discovery, and the discovery registration core collects the same
-	// bean (as a registration.Registry) into the single publication lifecycle.
+	// bean (as a discovery.Registry) into the single publication lifecycle.
 	// Blocks across backends never collide (the name carries the backend
 	// type); a duplicate name within one backend fails loudly in the
 	// container.
@@ -73,7 +73,7 @@ func init() {
 			r.Provide(newEtcdBackend,
 				gs.IndexArg(0, gs.ValueArg(c)),
 			).Name("etcd."+name).
-				Export(gs.As[discovery.Discovery](), gs.As[registration.Registry]()).
+				Export(gs.As[discovery.Discovery](), gs.As[discovery.Registry]()).
 				Destroy((*etcdBackend).Close).Caller(1)
 
 			// Contribute a health indicator for this cluster unless the user
@@ -103,7 +103,7 @@ const obsSystem = "etcd"
 // construction, closed by the bean destructor) and serves both halves of the
 // naming idiom through it:
 //
-//   - registration.Registry — the write side. The discovery registration core collects
+//   - discovery.Registry — the write side. The discovery registration core collects
 //     every backend's registry (across all backends) and drives them through
 //     one publication lifecycle.
 //   - discovery.Discovery — the read side. Consumers cite this bean by its
@@ -230,17 +230,17 @@ func (b *etcdBackend) Close() error {
 
 // Register publishes inst into this cluster (the lease + keep-alive protocol,
 // registry.go).
-func (b *etcdBackend) Register(ctx context.Context, inst registration.Instance) error {
+func (b *etcdBackend) Register(ctx context.Context, inst discovery.Instance) error {
 	return b.reg.Register(ctx, inst)
 }
 
 // Deregister removes inst from this cluster. Idempotent.
-func (b *etcdBackend) Deregister(ctx context.Context, inst registration.Instance) error {
+func (b *etcdBackend) Deregister(ctx context.Context, inst discovery.Instance) error {
 	return b.reg.Deregister(ctx, inst)
 }
 
 // UpdateWeight re-advertises inst with a new weight on its existing lease.
-func (b *etcdBackend) UpdateWeight(ctx context.Context, inst registration.Instance, weight int) error {
+func (b *etcdBackend) UpdateWeight(ctx context.Context, inst discovery.Instance, weight int) error {
 	return b.reg.UpdateWeight(ctx, inst, weight)
 }
 

@@ -93,7 +93,7 @@ func NewFileSource[T any](path string) (*FileSource[T], error) {
 func (s *FileSource[T]) Run(_ context.Context) error {
 	w, err := fsnotify.NewWatcher()
 	if err != nil {
-		return errutil.Explain(err, "controlplane file source: create watcher failed")
+		return errutil.Explain(err, "file source: create watcher failed")
 	}
 	// Watch the parent directory, never the file itself: Kubernetes updates a
 	// ConfigMap/Secret mount by atomically renaming the "..data" symlink, and
@@ -101,7 +101,7 @@ func (s *FileSource[T]) Run(_ context.Context) error {
 	// changes and a per-file watch would go stale after the first swap.
 	if err = w.Add(filepath.Dir(s.path)); err != nil {
 		_ = w.Close()
-		return errutil.Explain(err, "controlplane file source: watch %s failed", filepath.Dir(s.path))
+		return errutil.Explain(err, "file source: watch %s failed", filepath.Dir(s.path))
 	}
 	s.watcher = w
 
@@ -151,7 +151,7 @@ func (s *FileSource[T]) watchLoop(ctx context.Context, w *fsnotify.Watcher) {
 func (s *FileSource[T]) reload(ctx context.Context) {
 	cfg, err := s.load()
 	if err != nil {
-		log.Error(ctx, sourceTag, err, "controlplane file source: reload failed (keeping last good config)")
+		log.Error(ctx, sourceTag, err, "file source: reload failed (keeping last good config)")
 		return
 	}
 	if reflect.DeepEqual(s.Snapshot(), cfg) {
@@ -170,7 +170,7 @@ func (s *FileSource[T]) load() (T, error) {
 	var doc T
 	data, err := os.ReadFile(s.path)
 	if err != nil {
-		return doc, errutil.Explain(err, "controlplane file source: read %s failed", s.path)
+		return doc, errutil.Explain(err, "file source: read %s failed", s.path)
 	}
 	return Parse[T](s.path, data, "")
 }

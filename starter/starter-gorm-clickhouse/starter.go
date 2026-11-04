@@ -122,7 +122,7 @@ func build(ctx context.Context, c Config, center *governance.Runtime) (gormcore.
 		// Resolve the discovery backend the entry cites before building the
 		// dialer: the build reads one label (c.Discovery) and fails construction
 		// when it names no bean, rather than silently dialing the static address.
-		backend, _ = center.Discovery().Get(c.Discovery)
+		backend, _ = center.Directory.Get(c.Discovery)
 		if backend == nil {
 			return gormcore.Spec{}, errutil.Explain(nil, "gorm clickhouse: instance routes by service-name but cites discovery backend %q, which names no bean", c.Discovery)
 		}
@@ -153,7 +153,7 @@ func build(ctx context.Context, c Config, center *governance.Runtime) (gormcore.
 			opts.TLS = tlsCfg
 		}
 		if useDiscovery {
-			lb, _, derr := c.NewPickPool(ctx, backend, service, center.Loadbalance())
+			lb, _, derr := c.NewPickPool(ctx, backend, service, center.LoadBalance)
 			if derr != nil {
 				log.Error(ctx, log.TagAppDef, derr, "gorm clickhouse build discovery resolver failed")
 				return gormcore.Spec{}, derr

@@ -36,7 +36,11 @@ var id = Identity{System: "gin", Service: "gin:127.0.0.1:8080"}
 // mustNew builds a standalone Guard whose policy is expected to be valid.
 func mustNew(t *testing.T, p Policy, opts ...Option) Guard {
 	t.Helper()
-	return mustNewWith(t, p, ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()}), opts...)
+	factories, err := ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return mustNewWith(t, p, factories, opts...)
 }
 
 func mustNewWith(t *testing.T, p Policy, factories *ratelimit.Factory, opts ...Option) Guard {
@@ -169,7 +173,11 @@ func TestFaultInjection(t *testing.T) {
 }
 
 func TestManagerPush(t *testing.T) {
-	m := NewManager(ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()}))
+	factories, err := ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := NewManager(factories)
 	defer m.Close()
 	g := mustGuardFor(t, m, id)
 
@@ -194,7 +202,11 @@ func TestManagerPush(t *testing.T) {
 }
 
 func TestTwoInstancesDoNotShareState(t *testing.T) {
-	m := NewManager(ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()}))
+	factories, err := ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := NewManager(factories)
 	defer m.Close()
 	_ = m.Apply(Settings{Default: Policy{MaxConcurrent: 1}})
 
@@ -270,7 +282,10 @@ func (f *fakeProvider) New(_ string, scope string) (ratelimit.Limiter, error) {
 
 func TestApplyRejectsUnknownLimiterKind(t *testing.T) {
 	f := &fakeProvider{l: &fakeLimiter{allow: true}}
-	factories := ratelimit.NewFactory([]ratelimit.Provider{f})
+	factories, err := ratelimit.NewFactory([]ratelimit.Provider{f})
+	if err != nil {
+		t.Fatal(err)
+	}
 	m := NewManager(factories)
 	defer func() { _ = m.Close() }()
 	// A Guard is what makes the default policy actually used; an unserved rule
@@ -292,7 +307,10 @@ func TestApplyRejectsUnknownLimiterKind(t *testing.T) {
 func TestClusterLimiter(t *testing.T) {
 	l := &fakeLimiter{allow: true}
 	f := &fakeProvider{l: l}
-	factories := ratelimit.NewFactory([]ratelimit.Provider{f})
+	factories, err := ratelimit.NewFactory([]ratelimit.Provider{f})
+	if err != nil {
+		t.Fatal(err)
+	}
 	g := mustNewWith(t, Policy{Policy: ratelimit.Policy{RateLimit: 10, Burst: 3, Limiter: "token-bucket"}}, factories)
 	defer g.Close()
 
@@ -324,7 +342,11 @@ func TestClusterLimiter(t *testing.T) {
 // TestRateStateSurvivesPolicyChange pins the shared model on the inbound side:
 // a policy change updates the counter's rule without refilling it.
 func TestRateStateSurvivesPolicyChange(t *testing.T) {
-	m := NewManager(ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()}))
+	factories, err := ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := NewManager(factories)
 	defer func() { _ = m.Close() }()
 
 	id := Identity{System: "sys", Service: "svc-rate-survives"}
@@ -378,7 +400,11 @@ func TestTimeoutExposed(t *testing.T) {
 // the caller guarantees maxConcurrent >= 0, and an invalid policy is rejected
 // before a Bulkhead is built.
 func TestNegativeMaxConcurrentRejected(t *testing.T) {
-	if _, err := New(id, Policy{MaxConcurrent: -1}, ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()})); err == nil {
+	factories, err := ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := New(id, Policy{MaxConcurrent: -1}, factories); err == nil {
 		t.Fatal("New accepted a negative max-concurrent")
 	}
 }

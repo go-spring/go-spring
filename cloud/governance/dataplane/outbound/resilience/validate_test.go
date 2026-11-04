@@ -19,8 +19,8 @@ package resilience
 import (
 	"testing"
 
-	"go-spring.org/cloud/governance/capability/matcher"
 	"go-spring.org/cloud/governance/dataplane/outbound/chain"
+	"go-spring.org/cloud/governance/capability/matcher"
 	"go-spring.org/stdlib/testing/assert"
 )
 
@@ -33,7 +33,7 @@ func TestValidateLimitsScopeRules(t *testing.T) {
 	assert.Error(t, ValidateLimits(LimitsSettings{Rules: []LimitsRule{{
 		Service: "svc",
 		Action:  chain.ActionMatch{Exact: ServiceScopeAction},
-		Match:   matcher.ExactMap{"tenant": "core"},
+		Match:   map[string]matcher.StringMatch{"tenant": {Exact: "core"}},
 	}}})).Matches("must not carry a match selector")
 
 	// The retry budget is label-scoped: it cannot sit on one interface.
@@ -67,4 +67,38 @@ func TestValidateBreakerRuleList(t *testing.T) {
 		{Service: "svc", Action: chain.ActionMatch{Exact: ServiceScopeAction}},
 		{Service: "svc", Action: chain.ActionMatch{Exact: ServiceScopeAction}},
 	}})).Matches("duplicate breaker rule")
+}
+
+// TestOverlap pins the pairwise satisfiability the ambiguity check rides on:
+// exact pins the value, the containment ops can always splice.
+func TestOverlap(t *testing.T) {
+	tests := []struct {
+		name string
+		a, b matcher.StringMatch
+		want bool
+	}{
+		{"same exact", matcher.StringMatch{Exact: "acme"}, matcher.StringMatch{Exact: "acme"}, true},
+		{"different exact", matcher.StringMatch{Exact: "acme"}, matcher.StringMatch{Exact: "other"}, false},
+		{"exact under prefix", matcher.StringMatch{Exact: "v2.1"}, matcher.StringMatch{Prefix: "v2."}, true},
+		{"exact outside prefix", matcher.StringMatch{Exact: "v3.1"}, matcher.StringMatch{Prefix: "v2."}, false},
+		{"exact ends with suffix", matcher.StringMatch{Exact: "cn-1a"}, matcher.StringMatch{Suffix: "-1a"}, true},
+		{"exact misses suffix", matcher.StringMatch{Exact: "cn-1b"}, matcher.StringMatch{Suffix: "-1a"}, false},
+		{"exact contains", matcher.StringMatch{Exact: "cn-north-1a"}, matcher.StringMatch{Contains: "north"}, true},
+		{"exact misses contains", matcher.StringMatch{Exact: "cn-south"}, matcher.StringMatch{Contains: "north"}, false},
+		// No exact on either side: prefix/suffix/contains always splice into a
+		// common value.
+		{"prefix and prefix", matcher.StringMatch{Prefix: "v2."}, matcher.StringMatch{Prefix: "v3."}, true},
+		{"prefix and suffix", matcher.StringMatch{Prefix: "v2."}, matcher.StringMatch{Suffix: "-1a"}, true},
+		{"contains and contains", matcher.StringMatch{Contains: "a"}, matcher.StringMatch{Contains: "b"}, true},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := overlap(tc.a, tc.b); got != tc.want {
+				t.Fatalf("overlap(%+v, %+v) = %v, want %v", tc.a, tc.b, got, tc.want)
+			}
+			if got := overlap(tc.b, tc.a); got != tc.want {
+				t.Fatalf("overlap is not symmetric on %+v, %+v", tc.a, tc.b)
+			}
+		})
+	}
 }

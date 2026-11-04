@@ -36,9 +36,22 @@ func TestFixedWindowLimitAndRoll(t *testing.T) {
 	})
 }
 
-// TestFixedWindowWidthChangeResets pins that a width change starts fresh state:
-// a count recorded under a different width means nothing in the new one.
-func TestFixedWindowWidthChangeResets(t *testing.T) {
+// TestFixedWindowRateChangeMovesCap pins the in-place rule update: a new RATE
+// under the same WIDTH moves the cap on the spot, while the count already
+// recorded keeps counting against it.
+func TestFixedWindowRateChangeMovesCap(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		w := &fixedWindow{}
+		assert.That(t, allow(w, windowPolicy(1, time.Second), 1)).True()
+		assert.That(t, allow(w, windowPolicy(1, time.Second), 1)).False()
+		assert.That(t, allow(w, windowPolicy(2, time.Second), 1)).True() // cap raised, count kept
+		assert.That(t, allow(w, windowPolicy(2, time.Second), 1)).False()
+	})
+}
+
+// TestFixedWindowWindowChangeResets pins that a window change starts fresh
+// state: a count recorded under a different window means nothing in the new one.
+func TestFixedWindowWindowChangeResets(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		w := &fixedWindow{}
 		assert.That(t, allow(w, windowPolicy(2, time.Second), 2)).True()
@@ -66,5 +79,68 @@ func TestFixedWindowAlignedBoundaries(t *testing.T) {
 		time.Sleep(2 * win)
 		assert.That(t, allow(w1, p, 1)).True()
 		assert.That(t, allow(w2, p, 1)).True()
+	})
+}
+
+// TestFixedWindowFractionalLimit pins why the count is a float: the cap comes
+// from rate × width and can land between integers, and whole events are
+// admitted only while they still fit under it.
+func TestFixedWindowFractionalLimit(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		w := &fixedWindow{}
+		p := windowPolicy(2.5, time.Second) // limit 2.5: room for two events, not three
+		assert.That(t, allow(w, p, 1)).True()
+		assert.That(t, allow(w, p, 1)).True()
+		assert.That(t, allow(w, p, 1)).False() // 2+1 > 2.5
+
+		// The cap floors at one event: a rate that would buy half an event
+		// per window still admits exactly one.
+		w2 := &fixedWindow{}
+		tiny := windowPolicy(0.5, time.Second)
+		assert.That(t, allow(w2, tiny, 1)).True()
+		assert.That(t, allow(w2, tiny, 1)).False()
+	})
+}
+
+// TestFixedWindowRejectedChargeIsAllOrNothing pins that a batch over the cap
+// is refused as a whole: none of its units are counted, so the same room is
+// still available to a charge that fits.
+func TestFixedWindowRejectedChargeIsAllOrNothing(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		w := &fixedWindow{}
+		p := windowPolicy(5, time.Hour)        // never rolls within the test
+		assert.That(t, allow(w, p, 6)).False() // refused as a whole
+		assert.That(t, allow(w, p, 5)).True()  // the room was never spent
+		assert.That(t, allow(w, p, 1)).False()
+	})
+}
+
+// TestFixedWindowUnlimitedPolicy pins the two charges that bypass the budget:
+// a zero rate disables the stage, and a non-positive charge spends nothing.
+func TestFixedWindowUnlimitedPolicy(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		w := &fixedWindow{}
+		assert.That(t, allow(w, Policy{}, 100)).True()
+
+		p := windowPolicy(1, time.Second)
+		assert.That(t, allow(w, p, 0)).True()
+		assert.That(t, allow(w, p, -1)).True()
+		assert.That(t, allow(w, p, 1)).True() // the budget was untouched
+		assert.That(t, allow(w, p, 1)).False()
+	})
+}
+
+// TestFixedWindowIdleGapResets pins that an idle stretch spanning several
+// windows needs no catch-up: the next call lands directly in the current
+// window with a fresh count.
+func TestFixedWindowIdleGapResets(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		w := &fixedWindow{}
+		p := windowPolicy(1, 10*time.Millisecond)
+		assert.That(t, allow(w, p, 1)).True()
+		assert.That(t, allow(w, p, 1)).False()
+		time.Sleep(100 * time.Millisecond) // ten windows came and went unseen
+		assert.That(t, allow(w, p, 1)).True()
+		assert.That(t, allow(w, p, 1)).False()
 	})
 }

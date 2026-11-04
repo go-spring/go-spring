@@ -150,7 +150,8 @@ spring:
         # rate: 0.2           # set a rate to "set fire" without restart
         error: timeout
         match:
-          traffic: loadtest       # only traffic marked X-Traffic is affected
+          traffic:
+            exact: loadtest       # only traffic marked X-Traffic is affected
 ```
 
 **Verify**:
@@ -232,7 +233,7 @@ Rationale (from the source comments, verified):
 7. SecureHeaders/CORS/Gzip as enabled; BodyLimit enforces `maxBodySize`
 8. fault: `_, err := srv.Fire(ctx, fault.Target{Service: "echo", Action: "GET /x"})`
    — `inj` is the injected `*serverfault.Manager` bean, and the built-in target names the route
-   (`METHOD` + `c.Path()`), so a rule can fire one endpoint; with `match.traffic=loadtest` and the
+   (`METHOD` + `c.Path()`), so a rule can fire one endpoint; with `match.traffic.exact=loadtest` and the
    marker present, ~`rate` of requests get the injected error → 503; others pass through
 9. your route runs; the response unwinds through 6→5→4→3: access record logged (severity by
    status), duration recorded with `http.request.method`/`http.route`/`http.response.status_code`
@@ -313,7 +314,7 @@ curl -i :9370/healthz    # the echo-side liveness is on :8002/healthz (starter-s
 4. Marked traffic burns, normal traffic unaffected:
 
 ```bash
-curl -i :8002/echo/x                          # 200 (match.traffic=loadtest, no marker)
+curl -i :8002/echo/x                          # 200 (match.traffic.exact=loadtest, no marker)
 curl -i -H 'X-Traffic: loadtest' :8002/echo/x       # ~20% → 503 service unavailable
 ```
 
@@ -322,7 +323,7 @@ curl -i -H 'X-Traffic: loadtest' :8002/echo/x       # ~20% → 503 service unava
 
 ### 4.5 Load-test marking drill
 
-With `match.traffic=real` instead of `loadtest`, the injector affects unmarked traffic — use only in
+With `match.traffic.exact=real` instead of `loadtest`, the injector affects unmarked traffic — use only in
 dedicated environments. `traffic.IsLoadTest(ctx, prop)` in your handler branches on the same marker,
 so business code can degrade features under synthetic load.
 

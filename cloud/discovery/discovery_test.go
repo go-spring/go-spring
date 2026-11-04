@@ -166,7 +166,7 @@ func TestFilterByMetadata(t *testing.T) {
 		{Addr: "10.0.0.3:80", Metadata: map[string]string{"version": "v2.2"}},
 		{Addr: "10.0.0.4:80"}, // no metadata: naming "version" must drop it
 	}
-	sel := matcher.Selector{{Key: "version", Op: matcher.Prefix, Value: "v2."}}
+	sel := map[string]matcher.StringMatch{"version": {Prefix: "v2."}}
 
 	got := FilterByMetadata(eps, sel)
 	if len(got) != 2 || got[0].Addr != "10.0.0.2:80" || got[1].Addr != "10.0.0.3:80" {
@@ -179,7 +179,7 @@ func TestFilterByMetadata(t *testing.T) {
 	}
 
 	// No match returns an empty set, not the input.
-	if none := FilterByMetadata(eps, matcher.Selector{{Key: "version", Op: matcher.Exact, Value: "v9"}}); len(none) != 0 {
+	if none := FilterByMetadata(eps, map[string]matcher.StringMatch{"version": {Exact: "v9"}}); len(none) != 0 {
 		t.Fatalf("FilterByMetadata(no match) = %+v, want empty", none)
 	}
 }
@@ -200,7 +200,7 @@ func TestResolverSchemeThenMetadataFilters(t *testing.T) {
 	if err != nil {
 		t.Fatalf("resolver: %v", err)
 	}
-	got := FilterByMetadata(eps, matcher.Selector{{Key: "version", Op: matcher.Prefix, Value: "v2."}})
+	got := FilterByMetadata(eps, map[string]matcher.StringMatch{"version": {Prefix: "v2."}})
 	if len(got) != 1 || got[0].Addr != "a" {
 		t.Fatalf("schema+metadata narrowing = %+v, want only the tls v2 instance", got)
 	}
@@ -220,7 +220,7 @@ func TestFilterByMetadataAliasing(t *testing.T) {
 
 	// A selector always yields a fresh slice, even when every endpoint matches,
 	// so mutating the result cannot reach the caller's snapshot.
-	got = FilterByMetadata(eps, matcher.Selector{{Key: "version", Op: matcher.Exact, Value: "v"}})
+	got = FilterByMetadata(eps, map[string]matcher.StringMatch{"version": {Exact: "v"}})
 	if len(got) != 2 {
 		t.Fatalf("FilterByMetadata = %d endpoints, want 2", len(got))
 	}

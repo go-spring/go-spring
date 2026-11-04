@@ -21,9 +21,9 @@ import (
 	"errors"
 	"testing"
 
-	"go-spring.org/cloud/governance"
 	kfault "go-spring.org/cloud/governance/capability/fault"
 	"go-spring.org/cloud/governance/capability/ratelimit"
+	"go-spring.org/cloud/governance/dataplane/inbound"
 	"go-spring.org/cloud/governance/dataplane/inbound/admission"
 	serverfault "go-spring.org/cloud/governance/dataplane/inbound/fault"
 	"go-spring.org/cloud/governance/dataplane/inbound/observe"
@@ -50,8 +50,12 @@ func TestMapServerPolicyError_FollowsFaultClass(t *testing.T) {
 		inj.Refresh(kfault.Config{Rules: []kfault.Rule{{
 			Name: "fire", Service: "grpc", Rate: 1, Class: tc.class,
 		}}})
-		gm := admission.NewManager(ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()}))
-		in, err := governance.InboundOver("grpc", "grpc:test", gm, inj)
+		fact, err := ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()})
+		if err != nil {
+			t.Fatal(err)
+		}
+		gm := admission.NewManager(fact)
+		in, err := inbound.Over("grpc", "grpc:test", gm, inj)
 		if err != nil {
 			gm.Close()
 			t.Fatal(err)
@@ -60,7 +64,7 @@ func TestMapServerPolicyError_FollowsFaultClass(t *testing.T) {
 			func(context.Context) error { return nil })
 		gm.Close()
 
-		var ref *governance.Refusal
+		var ref *inbound.Refusal
 		if !errors.As(err, &ref) {
 			t.Fatalf("class %q: want a refusal, got %v", tc.class, err)
 		}

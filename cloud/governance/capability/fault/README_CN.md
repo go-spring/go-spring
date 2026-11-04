@@ -96,7 +96,7 @@ spring.fault.client.rules[0].latency=50ms         # 可选，每次 attempt 都�
 spring.fault.client.rules[0].latency-jitter=20ms  # 可选，睡眠 latency ± U[0,20ms]
 spring.fault.client.rules[0].max-affected=100     # 可选，爆炸半径上限（按进程）
 spring.fault.client.rules[0].max-duration=5m      # 可选，自愈窗口（按进程）
-spring.fault.client.rules[0].match.traffic=loadtest       # 可选："real" | "loadtest" | 任意自定义类别
+spring.fault.client.rules[0].match.traffic.exact=loadtest       # 可选："real" | "loadtest" | 任意自定义类别
 
 # 入站：Server.Fire 的判断（gin / echo / grpc / hertz / trpc / dubbo）。
 # 每条规则必须写目标 service——没有 catch-all。

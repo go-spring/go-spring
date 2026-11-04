@@ -31,7 +31,7 @@ import (
 	"go-spring.org/cloud/governance/capability/ratelimit"
 	admissionplane "go-spring.org/cloud/governance/controlplane/admission"
 	loadbalanceplane "go-spring.org/cloud/governance/controlplane/loadbalance"
-	"go-spring.org/cloud/governance/controlplane/source"
+	"go-spring.org/cloud/governance/capability/source"
 	"go-spring.org/cloud/governance/dataplane/inbound/admission"
 	serverfault "go-spring.org/cloud/governance/dataplane/inbound/fault"
 	clientfault "go-spring.org/cloud/governance/dataplane/outbound/fault"
@@ -56,11 +56,19 @@ var testProp = traffic.NewDefaultPropagator(traffic.DefaultBinding())
 // where every bean is always present (an absent bean fails startup).
 func testCenter() *governance.Runtime {
 	driver := resilience.NewDefaultDriver()
-	resClient := resilience.NewManager(driver, ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()}))
+	fact, err := ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()})
+	if err != nil {
+		panic(err)
+	}
+	resClient := resilience.NewManager(driver, fact)
+	fact2, err := ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()})
+	if err != nil {
+		panic(err)
+	}
 	ctr := &governance.Runtime{
 		Resilience:  resClient,
 		LoadBalance: loadbalance.NewManager(loadbalance.NewFactory([]loadbalance.Provider{loadbalance.NewBuiltinProvider()})),
-		Admission:   admission.NewManager(ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()})),
+		Admission:   admission.NewManager(fact2),
 		ClientFault: clientfault.NewManager(),
 		ServerFault: serverfault.NewManager(),
 		Directory:   discovery.NewManager(nil),
@@ -78,7 +86,7 @@ func testCenter() *governance.Runtime {
 // armRateLimit pushes a one-request rate budget into the center's guard authority.
 func armRateLimit(t *testing.T, ctr *governance.Runtime) {
 	t.Helper()
-	assert.That(t, ctr.GuardServer().Apply(admission.Settings{
+	assert.That(t, ctr.Admission.Apply(admission.Settings{
 		Default: admission.Policy{Policy: ratelimit.Policy{
 			Limiter:   ratelimit.TokenBucketAlgorithm,
 			RateLimit: 1,
@@ -103,7 +111,7 @@ func TestResilienceUnaryInterceptor_Unit(t *testing.T) {
 	armRateLimit(t, ctr)
 	in, err := ctr.InboundFor("grpc", "grpc:test")
 	assert.That(t, err).Nil()
-	ic := resilienceUnaryInterceptor(in, "grpc:test", ctr.TrafficPropagator())
+	ic := resilienceUnaryInterceptor(in, "grpc:test", ctr.Traffic)
 	info := &grpc.UnaryServerInfo{FullMethod: "/demo.Service/Echo"}
 
 	hits := 0

@@ -17,7 +17,7 @@
 // Package StarterDiscoveryConsul adapts Consul as a service registry. Each
 // ${spring.discovery.consul.<name>} block becomes ONE backend bean named
 // "consul.<name>" serving both sides of the naming idiom: the write side (a
-// registration.Registry collected by the discovery registration core, which registers
+// discovery.Registry collected by the discovery registration core, which registers
 // this instance once the app is ready and deregisters it on shutdown) and the
 // read side (a discovery.Discovery consumers cite by the bean's name).
 // Blank-import the package and configure one block per Consul agent:
@@ -58,7 +58,7 @@ func init() {
 	// One NAMED bean per block under ${spring.discovery.consul.<name>}: the
 	// bean name "consul.<name>" is the label a client starter cites to pick
 	// this backend for discovery, and the discovery registration core collects the
-	// same bean (as a registration.Registry) into the single publication
+	// same bean (as a discovery.Registry) into the single publication
 	// lifecycle. Blocks across backends never collide (the name carries the
 	// backend type); a duplicate name within one backend fails loudly in the
 	// container.
@@ -71,7 +71,7 @@ func init() {
 				gs.IndexArg(0, gs.ValueArg(c)),
 				gs.IndexArg(1, gs.ValueArg(name)),
 			).Name("consul."+name).
-				Export(gs.As[discovery.Discovery](), gs.As[registration.Registry]()).
+				Export(gs.As[discovery.Discovery](), gs.As[discovery.Registry]()).
 				Destroy((*consulBackend).Close).Caller(1)
 
 			// Contribute a health indicator for this agent unless the user
@@ -98,7 +98,7 @@ var starterTag = log.RegisterAppTag("discovery_consul", "")
 // ${spring.discovery.consul.<name>} block made a bean. It owns the single
 // Consul api client for that agent (probed at construction) and serves both
 // halves of the naming idiom through it: the write side (a
-// registration.Registry collected by the discovery registration core) and the read
+// discovery.Registry collected by the discovery registration core) and the read
 // side (a discovery.Discovery consumers cite by the bean's name
 // "consul.<name>"; lazy, so an app that never cites it pays nothing for the
 // read half). Both sides resolve the same agent, so read and write can never
@@ -172,17 +172,17 @@ func (b *consulBackend) Close() error {
 
 // Register publishes inst into this agent (the TTL-check heartbeat protocol,
 // registry.go).
-func (b *consulBackend) Register(ctx context.Context, inst registration.Instance) error {
+func (b *consulBackend) Register(ctx context.Context, inst discovery.Instance) error {
 	return b.reg.Register(ctx, inst)
 }
 
 // Deregister removes inst from this agent. Idempotent.
-func (b *consulBackend) Deregister(ctx context.Context, inst registration.Instance) error {
+func (b *consulBackend) Deregister(ctx context.Context, inst discovery.Instance) error {
 	return b.reg.Deregister(ctx, inst)
 }
 
 // UpdateWeight re-advertises inst with a new weight.
-func (b *consulBackend) UpdateWeight(ctx context.Context, inst registration.Instance, weight int) error {
+func (b *consulBackend) UpdateWeight(ctx context.Context, inst discovery.Instance, weight int) error {
 	return b.reg.UpdateWeight(ctx, inst, weight)
 }
 

@@ -22,7 +22,7 @@ import (
 	"time"
 
 	"go-spring.org/cloud/governance/capability/ratelimit"
-	"go-spring.org/cloud/governance/controlplane/source"
+	"go-spring.org/cloud/governance/capability/source"
 	"go-spring.org/cloud/governance/dataplane/inbound/admission"
 	"go-spring.org/stdlib/testing/assert"
 )
@@ -57,7 +57,11 @@ func TestCenterAppliesAndKeepsLastGood(t *testing.T) {
 	d, err := source.Parse[admission.Settings]("admission.properties", []byte(doc), "")
 	assert.Error(t, err).Nil()
 
-	mgr := admission.NewManager(ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()}))
+	factories, err := ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	mgr := admission.NewManager(factories)
 	// A guard must exist for Apply to materialize a policy: construction is what
 	// rejects a document, so nothing is built for an instance this process does
 	// not serve.
@@ -83,7 +87,11 @@ func TestCenterAppliesAndKeepsLastGood(t *testing.T) {
 // whose initial document cannot be built fails wiring, rather than arming a
 // center that would run unconfigured.
 func TestNewCenterRejectsUnservableSnapshot(t *testing.T) {
-	mgr := admission.NewManager(ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()}))
+	factories, err := ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	mgr := admission.NewManager(factories)
 	if _, err := mgr.GuardFor(admission.Identity{System: "gin", Service: "gin::8080"}); err != nil {
 		t.Fatal(err)
 	}

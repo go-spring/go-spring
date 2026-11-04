@@ -43,7 +43,11 @@ func TestConfigDefaults(t *testing.T) {
 // resilience driver, for driving the interceptors directly (no live Milvus
 // server is needed).
 func newGuardedSlot(t *testing.T, p ratelimit.Policy) *guardSlot {
-	m := resilience.NewManager(resilience.NewDefaultDriver(), ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()}))
+	fact, err := ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := resilience.NewManager(resilience.NewDefaultDriver(), fact)
 	assert.Error(t, m.ApplyRateLimit(resilience.RateLimitSettings{Default: p})).Nil()
 	exec := m.ExecutorFor("svc")
 	s := &guardSlot{}

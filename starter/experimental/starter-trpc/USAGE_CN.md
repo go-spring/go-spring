@@ -131,7 +131,8 @@ spring:
         # rate: 0.2           # 配上 rate 即免重启"放火"
         error: timeout
         match:
-          traffic: loadtest       # 只影响带 x-traffic 标记的流量
+          traffic:
+            exact: loadtest       # 只影响带 x-traffic 标记的流量
 ```
 
 **验证**（与自断言的 example/check.sh 同构）：
@@ -204,12 +205,12 @@ starter **不装固定链**。它把命名 filter 注册进 tRPC 全局 filter �
 
 ### 2.3 一次调用逐层走读
 
-客户端 `Greet("world")`，metadata 带 `x-traffic: loadtest`，fault match.traffic=loadtest 已生效：
+客户端 `Greet("world")`，metadata 带 `x-traffic: loadtest`，fault match.traffic.exact=loadtest 已生效：
 
 1. `loadtest` 读 `ServerMetaData()["x-traffic"]` → ctx 打标，使 `traffic.IsLoadTest(ctx, prop)`
 2. `tracing` 起 server span `trpc.demo.greet.GreetService/Greet`
 3. `metrics`：active_requests +1，时长观测开始
-4. `fault`：`Injector.Server.Fire` 咨询治理 injector；match.traffic=loadtest 且有标记时，约 `rate` 比例
+4. `fault`：`Injector.Server.Fire` 咨询治理 injector；match.traffic.exact=loadtest 且有标记时，约 `rate` 比例
    的调用被注入延迟/错误，其余直通
 5. handler 执行；应答按 3→2 展开回收：计数器/直方图带 `rpc.method` 记录，
    span 结束（失败则 Error 状态 + 记录错误）
@@ -323,7 +324,7 @@ kill -TERM %1                   # 日志："trpc server shutting down ..." 后�
 
 ### 4.5 压测标记录演练
 
-`match.traffic=real` 反转过滤——不带标的流量着火；只在专用环境使用。handler 里
+`match.traffic.exact=real` 反转过滤——不带标的流量着火；只在专用环境使用。handler 里
 `traffic.IsLoadTest(ctx, prop)` 分支同一个标记（由 `loadtest` filter 从入站 metadata 打上），
 业务代码可在合成压力下降级功能。
 

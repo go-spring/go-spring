@@ -69,7 +69,7 @@ func normalizeWeight(w int) int {
 // Register publishes reg as an ephemeral Nacos instance. The SDK then keeps it
 // alive with its own heartbeat until Deregister. Registering the same ip:port
 // again refreshes the entry.
-func (r *nacosRegistry) Register(ctx context.Context, reg registration.Instance) error {
+func (r *nacosRegistry) Register(ctx context.Context, reg discovery.Instance) error {
 	host, port, err := netutil.SplitHostPort(reg.Addr)
 	if err != nil {
 		return errutil.Explain(err, "discovery-nacos: register %q", reg.ServiceName)
@@ -104,7 +104,7 @@ func (r *nacosRegistry) Register(ctx context.Context, reg registration.Instance)
 
 // Deregister removes the instance. It is idempotent: deregistering an instance
 // that is not registered is a no-op on the Nacos side.
-func (r *nacosRegistry) Deregister(ctx context.Context, reg registration.Instance) error {
+func (r *nacosRegistry) Deregister(ctx context.Context, reg discovery.Instance) error {
 	host, port, err := netutil.SplitHostPort(reg.Addr)
 	if err != nil {
 		return errutil.Explain(err, "discovery-nacos: deregister %q", reg.ServiceName)
@@ -137,7 +137,7 @@ func (r *nacosRegistry) Deregister(ctx context.Context, reg registration.Instanc
 // running and discovery subscribers (the Nacos push channel) receive the new
 // weight without any re-registration. Mirrors the etcd backend's
 // UpdateWeight so both starters offer the same optional hot-reload API.
-func (r *nacosRegistry) UpdateWeight(ctx context.Context, reg registration.Instance, weight int) error {
+func (r *nacosRegistry) UpdateWeight(ctx context.Context, reg discovery.Instance, weight int) error {
 	host, port, err := netutil.SplitHostPort(reg.Addr)
 	if err != nil {
 		return errutil.Explain(err, "discovery-nacos: update weight %q", reg.ServiceName)
@@ -171,7 +171,7 @@ func (r *nacosRegistry) UpdateWeight(ctx context.Context, reg registration.Insta
 // scheme) into the metadata map handed to Nacos: the SDK has no dedicated
 // fields for them, and the discovery read side restores them from these
 // reserved keys.
-func instanceMetadata(reg registration.Instance) map[string]string {
+func instanceMetadata(reg discovery.Instance) map[string]string {
 	if reg.Version == "" && reg.Zone == "" && reg.Scheme == "" {
 		return reg.Metadata
 	}

@@ -21,8 +21,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"go-spring.org/cloud/governance"
 	"go-spring.org/cloud/governance/capability/ratelimit"
+	"go-spring.org/cloud/governance/dataplane/inbound"
 	"go-spring.org/cloud/governance/dataplane/inbound/admission"
 	"go-spring.org/cloud/traffic"
 )
@@ -37,8 +37,12 @@ var testProp = traffic.NewDefaultPropagator(traffic.DefaultBinding())
 func serveServerPolicy(t *testing.T, handler http.HandlerFunc) (*httptest.ResponseRecorder, int) {
 	t.Helper()
 	handlerRuns := 0
-	mgr := admission.NewManager(ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()}))
-	in, err := governance.InboundOver("http-server", "http-server::9090", mgr)
+	fact, err := ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	mgr := admission.NewManager(fact)
+	in, err := inbound.Over("http-server", "http-server::9090", mgr)
 	if err != nil {
 		t.Fatal(err)
 	}

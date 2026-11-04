@@ -59,7 +59,7 @@ type Pool struct {
 
 // center carries the container's facilities (see [governance.Runtime]). The
 // entry's ${discovery} label rides on the config (c.Discovery, already carrying
-// the family default); NewPool resolves it against center.Discovery() itself.
+// the family default); NewPool resolves it against center.Directory itself.
 // It is applied HERE, while the pool is built, so a Pool cannot exist
 // half-assembled: there is no separate apply step and nothing the container has
 // to remember to call. A stand-alone caller must supply a center holding a
@@ -85,7 +85,7 @@ func NewPool(ctx context.Context, c Config, center *governance.Runtime) (*Pool, 
 	// pool dials the configured Addr.
 	var lbChain *loadbalance.Chain
 	if center.UsesDiscovery(c.ServiceName) {
-		backend, _ := center.Discovery().Get(c.Discovery)
+		backend, _ := center.Directory.Get(c.Discovery)
 		if backend == nil {
 			return nil, errutil.Explain(nil, "redis: instance routes by service-name but cites discovery backend %q, which names no bean", c.Discovery)
 		}
@@ -93,14 +93,14 @@ func NewPool(ctx context.Context, c Config, center *governance.Runtime) (*Pool, 
 		if err != nil {
 			return nil, err
 		}
-		lbChain, err = center.Loadbalance().Chain(ctx, resolver, serviceLabel)
+		lbChain, err = center.LoadBalance.Chain(ctx, resolver, serviceLabel)
 		if err != nil {
 			return nil, err
 		}
 	}
 
 	pool := newRawPool(c, tlsConfig, lbChain)
-	w := &Pool{Pool: pool, cfg: c, serviceLabel: serviceLabel, lbChain: lbChain, prop: center.TrafficPropagator()}
+	w := &Pool{Pool: pool, cfg: c, serviceLabel: serviceLabel, lbChain: lbChain, prop: center.Traffic}
 
 	// Governance is assembled complete, in one step. The executor the pool's
 	// service label resolves to is the stack observe(fault(execFor)): fault wraps

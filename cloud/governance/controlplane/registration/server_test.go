@@ -17,6 +17,8 @@
 package registration
 
 import (
+	"go-spring.org/cloud/discovery"
+
 	"bytes"
 	"context"
 	"errors"
@@ -88,20 +90,20 @@ func (f *fakeRegistry) reset() {
 	f.mu.Unlock()
 }
 
-func (f *fakeRegistry) Register(ctx context.Context, inst Instance) error {
+func (f *fakeRegistry) Register(ctx context.Context, inst discovery.Instance) error {
 	return f.record("register", ctx)
 }
 
-func (f *fakeRegistry) Deregister(ctx context.Context, inst Instance) error {
+func (f *fakeRegistry) Deregister(ctx context.Context, inst discovery.Instance) error {
 	return f.record("deregister", ctx)
 }
 
-func (f *fakeRegistry) UpdateWeight(ctx context.Context, inst Instance, weight int) error {
+func (f *fakeRegistry) UpdateWeight(ctx context.Context, inst discovery.Instance, weight int) error {
 	return f.record("update-weight", ctx)
 }
 
 // compile-time contract: the fake stands in for a real backend registry.
-var _ Registry = (*fakeRegistry)(nil)
+var _ discovery.Registry = (*fakeRegistry)(nil)
 
 // regA / regB are the two fake backend registrys the test container collects.
 // The same instances back every test in this file; each test resets them, and
@@ -112,13 +114,13 @@ var (
 )
 
 func init() {
-	// Two named fake discovery beans exported as Registry: the container's
+	// Two named fake discovery beans exported as discovery.Registry: the container's
 	// slice collection the Server bean autowires is exactly the mechanism under
 	// test (one bean per configured center, across backends).
 	gs.Provide(func() *fakeRegistry { return regA }).
-		Name("fake-a").Export(gs.As[Registry]())
+		Name("fake-a").Export(gs.As[discovery.Registry]())
 	gs.Provide(func() *fakeRegistry { return regB }).
-		Name("fake-b").Export(gs.As[Registry]())
+		Name("fake-b").Export(gs.As[discovery.Registry]())
 }
 
 // waitFor polls cond until it holds or the deadline passes.
@@ -198,8 +200,8 @@ func TestUpdateWeightBroadcast(t *testing.T) {
 	defer func() { regB.fail = nil }()
 
 	s := &Server{
-		inst:       Instance{ServiceName: "orders", Addr: "10.0.0.5:8080"},
-		Registries: []Registry{regA, regB},
+		inst:       discovery.Instance{ServiceName: "orders", Addr: "10.0.0.5:8080"},
+		Registries: []discovery.Registry{regA, regB},
 	}
 
 	// Broadcast order follows the slice: regA succeeds, regB fails.
@@ -215,7 +217,7 @@ func TestUpdateWeightBroadcast(t *testing.T) {
 // only after Run has published the instance.
 func TestUpdateWeightBeforeRegister(t *testing.T) {
 	s := NewServer()
-	s.Registries = []Registry{regA}
+	s.Registries = []discovery.Registry{regA}
 	err := s.UpdateWeight(context.Background(), 1)
 	assert.Error(t, err).Matches("not registered yet")
 }
@@ -227,8 +229,8 @@ func TestUpdateWeightBeforeRegister(t *testing.T) {
 func TestUpdateWeightInheritsTheCallerPath(t *testing.T) {
 	regA.reset()
 	s := &Server{
-		inst:       Instance{ServiceName: "orders", Addr: "10.0.0.5:8080"},
-		Registries: []Registry{regA},
+		inst:       discovery.Instance{ServiceName: "orders", Addr: "10.0.0.5:8080"},
+		Registries: []discovery.Registry{regA},
 	}
 
 	caller := log.WithFields(context.Background(), log.String("trace_id", "caller-id"))
@@ -246,8 +248,8 @@ func TestUpdateWeightInheritsTheCallerPath(t *testing.T) {
 func TestDeregisterMintsItsOwnRoot(t *testing.T) {
 	regA.reset()
 	s := &Server{
-		inst:       Instance{ServiceName: "orders", Addr: "10.0.0.5:8080"},
-		Registries: []Registry{regA},
+		inst:       discovery.Instance{ServiceName: "orders", Addr: "10.0.0.5:8080"},
+		Registries: []discovery.Registry{regA},
 	}
 
 	caller := log.WithFields(context.Background(), log.String("trace_id", "caller-id"))
@@ -278,8 +280,8 @@ func TestDeregisterContinuesPastFailure(t *testing.T) {
 	defer func() { regA.fail = nil }()
 
 	s := &Server{
-		inst:       Instance{ServiceName: "orders", Addr: "10.0.0.5:8080"},
-		Registries: []Registry{regA, regB},
+		inst:       discovery.Instance{ServiceName: "orders", Addr: "10.0.0.5:8080"},
+		Registries: []discovery.Registry{regA, regB},
 	}
 	s.deregister()
 

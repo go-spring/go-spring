@@ -405,9 +405,9 @@ reference override 免重启重新下发。
 ### 4.5 故障演练（provider 侧，免重启）
 
 1. 给 service 的 filter 链加 `fault`：`...services.greet.filter=loadtest,fault`。
-2. 配好治理规则源；在规则里配置 `spring.fault.client.*`(rate/error/match.traffic)。
-3. `match.traffic=loadtest` 时只有带压测标记的调用被烧——由带标记的上游注入出站 carrier
-   （cloud/traffic）来打标，或在专属环境用 `match.traffic=real`。
+2. 配好治理规则源；在规则里配置 `spring.fault.client.*`(rate/error/match.traffic.exact)。
+3. `match.traffic.exact=loadtest` 时只有带压测标记的调用被烧——由带标记的上游注入出站 carrier
+   （cloud/traffic）来打标，或在专属环境用 `match.traffic.exact=real`。
 4. 观察：consumer 收到注入错误；带标记调用在实现内 `traffic.IsLoadTest(ctx, prop)` 为 true
    （loadtest filter 排最前）。
 

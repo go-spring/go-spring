@@ -206,7 +206,7 @@ func runTest(s *Service) {
 	// custom Driver (driver.go) fires for each drop.
 	big := make([]byte, 900)
 	for i := range 4000 {
-		if err := s.Evict.Set(fmt.Sprintf("k-%d", i), big); err != nil {
+		if err := s.Evict.Set(ctx, fmt.Sprintf("k-%d", i), big); err != nil {
 			log.Error(ctx, log.TagAppDef, err, "evict SET failed")
 			os.Exit(1)
 		}
@@ -247,7 +247,7 @@ func runTest(s *Service) {
 	// (see USAGE 2.2); everything else the raw cache exposes is re-exposed as a
 	// plain pass-through, and these are the ones with real uses.
 	for i := range 100 {
-		if err := s.Cold.Set(fmt.Sprintf("bulk-%d", i), []byte("v")); err != nil {
+		if err := s.Cold.Set(ctx, fmt.Sprintf("bulk-%d", i), []byte("v")); err != nil {
 			log.Error(ctx, log.TagAppDef, err, "bulk SET failed")
 			os.Exit(1)
 		}

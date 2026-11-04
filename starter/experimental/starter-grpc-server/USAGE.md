@@ -162,7 +162,8 @@ spring:
         - name: echo-drill          # required identity, unique within this direction
           service: "grpc:/EchoService/Echo"   # rule label = "grpc:{FullMethod}"
           match:
-            traffic: loadtest       # only traffic marked x-traffic is affected
+            traffic:
+              exact: loadtest       # only traffic marked x-traffic is affected
           error: timeout
           # rate: 0.2             # set a rate to "set fire" without restart
 ```
@@ -303,7 +304,7 @@ All keys under `spring.grpc.server.*`. Reconciled with
 | `tls.ca-file` | string | — | **Server-side this means mTLS**: sets ClientCAs + `RequireAndVerifyClientCert` (security.BuildServer). | Setting it casually → all clients without certs rejected. |
 | `tls.server-name` / `tls.insecure-skip-verify` | | — | Client-side knobs; **dead keys here** (ignored by BuildServer). | False confidence; no effect. |
 | `health.enabled` | bool | true | Registers `grpc_health_v1`, overall status SERVING. | false → probes/LB health checks get Unimplemented. |
-| `loadtest.enabled` | bool | true | Installs LoadTest interceptors reading `x-traffic` metadata (lowercase — grpc metadata keys are lower-case). | false → load-test marker invisible; fault `match.traffic=loadtest` never fires. |
+| `loadtest.enabled` | bool | true | Installs LoadTest interceptors reading `x-traffic` metadata (lowercase — grpc metadata keys are lower-case). | false → load-test marker invisible; fault `match.traffic.exact=loadtest` never fires. |
 | `observer.tracing.enabled` | bool | true | Installs tracing interceptors riding OTel globals; no-op without starter-otel (no warning). ⚠ example-otel's conf uses `interceptor.tracing.*` — a dead path; only the default-true saves it. | Prefix typo → silently the default. |
 | `observer.metrics.enabled` | bool | true | Installs metrics interceptors; same no-op caveat. | Same. |
 
@@ -350,7 +351,7 @@ and (on failure) `error` are the line's own payload. A failure is a Warn line.
 3. Set the fault rule's `rate: 0.2` in the file — the interceptor holds the injected `*serverfault.Manager`
    and the center swaps its config in place, so the change applies on the next RPC without restart.
 4. Rule label is `grpc:{FullMethod}` (e.g. `grpc:/EchoService/Echo`) — you can burn a single
-   method. With `match.traffic=loadtest` only metadata-marked traffic burns:
+   method. With `match.traffic.exact=loadtest` only metadata-marked traffic burns:
 
 ```bash
 grpcurl -plaintext -H 'x-traffic: loadtest' -d '{"message":"x"}' :9494 EchoService/Echo  # ~20% fail

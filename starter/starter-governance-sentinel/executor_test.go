@@ -44,7 +44,11 @@ import (
 func TestDriverBuilds(t *testing.T) {
 	d := NewSentinelDriver()
 	assert.That(t, d).NotNil()
-	m := resilience.NewManager(d, ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()}))
+	fact, err := ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := resilience.NewManager(d, fact)
 	e := m.ExecutorFor("svc-builds")
 	assert.That(t, e).NotNil()
 }
@@ -54,7 +58,11 @@ func TestDriverBuilds(t *testing.T) {
 // process-global, so a shared resource name would let one test's calls trip
 // another test's rule.
 func newExec(t *testing.T, service string, cfg any) chain.Executor {
-	m := resilience.NewManager(NewSentinelDriver(), ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()}))
+	fact, err := ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := resilience.NewManager(NewSentinelDriver(), fact)
 	switch v := cfg.(type) {
 	case nil:
 	case resilience.Limits:

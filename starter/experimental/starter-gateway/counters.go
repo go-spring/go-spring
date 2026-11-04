@@ -72,7 +72,7 @@ func (s *scopeStore) limiter(kind string, scope string) (ratelimit.Limiter, erro
 		c.used = now
 		return c.limiter, nil
 	}
-	l, err := s.factory.Create(kind, scope)
+	l, err := s.factory.NewLimiter(kind, scope)
 	if err != nil {
 		return nil, err
 	}

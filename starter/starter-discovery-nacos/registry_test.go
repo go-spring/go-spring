@@ -22,6 +22,7 @@ import (
 	"testing"
 
 	"github.com/nacos-group/nacos-sdk-go/v2/vo"
+	"go-spring.org/cloud/discovery"
 	"go-spring.org/cloud/governance/controlplane/registration"
 	"go-spring.org/stdlib/netutil"
 	"go-spring.org/stdlib/testing/assert"
@@ -146,7 +147,7 @@ func TestRegisterMapsInstanceParams(t *testing.T) {
 	r, client := newTestRegistry(false)
 	meta := map[string]string{"zone": "a"}
 
-	assert.Error(t, r.Register(context.Background(), registration.Instance{
+	assert.Error(t, r.Register(context.Background(), discovery.Instance{
 		ServiceName: "orders-register-params", Addr: "10.0.0.5:8080", Weight: -5, Metadata: meta,
 	})).Nil()
 	p := client.lastRegistered()
@@ -161,7 +162,7 @@ func TestRegisterMapsInstanceParams(t *testing.T) {
 	assert.That(t, p.Metadata["zone"]).Equal("a")
 
 	// Weight 0 is the drain signal and must survive the clamp.
-	assert.Error(t, r.Register(context.Background(), registration.Instance{
+	assert.Error(t, r.Register(context.Background(), discovery.Instance{
 		ServiceName: "orders-register-params", Addr: "10.0.0.5:8080", Weight: 0,
 	})).Nil()
 	assert.That(t, client.lastRegistered().Weight).Equal(float64(0))
@@ -173,7 +174,7 @@ func TestRegisterMapsInstanceParams(t *testing.T) {
 func TestDeregisterMapsInstanceParams(t *testing.T) {
 	r, client := newTestRegistry(false)
 
-	assert.Error(t, r.Deregister(context.Background(), registration.Instance{
+	assert.Error(t, r.Deregister(context.Background(), discovery.Instance{
 		ServiceName: "orders-deregister-params", Addr: "10.0.0.5:8080",
 	})).Nil()
 	p := client.lastDeregistered()
@@ -189,7 +190,7 @@ func TestDeregisterMapsInstanceParams(t *testing.T) {
 // advertisement — metadata included — stays as registered.
 func TestUpdateWeightMapsParams(t *testing.T) {
 	r, client := newTestRegistry(false)
-	in := registration.Instance{ServiceName: "orders-update-weight", Addr: "10.0.0.5:8080", Weight: 5, Metadata: map[string]string{"zone": "a"}}
+	in := discovery.Instance{ServiceName: "orders-update-weight", Addr: "10.0.0.5:8080", Weight: 5, Metadata: map[string]string{"zone": "a"}}
 
 	assert.Error(t, r.Register(context.Background(), in)).Nil()
 	assert.Error(t, r.UpdateWeight(context.Background(), in, 0)).Nil()
@@ -207,7 +208,7 @@ func TestRegisterEmitsClientSpan(t *testing.T) {
 	testSpans.Reset()
 	r, _ := newTestRegistry(true) // server-side rejection → failed span
 
-	err := r.Register(context.Background(), registration.Instance{ServiceName: "orders-span", Addr: "1.2.3.4:80", Weight: 1})
+	err := r.Register(context.Background(), discovery.Instance{ServiceName: "orders-span", Addr: "1.2.3.4:80", Weight: 1})
 	assert.Error(t, err).NotNil()
 
 	for _, s := range testSpans.GetSpans() {
@@ -235,7 +236,7 @@ func TestRegisterEmitsClientSpan(t *testing.T) {
 func TestUpdateWeightEmitsClientSpan(t *testing.T) {
 	testSpans.Reset()
 	r, _ := newTestRegistry(false)
-	in := registration.Instance{ServiceName: "orders-wspan", Addr: "1.2.3.4:80", Weight: 1}
+	in := discovery.Instance{ServiceName: "orders-wspan", Addr: "1.2.3.4:80", Weight: 1}
 
 	assert.Error(t, r.UpdateWeight(context.Background(), in, 2)).Nil()
 
@@ -261,7 +262,7 @@ func TestUpdateWeightEmitsClientSpan(t *testing.T) {
 // A successful publish is counted and marks the instance discoverable.
 func TestRegisterSuccessIsReported(t *testing.T) {
 	r, client := newTestRegistry(false)
-	in := registration.Instance{ServiceName: "orders", Addr: "1.2.3.4:80", Weight: 1}
+	in := discovery.Instance{ServiceName: "orders", Addr: "1.2.3.4:80", Weight: 1}
 
 	assert.Error(t, r.Register(context.Background(), in)).Nil()
 
@@ -280,7 +281,7 @@ func TestRegisterSuccessIsReported(t *testing.T) {
 // the Nacos SDK reports it that way, and it must not be mistaken for success.
 func TestRegisterServerRejectionIsReported(t *testing.T) {
 	r, _ := newTestRegistry(true)
-	in := registration.Instance{ServiceName: "orders-rejected", Addr: "1.2.3.4:80", Weight: 1}
+	in := discovery.Instance{ServiceName: "orders-rejected", Addr: "1.2.3.4:80", Weight: 1}
 
 	err := r.Register(context.Background(), in)
 	assert.Error(t, err).Matches("rejected by the server")
@@ -300,7 +301,7 @@ func TestRegisterServerRejectionIsReported(t *testing.T) {
 // still in the registry — a leak hidden behind a gauge saying the opposite.
 func TestDeregisterServerRejectionIsReported(t *testing.T) {
 	r, client := newTestRegistry(false)
-	in := registration.Instance{ServiceName: "orders-drain-rejected", Addr: "1.2.3.4:80", Weight: 1}
+	in := discovery.Instance{ServiceName: "orders-drain-rejected", Addr: "1.2.3.4:80", Weight: 1}
 	ctx := context.Background()
 
 	// Publish first, so the gauge has a real published state to wrongly clear.
@@ -322,7 +323,7 @@ func TestDeregisterServerRejectionIsReported(t *testing.T) {
 // own ephemeral heartbeat — so reason=self_heal never appears for this backend.
 func TestDeregisterAndWeightChangeAreReported(t *testing.T) {
 	r, client := newTestRegistry(false)
-	in := registration.Instance{ServiceName: "orders-drain", Addr: "1.2.3.4:80", Weight: 1}
+	in := discovery.Instance{ServiceName: "orders-drain", Addr: "1.2.3.4:80", Weight: 1}
 	ctx := context.Background()
 
 	assert.Error(t, r.Register(ctx, in)).Nil()

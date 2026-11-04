@@ -145,8 +145,8 @@ type Rule struct {
 	// the seams record the context's traffic kind under the ordinary key
 	// "traffic" while they build the operation, so
 	//
-	//	match.traffic=loadtest   fires only synthetic load-test traffic
-	//	match.traffic=real       fires only production traffic
+	//	match.traffic.exact=loadtest   fires only synthetic load-test traffic
+	//	match.traffic.exact=real       fires only production traffic
 	//	(no traffic condition)   fires every class
 	//
 	// There is no fault-specific "scope" field and no second matching path: the
@@ -158,18 +158,13 @@ type Rule struct {
 	// not a pattern language. Chaos Mesh's request_headers and ChaosBlade's
 	// business parameters are the same shape.
 	//
-	// It is [matcher.ExactMap], the exact-only shape of the shared matching
-	// vocabulary: the map spelling is kept because a rule config reads better as
-	// `match.tenant=acme` than as an indexed term list, and its semantics are
-	// exactly the [matcher.Exact] terms of a [matcher.Selector] — subset-match
-	// with the named key required to be present. Bind via indexed properties,
-	// e.g. spring.fault.client.rules[0].match.tenant=acme.
-	//
-	// EXTENSION: richer metadata matching (prefix/suffix/contains) arrives as a
-	// SIBLING field — MetadataMatchers matcher.Selector, the {key, kind, value}
-	// list Envoy/Istio/Sentinel use — that ANDs with this map. This field's
-	// spelling never changes, so a config written today keeps working forever.
-	MetadataMatch matcher.ExactMap `value:"${match:=}"`
+	// It is the map spelling of the shared matching vocabulary, one
+	// [matcher.StringMatch] per key — the op always spelled out
+	// (`match.tenant.exact=acme`, `match.version.prefix=v2`), one condition per
+	// key, documents being platform-generated rather than hand-written, and
+	// evaluated as bound with no translation. Bind via indexed properties, e.g.
+	// spring.fault.client.rules[0].match.tenant.exact=acme.
+	MetadataMatch map[string]matcher.StringMatch `value:"${match:=}"`
 
 	// ActionMatch narrows the rule to calls whose [Target.Action] it matches —
 	// the interface being invoked ("insert", "GET /users/{id}"). Empty matches
@@ -333,7 +328,7 @@ func (r Rule) Matches(t Target) bool {
 	if !r.ActionMatch.Matches(t.Action) {
 		return false
 	}
-	return r.MetadataMatch.Matches(t.Metadata)
+	return matcher.Matches(r.MetadataMatch, t.Metadata)
 }
 
 // roll draws this rule's dose for one attempt into a [Result]: the latency

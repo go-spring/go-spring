@@ -26,7 +26,7 @@ import (
 // middleware or interceptor captures at wiring time. It loads the authority's
 // published kernel pointer; the manager's lock is not taken per request. Its
 // outbound counterpart is
-// [go-spring.org/cloud/governance/dataplane/outbound/fault.Client].
+// [go-spring.org/cloud/governance/dataplane/outbound/fault.Manager.WrapClientExecutor].
 
 // Server is the inbound entry point an adapter fires through: it holds the
 // inbound authority and exposes only Fire, so the caller cannot aim a fire at
@@ -40,8 +40,9 @@ type Server struct {
 // Fire decides whether an inbound request should be set on fire, and applies the
 // configured latency. It is the server-side fault seam — a gin middleware, a gRPC
 // interceptor or a dubbo filter calls it before invoking its handler, mirroring
-// how [go-spring.org/cloud/governance/dataplane/outbound/fault.Client.Fire] gates
-// outbound calls. Both directions run the same injection sequence and the same
+// how
+// [go-spring.org/cloud/governance/dataplane/outbound/fault.Manager.WrapClientExecutor]
+// gates outbound calls. Both directions run the same injection sequence and the same
 // guardrail model, but each direction reads its own kernel, so burning inbound
 // requests leaves outbound calls untouched.
 //
@@ -65,7 +66,7 @@ type Server struct {
 // The traffic class is one of those metadata entries: a middleware building an
 // [go-spring.org/cloud/governance/dataplane/inbound/observe.ServerOperation] with
 // its base constructor already records it, and passes the same map here. A
-// Target without the "traffic" entry does not match a rule naming match.traffic.
+// Target without the "traffic" entry does not match a rule naming match.traffic.exact.
 //
 // The returned [kfault.Result] is what the manager pushed: which rule governed,
 // whether an error was injected, how much latency was applied. An adapter uses it

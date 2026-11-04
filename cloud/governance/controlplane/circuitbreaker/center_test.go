@@ -22,7 +22,7 @@ import (
 	"testing"
 
 	"go-spring.org/cloud/governance/capability/ratelimit"
-	"go-spring.org/cloud/governance/controlplane/source"
+	"go-spring.org/cloud/governance/capability/source"
 	"go-spring.org/cloud/governance/dataplane/outbound/chain"
 	"go-spring.org/cloud/governance/dataplane/outbound/resilience"
 	"go-spring.org/stdlib/testing/assert"
@@ -66,7 +66,11 @@ func TestServiceRuleWinsOutright(t *testing.T) {
 	d, err := source.Parse[resilience.BreakerSettings]("breaker.properties", []byte(doc), "")
 	assert.Error(t, err).Nil()
 
-	mgr := resilience.NewManager(resilience.NewDefaultDriver(), ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()}))
+	factories, err := ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	mgr := resilience.NewManager(resilience.NewDefaultDriver(), factories)
 	src := source.NewPushSource(d)
 	if _, err := NewCenter(context.Background(), mgr, src); err != nil {
 		t.Fatal(err)

@@ -17,7 +17,7 @@
 // Package StarterDiscoveryNacos adapts Nacos as a service registry. Each
 // ${spring.discovery.nacos.<name>} block becomes ONE backend bean named
 // "nacos.<name>" serving both sides of the naming idiom: the write side (a
-// registration.Registry collected by the discovery registration core, which registers
+// discovery.Registry collected by the discovery registration core, which registers
 // this instance once the app is ready and deregisters it on shutdown) and the
 // read side (a discovery.Discovery consumers cite by the bean's name).
 // Blank-import the package and configure one block per Nacos server:
@@ -63,7 +63,7 @@ func init() {
 	// One NAMED bean per block under ${spring.discovery.nacos.<name>}: the bean
 	// name "nacos.<name>" is the label a client starter cites to pick this
 	// backend for discovery, and the discovery registration core collects the same
-	// bean (as a registration.Registry) into the single publication lifecycle.
+	// bean (as a discovery.Registry) into the single publication lifecycle.
 	// Blocks across backends never collide (the name carries the backend
 	// type); a duplicate name within one backend fails loudly in the
 	// container.
@@ -76,7 +76,7 @@ func init() {
 				gs.IndexArg(0, gs.ValueArg(c)),
 				gs.IndexArg(1, gs.ValueArg(name)),
 			).Name("nacos."+name).
-				Export(gs.As[discovery.Discovery](), gs.As[registration.Registry]()).
+				Export(gs.As[discovery.Discovery](), gs.As[discovery.Registry]()).
 				Destroy((*nacosBackend).Close).Caller(1)
 
 			// Contribute a health indicator for this server unless the user
@@ -105,7 +105,7 @@ const obsSystem = "nacos"
 // ${spring.discovery.nacos.<name>} block made a bean. It owns the single Nacos
 // naming client for that server (probed at construction, closed by the bean
 // destructor) and serves both halves of the naming idiom through it: the
-// write side (a registration.Registry collected by the discovery registration core)
+// write side (a discovery.Registry collected by the discovery registration core)
 // and the read side (a discovery.Discovery consumers cite by the bean's name
 // "nacos.<name>"; lazy, so an app that never cites it pays nothing for the
 // read half). Both sides resolve within the block's namespace/group/cluster,
@@ -192,17 +192,17 @@ func (b *nacosBackend) Close() error {
 }
 
 // Register publishes inst into this server's namespace/group.
-func (b *nacosBackend) Register(ctx context.Context, inst registration.Instance) error {
+func (b *nacosBackend) Register(ctx context.Context, inst discovery.Instance) error {
 	return b.reg.Register(ctx, inst)
 }
 
 // Deregister removes inst from this server. Idempotent.
-func (b *nacosBackend) Deregister(ctx context.Context, inst registration.Instance) error {
+func (b *nacosBackend) Deregister(ctx context.Context, inst discovery.Instance) error {
 	return b.reg.Deregister(ctx, inst)
 }
 
 // UpdateWeight re-advertises inst with a new weight.
-func (b *nacosBackend) UpdateWeight(ctx context.Context, inst registration.Instance, weight int) error {
+func (b *nacosBackend) UpdateWeight(ctx context.Context, inst discovery.Instance, weight int) error {
 	return b.reg.UpdateWeight(ctx, inst, weight)
 }
 

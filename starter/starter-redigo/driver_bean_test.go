@@ -107,7 +107,7 @@ type captureDriver struct {
 }
 
 func (d *captureDriver) CreateClient(ctx context.Context, c Config, center *governance.Runtime) (*Pool, error) {
-	d.got, _ = center.Discovery().Get(c.Discovery)
+	d.got, _ = center.Directory.Get(c.Discovery)
 	return NewPool(ctx, c, center)
 }
 

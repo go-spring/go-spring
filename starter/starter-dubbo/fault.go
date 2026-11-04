@@ -58,7 +58,7 @@ type injectorHook struct{}
 // one — a test-process concern, but the same "last wiring wins" rule in both
 // cases.
 func newInjectorHook(center *governance.Runtime) (*injectorHook, error) {
-	faultServer.Store(center.FaultServer().NewServer())
+	faultServer.Store(center.ServerFault.NewServer())
 	return &injectorHook{}, nil
 }
 

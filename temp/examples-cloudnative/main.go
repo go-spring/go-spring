@@ -161,7 +161,11 @@ func main() {
 	// is armed with a default carrying the rate limit; the guard it hands out
 	// enforces it with its own per-instance state.
 	var err error
-	mgr := admission.NewManager(ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()}))
+	fact, err := ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()})
+	if err != nil {
+		fail("ratelimit factory: %v", err)
+	}
+	mgr := admission.NewManager(fact)
 	if err = mgr.Apply(admission.Settings{Default: admission.Policy{Policy: ratelimit.Policy{Limiter: ratelimit.TokenBucketAlgorithm, RateLimit: 3}}}); err != nil {
 		fail("guard apply: %v", err)
 	}

@@ -116,6 +116,6 @@ func (DefaultDriver) CreateClient(ctx context.Context, c Config, center *governa
 	// state per broker rather than per topic. Attaching requires a center that
 	// carries a [resilience.Manager]: resolving the executor panics
 	// without one.
-	AttachObserver(cl, c.Broker, center.TrafficPropagator())
+	AttachObserver(cl, c.Broker, center.Traffic)
 	return cl, nil
 }

@@ -58,11 +58,19 @@ func armForEquiv(t *testing.T, m *resilience.Manager, c equivCase) {
 // sentinel error it carried.
 func runEquiv(t *testing.T, c equivCase) {
 	t.Helper()
-	defMgr := resilience.NewManager(resilience.NewDefaultDriver(), ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()}))
+	fact, err := ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defMgr := resilience.NewManager(resilience.NewDefaultDriver(), fact)
 	armForEquiv(t, defMgr, c)
 	def := defMgr.ExecutorFor("equiv:" + c.name)
 
-	senMgr := resilience.NewManager(NewSentinelDriver(), ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()}))
+	senFact, err := ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	senMgr := resilience.NewManager(NewSentinelDriver(), senFact)
 	armForEquiv(t, senMgr, c)
 	sen := senMgr.ExecutorFor("equiv-sentinel:" + c.name)
 

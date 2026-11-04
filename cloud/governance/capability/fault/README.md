@@ -124,7 +124,7 @@ spring.fault.client.rules[0].latency=50ms         # optional, applied on every a
 spring.fault.client.rules[0].latency-jitter=20ms  # optional, sleep latency ± U[0,20ms]
 spring.fault.client.rules[0].max-affected=100     # optional blast-radius cap (per process)
 spring.fault.client.rules[0].max-duration=5m      # optional self-heal window (per process)
-spring.fault.client.rules[0].match.traffic=loadtest       # optional: "real" | "loadtest" | any custom class
+spring.fault.client.rules[0].match.traffic.exact=loadtest       # optional: "real" | "loadtest" | any custom class
 
 # inbound: Server.Fire's decision (gin / echo / grpc / hertz / trpc / dubbo).
 # Every rule names its target service — there is no catch-all.

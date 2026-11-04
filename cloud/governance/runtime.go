@@ -19,6 +19,7 @@ package governance
 import (
 	"go-spring.org/cloud/discovery"
 	"go-spring.org/cloud/governance/capability/loadbalance"
+	"go-spring.org/cloud/governance/dataplane/inbound"
 	"go-spring.org/cloud/governance/dataplane/inbound/admission"
 	serverfault "go-spring.org/cloud/governance/dataplane/inbound/fault"
 	"go-spring.org/cloud/governance/dataplane/outbound/chain"
@@ -78,56 +79,11 @@ type Runtime struct {
 	Traffic traffic.Propagator `autowire:""`
 }
 
-// ResilienceClient returns the OUTBOUND resilience authority. The Runtime is the
-// family's sole spokesperson: a client starter injects the ONE *Runtime bean and
-// reads whichever authority it needs from here, instead of wiring each authority
-// bean in separately. Every getter returns a non-nil authority.
-func (r *Runtime) ResilienceClient() *resilience.Manager {
-	return r.Resilience
-}
-
-// GuardServer returns the INBOUND admission authority — the manager that creates one
-// [admission.Guard] per server instance and pushes each the server policy. It is the
-// object a server adapter (or a filter library with no bean to inject into)
-// passes to [InboundOver].
-func (r *Runtime) GuardServer() *admission.Manager {
-	return r.Admission
-}
-
-// FaultClient returns the OUTBOUND fault authority; see [Runtime.ResilienceClient].
-// It is the object client starters wrap their executors with. A server starter
-// has no use for it, and vice versa.
-func (r *Runtime) FaultClient() *clientfault.Manager {
-	return r.ClientFault
-}
-
-// FaultServer returns the INBOUND fault authority; see [Runtime.ResilienceClient].
-// It is the object server adapters create their handle from.
-func (r *Runtime) FaultServer() *serverfault.Manager {
-	return r.ServerFault
-}
-
-// Loadbalance returns the endpoint-selection authority; see
-// [Runtime.ResilienceClient].
-func (r *Runtime) Loadbalance() *loadbalance.Manager {
-	return r.LoadBalance
-}
-
-// TrafficPropagator returns the process traffic convention. Every adapter that
-// builds a call's operation reads the call's traffic class through it (see
-// [traffic.Propagator.Kind]) and records it on the operation's metadata, so a
-// rule matches match.traffic=... like any other dimension. It is never nil.
-func (r *Runtime) TrafficPropagator() traffic.Propagator {
-	return r.Traffic
-}
-
-// Discovery returns the directory of named discovery backends; see
-// [Runtime.ResilienceClient]. It is not a policy authority like the other three —
-// the runtime holds it so a client reaches discovery through the same injection
-// point it reaches everything else.
-func (r *Runtime) Discovery() *discovery.Manager {
-	return r.Directory
-}
+// The authorities above are the Runtime's whole vocabulary: a starter reads the
+// field it needs directly (r.Resilience, r.Admission, ...) — the fields are the
+// injection point, and a getter in front of them would be a second owner of the
+// same access, not a guarantee. The two composition helpers below are the only
+// methods, because they are the only places that know two authorities at once.
 
 // UsesDiscovery reports whether a client entry configured with serviceName should
 // run in-process service discovery. It is the ONE place a client asks that
@@ -169,4 +125,15 @@ func (r *Runtime) UsesDiscovery(serviceName string) bool {
 func (r *Runtime) ExecutorFor(system, label string) chain.Executor {
 	exec := observe.WrapClientExecutor(r.Resilience.ExecutorFor(label), system, label)
 	return r.ClientFault.WrapClientExecutor(exec)
+}
+
+// InboundFor returns the pair of inbound objects one route's middleware drives,
+// wired together: the observer records the request plane, while the admission
+// publishes its own state. It is the composition root's half of the inbound
+// seam — the only place that knows both authorities — so no middleware wires
+// the observe object to the admission itself. The handle, and the layer order
+// it fixes, live in the data plane:
+// [go-spring.org/cloud/governance/dataplane/inbound].
+func (r *Runtime) InboundFor(system, label string) (*inbound.Inbound, error) {
+	return inbound.Over(system, label, r.Admission, r.ServerFault)
 }

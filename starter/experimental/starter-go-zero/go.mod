@@ -6,6 +6,7 @@ require (
 	github.com/zeromicro/go-zero v1.10.1
 	go-spring.org/log v0.1.4
 	go-spring.org/spring v1.3.4
+	go-spring.org/stdlib v0.1.7
 	google.golang.org/grpc v1.80.0
 )
 
@@ -33,6 +34,7 @@ require (
 	github.com/golang/protobuf v1.5.4 // indirect
 	github.com/google/gnostic-models v0.7.0 // indirect
 	github.com/google/go-cmp v0.7.0 // indirect
+	github.com/google/pprof v0.0.0-20250317173921-a4b03ec1a45e // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/gopherjs/gopherjs v1.20.2 // indirect
 	github.com/grafana/pyroscope-go v1.2.8 // indirect
@@ -67,7 +69,6 @@ require (
 	github.com/titanous/json5 v1.0.0 // indirect
 	github.com/x448/float16 v0.8.4 // indirect
 	go-spring.org/gs-mock v0.0.9 // indirect
-	go-spring.org/stdlib v0.1.7 // indirect
 	go.etcd.io/etcd/api/v3 v3.6.2 // indirect
 	go.etcd.io/etcd/client/pkg/v3 v3.6.2 // indirect
 	go.etcd.io/etcd/client/v3 v3.6.2 // indirect

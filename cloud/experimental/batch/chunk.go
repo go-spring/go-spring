@@ -71,7 +71,7 @@ type ChunkStep[I, O any] struct {
 	Executor chain.Executor
 
 	// Propagator is the process traffic convention used to stamp each chunk's
-	// operation, so a fault rule can target match.traffic. Optional: when nil,
+	// operation, so a fault rule can target match.traffic.exact. Optional: when nil,
 	// go-spring's standard binding is used.
 	Propagator traffic.Propagator
 }
@@ -88,7 +88,11 @@ func (s *ChunkStep[I, O]) executor() (chain.Executor, error) {
 	if s.Retry.IsZero() {
 		return nil, nil
 	}
-	mgr := resilience.NewManager(resilience.NewDefaultDriver(), ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()}))
+	factories, err := ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()})
+	if err != nil {
+		return nil, err
+	}
+	mgr := resilience.NewManager(resilience.NewDefaultDriver(), factories)
 	if err := mgr.ApplyLimits(resilience.LimitsSettings{Default: resilience.Limits{Retry: s.Retry}}); err != nil {
 		return nil, err
 	}

@@ -24,8 +24,8 @@ import (
 	"testing"
 	"time"
 
-	"go-spring.org/cloud/governance/capability/matcher"
 	"go-spring.org/cloud/governance/capability/ratelimit"
+	"go-spring.org/cloud/governance/capability/matcher"
 	"go-spring.org/cloud/governance/dataplane/outbound/chain"
 	"go-spring.org/stdlib/testing/assert"
 )
@@ -39,7 +39,11 @@ type testManager struct {
 }
 
 func newTestManager(d Driver) *testManager {
-	return &testManager{mgr: NewManager(d, ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()}))}
+	factories, err := ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()})
+	if err != nil {
+		panic(err)
+	}
+	return &testManager{mgr: NewManager(d, factories)}
 }
 
 func (m *testManager) ApplyLimits(s LimitsSettings) error {
@@ -427,7 +431,7 @@ func TestMostSpecificRuleWins(t *testing.T) {
 		{Service: "svc", Action: chain.ActionMatch{Exact: "GET /users/1"}, Limits: Limits{Timeout: 3 * time.Second}},
 		{Service: "svc", Action: chain.ActionMatch{Exact: ServiceScopeAction}, Limits: Limits{Timeout: time.Second}},
 		{Service: "svc", Action: chain.ActionMatch{Prefix: "GET /users"}, Limits: Limits{Timeout: 2 * time.Second}},
-		{Service: "svc", Action: chain.ActionMatch{Prefix: "GET /users"}, Match: matcher.ExactMap{"tenant": "a"}, Limits: Limits{Timeout: 4 * time.Second}},
+		{Service: "svc", Action: chain.ActionMatch{Prefix: "GET /users"}, Match: map[string]matcher.StringMatch{"tenant": {Exact: "a"}}, Limits: Limits{Timeout: 4 * time.Second}},
 	}}); err != nil {
 		t.Fatalf("Apply: %v", err)
 	}
@@ -448,8 +452,8 @@ func TestMostSpecificRuleWins(t *testing.T) {
 // that can match the same call are a document error, not a list-order hint.
 func TestAmbiguousRulesRejected(t *testing.T) {
 	err := ValidateLimits(LimitsSettings{Rules: []LimitsRule{
-		{Service: "svc", Action: chain.ActionMatch{Prefix: "GET /"}, Match: matcher.ExactMap{"tenant": "a"}, Limits: Limits{Timeout: time.Second}},
-		{Service: "svc", Action: chain.ActionMatch{Prefix: "GET /"}, Match: matcher.ExactMap{"region": "b"}, Limits: Limits{Timeout: 2 * time.Second}},
+		{Service: "svc", Action: chain.ActionMatch{Prefix: "GET /"}, Match: map[string]matcher.StringMatch{"tenant": {Exact: "a"}}, Limits: Limits{Timeout: time.Second}},
+		{Service: "svc", Action: chain.ActionMatch{Prefix: "GET /"}, Match: map[string]matcher.StringMatch{"region": {Exact: "b"}}, Limits: Limits{Timeout: 2 * time.Second}},
 	}})
 	if err == nil {
 		t.Fatal("equal-specificity selectors that can co-match must be rejected")

@@ -103,9 +103,10 @@ type LimitsRule struct {
 	// real exact/prefix.
 	Action chain.ActionMatch `value:"${action:=}"`
 
-	// Match narrows a real-action rule by call metadata (subset-match). Must be
-	// empty on a [ServiceScopeAction] rule.
-	Match matcher.ExactMap `value:"${match:=}"`
+	// Match narrows a real-action rule by call metadata (subset-match): one
+	// [matcher.StringMatch] per key, the op always spelled out. Must be empty
+	// on a [ServiceScopeAction] rule.
+	Match map[string]matcher.StringMatch `value:"${match:=}"`
 
 	Limits
 }

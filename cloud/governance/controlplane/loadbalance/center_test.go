@@ -23,7 +23,7 @@ import (
 
 	"go-spring.org/cloud/discovery"
 	kloadbalance "go-spring.org/cloud/governance/capability/loadbalance"
-	"go-spring.org/cloud/governance/controlplane/source"
+	"go-spring.org/cloud/governance/capability/source"
 	"go-spring.org/stdlib/testing/assert"
 )
 
@@ -36,9 +36,8 @@ services:
     consistent-hash:
       replicas: 200
     selector:
-      - key: version
-        kind: prefix
-        value: v2.
+      version:
+        prefix: v2.
 `
 
 func TestDocumentBinds(t *testing.T) {
@@ -53,8 +52,7 @@ func TestDocumentBinds(t *testing.T) {
 	assert.Number(t, d.Rules[0].ConsistentHash.Replicas).Equal(200)
 	sel := d.Rules[0].Selector
 	assert.Number(t, len(sel)).Equal(1)
-	assert.That(t, sel[0].Key).Equal("version")
-	assert.That(t, sel[0].Value).Equal("v2.")
+	assert.That(t, sel["version"].Prefix).Equal("v2.")
 }
 
 // TestDuplicateServicesFollowListOrder pins the resolution rule for a repeated

@@ -93,8 +93,8 @@ func versionedSource() discovery.Resolver {
 }
 
 // versionPrefix builds the selector a versioned rule narrows with.
-func versionPrefix(v string) matcher.Selector {
-	return matcher.Selector{{Key: "version", Op: matcher.Prefix, Value: v}}
+func versionPrefix(v string) map[string]matcher.StringMatch {
+	return map[string]matcher.StringMatch{"version": {Prefix: v}}
 }
 
 // mustChain is [Manager.Chain] with the construction error asserted away: a

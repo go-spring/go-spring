@@ -52,7 +52,7 @@ import (
 // center is the container's runtime — the family's one injection
 // point — carrying resilience, fault, loadbalance and the discovery directory.
 // A discovery-routed driver resolves the backend its entry's ${discovery} label
-// names from center.Discovery() and builds its [loadbalance.Chain] over the
+// names from center.Directory and builds its [loadbalance.Chain] over the
 // resolver — which registers the chain under the service's governance label, so
 // the strategy and outlier suspension apply from the first dial and are rebuilt
 // when a rule moves them — then passes the chain, along with center, to
@@ -62,7 +62,7 @@ import (
 //
 // The entry's ${discovery} label rides on the config (c.Discovery, already
 // carrying the family default): the driver resolves it against
-// center.Discovery() itself, failing construction when an entry routes by
+// center.Directory itself, failing construction when an entry routes by
 // service-name and the label names no bean.
 type Driver interface {
 	CreateClient(ctx context.Context, c Config, center *governance.Runtime) (*Client, error)
@@ -94,7 +94,7 @@ var (
 // topologies return the starter's wrapped [Client].
 //
 // In single mode, when c.ServiceName is set the address is resolved through the
-// discovery backend (center.Discovery().Get(c.Discovery)) instead of c.Addr: a
+// discovery backend (center.Directory.Get(c.Discovery)) instead of c.Addr: a
 // Resolver keeps the endpoint set fresh and the client dials a live
 // instance on each new connection. Combined with c.ConnMaxLifetime, connections
 // recycle onto updated addresses without rebuilding the client. When
@@ -157,7 +157,7 @@ func (DefaultDriver) CreateClient(ctx context.Context, c Config, center *governa
 	// Resolve the discovery backend this entry cites. The label rides on the
 	// config (c.Discovery, already carrying the family default); an entry routed
 	// by service-name that cites no existing backend fails here, at construction.
-	backend, _ := center.Discovery().Get(c.Discovery)
+	backend, _ := center.Directory.Get(c.Discovery)
 	if backend == nil {
 		return nil, errutil.Explain(nil, "redis: instance routes by service-name but cites discovery backend %q, which names no bean", c.Discovery)
 	}
@@ -174,7 +174,7 @@ func (DefaultDriver) CreateClient(ctx context.Context, c Config, center *governa
 	// registers it under the service's governance label — the same rule that
 	// drives its protection executor — so the dialer below picks under the
 	// selection in force.
-	lbChain, err := center.Loadbalance().Chain(ctx, resolver, serviceLabel(c))
+	lbChain, err := center.LoadBalance.Chain(ctx, resolver, serviceLabel(c))
 	if err != nil {
 		return nil, err
 	}

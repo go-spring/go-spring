@@ -25,6 +25,7 @@ import (
 	"time"
 
 	"github.com/go-zookeeper/zk"
+	"go-spring.org/cloud/discovery"
 	"go-spring.org/cloud/governance/controlplane/registration"
 	"go-spring.org/log"
 	"go-spring.org/stdlib/errutil"
@@ -75,10 +76,10 @@ type zkRegistry struct {
 	// implementations read Conn.State and re-run the node-creation step, and
 	// tests replace them to drive loss/recovery without an ensemble.
 	state      func() zk.State
-	reRegister func(reg registration.Instance) error
+	reRegister func(reg discovery.Instance) error
 
 	mu   sync.Mutex
-	regs map[string]registration.Instance // znode path -> last advertised value
+	regs map[string]discovery.Instance // znode path -> last advertised value
 
 	done     chan struct{}
 	doneOnce sync.Once
@@ -107,18 +108,18 @@ func newZookeeperRegistry(c ZookeeperConfig, conn *zk.Conn, obs *registration.Ob
 		backoffBase: time.Second,
 		backoffCap:  time.Minute,
 		obs:         obs,
-		regs:        map[string]registration.Instance{},
+		regs:        map[string]discovery.Instance{},
 		done:        make(chan struct{}),
 	}
 	r.state = r.conn.State
-	r.reRegister = func(reg registration.Instance) error { return r.createNode(reg) }
+	r.reRegister = func(reg discovery.Instance) error { return r.createNode(reg) }
 	go r.monitorSession()
 	return r, nil
 }
 
 // instanceID returns the instance id within the service: the caller-supplied ID,
 // or a stable one derived from the service name and advertised address.
-func instanceID(reg registration.Instance) string {
+func instanceID(reg discovery.Instance) string {
 	if reg.ID != "" {
 		return reg.ID
 	}
@@ -126,7 +127,7 @@ func instanceID(reg registration.Instance) string {
 }
 
 // pathFor returns the znode an instance is written to: basePath/service/id.
-func (r *zkRegistry) pathFor(reg registration.Instance) string {
+func (r *zkRegistry) pathFor(reg discovery.Instance) string {
 	return r.basePath + "/" + reg.ServiceName + "/" + instanceID(reg)
 }
 
@@ -146,7 +147,7 @@ func normalizeWeight(w int) int {
 // the entry is refreshed rather than duplicated. The advertised value is also
 // remembered so the session monitor can re-create the node (with its latest
 // weight) after a session loss.
-func (r *zkRegistry) Register(ctx context.Context, reg registration.Instance) error {
+func (r *zkRegistry) Register(ctx context.Context, reg discovery.Instance) error {
 	if reg.Addr == "" {
 		return errutil.Explain(nil, "discovery-zookeeper: addr is required")
 	}
@@ -165,7 +166,7 @@ func (r *zkRegistry) Register(ctx context.Context, reg registration.Instance) er
 // createNode performs the raw znode write: marshal, create persistent parents,
 // then create (or replace) the ephemeral leaf. It is the single (re-)creation
 // step used by Register and by the session monitor's recovery loop.
-func (r *zkRegistry) createNode(reg registration.Instance) error {
+func (r *zkRegistry) createNode(reg discovery.Instance) error {
 	val, err := json.Marshal(instanceValue{
 		ServiceName: reg.ServiceName,
 		Addr:        reg.Addr,
@@ -204,7 +205,7 @@ func (r *zkRegistry) createNode(reg registration.Instance) error {
 // are undisturbed and a discovery backend simply sees the new value. A weight
 // of 0 is the drain signal: it serializes as an omitted weight field, which
 // readers reconstruct as 0 and exclude from picking.
-func (r *zkRegistry) UpdateWeight(ctx context.Context, reg registration.Instance, weight int) error {
+func (r *zkRegistry) UpdateWeight(ctx context.Context, reg discovery.Instance, weight int) error {
 	weight = normalizeWeight(weight)
 	val, err := json.Marshal(instanceValue{
 		ServiceName: reg.ServiceName,
@@ -242,7 +243,7 @@ func (r *zkRegistry) UpdateWeight(ctx context.Context, reg registration.Instance
 
 // Deregister removes the instance znode. It is idempotent: deregistering an
 // instance that is not registered (ErrNoNode) is a no-op.
-func (r *zkRegistry) Deregister(ctx context.Context, reg registration.Instance) error {
+func (r *zkRegistry) Deregister(ctx context.Context, reg discovery.Instance) error {
 	path := r.pathFor(reg)
 	r.mu.Lock()
 	delete(r.regs, path)
@@ -353,7 +354,7 @@ func (r *zkRegistry) healAll() {
 // metric for that instance.
 func (r *zkRegistry) reRegisterAll() (string, error) {
 	r.mu.Lock()
-	regs := make([]registration.Instance, 0, len(r.regs))
+	regs := make([]discovery.Instance, 0, len(r.regs))
 	for _, reg := range r.regs {
 		regs = append(regs, reg)
 	}

@@ -24,9 +24,10 @@ import (
 	"go-spring.org/cloud/discovery"
 	"go-spring.org/cloud/governance/capability/loadbalance"
 	"go-spring.org/cloud/governance/capability/ratelimit"
+	"go-spring.org/cloud/governance/capability/source"
 	admissionplane "go-spring.org/cloud/governance/controlplane/admission"
 	loadbalanceplane "go-spring.org/cloud/governance/controlplane/loadbalance"
-	"go-spring.org/cloud/governance/controlplane/source"
+	_ "go-spring.org/cloud/governance/controlplane/timeoutretry"
 	"go-spring.org/cloud/governance/dataplane/inbound/admission"
 	serverfault "go-spring.org/cloud/governance/dataplane/inbound/fault"
 	"go-spring.org/cloud/governance/dataplane/outbound/chain"
@@ -161,10 +162,10 @@ func TestRuntime_IsTheInjectedBean(t *testing.T) {
 		if rt == nil {
 			t.Fatal("the runtime bean was not injected")
 		}
-		if p := rt.ResilienceClient().LimitsFor("x"); p.Timeout != 120*time.Millisecond {
+		if p := rt.Resilience.LimitsFor("x"); p.Timeout != 120*time.Millisecond {
 			t.Fatalf("the injected runtime must be the armed one: want 120ms, got %v", p.Timeout)
 		}
-		if rt.GuardServer() == nil || rt.FaultClient() == nil || rt.FaultServer() == nil {
+		if rt.Admission == nil || rt.ClientFault == nil || rt.ServerFault == nil {
 			t.Fatal("the runtime must expose every authority")
 		}
 	})
@@ -179,10 +180,18 @@ func TestRuntime_HandsOutDiscovery(t *testing.T) {
 	backend := discovery.NewStaticDiscovery(discovery.Endpoint{Addr: "10.0.0.1:2379"})
 	disc := discovery.NewManager(map[string]discovery.Discovery{"etcd.main": backend})
 
+	fact, err := ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	fact2, err := ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()})
+	if err != nil {
+		t.Fatal(err)
+	}
 	rt := &Runtime{
-		Resilience:  resilience.NewManager(resilience.NewDefaultDriver(), ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()})),
+		Resilience:  resilience.NewManager(resilience.NewDefaultDriver(), fact),
 		LoadBalance: loadbalance.NewManager(loadbalance.NewFactory([]loadbalance.Provider{loadbalance.NewBuiltinProvider()})),
-		Admission:   admission.NewManager(ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()})),
+		Admission:   admission.NewManager(fact2),
 		ClientFault: clientfault.NewManager(),
 		ServerFault: serverfault.NewManager(),
 		Traffic:     traffic.NewDefaultPropagator(traffic.DefaultBinding()),
@@ -194,10 +203,10 @@ func TestRuntime_HandsOutDiscovery(t *testing.T) {
 	if _, err := admissionplane.NewCenter(context.Background(), rt.Admission, source.NewPushSource(admission.Settings{})); err != nil {
 		t.Fatal(err)
 	}
-	if rt.Discovery() != disc {
+	if rt.Directory != disc {
 		t.Fatal("the runtime must hand out the discovery manager it was built with")
 	}
-	got, ok := rt.Discovery().Get("etcd.main")
+	got, ok := rt.Directory.Get("etcd.main")
 	if !ok || got != backend {
 		t.Fatalf("discovery lookup: ok=%v backend=%v", ok, got)
 	}

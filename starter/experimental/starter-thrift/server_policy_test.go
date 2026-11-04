@@ -21,8 +21,8 @@ import (
 	"strings"
 	"testing"
 
-	"go-spring.org/cloud/governance"
 	"go-spring.org/cloud/governance/capability/ratelimit"
+	"go-spring.org/cloud/governance/dataplane/inbound"
 	"go-spring.org/cloud/governance/dataplane/inbound/admission"
 	"go-spring.org/cloud/traffic"
 
@@ -50,11 +50,15 @@ func (f *countingFunc) Process(ctx context.Context, seqID int32, in, out thrift.
 
 // inboundFor builds the inbound governance object for the thrift test label over
 // a guard manager armed with p.
-func inboundFor(t *testing.T, p admission.Policy) *governance.Inbound {
+func inboundFor(t *testing.T, p admission.Policy) *inbound.Inbound {
 	t.Helper()
-	mgr := admission.NewManager(ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()}))
+	fact, err := ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	mgr := admission.NewManager(fact)
 	_ = mgr.Apply(admission.Settings{Default: p})
-	in, err := governance.InboundOver("thrift", "thrift:test", mgr)
+	in, err := inbound.Over("thrift", "thrift:test", mgr)
 	if err != nil {
 		t.Fatal(err)
 	}

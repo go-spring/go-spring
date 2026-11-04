@@ -421,10 +421,10 @@ without restart.
 ### 4.5 Fault drill (provider side, no restart)
 
 1. Add `fault` to the service's filter chain: `...services.greet.filter=loadtest,fault`.
-2. Configure a governance rules source; set `spring.fault.client.*` (rate/error/match.traffic) in its rules.
-3. With `match.traffic=loadtest`, only invocations carrying the load-test marker burn — mark them by
+2. Configure a governance rules source; set `spring.fault.client.*` (rate/error/match.traffic.exact) in its rules.
+3. With `match.traffic.exact=loadtest`, only invocations carrying the load-test marker burn — mark them by
    injecting the outbound carrier (cloud/traffic) from a marked upstream, or use
-   `match.traffic=real` in a dedicated environment.
+   `match.traffic.exact=real` in a dedicated environment.
 4. Watch: consumer receives the injected error; `traffic.IsLoadTest(ctx, prop)` returns true inside
    the impl for marked calls (loadtest filter ordered first).
 

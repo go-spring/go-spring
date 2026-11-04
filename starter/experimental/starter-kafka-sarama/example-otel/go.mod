@@ -8,6 +8,7 @@ require (
 	go-spring.org/spring v1.3.4
 	go-spring.org/starter-kafka-sarama v1.3.4
 	go-spring.org/starter-otel v1.3.4
+	go-spring.org/stdlib v0.1.7
 )
 
 require (
@@ -55,7 +56,6 @@ require (
 	github.com/xdg-go/scram v1.2.0 // indirect
 	github.com/xdg-go/stringprep v1.0.4 // indirect
 	go-spring.org/gs-mock v0.0.9 // indirect
-	go-spring.org/stdlib v0.1.7 // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
 	go.opentelemetry.io/contrib/instrumentation/runtime v0.68.0 // indirect
 	go.opentelemetry.io/otel v1.45.0 // indirect

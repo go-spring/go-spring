@@ -38,7 +38,7 @@ import (
 const queueName = "hello"
 
 type Service struct {
-	Conn *amqp.Connection `autowire:"a"`
+	Conn *starter.Client `autowire:"a"`
 }
 
 var manual = flag.Bool("manual", false, "run in manual verification mode (server stays up)")
@@ -104,7 +104,7 @@ func main() {
 // injects the W3C trace context into the message headers, so a downstream
 // consumer continues the trace.
 func (s *Service) publish(ctx context.Context, body string) error {
-	ch, err := s.Conn.Channel()
+	ch, err := s.Conn.Conn.Channel()
 	if err != nil {
 		return err
 	}
@@ -122,7 +122,7 @@ func (s *Service) publish(ctx context.Context, body string) error {
 // consume declares the queue and pulls a single message from it. A raw ch.Get
 // pull is not part of the instrumented driver path, so it runs unobserved here.
 func (s *Service) consume() (string, error) {
-	ch, err := s.Conn.Channel()
+	ch, err := s.Conn.Conn.Channel()
 	if err != nil {
 		return "", err
 	}
@@ -163,7 +163,7 @@ func runTest(s *Service) {
 
 	// Feature 1: Default-exchange publish/consume on queue "hello".
 	// Purge first so a leftover message from a previous run cannot poison this test.
-	if ch, err := s.Conn.Channel(); err == nil {
+	if ch, err := s.Conn.Conn.Channel(); err == nil {
 		_, _ = ch.QueueDeclare(queueName, false, false, false, false, nil)
 		_, _ = ch.QueuePurge(queueName, false)
 		_ = ch.Close()
@@ -203,7 +203,7 @@ func runTest(s *Service) {
 // routing key. Both the exchange and the queue are auto-deleted so the
 // example stays self-contained.
 func runDirectExchange(ctx context.Context, s *Service) (string, error) {
-	ch, err := s.Conn.Channel()
+	ch, err := s.Conn.Conn.Channel()
 	if err != nil {
 		return "", err
 	}
@@ -241,7 +241,7 @@ func runDirectExchange(ctx context.Context, s *Service) (string, error) {
 // runQosManualAck demonstrates channel prefetch (Qos) combined with manual
 // ack: the consumer must explicitly acknowledge each delivery.
 func runQosManualAck(ctx context.Context, s *Service) (string, error) {
-	ch, err := s.Conn.Channel()
+	ch, err := s.Conn.Conn.Channel()
 	if err != nil {
 		return "", err
 	}

@@ -22,8 +22,8 @@ import (
 	"time"
 
 	"go-spring.org/cloud/governance/capability/fault"
-	"go-spring.org/cloud/governance/capability/matcher"
 	"go-spring.org/cloud/governance/capability/ratelimit"
+	"go-spring.org/cloud/governance/capability/matcher"
 	"go-spring.org/cloud/governance/dataplane/outbound/chain"
 	clientfault "go-spring.org/cloud/governance/dataplane/outbound/fault"
 	"go-spring.org/cloud/governance/dataplane/outbound/resilience"
@@ -36,7 +36,9 @@ import (
 // at test cleanup.
 func newGovernedExec(t *testing.T, p resilience.BreakerPolicy) chain.Executor {
 	t.Helper()
-	m := resilience.NewManager(resilience.NewDefaultDriver(), ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()}))
+	factories, err := ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()})
+	assert.That(t, err).Nil()
+	m := resilience.NewManager(resilience.NewDefaultDriver(), factories)
 	assert.Error(t, m.ApplyBreaker(resilience.BreakerSettings{Default: p})).Nil()
 	t.Cleanup(func() { _ = m.Close() })
 	return m.ExecutorFor("svc")
@@ -96,10 +98,10 @@ func TestIntegration_ScopeRealTrafficSkipsFault(t *testing.T) {
 	exec := newGovernedExec(t, resilience.BreakerPolicy{ErrorThreshold: 1, OpenDuration: time.Minute})
 
 	inj := clientfault.NewManager()
-	// match.traffic=real: skip load-test traffic.
+	// match.traffic.exact=real: skip load-test traffic.
 	inj.Refresh(fault.Config{Rules: []fault.Rule{{
 		Name: "real-only", Service: "svc", Rate: 1, Class: fault.ClassTransient, Error: "generic",
-		MetadataMatch: matcher.ExactMap{"traffic": "real"},
+		MetadataMatch: map[string]matcher.StringMatch{"traffic": {Exact: "real"}},
 	}}})
 	fexec := inj.WrapClientExecutor(exec)
 	prop := traffic.NewDefaultPropagator(traffic.DefaultBinding())

@@ -32,7 +32,9 @@ import (
 // It is the stand-in for the constructor call sites outside the package use.
 func newExternalExecutor(t *testing.T, d resilience.Driver, label string, p ratelimit.Policy) chain.Executor {
 	t.Helper()
-	m := resilience.NewManager(d, ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()}))
+	factories, err := ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()})
+	assert.That(t, err).Nil()
+	m := resilience.NewManager(d, factories)
 	assert.That(t, m.ApplyRateLimit(resilience.RateLimitSettings{Default: p})).Nil()
 	return m.ExecutorFor(label)
 }
@@ -73,9 +75,10 @@ func (s *testScoped) Allow(_ context.Context, spec ratelimit.Policy, n int) (boo
 // naming a kind no factory was registered for is refused, not silently counted
 // as another algorithm.
 func TestApplyRateLimitRejectsUnknownLimiterKind(t *testing.T) {
-	factories := ratelimit.NewFactory([]ratelimit.Provider{
+	factories, err := ratelimit.NewFactory([]ratelimit.Provider{
 		ratelimit.NewLocalProvider(),
 	})
+	assert.That(t, err).Nil()
 	m := resilience.NewManager(resilience.NewDefaultDriver(), factories)
 
 	sliding := ratelimit.Policy{RateLimit: 1, Limiter: "redis:sliding-window"}
@@ -111,7 +114,8 @@ func TestDefaultDriverCountsPerExecutor(t *testing.T) {
 // backend.
 func TestDefaultDriverSharesSuppliedStore(t *testing.T) {
 	store := &testStore{}
-	factories := ratelimit.NewFactory([]ratelimit.Provider{store})
+	factories, err := ratelimit.NewFactory([]ratelimit.Provider{store})
+	assert.That(t, err).Nil()
 	m := resilience.NewManager(resilience.NewDefaultDriver(), factories)
 	p := ratelimit.Policy{RateLimit: 1, Burst: 1, Limiter: "token-bucket"}
 	assert.That(t, m.ApplyRateLimit(resilience.RateLimitSettings{Default: p})).Nil()

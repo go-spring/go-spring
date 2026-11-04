@@ -266,7 +266,7 @@ type GuardClient struct {
 // used here, closed at the layer's Release — and never leaves it.
 func NewGuardClient(next InnerClient, instanceName, serviceName string, center *governance.Runtime) *GuardClient {
 	label := label.ServiceLabel("memcached", serviceName, instanceName)
-	return &GuardClient{exec: center.ExecutorFor("memcached", label), service: label, prop: center.TrafficPropagator(), next: next}
+	return &GuardClient{exec: center.ExecutorFor("memcached", label), service: label, prop: center.Traffic, next: next}
 }
 
 // op builds one call's identity with this layer's service label: the fault layer

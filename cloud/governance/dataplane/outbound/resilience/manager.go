@@ -184,7 +184,7 @@ func (m *Manager) ApplyRateLimit(s RateLimitSettings) error {
 // executor will use.
 func (m *Manager) buildRateCounters(s RateLimitSettings) error {
 	if s.Default.RateLimit > 0 {
-		if _, err := m.limiters.Create(s.Default.Limiter, ""); err != nil {
+		if _, err := m.limiters.NewLimiter(s.Default.Limiter, ""); err != nil {
 			return errutil.Explain(err, "resilience: default rate-limit policy")
 		}
 	}
@@ -192,7 +192,7 @@ func (m *Manager) buildRateCounters(s RateLimitSettings) error {
 		if s.Rules[i].RateLimit == 0 {
 			continue
 		}
-		if _, err := m.limiters.Create(s.Rules[i].Policy.Limiter, s.Rules[i].Service); err != nil {
+		if _, err := m.limiters.NewLimiter(s.Rules[i].Policy.Limiter, s.Rules[i].Service); err != nil {
 			return errutil.Explain(err, "resilience: rate-limit rule for service %q", s.Rules[i].Service)
 		}
 	}
