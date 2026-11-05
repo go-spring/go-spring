@@ -57,12 +57,12 @@ var (
 	// maximum number of concurrent in-flight operations allowed by the bulkhead.
 	ErrBulkheadFull = errors.New("resilience: bulkhead full")
 
-	// ErrRetryBudgetExceeded is the chain's verdict that a RETRY attempt was
+	// ErrRetryExceeded is the chain's verdict that a RETRY attempt was
 	// rejected because the executor-wide in-flight retry cap is exhausted — the
 	// process-level guard against retry amplification. The first attempt of a
 	// call never takes budget, so it only ever replaces a retry, not the initial
 	// call.
-	ErrRetryBudgetExceeded = errors.New("resilience: retry budget exceeded")
+	ErrRetryExceeded = errors.New("resilience: retry exceeded")
 )
 
 // Executor runs one operation under the governance chain built for the ONE

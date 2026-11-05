@@ -57,7 +57,6 @@ import (
 
 	"go-spring.org/cloud/governance/capability/matcher"
 	"go-spring.org/cloud/governance/capability/ratelimit"
-	"go-spring.org/cloud/governance/dataplane/outbound/chain"
 )
 
 // LimitsSettings is the limits half of the outbound document, PUSHED whole: the
@@ -101,7 +100,7 @@ type LimitsRule struct {
 
 	// Action selects the scope: [ServiceScopeAction] for the whole service, or a
 	// real exact/prefix.
-	Action chain.ActionMatch `value:"${action:=}"`
+	Action matcher.ActionMatch `value:"${action:=}"`
 
 	// Match narrows a real-action rule by call metadata (subset-match): one
 	// [matcher.StringMatch] per key, the op always spelled out. Must be empty
@@ -143,7 +142,7 @@ type BreakerRule struct {
 
 	// Action selects the scope: "-" for the whole service, or a real
 	// exact/prefix for one interface.
-	Action chain.ActionMatch `value:"${action:=}"`
+	Action matcher.ActionMatch `value:"${action:=}"`
 
 	BreakerPolicy
 }
@@ -179,7 +178,7 @@ type RateLimitRule struct {
 
 	// Action is the interface being limited. Required and must not be the
 	// service marker "-".
-	Action chain.ActionMatch `value:"${action:=}"`
+	Action matcher.ActionMatch `value:"${action:=}"`
 
 	ratelimit.Policy
 }

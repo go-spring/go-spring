@@ -34,6 +34,7 @@ import (
 	"go-spring.org/cloud/governance/dataplane/outbound/chain"
 	"go-spring.org/cloud/traffic"
 	"go-spring.org/log"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // kafkaSystem is the value the family's messaging.system label carries for this
@@ -53,14 +54,14 @@ var accessTag = log.RegisterAppTag("messaging", "access")
 // the one that word means, not a fallback for words nobody recognized.
 type opWord struct {
 	word  string
-	shape chain.Kind
+	shape trace.SpanKind
 }
 
 var (
 	// opSend is a one-way hand-off to the broker: the producer edge.
-	opSend = opWord{word: "send", shape: chain.KindPublish}
+	opSend = opWord{word: "send", shape: trace.SpanKindProducer}
 	// opProcess is the handling of one delivered message: the consumer edge.
-	opProcess = opWord{word: "process", shape: chain.KindConsume}
+	opProcess = opWord{word: "process", shape: trace.SpanKindConsumer}
 )
 
 // operation is the semantic identity of one kafka operation: the operation

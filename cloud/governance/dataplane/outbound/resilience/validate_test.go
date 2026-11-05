@@ -19,8 +19,8 @@ package resilience
 import (
 	"testing"
 
-	"go-spring.org/cloud/governance/dataplane/outbound/chain"
 	"go-spring.org/cloud/governance/capability/matcher"
+	"go-spring.org/cloud/governance/dataplane/outbound/chain"
 	"go-spring.org/stdlib/testing/assert"
 )
 
@@ -32,15 +32,15 @@ func TestValidateLimitsScopeRules(t *testing.T) {
 	// meaningless.
 	assert.Error(t, ValidateLimits(LimitsSettings{Rules: []LimitsRule{{
 		Service: "svc",
-		Action:  chain.ActionMatch{Exact: ServiceScopeAction},
+		Action:  matcher.ActionMatch{Exact: ServiceScopeAction},
 		Match:   map[string]matcher.StringMatch{"tenant": {Exact: "core"}},
 	}}})).Matches("must not carry a match selector")
 
 	// The retry budget is label-scoped: it cannot sit on one interface.
 	assert.Error(t, ValidateLimits(LimitsSettings{Rules: []LimitsRule{{
 		Service: "svc",
-		Action:  chain.ActionMatch{Prefix: "GET /"},
-		Limits:  Limits{Retry: chain.RetryPolicy{RetryBudget: 4}},
+		Action:  matcher.ActionMatch{Prefix: "GET /"},
+		Limits:  Limits{Retry: chain.Retry{RetryBudget: 4}},
 	}}})).Matches("retry-budget is label-scoped")
 
 	// An action selector is required.
@@ -52,7 +52,7 @@ func TestValidateLimitsScopeRules(t *testing.T) {
 func TestValidateRateLimitInterfaceScoped(t *testing.T) {
 	assert.Error(t, ValidateRateLimit(RateLimitSettings{Rules: []RateLimitRule{{
 		Service: "svc",
-		Action:  chain.ActionMatch{Exact: ServiceScopeAction},
+		Action:  matcher.ActionMatch{Exact: ServiceScopeAction},
 	}}})).Matches("interface-scoped")
 }
 
@@ -64,8 +64,8 @@ func TestValidateBreakerRuleList(t *testing.T) {
 
 	// Two rules selecting the same calls would make list order decide the winner.
 	assert.Error(t, ValidateBreaker(BreakerSettings{Rules: []BreakerRule{
-		{Service: "svc", Action: chain.ActionMatch{Exact: ServiceScopeAction}},
-		{Service: "svc", Action: chain.ActionMatch{Exact: ServiceScopeAction}},
+		{Service: "svc", Action: matcher.ActionMatch{Exact: ServiceScopeAction}},
+		{Service: "svc", Action: matcher.ActionMatch{Exact: ServiceScopeAction}},
 	}})).Matches("duplicate breaker rule")
 }
 

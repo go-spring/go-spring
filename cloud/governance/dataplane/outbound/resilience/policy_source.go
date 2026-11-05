@@ -53,7 +53,7 @@ import (
 // generation only tells a reader whether the value moved.
 type LimitsRef struct {
 	Timeout time.Duration
-	Retry   chain.RetryPolicy
+	Retry   chain.Retry
 	Gen     uint64
 }
 
@@ -309,7 +309,7 @@ func breakerGen(label string, s *BreakerSettings) uint64 {
 // fingerprintRuleHead writes the parts every capability's fingerprint shares:
 // the rule's position and selector. A selector change moves all three
 // generations, because it changes which calls a rule's state belongs to.
-func fingerprintRuleHead(h hash.Hash64, index int, service string, action chain.ActionMatch, match map[string]matcher.StringMatch) {
+func fingerprintRuleHead(h hash.Hash64, index int, service string, action matcher.ActionMatch, match map[string]matcher.StringMatch) {
 	fingerprint(h, "rule")
 	fingerprint(h, strconv.Itoa(index))
 	fingerprint(h, service)

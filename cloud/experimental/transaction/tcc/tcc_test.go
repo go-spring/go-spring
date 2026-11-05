@@ -224,7 +224,7 @@ func TestExecute_ConfirmRetriedUnderPolicy(t *testing.T) {
 		Participants: []Participant{{
 			Name:  "a",
 			Try:   func(context.Context) (any, error) { return "t", nil },
-			Retry: RetryPolicy{MaxRetries: 1},
+			Retry: Retry{MaxRetries: 1},
 			Confirm: func(context.Context, any) error {
 				attempts++
 				if attempts == 1 {
@@ -250,7 +250,7 @@ func TestExecute_CancelRetriedUnderPolicy(t *testing.T) {
 		Participants: []Participant{{
 			Name:    "a",
 			Try:     func(context.Context) (any, error) { return "t", nil },
-			Retry:   RetryPolicy{MaxRetries: 1},
+			Retry:   Retry{MaxRetries: 1},
 			Confirm: func(context.Context, any) error { return nil },
 			Cancel: func(context.Context, any) error {
 				cancels++

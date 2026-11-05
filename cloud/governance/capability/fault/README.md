@@ -273,8 +273,9 @@ a header map; ChaosBlade exposes regex only as a separate opt-in flag. The rich
 match grammars (Envoy `StringMatcher`, Istio `StringMatch`, Gateway API, Traefik,
 APISIX `vars`) belong to traffic management. The axis a fire needs beyond this is
 the DOSE — `Rate` / `MaxAffected` / `MaxDuration` — not a richer
-predicate. `ActionMatch` is fault's own type for the same reason as `Target`:
-structurally identical to `chain.ActionMatch`, derived from neither.
+predicate. `ActionMatch` lives in the shared
+`capability/matcher` vocabulary alongside `StringMatch`, so policy rules and
+fault rules answer the "which action" question with one spelling.
 
 EXTENSION: a new operator is a new field under the same one-of convention
 (`ActionMatch`), never a reinterpretation of an existing one; richer metadata

@@ -69,12 +69,12 @@ import (
 	"go-spring.org/cloud/governance/dataplane/outbound/chain"
 )
 
-// RetryPolicy governs how a branch's second-phase operation (commit or
-// rollback) is retried on failure. It is [chain.RetryPolicy] — the same node
+// Retry governs how a branch's second-phase operation (commit or
+// rollback) is retried on failure. It is [chain.Retry] — the same node
 // that governs outbound resilience retry — rather than a second knob set, so one
 // retry vocabulary covers both. The zero value means a single attempt with no
 // retry.
-type RetryPolicy = chain.RetryPolicy
+type Retry = chain.Retry
 
 // SQLType is the kind of DML a branch captured, which determines how a row is
 // restored on rollback: an inserted row is deleted, a deleted row is

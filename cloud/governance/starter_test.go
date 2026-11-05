@@ -23,6 +23,7 @@ import (
 
 	"go-spring.org/cloud/discovery"
 	"go-spring.org/cloud/governance/capability/loadbalance"
+	"go-spring.org/cloud/governance/capability/matcher"
 	"go-spring.org/cloud/governance/capability/ratelimit"
 	"go-spring.org/cloud/governance/capability/source"
 	admissionplane "go-spring.org/cloud/governance/controlplane/admission"
@@ -70,7 +71,7 @@ type managerProbe struct{}
 func testCfg(timeoutMs int) resilience.LimitsSettings {
 	return resilience.LimitsSettings{Rules: []resilience.LimitsRule{{
 		Service: "x",
-		Action:  chain.ActionMatch{Exact: resilience.ServiceScopeAction},
+		Action:  matcher.ActionMatch{Exact: resilience.ServiceScopeAction},
 		Limits:  resilience.Limits{Timeout: time.Duration(timeoutMs) * time.Millisecond},
 	}}}
 }
@@ -135,7 +136,7 @@ func TestStarter_DriverBeanSelectedByName(t *testing.T) {
 			t.Fatal("the resilience manager bean was not injected")
 		}
 		exec := mgr.ExecutorFor("res:1")
-		if err := exec.Execute(context.Background(), chain.Operation{}, nil, func(context.Context) error { return nil }); err != nil {
+		if err := exec.Execute(context.Background(), chain.Operation{}, new(chain.Recorder), func(context.Context) error { return nil }); err != nil {
 			t.Fatal(err)
 		}
 		if !drv.used {

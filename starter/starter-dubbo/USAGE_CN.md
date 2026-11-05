@@ -355,27 +355,31 @@ grep -ri "_rpc_dubbo" logs/ | head        # 经日志桥转发的 dubbo-go 框�
 ### 4.2 热更新演练（timeout/retries，免重启）
 
 `${spring.dubbo}`（含 consumer 子树）为 `Instance` 做一次静态绑定——在构建/Refer 期消费
-的字段全部**冻结**（protocols、registries、filter、serialization、interface/group 路由），
-整个 consumer 节点同样静态：任一变更都需要重启。`dyncPoller` 把 consumer 节点中可动态
-生效的子集以扁平 dubbo URL 参数推进内存配置中心（mapconfig）：`timeout`、`retries`、
-`loadbalance`、`cluster`、`group`、`version`、`serialization`、`sticky`、`force.tag`、
-`weight`，以及按方法
-`methods.<m>.{timeout,retries,loadbalance,weight,sticky,tps.limit.*,execute.limit*}`
-（dync.go，consumerToOverrideRules）。
+的字段全部**冻结**（protocols、registries、filter、serialization、interface/group 路由）。
+consumer 节点中可动态生效的子集走 cloud 统一模型（source 推送 → dyncPoller 接收快照 →
+dubbo 调用时读 URL 参数）：配置一个独立的 consumer 文档
+（`${spring.dubbo.consumer.file}`，properties 格式，键与静态 consumer 节点一致，如
+`spring.dubbo.consumer.references.greet.timeout=3s`），fsnotify 监听文件变更、热刷新进
+内存配置中心（mapconfig）——可动态的参数同前：`timeout`、`retries`、`loadbalance`、
+`cluster`、`group`、`version`、`serialization`、`sticky`、`force.tag`、`weight`，以及按
+方法 `methods.<m>.{timeout,retries,loadbalance,weight,sticky,tps.limit.*,execute.limit*}`
+（dync.go，consumerToOverrideRules）。未配置文件时默认空文档，热更新线只剩治理。
 
-唯一的热更新线是治理（README 设计说明，已对码确认）：
+两条热更新线（dyncPoller 是 dubbo 本地的动态配置 manager）：
 
 ```
-治理中心推送 → resilience Subscribe(label) → poll() → 与上次快照 diff（无变化刷新跳过）
-  → mapconfig.RefreshOverrideRules → dubbo-go consumerConfigurationListener /
-    referenceConfigurationListener → invoker URL 更新 → 下次调用生效
+consumer 文档源推送（fsnotify）─┐
+                               ├→ poll() → 与上次快照 diff（无变化刷新跳过）
+治理中心推送 → OnLimits(label) ─┘   → mapconfig.RefreshOverrideRules
+  → dubbo-go consumerConfigurationListener / referenceConfigurationListener
+  → invoker URL 更新 → 下次调用生效
 ```
 
 演练：
 
-1. 以 `spring.dubbo.consumer.references.greet.timeout=3s` 启动。
-2. 改成 `100ms` 并触发刷新（如接了 actuator 则 `curl -X POST :9370/actuator/refresh`，
-   或走你配置源的刷新路径）。
+1. 以 `spring.dubbo.consumer.file=/etc/app/consumer.properties` 启动，文件内
+   `spring.dubbo.consumer.references.greet.timeout=3s`。
+2. 改成 `100ms` 保存（文件被 watch 父目录捕获，K8s ConfigMap 原子改名同样有效）。
 3. 观察慢调用立刻失败；override 落在 key `greet.GreetService:1.0.0:.configurators` 下——
    key 格式见 §4.3。
 

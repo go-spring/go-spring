@@ -115,7 +115,7 @@ func TestSentinelRoundTripperRetry(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	e := newExec(t, "sentinel:test", resilience.Limits{Timeout: time.Second, Retry: chain.RetryPolicy{MaxRetries: 3}})
+	e := newExec(t, "sentinel:test", resilience.Limits{Timeout: time.Second, Retry: chain.Retry{MaxRetries: 3}})
 	client := &http.Client{Transport: resilience.NewRoundTripper(http.DefaultTransport, e, "svc", nil)}
 
 	resp, err := client.Get(srv.URL)

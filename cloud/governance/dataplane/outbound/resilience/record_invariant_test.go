@@ -39,38 +39,38 @@ func TestEveryGovernedCallRecordsAtLeastOneRound(t *testing.T) {
 		err := newBuiltin(t, Limits{}).Execute(context.Background(), chain.Operation{}, rec,
 			func(context.Context) error { return nil })
 		assert.Error(t, err).Nil()
-		assert.Number(t, len(rec.Rounds())).Equal(1)
-		assert.String(t, rec.Rounds()[0].Status).Equal("ok")
+		assert.Number(t, len(rec.Rounds)).Equal(1)
+		assert.String(t, rec.Rounds[0].Status).Equal("ok")
 	})
 
 	t.Run("refused-before-the-downstream", func(t *testing.T) {
 		e := newBuiltin(t, ratelimit.Policy{Limiter: ratelimit.TokenBucketAlgorithm, RateLimit: 1, Burst: 1})
 		// Spend the burst so the next call is refused.
-		assert.Error(t, e.Execute(context.Background(), chain.Operation{}, nil,
+		assert.Error(t, e.Execute(context.Background(), chain.Operation{}, new(chain.Recorder),
 			func(context.Context) error { return nil })).Nil()
 
 		rec := &chain.Recorder{}
 		err := e.Execute(context.Background(), chain.Operation{}, rec,
 			func(context.Context) error { return nil })
 		assert.Error(t, err).Is(chain.ErrRateLimited)
-		assert.Number(t, len(rec.Rounds())).Equal(1)
-		assert.String(t, rec.Rounds()[0].ErrorType).Equal("rate_limited")
+		assert.Number(t, len(rec.Rounds)).Equal(1)
+		assert.String(t, rec.Rounds[0].ErrorType).Equal("rate_limited")
 	})
 
 	t.Run("every-retry-is-a-round", func(t *testing.T) {
-		e := newBuiltin(t, Limits{Retry: chain.RetryPolicy{MaxRetries: 2, InitialInterval: time.Millisecond}})
+		e := newBuiltin(t, Limits{Retry: chain.Retry{MaxRetries: 2, InitialInterval: time.Millisecond}})
 		rec := &chain.Recorder{}
 		err := e.Execute(context.Background(), chain.Operation{}, rec,
 			func(context.Context) error { return errors.New("boom") })
 		assert.Error(t, err).NotNil()
-		assert.Number(t, len(rec.Rounds())).Equal(3)
+		assert.Number(t, len(rec.Rounds)).Equal(3)
 	})
 
 	t.Run("a-declined-record-is-not-an-empty-record", func(t *testing.T) {
 		// nil means "record nothing": the call runs, and there is no record to
 		// read — which is why a reader must never conclude anything from an
 		// absent recorder it never asked for.
-		err := newBuiltin(t, Limits{}).Execute(context.Background(), chain.Operation{}, nil,
+		err := newBuiltin(t, Limits{}).Execute(context.Background(), chain.Operation{}, new(chain.Recorder),
 			func(context.Context) error { return nil })
 		assert.Error(t, err).Nil()
 	})

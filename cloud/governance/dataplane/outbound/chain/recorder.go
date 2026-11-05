@@ -66,7 +66,7 @@ type Round struct {
 	// ErrorType names the class of the failure when the CHAIN is what failed this
 	// round — the vocabulary is [ClassifyErrorType]'s: "timeout" (the round's own
 	// budget fired), "rate_limited" / "circuit_open" / "bulkhead_full" /
-	// "retry_budget_exceeded" (an admission gate refused the round before the
+	// "retry_exceeded" (an admission gate refused the round before the
 	// downstream was touched). Empty means the chain did not decide this round's
 	// fate: it simply ran, and its error (if any) came from the downstream.
 	//
@@ -83,10 +83,10 @@ type Round struct {
 	// nothing about the second.
 	ErrorType string
 
-	// Err is the round's own error, nil on success. It is per-round: a
+	// Error is the round's own error, nil on success. It is per-round: a
 	// retried-then-succeeded call keeps the failed round's error here while
 	// Execute returns nil.
-	Err error
+	Error error
 }
 
 // Observed is the observability block the chain FILLS: what the call LEARNED,
@@ -97,7 +97,7 @@ type Round struct {
 // name) and the produced block carries none of it, because none of it can still
 // be chosen once the call is under way. What they share is only the SHAPE —
 // three groups, addressed by signal type — so a value meant for the span is
-// written to Span on either side and never has to be translated.
+// written to the span group on either side and never has to be translated.
 //
 // It exists because a signal group cannot be closed at declaration time. The
 // caller states what it knows up front; the fn knows what the response carried,
@@ -113,57 +113,48 @@ type Round struct {
 // one a reader sees last. Nothing is deduplicated: a writer that wants to correct
 // a declared value appends its own, and one that wants only to add does the same.
 //
-// CARDINALITY: [Observed.Metric] is bounded the same hard way [Metric.Attrs] is —
+// CARDINALITY: [Observed.MetricAttrs] is bounded the same hard way [Metric.Attrs] is —
 // the values must come from a small, closed set. This side is the easier one to
 // get wrong, because a metric label is the natural place to want a key, a
 // statement or a path, and the write-back happens far from where the family was
-// declared. An open-set value belongs in [Observed.Span] or [Observed.Log].
+// declared. An open-set value belongs in [Observed.SpanAttrs] or [Observed.LogFields].
 type Observed struct {
-	// Log holds access-log fields appended after the declared [Log.Fields]: the
-	// RESPONSE half of the line — what the fn or the client's own executor found —
-	// as opposed to the declared request half. Per CALL, not per round: the access
-	// line is one line, so a field that differs per attempt has to be summarised
-	// rather than appended once per attempt.
-	Log []log.Field
+	// LogFields holds access-log fields appended after the declared [Log.Fields]:
+	// the RESPONSE half of the line — what the fn or the client's own executor
+	// found — as opposed to the declared request half. Per CALL, not per round:
+	// the access line is one line, so a field that differs per attempt has to be
+	// summarised rather than appended once per attempt.
+	LogFields []log.Field
 
-	// Span holds attributes appended after the declared [Span.Attrs]. Unlike the
-	// declared half, which is set when the span STARTS, these are set when the call
-	// ends — which is the whole point: they are the values only the call could
-	// produce.
-	Span []attribute.KeyValue
+	// SpanAttrs holds attributes appended after the declared [Span.Attrs]. Unlike
+	// the declared half, which is set when the span STARTS, these are set when
+	// the call ends — which is the whole point: they are the values only the call
+	// could produce.
+	SpanAttrs []attribute.KeyValue
 
-	// Metric holds labels appended after the declared [Metric.Attrs], on the
-	// CALL-level duration only: an attempt-level sample describes one round, and a
-	// call-level supplement does not belong on it. See the cardinality rule above.
-	Metric []attribute.KeyValue
+	// MetricAttrs holds labels appended after the declared [Metric.Attrs], on the
+	// CALL-level duration only: an attempt-level sample describes one round, and
+	// a call-level supplement does not belong on it. See the cardinality rule
+	// above.
+	MetricAttrs []attribute.KeyValue
 }
 
-// AddLog appends access-log fields to the call's produced observability block. A
-// nil Recorder is a no-op, so a client's own executor writes unconditionally.
-func (r *Recorder) AddLog(fields ...log.Field) {
-	if r == nil {
-		return
-	}
-	r.Observed.Log = append(r.Observed.Log, fields...)
+// AddLogFields appends access-log fields to the call's produced observability block.
+func (r *Recorder) AddLogFields(fields ...log.Field) {
+	r.Observed.LogFields = append(r.Observed.LogFields, fields...)
 }
 
-// AddSpan appends span attributes to the call's produced observability block, set
-// on the span when the call ends. A nil Recorder is a no-op.
-func (r *Recorder) AddSpan(attrs ...attribute.KeyValue) {
-	if r == nil {
-		return
-	}
-	r.Observed.Span = append(r.Observed.Span, attrs...)
+// AddSpanAttrs appends span attributes to the call's produced observability block, set
+// on the span when the call ends.
+func (r *Recorder) AddSpanAttrs(attrs ...attribute.KeyValue) {
+	r.Observed.SpanAttrs = append(r.Observed.SpanAttrs, attrs...)
 }
 
-// AddMetric appends metric labels to the call's produced observability block,
+// AddMetricAttrs appends metric labels to the call's produced observability block,
 // carried by the call-level duration. The values must be bounded — see
-// [Observed]. A nil Recorder is a no-op.
-func (r *Recorder) AddMetric(attrs ...attribute.KeyValue) {
-	if r == nil {
-		return
-	}
-	r.Observed.Metric = append(r.Observed.Metric, attrs...)
+// [Observed].
+func (r *Recorder) AddMetricAttrs(attrs ...attribute.KeyValue) {
+	r.Observed.MetricAttrs = append(r.Observed.MetricAttrs, attrs...)
 }
 
 // Recorder is the write-back half of a call: what the chain LEARNED as the call
@@ -196,10 +187,18 @@ func (r *Recorder) AddMetric(attrs ...attribute.KeyValue) {
 //
 // OWNERSHIP: one Recorder belongs to exactly ONE call. It is written by the chain
 // on the calling goroutine (no lock: a nested call gets its own Recorder, not a
-// shared one) and is only valid to READ after Execute returns. A nil Recorder is
-// valid and means "record nothing" — every method is nil-safe, so a caller that
-// does not want a record passes nil and a layer records unconditionally.
+// shared one) and is only valid to READ after Execute returns. It must be
+// non-nil: a caller that wants only the signals passes a record it simply never
+// reads.
 type Recorder struct {
+
+	// Rounds holds the call's rounds, oldest first. len() is the count; empty means
+	// the call never entered the chain (a dead context on entry, or a call that
+	// was never attempted at all) — NOT that it was rejected, which records a
+	// round like everything else. Appended through [Recorder.AddRound]; readers
+	// treat it as read-only.
+	Rounds []Round
+
 	// Timeout is the bound the governance layer put on the call's WALL TIME —
 	// the resolved value after a hot-fix override, zero when the call ran under
 	// none of its own. It is the one number the chain applies to every stage at
@@ -218,8 +217,8 @@ type Recorder struct {
 	// Observed is the observability block the chain FILLS — the counterpart of the
 	// one the caller declares ([Operation.Observe]) and the only way a signal group
 	// grows after the call starts. It is read by the emitter, which appends each
-	// group after the declared one; a writer appends through [Recorder.AddLog],
-	// [Recorder.AddSpan] and [Recorder.AddMetric]. See [Observed].
+	// group after the declared one; a writer appends through [Recorder.AddLogFields],
+	// [Recorder.AddSpanAttrs] and [Recorder.AddMetricAttrs]. See [Observed].
 	Observed Observed
 
 	// Fault is the fire the fault layer set on this call, nil when none was. It is
@@ -228,70 +227,44 @@ type Recorder struct {
 	// which is the same answer a reader of the rounds would derive (the most
 	// recent round that fired).
 	Fault *kfault.Result
-
-	// rounds holds the call's rounds, oldest first. len() is the count; empty means
-	// the call never entered the chain (a dead context on entry, or a call that
-	// was never attempted at all) — NOT that it was rejected, which records a
-	// round like everything else.
-	rounds []Round
 }
 
-// SetFault records the fire the fault layer set on this call. A nil Recorder is a
-// no-op, so a layer records unconditionally. The last fire wins: a retry that
+// SetFault records the fire the fault layer set on this call. The last fire wins: a retry that
 // succeeds after a firing attempt leaves the first attempt's fire on the record,
 // because that is what the call was subjected to.
 func (r *Recorder) SetFault(f *kfault.Result) {
-	if r == nil {
-		return
-	}
 	r.Fault = f
 }
 
 // AddRound appends one sealed round to the record. The caller supplies the facts
 // only it can measure — when the round ran, how long it took, how it ended and
-// its error (see [Round]). A nil Recorder is a no-op, so recording is always
-// safe to attempt.
+// its error (see [Round]).
 //
 // It is called by the one place that knows a round ended — the governance retry
 // loop, or the emitter for a call that ran with no governance layer.
 func (r *Recorder) AddRound(a Round) {
-	if r == nil {
-		return
-	}
-	r.rounds = append(r.rounds, a)
-}
-
-// Rounds returns the rounds recorded so far, oldest first, or nil when the call
-// made none. The result is owned by the Recorder and must not be modified.
-func (r *Recorder) Rounds() []Round {
-	if r == nil {
-		return nil
-	}
-	return r.rounds
+	r.Rounds = append(r.Rounds, a)
 }
 
 // LastRound returns the most recent round, zero when the call made none. It is
 // the round the call's own status, peer and error derive from, so the derivation
 // lives here rather than being spelled out again at every reader.
 func (r *Recorder) LastRound() (Round, bool) {
-	if r == nil || len(r.rounds) == 0 {
+	if len(r.Rounds) == 0 {
 		return Round{}, false
 	}
-	return r.rounds[len(r.rounds)-1], true
+	return r.Rounds[len(r.Rounds)-1], true
 }
 
 // Reset clears the record so the same Recorder can serve another call — the
 // supported way to pool them. It keeps nothing: a fresh call starts from zero.
 func (r *Recorder) Reset() {
-	if r == nil {
-		return
-	}
 	r.Timeout = 0
 	// The produced block is cleared the way the rounds are: a pooled Recorder must
 	// not carry one call's business fields onto the next — nor its fire.
 	r.Observed = Observed{}
 	r.Fault = nil
-	r.rounds = r.rounds[:0]
+	r.Rounds = r.Rounds[:0]
 }
 
 // ClassifyStatus maps a call's return error onto the status axis go-spring uses
@@ -307,7 +280,7 @@ func ClassifyStatus(err error) string {
 
 // ClassifyErrorType names the class of an error the CHAIN produced, on the
 // vocabulary [Round.ErrorType] carries: "rate_limited", "circuit_open",
-// "bulkhead_full", "retry_budget_exceeded", "timeout" — or "" for an ordinary
+// "bulkhead_full", "retry_exceeded", "timeout" — or "" for an ordinary
 // error that came from the downstream rather than from protection.
 //
 // Whether the call succeeded is a different question, and [ClassifyStatus]
@@ -326,8 +299,8 @@ func ClassifyErrorType(err error) string {
 		return "circuit_open"
 	case errors.Is(err, ErrBulkheadFull):
 		return "bulkhead_full"
-	case errors.Is(err, ErrRetryBudgetExceeded):
-		return "retry_budget_exceeded"
+	case errors.Is(err, ErrRetryExceeded):
+		return "retry_exceeded"
 	case errors.Is(err, context.DeadlineExceeded):
 		return "timeout"
 	default:

@@ -331,7 +331,7 @@ func (c *coordinator) snapshot(s Saga, status Status, completed []completedStep,
 // reuses [resilience.Limits] so Saga step retries and outbound resilience share
 // one knob set instead of duplicating retry logic here; the step's node becomes the
 // executor's policy retry node.
-func runWithPolicy(ctx context.Context, prop traffic.Propagator, p RetryPolicy, resource string, fn func(context.Context) error) error {
+func runWithPolicy(ctx context.Context, prop traffic.Propagator, p Retry, resource string, fn func(context.Context) error) error {
 	if p.IsZero() {
 		return fn(ctx)
 	}
@@ -347,5 +347,5 @@ func runWithPolicy(ctx context.Context, prop traffic.Propagator, p RetryPolicy, 
 	exec := mgr.ExecutorFor(resource)
 	op := chain.NewOperation(ctx, prop)
 	op.Service = resource
-	return exec.Execute(ctx, op, nil, fn)
+	return exec.Execute(ctx, op, new(chain.Recorder), fn)
 }

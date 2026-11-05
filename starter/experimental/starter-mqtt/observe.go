@@ -37,6 +37,7 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // componentName is the instrumentation componentName name every meter and tracer in this package reports under.
@@ -59,14 +60,14 @@ const mqttSystem = "mqtt"
 // the one that word means, not a fallback for words nobody recognized.
 type opWord struct {
 	word  string
-	shape chain.Kind
+	shape trace.SpanKind
 }
 
 var (
 	// opSend is a one-way hand-off to the broker: the producer edge.
-	opSend = opWord{word: "send", shape: chain.KindPublish}
+	opSend = opWord{word: "send", shape: trace.SpanKindProducer}
 	// opProcess is the handling of one delivered message: the consumer edge.
-	opProcess = opWord{word: "process", shape: chain.KindConsume}
+	opProcess = opWord{word: "process", shape: trace.SpanKindConsumer}
 )
 
 // Connection-state values the counter and the log lines share.

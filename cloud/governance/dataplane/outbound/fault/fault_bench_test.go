@@ -68,7 +68,7 @@ func BenchmarkExecutor_Baseline(b *testing.B) {
 	ctx := context.Background()
 	b.ResetTimer()
 	for b.Loop() {
-		_ = exec.Execute(ctx, chain.Operation{Service: "svc"}, nil, noopFn)
+		_ = exec.Execute(ctx, chain.Operation{Service: "svc"}, new(chain.Recorder), noopFn)
 	}
 }
 
@@ -81,7 +81,7 @@ func BenchmarkFaultExecutor_Inert(b *testing.B) {
 	ctx := context.Background()
 	b.ResetTimer()
 	for b.Loop() {
-		_ = exec.Execute(ctx, chain.Operation{Service: "svc"}, nil, noopFn)
+		_ = exec.Execute(ctx, chain.Operation{Service: "svc"}, new(chain.Recorder), noopFn)
 	}
 }
 
@@ -93,6 +93,6 @@ func BenchmarkFaultExecutor_Injecting(b *testing.B) {
 	ctx := context.Background()
 	b.ResetTimer()
 	for b.Loop() {
-		_ = exec.Execute(ctx, chain.Operation{Service: "svc"}, nil, noopFn)
+		_ = exec.Execute(ctx, chain.Operation{Service: "svc"}, new(chain.Recorder), noopFn)
 	}
 }

@@ -41,44 +41,11 @@ func drainCache(c *sync.Map) []chain.Executor {
 	return out
 }
 
-// subscriber is one caller's interest in the policy for a label. last is the most
-// recent policy delivered to cb, so an apply can skip callbacks whose policy is
-// unchanged and avoid re-delivering the same value.
+// subscriber is one caller's interest in the limits of a label. last is the
+// most recent limits the label resolved to, so an apply can skip notifications
+// whose limits are unchanged and avoid firing on a no-op push. The notify
+// callback carries no value: the subscriber re-reads the limits itself.
 type subscriber struct {
-	last Limits
-	cb   func(Limits)
-
-	// cancelled marks a subscriber whose [Subscription.Cancel] has run. The
-	// manager drops it from subs on cancel, but an Apply already in flight may
-	// hold a reference to it from before the removal — so delivery checks this
-	// flag under mu and skips it, making cancel take effect immediately rather
-	// than after the next apply.
-	cancelled bool
-}
-
-// Subscription is a live registration created by [Manager.SubscribeLimits]. It
-// carries the limits the callback was armed with and the ability to detach it
-// again, which matters for callers whose protected objects are not
-// process-lifetime: a gateway rebuilding its route table, or any client
-// re-created on a config change. Without Cancel, every rebuild would leave a
-// subscriber (and a reference to the discarded object) behind in the client
-// manager forever.
-//
-// The zero value is inert: Limits is zero and Cancel is a no-op, so a
-// Subscription is always safe to hold and always safe to cancel — including more
-// than once.
-type Subscription struct {
-	// Limits is the limits the callback was armed with at registration time.
-	Limits Limits
-
-	cancel func()
-}
-
-// Cancel detaches the subscription. It is idempotent and safe to call
-// concurrently with an apply: once it returns, the callback is no longer invoked.
-// Cancelling the zero Subscription is a no-op.
-func (s Subscription) Cancel() {
-	if s.cancel != nil {
-		s.cancel()
-	}
+	last   Limits
+	notify func()
 }

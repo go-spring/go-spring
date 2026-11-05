@@ -27,10 +27,11 @@ import (
 	"go-spring.org/cloud/discovery"
 	"go-spring.org/cloud/governance"
 	"go-spring.org/cloud/governance/capability/loadbalance"
+	"go-spring.org/cloud/governance/capability/matcher"
 	"go-spring.org/cloud/governance/capability/ratelimit"
+	"go-spring.org/cloud/governance/capability/source"
 	admissionplane "go-spring.org/cloud/governance/controlplane/admission"
 	loadbalanceplane "go-spring.org/cloud/governance/controlplane/loadbalance"
-	"go-spring.org/cloud/governance/capability/source"
 	"go-spring.org/cloud/governance/controlplane/timeoutretry"
 	serverfault "go-spring.org/cloud/governance/dataplane/inbound/fault"
 	"go-spring.org/cloud/governance/dataplane/outbound/chain"
@@ -42,10 +43,11 @@ import (
 
 const testApp = "test-app"
 
-// setConsumer pushes a DubboConsumer into the poller's statically bound
-// consumer field.
+// setConsumer pushes a DubboConsumer document through the poller's source.
+// The push itself re-runs the poll (the constructor subscribed); the explicit
+// poll() calls at the call sites stay harmless no-ops.
 func setConsumer(p *dyncPoller, c DubboConsumer) {
-	p.consumer = c
+	p.src.(*source.PushSource[consumerDocument]).Push(context.Background(), consumerDocument{Consumer: c})
 }
 
 // newTestPoller builds a poller over a fresh UNARMED resilience manager, so
@@ -76,7 +78,7 @@ func newTestPoller() *dyncPoller {
 	if _, err := admissionplane.NewCenter(context.Background(), ctr.Admission, source.NewPushSource(admission.Settings{})); err != nil {
 		panic(err)
 	}
-	return newDyncPoller(DubboApplication{Name: testApp}, DubboConsumer{}, ctr)
+	return newDyncPoller(DubboApplication{Name: testApp}, source.NewPushSource(consumerDocument{}), ctr)
 }
 
 // armedPoller builds a poller over a center constructed from cfg, then drives
@@ -113,13 +115,7 @@ func armedPoller(doc resilience.LimitsSettings) *dyncPoller {
 	if _, err := timeoutretry.NewCenter(context.Background(), resClient, source.NewPushSource(doc)); err != nil {
 		panic(err)
 	}
-	return &dyncPoller{
-		dynCfg:  mapconfig.Singleton(),
-		appName: testApp,
-		ctr:     ctr,
-		last:    make(map[string]map[string]string),
-		regged:  make(map[string]bool),
-	}
+	return newDyncPoller(DubboApplication{Name: testApp}, source.NewPushSource(consumerDocument{}), ctr)
 }
 
 // getRule fetches an override rule from the config center.
@@ -378,6 +374,62 @@ func TestDyncPoller_Init(t *testing.T) {
 	}
 }
 
+// TestDyncPoller_SourcePushRepolls pins the constructor subscription: a push
+// through the consumer document source alone — no explicit poll, no Init —
+// must publish the override rules.
+func TestDyncPoller_SourcePushRepolls(t *testing.T) {
+	dc := mapconfig.Singleton()
+	dc.RefreshOverrideRules(nil)
+	p := newTestPoller()
+
+	setConsumer(p, DubboConsumer{
+		References: map[string]DubboReference{
+			"greet": {Interface: "greet.GreetService", Timeout: "3000"},
+		},
+	})
+
+	if raw := getRule(t, dc, "greet.GreetService::"); raw == "" {
+		t.Fatal("a source push alone must repoll and publish")
+	}
+}
+
+// TestDyncPoller_OnLimitsRepolls pins the governance dirty signal: a limits
+// Apply that changes a dubbo label's limits must repoll and re-publish, with
+// no explicit poll at the call site.
+func TestDyncPoller_OnLimitsRepolls(t *testing.T) {
+	dc := mapconfig.Singleton()
+	dc.RefreshOverrideRules(nil)
+	p := armedPoller(resilience.LimitsSettings{})
+
+	setConsumer(p, DubboConsumer{
+		References: map[string]DubboReference{
+			"greet": {Interface: "greet.GreetService", Timeout: "3000"},
+		},
+	})
+
+	// A governance push changing the app label's limits fires OnLimits, which
+	// re-runs poll and re-publishes the merged rules.
+	err := p.mgr().ApplyLimits(resilience.LimitsSettings{Rules: []resilience.LimitsRule{
+		{
+			Service: "dubbo:" + testApp,
+			Action:  matcher.ActionMatch{Exact: resilience.ServiceScopeAction},
+			Limits:  resilience.Limits{Timeout: 2 * time.Second, Retry: chain.Retry{MaxRetries: 4}},
+		},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	raw := getRule(t, dc, testApp)
+	urls, err := dc.Parser().ParseToUrls(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v := urls[0].GetParam("timeout", ""); v != "2000" {
+		t.Fatalf("the OnLimits repoll must merge the new governance timeout, got %q", v)
+	}
+}
+
 func TestDyncPoller_SnapshotLast(t *testing.T) {
 	p := newTestPoller()
 	svcKey := "greet.GreetService::"
@@ -487,15 +539,15 @@ func TestDyncPoller_GovernOverride(t *testing.T) {
 		// app label carries the center's baseline (2s/4).
 		{
 			Service: "dubbo:test-app",
-			Action:  chain.ActionMatch{Exact: resilience.ServiceScopeAction},
-			Limits:  resilience.Limits{Timeout: 2 * time.Second, Retry: chain.RetryPolicy{MaxRetries: 4}},
+			Action:  matcher.ActionMatch{Exact: resilience.ServiceScopeAction},
+			Limits:  resilience.Limits{Timeout: 2 * time.Second, Retry: chain.Retry{MaxRetries: 4}},
 		},
 		// Per-reference override: a different timeout for one service. The key
 		// is the full dubbo service label ("dubbo:" + colonSeparatedKey).
 		{
 			Service: "dubbo:greet.GreetService::",
-			Action:  chain.ActionMatch{Exact: resilience.ServiceScopeAction},
-			Limits:  resilience.Limits{Timeout: 500 * time.Millisecond, Retry: chain.RetryPolicy{MaxRetries: 1}},
+			Action:  matcher.ActionMatch{Exact: resilience.ServiceScopeAction},
+			Limits:  resilience.Limits{Timeout: 500 * time.Millisecond, Retry: chain.Retry{MaxRetries: 1}},
 		},
 	}})
 

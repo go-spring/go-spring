@@ -109,7 +109,7 @@ func (rt *roundTripper) call(req *http.Request) chain.Operation {
 
 func (rt *roundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 	var resp *http.Response
-	err := rt.exec.Execute(req.Context(), rt.call(req), nil, func(ctx context.Context) error {
+	err := rt.exec.Execute(req.Context(), rt.call(req), new(chain.Recorder), func(ctx context.Context) error {
 		// A shallow copy carrying the attempt's context: the transport must run
 		// under the deadline exec derived for this attempt, and a retry derives a
 		// fresh one. Nothing here mutates the headers, so they need no copy of

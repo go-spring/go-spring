@@ -68,7 +68,7 @@ func demoComposedRetry(driver resilience.Driver) {
 	m := resilience.NewManager(driver, fact)
 	if err := m.ApplyLimits(resilience.LimitsSettings{Default: resilience.Limits{
 		Timeout: time.Second,
-		Retry:   chain.RetryPolicy{MaxRetries: 3},
+		Retry:   chain.Retry{MaxRetries: 3},
 	}}); err != nil {
 		fail("composed limits: %v", err)
 	}

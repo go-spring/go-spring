@@ -80,7 +80,7 @@ func TestStarter_ManagerBeanClosesOnShutdown(t *testing.T) {
 		}
 		// Build one executor, so there is something for Close to release.
 		exec := m.ExecutorFor("res:1")
-		if err := exec.Execute(context.Background(), chain.Operation{}, nil, func(context.Context) error { return nil }); err != nil {
+		if err := exec.Execute(context.Background(), chain.Operation{}, new(chain.Recorder), func(context.Context) error { return nil }); err != nil {
 			t.Fatalf("Execute: %v", err)
 		}
 		if got := closed.Load(); got != 0 {

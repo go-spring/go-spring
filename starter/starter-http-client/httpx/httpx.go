@@ -350,7 +350,7 @@ type trafficTransport struct {
 // matches on. Without it the call is undeclared — the emitter falls back to its
 // generic signals — and, more to the point, no rule could target one endpoint of
 // this client. The path is the concrete request path (a client has no route
-// template); a rule that must cover a family of paths uses [chain.ActionMatch]
+// template); a rule that must cover a family of paths uses [matcher.ActionMatch]
 // with a Prefix.
 func callFor(req *http.Request, prop traffic.Propagator) chain.Operation {
 	path := ""

@@ -54,10 +54,10 @@ func WithTraffic(prop traffic.Propagator) Option {
 	return func(c *coordinator) { c.prop = prop }
 }
 
-// WithRetry sets the [RetryPolicy] applied to each branch's second-phase
+// WithRetry sets the [Retry] applied to each branch's second-phase
 // operation. The zero value (default) means a single attempt; a non-zero policy
 // is useful because commit/rollback are expected to eventually succeed.
-func WithRetry(p RetryPolicy) Option { return func(c *coordinator) { c.retry = p } }
+func WithRetry(p Retry) Option { return func(c *coordinator) { c.retry = p } }
 
 // NewCoordinator returns the bundled in-process [Coordinator]. With no options it
 // uses no global lock and no observer, which is a valid transparent setup for
@@ -77,7 +77,7 @@ func NewCoordinator(opts ...Option) Coordinator {
 type coordinator struct {
 	lock     GlobalLock
 	observer Observer
-	retry    RetryPolicy
+	retry    Retry
 	prop     traffic.Propagator
 
 	mu       sync.Mutex
@@ -209,7 +209,7 @@ func (c *coordinator) runPhase(ctx context.Context, xid string, b Branch, phase 
 // resilience "default" executor (retry, per-attempt timeout, ...) otherwise. It
 // reuses [resilience.Limits] so AT phase retries and outbound resilience share
 // one knob set instead of duplicating retry logic here.
-func runWithPolicy(ctx context.Context, prop traffic.Propagator, p RetryPolicy, resource string, fn func(context.Context) error) error {
+func runWithPolicy(ctx context.Context, prop traffic.Propagator, p Retry, resource string, fn func(context.Context) error) error {
 	if p.IsZero() {
 		return fn(ctx)
 	}
@@ -225,5 +225,5 @@ func runWithPolicy(ctx context.Context, prop traffic.Propagator, p RetryPolicy, 
 	exec := mgr.ExecutorFor(resource)
 	op := chain.NewOperation(ctx, prop)
 	op.Service = resource
-	return exec.Execute(ctx, op, nil, fn)
+	return exec.Execute(ctx, op, new(chain.Recorder), fn)
 }

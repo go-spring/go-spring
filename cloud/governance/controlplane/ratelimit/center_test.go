@@ -77,11 +77,11 @@ func TestCenterAppliesAndKeepsLastGood(t *testing.T) {
 	slow := chain.Operation{Request: chain.Request{Action: "GET /slow/x"}}
 	other := chain.Operation{Request: chain.Request{Action: "GET /fast"}}
 
-	assert.Error(t, e.Execute(context.Background(), slow, nil, noop)).Nil()
-	assert.Error(t, e.Execute(context.Background(), slow, nil, noop)).Is(chain.ErrRateLimited)
+	assert.Error(t, e.Execute(context.Background(), slow, new(chain.Recorder), noop)).Nil()
+	assert.Error(t, e.Execute(context.Background(), slow, new(chain.Recorder), noop)).Is(chain.ErrRateLimited)
 	// Another interface is not limited.
 	for range 3 {
-		assert.Error(t, e.Execute(context.Background(), other, nil, noop)).Nil()
+		assert.Error(t, e.Execute(context.Background(), other, new(chain.Recorder), noop)).Nil()
 	}
 
 	// A document whose rule names a kind no provider exports cannot be built, so
@@ -90,7 +90,7 @@ func TestCenterAppliesAndKeepsLastGood(t *testing.T) {
 		Service: "redis:cache",
 		Policy:  ratelimit.Policy{RateLimit: 1, Limiter: "redis:unregistered"},
 	}}})
-	assert.Error(t, e.Execute(context.Background(), slow, nil, noop)).Is(chain.ErrRateLimited)
+	assert.Error(t, e.Execute(context.Background(), slow, new(chain.Recorder), noop)).Is(chain.ErrRateLimited)
 }
 
 // TestNewCenterRejectsUnservableSnapshot pins the startup contract: a source

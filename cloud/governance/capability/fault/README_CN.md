@@ -210,8 +210,9 @@ fault 自己的类型，刻意不用 `chain.Operation`：那是一个**客户端
 Chaos Mesh 匹配 method + path（支持通配）+ header map；ChaosBlade 把 regex 放在独立的
 可选参数里。那些丰富的匹配文法（Envoy `StringMatcher`、Istio `StringMatch`、Gateway API、
 Traefik、APISIX `vars`）属于流量路由。放火还需要的另一个轴是**剂量**——`Rate` /
-`MaxAffected` / `MaxDuration`——而不是更复杂的谓词。`ActionMatch` 是 fault
-自己的类型，理由与 `Target` 相同：与 `chain.ActionMatch` 结构一样，但互不派生。
+`MaxAffected` / `MaxDuration`——而不是更复杂的谓词。`ActionMatch` 放在共享的
+`capability/matcher` 词汇里，与 `StringMatch` 并列：policy 规则和 fault 规则用同一套
+拼写回答"匹配哪个 action"。
 
 扩展方式：新增操作符 = 在 `ActionMatch` 里加新字段（同一 one-of 约定），绝不复用/重新
 解释已有字段；metadata 的富匹配将来以一个兄弟字段 `MetadataMatchers []MetadataMatcher`

@@ -23,7 +23,7 @@
 // call has a single around-function and,
 // with retry, N attempts; an inbound request has one attempt and two hook
 // points (admit before the handler, settle after it). That is why this package
-// has no Operation, no Recorder, no Kind and no RetryPolicy: none of those
+// has no Operation, no Recorder, no Kind and no Retry: none of those
 // describes an inbound request, and reusing them would make the server speak
 // the client's model.
 //

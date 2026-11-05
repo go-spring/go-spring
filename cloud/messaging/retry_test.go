@@ -62,7 +62,7 @@ func TestRetryExhaustsAndReturnsLastError(t *testing.T) {
 }
 
 func TestRetryZeroPolicyIsSingleAttempt(t *testing.T) {
-	// The zero RetryPolicy retries nothing: one call, then fail.
+	// The zero Retry retries nothing: one call, then fail.
 	h := &countingHandler{failN: 1, err: errutil.Explain(nil, "x")}
 	err := Retry(h.handle, RetryPolicy{})(context.Background(), &Message{})
 	assert.That(t, err).NotNil()

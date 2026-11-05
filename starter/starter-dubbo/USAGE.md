@@ -368,27 +368,34 @@ grep -ri "_rpc_dubbo" logs/ | head        # dubbo-go framework logs via the brid
 
 `${spring.dubbo}` — including the consumer tree — is bound once, statically for `Instance`:
 fields consumed at build/refer time are **frozen** (protocols, registries, filters,
-serialization, interface/group routing), and so is the whole consumer node; a change to either
-needs a restart. The `dyncPoller` pushes the dynamically-applicable subset of the consumer
-node into an in-memory config center (mapconfig) as flat dubbo URL params: `timeout`,
+serialization, interface/group routing); a change to those needs a restart. The
+dynamically-applicable subset of the consumer node follows the cloud unified model
+(source pushes → dyncPoller receives the snapshot → dubbo reads URL params per call):
+configure a standalone consumer document (`${spring.dubbo.consumer.file}`, properties
+format, same keys as the static consumer node, e.g.
+`spring.dubbo.consumer.references.greet.timeout=3s`); fsnotify watches it and hot-refreshes
+into the in-memory config center (mapconfig) — same dynamic params as before: `timeout`,
 `retries`, `loadbalance`, `cluster`, `group`, `version`, `serialization`, `sticky`,
 `force.tag`, `weight`, and per-method `methods.<m>.{timeout,retries,loadbalance,weight,sticky,
-tps.limit.*,execute.limit*}` (dync.go, consumerToOverrideRules).
+tps.limit.*,execute.limit*}` (dync.go, consumerToOverrideRules). With no file configured the
+default empty document wires and governance is the only hot-reload line.
 
-The only hot-reload line is governance (README Design Notes, confirmed in code):
+Two hot-reload lines (dyncPoller is dubbo's local dynamic-config manager):
 
 ```
-governance center push → resilience Subscribe(label) → poll() → diff vs last snapshot
-  (no-op refreshes skipped) → mapconfig.RefreshOverrideRules → dubbo-go
-    consumerConfigurationListener / referenceConfigurationListener → invoker URL updated
-    → next call uses new params
+consumer document source push (fsnotify) ─┐
+                                           ├→ poll() → diff vs last snapshot (no-op refreshes
+governance center push → OnLimits(label) ─┘     skipped) → mapconfig.RefreshOverrideRules
+  → dubbo-go consumerConfigurationListener / referenceConfigurationListener
+  → invoker URL updated → next call uses new params
 ```
 
 Drill:
 
-1. Start with `spring.dubbo.consumer.references.greet.timeout=3s`.
-2. Change it to `100ms` and trigger a refresh (e.g. `curl -X POST :9370/actuator/refresh` if
-   wired, or your source's refresh path).
+1. Start with `spring.dubbo.consumer.file=/etc/app/consumer.properties`, containing
+   `spring.dubbo.consumer.references.greet.timeout=3s`.
+2. Change it to `100ms` and save (the parent directory is watched, so K8s ConfigMap's
+   atomic rename works too).
 3. Observe slow calls now fail fast; the override landed under key
    `greet.GreetService:1.0.0:.configurators` — see §4.3 for the key format.
 

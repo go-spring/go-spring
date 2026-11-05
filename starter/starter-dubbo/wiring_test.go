@@ -17,12 +17,15 @@
 package StarterDubbo
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"dubbo.apache.org/dubbo-go/v3/client"
 	"dubbo.apache.org/dubbo-go/v3/server"
 	"go-spring.org/spring/gs"
+	mapconfig "go-spring.org/starter-dubbo/internal/mapconfig"
 )
 
 // KNOWN BUG (recorded, not fixed here): DubboProtocol.Params is
@@ -208,6 +211,33 @@ func TestWiring_InstanceAndClientBeans(t *testing.T) {
 	}) {
 		if s.Ins == nil || s.Cli == nil {
 			t.Fatalf("Instance and client beans should assemble offline: ins=%v cli=%v", s.Ins, s.Cli)
+		}
+	})
+}
+
+// TestWiring_ConsumerFileSource pins the optional file line: with
+// ${spring.dubbo.consumer.file} naming a properties file, the poller's Init
+// publishes the document's references as override rules. Without the property
+// (every test above) the default empty source wires and publishes nothing —
+// the two assemblies share the rest of this test's shape.
+func TestWiring_ConsumerFileSource(t *testing.T) {
+	file := filepath.Join(t.TempDir(), "consumer.properties")
+	doc := "spring.dubbo.consumer.references.greet.interface=greet.GreetService\n" +
+		"spring.dubbo.consumer.references.greet.timeout=3000\n"
+	if err := os.WriteFile(file, []byte(doc), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	dc := mapconfig.Singleton()
+	dc.RefreshOverrideRules(nil)
+
+	gs.Web(false).Configure(func(g gs.App) {
+		setDubboProps(g, [2]string{"spring.dubbo.consumer.file", file})
+	}).RunTest(t, func(_ *struct{}) {
+		// The poller is a Rooter: its Init has run by the time the test body
+		// executes, so the document's rule must already be published.
+		if raw := getRule(t, dc, "greet.GreetService::"); raw == "" {
+			t.Fatal("the consumer file document must publish the reference's override rule")
 		}
 	})
 }

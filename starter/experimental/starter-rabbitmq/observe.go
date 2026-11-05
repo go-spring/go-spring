@@ -37,6 +37,7 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // accessTag is the static log tag for the rabbitmq access log. It is registered
@@ -59,14 +60,14 @@ const rabbitmqSystem = "rabbitmq"
 // the one that word means, not a fallback for words nobody recognized.
 type opWord struct {
 	word  string
-	shape chain.Kind
+	shape trace.SpanKind
 }
 
 var (
 	// opSend is a one-way hand-off to the broker: the producer edge.
-	opSend = opWord{word: "send", shape: chain.KindPublish}
+	opSend = opWord{word: "send", shape: trace.SpanKindProducer}
 	// opProcess is the handling of one delivered message: the consumer edge.
-	opProcess = opWord{word: "process", shape: chain.KindConsume}
+	opProcess = opWord{word: "process", shape: trace.SpanKindConsumer}
 )
 
 // operation is the semantic identity of one rabbitmq operation: the operation

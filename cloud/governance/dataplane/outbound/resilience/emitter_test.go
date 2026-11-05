@@ -193,10 +193,10 @@ func dbOperation() chain.Operation {
 
 // TestRoundPeersAreRecordedPerRound proves a retry that lands on a different
 // instance keeps the two rounds apart in the write-back: each entry of
-// rec.Rounds() carries what happened on its own attempt, so "which node is
+// rec.Rounds carries what happened on its own attempt, so "which node is
 // failing" stays answerable when the balancer moved the call between rounds.
 func TestRoundsAreRecordedPerAttempt(t *testing.T) {
-	e := clientobserve.WrapClientExecutor(newBuiltin(t, resilience.Limits{Retry: chain.RetryPolicy{MaxRetries: 1}}), "redis", "redis:cache")
+	e := clientobserve.WrapClientExecutor(newBuiltin(t, resilience.Limits{Retry: chain.Retry{MaxRetries: 1}}), "redis", "redis:cache")
 	op := chain.Operation{Request: chain.Request{Action: "get"}}
 	rec := &chain.Recorder{}
 	var i int
@@ -208,7 +208,7 @@ func TestRoundsAreRecordedPerAttempt(t *testing.T) {
 		return nil
 	})
 	assert.Error(t, err).Nil()
-	got := rec.Rounds()
+	got := rec.Rounds
 	assert.Number(t, len(got)).Equal(2)
 	assert.String(t, got[0].Status).Equal("error")
 	assert.String(t, got[1].Status).Equal("ok")
@@ -228,9 +228,9 @@ func TestProducedObservabilityReachesEverySignal(t *testing.T) {
 	rec := &chain.Recorder{}
 
 	err := exec.Execute(context.Background(), op, rec, func(context.Context) error {
-		rec.AddLog(log.String("cache", "hit"))
-		rec.AddSpan(attribute.String("cache.result", "hit"))
-		rec.AddMetric(attribute.String("cache.result", "hit"))
+		rec.AddLogFields(log.String("cache", "hit"))
+		rec.AddSpanAttrs(attribute.String("cache.result", "hit"))
+		rec.AddMetricAttrs(attribute.String("cache.result", "hit"))
 		return nil
 	})
 	assert.Error(t, err).Nil()
@@ -263,11 +263,11 @@ func TestProducedObservabilityReachesEverySignal(t *testing.T) {
 	assert.That(t, has).False("a call-level label must not reach the attempt grain")
 
 	// And the record kept what the client reported, so a caller can read it back.
-	assert.Number(t, len(rec.Observed.Log)).Equal(1)
+	assert.Number(t, len(rec.Observed.LogFields)).Equal(1)
 }
 
 // TestNonIdempotentOperationIsNotRetried proves a caller that declares its call
-// non-idempotent (see [chain.RetryPolicy.NonIdempotent]) runs ONCE however many
+// non-idempotent (see [chain.Retry.NonIdempotent]) runs ONCE however many
 // retries its retry node asks for. The suppression must survive the wrapper in
 // between, which is the only executor a client ever holds.
 func TestNonIdempotentOperationIsNotRetried(t *testing.T) {
@@ -275,10 +275,10 @@ func TestNonIdempotentOperationIsNotRetried(t *testing.T) {
 	op := chain.Operation{
 		Request: chain.Request{Action: "send"},
 		Observe: chain.Observe{Metric: chain.Metric{Name: "email.client"}},
-		Retry:   chain.RetryPolicy{MaxRetries: 3, NonIdempotent: true},
+		Retry:   chain.Retry{MaxRetries: 3, NonIdempotent: true},
 	}
 	var attempts int
-	err := e.Execute(context.Background(), op, nil, func(context.Context) error {
+	err := e.Execute(context.Background(), op, new(chain.Recorder), func(context.Context) error {
 		attempts++
 		return errutil.Explain(nil, "transient")
 	})
@@ -296,17 +296,17 @@ func TestDeclaredSpanKind(t *testing.T) {
 	e := clientobserve.WrapClientExecutor(newBuiltin(t, resilience.Limits{}), "kafka", "kafka:svc")
 
 	declared := chain.Operation{
-		Request: chain.Request{Action: "publish", Kind: chain.KindPublish},
+		Request: chain.Request{Action: "publish"},
 		Observe: chain.Observe{Metric: chain.Metric{Name: "messaging.client"},
 			Span: chain.Span{Kind: trace.SpanKindProducer}},
 	}
-	assert.Error(t, e.Execute(context.Background(), declared, nil, func(context.Context) error { return nil })).Nil()
-	assert.Error(t, e.Execute(context.Background(), chain.Operation{}, nil, func(context.Context) error { return nil })).Nil()
+	assert.Error(t, e.Execute(context.Background(), declared, new(chain.Recorder), func(context.Context) error { return nil })).Nil()
+	assert.Error(t, e.Execute(context.Background(), chain.Operation{}, new(chain.Recorder), func(context.Context) error { return nil })).Nil()
 
 	spans := exp.GetSpans()
 	assert.Number(t, len(spans)).Equal(2)
 	assert.That(t, spans[0].SpanKind).Equal(trace.SpanKindProducer)
-	// KindCall (the zero Kind) is the CLIENT edge: these calls reach another
+	// An undeclared kind is the CLIENT edge: these calls reach another
 	// service, a database or a broker, never the current process.
 	assert.That(t, spans[1].SpanKind).Equal(trace.SpanKindClient)
 }
@@ -316,12 +316,12 @@ func TestDeclaredSpanKind(t *testing.T) {
 // prefix, and stops reporting the undeclared layer's generic duration.
 func TestDeclaredOperationEmitsTwoGrains(t *testing.T) {
 	rdr := withMeter(t)
-	exec := clientobserve.WrapClientExecutor(newBuiltin(t, resilience.Limits{Retry: chain.RetryPolicy{MaxRetries: 1}}), "memcached", "svc")
+	exec := clientobserve.WrapClientExecutor(newBuiltin(t, resilience.Limits{Retry: chain.Retry{MaxRetries: 1}}), "memcached", "svc")
 	op := dbOperation()
 
 	boom := errutil.Explain(nil, "transient")
 	var calls int
-	err := exec.Execute(context.Background(), op, nil, func(context.Context) error {
+	err := exec.Execute(context.Background(), op, new(chain.Recorder), func(context.Context) error {
 		calls++
 		if calls < 2 {
 			return boom
@@ -351,7 +351,7 @@ func TestUndeclaredOperationKeepsHistoricalSignals(t *testing.T) {
 	rdr := withMeter(t)
 	exec := clientobserve.WrapClientExecutor(newBuiltin(t, resilience.Limits{}), "redis", "svc")
 
-	assert.Error(t, exec.Execute(context.Background(), chain.Operation{}, nil, func(context.Context) error { return nil })).Nil()
+	assert.Error(t, exec.Execute(context.Background(), chain.Operation{}, new(chain.Recorder), func(context.Context) error { return nil })).Nil()
 
 	got := collect(t, rdr)
 	_, ok := got["resilience.client.duration"]
@@ -374,8 +374,8 @@ func TestRejectedCallStillEmits(t *testing.T) {
 	op := dbOperation()
 
 	// First call spends the burst; the second is rejected before running fn.
-	assert.Error(t, exec.Execute(context.Background(), op, nil, func(context.Context) error { return nil })).Nil()
-	assert.Error(t, exec.Execute(context.Background(), op, nil, func(context.Context) error { return nil })).Is(chain.ErrRateLimited)
+	assert.Error(t, exec.Execute(context.Background(), op, new(chain.Recorder), func(context.Context) error { return nil })).Nil()
+	assert.Error(t, exec.Execute(context.Background(), op, new(chain.Recorder), func(context.Context) error { return nil })).Is(chain.ErrRateLimited)
 
 	got := collect(t, rdr)
 	call, ok := got["db.client.operation.duration"]

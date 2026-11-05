@@ -17,6 +17,7 @@
 package StarterDubbo
 
 import (
+	"context"
 	"maps"
 	"strconv"
 	"strings"
@@ -24,55 +25,76 @@ import (
 	"time"
 
 	"go-spring.org/cloud/governance"
+	"go-spring.org/cloud/governance/capability/source"
 	"go-spring.org/cloud/governance/dataplane/outbound/resilience"
 	mapconfig "go-spring.org/starter-dubbo/internal/mapconfig"
 )
 
-// dyncPoller pushes dubbo's consumer settings (the entire ${spring.dubbo.consumer}
-// node: consumer-level defaults + per-reference overrides + per-method tuning)
-// into the in-memory config center as flat dubbo URL params. The consumer node
-// is bound ONCE, statically — dubbo config is startup config; the only
-// hot-reload line is governance: the poller subscribes each dubbo service label
-// on the resilience authority and re-pushes the merged overrides when the
-// center's policy changes.
+// consumerDocument is the consumer node's standalone source document: a
+// dedicated file (or remote key) holding the ${spring.dubbo.consumer} node.
+// The top-level tag declares the key space for source.Parse; DubboConsumer's
+// own tags stay relative. A document carrying none of the keys binds the zero
+// value — an empty file legitimately configures nothing.
+type consumerDocument struct {
+	Consumer DubboConsumer `value:"${spring.dubbo.consumer:=}"`
+}
+
+// dyncPoller is dubbo's local manager for dynamic configuration — the mapping
+// of the cloud unified model (source pushes, manager receives the snapshot,
+// the call path queries) onto a framework that owns its own invocation chain.
+// It receives pushes from two sources — the consumer document source
+// (constructor subscription) and governance [resilience.Manager.OnLimits]
+// (per-label dirty signals) — and on each push re-derives the override-rule
+// snapshot from the current [source.Source.Snapshot] plus [Manager.LimitsFor],
+// publishing it into the in-memory config center as flat dubbo URL params.
+// Dubbo's invoker chain "queries" per call by reading those URL params —
+// dubbo-go's native mechanism, unchanged.
+//
+// The two push entry points run on different goroutines (the file-source loop
+// and the governance limits loop), so poll may run concurrently with itself;
+// mu plus the changed() diff make that a harmless double poll.
 //
 // Dynamic fields are those dubbo-go reads from URL params at call time:
 // timeout, retries, loadbalance, cluster, group, version, serialization,
 // sticky, force.tag, weight, and per-method tps/execute tuning.
-// Filter is NOT dynamic — it is frozen into the invoker chain at Refer time.
+// Filter is NOT dynamic — it is frozen into the invoker chain at Refer time;
+// the Refer-frozen fields (filter, protocol, registries, check, url, async,
+// generic, params) stay startup configuration, read by NewClient from the
+// statically bound ${spring.dubbo.consumer} node.
 type dyncPoller struct {
 	dynCfg  *mapconfig.MapDynamicConfiguration // in-memory config center overrides are pushed into
 	appName string                             // application name, used as the app-level override key
 
+	// src is the consumer document source. Its constructor has read the first
+	// copy before this poller exists, so Snapshot is always available.
+	src source.Source[consumerDocument]
+
 	// ctr is the runtime bean, always present — the constructor arg
 	// is injected by type, so a process without the center fails wiring. It is
 	// the poller's sole governance entry: [dyncPoller.mgr] reads the resilience
-	// authority off it, whose Subscribe callbacks re-run the poll on every
+	// authority off it, whose OnLimits callbacks re-run the poll on every
 	// governance push.
 	ctr *governance.Runtime
-
-	// consumer is the entire consumer node under ${spring.dubbo.consumer},
-	// bound once at construction.
-	consumer DubboConsumer
 
 	mu     sync.Mutex                   // guards last and regged
 	last   map[string]map[string]string // last pushed override snapshot, for change detection
 	regged map[string]bool              // dubbo service labels already subscribed on the center
 }
 
-// newDyncPoller creates the poller bean. consumer is the statically bound
-// ${spring.dubbo.consumer} node. ctr is the runtime bean; it is nil
-// when governance is not imported, which leaves the poller pushing the
-// dubbo-native values only.
-func newDyncPoller(app DubboApplication, consumer DubboConsumer, ctr *governance.Runtime) *dyncPoller {
-	return &dyncPoller{
-		dynCfg:   mapconfig.Singleton(),
-		appName:  app.Name,
-		ctr:      ctr,
-		consumer: consumer,
-		last:     make(map[string]map[string]string),
-		regged:   make(map[string]bool),
+// newDyncPoller creates the poller bean and subscribes to the consumer
+// document source on the spot — every later push re-runs the poll, the same
+// contract each control-plane center arms under.
+func newDyncPoller(app DubboApplication, src source.Source[consumerDocument], ctr *governance.Runtime) *dyncPoller {
+	p := &dyncPoller{
+		dynCfg:  mapconfig.Singleton(),
+		appName: app.Name,
+		src:     src,
+		ctr:     ctr,
+		last:    make(map[string]map[string]string),
+		regged:  make(map[string]bool),
 	}
+	src.Subscribe(func(context.Context, consumerDocument) { p.poll() })
+	return p
 }
 
 // mgr returns the resilience authority the center hands out. It is never nil:
@@ -83,8 +105,9 @@ func (p *dyncPoller) mgr() *resilience.Manager {
 }
 
 // Init pushes the current override rules once. Later re-pushes come from the
-// governance line alone: each Subscribe callback registered in poll re-runs it,
-// and poll's internal diff skips no-op refreshes.
+// two push lines: the consumer source subscription (constructor) and each
+// OnLimits callback registered in poll; poll's internal diff skips no-op
+// refreshes, so the overlap is harmless.
 //
 // The center is a Rooter whose Init hook is its GoLive, and this poller takes it
 // as a constructor dependency — so by the time this Init runs the center has
@@ -95,16 +118,16 @@ func (p *dyncPoller) Init() error {
 }
 
 func (p *dyncPoller) poll() {
-	consumer := p.consumer
+	consumer := p.src.Snapshot().Consumer
 
 	rules := p.consumerToOverrideRules(&consumer)
 
-	// Subscribe to governance policy changes for each dubbo service label we
+	// Register the governance dirty signal for each dubbo service label we
 	// publish, so a governance hot-reload re-runs poll and re-pushes the merged
-	// rules. Collected under p.mu (dedup via regged) but subscribed OUTSIDE the
-	// lock: Subscribe arms its callback synchronously, and that callback re-enters
-	// poll - holding p.mu across Subscribe would self-deadlock. The re-entrant poll
-	// is a no-op (changed() finds the same snapshot).
+	// rules. Collected under p.mu (dedup via regged) and registered outside the
+	// lock; OnLimits is pure bookkeeping, so a poll already in flight on the
+	// governance loop's goroutine is a harmless double poll (changed() finds
+	// the same snapshot).
 	labels := dubboServiceLabels(p.appName, &consumer)
 	var toReg []string
 	p.mu.Lock()
@@ -116,8 +139,7 @@ func (p *dyncPoller) poll() {
 	}
 	p.mu.Unlock()
 	for _, l := range toReg {
-		l := l
-		p.mgr().SubscribeLimits(l, func(resilience.Limits) { p.poll() })
+		p.mgr().OnLimits(l, p.poll)
 	}
 
 	if len(rules) == 0 {

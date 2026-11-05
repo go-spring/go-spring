@@ -36,7 +36,7 @@ func IsRejection(err error) bool {
 	return errors.Is(err, chain.ErrRateLimited) ||
 		errors.Is(err, chain.ErrCircuitOpen) ||
 		errors.Is(err, chain.ErrBulkheadFull) ||
-		errors.Is(err, chain.ErrRetryBudgetExceeded)
+		errors.Is(err, chain.ErrRetryExceeded)
 }
 
 // Option adjusts how [Run] classifies a call's outcome.
@@ -115,7 +115,7 @@ func Run[T any](ctx context.Context, exec chain.Executor, call chain.Operation,
 		return fn(ctx)
 	}
 	var callErr error
-	execErr := exec.Execute(ctx, call, nil, func(attemptCtx context.Context) error {
+	execErr := exec.Execute(ctx, call, new(chain.Recorder), func(attemptCtx context.Context) error {
 		result, callErr = fn(attemptCtx)
 		if callErr != nil && !nilErr(callErr) {
 			return callErr // a real failure feeds the breaker/retry

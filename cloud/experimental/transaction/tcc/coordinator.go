@@ -369,7 +369,7 @@ func isTerminal(s Status) bool {
 // resilience "default" executor (retry, per-attempt timeout, ...) otherwise. It
 // reuses [resilience.Limits] so TCC phase retries and outbound resilience share
 // one knob set instead of duplicating retry logic here.
-func runWithPolicy(ctx context.Context, prop traffic.Propagator, p RetryPolicy, resource string, fn func(context.Context) error) error {
+func runWithPolicy(ctx context.Context, prop traffic.Propagator, p Retry, resource string, fn func(context.Context) error) error {
 	if p.IsZero() {
 		return fn(ctx)
 	}
@@ -385,5 +385,5 @@ func runWithPolicy(ctx context.Context, prop traffic.Propagator, p RetryPolicy, 
 	exec := mgr.ExecutorFor(resource)
 	op := chain.NewOperation(ctx, prop)
 	op.Service = resource
-	return exec.Execute(ctx, op, nil, fn)
+	return exec.Execute(ctx, op, new(chain.Recorder), fn)
 }

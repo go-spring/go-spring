@@ -55,11 +55,11 @@ import (
 	"go-spring.org/cloud/governance/dataplane/outbound/chain"
 )
 
-// RetryPolicy describes how an individual [Step] phase (action or compensation)
-// is retried on failure. It is [chain.RetryPolicy] — the same node that governs
+// Retry describes how an individual [Step] phase (action or compensation)
+// is retried on failure. It is [chain.Retry] — the same node that governs
 // outbound resilience retry — rather than a second knob set, so one retry
 // vocabulary covers both. The zero value means a single attempt with no retry.
-type RetryPolicy = chain.RetryPolicy
+type Retry = chain.Retry
 
 // Step is one compensable unit of a [Saga]. Action is the forward operation;
 // Compensate undoes it if a later step fails.
@@ -89,7 +89,7 @@ type Step struct {
 	// zero value means a single attempt. Compensation reuses the same policy so a
 	// transient downstream error does not immediately escalate to manual
 	// intervention.
-	Retry RetryPolicy
+	Retry Retry
 }
 
 // Saga is an ordered set of [Step]s executed as a single logical operation. If

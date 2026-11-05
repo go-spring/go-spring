@@ -18,7 +18,6 @@ package fault
 
 import (
 	"math/rand/v2"
-	"strings"
 	"time"
 
 	"go-spring.org/cloud/governance/capability/matcher"
@@ -36,58 +35,6 @@ import (
 // nothing else. What they do NOT do is sequence anything: the kernel, the
 // guardrails and the sleep live in manager.go, and the call's [Target] is built at
 // call time, not configured.
-
-// ActionMatch is a rule's match condition over a call's [Target.Action] — the
-// interface being invoked ("insert", "GET /users/{id}"). Its zero value matches
-// every action, so a rule that declares no action condition governs the whole
-// service.
-//
-// Exact is equality; Prefix matches a leading string, which is how one rule
-// covers a REST subtree whose concrete paths vary ("GET /users" covers
-// "GET /users/{id}"). They are mutually exclusive in practice — Exact wins when
-// both are set — so a rule states one intent.
-//
-// WHY SO SHALLOW: fault injection is not routing. A router needs rich matching
-// because forwarding to the wrong backend is an incident; a fire needs matching
-// an operator can predict, because the first question during a drill is "what
-// exactly did we just hit". The mainstream chaos tools agree: Chaos Mesh's
-// HTTPChaos matches on method, path (with wildcards) and a header map; ChaosBlade
-// matches on uri/method and exposes regex as a SEPARATE opt-in parameter; the
-// rich match grammars (Envoy StringMatcher, Istio StringMatch, Gateway API,
-// Traefik, APISIX vars) belong to traffic management. The axis a fire usually
-// needs beyond this is the dose — Rate, MaxAffected, MaxDuration — not a richer
-// predicate. (Traffic class is not an axis here: it is one metadata entry, see
-// [Rule.MetadataMatch].)
-//
-// EXTENSION: operators are added as NEW FIELDS under the same one-of convention,
-// never by reinterpreting an existing field, so every config written today keeps
-// its meaning. A regex operator would earn its place only when a real case needs
-// to split one service by path pattern that Prefix cannot express; it would then
-// be added here (compiled once per distinct pattern, not per call), not as a
-// "match strategy" enum on an existing field. Case-insensitivity, if ever
-// needed, is spelled " (?i)" in the pattern the way Traefik and Spring do it.
-//
-// It is fault's own type, structurally identical to [chain.ActionMatch]: the
-// shared [go-spring.org/cloud/governance/capability/matcher] vocabulary
-// covers metadata maps, not the single-value "which action" question, and fault
-// must not import chain, whose matcher pairs with chain.Operation — the
-// client-shaped call description a rule has no business reading (see [Target]).
-type ActionMatch struct {
-	Exact  string `value:"${exact:=}"`
-	Prefix string `value:"${prefix:=}"`
-}
-
-// Matches reports whether action satisfies m. The first non-empty operator wins.
-func (m ActionMatch) Matches(action string) bool {
-	switch {
-	case m.Exact != "":
-		return action == m.Exact
-	case m.Prefix != "":
-		return strings.HasPrefix(action, m.Prefix)
-	default:
-		return true
-	}
-}
 
 // Rule is one fault rule: it names one service (optionally one interface
 // and one traffic slice of it) and the dose to apply. See [Config.Rules].
@@ -153,7 +100,7 @@ type Rule struct {
 	// class is just another dimension the subset rule already handles, and an
 	// unknown class ("stress", "shadow") needs no code change.
 	//
-	// Value equality is deliberate (see [ActionMatch] for the why): chaos
+	// Value equality is deliberate (see [matcher.ActionMatch] for the why): chaos
 	// targeting is mostly "this tenant / this canary", which is a label lookup,
 	// not a pattern language. Chaos Mesh's request_headers and ChaosBlade's
 	// business parameters are the same shape.
@@ -170,8 +117,8 @@ type Rule struct {
 	// the interface being invoked ("insert", "GET /users/{id}"). Empty matches
 	// every action, so a rule without one fires the whole service. This is what
 	// makes INTERFACE-level fault injection possible: fire one endpoint, one
-	// method. See [ActionMatch].
-	ActionMatch ActionMatch `value:"${action:=}"`
+	// method. See [matcher.ActionMatch].
+	Action matcher.ActionMatch `value:"${action:=}"`
 
 	// Rate is the per-call probability (0..1) of injecting the configured Error.
 	// 0 means never inject; 1 means every call fails. Latency, when set, is
@@ -325,7 +272,7 @@ func (r Rule) Matches(t Target) bool {
 	if r.Service != t.Service {
 		return false
 	}
-	if !r.ActionMatch.Matches(t.Action) {
+	if !r.Action.Matches(t.Action) {
 		return false
 	}
 	return matcher.Matches(r.MetadataMatch, t.Metadata)

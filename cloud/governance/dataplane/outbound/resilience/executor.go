@@ -358,13 +358,13 @@ func CallerAborted(ctx context.Context, err error) bool {
 // visible in the attempt-level series instead of silently missing; it is also
 // why the loop TERMINATES on a refusal rather than retrying it — a retry of an
 // admission-refused call (rate limited today) is exactly the load amplification
-// the gate exists to prevent. A nil recorder is a no-op.
+// the gate exists to prevent.
 func refusedRound(rec *chain.Recorder, err error) {
 	rec.AddRound(chain.Round{
 		Start:     time.Now(),
 		Status:    chain.ClassifyStatus(err),
 		ErrorType: chain.ClassifyErrorType(err),
-		Err:       err,
+		Error:     err,
 	})
 }
 
@@ -375,10 +375,8 @@ func (e *defaultExecutor) Execute(ctx context.Context, op chain.Operation, rec *
 	// Record the policy this call ran under — the rule that was matched and the
 	// effective knobs it resolved to, after a hot-fix override, not the compiled
 	// defaults — so "what governed this call" is answerable from the call's own
-	// record. A nil recorder means the caller wants no record.
-	if rec != nil {
-		rec.Timeout = c.Limits.Timeout
-	}
+	// record.
+	rec.Timeout = c.Limits.Timeout
 
 	// Timeout bounds the whole call — every round and the backoff between them —
 	// as ONE deadline applied here and inherited by everything below. It only
@@ -400,7 +398,7 @@ func (e *defaultExecutor) Execute(ctx context.Context, op chain.Operation, rec *
 	// A non-idempotent call is run once whatever the schedule says: its retry
 	// would repeat the side effect — a second email, a second published message —
 	// and no downstream stage can undo that. The client declares it on the call's
-	// retry node (see [chain.RetryPolicy.NonIdempotent]); dropping the retry here
+	// retry node (see [chain.Retry.NonIdempotent]); dropping the retry here
 	// is the framework acting on that declaration, and it says so once per target,
 	// because a silently ignored rule is worse than one that was never written.
 	if attempts > 1 {
@@ -475,15 +473,15 @@ func (e *defaultExecutor) Execute(ctx context.Context, op chain.Operation, rec *
 	for i := range attempts {
 		// The retry budget gates attempts after the first: when the executor-
 		// wide in-flight retry cap is exhausted, this call stops with
-		// [chain.ErrRetryBudgetExceeded] instead of piling one more retry onto a
+		// [chain.ErrRetryExceeded] instead of piling one more retry onto a
 		// downstream that is already being retried by everyone.
 		if sem := org.retry; sem != nil && i > 0 {
 			select {
 			case sem <- struct{}{}:
 				budgetSem, budgetHeld = sem, i
 			default:
-				refusedRound(rec, chain.ErrRetryBudgetExceeded)
-				return chain.ErrRetryBudgetExceeded
+				refusedRound(rec, chain.ErrRetryExceeded)
+				return chain.ErrRetryExceeded
 			}
 		}
 		// Every attempt past the first is charged here; the first was charged
@@ -513,7 +511,7 @@ func (e *defaultExecutor) Execute(ctx context.Context, op chain.Operation, rec *
 			Duration:  attemptDur,
 			Status:    chain.ClassifyStatus(err),
 			ErrorType: chain.ClassifyErrorType(err),
-			Err:       err,
+			Error:     err,
 		})
 		if err == nil {
 			break
@@ -569,7 +567,7 @@ func (e *defaultExecutor) Close() error {
 // override that replaced the whole node would otherwise silently drop a caller's
 // non-idempotent declaration — re-enabling retry on a call whose repetition
 // doubles a side effect. The safety flag survives regardless of who wins.
-func EffectiveRetry(policy, call chain.RetryPolicy) chain.RetryPolicy {
+func EffectiveRetry(policy, call chain.Retry) chain.Retry {
 	eff := call
 	if policy.HasSchedule() {
 		eff = policy
@@ -600,12 +598,12 @@ func ShouldRetry(err error) bool {
 // failure, applying exponential growth and jitter per p. Both engines call it so
 // the math cannot drift.
 //
-// The schedule grows [chain.RetryPolicy.InitialInterval] by
-// [chain.RetryPolicy.Multiplier] each step up to
-// [chain.RetryPolicy.MaxInterval], then decorrelates concurrent callers by ±
-// [chain.RetryPolicy.RandomizationFactor]. A zero InitialInterval yields 0 (no
+// The schedule grows [chain.Retry.InitialInterval] by
+// [chain.Retry.Multiplier] each step up to
+// [chain.Retry.MaxInterval], then decorrelates concurrent callers by ±
+// [chain.Retry.RandomizationFactor]. A zero InitialInterval yields 0 (no
 // backoff), so a node that sets only MaxRetries retries back to back.
-func Backoff(p chain.RetryPolicy, attempt int) time.Duration {
+func Backoff(p chain.Retry, attempt int) time.Duration {
 	if p.InitialInterval <= 0 {
 		return 0
 	}

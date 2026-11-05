@@ -47,7 +47,7 @@ import (
 //
 // It is a separate set from the outbound (resilience.client.*) family rather
 // than one family with a direction attribute: the outcome sets genuinely differ
-// (inbound has no retry, so no retry_budget_exceeded and no per-attempt timeout),
+// (inbound has no retry, so no retry_exceeded and no per-attempt timeout),
 // and keeping them apart leaves existing outbound dashboards untouched.
 type serverInstrumentSet struct {
 	duration      metric.Float64Histogram
@@ -125,7 +125,7 @@ func (o *ServerObserver) Run(ctx context.Context, op ServerOperation, fn func(co
 func (o *ServerObserver) Begin(ctx context.Context, op ServerOperation) (context.Context, *Observation) {
 	// A described route carries a non-empty metric prefix; a route that declares
 	// no description (the zero Operation) takes the fallback path.
-	hasOp := op.Described()
+	hasOp := op.Observe.Metric.Name != ""
 
 	ctx, span := otel.Tracer(instrument.ComponentName).Start(ctx, o.serverSpanName(op, hasOp),
 		trace.WithSpanKind(trace.SpanKindServer),

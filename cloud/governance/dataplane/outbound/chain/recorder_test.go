@@ -29,21 +29,15 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 )
 
-// A nil Recorder is the "record nothing" case: every method must tolerate it, so
-// a layer can record unconditionally and a caller can pass nil to decline.
-func TestNilRecorderIsSafe(t *testing.T) {
-	var rec *chain.Recorder
+// The methods are not nil-safe: nil is normalized to a private Recorder at the
+// observe entry points, so a nil receiver never reaches them — the contract the
+// Recorder doc states. This test pins the empty-Recorder behavior instead.
+func TestEmptyRecorderHasNoRounds(t *testing.T) {
+	rec := &chain.Recorder{}
 
-	rec.SetFault(&kfault.Result{Name: "fire", Inject: true, Error: "timeout"})
-	rec.AddLog(log.String("cache", "hit"))
-	rec.AddSpan(attribute.String("cache.result", "hit"))
-	rec.AddMetric(attribute.String("cache.result", "hit"))
-	rec.AddRound(chain.Round{Start: time.Now(), Duration: time.Millisecond, Status: "ok"})
-	rec.Reset()
-
-	assert.That(t, rec.Rounds() == nil).True("a nil recorder records no rounds")
 	_, ok := rec.LastRound()
-	assert.That(t, ok).False("a nil recorder has no last round")
+	assert.That(t, ok).False("an empty recorder has no last round")
+	assert.That(t, len(rec.Rounds)).Equal(0)
 }
 
 // The produced observability block is the write-back counterpart of the declared
@@ -52,20 +46,20 @@ func TestNilRecorderIsSafe(t *testing.T) {
 // into the next.
 func TestProducedObservabilityIsKeptPerCall(t *testing.T) {
 	rec := &chain.Recorder{}
-	rec.AddLog(log.String("cache", "hit"))
-	rec.AddSpan(attribute.String("cache.result", "hit"))
-	rec.AddMetric(attribute.String("cache.result", "hit"))
+	rec.AddLogFields(log.String("cache", "hit"))
+	rec.AddSpanAttrs(attribute.String("cache.result", "hit"))
+	rec.AddMetricAttrs(attribute.String("cache.result", "hit"))
 
-	assert.Number(t, len(rec.Observed.Log)).Equal(1)
-	assert.Number(t, len(rec.Observed.Span)).Equal(1)
-	assert.Number(t, len(rec.Observed.Metric)).Equal(1)
-	assert.String(t, rec.Observed.Span[0].Value.AsString()).Equal("hit")
+	assert.Number(t, len(rec.Observed.LogFields)).Equal(1)
+	assert.Number(t, len(rec.Observed.SpanAttrs)).Equal(1)
+	assert.Number(t, len(rec.Observed.MetricAttrs)).Equal(1)
+	assert.String(t, rec.Observed.SpanAttrs[0].Value.AsString()).Equal("hit")
 
 	rec.Reset()
 
-	assert.Number(t, len(rec.Observed.Log)).Equal(0)
-	assert.Number(t, len(rec.Observed.Span)).Equal(0)
-	assert.Number(t, len(rec.Observed.Metric)).Equal(0)
+	assert.Number(t, len(rec.Observed.LogFields)).Equal(0)
+	assert.Number(t, len(rec.Observed.SpanAttrs)).Equal(0)
+	assert.Number(t, len(rec.Observed.MetricAttrs)).Equal(0)
 }
 
 // The fire is a CALL-level fact, not a per-round one: the fault layer sets it on
@@ -95,9 +89,9 @@ func TestAddRoundAppendsTheRounds(t *testing.T) {
 
 	rec.AddRound(chain.Round{Start: start, Duration: 7 * time.Millisecond, Status: "ok"})
 	rec.AddRound(chain.Round{Start: time.Now(), Duration: time.Millisecond, Status: "error",
-		ErrorType: "circuit_open", Err: chanErr()})
+		ErrorType: "circuit_open", Error: chanErr()})
 
-	rounds := rec.Rounds()
+	rounds := rec.Rounds
 	assert.Number(t, len(rounds)).Equal(2)
 	assert.That(t, rounds[0].Duration).Equal(7 * time.Millisecond)
 	assert.That(t, rounds[0].Status).Equal("ok")
@@ -105,8 +99,8 @@ func TestAddRoundAppendsTheRounds(t *testing.T) {
 
 	last, ok := rec.LastRound()
 	assert.That(t, ok).True("the last round is the one just appended")
-	assert.That(t, errors.Is(last.Err, chanErr())).False("each round carries its own error") // same text, different value
-	assert.String(t, last.Err.Error()).Equal("downstream refused")
+	assert.That(t, errors.Is(last.Error, chanErr())).False("each round carries its own error") // same text, different value
+	assert.String(t, last.Error.Error()).Equal("downstream refused")
 }
 
 // A round the chain refused before touching the downstream is still a round: it
@@ -118,14 +112,14 @@ func TestRefusedRoundRecordsErrorType(t *testing.T) {
 		Start:     time.Now(),
 		Status:    chain.ClassifyStatus(chain.ErrBulkheadFull),
 		ErrorType: chain.ClassifyErrorType(chain.ErrBulkheadFull),
-		Err:       chain.ErrBulkheadFull,
+		Error:       chain.ErrBulkheadFull,
 	})
 
 	a, ok := rec.LastRound()
 	assert.That(t, ok).True("the refusal is a round")
 	assert.That(t, a.Status).Equal("error")
 	assert.That(t, a.ErrorType).Equal("bulkhead_full")
-	assert.That(t, errors.Is(a.Err, chain.ErrBulkheadFull)).True("the rejection rides on the round")
+	assert.That(t, errors.Is(a.Error, chain.ErrBulkheadFull)).True("the rejection rides on the round")
 }
 
 // Reset clears everything so one Recorder can serve another call — the supported
@@ -141,7 +135,7 @@ func TestResetClearsTheRecord(t *testing.T) {
 
 	assert.That(t, rec.Timeout).Equal(time.Duration(0))
 	assert.That(t, rec.Fault == nil).True("the fire is cleared with the rest")
-	assert.That(t, len(rec.Rounds())).Equal(0)
+	assert.That(t, len(rec.Rounds)).Equal(0)
 }
 
 // The two axes are independent: Status is the call's result, ErrorType names what
@@ -153,7 +147,7 @@ func TestClassifyAxes(t *testing.T) {
 	assert.That(t, chain.ClassifyErrorType(chain.ErrRateLimited)).Equal("rate_limited")
 	assert.That(t, chain.ClassifyErrorType(chain.ErrCircuitOpen)).Equal("circuit_open")
 	assert.That(t, chain.ClassifyErrorType(chain.ErrBulkheadFull)).Equal("bulkhead_full")
-	assert.That(t, chain.ClassifyErrorType(chain.ErrRetryBudgetExceeded)).Equal("retry_budget_exceeded")
+	assert.That(t, chain.ClassifyErrorType(chain.ErrRetryExceeded)).Equal("retry_exceeded")
 	assert.That(t, chain.ClassifyErrorType(context.DeadlineExceeded)).Equal("timeout")
 	assert.That(t, chain.ClassifyErrorType(errors.New("downstream"))).Equal("")
 }

@@ -64,7 +64,7 @@ func TestIntegration_LoadFaultBreaker(t *testing.T) {
 	// The op routes through the faulted executor; its inner fn would succeed,
 	// so any failure is fault/resilience, not the op itself.
 	op := func(ctx context.Context) error {
-		return fexec.Execute(ctx, chain.Operation{Service: "svc"}, nil, func(context.Context) error { return nil })
+		return fexec.Execute(ctx, chain.Operation{Service: "svc"}, new(chain.Recorder), func(context.Context) error { return nil })
 	}
 
 	r := New().
@@ -112,7 +112,7 @@ func TestIntegration_ScopeRealTrafficSkipsFault(t *testing.T) {
 			Service: "svc",
 			Request: chain.Request{Metadata: map[string]string{"traffic": prop.Kind(ctx).Label()}},
 		}
-		return fexec.Execute(ctx, o, nil, func(context.Context) error { return nil })
+		return fexec.Execute(ctx, o, new(chain.Recorder), func(context.Context) error { return nil })
 	}
 
 	r := New().Driver(ClosedLoop{Concurrency: 4}).Duration(150*time.Millisecond).

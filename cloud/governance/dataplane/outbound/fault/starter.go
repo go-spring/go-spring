@@ -31,5 +31,5 @@ import (
 // it owns the one document that drives them, but each direction is still an
 // independent object with its own API.
 func init() {
-	gs.Provide(NewManager).Caller(1)
+	gs.Provide(NewManager)
 }

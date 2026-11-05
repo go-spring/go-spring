@@ -34,6 +34,7 @@ import (
 
 	"go-spring.org/cloud/traffic"
 	"go-spring.org/stdlib/strutil"
+	"go.opentelemetry.io/otel/trace"
 
 	"go-spring.org/cloud/governance/dataplane/outbound/chain"
 	"go-spring.org/log"
@@ -68,7 +69,7 @@ func operation(ctx context.Context, prop traffic.Propagator, channel, endpoint s
 	// A delivery is a producer publish: the webhook endpoint is downstream
 	// of us, and the direction is what keeps that edge visible once the
 	// emitter opens the span.
-	o.Request.Kind = chain.KindPublish
+	o.Observe.Span.Kind = trace.SpanKindProducer
 	o.Request.System = webhookSystem
 	o.Request.Action = "webhook.send"
 	o.Observe = chain.Observe{

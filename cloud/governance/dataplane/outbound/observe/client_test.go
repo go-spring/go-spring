@@ -22,6 +22,7 @@ import (
 	"testing"
 
 	"go-spring.org/cloud/governance/dataplane/outbound/chain"
+	"go-spring.org/stdlib/errutil"
 	"go-spring.org/stdlib/testing/assert"
 	"go.opentelemetry.io/otel/attribute"
 )
@@ -130,16 +131,77 @@ func TestFactsAreWrittenBack(t *testing.T) {
 	_ = ob.Observe(context.Background(), op, rec, func(context.Context) error { return boom })
 	// The call's status and error live per round: one failed round, its error is
 	// the one the round recorded.
-	assert.Number(t, len(rec.Rounds())).Equal(1)
-	assert.String(t, rec.Rounds()[0].Status).Equal("error")
-	assert.Error(t, rec.Rounds()[0].Err).Is(boom)
+	assert.Number(t, len(rec.Rounds)).Equal(1)
+	assert.String(t, rec.Rounds[0].Status).Equal("error")
+	assert.Error(t, rec.Rounds[0].Error).Is(boom)
 
 	ok := dbOperation()
 	okRec := &chain.Recorder{}
 	_ = ob.Observe(context.Background(), ok, okRec, func(context.Context) error { return nil })
 	// The response-direction facts: a no-governance call is its own single
 	// round, ok on the shared axis.
-	assert.Number(t, len(okRec.Rounds())).Equal(1)
-	assert.String(t, okRec.Rounds()[0].Status).Equal("ok")
-	assert.That(t, okRec.Rounds()[0].Duration >= 0).True()
+	assert.Number(t, len(okRec.Rounds)).Equal(1)
+	assert.String(t, okRec.Rounds[0].Status).Equal("ok")
+	assert.That(t, okRec.Rounds[0].Duration >= 0).True()
+}
+
+// fakeExecutor returns a fixed error from Execute so a test can drive every
+// status classification without wiring a real driver.
+type fakeExecutor struct{ err error }
+
+func (f fakeExecutor) Execute(ctx context.Context, op chain.Operation, rec *chain.Recorder, fn func(context.Context) error) error {
+	return f.err
+}
+func (fakeExecutor) Close() error { return nil }
+
+func TestWrapClientExecutor_NilInnerReturnsNil(t *testing.T) {
+	assert.That(t, WrapClientExecutor(nil, "sys", "svc")).Nil()
+}
+
+// TestClassifyStatusAndOutcome proves the two keys answer two different
+// questions, which is why they are separate: `status` is the ecosystem-wide axis
+// (`ok`/`error`, the same words an inbound request uses), and
+// `resilience.error_type` is what protection decided about the call — empty unless
+// it refused one or the call ran out of budget.
+func TestClassifyStatusAndOutcome(t *testing.T) {
+	cases := []struct {
+		err     error
+		status  string
+		outcome string
+	}{
+		{nil, "ok", ""},
+		{chain.ErrRateLimited, "error", "rate_limited"},
+		{chain.ErrCircuitOpen, "error", "circuit_open"},
+		{chain.ErrBulkheadFull, "error", "bulkhead_full"},
+		{chain.ErrRetryExceeded, "error", "retry_exceeded"},
+		{context.DeadlineExceeded, "error", "timeout"},
+		// A plain downstream failure is an error, but nothing protection did.
+		{errutil.Explain(nil, "boom"), "error", ""},
+		// wrapped sentinels must still classify by errors.Is.
+		{errors.Join(chain.ErrCircuitOpen, errutil.Explain(nil, "detail")), "error", "circuit_open"},
+	}
+	for _, c := range cases {
+		assert.That(t, chain.ClassifyStatus(c.err)).Equal(c.status)
+		assert.That(t, chain.ClassifyErrorType(c.err)).Equal(c.outcome)
+	}
+}
+
+// TestWrapClientExecutor_PassesErrorThrough exercises every status end to end: the
+// wrapper must return the inner error unchanged (no swallowing) while emitting
+// signals. The OTel globals are no-ops here, so this only proves pass-through +
+// no-panic; metric values are verified by the SDK-backed test below.
+func TestWrapClientExecutor_PassesErrorThrough(t *testing.T) {
+	for _, err := range []error{
+		nil,
+		chain.ErrRateLimited,
+		chain.ErrCircuitOpen,
+		chain.ErrBulkheadFull,
+		context.DeadlineExceeded,
+		errutil.Explain(nil, "downstream"),
+	} {
+		exec := WrapClientExecutor(fakeExecutor{err: err}, "redis", "svc")
+		got := exec.Execute(context.Background(), chain.Operation{}, new(chain.Recorder), func(ctx context.Context) error { return nil })
+		assert.That(t, errors.Is(got, err)).True()
+	}
+	_ = chain.ErrBulkheadFull // keep import even if slice above changes
 }

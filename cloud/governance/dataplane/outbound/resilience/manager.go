@@ -54,12 +54,10 @@ func (m *Manager) activeRateKeys(label string) map[string]struct{} {
 //
 // Every mutation sits on a phase of its own, which is why the manager takes no
 // lock: executors and subscriptions are built at wiring/init ([Manager.ExecutorFor],
-// [Manager.SubscribeLimits]), settings are pushed by each capability's source loop
+// [Manager.OnLimits]), settings are pushed by each capability's source loop
 // in the Runner phase ([Manager.ApplyLimits], [Manager.ApplyBreaker],
 // [Manager.ApplyRateLimit]), and [Manager.Close] runs at destroy, after the loops
-// have stopped. A Subscribe callback may re-enter the manager on the loop's own
-// goroutine — the same thread that walks the table — so even that needs no
-// synchronization. This is the same contract that leaves [fault.Manager.Refresh]
+// have stopped. This is the same contract that leaves [fault.Manager.Refresh]
 // and the loadbalance registration table unsynchronized.
 //
 // Safe for concurrent use.
@@ -80,9 +78,8 @@ type Manager struct {
 	breaker   atomic.Pointer[breakerSnapshot]
 	rateLimit atomic.Pointer[rateSnapshot]
 
-	// subs is the outbound per-label subscriber table (see
-	// [Manager.SubscribeLimits]). A label with no subscriber leaves no entry, so
-	// a repeatedly-rebuilt client leaves no residue.
+	// subs is the outbound per-label dirty-signal table (see
+	// [Manager.OnLimits]). A label with no subscriber leaves no entry.
 	subs map[string][]*subscriber
 
 	// entries registers every outbound executor this process has built, keyed by
@@ -265,32 +262,22 @@ func (m *Manager) LimitsFor(label string) Limits {
 	return m.limits.Load().label(label)
 }
 
-// SubscribeLimits registers cb for changes to label's LIMITS and arms it
-// immediately with the current value. Only a limits Apply notifies: the other
-// capabilities do not affect the knobs this subscriber reads.
+// OnLimits registers notify as a dirty signal for label's LIMITS: when a limits
+// Apply changes the limits label resolves to, notify fires — with no value
+// delivered. The subscriber re-reads the value itself ([Manager.LimitsFor] or
+// its own poll), which is what an adapter re-deriving its own parameters from
+// the config wants. Only a limits Apply notifies: the other capabilities do not
+// affect the knobs this subscriber reads.
 //
-// Callers that own their protected object rather than a [chain.Executor] — an
-// adapter re-deriving its own parameters — use this to follow the config without
-// an executor.
+// Registration is pure bookkeeping — nothing is invoked here — and it runs on
+// the wiring/init phase, before the source loop starts, so the table it writes
+// is never written concurrently with the loop's walk.
 //
-// cb is always called outside any manager state, so a callback that itself calls
-// into the manager cannot self-deadlock; it MUST be safe for concurrent
-// invocation, since an Apply may fire concurrently with the immediate call.
-//
-// The returned [Subscription] carries the limits cb was armed with and detaches
-// the registration on [Subscription.Cancel]. A caller whose object is not
-// process-lifetime MUST cancel, or the manager keeps a reference to the
-// discarded object forever.
-func (m *Manager) SubscribeLimits(label string, cb func(Limits)) Subscription {
-	// Subscribe runs on the wiring/init phase, before the source loop starts, so
-	// the table it writes is never written concurrently with the loop's walk —
-	// and a callback that re-enters Subscribe (dubbo's poller does) runs on the
-	// loop's own goroutine, where same-thread map growth during iteration is
-	// safe by the language's contract.
-	sub := &subscriber{last: m.limits.Load().label(label), cb: cb}
-	m.subs[label] = append(m.subs[label], sub)
-	cb(sub.last)
-	return Subscription{Limits: sub.last, cancel: func() { m.unsubscribe(label, sub) }}
+// Registration is for the process lifetime: there is no cancel. An owner whose
+// object is not process-lifetime must keep its notify safe to call after the
+// object is discarded.
+func (m *Manager) OnLimits(label string, notify func()) {
+	m.subs[label] = append(m.subs[label], &subscriber{last: m.limits.Load().label(label), notify: notify})
 }
 
 // Resolve answers an outbound executor's question — what does THIS call run
@@ -368,39 +355,17 @@ func (m *Manager) build(label string) chain.Executor {
 	return e
 }
 
-// notifyLimits delivers the new limits of every subscribed label whose value
+// notifyLimits fires the dirty signal of every subscribed label whose limits
 // changed. It runs on the source loop's goroutine.
 func (m *Manager) notifyLimits() {
 	for label, list := range m.subs {
 		next := m.limits.Load().label(label)
 		for _, sub := range list {
-			// A subscriber cancelled since this apply began must not be notified:
-			// its owner is already tearing down what cb drives.
-			if sub.cancelled || sub.last == next {
+			if sub.last == next {
 				continue
 			}
 			sub.last = next
-			sub.cb(next)
+			sub.notify()
 		}
 	}
-}
-
-// unsubscribe detaches sub from label. It marks sub cancelled before removing
-// it, so an apply that already collected sub still skips it at delivery time.
-// Removing the last subscriber for a label drops the map entry, so a
-// repeatedly-rebuilt client leaves no residue — not even an empty slice.
-func (m *Manager) unsubscribe(label string, sub *subscriber) {
-	sub.cancelled = true
-	list := m.subs[label]
-	for i, e := range list {
-		if e == sub {
-			list = append(list[:i:i], list[i+1:]...)
-			break
-		}
-	}
-	if len(list) == 0 {
-		delete(m.subs, label)
-		return
-	}
-	m.subs[label] = list
 }

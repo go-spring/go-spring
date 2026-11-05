@@ -101,7 +101,3 @@ type ServerMetric struct {
 	// Attrs are the bounded metric labels.
 	Attrs []attribute.KeyValue
 }
-
-// Described reports whether the request declares a metric family, which is the
-// marker for "this route described itself".
-func (o ServerOperation) Described() bool { return o.Observe.Metric.Name != "" }

@@ -135,7 +135,7 @@ func TestExecute_RetriesActionUnderPolicy(t *testing.T) {
 			{
 				Name: "flaky",
 				// MaxRetries=2 -> up to 3 attempts; succeed on the third.
-				Retry: transaction.RetryPolicy{MaxRetries: 2},
+				Retry: transaction.Retry{MaxRetries: 2},
 				Action: func(context.Context) (any, error) {
 					attempts++
 					if attempts < 3 {

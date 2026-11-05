@@ -22,7 +22,6 @@ import (
 	"strings"
 
 	"go-spring.org/cloud/governance/capability/matcher"
-	"go-spring.org/cloud/governance/dataplane/outbound/chain"
 	"go-spring.org/stdlib/errutil"
 )
 
@@ -33,7 +32,7 @@ import (
 const ServiceScopeAction = "-"
 
 // isServiceScope reports whether a selects the service level.
-func isServiceScope(a chain.ActionMatch) bool {
+func isServiceScope(a matcher.ActionMatch) bool {
 	return a.Exact == ServiceScopeAction
 }
 
@@ -47,7 +46,7 @@ type specificity struct {
 	matchLen  int
 }
 
-func specOf(a chain.ActionMatch, matchLen int) specificity {
+func specOf(a matcher.ActionMatch, matchLen int) specificity {
 	if isServiceScope(a) {
 		return specificity{rank: 0}
 	}
@@ -68,7 +67,7 @@ func (s specificity) betterThan(o specificity) bool {
 }
 
 // validateSelector checks that a rule's Action names exactly one scope.
-func validateSelector(a chain.ActionMatch) error {
+func validateSelector(a matcher.ActionMatch) error {
 	switch {
 	case a.Exact != "" && a.Prefix != "":
 		return errutil.Explain(nil, "resilience: action selector sets both exact and prefix")
@@ -190,7 +189,7 @@ func validateNoAmbiguity(rules []LimitsRule) error {
 	return nil
 }
 
-func actionsCanCoMatch(a, b chain.ActionMatch) bool {
+func actionsCanCoMatch(a, b matcher.ActionMatch) bool {
 	switch {
 	case a.Exact != "" && b.Exact != "":
 		return a.Exact == b.Exact
@@ -253,7 +252,7 @@ func holds(m matcher.StringMatch, v string) bool {
 // ruleIdentity renders a rule's selector as a stable string for the duplicate
 // check. The match renders in key order, so identical selectors compare equal
 // however their maps were laid out.
-func ruleIdentity(service string, action chain.ActionMatch, match map[string]matcher.StringMatch) string {
+func ruleIdentity(service string, action matcher.ActionMatch, match map[string]matcher.StringMatch) string {
 	id := service + "\x00" + action.Exact + "\x00" + action.Prefix
 	if len(match) == 0 {
 		return id

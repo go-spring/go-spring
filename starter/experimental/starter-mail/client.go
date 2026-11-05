@@ -263,7 +263,7 @@ func (g *GuardMailer) Send(ctx context.Context, msgs ...*Message) error {
 	// Name the service on the operation: the fault layer matches its rules on it
 	// and sits outside this executor.
 	op.Service = g.service
-	op.Retry = chain.RetryPolicy{NonIdempotent: true}
+	op.Retry = chain.Retry{NonIdempotent: true}
 	_, err := resilience.Run(ctx, g.exec, op, func(attemptCtx context.Context) (struct{}, error) {
 		return struct{}{}, g.next.Send(attemptCtx, msgs...)
 	})

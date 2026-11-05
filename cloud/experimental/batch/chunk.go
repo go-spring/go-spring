@@ -62,8 +62,8 @@ type ChunkStep[I, O any] struct {
 	// Retry, when any field is set, wraps each chunk (read+process+write) in a
 	// retry/circuit-breaker via the resilience default driver, so a transient
 	// failure retries the chunk instead of failing the step. It is the retry node
-	// (see [chain.RetryPolicy]); Ignored when Executor is set.
-	Retry chain.RetryPolicy
+	// (see [chain.Retry]); Ignored when Executor is set.
+	Retry chain.Retry
 
 	// Executor, when set, is used to guard each chunk instead of building one
 	// from Retry — plug in a production driver (e.g. sentinel) here. When both
@@ -195,7 +195,7 @@ func (s *ChunkStep[I, O]) Run(ctx context.Context, rc *StepContext) error {
 			}
 			op := chain.NewOperation(ctx, prop)
 			op.Service = s.Name
-			err = exec.Execute(ctx, op, nil, writeChunk)
+			err = exec.Execute(ctx, op, new(chain.Recorder), writeChunk)
 		} else {
 			err = writeChunk(ctx)
 		}

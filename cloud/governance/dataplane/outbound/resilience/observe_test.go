@@ -132,7 +132,7 @@ func TestExecutorPublishesState(t *testing.T) {
 	defer func() { _ = m.Close() }()
 
 	boom := errutil.Explain(nil, "boom")
-	_ = exec.Execute(context.Background(), chain.Operation{}, nil,
+	_ = exec.Execute(context.Background(), chain.Operation{}, new(chain.Recorder),
 		func(context.Context) error { return boom })
 
 	rm := collect(t, rdr)
@@ -162,7 +162,7 @@ func TestCloseStopsPublishing(t *testing.T) {
 	defer func() { _ = m.Close() }()
 
 	boom := errutil.Explain(nil, "boom")
-	_ = exec.Execute(context.Background(), chain.Operation{}, nil,
+	_ = exec.Execute(context.Background(), chain.Operation{}, new(chain.Recorder),
 		func(context.Context) error { return boom })
 	if _, ok := gaugeValue(t, collect(t, rdr), "resilience.client.breaker.state",
 		map[string]string{"service": "svc-close", "unit": "svc-close", "state": "open"}); !ok {

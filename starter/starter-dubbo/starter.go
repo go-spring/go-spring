@@ -23,6 +23,7 @@ package StarterDubbo
 import (
 	"dubbo.apache.org/dubbo-go/v3/common/config"
 	"dubbo.apache.org/dubbo-go/v3/common/extension"
+	"go-spring.org/cloud/governance/capability/source"
 	"go-spring.org/spring/gs"
 	"go-spring.org/starter-dubbo/internal/logger"
 	mapconfig "go-spring.org/starter-dubbo/internal/mapconfig"
@@ -58,13 +59,34 @@ func init() {
 	).Condition(gs.OnBean[*Instance]())
 }
 
-// The dynamic-configuration poller (see dync.go).
+// The dynamic-configuration poller (see dync.go) and its two config lines.
 func init() {
-	// The runtime is the family's sole injection point: the poller
-	// reads its resilience authority and its ready signal from here.
+	// The consumer document source: a dedicated file, watched for changes, when
+	// ${spring.dubbo.consumer.file} names one. The constructor reads the first
+	// copy (a bad file fails startup); the fsnotify loop starts in the Runner
+	// phase, so pushes never race construction.
+	gs.Module(gs.OnProperty("spring.dubbo.consumer.file"), func(r gs.BeanProvider, _ flatten.Storage) error {
+		r.Provide(func(path string) (*source.FileSource[consumerDocument], error) {
+			return source.NewFileSource[consumerDocument](path)
+		}, gs.IndexArg(0, gs.TagArg("${spring.dubbo.consumer.file}"))).
+			Destroy((*source.FileSource[consumerDocument]).Close).
+			Export(gs.As[source.Source[consumerDocument]](), gs.As[gs.Runner]()).
+			Caller(1)
+		return nil
+	})
+
+	// Default source, stepping aside when the file module above provides one:
+	// an empty document leaves the hot line to governance alone — the static
+	// ${spring.dubbo.consumer} node still reaches dubbo through NewClient's
+	// client options.
+	gs.Provide(func() source.Source[consumerDocument] {
+		return source.NewPushSource(consumerDocument{})
+	}).Condition(gs.OnMissingBean[source.Source[consumerDocument]]()).Caller(1)
+
+	// The runtime is the family's sole injection point: the poller reads its
+	// resilience authority from here; the source injects by type.
 	gs.Provide(newDyncPoller,
 		gs.IndexArg(0, gs.TagArg("${spring.dubbo.application}")),
-		gs.IndexArg(1, gs.TagArg("${spring.dubbo.consumer}")),
 	).Init((*dyncPoller).Init).Export(gs.As[gs.Rooter]()).Caller(1)
 }
 

@@ -24,8 +24,8 @@ import (
 	"testing"
 	"time"
 
-	"go-spring.org/cloud/governance/capability/ratelimit"
 	"go-spring.org/cloud/governance/capability/matcher"
+	"go-spring.org/cloud/governance/capability/ratelimit"
 	"go-spring.org/cloud/governance/dataplane/outbound/chain"
 	"go-spring.org/stdlib/testing/assert"
 )
@@ -66,8 +66,8 @@ func (m *testManager) LimitsFor(label string) Limits {
 	return m.mgr.LimitsFor(label)
 }
 
-func (m *testManager) SubscribeLimits(label string, cb func(Limits)) Subscription {
-	return m.mgr.SubscribeLimits(label, cb)
+func (m *testManager) OnLimits(label string, notify func()) {
+	m.mgr.OnLimits(label, notify)
 }
 
 func (m *testManager) Resolve(op chain.Operation) CallPolicy { return m.mgr.Resolve(op) }
@@ -76,24 +76,13 @@ func (m *testManager) Close() error {
 	return m.mgr.Close()
 }
 
-// armedLimits returns a manager whose limits are fixed per label, over the
-// bundled driver (the driver is fixed at construction now, not part of settings).
-func armedLimits(t *testing.T, limits map[string]Limits) *testManager {
-	t.Helper()
-	m := newTestManager(NewDefaultDriver())
-	if err := m.ApplyLimits(LimitsSettings{Rules: limitsRules(limits)}); err != nil {
-		t.Fatalf("ApplyLimits: %v", err)
-	}
-	return m
-}
-
 // armedBreakers returns a manager whose breakers are fixed per label.
 func armedBreakers(t *testing.T, breakers map[string]BreakerPolicy) *testManager {
 	t.Helper()
 	m := newTestManager(NewDefaultDriver())
 	rules := make([]BreakerRule, 0, len(breakers))
 	for label, p := range breakers {
-		rules = append(rules, BreakerRule{Service: label, Action: chain.ActionMatch{Exact: ServiceScopeAction}, BreakerPolicy: p})
+		rules = append(rules, BreakerRule{Service: label, Action: matcher.ActionMatch{Exact: ServiceScopeAction}, BreakerPolicy: p})
 	}
 	if err := m.ApplyBreaker(BreakerSettings{Rules: rules}); err != nil {
 		t.Fatalf("ApplyBreaker: %v", err)
@@ -108,7 +97,7 @@ func limitsRules(limits map[string]Limits) []LimitsRule {
 	}
 	out := make([]LimitsRule, 0, len(limits))
 	for label, p := range limits {
-		out = append(out, LimitsRule{Service: label, Action: chain.ActionMatch{Exact: ServiceScopeAction}, Limits: p})
+		out = append(out, LimitsRule{Service: label, Action: matcher.ActionMatch{Exact: ServiceScopeAction}, Limits: p})
 	}
 	return out
 }
@@ -117,7 +106,7 @@ func limitsRules(limits map[string]Limits) []LimitsRule {
 func runOnce(t *testing.T, e chain.Executor) bool {
 	t.Helper()
 	ran := false
-	err := e.Execute(context.Background(), chain.Operation{}, nil, func(context.Context) error {
+	err := e.Execute(context.Background(), chain.Operation{}, new(chain.Recorder), func(context.Context) error {
 		ran = true
 		return nil
 	})
@@ -136,7 +125,7 @@ func TestManagerBuildsBeforeAnySettings(t *testing.T) {
 	if e == nil {
 		t.Fatal("executor construction must not depend on configuration")
 	}
-	err := e.Execute(context.Background(), chain.Operation{}, nil, func(context.Context) error { return nil })
+	err := e.Execute(context.Background(), chain.Operation{}, new(chain.Recorder), func(context.Context) error { return nil })
 	if err != nil {
 		t.Fatalf("an unconfigured executor must pass through, got %v", err)
 	}
@@ -166,20 +155,21 @@ func TestManagerSharesOneExecutorPerLabel(t *testing.T) {
 	b := m.ExecutorFor("redis:cache")
 
 	fail := func(e chain.Executor) {
-		_ = e.Execute(context.Background(), chain.Operation{}, nil, func(context.Context) error { return errFail })
+		_ = e.Execute(context.Background(), chain.Operation{}, new(chain.Recorder), func(context.Context) error { return errFail })
 	}
 	fail(a)
 	fail(b) // second failure across BOTH handles trips the shared breaker
 
-	err := a.Execute(context.Background(), chain.Operation{}, nil, func(context.Context) error { return nil })
+	err := a.Execute(context.Background(), chain.Operation{}, new(chain.Recorder), func(context.Context) error { return nil })
 	if err != chain.ErrCircuitOpen {
 		t.Fatalf("breaker state must be shared across handles for one label, got %v", err)
 	}
 }
 
-// TestManagerSubscribeArmsAndNotifies covers the subscription contract: immediate
-// arming, notification on change, silence on an unchanged policy, and cancel.
-func TestManagerSubscribeArmsAndNotifies(t *testing.T) {
+// TestManagerOnLimitsNotifiesOnChange covers the dirty-signal contract: no
+// invocation at registration, silence on an unchanged policy, one fire on a
+// change.
+func TestManagerOnLimitsNotifiesOnChange(t *testing.T) {
 	var mu sync.Mutex
 	policies := map[string]Limits{"redis:cache": {Timeout: time.Second}}
 	m := newTestManager(NewDefaultDriver())
@@ -196,54 +186,34 @@ func TestManagerSubscribeArmsAndNotifies(t *testing.T) {
 	}
 	apply()
 
-	var got []Limits
-	sub := m.SubscribeLimits("redis:cache", func(p Limits) { got = append(got, p) })
-	if len(got) != 1 || got[0].Timeout != time.Second {
-		t.Fatalf("Subscribe must arm immediately, got %+v", got)
-	}
-	if sub.Limits.Timeout != time.Second {
-		t.Fatalf("Subscription.Policy = %+v, want the arming policy", sub.Limits)
+	fired := 0
+	m.OnLimits("redis:cache", func() { fired++ })
+	if fired != 0 {
+		t.Fatalf("OnLimits must not invoke at registration, got %d calls", fired)
 	}
 
 	// An apply that leaves this label's policy unchanged must not notify.
 	apply()
-	if len(got) != 1 {
-		t.Fatalf("an unchanged policy must not re-notify, got %d calls", len(got))
+	if fired != 0 {
+		t.Fatalf("an unchanged policy must not fire, got %d calls", fired)
 	}
 
-	// A change must notify with the new policy.
+	// A change must fire exactly once.
 	mu.Lock()
 	policies["redis:cache"] = Limits{Timeout: 2 * time.Second}
 	mu.Unlock()
 	apply()
-	if len(got) != 2 || got[1].Timeout != 2*time.Second {
-		t.Fatalf("a changed policy must notify, got %+v", got)
+	if fired != 1 {
+		t.Fatalf("a changed policy must fire once, got %d calls", fired)
 	}
 
-	// Cancel must stop delivery and be idempotent.
-	sub.Cancel()
-	sub.Cancel()
+	// A change to ANOTHER label must not fire this one.
 	mu.Lock()
-	policies["redis:cache"] = Limits{Timeout: 3 * time.Second}
+	policies["redis:other"] = Limits{Timeout: time.Second}
 	mu.Unlock()
 	apply()
-	if len(got) != 2 {
-		t.Fatalf("a cancelled subscription must not be notified, got %d calls", len(got))
-	}
-	// Cancelling the last subscriber must drop the label's entry entirely: a
-	// client that rebuilds itself repeatedly must not grow the table.
-	if _, ok := m.mgr.subs["redis:cache"]; ok {
-		t.Fatal("cancelling the last subscriber must drop the label's map entry")
-	}
-}
-
-// TestSubscription_ZeroIsInert pins that a Subscription is safe to hold and
-// cancel even when the manager was never armed: the zero value is inert.
-func TestSubscription_ZeroIsInert(t *testing.T) {
-	var s Subscription
-	s.Cancel()
-	if !s.Limits.IsZero() {
-		t.Fatal("zero Subscription must carry a zero policy")
+	if fired != 1 {
+		t.Fatalf("another label's change must not fire, got %d calls", fired)
 	}
 }
 
@@ -348,9 +318,9 @@ func TestManagerGenerationIsContentDerived(t *testing.T) {
 
 	doc := func(get, set time.Duration) LimitsSettings {
 		return LimitsSettings{Rules: []LimitsRule{
-			{Service: "svc", Action: chain.ActionMatch{Exact: "get"}, Limits: Limits{Timeout: get}},
-			{Service: "svc", Action: chain.ActionMatch{Exact: "set"}, Limits: Limits{Timeout: set}},
-			{Service: "other", Action: chain.ActionMatch{Exact: ServiceScopeAction}, Limits: Limits{Timeout: time.Second}},
+			{Service: "svc", Action: matcher.ActionMatch{Exact: "get"}, Limits: Limits{Timeout: get}},
+			{Service: "svc", Action: matcher.ActionMatch{Exact: "set"}, Limits: Limits{Timeout: set}},
+			{Service: "other", Action: matcher.ActionMatch{Exact: ServiceScopeAction}, Limits: Limits{Timeout: time.Second}},
 		}}
 	}
 	genOf := func(label string) uint64 {
@@ -388,7 +358,7 @@ func TestManagerPolicyMatch(t *testing.T) {
 	if err := m.ApplyLimits(LimitsSettings{
 		Default: Limits{Timeout: time.Second},
 		Rules: []LimitsRule{
-			{Service: "redis:cache", Action: chain.ActionMatch{Exact: ServiceScopeAction}, Limits: Limits{Timeout: 2 * time.Second}},
+			{Service: "redis:cache", Action: matcher.ActionMatch{Exact: ServiceScopeAction}, Limits: Limits{Timeout: 2 * time.Second}},
 		},
 	}); err != nil {
 		t.Fatalf("Apply: %v", err)
@@ -409,7 +379,7 @@ func TestManagerPolicyMatch(t *testing.T) {
 func TestValidateRejectsDuplicateRules(t *testing.T) {
 	err := ValidateLimits(LimitsSettings{Rules: []LimitsRule{
 		{Service: "redis:cache", Limits: Limits{Timeout: time.Second}},
-		{Service: "redis:cache", Action: chain.ActionMatch{Exact: ServiceScopeAction}, Limits: Limits{Timeout: 2 * time.Second}},
+		{Service: "redis:cache", Action: matcher.ActionMatch{Exact: ServiceScopeAction}, Limits: Limits{Timeout: 2 * time.Second}},
 	}})
 	if err == nil {
 		t.Fatal("a duplicate rule must be rejected")
@@ -428,10 +398,10 @@ func TestValidateRejectsDuplicateRules(t *testing.T) {
 func TestMostSpecificRuleWins(t *testing.T) {
 	m := newTestManager(NewDefaultDriver())
 	if err := m.ApplyLimits(LimitsSettings{Rules: []LimitsRule{
-		{Service: "svc", Action: chain.ActionMatch{Exact: "GET /users/1"}, Limits: Limits{Timeout: 3 * time.Second}},
-		{Service: "svc", Action: chain.ActionMatch{Exact: ServiceScopeAction}, Limits: Limits{Timeout: time.Second}},
-		{Service: "svc", Action: chain.ActionMatch{Prefix: "GET /users"}, Limits: Limits{Timeout: 2 * time.Second}},
-		{Service: "svc", Action: chain.ActionMatch{Prefix: "GET /users"}, Match: map[string]matcher.StringMatch{"tenant": {Exact: "a"}}, Limits: Limits{Timeout: 4 * time.Second}},
+		{Service: "svc", Action: matcher.ActionMatch{Exact: "GET /users/1"}, Limits: Limits{Timeout: 3 * time.Second}},
+		{Service: "svc", Action: matcher.ActionMatch{Exact: ServiceScopeAction}, Limits: Limits{Timeout: time.Second}},
+		{Service: "svc", Action: matcher.ActionMatch{Prefix: "GET /users"}, Limits: Limits{Timeout: 2 * time.Second}},
+		{Service: "svc", Action: matcher.ActionMatch{Prefix: "GET /users"}, Match: map[string]matcher.StringMatch{"tenant": {Exact: "a"}}, Limits: Limits{Timeout: 4 * time.Second}},
 	}}); err != nil {
 		t.Fatalf("Apply: %v", err)
 	}
@@ -452,8 +422,8 @@ func TestMostSpecificRuleWins(t *testing.T) {
 // that can match the same call are a document error, not a list-order hint.
 func TestAmbiguousRulesRejected(t *testing.T) {
 	err := ValidateLimits(LimitsSettings{Rules: []LimitsRule{
-		{Service: "svc", Action: chain.ActionMatch{Prefix: "GET /"}, Match: map[string]matcher.StringMatch{"tenant": {Exact: "a"}}, Limits: Limits{Timeout: time.Second}},
-		{Service: "svc", Action: chain.ActionMatch{Prefix: "GET /"}, Match: map[string]matcher.StringMatch{"region": {Exact: "b"}}, Limits: Limits{Timeout: 2 * time.Second}},
+		{Service: "svc", Action: matcher.ActionMatch{Prefix: "GET /"}, Match: map[string]matcher.StringMatch{"tenant": {Exact: "a"}}, Limits: Limits{Timeout: time.Second}},
+		{Service: "svc", Action: matcher.ActionMatch{Prefix: "GET /"}, Match: map[string]matcher.StringMatch{"region": {Exact: "b"}}, Limits: Limits{Timeout: 2 * time.Second}},
 	}})
 	if err == nil {
 		t.Fatal("equal-specificity selectors that can co-match must be rejected")
@@ -467,7 +437,7 @@ func TestAmbiguousRulesRejected(t *testing.T) {
 func TestManagerMatchesRuleByAction(t *testing.T) {
 	m := newTestManager(NewDefaultDriver())
 	if err := m.ApplyRateLimit(RateLimitSettings{Rules: []RateLimitRule{
-		{Service: "svc", Action: chain.ActionMatch{Exact: "limited"}, Policy: ratelimit.Policy{Limiter: ratelimit.TokenBucketAlgorithm, RateLimit: 1, Burst: 1}},
+		{Service: "svc", Action: matcher.ActionMatch{Exact: "limited"}, Policy: ratelimit.Policy{Limiter: ratelimit.TokenBucketAlgorithm, RateLimit: 1, Burst: 1}},
 	}}); err != nil {
 		t.Fatalf("Apply: %v", err)
 	}
@@ -477,16 +447,16 @@ func TestManagerMatchesRuleByAction(t *testing.T) {
 	limited := chain.Operation{Request: chain.Request{Action: "limited"}}
 	other := chain.Operation{Request: chain.Request{Action: "other"}}
 
-	if err := e.Execute(context.Background(), limited, nil, noop); err != nil {
+	if err := e.Execute(context.Background(), limited, new(chain.Recorder), noop); err != nil {
 		t.Fatalf("first limited call: %v", err)
 	}
-	if err := e.Execute(context.Background(), limited, nil, noop); !errors.Is(err, chain.ErrRateLimited) {
+	if err := e.Execute(context.Background(), limited, new(chain.Recorder), noop); !errors.Is(err, chain.ErrRateLimited) {
 		t.Fatalf("second limited call = %v, want ErrRateLimited", err)
 	}
 	// A different action of the SAME service has its own (default, unmetered)
 	// policy — the armed rule must not touch it.
 	for range 3 {
-		if err := e.Execute(context.Background(), other, nil, noop); err != nil {
+		if err := e.Execute(context.Background(), other, new(chain.Recorder), noop); err != nil {
 			t.Fatalf("other action must be untouched: %v", err)
 		}
 	}

@@ -51,8 +51,8 @@ type Limits struct {
 	// regardless (see [EffectiveRetry], the one place the two are merged).
 	//
 	// RetryBudget is read from HERE only, at the label level (see
-	// [chain.RetryPolicy.RetryBudget]); a per-call node's budget is ignored.
-	Retry chain.RetryPolicy `value:"${retry:=}"`
+	// [chain.Retry.RetryBudget]); a per-call node's budget is ignored.
+	Retry chain.Retry `value:"${retry:=}"`
 
 	// Timeout bounds the WALL TIME of the whole [chain.Executor.Execute] — retries
 	// and backoff included — as one context deadline applied at the entry and

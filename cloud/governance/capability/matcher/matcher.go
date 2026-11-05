@@ -123,3 +123,45 @@ func Matches(match map[string]StringMatch, metadata map[string]string) bool {
 	}
 	return true
 }
+
+// ActionMatch is a rule's match condition over a call's action — the interface
+// being invoked ("insert", "GET /users/{id}"). It is the single-value
+// counterpart of the map vocabulary above: the "which action" question a policy
+// rule and a fault rule both ask, shared here because the two layers must not
+// derive it from each other. Its zero value matches every action, so a rule
+// that declares no action condition governs the whole service.
+//
+// Exact is equality; Prefix matches a leading string, which is how one rule
+// covers a REST subtree whose concrete paths vary ("GET /users" covers
+// "GET /users/{id}"). They are mutually exclusive in practice — Exact wins when
+// both are set — so a rule states one intent.
+//
+// WHY SO SHALLOW: fault injection and policy targeting are not routing. A
+// router needs rich matching because forwarding to the wrong backend is an
+// incident; a rule needs matching an operator can predict, because the first
+// question during a drill is "what exactly did we just hit". The axis a rule
+// usually needs beyond this is the dose, not a richer predicate.
+//
+// EXTENSION: operators are added as NEW FIELDS under the same one-of
+// convention, never by reinterpreting an existing field, so every config
+// written today keeps its meaning. A regex operator would earn its place only
+// when a real case needs to split one service by path pattern that Prefix
+// cannot express; it would then be added here (compiled once per distinct
+// pattern, not per call), not as a "match strategy" enum on an existing field.
+type ActionMatch struct {
+	Exact  string `value:"${exact:=}"`
+	Prefix string `value:"${prefix:=}"`
+}
+
+// Matches reports whether action satisfies m. The first non-empty operator
+// wins; the zero value matches every action.
+func (m ActionMatch) Matches(action string) bool {
+	switch {
+	case m.Exact != "":
+		return action == m.Exact
+	case m.Prefix != "":
+		return strings.HasPrefix(action, m.Prefix)
+	default:
+		return true
+	}
+}

@@ -31,18 +31,18 @@ import (
 // both are set.
 func TestActionMatch_Matches(t *testing.T) {
 	cases := []struct {
-		m      ActionMatch
+		m      matcher.ActionMatch
 		action string
 		want   bool
 	}{
-		{ActionMatch{}, "", true},                       // no condition: matches all
-		{ActionMatch{}, "GET /users/1", true},           //
-		{ActionMatch{Exact: "insert"}, "insert", true},  //
-		{ActionMatch{Exact: "insert"}, "update", false}, //
-		{ActionMatch{Prefix: "GET /users"}, "GET /users/1", true},
-		{ActionMatch{Prefix: "GET /users"}, "POST /users", false},
-		{ActionMatch{Exact: "insert", Prefix: "in"}, "insert", true},    // exact wins
-		{ActionMatch{Exact: "insert", Prefix: "in"}, "internal", false}, //
+		{matcher.ActionMatch{}, "", true},                       // no condition: matches all
+		{matcher.ActionMatch{}, "GET /users/1", true},           //
+		{matcher.ActionMatch{Exact: "insert"}, "insert", true},  //
+		{matcher.ActionMatch{Exact: "insert"}, "update", false}, //
+		{matcher.ActionMatch{Prefix: "GET /users"}, "GET /users/1", true},
+		{matcher.ActionMatch{Prefix: "GET /users"}, "POST /users", false},
+		{matcher.ActionMatch{Exact: "insert", Prefix: "in"}, "insert", true},    // exact wins
+		{matcher.ActionMatch{Exact: "insert", Prefix: "in"}, "internal", false}, //
 	}
 	for _, tc := range cases {
 		assert.That(t, tc.m.Matches(tc.action)).Equal(tc.want)
@@ -57,7 +57,7 @@ func TestRule_Matches(t *testing.T) {
 	base := Rule{
 		Name:          "r",
 		Service:       "svc",
-		ActionMatch:   ActionMatch{Prefix: "GET /users"},
+		Action:        matcher.ActionMatch{Prefix: "GET /users"},
 		MetadataMatch: map[string]matcher.StringMatch{"tenant": {Exact: "acme"}},
 	}
 
@@ -144,8 +144,8 @@ func TestRule_BindsMatchAndAction(t *testing.T) {
 	assert.Number(t, len(c.Rules)).Equal(2)
 	r0 := c.Rules[0]
 	assert.String(t, r0.Service).Equal("gin")
-	assert.String(t, r0.ActionMatch.Exact).Equal("GET /users/{id}")
-	assert.String(t, r0.ActionMatch.Prefix).Equal("")
+	assert.String(t, r0.Action.Exact).Equal("GET /users/{id}")
+	assert.String(t, r0.Action.Prefix).Equal("")
 	assert.String(t, r0.MetadataMatch["tenant"].Exact).Equal("acme")
 	assert.String(t, r0.MetadataMatch["region"].Exact).Equal("cn")
 	assert.Number(t, int(c.Rules[1].Rate)).Equal(0)

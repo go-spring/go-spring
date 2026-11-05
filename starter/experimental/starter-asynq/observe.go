@@ -29,6 +29,7 @@ import (
 	"go-spring.org/cloud/governance/dataplane/outbound/chain"
 	"go-spring.org/cloud/traffic"
 	"go-spring.org/log"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // asynqSystem is the value the family's messaging.system label carries for this
@@ -45,7 +46,7 @@ var accessTag = log.RegisterAppTag("asynq", "access")
 // the messaging family's vocabulary in [wire] describes it; this starter
 // supplies only the system and the task type.
 func operation(ctx context.Context, prop traffic.Propagator, op, taskType string) chain.Operation {
-	o := chain.MessagingOp(ctx, prop, chain.KindPublish, asynqSystem, op, taskType)
+	o := chain.MessagingOp(ctx, prop, trace.SpanKindProducer, asynqSystem, op, taskType)
 	o.Observe.Log.Tag = accessTag
 	return o
 }

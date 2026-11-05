@@ -83,13 +83,13 @@ import (
 	"go-spring.org/cloud/governance/dataplane/outbound/chain"
 )
 
-// RetryPolicy governs how a [Participant] phase (try, confirm or cancel) is
-// retried on failure. It is [chain.RetryPolicy] — the same node that governs
+// Retry governs how a [Participant] phase (try, confirm or cancel) is
+// retried on failure. It is [chain.Retry] — the same node that governs
 // outbound resilience retry — rather than a second knob set, so one retry
 // vocabulary covers both. The zero value means a single attempt with no retry.
 // Confirm and Cancel in particular benefit from a non-zero policy, since the TCC
 // contract requires them to eventually succeed.
-type RetryPolicy = chain.RetryPolicy
+type Retry = chain.Retry
 
 // Participant is one TCC resource that splits its work into three phases: a
 // reversible Try that reserves the resource, a Confirm that commits the
@@ -124,7 +124,7 @@ type Participant struct {
 	// Retry optionally governs retrying this participant's phases. The zero value
 	// means a single attempt. A non-zero policy is recommended for Confirm/Cancel,
 	// which the TCC contract requires to eventually succeed.
-	Retry RetryPolicy
+	Retry Retry
 }
 
 // Transaction is an ordered set of [Participant]s executed as one TCC unit. If

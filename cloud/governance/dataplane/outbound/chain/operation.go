@@ -23,7 +23,6 @@ package chain
 
 import (
 	"context"
-	"strings"
 	"time"
 
 	"go-spring.org/cloud/traffic"
@@ -33,97 +32,11 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
-// Kind is the SHAPE of interaction a governed call has, independent of the wire
-// protocol that carries it. There are exactly three, and they are exhaustive:
-// waiting for an answer ([KindCall]), handing something over without waiting
-// ([KindPublish]), and taking something in to handle it ([KindConsume]). It
-// exists so a starter declares the shape once, instead of each one re-deriving
-// the trace edge from its own strings.
-//
-// It is one of three orthogonal coordinates, and the least specific of them:
-// [Kind] is the SHAPE of the interaction, [Request.System] is the WIRE it rides
-// ("redis", "kafka", "gin"), and [Request.Action] is the protocol's own name for
-// what was done ("GET /users/{id}", "insert", "send"). Because shape and wire are
-// independent, their cross product is expressible: a request/response exchange
-// over a broker is [KindCall] with a messaging system, a fire-and-forget POST is
-// [KindPublish] with an HTTP system.
-//
-// For MESSAGING the two vocabularies happen to live in the same domain, which is
-// the one place they look redundant. OTel names a messaging operation with a
-// finer word than a shape — send / receive / process / settle — and that word
-// belongs in [Request.Action]; this type is its COARSE PROJECTION, the part the
-// trace edge can be picked from without knowing the protocol: send is the
-// producer edge and process the consumer edge, while receive (a pull from the
-// broker) and settle (its acknowledgement) are client-side calls, which
-// [KindCall] already describes. Elsewhere the two have nothing to do with each
-// other — "INSERT" says nothing about which edge it adds.
-//
-// It is CLIENT-SIDE. An inbound request is handled by the server stack, which
-// derives [trace.SpanKindServer] itself and reads nothing here; the zero value
-// is [KindCall], so the field is simply meaningless on an inbound Operation
-// rather than wrong.
-type Kind uint8
-
-const (
-	// KindCall is a synchronous request/response call: the caller waits for an
-	// answer. It is the zero value — the shape an ordinary client call has always
-	// had — so a client that declares nothing keeps it.
-	KindCall Kind = iota
-
-	// KindPublish is a one-way send into a broker: the call hands a message over
-	// and returns when the broker accepts it. It is the producer edge of a trace.
-	KindPublish
-
-	// KindConsume is a delivery taken out of a broker: the call is the handling of
-	// a message the broker produced. It is the consumer edge of a trace.
-	KindConsume
-)
-
-// String names the direction for logs and labels.
-func (k Kind) String() string {
-	switch k {
-	case KindPublish:
-		return "publish"
-	case KindConsume:
-		return "consume"
-	default:
-		return "call"
-	}
-}
-
-// SpanKind maps the base action onto the trace edge it adds. A call is the
-// client edge of a request/response pair (this side waits for the other side's
-// server edge), a consume is the consumer edge of a delivery, and a publish is
-// the producer edge itself.
-//
-// KindCall is [trace.SpanKindClient] — NOT internal. The governed calls this
-// package describes reach a database, a broker or another service, and a backend
-// that pairs client and server edges (the service graph of any trace UI) can only
-// do so if the outbound edge says it is one. A genuinely in-process call states
-// [Observe.Span.Kind] = [trace.SpanKindInternal] itself, which is the one case the
-// derived default cannot know about.
-//
-// Whichever kind results, exactly ONE layer opens the span for a given protocol:
-// this one when the client declares an operation, the protocol's own
-// instrumentation (an otelhttp transport, a tracing driver) otherwise. Two
-// instrumentations over one call produce two spans — one nested in the other —
-// and double-counted metrics.
-func (k Kind) SpanKind() trace.SpanKind {
-	switch k {
-	case KindPublish:
-		return trace.SpanKindProducer
-	case KindConsume:
-		return trace.SpanKindConsumer
-	default:
-		return trace.SpanKindClient
-	}
-}
-
-// Request is WHAT a call is: the base action it performs (call/publish/consume),
-// the wire system it rides, the interface it invokes, and the caller's
-// targeting metadata. Together these are the coordinates a rule matches on —
-// policy and fault match on [Request.Action] and [Request.Metadata] — and the
-// protocol's own vocabulary for naming what happened.
+// Request is WHAT a call is: the wire system it rides, the interface it
+// invokes, and the caller's targeting metadata. Together these are the
+// coordinates a rule matches on — policy and fault match on [Request.Action]
+// and [Request.Metadata] — and the protocol's own vocabulary for naming what
+// happened.
 //
 // It is the call's IDENTITY, and it stops there: how the call's signals are
 // named, and what they carry, is [Observe]'s business, declared beside it. The
@@ -132,15 +45,11 @@ func (k Kind) SpanKind() trace.SpanKind {
 // span attribute is read by the emitter alone and lives in [Observe].
 //
 // Two sides fill it, which is why its fields are not all of one kind: the
-// protocol package fills [Request.Kind], [Request.System] and [Request.Action] — it is
+// protocol package fills [Request.System] and [Request.Action] — it is
 // the only side that knows whether these calls reach a broker, a database or an
 // HTTP service — while the caller, or a middleware reading request headers,
 // fills [Request.Metadata].
 type Request struct {
-	// Kind is the base action. Its zero value is [KindCall], so an ordinary client
-	// call declares nothing here.
-	Kind Kind
-
 	// Action is the finest addressable name of this operation — the interface
 	// being invoked — in the PROTOCOL'S OWN format. The format is deliberately not
 	// fixed here, because "the action" differs by protocol:
@@ -253,7 +162,7 @@ type Log struct {
 	// open-set value is fine here, the very reason it must NOT go into
 	// [Metric.Attrs]. The RESPONSE half does NOT belong here: only the fn knows
 	// what the response carried, and it appends those fields to
-	// [Recorder.Observed.Log] — one line per call, both halves — rather than to a
+	// [Recorder.Observed.LogFields] — one line per call, both halves — rather than to a
 	// list here, which a shared Operation would accumulate one copy of per call.
 	//
 	// A value that differs PER ROUND — the item that failed on this attempt — is
@@ -265,9 +174,10 @@ type Log struct {
 // Span is the TRACE group of [Observe]: the call's edge in a trace and what it
 // carries.
 type Span struct {
-	// Kind overrides the kind the emitter derives from [Request.Kind]. It is
-	// normally zero (unspecified), meaning "use the direction's kind"; it exists
-	// for the rare call whose trace edge is not implied by its action.
+	// Kind is the trace edge this call adds. Its zero value (unspecified) means
+	// [trace.SpanKindClient], the edge an ordinary outbound call has; a publish
+	// states [trace.SpanKindProducer], a consume [trace.SpanKindConsumer], and a
+	// genuinely in-process call [trace.SpanKindInternal].
 	Kind trace.SpanKind
 
 	// Attrs are the attributes that become SPAN attributes. They may be bounded
@@ -307,13 +217,7 @@ type Metric struct {
 	Attrs []attribute.KeyValue
 }
 
-// Described reports whether this group declares a description at all: a non-empty
-// family is the marker, since a client that declares nothing takes the emitter's
-// fallback signals. It is stated here, on the block that owns the marker, rather
-// than re-tested wherever a reader needs to know.
-func (m Metric) Described() bool { return m.Name != "" }
-
-// RetryPolicy is the retry declaration for one call: how many extra attempts
+// Retry is the retry declaration for one call: how many extra attempts
 // are allowed, how they are paced, and the two safety knobs around them. It is
 // the explicit CHANNEL through which retry is configured — it travels on
 // [Operation], declared by the caller that owns the call, and may be overridden
@@ -340,7 +244,7 @@ func (m Metric) Described() bool { return m.Name != "" }
 // client.resilience.services[0].retry.max-retries. The tag strings are the
 // only place this package names config keys; the coupling is intentional — a
 // document's expressible retry IS this type, with no binding twin.
-type RetryPolicy struct {
+type Retry struct {
 	// MaxRetries is the number of extra attempts after the first failure. 0 (the
 	// zero value) means a single attempt with no retry.
 	MaxRetries int `value:"${max-retries:=0}" expr:"$ >= 0"`
@@ -377,7 +281,7 @@ type RetryPolicy struct {
 	// RetryBudget caps the number of retry attempts in flight across all services
 	// served by one executor at the same time — the process-level guard against
 	// retry amplification. An over-budget retry is rejected with
-	// ErrRetryBudgetExceeded (the first attempt always runs; only retries take
+	// ErrRetryExceeded (the first attempt always runs; only retries take
 	// budget). 0 disables the cap.
 	//
 	// It is process-level state, sized once when the executor is built, so it is
@@ -388,7 +292,7 @@ type RetryPolicy struct {
 }
 
 // IsZero reports whether the node declares nothing at all.
-func (p RetryPolicy) IsZero() bool {
+func (p Retry) IsZero() bool {
 	return p.MaxRetries == 0 && p.InitialInterval == 0 && p.Multiplier == 0 &&
 		p.MaxInterval == 0 && p.RandomizationFactor == 0 &&
 		!p.NonIdempotent && p.RetryBudget == 0
@@ -400,7 +304,7 @@ func (p RetryPolicy) IsZero() bool {
 // declaration, and must not override a call's own retry node when a policy and
 // a call are merged (a center that pushes only a retry-budget must not wipe the
 // caller's schedule).
-func (p RetryPolicy) HasSchedule() bool {
+func (p Retry) HasSchedule() bool {
 	return p.MaxRetries != 0 || p.InitialInterval != 0 || p.Multiplier != 0 ||
 		p.MaxInterval != 0 || p.RandomizationFactor != 0
 }
@@ -479,33 +383,7 @@ type Operation struct {
 	// one whole when it declares a schedule (a live hot-fix must win), while the
 	// NonIdempotent flag is preserved from both (see the resilience package's
 	// EffectiveRetry, which is the single place the two are merged).
-	Retry RetryPolicy
-}
-
-// ActionMatch is a rule's match condition over a call's [Request.Action] — the
-// interface being invoked ("get", "insert", "publish", or "GET /users/{id}" for
-// a REST endpoint). Its zero value matches every action, so a rule that declares
-// neither field governs the whole service.
-//
-// Exact is equality; Prefix matches a leading string, which is how one rule
-// covers a REST subtree whose concrete paths vary ("GET /users" covers
-// "GET /users/{id}"). They are mutually exclusive in practice — Exact wins when
-// both are set — so a rule states one intent.
-type ActionMatch struct {
-	Exact  string `value:"${exact:=}"`
-	Prefix string `value:"${prefix:=}"`
-}
-
-// Matches reports whether action satisfies m.
-func (m ActionMatch) Matches(action string) bool {
-	switch {
-	case m.Exact != "":
-		return action == m.Exact
-	case m.Prefix != "":
-		return strings.HasPrefix(action, m.Prefix)
-	default:
-		return true
-	}
+	Retry Retry
 }
 
 // maxDetail bounds a value captured as an open-set detail attribute. A topic, a
@@ -521,106 +399,6 @@ const (
 	metricMessaging = "messaging.client"
 	metricHTTP      = "http.client"
 )
-
-// attr couples one attribute with its log field, for the ubiquitous case where a
-// value belongs on the metric, the span and the log alike. It exists so the key
-// is spelled once in a constructor — a value the three destinations share cannot
-// drift apart. A protocol that wants the destinations to differ writes the lists
-// directly.
-func attr(key, val string) (attribute.KeyValue, log.Field) {
-	return attribute.String(key, val), log.String(key, val)
-}
-
-// MessagingOp is the operation a publish or a consume of system constructs,
-// addressed by destination. kind is the interaction shape and its trace edge;
-// system is the backend's family value ("kafka", "pulsar", "asynq"); operation
-// is the messaging operation word the call reports as its messaging.operation
-// ("send", "receive", "process", "settle" — the OTel vocabulary, or the word the
-// client's own API uses when it has a better one, like asynq's "enqueue").
-//
-// Pass the word the CLIENT's API actually names the operation with: an empty one
-// falls back to the shape's own word ([Kind.String], i.e. "publish"/"consume"),
-// which is the coarsest true statement about the call — a valid default, but a
-// lossy one. The finer word is what separates the poll that fetched a batch from
-// the handler that processed one message from the commit that settled it, and it
-// is also what an interface-precise governance rule matches on.
-//
-// destination is the topic, queue or task type the call addresses. Pass it ONLY
-// when the call targets exactly ONE bounded destination: a batch that spans
-// several topics, or a call with no destination at all, passes "" — and the
-// span then names the operation alone, which is what OTel prescribes (omit the
-// destination when no low-cardinality one is available). Naming a mixed batch
-// after its first element would be a lie told in the span NAME and in the
-// governance key, not merely in a detail field, so this is a contract and not a
-// nicety.
-//
-// The span is named `{operation} {destination}`, the order the messaging
-// conventions specify (the older `{destination} {operation}` was reordered);
-// [HTTPOp] names its span the same way round, `METHOD path`.
-//
-// system, the operation word and the shape are bounded, so they label the
-// metric, the span and the log. The destination is drawn from an open set: it
-// reaches the span name, the span attributes and the log, but never a metric
-// label — a topic per series would multiply the metric until it is unusable.
-func MessagingOp(ctx context.Context, prop traffic.Propagator, kind Kind, system, operation, destination string) Operation {
-	if operation == "" {
-		operation = kind.String()
-	}
-	sys, sysF := attr("messaging.system", system)
-	opv, opF := attr("messaging.operation", operation)
-	tel := Observe{
-		Metric: Metric{Name: metricMessaging, Attrs: []attribute.KeyValue{sys, opv}},
-		Span:   Span{Attrs: []attribute.KeyValue{sys, opv}},
-		Log:    Log{Fields: []log.Field{sysF, opF}},
-	}
-	// The span's name, and the string a governance rule matches on. It is NOT
-	// truncated: a rule written against the whole name must be able to match it,
-	// so length is controlled at the CALL — by passing no destination when it is
-	// not unique — rather than by cutting the match key.
-	action := operation
-	if destination != "" {
-		dest := strutil.Truncate(destination, maxDetail)
-		tel.Span.Attrs = append(tel.Span.Attrs, attribute.String("messaging.destination.name", dest))
-		tel.Log.Fields = append(tel.Log.Fields, log.String("messaging.destination.name", dest))
-		tel.Log.QuietSuccess = true
-		action = operation + " " + destination
-	}
-	op := NewOperation(ctx, prop)
-	op.Request.Kind = kind
-	op.Request.System = system
-	op.Request.Action = action
-	op.Observe = tel
-	return op
-}
-
-// DBOp is the operation a database call of system constructs: operation is the
-// bounded operation word ("get", "exec", "query", "GET" for an HTTP-fronted
-// store), statement is the open-set statement, key or path the call ran against,
-// empty when the client has none.
-//
-// A system whose wire is HTTP (an object store, a metrics API) still describes
-// itself as a database here: the family is defined by what the call MEANS — a
-// request against a store — not by the transport that carries it.
-func DBOp(ctx context.Context, prop traffic.Propagator, system, operation, statement string) Operation {
-	sys, sysF := attr("db.system", system)
-	opv, opF := attr("db.operation", operation)
-	tel := Observe{
-		Metric: Metric{Name: metricDB, Attrs: []attribute.KeyValue{sys, opv}},
-		Span:   Span{Attrs: []attribute.KeyValue{sys, opv}},
-		Log:    Log{Fields: []log.Field{sysF, opF}},
-	}
-	if statement != "" {
-		stmt := strutil.Truncate(statement, maxDetail)
-		tel.Span.Attrs = append(tel.Span.Attrs, attribute.String("db.statement", stmt))
-		tel.Log.Fields = append(tel.Log.Fields, log.String("db.statement", stmt))
-		tel.Log.QuietSuccess = true
-	}
-	op := NewOperation(ctx, prop)
-	op.Request.System = system
-	op.Request.Action = operation
-	op.Observe = tel
-	return op
-}
 
 // NewOperation is the base constructor every outbound client starts from: it
 // records the standard dimensions the call's own context carries, so a client
@@ -639,6 +417,106 @@ func NewOperation(ctx context.Context, prop traffic.Propagator) Operation {
 	}}
 }
 
+// MessagingOp is the operation a publish or a consume of system constructs,
+// addressed by destination. spanKind is the trace edge the call adds —
+// [trace.SpanKindProducer] for a send, [trace.SpanKindConsumer] for a process;
+// system is the backend's family value ("kafka", "pulsar", "asynq"); operation
+// is the messaging operation word the call reports as its messaging.operation
+// ("send", "receive", "process", "settle" — the OTel vocabulary, or the word the
+// client's own API uses when it has a better one, like asynq's "enqueue").
+//
+// Pass the word the CLIENT's API actually names the operation with. The word is
+// what separates the poll that fetched a batch from the handler that processed
+// one message from the commit that settled it, and it is also what an
+// interface-precise governance rule matches on.
+//
+// destination is the topic, queue or task type the call addresses. Pass it ONLY
+// when the call targets exactly ONE bounded destination: a batch that spans
+// several topics, or a call with no destination at all, passes "" — and the
+// span then names the operation alone, which is what OTel prescribes (omit the
+// destination when no low-cardinality one is available). Naming a mixed batch
+// after its first element would be a lie told in the span NAME and in the
+// governance key, not merely in a detail field, so this is a contract and not a
+// nicety.
+//
+// The span is named `{operation} {destination}`, the order the messaging
+// conventions specify (the older `{destination} {operation}` was reordered);
+// [HTTPOp] names its span the same way round, `METHOD path`.
+//
+// system and the operation word are bounded, so they label the metric, the span
+// and the log. The destination is drawn from an open set: it reaches the span
+// name, the span attributes and the log, but never a metric label — a topic per
+// series would multiply the metric until it is unusable.
+func MessagingOp(ctx context.Context, prop traffic.Propagator, spanKind trace.SpanKind, system, operation, destination string) Operation {
+	tel := Observe{
+		Metric: Metric{Name: metricMessaging, Attrs: []attribute.KeyValue{
+			attribute.String("messaging.system", system),
+			attribute.String("messaging.operation", operation),
+		}},
+		Span: Span{Kind: spanKind, Attrs: []attribute.KeyValue{
+			attribute.String("messaging.system", system),
+			attribute.String("messaging.operation", operation),
+		}},
+		Log: Log{Fields: []log.Field{
+			log.String("messaging.system", system),
+			log.String("messaging.operation", operation),
+		}},
+	}
+	// The span's name, and the string a governance rule matches on. It is NOT
+	// truncated: a rule written against the whole name must be able to match it,
+	// so length is controlled at the CALL — by passing no destination when it is
+	// not unique — rather than by cutting the match key.
+	action := operation
+	if destination != "" {
+		dest := strutil.Truncate(destination, maxDetail)
+		tel.Span.Attrs = append(tel.Span.Attrs, attribute.String("messaging.destination.name", dest))
+		tel.Log.Fields = append(tel.Log.Fields, log.String("messaging.destination.name", dest))
+		tel.Log.QuietSuccess = true
+		action = operation + " " + destination
+	}
+	op := NewOperation(ctx, prop)
+	op.Request.System = system
+	op.Request.Action = action
+	op.Observe = tel
+	return op
+}
+
+// DBOp is the operation a database call of system constructs: operation is the
+// bounded operation word ("get", "exec", "query", "GET" for an HTTP-fronted
+// store), statement is the open-set statement, key or path the call ran against,
+// empty when the client has none.
+//
+// A system whose wire is HTTP (an object store, a metrics API) still describes
+// itself as a database here: the family is defined by what the call MEANS — a
+// request against a store — not by the transport that carries it.
+func DBOp(ctx context.Context, prop traffic.Propagator, system, operation, statement string) Operation {
+	tel := Observe{
+		Metric: Metric{Name: metricDB, Attrs: []attribute.KeyValue{
+			attribute.String("db.system", system),
+			attribute.String("db.operation", operation),
+		}},
+		Span: Span{Attrs: []attribute.KeyValue{
+			attribute.String("db.system", system),
+			attribute.String("db.operation", operation),
+		}},
+		Log: Log{Fields: []log.Field{
+			log.String("db.system", system),
+			log.String("db.operation", operation),
+		}},
+	}
+	if statement != "" {
+		stmt := strutil.Truncate(statement, maxDetail)
+		tel.Span.Attrs = append(tel.Span.Attrs, attribute.String("db.statement", stmt))
+		tel.Log.Fields = append(tel.Log.Fields, log.String("db.statement", stmt))
+		tel.Log.QuietSuccess = true
+	}
+	op := NewOperation(ctx, prop)
+	op.Request.System = system
+	op.Request.Action = operation
+	op.Observe = tel
+	return op
+}
+
 // HTTPOp is the operation an outbound HTTP call constructs: method is the HTTP
 // verb, route is the request target (a path, a URL). The method is bounded, so it
 // labels the metric, the span and the log; the route is drawn from an open set,
@@ -647,11 +525,16 @@ func NewOperation(ctx context.Context, prop traffic.Propagator) Operation {
 // It starts from [NewOperation], so every call it describes carries the
 // standard context-derived metadata.
 func HTTPOp(ctx context.Context, prop traffic.Propagator, method, route string) Operation {
-	m, mF := attr("http.request.method", method)
 	tel := Observe{
-		Metric: Metric{Name: metricHTTP, Attrs: []attribute.KeyValue{m}},
-		Span:   Span{Attrs: []attribute.KeyValue{m}},
-		Log:    Log{Fields: []log.Field{mF}},
+		Metric: Metric{Name: metricHTTP, Attrs: []attribute.KeyValue{
+			attribute.String("http.request.method", method),
+		}},
+		Span: Span{Attrs: []attribute.KeyValue{
+			attribute.String("http.request.method", method),
+		}},
+		Log: Log{Fields: []log.Field{
+			log.String("http.request.method", method),
+		}},
 	}
 	if route != "" {
 		full := strutil.Truncate(route, maxDetail)
@@ -664,24 +547,4 @@ func HTTPOp(ctx context.Context, prop traffic.Propagator, method, route string) 
 	op.Request.Action = method + " " + route
 	op.Observe = tel
 	return op
-}
-
-// Described reports whether the operation declares a description at all — a
-// non-empty metric family is the marker, because a client that declares nothing
-// (a skipped PING, a driver's own silent call) takes the emitter's fallback
-// signals, whose names this layer has always used in the undeclared case.
-//
-// The marker lives on the group ([Metric.Described]) rather than here, so the
-// convention is stated once and a reader of the Metric block finds it there.
-func (op Operation) Described() bool { return op.Observe.Metric.Described() }
-
-// SpanKind is the span kind for the call: the one [Observe] overrides, else
-// the one derived from the base action [Request].Kind. It is
-// [trace.SpanKindInternal] for an ordinary call, so a client that declares no
-// direction keeps the kind an in-process call has always had.
-func (op Operation) SpanKind() trace.SpanKind {
-	if op.Observe.Span.Kind != trace.SpanKindUnspecified {
-		return op.Observe.Span.Kind
-	}
-	return op.Request.Kind.SpanKind()
 }
