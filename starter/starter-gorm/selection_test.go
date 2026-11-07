@@ -73,9 +73,9 @@ func TestNewPickPoolRebuildsOnChange(t *testing.T) {
 	// already picks from the discovered endpoint.
 	assert.That(t, chain.Selection().Balancer).Equal(loadbalance.LeastConn)
 	assert.Number(t, chain.Selection().OutlierThreshold).Equal(3)
-	ep, perr := chain.Pick(context.Background(), loadbalance.PickInfo{})
+	pick, perr := chain.Pick(context.Background(), loadbalance.PickInfo{})
 	assert.Error(t, perr).Nil()
-	assert.That(t, ep.Addr).Equal("127.0.0.1:3306")
+	assert.That(t, pick.Endpoint.Addr).Equal("127.0.0.1:3306")
 
 	// A later push rebuilds the chain whole: a fresh pool, not the old one retuned.
 	a.push(loadbalance.Selection{Balancer: loadbalance.Weighted, OutlierThreshold: 5, OutlierSuspendFor: 2 * time.Minute})
@@ -112,9 +112,9 @@ func TestNewPickPoolAnUnarmedManagerIsPassThrough(t *testing.T) {
 	// recorded and the tracker left at the zero config.
 	assert.That(t, chain.Selection()).Equal(loadbalance.Selection{Balancer: loadbalance.RoundRobin})
 	assert.Number(t, chain.Selection().OutlierThreshold).Equal(0)
-	ep, perr := chain.Pick(context.Background(), loadbalance.PickInfo{})
+	pick, perr := chain.Pick(context.Background(), loadbalance.PickInfo{})
 	assert.Error(t, perr).Nil()
-	assert.That(t, ep.Addr).Equal("127.0.0.1:3306")
+	assert.That(t, pick.Endpoint.Addr).Equal("127.0.0.1:3306")
 }
 
 // TestNewPickPoolDirectAddrBindsNothing pins that a client dialing a fixed

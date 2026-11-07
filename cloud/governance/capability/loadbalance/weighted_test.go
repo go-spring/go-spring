@@ -65,3 +65,59 @@ func TestWeighted(t *testing.T) {
 	assert.Number(t, m3["x"]).Equal(2)
 	assert.Number(t, m3["y"]).Equal(2)
 }
+
+// TestWeightedClampsHugeWeights pins the overflow guard: discovery can hand over
+// any int as a weight, and two extreme values would overflow the round's total
+// and starve one endpoint. Weights are clamped before they reach the accumulator.
+func TestWeightedClampsHugeWeights(t *testing.T) {
+	huge := int(^uint(0) >> 1)
+
+	assert.Number(t, effectiveWeight(discovery.Endpoint{Weight: huge})).Equal(maxWeight)
+	assert.Number(t, effectiveWeight(discovery.Endpoint{Weight: maxWeight + 1})).Equal(maxWeight)
+	assert.Number(t, effectiveWeight(discovery.Endpoint{Weight: maxWeight})).Equal(maxWeight)
+	assert.Number(t, effectiveWeight(discovery.Endpoint{Weight: 0})).Equal(1)
+	assert.Number(t, effectiveWeight(discovery.Endpoint{Weight: -3})).Equal(1)
+
+	// Two extreme weights clamp to the same value, so neither overflows the total
+	// and both keep receiving traffic.
+	b := newBalancer(t, Selection{Balancer: Weighted})
+	set := []discovery.Endpoint{
+		{Addr: "huge-1", Weight: huge},
+		{Addr: "huge-2", Weight: huge},
+	}
+	m := counts(t, b, set, PickInfo{}, 10)
+	assert.Number(t, m["huge-1"]).Equal(5)
+	assert.Number(t, m["huge-2"]).Equal(5)
+}
+
+func TestWeightedDropsDepartedAddresses(t *testing.T) {
+	b := &WeightedBalancer{currentWeights: map[string]int64{}}
+	a := discovery.Endpoint{Addr: "a", Weight: 1}
+	bp := discovery.Endpoint{Addr: "b", Weight: 1}
+	c := discovery.Endpoint{Addr: "c", Weight: 1}
+
+	pick := func(set ...discovery.Endpoint) {
+		t.Helper()
+		_, err := b.Pick(set, PickInfo{})
+		assert.Error(t, err).Nil()
+	}
+
+	pick(a, bp, c)
+	assert.Map(t, b.currentWeights).Length(3)
+
+	// A departed address must not linger in the running state.
+	pick(a, bp)
+	assert.Map(t, b.currentWeights).Length(2)
+	if _, ok := b.currentWeights["c"]; ok {
+		t.Fatalf("stale address %q kept in current: %v", "c", b.currentWeights)
+	}
+
+	// Equal sizes (one leaves, one arrives) must still evict the stale address:
+	// the map grows past len(eps) because the newcomer is added before the
+	// departed key is rebuilt away.
+	pick(a, discovery.Endpoint{Addr: "d", Weight: 1})
+	assert.Map(t, b.currentWeights).Length(2)
+	if _, ok := b.currentWeights["b"]; ok {
+		t.Fatalf("stale address %q kept in current: %v", "b", b.currentWeights)
+	}
+}

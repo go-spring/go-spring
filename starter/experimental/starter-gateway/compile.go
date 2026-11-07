@@ -116,16 +116,16 @@ type RouteTable struct {
 	scopes    *scopeStore
 
 	// chains caches the endpoint-selection chain per route id, so a recompile
-	// REUSES the chain it built last time rather than replacing it. That is what
-	// keeps the governance registration a one-way affair: registering a chain is
-	// permanent (see loadbalance.Manager.Chain), so a fresh chain per route-table edit
-	// would strand the old registration and pin a discarded chain for the life of
-	// the process.
+	// REUSES the chain it built last time rather than replacing it. Registration
+	// is permanent and one-service-one-chain (see loadbalance.Manager.Chain), so a
+	// fresh chain per route-table edit would either strand the old registration
+	// and pin a discarded chain, or fail as a duplicate.
 	//
-	// A route whose upstream changed (a new target or discovery backend) gets a
-	// new chain, and with it a new registration — its resolver is a different
-	// service, so the old chain cannot be reused; the superseded one is left to
-	// the manager's Close. Route edits are operator actions, not a hot path.
+	// A route whose upstream changed (a new target or discovery backend) cannot
+	// repoint its chain: the resolver is a different service and the label is
+	// already registered, so the recompile fails fast and the operator must
+	// restart (or use a new route id). Route edits are operator actions, not a hot
+	// path.
 	//
 	// Governance changes to a route's SELECTION do not come through here: they
 	// move the label, and the manager rebuilds the registered chain in place,

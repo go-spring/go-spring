@@ -71,14 +71,78 @@ func TestTrackerDisabled(t *testing.T) {
 	assert.Slice(t, addrs(tr.Allows(eps("a", "b")))).Length(2)
 }
 
-func TestTrackerFilterIsPure(t *testing.T) {
-	// Unlike Allows, the pure filter applies no fallback: with every endpoint
-	// suspended it returns an empty slice and leaves the decision to the caller.
+func TestTrackerIgnoresOutcomesDuringCoolDown(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		tr := NewTracker(TrackerConfig{Threshold: 1, SuspendFor: time.Minute})
+		tr.Record(context.Background(), "a", false)
+		assert.That(t, suspended(tr, "a")).True()
+
+		// A success from a request admitted before the suspension must not close
+		// the circuit: the endpoint receives no new traffic while cooling down.
+		tr.Record(context.Background(), "a", true)
+		assert.That(t, suspended(tr, "a")).True()
+
+		// After the cool-down, Allows admits the half-open trial; its success is
+		// what recovers the endpoint.
+		time.Sleep(time.Minute)
+		tr.Allows(eps("a"))
+		tr.Record(context.Background(), "a", true)
+		assert.That(t, suspended(tr, "a")).False()
+	})
+}
+
+func TestTrackerPruneDropsVanishedEndpoints(t *testing.T) {
 	tr := NewTracker(TrackerConfig{Threshold: 1, SuspendFor: time.Minute})
 	tr.Record(context.Background(), "a", false)
 	tr.Record(context.Background(), "b", false)
-	assert.Slice(t, addrs(tr.admissible(eps("a", "b")))).Length(0)
-	assert.Slice(t, addrs(tr.admissible(eps("a", "b", "c")))).Equal([]string{"c"})
+	assert.Number(t, tr.suspendedCount()).Equal(2)
+
+	tr.Prune(eps("b", "c"))
+
+	// "a" is gone from discovery: its suspension state and gauge share go with it.
+	assert.Number(t, tr.suspendedCount()).Equal(1)
+	assert.Number(t, len(tr.states)).Equal(1)
+	assert.That(t, suspended(tr, "b")).True()
+}
+
+func TestTrackerPruneIgnoresEmptyEndpointSet(t *testing.T) {
+	tr := NewTracker(TrackerConfig{Threshold: 1, SuspendFor: time.Minute})
+	tr.Record(context.Background(), "a", false)
+
+	// A source that momentarily advertises nothing is no evidence that "a" is gone.
+	tr.Prune(nil)
+
+	assert.Number(t, tr.suspendedCount()).Equal(1)
+}
+
+func TestTrackerSuccessLeavesNoState(t *testing.T) {
+	tr := NewTracker(TrackerConfig{Threshold: 1})
+	tr.Record(context.Background(), "a", true)
+	tr.Record(context.Background(), "a", true)
+	assert.Number(t, len(tr.states)).Equal(0)
+}
+
+func TestTrackerRecordAfterCloseIsDropped(t *testing.T) {
+	tr := NewTracker(TrackerConfig{Threshold: 1, SuspendFor: time.Minute})
+	tr.Close()
+
+	// An in-flight request of a retired generation settles late: it must not
+	// recreate state (and a gauge count nothing will ever return).
+	tr.Record(context.Background(), "a", false)
+
+	assert.Number(t, len(tr.states)).Equal(0)
+	assert.Number(t, tr.suspendedCount()).Equal(0)
+}
+
+func TestTrackerCloseDropsState(t *testing.T) {
+	tr := NewTracker(TrackerConfig{Threshold: 1, SuspendFor: time.Minute})
+	tr.Record(context.Background(), "a", false)
+	assert.Number(t, tr.suspendedCount()).Equal(1)
+
+	tr.Close()
+
+	assert.Number(t, tr.suspendedCount()).Equal(0)
+	assert.Number(t, len(tr.states)).Equal(0)
 }
 
 func TestTrackerAllSuspendedFallsBack(t *testing.T) {

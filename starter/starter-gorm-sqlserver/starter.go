@@ -170,14 +170,14 @@ type resolverDialer struct {
 }
 
 func (d resolverDialer) DialContext(ctx context.Context, _, _ string) (net.Conn, error) {
-	ep, err := d.lb.Pick(ctx, loadbalance.PickInfo{})
+	pick, err := d.lb.Pick(ctx, loadbalance.PickInfo{})
 	if err != nil {
 		return nil, err
 	}
-	conn, derr := d.nd.DialContext(ctx, "tcp", ep.Addr)
+	conn, derr := d.nd.DialContext(ctx, "tcp", pick.Endpoint.Addr)
 	// The dial outcome is the only signal this picker has; feeding it makes
 	// outlier suspension evict an instance that keeps refusing connections.
-	d.lb.Complete(ctx, ep, derr)
+	pick.Complete(ctx, derr)
 	return conn, derr
 }
 

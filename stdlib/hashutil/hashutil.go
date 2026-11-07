@@ -23,12 +23,30 @@ import (
 	"hash/fnv"
 )
 
-// FNV1a32 computes the 32-bit FNV-1a hash of the given string using
-// the standard library hash/fnv implementation.
+// FNV1a32 computes the 32-bit FNV-1a hash of the given string.
+//
+// It is written as a direct loop rather than through hash/fnv: callers on hot
+// paths (a consistent-hash ring, a per-request fingerprint) hash many short
+// strings per call, and fnv.New32a allocates a hasher object plus a []byte
+// conversion for every one of them. The result is identical.
 func FNV1a32(s string) uint32 {
-	h := fnv.New32a()
-	_, _ = h.Write([]byte(s))
-	return h.Sum32()
+	h := uint32(2166136261)
+	for i := 0; i < len(s); i++ {
+		h ^= uint32(s[i])
+		h *= 16777619
+	}
+	return h
+}
+
+// FNV1a32Bytes is [FNV1a32] over a byte slice, for callers that build the input
+// in a reusable buffer instead of allocating a string.
+func FNV1a32Bytes(b []byte) uint32 {
+	h := uint32(2166136261)
+	for _, c := range b {
+		h ^= uint32(c)
+		h *= 16777619
+	}
+	return h
 }
 
 // FNV1a64 computes the 64-bit FNV-1a hash of the given string using

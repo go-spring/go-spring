@@ -31,18 +31,25 @@ func TestFactoryBuildsBuiltins(t *testing.T) {
 		assert.That(t, b).NotNil()
 	}
 
-	// consistent_hash has one parameter with no zero case in code: a Selection
-	// built in code states the count, while a bound document gets it from the
-	// field's tag.
-	b, err := factories.Create(Selection{Balancer: ConsistentHash, ConsistentHash: ConsistentHashParams{Replicas: 100}})
+	// consistent_hash has one parameter: a rule that omits it gets the tag's
+	// default, and a code-built selection that omits it gets the same default
+	// when the ring is built.
+	b, err := factories.Create(Selection{Balancer: ConsistentHash, ConsistentHashReplicas: 100})
 	assert.Error(t, err).Nil()
 	assert.That(t, b).NotNil()
 
-	// zone_aware narrows the candidate set and cannot choose on its own, so it
-	// only builds when a delegate is named.
-	b, err = factories.Create(Selection{Balancer: ZoneAware, ZoneAware: ZoneAwareParams{ZoneKey: discovery.MetaKeyZone, Delegate: RoundRobin}})
+	b, err = factories.Create(Selection{Balancer: ConsistentHash})
 	assert.Error(t, err).Nil()
-	assert.That(t, b).NotNil()
+	ep, err := b.Pick(eps("a"), PickInfo{HashKey: "user-42"})
+	assert.Error(t, err).Nil()
+	assert.String(t, ep.Addr).Equal("a")
+
+	// The zone-aware switch wraps whichever strategy was named, so the rule states
+	// its balancer once.
+	b, err = factories.Create(Selection{Balancer: RoundRobin, ZoneAware: true, ZoneKey: discovery.MetaKeyZone})
+	assert.Error(t, err).Nil()
+	_, zoneAware := b.(*ZoneAwareBalancer)
+	assert.That(t, zoneAware).True()
 
 	// An empty name is a construction error: the base strategy is stated by the
 	// settings document, never implied here.
@@ -52,8 +59,8 @@ func TestFactoryBuildsBuiltins(t *testing.T) {
 	_, err = factories.Create(Selection{Balancer: "does-not-exist"})
 	assert.Error(t, err).Matches("no strategy registered")
 
-	assert.That(t, factories.names()).Equal([]string{
-		ConsistentHash, LeastConn, P2C, Random, RoundRobin, Weighted, ZoneAware,
+	assert.That(t, factories.strategyNames()).Equal([]string{
+		ConsistentHash, LeastConn, P2C, Random, RoundRobin, Weighted,
 	})
 }
 
@@ -62,7 +69,7 @@ type duplicateStrategyProvider struct{ name string }
 
 func (f duplicateStrategyProvider) Strategies() []string { return []string{f.name} }
 
-func (duplicateStrategyProvider) New(Selection, Resolver) (Balancer, error) { return nil, nil }
+func (duplicateStrategyProvider) New(Selection) (Balancer, error) { return nil, nil }
 
 func TestFactoryRejectsDuplicateStrategies(t *testing.T) {
 	assert.Panic(t, func() {
@@ -86,8 +93,8 @@ type repeatingStrategyProvider struct{ name string }
 
 func (p repeatingStrategyProvider) Strategies() []string { return []string{p.name, p.name} }
 
-func (repeatingStrategyProvider) New(Selection, Resolver) (Balancer, error) {
-	return &roundRobin{}, nil
+func (repeatingStrategyProvider) New(Selection) (Balancer, error) {
+	return &RoundRobinBalancer{}, nil
 }
 
 func TestFactoryToleratesOneProvidersRepeats(t *testing.T) {
@@ -100,16 +107,13 @@ func TestFactoryToleratesOneProvidersRepeats(t *testing.T) {
 // answers every built-in name and builds each of them.
 func TestBuiltinProviderExportsEveryStrategy(t *testing.T) {
 	p := NewBuiltinProvider()
-	assert.That(t, len(p.Strategies())).Equal(7)
+	assert.That(t, len(p.Strategies())).Equal(6)
 	for _, name := range p.Strategies() {
 		selection := Selection{Balancer: name}
-		switch name {
-		case ConsistentHash:
-			selection.ConsistentHash = ConsistentHashParams{Replicas: 100}
-		case ZoneAware:
-			selection.ZoneAware = ZoneAwareParams{ZoneKey: discovery.MetaKeyZone, Delegate: RoundRobin}
+		if name == ConsistentHash {
+			selection.ConsistentHashReplicas = 100
 		}
-		b, err := p.New(selection, testFactories().Create)
+		b, err := p.New(selection)
 		assert.Error(t, err).Nil()
 		assert.That(t, b).NotNil()
 	}
@@ -120,12 +124,14 @@ func TestBuiltinProviderExportsEveryStrategy(t *testing.T) {
 // build.
 func TestForeignGroupsIgnored(t *testing.T) {
 	_, err := testFactories().Create(Selection{
-		Balancer: LeastConn, ConsistentHash: ConsistentHashParams{Replicas: 200},
+		Balancer: LeastConn, ConsistentHashReplicas: 200,
 	})
 	assert.Error(t, err).Nil()
 
+	// The zone-aware switch is not a group: it applies to every strategy.
 	_, err = testFactories().Create(Selection{
-		Balancer: ConsistentHash, ZoneAware: ZoneAwareParams{ZoneKey: "az", Delegate: RoundRobin},
+		Balancer: ConsistentHash, ZoneAware: true, ZoneKey: "az",
+		ConsistentHashReplicas: 100,
 	})
 	assert.Error(t, err).Nil()
 
@@ -138,15 +144,13 @@ func TestForeignGroupsIgnored(t *testing.T) {
 
 	// A strategy's own group passes.
 	_, err = testFactories().Create(Selection{
-		Balancer: ConsistentHash, ConsistentHash: ConsistentHashParams{Replicas: 200},
+		Balancer: ConsistentHash, ConsistentHashReplicas: 200,
 	})
 	assert.Error(t, err).Nil()
 
-	// zone_aware delegate errors: empty, unknown name, and self-delegation.
-	_, err = testFactories().Create(Selection{Balancer: ZoneAware})
-	assert.Error(t, err).Matches("requires a delegate")
-	_, err = testFactories().Create(Selection{Balancer: ZoneAware, ZoneAware: ZoneAwareParams{ZoneKey: discovery.MetaKeyZone, Delegate: "nope"}})
-	assert.Error(t, err).Matches("zone_aware delegate")
-	_, err = testFactories().Create(Selection{Balancer: ZoneAware, ZoneAware: ZoneAwareParams{ZoneKey: discovery.MetaKeyZone, Delegate: ZoneAware}})
-	assert.Error(t, err).Matches("cannot delegate to itself")
+	// A zone key the selection does not state defaults to the shared zone key
+	// when the switch is on.
+	b, err = testFactories().Create(Selection{Balancer: RoundRobin, ZoneAware: true})
+	assert.Error(t, err).Nil()
+	assert.That(t, b).NotNil()
 }

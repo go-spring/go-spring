@@ -165,15 +165,15 @@ func build(ctx context.Context, c Config, center *governance.Runtime) (gormcore.
 		// the Resolver and dials it over TCP.
 		nd := &net.Dialer{}
 		pgxCfg.DialFunc = func(ctx context.Context, _, _ string) (net.Conn, error) {
-			ep, perr := lb.Pick(ctx, loadbalance.PickInfo{})
+			pick, perr := lb.Pick(ctx, loadbalance.PickInfo{})
 			if perr != nil {
 				return nil, perr
 			}
-			conn, derr := nd.DialContext(ctx, "tcp", ep.Addr)
+			conn, derr := nd.DialContext(ctx, "tcp", pick.Endpoint.Addr)
 			// The dial outcome is the only signal this picker has; feeding it
 			// makes outlier suspension evict an instance that keeps refusing
 			// connections.
-			lb.Complete(ctx, ep, derr)
+			pick.Complete(ctx, derr)
 			return conn, derr
 		}
 	}

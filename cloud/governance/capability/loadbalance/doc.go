@@ -22,9 +22,10 @@
 // to?". It is deliberately split into two concerns:
 //
 //   - [Balancer] is the pluggable selection strategy (round-robin, least-conn,
-//     consistent-hash, weighted, zone-aware). It is pure: given a candidate
+//     consistent-hash, weighted, random, p2c). It is pure: given a candidate
 //     endpoint set and a [PickInfo] it returns one endpoint, plus the
-//     Complete method that settles the request it issued.
+//     Complete method that settles the request it issued. [ZoneAwareBalancer] is
+//     a filter that wraps any strategy when the selection asks for locality.
 //   - [Pool] binds a live discovery source (a [discovery.Resolver] bound to one
 //     service name via [discovery.NewResolver]) and a
 //     [Tracker] (outlier suspension) to a Balancer, so the candidate set stays

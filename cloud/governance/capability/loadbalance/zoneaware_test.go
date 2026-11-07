@@ -30,7 +30,7 @@ func TestZoneAware(t *testing.T) {
 		{Addr: "b", Metadata: map[string]string{"zone": "z1"}},
 		{Addr: "c", Metadata: map[string]string{"zone": "z2"}},
 	}
-	b := newBalancer(t, Selection{Balancer: ZoneAware, ZoneAware: ZoneAwareParams{ZoneKey: "zone", Delegate: RoundRobin}})
+	b := newBalancer(t, Selection{Balancer: RoundRobin, ZoneAware: true, ZoneKey: "zone"})
 
 	// Requests from z1 stay in z1.
 	m := counts(t, b, set, PickInfo{Zone: "z1"}, 20)
@@ -47,9 +47,9 @@ func TestZoneAware(t *testing.T) {
 }
 
 func TestZoneAwareCompleteForwards(t *testing.T) {
-	// Complete must reach the delegate so a stateful strategy composed under
-	// zone_aware (least-conn here) keeps its per-request accounting.
-	b := newBalancer(t, Selection{Balancer: ZoneAware, ZoneAware: ZoneAwareParams{ZoneKey: "zone", Delegate: LeastConn}})
+	// Complete must reach the delegate so a stateful strategy wrapped by the
+	// zone-aware filter (least-conn here) keeps its per-request accounting.
+	b := newBalancer(t, Selection{Balancer: LeastConn, ZoneAware: true, ZoneKey: "zone"})
 	set := []discovery.Endpoint{
 		{Addr: "a", Metadata: map[string]string{"zone": "z1"}},
 		{Addr: "b", Metadata: map[string]string{"zone": "z1"}},
@@ -72,7 +72,7 @@ func TestZoneAwareLevels(t *testing.T) {
 		{Addr: "az", Metadata: map[string]string{"zone": "cn-north-1b"}},
 		{Addr: "region", Metadata: map[string]string{"zone": "cn-north-2"}},
 	}
-	b := newBalancer(t, Selection{Balancer: ZoneAware, ZoneAware: ZoneAwareParams{ZoneKey: "zone", Delegate: RoundRobin}})
+	b := newBalancer(t, Selection{Balancer: RoundRobin, ZoneAware: true, ZoneKey: "zone"})
 
 	// Exact first level wins: only the rack-local instance is picked.
 	m := counts(t, b, set, PickInfo{Zone: "cn-north-1a"}, 5)
@@ -104,46 +104,47 @@ func TestZoneAwareLevels(t *testing.T) {
 }
 
 func TestZoneLevels(t *testing.T) {
-	assert.That(t, len(parseZoneLevels(""))).Equal(0)
-	assert.Slice(t, parseZoneLevels("cn-north-1a")).Length(1)
-	assert.Slice(t, parseZoneLevels(" cn-north-1a , cn-north-1 ")).Length(2)
-	assert.Slice(t, parseZoneLevels("a,,b")).Length(2)
-	assert.That(t, zoneMatch("cn-north-1a", "cn-north-1a")).True()
-	assert.That(t, zoneMatch("cn-north-1a", "cn-north-1")).True()
-	assert.That(t, zoneMatch("cn-north-2", "cn-north-1")).False()
-	assert.That(t, zoneMatch("cn-north-12", "cn-north-1")).True() // documented hierarchy edge
-	assert.That(t, zoneMatch("", "cn-north-1")).False()
+	assert.That(t, len(splitZoneLevels(""))).Equal(0)
+	assert.Slice(t, splitZoneLevels("cn-north-1a")).Length(1)
+	assert.Slice(t, splitZoneLevels(" cn-north-1a , cn-north-1 ")).Length(2)
+	assert.Slice(t, splitZoneLevels("a,,b")).Length(2)
+	assert.That(t, matchesZone("cn-north-1a", "cn-north-1a")).True()
+	assert.That(t, matchesZone("cn-north-1a", "cn-north-1")).True()
+	assert.That(t, matchesZone("cn-north-2", "cn-north-1")).False()
+	assert.That(t, matchesZone("cn-north-1", "cn-north")).True() // separator: a child of the broader level
+	assert.That(t, matchesZone("us-central1-a", "us-central1")).True()
+	// A digit after the prefix is another numeric component, not a child.
+	assert.That(t, matchesZone("cn-north-12", "cn-north-1")).False()
+	assert.That(t, matchesZone("cn-north-10a", "cn-north-1")).False()
+	assert.That(t, matchesZone("us-central10", "us-central1")).False()
+	assert.That(t, matchesZone("", "cn-north-1")).False()
 }
 
-// TestZoneAwareDelegatesWithParameters pins the composition rule: a delegate
-// that takes knobs reads them from the SAME selection, so zone_aware delegating
-// to consistent_hash gets a real ring instead of a zero-replica one (which used
-// to panic on keyed traffic).
-// TestZoneAwarePassesSelectionToDelegate pins that zone_aware forwards the whole
-// selection to its delegate, which reads only the group it owns: a
-// consistent-hash delegate gets the replicas, a round-robin delegate ignores
-// them.
-func TestZoneAwarePassesSelectionToDelegate(t *testing.T) {
-	_, err := testFactories().Create(Selection{
-		Balancer:       ZoneAware,
-		ZoneAware:      ZoneAwareParams{ZoneKey: "zone", Delegate: ConsistentHash},
-		ConsistentHash: ConsistentHashParams{Replicas: 200},
-	})
-	assert.Error(t, err).Nil()
-
-	_, err = testFactories().Create(Selection{
-		Balancer:       ZoneAware,
-		ZoneAware:      ZoneAwareParams{ZoneKey: "zone", Delegate: RoundRobin},
-		ConsistentHash: ConsistentHashParams{Replicas: 200},
-	})
-	assert.Error(t, err).Nil()
+// TestZoneAwareComposesWithEveryStrategy pins the switch's shape: it wraps
+// whichever strategy the selection names, so every built-in can run under it
+// without stating itself twice.
+func TestZoneAwareComposesWithEveryStrategy(t *testing.T) {
+	for _, name := range NewBuiltinProvider().Strategies() {
+		selection := Selection{Balancer: name, ZoneAware: true, ZoneKey: "zone"}
+		if name == ConsistentHash {
+			selection.ConsistentHashReplicas = 100
+		}
+		b, err := testFactories().Create(selection)
+		assert.Error(t, err).Nil()
+		_, ok := b.(*ZoneAwareBalancer)
+		assert.That(t, ok).True()
+	}
 }
 
-func TestZoneAwareDelegatesWithParameters(t *testing.T) {
+// TestZoneAwareKeepsDelegateParameters pins that the named strategy still reads
+// its own knobs: consistent_hash under the zone filter gets a real ring, not a
+// zero-replica one.
+func TestZoneAwareKeepsDelegateParameters(t *testing.T) {
 	b := newBalancer(t, Selection{
-		Balancer:       ZoneAware,
-		ZoneAware:      ZoneAwareParams{ZoneKey: "zone", Delegate: ConsistentHash},
-		ConsistentHash: ConsistentHashParams{Replicas: 100},
+		Balancer:               ConsistentHash,
+		ZoneAware:              true,
+		ZoneKey:                "zone",
+		ConsistentHashReplicas: 100,
 	})
 	set := []discovery.Endpoint{
 		{Addr: "a", Metadata: map[string]string{"zone": "z1"}},

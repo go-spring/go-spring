@@ -23,24 +23,29 @@ import (
 	"go-spring.org/cloud/discovery"
 )
 
-// The [Random] strategy is exported by the built-in [Provider]. It has no
-// parameters of its own.
-
-func newRandom(Selection) (Balancer, error) {
-	return &randomBalancer{}, nil
+// NewRandom builds the [Random] strategy. It has no parameters of its own.
+func NewRandom(Selection) *RandomBalancer {
+	return &RandomBalancer{}
 }
 
-// randomBalancer is a random [Balancer]: every pick draws a uniformly random
-// candidate. Unlike round-robin there is no shared cursor, so concurrent picks
-// never contend on one atomic — the law of large numbers keeps the spread even,
-// which makes this a good baseline and a lock-free choice for very wide fan-out
-// callers. It ignores weight and routing hints.
+// RandomBalancer is a uniform-random [Balancer]: every pick draws one candidate
+// at random. It is the simplest strategy and a baseline to compare the smarter
+// ones against.
 //
-// It is fully stateless: no cursor, no lock, no per-address map — the only
-// strategy here that can be shared across pools for free.
-type randomBalancer struct{}
+// It is fully stateless — no cursor, no lock, no per-address map — so concurrent
+// picks never contend (unlike round-robin's shared atomic) and one value can be
+// reused across pools without coupling them. The law of large numbers keeps the
+// spread even, which makes it a reasonable choice for wide fan-out callers with
+// no better signal to go on.
+//
+// It ignores [discovery.Endpoint.Weight] and every [PickInfo] hint: the choice is
+// uniform over the candidates it is given. Weight and locality belong to the
+// weighted strategy and the zone-aware filter respectively.
+type RandomBalancer struct{}
 
-func (b *randomBalancer) Pick(eps []discovery.Endpoint, _ PickInfo) (discovery.Endpoint, error) {
+// Pick returns a uniformly random endpoint from eps, or [ErrNoEndpoints] when eps
+// is empty. It never blocks, allocates nothing, and does not retain eps.
+func (b *RandomBalancer) Pick(eps []discovery.Endpoint, _ PickInfo) (discovery.Endpoint, error) {
 	if len(eps) == 0 {
 		return discovery.Endpoint{}, ErrNoEndpoints
 	}
@@ -48,4 +53,4 @@ func (b *randomBalancer) Pick(eps []discovery.Endpoint, _ PickInfo) (discovery.E
 }
 
 // Complete is a no-op: random keeps no per-request state.
-func (b *randomBalancer) Complete(_ context.Context, _ discovery.Endpoint, _ error) {}
+func (b *RandomBalancer) Complete(_ context.Context, _ discovery.Endpoint, _ error) {}

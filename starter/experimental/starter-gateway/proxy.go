@@ -53,12 +53,12 @@ func (t *RouteTable) buildPicker(routeID string, up *Upstream) (picker, error) {
 		return nil, err
 	}
 	return func(r *http.Request) (*url.URL, func(error), error) {
-		ep, err := chain.Pick(r.Context(), loadbalance.PickInfo{HashKey: clientIP(r)})
+		pick, err := chain.Pick(r.Context(), loadbalance.PickInfo{HashKey: clientIP(r)})
 		if err != nil {
 			return nil, nil, err
 		}
-		u := &url.URL{Scheme: "http", Host: ep.Addr}
-		done := func(err error) { chain.Complete(r.Context(), ep, err) }
+		u := &url.URL{Scheme: "http", Host: pick.Endpoint.Addr}
+		done := func(err error) { pick.Complete(r.Context(), err) }
 		return u, done, nil
 	}, nil
 }
@@ -75,13 +75,13 @@ func (t *RouteTable) buildPicker(routeID string, up *Upstream) (picker, error) {
 // background watch, so the chain has no resources to release.
 //
 // The chain is CACHED per route id and REUSED across recompiles, and it is
-// registered under its governance label ONCE, here, at creation. Both halves
-// matter: registration is one-way (see loadbalance.Manager.Chain), so recompiling
-// into a fresh chain would strand the old registration and pin a discarded chain
-// for the life of the process. A route whose target (discovery backend or
-// service) changed does get a new chain — its resolver is a different service,
-// so the old one cannot serve it — and with it a new registration. Caller holds
-// [RouteTable.mu].
+// registered under its governance label ONCE, here, at creation. Registration is
+// permanent and one-service-one-chain (see loadbalance.Manager.Chain), so
+// recompiling into a fresh chain would either strand the old registration and
+// pin a discarded chain, or fail as a duplicate. A route whose target (discovery
+// backend or service) changed cannot repoint its chain: its resolver is a
+// different service and the label is already registered, so the recompile fails
+// fast for the operator to notice. Caller holds [RouteTable.mu].
 func (t *RouteTable) chainFor(routeID string, up *Upstream) (*loadbalance.Chain, error) {
 	disName := up.Discovery
 	if disName == "" {

@@ -376,7 +376,7 @@ type balancedTransport struct {
 }
 
 func (t *balancedTransport) RoundTrip(req *http.Request) (*http.Response, error) {
-	ep, err := t.chain.Pick(req.Context(), loadbalance.PickInfo{})
+	pick, err := t.chain.Pick(req.Context(), loadbalance.PickInfo{})
 	if err != nil {
 		return nil, err
 	}
@@ -384,11 +384,11 @@ func (t *balancedTransport) RoundTrip(req *http.Request) (*http.Response, error)
 	// Clone before mutating: net/http may retry and the resilience layer above
 	// reuses the original request across attempts.
 	r := req.Clone(req.Context())
-	r.URL.Host = ep.Addr
-	r.Host = ep.Addr
+	r.URL.Host = pick.Endpoint.Addr
+	r.Host = pick.Endpoint.Addr
 
 	resp, err := t.base.RoundTrip(r)
-	t.chain.Complete(req.Context(), ep, err)
+	pick.Complete(req.Context(), err)
 	return resp, err
 }
 

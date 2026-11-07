@@ -136,20 +136,14 @@ func newConnState(label string, mgr *loadbalance.Manager) (*connState, error) {
 		return nil, err
 	}
 	s.chain = chain
-	if err != nil {
-		return nil, err
-	}
 	return s, nil
 }
 
-// Pick selects one READY endpoint through the chain's generation in force.
-func (s *connState) Pick(info balancer.PickInfo) (discovery.Endpoint, error) {
+// Pick selects one READY route through the chain's generation in force. The
+// result carries that generation, so gRPC's Done callback settles on it even if
+// a governance push swapped the chain in between.
+func (s *connState) Pick(info balancer.PickInfo) (loadbalance.PickResult, error) {
 	return s.chain.Pick(info.Ctx, pickInfoFrom(info))
-}
-
-// Complete settles a pick issued by [connState.Pick].
-func (s *connState) Complete(ctx context.Context, ep discovery.Endpoint, err error) {
-	s.chain.Complete(ctx, ep, err)
 }
 
 // publish installs eps as the live candidate snapshot. It is called from the
@@ -175,7 +169,7 @@ func WithHashKey(ctx context.Context, key string) context.Context {
 	return context.WithValue(ctx, hashKeyCtxKey, key)
 }
 
-// WithZone attaches the caller's locality to ctx so a zone_aware balancer
+// WithZone attaches the caller's locality to ctx so zone-aware balancing
 // prefers instances advertising the same zone.
 func WithZone(ctx context.Context, zone string) context.Context {
 	return context.WithValue(ctx, zoneCtxKey, zone)
@@ -314,18 +308,18 @@ func (p *gsPicker) Pick(info balancer.PickInfo) (balancer.PickResult, error) {
 	// are dropped there — the "kill an instance" path); the chain layers
 	// eligibility, breaker-style suspension and drain on top, and its balancer
 	// makes the choice.
-	ep, err := p.sel.Pick(info)
+	pick, err := p.sel.Pick(info)
 	if err != nil {
 		return balancer.PickResult{}, balancer.ErrNoSubConnAvailable
 	}
-	sc, ok := p.byAddr[ep.Addr]
+	sc, ok := p.byAddr[pick.Endpoint.Addr]
 	if !ok {
 		return balancer.PickResult{}, balancer.ErrNoSubConnAvailable
 	}
 	return balancer.PickResult{
 		SubConn: sc,
 		Done: func(di balancer.DoneInfo) {
-			p.sel.Complete(info.Ctx, ep, di.Err)
+			pick.Complete(info.Ctx, di.Err)
 		},
 	}, nil
 }

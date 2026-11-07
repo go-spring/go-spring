@@ -26,9 +26,9 @@ import (
 	"go-spring.org/cloud/governance/dataplane/inbound/admission"
 
 	"go-spring.org/cloud/governance"
+	"go-spring.org/cloud/governance/capability/source"
 	admissionplane "go-spring.org/cloud/governance/controlplane/admission"
 	loadbalanceplane "go-spring.org/cloud/governance/controlplane/loadbalance"
-	"go-spring.org/cloud/governance/capability/source"
 	"go-spring.org/cloud/governance/dataplane/outbound/chain"
 
 	"go-spring.org/cloud/discovery"
@@ -176,9 +176,9 @@ func TestGovernSelection_RebuildsThroughTheChain(t *testing.T) {
 	// A rule for this service's label rebuilds the chain underneath the live
 	// transport; the next request is served by the new generation.
 	mgr.Apply(context.Background(), loadbalance.Settings{Selection: loadbalance.Selection{
-		Balancer:         loadbalance.ConsistentHash,
-		ConsistentHash:   loadbalance.ConsistentHashParams{Replicas: 100},
-		OutlierThreshold: 3,
+		Balancer:               loadbalance.ConsistentHash,
+		ConsistentHashReplicas: 100,
+		OutlierThreshold:       3,
 	}})
 
 	req2, _ := http.NewRequest(http.MethodGet, "http://orders/ping", nil)

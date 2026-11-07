@@ -28,64 +28,111 @@ import (
 )
 
 func TestP2CSpreadWhenHealthy(t *testing.T) {
-	// With every candidate healthy and fast, both-two-choices keeps the spread
-	// near even (each draw starts from a uniform pair).
-	b := newBalancer(t, Selection{Balancer: P2C})
-	m := map[string]int{}
-	for range 2000 {
-		ep, err := b.Pick(eps("a", "b", "c"), PickInfo{})
-		assert.Error(t, err).Nil()
-		m[ep.Addr]++
-		b.Complete(context.Background(), ep, nil)
-	}
-	// p2c is not uniform by design: timing noise in the EWMA makes it prefer
-	// the momentarily-cheapest of each drawn pair, and a momentarily slower
-	// address only re-enters rotation through the staleness aging (τ = 10s of
-	// wall clock), which a microsecond-scale test loop never reaches. The
-	// invariant this loop can check is that no address is starved to zero.
-	for _, addr := range []string{"a", "b", "c"} {
-		assert.Number(t, m[addr]).GreaterThan(0)
-	}
+	synctest.Test(t, func(t *testing.T) {
+		// With every candidate healthy and fast, power-of-two-choices keeps the
+		// spread near even (each draw starts from a uniform pair).
+		b := NewP2C(Selection{Balancer: P2C})
+		set := eps("a", "b", "c")
+		// Give every address the same small measurement, so the comparison is about
+		// load rather than which prior happens to be fresher.
+		for _, addr := range []string{"a", "b", "c"} {
+			b.ewma[addr] = float64(time.Microsecond)
+			b.observedAt[addr] = time.Now()
+		}
+
+		m := map[string]int{}
+		for i := range 2000 {
+			ep, err := b.Pick(set, PickInfo{})
+			assert.Error(t, err).Nil()
+			m[ep.Addr]++
+			b.Complete(context.Background(), ep, nil)
+			// Let staleness decay run periodically: a peer that keeps losing its
+			// comparisons is never sampled, so only aging can make it competitive
+			// again — and a microsecond-scale loop never reaches that on its own.
+			if i%100 == 99 {
+				time.Sleep(ewmaTau)
+			}
+		}
+		// p2c is not uniform by design; the invariant this loop can check is that
+		// no address is starved to zero.
+		for _, addr := range []string{"a", "b", "c"} {
+			assert.Number(t, m[addr]).GreaterThan(0)
+		}
+	})
 }
 
-func TestP2CAvoidsFailingEndpoint(t *testing.T) {
-	// Failures feed a 1s penalty into the EWMA, so "b" quickly loses every
-	// two-choices comparison and traffic concentrates on "a".
-	b := newBalancer(t, Selection{Balancer: P2C})
+// TestP2CFailuresDoNotFeedLatency pins that a failure is not turned into a
+// synthetic latency sample: the strategy would then have to keep the peer out of
+// rotation to recover, which it cannot do by measurement (it is not selected) and
+// which duplicates the tracker's failure handling.
+func TestP2CFailuresDoNotFeedLatency(t *testing.T) {
+	b := NewP2C(Selection{Balancer: P2C})
 	set := eps("a", "b")
-	for range 20 { // seed failures on b
-		ep, err := b.Pick(set, PickInfo{})
-		assert.Error(t, err).Nil()
-		if ep.Addr == "b" {
-			b.Complete(context.Background(), ep, errutil.Explain(nil, "boom"))
-		} else {
-			b.Complete(context.Background(), ep, nil)
-		}
-	}
-	m := map[string]int{}
-	for range 200 {
-		ep, err := b.Pick(set, PickInfo{})
-		assert.Error(t, err).Nil()
-		m[ep.Addr]++
-		b.Complete(context.Background(), ep, nil)
-	}
-	assert.Number(t, m["a"]).GreaterThan(190)
+
+	ep, err := b.Pick(set, PickInfo{})
+	assert.Error(t, err).Nil()
+	ewma := b.ewma[ep.Addr] // seeded from the prior by the Pick's comparison
+
+	b.Complete(context.Background(), ep, errutil.Explain(nil, "boom"))
+
+	assert.Number(t, b.ewma[ep.Addr]).Equal(ewma)  // estimate untouched
+	assert.Number(t, b.inflight[ep.Addr]).Equal(0) // slot released anyway
 }
 
 func TestP2CInflightDrains(t *testing.T) {
-	// Outstanding picks raise the score; after Complete the slot is released
-	// and the address competes on latency alone again.
-	b := newBalancer(t, Selection{Balancer: P2C})
+	// An outstanding pick scales the score; Complete releases the slot and the
+	// address competes on latency alone again.
+	b := NewP2C(Selection{Balancer: P2C})
 	set := eps("a", "b")
 
 	e1, err := b.Pick(set, PickInfo{})
 	assert.Error(t, err).Nil()
+	withInflight := b.score(e1.Addr)
 	b.Complete(context.Background(), e1, nil)
+	assert.That(t, b.score(e1.Addr) < withInflight).True()
+}
 
-	// A fresh instance with no history scores 0 and is preferred (exploration).
-	e2, err := b.Pick(set, PickInfo{})
+// TestP2CInitialLatency pins the pessimistic prior: an address with no
+// measurement is scored from initialLatency rather than from zero, so its
+// in-flight count matters from the first pick instead of being multiplied away.
+func TestP2CInitialLatency(t *testing.T) {
+	b := NewP2C(Selection{Balancer: P2C})
+
+	assert.Number(t, b.score("new")).Equal(float64(initialLatency))
+
+	b.inflight["new"] = 2
+	got := b.score("new")
+	assert.That(t, got > 2.9*float64(initialLatency)).True()
+	assert.That(t, got < 3.01*float64(initialLatency)).True()
+}
+
+// TestP2CPrunesVanishedAddresses pins the bounded-state rule: a sweep triggered
+// by table growth drops state for addresses that left the candidate set, while a
+// live address and a recently observed one keep their history.
+func TestP2CPrunesVanishedAddresses(t *testing.T) {
+	b := NewP2C(Selection{Balancer: P2C})
+	stale := time.Now().Add(-2 * ewmaTau)
+	for _, addr := range []string{"gone-1", "gone-2"} {
+		b.ewma[addr] = 1
+		b.observedAt[addr] = stale
+	}
+	b.ewma["kept"] = 1 // live: never pruned
+	b.observedAt["kept"] = stale
+	b.ewma["recent"] = 1 // gone from eps, but observed inside the window
+	b.observedAt["recent"] = time.Now()
+
+	// Four tracked addresses for one candidate: the sweep runs on this pick.
+	_, err := b.Pick(eps("kept"), PickInfo{})
 	assert.Error(t, err).Nil()
-	b.Complete(context.Background(), e2, nil)
+
+	for _, addr := range []string{"gone-1", "gone-2"} {
+		_, ok := b.ewma[addr]
+		assert.That(t, ok).False()
+	}
+	for _, addr := range []string{"kept", "recent"} {
+		_, ok := b.ewma[addr]
+		assert.That(t, ok).True()
+	}
 }
 
 func TestP2CEmpty(t *testing.T) {
@@ -104,32 +151,36 @@ func TestP2CSingleCandidate(t *testing.T) {
 
 func TestP2CStalenessAgingReadmits(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		// The frozen-estimate guard: an address whose EWMA went high (here via a
-		// failure penalty) and then stopped being picked must re-enter rotation
-		// once its estimate decays past the tau half-life — otherwise it starves
-		// forever behind a stale number.
-		b := newBalancer(t, Selection{Balancer: P2C}).(*p2c)
-		set := eps("a", "b")
+		// The frozen-estimate guard: an address whose EWMA went high and then
+		// stopped being picked must re-enter rotation once its estimate decays past
+		// the tau half-life — otherwise it starves forever behind a stale number.
+		b := NewP2C(Selection{Balancer: P2C})
+		b.ewma["slow"] = float64(time.Second)
+		b.observedAt["slow"] = time.Now()
 
-		// Seed a failure on "a" so its EWMA carries the 1s penalty.
-		for range 10 {
-			ep, err := b.Pick(set, PickInfo{})
-			assert.Error(t, err).Nil()
-			if ep.Addr == "a" {
-				b.Complete(context.Background(), ep, errutil.Explain(nil, "boom"))
-				break
-			}
-			b.Complete(context.Background(), ep, nil)
-		}
-		assert.Number(t, b.score("a")).GreaterThan(b.score("b") + 1) // a looks costly
+		assert.Number(t, b.score("slow")).GreaterThan(0.5 * float64(time.Second))
 
-		// Right after: the penalty dominates the score (score is in nanoseconds).
 		time.Sleep(time.Second)
-		assert.Number(t, b.score("a")).GreaterThan(0.1 * float64(p2cFailurePenalty))
+		assert.Number(t, b.score("slow")).GreaterThan(0.1 * float64(time.Second))
 
 		// After several taus with no observations, the stored estimate decays to
-		// microseconds of noise and "a" competes again.
+		// microseconds of noise and the address competes again.
 		time.Sleep(ewmaTau * 10)
-		assert.Number(t, b.score("a")).LessThan(float64(time.Millisecond))
+		assert.Number(t, b.score("slow")).LessThan(float64(time.Millisecond))
+	})
+}
+
+// TestP2CDecayFloor pins the underflow guard: however long an address has been
+// idle, the decayed estimate never reaches zero, so the in-flight factor keeps
+// counting.
+func TestP2CDecayFloor(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		b := NewP2C(Selection{Balancer: P2C})
+		b.ewma["idle"] = float64(time.Second)
+		b.observedAt["idle"] = time.Now()
+		b.inflight["idle"] = 9
+
+		time.Sleep(1000 * time.Hour)
+		assert.Number(t, b.score("idle")).Equal(minLatency * 10)
 	})
 }

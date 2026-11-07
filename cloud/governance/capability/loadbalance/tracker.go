@@ -27,8 +27,8 @@ import (
 	"go.opentelemetry.io/otel/metric"
 )
 
-// componentName is the instrumentation componentName name every meter and tracer in this
-// package reports under.
+// componentName is the instrumentation component every meter in this package
+// reports under.
 const componentName = "go-spring.org/cloud/loadbalance"
 
 // suspendState is one endpoint address's suspension bookkeeping. suspendedAt
@@ -38,7 +38,17 @@ type suspendState struct {
 	failures    int
 	halfOpen    bool
 	suspendedAt time.Time
+
+	// seen is scratch space for [Tracker.Prune]: it marks the addresses present
+	// in the current endpoint set so the sweep can drop the rest. It carries no
+	// meaning between calls.
+	seen bool
 }
+
+// suspended reports whether s is out of steady rotation: cooling down, or
+// admitted as a half-open trial but not yet recovered. It is the condition the
+// suspended gauge counts.
+func (s *suspendState) suspended() bool { return !s.suspendedAt.IsZero() }
 
 // TrackerConfig is the configuration for a [Tracker].
 type TrackerConfig struct {
@@ -54,16 +64,17 @@ type TrackerConfig struct {
 
 // Tracker is the load-balancing layer's outlier-suspension mechanism. It
 // watches the success/failure outcome of balanced requests per endpoint and
-// temporarily suspends an instance that fails repeatedly, then lets it back in
-// on a half-open trial once a cool-down elapses.
+// temporarily suspends an instance that fails repeatedly. Once the cool-down
+// elapses it admits the endpoint's traffic again (a half-open round): the first
+// success restores it, any failure re-suspends it for a fresh cool-down.
 //
 // It is the LB-layer counterpart to the circuit breaker in
-// [go-spring.org/cloud/governance/dataplane/outbound/resilience]: same consecutive-failure + half-open
-// semantics, but keyed by endpoint address and *queryable* so a [Pool] can drop
-// bad instances from the candidate set proactively rather than only rejecting a
-// call after it is routed. The same Complete-err signal that feeds a
-// resilience chain.Executor feeds a Tracker, so the two stay consistent without one
-// depending on the other.
+// [go-spring.org/cloud/governance/dataplane/outbound/resilience]: the same
+// consecutive-failure + half-open semantics, but keyed by endpoint address and
+// *queryable* so a [Pool] can drop bad instances from the candidate set
+// proactively rather than only rejecting a call after it is routed. The same
+// Complete-err signal that feeds a resilience chain.Executor feeds a Tracker, so
+// the two stay consistent without one depending on the other.
 //
 // A Tracker with Threshold <= 0 is disabled: [Tracker.Allows] returns every
 // endpoint and [Tracker.Record] is a no-op. It is safe to attach a disabled
@@ -85,6 +96,12 @@ type Tracker struct {
 
 	mu     sync.Mutex
 	states map[string]*suspendState
+
+	// closed is set by [Tracker.Close] when the generation owning this tracker
+	// is replaced. In-flight requests of that generation may still settle
+	// afterwards; their outcomes are dropped rather than resurrecting state (and
+	// a gauge count that will never be returned).
+	closed bool
 }
 
 // instrumentSet is this package's metric set: one per process, resolved lazily
@@ -104,16 +121,18 @@ type instrumentSet struct {
 // instruments is the one instrument set this package uses for the whole process.
 var instruments = sync.OnceValue(buildInstruments)
 
+// buildInstruments resolves the process-wide instruments from the meter provider
+// in force when it first runs.
 func buildInstruments() *instrumentSet {
 	m := otel.Meter(componentName)
-	in := &instrumentSet{}
-	in.suspensions, _ = m.Int64Counter("loadbalance.endpoint.suspension.total",
+	set := &instrumentSet{}
+	set.suspensions, _ = m.Int64Counter("loadbalance.endpoint.suspension.total",
 		metric.WithDescription("Endpoints suspended for consecutive failures, including re-suspensions after failed half-open trials"),
 		metric.WithUnit("{event}"))
-	in.suspended, _ = m.Int64UpDownCounter("loadbalance.endpoint.suspended",
+	set.suspended, _ = m.Int64UpDownCounter("loadbalance.endpoint.suspended",
 		metric.WithDescription("Endpoints currently suspended from rotation"),
 		metric.WithUnit("{endpoint}"))
-	return in
+	return set
 }
 
 // NewTracker builds a [Tracker] from cfg. A zero SuspendFor is normalized to
@@ -135,21 +154,8 @@ func NewTracker(cfg TrackerConfig) *Tracker {
 // trial). When the tracker is disabled it returns eps unchanged.
 //
 // If every endpoint is suspended it falls back to eps — black-holing all
-// traffic is worse than probing a degraded instance. This is the only
-// suspension filter a caller needs; [admissible] is its pure inner half.
+// traffic is worse than probing a degraded instance.
 func (t *Tracker) Allows(eps []discovery.Endpoint) []discovery.Endpoint {
-	out := t.admissible(eps)
-	if len(out) == 0 {
-		return eps
-	}
-	return out
-}
-
-// admissible is [Allows] without the fallback: when every endpoint is
-// suspended it returns an empty slice. It is unexported because every caller
-// wants the fallback; keeping it separate is what lets tests pin the pure
-// filter without the caller-level policy.
-func (t *Tracker) admissible(eps []discovery.Endpoint) []discovery.Endpoint {
 	cfg := t.cfg
 	if cfg.Threshold <= 0 || len(eps) == 0 {
 		return eps
@@ -157,13 +163,16 @@ func (t *Tracker) admissible(eps []discovery.Endpoint) []discovery.Endpoint {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
-	out := make([]discovery.Endpoint, 0, len(eps))
+	allowed := make([]discovery.Endpoint, 0, len(eps))
 	for _, ep := range eps {
 		if t.admit(ep.Addr, cfg.SuspendFor) {
-			out = append(out, ep)
+			allowed = append(allowed, ep)
 		}
 	}
-	return out
+	if len(allowed) == 0 {
+		return eps
+	}
+	return allowed
 }
 
 // admit reports whether addr may receive a request, advancing a suspended
@@ -174,7 +183,7 @@ func (t *Tracker) admit(addr string, suspendFor time.Duration) bool {
 	if s == nil || s.suspendedAt.IsZero() {
 		return true // never failed, or recovered
 	}
-	if time.Now().Sub(s.suspendedAt) < suspendFor {
+	if time.Since(s.suspendedAt) < suspendFor {
 		return false // suspended, cooling down
 	}
 	if !s.halfOpen {
@@ -186,12 +195,98 @@ func (t *Tracker) admit(addr string, suspendFor time.Duration) bool {
 	return true
 }
 
+// Prune drops the suspension state of addresses that are no longer in live, the
+// endpoint set the source currently advertises. A tracker outlives individual
+// endpoints: discovery churn (rescheduled pods, scale-down) otherwise leaves
+// state behind for addresses that will never be picked again, which both leaks
+// the map and keeps the "currently suspended" gauge counting ghosts.
+//
+// An empty live set is ignored: a source that momentarily advertises nothing is
+// not evidence that every endpoint is gone, and wiping all state on a transient
+// refresh failure would forget real suspensions. It costs one pass over the
+// tracked addresses per call, the same order [Tracker.Allows] already pays.
+func (t *Tracker) Prune(live []discovery.Endpoint) {
+	if t.cfg.Threshold <= 0 || len(live) == 0 {
+		return
+	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.closed || len(t.states) == 0 {
+		return
+	}
+
+	for _, ep := range live {
+		if s := t.states[ep.Addr]; s != nil {
+			s.seen = true
+		}
+	}
+	for addr, s := range t.states {
+		if s.seen {
+			s.seen = false
+			continue
+		}
+		if s.suspended() {
+			t.ins.suspended.Add(context.Background(), -1)
+		}
+		delete(t.states, addr)
+	}
+}
+
+// suspendedCount reports how many tracked addresses are out of rotation. It is
+// the value the shared suspended gauge should hold on this tracker's behalf.
+func (t *Tracker) suspendedCount() int {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	count := 0
+	for _, s := range t.states {
+		if s.suspended() {
+			count++
+		}
+	}
+	return count
+}
+
+// Close returns this tracker's share of the process-wide "currently suspended"
+// gauge and drops its state. A tracker is one generation's runtime state (see
+// [Chain]): when a governance change replaces the generation, nothing will ever
+// decrement the +1s this tracker contributed, so leaving them behind makes the
+// gauge drift upward across pushes.
+//
+// Closing is final and idempotent. In-flight requests of the retired generation
+// may still settle afterwards — they carry their own [PickResult] — and their
+// outcomes are dropped: the generation is gone, so what it would have learned
+// belongs to no one, and letting it recreate state would leak the gauge it just
+// returned.
+func (t *Tracker) Close() {
+	t.mu.Lock()
+	if t.closed {
+		t.mu.Unlock()
+		return
+	}
+	t.closed = true
+	count := 0
+	for _, s := range t.states {
+		if s.suspended() {
+			count++
+		}
+	}
+	clear(t.states)
+	t.mu.Unlock()
+	if count > 0 {
+		t.ins.suspended.Add(context.Background(), int64(-count))
+	}
+}
+
 // Record folds a request outcome back into the tracker. ctx is the context of
 // the request whose outcome this is, carried into the suspension log lines so
 // they keep its trace and values; it is read, never canceled, here. success=true
 // clears the endpoint's failure state (or closes a half-open trial);
 // success=false counts toward suspension (or re-suspends a failed half-open
 // trial). It is a no-op when the tracker is disabled.
+//
+// An outcome from a request admitted BEFORE the endpoint was suspended is
+// ignored: while it cools down the endpoint receives no new traffic, so the
+// result is stale, and only the half-open trial may decide recovery.
 func (t *Tracker) Record(ctx context.Context, addr string, success bool) {
 	cfg := t.cfg
 	if cfg.Threshold <= 0 {
@@ -199,11 +294,25 @@ func (t *Tracker) Record(ctx context.Context, addr string, success bool) {
 	}
 	t.mu.Lock()
 	defer t.mu.Unlock()
+	if t.closed {
+		return // the generation is gone; its observations go with it
+	}
 
 	s := t.states[addr]
 	if s == nil {
+		if success {
+			return // never failed: nothing to clear, and no state to keep
+		}
 		s = &suspendState{}
 		t.states[addr] = s
+	}
+	// While the endpoint cools down, Allows admits none of its traffic, so an
+	// outcome arriving now belongs to a request picked BEFORE the suspension. It
+	// describes a state that no longer exists: it must not close the circuit
+	// (only the half-open trial can) nor extend the cool-down. This is the same
+	// rule the circuit breaker enforces with its permit generations.
+	if !s.suspendedAt.IsZero() && !s.halfOpen {
+		return
 	}
 	if success {
 		wasDown := !s.suspendedAt.IsZero() || s.halfOpen

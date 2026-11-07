@@ -203,15 +203,15 @@ func runTest() {
 	if err != nil {
 		fail("new balancer: %v", err)
 	}
-	ep, err := loadbalance.NewPool(resolver, bal, loadbalance.NewTracker(loadbalance.TrackerConfig{}), loadbalance.Selection{}).Pick(ctx, loadbalance.PickInfo{})
+	pick, err := loadbalance.NewPool(resolver, bal, loadbalance.NewTracker(loadbalance.TrackerConfig{}), loadbalance.Selection{}).Pick(ctx, loadbalance.PickInfo{})
 	if err != nil {
 		fail("resolve: %v", err)
 	}
-	if ep.Addr != "127.0.0.1:8082" {
-		fail("unexpected resolved addr: %s", ep.Addr)
+	if pick.Endpoint.Addr != "127.0.0.1:8082" {
+		fail("unexpected resolved addr: %s", pick.Endpoint.Addr)
 	}
-	mustStatus("http://"+ep.Addr+"/", http.StatusOK)
-	fmt.Printf("discovery: resolved %q -> dialed OK\n", ep.Addr)
+	mustStatus("http://"+pick.Endpoint.Addr+"/", http.StatusOK)
+	fmt.Printf("discovery: resolved %q -> dialed OK\n", pick.Endpoint.Addr)
 
 	// --- 3. Resilience ---------------------------------------------------
 	var admitted, rejected int

@@ -118,7 +118,7 @@ func TestChainRebuildDropsObservedFailures(t *testing.T) {
 	c := mustChain(t, m, context.Background(), staticSource(eps("a", "b")...), "demo:service")
 	base := c.cur.Load()
 
-	c.Complete(context.Background(), discovery.Endpoint{Addr: "a"}, errChainBoom)
+	PickResult{Endpoint: discovery.Endpoint{Addr: "a"}, pool: c.cur.Load()}.Complete(context.Background(), errChainBoom)
 	assert.That(t, suspended(c.cur.Load().tracker, "a")).True()
 
 	m.Apply(context.Background(), Settings{Selection: Selection{Balancer: Random, OutlierThreshold: 1, OutlierSuspendFor: time.Hour}})
@@ -127,9 +127,51 @@ func TestChainRebuildDropsObservedFailures(t *testing.T) {
 	assert.That(t, suspended(c.cur.Load().tracker, "a")).False()
 
 	// The endpoint is genuinely back: the new generation picks from the full set.
-	ep, err := c.Pick(context.Background(), PickInfo{})
+	pick, err := c.Pick(context.Background(), PickInfo{})
 	assert.Error(t, err).Nil()
-	assert.That(t, ep.Addr == "a" || ep.Addr == "b").True()
+	assert.That(t, pick.Endpoint.Addr == "a" || pick.Endpoint.Addr == "b").True()
+}
+
+// TestChainRebuildClosesReplacedTracker pins the gauge accounting: the replaced
+// generation's tracker is closed, so its contribution to the process-wide
+// "currently suspended" UpDownCounter is returned instead of drifting upward
+// across pushes.
+func TestChainRebuildClosesReplacedTracker(t *testing.T) {
+	m := newManager(t)
+	m.Apply(context.Background(), Settings{Selection: Selection{Balancer: RoundRobin, OutlierThreshold: 1, OutlierSuspendFor: time.Hour}})
+
+	c := mustChain(t, m, context.Background(), staticSource(eps("a", "b")...), "demo:service")
+	old := c.cur.Load()
+	PickResult{Endpoint: discovery.Endpoint{Addr: "a"}, pool: c.cur.Load()}.Complete(context.Background(), errChainBoom)
+	assert.Number(t, old.tracker.suspendedCount()).Equal(1)
+
+	m.Apply(context.Background(), Settings{Selection: Selection{Balancer: Random, OutlierThreshold: 1, OutlierSuspendFor: time.Hour}})
+
+	assert.Number(t, old.tracker.suspendedCount()).Equal(0)
+}
+
+// TestChainCompleteSettlesOnThePickingGeneration guards the cross-generation
+// bug: a rebuild landing between Pick and Complete must not move the outcome to
+// the new generation. The retired generation drops it (it is gone by design),
+// and the new one must not learn a failure it never saw.
+func TestChainCompleteSettlesOnThePickingGeneration(t *testing.T) {
+	m := newManager(t)
+	m.Apply(context.Background(), Settings{Selection: Selection{Balancer: RoundRobin, OutlierThreshold: 1, OutlierSuspendFor: time.Hour}})
+
+	c := mustChain(t, m, context.Background(), staticSource(eps("a")...), "demo:service")
+	old := c.cur.Load()
+	pick, err := c.Pick(context.Background(), PickInfo{})
+	assert.Error(t, err).Nil()
+
+	m.Apply(context.Background(), Settings{Selection: Selection{Balancer: Random, OutlierThreshold: 1, OutlierSuspendFor: time.Hour}})
+	assert.That(t, c.cur.Load() != old).True()
+
+	// The in-flight request settles after the swap: it belongs to the retired
+	// generation and must not suspend "a" in the one that replaced it.
+	pick.Complete(context.Background(), errChainBoom)
+
+	assert.That(t, suspended(c.cur.Load().tracker, "a")).False()
+	assert.Number(t, old.tracker.suspendedCount()).Equal(0)
 }
 
 // TestChainRebuildIsDrivenByTheChangedService pins that the diff answers "which
@@ -171,33 +213,22 @@ func TestChainUnknownStrategyKeepsLastGood(t *testing.T) {
 	assert.Error(t, err).NotNil()
 
 	assert.That(t, c.cur.Load() == good).True() // the rejected document committed nothing
-	ep, err := c.Pick(context.Background(), PickInfo{})
+	pick, err := c.Pick(context.Background(), PickInfo{})
 	assert.Error(t, err).Nil()
-	assert.That(t, ep.Addr).Equal("a")
+	assert.That(t, pick.Endpoint.Addr).Equal("a")
 }
 
-// TestChainPerChainNotPerService pins that the service is matched, not used as a key:
-// one service legitimately backs more than one chain (two clients sharing a
-// service name), so a change to that service rebuilds every chain carrying it, and
-// each keeps its own endpoint source.
-func TestChainPerChainNotPerService(t *testing.T) {
+// TestChainRejectsASecondRegistration pins the one-service-one-client rule: two
+// clients on one governance label would fork the selection state and only the
+// first source would ever be consulted, so a second registration fails at wiring
+// instead of being stored as another entry.
+func TestChainRejectsASecondRegistration(t *testing.T) {
 	m := newManager(t)
 
-	c1 := mustChain(t, m, context.Background(), staticSource(eps("a")...), "demo:service")
-	c2 := mustChain(t, m, context.Background(), staticSource(eps("b")...), "demo:service")
-	c1Base, c2Base := c1.cur.Load(), c2.cur.Load()
+	mustChain(t, m, context.Background(), staticSource(eps("a")...), "demo:service")
 
-	m.Apply(context.Background(), Settings{Selection: Selection{Balancer: LeastConn}})
-
-	assert.That(t, c1.cur.Load() != c1Base).True()
-	assert.That(t, c2.cur.Load() != c2Base).True()
-
-	ep1, err := c1.Pick(context.Background(), PickInfo{})
-	assert.Error(t, err).Nil()
-	assert.That(t, ep1.Addr).Equal("a")
-	ep2, err := c2.Pick(context.Background(), PickInfo{})
-	assert.Error(t, err).Nil()
-	assert.That(t, ep2.Addr).Equal("b")
+	_, err := m.Chain(context.Background(), staticSource(eps("b")...), "demo:service")
+	assert.Error(t, err).Matches("already has a chain")
 }
 
 // TestChainSwapIsLive pins the egress contract: after a governance change, a
@@ -211,9 +242,9 @@ func TestChainSwapIsLive(t *testing.T) {
 	m.Apply(context.Background(), Settings{Selection: Selection{Balancer: LeastConn}})
 	assert.That(t, c.cur.Load() != base).True()
 
-	ep, err := c.Pick(context.Background(), PickInfo{})
+	pick, err := c.Pick(context.Background(), PickInfo{})
 	assert.Error(t, err).Nil()
-	c.Complete(context.Background(), ep, nil)
+	pick.Complete(context.Background(), nil)
 
 	assert.That(t, c.Selection().Balancer).Equal(LeastConn)
 }
@@ -238,12 +269,12 @@ func TestChainConcurrentPickAndRebuild(t *testing.T) {
 					return
 				default:
 				}
-				ep, err := c.Pick(context.Background(), PickInfo{})
+				pick, err := c.Pick(context.Background(), PickInfo{})
 				if err != nil {
 					errs <- err
 					return
 				}
-				c.Complete(context.Background(), ep, nil)
+				pick.Complete(context.Background(), nil)
 			}
 		})
 	}
@@ -305,9 +336,9 @@ func TestChainSelectorNarrowsCandidates(t *testing.T) {
 
 	c := mustChain(t, m, context.Background(), versionedSource(), "svc:x")
 	for range 4 {
-		ep, err := c.Pick(context.Background(), PickInfo{})
+		pick, err := c.Pick(context.Background(), PickInfo{})
 		assert.Error(t, err).Nil()
-		assert.That(t, ep.Addr).Equal("a")
+		assert.That(t, pick.Endpoint.Addr).Equal("a")
 	}
 	assert.Number(t, len(c.Selection().Selector)).Equal(1)
 }
@@ -322,16 +353,16 @@ func TestChainSelectorChangeRebuilds(t *testing.T) {
 
 	m.Apply(context.Background(), Settings{Selection: Selection{Balancer: RoundRobin, Selector: versionPrefix("v2.")}})
 	assert.That(t, c.cur.Load() != base).True()
-	ep, err := c.Pick(context.Background(), PickInfo{})
+	pick, err := c.Pick(context.Background(), PickInfo{})
 	assert.Error(t, err).Nil()
-	assert.That(t, ep.Addr).Equal("a")
+	assert.That(t, pick.Endpoint.Addr).Equal("a")
 
 	narrowed := c.cur.Load()
 	m.Apply(context.Background(), Settings{Selection: Selection{Balancer: RoundRobin, Selector: versionPrefix("v1.")}})
 	assert.That(t, c.cur.Load() != narrowed).True()
-	ep, err = c.Pick(context.Background(), PickInfo{})
+	pick, err = c.Pick(context.Background(), PickInfo{})
 	assert.Error(t, err).Nil()
-	assert.That(t, ep.Addr).Equal("b")
+	assert.That(t, pick.Endpoint.Addr).Equal("b")
 }
 
 // TestChainSelectorMatchingNothingFailsLoudly pins the no-fallback decision: a
@@ -370,29 +401,28 @@ func TestChainServesRealTrafficAcrossARebuild(t *testing.T) {
 	// The gateway handler, wired exactly as the chain's egress documents: pick
 	// through the chain, forward to the picked address, complete through the chain.
 	gw := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		ep, err := c.Pick(context.Background(), PickInfo{})
+		pick, err := c.Pick(context.Background(), PickInfo{})
 		if err != nil {
-			c.Complete(r.Context(), ep, err)
 			http.Error(w, "503 Service Unavailable", http.StatusServiceUnavailable)
 			return
 		}
 		hits.Add(1)
 		req, err := http.NewRequestWithContext(r.Context(), r.Method,
-			"http://"+ep.Addr+r.URL.Path, nil)
+			"http://"+pick.Endpoint.Addr+r.URL.Path, nil)
 		if err != nil {
-			c.Complete(r.Context(), ep, err)
+			pick.Complete(r.Context(), err)
 			http.Error(w, "500", http.StatusInternalServerError)
 			return
 		}
 		resp, err := http.DefaultClient.Do(req)
 		if err != nil {
-			c.Complete(r.Context(), ep, err)
+			pick.Complete(r.Context(), err)
 			http.Error(w, "502 Bad Gateway", http.StatusBadGateway)
 			return
 		}
 		defer func() { _ = resp.Body.Close() }()
 		_, _ = io.Copy(w, resp.Body)
-		c.Complete(r.Context(), ep, nil)
+		pick.Complete(r.Context(), nil)
 	}))
 	defer gw.Close()
 
@@ -438,8 +468,8 @@ func TestApplyRejectsWholeDocument(t *testing.T) {
 		Rules: []Rule{
 			{Service: "redis:cache", Selection: Selection{Balancer: LeastConn}},
 			{Service: "gorm:db", Selection: Selection{
-				Balancer:       ConsistentHash,
-				ConsistentHash: ConsistentHashParams{Replicas: 200},
+				Balancer:               ConsistentHash,
+				ConsistentHashReplicas: 200,
 			}},
 		},
 	}
@@ -456,14 +486,6 @@ func TestApplyRejectsWholeDocument(t *testing.T) {
 		Rules:     []Rule{{Service: "redis:cache", Selection: Selection{Balancer: "no_such_strategy"}}},
 	}
 	assert.Error(t, m.Apply(ctx, badRule)).Matches("no strategy registered")
-
-	// A selection that cannot be built — zone_aware names no delegate — rejects
-	// the document for the chain it governs.
-	badSelection := Settings{
-		Selection: Selection{Balancer: RoundRobin},
-		Rules:     []Rule{{Service: "redis:cache", Selection: Selection{Balancer: ZoneAware}}},
-	}
-	assert.Error(t, m.Apply(ctx, badSelection)).Matches("requires a delegate")
 
 	// A rule that names no strategy is not an error: resolution falls through
 	// to the global base strategy.

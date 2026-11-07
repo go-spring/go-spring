@@ -52,9 +52,9 @@ func TestNewPickChainRebuildsFromScratch(t *testing.T) {
 
 	// The base generation: round-robin, suspension disabled, live instance picked.
 	assert.That(t, chain.Selection()).Equal(loadbalance.Selection{Balancer: loadbalance.RoundRobin})
-	ep, err := chain.Pick(context.Background(), loadbalance.PickInfo{})
+	pick, err := chain.Pick(context.Background(), loadbalance.PickInfo{})
 	assert.Error(t, err).Nil()
-	assert.That(t, ep.Addr).Equal("127.0.0.1:27017")
+	assert.That(t, pick.Endpoint.Addr).Equal("127.0.0.1:27017")
 
 	// A push that targets THIS service's governance label moves the chain...
 	moved := loadbalance.Selection{Balancer: loadbalance.LeastConn, OutlierThreshold: 3, OutlierSuspendFor: time.Minute}
@@ -82,9 +82,9 @@ func TestNewPickChainUnarmedManagerIsPassThrough(t *testing.T) {
 
 	assert.That(t, chain.Selection()).Equal(loadbalance.Selection{Balancer: loadbalance.RoundRobin})
 
-	ep, err := chain.Pick(context.Background(), loadbalance.PickInfo{})
+	pick, err := chain.Pick(context.Background(), loadbalance.PickInfo{})
 	assert.Error(t, err).Nil()
-	assert.That(t, ep.Addr).Equal("127.0.0.1:27017")
+	assert.That(t, pick.Endpoint.Addr).Equal("127.0.0.1:27017")
 }
 
 // TestNewPickChainMissingBackendFails pins the loud failure: a service-name with

@@ -31,32 +31,15 @@ import (
 // downstream work.
 func noopFn(context.Context) error { return nil }
 
-// benchExec builds a bundled-driver executor for "svc" under p, released at the
+// benchExec builds a default (policy-free) executor for "svc", released at the
 // benchmark's cleanup.
-func benchExec(b *testing.B, cfg any) chain.Executor {
+func benchExec(b *testing.B) chain.Executor {
 	b.Helper()
 	factories, err := ratelimit.NewFactory([]ratelimit.Provider{ratelimit.NewLocalProvider()})
 	if err != nil {
 		b.Fatal(err)
 	}
 	m := resilience.NewManager(resilience.NewDefaultDriver(), factories)
-	switch v := cfg.(type) {
-	case nil:
-	case resilience.Limits:
-		if err := m.ApplyLimits(resilience.LimitsSettings{Default: v}); err != nil {
-			b.Fatalf("ApplyLimits: %v", err)
-		}
-	case resilience.BreakerPolicy:
-		if err := m.ApplyBreaker(resilience.BreakerSettings{Default: v}); err != nil {
-			b.Fatalf("ApplyBreaker: %v", err)
-		}
-	case ratelimit.Policy:
-		if err := m.ApplyRateLimit(resilience.RateLimitSettings{Default: v}); err != nil {
-			b.Fatalf("ApplyRateLimit: %v", err)
-		}
-	default:
-		b.Fatalf("unsupported test policy %T", cfg)
-	}
 	b.Cleanup(func() { _ = m.Close() })
 	return m.ExecutorFor("svc")
 }
@@ -64,7 +47,7 @@ func benchExec(b *testing.B, cfg any) chain.Executor {
 // BenchmarkExecutor_Baseline measures the raw default executor's per-op cost
 // (no fault layer) — the reference for the framework-tax delta below.
 func BenchmarkExecutor_Baseline(b *testing.B) {
-	exec := benchExec(b, nil)
+	exec := benchExec(b)
 	ctx := context.Background()
 	b.ResetTimer()
 	for b.Loop() {
@@ -76,7 +59,7 @@ func BenchmarkExecutor_Baseline(b *testing.B) {
 // is inert (no rate, no latency) — the steady-state cost a production config
 // pays.
 func BenchmarkFaultExecutor_Inert(b *testing.B) {
-	raw := benchExec(b, nil)
+	raw := benchExec(b)
 	exec := newFixture(configs{Client: kfault.Config{}}).client.WrapClientExecutor(raw) // inert
 	ctx := context.Background()
 	b.ResetTimer()
@@ -88,7 +71,7 @@ func BenchmarkFaultExecutor_Inert(b *testing.B) {
 // BenchmarkFaultExecutor_Injecting measures cost when every call is injected
 // (Rate 1) — exercises the maybe() decision + error path per attempt.
 func BenchmarkFaultExecutor_Injecting(b *testing.B) {
-	raw := benchExec(b, nil)
+	raw := benchExec(b)
 	exec := newFixture(configs{Client: kfault.Config{Rules: []kfault.Rule{{Name: "bench", Service: "svc", Rate: 1, Class: kfault.ClassTransient, Error: "generic"}}}}).client.WrapClientExecutor(raw)
 	ctx := context.Background()
 	b.ResetTimer()

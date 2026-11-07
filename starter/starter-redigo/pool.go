@@ -161,15 +161,15 @@ func newRawPool(c Config, tlsConfig *tls.Config, lbChain *loadbalance.Chain) *re
 				nd := &net.Dialer{Timeout: c.DialTimeout}
 				opts = append(opts, redis.DialContextFunc(
 					func(ctx context.Context, network, _ string) (net.Conn, error) {
-						ep, err := lbChain.Pick(ctx, loadbalance.PickInfo{})
+						pick, err := lbChain.Pick(ctx, loadbalance.PickInfo{})
 						if err != nil {
 							return nil, err
 						}
-						conn, derr := nd.DialContext(ctx, network, ep.Addr)
+						conn, derr := nd.DialContext(ctx, network, pick.Endpoint.Addr)
 						// The dial outcome is the only signal this picker has;
 						// feeding it makes outlier suspension evict an instance
 						// that keeps refusing connections.
-						lbChain.Complete(ctx, ep, derr)
+						pick.Complete(ctx, derr)
 						return conn, derr
 					}))
 				// Addr becomes a label for the chain; the dialer picks a live

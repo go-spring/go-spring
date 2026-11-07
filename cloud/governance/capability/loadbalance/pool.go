@@ -25,19 +25,19 @@ import (
 // Pool is the INNER layer of client-side load balancing: ONE immutable
 // generation of a complete endpoint-selection chain — a [discovery.Resolver]
 // source, the filter chain, a [Balancer] and its [Tracker] — built once and
-// never retuned. It is what a [Chain] assembles (see buildPool) and swaps
-// whole on a governance refresh; request paths reach it THROUGH the chain, via
-// [Chain.Pick] and [Chain.Complete]. Building one directly with [NewPool] is
-// the standalone case, for callers with no governance manager behind them.
+// never retuned. It is what a [Chain] assembles (see buildPool) and swaps whole
+// on a governance refresh; request paths reach it THROUGH the chain, via
+// [Chain.Pick] and the [PickResult] it returns. Building one directly with
+// [NewPool] is the standalone case, for callers with no governance manager
+// behind them.
 //
 // The endpoint source of a Pool is a [discovery.Resolver] — a plain
 // `func(ctx context.Context) ([]Endpoint, error)`, typically bound to one
-// service name via [discovery.NewResolver] — re-read live on every Pick. A
-// source error (a registry hiccup, an unknown service) propagates out of
-// [Pool.Pick] instead of being treated as "no endpoints".
-// On every [Pool.Pick] it takes the live endpoint snapshot from its
-// [discovery.Resolver] (kept fresh by discovery Watch), filters it, and hands
-// the survivors to a [Balancer] to choose one.
+// service name via [discovery.NewResolver] — re-read live on every Pick. Its
+// snapshot (kept fresh by discovery Watch) is filtered, and the survivors are
+// handed to a [Balancer] to choose one. A source error (a registry hiccup, an
+// unknown service) propagates out of [Pool.Pick] instead of being treated as
+// "no endpoints".
 //
 // The filter chain has four stages: the selection's dynamic selector (metadata
 // terms from the governance document), static eligibility (Disabled or
@@ -97,22 +97,49 @@ func NewPool(src discovery.Resolver, bal Balancer, tracker *Tracker, sel Selecti
 // directly with [NewPool].
 func (p *Pool) Selection() Selection { return p.sel }
 
+// PickResult is one route decision: the chosen endpoint together with the
+// generation that chose it. A request must be settled with [PickResult.Complete]
+// on this same value, so a governance push landing between Pick and Complete
+// cannot move the settlement to a generation that never saw the request.
+//
+// The generation is unexported on purpose: a caller routes with a PickResult and
+// settles it, and has no business reaching into the generation behind it.
+type PickResult struct {
+	// Endpoint is the endpoint the balancer picked.
+	Endpoint discovery.Endpoint
+
+	// pool is the generation that made the choice; the request is settled there
+	// even if a later push has already replaced it.
+	pool *Pool
+}
+
+// Complete settles the request Pick issued. Invoke it exactly once, after the
+// request ends, with the same PickResult Pick returned: it advances the picking
+// generation's balancer accounting and feeds that generation's suspension
+// tracker. A retired generation drops the outcome (see [Tracker.Close]).
+func (r PickResult) Complete(ctx context.Context, err error) {
+	r.pool.Complete(ctx, r.Endpoint, err)
+}
+
 // Pick selects one live, healthy, non-suspended endpoint via the configured
-// balancer. The caller must invoke [Pool.Complete] with the picked endpoint
-// when the request finishes: it advances least-conn accounting and feeds the
+// balancer. The caller must invoke [PickResult.Complete] on the returned result
+// when the request finishes: it advances the balancer's accounting and feeds the
 // suspension tracker, so skipping it defeats health suspension.
 //
 // ctx is the request's context, threaded to the endpoint source. The source is
 // usually a cache read, but a backend may refresh on demand, and that read owes
 // the request its deadline, cancellation and trace.
 //
-// It returns [ErrNoEndpoints] when the source has no endpoints, or every
-// endpoint is disabled.
-func (p *Pool) Pick(ctx context.Context, info PickInfo) (discovery.Endpoint, error) {
+// It returns [ErrNoEndpoints] when the source has no endpoints, the selector
+// matches none, or every endpoint is disabled.
+func (p *Pool) Pick(ctx context.Context, info PickInfo) (PickResult, error) {
 	eps, err := p.src(ctx)
 	if err != nil {
-		return discovery.Endpoint{}, err
+		return PickResult{}, err
 	}
+	// Discovery churn must not leave suspension state behind for addresses that
+	// are gone; prune against the raw set before any filter narrows it.
+	p.tracker.Prune(eps)
 
 	// The selection's selector: the dynamic half of endpoint narrowing, applied
 	// here rather than baked into the source, so the source stays the chain's
@@ -123,7 +150,7 @@ func (p *Pool) Pick(ctx context.Context, info PickInfo) (discovery.Endpoint, err
 		eps = discovery.FilterByMetadata(eps, p.sel.Selector)
 	}
 	if len(eps) == 0 {
-		return discovery.Endpoint{}, ErrNoEndpoints
+		return PickResult{}, ErrNoEndpoints
 	}
 
 	// Static eligible: the shared Endpoint contract filter (never Disabled,
@@ -131,7 +158,7 @@ func (p *Pool) Pick(ctx context.Context, info PickInfo) (discovery.Endpoint, err
 	// an explicit exclusion that must not be overridden by any fallback below.
 	candidates := eligible(eps)
 	if len(candidates) == 0 {
-		return discovery.Endpoint{}, ErrNoEndpoints
+		return PickResult{}, ErrNoEndpoints
 	}
 
 	// The filters below are pure: when one would empty the set, the pre-filter
@@ -149,8 +176,19 @@ func (p *Pool) Pick(ctx context.Context, info PickInfo) (discovery.Endpoint, err
 		candidates = live
 	}
 
-	return p.bal.Pick(candidates, info)
+	ep, err := p.bal.Pick(candidates, info)
+	if err != nil {
+		return PickResult{}, err
+	}
+	return PickResult{Endpoint: ep, pool: p}, nil
 }
+
+// Close releases the generation's instrumented state. The manager calls it on
+// the pool a rebuild replaces; see [Tracker.Close] for why the count must come
+// back. Outstanding [PickResult]s may still settle on this pool — their
+// suspension outcomes are dropped as a retired generation's — but it must not
+// be picked from again.
+func (p *Pool) Close() { p.tracker.Close() }
 
 // Complete settles the request that Pick issued to ep: it advances the
 // balancer's own accounting and records the outcome with the suspension
@@ -188,13 +226,13 @@ func eligible(eps []discovery.Endpoint) []discovery.Endpoint {
 	return out
 }
 
-// excludeDrained drops endpoints with an explicit zero weight (the drain
+// excludeDrained drops endpoints whose weight is explicitly zero (the drain
 // signal). Negative weights are kept — misconfiguration should not silently
-// remove an instance; the weighted balancer still treats them as default.
-// It is a pure filter: when every endpoint is drained it returns nil and the
-// fallback belongs to the caller. Callers may legitimately see all-zero
-// snapshots, where registrants predate the weight contract and store 0 for
-// "default".
+// remove an instance, and the weighted balancer treats them as the default. It
+// is a pure filter: when every endpoint is drained it returns nil and the
+// fallback belongs to the caller. All-zero snapshots are legitimate (registrants
+// predating the weight contract store 0 for "default"), which is why the caller
+// falls back to the pre-filter set rather than black-holing the pool.
 func excludeDrained(eps []discovery.Endpoint) []discovery.Endpoint {
 	var kept []discovery.Endpoint
 	for _, ep := range eps {

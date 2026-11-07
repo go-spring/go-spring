@@ -180,15 +180,15 @@ func (DefaultDriver) CreateClient(ctx context.Context, c Config, center *governa
 	}
 	opts.Addr = c.ServiceName
 	opts.Dialer = func(ctx context.Context, network, _ string) (net.Conn, error) {
-		ep, err := lbChain.Pick(ctx, loadbalance.PickInfo{})
+		pick, err := lbChain.Pick(ctx, loadbalance.PickInfo{})
 		if err != nil {
 			return nil, err
 		}
-		conn, derr := nd.DialContext(ctx, network, ep.Addr)
+		conn, derr := nd.DialContext(ctx, network, pick.Endpoint.Addr)
 		// The dial outcome is the only signal this picker has; feeding it
 		// makes outlier suspension evict an instance that keeps refusing
 		// connections.
-		lbChain.Complete(ctx, ep, derr)
+		pick.Complete(ctx, derr)
 		return conn, derr
 	}
 	return NewClient(redis.NewClient(opts), c, lbChain, center)

@@ -60,10 +60,10 @@ func TestSelectionHashKeyAffinity(t *testing.T) {
 	assert.Error(t, err).Nil()
 
 	pickFor := func(clientIP string) string {
-		ep, err := chain.Pick(context.Background(), loadbalance.PickInfo{HashKey: clientIP})
+		pick, err := chain.Pick(context.Background(), loadbalance.PickInfo{HashKey: clientIP})
 		assert.Error(t, err).Nil()
-		chain.Complete(context.Background(), ep, nil)
-		return ep.Addr
+		pick.Complete(context.Background(), nil)
+		return pick.Endpoint.Addr
 	}
 
 	// Default strategy: the hint is ignored, so one client roams both upstreams.
@@ -79,8 +79,8 @@ func TestSelectionHashKeyAffinity(t *testing.T) {
 	mgr.Apply(context.Background(), loadbalance.Settings{Rules: []loadbalance.Rule{{
 		Service: gatewayLabel("orders"),
 		Selection: loadbalance.Selection{
-			Balancer:       loadbalance.ConsistentHash,
-			ConsistentHash: loadbalance.ConsistentHashParams{Replicas: 100},
+			Balancer:               loadbalance.ConsistentHash,
+			ConsistentHashReplicas: 100,
 		},
 	}}})
 	assert.That(t, chain.Selection().Balancer).Equal(loadbalance.ConsistentHash)

@@ -30,11 +30,12 @@ import (
 const doc = `
 balancer: round_robin
 outlier-threshold: 5
+zone-aware: true
+zone-key: az
 services:
   - service: redis:cache
     balancer: consistent_hash
-    consistent-hash:
-      replicas: 200
+    consistent-hash-replicas: 200
     selector:
       version:
         prefix: v2.
@@ -46,13 +47,27 @@ func TestDocumentBinds(t *testing.T) {
 
 	assert.That(t, d.Balancer).Equal(kloadbalance.RoundRobin)
 	assert.Number(t, d.OutlierThreshold).Equal(5)
+	// The zone-aware switch and its key are flat selection fields, not a strategy.
+	assert.That(t, d.ZoneAware).True()
+	assert.That(t, d.ZoneKey).Equal("az")
 	assert.Number(t, len(d.Rules)).Equal(1)
 	assert.That(t, d.Rules[0].Service).Equal("redis:cache")
 	assert.That(t, d.Rules[0].Balancer).Equal(kloadbalance.ConsistentHash)
-	assert.Number(t, d.Rules[0].ConsistentHash.Replicas).Equal(200)
+	assert.Number(t, d.Rules[0].ConsistentHashReplicas).Equal(200)
 	sel := d.Rules[0].Selector
 	assert.Number(t, len(sel)).Equal(1)
 	assert.That(t, sel["version"].Prefix).Equal("v2.")
+}
+
+// TestDocumentBoundsRingReplicas pins the resource ceiling on the document path:
+// a rule asking for an unbounded ring is rejected at bind time instead of
+// allocating it on the first keyed request.
+func TestDocumentBoundsRingReplicas(t *testing.T) {
+	_, err := source.Parse[kloadbalance.Settings]("loadbalance.yaml", []byte(`
+balancer: consistent_hash
+consistent-hash-replicas: 1000000
+`), "")
+	assert.Error(t, err).NotNil()
 }
 
 // TestDuplicateServicesFollowListOrder pins the resolution rule for a repeated
@@ -97,17 +112,17 @@ func TestCenterAppliesAndKeepsLastGood(t *testing.T) {
 
 	chain := selectionChain(t, mgr, "redis:cache")
 	assert.That(t, chain.Selection().Balancer).Equal(kloadbalance.ConsistentHash)
-	assert.Number(t, chain.Selection().ConsistentHash.Replicas).Equal(200)
+	assert.Number(t, chain.Selection().ConsistentHashReplicas).Equal(200)
 
 	// A document naming an unregistered strategy is rejected and the last good
-	// selection keeps serving.
+	// selection keeps serving — on the same registered chain, which a push
+	// rebuilds in place.
 	src.Push(context.Background(), kloadbalance.Settings{Rules: []kloadbalance.Rule{{
 		Service:   "redis:cache",
 		Selection: kloadbalance.Selection{Balancer: "no_such_strategy"},
 	}}})
-	again := selectionChain(t, mgr, "redis:cache")
-	assert.That(t, again.Selection().Balancer).Equal(kloadbalance.ConsistentHash)
-	assert.That(t, again.Selection().OutlierSuspendFor).Equal(time.Duration(0))
+	assert.That(t, chain.Selection().Balancer).Equal(kloadbalance.ConsistentHash)
+	assert.That(t, chain.Selection().OutlierSuspendFor).Equal(time.Duration(0))
 }
 
 // TestNewCenterRejectsUnservableSnapshot pins the startup contract: a source

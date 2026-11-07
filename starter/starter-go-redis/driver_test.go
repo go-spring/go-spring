@@ -28,9 +28,9 @@ import (
 	"go-spring.org/cloud/governance"
 	"go-spring.org/cloud/governance/capability/loadbalance"
 	"go-spring.org/cloud/governance/capability/ratelimit"
+	"go-spring.org/cloud/governance/capability/source"
 	admissionplane "go-spring.org/cloud/governance/controlplane/admission"
 	loadbalanceplane "go-spring.org/cloud/governance/controlplane/loadbalance"
-	"go-spring.org/cloud/governance/capability/source"
 	serverfault "go-spring.org/cloud/governance/dataplane/inbound/fault"
 	clientfault "go-spring.org/cloud/governance/dataplane/outbound/fault"
 	"go-spring.org/cloud/governance/dataplane/outbound/resilience"
@@ -118,10 +118,10 @@ func TestDriverChainIsGovernedFromConstruction(t *testing.T) {
 	mgr.Apply(context.Background(), loadbalance.Settings{Rules: []loadbalance.Rule{{
 		Service: serviceLabel(cfg),
 		Selection: loadbalance.Selection{
-			Balancer:          loadbalance.ConsistentHash,
-			ConsistentHash:    loadbalance.ConsistentHashParams{Replicas: 100},
-			OutlierThreshold:  3,
-			OutlierSuspendFor: time.Second,
+			Balancer:               loadbalance.ConsistentHash,
+			ConsistentHashReplicas: 100,
+			OutlierThreshold:       3,
+			OutlierSuspendFor:      time.Second,
 		},
 	}}})
 

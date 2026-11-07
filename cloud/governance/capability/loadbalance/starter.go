@@ -20,19 +20,28 @@ import (
 	"go-spring.org/spring/gs"
 )
 
-// The manager is registered here, by the package that owns it: a client that
-// injects *loadbalance.Manager has already imported this package, and its
-// constructor parameter is REQUIRED — an absent bean fails startup rather than
-// degrading silently.
+// Package registration for the load-balancing capability.
 //
-// Strategies are [Provider] beans: this package contributes the built-in provider,
-// and any package that supplies a strategy contributes its own. [Factory]
-// collects them and is the manager's required dependency.
+// # The manager
 //
-// The bean owns its own teardown: close runs on [Manager.Close], which drops
-// the chain registrations — the only references the manager keeps. gs destroys
-// beans in reverse construction order, so the chains — built after the
-// manager — are gone by then.
+// NewManager is registered BY this package, so a client that injects a
+// *loadbalance.Manager has already imported it. The dependency is required: an
+// absent bean fails startup rather than silently degrading into an unmanaged
+// client.
+//
+// # Strategies
+//
+// A [Provider] exports one or more strategy names; this package registers the
+// built-in provider, and any deployment that adds a strategy contributes its own
+// Provider bean. [Factory] collects all of them into the name index and is the
+// manager's required dependency.
+//
+// # Teardown
+//
+// The manager holds no goroutines and no connections; its live state is the
+// chain registration table, so [Manager.Close] is the destroy hook that drops
+// it. gs destroys beans in reverse construction order, and chains are built
+// after the manager, so they are already gone by the time Close runs.
 func init() {
 	gs.Provide(NewBuiltinProvider)
 	gs.Provide(NewFactory)

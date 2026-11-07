@@ -28,9 +28,9 @@ import (
 	"go-spring.org/cloud/discovery"
 	"go-spring.org/cloud/governance/capability/loadbalance"
 	"go-spring.org/cloud/governance/capability/ratelimit"
+	"go-spring.org/cloud/governance/capability/source"
 	admissionplane "go-spring.org/cloud/governance/controlplane/admission"
 	loadbalanceplane "go-spring.org/cloud/governance/controlplane/loadbalance"
-	"go-spring.org/cloud/governance/capability/source"
 	serverfault "go-spring.org/cloud/governance/dataplane/inbound/fault"
 	clientfault "go-spring.org/cloud/governance/dataplane/outbound/fault"
 	"go-spring.org/cloud/governance/dataplane/outbound/resilience"
@@ -82,9 +82,9 @@ func TestNewPoolChainRebuildsFromScratch(t *testing.T) {
 
 	// The base generation: round-robin, suspension disabled, live instance picked.
 	assert.That(t, p.lbChain.Selection()).Equal(loadbalance.Selection{Balancer: loadbalance.RoundRobin})
-	ep, err := p.lbChain.Pick(context.Background(), loadbalance.PickInfo{})
+	pick, err := p.lbChain.Pick(context.Background(), loadbalance.PickInfo{})
 	assert.Error(t, err).Nil()
-	assert.That(t, ep.Addr).Equal("127.0.0.1:6379")
+	assert.That(t, pick.Endpoint.Addr).Equal("127.0.0.1:6379")
 
 	// A push that targets THIS pool's governance label rebuilds the chain whole.
 	moved := loadbalance.Selection{Balancer: loadbalance.LeastConn, OutlierThreshold: 3, OutlierSuspendFor: time.Minute}

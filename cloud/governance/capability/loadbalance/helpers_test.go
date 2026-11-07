@@ -44,11 +44,17 @@ func addrs(eps []discovery.Endpoint) []string {
 	return out
 }
 
-// suspended reports whether addr is currently suspended and cooling down: the
-// tracker's pure filter drops it from the admissible set only in that state, so
-// a half-open or recovered endpoint reads as not suspended.
+// suspended reports whether addr is currently suspended and cooling down, so a
+// half-open or recovered endpoint reads as not suspended. It probes through
+// Allows with an endpoint the tracker has never seen: that endpoint is always
+// admissible, which keeps the all-suspended fallback from masking the answer.
 func suspended(tr *Tracker, addr string) bool {
-	return len(tr.admissible(eps(addr))) == 0
+	for _, ep := range tr.Allows(eps(addr, "__probe__")) {
+		if ep.Addr == addr {
+			return false
+		}
+	}
+	return true
 }
 
 // counts tallies how many picks landed on each address over n calls.
@@ -80,7 +86,7 @@ func newManager(t *testing.T) *Manager {
 // selectionFor reads what service resolves to right now, through the same
 // resolution the manager runs when it arms and rebuilds chains.
 func selectionFor(m *Manager, service string) Selection {
-	return findSelection(m.snap.Load(), service)
+	return findSelection(*m.snap.Load(), service)
 }
 
 // versionedSource is a source whose endpoints carry a version, the dimension the

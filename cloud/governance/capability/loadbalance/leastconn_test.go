@@ -18,6 +18,7 @@ package loadbalance
 
 import (
 	"context"
+	"sync"
 	"testing"
 
 	"go-spring.org/stdlib/testing/assert"
@@ -48,4 +49,46 @@ func TestLeastConn(t *testing.T) {
 	e4, err := b.Pick(set, PickInfo{})
 	assert.Error(t, err).Nil()
 	assert.String(t, e4.Addr).Equal(e1.Addr) // e1's count was not driven negative
+}
+
+// TestLeastConnTieRotation pins the tie-breaker: with every count equal, the
+// rotating start spreads picks evenly instead of always taking the first
+// endpoint.
+func TestLeastConnTieRotation(t *testing.T) {
+	b := NewLeastConn(Selection{Balancer: LeastConn})
+	set := eps("a", "b", "c")
+
+	m := map[string]int{}
+	for range 6 {
+		ep, err := b.Pick(set, PickInfo{})
+		assert.Error(t, err).Nil()
+		m[ep.Addr]++
+		b.Complete(context.Background(), ep, nil) // back to zero: every pick sees a tie
+	}
+	assert.Number(t, m["a"]).Equal(2)
+	assert.Number(t, m["b"]).Equal(2)
+	assert.Number(t, m["c"]).Equal(2)
+}
+
+// TestLeastConnConcurrent exercises Pick/Complete racing on the shared table. Run
+// with -race; afterwards every settled request must have left the table empty.
+func TestLeastConnConcurrent(t *testing.T) {
+	b := NewLeastConn(Selection{Balancer: LeastConn})
+	set := eps("a", "b", "c")
+
+	var wg sync.WaitGroup
+	for range 8 {
+		wg.Go(func() {
+			for range 100 {
+				ep, err := b.Pick(set, PickInfo{})
+				assert.Error(t, err).Nil()
+				b.Complete(context.Background(), ep, nil)
+			}
+		})
+	}
+	wg.Wait()
+
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	assert.Number(t, len(b.inflight)).Equal(0)
 }

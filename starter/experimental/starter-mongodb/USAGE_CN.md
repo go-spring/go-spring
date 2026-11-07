@@ -281,8 +281,8 @@ seam 在**建连层**：breaker 策略表现为拒绝*连接*；故障注入按�
 **端点选择由同一条规则、同一个标签管**。发现模式下链路会挂上 suspension tracker，并在
 `lbMgr.Chain(resolver, label)` 调用时就注册到
 `mongodb:<service-name|uri>`（`*loadbalance.Manager` bean 注入 `newClient`），于是
-`spring.governance.client.loadbalance.services[N].balancer`（round_robin / least_conn / consistent_hash / weighted / zone_aware /
-random / p2c）与 `outlier-threshold` / `outlier-suspend-for` **整条重建**——下一次拨号在全新的
+`spring.governance.client.loadbalance.services[N].balancer`（round_robin / least_conn / consistent_hash / weighted /
+random / p2c）、`zone-aware` / `zone-key` 开关与 `outlier-threshold` / `outlier-suspend-for` **整条重建**——下一次拨号在全新的
 balancer 与 suspension tracker 上走新策略，不用重启，也不会重建已有连接。直连（只配 URI）的实例没有候选集，这些 key 对它无效。
 ⚠ dialer 能拿到的成败信号只有拨号本身，所以 `outlier-threshold` 摘的是**反复连不上**的实例；
 单条命令的失败归上层 resilience executor 管。详见 `cloud/governance/README.md` §3.1。

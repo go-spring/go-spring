@@ -18,35 +18,46 @@ package loadbalance
 
 import (
 	"context"
+	"math/rand/v2"
 	"sync/atomic"
 
 	"go-spring.org/cloud/discovery"
 )
 
-// The [RoundRobin] strategy is exported by the built-in [Provider]. It
-// has no parameters of its own.
-
-func newRoundRobin(Selection) (Balancer, error) {
-	return &roundRobin{}, nil
+// NewRoundRobin builds the [RoundRobin] strategy. It has no parameters of its
+// own. The counter starts at a random offset so a fleet of clients that comes up
+// together does not send its first picks to the same instance; the cycle is
+// uniform from there.
+func NewRoundRobin(Selection) *RoundRobinBalancer {
+	b := &RoundRobinBalancer{}
+	b.seq.Store(rand.Uint64())
+	return b
 }
 
-// roundRobin is a stateless round-robin [Balancer]: it cycles evenly through the
-// candidate set, ignoring weight. It is the simplest strategy and the base
-// strategy a selection that names nothing runs under.
+// RoundRobinBalancer is a round-robin [Balancer]: it cycles through the
+// candidate set in order, ignoring weight. It is the simplest strategy and the
+// base strategy a selection that names nothing runs under.
 //
-// It holds only a monotonically increasing cursor; the candidate set is supplied
-// on every Pick, so no per-endpoint bookkeeping is needed.
-type roundRobin struct {
-	next atomic.Uint64
+// It keeps no per-endpoint or per-request state — only a monotonically
+// increasing counter. The candidate set is supplied on every Pick, so no
+// bookkeeping per endpoint is needed.
+type RoundRobinBalancer struct {
+	// seq is a monotonically increasing pick counter; its value modulo the
+	// candidate count is the cycle position. It is atomic so concurrent picks each
+	// take one slot without a lock.
+	seq atomic.Uint64
 }
 
-func (b *roundRobin) Pick(eps []discovery.Endpoint, _ PickInfo) (discovery.Endpoint, error) {
+// Pick returns the next endpoint in the cycle, or [ErrNoEndpoints] when eps is
+// empty. While the candidate set is stable, any len(eps) consecutive picks cover
+// it exactly once. eps is read, never retained.
+func (b *RoundRobinBalancer) Pick(eps []discovery.Endpoint, _ PickInfo) (discovery.Endpoint, error) {
 	if len(eps) == 0 {
 		return discovery.Endpoint{}, ErrNoEndpoints
 	}
-	i := b.next.Add(1) - 1
-	return eps[int(i%uint64(len(eps)))], nil
+	seq := b.seq.Add(1) - 1
+	return eps[int(seq%uint64(len(eps)))], nil
 }
 
 // Complete is a no-op: round-robin keeps no per-request state.
-func (b *roundRobin) Complete(_ context.Context, _ discovery.Endpoint, _ error) {}
+func (b *RoundRobinBalancer) Complete(_ context.Context, _ discovery.Endpoint, _ error) {}
